@@ -7,6 +7,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private var statusLabel: NSTextField!
     private var logTextView: NSTextView!
     private var pendingCompletion: ((Error?) -> Void)?
+    private var activePreviewRequestID = UUID()
     private var logLines: [String] = []
     private let previewID = String(UUID().uuidString.prefix(8))
     private var hasRenderedTerminationError = false
@@ -113,6 +114,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     func preparePreviewOfFile(at url: URL, completionHandler handler: @escaping (Error?) -> Void) {
+        let requestID = UUID()
+        activePreviewRequestID = requestID
         pendingCompletion = handler
         resetLog()
         hasRenderedTerminationError = false
@@ -123,24 +126,42 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         appendFileDiagnostics(url)
         webView.stopLoading()
 
-        DispatchQueue.global(qos: .userInitiated).async {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             do {
                 let result = try Self.buildInlinePreviewHTML(for: url)
-                for line in result.diagnostics { self.appendLog(line) }
-                DispatchQueue.main.async {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else {
+                        handler(nil)
+                        return
+                    }
+                    guard self.activePreviewRequestID == requestID else {
+                        self.appendLog("ignoring stale preview build for \(url.lastPathComponent)")
+                        handler(nil)
+                        return
+                    }
+                    for line in result.diagnostics { self.appendLog(line) }
                     self.statusLabel.stringValue = "[native] Loading file preview into WKWebView…\n\(url.lastPathComponent)"
                     self.appendLog("calling WKWebView.loadFileURL; html.bytes=\(result.html.utf8.count); indexURL=\(result.indexURL.path); readAccessURL=\(result.readAccessURL.path)")
                     self.webView.loadFileURL(result.indexURL, allowingReadAccessTo: result.readAccessURL)
-                    self.finishPreviewIfNeeded(nil)
+                    self.finishPreviewIfNeeded(nil, requestID: requestID)
                     if Self.showDebugOverlay {
                         self.scheduleJavaScriptProbes()
                     }
                 }
             } catch {
-                DispatchQueue.main.async {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else {
+                        handler(nil)
+                        return
+                    }
+                    guard self.activePreviewRequestID == requestID else {
+                        self.appendLog("ignoring stale preview error for \(url.lastPathComponent): \(Self.describe(error))")
+                        handler(nil)
+                        return
+                    }
                     self.appendLog("native build error: \(Self.describe(error))")
                     self.renderNativeError(error, fileURL: url)
-                    self.finishPreviewIfNeeded(nil)
+                    self.finishPreviewIfNeeded(nil, requestID: requestID)
                 }
             }
         }
@@ -512,7 +533,11 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
     }
 
-    private func finishPreviewIfNeeded(_ error: Error?) {
+    private func finishPreviewIfNeeded(_ error: Error?, requestID: UUID? = nil) {
+        if let requestID, requestID != activePreviewRequestID {
+            appendLog("skipping Quick Look completion for stale preview request")
+            return
+        }
         guard let completion = pendingCompletion else { return }
         pendingCompletion = nil
         appendLog("calling Quick Look completion handler; error=\(error.map { Self.describe($0) } ?? "nil")")

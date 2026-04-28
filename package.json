@@ -1,6 +1,6 @@
 {
   "name": "molstar-quicklook",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "private": true,
   "description": "macOS Quick Look preview extension for PDB/mmCIF/SDF files powered by Mol*.",
   "scripts": {

@@ -76,6 +76,8 @@ struct ContentView: View {
                     subtitle: "Refresh the system preview service after installing a new build."
                 ) {
                     run("/usr/bin/qlmanage", arguments: ["-r"])
+                    run("/usr/bin/qlmanage", arguments: ["-r", "cache"])
+                    run("/usr/bin/killall", arguments: ["quicklookd"])
                 }
             }
 
@@ -455,7 +457,7 @@ private struct AboutPanel: View {
                 Text("Burette")
                     .font(.system(size: 34, weight: .bold))
                     .foregroundColor(.white.opacity(0.92))
-                Text("Version 0.10.0")
+                Text("Version 0.10.1")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.white.opacity(0.42))
             }
