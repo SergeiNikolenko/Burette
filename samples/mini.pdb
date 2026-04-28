@@ -1,0 +1,13 @@
+HEADER    MINI GLY-ALA PEPTIDE FOR QUICK LOOK TEST
+TITLE     MOLSTAR QUICK LOOK SAMPLE
+ATOM      1  N   GLY A   1      -1.204   0.176   0.000  1.00 20.00           N
+ATOM      2  CA  GLY A   1       0.000   0.000   0.000  1.00 20.00           C
+ATOM      3  C   GLY A   1       0.722   1.271   0.000  1.00 20.00           C
+ATOM      4  O   GLY A   1       0.163   2.360   0.000  1.00 20.00           O
+ATOM      5  N   ALA A   2       2.052   1.189   0.000  1.00 20.00           N
+ATOM      6  CA  ALA A   2       2.896   2.377   0.000  1.00 20.00           C
+ATOM      7  CB  ALA A   2       3.711   2.273   1.276  1.00 20.00           C
+ATOM      8  C   ALA A   2       3.793   2.477  -1.230  1.00 20.00           C
+ATOM      9  O   ALA A   2       4.675   3.336  -1.236  1.00 20.00           O
+TER      10      ALA A   2
+END

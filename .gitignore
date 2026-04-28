@@ -1,0 +1,9 @@
+.DS_Store
+build/
+DerivedData/
+node_modules/
+npm-cache/
+xcuserdata/
+*.xcuserstate
+*.zip
+*.dmg
