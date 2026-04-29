@@ -79,6 +79,7 @@
 				<string>public.pdb</string>
 				<string>public.mmcif</string>
 				<string>public.cif</string>
+				<string>com.schrodinger.sdf</string>
 			</array>
 			<key>QLSupportsSearchableItems</key>
 			<false/>

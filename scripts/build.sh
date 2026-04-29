@@ -20,8 +20,14 @@ APP_ID="com.local.MolstarQuickLookV10"
 PREVIEW_ID="com.local.MolstarQuickLookV10.Preview"
 QL_PLIST="PreviewExtension/Info.plist"
 QL_TYPES_PATH=":NSExtension:NSExtensionAttributes:QLSupportedContentTypes"
-SAFE_ROOT="${TMPDIR:-/tmp}/MolstarQuickLookV10BuildSafe"
+SAFE_ROOT_BASE="${TMPDIR:-/tmp}"
+SAFE_ROOT="$(mktemp -d "${SAFE_ROOT_BASE%/}/MolstarQuickLookV10BuildSafe.XXXXXX")"
 LOCAL_APP="$ROOT/build/Build/Products/Debug/MolstarQuickLook.app"
+
+cleanup_safe_root() {
+  rm -rf "$SAFE_ROOT" 2>/dev/null || true
+}
+trap cleanup_safe_root EXIT
 
 cat <<HDR
 MolstarQuickLook v10 build
@@ -73,14 +79,12 @@ detect_and_add_current_uti "$QL_PLIST" "$ROOT/samples/mini.cif"
 detect_and_add_current_uti "$QL_PLIST" "$ROOT/samples/mini.sdf"
 for file in "$@"; do detect_and_add_current_uti "$QL_PLIST" "$file"; done
 
-rm -rf "$SAFE_ROOT"
-mkdir -p "$SAFE_ROOT"
 rsync -a --delete --exclude build --exclude node_modules --exclude .git "$ROOT/" "$SAFE_ROOT/"
 clean_detritus "$SAFE_ROOT"
 
 pushd "$SAFE_ROOT" >/dev/null
 rm -rf build
-xcodebuild -project MolstarQuickLook.xcodeproj -scheme MolstarQuickLook -configuration Debug -derivedDataPath build CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build
+xcodebuild -project MolstarQuickLook.xcodeproj -scheme MolstarQuickLook -configuration Debug -derivedDataPath build COMPILER_INDEX_STORE_ENABLE=NO CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build
 clean_detritus "build/Build/Products/Debug/MolstarQuickLook.app"
 popd >/dev/null
 
