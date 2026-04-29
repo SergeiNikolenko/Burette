@@ -40,11 +40,40 @@
   }
 
   const layoutState = {
-    left: 'collapsed',
+    left: 'hidden',
     right: 'hidden',
     top: 'hidden',
     bottom: 'hidden'
   };
+  const resizeState = {
+    viewer: null,
+    frame: 0,
+    timer: 0
+  };
+
+  function scheduleViewerResize(viewer, delayMs = 80) {
+    if (!viewer) return;
+    resizeState.viewer = viewer;
+    if (resizeState.frame) return;
+    resizeState.frame = requestAnimationFrame(() => {
+      resizeState.frame = 0;
+      clearTimeout(resizeState.timer);
+      resizeState.timer = setTimeout(() => {
+        const target = resizeState.viewer;
+        if (!target) return;
+        let handled = false;
+        try {
+          if (typeof target.handleResize === 'function') {
+            target.handleResize();
+            handled = true;
+          }
+        } catch (_) {}
+        if (!handled) {
+          try { target.plugin?.layout?.events?.updated?.next?.(); } catch (_) {}
+        }
+      }, delayMs);
+    });
+  }
 
   const DEFAULT_VIEWER_UI_SCALE = 0.86;
   const MIN_VIEWER_UI_SCALE = 0.72;
@@ -220,7 +249,7 @@
   }
 
   function toggleLayoutRegion(region, viewer) {
-    if (region === 'left') layoutState.left = layoutState.left === 'full' ? 'collapsed' : 'full';
+    if (region === 'left') layoutState.left = layoutState.left === 'full' ? 'hidden' : 'full';
     if (region === 'right') layoutState.right = layoutState.right === 'full' ? 'hidden' : 'full';
     if (region === 'sequence') layoutState.top = layoutState.top === 'full' ? 'hidden' : 'full';
     if (region === 'log') layoutState.bottom = layoutState.bottom === 'full' ? 'hidden' : 'full';
@@ -244,10 +273,7 @@
     }
 
     updateToolbarButtons();
-    requestAnimationFrame(() => {
-      try { viewer?.handleResize?.(); } catch (_) {}
-      try { viewer?.plugin?.layout?.events?.updated?.next?.(); } catch (_) {}
-    });
+    scheduleViewerResize(viewer, 40);
   }
 
   function updateToolbarButtons() {
@@ -384,15 +410,15 @@
       layoutShowSequence: true,
       layoutShowLog: true,
       layoutShowLeftPanel: true,
-      viewportShowReset: false,
-      viewportShowScreenshotControls: false,
-      viewportShowControls: false,
+      viewportShowReset: true,
+      viewportShowScreenshotControls: true,
+      viewportShowControls: true,
       viewportShowExpand: false,
       viewportShowToggleFullscreen: false,
-      viewportShowSelectionMode: false,
+      viewportShowSelectionMode: true,
       viewportShowAnimation: false,
       viewportShowTrajectoryControls: false,
-      viewportShowSettings: false,
+      viewportShowSettings: true,
       collapseLeftPanel: true,
       collapseRightPanel: true,
       pdbProvider: 'rcsb',
@@ -454,9 +480,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
 ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     window.MolstarQuickLookViewer = viewer;
     activeViewer = viewer;
-    window.MolstarQuickLookHandleResize = () => {
-      try { viewer.handleResize(); } catch (_) {}
-    };
+    window.MolstarQuickLookHandleResize = () => scheduleViewerResize(viewer, 60);
     applyViewerUIScale(viewer);
     initViewerKeyboardShortcuts(viewer);
     initBuretToolbar(viewer);
@@ -476,9 +500,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       `Mol* timed out while parsing/rendering ${prepared.label} as ${prepared.format}.`
     );
 
-    window.addEventListener('resize', () => {
-      try { viewer.handleResize(); } catch (_) {}
-    });
+    window.addEventListener('resize', () => scheduleViewerResize(viewer, 100));
     await waitForAnimationFrame();
     try { viewer.handleResize(); } catch (_) {}
 
