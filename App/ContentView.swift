@@ -4,8 +4,9 @@ import SwiftUI
 struct ContentView: View {
     @AppStorage("openSettingsAtLaunch") private var openSettingsAtLaunch = false
     @AppStorage("showPreviewPanelControls") private var showPreviewPanelControls = true
-    @AppStorage("useTransparentPreviewBackground") private var useTransparentPreviewBackground = true
-    @AppStorage("transparentSDFBackground") private var transparentSDFBackground = true
+    @AppStorage("useTransparentPreviewBackground") private var useTransparentPreviewBackground = false
+    @AppStorage("viewerTheme") private var viewerTheme = "dark"
+    @AppStorage("viewerCanvasBackground") private var viewerCanvasBackground = "black"
     @AppStorage("checkUpdatesAutomatically") private var checkUpdatesAutomatically = true
     @AppStorage("updateChannel") private var updateChannelRaw = BurreteUpdateChannel.stable.rawValue
     @StateObject private var updater = BurreteUpdater.shared
@@ -74,9 +75,9 @@ struct ContentView: View {
                 )
                 SettingsDivider()
                 SettingsValueRow(
-                    icon: "arrow.up.left.and.arrow.down.right",
-                    title: "Fit to screen",
-                    subtitle: "Uses native window resizing so the macOS title bar stays reachable."
+                    icon: "arrow.up.left.and.arrow.down.right.circle",
+                    title: "Fullscreen",
+                    subtitle: "The green window button opens the full app viewer in native macOS fullscreen."
                 )
                 SettingsDivider()
                 SettingsActionRow(
@@ -97,12 +98,6 @@ struct ContentView: View {
                 SettingsDivider()
                 SettingsValueRow(icon: "doc.richtext", title: "Formats", subtitle: "PDB, PDBx/mmCIF, BinaryCIF, SDF, MOL, and MOL2")
                 SettingsDivider()
-                SettingsToggleRow(
-                    title: "Transparent SDF background",
-                    subtitle: "Use a transparent canvas by default for SDF molecule files.",
-                    isOn: $transparentSDFBackground
-                )
-                SettingsDivider()
                 SettingsValueRow(icon: "square.grid.3x3", title: "SDF molecule grid", subtitle: "Multi-record SDF files are laid out as a visible grid when possible.")
                 SettingsDivider()
                 SettingsValueRow(icon: "bolt.horizontal", title: "Performance", subtitle: "Bundled assets, cached runtime previews, and WebGL fallback.")
@@ -110,9 +105,34 @@ struct ContentView: View {
 
             SettingsSectionTitle("Appearance")
             SettingsCard {
+                SettingsStringPickerRow(
+                    icon: "circle.lefthalf.filled",
+                    title: "Theme",
+                    subtitle: "Use the system appearance, force dark, or force light.",
+                    selection: $viewerTheme,
+                    options: [
+                        ("auto", "Auto"),
+                        ("dark", "Dark"),
+                        ("light", "Light")
+                    ]
+                )
+                SettingsDivider()
+                SettingsStringPickerRow(
+                    icon: "circle.fill",
+                    title: "Canvas background",
+                    subtitle: "The molecule canvas uses black by default; choose another surface when needed.",
+                    selection: $viewerCanvasBackground,
+                    options: [
+                        ("black", "Black"),
+                        ("graphite", "Graphite"),
+                        ("white", "White"),
+                        ("transparent", "Transparent")
+                    ]
+                )
+                SettingsDivider()
                 SettingsToggleRow(
                     title: "Transparent preview background",
-                    subtitle: "Use the native Quick Look glass behind the molecule instead of an opaque viewer surface.",
+                    subtitle: "Use native Quick Look glass around the canvas; the canvas background stays controlled above.",
                     isOn: $useTransparentPreviewBackground
                 )
                 SettingsDivider()
@@ -132,9 +152,9 @@ struct ContentView: View {
                 )
                 SettingsDivider()
                 SettingsValueRow(
-                    icon: "arrow.up.left.and.arrow.down.right",
-                    title: "Fit control",
-                    subtitle: "The fit button resizes the viewer within the visible screen and can restore its previous size."
+                    icon: "rectangle.compress.vertical",
+                    title: "Compact controls",
+                    subtitle: "Click the dotted handle to collapse the toolbar to a miniature control, then click it again to restore it."
                 )
             }
 
@@ -323,9 +343,9 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
     var searchTerms: [String] {
         switch self {
         case .general:
-            return ["application", "launch", "startup", "menu bar", "icon", "dock", "preview window", "fit"]
+            return ["application", "launch", "startup", "menu bar", "icon", "dock", "preview window", "fullscreen"]
         case .viewer:
-            return ["molstar", "formats", "pdb", "cif", "sdf", "mol", "mol2", "xyz", "gro", "background", "transparent", "grid", "toolbar", "panels", "sequence", "log"]
+            return ["molstar", "formats", "pdb", "cif", "sdf", "mol", "mol2", "xyz", "gro", "background", "transparent", "black", "canvas", "theme", "dark", "light", "auto", "grid", "toolbar", "panels", "sequence", "log"]
         case .files:
             return ["finder", "default", "double-click", "open with", "quick look", "cache", "file", "extension"]
         case .logs:
@@ -588,6 +608,47 @@ private struct SettingsPickerRow: View {
     }
 }
 
+private struct SettingsStringPickerRow: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+    @Binding var selection: String
+    let options: [(value: String, title: String)]
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .semibold))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundColor(.white.opacity(0.82))
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.9))
+                Text(subtitle)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(0.48))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 12)
+
+            Picker("", selection: $selection) {
+                ForEach(options, id: \.value) { option in
+                    Text(option.title).tag(option.value)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .frame(width: 150)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+}
+
 private struct SettingsActionRow: View {
     let icon: String
     let title: String
@@ -667,7 +728,7 @@ private struct AboutPanel: View {
                 Text("Burrete")
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundStyle(.primary)
-                Text("Version 0.10.6")
+                Text("Version 0.10.7")
                     .font(.system(size: 12, weight: .regular))
                     .foregroundStyle(.secondary)
             }
