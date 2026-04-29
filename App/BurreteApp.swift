@@ -8,7 +8,7 @@ struct BurreteApp: App {
 
     var body: some Scene {
         Settings {
-            ContentView()
+            EmptyView()
         }
     }
 }
@@ -22,12 +22,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         updateActivationPolicy()
         installStatusItem()
-        BurreteFileAssociations.registerForUnsetDefaults()
+        BurreteFileAssociations.registerBundleOnly()
         Task { @MainActor in
             BurreteUpdater.shared.checkAutomaticallyIfNeeded()
         }
         if UserDefaults.standard.object(forKey: "openSettingsAtLaunch") == nil {
-            UserDefaults.standard.set(true, forKey: "openSettingsAtLaunch")
+            UserDefaults.standard.set(false, forKey: "openSettingsAtLaunch")
         }
         if UserDefaults.standard.bool(forKey: "openSettingsAtLaunch") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
@@ -69,11 +69,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func installStatusItem() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = item.button {
             button.image = BurreteIcon.statusImage()
-            button.title = ""
-            button.toolTip = "Burrete"
+            button.title = " Burrete"
+            button.toolTip = "Burrete - molecular Quick Look previews. Open Settings from this menu."
         }
 
         let menu = NSMenu()
@@ -109,7 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         settingsWindow?.center()
-        showAsForegroundApp(activating: settingsWindow)
+        presentWindow(settingsWindow, activate: true)
     }
 
     @objc private func checkForUpdates() {
@@ -124,7 +124,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let fileURL = url.standardizedFileURL
         if let existing = viewerWindows[fileURL] {
             existing.showWindow(nil)
-            showAsForegroundApp(activating: existing.window)
+            presentWindow(existing.window, activate: true)
             return
         }
 
@@ -143,20 +143,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.load()
         controller.showWindow(nil)
         controller.window?.center()
-        showAsForegroundApp(activating: controller.window)
+        presentWindow(controller.window, activate: true)
     }
 
-    private func showAsForegroundApp(activating window: NSWindow?) {
-        NSApp.setActivationPolicy(.regular)
+    private func presentWindow(_ window: NSWindow?, activate: Bool) {
+        guard let window else { return }
+        NSApp.setActivationPolicy(.accessory)
         NSApp.unhide(nil)
-        window?.makeKeyAndOrderFront(nil)
-        window?.orderFrontRegardless()
-        NSRunningApplication.current.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
-        NSApp.activate(ignoringOtherApps: true)
-        DispatchQueue.main.async {
-            window?.makeKeyAndOrderFront(nil)
-            window?.orderFrontRegardless()
-            NSRunningApplication.current.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+        window.makeKeyAndOrderFront(nil)
+        if activate {
             NSApp.activate(ignoringOtherApps: true)
         }
     }
@@ -235,11 +230,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 enum BurreteFileAssociations {
     static let bundleIdentifier = "com.local.BurreteV10"
-    private static let legacyBundleIdentifiers = [
-        "com.local.molstarquicklook",
-        "com.local.molstarquicklookv8",
-        "com.local.molstarquicklookv10"
-    ]
     static let contentTypes = [
         "com.local.burrete10.pdb",
         "com.local.burrete10.cif",
@@ -296,22 +286,12 @@ enum BurreteFileAssociations {
         return "Some file types could not be updated: \(failures.prefix(3).joined(separator: "; "))"
     }
 
-    static func registerForUnsetDefaults() {
+    static func registerBundleOnly() {
         LSRegisterURL(Bundle.main.bundleURL as CFURL, true)
-        for contentType in contentTypes where shouldClaimDefaultHandler(for: contentType) {
-            LSSetDefaultRoleHandlerForContentType(contentType as CFString, .viewer, bundleIdentifier as CFString)
-        }
     }
 
     private static func defaultHandler(for contentType: String) -> String? {
         LSCopyDefaultRoleHandlerForContentType(contentType as CFString, .viewer)?.takeRetainedValue() as String?
-    }
-
-    private static func shouldClaimDefaultHandler(for contentType: String) -> Bool {
-        guard let handler = defaultHandler(for: contentType) else {
-            return true
-        }
-        return legacyBundleIdentifiers.contains(handler.lowercased())
     }
 }
 
