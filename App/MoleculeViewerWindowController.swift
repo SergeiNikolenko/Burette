@@ -379,6 +379,7 @@ private struct AppViewerRuntime {
             body .msp-plugin .msp-sequence {
               color: var(--buret-molstar-text) !important;
               background: var(--buret-molstar-panel-background) !important;
+              max-height: calc(100vh - 76px) !important;
               box-shadow: 0 14px 34px var(--buret-molstar-shadow);
             }
             body .msp-plugin .msp-control-row,
@@ -469,6 +470,7 @@ private struct AppViewerRuntime {
               opacity: 0.76 !important;
             }
             body .msp-plugin .msp-viewport-controls {
+              top: 64px !important;
               z-index: 40;
             }
             body .msp-plugin .msp-viewport-controls-buttons > div {
@@ -518,7 +520,7 @@ private struct AppViewerRuntime {
             #status.error { color: #ffd4d4; background: rgba(70, 0, 0, 0.82); }
             #status.hidden { display: none; }
             #buret-toolbar {
-              position: absolute; top: 12px; right: 12px; z-index: 2147483646;
+              position: absolute; top: 12px; left: 12px; right: auto; z-index: 2147483646;
               display: flex; align-items: center; gap: 6px; padding: 6px;
               border: 1px solid var(--buret-toolbar-border);
               border-radius: 12px; color: var(--buret-toolbar-color);

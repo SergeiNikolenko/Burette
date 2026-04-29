@@ -6,6 +6,8 @@
   const MAX_SDF_GRID_ATOMS = 900;
   const MAX_SDF_GRID_BONDS = 900;
   const SDF_GRID_PADDING = 4.0;
+  const TOOLBAR_POSITION_VERSION = '2';
+  const TOOLBAR_MARGIN = 12;
   try { window.__mqlDebug && window.__mqlDebug('[viewer.js] top-level IIFE entered; readyState=' + document.readyState); } catch (_) {}
 
   function post(type, message) {
@@ -311,22 +313,29 @@
         window.localStorage && window.localStorage.setItem('buret.toolbar.collapsed', collapsed ? '1' : '0');
       } catch (_) {}
     }
-    moveToolbar(toolbar, toolbar.getBoundingClientRect().left, toolbar.getBoundingClientRect().top);
+    repositionToolbar(toolbar);
     scheduleViewerResize(viewer, 40);
   }
 
   function initToolbarDrag(toolbar) {
+    let hasSavedPosition = false;
     try {
       const raw = window.localStorage && window.localStorage.getItem('buret.toolbar.position');
-      if (raw) {
+      const version = window.localStorage && window.localStorage.getItem('buret.toolbar.position.version');
+      if (raw && version === TOOLBAR_POSITION_VERSION) {
         const saved = JSON.parse(raw);
         if (Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
           toolbar.style.left = saved.left + 'px';
           toolbar.style.top = saved.top + 'px';
           toolbar.style.right = 'auto';
+          toolbar.dataset.defaultPosition = '0';
+          hasSavedPosition = true;
         }
+      } else if (raw) {
+        window.localStorage && window.localStorage.removeItem('buret.toolbar.position');
       }
     } catch (_) {}
+    if (!hasSavedPosition) applyDefaultToolbarPosition(toolbar);
 
     let drag = null;
     toolbar.addEventListener('pointerdown', event => {
@@ -359,15 +368,34 @@
       if (shouldToggle) {
         setToolbarCollapsed(toolbar, !toolbar.classList.contains('collapsed'), resizeState.viewer);
       } else {
+        toolbar.dataset.defaultPosition = '0';
         saveToolbarPosition(toolbar);
       }
     });
     toolbar.addEventListener('pointercancel', () => { drag = null; });
     window.addEventListener('resize', () => {
-      const rect = toolbar.getBoundingClientRect();
-      moveToolbar(toolbar, rect.left, rect.top);
-      saveToolbarPosition(toolbar);
+      repositionToolbar(toolbar);
     });
+  }
+
+  function repositionToolbar(toolbar) {
+    if (toolbar.dataset.defaultPosition === '1') {
+      applyDefaultToolbarPosition(toolbar);
+      return;
+    }
+
+    const rect = toolbar.getBoundingClientRect();
+    moveToolbar(toolbar, rect.left, rect.top);
+    saveToolbarPosition(toolbar);
+  }
+
+  function applyDefaultToolbarPosition(toolbar) {
+    const main = document.querySelector('.msp-plugin .msp-layout-main');
+    const rect = main && main.getBoundingClientRect();
+    const left = rect && rect.width > 0 ? rect.left + TOOLBAR_MARGIN : TOOLBAR_MARGIN;
+    const top = rect && rect.height > 0 ? rect.top + TOOLBAR_MARGIN : TOOLBAR_MARGIN;
+    toolbar.dataset.defaultPosition = '1';
+    moveToolbar(toolbar, left, top);
   }
 
   function moveToolbar(toolbar, left, top) {
@@ -383,6 +411,7 @@
     try {
       const rect = toolbar.getBoundingClientRect();
       window.localStorage && window.localStorage.setItem('buret.toolbar.position', JSON.stringify({ left: rect.left, top: rect.top }));
+      window.localStorage && window.localStorage.setItem('buret.toolbar.position.version', TOOLBAR_POSITION_VERSION);
     } catch (_) {}
   }
 
@@ -412,6 +441,10 @@
 
     updateToolbarButtons();
     scheduleViewerResize(viewer, 40);
+    const toolbar = document.getElementById('buret-toolbar');
+    if (toolbar?.dataset.defaultPosition === '1') {
+      requestAnimationFrame(() => applyDefaultToolbarPosition(toolbar));
+    }
   }
 
   function updateToolbarButtons() {

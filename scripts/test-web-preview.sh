@@ -123,12 +123,15 @@ assert(index.includes('role="toolbar"'), 'preview HTML must expose a toolbar rol
 assert(!index.includes('data-buret-action="fit"'), 'fit/fullscreen toolbar button should not be present');
 assert(index.includes('aria-label="Collapse controls"'), 'toolbar handle should collapse controls');
 assert(index.includes('aria-expanded="true"'), 'toolbar handle should expose expanded state');
+assert(index.includes('top: 12px; left: 12px; right: auto'), 'toolbar should default to the upper-left corner');
 assert(index.includes('--buret-molstar-panel-background'), 'preview HTML must define Mol* theme panel colors');
 assert(index.includes('.msp-viewport-controls-panel'), 'preview HTML must theme Mol* viewport panels');
+assert(index.includes('top: 64px !important'), 'Mol* viewport controls should clear the toolbar row');
 assert(!index.includes('aria-label="Fullscreen"'), 'stale Fullscreen aria-label found');
 assert(!index.includes('title="Fullscreen"'), 'stale Fullscreen title found');
 assert(viewer.includes('window.BurreteConfig'), 'viewer.js must read BurreteConfig');
 assert(viewer.includes('buret.toolbar.collapsed'), 'viewer.js must remember compact toolbar state');
+assert(viewer.includes('TOOLBAR_POSITION_VERSION'), 'viewer.js must reset stale toolbar positions');
 assert(viewer.includes('normalizeViewerTheme'), 'viewer.js must support viewer themes');
 assert(viewer.includes('canvasBackgroundColor'), 'viewer.js must support configurable canvas backgrounds');
 assert(viewer.includes('viewportBackgroundColor'), 'viewer.js must seed Mol* with the requested canvas background');
