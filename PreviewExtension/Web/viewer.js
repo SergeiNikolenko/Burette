@@ -764,6 +764,7 @@
       emdbProvider: 'rcsb',
       preferWebgl1: true,
       disableAntialiasing: true,
+      viewportBackgroundColor: transparentBackground ? undefined : canvasBackgroundCSS(),
       powerPreference: 'high-performance'
     };
   }
