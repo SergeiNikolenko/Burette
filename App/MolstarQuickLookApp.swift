@@ -1,4 +1,5 @@
 import AppKit
+import CoreServices
 import SwiftUI
 
 @main
@@ -15,18 +16,34 @@ struct MolstarQuickLookApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var settingsWindow: NSWindow?
+    private var documentViewers: [BuretteDocumentViewerController] = []
+    private var openedDocumentAtLaunch = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         installStatusItem()
+        BuretteFileAssociations.registerForUnsetDefaults()
         if UserDefaults.standard.object(forKey: "openSettingsAtLaunch") == nil {
             UserDefaults.standard.set(true, forKey: "openSettingsAtLaunch")
         }
         if UserDefaults.standard.bool(forKey: "openSettingsAtLaunch") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                self?.openSettings()
+                if self?.openedDocumentAtLaunch == false {
+                    self?.openSettings()
+                }
             }
         }
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        openedDocumentAtLaunch = true
+        for url in urls {
+            openDocument(url)
+        }
+    }
+
+    func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
+        false
     }
 
     private func installStatusItem() {
@@ -98,6 +115,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.terminate(nil)
     }
 
+    private func openDocument(_ url: URL) {
+        let controller = BuretteDocumentViewerController(fileURL: url)
+        controller.onClose = { [weak self] closedController in
+            self?.documentViewers.removeAll { $0 === closedController }
+        }
+        documentViewers.append(controller)
+        controller.open()
+    }
+
     private func run(_ executable: String, arguments: [String]) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
@@ -116,6 +142,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     static var primaryLogURL: URL {
         logsDirectory.appendingPathComponent("MolstarQuickLook.log")
+    }
+}
+
+enum BuretteFileAssociations {
+    static let bundleIdentifier = "com.local.MolstarQuickLookV10"
+    static let contentTypes = [
+        "com.local.molstarquicklook10.pdb",
+        "com.local.molstarquicklook10.cif",
+        "com.local.molstarquicklook10.mmcif",
+        "com.local.molstarquicklook10.bcif",
+        "com.local.molstarquicklook10.sdf",
+        "com.local.molstarquicklook10.mol",
+        "com.local.molstarquicklook10.mol2",
+        "org.wwpdb.pdb",
+        "org.wwpdb.cif",
+        "org.wwpdb.mmcif",
+        "org.wwpdb.bcif",
+        "org.iucr.cif",
+        "org.iucr.mmcif",
+        "org.openscience.sdf",
+        "org.openscience.molfile",
+        "org.openscience.mol2",
+        "public.pdb",
+        "public.cif",
+        "public.mmcif"
+    ]
+
+    static var defaultHandlerSummary: String {
+        let current = contentTypes.filter { defaultHandler(for: $0) == bundleIdentifier }.count
+        if current == contentTypes.count {
+            return "Burette is the default app for supported molecular structure files."
+        }
+        if current == 0 {
+            return "Double-click behavior depends on Finder defaults. Use this to make Burette the default viewer."
+        }
+        return "Burette is the default for \(current) of \(contentTypes.count) registered molecular content types."
+    }
+
+    @discardableResult
+    static func registerAsDefaultHandler() -> String {
+        LSRegisterURL(Bundle.main.bundleURL as CFURL, true)
+        let failures = contentTypes.compactMap { contentType -> String? in
+            let status = LSSetDefaultRoleHandlerForContentType(contentType as CFString, .viewer, bundleIdentifier as CFString)
+            return status == noErr ? nil : "\(contentType): \(status)"
+        }
+        if failures.isEmpty {
+            return "Burette is now the default viewer for supported molecular structure files."
+        }
+        return "Some file types could not be updated: \(failures.prefix(3).joined(separator: "; "))"
+    }
+
+    static func registerForUnsetDefaults() {
+        LSRegisterURL(Bundle.main.bundleURL as CFURL, true)
+        for contentType in contentTypes where defaultHandler(for: contentType) == nil {
+            LSSetDefaultRoleHandlerForContentType(contentType as CFString, .viewer, bundleIdentifier as CFString)
+        }
+    }
+
+    private static func defaultHandler(for contentType: String) -> String? {
+        LSCopyDefaultRoleHandlerForContentType(contentType as CFString, .viewer)?.takeRetainedValue() as String?
     }
 }
 

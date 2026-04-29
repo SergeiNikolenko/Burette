@@ -380,10 +380,14 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             #buret-toolbar {
               position: absolute; top: 12px; right: 12px; z-index: 2147483646;
               display: flex; align-items: center; gap: 6px; padding: 6px;
+              border: 1px solid rgba(255, 255, 255, 0.10);
               border-radius: 12px; color: rgba(255, 255, 255, 0.94);
-              background: rgba(20, 22, 24, 0.62);
-              -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
-              box-shadow: 0 4px 18px rgba(0, 0, 0, 0.28);
+              background: rgba(18, 20, 22, 0.86);
+              -webkit-backdrop-filter: blur(10px);
+              backdrop-filter: blur(10px);
+              box-shadow:
+                0 8px 22px rgba(0, 0, 0, 0.22),
+                inset 0 1px 0 rgba(255, 255, 255, 0.06);
               user-select: none; touch-action: none;
             }
             .buret-button {

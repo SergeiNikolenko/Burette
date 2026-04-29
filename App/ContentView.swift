@@ -5,6 +5,7 @@ struct ContentView: View {
     @AppStorage("openSettingsAtLaunch") private var openSettingsAtLaunch = true
     @AppStorage("showMenuBarIcon") private var showMenuBarIcon = true
     @State private var section: SettingsSection = .general
+    @State private var defaultOpenStatus = BuretteFileAssociations.defaultHandlerSummary
 
     var body: some View {
         ZStack {
@@ -99,13 +100,30 @@ struct ContentView: View {
             }
 
         case .files:
+            SettingsSectionTitle("Open In Finder")
+            SettingsCard {
+                SettingsValueRow(
+                    icon: "doc.viewfinder",
+                    title: "Double-click opens Burette",
+                    subtitle: "Finder opens supported structure files in a standalone Mol* viewer window. Space still uses the Quick Look extension."
+                )
+                SettingsDivider()
+                SettingsActionRow(
+                    icon: "checkmark.seal",
+                    title: "Make Burette Default",
+                    subtitle: defaultOpenStatus
+                ) {
+                    defaultOpenStatus = BuretteFileAssociations.registerAsDefaultHandler()
+                }
+            }
+
             SettingsSectionTitle("Finder Integration")
             SettingsCard {
                 SettingsValueRow(icon: "puzzlepiece.extension", title: "Quick Look extension", subtitle: "com.local.MolstarQuickLookV10.Preview")
                 SettingsDivider()
                 SettingsValueRow(icon: "app.badge", title: "Main bundle", subtitle: "com.local.MolstarQuickLookV10")
                 SettingsDivider()
-                SettingsValueRow(icon: "eye", title: "Document role", subtitle: "Viewer")
+                SettingsValueRow(icon: "eye", title: "Document role", subtitle: "Viewer for double-click/Open With; Quick Look preview remains separate.")
             }
 
             SettingsSectionTitle("Cache")
