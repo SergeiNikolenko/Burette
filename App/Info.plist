@@ -41,12 +41,20 @@
 				<string>com.local.burrete10.sdf</string>
 				<string>com.local.burrete10.mol</string>
 				<string>com.local.burrete10.mol2</string>
+				<string>com.local.molstarquicklook10.pdb</string>
+				<string>com.local.molstarquicklook10.cif</string>
+				<string>com.local.molstarquicklook10.mmcif</string>
+				<string>com.local.molstarquicklook10.bcif</string>
+				<string>com.local.molstarquicklook10.sdf</string>
+				<string>com.local.molstarquicklook10.mol</string>
+				<string>com.local.molstarquicklook10.mol2</string>
 				<string>org.wwpdb.pdb</string>
 				<string>org.wwpdb.cif</string>
 				<string>org.wwpdb.mmcif</string>
 				<string>org.wwpdb.bcif</string>
 				<string>org.iucr.cif</string>
 				<string>org.iucr.mmcif</string>
+				<string>com.schrodinger.pdb</string>
 				<string>org.openscience.sdf</string>
 				<string>com.schrodinger.sdf</string>
 				<string>org.openscience.molfile</string>
