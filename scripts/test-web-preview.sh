@@ -132,6 +132,7 @@ assert(!index.includes('title="Fullscreen"'), 'stale Fullscreen title found');
 assert(viewer.includes('window.BurreteConfig'), 'viewer.js must read BurreteConfig');
 assert(viewer.includes('buret.toolbar.collapsed'), 'viewer.js must remember compact toolbar state');
 assert(viewer.includes('TOOLBAR_POSITION_VERSION'), 'viewer.js must reset stale toolbar positions');
+assert(viewer.includes("mode: 'custom'"), 'viewer.js must distinguish custom toolbar positions from defaults');
 assert(viewer.includes('normalizeViewerTheme'), 'viewer.js must support viewer themes');
 assert(viewer.includes('canvasBackgroundColor'), 'viewer.js must support configurable canvas backgrounds');
 assert(viewer.includes('viewportBackgroundColor'), 'viewer.js must seed Mol* with the requested canvas background');
