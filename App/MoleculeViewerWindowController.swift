@@ -265,6 +265,15 @@ private struct AppViewerRuntime {
               --buret-toolbar-border: rgba(255, 255, 255, 0.10);
               --buret-toolbar-hover: rgba(255, 255, 255, 0.14);
               --buret-toolbar-color: rgba(255, 255, 255, 0.94);
+              --buret-molstar-panel-background: rgba(14, 15, 17, 0.94);
+              --buret-molstar-row-background: rgba(24, 26, 29, 0.96);
+              --buret-molstar-field-background: rgba(32, 35, 39, 0.98);
+              --buret-molstar-hover-background: rgba(48, 52, 58, 0.98);
+              --buret-molstar-border: rgba(255, 255, 255, 0.10);
+              --buret-molstar-text: rgba(246, 247, 249, 0.94);
+              --buret-molstar-muted-text: rgba(190, 196, 204, 0.82);
+              --buret-molstar-accent: #8fc7ff;
+              --buret-molstar-shadow: rgba(0, 0, 0, 0.38);
             }
             html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: transparent; }
             html.buret-transparent-background,
@@ -282,6 +291,15 @@ private struct AppViewerRuntime {
               --buret-toolbar-border: rgba(0, 0, 0, 0.12);
               --buret-toolbar-hover: rgba(0, 0, 0, 0.08);
               --buret-toolbar-color: rgba(20, 21, 23, 0.92);
+              --buret-molstar-panel-background: rgba(239, 239, 235, 0.94);
+              --buret-molstar-row-background: rgba(229, 228, 222, 0.96);
+              --buret-molstar-field-background: rgba(248, 247, 244, 0.98);
+              --buret-molstar-hover-background: rgba(218, 216, 209, 0.98);
+              --buret-molstar-border: rgba(0, 0, 0, 0.13);
+              --buret-molstar-text: rgba(32, 33, 35, 0.94);
+              --buret-molstar-muted-text: rgba(84, 78, 68, 0.82);
+              --buret-molstar-accent: #8a4b10;
+              --buret-molstar-shadow: rgba(0, 0, 0, 0.18);
               color: #161719;
             }
             body.buret-theme-dark {
@@ -291,6 +309,15 @@ private struct AppViewerRuntime {
               --buret-toolbar-border: rgba(255, 255, 255, 0.10);
               --buret-toolbar-hover: rgba(255, 255, 255, 0.14);
               --buret-toolbar-color: rgba(255, 255, 255, 0.94);
+              --buret-molstar-panel-background: rgba(14, 15, 17, 0.94);
+              --buret-molstar-row-background: rgba(24, 26, 29, 0.96);
+              --buret-molstar-field-background: rgba(32, 35, 39, 0.98);
+              --buret-molstar-hover-background: rgba(48, 52, 58, 0.98);
+              --buret-molstar-border: rgba(255, 255, 255, 0.10);
+              --buret-molstar-text: rgba(246, 247, 249, 0.94);
+              --buret-molstar-muted-text: rgba(190, 196, 204, 0.82);
+              --buret-molstar-accent: #8fc7ff;
+              --buret-molstar-shadow: rgba(0, 0, 0, 0.38);
             }
             body.burette-opaque-background,
             body.burette-opaque-background #app {
@@ -320,6 +347,148 @@ private struct AppViewerRuntime {
               background: var(--buret-panel-background) !important;
               -webkit-backdrop-filter: blur(14px);
               backdrop-filter: blur(14px);
+            }
+            body .msp-plugin,
+            body .msp-plugin .msp-plugin-content {
+              color: var(--buret-molstar-text) !important;
+              background: var(--buret-molstar-panel-background) !important;
+            }
+            body .msp-plugin .msp-layout-standard,
+            body .msp-plugin .msp-layout-top,
+            body .msp-plugin .msp-layout-bottom,
+            body .msp-plugin .msp-layout-left,
+            body .msp-plugin .msp-layout-right,
+            body .msp-plugin .msp-control-row,
+            body .msp-plugin .msp-log li,
+            body .msp-plugin .msp-toast-container .msp-toast-entry,
+            body .msp-plugin .msp-markdown table,
+            body .msp-plugin .msp-markdown th,
+            body .msp-plugin .msp-markdown td {
+              border-color: var(--buret-molstar-border) !important;
+            }
+            body .msp-plugin .msp-viewport-controls-panel,
+            body .msp-plugin .msp-hover-box-body,
+            body .msp-plugin .msp-action-menu-options,
+            body .msp-plugin .msp-action-menu-options-no-header,
+            body .msp-plugin .msp-animation-viewport-controls-select,
+            body .msp-plugin .msp-selection-viewport-controls-actions,
+            body .msp-plugin .msp-snapshot-description-wrapper,
+            body .msp-plugin .msp-toast-container .msp-toast-entry,
+            body .msp-plugin .msp-no-webgl,
+            body .msp-plugin .msp-log,
+            body .msp-plugin .msp-sequence {
+              color: var(--buret-molstar-text) !important;
+              background: var(--buret-molstar-panel-background) !important;
+              box-shadow: 0 14px 34px var(--buret-molstar-shadow);
+            }
+            body .msp-plugin .msp-control-row,
+            body .msp-plugin .msp-control-current,
+            body .msp-plugin .msp-control-group-header,
+            body .msp-plugin .msp-control-group-header > button,
+            body .msp-plugin .msp-control-group-header div,
+            body .msp-plugin .msp-control-group-header > span,
+            body .msp-plugin .msp-flex-row,
+            body .msp-plugin .msp-state-image-row,
+            body .msp-plugin .msp-row-text,
+            body .msp-plugin .msp-section-header,
+            body .msp-plugin .msp-current-header,
+            body .msp-plugin .msp-description,
+            body .msp-plugin .msp-help-text,
+            body .msp-plugin .msp-help-row,
+            body .msp-plugin .msp-image-preview,
+            body .msp-plugin .msp-simple-help-section,
+            body .msp-plugin .msp-left-panel-controls-buttons,
+            body .msp-plugin .msp-overlay-tasks .msp-task-state > div,
+            body .msp-plugin .msp-background-tasks .msp-task-state > div,
+            body .msp-plugin .msp-log li {
+              color: var(--buret-molstar-text) !important;
+              background: var(--buret-molstar-row-background) !important;
+            }
+            body .msp-plugin .msp-control-row > div,
+            body .msp-plugin .msp-control-row > div.msp-control-row-text,
+            body .msp-plugin .msp-help-row > div,
+            body .msp-plugin .msp-sequence-wrapper-non-empty,
+            body .msp-plugin .msp-log .msp-log-entry,
+            body .msp-plugin .msp-copy-image-wrapper div,
+            body .msp-plugin .msp-overlay-tasks .msp-task-state > div > div,
+            body .msp-plugin .msp-background-tasks .msp-task-state > div > div {
+              color: var(--buret-molstar-text) !important;
+              background: var(--buret-molstar-field-background) !important;
+            }
+            body .msp-plugin .msp-form-control,
+            body .msp-plugin .msp-control-row select,
+            body .msp-plugin .msp-control-row button,
+            body .msp-plugin .msp-control-row input[type=text],
+            body .msp-plugin textarea,
+            body .msp-plugin .msp-btn {
+              color: var(--buret-molstar-text) !important;
+              background-color: var(--buret-molstar-field-background) !important;
+            }
+            body .msp-plugin .msp-form-control:hover,
+            body .msp-plugin .msp-control-row select:hover,
+            body .msp-plugin .msp-control-row button:hover,
+            body .msp-plugin .msp-control-row input[type=text]:hover,
+            body .msp-plugin .msp-btn:hover,
+            body .msp-plugin .msp-btn-icon:hover,
+            body .msp-plugin .msp-btn-icon-small:hover {
+              color: var(--buret-molstar-accent) !important;
+              background-color: var(--buret-molstar-hover-background) !important;
+              outline: 1px solid var(--buret-molstar-border) !important;
+            }
+            body .msp-plugin .msp-btn-link,
+            body .msp-plugin .msp-btn-link:active,
+            body .msp-plugin .msp-btn-link:focus,
+            body .msp-plugin .msp-btn-link-toggle-on,
+            body .msp-plugin .msp-sequence-wrapper .msp-sequence-present,
+            body .msp-plugin .msp-svg-text {
+              color: var(--buret-molstar-text) !important;
+              fill: var(--buret-molstar-text) !important;
+            }
+            body .msp-plugin .msp-btn-link:hover,
+            body .msp-plugin .msp-highlight-info,
+            body .msp-plugin .msp-highlight-info-additional,
+            body .msp-plugin .msp-sequence-chain-label,
+            body .msp-plugin .msp-sequence-wrapper .msp-sequence-label,
+            body .msp-plugin .msp-sequence-wrapper .msp-sequence-number {
+              color: var(--buret-molstar-accent) !important;
+            }
+            body .msp-plugin .msp-control-row > span.msp-control-row-label,
+            body .msp-plugin .msp-control-row > button.msp-control-button-label,
+            body .msp-plugin .msp-control-group-header > button,
+            body .msp-plugin .msp-control-group-header div,
+            body .msp-plugin .msp-control-group-header > span,
+            body .msp-plugin .msp-log .msp-log-timestamp,
+            body .msp-plugin .msp-help-row > span,
+            body .msp-plugin .msp-row-text > div,
+            body .msp-plugin .msp-25-lower-contrast-text,
+            body .msp-plugin .msp-sequence-wrapper .msp-sequence-missing {
+              color: var(--buret-molstar-muted-text) !important;
+            }
+            body .msp-plugin .msp-semi-transparent-background {
+              background: var(--buret-molstar-panel-background) !important;
+              opacity: 0.76 !important;
+            }
+            body .msp-plugin .msp-shape-filled,
+            body .msp-plugin .msp-transform-header-brand svg {
+              fill: var(--buret-molstar-text) !important;
+              stroke: var(--buret-molstar-text) !important;
+            }
+            body .msp-plugin .msp-shape-empty {
+              stroke: var(--buret-molstar-text) !important;
+            }
+            body .msp-plugin .msp-slider-base-rail {
+              background-color: var(--buret-molstar-row-background) !important;
+            }
+            body .msp-plugin .msp-slider-base-handle {
+              background-color: var(--buret-molstar-text) !important;
+              border-color: var(--buret-molstar-row-background) !important;
+            }
+            body .msp-plugin ::-webkit-scrollbar-track {
+              background-color: var(--buret-molstar-panel-background) !important;
+            }
+            body .msp-plugin ::-webkit-scrollbar-thumb {
+              background-color: var(--buret-molstar-hover-background) !important;
+              border-color: transparent !important;
             }
             #status {
               position: absolute; left: 12px; top: 12px; z-index: 2147483647;
