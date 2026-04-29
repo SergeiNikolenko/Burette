@@ -49,7 +49,9 @@ const config = {
   label: path.basename(file),
   format,
   binary,
-  byteCount: data.length
+  byteCount: data.length,
+  transparentBackground: format === 'sdf',
+  sdfGrid: format === 'sdf'
 };
 fs.writeFileSync(configOut, 'window.BurreteConfig = ' + JSON.stringify(config, null, 2) + ';\n');
 fs.writeFileSync(dataOut, 'window.BurreteDataBase64 = "' + data.toString('base64') + '";\n');
