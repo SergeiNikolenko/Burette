@@ -13,7 +13,7 @@
 	<key>CFBundleName</key>
 	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Burette</string>
+	<string>Burrete</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -37,13 +37,13 @@
 			<string>Owner</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>com.local.molstarquicklook10.pdb</string>
-				<string>com.local.molstarquicklook10.cif</string>
-				<string>com.local.molstarquicklook10.mmcif</string>
-				<string>com.local.molstarquicklook10.bcif</string>
-				<string>com.local.molstarquicklook10.sdf</string>
-				<string>com.local.molstarquicklook10.mol</string>
-				<string>com.local.molstarquicklook10.mol2</string>
+				<string>com.local.burrete10.pdb</string>
+				<string>com.local.burrete10.cif</string>
+				<string>com.local.burrete10.mmcif</string>
+				<string>com.local.burrete10.bcif</string>
+				<string>com.local.burrete10.sdf</string>
+				<string>com.local.burrete10.mol</string>
+				<string>com.local.burrete10.mol2</string>
 				<string>org.wwpdb.pdb</string>
 				<string>org.wwpdb.cif</string>
 				<string>org.wwpdb.mmcif</string>
@@ -715,7 +715,7 @@
 	<array>
 		<dict>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.molstarquicklook10.pdb</string>
+			<string>com.local.burrete10.pdb</string>
 			<key>UTTypeDescription</key>
 			<string>Protein Data Bank coordinate file</string>
 			<key>UTTypeConformsTo</key>
@@ -741,7 +741,7 @@
 		</dict>
 		<dict>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.molstarquicklook10.cif</string>
+			<string>com.local.burrete10.cif</string>
 			<key>UTTypeDescription</key>
 			<string>Crystallographic information file</string>
 			<key>UTTypeConformsTo</key>
@@ -764,12 +764,12 @@
 		</dict>
 		<dict>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.molstarquicklook10.mmcif</string>
+			<string>com.local.burrete10.mmcif</string>
 			<key>UTTypeDescription</key>
 			<string>Macromolecular crystallographic information file</string>
 			<key>UTTypeConformsTo</key>
 			<array>
-				<string>com.local.molstarquicklook10.cif</string>
+				<string>com.local.burrete10.cif</string>
 				<string>public.plain-text</string>
 				<string>public.data</string>
 			</array>
@@ -788,7 +788,7 @@
 		</dict>
 		<dict>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.molstarquicklook10.bcif</string>
+			<string>com.local.burrete10.bcif</string>
 			<key>UTTypeDescription</key>
 			<string>BinaryCIF macromolecular structure file</string>
 			<key>UTTypeConformsTo</key>
@@ -809,7 +809,7 @@
 		</dict>
 		<dict>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.molstarquicklook10.sdf</string>
+			<string>com.local.burrete10.sdf</string>
 			<key>UTTypeDescription</key>
 			<string>Structure-data file</string>
 			<key>UTTypeConformsTo</key>
@@ -832,7 +832,7 @@
 		</dict>
 		<dict>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.molstarquicklook10.mol</string>
+			<string>com.local.burrete10.mol</string>
 			<key>UTTypeDescription</key>
 			<string>MDL molfile</string>
 			<key>UTTypeConformsTo</key>
@@ -854,7 +854,7 @@
 		</dict>
 		<dict>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.molstarquicklook10.mol2</string>
+			<string>com.local.burrete10.mol2</string>
 			<key>UTTypeDescription</key>
 			<string>Tripos MOL2 structure file</string>
 			<key>UTTypeConformsTo</key>

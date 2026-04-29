@@ -3,9 +3,9 @@ set -euo pipefail
 
 ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 FILE="${1:-$ROOT/samples/mini.pdb}"
-APP="$HOME/Applications/MolstarQuickLook.app"
-BUILT_APP="$ROOT/build/Build/Products/Debug/MolstarQuickLook.app"
-EXT_ID="com.local.MolstarQuickLookV10.Preview"
+APP="$HOME/Applications/Burrete.app"
+BUILT_APP="$ROOT/build/Build/Products/Debug/Burrete.app"
+EXT_ID="com.local.BurreteV10.Preview"
 
 printf '\n== File ==\n%s\n' "$FILE"
 if [ -f "$FILE" ]; then
@@ -34,9 +34,9 @@ fi
 printf '\n== Embedded extension plist supported types ==\n'
 PLIST=""
 if [ -d "$APP" ]; then
-  PLIST="$APP/Contents/PlugIns/MolstarQuickLookPreview.appex/Contents/Info.plist"
+  PLIST="$APP/Contents/PlugIns/BurretePreview.appex/Contents/Info.plist"
 elif [ -d "$BUILT_APP" ]; then
-  PLIST="$BUILT_APP/Contents/PlugIns/MolstarQuickLookPreview.appex/Contents/Info.plist"
+  PLIST="$BUILT_APP/Contents/PlugIns/BurretePreview.appex/Contents/Info.plist"
 fi
 if [ -n "$PLIST" ] && [ -f "$PLIST" ]; then
   /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionAttributes:QLSupportedContentTypes' "$PLIST" 2>/dev/null || defaults read "$PLIST" NSExtension || true
@@ -45,11 +45,11 @@ else
 fi
 
 printf '\n== pluginkit ==\n'
-pluginkit -m -p com.apple.quicklook.preview | grep -i Molstar || echo "MolstarQuickLook not listed by pluginkit."
+pluginkit -m -p com.apple.quicklook.preview | grep -i Burrete || echo "Burrete not listed by pluginkit."
 pluginkit -m -p com.apple.quicklook.preview -i "$EXT_ID" || true
 
 printf '\n== QuickLook plugin map hints ==\n'
-qlmanage -m plugins 2>/dev/null | grep -Ei 'Molstar|pdb|cif|sdf|palm|vesta' || true
+qlmanage -m plugins 2>/dev/null | grep -Ei 'Burrete|pdb|cif|sdf|palm|vesta' || true
 
 printf '\n== Suggested tests ==\n'
 if [ -f "$FILE" ]; then
@@ -64,8 +64,8 @@ if [ -f "$FILE" ]; then
   echo "qlmanage -d 4 -p '$FILE'"
 fi
 
-printf '\n== Last MolstarQuickLook log ==\n'
-for LOG in "/tmp/MolstarQuickLook.log" "${TMPDIR:-/tmp}/MolstarQuickLook.log"; do
+printf '\n== Last Burrete log ==\n'
+for LOG in "/tmp/Burrete.log" "${TMPDIR:-/tmp}/Burrete.log"; do
   if [ -f "$LOG" ]; then
     echo "-- $LOG --"
     tail -80 "$LOG"
@@ -77,4 +77,4 @@ done
 printf '\n== Notes ==\n'
 echo "If forced preview works but normal Space does not, the issue is LaunchServices/UTI selection, not Mol*."
 echo "If the preview errors or stays on a status message, run ./scripts/tail-log.sh and paste the log."
-echo "If pluginkit shows nothing, run ./scripts/install-local.sh, then enable Molstar Quick Look V10 in System Settings → General → Login Items & Extensions → Quick Look."
+echo "If pluginkit shows nothing, run ./scripts/install-local.sh, then enable Burrete V10 in System Settings → General → Login Items & Extensions → Quick Look."

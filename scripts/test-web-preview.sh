@@ -18,7 +18,7 @@ if [[ ! -d node_modules/molstar ]]; then
 fi
 npm run vendor:molstar
 
-TMP="$(mktemp -d "${TMPDIR:-/tmp}/molstar-quicklook-web.XXXXXX")"
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/burrete-web.XXXXXX")"
 cp -R PreviewExtension/Web "$TMP/Web"
 
 node - "$SAMPLE" "$TMP/Web/preview-config.js" "$TMP/Web/preview-data.js" <<'JS'
@@ -51,8 +51,8 @@ const config = {
   binary,
   byteCount: data.length
 };
-fs.writeFileSync(configOut, 'window.MolstarQuickLookConfig = ' + JSON.stringify(config, null, 2) + ';\n');
-fs.writeFileSync(dataOut, 'window.MolstarQuickLookDataBase64 = "' + data.toString('base64') + '";\n');
+fs.writeFileSync(configOut, 'window.BurreteConfig = ' + JSON.stringify(config, null, 2) + ';\n');
+fs.writeFileSync(dataOut, 'window.BurreteDataBase64 = "' + data.toString('base64') + '";\n');
 console.log(`Wrote preview config/data for ${file} as ${format}`);
 JS
 
