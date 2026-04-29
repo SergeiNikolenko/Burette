@@ -17,7 +17,7 @@ struct ContentView: View {
             SettingsColors.background.ignoresSafeArea()
             HStack(spacing: 0) {
                 Sidebar(selection: $section)
-                    .frame(width: 236)
+                    .frame(width: 198)
                     .background(SettingsColors.sidebar)
 
                 Rectangle()
@@ -27,19 +27,23 @@ struct ContentView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         Text(section.title)
-                            .font(.system(size: 23, weight: .bold))
-                            .padding(.bottom, 8)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .padding(.bottom, 2)
 
                         content
                     }
-                    .frame(maxWidth: 720, alignment: .leading)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 22)
+                    .id(section)
+                    .frame(maxWidth: 620, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 18)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .animation(.easeInOut(duration: 0.16), value: section)
+                .animation(.easeInOut(duration: 0.12), value: useTransparentPreviewBackground)
             }
         }
-        .frame(minWidth: 740, minHeight: 500)
+        .frame(minWidth: 660, minHeight: 440)
     }
 
     @ViewBuilder
@@ -113,9 +117,9 @@ struct ContentView: View {
                 )
                 SettingsDivider()
                 SettingsValueRow(
-                    icon: "rectangle.fill",
-                    title: "Opaque mode",
-                    subtitle: "Turn transparency off to use the classic dark Mol* background."
+                    icon: previewBackgroundIcon,
+                    title: previewBackgroundModeTitle,
+                    subtitle: previewBackgroundModeSubtitle
                 )
             }
 
@@ -224,8 +228,8 @@ struct ContentView: View {
                     SettingsDivider()
                     SettingsActionRow(
                         icon: "folder",
-                        title: "Reveal Downloaded Archive",
-                        subtitle: "Open the downloaded archive in Finder. Burrete is not installed automatically."
+                        title: "Reveal Downloaded Update",
+                        subtitle: "Open the downloaded update archive in Finder."
                     ) {
                         updater.revealDownloadedUpdate()
                     }
@@ -251,6 +255,21 @@ struct ContentView: View {
                 updater.clearAvailableRelease()
             }
         )
+    }
+
+    private var previewBackgroundIcon: String {
+        useTransparentPreviewBackground ? "square.stack.3d.down.forward" : "rectangle.fill"
+    }
+
+    private var previewBackgroundModeTitle: String {
+        useTransparentPreviewBackground ? "Transparent background" : "Opaque background"
+    }
+
+    private var previewBackgroundModeSubtitle: String {
+        if useTransparentPreviewBackground {
+            return "Quick Look glass is visible behind the molecule."
+        }
+        return "Mol* uses its classic opaque viewer surface."
     }
 
     private func run(_ executable: String, arguments: [String]) {
@@ -346,24 +365,24 @@ private struct Sidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Spacer().frame(height: 28)
+            Spacer().frame(height: 18)
 
             SearchField(text: $searchText)
-                .padding(.horizontal, 14)
-                .padding(.bottom, 14)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 10)
 
             Rectangle()
                 .fill(SettingsColors.separator)
                 .frame(height: 1)
 
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
                 ForEach(groupedSections, id: \.0) { group, sections in
-                    VStack(alignment: .leading, spacing: 5) {
+                    VStack(alignment: .leading, spacing: 3) {
                         if let group {
                             Text(group)
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.white.opacity(0.28))
-                                .padding(.horizontal, 14)
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.tertiary)
+                                .padding(.horizontal, 10)
                                 .padding(.top, 4)
                         }
 
@@ -375,8 +394,8 @@ private struct Sidebar: View {
                     }
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.top, 18)
+            .padding(.horizontal, 8)
+            .padding(.top, 12)
 
             Spacer()
         }
@@ -390,22 +409,21 @@ private struct SidebarRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 11) {
+            HStack(spacing: 8) {
                 Image(systemName: section.icon)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 13, weight: .medium))
                     .symbolRenderingMode(.hierarchical)
-                    .frame(width: 20)
+                    .frame(width: 18)
 
                 Text(section.title)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 13, weight: .medium))
 
                 Spacer(minLength: 0)
             }
-            .foregroundColor(.white)
-            .padding(.horizontal, 10)
-            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
-            .contentShape(Rectangle())
-            .background(isSelected ? SettingsColors.selection : Color.clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .foregroundStyle(isSelected ? .primary : .secondary)
+            .padding(.horizontal, 8)
+            .frame(height: 28)
+            .background(isSelected ? SettingsColors.selection : Color.clear, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -417,17 +435,17 @@ private struct SearchField: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.white.opacity(0.38))
+                .font(.system(size: 11, weight: .regular))
+                .foregroundStyle(.tertiary)
 
             TextField("Search settings...", text: $text)
                 .textFieldStyle(.plain)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(.white.opacity(0.82))
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(.primary)
         }
-        .padding(.horizontal, 10)
-        .frame(height: 30)
-        .background(SettingsColors.search, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .padding(.horizontal, 8)
+        .frame(height: 24)
+        .background(SettingsColors.search, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 }
 
@@ -440,9 +458,9 @@ private struct SettingsSectionTitle: View {
 
     var body: some View {
         Text(title.uppercased())
-            .font(.system(size: 11, weight: .bold))
-            .foregroundColor(.white.opacity(0.42))
-            .padding(.top, 4)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .padding(.top, 2)
     }
 }
 
@@ -457,9 +475,13 @@ private struct SettingsCard<Content: View>: View {
         VStack(spacing: 0) {
             content
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(SettingsColors.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(SettingsColors.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(SettingsColors.separator, lineWidth: 1)
+        )
     }
 }
 
@@ -470,27 +492,27 @@ private struct SettingsToggleRow: View {
     var isDisabled = false
 
     var body: some View {
-        HStack(alignment: .center, spacing: 14) {
-            VStack(alignment: .leading, spacing: 3) {
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white.opacity(isDisabled ? 0.52 : 0.9))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(isDisabled ? .tertiary : .primary)
                 Text(subtitle)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.white.opacity(0.46))
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Spacer(minLength: 12)
+            Spacer(minLength: 10)
 
             Toggle("", isOn: $isOn)
                 .labelsHidden()
                 .toggleStyle(.switch)
-                .controlSize(.regular)
+                .controlSize(.small)
                 .disabled(isDisabled)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
     }
 }
 
@@ -500,28 +522,28 @@ private struct SettingsValueRow: View {
     let subtitle: String
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 13, weight: .medium))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundColor(.white.opacity(0.82))
-                .frame(width: 24)
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.9))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
                 Text(subtitle)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.white.opacity(0.48))
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(.secondary)
                     .lineLimit(3)
                     .textSelection(.enabled)
             }
 
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
     }
 }
 
@@ -532,24 +554,24 @@ private struct SettingsPickerRow: View {
     @Binding var selection: BurreteUpdateChannel
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 13, weight: .medium))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundColor(.white.opacity(0.82))
-                .frame(width: 24)
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.9))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
                 Text(subtitle)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.white.opacity(0.48))
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Spacer(minLength: 12)
+            Spacer(minLength: 10)
 
             Picker("", selection: $selection) {
                 ForEach(BurreteUpdateChannel.allCases) { channel in
@@ -558,10 +580,11 @@ private struct SettingsPickerRow: View {
             }
             .labelsHidden()
             .pickerStyle(.menu)
-            .frame(width: 150)
+            .controlSize(.small)
+            .frame(width: 128)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
     }
 }
 
@@ -574,32 +597,32 @@ private struct SettingsActionRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .center, spacing: 10) {
                 Image(systemName: icon)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 13, weight: .medium))
                     .symbolRenderingMode(.hierarchical)
-                    .foregroundColor(.white.opacity(0.86))
-                    .frame(width: 24)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18)
 
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.9))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.primary)
                     Text(subtitle)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.white.opacity(0.48))
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                Spacer(minLength: 12)
+                Spacer(minLength: 10)
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white.opacity(0.24))
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.tertiary)
             }
             .opacity(isDisabled ? 0.55 : 1)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -612,7 +635,7 @@ private struct SettingsDivider: View {
         Rectangle()
             .fill(SettingsColors.separator)
             .frame(height: 1)
-            .padding(.leading, 50)
+            .padding(.leading, 40)
     }
 }
 
@@ -625,8 +648,8 @@ private struct SettingsFootnote: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 12, weight: .medium))
-            .foregroundColor(.white.opacity(0.42))
+            .font(.system(size: 11, weight: .regular))
+            .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 4)
     }
@@ -634,19 +657,19 @@ private struct SettingsFootnote: View {
 
 private struct AboutPanel: View {
     var body: some View {
-        VStack(spacing: 18) {
-            Spacer(minLength: 34)
+        VStack(spacing: 14) {
+            Spacer(minLength: 22)
 
             BurreteBadge()
-                .frame(width: 104, height: 104)
+                .frame(width: 82, height: 82)
 
             VStack(spacing: 4) {
                 Text("Burrete")
-                    .font(.system(size: 34, weight: .bold))
-                    .foregroundColor(.white.opacity(0.92))
-                Text("Version 0.10.5")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.42))
+                    .font(.system(size: 26, weight: .semibold))
+                    .foregroundStyle(.primary)
+                Text("Version 0.10.6")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(.secondary)
             }
 
             HStack(spacing: 12) {
@@ -654,45 +677,44 @@ private struct AboutPanel: View {
                 Button("Clear Cache") { AppDelegate.clearPreviewCache() }
             }
             .buttonStyle(.bordered)
-            .controlSize(.large)
-            .padding(.top, 16)
+            .controlSize(.regular)
+            .padding(.top, 8)
 
-            Spacer(minLength: 44)
+            Spacer(minLength: 24)
 
             SettingsCard {
                 SettingsValueRow(icon: "sparkles", title: "Release Notes", subtitle: "First Burrete release with native settings, hidden logs, and movable Quick Look controls.")
                 SettingsDivider()
                 SettingsValueRow(icon: "envelope", title: "Contact", subtitle: "Local build for molecular Quick Look previews.")
             }
-            .frame(maxWidth: 560)
+            .frame(maxWidth: 500)
 
             Spacer()
         }
-        .frame(maxWidth: .infinity, minHeight: 430)
+        .frame(maxWidth: .infinity, minHeight: 360)
     }
 }
 
 private struct BurreteBadge: View {
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(LinearGradient(colors: [Color.black.opacity(0.96), Color.black.opacity(0.82)], startPoint: .top, endPoint: .bottom))
-                .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color.white.opacity(0.14), lineWidth: 1))
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(SettingsColors.card)
+                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(SettingsColors.separator, lineWidth: 1))
 
             Image(systemName: "atom")
-                .font(.system(size: 48, weight: .regular))
+                .font(.system(size: 38, weight: .regular))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundColor(.white.opacity(0.9))
+                .foregroundStyle(.primary)
         }
-        .shadow(color: .black.opacity(0.34), radius: 12, y: 6)
     }
 }
 
 private enum SettingsColors {
-    static let background = Color(red: 0.14, green: 0.15, blue: 0.14)
-    static let sidebar = Color(red: 0.10, green: 0.12, blue: 0.11).opacity(0.92)
-    static let card = Color.white.opacity(0.055)
-    static let search = Color.black.opacity(0.16)
-    static let selection = Color.accentColor
-    static let separator = Color.white.opacity(0.085)
+    static let background = Color(nsColor: .windowBackgroundColor)
+    static let sidebar = Color(nsColor: .underPageBackgroundColor)
+    static let card = Color(nsColor: .controlBackgroundColor)
+    static let search = Color(nsColor: .textBackgroundColor)
+    static let selection = Color.accentColor.opacity(0.18)
+    static let separator = Color(nsColor: .separatorColor).opacity(0.55)
 }
