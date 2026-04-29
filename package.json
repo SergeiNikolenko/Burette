@@ -1,6 +1,6 @@
 {
   "name": "burrete",
-  "version": "0.10.6",
+  "version": "0.10.7",
   "private": true,
   "description": "macOS menu bar app and Quick Look extension for molecular structure previews powered by Mol*.",
   "scripts": {

@@ -4,7 +4,6 @@ import WebKit
 final class MoleculeViewerWindowController: NSWindowController, WKNavigationDelegate, WKScriptMessageHandler {
     private let fileURL: URL
     private let webView: WKWebView
-    private var restoredWindowFrame: NSRect?
     private var currentViewerPageZoom: CGFloat = 0.86
     private static let defaultViewerPageZoom: CGFloat = 0.86
     private static let minViewerPageZoom: CGFloat = 0.72
@@ -32,11 +31,12 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1040, height: 720),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullScreen],
             backing: .buffered,
             defer: false
         )
         window.title = "Burrete - \(fileURL.lastPathComponent)"
+        window.collectionBehavior.insert(.fullScreenPrimary)
         window.minSize = NSSize(width: 660, height: 440)
         window.isOpaque = !transparentBackground
         window.backgroundColor = transparentBackground ? .clear : NSColor(calibratedWhite: 0.055, alpha: 1.0)
@@ -82,10 +82,6 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
               let type = body["type"] as? String else {
             return
         }
-        if type == "action", (body["message"] as? String) == "fit" {
-            toggleFitToScreen()
-            return
-        }
         if type == "viewerZoom", let value = body["value"] as? NSNumber {
             setViewerPageZoom(CGFloat(value.doubleValue))
             return
@@ -104,24 +100,6 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         }
     }
 
-    private func toggleFitToScreen() {
-        guard let window, let screen = window.screen ?? NSScreen.main else { return }
-        if window.styleMask.contains(.fullScreen) {
-            window.toggleFullScreen(nil)
-            return
-        }
-        if let frame = restoredWindowFrame {
-            window.setFrame(frame, display: true, animate: false)
-            restoredWindowFrame = nil
-        } else {
-            restoredWindowFrame = window.frame
-            window.setFrame(screen.visibleFrame.insetBy(dx: 8, dy: 8), display: true, animate: false)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            self?.webView.evaluateJavaScript("window.BurreteHandleResize && window.BurreteHandleResize();", completionHandler: nil)
-        }
-    }
-
     private static func errorHTML(_ error: Error) -> String {
         """
         <!doctype html><html><head><meta charset="utf-8"><style>
@@ -133,7 +111,7 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
     }
 
     private static var useTransparentPreviewBackground: Bool {
-        UserDefaults.standard.object(forKey: "useTransparentPreviewBackground") as? Bool ?? true
+        UserDefaults.standard.object(forKey: "useTransparentPreviewBackground") as? Bool ?? false
     }
 }
 
@@ -176,7 +154,10 @@ private struct AppViewerRuntime {
         try copyAssets(from: bundledWebDirectory, to: assetsDirectory)
 
         let format = AppViewerStructureFormat(url: fileURL, data: data)
-        let transparentBackground = UserDefaults.standard.object(forKey: "useTransparentPreviewBackground") as? Bool ?? true
+        let transparentBackground = UserDefaults.standard.object(forKey: "useTransparentPreviewBackground") as? Bool ?? false
+        let viewerTheme = UserDefaults.standard.string(forKey: "viewerTheme") ?? "dark"
+        let canvasBackground = UserDefaults.standard.string(forKey: "viewerCanvasBackground") ?? "black"
+        let canvasIsTransparent = canvasBackground == "transparent"
         let config: [String: Any] = [
             "format": format.molstarFormat,
             "binary": format.isBinary,
@@ -184,9 +165,10 @@ private struct AppViewerRuntime {
             "byteCount": data.count,
             "quickLookBuild": "burrete-app",
             "debug": false,
+            "theme": viewerTheme,
+            "canvasBackground": canvasBackground,
             "uiScale": 0.86,
-            "transparentBackground": format.prefersTransparentBackground &&
-                (UserDefaults.standard.object(forKey: "transparentSDFBackground") as? Bool ?? true),
+            "transparentBackground": canvasIsTransparent,
             "sdfGrid": true,
             "showPanelControls": UserDefaults.standard.object(forKey: "showPreviewPanelControls") as? Bool ?? true,
             "defaultLayoutState": [
@@ -274,7 +256,25 @@ private struct AppViewerRuntime {
           <title>Burrete - \(escapeHTML(title))</title>
           <link rel="stylesheet" href="../assets/molstar.css" />
           <style>
-            :root { --buret-viewer-ui-scale: 0.86; }
+            :root {
+              --buret-viewer-ui-scale: 0.86;
+              --buret-canvas-background: #000000;
+              --buret-shell-background: #000000;
+              --buret-panel-background: rgba(18, 20, 22, 0.82);
+              --buret-toolbar-background: rgba(12, 13, 14, 0.90);
+              --buret-toolbar-border: rgba(255, 255, 255, 0.10);
+              --buret-toolbar-hover: rgba(255, 255, 255, 0.14);
+              --buret-toolbar-color: rgba(255, 255, 255, 0.94);
+              --buret-molstar-panel-background: rgba(14, 15, 17, 0.94);
+              --buret-molstar-row-background: rgba(24, 26, 29, 0.96);
+              --buret-molstar-field-background: rgba(32, 35, 39, 0.98);
+              --buret-molstar-hover-background: rgba(48, 52, 58, 0.98);
+              --buret-molstar-border: rgba(255, 255, 255, 0.10);
+              --buret-molstar-text: rgba(246, 247, 249, 0.94);
+              --buret-molstar-muted-text: rgba(190, 196, 204, 0.82);
+              --buret-molstar-accent: #8fc7ff;
+              --buret-molstar-shadow: rgba(0, 0, 0, 0.38);
+            }
             html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: transparent; }
             html.buret-transparent-background,
             html.buret-transparent-background body,
@@ -284,9 +284,44 @@ private struct AppViewerRuntime {
             html.buret-transparent-background .msp-layout-main,
             html.buret-transparent-background canvas { background: transparent !important; background-color: transparent !important; }
             body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: #f2f2f2; }
+            body.buret-theme-light {
+              --buret-shell-background: #f7f7f2;
+              --buret-panel-background: rgba(247, 247, 242, 0.86);
+              --buret-toolbar-background: rgba(247, 247, 242, 0.90);
+              --buret-toolbar-border: rgba(0, 0, 0, 0.12);
+              --buret-toolbar-hover: rgba(0, 0, 0, 0.08);
+              --buret-toolbar-color: rgba(20, 21, 23, 0.92);
+              --buret-molstar-panel-background: rgba(239, 239, 235, 0.94);
+              --buret-molstar-row-background: rgba(229, 228, 222, 0.96);
+              --buret-molstar-field-background: rgba(248, 247, 244, 0.98);
+              --buret-molstar-hover-background: rgba(218, 216, 209, 0.98);
+              --buret-molstar-border: rgba(0, 0, 0, 0.13);
+              --buret-molstar-text: rgba(32, 33, 35, 0.94);
+              --buret-molstar-muted-text: rgba(84, 78, 68, 0.82);
+              --buret-molstar-accent: #8a4b10;
+              --buret-molstar-shadow: rgba(0, 0, 0, 0.18);
+              color: #161719;
+            }
+            body.buret-theme-dark {
+              --buret-shell-background: var(--buret-canvas-background);
+              --buret-panel-background: rgba(18, 20, 22, 0.82);
+              --buret-toolbar-background: rgba(12, 13, 14, 0.90);
+              --buret-toolbar-border: rgba(255, 255, 255, 0.10);
+              --buret-toolbar-hover: rgba(255, 255, 255, 0.14);
+              --buret-toolbar-color: rgba(255, 255, 255, 0.94);
+              --buret-molstar-panel-background: rgba(14, 15, 17, 0.94);
+              --buret-molstar-row-background: rgba(24, 26, 29, 0.96);
+              --buret-molstar-field-background: rgba(32, 35, 39, 0.98);
+              --buret-molstar-hover-background: rgba(48, 52, 58, 0.98);
+              --buret-molstar-border: rgba(255, 255, 255, 0.10);
+              --buret-molstar-text: rgba(246, 247, 249, 0.94);
+              --buret-molstar-muted-text: rgba(190, 196, 204, 0.82);
+              --buret-molstar-accent: #8fc7ff;
+              --buret-molstar-shadow: rgba(0, 0, 0, 0.38);
+            }
             body.burette-opaque-background,
             body.burette-opaque-background #app {
-              background: #111317;
+              background: var(--buret-shell-background);
             }
             #app { position: absolute; inset: 0; }
             body.burette-transparent-background .msp-plugin,
@@ -303,15 +338,177 @@ private struct AppViewerRuntime {
             body.burette-opaque-background .msp-plugin .msp-layout-viewport,
             body.burette-opaque-background .msp-plugin .msp-plugin-content,
             body.burette-opaque-background .msp-plugin canvas {
-              background: #111317 !important;
+              background: var(--buret-canvas-background) !important;
             }
-            body.burette-transparent-background .msp-plugin .msp-layout-left,
-            body.burette-transparent-background .msp-plugin .msp-layout-right,
-            body.burette-transparent-background .msp-plugin .msp-layout-top,
-            body.burette-transparent-background .msp-plugin .msp-layout-bottom {
-              background: rgba(238, 236, 231, 0.72) !important;
+            body .msp-plugin .msp-layout-left,
+            body .msp-plugin .msp-layout-right,
+            body .msp-plugin .msp-layout-top,
+            body .msp-plugin .msp-layout-bottom {
+              background: var(--buret-panel-background) !important;
               -webkit-backdrop-filter: blur(14px);
               backdrop-filter: blur(14px);
+            }
+            body .msp-plugin,
+            body .msp-plugin .msp-plugin-content {
+              color: var(--buret-molstar-text) !important;
+              background: var(--buret-molstar-panel-background) !important;
+            }
+            body .msp-plugin .msp-layout-standard,
+            body .msp-plugin .msp-layout-top,
+            body .msp-plugin .msp-layout-bottom,
+            body .msp-plugin .msp-layout-left,
+            body .msp-plugin .msp-layout-right,
+            body .msp-plugin .msp-control-row,
+            body .msp-plugin .msp-log li,
+            body .msp-plugin .msp-toast-container .msp-toast-entry,
+            body .msp-plugin .msp-markdown table,
+            body .msp-plugin .msp-markdown th,
+            body .msp-plugin .msp-markdown td {
+              border-color: var(--buret-molstar-border) !important;
+            }
+            body .msp-plugin .msp-viewport-controls-panel,
+            body .msp-plugin .msp-hover-box-body,
+            body .msp-plugin .msp-action-menu-options,
+            body .msp-plugin .msp-action-menu-options-no-header,
+            body .msp-plugin .msp-animation-viewport-controls-select,
+            body .msp-plugin .msp-selection-viewport-controls-actions,
+            body .msp-plugin .msp-snapshot-description-wrapper,
+            body .msp-plugin .msp-toast-container .msp-toast-entry,
+            body .msp-plugin .msp-no-webgl,
+            body .msp-plugin .msp-log,
+            body .msp-plugin .msp-sequence {
+              color: var(--buret-molstar-text) !important;
+              background: var(--buret-molstar-panel-background) !important;
+              max-height: calc(100vh - 76px) !important;
+              box-shadow: 0 14px 34px var(--buret-molstar-shadow);
+            }
+            body .msp-plugin .msp-control-row,
+            body .msp-plugin .msp-control-current,
+            body .msp-plugin .msp-control-group-header,
+            body .msp-plugin .msp-control-group-header > button,
+            body .msp-plugin .msp-control-group-header div,
+            body .msp-plugin .msp-control-group-header > span,
+            body .msp-plugin .msp-flex-row,
+            body .msp-plugin .msp-state-image-row,
+            body .msp-plugin .msp-row-text,
+            body .msp-plugin .msp-section-header,
+            body .msp-plugin .msp-current-header,
+            body .msp-plugin .msp-description,
+            body .msp-plugin .msp-help-text,
+            body .msp-plugin .msp-help-row,
+            body .msp-plugin .msp-image-preview,
+            body .msp-plugin .msp-simple-help-section,
+            body .msp-plugin .msp-left-panel-controls-buttons,
+            body .msp-plugin .msp-overlay-tasks .msp-task-state > div,
+            body .msp-plugin .msp-background-tasks .msp-task-state > div,
+            body .msp-plugin .msp-log li {
+              color: var(--buret-molstar-text) !important;
+              background: var(--buret-molstar-row-background) !important;
+            }
+            body .msp-plugin .msp-control-row > div,
+            body .msp-plugin .msp-control-row > div.msp-control-row-text,
+            body .msp-plugin .msp-help-row > div,
+            body .msp-plugin .msp-sequence-wrapper-non-empty,
+            body .msp-plugin .msp-log .msp-log-entry,
+            body .msp-plugin .msp-copy-image-wrapper div,
+            body .msp-plugin .msp-overlay-tasks .msp-task-state > div > div,
+            body .msp-plugin .msp-background-tasks .msp-task-state > div > div {
+              color: var(--buret-molstar-text) !important;
+              background: var(--buret-molstar-field-background) !important;
+            }
+            body .msp-plugin .msp-form-control,
+            body .msp-plugin .msp-control-row select,
+            body .msp-plugin .msp-control-row button,
+            body .msp-plugin .msp-control-row input[type=text],
+            body .msp-plugin textarea,
+            body .msp-plugin .msp-btn {
+              color: var(--buret-molstar-text) !important;
+              background-color: var(--buret-molstar-field-background) !important;
+            }
+            body .msp-plugin .msp-form-control:hover,
+            body .msp-plugin .msp-control-row select:hover,
+            body .msp-plugin .msp-control-row button:hover,
+            body .msp-plugin .msp-control-row input[type=text]:hover,
+            body .msp-plugin .msp-btn:hover,
+            body .msp-plugin .msp-btn-icon:hover,
+            body .msp-plugin .msp-btn-icon-small:hover {
+              color: var(--buret-molstar-accent) !important;
+              background-color: var(--buret-molstar-hover-background) !important;
+              outline: 1px solid var(--buret-molstar-border) !important;
+            }
+            body .msp-plugin .msp-btn-link,
+            body .msp-plugin .msp-btn-link:active,
+            body .msp-plugin .msp-btn-link:focus,
+            body .msp-plugin .msp-btn-link-toggle-on,
+            body .msp-plugin .msp-sequence-wrapper .msp-sequence-present,
+            body .msp-plugin .msp-svg-text {
+              color: var(--buret-molstar-text) !important;
+              fill: var(--buret-molstar-text) !important;
+            }
+            body .msp-plugin .msp-btn-link:hover,
+            body .msp-plugin .msp-highlight-info,
+            body .msp-plugin .msp-highlight-info-additional,
+            body .msp-plugin .msp-sequence-chain-label,
+            body .msp-plugin .msp-sequence-wrapper .msp-sequence-label,
+            body .msp-plugin .msp-sequence-wrapper .msp-sequence-number {
+              color: var(--buret-molstar-accent) !important;
+            }
+            body .msp-plugin .msp-control-row > span.msp-control-row-label,
+            body .msp-plugin .msp-control-row > button.msp-control-button-label,
+            body .msp-plugin .msp-control-group-header > button,
+            body .msp-plugin .msp-control-group-header div,
+            body .msp-plugin .msp-control-group-header > span,
+            body .msp-plugin .msp-log .msp-log-timestamp,
+            body .msp-plugin .msp-help-row > span,
+            body .msp-plugin .msp-row-text > div,
+            body .msp-plugin .msp-25-lower-contrast-text,
+            body .msp-plugin .msp-sequence-wrapper .msp-sequence-missing {
+              color: var(--buret-molstar-muted-text) !important;
+            }
+            body .msp-plugin .msp-semi-transparent-background {
+              background: var(--buret-molstar-panel-background) !important;
+              opacity: 0.76 !important;
+            }
+            body .msp-plugin .msp-viewport-controls {
+              top: 64px !important;
+              z-index: 40;
+            }
+            body .msp-plugin .msp-viewport-controls-buttons > div {
+              overflow: hidden;
+              border: 1px solid var(--buret-molstar-border);
+              border-radius: 8px;
+              background: var(--buret-molstar-row-background) !important;
+              box-shadow: 0 8px 20px var(--buret-molstar-shadow);
+            }
+            body .msp-plugin .msp-viewport-controls-buttons button {
+              color: var(--buret-molstar-text) !important;
+              background: transparent !important;
+            }
+            body .msp-plugin .msp-viewport-controls-buttons button[disabled] {
+              color: var(--buret-molstar-muted-text) !important;
+              opacity: 0.55;
+            }
+            body .msp-plugin .msp-shape-filled,
+            body .msp-plugin .msp-transform-header-brand svg {
+              fill: var(--buret-molstar-text) !important;
+              stroke: var(--buret-molstar-text) !important;
+            }
+            body .msp-plugin .msp-shape-empty {
+              stroke: var(--buret-molstar-text) !important;
+            }
+            body .msp-plugin .msp-slider-base-rail {
+              background-color: var(--buret-molstar-row-background) !important;
+            }
+            body .msp-plugin .msp-slider-base-handle {
+              background-color: var(--buret-molstar-text) !important;
+              border-color: var(--buret-molstar-row-background) !important;
+            }
+            body .msp-plugin ::-webkit-scrollbar-track {
+              background-color: var(--buret-molstar-panel-background) !important;
+            }
+            body .msp-plugin ::-webkit-scrollbar-thumb {
+              background-color: var(--buret-molstar-hover-background) !important;
+              border-color: transparent !important;
             }
             #status {
               position: absolute; left: 12px; top: 12px; z-index: 2147483647;
@@ -323,26 +520,29 @@ private struct AppViewerRuntime {
             #status.error { color: #ffd4d4; background: rgba(70, 0, 0, 0.82); }
             #status.hidden { display: none; }
             #buret-toolbar {
-              position: absolute; top: 12px; right: 12px; z-index: 2147483646;
+              position: absolute; top: 12px; left: 12px; right: auto; z-index: 2147483646;
               display: flex; align-items: center; gap: 6px; padding: 6px;
-              border: 1px solid rgba(255, 255, 255, 0.10);
-              border-radius: 12px; color: rgba(255, 255, 255, 0.94);
-              background: rgba(18, 20, 22, 0.86);
+              border: 1px solid var(--buret-toolbar-border);
+              border-radius: 12px; color: var(--buret-toolbar-color);
+              background: var(--buret-toolbar-background);
               -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
               box-shadow:
                 0 8px 22px rgba(0, 0, 0, 0.22),
                 inset 0 1px 0 rgba(255, 255, 255, 0.06);
               user-select: none; touch-action: none;
             }
+            #buret-toolbar.collapsed { gap: 0; }
+            #buret-toolbar.collapsed .buret-button:not(.buret-grip) { display: none; }
+            #buret-toolbar.collapsed .buret-grip { min-width: 26px; padding: 0; cursor: pointer; }
             .buret-button {
               min-width: 26px; height: 26px; border: 0; border-radius: 7px; padding: 0 7px;
               color: inherit; background: transparent; font: 600 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
               display: grid; place-items: center;
             }
-            .buret-button:hover, .buret-button.active { background: rgba(255, 255, 255, 0.14); }
+            .buret-button:hover, .buret-button.active { background: var(--buret-toolbar-hover); }
             .buret-button.hidden { display: none; }
             .buret-button svg { width: 15px; height: 15px; display: block; }
-            .buret-grip { cursor: move; color: rgba(255, 255, 255, 0.66); }
+            .buret-grip { cursor: grab; color: currentColor; opacity: 0.66; }
           </style>
           <script>
             (function () {
@@ -368,11 +568,8 @@ private struct AppViewerRuntime {
         <body class="\(backgroundClass)">
           <div id="app"></div>
           <div id="buret-toolbar" role="toolbar" aria-label="Burrete viewer controls">
-            <button class="buret-button buret-grip" type="button" data-drag-handle aria-label="Move controls" title="Move controls">
+            <button class="buret-button buret-grip" type="button" data-drag-handle aria-label="Collapse controls" aria-expanded="true" title="Collapse controls">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h2v2H8V5Zm6 0h2v2h-2V5ZM8 11h2v2H8v-2Zm6 0h2v2h-2v-2ZM8 17h2v2H8v-2Zm6 0h2v2h-2v-2Z" fill="currentColor"/></svg>
-            </button>
-            <button class="buret-button" type="button" data-buret-action="fit" aria-label="Fit window to screen" title="Fit window to screen">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5v2H7.4l3.2 3.2-1.4 1.4L6 7.4V9H4Zm11-5h5v5h-2V7.4l-3.2 3.2-1.4-1.4L16.6 6H15V4ZM9.2 13.4l1.4 1.4L7.4 18H9v2H4v-5h2v1.6l3.2-3.2Zm5.6 0 3.2 3.2V15h2v5h-5v-2h1.6l-3.2-3.2 1.4-1.4Z" fill="currentColor"/></svg>
             </button>
             <button class="buret-button buret-panel-toggle active" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel">L</button>
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle right panel">R</button>
