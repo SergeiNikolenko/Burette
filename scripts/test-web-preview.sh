@@ -84,7 +84,7 @@ const config = {
   format,
   binary,
   byteCount: data.length,
-  theme: 'auto',
+  theme: 'dark',
   canvasBackground: 'black',
   transparentBackground: false,
   sdfGrid: true,
@@ -135,7 +135,7 @@ assert(viewer.includes('viewportBackgroundColor'), 'viewer.js must seed Mol* wit
 assert(dataSource.startsWith('window.BurreteDataBase64 = "'), 'preview data file must define BurreteDataBase64');
 assert(config.label === path.basename(sample), 'config label should match sample basename');
 assert(typeof config.byteCount === 'number' && config.byteCount > 0, 'config byteCount should be positive');
-assert(config.theme === 'auto', 'theme should default to auto');
+assert(config.theme === 'dark', 'theme should default to dark');
 assert(config.canvasBackground === 'black', 'canvas background should default to black');
 assert(config.transparentBackground === false, 'transparent background should be opt-in');
 assert(config.sdfGrid === true, 'SDF grid flag should be encoded');

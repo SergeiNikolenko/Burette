@@ -155,7 +155,7 @@ private struct AppViewerRuntime {
 
         let format = AppViewerStructureFormat(url: fileURL, data: data)
         let transparentBackground = UserDefaults.standard.object(forKey: "useTransparentPreviewBackground") as? Bool ?? false
-        let viewerTheme = UserDefaults.standard.string(forKey: "viewerTheme") ?? "auto"
+        let viewerTheme = UserDefaults.standard.string(forKey: "viewerTheme") ?? "dark"
         let canvasBackground = UserDefaults.standard.string(forKey: "viewerCanvasBackground") ?? "black"
         let canvasIsTransparent = canvasBackground == "transparent"
         let config: [String: Any] = [
@@ -467,6 +467,24 @@ private struct AppViewerRuntime {
             body .msp-plugin .msp-semi-transparent-background {
               background: var(--buret-molstar-panel-background) !important;
               opacity: 0.76 !important;
+            }
+            body .msp-plugin .msp-viewport-controls {
+              z-index: 40;
+            }
+            body .msp-plugin .msp-viewport-controls-buttons > div {
+              overflow: hidden;
+              border: 1px solid var(--buret-molstar-border);
+              border-radius: 8px;
+              background: var(--buret-molstar-row-background) !important;
+              box-shadow: 0 8px 20px var(--buret-molstar-shadow);
+            }
+            body .msp-plugin .msp-viewport-controls-buttons button {
+              color: var(--buret-molstar-text) !important;
+              background: transparent !important;
+            }
+            body .msp-plugin .msp-viewport-controls-buttons button[disabled] {
+              color: var(--buret-molstar-muted-text) !important;
+              opacity: 0.55;
             }
             body .msp-plugin .msp-shape-filled,
             body .msp-plugin .msp-transform-header-brand svg {

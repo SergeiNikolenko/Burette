@@ -5,7 +5,7 @@ struct ContentView: View {
     @AppStorage("openSettingsAtLaunch") private var openSettingsAtLaunch = false
     @AppStorage("showPreviewPanelControls") private var showPreviewPanelControls = true
     @AppStorage("useTransparentPreviewBackground") private var useTransparentPreviewBackground = false
-    @AppStorage("viewerTheme") private var viewerTheme = "auto"
+    @AppStorage("viewerTheme") private var viewerTheme = "dark"
     @AppStorage("viewerCanvasBackground") private var viewerCanvasBackground = "black"
     @AppStorage("checkUpdatesAutomatically") private var checkUpdatesAutomatically = true
     @AppStorage("updateChannel") private var updateChannelRaw = BurreteUpdateChannel.stable.rawValue
@@ -699,7 +699,7 @@ private struct AboutPanel: View {
                 Text("Burrete")
                     .font(.system(size: 34, weight: .bold))
                     .foregroundColor(.white.opacity(0.92))
-                Text("Version 0.10.4")
+                Text("Version 0.10.6")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.white.opacity(0.42))
             }
