@@ -1,6 +1,6 @@
-# Burette
+# Burrete
 
-Burette is a macOS menu bar app with a Quick Look Preview Extension for molecular structure files. It renders PDB, PDBx/mmCIF, BinaryCIF, SDF, MOL, and MOL2 files in Finder previews using Mol*.
+Burrete is a macOS menu bar app with a Quick Look Preview Extension for molecular structure files. It renders PDB, PDBx/mmCIF, BinaryCIF, SDF, MOL, and MOL2 files in Finder previews using Mol*.
 
 The app itself stays out of the Dock. Settings and maintenance tools live in the menu bar, while Quick Look previews keep the Mol* UI compact by default.
 
@@ -24,16 +24,16 @@ The app itself stays out of the Dock. Settings and maintenance tools live in the
 The installer writes the app to:
 
 ```text
-~/Applications/Burette.app
+~/Applications/Burrete.app
 ```
 
 The Quick Look extension bundle identifier remains:
 
 ```text
-com.local.MolstarQuickLookV10.Preview
+com.local.BurreteV10.Preview
 ```
 
-Keeping the extension identifier stable avoids stale Quick Look registration conflicts while the product name moves to Burette.
+Keeping the extension identifier stable avoids stale Quick Look registration conflicts while the product name moves to Burrete.
 
 ## Reset Quick Look
 
@@ -55,13 +55,13 @@ killall quicklookd 2>/dev/null || true
 The forced content types are:
 
 ```text
-com.local.molstarquicklook10.pdb
-com.local.molstarquicklook10.cif
+com.local.burrete10.pdb
+com.local.burrete10.cif
 ```
 
 ## Logs
 
-Logs are available from Burette Settings and from:
+Logs are available from Burrete Settings and from:
 
 ```bash
 ./scripts/tail-log.sh
@@ -70,5 +70,5 @@ Logs are available from Burette Settings and from:
 Primary log path:
 
 ```text
-~/Library/Containers/com.local.MolstarQuickLookV10.Preview/Data/Library/Caches/MolstarQuickLook/MolstarQuickLook.log
+~/Library/Containers/com.local.BurreteV10.Preview/Data/Library/Caches/Burrete/Burrete.log
 ```

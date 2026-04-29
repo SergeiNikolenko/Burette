@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 @main
-struct MolstarQuickLookApp: App {
+struct BurreteApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
@@ -51,8 +51,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = item.button {
-            button.image = BuretteIcon.statusImage()
-            button.toolTip = "Burette"
+            button.image = BurreteIcon.statusImage()
+            button.toolTip = "Burrete"
         }
 
         let menu = NSMenu()
@@ -62,7 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: "Clear Preview Cache", action: #selector(clearPreviewCache), keyEquivalent: "k"))
         menu.addItem(NSMenuItem(title: "Reset Quick Look", action: #selector(resetQuickLook), keyEquivalent: "r"))
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Quit Burette", action: #selector(quit), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: "Quit Burrete", action: #selector(quit), keyEquivalent: "q"))
         menu.items.forEach { $0.target = self }
         item.menu = menu
         statusItem = item
@@ -72,7 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if settingsWindow == nil {
             let controller = NSHostingController(rootView: ContentView())
             let window = SettingsWindow(contentViewController: controller)
-            window.title = "Burette Settings"
+            window.title = "Burrete Settings"
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             window.isReleasedWhenClosed = false
             window.minSize = NSSize(width: 660, height: 460)
@@ -151,7 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     static var logsDirectory: URL {
         FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Containers/com.local.MolstarQuickLookV10.Preview/Data/Library/Caches/MolstarQuickLook", isDirectory: true)
+            .appendingPathComponent("Library/Containers/com.local.BurreteV10.Preview/Data/Library/Caches/Burrete", isDirectory: true)
     }
 
     static var previewCacheDirectory: URL {
@@ -159,7 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     static var primaryLogURL: URL {
-        logsDirectory.appendingPathComponent("MolstarQuickLook.log")
+        logsDirectory.appendingPathComponent("Burrete.log")
     }
 }
 
@@ -203,7 +203,7 @@ private final class SettingsWindow: NSWindow {
     }
 }
 
-enum BuretteIcon {
+enum BurreteIcon {
     static func statusImage() -> NSImage {
         let image = NSImage(size: NSSize(width: 18, height: 18))
         image.lockFocus()

@@ -15,9 +15,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "C9F45524962D088FBA96DA08"
-               BuildableName = "MolstarQuickLook.app"
-               BlueprintName = "MolstarQuickLook"
-               ReferencedContainer = "container:MolstarQuickLook.xcodeproj">
+               BuildableName = "Burrete.app"
+               BlueprintName = "Burrete"
+               ReferencedContainer = "container:Burrete.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -43,9 +43,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "C9F45524962D088FBA96DA08"
-            BuildableName = "MolstarQuickLook.app"
-            BlueprintName = "MolstarQuickLook"
-            ReferencedContainer = "container:MolstarQuickLook.xcodeproj">
+            BuildableName = "Burrete.app"
+            BlueprintName = "Burrete"
+            ReferencedContainer = "container:Burrete.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -60,9 +60,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "C9F45524962D088FBA96DA08"
-            BuildableName = "MolstarQuickLook.app"
-            BlueprintName = "MolstarQuickLook"
-            ReferencedContainer = "container:MolstarQuickLook.xcodeproj">
+            BuildableName = "Burrete.app"
+            BlueprintName = "Burrete"
+            ReferencedContainer = "container:Burrete.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

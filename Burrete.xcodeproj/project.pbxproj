@@ -7,14 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		47FCA5D382862E1453313DBE /* MolstarQuickLookApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A22A79402DCF99A8F73E63C9 /* MolstarQuickLookApp.swift */; };
+		47FCA5D382862E1453313DBE /* BurreteApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A22A79402DCF99A8F73E63C9 /* BurreteApp.swift */; };
 		1B0A192E03A98BBEF19FE524 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E19FAD5D706EFF2DCADAC02E /* ContentView.swift */; };
 		B88A1B0D9C2F4E7A8D3C6B11 /* MoleculeViewerWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B88A1B0C9C2F4E7A8D3C6B11 /* MoleculeViewerWindowController.swift */; };
 		2A6C3FDEB8E145A2A9364F01 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8B707533C58E4E3C9B6E6E15 /* Assets.xcassets */; };
 		B88A1B0E9C2F4E7A8D3C6B11 /* Web in Resources */ = {isa = PBXBuildFile; fileRef = 4ADF66CA120EDD24C9E3F203 /* Web */; };
 		3C65656FB6FE8E52854AC3F4 /* PreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA02CDF88EC813372195D216 /* PreviewViewController.swift */; };
 		E31816093C5AEC762F9638CB /* Web in Resources */ = {isa = PBXBuildFile; fileRef = 4ADF66CA120EDD24C9E3F203 /* Web */; };
-		A0E5E86E854F89E5A48C3DB0 /* MolstarQuickLookPreview.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 664D234BD361BA8FA6C574ED /* MolstarQuickLookPreview.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A0E5E86E854F89E5A48C3DB0 /* BurretePreview.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 664D234BD361BA8FA6C574ED /* BurretePreview.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -23,7 +23,7 @@
 			containerPortal = 16EEAF57BAFC2A41CAB7C99A /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 61BF5421FB639DEF491CFBE0;
-			remoteInfo = MolstarQuickLookPreview;
+			remoteInfo = BurretePreview;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -34,7 +34,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				A0E5E86E854F89E5A48C3DB0 /* MolstarQuickLookPreview.appex in Embed App Extensions */,
+				A0E5E86E854F89E5A48C3DB0 /* BurretePreview.appex in Embed App Extensions */,
 			);
 			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -42,17 +42,17 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		D9730C12B890D116AC692E1F /* MolstarQuickLook.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MolstarQuickLook.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		664D234BD361BA8FA6C574ED /* MolstarQuickLookPreview.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MolstarQuickLookPreview.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		A22A79402DCF99A8F73E63C9 /* MolstarQuickLookApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MolstarQuickLookApp.swift; sourceTree = "<group>"; };
+		D9730C12B890D116AC692E1F /* Burrete.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Burrete.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		664D234BD361BA8FA6C574ED /* BurretePreview.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BurretePreview.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A22A79402DCF99A8F73E63C9 /* BurreteApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurreteApp.swift; sourceTree = "<group>"; };
 		E19FAD5D706EFF2DCADAC02E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		B88A1B0C9C2F4E7A8D3C6B11 /* MoleculeViewerWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoleculeViewerWindowController.swift; sourceTree = "<group>"; };
 		8B707533C58E4E3C9B6E6E15 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		6E373F91487569133D571598 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		8AD874A7BD1213FF583AB869 /* MolstarQuickLook.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MolstarQuickLook.entitlements; sourceTree = "<group>"; };
+		8AD874A7BD1213FF583AB869 /* Burrete.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Burrete.entitlements; sourceTree = "<group>"; };
 		AA02CDF88EC813372195D216 /* PreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewViewController.swift; sourceTree = "<group>"; };
 		D112F5444BEBEFD99D68B6DD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		F27769504D80BCF7B53A232F /* MolstarQuickLookPreview.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MolstarQuickLookPreview.entitlements; sourceTree = "<group>"; };
+		F27769504D80BCF7B53A232F /* BurretePreview.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BurretePreview.entitlements; sourceTree = "<group>"; };
 		4ADF66CA120EDD24C9E3F203 /* Web */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Web; sourceTree = "<group>"; };
 		B262D4721622654301018823 /* package.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = package.json; sourceTree = "<group>"; };
 		7179C178DEEA22EE9D4E2FA3 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
@@ -86,12 +86,12 @@
 		FDBDEEC77EA1DB023A30F615 /* App */ = {
 			isa = PBXGroup;
 			children = (
-				A22A79402DCF99A8F73E63C9 /* MolstarQuickLookApp.swift */,
+				A22A79402DCF99A8F73E63C9 /* BurreteApp.swift */,
 				E19FAD5D706EFF2DCADAC02E /* ContentView.swift */,
 				B88A1B0C9C2F4E7A8D3C6B11 /* MoleculeViewerWindowController.swift */,
 				8B707533C58E4E3C9B6E6E15 /* Assets.xcassets */,
 				6E373F91487569133D571598 /* Info.plist */,
-				8AD874A7BD1213FF583AB869 /* MolstarQuickLook.entitlements */,
+				8AD874A7BD1213FF583AB869 /* Burrete.entitlements */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -101,7 +101,7 @@
 			children = (
 				AA02CDF88EC813372195D216 /* PreviewViewController.swift */,
 				D112F5444BEBEFD99D68B6DD /* Info.plist */,
-				F27769504D80BCF7B53A232F /* MolstarQuickLookPreview.entitlements */,
+				F27769504D80BCF7B53A232F /* BurretePreview.entitlements */,
 				4ADF66CA120EDD24C9E3F203 /* Web */,
 			);
 			path = PreviewExtension;
@@ -128,8 +128,8 @@
 		5ADE8A4128725EB9150C196B /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				D9730C12B890D116AC692E1F /* MolstarQuickLook.app */,
-				664D234BD361BA8FA6C574ED /* MolstarQuickLookPreview.appex */,
+				D9730C12B890D116AC692E1F /* Burrete.app */,
+				664D234BD361BA8FA6C574ED /* BurretePreview.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -137,9 +137,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		C9F45524962D088FBA96DA08 /* MolstarQuickLook */ = {
+		C9F45524962D088FBA96DA08 /* Burrete */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = B5CB73E473562139D609B498 /* Build configuration list for PBXNativeTarget "MolstarQuickLook" */;
+			buildConfigurationList = B5CB73E473562139D609B498 /* Build configuration list for PBXNativeTarget "Burrete" */;
 			buildPhases = (
 				AD7F4DA0D2B5600DAD6CC1D4 /* Sources */,
 				61D85E48ABD4C58BF0072A49 /* Frameworks */,
@@ -151,14 +151,14 @@
 			dependencies = (
 				3FC4DC70C3FB30E4043CD305 /* PBXTargetDependency */,
 			);
-			name = MolstarQuickLook;
-			productName = MolstarQuickLook;
-			productReference = D9730C12B890D116AC692E1F /* MolstarQuickLook.app */;
+			name = Burrete;
+			productName = Burrete;
+			productReference = D9730C12B890D116AC692E1F /* Burrete.app */;
 			productType = "com.apple.product-type.application";
 		};
-		61BF5421FB639DEF491CFBE0 /* MolstarQuickLookPreview */ = {
+		61BF5421FB639DEF491CFBE0 /* BurretePreview */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = B1961E2A76BF7D259B33E151 /* Build configuration list for PBXNativeTarget "MolstarQuickLookPreview" */;
+			buildConfigurationList = B1961E2A76BF7D259B33E151 /* Build configuration list for PBXNativeTarget "BurretePreview" */;
 			buildPhases = (
 				33A90F7211FDC5E570EC5350 /* Vendor Mol* assets */,
 				163085407F6A19FD620C881A /* Sources */,
@@ -168,9 +168,9 @@
 			);
 			buildRules = ();
 			dependencies = ();
-			name = MolstarQuickLookPreview;
-			productName = MolstarQuickLookPreview;
-			productReference = 664D234BD361BA8FA6C574ED /* MolstarQuickLookPreview.appex */;
+			name = BurretePreview;
+			productName = BurretePreview;
+			productReference = 664D234BD361BA8FA6C574ED /* BurretePreview.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
@@ -191,7 +191,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 4B2380CA9135CE36448D46F6 /* Build configuration list for PBXProject "MolstarQuickLook" */;
+			buildConfigurationList = 4B2380CA9135CE36448D46F6 /* Build configuration list for PBXProject "Burrete" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -201,8 +201,8 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				C9F45524962D088FBA96DA08 /* MolstarQuickLook */,
-				61BF5421FB639DEF491CFBE0 /* MolstarQuickLookPreview */,
+				C9F45524962D088FBA96DA08 /* Burrete */,
+				61BF5421FB639DEF491CFBE0 /* BurretePreview */,
 			);
 		};
 /* End PBXProject section */
@@ -279,7 +279,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				47FCA5D382862E1453313DBE /* MolstarQuickLookApp.swift in Sources */,
+				47FCA5D382862E1453313DBE /* BurreteApp.swift in Sources */,
 				1B0A192E03A98BBEF19FE524 /* ContentView.swift in Sources */,
 				B88A1B0D9C2F4E7A8D3C6B11 /* MoleculeViewerWindowController.swift in Sources */,
 			);
@@ -296,7 +296,7 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		3FC4DC70C3FB30E4043CD305 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = 61BF5421FB639DEF491CFBE0 /* MolstarQuickLookPreview */; targetProxy = CA36266CEBABA92D8B1FE194 /* PBXContainerItemProxy */; };
+		3FC4DC70C3FB30E4043CD305 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = 61BF5421FB639DEF491CFBE0 /* BurretePreview */; targetProxy = CA36266CEBABA92D8B1FE194 /* PBXContainerItemProxy */; };
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -371,7 +371,7 @@
 		7371A6B6FA3DC61535FF98BB /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = App/MolstarQuickLook.entitlements;
+				CODE_SIGN_ENTITLEMENTS = App/Burrete.entitlements;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -384,7 +384,7 @@
 				INFOPLIST_FILE = App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", );
 				MARKETING_VERSION = 0.10.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.local.MolstarQuickLookV10;
+				PRODUCT_BUNDLE_IDENTIFIER = com.local.BurreteV10;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				SUPPORTED_PLATFORMS = macosx;
@@ -395,7 +395,7 @@
 		5D7977E946686638EB4B0BD7 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = App/MolstarQuickLook.entitlements;
+				CODE_SIGN_ENTITLEMENTS = App/Burrete.entitlements;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -408,7 +408,7 @@
 				INFOPLIST_FILE = App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", );
 				MARKETING_VERSION = 0.10.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.local.MolstarQuickLookV10;
+				PRODUCT_BUNDLE_IDENTIFIER = com.local.BurreteV10;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				SUPPORTED_PLATFORMS = macosx;
@@ -420,7 +420,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = PreviewExtension/MolstarQuickLookPreview.entitlements;
+				CODE_SIGN_ENTITLEMENTS = PreviewExtension/BurretePreview.entitlements;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -432,7 +432,7 @@
 				INFOPLIST_FILE = PreviewExtension/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks", );
 				MARKETING_VERSION = 0.10.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.local.MolstarQuickLookV10.Preview;
+				PRODUCT_BUNDLE_IDENTIFIER = com.local.BurreteV10.Preview;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.0;
@@ -445,7 +445,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = PreviewExtension/MolstarQuickLookPreview.entitlements;
+				CODE_SIGN_ENTITLEMENTS = PreviewExtension/BurretePreview.entitlements;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -457,7 +457,7 @@
 				INFOPLIST_FILE = PreviewExtension/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks", );
 				MARKETING_VERSION = 0.10.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.local.MolstarQuickLookV10.Preview;
+				PRODUCT_BUNDLE_IDENTIFIER = com.local.BurreteV10.Preview;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.0;
@@ -469,7 +469,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		4B2380CA9135CE36448D46F6 /* Build configuration list for PBXProject "MolstarQuickLook" */ = {
+		4B2380CA9135CE36448D46F6 /* Build configuration list for PBXProject "Burrete" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				DA925284BA893A0B7CD58824 /* Debug */,
@@ -478,7 +478,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		B5CB73E473562139D609B498 /* Build configuration list for PBXNativeTarget "MolstarQuickLook" */ = {
+		B5CB73E473562139D609B498 /* Build configuration list for PBXNativeTarget "Burrete" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				7371A6B6FA3DC61535FF98BB /* Debug */,
@@ -487,7 +487,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		B1961E2A76BF7D259B33E151 /* Build configuration list for PBXNativeTarget "MolstarQuickLookPreview" */ = {
+		B1961E2A76BF7D259B33E151 /* Build configuration list for PBXNativeTarget "BurretePreview" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				7C41880A1B0B737541AB8894 /* Debug */,

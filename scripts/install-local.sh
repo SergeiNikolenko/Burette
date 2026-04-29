@@ -2,22 +2,22 @@
 set -euo pipefail
 
 ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-APP="$ROOT/build/Build/Products/Debug/MolstarQuickLook.app"
+APP="$ROOT/build/Build/Products/Debug/Burrete.app"
 DEST_DIR="$HOME/Applications"
-DEST="$DEST_DIR/Burette.app"
-LEGACY_DEST="$DEST_DIR/MolstarQuickLook.app"
+DEST="$DEST_DIR/Burrete.app"
+LEGACY_BURETTE_DEST="$DEST_DIR/Burette.app"
 LEGACY_BURET_DEST="$DEST_DIR/Buret.app"
-APPEX="$DEST/Contents/PlugIns/MolstarQuickLookPreview.appex"
-EXT_ID="com.local.MolstarQuickLookV10.Preview"
-APP_ID="com.local.MolstarQuickLookV10"
+APPEX="$DEST/Contents/PlugIns/BurretePreview.appex"
+EXT_ID="com.local.BurreteV10.Preview"
+APP_ID="com.local.BurreteV10"
 
 if [[ ! -d "$APP" ]]; then
   echo "error: built app not found: $APP" >&2
   echo "Run ./scripts/build.sh first and make sure it ends with BUILD SUCCEEDED." >&2
   exit 1
 fi
-if [[ ! -x "$APP/Contents/MacOS/MolstarQuickLook" ]]; then
-  echo "error: built app executable is missing: $APP/Contents/MacOS/MolstarQuickLook" >&2
+if [[ ! -x "$APP/Contents/MacOS/Burrete" ]]; then
+  echo "error: built app executable is missing: $APP/Contents/MacOS/Burrete" >&2
   echo "Do not run install.sh after a failed build. Re-run: ./scripts/build.sh && ./scripts/install.sh" >&2
   exit 1
 fi
@@ -31,28 +31,28 @@ fi
 
 clean_detritus() { local path="$1"; [[ -e "$path" ]] || return 0; xattr -cr "$path" 2>/dev/null || true; dot_clean -m "$path" 2>/dev/null || true; find "$path" \( -name '._*' -o -name '.DS_Store' \) -delete 2>/dev/null || true; }
 
-echo "Unregistering old MolstarQuickLook extensions, if any..."
+echo "Unregistering old Burrete extensions, if any..."
 for OLD_ID in \
-  com.local.MolstarQuickLook.Preview \
-  com.local.MolstarQuickLookV4.Preview \
-  com.local.MolstarQuickLookV5.Preview \
-  com.local.MolstarQuickLookV6.Preview \
-  com.local.MolstarQuickLookV7.Preview \
-  com.local.MolstarQuickLookV8.Preview \
-  com.local.MolstarQuickLookV9.Preview \
-  com.local.MolstarQuickLookV10.Preview
+  com.local.Burrete.Preview \
+  com.local.BurreteV4.Preview \
+  com.local.BurreteV5.Preview \
+  com.local.BurreteV6.Preview \
+  com.local.BurreteV7.Preview \
+  com.local.BurreteV8.Preview \
+  com.local.BurreteV9.Preview \
+  com.local.BurreteV10.Preview
 do
   pluginkit -r "$OLD_ID" 2>/dev/null || true
 done
 while IFS= read -r OLD_ENTRY; do
   OLD_APPEX="${OLD_ENTRY##*$'\t'}"
-  if [[ "$OLD_APPEX" == *MolstarQuickLook*.appex ]]; then
+  if [[ "$OLD_APPEX" == *Burrete*.appex ]]; then
     pluginkit -r "$OLD_APPEX" 2>/dev/null || true
   fi
-done < <(pluginkit -m -v -p com.apple.quicklook.preview 2>/dev/null | grep -i MolstarQuickLook || true)
+done < <(pluginkit -m -v -p com.apple.quicklook.preview 2>/dev/null | grep -i Burrete || true)
 
 mkdir -p "$DEST_DIR"
-rm -rf "$DEST" "$LEGACY_DEST" "$LEGACY_BURET_DEST"
+rm -rf "$DEST" "$LEGACY_BURETTE_DEST" "$LEGACY_BURET_DEST"
 COPYFILE_DISABLE=1 COPY_EXTENDED_ATTRIBUTES_DISABLE=1 cp -R "$APP" "$DEST"
 clean_detritus "$DEST"
 
@@ -73,11 +73,11 @@ Installed local copy:
   $DEST
 
 Check extension registration:
-  pluginkit -m -p com.apple.quicklook.preview | grep -i MolstarQuickLook
+  pluginkit -m -p com.apple.quicklook.preview | grep -i Burrete
 
 Forced tests:
-  qlmanage -p -c com.local.molstarquicklook10.pdb "$ROOT/samples/mini.pdb"
-  qlmanage -p -c com.local.molstarquicklook10.cif "$ROOT/samples/mini.cif"
+  qlmanage -p -c com.local.burrete10.pdb "$ROOT/samples/mini.pdb"
+  qlmanage -p -c com.local.burrete10.cif "$ROOT/samples/mini.cif"
 
 Normal tests:
   qlmanage -p "$ROOT/samples/mini.pdb"
