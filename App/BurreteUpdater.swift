@@ -69,7 +69,7 @@ struct BurreteUpdateRelease: Decodable, Equatable {
         let installExtensions = [".dmg", ".zip", ".pkg"]
         let candidates = assets.filter { asset in
             let lower = asset.name.lowercased()
-            return installExtensions.contains { lower.hasSuffix($0) }
+            return asset.size > 0 && installExtensions.contains { lower.hasSuffix($0) }
         }
         return candidates.first {
             $0.name.localizedCaseInsensitiveContains("burrete")
@@ -91,11 +91,14 @@ final class BurreteUpdater: ObservableObject {
     @Published private(set) var isInstalling = false
     @Published private(set) var statusText: String
     @Published private(set) var availableRelease: BurreteUpdateRelease?
+    @Published private(set) var availableReleaseChannel: BurreteUpdateChannel?
     @Published private(set) var downloadedFileURL: URL?
 
     private let releasesURL = BurreteUpdateRepository.releasesURL
     private let defaults = UserDefaults.standard
     private let automaticCheckInterval: TimeInterval = 12 * 60 * 60
+    private let automaticFailureRetryInterval: TimeInterval = 60 * 60
+    private var activeUpdateRequestID = UUID()
 
     private init() {
         if defaults.object(forKey: "checkUpdatesAutomatically") == nil {
@@ -121,10 +124,10 @@ final class BurreteUpdater: ObservableObject {
         if isInstalling {
             return "Installing..."
         }
-        if availableRelease?.installAsset != nil {
+        if availableReleaseChannel == storedChannel(), availableRelease?.installAsset != nil {
             return "Download and Install..."
         }
-        if availableRelease != nil {
+        if availableReleaseChannel == storedChannel(), availableRelease != nil {
             return "Open Release Page..."
         }
         return "Check for Updates..."
@@ -132,9 +135,10 @@ final class BurreteUpdater: ObservableObject {
 
     func checkAutomaticallyIfNeeded() {
         guard defaults.bool(forKey: "checkUpdatesAutomatically") else { return }
-        let lastCheck = defaults.object(forKey: "lastAutomaticUpdateCheckAt") as? Date ?? .distantPast
-        guard Date().timeIntervalSince(lastCheck) >= automaticCheckInterval else { return }
-        defaults.set(Date(), forKey: "lastAutomaticUpdateCheckAt")
+        let lastSuccess = defaults.object(forKey: "lastAutomaticUpdateSuccessAt") as? Date ?? .distantPast
+        let lastFailure = defaults.object(forKey: "lastAutomaticUpdateFailureAt") as? Date ?? .distantPast
+        guard Date().timeIntervalSince(lastSuccess) >= automaticCheckInterval,
+              Date().timeIntervalSince(lastFailure) >= automaticFailureRetryInterval else { return }
         let channel = storedChannel()
         Task {
             await checkForUpdates(channel: channel, isAutomatic: true)
@@ -142,7 +146,7 @@ final class BurreteUpdater: ObservableObject {
     }
 
     func runPrimaryAction(channel: BurreteUpdateChannel) async {
-        if let release = availableRelease {
+        if let release = availableRelease, availableReleaseChannel == channel {
             if release.installAsset != nil {
                 await downloadAndInstallAvailableUpdate()
             } else {
@@ -153,8 +157,18 @@ final class BurreteUpdater: ObservableObject {
         await checkForUpdates(channel: channel, isAutomatic: false)
     }
 
+    func clearAvailableRelease() {
+        activeUpdateRequestID = UUID()
+        availableRelease = nil
+        availableReleaseChannel = nil
+        downloadedFileURL = nil
+        setStatus("Update channel changed. Check for updates again.")
+    }
+
     func checkForUpdates(channel: BurreteUpdateChannel, isAutomatic: Bool) async {
         guard !isChecking else { return }
+        let requestID = UUID()
+        activeUpdateRequestID = requestID
         isChecking = true
         if !isAutomatic {
             statusText = "Checking GitHub releases..."
@@ -164,17 +178,28 @@ final class BurreteUpdater: ObservableObject {
 
         do {
             let releases = try await fetchReleases()
+            guard isCurrentUpdateRequest(requestID, channel: channel) else { return }
             if let release = newestUpdate(in: releases, channel: channel) {
                 availableRelease = release
+                availableReleaseChannel = channel
                 let assetText = release.installAsset == nil ? " No downloadable app archive is attached to this release." : ""
                 setStatus("Update available: \(release.displayName) (\(release.tagName)).\(assetText)")
             } else {
                 availableRelease = nil
+                availableReleaseChannel = nil
                 setStatus("Burrete \(currentVersion) is up to date on \(channel.title).")
             }
+            if isAutomatic {
+                defaults.set(Date(), forKey: "lastAutomaticUpdateSuccessAt")
+                defaults.removeObject(forKey: "lastAutomaticUpdateFailureAt")
+            }
         } catch {
+            guard isCurrentUpdateRequest(requestID, channel: channel) else { return }
             if !isAutomatic {
                 availableRelease = nil
+                availableReleaseChannel = nil
+            } else {
+                defaults.set(Date(), forKey: "lastAutomaticUpdateFailureAt")
             }
             setStatus("Update check failed: \(error.localizedDescription)")
         }
@@ -242,6 +267,9 @@ final class BurreteUpdater: ObservableObject {
     }
 
     private func download(asset: BurreteUpdateAsset, from release: BurreteUpdateRelease) async throws -> URL {
+        guard asset.size > 0 else {
+            throw BurreteUpdateError.invalidAsset("Release asset \(asset.name) reports zero bytes.")
+        }
         var request = URLRequest(url: asset.browserDownloadURL)
         request.setValue("application/octet-stream", forHTTPHeaderField: "Accept")
         request.setValue("Burrete/\(currentVersion)", forHTTPHeaderField: "User-Agent")
@@ -258,6 +286,11 @@ final class BurreteUpdater: ObservableObject {
             try fileManager.removeItem(at: destination)
         }
         try fileManager.moveItem(at: temporaryURL, to: destination)
+        let downloadedSize = ((try? fileManager.attributesOfItem(atPath: destination.path)[.size]) as? NSNumber)?.intValue ?? 0
+        guard downloadedSize == asset.size else {
+            try? fileManager.removeItem(at: destination)
+            throw BurreteUpdateError.downloadedAssetSizeMismatch(expected: asset.size, actual: downloadedSize)
+        }
         return destination
     }
 
@@ -454,6 +487,10 @@ final class BurreteUpdater: ObservableObject {
         BurreteUpdateChannel(rawValue: defaults.string(forKey: "updateChannel") ?? "") ?? .stable
     }
 
+    private func isCurrentUpdateRequest(_ requestID: UUID, channel: BurreteUpdateChannel) -> Bool {
+        requestID == activeUpdateRequestID && storedChannel() == channel
+    }
+
     private func setStatus(_ status: String) {
         statusText = status
         defaults.set(status, forKey: "updateStatusText")
@@ -469,6 +506,8 @@ private enum BurreteUpdateError: LocalizedError {
     case invalidDownloadedApp(String)
     case processFailed(String, Int32)
     case installerLaunchFailed(String)
+    case invalidAsset(String)
+    case downloadedAssetSizeMismatch(expected: Int, actual: Int)
 
     var errorDescription: String? {
         switch self {
@@ -489,6 +528,10 @@ private enum BurreteUpdateError: LocalizedError {
             return "\(name) exited with status \(status)."
         case .installerLaunchFailed(let reason):
             return "Could not launch the updater helper: \(reason)"
+        case .invalidAsset(let message):
+            return message
+        case let .downloadedAssetSizeMismatch(expected, actual):
+            return "Downloaded update archive size mismatch: expected \(expected) bytes, got \(actual) bytes."
         }
     }
 }
