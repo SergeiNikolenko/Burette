@@ -32,7 +32,7 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         window.title = "Burrete - \(fileURL.lastPathComponent)"
         window.minSize = NSSize(width: 660, height: 440)
         window.backgroundColor = NSColor(calibratedWhite: 0.055, alpha: 1.0)
-        window.contentView = BuretteAppViewerContainerView(contentView: webView)
+        window.contentView = BurreteAppViewerContainerView(contentView: webView)
 
         super.init(window: window)
 
@@ -342,7 +342,7 @@ private enum AppViewerError: LocalizedError {
     }
 }
 
-private final class BuretteAppViewerContainerView: NSView {
+private final class BurreteAppViewerContainerView: NSView {
     init(contentView: NSView) {
         super.init(frame: .zero)
         wantsLayer = true
