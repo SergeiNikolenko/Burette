@@ -51,6 +51,7 @@
 				<string>org.iucr.cif</string>
 				<string>org.iucr.mmcif</string>
 				<string>org.openscience.sdf</string>
+				<string>com.schrodinger.sdf</string>
 				<string>org.openscience.molfile</string>
 				<string>org.openscience.mol2</string>
 				<string>com.mdli.sdf</string>

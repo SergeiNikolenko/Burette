@@ -46,6 +46,97 @@
     bottom: 'hidden'
   };
 
+  const DEFAULT_VIEWER_UI_SCALE = 0.86;
+  const MIN_VIEWER_UI_SCALE = 0.72;
+  const MAX_VIEWER_UI_SCALE = 1.35;
+  const VIEWER_UI_SCALE_STEP = 0.08;
+
+  let panelControlsVisible = window.MolstarQuickLookPanelControlsVisible !== false;
+  let viewerUIScale = DEFAULT_VIEWER_UI_SCALE;
+  let activeViewer = null;
+  let keyboardShortcutsInstalled = false;
+
+  function applyConfigOptions(config) {
+    panelControlsVisible = config.showPanelControls !== undefined ? !!config.showPanelControls : panelControlsVisible;
+    viewerUIScale = resolveInitialViewerScale(config);
+    applyViewerUIScale();
+    const nextLayoutState = config.defaultLayoutState;
+    if (nextLayoutState && typeof nextLayoutState === 'object') {
+      for (const key of ['left', 'right', 'top', 'bottom']) {
+        if (['full', 'collapsed', 'hidden'].includes(nextLayoutState[key])) {
+          layoutState[key] = nextLayoutState[key];
+        }
+      }
+    }
+    updateToolbarVisibility();
+  }
+
+  function resolveInitialViewerScale(config) {
+    const scale = Number(config.uiScale);
+    return clampViewerScale(Number.isFinite(scale) ? scale : DEFAULT_VIEWER_UI_SCALE);
+  }
+
+  function clampViewerScale(scale) {
+    return Math.min(Math.max(scale, MIN_VIEWER_UI_SCALE), MAX_VIEWER_UI_SCALE);
+  }
+
+  function applyViewerUIScale(viewer = activeViewer) {
+    document.documentElement.style.setProperty('--buret-viewer-ui-scale', viewerUIScale.toFixed(2));
+
+    const pluginRoot = document.querySelector('.msp-plugin');
+    if (pluginRoot) {
+      pluginRoot.style.zoom = String(viewerUIScale);
+      pluginRoot.style.width = `${100 / viewerUIScale}%`;
+      pluginRoot.style.height = `${100 / viewerUIScale}%`;
+    }
+
+    requestAnimationFrame(() => {
+      try { viewer?.handleResize?.(); } catch (_) {}
+      try { viewer?.plugin?.layout?.events?.updated?.next?.(); } catch (_) {}
+    });
+  }
+
+  function setViewerUIScale(scale, viewer = activeViewer) {
+    viewerUIScale = clampViewerScale(scale);
+    applyViewerUIScale(viewer);
+  }
+
+  function initViewerKeyboardShortcuts(viewer) {
+    if (keyboardShortcutsInstalled) return;
+    keyboardShortcutsInstalled = true;
+
+    document.addEventListener('keydown', event => {
+      if (event.defaultPrevented || !event.metaKey || event.ctrlKey || event.altKey) return;
+      const tagName = event.target?.tagName?.toLowerCase();
+      if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') return;
+
+      if (event.key === '+' || event.key === '=' || event.key === 'Add') {
+        event.preventDefault();
+        setViewerUIScale(viewerUIScale + VIEWER_UI_SCALE_STEP, viewer);
+        return;
+      }
+
+      if (event.key === '-' || event.key === '_' || event.key === 'Subtract') {
+        event.preventDefault();
+        setViewerUIScale(viewerUIScale - VIEWER_UI_SCALE_STEP, viewer);
+        return;
+      }
+
+      if (event.key === '0') {
+        event.preventDefault();
+        setViewerUIScale(DEFAULT_VIEWER_UI_SCALE, viewer);
+      }
+    }, true);
+  }
+
+  function updateToolbarVisibility() {
+    const toolbar = document.getElementById('buret-toolbar');
+    if (!toolbar) return;
+    toolbar.querySelectorAll('.buret-panel-toggle').forEach(button => {
+      button.classList.toggle('hidden', !panelControlsVisible);
+    });
+  }
+
   function initBuretToolbar(viewer) {
     const toolbar = document.getElementById('buret-toolbar');
     if (!toolbar) return;
@@ -53,7 +144,9 @@
     toolbar.querySelectorAll('[data-buret-action]').forEach(button => {
       button.addEventListener('click', () => {
         const action = button.getAttribute('data-buret-action');
-        if (action === 'fit') post('action', 'fit');
+        if (action === 'fit') {
+          post('action', 'fit');
+        }
       });
     });
 
@@ -64,6 +157,7 @@
     });
 
     initToolbarDrag(toolbar);
+    updateToolbarVisibility();
     applyLayoutState(viewer);
   }
 
@@ -337,6 +431,7 @@
     }
 
     const config = requireConfig();
+    applyConfigOptions(config);
     debug('config=' + JSON.stringify(config));
     const size = describeBytes(config.byteCount);
     const formatLabel = describeFormat(config.format, config.binary);
@@ -358,9 +453,12 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     setStatus(`[web] WebGL viewer created. Parsing structure…
 ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     window.MolstarQuickLookViewer = viewer;
+    activeViewer = viewer;
     window.MolstarQuickLookHandleResize = () => {
       try { viewer.handleResize(); } catch (_) {}
     };
+    applyViewerUIScale(viewer);
+    initViewerKeyboardShortcuts(viewer);
     initBuretToolbar(viewer);
 
     await waitForAnimationFrame();

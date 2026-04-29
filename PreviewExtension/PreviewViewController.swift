@@ -215,7 +215,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let format = StructureFormat(url: url, data: structureData)
         diag("detected.format=\(format.molstarFormat) binary=\(format.isBinary)")
 
-        let configJSON = try previewConfigJSON(format: format, label: url.lastPathComponent, byteCount: structureData.count)
+        let configJSON = try previewConfigJSON(
+            format: format,
+            label: url.lastPathComponent,
+            byteCount: structureData.count,
+            preferences: PreviewPreferences.load()
+        )
         let base64 = structureData.base64EncodedString(options: [])
         diag("structure.base64.chars=\(base64.count)")
 
@@ -339,14 +344,17 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         return left == right
     }
 
-    private static func previewConfigJSON(format: StructureFormat, label: String, byteCount: Int) throws -> String {
+    private static func previewConfigJSON(format: StructureFormat, label: String, byteCount: Int, preferences: PreviewPreferences) throws -> String {
         let payload: [String: Any] = [
             "format": format.molstarFormat,
             "binary": format.isBinary,
             "label": label,
             "byteCount": byteCount,
             "quickLookBuild": "v10-product",
-            "debug": showDebugOverlay
+            "debug": showDebugOverlay,
+            "uiScale": 0.86,
+            "showPanelControls": preferences.showPanelControls,
+            "defaultLayoutState": preferences.defaultLayoutState
         ]
         let jsonData = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes])
         guard let json = String(data: jsonData, encoding: .utf8) else { throw PreviewError.couldNotCreatePreviewConfig }
@@ -364,16 +372,18 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           <title>Burette - \(safeTitle)</title>
           <link rel="stylesheet" href="../assets/molstar.css" />
           <style>
+            :root { --buret-viewer-ui-scale: 0.86; }
             html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: #111317; }
             body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: #f2f2f2; }
             #app { position: absolute; inset: 0; }
             #status {
-              position: absolute; left: 16px; top: 16px;
+              position: absolute; left: 12px; top: 12px;
               z-index: 2147483647; max-width: min(880px, calc(100vw - 32px)); max-height: calc(50vh - 32px); overflow: auto;
-              box-sizing: border-box; padding: 12px 14px; border-radius: 12px; color: rgba(255, 255, 255, 0.96);
+              box-sizing: border-box; padding: 10px 12px; border-radius: 10px; color: rgba(255, 255, 255, 0.96);
               background: rgba(0, 0, 0, 0.76); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
               font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-              font-size: 12px; font-weight: 500; line-height: 1.35; white-space: pre-wrap; pointer-events: auto;
+              font-size: 11px; font-weight: 500; line-height: 1.35; white-space: pre-wrap; pointer-events: auto;
+              transform: scale(var(--buret-viewer-ui-scale)); transform-origin: top left;
             }
             #status.error { color: #ffd4d4; background: rgba(70, 0, 0, 0.82); }
             #status.hidden { display: none; }
@@ -389,14 +399,16 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 0 8px 22px rgba(0, 0, 0, 0.22),
                 inset 0 1px 0 rgba(255, 255, 255, 0.06);
               user-select: none; touch-action: none;
+              transform: scale(var(--buret-viewer-ui-scale)); transform-origin: top right;
             }
             .buret-button {
-              min-width: 30px; height: 30px; border: 0; border-radius: 8px; padding: 0 8px;
-              color: inherit; background: transparent; font: 600 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+              min-width: 26px; height: 26px; border: 0; border-radius: 7px; padding: 0 7px;
+              color: inherit; background: transparent; font: 600 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
               display: grid; place-items: center;
             }
             .buret-button:hover, .buret-button.active { background: rgba(255, 255, 255, 0.14); }
-            .buret-button svg { width: 17px; height: 17px; display: block; }
+            .buret-button.hidden { display: none; }
+            .buret-button svg { width: 15px; height: 15px; display: block; }
             .buret-grip { cursor: move; color: rgba(255, 255, 255, 0.66); }
           </style>
           <script>
@@ -462,18 +474,19 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             <button class="buret-button buret-grip" type="button" data-drag-handle aria-label="Move controls" title="Move controls">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h2v2H8V5Zm6 0h2v2h-2V5ZM8 11h2v2H8v-2Zm6 0h2v2h-2v-2ZM8 17h2v2H8v-2Zm6 0h2v2h-2v-2Z" fill="currentColor"/></svg>
             </button>
-            <button class="buret-button" type="button" data-buret-action="fit" aria-label="Fit window to screen" title="Fit window to screen">
+            <button class="buret-button" type="button" data-buret-action="fit" aria-label="Fullscreen" title="Fullscreen">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5v2H7.4l3.2 3.2-1.4 1.4L6 7.4V9H4Zm11-5h5v5h-2V7.4l-3.2 3.2-1.4-1.4L16.6 6H15V4ZM9.2 13.4l1.4 1.4L7.4 18H9v2H4v-5h2v1.6l3.2-3.2Zm5.6 0 3.2 3.2V15h2v5h-5v-2h1.6l-3.2-3.2 1.4-1.4Z" fill="currentColor"/></svg>
             </button>
-            <button class="buret-button active" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel">L</button>
-            <button class="buret-button" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle right panel">R</button>
-            <button class="buret-button" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq</button>
-            <button class="buret-button" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel">Log</button>
+            <button class="buret-button buret-panel-toggle active" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel">L</button>
+            <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle right panel">R</button>
+            <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq</button>
+            <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel">Log</button>
           </div>
           <div id="status" class="hidden">[web] HTML body created. Waiting for embedded data and Mol* script…</div>
           <script>
             window.MolstarQuickLookInlineMode = true;
             window.MolstarQuickLookDebug = \(showDebugOverlay ? "true" : "false");
+            window.MolstarQuickLookPanelControlsVisible = \(PreviewPreferences.load().showPanelControls ? "true" : "false");
             window.MolstarQuickLookCacheBuster = String(Date.now());
           </script>
           <script>
@@ -606,6 +619,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     private func handleJavaScriptAction(_ action: String) {
+        appendLog("JS action=\(action)")
         switch action {
         case "fit":
             toggleFitToScreen()
@@ -615,13 +629,25 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     private func toggleFitToScreen() {
-        guard let window = view.window, let screen = window.screen ?? NSScreen.main else { return }
+        guard let window = view.window, let screen = window.screen ?? NSScreen.main else {
+            appendLog("fit action ignored: no preview window")
+            return
+        }
+        if window.styleMask.contains(.fullScreen) {
+            window.toggleFullScreen(nil)
+            return
+        }
         if let frame = restoredWindowFrame {
             window.setFrame(frame, display: true, animate: true)
             restoredWindowFrame = nil
         } else {
             restoredWindowFrame = window.frame
-            window.setFrame(screen.visibleFrame.insetBy(dx: 8, dy: 8), display: true, animate: true)
+            let targetFrame = screen.visibleFrame.insetBy(dx: 8, dy: 8)
+            if window.styleMask.contains(.resizable) {
+                window.setFrame(targetFrame, display: true, animate: true)
+            } else {
+                window.toggleFullScreen(nil)
+            }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             self?.webView.evaluateJavaScript("window.MolstarQuickLookHandleResize && window.MolstarQuickLookHandleResize();", completionHandler: nil)
@@ -713,6 +739,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         if message.hasPrefix("WK webContentProcessDidTerminate") { return true }
         if message.hasPrefix("native build error") { return true }
         if message.hasPrefix("renderNativeError") { return true }
+        if message.hasPrefix("JS action=") { return true }
+        if message.hasPrefix("fit action ignored") { return true }
         if message.hasPrefix("JS alert:") { return true }
         if message.contains("JS message type=error") { return true }
         if message.contains("JS message type=console.error") { return true }
@@ -907,6 +935,25 @@ private struct StructureFormat {
         if let value = String(data: data, encoding: .utf8) { return value }
         if let value = String(data: data, encoding: .isoLatin1) { return value }
         return String(decoding: data, as: UTF8.self)
+    }
+}
+
+private struct PreviewPreferences {
+    let showPanelControls: Bool
+    let defaultLayoutState: [String: String]
+
+    static func load() -> PreviewPreferences {
+        let appID = "com.local.MolstarQuickLookV10" as CFString
+        let showPanelControls = (CFPreferencesCopyAppValue("showPreviewPanelControls" as CFString, appID) as? Bool) ?? false
+        return PreviewPreferences(
+            showPanelControls: showPanelControls,
+            defaultLayoutState: [
+                "left": "collapsed",
+                "right": "hidden",
+                "top": "hidden",
+                "bottom": "hidden"
+            ]
+        )
     }
 }
 
