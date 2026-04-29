@@ -88,6 +88,7 @@ final class BurreteUpdater: ObservableObject {
 
     @Published private(set) var isChecking = false
     @Published private(set) var isDownloading = false
+    @Published private(set) var isInstalling = false
     @Published private(set) var statusText: String
     @Published private(set) var availableRelease: BurreteUpdateRelease?
     @Published private(set) var downloadedFileURL: URL?
@@ -117,8 +118,11 @@ final class BurreteUpdater: ObservableObject {
         if isDownloading {
             return "Downloading..."
         }
+        if isInstalling {
+            return "Installing..."
+        }
         if availableRelease?.installAsset != nil {
-            return "Download Update..."
+            return "Download and Install..."
         }
         if availableRelease != nil {
             return "Open Release Page..."
@@ -140,7 +144,7 @@ final class BurreteUpdater: ObservableObject {
     func runPrimaryAction(channel: BurreteUpdateChannel) async {
         if let release = availableRelease {
             if release.installAsset != nil {
-                await downloadAvailableUpdate()
+                await downloadAndInstallAvailableUpdate()
             } else {
                 NSWorkspace.shared.open(release.htmlURL)
             }
@@ -176,26 +180,31 @@ final class BurreteUpdater: ObservableObject {
         }
     }
 
-    func downloadAvailableUpdate() async {
+    func downloadAndInstallAvailableUpdate() async {
         guard let release = availableRelease, let asset = release.installAsset else {
             if let release = availableRelease {
                 NSWorkspace.shared.open(release.htmlURL)
             }
             return
         }
-        guard !isDownloading else { return }
+        guard !isDownloading, !isInstalling else { return }
 
         isDownloading = true
         statusText = "Downloading \(asset.name)..."
-        defer { isDownloading = false }
 
         do {
             let destination = try await download(asset: asset, from: release)
             downloadedFileURL = destination
-            setStatus("Downloaded \(asset.name). The update archive is selected in Finder.")
-            NSWorkspace.shared.activateFileViewerSelecting([destination])
+            isDownloading = false
+            isInstalling = true
+            setStatus("Installing \(release.displayName)... Burrete will restart when the update is ready.")
+            try prepareAndLaunchInstaller(archiveURL: destination, release: release, asset: asset)
+            setStatus("Installer launched for \(release.displayName). Burrete will quit and reopen automatically.")
+            NSApp.terminate(nil)
         } catch {
-            setStatus("Update download failed: \(error.localizedDescription)")
+            isDownloading = false
+            isInstalling = false
+            setStatus("Update install failed: \(error.localizedDescription)")
         }
     }
 
@@ -252,6 +261,179 @@ final class BurreteUpdater: ObservableObject {
         return destination
     }
 
+    private func prepareAndLaunchInstaller(archiveURL: URL, release: BurreteUpdateRelease, asset: BurreteUpdateAsset) throws {
+        guard asset.name.lowercased().hasSuffix(".zip") else {
+            throw BurreteUpdateError.unsupportedAsset(asset.name)
+        }
+
+        let fileManager = FileManager.default
+        let updatesDirectory = try updatesDirectoryURL(for: release)
+        let stagingDirectory = updatesDirectory
+            .appendingPathComponent("Install-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: stagingDirectory, withIntermediateDirectories: true)
+
+        try runProcess("/usr/bin/ditto", arguments: ["-x", "-k", archiveURL.path, stagingDirectory.path])
+
+        let appURL = try findDownloadedApp(in: stagingDirectory, fileManager: fileManager)
+        try validateDownloadedApp(appURL, release: release)
+
+        let scriptURL = updatesDirectory.appendingPathComponent("install-\(safePathComponent(release.tagName)).sh")
+        let logURL = updatesDirectory.appendingPathComponent("install-\(safePathComponent(release.tagName)).log")
+        let currentAppURL = Bundle.main.bundleURL.standardizedFileURL
+        let script = installerScript(
+            appPID: ProcessInfo.processInfo.processIdentifier,
+            newAppURL: appURL,
+            destinationAppURL: currentAppURL,
+            logURL: logURL
+        )
+        try Data(script.utf8).write(to: scriptURL, options: [.atomic])
+        try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = [scriptURL.path]
+        do {
+            try process.run()
+        } catch {
+            throw BurreteUpdateError.installerLaunchFailed(error.localizedDescription)
+        }
+    }
+
+    private func findDownloadedApp(in directory: URL, fileManager: FileManager) throws -> URL {
+        guard let enumerator = fileManager.enumerator(
+            at: directory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            throw BurreteUpdateError.appNotFoundInArchive
+        }
+
+        for case let url as URL in enumerator {
+            guard url.pathExtension == "app" else { continue }
+            let infoPlist = url.appendingPathComponent("Contents/Info.plist")
+            guard let info = NSDictionary(contentsOf: infoPlist),
+                  info["CFBundleIdentifier"] as? String == "com.local.BurreteV10" else {
+                continue
+            }
+            return url
+        }
+        throw BurreteUpdateError.appNotFoundInArchive
+    }
+
+    private func validateDownloadedApp(_ appURL: URL, release: BurreteUpdateRelease) throws {
+        let infoPlist = appURL.appendingPathComponent("Contents/Info.plist")
+        guard let info = NSDictionary(contentsOf: infoPlist),
+              info["CFBundleIdentifier"] as? String == "com.local.BurreteV10" else {
+            throw BurreteUpdateError.invalidDownloadedApp("The archive does not contain com.local.BurreteV10.")
+        }
+
+        let downloadedVersion = info["CFBundleShortVersionString"] as? String ?? "0"
+        guard BurreteVersion(downloadedVersion) > BurreteVersion(currentVersion) else {
+            throw BurreteUpdateError.invalidDownloadedApp("Downloaded version \(downloadedVersion) is not newer than \(currentVersion).")
+        }
+        let releaseVersion = release.tagName.trimmingPrefix("v")
+        guard BurreteVersion(downloadedVersion) == BurreteVersion(releaseVersion) else {
+            throw BurreteUpdateError.invalidDownloadedApp("Downloaded version \(downloadedVersion) does not match release \(release.tagName).")
+        }
+
+        let executable = appURL.appendingPathComponent("Contents/MacOS/Burrete")
+        guard FileManager.default.isExecutableFile(atPath: executable.path) else {
+            throw BurreteUpdateError.invalidDownloadedApp("The downloaded app executable is missing.")
+        }
+    }
+
+    private func runProcess(_ executable: String, arguments: [String]) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            throw BurreteUpdateError.processFailed(URL(fileURLWithPath: executable).lastPathComponent, process.terminationStatus)
+        }
+    }
+
+    private func installerScript(appPID: Int32, newAppURL: URL, destinationAppURL: URL, logURL: URL) -> String {
+        """
+        #!/bin/bash
+        set -euo pipefail
+
+        APP_PID=\(appPID)
+        NEW_APP=\(shellQuote(newAppURL.path))
+        DEST_APP=\(shellQuote(destinationAppURL.path))
+        APP_ID='com.local.BurreteV10'
+        EXT_ID='com.local.BurreteV10.Preview'
+        LOG_FILE=\(shellQuote(logURL.path))
+
+        mkdir -p "$(dirname "$LOG_FILE")"
+        exec >>"$LOG_FILE" 2>&1
+        echo "== Burrete updater $(date) =="
+        echo "new app: $NEW_APP"
+        echo "destination: $DEST_APP"
+
+        for _ in $(seq 1 80); do
+          if ! kill -0 "$APP_PID" 2>/dev/null; then
+            break
+          fi
+          sleep 0.25
+        done
+        if kill -0 "$APP_PID" 2>/dev/null; then
+          echo "error: Burrete did not quit in time"
+          exit 1
+        fi
+
+        clean_detritus() {
+          local path="$1"
+          [ -e "$path" ] || return 0
+          /usr/bin/xattr -cr "$path" 2>/dev/null || true
+          /usr/bin/dot_clean -m "$path" 2>/dev/null || true
+          /usr/bin/find "$path" \\( -name '._*' -o -name '.DS_Store' \\) -delete 2>/dev/null || true
+        }
+
+        PARENT_DIR="$(dirname "$DEST_APP")"
+        TMP_APP="${DEST_APP}.updating"
+        BACKUP_APP="${DEST_APP}.previous"
+        mkdir -p "$PARENT_DIR"
+        rm -rf "$TMP_APP"
+        /bin/cp -R "$NEW_APP" "$TMP_APP"
+        clean_detritus "$TMP_APP"
+
+        ACTUAL_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$TMP_APP/Contents/Info.plist")"
+        if [ "$ACTUAL_ID" != "$APP_ID" ]; then
+          echo "error: bundle id mismatch: $ACTUAL_ID"
+          rm -rf "$TMP_APP"
+          exit 1
+        fi
+
+        rm -rf "$BACKUP_APP"
+        if [ -d "$DEST_APP" ]; then
+          /bin/mv "$DEST_APP" "$BACKUP_APP"
+        fi
+        if ! /bin/mv "$TMP_APP" "$DEST_APP"; then
+          if [ -d "$BACKUP_APP" ]; then
+            /bin/mv "$BACKUP_APP" "$DEST_APP"
+          fi
+          exit 1
+        fi
+        rm -rf "$BACKUP_APP"
+
+        APPEX="$DEST_APP/Contents/PlugIns/BurretePreview.appex"
+        LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+        [ -x "$LSREGISTER" ] && "$LSREGISTER" -f -R "$DEST_APP" || true
+        [ -d "$APPEX" ] && /usr/bin/pluginkit -a "$APPEX" 2>/dev/null || true
+        /usr/bin/pluginkit -e use -i "$EXT_ID" 2>/dev/null || true
+        /usr/bin/qlmanage -r >/dev/null 2>&1 || true
+        /usr/bin/qlmanage -r cache >/dev/null 2>&1 || true
+        /usr/bin/killall quicklookd >/dev/null 2>&1 || true
+        /usr/bin/open "$DEST_APP"
+        echo "update installed"
+        """
+    }
+
+    private func shellQuote(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
     private func updatesDirectoryURL(for release: BurreteUpdateRelease) throws -> URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Burrete", isDirectory: true)
@@ -282,6 +464,11 @@ final class BurreteUpdater: ObservableObject {
 private enum BurreteUpdateError: LocalizedError {
     case invalidResponse
     case github(status: Int, message: String?)
+    case unsupportedAsset(String)
+    case appNotFoundInArchive
+    case invalidDownloadedApp(String)
+    case processFailed(String, Int32)
+    case installerLaunchFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -292,6 +479,16 @@ private enum BurreteUpdateError: LocalizedError {
                 return "GitHub returned HTTP \(status): \(message)"
             }
             return "GitHub returned HTTP \(status)."
+        case .unsupportedAsset(let name):
+            return "Automatic installation supports zip app archives only. Downloaded asset: \(name)"
+        case .appNotFoundInArchive:
+            return "The update archive does not contain Burrete.app."
+        case .invalidDownloadedApp(let reason):
+            return "The downloaded app is not a valid Burrete update. \(reason)"
+        case .processFailed(let name, let status):
+            return "\(name) exited with status \(status)."
+        case .installerLaunchFailed(let reason):
+            return "Could not launch the updater helper: \(reason)"
         }
     }
 }
