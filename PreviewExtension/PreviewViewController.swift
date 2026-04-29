@@ -388,12 +388,16 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             #status.error { color: #ffd4d4; background: rgba(70, 0, 0, 0.82); }
             #status.hidden { display: none; }
             #buret-toolbar {
-              position: absolute; top: 10px; right: 10px; z-index: 2147483646;
-              display: flex; align-items: center; gap: 5px; padding: 5px;
-              border-radius: 10px; color: rgba(255, 255, 255, 0.94);
-              background: rgba(20, 22, 24, 0.62);
-              -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
-              box-shadow: 0 4px 18px rgba(0, 0, 0, 0.28);
+              position: absolute; top: 12px; right: 12px; z-index: 2147483646;
+              display: flex; align-items: center; gap: 6px; padding: 6px;
+              border: 1px solid rgba(255, 255, 255, 0.10);
+              border-radius: 12px; color: rgba(255, 255, 255, 0.94);
+              background: rgba(18, 20, 22, 0.86);
+              -webkit-backdrop-filter: blur(10px);
+              backdrop-filter: blur(10px);
+              box-shadow:
+                0 8px 22px rgba(0, 0, 0, 0.22),
+                inset 0 1px 0 rgba(255, 255, 255, 0.06);
               user-select: none; touch-action: none;
               transform: scale(var(--buret-viewer-ui-scale)); transform-origin: top right;
             }
