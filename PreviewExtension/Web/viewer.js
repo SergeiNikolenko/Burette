@@ -79,6 +79,8 @@
   const MIN_VIEWER_UI_SCALE = 0.72;
   const MAX_VIEWER_UI_SCALE = 1.35;
   const VIEWER_UI_SCALE_STEP = 0.08;
+  const RENDER_PIXEL_SCALE = 0.75;
+  const PICK_PIXEL_SCALE = 0.2;
 
   let panelControlsVisible = window.BurretePanelControlsVisible !== false;
   let viewerUIScale = DEFAULT_VIEWER_UI_SCALE;
@@ -425,6 +427,9 @@
       emdbProvider: 'rcsb',
       preferWebgl1: true,
       disableAntialiasing: true,
+      resolutionMode: 'scaled',
+      pixelScale: RENDER_PIXEL_SCALE,
+      pickScale: PICK_PIXEL_SCALE,
       powerPreference: 'high-performance'
     };
   }

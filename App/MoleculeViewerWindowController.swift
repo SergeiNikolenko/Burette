@@ -4,6 +4,7 @@ import WebKit
 final class MoleculeViewerWindowController: NSWindowController, WKNavigationDelegate, WKScriptMessageHandler {
     private let fileURL: URL
     private let webView: WKWebView
+    private var restoredWindowFrame: NSRect?
 
     init(fileURL: URL) {
         self.fileURL = fileURL
@@ -72,11 +73,29 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
             return
         }
         if type == "action", (body["message"] as? String) == "fit" {
-            window?.toggleFullScreen(nil)
+            toggleFitToScreen()
             return
         }
         let text = (body["message"] as? String) ?? ""
         NSLog("[BurreteAppViewer] %@: %@ %@", fileURL.lastPathComponent, type, text)
+    }
+
+    private func toggleFitToScreen() {
+        guard let window, let screen = window.screen ?? NSScreen.main else { return }
+        if window.styleMask.contains(.fullScreen) {
+            window.toggleFullScreen(nil)
+            return
+        }
+        if let frame = restoredWindowFrame {
+            window.setFrame(frame, display: true, animate: false)
+            restoredWindowFrame = nil
+        } else {
+            restoredWindowFrame = window.frame
+            window.setFrame(screen.visibleFrame.insetBy(dx: 8, dy: 8), display: true, animate: false)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.webView.evaluateJavaScript("window.BurreteHandleResize && window.BurreteHandleResize();", completionHandler: nil)
+        }
     }
 
     private static func errorHTML(_ error: Error) -> String {
