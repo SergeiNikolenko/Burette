@@ -7,6 +7,7 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
 
     init(fileURL: URL) {
         self.fileURL = fileURL
+        let transparentBackground = Self.useTransparentPreviewBackground
 
         let userContentController = WKUserContentController()
         let configuration = WKWebViewConfiguration()
@@ -31,6 +32,8 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         )
         window.title = "Burette - \(fileURL.lastPathComponent)"
         window.minSize = NSSize(width: 780, height: 520)
+        window.isOpaque = !transparentBackground
+        window.backgroundColor = transparentBackground ? .clear : NSColor(calibratedRed: 0.07, green: 0.08, blue: 0.09, alpha: 1.0)
         window.contentView = webView
 
         super.init(window: window)
@@ -38,6 +41,11 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         userContentController.add(self, name: "molstarQuickLook")
         webView.navigationDelegate = self
         webView.setValue(false, forKey: "drawsBackground")
+        webView.wantsLayer = true
+        webView.layer?.backgroundColor = (transparentBackground ? NSColor.clear : NSColor(calibratedRed: 0.07, green: 0.08, blue: 0.09, alpha: 1.0)).cgColor
+        if #available(macOS 11.0, *) {
+            webView.underPageBackgroundColor = transparentBackground ? .clear : NSColor(calibratedRed: 0.07, green: 0.08, blue: 0.09, alpha: 1.0)
+        }
         if #available(macOS 13.3, *) {
             webView.isInspectable = true
         }
@@ -83,6 +91,10 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         </style></head><body><h1>Burette could not open this file</h1><pre>\(escapeHTML(String(describing: error)))</pre></body></html>
         """
     }
+
+    private static var useTransparentPreviewBackground: Bool {
+        UserDefaults.standard.object(forKey: "useTransparentPreviewBackground") as? Bool ?? true
+    }
 }
 
 private struct AppViewerRuntime {
@@ -118,6 +130,7 @@ private struct AppViewerRuntime {
         try copyAssets(from: bundledWebDirectory, to: assetsDirectory)
 
         let format = AppViewerStructureFormat(url: fileURL, data: data)
+        let transparentBackground = UserDefaults.standard.object(forKey: "useTransparentPreviewBackground") as? Bool ?? true
         let config: [String: Any] = [
             "format": format.molstarFormat,
             "binary": format.isBinary,
@@ -126,6 +139,7 @@ private struct AppViewerRuntime {
             "quickLookBuild": "burette-app",
             "debug": false,
             "showPanelControls": UserDefaults.standard.object(forKey: "showPreviewPanelControls") as? Bool ?? false,
+            "transparentBackground": transparentBackground,
             "defaultLayoutState": [
                 "left": "full",
                 "right": "hidden",
@@ -136,7 +150,7 @@ private struct AppViewerRuntime {
         let configData = try JSONSerialization.data(withJSONObject: config, options: [.sortedKeys, .withoutEscapingSlashes])
         let configJSON = String(data: configData, encoding: .utf8) ?? "{}"
 
-        try Data(html(title: fileURL.lastPathComponent).utf8)
+        try Data(html(title: fileURL.lastPathComponent, transparentBackground: transparentBackground).utf8)
             .write(to: runtimeDirectory.appendingPathComponent("index.html"), options: [.atomic])
         try Data("window.MolstarQuickLookConfig = \(configJSON);\n".utf8)
             .write(to: runtimeDirectory.appendingPathComponent("preview-config.js"), options: [.atomic])
@@ -160,8 +174,9 @@ private struct AppViewerRuntime {
         }
     }
 
-    private static func html(title: String) -> String {
-        """
+    private static func html(title: String, transparentBackground: Bool) -> String {
+        let backgroundClass = transparentBackground ? "burette-transparent-background" : "burette-opaque-background"
+        return """
         <!doctype html>
         <html lang="en">
         <head>
@@ -170,9 +185,37 @@ private struct AppViewerRuntime {
           <title>Burette - \(escapeHTML(title))</title>
           <link rel="stylesheet" href="../assets/molstar.css" />
           <style>
-            html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: #111317; }
+            html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: transparent; }
             body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: #f2f2f2; }
+            body.burette-opaque-background,
+            body.burette-opaque-background #app {
+              background: #111317;
+            }
             #app { position: absolute; inset: 0; }
+            body.burette-transparent-background .msp-plugin,
+            body.burette-transparent-background .msp-plugin .msp-viewport,
+            body.burette-transparent-background .msp-plugin .msp-layout-viewport,
+            body.burette-transparent-background .msp-plugin .msp-plugin-content {
+              background: transparent !important;
+            }
+            body.burette-transparent-background .msp-plugin canvas {
+              background: transparent !important;
+            }
+            body.burette-opaque-background .msp-plugin,
+            body.burette-opaque-background .msp-plugin .msp-viewport,
+            body.burette-opaque-background .msp-plugin .msp-layout-viewport,
+            body.burette-opaque-background .msp-plugin .msp-plugin-content,
+            body.burette-opaque-background .msp-plugin canvas {
+              background: #111317 !important;
+            }
+            body.burette-transparent-background .msp-plugin .msp-layout-left,
+            body.burette-transparent-background .msp-plugin .msp-layout-right,
+            body.burette-transparent-background .msp-plugin .msp-layout-top,
+            body.burette-transparent-background .msp-plugin .msp-layout-bottom {
+              background: rgba(238, 236, 231, 0.72) !important;
+              -webkit-backdrop-filter: blur(14px);
+              backdrop-filter: blur(14px);
+            }
             #status {
               position: absolute; left: 16px; top: 16px; z-index: 2147483647;
               max-width: min(880px, calc(100vw - 32px)); box-sizing: border-box;
@@ -220,7 +263,7 @@ private struct AppViewerRuntime {
             })();
           </script>
         </head>
-        <body>
+        <body class="\(backgroundClass)">
           <div id="app"></div>
           <div id="buret-toolbar" role="toolbar" aria-label="Burette viewer controls">
             <button class="buret-button buret-grip" type="button" data-drag-handle aria-label="Move controls" title="Move controls">

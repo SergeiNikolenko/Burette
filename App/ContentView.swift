@@ -5,6 +5,7 @@ struct ContentView: View {
     @AppStorage("openSettingsAtLaunch") private var openSettingsAtLaunch = true
     @AppStorage("showMenuBarIcon") private var showMenuBarIcon = true
     @AppStorage("showPreviewPanelControls") private var showPreviewPanelControls = false
+    @AppStorage("useTransparentPreviewBackground") private var useTransparentPreviewBackground = true
     @State private var section: SettingsSection = .general
 
     var body: some View {
@@ -90,6 +91,21 @@ struct ContentView: View {
                 SettingsValueRow(icon: "doc.richtext", title: "Formats", subtitle: "PDB, PDBx/mmCIF, BinaryCIF, SDF, MOL, and MOL2")
                 SettingsDivider()
                 SettingsValueRow(icon: "bolt.horizontal", title: "Performance", subtitle: "Bundled assets, cached runtime previews, and WebGL fallback.")
+            }
+
+            SettingsSectionTitle("Appearance")
+            SettingsCard {
+                SettingsToggleRow(
+                    title: "Transparent preview background",
+                    subtitle: "Use the native Quick Look glass behind the molecule instead of an opaque viewer surface.",
+                    isOn: $useTransparentPreviewBackground
+                )
+                SettingsDivider()
+                SettingsValueRow(
+                    icon: "rectangle.fill",
+                    title: "Opaque mode",
+                    subtitle: "Turn transparency off to use the classic dark Mol* background."
+                )
             }
 
             SettingsSectionTitle("Preview Toolbar")
@@ -246,8 +262,10 @@ private struct Sidebar: View {
                             }
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 12)
             .padding(.top, 24)
 
@@ -276,10 +294,12 @@ private struct SidebarRow: View {
             }
             .foregroundColor(.white)
             .padding(.horizontal, 12)
-            .frame(height: 44)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .background(isSelected ? SettingsColors.selection : Color.clear, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
     }
 }
 

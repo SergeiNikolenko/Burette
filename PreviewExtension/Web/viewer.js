@@ -47,9 +47,11 @@
   };
 
   let panelControlsVisible = window.MolstarQuickLookPanelControlsVisible !== false;
+  let transparentBackground = true;
 
   function applyConfigOptions(config) {
     panelControlsVisible = config.showPanelControls !== undefined ? !!config.showPanelControls : panelControlsVisible;
+    transparentBackground = config.transparentBackground !== undefined ? !!config.transparentBackground : transparentBackground;
     const nextLayoutState = config.defaultLayoutState;
     if (nextLayoutState && typeof nextLayoutState === 'object') {
       for (const key of ['left', 'right', 'top', 'bottom']) {
@@ -58,7 +60,14 @@
         }
       }
     }
+    applyBackgroundMode();
     updateToolbarVisibility();
+  }
+
+  function applyBackgroundMode() {
+    if (!document.body) return;
+    document.body.classList.toggle('burette-transparent-background', transparentBackground);
+    document.body.classList.toggle('burette-opaque-background', !transparentBackground);
   }
 
   function updateToolbarVisibility() {
@@ -327,6 +336,7 @@
       viewportShowSettings: false,
       collapseLeftPanel: true,
       collapseRightPanel: true,
+      viewportBackgroundColor: transparentBackground ? undefined : 0x111317,
       pdbProvider: 'rcsb',
       emdbProvider: 'rcsb',
       preferWebgl1: true,
@@ -348,6 +358,18 @@
     }
 
     return new window.molstar.Viewer('app', createViewerOptions());
+  }
+
+  function applyViewerBackground(viewer) {
+    try {
+      viewer?.plugin?.canvas3d?.setProps?.(
+        transparentBackground
+          ? { transparentBackground: true }
+          : { transparentBackground: false, renderer: { backgroundColor: 0x111317 } }
+      );
+    } catch (error) {
+      debug('canvas3d background mode failed: ' + (error && error.message || String(error)));
+    }
   }
 
   async function start() {
@@ -384,6 +406,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     );
     setStatus(`[web] WebGL viewer created. Parsing structure…
 ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
+    applyViewerBackground(viewer);
     window.MolstarQuickLookViewer = viewer;
     window.MolstarQuickLookHandleResize = () => {
       try { viewer.handleResize(); } catch (_) {}
