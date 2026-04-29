@@ -92,18 +92,21 @@
   const MIN_VIEWER_UI_SCALE = 0.72;
   const MAX_VIEWER_UI_SCALE = 1.35;
   const VIEWER_UI_SCALE_STEP = 0.08;
-  const RENDER_PIXEL_SCALE = 0.75;
-  const PICK_PIXEL_SCALE = 0.2;
 
   let panelControlsVisible = window.BurretePanelControlsVisible !== false;
   let transparentBackground = false;
+  let viewerTheme = 'auto';
+  let canvasBackground = 'black';
   let viewerUIScale = DEFAULT_VIEWER_UI_SCALE;
   let activeViewer = null;
   let keyboardShortcutsInstalled = false;
+  let themeListenerInstalled = false;
 
   function applyConfigOptions(config) {
     panelControlsVisible = config.showPanelControls !== undefined ? !!config.showPanelControls : panelControlsVisible;
-    transparentBackground = config.transparentBackground === true;
+    viewerTheme = normalizeViewerTheme(config.theme);
+    canvasBackground = normalizeCanvasBackground(config.canvasBackground);
+    transparentBackground = canvasBackground === 'transparent' || config.transparentBackground === true;
     applyDocumentBackground();
     viewerUIScale = resolveInitialViewerScale(config);
     applyViewerUIScale();
@@ -116,13 +119,65 @@
       }
     }
     applyBackgroundMode();
+    installThemeListener();
     updateToolbarVisibility();
   }
 
   function applyBackgroundMode() {
     if (!document.body) return;
+    const resolvedTheme = resolveViewerTheme();
+    document.documentElement.dataset.buretTheme = resolvedTheme;
+    document.body.dataset.buretTheme = resolvedTheme;
+    document.body.classList.toggle('buret-theme-dark', resolvedTheme === 'dark');
+    document.body.classList.toggle('buret-theme-light', resolvedTheme === 'light');
     document.body.classList.toggle('burette-transparent-background', transparentBackground);
     document.body.classList.toggle('burette-opaque-background', !transparentBackground);
+    document.documentElement.style.setProperty('--buret-canvas-background', canvasBackgroundCSS());
+  }
+
+  function normalizeViewerTheme(value) {
+    return ['dark', 'light', 'auto'].includes(value) ? value : 'auto';
+  }
+
+  function resolveViewerTheme() {
+    if (viewerTheme === 'dark' || viewerTheme === 'light') return viewerTheme;
+    try {
+      return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    } catch (_) {
+      return 'dark';
+    }
+  }
+
+  function installThemeListener() {
+    if (themeListenerInstalled || !window.matchMedia) return;
+    themeListenerInstalled = true;
+    try {
+      const media = window.matchMedia('(prefers-color-scheme: light)');
+      const update = () => {
+        if (viewerTheme !== 'auto') return;
+        applyBackgroundMode();
+        applyViewerBackground();
+      };
+      if (typeof media.addEventListener === 'function') media.addEventListener('change', update);
+      else if (typeof media.addListener === 'function') media.addListener(update);
+    } catch (_) {}
+  }
+
+  function normalizeCanvasBackground(value) {
+    return ['black', 'graphite', 'white', 'transparent'].includes(value) ? value : 'black';
+  }
+
+  function canvasBackgroundCSS() {
+    if (canvasBackground === 'white') return '#f7f7f2';
+    if (canvasBackground === 'graphite') return '#111317';
+    if (canvasBackground === 'transparent') return 'transparent';
+    return '#000000';
+  }
+
+  function canvasBackgroundColor() {
+    if (canvasBackground === 'white') return 0xf7f7f2;
+    if (canvasBackground === 'graphite') return 0x111317;
+    return 0x000000;
   }
 
   function resolveInitialViewerScale(config) {
@@ -167,9 +222,13 @@
     const canvas3d = viewer?.plugin?.canvas3d;
     if (!canvas3d) return;
     try {
-      canvas3d.setProps({ transparentBackground });
+      if (transparentBackground) {
+        canvas3d.setProps({ transparentBackground: true });
+      } else {
+        canvas3d.setProps({ transparentBackground: false, renderer: { backgroundColor: canvasBackgroundColor() } });
+      }
     } catch (error) {
-      debug('canvas3d transparentBackground failed: ' + (error && error.message || String(error)));
+      debug('canvas3d background mode failed: ' + (error && error.message || String(error)));
     }
     try { canvas3d.requestDraw?.(); } catch (_) {}
   }
@@ -219,15 +278,6 @@
     const toolbar = document.getElementById('buret-toolbar');
     if (!toolbar) return;
 
-    toolbar.querySelectorAll('[data-buret-action]').forEach(button => {
-      button.addEventListener('click', () => {
-        const action = button.getAttribute('data-buret-action');
-        if (action === 'fit') {
-          post('action', 'fit');
-        }
-      });
-    });
-
     toolbar.querySelectorAll('[data-buret-toggle]').forEach(button => {
       button.addEventListener('click', () => {
         toggleLayoutRegion(button.getAttribute('data-buret-toggle'), viewer);
@@ -235,8 +285,34 @@
     });
 
     initToolbarDrag(toolbar);
+    restoreToolbarCollapsed(toolbar, viewer);
     updateToolbarVisibility();
     applyLayoutState(viewer);
+  }
+
+  function restoreToolbarCollapsed(toolbar, viewer) {
+    let collapsed = false;
+    try {
+      collapsed = window.localStorage && window.localStorage.getItem('buret.toolbar.collapsed') === '1';
+    } catch (_) {}
+    setToolbarCollapsed(toolbar, collapsed, viewer, false);
+  }
+
+  function setToolbarCollapsed(toolbar, collapsed, viewer, persist = true) {
+    toolbar.classList.toggle('collapsed', collapsed);
+    const grip = toolbar.querySelector('[data-drag-handle]');
+    if (grip) {
+      grip.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      grip.setAttribute('aria-label', collapsed ? 'Expand controls' : 'Collapse controls');
+      grip.setAttribute('title', collapsed ? 'Expand controls' : 'Collapse controls');
+    }
+    if (persist) {
+      try {
+        window.localStorage && window.localStorage.setItem('buret.toolbar.collapsed', collapsed ? '1' : '0');
+      } catch (_) {}
+    }
+    moveToolbar(toolbar, toolbar.getBoundingClientRect().left, toolbar.getBoundingClientRect().top);
+    scheduleViewerResize(viewer, 40);
   }
 
   function initToolbarDrag(toolbar) {
@@ -259,19 +335,32 @@
       drag = {
         dx: event.clientX - rect.left,
         dy: event.clientY - rect.top,
-        pointerId: event.pointerId
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        moved: false
       };
       toolbar.setPointerCapture(event.pointerId);
       event.preventDefault();
     });
     toolbar.addEventListener('pointermove', event => {
       if (!drag || event.pointerId !== drag.pointerId) return;
-      moveToolbar(toolbar, event.clientX - drag.dx, event.clientY - drag.dy);
+      if (!drag.moved) {
+        drag.moved = Math.abs(event.clientX - drag.startX) > 4 || Math.abs(event.clientY - drag.startY) > 4;
+      }
+      if (drag.moved) {
+        moveToolbar(toolbar, event.clientX - drag.dx, event.clientY - drag.dy);
+      }
     });
     toolbar.addEventListener('pointerup', event => {
       if (!drag || event.pointerId !== drag.pointerId) return;
+      const shouldToggle = !drag.moved;
       drag = null;
-      saveToolbarPosition(toolbar);
+      if (shouldToggle) {
+        setToolbarCollapsed(toolbar, !toolbar.classList.contains('collapsed'), resizeState.viewer);
+      } else {
+        saveToolbarPosition(toolbar);
+      }
     });
     toolbar.addEventListener('pointercancel', () => { drag = null; });
     window.addEventListener('resize', () => {
@@ -675,9 +764,6 @@
       emdbProvider: 'rcsb',
       preferWebgl1: true,
       disableAntialiasing: true,
-      resolutionMode: 'scaled',
-      pixelScale: RENDER_PIXEL_SCALE,
-      pickScale: PICK_PIXEL_SCALE,
       powerPreference: 'high-performance'
     };
   }
@@ -695,18 +781,6 @@
     }
 
     return new window.molstar.Viewer('app', createViewerOptions());
-  }
-
-  function applyViewerBackground(viewer) {
-    try {
-      viewer?.plugin?.canvas3d?.setProps?.(
-        transparentBackground
-          ? { transparentBackground: true }
-          : { transparentBackground: false, renderer: { backgroundColor: 0x111317 } }
-      );
-    } catch (error) {
-      debug('canvas3d background mode failed: ' + (error && error.message || String(error)));
-    }
   }
 
   async function start() {
