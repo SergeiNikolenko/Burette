@@ -168,6 +168,7 @@ private struct AppViewerRuntime {
             "uiScale": 0.86,
             "showPanelControls": UserDefaults.standard.object(forKey: "showPreviewPanelControls") as? Bool ?? true,
             "transparentBackground": transparentBackground,
+            "sdfGrid": format.molstarFormat == "sdf",
             "defaultLayoutState": [
                 "left": "collapsed",
                 "right": "hidden",

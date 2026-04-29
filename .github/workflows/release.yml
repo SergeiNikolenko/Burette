@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and Publish Release
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Validate release version
+        run: npm run check:release
+
+      - name: Resolve version
+        id: version
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          tag="v${version}"
+          if git rev-parse --verify "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "Release tag ${tag} already exists. Bump package.json before merging another PR." >&2
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Build app
+        run: ./scripts/build.sh samples/mini.sdf
+
+      - name: Package app
+        run: |
+          rm -rf release
+          mkdir -p release
+          cp -R build/Build/Products/Debug/Burrete.app release/Burrete.app
+          ditto -c -k --keepParent release/Burrete.app "Burrete-${{ steps.version.outputs.version }}.zip"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            "Burrete-${{ steps.version.outputs.version }}.zip" \
+            --title "Burrete ${{ steps.version.outputs.version }}" \
+            --generate-notes
