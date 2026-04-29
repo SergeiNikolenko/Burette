@@ -4,31 +4,28 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
-	<key>CFBundleExecutable</key>
-	<string>$(EXECUTABLE_NAME)</string>
-	<key>CFBundleIdentifier</key>
-	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-	<key>CFBundleInfoDictionaryVersion</key>
-	<string>6.0</string>
-	<key>CFBundleName</key>
-	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Burette</string>
-	<key>CFBundlePackageType</key>
-	<string>APPL</string>
-	<key>CFBundleShortVersionString</key>
-	<string>$(MARKETING_VERSION)</string>
-	<key>CFBundleVersion</key>
-	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>LSMinimumSystemVersion</key>
-	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
-	<key>LSUIElement</key>
-	<true/>
-	<key>NSSupportsAutomaticGraphicsSwitching</key>
-	<true/>
+	<string>Burrete</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>bcif</string>
+				<string>cif</string>
+				<string>ent</string>
+				<string>mcif</string>
+				<string>mmcif</string>
+				<string>mol</string>
+				<string>mol2</string>
+				<string>pdb</string>
+				<string>pdbqt</string>
+				<string>pqr</string>
+				<string>sd</string>
+				<string>sdf</string>
+				<string>xyz</string>
+				<string>gro</string>
+			</array>
 			<key>CFBundleTypeName</key>
 			<string>Molecular structure files</string>
 			<key>CFBundleTypeRole</key>
@@ -37,6 +34,13 @@
 			<string>Owner</string>
 			<key>LSItemContentTypes</key>
 			<array>
+				<string>com.local.burrete10.pdb</string>
+				<string>com.local.burrete10.cif</string>
+				<string>com.local.burrete10.mmcif</string>
+				<string>com.local.burrete10.bcif</string>
+				<string>com.local.burrete10.sdf</string>
+				<string>com.local.burrete10.mol</string>
+				<string>com.local.burrete10.mol2</string>
 				<string>com.local.molstarquicklook10.pdb</string>
 				<string>com.local.molstarquicklook10.cif</string>
 				<string>com.local.molstarquicklook10.mmcif</string>
@@ -50,6 +54,7 @@
 				<string>org.wwpdb.bcif</string>
 				<string>org.iucr.cif</string>
 				<string>org.iucr.mmcif</string>
+				<string>com.schrodinger.pdb</string>
 				<string>org.openscience.sdf</string>
 				<string>com.schrodinger.sdf</string>
 				<string>org.openscience.molfile</string>
@@ -57,9 +62,6 @@
 				<string>com.mdli.sdf</string>
 				<string>com.mdli.molfile</string>
 				<string>com.tripos.mol2</string>
-				<string>com.palm.database</string>
-				<string>com.apple.palm-database</string>
-				<string>com.apple.palm-pdb</string>
 				<string>org.rcsb.pdb</string>
 				<string>org.rcsb.cif</string>
 				<string>org.rcsb.mmcif</string>
@@ -77,11 +79,6 @@
 				<string>jp-minerals.vesta.cif</string>
 				<string>jp.sourceforge.vesta.cif</string>
 				<string>jp.co.vesta.cif</string>
-				<string>com.apple.palm.database</string>
-				<string>com.apple.palm.pdb</string>
-				<string>com.palm.pdb</string>
-				<string>com.palmos.database</string>
-				<string>com.palmos.pdb</string>
 				<string>org.pdbj.pdb</string>
 				<string>org.pdbj.cif</string>
 				<string>org.pdbj.mmcif</string>
@@ -91,36 +88,41 @@
 				<string>public.pdb</string>
 				<string>public.mmcif</string>
 				<string>public.cif</string>
-			</array>
-			<key>CFBundleTypeExtensions</key>
-			<array>
-				<string>bcif</string>
-				<string>cif</string>
-				<string>ent</string>
-				<string>mcif</string>
-				<string>mmcif</string>
-				<string>mol</string>
-				<string>mol2</string>
-				<string>pdb</string>
-				<string>pdbqt</string>
-				<string>pqr</string>
-				<string>sd</string>
-				<string>sdf</string>
+				<string>com.local.burrete10.xyz</string>
+				<string>com.local.burrete10.gro</string>
 			</array>
 		</dict>
 	</array>
-	<key>UTImportedTypeDeclarations</key>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>NSSupportsAutomaticGraphicsSwitching</key>
+	<true/>
+	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>org.wwpdb.pdb</string>
-			<key>UTTypeDescription</key>
-			<string>Protein Data Bank coordinate file</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.plain-text</string>
 				<string>public.data</string>
 			</array>
+			<key>UTTypeDescription</key>
+			<string>Protein Data Bank coordinate file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.pdb</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -138,15 +140,15 @@
 			</dict>
 		</dict>
 		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>org.wwpdb.cif</string>
-			<key>UTTypeDescription</key>
-			<string>Crystallographic information file</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.plain-text</string>
 				<string>public.data</string>
 			</array>
+			<key>UTTypeDescription</key>
+			<string>Crystallographic information file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.cif</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -161,16 +163,180 @@
 			</dict>
 		</dict>
 		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>org.wwpdb.mmcif</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>com.local.burrete10.cif</string>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
 			<key>UTTypeDescription</key>
 			<string>Macromolecular crystallographic information file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.mmcif</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mmcif</string>
+					<string>mcif</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>chemical/x-mmcif</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>BinaryCIF macromolecular structure file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.bcif</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>bcif</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/octet-stream</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Structure-data file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.sdf</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>sdf</string>
+					<string>sd</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>chemical/x-mdl-sdfile</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>MDL molfile</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.mol</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mol</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>chemical/x-mdl-molfile</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Tripos MOL2 structure file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.mol2</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mol2</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>chemical/x-mol2</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Protein Data Bank coordinate file</string>
+			<key>UTTypeIdentifier</key>
+			<string>org.wwpdb.pdb</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>pdb</string>
+					<string>ent</string>
+					<string>pdbqt</string>
+					<string>pqr</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>chemical/x-pdb</string>
+					<string>chemical/x-pdbqt</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Crystallographic information file</string>
+			<key>UTTypeIdentifier</key>
+			<string>org.wwpdb.cif</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>cif</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>chemical/x-cif</string>
+					<string>chemical/x-mmcif</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>org.wwpdb.cif</string>
 				<string>public.plain-text</string>
 				<string>public.data</string>
 			</array>
+			<key>UTTypeDescription</key>
+			<string>Macromolecular crystallographic information file</string>
+			<key>UTTypeIdentifier</key>
+			<string>org.wwpdb.mmcif</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -185,14 +351,14 @@
 			</dict>
 		</dict>
 		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>org.wwpdb.bcif</string>
-			<key>UTTypeDescription</key>
-			<string>BinaryCIF macromolecular structure file</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.data</string>
 			</array>
+			<key>UTTypeDescription</key>
+			<string>BinaryCIF macromolecular structure file</string>
+			<key>UTTypeIdentifier</key>
+			<string>org.wwpdb.bcif</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -206,15 +372,15 @@
 			</dict>
 		</dict>
 		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>org.iucr.cif</string>
-			<key>UTTypeDescription</key>
-			<string>IUCr CIF file</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.plain-text</string>
 				<string>public.data</string>
 			</array>
+			<key>UTTypeDescription</key>
+			<string>IUCr CIF file</string>
+			<key>UTTypeIdentifier</key>
+			<string>org.iucr.cif</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -228,16 +394,16 @@
 			</dict>
 		</dict>
 		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>org.iucr.mmcif</string>
-			<key>UTTypeDescription</key>
-			<string>IUCr mmCIF file</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>org.iucr.cif</string>
 				<string>public.plain-text</string>
 				<string>public.data</string>
 			</array>
+			<key>UTTypeDescription</key>
+			<string>IUCr mmCIF file</string>
+			<key>UTTypeIdentifier</key>
+			<string>org.iucr.mmcif</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -252,15 +418,15 @@
 			</dict>
 		</dict>
 		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Structure-data file</string>
 			<key>UTTypeIdentifier</key>
 			<string>org.openscience.sdf</string>
-			<key>UTTypeDescription</key>
-			<string>Structure-data file</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.plain-text</string>
-				<string>public.data</string>
-			</array>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -275,15 +441,15 @@
 			</dict>
 		</dict>
 		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>MDL molfile</string>
 			<key>UTTypeIdentifier</key>
 			<string>org.openscience.molfile</string>
-			<key>UTTypeDescription</key>
-			<string>MDL molfile</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.plain-text</string>
-				<string>public.data</string>
-			</array>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -297,15 +463,15 @@
 			</dict>
 		</dict>
 		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Tripos MOL2 structure file</string>
 			<key>UTTypeIdentifier</key>
 			<string>org.openscience.mol2</string>
-			<key>UTTypeDescription</key>
-			<string>Tripos MOL2 structure file</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.plain-text</string>
-				<string>public.data</string>
-			</array>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -319,15 +485,15 @@
 			</dict>
 		</dict>
 		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>com.mdli.sdf</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
 			<key>UTTypeDescription</key>
 			<string>MDL structure-data file</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.plain-text</string>
-				<string>public.data</string>
-			</array>
+			<key>UTTypeIdentifier</key>
+			<string>com.mdli.sdf</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -342,15 +508,15 @@
 			</dict>
 		</dict>
 		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>MDL molfile</string>
 			<key>UTTypeIdentifier</key>
 			<string>com.mdli.molfile</string>
-			<key>UTTypeDescription</key>
-			<string>MDL molfile</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.plain-text</string>
-				<string>public.data</string>
-			</array>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -364,15 +530,15 @@
 			</dict>
 		</dict>
 		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Tripos MOL2 structure file</string>
 			<key>UTTypeIdentifier</key>
 			<string>com.tripos.mol2</string>
-			<key>UTTypeDescription</key>
-			<string>Tripos MOL2 structure file</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.plain-text</string>
-				<string>public.data</string>
-			</array>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -386,163 +552,15 @@
 			</dict>
 		</dict>
 		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>com.palm.database</string>
-			<key>UTTypeDescription</key>
-			<string>Palm database / PDB extension fallback</string>
 			<key>UTTypeConformsTo</key>
 			<array>
+				<string>public.plain-text</string>
 				<string>public.data</string>
 			</array>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>pdb</string>
-				</array>
-				<key>public.mime-type</key>
-				<array>
-					<string>application/octet-stream</string>
-				</array>
-			</dict>
-		</dict>
-		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>com.apple.palm-database</string>
 			<key>UTTypeDescription</key>
-			<string>Palm database / PDB extension fallback</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.data</string>
-			</array>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>pdb</string>
-				</array>
-				<key>public.mime-type</key>
-				<array>
-					<string>application/octet-stream</string>
-				</array>
-			</dict>
-		</dict>
-		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>com.apple.palm-pdb</string>
-			<key>UTTypeDescription</key>
-			<string>Palm PDB extension fallback</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.data</string>
-			</array>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>pdb</string>
-				</array>
-				<key>public.mime-type</key>
-				<array>
-					<string>application/octet-stream</string>
-				</array>
-			</dict>
-		</dict>
-		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>com.apple.palm.database</string>
-			<key>UTTypeDescription</key>
-			<string>Protein Data Bank or Palm PDB file</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.data</string>
-			</array>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>pdb</string>
-				</array>
-			</dict>
-		</dict>
-		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>com.apple.palm.pdb</string>
-			<key>UTTypeDescription</key>
-			<string>Protein Data Bank or Palm PDB file</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.data</string>
-			</array>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>pdb</string>
-				</array>
-			</dict>
-		</dict>
-		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>com.palm.pdb</string>
-			<key>UTTypeDescription</key>
-			<string>Protein Data Bank or Palm PDB file</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.data</string>
-			</array>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>pdb</string>
-				</array>
-			</dict>
-		</dict>
-		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>com.palmos.database</string>
-			<key>UTTypeDescription</key>
-			<string>Protein Data Bank or Palm PDB file</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.data</string>
-			</array>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>pdb</string>
-				</array>
-			</dict>
-		</dict>
-		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>com.palmos.pdb</string>
-			<key>UTTypeDescription</key>
-			<string>Protein Data Bank or Palm PDB file</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.data</string>
-			</array>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>pdb</string>
-				</array>
-			</dict>
-		</dict>
-		<dict>
+			<string>Protein Data Bank coordinate file</string>
 			<key>UTTypeIdentifier</key>
 			<string>public.pdb</string>
-			<key>UTTypeDescription</key>
-			<string>Protein Data Bank coordinate file</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.plain-text</string>
-				<string>public.data</string>
-			</array>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -555,15 +573,15 @@
 			</dict>
 		</dict>
 		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Protein Data Bank coordinate file</string>
 			<key>UTTypeIdentifier</key>
 			<string>org.pdbj.pdb</string>
-			<key>UTTypeDescription</key>
-			<string>Protein Data Bank coordinate file</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.plain-text</string>
-				<string>public.data</string>
-			</array>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -576,15 +594,15 @@
 			</dict>
 		</dict>
 		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Protein Data Bank coordinate file</string>
 			<key>UTTypeIdentifier</key>
 			<string>uk.ac.ebi.pdbe.pdb</string>
-			<key>UTTypeDescription</key>
-			<string>Protein Data Bank coordinate file</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.plain-text</string>
-				<string>public.data</string>
-			</array>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -597,15 +615,15 @@
 			</dict>
 		</dict>
 		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Crystallographic information file</string>
 			<key>UTTypeIdentifier</key>
 			<string>public.cif</string>
-			<key>UTTypeDescription</key>
-			<string>Crystallographic information file</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.plain-text</string>
-				<string>public.data</string>
-			</array>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -615,15 +633,15 @@
 			</dict>
 		</dict>
 		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Crystallographic information file</string>
 			<key>UTTypeIdentifier</key>
 			<string>org.pdbj.cif</string>
-			<key>UTTypeDescription</key>
-			<string>Crystallographic information file</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.plain-text</string>
-				<string>public.data</string>
-			</array>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -633,15 +651,15 @@
 			</dict>
 		</dict>
 		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Crystallographic information file</string>
 			<key>UTTypeIdentifier</key>
 			<string>uk.ac.ebi.pdbe.cif</string>
-			<key>UTTypeDescription</key>
-			<string>Crystallographic information file</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.plain-text</string>
-				<string>public.data</string>
-			</array>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -651,15 +669,15 @@
 			</dict>
 		</dict>
 		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Macromolecular crystallographic information file</string>
 			<key>UTTypeIdentifier</key>
 			<string>public.mmcif</string>
-			<key>UTTypeDescription</key>
-			<string>Macromolecular crystallographic information file</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.plain-text</string>
-				<string>public.data</string>
-			</array>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -671,15 +689,15 @@
 			</dict>
 		</dict>
 		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Macromolecular crystallographic information file</string>
 			<key>UTTypeIdentifier</key>
 			<string>org.pdbj.mmcif</string>
-			<key>UTTypeDescription</key>
-			<string>Macromolecular crystallographic information file</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.plain-text</string>
-				<string>public.data</string>
-			</array>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -691,15 +709,15 @@
 			</dict>
 		</dict>
 		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Macromolecular crystallographic information file</string>
 			<key>UTTypeIdentifier</key>
 			<string>uk.ac.ebi.pdbe.mmcif</string>
-			<key>UTTypeDescription</key>
-			<string>Macromolecular crystallographic information file</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.plain-text</string>
-				<string>public.data</string>
-			</array>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -710,167 +728,43 @@
 				</array>
 			</dict>
 		</dict>
-	</array>
-	<key>UTExportedTypeDeclarations</key>
-	<array>
 		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>com.local.molstarquicklook10.pdb</string>
-			<key>UTTypeDescription</key>
-			<string>Protein Data Bank coordinate file</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.plain-text</string>
 				<string>public.data</string>
 			</array>
+			<key>UTTypeDescription</key>
+			<string>XYZ molecular structure file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.xyz</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
 				<array>
-					<string>pdb</string>
-					<string>ent</string>
-					<string>pdbqt</string>
-					<string>pqr</string>
+					<string>xyz</string>
 				</array>
 				<key>public.mime-type</key>
 				<array>
-					<string>chemical/x-pdb</string>
-					<string>chemical/x-pdbqt</string>
+					<string>chemical/x-xyz</string>
 				</array>
 			</dict>
 		</dict>
 		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>com.local.molstarquicklook10.cif</string>
-			<key>UTTypeDescription</key>
-			<string>Crystallographic information file</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.plain-text</string>
 				<string>public.data</string>
 			</array>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>cif</string>
-				</array>
-				<key>public.mime-type</key>
-				<array>
-					<string>chemical/x-cif</string>
-					<string>chemical/x-mmcif</string>
-				</array>
-			</dict>
-		</dict>
-		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>com.local.molstarquicklook10.mmcif</string>
 			<key>UTTypeDescription</key>
-			<string>Macromolecular crystallographic information file</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>com.local.molstarquicklook10.cif</string>
-				<string>public.plain-text</string>
-				<string>public.data</string>
-			</array>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>mmcif</string>
-					<string>mcif</string>
-				</array>
-				<key>public.mime-type</key>
-				<array>
-					<string>chemical/x-mmcif</string>
-				</array>
-			</dict>
-		</dict>
-		<dict>
+			<string>GROMACS structure file</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.molstarquicklook10.bcif</string>
-			<key>UTTypeDescription</key>
-			<string>BinaryCIF macromolecular structure file</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.data</string>
-			</array>
+			<string>com.local.burrete10.gro</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
 				<array>
-					<string>bcif</string>
-				</array>
-				<key>public.mime-type</key>
-				<array>
-					<string>application/octet-stream</string>
-				</array>
-			</dict>
-		</dict>
-		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>com.local.molstarquicklook10.sdf</string>
-			<key>UTTypeDescription</key>
-			<string>Structure-data file</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.plain-text</string>
-				<string>public.data</string>
-			</array>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>sdf</string>
-					<string>sd</string>
-				</array>
-				<key>public.mime-type</key>
-				<array>
-					<string>chemical/x-mdl-sdfile</string>
-				</array>
-			</dict>
-		</dict>
-		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>com.local.molstarquicklook10.mol</string>
-			<key>UTTypeDescription</key>
-			<string>MDL molfile</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.plain-text</string>
-				<string>public.data</string>
-			</array>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>mol</string>
-				</array>
-				<key>public.mime-type</key>
-				<array>
-					<string>chemical/x-mdl-molfile</string>
-				</array>
-			</dict>
-		</dict>
-		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>com.local.molstarquicklook10.mol2</string>
-			<key>UTTypeDescription</key>
-			<string>Tripos MOL2 structure file</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.plain-text</string>
-				<string>public.data</string>
-			</array>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>mol2</string>
-				</array>
-				<key>public.mime-type</key>
-				<array>
-					<string>chemical/x-mol2</string>
+					<string>gro</string>
 				</array>
 			</dict>
 		</dict>

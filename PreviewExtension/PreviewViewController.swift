@@ -8,15 +8,18 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private var logTextView: NSTextView!
     private var pendingCompletion: ((Error?) -> Void)?
     private var activePreviewRequestID = UUID()
+    private var renderTimeoutWorkItem: DispatchWorkItem?
     private var logLines: [String] = []
     private let previewID = String(UUID().uuidString.prefix(8))
     private var hasRenderedTerminationError = false
     private var restoredWindowFrame: NSRect?
     private static let showDebugOverlay = false
     private static let verboseLogging = false
+    private static let maxStructureFileSize: Int64 = 75 * 1024 * 1024
 
     deinit {
-        webView?.configuration.userContentController.removeScriptMessageHandler(forName: "molstarQuickLook")
+        renderTimeoutWorkItem?.cancel()
+        webView?.configuration.userContentController.removeScriptMessageHandler(forName: "burrete")
         appendLog("deinit")
     }
 
@@ -24,10 +27,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let transparentBackground = PreviewPreferences.load().transparentBackground
         let container = NSView(frame: .zero)
         container.wantsLayer = true
-        container.layer?.backgroundColor = (transparentBackground ? NSColor.clear : NSColor(calibratedRed: 0.07, green: 0.08, blue: 0.09, alpha: 1.0)).cgColor
+        container.layer?.backgroundColor = (transparentBackground ? NSColor.clear : NSColor(calibratedWhite: 0.055, alpha: 1.0)).cgColor
 
         let userContentController = WKUserContentController()
-        userContentController.add(self, name: "molstarQuickLook")
+        userContentController.add(self, name: "burrete")
         if Self.showDebugOverlay {
             userContentController.addUserScript(WKUserScript(source: Self.documentStartProbeJavaScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
             userContentController.addUserScript(WKUserScript(source: Self.documentEndProbeJavaScript, injectionTime: .atDocumentEnd, forMainFrameOnly: false))
@@ -54,13 +57,13 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         webView.translatesAutoresizingMaskIntoConstraints = false
         webView.wantsLayer = true
         webView.setValue(false, forKey: "drawsBackground")
-        webView.layer?.backgroundColor = (transparentBackground ? NSColor.clear : NSColor(calibratedRed: 0.07, green: 0.08, blue: 0.09, alpha: 1.0)).cgColor
+        webView.layer?.backgroundColor = (transparentBackground ? NSColor.clear : NSColor(calibratedWhite: 0.055, alpha: 1.0)).cgColor
         if #available(macOS 11.0, *) {
-            webView.underPageBackgroundColor = transparentBackground ? .clear : NSColor(calibratedRed: 0.07, green: 0.08, blue: 0.09, alpha: 1.0)
+            webView.underPageBackgroundColor = transparentBackground ? .clear : NSColor(calibratedWhite: 0.055, alpha: 1.0)
         }
         container.addSubview(webView)
 
-        let label = NSTextField(labelWithString: "Burette debug boot...")
+        let label = NSTextField(labelWithString: "Burrete debug boot...")
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .medium)
         label.textColor = NSColor(calibratedWhite: 0.94, alpha: 1.0)
@@ -148,7 +151,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     self.statusLabel.stringValue = "[native] Loading file preview into WKWebView…\n\(url.lastPathComponent)"
                     self.appendLog("calling WKWebView.loadFileURL; html.bytes=\(result.html.utf8.count); indexURL=\(result.indexURL.path); readAccessURL=\(result.readAccessURL.path)")
                     self.webView.loadFileURL(result.indexURL, allowingReadAccessTo: result.readAccessURL)
-                    self.finishPreviewIfNeeded(nil, requestID: requestID)
+                    self.scheduleRenderTimeout(for: requestID)
                     if Self.showDebugOverlay {
                         self.scheduleJavaScriptProbes()
                     }
@@ -213,6 +216,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         diag("webDirectory=\(webDirectory.path)")
         try validateVendoredMolstarAssets(in: webDirectory, fileManager: fileManager, diagnostics: &diagnostics)
 
+        let structureSize = try fileSize(for: url, fileManager: fileManager)
+        guard structureSize <= maxStructureFileSize else {
+            throw PreviewError.fileTooLarge(url.lastPathComponent, structureSize, maxStructureFileSize)
+        }
         let structureData = try Data(contentsOf: url)
         guard !structureData.isEmpty else { throw PreviewError.emptyStructureFile(url.lastPathComponent) }
         diag("structureData.bytes=\(structureData.count)")
@@ -264,7 +271,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             throw PreviewError.couldNotCreateRuntimePreview("Caches directory is unavailable")
         }
         let previewsDirectory = cachesDirectory
-            .appendingPathComponent("MolstarQuickLook", isDirectory: true)
+            .appendingPathComponent("Burrete", isDirectory: true)
             .appendingPathComponent("previews", isDirectory: true)
         try fileManager.createDirectory(at: previewsDirectory, withIntermediateDirectories: true)
         pruneRuntimePreviews(in: previewsDirectory, fileManager: fileManager, diagnostics: &diagnostics)
@@ -280,9 +287,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
         let indexURL = runtimeDirectory.appendingPathComponent("index.html")
         try Data(html.utf8).write(to: indexURL, options: [.atomic])
-        try Data("window.MolstarQuickLookConfig = \(configJSON);\n".utf8)
+        try Data("window.BurreteConfig = \(configJSON);\n".utf8)
             .write(to: runtimeDirectory.appendingPathComponent("preview-config.js"), options: [.atomic])
-        try Data("window.MolstarQuickLookDataBase64 = \"\(structureBase64)\";\n".utf8)
+        try Data("window.BurreteDataBase64 = \"\(structureBase64)\";\n".utf8)
             .write(to: runtimeDirectory.appendingPathComponent("preview-data.js"), options: [.atomic])
         return RuntimePreview(runtimeDirectory: runtimeDirectory, indexURL: indexURL, readAccessURL: previewsDirectory)
     }
@@ -329,25 +336,29 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         for assetName in ["molstar.js", "molstar.css", "viewer.js"] {
             let source = bundledWebDirectory.appendingPathComponent(assetName)
             let destination = assetsDirectory.appendingPathComponent(assetName)
-            let shouldCopy = assetName != "molstar.js" || !sameFileSize(source, destination, fileManager: fileManager)
-            if shouldCopy {
-                if fileManager.fileExists(atPath: destination.path) {
-                    try fileManager.removeItem(at: destination)
-                }
-                try fileManager.copyItem(at: source, to: destination)
-            }
+            try copyAssetAtomically(from: source, to: destination, fileManager: fileManager)
             let size = ((try? fileManager.attributesOfItem(atPath: destination.path)[.size]) as? NSNumber)?.intValue ?? -1
-            diagnostics.append("[build] runtime.asset.\(assetName).exists=\(fileManager.fileExists(atPath: destination.path)) size=\(size) copied=\(shouldCopy)")
+            diagnostics.append("[build] runtime.asset.\(assetName).exists=\(fileManager.fileExists(atPath: destination.path)) size=\(size) copied=true")
         }
     }
 
-    private static func sameFileSize(_ lhs: URL, _ rhs: URL, fileManager: FileManager) -> Bool {
-        guard fileManager.fileExists(atPath: rhs.path),
-              let left = ((try? fileManager.attributesOfItem(atPath: lhs.path)[.size]) as? NSNumber)?.intValue,
-              let right = ((try? fileManager.attributesOfItem(atPath: rhs.path)[.size]) as? NSNumber)?.intValue else {
-            return false
+    private static func copyAssetAtomically(from source: URL, to destination: URL, fileManager: FileManager) throws {
+        let temporaryURL = destination
+            .deletingLastPathComponent()
+            .appendingPathComponent(".\(destination.lastPathComponent).\(UUID().uuidString).tmp")
+        try? fileManager.removeItem(at: temporaryURL)
+        defer { try? fileManager.removeItem(at: temporaryURL) }
+        try fileManager.copyItem(at: source, to: temporaryURL)
+        if fileManager.fileExists(atPath: destination.path) {
+            _ = try fileManager.replaceItemAt(destination, withItemAt: temporaryURL)
+        } else {
+            try fileManager.moveItem(at: temporaryURL, to: destination)
         }
-        return left == right
+    }
+
+    private static func fileSize(for url: URL, fileManager: FileManager) throws -> Int64 {
+        let attrs = try fileManager.attributesOfItem(atPath: url.path)
+        return (attrs[.size] as? NSNumber)?.int64Value ?? 0
     }
 
     private static func previewConfigJSON(format: StructureFormat, label: String, byteCount: Int, preferences: PreviewPreferences) throws -> String {
@@ -358,6 +369,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "byteCount": byteCount,
             "quickLookBuild": "v10-product",
             "debug": showDebugOverlay,
+            "uiScale": 0.86,
             "showPanelControls": preferences.showPanelControls,
             "transparentBackground": preferences.transparentBackground,
             "defaultLayoutState": preferences.defaultLayoutState
@@ -376,9 +388,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         <head>
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>Burette - \(safeTitle)</title>
+          <title>Burrete - \(safeTitle)</title>
           <link rel="stylesheet" href="../assets/molstar.css" />
           <style>
+            :root { --buret-viewer-ui-scale: 0.86; }
             html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: transparent; }
             body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: #f2f2f2; }
             body.burette-opaque-background,
@@ -411,41 +424,47 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
               backdrop-filter: blur(14px);
             }
             #status {
-              position: absolute; left: 16px; top: 16px;
+              position: absolute; left: 12px; top: 12px;
               z-index: 2147483647; max-width: min(880px, calc(100vw - 32px)); max-height: calc(50vh - 32px); overflow: auto;
-              box-sizing: border-box; padding: 12px 14px; border-radius: 12px; color: rgba(255, 255, 255, 0.96);
+              box-sizing: border-box; padding: 10px 12px; border-radius: 10px; color: rgba(255, 255, 255, 0.96);
               background: rgba(0, 0, 0, 0.76); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
               font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-              font-size: 12px; font-weight: 500; line-height: 1.35; white-space: pre-wrap; pointer-events: auto;
+              font-size: 11px; font-weight: 500; line-height: 1.35; white-space: pre-wrap; pointer-events: auto;
+              transform: scale(var(--buret-viewer-ui-scale)); transform-origin: top left;
             }
             #status.error { color: #ffd4d4; background: rgba(70, 0, 0, 0.82); }
             #status.hidden { display: none; }
             #buret-toolbar {
               position: absolute; top: 12px; right: 12px; z-index: 2147483646;
               display: flex; align-items: center; gap: 6px; padding: 6px;
+              border: 1px solid rgba(255, 255, 255, 0.10);
               border-radius: 12px; color: rgba(255, 255, 255, 0.94);
-              background: rgba(20, 22, 24, 0.62);
-              -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
-              box-shadow: 0 4px 18px rgba(0, 0, 0, 0.28);
+              background: rgba(18, 20, 22, 0.86);
+              -webkit-backdrop-filter: blur(10px);
+              backdrop-filter: blur(10px);
+              box-shadow:
+                0 8px 22px rgba(0, 0, 0, 0.22),
+                inset 0 1px 0 rgba(255, 255, 255, 0.06);
               user-select: none; touch-action: none;
+              transform: scale(var(--buret-viewer-ui-scale)); transform-origin: top right;
             }
             .buret-button {
-              min-width: 30px; height: 30px; border: 0; border-radius: 8px; padding: 0 8px;
-              color: inherit; background: transparent; font: 600 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+              min-width: 26px; height: 26px; border: 0; border-radius: 7px; padding: 0 7px;
+              color: inherit; background: transparent; font: 600 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
               display: grid; place-items: center;
             }
             .buret-button:hover, .buret-button.active { background: rgba(255, 255, 255, 0.14); }
             .buret-button.hidden { display: none; }
-            .buret-button svg { width: 17px; height: 17px; display: block; }
+            .buret-button svg { width: 15px; height: 15px; display: block; }
             .buret-grip { cursor: move; color: rgba(255, 255, 255, 0.66); }
           </style>
           <script>
             (function () {
               function post(type, message) {
-                try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.molstarQuickLook.postMessage({ type: type, message: String(message || '') }); } catch (_) {}
+                try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burrete.postMessage({ type: type, message: String(message || '') }); } catch (_) {}
               }
               function shouldReportStatus(text, kind) {
-                if (kind === 'error' || window.MolstarQuickLookDebug) return true;
+                if (kind === 'error' || window.BurreteDebug) return true;
                 return text.indexOf('[web] About to load molstar.js') === 0 ||
                   text.indexOf('[web] molstar.js parsed') === 0 ||
                   text.indexOf('[web] About to load viewer.js') === 0 ||
@@ -462,7 +481,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 if (el) {
                   el.textContent = text;
                   if (kind === 'error') el.classList.add('error'); else el.classList.remove('error');
-                  if (kind === 'error' || window.MolstarQuickLookDebug) el.classList.remove('hidden'); else el.classList.add('hidden');
+                  if (kind === 'error' || window.BurreteDebug) el.classList.remove('hidden'); else el.classList.add('hidden');
                 }
                 if (shouldReportStatus(text, kind)) {
                   post(kind === 'error' ? 'error' : 'status', text);
@@ -470,13 +489,13 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
               };
               window.__mqlAction = function (name) { post('action', name); };
               window.__mqlDebug = function (message) {
-                if (window.MolstarQuickLookDebug) post('debug', String(message || ''));
+                if (window.BurreteDebug) post('debug', String(message || ''));
               };
               ['log', 'warn', 'error'].forEach(function (name) {
                 var original = console[name];
                 console[name] = function () {
                   try {
-                    if (window.MolstarQuickLookDebug || name === 'error') {
+                    if (window.BurreteDebug || name === 'error') {
                       post('console.' + name, Array.prototype.map.call(arguments, function (x) { try { return typeof x === 'string' ? x : JSON.stringify(x); } catch (_) { return String(x); } }).join(' '));
                     }
                   } catch (_) {}
@@ -498,24 +517,24 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         </head>
         <body class="\(backgroundClass)">
           <div id="app"></div>
-          <div id="buret-toolbar" role="toolbar" aria-label="Burette preview controls">
+          <div id="buret-toolbar" role="toolbar" aria-label="Burrete preview controls">
             <button class="buret-button buret-grip" type="button" data-drag-handle aria-label="Move controls" title="Move controls">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h2v2H8V5Zm6 0h2v2h-2V5ZM8 11h2v2H8v-2Zm6 0h2v2h-2v-2ZM8 17h2v2H8v-2Zm6 0h2v2h-2v-2Z" fill="currentColor"/></svg>
             </button>
             <button class="buret-button" type="button" data-buret-action="fit" aria-label="Fullscreen" title="Fullscreen">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5v2H7.4l3.2 3.2-1.4 1.4L6 7.4V9H4Zm11-5h5v5h-2V7.4l-3.2 3.2-1.4-1.4L16.6 6H15V4ZM9.2 13.4l1.4 1.4L7.4 18H9v2H4v-5h2v1.6l3.2-3.2Zm5.6 0 3.2 3.2V15h2v5h-5v-2h1.6l-3.2-3.2 1.4-1.4Z" fill="currentColor"/></svg>
             </button>
-            <button class="buret-button buret-panel-toggle active" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel">L</button>
+            <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel">L</button>
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle right panel">R</button>
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq</button>
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel">Log</button>
           </div>
           <div id="status" class="hidden">[web] HTML body created. Waiting for embedded data and Mol* script…</div>
           <script>
-            window.MolstarQuickLookInlineMode = true;
-            window.MolstarQuickLookDebug = \(showDebugOverlay ? "true" : "false");
-            window.MolstarQuickLookPanelControlsVisible = \(preferences.showPanelControls ? "true" : "false");
-            window.MolstarQuickLookCacheBuster = String(Date.now());
+            window.BurreteInlineMode = true;
+            window.BurreteDebug = \(showDebugOverlay ? "true" : "false");
+            window.BurretePanelControlsVisible = \(PreviewPreferences.load().showPanelControls ? "true" : "false");
+            window.BurreteCacheBuster = String(Date.now());
           </script>
           <script>
             window.__mqlStatus && window.__mqlStatus('[web] About to load molstar.js from bundled resource…');
@@ -576,6 +595,17 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             if nextValues?.ubiquitousItemDownloadingStatus == .current || nextValues?.ubiquitousItemDownloadingStatus == .downloaded { return }
             Thread.sleep(forTimeInterval: 0.1)
         }
+        throw PreviewError.ubiquitousFileNotDownloaded(url.lastPathComponent)
+    }
+
+    private func scheduleRenderTimeout(for requestID: UUID) {
+        renderTimeoutWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.appendLog("render timeout waiting for JS ready")
+            self?.finishPreviewIfNeeded(PreviewError.webRenderTimedOut, requestID: requestID)
+        }
+        renderTimeoutWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: workItem)
     }
 
     private func finishPreviewIfNeeded(_ error: Error?, requestID: UUID? = nil) {
@@ -584,6 +614,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             return
         }
         guard let completion = pendingCompletion else { return }
+        renderTimeoutWorkItem?.cancel()
+        renderTimeoutWorkItem = nil
         pendingCompletion = nil
         appendLog("calling Quick Look completion handler; error=\(error.map { Self.describe($0) } ?? "nil")")
         completion(error)
@@ -623,12 +655,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         appendLog("WK webContentProcessDidTerminate")
         guard !hasRenderedTerminationError else { return }
         hasRenderedTerminationError = true
-        let html = Self.staticErrorHTML(title: "WebKit process terminated", details: "The embedded WebKit process crashed while parsing Mol* or initializing WebGL. Use Burette Settings or ./scripts/tail-log.sh for logs.")
+        let html = Self.staticErrorHTML(title: "WebKit process terminated", details: "The embedded WebKit process crashed while parsing Mol* or initializing WebGL. Use Burrete Settings or ./scripts/tail-log.sh for logs.")
         webView.loadHTMLString(html, baseURL: nil)
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard message.name == "molstarQuickLook" else { return }
+        guard message.name == "burrete" else { return }
         if let body = message.body as? [String: Any] {
             let type = body["type"] as? String ?? "unknown"
             let text = body["message"] as? String ?? String(describing: body)
@@ -637,6 +669,11 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 return
             }
             appendLog("JS message type=\(type): \(text.prefix(1600))")
+            if type == "ready" {
+                finishPreviewIfNeeded(nil, requestID: activePreviewRequestID)
+            } else if type == "error" {
+                finishPreviewIfNeeded(PreviewError.webRenderFailed(text), requestID: activePreviewRequestID)
+            }
             if Self.showDebugOverlay || type == "error" {
                 statusLabel.isHidden = false
                 statusLabel.stringValue = "[web:\(type)] \(text.prefix(900))"
@@ -678,7 +715,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-            self?.webView.evaluateJavaScript("window.MolstarQuickLookHandleResize && window.MolstarQuickLookHandleResize();", completionHandler: nil)
+            self?.webView.evaluateJavaScript("window.BurreteHandleResize && window.BurreteHandleResize();", completionHandler: nil)
         }
     }
 
@@ -714,8 +751,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             scriptCount: document.getElementsByTagName('script').length,
             typeofMolstar: typeof window.molstar,
             typeofViewer: window.molstar ? typeof window.molstar.Viewer : 'no molstar',
-            typeofConfig: typeof window.MolstarQuickLookConfig,
-            dataBase64Chars: window.MolstarQuickLookDataBase64 ? window.MolstarQuickLookDataBase64.length : -1,
+            typeofConfig: typeof window.BurreteConfig,
+            dataBase64Chars: window.BurreteDataBase64 ? window.BurreteDataBase64.length : -1,
             webgl2: (function(){ try { var c = document.createElement('canvas'); return !!c.getContext('webgl2'); } catch(e) { return 'error:' + e; } })(),
             webgl1: (function(){ try { var c = document.createElement('canvas'); return !!(c.getContext('webgl') || c.getContext('experimental-webgl')); } catch(e) { return 'error:' + e; } })()
           };
@@ -740,7 +777,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private func appendLog(_ message: String) {
         guard Self.shouldRecordLog(message) else { return }
         let line = "[\(Self.timestamp())] [\(previewID)] \(message)"
-        NSLog("[MolstarQuickLookV10] \(line)")
+        NSLog("[BurreteV10] \(line)")
         Self.writeLogLine(line)
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
@@ -795,9 +832,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let fileManager = FileManager.default
         for directory in [.cachesDirectory, .applicationSupportDirectory] as [FileManager.SearchPathDirectory] {
             if let base = fileManager.urls(for: directory, in: .userDomainMask).first {
-                let logDirectory = base.appendingPathComponent("MolstarQuickLook", isDirectory: true)
-                urls.append(logDirectory.appendingPathComponent("MolstarQuickLookV10.log"))
-                urls.append(logDirectory.appendingPathComponent("MolstarQuickLook.log"))
+                let logDirectory = base.appendingPathComponent("Burrete", isDirectory: true)
+                urls.append(logDirectory.appendingPathComponent("BurreteV10.log"))
+                urls.append(logDirectory.appendingPathComponent("Burrete.log"))
             }
         }
         var seen = Set<String>()
@@ -822,7 +859,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     try data.write(to: url, options: [.atomic])
                 }
             } catch {
-                NSLog("[MolstarQuickLookV10] could not write log to \(url.path): \(String(describing: error))")
+                NSLog("[BurreteV10] could not write log to \(url.path): \(String(describing: error))")
             }
         }
     }
@@ -830,7 +867,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private func renderNativeError(_ error: Error, fileURL: URL?) {
         let fileName = fileURL?.lastPathComponent ?? "file"
         appendLog("renderNativeError for \(fileName): \(Self.describe(error))")
-        webView.loadHTMLString(Self.staticErrorHTML(title: "Burette could not preview \(fileName)", details: Self.describe(error)), baseURL: nil)
+        webView.loadHTMLString(Self.staticErrorHTML(title: "Burrete could not preview \(fileName)", details: Self.describe(error)), baseURL: nil)
     }
 
     private static func describe(_ error: Error) -> String {
@@ -854,7 +891,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         """
         (function(){
           function post(type, message) {
-            try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.molstarQuickLook.postMessage({ type: type, message: String(message || '') }); } catch (_) {}
+            try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burrete.postMessage({ type: type, message: String(message || '') }); } catch (_) {}
           }
           post('debug', '[probe] document-start. href=' + String(location.href));
           window.addEventListener('DOMContentLoaded', function(){ post('debug', '[probe] DOMContentLoaded. body=' + !!document.body); });
@@ -868,7 +905,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private static var documentEndProbeJavaScript: String {
         """
         (function(){
-          try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.molstarQuickLook.postMessage({ type: 'debug', message: '[probe] document-end. readyState=' + document.readyState + '; title=' + document.title }); } catch (_) {}
+          try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burrete.postMessage({ type: 'debug', message: '[probe] document-end. readyState=' + document.readyState + '; title=' + document.title }); } catch (_) {}
         })();
         """
     }
@@ -972,8 +1009,8 @@ private struct PreviewPreferences {
     let defaultLayoutState: [String: String]
 
     static func load() -> PreviewPreferences {
-        let appID = "com.local.MolstarQuickLookV10" as CFString
-        let showPanelControls = (CFPreferencesCopyAppValue("showPreviewPanelControls" as CFString, appID) as? Bool) ?? false
+        let appID = "com.local.BurreteV10" as CFString
+        let showPanelControls = (CFPreferencesCopyAppValue("showPreviewPanelControls" as CFString, appID) as? Bool) ?? true
         let transparentBackground = (CFPreferencesCopyAppValue("useTransparentPreviewBackground" as CFString, appID) as? Bool) ?? true
         return PreviewPreferences(
             showPanelControls: showPanelControls,
@@ -993,6 +1030,10 @@ private enum PreviewError: LocalizedError {
     case missingWebAsset(String)
     case molstarAssetsNotVendored(Int)
     case emptyStructureFile(String)
+    case fileTooLarge(String, Int64, Int64)
+    case ubiquitousFileNotDownloaded(String)
+    case webRenderFailed(String)
+    case webRenderTimedOut
     case couldNotCreatePreviewConfig
     case couldNotCreateRuntimePreview(String)
 
@@ -1006,6 +1047,14 @@ private enum PreviewError: LocalizedError {
             return "Mol* assets were not vendored into the extension. molstar.js is only \(size) bytes. Run ./scripts/build.sh so npm copies build/viewer/molstar.js and molstar.css before Xcode signs the app."
         case .emptyStructureFile(let name):
             return "The structure file is empty or not downloaded locally: \(name)"
+        case .fileTooLarge(let name, let size, let limit):
+            return "\(name) is too large for Quick Look preview (\(size) bytes; limit \(limit) bytes). Open it in a dedicated molecular viewer."
+        case .ubiquitousFileNotDownloaded(let name):
+            return "\(name) is not downloaded locally. Download the file first, then open Quick Look again."
+        case .webRenderFailed(let message):
+            return "Mol* web rendering failed: \(message)"
+        case .webRenderTimedOut:
+            return "Mol* web rendering did not become ready within 30 seconds."
         case .couldNotCreatePreviewConfig:
             return "Could not create Mol* preview config."
         case .couldNotCreateRuntimePreview(let reason):
