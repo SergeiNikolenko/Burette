@@ -229,19 +229,24 @@
 
 /* Begin PBXShellScriptBuildPhase section */
 		33A90F7211FDC5E570EC5350 /* Vendor Mol* assets */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = ();
-			inputFileListPaths = ();
-			inputPaths = ();
-			name = "Vendor Mol* assets";
-			outputFileListPaths = ();
-			outputPaths = ();
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\nexport PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"\ncd \"${SRCROOT}\"\n\nif ! command -v node >/dev/null 2>&1; then\n  echo \"error: Node.js is required to copy Mol* viewer assets. Install it with: brew install node\"\n  exit 1\nfi\nif ! command -v npm >/dev/null 2>&1; then\n  echo \"error: npm is required to copy Mol* viewer assets. Install Node.js/npm first.\"\n  exit 1\nfi\n\nif [ ! -d \"node_modules/molstar\" ]; then\n  npm install\nfi\nnode scripts/vendor-molstar.mjs\n\n# Downloaded archives and unzipped bundles can carry com.apple.quarantine, FinderInfo,\n# or AppleDouble files. If Xcode copies those into the .appex, codesign fails with:\n# \"resource fork, Finder information, or similar detritus not allowed\".\nif command -v xattr >/dev/null 2>&1; then\n  xattr -cr \"${SRCROOT}/PreviewExtension/Web\" || true\nfi\nif command -v dot_clean >/dev/null 2>&1; then\n  dot_clean -m \"${SRCROOT}/PreviewExtension/Web\" || true\nfi\nfind \"${SRCROOT}/PreviewExtension/Web\" \\( -name \"._*\" -o -name \".DS_Store\" \\) -delete || true\n";
-		};
+				isa = PBXShellScriptBuildPhase;
+				buildActionMask = 2147483647;
+				files = ();
+				inputFileListPaths = ();
+				inputPaths = (
+					"$(SRCROOT)/PreviewExtension/Web/molstar.js",
+					"$(SRCROOT)/PreviewExtension/Web/molstar.css",
+					"$(SRCROOT)/PreviewExtension/Web/viewer.js",
+				);
+				name = "Validate Mol* assets";
+				outputFileListPaths = ();
+				outputPaths = (
+					"$(DERIVED_FILE_DIR)/BurreteWebAssetsValidated.stamp",
+				);
+				runOnlyForDeploymentPostprocessing = 0;
+				shellPath = /bin/sh;
+				shellScript = "set -euo pipefail\nexport PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"\ncd \"${SRCROOT}\"\n\nif ! command -v node >/dev/null 2>&1; then\n  echo \"error: Node.js is required to validate Burrete web assets. Install it with: brew install node\"\n  exit 1\nfi\nfor asset in PreviewExtension/Web/molstar.js PreviewExtension/Web/molstar.css PreviewExtension/Web/viewer.js; do\n  if [ ! -s \"$asset\" ]; then\n    echo \"error: missing vendored web asset: $asset\"\n    echo \"Run: npm ci --ignore-scripts && npm run vendor:molstar\"\n    exit 1\n  fi\ndone\nnode --check PreviewExtension/Web/viewer.js\n\n# Downloaded archives and unzipped bundles can carry com.apple.quarantine, FinderInfo,\n# or AppleDouble files. If Xcode copies those into the .appex, codesign fails with:\n# \"resource fork, Finder information, or similar detritus not allowed\".\nif command -v xattr >/dev/null 2>&1; then\n  xattr -cr \"${SRCROOT}/PreviewExtension/Web\" || true\nfi\nif command -v dot_clean >/dev/null 2>&1; then\n  dot_clean -m \"${SRCROOT}/PreviewExtension/Web\" || true\nfi\nfind \"${SRCROOT}/PreviewExtension/Web\" \\( -name \"._*\" -o -name \".DS_Store\" \\) -delete || true\nmkdir -p \"${DERIVED_FILE_DIR}\"\ntouch \"${DERIVED_FILE_DIR}/BurreteWebAssetsValidated.stamp\"\n";
+			};
 
 		7E7F01C829F8540000010001 /* Clean bundle detritus before codesign */ = {
 			isa = PBXShellScriptBuildPhase;

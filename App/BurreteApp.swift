@@ -22,7 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         installStatusItem()
-        BurreteFileAssociations.registerForUnsetDefaults()
+        LSRegisterURL(Bundle.main.bundleURL as CFURL, true)
         if UserDefaults.standard.object(forKey: "openSettingsAtLaunch") == nil {
             UserDefaults.standard.set(true, forKey: "openSettingsAtLaunch")
         }
@@ -221,13 +221,6 @@ enum BurreteFileAssociations {
             return "Burrete is now the default viewer for supported molecular structure files."
         }
         return "Some file types could not be updated: \(failures.prefix(3).joined(separator: "; "))"
-    }
-
-    static func registerForUnsetDefaults() {
-        LSRegisterURL(Bundle.main.bundleURL as CFURL, true)
-        for contentType in contentTypes where defaultHandler(for: contentType) == nil {
-            LSSetDefaultRoleHandlerForContentType(contentType as CFString, .viewer, bundleIdentifier as CFString)
-        }
     }
 
     private static func defaultHandler(for contentType: String) -> String? {

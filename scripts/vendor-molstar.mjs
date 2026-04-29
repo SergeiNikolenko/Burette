@@ -14,7 +14,7 @@ let molstarPkg;
 try {
   molstarPkg = require.resolve('molstar/package.json');
 } catch (error) {
-  console.error('\nMol* is not installed yet. Run:\n\n  npm install\n  npm run vendor:molstar\n');
+  console.error('\nMol* is not installed yet. Run:\n\n  npm ci --ignore-scripts\n  npm run vendor:molstar\n');
   process.exit(1);
 }
 
