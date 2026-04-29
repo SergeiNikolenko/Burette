@@ -6,7 +6,7 @@ struct ContentView: View {
     @AppStorage("showMenuBarIcon") private var showMenuBarIcon = true
     @AppStorage("showPreviewPanelControls") private var showPreviewPanelControls = false
     @State private var section: SettingsSection = .general
-    @State private var defaultOpenStatus = BuretteFileAssociations.defaultHandlerSummary
+    @State private var defaultOpenStatus = BurreteFileAssociations.defaultHandlerSummary
 
     var body: some View {
         ZStack {
@@ -120,16 +120,16 @@ struct ContentView: View {
             SettingsCard {
                 SettingsValueRow(
                     icon: "doc.viewfinder",
-                    title: "Double-click opens Burette",
+                    title: "Double-click opens Burrete",
                     subtitle: "Finder opens supported structure files in a standalone Mol* viewer window. Space still uses the Quick Look extension."
                 )
                 SettingsDivider()
                 SettingsActionRow(
                     icon: "checkmark.seal",
-                    title: "Make Burette Default",
+                    title: "Make Burrete Default",
                     subtitle: defaultOpenStatus
                 ) {
-                    defaultOpenStatus = BuretteFileAssociations.registerAsDefaultHandler()
+                    defaultOpenStatus = BurreteFileAssociations.registerAsDefaultHandler()
                 }
             }
 
