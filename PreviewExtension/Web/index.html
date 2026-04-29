@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Burette Preview</title>
+  <title>Burrete Preview</title>
   <link rel="stylesheet" href="./molstar.css" />
   <style>
     html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: #111317; }
@@ -56,7 +56,7 @@
   <script>
     (function () {
       function post(type, message) {
-        try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.molstarQuickLook.postMessage({ type: type, message: message || '' }); } catch (_) {}
+        try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burrete.postMessage({ type: type, message: message || '' }); } catch (_) {}
       }
       window.__mqlPost = post;
       window.addEventListener('error', function (event) {
@@ -77,7 +77,7 @@
 </head>
 <body>
   <div id="app"></div>
-  <div id="buret-toolbar" role="toolbar" aria-label="Burette preview controls">
+  <div id="buret-toolbar" role="toolbar" aria-label="Burrete preview controls">
     <button class="buret-button buret-grip" type="button" data-drag-handle aria-label="Move controls" title="Move controls">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h2v2H8V5Zm6 0h2v2h-2V5ZM8 11h2v2H8v-2Zm6 0h2v2h-2v-2ZM8 17h2v2H8v-2Zm6 0h2v2h-2v-2Z" fill="currentColor"/></svg>
     </button>
@@ -91,7 +91,7 @@
   </div>
   <div id="buret-window-outline" aria-hidden="true"></div>
   <div id="status">[web] Loading Mol* preview shell…</div>
-  <script>window.MolstarQuickLookCacheBuster = String(Date.now());</script>
+  <script>window.BurreteCacheBuster = String(Date.now());</script>
   <script src="./viewer.js"></script>
 </body>
 </html>

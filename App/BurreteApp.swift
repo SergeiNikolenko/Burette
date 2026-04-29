@@ -3,7 +3,7 @@ import CoreServices
 import SwiftUI
 
 @main
-struct MolstarQuickLookApp: App {
+struct BurreteApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
@@ -22,7 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         installStatusItem()
-        BuretteFileAssociations.registerForUnsetDefaults()
+        BurreteFileAssociations.registerForUnsetDefaults()
         if UserDefaults.standard.object(forKey: "openSettingsAtLaunch") == nil {
             UserDefaults.standard.set(true, forKey: "openSettingsAtLaunch")
         }
@@ -63,8 +63,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = item.button {
-            button.image = BuretteIcon.statusImage()
-            button.toolTip = "Burette"
+            button.image = BurreteIcon.statusImage()
+            button.toolTip = "Burrete"
         }
 
         let menu = NSMenu()
@@ -74,7 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: "Clear Preview Cache", action: #selector(clearPreviewCache), keyEquivalent: "k"))
         menu.addItem(NSMenuItem(title: "Reset Quick Look", action: #selector(resetQuickLook), keyEquivalent: "r"))
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Quit Burette", action: #selector(quit), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: "Quit Burrete", action: #selector(quit), keyEquivalent: "q"))
         menu.items.forEach { $0.target = self }
         item.menu = menu
         statusItem = item
@@ -84,7 +84,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if settingsWindow == nil {
             let controller = NSHostingController(rootView: ContentView())
             let window = SettingsWindow(contentViewController: controller)
-            window.title = "Burette Settings"
+            window.title = "Burrete Settings"
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             window.isReleasedWhenClosed = false
             window.minSize = NSSize(width: 660, height: 460)
@@ -163,7 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     static var logsDirectory: URL {
         FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Containers/com.local.MolstarQuickLookV10.Preview/Data/Library/Caches/MolstarQuickLook", isDirectory: true)
+            .appendingPathComponent("Library/Containers/com.local.BurreteV10.Preview/Data/Library/Caches/Burrete", isDirectory: true)
     }
 
     static var previewCacheDirectory: URL {
@@ -171,20 +171,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     static var primaryLogURL: URL {
-        logsDirectory.appendingPathComponent("MolstarQuickLook.log")
+        logsDirectory.appendingPathComponent("Burrete.log")
     }
 }
 
-enum BuretteFileAssociations {
-    static let bundleIdentifier = "com.local.MolstarQuickLookV10"
+enum BurreteFileAssociations {
+    static let bundleIdentifier = "com.local.BurreteV10"
     static let contentTypes = [
-        "com.local.molstarquicklook10.pdb",
-        "com.local.molstarquicklook10.cif",
-        "com.local.molstarquicklook10.mmcif",
-        "com.local.molstarquicklook10.bcif",
-        "com.local.molstarquicklook10.sdf",
-        "com.local.molstarquicklook10.mol",
-        "com.local.molstarquicklook10.mol2",
+        "com.local.burrete10.pdb",
+        "com.local.burrete10.cif",
+        "com.local.burrete10.mmcif",
+        "com.local.burrete10.bcif",
+        "com.local.burrete10.sdf",
+        "com.local.burrete10.mol",
+        "com.local.burrete10.mol2",
         "org.wwpdb.pdb",
         "org.wwpdb.cif",
         "org.wwpdb.mmcif",
@@ -202,12 +202,12 @@ enum BuretteFileAssociations {
     static var defaultHandlerSummary: String {
         let current = contentTypes.filter { defaultHandler(for: $0) == bundleIdentifier }.count
         if current == contentTypes.count {
-            return "Burette is the default app for supported molecular structure files."
+            return "Burrete is the default app for supported molecular structure files."
         }
         if current == 0 {
-            return "Double-click behavior depends on Finder defaults. Use this to make Burette the default viewer."
+            return "Double-click behavior depends on Finder defaults. Use this to make Burrete the default viewer."
         }
-        return "Burette is the default for \(current) of \(contentTypes.count) registered molecular content types."
+        return "Burrete is the default for \(current) of \(contentTypes.count) registered molecular content types."
     }
 
     @discardableResult
@@ -218,7 +218,7 @@ enum BuretteFileAssociations {
             return status == noErr ? nil : "\(contentType): \(status)"
         }
         if failures.isEmpty {
-            return "Burette is now the default viewer for supported molecular structure files."
+            return "Burrete is now the default viewer for supported molecular structure files."
         }
         return "Some file types could not be updated: \(failures.prefix(3).joined(separator: "; "))"
     }
@@ -275,7 +275,7 @@ private final class SettingsWindow: NSWindow {
     }
 }
 
-enum BuretteIcon {
+enum BurreteIcon {
     static func statusImage() -> NSImage {
         let image = NSImage(size: NSSize(width: 18, height: 18))
         image.lockFocus()

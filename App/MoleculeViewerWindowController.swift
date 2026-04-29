@@ -29,14 +29,14 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
             backing: .buffered,
             defer: false
         )
-        window.title = "Burette - \(fileURL.lastPathComponent)"
+        window.title = "Burrete - \(fileURL.lastPathComponent)"
         window.minSize = NSSize(width: 660, height: 440)
         window.backgroundColor = NSColor(calibratedWhite: 0.055, alpha: 1.0)
-        window.contentView = BuretteAppViewerContainerView(contentView: webView)
+        window.contentView = BurreteAppViewerContainerView(contentView: webView)
 
         super.init(window: window)
 
-        userContentController.add(self, name: "molstarQuickLook")
+        userContentController.add(self, name: "burrete")
         webView.navigationDelegate = self
         webView.wantsLayer = true
         webView.layer?.backgroundColor = NSColor(calibratedWhite: 0.055, alpha: 1.0).cgColor
@@ -51,7 +51,7 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
     }
 
     deinit {
-        webView.configuration.userContentController.removeScriptMessageHandler(forName: "molstarQuickLook")
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "burrete")
     }
 
     func load() {
@@ -64,7 +64,7 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard message.name == "molstarQuickLook",
+        guard message.name == "burrete",
               let body = message.body as? [String: Any],
               let type = body["type"] as? String else {
             return
@@ -74,7 +74,7 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
             return
         }
         let text = (body["message"] as? String) ?? ""
-        NSLog("[BuretteAppViewer] %@: %@ %@", fileURL.lastPathComponent, type, text)
+        NSLog("[BurreteAppViewer] %@: %@ %@", fileURL.lastPathComponent, type, text)
     }
 
     private static func errorHTML(_ error: Error) -> String {
@@ -83,7 +83,7 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         html,body{margin:0;width:100%;height:100%;background:#111317;color:#f2f2f2}
         body{box-sizing:border-box;padding:24px;font:13px -apple-system,BlinkMacSystemFont,sans-serif}
         h1{font-size:18px;margin:0 0 12px}pre{white-space:pre-wrap;background:#24262a;padding:12px;border-radius:8px}
-        </style></head><body><h1>Burette could not open this file</h1><pre>\(escapeHTML(String(describing: error)))</pre></body></html>
+        </style></head><body><h1>Burrete could not open this file</h1><pre>\(escapeHTML(String(describing: error)))</pre></body></html>
         """
     }
 }
@@ -111,7 +111,7 @@ private struct AppViewerRuntime {
             throw AppViewerError.missingCacheDirectory
         }
         let baseDirectory = cachesDirectory
-            .appendingPathComponent("Burette", isDirectory: true)
+            .appendingPathComponent("Burrete", isDirectory: true)
             .appendingPathComponent("app-viewer", isDirectory: true)
         let assetsDirectory = baseDirectory.appendingPathComponent("assets", isDirectory: true)
         let runtimeDirectory = baseDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -126,7 +126,7 @@ private struct AppViewerRuntime {
             "binary": format.isBinary,
             "label": fileURL.lastPathComponent,
             "byteCount": data.count,
-            "quickLookBuild": "burette-app",
+            "quickLookBuild": "burrete-app",
             "debug": false,
             "uiScale": 0.86,
             "showPanelControls": UserDefaults.standard.object(forKey: "showPreviewPanelControls") as? Bool ?? false,
@@ -142,9 +142,9 @@ private struct AppViewerRuntime {
 
         try Data(html(title: fileURL.lastPathComponent).utf8)
             .write(to: runtimeDirectory.appendingPathComponent("index.html"), options: [.atomic])
-        try Data("window.MolstarQuickLookConfig = \(configJSON);\n".utf8)
+        try Data("window.BurreteConfig = \(configJSON);\n".utf8)
             .write(to: runtimeDirectory.appendingPathComponent("preview-config.js"), options: [.atomic])
-        try Data("window.MolstarQuickLookDataBase64 = \"\(data.base64EncodedString())\";\n".utf8)
+        try Data("window.BurreteDataBase64 = \"\(data.base64EncodedString())\";\n".utf8)
             .write(to: runtimeDirectory.appendingPathComponent("preview-data.js"), options: [.atomic])
 
         return AppViewerRuntime(
@@ -171,7 +171,7 @@ private struct AppViewerRuntime {
         <head>
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>Burette - \(escapeHTML(title))</title>
+          <title>Burrete - \(escapeHTML(title))</title>
           <link rel="stylesheet" href="../assets/molstar.css" />
           <style>
             :root { --buret-viewer-ui-scale: 0.86; }
@@ -214,7 +214,7 @@ private struct AppViewerRuntime {
           <script>
             (function () {
               function post(type, message) {
-                try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.molstarQuickLook.postMessage({ type: type, message: String(message || '') }); } catch (_) {}
+                try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burrete.postMessage({ type: type, message: String(message || '') }); } catch (_) {}
               }
               window.__mqlPost = post;
               window.__mqlStatus = function (message, kind) {
@@ -234,7 +234,7 @@ private struct AppViewerRuntime {
         </head>
         <body>
           <div id="app"></div>
-          <div id="buret-toolbar" role="toolbar" aria-label="Burette viewer controls">
+          <div id="buret-toolbar" role="toolbar" aria-label="Burrete viewer controls">
             <button class="buret-button buret-grip" type="button" data-drag-handle aria-label="Move controls" title="Move controls">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h2v2H8V5Zm6 0h2v2h-2V5ZM8 11h2v2H8v-2Zm6 0h2v2h-2v-2ZM8 17h2v2H8v-2Zm6 0h2v2h-2v-2Z" fill="currentColor"/></svg>
             </button>
@@ -246,12 +246,12 @@ private struct AppViewerRuntime {
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq</button>
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel">Log</button>
           </div>
-          <div id="status" class="hidden">Loading Burette viewer...</div>
+          <div id="status" class="hidden">Loading Burrete viewer...</div>
           <script>
-            window.MolstarQuickLookInlineMode = true;
-            window.MolstarQuickLookDebug = false;
-            window.MolstarQuickLookPanelControlsVisible = false;
-            window.MolstarQuickLookCacheBuster = String(Date.now());
+            window.BurreteInlineMode = true;
+            window.BurreteDebug = false;
+            window.BurretePanelControlsVisible = false;
+            window.BurreteCacheBuster = String(Date.now());
           </script>
           <script src="../assets/molstar.js"></script>
           <script src="preview-config.js"></script>
@@ -333,7 +333,7 @@ private enum AppViewerError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingWebResources:
-            return "Bundled Mol* web resources are missing from Burette.app."
+            return "Bundled Mol* web resources are missing from Burrete.app."
         case .emptyFile(let name):
             return "The structure file is empty: \(name)"
         case .missingCacheDirectory:
@@ -342,7 +342,7 @@ private enum AppViewerError: LocalizedError {
     }
 }
 
-private final class BuretteAppViewerContainerView: NSView {
+private final class BurreteAppViewerContainerView: NSView {
     init(contentView: NSView) {
         super.init(frame: .zero)
         wantsLayer = true
