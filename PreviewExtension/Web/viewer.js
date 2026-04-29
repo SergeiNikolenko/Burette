@@ -450,6 +450,7 @@
     const toolbar = document.getElementById('buret-toolbar');
     if (toolbar?.dataset.defaultPosition === '1') {
       requestAnimationFrame(() => applyDefaultToolbarPosition(toolbar));
+      setTimeout(() => applyDefaultToolbarPosition(toolbar), 120);
     }
   }
 
