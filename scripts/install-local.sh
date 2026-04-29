@@ -5,7 +5,7 @@ ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 APP="$ROOT/build/Build/Products/Debug/Burrete.app"
 DEST_DIR="$HOME/Applications"
 DEST="$DEST_DIR/Burrete.app"
-LEGACY_BURETTE_DEST="$DEST_DIR/Burette.app"
+LEGACY_OLD_DEST="$DEST_DIR/Bur""ette.app"
 LEGACY_BURET_DEST="$DEST_DIR/Buret.app"
 APPEX="$DEST/Contents/PlugIns/BurretePreview.appex"
 EXT_ID="com.local.BurreteV10.Preview"
@@ -52,7 +52,7 @@ while IFS= read -r OLD_ENTRY; do
 done < <(pluginkit -m -v -p com.apple.quicklook.preview 2>/dev/null | grep -i Burrete || true)
 
 mkdir -p "$DEST_DIR"
-rm -rf "$DEST" "$LEGACY_BURETTE_DEST" "$LEGACY_BURET_DEST"
+rm -rf "$DEST" "$LEGACY_OLD_DEST" "$LEGACY_BURET_DEST"
 COPYFILE_DISABLE=1 COPY_EXTENDED_ATTRIBUTES_DISABLE=1 cp -R "$APP" "$DEST"
 clean_detritus "$DEST"
 

@@ -22,7 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         installStatusItem()
-        BuretteFileAssociations.registerForUnsetDefaults()
+        BurreteFileAssociations.registerForUnsetDefaults()
         if UserDefaults.standard.object(forKey: "openSettingsAtLaunch") == nil {
             UserDefaults.standard.set(true, forKey: "openSettingsAtLaunch")
         }
@@ -175,16 +175,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-enum BuretteFileAssociations {
-    static let bundleIdentifier = "com.local.MolstarQuickLookV10"
+enum BurreteFileAssociations {
+    static let bundleIdentifier = "com.local.BurreteV10"
     static let contentTypes = [
-        "com.local.molstarquicklook10.pdb",
-        "com.local.molstarquicklook10.cif",
-        "com.local.molstarquicklook10.mmcif",
-        "com.local.molstarquicklook10.bcif",
-        "com.local.molstarquicklook10.sdf",
-        "com.local.molstarquicklook10.mol",
-        "com.local.molstarquicklook10.mol2",
+        "com.local.burrete10.pdb",
+        "com.local.burrete10.cif",
+        "com.local.burrete10.mmcif",
+        "com.local.burrete10.bcif",
+        "com.local.burrete10.sdf",
+        "com.local.burrete10.mol",
+        "com.local.burrete10.mol2",
         "org.wwpdb.pdb",
         "org.wwpdb.cif",
         "org.wwpdb.mmcif",
@@ -202,12 +202,12 @@ enum BuretteFileAssociations {
     static var defaultHandlerSummary: String {
         let current = contentTypes.filter { defaultHandler(for: $0) == bundleIdentifier }.count
         if current == contentTypes.count {
-            return "Burette is the default app for supported molecular structure files."
+            return "Burrete is the default app for supported molecular structure files."
         }
         if current == 0 {
-            return "Double-click behavior depends on Finder defaults. Use this to make Burette the default viewer."
+            return "Double-click behavior depends on Finder defaults. Use this to make Burrete the default viewer."
         }
-        return "Burette is the default for \(current) of \(contentTypes.count) registered molecular content types."
+        return "Burrete is the default for \(current) of \(contentTypes.count) registered molecular content types."
     }
 
     @discardableResult
@@ -218,7 +218,7 @@ enum BuretteFileAssociations {
             return status == noErr ? nil : "\(contentType): \(status)"
         }
         if failures.isEmpty {
-            return "Burette is now the default viewer for supported molecular structure files."
+            return "Burrete is now the default viewer for supported molecular structure files."
         }
         return "Some file types could not be updated: \(failures.prefix(3).joined(separator: "; "))"
     }
