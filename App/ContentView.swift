@@ -5,6 +5,7 @@ struct ContentView: View {
     @AppStorage("openSettingsAtLaunch") private var openSettingsAtLaunch = true
     @AppStorage("showMenuBarIcon") private var showMenuBarIcon = true
     @AppStorage("showPreviewPanelControls") private var showPreviewPanelControls = true
+    @AppStorage("useTransparentPreviewBackground") private var useTransparentPreviewBackground = true
     @AppStorage("checkUpdatesAutomatically") private var checkUpdatesAutomatically = true
     @AppStorage("updateChannel") private var updateChannelRaw = BurreteUpdateChannel.stable.rawValue
     @StateObject private var updater = BurreteUpdater.shared
@@ -94,6 +95,21 @@ struct ContentView: View {
                 SettingsValueRow(icon: "doc.richtext", title: "Formats", subtitle: "PDB, PDBx/mmCIF, BinaryCIF, SDF, MOL, and MOL2")
                 SettingsDivider()
                 SettingsValueRow(icon: "bolt.horizontal", title: "Performance", subtitle: "Bundled assets, cached runtime previews, and WebGL fallback.")
+            }
+
+            SettingsSectionTitle("Appearance")
+            SettingsCard {
+                SettingsToggleRow(
+                    title: "Transparent preview background",
+                    subtitle: "Use the native Quick Look glass behind the molecule instead of an opaque viewer surface.",
+                    isOn: $useTransparentPreviewBackground
+                )
+                SettingsDivider()
+                SettingsValueRow(
+                    icon: "rectangle.fill",
+                    title: "Opaque mode",
+                    subtitle: "Turn transparency off to use the classic dark Mol* background."
+                )
             }
 
             SettingsSectionTitle("Preview Toolbar")

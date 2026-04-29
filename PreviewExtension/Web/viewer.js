@@ -81,12 +81,14 @@
   const VIEWER_UI_SCALE_STEP = 0.08;
 
   let panelControlsVisible = window.BurretePanelControlsVisible !== false;
+  let transparentBackground = true;
   let viewerUIScale = DEFAULT_VIEWER_UI_SCALE;
   let activeViewer = null;
   let keyboardShortcutsInstalled = false;
 
   function applyConfigOptions(config) {
     panelControlsVisible = config.showPanelControls !== undefined ? !!config.showPanelControls : panelControlsVisible;
+    transparentBackground = config.transparentBackground !== undefined ? !!config.transparentBackground : transparentBackground;
     viewerUIScale = resolveInitialViewerScale(config);
     applyViewerUIScale();
     const nextLayoutState = config.defaultLayoutState;
@@ -97,7 +99,14 @@
         }
       }
     }
+    applyBackgroundMode();
     updateToolbarVisibility();
+  }
+
+  function applyBackgroundMode() {
+    if (!document.body) return;
+    document.body.classList.toggle('burette-transparent-background', transparentBackground);
+    document.body.classList.toggle('burette-opaque-background', !transparentBackground);
   }
 
   function resolveInitialViewerScale(config) {
@@ -444,6 +453,18 @@
     return new window.molstar.Viewer('app', createViewerOptions());
   }
 
+  function applyViewerBackground(viewer) {
+    try {
+      viewer?.plugin?.canvas3d?.setProps?.(
+        transparentBackground
+          ? { transparentBackground: true }
+          : { transparentBackground: false, renderer: { backgroundColor: 0x111317 } }
+      );
+    } catch (error) {
+      debug('canvas3d background mode failed: ' + (error && error.message || String(error)));
+    }
+  }
+
   async function start() {
     debug('viewer.js executed');
     setStatus('[web] Booting Mol* Quick Look JavaScript…');
@@ -478,6 +499,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     );
     setStatus(`[web] WebGL viewer created. Parsing structure…
 ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
+    applyViewerBackground(viewer);
     window.BurreteViewer = viewer;
     activeViewer = viewer;
     window.BurreteHandleResize = () => scheduleViewerResize(viewer, 60);
