@@ -12,6 +12,7 @@ The app itself stays out of the Dock. Settings and maintenance tools live in the
 - Native fit-to-screen window resizing instead of WebKit fullscreen.
 - Hidden debug UI by default, with logs still written to disk for troubleshooting.
 - Shared Mol* assets and runtime preview cache for faster repeat previews.
+- GitHub Releases update checks with stable/beta channels and app archive download.
 
 ## Build And Install
 
