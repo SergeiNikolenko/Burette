@@ -973,7 +973,7 @@ private struct PreviewPreferences {
 
     static func load() -> PreviewPreferences {
         let appID = "com.local.BurreteV10" as CFString
-        let showPanelControls = (CFPreferencesCopyAppValue("showPreviewPanelControls" as CFString, appID) as? Bool) ?? false
+        let showPanelControls = (CFPreferencesCopyAppValue("showPreviewPanelControls" as CFString, appID) as? Bool) ?? true
         return PreviewPreferences(
             showPanelControls: showPanelControls,
             defaultLayoutState: [
