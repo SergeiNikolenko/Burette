@@ -36,6 +36,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func application(_ sender: NSApplication, openFile filename: String) -> Bool {
+        openViewer(for: URL(fileURLWithPath: filename))
+        return true
+    }
+
+    func application(_ sender: NSApplication, openFiles filenames: [String]) {
+        for filename in filenames {
+            openViewer(for: URL(fileURLWithPath: filename))
+        }
+        sender.reply(toOpenOrPrint: .success)
+    }
+
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = item.button {
@@ -59,12 +71,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func openSettings() {
         if settingsWindow == nil {
             let controller = NSHostingController(rootView: ContentView())
-            let window = NSWindow(contentViewController: controller)
+            let window = SettingsWindow(contentViewController: controller)
             window.title = "Burette Settings"
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             window.isReleasedWhenClosed = false
-            window.minSize = NSSize(width: 760, height: 520)
-            window.setContentSize(NSSize(width: 940, height: 620))
+            window.minSize = NSSize(width: 660, height: 460)
+            window.setContentSize(NSSize(width: 820, height: 540))
             settingsWindow = window
         }
 
@@ -148,6 +160,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     static var primaryLogURL: URL {
         logsDirectory.appendingPathComponent("MolstarQuickLook.log")
+    }
+}
+
+private final class SettingsWindow: NSWindow {
+    private let defaultContentSize = NSSize(width: 820, height: 540)
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.command),
+              let key = event.charactersIgnoringModifiers else {
+            return super.performKeyEquivalent(with: event)
+        }
+
+        switch key {
+        case "+", "=":
+            resizeContent(by: 1.1)
+            return true
+        case "-", "_":
+            resizeContent(by: 1 / 1.1)
+            return true
+        case "0":
+            setContentSizeKeepingCenter(defaultContentSize)
+            return true
+        default:
+            return super.performKeyEquivalent(with: event)
+        }
+    }
+
+    private func resizeContent(by factor: CGFloat) {
+        let current = contentLayoutRect.size
+        let next = NSSize(
+            width: min(max(current.width * factor, minSize.width), 1160),
+            height: min(max(current.height * factor, minSize.height), 820)
+        )
+        setContentSizeKeepingCenter(next)
+    }
+
+    private func setContentSizeKeepingCenter(_ size: NSSize) {
+        let center = NSPoint(x: frame.midX, y: frame.midY)
+        setContentSize(size)
+        setFrameOrigin(NSPoint(x: center.x - frame.width / 2, y: center.y - frame.height / 2))
     }
 }
 

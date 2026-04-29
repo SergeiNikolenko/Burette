@@ -12,7 +12,7 @@ struct ContentView: View {
             SettingsColors.background.ignoresSafeArea()
             HStack(spacing: 0) {
                 Sidebar(selection: $section)
-                    .frame(width: 292)
+                    .frame(width: 236)
                     .background(SettingsColors.sidebar)
 
                 Rectangle()
@@ -20,21 +20,21 @@ struct ContentView: View {
                     .frame(width: 1)
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 22) {
+                    VStack(alignment: .leading, spacing: 18) {
                         Text(section.title)
-                            .font(.system(size: 28, weight: .bold))
-                            .padding(.bottom, 12)
+                            .font(.system(size: 23, weight: .bold))
+                            .padding(.bottom, 8)
 
                         content
                     }
-                    .frame(maxWidth: 820, alignment: .leading)
-                    .padding(.horizontal, 34)
-                    .padding(.vertical, 30)
+                    .frame(maxWidth: 720, alignment: .leading)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 22)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
-        .frame(minWidth: 860, minHeight: 560)
+        .frame(minWidth: 740, minHeight: 500)
     }
 
     @ViewBuilder
@@ -219,24 +219,24 @@ private struct Sidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Spacer().frame(height: 38)
+            Spacer().frame(height: 28)
 
             SearchField(text: $searchText)
-                .padding(.horizontal, 18)
-                .padding(.bottom, 18)
+                .padding(.horizontal, 14)
+                .padding(.bottom, 14)
 
             Rectangle()
                 .fill(SettingsColors.separator)
                 .frame(height: 1)
 
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 12) {
                 ForEach(groupedSections, id: \.0) { group, sections in
-                    VStack(alignment: .leading, spacing: 7) {
+                    VStack(alignment: .leading, spacing: 5) {
                         if let group {
                             Text(group)
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.system(size: 11, weight: .bold))
                                 .foregroundColor(.white.opacity(0.28))
-                                .padding(.horizontal, 18)
+                                .padding(.horizontal, 14)
                                 .padding(.top, 4)
                         }
 
@@ -248,8 +248,8 @@ private struct Sidebar: View {
                     }
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 24)
+            .padding(.horizontal, 10)
+            .padding(.top, 18)
 
             Spacer()
         }
@@ -263,21 +263,21 @@ private struct SidebarRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 13) {
+            HStack(spacing: 11) {
                 Image(systemName: section.icon)
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .symbolRenderingMode(.hierarchical)
-                    .frame(width: 22)
+                    .frame(width: 20)
 
                 Text(section.title)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
 
                 Spacer(minLength: 0)
             }
             .foregroundColor(.white)
-            .padding(.horizontal, 12)
-            .frame(height: 44)
-            .background(isSelected ? SettingsColors.selection : Color.clear, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .padding(.horizontal, 10)
+            .frame(height: 36)
+            .background(isSelected ? SettingsColors.selection : Color.clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -287,19 +287,19 @@ private struct SearchField: View {
     @Binding var text: String
 
     var body: some View {
-        HStack(spacing: 9) {
+        HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: 12, weight: .medium))
                 .foregroundColor(.white.opacity(0.38))
 
             TextField("Search settings...", text: $text)
                 .textFieldStyle(.plain)
-                .font(.system(size: 15, weight: .medium))
+                .font(.system(size: 13, weight: .medium))
                 .foregroundColor(.white.opacity(0.82))
         }
-        .padding(.horizontal, 12)
-        .frame(height: 34)
-        .background(SettingsColors.search, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .padding(.horizontal, 10)
+        .frame(height: 30)
+        .background(SettingsColors.search, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 
@@ -312,7 +312,7 @@ private struct SettingsSectionTitle: View {
 
     var body: some View {
         Text(title.uppercased())
-            .font(.system(size: 13, weight: .bold))
+            .font(.system(size: 11, weight: .bold))
             .foregroundColor(.white.opacity(0.42))
             .padding(.top, 4)
     }
@@ -329,9 +329,9 @@ private struct SettingsCard<Content: View>: View {
         VStack(spacing: 0) {
             content
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 4)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(SettingsColors.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(SettingsColors.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
@@ -342,27 +342,27 @@ private struct SettingsToggleRow: View {
     var isDisabled = false
 
     var body: some View {
-        HStack(alignment: .center, spacing: 18) {
+        HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.white.opacity(isDisabled ? 0.52 : 0.9))
                 Text(subtitle)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundColor(.white.opacity(0.46))
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Spacer(minLength: 16)
+            Spacer(minLength: 12)
 
             Toggle("", isOn: $isOn)
                 .labelsHidden()
                 .toggleStyle(.switch)
-                .controlSize(.large)
+                .controlSize(.regular)
                 .disabled(isDisabled)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
     }
 }
 
@@ -372,19 +372,19 @@ private struct SettingsValueRow: View {
     let subtitle: String
 
     var body: some View {
-        HStack(alignment: .center, spacing: 14) {
+        HStack(alignment: .center, spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 17, weight: .semibold))
+                .font(.system(size: 15, weight: .semibold))
                 .symbolRenderingMode(.hierarchical)
                 .foregroundColor(.white.opacity(0.82))
-                .frame(width: 28)
+                .frame(width: 24)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.white.opacity(0.9))
                 Text(subtitle)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundColor(.white.opacity(0.48))
                     .lineLimit(3)
                     .textSelection(.enabled)
@@ -392,8 +392,8 @@ private struct SettingsValueRow: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
     }
 }
 
@@ -405,19 +405,19 @@ private struct SettingsActionRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(alignment: .center, spacing: 14) {
+            HStack(alignment: .center, spacing: 12) {
                 Image(systemName: icon)
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .symbolRenderingMode(.hierarchical)
                     .foregroundColor(.white.opacity(0.86))
-                    .frame(width: 28)
+                    .frame(width: 24)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.white.opacity(0.9))
                     Text(subtitle)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.white.opacity(0.48))
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -425,11 +425,11 @@ private struct SettingsActionRow: View {
                 Spacer(minLength: 12)
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.white.opacity(0.24))
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -441,7 +441,7 @@ private struct SettingsDivider: View {
         Rectangle()
             .fill(SettingsColors.separator)
             .frame(height: 1)
-            .padding(.leading, 58)
+            .padding(.leading, 50)
     }
 }
 
@@ -454,7 +454,7 @@ private struct SettingsFootnote: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 13, weight: .medium))
+            .font(.system(size: 12, weight: .medium))
             .foregroundColor(.white.opacity(0.42))
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 4)

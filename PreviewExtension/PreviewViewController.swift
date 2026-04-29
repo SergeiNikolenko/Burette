@@ -352,6 +352,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "byteCount": byteCount,
             "quickLookBuild": "v10-product",
             "debug": showDebugOverlay,
+            "uiScale": 0.86,
             "showPanelControls": preferences.showPanelControls,
             "defaultLayoutState": preferences.defaultLayoutState
         ]
@@ -371,36 +372,39 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           <title>Burette - \(safeTitle)</title>
           <link rel="stylesheet" href="../assets/molstar.css" />
           <style>
+            :root { --buret-viewer-ui-scale: 0.86; }
             html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: #111317; }
             body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: #f2f2f2; }
             #app { position: absolute; inset: 0; }
             #status {
-              position: absolute; left: 16px; top: 16px;
+              position: absolute; left: 12px; top: 12px;
               z-index: 2147483647; max-width: min(880px, calc(100vw - 32px)); max-height: calc(50vh - 32px); overflow: auto;
-              box-sizing: border-box; padding: 12px 14px; border-radius: 12px; color: rgba(255, 255, 255, 0.96);
+              box-sizing: border-box; padding: 10px 12px; border-radius: 10px; color: rgba(255, 255, 255, 0.96);
               background: rgba(0, 0, 0, 0.76); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
               font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-              font-size: 12px; font-weight: 500; line-height: 1.35; white-space: pre-wrap; pointer-events: auto;
+              font-size: 11px; font-weight: 500; line-height: 1.35; white-space: pre-wrap; pointer-events: auto;
+              transform: scale(var(--buret-viewer-ui-scale)); transform-origin: top left;
             }
             #status.error { color: #ffd4d4; background: rgba(70, 0, 0, 0.82); }
             #status.hidden { display: none; }
             #buret-toolbar {
-              position: absolute; top: 12px; right: 12px; z-index: 2147483646;
-              display: flex; align-items: center; gap: 6px; padding: 6px;
-              border-radius: 12px; color: rgba(255, 255, 255, 0.94);
+              position: absolute; top: 10px; right: 10px; z-index: 2147483646;
+              display: flex; align-items: center; gap: 5px; padding: 5px;
+              border-radius: 10px; color: rgba(255, 255, 255, 0.94);
               background: rgba(20, 22, 24, 0.62);
               -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
               box-shadow: 0 4px 18px rgba(0, 0, 0, 0.28);
               user-select: none; touch-action: none;
+              transform: scale(var(--buret-viewer-ui-scale)); transform-origin: top right;
             }
             .buret-button {
-              min-width: 30px; height: 30px; border: 0; border-radius: 8px; padding: 0 8px;
-              color: inherit; background: transparent; font: 600 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+              min-width: 26px; height: 26px; border: 0; border-radius: 7px; padding: 0 7px;
+              color: inherit; background: transparent; font: 600 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
               display: grid; place-items: center;
             }
             .buret-button:hover, .buret-button.active { background: rgba(255, 255, 255, 0.14); }
             .buret-button.hidden { display: none; }
-            .buret-button svg { width: 17px; height: 17px; display: block; }
+            .buret-button svg { width: 15px; height: 15px; display: block; }
             .buret-grip { cursor: move; color: rgba(255, 255, 255, 0.66); }
           </style>
           <script>
