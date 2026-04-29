@@ -46,6 +46,29 @@
     bottom: 'hidden'
   };
 
+  let panelControlsVisible = window.MolstarQuickLookPanelControlsVisible !== false;
+
+  function applyConfigOptions(config) {
+    panelControlsVisible = config.showPanelControls !== undefined ? !!config.showPanelControls : panelControlsVisible;
+    const nextLayoutState = config.defaultLayoutState;
+    if (nextLayoutState && typeof nextLayoutState === 'object') {
+      for (const key of ['left', 'right', 'top', 'bottom']) {
+        if (['full', 'collapsed', 'hidden'].includes(nextLayoutState[key])) {
+          layoutState[key] = nextLayoutState[key];
+        }
+      }
+    }
+    updateToolbarVisibility();
+  }
+
+  function updateToolbarVisibility() {
+    const toolbar = document.getElementById('buret-toolbar');
+    if (!toolbar) return;
+    toolbar.querySelectorAll('.buret-panel-toggle').forEach(button => {
+      button.classList.toggle('hidden', !panelControlsVisible);
+    });
+  }
+
   function initBuretToolbar(viewer) {
     const toolbar = document.getElementById('buret-toolbar');
     if (!toolbar) return;
@@ -53,7 +76,9 @@
     toolbar.querySelectorAll('[data-buret-action]').forEach(button => {
       button.addEventListener('click', () => {
         const action = button.getAttribute('data-buret-action');
-        if (action === 'fit') post('action', 'fit');
+        if (action === 'fit') {
+          post('action', 'fit');
+        }
       });
     });
 
@@ -64,6 +89,7 @@
     });
 
     initToolbarDrag(toolbar);
+    updateToolbarVisibility();
     applyLayoutState(viewer);
   }
 
@@ -337,6 +363,7 @@
     }
 
     const config = requireConfig();
+    applyConfigOptions(config);
     debug('config=' + JSON.stringify(config));
     const size = describeBytes(config.byteCount);
     const formatLabel = describeFormat(config.format, config.binary);

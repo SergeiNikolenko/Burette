@@ -4,6 +4,7 @@ import SwiftUI
 struct ContentView: View {
     @AppStorage("openSettingsAtLaunch") private var openSettingsAtLaunch = true
     @AppStorage("showMenuBarIcon") private var showMenuBarIcon = true
+    @AppStorage("showPreviewPanelControls") private var showPreviewPanelControls = false
     @State private var section: SettingsSection = .general
 
     var body: some View {
@@ -89,6 +90,21 @@ struct ContentView: View {
                 SettingsValueRow(icon: "doc.richtext", title: "Formats", subtitle: "PDB, PDBx/mmCIF, BinaryCIF, SDF, MOL, and MOL2")
                 SettingsDivider()
                 SettingsValueRow(icon: "bolt.horizontal", title: "Performance", subtitle: "Bundled assets, cached runtime previews, and WebGL fallback.")
+            }
+
+            SettingsSectionTitle("Preview Toolbar")
+            SettingsCard {
+                SettingsToggleRow(
+                    title: "Show panel toggles by default",
+                    subtitle: "Show the L, R, Seq, and Log buttons in Quick Look and app viewer toolbars.",
+                    isOn: $showPreviewPanelControls
+                )
+                SettingsDivider()
+                SettingsValueRow(
+                    icon: "arrow.up.left.and.arrow.down.right",
+                    title: "Fullscreen control",
+                    subtitle: "The fit button opens a larger viewer with a native window fallback."
+                )
             }
 
             SettingsSectionTitle("Quick Controls")

@@ -9,7 +9,9 @@
 /* Begin PBXBuildFile section */
 		47FCA5D382862E1453313DBE /* MolstarQuickLookApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A22A79402DCF99A8F73E63C9 /* MolstarQuickLookApp.swift */; };
 		1B0A192E03A98BBEF19FE524 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E19FAD5D706EFF2DCADAC02E /* ContentView.swift */; };
+		B88A1B0D9C2F4E7A8D3C6B11 /* MoleculeViewerWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B88A1B0C9C2F4E7A8D3C6B11 /* MoleculeViewerWindowController.swift */; };
 		2A6C3FDEB8E145A2A9364F01 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8B707533C58E4E3C9B6E6E15 /* Assets.xcassets */; };
+		B88A1B0E9C2F4E7A8D3C6B11 /* Web in Resources */ = {isa = PBXBuildFile; fileRef = 4ADF66CA120EDD24C9E3F203 /* Web */; };
 		3C65656FB6FE8E52854AC3F4 /* PreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA02CDF88EC813372195D216 /* PreviewViewController.swift */; };
 		E31816093C5AEC762F9638CB /* Web in Resources */ = {isa = PBXBuildFile; fileRef = 4ADF66CA120EDD24C9E3F203 /* Web */; };
 		A0E5E86E854F89E5A48C3DB0 /* MolstarQuickLookPreview.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 664D234BD361BA8FA6C574ED /* MolstarQuickLookPreview.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -44,6 +46,7 @@
 		664D234BD361BA8FA6C574ED /* MolstarQuickLookPreview.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MolstarQuickLookPreview.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A22A79402DCF99A8F73E63C9 /* MolstarQuickLookApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MolstarQuickLookApp.swift; sourceTree = "<group>"; };
 		E19FAD5D706EFF2DCADAC02E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		B88A1B0C9C2F4E7A8D3C6B11 /* MoleculeViewerWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoleculeViewerWindowController.swift; sourceTree = "<group>"; };
 		8B707533C58E4E3C9B6E6E15 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		6E373F91487569133D571598 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		8AD874A7BD1213FF583AB869 /* MolstarQuickLook.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MolstarQuickLook.entitlements; sourceTree = "<group>"; };
@@ -85,6 +88,7 @@
 			children = (
 				A22A79402DCF99A8F73E63C9 /* MolstarQuickLookApp.swift */,
 				E19FAD5D706EFF2DCADAC02E /* ContentView.swift */,
+				B88A1B0C9C2F4E7A8D3C6B11 /* MoleculeViewerWindowController.swift */,
 				8B707533C58E4E3C9B6E6E15 /* Assets.xcassets */,
 				6E373F91487569133D571598 /* Info.plist */,
 				8AD874A7BD1213FF583AB869 /* MolstarQuickLook.entitlements */,
@@ -209,6 +213,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				2A6C3FDEB8E145A2A9364F01 /* Assets.xcassets in Resources */,
+				B88A1B0E9C2F4E7A8D3C6B11 /* Web in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -276,6 +281,7 @@
 			files = (
 				47FCA5D382862E1453313DBE /* MolstarQuickLookApp.swift in Sources */,
 				1B0A192E03A98BBEF19FE524 /* ContentView.swift in Sources */,
+				B88A1B0D9C2F4E7A8D3C6B11 /* MoleculeViewerWindowController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

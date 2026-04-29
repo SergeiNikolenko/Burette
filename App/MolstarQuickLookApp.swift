@@ -15,6 +15,7 @@ struct MolstarQuickLookApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var settingsWindow: NSWindow?
+    private var viewerWindows: [URL: MoleculeViewerWindowController] = [:]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -26,6 +27,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
                 self?.openSettings()
             }
+        }
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            openViewer(for: url)
         }
     }
 
@@ -63,6 +70,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         settingsWindow?.center()
         settingsWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func openViewer(for url: URL) {
+        let fileURL = url.standardizedFileURL
+        if let existing = viewerWindows[fileURL] {
+            existing.showWindow(nil)
+            existing.window?.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let controller = MoleculeViewerWindowController(fileURL: fileURL)
+        viewerWindows[fileURL] = controller
+        _ = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: controller.window,
+            queue: .main
+        ) { [weak self] _ in
+            self?.viewerWindows[fileURL] = nil
+        }
+        controller.load()
+        controller.showWindow(nil)
+        controller.window?.center()
+        controller.window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
