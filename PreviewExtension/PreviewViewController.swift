@@ -12,7 +12,6 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private var logLines: [String] = []
     private let previewID = String(UUID().uuidString.prefix(8))
     private var hasRenderedTerminationError = false
-    private var restoredWindowFrame: NSRect?
     private var currentViewerPageZoom: CGFloat = 0.86
     private static let showDebugOverlay = false
     private static let verboseLogging = false
@@ -374,8 +373,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "byteCount": byteCount,
             "quickLookBuild": "v10-product",
             "debug": showDebugOverlay,
+            "theme": preferences.viewerTheme,
+            "canvasBackground": preferences.canvasBackground,
             "uiScale": 0.86,
-            "transparentBackground": format.prefersTransparentBackground && preferences.transparentSDFBackground,
+            "transparentBackground": preferences.canvasBackground == "transparent",
             "sdfGrid": true,
             "showPanelControls": preferences.showPanelControls,
             "defaultLayoutState": preferences.defaultLayoutState
@@ -397,7 +398,16 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           <title>Burrete - \(safeTitle)</title>
           <link rel="stylesheet" href="../assets/molstar.css" />
           <style>
-            :root { --buret-viewer-ui-scale: 0.86; }
+            :root {
+              --buret-viewer-ui-scale: 0.86;
+              --buret-canvas-background: #000000;
+              --buret-shell-background: #000000;
+              --buret-panel-background: rgba(18, 20, 22, 0.82);
+              --buret-toolbar-background: rgba(12, 13, 14, 0.90);
+              --buret-toolbar-border: rgba(255, 255, 255, 0.10);
+              --buret-toolbar-hover: rgba(255, 255, 255, 0.14);
+              --buret-toolbar-color: rgba(255, 255, 255, 0.94);
+            }
             html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: transparent; }
             html.buret-transparent-background,
             html.buret-transparent-background body,
@@ -407,9 +417,26 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             html.buret-transparent-background .msp-layout-main,
             html.buret-transparent-background canvas { background: transparent !important; background-color: transparent !important; }
             body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: #f2f2f2; }
+            body.buret-theme-light {
+              --buret-shell-background: #f7f7f2;
+              --buret-panel-background: rgba(247, 247, 242, 0.86);
+              --buret-toolbar-background: rgba(247, 247, 242, 0.90);
+              --buret-toolbar-border: rgba(0, 0, 0, 0.12);
+              --buret-toolbar-hover: rgba(0, 0, 0, 0.08);
+              --buret-toolbar-color: rgba(20, 21, 23, 0.92);
+              color: #161719;
+            }
+            body.buret-theme-dark {
+              --buret-shell-background: var(--buret-canvas-background);
+              --buret-panel-background: rgba(18, 20, 22, 0.82);
+              --buret-toolbar-background: rgba(12, 13, 14, 0.90);
+              --buret-toolbar-border: rgba(255, 255, 255, 0.10);
+              --buret-toolbar-hover: rgba(255, 255, 255, 0.14);
+              --buret-toolbar-color: rgba(255, 255, 255, 0.94);
+            }
             body.burette-opaque-background,
             body.burette-opaque-background #app {
-              background: #111317;
+              background: var(--buret-shell-background);
             }
             #app { position: absolute; inset: 0; }
             body.burette-transparent-background .msp-plugin,
@@ -426,13 +453,13 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             body.burette-opaque-background .msp-plugin .msp-layout-viewport,
             body.burette-opaque-background .msp-plugin .msp-plugin-content,
             body.burette-opaque-background .msp-plugin canvas {
-              background: #111317 !important;
+              background: var(--buret-canvas-background) !important;
             }
-            body.burette-transparent-background .msp-plugin .msp-layout-left,
-            body.burette-transparent-background .msp-plugin .msp-layout-right,
-            body.burette-transparent-background .msp-plugin .msp-layout-top,
-            body.burette-transparent-background .msp-plugin .msp-layout-bottom {
-              background: rgba(238, 236, 231, 0.72) !important;
+            body .msp-plugin .msp-layout-left,
+            body .msp-plugin .msp-layout-right,
+            body .msp-plugin .msp-layout-top,
+            body .msp-plugin .msp-layout-bottom {
+              background: var(--buret-panel-background) !important;
               -webkit-backdrop-filter: blur(14px);
               backdrop-filter: blur(14px);
             }
@@ -449,9 +476,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             #buret-toolbar {
               position: absolute; top: 12px; right: 12px; z-index: 2147483646;
               display: flex; align-items: center; gap: 6px; padding: 6px;
-              border: 1px solid rgba(255, 255, 255, 0.10);
-              border-radius: 12px; color: rgba(255, 255, 255, 0.94);
-              background: rgba(18, 20, 22, 0.86);
+              border: 1px solid var(--buret-toolbar-border);
+              border-radius: 12px; color: var(--buret-toolbar-color);
+              background: var(--buret-toolbar-background);
               -webkit-backdrop-filter: blur(10px);
               backdrop-filter: blur(10px);
               box-shadow:
@@ -459,15 +486,18 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 inset 0 1px 0 rgba(255, 255, 255, 0.06);
               user-select: none; touch-action: none;
             }
+            #buret-toolbar.collapsed { gap: 0; }
+            #buret-toolbar.collapsed .buret-button:not(.buret-grip) { display: none; }
+            #buret-toolbar.collapsed .buret-grip { min-width: 26px; padding: 0; cursor: pointer; }
             .buret-button {
               min-width: 26px; height: 26px; border: 0; border-radius: 7px; padding: 0 7px;
               color: inherit; background: transparent; font: 600 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
               display: grid; place-items: center;
             }
-            .buret-button:hover, .buret-button.active { background: rgba(255, 255, 255, 0.14); }
+            .buret-button:hover, .buret-button.active { background: var(--buret-toolbar-hover); }
             .buret-button.hidden { display: none; }
             .buret-button svg { width: 15px; height: 15px; display: block; }
-            .buret-grip { cursor: move; color: rgba(255, 255, 255, 0.66); }
+            .buret-grip { cursor: grab; color: currentColor; opacity: 0.66; }
           </style>
           <script>
             (function () {
@@ -529,11 +559,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         <body class="\(backgroundClass)">
           <div id="app"></div>
           <div id="buret-toolbar" role="toolbar" aria-label="Burrete preview controls">
-            <button class="buret-button buret-grip" type="button" data-drag-handle aria-label="Move controls" title="Move controls">
+            <button class="buret-button buret-grip" type="button" data-drag-handle aria-label="Collapse controls" aria-expanded="true" title="Collapse controls">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h2v2H8V5Zm6 0h2v2h-2V5ZM8 11h2v2H8v-2Zm6 0h2v2h-2v-2ZM8 17h2v2H8v-2Zm6 0h2v2h-2v-2Z" fill="currentColor"/></svg>
-            </button>
-            <button class="buret-button" type="button" data-buret-action="fit" aria-label="Fit window to screen" title="Fit window to screen">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5v2H7.4l3.2 3.2-1.4 1.4L6 7.4V9H4Zm11-5h5v5h-2V7.4l-3.2 3.2-1.4-1.4L16.6 6H15V4ZM9.2 13.4l1.4 1.4L7.4 18H9v2H4v-5h2v1.6l3.2-3.2Zm5.6 0 3.2 3.2V15h2v5h-5v-2h1.6l-3.2-3.2 1.4-1.4Z" fill="currentColor"/></svg>
             </button>
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel">L</button>
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle right panel">R</button>
@@ -718,12 +745,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
     private func handleJavaScriptAction(_ action: String) {
         appendLog("JS action=\(action)")
-        switch action {
-        case "fit":
-            toggleFitToScreen()
-        default:
-            appendLog("unknown JS action=\(action)")
-        }
+        appendLog("unknown JS action=\(action)")
     }
 
     private func setViewerPageZoom(_ scale: CGFloat) {
@@ -733,32 +755,6 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         webView.pageZoom = clamped
         appendLog("viewer pageZoom=\(String(format: "%.2f", Double(clamped)))")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-            self?.webView.evaluateJavaScript("window.BurreteHandleResize && window.BurreteHandleResize();", completionHandler: nil)
-        }
-    }
-
-    private func toggleFitToScreen() {
-        guard let window = view.window, let screen = window.screen ?? NSScreen.main else {
-            appendLog("fit action ignored: no preview window")
-            return
-        }
-        if window.styleMask.contains(.fullScreen) {
-            window.toggleFullScreen(nil)
-            return
-        }
-        if let frame = restoredWindowFrame {
-            window.setFrame(frame, display: true, animate: false)
-            restoredWindowFrame = nil
-        } else {
-            restoredWindowFrame = window.frame
-            let targetFrame = screen.visibleFrame.insetBy(dx: 8, dy: 8)
-            if window.styleMask.contains(.resizable) {
-                window.setFrame(targetFrame, display: true, animate: false)
-            } else {
-                window.toggleFullScreen(nil)
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             self?.webView.evaluateJavaScript("window.BurreteHandleResize && window.BurreteHandleResize();", completionHandler: nil)
         }
     }
@@ -1051,18 +1047,21 @@ private struct StructureFormat {
 private struct PreviewPreferences {
     let showPanelControls: Bool
     let transparentBackground: Bool
-    let transparentSDFBackground: Bool
+    let viewerTheme: String
+    let canvasBackground: String
     let defaultLayoutState: [String: String]
 
     static func load() -> PreviewPreferences {
         let appID = "com.local.BurreteV10" as CFString
         let showPanelControls = (CFPreferencesCopyAppValue("showPreviewPanelControls" as CFString, appID) as? Bool) ?? true
-        let transparentBackground = (CFPreferencesCopyAppValue("useTransparentPreviewBackground" as CFString, appID) as? Bool) ?? true
-        let transparentSDFBackground = (CFPreferencesCopyAppValue("transparentSDFBackground" as CFString, appID) as? Bool) ?? true
+        let transparentBackground = (CFPreferencesCopyAppValue("useTransparentPreviewBackground" as CFString, appID) as? Bool) ?? false
+        let viewerTheme = (CFPreferencesCopyAppValue("viewerTheme" as CFString, appID) as? String) ?? "auto"
+        let canvasBackground = (CFPreferencesCopyAppValue("viewerCanvasBackground" as CFString, appID) as? String) ?? "black"
         return PreviewPreferences(
             showPanelControls: showPanelControls,
             transparentBackground: transparentBackground,
-            transparentSDFBackground: transparentSDFBackground,
+            viewerTheme: viewerTheme,
+            canvasBackground: canvasBackground,
             defaultLayoutState: [
                 "left": "collapsed",
                 "right": "hidden",
