@@ -644,7 +644,7 @@ private struct AboutPanel: View {
                 Text("Burrete")
                     .font(.system(size: 34, weight: .bold))
                     .foregroundColor(.white.opacity(0.92))
-                Text("Version 0.10.4")
+                Text("Version 0.10.5")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.white.opacity(0.42))
             }
