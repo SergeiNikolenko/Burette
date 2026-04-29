@@ -703,13 +703,13 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             return
         }
         if let frame = restoredWindowFrame {
-            window.setFrame(frame, display: true, animate: true)
+            window.setFrame(frame, display: true, animate: false)
             restoredWindowFrame = nil
         } else {
             restoredWindowFrame = window.frame
             let targetFrame = screen.visibleFrame.insetBy(dx: 8, dy: 8)
             if window.styleMask.contains(.resizable) {
-                window.setFrame(targetFrame, display: true, animate: true)
+                window.setFrame(targetFrame, display: true, animate: false)
             } else {
                 window.toggleFullScreen(nil)
             }
