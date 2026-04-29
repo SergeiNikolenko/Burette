@@ -5,6 +5,10 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
     private let fileURL: URL
     private let webView: WKWebView
     private var restoredWindowFrame: NSRect?
+    private var currentViewerPageZoom: CGFloat = 0.86
+    private static let defaultViewerPageZoom: CGFloat = 0.86
+    private static let minViewerPageZoom: CGFloat = 0.72
+    private static let maxViewerPageZoom: CGFloat = 1.35
 
     init(fileURL: URL) {
         self.fileURL = fileURL
@@ -23,6 +27,7 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         }
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.pageZoom = Self.defaultViewerPageZoom
         self.webView = webView
 
         let window = NSWindow(
@@ -81,8 +86,22 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
             toggleFitToScreen()
             return
         }
+        if type == "viewerZoom", let value = body["value"] as? NSNumber {
+            setViewerPageZoom(CGFloat(value.doubleValue))
+            return
+        }
         let text = (body["message"] as? String) ?? ""
         NSLog("[BurreteAppViewer] %@: %@ %@", fileURL.lastPathComponent, type, text)
+    }
+
+    private func setViewerPageZoom(_ scale: CGFloat) {
+        let clamped = min(max(scale, Self.minViewerPageZoom), Self.maxViewerPageZoom)
+        guard abs(currentViewerPageZoom - clamped) > 0.001 else { return }
+        currentViewerPageZoom = clamped
+        webView.pageZoom = clamped
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            self?.webView.evaluateJavaScript("window.BurreteHandleResize && window.BurreteHandleResize();", completionHandler: nil)
+        }
     }
 
     private func toggleFitToScreen() {
@@ -166,9 +185,10 @@ private struct AppViewerRuntime {
             "quickLookBuild": "burrete-app",
             "debug": false,
             "uiScale": 0.86,
+            "transparentBackground": format.prefersTransparentBackground &&
+                (UserDefaults.standard.object(forKey: "transparentSDFBackground") as? Bool ?? true),
+            "sdfGrid": true,
             "showPanelControls": UserDefaults.standard.object(forKey: "showPreviewPanelControls") as? Bool ?? true,
-            "transparentBackground": transparentBackground,
-            "sdfGrid": format.molstarFormat == "sdf",
             "defaultLayoutState": [
                 "left": "collapsed",
                 "right": "hidden",
@@ -256,6 +276,13 @@ private struct AppViewerRuntime {
           <style>
             :root { --buret-viewer-ui-scale: 0.86; }
             html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: transparent; }
+            html.buret-transparent-background,
+            html.buret-transparent-background body,
+            html.buret-transparent-background #app,
+            html.buret-transparent-background .msp-plugin,
+            html.buret-transparent-background .msp-viewport,
+            html.buret-transparent-background .msp-layout-main,
+            html.buret-transparent-background canvas { background: transparent !important; background-color: transparent !important; }
             body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: #f2f2f2; }
             body.burette-opaque-background,
             body.burette-opaque-background #app {
@@ -291,7 +318,6 @@ private struct AppViewerRuntime {
               max-width: min(880px, calc(100vw - 32px)); box-sizing: border-box;
               padding: 10px 12px; border-radius: 10px; color: rgba(255, 255, 255, 0.96);
               background: rgba(0, 0, 0, 0.76); font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-              transform: scale(var(--buret-viewer-ui-scale)); transform-origin: top left;
               white-space: pre-wrap; pointer-events: auto;
             }
             #status.error { color: #ffd4d4; background: rgba(70, 0, 0, 0.82); }
@@ -307,7 +333,6 @@ private struct AppViewerRuntime {
                 0 8px 22px rgba(0, 0, 0, 0.22),
                 inset 0 1px 0 rgba(255, 255, 255, 0.06);
               user-select: none; touch-action: none;
-              transform: scale(var(--buret-viewer-ui-scale)); transform-origin: top right;
             }
             .buret-button {
               min-width: 26px; height: 26px; border: 0; border-radius: 7px; padding: 0 7px;
@@ -346,7 +371,7 @@ private struct AppViewerRuntime {
             <button class="buret-button buret-grip" type="button" data-drag-handle aria-label="Move controls" title="Move controls">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h2v2H8V5Zm6 0h2v2h-2V5ZM8 11h2v2H8v-2Zm6 0h2v2h-2v-2ZM8 17h2v2H8v-2Zm6 0h2v2h-2v-2Z" fill="currentColor"/></svg>
             </button>
-            <button class="buret-button" type="button" data-buret-action="fit" aria-label="Fullscreen" title="Fullscreen">
+            <button class="buret-button" type="button" data-buret-action="fit" aria-label="Fit window to screen" title="Fit window to screen">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5v2H7.4l3.2 3.2-1.4 1.4L6 7.4V9H4Zm11-5h5v5h-2V7.4l-3.2 3.2-1.4-1.4L16.6 6H15V4ZM9.2 13.4l1.4 1.4L7.4 18H9v2H4v-5h2v1.6l3.2-3.2Zm5.6 0 3.2 3.2V15h2v5h-5v-2h1.6l-3.2-3.2 1.4-1.4Z" fill="currentColor"/></svg>
             </button>
             <button class="buret-button buret-panel-toggle active" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel">L</button>
@@ -374,6 +399,7 @@ private struct AppViewerRuntime {
 private struct AppViewerStructureFormat {
     let molstarFormat: String
     let isBinary: Bool
+    var prefersTransparentBackground: Bool { molstarFormat == "sdf" }
 
     init(url: URL, data: Data) {
         let ext = url.pathExtension.lowercased()
