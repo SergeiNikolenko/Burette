@@ -33,6 +33,13 @@
 				<string>com.local.burrete10.sdf</string>
 				<string>com.local.burrete10.mol</string>
 				<string>com.local.burrete10.mol2</string>
+				<string>com.local.molstarquicklook10.pdb</string>
+				<string>com.local.molstarquicklook10.cif</string>
+				<string>com.local.molstarquicklook10.mmcif</string>
+				<string>com.local.molstarquicklook10.bcif</string>
+				<string>com.local.molstarquicklook10.sdf</string>
+				<string>com.local.molstarquicklook10.mol</string>
+				<string>com.local.molstarquicklook10.mol2</string>
 				<string>org.wwpdb.pdb</string>
 				<string>org.wwpdb.cif</string>
 				<string>org.wwpdb.mmcif</string>
@@ -74,6 +81,7 @@
 				<string>com.schrodinger.sdf</string>
 				<string>com.local.burrete10.xyz</string>
 				<string>com.local.burrete10.gro</string>
+				<string>com.schrodinger.pdb</string>
 			</array>
 			<key>QLSupportsSearchableItems</key>
 			<false/>
