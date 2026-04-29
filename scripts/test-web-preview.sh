@@ -6,7 +6,35 @@ cd "$ROOT"
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 export npm_config_cache="$ROOT/build/npm-cache"
 
-SAMPLE="${1:-samples/mini.pdb}"
+OPEN_PREVIEW=1
+OUT_DIR=""
+SAMPLE="samples/mini.pdb"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --no-open)
+      OPEN_PREVIEW=0
+      shift
+      ;;
+    --out-dir)
+      OUT_DIR="${2:-}"
+      if [[ -z "$OUT_DIR" ]]; then
+        echo "error: --out-dir requires a path" >&2
+        exit 2
+      fi
+      shift 2
+      ;;
+    -h|--help)
+      echo "usage: $0 [--no-open] [--out-dir DIR] [structure-file]" >&2
+      exit 0
+      ;;
+    *)
+      SAMPLE="$1"
+      shift
+      ;;
+  esac
+done
+
 if [[ ! -f "$SAMPLE" ]]; then
   echo "error: sample not found: $SAMPLE" >&2
   exit 1
@@ -18,7 +46,13 @@ if [[ ! -d node_modules/molstar ]]; then
 fi
 npm run vendor:molstar
 
-TMP="$(mktemp -d "${TMPDIR:-/tmp}/burrete-web.XXXXXX")"
+if [[ -n "$OUT_DIR" ]]; then
+  TMP="$OUT_DIR"
+  rm -rf "$TMP"
+  mkdir -p "$TMP"
+else
+  TMP="$(mktemp -d "${TMPDIR:-/tmp}/burrete-web.XXXXXX")"
+fi
 cp -R PreviewExtension/Web "$TMP/Web"
 
 node - "$SAMPLE" "$TMP/Web/preview-config.js" "$TMP/Web/preview-data.js" <<'JS'
@@ -51,12 +85,84 @@ const config = {
   binary,
   byteCount: data.length,
   transparentBackground: format === 'sdf',
-  sdfGrid: format === 'sdf'
+  sdfGrid: true,
+  showPanelControls: true
 };
 fs.writeFileSync(configOut, 'window.BurreteConfig = ' + JSON.stringify(config, null, 2) + ';\n');
 fs.writeFileSync(dataOut, 'window.BurreteDataBase64 = "' + data.toString('base64') + '";\n');
 console.log(`Wrote preview config/data for ${file} as ${format}`);
 JS
 
-echo "Opening web-only preview in: $TMP/Web/index.html"
-open "$TMP/Web/index.html"
+node - "$SAMPLE" "$TMP/Web/index.html" "$TMP/Web/viewer.js" "$TMP/Web/preview-config.js" "$TMP/Web/preview-data.js" <<'JS'
+const fs = require('fs');
+const path = require('path');
+
+const sample = process.argv[2];
+const indexPath = process.argv[3];
+const viewerPath = process.argv[4];
+const configPath = process.argv[5];
+const dataPath = process.argv[6];
+
+const index = fs.readFileSync(indexPath, 'utf8');
+const viewer = fs.readFileSync(viewerPath, 'utf8');
+const configSource = fs.readFileSync(configPath, 'utf8');
+const dataSource = fs.readFileSync(dataPath, 'utf8');
+const config = JSON.parse(configSource.replace(/^window\.BurreteConfig = /, '').replace(/;\s*$/, ''));
+const ext = path.extname(sample).toLowerCase().slice(1);
+
+function assert(condition, message) {
+  if (!condition) {
+    console.error(`error: ${message}`);
+    process.exit(1);
+  }
+}
+
+assert(index.includes('role="toolbar"'), 'preview HTML must expose a toolbar role');
+assert(index.includes('aria-label="Fit window to screen"'), 'fit button must not be labelled Fullscreen');
+assert(!index.includes('aria-label="Fullscreen"'), 'stale Fullscreen aria-label found');
+assert(!index.includes('title="Fullscreen"'), 'stale Fullscreen title found');
+assert(viewer.includes('window.BurreteConfig'), 'viewer.js must read BurreteConfig');
+assert(dataSource.startsWith('window.BurreteDataBase64 = "'), 'preview data file must define BurreteDataBase64');
+assert(config.label === path.basename(sample), 'config label should match sample basename');
+assert(typeof config.byteCount === 'number' && config.byteCount > 0, 'config byteCount should be positive');
+assert(config.transparentBackground === (config.format === 'sdf'), 'transparent background should default to SDF only');
+assert(config.sdfGrid === true, 'SDF grid flag should be encoded');
+
+const expectedFormats = {
+  pdb: 'pdb',
+  ent: 'pdb',
+  pdbqt: 'pdb',
+  pqr: 'pdb',
+  mmcif: 'mmcif',
+  mcif: 'mmcif',
+  bcif: 'mmcif',
+  sdf: 'sdf',
+  sd: 'sdf',
+  mol: 'mol',
+  mol2: 'mol2',
+  xyz: 'xyz',
+  gro: 'gro'
+};
+if (expectedFormats[ext]) {
+  assert(config.format === expectedFormats[ext], `expected ${ext} to map to ${expectedFormats[ext]}, got ${config.format}`);
+}
+if (ext === 'bcif') {
+  assert(config.binary === true, 'BCIF should be marked binary');
+}
+console.log('Validated web preview contract');
+JS
+
+PREVIEW_URL="$(python3 - "$TMP/Web/index.html" <<'PY'
+import pathlib
+import sys
+
+print(pathlib.Path(sys.argv[1]).resolve().as_uri())
+PY
+)"
+
+if [[ "$OPEN_PREVIEW" == "1" ]]; then
+  echo "Opening web-only preview in: $PREVIEW_URL"
+  open "$PREVIEW_URL"
+else
+  echo "$PREVIEW_URL"
+fi

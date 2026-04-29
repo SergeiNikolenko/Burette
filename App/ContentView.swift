@@ -2,10 +2,10 @@ import AppKit
 import SwiftUI
 
 struct ContentView: View {
-    @AppStorage("openSettingsAtLaunch") private var openSettingsAtLaunch = true
-    @AppStorage("showMenuBarIcon") private var showMenuBarIcon = true
+    @AppStorage("openSettingsAtLaunch") private var openSettingsAtLaunch = false
     @AppStorage("showPreviewPanelControls") private var showPreviewPanelControls = true
     @AppStorage("useTransparentPreviewBackground") private var useTransparentPreviewBackground = true
+    @AppStorage("transparentSDFBackground") private var transparentSDFBackground = true
     @AppStorage("checkUpdatesAutomatically") private var checkUpdatesAutomatically = true
     @AppStorage("updateChannel") private var updateChannelRaw = BurreteUpdateChannel.stable.rawValue
     @StateObject private var updater = BurreteUpdater.shared
@@ -54,11 +54,10 @@ struct ContentView: View {
                     isOn: $openSettingsAtLaunch
                 )
                 SettingsDivider()
-                SettingsToggleRow(
-                    title: "Show menu bar icon",
-                    subtitle: "Burrete runs as a menu bar utility and stays out of the Dock.",
-                    isOn: $showMenuBarIcon,
-                    isDisabled: true
+                SettingsValueRow(
+                    icon: "menubar.rectangle",
+                    title: "Menu bar icon",
+                    subtitle: "Always shown so Settings, logs, cache tools, and Quit remain reachable."
                 )
             }
 
@@ -94,6 +93,14 @@ struct ContentView: View {
                 SettingsDivider()
                 SettingsValueRow(icon: "doc.richtext", title: "Formats", subtitle: "PDB, PDBx/mmCIF, BinaryCIF, SDF, MOL, and MOL2")
                 SettingsDivider()
+                SettingsToggleRow(
+                    title: "Transparent SDF background",
+                    subtitle: "Use a transparent canvas by default for SDF molecule files.",
+                    isOn: $transparentSDFBackground
+                )
+                SettingsDivider()
+                SettingsValueRow(icon: "square.grid.3x3", title: "SDF molecule grid", subtitle: "Multi-record SDF files are laid out as a visible grid when possible.")
+                SettingsDivider()
                 SettingsValueRow(icon: "bolt.horizontal", title: "Performance", subtitle: "Bundled assets, cached runtime previews, and WebGL fallback.")
             }
 
@@ -122,8 +129,8 @@ struct ContentView: View {
                 SettingsDivider()
                 SettingsValueRow(
                     icon: "arrow.up.left.and.arrow.down.right",
-                    title: "Fullscreen control",
-                    subtitle: "The fit button opens a larger viewer with a native window fallback."
+                    title: "Fit control",
+                    subtitle: "The fit button resizes the viewer within the visible screen and can restore its previous size."
                 )
             }
 
@@ -217,8 +224,8 @@ struct ContentView: View {
                     SettingsDivider()
                     SettingsActionRow(
                         icon: "folder",
-                        title: "Reveal Downloaded Update",
-                        subtitle: "Open the downloaded archive in Finder."
+                        title: "Reveal Downloaded Archive",
+                        subtitle: "Open the downloaded archive in Finder. Burrete is not installed automatically."
                     ) {
                         updater.revealDownloadedUpdate()
                     }
@@ -239,7 +246,10 @@ struct ContentView: View {
     private var updateChannelBinding: Binding<BurreteUpdateChannel> {
         Binding(
             get: { updateChannel },
-            set: { updateChannelRaw = $0.rawValue }
+            set: {
+                updateChannelRaw = $0.rawValue
+                updater.clearAvailableRelease()
+            }
         )
     }
 
@@ -290,6 +300,32 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .logs, .updates, .about: return "System"
         }
     }
+
+    var searchTerms: [String] {
+        switch self {
+        case .general:
+            return ["application", "launch", "startup", "menu bar", "icon", "dock", "preview window", "fit"]
+        case .viewer:
+            return ["molstar", "formats", "pdb", "cif", "sdf", "mol", "mol2", "xyz", "gro", "background", "transparent", "grid", "toolbar", "panels", "sequence", "log"]
+        case .files:
+            return ["finder", "default", "double-click", "open with", "quick look", "cache", "file", "extension"]
+        case .logs:
+            return ["diagnostics", "log", "logs", "folder", "clipboard", "path", "troubleshooting"]
+        case .updates:
+            return ["update", "updates", "release", "github", "stable", "beta", "download", "channel"]
+        case .about:
+            return ["about", "version", "release notes", "contact"]
+        }
+    }
+
+    func matchesSearch(_ query: String) -> Bool {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+        let lowercased = trimmed.lowercased()
+        return title.lowercased().contains(lowercased)
+            || (group?.lowercased().contains(lowercased) ?? false)
+            || searchTerms.contains { $0.localizedCaseInsensitiveContains(lowercased) }
+    }
 }
 
 private struct Sidebar: View {
@@ -298,7 +334,7 @@ private struct Sidebar: View {
 
     private var groupedSections: [(String?, [SettingsSection])] {
         var result: [(String?, [SettingsSection])] = []
-        for section in SettingsSection.allCases {
+        for section in SettingsSection.allCases where section.matchesSearch(searchText) {
             if !result.isEmpty, result[result.count - 1].0 == section.group {
                 result[result.count - 1].1.append(section)
             } else {
@@ -367,7 +403,8 @@ private struct SidebarRow: View {
             }
             .foregroundColor(.white)
             .padding(.horizontal, 10)
-            .frame(height: 36)
+            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+            .contentShape(Rectangle())
             .background(isSelected ? SettingsColors.selection : Color.clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -607,7 +644,7 @@ private struct AboutPanel: View {
                 Text("Burrete")
                     .font(.system(size: 34, weight: .bold))
                     .foregroundColor(.white.opacity(0.92))
-                Text("Version 0.10.3")
+                Text("Version 0.10.4")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.white.opacity(0.42))
             }

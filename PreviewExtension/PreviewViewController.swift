@@ -13,9 +13,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private let previewID = String(UUID().uuidString.prefix(8))
     private var hasRenderedTerminationError = false
     private var restoredWindowFrame: NSRect?
+    private var currentViewerPageZoom: CGFloat = 0.86
     private static let showDebugOverlay = false
     private static let verboseLogging = false
-    private static let maxStructureFileSize: Int64 = 75 * 1024 * 1024
+    private static let defaultViewerPageZoom: CGFloat = 0.86
+    private static let minViewerPageZoom: CGFloat = 0.72
+    private static let maxViewerPageZoom: CGFloat = 1.35
 
     deinit {
         renderTimeoutWorkItem?.cancel()
@@ -54,6 +57,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
         webView.navigationDelegate = self
         webView.uiDelegate = self
+        webView.pageZoom = Self.defaultViewerPageZoom
         webView.translatesAutoresizingMaskIntoConstraints = false
         webView.wantsLayer = true
         webView.setValue(false, forKey: "drawsBackground")
@@ -217,8 +221,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         try validateVendoredMolstarAssets(in: webDirectory, fileManager: fileManager, diagnostics: &diagnostics)
 
         let structureSize = try fileSize(for: url, fileManager: fileManager)
-        guard structureSize <= maxStructureFileSize else {
-            throw PreviewError.fileTooLarge(url.lastPathComponent, structureSize, maxStructureFileSize)
+        let sizeLimit = quickLookSizeLimit(for: url)
+        guard structureSize <= sizeLimit else {
+            throw PreviewError.fileTooLarge(url.lastPathComponent, structureSize, sizeLimit)
         }
         let structureData = try Data(contentsOf: url)
         guard !structureData.isEmpty else { throw PreviewError.emptyStructureFile(url.lastPathComponent) }
@@ -370,9 +375,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "quickLookBuild": "v10-product",
             "debug": showDebugOverlay,
             "uiScale": 0.86,
+            "transparentBackground": format.prefersTransparentBackground && preferences.transparentSDFBackground,
+            "sdfGrid": true,
             "showPanelControls": preferences.showPanelControls,
-            "transparentBackground": preferences.transparentBackground,
-            "sdfGrid": format.molstarFormat == "sdf",
             "defaultLayoutState": preferences.defaultLayoutState
         ]
         let jsonData = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes])
@@ -394,6 +399,13 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           <style>
             :root { --buret-viewer-ui-scale: 0.86; }
             html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: transparent; }
+            html.buret-transparent-background,
+            html.buret-transparent-background body,
+            html.buret-transparent-background #app,
+            html.buret-transparent-background .msp-plugin,
+            html.buret-transparent-background .msp-viewport,
+            html.buret-transparent-background .msp-layout-main,
+            html.buret-transparent-background canvas { background: transparent !important; background-color: transparent !important; }
             body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: #f2f2f2; }
             body.burette-opaque-background,
             body.burette-opaque-background #app {
@@ -431,7 +443,6 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
               background: rgba(0, 0, 0, 0.76); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
               font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
               font-size: 11px; font-weight: 500; line-height: 1.35; white-space: pre-wrap; pointer-events: auto;
-              transform: scale(var(--buret-viewer-ui-scale)); transform-origin: top left;
             }
             #status.error { color: #ffd4d4; background: rgba(70, 0, 0, 0.82); }
             #status.hidden { display: none; }
@@ -447,7 +458,6 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 0 8px 22px rgba(0, 0, 0, 0.22),
                 inset 0 1px 0 rgba(255, 255, 255, 0.06);
               user-select: none; touch-action: none;
-              transform: scale(var(--buret-viewer-ui-scale)); transform-origin: top right;
             }
             .buret-button {
               min-width: 26px; height: 26px; border: 0; border-radius: 7px; padding: 0 7px;
@@ -522,7 +532,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             <button class="buret-button buret-grip" type="button" data-drag-handle aria-label="Move controls" title="Move controls">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h2v2H8V5Zm6 0h2v2h-2V5ZM8 11h2v2H8v-2Zm6 0h2v2h-2v-2ZM8 17h2v2H8v-2Zm6 0h2v2h-2v-2Z" fill="currentColor"/></svg>
             </button>
-            <button class="buret-button" type="button" data-buret-action="fit" aria-label="Fullscreen" title="Fullscreen">
+            <button class="buret-button" type="button" data-buret-action="fit" aria-label="Fit window to screen" title="Fit window to screen">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5v2H7.4l3.2 3.2-1.4 1.4L6 7.4V9H4Zm11-5h5v5h-2V7.4l-3.2 3.2-1.4-1.4L16.6 6H15V4ZM9.2 13.4l1.4 1.4L7.4 18H9v2H4v-5h2v1.6l3.2-3.2Zm5.6 0 3.2 3.2V15h2v5h-5v-2h1.6l-3.2-3.2 1.4-1.4Z" fill="currentColor"/></svg>
             </button>
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel">L</button>
@@ -599,11 +609,29 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         throw PreviewError.ubiquitousFileNotDownloaded(url.lastPathComponent)
     }
 
+    private static func quickLookSizeLimit(for url: URL) -> Int64 {
+        let mib: Int64 = 1024 * 1024
+        switch url.pathExtension.lowercased() {
+        case "pdb", "ent", "pdbqt", "pqr":
+            return 35 * mib
+        case "cif", "mmcif", "mcif":
+            return 40 * mib
+        case "bcif":
+            return 50 * mib
+        case "sdf", "sd", "mol", "mol2", "xyz", "gro":
+            return 25 * mib
+        default:
+            return 20 * mib
+        }
+    }
+
     private func scheduleRenderTimeout(for requestID: UUID) {
         renderTimeoutWorkItem?.cancel()
         let workItem = DispatchWorkItem { [weak self] in
-            self?.appendLog("render timeout waiting for JS ready")
-            self?.finishPreviewIfNeeded(PreviewError.webRenderTimedOut, requestID: requestID)
+            guard let self else { return }
+            self.appendLog("render timeout waiting for JS ready")
+            self.renderNativeError(PreviewError.webRenderTimedOut, fileURL: nil)
+            self.finishPreviewIfNeeded(nil, requestID: requestID)
         }
         renderTimeoutWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: workItem)
@@ -669,11 +697,15 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 handleJavaScriptAction(text)
                 return
             }
+            if type == "viewerZoom", let value = body["value"] as? NSNumber {
+                setViewerPageZoom(CGFloat(value.doubleValue))
+                return
+            }
             appendLog("JS message type=\(type): \(text.prefix(1600))")
             if type == "ready" {
                 finishPreviewIfNeeded(nil, requestID: activePreviewRequestID)
             } else if type == "error" {
-                finishPreviewIfNeeded(PreviewError.webRenderFailed(text), requestID: activePreviewRequestID)
+                finishPreviewIfNeeded(nil, requestID: activePreviewRequestID)
             }
             if Self.showDebugOverlay || type == "error" {
                 statusLabel.isHidden = false
@@ -691,6 +723,17 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             toggleFitToScreen()
         default:
             appendLog("unknown JS action=\(action)")
+        }
+    }
+
+    private func setViewerPageZoom(_ scale: CGFloat) {
+        let clamped = min(max(scale, Self.minViewerPageZoom), Self.maxViewerPageZoom)
+        guard abs(currentViewerPageZoom - clamped) > 0.001 else { return }
+        currentViewerPageZoom = clamped
+        webView.pageZoom = clamped
+        appendLog("viewer pageZoom=\(String(format: "%.2f", Double(clamped)))")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            self?.webView.evaluateJavaScript("window.BurreteHandleResize && window.BurreteHandleResize();", completionHandler: nil)
         }
     }
 
@@ -932,6 +975,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 private struct StructureFormat {
     let molstarFormat: String
     let isBinary: Bool
+    var prefersTransparentBackground: Bool { molstarFormat == "sdf" }
 
     init(url: URL, data: Data) {
         let ext = url.pathExtension.lowercased()
@@ -1007,15 +1051,18 @@ private struct StructureFormat {
 private struct PreviewPreferences {
     let showPanelControls: Bool
     let transparentBackground: Bool
+    let transparentSDFBackground: Bool
     let defaultLayoutState: [String: String]
 
     static func load() -> PreviewPreferences {
         let appID = "com.local.BurreteV10" as CFString
         let showPanelControls = (CFPreferencesCopyAppValue("showPreviewPanelControls" as CFString, appID) as? Bool) ?? true
         let transparentBackground = (CFPreferencesCopyAppValue("useTransparentPreviewBackground" as CFString, appID) as? Bool) ?? true
+        let transparentSDFBackground = (CFPreferencesCopyAppValue("transparentSDFBackground" as CFString, appID) as? Bool) ?? true
         return PreviewPreferences(
             showPanelControls: showPanelControls,
             transparentBackground: transparentBackground,
+            transparentSDFBackground: transparentSDFBackground,
             defaultLayoutState: [
                 "left": "collapsed",
                 "right": "hidden",
@@ -1049,9 +1096,9 @@ private enum PreviewError: LocalizedError {
         case .emptyStructureFile(let name):
             return "The structure file is empty or not downloaded locally: \(name)"
         case .fileTooLarge(let name, let size, let limit):
-            return "\(name) is too large for Quick Look preview (\(size) bytes; limit \(limit) bytes). Open it in a dedicated molecular viewer."
+            return "\(name) is too large for Quick Look preview (\(size) bytes; limit \(limit) bytes). Open it in the Burrete app viewer or use a smaller file."
         case .ubiquitousFileNotDownloaded(let name):
-            return "\(name) is not downloaded locally. Download the file first, then open Quick Look again."
+            return "\(name) is in iCloud and is not downloaded locally. Download it in Finder, then open Quick Look again."
         case .webRenderFailed(let message):
             return "Mol* web rendering failed: \(message)"
         case .webRenderTimedOut:
