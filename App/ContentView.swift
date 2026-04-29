@@ -5,6 +5,9 @@ struct ContentView: View {
     @AppStorage("openSettingsAtLaunch") private var openSettingsAtLaunch = true
     @AppStorage("showMenuBarIcon") private var showMenuBarIcon = true
     @AppStorage("showPreviewPanelControls") private var showPreviewPanelControls = false
+    @AppStorage("checkUpdatesAutomatically") private var checkUpdatesAutomatically = true
+    @AppStorage("updateChannel") private var updateChannelRaw = BurreteUpdateChannel.stable.rawValue
+    @StateObject private var updater = BurreteUpdater.shared
     @State private var section: SettingsSection = .general
     @State private var defaultOpenStatus = BurreteFileAssociations.defaultHandlerSummary
 
@@ -168,9 +171,60 @@ struct ContentView: View {
 
             SettingsFootnote("Quick Look debug UI is hidden by default. Logs stay available here for troubleshooting.")
 
+        case .updates:
+            SettingsSectionTitle("Delivery")
+            SettingsCard {
+                SettingsToggleRow(
+                    title: "Check for updates automatically",
+                    subtitle: "Burrete checks GitHub Releases in the background at most twice a day.",
+                    isOn: $checkUpdatesAutomatically
+                )
+                SettingsDivider()
+                SettingsPickerRow(
+                    icon: "arrow.triangle.2.circlepath",
+                    title: "Update Channel",
+                    subtitle: updateChannel.description,
+                    selection: updateChannelBinding
+                )
+                SettingsDivider()
+                SettingsActionRow(
+                    icon: updater.availableRelease == nil ? "magnifyingglass" : "square.and.arrow.down",
+                    title: updater.primaryActionTitle,
+                    subtitle: updater.statusText,
+                    isDisabled: updater.isChecking || updater.isDownloading
+                ) {
+                    Task {
+                        await updater.runPrimaryAction(channel: updateChannel)
+                    }
+                }
+                if updater.downloadedFileURL != nil {
+                    SettingsDivider()
+                    SettingsActionRow(
+                        icon: "folder",
+                        title: "Reveal Downloaded Update",
+                        subtitle: "Open the downloaded archive in Finder."
+                    ) {
+                        updater.revealDownloadedUpdate()
+                    }
+                }
+            }
+
+            SettingsFootnote("Updates are read from github.com/\(BurreteUpdateRepository.ownerAndName). Archives are downloaded into Burrete Application Support before Finder reveals them.")
+
         case .about:
             AboutPanel()
         }
+    }
+
+    private var updateChannel: BurreteUpdateChannel {
+        BurreteUpdateChannel(rawValue: updateChannelRaw) ?? .stable
+    }
+
+    private var updateChannelBinding: Binding<BurreteUpdateChannel> {
+        Binding(
+            get: { updateChannel },
+            set: { updateChannelRaw = $0.rawValue }
+        )
     }
 
     private func run(_ executable: String, arguments: [String]) {
@@ -186,6 +240,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
     case viewer
     case files
     case logs
+    case updates
     case about
 
     var id: String { rawValue }
@@ -196,6 +251,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .viewer: return "Viewer"
         case .files: return "Files"
         case .logs: return "Logs"
+        case .updates: return "Updates"
         case .about: return "About"
         }
     }
@@ -206,6 +262,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .viewer: return "atom"
         case .files: return "folder"
         case .logs: return "doc.text.magnifyingglass"
+        case .updates: return "arrow.triangle.2.circlepath"
         case .about: return "info.circle"
         }
     }
@@ -214,7 +271,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .general: return nil
         case .viewer, .files: return "Features"
-        case .logs, .about: return "System"
+        case .logs, .updates, .about: return "System"
         }
     }
 }
@@ -415,10 +472,51 @@ private struct SettingsValueRow: View {
     }
 }
 
+private struct SettingsPickerRow: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+    @Binding var selection: BurreteUpdateChannel
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .semibold))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundColor(.white.opacity(0.82))
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.9))
+                Text(subtitle)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(0.48))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 12)
+
+            Picker("", selection: $selection) {
+                ForEach(BurreteUpdateChannel.allCases) { channel in
+                    Text(channel.title).tag(channel)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .frame(width: 150)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+}
+
 private struct SettingsActionRow: View {
     let icon: String
     let title: String
     let subtitle: String
+    var isDisabled = false
     let action: () -> Void
 
     var body: some View {
@@ -446,11 +544,13 @@ private struct SettingsActionRow: View {
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.white.opacity(0.24))
             }
+            .opacity(isDisabled ? 0.55 : 1)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(isDisabled)
     }
 }
 
