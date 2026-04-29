@@ -477,7 +477,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             <button class="buret-button" type="button" data-buret-action="fit" aria-label="Fullscreen" title="Fullscreen">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5v2H7.4l3.2 3.2-1.4 1.4L6 7.4V9H4Zm11-5h5v5h-2V7.4l-3.2 3.2-1.4-1.4L16.6 6H15V4ZM9.2 13.4l1.4 1.4L7.4 18H9v2H4v-5h2v1.6l3.2-3.2Zm5.6 0 3.2 3.2V15h2v5h-5v-2h1.6l-3.2-3.2 1.4-1.4Z" fill="currentColor"/></svg>
             </button>
-            <button class="buret-button buret-panel-toggle active" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel">L</button>
+            <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel">L</button>
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle right panel">R</button>
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq</button>
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel">Log</button>
