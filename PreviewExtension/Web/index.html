@@ -6,9 +6,37 @@
   <title>Burrete Preview</title>
   <link rel="stylesheet" href="./molstar.css" />
   <style>
-    html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: #111317; }
+    html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: transparent; }
     body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: #f2f2f2; }
+    body.burette-opaque-background,
+    body.burette-opaque-background #app {
+      background: #111317;
+    }
     #app { position: absolute; inset: 0; }
+    body.burette-transparent-background .msp-plugin,
+    body.burette-transparent-background .msp-plugin .msp-viewport,
+    body.burette-transparent-background .msp-plugin .msp-layout-viewport,
+    body.burette-transparent-background .msp-plugin .msp-plugin-content {
+      background: transparent !important;
+    }
+    body.burette-transparent-background .msp-plugin canvas {
+      background: transparent !important;
+    }
+    body.burette-opaque-background .msp-plugin,
+    body.burette-opaque-background .msp-plugin .msp-viewport,
+    body.burette-opaque-background .msp-plugin .msp-layout-viewport,
+    body.burette-opaque-background .msp-plugin .msp-plugin-content,
+    body.burette-opaque-background .msp-plugin canvas {
+      background: #111317 !important;
+    }
+    body.burette-transparent-background .msp-plugin .msp-layout-left,
+    body.burette-transparent-background .msp-plugin .msp-layout-right,
+    body.burette-transparent-background .msp-plugin .msp-layout-top,
+    body.burette-transparent-background .msp-plugin .msp-layout-bottom {
+      background: rgba(238, 236, 231, 0.72) !important;
+      -webkit-backdrop-filter: blur(14px);
+      backdrop-filter: blur(14px);
+    }
     #status {
       position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
       z-index: 2147483647; max-width: min(820px, calc(100vw - 48px)); max-height: calc(100vh - 48px); overflow: auto;

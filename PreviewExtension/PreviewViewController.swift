@@ -24,9 +24,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     override func loadView() {
+        let transparentBackground = PreviewPreferences.load().transparentBackground
         let container = NSView(frame: .zero)
         container.wantsLayer = true
-        container.layer?.backgroundColor = NSColor(calibratedWhite: 0.055, alpha: 1.0).cgColor
+        container.layer?.backgroundColor = (transparentBackground ? NSColor.clear : NSColor(calibratedWhite: 0.055, alpha: 1.0)).cgColor
 
         let userContentController = WKUserContentController()
         userContentController.add(self, name: "burrete")
@@ -55,7 +56,11 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         webView.uiDelegate = self
         webView.translatesAutoresizingMaskIntoConstraints = false
         webView.wantsLayer = true
-        webView.layer?.backgroundColor = NSColor(calibratedWhite: 0.055, alpha: 1.0).cgColor
+        webView.setValue(false, forKey: "drawsBackground")
+        webView.layer?.backgroundColor = (transparentBackground ? NSColor.clear : NSColor(calibratedWhite: 0.055, alpha: 1.0)).cgColor
+        if #available(macOS 11.0, *) {
+            webView.underPageBackgroundColor = transparentBackground ? .clear : NSColor(calibratedWhite: 0.055, alpha: 1.0)
+        }
         container.addSubview(webView)
 
         let label = NSTextField(labelWithString: "Burrete debug boot...")
@@ -222,16 +227,17 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let format = StructureFormat(url: url, data: structureData)
         diag("detected.format=\(format.molstarFormat) binary=\(format.isBinary)")
 
+        let preferences = PreviewPreferences.load()
         let configJSON = try previewConfigJSON(
             format: format,
             label: url.lastPathComponent,
             byteCount: structureData.count,
-            preferences: PreviewPreferences.load()
+            preferences: preferences
         )
         let base64 = structureData.base64EncodedString(options: [])
         diag("structure.base64.chars=\(base64.count)")
 
-        let html = inlineHTML(title: url.lastPathComponent)
+        let html = inlineHTML(title: url.lastPathComponent, preferences: preferences)
         diag("inlineHTML.bytes=\(html.utf8.count)")
         let runtimePreview = try createRuntimePreview(
             bundledWebDirectory: webDirectory,
@@ -365,6 +371,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "debug": showDebugOverlay,
             "uiScale": 0.86,
             "showPanelControls": preferences.showPanelControls,
+            "transparentBackground": preferences.transparentBackground,
             "defaultLayoutState": preferences.defaultLayoutState
         ]
         let jsonData = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes])
@@ -372,8 +379,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         return json
     }
 
-    private static func inlineHTML(title: String) -> String {
+    private static func inlineHTML(title: String, preferences: PreviewPreferences) -> String {
         let safeTitle = escapeHTML(title)
+        let backgroundClass = preferences.transparentBackground ? "burette-transparent-background" : "burette-opaque-background"
         return """
         <!doctype html>
         <html lang="en">
@@ -384,9 +392,37 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           <link rel="stylesheet" href="../assets/molstar.css" />
           <style>
             :root { --buret-viewer-ui-scale: 0.86; }
-            html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: #111317; }
+            html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: transparent; }
             body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: #f2f2f2; }
+            body.burette-opaque-background,
+            body.burette-opaque-background #app {
+              background: #111317;
+            }
             #app { position: absolute; inset: 0; }
+            body.burette-transparent-background .msp-plugin,
+            body.burette-transparent-background .msp-plugin .msp-viewport,
+            body.burette-transparent-background .msp-plugin .msp-layout-viewport,
+            body.burette-transparent-background .msp-plugin .msp-plugin-content {
+              background: transparent !important;
+            }
+            body.burette-transparent-background .msp-plugin canvas {
+              background: transparent !important;
+            }
+            body.burette-opaque-background .msp-plugin,
+            body.burette-opaque-background .msp-plugin .msp-viewport,
+            body.burette-opaque-background .msp-plugin .msp-layout-viewport,
+            body.burette-opaque-background .msp-plugin .msp-plugin-content,
+            body.burette-opaque-background .msp-plugin canvas {
+              background: #111317 !important;
+            }
+            body.burette-transparent-background .msp-plugin .msp-layout-left,
+            body.burette-transparent-background .msp-plugin .msp-layout-right,
+            body.burette-transparent-background .msp-plugin .msp-layout-top,
+            body.burette-transparent-background .msp-plugin .msp-layout-bottom {
+              background: rgba(238, 236, 231, 0.72) !important;
+              -webkit-backdrop-filter: blur(14px);
+              backdrop-filter: blur(14px);
+            }
             #status {
               position: absolute; left: 12px; top: 12px;
               z-index: 2147483647; max-width: min(880px, calc(100vw - 32px)); max-height: calc(50vh - 32px); overflow: auto;
@@ -479,7 +515,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             })();
           </script>
         </head>
-        <body>
+        <body class="\(backgroundClass)">
           <div id="app"></div>
           <div id="buret-toolbar" role="toolbar" aria-label="Burrete preview controls">
             <button class="buret-button buret-grip" type="button" data-drag-handle aria-label="Move controls" title="Move controls">
@@ -969,13 +1005,16 @@ private struct StructureFormat {
 
 private struct PreviewPreferences {
     let showPanelControls: Bool
+    let transparentBackground: Bool
     let defaultLayoutState: [String: String]
 
     static func load() -> PreviewPreferences {
         let appID = "com.local.BurreteV10" as CFString
         let showPanelControls = (CFPreferencesCopyAppValue("showPreviewPanelControls" as CFString, appID) as? Bool) ?? true
+        let transparentBackground = (CFPreferencesCopyAppValue("useTransparentPreviewBackground" as CFString, appID) as? Bool) ?? true
         return PreviewPreferences(
             showPanelControls: showPanelControls,
+            transparentBackground: transparentBackground,
             defaultLayoutState: [
                 "left": "collapsed",
                 "right": "hidden",
