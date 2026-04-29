@@ -3,7 +3,7 @@
 <p align="center">Finder-native molecular structure previews for macOS, powered by Mol*.</p>
 
 <p align="center">
-  <img alt="Version 0.10.3" src="https://img.shields.io/badge/version-0.10.3-0f8f72.svg?style=flat-square" />
+  <img alt="Version 0.10.4" src="https://img.shields.io/badge/version-0.10.4-0f8f72.svg?style=flat-square" />
   <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-yellow.svg?style=flat-square" /></a>
   <img alt="macOS 12+" src="https://img.shields.io/badge/macOS-12%2B-blue.svg?style=flat-square" />
   <img alt="Quick Look" src="https://img.shields.io/badge/Quick%20Look-extension-57606a.svg?style=flat-square" />
@@ -14,11 +14,69 @@
   <img src="docs/public/burrete-quick-look-preview.png" alt="Burrete Quick Look preview of 1HTB.pdb" width="90%" />
 </p>
 
-## Quick Start
+## What Is Burrete?
 
-Burrete is a macOS menu bar app plus a Quick Look Preview Extension for molecular
-structure files. It renders structures directly in Finder previews and keeps the
-main app out of the Dock.
+Burrete is a small macOS app that lets Finder preview molecular structure files.
+Select a structure file, press Space, and Burrete shows an interactive Mol*
+viewer directly inside the native Quick Look window.
+
+It is useful when you want to inspect structures quickly without opening a full
+molecular modeling environment.
+
+## Download
+
+The easiest way to install Burrete is from the GitHub Releases page:
+
+[Download the latest Burrete release](https://github.com/SergeiNikolenko/Burette/releases/latest)
+
+1. Open the latest release.
+2. Download the `Burrete-<version>.zip` file.
+3. Unzip it.
+4. Move `Burrete.app` to your `Applications` folder.
+5. Open Burrete once from `Applications`.
+
+After that, use Finder as usual: select a supported molecular structure file and
+press Space to preview it.
+
+## Supported Files
+
+Burrete supports common molecular structure formats:
+
+- PDB and PDBQT
+- PDBx/mmCIF and BinaryCIF
+- SDF, MOL, and MOL2
+- XYZ and GRO
+
+Double-clicking a supported file can open it in Burrete. Pressing Space keeps
+using the Quick Look preview.
+
+## Preview Features
+
+Burrete keeps the preview compact and Finder-friendly:
+
+- interactive 3D molecular structures powered by Mol*
+- protein ribbons and ligands in the same scene
+- a transparent Quick Look background that fits the macOS preview frame
+- a small floating toolbar for fullscreen and optional Mol* panels
+- optional sequence, log, left, and right Mol* panels when you need them
+
+## Settings
+
+Burrete runs as a menu bar app. Its settings window includes:
+
+- launch and menu bar behavior
+- transparent or opaque preview background
+- default visibility for Mol* panels
+- Finder file association registration
+- preview cache cleanup
+- log access
+- update checks for stable and beta GitHub Releases
+
+## Build From Source
+
+Most users should download Burrete from
+[GitHub Releases](https://github.com/SergeiNikolenko/Burette/releases/latest).
+If you want to build it yourself, clone the repository and run:
 
 ```bash
 ./scripts/doctor.sh
@@ -26,132 +84,10 @@ main app out of the Dock.
 ./scripts/install.sh
 ```
 
-The installer writes the app to:
+The local installer places the app here:
 
 ```text
 ~/Applications/Burrete.app
-```
-
-After installing or replacing the app, refresh Quick Look:
-
-```bash
-qlmanage -r
-qlmanage -r cache
-killall quicklookd 2>/dev/null || true
-```
-
-## Preview Experience
-
-Burrete turns a structure file such as `1HTB.pdb` into a native Quick Look
-preview with an `Open with Burrete` action in the title bar. The preview uses a
-transparent Quick Look background by default, so the Mol* canvas sits naturally
-inside the macOS glass frame instead of looking like a separate web page.
-
-The bundled Mol* viewer is configured for compact Finder use:
-
-- protein structures render as interactive 3D ribbons and ligands are visible in
-  the same scene
-- sequence, log, left, and right Mol* panels stay hidden until requested
-- the floating toolbar can be dragged away from molecule controls
-- the toolbar exposes fullscreen plus `L`, `R`, `Seq`, and `Log` panel toggles
-- the standalone app viewer shares the same runtime assets and preview settings
-
-## Supported Inputs
-
-Burrete supports common structure formats used in molecular modeling:
-
-- PDB and PDBQT
-- PDBx/mmCIF and BinaryCIF
-- SDF, MOL, MOL2
-- XYZ and GRO
-
-Finder double-click can open supported structures in Burrete, while Space keeps
-using the Quick Look extension.
-
-## Settings
-
-The menu bar settings window includes:
-
-- application launch and menu bar behavior
-- transparent or opaque preview background
-- default visibility for Mol* panel toggles
-- Finder file association registration
-- preview cache cleanup
-- log access
-- GitHub Releases update checks with stable and beta channels
-
-The Quick Look extension bundle identifier is:
-
-```text
-com.local.BurreteV10.Preview
-```
-
-Keeping the extension identifier stable avoids stale Quick Look registration
-conflicts while the product name stays Burrete.
-
-## Common Commands
-
-```bash
-# Build and install locally
-./scripts/build.sh
-./scripts/install.sh
-
-# Force Quick Look to preview a sample
-./scripts/force-preview.sh samples/mini.pdb
-./scripts/force-preview.sh samples/mini.cif
-
-# Preview a real desktop file
-./scripts/force-preview.sh ~/Desktop/1HTB.pdb
-
-# Inspect runtime logs
-./scripts/tail-log.sh
-
-# Refresh vendored Mol* assets
-npm ci --ignore-scripts
-npm run vendor:molstar
-```
-
-## CI And Releases
-
-Pull requests run the full CI workflow on macOS: npm dependency restore, release
-version checks, JavaScript syntax checks, plist linting, and a local Xcode build.
-Every PR intended for merge must bump `package.json`, `package-lock.json`,
-`MARKETING_VERSION`, and the visible About version together.
-
-Merging to `main` builds the app and publishes a GitHub Release tagged with the
-same package version. If the tag already exists, the release workflow fails so
-the next PR cannot overwrite an existing release.
-
-Local hooks use lefthook:
-
-```bash
-npm ci --ignore-scripts
-npm run prepare
-```
-
-Forced preview content types:
-
-```text
-com.local.burrete10.pdb
-com.local.burrete10.cif
-```
-
-## Runtime Files
-
-Quick Look previews are generated under the extension container cache. Burrete
-keeps Mol* assets shared and writes per-preview runtime HTML/data files for
-repeatable WebKit loading.
-
-Primary log path:
-
-```text
-~/Library/Containers/com.local.BurreteV10.Preview/Data/Library/Caches/Burrete/Burrete.log
-```
-
-Preview cache:
-
-```text
-~/Library/Containers/com.local.BurreteV10.Preview/Data/Library/Caches/Burrete/previews
 ```
 
 ## License
