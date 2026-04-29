@@ -325,11 +325,14 @@
       if (raw && version === TOOLBAR_POSITION_VERSION) {
         const saved = JSON.parse(raw);
         if (Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
-          toolbar.style.left = saved.left + 'px';
-          toolbar.style.top = saved.top + 'px';
-          toolbar.style.right = 'auto';
-          toolbar.dataset.defaultPosition = '0';
-          hasSavedPosition = true;
+          const savedDefaultCorner = saved.left <= TOOLBAR_MARGIN + 4 && saved.top <= TOOLBAR_MARGIN + 4;
+          if (!savedDefaultCorner) {
+            toolbar.style.left = saved.left + 'px';
+            toolbar.style.top = saved.top + 'px';
+            toolbar.style.right = 'auto';
+            toolbar.dataset.defaultPosition = '0';
+            hasSavedPosition = true;
+          }
         }
       } else if (raw) {
         window.localStorage && window.localStorage.removeItem('buret.toolbar.position');
@@ -392,7 +395,13 @@
   function applyDefaultToolbarPosition(toolbar) {
     const main = document.querySelector('.msp-plugin .msp-layout-main');
     const rect = main && main.getBoundingClientRect();
-    const left = rect && rect.width > 0 ? rect.left + TOOLBAR_MARGIN : TOOLBAR_MARGIN;
+    const leftPanel = document.querySelector('.msp-plugin .msp-layout-left');
+    const leftPanelRect = leftPanel && leftPanel.getBoundingClientRect();
+    const leftPanelVisible = leftPanelRect &&
+      leftPanelRect.width > 0 &&
+      leftPanelRect.height > 0 &&
+      window.getComputedStyle(leftPanel).display !== 'none';
+    const left = leftPanelVisible ? leftPanelRect.right + TOOLBAR_MARGIN : (rect && rect.width > 0 ? rect.left + TOOLBAR_MARGIN : TOOLBAR_MARGIN);
     const top = rect && rect.height > 0 ? rect.top + TOOLBAR_MARGIN : TOOLBAR_MARGIN;
     toolbar.dataset.defaultPosition = '1';
     moveToolbar(toolbar, left, top);
