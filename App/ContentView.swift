@@ -443,7 +443,9 @@ private struct SidebarRow: View {
             .foregroundStyle(isSelected ? .primary : .secondary)
             .padding(.horizontal, 8)
             .frame(height: 28)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(isSelected ? SettingsColors.selection : Color.clear, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -512,27 +514,35 @@ private struct SettingsToggleRow: View {
     var isDisabled = false
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(isDisabled ? .tertiary : .primary)
-                Text(subtitle)
-                    .font(.system(size: 11, weight: .regular))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+        Button {
+            isOn.toggle()
+        } label: {
+            HStack(alignment: .center, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(isDisabled ? .tertiary : .primary)
+                    Text(subtitle)
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 10)
+
+                Toggle("", isOn: $isOn)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .allowsHitTesting(false)
             }
-
-            Spacer(minLength: 10)
-
-            Toggle("", isOn: $isOn)
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                .disabled(isDisabled)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
     }
 }
 
@@ -574,37 +584,46 @@ private struct SettingsPickerRow: View {
     @Binding var selection: BurreteUpdateChannel
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            Image(systemName: icon)
-                .font(.system(size: 13, weight: .medium))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.secondary)
-                .frame(width: 18)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.primary)
-                Text(subtitle)
-                    .font(.system(size: 11, weight: .regular))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer(minLength: 10)
-
-            Picker("", selection: $selection) {
-                ForEach(BurreteUpdateChannel.allCases) { channel in
-                    Text(channel.title).tag(channel)
+        Menu {
+            ForEach(BurreteUpdateChannel.allCases) { channel in
+                Button(channel.title) {
+                    selection = channel
                 }
             }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .controlSize(.small)
-            .frame(width: 128)
+        } label: {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .medium))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.primary)
+                    Text(subtitle)
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 10)
+
+                Text(selection.title)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(.secondary)
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
+        .buttonStyle(.plain)
     }
 }
 
@@ -616,36 +635,50 @@ private struct SettingsStringPickerRow: View {
     let options: [(value: String, title: String)]
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 15, weight: .semibold))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundColor(.white.opacity(0.82))
-                .frame(width: 24)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.9))
-                Text(subtitle)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.white.opacity(0.48))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer(minLength: 12)
-
-            Picker("", selection: $selection) {
-                ForEach(options, id: \.value) { option in
-                    Text(option.title).tag(option.value)
+        Menu {
+            ForEach(options, id: \.value) { option in
+                Button(option.title) {
+                    selection = option.value
                 }
             }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .frame(width: 150)
+        } label: {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .medium))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.primary)
+                    Text(subtitle)
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 10)
+
+                Text(selectedTitle)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(.secondary)
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .buttonStyle(.plain)
+    }
+
+    private var selectedTitle: String {
+        options.first { $0.value == selection }?.title ?? selection
     }
 }
 
@@ -684,6 +717,7 @@ private struct SettingsActionRow: View {
             .opacity(isDisabled ? 0.55 : 1)
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -728,7 +762,7 @@ private struct AboutPanel: View {
                 Text("Burrete")
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundStyle(.primary)
-                Text("Version 0.10.7")
+                Text("Version 0.10.8")
                     .font(.system(size: 12, weight: .regular))
                     .foregroundStyle(.secondary)
             }
