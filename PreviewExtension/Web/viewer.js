@@ -2,6 +2,10 @@
   'use strict';
 
   const status = document.getElementById('status');
+  const MAX_SDF_GRID_MOLECULES = 64;
+  const MAX_SDF_GRID_ATOMS = 900;
+  const MAX_SDF_GRID_BONDS = 900;
+  const SDF_GRID_PADDING = 4.0;
   try { window.__mqlDebug && window.__mqlDebug('[viewer.js] top-level IIFE entered; readyState=' + document.readyState); } catch (_) {}
 
   function post(type, message) {
@@ -394,12 +398,180 @@
         label: `${config.label || 'structure'} (core-CIF asymmetric unit)`
       };
     }
+    if (normalized === 'sdf') {
+      return prepareSdfStructure(rawStructureData({ ...config, binary: false }), config);
+    }
 
     return {
       data: rawStructureData(config),
       format: normalized,
       label: config.label || 'structure'
     };
+  }
+
+  function prepareSdfStructure(text, config) {
+    const label = config.label || 'structure';
+    const records = splitSdfRecords(text);
+    if (records.length <= 1 || config.sdfGrid !== true) {
+      return { data: text, format: 'sdf', label, loadPreset: records.length > 1 ? 'all-models' : 'default' };
+    }
+
+    const grid = buildSdfGrid(records, label);
+    if (grid) return grid;
+    return { data: text, format: 'sdf', label: `${label} (${records.length} molecules)`, loadPreset: 'all-models' };
+  }
+
+  function splitSdfRecords(text) {
+    return String(text || '')
+      .split(/\$\$\$\$\s*(?:\r?\n|$)/u)
+      .map(record => record.replace(/\s+$/u, ''))
+      .filter(record => record.trim().length > 0);
+  }
+
+  function buildSdfGrid(records, label) {
+    const molecules = [];
+    let atomTotal = 0;
+    let bondTotal = 0;
+
+    for (const record of records) {
+      if (molecules.length >= MAX_SDF_GRID_MOLECULES) break;
+      const molecule = parseV2000SdfRecord(record);
+      if (!molecule) continue;
+      if (atomTotal + molecule.atoms.length > MAX_SDF_GRID_ATOMS || bondTotal + molecule.bonds.length > MAX_SDF_GRID_BONDS) break;
+      molecules.push(molecule);
+      atomTotal += molecule.atoms.length;
+      bondTotal += molecule.bonds.length;
+    }
+    if (molecules.length < 2 || atomTotal < 1) return null;
+
+    const columns = Math.ceil(Math.sqrt(molecules.length));
+    const cellWidth = Math.max(2, ...molecules.map(m => Math.max(2, m.width))) + SDF_GRID_PADDING;
+    const cellHeight = Math.max(2, ...molecules.map(m => Math.max(2, m.height))) + SDF_GRID_PADDING;
+    const output = [
+      label,
+      'Burrete SDF grid',
+      `${molecules.length} of ${records.length} molecules`
+    ];
+    output.push(formatSdfCountsLine(atomTotal, bondTotal));
+
+    const bondLines = [];
+    let atomOffset = 0;
+    molecules.forEach((molecule, index) => {
+      const col = index % columns;
+      const row = Math.floor(index / columns);
+      const centerX = col * cellWidth;
+      const centerY = -row * cellHeight;
+      for (const atom of molecule.atoms) {
+        output.push(formatSdfAtomLine(atom, atom.x - molecule.centerX + centerX, atom.y - molecule.centerY + centerY, atom.z));
+      }
+      for (const bond of molecule.bonds) {
+        bondLines.push(formatSdfBondLine(bond, atomOffset));
+      }
+      atomOffset += molecule.atoms.length;
+    });
+
+    output.push(...bondLines, 'M  END', '$$$$', '');
+    return {
+      data: output.join('\n'),
+      format: 'sdf',
+      label: `${label} (grid: ${molecules.length} of ${records.length} molecules)`
+    };
+  }
+
+  function parseV2000SdfRecord(record) {
+    const lines = String(record || '').replace(/\r\n?/gu, '\n').split('\n');
+    if (lines.length < 4 || !/V2000/u.test(lines[3])) return null;
+    const atomCount = parseInt(lines[3].slice(0, 3), 10);
+    const bondCount = parseInt(lines[3].slice(3, 6), 10);
+    if (!Number.isFinite(atomCount) || !Number.isFinite(bondCount) || atomCount < 1 || bondCount < 0) return null;
+    if (lines.length < 4 + atomCount + bondCount) return null;
+
+    const atoms = [];
+    for (let i = 0; i < atomCount; i++) {
+      const atom = parseSdfAtomLine(lines[4 + i]);
+      if (!atom) return null;
+      atoms.push(atom);
+    }
+
+    const bonds = [];
+    for (let i = 0; i < bondCount; i++) {
+      const bond = parseSdfBondLine(lines[4 + atomCount + i]);
+      if (!bond) return null;
+      bonds.push(bond);
+    }
+
+    const xs = atoms.map(atom => atom.x);
+    const ys = atoms.map(atom => atom.y);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    return {
+      atoms,
+      bonds,
+      centerX: (minX + maxX) / 2,
+      centerY: (minY + maxY) / 2,
+      width: maxX - minX,
+      height: maxY - minY
+    };
+  }
+
+  function parseSdfAtomLine(line) {
+    const fixed = {
+      x: Number(line.slice(0, 10)),
+      y: Number(line.slice(10, 20)),
+      z: Number(line.slice(20, 30)),
+      element: line.slice(31, 34).trim()
+    };
+    if (Number.isFinite(fixed.x) && Number.isFinite(fixed.y) && Number.isFinite(fixed.z) && fixed.element) return fixed;
+
+    const parts = line.trim().split(/\s+/u);
+    if (parts.length < 4) return null;
+    const atom = { x: Number(parts[0]), y: Number(parts[1]), z: Number(parts[2]), element: parts[3] };
+    return Number.isFinite(atom.x) && Number.isFinite(atom.y) && Number.isFinite(atom.z) && atom.element ? atom : null;
+  }
+
+  function parseSdfBondLine(line) {
+    const bond = {
+      a: parseInt(line.slice(0, 3), 10),
+      b: parseInt(line.slice(3, 6), 10),
+      order: parseInt(line.slice(6, 9), 10) || 1
+    };
+    if (Number.isFinite(bond.a) && Number.isFinite(bond.b) && bond.a > 0 && bond.b > 0) return bond;
+
+    const parts = line.trim().split(/\s+/u);
+    if (parts.length < 3) return null;
+    const fallback = { a: parseInt(parts[0], 10), b: parseInt(parts[1], 10), order: parseInt(parts[2], 10) || 1 };
+    return Number.isFinite(fallback.a) && Number.isFinite(fallback.b) && fallback.a > 0 && fallback.b > 0 ? fallback : null;
+  }
+
+  function formatSdfCountsLine(atomCount, bondCount) {
+    return `${padSdfInt(atomCount)}${padSdfInt(bondCount)}  0  0  0  0            999 V2000`;
+  }
+
+  function formatSdfAtomLine(atom, x, y, z) {
+    const element = atom.element.padEnd(3, ' ').slice(0, 3);
+    return `${formatSdfCoord(x)}${formatSdfCoord(y)}${formatSdfCoord(z)} ${element} 0  0  0  0  0  0  0  0  0  0  0  0`;
+  }
+
+  function formatSdfBondLine(bond, offset) {
+    return `${padSdfInt(bond.a + offset)}${padSdfInt(bond.b + offset)}${padSdfInt(bond.order)}  0  0  0`;
+  }
+
+  function formatSdfCoord(value) {
+    return Number(value).toFixed(4).padStart(10, ' ');
+  }
+
+  function padSdfInt(value) {
+    return String(value).padStart(3, ' ').slice(-3);
+  }
+
+  async function loadPreparedStructure(viewer, prepared) {
+    if (prepared.loadPreset === 'all-models') {
+      const data = await viewer.plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
+      const trajectory = await viewer.plugin.builders.structure.parseTrajectory(data, prepared.format);
+      await viewer.plugin.builders.structure.hierarchy.applyPreset(trajectory, 'all-models', { useDefaultIfSingleModel: true });
+      return;
+    }
+    await viewer.loadStructureFromData(prepared.data, prepared.format, { dataLabel: prepared.label });
   }
 
   function withTimeout(promise, timeoutMs, message) {
@@ -522,7 +694,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     setStatus(`[web] Parsing structure…\n${prepared.label} (${describeFormat(prepared.format, config.binary)})`);
 
     await withTimeout(
-      viewer.loadStructureFromData(prepared.data, prepared.format, { dataLabel: prepared.label }),
+      loadPreparedStructure(viewer, prepared),
       45000,
       `Mol* timed out while parsing/rendering ${prepared.label} as ${prepared.format}.`
     );
