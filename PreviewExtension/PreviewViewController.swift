@@ -610,6 +610,24 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
               background: var(--buret-molstar-panel-background) !important;
               opacity: 0.76 !important;
             }
+            body .msp-plugin .msp-viewport-controls {
+              z-index: 40;
+            }
+            body .msp-plugin .msp-viewport-controls-buttons > div {
+              overflow: hidden;
+              border: 1px solid var(--buret-molstar-border);
+              border-radius: 8px;
+              background: var(--buret-molstar-row-background) !important;
+              box-shadow: 0 8px 20px var(--buret-molstar-shadow);
+            }
+            body .msp-plugin .msp-viewport-controls-buttons button {
+              color: var(--buret-molstar-text) !important;
+              background: transparent !important;
+            }
+            body .msp-plugin .msp-viewport-controls-buttons button[disabled] {
+              color: var(--buret-molstar-muted-text) !important;
+              opacity: 0.55;
+            }
             body .msp-plugin .msp-shape-filled,
             body .msp-plugin .msp-transform-header-brand svg {
               fill: var(--buret-molstar-text) !important;
@@ -1224,7 +1242,7 @@ private struct PreviewPreferences {
         let appID = "com.local.BurreteV10" as CFString
         let showPanelControls = (CFPreferencesCopyAppValue("showPreviewPanelControls" as CFString, appID) as? Bool) ?? true
         let transparentBackground = (CFPreferencesCopyAppValue("useTransparentPreviewBackground" as CFString, appID) as? Bool) ?? false
-        let viewerTheme = (CFPreferencesCopyAppValue("viewerTheme" as CFString, appID) as? String) ?? "auto"
+        let viewerTheme = (CFPreferencesCopyAppValue("viewerTheme" as CFString, appID) as? String) ?? "dark"
         let canvasBackground = (CFPreferencesCopyAppValue("viewerCanvasBackground" as CFString, appID) as? String) ?? "black"
         return PreviewPreferences(
             showPanelControls: showPanelControls,
