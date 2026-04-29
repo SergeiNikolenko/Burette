@@ -7,7 +7,7 @@
   function post(type, message) {
     try {
       if (window.__mqlPost) window.__mqlPost(type, message || '');
-      else window.webkit?.messageHandlers?.molstarQuickLook?.postMessage({ type, message: message || '' });
+      else window.webkit?.messageHandlers?.burrete?.postMessage({ type, message: message || '' });
     } catch (_) {
       // Browser-only testing, not WKWebView.
     }
@@ -18,7 +18,7 @@
     if (status) {
       status.textContent = text;
       status.classList.toggle('error', kind === 'error');
-      status.classList.toggle('hidden', kind !== 'error' && !window.MolstarQuickLookDebug);
+      status.classList.toggle('hidden', kind !== 'error' && !window.BurreteDebug);
     }
     if (shouldReportStatus(text, kind)) {
       post(kind === 'error' ? 'error' : 'status', text);
@@ -26,7 +26,7 @@
   }
 
   function shouldReportStatus(text, kind) {
-    if (kind === 'error' || window.MolstarQuickLookDebug) return true;
+    if (kind === 'error' || window.BurreteDebug) return true;
     return text.startsWith('[web] Loading Mol* engine') ||
       text.startsWith('[web] Mol* engine loaded') ||
       text.startsWith('[web] WebGL viewer created') ||
@@ -35,7 +35,7 @@
   }
 
   function debug(message) {
-    if (!window.MolstarQuickLookDebug) return;
+    if (!window.BurreteDebug) return;
     post('debug', message);
   }
 
@@ -80,7 +80,7 @@
   const MAX_VIEWER_UI_SCALE = 1.35;
   const VIEWER_UI_SCALE_STEP = 0.08;
 
-  let panelControlsVisible = window.MolstarQuickLookPanelControlsVisible !== false;
+  let panelControlsVisible = window.BurretePanelControlsVisible !== false;
   let viewerUIScale = DEFAULT_VIEWER_UI_SCALE;
   let activeViewer = null;
   let keyboardShortcutsInstalled = false;
@@ -317,7 +317,7 @@
 
   function hideStatus() {
     post('ready', 'ready');
-    if (window.MolstarQuickLookDebug) return;
+    if (window.BurreteDebug) return;
     if (status) status.classList.add('hidden');
   }
 
@@ -357,18 +357,18 @@
   }
 
   function requireConfig() {
-    const config = window.MolstarQuickLookConfig;
+    const config = window.BurreteConfig;
     if (!config || typeof config !== 'object') {
-      throw new Error('preview-config.js did not define window.MolstarQuickLookConfig.');
+      throw new Error('preview-config.js did not define window.BurreteConfig.');
     }
     if (!config.format) throw new Error('preview-config.js is missing format.');
     return config;
   }
 
   function rawStructureData(config) {
-    const base64 = window.MolstarQuickLookDataBase64;
+    const base64 = window.BurreteDataBase64;
     if (!base64 || typeof base64 !== 'string') {
-      throw new Error('preview-data.js did not define window.MolstarQuickLookDataBase64.');
+      throw new Error('preview-data.js did not define window.BurreteDataBase64.');
     }
     return config.binary ? Array.from(base64ToBytes(base64)) : base64ToText(base64);
   }
@@ -448,11 +448,11 @@
     debug('viewer.js executed');
     setStatus('[web] Booting Mol* Quick Look JavaScript…');
 
-    const cb = window.MolstarQuickLookCacheBuster || String(Date.now());
-    if (!window.MolstarQuickLookConfig) {
+    const cb = window.BurreteCacheBuster || String(Date.now());
+    if (!window.BurreteConfig) {
       await loadScript('./preview-config.js?v=' + encodeURIComponent(cb), 'preview config', 10000);
     }
-    if (!window.MolstarQuickLookDataBase64) {
+    if (!window.BurreteDataBase64) {
       await loadScript('./preview-data.js?v=' + encodeURIComponent(cb), 'structure data', 30000);
     }
 
@@ -478,9 +478,9 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     );
     setStatus(`[web] WebGL viewer created. Parsing structure…
 ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
-    window.MolstarQuickLookViewer = viewer;
+    window.BurreteViewer = viewer;
     activeViewer = viewer;
-    window.MolstarQuickLookHandleResize = () => scheduleViewerResize(viewer, 60);
+    window.BurreteHandleResize = () => scheduleViewerResize(viewer, 60);
     applyViewerUIScale(viewer);
     initViewerKeyboardShortcuts(viewer);
     initBuretToolbar(viewer);
@@ -489,7 +489,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     applyLayoutState(viewer);
     try { viewer.handleResize(); } catch (_) {}
 
-    debug('before structureDataForMolstar: base64 chars=' + (window.MolstarQuickLookDataBase64 ? window.MolstarQuickLookDataBase64.length : -1));
+    debug('before structureDataForMolstar: base64 chars=' + (window.BurreteDataBase64 ? window.BurreteDataBase64.length : -1));
     const prepared = structureDataForMolstar(config);
     debug('prepared format=' + prepared.format + '; data type=' + (prepared.data && prepared.data.constructor ? prepared.data.constructor.name : typeof prepared.data) + '; data length=' + (prepared.data ? prepared.data.length : -1));
     setStatus(`[web] Parsing structure…\n${prepared.label} (${describeFormat(prepared.format, config.binary)})`);

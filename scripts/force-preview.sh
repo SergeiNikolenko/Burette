@@ -6,15 +6,15 @@ if [[ -z "$FILE" || ! -f "$FILE" ]]; then
   exit 1
 fi
 case "${FILE##*.}" in
-  pdb|PDB|ent|ENT|pdbqt|PDBQT|pqr|PQR) TYPE="com.local.molstarquicklook10.pdb" ;;
-  cif|CIF) TYPE="com.local.molstarquicklook10.cif" ;;
-  mmcif|MMCIF|mcif|MCIF) TYPE="com.local.molstarquicklook10.mmcif" ;;
-  bcif|BCIF) TYPE="com.local.molstarquicklook10.bcif" ;;
-  sdf|SDF|sd|SD) TYPE="com.local.molstarquicklook10.sdf" ;;
-  mol|MOL) TYPE="com.local.molstarquicklook10.mol" ;;
-  mol2|MOL2) TYPE="com.local.molstarquicklook10.mol2" ;;
-  xyz|XYZ) TYPE="com.local.molstarquicklook10.xyz" ;;
-  gro|GRO) TYPE="com.local.molstarquicklook10.gro" ;;
+  pdb|PDB|ent|ENT|pdbqt|PDBQT|pqr|PQR) TYPE="com.local.burrete10.pdb" ;;
+  cif|CIF) TYPE="com.local.burrete10.cif" ;;
+  mmcif|MMCIF|mcif|MCIF) TYPE="com.local.burrete10.mmcif" ;;
+  bcif|BCIF) TYPE="com.local.burrete10.bcif" ;;
+  sdf|SDF|sd|SD) TYPE="com.local.burrete10.sdf" ;;
+  mol|MOL) TYPE="com.local.burrete10.mol" ;;
+  mol2|MOL2) TYPE="com.local.burrete10.mol2" ;;
+  xyz|XYZ) TYPE="com.local.burrete10.xyz" ;;
+  gro|GRO) TYPE="com.local.burrete10.gro" ;;
   *) TYPE="$(mdls -raw -name kMDItemContentType "$FILE" 2>/dev/null || true)" ;;
 esac
 qlmanage -p -c "$TYPE" "$FILE"

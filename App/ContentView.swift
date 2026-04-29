@@ -6,7 +6,7 @@ struct ContentView: View {
     @AppStorage("showMenuBarIcon") private var showMenuBarIcon = true
     @AppStorage("showPreviewPanelControls") private var showPreviewPanelControls = false
     @State private var section: SettingsSection = .general
-    @State private var defaultOpenStatus = BuretteFileAssociations.defaultHandlerSummary
+    @State private var defaultOpenStatus = BurreteFileAssociations.defaultHandlerSummary
 
     var body: some View {
         ZStack {
@@ -46,13 +46,13 @@ struct ContentView: View {
             SettingsCard {
                 SettingsToggleRow(
                     title: "Open settings window at launch",
-                    subtitle: "Show this window when Burette starts from the menu bar.",
+                    subtitle: "Show this window when Burrete starts from the menu bar.",
                     isOn: $openSettingsAtLaunch
                 )
                 SettingsDivider()
                 SettingsToggleRow(
                     title: "Show menu bar icon",
-                    subtitle: "Burette runs as a menu bar utility and stays out of the Dock.",
+                    subtitle: "Burrete runs as a menu bar utility and stays out of the Dock.",
                     isOn: $showMenuBarIcon,
                     isDisabled: true
                 )
@@ -120,24 +120,24 @@ struct ContentView: View {
             SettingsCard {
                 SettingsValueRow(
                     icon: "doc.viewfinder",
-                    title: "Double-click opens Burette",
+                    title: "Double-click opens Burrete",
                     subtitle: "Finder opens supported structure files in a standalone Mol* viewer window. Space still uses the Quick Look extension."
                 )
                 SettingsDivider()
                 SettingsActionRow(
                     icon: "checkmark.seal",
-                    title: "Make Burette Default",
+                    title: "Make Burrete Default",
                     subtitle: defaultOpenStatus
                 ) {
-                    defaultOpenStatus = BuretteFileAssociations.registerAsDefaultHandler()
+                    defaultOpenStatus = BurreteFileAssociations.registerAsDefaultHandler()
                 }
             }
 
             SettingsSectionTitle("Finder Integration")
             SettingsCard {
-                SettingsValueRow(icon: "puzzlepiece.extension", title: "Quick Look extension", subtitle: "com.local.MolstarQuickLookV10.Preview")
+                SettingsValueRow(icon: "puzzlepiece.extension", title: "Quick Look extension", subtitle: "com.local.BurreteV10.Preview")
                 SettingsDivider()
-                SettingsValueRow(icon: "app.badge", title: "Main bundle", subtitle: "com.local.MolstarQuickLookV10")
+                SettingsValueRow(icon: "app.badge", title: "Main bundle", subtitle: "com.local.BurreteV10")
                 SettingsDivider()
                 SettingsValueRow(icon: "eye", title: "Document role", subtitle: "Viewer for double-click/Open With; Quick Look preview remains separate.")
             }
@@ -484,11 +484,11 @@ private struct AboutPanel: View {
         VStack(spacing: 18) {
             Spacer(minLength: 34)
 
-            BuretteBadge()
+            BurreteBadge()
                 .frame(width: 104, height: 104)
 
             VStack(spacing: 4) {
-                Text("Burette")
+                Text("Burrete")
                     .font(.system(size: 34, weight: .bold))
                     .foregroundColor(.white.opacity(0.92))
                 Text("Version 0.10.1")
@@ -507,7 +507,7 @@ private struct AboutPanel: View {
             Spacer(minLength: 44)
 
             SettingsCard {
-                SettingsValueRow(icon: "sparkles", title: "Release Notes", subtitle: "First Burette release with native settings, hidden logs, and movable Quick Look controls.")
+                SettingsValueRow(icon: "sparkles", title: "Release Notes", subtitle: "First Burrete release with native settings, hidden logs, and movable Quick Look controls.")
                 SettingsDivider()
                 SettingsValueRow(icon: "envelope", title: "Contact", subtitle: "Local build for molecular Quick Look previews.")
             }
@@ -519,7 +519,7 @@ private struct AboutPanel: View {
     }
 }
 
-private struct BuretteBadge: View {
+private struct BurreteBadge: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
