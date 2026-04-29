@@ -1,14 +1,21 @@
 {
   "name": "burrete",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "private": true,
   "description": "macOS menu bar app and Quick Look extension for molecular structure previews powered by Mol*.",
   "scripts": {
     "vendor:molstar": "node scripts/vendor-molstar.mjs",
     "build:macos": "bash scripts/build.sh",
-    "test:web": "bash scripts/test-web-preview.sh"
+    "test:web": "bash scripts/test-web-preview.sh",
+    "check:js": "node --check PreviewExtension/Web/viewer.js && node --check scripts/vendor-molstar.mjs && node --check scripts/check-release-version.mjs",
+    "check:release": "node scripts/check-release-version.mjs",
+    "ci": "bash scripts/ci.sh",
+    "prepare": "lefthook install"
   },
   "dependencies": {
     "molstar": "5.7.0"
+  },
+  "devDependencies": {
+    "lefthook": "^2.1.6"
   }
 }

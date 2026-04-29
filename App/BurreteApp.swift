@@ -69,10 +69,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func installStatusItem() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = item.button {
             button.image = BurreteIcon.statusImage()
-            button.title = " Burrete"
+            button.title = ""
             button.toolTip = "Burrete"
         }
 

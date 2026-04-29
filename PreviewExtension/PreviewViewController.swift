@@ -372,6 +372,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "uiScale": 0.86,
             "showPanelControls": preferences.showPanelControls,
             "transparentBackground": preferences.transparentBackground,
+            "sdfGrid": format.molstarFormat == "sdf",
             "defaultLayoutState": preferences.defaultLayoutState
         ]
         let jsonData = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes])
