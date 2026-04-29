@@ -207,7 +207,7 @@ struct ContentView: View {
                     icon: updater.availableRelease == nil ? "magnifyingglass" : "square.and.arrow.down",
                     title: updater.primaryActionTitle,
                     subtitle: updater.statusText,
-                    isDisabled: updater.isChecking || updater.isDownloading
+                    isDisabled: updater.isChecking || updater.isDownloading || updater.isInstalling
                 ) {
                     Task {
                         await updater.runPrimaryAction(channel: updateChannel)
@@ -225,7 +225,7 @@ struct ContentView: View {
                 }
             }
 
-            SettingsFootnote("Updates are read from github.com/\(BurreteUpdateRepository.ownerAndName). Archives are downloaded into Burrete Application Support before Finder reveals them.")
+            SettingsFootnote("Updates are read from github.com/\(BurreteUpdateRepository.ownerAndName). App archives are downloaded into Burrete Application Support, installed, and then Burrete restarts automatically.")
 
         case .about:
             AboutPanel()
@@ -607,7 +607,7 @@ private struct AboutPanel: View {
                 Text("Burrete")
                     .font(.system(size: 34, weight: .bold))
                     .foregroundColor(.white.opacity(0.92))
-                Text("Version 0.10.2")
+                Text("Version 0.10.3")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.white.opacity(0.42))
             }
