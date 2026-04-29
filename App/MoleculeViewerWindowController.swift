@@ -137,7 +137,7 @@ private struct AppViewerRuntime {
             "quickLookBuild": "burrete-app",
             "debug": false,
             "uiScale": 0.86,
-            "showPanelControls": UserDefaults.standard.object(forKey: "showPreviewPanelControls") as? Bool ?? false,
+            "showPanelControls": UserDefaults.standard.object(forKey: "showPreviewPanelControls") as? Bool ?? true,
             "defaultLayoutState": [
                 "left": "collapsed",
                 "right": "hidden",
