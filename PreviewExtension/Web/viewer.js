@@ -114,9 +114,9 @@
 
     const pluginRoot = document.querySelector('.msp-plugin');
     if (pluginRoot) {
-      pluginRoot.style.zoom = String(viewerUIScale);
-      pluginRoot.style.width = `${100 / viewerUIScale}%`;
-      pluginRoot.style.height = `${100 / viewerUIScale}%`;
+      pluginRoot.style.zoom = '';
+      pluginRoot.style.width = '100%';
+      pluginRoot.style.height = '100%';
     }
 
     requestAnimationFrame(() => {
