@@ -8,14 +8,17 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private var logTextView: NSTextView!
     private var pendingCompletion: ((Error?) -> Void)?
     private var activePreviewRequestID = UUID()
+    private var renderTimeoutWorkItem: DispatchWorkItem?
     private var logLines: [String] = []
     private let previewID = String(UUID().uuidString.prefix(8))
     private var hasRenderedTerminationError = false
     private var restoredWindowFrame: NSRect?
     private static let showDebugOverlay = false
     private static let verboseLogging = false
+    private static let maxStructureFileSize: Int64 = 75 * 1024 * 1024
 
     deinit {
+        renderTimeoutWorkItem?.cancel()
         webView?.configuration.userContentController.removeScriptMessageHandler(forName: "burrete")
         appendLog("deinit")
     }
@@ -143,7 +146,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     self.statusLabel.stringValue = "[native] Loading file preview into WKWebView…\n\(url.lastPathComponent)"
                     self.appendLog("calling WKWebView.loadFileURL; html.bytes=\(result.html.utf8.count); indexURL=\(result.indexURL.path); readAccessURL=\(result.readAccessURL.path)")
                     self.webView.loadFileURL(result.indexURL, allowingReadAccessTo: result.readAccessURL)
-                    self.finishPreviewIfNeeded(nil, requestID: requestID)
+                    self.scheduleRenderTimeout(for: requestID)
                     if Self.showDebugOverlay {
                         self.scheduleJavaScriptProbes()
                     }
@@ -208,6 +211,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         diag("webDirectory=\(webDirectory.path)")
         try validateVendoredMolstarAssets(in: webDirectory, fileManager: fileManager, diagnostics: &diagnostics)
 
+        let structureSize = try fileSize(for: url, fileManager: fileManager)
+        guard structureSize <= maxStructureFileSize else {
+            throw PreviewError.fileTooLarge(url.lastPathComponent, structureSize, maxStructureFileSize)
+        }
         let structureData = try Data(contentsOf: url)
         guard !structureData.isEmpty else { throw PreviewError.emptyStructureFile(url.lastPathComponent) }
         diag("structureData.bytes=\(structureData.count)")
@@ -323,25 +330,29 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         for assetName in ["molstar.js", "molstar.css", "viewer.js"] {
             let source = bundledWebDirectory.appendingPathComponent(assetName)
             let destination = assetsDirectory.appendingPathComponent(assetName)
-            let shouldCopy = assetName != "molstar.js" || !sameFileSize(source, destination, fileManager: fileManager)
-            if shouldCopy {
-                if fileManager.fileExists(atPath: destination.path) {
-                    try fileManager.removeItem(at: destination)
-                }
-                try fileManager.copyItem(at: source, to: destination)
-            }
+            try copyAssetAtomically(from: source, to: destination, fileManager: fileManager)
             let size = ((try? fileManager.attributesOfItem(atPath: destination.path)[.size]) as? NSNumber)?.intValue ?? -1
-            diagnostics.append("[build] runtime.asset.\(assetName).exists=\(fileManager.fileExists(atPath: destination.path)) size=\(size) copied=\(shouldCopy)")
+            diagnostics.append("[build] runtime.asset.\(assetName).exists=\(fileManager.fileExists(atPath: destination.path)) size=\(size) copied=true")
         }
     }
 
-    private static func sameFileSize(_ lhs: URL, _ rhs: URL, fileManager: FileManager) -> Bool {
-        guard fileManager.fileExists(atPath: rhs.path),
-              let left = ((try? fileManager.attributesOfItem(atPath: lhs.path)[.size]) as? NSNumber)?.intValue,
-              let right = ((try? fileManager.attributesOfItem(atPath: rhs.path)[.size]) as? NSNumber)?.intValue else {
-            return false
+    private static func copyAssetAtomically(from source: URL, to destination: URL, fileManager: FileManager) throws {
+        let temporaryURL = destination
+            .deletingLastPathComponent()
+            .appendingPathComponent(".\(destination.lastPathComponent).\(UUID().uuidString).tmp")
+        try? fileManager.removeItem(at: temporaryURL)
+        defer { try? fileManager.removeItem(at: temporaryURL) }
+        try fileManager.copyItem(at: source, to: temporaryURL)
+        if fileManager.fileExists(atPath: destination.path) {
+            _ = try fileManager.replaceItemAt(destination, withItemAt: temporaryURL)
+        } else {
+            try fileManager.moveItem(at: temporaryURL, to: destination)
         }
-        return left == right
+    }
+
+    private static func fileSize(for url: URL, fileManager: FileManager) throws -> Int64 {
+        let attrs = try fileManager.attributesOfItem(atPath: url.path)
+        return (attrs[.size] as? NSNumber)?.int64Value ?? 0
     }
 
     private static func previewConfigJSON(format: StructureFormat, label: String, byteCount: Int, preferences: PreviewPreferences) throws -> String {
@@ -548,6 +559,17 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             if nextValues?.ubiquitousItemDownloadingStatus == .current || nextValues?.ubiquitousItemDownloadingStatus == .downloaded { return }
             Thread.sleep(forTimeInterval: 0.1)
         }
+        throw PreviewError.ubiquitousFileNotDownloaded(url.lastPathComponent)
+    }
+
+    private func scheduleRenderTimeout(for requestID: UUID) {
+        renderTimeoutWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.appendLog("render timeout waiting for JS ready")
+            self?.finishPreviewIfNeeded(PreviewError.webRenderTimedOut, requestID: requestID)
+        }
+        renderTimeoutWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: workItem)
     }
 
     private func finishPreviewIfNeeded(_ error: Error?, requestID: UUID? = nil) {
@@ -556,6 +578,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             return
         }
         guard let completion = pendingCompletion else { return }
+        renderTimeoutWorkItem?.cancel()
+        renderTimeoutWorkItem = nil
         pendingCompletion = nil
         appendLog("calling Quick Look completion handler; error=\(error.map { Self.describe($0) } ?? "nil")")
         completion(error)
@@ -609,6 +633,11 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 return
             }
             appendLog("JS message type=\(type): \(text.prefix(1600))")
+            if type == "ready" {
+                finishPreviewIfNeeded(nil, requestID: activePreviewRequestID)
+            } else if type == "error" {
+                finishPreviewIfNeeded(PreviewError.webRenderFailed(text), requestID: activePreviewRequestID)
+            }
             if Self.showDebugOverlay || type == "error" {
                 statusLabel.isHidden = false
                 statusLabel.stringValue = "[web:\(type)] \(text.prefix(900))"
@@ -962,6 +991,10 @@ private enum PreviewError: LocalizedError {
     case missingWebAsset(String)
     case molstarAssetsNotVendored(Int)
     case emptyStructureFile(String)
+    case fileTooLarge(String, Int64, Int64)
+    case ubiquitousFileNotDownloaded(String)
+    case webRenderFailed(String)
+    case webRenderTimedOut
     case couldNotCreatePreviewConfig
     case couldNotCreateRuntimePreview(String)
 
@@ -975,6 +1008,14 @@ private enum PreviewError: LocalizedError {
             return "Mol* assets were not vendored into the extension. molstar.js is only \(size) bytes. Run ./scripts/build.sh so npm copies build/viewer/molstar.js and molstar.css before Xcode signs the app."
         case .emptyStructureFile(let name):
             return "The structure file is empty or not downloaded locally: \(name)"
+        case .fileTooLarge(let name, let size, let limit):
+            return "\(name) is too large for Quick Look preview (\(size) bytes; limit \(limit) bytes). Open it in a dedicated molecular viewer."
+        case .ubiquitousFileNotDownloaded(let name):
+            return "\(name) is not downloaded locally. Download the file first, then open Quick Look again."
+        case .webRenderFailed(let message):
+            return "Mol* web rendering failed: \(message)"
+        case .webRenderTimedOut:
+            return "Mol* web rendering did not become ready within 30 seconds."
         case .couldNotCreatePreviewConfig:
             return "Could not create Mol* preview config."
         case .couldNotCreateRuntimePreview(let reason):

@@ -1,8 +1,8 @@
 {
-  "name": "molstar-quicklook",
+  "name": "burrete",
   "version": "0.10.1",
   "private": true,
-  "description": "macOS Quick Look preview extension for PDB/mmCIF/SDF files powered by Mol*.",
+  "description": "macOS menu bar app and Quick Look extension for molecular structure previews powered by Mol*.",
   "scripts": {
     "vendor:molstar": "node scripts/vendor-molstar.mjs",
     "build:macos": "bash scripts/build.sh",

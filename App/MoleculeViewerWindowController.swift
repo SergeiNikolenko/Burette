@@ -41,9 +41,11 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         webView.wantsLayer = true
         webView.layer?.backgroundColor = NSColor(calibratedWhite: 0.055, alpha: 1.0).cgColor
         webView.setValue(false, forKey: "drawsBackground")
+        #if DEBUG
         if #available(macOS 13.3, *) {
             webView.isInspectable = true
         }
+        #endif
     }
 
     required init?(coder: NSCoder) {
@@ -91,6 +93,7 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
 private struct AppViewerRuntime {
     let indexURL: URL
     let readAccessURL: URL
+    private static let maxStructureFileSize: Int64 = 75 * 1024 * 1024
 
     static func create(for fileURL: URL) throws -> AppViewerRuntime {
         guard let bundledWebDirectory = Bundle.main.resourceURL?.appendingPathComponent("Web", isDirectory: true),
@@ -104,6 +107,10 @@ private struct AppViewerRuntime {
                 fileURL.stopAccessingSecurityScopedResource()
             }
         }
+        let size = try fileSize(for: fileURL)
+        guard size <= maxStructureFileSize else {
+            throw AppViewerError.fileTooLarge(fileURL.lastPathComponent, size, maxStructureFileSize)
+        }
         let data = try Data(contentsOf: fileURL)
         guard !data.isEmpty else { throw AppViewerError.emptyFile(fileURL.lastPathComponent) }
 
@@ -116,6 +123,7 @@ private struct AppViewerRuntime {
         let assetsDirectory = baseDirectory.appendingPathComponent("assets", isDirectory: true)
         let runtimeDirectory = baseDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
 
+        pruneRuntimeDirectories(in: baseDirectory)
         try FileManager.default.createDirectory(at: assetsDirectory, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: runtimeDirectory, withIntermediateDirectories: true)
         try copyAssets(from: bundledWebDirectory, to: assetsDirectory)
@@ -157,11 +165,51 @@ private struct AppViewerRuntime {
         for name in ["molstar.js", "molstar.css", "viewer.js"] {
             let source = sourceDirectory.appendingPathComponent(name)
             let destination = assetsDirectory.appendingPathComponent(name)
-            if FileManager.default.fileExists(atPath: destination.path) {
-                try FileManager.default.removeItem(at: destination)
-            }
-            try FileManager.default.copyItem(at: source, to: destination)
+            try copyAssetAtomically(from: source, to: destination)
         }
+    }
+
+    private static func copyAssetAtomically(from source: URL, to destination: URL) throws {
+        let fileManager = FileManager.default
+        let temporaryURL = destination
+            .deletingLastPathComponent()
+            .appendingPathComponent(".\(destination.lastPathComponent).\(UUID().uuidString).tmp")
+        try? fileManager.removeItem(at: temporaryURL)
+        defer { try? fileManager.removeItem(at: temporaryURL) }
+        try fileManager.copyItem(at: source, to: temporaryURL)
+        if fileManager.fileExists(atPath: destination.path) {
+            _ = try fileManager.replaceItemAt(destination, withItemAt: temporaryURL)
+        } else {
+            try fileManager.moveItem(at: temporaryURL, to: destination)
+        }
+    }
+
+    private static func pruneRuntimeDirectories(in baseDirectory: URL) {
+        let fileManager = FileManager.default
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .contentModificationDateKey]
+        guard let contents = try? fileManager.contentsOfDirectory(at: baseDirectory, includingPropertiesForKeys: Array(keys)) else { return }
+        let cutoff = Date().addingTimeInterval(-6 * 60 * 60)
+        let runtimeDirectories = contents.compactMap { url -> (url: URL, modified: Date)? in
+            guard url.lastPathComponent != "assets",
+                  let values = try? url.resourceValues(forKeys: keys),
+                  values.isDirectory == true else {
+                return nil
+            }
+            return (url, values.contentModificationDate ?? .distantPast)
+        }
+        let oldDirectories = runtimeDirectories.filter { $0.modified < cutoff }
+        let overflowDirectories = runtimeDirectories
+            .sorted { $0.modified > $1.modified }
+            .dropFirst(24)
+        var removed = Set<String>()
+        for entry in oldDirectories + overflowDirectories where removed.insert(entry.url.path).inserted {
+            try? fileManager.removeItem(at: entry.url)
+        }
+    }
+
+    private static func fileSize(for url: URL) throws -> Int64 {
+        let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+        return (attrs[.size] as? NSNumber)?.int64Value ?? 0
     }
 
     private static func html(title: String) -> String {
@@ -328,6 +376,7 @@ private struct AppViewerStructureFormat {
 private enum AppViewerError: LocalizedError {
     case missingWebResources
     case emptyFile(String)
+    case fileTooLarge(String, Int64, Int64)
     case missingCacheDirectory
 
     var errorDescription: String? {
@@ -336,6 +385,8 @@ private enum AppViewerError: LocalizedError {
             return "Bundled Mol* web resources are missing from Burrete.app."
         case .emptyFile(let name):
             return "The structure file is empty: \(name)"
+        case .fileTooLarge(let name, let size, let limit):
+            return "\(name) is too large for the Burrete app viewer (\(size) bytes; limit \(limit) bytes). Open it in a dedicated molecular viewer."
         case .missingCacheDirectory:
             return "Could not locate the app cache directory."
         }

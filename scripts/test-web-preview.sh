@@ -14,7 +14,7 @@ fi
 
 if [[ ! -d node_modules/molstar ]]; then
   mkdir -p "$npm_config_cache"
-  npm install
+  npm ci --ignore-scripts
 fi
 npm run vendor:molstar
 
