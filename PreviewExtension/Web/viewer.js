@@ -6,7 +6,7 @@
   const MAX_SDF_GRID_ATOMS = 900;
   const MAX_SDF_GRID_BONDS = 900;
   const SDF_GRID_PADDING = 4.0;
-  const TOOLBAR_POSITION_VERSION = '2';
+  const TOOLBAR_POSITION_VERSION = '3';
   const TOOLBAR_MARGIN = 12;
   try { window.__mqlDebug && window.__mqlDebug('[viewer.js] top-level IIFE entered; readyState=' + document.readyState); } catch (_) {}
 
@@ -324,15 +324,12 @@
       const version = window.localStorage && window.localStorage.getItem('buret.toolbar.position.version');
       if (raw && version === TOOLBAR_POSITION_VERSION) {
         const saved = JSON.parse(raw);
-        if (Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
-          const savedDefaultCorner = saved.left <= TOOLBAR_MARGIN + 4 && saved.top <= TOOLBAR_MARGIN + 4;
-          if (!savedDefaultCorner) {
-            toolbar.style.left = saved.left + 'px';
-            toolbar.style.top = saved.top + 'px';
-            toolbar.style.right = 'auto';
-            toolbar.dataset.defaultPosition = '0';
-            hasSavedPosition = true;
-          }
+        if (saved.mode === 'custom' && Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
+          toolbar.style.left = saved.left + 'px';
+          toolbar.style.top = saved.top + 'px';
+          toolbar.style.right = 'auto';
+          toolbar.dataset.defaultPosition = '0';
+          hasSavedPosition = true;
         }
       } else if (raw) {
         window.localStorage && window.localStorage.removeItem('buret.toolbar.position');
@@ -419,7 +416,7 @@
   function saveToolbarPosition(toolbar) {
     try {
       const rect = toolbar.getBoundingClientRect();
-      window.localStorage && window.localStorage.setItem('buret.toolbar.position', JSON.stringify({ left: rect.left, top: rect.top }));
+      window.localStorage && window.localStorage.setItem('buret.toolbar.position', JSON.stringify({ left: rect.left, top: rect.top, mode: 'custom' }));
       window.localStorage && window.localStorage.setItem('buret.toolbar.position.version', TOOLBAR_POSITION_VERSION);
     } catch (_) {}
   }
