@@ -22,7 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         installStatusItem()
-        LSRegisterURL(Bundle.main.bundleURL as CFURL, true)
+        BurreteFileAssociations.registerForUnsetDefaults()
         if UserDefaults.standard.object(forKey: "openSettingsAtLaunch") == nil {
             UserDefaults.standard.set(true, forKey: "openSettingsAtLaunch")
         }
@@ -177,6 +177,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 enum BurreteFileAssociations {
     static let bundleIdentifier = "com.local.BurreteV10"
+    private static let legacyBundleIdentifiers = [
+        "com.local.molstarquicklook",
+        "com.local.molstarquicklookv8",
+        "com.local.molstarquicklookv10"
+    ]
     static let contentTypes = [
         "com.local.burrete10.pdb",
         "com.local.burrete10.cif",
@@ -185,12 +190,22 @@ enum BurreteFileAssociations {
         "com.local.burrete10.sdf",
         "com.local.burrete10.mol",
         "com.local.burrete10.mol2",
+        "com.local.burrete10.xyz",
+        "com.local.burrete10.gro",
+        "com.local.molstarquicklook10.pdb",
+        "com.local.molstarquicklook10.cif",
+        "com.local.molstarquicklook10.mmcif",
+        "com.local.molstarquicklook10.bcif",
+        "com.local.molstarquicklook10.sdf",
+        "com.local.molstarquicklook10.mol",
+        "com.local.molstarquicklook10.mol2",
         "org.wwpdb.pdb",
         "org.wwpdb.cif",
         "org.wwpdb.mmcif",
         "org.wwpdb.bcif",
         "org.iucr.cif",
         "org.iucr.mmcif",
+        "com.schrodinger.pdb",
         "org.openscience.sdf",
         "org.openscience.molfile",
         "org.openscience.mol2",
@@ -223,8 +238,22 @@ enum BurreteFileAssociations {
         return "Some file types could not be updated: \(failures.prefix(3).joined(separator: "; "))"
     }
 
+    static func registerForUnsetDefaults() {
+        LSRegisterURL(Bundle.main.bundleURL as CFURL, true)
+        for contentType in contentTypes where shouldClaimDefaultHandler(for: contentType) {
+            LSSetDefaultRoleHandlerForContentType(contentType as CFString, .viewer, bundleIdentifier as CFString)
+        }
+    }
+
     private static func defaultHandler(for contentType: String) -> String? {
         LSCopyDefaultRoleHandlerForContentType(contentType as CFString, .viewer)?.takeRetainedValue() as String?
+    }
+
+    private static func shouldClaimDefaultHandler(for contentType: String) -> Bool {
+        guard let handler = defaultHandler(for: contentType) else {
+            return true
+        }
+        return legacyBundleIdentifiers.contains(handler.lowercased())
     }
 }
 
