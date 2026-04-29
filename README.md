@@ -3,7 +3,7 @@
 <p align="center">Finder-native molecular structure previews for macOS, powered by Mol*.</p>
 
 <p align="center">
-  <img alt="Version 0.10.1" src="https://img.shields.io/badge/version-0.10.1-0f8f72.svg?style=flat-square" />
+  <img alt="Version 0.10.2" src="https://img.shields.io/badge/version-0.10.2-0f8f72.svg?style=flat-square" />
   <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-yellow.svg?style=flat-square" /></a>
   <img alt="macOS 12+" src="https://img.shields.io/badge/macOS-12%2B-blue.svg?style=flat-square" />
   <img alt="Quick Look" src="https://img.shields.io/badge/Quick%20Look-extension-57606a.svg?style=flat-square" />
@@ -109,6 +109,24 @@ conflicts while the product name stays Burrete.
 # Refresh vendored Mol* assets
 npm ci --ignore-scripts
 npm run vendor:molstar
+```
+
+## CI And Releases
+
+Pull requests run the full CI workflow on macOS: npm dependency restore, release
+version checks, JavaScript syntax checks, plist linting, and a local Xcode build.
+Every PR intended for merge must bump `package.json`, `package-lock.json`,
+`MARKETING_VERSION`, and the visible About version together.
+
+Merging to `main` builds the app and publishes a GitHub Release tagged with the
+same package version. If the tag already exists, the release workflow fails so
+the next PR cannot overwrite an existing release.
+
+Local hooks use lefthook:
+
+```bash
+npm ci --ignore-scripts
+npm run prepare
 ```
 
 Forced preview content types:
