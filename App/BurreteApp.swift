@@ -23,6 +23,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         installStatusItem()
         BurreteFileAssociations.registerForUnsetDefaults()
+        Task { @MainActor in
+            BurreteUpdater.shared.checkAutomaticallyIfNeeded()
+        }
         if UserDefaults.standard.object(forKey: "openSettingsAtLaunch") == nil {
             UserDefaults.standard.set(true, forKey: "openSettingsAtLaunch")
         }
@@ -69,6 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ","))
+        menu.addItem(NSMenuItem(title: "Check for Updates...", action: #selector(checkForUpdates), keyEquivalent: "u"))
         menu.addItem(NSMenuItem(title: "Open Logs Folder", action: #selector(openLogsFolder), keyEquivalent: "l"))
         menu.addItem(NSMenuItem(title: "Copy Log Path", action: #selector(copyLogPath), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Clear Preview Cache", action: #selector(clearPreviewCache), keyEquivalent: "k"))
@@ -95,6 +99,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindow?.center()
         settingsWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func checkForUpdates() {
+        openSettings()
+        let channel = BurreteUpdateChannel(rawValue: UserDefaults.standard.string(forKey: "updateChannel") ?? "") ?? .stable
+        Task { @MainActor in
+            await BurreteUpdater.shared.checkForUpdates(channel: channel, isAutomatic: false)
+        }
     }
 
     private func openViewer(for url: URL) {
