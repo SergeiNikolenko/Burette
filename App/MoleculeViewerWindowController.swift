@@ -31,12 +31,15 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         )
         window.title = "Burrete - \(fileURL.lastPathComponent)"
         window.minSize = NSSize(width: 660, height: 440)
-        window.contentView = webView
+        window.backgroundColor = NSColor(calibratedWhite: 0.055, alpha: 1.0)
+        window.contentView = BuretteAppViewerContainerView(contentView: webView)
 
         super.init(window: window)
 
         userContentController.add(self, name: "burrete")
         webView.navigationDelegate = self
+        webView.wantsLayer = true
+        webView.layer?.backgroundColor = NSColor(calibratedWhite: 0.055, alpha: 1.0).cgColor
         webView.setValue(false, forKey: "drawsBackground")
         if #available(macOS 13.3, *) {
             webView.isInspectable = true
@@ -186,11 +189,16 @@ private struct AppViewerRuntime {
             #status.error { color: #ffd4d4; background: rgba(70, 0, 0, 0.82); }
             #status.hidden { display: none; }
             #buret-toolbar {
-              position: absolute; top: 10px; right: 10px; z-index: 2147483646;
-              display: flex; align-items: center; gap: 5px; padding: 5px;
-              border-radius: 10px; color: rgba(255, 255, 255, 0.94);
-              background: rgba(20, 22, 24, 0.62); backdrop-filter: blur(14px);
-              box-shadow: 0 4px 18px rgba(0, 0, 0, 0.28); user-select: none; touch-action: none;
+              position: absolute; top: 12px; right: 12px; z-index: 2147483646;
+              display: flex; align-items: center; gap: 6px; padding: 6px;
+              border: 1px solid rgba(255, 255, 255, 0.10);
+              border-radius: 12px; color: rgba(255, 255, 255, 0.94);
+              background: rgba(18, 20, 22, 0.86);
+              -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+              box-shadow:
+                0 8px 22px rgba(0, 0, 0, 0.22),
+                inset 0 1px 0 rgba(255, 255, 255, 0.06);
+              user-select: none; touch-action: none;
               transform: scale(var(--buret-viewer-ui-scale)); transform-origin: top right;
             }
             .buret-button {
@@ -331,6 +339,29 @@ private enum AppViewerError: LocalizedError {
         case .missingCacheDirectory:
             return "Could not locate the app cache directory."
         }
+    }
+}
+
+private final class BuretteAppViewerContainerView: NSView {
+    init(contentView: NSView) {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
+        layer?.backgroundColor = NSColor(calibratedWhite: 0.055, alpha: 1.0).cgColor
+
+        contentView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(contentView)
+        NSLayoutConstraint.activate([
+            contentView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 1),
+            contentView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -1),
+            contentView.topAnchor.constraint(equalTo: topAnchor, constant: 1),
+            contentView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -1)
+        ])
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
     }
 }
 
