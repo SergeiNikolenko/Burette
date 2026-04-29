@@ -49,6 +49,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        openSettings()
+        return false
+    }
+
     func application(_ sender: NSApplication, openFile filename: String) -> Bool {
         openedDocumentAtLaunch = true
         openViewer(for: URL(fileURLWithPath: filename))
@@ -64,9 +69,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func installStatusItem() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = item.button {
             button.image = BurreteIcon.statusImage()
+            button.title = " Burrete"
             button.toolTip = "Burrete"
         }
 
@@ -93,12 +99,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.isReleasedWhenClosed = false
             window.minSize = NSSize(width: 660, height: 460)
             window.setContentSize(NSSize(width: 820, height: 540))
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(windowDidClose),
+                name: NSWindow.willCloseNotification,
+                object: window
+            )
             settingsWindow = window
         }
 
+        showAsForegroundApp()
         settingsWindow?.center()
         settingsWindow?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc private func checkForUpdates() {
@@ -125,17 +137,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             object: controller.window,
             queue: .main
         ) { [weak self] _ in
-            self?.viewerWindows[fileURL] = nil
+            DispatchQueue.main.async {
+                self?.viewerWindows[fileURL] = nil
+                self?.updateActivationPolicy()
+            }
         }
         controller.load()
+        showAsForegroundApp()
         controller.showWindow(nil)
         controller.window?.center()
         controller.window?.makeKeyAndOrderFront(nil)
+    }
+
+    private func showAsForegroundApp() {
+        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    @objc private func windowDidClose(_ notification: Notification) {
+        DispatchQueue.main.async { [weak self] in
+            self?.updateActivationPolicy()
+        }
+    }
+
+    private func updateActivationPolicy() {
+        let hasVisibleSettings = settingsWindow?.isVisible == true
+        let hasVisibleViewer = viewerWindows.values.contains { $0.window?.isVisible == true }
+        if !hasVisibleSettings && !hasVisibleViewer {
+            NSApp.setActivationPolicy(.accessory)
+        }
+    }
+
     @objc private func openLogsFolder() {
-        NSWorkspace.shared.open(Self.logsDirectory)
+        Self.openLogsDirectory()
     }
 
     @objc private func copyLogPath() {
@@ -154,6 +188,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for url in contents where url.lastPathComponent != "assets" {
             try? fileManager.removeItem(at: url)
         }
+    }
+
+    static func openLogsDirectory() {
+        try? FileManager.default.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(logsDirectory)
     }
 
     @objc private func resetQuickLook() {

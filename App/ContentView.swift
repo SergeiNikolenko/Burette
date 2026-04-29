@@ -4,7 +4,7 @@ import SwiftUI
 struct ContentView: View {
     @AppStorage("openSettingsAtLaunch") private var openSettingsAtLaunch = true
     @AppStorage("showMenuBarIcon") private var showMenuBarIcon = true
-    @AppStorage("showPreviewPanelControls") private var showPreviewPanelControls = false
+    @AppStorage("showPreviewPanelControls") private var showPreviewPanelControls = true
     @AppStorage("checkUpdatesAutomatically") private var checkUpdatesAutomatically = true
     @AppStorage("updateChannel") private var updateChannelRaw = BurreteUpdateChannel.stable.rawValue
     @StateObject private var updater = BurreteUpdater.shared
@@ -160,7 +160,7 @@ struct ContentView: View {
                 SettingsValueRow(icon: "doc.text.magnifyingglass", title: "Log file", subtitle: AppDelegate.primaryLogURL.path)
                 SettingsDivider()
                 SettingsActionRow(icon: "folder", title: "Open Logs Folder", subtitle: "Open the sandbox diagnostics directory in Finder.") {
-                    NSWorkspace.shared.open(AppDelegate.logsDirectory)
+                    AppDelegate.openLogsDirectory()
                 }
                 SettingsDivider()
                 SettingsActionRow(icon: "doc.on.clipboard", title: "Copy Log Path", subtitle: "Copy the current log path to the clipboard.") {
@@ -597,7 +597,7 @@ private struct AboutPanel: View {
             }
 
             HStack(spacing: 12) {
-                Button("Open Logs") { NSWorkspace.shared.open(AppDelegate.logsDirectory) }
+                Button("Open Logs") { AppDelegate.openLogsDirectory() }
                 Button("Clear Cache") { AppDelegate.clearPreviewCache() }
             }
             .buttonStyle(.bordered)
