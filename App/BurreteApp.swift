@@ -20,7 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var openedDocumentAtLaunch = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
+        updateActivationPolicy()
         installStatusItem()
         BurreteFileAssociations.registerForUnsetDefaults()
         Task { @MainActor in
@@ -108,9 +108,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settingsWindow = window
         }
 
-        showAsForegroundApp()
         settingsWindow?.center()
-        settingsWindow?.makeKeyAndOrderFront(nil)
+        showAsForegroundApp(activating: settingsWindow)
     }
 
     @objc private func checkForUpdates() {
@@ -125,8 +124,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let fileURL = url.standardizedFileURL
         if let existing = viewerWindows[fileURL] {
             existing.showWindow(nil)
-            existing.window?.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            showAsForegroundApp(activating: existing.window)
             return
         }
 
@@ -143,15 +141,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         controller.load()
-        showAsForegroundApp()
         controller.showWindow(nil)
         controller.window?.center()
-        controller.window?.makeKeyAndOrderFront(nil)
+        showAsForegroundApp(activating: controller.window)
     }
 
-    private func showAsForegroundApp() {
+    private func showAsForegroundApp(activating window: NSWindow?) {
         NSApp.setActivationPolicy(.regular)
+        NSApp.unhide(nil)
+        window?.makeKeyAndOrderFront(nil)
+        window?.orderFrontRegardless()
+        NSRunningApplication.current.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
         NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.async {
+            window?.makeKeyAndOrderFront(nil)
+            window?.orderFrontRegardless()
+            NSRunningApplication.current.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 
     @objc private func windowDidClose(_ notification: Notification) {

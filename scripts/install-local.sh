@@ -7,6 +7,7 @@ DEST_DIR="$HOME/Applications"
 DEST="$DEST_DIR/Burrete.app"
 LEGACY_OLD_DEST="$DEST_DIR/Bur""ette.app"
 LEGACY_BURET_DEST="$DEST_DIR/Buret.app"
+LEGACY_XYZ_DEST="$DEST_DIR/Burette XYZRender.app"
 APPEX="$DEST/Contents/PlugIns/BurretePreview.appex"
 EXT_ID="com.local.BurreteV10.Preview"
 APP_ID="com.local.BurreteV10"
@@ -32,6 +33,10 @@ fi
 clean_detritus() { local path="$1"; [[ -e "$path" ]] || return 0; xattr -cr "$path" 2>/dev/null || true; dot_clean -m "$path" 2>/dev/null || true; find "$path" \( -name '._*' -o -name '.DS_Store' \) -delete 2>/dev/null || true; }
 
 echo "Unregistering old Burrete extensions, if any..."
+pkill -f "$DEST/Contents/MacOS/Burrete" 2>/dev/null || true
+pkill -f "$LEGACY_OLD_DEST/Contents/MacOS/MolstarQuickLook" 2>/dev/null || true
+pkill -f "$LEGACY_XYZ_DEST" 2>/dev/null || true
+pkill -f "$ROOT/build/Build/Products/Debug/MolstarQuickLook" 2>/dev/null || true
 for OLD_ID in \
   com.local.Burrete.Preview \
   com.local.BurreteV4.Preview \
@@ -40,19 +45,23 @@ for OLD_ID in \
   com.local.BurreteV7.Preview \
   com.local.BurreteV8.Preview \
   com.local.BurreteV9.Preview \
-  com.local.BurreteV10.Preview
+  com.local.BurreteV10.Preview \
+  com.local.BuretteXyzRender.Preview \
+  com.local.MolstarQuickLook.Preview \
+  com.local.MolstarQuickLookV8.Preview \
+  com.local.MolstarQuickLookV10.Preview
 do
   pluginkit -r "$OLD_ID" 2>/dev/null || true
 done
 while IFS= read -r OLD_ENTRY; do
   OLD_APPEX="${OLD_ENTRY##*$'\t'}"
-  if [[ "$OLD_APPEX" == *Burrete*.appex ]]; then
+  if [[ "$OLD_APPEX" == *Burrete*.appex || "$OLD_APPEX" == *Burette*.appex || "$OLD_APPEX" == *MolstarQuickLook*.appex ]]; then
     pluginkit -r "$OLD_APPEX" 2>/dev/null || true
   fi
-done < <(pluginkit -m -v -p com.apple.quicklook.preview 2>/dev/null | grep -i Burrete || true)
+done < <(pluginkit -m -v -p com.apple.quicklook.preview 2>/dev/null | grep -Ei 'Burrete|Burette|MolstarQuickLook' || true)
 
 mkdir -p "$DEST_DIR"
-rm -rf "$DEST" "$LEGACY_OLD_DEST" "$LEGACY_BURET_DEST"
+rm -rf "$DEST" "$LEGACY_OLD_DEST" "$LEGACY_BURET_DEST" "$LEGACY_XYZ_DEST"
 COPYFILE_DISABLE=1 COPY_EXTENDED_ATTRIBUTES_DISABLE=1 cp -R "$APP" "$DEST"
 clean_detritus "$DEST"
 
