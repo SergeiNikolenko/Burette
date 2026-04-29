@@ -26,6 +26,13 @@
 		<dict>
 			<key>QLSupportedContentTypes</key>
 			<array>
+				<string>com.local.burrete10.pdb</string>
+				<string>com.local.burrete10.cif</string>
+				<string>com.local.burrete10.mmcif</string>
+				<string>com.local.burrete10.bcif</string>
+				<string>com.local.burrete10.sdf</string>
+				<string>com.local.burrete10.mol</string>
+				<string>com.local.burrete10.mol2</string>
 				<string>com.local.molstarquicklook10.pdb</string>
 				<string>com.local.molstarquicklook10.cif</string>
 				<string>com.local.molstarquicklook10.mmcif</string>
@@ -45,9 +52,6 @@
 				<string>com.mdli.sdf</string>
 				<string>com.mdli.molfile</string>
 				<string>com.tripos.mol2</string>
-				<string>com.palm.database</string>
-				<string>com.apple.palm-database</string>
-				<string>com.apple.palm-pdb</string>
 				<string>org.rcsb.pdb</string>
 				<string>org.rcsb.cif</string>
 				<string>org.rcsb.mmcif</string>
@@ -65,11 +69,6 @@
 				<string>jp-minerals.vesta.cif</string>
 				<string>jp.sourceforge.vesta.cif</string>
 				<string>jp.co.vesta.cif</string>
-				<string>com.apple.palm.database</string>
-				<string>com.apple.palm.pdb</string>
-				<string>com.palm.pdb</string>
-				<string>com.palmos.database</string>
-				<string>com.palmos.pdb</string>
 				<string>org.pdbj.pdb</string>
 				<string>org.pdbj.cif</string>
 				<string>org.pdbj.mmcif</string>
@@ -80,6 +79,9 @@
 				<string>public.mmcif</string>
 				<string>public.cif</string>
 				<string>com.schrodinger.sdf</string>
+				<string>com.local.burrete10.xyz</string>
+				<string>com.local.burrete10.gro</string>
+				<string>com.schrodinger.pdb</string>
 			</array>
 			<key>QLSupportsSearchableItems</key>
 			<false/>

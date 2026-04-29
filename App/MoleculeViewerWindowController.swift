@@ -25,30 +25,32 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         self.webView = webView
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1220, height: 860),
+            contentRect: NSRect(x: 0, y: 0, width: 1040, height: 720),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
-        window.title = "Burette - \(fileURL.lastPathComponent)"
-        window.minSize = NSSize(width: 780, height: 520)
+        window.title = "Burrete - \(fileURL.lastPathComponent)"
+        window.minSize = NSSize(width: 660, height: 440)
         window.isOpaque = !transparentBackground
-        window.backgroundColor = transparentBackground ? .clear : NSColor(calibratedRed: 0.07, green: 0.08, blue: 0.09, alpha: 1.0)
-        window.contentView = webView
+        window.backgroundColor = transparentBackground ? .clear : NSColor(calibratedWhite: 0.055, alpha: 1.0)
+        window.contentView = BurreteAppViewerContainerView(contentView: webView, transparentBackground: transparentBackground)
 
         super.init(window: window)
 
-        userContentController.add(self, name: "molstarQuickLook")
+        userContentController.add(self, name: "burrete")
         webView.navigationDelegate = self
-        webView.setValue(false, forKey: "drawsBackground")
         webView.wantsLayer = true
-        webView.layer?.backgroundColor = (transparentBackground ? NSColor.clear : NSColor(calibratedRed: 0.07, green: 0.08, blue: 0.09, alpha: 1.0)).cgColor
+        webView.layer?.backgroundColor = (transparentBackground ? NSColor.clear : NSColor(calibratedWhite: 0.055, alpha: 1.0)).cgColor
+        webView.setValue(false, forKey: "drawsBackground")
         if #available(macOS 11.0, *) {
-            webView.underPageBackgroundColor = transparentBackground ? .clear : NSColor(calibratedRed: 0.07, green: 0.08, blue: 0.09, alpha: 1.0)
+            webView.underPageBackgroundColor = transparentBackground ? .clear : NSColor(calibratedWhite: 0.055, alpha: 1.0)
         }
+        #if DEBUG
         if #available(macOS 13.3, *) {
             webView.isInspectable = true
         }
+        #endif
     }
 
     required init?(coder: NSCoder) {
@@ -56,7 +58,7 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
     }
 
     deinit {
-        webView.configuration.userContentController.removeScriptMessageHandler(forName: "molstarQuickLook")
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "burrete")
     }
 
     func load() {
@@ -69,7 +71,7 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard message.name == "molstarQuickLook",
+        guard message.name == "burrete",
               let body = message.body as? [String: Any],
               let type = body["type"] as? String else {
             return
@@ -79,7 +81,7 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
             return
         }
         let text = (body["message"] as? String) ?? ""
-        NSLog("[BuretteAppViewer] %@: %@ %@", fileURL.lastPathComponent, type, text)
+        NSLog("[BurreteAppViewer] %@: %@ %@", fileURL.lastPathComponent, type, text)
     }
 
     private static func errorHTML(_ error: Error) -> String {
@@ -88,7 +90,7 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         html,body{margin:0;width:100%;height:100%;background:#111317;color:#f2f2f2}
         body{box-sizing:border-box;padding:24px;font:13px -apple-system,BlinkMacSystemFont,sans-serif}
         h1{font-size:18px;margin:0 0 12px}pre{white-space:pre-wrap;background:#24262a;padding:12px;border-radius:8px}
-        </style></head><body><h1>Burette could not open this file</h1><pre>\(escapeHTML(String(describing: error)))</pre></body></html>
+        </style></head><body><h1>Burrete could not open this file</h1><pre>\(escapeHTML(String(describing: error)))</pre></body></html>
         """
     }
 
@@ -100,6 +102,7 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
 private struct AppViewerRuntime {
     let indexURL: URL
     let readAccessURL: URL
+    private static let maxStructureFileSize: Int64 = 75 * 1024 * 1024
 
     static func create(for fileURL: URL) throws -> AppViewerRuntime {
         guard let bundledWebDirectory = Bundle.main.resourceURL?.appendingPathComponent("Web", isDirectory: true),
@@ -113,6 +116,10 @@ private struct AppViewerRuntime {
                 fileURL.stopAccessingSecurityScopedResource()
             }
         }
+        let size = try fileSize(for: fileURL)
+        guard size <= maxStructureFileSize else {
+            throw AppViewerError.fileTooLarge(fileURL.lastPathComponent, size, maxStructureFileSize)
+        }
         let data = try Data(contentsOf: fileURL)
         guard !data.isEmpty else { throw AppViewerError.emptyFile(fileURL.lastPathComponent) }
 
@@ -120,11 +127,12 @@ private struct AppViewerRuntime {
             throw AppViewerError.missingCacheDirectory
         }
         let baseDirectory = cachesDirectory
-            .appendingPathComponent("Burette", isDirectory: true)
+            .appendingPathComponent("Burrete", isDirectory: true)
             .appendingPathComponent("app-viewer", isDirectory: true)
         let assetsDirectory = baseDirectory.appendingPathComponent("assets", isDirectory: true)
         let runtimeDirectory = baseDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
 
+        pruneRuntimeDirectories(in: baseDirectory)
         try FileManager.default.createDirectory(at: assetsDirectory, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: runtimeDirectory, withIntermediateDirectories: true)
         try copyAssets(from: bundledWebDirectory, to: assetsDirectory)
@@ -136,12 +144,13 @@ private struct AppViewerRuntime {
             "binary": format.isBinary,
             "label": fileURL.lastPathComponent,
             "byteCount": data.count,
-            "quickLookBuild": "burette-app",
+            "quickLookBuild": "burrete-app",
             "debug": false,
-            "showPanelControls": UserDefaults.standard.object(forKey: "showPreviewPanelControls") as? Bool ?? false,
+            "uiScale": 0.86,
+            "showPanelControls": UserDefaults.standard.object(forKey: "showPreviewPanelControls") as? Bool ?? true,
             "transparentBackground": transparentBackground,
             "defaultLayoutState": [
-                "left": "full",
+                "left": "collapsed",
                 "right": "hidden",
                 "top": "hidden",
                 "bottom": "hidden"
@@ -152,9 +161,9 @@ private struct AppViewerRuntime {
 
         try Data(html(title: fileURL.lastPathComponent, transparentBackground: transparentBackground).utf8)
             .write(to: runtimeDirectory.appendingPathComponent("index.html"), options: [.atomic])
-        try Data("window.MolstarQuickLookConfig = \(configJSON);\n".utf8)
+        try Data("window.BurreteConfig = \(configJSON);\n".utf8)
             .write(to: runtimeDirectory.appendingPathComponent("preview-config.js"), options: [.atomic])
-        try Data("window.MolstarQuickLookDataBase64 = \"\(data.base64EncodedString())\";\n".utf8)
+        try Data("window.BurreteDataBase64 = \"\(data.base64EncodedString())\";\n".utf8)
             .write(to: runtimeDirectory.appendingPathComponent("preview-data.js"), options: [.atomic])
 
         return AppViewerRuntime(
@@ -167,11 +176,51 @@ private struct AppViewerRuntime {
         for name in ["molstar.js", "molstar.css", "viewer.js"] {
             let source = sourceDirectory.appendingPathComponent(name)
             let destination = assetsDirectory.appendingPathComponent(name)
-            if FileManager.default.fileExists(atPath: destination.path) {
-                try FileManager.default.removeItem(at: destination)
-            }
-            try FileManager.default.copyItem(at: source, to: destination)
+            try copyAssetAtomically(from: source, to: destination)
         }
+    }
+
+    private static func copyAssetAtomically(from source: URL, to destination: URL) throws {
+        let fileManager = FileManager.default
+        let temporaryURL = destination
+            .deletingLastPathComponent()
+            .appendingPathComponent(".\(destination.lastPathComponent).\(UUID().uuidString).tmp")
+        try? fileManager.removeItem(at: temporaryURL)
+        defer { try? fileManager.removeItem(at: temporaryURL) }
+        try fileManager.copyItem(at: source, to: temporaryURL)
+        if fileManager.fileExists(atPath: destination.path) {
+            _ = try fileManager.replaceItemAt(destination, withItemAt: temporaryURL)
+        } else {
+            try fileManager.moveItem(at: temporaryURL, to: destination)
+        }
+    }
+
+    private static func pruneRuntimeDirectories(in baseDirectory: URL) {
+        let fileManager = FileManager.default
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .contentModificationDateKey]
+        guard let contents = try? fileManager.contentsOfDirectory(at: baseDirectory, includingPropertiesForKeys: Array(keys)) else { return }
+        let cutoff = Date().addingTimeInterval(-6 * 60 * 60)
+        let runtimeDirectories = contents.compactMap { url -> (url: URL, modified: Date)? in
+            guard url.lastPathComponent != "assets",
+                  let values = try? url.resourceValues(forKeys: keys),
+                  values.isDirectory == true else {
+                return nil
+            }
+            return (url, values.contentModificationDate ?? .distantPast)
+        }
+        let oldDirectories = runtimeDirectories.filter { $0.modified < cutoff }
+        let overflowDirectories = runtimeDirectories
+            .sorted { $0.modified > $1.modified }
+            .dropFirst(24)
+        var removed = Set<String>()
+        for entry in oldDirectories + overflowDirectories where removed.insert(entry.url.path).inserted {
+            try? fileManager.removeItem(at: entry.url)
+        }
+    }
+
+    private static func fileSize(for url: URL) throws -> Int64 {
+        let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+        return (attrs[.size] as? NSNumber)?.int64Value ?? 0
     }
 
     private static func html(title: String, transparentBackground: Bool) -> String {
@@ -182,9 +231,10 @@ private struct AppViewerRuntime {
         <head>
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>Burette - \(escapeHTML(title))</title>
+          <title>Burrete - \(escapeHTML(title))</title>
           <link rel="stylesheet" href="../assets/molstar.css" />
           <style>
+            :root { --buret-viewer-ui-scale: 0.86; }
             html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: transparent; }
             body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: #f2f2f2; }
             body.burette-opaque-background,
@@ -217,10 +267,11 @@ private struct AppViewerRuntime {
               backdrop-filter: blur(14px);
             }
             #status {
-              position: absolute; left: 16px; top: 16px; z-index: 2147483647;
+              position: absolute; left: 12px; top: 12px; z-index: 2147483647;
               max-width: min(880px, calc(100vw - 32px)); box-sizing: border-box;
-              padding: 12px 14px; border-radius: 12px; color: rgba(255, 255, 255, 0.96);
-              background: rgba(0, 0, 0, 0.76); font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+              padding: 10px 12px; border-radius: 10px; color: rgba(255, 255, 255, 0.96);
+              background: rgba(0, 0, 0, 0.76); font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+              transform: scale(var(--buret-viewer-ui-scale)); transform-origin: top left;
               white-space: pre-wrap; pointer-events: auto;
             }
             #status.error { color: #ffd4d4; background: rgba(70, 0, 0, 0.82); }
@@ -228,24 +279,30 @@ private struct AppViewerRuntime {
             #buret-toolbar {
               position: absolute; top: 12px; right: 12px; z-index: 2147483646;
               display: flex; align-items: center; gap: 6px; padding: 6px;
+              border: 1px solid rgba(255, 255, 255, 0.10);
               border-radius: 12px; color: rgba(255, 255, 255, 0.94);
-              background: rgba(20, 22, 24, 0.62); backdrop-filter: blur(14px);
-              box-shadow: 0 4px 18px rgba(0, 0, 0, 0.28); user-select: none; touch-action: none;
+              background: rgba(18, 20, 22, 0.86);
+              -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+              box-shadow:
+                0 8px 22px rgba(0, 0, 0, 0.22),
+                inset 0 1px 0 rgba(255, 255, 255, 0.06);
+              user-select: none; touch-action: none;
+              transform: scale(var(--buret-viewer-ui-scale)); transform-origin: top right;
             }
             .buret-button {
-              min-width: 30px; height: 30px; border: 0; border-radius: 8px; padding: 0 8px;
-              color: inherit; background: transparent; font: 600 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+              min-width: 26px; height: 26px; border: 0; border-radius: 7px; padding: 0 7px;
+              color: inherit; background: transparent; font: 600 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
               display: grid; place-items: center;
             }
             .buret-button:hover, .buret-button.active { background: rgba(255, 255, 255, 0.14); }
             .buret-button.hidden { display: none; }
-            .buret-button svg { width: 17px; height: 17px; display: block; }
+            .buret-button svg { width: 15px; height: 15px; display: block; }
             .buret-grip { cursor: move; color: rgba(255, 255, 255, 0.66); }
           </style>
           <script>
             (function () {
               function post(type, message) {
-                try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.molstarQuickLook.postMessage({ type: type, message: String(message || '') }); } catch (_) {}
+                try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burrete.postMessage({ type: type, message: String(message || '') }); } catch (_) {}
               }
               window.__mqlPost = post;
               window.__mqlStatus = function (message, kind) {
@@ -265,7 +322,7 @@ private struct AppViewerRuntime {
         </head>
         <body class="\(backgroundClass)">
           <div id="app"></div>
-          <div id="buret-toolbar" role="toolbar" aria-label="Burette viewer controls">
+          <div id="buret-toolbar" role="toolbar" aria-label="Burrete viewer controls">
             <button class="buret-button buret-grip" type="button" data-drag-handle aria-label="Move controls" title="Move controls">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h2v2H8V5Zm6 0h2v2h-2V5ZM8 11h2v2H8v-2Zm6 0h2v2h-2v-2ZM8 17h2v2H8v-2Zm6 0h2v2h-2v-2Z" fill="currentColor"/></svg>
             </button>
@@ -277,12 +334,12 @@ private struct AppViewerRuntime {
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq</button>
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel">Log</button>
           </div>
-          <div id="status" class="hidden">Loading Burette viewer...</div>
+          <div id="status" class="hidden">Loading Burrete viewer...</div>
           <script>
-            window.MolstarQuickLookInlineMode = true;
-            window.MolstarQuickLookDebug = false;
-            window.MolstarQuickLookPanelControlsVisible = false;
-            window.MolstarQuickLookCacheBuster = String(Date.now());
+            window.BurreteInlineMode = true;
+            window.BurreteDebug = false;
+            window.BurretePanelControlsVisible = false;
+            window.BurreteCacheBuster = String(Date.now());
           </script>
           <script src="../assets/molstar.js"></script>
           <script src="preview-config.js"></script>
@@ -359,17 +416,43 @@ private struct AppViewerStructureFormat {
 private enum AppViewerError: LocalizedError {
     case missingWebResources
     case emptyFile(String)
+    case fileTooLarge(String, Int64, Int64)
     case missingCacheDirectory
 
     var errorDescription: String? {
         switch self {
         case .missingWebResources:
-            return "Bundled Mol* web resources are missing from Burette.app."
+            return "Bundled Mol* web resources are missing from Burrete.app."
         case .emptyFile(let name):
             return "The structure file is empty: \(name)"
+        case .fileTooLarge(let name, let size, let limit):
+            return "\(name) is too large for the Burrete app viewer (\(size) bytes; limit \(limit) bytes). Open it in a dedicated molecular viewer."
         case .missingCacheDirectory:
             return "Could not locate the app cache directory."
         }
+    }
+}
+
+private final class BurreteAppViewerContainerView: NSView {
+    init(contentView: NSView, transparentBackground: Bool) {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
+        layer?.backgroundColor = (transparentBackground ? NSColor.clear : NSColor(calibratedWhite: 0.055, alpha: 1.0)).cgColor
+
+        contentView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(contentView)
+        NSLayoutConstraint.activate([
+            contentView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 1),
+            contentView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -1),
+            contentView.topAnchor.constraint(equalTo: topAnchor, constant: 1),
+            contentView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -1)
+        ])
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
     }
 }
 

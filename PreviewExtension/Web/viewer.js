@@ -7,7 +7,7 @@
   function post(type, message) {
     try {
       if (window.__mqlPost) window.__mqlPost(type, message || '');
-      else window.webkit?.messageHandlers?.molstarQuickLook?.postMessage({ type, message: message || '' });
+      else window.webkit?.messageHandlers?.burrete?.postMessage({ type, message: message || '' });
     } catch (_) {
       // Browser-only testing, not WKWebView.
     }
@@ -18,7 +18,7 @@
     if (status) {
       status.textContent = text;
       status.classList.toggle('error', kind === 'error');
-      status.classList.toggle('hidden', kind !== 'error' && !window.MolstarQuickLookDebug);
+      status.classList.toggle('hidden', kind !== 'error' && !window.BurreteDebug);
     }
     if (shouldReportStatus(text, kind)) {
       post(kind === 'error' ? 'error' : 'status', text);
@@ -26,7 +26,7 @@
   }
 
   function shouldReportStatus(text, kind) {
-    if (kind === 'error' || window.MolstarQuickLookDebug) return true;
+    if (kind === 'error' || window.BurreteDebug) return true;
     return text.startsWith('[web] Loading Mol* engine') ||
       text.startsWith('[web] Mol* engine loaded') ||
       text.startsWith('[web] WebGL viewer created') ||
@@ -35,23 +35,62 @@
   }
 
   function debug(message) {
-    if (!window.MolstarQuickLookDebug) return;
+    if (!window.BurreteDebug) return;
     post('debug', message);
   }
 
   const layoutState = {
-    left: 'collapsed',
+    left: 'hidden',
     right: 'hidden',
     top: 'hidden',
     bottom: 'hidden'
   };
+  const resizeState = {
+    viewer: null,
+    frame: 0,
+    timer: 0
+  };
 
-  let panelControlsVisible = window.MolstarQuickLookPanelControlsVisible !== false;
+  function scheduleViewerResize(viewer, delayMs = 80) {
+    if (!viewer) return;
+    resizeState.viewer = viewer;
+    if (resizeState.frame) return;
+    resizeState.frame = requestAnimationFrame(() => {
+      resizeState.frame = 0;
+      clearTimeout(resizeState.timer);
+      resizeState.timer = setTimeout(() => {
+        const target = resizeState.viewer;
+        if (!target) return;
+        let handled = false;
+        try {
+          if (typeof target.handleResize === 'function') {
+            target.handleResize();
+            handled = true;
+          }
+        } catch (_) {}
+        if (!handled) {
+          try { target.plugin?.layout?.events?.updated?.next?.(); } catch (_) {}
+        }
+      }, delayMs);
+    });
+  }
+
+  const DEFAULT_VIEWER_UI_SCALE = 0.86;
+  const MIN_VIEWER_UI_SCALE = 0.72;
+  const MAX_VIEWER_UI_SCALE = 1.35;
+  const VIEWER_UI_SCALE_STEP = 0.08;
+
+  let panelControlsVisible = window.BurretePanelControlsVisible !== false;
   let transparentBackground = true;
+  let viewerUIScale = DEFAULT_VIEWER_UI_SCALE;
+  let activeViewer = null;
+  let keyboardShortcutsInstalled = false;
 
   function applyConfigOptions(config) {
     panelControlsVisible = config.showPanelControls !== undefined ? !!config.showPanelControls : panelControlsVisible;
     transparentBackground = config.transparentBackground !== undefined ? !!config.transparentBackground : transparentBackground;
+    viewerUIScale = resolveInitialViewerScale(config);
+    applyViewerUIScale();
     const nextLayoutState = config.defaultLayoutState;
     if (nextLayoutState && typeof nextLayoutState === 'object') {
       for (const key of ['left', 'right', 'top', 'bottom']) {
@@ -68,6 +107,64 @@
     if (!document.body) return;
     document.body.classList.toggle('burette-transparent-background', transparentBackground);
     document.body.classList.toggle('burette-opaque-background', !transparentBackground);
+  }
+
+  function resolveInitialViewerScale(config) {
+    const scale = Number(config.uiScale);
+    return clampViewerScale(Number.isFinite(scale) ? scale : DEFAULT_VIEWER_UI_SCALE);
+  }
+
+  function clampViewerScale(scale) {
+    return Math.min(Math.max(scale, MIN_VIEWER_UI_SCALE), MAX_VIEWER_UI_SCALE);
+  }
+
+  function applyViewerUIScale(viewer = activeViewer) {
+    document.documentElement.style.setProperty('--buret-viewer-ui-scale', viewerUIScale.toFixed(2));
+
+    const pluginRoot = document.querySelector('.msp-plugin');
+    if (pluginRoot) {
+      pluginRoot.style.zoom = '';
+      pluginRoot.style.width = '100%';
+      pluginRoot.style.height = '100%';
+    }
+
+    requestAnimationFrame(() => {
+      try { viewer?.handleResize?.(); } catch (_) {}
+      try { viewer?.plugin?.layout?.events?.updated?.next?.(); } catch (_) {}
+    });
+  }
+
+  function setViewerUIScale(scale, viewer = activeViewer) {
+    viewerUIScale = clampViewerScale(scale);
+    applyViewerUIScale(viewer);
+  }
+
+  function initViewerKeyboardShortcuts(viewer) {
+    if (keyboardShortcutsInstalled) return;
+    keyboardShortcutsInstalled = true;
+
+    document.addEventListener('keydown', event => {
+      if (event.defaultPrevented || !event.metaKey || event.ctrlKey || event.altKey) return;
+      const tagName = event.target?.tagName?.toLowerCase();
+      if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') return;
+
+      if (event.key === '+' || event.key === '=' || event.key === 'Add') {
+        event.preventDefault();
+        setViewerUIScale(viewerUIScale + VIEWER_UI_SCALE_STEP, viewer);
+        return;
+      }
+
+      if (event.key === '-' || event.key === '_' || event.key === 'Subtract') {
+        event.preventDefault();
+        setViewerUIScale(viewerUIScale - VIEWER_UI_SCALE_STEP, viewer);
+        return;
+      }
+
+      if (event.key === '0') {
+        event.preventDefault();
+        setViewerUIScale(DEFAULT_VIEWER_UI_SCALE, viewer);
+      }
+    }, true);
   }
 
   function updateToolbarVisibility() {
@@ -161,7 +258,7 @@
   }
 
   function toggleLayoutRegion(region, viewer) {
-    if (region === 'left') layoutState.left = layoutState.left === 'full' ? 'collapsed' : 'full';
+    if (region === 'left') layoutState.left = layoutState.left === 'full' ? 'hidden' : 'full';
     if (region === 'right') layoutState.right = layoutState.right === 'full' ? 'hidden' : 'full';
     if (region === 'sequence') layoutState.top = layoutState.top === 'full' ? 'hidden' : 'full';
     if (region === 'log') layoutState.bottom = layoutState.bottom === 'full' ? 'hidden' : 'full';
@@ -185,10 +282,7 @@
     }
 
     updateToolbarButtons();
-    requestAnimationFrame(() => {
-      try { viewer?.handleResize?.(); } catch (_) {}
-      try { viewer?.plugin?.layout?.events?.updated?.next?.(); } catch (_) {}
-    });
+    scheduleViewerResize(viewer, 40);
   }
 
   function updateToolbarButtons() {
@@ -232,7 +326,7 @@
 
   function hideStatus() {
     post('ready', 'ready');
-    if (window.MolstarQuickLookDebug) return;
+    if (window.BurreteDebug) return;
     if (status) status.classList.add('hidden');
   }
 
@@ -272,18 +366,18 @@
   }
 
   function requireConfig() {
-    const config = window.MolstarQuickLookConfig;
+    const config = window.BurreteConfig;
     if (!config || typeof config !== 'object') {
-      throw new Error('preview-config.js did not define window.MolstarQuickLookConfig.');
+      throw new Error('preview-config.js did not define window.BurreteConfig.');
     }
     if (!config.format) throw new Error('preview-config.js is missing format.');
     return config;
   }
 
   function rawStructureData(config) {
-    const base64 = window.MolstarQuickLookDataBase64;
+    const base64 = window.BurreteDataBase64;
     if (!base64 || typeof base64 !== 'string') {
-      throw new Error('preview-data.js did not define window.MolstarQuickLookDataBase64.');
+      throw new Error('preview-data.js did not define window.BurreteDataBase64.');
     }
     return config.binary ? Array.from(base64ToBytes(base64)) : base64ToText(base64);
   }
@@ -325,18 +419,17 @@
       layoutShowSequence: true,
       layoutShowLog: true,
       layoutShowLeftPanel: true,
-      viewportShowReset: false,
-      viewportShowScreenshotControls: false,
-      viewportShowControls: false,
+      viewportShowReset: true,
+      viewportShowScreenshotControls: true,
+      viewportShowControls: true,
       viewportShowExpand: false,
       viewportShowToggleFullscreen: false,
-      viewportShowSelectionMode: false,
+      viewportShowSelectionMode: true,
       viewportShowAnimation: false,
       viewportShowTrajectoryControls: false,
-      viewportShowSettings: false,
+      viewportShowSettings: true,
       collapseLeftPanel: true,
       collapseRightPanel: true,
-      viewportBackgroundColor: transparentBackground ? undefined : 0x111317,
       pdbProvider: 'rcsb',
       emdbProvider: 'rcsb',
       preferWebgl1: true,
@@ -376,11 +469,11 @@
     debug('viewer.js executed');
     setStatus('[web] Booting Mol* Quick Look JavaScript…');
 
-    const cb = window.MolstarQuickLookCacheBuster || String(Date.now());
-    if (!window.MolstarQuickLookConfig) {
+    const cb = window.BurreteCacheBuster || String(Date.now());
+    if (!window.BurreteConfig) {
       await loadScript('./preview-config.js?v=' + encodeURIComponent(cb), 'preview config', 10000);
     }
-    if (!window.MolstarQuickLookDataBase64) {
+    if (!window.BurreteDataBase64) {
       await loadScript('./preview-data.js?v=' + encodeURIComponent(cb), 'structure data', 30000);
     }
 
@@ -407,17 +500,18 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     setStatus(`[web] WebGL viewer created. Parsing structure…
 ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     applyViewerBackground(viewer);
-    window.MolstarQuickLookViewer = viewer;
-    window.MolstarQuickLookHandleResize = () => {
-      try { viewer.handleResize(); } catch (_) {}
-    };
+    window.BurreteViewer = viewer;
+    activeViewer = viewer;
+    window.BurreteHandleResize = () => scheduleViewerResize(viewer, 60);
+    applyViewerUIScale(viewer);
+    initViewerKeyboardShortcuts(viewer);
     initBuretToolbar(viewer);
 
     await waitForAnimationFrame();
     applyLayoutState(viewer);
     try { viewer.handleResize(); } catch (_) {}
 
-    debug('before structureDataForMolstar: base64 chars=' + (window.MolstarQuickLookDataBase64 ? window.MolstarQuickLookDataBase64.length : -1));
+    debug('before structureDataForMolstar: base64 chars=' + (window.BurreteDataBase64 ? window.BurreteDataBase64.length : -1));
     const prepared = structureDataForMolstar(config);
     debug('prepared format=' + prepared.format + '; data type=' + (prepared.data && prepared.data.constructor ? prepared.data.constructor.name : typeof prepared.data) + '; data length=' + (prepared.data ? prepared.data.length : -1));
     setStatus(`[web] Parsing structure…\n${prepared.label} (${describeFormat(prepared.format, config.binary)})`);
@@ -428,9 +522,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       `Mol* timed out while parsing/rendering ${prepared.label} as ${prepared.format}.`
     );
 
-    window.addEventListener('resize', () => {
-      try { viewer.handleResize(); } catch (_) {}
-    });
+    window.addEventListener('resize', () => scheduleViewerResize(viewer, 100));
     await waitForAnimationFrame();
     try { viewer.handleResize(); } catch (_) {}
 
