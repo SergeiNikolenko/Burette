@@ -84,7 +84,9 @@ const config = {
   format,
   binary,
   byteCount: data.length,
-  transparentBackground: format === 'sdf',
+  theme: 'auto',
+  canvasBackground: 'black',
+  transparentBackground: false,
   sdfGrid: true,
   showPanelControls: true
 };
@@ -118,14 +120,21 @@ function assert(condition, message) {
 }
 
 assert(index.includes('role="toolbar"'), 'preview HTML must expose a toolbar role');
-assert(index.includes('aria-label="Fit window to screen"'), 'fit button must not be labelled Fullscreen');
+assert(!index.includes('data-buret-action="fit"'), 'fit/fullscreen toolbar button should not be present');
+assert(index.includes('aria-label="Collapse controls"'), 'toolbar handle should collapse controls');
+assert(index.includes('aria-expanded="true"'), 'toolbar handle should expose expanded state');
 assert(!index.includes('aria-label="Fullscreen"'), 'stale Fullscreen aria-label found');
 assert(!index.includes('title="Fullscreen"'), 'stale Fullscreen title found');
 assert(viewer.includes('window.BurreteConfig'), 'viewer.js must read BurreteConfig');
+assert(viewer.includes('buret.toolbar.collapsed'), 'viewer.js must remember compact toolbar state');
+assert(viewer.includes('normalizeViewerTheme'), 'viewer.js must support viewer themes');
+assert(viewer.includes('canvasBackgroundColor'), 'viewer.js must support configurable canvas backgrounds');
 assert(dataSource.startsWith('window.BurreteDataBase64 = "'), 'preview data file must define BurreteDataBase64');
 assert(config.label === path.basename(sample), 'config label should match sample basename');
 assert(typeof config.byteCount === 'number' && config.byteCount > 0, 'config byteCount should be positive');
-assert(config.transparentBackground === (config.format === 'sdf'), 'transparent background should default to SDF only');
+assert(config.theme === 'auto', 'theme should default to auto');
+assert(config.canvasBackground === 'black', 'canvas background should default to black');
+assert(config.transparentBackground === false, 'transparent background should be opt-in');
 assert(config.sdfGrid === true, 'SDF grid flag should be encoded');
 
 const expectedFormats = {
