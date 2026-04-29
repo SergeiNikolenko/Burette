@@ -7,6 +7,13 @@
   <link rel="stylesheet" href="./molstar.css" />
   <style>
     html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: transparent; }
+    html.buret-transparent-background,
+    html.buret-transparent-background body,
+    html.buret-transparent-background #app,
+    html.buret-transparent-background .msp-plugin,
+    html.buret-transparent-background .msp-viewport,
+    html.buret-transparent-background .msp-layout-main,
+    html.buret-transparent-background canvas { background: transparent !important; background-color: transparent !important; }
     body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: #f2f2f2; }
     body.burette-opaque-background,
     body.burette-opaque-background #app {
