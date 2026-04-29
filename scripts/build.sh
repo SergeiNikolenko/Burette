@@ -55,7 +55,7 @@ case "$ROOT" in *"/.Trash/"*|*"/Library/Mobile Documents/.Trash/"*)
 esac
 
 # Prevent accidentally running old v5/v6/v7/v8 folders.
-grep -q '"version": "0.10.1"' package.json || { echo "error: this is not v10; package.json version is:" >&2; grep '"version"' package.json >&2 || true; exit 1; }
+grep -Eq '"version": "0\.10\.[0-9]+"' package.json || { echo "error: this is not a v10 release package; package.json version is:" >&2; grep '"version"' package.json >&2 || true; exit 1; }
 grep -q 'com.local.BurreteV10.Preview' Burrete.xcodeproj/project.pbxproj || { echo "error: this Xcode project is not v10." >&2; exit 1; }
 grep -q 'com.local.burrete10.pdb' scripts/force-preview.sh || { echo "error: force-preview.sh is not v10." >&2; exit 1; }
 

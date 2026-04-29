@@ -1,0 +1,14 @@
+pre-commit:
+  parallel: true
+  commands:
+    release-version:
+      run: npm run check:release
+    js-syntax:
+      run: npm run check:js
+    plist:
+      run: plutil -lint App/Info.plist PreviewExtension/Info.plist App/Burrete.entitlements PreviewExtension/BurretePreview.entitlements
+
+pre-push:
+  commands:
+    ci:
+      run: npm run ci
