@@ -26,8 +26,10 @@ require_tool ditto "ditto is normally present on macOS."
 
 require_asset PreviewExtension/Web/molstar.js
 require_asset PreviewExtension/Web/molstar.css
+require_asset PreviewExtension/Web/burette-agent.js
 require_asset PreviewExtension/Web/viewer.js
 node --check PreviewExtension/Web/viewer.js >/dev/null
+node --check PreviewExtension/Web/burette-agent.js >/dev/null
 
 if [[ ! -f "$EXPORT_OPTIONS" ]]; then
   cat >&2 <<MSG
