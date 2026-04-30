@@ -61,8 +61,10 @@ grep -q 'com.local.burrete10.pdb' scripts/force-preview.sh || { echo "error: for
 
 require_asset PreviewExtension/Web/molstar.js
 require_asset PreviewExtension/Web/molstar.css
+require_asset PreviewExtension/Web/burette-agent.js
 require_asset PreviewExtension/Web/viewer.js
 node --check PreviewExtension/Web/viewer.js >/dev/null
+node --check PreviewExtension/Web/burette-agent.js >/dev/null
 clean_detritus "$ROOT"
 rm -f /tmp/Burrete.log "${TMPDIR:-/tmp}/Burrete.log" 2>/dev/null || true
 

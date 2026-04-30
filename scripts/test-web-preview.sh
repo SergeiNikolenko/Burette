@@ -95,20 +95,27 @@ fs.writeFileSync(dataOut, 'window.BurreteDataBase64 = "' + data.toString('base64
 console.log(`Wrote preview config/data for ${file} as ${format}`);
 JS
 
-node - "$SAMPLE" "$TMP/Web/index.html" "$TMP/Web/viewer.js" "$TMP/Web/preview-config.js" "$TMP/Web/preview-data.js" <<'JS'
+node - "$SAMPLE" "$TMP/Web/index.html" "$TMP/Web/viewer.js" "$TMP/Web/burette-agent.js" "$TMP/Web/preview-config.js" "$TMP/Web/preview-data.js" <<'JS'
 const fs = require('fs');
 const path = require('path');
 
 const sample = process.argv[2];
 const indexPath = process.argv[3];
 const viewerPath = process.argv[4];
-const configPath = process.argv[5];
-const dataPath = process.argv[6];
+const agentPath = process.argv[5];
+const configPath = process.argv[6];
+const dataPath = process.argv[7];
 
 const index = fs.readFileSync(indexPath, 'utf8');
 const viewer = fs.readFileSync(viewerPath, 'utf8');
+const agent = fs.readFileSync(agentPath, 'utf8');
 const configSource = fs.readFileSync(configPath, 'utf8');
 const dataSource = fs.readFileSync(dataPath, 'utf8');
+const appViewer = fs.readFileSync('App/MoleculeViewerWindowController.swift', 'utf8');
+const quickLookViewer = fs.readFileSync('PreviewExtension/PreviewViewController.swift', 'utf8');
+const buildScript = fs.readFileSync('scripts/build.sh', 'utf8');
+const releaseScript = fs.readFileSync('scripts/release.sh', 'utf8');
+const xcodeProject = fs.readFileSync('Burrete.xcodeproj/project.pbxproj', 'utf8');
 const config = JSON.parse(configSource.replace(/^window\.BurreteConfig = /, '').replace(/;\s*$/, ''));
 const ext = path.extname(sample).toLowerCase().slice(1);
 
@@ -137,7 +144,16 @@ assert(index.includes('.msp-sequence-select > select'), 'preview HTML must theme
 assert(index.includes('top: 64px !important'), 'Mol* viewport controls should clear the toolbar row');
 assert(!index.includes('aria-label="Fullscreen"'), 'stale Fullscreen aria-label found');
 assert(!index.includes('title="Fullscreen"'), 'stale Fullscreen title found');
+assert(index.includes('./burette-agent.js'), 'preview HTML must load the Burette agent bridge before viewer.js');
 assert(viewer.includes('window.BurreteConfig'), 'viewer.js must read BurreteConfig');
+assert(viewer.includes('BurreteAgent?.attach'), 'viewer.js must attach the Burette agent bridge');
+assert(agent.includes('window.BurreteAgent'), 'burette-agent.js must expose the BurreteAgent alias');
+assert(agent.includes('window.BuretteAgent'), 'burette-agent.js must expose the BuretteAgent alias');
+assert(appViewer.includes('burette-agent.js'), 'app viewer runtime must copy and load burette-agent.js');
+assert(quickLookViewer.includes('burette-agent.js'), 'Quick Look runtime must copy and load burette-agent.js');
+assert(buildScript.includes('PreviewExtension/Web/burette-agent.js'), 'build script must require and syntax-check burette-agent.js');
+assert(releaseScript.includes('PreviewExtension/Web/burette-agent.js'), 'release script must require and syntax-check burette-agent.js');
+assert(xcodeProject.includes('PreviewExtension/Web/burette-agent.js'), 'Xcode validation phase must track burette-agent.js');
 assert(viewer.includes('buret.toolbar.collapsed'), 'viewer.js must remember compact toolbar state');
 assert(viewer.includes('TOOLBAR_POSITION_VERSION'), 'viewer.js must reset stale toolbar positions');
 assert(viewer.includes("mode: 'custom'"), 'viewer.js must distinguish custom toolbar positions from defaults');
