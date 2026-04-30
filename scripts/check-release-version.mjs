@@ -40,6 +40,17 @@ if (!contentView.includes(`Text("Version ${packageVersion}")`)) {
   fail(`App/ContentView.swift About panel does not show Version ${packageVersion}`);
 }
 
+const appDelegate = readFileSync('App/BurreteApp.swift', 'utf8');
+if (!appDelegate.includes('statusItem(withLength: NSStatusItem.squareLength)')) {
+  fail('menu bar status item must use squareLength so it stays icon-only');
+}
+if (!appDelegate.includes('button.imagePosition = .imageOnly')) {
+  fail('menu bar status item must use imageOnly so it does not show a text label');
+}
+if (/button\.title\s*=\s*"[^"]*\S[^"]*"/.test(appDelegate)) {
+  fail('menu bar status item must not set a visible button title');
+}
+
 if (process.env.GITHUB_EVENT_NAME === 'pull_request' && process.env.GITHUB_BASE_REF) {
   const base = process.env.GITHUB_BASE_REF;
   try {
