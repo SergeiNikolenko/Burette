@@ -3,11 +3,11 @@
 
   const root = document.getElementById('app');
   const status = document.getElementById('status');
-  const GRID_SIZE_STORAGE_KEY = 'buret.grid.cardSize';
-  const MOLECULE_SCALE_STORAGE_KEY = 'buret.grid.moleculeScale';
+  const GRID_COLUMNS_STORAGE_KEY = 'buret.grid.columns';
   const LOAD_BATCH_STORAGE_KEY = 'buret.grid.loadBatch';
   const SHOW_PROPERTIES_STORAGE_KEY = 'buret.grid.showProperties';
-  const GRID_SIZES = ['compact', 'medium', 'large'];
+  const GRID_COLUMNS_MIN = 4;
+  const GRID_COLUMNS_MAX = 16;
   const LOAD_BATCH_OPTIONS = ['auto', '24', '60', '120', '240'];
   const state = {
     rdkit: null,
@@ -20,8 +20,7 @@
     smartsError: '',
     smartsMatches: new Map(),
     sort: 'index',
-    gridSize: storedChoice(GRID_SIZE_STORAGE_KEY, GRID_SIZES, 'medium'),
-    moleculeScale: storedNumber(MOLECULE_SCALE_STORAGE_KEY, 100, 80, 140),
+    gridColumns: storedNumber(GRID_COLUMNS_STORAGE_KEY, 4, GRID_COLUMNS_MIN, GRID_COLUMNS_MAX),
     loadBatchChoice: storedChoice(LOAD_BATCH_STORAGE_KEY, LOAD_BATCH_OPTIONS, 'auto'),
     showProperties: storedBoolean(SHOW_PROPERTIES_STORAGE_KEY, true),
     selected: new Set(),
@@ -161,15 +160,11 @@
             <div id="load-status" class="buret-load-status"></div>
           </div>
           <div class="buret-toolbar-row buret-toolbar-row-view">
-            <fieldset class="buret-segmented-control">
-              <legend>Card size</legend>
-              <div>
-                <button type="button" data-grid-size="compact">Compact</button>
-                <button type="button" data-grid-size="medium">Regular</button>
-                <button type="button" data-grid-size="large">Large</button>
-              </div>
-            </fieldset>
-            <label class="buret-scale-control">Molecule zoom <span><input id="molecule-scale" type="range" min="80" max="140" step="5" /><output id="molecule-scale-label"></output></span></label>
+            <label class="buret-columns-control">Grid columns <span><input id="grid-columns" type="range" min="${GRID_COLUMNS_MIN}" max="${GRID_COLUMNS_MAX}" step="1" /><output id="grid-columns-label"></output></span></label>
+            <div class="buret-stepper-control" aria-label="Adjust grid columns">
+              <button id="grid-columns-decrease" type="button" aria-label="Fewer columns">-</button>
+              <button id="grid-columns-increase" type="button" aria-label="More columns">+</button>
+            </div>
             <button id="show-properties" class="buret-toggle-button" type="button" aria-pressed="true">Properties</button>
             <button id="clear-smarts" class="buret-toggle-button buret-clear-smarts" type="button" hidden>Clear SMARTS</button>
             ${caps.rendererSwitch ? rendererSwitchHTML() : ''}
@@ -196,16 +191,12 @@
       store(LOAD_BATCH_STORAGE_KEY, state.loadBatchChoice);
       render(cfg);
     });
-    document.querySelectorAll('[data-grid-size]').forEach(button => button.addEventListener('click', event => {
-      state.gridSize = event.currentTarget.dataset.gridSize || 'medium';
-      store(GRID_SIZE_STORAGE_KEY, state.gridSize);
-      applyGridPreferences();
-    }));
-    document.getElementById('molecule-scale').addEventListener('input', event => {
-      state.moleculeScale = storedNumberFromValue(event.target.value, 100, 80, 140);
-      store(MOLECULE_SCALE_STORAGE_KEY, state.moleculeScale);
+    document.getElementById('grid-columns').addEventListener('input', event => {
+      setGridColumns(event.target.value);
       applyGridPreferences();
     });
+    document.getElementById('grid-columns-decrease').addEventListener('click', () => updateGridColumns(-1));
+    document.getElementById('grid-columns-increase').addEventListener('click', () => updateGridColumns(1));
     document.getElementById('show-properties').addEventListener('click', () => {
       state.showProperties = !state.showProperties;
       store(SHOW_PROPERTIES_STORAGE_KEY, state.showProperties);
@@ -229,27 +220,33 @@
   }
 
   function applyGridPreferences() {
-    document.body.classList.toggle('buret-grid-size-compact', state.gridSize === 'compact');
-    document.body.classList.toggle('buret-grid-size-medium', state.gridSize === 'medium');
-    document.body.classList.toggle('buret-grid-size-large', state.gridSize === 'large');
     document.body.classList.toggle('buret-hide-properties', !state.showProperties);
-    document.body.style.setProperty('--buret-molecule-scale', String(state.moleculeScale / 100));
-    document.querySelectorAll('[data-grid-size]').forEach(button => {
-      const active = button.dataset.gridSize === state.gridSize;
-      button.classList.toggle('active', active);
-      button.setAttribute('aria-pressed', active ? 'true' : 'false');
-    });
-    const moleculeScaleInput = document.getElementById('molecule-scale');
-    const moleculeScaleLabel = document.getElementById('molecule-scale-label');
+    document.body.style.setProperty('--buret-grid-columns', String(state.gridColumns));
+    const gridColumnsInput = document.getElementById('grid-columns');
+    const gridColumnsLabel = document.getElementById('grid-columns-label');
+    const gridColumnsDecrease = document.getElementById('grid-columns-decrease');
+    const gridColumnsIncrease = document.getElementById('grid-columns-increase');
     const loadBatchSelect = document.getElementById('load-batch');
     const propertiesToggle = document.getElementById('show-properties');
-    if (moleculeScaleInput) moleculeScaleInput.value = String(state.moleculeScale);
-    if (moleculeScaleLabel) moleculeScaleLabel.textContent = `${state.moleculeScale}%`;
+    if (gridColumnsInput) gridColumnsInput.value = String(state.gridColumns);
+    if (gridColumnsLabel) gridColumnsLabel.textContent = `${state.gridColumns} per row`;
+    if (gridColumnsDecrease) gridColumnsDecrease.disabled = state.gridColumns <= GRID_COLUMNS_MIN;
+    if (gridColumnsIncrease) gridColumnsIncrease.disabled = state.gridColumns >= GRID_COLUMNS_MAX;
     if (loadBatchSelect) loadBatchSelect.value = state.loadBatchChoice;
     if (propertiesToggle) {
       propertiesToggle.classList.toggle('active', state.showProperties);
       propertiesToggle.setAttribute('aria-pressed', state.showProperties ? 'true' : 'false');
     }
+  }
+
+  function setGridColumns(value) {
+    state.gridColumns = storedNumberFromValue(value, state.gridColumns, GRID_COLUMNS_MIN, GRID_COLUMNS_MAX);
+    store(GRID_COLUMNS_STORAGE_KEY, state.gridColumns);
+  }
+
+  function updateGridColumns(delta) {
+    setGridColumns(state.gridColumns + delta);
+    applyGridPreferences();
   }
 
   function storedNumberFromValue(value, fallback, min, max) {
