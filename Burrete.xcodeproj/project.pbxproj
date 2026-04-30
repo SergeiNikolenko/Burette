@@ -403,7 +403,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", );
-				MARKETING_VERSION = 0.10.16;
+				MARKETING_VERSION = 0.10.17;
 				PRODUCT_BUNDLE_IDENTIFIER = com.local.BurreteV10;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -427,7 +427,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", );
-				MARKETING_VERSION = 0.10.16;
+				MARKETING_VERSION = 0.10.17;
 				PRODUCT_BUNDLE_IDENTIFIER = com.local.BurreteV10;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -451,7 +451,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PreviewExtension/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks", );
-				MARKETING_VERSION = 0.10.16;
+				MARKETING_VERSION = 0.10.17;
 				PRODUCT_BUNDLE_IDENTIFIER = com.local.BurreteV10.Preview;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -476,7 +476,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PreviewExtension/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks", );
-				MARKETING_VERSION = 0.10.16;
+				MARKETING_VERSION = 0.10.17;
 				PRODUCT_BUNDLE_IDENTIFIER = com.local.BurreteV10.Preview;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;

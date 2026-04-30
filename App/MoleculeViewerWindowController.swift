@@ -43,18 +43,18 @@ enum AppViewerXyzrenderPreset {
 final class MoleculeViewerWindowController: NSWindowController, WKNavigationDelegate, WKScriptMessageHandler {
     private let fileURL: URL
     private let webView: WKWebView
-    private var currentViewerPageZoom: CGFloat = 0.86
+    private var currentViewerPageZoom: CGFloat = 1.0
     private var rendererOverride: String?
     private var xyzrenderPresetOverride: String?
     private var isInNativeFullScreen = false
     private var isEnteringNativeFullScreen = false
-    private static let defaultViewerPageZoom: CGFloat = 0.86
-    private static let minViewerPageZoom: CGFloat = 0.72
-    private static let maxViewerPageZoom: CGFloat = 1.35
+    private static let defaultViewerPageZoom: CGFloat = 1.0
+    private static let minViewerPageZoom: CGFloat = 1.0
+    private static let maxViewerPageZoom: CGFloat = 1.0
 
     init(fileURL: URL) {
         self.fileURL = fileURL
-        let transparentBackground = Self.useTransparentPreviewBackground
+        let displayPreferences = Self.currentDisplayPreferences
 
         let userContentController = WKUserContentController()
         let configuration = WKWebViewConfiguration()
@@ -81,18 +81,14 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         window.title = "Burrete - \(fileURL.lastPathComponent)"
         window.titleVisibility = .visible
         window.titlebarAppearsTransparent = false
-        window.isMovableByWindowBackground = false
-        window.styleMask.remove(.fullSizeContentView)
+        window.isMovableByWindowBackground = true
         window.collectionBehavior.insert(.fullScreenPrimary)
         window.minSize = NSSize(width: 660, height: 440)
-        window.appearance = NSAppearance(named: .darkAqua)
         if #available(macOS 11.0, *) {
             window.toolbarStyle = .unifiedCompact
         }
-        window.isOpaque = true
-        window.backgroundColor = .windowBackgroundColor
         window.hasShadow = true
-        window.contentView = webView
+        window.contentView = BurreteAppViewerContainerView(contentView: webView, preferences: displayPreferences)
 
         super.init(window: window)
 
@@ -111,11 +107,8 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         userContentController.add(self, name: "burrete")
         webView.navigationDelegate = self
         webView.wantsLayer = true
-        webView.layer?.backgroundColor = (transparentBackground ? NSColor.clear : NSColor(calibratedWhite: 0.055, alpha: 1.0)).cgColor
+        applyWindowDisplayPreferences(displayPreferences)
         webView.setValue(false, forKey: "drawsBackground")
-        if #available(macOS 11.0, *) {
-            webView.underPageBackgroundColor = transparentBackground ? .clear : NSColor(calibratedWhite: 0.055, alpha: 1.0)
-        }
         #if DEBUG
         if #available(macOS 13.3, *) {
             webView.isInspectable = true
@@ -143,6 +136,17 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         } catch {
             webView.loadHTMLString(Self.errorHTML(error), baseURL: nil)
         }
+    }
+
+    func reloadDisplayPreferences() {
+        applyWindowDisplayPreferences(Self.currentDisplayPreferences)
+        load()
+    }
+
+    func reloadSettingsPreferences() {
+        rendererOverride = nil
+        xyzrenderPresetOverride = nil
+        reloadDisplayPreferences()
     }
 
     func enterFullScreen() {
@@ -194,6 +198,18 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         }
         let text = (body["message"] as? String) ?? ""
         NSLog("[BurreteAppViewer] %@: %@ %@", fileURL.lastPathComponent, type, text)
+    }
+
+    private func applyWindowDisplayPreferences(_ preferences: AppViewerDisplayPreferences) {
+        let backgroundColor = preferences.isWindowTransparent ? NSColor.clear : NSColor.windowBackgroundColor
+        window?.appearance = preferences.windowAppearance
+        window?.isOpaque = !preferences.isWindowTransparent
+        window?.backgroundColor = backgroundColor
+        (window?.contentView as? BurreteAppViewerContainerView)?.apply(preferences)
+        webView.layer?.backgroundColor = backgroundColor.cgColor
+        if #available(macOS 11.0, *) {
+            webView.underPageBackgroundColor = backgroundColor
+        }
     }
 
     private func setViewerPageZoom(_ scale: CGFloat) {
@@ -258,8 +274,50 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         """
     }
 
-    private static var useTransparentPreviewBackground: Bool {
-        UserDefaults.standard.object(forKey: "useTransparentPreviewBackground") as? Bool ?? false
+    private static var currentDisplayPreferences: AppViewerDisplayPreferences {
+        AppViewerDisplayPreferences(
+            transparentWindow: UserDefaults.standard.object(forKey: "useTransparentPreviewBackground") as? Bool ?? false,
+            theme: UserDefaults.standard.string(forKey: "viewerTheme") ?? "auto",
+            windowOpacity: UserDefaults.standard.object(forKey: "viewerWindowOpacity") as? Double ?? 0.82,
+            overlayOpacity: UserDefaults.standard.object(forKey: "viewerOverlayOpacity") as? Double ?? 0.90
+        )
+    }
+}
+
+private struct AppViewerDisplayPreferences {
+    let transparentWindow: Bool
+    let theme: String
+    let windowOpacity: Double
+    let overlayOpacity: Double
+
+    var isWindowTransparent: Bool {
+        transparentWindow
+    }
+
+    var clampedWindowOpacity: CGFloat {
+        CGFloat(min(max(windowOpacity, 0.35), 0.95))
+    }
+
+    var clampedOverlayOpacity: Double {
+        min(max(overlayOpacity, 0.72), 0.98)
+    }
+
+    var resolvedTheme: String {
+        if theme == "dark" || theme == "light" { return theme }
+        if let appearance = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]), appearance == .darkAqua {
+            return "dark"
+        }
+        return "light"
+    }
+
+    var windowAppearance: NSAppearance? {
+        if theme == "dark" { return NSAppearance(named: .darkAqua) }
+        if theme == "light" { return NSAppearance(named: .aqua) }
+        return nil
+    }
+
+    var baseColor: NSColor {
+        resolvedTheme == "dark" ? NSColor(calibratedWhite: 0.08, alpha: 1.0) : NSColor.windowBackgroundColor
     }
 }
 
@@ -307,45 +365,52 @@ private struct AppViewerRuntime {
 
         let transparentBackground = UserDefaults.standard.object(forKey: "useTransparentPreviewBackground") as? Bool ?? false
         let viewerTheme = UserDefaults.standard.string(forKey: "viewerTheme") ?? "auto"
-        let canvasBackground = UserDefaults.standard.string(forKey: "viewerCanvasBackground") ?? "black"
+        let canvasBackground = UserDefaults.standard.string(forKey: "viewerCanvasBackground") ?? "auto"
         let canvasIsTransparent = canvasBackground == "transparent"
+        let overlayOpacity = AppViewerDisplayPreferences(
+            transparentWindow: transparentBackground,
+            theme: viewerTheme,
+            windowOpacity: UserDefaults.standard.object(forKey: "viewerWindowOpacity") as? Double ?? 0.82,
+            overlayOpacity: UserDefaults.standard.object(forKey: "viewerOverlayOpacity") as? Double ?? 0.90
+        ).clampedOverlayOpacity
 
-        let rendererOverride = rendererModeOverride.map(AppViewerRendererMode.normalize)
-        let bypassGridForRendererSwitch = ["sdf", "sd"].contains(fileURL.pathExtension.lowercased()) &&
-            rendererOverride != nil &&
-            rendererOverride != "auto"
-
-        if !bypassGridForRendererSwitch,
-           let gridPreview = try MoleculeGridPreviewBuilder.makePreview(
+        if let gridPreview = try MoleculeGridPreviewBuilder.makePreview(
             fileURL: fileURL,
             data: data,
             host: .app,
             theme: viewerTheme,
             canvasBackground: canvasBackground,
             transparentBackground: canvasIsTransparent,
+            overlayOpacity: overlayOpacity,
             debug: false,
             allowSelection: true,
             allowExport: true,
-            maxRecords: 10000
+            maxRecords: 5000,
+            fileSupport: MoleculeGridFileSupport.load()
         ) {
             try requireGridRuntimeAssets(in: assetsDirectory)
+            let gridRecordsScript = try gridRecordsScriptWithRDKitWasm(
+                gridPreview.recordsScript,
+                bundledWebDirectory: bundledWebDirectory
+            )
             try Data(gridHTML(title: fileURL.lastPathComponent, transparentBackground: transparentBackground).utf8)
                 .write(to: runtimeDirectory.appendingPathComponent("index.html"), options: [.atomic])
             try Data("window.BurreteConfig = \(gridPreview.configJSON);\n".utf8)
                 .write(to: runtimeDirectory.appendingPathComponent("preview-config.js"), options: [.atomic])
             try Data("window.BurreteDataBase64 = null;\n".utf8)
                 .write(to: runtimeDirectory.appendingPathComponent("preview-data.js"), options: [.atomic])
-            try Data(gridPreview.recordsScript.utf8)
+            try Data(gridRecordsScript.utf8)
                 .write(to: runtimeDirectory.appendingPathComponent("preview-grid-records.js"), options: [.atomic])
-            let rdkitWasmURL = assetsDirectory
-                .appendingPathComponent("rdkit", isDirectory: true)
-                .appendingPathComponent("RDKit_minimal.wasm")
-            try Data(rdkitWasmInlineScript(from: rdkitWasmURL).utf8)
-                .write(to: runtimeDirectory.appendingPathComponent("preview-rdkit-wasm.js"), options: [.atomic])
             return AppViewerRuntime(
                 indexURL: runtimeDirectory.appendingPathComponent("index.html"),
                 readAccessURL: baseDirectory
             )
+        }
+        if MoleculeGridFileSupport.requiresGridPreview(fileExtension: fileURL.pathExtension) {
+            if !MoleculeGridFileSupport.load().supports(fileExtension: fileURL.pathExtension) {
+                throw AppViewerError.gridFileTypeDisabled(fileURL.pathExtension)
+            }
+            throw AppViewerError.unsupportedFile(fileURL.lastPathComponent)
         }
 
         let format = AppViewerStructureFormat(url: fileURL, data: data)
@@ -393,7 +458,8 @@ private struct AppViewerRuntime {
             "debug": false,
             "theme": viewerTheme,
             "canvasBackground": canvasBackground,
-            "uiScale": 0.86,
+            "uiScale": 1.0,
+            "overlayOpacity": overlayOpacity,
             "transparentBackground": canvasIsTransparent,
             "sdfGrid": true,
             "appViewer": true,
@@ -469,21 +535,12 @@ private struct AppViewerRuntime {
         }
     }
 
-    private static func rdkitWasmInlineScript(from url: URL) throws -> String {
-        let base64 = try Data(contentsOf: url).base64EncodedString(options: [])
-        let chunkSize = 32_768
-        var chunks: [String] = []
-        var start = base64.startIndex
-        while start < base64.endIndex {
-            let end = base64.index(start, offsetBy: chunkSize, limitedBy: base64.endIndex) ?? base64.endIndex
-            chunks.append(String(base64[start..<end]))
-            start = end
-        }
-        let jsonData = try JSONSerialization.data(withJSONObject: chunks, options: [.withoutEscapingSlashes])
-        guard let json = String(data: jsonData, encoding: .utf8) else {
-            throw AppViewerError.missingWebResources
-        }
-        return "window.BurreteRDKitWasmBase64Chunks = \(json);\n"
+    private static func gridRecordsScriptWithRDKitWasm(_ recordsScript: String, bundledWebDirectory: URL) throws -> String {
+        let wasmURL = bundledWebDirectory
+            .appendingPathComponent("rdkit", isDirectory: true)
+            .appendingPathComponent("RDKit_minimal.wasm")
+        let wasmBase64 = try Data(contentsOf: wasmURL).base64EncodedString()
+        return recordsScript + "window.BurreteRDKitWasmBase64 = \"\(wasmBase64)\";\n"
     }
 
     private static func copyAssetAtomically(from source: URL, to destination: URL) throws {
@@ -540,14 +597,13 @@ private struct AppViewerRuntime {
 
     private static func resolveRenderer(for format: AppViewerStructureFormat, rendererMode: String) -> String {
         let isXYZ = format.molstarFormat == "xyz" && !format.isBinary
-        let isSDF = format.molstarFormat == "sdf" && !format.isBinary
         switch AppViewerRendererMode.normalize(rendererMode) {
         case "molstar":
             return "molstar"
         case "xyz-fast":
             return isXYZ ? "xyz-fast" : "molstar"
         case "xyzrender-external":
-            return (isXYZ || isSDF) ? "xyzrender-external" : "molstar"
+            return isXYZ ? "xyzrender-external" : "molstar"
         default:
             return isXYZ ? "xyz-fast" : "molstar"
         }
@@ -632,7 +688,6 @@ private struct AppViewerRuntime {
           </script>
           <script src="preview-config.js"></script>
           <script src="preview-grid-records.js"></script>
-          <script src="preview-rdkit-wasm.js"></script>
           <script src="../assets/rdkit/RDKit_minimal.js"></script>
           <script src="../assets/grid-viewer.js"></script>
         </body>
@@ -671,16 +726,18 @@ private struct AppViewerRuntime {
             :root {
               --buret-viewer-ui-scale: 0.86;
               --buret-toolbar-safe-top: 18px;
+              --buret-overlay-opacity: 0.90;
+              --buret-overlay-strong-opacity: 0.96;
               --buret-canvas-background: #000000;
               --buret-shell-background: #000000;
-              --buret-panel-background: rgba(18, 20, 22, 0.82);
-              --buret-toolbar-background: rgba(12, 13, 14, 0.90);
+              --buret-panel-background: rgba(18, 20, 22, var(--buret-overlay-opacity));
+              --buret-toolbar-background: rgba(12, 13, 14, var(--buret-overlay-opacity));
               --buret-toolbar-border: rgba(255, 255, 255, 0.10);
               --buret-toolbar-hover: rgba(255, 255, 255, 0.14);
               --buret-toolbar-color: rgba(255, 255, 255, 0.94);
-              --buret-molstar-panel-background: rgba(14, 15, 17, 0.94);
-              --buret-molstar-row-background: rgba(24, 26, 29, 0.96);
-              --buret-molstar-field-background: rgba(32, 35, 39, 0.98);
+              --buret-molstar-panel-background: rgba(14, 15, 17, var(--buret-overlay-strong-opacity));
+              --buret-molstar-row-background: rgba(24, 26, 29, var(--buret-overlay-strong-opacity));
+              --buret-molstar-field-background: rgba(32, 35, 39, var(--buret-overlay-strong-opacity));
               --buret-molstar-hover-background: rgba(48, 52, 58, 0.98);
               --buret-molstar-border: rgba(255, 255, 255, 0.10);
               --buret-molstar-text: rgba(246, 247, 249, 0.94);
@@ -699,33 +756,33 @@ private struct AppViewerRuntime {
             html.buret-transparent-background canvas { background: transparent !important; background-color: transparent !important; }
             body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: #f2f2f2; }
             body.buret-theme-light {
-              --buret-shell-background: #f7f7f2;
-              --buret-panel-background: rgba(247, 247, 242, 0.86);
-              --buret-toolbar-background: rgba(247, 247, 242, 0.90);
+              --buret-shell-background: #ffffff;
+              --buret-panel-background: rgba(248, 248, 248, var(--buret-overlay-opacity));
+              --buret-toolbar-background: rgba(248, 248, 248, var(--buret-overlay-opacity));
               --buret-toolbar-border: rgba(0, 0, 0, 0.12);
               --buret-toolbar-hover: rgba(0, 0, 0, 0.08);
               --buret-toolbar-color: rgba(20, 21, 23, 0.92);
-              --buret-molstar-panel-background: rgba(239, 239, 235, 0.94);
-              --buret-molstar-row-background: rgba(229, 228, 222, 0.96);
-              --buret-molstar-field-background: rgba(248, 247, 244, 0.98);
-              --buret-molstar-hover-background: rgba(218, 216, 209, 0.98);
+              --buret-molstar-panel-background: rgba(248, 248, 248, var(--buret-overlay-strong-opacity));
+              --buret-molstar-row-background: rgba(238, 238, 238, var(--buret-overlay-strong-opacity));
+              --buret-molstar-field-background: rgba(255, 255, 255, var(--buret-overlay-strong-opacity));
+              --buret-molstar-hover-background: rgba(228, 228, 228, 0.98);
               --buret-molstar-border: rgba(0, 0, 0, 0.13);
               --buret-molstar-text: rgba(32, 33, 35, 0.94);
-              --buret-molstar-muted-text: rgba(84, 78, 68, 0.82);
-              --buret-molstar-accent: #8a4b10;
+              --buret-molstar-muted-text: rgba(86, 88, 92, 0.82);
+              --buret-molstar-accent: #006bd6;
               --buret-molstar-shadow: rgba(0, 0, 0, 0.18);
               color: #161719;
             }
             body.buret-theme-dark {
               --buret-shell-background: var(--buret-canvas-background);
-              --buret-panel-background: rgba(18, 20, 22, 0.82);
-              --buret-toolbar-background: rgba(12, 13, 14, 0.90);
+              --buret-panel-background: rgba(18, 20, 22, var(--buret-overlay-opacity));
+              --buret-toolbar-background: rgba(12, 13, 14, var(--buret-overlay-opacity));
               --buret-toolbar-border: rgba(255, 255, 255, 0.10);
               --buret-toolbar-hover: rgba(255, 255, 255, 0.14);
               --buret-toolbar-color: rgba(255, 255, 255, 0.94);
-              --buret-molstar-panel-background: rgba(14, 15, 17, 0.94);
-              --buret-molstar-row-background: rgba(24, 26, 29, 0.96);
-              --buret-molstar-field-background: rgba(32, 35, 39, 0.98);
+              --buret-molstar-panel-background: rgba(14, 15, 17, var(--buret-overlay-strong-opacity));
+              --buret-molstar-row-background: rgba(24, 26, 29, var(--buret-overlay-strong-opacity));
+              --buret-molstar-field-background: rgba(32, 35, 39, var(--buret-overlay-strong-opacity));
               --buret-molstar-hover-background: rgba(48, 52, 58, 0.98);
               --buret-molstar-border: rgba(255, 255, 255, 0.10);
               --buret-molstar-text: rgba(246, 247, 249, 0.94);
@@ -765,7 +822,7 @@ private struct AppViewerRuntime {
             body .msp-plugin,
             body .msp-plugin .msp-plugin-content {
               color: var(--buret-molstar-text) !important;
-              background: var(--buret-molstar-panel-background) !important;
+              background: transparent !important;
             }
             body .msp-plugin .msp-layout-standard,
             body .msp-plugin .msp-layout-top,
@@ -1373,6 +1430,8 @@ private struct AppViewerStructureFormat {
 private enum AppViewerError: LocalizedError {
     case missingWebResources
     case emptyFile(String)
+    case unsupportedFile(String)
+    case gridFileTypeDisabled(String)
     case fileTooLarge(String, Int64, Int64)
     case missingCacheDirectory
 
@@ -1382,11 +1441,69 @@ private enum AppViewerError: LocalizedError {
             return "Bundled Mol* web resources are missing from Burrete.app."
         case .emptyFile(let name):
             return "The structure file is empty: \(name)"
+        case .unsupportedFile(let name):
+            return "Unsupported molecule grid file: \(name)"
+        case .gridFileTypeDisabled(let ext):
+            return ".\(ext) molecule grid previews are disabled in Burrete Settings."
         case .fileTooLarge(let name, let size, let limit):
             return "\(name) is too large for the Burrete app viewer (\(size) bytes; limit \(limit) bytes). Open it in a dedicated molecular viewer."
         case .missingCacheDirectory:
             return "Could not locate the app cache directory."
         }
+    }
+}
+
+private final class BurreteAppViewerContainerView: NSView {
+    private let materialView = NSVisualEffectView()
+    private let backgroundFillView = NSView()
+
+    init(contentView: NSView, preferences: AppViewerDisplayPreferences) {
+        super.init(frame: .zero)
+        wantsLayer = true
+
+        materialView.translatesAutoresizingMaskIntoConstraints = false
+        materialView.blendingMode = .behindWindow
+        materialView.state = .active
+        materialView.material = .underWindowBackground
+        addSubview(materialView)
+
+        backgroundFillView.translatesAutoresizingMaskIntoConstraints = false
+        backgroundFillView.wantsLayer = true
+        addSubview(backgroundFillView)
+
+        contentView.wantsLayer = true
+        contentView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(contentView)
+        NSLayoutConstraint.activate([
+            materialView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            materialView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            materialView.topAnchor.constraint(equalTo: topAnchor),
+            materialView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            backgroundFillView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            backgroundFillView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            backgroundFillView.topAnchor.constraint(equalTo: topAnchor),
+            backgroundFillView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            contentView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            contentView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            contentView.topAnchor.constraint(equalTo: topAnchor),
+            contentView.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+        apply(preferences)
+    }
+
+    override var mouseDownCanMoveWindow: Bool {
+        true
+    }
+
+    func apply(_ preferences: AppViewerDisplayPreferences) {
+        materialView.isHidden = !preferences.isWindowTransparent
+        let fillColor = preferences.baseColor.withAlphaComponent(preferences.isWindowTransparent ? preferences.clampedWindowOpacity : 1.0)
+        layer?.backgroundColor = fillColor.cgColor
+        backgroundFillView.layer?.backgroundColor = fillColor.cgColor
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
     }
 }
 

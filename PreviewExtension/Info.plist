@@ -99,6 +99,7 @@
 				<string>com.local.burrete10.bcif</string>
 				<string>com.local.burrete10.sdf</string>
 				<string>com.local.burrete10.smiles</string>
+				<string>com.local.burettexyzrender.smiles</string>
 				<string>com.local.burrete10.mol</string>
 				<string>com.local.burrete10.mol2</string>
 				<string>com.local.molstarquicklook10.pdb</string>
@@ -144,12 +145,14 @@
 				<string>uk.ac.ebi.pdbe.pdb</string>
 				<string>uk.ac.ebi.pdbe.cif</string>
 				<string>uk.ac.ebi.pdbe.mmcif</string>
-					<string>public.pdb</string>
-					<string>public.mmcif</string>
+				<string>public.pdb</string>
+				<string>public.mmcif</string>
 					<string>public.cif</string>
-					<string>public.data</string>
+					<string>public.comma-separated-values-text</string>
+					<string>public.tab-separated-values-text</string>
 						<string>com.schrodinger.sdf</string>
 						<string>com.local.burrete10.xyz</string>
+						<string>net.sourceforge.openbabel.xyz</string>
 						<string>dyn.ah62d4rv4ge81u8p4</string>
 						<string>com.local.burrete10.gro</string>
 						<string>dyn.ah62d4rv4ge80s6xt</string>
