@@ -204,9 +204,18 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let diagnostics: [String]
     }
 
+    private static let supportedStructureExtensions: Set<String> = [
+        "bcif", "cif", "ent", "gro", "mcif", "mmcif", "mol", "mol2", "pdb", "pdbqt", "pqr", "sd", "sdf", "xyz"
+    ]
+
     private static func buildInlinePreviewHTML(for url: URL) throws -> BuildResult {
         var diagnostics: [String] = []
         func diag(_ message: String) { diagnostics.append("[build] " + message) }
+
+        let pathExtension = url.pathExtension.lowercased()
+        guard supportedStructureExtensions.contains(pathExtension) else {
+            throw PreviewError.unsupportedStructureFile(url.lastPathComponent)
+        }
 
         let accessGranted = url.startAccessingSecurityScopedResource()
         diag("securityScopedAccess=\(accessGranted)")
@@ -217,7 +226,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
         let webDirectory = try locateBundledWebDirectory(fileManager: fileManager, diagnostics: &diagnostics)
         diag("webDirectory=\(webDirectory.path)")
-        try validateVendoredMolstarAssets(in: webDirectory, fileManager: fileManager, diagnostics: &diagnostics)
+        try validateVendoredWebAssets(in: webDirectory, fileManager: fileManager, diagnostics: &diagnostics)
 
         let structureSize = try fileSize(for: url, fileManager: fileManager)
         let sizeLimit = quickLookSizeLimit(for: url)
@@ -261,18 +270,27 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
 
         let format = StructureFormat(url: url, data: structureData)
-        diag("detected.format=\(format.molstarFormat) binary=\(format.isBinary)")
+        let renderer = resolvedRenderer(for: format, preferences: preferences, isQuickLook: true)
+        let xyzFastPayload = renderer == "xyz-fast" ? makeXYZFastPayload(from: structureData) : nil
+        let structureDataForWeb = xyzFastPayload?.data ?? structureData
+        diag("detected.format=\(format.molstarFormat) binary=\(format.isBinary) renderer=\(renderer)")
+        if let xyzFastPayload {
+            diag("xyzFast.firstFrame.bytes=\(xyzFastPayload.data.count) atoms=\(xyzFastPayload.atomCount ?? -1) frames=\(xyzFastPayload.frameCount ?? -1)")
+        }
 
         let configJSON = try previewConfigJSON(
             format: format,
             label: url.lastPathComponent,
             byteCount: structureData.count,
+            previewByteCount: structureDataForWeb.count,
+            renderer: renderer,
+            xyzFastPayload: xyzFastPayload,
             preferences: preferences
         )
-        let base64 = structureData.base64EncodedString(options: [])
+        let base64 = structureDataForWeb.base64EncodedString(options: [])
         diag("structure.base64.chars=\(base64.count)")
 
-        let html = inlineHTML(title: url.lastPathComponent, preferences: preferences)
+        let html = inlineHTML(title: url.lastPathComponent, preferences: preferences, renderer: renderer)
         diag("inlineHTML.bytes=\(html.utf8.count)")
         let runtimePreview = try createRuntimePreview(
             bundledWebDirectory: webDirectory,
@@ -375,7 +393,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     ) throws {
         let assetsDirectory = previewsDirectory.appendingPathComponent("assets", isDirectory: true)
         try fileManager.createDirectory(at: assetsDirectory, withIntermediateDirectories: true)
-        for assetName in ["molstar.js", "molstar.css", "burette-agent.js", "viewer.js", "grid-viewer.js", "grid.css"] {
+        for assetName in ["molstar.js", "molstar.css", "burette-agent.js", "viewer.js", "xyz-fast.js", "grid-viewer.js", "grid.css"] {
             let source = bundledWebDirectory.appendingPathComponent(assetName)
             let destination = assetsDirectory.appendingPathComponent(assetName)
             try copyAssetAtomically(from: source, to: destination, fileManager: fileManager)
@@ -421,12 +439,24 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         return (attrs[.size] as? NSNumber)?.int64Value ?? 0
     }
 
-    private static func previewConfigJSON(format: StructureFormat, label: String, byteCount: Int, preferences: PreviewPreferences) throws -> String {
-        let payload: [String: Any] = [
+    private static func previewConfigJSON(
+        format: StructureFormat,
+        label: String,
+        byteCount: Int,
+        previewByteCount: Int,
+        renderer: String,
+        xyzFastPayload: XYZFastPayload?,
+        preferences: PreviewPreferences
+    ) throws -> String {
+        var payload: [String: Any] = [
             "format": format.molstarFormat,
+            "molstarFormat": format.molstarFormat,
             "binary": format.isBinary,
+            "renderer": renderer,
+            "allowMolstarFallback": true,
             "label": label,
             "byteCount": byteCount,
+            "previewByteCount": previewByteCount,
             "quickLookBuild": "v10-product",
             "debug": showDebugOverlay,
             "theme": preferences.viewerTheme,
@@ -437,6 +467,19 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "showPanelControls": preferences.showPanelControls,
             "defaultLayoutState": preferences.defaultLayoutState
         ]
+        if renderer == "xyz-fast" {
+            var xyzFast: [String: Any] = [
+                "style": preferences.xyzFastStyle,
+                "firstFrameOnly": true,
+                "showCell": true,
+                "sourceByteCount": byteCount,
+                "previewByteCount": previewByteCount
+            ]
+            if let atomCount = xyzFastPayload?.atomCount { xyzFast["atomCount"] = atomCount }
+            if let frameCount = xyzFastPayload?.frameCount { xyzFast["frameCount"] = frameCount }
+            if let comment = xyzFastPayload?.comment, !comment.isEmpty { xyzFast["comment"] = comment }
+            payload["xyzFast"] = xyzFast
+        }
         let jsonData = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes])
         guard let json = String(data: jsonData, encoding: .utf8) else { throw PreviewError.couldNotCreatePreviewConfig }
         return json
@@ -479,9 +522,25 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         """
     }
 
-    private static func inlineHTML(title: String, preferences: PreviewPreferences) -> String {
+    private static func inlineHTML(title: String, preferences: PreviewPreferences, renderer: String) -> String {
         let safeTitle = escapeHTML(title)
         let backgroundClass = preferences.transparentBackground ? "burette-transparent-background" : "burette-opaque-background"
+        let isXYZFast = renderer == "xyz-fast"
+        let initialStatus = isXYZFast ? "[web] HTML body created. Waiting for Fast XYZ renderer…" : "[web] HTML body created. Waiting for embedded data and Mol* script…"
+        let rendererAssets = isXYZFast ? """
+          <script src="../assets/xyz-fast.js"></script>
+          <script>
+            window.__mqlStatus && window.__mqlStatus('[web] xyz-fast.js parsed. typeof BurreteXYZFast=' + typeof window.BurreteXYZFast);
+          </script>
+        """ : """
+          <script>
+            window.__mqlStatus && window.__mqlStatus('[web] About to load molstar.js from bundled resource…');
+          </script>
+          <script src="../assets/molstar.js"></script>
+          <script>
+            window.__mqlStatus && window.__mqlStatus('[web] molstar.js parsed. typeof molstar=' + typeof window.molstar + '; Viewer=' + (window.molstar && typeof window.molstar.Viewer));
+          </script>
+        """
         return """
         <!doctype html>
         <html lang="en">
@@ -889,7 +948,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
               user-select: none; touch-action: none;
             }
             #buret-toolbar.collapsed { gap: 0; }
-            #buret-toolbar.collapsed .buret-button:not(.buret-grip) { display: none; }
+            #buret-toolbar.collapsed .buret-button:not(.buret-grip),
+            #buret-toolbar.collapsed .buret-renderer-control { display: none; }
             #buret-toolbar.collapsed .buret-grip { min-width: 26px; padding: 0; cursor: pointer; }
             .buret-button {
               min-width: 26px; height: 26px; border: 0; border-radius: 7px; padding: 0 7px;
@@ -900,6 +960,16 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             .buret-button.hidden { display: none; }
             .buret-button svg { width: 15px; height: 15px; display: block; }
             .buret-grip { cursor: grab; color: currentColor; opacity: 0.66; }
+            .buret-renderer-control {
+              display: none; align-items: center; gap: 4px; padding-left: 5px;
+              border-left: 1px solid var(--buret-toolbar-border);
+            }
+            .buret-renderer-control.visible { display: flex; }
+            .buret-select {
+              height: 26px; max-width: 118px; border: 0; border-radius: 7px; padding: 0 22px 0 8px;
+              color: inherit; background: transparent; font: 600 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+            }
+            .buret-select:hover, .buret-select:focus { background: var(--buret-toolbar-hover); outline: none; }
           </style>
           <script>
             (function () {
@@ -913,6 +983,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                   text.indexOf('[web] About to load viewer.js') === 0 ||
                   text.indexOf('[web] Loading Mol* engine') === 0 ||
                   text.indexOf('[web] Mol* engine loaded') === 0 ||
+                  text.indexOf('[web] Loading Fast XYZ renderer') === 0 ||
+                  text.indexOf('[web] Fast XYZ renderer loaded') === 0 ||
+                  text.indexOf('[web] Loading xyzrender artifact') === 0 ||
                   text.indexOf('[web] WebGL viewer created') === 0 ||
                   text.indexOf('[web] Parsing structure') === 0 ||
                   text.indexOf('[web] Rendered ') === 0;
@@ -969,21 +1042,21 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq</button>
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel">Log</button>
             <button class="buret-button" type="button" data-buret-action="theme" aria-label="Switch to light theme" title="Switch to light theme">Light</button>
+            <div class="buret-renderer-control" data-buret-renderer-control>
+              <button class="buret-button" type="button" data-buret-renderer="xyz-fast" aria-label="Use Fast XYZ SVG" title="Use Fast XYZ SVG">Fast</button>
+              <button class="buret-button" type="button" data-buret-renderer="molstar" aria-label="Use Mol* Interactive" title="Use Mol* Interactive">Mol*</button>
+              <button class="buret-button" type="button" data-buret-renderer="xyzrender-external" aria-label="Use external xyzrender" title="Use external xyzrender">xyzr</button>
+              <select class="buret-select" data-buret-xyzrender-preset aria-label="External xyzrender preset" title="External xyzrender preset"></select>
+            </div>
           </div>
-          <div id="status" class="hidden">[web] HTML body created. Waiting for embedded data and Mol* script…</div>
+          <div id="status" class="hidden">\(initialStatus)</div>
           <script>
             window.BurreteInlineMode = true;
             window.BurreteDebug = \(showDebugOverlay ? "true" : "false");
-            window.BurretePanelControlsVisible = \(PreviewPreferences.load().showPanelControls ? "true" : "false");
+            window.BurretePanelControlsVisible = \(preferences.showPanelControls ? "true" : "false");
             window.BurreteCacheBuster = String(Date.now());
           </script>
-          <script>
-            window.__mqlStatus && window.__mqlStatus('[web] About to load molstar.js from bundled resource…');
-          </script>
-          <script src="../assets/molstar.js"></script>
-          <script>
-            window.__mqlStatus && window.__mqlStatus('[web] molstar.js parsed. typeof molstar=' + typeof window.molstar + '; Viewer=' + (window.molstar && typeof window.molstar.Viewer));
-          </script>
+          \(rendererAssets)
           <script>
             window.__mqlStatus && window.__mqlStatus('[web] About to load viewer.js from bundled resource…');
           </script>
@@ -1012,8 +1085,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         throw PreviewError.missingWebDirectory(debugDescription.isEmpty ? "no resource bundle candidates" : debugDescription)
     }
 
-    private static func validateVendoredMolstarAssets(in webDirectory: URL, fileManager: FileManager, diagnostics: inout [String]) throws {
-        let required = ["viewer.js", "burette-agent.js", "molstar.js", "molstar.css"]
+    private static func validateVendoredWebAssets(in webDirectory: URL, fileManager: FileManager, diagnostics: inout [String]) throws {
+        let required = ["viewer.js", "burette-agent.js", "xyz-fast.js", "molstar.js", "molstar.css"]
         for name in required {
             let url = webDirectory.appendingPathComponent(name)
             let exists = fileManager.fileExists(atPath: url.path)
@@ -1056,6 +1129,66 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             Thread.sleep(forTimeInterval: 0.1)
         }
         throw PreviewError.ubiquitousFileNotDownloaded(url.lastPathComponent)
+    }
+
+    private static func resolvedRenderer(for format: StructureFormat, preferences: PreviewPreferences, isQuickLook: Bool) -> String {
+        let isXYZ = format.molstarFormat == "xyz" && !format.isBinary
+        switch preferences.rendererMode {
+        case "molstar":
+            return "molstar"
+        case "xyz-fast":
+            return isXYZ ? "xyz-fast" : "molstar"
+        case "xyzrender-external":
+            // Quick Look must stay self-contained and must never launch Python.
+            return isXYZ ? "xyz-fast" : "molstar"
+        default:
+            return isXYZ ? "xyz-fast" : "molstar"
+        }
+    }
+
+    private struct XYZFastPayload {
+        let data: Data
+        let atomCount: Int?
+        let frameCount: Int?
+        let comment: String?
+    }
+
+    private static func makeXYZFastPayload(from data: Data) -> XYZFastPayload? {
+        let text = decodeText(data).replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        var start = 0
+        while start < lines.count && lines[start].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { start += 1 }
+        guard start < lines.count else { return nil }
+        let firstToken = lines[start].trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ").first
+        guard let token = firstToken, let atomCount = Int(token), atomCount > 0 else { return nil }
+        let end = min(lines.count, start + atomCount + 2)
+        guard end > start + 1 else { return nil }
+        var firstFrame = lines[start..<end].joined(separator: "\n")
+        if !firstFrame.hasSuffix("\n") { firstFrame += "\n" }
+        let frameCount = countXYZFrames(lines: lines, start: start)
+        let comment = start + 1 < lines.count ? lines[start + 1] : nil
+        return XYZFastPayload(data: Data(firstFrame.utf8), atomCount: atomCount, frameCount: frameCount, comment: comment)
+    }
+
+    private static func countXYZFrames(lines: [String], start: Int) -> Int? {
+        var index = start
+        var frames = 0
+        while index < lines.count && frames < 100_000 {
+            while index < lines.count && lines[index].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { index += 1 }
+            guard index < lines.count else { break }
+            let firstToken = lines[index].trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ").first
+            guard let token = firstToken, let atomCount = Int(token), atomCount > 0 else { break }
+            guard index + atomCount + 1 < lines.count else { break }
+            frames += 1
+            index += atomCount + 2
+        }
+        return frames > 0 ? frames : nil
+    }
+
+    private static func decodeText(_ data: Data) -> String {
+        if let value = String(data: data, encoding: .utf8) { return value }
+        if let value = String(data: data, encoding: .isoLatin1) { return value }
+        return String(decoding: data, as: UTF8.self)
     }
 
     private static func quickLookSizeLimit(for url: URL) -> Int64 {
@@ -1471,6 +1604,8 @@ private struct PreviewPreferences {
     let transparentBackground: Bool
     let viewerTheme: String
     let canvasBackground: String
+    let rendererMode: String
+    let xyzFastStyle: String
     let defaultLayoutState: [String: String]
 
     static func load() -> PreviewPreferences {
@@ -1479,11 +1614,15 @@ private struct PreviewPreferences {
         let transparentBackground = (CFPreferencesCopyAppValue("useTransparentPreviewBackground" as CFString, appID) as? Bool) ?? false
         let viewerTheme = (CFPreferencesCopyAppValue("viewerTheme" as CFString, appID) as? String) ?? "dark"
         let canvasBackground = (CFPreferencesCopyAppValue("viewerCanvasBackground" as CFString, appID) as? String) ?? "black"
+        let rendererMode = (CFPreferencesCopyAppValue("structureRendererMode" as CFString, appID) as? String) ?? "auto"
+        let xyzFastStyle = (CFPreferencesCopyAppValue("xyzFastStyle" as CFString, appID) as? String) ?? "default"
         return PreviewPreferences(
             showPanelControls: showPanelControls,
             transparentBackground: transparentBackground,
             viewerTheme: viewerTheme,
             canvasBackground: canvasBackground,
+            rendererMode: rendererMode,
+            xyzFastStyle: xyzFastStyle,
             defaultLayoutState: [
                 "left": "collapsed",
                 "right": "hidden",
@@ -1499,6 +1638,7 @@ private enum PreviewError: LocalizedError {
     case missingWebAsset(String)
     case molstarAssetsNotVendored(Int)
     case emptyStructureFile(String)
+    case unsupportedStructureFile(String)
     case fileTooLarge(String, Int64, Int64)
     case ubiquitousFileNotDownloaded(String)
     case webRenderFailed(String)
@@ -1516,16 +1656,18 @@ private enum PreviewError: LocalizedError {
             return "Mol* assets were not vendored into the extension. molstar.js is only \(size) bytes. Run ./scripts/build.sh so npm copies build/viewer/molstar.js and molstar.css before Xcode signs the app."
         case .emptyStructureFile(let name):
             return "The structure file is empty or not downloaded locally: \(name)"
+        case .unsupportedStructureFile(let name):
+            return "Unsupported structure file type: \(name)"
         case .fileTooLarge(let name, let size, let limit):
             return "\(name) is too large for Quick Look preview (\(size) bytes; limit \(limit) bytes). Open it in the Burrete app viewer or use a smaller file."
         case .ubiquitousFileNotDownloaded(let name):
             return "\(name) is in iCloud and is not downloaded locally. Download it in Finder, then open Quick Look again."
         case .webRenderFailed(let message):
-            return "Mol* web rendering failed: \(message)"
+            return "Web rendering failed: \(message)"
         case .webRenderTimedOut:
             return "Mol* web rendering did not become ready within 30 seconds."
         case .couldNotCreatePreviewConfig:
-            return "Could not create Mol* preview config."
+            return "Could not create preview config."
         case .couldNotCreateRuntimePreview(let reason):
             return "Could not create runtime preview files: \(reason)"
         }
