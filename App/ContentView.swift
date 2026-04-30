@@ -5,7 +5,7 @@ struct ContentView: View {
     @AppStorage("openSettingsAtLaunch") private var openSettingsAtLaunch = false
     @AppStorage("showPreviewPanelControls") private var showPreviewPanelControls = true
     @AppStorage("useTransparentPreviewBackground") private var useTransparentPreviewBackground = false
-    @AppStorage("viewerTheme") private var viewerTheme = "dark"
+    @AppStorage("viewerTheme") private var viewerTheme = "auto"
     @AppStorage("viewerCanvasBackground") private var viewerCanvasBackground = "black"
     @AppStorage("structureRendererMode") private var structureRendererMode = "auto"
     @AppStorage("xyzFastStyle") private var xyzFastStyle = "default"
@@ -18,6 +18,7 @@ struct ContentView: View {
     @StateObject private var updater = BurreteUpdater.shared
     @State private var section: SettingsSection = .general
     @State private var defaultOpenStatus = BurreteFileAssociations.defaultHandlerSummary
+    @State private var showExternalXyzrenderSettings = false
 
     var body: some View {
         ZStack {
@@ -98,12 +99,33 @@ struct ContentView: View {
             }
 
         case .viewer:
-            SettingsSectionTitle("Viewer")
+            SettingsSectionTitle("File Type Behavior")
+            SettingsCard {
+                SettingsValueRow(
+                    icon: "cube.transparent",
+                    title: "PDB / mmCIF / BinaryCIF / GRO",
+                    subtitle: "Opened with Mol* Interactive for rotation, chains, residues, sequence, and structure panels."
+                )
+                SettingsDivider()
+                SettingsValueRow(
+                    icon: "square.grid.3x3",
+                    title: "SDF / SMILES / MOL / MOL2",
+                    subtitle: "SMILES and multi-record SDF files show a molecule grid when possible; single structure files stay in Mol*."
+                )
+                SettingsDivider()
+                SettingsValueRow(
+                    icon: "sparkles",
+                    title: "XYZ",
+                    subtitle: "Auto uses Fast XYZ SVG for Quick Look speed. In the full app toolbar, .xyz can switch to Mol* or external xyzrender."
+                )
+            }
+
+            SettingsSectionTitle("Renderer")
             SettingsCard {
                 SettingsStringPickerRow(
                     icon: "atom",
-                    title: "Renderer",
-                    subtitle: "Auto uses Fast XYZ SVG for .xyz and Mol* for the rest. Choose Mol* Interactive when you want live rotation and the full app controls.",
+                    title: "Default renderer policy",
+                    subtitle: "Recommended: Auto. It chooses Fast XYZ for .xyz and Mol* for PDB, mmCIF, SDF, MOL, MOL2, and GRO.",
                     selection: $structureRendererMode,
                     options: [
                         ("auto", "Auto"),
@@ -116,7 +138,7 @@ struct ContentView: View {
                 SettingsStringPickerRow(
                     icon: "sparkles",
                     title: "Fast XYZ style",
-                    subtitle: "Static SVG style for Quick Look and app .xyz previews.",
+                    subtitle: "Only affects .xyz files when the renderer resolves to Fast XYZ SVG.",
                     selection: $xyzFastStyle,
                     options: [
                         ("default", "Default"),
@@ -125,46 +147,63 @@ struct ContentView: View {
                         ("spacefill", "Spacefill")
                     ]
                 )
+            }
+
+            SettingsSectionTitle("External xyzrender")
+            SettingsCard {
+                DisclosureGroup(isExpanded: $showExternalXyzrenderSettings) {
+                    VStack(spacing: 0) {
+                        SettingsDivider()
+                        SettingsStringPickerRow(
+                            icon: "terminal",
+                            title: "Preset",
+                            subtitle: "Used only by the standalone app for .xyz files when external xyzrender is selected.",
+                            selection: $xyzrenderPreset,
+                            options: AppViewerXyzrenderPreset.pickerOptions
+                        )
+                        SettingsDivider()
+                        SettingsTextFieldRow(
+                            icon: "doc.badge.gearshape",
+                            title: "Custom config path",
+                            subtitle: "Used when the preset is Custom JSON. Point this to a local xyzrender config file.",
+                            text: $xyzrenderCustomConfigPath,
+                            placeholder: "/Users/me/styles/my_style.json"
+                        )
+                        SettingsDivider()
+                        SettingsTextFieldRow(
+                            icon: "point.3.connected.trianglepath.dotted",
+                            title: "Executable path",
+                            subtitle: "Leave empty to run xyzrender from PATH. Set an absolute path for a custom venv, uv tool, or signed helper.",
+                            text: $xyzrenderExecutablePath,
+                            placeholder: "/opt/homebrew/bin/xyzrender"
+                        )
+                        SettingsDivider()
+                        SettingsTextFieldRow(
+                            icon: "curlybraces",
+                            title: "Extra flags",
+                            subtitle: "Optional app-only CLI flags such as --cell --idx sn --no-hy. Output flags are ignored.",
+                            text: $xyzrenderExtraArguments,
+                            placeholder: "--cell --idx sn"
+                        )
+                    }
+                } label: {
+                    SettingsDisclosureHeader(
+                        icon: "terminal",
+                        title: "External xyzrender (optional)",
+                        subtitle: "Advanced .xyz SVG rendering. Leave closed unless you installed xyzrender and want Burrete to call it."
+                    )
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+            }
+
+            SettingsSectionTitle("What The Modes Mean")
+            SettingsCard {
+                SettingsValueRow(icon: "bolt.horizontal", title: "Fast XYZ SVG", subtitle: "Fast static SVG for .xyz previews. Best for Quick Look and large simple XYZ files.")
                 SettingsDivider()
-                SettingsStringPickerRow(
-                    icon: "terminal",
-                    title: "External xyzrender preset",
-                    subtitle: "Used only by the standalone app when xyzrender is available on PATH or configured via defaults.",
-                    selection: $xyzrenderPreset,
-                    options: AppViewerXyzrenderPreset.pickerOptions
-                )
+                SettingsValueRow(icon: "rotate.3d", title: "Mol* Interactive", subtitle: "Full interactive viewer for rotation, measurement, panels, sequence, logs, and structure inspection.")
                 SettingsDivider()
-                SettingsTextFieldRow(
-                    icon: "doc.badge.gearshape",
-                    title: "External xyzrender custom config",
-                    subtitle: "Used when the preset is Custom JSON. Point this to a local xyzrender config file.",
-                    text: $xyzrenderCustomConfigPath,
-                    placeholder: "/Users/me/styles/my_style.json"
-                )
-                SettingsDivider()
-                SettingsTextFieldRow(
-                    icon: "point.3.connected.trianglepath.dotted",
-                    title: "External xyzrender executable",
-                    subtitle: "Leave empty to run `xyzrender` from PATH. Set an absolute path when using a custom venv, uv tool, or signed helper.",
-                    text: $xyzrenderExecutablePath,
-                    placeholder: "/opt/homebrew/bin/xyzrender"
-                )
-                SettingsDivider()
-                SettingsTextFieldRow(
-                    icon: "curlybraces",
-                    title: "External xyzrender extra flags",
-                    subtitle: "Optional app-only CLI flags such as `--cell --idx sn --no-hy`. Output flags are ignored so Burrete can keep displaying the generated SVG.",
-                    text: $xyzrenderExtraArguments,
-                    placeholder: "--cell --idx sn"
-                )
-                SettingsDivider()
-                SettingsValueRow(icon: "doc.richtext", title: "Formats", subtitle: "PDB, PDBx/mmCIF, BinaryCIF, SDF, MOL, MOL2, XYZ, and GRO")
-                SettingsDivider()
-                SettingsValueRow(icon: "rotate.3d", title: "Interactive XYZ", subtitle: "Open .xyz in the standalone app and switch to Mol* Interactive from the toolbar to rotate, inspect, and use Mol* panels.")
-                SettingsDivider()
-                SettingsValueRow(icon: "square.grid.3x3", title: "SDF molecule grid", subtitle: "Multi-record SDF files are laid out as a visible grid when possible.")
-                SettingsDivider()
-                SettingsValueRow(icon: "bolt.horizontal", title: "Performance", subtitle: "Fast SVG for .xyz; bundled Mol* assets and WebGL fallback for interactive formats.")
+                SettingsValueRow(icon: "terminal", title: "External xyzrender SVG", subtitle: "Optional app-only renderer for .xyz when xyzrender is installed. Quick Look still uses bundled renderers.")
             }
 
             SettingsSectionTitle("Appearance")
@@ -754,32 +793,60 @@ private struct SettingsTextFieldRow: View {
     let placeholder: String
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 13, weight: .medium))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundColor(.white.opacity(0.82))
-                .frame(width: 24)
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.9))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
                 Text(subtitle)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.white.opacity(0.48))
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Spacer(minLength: 12)
+            Spacer(minLength: 10)
 
             TextField(placeholder, text: $text)
                 .textFieldStyle(.roundedBorder)
                 .font(.system(size: 12, weight: .regular, design: .monospaced))
                 .frame(width: 220)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+    }
+}
+
+private struct SettingsDisclosureHeader: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .medium))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
+                Text(subtitle)
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
     }
 }
 

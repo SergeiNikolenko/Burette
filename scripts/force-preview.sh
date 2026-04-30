@@ -11,6 +11,7 @@ case "${FILE##*.}" in
   mmcif|MMCIF|mcif|MCIF) TYPE="com.local.burrete10.mmcif" ;;
   bcif|BCIF) TYPE="com.local.burrete10.bcif" ;;
   sdf|SDF|sd|SD) TYPE="com.local.burrete10.sdf" ;;
+  smi|SMI|smiles|SMILES) TYPE="com.local.burrete10.smiles" ;;
   mol|MOL) TYPE="com.local.burrete10.mol" ;;
   mol2|MOL2) TYPE="com.local.burrete10.mol2" ;;
   xyz|XYZ) TYPE="com.local.burrete10.xyz" ;;
