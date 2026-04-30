@@ -51,6 +51,30 @@
 				<string>public.data</string>
 			</array>
 			<key>UTTypeDescription</key>
+			<string>SMILES molecular structure list</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.smiles</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>smi</string>
+					<string>smiles</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>chemical/x-daylight-smiles</string>
+					<string>chemical/x-smiles</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
 			<string>GROMACS structure file</string>
 			<key>UTTypeIdentifier</key>
 			<string>com.local.burrete10.gro</string>
@@ -82,6 +106,7 @@
 				<string>com.local.molstarquicklook10.mmcif</string>
 				<string>com.local.molstarquicklook10.bcif</string>
 				<string>com.local.molstarquicklook10.sdf</string>
+				<string>com.local.molstarquicklook10.smiles</string>
 				<string>com.local.molstarquicklook10.mol</string>
 				<string>com.local.molstarquicklook10.mol2</string>
 				<string>org.wwpdb.pdb</string>

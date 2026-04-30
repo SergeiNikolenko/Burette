@@ -46,6 +46,8 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
     private var currentViewerPageZoom: CGFloat = 0.86
     private var rendererOverride: String?
     private var xyzrenderPresetOverride: String?
+    private var isInNativeFullScreen = false
+    private var isEnteringNativeFullScreen = false
     private static let defaultViewerPageZoom: CGFloat = 0.86
     private static let minViewerPageZoom: CGFloat = 0.72
     private static let maxViewerPageZoom: CGFloat = 1.35
@@ -79,7 +81,7 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         window.title = "Burrete - \(fileURL.lastPathComponent)"
         window.titleVisibility = .visible
         window.titlebarAppearsTransparent = false
-        window.isMovableByWindowBackground = true
+        window.isMovableByWindowBackground = false
         window.styleMask.remove(.fullSizeContentView)
         window.collectionBehavior.insert(.fullScreenPrimary)
         window.minSize = NSSize(width: 660, height: 440)
@@ -87,13 +89,25 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         if #available(macOS 11.0, *) {
             window.toolbarStyle = .unifiedCompact
         }
-        window.isOpaque = false
-        window.backgroundColor = .clear
+        window.isOpaque = true
+        window.backgroundColor = .windowBackgroundColor
         window.hasShadow = true
-        window.contentView = BurreteAppViewerContainerView(contentView: webView, transparentBackground: transparentBackground)
+        window.contentView = webView
 
         super.init(window: window)
 
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowDidEnterFullScreen),
+            name: NSWindow.didEnterFullScreenNotification,
+            object: window
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowDidExitFullScreen),
+            name: NSWindow.didExitFullScreenNotification,
+            object: window
+        )
         userContentController.add(self, name: "burrete")
         webView.navigationDelegate = self
         webView.wantsLayer = true
@@ -114,6 +128,7 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
     }
 
     deinit {
+        NotificationCenter.default.removeObserver(self)
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "burrete")
     }
 
@@ -128,6 +143,25 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         } catch {
             webView.loadHTMLString(Self.errorHTML(error), baseURL: nil)
         }
+    }
+
+    func enterFullScreen() {
+        guard window != nil, !isInNativeFullScreen, !isEnteringNativeFullScreen else { return }
+        isEnteringNativeFullScreen = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let window = self.window else { return }
+            window.toggleFullScreen(nil)
+        }
+    }
+
+    @objc private func windowDidEnterFullScreen(_ notification: Notification) {
+        isInNativeFullScreen = true
+        isEnteringNativeFullScreen = false
+    }
+
+    @objc private func windowDidExitFullScreen(_ notification: Notification) {
+        isInNativeFullScreen = false
+        isEnteringNativeFullScreen = false
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -272,11 +306,17 @@ private struct AppViewerRuntime {
         try copyAssets(from: bundledWebDirectory, to: assetsDirectory)
 
         let transparentBackground = UserDefaults.standard.object(forKey: "useTransparentPreviewBackground") as? Bool ?? false
-        let viewerTheme = UserDefaults.standard.string(forKey: "viewerTheme") ?? "dark"
+        let viewerTheme = UserDefaults.standard.string(forKey: "viewerTheme") ?? "auto"
         let canvasBackground = UserDefaults.standard.string(forKey: "viewerCanvasBackground") ?? "black"
         let canvasIsTransparent = canvasBackground == "transparent"
 
-        if let gridPreview = try MoleculeGridPreviewBuilder.makePreview(
+        let rendererOverride = rendererModeOverride.map(AppViewerRendererMode.normalize)
+        let bypassGridForRendererSwitch = ["sdf", "sd"].contains(fileURL.pathExtension.lowercased()) &&
+            rendererOverride != nil &&
+            rendererOverride != "auto"
+
+        if !bypassGridForRendererSwitch,
+           let gridPreview = try MoleculeGridPreviewBuilder.makePreview(
             fileURL: fileURL,
             data: data,
             host: .app,
@@ -286,7 +326,7 @@ private struct AppViewerRuntime {
             debug: false,
             allowSelection: true,
             allowExport: true,
-            maxRecords: 5000
+            maxRecords: 10000
         ) {
             try requireGridRuntimeAssets(in: assetsDirectory)
             try Data(gridHTML(title: fileURL.lastPathComponent, transparentBackground: transparentBackground).utf8)
@@ -297,6 +337,11 @@ private struct AppViewerRuntime {
                 .write(to: runtimeDirectory.appendingPathComponent("preview-data.js"), options: [.atomic])
             try Data(gridPreview.recordsScript.utf8)
                 .write(to: runtimeDirectory.appendingPathComponent("preview-grid-records.js"), options: [.atomic])
+            let rdkitWasmURL = assetsDirectory
+                .appendingPathComponent("rdkit", isDirectory: true)
+                .appendingPathComponent("RDKit_minimal.wasm")
+            try Data(rdkitWasmInlineScript(from: rdkitWasmURL).utf8)
+                .write(to: runtimeDirectory.appendingPathComponent("preview-rdkit-wasm.js"), options: [.atomic])
             return AppViewerRuntime(
                 indexURL: runtimeDirectory.appendingPathComponent("index.html"),
                 readAccessURL: baseDirectory
@@ -424,6 +469,23 @@ private struct AppViewerRuntime {
         }
     }
 
+    private static func rdkitWasmInlineScript(from url: URL) throws -> String {
+        let base64 = try Data(contentsOf: url).base64EncodedString(options: [])
+        let chunkSize = 32_768
+        var chunks: [String] = []
+        var start = base64.startIndex
+        while start < base64.endIndex {
+            let end = base64.index(start, offsetBy: chunkSize, limitedBy: base64.endIndex) ?? base64.endIndex
+            chunks.append(String(base64[start..<end]))
+            start = end
+        }
+        let jsonData = try JSONSerialization.data(withJSONObject: chunks, options: [.withoutEscapingSlashes])
+        guard let json = String(data: jsonData, encoding: .utf8) else {
+            throw AppViewerError.missingWebResources
+        }
+        return "window.BurreteRDKitWasmBase64Chunks = \(json);\n"
+    }
+
     private static func copyAssetAtomically(from source: URL, to destination: URL) throws {
         let fileManager = FileManager.default
         let temporaryURL = destination
@@ -478,13 +540,14 @@ private struct AppViewerRuntime {
 
     private static func resolveRenderer(for format: AppViewerStructureFormat, rendererMode: String) -> String {
         let isXYZ = format.molstarFormat == "xyz" && !format.isBinary
+        let isSDF = format.molstarFormat == "sdf" && !format.isBinary
         switch AppViewerRendererMode.normalize(rendererMode) {
         case "molstar":
             return "molstar"
         case "xyz-fast":
             return isXYZ ? "xyz-fast" : "molstar"
         case "xyzrender-external":
-            return isXYZ ? "xyzrender-external" : "molstar"
+            return (isXYZ || isSDF) ? "xyzrender-external" : "molstar"
         default:
             return isXYZ ? "xyz-fast" : "molstar"
         }
@@ -569,6 +632,7 @@ private struct AppViewerRuntime {
           </script>
           <script src="preview-config.js"></script>
           <script src="preview-grid-records.js"></script>
+          <script src="preview-rdkit-wasm.js"></script>
           <script src="../assets/rdkit/RDKit_minimal.js"></script>
           <script src="../assets/grid-viewer.js"></script>
         </body>
@@ -1323,45 +1387,6 @@ private enum AppViewerError: LocalizedError {
         case .missingCacheDirectory:
             return "Could not locate the app cache directory."
         }
-    }
-}
-
-private final class BurreteAppViewerContainerView: NSView {
-    private static let contentInset: CGFloat = 7
-    private static let cornerRadius: CGFloat = 14
-
-    init(contentView: NSView, transparentBackground: Bool) {
-        super.init(frame: .zero)
-        wantsLayer = true
-        layer?.borderWidth = 1
-        layer?.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
-        layer?.cornerRadius = 16
-        layer?.masksToBounds = true
-        layer?.backgroundColor = (transparentBackground ? NSColor.clear : NSColor(calibratedWhite: 0.055, alpha: 1.0)).cgColor
-        layer?.cornerRadius = Self.cornerRadius
-        if #available(macOS 10.15, *) {
-            layer?.cornerCurve = .continuous
-        }
-        layer?.masksToBounds = true
-
-        contentView.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(contentView)
-        contentView.wantsLayer = true
-        contentView.layer?.cornerRadius = Self.cornerRadius - Self.contentInset
-        if #available(macOS 10.15, *) {
-            contentView.layer?.cornerCurve = .continuous
-        }
-        contentView.layer?.masksToBounds = true
-        NSLayoutConstraint.activate([
-            contentView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.contentInset),
-            contentView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.contentInset),
-            contentView.topAnchor.constraint(equalTo: topAnchor, constant: Self.contentInset),
-            contentView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Self.contentInset)
-        ])
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
     }
 }
 
