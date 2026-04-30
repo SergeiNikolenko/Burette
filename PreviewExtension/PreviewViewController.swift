@@ -400,6 +400,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           <style>
             :root {
               --buret-viewer-ui-scale: 0.86;
+              --buret-toolbar-safe-top: 12px;
               --buret-canvas-background: #000000;
               --buret-shell-background: #000000;
               --buret-panel-background: rgba(18, 20, 22, 0.82);
@@ -782,7 +783,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             #status.error { color: #ffd4d4; background: rgba(70, 0, 0, 0.82); }
             #status.hidden { display: none; }
             #buret-toolbar {
-              position: absolute; top: 12px; right: 12px; left: auto; z-index: 2147483646;
+              position: absolute; top: var(--buret-toolbar-safe-top); right: 12px; left: auto; z-index: 2147483646;
               display: flex; align-items: center; gap: 6px; padding: 6px;
               border: 1px solid var(--buret-toolbar-border);
               border-radius: 12px; color: var(--buret-toolbar-color);

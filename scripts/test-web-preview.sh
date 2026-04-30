@@ -130,7 +130,7 @@ assert(index.includes('role="toolbar"'), 'preview HTML must expose a toolbar rol
 assert(!index.includes('data-buret-action="fit"'), 'fit/fullscreen toolbar button should not be present');
 assert(index.includes('aria-label="Collapse controls"'), 'toolbar handle should collapse controls');
 assert(index.includes('aria-expanded="true"'), 'toolbar handle should expose expanded state');
-assert(index.includes('top: 12px; right: 12px; left: auto'), 'toolbar should default to the upper-right corner');
+assert(index.includes('top: var(--buret-toolbar-safe-top); right: 12px; left: auto'), 'toolbar should honor the safe top inset');
 assert(index.includes('data-buret-action="theme"'), 'toolbar should expose a separate theme toggle');
 assert(index.includes('--buret-molstar-panel-background'), 'preview HTML must define Mol* theme panel colors');
 assert(index.includes('.msp-viewport-controls-panel'), 'preview HTML must theme Mol* viewport panels');
@@ -156,10 +156,13 @@ assert(releaseScript.includes('PreviewExtension/Web/burette-agent.js'), 'release
 assert(xcodeProject.includes('PreviewExtension/Web/burette-agent.js'), 'Xcode validation phase must track burette-agent.js');
 assert(viewer.includes('buret.toolbar.collapsed'), 'viewer.js must remember compact toolbar state');
 assert(viewer.includes('TOOLBAR_POSITION_VERSION'), 'viewer.js must reset stale toolbar positions');
+assert(viewer.includes("TOOLBAR_POSITION_VERSION = '7'"), 'toolbar position cache should invalidate pre-safe-area positions');
 assert(viewer.includes("mode: 'custom'"), 'viewer.js must distinguish custom toolbar positions from defaults');
 assert(!viewer.includes('initMolstarRightPanelToggle'), 'viewer.js must keep Mol* right-side buttons native');
 assert(viewer.includes('VIEWER_THEME_STORAGE_KEY'), 'viewer.js must persist the separate theme toggle');
 assert(!viewer.includes('initMolstarThemeToggle'), 'viewer.js must keep Mol* Illumination button native');
+assert(viewer.includes("event.target.closest('[data-buret-toggle]')"), 'toolbar drag should not capture panel toggle buttons');
+assert(viewer.includes('toolbarSafeTop'), 'toolbar drag should clamp to the safe top inset');
 assert(viewer.includes('normalizeViewerTheme'), 'viewer.js must support viewer themes');
 assert(viewer.includes('canvasBackgroundColor'), 'viewer.js must support configurable canvas backgrounds');
 assert(viewer.includes('viewportBackgroundColor'), 'viewer.js must seed Mol* with the requested canvas background');
