@@ -2,7 +2,7 @@
 set -euo pipefail
 FILE="${1:-}"
 if [[ -z "$FILE" || ! -f "$FILE" ]]; then
-  echo "usage: $0 /path/to/structure.pdb|cif|mmcif|sdf" >&2
+  echo "usage: $0 /path/to/structure.pdb|cif|mmcif|sdf|smi|csv|tsv|xyz" >&2
   exit 1
 fi
 case "${FILE##*.}" in
@@ -10,8 +10,10 @@ case "${FILE##*.}" in
   cif|CIF) TYPE="com.local.burrete10.cif" ;;
   mmcif|MMCIF|mcif|MCIF) TYPE="com.local.burrete10.mmcif" ;;
   bcif|BCIF) TYPE="com.local.burrete10.bcif" ;;
+  csv|CSV) TYPE="public.comma-separated-values-text" ;;
   sdf|SDF|sd|SD) TYPE="com.local.burrete10.sdf" ;;
   smi|SMI|smiles|SMILES) TYPE="com.local.burrete10.smiles" ;;
+  tsv|TSV) TYPE="public.tab-separated-values-text" ;;
   mol|MOL) TYPE="com.local.burrete10.mol" ;;
   mol2|MOL2) TYPE="com.local.burrete10.mol2" ;;
   xyz|XYZ) TYPE="com.local.burrete10.xyz" ;;

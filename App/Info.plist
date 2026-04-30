@@ -13,6 +13,7 @@
 			<array>
 				<string>bcif</string>
 				<string>cif</string>
+				<string>csv</string>
 				<string>ent</string>
 				<string>mcif</string>
 				<string>mmcif</string>
@@ -25,6 +26,7 @@
 				<string>sdf</string>
 				<string>smi</string>
 				<string>smiles</string>
+				<string>tsv</string>
 				<string>xyz</string>
 				<string>gro</string>
 			</array>
@@ -42,6 +44,7 @@
 				<string>com.local.burrete10.bcif</string>
 				<string>com.local.burrete10.sdf</string>
 				<string>com.local.burrete10.smiles</string>
+				<string>com.local.burettexyzrender.smiles</string>
 				<string>com.local.burrete10.mol</string>
 				<string>com.local.burrete10.mol2</string>
 				<string>com.local.molstarquicklook10.pdb</string>
@@ -92,7 +95,10 @@
 				<string>public.pdb</string>
 				<string>public.mmcif</string>
 					<string>public.cif</string>
+					<string>public.comma-separated-values-text</string>
+					<string>public.tab-separated-values-text</string>
 					<string>com.local.burrete10.xyz</string>
+					<string>net.sourceforge.openbabel.xyz</string>
 					<string>dyn.ah62d4rv4ge81u8p4</string>
 					<string>com.local.burrete10.gro</string>
 					<string>dyn.ah62d4rv4ge80s6xt</string>
