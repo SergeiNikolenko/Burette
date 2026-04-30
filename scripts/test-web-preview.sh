@@ -204,6 +204,7 @@ assert(quickLookViewer.includes('CFPreferencesCopyAppValue("viewerCanvasBackgrou
 assert(appViewer.includes('func enterFullScreen()'), 'standalone app viewer must expose native fullscreen for Quick Look handoff');
 assert(appViewer.includes('window.toggleFullScreen(nil)'), 'standalone app viewer should use AppKit native fullscreen');
 assert(!appViewer.includes('exitFullScreenMode'), 'standalone app viewer must not call AppKit fullscreen exit during open');
+assert(!appDelegate.includes('.enterFullScreen()'), 'opening files in the app must not force native fullscreen');
 assert(appViewer.includes('func reloadDisplayPreferences()'), 'app viewer must expose a display-preference reload hook');
 assert(appViewer.includes('applyWindowDisplayPreferences'), 'app viewer must update native window appearance and material preferences');
 assert(appViewer.includes('NSVisualEffectView'), 'app viewer transparency must use native macOS material instead of a fully clear custom window');
@@ -212,6 +213,14 @@ assert(appViewer.includes('viewerOverlayOpacity'), 'app viewer must expose confi
 assert(appViewer.includes('defaultViewerPageZoom: CGFloat = 1.0'), 'app viewer must keep WKWebView page zoom at 1.0 so Mol* mouse picking stays aligned');
 assert(quickLookViewer.includes('defaultViewerPageZoom: CGFloat = 1.0'), 'Quick Look viewer must keep WKWebView page zoom at 1.0 so Mol* mouse picking stays aligned');
 assert(quickLookViewer.includes('requiredAssets: runtimeAssets(for: renderer)'), 'Quick Look should copy only renderer-required assets');
+assert(quickLookViewer.includes('quickLookViewer'), 'Quick Look XYZ previews should expose renderer switching controls');
+assert(quickLookViewer.includes('setRendererOverride'), 'Quick Look should handle renderer switching from the toolbar');
+assert(quickLookViewer.includes('setXyzrenderPresetOverride'), 'Quick Look should handle xyzrender preset switching from the toolbar');
+assert(quickLookViewer.includes('PreviewExternalXyzrenderWorker.render'), 'Quick Look should support xyzrender artifacts for XYZ files');
+assert(quickLookViewer.includes('externalArtifactSourceURL'), 'Quick Look should copy generated xyzrender artifacts into the preview runtime');
+assert(quickLookViewer.includes('return isXYZ ? "xyz-fast" : "molstar"'), 'Quick Look auto renderer should remain Fast XYZ by default');
+assert((quickLookViewer.match(/scheduleRenderTimeout\(for: requestID\)/g) || []).length >= 2, 'Quick Look renderer reloads must keep the render watchdog active');
+assert((quickLookViewer.match(/finishPreviewIfNeeded\(nil, requestID: requestID\)/g) || []).length >= 2, 'Quick Look renderer reload errors must finish the preview callback path');
 assert(quickLookViewer.includes('requiresRDKit: true'), 'Quick Look grid previews should opt into RDKit assets explicitly');
 assert(quickLookViewer.includes('copyAssetIfNeeded'), 'Quick Look should reuse unchanged runtime assets instead of recopying every preview');
 assert(quickLookViewer.includes('gridRecordsScriptWithRDKitWasm'), 'Quick Look grid previews must pass RDKit wasm without file:// fetch');
@@ -258,6 +267,7 @@ assert(releaseScript.includes('PreviewExtension/Web/burette-agent.js'), 'release
 assert(xcodeProject.includes('PreviewExtension/Web/burette-agent.js'), 'Xcode validation phase must track burette-agent.js');
 assert(viewer.includes('startXYZFast'), 'viewer.js must support Fast XYZ rendering');
 assert(viewer.includes('startExternalArtifact'), 'viewer.js must support external xyzrender artifacts');
+assert(viewer.includes("config.quickLookViewer === true && format === 'xyz'"), 'viewer.js must show renderer controls for Quick Look XYZ previews');
 assert(xyzFast.includes('BurreteXYZFast'), 'xyz-fast.js must expose BurreteXYZFast');
 assert(viewer.includes('buret.toolbar.collapsed'), 'viewer.js must remember compact toolbar state');
 assert(viewer.includes('TOOLBAR_POSITION_VERSION'), 'viewer.js must reset stale toolbar positions');
