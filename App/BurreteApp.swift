@@ -195,7 +195,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let existing = viewerWindows[fileURL] {
             existing.showWindow(nil)
             presentWindow(existing.window, activate: true)
-            existing.enterFullScreen()
             return
         }
 
@@ -215,7 +214,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.showWindow(nil)
         controller.window?.center()
         presentWindow(controller.window, activate: true)
-        controller.enterFullScreen()
     }
 
     private func presentWindow(_ window: NSWindow?, activate: Bool) {
@@ -401,11 +399,15 @@ enum BurreteFileAssociations {
     ]
 
     private static let csvContentTypes = [
+        "com.local.burrete10.csv",
         "public.comma-separated-values-text",
+        "dyn.ah62d4rv4ge80g650",
     ]
 
     private static let tsvContentTypes = [
-        "public.tab-separated-values-text"
+        "com.local.burrete10.tsv",
+        "public.tab-separated-values-text",
+        "dyn.ah62d4rv4ge81k650"
     ]
 
     private static func contentTypes(for fileSupport: MoleculeGridFileSupport) -> [String] {

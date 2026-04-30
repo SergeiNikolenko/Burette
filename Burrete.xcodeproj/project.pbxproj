@@ -272,7 +272,7 @@
 			outputPaths = ();
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\n\necho \"Cleaning extended attributes and AppleDouble files before codesign...\"\n\nclean_path() {\n  local path=\"$1\"\n  [ -e \"$path\" ] || return 0\n  if command -v xattr >/dev/null 2>&1; then\n    xattr -cr \"$path\" || true\n  fi\n  if command -v dot_clean >/dev/null 2>&1; then\n    dot_clean -m \"$path\" || true\n  fi\n  find \"$path\" \\( -name \"._*\" -o -name \".DS_Store\" \\) -delete || true\n}\n\nclean_path \"${SRCROOT}/PreviewExtension/Web\"\nclean_path \"${CODESIGNING_FOLDER_PATH}\"\n";
+			shellScript = "set -euo pipefail\n\necho \"Cleaning extended attributes and AppleDouble files before codesign...\"\n\nclean_path() {\n  local path=\"$1\"\n  [ -e \"$path\" ] || return 0\n  if command -v xattr >/dev/null 2>&1; then\n    xattr -cr \"$path\" || true\n    find \"$path\" -exec xattr -d com.apple.FinderInfo {} + 2>/dev/null || true\n    find \"$path\" -exec xattr -d 'com.apple.fileprovider.fpfs#P' {} + 2>/dev/null || true\n    find \"$path\" -exec xattr -d com.apple.ResourceFork {} + 2>/dev/null || true\n  fi\n  if command -v dot_clean >/dev/null 2>&1; then\n    dot_clean -m \"$path\" || true\n  fi\n  find \"$path\" \\( -name \"._*\" -o -name \".DS_Store\" \\) -delete || true\n}\n\nclean_path \"${SRCROOT}/PreviewExtension/Web\"\nclean_path \"${CODESIGNING_FOLDER_PATH}\"\n";
 		};
 
 		7E7F01C829F8540000010002 /* Clean app detritus before codesign */ = {
@@ -287,7 +287,7 @@
 			outputPaths = ();
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\n\necho \"Cleaning app bundle extended attributes before codesign...\"\n\npath=\"${CODESIGNING_FOLDER_PATH}\"\n[ -e \"$path\" ] || exit 0\nif command -v xattr >/dev/null 2>&1; then\n  xattr -cr \"$path\" || true\nfi\nif command -v dot_clean >/dev/null 2>&1; then\n  dot_clean -m \"$path\" || true\nfi\nfind \"$path\" \\( -name \"._*\" -o -name \".DS_Store\" \\) -delete || true\n";
+			shellScript = "set -euo pipefail\n\necho \"Cleaning app bundle extended attributes before codesign...\"\n\npath=\"${CODESIGNING_FOLDER_PATH}\"\n[ -e \"$path\" ] || exit 0\nif command -v xattr >/dev/null 2>&1; then\n  xattr -cr \"$path\" || true\n  find \"$path\" -exec xattr -d com.apple.FinderInfo {} + 2>/dev/null || true\n  find \"$path\" -exec xattr -d 'com.apple.fileprovider.fpfs#P' {} + 2>/dev/null || true\n  find \"$path\" -exec xattr -d com.apple.ResourceFork {} + 2>/dev/null || true\nfi\nif command -v dot_clean >/dev/null 2>&1; then\n  dot_clean -m \"$path\" || true\nfi\nfind \"$path\" \\( -name \"._*\" -o -name \".DS_Store\" \\) -delete || true\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -403,7 +403,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", );
-				MARKETING_VERSION = 0.10.17;
+				MARKETING_VERSION = 0.10.18;
 				PRODUCT_BUNDLE_IDENTIFIER = com.local.BurreteV10;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -427,7 +427,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", );
-				MARKETING_VERSION = 0.10.17;
+				MARKETING_VERSION = 0.10.18;
 				PRODUCT_BUNDLE_IDENTIFIER = com.local.BurreteV10;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -451,7 +451,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PreviewExtension/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks", );
-				MARKETING_VERSION = 0.10.17;
+				MARKETING_VERSION = 0.10.18;
 				PRODUCT_BUNDLE_IDENTIFIER = com.local.BurreteV10.Preview;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -476,7 +476,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PreviewExtension/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks", );
-				MARKETING_VERSION = 0.10.17;
+				MARKETING_VERSION = 0.10.18;
 				PRODUCT_BUNDLE_IDENTIFIER = com.local.BurreteV10.Preview;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;

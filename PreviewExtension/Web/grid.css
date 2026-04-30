@@ -1,49 +1,29 @@
 :root {
   color-scheme: dark;
-  --buret-bg: #0e1014;
-  --buret-surface: rgba(24, 27, 33, 0.94);
-  --buret-strong: rgba(31, 35, 43, 0.98);
+  --buret-bg: rgba(25, 27, 30, 0.72);
+  --buret-surface: rgba(30, 33, 39, 0.70);
+  --buret-strong: rgba(42, 45, 52, 0.64);
   --buret-border: rgba(255, 255, 255, 0.11);
   --buret-accent: #8fc7ff;
   --buret-text: rgba(247, 248, 250, 0.96);
   --buret-muted: rgba(193, 199, 209, 0.76);
   --buret-faint: rgba(193, 199, 209, 0.54);
   --buret-shadow: rgba(0, 0, 0, 0.24);
-  --buret-card-min: 230px;
-  --buret-card-gap: 12px;
-  --buret-picture-min-height: 190px;
-  --buret-drawing-max-width: 260px;
-  --buret-drawing-max-height: 190px;
-  --buret-molecule-scale: 1;
+  --buret-grid-columns: 4;
+  --buret-card-gap: 10px;
 }
 
 html[data-buret-theme="light"] {
   color-scheme: light;
-  --buret-bg: #f7f8fa;
-  --buret-surface: rgba(255, 255, 255, 0.95);
-  --buret-strong: rgba(240, 242, 246, 0.98);
+  --buret-bg: rgba(246, 248, 251, 0.72);
+  --buret-surface: rgba(255, 255, 255, 0.70);
+  --buret-strong: rgba(244, 246, 250, 0.66);
   --buret-border: rgba(28, 31, 36, 0.12);
   --buret-accent: #0b6bcb;
   --buret-text: rgba(24, 25, 27, 0.94);
   --buret-muted: rgba(84, 89, 99, 0.78);
   --buret-faint: rgba(84, 89, 99, 0.55);
   --buret-shadow: rgba(0, 0, 0, 0.10);
-}
-
-body.buret-grid-size-compact {
-  --buret-card-min: 176px;
-  --buret-card-gap: 9px;
-  --buret-picture-min-height: 148px;
-  --buret-drawing-max-width: 210px;
-  --buret-drawing-max-height: 150px;
-}
-
-body.buret-grid-size-large {
-  --buret-card-min: 300px;
-  --buret-card-gap: 14px;
-  --buret-picture-min-height: 238px;
-  --buret-drawing-max-width: 340px;
-  --buret-drawing-max-height: 240px;
 }
 
 html,
@@ -60,10 +40,12 @@ body {
   background: var(--buret-bg);
   color: var(--buret-text);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  -webkit-backdrop-filter: saturate(180%) blur(28px);
+  backdrop-filter: saturate(180%) blur(28px);
 }
 
 body.burette-transparent-background {
-  background: transparent;
+  background: var(--buret-bg);
 }
 
 button,
@@ -76,22 +58,25 @@ button,
 .buret-grid-toolbar input[type="search"],
 .buret-grid-toolbar select {
   border: 1px solid var(--buret-border);
-  border-radius: 9px;
+  border-radius: 10px;
   color: var(--buret-text);
-  background: var(--buret-strong);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)), var(--buret-strong);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10);
   outline: none;
 }
 
 button {
   min-height: 34px;
-  padding: 7px 12px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 650;
 }
 
 button:not(:disabled):hover,
 .buret-grid-toolbar input[type="search"]:hover,
 .buret-grid-toolbar select:hover {
   border-color: var(--buret-accent);
+  background-color: rgba(143, 199, 255, 0.12);
 }
 
 button:disabled {
@@ -170,7 +155,7 @@ button:disabled {
 }
 
 .buret-toolbar-row-view {
-  grid-template-columns: auto minmax(190px, 260px) auto auto auto;
+  grid-template-columns: minmax(260px, 440px) auto auto auto auto;
   justify-content: start;
 }
 
@@ -222,25 +207,48 @@ button:disabled {
   margin-top: 1px;
 }
 
-.buret-segmented-control {
-  display: grid;
-  gap: 5px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.buret-segmented-control legend,
-.buret-scale-control {
+.buret-columns-control {
   color: var(--buret-muted);
+  display: grid;
   font-size: 11px;
   font-weight: 600;
+  gap: 5px;
+  min-width: 0;
   text-transform: uppercase;
 }
 
-.buret-segmented-control > div {
+.buret-columns-control span {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) 68px;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  box-sizing: border-box;
+  padding: 0 9px;
+  border: 1px solid var(--buret-border);
+  border-radius: 10px;
+  background: var(--buret-strong);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10);
+}
+
+.buret-columns-control input[type="range"] {
+  width: 100%;
+  accent-color: var(--buret-accent);
+}
+
+.buret-columns-control output {
+  color: var(--buret-text);
+  font-size: 12px;
+  font-weight: 650;
+  text-align: right;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.buret-stepper-control {
   display: inline-flex;
-  gap: 2px;
+  align-self: end;
+  gap: 1px;
   min-height: 34px;
   padding: 2px;
   border: 1px solid var(--buret-border);
@@ -249,49 +257,14 @@ button:disabled {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10);
 }
 
-.buret-segmented-control button {
+.buret-stepper-control button {
+  width: 34px;
   min-height: 28px;
-  padding: 4px 10px;
+  padding: 0;
   border: 0;
-  border-radius: 7px;
+  border-radius: 8px;
   background: transparent;
   box-shadow: none;
-  color: var(--buret-muted);
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.buret-segmented-control button.active {
-  color: #fff;
-  background: var(--buret-accent);
-  box-shadow: 0 1px 4px var(--buret-shadow);
-}
-
-.buret-scale-control {
-  display: grid;
-  gap: 5px;
-  min-width: 0;
-}
-
-.buret-scale-control span {
-  display: grid;
-  grid-template-columns: minmax(120px, 1fr) 48px;
-  align-items: center;
-  gap: 8px;
-  min-height: 34px;
-}
-
-.buret-scale-control input[type="range"] {
-  width: 100%;
-  accent-color: var(--buret-accent);
-}
-
-.buret-scale-control output {
-  color: var(--buret-muted);
-  font-size: 12px;
-  font-weight: 650;
-  text-align: right;
-  text-transform: none;
 }
 
 .buret-toggle-button {
@@ -305,7 +278,7 @@ button:disabled {
 .buret-toggle-button.active {
   color: #fff;
   border-color: var(--buret-accent);
-  background: var(--buret-accent);
+  background: linear-gradient(180deg, #2493ff, var(--buret-accent));
   box-shadow: 0 1px 4px var(--buret-shadow);
 }
 
@@ -345,18 +318,20 @@ button:disabled {
 
 .buret-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--buret-card-min), 1fr));
+  grid-template-columns: repeat(var(--buret-grid-columns), minmax(0, 1fr));
   gap: var(--buret-card-gap);
 }
 
 .buret-card {
   display: grid;
-  grid-template-rows: minmax(var(--buret-picture-min-height), auto) auto;
+  grid-template-rows: minmax(0, 1fr) auto;
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--buret-border);
   border-radius: 10px;
   background: var(--buret-surface);
+  -webkit-backdrop-filter: saturate(160%) blur(18px);
+  backdrop-filter: saturate(160%) blur(18px);
   box-shadow: 0 8px 20px var(--buret-shadow);
   transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
 }
@@ -386,8 +361,9 @@ button:disabled {
 .buret-molecule-picture {
   display: grid;
   place-items: center;
-  min-height: var(--buret-picture-min-height);
-  padding: 8px;
+  aspect-ratio: 1.16 / 1;
+  min-height: 58px;
+  padding: clamp(4px, 1.2vw, 10px);
   overflow: hidden;
   background: linear-gradient(180deg, #fff 0%, #fbfbfc 100%);
 }
@@ -395,12 +371,8 @@ button:disabled {
 .buret-molecule-picture svg {
   display: block;
   width: 100%;
-  max-width: var(--buret-drawing-max-width);
-  height: auto;
-  max-height: var(--buret-drawing-max-height);
-  transform: scale(var(--buret-molecule-scale));
-  transform-origin: center;
-  transition: transform 120ms ease;
+  height: 100%;
+  object-fit: contain;
 }
 
 .buret-molecule-error {
@@ -514,11 +486,11 @@ body.buret-hide-properties .buret-no-metadata {
 }
 
 body.buret-hide-properties .buret-card-body {
-  padding: 9px 11px 10px;
+  display: none;
 }
 
 body.buret-hide-properties .buret-card h2 {
-  margin-bottom: 0;
+  display: none;
 }
 
 .buret-grid-footer {
@@ -577,6 +549,6 @@ body.buret-hide-properties .buret-card h2 {
   }
 
   .buret-grid {
-    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    grid-template-columns: repeat(var(--buret-grid-columns), minmax(0, 1fr));
   }
 }

@@ -30,7 +30,7 @@ if [[ "$actual_id" != "$APP_ID" ]]; then
   exit 1
 fi
 
-clean_detritus() { local path="$1"; [[ -e "$path" ]] || return 0; xattr -cr "$path" 2>/dev/null || true; dot_clean -m "$path" 2>/dev/null || true; find "$path" \( -name '._*' -o -name '.DS_Store' \) -delete 2>/dev/null || true; }
+clean_detritus() { local path="$1"; [[ -e "$path" ]] || return 0; xattr -cr "$path" 2>/dev/null || true; find "$path" -exec xattr -d com.apple.FinderInfo {} + 2>/dev/null || true; find "$path" -exec xattr -d 'com.apple.fileprovider.fpfs#P' {} + 2>/dev/null || true; find "$path" -exec xattr -d com.apple.ResourceFork {} + 2>/dev/null || true; dot_clean -m "$path" 2>/dev/null || true; find "$path" \( -name '._*' -o -name '.DS_Store' \) -delete 2>/dev/null || true; }
 
 echo "Unregistering old Burrete extensions, if any..."
 pkill -f "$DEST/Contents/MacOS/Burrete" 2>/dev/null || true
@@ -79,10 +79,21 @@ import Foundation
 import CoreServices
 
 let appURL = URL(fileURLWithPath: ProcessInfo.processInfo.environment["BURRETE_APP_PATH"] ?? "")
-let bundleID = "com.local.BurreteV10" as CFString
+let bundleID = "com.local.BurreteV10" as NSString
 LSRegisterURL(appURL as CFURL, true)
-for contentType in ["dyn.ah62d4rv4ge81u8p4", "dyn.ah62d4rv4ge80s6xt"] {
-    LSSetDefaultRoleHandlerForContentType(contentType as CFString, .viewer, bundleID)
+for contentType in [
+    "com.local.burrete10.xyz",
+    "net.sourceforge.openbabel.xyz",
+    "dyn.ah62d4rv4ge81u8p4",
+    "dyn.ah62d4rv4ge80s6xt",
+    "com.local.burrete10.csv",
+    "dyn.ah62d4rv4ge80g650",
+    "public.comma-separated-values-text",
+    "com.local.burrete10.tsv",
+    "dyn.ah62d4rv4ge81k650",
+    "public.tab-separated-values-text"
+] {
+    LSSetDefaultRoleHandlerForContentType(contentType as NSString, .viewer, bundleID)
 }
 ' >/dev/null 2>&1 || true
 fi

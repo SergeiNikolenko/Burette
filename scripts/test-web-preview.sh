@@ -82,10 +82,26 @@ else if (ext === 'mol2') format = 'mol2';
 else if (ext === 'xyz') format = 'xyz';
 else if (ext === 'gro') format = 'gro';
 
-const gridExts = new Set(['csv', 'sd', 'sdf', 'smi', 'smiles', 'tsv']);
-const renderer = gridExts.has(ext) ? 'grid2d' : (ext === 'xyz' ? 'xyz-fast' : 'molstar');
+function countSdfRecords(text) {
+  let count = 0;
+  let hasContent = false;
+  for (const line of String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')) {
+    if (line.trim() === '$$$$') {
+      if (hasContent) count += 1;
+      hasContent = false;
+    } else if (line.trim()) {
+      hasContent = true;
+    }
+  }
+  if (hasContent) count += 1;
+  return count;
+}
+
+const gridExts = new Set(['csv', 'smi', 'smiles', 'tsv']);
+const sdfRecordCount = ['sd', 'sdf'].includes(ext) ? countSdfRecords(data.toString('utf8')) : 0;
+const renderer = (gridExts.has(ext) || sdfRecordCount > 1) ? 'grid2d' : (ext === 'xyz' ? 'xyz-fast' : 'molstar');
 const config = {
-  mode: gridExts.has(ext) ? 'grid2d' : 'structure',
+  mode: renderer === 'grid2d' ? 'grid2d' : 'structure',
   label: path.basename(file),
   format,
   molstarFormat: format,
@@ -100,6 +116,7 @@ const config = {
   sdfGrid: true,
   showPanelControls: true
 };
+if (sdfRecordCount > 0) config.sdfRecordCount = sdfRecordCount;
 if (renderer === 'xyz-fast') {
   config.xyzFast = {
     style: 'default',
@@ -144,10 +161,11 @@ const gridCSS = fs.readFileSync('PreviewExtension/Web/grid.css', 'utf8');
 const buildScript = fs.readFileSync('scripts/build.sh', 'utf8');
 const releaseScript = fs.readFileSync('scripts/release.sh', 'utf8');
 const forcePreview = fs.readFileSync('scripts/force-preview.sh', 'utf8');
+const installScript = fs.readFileSync('scripts/install-local.sh', 'utf8');
 const xcodeProject = fs.readFileSync('Burrete.xcodeproj/project.pbxproj', 'utf8');
 const config = JSON.parse(configSource.replace(/^window\.BurreteConfig = /, '').replace(/;\s*$/, ''));
 const ext = path.extname(sample).toLowerCase().slice(1);
-const gridExts = new Set(['csv', 'sd', 'sdf', 'smi', 'smiles', 'tsv']);
+const gridExts = new Set(['csv', 'smi', 'smiles', 'tsv']);
 
 function assert(condition, message) {
   if (!condition) {
@@ -165,6 +183,8 @@ assert(index.includes('top: var(--buret-toolbar-safe-top); right: 12px; left: au
 assert(index.includes('data-buret-action="theme"'), 'toolbar should expose a separate theme toggle');
 assert(index.includes('--buret-molstar-panel-background'), 'preview HTML must define Mol* theme panel colors');
 assert(index.includes('.msp-viewport-controls-panel'), 'preview HTML must theme Mol* viewport panels');
+assert(index.includes('.msp-viewport-controls-panel {\n      overflow: auto;'), 'Mol* viewport settings panel must keep base scroll behavior');
+assert(index.includes('.msp-viewport-controls-panel .msp-viewport-controls-panel-controls {\n      overflow: visible;'), 'Mol* viewport settings panel controls must not be clipped');
 assert(index.includes('.msp-viewport-controls-panel .msp-control-group-header > button'), 'preview HTML must style Mol* floating settings panel headers');
 assert(index.includes('.msp-selection-viewport-controls > .msp-flex-row'), 'preview HTML must style Mol* selection viewport toolbar');
 assert(index.includes('--buret-molstar-panel-radius'), 'preview HTML must define a shared Mol* panel radius');
@@ -193,6 +213,8 @@ assert(appDelegate.includes('MoleculeGridFileSupport.load()'), 'app delegate mus
 assert(appDelegate.includes('rendererSettingsDiffer'), 'renderer setting changes must clear temporary toolbar overrides');
 assert(appDelegate.includes('controller.reloadDisplayPreferences()'), 'open app viewers must reload when display preferences change');
 assert(appViewer.includes('func reloadSettingsPreferences()'), 'app viewer must expose a settings-preference reload hook');
+assert(appViewer.includes('.msp-viewport-controls-panel {\n              overflow: auto;'), 'standalone app Mol* settings panel must keep base scroll behavior');
+assert(appViewer.includes('.msp-viewport-controls-panel .msp-viewport-controls-panel-controls {\n              overflow: visible;'), 'standalone app Mol* settings panel controls must not be clipped');
 assert(contentView.includes('@AppStorage("viewerTheme") private var viewerTheme = "auto"'), 'settings UI theme should default to auto');
 assert(contentView.includes('@AppStorage("viewerCanvasBackground") private var viewerCanvasBackground = "auto"'), 'settings UI canvas background should default to auto');
 assert(appDelegate.includes('string(forKey: "viewerTheme") ?? "auto"'), 'app display preferences should default theme to auto');
@@ -203,7 +225,11 @@ assert(quickLookViewer.includes('CFPreferencesCopyAppValue("viewerTheme" as CFSt
 assert(quickLookViewer.includes('CFPreferencesCopyAppValue("viewerCanvasBackground" as CFString, appID) as? String) ?? "auto"'), 'Quick Look should default canvas background to auto');
 assert(appViewer.includes('func enterFullScreen()'), 'standalone app viewer must expose native fullscreen for Quick Look handoff');
 assert(appViewer.includes('window.toggleFullScreen(nil)'), 'standalone app viewer should use AppKit native fullscreen');
+assert(appDelegate.includes('private func openViewer(for url: URL)'), 'app delegate must keep a single document-open path');
+assert(!appDelegate.includes('controller.enterFullScreen()'), 'opening a structure in the standalone app must not default to fullscreen');
+assert(!appDelegate.includes('existing.enterFullScreen()'), 'reopening an existing structure window must not force fullscreen');
 assert(!appViewer.includes('exitFullScreenMode'), 'standalone app viewer must not call AppKit fullscreen exit during open');
+assert(!appViewer.includes('styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullScreen]'), 'standalone app viewer must not create windows with the fullscreen state style mask');
 assert(appViewer.includes('func reloadDisplayPreferences()'), 'app viewer must expose a display-preference reload hook');
 assert(appViewer.includes('applyWindowDisplayPreferences'), 'app viewer must update native window appearance and material preferences');
 assert(appViewer.includes('NSVisualEffectView'), 'app viewer transparency must use native macOS material instead of a fully clear custom window');
@@ -215,50 +241,82 @@ assert(quickLookViewer.includes('requiredAssets: runtimeAssets(for: renderer)'),
 assert(quickLookViewer.includes('requiresRDKit: true'), 'Quick Look grid previews should opt into RDKit assets explicitly');
 assert(quickLookViewer.includes('copyAssetIfNeeded'), 'Quick Look should reuse unchanged runtime assets instead of recopying every preview');
 assert(quickLookViewer.includes('gridRecordsScriptWithRDKitWasm'), 'Quick Look grid previews must pass RDKit wasm without file:// fetch');
+assert(quickLookViewer.includes('NSVisualEffectView'), 'Quick Look previews should use native macOS material background');
+assert(quickLookViewer.includes('webView.underPageBackgroundColor = .clear'), 'Quick Look WKWebView must leave the material background visible');
 assert(quickLookViewer.includes('"smi", "smiles"'), 'Quick Look should allow SMILES files before grid dispatch');
 assert(quickLookViewer.includes('"csv"'), 'Quick Look should allow CSV files before grid dispatch');
 assert(quickLookViewer.includes('"tsv"'), 'Quick Look should allow TSV files before grid dispatch');
 assert(appViewer.includes('gridRecordsScriptWithRDKitWasm'), 'standalone grid previews must pass RDKit wasm without file:// fetch');
 assert(appViewer.includes('fileSupport: MoleculeGridFileSupport.load()'), 'standalone grid previews must honor enabled grid file types');
 assert(gridViewer.includes('wasmBinary'), 'grid viewer must initialize RDKit with an in-memory wasmBinary fallback');
-assert(gridViewer.includes('buret.grid.cardSize'), 'grid viewer must persist card size controls');
-assert(gridViewer.includes('buret.grid.moleculeScale'), 'grid viewer must persist molecule zoom controls');
-assert(gridViewer.includes('data-grid-size="compact"'), 'grid viewer must use stable segmented card-size controls');
+assert(gridViewer.includes('buret.grid.columns'), 'grid viewer must persist grid column controls');
+assert(gridViewer.includes('GRID_COLUMNS_MIN = 4'), 'grid viewer must allow four columns at the low end');
+assert(gridViewer.includes('GRID_COLUMNS_MAX = 16'), 'grid viewer must allow sixteen columns at the high end');
+assert(!gridViewer.includes('molecule-scale'), 'grid viewer must not expose a separate molecule zoom slider');
+assert(gridViewer.includes("rootSVG.removeAttribute('width')"), 'grid viewer must let molecule SVGs fit their cards instead of fixed pixel width');
+assert(gridViewer.includes("rootSVG.removeAttribute('height')"), 'grid viewer must let molecule SVGs fit their cards instead of fixed pixel height');
+assert(gridViewer.includes("preserveAspectRatio', 'xMidYMid meet'"), 'grid viewer must preserve molecule aspect ratio during automatic fitting');
 assert(gridViewer.includes('buret.grid.loadBatch'), 'grid viewer must persist infinite-scroll batch size controls');
 assert(gridViewer.includes('load-sentinel'), 'grid viewer must use a sentinel for infinite scrolling');
 assert(gridViewer.includes('IntersectionObserver'), 'grid viewer must dynamically append molecules while scrolling');
 assert(!gridViewer.includes('page-label'), 'grid viewer must not expose page navigation labels');
 assert(gridViewer.includes('buret-hide-properties'), 'grid viewer must allow hiding card metadata properties');
-assert(gridCSS.includes('--buret-card-min'), 'grid CSS must expose card size variables');
-assert(gridCSS.includes('--buret-molecule-scale'), 'grid CSS must expose molecule zoom variables');
+assert(gridCSS.includes('--buret-grid-columns'), 'grid CSS must expose grid column variables');
+assert(gridCSS.includes('repeat(var(--buret-grid-columns)'), 'grid CSS must lay out molecules by the selected column count');
+assert(gridCSS.includes('--buret-bg: rgba('), 'grid CSS must use a translucent material background');
+assert(gridCSS.includes('backdrop-filter: saturate(180%) blur(28px)'), 'grid CSS must apply frosted blur to the base background');
+assert(gridCSS.includes('body.buret-hide-properties .buret-card-body {\n  display: none;\n}'), 'Properties toggle must hide card text details');
+assert(gridCSS.includes('body.buret-hide-properties .buret-card h2 {\n  display: none;\n}'), 'Properties toggle must hide molecule names');
+assert(gridCSS.includes('grid-template-rows: minmax(0, 1fr) auto'), 'grid cards must give molecule drawings the flexible area');
+assert(gridCSS.includes('object-fit: contain'), 'grid molecule drawings must auto-fit inside their cards');
 assert(gridCSS.includes('.buret-toolbar-row-main'), 'grid CSS must use named toolbar rows instead of fragile child selectors');
-assert(gridCSS.includes('.buret-segmented-control'), 'grid CSS must style segmented grid-size controls');
+assert(gridCSS.includes('.buret-columns-control'), 'grid CSS must style grid column controls');
 assert(gridCSS.includes('.buret-load-status'), 'grid CSS must style infinite-scroll load status');
 assert(gridBuilder.includes('case "csv"'), 'grid builder must parse CSV molecule tables');
 assert(gridBuilder.includes('canonical_smiles'), 'grid builder must recognize canonical_smiles CSV columns');
 assert(contentView.includes('CSV tables'), 'settings UI must expose CSV molecule table support');
 assert(contentView.includes('TSV tables'), 'settings UI must expose TSV molecule table support');
+assert(quickLookInfo.includes('com.local.burrete10.csv'), 'Quick Look should support Burrete CSV table content type');
 assert(quickLookInfo.includes('public.comma-separated-values-text'), 'Quick Look should support CSV table content type');
+assert(quickLookInfo.includes('dyn.ah62d4rv4ge80g650'), 'Quick Look should support macOS dynamic CSV content type');
 assert(!quickLookInfo.includes('<string>public.comma-separated-values-text</string>\n\t\t\t\t\t<string>public.data</string>'), 'Quick Look should not claim every generic data file');
+assert(quickLookInfo.includes('com.local.burrete10.tsv'), 'Quick Look should support Burrete TSV table content type');
 assert(quickLookInfo.includes('public.tab-separated-values-text'), 'Quick Look should support TSV table content type');
+assert(quickLookInfo.includes('dyn.ah62d4rv4ge81k650'), 'Quick Look should support macOS dynamic TSV content type');
 assert(quickLookInfo.includes('net.sourceforge.openbabel.xyz'), 'Quick Look should support Open Babel XYZ content type');
 assert(appInfo.includes('net.sourceforge.openbabel.xyz'), 'app document types should support Open Babel XYZ content type');
 assert(quickLookInfo.includes('com.local.burettexyzrender.smiles'), 'Quick Look should support existing SMILES content type');
 assert(quickLookInfo.includes('com.local.molstarquicklook10.smiles'), 'Quick Look should support legacy SMILES content type');
 assert(appDelegate.includes('com.local.burettexyzrender.smiles'), 'default-handler registration should include existing SMILES content type');
 assert(appDelegate.includes('com.local.molstarquicklook10.smiles'), 'default-handler registration should include legacy SMILES content type');
+assert(appDelegate.includes('com.local.burrete10.csv'), 'default-handler registration should include Burrete CSV table content type');
 assert(appDelegate.includes('public.comma-separated-values-text'), 'default-handler registration should include CSV table content type');
+assert(appDelegate.includes('dyn.ah62d4rv4ge80g650'), 'default-handler registration should include dynamic CSV table content type');
+assert(appDelegate.includes('com.local.burrete10.tsv'), 'default-handler registration should include Burrete TSV table content type');
 assert(appDelegate.includes('public.tab-separated-values-text'), 'default-handler registration should include TSV table content type');
+assert(appDelegate.includes('dyn.ah62d4rv4ge81k650'), 'default-handler registration should include dynamic TSV table content type');
 assert(appDelegate.includes('MoleculeGridFileSupport.load()'), 'default-handler registration should respect enabled grid file type settings');
 assert(forcePreview.includes('smi|SMI|smiles|SMILES'), 'force-preview should support SMILES files');
 assert(forcePreview.includes('csv|CSV'), 'force-preview should support CSV files');
+assert(forcePreview.includes('com.local.burrete10.csv'), 'force-preview should use the Burrete CSV type');
 assert(forcePreview.includes('tsv|TSV'), 'force-preview should support TSV files');
+assert(forcePreview.includes('com.local.burrete10.tsv'), 'force-preview should use the Burrete TSV type');
 assert(buildScript.includes('PreviewExtension/Web/burette-agent.js'), 'build script must require and syntax-check burette-agent.js');
 assert(releaseScript.includes('PreviewExtension/Web/burette-agent.js'), 'release script must require and syntax-check burette-agent.js');
 assert(xcodeProject.includes('PreviewExtension/Web/burette-agent.js'), 'Xcode validation phase must track burette-agent.js');
 assert(viewer.includes('startXYZFast'), 'viewer.js must support Fast XYZ rendering');
 assert(viewer.includes('startExternalArtifact'), 'viewer.js must support external xyzrender artifacts');
 assert(xyzFast.includes('BurreteXYZFast'), 'xyz-fast.js must expose BurreteXYZFast');
+assert(xyzFast.includes('preloadedXYZFrames'), 'xyz-fast.js must support preloaded trajectory frames');
+assert(xyzFast.includes('data-buret-xyz-frame'), 'xyz-fast.js must expose a frame slider for preloaded XYZ frames');
+assert(xyzFast.includes('--buret-canvas-background'), 'Fast XYZ must use the canvas background setting, not the shell background');
+assert(xyzFast.includes('SMALL_MOLECULE_MAX_SCALE'), 'Fast XYZ must cap tiny molecule projection scale');
+assert(quickLookViewer.includes('maxXYZFastPreloadedFrames'), 'Quick Look should bound preloaded XYZ trajectory frames');
+assert(quickLookViewer.includes('"preloadedFrameCount"'), 'Quick Look should publish preloaded XYZ frame count');
+assert(quickLookViewer.includes('"dataBase64"'), 'Quick Look should publish preloaded XYZ frame data');
+assert(installScript.includes('net.sourceforge.openbabel.xyz'), 'installer should set Burrete as default viewer for Open Babel XYZ files');
+assert(installScript.includes('com.local.burrete10.xyz'), 'installer should set Burrete as default viewer for Burrete XYZ files');
+assert(installScript.includes('contentType as NSString'), 'installer Swift snippet must use NSString casts that work with swift -e');
 assert(viewer.includes('buret.toolbar.collapsed'), 'viewer.js must remember compact toolbar state');
 assert(viewer.includes('TOOLBAR_POSITION_VERSION'), 'viewer.js must reset stale toolbar positions');
 assert(viewer.includes("TOOLBAR_POSITION_VERSION = '7'"), 'toolbar position cache should invalidate pre-safe-area positions');
@@ -283,6 +341,13 @@ assert(config.label === path.basename(sample), 'config label should match sample
 if (ext === 'csv') assert(config.format === 'csv' && config.mode === 'grid2d', 'CSV samples should be dispatched as grid2d CSV previews');
 if (ext === 'tsv') assert(config.format === 'tsv' && config.mode === 'grid2d', 'TSV samples should be dispatched as grid2d TSV previews');
 if (['smi', 'smiles'].includes(ext)) assert(config.format === 'smiles' && config.mode === 'grid2d', 'SMILES samples should be dispatched as grid2d previews');
+if (['sd', 'sdf'].includes(ext)) {
+  if (config.sdfRecordCount === 1) {
+    assert(config.format === 'sdf' && config.mode === 'structure' && config.renderer === 'molstar', 'single-record SDF samples should be dispatched as Mol* structure previews');
+  } else if (config.sdfRecordCount > 1) {
+    assert(config.format === 'sdf' && config.mode === 'grid2d' && config.renderer === 'grid2d', 'multi-record SDF samples should be dispatched as grid2d SDF previews');
+  }
+}
 assert(typeof config.byteCount === 'number' && config.byteCount > 0, 'config byteCount should be positive');
 assert(config.theme === 'auto', 'theme should default to auto');
 assert(config.canvasBackground === 'auto', 'canvas background should default to auto');
@@ -290,7 +355,7 @@ assert(config.transparentBackground === false, 'transparent background should be
 assert(config.sdfGrid === true, 'SDF grid flag should be encoded');
 assert(config.molstarFormat === config.format, 'molstarFormat should mirror the resolved Mol* format');
 assert(config.allowMolstarFallback === true, 'Mol* fallback flag should be encoded');
-assert(config.renderer === (gridExts.has(ext) ? 'grid2d' : (ext === 'xyz' ? 'xyz-fast' : 'molstar')), 'renderer should select grid2d for molecule collections, Fast XYZ for .xyz, and Mol* otherwise');
+assert(config.renderer === ((gridExts.has(ext) || config.sdfRecordCount > 1) ? 'grid2d' : (ext === 'xyz' ? 'xyz-fast' : 'molstar')), 'renderer should select grid2d for molecule collections, Fast XYZ for .xyz, and Mol* otherwise');
 if (ext === 'xyz') {
   assert(config.xyzFast && config.xyzFast.firstFrameOnly === true, 'XYZ web test should encode first-frame Fast XYZ options');
   assert(config.xyzFast.showCell === true, 'XYZ web test should encode cell drawing preference');
