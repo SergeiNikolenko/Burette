@@ -416,6 +416,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
               --buret-molstar-muted-text: rgba(190, 196, 204, 0.82);
               --buret-molstar-accent: #8fc7ff;
               --buret-molstar-shadow: rgba(0, 0, 0, 0.38);
+              --buret-molstar-panel-radius: 10px;
             }
             html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: transparent; }
             html.buret-transparent-background,
@@ -500,6 +501,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             body .msp-plugin .msp-layout-bottom,
             body .msp-plugin .msp-layout-left,
             body .msp-plugin .msp-layout-right,
+            body .msp-plugin .msp-sequence-select,
             body .msp-plugin .msp-control-row,
             body .msp-plugin .msp-log li,
             body .msp-plugin .msp-toast-container .msp-toast-entry,
@@ -523,6 +525,41 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
               background: var(--buret-molstar-panel-background) !important;
               max-height: calc(100vh - 76px) !important;
               box-shadow: 0 14px 34px var(--buret-molstar-shadow);
+            }
+            body .msp-plugin .msp-hover-box-wrapper .msp-hover-box-body,
+            body .msp-plugin .msp-action-menu-options,
+            body .msp-plugin .msp-action-menu-options-no-header,
+            body .msp-plugin .msp-animation-viewport-controls-select,
+            body .msp-plugin .msp-selection-viewport-controls-actions,
+            body .msp-plugin .msp-panel-description-content,
+            body .msp-plugin .msp-simple-help-section,
+            body .msp-plugin .msp-help-text,
+            body .msp-plugin .msp-no-webgl,
+            body .msp-plugin .msp-log,
+            body .msp-plugin .msp-toast-container .msp-toast-entry {
+              overflow: hidden;
+              border: 1px solid var(--buret-molstar-border) !important;
+              border-radius: var(--buret-molstar-panel-radius);
+              background: var(--buret-molstar-panel-background) !important;
+              box-shadow: 0 12px 28px var(--buret-molstar-shadow);
+              -webkit-backdrop-filter: blur(12px);
+              backdrop-filter: blur(12px);
+            }
+            body .msp-plugin .msp-action-menu-options .msp-control-group-children,
+            body .msp-plugin .msp-viewport-controls-panel .msp-viewport-controls-panel-controls {
+              border-radius: inherit;
+            }
+            body .msp-plugin .msp-sequence-select {
+              color: var(--buret-molstar-text) !important;
+              background: var(--buret-molstar-row-background) !important;
+              border-bottom: 1px solid var(--buret-molstar-border);
+              box-shadow: none;
+            }
+            body .msp-plugin .msp-sequence-select > span,
+            body .msp-plugin .msp-sequence-select > select {
+              color: var(--buret-molstar-text) !important;
+              background-color: var(--buret-molstar-field-background) !important;
+              border-right: 1px solid var(--buret-molstar-border);
             }
             body .msp-plugin .msp-control-row,
             body .msp-plugin .msp-control-current,
@@ -551,12 +588,17 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             body .msp-plugin .msp-control-row > div.msp-control-row-text,
             body .msp-plugin .msp-help-row > div,
             body .msp-plugin .msp-sequence-wrapper-non-empty,
+            body .msp-plugin .msp-sequence-wrapper,
             body .msp-plugin .msp-log .msp-log-entry,
             body .msp-plugin .msp-copy-image-wrapper div,
             body .msp-plugin .msp-overlay-tasks .msp-task-state > div > div,
             body .msp-plugin .msp-background-tasks .msp-task-state > div > div {
               color: var(--buret-molstar-text) !important;
               background: var(--buret-molstar-field-background) !important;
+            }
+            body .msp-plugin .msp-sequence-wrapper-non-empty {
+              border-top: 1px solid var(--buret-molstar-border);
+              box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
             }
             body .msp-plugin .msp-form-control,
             body .msp-plugin .msp-control-row select,
@@ -607,9 +649,86 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             body .msp-plugin .msp-sequence-wrapper .msp-sequence-missing {
               color: var(--buret-molstar-muted-text) !important;
             }
+            body .msp-plugin .msp-viewport-controls-panel {
+              overflow: hidden;
+              border: 1px solid var(--buret-molstar-border) !important;
+              border-radius: var(--buret-molstar-panel-radius);
+              background: var(--buret-molstar-panel-background) !important;
+              box-shadow: 0 12px 28px var(--buret-molstar-shadow);
+              -webkit-backdrop-filter: blur(12px);
+              backdrop-filter: blur(12px);
+            }
+            body .msp-plugin .msp-viewport-controls-panel .msp-control-group-wrapper {
+              background: transparent !important;
+            }
+            body .msp-plugin .msp-viewport-controls-panel .msp-control-group-header,
+            body .msp-plugin .msp-viewport-controls-panel .msp-control-group-header > button {
+              color: var(--buret-molstar-text) !important;
+              background: var(--buret-molstar-row-background) !important;
+            }
+            body .msp-plugin .msp-viewport-controls-panel .msp-control-group-header > button {
+              border-bottom: 1px solid var(--buret-molstar-border) !important;
+              font-weight: 700;
+            }
+            body .msp-plugin .msp-viewport-controls-panel .msp-control-row {
+              border-top: 1px solid var(--buret-molstar-border) !important;
+              background: var(--buret-molstar-row-background) !important;
+            }
+            body .msp-plugin .msp-viewport-controls-panel .msp-control-row > div,
+            body .msp-plugin .msp-viewport-controls-panel .msp-control-row > div.msp-control-row-text,
+            body .msp-plugin .msp-viewport-controls-panel .msp-control-current {
+              background: var(--buret-molstar-field-background) !important;
+            }
+            body .msp-plugin .msp-selection-viewport-controls > .msp-flex-row {
+              overflow: hidden;
+              border: 1px solid var(--buret-molstar-border) !important;
+              border-radius: 10px;
+              color: var(--buret-molstar-text) !important;
+              background: var(--buret-molstar-panel-background) !important;
+              box-shadow: 0 12px 28px var(--buret-molstar-shadow);
+            }
+            body .msp-plugin .msp-selection-viewport-controls > .msp-flex-row > * {
+              border-left: 1px solid var(--buret-molstar-border) !important;
+              color: var(--buret-molstar-text) !important;
+              background: var(--buret-molstar-row-background) !important;
+            }
+            body .msp-plugin .msp-selection-viewport-controls > .msp-flex-row > *:first-child {
+              border-left: 0 !important;
+            }
+            body .msp-plugin .msp-selection-viewport-controls button,
+            body .msp-plugin .msp-selection-viewport-controls .msp-btn {
+              color: var(--buret-molstar-text) !important;
+              background: transparent !important;
+            }
+            body .msp-plugin .msp-selection-viewport-controls button:hover,
+            body .msp-plugin .msp-selection-viewport-controls .msp-btn:hover,
+            body .msp-plugin .msp-selection-viewport-controls .msp-btn-link-toggle-on {
+              color: var(--buret-molstar-accent) !important;
+              background: var(--buret-molstar-hover-background) !important;
+              outline: 0 !important;
+            }
             body .msp-plugin .msp-semi-transparent-background {
               background: var(--buret-molstar-panel-background) !important;
               opacity: 0.76 !important;
+            }
+            body .msp-plugin .msp-snapshot-description-wrapper,
+            body .msp-plugin .msp-highlight-info {
+              color: var(--buret-molstar-text) !important;
+              background: var(--buret-molstar-panel-background) !important;
+              border: 1px solid var(--buret-molstar-border);
+              border-radius: 10px;
+              opacity: 1 !important;
+              -webkit-backdrop-filter: blur(12px);
+              backdrop-filter: blur(12px);
+            }
+            body .msp-plugin .msp-snapshot-description-wrapper *,
+            body .msp-plugin .msp-highlight-info * {
+              background: transparent !important;
+              color: inherit !important;
+            }
+            body .msp-plugin .msp-snapshot-description-wrapper a,
+            body .msp-plugin .msp-highlight-info-additional {
+              color: var(--buret-molstar-accent) !important;
             }
             body .msp-plugin .msp-viewport-controls {
               top: 64px !important;
@@ -663,7 +782,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             #status.error { color: #ffd4d4; background: rgba(70, 0, 0, 0.82); }
             #status.hidden { display: none; }
             #buret-toolbar {
-              position: absolute; top: 12px; left: 12px; right: auto; z-index: 2147483646;
+              position: absolute; top: 12px; right: 12px; left: auto; z-index: 2147483646;
               display: flex; align-items: center; gap: 6px; padding: 6px;
               border: 1px solid var(--buret-toolbar-border);
               border-radius: 12px; color: var(--buret-toolbar-color);
@@ -755,6 +874,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle right panel">R</button>
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq</button>
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel">Log</button>
+            <button class="buret-button" type="button" data-buret-action="theme" aria-label="Switch to light theme" title="Switch to light theme">Light</button>
           </div>
           <div id="status" class="hidden">[web] HTML body created. Waiting for embedded data and Mol* script…</div>
           <script>
