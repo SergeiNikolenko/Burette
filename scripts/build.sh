@@ -35,7 +35,7 @@ HDR
 
 require_tool() { command -v "$1" >/dev/null 2>&1 || { echo "error: $1 is required. $2" >&2; exit 1; }; }
 clean_detritus() { local p="$1"; [[ -e "$p" ]] || return 0; xattr -cr "$p" 2>/dev/null || true; dot_clean -m "$p" 2>/dev/null || true; find "$p" \( -name '._*' -o -name '.DS_Store' \) -delete 2>/dev/null || true; }
-require_asset() { local p="$1"; [[ -s "$p" ]] || { echo "error: missing vendored web asset: $p" >&2; echo "Run: npm ci --ignore-scripts && npm run vendor:molstar" >&2; exit 1; }; }
+require_asset() { local p="$1"; [[ -s "$p" ]] || { echo "error: missing vendored web asset: $p" >&2; echo "Run: npm ci --ignore-scripts && npm run vendor:molstar && npm run vendor:rdkit" >&2; exit 1; }; }
 
 require_tool node "Install it with: brew install node"
 require_tool xcodebuild "Install full Xcode from the App Store."
@@ -62,7 +62,12 @@ grep -q 'com.local.burrete10.pdb' scripts/force-preview.sh || { echo "error: for
 require_asset PreviewExtension/Web/molstar.js
 require_asset PreviewExtension/Web/molstar.css
 require_asset PreviewExtension/Web/viewer.js
+require_asset PreviewExtension/Web/grid-viewer.js
+require_asset PreviewExtension/Web/grid.css
+require_asset PreviewExtension/Web/rdkit/RDKit_minimal.js
+require_asset PreviewExtension/Web/rdkit/RDKit_minimal.wasm
 node --check PreviewExtension/Web/viewer.js >/dev/null
+node --check PreviewExtension/Web/grid-viewer.js >/dev/null
 clean_detritus "$ROOT"
 rm -f /tmp/Burrete.log "${TMPDIR:-/tmp}/Burrete.log" 2>/dev/null || true
 
