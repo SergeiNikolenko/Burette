@@ -26,10 +26,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     override func loadView() {
-        let transparentBackground = PreviewPreferences.load().transparentBackground
-        let container = NSView(frame: .zero)
+        let container = NSVisualEffectView(frame: .zero)
+        container.blendingMode = .behindWindow
+        container.material = .underWindowBackground
+        container.state = .active
         container.wantsLayer = true
-        container.layer?.backgroundColor = (transparentBackground ? NSColor.clear : NSColor(calibratedWhite: 0.055, alpha: 1.0)).cgColor
+        container.layer?.backgroundColor = NSColor.clear.cgColor
 
         let userContentController = WKUserContentController()
         userContentController.add(self, name: "burrete")
@@ -60,9 +62,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         webView.translatesAutoresizingMaskIntoConstraints = false
         webView.wantsLayer = true
         webView.setValue(false, forKey: "drawsBackground")
-        webView.layer?.backgroundColor = (transparentBackground ? NSColor.clear : NSColor(calibratedWhite: 0.055, alpha: 1.0)).cgColor
+        webView.layer?.backgroundColor = NSColor.clear.cgColor
         if #available(macOS 11.0, *) {
-            webView.underPageBackgroundColor = transparentBackground ? .clear : NSColor(calibratedWhite: 0.055, alpha: 1.0)
+            webView.underPageBackgroundColor = .clear
         }
         container.addSubview(webView)
 

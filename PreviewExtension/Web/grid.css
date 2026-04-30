@@ -1,8 +1,8 @@
 :root {
   color-scheme: dark;
-  --buret-bg: #0e1014;
-  --buret-surface: rgba(24, 27, 33, 0.94);
-  --buret-strong: rgba(31, 35, 43, 0.98);
+  --buret-bg: rgba(25, 27, 30, 0.72);
+  --buret-surface: rgba(30, 33, 39, 0.70);
+  --buret-strong: rgba(42, 45, 52, 0.64);
   --buret-border: rgba(255, 255, 255, 0.11);
   --buret-accent: #8fc7ff;
   --buret-text: rgba(247, 248, 250, 0.96);
@@ -15,9 +15,9 @@
 
 html[data-buret-theme="light"] {
   color-scheme: light;
-  --buret-bg: #f7f8fa;
-  --buret-surface: rgba(255, 255, 255, 0.95);
-  --buret-strong: rgba(240, 242, 246, 0.98);
+  --buret-bg: rgba(246, 248, 251, 0.72);
+  --buret-surface: rgba(255, 255, 255, 0.70);
+  --buret-strong: rgba(244, 246, 250, 0.66);
   --buret-border: rgba(28, 31, 36, 0.12);
   --buret-accent: #0b6bcb;
   --buret-text: rgba(24, 25, 27, 0.94);
@@ -40,10 +40,12 @@ body {
   background: var(--buret-bg);
   color: var(--buret-text);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  -webkit-backdrop-filter: saturate(180%) blur(28px);
+  backdrop-filter: saturate(180%) blur(28px);
 }
 
 body.burette-transparent-background {
-  background: transparent;
+  background: var(--buret-bg);
 }
 
 button,
@@ -328,6 +330,8 @@ button:disabled {
   border: 1px solid var(--buret-border);
   border-radius: 10px;
   background: var(--buret-surface);
+  -webkit-backdrop-filter: saturate(160%) blur(18px);
+  backdrop-filter: saturate(160%) blur(18px);
   box-shadow: 0 8px 20px var(--buret-shadow);
   transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
 }
@@ -483,11 +487,11 @@ body.buret-hide-properties .buret-no-metadata {
 }
 
 body.buret-hide-properties .buret-card-body {
-  padding: 9px 11px 10px;
+  display: none;
 }
 
 body.buret-hide-properties .buret-card h2 {
-  margin-bottom: 0;
+  display: none;
 }
 
 .buret-grid-footer {

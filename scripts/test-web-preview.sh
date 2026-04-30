@@ -240,6 +240,8 @@ assert(quickLookViewer.includes('requiredAssets: runtimeAssets(for: renderer)'),
 assert(quickLookViewer.includes('requiresRDKit: true'), 'Quick Look grid previews should opt into RDKit assets explicitly');
 assert(quickLookViewer.includes('copyAssetIfNeeded'), 'Quick Look should reuse unchanged runtime assets instead of recopying every preview');
 assert(quickLookViewer.includes('gridRecordsScriptWithRDKitWasm'), 'Quick Look grid previews must pass RDKit wasm without file:// fetch');
+assert(quickLookViewer.includes('NSVisualEffectView'), 'Quick Look previews should use native macOS material background');
+assert(quickLookViewer.includes('webView.underPageBackgroundColor = .clear'), 'Quick Look WKWebView must leave the material background visible');
 assert(quickLookViewer.includes('"smi", "smiles"'), 'Quick Look should allow SMILES files before grid dispatch');
 assert(quickLookViewer.includes('"csv"'), 'Quick Look should allow CSV files before grid dispatch');
 assert(quickLookViewer.includes('"tsv"'), 'Quick Look should allow TSV files before grid dispatch');
@@ -257,6 +259,10 @@ assert(!gridViewer.includes('page-label'), 'grid viewer must not expose page nav
 assert(gridViewer.includes('buret-hide-properties'), 'grid viewer must allow hiding card metadata properties');
 assert(gridCSS.includes('--buret-grid-columns'), 'grid CSS must expose grid column variables');
 assert(gridCSS.includes('repeat(var(--buret-grid-columns)'), 'grid CSS must lay out molecules by the selected column count');
+assert(gridCSS.includes('--buret-bg: rgba('), 'grid CSS must use a translucent material background');
+assert(gridCSS.includes('backdrop-filter: saturate(180%) blur(28px)'), 'grid CSS must apply frosted blur to the base background');
+assert(gridCSS.includes('body.buret-hide-properties .buret-card-body {\n  display: none;\n}'), 'Properties toggle must hide card text details');
+assert(gridCSS.includes('body.buret-hide-properties .buret-card h2 {\n  display: none;\n}'), 'Properties toggle must hide molecule names');
 assert(gridCSS.includes('.buret-toolbar-row-main'), 'grid CSS must use named toolbar rows instead of fragile child selectors');
 assert(gridCSS.includes('.buret-columns-control'), 'grid CSS must style grid column controls');
 assert(gridCSS.includes('.buret-load-status'), 'grid CSS must style infinite-scroll load status');
