@@ -36,10 +36,13 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
             defer: false
         )
         window.title = "Burrete - \(fileURL.lastPathComponent)"
+        window.titleVisibility = .visible
+        window.titlebarAppearsTransparent = false
+        window.isMovableByWindowBackground = true
+        window.styleMask.remove(.fullSizeContentView)
         window.collectionBehavior.insert(.fullScreenPrimary)
         window.minSize = NSSize(width: 660, height: 440)
         window.appearance = NSAppearance(named: .darkAqua)
-        window.titlebarAppearsTransparent = true
         if #available(macOS 11.0, *) {
             window.toolbarStyle = .unifiedCompact
         }
@@ -264,6 +267,7 @@ private struct AppViewerRuntime {
           <style>
             :root {
               --buret-viewer-ui-scale: 0.86;
+              --buret-toolbar-safe-top: 18px;
               --buret-canvas-background: #000000;
               --buret-shell-background: #000000;
               --buret-panel-background: rgba(18, 20, 22, 0.82);
@@ -645,7 +649,7 @@ private struct AppViewerRuntime {
             #status.error { color: #ffd4d4; background: rgba(70, 0, 0, 0.82); }
             #status.hidden { display: none; }
             #buret-toolbar {
-              position: absolute; top: 12px; right: 12px; left: auto; z-index: 2147483646;
+              position: absolute; top: var(--buret-toolbar-safe-top); right: 12px; left: auto; z-index: 2147483646;
               display: flex; align-items: center; gap: 6px; padding: 6px;
               border: 1px solid var(--buret-toolbar-border);
               border-radius: 12px; color: var(--buret-toolbar-color);
@@ -804,22 +808,34 @@ private enum AppViewerError: LocalizedError {
 }
 
 private final class BurreteAppViewerContainerView: NSView {
+    private static let contentInset: CGFloat = 7
+    private static let cornerRadius: CGFloat = 14
+
     init(contentView: NSView, transparentBackground: Bool) {
         super.init(frame: .zero)
         wantsLayer = true
         layer?.borderWidth = 1
         layer?.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
-        layer?.cornerRadius = 16
-        layer?.masksToBounds = true
         layer?.backgroundColor = (transparentBackground ? NSColor.clear : NSColor(calibratedWhite: 0.055, alpha: 1.0)).cgColor
+        layer?.cornerRadius = Self.cornerRadius
+        if #available(macOS 10.15, *) {
+            layer?.cornerCurve = .continuous
+        }
+        layer?.masksToBounds = true
 
         contentView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(contentView)
+        contentView.wantsLayer = true
+        contentView.layer?.cornerRadius = Self.cornerRadius - Self.contentInset
+        if #available(macOS 10.15, *) {
+            contentView.layer?.cornerCurve = .continuous
+        }
+        contentView.layer?.masksToBounds = true
         NSLayoutConstraint.activate([
-            contentView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 1),
-            contentView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -1),
-            contentView.topAnchor.constraint(equalTo: topAnchor, constant: 1),
-            contentView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -1)
+            contentView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.contentInset),
+            contentView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.contentInset),
+            contentView.topAnchor.constraint(equalTo: topAnchor, constant: Self.contentInset),
+            contentView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Self.contentInset)
         ])
     }
 
