@@ -195,7 +195,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let existing = viewerWindows[fileURL] {
             existing.showWindow(nil)
             presentWindow(existing.window, activate: true)
-            existing.enterFullScreen()
             return
         }
 
@@ -215,7 +214,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.showWindow(nil)
         controller.window?.center()
         presentWindow(controller.window, activate: true)
-        controller.enterFullScreen()
     }
 
     private func presentWindow(_ window: NSWindow?, activate: Bool) {

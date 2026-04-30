@@ -207,6 +207,9 @@ assert(quickLookViewer.includes('CFPreferencesCopyAppValue("viewerTheme" as CFSt
 assert(quickLookViewer.includes('CFPreferencesCopyAppValue("viewerCanvasBackground" as CFString, appID) as? String) ?? "auto"'), 'Quick Look should default canvas background to auto');
 assert(appViewer.includes('func enterFullScreen()'), 'standalone app viewer must expose native fullscreen for Quick Look handoff');
 assert(appViewer.includes('window.toggleFullScreen(nil)'), 'standalone app viewer should use AppKit native fullscreen');
+assert(appDelegate.includes('private func openViewer(for url: URL)'), 'app delegate must keep a single document-open path');
+assert(!appDelegate.includes('controller.enterFullScreen()'), 'opening a structure in the standalone app must not default to fullscreen');
+assert(!appDelegate.includes('existing.enterFullScreen()'), 'reopening an existing structure window must not force fullscreen');
 assert(!appViewer.includes('exitFullScreenMode'), 'standalone app viewer must not call AppKit fullscreen exit during open');
 assert(!appViewer.includes('styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullScreen]'), 'standalone app viewer must not create windows with the fullscreen state style mask');
 assert(appViewer.includes('func reloadDisplayPreferences()'), 'app viewer must expose a display-preference reload hook');
