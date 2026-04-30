@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var settingsWindow: NSWindow?
     private var viewerWindows: [URL: MoleculeViewerWindowController] = [:]
+    private var viewerRuntimePreferences = ViewerRuntimePreferences.load()
     private var openedDocumentAtLaunch = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -28,6 +29,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if UserDefaults.standard.object(forKey: "openSettingsAtLaunch") == nil {
             UserDefaults.standard.set(false, forKey: "openSettingsAtLaunch")
+        }
+        if UserDefaults.standard.object(forKey: "showPreviewPanelControls") == nil {
+            UserDefaults.standard.set(true, forKey: "showPreviewPanelControls")
+        }
+        if UserDefaults.standard.object(forKey: "useTransparentPreviewBackground") == nil {
+            UserDefaults.standard.set(false, forKey: "useTransparentPreviewBackground")
+        }
+        if UserDefaults.standard.object(forKey: "viewerTheme") == nil {
+            UserDefaults.standard.set("auto", forKey: "viewerTheme")
+        }
+        if UserDefaults.standard.object(forKey: "viewerCanvasBackground") == nil {
+            UserDefaults.standard.set("auto", forKey: "viewerCanvasBackground")
         }
         if UserDefaults.standard.object(forKey: "structureRendererMode") == nil {
             UserDefaults.standard.set("auto", forKey: "structureRendererMode")
@@ -47,6 +60,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if UserDefaults.standard.object(forKey: "xyzrenderExtraArguments") == nil {
             UserDefaults.standard.set("", forKey: "xyzrenderExtraArguments")
         }
+        if UserDefaults.standard.object(forKey: "viewerWindowOpacity") == nil {
+            UserDefaults.standard.set(0.82, forKey: "viewerWindowOpacity")
+        }
+        if UserDefaults.standard.object(forKey: "viewerOverlayOpacity") == nil {
+            UserDefaults.standard.set(0.90, forKey: "viewerOverlayOpacity")
+        }
+        if UserDefaults.standard.object(forKey: MoleculeGridFileSupport.sdfKey) == nil {
+            UserDefaults.standard.set(true, forKey: MoleculeGridFileSupport.sdfKey)
+        }
+        if UserDefaults.standard.object(forKey: MoleculeGridFileSupport.smilesKey) == nil {
+            UserDefaults.standard.set(true, forKey: MoleculeGridFileSupport.smilesKey)
+        }
+        if UserDefaults.standard.object(forKey: MoleculeGridFileSupport.csvKey) == nil {
+            UserDefaults.standard.set(true, forKey: MoleculeGridFileSupport.csvKey)
+        }
+        if UserDefaults.standard.object(forKey: MoleculeGridFileSupport.tsvKey) == nil {
+            UserDefaults.standard.set(true, forKey: MoleculeGridFileSupport.tsvKey)
+        }
+        viewerRuntimePreferences = ViewerRuntimePreferences.load()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(viewerRuntimePreferencesDidChange),
+            name: UserDefaults.didChangeNotification,
+            object: UserDefaults.standard
+        )
         if UserDefaults.standard.bool(forKey: "openSettingsAtLaunch") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
                 if self?.openedDocumentAtLaunch == false {
@@ -128,6 +166,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         settingsWindow?.center()
         presentWindow(settingsWindow, activate: true)
+    }
+
+    @objc private func viewerRuntimePreferencesDidChange(_ notification: Notification) {
+        let previous = viewerRuntimePreferences
+        let next = ViewerRuntimePreferences.load()
+        guard next != previous else { return }
+        viewerRuntimePreferences = next
+        for controller in viewerWindows.values {
+            if next.rendererSettingsDiffer(from: previous) {
+                controller.reloadSettingsPreferences()
+            } else {
+                controller.reloadDisplayPreferences()
+            }
+        }
     }
 
     @objc private func checkForUpdates() {
@@ -248,18 +300,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+private struct ViewerRuntimePreferences: Equatable {
+    let transparentPreviewBackground: Bool
+    let viewerTheme: String
+    let canvasBackground: String
+    let windowOpacity: Double
+    let overlayOpacity: Double
+    let showPanelControls: Bool
+    let structureRendererMode: String
+    let xyzFastStyle: String
+    let xyzrenderPreset: String
+    let xyzrenderCustomConfigPath: String
+    let xyzrenderExecutablePath: String
+    let xyzrenderExtraArguments: String
+    let gridFileSupport: MoleculeGridFileSupport
+
+    static func load() -> ViewerRuntimePreferences {
+        ViewerRuntimePreferences(
+            transparentPreviewBackground: UserDefaults.standard.object(forKey: "useTransparentPreviewBackground") as? Bool ?? false,
+            viewerTheme: UserDefaults.standard.string(forKey: "viewerTheme") ?? "auto",
+            canvasBackground: UserDefaults.standard.string(forKey: "viewerCanvasBackground") ?? "auto",
+            windowOpacity: UserDefaults.standard.object(forKey: "viewerWindowOpacity") as? Double ?? 0.82,
+            overlayOpacity: UserDefaults.standard.object(forKey: "viewerOverlayOpacity") as? Double ?? 0.90,
+            showPanelControls: UserDefaults.standard.object(forKey: "showPreviewPanelControls") as? Bool ?? true,
+            structureRendererMode: UserDefaults.standard.string(forKey: "structureRendererMode") ?? "auto",
+            xyzFastStyle: UserDefaults.standard.string(forKey: "xyzFastStyle") ?? "default",
+            xyzrenderPreset: UserDefaults.standard.string(forKey: "xyzrenderPreset") ?? "default",
+            xyzrenderCustomConfigPath: UserDefaults.standard.string(forKey: "xyzrenderCustomConfigPath") ?? "",
+            xyzrenderExecutablePath: UserDefaults.standard.string(forKey: "xyzrenderExecutablePath") ?? "",
+            xyzrenderExtraArguments: UserDefaults.standard.string(forKey: "xyzrenderExtraArguments") ?? "",
+            gridFileSupport: MoleculeGridFileSupport.load()
+        )
+    }
+
+    func rendererSettingsDiffer(from other: ViewerRuntimePreferences) -> Bool {
+        structureRendererMode != other.structureRendererMode ||
+            xyzFastStyle != other.xyzFastStyle ||
+            xyzrenderPreset != other.xyzrenderPreset ||
+            xyzrenderCustomConfigPath != other.xyzrenderCustomConfigPath ||
+            xyzrenderExecutablePath != other.xyzrenderExecutablePath ||
+            xyzrenderExtraArguments != other.xyzrenderExtraArguments
+    }
+}
+
 enum BurreteFileAssociations {
     static let bundleIdentifier = "com.local.BurreteV10"
-    static let contentTypes = [
+    static var contentTypes: [String] {
+        contentTypes(for: MoleculeGridFileSupport.load())
+    }
+
+    private static let structureContentTypes = [
         "com.local.burrete10.pdb",
         "com.local.burrete10.cif",
         "com.local.burrete10.mmcif",
         "com.local.burrete10.bcif",
-        "com.local.burrete10.sdf",
-        "com.local.burrete10.smiles",
         "com.local.burrete10.mol",
         "com.local.burrete10.mol2",
         "com.local.burrete10.xyz",
+        "net.sourceforge.openbabel.xyz",
         // LaunchServices resolves bare .xyz files to this dynamic UTI on current macOS.
         "dyn.ah62d4rv4ge81u8p4",
         "com.local.burrete10.gro",
@@ -280,13 +378,44 @@ enum BurreteFileAssociations {
         "org.iucr.cif",
         "org.iucr.mmcif",
         "com.schrodinger.pdb",
-        "org.openscience.sdf",
         "org.openscience.molfile",
         "org.openscience.mol2",
         "public.pdb",
         "public.cif",
         "public.mmcif"
     ]
+
+    private static let sdfContentTypes = [
+        "com.local.burrete10.sdf",
+        "com.local.molstarquicklook10.sdf",
+        "org.openscience.sdf",
+        "com.schrodinger.sdf",
+        "com.mdli.sdf",
+        "com.mdl.sdf"
+    ]
+
+    private static let smilesContentTypes = [
+        "com.local.burrete10.smiles",
+        "com.local.burettexyzrender.smiles",
+        "com.local.molstarquicklook10.smiles"
+    ]
+
+    private static let csvContentTypes = [
+        "public.comma-separated-values-text",
+    ]
+
+    private static let tsvContentTypes = [
+        "public.tab-separated-values-text"
+    ]
+
+    private static func contentTypes(for fileSupport: MoleculeGridFileSupport) -> [String] {
+        var types = structureContentTypes
+        if fileSupport.sdf { types.append(contentsOf: sdfContentTypes) }
+        if fileSupport.smiles { types.append(contentsOf: smilesContentTypes) }
+        if fileSupport.csv { types.append(contentsOf: csvContentTypes) }
+        if fileSupport.tsv { types.append(contentsOf: tsvContentTypes) }
+        return types
+    }
 
     static var defaultHandlerSummary: String {
         let current = contentTypes.filter { defaultHandler(for: $0) == bundleIdentifier }.count
