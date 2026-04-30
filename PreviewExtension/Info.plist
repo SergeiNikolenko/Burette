@@ -31,6 +31,7 @@
 				<string>com.local.burrete10.mmcif</string>
 				<string>com.local.burrete10.bcif</string>
 				<string>com.local.burrete10.sdf</string>
+				<string>com.local.burrete10.smiles</string>
 				<string>com.local.burrete10.mol</string>
 				<string>com.local.burrete10.mol2</string>
 				<string>com.local.molstarquicklook10.pdb</string>
