@@ -875,6 +875,7 @@ private struct AppViewerRuntime {
             }
             body .msp-plugin .msp-action-menu-options .msp-control-group-children,
             body .msp-plugin .msp-viewport-controls-panel .msp-viewport-controls-panel-controls {
+              overflow: visible;
               border-radius: inherit;
             }
             body .msp-plugin .msp-sequence-select {
@@ -978,7 +979,7 @@ private struct AppViewerRuntime {
               color: var(--buret-molstar-muted-text) !important;
             }
             body .msp-plugin .msp-viewport-controls-panel {
-              overflow: hidden;
+              overflow: auto;
               border: 1px solid var(--buret-molstar-border) !important;
               border-radius: var(--buret-molstar-panel-radius);
               background: var(--buret-molstar-panel-background) !important;

@@ -165,6 +165,8 @@ assert(index.includes('top: var(--buret-toolbar-safe-top); right: 12px; left: au
 assert(index.includes('data-buret-action="theme"'), 'toolbar should expose a separate theme toggle');
 assert(index.includes('--buret-molstar-panel-background'), 'preview HTML must define Mol* theme panel colors');
 assert(index.includes('.msp-viewport-controls-panel'), 'preview HTML must theme Mol* viewport panels');
+assert(index.includes('.msp-viewport-controls-panel {\n      overflow: auto;'), 'Mol* viewport settings panel must keep base scroll behavior');
+assert(index.includes('.msp-viewport-controls-panel .msp-viewport-controls-panel-controls {\n      overflow: visible;'), 'Mol* viewport settings panel controls must not be clipped');
 assert(index.includes('.msp-viewport-controls-panel .msp-control-group-header > button'), 'preview HTML must style Mol* floating settings panel headers');
 assert(index.includes('.msp-selection-viewport-controls > .msp-flex-row'), 'preview HTML must style Mol* selection viewport toolbar');
 assert(index.includes('--buret-molstar-panel-radius'), 'preview HTML must define a shared Mol* panel radius');
@@ -193,6 +195,8 @@ assert(appDelegate.includes('MoleculeGridFileSupport.load()'), 'app delegate mus
 assert(appDelegate.includes('rendererSettingsDiffer'), 'renderer setting changes must clear temporary toolbar overrides');
 assert(appDelegate.includes('controller.reloadDisplayPreferences()'), 'open app viewers must reload when display preferences change');
 assert(appViewer.includes('func reloadSettingsPreferences()'), 'app viewer must expose a settings-preference reload hook');
+assert(appViewer.includes('.msp-viewport-controls-panel {\n              overflow: auto;'), 'standalone app Mol* settings panel must keep base scroll behavior');
+assert(appViewer.includes('.msp-viewport-controls-panel .msp-viewport-controls-panel-controls {\n              overflow: visible;'), 'standalone app Mol* settings panel controls must not be clipped');
 assert(contentView.includes('@AppStorage("viewerTheme") private var viewerTheme = "auto"'), 'settings UI theme should default to auto');
 assert(contentView.includes('@AppStorage("viewerCanvasBackground") private var viewerCanvasBackground = "auto"'), 'settings UI canvas background should default to auto');
 assert(appDelegate.includes('string(forKey: "viewerTheme") ?? "auto"'), 'app display preferences should default theme to auto');
