@@ -30,7 +30,7 @@ if [[ "$actual_id" != "$APP_ID" ]]; then
   exit 1
 fi
 
-clean_detritus() { local path="$1"; [[ -e "$path" ]] || return 0; xattr -cr "$path" 2>/dev/null || true; dot_clean -m "$path" 2>/dev/null || true; find "$path" \( -name '._*' -o -name '.DS_Store' \) -delete 2>/dev/null || true; }
+clean_detritus() { local path="$1"; [[ -e "$path" ]] || return 0; xattr -cr "$path" 2>/dev/null || true; find "$path" -exec xattr -d com.apple.FinderInfo {} + 2>/dev/null || true; find "$path" -exec xattr -d 'com.apple.fileprovider.fpfs#P' {} + 2>/dev/null || true; find "$path" -exec xattr -d com.apple.ResourceFork {} + 2>/dev/null || true; dot_clean -m "$path" 2>/dev/null || true; find "$path" \( -name '._*' -o -name '.DS_Store' \) -delete 2>/dev/null || true; }
 
 echo "Unregistering old Burrete extensions, if any..."
 pkill -f "$DEST/Contents/MacOS/Burrete" 2>/dev/null || true

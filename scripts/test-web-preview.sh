@@ -82,10 +82,26 @@ else if (ext === 'mol2') format = 'mol2';
 else if (ext === 'xyz') format = 'xyz';
 else if (ext === 'gro') format = 'gro';
 
-const gridExts = new Set(['csv', 'sd', 'sdf', 'smi', 'smiles', 'tsv']);
-const renderer = gridExts.has(ext) ? 'grid2d' : (ext === 'xyz' ? 'xyz-fast' : 'molstar');
+function countSdfRecords(text) {
+  let count = 0;
+  let hasContent = false;
+  for (const line of String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')) {
+    if (line.trim() === '$$$$') {
+      if (hasContent) count += 1;
+      hasContent = false;
+    } else if (line.trim()) {
+      hasContent = true;
+    }
+  }
+  if (hasContent) count += 1;
+  return count;
+}
+
+const gridExts = new Set(['csv', 'smi', 'smiles', 'tsv']);
+const sdfRecordCount = ['sd', 'sdf'].includes(ext) ? countSdfRecords(data.toString('utf8')) : 0;
+const renderer = (gridExts.has(ext) || sdfRecordCount > 1) ? 'grid2d' : (ext === 'xyz' ? 'xyz-fast' : 'molstar');
 const config = {
-  mode: gridExts.has(ext) ? 'grid2d' : 'structure',
+  mode: renderer === 'grid2d' ? 'grid2d' : 'structure',
   label: path.basename(file),
   format,
   molstarFormat: format,
@@ -100,6 +116,7 @@ const config = {
   sdfGrid: true,
   showPanelControls: true
 };
+if (sdfRecordCount > 0) config.sdfRecordCount = sdfRecordCount;
 if (renderer === 'xyz-fast') {
   config.xyzFast = {
     style: 'default',
@@ -147,7 +164,7 @@ const forcePreview = fs.readFileSync('scripts/force-preview.sh', 'utf8');
 const xcodeProject = fs.readFileSync('Burrete.xcodeproj/project.pbxproj', 'utf8');
 const config = JSON.parse(configSource.replace(/^window\.BurreteConfig = /, '').replace(/;\s*$/, ''));
 const ext = path.extname(sample).toLowerCase().slice(1);
-const gridExts = new Set(['csv', 'sd', 'sdf', 'smi', 'smiles', 'tsv']);
+const gridExts = new Set(['csv', 'smi', 'smiles', 'tsv']);
 
 function assert(condition, message) {
   if (!condition) {
@@ -291,6 +308,13 @@ assert(config.label === path.basename(sample), 'config label should match sample
 if (ext === 'csv') assert(config.format === 'csv' && config.mode === 'grid2d', 'CSV samples should be dispatched as grid2d CSV previews');
 if (ext === 'tsv') assert(config.format === 'tsv' && config.mode === 'grid2d', 'TSV samples should be dispatched as grid2d TSV previews');
 if (['smi', 'smiles'].includes(ext)) assert(config.format === 'smiles' && config.mode === 'grid2d', 'SMILES samples should be dispatched as grid2d previews');
+if (['sd', 'sdf'].includes(ext)) {
+  if (config.sdfRecordCount === 1) {
+    assert(config.format === 'sdf' && config.mode === 'structure' && config.renderer === 'molstar', 'single-record SDF samples should be dispatched as Mol* structure previews');
+  } else if (config.sdfRecordCount > 1) {
+    assert(config.format === 'sdf' && config.mode === 'grid2d' && config.renderer === 'grid2d', 'multi-record SDF samples should be dispatched as grid2d SDF previews');
+  }
+}
 assert(typeof config.byteCount === 'number' && config.byteCount > 0, 'config byteCount should be positive');
 assert(config.theme === 'auto', 'theme should default to auto');
 assert(config.canvasBackground === 'auto', 'canvas background should default to auto');
@@ -298,7 +322,7 @@ assert(config.transparentBackground === false, 'transparent background should be
 assert(config.sdfGrid === true, 'SDF grid flag should be encoded');
 assert(config.molstarFormat === config.format, 'molstarFormat should mirror the resolved Mol* format');
 assert(config.allowMolstarFallback === true, 'Mol* fallback flag should be encoded');
-assert(config.renderer === (gridExts.has(ext) ? 'grid2d' : (ext === 'xyz' ? 'xyz-fast' : 'molstar')), 'renderer should select grid2d for molecule collections, Fast XYZ for .xyz, and Mol* otherwise');
+assert(config.renderer === ((gridExts.has(ext) || config.sdfRecordCount > 1) ? 'grid2d' : (ext === 'xyz' ? 'xyz-fast' : 'molstar')), 'renderer should select grid2d for molecule collections, Fast XYZ for .xyz, and Mol* otherwise');
 if (ext === 'xyz') {
   assert(config.xyzFast && config.xyzFast.firstFrameOnly === true, 'XYZ web test should encode first-frame Fast XYZ options');
   assert(config.xyzFast.showCell === true, 'XYZ web test should encode cell drawing preference');

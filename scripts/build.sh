@@ -34,7 +34,7 @@ Burrete v10 build
 HDR
 
 require_tool() { command -v "$1" >/dev/null 2>&1 || { echo "error: $1 is required. $2" >&2; exit 1; }; }
-clean_detritus() { local p="$1"; [[ -e "$p" ]] || return 0; xattr -cr "$p" 2>/dev/null || true; dot_clean -m "$p" 2>/dev/null || true; find "$p" \( -name '._*' -o -name '.DS_Store' \) -delete 2>/dev/null || true; }
+clean_detritus() { local p="$1"; [[ -e "$p" ]] || return 0; xattr -cr "$p" 2>/dev/null || true; find "$p" -exec xattr -d com.apple.FinderInfo {} + 2>/dev/null || true; find "$p" -exec xattr -d 'com.apple.fileprovider.fpfs#P' {} + 2>/dev/null || true; find "$p" -exec xattr -d com.apple.ResourceFork {} + 2>/dev/null || true; dot_clean -m "$p" 2>/dev/null || true; find "$p" \( -name '._*' -o -name '.DS_Store' \) -delete 2>/dev/null || true; }
 require_asset() { local p="$1"; [[ -s "$p" ]] || { echo "error: missing vendored web asset: $p" >&2; echo "Run: npm ci --ignore-scripts && npm run vendor:molstar && npm run vendor:rdkit" >&2; exit 1; }; }
 
 require_tool node "Install it with: brew install node"
@@ -72,7 +72,6 @@ node --check PreviewExtension/Web/viewer.js >/dev/null
 node --check PreviewExtension/Web/burette-agent.js >/dev/null
 node --check PreviewExtension/Web/grid-viewer.js >/dev/null
 node --check PreviewExtension/Web/xyz-fast.js >/dev/null
-clean_detritus "$ROOT"
 rm -f /tmp/Burrete.log "${TMPDIR:-/tmp}/Burrete.log" 2>/dev/null || true
 
 rsync -a --delete --exclude build --exclude node_modules --exclude .git "$ROOT/" "$SAFE_ROOT/"
