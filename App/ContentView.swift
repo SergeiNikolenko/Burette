@@ -762,7 +762,7 @@ private struct AboutPanel: View {
                 Text("Burrete")
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundStyle(.primary)
-                Text("Version 0.10.11")
+                Text("Version 0.10.12")
                     .font(.system(size: 12, weight: .regular))
                     .foregroundStyle(.secondary)
             }
@@ -807,8 +807,8 @@ private struct BurreteBadge: View {
 
 private enum SettingsColors {
     static let background = Color(nsColor: .windowBackgroundColor)
-    static let sidebar = Color(nsColor: .underPageBackgroundColor)
-    static let card = Color(nsColor: .controlBackgroundColor)
+    static let sidebar = Color(nsColor: .controlBackgroundColor)
+    static let card = Color(nsColor: .textBackgroundColor)
     static let search = Color(nsColor: .textBackgroundColor)
     static let selection = Color.accentColor.opacity(0.18)
     static let separator = Color(nsColor: .separatorColor).opacity(0.55)
