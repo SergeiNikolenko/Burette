@@ -74,7 +74,7 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1040, height: 720),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullScreen],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )

@@ -204,6 +204,7 @@ assert(quickLookViewer.includes('CFPreferencesCopyAppValue("viewerCanvasBackgrou
 assert(appViewer.includes('func enterFullScreen()'), 'standalone app viewer must expose native fullscreen for Quick Look handoff');
 assert(appViewer.includes('window.toggleFullScreen(nil)'), 'standalone app viewer should use AppKit native fullscreen');
 assert(!appViewer.includes('exitFullScreenMode'), 'standalone app viewer must not call AppKit fullscreen exit during open');
+assert(!appViewer.includes('styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullScreen]'), 'standalone app viewer must not create windows with the fullscreen state style mask');
 assert(appViewer.includes('func reloadDisplayPreferences()'), 'app viewer must expose a display-preference reload hook');
 assert(appViewer.includes('applyWindowDisplayPreferences'), 'app viewer must update native window appearance and material preferences');
 assert(appViewer.includes('NSVisualEffectView'), 'app viewer transparency must use native macOS material instead of a fully clear custom window');
