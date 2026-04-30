@@ -11,6 +11,8 @@
 		1B0A192E03A98BBEF19FE524 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E19FAD5D706EFF2DCADAC02E /* ContentView.swift */; };
 		E8B6F5D5A1C74396A1D13711 /* BurreteUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8B6F5D4A1C74396A1D13711 /* BurreteUpdater.swift */; };
 		B88A1B0D9C2F4E7A8D3C6B11 /* MoleculeViewerWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B88A1B0C9C2F4E7A8D3C6B11 /* MoleculeViewerWindowController.swift */; };
+		3F8B96A03E7544E6A395D201 /* MoleculeGridPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F8B96A03E7544E6A395D200 /* MoleculeGridPreview.swift */; };
+		3F8B96A03E7544E6A395D202 /* MoleculeGridPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F8B96A03E7544E6A395D200 /* MoleculeGridPreview.swift */; };
 		2A6C3FDEB8E145A2A9364F01 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8B707533C58E4E3C9B6E6E15 /* Assets.xcassets */; };
 		B88A1B0E9C2F4E7A8D3C6B11 /* Web in Resources */ = {isa = PBXBuildFile; fileRef = 4ADF66CA120EDD24C9E3F203 /* Web */; };
 		3C65656FB6FE8E52854AC3F4 /* PreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA02CDF88EC813372195D216 /* PreviewViewController.swift */; };
@@ -53,6 +55,7 @@
 		6E373F91487569133D571598 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		8AD874A7BD1213FF583AB869 /* Burrete.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Burrete.entitlements; sourceTree = "<group>"; };
 		AA02CDF88EC813372195D216 /* PreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewViewController.swift; sourceTree = "<group>"; };
+		3F8B96A03E7544E6A395D200 /* MoleculeGridPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoleculeGridPreview.swift; sourceTree = "<group>"; };
 		D112F5444BEBEFD99D68B6DD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		F27769504D80BCF7B53A232F /* BurretePreview.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BurretePreview.entitlements; sourceTree = "<group>"; };
 		4ADF66CA120EDD24C9E3F203 /* Web */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Web; sourceTree = "<group>"; };
@@ -103,6 +106,7 @@
 			isa = PBXGroup;
 			children = (
 				AA02CDF88EC813372195D216 /* PreviewViewController.swift */,
+				3F8B96A03E7544E6A395D200 /* MoleculeGridPreview.swift */,
 				D112F5444BEBEFD99D68B6DD /* Info.plist */,
 				F27769504D80BCF7B53A232F /* BurretePreview.entitlements */,
 				4ADF66CA120EDD24C9E3F203 /* Web */,
@@ -240,6 +244,10 @@
 					"$(SRCROOT)/PreviewExtension/Web/molstar.js",
 					"$(SRCROOT)/PreviewExtension/Web/molstar.css",
 					"$(SRCROOT)/PreviewExtension/Web/viewer.js",
+					"$(SRCROOT)/PreviewExtension/Web/grid-viewer.js",
+					"$(SRCROOT)/PreviewExtension/Web/grid.css",
+					"$(SRCROOT)/PreviewExtension/Web/rdkit/RDKit_minimal.js",
+					"$(SRCROOT)/PreviewExtension/Web/rdkit/RDKit_minimal.wasm",
 				);
 				name = "Validate Mol* assets";
 				outputFileListPaths = ();
@@ -248,7 +256,7 @@
 				);
 				runOnlyForDeploymentPostprocessing = 0;
 				shellPath = /bin/sh;
-				shellScript = "set -euo pipefail\nexport PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"\ncd \"${SRCROOT}\"\n\nif ! command -v node >/dev/null 2>&1; then\n  echo \"error: Node.js is required to validate Burrete web assets. Install it with: brew install node\"\n  exit 1\nfi\nfor asset in PreviewExtension/Web/molstar.js PreviewExtension/Web/molstar.css PreviewExtension/Web/viewer.js; do\n  if [ ! -s \"$asset\" ]; then\n    echo \"error: missing vendored web asset: $asset\"\n    echo \"Run: npm ci --ignore-scripts && npm run vendor:molstar\"\n    exit 1\n  fi\ndone\nnode --check PreviewExtension/Web/viewer.js\n\n# Downloaded archives and unzipped bundles can carry com.apple.quarantine, FinderInfo,\n# or AppleDouble files. If Xcode copies those into the .appex, codesign fails with:\n# \"resource fork, Finder information, or similar detritus not allowed\".\nif command -v xattr >/dev/null 2>&1; then\n  xattr -cr \"${SRCROOT}/PreviewExtension/Web\" || true\nfi\nif command -v dot_clean >/dev/null 2>&1; then\n  dot_clean -m \"${SRCROOT}/PreviewExtension/Web\" || true\nfi\nfind \"${SRCROOT}/PreviewExtension/Web\" \\( -name \"._*\" -o -name \".DS_Store\" \\) -delete || true\nmkdir -p \"${DERIVED_FILE_DIR}\"\ntouch \"${DERIVED_FILE_DIR}/BurreteWebAssetsValidated.stamp\"\n";
+				shellScript = "set -euo pipefail\nexport PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"\ncd \"${SRCROOT}\"\n\nif ! command -v node >/dev/null 2>&1; then\n  echo \"error: Node.js is required to validate Burrete web assets. Install it with: brew install node\"\n  exit 1\nfi\nfor asset in PreviewExtension/Web/molstar.js PreviewExtension/Web/molstar.css PreviewExtension/Web/viewer.js PreviewExtension/Web/grid-viewer.js PreviewExtension/Web/grid.css PreviewExtension/Web/rdkit/RDKit_minimal.js PreviewExtension/Web/rdkit/RDKit_minimal.wasm; do\n  if [ ! -s \"$asset\" ]; then\n    echo \"error: missing vendored web asset: $asset\"\n    echo \"Run: npm ci --ignore-scripts && npm run vendor:molstar && npm run vendor:rdkit\"\n    exit 1\n  fi\ndone\nnode --check PreviewExtension/Web/viewer.js\nnode --check PreviewExtension/Web/grid-viewer.js\n\n# Downloaded archives and unzipped bundles can carry com.apple.quarantine, FinderInfo,\n# or AppleDouble files. If Xcode copies those into the .appex, codesign fails with:\n# \"resource fork, Finder information, or similar detritus not allowed\".\nif command -v xattr >/dev/null 2>&1; then\n  xattr -cr \"${SRCROOT}/PreviewExtension/Web\" || true\nfi\nif command -v dot_clean >/dev/null 2>&1; then\n  dot_clean -m \"${SRCROOT}/PreviewExtension/Web\" || true\nfi\nfind \"${SRCROOT}/PreviewExtension/Web\" \\( -name \"._*\" -o -name \".DS_Store\" \\) -delete || true\nmkdir -p \"${DERIVED_FILE_DIR}\"\ntouch \"${DERIVED_FILE_DIR}/BurreteWebAssetsValidated.stamp\"\n";
 			};
 
 		7E7F01C829F8540000010001 /* Clean bundle detritus before codesign */ = {
@@ -291,6 +299,7 @@
 				1B0A192E03A98BBEF19FE524 /* ContentView.swift in Sources */,
 				E8B6F5D5A1C74396A1D13711 /* BurreteUpdater.swift in Sources */,
 				B88A1B0D9C2F4E7A8D3C6B11 /* MoleculeViewerWindowController.swift in Sources */,
+				3F8B96A03E7544E6A395D201 /* MoleculeGridPreview.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -299,6 +308,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				3C65656FB6FE8E52854AC3F4 /* PreviewViewController.swift in Sources */,
+				3F8B96A03E7544E6A395D202 /* MoleculeGridPreview.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
