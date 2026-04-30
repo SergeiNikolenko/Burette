@@ -59,6 +59,12 @@ while IFS= read -r OLD_ENTRY; do
     pluginkit -r "$OLD_APPEX" 2>/dev/null || true
   fi
 done < <(pluginkit -m -v -p com.apple.quicklook.preview 2>/dev/null | grep -Ei 'Burrete|Burette|MolstarQuickLook' || true)
+while IFS= read -r OLD_APPEX; do
+  [[ "$OLD_APPEX" == "$APPEX" ]] && continue
+  if [[ "$OLD_APPEX" == *Burrete*.appex || "$OLD_APPEX" == *Burette*.appex || "$OLD_APPEX" == *MolstarQuickLook*.appex ]]; then
+    pluginkit -r "$OLD_APPEX" 2>/dev/null || true
+  fi
+done < <(pluginkit -m -A -D -vvv -p com.apple.quicklook.preview 2>/dev/null | sed -n 's/^[[:space:]]*Path = //p' | grep -Ei 'Burrete|Burette|MolstarQuickLook' || true)
 
 mkdir -p "$DEST_DIR"
 rm -rf "$DEST" "$LEGACY_OLD_DEST" "$LEGACY_BURET_DEST" "$LEGACY_XYZ_DEST"
@@ -67,6 +73,19 @@ clean_detritus "$DEST"
 
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 [[ -x "$LSREGISTER" ]] && "$LSREGISTER" -f -R "$DEST" || true
+if [[ -x /usr/bin/swift ]]; then
+  BURRETE_APP_PATH="$DEST" /usr/bin/swift -e '
+import Foundation
+import CoreServices
+
+let appURL = URL(fileURLWithPath: ProcessInfo.processInfo.environment["BURRETE_APP_PATH"] ?? "")
+let bundleID = "com.local.BurreteV10" as CFString
+LSRegisterURL(appURL as CFURL, true)
+for contentType in ["dyn.ah62d4rv4ge81u8p4", "dyn.ah62d4rv4ge80s6xt"] {
+    LSSetDefaultRoleHandlerForContentType(contentType as CFString, .viewer, bundleID)
+}
+' >/dev/null 2>&1 || true
+fi
 [[ -d "$APPEX" ]] && pluginkit -a "$APPEX" 2>/dev/null || true
 pluginkit -e use -i "$EXT_ID" 2>/dev/null || true
 
@@ -75,7 +94,7 @@ qlmanage -r >/dev/null 2>&1 || true
 qlmanage -r cache >/dev/null 2>&1 || true
 killall quicklookd 2>/dev/null || true
 
-touch "$ROOT/samples/mini.pdb" "$ROOT/samples/mini.cif" 2>/dev/null || true
+touch "$ROOT/samples/mini.pdb" "$ROOT/samples/mini.cif" "$ROOT/samples/mini.xyz" 2>/dev/null || true
 
 cat <<REPORT
 Installed local copy:
@@ -87,8 +106,10 @@ Check extension registration:
 Forced tests:
   qlmanage -p -c com.local.burrete10.pdb "$ROOT/samples/mini.pdb"
   qlmanage -p -c com.local.burrete10.cif "$ROOT/samples/mini.cif"
+  qlmanage -p -c dyn.ah62d4rv4ge81u8p4 "$ROOT/samples/mini.xyz"
 
 Normal tests:
   qlmanage -p "$ROOT/samples/mini.pdb"
   qlmanage -p "$ROOT/samples/mini.cif"
+  qlmanage -p "$ROOT/samples/mini.xyz"
 REPORT

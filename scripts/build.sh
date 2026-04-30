@@ -67,9 +67,11 @@ require_asset PreviewExtension/Web/grid-viewer.js
 require_asset PreviewExtension/Web/grid.css
 require_asset PreviewExtension/Web/rdkit/RDKit_minimal.js
 require_asset PreviewExtension/Web/rdkit/RDKit_minimal.wasm
+require_asset PreviewExtension/Web/xyz-fast.js
 node --check PreviewExtension/Web/viewer.js >/dev/null
 node --check PreviewExtension/Web/burette-agent.js >/dev/null
 node --check PreviewExtension/Web/grid-viewer.js >/dev/null
+node --check PreviewExtension/Web/xyz-fast.js >/dev/null
 clean_detritus "$ROOT"
 rm -f /tmp/Burrete.log "${TMPDIR:-/tmp}/Burrete.log" 2>/dev/null || true
 
