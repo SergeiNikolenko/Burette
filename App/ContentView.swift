@@ -93,7 +93,7 @@ struct ContentView: View {
                 SettingsValueRow(
                     icon: "arrow.up.left.and.arrow.down.right.circle",
                     title: "Fullscreen",
-                    subtitle: "The green window button opens the full app viewer in native macOS fullscreen."
+                    subtitle: "Use the green window button when you want the full app viewer in native macOS fullscreen."
                 )
                 SettingsDivider()
                 SettingsActionRow(
@@ -962,7 +962,7 @@ private struct AboutPanel: View {
                 Text("Burrete")
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundStyle(.primary)
-                Text("Version 0.10.17")
+                Text("Version 0.10.18")
                     .font(.system(size: 12, weight: .regular))
                     .foregroundStyle(.secondary)
             }
