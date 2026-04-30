@@ -228,10 +228,41 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         guard !structureData.isEmpty else { throw PreviewError.emptyStructureFile(url.lastPathComponent) }
         diag("structureData.bytes=\(structureData.count)")
 
+        let preferences = PreviewPreferences.load()
+        if let gridPreview = try MoleculeGridPreviewBuilder.makePreview(
+            fileURL: url,
+            data: structureData,
+            host: .quickLook,
+            theme: preferences.viewerTheme,
+            canvasBackground: preferences.canvasBackground,
+            transparentBackground: preferences.canvasBackground == "transparent",
+            debug: showDebugOverlay,
+            allowSelection: false,
+            allowExport: false,
+            maxRecords: 750
+        ) {
+            diag("detected.previewMode=grid2d format=\(gridPreview.format) records=\(gridPreview.recordsIncluded)/\(gridPreview.recordsTotal)")
+            try validateVendoredMoleculeGridAssets(in: webDirectory, fileManager: fileManager, diagnostics: &diagnostics)
+            let html = gridInlineHTML(title: url.lastPathComponent, preferences: preferences)
+            diag("gridInlineHTML.bytes=\(html.utf8.count)")
+            let runtimePreview = try createRuntimePreview(
+                bundledWebDirectory: webDirectory,
+                html: html,
+                configJSON: gridPreview.configJSON,
+                structureBase64: nil,
+                gridRecordsScript: gridPreview.recordsScript,
+                fileManager: fileManager,
+                diagnostics: &diagnostics
+            )
+            let indexURL = runtimePreview.indexURL
+            diag("runtimeDirectory=\(runtimePreview.runtimeDirectory.path)")
+            diag("runtime.index.exists=\(fileManager.fileExists(atPath: indexURL.path))")
+            return BuildResult(html: html, indexURL: indexURL, readAccessURL: runtimePreview.readAccessURL, diagnostics: diagnostics)
+        }
+
         let format = StructureFormat(url: url, data: structureData)
         diag("detected.format=\(format.molstarFormat) binary=\(format.isBinary)")
 
-        let preferences = PreviewPreferences.load()
         let configJSON = try previewConfigJSON(
             format: format,
             label: url.lastPathComponent,
@@ -248,6 +279,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             html: html,
             configJSON: configJSON,
             structureBase64: base64,
+            gridRecordsScript: nil,
             fileManager: fileManager,
             diagnostics: &diagnostics
         )
@@ -267,7 +299,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         bundledWebDirectory: URL,
         html: String,
         configJSON: String,
-        structureBase64: String,
+        structureBase64: String?,
+        gridRecordsScript: String?,
         fileManager: FileManager,
         diagnostics: inout [String]
     ) throws -> RuntimePreview {
@@ -293,8 +326,13 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         try Data(html.utf8).write(to: indexURL, options: [.atomic])
         try Data("window.BurreteConfig = \(configJSON);\n".utf8)
             .write(to: runtimeDirectory.appendingPathComponent("preview-config.js"), options: [.atomic])
-        try Data("window.BurreteDataBase64 = \"\(structureBase64)\";\n".utf8)
+        let dataScript = structureBase64.map { "window.BurreteDataBase64 = \"\($0)\";\n" } ?? "window.BurreteDataBase64 = null;\n"
+        try Data(dataScript.utf8)
             .write(to: runtimeDirectory.appendingPathComponent("preview-data.js"), options: [.atomic])
+        if let gridRecordsScript {
+            try Data(gridRecordsScript.utf8)
+                .write(to: runtimeDirectory.appendingPathComponent("preview-grid-records.js"), options: [.atomic])
+        }
         return RuntimePreview(runtimeDirectory: runtimeDirectory, indexURL: indexURL, readAccessURL: previewsDirectory)
     }
 
@@ -337,12 +375,17 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     ) throws {
         let assetsDirectory = previewsDirectory.appendingPathComponent("assets", isDirectory: true)
         try fileManager.createDirectory(at: assetsDirectory, withIntermediateDirectories: true)
-        for assetName in ["molstar.js", "molstar.css", "burette-agent.js", "viewer.js"] {
+        for assetName in ["molstar.js", "molstar.css", "burette-agent.js", "viewer.js", "grid-viewer.js", "grid.css"] {
             let source = bundledWebDirectory.appendingPathComponent(assetName)
             let destination = assetsDirectory.appendingPathComponent(assetName)
             try copyAssetAtomically(from: source, to: destination, fileManager: fileManager)
             let size = ((try? fileManager.attributesOfItem(atPath: destination.path)[.size]) as? NSNumber)?.intValue ?? -1
             diagnostics.append("[build] runtime.asset.\(assetName).exists=\(fileManager.fileExists(atPath: destination.path)) size=\(size) copied=true")
+        }
+        let rdkitSource = bundledWebDirectory.appendingPathComponent("rdkit", isDirectory: true)
+        if fileManager.fileExists(atPath: rdkitSource.path) {
+            try copyDirectoryAtomically(from: rdkitSource, to: assetsDirectory.appendingPathComponent("rdkit", isDirectory: true), fileManager: fileManager)
+            diagnostics.append("[build] runtime.asset.rdkit.exists=true copied=true")
         }
     }
 
@@ -358,6 +401,19 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         } else {
             try fileManager.moveItem(at: temporaryURL, to: destination)
         }
+    }
+
+    private static func copyDirectoryAtomically(from source: URL, to destination: URL, fileManager: FileManager) throws {
+        let temporaryURL = destination
+            .deletingLastPathComponent()
+            .appendingPathComponent(".\(destination.lastPathComponent).\(UUID().uuidString).tmp", isDirectory: true)
+        try? fileManager.removeItem(at: temporaryURL)
+        defer { try? fileManager.removeItem(at: temporaryURL) }
+        try fileManager.copyItem(at: source, to: temporaryURL)
+        if fileManager.fileExists(atPath: destination.path) {
+            try fileManager.removeItem(at: destination)
+        }
+        try fileManager.moveItem(at: temporaryURL, to: destination)
     }
 
     private static func fileSize(for url: URL, fileManager: FileManager) throws -> Int64 {
@@ -384,6 +440,43 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let jsonData = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes])
         guard let json = String(data: jsonData, encoding: .utf8) else { throw PreviewError.couldNotCreatePreviewConfig }
         return json
+    }
+
+    private static func gridInlineHTML(title: String, preferences: PreviewPreferences) -> String {
+        let safeTitle = escapeHTML(title)
+        let backgroundClass = preferences.transparentBackground ? "burette-transparent-background" : "burette-opaque-background"
+        return """
+        <!doctype html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>Burrete Grid - \(safeTitle)</title>
+          <link rel="stylesheet" href="../assets/grid.css" />
+          <script>
+            (function () {
+              function post(type, message, payload) {
+                try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burrete.postMessage(Object.assign({ type: type, message: String(message || '') }, payload || {})); } catch (_) {}
+              }
+              window.__mqlPost = post;
+            })();
+          </script>
+        </head>
+        <body class="\(backgroundClass)">
+          <div id="app"></div>
+          <div id="status">Loading molecule grid...</div>
+          <script>
+            window.BurreteInlineMode = true;
+            window.BurreteGridMode = true;
+            window.BurreteDebug = \(showDebugOverlay ? "true" : "false");
+          </script>
+          <script src="preview-config.js"></script>
+          <script src="preview-grid-records.js"></script>
+          <script src="../assets/rdkit/RDKit_minimal.js"></script>
+          <script src="../assets/grid-viewer.js"></script>
+        </body>
+        </html>
+        """
     }
 
     private static func inlineHTML(title: String, preferences: PreviewPreferences) -> String {
@@ -934,6 +1027,24 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         if size < 1024 * 1024 { throw PreviewError.molstarAssetsNotVendored(size) }
     }
 
+    private static func validateVendoredMoleculeGridAssets(in webDirectory: URL, fileManager: FileManager, diagnostics: inout [String]) throws {
+        let required = [
+            "grid-viewer.js",
+            "grid.css",
+            "rdkit/RDKit_minimal.js",
+            "rdkit/RDKit_minimal.wasm"
+        ]
+        for name in required {
+            let url = webDirectory.appendingPathComponent(name)
+            let exists = fileManager.fileExists(atPath: url.path)
+            let size = ((try? fileManager.attributesOfItem(atPath: url.path)[.size]) as? NSNumber)?.intValue ?? -1
+            diagnostics.append("[build] grid.asset.\(name).exists=\(exists) size=\(size)")
+            guard exists else {
+                throw PreviewError.couldNotCreateRuntimePreview("Missing vendored molecule grid asset: \(name). Run npm install --ignore-scripts && npm run vendor:rdkit")
+            }
+        }
+    }
+
     private static func ensureUbiquitousFileIsAvailable(_ url: URL, fileManager: FileManager) throws {
         let values = try? url.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey])
         guard values?.isUbiquitousItem == true else { return }
@@ -956,7 +1067,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             return 40 * mib
         case "bcif":
             return 50 * mib
-        case "sdf", "sd", "mol", "mol2", "xyz", "gro":
+        case "sdf", "sd", "mol", "mol2", "xyz", "gro", "smi", "smiles":
             return 25 * mib
         default:
             return 20 * mib
