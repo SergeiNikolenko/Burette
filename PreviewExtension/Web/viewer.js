@@ -6,8 +6,9 @@
   const MAX_SDF_GRID_ATOMS = 900;
   const MAX_SDF_GRID_BONDS = 900;
   const SDF_GRID_PADDING = 4.0;
-  const TOOLBAR_POSITION_VERSION = '3';
+  const TOOLBAR_POSITION_VERSION = '6';
   const TOOLBAR_MARGIN = 12;
+  const VIEWER_THEME_STORAGE_KEY = 'buret.viewer.theme';
   try { window.__mqlDebug && window.__mqlDebug('[viewer.js] top-level IIFE entered; readyState=' + document.readyState); } catch (_) {}
 
   function post(type, message) {
@@ -55,7 +56,7 @@
   }
 
   const layoutState = {
-    left: 'hidden',
+    left: 'collapsed',
     right: 'hidden',
     top: 'hidden',
     bottom: 'hidden'
@@ -106,8 +107,10 @@
 
   function applyConfigOptions(config) {
     panelControlsVisible = config.showPanelControls !== undefined ? !!config.showPanelControls : panelControlsVisible;
-    viewerTheme = normalizeViewerTheme(config.theme);
+    viewerTheme = readStoredViewerTheme() || normalizeViewerTheme(config.theme);
     canvasBackground = normalizeCanvasBackground(config.canvasBackground);
+    if (viewerTheme === 'dark' && canvasBackground === 'white') canvasBackground = 'black';
+    if (viewerTheme === 'light' && canvasBackground === 'black') canvasBackground = 'white';
     transparentBackground = canvasBackground === 'transparent' || config.transparentBackground === true;
     applyDocumentBackground();
     viewerUIScale = resolveInitialViewerScale(config);
@@ -135,10 +138,20 @@
     document.body.classList.toggle('burette-transparent-background', transparentBackground);
     document.body.classList.toggle('burette-opaque-background', !transparentBackground);
     document.documentElement.style.setProperty('--buret-canvas-background', canvasBackgroundCSS());
+    updateThemeButton();
   }
 
   function normalizeViewerTheme(value) {
     return ['dark', 'light', 'auto'].includes(value) ? value : 'auto';
+  }
+
+  function readStoredViewerTheme() {
+    try {
+      const storedTheme = window.localStorage && window.localStorage.getItem(VIEWER_THEME_STORAGE_KEY);
+      return storedTheme === 'dark' || storedTheme === 'light' ? storedTheme : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   function resolveViewerTheme() {
@@ -235,6 +248,30 @@
     try { canvas3d.requestDraw?.(); } catch (_) {}
   }
 
+  function setViewerTheme(theme, viewer = activeViewer, persist = true) {
+    viewerTheme = normalizeViewerTheme(theme);
+    if (viewerTheme === 'dark') {
+      canvasBackground = 'black';
+      transparentBackground = false;
+    } else if (viewerTheme === 'light') {
+      canvasBackground = 'white';
+      transparentBackground = false;
+    }
+    if (persist) {
+      try {
+        window.localStorage && window.localStorage.setItem(VIEWER_THEME_STORAGE_KEY, viewerTheme);
+      } catch (_) {}
+    }
+    applyBackgroundMode();
+    applyViewerBackground(viewer);
+    updateThemeButton();
+    scheduleViewerResize(viewer, 40);
+  }
+
+  function toggleViewerTheme(viewer = activeViewer) {
+    setViewerTheme(resolveViewerTheme() === 'dark' ? 'light' : 'dark', viewer);
+  }
+
   function setViewerUIScale(scale, viewer = activeViewer) {
     viewerUIScale = clampViewerScale(scale);
     applyViewerUIScale(viewer);
@@ -285,10 +322,14 @@
         toggleLayoutRegion(button.getAttribute('data-buret-toggle'), viewer);
       });
     });
+    toolbar.querySelector('[data-buret-action="theme"]')?.addEventListener('click', () => {
+      toggleViewerTheme(viewer);
+    });
 
     initToolbarDrag(toolbar);
     restoreToolbarCollapsed(toolbar, viewer);
     updateToolbarVisibility();
+    updateThemeButton();
     applyLayoutState(viewer);
   }
 
@@ -392,13 +433,14 @@
   function applyDefaultToolbarPosition(toolbar) {
     const main = document.querySelector('.msp-plugin .msp-layout-main');
     const rect = main && main.getBoundingClientRect();
-    const leftPanel = document.querySelector('.msp-plugin .msp-layout-left');
-    const leftPanelRect = leftPanel && leftPanel.getBoundingClientRect();
-    const leftPanelVisible = leftPanelRect &&
-      leftPanelRect.width > 0 &&
-      leftPanelRect.height > 0 &&
-      window.getComputedStyle(leftPanel).display !== 'none';
-    const left = leftPanelVisible ? leftPanelRect.right + TOOLBAR_MARGIN : (rect && rect.width > 0 ? rect.left + TOOLBAR_MARGIN : TOOLBAR_MARGIN);
+    const viewportControls = document.querySelector('.msp-plugin .msp-viewport-controls');
+    const controlsRect = viewportControls && viewportControls.getBoundingClientRect();
+    const controlsVisible = controlsRect &&
+      controlsRect.width > 0 &&
+      controlsRect.height > 0 &&
+      window.getComputedStyle(viewportControls).display !== 'none';
+    const right = controlsVisible ? controlsRect.left - TOOLBAR_MARGIN : window.innerWidth - TOOLBAR_MARGIN;
+    const left = right - toolbar.offsetWidth;
     const top = rect && rect.height > 0 ? rect.top + TOOLBAR_MARGIN : TOOLBAR_MARGIN;
     toolbar.dataset.defaultPosition = '1';
     moveToolbar(toolbar, left, top);
@@ -461,6 +503,16 @@
     toolbar.querySelector('[data-buret-toggle="right"]')?.classList.toggle('active', layoutState.right === 'full');
     toolbar.querySelector('[data-buret-toggle="sequence"]')?.classList.toggle('active', layoutState.top === 'full');
     toolbar.querySelector('[data-buret-toggle="log"]')?.classList.toggle('active', layoutState.bottom === 'full');
+  }
+
+  function updateThemeButton() {
+    const button = document.querySelector('#buret-toolbar [data-buret-action="theme"]');
+    if (!button) return;
+    const isDark = resolveViewerTheme() === 'dark';
+    button.textContent = isDark ? 'Light' : 'Dark';
+    button.setAttribute('aria-label', isDark ? 'Switch to light theme' : 'Switch to dark theme');
+    button.setAttribute('title', isDark ? 'Switch to light theme' : 'Switch to dark theme');
+    button.classList.toggle('active', !isDark);
   }
 
   function loadScript(src, label, timeoutMs) {
