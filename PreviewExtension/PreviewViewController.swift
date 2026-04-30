@@ -13,6 +13,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private let previewID = String(UUID().uuidString.prefix(8))
     private var hasRenderedTerminationError = false
     private var currentViewerPageZoom: CGFloat = 1.0
+    private var currentPreviewURL: URL?
+    private var rendererOverride: String?
+    private var xyzrenderPresetOverride: String?
     private static let showDebugOverlay = false
     private static let verboseLogging = false
     private static let defaultViewerPageZoom: CGFloat = 1.0
@@ -128,6 +131,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let requestID = UUID()
         activePreviewRequestID = requestID
         pendingCompletion = handler
+        currentPreviewURL = url
+        rendererOverride = nil
+        xyzrenderPresetOverride = nil
         resetLog()
         hasRenderedTerminationError = false
         appendLog("preparePreviewOfFile called")
@@ -208,7 +214,11 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         "bcif", "cif", "csv", "ent", "gro", "mcif", "mmcif", "mol", "mol2", "pdb", "pdbqt", "pqr", "sd", "sdf", "smi", "smiles", "tsv", "xyz"
     ]
 
-    private static func buildInlinePreviewHTML(for url: URL) throws -> BuildResult {
+    private static func buildInlinePreviewHTML(
+        for url: URL,
+        rendererOverride: String? = nil,
+        xyzrenderPresetOverride: String? = nil
+    ) throws -> BuildResult {
         var diagnostics: [String] = []
         func diag(_ message: String) { diagnostics.append("[build] " + message) }
 
@@ -269,6 +279,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 gridRecordsScript: gridRecordsScript,
                 requiredAssets: ["grid-viewer.js", "grid.css"],
                 requiresRDKit: true,
+                externalArtifactSourceURL: nil,
                 fileManager: fileManager,
                 diagnostics: &diagnostics
             )
@@ -285,7 +296,44 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
 
         let format = StructureFormat(url: url, data: structureData)
-        let renderer = resolvedRenderer(for: format, preferences: preferences, isQuickLook: true)
+        var renderer = resolvedRenderer(for: format, preferences: preferences, rendererOverride: rendererOverride)
+        var externalArtifact: PreviewExternalXyzrenderArtifact?
+        var externalArtifactSourceURL: URL?
+        var externalStatus: [String: Any]?
+        var temporaryExternalDirectory: URL?
+        let xyzrenderPreset = PreviewXyzrenderPreset.normalize(xyzrenderPresetOverride ?? preferences.xyzrenderPreset)
+        if renderer == "xyzrender-external" {
+            let renderDirectory = fileManager.temporaryDirectory
+                .appendingPathComponent("BurreteXYZRender-\(UUID().uuidString)", isDirectory: true)
+            temporaryExternalDirectory = renderDirectory
+            do {
+                try fileManager.createDirectory(at: renderDirectory, withIntermediateDirectories: true)
+                externalArtifact = try PreviewExternalXyzrenderWorker.render(
+                    inputData: structureData,
+                    sourceFilename: url.lastPathComponent,
+                    outputDirectory: renderDirectory,
+                    preset: xyzrenderPreset,
+                    customConfigPath: preferences.xyzrenderCustomConfigPath,
+                    transparent: preferences.canvasBackground == "transparent",
+                    executablePath: preferences.xyzrenderExecutablePath,
+                    extraArguments: preferences.xyzrenderExtraArguments
+                )
+                externalArtifactSourceURL = renderDirectory.appendingPathComponent("xyzrender.svg")
+            } catch {
+                renderer = "xyz-fast"
+                externalStatus = [
+                    "status": "fallback",
+                    "requested": "xyzrender-external",
+                    "message": error.localizedDescription
+                ]
+                diag("xyzrender.fallback=\(error.localizedDescription)")
+            }
+        }
+        defer {
+            if let temporaryExternalDirectory {
+                try? fileManager.removeItem(at: temporaryExternalDirectory)
+            }
+        }
         let xyzFastPayload = renderer == "xyz-fast" ? makeXYZFastPayload(from: structureData) : nil
         let structureDataForWeb = xyzFastPayload?.data ?? structureData
         diag("detected.format=\(format.molstarFormat) binary=\(format.isBinary) renderer=\(renderer)")
@@ -300,6 +348,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             previewByteCount: structureDataForWeb.count,
             renderer: renderer,
             xyzFastPayload: xyzFastPayload,
+            externalArtifact: externalArtifact,
+            externalStatus: externalStatus,
+            xyzrenderPreset: xyzrenderPreset,
             preferences: preferences
         )
         let base64 = structureDataForWeb.base64EncodedString(options: [])
@@ -315,6 +366,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             gridRecordsScript: nil,
             requiredAssets: runtimeAssets(for: renderer),
             requiresRDKit: false,
+            externalArtifactSourceURL: externalArtifactSourceURL,
             fileManager: fileManager,
             diagnostics: &diagnostics
         )
@@ -338,6 +390,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         gridRecordsScript: String?,
         requiredAssets: [String],
         requiresRDKit: Bool,
+        externalArtifactSourceURL: URL?,
         fileManager: FileManager,
         diagnostics: inout [String]
     ) throws -> RuntimePreview {
@@ -371,6 +424,11 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         if let gridRecordsScript {
             try Data(gridRecordsScript.utf8)
                 .write(to: runtimeDirectory.appendingPathComponent("preview-grid-records.js"), options: [.atomic])
+        }
+        if let externalArtifactSourceURL {
+            let destination = runtimeDirectory.appendingPathComponent(externalArtifactSourceURL.lastPathComponent)
+            _ = try copyAssetIfNeeded(from: externalArtifactSourceURL, to: destination, fileManager: fileManager)
+            diagnostics.append("[build] runtime.externalArtifact=\(destination.lastPathComponent)")
         }
         return RuntimePreview(runtimeDirectory: runtimeDirectory, indexURL: indexURL, readAccessURL: previewsDirectory)
     }
@@ -435,6 +493,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private static func runtimeAssets(for renderer: String) -> [String] {
         if renderer == "xyz-fast" {
             return ["xyz-fast.js", "burette-agent.js", "viewer.js"]
+        }
+        if renderer == "xyzrender-external" {
+            return ["molstar.css", "burette-agent.js", "viewer.js"]
         }
         return ["molstar.js", "molstar.css", "burette-agent.js", "viewer.js"]
     }
@@ -514,6 +575,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         previewByteCount: Int,
         renderer: String,
         xyzFastPayload: XYZFastPayload?,
+        externalArtifact: PreviewExternalXyzrenderArtifact?,
+        externalStatus: [String: Any]?,
+        xyzrenderPreset: String,
         preferences: PreviewPreferences
     ) throws -> String {
         var payload: [String: Any] = [
@@ -536,6 +600,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "showPanelControls": preferences.showPanelControls,
             "defaultLayoutState": preferences.defaultLayoutState
         ]
+        if format.molstarFormat == "xyz" && !format.isBinary {
+            payload["quickLookViewer"] = true
+            payload["requestedRenderer"] = "auto"
+            payload["xyzrenderPreset"] = xyzrenderPreset
+            payload["xyzrenderPresetOptions"] = PreviewXyzrenderPreset.pickerOptions.map { ["value": $0.0, "label": $0.1] }
+        }
         if renderer == "xyz-fast" {
             var xyzFast: [String: Any] = [
                 "style": preferences.xyzFastStyle,
@@ -549,6 +619,19 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             if let comment = xyzFastPayload?.comment, !comment.isEmpty { xyzFast["comment"] = comment }
             payload["xyzFast"] = xyzFast
         }
+        if let externalArtifact {
+            payload["externalArtifact"] = [
+                "path": externalArtifact.relativePath,
+                "type": externalArtifact.outputType,
+                "renderer": "xyzrender",
+                "preset": externalArtifact.preset,
+                "config": externalArtifact.configArgument,
+                "elapsedMs": externalArtifact.elapsedMs,
+                "log": externalArtifact.log
+            ]
+            payload["xyzrenderPreset"] = externalArtifact.preset
+        }
+        if let externalStatus { payload["externalRendererStatus"] = externalStatus }
         let jsonData = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes])
         guard let json = String(data: jsonData, encoding: .utf8) else { throw PreviewError.couldNotCreatePreviewConfig }
         return json
@@ -594,22 +677,31 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private static func inlineHTML(title: String, preferences: PreviewPreferences, renderer: String) -> String {
         let safeTitle = escapeHTML(title)
         let backgroundClass = preferences.transparentBackground ? "burette-transparent-background" : "burette-opaque-background"
-        let isXYZFast = renderer == "xyz-fast"
-        let initialStatus = isXYZFast ? "[web] HTML body created. Waiting for Fast XYZ renderer…" : "[web] HTML body created. Waiting for embedded data and Mol* script…"
-        let rendererAssets = isXYZFast ? """
-          <script src="../assets/xyz-fast.js"></script>
-          <script>
-            window.__mqlStatus && window.__mqlStatus('[web] xyz-fast.js parsed. typeof BurreteXYZFast=' + typeof window.BurreteXYZFast);
-          </script>
-        """ : """
-          <script>
-            window.__mqlStatus && window.__mqlStatus('[web] About to load molstar.js from bundled resource…');
-          </script>
-          <script src="../assets/molstar.js"></script>
-          <script>
-            window.__mqlStatus && window.__mqlStatus('[web] molstar.js parsed. typeof molstar=' + typeof window.molstar + '; Viewer=' + (window.molstar && typeof window.molstar.Viewer));
-          </script>
-        """
+        let initialStatus: String
+        let rendererAssets: String
+        if renderer == "xyz-fast" {
+            initialStatus = "[web] HTML body created. Waiting for Fast XYZ renderer…"
+            rendererAssets = """
+              <script src="../assets/xyz-fast.js"></script>
+              <script>
+                window.__mqlStatus && window.__mqlStatus('[web] xyz-fast.js parsed. typeof BurreteXYZFast=' + typeof window.BurreteXYZFast);
+              </script>
+            """
+        } else if renderer == "xyzrender-external" {
+            initialStatus = "[web] HTML body created. Waiting for xyzrender artifact…"
+            rendererAssets = ""
+        } else {
+            initialStatus = "[web] HTML body created. Waiting for embedded data and Mol* script…"
+            rendererAssets = """
+              <script>
+                window.__mqlStatus && window.__mqlStatus('[web] About to load molstar.js from bundled resource…');
+              </script>
+              <script src="../assets/molstar.js"></script>
+              <script>
+                window.__mqlStatus && window.__mqlStatus('[web] molstar.js parsed. typeof molstar=' + typeof window.molstar + '; Viewer=' + (window.molstar && typeof window.molstar.Viewer));
+              </script>
+            """
+        }
         return """
         <!doctype html>
         <html lang="en">
@@ -1202,18 +1294,31 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         throw PreviewError.ubiquitousFileNotDownloaded(url.lastPathComponent)
     }
 
-    private static func resolvedRenderer(for format: StructureFormat, preferences: PreviewPreferences, isQuickLook: Bool) -> String {
+    private static func resolvedRenderer(for format: StructureFormat, preferences _: PreviewPreferences, rendererOverride: String?) -> String {
         let isXYZ = format.molstarFormat == "xyz" && !format.isBinary
-        switch preferences.rendererMode {
+        guard let rendererOverride else { return isXYZ ? "xyz-fast" : "molstar" }
+        switch normalizeRendererMode(rendererOverride) {
         case "molstar":
             return "molstar"
         case "xyz-fast":
             return isXYZ ? "xyz-fast" : "molstar"
         case "xyzrender-external":
-            // Quick Look must stay self-contained and must never launch Python.
-            return isXYZ ? "xyz-fast" : "molstar"
+            return isXYZ ? "xyzrender-external" : "molstar"
         default:
             return isXYZ ? "xyz-fast" : "molstar"
+        }
+    }
+
+    private static func normalizeRendererMode(_ value: String) -> String {
+        switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "xyz-fast", "fast-xyz", "xyzfast":
+            return "xyz-fast"
+        case "molstar", "mol*", "interactive":
+            return "molstar"
+        case "xyzrender-external", "external-xyzrender", "xyzrender":
+            return "xyzrender-external"
+        default:
+            return "auto"
         }
     }
 
@@ -1354,6 +1459,14 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 setViewerPageZoom(CGFloat(value.doubleValue))
                 return
             }
+            if type == "setRenderer", let value = body["value"] as? String {
+                setRendererOverride(value)
+                return
+            }
+            if type == "setXyzrenderPreset", let value = body["value"] as? String {
+                setXyzrenderPresetOverride(value)
+                return
+            }
             appendLog("JS message type=\(type): \(text.prefix(1600))")
             if type == "ready" {
                 finishPreviewIfNeeded(nil, requestID: activePreviewRequestID)
@@ -1372,6 +1485,55 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private func handleJavaScriptAction(_ action: String) {
         appendLog("JS action=\(action)")
         appendLog("unknown JS action=\(action)")
+    }
+
+    private func setRendererOverride(_ value: String) {
+        let renderer = Self.normalizeRendererMode(value)
+        guard rendererOverride != renderer else { return }
+        rendererOverride = renderer
+        reloadCurrentPreview()
+    }
+
+    private func setXyzrenderPresetOverride(_ value: String) {
+        let preset = PreviewXyzrenderPreset.normalize(value)
+        guard xyzrenderPresetOverride != preset || rendererOverride != "xyzrender-external" else { return }
+        xyzrenderPresetOverride = preset
+        rendererOverride = "xyzrender-external"
+        reloadCurrentPreview()
+    }
+
+    private func reloadCurrentPreview() {
+        guard let url = currentPreviewURL else { return }
+        let requestID = UUID()
+        activePreviewRequestID = requestID
+        renderTimeoutWorkItem?.cancel()
+        hasRenderedTerminationError = false
+        let rendererOverride = rendererOverride
+        let xyzrenderPresetOverride = xyzrenderPresetOverride
+        appendLog("reloading preview rendererOverride=\(rendererOverride ?? "nil") xyzrenderPresetOverride=\(xyzrenderPresetOverride ?? "nil")")
+        statusLabel.stringValue = "[native] Switching renderer...\n\(url.lastPathComponent)"
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            do {
+                let result = try Self.buildInlinePreviewHTML(
+                    for: url,
+                    rendererOverride: rendererOverride,
+                    xyzrenderPresetOverride: xyzrenderPresetOverride
+                )
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.activePreviewRequestID == requestID else { return }
+                    for line in result.diagnostics { self.appendLog(line) }
+                    self.webView.loadFileURL(result.indexURL, allowingReadAccessTo: result.readAccessURL)
+                    self.scheduleRenderTimeout(for: requestID)
+                }
+            } catch {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.activePreviewRequestID == requestID else { return }
+                    self.appendLog("native renderer switch error: \(Self.describe(error))")
+                    self.renderNativeError(error, fileURL: url)
+                    self.finishPreviewIfNeeded(nil, requestID: requestID)
+                }
+            }
+        }
     }
 
     private func setViewerPageZoom(_ scale: CGFloat) {
@@ -1670,6 +1832,213 @@ private struct StructureFormat {
     }
 }
 
+private enum PreviewXyzrenderPreset {
+    static let pickerOptions: [(String, String)] = [
+        ("default", "Default"),
+        ("flat", "Flat"),
+        ("paton", "Paton"),
+        ("pmol", "PMol"),
+        ("skeletal", "Skeletal"),
+        ("bubble", "Bubble"),
+        ("tube", "Tube"),
+        ("btube", "BTube"),
+        ("mtube", "MTube"),
+        ("wire", "Wire"),
+        ("graph", "Graph"),
+        ("custom", "Custom JSON")
+    ]
+
+    static func normalize(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let allowed = Set(pickerOptions.map { $0.0 })
+        return allowed.contains(trimmed) ? trimmed : "default"
+    }
+}
+
+private struct PreviewExternalXyzrenderArtifact {
+    let relativePath: String
+    let outputType: String
+    let preset: String
+    let configArgument: String
+    let elapsedMs: Int
+    let log: String
+}
+
+private enum PreviewExternalXyzrenderWorker {
+    static func render(
+        inputData: Data,
+        sourceFilename: String,
+        outputDirectory: URL,
+        preset: String,
+        customConfigPath: String,
+        transparent: Bool,
+        executablePath: String,
+        extraArguments: String
+    ) throws -> PreviewExternalXyzrenderArtifact {
+        let fileManager = FileManager.default
+        let inputURL = outputDirectory.appendingPathComponent(safeInputFilename(sourceFilename))
+        let outputURL = outputDirectory.appendingPathComponent("xyzrender.svg")
+        let logURL = outputDirectory.appendingPathComponent("xyzrender.log")
+        try? fileManager.removeItem(at: outputURL)
+        try? fileManager.removeItem(at: logURL)
+        try inputData.write(to: inputURL, options: [.atomic])
+
+        let process = Process()
+        let configuredExecutable = executablePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        var arguments: [String]
+        if configuredExecutable.isEmpty {
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            arguments = ["xyzrender", inputURL.path, "-o", outputURL.path]
+        } else {
+            process.executableURL = URL(fileURLWithPath: configuredExecutable)
+            arguments = [inputURL.path, "-o", outputURL.path]
+        }
+
+        let safePreset = PreviewXyzrenderPreset.normalize(preset)
+        let configArgument = resolveConfigArgument(preset: safePreset, customConfigPath: customConfigPath)
+        let effectivePreset = safePreset == "custom" && configArgument == "default" ? "default" : safePreset
+        arguments += ["--config", configArgument]
+        if transparent { arguments.append("--transparent") }
+        arguments += sanitizedExtraArguments(extraArguments)
+        process.arguments = arguments
+        process.environment = mergedEnvironment()
+
+        _ = fileManager.createFile(atPath: logURL.path, contents: nil)
+        let logHandle = try FileHandle(forWritingTo: logURL)
+        defer { logHandle.closeFile() }
+        process.standardOutput = logHandle
+        process.standardError = logHandle
+        let semaphore = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in semaphore.signal() }
+        let started = Date()
+        try process.run()
+
+        if semaphore.wait(timeout: .now() + 25) == .timedOut {
+            process.terminate()
+            throw PreviewExternalXyzrenderError.timedOut
+        }
+
+        logHandle.synchronizeFile()
+        let logData = (try? Data(contentsOf: logURL)) ?? Data()
+        let log = String(data: logData, encoding: .utf8) ?? String(decoding: logData, as: UTF8.self)
+        guard process.terminationStatus == 0 else {
+            throw PreviewExternalXyzrenderError.failed(status: process.terminationStatus, log: log)
+        }
+        guard fileManager.fileExists(atPath: outputURL.path) else {
+            throw PreviewExternalXyzrenderError.missingOutput
+        }
+        let elapsedMs = Int(Date().timeIntervalSince(started) * 1000)
+        return PreviewExternalXyzrenderArtifact(
+            relativePath: "xyzrender.svg",
+            outputType: "svg",
+            preset: effectivePreset,
+            configArgument: configArgument,
+            elapsedMs: elapsedMs,
+            log: log
+        )
+    }
+
+    private static func safeInputFilename(_ filename: String) -> String {
+        let ext = URL(fileURLWithPath: filename).pathExtension
+        return ext.isEmpty ? "input.xyz" : "input.\(ext)"
+    }
+
+    private static func resolveConfigArgument(preset: String, customConfigPath: String) -> String {
+        guard preset == "custom" else { return preset }
+        let trimmed = customConfigPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "default" : trimmed
+    }
+
+    private static func sanitizedExtraArguments(_ value: String) -> [String] {
+        let outputFlags = Set(["-o", "--output", "-go", "--gif-output", "--config"])
+        var result: [String] = []
+        var skipNext = false
+        for token in splitCommandLine(value) {
+            if skipNext {
+                skipNext = false
+                continue
+            }
+            if outputFlags.contains(token) {
+                skipNext = true
+                continue
+            }
+            if outputFlags.contains(where: { token.hasPrefix($0 + "=") }) { continue }
+            result.append(token)
+        }
+        return result
+    }
+
+    private static func splitCommandLine(_ value: String) -> [String] {
+        var tokens: [String] = []
+        var current = ""
+        var quote: Character?
+        var escaped = false
+        for character in value {
+            if escaped {
+                current.append(character)
+                escaped = false
+                continue
+            }
+            if character == "\\" {
+                escaped = true
+                continue
+            }
+            if let activeQuote = quote {
+                if character == activeQuote {
+                    quote = nil
+                } else {
+                    current.append(character)
+                }
+                continue
+            }
+            if character == "\"" || character == "'" {
+                quote = character
+                continue
+            }
+            if character.isWhitespace {
+                if !current.isEmpty {
+                    tokens.append(current)
+                    current.removeAll(keepingCapacity: true)
+                }
+            } else {
+                current.append(character)
+            }
+        }
+        if escaped { current.append("\\") }
+        if !current.isEmpty { tokens.append(current) }
+        return tokens
+    }
+
+    private static func mergedEnvironment() -> [String: String] {
+        var environment = ProcessInfo.processInfo.environment
+        let defaultPath = "/opt/homebrew/bin:/usr/local/bin:/opt/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        if let path = environment["PATH"], !path.isEmpty {
+            environment["PATH"] = defaultPath + ":" + path
+        } else {
+            environment["PATH"] = defaultPath
+        }
+        return environment
+    }
+}
+
+private enum PreviewExternalXyzrenderError: LocalizedError {
+    case timedOut
+    case missingOutput
+    case failed(status: Int32, log: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .timedOut:
+            return "External xyzrender timed out after 25 seconds."
+        case .missingOutput:
+            return "External xyzrender finished but did not produce an SVG output file."
+        case .failed(let status, let log):
+            let trimmed = log.trimmingCharacters(in: .whitespacesAndNewlines)
+            return "External xyzrender failed with exit status \(status)." + (trimmed.isEmpty ? "" : " \(trimmed.prefix(320))")
+        }
+    }
+}
+
 private struct PreviewPreferences {
     let showPanelControls: Bool
     let transparentBackground: Bool
@@ -1678,6 +2047,10 @@ private struct PreviewPreferences {
     let overlayOpacity: Double
     let rendererMode: String
     let xyzFastStyle: String
+    let xyzrenderPreset: String
+    let xyzrenderCustomConfigPath: String
+    let xyzrenderExecutablePath: String
+    let xyzrenderExtraArguments: String
     let gridFileSupport: MoleculeGridFileSupport
     let defaultLayoutState: [String: String]
 
@@ -1690,6 +2063,10 @@ private struct PreviewPreferences {
         let overlayOpacity = (CFPreferencesCopyAppValue("viewerOverlayOpacity" as CFString, appID) as? Double) ?? 0.90
         let rendererMode = (CFPreferencesCopyAppValue("structureRendererMode" as CFString, appID) as? String) ?? "auto"
         let xyzFastStyle = (CFPreferencesCopyAppValue("xyzFastStyle" as CFString, appID) as? String) ?? "default"
+        let xyzrenderPreset = (CFPreferencesCopyAppValue("xyzrenderPreset" as CFString, appID) as? String) ?? "default"
+        let xyzrenderCustomConfigPath = (CFPreferencesCopyAppValue("xyzrenderCustomConfigPath" as CFString, appID) as? String) ?? ""
+        let xyzrenderExecutablePath = (CFPreferencesCopyAppValue("xyzrenderExecutablePath" as CFString, appID) as? String) ?? ""
+        let xyzrenderExtraArguments = (CFPreferencesCopyAppValue("xyzrenderExtraArguments" as CFString, appID) as? String) ?? ""
         let gridFileSupport = MoleculeGridFileSupport.loadFromAppPreferences(appID: appID)
         return PreviewPreferences(
             showPanelControls: showPanelControls,
@@ -1699,6 +2076,10 @@ private struct PreviewPreferences {
             overlayOpacity: min(max(overlayOpacity, 0.72), 0.98),
             rendererMode: rendererMode,
             xyzFastStyle: xyzFastStyle,
+            xyzrenderPreset: PreviewXyzrenderPreset.normalize(xyzrenderPreset),
+            xyzrenderCustomConfigPath: xyzrenderCustomConfigPath,
+            xyzrenderExecutablePath: xyzrenderExecutablePath,
+            xyzrenderExtraArguments: xyzrenderExtraArguments,
             gridFileSupport: gridFileSupport,
             defaultLayoutState: [
                 "left": "collapsed",

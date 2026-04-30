@@ -351,7 +351,8 @@
     const control = document.querySelector('[data-buret-renderer-control]');
     if (!control) return;
     const format = normalizeFormat(config.molstarFormat || config.format);
-    const canSwitchRenderer = config.appViewer === true && (format === 'xyz' || format === 'sdf');
+    const canSwitchRenderer = (config.appViewer === true && (format === 'xyz' || format === 'sdf')) ||
+      (config.quickLookViewer === true && format === 'xyz');
     control.classList.toggle('visible', canSwitchRenderer);
     if (!canSwitchRenderer) return;
 
@@ -401,13 +402,13 @@
   function requestRendererSwitch(renderer) {
     const value = normalizeRenderer(renderer);
     const sent = postHostMessage({ type: 'setRenderer', value });
-    if (!sent) setStatus('Renderer switching is available only in the standalone app viewer.', 'error');
+    if (!sent) setStatus('Renderer switching is available only in the app or Quick Look viewer.', 'error');
   }
 
   function requestXyzrenderPreset(preset) {
     const value = normalizeXyzrenderPreset(preset);
     const sent = postHostMessage({ type: 'setXyzrenderPreset', value });
-    if (!sent) setStatus('xyzrender preset switching is available only in the standalone app viewer.', 'error');
+    if (!sent) setStatus('xyzrender preset switching is available only in the app or Quick Look viewer.', 'error');
   }
 
   function initBuretToolbar(viewer) {
