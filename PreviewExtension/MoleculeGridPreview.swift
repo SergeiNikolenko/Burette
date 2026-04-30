@@ -13,6 +13,65 @@ enum MoleculeGridPreviewHost: String {
     case app
 }
 
+struct MoleculeGridFileSupport: Equatable {
+    static let sdfKey = "gridPreviewSupportsSDF"
+    static let smilesKey = "gridPreviewSupportsSMILES"
+    static let csvKey = "gridPreviewSupportsCSV"
+    static let tsvKey = "gridPreviewSupportsTSV"
+
+    let sdf: Bool
+    let smiles: Bool
+    let csv: Bool
+    let tsv: Bool
+
+    static let all = MoleculeGridFileSupport(sdf: true, smiles: true, csv: true, tsv: true)
+
+    static func load(from defaults: UserDefaults = .standard) -> MoleculeGridFileSupport {
+        MoleculeGridFileSupport(
+            sdf: boolValue(defaults.object(forKey: sdfKey), defaultValue: true),
+            smiles: boolValue(defaults.object(forKey: smilesKey), defaultValue: true),
+            csv: boolValue(defaults.object(forKey: csvKey), defaultValue: true),
+            tsv: boolValue(defaults.object(forKey: tsvKey), defaultValue: true)
+        )
+    }
+
+    static func loadFromAppPreferences(appID: CFString) -> MoleculeGridFileSupport {
+        MoleculeGridFileSupport(
+            sdf: boolValue(CFPreferencesCopyAppValue(sdfKey as CFString, appID), defaultValue: true),
+            smiles: boolValue(CFPreferencesCopyAppValue(smilesKey as CFString, appID), defaultValue: true),
+            csv: boolValue(CFPreferencesCopyAppValue(csvKey as CFString, appID), defaultValue: true),
+            tsv: boolValue(CFPreferencesCopyAppValue(tsvKey as CFString, appID), defaultValue: true)
+        )
+    }
+
+    func supports(fileExtension ext: String) -> Bool {
+        switch ext.lowercased() {
+        case "sdf", "sd":
+            return sdf
+        case "smi", "smiles":
+            return smiles
+        case "csv":
+            return csv
+        case "tsv":
+            return tsv
+        default:
+            return false
+        }
+    }
+
+    static func canPreview(fileExtension ext: String) -> Bool {
+        ["csv", "sd", "sdf", "smi", "smiles", "tsv"].contains(ext.lowercased())
+    }
+
+    static func requiresGridPreview(fileExtension ext: String) -> Bool {
+        ["csv", "smi", "smiles", "tsv"].contains(ext.lowercased())
+    }
+
+    private static func boolValue(_ value: Any?, defaultValue: Bool) -> Bool {
+        (value as? Bool) ?? defaultValue
+    }
+}
+
 enum MoleculeGridPreviewBuilder {
     static func makePreview(
         fileURL: URL,
@@ -21,23 +80,32 @@ enum MoleculeGridPreviewBuilder {
         theme: String,
         canvasBackground: String,
         transparentBackground: Bool,
+        overlayOpacity: Double = 0.90,
         debug: Bool,
         allowSelection: Bool,
         allowExport: Bool,
-        maxRecords: Int
+        maxRecords: Int,
+        fileSupport: MoleculeGridFileSupport = .all
     ) throws -> MoleculeGridPreview? {
         let ext = fileURL.pathExtension.lowercased()
+        guard fileSupport.supports(fileExtension: ext) else { return nil }
         let text = decodeText(data)
         let recordLimit = max(1, maxRecords)
         let collection: MoleculeGridCollection
 
         switch ext {
+        case "csv":
+            collection = try parseDelimitedTable(text, separator: ",", format: "csv", maxRecords: recordLimit)
+            guard collection.recordsTotal > 0 else { return nil }
         case "smi", "smiles":
             collection = parseSmiles(text, maxRecords: recordLimit)
             guard collection.recordsTotal > 0 else { return nil }
         case "sdf", "sd":
             collection = parseSDF(text, maxRecords: recordLimit)
             guard collection.recordsTotal > 1 else { return nil }
+        case "tsv":
+            collection = try parseDelimitedTable(text, separator: "\t", format: "tsv", maxRecords: recordLimit)
+            guard collection.recordsTotal > 0 else { return nil }
         default:
             return nil
         }
@@ -65,6 +133,7 @@ enum MoleculeGridPreviewBuilder {
             "appViewer": host == .app,
             "theme": theme,
             "canvasBackground": canvasBackground,
+            "overlayOpacity": min(max(overlayOpacity, 0.72), 0.98),
             "transparentBackground": transparentBackground,
             "recordsTotal": collection.recordsTotal,
             "recordsIncluded": includedRecords.count,
@@ -153,6 +222,87 @@ enum MoleculeGridPreviewBuilder {
         }
         finishRecord()
         return MoleculeGridCollection(format: "sdf", records: records, recordsTotal: recordsTotal)
+    }
+
+    private static func parseDelimitedTable(
+        _ text: String,
+        separator: Character,
+        format: String,
+        maxRecords: Int
+    ) throws -> MoleculeGridCollection {
+        let rows = normalizedLines(text).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard let headerLine = rows.first else {
+            return MoleculeGridCollection(format: format, records: [], recordsTotal: 0)
+        }
+        let headers = parseDelimitedLine(headerLine, separator: separator).map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let normalizedHeaders = headers.map { $0.lowercased().replacingOccurrences(of: " ", with: "_") }
+        guard let smilesIndex = normalizedHeaders.firstIndex(where: { isSmilesColumn($0) }) else {
+            throw MoleculeGridPreviewError.missingMoleculeColumn(format.uppercased())
+        }
+        let nameIndex = normalizedHeaders.firstIndex(where: { ["compound_id", "id", "name", "title", "compound"].contains($0) && $0 != normalizedHeaders[smilesIndex] })
+
+        var records: [MoleculeGridRecord] = []
+        var recordsTotal = 0
+        for line in rows.dropFirst() {
+            let cells = parseDelimitedLine(line, separator: separator)
+            guard smilesIndex < cells.count else { continue }
+            let smiles = cells[smilesIndex].trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !smiles.isEmpty else { continue }
+            defer { recordsTotal += 1 }
+            guard records.count < maxRecords else { continue }
+
+            let rawName = nameIndex.flatMap { $0 < cells.count ? cells[$0].trimmingCharacters(in: .whitespacesAndNewlines) : nil } ?? ""
+            let name = rawName.isEmpty ? "Molecule \(recordsTotal + 1)" : rawName
+            var props: [String: String] = [:]
+            for (index, header) in headers.enumerated() where index != smilesIndex && index != nameIndex {
+                guard index < cells.count else { continue }
+                let value = cells[index].trimmingCharacters(in: .whitespacesAndNewlines)
+                if !header.isEmpty, !value.isEmpty, props.count < 64 {
+                    props[clipped(header, limit: 80)] = clipped(value, limit: 500)
+                }
+            }
+            records.append(MoleculeGridRecord(
+                index: recordsTotal,
+                name: clipped(name, limit: 160),
+                smiles: clipped(smiles, limit: 2048),
+                molblock: nil,
+                props: props
+            ))
+        }
+        return MoleculeGridCollection(format: format, records: records, recordsTotal: recordsTotal)
+    }
+
+    private static func parseDelimitedLine(_ line: String, separator: Character) -> [String] {
+        let chars = Array(line)
+        var fields: [String] = []
+        var field = ""
+        var index = 0
+        var inQuotes = false
+        while index < chars.count {
+            let char = chars[index]
+            if char == "\"" {
+                if inQuotes, index + 1 < chars.count, chars[index + 1] == "\"" {
+                    field.append(char)
+                    index += 1
+                } else {
+                    inQuotes.toggle()
+                }
+            } else if char == separator, !inQuotes {
+                fields.append(field)
+                field = ""
+            } else {
+                field.append(char)
+            }
+            index += 1
+        }
+        fields.append(field)
+        return fields
+    }
+
+    private static func isSmilesColumn(_ value: String) -> Bool {
+        ["smiles", "canonical_smiles", "isomeric_smiles", "cxsmiles", "smiles_string"].contains(value)
     }
 
     private static func normalizedLines(_ text: String) -> [String] {
@@ -245,8 +395,14 @@ private struct MoleculeGridRecord {
 
 private enum MoleculeGridPreviewError: LocalizedError {
     case couldNotEncodeJSON
+    case missingMoleculeColumn(String)
 
     var errorDescription: String? {
-        "Could not encode molecule grid preview JSON."
+        switch self {
+        case .couldNotEncodeJSON:
+            return "Could not encode molecule grid preview JSON."
+        case .missingMoleculeColumn(let format):
+            return "\(format) table needs a SMILES, canonical_smiles, isomeric_smiles, cxsmiles, or smiles_string column."
+        }
     }
 }

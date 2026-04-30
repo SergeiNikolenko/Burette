@@ -108,15 +108,16 @@
     });
   }
 
-  const DEFAULT_VIEWER_UI_SCALE = 0.86;
-  const MIN_VIEWER_UI_SCALE = 0.72;
-  const MAX_VIEWER_UI_SCALE = 1.35;
+  const DEFAULT_VIEWER_UI_SCALE = 1.0;
+  const MIN_VIEWER_UI_SCALE = 1.0;
+  const MAX_VIEWER_UI_SCALE = 1.0;
   const VIEWER_UI_SCALE_STEP = 0.08;
 
   let panelControlsVisible = window.BurretePanelControlsVisible !== false;
   let transparentBackground = false;
   let viewerTheme = 'auto';
-  let canvasBackground = 'black';
+  let canvasBackground = 'auto';
+  let overlayOpacity = 0.90;
   let viewerUIScale = DEFAULT_VIEWER_UI_SCALE;
   let activeViewer = null;
   let keyboardShortcutsInstalled = false;
@@ -124,10 +125,9 @@
 
   function applyConfigOptions(config) {
     panelControlsVisible = config.showPanelControls !== undefined ? !!config.showPanelControls : panelControlsVisible;
-    viewerTheme = readStoredViewerTheme() || normalizeViewerTheme(config.theme);
+    viewerTheme = normalizeViewerTheme(config.theme);
     canvasBackground = normalizeCanvasBackground(config.canvasBackground);
-    if (viewerTheme === 'dark' && canvasBackground === 'white') canvasBackground = 'black';
-    if (viewerTheme === 'light' && canvasBackground === 'black') canvasBackground = 'white';
+    overlayOpacity = normalizeOverlayOpacity(config.overlayOpacity);
     transparentBackground = canvasBackground === 'transparent' || config.transparentBackground === true;
     applyDocumentBackground();
     viewerUIScale = resolveInitialViewerScale(config);
@@ -156,6 +156,8 @@
     document.body.classList.toggle('burette-transparent-background', transparentBackground);
     document.body.classList.toggle('burette-opaque-background', !transparentBackground);
     document.documentElement.style.setProperty('--buret-canvas-background', canvasBackgroundCSS());
+    document.documentElement.style.setProperty('--buret-overlay-opacity', overlayOpacity.toFixed(2));
+    document.documentElement.style.setProperty('--buret-overlay-strong-opacity', Math.min(overlayOpacity + 0.06, 0.99).toFixed(2));
     updateThemeButton();
   }
 
@@ -197,19 +199,32 @@
   }
 
   function normalizeCanvasBackground(value) {
-    return ['black', 'graphite', 'white', 'transparent'].includes(value) ? value : 'black';
+    return ['auto', 'black', 'graphite', 'white', 'transparent'].includes(value) ? value : 'auto';
+  }
+
+  function normalizeOverlayOpacity(value) {
+    const opacity = Number(value);
+    if (!Number.isFinite(opacity)) return 0.90;
+    return Math.min(Math.max(opacity, 0.72), 0.98);
+  }
+
+  function resolvedCanvasBackground() {
+    if (canvasBackground === 'auto') return resolveViewerTheme() === 'light' ? 'white' : 'black';
+    return canvasBackground;
   }
 
   function canvasBackgroundCSS() {
-    if (canvasBackground === 'white') return '#f7f7f2';
-    if (canvasBackground === 'graphite') return '#111317';
-    if (canvasBackground === 'transparent') return 'transparent';
+    const background = resolvedCanvasBackground();
+    if (background === 'white') return '#f7f7f2';
+    if (background === 'graphite') return '#111317';
+    if (background === 'transparent') return 'transparent';
     return '#000000';
   }
 
   function canvasBackgroundColor() {
-    if (canvasBackground === 'white') return 0xf7f7f2;
-    if (canvasBackground === 'graphite') return 0x111317;
+    const background = resolvedCanvasBackground();
+    if (background === 'white') return 0xf7f7f2;
+    if (background === 'graphite') return 0x111317;
     return 0x000000;
   }
 
@@ -223,11 +238,12 @@
   }
 
   function applyViewerUIScale(viewer = activeViewer) {
-    const scaleValue = viewerUIScale.toFixed(2);
-    const hostHandledScale = postHostMessage({ type: 'viewerZoom', value: viewerUIScale });
+    // Mol* WebGL picking uses unscaled client coordinates; page/body zoom makes
+    // hover and click loci drift away from the visible cursor position.
+    postHostMessage({ type: 'viewerZoom', value: DEFAULT_VIEWER_UI_SCALE });
     document.documentElement.style.setProperty('--buret-viewer-ui-scale', '1');
     if (document.body) {
-      document.body.style.zoom = hostHandledScale ? '' : scaleValue;
+      document.body.style.zoom = '';
     }
 
     const pluginRoot = document.querySelector('.msp-plugin');
@@ -414,40 +430,6 @@
     applyLayoutState(viewer);
   }
 
-  function initFastViewportReset(viewer) {
-    if (document.documentElement.dataset.buretFastViewportReset === '1') return;
-    document.documentElement.dataset.buretFastViewportReset = '1';
-    document.addEventListener('click', event => {
-      const button = event.target.closest('.msp-viewport-controls button[title="Reset Zoom"]');
-      if (!button) return;
-      event.preventDefault();
-      event.stopPropagation();
-      event.stopImmediatePropagation();
-      resetCameraInstantly(viewer);
-    }, true);
-  }
-
-  function resetCameraInstantly(viewer) {
-    let handled = false;
-    try {
-      if (typeof viewer?.plugin?.managers?.camera?.reset === 'function') {
-        viewer.plugin.managers.camera.reset(0);
-        handled = true;
-      }
-    } catch (error) {
-      debug('fast viewport reset via camera manager failed: ' + (error && error.message || String(error)));
-    }
-    try {
-      if (!handled && typeof viewer?.plugin?.canvas3d?.requestCameraReset === 'function') {
-        viewer.plugin.canvas3d.requestCameraReset(0);
-        handled = true;
-      }
-    } catch (error) {
-      debug('fast viewport reset via canvas3d failed: ' + (error && error.message || String(error)));
-    }
-    try { viewer?.plugin?.canvas3d?.requestDraw?.(); } catch (_) {}
-  }
-
   function restoreToolbarCollapsed(toolbar, viewer) {
     let collapsed = false;
     try {
@@ -496,6 +478,7 @@
     let drag = null;
     toolbar.addEventListener('pointerdown', event => {
       if (event.target.closest('[data-buret-toggle]')) return;
+      if (event.target.closest('select, input, textarea')) return;
       if (!event.target.closest('[data-drag-handle]') && event.target.closest('.buret-button')) return;
       const rect = toolbar.getBoundingClientRect();
       drag = {
@@ -1150,7 +1133,6 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     applyViewerUIScale(viewer);
     initViewerKeyboardShortcuts(viewer);
     initBuretToolbar(viewer);
-    initFastViewportReset(viewer);
 
     await waitForAnimationFrame();
     applyLayoutState(viewer);

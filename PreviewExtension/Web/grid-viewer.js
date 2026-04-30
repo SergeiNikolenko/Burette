@@ -3,34 +3,41 @@
 
   const root = document.getElementById('app');
   const status = document.getElementById('status');
+  const GRID_SIZE_STORAGE_KEY = 'buret.grid.cardSize';
+  const MOLECULE_SCALE_STORAGE_KEY = 'buret.grid.moleculeScale';
+  const LOAD_BATCH_STORAGE_KEY = 'buret.grid.loadBatch';
+  const SHOW_PROPERTIES_STORAGE_KEY = 'buret.grid.showProperties';
+  const GRID_SIZES = ['compact', 'medium', 'large'];
+  const LOAD_BATCH_OPTIONS = ['auto', '24', '60', '120', '240'];
   const state = {
     rdkit: null,
     all: Array.isArray(window.BurreteGridRecords) ? window.BurreteGridRecords : [],
     rows: [],
     visibleCount: 0,
-    batchSize: 0,
+    renderedCount: 0,
     query: '',
     smarts: '',
     smartsError: '',
     smartsMatches: new Map(),
     sort: 'index',
+    gridSize: storedChoice(GRID_SIZE_STORAGE_KEY, GRID_SIZES, 'medium'),
+    moleculeScale: storedNumber(MOLECULE_SCALE_STORAGE_KEY, 100, 80, 140),
+    loadBatchChoice: storedChoice(LOAD_BATCH_STORAGE_KEY, LOAD_BATCH_OPTIONS, 'auto'),
+    showProperties: storedBoolean(SHOW_PROPERTIES_STORAGE_KEY, true),
     selected: new Set(),
     svgCache: new Map(),
     token: 0,
-    autoLoadScheduled: false
+    rendering: false,
+    pendingLoad: false,
+    loadObserver: null,
+    scrollHandler: null
   };
 
   function post(type, message, payload = {}) {
     try {
-      if (window.__mqlPost) {
-        window.__mqlPost(type, message || '', payload);
-        return true;
-      }
-      const handler = window.webkit?.messageHandlers?.burrete;
-      handler?.postMessage({ type, message: String(message || ''), ...payload });
-      return !!handler;
+      if (window.__mqlPost) window.__mqlPost(type, message || '', payload);
+      else window.webkit?.messageHandlers?.burrete?.postMessage({ type, message: String(message || ''), ...payload });
     } catch (_) {}
-    return false;
   }
 
   function setStatus(message, kind = 'info') {
@@ -64,44 +71,56 @@
       throw new Error('RDKit_minimal.js is missing. Run npm run vendor:rdkit and rebuild.');
     }
     setStatus('[grid] Loading RDKit.js...');
-    state.rdkit = await window.initRDKitModule(rdkitModuleOptions());
+    const options = { locateFile: file => `../assets/rdkit/${file}` };
+    if (window.BurreteRDKitWasmBase64) {
+      options.wasmBinary = base64ToBytes(window.BurreteRDKitWasmBase64);
+      window.BurreteRDKitWasmBase64 = '';
+    }
+    state.rdkit = await window.initRDKitModule(options);
     return state.rdkit;
   }
 
-  function rdkitModuleOptions() {
-    const options = {
-      locateFile: file => new URL(`../assets/rdkit/${file}`, document.baseURI).href,
-      printErr: message => post('error', `[grid] RDKit stderr: ${String(message || '')}`),
-      onAbort: reason => post('error', `[grid] RDKit aborted: ${String(reason || '')}`)
-    };
-    const wasmBinary = embeddedRDKitWasmBinary();
-    if (wasmBinary) options.wasmBinary = wasmBinary;
-    return options;
-  }
-
-  function embeddedRDKitWasmBinary() {
-    const chunks = window.BurreteRDKitWasmBase64Chunks;
-    if (!Array.isArray(chunks) || chunks.length === 0) return null;
-    const binary = window.atob(chunks.join(''));
+  function base64ToBytes(value) {
+    const binary = atob(String(value || ''));
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
     return bytes;
   }
 
-  function defaultBatchSize(cfg) {
-    const value = Number(cfg.pageSize || 96);
-    return Number.isFinite(value) ? Math.max(24, Math.min(480, Math.floor(value))) : 96;
+  function loadBatchSize(cfg) {
+    if (state.loadBatchChoice !== 'auto') return Number(state.loadBatchChoice);
+    const value = Number(cfg.pageSize || 72);
+    return Number.isFinite(value) ? Math.max(12, Math.min(180, Math.floor(value))) : 72;
   }
 
-  function batchSize(cfg) {
-    return state.batchSize || defaultBatchSize(cfg);
+  function storedChoice(key, options, fallback) {
+    try {
+      const value = window.localStorage?.getItem(key);
+      return options.includes(value) ? value : fallback;
+    } catch (_) {
+      return fallback;
+    }
   }
 
-  function batchOptions(cfg) {
-    return [...new Set([24, 60, 96, 120, 240, 480, defaultBatchSize(cfg)])]
-      .sort((a, b) => a - b)
-      .map(value => `<option value="${value}">${value} at a time</option>`)
-      .join('');
+  function storedBoolean(key, fallback) {
+    try {
+      const value = window.localStorage?.getItem(key);
+      if (value === 'true') return true;
+      if (value === 'false') return false;
+    } catch (_) {}
+    return fallback;
+  }
+
+  function storedNumber(key, fallback, min, max) {
+    try {
+      const value = Number(window.localStorage?.getItem(key));
+      if (Number.isFinite(value)) return Math.max(min, Math.min(max, Math.round(value)));
+    } catch (_) {}
+    return fallback;
+  }
+
+  function store(key, value) {
+    try { window.localStorage?.setItem(key, String(value)); } catch (_) {}
   }
 
   function applyTheme(cfg) {
@@ -134,19 +153,32 @@
           </div>
         </header>
         <div class="buret-grid-toolbar">
-          <label>Search <input id="search" type="search" placeholder="name, SMILES, metadata" /></label>
-          <label>SMARTS <input id="smarts" type="search" spellcheck="false" autocapitalize="off" placeholder="[#6]=O" /></label>
-          <label>Sort <select id="sort"><option value="index">File order</option><option value="name">Name</option><option value="smiles">SMILES</option>${propertyOptions()}</select></label>
-          <label>Show <select id="display-count">${batchOptions(cfg)}</select></label>
-          <button id="clear-smarts" class="buret-clear-smarts" type="button" hidden>Clear SMARTS</button>
-          ${caps.rendererSwitch ? rendererSwitchHTML() : ''}
-          <div class="buret-load-controls"><span id="shown-label"></span><button id="load-more" type="button">Show more</button></div>
+          <div class="buret-toolbar-row buret-toolbar-row-main">
+            <label class="buret-search-control">Search <input id="search" type="search" placeholder="name, SMILES, metadata" /></label>
+            <label class="buret-smarts-control">SMARTS <input id="smarts" type="search" spellcheck="false" autocapitalize="off" placeholder="[#6]=O" /></label>
+            <label class="buret-sort-control">Sort <select id="sort"><option value="index">File order</option><option value="name">Name</option><option value="smiles">SMILES</option>${propertyOptions()}</select></label>
+            <label class="buret-load-control">Load batch <select id="load-batch"><option value="auto">Auto</option><option value="24">24</option><option value="60">60</option><option value="120">120</option><option value="240">240</option></select></label>
+            <div id="load-status" class="buret-load-status"></div>
+          </div>
+          <div class="buret-toolbar-row buret-toolbar-row-view">
+            <fieldset class="buret-segmented-control">
+              <legend>Card size</legend>
+              <div>
+                <button type="button" data-grid-size="compact">Compact</button>
+                <button type="button" data-grid-size="medium">Regular</button>
+                <button type="button" data-grid-size="large">Large</button>
+              </div>
+            </fieldset>
+            <label class="buret-scale-control">Molecule zoom <span><input id="molecule-scale" type="range" min="80" max="140" step="5" /><output id="molecule-scale-label"></output></span></label>
+            <button id="show-properties" class="buret-toggle-button" type="button" aria-pressed="true">Properties</button>
+            <button id="clear-smarts" class="buret-toggle-button buret-clear-smarts" type="button" hidden>Clear SMARTS</button>
+            ${caps.rendererSwitch ? rendererSwitchHTML() : ''}
+          </div>
         </div>
         <main id="grid" class="buret-grid"></main>
+        <div id="load-sentinel" class="buret-load-sentinel" aria-hidden="true"></div>
         <footer id="footer" class="buret-grid-footer"></footer>
       </section>`;
-    state.batchSize = defaultBatchSize(cfg);
-    document.getElementById('display-count').value = String(state.batchSize);
     document.getElementById('search').addEventListener('input', event => {
       state.query = event.target.value || '';
       refresh(cfg);
@@ -159,13 +191,25 @@
       state.sort = event.target.value || 'index';
       refresh(cfg);
     });
-    document.getElementById('display-count').addEventListener('change', event => {
-      state.batchSize = Math.max(24, Math.min(480, Number(event.target.value) || defaultBatchSize(cfg)));
-      refresh(cfg);
+    document.getElementById('load-batch').addEventListener('change', event => {
+      state.loadBatchChoice = LOAD_BATCH_OPTIONS.includes(event.target.value) ? event.target.value : 'auto';
+      store(LOAD_BATCH_STORAGE_KEY, state.loadBatchChoice);
+      render(cfg);
     });
-    document.getElementById('load-more').addEventListener('click', () => loadMore(cfg));
-    root.querySelectorAll('[data-buret-grid-renderer]').forEach(button => {
-      button.addEventListener('click', () => requestRendererSwitch(button.getAttribute('data-buret-grid-renderer')));
+    document.querySelectorAll('[data-grid-size]').forEach(button => button.addEventListener('click', event => {
+      state.gridSize = event.currentTarget.dataset.gridSize || 'medium';
+      store(GRID_SIZE_STORAGE_KEY, state.gridSize);
+      applyGridPreferences();
+    }));
+    document.getElementById('molecule-scale').addEventListener('input', event => {
+      state.moleculeScale = storedNumberFromValue(event.target.value, 100, 80, 140);
+      store(MOLECULE_SCALE_STORAGE_KEY, state.moleculeScale);
+      applyGridPreferences();
+    });
+    document.getElementById('show-properties').addEventListener('click', () => {
+      state.showProperties = !state.showProperties;
+      store(SHOW_PROPERTIES_STORAGE_KEY, state.showProperties);
+      applyGridPreferences();
     });
     document.getElementById('copy-selected')?.addEventListener('click', copySelected);
     document.getElementById('export-smi')?.addEventListener('click', () => exportSmiles(cfg));
@@ -177,7 +221,40 @@
       refresh(cfg);
       input?.focus();
     });
-    window.addEventListener('scroll', () => scheduleAutoLoad(cfg), { passive: true });
+    root.querySelectorAll('[data-buret-grid-renderer]').forEach(button => {
+      button.addEventListener('click', () => requestRendererSwitch(button.getAttribute('data-buret-grid-renderer')));
+    });
+    applyGridPreferences();
+    initInfiniteLoading(cfg);
+  }
+
+  function applyGridPreferences() {
+    document.body.classList.toggle('buret-grid-size-compact', state.gridSize === 'compact');
+    document.body.classList.toggle('buret-grid-size-medium', state.gridSize === 'medium');
+    document.body.classList.toggle('buret-grid-size-large', state.gridSize === 'large');
+    document.body.classList.toggle('buret-hide-properties', !state.showProperties);
+    document.body.style.setProperty('--buret-molecule-scale', String(state.moleculeScale / 100));
+    document.querySelectorAll('[data-grid-size]').forEach(button => {
+      const active = button.dataset.gridSize === state.gridSize;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    const moleculeScaleInput = document.getElementById('molecule-scale');
+    const moleculeScaleLabel = document.getElementById('molecule-scale-label');
+    const loadBatchSelect = document.getElementById('load-batch');
+    const propertiesToggle = document.getElementById('show-properties');
+    if (moleculeScaleInput) moleculeScaleInput.value = String(state.moleculeScale);
+    if (moleculeScaleLabel) moleculeScaleLabel.textContent = `${state.moleculeScale}%`;
+    if (loadBatchSelect) loadBatchSelect.value = state.loadBatchChoice;
+    if (propertiesToggle) {
+      propertiesToggle.classList.toggle('active', state.showProperties);
+      propertiesToggle.setAttribute('aria-pressed', state.showProperties ? 'true' : 'false');
+    }
+  }
+
+  function storedNumberFromValue(value, fallback, min, max) {
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.max(min, Math.min(max, Math.round(number))) : fallback;
   }
 
   function propertyOptions() {
@@ -201,8 +278,7 @@
 
   function requestRendererSwitch(renderer) {
     const value = normalizeRenderer(renderer);
-    const sent = post('setRenderer', `[grid] Switch renderer to ${value}.`, { value });
-    if (!sent) setStatus('Renderer switching is available only in the standalone app viewer.', 'error');
+    post('setRenderer', `[grid] Switch renderer to ${value}.`, { value });
   }
 
   function normalizeRenderer(renderer) {
@@ -217,7 +293,6 @@
       : state.all.slice();
     state.rows = filterBySMARTS(textRows);
     state.rows.sort((a, b) => compare(a, b, state.sort));
-    resetVisibleCount(cfg);
     render(cfg);
   }
 
@@ -277,41 +352,82 @@
     }) || Number(a.index) - Number(b.index);
   }
 
-  function resetVisibleCount(cfg) {
-    state.visibleCount = Math.min(state.rows.length, batchSize(cfg));
+  function initInfiniteLoading(cfg) {
+    const sentinel = document.getElementById('load-sentinel');
+    if (!sentinel) return;
+    state.loadObserver?.disconnect?.();
+    if (typeof IntersectionObserver === 'function') {
+      state.loadObserver = new IntersectionObserver(entries => {
+        if (entries.some(entry => entry.isIntersecting)) loadMore(cfg);
+      }, { root: null, rootMargin: '520px 0px' });
+      state.loadObserver.observe(sentinel);
+    }
+    if (state.scrollHandler) window.removeEventListener('scroll', state.scrollHandler);
+    state.scrollHandler = () => maybeLoadMore(cfg);
+    window.addEventListener('scroll', state.scrollHandler, { passive: true });
   }
 
-  function loadMore(cfg) {
-    if (state.visibleCount >= state.rows.length) return;
-    state.visibleCount = Math.min(state.rows.length, state.visibleCount + batchSize(cfg));
-    render(cfg);
+  function hasMoreRows() {
+    return state.renderedCount < state.rows.length;
   }
 
-  function scheduleAutoLoad(cfg) {
-    if (state.autoLoadScheduled || state.visibleCount >= state.rows.length) return;
-    state.autoLoadScheduled = true;
-    window.requestAnimationFrame(() => {
-      state.autoLoadScheduled = false;
-      const scrollBottom = window.scrollY + window.innerHeight;
-      const documentHeight = document.documentElement.scrollHeight;
-      if (scrollBottom >= documentHeight - 720) loadMore(cfg);
-    });
+  function maybeLoadMore(cfg) {
+    if (!hasMoreRows()) return;
+    const sentinel = document.getElementById('load-sentinel');
+    const rect = sentinel?.getBoundingClientRect();
+    if (!rect || rect.top <= window.innerHeight + 520) loadMore(cfg);
   }
 
   async function render(cfg) {
     const token = ++state.token;
     const grid = document.getElementById('grid');
-    const rows = state.rows.slice(0, state.visibleCount);
     grid.innerHTML = '';
-    if (!rows.length) grid.innerHTML = '<div class="buret-empty">No molecules match this search.</div>';
-    for (const row of rows) {
-      if (token !== state.token) return;
-      grid.appendChild(card(row, cfg));
-      if (grid.children.length % 16 === 0) await new Promise(resolve => setTimeout(resolve, 0));
+    state.renderedCount = 0;
+    state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
+    if (!state.rows.length) {
+      grid.innerHTML = '<div class="buret-empty">No molecules match this search.</div>';
+      updateChrome(cfg);
+      post('ready', 'ready');
+      return;
     }
-    updateChrome(cfg);
-    post('ready', 'ready');
-    if (status && !window.BurreteDebug) status.classList.add('hidden');
+    await appendVisibleRows(cfg, token);
+  }
+
+  async function loadMore(cfg) {
+    if (state.rendering) {
+      state.pendingLoad = hasMoreRows();
+      return;
+    }
+    if (!hasMoreRows()) return;
+    state.visibleCount = Math.min(state.rows.length, state.visibleCount + loadBatchSize(cfg));
+    await appendVisibleRows(cfg, state.token);
+  }
+
+  async function appendVisibleRows(cfg, token) {
+    const grid = document.getElementById('grid');
+    const rows = state.rows.slice(state.renderedCount, state.visibleCount);
+    state.rendering = true;
+    try {
+      for (const row of rows) {
+        if (token !== state.token) return;
+        grid.appendChild(card(row, cfg));
+        state.renderedCount++;
+        if (state.renderedCount % 16 === 0) await new Promise(resolve => setTimeout(resolve, 0));
+      }
+      updateChrome(cfg);
+      post('ready', 'ready');
+      if (status && !window.BurreteDebug) status.classList.add('hidden');
+    } finally {
+      state.rendering = false;
+      if (token === state.token) {
+        if (state.pendingLoad) {
+          state.pendingLoad = false;
+          loadMore(cfg);
+        } else {
+          requestAnimationFrame(() => maybeLoadMore(cfg));
+        }
+      }
+    }
   }
 
   function updateChrome(cfg) {
@@ -319,7 +435,7 @@
     const included = Number(cfg.recordsIncluded || state.all.length);
     document.getElementById('summary').textContent = [
       `${state.rows.length.toLocaleString()} visible`,
-      `${Math.min(state.visibleCount, state.rows.length).toLocaleString()} shown`,
+      `${state.renderedCount.toLocaleString()} shown`,
       `${included.toLocaleString()} loaded`,
       `${total.toLocaleString()} in file`,
       state.selected.size ? `${state.selected.size.toLocaleString()} selected` : ''
@@ -327,10 +443,12 @@
     if (state.smarts.trim() && !state.smartsError) {
       document.getElementById('summary').textContent += ` · SMARTS matches ${state.smartsMatches.size.toLocaleString()}`;
     }
-    const shownLabel = document.getElementById('shown-label');
-    if (shownLabel) shownLabel.textContent = `${Math.min(state.visibleCount, state.rows.length).toLocaleString()} / ${state.rows.length.toLocaleString()}`;
-    const loadMoreButton = document.getElementById('load-more');
-    if (loadMoreButton) loadMoreButton.disabled = state.visibleCount >= state.rows.length;
+    const loadStatus = document.getElementById('load-status');
+    if (loadStatus) {
+      loadStatus.textContent = hasMoreRows()
+        ? `${state.renderedCount.toLocaleString()} of ${state.rows.length.toLocaleString()} shown`
+        : 'All visible molecules loaded';
+    }
     const clearSMARTS = document.getElementById('clear-smarts');
     if (clearSMARTS) clearSMARTS.hidden = !state.smarts.trim();
     const smartsInput = document.getElementById('smarts');
@@ -338,8 +456,10 @@
     document.getElementById('footer').textContent = state.smartsError
       ? `SMARTS error: ${state.smartsError}`
       : (total > included
-          ? `Showing first ${included.toLocaleString()} of ${total.toLocaleString()} records.`
-          : 'Offline RDKit.js rendering. No network access required.');
+        ? `Showing first ${included.toLocaleString()} of ${total.toLocaleString()} records.`
+        : (hasMoreRows()
+          ? `Scroll to load more. ${state.renderedCount.toLocaleString()} of ${state.rows.length.toLocaleString()} visible molecules are rendered.`
+          : 'Offline RDKit.js rendering. No network access required.'));
   }
 
   function card(row, cfg) {
@@ -392,10 +512,10 @@
           ? mol.get_svg_with_highlights(JSON.stringify({
               atoms: match.atoms,
               bonds: match.bonds,
-              width: 172,
-              height: 124
+              width: 260,
+              height: 190
             }))
-          : mol.get_svg(172, 124);
+          : mol.get_svg(260, 190);
       } catch (_) {
         html = mol.get_svg();
       }
@@ -412,7 +532,7 @@
   }
 
   function metadata(row) {
-    const entries = Object.entries(row.props || {}).filter(([, value]) => String(value || '').length).slice(0, 3);
+    const entries = Object.entries(row.props || {}).filter(([, value]) => String(value || '').length).slice(0, 6);
     if (!entries.length) return '<div class="buret-no-metadata">No metadata</div>';
     return `<dl class="buret-metadata">${entries.map(([key, value]) => `<dt>${escapeHTML(key)}</dt><dd>${escapeHTML(value)}</dd>`).join('')}</dl>`;
   }
