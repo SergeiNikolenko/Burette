@@ -123,9 +123,17 @@ assert(index.includes('role="toolbar"'), 'preview HTML must expose a toolbar rol
 assert(!index.includes('data-buret-action="fit"'), 'fit/fullscreen toolbar button should not be present');
 assert(index.includes('aria-label="Collapse controls"'), 'toolbar handle should collapse controls');
 assert(index.includes('aria-expanded="true"'), 'toolbar handle should expose expanded state');
-assert(index.includes('top: 12px; left: 12px; right: auto'), 'toolbar should default to the upper-left corner');
+assert(index.includes('top: 12px; right: 12px; left: auto'), 'toolbar should default to the upper-right corner');
+assert(index.includes('data-buret-action="theme"'), 'toolbar should expose a separate theme toggle');
 assert(index.includes('--buret-molstar-panel-background'), 'preview HTML must define Mol* theme panel colors');
 assert(index.includes('.msp-viewport-controls-panel'), 'preview HTML must theme Mol* viewport panels');
+assert(index.includes('.msp-viewport-controls-panel .msp-control-group-header > button'), 'preview HTML must style Mol* floating settings panel headers');
+assert(index.includes('.msp-selection-viewport-controls > .msp-flex-row'), 'preview HTML must style Mol* selection viewport toolbar');
+assert(index.includes('--buret-molstar-panel-radius'), 'preview HTML must define a shared Mol* panel radius');
+assert(index.includes('.msp-hover-box-wrapper .msp-hover-box-body'), 'preview HTML must round Mol* hover panels');
+assert(index.includes('.msp-action-menu-options'), 'preview HTML must round Mol* action menu panels');
+assert(index.includes('.msp-snapshot-description-wrapper *'), 'preview HTML must theme Mol* snapshot description text');
+assert(index.includes('.msp-sequence-select > select'), 'preview HTML must theme Mol* sequence selectors');
 assert(index.includes('top: 64px !important'), 'Mol* viewport controls should clear the toolbar row');
 assert(!index.includes('aria-label="Fullscreen"'), 'stale Fullscreen aria-label found');
 assert(!index.includes('title="Fullscreen"'), 'stale Fullscreen title found');
@@ -133,6 +141,9 @@ assert(viewer.includes('window.BurreteConfig'), 'viewer.js must read BurreteConf
 assert(viewer.includes('buret.toolbar.collapsed'), 'viewer.js must remember compact toolbar state');
 assert(viewer.includes('TOOLBAR_POSITION_VERSION'), 'viewer.js must reset stale toolbar positions');
 assert(viewer.includes("mode: 'custom'"), 'viewer.js must distinguish custom toolbar positions from defaults');
+assert(!viewer.includes('initMolstarRightPanelToggle'), 'viewer.js must keep Mol* right-side buttons native');
+assert(viewer.includes('VIEWER_THEME_STORAGE_KEY'), 'viewer.js must persist the separate theme toggle');
+assert(!viewer.includes('initMolstarThemeToggle'), 'viewer.js must keep Mol* Illumination button native');
 assert(viewer.includes('normalizeViewerTheme'), 'viewer.js must support viewer themes');
 assert(viewer.includes('canvasBackgroundColor'), 'viewer.js must support configurable canvas backgrounds');
 assert(viewer.includes('viewportBackgroundColor'), 'viewer.js must seed Mol* with the requested canvas background');
