@@ -12,12 +12,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private var logLines: [String] = []
     private let previewID = String(UUID().uuidString.prefix(8))
     private var hasRenderedTerminationError = false
-    private var currentViewerPageZoom: CGFloat = 0.86
+    private var currentViewerPageZoom: CGFloat = 1.0
     private static let showDebugOverlay = false
     private static let verboseLogging = false
-    private static let defaultViewerPageZoom: CGFloat = 0.86
-    private static let minViewerPageZoom: CGFloat = 0.72
-    private static let maxViewerPageZoom: CGFloat = 1.35
+    private static let defaultViewerPageZoom: CGFloat = 1.0
+    private static let minViewerPageZoom: CGFloat = 1.0
+    private static let maxViewerPageZoom: CGFloat = 1.0
 
     deinit {
         renderTimeoutWorkItem?.cancel()
@@ -205,7 +205,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     private static let supportedStructureExtensions: Set<String> = [
-        "bcif", "cif", "ent", "gro", "mcif", "mmcif", "mol", "mol2", "pdb", "pdbqt", "pqr", "sd", "sdf", "smi", "smiles", "xyz"
+        "bcif", "cif", "csv", "ent", "gro", "mcif", "mmcif", "mol", "mol2", "pdb", "pdbqt", "pqr", "sd", "sdf", "smi", "smiles", "tsv", "xyz"
     ]
 
     private static func buildInlinePreviewHTML(for url: URL) throws -> BuildResult {
@@ -238,6 +238,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         diag("structureData.bytes=\(structureData.count)")
 
         let preferences = PreviewPreferences.load()
+        let gridFileSupport = preferences.gridFileSupport
         if let gridPreview = try MoleculeGridPreviewBuilder.makePreview(
             fileURL: url,
             data: structureData,
@@ -245,21 +246,29 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             theme: preferences.viewerTheme,
             canvasBackground: preferences.canvasBackground,
             transparentBackground: preferences.canvasBackground == "transparent",
+            overlayOpacity: preferences.overlayOpacity,
             debug: showDebugOverlay,
             allowSelection: false,
             allowExport: false,
-            maxRecords: 3000
+            maxRecords: 750,
+            fileSupport: gridFileSupport
         ) {
             diag("detected.previewMode=grid2d format=\(gridPreview.format) records=\(gridPreview.recordsIncluded)/\(gridPreview.recordsTotal)")
             try validateVendoredMoleculeGridAssets(in: webDirectory, fileManager: fileManager, diagnostics: &diagnostics)
             let html = gridInlineHTML(title: url.lastPathComponent, preferences: preferences)
             diag("gridInlineHTML.bytes=\(html.utf8.count)")
+            let gridRecordsScript = try gridRecordsScriptWithRDKitWasm(
+                gridPreview.recordsScript,
+                bundledWebDirectory: webDirectory
+            )
             let runtimePreview = try createRuntimePreview(
                 bundledWebDirectory: webDirectory,
                 html: html,
                 configJSON: gridPreview.configJSON,
                 structureBase64: nil,
-                gridRecordsScript: gridPreview.recordsScript,
+                gridRecordsScript: gridRecordsScript,
+                requiredAssets: ["grid-viewer.js", "grid.css"],
+                requiresRDKit: true,
                 fileManager: fileManager,
                 diagnostics: &diagnostics
             )
@@ -267,6 +276,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             diag("runtimeDirectory=\(runtimePreview.runtimeDirectory.path)")
             diag("runtime.index.exists=\(fileManager.fileExists(atPath: indexURL.path))")
             return BuildResult(html: html, indexURL: indexURL, readAccessURL: runtimePreview.readAccessURL, diagnostics: diagnostics)
+        }
+        if MoleculeGridFileSupport.requiresGridPreview(fileExtension: pathExtension) {
+            if !gridFileSupport.supports(fileExtension: pathExtension) {
+                throw PreviewError.gridFileTypeDisabled(pathExtension)
+            }
+            throw PreviewError.unsupportedStructureFile(url.lastPathComponent)
         }
 
         let format = StructureFormat(url: url, data: structureData)
@@ -298,6 +313,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             configJSON: configJSON,
             structureBase64: base64,
             gridRecordsScript: nil,
+            requiredAssets: runtimeAssets(for: renderer),
+            requiresRDKit: false,
             fileManager: fileManager,
             diagnostics: &diagnostics
         )
@@ -319,6 +336,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         configJSON: String,
         structureBase64: String?,
         gridRecordsScript: String?,
+        requiredAssets: [String],
+        requiresRDKit: Bool,
         fileManager: FileManager,
         diagnostics: inout [String]
     ) throws -> RuntimePreview {
@@ -333,6 +352,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         try ensureRuntimeAssets(
             bundledWebDirectory: bundledWebDirectory,
             previewsDirectory: previewsDirectory,
+            requiredAssets: requiredAssets,
+            requiresRDKit: requiresRDKit,
             fileManager: fileManager,
             diagnostics: &diagnostics
         )
@@ -350,32 +371,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         if let gridRecordsScript {
             try Data(gridRecordsScript.utf8)
                 .write(to: runtimeDirectory.appendingPathComponent("preview-grid-records.js"), options: [.atomic])
-            let rdkitWasmURL = bundledWebDirectory
-                .appendingPathComponent("rdkit", isDirectory: true)
-                .appendingPathComponent("RDKit_minimal.wasm")
-            let rdkitWasmScript = try rdkitWasmInlineScript(from: rdkitWasmURL)
-            try Data(rdkitWasmScript.utf8)
-                .write(to: runtimeDirectory.appendingPathComponent("preview-rdkit-wasm.js"), options: [.atomic])
-            diagnostics.append("[build] preview-rdkit-wasm.script.bytes=\(rdkitWasmScript.utf8.count)")
         }
         return RuntimePreview(runtimeDirectory: runtimeDirectory, indexURL: indexURL, readAccessURL: previewsDirectory)
-    }
-
-    private static func rdkitWasmInlineScript(from url: URL) throws -> String {
-        let base64 = try Data(contentsOf: url).base64EncodedString(options: [])
-        let chunkSize = 32_768
-        var chunks: [String] = []
-        var start = base64.startIndex
-        while start < base64.endIndex {
-            let end = base64.index(start, offsetBy: chunkSize, limitedBy: base64.endIndex) ?? base64.endIndex
-            chunks.append(String(base64[start..<end]))
-            start = end
-        }
-        let jsonData = try JSONSerialization.data(withJSONObject: chunks, options: [.withoutEscapingSlashes])
-        guard let json = String(data: jsonData, encoding: .utf8) else {
-            throw PreviewError.couldNotCreateRuntimePreview("Could not encode RDKit WASM chunks")
-        }
-        return "window.BurreteRDKitWasmBase64Chunks = \(json);\n"
     }
 
     private static func pruneRuntimePreviews(
@@ -412,26 +409,48 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private static func ensureRuntimeAssets(
         bundledWebDirectory: URL,
         previewsDirectory: URL,
+        requiredAssets: [String],
+        requiresRDKit: Bool,
         fileManager: FileManager,
         diagnostics: inout [String]
     ) throws {
         let assetsDirectory = previewsDirectory.appendingPathComponent("assets", isDirectory: true)
         try fileManager.createDirectory(at: assetsDirectory, withIntermediateDirectories: true)
-        for assetName in ["molstar.js", "molstar.css", "burette-agent.js", "viewer.js", "xyz-fast.js", "grid-viewer.js", "grid.css"] {
+        for assetName in requiredAssets {
             let source = bundledWebDirectory.appendingPathComponent(assetName)
             let destination = assetsDirectory.appendingPathComponent(assetName)
-            try copyAssetAtomically(from: source, to: destination, fileManager: fileManager)
+            let copied = try copyAssetIfNeeded(from: source, to: destination, fileManager: fileManager)
             let size = ((try? fileManager.attributesOfItem(atPath: destination.path)[.size]) as? NSNumber)?.intValue ?? -1
-            diagnostics.append("[build] runtime.asset.\(assetName).exists=\(fileManager.fileExists(atPath: destination.path)) size=\(size) copied=true")
+            diagnostics.append("[build] runtime.asset.\(assetName).exists=\(fileManager.fileExists(atPath: destination.path)) size=\(size) copied=\(copied)")
         }
-        let rdkitSource = bundledWebDirectory.appendingPathComponent("rdkit", isDirectory: true)
-        if fileManager.fileExists(atPath: rdkitSource.path) {
-            try copyDirectoryAtomically(from: rdkitSource, to: assetsDirectory.appendingPathComponent("rdkit", isDirectory: true), fileManager: fileManager)
-            diagnostics.append("[build] runtime.asset.rdkit.exists=true copied=true")
+        if requiresRDKit {
+            let rdkitSource = bundledWebDirectory.appendingPathComponent("rdkit", isDirectory: true)
+            if fileManager.fileExists(atPath: rdkitSource.path) {
+                let copied = try copyDirectoryIfNeeded(from: rdkitSource, to: assetsDirectory.appendingPathComponent("rdkit", isDirectory: true), fileManager: fileManager)
+                diagnostics.append("[build] runtime.asset.rdkit.exists=true copied=\(copied)")
+            }
         }
     }
 
-    private static func copyAssetAtomically(from source: URL, to destination: URL, fileManager: FileManager) throws {
+    private static func runtimeAssets(for renderer: String) -> [String] {
+        if renderer == "xyz-fast" {
+            return ["xyz-fast.js", "burette-agent.js", "viewer.js"]
+        }
+        return ["molstar.js", "molstar.css", "burette-agent.js", "viewer.js"]
+    }
+
+    private static func gridRecordsScriptWithRDKitWasm(_ recordsScript: String, bundledWebDirectory: URL) throws -> String {
+        let wasmURL = bundledWebDirectory
+            .appendingPathComponent("rdkit", isDirectory: true)
+            .appendingPathComponent("RDKit_minimal.wasm")
+        let wasmBase64 = try Data(contentsOf: wasmURL).base64EncodedString()
+        return recordsScript + "window.BurreteRDKitWasmBase64 = \"\(wasmBase64)\";\n"
+    }
+
+    private static func copyAssetIfNeeded(from source: URL, to destination: URL, fileManager: FileManager) throws -> Bool {
+        if try fileExistsAndMatches(source: source, destination: destination, fileManager: fileManager) {
+            return false
+        }
         let temporaryURL = destination
             .deletingLastPathComponent()
             .appendingPathComponent(".\(destination.lastPathComponent).\(UUID().uuidString).tmp")
@@ -443,9 +462,13 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         } else {
             try fileManager.moveItem(at: temporaryURL, to: destination)
         }
+        return true
     }
 
-    private static func copyDirectoryAtomically(from source: URL, to destination: URL, fileManager: FileManager) throws {
+    private static func copyDirectoryIfNeeded(from source: URL, to destination: URL, fileManager: FileManager) throws -> Bool {
+        if try directoryExistsAndMatches(source: source, destination: destination, fileManager: fileManager) {
+            return false
+        }
         let temporaryURL = destination
             .deletingLastPathComponent()
             .appendingPathComponent(".\(destination.lastPathComponent).\(UUID().uuidString).tmp", isDirectory: true)
@@ -456,6 +479,27 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             try fileManager.removeItem(at: destination)
         }
         try fileManager.moveItem(at: temporaryURL, to: destination)
+        return true
+    }
+
+    private static func fileExistsAndMatches(source: URL, destination: URL, fileManager: FileManager) throws -> Bool {
+        guard fileManager.fileExists(atPath: destination.path) else { return false }
+        let sourceAttributes = try fileManager.attributesOfItem(atPath: source.path)
+        let destinationAttributes = try fileManager.attributesOfItem(atPath: destination.path)
+        return (sourceAttributes[.size] as? NSNumber)?.int64Value == (destinationAttributes[.size] as? NSNumber)?.int64Value &&
+            sourceAttributes[.modificationDate] as? Date == destinationAttributes[.modificationDate] as? Date
+    }
+
+    private static func directoryExistsAndMatches(source: URL, destination: URL, fileManager: FileManager) throws -> Bool {
+        guard fileManager.fileExists(atPath: destination.path) else { return false }
+        for name in ["RDKit_minimal.js", "RDKit_minimal.wasm"] {
+            let sourceFile = source.appendingPathComponent(name)
+            let destinationFile = destination.appendingPathComponent(name)
+            if !(try fileExistsAndMatches(source: sourceFile, destination: destinationFile, fileManager: fileManager)) {
+                return false
+            }
+        }
+        return true
     }
 
     private static func fileSize(for url: URL, fileManager: FileManager) throws -> Int64 {
@@ -485,7 +529,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "debug": showDebugOverlay,
             "theme": preferences.viewerTheme,
             "canvasBackground": preferences.canvasBackground,
-            "uiScale": 0.86,
+            "uiScale": 1.0,
+            "overlayOpacity": preferences.overlayOpacity,
             "transparentBackground": preferences.canvasBackground == "transparent",
             "sdfGrid": true,
             "showPanelControls": preferences.showPanelControls,
@@ -539,7 +584,6 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           </script>
           <script src="preview-config.js"></script>
           <script src="preview-grid-records.js"></script>
-          <script src="preview-rdkit-wasm.js"></script>
           <script src="../assets/rdkit/RDKit_minimal.js"></script>
           <script src="../assets/grid-viewer.js"></script>
         </body>
@@ -578,16 +622,18 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             :root {
               --buret-viewer-ui-scale: 0.86;
               --buret-toolbar-safe-top: 12px;
+              --buret-overlay-opacity: 0.90;
+              --buret-overlay-strong-opacity: 0.96;
               --buret-canvas-background: #000000;
               --buret-shell-background: #000000;
-              --buret-panel-background: rgba(18, 20, 22, 0.82);
-              --buret-toolbar-background: rgba(12, 13, 14, 0.90);
+              --buret-panel-background: rgba(18, 20, 22, var(--buret-overlay-opacity));
+              --buret-toolbar-background: rgba(12, 13, 14, var(--buret-overlay-opacity));
               --buret-toolbar-border: rgba(255, 255, 255, 0.10);
               --buret-toolbar-hover: rgba(255, 255, 255, 0.14);
               --buret-toolbar-color: rgba(255, 255, 255, 0.94);
-              --buret-molstar-panel-background: rgba(14, 15, 17, 0.94);
-              --buret-molstar-row-background: rgba(24, 26, 29, 0.96);
-              --buret-molstar-field-background: rgba(32, 35, 39, 0.98);
+              --buret-molstar-panel-background: rgba(14, 15, 17, var(--buret-overlay-strong-opacity));
+              --buret-molstar-row-background: rgba(24, 26, 29, var(--buret-overlay-strong-opacity));
+              --buret-molstar-field-background: rgba(32, 35, 39, var(--buret-overlay-strong-opacity));
               --buret-molstar-hover-background: rgba(48, 52, 58, 0.98);
               --buret-molstar-border: rgba(255, 255, 255, 0.10);
               --buret-molstar-text: rgba(246, 247, 249, 0.94);
@@ -606,33 +652,33 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             html.buret-transparent-background canvas { background: transparent !important; background-color: transparent !important; }
             body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: #f2f2f2; }
             body.buret-theme-light {
-              --buret-shell-background: #f7f7f2;
-              --buret-panel-background: rgba(247, 247, 242, 0.86);
-              --buret-toolbar-background: rgba(247, 247, 242, 0.90);
+              --buret-shell-background: #ffffff;
+              --buret-panel-background: rgba(248, 248, 248, var(--buret-overlay-opacity));
+              --buret-toolbar-background: rgba(248, 248, 248, var(--buret-overlay-opacity));
               --buret-toolbar-border: rgba(0, 0, 0, 0.12);
               --buret-toolbar-hover: rgba(0, 0, 0, 0.08);
               --buret-toolbar-color: rgba(20, 21, 23, 0.92);
-              --buret-molstar-panel-background: rgba(239, 239, 235, 0.94);
-              --buret-molstar-row-background: rgba(229, 228, 222, 0.96);
-              --buret-molstar-field-background: rgba(248, 247, 244, 0.98);
-              --buret-molstar-hover-background: rgba(218, 216, 209, 0.98);
+              --buret-molstar-panel-background: rgba(248, 248, 248, var(--buret-overlay-strong-opacity));
+              --buret-molstar-row-background: rgba(238, 238, 238, var(--buret-overlay-strong-opacity));
+              --buret-molstar-field-background: rgba(255, 255, 255, var(--buret-overlay-strong-opacity));
+              --buret-molstar-hover-background: rgba(228, 228, 228, 0.98);
               --buret-molstar-border: rgba(0, 0, 0, 0.13);
               --buret-molstar-text: rgba(32, 33, 35, 0.94);
-              --buret-molstar-muted-text: rgba(84, 78, 68, 0.82);
-              --buret-molstar-accent: #8a4b10;
+              --buret-molstar-muted-text: rgba(86, 88, 92, 0.82);
+              --buret-molstar-accent: #006bd6;
               --buret-molstar-shadow: rgba(0, 0, 0, 0.18);
               color: #161719;
             }
             body.buret-theme-dark {
               --buret-shell-background: var(--buret-canvas-background);
-              --buret-panel-background: rgba(18, 20, 22, 0.82);
-              --buret-toolbar-background: rgba(12, 13, 14, 0.90);
+              --buret-panel-background: rgba(18, 20, 22, var(--buret-overlay-opacity));
+              --buret-toolbar-background: rgba(12, 13, 14, var(--buret-overlay-opacity));
               --buret-toolbar-border: rgba(255, 255, 255, 0.10);
               --buret-toolbar-hover: rgba(255, 255, 255, 0.14);
               --buret-toolbar-color: rgba(255, 255, 255, 0.94);
-              --buret-molstar-panel-background: rgba(14, 15, 17, 0.94);
-              --buret-molstar-row-background: rgba(24, 26, 29, 0.96);
-              --buret-molstar-field-background: rgba(32, 35, 39, 0.98);
+              --buret-molstar-panel-background: rgba(14, 15, 17, var(--buret-overlay-strong-opacity));
+              --buret-molstar-row-background: rgba(24, 26, 29, var(--buret-overlay-strong-opacity));
+              --buret-molstar-field-background: rgba(32, 35, 39, var(--buret-overlay-strong-opacity));
               --buret-molstar-hover-background: rgba(48, 52, 58, 0.98);
               --buret-molstar-border: rgba(255, 255, 255, 0.10);
               --buret-molstar-text: rgba(246, 247, 249, 0.94);
@@ -672,7 +718,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             body .msp-plugin,
             body .msp-plugin .msp-plugin-content {
               color: var(--buret-molstar-text) !important;
-              background: var(--buret-molstar-panel-background) !important;
+              background: transparent !important;
             }
             body .msp-plugin .msp-layout-standard,
             body .msp-plugin .msp-layout-top,
@@ -1225,7 +1271,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             return 40 * mib
         case "bcif":
             return 50 * mib
-        case "sdf", "sd", "mol", "mol2", "xyz", "gro", "smi", "smiles":
+        case "csv", "sdf", "sd", "mol", "mol2", "xyz", "gro", "smi", "smiles", "tsv":
             return 25 * mib
         default:
             return 20 * mib
@@ -1629,8 +1675,10 @@ private struct PreviewPreferences {
     let transparentBackground: Bool
     let viewerTheme: String
     let canvasBackground: String
+    let overlayOpacity: Double
     let rendererMode: String
     let xyzFastStyle: String
+    let gridFileSupport: MoleculeGridFileSupport
     let defaultLayoutState: [String: String]
 
     static func load() -> PreviewPreferences {
@@ -1638,16 +1686,20 @@ private struct PreviewPreferences {
         let showPanelControls = (CFPreferencesCopyAppValue("showPreviewPanelControls" as CFString, appID) as? Bool) ?? true
         let transparentBackground = (CFPreferencesCopyAppValue("useTransparentPreviewBackground" as CFString, appID) as? Bool) ?? false
         let viewerTheme = (CFPreferencesCopyAppValue("viewerTheme" as CFString, appID) as? String) ?? "auto"
-        let canvasBackground = (CFPreferencesCopyAppValue("viewerCanvasBackground" as CFString, appID) as? String) ?? "black"
+        let canvasBackground = (CFPreferencesCopyAppValue("viewerCanvasBackground" as CFString, appID) as? String) ?? "auto"
+        let overlayOpacity = (CFPreferencesCopyAppValue("viewerOverlayOpacity" as CFString, appID) as? Double) ?? 0.90
         let rendererMode = (CFPreferencesCopyAppValue("structureRendererMode" as CFString, appID) as? String) ?? "auto"
         let xyzFastStyle = (CFPreferencesCopyAppValue("xyzFastStyle" as CFString, appID) as? String) ?? "default"
+        let gridFileSupport = MoleculeGridFileSupport.loadFromAppPreferences(appID: appID)
         return PreviewPreferences(
             showPanelControls: showPanelControls,
             transparentBackground: transparentBackground,
             viewerTheme: viewerTheme,
             canvasBackground: canvasBackground,
+            overlayOpacity: min(max(overlayOpacity, 0.72), 0.98),
             rendererMode: rendererMode,
             xyzFastStyle: xyzFastStyle,
+            gridFileSupport: gridFileSupport,
             defaultLayoutState: [
                 "left": "collapsed",
                 "right": "hidden",
@@ -1664,6 +1716,7 @@ private enum PreviewError: LocalizedError {
     case molstarAssetsNotVendored(Int)
     case emptyStructureFile(String)
     case unsupportedStructureFile(String)
+    case gridFileTypeDisabled(String)
     case fileTooLarge(String, Int64, Int64)
     case ubiquitousFileNotDownloaded(String)
     case webRenderFailed(String)
@@ -1683,6 +1736,8 @@ private enum PreviewError: LocalizedError {
             return "The structure file is empty or not downloaded locally: \(name)"
         case .unsupportedStructureFile(let name):
             return "Unsupported structure file type: \(name)"
+        case .gridFileTypeDisabled(let ext):
+            return ".\(ext) molecule grid previews are disabled in Burrete Settings."
         case .fileTooLarge(let name, let size, let limit):
             return "\(name) is too large for Quick Look preview (\(size) bytes; limit \(limit) bytes). Open it in the Burrete app viewer or use a smaller file."
         case .ubiquitousFileNotDownloaded(let name):

@@ -93,7 +93,7 @@ async function main() {
     showPanelControls: true,
     defaultLayoutState: { left: 'hidden', right: 'hidden', top: 'hidden', bottom: 'hidden' },
     theme: 'auto',
-    canvasBackground: 'black'
+    canvasBackground: 'auto'
   };
   const dataBase64 = bytes.toString('base64');
   const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
