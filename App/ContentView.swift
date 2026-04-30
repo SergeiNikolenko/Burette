@@ -807,8 +807,8 @@ private struct BurreteBadge: View {
 
 private enum SettingsColors {
     static let background = Color(nsColor: .windowBackgroundColor)
-    static let sidebar = Color(nsColor: .underPageBackgroundColor)
-    static let card = Color(nsColor: .controlBackgroundColor)
+    static let sidebar = Color(nsColor: .controlBackgroundColor)
+    static let card = Color(nsColor: .textBackgroundColor)
     static let search = Color(nsColor: .textBackgroundColor)
     static let selection = Color.accentColor.opacity(0.18)
     static let separator = Color(nsColor: .separatorColor).opacity(0.55)
