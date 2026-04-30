@@ -201,7 +201,7 @@ private struct AppViewerRuntime {
     }
 
     private static func copyAssets(from sourceDirectory: URL, to assetsDirectory: URL) throws {
-        for name in ["molstar.js", "molstar.css", "viewer.js"] {
+        for name in ["molstar.js", "molstar.css", "burette-agent.js", "viewer.js"] {
             let source = sourceDirectory.appendingPathComponent(name)
             let destination = assetsDirectory.appendingPathComponent(name)
             try copyAssetAtomically(from: source, to: destination)
@@ -712,6 +712,7 @@ private struct AppViewerRuntime {
           <script src="../assets/molstar.js"></script>
           <script src="preview-config.js"></script>
           <script src="preview-data.js"></script>
+          <script src="../assets/burette-agent.js"></script>
           <script src="../assets/viewer.js"></script>
         </body>
         </html>
