@@ -616,6 +616,15 @@
     const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
     if (doc.querySelector('parsererror')) return '';
     for (const node of [...doc.querySelectorAll('script, foreignObject')]) node.remove();
+    const rootSVG = doc.documentElement;
+    const width = Number.parseFloat(rootSVG.getAttribute('width') || '');
+    const height = Number.parseFloat(rootSVG.getAttribute('height') || '');
+    if (!rootSVG.getAttribute('viewBox') && Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+      rootSVG.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    }
+    rootSVG.removeAttribute('width');
+    rootSVG.removeAttribute('height');
+    rootSVG.setAttribute('preserveAspectRatio', 'xMidYMid meet');
     for (const node of [...doc.querySelectorAll('*')]) {
       for (const attr of [...node.attributes]) {
         const name = attr.name.toLowerCase();

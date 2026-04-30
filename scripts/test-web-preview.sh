@@ -252,6 +252,9 @@ assert(gridViewer.includes('buret.grid.columns'), 'grid viewer must persist grid
 assert(gridViewer.includes('GRID_COLUMNS_MIN = 4'), 'grid viewer must allow four columns at the low end');
 assert(gridViewer.includes('GRID_COLUMNS_MAX = 16'), 'grid viewer must allow sixteen columns at the high end');
 assert(!gridViewer.includes('molecule-scale'), 'grid viewer must not expose a separate molecule zoom slider');
+assert(gridViewer.includes("rootSVG.removeAttribute('width')"), 'grid viewer must let molecule SVGs fit their cards instead of fixed pixel width');
+assert(gridViewer.includes("rootSVG.removeAttribute('height')"), 'grid viewer must let molecule SVGs fit their cards instead of fixed pixel height');
+assert(gridViewer.includes("preserveAspectRatio', 'xMidYMid meet'"), 'grid viewer must preserve molecule aspect ratio during automatic fitting');
 assert(gridViewer.includes('buret.grid.loadBatch'), 'grid viewer must persist infinite-scroll batch size controls');
 assert(gridViewer.includes('load-sentinel'), 'grid viewer must use a sentinel for infinite scrolling');
 assert(gridViewer.includes('IntersectionObserver'), 'grid viewer must dynamically append molecules while scrolling');
@@ -263,6 +266,8 @@ assert(gridCSS.includes('--buret-bg: rgba('), 'grid CSS must use a translucent m
 assert(gridCSS.includes('backdrop-filter: saturate(180%) blur(28px)'), 'grid CSS must apply frosted blur to the base background');
 assert(gridCSS.includes('body.buret-hide-properties .buret-card-body {\n  display: none;\n}'), 'Properties toggle must hide card text details');
 assert(gridCSS.includes('body.buret-hide-properties .buret-card h2 {\n  display: none;\n}'), 'Properties toggle must hide molecule names');
+assert(gridCSS.includes('grid-template-rows: minmax(0, 1fr) auto'), 'grid cards must give molecule drawings the flexible area');
+assert(gridCSS.includes('object-fit: contain'), 'grid molecule drawings must auto-fit inside their cards');
 assert(gridCSS.includes('.buret-toolbar-row-main'), 'grid CSS must use named toolbar rows instead of fragile child selectors');
 assert(gridCSS.includes('.buret-columns-control'), 'grid CSS must style grid column controls');
 assert(gridCSS.includes('.buret-load-status'), 'grid CSS must style infinite-scroll load status');
