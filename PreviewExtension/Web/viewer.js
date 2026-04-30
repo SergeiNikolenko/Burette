@@ -9,6 +9,20 @@
   const TOOLBAR_POSITION_VERSION = '7';
   const TOOLBAR_MARGIN = 12;
   const VIEWER_THEME_STORAGE_KEY = 'buret.viewer.theme';
+  const DEFAULT_XYZRENDER_PRESETS = [
+    { value: 'default', label: 'Default' },
+    { value: 'flat', label: 'Flat' },
+    { value: 'paton', label: 'Paton' },
+    { value: 'pmol', label: 'PMol' },
+    { value: 'skeletal', label: 'Skeletal' },
+    { value: 'bubble', label: 'Bubble' },
+    { value: 'tube', label: 'Tube' },
+    { value: 'btube', label: 'BTube' },
+    { value: 'mtube', label: 'MTube' },
+    { value: 'wire', label: 'Wire' },
+    { value: 'graph', label: 'Graph' },
+    { value: 'custom', label: 'Custom JSON' }
+  ];
   try { window.__mqlDebug && window.__mqlDebug('[viewer.js] top-level IIFE entered; readyState=' + document.readyState); } catch (_) {}
 
   function post(type, message) {
@@ -45,6 +59,9 @@
     if (kind === 'error' || window.BurreteDebug) return true;
     return text.startsWith('[web] Loading Mol* engine') ||
       text.startsWith('[web] Mol* engine loaded') ||
+      text.startsWith('[web] Loading Fast XYZ renderer') ||
+      text.startsWith('[web] Fast XYZ renderer loaded') ||
+      text.startsWith('[web] Loading xyzrender artifact') ||
       text.startsWith('[web] WebGL viewer created') ||
       text.startsWith('[web] Parsing structure') ||
       text.startsWith('[web] Rendered ');
@@ -126,6 +143,7 @@
     applyBackgroundMode();
     installThemeListener();
     updateToolbarVisibility();
+    configureRendererControls(config);
   }
 
   function applyBackgroundMode() {
@@ -311,6 +329,66 @@
     toolbar.querySelectorAll('.buret-panel-toggle').forEach(button => {
       button.classList.toggle('hidden', !panelControlsVisible);
     });
+  }
+
+  function configureRendererControls(config) {
+    const control = document.querySelector('[data-buret-renderer-control]');
+    if (!control) return;
+    const isXYZ = config.appViewer === true && normalizeFormat(config.molstarFormat || config.format) === 'xyz';
+    control.classList.toggle('visible', isXYZ);
+    if (!isXYZ) return;
+
+    const renderer = normalizeRenderer(config.renderer);
+    control.querySelectorAll('[data-buret-renderer]').forEach(button => {
+      const value = button.getAttribute('data-buret-renderer');
+      button.classList.toggle('active', value === renderer);
+      if (control.dataset.rendererBound !== '1') {
+        button.addEventListener('click', () => requestRendererSwitch(value));
+      }
+    });
+
+    const select = control.querySelector('[data-buret-xyzrender-preset]');
+    if (select) {
+      populateXyzrenderPresetSelect(select, config.xyzrenderPresetOptions);
+      select.value = normalizeXyzrenderPreset(config.externalArtifact?.preset || config.xyzrenderPreset || 'default');
+      select.disabled = renderer !== 'xyzrender-external';
+      if (control.dataset.presetBound !== '1') {
+        select.addEventListener('change', () => requestXyzrenderPreset(select.value));
+      }
+    }
+    control.dataset.rendererBound = '1';
+    control.dataset.presetBound = '1';
+  }
+
+  function populateXyzrenderPresetSelect(select, options) {
+    if (select.dataset.populated === '1') return;
+    const rows = Array.isArray(options) && options.length ? options : DEFAULT_XYZRENDER_PRESETS;
+    select.innerHTML = '';
+    for (const row of rows) {
+      const value = normalizeXyzrenderPreset(row.value);
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = String(row.label || value);
+      select.appendChild(option);
+    }
+    select.dataset.populated = '1';
+  }
+
+  function normalizeXyzrenderPreset(value) {
+    const raw = String(value || 'default').trim().toLowerCase();
+    return DEFAULT_XYZRENDER_PRESETS.some(row => row.value === raw) ? raw : 'default';
+  }
+
+  function requestRendererSwitch(renderer) {
+    const value = normalizeRenderer(renderer);
+    const sent = postHostMessage({ type: 'setRenderer', value });
+    if (!sent) setStatus('Renderer switching is available only in the standalone app viewer.', 'error');
+  }
+
+  function requestXyzrenderPreset(preset) {
+    const value = normalizeXyzrenderPreset(preset);
+    const sent = postHostMessage({ type: 'setXyzrenderPreset', value });
+    if (!sent) setStatus('xyzrender preset switching is available only in the standalone app viewer.', 'error');
   }
 
   function initBuretToolbar(viewer) {
@@ -612,6 +690,13 @@
     return config.binary ? Array.from(base64ToBytes(base64)) : base64ToText(base64);
   }
 
+  function normalizeRenderer(renderer) {
+    const value = String(renderer || 'molstar').toLowerCase();
+    if (value === 'xyz-fast' || value === 'fast-xyz' || value === 'xyzfast') return 'xyz-fast';
+    if (value === 'xyzrender-external' || value === 'external-xyzrender') return 'xyzrender-external';
+    return 'molstar';
+  }
+
   function structureDataForMolstar(config) {
     const normalized = normalizeFormat(config.format);
     if (normalized === 'cifCore') {
@@ -631,6 +716,91 @@
       format: normalized,
       label: config.label || 'structure'
     };
+  }
+
+  async function startXYZFast(config, cb) {
+    const label = config.label || 'structure';
+    const size = describeBytes(config.byteCount);
+    setStatus(`[web] Loading Fast XYZ renderer…\n${label} (XYZ${size ? `, ${size}` : ''})`);
+    if (!window.BurreteXYZFast) {
+      await loadScript('./xyz-fast.js?v=' + encodeURIComponent(cb), 'Fast XYZ renderer', 10000);
+    }
+    if (!window.BurreteXYZFast || typeof window.BurreteXYZFast.render !== 'function') {
+      throw new Error('xyz-fast.js did not define window.BurreteXYZFast.render.');
+    }
+
+    setStatus(`[web] Fast XYZ renderer loaded. Rendering static preview…\n${label}`);
+    const container = document.getElementById('app');
+    const result = window.BurreteXYZFast.render({
+      container,
+      text: rawStructureData({ ...config, binary: false }),
+      config
+    });
+    initStaticRendererToolbar();
+    const fallback = config.externalRendererStatus?.status === 'fallback' ? `\nExternal xyzrender fallback: ${config.externalRendererStatus.message || 'not available'}` : '';
+    setStatus(`[web] Rendered ${label} with Fast XYZ SVG (${result.atoms} atoms, ${result.bonds} bonds)${fallback}`);
+    setTimeout(hideStatus, 450);
+  }
+
+  async function startExternalArtifact(config) {
+    const artifact = config.externalArtifact;
+    if (!artifact || !artifact.path) {
+      throw new Error('External xyzrender renderer was selected, but no externalArtifact path was provided.');
+    }
+    const path = safeRelativeArtifactPath(artifact.path);
+    setStatus(`[web] Loading xyzrender artifact…\n${config.label || 'structure'}`);
+    installExternalArtifactStyles();
+    const container = document.getElementById('app');
+    const preset = artifact.preset ? ` · ${escapeHTML(artifact.preset)}` : '';
+    const elapsed = Number.isFinite(Number(artifact.elapsedMs)) ? ` · ${Number(artifact.elapsedMs)} ms` : '';
+    container.innerHTML = `
+      <div class="buret-external-artifact-root">
+        <object class="buret-external-artifact-object" data="${path}" type="image/svg+xml" aria-label="${escapeHTML(config.label || 'xyzrender artifact')}"></object>
+        <div class="buret-xyz-badge"><strong>External xyzrender</strong><span>SVG${preset}${elapsed}</span></div>
+      </div>`;
+    initStaticRendererToolbar();
+    setStatus(`[web] Rendered ${config.label || 'structure'} with external xyzrender`);
+    setTimeout(hideStatus, 450);
+  }
+
+  function initStaticRendererToolbar() {
+    const toolbar = document.getElementById('buret-toolbar');
+    if (!toolbar) return;
+    toolbar.querySelectorAll('.buret-panel-toggle').forEach(button => { button.classList.add('hidden'); });
+    initToolbarDrag(toolbar);
+    restoreToolbarCollapsed(toolbar, null);
+  }
+
+  function safeRelativeArtifactPath(path) {
+    const value = String(path || '').trim();
+    if (!value || value.includes('..') || value.startsWith('/') || !/^[A-Za-z0-9_.\/-]+$/u.test(value)) {
+      throw new Error('Unsafe external artifact path: ' + value);
+    }
+    return value;
+  }
+
+  function escapeHTML(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/gu, '&amp;')
+      .replace(/</gu, '&lt;')
+      .replace(/>/gu, '&gt;')
+      .replace(/"/gu, '&quot;')
+      .replace(/'/gu, '&#39;');
+  }
+
+  function installExternalArtifactStyles() {
+    if (document.getElementById('buret-external-artifact-style')) return;
+    const style = document.createElement('style');
+    style.id = 'buret-external-artifact-style';
+    style.textContent = `
+      .buret-external-artifact-root { position: absolute; inset: 0; overflow: hidden; background: var(--buret-shell-background, #000); }
+      body.burette-transparent-background .buret-external-artifact-root { background: transparent; }
+      .buret-external-artifact-object { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
+      .buret-xyz-badge { position: absolute; left: 14px; bottom: 14px; z-index: 30; max-width: calc(100vw - 28px); box-sizing: border-box; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--buret-toolbar-border, rgba(255,255,255,0.12)); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.9)); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: 0 8px 22px rgba(0,0,0,0.20); font: 11px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; pointer-events: none; }
+      .buret-xyz-badge strong { display: block; font-size: 11px; }
+      .buret-xyz-badge span { display: block; opacity: 0.76; }
+    `;
+    document.head.appendChild(style);
   }
 
   function prepareSdfStructure(text, config) {
@@ -887,7 +1057,7 @@
 
   async function start() {
     debug('viewer.js executed');
-    setStatus('[web] Booting Mol* Quick Look JavaScript…');
+    setStatus('[web] Booting Burrete viewer JavaScript…');
 
     const cb = window.BurreteCacheBuster || String(Date.now());
     if (!window.BurreteConfig) {
@@ -900,6 +1070,16 @@
     const config = requireConfig();
     applyConfigOptions(config);
     debug('config=' + JSON.stringify(config));
+    const renderer = normalizeRenderer(config.renderer);
+    if (renderer === 'xyz-fast') {
+      await startXYZFast(config, cb);
+      return;
+    }
+    if (renderer === 'xyzrender-external') {
+      await startExternalArtifact(config);
+      return;
+    }
+
     const size = describeBytes(config.byteCount);
     const formatLabel = describeFormat(config.format, config.binary);
 
@@ -1134,7 +1314,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
 
   function showError(error) {
     const message = error && (error.stack || error.message) ? (error.stack || error.message) : String(error);
-    setStatus(`[web] Mol* failed to load this file.\n\n${message}\n\nCheck: ./scripts/tail-log.sh`, 'error');
+    setStatus(`[web] Burrete web renderer failed to load this file.\n\n${message}\n\nCheck: ./scripts/tail-log.sh`, 'error');
     // eslint-disable-next-line no-console
     console.error(error);
   }

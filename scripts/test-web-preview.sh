@@ -79,17 +79,31 @@ else if (ext === 'mol2') format = 'mol2';
 else if (ext === 'xyz') format = 'xyz';
 else if (ext === 'gro') format = 'gro';
 
+const renderer = ext === 'xyz' ? 'xyz-fast' : 'molstar';
 const config = {
   label: path.basename(file),
   format,
+  molstarFormat: format,
+  renderer,
+  allowMolstarFallback: true,
   binary,
   byteCount: data.length,
+  previewByteCount: data.length,
   theme: 'dark',
   canvasBackground: 'black',
   transparentBackground: false,
   sdfGrid: true,
   showPanelControls: true
 };
+if (renderer === 'xyz-fast') {
+  config.xyzFast = {
+    style: 'default',
+    firstFrameOnly: true,
+    showCell: true,
+    sourceByteCount: data.length,
+    previewByteCount: data.length
+  };
+}
 fs.writeFileSync(configOut, 'window.BurreteConfig = ' + JSON.stringify(config, null, 2) + ';\n');
 fs.writeFileSync(dataOut, 'window.BurreteDataBase64 = "' + data.toString('base64') + '";\n');
 console.log(`Wrote preview config/data for ${file} as ${format}`);
@@ -109,6 +123,8 @@ const dataPath = process.argv[7];
 const index = fs.readFileSync(indexPath, 'utf8');
 const viewer = fs.readFileSync(viewerPath, 'utf8');
 const agent = fs.readFileSync(agentPath, 'utf8');
+const xyzFastPath = path.join(path.dirname(indexPath), 'xyz-fast.js');
+const xyzFast = fs.readFileSync(xyzFastPath, 'utf8');
 const configSource = fs.readFileSync(configPath, 'utf8');
 const dataSource = fs.readFileSync(dataPath, 'utf8');
 const appViewer = fs.readFileSync('App/MoleculeViewerWindowController.swift', 'utf8');
@@ -127,6 +143,7 @@ function assert(condition, message) {
 }
 
 assert(index.includes('role="toolbar"'), 'preview HTML must expose a toolbar role');
+assert(index.includes('./xyz-fast.js'), 'preview HTML must load the Fast XYZ renderer asset');
 assert(!index.includes('data-buret-action="fit"'), 'fit/fullscreen toolbar button should not be present');
 assert(index.includes('aria-label="Collapse controls"'), 'toolbar handle should collapse controls');
 assert(index.includes('aria-expanded="true"'), 'toolbar handle should expose expanded state');
@@ -154,6 +171,9 @@ assert(quickLookViewer.includes('burette-agent.js'), 'Quick Look runtime must co
 assert(buildScript.includes('PreviewExtension/Web/burette-agent.js'), 'build script must require and syntax-check burette-agent.js');
 assert(releaseScript.includes('PreviewExtension/Web/burette-agent.js'), 'release script must require and syntax-check burette-agent.js');
 assert(xcodeProject.includes('PreviewExtension/Web/burette-agent.js'), 'Xcode validation phase must track burette-agent.js');
+assert(viewer.includes('startXYZFast'), 'viewer.js must support Fast XYZ rendering');
+assert(viewer.includes('startExternalArtifact'), 'viewer.js must support external xyzrender artifacts');
+assert(xyzFast.includes('BurreteXYZFast'), 'xyz-fast.js must expose BurreteXYZFast');
 assert(viewer.includes('buret.toolbar.collapsed'), 'viewer.js must remember compact toolbar state');
 assert(viewer.includes('TOOLBAR_POSITION_VERSION'), 'viewer.js must reset stale toolbar positions');
 assert(viewer.includes("TOOLBAR_POSITION_VERSION = '7'"), 'toolbar position cache should invalidate pre-safe-area positions');
@@ -173,6 +193,13 @@ assert(config.theme === 'dark', 'theme should default to dark');
 assert(config.canvasBackground === 'black', 'canvas background should default to black');
 assert(config.transparentBackground === false, 'transparent background should be opt-in');
 assert(config.sdfGrid === true, 'SDF grid flag should be encoded');
+assert(config.molstarFormat === config.format, 'molstarFormat should mirror the resolved Mol* format');
+assert(config.allowMolstarFallback === true, 'Mol* fallback flag should be encoded');
+assert(config.renderer === (ext === 'xyz' ? 'xyz-fast' : 'molstar'), 'renderer should select Fast XYZ only for .xyz in web test auto mode');
+if (ext === 'xyz') {
+  assert(config.xyzFast && config.xyzFast.firstFrameOnly === true, 'XYZ web test should encode first-frame Fast XYZ options');
+  assert(config.xyzFast.showCell === true, 'XYZ web test should encode cell drawing preference');
+}
 
 const expectedFormats = {
   pdb: 'pdb',
