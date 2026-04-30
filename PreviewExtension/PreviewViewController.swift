@@ -337,7 +337,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     ) throws {
         let assetsDirectory = previewsDirectory.appendingPathComponent("assets", isDirectory: true)
         try fileManager.createDirectory(at: assetsDirectory, withIntermediateDirectories: true)
-        for assetName in ["molstar.js", "molstar.css", "viewer.js"] {
+        for assetName in ["molstar.js", "molstar.css", "burette-agent.js", "viewer.js"] {
             let source = bundledWebDirectory.appendingPathComponent(assetName)
             let destination = assetsDirectory.appendingPathComponent(assetName)
             try copyAssetAtomically(from: source, to: destination, fileManager: fileManager)
@@ -893,6 +893,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           <script>
             window.__mqlStatus && window.__mqlStatus('[web] About to load viewer.js from bundled resource…');
           </script>
+          <script src="../assets/burette-agent.js"></script>
           <script src="../assets/viewer.js"></script>
           <script>
             window.__mqlDebug && window.__mqlDebug('[web] viewer.js script tag parsed. async startup may still be running.');
@@ -918,7 +919,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     private static func validateVendoredMolstarAssets(in webDirectory: URL, fileManager: FileManager, diagnostics: inout [String]) throws {
-        let required = ["viewer.js", "molstar.js", "molstar.css"]
+        let required = ["viewer.js", "burette-agent.js", "molstar.js", "molstar.css"]
         for name in required {
             let url = webDirectory.appendingPathComponent(name)
             let exists = fileManager.fileExists(atPath: url.path)

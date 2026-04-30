@@ -912,6 +912,12 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
 ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     applyViewerBackground(viewer);
     window.BurreteViewer = viewer;
+    window.BuretteViewer = viewer;
+    try {
+      window.BurreteAgent?.attach?.({ viewer, plugin: viewer.plugin, config });
+    } catch (error) {
+      debug('BurreteAgent attach failed: ' + (error && error.message || String(error)));
+    }
     activeViewer = viewer;
     window.BurreteHandleResize = () => scheduleViewerResize(viewer, 60);
     applyViewerUIScale(viewer);
@@ -932,6 +938,12 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       45000,
       `Mol* timed out while parsing/rendering ${prepared.label} as ${prepared.format}.`
     );
+
+    try {
+      window.BurreteAgent?.notifyStructureLoaded?.({ viewer, plugin: viewer.plugin, config, prepared });
+    } catch (error) {
+      debug('BurreteAgent notifyStructureLoaded failed: ' + (error && error.message || String(error)));
+    }
 
     window.addEventListener('resize', () => scheduleViewerResize(viewer, 100));
     await waitForAnimationFrame();
