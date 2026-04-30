@@ -6,7 +6,7 @@
   const MAX_SDF_GRID_ATOMS = 900;
   const MAX_SDF_GRID_BONDS = 900;
   const SDF_GRID_PADDING = 4.0;
-  const TOOLBAR_POSITION_VERSION = '6';
+  const TOOLBAR_POSITION_VERSION = '7';
   const TOOLBAR_MARGIN = 12;
   const VIEWER_THEME_STORAGE_KEY = 'buret.viewer.theme';
   try { window.__mqlDebug && window.__mqlDebug('[viewer.js] top-level IIFE entered; readyState=' + document.readyState); } catch (_) {}
@@ -380,7 +380,8 @@
 
     let drag = null;
     toolbar.addEventListener('pointerdown', event => {
-      if (!event.target.closest('[data-drag-handle]')) return;
+      if (event.target.closest('[data-buret-toggle]')) return;
+      if (!event.target.closest('[data-drag-handle]') && event.target.closest('.buret-button')) return;
       const rect = toolbar.getBoundingClientRect();
       drag = {
         dx: event.clientX - rect.left,
@@ -404,7 +405,8 @@
     });
     toolbar.addEventListener('pointerup', event => {
       if (!drag || event.pointerId !== drag.pointerId) return;
-      const shouldToggle = !drag.moved;
+      const shouldToggle = !drag.moved && event.target.closest('[data-drag-handle]');
+      try { toolbar.releasePointerCapture(event.pointerId); } catch (_) {}
       drag = null;
       if (shouldToggle) {
         setToolbarCollapsed(toolbar, !toolbar.classList.contains('collapsed'), resizeState.viewer);
@@ -441,18 +443,25 @@
       window.getComputedStyle(viewportControls).display !== 'none';
     const right = controlsVisible ? controlsRect.left - TOOLBAR_MARGIN : window.innerWidth - TOOLBAR_MARGIN;
     const left = right - toolbar.offsetWidth;
-    const top = rect && rect.height > 0 ? rect.top + TOOLBAR_MARGIN : TOOLBAR_MARGIN;
+    const top = Math.max(toolbarSafeTop(), rect && rect.height > 0 ? rect.top + TOOLBAR_MARGIN : TOOLBAR_MARGIN);
     toolbar.dataset.defaultPosition = '1';
     moveToolbar(toolbar, left, top);
   }
 
   function moveToolbar(toolbar, left, top) {
-    const margin = 8;
+    const margin = TOOLBAR_MARGIN;
+    const safeTop = toolbarSafeTop();
     const maxLeft = Math.max(margin, window.innerWidth - toolbar.offsetWidth - margin);
-    const maxTop = Math.max(margin, window.innerHeight - toolbar.offsetHeight - margin);
+    const maxTop = Math.max(safeTop, window.innerHeight - toolbar.offsetHeight - margin);
     toolbar.style.left = Math.min(Math.max(margin, left), maxLeft) + 'px';
-    toolbar.style.top = Math.min(Math.max(margin, top), maxTop) + 'px';
+    toolbar.style.top = Math.min(Math.max(safeTop, top), maxTop) + 'px';
     toolbar.style.right = 'auto';
+  }
+
+  function toolbarSafeTop() {
+    const raw = window.getComputedStyle(document.documentElement).getPropertyValue('--buret-toolbar-safe-top');
+    const parsed = Number.parseFloat(raw);
+    return Number.isFinite(parsed) ? Math.max(TOOLBAR_MARGIN, parsed) : TOOLBAR_MARGIN;
   }
 
   function saveToolbarPosition(toolbar) {
