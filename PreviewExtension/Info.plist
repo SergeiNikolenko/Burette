@@ -20,6 +20,49 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>XYZ molecular structure file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.xyz</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>xyz</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>chemical/x-xyz</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>GROMACS structure file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.gro</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>gro</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 	<key>NSExtension</key>
 	<dict>
 		<key>NSExtensionAttributes</key>
@@ -76,14 +119,17 @@
 				<string>uk.ac.ebi.pdbe.pdb</string>
 				<string>uk.ac.ebi.pdbe.cif</string>
 				<string>uk.ac.ebi.pdbe.mmcif</string>
-				<string>public.pdb</string>
-				<string>public.mmcif</string>
-				<string>public.cif</string>
-				<string>com.schrodinger.sdf</string>
-				<string>com.local.burrete10.xyz</string>
-				<string>com.local.burrete10.gro</string>
-				<string>com.schrodinger.pdb</string>
-			</array>
+					<string>public.pdb</string>
+					<string>public.mmcif</string>
+					<string>public.cif</string>
+					<string>public.data</string>
+						<string>com.schrodinger.sdf</string>
+						<string>com.local.burrete10.xyz</string>
+						<string>dyn.ah62d4rv4ge81u8p4</string>
+						<string>com.local.burrete10.gro</string>
+						<string>dyn.ah62d4rv4ge80s6xt</string>
+						<string>com.schrodinger.pdb</string>
+					</array>
 			<key>QLSupportsSearchableItems</key>
 			<false/>
 		</dict>

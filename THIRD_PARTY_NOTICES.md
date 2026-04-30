@@ -7,3 +7,7 @@ The preview engine vendors `molstar/build/viewer/molstar.js` and `molstar/build/
 ## QuickLookProtein
 
 This project follows the same broad product idea as QuickLookProtein: a host macOS app that packages a Quick Look extension and renders protein/3D structure files in a WebKit view. No QuickLookProtein source files are vendored here.
+
+## xyzrender
+
+Burrete can call a user-installed `xyzrender` executable from the standalone app and includes an independent dependency-free JavaScript Fast XYZ renderer for Quick Look and app previews. The `xyzrender` Python package is MIT-licensed by Alister S. Goodfellow and contributors. `xyzrender` itself is not bundled with Burrete.

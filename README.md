@@ -1,9 +1,9 @@
 <h1 align="center">Burrete</h1>
 
-<p align="center">Finder-native molecular structure previews for macOS, powered by Mol*.</p>
+<p align="center">Finder-native molecular structure previews for macOS, powered by Mol* and a fast SVG path for XYZ.</p>
 
 <p align="center">
-  <img alt="Version 0.10.8" src="https://img.shields.io/badge/version-0.10.8-0f8f72.svg?style=flat-square" />
+  <img alt="Version 0.10.15" src="https://img.shields.io/badge/version-0.10.15-0f8f72.svg?style=flat-square" />
   <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-yellow.svg?style=flat-square" /></a>
   <img alt="macOS 12+" src="https://img.shields.io/badge/macOS-12%2B-blue.svg?style=flat-square" />
   <img alt="Quick Look" src="https://img.shields.io/badge/Quick%20Look-extension-57606a.svg?style=flat-square" />
@@ -47,6 +47,8 @@ Burrete supports common molecular structure formats:
 - SDF, MOL, and MOL2
 - XYZ and GRO
 
+XYZ files use a lightweight Fast XYZ SVG renderer by default in Quick Look for faster first-frame previews. Mol* remains available as the interactive renderer for live rotation and full app controls, and the standalone app can optionally call a user-installed `xyzrender` executable for publication-style SVG output with the built-in preset set, a custom JSON config path, and optional advanced CLI flags.
+
 Double-clicking a supported file can open it in Burrete. Pressing Space keeps
 using the Quick Look preview.
 
@@ -59,6 +61,7 @@ Burrete keeps the preview compact and Finder-friendly:
 - a transparent Quick Look background that fits the macOS preview frame
 - a small floating toolbar for fullscreen and optional Mol* panels
 - optional sequence, log, left, and right Mol* panels when you need them
+- fast static SVG previews for `.xyz` files, including first-frame multi-frame XYZ and simple extXYZ lattice boxes
 
 ## Settings
 
@@ -67,6 +70,8 @@ Burrete runs as a menu bar app. Its settings window includes:
 - launch and menu bar behavior
 - transparent or opaque preview background
 - default visibility for Mol* panels
+- renderer selection: Auto, Fast XYZ SVG, Mol* Interactive, or External xyzrender for the standalone app, including executable path, built-in preset/custom JSON config, and extra CLI flags
+- quick `.xyz` toolbar switching in the standalone app between Fast SVG, Mol* Interactive, and external `xyzrender`
 - Finder file association registration
 - preview cache cleanup
 - log access

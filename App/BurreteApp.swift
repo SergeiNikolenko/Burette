@@ -29,6 +29,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if UserDefaults.standard.object(forKey: "openSettingsAtLaunch") == nil {
             UserDefaults.standard.set(false, forKey: "openSettingsAtLaunch")
         }
+        if UserDefaults.standard.object(forKey: "structureRendererMode") == nil {
+            UserDefaults.standard.set("auto", forKey: "structureRendererMode")
+        }
+        if UserDefaults.standard.object(forKey: "xyzFastStyle") == nil {
+            UserDefaults.standard.set("default", forKey: "xyzFastStyle")
+        }
+        if UserDefaults.standard.object(forKey: "xyzrenderPreset") == nil {
+            UserDefaults.standard.set("default", forKey: "xyzrenderPreset")
+        }
+        if UserDefaults.standard.object(forKey: "xyzrenderCustomConfigPath") == nil {
+            UserDefaults.standard.set("", forKey: "xyzrenderCustomConfigPath")
+        }
+        if UserDefaults.standard.object(forKey: "xyzrenderExecutablePath") == nil {
+            UserDefaults.standard.set("", forKey: "xyzrenderExecutablePath")
+        }
+        if UserDefaults.standard.object(forKey: "xyzrenderExtraArguments") == nil {
+            UserDefaults.standard.set("", forKey: "xyzrenderExtraArguments")
+        }
         if UserDefaults.standard.bool(forKey: "openSettingsAtLaunch") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
                 if self?.openedDocumentAtLaunch == false {
@@ -240,7 +258,11 @@ enum BurreteFileAssociations {
         "com.local.burrete10.mol",
         "com.local.burrete10.mol2",
         "com.local.burrete10.xyz",
+        // LaunchServices resolves bare .xyz files to this dynamic UTI on current macOS.
+        "dyn.ah62d4rv4ge81u8p4",
         "com.local.burrete10.gro",
+        // LaunchServices resolves bare .gro files to this dynamic UTI on current macOS.
+        "dyn.ah62d4rv4ge80s6xt",
         "com.local.molstarquicklook10.pdb",
         "com.local.molstarquicklook10.cif",
         "com.local.molstarquicklook10.mmcif",
