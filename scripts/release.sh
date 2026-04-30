@@ -18,7 +18,7 @@ EXPORT_OPTIONS="${EXPORT_OPTIONS:-$ROOT/ExportOptions.plist}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-}"
 
 require_tool() { command -v "$1" >/dev/null 2>&1 || { echo "error: $1 is required. $2" >&2; exit 1; }; }
-require_asset() { local p="$1"; [[ -s "$p" ]] || { echo "error: missing vendored web asset: $p" >&2; echo "Run: npm ci --ignore-scripts && npm run vendor:molstar" >&2; exit 1; }; }
+require_asset() { local p="$1"; [[ -s "$p" ]] || { echo "error: missing vendored web asset: $p" >&2; echo "Run: npm ci --ignore-scripts && npm run vendor:molstar && npm run vendor:rdkit" >&2; exit 1; }; }
 
 require_tool xcodebuild "Install full Xcode from the App Store."
 require_tool xcrun "Install full Xcode from the App Store."
@@ -28,8 +28,13 @@ require_asset PreviewExtension/Web/molstar.js
 require_asset PreviewExtension/Web/molstar.css
 require_asset PreviewExtension/Web/burette-agent.js
 require_asset PreviewExtension/Web/viewer.js
+require_asset PreviewExtension/Web/grid-viewer.js
+require_asset PreviewExtension/Web/grid.css
+require_asset PreviewExtension/Web/rdkit/RDKit_minimal.js
+require_asset PreviewExtension/Web/rdkit/RDKit_minimal.wasm
 node --check PreviewExtension/Web/viewer.js >/dev/null
 node --check PreviewExtension/Web/burette-agent.js >/dev/null
+node --check PreviewExtension/Web/grid-viewer.js >/dev/null
 
 if [[ ! -f "$EXPORT_OPTIONS" ]]; then
   cat >&2 <<MSG

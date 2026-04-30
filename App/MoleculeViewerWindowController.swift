@@ -95,6 +95,16 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
             setViewerPageZoom(CGFloat(value.doubleValue))
             return
         }
+        if type == "copyText", let text = body["text"] as? String {
+            copyToPasteboard(text)
+            return
+        }
+        if type == "exportText",
+           let text = body["text"] as? String,
+           let name = body["name"] as? String {
+            exportText(text, suggestedName: name)
+            return
+        }
         let text = (body["message"] as? String) ?? ""
         NSLog("[BurreteAppViewer] %@: %@ %@", fileURL.lastPathComponent, type, text)
     }
@@ -106,6 +116,33 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         webView.pageZoom = clamped
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             self?.webView.evaluateJavaScript("window.BurreteHandleResize && window.BurreteHandleResize();", completionHandler: nil)
+        }
+    }
+
+    private func copyToPasteboard(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        NSLog("[BurreteAppViewer] %@: copied %d characters", fileURL.lastPathComponent, text.count)
+    }
+
+    private func exportText(_ text: String, suggestedName: String) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = suggestedName
+        panel.canCreateDirectories = true
+        let writeSelection = { [weak self] in
+            guard let self, let url = panel.url else { return }
+            do {
+                try text.write(to: url, atomically: true, encoding: .utf8)
+            } catch {
+                NSLog("[BurreteAppViewer] %@: export failed: %@", self.fileURL.lastPathComponent, String(describing: error))
+            }
+        }
+        if let sheetWindow = window ?? NSApp.keyWindow {
+            panel.beginSheetModal(for: sheetWindow) { response in
+                if response == .OK { writeSelection() }
+            }
+        } else if panel.runModal() == .OK {
+            writeSelection()
         }
     }
 
@@ -162,11 +199,39 @@ private struct AppViewerRuntime {
         try FileManager.default.createDirectory(at: runtimeDirectory, withIntermediateDirectories: true)
         try copyAssets(from: bundledWebDirectory, to: assetsDirectory)
 
-        let format = AppViewerStructureFormat(url: fileURL, data: data)
         let transparentBackground = UserDefaults.standard.object(forKey: "useTransparentPreviewBackground") as? Bool ?? false
         let viewerTheme = UserDefaults.standard.string(forKey: "viewerTheme") ?? "dark"
         let canvasBackground = UserDefaults.standard.string(forKey: "viewerCanvasBackground") ?? "black"
         let canvasIsTransparent = canvasBackground == "transparent"
+
+        if let gridPreview = try MoleculeGridPreviewBuilder.makePreview(
+            fileURL: fileURL,
+            data: data,
+            host: .app,
+            theme: viewerTheme,
+            canvasBackground: canvasBackground,
+            transparentBackground: canvasIsTransparent,
+            debug: false,
+            allowSelection: true,
+            allowExport: true,
+            maxRecords: 5000
+        ) {
+            try requireGridRuntimeAssets(in: assetsDirectory)
+            try Data(gridHTML(title: fileURL.lastPathComponent, transparentBackground: transparentBackground).utf8)
+                .write(to: runtimeDirectory.appendingPathComponent("index.html"), options: [.atomic])
+            try Data("window.BurreteConfig = \(gridPreview.configJSON);\n".utf8)
+                .write(to: runtimeDirectory.appendingPathComponent("preview-config.js"), options: [.atomic])
+            try Data("window.BurreteDataBase64 = null;\n".utf8)
+                .write(to: runtimeDirectory.appendingPathComponent("preview-data.js"), options: [.atomic])
+            try Data(gridPreview.recordsScript.utf8)
+                .write(to: runtimeDirectory.appendingPathComponent("preview-grid-records.js"), options: [.atomic])
+            return AppViewerRuntime(
+                indexURL: runtimeDirectory.appendingPathComponent("index.html"),
+                readAccessURL: baseDirectory
+            )
+        }
+
+        let format = AppViewerStructureFormat(url: fileURL, data: data)
         let config: [String: Any] = [
             "format": format.molstarFormat,
             "binary": format.isBinary,
@@ -204,10 +269,23 @@ private struct AppViewerRuntime {
     }
 
     private static func copyAssets(from sourceDirectory: URL, to assetsDirectory: URL) throws {
-        for name in ["molstar.js", "molstar.css", "burette-agent.js", "viewer.js"] {
+        for name in ["molstar.js", "molstar.css", "burette-agent.js", "viewer.js", "grid-viewer.js", "grid.css"] {
             let source = sourceDirectory.appendingPathComponent(name)
             let destination = assetsDirectory.appendingPathComponent(name)
             try copyAssetAtomically(from: source, to: destination)
+        }
+        let rdkitSource = sourceDirectory.appendingPathComponent("rdkit", isDirectory: true)
+        if FileManager.default.fileExists(atPath: rdkitSource.path) {
+            try copyDirectoryAtomically(from: rdkitSource, to: assetsDirectory.appendingPathComponent("rdkit", isDirectory: true))
+        }
+    }
+
+    private static func requireGridRuntimeAssets(in assetsDirectory: URL) throws {
+        for relativePath in ["grid-viewer.js", "grid.css", "rdkit/RDKit_minimal.js", "rdkit/RDKit_minimal.wasm"] {
+            let url = assetsDirectory.appendingPathComponent(relativePath)
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                throw AppViewerError.missingWebResources
+            }
         }
     }
 
@@ -224,6 +302,20 @@ private struct AppViewerRuntime {
         } else {
             try fileManager.moveItem(at: temporaryURL, to: destination)
         }
+    }
+
+    private static func copyDirectoryAtomically(from source: URL, to destination: URL) throws {
+        let fileManager = FileManager.default
+        let temporaryURL = destination
+            .deletingLastPathComponent()
+            .appendingPathComponent(".\(destination.lastPathComponent).\(UUID().uuidString).tmp", isDirectory: true)
+        try? fileManager.removeItem(at: temporaryURL)
+        defer { try? fileManager.removeItem(at: temporaryURL) }
+        try fileManager.copyItem(at: source, to: temporaryURL)
+        if fileManager.fileExists(atPath: destination.path) {
+            try fileManager.removeItem(at: destination)
+        }
+        try fileManager.moveItem(at: temporaryURL, to: destination)
     }
 
     private static func pruneRuntimeDirectories(in baseDirectory: URL) {
@@ -252,6 +344,42 @@ private struct AppViewerRuntime {
     private static func fileSize(for url: URL) throws -> Int64 {
         let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
         return (attrs[.size] as? NSNumber)?.int64Value ?? 0
+    }
+
+    private static func gridHTML(title: String, transparentBackground: Bool) -> String {
+        let backgroundClass = transparentBackground ? "burette-transparent-background" : "burette-opaque-background"
+        return """
+        <!doctype html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>Burrete Grid - \(escapeHTML(title))</title>
+          <link rel="stylesheet" href="../assets/grid.css" />
+          <script>
+            (function () {
+              function post(type, message, payload) {
+                try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burrete.postMessage(Object.assign({ type: type, message: String(message || '') }, payload || {})); } catch (_) {}
+              }
+              window.__mqlPost = post;
+            })();
+          </script>
+        </head>
+        <body class="\(backgroundClass)">
+          <div id="app"></div>
+          <div id="status">Loading molecule grid...</div>
+          <script>
+            window.BurreteInlineMode = true;
+            window.BurreteGridMode = true;
+            window.BurreteDebug = false;
+          </script>
+          <script src="preview-config.js"></script>
+          <script src="preview-grid-records.js"></script>
+          <script src="../assets/rdkit/RDKit_minimal.js"></script>
+          <script src="../assets/grid-viewer.js"></script>
+        </body>
+        </html>
+        """
     }
 
     private static func html(title: String, transparentBackground: Bool) -> String {
@@ -748,6 +876,9 @@ private struct AppViewerStructureFormat {
             molstarFormat = "mmcif"
             isBinary = true
         case "sdf", "sd":
+            molstarFormat = "sdf"
+            isBinary = false
+        case "smi", "smiles":
             molstarFormat = "sdf"
             isBinary = false
         case "mol":
