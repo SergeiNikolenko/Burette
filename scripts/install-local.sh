@@ -79,10 +79,21 @@ import Foundation
 import CoreServices
 
 let appURL = URL(fileURLWithPath: ProcessInfo.processInfo.environment["BURRETE_APP_PATH"] ?? "")
-let bundleID = "com.local.BurreteV10" as CFString
+let bundleID = "com.local.BurreteV10" as NSString
 LSRegisterURL(appURL as CFURL, true)
-for contentType in ["dyn.ah62d4rv4ge81u8p4", "dyn.ah62d4rv4ge80s6xt"] {
-    LSSetDefaultRoleHandlerForContentType(contentType as CFString, .viewer, bundleID)
+for contentType in [
+    "com.local.burrete10.xyz",
+    "net.sourceforge.openbabel.xyz",
+    "dyn.ah62d4rv4ge81u8p4",
+    "dyn.ah62d4rv4ge80s6xt",
+    "com.local.burrete10.csv",
+    "dyn.ah62d4rv4ge80g650",
+    "public.comma-separated-values-text",
+    "com.local.burrete10.tsv",
+    "dyn.ah62d4rv4ge81k650",
+    "public.tab-separated-values-text"
+] {
+    LSSetDefaultRoleHandlerForContentType(contentType as NSString, .viewer, bundleID)
 }
 ' >/dev/null 2>&1 || true
 fi

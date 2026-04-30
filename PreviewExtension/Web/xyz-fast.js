@@ -6,6 +6,7 @@
   const DEFAULT_HEIGHT = 860;
   const MAX_BOND_INFERENCE_ATOMS = 1800;
   const MAX_DRAWN_BONDS = 7000;
+  const SMALL_MOLECULE_MAX_SCALE = 116;
 
   const ELEMENT_COLORS = {
     H: '#f2f2f2', He: '#d9ffff', Li: '#cc80ff', Be: '#c2ff00', B: '#ffb5b5', C: '#6f7680',
@@ -208,7 +209,9 @@
     const pad = 88;
     const spanX = Math.max(1e-3, maxX - minX);
     const spanY = Math.max(1e-3, maxY - minY);
-    const scale = Math.min((width - pad * 2) / spanX, (height - pad * 2) / spanY);
+    const rawScale = Math.min((width - pad * 2) / spanX, (height - pad * 2) / spanY);
+    const maxProjectionScale = Math.max(42, Math.min(SMALL_MOLECULE_MAX_SCALE, Math.min(width, height) / 7.0));
+    const scale = Math.min(rawScale, maxProjectionScale);
     const tx = width / 2 - ((minX + maxX) / 2) * scale;
     const ty = height / 2 + ((minY + maxY) / 2) * scale;
     const toScreen = p => ({ ...p, sx: p.x * scale + tx, sy: -p.y * scale + ty, sz: p.z });
@@ -235,7 +238,7 @@
     const projected = projectScene(parsed.atoms, parsed.cell, width, height);
     const atoms = projected.atoms;
     const showCell = config?.xyzFast?.showCell !== false;
-    const background = config.transparentBackground ? 'transparent' : 'var(--buret-shell-background, #000)';
+    const background = config.transparentBackground ? 'transparent' : 'var(--buret-canvas-background, #000)';
     const atomScale = Math.max(0.1, Math.min(2.2, style.atomScale)) * Math.max(1.0, Math.min(22.0, projected.scale / 32));
     const bondItems = style.showBonds ? bonds.map(bond => ({ ...bond, z: (atoms[bond.a].sz + atoms[bond.b].sz) / 2 })).sort((a, b) => a.z - b.z) : [];
     const atomItems = atoms.map(atom => ({ ...atom, radius: Math.min(style.maxAtomRadius, Math.max(style.minAtomRadius, radiusForElement(atom.element) * 11.5 * atomScale)) })).sort((a, b) => a.sz - b.sz);
@@ -265,11 +268,60 @@
     return parts.join('');
   }
 
-  function renderBadge(parsed, bonds, config) {
-    const frameText = parsed.frameCount > 1 ? ` · first frame of ${parsed.frameCount}` : '';
+  function renderBadge(parsed, bonds, config, frameState = null) {
+    const totalFrames = frameState?.totalCount || parsed.frameCount;
+    let frameText = '';
+    if (totalFrames > 1 && frameState) {
+      const loadedText = frameState.preloadedCount < totalFrames ? ` · ${frameState.preloadedCount} loaded` : '';
+      frameText = ` · frame ${frameState.selected + 1} of ${totalFrames}${loadedText}`;
+    } else if (totalFrames > 1) {
+      frameText = ` · first frame of ${totalFrames}`;
+    }
     const cellText = parsed.cell ? ' · extXYZ cell' : '';
     const style = escapeHTML(config?.xyzFast?.style || 'default');
     return `<div class="buret-xyz-badge"><strong>Fast XYZ SVG</strong><span>${parsed.atoms.length} atoms · ${bonds.length} bonds${cellText}${frameText} · ${style}</span></div>`;
+  }
+
+  function decodeBase64Text(value) {
+    const raw = String(value || '');
+    if (!raw) return '';
+    try {
+      const binary = root.atob(raw);
+      const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+      if (typeof root.TextDecoder === 'function') {
+        return new root.TextDecoder('utf-8').decode(bytes);
+      }
+      return Array.from(bytes, byte => String.fromCharCode(byte)).join('');
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function preloadedXYZFrames(text, config = {}) {
+    const frames = Array.isArray(config?.xyzFast?.frames) ? config.xyzFast.frames : [];
+    const decodedFrames = frames
+      .map((frame, position) => ({
+        index: Number.isFinite(Number(frame?.index)) ? Number(frame.index) : position,
+        text: decodeBase64Text(frame?.dataBase64),
+        atomCount: Number.isFinite(Number(frame?.atomCount)) ? Number(frame.atomCount) : null,
+        comment: String(frame?.comment || '')
+      }))
+      .filter(frame => frame.text.trim());
+    return decodedFrames.length ? decodedFrames : [{ index: 0, text: String(text || ''), atomCount: null, comment: '' }];
+  }
+
+  function frameControlHTML(frameState) {
+    if (!frameState || frameState.preloadedCount <= 1) return '';
+    const value = frameState.selected + 1;
+    const totalText = frameState.preloadedCount < frameState.totalCount
+      ? `${value} / ${frameState.preloadedCount} loaded`
+      : `${value} / ${frameState.totalCount}`;
+    return `
+      <div class="buret-xyz-frame-control" aria-label="XYZ frame">
+        <span>Frame</span>
+        <input type="range" min="1" max="${frameState.preloadedCount}" step="1" value="${value}" data-buret-xyz-frame>
+        <output data-buret-xyz-frame-output>${escapeHTML(totalText)}</output>
+      </div>`;
   }
 
   function installStyles() {
@@ -277,12 +329,20 @@
     const style = root.document.createElement('style');
     style.id = 'buret-xyz-fast-style';
     style.textContent = `
-      .buret-xyz-fast-root { position: absolute; inset: 0; overflow: hidden; background: var(--buret-shell-background, #000); }
+      .buret-xyz-fast-root { position: absolute; inset: 0; overflow: hidden; background: var(--buret-canvas-background, #000); }
       body.burette-transparent-background .buret-xyz-fast-root { background: transparent; }
+      .buret-xyz-stage { position: absolute; inset: 0; overflow: hidden; }
       .buret-xyz-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
       .buret-xyz-badge { position: absolute; left: 14px; bottom: 14px; z-index: 30; max-width: calc(100vw - 28px); box-sizing: border-box; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--buret-toolbar-border, rgba(255,255,255,0.12)); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.9)); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: 0 8px 22px rgba(0,0,0,0.20); font: 11px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; pointer-events: none; }
       .buret-xyz-badge strong { display: block; font-size: 11px; }
       .buret-xyz-badge span { display: block; opacity: 0.76; }
+      .buret-xyz-frame-control { position: absolute; right: 14px; bottom: 14px; z-index: 31; display: grid; grid-template-columns: auto minmax(136px, 22vw) auto; align-items: center; gap: 9px; max-width: calc(100vw - 28px); box-sizing: border-box; padding: 8px 10px; border-radius: 11px; border: 1px solid var(--buret-toolbar-border, rgba(255,255,255,0.14)); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.88)); -webkit-backdrop-filter: blur(14px) saturate(160%); backdrop-filter: blur(14px) saturate(160%); box-shadow: 0 10px 24px rgba(0,0,0,0.22); font: 11px/1.25 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
+      .buret-xyz-frame-control span { font-weight: 700; }
+      .buret-xyz-frame-control output { min-width: 76px; text-align: right; opacity: 0.78; font-variant-numeric: tabular-nums; }
+      .buret-xyz-frame-control input { width: 100%; accent-color: var(--buret-accent, #0a84ff); }
+      @media (max-width: 680px) {
+        .buret-xyz-frame-control { left: 14px; right: 14px; bottom: 58px; grid-template-columns: auto minmax(0, 1fr) auto; }
+      }
     `;
     root.document.head.appendChild(style);
   }
@@ -290,16 +350,44 @@
   function render({ container, text, config }) {
     if (!container) throw new Error('XYZ fast renderer needs a container element.');
     installStyles();
-    const parsed = parseXYZFirstFrame(text);
-    const bonds = inferBonds(parsed.atoms, config?.xyzFast || {});
-    container.innerHTML = `<div class="buret-xyz-fast-root">${renderSVG(parsed, bonds, config)}${renderBadge(parsed, bonds, config)}</div>`;
-    return { atoms: parsed.atoms.length, bonds: bonds.length, frames: parsed.frameCount, hasCell: !!parsed.cell };
+    const frames = preloadedXYZFrames(text, config);
+    const totalCount = Math.max(frames.length, Number(config?.xyzFast?.frameCount) || 0, 1);
+    const initialFrameState = { selected: 0, preloadedCount: frames.length, totalCount };
+    container.innerHTML = `<div class="buret-xyz-fast-root"><div class="buret-xyz-stage"></div><div data-buret-xyz-badge-host></div>${frameControlHTML(initialFrameState)}</div>`;
+    const rootEl = container.querySelector('.buret-xyz-fast-root');
+    const stage = rootEl.querySelector('.buret-xyz-stage');
+    const badgeHost = rootEl.querySelector('[data-buret-xyz-badge-host]');
+    const slider = rootEl.querySelector('[data-buret-xyz-frame]');
+    const output = rootEl.querySelector('[data-buret-xyz-frame-output]');
+    let currentResult = { atoms: 0, bonds: 0, frames: totalCount, hasCell: false };
+
+    const drawFrame = position => {
+      const selected = Math.max(0, Math.min(frames.length - 1, Number(position) || 0));
+      const parsed = parseXYZFirstFrame(frames[selected].text);
+      const bonds = inferBonds(parsed.atoms, config?.xyzFast || {});
+      const frameState = { selected, preloadedCount: frames.length, totalCount };
+      stage.innerHTML = renderSVG(parsed, bonds, config);
+      badgeHost.innerHTML = renderBadge(parsed, bonds, config, frameState);
+      if (output) {
+        output.textContent = frames.length < totalCount ? `${selected + 1} / ${frames.length} loaded` : `${selected + 1} / ${totalCount}`;
+      }
+      currentResult = { atoms: parsed.atoms.length, bonds: bonds.length, frames: totalCount, hasCell: !!parsed.cell };
+    };
+
+    drawFrame(0);
+    if (slider) {
+      slider.addEventListener('input', event => {
+        drawFrame(Number(event.target.value) - 1);
+      });
+    }
+    return currentResult;
   }
 
   root.BurreteXYZFast = {
     parseXYZFirstFrame,
     parseExtXYZLattice,
     inferBonds,
+    preloadedXYZFrames,
     renderSVG,
     render
   };

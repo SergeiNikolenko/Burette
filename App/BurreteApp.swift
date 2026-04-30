@@ -399,11 +399,15 @@ enum BurreteFileAssociations {
     ]
 
     private static let csvContentTypes = [
+        "com.local.burrete10.csv",
         "public.comma-separated-values-text",
+        "dyn.ah62d4rv4ge80g650",
     ]
 
     private static let tsvContentTypes = [
-        "public.tab-separated-values-text"
+        "com.local.burrete10.tsv",
+        "public.tab-separated-values-text",
+        "dyn.ah62d4rv4ge81k650"
     ]
 
     private static func contentTypes(for fileSupport: MoleculeGridFileSupport) -> [String] {

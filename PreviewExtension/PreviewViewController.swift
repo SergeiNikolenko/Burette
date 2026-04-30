@@ -18,6 +18,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private static let defaultViewerPageZoom: CGFloat = 1.0
     private static let minViewerPageZoom: CGFloat = 1.0
     private static let maxViewerPageZoom: CGFloat = 1.0
+    private static let maxXYZFastPreloadedFrames = 80
 
     deinit {
         renderTimeoutWorkItem?.cancel()
@@ -541,7 +542,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         if renderer == "xyz-fast" {
             var xyzFast: [String: Any] = [
                 "style": preferences.xyzFastStyle,
-                "firstFrameOnly": true,
+                "firstFrameOnly": (xyzFastPayload?.frames.count ?? 0) <= 1,
                 "showCell": true,
                 "sourceByteCount": byteCount,
                 "previewByteCount": previewByteCount
@@ -549,6 +550,18 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             if let atomCount = xyzFastPayload?.atomCount { xyzFast["atomCount"] = atomCount }
             if let frameCount = xyzFastPayload?.frameCount { xyzFast["frameCount"] = frameCount }
             if let comment = xyzFastPayload?.comment, !comment.isEmpty { xyzFast["comment"] = comment }
+            if let xyzFastPayload, xyzFastPayload.frames.count > 1 {
+                xyzFast["preloadedFrameCount"] = xyzFastPayload.frames.count
+                xyzFast["frames"] = xyzFastPayload.frames.map { frame in
+                    var value: [String: Any] = [
+                        "index": frame.index,
+                        "dataBase64": frame.data.base64EncodedString(options: [])
+                    ]
+                    if let atomCount = frame.atomCount { value["atomCount"] = atomCount }
+                    if let comment = frame.comment, !comment.isEmpty { value["comment"] = comment }
+                    return value
+                }
+            }
             payload["xyzFast"] = xyzFast
         }
         let jsonData = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes])
@@ -1219,11 +1232,19 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
     }
 
+    private struct XYZFastFrame {
+        let index: Int
+        let data: Data
+        let atomCount: Int?
+        let comment: String?
+    }
+
     private struct XYZFastPayload {
         let data: Data
         let atomCount: Int?
         let frameCount: Int?
         let comment: String?
+        let frames: [XYZFastFrame]
     }
 
     private static func makeXYZFastPayload(from data: Data) -> XYZFastPayload? {
@@ -1232,30 +1253,33 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         var start = 0
         while start < lines.count && lines[start].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { start += 1 }
         guard start < lines.count else { return nil }
-        let firstToken = lines[start].trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ").first
-        guard let token = firstToken, let atomCount = Int(token), atomCount > 0 else { return nil }
-        let end = min(lines.count, start + atomCount + 2)
-        guard end > start + 1 else { return nil }
-        var firstFrame = lines[start..<end].joined(separator: "\n")
-        if !firstFrame.hasSuffix("\n") { firstFrame += "\n" }
-        let frameCount = countXYZFrames(lines: lines, start: start)
-        let comment = start + 1 < lines.count ? lines[start + 1] : nil
-        return XYZFastPayload(data: Data(firstFrame.utf8), atomCount: atomCount, frameCount: frameCount, comment: comment)
-    }
-
-    private static func countXYZFrames(lines: [String], start: Int) -> Int? {
         var index = start
         var frames = 0
+        var preloadedFrames: [XYZFastFrame] = []
         while index < lines.count && frames < 100_000 {
             while index < lines.count && lines[index].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { index += 1 }
             guard index < lines.count else { break }
             let firstToken = lines[index].trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ").first
             guard let token = firstToken, let atomCount = Int(token), atomCount > 0 else { break }
             guard index + atomCount + 1 < lines.count else { break }
+            if preloadedFrames.count < maxXYZFastPreloadedFrames {
+                let end = index + atomCount + 2
+                var frameText = lines[index..<end].joined(separator: "\n")
+                if !frameText.hasSuffix("\n") { frameText += "\n" }
+                let comment = index + 1 < lines.count ? lines[index + 1] : nil
+                preloadedFrames.append(XYZFastFrame(index: frames, data: Data(frameText.utf8), atomCount: atomCount, comment: comment))
+            }
             frames += 1
             index += atomCount + 2
         }
-        return frames > 0 ? frames : nil
+        guard let firstFrame = preloadedFrames.first else { return nil }
+        return XYZFastPayload(
+            data: firstFrame.data,
+            atomCount: firstFrame.atomCount,
+            frameCount: frames > 0 ? frames : nil,
+            comment: firstFrame.comment,
+            frames: preloadedFrames
+        )
     }
 
     private static func decodeText(_ data: Data) -> String {
