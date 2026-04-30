@@ -334,13 +334,16 @@
   function configureRendererControls(config) {
     const control = document.querySelector('[data-buret-renderer-control]');
     if (!control) return;
-    const isXYZ = config.appViewer === true && normalizeFormat(config.molstarFormat || config.format) === 'xyz';
-    control.classList.toggle('visible', isXYZ);
-    if (!isXYZ) return;
+    const format = normalizeFormat(config.molstarFormat || config.format);
+    const canSwitchRenderer = config.appViewer === true && (format === 'xyz' || format === 'sdf');
+    control.classList.toggle('visible', canSwitchRenderer);
+    if (!canSwitchRenderer) return;
 
     const renderer = normalizeRenderer(config.renderer);
     control.querySelectorAll('[data-buret-renderer]').forEach(button => {
       const value = button.getAttribute('data-buret-renderer');
+      const isFastXYZOnly = value === 'xyz-fast';
+      button.classList.toggle('hidden', isFastXYZOnly && format !== 'xyz');
       button.classList.toggle('active', value === renderer);
       if (control.dataset.rendererBound !== '1') {
         button.addEventListener('click', () => requestRendererSwitch(value));
@@ -411,6 +414,40 @@
     applyLayoutState(viewer);
   }
 
+  function initFastViewportReset(viewer) {
+    if (document.documentElement.dataset.buretFastViewportReset === '1') return;
+    document.documentElement.dataset.buretFastViewportReset = '1';
+    document.addEventListener('click', event => {
+      const button = event.target.closest('.msp-viewport-controls button[title="Reset Zoom"]');
+      if (!button) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      resetCameraInstantly(viewer);
+    }, true);
+  }
+
+  function resetCameraInstantly(viewer) {
+    let handled = false;
+    try {
+      if (typeof viewer?.plugin?.managers?.camera?.reset === 'function') {
+        viewer.plugin.managers.camera.reset(0);
+        handled = true;
+      }
+    } catch (error) {
+      debug('fast viewport reset via camera manager failed: ' + (error && error.message || String(error)));
+    }
+    try {
+      if (!handled && typeof viewer?.plugin?.canvas3d?.requestCameraReset === 'function') {
+        viewer.plugin.canvas3d.requestCameraReset(0);
+        handled = true;
+      }
+    } catch (error) {
+      debug('fast viewport reset via canvas3d failed: ' + (error && error.message || String(error)));
+    }
+    try { viewer?.plugin?.canvas3d?.requestDraw?.(); } catch (_) {}
+  }
+
   function restoreToolbarCollapsed(toolbar, viewer) {
     let collapsed = false;
     try {
@@ -467,6 +504,7 @@
         pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
+        startedOnHandle: !!event.target.closest('[data-drag-handle]'),
         moved: false
       };
       toolbar.setPointerCapture(event.pointerId);
@@ -483,7 +521,7 @@
     });
     toolbar.addEventListener('pointerup', event => {
       if (!drag || event.pointerId !== drag.pointerId) return;
-      const shouldToggle = !drag.moved && event.target.closest('[data-drag-handle]');
+      const shouldToggle = !drag.moved && drag.startedOnHandle;
       try { toolbar.releasePointerCapture(event.pointerId); } catch (_) {}
       drag = null;
       if (shouldToggle) {
@@ -1112,6 +1150,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     applyViewerUIScale(viewer);
     initViewerKeyboardShortcuts(viewer);
     initBuretToolbar(viewer);
+    initFastViewportReset(viewer);
 
     await waitForAnimationFrame();
     applyLayoutState(viewer);

@@ -143,6 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let existing = viewerWindows[fileURL] {
             existing.showWindow(nil)
             presentWindow(existing.window, activate: true)
+            existing.enterFullScreen()
             return
         }
 
@@ -162,6 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.showWindow(nil)
         controller.window?.center()
         presentWindow(controller.window, activate: true)
+        controller.enterFullScreen()
     }
 
     private func presentWindow(_ window: NSWindow?, activate: Bool) {
@@ -268,6 +270,7 @@ enum BurreteFileAssociations {
         "com.local.molstarquicklook10.mmcif",
         "com.local.molstarquicklook10.bcif",
         "com.local.molstarquicklook10.sdf",
+        "com.local.molstarquicklook10.smiles",
         "com.local.molstarquicklook10.mol",
         "com.local.molstarquicklook10.mol2",
         "org.wwpdb.pdb",

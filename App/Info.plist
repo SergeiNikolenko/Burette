@@ -49,6 +49,7 @@
 				<string>com.local.molstarquicklook10.mmcif</string>
 				<string>com.local.molstarquicklook10.bcif</string>
 				<string>com.local.molstarquicklook10.sdf</string>
+				<string>com.local.molstarquicklook10.smiles</string>
 				<string>com.local.molstarquicklook10.mol</string>
 				<string>com.local.molstarquicklook10.mol2</string>
 				<string>org.wwpdb.pdb</string>

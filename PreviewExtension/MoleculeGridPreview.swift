@@ -62,6 +62,7 @@ enum MoleculeGridPreviewBuilder {
             "host": host.rawValue,
             "quickLookBuild": host == .quickLook ? "burrete-grid2d-quicklook" : "burrete-grid2d-app",
             "debug": debug,
+            "appViewer": host == .app,
             "theme": theme,
             "canvasBackground": canvasBackground,
             "transparentBackground": transparentBackground,
@@ -72,7 +73,8 @@ enum MoleculeGridPreviewBuilder {
             "capabilities": [
                 "selection": allowSelection,
                 "export": allowExport,
-                "substructureSearch": false
+                "substructureSearch": true,
+                "rendererSwitch": host == .app && collection.format == "sdf"
             ]
         ]
 

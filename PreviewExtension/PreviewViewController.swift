@@ -205,7 +205,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     private static let supportedStructureExtensions: Set<String> = [
-        "bcif", "cif", "ent", "gro", "mcif", "mmcif", "mol", "mol2", "pdb", "pdbqt", "pqr", "sd", "sdf", "xyz"
+        "bcif", "cif", "ent", "gro", "mcif", "mmcif", "mol", "mol2", "pdb", "pdbqt", "pqr", "sd", "sdf", "smi", "smiles", "xyz"
     ]
 
     private static func buildInlinePreviewHTML(for url: URL) throws -> BuildResult {
@@ -248,7 +248,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             debug: showDebugOverlay,
             allowSelection: false,
             allowExport: false,
-            maxRecords: 750
+            maxRecords: 3000
         ) {
             diag("detected.previewMode=grid2d format=\(gridPreview.format) records=\(gridPreview.recordsIncluded)/\(gridPreview.recordsTotal)")
             try validateVendoredMoleculeGridAssets(in: webDirectory, fileManager: fileManager, diagnostics: &diagnostics)
@@ -350,8 +350,32 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         if let gridRecordsScript {
             try Data(gridRecordsScript.utf8)
                 .write(to: runtimeDirectory.appendingPathComponent("preview-grid-records.js"), options: [.atomic])
+            let rdkitWasmURL = bundledWebDirectory
+                .appendingPathComponent("rdkit", isDirectory: true)
+                .appendingPathComponent("RDKit_minimal.wasm")
+            let rdkitWasmScript = try rdkitWasmInlineScript(from: rdkitWasmURL)
+            try Data(rdkitWasmScript.utf8)
+                .write(to: runtimeDirectory.appendingPathComponent("preview-rdkit-wasm.js"), options: [.atomic])
+            diagnostics.append("[build] preview-rdkit-wasm.script.bytes=\(rdkitWasmScript.utf8.count)")
         }
         return RuntimePreview(runtimeDirectory: runtimeDirectory, indexURL: indexURL, readAccessURL: previewsDirectory)
+    }
+
+    private static func rdkitWasmInlineScript(from url: URL) throws -> String {
+        let base64 = try Data(contentsOf: url).base64EncodedString(options: [])
+        let chunkSize = 32_768
+        var chunks: [String] = []
+        var start = base64.startIndex
+        while start < base64.endIndex {
+            let end = base64.index(start, offsetBy: chunkSize, limitedBy: base64.endIndex) ?? base64.endIndex
+            chunks.append(String(base64[start..<end]))
+            start = end
+        }
+        let jsonData = try JSONSerialization.data(withJSONObject: chunks, options: [.withoutEscapingSlashes])
+        guard let json = String(data: jsonData, encoding: .utf8) else {
+            throw PreviewError.couldNotCreateRuntimePreview("Could not encode RDKit WASM chunks")
+        }
+        return "window.BurreteRDKitWasmBase64Chunks = \(json);\n"
     }
 
     private static func pruneRuntimePreviews(
@@ -515,6 +539,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           </script>
           <script src="preview-config.js"></script>
           <script src="preview-grid-records.js"></script>
+          <script src="preview-rdkit-wasm.js"></script>
           <script src="../assets/rdkit/RDKit_minimal.js"></script>
           <script src="../assets/grid-viewer.js"></script>
         </body>
@@ -1612,7 +1637,7 @@ private struct PreviewPreferences {
         let appID = "com.local.BurreteV10" as CFString
         let showPanelControls = (CFPreferencesCopyAppValue("showPreviewPanelControls" as CFString, appID) as? Bool) ?? true
         let transparentBackground = (CFPreferencesCopyAppValue("useTransparentPreviewBackground" as CFString, appID) as? Bool) ?? false
-        let viewerTheme = (CFPreferencesCopyAppValue("viewerTheme" as CFString, appID) as? String) ?? "dark"
+        let viewerTheme = (CFPreferencesCopyAppValue("viewerTheme" as CFString, appID) as? String) ?? "auto"
         let canvasBackground = (CFPreferencesCopyAppValue("viewerCanvasBackground" as CFString, appID) as? String) ?? "black"
         let rendererMode = (CFPreferencesCopyAppValue("structureRendererMode" as CFString, appID) as? String) ?? "auto"
         let xyzFastStyle = (CFPreferencesCopyAppValue("xyzFastStyle" as CFString, appID) as? String) ?? "default"
