@@ -1,10 +1,51 @@
 import AppKit
 import WebKit
 
+enum AppViewerRendererMode {
+    static func normalize(_ value: String) -> String {
+        switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "xyz-fast", "fast-xyz", "xyzfast":
+            return "xyz-fast"
+        case "molstar", "mol*", "interactive":
+            return "molstar"
+        case "xyzrender-external", "external-xyzrender", "xyzrender":
+            return "xyzrender-external"
+        default:
+            return "auto"
+        }
+    }
+}
+
+enum AppViewerXyzrenderPreset {
+    static let builtInOptions: [(String, String)] = [
+        ("default", "Default"),
+        ("flat", "Flat"),
+        ("paton", "Paton"),
+        ("pmol", "PMol"),
+        ("skeletal", "Skeletal"),
+        ("bubble", "Bubble"),
+        ("tube", "Tube"),
+        ("btube", "BTube"),
+        ("mtube", "MTube"),
+        ("wire", "Wire"),
+        ("graph", "Graph")
+    ]
+
+    static let pickerOptions: [(String, String)] = builtInOptions + [("custom", "Custom JSON")]
+
+    static func normalize(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let allowed = Set(pickerOptions.map { $0.0 })
+        return allowed.contains(trimmed) ? trimmed : "default"
+    }
+}
+
 final class MoleculeViewerWindowController: NSWindowController, WKNavigationDelegate, WKScriptMessageHandler {
     private let fileURL: URL
     private let webView: WKWebView
     private var currentViewerPageZoom: CGFloat = 0.86
+    private var rendererOverride: String?
+    private var xyzrenderPresetOverride: String?
     private static let defaultViewerPageZoom: CGFloat = 0.86
     private static let minViewerPageZoom: CGFloat = 0.72
     private static let maxViewerPageZoom: CGFloat = 1.35
@@ -78,7 +119,11 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
 
     func load() {
         do {
-            let runtime = try AppViewerRuntime.create(for: fileURL)
+            let runtime = try AppViewerRuntime.create(
+                for: fileURL,
+                rendererModeOverride: rendererOverride,
+                xyzrenderPresetOverride: xyzrenderPresetOverride
+            )
             webView.loadFileURL(runtime.indexURL, allowingReadAccessTo: runtime.readAccessURL)
         } catch {
             webView.loadHTMLString(Self.errorHTML(error), baseURL: nil)
@@ -103,6 +148,14 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
            let text = body["text"] as? String,
            let name = body["name"] as? String {
             exportText(text, suggestedName: name)
+            return
+        }
+        if type == "setRenderer", let value = body["value"] as? String {
+            setRendererOverride(value)
+            return
+        }
+        if type == "setXyzrenderPreset", let value = body["value"] as? String {
+            setXyzrenderPresetOverride(value)
             return
         }
         let text = (body["message"] as? String) ?? ""
@@ -146,6 +199,21 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         }
     }
 
+    private func setRendererOverride(_ value: String) {
+        let renderer = AppViewerRendererMode.normalize(value)
+        guard rendererOverride != renderer else { return }
+        rendererOverride = renderer
+        load()
+    }
+
+    private func setXyzrenderPresetOverride(_ value: String) {
+        let preset = AppViewerXyzrenderPreset.normalize(value)
+        guard xyzrenderPresetOverride != preset else { return }
+        xyzrenderPresetOverride = preset
+        rendererOverride = "xyzrender-external"
+        load()
+    }
+
     private static func errorHTML(_ error: Error) -> String {
         """
         <!doctype html><html><head><meta charset="utf-8"><style>
@@ -166,7 +234,11 @@ private struct AppViewerRuntime {
     let readAccessURL: URL
     private static let maxStructureFileSize: Int64 = 75 * 1024 * 1024
 
-    static func create(for fileURL: URL) throws -> AppViewerRuntime {
+    static func create(
+        for fileURL: URL,
+        rendererModeOverride: String? = nil,
+        xyzrenderPresetOverride: String? = nil
+    ) throws -> AppViewerRuntime {
         guard let bundledWebDirectory = Bundle.main.resourceURL?.appendingPathComponent("Web", isDirectory: true),
               FileManager.default.fileExists(atPath: bundledWebDirectory.path) else {
             throw AppViewerError.missingWebResources
@@ -232,11 +304,46 @@ private struct AppViewerRuntime {
         }
 
         let format = AppViewerStructureFormat(url: fileURL, data: data)
-        let config: [String: Any] = [
+        let storedRendererMode = UserDefaults.standard.string(forKey: "structureRendererMode") ?? "auto"
+        let rendererMode = rendererModeOverride ?? storedRendererMode
+        let storedXyzrenderPreset = UserDefaults.standard.string(forKey: "xyzrenderPreset") ?? "default"
+        let xyzrenderPreset = AppViewerXyzrenderPreset.normalize(xyzrenderPresetOverride ?? storedXyzrenderPreset)
+        var renderer = resolveRenderer(for: format, rendererMode: rendererMode)
+        var externalArtifact: ExternalXyzrenderArtifact?
+        var externalStatus: [String: Any]?
+        if renderer == "xyzrender-external" {
+            do {
+                externalArtifact = try ExternalXyzrenderWorker.render(
+                    inputURL: fileURL,
+                    outputDirectory: runtimeDirectory,
+                    preset: xyzrenderPreset,
+                    customConfigPath: UserDefaults.standard.string(forKey: "xyzrenderCustomConfigPath") ?? "",
+                    transparent: canvasIsTransparent,
+                    extraArguments: UserDefaults.standard.string(forKey: "xyzrenderExtraArguments") ?? ""
+                )
+            } catch {
+                renderer = format.molstarFormat == "xyz" ? "xyz-fast" : "molstar"
+                externalStatus = [
+                    "status": "fallback",
+                    "requested": "xyzrender-external",
+                    "message": error.localizedDescription
+                ]
+            }
+        }
+        let xyzFastPayload = renderer == "xyz-fast" ? makeXYZFastPayload(from: data) : nil
+        let dataForWeb = xyzFastPayload?.data ?? data
+
+        var config: [String: Any] = [
             "format": format.molstarFormat,
+            "molstarFormat": format.molstarFormat,
             "binary": format.isBinary,
+            "renderer": renderer,
+            "requestedRenderer": rendererMode,
+            "storedRenderer": storedRendererMode,
+            "allowMolstarFallback": true,
             "label": fileURL.lastPathComponent,
             "byteCount": data.count,
+            "previewByteCount": dataForWeb.count,
             "quickLookBuild": "burrete-app",
             "debug": false,
             "theme": viewerTheme,
@@ -244,6 +351,9 @@ private struct AppViewerRuntime {
             "uiScale": 0.86,
             "transparentBackground": canvasIsTransparent,
             "sdfGrid": true,
+            "appViewer": true,
+            "xyzrenderPreset": xyzrenderPreset,
+            "xyzrenderPresetOptions": AppViewerXyzrenderPreset.pickerOptions.map { ["value": $0.0, "label": $0.1] },
             "showPanelControls": UserDefaults.standard.object(forKey: "showPreviewPanelControls") as? Bool ?? true,
             "defaultLayoutState": [
                 "left": "collapsed",
@@ -252,14 +362,39 @@ private struct AppViewerRuntime {
                 "bottom": "hidden"
             ]
         ]
+        if renderer == "xyz-fast" {
+            var xyzFast: [String: Any] = [
+                "style": UserDefaults.standard.string(forKey: "xyzFastStyle") ?? "default",
+                "firstFrameOnly": true,
+                "showCell": true,
+                "sourceByteCount": data.count,
+                "previewByteCount": dataForWeb.count
+            ]
+            if let atomCount = xyzFastPayload?.atomCount { xyzFast["atomCount"] = atomCount }
+            if let frameCount = xyzFastPayload?.frameCount { xyzFast["frameCount"] = frameCount }
+            if let comment = xyzFastPayload?.comment, !comment.isEmpty { xyzFast["comment"] = comment }
+            config["xyzFast"] = xyzFast
+        }
+        if let externalArtifact {
+            config["externalArtifact"] = [
+                "path": externalArtifact.relativePath,
+                "type": externalArtifact.outputType,
+                "renderer": "xyzrender",
+                "preset": externalArtifact.preset,
+                "config": externalArtifact.configArgument,
+                "elapsedMs": externalArtifact.elapsedMs,
+                "log": externalArtifact.log
+            ]
+        }
+        if let externalStatus { config["externalRendererStatus"] = externalStatus }
         let configData = try JSONSerialization.data(withJSONObject: config, options: [.sortedKeys, .withoutEscapingSlashes])
         let configJSON = String(data: configData, encoding: .utf8) ?? "{}"
 
-        try Data(html(title: fileURL.lastPathComponent, transparentBackground: transparentBackground).utf8)
+        try Data(html(title: fileURL.lastPathComponent, transparentBackground: transparentBackground, renderer: renderer).utf8)
             .write(to: runtimeDirectory.appendingPathComponent("index.html"), options: [.atomic])
         try Data("window.BurreteConfig = \(configJSON);\n".utf8)
             .write(to: runtimeDirectory.appendingPathComponent("preview-config.js"), options: [.atomic])
-        try Data("window.BurreteDataBase64 = \"\(data.base64EncodedString())\";\n".utf8)
+        try Data("window.BurreteDataBase64 = \"\(dataForWeb.base64EncodedString())\";\n".utf8)
             .write(to: runtimeDirectory.appendingPathComponent("preview-data.js"), options: [.atomic])
 
         return AppViewerRuntime(
@@ -269,7 +404,7 @@ private struct AppViewerRuntime {
     }
 
     private static func copyAssets(from sourceDirectory: URL, to assetsDirectory: URL) throws {
-        for name in ["molstar.js", "molstar.css", "burette-agent.js", "viewer.js", "grid-viewer.js", "grid.css"] {
+        for name in ["molstar.js", "molstar.css", "burette-agent.js", "viewer.js", "xyz-fast.js", "grid-viewer.js", "grid.css"] {
             let source = sourceDirectory.appendingPathComponent(name)
             let destination = assetsDirectory.appendingPathComponent(name)
             try copyAssetAtomically(from: source, to: destination)
@@ -341,6 +476,65 @@ private struct AppViewerRuntime {
         }
     }
 
+    private static func resolveRenderer(for format: AppViewerStructureFormat, rendererMode: String) -> String {
+        let isXYZ = format.molstarFormat == "xyz" && !format.isBinary
+        switch AppViewerRendererMode.normalize(rendererMode) {
+        case "molstar":
+            return "molstar"
+        case "xyz-fast":
+            return isXYZ ? "xyz-fast" : "molstar"
+        case "xyzrender-external":
+            return isXYZ ? "xyzrender-external" : "molstar"
+        default:
+            return isXYZ ? "xyz-fast" : "molstar"
+        }
+    }
+
+    private struct XYZFastPayload {
+        let data: Data
+        let atomCount: Int?
+        let frameCount: Int?
+        let comment: String?
+    }
+
+    private static func makeXYZFastPayload(from data: Data) -> XYZFastPayload? {
+        let text = decodeText(data).replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        var start = 0
+        while start < lines.count && lines[start].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { start += 1 }
+        guard start < lines.count else { return nil }
+        let firstToken = lines[start].trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ").first
+        guard let token = firstToken, let atomCount = Int(token), atomCount > 0 else { return nil }
+        let end = min(lines.count, start + atomCount + 2)
+        guard end > start + 1 else { return nil }
+        var firstFrame = lines[start..<end].joined(separator: "\n")
+        if !firstFrame.hasSuffix("\n") { firstFrame += "\n" }
+        let frameCount = countXYZFrames(lines: lines, start: start)
+        let comment = start + 1 < lines.count ? lines[start + 1] : nil
+        return XYZFastPayload(data: Data(firstFrame.utf8), atomCount: atomCount, frameCount: frameCount, comment: comment)
+    }
+
+    private static func countXYZFrames(lines: [String], start: Int) -> Int? {
+        var index = start
+        var frames = 0
+        while index < lines.count && frames < 100_000 {
+            while index < lines.count && lines[index].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { index += 1 }
+            guard index < lines.count else { break }
+            let firstToken = lines[index].trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ").first
+            guard let token = firstToken, let atomCount = Int(token), atomCount > 0 else { break }
+            guard index + atomCount + 1 < lines.count else { break }
+            frames += 1
+            index += atomCount + 2
+        }
+        return frames > 0 ? frames : nil
+    }
+
+    private static func decodeText(_ data: Data) -> String {
+        if let value = String(data: data, encoding: .utf8) { return value }
+        if let value = String(data: data, encoding: .isoLatin1) { return value }
+        return String(decoding: data, as: UTF8.self)
+    }
+
     private static func fileSize(for url: URL) throws -> Int64 {
         let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
         return (attrs[.size] as? NSNumber)?.int64Value ?? 0
@@ -382,8 +576,25 @@ private struct AppViewerRuntime {
         """
     }
 
-    private static func html(title: String, transparentBackground: Bool) -> String {
+    private static func html(title: String, transparentBackground: Bool, renderer: String) -> String {
         let backgroundClass = transparentBackground ? "burette-transparent-background" : "burette-opaque-background"
+        let initialStatus: String
+        let rendererAssets: String
+        switch renderer {
+        case "xyz-fast":
+            initialStatus = "Loading Fast XYZ viewer..."
+            rendererAssets = """
+              <script src="../assets/xyz-fast.js"></script>
+            """
+        case "xyzrender-external":
+            initialStatus = "Loading xyzrender artifact..."
+            rendererAssets = ""
+        default:
+            initialStatus = "Loading Mol* viewer..."
+            rendererAssets = """
+              <script src="../assets/molstar.js"></script>
+            """
+        }
         return """
         <!doctype html>
         <html lang="en">
@@ -789,7 +1000,8 @@ private struct AppViewerRuntime {
               user-select: none; touch-action: none;
             }
             #buret-toolbar.collapsed { gap: 0; }
-            #buret-toolbar.collapsed .buret-button:not(.buret-grip) { display: none; }
+            #buret-toolbar.collapsed .buret-button:not(.buret-grip),
+            #buret-toolbar.collapsed .buret-renderer-control { display: none; }
             #buret-toolbar.collapsed .buret-grip { min-width: 26px; padding: 0; cursor: pointer; }
             .buret-button {
               min-width: 26px; height: 26px; border: 0; border-radius: 7px; padding: 0 7px;
@@ -800,6 +1012,16 @@ private struct AppViewerRuntime {
             .buret-button.hidden { display: none; }
             .buret-button svg { width: 15px; height: 15px; display: block; }
             .buret-grip { cursor: grab; color: currentColor; opacity: 0.66; }
+            .buret-renderer-control {
+              display: none; align-items: center; gap: 4px; padding-left: 5px;
+              border-left: 1px solid var(--buret-toolbar-border);
+            }
+            .buret-renderer-control.visible { display: flex; }
+            .buret-select {
+              height: 26px; max-width: 118px; border: 0; border-radius: 7px; padding: 0 22px 0 8px;
+              color: inherit; background: transparent; font: 600 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+            }
+            .buret-select:hover, .buret-select:focus { background: var(--buret-toolbar-hover); outline: none; }
           </style>
           <script>
             (function () {
@@ -833,15 +1055,21 @@ private struct AppViewerRuntime {
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq</button>
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel">Log</button>
             <button class="buret-button" type="button" data-buret-action="theme" aria-label="Switch to light theme" title="Switch to light theme">Light</button>
+            <div class="buret-renderer-control" data-buret-renderer-control>
+              <button class="buret-button" type="button" data-buret-renderer="xyz-fast" aria-label="Use Fast XYZ SVG" title="Use Fast XYZ SVG">Fast</button>
+              <button class="buret-button" type="button" data-buret-renderer="molstar" aria-label="Use Mol* Interactive" title="Use Mol* Interactive">Mol*</button>
+              <button class="buret-button" type="button" data-buret-renderer="xyzrender-external" aria-label="Use external xyzrender" title="Use external xyzrender">xyzr</button>
+              <select class="buret-select" data-buret-xyzrender-preset aria-label="External xyzrender preset" title="External xyzrender preset"></select>
+            </div>
           </div>
-          <div id="status" class="hidden">Loading Burrete viewer...</div>
+          <div id="status" class="hidden">\(initialStatus)</div>
           <script>
             window.BurreteInlineMode = true;
             window.BurreteDebug = false;
             window.BurretePanelControlsVisible = false;
             window.BurreteCacheBuster = String(Date.now());
           </script>
-          <script src="../assets/molstar.js"></script>
+          \(rendererAssets)
           <script src="preview-config.js"></script>
           <script src="preview-data.js"></script>
           <script src="../assets/burette-agent.js"></script>
@@ -849,6 +1077,166 @@ private struct AppViewerRuntime {
         </body>
         </html>
         """
+    }
+}
+
+private struct ExternalXyzrenderArtifact {
+    let relativePath: String
+    let outputType: String
+    let preset: String
+    let configArgument: String
+    let elapsedMs: Int
+    let log: String
+}
+
+private enum ExternalXyzrenderWorker {
+    static func render(inputURL: URL, outputDirectory: URL, preset: String, customConfigPath: String, transparent: Bool, extraArguments: String) throws -> ExternalXyzrenderArtifact {
+        let fileManager = FileManager.default
+        let outputURL = outputDirectory.appendingPathComponent("xyzrender.svg")
+        let logURL = outputDirectory.appendingPathComponent("xyzrender.log")
+        try? fileManager.removeItem(at: outputURL)
+        try? fileManager.removeItem(at: logURL)
+
+        let process = Process()
+        let configuredExecutable = UserDefaults.standard.string(forKey: "xyzrenderExecutablePath")?.trimmingCharacters(in: .whitespacesAndNewlines)
+        var arguments: [String]
+        if let configuredExecutable, !configuredExecutable.isEmpty {
+            process.executableURL = URL(fileURLWithPath: configuredExecutable)
+            arguments = [inputURL.path, "-o", outputURL.path]
+        } else {
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            arguments = ["xyzrender", inputURL.path, "-o", outputURL.path]
+        }
+        let safePreset = AppViewerXyzrenderPreset.normalize(preset)
+        let configArgument = resolveConfigArgument(preset: safePreset, customConfigPath: customConfigPath)
+        let effectivePreset = safePreset == "custom" && configArgument == "default" ? "default" : safePreset
+        arguments += ["--config", configArgument]
+        if transparent { arguments.append("--transparent") }
+        arguments += sanitizedExtraArguments(extraArguments)
+        process.arguments = arguments
+        process.environment = mergedEnvironment()
+
+        _ = fileManager.createFile(atPath: logURL.path, contents: nil)
+        let logHandle = try FileHandle(forWritingTo: logURL)
+        defer { logHandle.closeFile() }
+        process.standardOutput = logHandle
+        process.standardError = logHandle
+        let semaphore = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in semaphore.signal() }
+        let started = Date()
+        try process.run()
+
+        if semaphore.wait(timeout: .now() + 25) == .timedOut {
+            process.terminate()
+            throw ExternalXyzrenderError.timedOut
+        }
+
+        logHandle.synchronizeFile()
+        let logData = (try? Data(contentsOf: logURL)) ?? Data()
+        let log = String(data: logData, encoding: .utf8) ?? String(decoding: logData, as: UTF8.self)
+        guard process.terminationStatus == 0 else {
+            throw ExternalXyzrenderError.failed(status: process.terminationStatus, log: log)
+        }
+        guard fileManager.fileExists(atPath: outputURL.path) else {
+            throw ExternalXyzrenderError.missingOutput
+        }
+        let elapsedMs = Int(Date().timeIntervalSince(started) * 1000)
+        return ExternalXyzrenderArtifact(relativePath: "xyzrender.svg", outputType: "svg", preset: effectivePreset, configArgument: configArgument, elapsedMs: elapsedMs, log: log)
+    }
+
+    private static func resolveConfigArgument(preset: String, customConfigPath: String) -> String {
+        guard preset == "custom" else { return preset }
+        let trimmed = customConfigPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "default" : trimmed
+    }
+
+    private static func sanitizedExtraArguments(_ value: String) -> [String] {
+        let outputFlags = Set(["-o", "--output", "-go", "--gif-output", "--config"])
+        var result: [String] = []
+        var skipNext = false
+        for token in splitCommandLine(value) {
+            if skipNext {
+                skipNext = false
+                continue
+            }
+            if outputFlags.contains(token) {
+                skipNext = true
+                continue
+            }
+            if outputFlags.contains(where: { token.hasPrefix($0 + "=") }) { continue }
+            result.append(token)
+        }
+        return result
+    }
+
+    private static func splitCommandLine(_ value: String) -> [String] {
+        var tokens: [String] = []
+        var current = ""
+        var quote: Character?
+        var escaped = false
+        for character in value {
+            if escaped {
+                current.append(character)
+                escaped = false
+                continue
+            }
+            if character == "\\" {
+                escaped = true
+                continue
+            }
+            if let activeQuote = quote {
+                if character == activeQuote {
+                    quote = nil
+                } else {
+                    current.append(character)
+                }
+                continue
+            }
+            if character == "\"" || character == "'" {
+                quote = character
+                continue
+            }
+            if character.isWhitespace {
+                if !current.isEmpty {
+                    tokens.append(current)
+                    current.removeAll(keepingCapacity: true)
+                }
+            } else {
+                current.append(character)
+            }
+        }
+        if escaped { current.append("\\") }
+        if !current.isEmpty { tokens.append(current) }
+        return tokens
+    }
+
+    private static func mergedEnvironment() -> [String: String] {
+        var environment = ProcessInfo.processInfo.environment
+        let defaultPath = "/opt/homebrew/bin:/usr/local/bin:/opt/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        if let path = environment["PATH"], !path.isEmpty {
+            environment["PATH"] = defaultPath + ":" + path
+        } else {
+            environment["PATH"] = defaultPath
+        }
+        return environment
+    }
+}
+
+private enum ExternalXyzrenderError: LocalizedError {
+    case timedOut
+    case missingOutput
+    case failed(status: Int32, log: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .timedOut:
+            return "External xyzrender timed out after 25 seconds."
+        case .missingOutput:
+            return "External xyzrender finished but did not produce an SVG output file."
+        case .failed(let status, let log):
+            let trimmed = log.trimmingCharacters(in: .whitespacesAndNewlines)
+            return "External xyzrender failed with exit status \(status)." + (trimmed.isEmpty ? "" : " \(trimmed.prefix(320))")
+        }
     }
 }
 
@@ -947,6 +1335,8 @@ private final class BurreteAppViewerContainerView: NSView {
         wantsLayer = true
         layer?.borderWidth = 1
         layer?.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
+        layer?.cornerRadius = 16
+        layer?.masksToBounds = true
         layer?.backgroundColor = (transparentBackground ? NSColor.clear : NSColor(calibratedWhite: 0.055, alpha: 1.0)).cgColor
         layer?.cornerRadius = Self.cornerRadius
         if #available(macOS 10.15, *) {

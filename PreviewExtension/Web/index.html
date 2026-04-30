@@ -338,6 +338,25 @@
       background: var(--buret-molstar-panel-background) !important;
       opacity: 0.76 !important;
     }
+    body .msp-plugin .msp-snapshot-description-wrapper,
+    body .msp-plugin .msp-highlight-info {
+      color: var(--buret-molstar-text) !important;
+      background: var(--buret-molstar-panel-background) !important;
+      border: 1px solid var(--buret-molstar-border);
+      border-radius: 10px;
+      opacity: 1 !important;
+      -webkit-backdrop-filter: blur(12px);
+      backdrop-filter: blur(12px);
+    }
+    body .msp-plugin .msp-snapshot-description-wrapper *,
+    body .msp-plugin .msp-highlight-info * {
+      background: transparent !important;
+      color: inherit !important;
+    }
+    body .msp-plugin .msp-snapshot-description-wrapper a,
+    body .msp-plugin .msp-highlight-info-additional {
+      color: var(--buret-molstar-accent) !important;
+    }
     body .msp-plugin .msp-viewport-controls {
       top: 64px !important;
       z-index: 40;
@@ -407,7 +426,8 @@
       user-select: none; touch-action: none;
     }
     #buret-toolbar.collapsed { gap: 0; }
-    #buret-toolbar.collapsed .buret-button:not(.buret-grip) { display: none; }
+    #buret-toolbar.collapsed .buret-button:not(.buret-grip),
+    #buret-toolbar.collapsed .buret-renderer-control { display: none; }
     #buret-toolbar.collapsed .buret-grip { min-width: 30px; padding: 0; cursor: pointer; }
     .buret-button {
       min-width: 30px; height: 30px; border: 0; border-radius: 8px; padding: 0 8px;
@@ -415,8 +435,19 @@
       display: grid; place-items: center;
     }
     .buret-button:hover, .buret-button.active { background: var(--buret-toolbar-hover); }
+    .buret-button.hidden { display: none; }
     .buret-button svg { width: 17px; height: 17px; display: block; }
     .buret-grip { cursor: grab; color: currentColor; opacity: 0.66; }
+    .buret-renderer-control {
+      display: none; align-items: center; gap: 4px; padding-left: 5px;
+      border-left: 1px solid var(--buret-toolbar-border);
+    }
+    .buret-renderer-control.visible { display: flex; }
+    .buret-select {
+      height: 30px; max-width: 118px; border: 0; border-radius: 8px; padding: 0 22px 0 8px;
+      color: inherit; background: transparent; font: 600 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+    }
+    .buret-select:hover, .buret-select:focus { background: var(--buret-toolbar-hover); outline: none; }
     #buret-window-outline {
       position: absolute; inset: 0; z-index: 2147483645;
       border: 1px solid rgba(255, 255, 255, 0.08);
@@ -459,11 +490,18 @@
     <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq</button>
     <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel">Log</button>
     <button class="buret-button" type="button" data-buret-action="theme" aria-label="Switch to light theme" title="Switch to light theme">Light</button>
+    <div class="buret-renderer-control" data-buret-renderer-control>
+      <button class="buret-button" type="button" data-buret-renderer="xyz-fast" aria-label="Use Fast XYZ SVG" title="Use Fast XYZ SVG">Fast</button>
+      <button class="buret-button" type="button" data-buret-renderer="molstar" aria-label="Use Mol* Interactive" title="Use Mol* Interactive">Mol*</button>
+      <button class="buret-button" type="button" data-buret-renderer="xyzrender-external" aria-label="Use external xyzrender" title="Use external xyzrender">xyzr</button>
+      <select class="buret-select" data-buret-xyzrender-preset aria-label="External xyzrender preset" title="External xyzrender preset"></select>
+    </div>
   </div>
   <div id="buret-window-outline" aria-hidden="true"></div>
   <div id="status">[web] Loading Mol* preview shell…</div>
   <script>window.BurreteCacheBuster = String(Date.now());</script>
   <script src="./burette-agent.js"></script>
+  <script src="./xyz-fast.js"></script>
   <script src="./viewer.js"></script>
 </body>
 </html>
