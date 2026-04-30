@@ -236,6 +236,7 @@ enum BurreteFileAssociations {
         "com.local.burrete10.mmcif",
         "com.local.burrete10.bcif",
         "com.local.burrete10.sdf",
+        "com.local.burrete10.smiles",
         "com.local.burrete10.mol",
         "com.local.burrete10.mol2",
         "com.local.burrete10.xyz",
