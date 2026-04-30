@@ -7,6 +7,12 @@ struct ContentView: View {
     @AppStorage("useTransparentPreviewBackground") private var useTransparentPreviewBackground = false
     @AppStorage("viewerTheme") private var viewerTheme = "dark"
     @AppStorage("viewerCanvasBackground") private var viewerCanvasBackground = "black"
+    @AppStorage("structureRendererMode") private var structureRendererMode = "auto"
+    @AppStorage("xyzFastStyle") private var xyzFastStyle = "default"
+    @AppStorage("xyzrenderPreset") private var xyzrenderPreset = "default"
+    @AppStorage("xyzrenderCustomConfigPath") private var xyzrenderCustomConfigPath = ""
+    @AppStorage("xyzrenderExecutablePath") private var xyzrenderExecutablePath = ""
+    @AppStorage("xyzrenderExtraArguments") private var xyzrenderExtraArguments = ""
     @AppStorage("checkUpdatesAutomatically") private var checkUpdatesAutomatically = true
     @AppStorage("updateChannel") private var updateChannelRaw = BurreteUpdateChannel.stable.rawValue
     @StateObject private var updater = BurreteUpdater.shared
@@ -94,13 +100,71 @@ struct ContentView: View {
         case .viewer:
             SettingsSectionTitle("Viewer")
             SettingsCard {
-                SettingsValueRow(icon: "atom", title: "Engine", subtitle: "Mol* Viewer")
+                SettingsStringPickerRow(
+                    icon: "atom",
+                    title: "Renderer",
+                    subtitle: "Auto uses Fast XYZ SVG for .xyz and Mol* for the rest. Choose Mol* Interactive when you want live rotation and the full app controls.",
+                    selection: $structureRendererMode,
+                    options: [
+                        ("auto", "Auto"),
+                        ("xyz-fast", "Fast XYZ SVG"),
+                        ("molstar", "Mol* Interactive"),
+                        ("xyzrender-external", "External xyzrender SVG")
+                    ]
+                )
                 SettingsDivider()
-                SettingsValueRow(icon: "doc.richtext", title: "Formats", subtitle: "PDB, PDBx/mmCIF, BinaryCIF, SDF, MOL, and MOL2")
+                SettingsStringPickerRow(
+                    icon: "sparkles",
+                    title: "Fast XYZ style",
+                    subtitle: "Static SVG style for Quick Look and app .xyz previews.",
+                    selection: $xyzFastStyle,
+                    options: [
+                        ("default", "Default"),
+                        ("wire", "Wire"),
+                        ("tube", "Tube"),
+                        ("spacefill", "Spacefill")
+                    ]
+                )
+                SettingsDivider()
+                SettingsStringPickerRow(
+                    icon: "terminal",
+                    title: "External xyzrender preset",
+                    subtitle: "Used only by the standalone app when xyzrender is available on PATH or configured via defaults.",
+                    selection: $xyzrenderPreset,
+                    options: AppViewerXyzrenderPreset.pickerOptions
+                )
+                SettingsDivider()
+                SettingsTextFieldRow(
+                    icon: "doc.badge.gearshape",
+                    title: "External xyzrender custom config",
+                    subtitle: "Used when the preset is Custom JSON. Point this to a local xyzrender config file.",
+                    text: $xyzrenderCustomConfigPath,
+                    placeholder: "/Users/me/styles/my_style.json"
+                )
+                SettingsDivider()
+                SettingsTextFieldRow(
+                    icon: "point.3.connected.trianglepath.dotted",
+                    title: "External xyzrender executable",
+                    subtitle: "Leave empty to run `xyzrender` from PATH. Set an absolute path when using a custom venv, uv tool, or signed helper.",
+                    text: $xyzrenderExecutablePath,
+                    placeholder: "/opt/homebrew/bin/xyzrender"
+                )
+                SettingsDivider()
+                SettingsTextFieldRow(
+                    icon: "curlybraces",
+                    title: "External xyzrender extra flags",
+                    subtitle: "Optional app-only CLI flags such as `--cell --idx sn --no-hy`. Output flags are ignored so Burrete can keep displaying the generated SVG.",
+                    text: $xyzrenderExtraArguments,
+                    placeholder: "--cell --idx sn"
+                )
+                SettingsDivider()
+                SettingsValueRow(icon: "doc.richtext", title: "Formats", subtitle: "PDB, PDBx/mmCIF, BinaryCIF, SDF, MOL, MOL2, XYZ, and GRO")
+                SettingsDivider()
+                SettingsValueRow(icon: "rotate.3d", title: "Interactive XYZ", subtitle: "Open .xyz in the standalone app and switch to Mol* Interactive from the toolbar to rotate, inspect, and use Mol* panels.")
                 SettingsDivider()
                 SettingsValueRow(icon: "square.grid.3x3", title: "SDF molecule grid", subtitle: "Multi-record SDF files are laid out as a visible grid when possible.")
                 SettingsDivider()
-                SettingsValueRow(icon: "bolt.horizontal", title: "Performance", subtitle: "Bundled assets, cached runtime previews, and WebGL fallback.")
+                SettingsValueRow(icon: "bolt.horizontal", title: "Performance", subtitle: "Fast SVG for .xyz; bundled Mol* assets and WebGL fallback for interactive formats.")
             }
 
             SettingsSectionTitle("Appearance")
@@ -345,7 +409,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .general:
             return ["application", "launch", "startup", "menu bar", "icon", "dock", "preview window", "fullscreen"]
         case .viewer:
-            return ["molstar", "formats", "pdb", "cif", "sdf", "mol", "mol2", "xyz", "gro", "background", "transparent", "black", "canvas", "theme", "dark", "light", "auto", "grid", "toolbar", "panels", "sequence", "log"]
+            return ["renderer", "fast xyz", "xyzrender", "external", "molstar", "formats", "pdb", "cif", "sdf", "mol", "mol2", "xyz", "gro", "background", "transparent", "black", "canvas", "theme", "dark", "light", "auto", "grid", "toolbar", "panels", "sequence", "log"]
         case .files:
             return ["finder", "default", "double-click", "open with", "quick look", "cache", "file", "extension"]
         case .logs:
@@ -682,6 +746,43 @@ private struct SettingsStringPickerRow: View {
     }
 }
 
+private struct SettingsTextFieldRow: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+    @Binding var text: String
+    let placeholder: String
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .semibold))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundColor(.white.opacity(0.82))
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.9))
+                Text(subtitle)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(0.48))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 12)
+
+            TextField(placeholder, text: $text)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                .frame(width: 220)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+}
+
 private struct SettingsActionRow: View {
     let icon: String
     let title: String
@@ -762,7 +863,7 @@ private struct AboutPanel: View {
                 Text("Burrete")
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundStyle(.primary)
-                Text("Version 0.10.14")
+                Text("Version 0.10.15")
                     .font(.system(size: 12, weight: .regular))
                     .foregroundStyle(.secondary)
             }
