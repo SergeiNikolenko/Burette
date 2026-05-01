@@ -120,6 +120,9 @@
   let overlayOpacity = 0.90;
   let viewerUIScale = DEFAULT_VIEWER_UI_SCALE;
   let activeViewer = null;
+  let activeConfig = null;
+  let latestXyzrenderOrientationRef = null;
+  let orientationTrackingCleanup = null;
   let keyboardShortcutsInstalled = false;
   let themeListenerInstalled = false;
 
@@ -351,8 +354,10 @@
     const control = document.querySelector('[data-buret-renderer-control]');
     if (!control) return;
     const format = normalizeFormat(config.molstarFormat || config.format);
+    const xyzrenderViewer = config.xyzrenderViewer === true;
     const canSwitchRenderer = (config.appViewer === true && (format === 'xyz' || format === 'sdf')) ||
-      (config.quickLookViewer === true && format === 'xyz');
+      (config.quickLookViewer === true && format === 'xyz') ||
+      xyzrenderViewer;
     control.classList.toggle('visible', canSwitchRenderer);
     if (!canSwitchRenderer) return;
 
@@ -360,7 +365,11 @@
     control.querySelectorAll('[data-buret-renderer]').forEach(button => {
       const value = button.getAttribute('data-buret-renderer');
       const isFastXYZOnly = value === 'xyz-fast';
-      button.classList.toggle('hidden', isFastXYZOnly && format !== 'xyz');
+      const needsMolstar = value === 'molstar';
+      button.classList.toggle('hidden',
+        (isFastXYZOnly && format !== 'xyz') ||
+        (needsMolstar && config.molstarAvailable === false)
+      );
       button.classList.toggle('active', value === renderer);
       if (control.dataset.rendererBound !== '1') {
         button.addEventListener('click', () => requestRendererSwitch(value));
@@ -401,7 +410,20 @@
 
   function requestRendererSwitch(renderer) {
     const value = normalizeRenderer(renderer);
-    const sent = postHostMessage({ type: 'setRenderer', value });
+    const orientationRef = value === 'xyzrender-external' ? captureCurrentXyzrenderOrientationRef() : null;
+    if (orientationRef) {
+      postHostMessage({
+        type: 'setXyzrenderOrientation',
+        text: orientationRef.text,
+        atomCount: orientationRef.atomCount
+      });
+    }
+    const payload = { type: 'setRenderer', value };
+    if (orientationRef) {
+      payload.orientationRef = orientationRef.text;
+      payload.orientationAtomCount = orientationRef.atomCount;
+    }
+    const sent = postHostMessage(payload);
     if (!sent) setStatus('Renderer switching is available only in the app or Quick Look viewer.', 'error');
   }
 
@@ -409,6 +431,192 @@
     const value = normalizeXyzrenderPreset(preset);
     const sent = postHostMessage({ type: 'setXyzrenderPreset', value });
     if (!sent) setStatus('xyzrender preset switching is available only in the app or Quick Look viewer.', 'error');
+  }
+
+  function requestOpenInVesta() {
+    const sent = postHostMessage({ type: 'action', message: 'open-vesta' });
+    if (!sent) setStatus('Opening in VESTA is available only in the app or Quick Look viewer.', 'error');
+  }
+
+  function captureCurrentXyzrenderOrientationRef() {
+    const config = activeConfig || {};
+    const format = normalizeFormat(config.molstarFormat || config.format);
+    if (format !== 'xyz' || config.binary === true || !activeViewer) return null;
+    const nextRef = buildXyzrenderOrientationRef(activeViewer, config);
+    if (nextRef) latestXyzrenderOrientationRef = nextRef;
+    return nextRef || latestXyzrenderOrientationRef;
+  }
+
+  function trackMolstarOrientation(viewer, config) {
+    if (orientationTrackingCleanup) {
+      try { orientationTrackingCleanup(); } catch (_) {}
+      orientationTrackingCleanup = null;
+    }
+    latestXyzrenderOrientationRef = null;
+    if (normalizeFormat(config.molstarFormat || config.format) !== 'xyz' || config.binary === true) return;
+
+    const disposers = [];
+    const update = debounce(() => {
+      const nextRef = buildXyzrenderOrientationRef(viewer, config);
+      if (nextRef) latestXyzrenderOrientationRef = nextRef;
+    }, 120);
+
+    const changed = viewer?.plugin?.canvas3d?.camera?.changed;
+    if (changed && typeof changed.subscribe === 'function') {
+      try {
+        const subscription = changed.subscribe(update);
+        disposers.push(() => subscription?.unsubscribe?.());
+      } catch (error) {
+        debug('camera subscription failed: ' + (error && error.message || String(error)));
+      }
+    }
+
+    ['pointerup', 'wheel', 'keyup', 'mouseup'].forEach(eventName => {
+      document.addEventListener(eventName, update, true);
+      disposers.push(() => document.removeEventListener(eventName, update, true));
+    });
+
+    update();
+    orientationTrackingCleanup = () => {
+      disposers.forEach(dispose => {
+        try { dispose(); } catch (_) {}
+      });
+    };
+  }
+
+  function debounce(fn, delayMs) {
+    let timer = 0;
+    return () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = 0;
+        fn();
+      }, delayMs);
+    };
+  }
+
+  function buildXyzrenderOrientationRef(viewer, config) {
+    const frame = parseFirstXYZFrame(rawStructureData({ ...config, binary: false }));
+    if (!frame || !frame.atoms.length || frame.atoms.length > 50000) return null;
+    const snapshot = readCameraSnapshot(viewer);
+    const basis = cameraBasis(snapshot, frame.atoms);
+    if (!basis) return null;
+
+    const lines = [
+      String(frame.atoms.length),
+      `Burrete Mol* orientation reference for ${config.label || 'structure'}`
+    ];
+    for (const atom of frame.atoms) {
+      const x = atom.x - basis.origin.x;
+      const y = atom.y - basis.origin.y;
+      const z = atom.z - basis.origin.z;
+      lines.push([
+        atom.symbol,
+        formatCoordinate(dot3({ x, y, z }, basis.right)),
+        formatCoordinate(dot3({ x, y, z }, basis.up)),
+        formatCoordinate(dot3({ x, y, z }, basis.forward))
+      ].join(' '));
+    }
+    const text = lines.join('\n') + '\n';
+    if (text.length > 4 * 1024 * 1024) return null;
+    return { text, atomCount: frame.atoms.length };
+  }
+
+  function parseFirstXYZFrame(text) {
+    const lines = String(text || '').replace(/\r\n?/gu, '\n').split('\n');
+    let start = 0;
+    while (start < lines.length && !lines[start].trim()) start += 1;
+    const atomCount = Number.parseInt(lines[start]?.trim().split(/\s+/u)[0] || '', 10);
+    if (!Number.isFinite(atomCount) || atomCount <= 0 || start + atomCount + 1 >= lines.length) return null;
+    const atoms = [];
+    for (let i = start + 2; i < Math.min(lines.length, start + 2 + atomCount); i += 1) {
+      const parts = lines[i].trim().split(/\s+/u);
+      if (parts.length < 4) return null;
+      const x = Number(parts[1]);
+      const y = Number(parts[2]);
+      const z = Number(parts[3]);
+      if (![x, y, z].every(Number.isFinite)) return null;
+      atoms.push({ symbol: normalizeElementSymbol(parts[0]), x, y, z });
+    }
+    return atoms.length === atomCount ? { atoms } : null;
+  }
+
+  function normalizeElementSymbol(value) {
+    const match = String(value || 'X').trim().match(/[A-Za-z]{1,3}/u);
+    if (!match) return 'X';
+    return match[0].slice(0, 1).toUpperCase() + match[0].slice(1).toLowerCase();
+  }
+
+  function readCameraSnapshot(viewer) {
+    const camera = viewer?.plugin?.canvas3d?.camera;
+    if (!camera) return null;
+    let snapshot = null;
+    try { snapshot = typeof camera.getSnapshot === 'function' ? camera.getSnapshot() : null; } catch (_) {}
+    snapshot = snapshot || camera.state || camera;
+    const position = vectorFrom(snapshot.position || camera.position);
+    const target = vectorFrom(snapshot.target || camera.target);
+    const up = vectorFrom(snapshot.up || camera.up);
+    return position && target && up ? { position, target, up } : null;
+  }
+
+  function cameraBasis(snapshot, atoms) {
+    const centroidValue = centroid(atoms);
+    if (!snapshot) return null;
+    const origin = snapshot.target || centroidValue;
+    const forward = normalize3(sub3(snapshot.position, origin));
+    if (!forward) return null;
+    const rawUp = normalize3(snapshot.up) || { x: 0, y: 1, z: 0 };
+    const right = normalize3(cross3(rawUp, forward));
+    if (!right) return null;
+    const up = normalize3(cross3(forward, right));
+    if (!up) return null;
+    return { origin, right, up, forward };
+  }
+
+  function vectorFrom(value) {
+    if (!value) return null;
+    if (Array.isArray(value) || typeof value.length === 'number') {
+      const x = Number(value[0]);
+      const y = Number(value[1]);
+      const z = Number(value[2]);
+      return [x, y, z].every(Number.isFinite) ? { x, y, z } : null;
+    }
+    const x = Number(value.x);
+    const y = Number(value.y);
+    const z = Number(value.z);
+    return [x, y, z].every(Number.isFinite) ? { x, y, z } : null;
+  }
+
+  function centroid(atoms) {
+    const sum = atoms.reduce((acc, atom) => ({ x: acc.x + atom.x, y: acc.y + atom.y, z: acc.z + atom.z }), { x: 0, y: 0, z: 0 });
+    const count = Math.max(1, atoms.length);
+    return { x: sum.x / count, y: sum.y / count, z: sum.z / count };
+  }
+
+  function sub3(a, b) {
+    return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
+  }
+
+  function dot3(a, b) {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+  }
+
+  function cross3(a, b) {
+    return {
+      x: a.y * b.z - a.z * b.y,
+      y: a.z * b.x - a.x * b.z,
+      z: a.x * b.y - a.y * b.x
+    };
+  }
+
+  function normalize3(v) {
+    const length = Math.hypot(v.x, v.y, v.z);
+    if (!Number.isFinite(length) || length < 1e-8) return null;
+    return { x: v.x / length, y: v.y / length, z: v.z / length };
+  }
+
+  function formatCoordinate(value) {
+    return Number(value).toFixed(6).replace(/\.?0+$/u, match => (match === '.' ? '' : ''));
   }
 
   function initBuretToolbar(viewer) {
@@ -423,6 +631,11 @@
     toolbar.querySelector('[data-buret-action="theme"]')?.addEventListener('click', () => {
       toggleViewerTheme(viewer);
     });
+    const vestaButton = toolbar.querySelector('[data-buret-action="open-vesta"]');
+    if (vestaButton) {
+      vestaButton.classList.toggle('hidden', activeConfig?.canOpenInVesta !== true);
+      vestaButton.addEventListener('click', () => requestOpenInVesta());
+    }
 
     initToolbarDrag(toolbar);
     restoreToolbarCollapsed(toolbar, viewer);
@@ -709,7 +922,7 @@
     if (!base64 || typeof base64 !== 'string') {
       throw new Error('preview-data.js did not define window.BurreteDataBase64.');
     }
-    return config.binary ? Array.from(base64ToBytes(base64)) : base64ToText(base64);
+    return config.binary ? base64ToBytes(base64) : base64ToText(base64);
   }
 
   function normalizeRenderer(renderer) {
@@ -1090,6 +1303,7 @@
     }
 
     const config = requireConfig();
+    activeConfig = config;
     applyConfigOptions(config);
     debug('config=' + JSON.stringify(config));
     const renderer = normalizeRenderer(config.renderer);
@@ -1155,6 +1369,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     } catch (error) {
       debug('BurreteAgent notifyStructureLoaded failed: ' + (error && error.message || String(error)));
     }
+    trackMolstarOrientation(viewer, config);
 
     window.addEventListener('resize', () => scheduleViewerResize(viewer, 100));
     await waitForAnimationFrame();
