@@ -58,11 +58,14 @@ cp -R PreviewExtension/Web "$TMP/Web"
 node - "$SAMPLE" "$TMP/Web/preview-config.js" "$TMP/Web/preview-data.js" <<'JS'
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 const file = process.argv[2];
 const configOut = process.argv[3];
 const dataOut = process.argv[4];
-const ext = path.extname(file).toLowerCase().slice(1);
+const basename = path.basename(file).toLowerCase();
+const ext = basename.endsWith('.mae.gz') ? 'maegz' : path.extname(file).toLowerCase().slice(1);
 const data = fs.readFileSync(file);
+const xyzrenderExts = new Set(['cub', 'cube', 'in', 'log', 'out', 'vasp', 'mae', 'maegz', 'cms']);
 
 let format = 'mmcif';
 let binary = false;
@@ -81,9 +84,13 @@ else if (ext === 'mol') format = 'mol';
 else if (ext === 'mol2') format = 'mol2';
 else if (ext === 'xyz') format = 'xyz';
 else if (ext === 'gro') format = 'gro';
+else if (['xtc', 'trr', 'dcd', 'nctraj'].includes(ext)) { format = ext; binary = true; }
+else if (['lammpstrj', 'top', 'psf', 'prmtop'].includes(ext)) format = ext;
+else if (xyzrenderExts.has(ext)) format = 'xyzrender';
 
 const gridExts = new Set(['csv', 'sd', 'sdf', 'smi', 'smiles', 'tsv']);
-const renderer = gridExts.has(ext) ? 'grid2d' : (ext === 'xyz' ? 'xyz-fast' : 'molstar');
+const renderer = gridExts.has(ext) ? 'grid2d' : (ext === 'xyz' ? 'xyz-fast' : (xyzrenderExts.has(ext) ? 'xyzrender-external' : 'molstar'));
+const vestaExts = new Set(['xyz', 'cub', 'cube']);
 const config = {
   mode: gridExts.has(ext) ? 'grid2d' : 'structure',
   label: path.basename(file),
@@ -98,8 +105,48 @@ const config = {
   canvasBackground: 'auto',
   transparentBackground: false,
   sdfGrid: true,
-  showPanelControls: true
+  showPanelControls: true,
+  canOpenInVesta: vestaExts.has(ext)
 };
+if (renderer === 'xyzrender-external') {
+  const artifactPath = path.join(path.dirname(configOut), 'xyzrender.svg');
+  const started = Date.now();
+  const result = spawnSync('xyzrender', [file, '-o', artifactPath, '--config', 'default'], {
+    encoding: 'utf8',
+    maxBuffer: 1024 * 1024 * 10
+  });
+  if (result.status !== 0 || !fs.existsSync(artifactPath) || fs.statSync(artifactPath).size <= 0) {
+    const output = `${result.stdout || ''}\n${result.stderr || ''}`.trim();
+    throw new Error(`xyzrender failed for ${file}: ${output}`);
+  }
+  config.quickLookViewer = true;
+  config.xyzrenderViewer = true;
+  config.molstarAvailable = false;
+  config.xyzrenderPreset = 'default';
+  config.xyzrenderPresetOptions = [
+    { value: 'default', label: 'Default' },
+    { value: 'flat', label: 'Flat' },
+    { value: 'paton', label: 'Paton' },
+    { value: 'pmol', label: 'PMol' },
+    { value: 'skeletal', label: 'Skeletal' },
+    { value: 'bubble', label: 'Bubble' },
+    { value: 'tube', label: 'Tube' },
+    { value: 'btube', label: 'BTube' },
+    { value: 'mtube', label: 'MTube' },
+    { value: 'wire', label: 'Wire' },
+    { value: 'graph', label: 'Graph' },
+    { value: 'custom', label: 'Custom JSON' }
+  ];
+  config.externalArtifact = {
+    path: 'xyzrender.svg',
+    type: 'svg',
+    renderer: 'xyzrender',
+    preset: 'default',
+    config: 'default',
+    elapsedMs: Date.now() - started,
+    log: `${result.stdout || ''}\n${result.stderr || ''}`.trim()
+  };
+}
 if (renderer === 'xyz-fast') {
   config.xyzFast = {
     style: 'default',
@@ -146,8 +193,10 @@ const releaseScript = fs.readFileSync('scripts/release.sh', 'utf8');
 const forcePreview = fs.readFileSync('scripts/force-preview.sh', 'utf8');
 const xcodeProject = fs.readFileSync('Burrete.xcodeproj/project.pbxproj', 'utf8');
 const config = JSON.parse(configSource.replace(/^window\.BurreteConfig = /, '').replace(/;\s*$/, ''));
-const ext = path.extname(sample).toLowerCase().slice(1);
+const sampleBasename = path.basename(sample).toLowerCase();
+const ext = sampleBasename.endsWith('.mae.gz') ? 'maegz' : path.extname(sample).toLowerCase().slice(1);
 const gridExts = new Set(['csv', 'sd', 'sdf', 'smi', 'smiles', 'tsv']);
+const xyzrenderExts = new Set(['cub', 'cube', 'in', 'log', 'out', 'vasp', 'mae', 'maegz', 'cms']);
 
 function assert(condition, message) {
   if (!condition) {
@@ -163,6 +212,7 @@ assert(index.includes('aria-label="Collapse controls"'), 'toolbar handle should 
 assert(index.includes('aria-expanded="true"'), 'toolbar handle should expose expanded state');
 assert(index.includes('top: var(--buret-toolbar-safe-top); right: 12px; left: auto'), 'toolbar should honor the safe top inset');
 assert(index.includes('data-buret-action="theme"'), 'toolbar should expose a separate theme toggle');
+assert(index.includes('data-buret-action="open-vesta"'), 'toolbar should expose a VESTA handoff button');
 assert(index.includes('--buret-molstar-panel-background'), 'preview HTML must define Mol* theme panel colors');
 assert(index.includes('.msp-viewport-controls-panel'), 'preview HTML must theme Mol* viewport panels');
 assert(index.includes('.msp-viewport-controls-panel .msp-control-group-header > button'), 'preview HTML must style Mol* floating settings panel headers');
@@ -177,7 +227,11 @@ assert(!index.includes('aria-label="Fullscreen"'), 'stale Fullscreen aria-label 
 assert(!index.includes('title="Fullscreen"'), 'stale Fullscreen title found');
 assert(index.includes('./burette-agent.js'), 'preview HTML must load the Burette agent bridge before viewer.js');
 assert(viewer.includes('window.BurreteConfig'), 'viewer.js must read BurreteConfig');
+assert(viewer.includes('config.binary ? base64ToBytes(base64) : base64ToText(base64)'), 'viewer.js must pass binary molecular data as Uint8Array');
 assert(viewer.includes('BurreteAgent?.attach'), 'viewer.js must attach the Burette agent bridge');
+assert(viewer.includes('requestOpenInVesta'), 'viewer.js must request VESTA handoff from the host app');
+assert(viewer.includes('setXyzrenderOrientation'), 'viewer.js must send Mol* orientation references before xyzrender handoff');
+assert(viewer.includes('buildXyzrenderOrientationRef'), 'viewer.js must build xyzrender reference XYZ from Mol* camera orientation');
 assert(agent.includes('window.BurreteAgent'), 'burette-agent.js must expose the BurreteAgent alias');
 assert(agent.includes('window.BuretteAgent'), 'burette-agent.js must expose the BuretteAgent alias');
 assert(appViewer.includes('burette-agent.js'), 'app viewer runtime must copy and load burette-agent.js');
@@ -216,6 +270,10 @@ assert(quickLookViewer.includes('requiredAssets: runtimeAssets(for: renderer)'),
 assert(quickLookViewer.includes('quickLookViewer'), 'Quick Look XYZ previews should expose renderer switching controls');
 assert(quickLookViewer.includes('setRendererOverride'), 'Quick Look should handle renderer switching from the toolbar');
 assert(quickLookViewer.includes('setXyzrenderPresetOverride'), 'Quick Look should handle xyzrender preset switching from the toolbar');
+assert(quickLookViewer.includes('canOpenInVesta'), 'Quick Look should expose VESTA handoff eligibility');
+assert(quickLookViewer.includes('VestaLauncher.open'), 'Quick Look should hand eligible XYZ/Cube files to VESTA');
+assert(quickLookViewer.includes('xyzrenderOrientationRefText'), 'Quick Look should keep the latest Mol* orientation reference');
+assert(quickLookViewer.includes('arguments += ["--ref", orientationRefURL.path]'), 'Quick Look xyzrender launch should pass orientation refs with --ref');
 assert(quickLookViewer.includes('PreviewExternalXyzrenderWorker.render'), 'Quick Look should support xyzrender artifacts for XYZ files');
 assert(quickLookViewer.includes('externalArtifactSourceURL'), 'Quick Look should copy generated xyzrender artifacts into the preview runtime');
 assert(quickLookViewer.includes('return isXYZ ? "xyz-fast" : "molstar"'), 'Quick Look auto renderer should remain Fast XYZ by default');
@@ -227,6 +285,40 @@ assert(quickLookViewer.includes('gridRecordsScriptWithRDKitWasm'), 'Quick Look g
 assert(quickLookViewer.includes('"smi", "smiles"'), 'Quick Look should allow SMILES files before grid dispatch');
 assert(quickLookViewer.includes('"csv"'), 'Quick Look should allow CSV files before grid dispatch');
 assert(quickLookViewer.includes('"tsv"'), 'Quick Look should allow TSV files before grid dispatch');
+assert(quickLookViewer.includes('"cub", "cube"'), 'Quick Look should allow Gaussian cube files before xyzrender dispatch');
+assert(quickLookViewer.includes('"in", "log"'), 'Quick Look should allow quantum input/log files before xyzrender dispatch');
+assert(quickLookViewer.includes('"out"'), 'Quick Look should allow quantum output files before xyzrender dispatch');
+assert(quickLookViewer.includes('"vasp"'), 'Quick Look should allow VASP files before xyzrender dispatch');
+assert(quickLookViewer.includes('"xtc", "trr", "dcd", "nctraj"'), 'Quick Look should map binary MD trajectories to Mol* formats');
+assert(quickLookViewer.includes('"lammpstrj", "top", "psf", "prmtop"'), 'Quick Look should map text MD trajectory/topology files to Mol* formats');
+assert(quickLookViewer.includes('"mae", "maegz", "cms"'), 'Quick Look should allow Schrodinger files before xyzrender dispatch');
+assert(quickLookViewer.includes('PreviewStructureTextConverter'), 'Quick Look should have a sandbox-safe text-to-XYZ fallback for xyzrender-only formats');
+assert(quickLookViewer.includes('xyzrender.default=built-in-text-parser'), 'Quick Look should use the built-in parser by default for xyzrender-only formats');
+assert(quickLookViewer.includes('parseCube'), 'Quick Look fallback should parse cube/cub atom sections');
+assert(quickLookViewer.includes('parseVasp'), 'Quick Look fallback should parse VASP POSCAR files');
+assert(quickLookViewer.includes('parseQuantumEspressoInput'), 'Quick Look fallback should parse Quantum ESPRESSO input files');
+assert(quickLookViewer.includes('parseOrcaOutput'), 'Quick Look fallback should parse ORCA output files');
+assert(quickLookViewer.includes('parseGaussianOutput'), 'Quick Look fallback should parse Gaussian log files');
+assert(quickLookInfo.includes('com.local.burrete10.xyzrender-input'), 'Quick Look Info.plist must register xyzrender-only input types');
+assert(quickLookInfo.includes('com.local.burrete10.molecular-dynamics'), 'Quick Look Info.plist must register molecular dynamics content types');
+assert(quickLookInfo.includes('com.local.burrete10.schrodinger'), 'Quick Look Info.plist must register Schrodinger content types');
+assert(quickLookInfo.includes('mae.gz'), 'Quick Look Info.plist must register compressed Schrodinger Maestro files');
+assert(appInfo.includes('com.local.burrete10.xyzrender-input'), 'app Info.plist must register xyzrender-only input types');
+assert(appInfo.includes('com.local.burrete10.molecular-dynamics'), 'app Info.plist must register molecular dynamics content types');
+assert(appInfo.includes('com.local.burrete10.schrodinger'), 'app Info.plist must register Schrodinger content types');
+assert(appInfo.includes('mae.gz'), 'app Info.plist must register compressed Schrodinger Maestro files');
+assert(appDelegate.includes('com.local.burrete10.xyzrender-input'), 'app runtime default-handler registration must include xyzrender-only input types');
+assert(appDelegate.includes('com.local.burrete10.molecular-dynamics'), 'app runtime default-handler registration must include molecular dynamics content types');
+assert(appDelegate.includes('com.local.burrete10.schrodinger'), 'app runtime default-handler registration must include Schrodinger content types');
+assert(appViewer.includes('isExternalXyzrenderOnly'), 'standalone app viewer must route xyzrender-only formats away from Mol*');
+assert(appViewer.includes('canOpenInVesta'), 'standalone app viewer should expose VESTA handoff eligibility');
+assert(appViewer.includes('VestaLauncher.open'), 'standalone app viewer should hand eligible XYZ/Cube files to VESTA');
+assert(appViewer.includes('xyzrenderOrientationRefText'), 'standalone app viewer should keep the latest Mol* orientation reference');
+assert(appViewer.includes('arguments += ["--ref", orientationRefURL.path]'), 'standalone app xyzrender launch should pass orientation refs with --ref');
+assert(quickLookViewer.includes('isExternalXyzrenderOnly'), 'Quick Look viewer must route xyzrender-only formats away from Mol*');
+assert(!appViewer.includes('URL(fileURLWithPath: "/usr/bin/env")'), 'standalone app xyzrender launch must not depend on /usr/bin/env');
+assert(!quickLookViewer.includes('URL(fileURLWithPath: "/usr/bin/env")'), 'Quick Look xyzrender launch must not depend on /usr/bin/env');
+assert(viewer.includes('xyzrenderViewer'), 'web viewer must expose xyzrender controls for xyzrender-only formats');
 assert(appViewer.includes('gridRecordsScriptWithRDKitWasm'), 'standalone grid previews must pass RDKit wasm without file:// fetch');
 assert(appViewer.includes('fileSupport: MoleculeGridFileSupport.load()'), 'standalone grid previews must honor enabled grid file types');
 assert(gridViewer.includes('wasmBinary'), 'grid viewer must initialize RDKit with an in-memory wasmBinary fallback');
@@ -268,6 +360,7 @@ assert(xcodeProject.includes('PreviewExtension/Web/burette-agent.js'), 'Xcode va
 assert(viewer.includes('startXYZFast'), 'viewer.js must support Fast XYZ rendering');
 assert(viewer.includes('startExternalArtifact'), 'viewer.js must support external xyzrender artifacts');
 assert(viewer.includes("config.quickLookViewer === true && format === 'xyz'"), 'viewer.js must show renderer controls for Quick Look XYZ previews');
+assert(viewer.includes('xyzrenderViewer'), 'viewer.js must show xyzrender preset controls for xyzrender-only previews');
 assert(xyzFast.includes('BurreteXYZFast'), 'xyz-fast.js must expose BurreteXYZFast');
 assert(viewer.includes('buret.toolbar.collapsed'), 'viewer.js must remember compact toolbar state');
 assert(viewer.includes('TOOLBAR_POSITION_VERSION'), 'viewer.js must reset stale toolbar positions');
@@ -300,10 +393,15 @@ assert(config.transparentBackground === false, 'transparent background should be
 assert(config.sdfGrid === true, 'SDF grid flag should be encoded');
 assert(config.molstarFormat === config.format, 'molstarFormat should mirror the resolved Mol* format');
 assert(config.allowMolstarFallback === true, 'Mol* fallback flag should be encoded');
-assert(config.renderer === (gridExts.has(ext) ? 'grid2d' : (ext === 'xyz' ? 'xyz-fast' : 'molstar')), 'renderer should select grid2d for molecule collections, Fast XYZ for .xyz, and Mol* otherwise');
+assert(config.renderer === (gridExts.has(ext) ? 'grid2d' : (ext === 'xyz' ? 'xyz-fast' : (xyzrenderExts.has(ext) ? 'xyzrender-external' : 'molstar'))), 'renderer should select grid2d for molecule collections, Fast XYZ for .xyz, xyzrender for xyzrender-only formats, and Mol* otherwise');
 if (ext === 'xyz') {
   assert(config.xyzFast && config.xyzFast.firstFrameOnly === true, 'XYZ web test should encode first-frame Fast XYZ options');
   assert(config.xyzFast.showCell === true, 'XYZ web test should encode cell drawing preference');
+}
+if (xyzrenderExts.has(ext)) {
+  assert(config.xyzrenderViewer === true, 'xyzrender-only web test should expose xyzrender controls');
+  assert(config.molstarAvailable === false, 'xyzrender-only web test should hide Mol* switching');
+  assert(config.externalArtifact && config.externalArtifact.path === 'xyzrender.svg', 'xyzrender-only web test should generate an SVG artifact');
 }
 
 const expectedFormats = {
@@ -319,13 +417,36 @@ const expectedFormats = {
   mol: 'mol',
   mol2: 'mol2',
   xyz: 'xyz',
-  gro: 'gro'
+  gro: 'gro',
+  xtc: 'xtc',
+  trr: 'trr',
+  dcd: 'dcd',
+  nctraj: 'nctraj',
+  lammpstrj: 'lammpstrj',
+  top: 'top',
+  psf: 'psf',
+  prmtop: 'prmtop',
+  cub: 'xyzrender',
+  cube: 'xyzrender',
+  in: 'xyzrender',
+  log: 'xyzrender',
+  out: 'xyzrender',
+  vasp: 'xyzrender',
+  mae: 'xyzrender',
+  maegz: 'xyzrender',
+  cms: 'xyzrender'
 };
 if (expectedFormats[ext]) {
   assert(config.format === expectedFormats[ext], `expected ${ext} to map to ${expectedFormats[ext]}, got ${config.format}`);
 }
 if (ext === 'bcif') {
   assert(config.binary === true, 'BCIF should be marked binary');
+}
+if (['xtc', 'trr', 'dcd', 'nctraj'].includes(ext)) {
+  assert(config.binary === true, `${ext.toUpperCase()} should be marked binary`);
+}
+if (['xyz', 'cub', 'cube'].includes(ext)) {
+  assert(config.canOpenInVesta === true, `${ext.toUpperCase()} should expose VESTA handoff`);
 }
 console.log('Validated web preview contract');
 JS

@@ -355,10 +355,13 @@ enum BurreteFileAssociations {
         "com.local.burrete10.mol",
         "com.local.burrete10.mol2",
         "com.local.burrete10.xyz",
+        "com.local.burrete10.xyzrender-input",
         "net.sourceforge.openbabel.xyz",
         // LaunchServices resolves bare .xyz files to this dynamic UTI on current macOS.
         "dyn.ah62d4rv4ge81u8p4",
         "com.local.burrete10.gro",
+        "com.local.burrete10.molecular-dynamics",
+        "com.local.burrete10.schrodinger",
         // LaunchServices resolves bare .gro files to this dynamic UTI on current macOS.
         "dyn.ah62d4rv4ge80s6xt",
         "com.local.molstarquicklook10.pdb",
