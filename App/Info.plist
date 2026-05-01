@@ -13,22 +13,40 @@
 			<array>
 				<string>bcif</string>
 				<string>cif</string>
+				<string>cms</string>
 				<string>csv</string>
+				<string>cub</string>
+				<string>cube</string>
+				<string>dcd</string>
 				<string>ent</string>
+				<string>gro</string>
 				<string>mcif</string>
 				<string>mmcif</string>
 				<string>mol</string>
 				<string>mol2</string>
+				<string>in</string>
+				<string>lammpstrj</string>
+				<string>log</string>
+				<string>mae</string>
+				<string>mae.gz</string>
+				<string>maegz</string>
+				<string>nctraj</string>
+				<string>out</string>
 				<string>pdb</string>
 				<string>pdbqt</string>
 				<string>pqr</string>
+				<string>prmtop</string>
+				<string>psf</string>
 				<string>sd</string>
 				<string>sdf</string>
 				<string>smi</string>
 				<string>smiles</string>
+				<string>top</string>
+				<string>trr</string>
 				<string>tsv</string>
+				<string>vasp</string>
+				<string>xtc</string>
 				<string>xyz</string>
-				<string>gro</string>
 			</array>
 			<key>CFBundleTypeName</key>
 			<string>Molecular structure files</string>
@@ -98,9 +116,12 @@
 					<string>public.comma-separated-values-text</string>
 					<string>public.tab-separated-values-text</string>
 					<string>com.local.burrete10.xyz</string>
+					<string>com.local.burrete10.xyzrender-input</string>
 					<string>net.sourceforge.openbabel.xyz</string>
 					<string>dyn.ah62d4rv4ge81u8p4</string>
 					<string>com.local.burrete10.gro</string>
+					<string>com.local.burrete10.molecular-dynamics</string>
+					<string>com.local.burrete10.schrodinger</string>
 					<string>dyn.ah62d4rv4ge80s6xt</string>
 				</array>
 			</dict>
@@ -150,6 +171,29 @@
 				<array>
 					<string>chemical/x-pdb</string>
 					<string>chemical/x-pdbqt</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>xyzrender-compatible molecular structure file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.xyzrender-input</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>cub</string>
+					<string>cube</string>
+					<string>in</string>
+					<string>log</string>
+					<string>out</string>
+					<string>vasp</string>
 				</array>
 			</dict>
 		</dict>
@@ -349,6 +393,50 @@
 				<key>public.filename-extension</key>
 				<array>
 					<string>gro</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Molecular dynamics trajectory or topology file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.molecular-dynamics</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>xtc</string>
+					<string>trr</string>
+					<string>dcd</string>
+					<string>nctraj</string>
+					<string>lammpstrj</string>
+					<string>top</string>
+					<string>psf</string>
+					<string>prmtop</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Schrodinger molecular structure file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.schrodinger</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mae</string>
+					<string>mae.gz</string>
+					<string>maegz</string>
+					<string>cms</string>
 				</array>
 			</dict>
 		</dict>

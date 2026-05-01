@@ -16,6 +16,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private var currentPreviewURL: URL?
     private var rendererOverride: String?
     private var xyzrenderPresetOverride: String?
+    private var xyzrenderOrientationRefText: String?
     private static let showDebugOverlay = false
     private static let verboseLogging = false
     private static let defaultViewerPageZoom: CGFloat = 1.0
@@ -134,6 +135,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         currentPreviewURL = url
         rendererOverride = nil
         xyzrenderPresetOverride = nil
+        xyzrenderOrientationRefText = nil
         resetLog()
         hasRenderedTerminationError = false
         appendLog("preparePreviewOfFile called")
@@ -211,18 +213,19 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     private static let supportedStructureExtensions: Set<String> = [
-        "bcif", "cif", "csv", "ent", "gro", "mcif", "mmcif", "mol", "mol2", "pdb", "pdbqt", "pqr", "sd", "sdf", "smi", "smiles", "tsv", "xyz"
+        "bcif", "cif", "cms", "csv", "cub", "cube", "dcd", "ent", "gro", "in", "lammpstrj", "log", "mae", "maegz", "mcif", "mmcif", "mol", "mol2", "nctraj", "out", "pdb", "pdbqt", "pqr", "prmtop", "psf", "sd", "sdf", "smi", "smiles", "top", "trr", "tsv", "vasp", "xtc", "xyz"
     ]
 
     private static func buildInlinePreviewHTML(
         for url: URL,
         rendererOverride: String? = nil,
-        xyzrenderPresetOverride: String? = nil
+        xyzrenderPresetOverride: String? = nil,
+        xyzrenderOrientationRefText: String? = nil
     ) throws -> BuildResult {
         var diagnostics: [String] = []
         func diag(_ message: String) { diagnostics.append("[build] " + message) }
 
-        let pathExtension = url.pathExtension.lowercased()
+        let pathExtension = structurePathExtension(for: url)
         guard supportedStructureExtensions.contains(pathExtension) else {
             throw PreviewError.unsupportedStructureFile(url.lastPathComponent)
         }
@@ -295,13 +298,27 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             throw PreviewError.unsupportedStructureFile(url.lastPathComponent)
         }
 
-        let format = StructureFormat(url: url, data: structureData)
+        var format = StructureFormat(url: url, data: structureData)
         var renderer = resolvedRenderer(for: format, preferences: preferences, rendererOverride: rendererOverride)
+        var structureDataForWeb = structureData
         var externalArtifact: PreviewExternalXyzrenderArtifact?
         var externalArtifactSourceURL: URL?
         var externalStatus: [String: Any]?
         var temporaryExternalDirectory: URL?
         let xyzrenderPreset = PreviewXyzrenderPreset.normalize(xyzrenderPresetOverride ?? preferences.xyzrenderPreset)
+        if renderer == "xyzrender-external",
+           rendererOverride == nil,
+           format.isExternalXyzrenderOnly,
+           let convertedXYZ = PreviewStructureTextConverter.xyzData(
+            from: structureData,
+            fileExtension: pathExtension,
+            label: url.lastPathComponent
+           ) {
+            renderer = "xyz-fast"
+            format = .xyzFastCompatible
+            structureDataForWeb = convertedXYZ
+            diag("xyzrender.default=built-in-text-parser")
+        }
         if renderer == "xyzrender-external" {
             let renderDirectory = fileManager.temporaryDirectory
                 .appendingPathComponent("BurreteXYZRender-\(UUID().uuidString)", isDirectory: true)
@@ -316,17 +333,37 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     customConfigPath: preferences.xyzrenderCustomConfigPath,
                     transparent: preferences.canvasBackground == "transparent",
                     executablePath: preferences.xyzrenderExecutablePath,
-                    extraArguments: preferences.xyzrenderExtraArguments
+                    extraArguments: preferences.xyzrenderExtraArguments,
+                    orientationRefText: xyzrenderOrientationRefText
                 )
                 externalArtifactSourceURL = renderDirectory.appendingPathComponent("xyzrender.svg")
             } catch {
-                renderer = "xyz-fast"
-                externalStatus = [
-                    "status": "fallback",
-                    "requested": "xyzrender-external",
-                    "message": error.localizedDescription
-                ]
-                diag("xyzrender.fallback=\(error.localizedDescription)")
+                if format.isExternalXyzrenderOnly,
+                   let convertedXYZ = PreviewStructureTextConverter.xyzData(
+                    from: structureData,
+                    fileExtension: pathExtension,
+                    label: url.lastPathComponent
+                   ) {
+                    renderer = "xyz-fast"
+                    format = .xyzFastCompatible
+                    structureDataForWeb = convertedXYZ
+                    externalStatus = [
+                        "status": "fallback",
+                        "requested": "xyzrender-external",
+                        "message": "Using built-in text structure parser because external xyzrender is unavailable in Quick Look."
+                    ]
+                    diag("xyzrender.fallback=built-in-text-parser error=\(error.localizedDescription)")
+                } else if format.isExternalXyzrenderOnly {
+                    throw error
+                } else {
+                    renderer = "xyz-fast"
+                    externalStatus = [
+                        "status": "fallback",
+                        "requested": "xyzrender-external",
+                        "message": error.localizedDescription
+                    ]
+                    diag("xyzrender.fallback=\(error.localizedDescription)")
+                }
             }
         }
         defer {
@@ -334,8 +371,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 try? fileManager.removeItem(at: temporaryExternalDirectory)
             }
         }
-        let xyzFastPayload = renderer == "xyz-fast" ? makeXYZFastPayload(from: structureData) : nil
-        let structureDataForWeb = xyzFastPayload?.data ?? structureData
+        let xyzFastPayload = renderer == "xyz-fast" ? makeXYZFastPayload(from: structureDataForWeb) : nil
+        structureDataForWeb = xyzFastPayload?.data ?? structureDataForWeb
         diag("detected.format=\(format.molstarFormat) binary=\(format.isBinary) renderer=\(renderer)")
         if let xyzFastPayload {
             diag("xyzFast.firstFrame.bytes=\(xyzFastPayload.data.count) atoms=\(xyzFastPayload.atomCount ?? -1) frames=\(xyzFastPayload.frameCount ?? -1)")
@@ -351,6 +388,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             externalArtifact: externalArtifact,
             externalStatus: externalStatus,
             xyzrenderPreset: xyzrenderPreset,
+            originalFileExtension: pathExtension,
             preferences: preferences
         )
         let base64 = structureDataForWeb.base64EncodedString(options: [])
@@ -578,6 +616,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         externalArtifact: PreviewExternalXyzrenderArtifact?,
         externalStatus: [String: Any]?,
         xyzrenderPreset: String,
+        originalFileExtension: String,
         preferences: PreviewPreferences
     ) throws -> String {
         var payload: [String: Any] = [
@@ -598,8 +637,17 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "transparentBackground": preferences.canvasBackground == "transparent",
             "sdfGrid": true,
             "showPanelControls": preferences.showPanelControls,
-            "defaultLayoutState": preferences.defaultLayoutState
+            "defaultLayoutState": preferences.defaultLayoutState,
+            "canOpenInVesta": canOpenInVesta(fileExtension: originalFileExtension)
         ]
+        if renderer == "xyzrender-external" {
+            payload["xyzrenderViewer"] = true
+            payload["molstarAvailable"] = !format.isExternalXyzrenderOnly
+            payload["quickLookViewer"] = true
+            payload["requestedRenderer"] = "auto"
+            payload["xyzrenderPreset"] = xyzrenderPreset
+            payload["xyzrenderPresetOptions"] = PreviewXyzrenderPreset.pickerOptions.map { ["value": $0.0, "label": $0.1] }
+        }
         if format.molstarFormat == "xyz" && !format.isBinary {
             payload["quickLookViewer"] = true
             payload["requestedRenderer"] = "auto"
@@ -626,6 +674,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 "renderer": "xyzrender",
                 "preset": externalArtifact.preset,
                 "config": externalArtifact.configArgument,
+                "orientationRef": externalArtifact.usedOrientationRef,
                 "elapsedMs": externalArtifact.elapsedMs,
                 "log": externalArtifact.log
             ]
@@ -1205,6 +1254,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq</button>
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel">Log</button>
             <button class="buret-button" type="button" data-buret-action="theme" aria-label="Switch to light theme" title="Switch to light theme">Light</button>
+            <button class="buret-button hidden" type="button" data-buret-action="open-vesta" aria-label="Open in VESTA" title="Open in VESTA">VESTA</button>
             <div class="buret-renderer-control" data-buret-renderer-control>
               <button class="buret-button" type="button" data-buret-renderer="xyz-fast" aria-label="Use Fast XYZ SVG" title="Use Fast XYZ SVG">Fast</button>
               <button class="buret-button" type="button" data-buret-renderer="molstar" aria-label="Use Mol* Interactive" title="Use Mol* Interactive">Mol*</button>
@@ -1295,6 +1345,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     private static func resolvedRenderer(for format: StructureFormat, preferences _: PreviewPreferences, rendererOverride: String?) -> String {
+        if format.isExternalXyzrenderOnly {
+            return "xyzrender-external"
+        }
         let isXYZ = format.molstarFormat == "xyz" && !format.isBinary
         guard let rendererOverride else { return isXYZ ? "xyz-fast" : "molstar" }
         switch normalizeRendererMode(rendererOverride) {
@@ -1369,18 +1422,31 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
     private static func quickLookSizeLimit(for url: URL) -> Int64 {
         let mib: Int64 = 1024 * 1024
-        switch url.pathExtension.lowercased() {
+        switch structurePathExtension(for: url) {
         case "pdb", "ent", "pdbqt", "pqr":
             return 35 * mib
         case "cif", "mmcif", "mcif":
             return 40 * mib
         case "bcif":
             return 50 * mib
-        case "csv", "sdf", "sd", "mol", "mol2", "xyz", "gro", "smi", "smiles", "tsv":
+        case "csv", "sdf", "sd", "mol", "mol2", "xyz", "gro", "smi", "smiles", "tsv", "cub", "cube", "in", "log", "out", "vasp", "lammpstrj", "top", "psf", "prmtop", "mae", "maegz", "cms":
             return 25 * mib
+        case "xtc", "trr", "dcd", "nctraj":
+            return 75 * mib
         default:
             return 20 * mib
         }
+    }
+
+    private static func structurePathExtension(for url: URL) -> String {
+        if url.lastPathComponent.lowercased().hasSuffix(".mae.gz") {
+            return "maegz"
+        }
+        return url.pathExtension.lowercased()
+    }
+
+    private static func canOpenInVesta(fileExtension: String) -> Bool {
+        ["xyz", "cub", "cube"].contains(fileExtension.lowercased())
     }
 
     private func scheduleRenderTimeout(for requestID: UUID) {
@@ -1460,11 +1526,15 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 return
             }
             if type == "setRenderer", let value = body["value"] as? String {
-                setRendererOverride(value)
+                setRendererOverride(value, orientationRefText: body["orientationRef"] as? String)
                 return
             }
             if type == "setXyzrenderPreset", let value = body["value"] as? String {
                 setXyzrenderPresetOverride(value)
+                return
+            }
+            if type == "setXyzrenderOrientation" {
+                setXyzrenderOrientation(body["text"] as? String ?? body["value"] as? String)
                 return
             }
             appendLog("JS message type=\(type): \(text.prefix(1600))")
@@ -1484,12 +1554,37 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
     private func handleJavaScriptAction(_ action: String) {
         appendLog("JS action=\(action)")
+        if action == "open-vesta" {
+            openCurrentPreviewInVesta()
+            return
+        }
         appendLog("unknown JS action=\(action)")
     }
 
-    private func setRendererOverride(_ value: String) {
+    private func openCurrentPreviewInVesta() {
+        guard let url = currentPreviewURL else {
+            appendLog("openInVesta.missingCurrentURL")
+            return
+        }
+        guard Self.canOpenInVesta(fileExtension: Self.structurePathExtension(for: url)) else {
+            appendLog("openInVesta.unsupportedExtension=\(Self.structurePathExtension(for: url))")
+            return
+        }
+        do {
+            try VestaLauncher.open(fileURL: url)
+            appendLog("openInVesta.launched=\(url.path)")
+        } catch {
+            appendLog("openInVesta.failed=\(error.localizedDescription)")
+        }
+    }
+
+    private func setRendererOverride(_ value: String, orientationRefText: String? = nil) {
         let renderer = Self.normalizeRendererMode(value)
-        guard rendererOverride != renderer else { return }
+        let hasNewOrientation = setXyzrenderOrientation(orientationRefText)
+        if renderer != "xyzrender-external" {
+            xyzrenderOrientationRefText = nil
+        }
+        guard rendererOverride != renderer || hasNewOrientation else { return }
         rendererOverride = renderer
         reloadCurrentPreview()
     }
@@ -1502,6 +1597,28 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         reloadCurrentPreview()
     }
 
+    @discardableResult
+    private func setXyzrenderOrientation(_ text: String?) -> Bool {
+        let normalized = Self.normalizedXyzrenderOrientationRef(text)
+        guard xyzrenderOrientationRefText != normalized else { return false }
+        xyzrenderOrientationRefText = normalized
+        return true
+    }
+
+    private static func normalizedXyzrenderOrientationRef(_ text: String?) -> String? {
+        guard let text else { return nil }
+        let normalized = text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+        guard normalized.utf8.count <= 4 * 1024 * 1024 else { return nil }
+        let lines = normalized.split(separator: "\n", omittingEmptySubsequences: false)
+        guard let first = lines.first?.trimmingCharacters(in: .whitespacesAndNewlines),
+              let atomCount = Int(first),
+              atomCount > 0,
+              lines.count >= atomCount + 2 else {
+            return nil
+        }
+        return normalized.hasSuffix("\n") ? normalized : normalized + "\n"
+    }
+
     private func reloadCurrentPreview() {
         guard let url = currentPreviewURL else { return }
         let requestID = UUID()
@@ -1510,14 +1627,16 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         hasRenderedTerminationError = false
         let rendererOverride = rendererOverride
         let xyzrenderPresetOverride = xyzrenderPresetOverride
-        appendLog("reloading preview rendererOverride=\(rendererOverride ?? "nil") xyzrenderPresetOverride=\(xyzrenderPresetOverride ?? "nil")")
+        let xyzrenderOrientationRefText = xyzrenderOrientationRefText
+        appendLog("reloading preview rendererOverride=\(rendererOverride ?? "nil") xyzrenderPresetOverride=\(xyzrenderPresetOverride ?? "nil") orientationRef=\(xyzrenderOrientationRefText == nil ? "nil" : "set")")
         statusLabel.stringValue = "[native] Switching renderer...\n\(url.lastPathComponent)"
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             do {
                 let result = try Self.buildInlinePreviewHTML(
                     for: url,
                     rendererOverride: rendererOverride,
-                    xyzrenderPresetOverride: xyzrenderPresetOverride
+                    xyzrenderPresetOverride: xyzrenderPresetOverride,
+                    xyzrenderOrientationRefText: xyzrenderOrientationRefText
                 )
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.activePreviewRequestID == requestID else { return }
@@ -1756,13 +1875,258 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 }
 
+private enum PreviewStructureTextConverter {
+    private struct Atom {
+        let symbol: String
+        let x: Double
+        let y: Double
+        let z: Double
+    }
+
+    private typealias Vec3 = (Double, Double, Double)
+
+    static func xyzData(from data: Data, fileExtension: String, label: String) -> Data? {
+        let text = decodeText(data)
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let atoms: [Atom]?
+        switch fileExtension.lowercased() {
+        case "cub", "cube":
+            atoms = parseCube(lines)
+        case "vasp":
+            atoms = parseVasp(lines)
+        case "in":
+            atoms = parseQuantumEspressoInput(lines)
+        case "out":
+            atoms = parseOrcaOutput(lines)
+        case "log":
+            atoms = parseGaussianOutput(lines) ?? parseOrcaOutput(lines)
+        default:
+            atoms = nil
+        }
+        guard let atoms, !atoms.isEmpty else { return nil }
+        var xyz = "\(atoms.count)\nConverted from \(label)\n"
+        for atom in atoms {
+            xyz += "\(atom.symbol) \(format(atom.x)) \(format(atom.y)) \(format(atom.z))\n"
+        }
+        return Data(xyz.utf8)
+    }
+
+    private static func parseCube(_ lines: [String]) -> [Atom]? {
+        guard lines.count >= 6 else { return nil }
+        let countFields = fields(lines[2])
+        guard let atomCountToken = countFields.first, let atomCount = Int(atomCountToken), atomCount != 0 else { return nil }
+        let count = abs(atomCount)
+        guard lines.count >= 6 + count else { return nil }
+        return (0..<count).compactMap { index in
+            let parts = fields(lines[6 + index])
+            guard parts.count >= 5, let number = Int(parts[0]),
+                  let x = Double(parts[2]), let y = Double(parts[3]), let z = Double(parts[4]) else { return nil }
+            return Atom(symbol: symbol(for: number), x: x, y: y, z: z)
+        }
+    }
+
+    private static func parseVasp(_ lines: [String]) -> [Atom]? {
+        guard lines.count >= 8, let scale = Double(lines[1].trimmingCharacters(in: .whitespacesAndNewlines)) else { return nil }
+        guard let a = parseVector(lines[2], scale: scale),
+              let b = parseVector(lines[3], scale: scale),
+              let c = parseVector(lines[4], scale: scale) else { return nil }
+        let symbols = fields(lines[5])
+        let counts = fields(lines[6]).compactMap(Int.init)
+        guard !symbols.isEmpty, symbols.count == counts.count else { return nil }
+        var index = 7
+        if index < lines.count && lines[index].trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("s") {
+            index += 1
+        }
+        guard index < lines.count else { return nil }
+        let mode = lines[index].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let direct = mode.hasPrefix("d")
+        index += 1
+        var atoms: [Atom] = []
+        for (symbolIndex, symbol) in symbols.enumerated() {
+            for _ in 0..<counts[symbolIndex] {
+                guard index < lines.count else { return atoms.isEmpty ? nil : atoms }
+                let parts = fields(lines[index])
+                index += 1
+                guard parts.count >= 3, let x = Double(parts[0]), let y = Double(parts[1]), let z = Double(parts[2]) else { continue }
+                let position = direct ? combine(x, a, y, b, z, c) : (x * scale, y * scale, z * scale)
+                atoms.append(Atom(symbol: symbol, x: position.0, y: position.1, z: position.2))
+            }
+        }
+        return atoms
+    }
+
+    private static func parseQuantumEspressoInput(_ lines: [String]) -> [Atom]? {
+        var cell: [Vec3] = []
+        var cellScale = 1.0
+        var atomStart: Int?
+        var direct = false
+        for index in lines.indices {
+            let lower = lines[index].lowercased()
+            if lower.trimmingCharacters(in: .whitespaces).hasPrefix("cell_parameters") {
+                if lower.contains("bohr") { cellScale = 0.529177210903 }
+                cell = (1...3).compactMap { offset in
+                    guard index + offset < lines.count else { return nil }
+                    return parseVector(lines[index + offset], scale: cellScale)
+                }
+            }
+            if lower.trimmingCharacters(in: .whitespaces).hasPrefix("atomic_positions") {
+                atomStart = index + 1
+                direct = lower.contains("crystal")
+            }
+        }
+        guard let atomStart else { return nil }
+        var atoms: [Atom] = []
+        for line in lines[atomStart...] {
+            let parts = fields(line)
+            guard parts.count >= 4 else { break }
+            guard let x = Double(parts[1]), let y = Double(parts[2]), let z = Double(parts[3]) else { break }
+            let position: Vec3
+            if direct, cell.count == 3 {
+                position = combine(x, cell[0], y, cell[1], z, cell[2])
+            } else {
+                position = (x, y, z)
+            }
+            atoms.append(Atom(symbol: parts[0], x: position.0, y: position.1, z: position.2))
+        }
+        return atoms.isEmpty ? nil : atoms
+    }
+
+    private static func parseOrcaOutput(_ lines: [String]) -> [Atom]? {
+        var best: [Atom]?
+        var index = 0
+        while index < lines.count {
+            if lines[index].contains("CARTESIAN COORDINATES (ANGSTROEM)") {
+                var atoms: [Atom] = []
+                index += 1
+                while index < lines.count && !(fields(lines[index]).first.map { isElementSymbol($0) } ?? false) {
+                    index += 1
+                }
+                while index < lines.count {
+                    let parts = fields(lines[index])
+                    guard parts.count >= 4, isElementSymbol(parts[0]),
+                          let x = Double(parts[1]), let y = Double(parts[2]), let z = Double(parts[3]) else { break }
+                    atoms.append(Atom(symbol: parts[0], x: x, y: y, z: z))
+                    index += 1
+                }
+                if !atoms.isEmpty { best = atoms }
+            } else {
+                index += 1
+            }
+        }
+        return best
+    }
+
+    private static func parseGaussianOutput(_ lines: [String]) -> [Atom]? {
+        var best: [Atom]?
+        var index = 0
+        while index < lines.count {
+            if lines[index].contains("Standard orientation:") || lines[index].contains("Input orientation:") {
+                var atoms: [Atom] = []
+                index += 1
+                var separators = 0
+                while index < lines.count && separators < 2 {
+                    if lines[index].contains("-----") { separators += 1 }
+                    index += 1
+                }
+                while index < lines.count {
+                    if lines[index].contains("-----") { break }
+                    let parts = fields(lines[index])
+                    guard parts.count >= 6, let number = Int(parts[1]),
+                          let x = Double(parts[3]), let y = Double(parts[4]), let z = Double(parts[5]) else {
+                        index += 1
+                        continue
+                    }
+                    atoms.append(Atom(symbol: symbol(for: number), x: x, y: y, z: z))
+                    index += 1
+                }
+                if !atoms.isEmpty { best = atoms }
+            } else {
+                index += 1
+            }
+        }
+        return best ?? parseGaussianSymbolicZMatrix(lines)
+    }
+
+    private static func parseGaussianSymbolicZMatrix(_ lines: [String]) -> [Atom]? {
+        guard let start = lines.firstIndex(where: { $0.contains("Symbolic Z-matrix:") }) else { return nil }
+        var atoms: [Atom] = []
+        for line in lines[(start + 1)...] {
+            let parts = fields(line)
+            if parts.isEmpty { continue }
+            if parts.first == "Charge" { continue }
+            guard parts.count >= 4, isElementSymbol(parts[0]),
+                  let x = Double(parts[1]), let y = Double(parts[2]), let z = Double(parts[3]) else {
+                if !atoms.isEmpty { break }
+                continue
+            }
+            atoms.append(Atom(symbol: parts[0], x: x, y: y, z: z))
+        }
+        return atoms.isEmpty ? nil : atoms
+    }
+
+    private static func fields(_ line: String) -> [String] {
+        line.split { $0 == " " || $0 == "\t" }.map(String.init)
+    }
+
+    private static func parseVector(_ line: String, scale: Double) -> Vec3? {
+        let parts = fields(line)
+        guard parts.count >= 3, let x = Double(parts[0]), let y = Double(parts[1]), let z = Double(parts[2]) else { return nil }
+        return (x * scale, y * scale, z * scale)
+    }
+
+    private static func combine(_ x: Double, _ a: Vec3, _ y: Double, _ b: Vec3, _ z: Double, _ c: Vec3) -> Vec3 {
+        (x * a.0 + y * b.0 + z * c.0, x * a.1 + y * b.1 + z * c.1, x * a.2 + y * b.2 + z * c.2)
+    }
+
+    private static func isElementSymbol(_ value: String) -> Bool {
+        symbolsByNumber.contains { $0 == value.capitalized }
+    }
+
+    private static func symbol(for atomicNumber: Int) -> String {
+        guard atomicNumber > 0, atomicNumber <= symbolsByNumber.count else { return "X" }
+        return symbolsByNumber[atomicNumber - 1]
+    }
+
+    private static func format(_ value: Double) -> String {
+        String(format: "%.6f", value)
+    }
+
+    private static func decodeText(_ data: Data) -> String {
+        if let value = String(data: data, encoding: .utf8) { return value }
+        if let value = String(data: data, encoding: .isoLatin1) { return value }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    private static let symbolsByNumber = [
+        "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne",
+        "Na", "Mg", "Al", "Si", "P", "S", "Cl", "Ar", "K", "Ca",
+        "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn",
+        "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr",
+        "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn",
+        "Sb", "Te", "I", "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd",
+        "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb",
+        "Lu", "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg",
+        "Tl", "Pb", "Bi", "Po", "At", "Rn"
+    ]
+}
+
 private struct StructureFormat {
     let molstarFormat: String
     let isBinary: Bool
     var prefersTransparentBackground: Bool { molstarFormat == "sdf" }
+    var isExternalXyzrenderOnly: Bool { molstarFormat == "xyzrender" }
+
+    static let xyzFastCompatible = StructureFormat(molstarFormat: "xyz", isBinary: false)
+
+    private init(molstarFormat: String, isBinary: Bool) {
+        self.molstarFormat = molstarFormat
+        self.isBinary = isBinary
+    }
 
     init(url: URL, data: Data) {
-        let ext = url.pathExtension.lowercased()
+        let ext = url.lastPathComponent.lowercased().hasSuffix(".mae.gz") ? "maegz" : url.pathExtension.lowercased()
         switch ext {
         case "pdb", "ent", "pqr":
             self.molstarFormat = "pdb"
@@ -1793,6 +2157,18 @@ private struct StructureFormat {
             self.isBinary = false
         case "gro":
             self.molstarFormat = "gro"
+            self.isBinary = false
+        case "xtc", "trr", "dcd", "nctraj":
+            self.molstarFormat = ext
+            self.isBinary = true
+        case "lammpstrj", "top", "psf", "prmtop":
+            self.molstarFormat = ext
+            self.isBinary = false
+        case "mae", "maegz", "cms":
+            self.molstarFormat = "xyzrender"
+            self.isBinary = false
+        case "cub", "cube", "in", "log", "out", "vasp":
+            self.molstarFormat = "xyzrender"
             self.isBinary = false
         default:
             self.molstarFormat = "mmcif"
@@ -1860,6 +2236,7 @@ private struct PreviewExternalXyzrenderArtifact {
     let outputType: String
     let preset: String
     let configArgument: String
+    let usedOrientationRef: Bool
     let elapsedMs: Int
     let log: String
 }
@@ -1873,7 +2250,8 @@ private enum PreviewExternalXyzrenderWorker {
         customConfigPath: String,
         transparent: Bool,
         executablePath: String,
-        extraArguments: String
+        extraArguments: String,
+        orientationRefText: String?
     ) throws -> PreviewExternalXyzrenderArtifact {
         let fileManager = FileManager.default
         let inputURL = outputDirectory.appendingPathComponent(safeInputFilename(sourceFilename))
@@ -1885,19 +2263,17 @@ private enum PreviewExternalXyzrenderWorker {
 
         let process = Process()
         let configuredExecutable = executablePath.trimmingCharacters(in: .whitespacesAndNewlines)
-        var arguments: [String]
-        if configuredExecutable.isEmpty {
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            arguments = ["xyzrender", inputURL.path, "-o", outputURL.path]
-        } else {
-            process.executableURL = URL(fileURLWithPath: configuredExecutable)
-            arguments = [inputURL.path, "-o", outputURL.path]
-        }
+        process.executableURL = URL(fileURLWithPath: try resolvedExecutable(configuredExecutable))
+        var arguments = [inputURL.path, "-o", outputURL.path]
 
         let safePreset = PreviewXyzrenderPreset.normalize(preset)
         let configArgument = resolveConfigArgument(preset: safePreset, customConfigPath: customConfigPath)
         let effectivePreset = safePreset == "custom" && configArgument == "default" ? "default" : safePreset
         arguments += ["--config", configArgument]
+        let orientationRefURL = try writeOrientationRef(orientationRefText, outputDirectory: outputDirectory)
+        if let orientationRefURL {
+            arguments += ["--ref", orientationRefURL.path]
+        }
         if transparent { arguments.append("--transparent") }
         arguments += sanitizedExtraArguments(extraArguments)
         process.arguments = arguments
@@ -1933,6 +2309,7 @@ private enum PreviewExternalXyzrenderWorker {
             outputType: "svg",
             preset: effectivePreset,
             configArgument: configArgument,
+            usedOrientationRef: orientationRefURL != nil,
             elapsedMs: elapsedMs,
             log: log
         )
@@ -1941,6 +2318,47 @@ private enum PreviewExternalXyzrenderWorker {
     private static func safeInputFilename(_ filename: String) -> String {
         let ext = URL(fileURLWithPath: filename).pathExtension
         return ext.isEmpty ? "input.xyz" : "input.\(ext)"
+    }
+
+    private static func writeOrientationRef(_ text: String?, outputDirectory: URL) throws -> URL? {
+        guard let text, !text.isEmpty else { return nil }
+        let url = outputDirectory.appendingPathComponent("xyzrender-orientation-ref.xyz")
+        try Data(text.utf8).write(to: url, options: [.atomic])
+        return url
+    }
+
+    private static func resolvedExecutable(_ configuredExecutable: String) throws -> String {
+        if !configuredExecutable.isEmpty { return configuredExecutable }
+        let fileManager = FileManager.default
+        for directory in executableSearchPaths() {
+            let candidate = URL(fileURLWithPath: directory).appendingPathComponent("xyzrender").path
+            if fileManager.isExecutableFile(atPath: candidate) {
+                return candidate
+            }
+        }
+        throw PreviewExternalXyzrenderError.missingExecutable
+    }
+
+    private static func executableSearchPaths() -> [String] {
+        let containerHome = FileManager.default.homeDirectoryForCurrentUser.path
+        let userHome = "/Users/\(NSUserName())"
+        var paths = [
+            "\(userHome)/.local/bin",
+            "\(userHome)/bin",
+            "\(containerHome)/.local/bin",
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/opt/local/bin",
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin"
+        ]
+        if let path = ProcessInfo.processInfo.environment["PATH"] {
+            paths += path.split(separator: ":").map(String.init)
+        }
+        var seen = Set<String>()
+        return paths.filter { seen.insert($0).inserted }
     }
 
     private static func resolveConfigArgument(preset: String, customConfigPath: String) -> String {
@@ -2011,7 +2429,7 @@ private enum PreviewExternalXyzrenderWorker {
 
     private static func mergedEnvironment() -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
-        let defaultPath = "/opt/homebrew/bin:/usr/local/bin:/opt/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        let defaultPath = executableSearchPaths().joined(separator: ":")
         if let path = environment["PATH"], !path.isEmpty {
             environment["PATH"] = defaultPath + ":" + path
         } else {
@@ -2022,12 +2440,15 @@ private enum PreviewExternalXyzrenderWorker {
 }
 
 private enum PreviewExternalXyzrenderError: LocalizedError {
+    case missingExecutable
     case timedOut
     case missingOutput
     case failed(status: Int32, log: String)
 
     var errorDescription: String? {
         switch self {
+        case .missingExecutable:
+            return "External xyzrender executable was not found. Set an absolute xyzrender path in Burrete settings."
         case .timedOut:
             return "External xyzrender timed out after 25 seconds."
         case .missingOutput:
@@ -2131,6 +2552,34 @@ private enum PreviewError: LocalizedError {
             return "Could not create preview config."
         case .couldNotCreateRuntimePreview(let reason):
             return "Could not create runtime preview files: \(reason)"
+        }
+    }
+}
+
+private enum VestaLauncher {
+    static func open(fileURL: URL) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = ["-a", "VESTA", fileURL.path]
+        let errorPipe = Pipe()
+        process.standardError = errorPipe
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            let data = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            let message = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
+            throw VestaLaunchError.failed(message.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+    }
+}
+
+private enum VestaLaunchError: LocalizedError {
+    case failed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .failed(let message):
+            return message.isEmpty ? "VESTA could not be opened." : message
         }
     }
 }
