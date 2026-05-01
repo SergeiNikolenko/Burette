@@ -2,7 +2,7 @@
   "name": "burrete",
   "version": "0.10.19",
   "private": true,
-  "description": "macOS menu bar app and Quick Look extension for molecular structure previews powered by Mol*.",
+  "description": "macOS menu bar app and Quick Look extension for molecular previews: Mol* 3D, fast XYZ, xyzrender SVG, and RDKit grids.",
   "scripts": {
     "vendor:molstar": "node scripts/vendor-molstar.mjs",
     "vendor:rdkit": "node scripts/vendor-rdkit.mjs",

@@ -1,6 +1,6 @@
 <h1 align="center">Burrete</h1>
 
-<p align="center">Finder-native molecular structure previews for macOS, powered by Mol* and a fast SVG path for XYZ.</p>
+<p align="center">Finder-native molecular structure previews for macOS: Mol* 3D, fast XYZ, xyzrender SVG, and RDKit molecule grids.</p>
 
 <p align="center">
   <img alt="Version 0.10.19" src="https://img.shields.io/badge/version-0.10.19-0f8f72.svg?style=flat-square" />
@@ -16,12 +16,14 @@
 
 ## What Is Burrete?
 
-Burrete is a small macOS app that lets Finder preview molecular structure files.
-Select a structure file, press Space, and Burrete shows an interactive Mol*
-viewer directly inside the native Quick Look window.
+Burrete is a macOS menu bar app with a Quick Look preview extension for
+molecular structure files. Select a structure file in Finder, press Space, and
+Burrete opens a native preview that can use Mol* for interactive 3D, a fast SVG
+path for XYZ files, external `xyzrender` for publication-style XYZ/CUBE output,
+or an RDKit-powered molecule grid for compound collections.
 
-It is useful when you want to inspect structures quickly without opening a full
-molecular modeling environment.
+It is built for quick structure inspection without opening a full molecular
+modeling environment.
 
 ## Download
 
@@ -40,17 +42,24 @@ press Space to preview it.
 
 ## Supported Files
 
-Burrete supports common molecular structure formats:
+Burrete supports common structure and small-molecule collection formats:
 
 - PDB and PDBQT
 - PDBx/mmCIF and BinaryCIF
 - SDF, MOL, and MOL2
-- XYZ and GRO
+- SMILES files (`.smi`, `.smiles`)
+- CSV and TSV tables with SMILES-like columns
+- XYZ, extXYZ, CUBE, GRO, GROMACS-style trajectories/topologies, and related text outputs
 
-XYZ files use a lightweight Fast XYZ SVG renderer by default in Quick Look for faster first-frame previews. Mol* remains available as the interactive renderer for live rotation and full app controls, and the standalone app can optionally call a user-installed `xyzrender` executable for publication-style SVG output with the built-in preset set, a custom JSON config path, and optional advanced CLI flags.
+XYZ files use the lightweight Fast XYZ renderer by default in Quick Look for
+instant first-frame previews. You can switch to Mol* for interactive rotation or
+to external `xyzrender` for high-quality SVG output. If you rotate the molecule
+in Mol* and then switch to `xyzrender`, Burrete passes the current orientation to
+`xyzrender` through its reference-file workflow.
 
-Double-clicking a supported file can open it in Burrete. Pressing Space keeps
-using the Quick Look preview.
+CUBE and XYZ previews also expose an optional VESTA handoff when VESTA is
+installed. Double-clicking a supported file can open it in Burrete; pressing
+Space keeps using the Quick Look preview.
 
 ## Preview Features
 
@@ -58,10 +67,14 @@ Burrete keeps the preview compact and Finder-friendly:
 
 - interactive 3D molecular structures powered by Mol*
 - protein ribbons and ligands in the same scene
-- a transparent Quick Look background that fits the macOS preview frame
+- light, dark, automatic, and transparent preview backgrounds
 - a small floating toolbar for fullscreen and optional Mol* panels
 - optional sequence, log, left, and right Mol* panels when you need them
-- fast static SVG previews for `.xyz` files, including first-frame multi-frame XYZ and simple extXYZ lattice boxes
+- fast static SVG previews for `.xyz` files, including first-frame multi-frame XYZ and extXYZ lattice boxes
+- external `xyzrender` previews with built-in presets, custom JSON configs, and optional advanced CLI flags
+- RDKit grids for SDF, SMILES, CSV, and TSV collections
+- grid search, sorting, SMARTS filtering/highlighting, selection, and export to SMILES or CSV
+- infinite grid loading for larger collections
 
 ## Settings
 
@@ -70,8 +83,10 @@ Burrete runs as a menu bar app. Its settings window includes:
 - launch and menu bar behavior
 - transparent or opaque preview background
 - default visibility for Mol* panels
-- renderer selection: Auto, Fast XYZ SVG, Mol* Interactive, or External xyzrender for the standalone app, including executable path, built-in preset/custom JSON config, and extra CLI flags
-- quick `.xyz` toolbar switching in the standalone app between Fast SVG, Mol* Interactive, and external `xyzrender`
+- renderer selection: Auto, Fast XYZ SVG, Mol* Interactive, or external `xyzrender`
+- `xyzrender` executable path, built-in preset/custom JSON config, and extra CLI flags
+- quick `.xyz` toolbar switching between Fast SVG, Mol*, and `xyzrender`
+- grid preview enablement for SDF, SMILES, CSV, and TSV files
 - Finder file association registration
 - preview cache cleanup
 - log access
@@ -93,6 +108,26 @@ The local installer places the app here:
 
 ```text
 ~/Applications/Burrete.app
+```
+
+## Development Checks
+
+Useful local checks:
+
+```bash
+npm run check:js
+npm run check:release
+npm run test:web
+npm run test:agent
+```
+
+The Quick Look extension caches generated runtime files under the extension
+container. After replacing the app, refresh Quick Look with:
+
+```bash
+qlmanage -r
+qlmanage -r cache
+killall quicklookd 2>/dev/null || true
 ```
 
 ## License
