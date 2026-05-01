@@ -46,6 +46,7 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
     private var currentViewerPageZoom: CGFloat = 1.0
     private var rendererOverride: String?
     private var xyzrenderPresetOverride: String?
+    private var xyzrenderOrientationRefText: String?
     private var isInNativeFullScreen = false
     private var isEnteringNativeFullScreen = false
     private static let defaultViewerPageZoom: CGFloat = 1.0
@@ -130,7 +131,8 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
             let runtime = try AppViewerRuntime.create(
                 for: fileURL,
                 rendererModeOverride: rendererOverride,
-                xyzrenderPresetOverride: xyzrenderPresetOverride
+                xyzrenderPresetOverride: xyzrenderPresetOverride,
+                xyzrenderOrientationRefText: xyzrenderOrientationRefText
             )
             webView.loadFileURL(runtime.indexURL, allowingReadAccessTo: runtime.readAccessURL)
         } catch {
@@ -146,6 +148,7 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
     func reloadSettingsPreferences() {
         rendererOverride = nil
         xyzrenderPresetOverride = nil
+        xyzrenderOrientationRefText = nil
         reloadDisplayPreferences()
     }
 
@@ -188,8 +191,16 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
             exportText(text, suggestedName: name)
             return
         }
+        if type == "action", let action = body["message"] as? String {
+            handleJavaScriptAction(action)
+            return
+        }
+        if type == "setXyzrenderOrientation" {
+            setXyzrenderOrientation(body["text"] as? String ?? body["value"] as? String)
+            return
+        }
         if type == "setRenderer", let value = body["value"] as? String {
-            setRendererOverride(value)
+            setRendererOverride(value, orientationRefText: body["orientationRef"] as? String)
             return
         }
         if type == "setXyzrenderPreset", let value = body["value"] as? String {
@@ -222,6 +233,38 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         }
     }
 
+    private func handleJavaScriptAction(_ action: String) {
+        if action == "open-vesta" {
+            openCurrentFileInVesta()
+            return
+        }
+        NSLog("[BurreteAppViewer] %@: unknown action %@", fileURL.lastPathComponent, action)
+    }
+
+    private func openCurrentFileInVesta() {
+        guard Self.canOpenInVesta(fileExtension: Self.structurePathExtension(for: fileURL)) else {
+            NSLog("[BurreteAppViewer] %@: VESTA handoff is unsupported for this file type", fileURL.lastPathComponent)
+            return
+        }
+        do {
+            try VestaLauncher.open(fileURL: fileURL)
+            NSLog("[BurreteAppViewer] %@: opened in VESTA", fileURL.lastPathComponent)
+        } catch {
+            NSLog("[BurreteAppViewer] %@: VESTA open failed: %@", fileURL.lastPathComponent, String(describing: error))
+        }
+    }
+
+    private static func structurePathExtension(for url: URL) -> String {
+        if url.lastPathComponent.lowercased().hasSuffix(".mae.gz") {
+            return "maegz"
+        }
+        return url.pathExtension.lowercased()
+    }
+
+    private static func canOpenInVesta(fileExtension: String) -> Bool {
+        ["xyz", "cub", "cube"].contains(fileExtension.lowercased())
+    }
+
     private func copyToPasteboard(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
@@ -249,9 +292,13 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         }
     }
 
-    private func setRendererOverride(_ value: String) {
+    private func setRendererOverride(_ value: String, orientationRefText: String? = nil) {
         let renderer = AppViewerRendererMode.normalize(value)
-        guard rendererOverride != renderer else { return }
+        let hasNewOrientation = setXyzrenderOrientation(orientationRefText)
+        if renderer != "xyzrender-external" {
+            xyzrenderOrientationRefText = nil
+        }
+        guard rendererOverride != renderer || hasNewOrientation else { return }
         rendererOverride = renderer
         load()
     }
@@ -262,6 +309,28 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         xyzrenderPresetOverride = preset
         rendererOverride = "xyzrender-external"
         load()
+    }
+
+    @discardableResult
+    private func setXyzrenderOrientation(_ text: String?) -> Bool {
+        let normalized = Self.normalizedXyzrenderOrientationRef(text)
+        guard xyzrenderOrientationRefText != normalized else { return false }
+        xyzrenderOrientationRefText = normalized
+        return true
+    }
+
+    private static func normalizedXyzrenderOrientationRef(_ text: String?) -> String? {
+        guard let text else { return nil }
+        let normalized = text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+        guard normalized.utf8.count <= 4 * 1024 * 1024 else { return nil }
+        let lines = normalized.split(separator: "\n", omittingEmptySubsequences: false)
+        guard let first = lines.first?.trimmingCharacters(in: .whitespacesAndNewlines),
+              let atomCount = Int(first),
+              atomCount > 0,
+              lines.count >= atomCount + 2 else {
+            return nil
+        }
+        return normalized.hasSuffix("\n") ? normalized : normalized + "\n"
     }
 
     private static func errorHTML(_ error: Error) -> String {
@@ -329,7 +398,8 @@ private struct AppViewerRuntime {
     static func create(
         for fileURL: URL,
         rendererModeOverride: String? = nil,
-        xyzrenderPresetOverride: String? = nil
+        xyzrenderPresetOverride: String? = nil,
+        xyzrenderOrientationRefText: String? = nil
     ) throws -> AppViewerRuntime {
         guard let bundledWebDirectory = Bundle.main.resourceURL?.appendingPathComponent("Web", isDirectory: true),
               FileManager.default.fileExists(atPath: bundledWebDirectory.path) else {
@@ -429,9 +499,13 @@ private struct AppViewerRuntime {
                     preset: xyzrenderPreset,
                     customConfigPath: UserDefaults.standard.string(forKey: "xyzrenderCustomConfigPath") ?? "",
                     transparent: canvasIsTransparent,
-                    extraArguments: UserDefaults.standard.string(forKey: "xyzrenderExtraArguments") ?? ""
+                    extraArguments: UserDefaults.standard.string(forKey: "xyzrenderExtraArguments") ?? "",
+                    orientationRefText: xyzrenderOrientationRefText
                 )
             } catch {
+                if format.isExternalXyzrenderOnly {
+                    throw error
+                }
                 renderer = format.molstarFormat == "xyz" ? "xyz-fast" : "molstar"
                 externalStatus = [
                     "status": "fallback",
@@ -463,8 +537,11 @@ private struct AppViewerRuntime {
             "transparentBackground": canvasIsTransparent,
             "sdfGrid": true,
             "appViewer": true,
+            "xyzrenderViewer": renderer == "xyzrender-external",
+            "molstarAvailable": !format.isExternalXyzrenderOnly,
             "xyzrenderPreset": xyzrenderPreset,
             "xyzrenderPresetOptions": AppViewerXyzrenderPreset.pickerOptions.map { ["value": $0.0, "label": $0.1] },
+            "canOpenInVesta": canOpenInVesta(fileExtension: structurePathExtension(for: fileURL)),
             "showPanelControls": UserDefaults.standard.object(forKey: "showPreviewPanelControls") as? Bool ?? true,
             "defaultLayoutState": [
                 "left": "collapsed",
@@ -493,6 +570,7 @@ private struct AppViewerRuntime {
                 "renderer": "xyzrender",
                 "preset": externalArtifact.preset,
                 "config": externalArtifact.configArgument,
+                "orientationRef": externalArtifact.usedOrientationRef,
                 "elapsedMs": externalArtifact.elapsedMs,
                 "log": externalArtifact.log
             ]
@@ -596,6 +674,9 @@ private struct AppViewerRuntime {
     }
 
     private static func resolveRenderer(for format: AppViewerStructureFormat, rendererMode: String) -> String {
+        if format.isExternalXyzrenderOnly {
+            return "xyzrender-external"
+        }
         let isXYZ = format.molstarFormat == "xyz" && !format.isBinary
         switch AppViewerRendererMode.normalize(rendererMode) {
         case "molstar":
@@ -607,6 +688,17 @@ private struct AppViewerRuntime {
         default:
             return isXYZ ? "xyz-fast" : "molstar"
         }
+    }
+
+    private static func structurePathExtension(for url: URL) -> String {
+        if url.lastPathComponent.lowercased().hasSuffix(".mae.gz") {
+            return "maegz"
+        }
+        return url.pathExtension.lowercased()
+    }
+
+    private static func canOpenInVesta(fileExtension: String) -> Bool {
+        ["xyz", "cub", "cube"].contains(fileExtension.lowercased())
     }
 
     private struct XYZFastPayload {
@@ -1176,6 +1268,7 @@ private struct AppViewerRuntime {
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq</button>
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel">Log</button>
             <button class="buret-button" type="button" data-buret-action="theme" aria-label="Switch to light theme" title="Switch to light theme">Light</button>
+            <button class="buret-button hidden" type="button" data-buret-action="open-vesta" aria-label="Open in VESTA" title="Open in VESTA">VESTA</button>
             <div class="buret-renderer-control" data-buret-renderer-control>
               <button class="buret-button" type="button" data-buret-renderer="xyz-fast" aria-label="Use Fast XYZ SVG" title="Use Fast XYZ SVG">Fast</button>
               <button class="buret-button" type="button" data-buret-renderer="molstar" aria-label="Use Mol* Interactive" title="Use Mol* Interactive">Mol*</button>
@@ -1206,12 +1299,21 @@ private struct ExternalXyzrenderArtifact {
     let outputType: String
     let preset: String
     let configArgument: String
+    let usedOrientationRef: Bool
     let elapsedMs: Int
     let log: String
 }
 
 private enum ExternalXyzrenderWorker {
-    static func render(inputURL: URL, outputDirectory: URL, preset: String, customConfigPath: String, transparent: Bool, extraArguments: String) throws -> ExternalXyzrenderArtifact {
+    static func render(
+        inputURL: URL,
+        outputDirectory: URL,
+        preset: String,
+        customConfigPath: String,
+        transparent: Bool,
+        extraArguments: String,
+        orientationRefText: String?
+    ) throws -> ExternalXyzrenderArtifact {
         let fileManager = FileManager.default
         let outputURL = outputDirectory.appendingPathComponent("xyzrender.svg")
         let logURL = outputDirectory.appendingPathComponent("xyzrender.log")
@@ -1220,18 +1322,16 @@ private enum ExternalXyzrenderWorker {
 
         let process = Process()
         let configuredExecutable = UserDefaults.standard.string(forKey: "xyzrenderExecutablePath")?.trimmingCharacters(in: .whitespacesAndNewlines)
-        var arguments: [String]
-        if let configuredExecutable, !configuredExecutable.isEmpty {
-            process.executableURL = URL(fileURLWithPath: configuredExecutable)
-            arguments = [inputURL.path, "-o", outputURL.path]
-        } else {
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            arguments = ["xyzrender", inputURL.path, "-o", outputURL.path]
-        }
+        process.executableURL = URL(fileURLWithPath: try resolvedExecutable(configuredExecutable ?? ""))
+        var arguments = [inputURL.path, "-o", outputURL.path]
         let safePreset = AppViewerXyzrenderPreset.normalize(preset)
         let configArgument = resolveConfigArgument(preset: safePreset, customConfigPath: customConfigPath)
         let effectivePreset = safePreset == "custom" && configArgument == "default" ? "default" : safePreset
         arguments += ["--config", configArgument]
+        let orientationRefURL = try writeOrientationRef(orientationRefText, outputDirectory: outputDirectory)
+        if let orientationRefURL {
+            arguments += ["--ref", orientationRefURL.path]
+        }
         if transparent { arguments.append("--transparent") }
         arguments += sanitizedExtraArguments(extraArguments)
         process.arguments = arguments
@@ -1262,13 +1362,62 @@ private enum ExternalXyzrenderWorker {
             throw ExternalXyzrenderError.missingOutput
         }
         let elapsedMs = Int(Date().timeIntervalSince(started) * 1000)
-        return ExternalXyzrenderArtifact(relativePath: "xyzrender.svg", outputType: "svg", preset: effectivePreset, configArgument: configArgument, elapsedMs: elapsedMs, log: log)
+        return ExternalXyzrenderArtifact(
+            relativePath: "xyzrender.svg",
+            outputType: "svg",
+            preset: effectivePreset,
+            configArgument: configArgument,
+            usedOrientationRef: orientationRefURL != nil,
+            elapsedMs: elapsedMs,
+            log: log
+        )
     }
 
     private static func resolveConfigArgument(preset: String, customConfigPath: String) -> String {
         guard preset == "custom" else { return preset }
         let trimmed = customConfigPath.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "default" : trimmed
+    }
+
+    private static func writeOrientationRef(_ text: String?, outputDirectory: URL) throws -> URL? {
+        guard let text, !text.isEmpty else { return nil }
+        let url = outputDirectory.appendingPathComponent("xyzrender-orientation-ref.xyz")
+        try Data(text.utf8).write(to: url, options: [.atomic])
+        return url
+    }
+
+    private static func resolvedExecutable(_ configuredExecutable: String) throws -> String {
+        if !configuredExecutable.isEmpty { return configuredExecutable }
+        let fileManager = FileManager.default
+        for directory in executableSearchPaths() {
+            let candidate = URL(fileURLWithPath: directory).appendingPathComponent("xyzrender").path
+            if fileManager.isExecutableFile(atPath: candidate) {
+                return candidate
+            }
+        }
+        throw ExternalXyzrenderError.missingExecutable
+    }
+
+    private static func executableSearchPaths() -> [String] {
+        let containerHome = FileManager.default.homeDirectoryForCurrentUser.path
+        let userHome = "/Users/\(NSUserName())"
+        var paths = [
+            "\(userHome)/.local/bin",
+            "\(userHome)/bin",
+            "\(containerHome)/.local/bin",
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/opt/local/bin",
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin"
+        ]
+        if let path = ProcessInfo.processInfo.environment["PATH"] {
+            paths += path.split(separator: ":").map(String.init)
+        }
+        var seen = Set<String>()
+        return paths.filter { seen.insert($0).inserted }
     }
 
     private static func sanitizedExtraArguments(_ value: String) -> [String] {
@@ -1333,7 +1482,7 @@ private enum ExternalXyzrenderWorker {
 
     private static func mergedEnvironment() -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
-        let defaultPath = "/opt/homebrew/bin:/usr/local/bin:/opt/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        let defaultPath = executableSearchPaths().joined(separator: ":")
         if let path = environment["PATH"], !path.isEmpty {
             environment["PATH"] = defaultPath + ":" + path
         } else {
@@ -1344,12 +1493,15 @@ private enum ExternalXyzrenderWorker {
 }
 
 private enum ExternalXyzrenderError: LocalizedError {
+    case missingExecutable
     case timedOut
     case missingOutput
     case failed(status: Int32, log: String)
 
     var errorDescription: String? {
         switch self {
+        case .missingExecutable:
+            return "External xyzrender executable was not found. Set an absolute xyzrender path in Burrete settings."
         case .timedOut:
             return "External xyzrender timed out after 25 seconds."
         case .missingOutput:
@@ -1365,9 +1517,10 @@ private struct AppViewerStructureFormat {
     let molstarFormat: String
     let isBinary: Bool
     var prefersTransparentBackground: Bool { molstarFormat == "sdf" }
+    var isExternalXyzrenderOnly: Bool { molstarFormat == "xyzrender" }
 
     init(url: URL, data: Data) {
-        let ext = url.pathExtension.lowercased()
+        let ext = url.lastPathComponent.lowercased().hasSuffix(".mae.gz") ? "maegz" : url.pathExtension.lowercased()
         switch ext {
         case "pdb", "ent", "pqr":
             molstarFormat = "pdb"
@@ -1401,6 +1554,18 @@ private struct AppViewerStructureFormat {
             isBinary = false
         case "gro":
             molstarFormat = "gro"
+            isBinary = false
+        case "xtc", "trr", "dcd", "nctraj":
+            molstarFormat = ext
+            isBinary = true
+        case "lammpstrj", "top", "psf", "prmtop":
+            molstarFormat = ext
+            isBinary = false
+        case "mae", "maegz", "cms":
+            molstarFormat = "xyzrender"
+            isBinary = false
+        case "cub", "cube", "in", "log", "out", "vasp":
+            molstarFormat = "xyzrender"
             isBinary = false
         default:
             molstarFormat = "mmcif"
@@ -1449,6 +1614,34 @@ private enum AppViewerError: LocalizedError {
             return "\(name) is too large for the Burrete app viewer (\(size) bytes; limit \(limit) bytes). Open it in a dedicated molecular viewer."
         case .missingCacheDirectory:
             return "Could not locate the app cache directory."
+        }
+    }
+}
+
+private enum VestaLauncher {
+    static func open(fileURL: URL) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = ["-a", "VESTA", fileURL.path]
+        let errorPipe = Pipe()
+        process.standardError = errorPipe
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            let data = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            let message = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
+            throw VestaLaunchError.failed(message.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+    }
+}
+
+private enum VestaLaunchError: LocalizedError {
+    case failed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .failed(let message):
+            return message.isEmpty ? "VESTA could not be opened." : message
         }
     }
 }
