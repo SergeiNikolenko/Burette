@@ -14,6 +14,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private var hasRenderedTerminationError = false
     private var currentViewerPageZoom: CGFloat = 1.0
     private var currentPreviewURL: URL?
+    private var currentRuntimeDirectory: URL?
     private var rendererOverride: String?
     private var xyzrenderPresetOverride: String?
     private var xyzrenderOrientationRefText: String?
@@ -133,6 +134,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         activePreviewRequestID = requestID
         pendingCompletion = handler
         currentPreviewURL = url
+        currentRuntimeDirectory = nil
         rendererOverride = nil
         xyzrenderPresetOverride = nil
         xyzrenderOrientationRefText = nil
@@ -147,7 +149,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             do {
-                let result = try Self.buildInlinePreviewHTML(for: url)
+                let result = try Self.buildInlinePreviewHTML(for: url, requestID: requestID.uuidString)
                 DispatchQueue.main.async { [weak self] in
                     guard let self else {
                         handler(nil)
@@ -161,6 +163,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     for line in result.diagnostics { self.appendLog(line) }
                     self.statusLabel.stringValue = "[native] Loading file preview into WKWebView…\n\(url.lastPathComponent)"
                     self.appendLog("calling WKWebView.loadFileURL; html.bytes=\(result.html.utf8.count); indexURL=\(result.indexURL.path); readAccessURL=\(result.readAccessURL.path)")
+                    self.currentRuntimeDirectory = result.indexURL.deletingLastPathComponent()
                     self.webView.loadFileURL(result.indexURL, allowingReadAccessTo: result.readAccessURL)
                     self.scheduleRenderTimeout(for: requestID)
                     if Self.showDebugOverlay {
@@ -179,8 +182,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                         return
                     }
                     self.appendLog("native build error: \(Self.describe(error))")
-                    self.renderNativeError(error, fileURL: url)
-                    self.finishPreviewIfNeeded(nil, requestID: requestID)
+                    if Self.shouldAllowSystemFallback(for: error, fileExtension: Self.structurePathExtension(for: url)) {
+                        self.finishPreviewIfNeeded(error, requestID: requestID)
+                    } else {
+                        self.renderNativeError(error, fileURL: url)
+                        self.finishPreviewIfNeeded(nil, requestID: requestID)
+                    }
                 }
             }
         }
@@ -218,6 +225,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
     private static func buildInlinePreviewHTML(
         for url: URL,
+        requestID: String,
         rendererOverride: String? = nil,
         xyzrenderPresetOverride: String? = nil,
         xyzrenderOrientationRefText: String? = nil
@@ -277,7 +285,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             let runtimePreview = try createRuntimePreview(
                 bundledWebDirectory: webDirectory,
                 html: html,
-                configJSON: gridPreview.configJSON,
+                configJSON: configJSONWithRequestID(gridPreview.configJSON, requestID: requestID),
                 structureBase64: nil,
                 gridRecordsScript: gridRecordsScript,
                 requiredAssets: ["grid-viewer.js", "grid.css"],
@@ -299,7 +307,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
 
         var format = StructureFormat(url: url, data: structureData)
-        var renderer = resolvedRenderer(for: format, preferences: preferences, rendererOverride: rendererOverride)
+        let requestedRendererMode = normalizeRendererMode(rendererOverride ?? preferences.rendererMode)
+        var renderer = resolvedRenderer(for: format, rendererMode: requestedRendererMode)
         var structureDataForWeb = structureData
         var externalArtifact: PreviewExternalXyzrenderArtifact?
         var externalArtifactSourceURL: URL?
@@ -381,6 +390,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let configJSON = try previewConfigJSON(
             format: format,
             label: url.lastPathComponent,
+            requestID: requestID,
+            requestedRendererMode: requestedRendererMode,
             byteCount: structureData.count,
             previewByteCount: structureDataForWeb.count,
             renderer: renderer,
@@ -469,6 +480,15 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             diagnostics.append("[build] runtime.externalArtifact=\(destination.lastPathComponent)")
         }
         return RuntimePreview(runtimeDirectory: runtimeDirectory, indexURL: indexURL, readAccessURL: previewsDirectory)
+    }
+
+    private static func configJSONWithRequestID(_ configJSON: String, requestID: String) throws -> String {
+        let data = Data(configJSON.utf8)
+        var payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+        payload["previewRequestID"] = requestID
+        let nextData = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes])
+        guard let json = String(data: nextData, encoding: .utf8) else { throw PreviewError.couldNotCreatePreviewConfig }
+        return json
     }
 
     private static func pruneRuntimePreviews(
@@ -609,6 +629,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private static func previewConfigJSON(
         format: StructureFormat,
         label: String,
+        requestID: String,
+        requestedRendererMode: String,
         byteCount: Int,
         previewByteCount: Int,
         renderer: String,
@@ -624,8 +646,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "molstarFormat": format.molstarFormat,
             "binary": format.isBinary,
             "renderer": renderer,
+            "requestedRenderer": requestedRendererMode,
             "allowMolstarFallback": true,
             "label": label,
+            "previewRequestID": requestID,
             "byteCount": byteCount,
             "previewByteCount": previewByteCount,
             "quickLookBuild": "v10-product",
@@ -644,13 +668,11 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             payload["xyzrenderViewer"] = true
             payload["molstarAvailable"] = !format.isExternalXyzrenderOnly
             payload["quickLookViewer"] = true
-            payload["requestedRenderer"] = "auto"
             payload["xyzrenderPreset"] = xyzrenderPreset
             payload["xyzrenderPresetOptions"] = PreviewXyzrenderPreset.pickerOptions.map { ["value": $0.0, "label": $0.1] }
         }
         if format.molstarFormat == "xyz" && !format.isBinary {
             payload["quickLookViewer"] = true
-            payload["requestedRenderer"] = "auto"
             payload["xyzrenderPreset"] = xyzrenderPreset
             payload["xyzrenderPresetOptions"] = PreviewXyzrenderPreset.pickerOptions.map { ["value": $0.0, "label": $0.1] }
         }
@@ -700,7 +722,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           <script>
             (function () {
               function post(type, message, payload) {
-                try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burrete.postMessage(Object.assign({ type: type, message: String(message || '') }, payload || {})); } catch (_) {}
+                var body = Object.assign({ type: type, message: String(message || '') }, payload || {});
+                if (window.BurreteConfig && window.BurreteConfig.previewRequestID) body.requestID = String(window.BurreteConfig.previewRequestID);
+                try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burrete.postMessage(body); } catch (_) {}
               }
               window.__mqlPost = post;
             })();
@@ -1185,8 +1209,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           </style>
           <script>
             (function () {
-              function post(type, message) {
-                try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burrete.postMessage({ type: type, message: String(message || '') }); } catch (_) {}
+              function post(type, message, payload) {
+                var body = Object.assign({ type: type, message: String(message || '') }, payload || {});
+                if (window.BurreteConfig && window.BurreteConfig.previewRequestID) body.requestID = String(window.BurreteConfig.previewRequestID);
+                try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burrete.postMessage(body); } catch (_) {}
               }
               function shouldReportStatus(text, kind) {
                 if (kind === 'error' || window.BurreteDebug) return true;
@@ -1344,13 +1370,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         throw PreviewError.ubiquitousFileNotDownloaded(url.lastPathComponent)
     }
 
-    private static func resolvedRenderer(for format: StructureFormat, preferences _: PreviewPreferences, rendererOverride: String?) -> String {
+    private static func resolvedRenderer(for format: StructureFormat, rendererMode: String) -> String {
         if format.isExternalXyzrenderOnly {
             return "xyzrender-external"
         }
         let isXYZ = format.molstarFormat == "xyz" && !format.isBinary
-        guard let rendererOverride else { return isXYZ ? "xyz-fast" : "molstar" }
-        switch normalizeRendererMode(rendererOverride) {
+        switch rendererMode {
         case "molstar":
             return "molstar"
         case "xyz-fast":
@@ -1449,6 +1474,18 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         ["xyz", "cub", "cube"].contains(fileExtension.lowercased())
     }
 
+    private static func shouldAllowSystemFallback(for error: Error, fileExtension: String) -> Bool {
+        let lowercasedExtension = fileExtension.lowercased()
+        guard ["csv", "tsv"].contains(lowercasedExtension) else { return false }
+        guard let previewError = error as? PreviewError else { return false }
+        switch previewError {
+        case .unsupportedStructureFile, .gridFileTypeDisabled:
+            return true
+        default:
+            return false
+        }
+    }
+
     private func scheduleRenderTimeout(for requestID: UUID) {
         renderTimeoutWorkItem?.cancel()
         let workItem = DispatchWorkItem { [weak self] in
@@ -1476,6 +1513,20 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         appendLog("WK didStartProvisionalNavigation url=\(webView.url?.absoluteString ?? "nil")")
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        guard let url = navigationAction.request.url else {
+            appendLog("blocked navigation with missing URL")
+            decisionHandler(.cancel)
+            return
+        }
+        if isTrustedRuntimeURL(url) || url.scheme == "about" {
+            decisionHandler(.allow)
+            return
+        }
+        appendLog("blocked navigation to \(url.absoluteString)")
+        decisionHandler(.cancel)
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
@@ -1513,10 +1564,15 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard message.name == "burrete" else { return }
+        guard isTrustedScriptMessage(message) else { return }
         if let body = message.body as? [String: Any] {
             let type = body["type"] as? String ?? "unknown"
             let text = body["message"] as? String ?? String(describing: body)
+            let messageRequestID = (body["requestID"] as? String).flatMap(UUID.init(uuidString:))
+            if let messageRequestID, messageRequestID != activePreviewRequestID {
+                appendLog("ignoring stale JS message type=\(type) requestID=\(messageRequestID.uuidString)")
+                return
+            }
             if type == "action" {
                 handleJavaScriptAction(text)
                 return
@@ -1539,9 +1595,17 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             }
             appendLog("JS message type=\(type): \(text.prefix(1600))")
             if type == "ready" {
-                finishPreviewIfNeeded(nil, requestID: activePreviewRequestID)
+                guard let messageRequestID else {
+                    appendLog("ignoring ready without requestID")
+                    return
+                }
+                finishPreviewIfNeeded(nil, requestID: messageRequestID)
             } else if type == "error" {
-                finishPreviewIfNeeded(nil, requestID: activePreviewRequestID)
+                guard let messageRequestID else {
+                    appendLog("ignoring error without requestID")
+                    return
+                }
+                finishPreviewIfNeeded(nil, requestID: messageRequestID)
             }
             if Self.showDebugOverlay || type == "error" {
                 statusLabel.isHidden = false
@@ -1550,6 +1614,22 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         } else {
             appendLog("JS message raw: \(String(describing: message.body))")
         }
+    }
+
+    private func isTrustedScriptMessage(_ message: WKScriptMessage) -> Bool {
+        guard message.name == "burrete" else { return false }
+        guard message.webView === webView, message.frameInfo.isMainFrame else { return false }
+        let messageURL = message.frameInfo.request.url ?? webView.url
+        guard let messageURL, messageURL.isFileURL else { return false }
+        return isTrustedRuntimeURL(messageURL)
+    }
+
+    private func isTrustedRuntimeURL(_ url: URL) -> Bool {
+        guard url.isFileURL else { return false }
+        guard let currentRuntimeDirectory else { return false }
+        let rootPath = currentRuntimeDirectory.standardizedFileURL.path
+        let messagePath = url.standardizedFileURL.path
+        return messagePath == rootPath || messagePath.hasPrefix(rootPath + "/")
     }
 
     private func handleJavaScriptAction(_ action: String) {
@@ -1570,11 +1650,14 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             appendLog("openInVesta.unsupportedExtension=\(Self.structurePathExtension(for: url))")
             return
         }
-        do {
-            try VestaLauncher.open(fileURL: url)
-            appendLog("openInVesta.launched=\(url.path)")
-        } catch {
-            appendLog("openInVesta.failed=\(error.localizedDescription)")
+        VestaLauncher.open(fileURL: url) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success:
+                self.appendLog("openInVesta.launched=\(url.path)")
+            case .failure(let error):
+                self.appendLog("openInVesta.failed=\(error.localizedDescription)")
+            }
         }
     }
 
@@ -1634,6 +1717,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             do {
                 let result = try Self.buildInlinePreviewHTML(
                     for: url,
+                    requestID: requestID.uuidString,
                     rendererOverride: rendererOverride,
                     xyzrenderPresetOverride: xyzrenderPresetOverride,
                     xyzrenderOrientationRefText: xyzrenderOrientationRefText
@@ -1641,6 +1725,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.activePreviewRequestID == requestID else { return }
                     for line in result.diagnostics { self.appendLog(line) }
+                    self.currentRuntimeDirectory = result.indexURL.deletingLastPathComponent()
                     self.webView.loadFileURL(result.indexURL, allowingReadAccessTo: result.readAccessURL)
                     self.scheduleRenderTimeout(for: requestID)
                 }
@@ -2557,18 +2642,27 @@ private enum PreviewError: LocalizedError {
 }
 
 private enum VestaLauncher {
-    static func open(fileURL: URL) throws {
+    static func open(fileURL: URL, completion: @escaping (Result<Void, Error>) -> Void) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
         process.arguments = ["-a", "VESTA", fileURL.path]
         let errorPipe = Pipe()
         process.standardError = errorPipe
-        try process.run()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
+        process.terminationHandler = { finished in
             let data = errorPipe.fileHandleForReading.readDataToEndOfFile()
             let message = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
-            throw VestaLaunchError.failed(message.trimmingCharacters(in: .whitespacesAndNewlines))
+            DispatchQueue.main.async {
+                if finished.terminationStatus == 0 {
+                    completion(.success(()))
+                } else {
+                    completion(.failure(VestaLaunchError.failed(message.trimmingCharacters(in: .whitespacesAndNewlines))))
+                }
+            }
+        }
+        do {
+            try process.run()
+        } catch {
+            completion(.failure(error))
         }
     }
 }

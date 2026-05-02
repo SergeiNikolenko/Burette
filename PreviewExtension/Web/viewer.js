@@ -36,7 +36,11 @@
 
   function postHostMessage(payload) {
     try {
-      window.webkit?.messageHandlers?.burrete?.postMessage(payload);
+      const body = { ...(payload || {}) };
+      if (window.BurreteConfig && window.BurreteConfig.previewRequestID) {
+        body.requestID = String(window.BurreteConfig.previewRequestID);
+      }
+      window.webkit?.messageHandlers?.burrete?.postMessage(body);
       return !!window.webkit?.messageHandlers?.burrete;
     } catch (_) {
       return false;
