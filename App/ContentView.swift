@@ -61,6 +61,11 @@ struct ContentView: View {
         .onChange(of: gridPreviewSupportsSMILES) { _ in refreshDefaultOpenStatus() }
         .onChange(of: gridPreviewSupportsCSV) { _ in refreshDefaultOpenStatus() }
         .onChange(of: gridPreviewSupportsTSV) { _ in refreshDefaultOpenStatus() }
+        .onReceive(NotificationCenter.default.publisher(for: .burreteOpenSettingsSection)) { notification in
+            guard let rawSection = notification.object as? String,
+                  let requestedSection = SettingsSection(rawValue: rawSection) else { return }
+            section = requestedSection
+        }
     }
 
     @ViewBuilder
