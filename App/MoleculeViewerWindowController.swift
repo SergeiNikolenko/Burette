@@ -43,6 +43,8 @@ enum AppViewerXyzrenderPreset {
 final class MoleculeViewerWindowController: NSWindowController, WKNavigationDelegate, WKScriptMessageHandler {
     private let fileURL: URL
     private let webView: WKWebView
+    private var currentRuntimeReadAccessURL: URL?
+    private var activeLoadRequestID = UUID()
     private var currentViewerPageZoom: CGFloat = 1.0
     private var rendererOverride: String?
     private var xyzrenderPresetOverride: String?
@@ -127,17 +129,52 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
     }
 
     func load() {
-        do {
-            let runtime = try AppViewerRuntime.create(
-                for: fileURL,
-                rendererModeOverride: rendererOverride,
-                xyzrenderPresetOverride: xyzrenderPresetOverride,
-                xyzrenderOrientationRefText: xyzrenderOrientationRefText
-            )
-            webView.loadFileURL(runtime.indexURL, allowingReadAccessTo: runtime.readAccessURL)
-        } catch {
-            webView.loadHTMLString(Self.errorHTML(error), baseURL: nil)
+        let requestID = UUID()
+        activeLoadRequestID = requestID
+        currentRuntimeReadAccessURL = nil
+        webView.loadHTMLString(Self.loadingHTML(fileURL.lastPathComponent), baseURL: nil)
+
+        let fileURL = fileURL
+        let rendererOverride = rendererOverride
+        let xyzrenderPresetOverride = xyzrenderPresetOverride
+        let xyzrenderOrientationRefText = xyzrenderOrientationRefText
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            do {
+                let runtime = try AppViewerRuntime.create(
+                    for: fileURL,
+                    rendererModeOverride: rendererOverride,
+                    xyzrenderPresetOverride: xyzrenderPresetOverride,
+                    xyzrenderOrientationRefText: xyzrenderOrientationRefText
+                )
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.activeLoadRequestID == requestID else { return }
+                    self.currentRuntimeReadAccessURL = runtime.readAccessURL.standardizedFileURL
+                    self.webView.loadFileURL(runtime.indexURL, allowingReadAccessTo: runtime.readAccessURL)
+                }
+            } catch {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.activeLoadRequestID == requestID else { return }
+                    self.currentRuntimeReadAccessURL = nil
+                    self.webView.loadHTMLString(Self.errorHTML(error), baseURL: nil)
+                }
+            }
         }
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        guard let url = navigationAction.request.url else {
+            decisionHandler(.cancel)
+            return
+        }
+        if isTrustedRuntimeURL(url) || url.scheme == "about" {
+            decisionHandler(.allow)
+            return
+        }
+        if navigationAction.navigationType == .linkActivated {
+            NSWorkspace.shared.open(url)
+        }
+        NSLog("[BurreteAppViewer] blocked navigation to %@", url.absoluteString)
+        decisionHandler(.cancel)
     }
 
     func reloadDisplayPreferences() {
@@ -172,6 +209,10 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard isTrustedScriptMessage(message) else {
+            NSLog("[BurreteAppViewer] %@: blocked script message from untrusted frame", fileURL.lastPathComponent)
+            return
+        }
         guard message.name == "burrete",
               let body = message.body as? [String: Any],
               let type = body["type"] as? String else {
@@ -211,6 +252,21 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         NSLog("[BurreteAppViewer] %@: %@ %@", fileURL.lastPathComponent, type, text)
     }
 
+    private func isTrustedScriptMessage(_ message: WKScriptMessage) -> Bool {
+        guard message.webView === webView else { return false }
+        guard message.frameInfo.isMainFrame else { return false }
+        guard let sourceURL = message.frameInfo.request.url ?? message.webView?.url else { return false }
+        return isTrustedRuntimeURL(sourceURL)
+    }
+
+    private func isTrustedRuntimeURL(_ url: URL) -> Bool {
+        guard url.isFileURL else { return false }
+        guard let allowed = currentRuntimeReadAccessURL?.standardizedFileURL else { return false }
+        let allowedPath = allowed.path.hasSuffix("/") ? allowed.path : allowed.path + "/"
+        let path = url.standardizedFileURL.path
+        return path == allowed.path || path.hasPrefix(allowedPath)
+    }
+
     private func applyWindowDisplayPreferences(_ preferences: AppViewerDisplayPreferences) {
         let backgroundColor = preferences.isWindowTransparent ? NSColor.clear : NSColor.windowBackgroundColor
         window?.appearance = preferences.windowAppearance
@@ -242,27 +298,19 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
     }
 
     private func openCurrentFileInVesta() {
-        guard Self.canOpenInVesta(fileExtension: Self.structurePathExtension(for: fileURL)) else {
+        guard canOpenInVesta(fileExtension: structurePathExtension(for: fileURL)) else {
             NSLog("[BurreteAppViewer] %@: VESTA handoff is unsupported for this file type", fileURL.lastPathComponent)
             return
         }
-        do {
-            try VestaLauncher.open(fileURL: fileURL)
-            NSLog("[BurreteAppViewer] %@: opened in VESTA", fileURL.lastPathComponent)
-        } catch {
-            NSLog("[BurreteAppViewer] %@: VESTA open failed: %@", fileURL.lastPathComponent, String(describing: error))
+        VestaLauncher.open(fileURL: fileURL) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success:
+                NSLog("[BurreteAppViewer] %@: opened in VESTA", self.fileURL.lastPathComponent)
+            case .failure(let error):
+                NSLog("[BurreteAppViewer] %@: VESTA open failed: %@", self.fileURL.lastPathComponent, String(describing: error))
+            }
         }
-    }
-
-    private static func structurePathExtension(for url: URL) -> String {
-        if url.lastPathComponent.lowercased().hasSuffix(".mae.gz") {
-            return "maegz"
-        }
-        return url.pathExtension.lowercased()
-    }
-
-    private static func canOpenInVesta(fileExtension: String) -> Bool {
-        ["xyz", "cub", "cube"].contains(fileExtension.lowercased())
     }
 
     private func copyToPasteboard(_ text: String) {
@@ -340,6 +388,17 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         body{box-sizing:border-box;padding:24px;font:13px -apple-system,BlinkMacSystemFont,sans-serif}
         h1{font-size:18px;margin:0 0 12px}pre{white-space:pre-wrap;background:#24262a;padding:12px;border-radius:8px}
         </style></head><body><h1>Burrete could not open this file</h1><pre>\(escapeHTML(String(describing: error)))</pre></body></html>
+        """
+    }
+
+    private static func loadingHTML(_ filename: String) -> String {
+        """
+        <!doctype html><html><head><meta charset="utf-8"><style>
+        html,body{margin:0;width:100%;height:100%;background:transparent;color:#6c6c70}
+        body{display:grid;place-items:center;font:13px -apple-system,BlinkMacSystemFont,sans-serif}
+        div{padding:16px 18px;border-radius:12px;background:rgba(255,255,255,.72);box-shadow:0 10px 30px rgba(0,0,0,.12)}
+        @media (prefers-color-scheme: dark){body{color:#d1d1d6}div{background:rgba(28,28,30,.72)}}
+        </style></head><body><div>Loading \(escapeHTML(filename))...</div></body></html>
         """
     }
 
@@ -688,17 +747,6 @@ private struct AppViewerRuntime {
         default:
             return isXYZ ? "xyz-fast" : "molstar"
         }
-    }
-
-    private static func structurePathExtension(for url: URL) -> String {
-        if url.lastPathComponent.lowercased().hasSuffix(".mae.gz") {
-            return "maegz"
-        }
-        return url.pathExtension.lowercased()
-    }
-
-    private static func canOpenInVesta(fileExtension: String) -> Bool {
-        ["xyz", "cub", "cube"].contains(fileExtension.lowercased())
     }
 
     private struct XYZFastPayload {
@@ -1619,18 +1667,27 @@ private enum AppViewerError: LocalizedError {
 }
 
 private enum VestaLauncher {
-    static func open(fileURL: URL) throws {
+    static func open(fileURL: URL, completion: @escaping (Result<Void, Error>) -> Void) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
         process.arguments = ["-a", "VESTA", fileURL.path]
         let errorPipe = Pipe()
         process.standardError = errorPipe
-        try process.run()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
+        process.terminationHandler = { finished in
             let data = errorPipe.fileHandleForReading.readDataToEndOfFile()
             let message = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
-            throw VestaLaunchError.failed(message.trimmingCharacters(in: .whitespacesAndNewlines))
+            DispatchQueue.main.async {
+                if finished.terminationStatus == 0 {
+                    completion(.success(()))
+                } else {
+                    completion(.failure(VestaLaunchError.failed(message.trimmingCharacters(in: .whitespacesAndNewlines))))
+                }
+            }
+        }
+        do {
+            try process.run()
+        } catch {
+            completion(.failure(error))
         }
     }
 }
@@ -1698,6 +1755,19 @@ private final class BurreteAppViewerContainerView: NSView {
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
+}
+
+private let vestaSupportedStructureExtensions: Set<String> = ["xyz", "cub", "cube"]
+
+private func structurePathExtension(for url: URL) -> String {
+    if url.lastPathComponent.lowercased().hasSuffix(".mae.gz") {
+        return "maegz"
+    }
+    return url.pathExtension.lowercased()
+}
+
+private func canOpenInVesta(fileExtension: String) -> Bool {
+    vestaSupportedStructureExtensions.contains(fileExtension.lowercased())
 }
 
 private func escapeHTML(_ value: String) -> String {
