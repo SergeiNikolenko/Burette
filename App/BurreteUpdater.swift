@@ -373,6 +373,58 @@ final class BurreteUpdater: ObservableObject {
         guard FileManager.default.isExecutableFile(atPath: executable.path) else {
             throw BurreteUpdateError.invalidDownloadedApp("The downloaded app executable is missing.")
         }
+
+        try validateDownloadedAppSignature(appURL)
+    }
+
+    private func validateDownloadedAppSignature(_ appURL: URL) throws {
+        try runProcess("/usr/bin/codesign", arguments: ["--verify", "--deep", "--strict", appURL.path])
+
+        let currentSignature = try codeSignatureDescriptor(for: Bundle.main.bundleURL.standardizedFileURL)
+        let downloadedSignature = try codeSignatureDescriptor(for: appURL)
+
+        guard downloadedSignature.identifier == "com.local.BurreteV10" else {
+            throw BurreteUpdateError.signatureValidationFailed("Downloaded app signature identifier is invalid.")
+        }
+
+        if let currentTeam = currentSignature.teamIdentifier, !currentTeam.isEmpty {
+            guard downloadedSignature.teamIdentifier == currentTeam else {
+                throw BurreteUpdateError.signatureValidationFailed("Downloaded app TeamIdentifier does not match the installed app.")
+            }
+            if downloadedSignature.isAdHoc {
+                throw BurreteUpdateError.signatureValidationFailed("Downloaded app is ad-hoc signed while installed app uses a developer signature.")
+            }
+        }
+    }
+
+    private func codeSignatureDescriptor(for appURL: URL) throws -> BurreteCodeSignatureDescriptor {
+        let output = try runProcessCapturingCombinedOutput(
+            "/usr/bin/codesign",
+            arguments: ["-dv", "--verbose=4", appURL.path]
+        )
+        var identifier: String?
+        var teamIdentifier: String?
+        var isAdHoc = false
+
+        for rawLine in output.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            if line.hasPrefix("Identifier=") {
+                identifier = String(line.dropFirst("Identifier=".count))
+            } else if line.hasPrefix("TeamIdentifier=") {
+                let value = String(line.dropFirst("TeamIdentifier=".count))
+                if !value.isEmpty && value != "not set" {
+                    teamIdentifier = value
+                }
+            } else if line == "Signature=adhoc" || line.contains("(adhoc") {
+                isAdHoc = true
+            }
+        }
+
+        return BurreteCodeSignatureDescriptor(
+            identifier: identifier,
+            teamIdentifier: teamIdentifier,
+            isAdHoc: isAdHoc
+        )
     }
 
     private func runProcess(_ executable: String, arguments: [String]) throws {
@@ -384,6 +436,28 @@ final class BurreteUpdater: ObservableObject {
         guard process.terminationStatus == 0 else {
             throw BurreteUpdateError.processFailed(URL(fileURLWithPath: executable).lastPathComponent, process.terminationStatus)
         }
+    }
+
+    private func runProcessCapturingCombinedOutput(_ executable: String, arguments: [String]) throws -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+
+        try process.run()
+        process.waitUntilExit()
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
+        guard process.terminationStatus == 0 else {
+            throw BurreteUpdateError.signatureValidationFailed(
+                "\(URL(fileURLWithPath: executable).lastPathComponent) failed with status \(process.terminationStatus): \(output.trimmingCharacters(in: .whitespacesAndNewlines))"
+            )
+        }
+        return output
     }
 
     private func installerScript(appPID: Int32, newAppURL: URL, destinationAppURL: URL, logURL: URL) -> String {
@@ -508,6 +582,7 @@ private enum BurreteUpdateError: LocalizedError {
     case installerLaunchFailed(String)
     case invalidAsset(String)
     case downloadedAssetSizeMismatch(expected: Int, actual: Int)
+    case signatureValidationFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -532,8 +607,16 @@ private enum BurreteUpdateError: LocalizedError {
             return message
         case let .downloadedAssetSizeMismatch(expected, actual):
             return "Downloaded update archive size mismatch: expected \(expected) bytes, got \(actual) bytes."
+        case .signatureValidationFailed(let reason):
+            return "Downloaded app signature validation failed. \(reason)"
         }
     }
+}
+
+private struct BurreteCodeSignatureDescriptor {
+    let identifier: String?
+    let teamIdentifier: String?
+    let isAdHoc: Bool
 }
 
 private struct BurreteVersion: Comparable {
