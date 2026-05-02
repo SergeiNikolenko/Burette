@@ -2,6 +2,10 @@ import AppKit
 import CoreServices
 import SwiftUI
 
+extension Notification.Name {
+    static let burreteOpenSettingsSection = Notification.Name("BurreteOpenSettingsSection")
+}
+
 @main
 struct BurreteApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
@@ -15,6 +19,8 @@ struct BurreteApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
+    private var updateNotificationItem: NSMenuItem?
+    private var updateNotificationSeparator: NSMenuItem?
     private var settingsWindow: NSWindow?
     private var viewerWindows: [URL: MoleculeViewerWindowController] = [:]
     private var viewerRuntimePreferences = ViewerRuntimePreferences.load()
@@ -24,9 +30,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateActivationPolicy()
         installStatusItem()
         BurreteFileAssociations.registerBundleOnly()
-        Task { @MainActor in
-            BurreteUpdater.shared.checkAutomaticallyIfNeeded()
-        }
         registerDefaultSettings()
         viewerRuntimePreferences = ViewerRuntimePreferences.load()
         NotificationCenter.default.addObserver(
@@ -35,6 +38,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: UserDefaults.didChangeNotification,
             object: UserDefaults.standard
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(updateStateDidChange),
+            name: .burreteUpdateStateDidChange,
+            object: nil
+        )
+        Task { @MainActor in
+            BurreteUpdater.shared.checkAutomaticallyIfNeeded()
+        }
         if UserDefaults.standard.bool(forKey: "openSettingsAtLaunch") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
                 if self?.openedDocumentAtLaunch == false {
@@ -118,6 +130,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let menu = NSMenu()
+        let updateItem = NSMenuItem(title: "Update Available...", action: #selector(openUpdates), keyEquivalent: "")
+        updateItem.image = NSImage(systemSymbolName: "arrow.down.circle.fill", accessibilityDescription: nil)
+        updateItem.isHidden = true
+        menu.addItem(updateItem)
+        let updateSeparator = NSMenuItem.separator()
+        updateSeparator.isHidden = true
+        menu.addItem(updateSeparator)
         menu.addItem(NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ","))
         menu.addItem(NSMenuItem(title: "Check for Updates...", action: #selector(checkForUpdates), keyEquivalent: "u"))
         menu.addItem(NSMenuItem(title: "Open Logs Folder", action: #selector(openLogsFolder), keyEquivalent: "l"))
@@ -128,7 +147,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: "Quit Burrete", action: #selector(quit), keyEquivalent: "q"))
         menu.items.forEach { $0.target = self }
         item.menu = menu
+        updateNotificationItem = updateItem
+        updateNotificationSeparator = updateSeparator
         statusItem = item
+        refreshUpdateNotification(release: nil, channel: nil)
     }
 
     @objc private func openSettings() {
@@ -173,6 +195,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             await BurreteUpdater.shared.checkForUpdates(channel: channel, isAutomatic: false)
         }
+    }
+
+    @objc private func openUpdates() {
+        openSettings()
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .burreteOpenSettingsSection, object: "updates")
+        }
+    }
+
+    @objc private func updateStateDidChange(_ notification: Notification) {
+        Task { @MainActor in
+            let updater = BurreteUpdater.shared
+            refreshUpdateNotification(
+                release: updater.availableRelease,
+                channel: updater.availableReleaseChannel
+            )
+        }
+    }
+
+    private func refreshUpdateNotification(release: BurreteUpdateRelease?, channel: BurreteUpdateChannel?) {
+        guard let item = updateNotificationItem,
+              let separator = updateNotificationSeparator,
+              let button = statusItem?.button else { return }
+
+        let currentChannel = BurreteUpdateChannel(
+            rawValue: UserDefaults.standard.string(forKey: "updateChannel") ?? ""
+        ) ?? .stable
+
+        guard let release,
+              channel == currentChannel else {
+            item.isHidden = true
+            separator.isHidden = true
+            button.toolTip = "Burrete - molecular Quick Look previews. Open Settings from this menu."
+            return
+        }
+
+        item.isHidden = false
+        separator.isHidden = false
+        item.title = "Update Available: \(release.displayName)"
+        item.toolTip = "Open Updates to install \(release.tagName)."
+        button.toolTip = "Burrete update available: \(release.displayName)."
     }
 
     private func openViewer(for url: URL) {
