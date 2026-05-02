@@ -3,7 +3,7 @@
 <p align="center">Finder-native molecular structure previews for macOS: Mol* 3D, fast XYZ, xyzrender SVG, and RDKit molecule grids.</p>
 
 <p align="center">
-  <img alt="Version 0.10.19" src="https://img.shields.io/badge/version-0.10.19-0f8f72.svg?style=flat-square" />
+  <img alt="Version 0.10.20" src="https://img.shields.io/badge/version-0.10.20-0f8f72.svg?style=flat-square" />
   <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-yellow.svg?style=flat-square" /></a>
   <img alt="macOS 12+" src="https://img.shields.io/badge/macOS-12%2B-blue.svg?style=flat-square" />
   <img alt="Quick Look" src="https://img.shields.io/badge/Quick%20Look-extension-57606a.svg?style=flat-square" />

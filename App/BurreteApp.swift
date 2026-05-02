@@ -27,57 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             BurreteUpdater.shared.checkAutomaticallyIfNeeded()
         }
-        if UserDefaults.standard.object(forKey: "openSettingsAtLaunch") == nil {
-            UserDefaults.standard.set(false, forKey: "openSettingsAtLaunch")
-        }
-        if UserDefaults.standard.object(forKey: "showPreviewPanelControls") == nil {
-            UserDefaults.standard.set(true, forKey: "showPreviewPanelControls")
-        }
-        if UserDefaults.standard.object(forKey: "useTransparentPreviewBackground") == nil {
-            UserDefaults.standard.set(false, forKey: "useTransparentPreviewBackground")
-        }
-        if UserDefaults.standard.object(forKey: "viewerTheme") == nil {
-            UserDefaults.standard.set("auto", forKey: "viewerTheme")
-        }
-        if UserDefaults.standard.object(forKey: "viewerCanvasBackground") == nil {
-            UserDefaults.standard.set("auto", forKey: "viewerCanvasBackground")
-        }
-        if UserDefaults.standard.object(forKey: "structureRendererMode") == nil {
-            UserDefaults.standard.set("auto", forKey: "structureRendererMode")
-        }
-        if UserDefaults.standard.object(forKey: "xyzFastStyle") == nil {
-            UserDefaults.standard.set("default", forKey: "xyzFastStyle")
-        }
-        if UserDefaults.standard.object(forKey: "xyzrenderPreset") == nil {
-            UserDefaults.standard.set("default", forKey: "xyzrenderPreset")
-        }
-        if UserDefaults.standard.object(forKey: "xyzrenderCustomConfigPath") == nil {
-            UserDefaults.standard.set("", forKey: "xyzrenderCustomConfigPath")
-        }
-        if UserDefaults.standard.object(forKey: "xyzrenderExecutablePath") == nil {
-            UserDefaults.standard.set("", forKey: "xyzrenderExecutablePath")
-        }
-        if UserDefaults.standard.object(forKey: "xyzrenderExtraArguments") == nil {
-            UserDefaults.standard.set("", forKey: "xyzrenderExtraArguments")
-        }
-        if UserDefaults.standard.object(forKey: "viewerWindowOpacity") == nil {
-            UserDefaults.standard.set(0.82, forKey: "viewerWindowOpacity")
-        }
-        if UserDefaults.standard.object(forKey: "viewerOverlayOpacity") == nil {
-            UserDefaults.standard.set(0.90, forKey: "viewerOverlayOpacity")
-        }
-        if UserDefaults.standard.object(forKey: MoleculeGridFileSupport.sdfKey) == nil {
-            UserDefaults.standard.set(true, forKey: MoleculeGridFileSupport.sdfKey)
-        }
-        if UserDefaults.standard.object(forKey: MoleculeGridFileSupport.smilesKey) == nil {
-            UserDefaults.standard.set(true, forKey: MoleculeGridFileSupport.smilesKey)
-        }
-        if UserDefaults.standard.object(forKey: MoleculeGridFileSupport.csvKey) == nil {
-            UserDefaults.standard.set(true, forKey: MoleculeGridFileSupport.csvKey)
-        }
-        if UserDefaults.standard.object(forKey: MoleculeGridFileSupport.tsvKey) == nil {
-            UserDefaults.standard.set(true, forKey: MoleculeGridFileSupport.tsvKey)
-        }
+        registerDefaultSettings()
         viewerRuntimePreferences = ViewerRuntimePreferences.load()
         NotificationCenter.default.addObserver(
             self,
@@ -122,6 +72,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             openViewer(for: URL(fileURLWithPath: filename))
         }
         sender.reply(toOpenOrPrint: .success)
+    }
+
+    private func registerDefaultSettings() {
+        let defaults = UserDefaults.standard
+        for (key, value) in [
+            ("openSettingsAtLaunch", false as Any),
+            ("showPreviewPanelControls", true as Any),
+            ("useTransparentPreviewBackground", false as Any),
+            ("viewerTheme", "auto" as Any),
+            ("viewerCanvasBackground", "auto" as Any),
+            ("structureRendererMode", "auto" as Any),
+            ("xyzFastStyle", "default" as Any),
+            ("xyzrenderPreset", "default" as Any),
+            ("xyzrenderCustomConfigPath", "" as Any),
+            ("xyzrenderExecutablePath", "" as Any),
+            ("xyzrenderExtraArguments", "" as Any),
+            ("viewerWindowOpacity", 0.82 as Any),
+            ("viewerOverlayOpacity", 0.90 as Any)
+        ] {
+            setDefaultValueIfNeeded(value, forKey: key, defaults: defaults)
+        }
+        for key in [
+            MoleculeGridFileSupport.sdfKey,
+            MoleculeGridFileSupport.smilesKey,
+            MoleculeGridFileSupport.csvKey,
+            MoleculeGridFileSupport.tsvKey
+        ] {
+            setDefaultValueIfNeeded(true, forKey: key, defaults: defaults)
+        }
+    }
+
+    private func setDefaultValueIfNeeded(_ value: Any, forKey key: String, defaults: UserDefaults) {
+        if defaults.object(forKey: key) == nil {
+            defaults.set(value, forKey: key)
+        }
     }
 
     private func installStatusItem() {
