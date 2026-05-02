@@ -141,7 +141,7 @@ struct ContentView: View {
                     title: "External xyzrender preset",
                     subtitle: "Used only by the standalone app when xyzrender is available on PATH or configured via defaults.",
                     selection: $xyzrenderPreset,
-                    options: AppViewerXyzrenderPreset.pickerOptions
+                    options: BurreteXyzrenderPreset.pickerOptions
                 )
                 SettingsDivider()
                 SettingsTextFieldRow(

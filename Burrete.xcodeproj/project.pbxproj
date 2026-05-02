@@ -13,6 +13,8 @@
 		B88A1B0D9C2F4E7A8D3C6B11 /* MoleculeViewerWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B88A1B0C9C2F4E7A8D3C6B11 /* MoleculeViewerWindowController.swift */; };
 		3F8B96A03E7544E6A395D201 /* MoleculeGridPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F8B96A03E7544E6A395D200 /* MoleculeGridPreview.swift */; };
 		3F8B96A03E7544E6A395D202 /* MoleculeGridPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F8B96A03E7544E6A395D200 /* MoleculeGridPreview.swift */; };
+		71B2D3E4F5A60718293A4B5C /* RendererPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71B2D3E4F5A60718293A4B5B /* RendererPolicy.swift */; };
+		71B2D3E4F5A60718293A4B5D /* RendererPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71B2D3E4F5A60718293A4B5B /* RendererPolicy.swift */; };
 		2A6C3FDEB8E145A2A9364F01 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8B707533C58E4E3C9B6E6E15 /* Assets.xcassets */; };
 		B88A1B0E9C2F4E7A8D3C6B11 /* Web in Resources */ = {isa = PBXBuildFile; fileRef = 4ADF66CA120EDD24C9E3F203 /* Web */; };
 		3C65656FB6FE8E52854AC3F4 /* PreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA02CDF88EC813372195D216 /* PreviewViewController.swift */; };
@@ -56,6 +58,7 @@
 		8AD874A7BD1213FF583AB869 /* Burrete.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Burrete.entitlements; sourceTree = "<group>"; };
 		AA02CDF88EC813372195D216 /* PreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewViewController.swift; sourceTree = "<group>"; };
 		3F8B96A03E7544E6A395D200 /* MoleculeGridPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoleculeGridPreview.swift; sourceTree = "<group>"; };
+		71B2D3E4F5A60718293A4B5B /* RendererPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RendererPolicy.swift; sourceTree = "<group>"; };
 		D112F5444BEBEFD99D68B6DD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		F27769504D80BCF7B53A232F /* BurretePreview.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BurretePreview.entitlements; sourceTree = "<group>"; };
 		4ADF66CA120EDD24C9E3F203 /* Web */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Web; sourceTree = "<group>"; };
@@ -107,6 +110,7 @@
 			children = (
 				AA02CDF88EC813372195D216 /* PreviewViewController.swift */,
 				3F8B96A03E7544E6A395D200 /* MoleculeGridPreview.swift */,
+				71B2D3E4F5A60718293A4B5B /* RendererPolicy.swift */,
 				D112F5444BEBEFD99D68B6DD /* Info.plist */,
 				F27769504D80BCF7B53A232F /* BurretePreview.entitlements */,
 				4ADF66CA120EDD24C9E3F203 /* Web */,
@@ -301,6 +305,7 @@
 				E8B6F5D5A1C74396A1D13711 /* BurreteUpdater.swift in Sources */,
 				B88A1B0D9C2F4E7A8D3C6B11 /* MoleculeViewerWindowController.swift in Sources */,
 				3F8B96A03E7544E6A395D201 /* MoleculeGridPreview.swift in Sources */,
+				71B2D3E4F5A60718293A4B5C /* RendererPolicy.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -310,6 +315,7 @@
 			files = (
 				3C65656FB6FE8E52854AC3F4 /* PreviewViewController.swift in Sources */,
 				3F8B96A03E7544E6A395D202 /* MoleculeGridPreview.swift in Sources */,
+				71B2D3E4F5A60718293A4B5D /* RendererPolicy.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
