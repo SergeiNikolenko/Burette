@@ -40,7 +40,7 @@ if (!contentView.includes(`Text("Version ${packageVersion}")`)) {
   fail(`App/ContentView.swift About panel does not show Version ${packageVersion}`);
 }
 
-const appDelegate = readFileSync('App/BurreteApp.swift', 'utf8');
+const appDelegate = readFileSync('App/Platform/PlatformBridge.swift', 'utf8');
 if (!appDelegate.includes('statusItem(withLength: NSStatusItem.squareLength)')) {
   fail('menu bar status item must use squareLength so it stays icon-only');
 }

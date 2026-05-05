@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import WebKit
 
 enum AppViewerRendererMode {
@@ -79,17 +80,18 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
             backing: .buffered,
             defer: false
         )
-        window.title = "Burrete - \(fileURL.lastPathComponent)"
+        window.title = fileURL.lastPathComponent
+        window.representedURL = fileURL
         window.titleVisibility = .visible
-        window.titlebarAppearsTransparent = false
-        window.isMovableByWindowBackground = true
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = false
         window.collectionBehavior.insert(.fullScreenPrimary)
         window.minSize = NSSize(width: 660, height: 440)
         if #available(macOS 11.0, *) {
-            window.toolbarStyle = .unifiedCompact
+            window.toolbarStyle = .unified
         }
         window.hasShadow = true
-        window.contentView = BurreteAppViewerContainerView(contentView: webView, preferences: displayPreferences)
+        window.contentView = NSHostingView(rootView: MoleculeViewerScene(webView: webView, transparentWindow: displayPreferences.isWindowTransparent, windowOpacity: Double(displayPreferences.clampedWindowOpacity)))
 
         super.init(window: window)
 
@@ -216,7 +218,13 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         window?.appearance = preferences.windowAppearance
         window?.isOpaque = !preferences.isWindowTransparent
         window?.backgroundColor = backgroundColor
-        (window?.contentView as? BurreteAppViewerContainerView)?.apply(preferences)
+        if let hostingView = window?.contentView as? NSHostingView<MoleculeViewerScene> {
+            hostingView.rootView = MoleculeViewerScene(
+                webView: webView,
+                transparentWindow: preferences.isWindowTransparent,
+                windowOpacity: Double(preferences.clampedWindowOpacity)
+            )
+        }
         webView.layer?.backgroundColor = backgroundColor.cgColor
         if #available(macOS 11.0, *) {
             webView.underPageBackgroundColor = backgroundColor
@@ -1235,6 +1243,18 @@ private struct AppViewerRuntime {
               color: inherit; background: transparent; font: 600 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
             }
             .buret-select:hover, .buret-select:focus { background: var(--buret-toolbar-hover); outline: none; }
+            #buret-toolbar {
+              border-radius: 9px; gap: 4px; padding: 4px;
+              -webkit-backdrop-filter: saturate(1.8) blur(22px); backdrop-filter: saturate(1.8) blur(22px);
+            }
+            .buret-button {
+              width: 28px; min-width: 28px; height: 28px; padding: 0;
+              border-radius: 6px; font-size: 13px; font-weight: 500;
+            }
+            .buret-button:hover { background: var(--buret-toolbar-hover); }
+            .buret-button.active { color: #ffffff; background: #0a84ff; }
+            .buret-renderer-control { gap: 3px; padding-left: 4px; margin-left: 2px; }
+            .buret-renderer-control .buret-button { width: auto; min-width: 42px; padding: 0 8px; font-size: 11px; }
           </style>
           <script>
             (function () {
@@ -1263,12 +1283,12 @@ private struct AppViewerRuntime {
             <button class="buret-button buret-grip" type="button" data-drag-handle aria-label="Collapse controls" aria-expanded="true" title="Collapse controls">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h2v2H8V5Zm6 0h2v2h-2V5ZM8 11h2v2H8v-2Zm6 0h2v2h-2v-2ZM8 17h2v2H8v-2Zm6 0h2v2h-2v-2Z" fill="currentColor"/></svg>
             </button>
-            <button class="buret-button buret-panel-toggle active" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel">L</button>
-            <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle right panel">R</button>
-            <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq</button>
-            <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel">Log</button>
-            <button class="buret-button" type="button" data-buret-action="theme" aria-label="Switch to light theme" title="Switch to light theme">Light</button>
-            <button class="buret-button hidden" type="button" data-buret-action="open-vesta" aria-label="Open in VESTA" title="Open in VESTA">VESTA</button>
+            <button class="buret-button buret-panel-toggle active" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel">&#x25E7;</button>
+            <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle right panel">&#x25E8;</button>
+            <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">&#x2630;</button>
+            <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel">&#x2261;</button>
+            <button class="buret-button" type="button" data-buret-action="theme" aria-label="Switch to light theme" title="Switch to light theme">&#x2600;</button>
+            <button class="buret-button hidden" type="button" data-buret-action="open-vesta" aria-label="Open in VESTA" title="Open in VESTA">&#x2197;</button>
             <div class="buret-renderer-control" data-buret-renderer-control>
               <button class="buret-button" type="button" data-buret-renderer="xyz-fast" aria-label="Use Fast XYZ SVG" title="Use Fast XYZ SVG">Fast</button>
               <button class="buret-button" type="button" data-buret-renderer="molstar" aria-label="Use Mol* Interactive" title="Use Mol* Interactive">Mol*</button>
@@ -1643,60 +1663,6 @@ private enum VestaLaunchError: LocalizedError {
         case .failed(let message):
             return message.isEmpty ? "VESTA could not be opened." : message
         }
-    }
-}
-
-private final class BurreteAppViewerContainerView: NSView {
-    private let materialView = NSVisualEffectView()
-    private let backgroundFillView = NSView()
-
-    init(contentView: NSView, preferences: AppViewerDisplayPreferences) {
-        super.init(frame: .zero)
-        wantsLayer = true
-
-        materialView.translatesAutoresizingMaskIntoConstraints = false
-        materialView.blendingMode = .behindWindow
-        materialView.state = .active
-        materialView.material = .underWindowBackground
-        addSubview(materialView)
-
-        backgroundFillView.translatesAutoresizingMaskIntoConstraints = false
-        backgroundFillView.wantsLayer = true
-        addSubview(backgroundFillView)
-
-        contentView.wantsLayer = true
-        contentView.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(contentView)
-        NSLayoutConstraint.activate([
-            materialView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            materialView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            materialView.topAnchor.constraint(equalTo: topAnchor),
-            materialView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            backgroundFillView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            backgroundFillView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            backgroundFillView.topAnchor.constraint(equalTo: topAnchor),
-            backgroundFillView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            contentView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            contentView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            contentView.topAnchor.constraint(equalTo: topAnchor),
-            contentView.bottomAnchor.constraint(equalTo: bottomAnchor)
-        ])
-        apply(preferences)
-    }
-
-    override var mouseDownCanMoveWindow: Bool {
-        true
-    }
-
-    func apply(_ preferences: AppViewerDisplayPreferences) {
-        materialView.isHidden = !preferences.isWindowTransparent
-        let fillColor = preferences.baseColor.withAlphaComponent(preferences.isWindowTransparent ? preferences.clampedWindowOpacity : 1.0)
-        layer?.backgroundColor = fillColor.cgColor
-        backgroundFillView.layer?.backgroundColor = fillColor.cgColor
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
     }
 }
 
