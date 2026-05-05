@@ -1,11 +1,11 @@
-import Cocoa
+import AppKit
 import QuickLookUI
+import SwiftUI
 import WebKit
 
 final class PreviewViewController: NSViewController, QLPreviewingController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     private var webView: WKWebView!
-    private var statusLabel: NSTextField!
-    private var logTextView: NSTextView!
+    private var previewStatus = ""
     private var pendingCompletion: ((Error?) -> Void)?
     private var activePreviewRequestID = UUID()
     private var renderTimeoutWorkItem: DispatchWorkItem?
@@ -32,10 +32,6 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
     override func loadView() {
         let transparentBackground = PreviewPreferences.load().transparentBackground
-        let container = NSView(frame: .zero)
-        container.wantsLayer = true
-        container.layer?.backgroundColor = (transparentBackground ? NSColor.clear : NSColor(calibratedWhite: 0.055, alpha: 1.0)).cgColor
-
         let userContentController = WKUserContentController()
         userContentController.add(self, name: "burrete")
         if Self.showDebugOverlay {
@@ -62,71 +58,17 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.pageZoom = Self.defaultViewerPageZoom
-        webView.translatesAutoresizingMaskIntoConstraints = false
         webView.wantsLayer = true
         webView.setValue(false, forKey: "drawsBackground")
-        webView.layer?.backgroundColor = (transparentBackground ? NSColor.clear : NSColor(calibratedWhite: 0.055, alpha: 1.0)).cgColor
+        let backgroundColor = transparentBackground ? NSColor.clear : NSColor(calibratedWhite: 0.055, alpha: 1.0)
+        webView.layer?.backgroundColor = backgroundColor.cgColor
         if #available(macOS 11.0, *) {
-            webView.underPageBackgroundColor = transparentBackground ? .clear : NSColor(calibratedWhite: 0.055, alpha: 1.0)
+            webView.underPageBackgroundColor = backgroundColor
         }
-        container.addSubview(webView)
-
-        let label = NSTextField(labelWithString: "Burrete debug boot...")
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .medium)
-        label.textColor = NSColor(calibratedWhite: 0.94, alpha: 1.0)
-        label.alignment = .left
-        label.maximumNumberOfLines = 8
-        label.lineBreakMode = .byWordWrapping
-        label.wantsLayer = true
-        label.layer?.backgroundColor = NSColor(calibratedWhite: 0.0, alpha: 0.58).cgColor
-        label.layer?.cornerRadius = 8
-        label.isHidden = !Self.showDebugOverlay
-        container.addSubview(label)
-
-        let scrollView = NSScrollView(frame: .zero)
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.borderType = .noBorder
-        scrollView.drawsBackground = false
-        scrollView.hasVerticalScroller = true
-        scrollView.autohidesScrollers = false
-        scrollView.wantsLayer = true
-        scrollView.layer?.backgroundColor = NSColor(calibratedWhite: 0.0, alpha: 0.76).cgColor
-        scrollView.layer?.cornerRadius = 10
-
-        let textView = NSTextView(frame: .zero)
-        textView.isEditable = false
-        textView.isSelectable = true
-        textView.drawsBackground = false
-        textView.textColor = NSColor(calibratedWhite: 0.94, alpha: 1.0)
-        textView.font = NSFont.monospacedSystemFont(ofSize: 10.5, weight: .regular)
-        textView.textContainerInset = NSSize(width: 10, height: 8)
-        scrollView.documentView = textView
-        scrollView.isHidden = !Self.showDebugOverlay
-        container.addSubview(scrollView)
-
-        NSLayoutConstraint.activate([
-            webView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            webView.topAnchor.constraint(equalTo: container.topAnchor),
-            webView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-
-            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
-            label.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -12),
-            label.topAnchor.constraint(equalTo: container.topAnchor, constant: 12),
-            label.widthAnchor.constraint(lessThanOrEqualToConstant: 980),
-
-            scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
-            scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
-            scrollView.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
-            scrollView.heightAnchor.constraint(equalToConstant: 270)
-        ])
 
         self.webView = webView
-        self.statusLabel = label
-        self.logTextView = textView
-        self.view = container
-        appendLog("loadView finished; WKWebView created")
+        self.view = NSHostingView(rootView: QuickLookPreviewSurface(webView: webView, transparentBackground: transparentBackground))
+        appendLog("loadView finished; SwiftUI WKWebView surface created")
     }
 
     func preparePreviewOfFile(at url: URL, completionHandler handler: @escaping (Error?) -> Void) {
@@ -161,7 +103,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                         return
                     }
                     for line in result.diagnostics { self.appendLog(line) }
-                    self.statusLabel.stringValue = "[native] Loading file preview into WKWebView…\n\(url.lastPathComponent)"
+                    self.previewStatus = "[native] Loading file preview into WKWebView...\n\(url.lastPathComponent)"
                     self.appendLog("calling WKWebView.loadFileURL; html.bytes=\(result.html.utf8.count); indexURL=\(result.indexURL.path); readAccessURL=\(result.readAccessURL.path)")
                     self.currentRuntimeDirectory = result.indexURL.deletingLastPathComponent()
                     self.webView.loadFileURL(result.indexURL, allowingReadAccessTo: result.readAccessURL)
@@ -1584,8 +1526,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 finishPreviewIfNeeded(nil, requestID: messageRequestID)
             }
             if Self.showDebugOverlay || type == "error" {
-                statusLabel.isHidden = false
-                statusLabel.stringValue = "[web:\(type)] \(text.prefix(900))"
+                previewStatus = "[web:\(type)] \(text.prefix(900))"
             }
         } else {
             appendLog("JS message raw: \(String(describing: message.body))")
@@ -1688,7 +1629,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let xyzrenderPresetOverride = xyzrenderPresetOverride
         let xyzrenderOrientationRefText = xyzrenderOrientationRefText
         appendLog("reloading preview rendererOverride=\(rendererOverride ?? "nil") xyzrenderPresetOverride=\(xyzrenderPresetOverride ?? "nil") orientationRef=\(xyzrenderOrientationRefText == nil ? "nil" : "set")")
-        statusLabel.stringValue = "[native] Switching renderer...\n\(url.lastPathComponent)"
+        previewStatus = "[native] Switching renderer...\n\(url.lastPathComponent)"
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             do {
                 let result = try Self.buildInlinePreviewHTML(
@@ -1778,7 +1719,6 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
     private func resetLog() {
         logLines.removeAll()
-        logTextView?.string = ""
         Self.resetLogFiles()
     }
 
@@ -1791,11 +1731,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             guard let self = self else { return }
             self.logLines.append(line)
             if self.logLines.count > 800 { self.logLines.removeFirst(self.logLines.count - 800) }
-            self.logTextView?.string = self.logLines.joined(separator: "\n")
-            self.logTextView?.scrollToEndOfDocument(nil)
-            if self.statusLabel?.stringValue.isEmpty ?? true {
-                self.statusLabel?.stringValue = line
-            }
+            if self.previewStatus.isEmpty { self.previewStatus = line }
         }
     }
 
