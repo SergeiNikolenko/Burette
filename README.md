@@ -29,7 +29,7 @@ modeling environment.
 
 The easiest way to install Burrete is from the GitHub Releases page:
 
-[Download the latest Burrete release](https://github.com/SergeiNikolenko/Burette/releases/latest)
+[Download the latest Burrete release](https://github.com/SergeiNikolenko/Burrete/releases/latest)
 
 1. Open the latest release.
 2. Download the `Burrete-<version>.zip` file.
@@ -95,7 +95,7 @@ Burrete runs as a menu bar app. Its settings window includes:
 ## Build From Source
 
 Most users should download Burrete from
-[GitHub Releases](https://github.com/SergeiNikolenko/Burette/releases/latest).
+[GitHub Releases](https://github.com/SergeiNikolenko/Burrete/releases/latest).
 If you want to build it yourself, clone the repository and run:
 
 ```bash
