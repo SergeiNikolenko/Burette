@@ -2,48 +2,14 @@ import AppKit
 import SwiftUI
 import WebKit
 
-enum AppViewerRendererMode {
-    static func normalize(_ value: String) -> String {
-        switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-        case "xyz-fast", "fast-xyz", "xyzfast":
-            return "xyz-fast"
-        case "molstar", "mol*", "interactive":
-            return "molstar"
-        case "xyzrender-external", "external-xyzrender", "xyzrender":
-            return "xyzrender-external"
-        default:
-            return "auto"
-        }
-    }
-}
-
-enum AppViewerXyzrenderPreset {
-    static let builtInOptions: [(String, String)] = [
-        ("default", "Default"),
-        ("flat", "Flat"),
-        ("paton", "Paton"),
-        ("pmol", "PMol"),
-        ("skeletal", "Skeletal"),
-        ("bubble", "Bubble"),
-        ("tube", "Tube"),
-        ("btube", "BTube"),
-        ("mtube", "MTube"),
-        ("wire", "Wire"),
-        ("graph", "Graph")
-    ]
-
-    static let pickerOptions: [(String, String)] = builtInOptions + [("custom", "Custom JSON")]
-
-    static func normalize(_ value: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let allowed = Set(pickerOptions.map { $0.0 })
-        return allowed.contains(trimmed) ? trimmed : "default"
-    }
-}
-
 final class MoleculeViewerWindowController: NSWindowController, WKNavigationDelegate, WKScriptMessageHandler {
     private let fileURL: URL
+    private let workspace: MoleculeViewerWorkspace
+    private let showDocument: (URL) -> Void
+    private let openSettings: () -> Void
     private let webView: WKWebView
+    private var currentRuntimeReadAccessURL: URL?
+    private var activeLoadRequestID = UUID()
     private var currentViewerPageZoom: CGFloat = 1.0
     private var rendererOverride: String?
     private var xyzrenderPresetOverride: String?
@@ -54,8 +20,16 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
     private static let minViewerPageZoom: CGFloat = 1.0
     private static let maxViewerPageZoom: CGFloat = 1.0
 
-    init(fileURL: URL) {
+    init(
+        fileURL: URL,
+        workspace: MoleculeViewerWorkspace,
+        showDocument: @escaping (URL) -> Void,
+        openSettings: @escaping () -> Void
+    ) {
         self.fileURL = fileURL
+        self.workspace = workspace
+        self.showDocument = showDocument
+        self.openSettings = openSettings
         let displayPreferences = Self.currentDisplayPreferences
 
         let userContentController = WKUserContentController()
@@ -83,15 +57,25 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         window.title = fileURL.lastPathComponent
         window.representedURL = fileURL
         window.titleVisibility = .visible
-        window.titlebarAppearsTransparent = true
-        window.isMovableByWindowBackground = false
+        window.titlebarAppearsTransparent = false
+        window.isMovableByWindowBackground = true
         window.collectionBehavior.insert(.fullScreenPrimary)
-        window.minSize = NSSize(width: 660, height: 440)
+        window.minSize = NSSize(width: 820, height: 500)
         if #available(macOS 11.0, *) {
             window.toolbarStyle = .unified
         }
         window.hasShadow = true
-        window.contentView = NSHostingView(rootView: MoleculeViewerScene(webView: webView, transparentWindow: displayPreferences.isWindowTransparent, windowOpacity: Double(displayPreferences.clampedWindowOpacity)))
+        window.contentView = NSHostingView(
+            rootView: MoleculeViewerScene(
+                webView: webView,
+                currentFileURL: fileURL,
+                transparentWindow: displayPreferences.isWindowTransparent,
+                windowOpacity: Double(displayPreferences.clampedWindowOpacity),
+                workspace: workspace,
+                showDocument: showDocument,
+                openSettings: openSettings
+            )
+        )
 
         super.init(window: window)
 
@@ -129,17 +113,52 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
     }
 
     func load() {
-        do {
-            let runtime = try AppViewerRuntime.create(
-                for: fileURL,
-                rendererModeOverride: rendererOverride,
-                xyzrenderPresetOverride: xyzrenderPresetOverride,
-                xyzrenderOrientationRefText: xyzrenderOrientationRefText
-            )
-            webView.loadFileURL(runtime.indexURL, allowingReadAccessTo: runtime.readAccessURL)
-        } catch {
-            webView.loadHTMLString(Self.errorHTML(error), baseURL: nil)
+        let requestID = UUID()
+        activeLoadRequestID = requestID
+        currentRuntimeReadAccessURL = nil
+        webView.loadHTMLString(Self.loadingHTML(fileURL.lastPathComponent), baseURL: nil)
+
+        let fileURL = fileURL
+        let rendererOverride = rendererOverride
+        let xyzrenderPresetOverride = xyzrenderPresetOverride
+        let xyzrenderOrientationRefText = xyzrenderOrientationRefText
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            do {
+                let runtime = try AppViewerRuntime.create(
+                    for: fileURL,
+                    rendererModeOverride: rendererOverride,
+                    xyzrenderPresetOverride: xyzrenderPresetOverride,
+                    xyzrenderOrientationRefText: xyzrenderOrientationRefText
+                )
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.activeLoadRequestID == requestID else { return }
+                    self.currentRuntimeReadAccessURL = runtime.readAccessURL.standardizedFileURL
+                    self.webView.loadFileURL(runtime.indexURL, allowingReadAccessTo: runtime.readAccessURL)
+                }
+            } catch {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.activeLoadRequestID == requestID else { return }
+                    self.currentRuntimeReadAccessURL = nil
+                    self.webView.loadHTMLString(Self.errorHTML(error), baseURL: nil)
+                }
+            }
         }
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        guard let url = navigationAction.request.url else {
+            decisionHandler(.cancel)
+            return
+        }
+        if isTrustedRuntimeURL(url) || url.scheme == "about" {
+            decisionHandler(.allow)
+            return
+        }
+        if navigationAction.navigationType == .linkActivated {
+            NSWorkspace.shared.open(url)
+        }
+        NSLog("[BurreteAppViewer] blocked navigation to %@", url.absoluteString)
+        decisionHandler(.cancel)
     }
 
     func reloadDisplayPreferences() {
@@ -174,6 +193,10 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard isTrustedScriptMessage(message) else {
+            NSLog("[BurreteAppViewer] %@: blocked script message from untrusted frame", fileURL.lastPathComponent)
+            return
+        }
         guard message.name == "burrete",
               let body = message.body as? [String: Any],
               let type = body["type"] as? String else {
@@ -213,6 +236,21 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         NSLog("[BurreteAppViewer] %@: %@ %@", fileURL.lastPathComponent, type, text)
     }
 
+    private func isTrustedScriptMessage(_ message: WKScriptMessage) -> Bool {
+        guard message.webView === webView else { return false }
+        guard message.frameInfo.isMainFrame else { return false }
+        guard let sourceURL = message.frameInfo.request.url ?? message.webView?.url else { return false }
+        return isTrustedRuntimeURL(sourceURL)
+    }
+
+    private func isTrustedRuntimeURL(_ url: URL) -> Bool {
+        guard url.isFileURL else { return false }
+        guard let allowed = currentRuntimeReadAccessURL?.standardizedFileURL else { return false }
+        let allowedPath = allowed.path.hasSuffix("/") ? allowed.path : allowed.path + "/"
+        let path = url.standardizedFileURL.path
+        return path == allowed.path || path.hasPrefix(allowedPath)
+    }
+
     private func applyWindowDisplayPreferences(_ preferences: AppViewerDisplayPreferences) {
         let backgroundColor = preferences.isWindowTransparent ? NSColor.clear : NSColor.windowBackgroundColor
         window?.appearance = preferences.windowAppearance
@@ -221,8 +259,12 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         if let hostingView = window?.contentView as? NSHostingView<MoleculeViewerScene> {
             hostingView.rootView = MoleculeViewerScene(
                 webView: webView,
+                currentFileURL: fileURL,
                 transparentWindow: preferences.isWindowTransparent,
-                windowOpacity: Double(preferences.clampedWindowOpacity)
+                windowOpacity: Double(preferences.clampedWindowOpacity),
+                workspace: workspace,
+                showDocument: showDocument,
+                openSettings: openSettings
             )
         }
         webView.layer?.backgroundColor = backgroundColor.cgColor
@@ -250,27 +292,19 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
     }
 
     private func openCurrentFileInVesta() {
-        guard Self.canOpenInVesta(fileExtension: Self.structurePathExtension(for: fileURL)) else {
+        guard canOpenInVesta(fileExtension: structurePathExtension(for: fileURL)) else {
             NSLog("[BurreteAppViewer] %@: VESTA handoff is unsupported for this file type", fileURL.lastPathComponent)
             return
         }
-        do {
-            try VestaLauncher.open(fileURL: fileURL)
-            NSLog("[BurreteAppViewer] %@: opened in VESTA", fileURL.lastPathComponent)
-        } catch {
-            NSLog("[BurreteAppViewer] %@: VESTA open failed: %@", fileURL.lastPathComponent, String(describing: error))
+        VestaLauncher.open(fileURL: fileURL) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success:
+                NSLog("[BurreteAppViewer] %@: opened in VESTA", self.fileURL.lastPathComponent)
+            case .failure(let error):
+                NSLog("[BurreteAppViewer] %@: VESTA open failed: %@", self.fileURL.lastPathComponent, String(describing: error))
+            }
         }
-    }
-
-    private static func structurePathExtension(for url: URL) -> String {
-        if url.lastPathComponent.lowercased().hasSuffix(".mae.gz") {
-            return "maegz"
-        }
-        return url.pathExtension.lowercased()
-    }
-
-    private static func canOpenInVesta(fileExtension: String) -> Bool {
-        ["xyz", "cub", "cube"].contains(fileExtension.lowercased())
     }
 
     private func copyToPasteboard(_ text: String) {
@@ -301,9 +335,9 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
     }
 
     private func setRendererOverride(_ value: String, orientationRefText: String? = nil) {
-        let renderer = AppViewerRendererMode.normalize(value)
+        let renderer = BurreteRendererMode.normalize(value)
         let hasNewOrientation = setXyzrenderOrientation(orientationRefText)
-        if renderer != "xyzrender-external" {
+        if renderer != BurreteRendererMode.xyzrenderExternal {
             xyzrenderOrientationRefText = nil
         }
         guard rendererOverride != renderer || hasNewOrientation else { return }
@@ -312,10 +346,10 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
     }
 
     private func setXyzrenderPresetOverride(_ value: String) {
-        let preset = AppViewerXyzrenderPreset.normalize(value)
+        let preset = BurreteXyzrenderPreset.normalize(value)
         guard xyzrenderPresetOverride != preset else { return }
         xyzrenderPresetOverride = preset
-        rendererOverride = "xyzrender-external"
+        rendererOverride = BurreteRendererMode.xyzrenderExternal
         load()
     }
 
@@ -348,6 +382,17 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         body{box-sizing:border-box;padding:24px;font:13px -apple-system,BlinkMacSystemFont,sans-serif}
         h1{font-size:18px;margin:0 0 12px}pre{white-space:pre-wrap;background:#24262a;padding:12px;border-radius:8px}
         </style></head><body><h1>Burrete could not open this file</h1><pre>\(escapeHTML(String(describing: error)))</pre></body></html>
+        """
+    }
+
+    private static func loadingHTML(_ filename: String) -> String {
+        """
+        <!doctype html><html><head><meta charset="utf-8"><style>
+        html,body{margin:0;width:100%;height:100%;background:transparent;color:#6c6c70}
+        body{display:grid;place-items:center;font:13px -apple-system,BlinkMacSystemFont,sans-serif}
+        div{padding:16px 18px;border-radius:12px;background:rgba(255,255,255,.72);box-shadow:0 10px 30px rgba(0,0,0,.12)}
+        @media (prefers-color-scheme: dark){body{color:#d1d1d6}div{background:rgba(28,28,30,.72)}}
+        </style></head><body><div>Loading \(escapeHTML(filename))...</div></body></html>
         """
     }
 
@@ -493,13 +538,17 @@ private struct AppViewerRuntime {
 
         let format = AppViewerStructureFormat(url: fileURL, data: data)
         let storedRendererMode = UserDefaults.standard.string(forKey: "structureRendererMode") ?? "auto"
-        let rendererMode = rendererModeOverride ?? storedRendererMode
+        let rendererPolicy = BurreteRendererPolicy.resolve(
+            format: BurreteRendererFormat(format),
+            requestedMode: rendererModeOverride ?? storedRendererMode
+        )
+        let rendererMode = rendererPolicy.requestedMode
         let storedXyzrenderPreset = UserDefaults.standard.string(forKey: "xyzrenderPreset") ?? "default"
-        let xyzrenderPreset = AppViewerXyzrenderPreset.normalize(xyzrenderPresetOverride ?? storedXyzrenderPreset)
-        var renderer = resolveRenderer(for: format, rendererMode: rendererMode)
+        let xyzrenderPreset = BurreteXyzrenderPreset.normalize(xyzrenderPresetOverride ?? storedXyzrenderPreset)
+        var renderer = rendererPolicy.renderer
         var externalArtifact: ExternalXyzrenderArtifact?
         var externalStatus: [String: Any]?
-        if renderer == "xyzrender-external" {
+        if renderer == BurreteRendererMode.xyzrenderExternal {
             do {
                 externalArtifact = try ExternalXyzrenderWorker.render(
                     inputURL: fileURL,
@@ -514,15 +563,15 @@ private struct AppViewerRuntime {
                 if format.isExternalXyzrenderOnly {
                     throw error
                 }
-                renderer = format.molstarFormat == "xyz" ? "xyz-fast" : "molstar"
+                renderer = BurreteRendererPolicy.fallbackRenderer(for: BurreteRendererFormat(format))
                 externalStatus = [
                     "status": "fallback",
-                    "requested": "xyzrender-external",
+                    "requested": BurreteRendererMode.xyzrenderExternal,
                     "message": error.localizedDescription
                 ]
             }
         }
-        let xyzFastPayload = renderer == "xyz-fast" ? makeXYZFastPayload(from: data) : nil
+        let xyzFastPayload = renderer == BurreteRendererMode.xyzFast ? makeXYZFastPayload(from: data) : nil
         let dataForWeb = xyzFastPayload?.data ?? data
 
         var config: [String: Any] = [
@@ -545,10 +594,10 @@ private struct AppViewerRuntime {
             "transparentBackground": canvasIsTransparent,
             "sdfGrid": true,
             "appViewer": true,
-            "xyzrenderViewer": renderer == "xyzrender-external",
-            "molstarAvailable": !format.isExternalXyzrenderOnly,
+            "xyzrenderViewer": renderer == BurreteRendererMode.xyzrenderExternal,
+            "molstarAvailable": rendererPolicy.molstarAvailable,
             "xyzrenderPreset": xyzrenderPreset,
-            "xyzrenderPresetOptions": AppViewerXyzrenderPreset.pickerOptions.map { ["value": $0.0, "label": $0.1] },
+            "xyzrenderPresetOptions": BurreteXyzrenderPreset.pickerOptions.map { ["value": $0.0, "label": $0.1] },
             "canOpenInVesta": canOpenInVesta(fileExtension: structurePathExtension(for: fileURL)),
             "showPanelControls": UserDefaults.standard.object(forKey: "showPreviewPanelControls") as? Bool ?? true,
             "defaultLayoutState": [
@@ -558,7 +607,7 @@ private struct AppViewerRuntime {
                 "bottom": "hidden"
             ]
         ]
-        if renderer == "xyz-fast" {
+        if renderer == BurreteRendererMode.xyzFast {
             var xyzFast: [String: Any] = [
                 "style": UserDefaults.standard.string(forKey: "xyzFastStyle") ?? "default",
                 "firstFrameOnly": true,
@@ -679,34 +728,6 @@ private struct AppViewerRuntime {
         for entry in oldDirectories + overflowDirectories where removed.insert(entry.url.path).inserted {
             try? fileManager.removeItem(at: entry.url)
         }
-    }
-
-    private static func resolveRenderer(for format: AppViewerStructureFormat, rendererMode: String) -> String {
-        if format.isExternalXyzrenderOnly {
-            return "xyzrender-external"
-        }
-        let isXYZ = format.molstarFormat == "xyz" && !format.isBinary
-        switch AppViewerRendererMode.normalize(rendererMode) {
-        case "molstar":
-            return "molstar"
-        case "xyz-fast":
-            return isXYZ ? "xyz-fast" : "molstar"
-        case "xyzrender-external":
-            return isXYZ ? "xyzrender-external" : "molstar"
-        default:
-            return isXYZ ? "xyz-fast" : "molstar"
-        }
-    }
-
-    private static func structurePathExtension(for url: URL) -> String {
-        if url.lastPathComponent.lowercased().hasSuffix(".mae.gz") {
-            return "maegz"
-        }
-        return url.pathExtension.lowercased()
-    }
-
-    private static func canOpenInVesta(fileExtension: String) -> Bool {
-        ["xyz", "cub", "cube"].contains(fileExtension.lowercased())
     }
 
     private struct XYZFastPayload {
@@ -1248,13 +1269,14 @@ private struct AppViewerRuntime {
               -webkit-backdrop-filter: saturate(1.8) blur(22px); backdrop-filter: saturate(1.8) blur(22px);
             }
             .buret-button {
-              width: 28px; min-width: 28px; height: 28px; padding: 0;
-              border-radius: 6px; font-size: 13px; font-weight: 500;
+              min-width: 28px; height: 28px; padding: 0 8px;
+              border-radius: 6px; font-size: 11px; font-weight: 600;
             }
+            .buret-grip { width: 28px; min-width: 28px; padding: 0; }
             .buret-button:hover { background: var(--buret-toolbar-hover); }
             .buret-button.active { color: #ffffff; background: #0a84ff; }
             .buret-renderer-control { gap: 3px; padding-left: 4px; margin-left: 2px; }
-            .buret-renderer-control .buret-button { width: auto; min-width: 42px; padding: 0 8px; font-size: 11px; }
+            .buret-renderer-control .buret-button { min-width: 42px; padding: 0 8px; font-size: 11px; }
           </style>
           <script>
             (function () {
@@ -1283,12 +1305,12 @@ private struct AppViewerRuntime {
             <button class="buret-button buret-grip" type="button" data-drag-handle aria-label="Collapse controls" aria-expanded="true" title="Collapse controls">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h2v2H8V5Zm6 0h2v2h-2V5ZM8 11h2v2H8v-2Zm6 0h2v2h-2v-2ZM8 17h2v2H8v-2Zm6 0h2v2h-2v-2Z" fill="currentColor"/></svg>
             </button>
-            <button class="buret-button buret-panel-toggle active" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel">&#x25E7;</button>
-            <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle right panel">&#x25E8;</button>
-            <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">&#x2630;</button>
-            <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel">&#x2261;</button>
-            <button class="buret-button" type="button" data-buret-action="theme" aria-label="Switch to light theme" title="Switch to light theme">&#x2600;</button>
-            <button class="buret-button hidden" type="button" data-buret-action="open-vesta" aria-label="Open in VESTA" title="Open in VESTA">&#x2197;</button>
+            <button class="buret-button buret-panel-toggle active" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel">L</button>
+            <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle right panel">R</button>
+            <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq</button>
+            <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel">Log</button>
+            <button class="buret-button" type="button" data-buret-action="theme" aria-label="Switch to light theme" title="Switch to light theme">Light</button>
+            <button class="buret-button hidden" type="button" data-buret-action="open-vesta" aria-label="Open in VESTA" title="Open in VESTA">VESTA</button>
             <div class="buret-renderer-control" data-buret-renderer-control>
               <button class="buret-button" type="button" data-buret-renderer="xyz-fast" aria-label="Use Fast XYZ SVG" title="Use Fast XYZ SVG">Fast</button>
               <button class="buret-button" type="button" data-buret-renderer="molstar" aria-label="Use Mol* Interactive" title="Use Mol* Interactive">Mol*</button>
@@ -1344,7 +1366,7 @@ private enum ExternalXyzrenderWorker {
         let configuredExecutable = UserDefaults.standard.string(forKey: "xyzrenderExecutablePath")?.trimmingCharacters(in: .whitespacesAndNewlines)
         process.executableURL = URL(fileURLWithPath: try resolvedExecutable(configuredExecutable ?? ""))
         var arguments = [inputURL.path, "-o", outputURL.path]
-        let safePreset = AppViewerXyzrenderPreset.normalize(preset)
+        let safePreset = BurreteXyzrenderPreset.normalize(preset)
         let configArgument = resolveConfigArgument(preset: safePreset, customConfigPath: customConfigPath)
         let effectivePreset = safePreset == "custom" && configArgument == "default" ? "default" : safePreset
         arguments += ["--config", configArgument]
@@ -1612,6 +1634,16 @@ private struct AppViewerStructureFormat {
     }
 }
 
+private extension BurreteRendererFormat {
+    init(_ format: AppViewerStructureFormat) {
+        self.init(
+            molstarFormat: format.molstarFormat,
+            isBinary: format.isBinary,
+            isExternalXyzrenderOnly: format.isExternalXyzrenderOnly
+        )
+    }
+}
+
 private enum AppViewerError: LocalizedError {
     case missingWebResources
     case emptyFile(String)
@@ -1639,18 +1671,27 @@ private enum AppViewerError: LocalizedError {
 }
 
 private enum VestaLauncher {
-    static func open(fileURL: URL) throws {
+    static func open(fileURL: URL, completion: @escaping (Result<Void, Error>) -> Void) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
         process.arguments = ["-a", "VESTA", fileURL.path]
         let errorPipe = Pipe()
         process.standardError = errorPipe
-        try process.run()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
+        process.terminationHandler = { finished in
             let data = errorPipe.fileHandleForReading.readDataToEndOfFile()
             let message = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
-            throw VestaLaunchError.failed(message.trimmingCharacters(in: .whitespacesAndNewlines))
+            DispatchQueue.main.async {
+                if finished.terminationStatus == 0 {
+                    completion(.success(()))
+                } else {
+                    completion(.failure(VestaLaunchError.failed(message.trimmingCharacters(in: .whitespacesAndNewlines))))
+                }
+            }
+        }
+        do {
+            try process.run()
+        } catch {
+            completion(.failure(error))
         }
     }
 }
@@ -1664,6 +1705,19 @@ private enum VestaLaunchError: LocalizedError {
             return message.isEmpty ? "VESTA could not be opened." : message
         }
     }
+}
+
+private let vestaSupportedStructureExtensions: Set<String> = ["xyz", "cub", "cube"]
+
+private func structurePathExtension(for url: URL) -> String {
+    if url.lastPathComponent.lowercased().hasSuffix(".mae.gz") {
+        return "maegz"
+    }
+    return url.pathExtension.lowercased()
+}
+
+private func canOpenInVesta(fileExtension: String) -> Bool {
+    vestaSupportedStructureExtensions.contains(fileExtension.lowercased())
 }
 
 private func escapeHTML(_ value: String) -> String {
