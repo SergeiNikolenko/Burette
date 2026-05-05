@@ -61,6 +61,11 @@ struct ContentView: View {
         .onChange(of: gridPreviewSupportsSMILES) { _ in refreshDefaultOpenStatus() }
         .onChange(of: gridPreviewSupportsCSV) { _ in refreshDefaultOpenStatus() }
         .onChange(of: gridPreviewSupportsTSV) { _ in refreshDefaultOpenStatus() }
+        .onReceive(NotificationCenter.default.publisher(for: .burreteOpenSettingsSection)) { notification in
+            guard let rawSection = notification.object as? String,
+                  let requestedSection = SettingsSection(rawValue: rawSection) else { return }
+            section = requestedSection
+        }
     }
 
     @ViewBuilder
@@ -141,7 +146,7 @@ struct ContentView: View {
                     title: "External xyzrender preset",
                     subtitle: "Used only by the standalone app when xyzrender is available on PATH or configured via defaults.",
                     selection: $xyzrenderPreset,
-                    options: AppViewerXyzrenderPreset.pickerOptions
+                    options: BurreteXyzrenderPreset.pickerOptions
                 )
                 SettingsDivider()
                 SettingsTextFieldRow(
@@ -962,7 +967,7 @@ private struct AboutPanel: View {
                 Text("Burrete")
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundStyle(.primary)
-                Text("Version 0.10.20")
+                Text("Version 0.10.21")
                     .font(.system(size: 12, weight: .regular))
                     .foregroundStyle(.secondary)
             }
