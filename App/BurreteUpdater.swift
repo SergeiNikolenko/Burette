@@ -25,7 +25,7 @@ enum BurreteUpdateChannel: String, CaseIterable, Identifiable {
 }
 
 enum BurreteUpdateRepository {
-    static let ownerAndName = "SergeiNikolenko/Burette"
+    static let ownerAndName = "SergeiNikolenko/Burrete"
     static let releasesURL = URL(string: "https://api.github.com/repos/\(ownerAndName)/releases")!
 }
 
