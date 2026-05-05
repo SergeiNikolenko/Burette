@@ -831,7 +831,7 @@
     const button = document.querySelector('#buret-toolbar [data-buret-action="theme"]');
     if (!button) return;
     const isDark = resolveViewerTheme() === 'dark';
-    button.textContent = isDark ? 'Light' : 'Dark';
+    button.textContent = isDark ? "\u2600" : "\u25D0";
     button.setAttribute('aria-label', isDark ? 'Switch to light theme' : 'Switch to dark theme');
     button.setAttribute('title', isDark ? 'Switch to light theme' : 'Switch to dark theme');
     button.classList.toggle('active', !isDark);

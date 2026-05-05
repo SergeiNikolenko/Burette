@@ -1,4 +1,4 @@
-import AppKit
+import Foundation
 import Foundation
 
 enum BurreteUpdateChannel: String, CaseIterable, Identifiable {
@@ -25,7 +25,7 @@ enum BurreteUpdateChannel: String, CaseIterable, Identifiable {
 }
 
 enum BurreteUpdateRepository {
-    static let ownerAndName = "SergeiNikolenko/Burette"
+    static let ownerAndName = "SergeiNikolenko/Burrete"
     static let releasesURL = URL(string: "https://api.github.com/repos/\(ownerAndName)/releases")!
 }
 
@@ -150,7 +150,7 @@ final class BurreteUpdater: ObservableObject {
             if release.installAsset != nil {
                 await downloadAndInstallAvailableUpdate()
             } else {
-                NSWorkspace.shared.open(release.htmlURL)
+                PlatformActions.openURL(release.htmlURL)
             }
             return
         }
@@ -208,7 +208,7 @@ final class BurreteUpdater: ObservableObject {
     func downloadAndInstallAvailableUpdate() async {
         guard let release = availableRelease, let asset = release.installAsset else {
             if let release = availableRelease {
-                NSWorkspace.shared.open(release.htmlURL)
+                PlatformActions.openURL(release.htmlURL)
             }
             return
         }
@@ -225,7 +225,7 @@ final class BurreteUpdater: ObservableObject {
             setStatus("Installing \(release.displayName)... Burrete will restart when the update is ready.")
             try prepareAndLaunchInstaller(archiveURL: destination, release: release, asset: asset)
             setStatus("Installer launched for \(release.displayName). Burrete will quit and reopen automatically.")
-            NSApp.terminate(nil)
+            PlatformActions.terminateApp()
         } catch {
             isDownloading = false
             isInstalling = false
@@ -235,7 +235,7 @@ final class BurreteUpdater: ObservableObject {
 
     func revealDownloadedUpdate() {
         guard let downloadedFileURL else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([downloadedFileURL])
+        PlatformActions.revealFile(downloadedFileURL)
     }
 
     private func fetchReleases() async throws -> [BurreteUpdateRelease] {
