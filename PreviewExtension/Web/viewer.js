@@ -36,7 +36,11 @@
 
   function postHostMessage(payload) {
     try {
-      window.webkit?.messageHandlers?.burrete?.postMessage(payload);
+      const body = { ...(payload || {}) };
+      if (window.BurreteConfig && window.BurreteConfig.previewRequestID) {
+        body.requestID = String(window.BurreteConfig.previewRequestID);
+      }
+      window.webkit?.messageHandlers?.burrete?.postMessage(body);
       return !!window.webkit?.messageHandlers?.burrete;
     } catch (_) {
       return false;
@@ -831,7 +835,7 @@
     const button = document.querySelector('#buret-toolbar [data-buret-action="theme"]');
     if (!button) return;
     const isDark = resolveViewerTheme() === 'dark';
-    button.textContent = isDark ? "\u2600" : "\u25D0";
+    button.textContent = isDark ? 'Light' : 'Dark';
     button.setAttribute('aria-label', isDark ? 'Switch to light theme' : 'Switch to dark theme');
     button.setAttribute('title', isDark ? 'Switch to light theme' : 'Switch to dark theme');
     button.classList.toggle('active', !isDark);

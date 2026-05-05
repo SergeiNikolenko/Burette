@@ -4,6 +4,7 @@ import SwiftUI
 
 final class AppLifecycleBridge: NSObject, NSApplicationDelegate {
     private let statusMenuController = PlatformStatusMenuController()
+    private let viewerWorkspace = MoleculeViewerWorkspace()
     private var settingsWindow: NSWindow?
     private var viewerWindows: [URL: MoleculeViewerWindowController] = [:]
     private var viewerRuntimePreferences = ViewerRuntimePreferences.load()
@@ -13,60 +14,7 @@ final class AppLifecycleBridge: NSObject, NSApplicationDelegate {
         updateActivationPolicy()
         statusMenuController.install(target: self)
         BurreteFileAssociations.registerBundleOnly()
-        Task { @MainActor in
-            BurreteUpdater.shared.checkAutomaticallyIfNeeded()
-        }
-        if UserDefaults.standard.object(forKey: "openSettingsAtLaunch") == nil {
-            UserDefaults.standard.set(false, forKey: "openSettingsAtLaunch")
-        }
-        if UserDefaults.standard.object(forKey: "showPreviewPanelControls") == nil {
-            UserDefaults.standard.set(true, forKey: "showPreviewPanelControls")
-        }
-        if UserDefaults.standard.object(forKey: "useTransparentPreviewBackground") == nil {
-            UserDefaults.standard.set(false, forKey: "useTransparentPreviewBackground")
-        }
-        if UserDefaults.standard.object(forKey: "viewerTheme") == nil {
-            UserDefaults.standard.set("auto", forKey: "viewerTheme")
-        }
-        if UserDefaults.standard.object(forKey: "viewerCanvasBackground") == nil {
-            UserDefaults.standard.set("auto", forKey: "viewerCanvasBackground")
-        }
-        if UserDefaults.standard.object(forKey: "structureRendererMode") == nil {
-            UserDefaults.standard.set("auto", forKey: "structureRendererMode")
-        }
-        if UserDefaults.standard.object(forKey: "xyzFastStyle") == nil {
-            UserDefaults.standard.set("default", forKey: "xyzFastStyle")
-        }
-        if UserDefaults.standard.object(forKey: "xyzrenderPreset") == nil {
-            UserDefaults.standard.set("default", forKey: "xyzrenderPreset")
-        }
-        if UserDefaults.standard.object(forKey: "xyzrenderCustomConfigPath") == nil {
-            UserDefaults.standard.set("", forKey: "xyzrenderCustomConfigPath")
-        }
-        if UserDefaults.standard.object(forKey: "xyzrenderExecutablePath") == nil {
-            UserDefaults.standard.set("", forKey: "xyzrenderExecutablePath")
-        }
-        if UserDefaults.standard.object(forKey: "xyzrenderExtraArguments") == nil {
-            UserDefaults.standard.set("", forKey: "xyzrenderExtraArguments")
-        }
-        if UserDefaults.standard.object(forKey: "viewerWindowOpacity") == nil {
-            UserDefaults.standard.set(0.82, forKey: "viewerWindowOpacity")
-        }
-        if UserDefaults.standard.object(forKey: "viewerOverlayOpacity") == nil {
-            UserDefaults.standard.set(0.90, forKey: "viewerOverlayOpacity")
-        }
-        if UserDefaults.standard.object(forKey: MoleculeGridFileSupport.sdfKey) == nil {
-            UserDefaults.standard.set(true, forKey: MoleculeGridFileSupport.sdfKey)
-        }
-        if UserDefaults.standard.object(forKey: MoleculeGridFileSupport.smilesKey) == nil {
-            UserDefaults.standard.set(true, forKey: MoleculeGridFileSupport.smilesKey)
-        }
-        if UserDefaults.standard.object(forKey: MoleculeGridFileSupport.csvKey) == nil {
-            UserDefaults.standard.set(true, forKey: MoleculeGridFileSupport.csvKey)
-        }
-        if UserDefaults.standard.object(forKey: MoleculeGridFileSupport.tsvKey) == nil {
-            UserDefaults.standard.set(true, forKey: MoleculeGridFileSupport.tsvKey)
-        }
+        registerDefaultSettings()
         viewerRuntimePreferences = ViewerRuntimePreferences.load()
         NotificationCenter.default.addObserver(
             self,
@@ -74,12 +22,56 @@ final class AppLifecycleBridge: NSObject, NSApplicationDelegate {
             name: UserDefaults.didChangeNotification,
             object: UserDefaults.standard
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(updateStateDidChange),
+            name: .burreteUpdateStateDidChange,
+            object: nil
+        )
+        Task { @MainActor in
+            BurreteUpdater.shared.checkAutomaticallyIfNeeded()
+        }
         if UserDefaults.standard.bool(forKey: "openSettingsAtLaunch") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
                 if self?.openedDocumentAtLaunch == false {
                     self?.openSettings()
                 }
             }
+        }
+    }
+
+    private func registerDefaultSettings() {
+        let defaults = UserDefaults.standard
+        for (key, value) in [
+            ("openSettingsAtLaunch", false as Any),
+            ("showPreviewPanelControls", true as Any),
+            ("useTransparentPreviewBackground", false as Any),
+            ("viewerTheme", "auto" as Any),
+            ("viewerCanvasBackground", "auto" as Any),
+            ("structureRendererMode", "auto" as Any),
+            ("xyzFastStyle", "default" as Any),
+            ("xyzrenderPreset", "default" as Any),
+            ("xyzrenderCustomConfigPath", "" as Any),
+            ("xyzrenderExecutablePath", "" as Any),
+            ("xyzrenderExtraArguments", "" as Any),
+            ("viewerWindowOpacity", 0.82 as Any),
+            ("viewerOverlayOpacity", 0.90 as Any)
+        ] {
+            setDefaultValueIfNeeded(value, forKey: key, defaults: defaults)
+        }
+        for key in [
+            MoleculeGridFileSupport.sdfKey,
+            MoleculeGridFileSupport.smilesKey,
+            MoleculeGridFileSupport.csvKey,
+            MoleculeGridFileSupport.tsvKey
+        ] {
+            setDefaultValueIfNeeded(true, forKey: key, defaults: defaults)
+        }
+    }
+
+    private func setDefaultValueIfNeeded(_ value: Any, forKey key: String, defaults: UserDefaults) {
+        if defaults.object(forKey: key) == nil {
+            defaults.set(value, forKey: key)
         }
     }
 
@@ -157,6 +149,23 @@ final class AppLifecycleBridge: NSObject, NSApplicationDelegate {
         }
     }
 
+    @objc func openUpdates() {
+        openSettings()
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .burreteOpenSettingsSection, object: "updates")
+        }
+    }
+
+    @objc private func updateStateDidChange(_ notification: Notification) {
+        Task { @MainActor in
+            let updater = BurreteUpdater.shared
+            statusMenuController.refreshUpdateNotification(
+                release: updater.availableRelease,
+                channel: updater.availableReleaseChannel
+            )
+        }
+    }
+
     private func openViewer(for url: URL) {
         let fileURL = url.standardizedFileURL
         if let existing = viewerWindows[fileURL] {
@@ -165,8 +174,18 @@ final class AppLifecycleBridge: NSObject, NSApplicationDelegate {
             return
         }
 
-        let controller = MoleculeViewerWindowController(fileURL: fileURL)
+        let controller = MoleculeViewerWindowController(
+            fileURL: fileURL,
+            workspace: viewerWorkspace,
+            showDocument: { [weak self] url in
+                self?.openViewer(for: url)
+            },
+            openSettings: { [weak self] in
+                self?.openSettings()
+            }
+        )
         viewerWindows[fileURL] = controller
+        refreshViewerWorkspace()
         _ = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification,
             object: controller.window,
@@ -174,6 +193,7 @@ final class AppLifecycleBridge: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             DispatchQueue.main.async {
                 self?.viewerWindows[fileURL] = nil
+                self?.refreshViewerWorkspace()
                 self?.updateActivationPolicy()
             }
         }
@@ -181,6 +201,10 @@ final class AppLifecycleBridge: NSObject, NSApplicationDelegate {
         controller.showWindow(nil)
         controller.window?.center()
         presentWindow(controller.window, activate: true)
+    }
+
+    private func refreshViewerWorkspace() {
+        viewerWorkspace.updateDocuments(Array(viewerWindows.keys))
     }
 
     private func presentWindow(_ window: NSWindow?, activate: Bool) {
@@ -267,6 +291,8 @@ final class AppLifecycleBridge: NSObject, NSApplicationDelegate {
 
 final class PlatformStatusMenuController {
     private var statusItem: NSStatusItem?
+    private var updateNotificationItem: NSMenuItem?
+    private var updateNotificationSeparator: NSMenuItem?
 
     func install(target: AppLifecycleBridge) {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -277,6 +303,13 @@ final class PlatformStatusMenuController {
         }
 
         let menu = NSMenu()
+        let updateItem = NSMenuItem(title: "Update Available...", action: #selector(AppLifecycleBridge.openUpdates), keyEquivalent: "")
+        updateItem.image = NSImage(systemSymbolName: "arrow.down.circle.fill", accessibilityDescription: nil)
+        updateItem.isHidden = true
+        menu.addItem(updateItem)
+        let updateSeparator = NSMenuItem.separator()
+        updateSeparator.isHidden = true
+        menu.addItem(updateSeparator)
         menu.addItem(NSMenuItem(title: "Settings...", action: #selector(AppLifecycleBridge.openSettings), keyEquivalent: ","))
         menu.addItem(NSMenuItem(title: "Check for Updates...", action: #selector(AppLifecycleBridge.checkForUpdates), keyEquivalent: "u"))
         menu.addItem(NSMenuItem(title: "Open Logs Folder", action: #selector(AppLifecycleBridge.openLogsFolder), keyEquivalent: "l"))
@@ -287,7 +320,34 @@ final class PlatformStatusMenuController {
         menu.addItem(NSMenuItem(title: "Quit Burrete", action: #selector(AppLifecycleBridge.quit), keyEquivalent: "q"))
         menu.items.forEach { $0.target = target }
         item.menu = menu
+        updateNotificationItem = updateItem
+        updateNotificationSeparator = updateSeparator
         statusItem = item
+        refreshUpdateNotification(release: nil, channel: nil)
+    }
+
+    func refreshUpdateNotification(release: BurreteUpdateRelease?, channel: BurreteUpdateChannel?) {
+        guard let item = updateNotificationItem,
+              let separator = updateNotificationSeparator,
+              let button = statusItem?.button else { return }
+
+        let currentChannel = BurreteUpdateChannel(
+            rawValue: UserDefaults.standard.string(forKey: "updateChannel") ?? ""
+        ) ?? .stable
+
+        guard let release,
+              channel == currentChannel else {
+            item.isHidden = true
+            separator.isHidden = true
+            button.toolTip = "Burrete - molecular Quick Look previews. Open Settings from this menu."
+            return
+        }
+
+        item.isHidden = false
+        separator.isHidden = false
+        item.title = "Update Available: \(release.displayName)"
+        item.toolTip = "Open Updates to install \(release.tagName)."
+        button.toolTip = "Burrete update available: \(release.displayName)."
     }
 }
 
