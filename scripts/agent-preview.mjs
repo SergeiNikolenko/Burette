@@ -12,7 +12,7 @@ const webRoot = resolve(repoRoot, 'PreviewExtension', 'Web');
 function usage() {
   console.error(`Usage: node scripts/agent-preview.mjs <structure-file> [--port 5177] [--host 127.0.0.1]
 
-Starts a tiny localhost-only Burette agent viewer for browser-use/manual QA.
+Starts a tiny localhost-only Burrete agent viewer for browser-use/manual QA.
 It serves PreviewExtension/Web assets and generates preview-config.js/preview-data.js in-memory.`);
 }
 
