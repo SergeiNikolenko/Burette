@@ -36,7 +36,13 @@
   function post(type, message, payload = {}) {
     try {
       if (window.__mqlPost) window.__mqlPost(type, message || '', payload);
-      else window.webkit?.messageHandlers?.burrete?.postMessage({ type, message: String(message || ''), ...payload });
+      else {
+        const body = { type, message: String(message || ''), ...payload };
+        if (window.BurreteConfig && window.BurreteConfig.previewRequestID) {
+          body.requestID = String(window.BurreteConfig.previewRequestID);
+        }
+        window.webkit?.messageHandlers?.burrete?.postMessage(body);
+      }
     } catch (_) {}
   }
 

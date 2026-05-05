@@ -56,6 +56,11 @@ struct SettingsView: View {
         .onChange(of: gridPreviewSupportsSMILES) { _ in refreshDefaultOpenStatus() }
         .onChange(of: gridPreviewSupportsCSV) { _ in refreshDefaultOpenStatus() }
         .onChange(of: gridPreviewSupportsTSV) { _ in refreshDefaultOpenStatus() }
+        .onReceive(NotificationCenter.default.publisher(for: .burreteOpenSettingsSection)) { notification in
+            guard let rawSection = notification.object as? String,
+                  let requestedSection = SettingsSection(rawValue: rawSection) else { return }
+            selectedSection = requestedSection
+        }
     }
 
     private var settingsSidebar: some View {
@@ -139,7 +144,7 @@ struct SettingsView: View {
                     Text("Spacefill").tag("spacefill")
                 }
                 Picker("External xyzrender preset", selection: $xyzrenderPreset) {
-                    ForEach(AppViewerXyzrenderPreset.pickerOptions, id: \.0) { value, title in
+                    ForEach(BurreteXyzrenderPreset.pickerOptions, id: \.0) { value, title in
                         Text(title).tag(value)
                     }
                 }
@@ -270,7 +275,7 @@ struct SettingsView: View {
                         .symbolRenderingMode(.hierarchical)
                     Text("Burrete")
                         .font(.title2.weight(.semibold))
-                    Text("Version 0.10.19")
+                    Text("Version 0.10.21")
                         .foregroundStyle(.secondary)
                     HStack {
                         Button("Open Logs") { PlatformActions.openLogsDirectory() }

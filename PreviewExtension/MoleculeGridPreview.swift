@@ -95,7 +95,7 @@ enum MoleculeGridPreviewBuilder {
 
         switch ext {
         case "csv":
-            collection = try parseDelimitedTable(text, separator: ",", format: "csv", maxRecords: recordLimit)
+            collection = try parseDelimitedTableWithFallback(text, separator: ",", format: "csv", maxRecords: recordLimit)
             guard collection.recordsTotal > 0 else { return nil }
         case "smi", "smiles":
             collection = parseSmiles(text, maxRecords: recordLimit)
@@ -104,7 +104,7 @@ enum MoleculeGridPreviewBuilder {
             collection = parseSDF(text, maxRecords: recordLimit)
             guard collection.recordsTotal > 1 else { return nil }
         case "tsv":
-            collection = try parseDelimitedTable(text, separator: "\t", format: "tsv", maxRecords: recordLimit)
+            collection = try parseDelimitedTableWithFallback(text, separator: "\t", format: "tsv", maxRecords: recordLimit)
             guard collection.recordsTotal > 0 else { return nil }
         default:
             return nil
@@ -274,6 +274,61 @@ enum MoleculeGridPreviewBuilder {
         return MoleculeGridCollection(format: format, records: records, recordsTotal: recordsTotal)
     }
 
+    private static func parseDelimitedTableWithFallback(
+        _ text: String,
+        separator: Character,
+        format: String,
+        maxRecords: Int
+    ) throws -> MoleculeGridCollection {
+        do {
+            return try parseDelimitedTable(text, separator: separator, format: format, maxRecords: maxRecords)
+        } catch MoleculeGridPreviewError.missingMoleculeColumn {
+            return parseDelimitedRowsAsSmiles(text, separator: separator, format: format, maxRecords: maxRecords)
+        }
+    }
+
+    private static func parseDelimitedRowsAsSmiles(
+        _ text: String,
+        separator: Character,
+        format: String,
+        maxRecords: Int
+    ) -> MoleculeGridCollection {
+        let rows = normalizedLines(text).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard !rows.isEmpty else {
+            return MoleculeGridCollection(format: format, records: [], recordsTotal: 0)
+        }
+        let firstRowCells = parseDelimitedLine(rows[0], separator: separator).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let startIndex = isLikelyDelimitedHeader(firstRowCells) ? 1 : 0
+        var records: [MoleculeGridRecord] = []
+        var recordsTotal = 0
+        for row in rows.dropFirst(startIndex) {
+            let rawCells = parseDelimitedLine(row, separator: separator).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            let cells = rawCells.filter { !$0.isEmpty }
+            guard let smiles = cells.first, looksLikeSmiles(smiles) else { continue }
+            defer { recordsTotal += 1 }
+            guard records.count < maxRecords else { continue }
+            let rawName = cells.dropFirst().first ?? ""
+            let name = rawName.isEmpty ? "Molecule \(recordsTotal + 1)" : rawName
+            var props: [String: String] = [:]
+            if cells.count > 2 {
+                for (offset, value) in cells.dropFirst(2).enumerated() where props.count < 64 {
+                    let clippedValue = clipped(value, limit: 500)
+                    if !clippedValue.isEmpty {
+                        props["Column \(offset + 3)"] = clippedValue
+                    }
+                }
+            }
+            records.append(MoleculeGridRecord(
+                index: recordsTotal,
+                name: clipped(name, limit: 160),
+                smiles: clipped(smiles, limit: 2048),
+                molblock: nil,
+                props: props
+            ))
+        }
+        return MoleculeGridCollection(format: format, records: records, recordsTotal: recordsTotal)
+    }
+
     private static func parseDelimitedLine(_ line: String, separator: Character) -> [String] {
         let chars = Array(line)
         var fields: [String] = []
@@ -302,7 +357,52 @@ enum MoleculeGridPreviewBuilder {
     }
 
     private static func isSmilesColumn(_ value: String) -> Bool {
-        ["smiles", "canonical_smiles", "isomeric_smiles", "cxsmiles", "smiles_string"].contains(value)
+        ["smiles", "smile", "canonical_smiles", "isomeric_smiles", "cxsmiles", "smiles_string"].contains(value)
+    }
+
+    private static func isLikelyDelimitedHeader(_ cells: [String]) -> Bool {
+        let normalized = cells.map { $0.lowercased().replacingOccurrences(of: " ", with: "_") }
+        if normalized.contains(where: isSmilesColumn) { return true }
+        let commonHeaders: Set<String> = ["id", "name", "title", "compound", "molecule", "structure", "inchi"]
+        return normalized.contains { commonHeaders.contains($0) }
+    }
+
+    private static func looksLikeSmiles(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { return false }
+        let lowered = trimmed.lowercased()
+        let knownHeaders: Set<String> = ["smiles", "smile", "id", "name", "title", "compound", "molecule", "structure", "inchi"]
+        if knownHeaders.contains(lowered) { return false }
+        guard trimmed.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else { return false }
+        let characters = Array(trimmed)
+        var index = 0
+        var hasAtom = false
+        var hasAromaticAtom = false
+        var hasStructuralMarker = false
+        while index < characters.count {
+            let character = characters[index]
+            if character.isNumber {
+                hasStructuralMarker = true
+            } else if "[]=#@+-/\\().,:".contains(character) {
+                hasStructuralMarker = true
+            } else if character == "B", index + 1 < characters.count, characters[index + 1] == "r" {
+                hasAtom = true
+                index += 1
+            } else if character == "C", index + 1 < characters.count, characters[index + 1] == "l" {
+                hasAtom = true
+                index += 1
+            } else if "BCNOFPSIKH".contains(character) {
+                hasAtom = true
+            } else if "bcnops".contains(character) {
+                hasAtom = true
+                hasAromaticAtom = true
+            } else {
+                return false
+            }
+            index += 1
+        }
+        guard hasAtom else { return false }
+        return !hasAromaticAtom || hasStructuralMarker
     }
 
     private static func normalizedLines(_ text: String) -> [String] {
