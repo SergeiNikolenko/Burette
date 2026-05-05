@@ -1,45 +1,6 @@
 import AppKit
 import WebKit
 
-enum AppViewerRendererMode {
-    static func normalize(_ value: String) -> String {
-        switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-        case "xyz-fast", "fast-xyz", "xyzfast":
-            return "xyz-fast"
-        case "molstar", "mol*", "interactive":
-            return "molstar"
-        case "xyzrender-external", "external-xyzrender", "xyzrender":
-            return "xyzrender-external"
-        default:
-            return "auto"
-        }
-    }
-}
-
-enum AppViewerXyzrenderPreset {
-    static let builtInOptions: [(String, String)] = [
-        ("default", "Default"),
-        ("flat", "Flat"),
-        ("paton", "Paton"),
-        ("pmol", "PMol"),
-        ("skeletal", "Skeletal"),
-        ("bubble", "Bubble"),
-        ("tube", "Tube"),
-        ("btube", "BTube"),
-        ("mtube", "MTube"),
-        ("wire", "Wire"),
-        ("graph", "Graph")
-    ]
-
-    static let pickerOptions: [(String, String)] = builtInOptions + [("custom", "Custom JSON")]
-
-    static func normalize(_ value: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let allowed = Set(pickerOptions.map { $0.0 })
-        return allowed.contains(trimmed) ? trimmed : "default"
-    }
-}
-
 final class MoleculeViewerWindowController: NSWindowController, WKNavigationDelegate, WKScriptMessageHandler {
     private let fileURL: URL
     private let webView: WKWebView
@@ -341,9 +302,9 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
     }
 
     private func setRendererOverride(_ value: String, orientationRefText: String? = nil) {
-        let renderer = AppViewerRendererMode.normalize(value)
+        let renderer = BurreteRendererMode.normalize(value)
         let hasNewOrientation = setXyzrenderOrientation(orientationRefText)
-        if renderer != "xyzrender-external" {
+        if renderer != BurreteRendererMode.xyzrenderExternal {
             xyzrenderOrientationRefText = nil
         }
         guard rendererOverride != renderer || hasNewOrientation else { return }
@@ -352,10 +313,10 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
     }
 
     private func setXyzrenderPresetOverride(_ value: String) {
-        let preset = AppViewerXyzrenderPreset.normalize(value)
+        let preset = BurreteXyzrenderPreset.normalize(value)
         guard xyzrenderPresetOverride != preset else { return }
         xyzrenderPresetOverride = preset
-        rendererOverride = "xyzrender-external"
+        rendererOverride = BurreteRendererMode.xyzrenderExternal
         load()
     }
 
@@ -544,13 +505,17 @@ private struct AppViewerRuntime {
 
         let format = AppViewerStructureFormat(url: fileURL, data: data)
         let storedRendererMode = UserDefaults.standard.string(forKey: "structureRendererMode") ?? "auto"
-        let rendererMode = rendererModeOverride ?? storedRendererMode
+        let rendererPolicy = BurreteRendererPolicy.resolve(
+            format: BurreteRendererFormat(format),
+            requestedMode: rendererModeOverride ?? storedRendererMode
+        )
+        let rendererMode = rendererPolicy.requestedMode
         let storedXyzrenderPreset = UserDefaults.standard.string(forKey: "xyzrenderPreset") ?? "default"
-        let xyzrenderPreset = AppViewerXyzrenderPreset.normalize(xyzrenderPresetOverride ?? storedXyzrenderPreset)
-        var renderer = resolveRenderer(for: format, rendererMode: rendererMode)
+        let xyzrenderPreset = BurreteXyzrenderPreset.normalize(xyzrenderPresetOverride ?? storedXyzrenderPreset)
+        var renderer = rendererPolicy.renderer
         var externalArtifact: ExternalXyzrenderArtifact?
         var externalStatus: [String: Any]?
-        if renderer == "xyzrender-external" {
+        if renderer == BurreteRendererMode.xyzrenderExternal {
             do {
                 externalArtifact = try ExternalXyzrenderWorker.render(
                     inputURL: fileURL,
@@ -565,15 +530,15 @@ private struct AppViewerRuntime {
                 if format.isExternalXyzrenderOnly {
                     throw error
                 }
-                renderer = format.molstarFormat == "xyz" ? "xyz-fast" : "molstar"
+                renderer = BurreteRendererPolicy.fallbackRenderer(for: BurreteRendererFormat(format))
                 externalStatus = [
                     "status": "fallback",
-                    "requested": "xyzrender-external",
+                    "requested": BurreteRendererMode.xyzrenderExternal,
                     "message": error.localizedDescription
                 ]
             }
         }
-        let xyzFastPayload = renderer == "xyz-fast" ? makeXYZFastPayload(from: data) : nil
+        let xyzFastPayload = renderer == BurreteRendererMode.xyzFast ? makeXYZFastPayload(from: data) : nil
         let dataForWeb = xyzFastPayload?.data ?? data
 
         var config: [String: Any] = [
@@ -596,10 +561,10 @@ private struct AppViewerRuntime {
             "transparentBackground": canvasIsTransparent,
             "sdfGrid": true,
             "appViewer": true,
-            "xyzrenderViewer": renderer == "xyzrender-external",
-            "molstarAvailable": !format.isExternalXyzrenderOnly,
+            "xyzrenderViewer": renderer == BurreteRendererMode.xyzrenderExternal,
+            "molstarAvailable": rendererPolicy.molstarAvailable,
             "xyzrenderPreset": xyzrenderPreset,
-            "xyzrenderPresetOptions": AppViewerXyzrenderPreset.pickerOptions.map { ["value": $0.0, "label": $0.1] },
+            "xyzrenderPresetOptions": BurreteXyzrenderPreset.pickerOptions.map { ["value": $0.0, "label": $0.1] },
             "canOpenInVesta": canOpenInVesta(fileExtension: structurePathExtension(for: fileURL)),
             "showPanelControls": UserDefaults.standard.object(forKey: "showPreviewPanelControls") as? Bool ?? true,
             "defaultLayoutState": [
@@ -609,7 +574,7 @@ private struct AppViewerRuntime {
                 "bottom": "hidden"
             ]
         ]
-        if renderer == "xyz-fast" {
+        if renderer == BurreteRendererMode.xyzFast {
             var xyzFast: [String: Any] = [
                 "style": UserDefaults.standard.string(forKey: "xyzFastStyle") ?? "default",
                 "firstFrameOnly": true,
@@ -729,23 +694,6 @@ private struct AppViewerRuntime {
         var removed = Set<String>()
         for entry in oldDirectories + overflowDirectories where removed.insert(entry.url.path).inserted {
             try? fileManager.removeItem(at: entry.url)
-        }
-    }
-
-    private static func resolveRenderer(for format: AppViewerStructureFormat, rendererMode: String) -> String {
-        if format.isExternalXyzrenderOnly {
-            return "xyzrender-external"
-        }
-        let isXYZ = format.molstarFormat == "xyz" && !format.isBinary
-        switch AppViewerRendererMode.normalize(rendererMode) {
-        case "molstar":
-            return "molstar"
-        case "xyz-fast":
-            return isXYZ ? "xyz-fast" : "molstar"
-        case "xyzrender-external":
-            return isXYZ ? "xyzrender-external" : "molstar"
-        default:
-            return isXYZ ? "xyz-fast" : "molstar"
         }
     }
 
@@ -1372,7 +1320,7 @@ private enum ExternalXyzrenderWorker {
         let configuredExecutable = UserDefaults.standard.string(forKey: "xyzrenderExecutablePath")?.trimmingCharacters(in: .whitespacesAndNewlines)
         process.executableURL = URL(fileURLWithPath: try resolvedExecutable(configuredExecutable ?? ""))
         var arguments = [inputURL.path, "-o", outputURL.path]
-        let safePreset = AppViewerXyzrenderPreset.normalize(preset)
+        let safePreset = BurreteXyzrenderPreset.normalize(preset)
         let configArgument = resolveConfigArgument(preset: safePreset, customConfigPath: customConfigPath)
         let effectivePreset = safePreset == "custom" && configArgument == "default" ? "default" : safePreset
         arguments += ["--config", configArgument]
@@ -1637,6 +1585,16 @@ private struct AppViewerStructureFormat {
             return "mmcif"
         }
         return "cifCore"
+    }
+}
+
+private extension BurreteRendererFormat {
+    init(_ format: AppViewerStructureFormat) {
+        self.init(
+            molstarFormat: format.molstarFormat,
+            isBinary: format.isBinary,
+            isExternalXyzrenderOnly: format.isExternalXyzrenderOnly
+        )
     }
 }
 

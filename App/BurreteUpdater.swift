@@ -1,6 +1,10 @@
 import AppKit
 import Foundation
 
+extension Notification.Name {
+    static let burreteUpdateStateDidChange = Notification.Name("BurreteUpdateStateDidChange")
+}
+
 enum BurreteUpdateChannel: String, CaseIterable, Identifiable {
     case stable
     case beta
@@ -569,6 +573,7 @@ final class BurreteUpdater: ObservableObject {
         statusText = status
         defaults.set(status, forKey: "updateStatusText")
         defaults.set(Date(), forKey: "lastUpdateCheckAt")
+        NotificationCenter.default.post(name: .burreteUpdateStateDidChange, object: self)
     }
 }
 

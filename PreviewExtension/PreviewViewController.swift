@@ -307,15 +307,19 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
 
         var format = StructureFormat(url: url, data: structureData)
-        let requestedRendererMode = normalizeRendererMode(rendererOverride ?? preferences.rendererMode)
-        var renderer = resolvedRenderer(for: format, rendererMode: requestedRendererMode)
+        let rendererPolicy = BurreteRendererPolicy.resolve(
+            format: BurreteRendererFormat(format),
+            requestedMode: rendererOverride ?? preferences.rendererMode
+        )
+        let requestedRendererMode = rendererPolicy.requestedMode
+        var renderer = rendererPolicy.renderer
         var structureDataForWeb = structureData
         var externalArtifact: PreviewExternalXyzrenderArtifact?
         var externalArtifactSourceURL: URL?
         var externalStatus: [String: Any]?
         var temporaryExternalDirectory: URL?
-        let xyzrenderPreset = PreviewXyzrenderPreset.normalize(xyzrenderPresetOverride ?? preferences.xyzrenderPreset)
-        if renderer == "xyzrender-external",
+        let xyzrenderPreset = BurreteXyzrenderPreset.normalize(xyzrenderPresetOverride ?? preferences.xyzrenderPreset)
+        if renderer == BurreteRendererMode.xyzrenderExternal,
            rendererOverride == nil,
            format.isExternalXyzrenderOnly,
            let convertedXYZ = PreviewStructureTextConverter.xyzData(
@@ -323,12 +327,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             fileExtension: pathExtension,
             label: url.lastPathComponent
            ) {
-            renderer = "xyz-fast"
+            renderer = BurreteRendererMode.xyzFast
             format = .xyzFastCompatible
             structureDataForWeb = convertedXYZ
             diag("xyzrender.default=built-in-text-parser")
         }
-        if renderer == "xyzrender-external" {
+        if renderer == BurreteRendererMode.xyzrenderExternal {
             let renderDirectory = fileManager.temporaryDirectory
                 .appendingPathComponent("BurreteXYZRender-\(UUID().uuidString)", isDirectory: true)
             temporaryExternalDirectory = renderDirectory
@@ -353,22 +357,22 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     fileExtension: pathExtension,
                     label: url.lastPathComponent
                    ) {
-                    renderer = "xyz-fast"
+                    renderer = BurreteRendererMode.xyzFast
                     format = .xyzFastCompatible
                     structureDataForWeb = convertedXYZ
                     externalStatus = [
                         "status": "fallback",
-                        "requested": "xyzrender-external",
+                        "requested": BurreteRendererMode.xyzrenderExternal,
                         "message": "Using built-in text structure parser because external xyzrender is unavailable in Quick Look."
                     ]
                     diag("xyzrender.fallback=built-in-text-parser error=\(error.localizedDescription)")
                 } else if format.isExternalXyzrenderOnly {
                     throw error
                 } else {
-                    renderer = "xyz-fast"
+                    renderer = BurreteRendererPolicy.fallbackRenderer(for: BurreteRendererFormat(format))
                     externalStatus = [
                         "status": "fallback",
-                        "requested": "xyzrender-external",
+                        "requested": BurreteRendererMode.xyzrenderExternal,
                         "message": error.localizedDescription
                     ]
                     diag("xyzrender.fallback=\(error.localizedDescription)")
@@ -380,7 +384,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 try? fileManager.removeItem(at: temporaryExternalDirectory)
             }
         }
-        let xyzFastPayload = renderer == "xyz-fast" ? makeXYZFastPayload(from: structureDataForWeb) : nil
+        let xyzFastPayload = renderer == BurreteRendererMode.xyzFast ? makeXYZFastPayload(from: structureDataForWeb) : nil
         structureDataForWeb = xyzFastPayload?.data ?? structureDataForWeb
         diag("detected.format=\(format.molstarFormat) binary=\(format.isBinary) renderer=\(renderer)")
         if let xyzFastPayload {
@@ -400,6 +404,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             externalStatus: externalStatus,
             xyzrenderPreset: xyzrenderPreset,
             originalFileExtension: pathExtension,
+            rendererPolicy: rendererPolicy,
             preferences: preferences
         )
         let base64 = structureDataForWeb.base64EncodedString(options: [])
@@ -549,10 +554,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     private static func runtimeAssets(for renderer: String) -> [String] {
-        if renderer == "xyz-fast" {
+        if renderer == BurreteRendererMode.xyzFast {
             return ["xyz-fast.js", "burette-agent.js", "viewer.js"]
         }
-        if renderer == "xyzrender-external" {
+        if renderer == BurreteRendererMode.xyzrenderExternal {
             return ["molstar.css", "burette-agent.js", "viewer.js"]
         }
         return ["molstar.js", "molstar.css", "burette-agent.js", "viewer.js"]
@@ -639,6 +644,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         externalStatus: [String: Any]?,
         xyzrenderPreset: String,
         originalFileExtension: String,
+        rendererPolicy: BurreteRendererPolicy,
         preferences: PreviewPreferences
     ) throws -> String {
         var payload: [String: Any] = [
@@ -664,19 +670,19 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "defaultLayoutState": preferences.defaultLayoutState,
             "canOpenInVesta": canOpenInVesta(fileExtension: originalFileExtension)
         ]
-        if renderer == "xyzrender-external" {
+        if renderer == BurreteRendererMode.xyzrenderExternal {
             payload["xyzrenderViewer"] = true
-            payload["molstarAvailable"] = !format.isExternalXyzrenderOnly
+            payload["molstarAvailable"] = rendererPolicy.molstarAvailable
             payload["quickLookViewer"] = true
             payload["xyzrenderPreset"] = xyzrenderPreset
-            payload["xyzrenderPresetOptions"] = PreviewXyzrenderPreset.pickerOptions.map { ["value": $0.0, "label": $0.1] }
+            payload["xyzrenderPresetOptions"] = BurreteXyzrenderPreset.pickerOptions.map { ["value": $0.0, "label": $0.1] }
         }
         if format.molstarFormat == "xyz" && !format.isBinary {
             payload["quickLookViewer"] = true
             payload["xyzrenderPreset"] = xyzrenderPreset
-            payload["xyzrenderPresetOptions"] = PreviewXyzrenderPreset.pickerOptions.map { ["value": $0.0, "label": $0.1] }
+            payload["xyzrenderPresetOptions"] = BurreteXyzrenderPreset.pickerOptions.map { ["value": $0.0, "label": $0.1] }
         }
-        if renderer == "xyz-fast" {
+        if renderer == BurreteRendererMode.xyzFast {
             var xyzFast: [String: Any] = [
                 "style": preferences.xyzFastStyle,
                 "firstFrameOnly": true,
@@ -1370,36 +1376,6 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         throw PreviewError.ubiquitousFileNotDownloaded(url.lastPathComponent)
     }
 
-    private static func resolvedRenderer(for format: StructureFormat, rendererMode: String) -> String {
-        if format.isExternalXyzrenderOnly {
-            return "xyzrender-external"
-        }
-        let isXYZ = format.molstarFormat == "xyz" && !format.isBinary
-        switch rendererMode {
-        case "molstar":
-            return "molstar"
-        case "xyz-fast":
-            return isXYZ ? "xyz-fast" : "molstar"
-        case "xyzrender-external":
-            return isXYZ ? "xyzrender-external" : "molstar"
-        default:
-            return isXYZ ? "xyz-fast" : "molstar"
-        }
-    }
-
-    private static func normalizeRendererMode(_ value: String) -> String {
-        switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-        case "xyz-fast", "fast-xyz", "xyzfast":
-            return "xyz-fast"
-        case "molstar", "mol*", "interactive":
-            return "molstar"
-        case "xyzrender-external", "external-xyzrender", "xyzrender":
-            return "xyzrender-external"
-        default:
-            return "auto"
-        }
-    }
-
     private struct XYZFastPayload {
         let data: Data
         let atomCount: Int?
@@ -1662,9 +1638,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     private func setRendererOverride(_ value: String, orientationRefText: String? = nil) {
-        let renderer = Self.normalizeRendererMode(value)
+        let renderer = BurreteRendererMode.normalize(value)
         let hasNewOrientation = setXyzrenderOrientation(orientationRefText)
-        if renderer != "xyzrender-external" {
+        if renderer != BurreteRendererMode.xyzrenderExternal {
             xyzrenderOrientationRefText = nil
         }
         guard rendererOverride != renderer || hasNewOrientation else { return }
@@ -1673,10 +1649,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     private func setXyzrenderPresetOverride(_ value: String) {
-        let preset = PreviewXyzrenderPreset.normalize(value)
-        guard xyzrenderPresetOverride != preset || rendererOverride != "xyzrender-external" else { return }
+        let preset = BurreteXyzrenderPreset.normalize(value)
+        guard xyzrenderPresetOverride != preset || rendererOverride != BurreteRendererMode.xyzrenderExternal else { return }
         xyzrenderPresetOverride = preset
-        rendererOverride = "xyzrender-external"
+        rendererOverride = BurreteRendererMode.xyzrenderExternal
         reloadCurrentPreview()
     }
 
@@ -2293,26 +2269,13 @@ private struct StructureFormat {
     }
 }
 
-private enum PreviewXyzrenderPreset {
-    static let pickerOptions: [(String, String)] = [
-        ("default", "Default"),
-        ("flat", "Flat"),
-        ("paton", "Paton"),
-        ("pmol", "PMol"),
-        ("skeletal", "Skeletal"),
-        ("bubble", "Bubble"),
-        ("tube", "Tube"),
-        ("btube", "BTube"),
-        ("mtube", "MTube"),
-        ("wire", "Wire"),
-        ("graph", "Graph"),
-        ("custom", "Custom JSON")
-    ]
-
-    static func normalize(_ value: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let allowed = Set(pickerOptions.map { $0.0 })
-        return allowed.contains(trimmed) ? trimmed : "default"
+private extension BurreteRendererFormat {
+    init(_ format: StructureFormat) {
+        self.init(
+            molstarFormat: format.molstarFormat,
+            isBinary: format.isBinary,
+            isExternalXyzrenderOnly: format.isExternalXyzrenderOnly
+        )
     }
 }
 
@@ -2351,7 +2314,7 @@ private enum PreviewExternalXyzrenderWorker {
         process.executableURL = URL(fileURLWithPath: try resolvedExecutable(configuredExecutable))
         var arguments = [inputURL.path, "-o", outputURL.path]
 
-        let safePreset = PreviewXyzrenderPreset.normalize(preset)
+        let safePreset = BurreteXyzrenderPreset.normalize(preset)
         let configArgument = resolveConfigArgument(preset: safePreset, customConfigPath: customConfigPath)
         let effectivePreset = safePreset == "custom" && configArgument == "default" ? "default" : safePreset
         arguments += ["--config", configArgument]
@@ -2582,7 +2545,7 @@ private struct PreviewPreferences {
             overlayOpacity: min(max(overlayOpacity, 0.72), 0.98),
             rendererMode: rendererMode,
             xyzFastStyle: xyzFastStyle,
-            xyzrenderPreset: PreviewXyzrenderPreset.normalize(xyzrenderPreset),
+            xyzrenderPreset: BurreteXyzrenderPreset.normalize(xyzrenderPreset),
             xyzrenderCustomConfigPath: xyzrenderCustomConfigPath,
             xyzrenderExecutablePath: xyzrenderExecutablePath,
             xyzrenderExtraArguments: xyzrenderExtraArguments,
