@@ -275,7 +275,7 @@ struct SettingsView: View {
                         .symbolRenderingMode(.hierarchical)
                     Text("Burrete")
                         .font(.title2.weight(.semibold))
-                    Text("Version 0.10.22")
+                    Text("Version 0.10.23")
                         .foregroundStyle(.secondary)
                     HStack {
                         Button("Open Logs") { PlatformActions.openLogsDirectory() }

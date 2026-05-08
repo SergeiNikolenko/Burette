@@ -142,7 +142,7 @@ final class AppLifecycleBridge: NSObject, NSApplicationDelegate {
     }
 
     @objc func checkForUpdates() {
-        openSettings()
+        openUpdates()
         let channel = BurreteUpdateChannel(rawValue: UserDefaults.standard.string(forKey: "updateChannel") ?? "") ?? .stable
         Task { @MainActor in
             await BurreteUpdater.shared.checkForUpdates(channel: channel, isAutomatic: false)
