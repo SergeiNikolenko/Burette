@@ -58,7 +58,7 @@ final class MoleculeViewerWindowController: NSWindowController, WKNavigationDele
         window.representedURL = fileURL
         window.titleVisibility = .visible
         window.titlebarAppearsTransparent = false
-        window.isMovableByWindowBackground = true
+        window.isMovableByWindowBackground = false
         window.collectionBehavior.insert(.fullScreenPrimary)
         window.minSize = NSSize(width: 820, height: 500)
         if #available(macOS 11.0, *) {
