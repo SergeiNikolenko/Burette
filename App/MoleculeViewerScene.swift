@@ -64,6 +64,7 @@ struct MoleculeViewerScene: View {
                     .overlay {
                         RoundedRectangle(cornerRadius: surfaceCornerRadius, style: .continuous)
                             .strokeBorder(Color.secondary.opacity(0.24), lineWidth: 1)
+                            .allowsHitTesting(false)
                     }
                     .shadow(color: Color.black.opacity(transparentWindow ? 0.18 : 0.09), radius: 9, x: 0, y: 2)
                     .padding(surfaceInset)
