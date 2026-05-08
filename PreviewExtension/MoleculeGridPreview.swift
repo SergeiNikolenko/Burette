@@ -171,9 +171,10 @@ enum MoleculeGridPreviewBuilder {
             guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { continue }
             let parts = trimmed.split(maxSplits: 1, whereSeparator: { $0 == " " || $0 == "\t" })
             guard let first = parts.first else { continue }
+            let smiles = String(first)
+            guard looksLikeSmiles(smiles) else { continue }
             defer { recordsTotal += 1 }
             guard records.count < maxRecords else { continue }
-            let smiles = String(first)
             let rawName = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines) : ""
             let name = rawName.isEmpty ? "Molecule \(recordsTotal + 1)" : rawName
             records.append(MoleculeGridRecord(

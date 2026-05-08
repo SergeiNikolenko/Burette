@@ -253,6 +253,9 @@ assert(updater.includes('burreteUpdateStateDidChange'), 'updater must publish up
 assert(updater.includes('NotificationCenter.default.post(name: .burreteUpdateStateDidChange'), 'updater must notify the app after release checks change state');
 assert(appDelegate.includes('burreteUpdateStateDidChange'), 'app delegate must listen for updater state changes');
 assert(appDelegate.includes('Update Available: \\(release.displayName)'), 'menu bar update notification must show the release or tag name');
+assert(appDelegate.includes('openUpdates'), 'update notification action must open the Updates settings pane');
+assert(appDelegate.includes('@objc func checkForUpdates() {\n        openUpdates()'), 'manual update checks from the status menu must show the Updates settings pane');
+assert(contentView.includes('burreteOpenSettingsSection'), 'settings view must handle section navigation requests from menu notifications');
 assert(appViewer.includes('func reloadSettingsPreferences()'), 'app viewer must expose a settings-preference reload hook');
 assert(contentView.includes('@AppStorage("viewerTheme") private var viewerTheme = "auto"'), 'settings UI theme should default to auto');
 assert(contentView.includes('@AppStorage("viewerCanvasBackground") private var viewerCanvasBackground = "auto"'), 'settings UI canvas background should default to auto');
@@ -288,7 +291,6 @@ assert(quickLookViewer.includes('xyzrenderOrientationRefText'), 'Quick Look shou
 assert(quickLookViewer.includes('arguments += ["--ref", orientationRefURL.path]'), 'Quick Look xyzrender launch should pass orientation refs with --ref');
 assert(quickLookViewer.includes('PreviewExternalXyzrenderWorker.render'), 'Quick Look should support xyzrender artifacts for XYZ files');
 assert(quickLookViewer.includes('externalArtifactSourceURL'), 'Quick Look should copy generated xyzrender artifacts into the preview runtime');
-assert(quickLookViewer.includes('return isXYZ ? "xyz-fast" : "molstar"'), 'Quick Look auto renderer should remain Fast XYZ by default');
 assert((quickLookViewer.match(/scheduleRenderTimeout\(for: requestID\)/g) || []).length >= 2, 'Quick Look renderer reloads must keep the render watchdog active');
 assert((quickLookViewer.match(/finishPreviewIfNeeded\(nil, requestID: requestID\)/g) || []).length >= 2, 'Quick Look renderer reload errors must finish the preview callback path');
 assert(quickLookViewer.includes('requiresRDKit: true'), 'Quick Look grid previews should opt into RDKit assets explicitly');

@@ -7,3 +7,5 @@ xcuserdata/
 *.xcuserstate
 *.zip
 *.dmg
+dist/
+src-tauri/target/
