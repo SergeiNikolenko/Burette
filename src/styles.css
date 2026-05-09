@@ -61,6 +61,7 @@ button { color: inherit; cursor: default; }
 }
 
 .drag-region { position: absolute; inset: 0 0 auto 0; height: var(--chrome-drag-height); z-index: 0; }
+.topbar, .sidebar-toggle-root, .tab-strip, .chrome-button, .chrome-text-button, .new-tab, .tab, .sidebar, .sidebar-footer, .project, .sidebar-link, .sidebar-search-row, .sidebar-search { pointer-events: auto; }
 .sidebar-toggle-root {
   position: absolute;
   left: 92px;
@@ -75,6 +76,7 @@ button { color: inherit; cursor: default; }
   height: var(--chrome-height);
   display: flex;
   align-items: center;
+  pointer-events: none;
   gap: 12px;
   padding: var(--chrome-control-padding) 0;
   transition: left 140ms ease-out;

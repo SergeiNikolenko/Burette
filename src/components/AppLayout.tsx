@@ -41,7 +41,7 @@ export function AppLayout({
       <button className="chrome-button sidebar-toggle-root" onClick={onToggleSidebar} title={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"} aria-label={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"}>
         {state.sidebarOpen ? "◧" : "◨"}
       </button>
-      <header className="topbar" data-tauri-drag-region style={{ left: tabChromeLeft }}>
+      <header className="topbar" style={{ left: tabChromeLeft }}>
         <EditorTabs state={state} actions={actions} />
         <button className="chrome-text-button" onClick={actions.chooseFiles}>Open</button>
       </header>

@@ -9,7 +9,7 @@ import { matchesQuery } from "./components/format";
 import type { AppPage, ShellActions, ShellViewState } from "./components/types";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useAppStore } from "./store";
-import type { ViewerDocument } from "./types";
+import type { OpenDocumentsResult, ViewerDocument } from "./types";
 import { checkForUpdates as requestUpdateCheck, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically } from "./update";
 import type { UpdatePreferences, UpdateState } from "./update";
 
@@ -17,10 +17,13 @@ function isTauriRuntime() {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
+const MENU_OPEN_SETTINGS_EVENT = "menu:open-settings";
+const MENU_OPEN_FILES_EVENT = "menu:open-files";
+
 const filters = [
   {
     name: "Molecular structures",
-    extensions: ["pdb", "cif", "mmcif", "bcif", "sdf", "sd", "smi", "smiles", "csv", "tsv", "mol", "mol2", "xyz", "gro", "cub", "cube"],
+    extensions: ["pdb", "ent", "pdbqt", "pqr", "cif", "mcif", "mmcif", "bcif", "sdf", "sd", "smi", "smiles", "csv", "tsv", "mol", "mol2", "xyz", "gro", "cub", "cube", "in", "log", "out", "vasp"],
   },
 ];
 
@@ -73,13 +76,15 @@ export default function App() {
 
   const openDocuments = useCallback(
     async (paths: string[]) => {
-      if (!paths.length) return;
+      const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
+      if (!cleanPaths.length) return;
       setStatus("Opening structures...");
       try {
-        const opened = await invoke<ViewerDocument[]>("open_documents", { paths, preferences });
-        addDocuments(opened);
+        const result = await invoke<OpenDocumentsResult>("open_documents", { paths: cleanPaths, preferences });
+        addDocuments(result.documents);
         setPage("viewer");
-        setStatus("Opened " + opened.length + " structure" + (opened.length === 1 ? "" : "s"));
+        const openedText = "Opened " + result.documents.length + " structure" + (result.documents.length === 1 ? "" : "s");
+        setStatus(result.errors.length > 0 ? openedText + "; skipped " + result.errors.length : openedText);
       } catch (error) {
         setStatus(error instanceof Error ? error.message : String(error));
       }
@@ -103,6 +108,27 @@ export default function App() {
         setStatus(error instanceof Error ? error.message : String(error));
       });
   }, [openDocuments]);
+
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let unlistenSettings: (() => void) | undefined;
+    let unlistenOpenFiles: (() => void) | undefined;
+    void listen(MENU_OPEN_SETTINGS_EVENT, () => {
+      setPage("settings");
+    }).then((next) => {
+      unlistenSettings = next;
+    });
+    void listen(MENU_OPEN_FILES_EVENT, () => {
+      void chooseFiles();
+    }).then((next) => {
+      unlistenOpenFiles = next;
+    });
+    return () => {
+      unlistenSettings?.();
+      unlistenOpenFiles?.();
+    };
+  }, [chooseFiles]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-APP="$ROOT/build/Build/Products/Debug/Burrete.app"
+APP="$ROOT/build/Burrete.app"
 DEST_DIR="$HOME/Applications"
 DEST="$DEST_DIR/Burrete.app"
 LEGACY_OLD_DEST="$DEST_DIR/Bur""ette.app"
@@ -17,8 +17,8 @@ if [[ ! -d "$APP" ]]; then
   echo "Run ./scripts/build.sh first and make sure it ends with BUILD SUCCEEDED." >&2
   exit 1
 fi
-if [[ ! -x "$APP/Contents/MacOS/Burrete" ]]; then
-  echo "error: built app executable is missing: $APP/Contents/MacOS/Burrete" >&2
+if [[ ! -x "$APP/Contents/MacOS/burrete" ]]; then
+  echo "error: built Tauri app executable is missing: $APP/Contents/MacOS/burrete" >&2
   echo "Do not run install.sh after a failed build. Re-run: ./scripts/build.sh && ./scripts/install.sh" >&2
   exit 1
 fi
@@ -30,10 +30,28 @@ if [[ "$actual_id" != "$APP_ID" ]]; then
   exit 1
 fi
 
-clean_detritus() { local path="$1"; [[ -e "$path" ]] || return 0; xattr -cr "$path" 2>/dev/null || true; dot_clean -m "$path" 2>/dev/null || true; find "$path" \( -name '._*' -o -name '.DS_Store' \) -delete 2>/dev/null || true; }
-
+clean_detritus() {
+  local path="$1"
+  [[ -e "$path" ]] || return 0
+  if [[ "$path" == *.app || "$path" == *.appex ]]; then
+    xattr -cr "$path" 2>/dev/null || true
+    dot_clean -m "$path" 2>/dev/null || true
+  fi
+  if [[ -d "$path" ]]; then
+    find "$path" \( -name '._*' -o -name '.DS_Store' \) -delete 2>/dev/null || true
+    while IFS= read -r -d '' bundle; do
+      for attr in com.apple.FinderInfo 'com.apple.fileprovider.fpfs#P' com.apple.ResourceFork; do
+        xattr -d "$attr" "$bundle" 2>/dev/null || true
+      done
+    done < <(find "$path" -type d \( -name '*.app' -o -name '*.appex' \) -print0 2>/dev/null)
+  fi
+  for attr in com.apple.FinderInfo 'com.apple.fileprovider.fpfs#P' com.apple.ResourceFork; do
+    xattr -d "$attr" "$path" 2>/dev/null || true
+  done
+}
 echo "Unregistering old Burrete extensions, if any..."
 pkill -f "$DEST/Contents/MacOS/Burrete" 2>/dev/null || true
+pkill -f "$DEST/Contents/MacOS/burrete" 2>/dev/null || true
 pkill -f "$LEGACY_OLD_DEST/Contents/MacOS/MolstarQuickLook" 2>/dev/null || true
 pkill -f "$LEGACY_XYZ_DEST" 2>/dev/null || true
 pkill -f "$ROOT/build/Build/Products/Debug/MolstarQuickLook" 2>/dev/null || true
@@ -68,8 +86,11 @@ done < <(pluginkit -m -A -D -vvv -p com.apple.quicklook.preview 2>/dev/null | se
 
 mkdir -p "$DEST_DIR"
 rm -rf "$DEST" "$LEGACY_OLD_DEST" "$LEGACY_BURET_DEST" "$LEGACY_XYZ_DEST"
-COPYFILE_DISABLE=1 COPY_EXTENDED_ATTRIBUTES_DISABLE=1 cp -R "$APP" "$DEST"
+ditto --norsrc --noextattr "$APP" "$DEST"
 clean_detritus "$DEST"
+codesign --force --deep --sign - "$DEST" >/dev/null
+clean_detritus "$DEST"
+codesign --verify --deep --strict "$DEST"
 
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 [[ -x "$LSREGISTER" ]] && "$LSREGISTER" -f -R "$DEST" || true

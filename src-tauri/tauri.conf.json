@@ -23,7 +23,9 @@
         },
         "transparent": true,
         "windowEffects": {
-          "effects": ["hudWindow"],
+          "effects": [
+            "hudWindow"
+          ],
           "state": "followsWindowActiveState"
         },
         "decorations": true,
@@ -60,7 +62,11 @@
       {
         "ext": [
           "pdb",
+          "ent",
+          "pdbqt",
+          "pqr",
           "cif",
+          "mcif",
           "mmcif",
           "bcif",
           "sdf",
@@ -74,7 +80,8 @@
           "xyz",
           "gro",
           "cub",
-          "cube"
+          "cube",
+          "vasp"
         ],
         "role": "Viewer"
       }

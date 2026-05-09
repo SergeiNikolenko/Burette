@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import type { ViewerDocument, ViewerPreferences } from "./types";
 
 type AppState = {
@@ -23,7 +24,10 @@ const defaultPreferences: ViewerPreferences = {
   xyzFastStyle: "default",
 };
 
-export const useAppStore = create<AppState>((set) => ({
+type PersistedAppState = Pick<AppState, "sidebarOpen" | "preferences">;
+
+export const useAppStore = create<AppState>()(
+  persist<AppState, [], [], PersistedAppState>((set) => ({
   documents: [],
   activeDocumentId: null,
   sidebarOpen: true,
@@ -53,4 +57,21 @@ export const useAppStore = create<AppState>((set) => ({
   closeAllDocuments: () => set({ documents: [], activeDocumentId: null }),
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
   setPreference: (key, value) => set((state) => ({ preferences: { ...state.preferences, [key]: value } })),
+}), {
+  name: "burrete.shell",
+  partialize: (state) => ({
+    sidebarOpen: state.sidebarOpen,
+    preferences: state.preferences,
+  }),
+  merge: (persisted, current) => {
+    const stored = persisted as Partial<PersistedAppState> | undefined;
+    return {
+      ...current,
+      sidebarOpen: stored?.sidebarOpen ?? current.sidebarOpen,
+      preferences: {
+        ...current.preferences,
+        ...stored?.preferences,
+      },
+    };
+  },
 }));

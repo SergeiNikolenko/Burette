@@ -1,3 +1,8 @@
+export type OpenDocumentsResult = {
+  documents: ViewerDocument[];
+  errors: string[];
+};
+
 export type ViewerDocument = {
   id: string;
   path: string;

@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 FILE="${1:-$ROOT/samples/mini.pdb}"
 APP="$HOME/Applications/Burrete.app"
-BUILT_APP="$ROOT/build/Build/Products/Debug/Burrete.app"
+BUILT_APP="$ROOT/build/Burrete.app"
 EXT_ID="com.local.BurreteV10.Preview"
 
 printf '\n== File ==\n%s\n' "$FILE"
