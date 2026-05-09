@@ -19,7 +19,7 @@ APP_ID="com.local.BurreteV10"
 PREVIEW_ID="com.local.BurreteV10.Preview"
 SAFE_ROOT_BASE="${TMPDIR:-/tmp}"
 SAFE_ROOT="$(mktemp -d "${SAFE_ROOT_BASE%/}/BurreteV10BuildSafe.XXXXXX")"
-LOCAL_APP="$ROOT/build/Build/Products/Debug/Burrete.app"
+LOCAL_APP="$ROOT/build/Burrete.app"
 
 cleanup_safe_root() {
   rm -rf "$SAFE_ROOT" 2>/dev/null || true
@@ -34,12 +34,32 @@ Burrete v10 build
 HDR
 
 require_tool() { command -v "$1" >/dev/null 2>&1 || { echo "error: $1 is required. $2" >&2; exit 1; }; }
-clean_detritus() { local p="$1"; [[ -e "$p" ]] || return 0; xattr -cr "$p" 2>/dev/null || true; dot_clean -m "$p" 2>/dev/null || true; find "$p" \( -name '._*' -o -name '.DS_Store' \) -delete 2>/dev/null || true; }
+clean_detritus() {
+  local p="$1"
+  [[ -e "$p" ]] || return 0
+  if [[ "$p" == *.app || "$p" == *.appex ]]; then
+    xattr -cr "$p" 2>/dev/null || true
+    dot_clean -m "$p" 2>/dev/null || true
+  fi
+  if [[ -d "$p" ]]; then
+    find "$p" \( -name '._*' -o -name '.DS_Store' \) -delete 2>/dev/null || true
+    while IFS= read -r -d '' bundle; do
+      for attr in com.apple.FinderInfo 'com.apple.fileprovider.fpfs#P' com.apple.ResourceFork; do
+        xattr -d "$attr" "$bundle" 2>/dev/null || true
+      done
+    done < <(find "$p" -type d \( -name '*.app' -o -name '*.appex' \) -print0 2>/dev/null)
+  fi
+  for attr in com.apple.FinderInfo 'com.apple.fileprovider.fpfs#P' com.apple.ResourceFork; do
+    xattr -d "$attr" "$p" 2>/dev/null || true
+  done
+}
 require_asset() { local p="$1"; [[ -s "$p" ]] || { echo "error: missing vendored web asset: $p" >&2; echo "Run: npm ci --ignore-scripts && npm run vendor:molstar && npm run vendor:rdkit" >&2; exit 1; }; }
 
 require_tool node "Install it with: brew install node"
+require_tool npm "Install it with: brew install node"
 require_tool xcodebuild "Install full Xcode from the App Store."
 require_tool rsync "rsync is normally present on macOS."
+require_tool ditto "ditto is normally present on macOS."
 
 if ! xcodebuild -version >/dev/null 2>&1; then
   active_dir="$(xcode-select -p 2>/dev/null || true)"
@@ -75,23 +95,43 @@ node --check PreviewExtension/Web/xyz-fast.js >/dev/null
 clean_detritus "$ROOT"
 rm -f /tmp/Burrete.log "${TMPDIR:-/tmp}/Burrete.log" 2>/dev/null || true
 
-rsync -a --delete --exclude build --exclude node_modules --exclude .git "$ROOT/" "$SAFE_ROOT/"
+rsync -a --delete --exclude build --exclude node_modules --exclude .git --exclude src-tauri/target "$ROOT/" "$SAFE_ROOT/"
 clean_detritus "$SAFE_ROOT"
 
 pushd "$SAFE_ROOT" >/dev/null
 rm -rf build
+npm ci --ignore-scripts
+npm run build:tauri
 xcodebuild -project Burrete.xcodeproj -scheme Burrete -configuration Debug -derivedDataPath build COMPILER_INDEX_STORE_ENABLE=NO CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build
-clean_detritus "build/Build/Products/Debug/Burrete.app"
+TAURI_BUILT_APP="src-tauri/target/release/bundle/macos/Burrete.app"
+QUICKLOOK_APPEX="build/Build/Products/Debug/Burrete.app/Contents/PlugIns/BurretePreview.appex"
+[[ -d "$TAURI_BUILT_APP" ]] || { echo "error: Tauri app bundle missing: $TAURI_BUILT_APP" >&2; exit 1; }
+[[ -d "$QUICKLOOK_APPEX" ]] || { echo "error: Quick Look extension missing: $QUICKLOOK_APPEX" >&2; exit 1; }
+mkdir -p "$TAURI_BUILT_APP/Contents/PlugIns"
+rm -rf "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex"
+ditto --norsrc --noextattr "$QUICKLOOK_APPEX" "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex"
+clean_detritus "$TAURI_BUILT_APP"
+codesign --force --deep --sign - "$TAURI_BUILT_APP" >/dev/null
+clean_detritus "$TAURI_BUILT_APP"
 popd >/dev/null
 
 rm -rf "$LOCAL_APP"
 mkdir -p "$(dirname "$LOCAL_APP")"
-COPYFILE_DISABLE=1 COPY_EXTENDED_ATTRIBUTES_DISABLE=1 cp -R "$SAFE_ROOT/build/Build/Products/Debug/Burrete.app" "$LOCAL_APP"
+ditto --norsrc --noextattr "$SAFE_ROOT/src-tauri/target/release/bundle/macos/Burrete.app" "$LOCAL_APP"
+clean_detritus "$LOCAL_APP"
+codesign --force --deep --sign - "$LOCAL_APP" >/dev/null
 clean_detritus "$LOCAL_APP"
 
 actual_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$LOCAL_APP/Contents/Info.plist" 2>/dev/null || true)"
 [[ "$actual_id" == "$APP_ID" ]] || { echo "error: built app id mismatch: got '${actual_id:-unknown}', expected '$APP_ID'" >&2; exit 1; }
-[[ -x "$LOCAL_APP/Contents/MacOS/Burrete" ]] || { echo "error: built app executable missing: $LOCAL_APP/Contents/MacOS/Burrete" >&2; exit 1; }
+[[ -x "$LOCAL_APP/Contents/MacOS/burrete" ]] || { echo "error: built Tauri app executable missing: $LOCAL_APP/Contents/MacOS/burrete" >&2; exit 1; }
+[[ -d "$LOCAL_APP/Contents/PlugIns/BurretePreview.appex" ]] || { echo "error: embedded Quick Look extension missing in Tauri app." >&2; exit 1; }
+VERIFY_APP="$SAFE_ROOT/verify/Burrete.app"
+rm -rf "$SAFE_ROOT/verify"
+mkdir -p "$SAFE_ROOT/verify"
+ditto --norsrc --noextattr "$LOCAL_APP" "$VERIFY_APP"
+clean_detritus "$VERIFY_APP"
+codesign --verify --deep --strict "$VERIFY_APP"
 
 cat <<MSG
 
