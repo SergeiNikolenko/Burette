@@ -9,9 +9,12 @@ use std::path::{Path, PathBuf};
 #[cfg(target_os = "macos")]
 use std::process::Command;
 use std::time::Instant;
+use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 use tauri::{Emitter, Manager, RunEvent, Runtime};
 
 const MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
+const MENU_OPEN_SETTINGS_EVENT: &str = "menu:open-settings";
+const MENU_OPEN_FILES_EVENT: &str = "menu:open-files";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -20,6 +23,13 @@ struct ViewerPreferences {
     canvas_background: String,
     renderer_mode: String,
     xyz_fast_style: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OpenDocumentsResult {
+    documents: Vec<ViewerDocument>,
+    errors: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -43,10 +53,28 @@ struct FormatInfo {
 
 #[tauri::command]
 fn startup_documents() -> Vec<String> {
-    std::env::args()
+    file_args_from_argv(std::env::args().collect(), std::env::current_dir().ok())
+}
+
+fn file_args_from_argv(argv: Vec<String>, cwd: Option<PathBuf>) -> Vec<String> {
+    argv.into_iter()
         .skip(1)
-        .filter(|arg| Path::new(arg).is_file())
+        .filter_map(|arg| {
+            let candidate = PathBuf::from(arg);
+            let path = if candidate.is_absolute() {
+                candidate
+            } else {
+                cwd.as_ref()?.join(candidate)
+            };
+            path.is_file().then(|| path.to_string_lossy().to_string())
+        })
         .collect()
+}
+
+fn emit_open_documents<R: Runtime>(app: &tauri::AppHandle<R>, paths: Vec<String>) {
+    if !paths.is_empty() {
+        let _ = app.emit("open-documents", paths);
+    }
 }
 
 #[tauri::command]
@@ -54,11 +82,19 @@ fn open_documents<R: Runtime>(
     app: tauri::AppHandle<R>,
     paths: Vec<String>,
     preferences: ViewerPreferences,
-) -> Result<Vec<ViewerDocument>, String> {
-    paths
-        .into_iter()
-        .map(|path| open_document(&app, PathBuf::from(path), &preferences))
-        .collect()
+) -> Result<OpenDocumentsResult, String> {
+    let mut documents = Vec::new();
+    let mut errors = Vec::new();
+    for path in paths {
+        match open_document(&app, PathBuf::from(&path), &preferences) {
+            Ok(document) => documents.push(document),
+            Err(error) => errors.push(error),
+        }
+    }
+    if documents.is_empty() && !errors.is_empty() {
+        return Err(errors.join("; "));
+    }
+    Ok(OpenDocumentsResult { documents, errors })
 }
 
 #[tauri::command]
@@ -884,7 +920,7 @@ fn create_runtime<R: Runtime>(
         "tauriViewer": true,
         "xyzrenderViewer": false,
         "molstarAvailable": !format.external_only,
-        "canOpenInVesta": matches!(extension, "xyz" | "cub" | "cube"),
+        "canOpenInVesta": matches!(extension, "cif" | "mcif" | "mmcif" | "xyz" | "cub" | "cube" | "vasp"),
         "showPanelControls": true,
         "defaultLayoutState": { "left": "collapsed", "right": "hidden", "top": "hidden", "bottom": "hidden" }
     });
@@ -1142,12 +1178,12 @@ fn viewer_bridge_js() -> &'static str {
 
 fn format_for_extension(extension: &str) -> Result<FormatInfo, String> {
     let format = match extension {
-        "pdb" => FormatInfo {
+        "pdb" | "ent" | "pdbqt" | "pqr" => FormatInfo {
             molstar_format: "pdb",
             is_binary: false,
             external_only: false,
         },
-        "cif" | "mmcif" => FormatInfo {
+        "cif" | "mcif" | "mmcif" => FormatInfo {
             molstar_format: "mmcif",
             is_binary: false,
             external_only: false,
@@ -1182,7 +1218,7 @@ fn format_for_extension(extension: &str) -> Result<FormatInfo, String> {
             is_binary: false,
             external_only: false,
         },
-        "cub" | "cube" => FormatInfo {
+        "cub" | "cube" | "in" | "log" | "out" | "vasp" => FormatInfo {
             molstar_format: "xyz",
             is_binary: false,
             external_only: true,
@@ -1416,14 +1452,87 @@ fn escape_html(value: &str) -> String {
         .replace('"', "&quot;")
 }
 
+fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
+    let settings = MenuItemBuilder::with_id("settings.open", "Settings...")
+        .accelerator("CmdOrCtrl+,")
+        .build(app)?;
+    let open = MenuItemBuilder::with_id("file.open", "Open...")
+        .accelerator("CmdOrCtrl+O")
+        .build(app)?;
+    let app_menu = SubmenuBuilder::new(app, "Burrete")
+        .items(&[
+            &settings,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::hide(app, None)?,
+            &PredefinedMenuItem::hide_others(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::quit(app, None)?,
+        ])
+        .build()?;
+    let file_menu = SubmenuBuilder::new(app, "File")
+        .items(&[
+            &open,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::close_window(app, None)?,
+        ])
+        .build()?;
+    let edit_menu = SubmenuBuilder::new(app, "Edit")
+        .items(&[
+            &PredefinedMenuItem::undo(app, None)?,
+            &PredefinedMenuItem::redo(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::cut(app, None)?,
+            &PredefinedMenuItem::copy(app, None)?,
+            &PredefinedMenuItem::paste(app, None)?,
+            &PredefinedMenuItem::select_all(app, None)?,
+        ])
+        .build()?;
+    let window_menu = SubmenuBuilder::new(app, "Window")
+        .items(&[
+            &PredefinedMenuItem::minimize(app, None)?,
+            &PredefinedMenuItem::maximize(app, None)?,
+        ])
+        .build()?;
+    let menu = MenuBuilder::new(app)
+        .items(&[&app_menu, &file_menu, &edit_menu, &window_menu])
+        .build()?;
+    app.set_menu(menu)?;
+    Ok(())
+}
+
+fn emit_to_focused_window<R: Runtime>(app: &tauri::AppHandle<R>, event: &str) {
+    let windows = app.webview_windows();
+    let target = windows
+        .values()
+        .find(|window| window.is_focused().unwrap_or(false))
+        .or_else(|| windows.get("main"))
+        .or_else(|| windows.values().next());
+    if let Some(window) = target {
+        let _ = window.emit(event, ());
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            emit_open_documents(app, file_args_from_argv(argv, Some(PathBuf::from(cwd))));
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            configure_menu(app)?;
+            let app_handle = app.handle().clone();
+            app.on_menu_event(move |app, event| match event.id().0.as_str() {
+                "settings.open" => emit_to_focused_window(app, MENU_OPEN_SETTINGS_EVENT),
+                "file.open" => emit_to_focused_window(app, MENU_OPEN_FILES_EVENT),
+                _ => {}
+            });
             #[cfg(target_os = "macos")]
-            if let Some(window) = app.get_webview_window("main") {
+            if let Some(window) = app_handle.get_webview_window("main") {
                 let _ = window.set_decorations(true);
                 let _ = window.set_shadow(true);
             }
@@ -1447,9 +1556,7 @@ pub fn run() {
                     .filter(|path| path.is_file())
                     .map(|path| path.to_string_lossy().to_string())
                     .collect();
-                if !paths.is_empty() {
-                    let _ = app.emit("open-documents", paths);
-                }
+                emit_open_documents(app, paths);
             }
         });
 }

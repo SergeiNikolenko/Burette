@@ -2,7 +2,7 @@ import type { ShellActions, ShellViewState } from "./types";
 
 export function EditorTabs({ state, actions }: { state: ShellViewState; actions: ShellActions }) {
   return (
-    <div className="tab-strip" data-tauri-drag-region>
+    <div className="tab-strip">
       {state.documents.map((document) => (
         <button
           key={document.id}
