@@ -76,6 +76,14 @@ Every release app bundle must satisfy:
 - Finder Quick Look can preview PDB, CIF, and XYZ samples.
 - Update metadata points to the Burette release endpoint.
 
+## In-App Updates
+
+The shipped app is the Tauri bundle from `apps/desktop/src-tauri`. It checks the
+Burette GitHub Releases endpoint on launch and from the app menu. A newer
+release offers `Install and Restart`; the installer command downloads the zipped
+`Burrete.app` release asset, validates the bundle, replaces the installed app,
+refreshes Quick Look registration, and relaunches Burrete.
+
 ## License Follow-Up
 
 License alignment is a release/legal task and should be handled deliberately in
