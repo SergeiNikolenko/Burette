@@ -3,11 +3,8 @@
 
   const root = document.getElementById('app');
   const status = document.getElementById('status');
-  const GRID_SIZE_STORAGE_KEY = 'buret.grid.cardSize';
-  const MOLECULE_SCALE_STORAGE_KEY = 'buret.grid.moleculeScale';
   const LOAD_BATCH_STORAGE_KEY = 'buret.grid.loadBatch';
   const SHOW_PROPERTIES_STORAGE_KEY = 'buret.grid.showProperties';
-  const GRID_SIZES = ['compact', 'medium', 'large'];
   const LOAD_BATCH_OPTIONS = ['auto', '24', '60', '120', '240'];
   const state = {
     rdkit: null,
@@ -20,8 +17,6 @@
     smartsError: '',
     smartsMatches: new Map(),
     sort: 'index',
-    gridSize: storedChoice(GRID_SIZE_STORAGE_KEY, GRID_SIZES, 'medium'),
-    moleculeScale: storedNumber(MOLECULE_SCALE_STORAGE_KEY, 100, 80, 140),
     loadBatchChoice: storedChoice(LOAD_BATCH_STORAGE_KEY, LOAD_BATCH_OPTIONS, 'auto'),
     showProperties: storedBoolean(SHOW_PROPERTIES_STORAGE_KEY, true),
     selected: new Set(),
@@ -117,22 +112,12 @@
     return fallback;
   }
 
-  function storedNumber(key, fallback, min, max) {
-    try {
-      const value = Number(window.localStorage?.getItem(key));
-      if (Number.isFinite(value)) return Math.max(min, Math.min(max, Math.round(value)));
-    } catch (_) {}
-    return fallback;
-  }
-
   function store(key, value) {
     try { window.localStorage?.setItem(key, String(value)); } catch (_) {}
   }
 
   function applyTheme(cfg) {
-    const theme = cfg.theme === 'light' || cfg.theme === 'dark'
-      ? cfg.theme
-      : (window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+    const theme = cfg.theme === 'light' ? 'light' : 'dark';
     const transparent = cfg.transparentBackground === true || cfg.canvasBackground === 'transparent';
     document.documentElement.dataset.buretTheme = theme;
     document.body.dataset.buretTheme = theme;
@@ -167,15 +152,6 @@
             <div id="load-status" class="buret-load-status"></div>
           </div>
           <div class="buret-toolbar-row buret-toolbar-row-view">
-            <fieldset class="buret-segmented-control">
-              <legend>Card size</legend>
-              <div>
-                <button type="button" data-grid-size="compact">Compact</button>
-                <button type="button" data-grid-size="medium">Regular</button>
-                <button type="button" data-grid-size="large">Large</button>
-              </div>
-            </fieldset>
-            <label class="buret-scale-control">Molecule zoom <span><input id="molecule-scale" type="range" min="80" max="140" step="5" /><output id="molecule-scale-label"></output></span></label>
             <button id="show-properties" class="buret-toggle-button" type="button" aria-pressed="true">Properties</button>
             <button id="clear-smarts" class="buret-toggle-button buret-clear-smarts" type="button" hidden>Clear SMARTS</button>
             ${caps.rendererSwitch ? rendererSwitchHTML() : ''}
@@ -202,16 +178,6 @@
       store(LOAD_BATCH_STORAGE_KEY, state.loadBatchChoice);
       render(cfg);
     });
-    document.querySelectorAll('[data-grid-size]').forEach(button => button.addEventListener('click', event => {
-      state.gridSize = event.currentTarget.dataset.gridSize || 'medium';
-      store(GRID_SIZE_STORAGE_KEY, state.gridSize);
-      applyGridPreferences();
-    }));
-    document.getElementById('molecule-scale').addEventListener('input', event => {
-      state.moleculeScale = storedNumberFromValue(event.target.value, 100, 80, 140);
-      store(MOLECULE_SCALE_STORAGE_KEY, state.moleculeScale);
-      applyGridPreferences();
-    });
     document.getElementById('show-properties').addEventListener('click', () => {
       state.showProperties = !state.showProperties;
       store(SHOW_PROPERTIES_STORAGE_KEY, state.showProperties);
@@ -235,32 +201,15 @@
   }
 
   function applyGridPreferences() {
-    document.body.classList.toggle('buret-grid-size-compact', state.gridSize === 'compact');
-    document.body.classList.toggle('buret-grid-size-medium', state.gridSize === 'medium');
-    document.body.classList.toggle('buret-grid-size-large', state.gridSize === 'large');
+    document.body.classList.add('buret-grid-size-compact');
     document.body.classList.toggle('buret-hide-properties', !state.showProperties);
-    document.body.style.setProperty('--buret-molecule-scale', String(state.moleculeScale / 100));
-    document.querySelectorAll('[data-grid-size]').forEach(button => {
-      const active = button.dataset.gridSize === state.gridSize;
-      button.classList.toggle('active', active);
-      button.setAttribute('aria-pressed', active ? 'true' : 'false');
-    });
-    const moleculeScaleInput = document.getElementById('molecule-scale');
-    const moleculeScaleLabel = document.getElementById('molecule-scale-label');
     const loadBatchSelect = document.getElementById('load-batch');
     const propertiesToggle = document.getElementById('show-properties');
-    if (moleculeScaleInput) moleculeScaleInput.value = String(state.moleculeScale);
-    if (moleculeScaleLabel) moleculeScaleLabel.textContent = `${state.moleculeScale}%`;
     if (loadBatchSelect) loadBatchSelect.value = state.loadBatchChoice;
     if (propertiesToggle) {
       propertiesToggle.classList.toggle('active', state.showProperties);
       propertiesToggle.setAttribute('aria-pressed', state.showProperties ? 'true' : 'false');
     }
-  }
-
-  function storedNumberFromValue(value, fallback, min, max) {
-    const number = Number(value);
-    return Number.isFinite(number) ? Math.max(min, Math.min(max, Math.round(number))) : fallback;
   }
 
   function propertyOptions() {

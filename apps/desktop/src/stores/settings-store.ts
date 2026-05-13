@@ -7,7 +7,7 @@ type SettingsState = {
   setPreference: <K extends keyof ViewerPreferences>(key: K, value: ViewerPreferences[K]) => void;
 };
 
-const defaultPreferences: ViewerPreferences = {
+export const defaultPreferences: ViewerPreferences = {
   theme: "auto",
   canvasBackground: "auto",
   rendererMode: "auto",
