@@ -25,7 +25,7 @@ embedded preview controls; each needs predictable focus, labels, and shortcuts.
 ## Canonical Shortcuts
 
 - `Cmd+O`: open structure files.
-- `Cmd+P`: focus sidebar search.
+- `Cmd+P`: open the command palette.
 - `Cmd+\\`: toggle sidebar.
 - `Cmd+,`: open Settings page.
 - `Cmd+W`: close active structure.
@@ -41,6 +41,13 @@ Sidebar:
 - Project rows expose file name and renderer in their accessible name.
 - Close buttons are focusable and labeled.
 
+Command palette:
+
+- The palette has dialog semantics and an accessible name.
+- Search input has an accessible name.
+- Escape dismisses the palette from any focused element inside it.
+- Global shell shortcuts are disabled while the palette is open.
+
 Tab strip:
 
 - Tabs use `role="tab"` semantics or clear button labels.
@@ -52,6 +59,16 @@ Settings:
 - Each select has a visible label.
 - Maintenance actions describe the effect.
 
+Launcher:
+
+- Welcome actions are reachable from keyboard.
+- The primary open action remains visible and labeled before any structure is
+  loaded.
+
+Fallback:
+
+- The shell error boundary uses `role="alert"` and exposes a retry button.
+
 Preview:
 
 - iframe title uses the active document name.
@@ -62,7 +79,7 @@ Preview:
 - Avoid global `outline: none`; replace with `:focus-visible`.
 - Do not rely on color alone for active rows.
 - Keep hover-only controls keyboard reachable.
-- Add `docs/keyboard-shortcuts.md` when shortcuts stabilize.
+- Keep `docs/keyboard-shortcuts.md` synchronized with the global shortcut hook.
 
 ## Acceptance Criteria
 
@@ -71,4 +88,4 @@ Preview:
 - Every icon-only button has an accessible name.
 - Focus is visible on all focusable controls.
 - Screen readers can identify active document, Settings, and Open actions.
-
+- Screen readers can identify the launcher and error fallback states.

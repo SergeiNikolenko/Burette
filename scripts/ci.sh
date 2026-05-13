@@ -11,5 +11,7 @@ npm ci --ignore-scripts
 npm run check:release
 npm run check:js
 npm run test:agent
+npm run test:ui
+npm run test:tauri-structure
 plutil -lint App/Info.plist PreviewExtension/Info.plist App/Burrete.entitlements PreviewExtension/BurretePreview.entitlements
 ./scripts/build.sh samples/mini.sdf

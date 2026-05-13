@@ -59,9 +59,9 @@ Log these phases with path, extension, renderer, bytes, and elapsed time:
 
 ## Expected Files
 
-- `src-tauri/src/lib.rs`
-- future `src-tauri/src/preview_runtime.rs` if runtime generation is split
-- `src/App.tsx`
+- `apps/desktop/src-tauri/src/commands.rs`
+- `apps/desktop/src-tauri/src/preview/runtime.rs`
+- `apps/desktop/src/App.tsx`
 - tests and fixtures under `tests/`
 
 ## Acceptance Criteria
@@ -71,4 +71,3 @@ Log these phases with path, extension, renderer, bytes, and elapsed time:
 - No incomplete runtime directories are selected as active documents.
 - Closing a document while it is opening prevents stale activation.
 - Logs identify the phase that consumed time.
-

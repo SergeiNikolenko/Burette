@@ -6,7 +6,7 @@
   const MAX_SDF_GRID_ATOMS = 900;
   const MAX_SDF_GRID_BONDS = 900;
   const SDF_GRID_PADDING = 4.0;
-  const TOOLBAR_POSITION_VERSION = '7';
+  const TOOLBAR_POSITION_VERSION = '8';
   const TOOLBAR_MARGIN = 12;
   const VIEWER_THEME_STORAGE_KEY = 'buret.viewer.theme';
   const DEFAULT_XYZRENDER_PRESETS = [
@@ -649,9 +649,11 @@
   }
 
   function restoreToolbarCollapsed(toolbar, viewer) {
-    let collapsed = false;
+    let collapsed = true;
     try {
-      collapsed = window.localStorage && window.localStorage.getItem('buret.toolbar.collapsed') === '1';
+      const stored = window.localStorage && window.localStorage.getItem('buret.toolbar.collapsed');
+      if (stored === '0') collapsed = false;
+      else if (stored === '1') collapsed = true;
     } catch (_) {}
     setToolbarCollapsed(toolbar, collapsed, viewer, false);
   }
@@ -835,7 +837,7 @@
     const button = document.querySelector('#buret-toolbar [data-buret-action="theme"]');
     if (!button) return;
     const isDark = resolveViewerTheme() === 'dark';
-    button.textContent = isDark ? 'Light' : 'Dark';
+    button.textContent = isDark ? '☀' : '☾';
     button.setAttribute('aria-label', isDark ? 'Switch to light theme' : 'Switch to dark theme');
     button.setAttribute('title', isDark ? 'Switch to light theme' : 'Switch to dark theme');
     button.classList.toggle('active', !isDark);

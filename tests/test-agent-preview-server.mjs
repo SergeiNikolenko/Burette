@@ -72,6 +72,9 @@ try {
 
   const htmlWithToken = await get(ready.url);
   assert.equal(htmlWithToken.statusCode, 200);
+  assert.match(htmlWithToken.body, /#buret-toolbar\.collapsed:hover/);
+  assert.match(htmlWithToken.body, /buret-renderer-choice/);
+  assert.match(htmlWithToken.body, /aria-label="Expand controls"/);
   const cookie = htmlWithToken.headers['set-cookie']?.find(value => value.startsWith('BurreteAgentPreviewToken='));
   assert.ok(cookie, 'authorized HTML response should set the preview token cookie');
 

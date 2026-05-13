@@ -1,0 +1,65 @@
+use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
+use tauri::{Emitter, Manager, Runtime};
+
+pub(crate) const MENU_OPEN_SETTINGS_EVENT: &str = "menu:open-settings";
+pub(crate) const MENU_OPEN_FILES_EVENT: &str = "menu:open-files";
+
+pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
+    let settings = MenuItemBuilder::with_id("settings.open", "Settings...")
+        .accelerator("CmdOrCtrl+,")
+        .build(app)?;
+    let open = MenuItemBuilder::with_id("file.open", "Open...")
+        .accelerator("CmdOrCtrl+O")
+        .build(app)?;
+    let app_menu = SubmenuBuilder::new(app, "Burrete")
+        .items(&[
+            &settings,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::hide(app, None)?,
+            &PredefinedMenuItem::hide_others(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::quit(app, None)?,
+        ])
+        .build()?;
+    let file_menu = SubmenuBuilder::new(app, "File")
+        .items(&[
+            &open,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::close_window(app, None)?,
+        ])
+        .build()?;
+    let edit_menu = SubmenuBuilder::new(app, "Edit")
+        .items(&[
+            &PredefinedMenuItem::undo(app, None)?,
+            &PredefinedMenuItem::redo(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::cut(app, None)?,
+            &PredefinedMenuItem::copy(app, None)?,
+            &PredefinedMenuItem::paste(app, None)?,
+            &PredefinedMenuItem::select_all(app, None)?,
+        ])
+        .build()?;
+    let window_menu = SubmenuBuilder::new(app, "Window")
+        .items(&[
+            &PredefinedMenuItem::minimize(app, None)?,
+            &PredefinedMenuItem::maximize(app, None)?,
+        ])
+        .build()?;
+    let menu = MenuBuilder::new(app)
+        .items(&[&app_menu, &file_menu, &edit_menu, &window_menu])
+        .build()?;
+    app.set_menu(menu)?;
+    Ok(())
+}
+
+pub(crate) fn emit_to_focused_window<R: Runtime>(app: &tauri::AppHandle<R>, event: &str) {
+    let windows = app.webview_windows();
+    let target = windows
+        .values()
+        .find(|window| window.is_focused().unwrap_or(false))
+        .or_else(|| windows.get("main"))
+        .or_else(|| windows.values().next());
+    if let Some(window) = target {
+        let _ = window.emit(event, ());
+    }
+}

@@ -102,7 +102,10 @@ import CoreServices
 let appURL = URL(fileURLWithPath: ProcessInfo.processInfo.environment["BURRETE_APP_PATH"] ?? "")
 let bundleID = "com.local.BurreteV10" as CFString
 LSRegisterURL(appURL as CFURL, true)
-for contentType in ["dyn.ah62d4rv4ge81u8p4", "dyn.ah62d4rv4ge80s6xt"] {
+let bundle = Bundle(url: appURL)
+let documentTypes = bundle?.object(forInfoDictionaryKey: "CFBundleDocumentTypes") as? [[String: Any]] ?? []
+let contentTypes = documentTypes.flatMap { $0["LSItemContentTypes"] as? [String] ?? [] }
+for contentType in Set(contentTypes) {
     LSSetDefaultRoleHandlerForContentType(contentType as CFString, .viewer, bundleID)
 }
 ' >/dev/null 2>&1 || true

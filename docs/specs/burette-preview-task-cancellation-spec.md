@@ -48,10 +48,12 @@ Before committing a generated runtime to UI state, the task verifies that:
 
 ## Expected Files
 
-- `src/store.ts`
-- `src/App.tsx`
-- `src-tauri/src/lib.rs`
-- future runtime/task modules if split from `lib.rs`
+- `apps/desktop/src/stores/molecule-store.ts`
+- `apps/desktop/src/stores/settings-store.ts`
+- `apps/desktop/src/App.tsx`
+- `apps/desktop/src-tauri/src/commands.rs`
+- `apps/desktop/src-tauri/src/preview/runtime.rs`
+- future runtime/task modules if split from `preview/runtime.rs`
 
 ## Acceptance Criteria
 
@@ -60,4 +62,3 @@ Before committing a generated runtime to UI state, the task verifies that:
 - Opening the same file repeatedly leaves one active tab for the canonical path.
 - Cache cleanup never removes the active runtime path.
 - Logs identify cancelled and superseded tasks.
-

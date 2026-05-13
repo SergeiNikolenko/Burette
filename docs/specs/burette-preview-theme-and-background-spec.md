@@ -69,9 +69,8 @@ short message.
 
 ## Implementation Notes
 
-- Keep CSS derivations in `src/styles.css`.
-- Keep persisted preferences in `src/store.ts` or the backend config once
-  persistence is added.
+- Keep CSS derivations in `apps/desktop/src/styles.css`.
+- Keep persisted viewer preferences in `apps/desktop/src/stores/settings-store.ts`.
 - Pass selected theme/canvas values through `ViewerPreferences` into runtime
   config.
 - Generated runtime CSS should use semantic values and avoid hardcoded UI chrome
@@ -84,4 +83,3 @@ short message.
 - Viewer canvas background follows the Canvas preference.
 - Theme changes refresh the active preview without duplicating tabs.
 - Settings stays a tab/page in the shell, not a floating inspector panel.
-

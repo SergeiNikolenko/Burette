@@ -37,9 +37,10 @@ the system preference.
 
 ## Expected Files
 
-- `src/App.tsx`
-- `src-tauri/src/lib.rs` for a small macOS preference command if needed
-- `src-tauri/tauri.conf.json`
+- `apps/desktop/src/App.tsx`
+- `apps/desktop/src-tauri/src/commands.rs` for a small macOS preference command if needed
+- `apps/desktop/src-tauri/src/menu.rs` for native menu/titlebar-adjacent routing
+- `apps/desktop/src-tauri/tauri.conf.json`
 
 ## Acceptance Criteria
 
@@ -50,4 +51,3 @@ the system preference.
 - Double-clicking a tab, Open button, or sidebar toggle does not zoom the
   window.
 - The behavior is covered by a manual smoke checklist.
-

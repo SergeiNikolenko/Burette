@@ -8,4 +8,5 @@ xcuserdata/
 *.zip
 *.dmg
 dist/
-src-tauri/target/
+apps/desktop/dist/
+apps/desktop/src-tauri/target/

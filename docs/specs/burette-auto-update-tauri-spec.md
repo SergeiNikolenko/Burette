@@ -65,8 +65,9 @@ instead of starting duplicate downloads.
 ## Implementation Notes
 
 - Use `tauri-plugin-updater` for signed update manifests.
-- Keep updater orchestration in `src-tauri/src/updater.rs`.
-- Register updater commands in `src-tauri/src/lib.rs`.
+- Keep updater orchestration in `apps/desktop/src-tauri/src/updater.rs`.
+- Register updater commands through `apps/desktop/src-tauri/src/commands.rs`
+  and the thin Tauri entrypoint in `apps/desktop/src-tauri/src/lib.rs`.
 - Store dismissed version state in app data so a user is not nagged repeatedly
   for the same release.
 - Ensure updates do not rewrite Quick Look identifiers:
@@ -77,11 +78,12 @@ instead of starting duplicate downloads.
 
 ## Expected Files
 
-- `src-tauri/Cargo.toml`
-- `src-tauri/src/updater.rs`
-- `src-tauri/src/lib.rs`
-- `src-tauri/tauri.conf.json`
-- `src/App.tsx` only for the Settings row
+- `apps/desktop/src-tauri/Cargo.toml`
+- `apps/desktop/src-tauri/src/updater.rs`
+- `apps/desktop/src-tauri/src/commands.rs`
+- `apps/desktop/src-tauri/src/lib.rs`
+- `apps/desktop/src-tauri/tauri.conf.json`
+- `apps/desktop/src/App.tsx` only for the Settings row
 - release scripts that publish the signed updater manifest
 
 ## Acceptance Criteria
@@ -92,4 +94,3 @@ instead of starting duplicate downloads.
 - Invalid signatures are rejected.
 - Automatic no-update checks stay silent.
 - Quick Look still renders test fixtures after an update.
-
