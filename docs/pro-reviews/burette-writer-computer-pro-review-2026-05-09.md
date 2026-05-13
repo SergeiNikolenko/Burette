@@ -147,7 +147,6 @@ Target convention:
     // Burette-specific compatibility aliases
     "build:macos": "bash scripts/build.sh",
     "install:macos": "bash scripts/install.sh",
-    "test:web": "vp run desktop#test:web",
     "check:quicklook-assets": "vp run desktop#check:quicklook-assets"
   }
 }
@@ -316,14 +315,13 @@ Actions:
 
 * Add `SPECs/migration-writer-shell.md`.
 * Add a checklist of non-negotiables: Quick Look extension works, `PreviewExtension/Web` assets vendored, `open_documents` command stable, molecular file associations stable, bundle IDs stable.
-* Record current command matrix: `npm run check:js`, `npm run test:web`, `npm run test:agent`, `npm run build:macos`, `./scripts/install.sh`.
+* Record current command matrix: `npm run check:js`, `npm run test:agent`, `npm run build:macos`, `./scripts/install.sh`.
 * Add a small `samples/` smoke matrix for `pdb`, `cif`, `xyz`, `sdf`, `smi`, `csv`, `tsv`.
 
 Verification after phase:
 
 ```sh
 npm run check:js
-npm run test:web
 npm run test:agent
 npm run build:macos
 ./scripts/install.sh
@@ -698,7 +696,6 @@ Run after every frontend/store phase:
 ```sh
 npm run check:js
 npm run build:web
-npm run test:web
 npm run test:agent
 ```
 

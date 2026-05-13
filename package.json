@@ -8,7 +8,6 @@
     "vendor:rdkit": "node scripts/vendor-rdkit.mjs",
     "build:dev": "bash scripts/build-dev.sh",
     "build:macos": "bash scripts/build.sh",
-    "test:web": "bash scripts/test-web-preview.sh",
     "agent:preview": "node scripts/agent-preview.mjs",
     "test:agent": "node tests/test-burette-agent.mjs && node tests/test-agent-preview-server.mjs",
     "test:ui": "node tests/test-ui-shell-contract.mjs",

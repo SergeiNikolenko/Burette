@@ -117,7 +117,6 @@ Useful local checks:
 ```bash
 npm run check:js
 npm run check:release
-npm run test:web
 npm run test:agent
 ```
 
