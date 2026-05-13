@@ -7,8 +7,46 @@ on:
       - main
 
 jobs:
+  changes:
+    name: Detect Build Scope
+    runs-on: macos-latest
+    outputs:
+      native: ${{ steps.scope.outputs.native }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect native/package changes
+        id: scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git fetch --quiet origin "${{ github.base_ref }}"
+            changed="$(git diff --name-only "origin/${{ github.base_ref }}"...HEAD)"
+          else
+            before="${{ github.event.before }}"
+            if [[ -z "$before" || "$before" == "0000000000000000000000000000000000000000" ]]; then
+              changed="$(git diff --name-only HEAD~1 HEAD)"
+            else
+              changed="$(git diff --name-only "$before" HEAD)"
+            fi
+          fi
+
+          native=false
+          while IFS= read -r path; do
+            case "$path" in
+              App/*|PreviewExtension/*|Burrete.xcodeproj/*|apps/desktop/src-tauri/*|scripts/build*.sh|scripts/install*.sh|scripts/ci.sh|package.json|package-lock.json|.github/workflows/ci.yml)
+                native=true
+                ;;
+            esac
+          done <<< "$changed"
+          echo "native=$native" >> "$GITHUB_OUTPUT"
+
   validate:
-    name: Validate and Build
+    name: Fast PR Validation
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -22,5 +60,30 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Run CI
-        run: npm run ci
+      - name: Run fast CI
+        run: npm run ci:fast
+
+  native-build:
+    name: Native Bundle Build
+    needs:
+      - changes
+      - validate
+    if: needs.changes.outputs.native == 'true'
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build native bundle
+        run: ./scripts/build.sh samples/mini.sdf
