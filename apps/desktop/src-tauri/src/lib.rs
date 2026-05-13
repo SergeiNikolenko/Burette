@@ -32,6 +32,9 @@ pub fn run() {
                     menu::emit_to_focused_window(app, menu::MENU_OPEN_SETTINGS_EVENT)
                 }
                 "file.open" => menu::emit_to_focused_window(app, menu::MENU_OPEN_FILES_EVENT),
+                "updater.check" => {
+                    menu::emit_to_focused_window(app, menu::MENU_CHECK_UPDATES_EVENT)
+                }
                 _ => {}
             });
             #[cfg(target_os = "macos")]
@@ -48,6 +51,7 @@ pub fn run() {
             commands::shell::open_logs_folder,
             commands::shell::open_external_url,
             commands::quicklook::reset_quick_look,
+            commands::updater::install_update,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Burrete Tauri application")

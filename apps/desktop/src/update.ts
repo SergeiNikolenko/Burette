@@ -24,6 +24,7 @@ export type UpdateRelease = {
 export type UpdateState = {
   preferences: UpdatePreferences;
   isChecking: boolean;
+  isInstalling: boolean;
   statusText: string;
   availableRelease: UpdateRelease | null;
 };
@@ -82,6 +83,27 @@ export function markAutomaticCheck(success: boolean) {
   try {
     localStorage.setItem(STORAGE_PREFIX + (success ? "lastAutomaticSuccessAt" : "lastAutomaticFailureAt"), String(Date.now()));
     if (success) localStorage.removeItem(STORAGE_PREFIX + "lastAutomaticFailureAt");
+  } catch (_) {}
+}
+
+export function shouldPromptForUpdate(release: UpdateRelease, automatic: boolean) {
+  if (!automatic) return true;
+  try {
+    return localStorage.getItem(STORAGE_PREFIX + "dismissedVersion") !== release.tagName;
+  } catch (_) {
+    return true;
+  }
+}
+
+export function dismissUpdate(release: UpdateRelease) {
+  try {
+    localStorage.setItem(STORAGE_PREFIX + "dismissedVersion", release.tagName);
+  } catch (_) {}
+}
+
+export function clearDismissedUpdate() {
+  try {
+    localStorage.removeItem(STORAGE_PREFIX + "dismissedVersion");
   } catch (_) {}
 }
 
