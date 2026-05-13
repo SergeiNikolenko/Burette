@@ -21,7 +21,7 @@ LOCAL_APP="$ROOT/build/Burrete.app"
 TAURI_BUILT_APP="$ROOT/apps/desktop/src-tauri/target/release/bundle/macos/Burrete.app"
 XCODE_DERIVED="${BURRETE_DEV_DERIVED_DATA:-/private/tmp/BurreteV10XcodeDev}"
 XCODE_LOG="$ROOT/build/xcode-dev.log"
-QUICKLOOK_APPEX="$XCODE_DERIVED/Build/Products/Debug/Burrete.app/Contents/PlugIns/BurretePreview.appex"
+QUICKLOOK_APPEX="$XCODE_DERIVED/Build/Products/Debug/BurretePreview.appex"
 
 cat <<HDR
 Burrete v10 dev build
@@ -81,7 +81,7 @@ mark_menu_bar_app() {
 copy_app_plist_metadata() {
   local app="$1"
   local plist="$app/Contents/Info.plist"
-  /usr/bin/python3 - "$ROOT/App/Info.plist" "$plist" <<'PY'
+  /usr/bin/python3 - "$ROOT/apps/desktop/src-tauri/AppMetadata.plist" "$plist" <<'PY'
 import plistlib
 import sys
 
@@ -123,7 +123,7 @@ fi
 
 npm run build:tauri
 mkdir -p "$XCODE_DERIVED" "$(dirname "$XCODE_LOG")"
-if ! xcodebuild -project Burrete.xcodeproj -scheme Burrete -configuration Debug -derivedDataPath "$XCODE_DERIVED" COMPILER_INDEX_STORE_ENABLE=NO CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build >"$XCODE_LOG" 2>&1; then
+if ! xcodebuild -project Burrete.xcodeproj -scheme BurretePreview -configuration Debug -derivedDataPath "$XCODE_DERIVED" COMPILER_INDEX_STORE_ENABLE=NO CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build >"$XCODE_LOG" 2>&1; then
   echo "error: Xcode build failed. Last log lines:" >&2
   tail -80 "$XCODE_LOG" >&2
   exit 1

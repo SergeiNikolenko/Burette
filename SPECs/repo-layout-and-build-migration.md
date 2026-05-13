@@ -10,7 +10,7 @@ macOS packaging and Quick Look.
 - Root orchestration files.
 - `apps/desktop/` owns the React desktop frontend.
 - `apps/desktop/src-tauri/` owns the Tauri desktop shell.
-- Root `App/`, `PreviewExtension/`, `Burrete.xcodeproj`, `scripts/`, `samples/`,
+- Root `PreviewExtension/`, `Burrete.xcodeproj`, `scripts/`, `samples/`,
   `docs/`, and `SPECs/` remain accessible.
 - Build and install scripts understand the moved Tauri paths.
 
