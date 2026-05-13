@@ -73,7 +73,6 @@
 		0398CCD0F49298B10A3D76A4 /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE; sourceTree = "<group>"; };
 		987CA4D153C61C7200C17C7D /* vendor-molstar.mjs */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "vendor-molstar.mjs"; sourceTree = "<group>"; };
 		1F66322AC219B6CE98CF53D7 /* build.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = build.sh; sourceTree = "<group>"; };
-		25280D04DF91DEC334356526 /* test-web-preview.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "test-web-preview.sh"; sourceTree = "<group>"; };
 		4A566BCA24ADD5993DACE9DD /* mini.pdb */ = {isa = PBXFileReference; lastKnownFileType = text; path = mini.pdb; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -132,7 +131,6 @@
 			children = (
 				987CA4D153C61C7200C17C7D /* vendor-molstar.mjs */,
 				1F66322AC219B6CE98CF53D7 /* build.sh */,
-				25280D04DF91DEC334356526 /* test-web-preview.sh */,
 			);
 			path = scripts;
 			sourceTree = "<group>";
