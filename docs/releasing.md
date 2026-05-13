@@ -34,7 +34,6 @@ Run the lightweight checks first:
 ```bash
 npm run check:js
 npm run test:ui
-npm run test:web
 npm run test:agent
 npm run build:web
 ```
