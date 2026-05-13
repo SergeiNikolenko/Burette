@@ -1,4 +1,4 @@
-import { forwardRef } from "react";
+import { forwardRef, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   Cancel01Icon,
@@ -15,6 +15,30 @@ export const Sidebar = forwardRef<HTMLButtonElement, {
   state: ShellViewState;
   actions: ShellActions;
 }>(({ state, actions }, searchRef) => {
+  const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!workspaceMenuOpen) return undefined;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setWorkspaceMenuOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setWorkspaceMenuOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [workspaceMenuOpen]);
+
+  const runWorkspaceAction = (action: () => void | Promise<void>) => {
+    setWorkspaceMenuOpen(false);
+    void action();
+  };
+
   return (
     <aside className="sidebar" style={{ width: state.sidebarWidth }}>
       <div className="sidebar-spacer" data-tauri-drag-region />
@@ -104,12 +128,24 @@ export const Sidebar = forwardRef<HTMLButtonElement, {
           </SidebarSection>
         )}
       </ScrollFade>
-      <div className="sidebar-footer">
+      <div className="sidebar-footer" ref={menuRef}>
+        {workspaceMenuOpen && (
+          <div className="sidebar-workspace-menu" role="menu" aria-label="Workspace actions">
+            <button type="button" role="menuitem" onClick={() => runWorkspaceAction(actions.chooseWorkspace)}>
+              Choose workspace...
+            </button>
+            <button type="button" role="menuitem" onClick={() => runWorkspaceAction(actions.openWorkspaceFolder)}>
+              Open folder
+            </button>
+          </div>
+        )}
         <button
           type="button"
           className="sidebar-product"
-          onClick={actions.openSettings}
-          aria-label={"Open settings for " + appInstanceLabel}
+          onClick={() => setWorkspaceMenuOpen((open) => !open)}
+          aria-haspopup="menu"
+          aria-expanded={workspaceMenuOpen}
+          aria-label={"Open workspace menu for " + appInstanceLabel}
           title={appInstanceLabel}
         >
           <span className="sidebar-product-icon" aria-hidden="true">
