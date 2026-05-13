@@ -76,7 +76,7 @@ mark_menu_bar_app() {
 copy_app_plist_metadata() {
   local app="$1"
   local plist="$app/Contents/Info.plist"
-  /usr/bin/python3 - "$ROOT/App/Info.plist" "$plist" <<'PY'
+  /usr/bin/python3 - "$ROOT/apps/desktop/src-tauri/AppMetadata.plist" "$plist" <<'PY'
 import plistlib
 import sys
 
@@ -140,9 +140,9 @@ pushd "$SAFE_ROOT" >/dev/null
 rm -rf build
 npm ci --ignore-scripts
 npm run build:tauri
-xcodebuild -project Burrete.xcodeproj -scheme Burrete -configuration Debug -derivedDataPath build COMPILER_INDEX_STORE_ENABLE=NO CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build
+xcodebuild -project Burrete.xcodeproj -scheme BurretePreview -configuration Debug -derivedDataPath build COMPILER_INDEX_STORE_ENABLE=NO CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build
 TAURI_BUILT_APP="apps/desktop/src-tauri/target/release/bundle/macos/Burrete.app"
-QUICKLOOK_APPEX="build/Build/Products/Debug/Burrete.app/Contents/PlugIns/BurretePreview.appex"
+QUICKLOOK_APPEX="build/Build/Products/Debug/BurretePreview.appex"
 [[ -d "$TAURI_BUILT_APP" ]] || { echo "error: Tauri app bundle missing: $TAURI_BUILT_APP" >&2; exit 1; }
 [[ -d "$QUICKLOOK_APPEX" ]] || { echo "error: Quick Look extension missing: $QUICKLOOK_APPEX" >&2; exit 1; }
 mkdir -p "$TAURI_BUILT_APP/Contents/PlugIns"

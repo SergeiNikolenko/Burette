@@ -18,8 +18,9 @@ Before a release, keep these versions aligned:
 
 - root `package.json`
 - root `package-lock.json`
+- Tauri `apps/desktop/src-tauri/tauri.conf.json`
 - Xcode `MARKETING_VERSION`
-- visible About/update version strings
+- visible About/update version strings exposed by the Tauri shell
 
 Run:
 
@@ -62,6 +63,9 @@ Use the project release helper when preparing a tagged artifact:
 ```bash
 ./scripts/release.sh
 ```
+
+The helper mirrors the GitHub release workflow locally: it builds the Tauri app,
+embeds `BurretePreview.appex`, and writes `build/release/Burrete.zip`.
 
 The release process must not overwrite existing tags. If a tag already exists,
 bump the version and rerun the release checks.
