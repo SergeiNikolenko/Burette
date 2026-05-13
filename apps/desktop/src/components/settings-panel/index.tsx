@@ -45,7 +45,9 @@ export function SettingsPanel({ state, actions }: { state: ShellViewState; actio
           {update.availableRelease && (
             <div className="settings-action-row">
               <span>{update.availableRelease.installAsset ? update.availableRelease.installAsset.name : "Current " + CURRENT_VERSION + ", latest " + update.availableRelease.tagName}</span>
-              <SettingsActionButton onClick={() => void actions.openUpdateRelease()}>Open Release Page</SettingsActionButton>
+              <SettingsActionButton onClick={() => void actions.installUpdate()} disabled={update.isInstalling}>
+                {update.availableRelease.installAsset ? (update.isInstalling ? "Installing..." : "Install and Restart") : "Open Release Page"}
+              </SettingsActionButton>
             </div>
           )}
         </div>

@@ -3,6 +3,7 @@ use tauri::{Emitter, Manager, Runtime};
 
 pub(crate) const MENU_OPEN_SETTINGS_EVENT: &str = "menu:open-settings";
 pub(crate) const MENU_OPEN_FILES_EVENT: &str = "menu:open-files";
+pub(crate) const MENU_CHECK_UPDATES_EVENT: &str = "menu:check-updates";
 
 pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
     let settings = MenuItemBuilder::with_id("settings.open", "Settings...")
@@ -11,9 +12,13 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
     let open = MenuItemBuilder::with_id("file.open", "Open...")
         .accelerator("CmdOrCtrl+O")
         .build(app)?;
+    let updates = MenuItemBuilder::with_id("updater.check", "Check for Updates...")
+        .accelerator("CmdOrCtrl+U")
+        .build(app)?;
     let app_menu = SubmenuBuilder::new(app, "Burrete")
         .items(&[
             &settings,
+            &updates,
             &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::hide(app, None)?,
             &PredefinedMenuItem::hide_others(app, None)?,
