@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ask, open } from "@tauri-apps/plugin-dialog";
+import { openPath } from "@tauri-apps/plugin-opener";
 import { AppLayout } from "./components/app-layout";
 import { CommandPalette } from "./components/command-palette";
 import type { ShellActions, ShellViewState } from "./components/types";
@@ -41,6 +42,7 @@ import {
   useSetActiveTab,
 } from "./hooks/use-tabs";
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
+import { openBrowserDevDocuments } from "./lib/browser-dev-documents";
 import { isTauriRuntime } from "./lib/tauri";
 import type { OpenDocumentsResult, RecentStructure } from "./types";
 import { checkForUpdates as requestUpdateCheck, clearDismissedUpdate, dismissUpdate, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically, shouldPromptForUpdate } from "./update";
@@ -80,6 +82,7 @@ export default function App() {
   const { sidebarOpen, sidebarWidth, setSidebarWidth, toggleSidebar } = useSidebar();
   const [sidebarDragging, setSidebarDragging] = useState(false);
   const [status, setStatus] = useState("Ready");
+  const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateState>(() => ({
     preferences: loadUpdatePreferences(),
     isChecking: false,
@@ -89,6 +92,7 @@ export default function App() {
   }));
   const sidebarSearchRef = useRef<HTMLButtonElement | null>(null);
   const refreshedPersistedSessionRef = useRef(false);
+  const openedBrowserDevFilesRef = useRef(false);
   const commandPaletteOpen = useIsCommandPaletteOpen();
   const commandPaletteQuery = useCommandPaletteSearch();
   const openCommandPalette = useOpenCommandPalette();
@@ -110,7 +114,9 @@ export default function App() {
       if (!cleanPaths.length) return;
       setStatus("Opening structures...");
       try {
-        const result = await invoke<OpenDocumentsResult>("open_documents", { paths: cleanPaths, preferences });
+        const result = isTauriRuntime()
+          ? await invoke<OpenDocumentsResult>("open_documents", { paths: cleanPaths, preferences })
+          : await openBrowserDevDocuments(cleanPaths, preferences);
         addDocuments(result.documents);
         rememberRecentStructures(result.documents);
         const openedText = "Opened " + result.documents.length + " structure" + (result.documents.length === 1 ? "" : "s");
@@ -121,6 +127,19 @@ export default function App() {
     },
     [addDocuments, preferences, rememberRecentStructures],
   );
+
+  useEffect(() => {
+    if (openedBrowserDevFilesRef.current || isTauriRuntime()) return;
+    const params = new URLSearchParams(window.location.search);
+    const rawFiles = params.get("devFiles");
+    if (!rawFiles) return;
+    openedBrowserDevFilesRef.current = true;
+    const paths = rawFiles.split("\n").map((path) => path.trim()).filter(Boolean);
+    const workspace = paths[0] ? parentDirectory(paths[0]) : null;
+    if (workspace) setWorkspacePath(workspace);
+    closeAllDocuments();
+    void openDocuments(paths);
+  }, [closeAllDocuments, openDocuments]);
 
   useEffect(() => {
     if (refreshedPersistedSessionRef.current) return;
@@ -145,6 +164,33 @@ export default function App() {
     const paths = Array.isArray(selection) ? selection : selection ? [selection] : [];
     await openDocuments(paths);
   }, [openDocuments]);
+
+  const chooseWorkspace = useCallback(async () => {
+    try {
+      const selection = await open({ directory: true, multiple: false });
+      if (!selection || Array.isArray(selection)) return;
+      setWorkspacePath(selection);
+      setStatus("Workspace selected");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    }
+  }, []);
+
+  const openWorkspaceFolder = useCallback(async () => {
+    const fallbackPath = workspacePath ?? activeDocument?.path ?? recentStructures[0]?.path ?? null;
+    if (!fallbackPath) {
+      await chooseWorkspace();
+      return;
+    }
+    const path = workspacePath ?? parentDirectory(fallbackPath);
+    if (!path) return;
+    try {
+      await openPath(path);
+      setStatus("Opened workspace folder");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    }
+  }, [activeDocument?.path, chooseWorkspace, recentStructures, workspacePath]);
 
   const openSettings = useCallback(() => {
     openSettingsTab();
@@ -340,6 +386,8 @@ export default function App() {
     focusSidebarSearch,
     openCommandPalette,
     openSettings,
+    chooseWorkspace,
+    openWorkspaceFolder,
     toggleSidebar,
     closeDocument,
     closeTab,
@@ -384,7 +432,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [canNavigateBack, canNavigateForward, chooseFiles, checkForUpdates, clearRecentStructures, closeActiveDocument, closeDocument, closeTab, closeAllDocuments, focusSidebarSearch, installUpdate, navigateBack, navigateForward, openCommandPalette, openNewTab, openRecentStructure, openSettings, selectDocument, setActiveTab, setPreference, setUpdatePreferences, toggleSidebar, update.availableRelease]);
+  }), [canNavigateBack, canNavigateForward, chooseFiles, chooseWorkspace, checkForUpdates, clearRecentStructures, closeActiveDocument, closeDocument, closeTab, closeAllDocuments, focusSidebarSearch, installUpdate, navigateBack, navigateForward, openCommandPalette, openNewTab, openRecentStructure, openSettings, openWorkspaceFolder, selectDocument, setActiveTab, setPreference, setUpdatePreferences, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
@@ -397,6 +445,7 @@ export default function App() {
     activeDocumentId: activeDocument?.id ?? null,
     visibleDocuments: documents,
     recentStructures,
+    workspacePath,
     page,
     sidebarOpen,
     sidebarWidth,
@@ -434,4 +483,10 @@ export default function App() {
       />
     </>
   );
+}
+
+function parentDirectory(path: string) {
+  const normalized = path.replace(/\\/g, "/");
+  const index = normalized.lastIndexOf("/");
+  return index > 0 ? normalized.slice(0, index) : null;
 }

@@ -1,5 +1,6 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ViewerDocument } from "../../../types";
+import { isTauriRuntime } from "../../../lib/tauri";
 import { definePageKind } from "./types";
 
 export type FileLocation = { kind: "file"; documentId?: string; path: string };
@@ -29,10 +30,15 @@ function findDocument(location: FileLocation, documents: ViewerDocument[]) {
 }
 
 function ViewerSurface({ document }: { document: ViewerDocument }) {
-  const url = convertFileSrc(document.runtimePath);
+  const tauriRuntime = isTauriRuntime();
+  const sandbox = tauriRuntime ? "allow-scripts allow-downloads" : "allow-scripts allow-downloads allow-same-origin";
   return (
     <div className="molecule-stage">
-      <iframe title={document.title} src={url} className="viewer-iframe" sandbox="allow-scripts allow-downloads" referrerPolicy="no-referrer" />
+      {tauriRuntime ? (
+        <iframe title={document.title} src={convertFileSrc(document.runtimePath)} className="viewer-iframe" sandbox={sandbox} referrerPolicy="no-referrer" />
+      ) : (
+        <iframe title={document.title} srcDoc={document.runtimePath} className="viewer-iframe" sandbox={sandbox} referrerPolicy="no-referrer" />
+      )}
     </div>
   );
 }

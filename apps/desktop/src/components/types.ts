@@ -17,6 +17,8 @@ export type ShellActions = {
   focusSidebarSearch: () => void;
   openCommandPalette: () => void;
   openSettings: () => void;
+  chooseWorkspace: () => void | Promise<void>;
+  openWorkspaceFolder: () => void | Promise<void>;
   toggleSidebar: () => void;
   closeDocument: (id: string) => void;
   closeTab: (id: string) => void;
@@ -42,6 +44,7 @@ export type ShellViewState = {
   activeDocumentId: string | null;
   visibleDocuments: ViewerDocument[];
   recentStructures: RecentStructure[];
+  workspacePath: string | null;
   page: AppPage;
   sidebarOpen: boolean;
   sidebarWidth: number;
