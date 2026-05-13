@@ -178,8 +178,9 @@ BUILT_VIEWER_SHELL="$LOCAL_APP/Contents/Resources/Web/viewer-shell.js"
 [[ -s "$BUILT_VIEWER_SHELL" ]] || { echo "error: built shared viewer shell missing: $BUILT_VIEWER_SHELL" >&2; exit 1; }
 grep -q 'buret-renderer-choice' "$BUILT_VIEWER_SHELL" || { echo "error: built shared viewer shell is missing compact renderer controls." >&2; exit 1; }
 grep -q 'aria-label="Collapse controls"' "$BUILT_VIEWER_SHELL" || { echo "error: built shared viewer shell is missing toolbar grip affordance." >&2; exit 1; }
-if grep -Eq '>L<|>Seq<|>Light<|>VESTA<' "$BUILT_VIEWER_SHELL"; then
-  echo "error: built web preview shell still contains legacy text toolbar controls." >&2
+grep -q '>Seq<' "$BUILT_VIEWER_SHELL" || { echo "error: built shared viewer shell is missing text toolbar controls." >&2; exit 1; }
+if grep -q 'VESTA' "$BUILT_VIEWER_SHELL"; then
+  echo "error: built shared viewer shell still contains removed VESTA toolbar control." >&2
   exit 1
 fi
 VERIFY_APP="$SAFE_ROOT/verify/Burrete.app"
