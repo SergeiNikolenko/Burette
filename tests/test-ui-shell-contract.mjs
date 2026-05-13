@@ -283,7 +283,7 @@ assert.match(commandPalette, /ArrowUp/);
 assert.match(commandPalette, /aria-selected=\{index === selectedIndex\}/);
 assert.match(app, /useOpenDrop\(openDocuments, setStatus\)/);
 assert.match(app, /useOpenEvents\(openDocuments, setStatus\)/);
-assert.match(app, /useMenuEvents\(\{ chooseFiles, openSettings \}\)/);
+assert.match(app, /useMenuEvents\(\{ chooseFiles, openSettings, checkForUpdates \}\)/);
 assert.match(app, /<WindowTitle activeDocument=\{activeDocument\} \/>/);
 assert.match(openDropHook, /export function useOpenDrop/);
 assert.match(openEventsHook, /export function useOpenEvents/);
