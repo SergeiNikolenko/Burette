@@ -49,7 +49,7 @@ jobs:
         run: |
           rm -rf release
           mkdir -p release
-          cp -R build/Build/Products/Debug/Burrete.app release/Burrete.app
+          cp -R build/Burrete.app release/Burrete.app
           ditto -c -k --keepParent release/Burrete.app "Burrete-${{ steps.version.outputs.version }}.zip"
 
       - name: Create GitHub release
