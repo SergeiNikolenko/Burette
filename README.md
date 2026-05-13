@@ -116,8 +116,8 @@ Useful local checks:
 
 ```bash
 npm run check:js
-npm run check:release
 npm run test:agent
+npm run ci:fast
 ```
 
 The Quick Look extension caches generated runtime files under the extension
