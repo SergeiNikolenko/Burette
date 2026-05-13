@@ -38,7 +38,7 @@ Burette molecular rendering and the macOS Quick Look extension.
 | Prompt requirement | Artifact or command inspected | Current evidence | Status |
 | --- | --- | --- | --- |
 | Treat Writer Computer as the skeleton/interface reference | `/private/tmp/writer-computer-ref` at `origin/master` commit `64c20bd`; `docs/pro-reviews/*writer-computer*`; `docs/writer-originals/`; `SPECs/writer-originals/` | Reference clone, Pro review, and Writer docs/spec snapshots are present. | Covered as reference |
-| Preserve Burette molecular rendering | `PreviewExtension/Web/`, `apps/desktop/src-tauri/src/preview/`, `scripts/test-web-preview.sh`, `tests/test-agent-preview-server.mjs` | Mol*, Fast XYZ, xyzrender, RDKit/grid assets and renderer contracts remain in source and tests. | Covered by source/static checks |
+| Preserve Burette molecular rendering | `PreviewExtension/Web/`, `apps/desktop/src-tauri/src/preview/`, `tests/test-agent-preview-server.mjs` | Mol*, Fast XYZ, xyzrender, RDKit/grid assets and renderer contracts remain in source and tests. | Covered by source/static checks |
 | Preserve macOS Quick Look extension | `PreviewExtension/`, `apps/desktop/src-tauri/src/commands/quicklook.rs`, `scripts/build.sh`, `scripts/force-preview.sh` | Extension id and forced content types are documented; build embeds `.appex`; installed Finder verification is paused. | Source covered, installed E2E missing |
 | Migrate to Writer-like app shell | `apps/desktop/src/components/app-layout.tsx`, `apps/desktop/src/styles.css` | Translucent shell, sidebar, top tab strip, `132px` collapsed tab offset, and dev instance title/sidebar identity are implemented. | Structurally covered, pixel parity weak |
 | Migrate tabs/session model | `apps/desktop/src/components/editor-area/`, `apps/desktop/src/stores/molecule-store.ts`, `apps/desktop/src/hooks/use-tabs.ts` | Launcher/settings/file tabs, history navigation, keep-alive page kinds, and molecule session persistence are implemented. | Covered |
@@ -62,7 +62,7 @@ Burette molecular rendering and the macOS Quick Look extension.
 | Repository layout | `apps/desktop/`, `apps/desktop/src-tauri/`, `pnpm-workspace.yaml`; old root frontend/Tauri files removed | Covered |
 | Rust/Tauri modularization | `apps/desktop/src-tauri/src/commands/`, `preview/runtime*.rs`, `menu.rs`, `startup.rs`; `tests/test-tauri-structure.mjs` | Covered |
 | Molecular renderer preservation | `preview/formats.rs`, `preview/runtime_viewer.rs`, `preview/runtime_grid.rs`, `preview/xyz.rs`, `preview/xyzrender.rs`; `npm run ci` includes JS/agent/tauri structure checks | Covered by static/build checks |
-| Mol* shell non-overlap | `.molecule-stage { inset: var(--chrome-height) 0 0; }`; `runtime_viewer.rs`, `PreviewExtension/Web/index.html`, and `PreviewExtension/Platform/PreviewViewController.swift` icon-only collapsed toolbar CSS; `tests/test-ui-shell-contract.mjs`, `tests/test-tauri-structure.mjs`, `scripts/test-web-preview.sh --no-open samples/mini.pdb`, and agent-preview browser DOM checks | Covered by static/browser/source checks |
+| Mol* shell non-overlap | `.molecule-stage { inset: var(--chrome-height) 0 0; }`; `runtime_viewer.rs`, `PreviewExtension/Web/index.html`, and `PreviewExtension/Platform/PreviewViewController.swift` icon-only collapsed toolbar CSS; `tests/test-ui-shell-contract.mjs`, `tests/test-tauri-structure.mjs`, and agent-preview browser DOM checks | Covered by static/browser/source checks |
 | Packaging | `npm run ci` passed; `codesign --verify --deep --strict build/Burrete.app` passed; app id `com.local.BurreteV10`; embedded appex id `com.local.BurreteV10.Preview`; `scripts/build.sh` now fails if final `build/Burrete.app/Contents/Resources/Web/index.html` contains the legacy toolbar | Covered |
 | Live browser smoke | `http://127.0.0.1:1421/` currently served by this worktree with dev label `Burette Dev 8a18`; named settings switch and command palette groups were previously browser-verified | Covered |
 | Installed Finder Quick Look preview | Paused for this slice because multiple parallel test instances were active and the user asked not to compete for the shared installed app name/Quick Look registration. Source/build gates cover generated HTML, but installed Finder/qlmanage rendering still needs a coordinated single-instance pass. | Missing |
@@ -75,7 +75,6 @@ Burette molecular rendering and the macOS Quick Look extension.
 - `npm run check:js`: passed.
 - `npm --prefix apps/desktop run typecheck`: passed after restoring Writer-like top chrome, single-row sidebar footer, and Writer switcher glyph.
 - `npm run test:tauri-structure`: passed after single-row sidebar footer change.
-- `./scripts/test-web-preview.sh --no-open samples/mini.pdb`: passed.
 - `npm run build:web`: passed after single-row sidebar footer change.
 - `npm run ci`: passed.
 - `codesign --verify --deep --strict build/Burrete.app`: passed.

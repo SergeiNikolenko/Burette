@@ -401,10 +401,6 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
 #buret-toolbar.collapsed { gap: 0; }
 #buret-toolbar.collapsed .buret-button:not(.buret-grip),
 #buret-toolbar.collapsed .buret-renderer-control { display: none; }
-#buret-toolbar.collapsed:hover .buret-button:not(.buret-grip),
-#buret-toolbar.collapsed:focus-within .buret-button:not(.buret-grip) { display: grid; }
-#buret-toolbar.collapsed:hover .buret-renderer-control.visible,
-#buret-toolbar.collapsed:focus-within .buret-renderer-control.visible { display: flex; }
 #buret-toolbar.collapsed .buret-grip { min-width: 30px; padding: 0; cursor: pointer; }
 .buret-button {
   min-width: 30px; height: 30px; border: 0; border-radius: 8px; padding: 0 8px;

@@ -66,6 +66,7 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
       <button className="new-tab" onClick={actions.openNewTab} title="New tab" aria-label="New tab">
         +
       </button>
+      <div className="tab-strip-spacer" data-tauri-drag-region />
     </div>
   );
 }
