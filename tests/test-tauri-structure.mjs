@@ -24,6 +24,7 @@ const [
   previewCacheCommand,
   shellCommand,
   quickLookCommand,
+  tray,
   previewIndex,
   previewRuntime,
   previewRuntimeGrid,
@@ -38,6 +39,7 @@ const [
   source('apps/desktop/src-tauri/src/commands/preview_cache.rs'),
   source('apps/desktop/src-tauri/src/commands/shell.rs'),
   source('apps/desktop/src-tauri/src/commands/quicklook.rs'),
+  source('apps/desktop/src-tauri/src/tray.rs'),
   source('apps/desktop/src-tauri/src/preview/mod.rs'),
   source('apps/desktop/src-tauri/src/preview/runtime.rs'),
   source('apps/desktop/src-tauri/src/preview/runtime_grid.rs'),
@@ -69,6 +71,12 @@ assert.match(previewCacheCommand, /#\[tauri::command\]\s+pub\(crate\) fn clear_p
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_logs_folder/);
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_external_url/);
 assert.match(quickLookCommand, /#\[tauri::command\]\s+pub\(crate\) fn reset_quick_look/);
+
+assert.match(tray, /fn status_image\(\) -> tauri::image::Image<'static>/);
+assert.match(tray, /\.icon\(status_image\(\)\)/);
+assert.match(tray, /\.icon_as_template\(true\)/);
+assert.doesNotMatch(tray, /default_window_icon/);
+assert.doesNotMatch(tray, /\.title\("B"\)/);
 
 for (const moduleName of ['runtime_grid', 'runtime_utils', 'runtime_viewer']) {
   assert.match(previewIndex, new RegExp(`pub\\(crate\\) mod ${moduleName};`));
