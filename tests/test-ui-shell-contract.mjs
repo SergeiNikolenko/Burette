@@ -44,6 +44,7 @@ const [
   shortcutDocs,
   workspaceManifest,
   styles,
+  gridViewer,
 ] = await Promise.all([
   source('apps/desktop/src/App.tsx'),
   source('apps/desktop/src/stores/ui-store.ts'),
@@ -81,6 +82,7 @@ const [
   source('docs/keyboard-shortcuts.md'),
   source('pnpm-workspace.yaml'),
   source('apps/desktop/src/styles.css'),
+  source('PreviewExtension/Web/grid-viewer.js'),
 ]);
 
 assert.match(uiStore, /export const useUIStore = create<UIState>/);
@@ -224,6 +226,10 @@ assert.match(fileKind, /className="molecule-stage"/);
 assert.match(fileKind, /className="viewer-iframe"/);
 assert.match(fileKind, /const sandbox = tauriRuntime \? "allow-scripts allow-downloads" : "allow-scripts allow-downloads allow-same-origin"/);
 assert.match(fileKind, /srcDoc=\{document\.runtimePath\}/);
+assert.match(gridViewer, /function resolveTheme\(value\)/);
+assert.match(gridViewer, /prefers-color-scheme: light/);
+assert.match(gridViewer, /function installThemeListener\(cfg\)/);
+assert.doesNotMatch(gridViewer, /const theme = cfg\.theme === 'light' \? 'light' : 'dark'/);
 assert.match(styles, /\.molecule-stage/);
 assert.match(styles, /inset: var\(--chrome-height\) 0 0/);
 assert.match(styles, /--chrome-drag-height: 56px/);

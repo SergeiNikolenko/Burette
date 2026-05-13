@@ -117,7 +117,7 @@
   }
 
   function applyTheme(cfg) {
-    const theme = cfg.theme === 'light' ? 'light' : 'dark';
+    const theme = resolveTheme(cfg.theme);
     const transparent = cfg.transparentBackground === true || cfg.canvasBackground === 'transparent';
     document.documentElement.dataset.buretTheme = theme;
     document.body.dataset.buretTheme = theme;
@@ -125,6 +125,25 @@
     document.body.classList.toggle('buret-theme-dark', theme !== 'light');
     document.body.classList.toggle('burette-transparent-background', transparent);
     document.body.classList.toggle('burette-opaque-background', !transparent);
+  }
+
+  function resolveTheme(value) {
+    if (value === 'light' || value === 'dark') return value;
+    try {
+      return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    } catch (_) {
+      return 'dark';
+    }
+  }
+
+  function installThemeListener(cfg) {
+    if (cfg.theme === 'light' || cfg.theme === 'dark' || !window.matchMedia) return;
+    try {
+      const media = window.matchMedia('(prefers-color-scheme: light)');
+      const update = () => applyTheme(cfg);
+      if (typeof media.addEventListener === 'function') media.addEventListener('change', update);
+      else if (typeof media.addListener === 'function') media.addListener(update);
+    } catch (_) {}
   }
 
   function buildUI(cfg) {
@@ -601,6 +620,7 @@
     try {
       const cfg = config();
       applyTheme(cfg);
+      installThemeListener(cfg);
       buildUI(cfg);
       await initRDKit();
       refresh(cfg);
