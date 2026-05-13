@@ -30,6 +30,7 @@ const [
   previewRuntimeViewer,
   previewRuntimeUtils,
   quickLookPreviewController,
+  tauriConfigSource,
 ] = await Promise.all([
   source('apps/desktop/src-tauri/src/commands/mod.rs'),
   source('apps/desktop/src-tauri/src/lib.rs'),
@@ -44,9 +45,15 @@ const [
   source('apps/desktop/src-tauri/src/preview/runtime_viewer.rs'),
   source('apps/desktop/src-tauri/src/preview/runtime_utils.rs'),
   source('PreviewExtension/Platform/PreviewViewController.swift'),
+  source('apps/desktop/src-tauri/tauri.conf.json'),
 ]);
 
+const tauriConfig = JSON.parse(tauriConfigSource);
+const mainWindowConfig = tauriConfig.app.windows.find((window) => window.label === 'main');
+
 assert.equal(await exists('apps/desktop/src-tauri/src/commands.rs'), false);
+assert.ok(mainWindowConfig);
+assert.equal(mainWindowConfig.windowEffects?.state, 'active');
 
 for (const moduleName of ['documents', 'preview_cache', 'quicklook', 'shell', 'startup']) {
   assert.match(commandsIndex, new RegExp(`pub\\(crate\\) mod ${moduleName};`));
