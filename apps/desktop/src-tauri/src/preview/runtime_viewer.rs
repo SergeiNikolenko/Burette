@@ -14,7 +14,7 @@ use super::xyzrender::{create_xyzrender_artifact, xyzrender_preset_options};
 pub(crate) fn create_runtime<R: Runtime>(
     app: &tauri::AppHandle<R>,
     file_path: &Path,
-    extension: &str,
+    _extension: &str,
     format: &FormatInfo,
     renderer: &str,
     data: &[u8],
@@ -49,8 +49,8 @@ pub(crate) fn create_runtime<R: Runtime>(
     };
 
     let mut config = json!({
-        "format": format.molstar_format,
-        "molstarFormat": format.molstar_format,
+        "format": format.molstar_format.as_str(),
+        "molstarFormat": format.molstar_format.as_str(),
         "binary": format.is_binary,
         "renderer": renderer,
         "requestedRenderer": normalize_renderer_mode(&preferences.renderer_mode),
@@ -70,7 +70,7 @@ pub(crate) fn create_runtime<R: Runtime>(
         "tauriViewer": true,
         "xyzrenderViewer": false,
         "molstarAvailable": !format.external_only,
-        "canOpenInVesta": matches!(extension, "cif" | "mcif" | "mmcif" | "xyz" | "cub" | "cube" | "vasp"),
+        "canOpenInVesta": format.can_open_in_vesta,
         "showPanelControls": true,
         "defaultLayoutState": { "left": "collapsed", "right": "hidden", "top": "hidden", "bottom": "hidden" }
     });
