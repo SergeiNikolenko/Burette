@@ -2,13 +2,19 @@
 
 ## Summary
 
-This document records which Writer Computer specs were adapted for Burrete and
-which were intentionally skipped. The source reference is
-`joelbqz/writer-computer` at commit `0186eae80bfa31cd308dd6ca3ec678750d02f831`.
+This document is superseded by the full Writer transplant plan:
 
-Burrete is a molecular preview app, not a markdown editor, so only specs that
-improve macOS/Tauri app quality, preview opening, file resilience, theming,
-accessibility, and window behavior are carried over.
+- `SPECs/full-writer-transplant-spec.md`
+- `SPECs/writer-feature-port-map.md`
+- `docs/migration-writer-full-transplant.md`
+
+The earlier approach adapted only selected Writer specs to Burrete. The current
+product decision is different: Burrete will adopt Writer Computer as the primary
+application skeleton and will copy or explicitly adapt every Writer feature/spec
+that is relevant to the new molecular desktop app.
+
+The old selective adaptation table is retained below only as historical context.
+It must not be used as the migration source of truth.
 
 ## Adapted Specs
 
@@ -62,4 +68,3 @@ or workspace-editor concerns:
 Some UI-only ideas from Writer's sidebar and tab specs are already reflected in
 the current Tauri shell work, but their full document-tree semantics do not
 belong in Burrete unless Burrete later grows a persistent workspace browser.
-

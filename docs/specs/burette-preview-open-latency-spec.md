@@ -67,9 +67,9 @@ Always include these fixture groups in latency checks:
 
 ## Expected Files
 
-- `src/App.tsx`
-- `src/store.ts`
-- `src-tauri/src/lib.rs`
+- `apps/desktop/src/App.tsx`
+- `apps/desktop/src/store.ts`
+- `apps/desktop/src-tauri/src/lib.rs`
 - `scripts/test-web-preview.sh`
 - `tests/fixtures/BurettePreviewSamples/`
 - future latency tests under `tests/`

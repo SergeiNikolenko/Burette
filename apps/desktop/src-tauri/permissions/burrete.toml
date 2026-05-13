@@ -1,0 +1,33 @@
+[[permission]]
+identifier = "allow-viewer-commands"
+description = "Allows the Burrete desktop shell to open structures and manage local viewer runtime state."
+commands.allow = [
+  "startup_documents",
+  "startup_open_payload",
+  "open_documents",
+  "read_directory",
+  "clear_preview_cache",
+  "open_logs_folder",
+  "reveal_path",
+  "open_external_url",
+  "get_settings",
+  "get_setting",
+  "set_setting",
+  "reset_setting",
+  "development_instance_name",
+  "titlebar_double_click_action",
+  "get_recent_workspaces",
+  "open_workspace",
+  "restore_workspace",
+  "take_pending_open",
+  "resolve_open_payload",
+  "open_workspace_in_new_window",
+  "remember_workspace",
+  "remove_recent_workspace",
+  "save_session",
+  "load_session",
+  "reset_quick_look",
+  "cli_status",
+  "install_cli",
+  "uninstall_cli"
+]

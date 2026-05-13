@@ -1,0 +1,63 @@
+{
+  "settings": [
+    {
+      "key": "theme",
+      "label": "Theme",
+      "description": "Use the system theme or pin the app chrome to light or dark.",
+      "category": "appearance",
+      "type": "enum",
+      "options": ["auto", "dark", "light"],
+      "default": "auto"
+    },
+    {
+      "key": "canvasBackground",
+      "label": "Canvas",
+      "description": "Default molecular viewport background.",
+      "category": "appearance",
+      "type": "enum",
+      "options": ["auto", "black", "graphite", "white", "transparent"],
+      "default": "auto"
+    },
+    {
+      "key": "themeOverrides",
+      "label": "Themes",
+      "description": "Light and dark Writer-style shell colors.",
+      "category": "appearance",
+      "type": "theme-overrides",
+      "default": {
+        "light": {
+          "accent": "#ff6a00",
+          "background": "#f7f5f1",
+          "foreground": "#171716",
+          "backgroundOpacity": 0.88,
+          "contrast": 0.26
+        },
+        "dark": {
+          "accent": "#ff6a00",
+          "background": "#111111",
+          "foreground": "#fcfcfc",
+          "backgroundOpacity": 0.715,
+          "contrast": 0.328
+        }
+      }
+    },
+    {
+      "key": "rendererMode",
+      "label": "Mode",
+      "description": "Choose the renderer used when opening structures.",
+      "category": "renderer",
+      "type": "enum",
+      "options": ["auto", "xyz-fast", "molstar", "xyzrender-external"],
+      "default": "auto"
+    },
+    {
+      "key": "xyzFastStyle",
+      "label": "XYZ style",
+      "description": "Fallback style for the fast XYZ renderer.",
+      "category": "renderer",
+      "type": "enum",
+      "options": ["default", "wire", "tube", "spacefill"],
+      "default": "default"
+    }
+  ]
+}

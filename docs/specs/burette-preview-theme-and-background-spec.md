@@ -69,8 +69,8 @@ short message.
 
 ## Implementation Notes
 
-- Keep CSS derivations in `src/styles.css`.
-- Keep persisted preferences in `src/store.ts` or the backend config once
+- Keep CSS derivations in `apps/desktop/src/styles.css`.
+- Keep persisted preferences in `apps/desktop/src/store.ts` or the backend config once
   persistence is added.
 - Pass selected theme/canvas values through `ViewerPreferences` into runtime
   config.

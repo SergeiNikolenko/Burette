@@ -20,7 +20,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Provision pnpm via Corepack
+        run: |
+          corepack enable
+          corepack install
 
       - name: Run CI
-        run: npm run ci
+        run: pnpm run ci

@@ -3,10 +3,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const sourceCandidates = [
-  path.join(repoRoot, 'node_modules', '@rdkit', 'rdkit', 'dist'),
+const packageCandidates = [
+  path.join(repoRoot, 'apps', 'desktop', 'node_modules', '@rdkit', 'rdkit'),
   path.join(repoRoot, 'node_modules', '@rdkit', 'rdkit')
 ];
+const sourceCandidates = packageCandidates.flatMap(pkgDir => [path.join(pkgDir, 'dist'), pkgDir]);
 const outputDir = path.join(repoRoot, 'PreviewExtension', 'Web', 'rdkit');
 const requiredFiles = ['RDKit_minimal.js', 'RDKit_minimal.wasm'];
 
@@ -24,7 +25,7 @@ for (const fileName of requiredFiles) {
   const source = findSourceFile(fileName);
   if (!source) {
     console.error(`error: cannot find ${fileName} in @rdkit/rdkit.`);
-    console.error('Run: npm install --ignore-scripts');
+    console.error('Run:\n  pnpm install --ignore-scripts\n  pnpm run vendor:rdkit');
     process.exit(1);
   }
   const destination = path.join(outputDir, fileName);
