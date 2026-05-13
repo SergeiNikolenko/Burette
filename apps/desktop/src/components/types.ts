@@ -27,6 +27,7 @@ export type ShellActions = {
   resetQuickLook: () => void | Promise<void>;
   openLogs: () => void | Promise<void>;
   checkForUpdates: () => void | Promise<void>;
+  installUpdate: () => void | Promise<void>;
   openUpdateRelease: () => void | Promise<void>;
   setPreference: <K extends keyof ViewerPreferences>(key: K, value: ViewerPreferences[K]) => void;
   setUpdatePreferences: (preferences: UpdatePreferences) => void;
