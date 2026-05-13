@@ -3,9 +3,11 @@ build/
 DerivedData/
 node_modules/
 npm-cache/
+.pnpm-store/
 xcuserdata/
 *.xcuserstate
 *.zip
 *.dmg
 dist/
 src-tauri/target/
+apps/desktop/src-tauri/target/

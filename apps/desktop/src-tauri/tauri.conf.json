@@ -1,0 +1,96 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Burrete",
+  "version": "0.10.24",
+  "identifier": "com.local.BurreteV10",
+  "build": {
+    "beforeDevCommand": "pnpm run dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "pnpm run build:web",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "",
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 20,
+          "y": 29
+        },
+        "transparent": true,
+        "windowEffects": {
+          "effects": [
+            "hudWindow"
+          ],
+          "state": "followsWindowActiveState"
+        },
+        "decorations": true,
+        "width": 1200,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 500,
+        "visible": false,
+        "backgroundColor": "#00000000"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' asset: http://asset.localhost; connect-src ipc: http://ipc.localhost https://api.github.com; script-src 'self' asset: http://asset.localhost; style-src 'self' asset: http://asset.localhost; img-src 'self' data: asset: http://asset.localhost; frame-src 'self' asset: http://asset.localhost",
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$APPCACHE/**",
+          "$RESOURCE/**"
+        ]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "app",
+    "resources": {
+      "../../../PreviewExtension/Web": "Web"
+    },
+    "macOS": {
+      "minimumSystemVersion": "12.0",
+      "hardenedRuntime": false
+    },
+    "fileAssociations": [
+      {
+        "ext": [
+          "pdb",
+          "ent",
+          "pdbqt",
+          "pqr",
+          "cif",
+          "mcif",
+          "mmcif",
+          "bcif",
+          "sdf",
+          "sd",
+          "smi",
+          "smiles",
+          "csv",
+          "tsv",
+          "mol",
+          "mol2",
+          "xyz",
+          "gro",
+          "cub",
+          "cube",
+          "vasp"
+        ],
+        "role": "Viewer"
+      }
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png"
+    ]
+  }
+}

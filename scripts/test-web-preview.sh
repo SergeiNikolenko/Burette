@@ -3,8 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$ROOT"
-export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-export npm_config_cache="$ROOT/build/npm-cache"
+export PATH="$PATH:/opt/homebrew/bin:/usr/local/bin"
 
 OPEN_PREVIEW=1
 OUT_DIR=""
@@ -40,11 +39,10 @@ if [[ ! -f "$SAMPLE" ]]; then
   exit 1
 fi
 
-if [[ ! -d node_modules/molstar ]]; then
-  mkdir -p "$npm_config_cache"
-  npm ci --ignore-scripts
+if [[ ! -d apps/desktop/node_modules/molstar && ! -d node_modules/molstar ]]; then
+  pnpm install --ignore-scripts
 fi
-npm run vendor:molstar
+pnpm run vendor:molstar
 
 if [[ -n "$OUT_DIR" ]]; then
   TMP="$OUT_DIR"

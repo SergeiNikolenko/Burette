@@ -59,9 +59,9 @@ Log these phases with path, extension, renderer, bytes, and elapsed time:
 
 ## Expected Files
 
-- `src-tauri/src/lib.rs`
-- future `src-tauri/src/preview_runtime.rs` if runtime generation is split
-- `src/App.tsx`
+- `apps/desktop/src-tauri/src/lib.rs`
+- future `apps/desktop/src-tauri/src/preview_runtime.rs` if runtime generation is split
+- `apps/desktop/src/App.tsx`
 - tests and fixtures under `tests/`
 
 ## Acceptance Criteria

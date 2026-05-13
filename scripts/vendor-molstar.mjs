@@ -8,13 +8,24 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const projectRoot = resolve(__dirname, '..');
 const webDir = join(projectRoot, 'PreviewExtension', 'Web');
+const dependencyRoots = [
+  join(projectRoot, 'apps', 'desktop'),
+  projectRoot
+];
 
 const require = createRequire(import.meta.url);
-let molstarPkg;
-try {
-  molstarPkg = require.resolve('molstar/package.json');
-} catch (error) {
-  console.error('\nMol* is not installed yet. Run:\n\n  npm ci --ignore-scripts\n  npm run vendor:molstar\n');
+let molstarPkg = null;
+for (const dependencyRoot of dependencyRoots) {
+  try {
+    molstarPkg = require.resolve('molstar/package.json', { paths: [dependencyRoot] });
+    break;
+  } catch (error) {
+    // Try the next workspace location.
+  }
+}
+
+if (!molstarPkg) {
+  console.error('\nMol* is not installed yet. Run:\n\n  pnpm install --ignore-scripts\n  pnpm run vendor:molstar\n');
   process.exit(1);
 }
 
@@ -24,7 +35,7 @@ const files = ['molstar.js', 'molstar.css'];
 
 if (!existsSync(viewerDir) || !statSync(viewerDir).isDirectory()) {
   console.error(`Expected Mol* viewer build directory not found: ${viewerDir}`);
-  console.error('The Mol* npm package layout may have changed. Check node_modules/molstar/build/viewer.');
+  console.error('The Mol* package layout may have changed. Reinstall deps and rerun:\n  pnpm install --ignore-scripts\n  pnpm run vendor:molstar');
   process.exit(1);
 }
 

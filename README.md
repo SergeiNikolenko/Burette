@@ -115,10 +115,10 @@ The local installer places the app here:
 Useful local checks:
 
 ```bash
-npm run check:js
-npm run check:release
-npm run test:web
-npm run test:agent
+pnpm run check:js
+pnpm run check:release
+pnpm run test:web
+pnpm run test:agent
 ```
 
 The Quick Look extension caches generated runtime files under the extension

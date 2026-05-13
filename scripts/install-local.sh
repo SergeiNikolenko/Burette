@@ -49,6 +49,39 @@ clean_detritus() {
     xattr -d "$attr" "$path" 2>/dev/null || true
   done
 }
+merge_tauri_info_plist() {
+  local app="$1"
+  local target="$app/Contents/Info.plist"
+  local source="$ROOT/App/Info.plist"
+
+  [[ -f "$target" ]] || { echo "error: app Info.plist missing: $target" >&2; exit 1; }
+  [[ -f "$source" ]] || { echo "error: source Info.plist missing: $source" >&2; exit 1; }
+
+  plutil -replace CFBundleDocumentTypes -json "$(plutil -extract CFBundleDocumentTypes json -o - "$source")" "$target"
+  plutil -replace UTExportedTypeDeclarations -json "$(plutil -extract UTExportedTypeDeclarations json -o - "$source")" "$target"
+  plutil -replace UTImportedTypeDeclarations -json "$(plutil -extract UTImportedTypeDeclarations json -o - "$source")" "$target"
+  plutil -replace LSUIElement -bool YES "$target"
+  plutil -replace NSSupportsAutomaticGraphicsSwitching -bool YES "$target"
+}
+sign_burrete_app() {
+  local app="$1"
+  local appex="$app/Contents/PlugIns/BurretePreview.appex"
+  local app_entitlements="$ROOT/App/Burrete.entitlements"
+  local preview_entitlements="$ROOT/PreviewExtension/BurretePreview.entitlements"
+
+  [[ -d "$appex" ]] || { echo "error: embedded Quick Look extension missing: $appex" >&2; exit 1; }
+  [[ -f "$app_entitlements" ]] || { echo "error: app entitlements missing: $app_entitlements" >&2; exit 1; }
+  [[ -f "$preview_entitlements" ]] || { echo "error: preview entitlements missing: $preview_entitlements" >&2; exit 1; }
+
+  while IFS= read -r -d '' binary; do
+    if file "$binary" | grep -q 'Mach-O'; then
+      codesign --force --sign - "$binary" >/dev/null
+    fi
+  done < <(find "$appex/Contents/MacOS" -type f -perm +111 -print0 2>/dev/null)
+
+  codesign --force --sign - --entitlements "$preview_entitlements" "$appex" >/dev/null
+  codesign --force --sign - --entitlements "$app_entitlements" "$app" >/dev/null
+}
 echo "Unregistering old Burrete extensions, if any..."
 pkill -f "$DEST/Contents/MacOS/Burrete" 2>/dev/null || true
 pkill -f "$DEST/Contents/MacOS/burrete" 2>/dev/null || true
@@ -87,8 +120,9 @@ done < <(pluginkit -m -A -D -vvv -p com.apple.quicklook.preview 2>/dev/null | se
 mkdir -p "$DEST_DIR"
 rm -rf "$DEST" "$LEGACY_OLD_DEST" "$LEGACY_BURET_DEST" "$LEGACY_XYZ_DEST"
 ditto --norsrc --noextattr "$APP" "$DEST"
+merge_tauri_info_plist "$DEST"
 clean_detritus "$DEST"
-codesign --force --deep --sign - "$DEST" >/dev/null
+sign_burrete_app "$DEST"
 clean_detritus "$DEST"
 codesign --verify --deep --strict "$DEST"
 

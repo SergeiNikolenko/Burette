@@ -9,7 +9,8 @@ the system preference.
 
 ## Goals
 
-- Keep normal window dragging from the empty titlebar region.
+- Keep normal window dragging from the titlebar, tab strip, and other
+  non-interactive chrome regions.
 - Keep native resize borders available.
 - Honor macOS titlebar double-click behavior:
   - zoom;
@@ -28,26 +29,27 @@ the system preference.
 ## Approach
 
 - Keep `decorations: true`.
-- Use `data-tauri-drag-region` only on empty chrome regions.
-- Add a small titlebar double-click handler that:
-  - reads `AppleActionOnDoubleClick` on macOS;
-  - calls the corresponding Tauri window action;
-  - defaults to zoom if the preference is unavailable.
-- Stop propagation on tabs and interactive titlebar controls.
+- Use Writer's declarative Tauri titlebar pattern: place
+  `data-tauri-drag-region` on the top drag strip, sidebar spacer, and tab
+  containers instead of calling `startDragging()` manually from React events.
+- Let Tauri's native drag-region script handle titlebar dragging and
+  double-click behavior so the shell stays aligned with Writer's chrome model.
+- Keep interactive controls as normal buttons/tabs and avoid parallel
+  drag-blocking state unless a specific control needs its own mouse handling.
 
 ## Expected Files
 
-- `src/App.tsx`
-- `src-tauri/src/lib.rs` for a small macOS preference command if needed
-- `src-tauri/tauri.conf.json`
+- `apps/desktop/src/App.tsx`
+- `apps/desktop/src-tauri/src/lib.rs` for a small macOS preference command if needed
+- `apps/desktop/src-tauri/tauri.conf.json`
 
 ## Acceptance Criteria
 
-- The user can drag the window from empty chrome.
+- The user can drag the window from titlebar, tab strip, sidebar spacer, and
+  other non-interactive chrome.
 - Native resize borders work.
 - Double-clicking empty titlebar zooms/restores or minimizes according to system
   settings.
 - Double-clicking a tab, Open button, or sidebar toggle does not zoom the
   window.
 - The behavior is covered by a manual smoke checklist.
-

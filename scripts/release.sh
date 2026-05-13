@@ -18,7 +18,7 @@ EXPORT_OPTIONS="${EXPORT_OPTIONS:-$ROOT/ExportOptions.plist}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-}"
 
 require_tool() { command -v "$1" >/dev/null 2>&1 || { echo "error: $1 is required. $2" >&2; exit 1; }; }
-require_asset() { local p="$1"; [[ -s "$p" ]] || { echo "error: missing vendored web asset: $p" >&2; echo "Run: npm ci --ignore-scripts && npm run vendor:molstar && npm run vendor:rdkit" >&2; exit 1; }; }
+require_asset() { local p="$1"; [[ -s "$p" ]] || { echo "error: missing vendored web asset: $p" >&2; echo "Run: pnpm install --ignore-scripts && pnpm run vendor:molstar && pnpm run vendor:rdkit" >&2; exit 1; }; }
 
 require_tool xcodebuild "Install full Xcode from the App Store."
 require_tool xcrun "Install full Xcode from the App Store."

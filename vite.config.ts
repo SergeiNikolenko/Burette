@@ -1,12 +1,3 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    port: 1420,
-    strictPort: true,
-    watch: { ignored: ["**/src-tauri/target/**"] },
-  },
-  clearScreen: false,
-});
+export default {
+  // Root config is workspace-level. Desktop app config lives in apps/desktop.
+};

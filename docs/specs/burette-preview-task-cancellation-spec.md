@@ -48,9 +48,9 @@ Before committing a generated runtime to UI state, the task verifies that:
 
 ## Expected Files
 
-- `src/store.ts`
-- `src/App.tsx`
-- `src-tauri/src/lib.rs`
+- `apps/desktop/src/store.ts`
+- `apps/desktop/src/App.tsx`
+- `apps/desktop/src-tauri/src/lib.rs`
 - future runtime/task modules if split from `lib.rs`
 
 ## Acceptance Criteria

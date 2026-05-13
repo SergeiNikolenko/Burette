@@ -1,0 +1,17 @@
+{
+  "identifier": "default",
+  "description": "Minimal permissions for the Burrete desktop shell",
+  "windows": [
+    "main",
+    "w-*"
+  ],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:window:allow-set-title",
+    "clipboard-manager:allow-write-text",
+    "dialog:allow-open",
+    "opener:allow-open-path",
+    "allow-viewer-commands"
+  ]
+}
