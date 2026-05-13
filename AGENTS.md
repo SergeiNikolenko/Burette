@@ -57,14 +57,17 @@ killall quicklookd 2>/dev/null || true
 
 ## CI And Releases
 
-Pull requests run the full CI workflow on macOS: npm dependency restore, release
-version checks, JavaScript syntax checks, plist linting, and a local Xcode build.
-Every PR intended for merge must bump `package.json`, `package-lock.json`,
-`MARKETING_VERSION`, and the visible About version together.
+Pull requests run fast macOS validation by default: npm dependency restore,
+JavaScript syntax checks, agent/UI/structure tests, and plist linting. PRs that
+touch native, packaging, or bundle layout paths also run the native bundle build.
 
-Merging to `main` builds the app and publishes a GitHub Release tagged with the
-same package version. If the tag already exists, the release workflow fails so
-the next PR cannot overwrite an existing release.
+Feature PRs do not need a version bump. Release PRs must bump `package.json`,
+`package-lock.json`, `MARKETING_VERSION`, and the visible About version
+together, then pass `npm run check:release`.
+
+Releases are explicit. Push a `v*` tag or run the release workflow manually to
+build the app and publish a GitHub Release tagged with the package version. If
+the tag already exists, bump the version before creating another release.
 
 Local hooks use lefthook:
 

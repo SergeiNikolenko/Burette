@@ -14,7 +14,8 @@ Burette-specific:
 
 ## Version Discipline
 
-Before a release, keep these versions aligned:
+Feature PRs do not need a version bump. Before a release, keep these versions
+aligned:
 
 - root `package.json`
 - root `package-lock.json`
@@ -30,16 +31,13 @@ npm run check:release
 
 ## Pre-Release Checks
 
-Run the lightweight checks first:
+Run the fast PR checks first:
 
 ```bash
-npm run check:js
-npm run test:ui
-npm run test:agent
-npm run build:web
+npm run ci:fast
 ```
 
-Then build the macOS bundle:
+For native, packaging, Quick Look, or release changes, build the macOS bundle:
 
 ```bash
 ./scripts/build.sh
@@ -58,7 +56,7 @@ If Quick Look or renderer behavior changed, install and run forced previews:
 
 ## Release Script
 
-Use the project release helper when preparing a tagged artifact:
+Use the project release helper when preparing a tagged artifact locally:
 
 ```bash
 ./scripts/release.sh
@@ -67,8 +65,10 @@ Use the project release helper when preparing a tagged artifact:
 The helper mirrors the GitHub release workflow locally: it builds the Tauri app,
 embeds `BurretePreview.appex`, and writes `build/release/Burrete.zip`.
 
-The release process must not overwrite existing tags. If a tag already exists,
-bump the version and rerun the release checks.
+GitHub releases are explicit: push a `v*` tag that matches `package.json`, or
+run the Release workflow manually. The release process must not overwrite
+existing tags. If a tag already exists, bump the version and rerun the release
+checks.
 
 ## Artifact Requirements
 
