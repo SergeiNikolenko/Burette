@@ -6,7 +6,7 @@ Add a signed in-app update flow for the Tauri-based Burrete shell while keeping
 Quick Look extension bundle identifiers, file associations, and cache paths
 stable.
 
-This adapts Writer Computer's native updater spec to Burrete's release model:
+This defines Burrete's native updater behavior:
 the user should be able to check for updates from the app menu/settings, install
 with consent, and relaunch without manually downloading a new app bundle.
 
@@ -65,7 +65,7 @@ instead of starting duplicate downloads.
 ## Implementation Notes
 
 - Use `tauri-plugin-updater` for signed update manifests.
-- Keep updater orchestration in `apps/desktop/src-tauri/src/updater.rs`.
+- Keep updater coordination in `apps/desktop/src-tauri/src/updater.rs`.
 - Register updater commands through `apps/desktop/src-tauri/src/commands.rs`
   and the thin Tauri entrypoint in `apps/desktop/src-tauri/src/lib.rs`.
 - Store dismissed version state in app data so a user is not nagged repeatedly
