@@ -6,7 +6,7 @@ pre-commit:
     js-syntax:
       run: npm run check:js
     plist:
-      run: plutil -lint App/Info.plist PreviewExtension/Info.plist App/Burrete.entitlements PreviewExtension/BurretePreview.entitlements
+      run: plutil -lint apps/desktop/src-tauri/AppMetadata.plist PreviewExtension/Info.plist PreviewExtension/BurretePreview.entitlements
 
 pre-push:
   commands:
