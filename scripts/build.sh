@@ -53,6 +53,32 @@ clean_detritus() {
     xattr -d "$attr" "$p" 2>/dev/null || true
   done
 }
+mark_menu_bar_app() {
+  local app="$1"
+  local plist="$app/Contents/Info.plist"
+  [[ -f "$plist" ]] || { echo "error: app Info.plist missing: $plist" >&2; exit 1; }
+  /usr/libexec/PlistBuddy -c 'Delete :LSUIElement' "$plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c 'Add :LSUIElement bool true' "$plist"
+  /usr/libexec/PlistBuddy -c 'Delete :LSBackgroundOnly' "$plist" 2>/dev/null || true
+}
+copy_app_plist_metadata() {
+  local app="$1"
+  local plist="$app/Contents/Info.plist"
+  /usr/bin/python3 - "$ROOT/App/Info.plist" "$plist" <<'PY'
+import plistlib
+import sys
+
+source_path, target_path = sys.argv[1:3]
+with open(source_path, "rb") as source_file:
+    source = plistlib.load(source_file)
+with open(target_path, "rb") as target_file:
+    target = plistlib.load(target_file)
+for key in ("CFBundleDocumentTypes", "UTExportedTypeDeclarations"):
+    target[key] = source[key]
+with open(target_path, "wb") as target_file:
+    plistlib.dump(target, target_file, sort_keys=False)
+PY
+}
 require_asset() { local p="$1"; [[ -s "$p" ]] || { echo "error: missing vendored web asset: $p" >&2; echo "Run: npm ci --ignore-scripts && npm run vendor:molstar && npm run vendor:rdkit" >&2; exit 1; }; }
 
 require_tool node "Install it with: brew install node"
@@ -95,7 +121,7 @@ node --check PreviewExtension/Web/xyz-fast.js >/dev/null
 clean_detritus "$ROOT"
 rm -f /tmp/Burrete.log "${TMPDIR:-/tmp}/Burrete.log" 2>/dev/null || true
 
-rsync -a --delete --exclude build --exclude node_modules --exclude .git --exclude src-tauri/target "$ROOT/" "$SAFE_ROOT/"
+rsync -a --delete --exclude build --exclude node_modules --exclude .git --exclude apps/desktop/src-tauri/target "$ROOT/" "$SAFE_ROOT/"
 clean_detritus "$SAFE_ROOT"
 
 pushd "$SAFE_ROOT" >/dev/null
@@ -103,13 +129,15 @@ rm -rf build
 npm ci --ignore-scripts
 npm run build:tauri
 xcodebuild -project Burrete.xcodeproj -scheme Burrete -configuration Debug -derivedDataPath build COMPILER_INDEX_STORE_ENABLE=NO CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build
-TAURI_BUILT_APP="src-tauri/target/release/bundle/macos/Burrete.app"
+TAURI_BUILT_APP="apps/desktop/src-tauri/target/release/bundle/macos/Burrete.app"
 QUICKLOOK_APPEX="build/Build/Products/Debug/Burrete.app/Contents/PlugIns/BurretePreview.appex"
 [[ -d "$TAURI_BUILT_APP" ]] || { echo "error: Tauri app bundle missing: $TAURI_BUILT_APP" >&2; exit 1; }
 [[ -d "$QUICKLOOK_APPEX" ]] || { echo "error: Quick Look extension missing: $QUICKLOOK_APPEX" >&2; exit 1; }
 mkdir -p "$TAURI_BUILT_APP/Contents/PlugIns"
 rm -rf "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex"
 ditto --norsrc --noextattr "$QUICKLOOK_APPEX" "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex"
+mark_menu_bar_app "$TAURI_BUILT_APP"
+copy_app_plist_metadata "$TAURI_BUILT_APP"
 clean_detritus "$TAURI_BUILT_APP"
 codesign --force --deep --sign - "$TAURI_BUILT_APP" >/dev/null
 clean_detritus "$TAURI_BUILT_APP"
@@ -117,15 +145,29 @@ popd >/dev/null
 
 rm -rf "$LOCAL_APP"
 mkdir -p "$(dirname "$LOCAL_APP")"
-ditto --norsrc --noextattr "$SAFE_ROOT/src-tauri/target/release/bundle/macos/Burrete.app" "$LOCAL_APP"
+ditto --norsrc --noextattr "$SAFE_ROOT/apps/desktop/src-tauri/target/release/bundle/macos/Burrete.app" "$LOCAL_APP"
+mark_menu_bar_app "$LOCAL_APP"
+copy_app_plist_metadata "$LOCAL_APP"
 clean_detritus "$LOCAL_APP"
 codesign --force --deep --sign - "$LOCAL_APP" >/dev/null
 clean_detritus "$LOCAL_APP"
 
 actual_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$LOCAL_APP/Contents/Info.plist" 2>/dev/null || true)"
 [[ "$actual_id" == "$APP_ID" ]] || { echo "error: built app id mismatch: got '${actual_id:-unknown}', expected '$APP_ID'" >&2; exit 1; }
+actual_lsui="$(/usr/libexec/PlistBuddy -c 'Print :LSUIElement' "$LOCAL_APP/Contents/Info.plist" 2>/dev/null || true)"
+[[ "$actual_lsui" == "true" ]] || { echo "error: built app is not marked as menu bar accessory (LSUIElement=true)." >&2; exit 1; }
+actual_pdb_type="$(/usr/libexec/PlistBuddy -c 'Print :UTExportedTypeDeclarations:0:UTTypeIdentifier' "$LOCAL_APP/Contents/Info.plist" 2>/dev/null || true)"
+[[ "$actual_pdb_type" == "com.local.burrete10.pdb" ]] || { echo "error: built app is missing Burrete exported content types." >&2; exit 1; }
 [[ -x "$LOCAL_APP/Contents/MacOS/burrete" ]] || { echo "error: built Tauri app executable missing: $LOCAL_APP/Contents/MacOS/burrete" >&2; exit 1; }
 [[ -d "$LOCAL_APP/Contents/PlugIns/BurretePreview.appex" ]] || { echo "error: embedded Quick Look extension missing in Tauri app." >&2; exit 1; }
+BUILT_WEB_INDEX="$LOCAL_APP/Contents/Resources/Web/index.html"
+[[ -s "$BUILT_WEB_INDEX" ]] || { echo "error: built web preview shell missing: $BUILT_WEB_INDEX" >&2; exit 1; }
+grep -q 'buret-renderer-choice' "$BUILT_WEB_INDEX" || { echo "error: built web preview shell is missing compact renderer controls." >&2; exit 1; }
+grep -q 'aria-label="Expand controls"' "$BUILT_WEB_INDEX" || { echo "error: built web preview shell is missing collapsed toolbar affordance." >&2; exit 1; }
+if grep -Eq '>L<|>Seq<|>Light<|>VESTA<' "$BUILT_WEB_INDEX"; then
+  echo "error: built web preview shell still contains legacy text toolbar controls." >&2
+  exit 1
+fi
 VERIFY_APP="$SAFE_ROOT/verify/Burrete.app"
 rm -rf "$SAFE_ROOT/verify"
 mkdir -p "$SAFE_ROOT/verify"

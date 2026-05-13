@@ -67,9 +67,11 @@ Always include these fixture groups in latency checks:
 
 ## Expected Files
 
-- `src/App.tsx`
-- `src/store.ts`
-- `src-tauri/src/lib.rs`
+- `apps/desktop/src/App.tsx`
+- `apps/desktop/src/stores/molecule-store.ts`
+- `apps/desktop/src/stores/settings-store.ts`
+- `apps/desktop/src-tauri/src/commands.rs`
+- `apps/desktop/src-tauri/src/preview/runtime.rs`
 - `scripts/test-web-preview.sh`
 - `tests/fixtures/BurettePreviewSamples/`
 - future latency tests under `tests/`
@@ -82,4 +84,3 @@ Always include these fixture groups in latency checks:
 - Slow or unsupported files show a deterministic status/error message.
 - Quick Look still renders supported fixtures.
 - Latency checks cover the permanent fixture directory.
-

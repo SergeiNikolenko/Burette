@@ -1120,9 +1120,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             #status.hidden { display: none; }
             #buret-toolbar {
               position: absolute; top: var(--buret-toolbar-safe-top); right: 12px; left: auto; z-index: 2147483646;
-              display: flex; align-items: center; gap: 6px; padding: 6px;
+              display: flex; align-items: center; gap: 4px; padding: 4px;
               border: 1px solid var(--buret-toolbar-border);
-              border-radius: 12px; color: var(--buret-toolbar-color);
+              border-radius: 10px; color: var(--buret-toolbar-color);
               background: var(--buret-toolbar-background);
               -webkit-backdrop-filter: blur(10px);
               backdrop-filter: blur(10px);
@@ -1134,24 +1134,30 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             #buret-toolbar.collapsed { gap: 0; }
             #buret-toolbar.collapsed .buret-button:not(.buret-grip),
             #buret-toolbar.collapsed .buret-renderer-control { display: none; }
-            #buret-toolbar.collapsed .buret-grip { min-width: 26px; padding: 0; cursor: pointer; }
+            #buret-toolbar.collapsed:hover .buret-button:not(.buret-grip),
+            #buret-toolbar.collapsed:focus-within .buret-button:not(.buret-grip) { display: grid; }
+            #buret-toolbar.collapsed:hover .buret-renderer-control.visible,
+            #buret-toolbar.collapsed:focus-within .buret-renderer-control.visible { display: flex; }
+            #buret-toolbar.collapsed .buret-grip { min-width: 30px; padding: 0; cursor: pointer; }
             .buret-button {
-              min-width: 26px; height: 26px; border: 0; border-radius: 7px; padding: 0 7px;
-              color: inherit; background: transparent; font: 600 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+              min-width: 30px; height: 30px; border: 0; border-radius: 8px; padding: 0 8px;
+              color: inherit; background: transparent; font: 600 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
               display: grid; place-items: center;
             }
+            .buret-button:not(.buret-renderer-choice) { width: 30px; padding: 0; }
             .buret-button:hover, .buret-button.active { background: var(--buret-toolbar-hover); }
             .buret-button.hidden { display: none; }
-            .buret-button svg { width: 15px; height: 15px; display: block; }
+            .buret-button svg { width: 17px; height: 17px; display: block; }
             .buret-grip { cursor: grab; color: currentColor; opacity: 0.66; }
             .buret-renderer-control {
               display: none; align-items: center; gap: 4px; padding-left: 5px;
               border-left: 1px solid var(--buret-toolbar-border);
             }
             .buret-renderer-control.visible { display: flex; }
+            .buret-renderer-choice { min-width: 42px; }
             .buret-select {
-              height: 26px; max-width: 118px; border: 0; border-radius: 7px; padding: 0 22px 0 8px;
-              color: inherit; background: transparent; font: 600 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+              height: 30px; max-width: 118px; border: 0; border-radius: 8px; padding: 0 22px 0 8px;
+              color: inherit; background: transparent; font: 600 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
             }
             .buret-select:hover, .buret-select:focus { background: var(--buret-toolbar-hover); outline: none; }
           </style>
@@ -1220,19 +1226,17 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         <body class="\(backgroundClass)">
           <div id="app"></div>
           <div id="buret-toolbar" role="toolbar" aria-label="Burrete preview controls">
-            <button class="buret-button buret-grip" type="button" data-drag-handle aria-label="Collapse controls" aria-expanded="true" title="Collapse controls">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h2v2H8V5Zm6 0h2v2h-2V5ZM8 11h2v2H8v-2Zm6 0h2v2h-2v-2ZM8 17h2v2H8v-2Zm6 0h2v2h-2v-2Z" fill="currentColor"/></svg>
-            </button>
-            <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel">L</button>
-            <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle right panel">R</button>
-            <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq</button>
-            <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel">Log</button>
-            <button class="buret-button" type="button" data-buret-action="theme" aria-label="Switch to light theme" title="Switch to light theme">Light</button>
-            <button class="buret-button hidden" type="button" data-buret-action="open-vesta" aria-label="Open in VESTA" title="Open in VESTA">VESTA</button>
+            <button class="buret-button buret-grip" type="button" data-drag-handle aria-label="Expand controls" aria-expanded="false" title="Expand controls"><span aria-hidden="true">⋯</span></button>
+            <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel"><span aria-hidden="true">◧</span></button>
+            <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle right panel"><span aria-hidden="true">◨</span></button>
+            <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel"><span aria-hidden="true">≡</span></button>
+            <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel"><span aria-hidden="true">⌘</span></button>
+            <button class="buret-button" type="button" data-buret-action="theme" aria-label="Switch to light theme" title="Switch to light theme"><span aria-hidden="true">☀</span></button>
+            <button class="buret-button hidden" type="button" data-buret-action="open-vesta" aria-label="Open in VESTA" title="Open in VESTA"><span aria-hidden="true">↗</span></button>
             <div class="buret-renderer-control" data-buret-renderer-control>
-              <button class="buret-button" type="button" data-buret-renderer="xyz-fast" aria-label="Use Fast XYZ SVG" title="Use Fast XYZ SVG">Fast</button>
-              <button class="buret-button" type="button" data-buret-renderer="molstar" aria-label="Use Mol* Interactive" title="Use Mol* Interactive">Mol*</button>
-              <button class="buret-button" type="button" data-buret-renderer="xyzrender-external" aria-label="Use external xyzrender" title="Use external xyzrender">xyzr</button>
+              <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="xyz-fast" aria-label="Use Fast XYZ SVG" title="Use Fast XYZ SVG">Fast</button>
+              <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="molstar" aria-label="Use Mol* Interactive" title="Use Mol* Interactive">Mol*</button>
+              <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="xyzrender-external" aria-label="Use external xyzrender" title="Use external xyzrender">xyzr</button>
               <select class="buret-select" data-buret-xyzrender-preset aria-label="External xyzrender preset" title="External xyzrender preset"></select>
             </div>
           </div>

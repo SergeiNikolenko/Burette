@@ -4,7 +4,7 @@
 
 This document records which Writer Computer specs were adapted for Burrete and
 which were intentionally skipped. The source reference is
-`joelbqz/writer-computer` at commit `0186eae80bfa31cd308dd6ca3ec678750d02f831`.
+`joelbqz/writer-computer` at commit `64c20bdb5881612e1c6c8bc4bca89155b3d863fd`.
 
 Burrete is a molecular preview app, not a markdown editor, so only specs that
 improve macOS/Tauri app quality, preview opening, file resilience, theming,
@@ -59,7 +59,7 @@ or workspace-editor concerns:
 - `writer-cli-spec.md`
 - `writer-open-cli-spec.md`
 
-Some UI-only ideas from Writer's sidebar and tab specs are already reflected in
-the current Tauri shell work, but their full document-tree semantics do not
-belong in Burrete unless Burrete later grows a persistent workspace browser.
-
+Some UI-only ideas from Writer's sidebar, tab, command palette, and UI-store
+shape are already reflected in the current Tauri shell work, but their full
+document-tree semantics do not belong in Burrete unless Burrete later grows a
+persistent workspace browser.
