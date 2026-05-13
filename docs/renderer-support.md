@@ -1,23 +1,16 @@
 # Renderer Support
 
-## Overview
-
-Burette supports several renderer paths. The Writer-like shell presents these
-paths through settings, tabs, command palette actions, and preview metadata, but
-renderer policy and artifact generation remain owned by Burette's runtime.
+Burrete supports multiple renderer paths. The desktop shell selects a renderer
+from user settings and runtime policy; Finder Quick Look uses the extension
+runtime under `PreviewExtension/`.
 
 ## Renderer Modes
 
-The desktop settings expose these modes:
-
-- Auto
-- Fast XYZ SVG
-- Mol* Interactive
-- External xyzrender
-
-The runtime normalizes mode names in
-`apps/desktop/src-tauri/src/preview/formats.rs` and resolves unsupported
-combinations back to a compatible renderer.
+- `auto`: choose the fastest compatible renderer for the file.
+- `molstar`: interactive Mol* preview.
+- `fast-xyz`: lightweight SVG for XYZ first frames.
+- `xyzrender-external`: call an external `xyzrender` executable when configured.
+- `grid`: collection preview for table-like molecule files.
 
 ## Format Support
 
@@ -27,69 +20,40 @@ Mol* interactive preview is used for:
 - CIF, MCIF, MMCIF, BCIF
 - SDF, SD
 - MOL, MOL2
-- XYZ and GRO when explicitly selected or resolved by the runtime
+- XYZ and GRO when selected or resolved by policy
 
-Inside the desktop Writer-like shell, Mol* loads through an iframe that is inset
-below the top chrome. This keeps Mol* toolbar controls and canvas overlays from
-stacking under Burette's tabs/titlebar while preserving the same runtime inside
-the iframe. The Mol* runtime toolbar defaults to a collapsed icon-only state and
-expands on hover/focus, so the molecule canvas remains the primary surface while
-panel, theme, and renderer controls stay available.
+Fast XYZ is used for text XYZ input when selected or when `auto` resolves to the
+fast path.
 
-Fast XYZ SVG is used for text XYZ input when the selected or automatic renderer
-allows it. It parses the first frame in
-`apps/desktop/src-tauri/src/preview/xyz.rs`.
-
-External `xyzrender` is used for XYZ-like text inputs when selected, and is the
-required path for extension groups that are external-renderer-only:
+External `xyzrender` is used for XYZ-like text inputs when selected. It is also
+the required path for external-renderer-only groups:
 
 - CUB, CUBE
 - IN, LOG, OUT
 - VASP
 
-SDF, SMILES, CSV, and TSV collection previews use the grid runtime in
-`PreviewExtension/Web/grid-viewer.js` and related Quick Look grid code.
+SDF, SMILES, CSV, and TSV collection previews use the grid runtime.
 
 ## Runtime Artifacts
 
-The Tauri runtime writes per-preview artifacts under the preview cache and
-returns metadata to the React shell. Artifacts can include:
-
-- source data files
-- generated HTML
-- generated SVG for fast XYZ or external xyzrender paths
-- renderer metadata
-- external renderer logs
-
-The Quick Look extension writes its own cache under the extension container and
-uses the bundled web runtime in `PreviewExtension/Web/`.
-
-## External xyzrender
-
-`apps/desktop/src-tauri/src/preview/xyzrender.rs` searches for the executable in:
-
-- `~/.local/bin/xyzrender`
-- directories from `PATH`
-- `/opt/homebrew/bin/xyzrender`
-- `/usr/local/bin/xyzrender`
-
-If the executable is missing, the runtime returns an explicit error. The caller
-should surface that error in the shell rather than silently falling back, because
-users choose external xyzrender for a specific output style.
+The desktop app writes generated preview artifacts through the Tauri preview
+service. Quick Look writes its own cache under the extension container. Artifacts
+can include source copies, generated HTML, generated SVG, renderer metadata, and
+external renderer logs.
 
 ## Verification
 
-After renderer runtime changes, run:
+Use the lightweight checks first:
 
 ```bash
-npm run test:agent
-cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
+npm run ci:fast
 ```
 
-After changes that can affect Finder previews, also run:
+For renderer behavior changes, also verify forced previews:
 
 ```bash
 ./scripts/build.sh
+./scripts/install.sh
 ./scripts/force-preview.sh samples/mini.pdb
 ./scripts/force-preview.sh samples/mini.cif
 ./scripts/force-preview.sh samples/mini.xyz

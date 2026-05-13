@@ -1,16 +1,12 @@
-# Releasing Burette
+# Releasing Burrete
 
-## Release Identity
-
-Burette may use Writer's release discipline, but release identity remains
-Burette-specific:
+Release identity is Burrete-specific:
 
 - app name: `Burrete`
-- app bundle identifier: `com.local.BurreteV10`
-- Quick Look extension identifier: `com.local.BurreteV10.Preview`
-- release repository: the Burette GitHub repository
-- release artifacts: signed Burette app bundles with the embedded Quick Look
-  extension
+- bundle app: `Burrete.app`
+- Quick Look extension: `BurretePreview.appex`
+- extension identifier: `com.local.BurreteV10.Preview`
+- release repository: `SergeiNikolenko/Burrete`
 
 ## Version Discipline
 
@@ -31,7 +27,7 @@ npm run check:release
 
 ## Pre-Release Checks
 
-Run the fast PR checks first:
+Run the fast checks first:
 
 ```bash
 npm run ci:fast
@@ -54,21 +50,16 @@ If Quick Look or renderer behavior changed, install and run forced previews:
 ./scripts/force-preview.sh samples/mini.xyz
 ```
 
-## Release Script
+## Release Command
 
-Use the project release helper when preparing a tagged artifact locally:
+Use the repository release script:
 
 ```bash
 ./scripts/release.sh
 ```
 
-The helper mirrors the GitHub release workflow locally: it builds the Tauri app,
-embeds `BurretePreview.appex`, and writes `build/release/Burrete.zip`.
-
-GitHub releases are explicit: push a `v*` tag that matches `package.json`, or
-run the Release workflow manually. The release process must not overwrite
-existing tags. If a tag already exists, bump the version and rerun the release
-checks.
+The script expects a clean version state and produces release artifacts for the
+GitHub release workflow.
 
 ## Artifact Requirements
 
@@ -78,17 +69,9 @@ Every release app bundle must satisfy:
 - `Burrete.app/Contents/PlugIns/BurretePreview.appex` exists.
 - Deep codesign verification passes.
 - Finder Quick Look can preview PDB, CIF, and XYZ samples.
-- Update metadata points to the Burette release endpoint.
+- Update metadata points to the Burrete release endpoint.
 
 ## In-App Updates
 
-The shipped app is the Tauri bundle from `apps/desktop/src-tauri`. It checks the
-Burette GitHub Releases endpoint on launch and from the app menu. A newer
-release offers `Install and Restart`; the installer command downloads the zipped
-`Burrete.app` release asset, validates the bundle, replaces the installed app,
-refreshes Quick Look registration, and relaunches Burrete.
-
-## License Follow-Up
-
-License alignment is a release/legal task and should be handled deliberately in
-the same release that finalizes imported Writer-derived structure or assets.
+The desktop app checks Burrete GitHub Releases on launch and from the app menu.
+A newer release can be downloaded from the update dialog.
