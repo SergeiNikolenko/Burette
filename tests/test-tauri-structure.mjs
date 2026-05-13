@@ -24,6 +24,7 @@ const [
   previewCacheCommand,
   shellCommand,
   quickLookCommand,
+  tray,
   previewIndex,
   previewRuntime,
   previewRuntimeGrid,
@@ -32,6 +33,7 @@ const [
   quickLookPreviewController,
   viewerRuntimeCSS,
   viewerShell,
+  tauriConfigSource,
 ] = await Promise.all([
   source('apps/desktop/src-tauri/src/commands/mod.rs'),
   source('apps/desktop/src-tauri/src/lib.rs'),
@@ -40,6 +42,7 @@ const [
   source('apps/desktop/src-tauri/src/commands/preview_cache.rs'),
   source('apps/desktop/src-tauri/src/commands/shell.rs'),
   source('apps/desktop/src-tauri/src/commands/quicklook.rs'),
+  source('apps/desktop/src-tauri/src/tray.rs'),
   source('apps/desktop/src-tauri/src/preview/mod.rs'),
   source('apps/desktop/src-tauri/src/preview/runtime.rs'),
   source('apps/desktop/src-tauri/src/preview/runtime_grid.rs'),
@@ -48,9 +51,15 @@ const [
   source('PreviewExtension/Platform/PreviewViewController.swift'),
   source('PreviewExtension/Web/viewer-runtime.css'),
   source('PreviewExtension/Web/viewer-shell.js'),
+  source('apps/desktop/src-tauri/tauri.conf.json'),
 ]);
 
+const tauriConfig = JSON.parse(tauriConfigSource);
+const mainWindowConfig = tauriConfig.app.windows.find((window) => window.label === 'main');
+
 assert.equal(await exists('apps/desktop/src-tauri/src/commands.rs'), false);
+assert.ok(mainWindowConfig);
+assert.equal(mainWindowConfig.windowEffects?.state, 'active');
 
 for (const moduleName of ['documents', 'preview_cache', 'quicklook', 'shell', 'startup']) {
   assert.match(commandsIndex, new RegExp(`pub\\(crate\\) mod ${moduleName};`));
@@ -74,6 +83,12 @@ assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_logs_fold
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_external_url/);
 assert.match(quickLookCommand, /#\[tauri::command\]\s+pub\(crate\) fn reset_quick_look/);
 
+assert.match(tray, /fn status_image\(\) -> tauri::image::Image<'static>/);
+assert.match(tray, /\.icon\(status_image\(\)\)/);
+assert.match(tray, /\.icon_as_template\(true\)/);
+assert.doesNotMatch(tray, /default_window_icon/);
+assert.doesNotMatch(tray, /\.title\("B"\)/);
+
 for (const moduleName of ['runtime_grid', 'runtime_utils', 'runtime_viewer']) {
   assert.match(previewIndex, new RegExp(`pub\\(crate\\) mod ${moduleName};`));
 }
@@ -94,11 +109,12 @@ assert.match(previewRuntimeViewer, /viewer-runtime\.css/);
 assert.match(previewRuntimeViewer, /assets\.join\("viewer-runtime\.css"\)/);
 assert.match(viewerRuntimeCSS, /--buret-toolbar-safe-top: 12px/);
 assert.match(viewerRuntimeCSS, /#buret-toolbar\.collapsed/);
-assert.match(viewerRuntimeCSS, /#buret-toolbar\.collapsed:hover/);
+assert.doesNotMatch(viewerRuntimeCSS, /#buret-toolbar\.collapsed:hover/);
 assert.match(viewerRuntimeCSS, /\.buret-renderer-control\.visible/);
 assert.match(previewRuntimeViewer, /viewer-shell\.js/);
 assert.match(viewerShell, /buret-renderer-choice/);
-assert.match(viewerShell, /aria-label="Expand controls"/);
+assert.match(viewerShell, /aria-label="Collapse controls"/);
+assert.match(viewerShell, /aria-expanded="true"/);
 assert.match(viewerRuntimeCSS, /--buret-panel-background/);
 assert.match(previewRuntimeUtils, /pub\(crate\) fn stable_id/);
 assert.match(previewRuntimeUtils, /pub\(crate\) fn prune_runtime_dirs/);

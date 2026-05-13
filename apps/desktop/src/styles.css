@@ -38,7 +38,7 @@
   --chrome-control-height: 32px;
   --chrome-control-padding: 12px;
   --chrome-height: 56px;
-  --chrome-drag-height: 72px;
+  --chrome-drag-height: 56px;
   font-family: var(--ui-font);
   color: var(--text);
   background: transparent;
@@ -91,8 +91,13 @@ button { color: inherit; cursor: default; }
   --tab-active-bg: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 34%), transparent);
 }
 
-.drag-region { position: absolute; inset: 0 0 auto 0; height: var(--chrome-drag-height); z-index: 0; }
-.topbar, .sidebar-toggle-root, .tab-strip, .chrome-button, .new-tab, .tab, .sidebar, .sidebar-footer, .project, .sidebar-search-row { pointer-events: auto; }
+.drag-region {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: var(--chrome-drag-height);
+  z-index: 2;
+}
+.topbar, .sidebar-toggle-root, .tab-strip, .tab-strip-spacer, .chrome-button, .new-tab, .tab, .sidebar, .sidebar-footer, .project, .sidebar-search-row { pointer-events: auto; }
 .sidebar-toggle-root {
   position: absolute;
   left: 92px;
@@ -144,6 +149,7 @@ button { color: inherit; cursor: default; }
 }
 .tab-strip::-webkit-scrollbar { display: none; }
 .tab-history-controls { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; margin-right: 8px; }
+.tab-strip-spacer { min-width: 28px; align-self: stretch; flex: 1 1 auto; }
 .tab-history-button {
   width: 28px;
   height: var(--chrome-control-height);

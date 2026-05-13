@@ -82,7 +82,6 @@ users choose external xyzrender for a specific output style.
 After renderer runtime changes, run:
 
 ```bash
-npm run test:web
 npm run test:agent
 cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
 ```

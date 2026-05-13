@@ -25,6 +25,17 @@ if (packageLockVersion !== packageVersion) {
   fail(`package-lock.json version ${packageLockVersion} does not match package.json ${packageVersion}`);
 }
 
+const tauriVersion = readJSON('apps/desktop/src-tauri/tauri.conf.json').version;
+if (tauriVersion !== packageVersion) {
+  fail(`Tauri app version ${tauriVersion} does not match package.json ${packageVersion}`);
+}
+
+const cargoManifest = readFileSync('apps/desktop/src-tauri/Cargo.toml', 'utf8');
+const cargoVersion = cargoManifest.match(/^version = "([^"]+)"$/m)?.[1];
+if (cargoVersion !== packageVersion) {
+  fail(`Tauri Rust crate version ${cargoVersion || 'unknown'} does not match package.json ${packageVersion}`);
+}
+
 const project = readFileSync('Burrete.xcodeproj/project.pbxproj', 'utf8');
 const marketingVersions = [...project.matchAll(/MARKETING_VERSION = ([0-9]+\.[0-9]+\.[0-9]+);/g)].map(match => match[1]);
 if (marketingVersions.length === 0) {
@@ -33,22 +44,6 @@ if (marketingVersions.length === 0) {
 const mismatchedMarketingVersion = marketingVersions.find(version => version !== packageVersion);
 if (mismatchedMarketingVersion) {
   fail(`Xcode MARKETING_VERSION ${mismatchedMarketingVersion} does not match package.json ${packageVersion}`);
-}
-
-const contentView = readFileSync('App/ContentView.swift', 'utf8');
-if (!contentView.includes(`Text("Version ${packageVersion}")`)) {
-  fail(`App/ContentView.swift About panel does not show Version ${packageVersion}`);
-}
-
-const appDelegate = readFileSync('App/Platform/PlatformBridge.swift', 'utf8');
-if (!appDelegate.includes('statusItem(withLength: NSStatusItem.squareLength)')) {
-  fail('menu bar status item must use squareLength so it stays icon-only');
-}
-if (!appDelegate.includes('button.imagePosition = .imageOnly')) {
-  fail('menu bar status item must use imageOnly so it does not show a text label');
-}
-if (/button\.title\s*=\s*"[^"]*\S[^"]*"/.test(appDelegate)) {
-  fail('menu bar status item must not set a visible button title');
 }
 
 if (process.env.GITHUB_EVENT_NAME === 'pull_request' && process.env.GITHUB_BASE_REF) {

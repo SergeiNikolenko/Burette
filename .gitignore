@@ -1,5 +1,6 @@
 .DS_Store
 build/
+build-dev/
 DerivedData/
 node_modules/
 npm-cache/
