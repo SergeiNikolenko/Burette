@@ -110,8 +110,6 @@ pub(crate) fn create_runtime<R: Runtime>(
         viewer_html(file_path, &runtime, &assets, renderer, preferences),
     )
     .map_err(|err| err.to_string())?;
-    fs::write(runtime.join("viewer-runtime.css"), viewer_runtime_css())
-        .map_err(|err| err.to_string())?;
     fs::write(runtime.join("viewer-bridge.js"), viewer_bridge_js())
         .map_err(|err| err.to_string())?;
     fs::write(
@@ -138,6 +136,8 @@ pub(crate) fn copy_web_assets<R: Runtime>(
     for name in [
         "molstar.js",
         "molstar.css",
+        "viewer-runtime.css",
+        "viewer-shell.js",
         "burette-agent.js",
         "viewer.js",
         "xyz-fast.js",
@@ -212,7 +212,8 @@ fn viewer_html(
     } else {
         "burette-opaque-background"
     };
-    let runtime_css = asset_url(&runtime.join("viewer-runtime.css"));
+    let runtime_css = asset_url(&assets.join("viewer-runtime.css"));
+    let shell_js = asset_url(&assets.join("viewer-shell.js"));
     let bridge_js = asset_url(&runtime.join("viewer-bridge.js"));
     let config_js = asset_url(&runtime.join("preview-config.js"));
     let data_js = asset_url(&runtime.join("preview-data.js"));
@@ -221,11 +222,18 @@ fn viewer_html(
     let molstar_css = asset_url(&assets.join("molstar.css"));
     let molstar_js = asset_url(&assets.join("molstar.js"));
     let xyz_fast_js = asset_url(&assets.join("xyz-fast.js"));
-    let renderer_assets = match renderer {
-        "xyz-fast" => format!(r#"<script src="{xyz_fast_js}"></script>"#),
-        "xyzrender-external" => format!(r#"<link rel="stylesheet" href="{molstar_css}" />"#),
-        _ => format!(
-            r#"<link rel="stylesheet" href="{molstar_css}" /><script src="{molstar_js}"></script>"#
+    let (renderer_styles, renderer_scripts) = match renderer {
+        "xyz-fast" => (
+            "".to_string(),
+            format!(r#"<script src="{xyz_fast_js}"></script>"#),
+        ),
+        "xyzrender-external" => (
+            format!(r#"<link rel="stylesheet" href="{molstar_css}" />"#),
+            "".to_string(),
+        ),
+        _ => (
+            format!(r#"<link rel="stylesheet" href="{molstar_css}" />"#),
+            format!(r#"<script src="{molstar_js}"></script>"#),
         ),
     };
     format!(
@@ -235,30 +243,15 @@ fn viewer_html(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Burrete - {title}</title>
+  {renderer_styles}
   <link rel="stylesheet" href="{runtime_css}" />
   <script src="{bridge_js}"></script>
 </head>
 <body class="{background_class}">
   <div id="app"></div>
-  <div id="buret-toolbar" role="toolbar" aria-label="Burrete viewer controls">
-    <button class="buret-button buret-grip" type="button" data-drag-handle aria-label="Collapse controls" aria-expanded="true" title="Collapse controls">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h2v2H8V5Zm6 0h2v2h-2V5ZM8 11h2v2H8v-2Zm6 0h2v2h-2v-2ZM8 17h2v2H8v-2Zm6 0h2v2h-2v-2Z" fill="currentColor"/></svg>
-    </button>
-    <button class="buret-button buret-panel-toggle active" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel"><span aria-hidden="true">◧</span></button>
-    <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle right panel"><span aria-hidden="true">◨</span></button>
-    <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel"><span aria-hidden="true">≡</span></button>
-    <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel"><span aria-hidden="true">⌘</span></button>
-    <button class="buret-button" type="button" data-buret-action="theme" aria-label="Switch theme" title="Switch theme"><span aria-hidden="true">☀</span></button>
-    <button class="buret-button hidden" type="button" data-buret-action="open-vesta" aria-label="Open in VESTA" title="Open in VESTA"><span aria-hidden="true">↗</span></button>
-    <div class="buret-renderer-control" data-buret-renderer-control>
-      <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="xyz-fast">Fast</button>
-      <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="molstar">Mol*</button>
-      <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="xyzrender-external">xyzr</button>
-      <select class="buret-select" data-buret-xyzrender-preset aria-label="External xyzrender preset"></select>
-    </div>
-  </div>
+  <script src="{shell_js}"></script>
   <div id="status" class="hidden">Loading {title}...</div>
-  {renderer_assets}
+  {renderer_scripts}
   <script src="{config_js}"></script>
   <script src="{data_js}"></script>
   <script src="{agent_js}"></script>
@@ -266,42 +259,6 @@ fn viewer_html(
 </body>
 </html>"#
     )
-}
-
-fn viewer_runtime_css() -> &'static str {
-    r#"html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;color:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif}
-:root{--buret-toolbar-safe-top:12px;--buret-toolbar-background:rgba(18,18,18,.72);--buret-toolbar-border:rgba(255,255,255,.12);--buret-toolbar-hover:rgba(255,255,255,.14);--buret-toolbar-color:rgba(255,255,255,.94);--buret-panel-bg:rgba(18,18,18,.76);--buret-panel-bg-strong:rgba(28,28,29,.88);--buret-panel-line:rgba(255,255,255,.12);--buret-panel-text:rgba(255,255,255,.92);--buret-panel-muted:rgba(255,255,255,.58);--buret-panel-hover:rgba(255,255,255,.12);--buret-panel-scrollbar:rgba(255,255,255,.34);--buret-panel-accent:#ff6a00}
-body.buret-theme-light{--buret-toolbar-background:rgba(246,244,240,.78);--buret-toolbar-border:rgba(20,20,19,.12);--buret-toolbar-hover:rgba(20,20,19,.1);--buret-toolbar-color:rgba(20,20,19,.9);--buret-panel-bg:rgba(246,244,240,.78);--buret-panel-bg-strong:rgba(255,255,255,.9);--buret-panel-line:rgba(20,20,19,.12);--buret-panel-text:rgba(20,20,19,.88);--buret-panel-muted:rgba(20,20,19,.55);--buret-panel-hover:rgba(20,20,19,.1);--buret-panel-scrollbar:rgba(20,20,19,.26)}
-.burette-opaque-background{background:#0b0b0c}
-.burette-transparent-background{background:transparent}
-#status{position:absolute;left:14px;right:14px;bottom:14px;z-index:20;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.14);background:rgba(18,18,18,.84);font-size:12px;white-space:pre-wrap}
-#status.hidden{display:none}
-#status.error{display:block;color:#ffb4ab}
-#buret-toolbar{position:absolute;top:var(--buret-toolbar-safe-top);right:12px;left:auto;z-index:30;display:flex;gap:4px;align-items:center;padding:4px;border:1px solid var(--buret-toolbar-border);border-radius:10px;background:var(--buret-toolbar-background);color:var(--buret-toolbar-color);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);box-shadow:0 8px 22px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.06);user-select:none;touch-action:none}
-#buret-toolbar.collapsed{gap:0}
-#buret-toolbar.collapsed .buret-button:not(.buret-grip),#buret-toolbar.collapsed .buret-renderer-control{display:none}
-#buret-toolbar.collapsed .buret-grip{min-width:30px;padding:0;cursor:pointer}
-.buret-button{min-width:30px;height:30px;border:0;border-radius:8px;background:transparent;color:inherit;padding:0 8px;font:600 12px -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;display:grid;place-items:center}
-.buret-button:not(.buret-renderer-choice){width:30px;padding:0}
-.buret-button:hover,.buret-button.active{background:var(--buret-toolbar-hover)}
-.buret-button svg{width:15px;height:15px;display:block}
-.buret-button.active{color:#fff}
-.buret-button.hidden{display:none}
-.buret-grip{cursor:grab;color:currentColor;opacity:.66}
-.buret-renderer-control{display:none;align-items:center;gap:4px;padding-left:5px;border-left:1px solid var(--buret-toolbar-border)}
-.buret-renderer-control.visible{display:flex}
-.buret-renderer-choice{min-width:42px}
-.buret-select{height:30px;max-width:118px;border:0;border-radius:8px;background:transparent;color:inherit;padding:0 22px 0 8px;font:600 12px -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif}
-.buret-select:hover,.buret-select:focus{background:var(--buret-toolbar-hover);outline:none}
-.msp-plugin,.msp-plugin *{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif!important}
-.msp-plugin .msp-layout-standard,.msp-plugin .msp-layout-expanded,.msp-plugin .msp-layout-region,.msp-plugin .msp-layout-static,.msp-plugin .msp-scrollable-container,.msp-plugin .msp-control-row,.msp-plugin .msp-control-row>div,.msp-plugin .msp-control-current,.msp-plugin .msp-control-group-header,.msp-plugin .msp-control-group-header>button,.msp-plugin .msp-control-group-header div,.msp-plugin .msp-control-group-footer,.msp-plugin .msp-row-text,.msp-plugin .msp-help-text,.msp-plugin .msp-help-row,.msp-plugin .msp-help-row>div{background:var(--buret-panel-bg)!important;border-color:var(--buret-panel-line)!important;color:var(--buret-panel-text)!important}
-.msp-plugin .msp-form-control,.msp-plugin .msp-control-row select,.msp-plugin .msp-control-row button,.msp-plugin .msp-control-row input[type=text],.msp-plugin .msp-btn{background:var(--buret-panel-bg-strong)!important;border:none!important;border-radius:8px!important;color:var(--buret-panel-text)!important;box-shadow:none!important}
-.msp-plugin .msp-form-control:hover,.msp-plugin .msp-control-row select:hover,.msp-plugin .msp-control-row button:hover,.msp-plugin .msp-control-row input[type=text]:hover,.msp-plugin .msp-btn:hover,.msp-plugin .msp-btn-icon:hover,.msp-plugin .msp-btn-icon-small:hover{background:var(--buret-panel-hover)!important;color:var(--buret-panel-text)!important;outline:none!important}
-.msp-plugin .msp-control-row>span.msp-control-row-label,.msp-plugin .msp-control-row>button.msp-control-button-label,.msp-plugin .msp-control-group-header>span,.msp-plugin .msp-row-text>div,.msp-plugin .msp-help-row>span,.msp-plugin .msp-help-text>div,.msp-plugin .msp-help-text>p{color:var(--buret-panel-muted)!important}
-.msp-plugin .msp-plugin-layout_controls,.msp-plugin .msp-viewport-controls,.msp-plugin .msp-viewport-top-left-controls{filter:drop-shadow(0 8px 22px rgba(0,0,0,.22))}
-.msp-plugin ::-webkit-scrollbar-track{background:transparent!important}
-.msp-plugin ::-webkit-scrollbar-thumb{background:var(--buret-panel-scrollbar)!important;border-color:transparent!important}
-.hidden{display:none!important}"#
 }
 
 fn viewer_bridge_js() -> &'static str {
