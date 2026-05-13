@@ -2,6 +2,7 @@ import type { ShellActions, ShellViewState } from "../types";
 import { pageKind } from "./page-kinds";
 
 export function EditorTabs({ state, actions }: { state: ShellViewState; actions: ShellActions }) {
+  const activeTabIndex = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
   return (
     <div className="tab-strip" role="tablist" aria-label="Open structures">
       <div className="tab-history-controls" data-tauri-drag-region>
@@ -28,10 +29,10 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
           →
         </button>
       </div>
-      {state.tabs.map((tab) => {
+      {state.tabs.map((tab, index) => {
         const kind = pageKind(tab.location);
         const title = kind.title(tab.location, state);
-        const active = tab.id === state.activeTabId;
+        const active = index === activeTabIndex;
         return (
           <div
             key={tab.id}

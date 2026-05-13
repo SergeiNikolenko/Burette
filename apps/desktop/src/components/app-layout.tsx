@@ -4,6 +4,7 @@ import { ViewerArea } from "./editor-area";
 import { EditorTabs } from "./editor-area/editor-tabs";
 import { Sidebar } from "./sidebar";
 import type { ShellActions, ShellViewState } from "./types";
+import { isTauriRuntime } from "../lib/tauri";
 
 function clampSidebarWidth(width: number, maxSidebarWidth: number) {
   return Math.max(220, Math.min(maxSidebarWidth, Math.round(width)));
@@ -41,6 +42,7 @@ export function AppLayout({
     <main
       className="app-shell"
       data-theme={state.preferences.theme}
+      data-runtime={isTauriRuntime() ? "tauri" : "browser"}
       data-drop-active={state.dropActive || undefined}
       onDragEnter={onDragEnter}
       onDragOver={onDragOver}

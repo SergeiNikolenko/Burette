@@ -44,6 +44,7 @@ const [
   shortcutDocs,
   workspaceManifest,
   styles,
+  gridViewer,
 ] = await Promise.all([
   source('apps/desktop/src/App.tsx'),
   source('apps/desktop/src/stores/ui-store.ts'),
@@ -81,6 +82,7 @@ const [
   source('docs/keyboard-shortcuts.md'),
   source('pnpm-workspace.yaml'),
   source('apps/desktop/src/styles.css'),
+  source('PreviewExtension/Web/grid-viewer.js'),
 ]);
 
 assert.match(uiStore, /export const useUIStore = create<UIState>/);
@@ -139,6 +141,8 @@ assert.match(moleculeStore, /export type MoleculeTab/);
 assert.match(moleculeStore, /export type SessionTab/);
 assert.match(moleculeStore, /createFileTab/);
 assert.match(moleculeStore, /createSettingsTab/);
+assert.match(moleculeStore, /syncTabSequence/);
+assert.match(moleculeStore, /dedupeTabIds/);
 assert.match(moleculeStore, /navigateBack:/);
 assert.match(moleculeStore, /navigateForward:/);
 assert.match(moleculeStore, /restoreSession:/);
@@ -186,14 +190,18 @@ assert.match(main, /<ErrorBoundary>/);
 assert.match(editorArea, /from "\.\/page-kinds"/);
 assert.match(editorArea, /state\.tabs\.length > 0/);
 assert.match(editorArea, /state\.tabs/);
+assert.match(editorArea, /state\.activeTabId \?\? state\.activeTab\?\.id/);
+assert.match(editorArea, /activeTabIndex/);
 assert.match(editorArea, /kind\.keepAlive/);
 assert.match(editorArea, /kind\.Component/);
 assert.match(editorArea, /className="page-stack"/);
 assert.match(editorArea, /className="page-surface"/);
+assert.match(editorArea, /data-page-kind=\{kind\.kind\}/);
 assert.match(editorArea, /kind: "launcher"/);
 assert.doesNotMatch(editorArea, /function WelcomePanel/);
 assert.match(editorTabs, /New tab/);
 assert.match(editorTabs, /state\.tabs\.map/);
+assert.match(editorTabs, /activeTabIndex/);
 assert.match(editorTabs, /pageKind\(tab\.location\)/);
 assert.match(editorTabs, /actions\.selectTab\(tab\.id\)/);
 assert.match(editorTabs, /actions\.closeTab\(tab\.id\)/);
@@ -216,7 +224,12 @@ assert.match(fileKind, /kind: "file"/);
 assert.match(fileKind, /path: location\.path/);
 assert.match(fileKind, /className="molecule-stage"/);
 assert.match(fileKind, /className="viewer-iframe"/);
-assert.match(fileKind, /sandbox="allow-scripts allow-downloads"/);
+assert.match(fileKind, /const sandbox = tauriRuntime \? "allow-scripts allow-downloads" : "allow-scripts allow-downloads allow-same-origin"/);
+assert.match(fileKind, /srcDoc=\{document\.runtimePath\}/);
+assert.match(gridViewer, /function resolveTheme\(value\)/);
+assert.match(gridViewer, /prefers-color-scheme: light/);
+assert.match(gridViewer, /function installThemeListener\(cfg\)/);
+assert.doesNotMatch(gridViewer, /const theme = cfg\.theme === 'light' \? 'light' : 'dark'/);
 assert.match(styles, /\.molecule-stage/);
 assert.match(styles, /inset: var\(--chrome-height\) 0 0/);
 assert.match(styles, /--chrome-drag-height: 56px/);
@@ -253,7 +266,14 @@ assert.match(sidebar, /fillRule="evenodd"/);
 assert.match(sidebar, /from "\.\.\/\.\.\/lib\/instance"/);
 assert.match(sidebar, /appInstanceLabel/);
 assert.match(sidebar, /className="sidebar-product"/);
-assert.match(sidebar, /actions\.openSettings/);
+assert.match(sidebar, /sidebar-workspace-menu/);
+assert.match(sidebar, /Choose workspace\.\.\./);
+assert.match(sidebar, /Open folder/);
+assert.doesNotMatch(sidebar, /actions\.openSettings/);
+assert.doesNotMatch(sidebar, /Open preferences/);
+assert.match(app, /openPath/);
+assert.match(app, /chooseWorkspace/);
+assert.match(app, /openWorkspaceFolder/);
 assert.doesNotMatch(sidebar, /SidebarUtility/);
 assert.doesNotMatch(sidebar, /Quick Look/);
 assert.doesNotMatch(sidebar, /actions\.resetQuickLook\(\)/);
@@ -261,15 +281,25 @@ assert.doesNotMatch(sidebar, /sidebar-title/);
 assert.doesNotMatch(sidebar, /Open Structures/);
 assert.doesNotMatch(appLayout + sidebar + editorTabs, /◧|◨/);
 assert.match(settingsPanel, /<h1>Preferences<\/h1>/);
-assert.match(settingsPanel, /settings-card/);
+assert.match(settingsPanel, /className="settings-panel"/);
+assert.match(settingsPanel, /<EditorScrollContainer>/);
+assert.match(settingsPanel, /title="Display"/);
+assert.match(settingsPanel, /title="Structure Rendering"/);
+assert.match(settingsPanel, /title="System"/);
 assert.match(settingsPanel, /from "\.\/setting-control"/);
-assert.match(settingsPanel, /<SettingSwitch/);
-assert.match(settingControl, /export function SettingSwitch/);
+assert.match(settingsPanel, /SettingsSection/);
+assert.match(settingsPanel, /ToggleControl/);
+assert.match(settingControl, /export function SettingsSection/);
+assert.match(settingControl, /export function ToggleControl/);
 assert.match(settingControl, /role="switch"/);
 assert.match(settingControl, /aria-label=\{label\}/);
 assert.match(settingControl, /export function SettingsActionButton/);
-assert.match(styles, /\.setting-switch/);
-assert.match(styles, /\.setting-select/);
+assert.match(styles, /\.settings-toggle/);
+assert.match(styles, /\.settings-select/);
+assert.match(styles, /\.settings-panel-content \{[^}]*margin: 0 auto/s);
+assert.match(styles, /\.page-surface\[data-page-kind="settings"\] \{[^}]*overflow: hidden/s);
+assert.match(styles, /\.page-surface:not\(\[data-active\]\) \{[^}]*display: none/s);
+assert.match(styles, /\.editor-progressive-blur/);
 assert.match(commandPalette, /Open Recent:/);
 assert.match(commandPalette, /Open Structure: /);
 assert.match(commandPalette, /Clear Recent Structures/);

@@ -152,11 +152,11 @@ fn grid_html(
     } else {
         "burette-opaque-background"
     };
-    let grid_css = asset_url(&assets.join("grid.css"));
+    let grid_css = versioned_asset_url(&assets.join("grid.css"));
     let config_js = asset_url(&runtime.join("preview-config.js"));
     let records_js = asset_url(&runtime.join("preview-grid-records.js"));
-    let rdkit_js = asset_url(&assets.join("rdkit").join("RDKit_minimal.js"));
-    let grid_js = asset_url(&assets.join("grid-viewer.js"));
+    let rdkit_js = versioned_asset_url(&assets.join("rdkit").join("RDKit_minimal.js"));
+    let grid_js = versioned_asset_url(&assets.join("grid-viewer.js"));
     format!(
         r#"<!doctype html>
 <html lang="en">
@@ -186,6 +186,10 @@ fn grid_html(
 </body>
 </html>"#
     )
+}
+
+fn versioned_asset_url(path: &Path) -> String {
+    format!("{}?v=grid-ui-v4", asset_url(path))
 }
 
 fn grid_can_preview(extension: &str) -> bool {
