@@ -69,12 +69,17 @@ try {
   const staticAgent = await get(`${base}/burette-agent.js`);
   assert.equal(staticAgent.statusCode, 200);
   assert.match(staticAgent.body, /window\.BurreteAgent/);
+  const staticViewerRuntimeCSS = await get(`${base}/viewer-runtime.css`);
+  assert.equal(staticViewerRuntimeCSS.statusCode, 200);
+  assert.match(staticViewerRuntimeCSS.body, /#buret-toolbar\.collapsed:hover/);
+  const staticViewerShell = await get(`${base}/viewer-shell.js`);
+  assert.equal(staticViewerShell.statusCode, 200);
+  assert.match(staticViewerShell.body, /buret-renderer-choice/);
 
   const htmlWithToken = await get(ready.url);
   assert.equal(htmlWithToken.statusCode, 200);
-  assert.match(htmlWithToken.body, /#buret-toolbar\.collapsed:hover/);
-  assert.match(htmlWithToken.body, /buret-renderer-choice/);
-  assert.match(htmlWithToken.body, /aria-label="Expand controls"/);
+  assert.match(htmlWithToken.body, /viewer-runtime\.css/);
+  assert.match(htmlWithToken.body, /viewer-shell\.js/);
   const cookie = htmlWithToken.headers['set-cookie']?.find(value => value.startsWith('BurreteAgentPreviewToken='));
   assert.ok(cookie, 'authorized HTML response should set the preview token cookie');
 
