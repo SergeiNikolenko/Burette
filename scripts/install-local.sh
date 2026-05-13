@@ -33,21 +33,33 @@ fi
 clean_detritus() {
   local path="$1"
   [[ -e "$path" ]] || return 0
-  if [[ "$path" == *.app || "$path" == *.appex ]]; then
-    xattr -cr "$path" 2>/dev/null || true
-    dot_clean -m "$path" 2>/dev/null || true
-  fi
-  if [[ -d "$path" ]]; then
-    find "$path" \( -name '._*' -o -name '.DS_Store' \) -delete 2>/dev/null || true
-    while IFS= read -r -d '' bundle; do
-      for attr in com.apple.FinderInfo 'com.apple.fileprovider.fpfs#P' com.apple.ResourceFork; do
-        xattr -d "$attr" "$bundle" 2>/dev/null || true
+  local attrs=(
+    com.apple.FinderInfo
+    'com.apple.fileprovider.fpfs#P'
+    com.apple.provenance
+    com.apple.ResourceFork
+  )
+  clean_bundle() {
+    local bundle="$1"
+    xattr -cr "$bundle" 2>/dev/null || true
+    dot_clean -m "$bundle" 2>/dev/null || true
+    while IFS= read -r -d '' entry; do
+      for attr in "${attrs[@]}"; do
+        xattr -d "$attr" "$entry" 2>/dev/null || true
       done
-    done < <(find "$path" -type d \( -name '*.app' -o -name '*.appex' \) -print0 2>/dev/null)
-  fi
-  for attr in com.apple.FinderInfo 'com.apple.fileprovider.fpfs#P' com.apple.ResourceFork; do
+    done < <(find "$bundle" -print0 2>/dev/null)
+  }
+  for attr in "${attrs[@]}"; do
     xattr -d "$attr" "$path" 2>/dev/null || true
   done
+  if [[ "$path" == *.app || "$path" == *.appex ]]; then
+    clean_bundle "$path"
+  elif [[ -d "$path" ]]; then
+    find "$path" \( -name '._*' -o -name '.DS_Store' \) -delete 2>/dev/null || true
+    while IFS= read -r -d '' bundle; do
+      clean_bundle "$bundle"
+    done < <(find "$path" -type d \( -name '*.app' -o -name '*.appex' \) -prune -print0 2>/dev/null)
+  fi
 }
 echo "Unregistering old Burrete extensions, if any..."
 pkill -f "$DEST/Contents/MacOS/Burrete" 2>/dev/null || true
@@ -88,7 +100,8 @@ mkdir -p "$DEST_DIR"
 rm -rf "$DEST" "$LEGACY_OLD_DEST" "$LEGACY_BURET_DEST" "$LEGACY_XYZ_DEST"
 ditto --norsrc --noextattr "$APP" "$DEST"
 clean_detritus "$DEST"
-codesign --force --deep --sign - "$DEST" >/dev/null
+codesign --force --sign - --entitlements "$ROOT/PreviewExtension/BurretePreview.entitlements" "$APPEX" >/dev/null
+codesign --force --sign - "$DEST" >/dev/null
 clean_detritus "$DEST"
 codesign --verify --deep --strict "$DEST"
 

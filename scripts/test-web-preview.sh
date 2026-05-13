@@ -211,8 +211,8 @@ function assert(condition, message) {
 assert(index.includes('role="toolbar"'), 'preview HTML must expose a toolbar role');
 assert(index.includes('./xyz-fast.js'), 'preview HTML must load the Fast XYZ renderer asset');
 assert(!index.includes('data-buret-action="fit"'), 'fit/fullscreen toolbar button should not be present');
-assert(index.includes('aria-label="Expand controls"'), 'toolbar handle should default to expanding collapsed controls');
-assert(index.includes('aria-expanded="false"'), 'toolbar handle should expose collapsed state');
+assert(index.includes('aria-label="Collapse controls"'), 'toolbar handle should collapse controls');
+assert(index.includes('aria-expanded="true"'), 'toolbar handle should expose expanded state');
 assert(index.includes('top: var(--buret-toolbar-safe-top); right: 12px; left: auto'), 'toolbar should honor the safe top inset');
 assert(index.includes('data-buret-action="theme"'), 'toolbar should expose a separate theme toggle');
 assert(index.includes('data-buret-action="open-vesta"'), 'toolbar should expose a VESTA handoff button');
@@ -380,8 +380,9 @@ assert(viewer.includes('buret.toolbar.collapsed'), 'viewer.js must remember comp
 assert(viewer.includes('TOOLBAR_POSITION_VERSION'), 'viewer.js must reset stale toolbar positions');
 assert(viewer.includes("TOOLBAR_POSITION_VERSION = '8'"), 'toolbar position cache should invalidate pre-compact-toolbar positions');
 assert(index.includes('buret-renderer-choice'), 'preview HTML must use compact renderer choice controls');
-assert(index.includes('aria-label="Expand controls"'), 'preview HTML should default the compact toolbar to a collapsed affordance');
-assert(index.includes('#buret-toolbar.collapsed:hover'), 'preview HTML should reveal compact toolbar controls on hover');
+assert(index.includes('aria-label="Collapse controls"'), 'preview HTML should expose the toolbar grip affordance');
+assert(index.includes('aria-expanded="true"'), 'preview HTML should default the toolbar grip to expanded');
+assert(!index.includes('#buret-toolbar.collapsed:hover'), 'preview HTML should keep collapsed toolbar controls hidden until toggled');
 assert(!/>L<|>Seq<|>Light<|>VESTA</.test(index), 'preview HTML must not expose legacy text toolbar controls');
 assert(viewer.includes("mode: 'custom'"), 'viewer.js must distinguish custom toolbar positions from defaults');
 assert(!viewer.includes('initMolstarRightPanelToggle'), 'viewer.js must keep Mol* right-side buttons native');
