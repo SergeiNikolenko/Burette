@@ -2,7 +2,7 @@
 
 ## Boundary
 
-Burette's Quick Look extension is built from `PreviewExtension/` through
+Burrete's Quick Look extension is built from `PreviewExtension/` through
 `Burrete.xcodeproj`. The final local app must contain:
 
 ```text

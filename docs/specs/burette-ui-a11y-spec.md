@@ -2,7 +2,7 @@
 
 ## Summary
 
-Make the Burette Tauri shell usable with keyboard and assistive technologies.
+Make the Burrete Tauri shell usable with keyboard and assistive technologies.
 The app has a compact sidebar, tab strip, Settings page, status surface, and
 embedded preview controls; each needs predictable focus, labels, and shortcuts.
 

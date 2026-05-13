@@ -3,7 +3,7 @@
 ## Summary
 
 Unify the visual theme pipeline for the Tauri shell, Settings page, and embedded
-preview runtime. The shell should follow a restrained Writer-inspired macOS
+preview runtime. The shell should follow a restrained native macOS
 style, while the molecular viewer keeps renderer-specific controls and canvas
 backgrounds predictable.
 
