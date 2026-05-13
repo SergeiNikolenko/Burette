@@ -72,7 +72,6 @@ Always include these fixture groups in latency checks:
 - `apps/desktop/src/stores/settings-store.ts`
 - `apps/desktop/src-tauri/src/commands.rs`
 - `apps/desktop/src-tauri/src/preview/runtime.rs`
-- `scripts/test-web-preview.sh`
 - `tests/fixtures/BurettePreviewSamples/`
 - future latency tests under `tests/`
 
