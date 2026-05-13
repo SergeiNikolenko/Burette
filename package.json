@@ -1,6 +1,6 @@
 {
   "name": "burrete",
-  "version": "0.10.31",
+  "version": "0.10.32",
   "private": true,
   "description": "macOS menu bar app and Quick Look extension for molecular previews: Mol* 3D, fast XYZ, xyzrender SVG, and RDKit grids.",
   "scripts": {
