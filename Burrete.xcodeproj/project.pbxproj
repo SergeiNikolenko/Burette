@@ -7,60 +7,15 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		47FCA5D382862E1453313DBE /* BurreteApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A22A79402DCF99A8F73E63C9 /* BurreteApp.swift */; };
-		1B0A192E03A98BBEF19FE524 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E19FAD5D706EFF2DCADAC02E /* ContentView.swift */; };
-		E8B6F5D5A1C74396A1D13711 /* BurreteUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8B6F5D4A1C74396A1D13711 /* BurreteUpdater.swift */; };
-		B88A1B0D9C2F4E7A8D3C6B11 /* MoleculeViewerWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B88A1B0C9C2F4E7A8D3C6B11 /* MoleculeViewerWindowController.swift */; };
-		A11111111111111111111101 /* PlatformBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11111111111111111111100 /* PlatformBridge.swift */; };
-		A11111111111111111111103 /* MoleculeViewerScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11111111111111111111102 /* MoleculeViewerScene.swift */; };
-		3F8B96A03E7544E6A395D201 /* MoleculeGridPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F8B96A03E7544E6A395D200 /* MoleculeGridPreview.swift */; };
 		3F8B96A03E7544E6A395D202 /* MoleculeGridPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F8B96A03E7544E6A395D200 /* MoleculeGridPreview.swift */; };
-		71B2D3E4F5A60718293A4B5C /* RendererPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71B2D3E4F5A60718293A4B5B /* RendererPolicy.swift */; };
 		71B2D3E4F5A60718293A4B5D /* RendererPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71B2D3E4F5A60718293A4B5B /* RendererPolicy.swift */; };
-		2A6C3FDEB8E145A2A9364F01 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8B707533C58E4E3C9B6E6E15 /* Assets.xcassets */; };
-		B88A1B0E9C2F4E7A8D3C6B11 /* Web in Resources */ = {isa = PBXBuildFile; fileRef = 4ADF66CA120EDD24C9E3F203 /* Web */; };
 		3C65656FB6FE8E52854AC3F4 /* PreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA02CDF88EC813372195D216 /* PreviewViewController.swift */; };
 		A11111111111111111111105 /* QuickLookPreviewSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11111111111111111111104 /* QuickLookPreviewSurface.swift */; };
 		E31816093C5AEC762F9638CB /* Web in Resources */ = {isa = PBXBuildFile; fileRef = 4ADF66CA120EDD24C9E3F203 /* Web */; };
-		A0E5E86E854F89E5A48C3DB0 /* BurretePreview.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 664D234BD361BA8FA6C574ED /* BurretePreview.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
-/* Begin PBXContainerItemProxy section */
-		CA36266CEBABA92D8B1FE194 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 16EEAF57BAFC2A41CAB7C99A /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 61BF5421FB639DEF491CFBE0;
-			remoteInfo = BurretePreview;
-		};
-/* End PBXContainerItemProxy section */
-
-/* Begin PBXCopyFilesBuildPhase section */
-		B4D0989F6873491838BA234A /* Embed App Extensions */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-			files = (
-				A0E5E86E854F89E5A48C3DB0 /* BurretePreview.appex in Embed App Extensions */,
-			);
-			name = "Embed App Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
-
 /* Begin PBXFileReference section */
-		D9730C12B890D116AC692E1F /* Burrete.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Burrete.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		664D234BD361BA8FA6C574ED /* BurretePreview.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BurretePreview.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		A22A79402DCF99A8F73E63C9 /* BurreteApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurreteApp.swift; sourceTree = "<group>"; };
-		E19FAD5D706EFF2DCADAC02E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		E8B6F5D4A1C74396A1D13711 /* BurreteUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurreteUpdater.swift; sourceTree = "<group>"; };
-		B88A1B0C9C2F4E7A8D3C6B11 /* MoleculeViewerWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Platform/MoleculeViewerWindowController.swift; sourceTree = "<group>"; };
-		A11111111111111111111100 /* PlatformBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Platform/PlatformBridge.swift; sourceTree = "<group>"; };
-		A11111111111111111111102 /* MoleculeViewerScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoleculeViewerScene.swift; sourceTree = "<group>"; };
-		8B707533C58E4E3C9B6E6E15 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		6E373F91487569133D571598 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		8AD874A7BD1213FF583AB869 /* Burrete.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Burrete.entitlements; sourceTree = "<group>"; };
 		AA02CDF88EC813372195D216 /* PreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Platform/PreviewViewController.swift; sourceTree = "<group>"; };
 		A11111111111111111111104 /* QuickLookPreviewSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickLookPreviewSurface.swift; sourceTree = "<group>"; };
 		3F8B96A03E7544E6A395D200 /* MoleculeGridPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoleculeGridPreview.swift; sourceTree = "<group>"; };
@@ -77,7 +32,6 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		61D85E48ABD4C58BF0072A49 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		EDE31F8E8E26065E582B8440 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
 
@@ -85,7 +39,6 @@
 		2E682101185D3B32FB956CAD = {
 			isa = PBXGroup;
 			children = (
-				FDBDEEC77EA1DB023A30F615 /* App */,
 				AEC1F3248E3064F59FE6E9BC /* PreviewExtension */,
 				97E8C637FB2B333FCF3DA441 /* scripts */,
 				C2959D171E182DEA26D7FE92 /* samples */,
@@ -94,22 +47,6 @@
 				0398CCD0F49298B10A3D76A4 /* LICENSE */,
 				5ADE8A4128725EB9150C196B /* Products */,
 			);
-			sourceTree = "<group>";
-		};
-		FDBDEEC77EA1DB023A30F615 /* App */ = {
-			isa = PBXGroup;
-			children = (
-				A22A79402DCF99A8F73E63C9 /* BurreteApp.swift */,
-				E19FAD5D706EFF2DCADAC02E /* ContentView.swift */,
-				A11111111111111111111100 /* PlatformBridge.swift */,
-				E8B6F5D4A1C74396A1D13711 /* BurreteUpdater.swift */,
-				B88A1B0C9C2F4E7A8D3C6B11 /* MoleculeViewerWindowController.swift */,
-				A11111111111111111111102 /* MoleculeViewerScene.swift */,
-				8B707533C58E4E3C9B6E6E15 /* Assets.xcassets */,
-				6E373F91487569133D571598 /* Info.plist */,
-				8AD874A7BD1213FF583AB869 /* Burrete.entitlements */,
-			);
-			path = App;
 			sourceTree = "<group>";
 		};
 		AEC1F3248E3064F59FE6E9BC /* PreviewExtension */ = {
@@ -146,7 +83,6 @@
 		5ADE8A4128725EB9150C196B /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				D9730C12B890D116AC692E1F /* Burrete.app */,
 				664D234BD361BA8FA6C574ED /* BurretePreview.appex */,
 			);
 			name = Products;
@@ -155,25 +91,6 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		C9F45524962D088FBA96DA08 /* Burrete */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = B5CB73E473562139D609B498 /* Build configuration list for PBXNativeTarget "Burrete" */;
-			buildPhases = (
-				AD7F4DA0D2B5600DAD6CC1D4 /* Sources */,
-				61D85E48ABD4C58BF0072A49 /* Frameworks */,
-				1D1DCE0D308435F6082AAF5E /* Resources */,
-				B4D0989F6873491838BA234A /* Embed App Extensions */,
-				7E7F01C829F8540000010002 /* Clean app detritus before codesign */,
-			);
-			buildRules = ();
-			dependencies = (
-				3FC4DC70C3FB30E4043CD305 /* PBXTargetDependency */,
-			);
-			name = Burrete;
-			productName = Burrete;
-			productReference = D9730C12B890D116AC692E1F /* Burrete.app */;
-			productType = "com.apple.product-type.application";
-		};
 		61BF5421FB639DEF491CFBE0 /* BurretePreview */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = B1961E2A76BF7D259B33E151 /* Build configuration list for PBXNativeTarget "BurretePreview" */;
@@ -201,9 +118,6 @@
 				LastSwiftUpdateCheck = 1610;
 				LastUpgradeCheck = 1610;
 				TargetAttributes = {
-					C9F45524962D088FBA96DA08 = {
-						CreatedOnToolsVersion = 16.1;
-					};
 					61BF5421FB639DEF491CFBE0 = {
 						CreatedOnToolsVersion = 16.1;
 					};
@@ -219,22 +133,12 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				C9F45524962D088FBA96DA08 /* Burrete */,
 				61BF5421FB639DEF491CFBE0 /* BurretePreview */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		1D1DCE0D308435F6082AAF5E /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				2A6C3FDEB8E145A2A9364F01 /* Assets.xcassets in Resources */,
-				B88A1B0E9C2F4E7A8D3C6B11 /* Web in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		789E2D0E9032EB7EA72BA43E /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -286,38 +190,9 @@
 			shellScript = "set -euo pipefail\n\necho \"Cleaning extended attributes and AppleDouble files before codesign...\"\n\nclean_path() {\n  local path=\"$1\"\n  [ -e \"$path\" ] || return 0\n  if command -v xattr >/dev/null 2>&1; then\n    xattr -cr \"$path\" || true\n  fi\n  if command -v dot_clean >/dev/null 2>&1; then\n    dot_clean -m \"$path\" || true\n  fi\n  find \"$path\" \\( -name \"._*\" -o -name \".DS_Store\" \\) -delete || true\n}\n\nclean_path \"${SRCROOT}/PreviewExtension/Web\"\nclean_path \"${CODESIGNING_FOLDER_PATH}\"\n";
 		};
 
-		7E7F01C829F8540000010002 /* Clean app detritus before codesign */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = ();
-			inputFileListPaths = ();
-			inputPaths = ();
-			name = "Clean app detritus before codesign";
-			outputFileListPaths = ();
-			outputPaths = ();
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\n\necho \"Cleaning app bundle extended attributes before codesign...\"\n\npath=\"${CODESIGNING_FOLDER_PATH}\"\n[ -e \"$path\" ] || exit 0\nif command -v xattr >/dev/null 2>&1; then\n  xattr -cr \"$path\" || true\nfi\nif command -v dot_clean >/dev/null 2>&1; then\n  dot_clean -m \"$path\" || true\nfi\nfind \"$path\" \\( -name \"._*\" -o -name \".DS_Store\" \\) -delete || true\n";
-		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		AD7F4DA0D2B5600DAD6CC1D4 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				47FCA5D382862E1453313DBE /* BurreteApp.swift in Sources */,
-				1B0A192E03A98BBEF19FE524 /* ContentView.swift in Sources */,
-				A11111111111111111111101 /* PlatformBridge.swift in Sources */,
-				E8B6F5D5A1C74396A1D13711 /* BurreteUpdater.swift in Sources */,
-				B88A1B0D9C2F4E7A8D3C6B11 /* MoleculeViewerWindowController.swift in Sources */,
-				A11111111111111111111103 /* MoleculeViewerScene.swift in Sources */,
-				3F8B96A03E7544E6A395D201 /* MoleculeGridPreview.swift in Sources */,
-				71B2D3E4F5A60718293A4B5C /* RendererPolicy.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		163085407F6A19FD620C881A /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -330,10 +205,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXTargetDependency section */
-		3FC4DC70C3FB30E4043CD305 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = 61BF5421FB639DEF491CFBE0 /* BurretePreview */; targetProxy = CA36266CEBABA92D8B1FE194 /* PBXContainerItemProxy */; };
-/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		DA925284BA893A0B7CD58824 /* Debug */ = {
@@ -404,54 +275,6 @@
 			};
 			name = Release;
 		};
-		7371A6B6FA3DC61535FF98BB /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = App/Burrete.entitlements;
-				CODE_SIGN_IDENTITY = "-";
-				CODE_SIGN_STYLE = Manual;
-				COMBINE_HIDPI_IMAGES = YES;
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
-				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = App/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", );
-				MARKETING_VERSION = 0.10.29;
-				PRODUCT_BUNDLE_IDENTIFIER = com.local.BurreteV10;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 5.0;
-				SUPPORTED_PLATFORMS = macosx;
-				SUPPORTS_MACCATALYST = NO;
-			};
-			name = Debug;
-		};
-		5D7977E946686638EB4B0BD7 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = App/Burrete.entitlements;
-				CODE_SIGN_IDENTITY = "-";
-				CODE_SIGN_STYLE = Manual;
-				COMBINE_HIDPI_IMAGES = YES;
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
-				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = App/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", );
-				MARKETING_VERSION = 0.10.29;
-				PRODUCT_BUNDLE_IDENTIFIER = com.local.BurreteV10;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 5.0;
-				SUPPORTED_PLATFORMS = macosx;
-				SUPPORTS_MACCATALYST = NO;
-			};
-			name = Release;
-		};
 		7C41880A1B0B737541AB8894 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -467,7 +290,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PreviewExtension/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks", );
-				MARKETING_VERSION = 0.10.29;
+				MARKETING_VERSION = 0.10.30;
 				PRODUCT_BUNDLE_IDENTIFIER = com.local.BurreteV10.Preview;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -492,7 +315,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PreviewExtension/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks", );
-				MARKETING_VERSION = 0.10.29;
+				MARKETING_VERSION = 0.10.30;
 				PRODUCT_BUNDLE_IDENTIFIER = com.local.BurreteV10.Preview;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -510,15 +333,6 @@
 			buildConfigurations = (
 				DA925284BA893A0B7CD58824 /* Debug */,
 				DE0782D262A66EE774C897C3 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		B5CB73E473562139D609B498 /* Build configuration list for PBXNativeTarget "Burrete" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				7371A6B6FA3DC61535FF98BB /* Debug */,
-				5D7977E946686638EB4B0BD7 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
