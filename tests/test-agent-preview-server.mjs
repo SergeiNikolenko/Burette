@@ -72,9 +72,12 @@ try {
   const staticViewerRuntimeCSS = await get(`${base}/viewer-runtime.css`);
   assert.equal(staticViewerRuntimeCSS.statusCode, 200);
   assert.doesNotMatch(staticViewerRuntimeCSS.body, /#buret-toolbar\.collapsed:hover/);
+  assert.match(staticViewerRuntimeCSS.body, /#buret-toolbar\.buret-suppressed-by-molstar-panel/);
   const staticViewerShell = await get(`${base}/viewer-shell.js`);
   assert.equal(staticViewerShell.statusCode, 200);
   assert.match(staticViewerShell.body, /buret-renderer-choice/);
+  assert.match(staticViewerShell.body, />Seq</);
+  assert.doesNotMatch(staticViewerShell.body, /VESTA/);
 
   const htmlWithToken = await get(ready.url);
   assert.equal(htmlWithToken.statusCode, 200);
