@@ -1,7 +1,5 @@
 packages:
   - apps/*
-  - packages/*
-  - tools/*
 
 catalog:
   "@hugeicons/core-free-icons": ^4.1.2
