@@ -58,6 +58,29 @@ function createTabId() {
   return `tab-${tabSequence}`;
 }
 
+function syncTabSequence(tabs: MoleculeTab[]) {
+  let max = tabSequence;
+  for (const tab of tabs) {
+    const match = /^tab-(\d+)$/.exec(tab.id);
+    if (match) max = Math.max(max, Number(match[1]));
+  }
+  tabSequence = max;
+}
+
+function dedupeTabIds(tabs: MoleculeTab[]) {
+  syncTabSequence(tabs);
+  const seen = new Set<string>();
+  return tabs.map((tab) => {
+    if (!seen.has(tab.id)) {
+      seen.add(tab.id);
+      return tab;
+    }
+    const next = { ...tab, id: createTabId() };
+    seen.add(next.id);
+    return next;
+  });
+}
+
 export function createLauncherTab(id = createTabId()): MoleculeTab {
   return { id, location: { kind: "launcher" }, back: [], forward: [] };
 }
@@ -292,7 +315,7 @@ export const useMoleculeStore = create<MoleculeState>()(
       },
       restoreSession: (sessionTabs, activeIndex) =>
         set((state) => {
-          const tabs = ensureTabs(sessionTabs.map((tab) => hydrateTab(tab)).filter((tab): tab is MoleculeTab => tab !== null));
+        const tabs = dedupeTabIds(ensureTabs(sessionTabs.map((tab) => hydrateTab(tab)).filter((tab): tab is MoleculeTab => tab !== null)));
           const requested = activeIndex === null ? null : tabs[activeIndex]?.id ?? null;
           const activeTabId = activeTabIdOrFirst(tabs, requested);
           return { tabs, activeTabId, activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, state.documents) };
@@ -309,7 +332,7 @@ export const useMoleculeStore = create<MoleculeState>()(
       merge: (persisted, current) => {
         const stored = persisted as Partial<PersistedMoleculeState> | undefined;
         const documents = stored?.documents ?? current.documents;
-        const tabs = ensureTabs((stored?.tabs ?? current.tabs).map(cloneTab));
+        const tabs = dedupeTabIds(ensureTabs((stored?.tabs ?? current.tabs).map(cloneTab)));
         const activeTabId = activeTabIdOrFirst(tabs, stored?.activeTabId ?? current.activeTabId);
         return {
           ...current,
