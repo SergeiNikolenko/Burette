@@ -2,7 +2,7 @@
 
 ## Summary
 
-Prevent stale preview generation from mutating current UI state. Writer's
+Prevent stale preview generation from mutating current UI state. Burrete's
 workspace-switch hang spec uses epochs and cancellation flags for background
 work; Burrete needs the same idea for preview generation, renderer preference
 changes, and multi-file opens.
