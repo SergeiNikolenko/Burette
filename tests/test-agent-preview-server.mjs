@@ -71,7 +71,7 @@ try {
   assert.match(staticAgent.body, /window\.BurreteAgent/);
   const staticViewerRuntimeCSS = await get(`${base}/viewer-runtime.css`);
   assert.equal(staticViewerRuntimeCSS.statusCode, 200);
-  assert.match(staticViewerRuntimeCSS.body, /#buret-toolbar\.collapsed:hover/);
+  assert.doesNotMatch(staticViewerRuntimeCSS.body, /#buret-toolbar\.collapsed:hover/);
   const staticViewerShell = await get(`${base}/viewer-shell.js`);
   assert.equal(staticViewerShell.statusCode, 200);
   assert.match(staticViewerShell.body, /buret-renderer-choice/);

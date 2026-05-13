@@ -14,12 +14,14 @@ Burette-specific:
 
 ## Version Discipline
 
-Before a release, keep these versions aligned:
+Feature PRs do not need a version bump. Before a release, keep these versions
+aligned:
 
 - root `package.json`
 - root `package-lock.json`
+- Tauri `apps/desktop/src-tauri/tauri.conf.json`
 - Xcode `MARKETING_VERSION`
-- visible About/update version strings
+- visible About/update version strings exposed by the Tauri shell
 
 Run:
 
@@ -29,17 +31,13 @@ npm run check:release
 
 ## Pre-Release Checks
 
-Run the lightweight checks first:
+Run the fast PR checks first:
 
 ```bash
-npm run check:js
-npm run test:ui
-npm run test:web
-npm run test:agent
-npm run build:web
+npm run ci:fast
 ```
 
-Then build the macOS bundle:
+For native, packaging, Quick Look, or release changes, build the macOS bundle:
 
 ```bash
 ./scripts/build.sh
@@ -58,14 +56,19 @@ If Quick Look or renderer behavior changed, install and run forced previews:
 
 ## Release Script
 
-Use the project release helper when preparing a tagged artifact:
+Use the project release helper when preparing a tagged artifact locally:
 
 ```bash
 ./scripts/release.sh
 ```
 
-The release process must not overwrite existing tags. If a tag already exists,
-bump the version and rerun the release checks.
+The helper mirrors the GitHub release workflow locally: it builds the Tauri app,
+embeds `BurretePreview.appex`, and writes `build/release/Burrete.zip`.
+
+GitHub releases are explicit: push a `v*` tag that matches `package.json`, or
+run the Release workflow manually. The release process must not overwrite
+existing tags. If a tag already exists, bump the version and rerun the release
+checks.
 
 ## Artifact Requirements
 
@@ -76,6 +79,14 @@ Every release app bundle must satisfy:
 - Deep codesign verification passes.
 - Finder Quick Look can preview PDB, CIF, and XYZ samples.
 - Update metadata points to the Burette release endpoint.
+
+## In-App Updates
+
+The shipped app is the Tauri bundle from `apps/desktop/src-tauri`. It checks the
+Burette GitHub Releases endpoint on launch and from the app menu. A newer
+release offers `Install and Restart`; the installer command downloads the zipped
+`Burrete.app` release asset, validates the bundle, replaces the installed app,
+refreshes Quick Look registration, and relaunches Burrete.
 
 ## License Follow-Up
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { ask, open } from "@tauri-apps/plugin-dialog";
 import { AppLayout } from "./components/app-layout";
 import { CommandPalette } from "./components/command-palette";
 import type { ShellActions, ShellViewState } from "./components/types";
@@ -43,8 +43,8 @@ import {
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
 import { isTauriRuntime } from "./lib/tauri";
 import type { OpenDocumentsResult, RecentStructure } from "./types";
-import { checkForUpdates as requestUpdateCheck, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically } from "./update";
-import type { UpdatePreferences, UpdateState } from "./update";
+import { checkForUpdates as requestUpdateCheck, clearDismissedUpdate, dismissUpdate, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically, shouldPromptForUpdate } from "./update";
+import type { UpdatePreferences, UpdateRelease, UpdateState } from "./update";
 
 const filters = [
   {
@@ -83,6 +83,7 @@ export default function App() {
   const [update, setUpdate] = useState<UpdateState>(() => ({
     preferences: loadUpdatePreferences(),
     isChecking: false,
+    isInstalling: false,
     statusText: "No update check has run yet.",
     availableRelease: null,
   }));
@@ -149,7 +150,6 @@ export default function App() {
     openSettingsTab();
   }, [openSettingsTab]);
 
-  useMenuEvents({ chooseFiles, openSettings });
   useOpenEvents(openDocuments, setStatus);
   const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop } = useOpenDrop(openDocuments, setStatus);
 
@@ -168,6 +168,72 @@ export default function App() {
     }));
   }, []);
 
+  const installUpdate = useCallback(async (releaseOverride?: UpdateRelease | null) => {
+    const release = releaseOverride ?? update.availableRelease;
+    if (!release) return;
+    if (!release.installAsset) {
+      const url = releasePageUrl(release);
+      if (isTauriRuntime()) {
+        await invoke("open_external_url", { url });
+      } else {
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+      setStatus("Opened release page");
+      return;
+    }
+
+    if (!isTauriRuntime()) {
+      window.open(release.htmlUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    setUpdate((previous) => ({
+      ...previous,
+      isInstalling: true,
+      statusText: "Installing " + release.displayName + "... Burrete will restart when the update is ready.",
+    }));
+    setStatus("Installing update...");
+    try {
+      clearDismissedUpdate();
+      await invoke("install_update", {
+        request: {
+          tagName: release.tagName,
+          assetName: release.installAsset.name,
+          browserDownloadUrl: release.installAsset.browserDownloadUrl,
+          size: release.installAsset.size,
+        },
+      });
+    } catch (error) {
+      setUpdate((previous) => ({
+        ...previous,
+        isInstalling: false,
+        statusText: "Update install failed: " + (error instanceof Error ? error.message : String(error)),
+      }));
+      setStatus("Update install failed");
+    }
+  }, [update.availableRelease]);
+
+  const promptForUpdate = useCallback(async (release: UpdateRelease, automatic: boolean) => {
+    if (!shouldPromptForUpdate(release, automatic)) return;
+    const canInstall = release.installAsset !== null;
+    const message = canInstall
+      ? "Burrete " + release.tagName + " is available. Install it now and restart Burrete when the update is ready?"
+      : "Burrete " + release.tagName + " is available, but this release does not include an installable app archive.";
+    const accepted = isTauriRuntime()
+      ? await ask(message, {
+        title: "Update Available",
+        kind: "info",
+        okLabel: canInstall ? "Install and Restart" : "Open Release Page",
+        cancelLabel: "Later",
+      })
+      : window.confirm(message);
+    if (accepted) {
+      await installUpdate(release);
+    } else {
+      dismissUpdate(release);
+    }
+  }, [installUpdate]);
+
   const checkForUpdates = useCallback(async (automatic = false, channelOverride?: UpdatePreferences["channel"]) => {
     const channel = channelOverride ?? update.preferences.channel;
     setUpdate((previous) => ({
@@ -185,6 +251,11 @@ export default function App() {
           ? "Update available: " + release.displayName + " (" + release.tagName + ")." + (release.installAsset ? "" : " No downloadable app archive is attached to this release.")
           : "Burrete is up to date on " + channel + ".",
       }));
+      if (release) {
+        await promptForUpdate(release, automatic);
+      } else {
+        clearDismissedUpdate();
+      }
       if (automatic) markAutomaticCheck(true);
     } catch (error) {
       setUpdate((previous) => ({
@@ -194,7 +265,9 @@ export default function App() {
       }));
       if (automatic) markAutomaticCheck(false);
     }
-  }, [update.preferences.channel]);
+  }, [promptForUpdate, update.preferences.channel]);
+
+  useMenuEvents({ chooseFiles, openSettings, checkForUpdates });
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -297,6 +370,9 @@ export default function App() {
     checkForUpdates: async () => {
       await checkForUpdates(false);
     },
+    installUpdate: async () => {
+      await installUpdate();
+    },
     openUpdateRelease: async () => {
       const url = releasePageUrl(update.availableRelease);
       if (isTauriRuntime()) {
@@ -308,7 +384,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [canNavigateBack, canNavigateForward, chooseFiles, checkForUpdates, clearRecentStructures, closeActiveDocument, closeDocument, closeTab, closeAllDocuments, focusSidebarSearch, navigateBack, navigateForward, openCommandPalette, openNewTab, openRecentStructure, openSettings, selectDocument, setActiveTab, setPreference, setUpdatePreferences, toggleSidebar, update.availableRelease]);
+  }), [canNavigateBack, canNavigateForward, chooseFiles, checkForUpdates, clearRecentStructures, closeActiveDocument, closeDocument, closeTab, closeAllDocuments, focusSidebarSearch, installUpdate, navigateBack, navigateForward, openCommandPalette, openNewTab, openRecentStructure, openSettings, selectDocument, setActiveTab, setPreference, setUpdatePreferences, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 

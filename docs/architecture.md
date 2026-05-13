@@ -16,8 +16,8 @@ support.
   Finder runtime.
 - `PreviewExtension/Web/` owns the self-contained web preview runtime used by
   Quick Look.
-- `App/` and `Burrete.xcodeproj` own the native macOS wrapper used to build the
-  preview extension.
+- `Burrete.xcodeproj` owns the Swift Quick Look extension build. The shipped app
+  shell is the Tauri bundle under `apps/desktop/src-tauri/`.
 - `scripts/` owns build, install, release, vendor, preview, and diagnostic
   workflows.
 - `SPECs/` owns migration and product contracts.
@@ -126,7 +126,7 @@ them as the IPC contract.
 
 ## Quick Look Boundary
 
-Quick Look remains a Swift extension boundary. The bundle identifier stays:
+Quick Look remains the only Swift runtime boundary. The bundle identifier stays:
 
 ```text
 com.local.BurreteV10.Preview
