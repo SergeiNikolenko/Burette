@@ -1,9 +1,11 @@
 import type { OpenDocumentsResult, ViewerDocument, ViewerPreferences } from "../types";
+import previewFormatRegistry from "../../../../config/preview-formats.json";
 
 type FormatInfo = {
   molstarFormat: string;
   binary: boolean;
   externalOnly: boolean;
+  canOpenInVesta: boolean;
 };
 
 type GridRecord = {
@@ -117,7 +119,7 @@ function viewerHtml(
     tauriViewer: false,
     xyzrenderViewer: false,
     molstarAvailable: !format.externalOnly,
-    canOpenInVesta: false,
+    canOpenInVesta: format.canOpenInVesta,
     showPanelControls: true,
     defaultLayoutState: { left: "collapsed", right: "hidden", top: "hidden", bottom: "hidden" },
     ...(renderer === "xyz-fast"
@@ -389,20 +391,16 @@ function viewerRuntimeCss(preferences: ViewerPreferences) {
 }
 
 function formatForExtension(extension: string): FormatInfo {
-  if (["pdb", "ent", "pdbqt", "pqr"].includes(extension)) {
-    return { molstarFormat: "pdb", binary: false, externalOnly: false };
-  }
-  if (["cif", "mcif", "mmcif"].includes(extension)) {
-    return { molstarFormat: "mmcif", binary: false, externalOnly: false };
-  }
-  if (extension === "bcif") return { molstarFormat: "mmcif", binary: true, externalOnly: false };
-  if (["sdf", "sd"].includes(extension)) return { molstarFormat: "sdf", binary: false, externalOnly: false };
-  if (extension === "mol") return { molstarFormat: "mol", binary: false, externalOnly: false };
-  if (extension === "mol2") return { molstarFormat: "mol2", binary: false, externalOnly: false };
-  if (extension === "xyz") return { molstarFormat: "xyz", binary: false, externalOnly: false };
-  if (extension === "gro") return { molstarFormat: "gro", binary: false, externalOnly: false };
-  if (["cub", "cube", "in", "log", "out", "vasp"].includes(extension)) {
-    return { molstarFormat: "xyz", binary: false, externalOnly: true };
+  const format = previewFormatRegistry.formats.find((candidate) =>
+    candidate.extensions.includes(extension),
+  );
+  if (format?.viewer) {
+    return {
+      molstarFormat: format.viewer.molstarFormat,
+      binary: format.viewer.binary,
+      externalOnly: format.viewer.externalOnly,
+      canOpenInVesta: Boolean(format.canOpenInVesta),
+    };
   }
   throw new Error(`Unsupported structure extension: ${extension}`);
 }
@@ -428,7 +426,9 @@ function normalizeRendererMode(raw: string) {
 }
 
 function gridRequiresPreview(extension: string) {
-  return ["csv", "smi", "smiles", "tsv"].includes(extension);
+  return previewFormatRegistry.formats.some((format) =>
+    format.extensions.includes(extension) && Boolean(format.grid?.requiresPreview),
+  );
 }
 
 function fileExtension(path: string) {
