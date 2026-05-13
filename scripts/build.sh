@@ -107,6 +107,8 @@ grep -q 'com.local.burrete10.pdb' scripts/force-preview.sh || { echo "error: for
 
 require_asset PreviewExtension/Web/molstar.js
 require_asset PreviewExtension/Web/molstar.css
+require_asset PreviewExtension/Web/viewer-runtime.css
+require_asset PreviewExtension/Web/viewer-shell.js
 require_asset PreviewExtension/Web/burette-agent.js
 require_asset PreviewExtension/Web/viewer.js
 require_asset PreviewExtension/Web/grid-viewer.js
@@ -115,6 +117,7 @@ require_asset PreviewExtension/Web/rdkit/RDKit_minimal.js
 require_asset PreviewExtension/Web/rdkit/RDKit_minimal.wasm
 require_asset PreviewExtension/Web/xyz-fast.js
 node --check PreviewExtension/Web/viewer.js >/dev/null
+node --check PreviewExtension/Web/viewer-shell.js >/dev/null
 node --check PreviewExtension/Web/burette-agent.js >/dev/null
 node --check PreviewExtension/Web/grid-viewer.js >/dev/null
 node --check PreviewExtension/Web/xyz-fast.js >/dev/null
@@ -161,10 +164,12 @@ actual_pdb_type="$(/usr/libexec/PlistBuddy -c 'Print :UTExportedTypeDeclarations
 [[ -x "$LOCAL_APP/Contents/MacOS/burrete" ]] || { echo "error: built Tauri app executable missing: $LOCAL_APP/Contents/MacOS/burrete" >&2; exit 1; }
 [[ -d "$LOCAL_APP/Contents/PlugIns/BurretePreview.appex" ]] || { echo "error: embedded Quick Look extension missing in Tauri app." >&2; exit 1; }
 BUILT_WEB_INDEX="$LOCAL_APP/Contents/Resources/Web/index.html"
+BUILT_VIEWER_SHELL="$LOCAL_APP/Contents/Resources/Web/viewer-shell.js"
 [[ -s "$BUILT_WEB_INDEX" ]] || { echo "error: built web preview shell missing: $BUILT_WEB_INDEX" >&2; exit 1; }
-grep -q 'buret-renderer-choice' "$BUILT_WEB_INDEX" || { echo "error: built web preview shell is missing compact renderer controls." >&2; exit 1; }
-grep -q 'aria-label="Expand controls"' "$BUILT_WEB_INDEX" || { echo "error: built web preview shell is missing collapsed toolbar affordance." >&2; exit 1; }
-if grep -Eq '>L<|>Seq<|>Light<|>VESTA<' "$BUILT_WEB_INDEX"; then
+[[ -s "$BUILT_VIEWER_SHELL" ]] || { echo "error: built shared viewer shell missing: $BUILT_VIEWER_SHELL" >&2; exit 1; }
+grep -q 'buret-renderer-choice' "$BUILT_VIEWER_SHELL" || { echo "error: built shared viewer shell is missing compact renderer controls." >&2; exit 1; }
+grep -q 'aria-label="Expand controls"' "$BUILT_VIEWER_SHELL" || { echo "error: built shared viewer shell is missing collapsed toolbar affordance." >&2; exit 1; }
+if grep -Eq '>L<|>Seq<|>Light<|>VESTA<' "$BUILT_VIEWER_SHELL"; then
   echo "error: built web preview shell still contains legacy text toolbar controls." >&2
   exit 1
 fi
