@@ -367,7 +367,6 @@ Verification:
 
 ```bash
 npm run check:js
-npm run test:web
 npm run test:agent
 ```
 
@@ -424,7 +423,6 @@ Verification:
 
 ```bash
 npm run check:js
-npm run test:web
 npm run test:agent
 npm run build:tauri
 ./scripts/build.sh
