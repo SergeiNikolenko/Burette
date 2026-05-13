@@ -6,8 +6,11 @@
   const MAX_SDF_GRID_ATOMS = 900;
   const MAX_SDF_GRID_BONDS = 900;
   const SDF_GRID_PADDING = 4.0;
-  const TOOLBAR_POSITION_VERSION = '8';
+  const TOOLBAR_POSITION_VERSION = '10';
+  const TOOLBAR_COLLAPSED_VERSION = '3';
   const TOOLBAR_MARGIN = 12;
+  const FLOATING_LAYOUT_GAP = 12;
+  const PANEL_CLOSE_HIT_WIDTH = 38;
   const VIEWER_THEME_STORAGE_KEY = 'buret.viewer.theme';
   const DEFAULT_XYZRENDER_PRESETS = [
     { value: 'default', label: 'Default' },
@@ -129,6 +132,11 @@
   let orientationTrackingCleanup = null;
   let keyboardShortcutsInstalled = false;
   let themeListenerInstalled = false;
+  let floatingPanelTrackingInstalled = false;
+  let floatingLayoutFrame = 0;
+  let molstarViewportPanelOpen = false;
+  let molstarSelectionControlsOpen = false;
+  const draggableViewportPanels = new WeakSet();
 
   function applyConfigOptions(config) {
     panelControlsVisible = config.showPanelControls !== undefined ? !!config.showPanelControls : panelControlsVisible;
@@ -437,11 +445,6 @@
     if (!sent) setStatus('xyzrender preset switching is available only in the app or Quick Look viewer.', 'error');
   }
 
-  function requestOpenInVesta() {
-    const sent = postHostMessage({ type: 'action', message: 'open-vesta' });
-    if (!sent) setStatus('Opening in VESTA is available only in the app or Quick Look viewer.', 'error');
-  }
-
   function captureCurrentXyzrenderOrientationRef() {
     const config = activeConfig || {};
     const format = normalizeFormat(config.molstarFormat || config.format);
@@ -635,25 +638,25 @@
     toolbar.querySelector('[data-buret-action="theme"]')?.addEventListener('click', () => {
       toggleViewerTheme(viewer);
     });
-    const vestaButton = toolbar.querySelector('[data-buret-action="open-vesta"]');
-    if (vestaButton) {
-      vestaButton.classList.toggle('hidden', activeConfig?.canOpenInVesta !== true);
-      vestaButton.addEventListener('click', () => requestOpenInVesta());
-    }
-
     initToolbarDrag(toolbar);
     restoreToolbarCollapsed(toolbar, viewer);
+    installMolstarFloatingPanelTracking();
     updateToolbarVisibility();
     updateThemeButton();
     applyLayoutState(viewer);
   }
 
   function restoreToolbarCollapsed(toolbar, viewer) {
-    let collapsed = true;
+    let collapsed = false;
     try {
       const stored = window.localStorage && window.localStorage.getItem('buret.toolbar.collapsed');
-      if (stored === '0') collapsed = false;
-      else if (stored === '1') collapsed = true;
+      const version = window.localStorage && window.localStorage.getItem('buret.toolbar.collapsed.version');
+      if (version === TOOLBAR_COLLAPSED_VERSION) {
+        if (stored === '0') collapsed = false;
+        else if (stored === '1') collapsed = true;
+      } else {
+        window.localStorage && window.localStorage.removeItem('buret.toolbar.collapsed');
+      }
     } catch (_) {}
     setToolbarCollapsed(toolbar, collapsed, viewer, false);
   }
@@ -669,9 +672,13 @@
     if (persist) {
       try {
         window.localStorage && window.localStorage.setItem('buret.toolbar.collapsed', collapsed ? '1' : '0');
+        window.localStorage && window.localStorage.setItem('buret.toolbar.collapsed.version', TOOLBAR_COLLAPSED_VERSION);
+        window.localStorage && window.localStorage.removeItem('buret.toolbar.position');
       } catch (_) {}
     }
+    toolbar.dataset.defaultPosition = '1';
     repositionToolbar(toolbar);
+    updateFloatingLayoutOffsets();
     scheduleViewerResize(viewer, 40);
   }
 
@@ -696,6 +703,17 @@
     if (!hasSavedPosition) applyDefaultToolbarPosition(toolbar);
 
     let drag = null;
+    let ignoreNextGripClick = false;
+    const grip = toolbar.querySelector('[data-drag-handle]');
+    grip?.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (ignoreNextGripClick) {
+        ignoreNextGripClick = false;
+        return;
+      }
+      setToolbarCollapsed(toolbar, !toolbar.classList.contains('collapsed'), resizeState.viewer);
+    });
     toolbar.addEventListener('pointerdown', event => {
       if (event.target.closest('[data-buret-toggle]')) return;
       if (event.target.closest('select, input, textarea')) return;
@@ -725,11 +743,15 @@
     toolbar.addEventListener('pointerup', event => {
       if (!drag || event.pointerId !== drag.pointerId) return;
       const shouldToggle = !drag.moved && drag.startedOnHandle;
+      const startedOnHandle = drag.startedOnHandle;
+      const shouldSavePosition = drag.moved || !drag.startedOnHandle;
       try { toolbar.releasePointerCapture(event.pointerId); } catch (_) {}
       drag = null;
       if (shouldToggle) {
+        ignoreNextGripClick = true;
         setToolbarCollapsed(toolbar, !toolbar.classList.contains('collapsed'), resizeState.viewer);
-      } else {
+      } else if (shouldSavePosition) {
+        ignoreNextGripClick = startedOnHandle;
         toolbar.dataset.defaultPosition = '0';
         saveToolbarPosition(toolbar);
       }
@@ -737,6 +759,7 @@
     toolbar.addEventListener('pointercancel', () => { drag = null; });
     window.addEventListener('resize', () => {
       repositionToolbar(toolbar);
+      updateFloatingLayoutOffsets();
     });
   }
 
@@ -752,17 +775,8 @@
   }
 
   function applyDefaultToolbarPosition(toolbar) {
-    const main = document.querySelector('.msp-plugin .msp-layout-main');
-    const rect = main && main.getBoundingClientRect();
-    const viewportControls = document.querySelector('.msp-plugin .msp-viewport-controls');
-    const controlsRect = viewportControls && viewportControls.getBoundingClientRect();
-    const controlsVisible = controlsRect &&
-      controlsRect.width > 0 &&
-      controlsRect.height > 0 &&
-      window.getComputedStyle(viewportControls).display !== 'none';
-    const right = controlsVisible ? controlsRect.left - TOOLBAR_MARGIN : window.innerWidth - TOOLBAR_MARGIN;
-    const left = right - toolbar.offsetWidth;
-    const top = Math.max(toolbarSafeTop(), rect && rect.height > 0 ? rect.top + TOOLBAR_MARGIN : TOOLBAR_MARGIN);
+    const left = window.innerWidth - toolbar.offsetWidth - TOOLBAR_MARGIN;
+    const top = toolbarSafeTop();
     toolbar.dataset.defaultPosition = '1';
     moveToolbar(toolbar, left, top);
   }
@@ -775,6 +789,168 @@
     toolbar.style.left = Math.min(Math.max(margin, left), maxLeft) + 'px';
     toolbar.style.top = Math.min(Math.max(safeTop, top), maxTop) + 'px';
     toolbar.style.right = 'auto';
+    updateFloatingLayoutOffsets();
+  }
+
+  function updateFloatingLayoutOffsets() {
+    const root = document.documentElement;
+    const panelState = refreshMolstarViewportPanelState();
+    const toolbar = document.getElementById('buret-toolbar');
+    const toolbarRect = toolbar && !panelState.open ? toolbar.getBoundingClientRect() : null;
+    const toolbarBottom = toolbarRect ? toolbarRect.bottom + FLOATING_LAYOUT_GAP : toolbarSafeTop() + 40;
+    const viewportControls = document.querySelector('.msp-plugin .msp-viewport-controls');
+    const viewportControlsRect = viewportControls ? viewportControls.getBoundingClientRect() : null;
+    const selectionToolbarRect = visibleRect('.msp-plugin .msp-selection-viewport-controls > .msp-flex-row');
+    const mainRect = visibleRect('.msp-plugin .msp-layout-main');
+    const mainTop = mainRect ? mainRect.top : 0;
+    const defaultViewportTop = mainTop + 64;
+    const panelOpenTop = selectionToolbarRect
+      ? Math.ceil(selectionToolbarRect.bottom + FLOATING_LAYOUT_GAP)
+      : defaultViewportTop;
+    const viewportControlsViewportTop = panelState.open
+      ? Math.max(defaultViewportTop, panelOpenTop)
+      : toolbarRect && (!viewportControlsRect || rectsOverlapX(toolbarRect, viewportControlsRect, 18))
+      ? Math.max(defaultViewportTop, Math.ceil(toolbarBottom))
+      : defaultViewportTop;
+    const viewportControlsTop = Math.max(TOOLBAR_MARGIN, Math.ceil(viewportControlsViewportTop - mainTop));
+    root.style.setProperty('--buret-viewport-controls-top', viewportControlsTop + 'px');
+
+    const bottomLimit = visibleRectTop('.msp-plugin .msp-layout-bottom') || window.innerHeight;
+    const panelMaxHeight = Math.max(160, Math.floor(bottomLimit - viewportControlsViewportTop - FLOATING_LAYOUT_GAP));
+    root.style.setProperty('--buret-viewport-panel-max-height', panelMaxHeight + 'px');
+  }
+
+  function visibleRectTop(selector) {
+    const element = document.querySelector(selector);
+    if (!element || !isVisible(element)) return 0;
+    const rect = element.getBoundingClientRect();
+    return rect.height > 0 ? rect.top : 0;
+  }
+
+  function visibleRect(selector) {
+    const element = document.querySelector(selector);
+    if (!element || !isVisible(element)) return null;
+    return element.getBoundingClientRect();
+  }
+
+  function isVisible(element) {
+    const style = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+  }
+
+  function rectsOverlapX(a, b, padding = 0) {
+    return a.left < b.right + padding && a.right > b.left - padding;
+  }
+
+  function installMolstarFloatingPanelTracking() {
+    if (floatingPanelTrackingInstalled || !document.body) return;
+    floatingPanelTrackingInstalled = true;
+    const observer = new MutationObserver(scheduleFloatingLayoutRefresh);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class', 'style', 'hidden', 'aria-hidden']
+    });
+    window.addEventListener('resize', scheduleFloatingLayoutRefresh);
+    document.addEventListener('click', () => setTimeout(scheduleFloatingLayoutRefresh, 0), true);
+    scheduleFloatingLayoutRefresh();
+  }
+
+  function scheduleFloatingLayoutRefresh() {
+    if (floatingLayoutFrame) return;
+    floatingLayoutFrame = requestAnimationFrame(() => {
+      floatingLayoutFrame = 0;
+      updateFloatingLayoutOffsets();
+    });
+  }
+
+  function refreshMolstarViewportPanelState() {
+    const panels = Array.from(document.querySelectorAll('.msp-plugin .msp-viewport-controls-panel')).filter(isVisible);
+    panels.forEach(installDraggableViewportPanel);
+    const panelOpen = panels.length > 0;
+    const selectionOpen = !!visibleRect('.msp-plugin .msp-selection-viewport-controls > .msp-flex-row');
+    if (panelOpen !== molstarViewportPanelOpen || selectionOpen !== molstarSelectionControlsOpen) {
+      molstarViewportPanelOpen = panelOpen;
+      molstarSelectionControlsOpen = selectionOpen;
+      const suppressToolbar = panelOpen || selectionOpen;
+      document.body?.classList.toggle('buret-molstar-viewport-panel-open', panelOpen);
+      document.body?.classList.toggle('buret-molstar-selection-controls-open', selectionOpen);
+      const toolbar = document.getElementById('buret-toolbar');
+      if (toolbar) {
+        toolbar.classList.toggle('buret-suppressed-by-molstar-panel', suppressToolbar);
+        if (toolbar.dataset.defaultPosition === '1') {
+          requestAnimationFrame(() => applyDefaultToolbarPosition(toolbar));
+        }
+      }
+    }
+    return { open: panelOpen, selectionOpen, panels };
+  }
+
+  function installDraggableViewportPanel(panel) {
+    if (draggableViewportPanels.has(panel)) return;
+    draggableViewportPanels.add(panel);
+    panel.classList.add('buret-draggable-viewport-panel');
+
+    let drag = null;
+    let suppressClick = false;
+    panel.addEventListener('pointerdown', event => {
+      if (event.button !== 0) return;
+      if (event.target.closest('input, select, textarea, [contenteditable="true"]')) return;
+      const dragHeader = panel.querySelector(':scope > .msp-control-group-wrapper:first-child > .msp-control-group-header');
+      if (!dragHeader || !dragHeader.contains(event.target)) return;
+      const rect = panel.getBoundingClientRect();
+      if (event.clientX > rect.right - PANEL_CLOSE_HIT_WIDTH) return;
+      const parentRect = panel.offsetParent?.getBoundingClientRect?.() || { left: 0, top: 0 };
+      drag = {
+        pointerId: event.pointerId,
+        dx: event.clientX - rect.left,
+        dy: event.clientY - rect.top,
+        parentLeft: parentRect.left,
+        parentTop: parentRect.top,
+        startX: event.clientX,
+        startY: event.clientY,
+        moved: false
+      };
+      panel.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    });
+    panel.addEventListener('pointermove', event => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      if (!drag.moved) {
+        drag.moved = Math.abs(event.clientX - drag.startX) > 4 || Math.abs(event.clientY - drag.startY) > 4;
+      }
+      if (!drag.moved) return;
+      const left = event.clientX - drag.dx;
+      const top = event.clientY - drag.dy;
+      moveViewportPanel(panel, left, top, drag.parentLeft, drag.parentTop);
+      event.preventDefault();
+    });
+    panel.addEventListener('pointerup', event => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      suppressClick = drag.moved;
+      try { panel.releasePointerCapture(event.pointerId); } catch (_) {}
+      drag = null;
+    });
+    panel.addEventListener('pointercancel', () => { drag = null; });
+    panel.addEventListener('click', event => {
+      if (!suppressClick) return;
+      suppressClick = false;
+      event.preventDefault();
+      event.stopPropagation();
+    }, true);
+  }
+
+  function moveViewportPanel(panel, viewportLeft, viewportTop, parentLeft, parentTop) {
+    const margin = TOOLBAR_MARGIN;
+    const width = panel.offsetWidth || panel.getBoundingClientRect().width || 290;
+    const height = panel.offsetHeight || panel.getBoundingClientRect().height || 160;
+    const left = Math.min(Math.max(margin, viewportLeft), Math.max(margin, window.innerWidth - width - margin));
+    const top = Math.min(Math.max(margin, viewportTop), Math.max(margin, window.innerHeight - height - margin));
+    panel.style.left = Math.round(left - parentLeft) + 'px';
+    panel.style.top = Math.round(top - parentTop) + 'px';
+    panel.style.right = 'auto';
   }
 
   function toolbarSafeTop() {
@@ -817,6 +993,7 @@
 
     updateToolbarButtons();
     scheduleViewerResize(viewer, 40);
+    updateFloatingLayoutOffsets();
     const toolbar = document.getElementById('buret-toolbar');
     if (toolbar?.dataset.defaultPosition === '1') {
       requestAnimationFrame(() => applyDefaultToolbarPosition(toolbar));
@@ -837,7 +1014,7 @@
     const button = document.querySelector('#buret-toolbar [data-buret-action="theme"]');
     if (!button) return;
     const isDark = resolveViewerTheme() === 'dark';
-    button.textContent = isDark ? '☀' : '☾';
+    button.textContent = isDark ? 'Light' : 'Dark';
     button.setAttribute('aria-label', isDark ? 'Switch to light theme' : 'Switch to dark theme');
     button.setAttribute('title', isDark ? 'Switch to light theme' : 'Switch to dark theme');
     button.classList.toggle('active', !isDark);
@@ -921,6 +1098,51 @@
     }
     if (!config.format) throw new Error('preview-config.js is missing format.');
     return config;
+  }
+
+  function isDirectTemplatePreview() {
+    if (window.location.protocol !== 'file:') return false;
+    const path = decodeURIComponent(window.location.pathname || '');
+    return /\/PreviewExtension\/Web\/index\.html$/u.test(path);
+  }
+
+  function installDirectTemplateFallback() {
+    if (!isDirectTemplatePreview()) return false;
+    window.BurreteConfig = {
+      label: 'Burrete mini sample',
+      format: 'pdb',
+      binary: false,
+      renderer: 'molstar',
+      byteCount: 829,
+      showPanelControls: true,
+      theme: 'dark',
+      canvasBackground: 'black',
+      overlayOpacity: 0.9,
+      defaultLayoutState: {
+        left: 'collapsed',
+        right: 'hidden',
+        top: 'hidden',
+        bottom: 'hidden'
+      }
+    };
+    window.BurreteDataBase64 = 'SEVBREVSICAgIE1JTkkgR0xZLUFMQSBQRVBUSURFIEZPUiBRVUlDSyBMT09LIFRFU1QKVElUTEUgICAgIE1PTFNUQVIgUVVJQ0sgTE9PSyBTQU1QTEUKQVRPTSAgICAgIDEgIE4gICBHTFkgQSAgIDEgICAgICAtMS4yMDQgICAwLjE3NiAgIDAuMDAwICAxLjAwIDIwLjAwICAgICAgICAgICBOCkFUT00gICAgICAyICBDQSAgR0xZIEEgICAxICAgICAgIDAuMDAwICAgMC4wMDAgICAwLjAwMCAgMS4wMCAyMC4wMCAgICAgICAgICAgQwpBVE9NICAgICAgMyAgQyAgIEdMWSBBICAgMSAgICAgICAwLjcyMiAgIDEuMjcxICAgMC4wMDAgIDEuMDAgMjAuMDAgICAgICAgICAgIEMKQVRPTSAgICAgIDQgIE8gICBHTFkgQSAgIDEgICAgICAgMC4xNjMgICAyLjM2MCAgIDAuMDAwICAxLjAwIDIwLjAwICAgICAgICAgICBPCkFUT00gICAgICA1ICBOICAgQUxBIEEgICAyICAgICAgIDIuMDUyICAgMS4xODkgICAwLjAwMCAgMS4wMCAyMC4wMCAgICAgICAgICAgTgpBVE9NICAgICAgNiAgQ0EgIEFMQSBBICAgMiAgICAgICAyLjg5NiAgIDIuMzc3ICAgMC4wMDAgIDEuMDAgMjAuMDAgICAgICAgICAgIEMKQVRPTSAgICAgIDcgIENCICBBTEEgQSAgIDIgICAgICAgMy43MTEgICAyLjI3MyAgIDEuMjc2ICAxLjAwIDIwLjAwICAgICAgICAgICBDCkFUT00gICAgICA4ICBDICAgQUxBIEEgICAyICAgICAgIDMuNzkzICAgMi40NzcgIC0xLjIzMCAgMS4wMCAyMC4wMCAgICAgICAgICAgQwpBVE9NICAgICAgOSAgTyAgIEFMQSBBICAgMiAgICAgICA0LjY3NSAgIDMuMzM2ICAtMS4yMzYgIDEuMDAgMjAuMDAgICAgICAgICAgIE8KVEVSICAgICAgMTAgICAgICBBTEEgQSAgIDIKRU5ECg==';
+    setStatus('[web] Using built-in mini sample for direct template preview.');
+    return true;
+  }
+
+  async function loadRuntimeInputs(cb) {
+    if (window.BurreteConfig && window.BurreteDataBase64) return;
+    try {
+      if (!window.BurreteConfig) {
+        await loadScript('./preview-config.js?v=' + encodeURIComponent(cb), 'preview config', 10000);
+      }
+      if (!window.BurreteDataBase64) {
+        await loadScript('./preview-data.js?v=' + encodeURIComponent(cb), 'structure data', 30000);
+      }
+    } catch (error) {
+      if (installDirectTemplateFallback()) return;
+      throw error;
+    }
   }
 
   function rawStructureData(config) {
@@ -1301,12 +1523,7 @@
     setStatus('[web] Booting Burrete viewer JavaScript…');
 
     const cb = window.BurreteCacheBuster || String(Date.now());
-    if (!window.BurreteConfig) {
-      await loadScript('./preview-config.js?v=' + encodeURIComponent(cb), 'preview config', 10000);
-    }
-    if (!window.BurreteDataBase64) {
-      await loadScript('./preview-data.js?v=' + encodeURIComponent(cb), 'structure data', 30000);
-    }
+    await loadRuntimeInputs(cb);
 
     const config = requireConfig();
     activeConfig = config;
