@@ -31,6 +31,8 @@ const [
   previewRuntimeViewer,
   previewRuntimeUtils,
   quickLookPreviewController,
+  viewerRuntimeCSS,
+  viewerShell,
   tauriConfigSource,
 ] = await Promise.all([
   source('apps/desktop/src-tauri/src/commands/mod.rs'),
@@ -47,6 +49,8 @@ const [
   source('apps/desktop/src-tauri/src/preview/runtime_viewer.rs'),
   source('apps/desktop/src-tauri/src/preview/runtime_utils.rs'),
   source('PreviewExtension/Platform/PreviewViewController.swift'),
+  source('PreviewExtension/Web/viewer-runtime.css'),
+  source('PreviewExtension/Web/viewer-shell.js'),
   source('apps/desktop/src-tauri/tauri.conf.json'),
 ]);
 
@@ -100,17 +104,19 @@ assert.match(previewRuntimeGrid, /fn parse_delimited_table/);
 assert.match(previewRuntimeViewer, /pub\(crate\) fn create_runtime/);
 assert.match(previewRuntimeViewer, /pub\(crate\) fn copy_web_assets/);
 assert.match(previewRuntimeViewer, /fn viewer_html/);
-assert.match(previewRuntimeViewer, /--buret-toolbar-safe-top:12px/);
-assert.match(previewRuntimeViewer, /#buret-toolbar\.collapsed/);
-assert.doesNotMatch(previewRuntimeViewer, /#buret-toolbar\.collapsed:hover/);
-assert.match(previewRuntimeViewer, /\.buret-renderer-control\.visible/);
-assert.match(previewRuntimeViewer, /buret-renderer-choice/);
-assert.match(previewRuntimeViewer, /aria-label="Collapse controls"/);
-assert.match(previewRuntimeViewer, /aria-expanded="true"/);
-assert.match(previewRuntimeViewer, /--buret-panel-bg/);
+assert.doesNotMatch(previewRuntimeViewer, /fn viewer_runtime_css/);
+assert.match(previewRuntimeViewer, /viewer-runtime\.css/);
+assert.match(previewRuntimeViewer, /assets\.join\("viewer-runtime\.css"\)/);
+assert.match(viewerRuntimeCSS, /--buret-toolbar-safe-top: 12px/);
+assert.match(viewerRuntimeCSS, /#buret-toolbar\.collapsed/);
+assert.doesNotMatch(viewerRuntimeCSS, /#buret-toolbar\.collapsed:hover/);
+assert.match(viewerRuntimeCSS, /\.buret-renderer-control\.visible/);
+assert.match(previewRuntimeViewer, /viewer-shell\.js/);
+assert.match(viewerShell, /buret-renderer-choice/);
+assert.match(viewerShell, /aria-label="Collapse controls"/);
+assert.match(viewerShell, /aria-expanded="true"/);
+assert.match(viewerRuntimeCSS, /--buret-panel-background/);
 assert.match(previewRuntimeUtils, /pub\(crate\) fn stable_id/);
 assert.match(previewRuntimeUtils, /pub\(crate\) fn prune_runtime_dirs/);
-assert.doesNotMatch(quickLookPreviewController, /#buret-toolbar\.collapsed:hover/);
-assert.match(quickLookPreviewController, /buret-renderer-choice/);
-assert.match(quickLookPreviewController, /aria-label="Collapse controls"/);
-assert.match(quickLookPreviewController, /aria-expanded="true"/);
+assert.match(quickLookPreviewController, /viewer-runtime\.css/);
+assert.match(quickLookPreviewController, /viewer-shell\.js/);

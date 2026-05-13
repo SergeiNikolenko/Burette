@@ -12,7 +12,7 @@
     "test:agent": "node tests/test-burette-agent.mjs && node tests/test-agent-preview-server.mjs",
     "test:ui": "node tests/test-ui-shell-contract.mjs",
     "test:tauri-structure": "node tests/test-tauri-structure.mjs",
-    "check:js": "node --check PreviewExtension/Web/viewer.js && node --check PreviewExtension/Web/burette-agent.js && node --check PreviewExtension/Web/grid-viewer.js && node --check PreviewExtension/Web/xyz-fast.js && node --check scripts/vendor-molstar.mjs && node --check scripts/vendor-rdkit.mjs && node --check scripts/agent-preview.mjs && node --check scripts/check-release-version.mjs",
+    "check:js": "node --check PreviewExtension/Web/viewer.js && node --check PreviewExtension/Web/viewer-shell.js && node --check PreviewExtension/Web/burette-agent.js && node --check PreviewExtension/Web/grid-viewer.js && node --check PreviewExtension/Web/xyz-fast.js && node --check scripts/vendor-molstar.mjs && node --check scripts/vendor-rdkit.mjs && node --check scripts/agent-preview.mjs && node --check scripts/check-release-version.mjs",
     "check:release": "node scripts/check-release-version.mjs",
     "ci:fast": "bash scripts/ci-fast.sh",
     "ci": "bash scripts/ci.sh",

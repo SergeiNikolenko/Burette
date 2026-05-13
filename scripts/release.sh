@@ -20,15 +20,20 @@ require_tool ditto "ditto is normally present on macOS."
 
 require_asset PreviewExtension/Web/molstar.js
 require_asset PreviewExtension/Web/molstar.css
+require_asset PreviewExtension/Web/viewer-runtime.css
+require_asset PreviewExtension/Web/viewer-shell.js
 require_asset PreviewExtension/Web/burette-agent.js
 require_asset PreviewExtension/Web/viewer.js
+require_asset PreviewExtension/Web/xyz-fast.js
 require_asset PreviewExtension/Web/grid-viewer.js
 require_asset PreviewExtension/Web/grid.css
 require_asset PreviewExtension/Web/rdkit/RDKit_minimal.js
 require_asset PreviewExtension/Web/rdkit/RDKit_minimal.wasm
 node --check PreviewExtension/Web/viewer.js >/dev/null
+node --check PreviewExtension/Web/viewer-shell.js >/dev/null
 node --check PreviewExtension/Web/burette-agent.js >/dev/null
 node --check PreviewExtension/Web/grid-viewer.js >/dev/null
+node --check PreviewExtension/Web/xyz-fast.js >/dev/null
 
 "$ROOT/scripts/build.sh"
 mkdir -p "$(dirname "$ZIP")"
