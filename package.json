@@ -6,6 +6,7 @@
   "scripts": {
     "vendor:molstar": "node scripts/vendor-molstar.mjs",
     "vendor:rdkit": "node scripts/vendor-rdkit.mjs",
+    "build:dev": "bash scripts/build-dev.sh",
     "build:macos": "bash scripts/build.sh",
     "test:web": "bash scripts/test-web-preview.sh",
     "agent:preview": "node scripts/agent-preview.mjs",

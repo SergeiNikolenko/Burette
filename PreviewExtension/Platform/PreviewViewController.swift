@@ -1134,11 +1134,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             #buret-toolbar.collapsed { gap: 0; }
             #buret-toolbar.collapsed .buret-button:not(.buret-grip),
             #buret-toolbar.collapsed .buret-renderer-control { display: none; }
-            #buret-toolbar.collapsed:hover .buret-button:not(.buret-grip),
-            #buret-toolbar.collapsed:focus-within .buret-button:not(.buret-grip) { display: grid; }
-            #buret-toolbar.collapsed:hover .buret-renderer-control.visible,
-            #buret-toolbar.collapsed:focus-within .buret-renderer-control.visible { display: flex; }
-            #buret-toolbar.collapsed .buret-grip { min-width: 30px; padding: 0; cursor: pointer; }
+            #buret-toolbar.collapsed .buret-grip { min-width: 26px; padding: 0; cursor: pointer; }
             .buret-button {
               min-width: 30px; height: 30px; border: 0; border-radius: 8px; padding: 0 8px;
               color: inherit; background: transparent; font: 600 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
@@ -1147,7 +1143,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             .buret-button:not(.buret-renderer-choice) { width: 30px; padding: 0; }
             .buret-button:hover, .buret-button.active { background: var(--buret-toolbar-hover); }
             .buret-button.hidden { display: none; }
-            .buret-button svg { width: 17px; height: 17px; display: block; }
+            .buret-button svg { width: 15px; height: 15px; display: block; }
             .buret-grip { cursor: grab; color: currentColor; opacity: 0.66; }
             .buret-renderer-control {
               display: none; align-items: center; gap: 4px; padding-left: 5px;
@@ -1226,7 +1222,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         <body class="\(backgroundClass)">
           <div id="app"></div>
           <div id="buret-toolbar" role="toolbar" aria-label="Burrete preview controls">
-            <button class="buret-button buret-grip" type="button" data-drag-handle aria-label="Expand controls" aria-expanded="false" title="Expand controls"><span aria-hidden="true">⋯</span></button>
+            <button class="buret-button buret-grip" type="button" data-drag-handle aria-label="Collapse controls" aria-expanded="true" title="Collapse controls">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h2v2H8V5Zm6 0h2v2h-2V5ZM8 11h2v2H8v-2Zm6 0h2v2h-2v-2ZM8 17h2v2H8v-2Zm6 0h2v2h-2v-2Z" fill="currentColor"/></svg>
+            </button>
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel"><span aria-hidden="true">◧</span></button>
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle right panel"><span aria-hidden="true">◨</span></button>
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel"><span aria-hidden="true">≡</span></button>
