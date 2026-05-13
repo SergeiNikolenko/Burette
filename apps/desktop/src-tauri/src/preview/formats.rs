@@ -1,60 +1,55 @@
+use serde::Deserialize;
+
+const FORMAT_REGISTRY_JSON: &str = include_str!("../../../../../config/preview-formats.json");
+
 #[derive(Clone, Debug)]
 pub(crate) struct FormatInfo {
-    pub(crate) molstar_format: &'static str,
+    pub(crate) molstar_format: String,
     pub(crate) is_binary: bool,
     pub(crate) external_only: bool,
+    pub(crate) can_open_in_vesta: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct FormatRegistry {
+    formats: Vec<RegistryFormat>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RegistryFormat {
+    extensions: Vec<String>,
+    viewer: Option<RegistryViewer>,
+    #[serde(default, rename = "canOpenInVesta")]
+    can_open_in_vesta: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RegistryViewer {
+    molstar_format: String,
+    binary: bool,
+    #[serde(default)]
+    external_only: bool,
 }
 
 pub(crate) fn format_for_extension(extension: &str) -> Result<FormatInfo, String> {
-    let format = match extension {
-        "pdb" | "ent" | "pdbqt" | "pqr" => FormatInfo {
-            molstar_format: "pdb",
-            is_binary: false,
-            external_only: false,
-        },
-        "cif" | "mcif" | "mmcif" => FormatInfo {
-            molstar_format: "mmcif",
-            is_binary: false,
-            external_only: false,
-        },
-        "bcif" => FormatInfo {
-            molstar_format: "mmcif",
-            is_binary: true,
-            external_only: false,
-        },
-        "sdf" | "sd" => FormatInfo {
-            molstar_format: "sdf",
-            is_binary: false,
-            external_only: false,
-        },
-        "mol" => FormatInfo {
-            molstar_format: "mol",
-            is_binary: false,
-            external_only: false,
-        },
-        "mol2" => FormatInfo {
-            molstar_format: "mol2",
-            is_binary: false,
-            external_only: false,
-        },
-        "xyz" => FormatInfo {
-            molstar_format: "xyz",
-            is_binary: false,
-            external_only: false,
-        },
-        "gro" => FormatInfo {
-            molstar_format: "gro",
-            is_binary: false,
-            external_only: false,
-        },
-        "cub" | "cube" | "in" | "log" | "out" | "vasp" => FormatInfo {
-            molstar_format: "xyz",
-            is_binary: false,
-            external_only: true,
-        },
-        other => return Err(format!("Unsupported structure extension: {other}")),
-    };
-    Ok(format)
+    let normalized = extension.trim().to_ascii_lowercase();
+    let registry: FormatRegistry = serde_json::from_str(FORMAT_REGISTRY_JSON)
+        .map_err(|err| format!("Invalid preview format registry: {err}"))?;
+    registry
+        .formats
+        .into_iter()
+        .find(|format| format.extensions.iter().any(|value| value == &normalized))
+        .and_then(|format| {
+            format.viewer.map(|viewer| (viewer, format.can_open_in_vesta))
+        })
+        .map(|viewer| FormatInfo {
+            molstar_format: viewer.0.molstar_format,
+            is_binary: viewer.0.binary,
+            external_only: viewer.0.external_only,
+            can_open_in_vesta: viewer.1,
+        })
+        .ok_or_else(|| format!("Unsupported structure extension: {normalized}"))
 }
 
 pub(crate) fn normalize_renderer_mode(raw: &str) -> &str {
