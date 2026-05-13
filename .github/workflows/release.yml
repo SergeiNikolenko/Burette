@@ -1,9 +1,10 @@
 name: Release
 
 on:
+  workflow_dispatch:
   push:
-    branches:
-      - main
+    tags:
+      - "v*"
 
 permissions:
   contents: write
@@ -35,10 +36,17 @@ jobs:
         run: |
           version="$(node -p "require('./package.json').version")"
           tag="v${version}"
-          if git rev-parse --verify "refs/tags/${tag}" >/dev/null 2>&1; then
+
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            if [[ "${GITHUB_REF_NAME:-}" != "${tag}" ]]; then
+              echo "Tag ${GITHUB_REF_NAME:-unknown} does not match package version ${version}." >&2
+              exit 1
+            fi
+          elif git rev-parse --verify "refs/tags/${tag}" >/dev/null 2>&1; then
             echo "Release tag ${tag} already exists. Bump package.json before merging another PR." >&2
             exit 1
           fi
+
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
 
