@@ -36,6 +36,19 @@ const [
   viewerShell,
   tauriConfigSource,
   tauriPermissionSource,
+  buildScript,
+  ciScript,
+  releaseWorkflow,
+  releaseScript,
+  releaseSignatureScript,
+  signUpdateManifestScript,
+  vendorMolstarScript,
+  vendorRdkitScript,
+  packageSource,
+  vendorAssetsLockSource,
+  previewEntitlements,
+  appMetadata,
+  installLocalScript,
 ] = await Promise.all([
   source('apps/desktop/src-tauri/src/commands/mod.rs'),
   source('apps/desktop/src-tauri/src/lib.rs'),
@@ -56,9 +69,24 @@ const [
   source('PreviewExtension/Web/viewer-shell.js'),
   source('apps/desktop/src-tauri/tauri.conf.json'),
   source('apps/desktop/src-tauri/permissions/burrete.toml'),
+  source('scripts/build.sh'),
+  source('scripts/ci.sh'),
+  source('.github/workflows/release.yml'),
+  source('scripts/release.sh'),
+  source('scripts/check-release-signature.sh'),
+  source('scripts/sign-update-manifest.mjs'),
+  source('scripts/vendor-molstar.mjs'),
+  source('scripts/vendor-rdkit.mjs'),
+  source('package.json'),
+  source('vendor-assets.lock.json'),
+  source('PreviewExtension/BurretePreview.entitlements'),
+  source('apps/desktop/src-tauri/AppMetadata.plist'),
+  source('scripts/install-local.sh'),
 ]);
 
 const tauriConfig = JSON.parse(tauriConfigSource);
+const packageConfig = JSON.parse(packageSource);
+const vendorAssetsLock = JSON.parse(vendorAssetsLockSource);
 const mainWindowConfig = tauriConfig.app.windows.find((window) => window.label === 'main');
 
 assert.equal(await exists('apps/desktop/src-tauri/src/commands.rs'), false);
@@ -89,6 +117,47 @@ assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_logs_fold
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_external_url/);
 assert.match(quickLookCommand, /#\[tauri::command\]\s+pub\(crate\) fn reset_quick_look/);
 assert.match(updaterCommand, /#\[tauri::command\]\s+pub\(crate\) async fn install_update/);
+assert.match(quickLookCommand, /QuickLookResetReport/);
+assert.match(quickLookCommand, /\.output\(\)/);
+assert.doesNotMatch(quickLookCommand, /\.spawn\(\)/);
+assert.match(buildScript, /does not accept positional arguments/);
+assert.match(ciScript, /\.\/scripts\/build\.sh\n/);
+assert.doesNotMatch(ciScript, /\.\/scripts\/build\.sh\s+samples\/mini\.sdf/);
+assert.match(ciScript, /npm run check:vendor-assets/);
+assert.match(releaseWorkflow, /BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX/);
+assert.match(releaseWorkflow, /BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM/);
+assert.match(releaseWorkflow, /zip\.manifest\.json/);
+assert.match(releaseWorkflow, /zip\.manifest\.json\.sig/);
+assert.match(releaseScript, /sign-update-manifest\.mjs/);
+assert.match(releaseSignatureScript, /spctl --assess --type execute/);
+assert.match(releaseSignatureScript, /xcrun stapler validate/);
+assert.match(signUpdateManifestScript, /crypto\.sign\(null, manifestBytes/);
+assert.match(updaterCommand, /verify_update_manifest/);
+assert.match(updaterCommand, /BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX/);
+assert.match(updaterCommand, /ed25519/);
+assert.match(updaterCommand, /manifest_asset_name/);
+assert.match(updaterCommand, /asset_sha256/);
+assert.equal(packageConfig.scripts['check:formats'], 'node scripts/check-preview-format-registry.mjs && node scripts/check-format-manifest.mjs');
+assert.equal(packageConfig.scripts['check:vendor-assets'], 'node scripts/check-vendor-assets.mjs');
+assert.equal(packageConfig.scripts['vendor:lock'], 'node scripts/check-vendor-assets.mjs --write');
+assert.match(vendorMolstarScript, /check-vendor-assets\.mjs/);
+assert.match(vendorRdkitScript, /check-vendor-assets\.mjs/);
+assert.equal(vendorAssetsLock.schemaVersion, 1);
+assert.equal(vendorAssetsLock.packages.molstar.version, packageConfig.dependencies.molstar);
+assert.equal(vendorAssetsLock.packages['@rdkit/rdkit'].version, packageConfig.dependencies['@rdkit/rdkit']);
+assert.equal(vendorAssetsLock.assets.length, 4);
+for (const asset of vendorAssetsLock.assets) {
+  assert.match(asset.sha256, /^sha256-/);
+  assert.ok(asset.bytes > 0);
+}
+assert.match(previewEntitlements, /com\.apple\.security\.app-sandbox/);
+assert.match(previewEntitlements, /com\.apple\.security\.files\.user-selected\.read-only/);
+assert.doesNotMatch(previewEntitlements, /com\.apple\.security\.network\.client/);
+assert.match(appMetadata, /<key>LSHandlerRank<\/key>\s*<string>Alternate<\/string>/);
+assert.match(installLocalScript, /broadPublicTypes/);
+assert.match(installLocalScript, /public\.comma-separated-values-text/);
+assert.match(installLocalScript, /public\.tab-separated-values-text/);
+assert.match(installLocalScript, /subtracting\(broadPublicTypes\)/);
 
 assert.match(tray, /fn status_image\(\) -> tauri::image::Image<'static>/);
 assert.match(tray, /\.icon\(status_image\(\)\)/);
@@ -114,6 +183,16 @@ assert.match(previewRuntimeViewer, /fn viewer_html/);
 assert.doesNotMatch(previewRuntimeViewer, /fn viewer_runtime_css/);
 assert.match(previewRuntimeViewer, /viewer-runtime\.css/);
 assert.match(previewRuntimeViewer, /assets\.join\("viewer-runtime\.css"\)/);
+assert.match(previewRuntimeViewer, /Content-Security-Policy/);
+assert.match(previewRuntimeGrid, /Content-Security-Policy/);
+assert.match(quickLookPreviewController, /Content-Security-Policy/);
+assert.match(previewRuntimeViewer, /"documentId": stable_id\(file_path\)/);
+assert.match(previewRuntimeViewer, /"dataPath": "\.\/preview-data\.bin"/);
+assert.match(previewRuntimeViewer, /runtime\.join\("preview-data\.bin"\)/);
+assert.doesNotMatch(previewRuntimeViewer, /BurreteDataBase64/);
+assert.doesNotMatch(previewRuntimeGrid, /BurreteRDKitWasmBase64/);
+assert.match(previewRuntimeGrid, /"rdkitWasmPath": asset_url/);
+assert.match(previewRuntimeViewer, /body\.documentId = String\(window\.BurreteConfig\.documentId\)/);
 assert.match(viewerRuntimeCSS, /--buret-toolbar-safe-top: 12px/);
 assert.match(viewerRuntimeCSS, /--buret-viewport-controls-top: 64px/);
 assert.match(viewerRuntimeCSS, /#buret-toolbar\.collapsed/);
