@@ -24,6 +24,11 @@ pub fn run() {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             menu::configure_menu(app)?;
             tray::configure_tray(app)?;
+            let startup_paths =
+                startup::file_args_from_argv(std::env::args().collect(), std::env::current_dir().ok());
+            if !startup_paths.is_empty() {
+                tray::show_main_window(&app.handle());
+            }
             let app_handle = app.handle().clone();
             app.on_menu_event(move |app, event| match event.id().0.as_str() {
                 "settings.open" => {
