@@ -6,7 +6,7 @@
   const MAX_SDF_GRID_ATOMS = 900;
   const MAX_SDF_GRID_BONDS = 900;
   const SDF_GRID_PADDING = 4.0;
-  const TOOLBAR_POSITION_VERSION = '10';
+  const TOOLBAR_POSITION_VERSION = '11';
   const TOOLBAR_COLLAPSED_VERSION = '3';
   const TOOLBAR_MARGIN = 12;
   const FLOATING_LAYOUT_GAP = 12;
@@ -131,6 +131,7 @@
   let activeConfig = null;
   let latestXyzrenderOrientationRef = null;
   let orientationTrackingCleanup = null;
+  let externalArtifactInteractionsCleanup = null;
   let keyboardShortcutsInstalled = false;
   let themeListenerInstalled = false;
   let floatingPanelTrackingInstalled = false;
@@ -284,6 +285,7 @@
 
   function applyViewerBackground(viewer = activeViewer) {
     applyDocumentBackground();
+    applyStaticRendererTheme();
     const canvas3d = viewer?.plugin?.canvas3d;
     if (!canvas3d) return;
     try {
@@ -320,6 +322,36 @@
 
   function toggleViewerTheme(viewer = activeViewer) {
     setViewerTheme(resolveViewerTheme() === 'dark' ? 'light' : 'dark', viewer);
+  }
+
+  function applyStaticRendererTheme() {
+    const background = transparentBackground ? 'transparent' : canvasBackgroundCSS();
+    const fastRoot = document.querySelector('.buret-xyz-fast-root');
+    if (fastRoot) {
+      fastRoot.style.background = background;
+    }
+    const fastRect = document.querySelector('.buret-xyz-svg rect');
+    if (fastRect) {
+      fastRect.setAttribute('fill', background);
+    }
+    const artifactRoot = document.querySelector('.buret-external-artifact-root');
+    const artifactRect = document.querySelector('.buret-external-artifact-inline > svg > rect');
+    const artifactBackgroundFill = resolveExternalArtifactBackgroundFill(artifactRect);
+    if (artifactRoot) {
+      artifactRoot.style.background = artifactBackgroundFill || background;
+    }
+    if (artifactRect && artifactRect.getAttribute('width') === '100%' && artifactRect.getAttribute('height') === '100%') {
+      artifactRect.setAttribute('fill', artifactBackgroundFill || background);
+    }
+  }
+
+  function resolveExternalArtifactBackgroundFill(rect) {
+    if (!rect || rect.getAttribute('width') !== '100%' || rect.getAttribute('height') !== '100%') return null;
+    const originalFill = rect.dataset.buretOriginalFill ?? rect.getAttribute('fill') ?? '';
+    rect.dataset.buretOriginalFill = originalFill;
+    if (!originalFill || originalFill === 'transparent') return null;
+    if (/^var\(/iu.test(originalFill)) return null;
+    return originalFill;
   }
 
   function setViewerUIScale(scale, viewer = activeViewer) {
@@ -365,13 +397,16 @@
 
   function configureRendererControls(config) {
     const control = document.querySelector('[data-buret-renderer-control]');
-    if (!control) return;
+    const toolbar = document.getElementById('buret-toolbar');
+    if (!control || !toolbar) return;
     const format = normalizeFormat(config.molstarFormat || config.format);
     const xyzrenderViewer = config.xyzrenderViewer === true;
     const canSwitchRenderer = (config.appViewer === true && (format === 'xyz' || format === 'sdf')) ||
       (config.quickLookViewer === true && format === 'xyz') ||
       xyzrenderViewer;
     control.classList.toggle('visible', canSwitchRenderer);
+    const presetSlot = toolbar.querySelector('[data-buret-xyzrender-preset-slot]');
+    presetSlot?.classList.remove('visible');
     if (!canSwitchRenderer) return;
 
     const renderer = normalizeRenderer(config.renderer);
@@ -389,11 +424,12 @@
       }
     });
 
-    const select = control.querySelector('[data-buret-xyzrender-preset]');
+    const select = toolbar.querySelector('[data-buret-xyzrender-preset]');
     if (select) {
       populateXyzrenderPresetSelect(select, config.xyzrenderPresetOptions);
       select.value = normalizeXyzrenderPreset(config.externalArtifact?.preset || config.xyzrenderPreset || 'default');
       select.disabled = renderer !== 'xyzrender-external';
+      presetSlot?.classList.toggle('visible', renderer === 'xyzrender-external');
       if (control.dataset.presetBound !== '1') {
         select.addEventListener('change', () => requestXyzrenderPreset(select.value));
       }
@@ -636,15 +672,21 @@
         toggleLayoutRegion(button.getAttribute('data-buret-toggle'), viewer);
       });
     });
-    toolbar.querySelector('[data-buret-action="theme"]')?.addEventListener('click', () => {
-      toggleViewerTheme(viewer);
-    });
+    bindThemeButton(toolbar, viewer);
     initToolbarDrag(toolbar);
     restoreToolbarCollapsed(toolbar, viewer);
     installMolstarFloatingPanelTracking();
     updateToolbarVisibility();
     updateThemeButton();
     applyLayoutState(viewer);
+  }
+
+  function bindThemeButton(toolbar, viewer) {
+    const button = toolbar?.querySelector('[data-buret-action="theme"]');
+    if (!button) return;
+    button.onclick = () => {
+      toggleViewerTheme(viewer);
+    };
   }
 
   function restoreToolbarCollapsed(toolbar, viewer) {
@@ -691,6 +733,7 @@
       if (raw && version === TOOLBAR_POSITION_VERSION) {
         const saved = JSON.parse(raw);
         if (saved.mode === 'custom' && Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
+          undockToolbar(toolbar);
           toolbar.style.left = saved.left + 'px';
           toolbar.style.top = saved.top + 'px';
           toolbar.style.right = 'auto';
@@ -730,6 +773,7 @@
         moved: false
       };
       toolbar.setPointerCapture(event.pointerId);
+      toolbar.classList.add('buret-dragging');
       event.preventDefault();
     });
     toolbar.addEventListener('pointermove', event => {
@@ -738,6 +782,10 @@
         drag.moved = Math.abs(event.clientX - drag.startX) > 4 || Math.abs(event.clientY - drag.startY) > 4;
       }
       if (drag.moved) {
+        if (toolbar.dataset.defaultPosition === '1') {
+          toolbar.dataset.defaultPosition = '0';
+          undockToolbar(toolbar);
+        }
         moveToolbar(toolbar, event.clientX - drag.dx, event.clientY - drag.dy);
       }
     });
@@ -747,6 +795,7 @@
       const startedOnHandle = drag.startedOnHandle;
       const shouldSavePosition = drag.moved || !drag.startedOnHandle;
       try { toolbar.releasePointerCapture(event.pointerId); } catch (_) {}
+      toolbar.classList.remove('buret-dragging');
       drag = null;
       if (shouldToggle) {
         ignoreNextGripClick = true;
@@ -754,10 +803,14 @@
       } else if (shouldSavePosition) {
         ignoreNextGripClick = startedOnHandle;
         toolbar.dataset.defaultPosition = '0';
+        undockToolbar(toolbar);
         saveToolbarPosition(toolbar);
       }
     });
-    toolbar.addEventListener('pointercancel', () => { drag = null; });
+    toolbar.addEventListener('pointercancel', () => {
+      toolbar.classList.remove('buret-dragging');
+      drag = null;
+    });
     window.addEventListener('resize', () => {
       repositionToolbar(toolbar);
       updateFloatingLayoutOffsets();
@@ -776,13 +829,18 @@
   }
 
   function applyDefaultToolbarPosition(toolbar) {
-    const left = window.innerWidth - toolbar.offsetWidth - TOOLBAR_MARGIN;
+    dockToolbar(toolbar);
+    fitToolbarToViewport(toolbar);
     const top = toolbarSafeTop();
     toolbar.dataset.defaultPosition = '1';
-    moveToolbar(toolbar, left, top);
+    toolbar.style.left = 'auto';
+    toolbar.style.right = TOOLBAR_MARGIN + 'px';
+    toolbar.style.top = top + 'px';
+    updateFloatingLayoutOffsets();
   }
 
   function moveToolbar(toolbar, left, top) {
+    fitToolbarToViewport(toolbar);
     const margin = TOOLBAR_MARGIN;
     const safeTop = toolbarSafeTop();
     const maxLeft = Math.max(margin, window.innerWidth - toolbar.offsetWidth - margin);
@@ -791,6 +849,22 @@
     toolbar.style.top = Math.min(Math.max(safeTop, top), maxTop) + 'px';
     toolbar.style.right = 'auto';
     updateFloatingLayoutOffsets();
+  }
+
+  function dockToolbar(toolbar) {
+    toolbar.classList.add('buret-toolbar-docked');
+  }
+
+  function undockToolbar(toolbar) {
+    toolbar.classList.remove('buret-toolbar-docked');
+  }
+
+  function fitToolbarToViewport(toolbar) {
+    toolbar.style.maxWidth = Math.max(180, window.innerWidth - TOOLBAR_MARGIN * 2) + 'px';
+    const content = toolbar.querySelector('[data-buret-toolbar-content]');
+    if (content) {
+      content.style.maxWidth = Math.max(0, window.innerWidth - TOOLBAR_MARGIN * 2 - 36) + 'px';
+    }
   }
 
   function updateFloatingLayoutOffsets() {
@@ -1230,6 +1304,7 @@
   }
 
   async function startXYZFast(config, cb) {
+    disposeExternalArtifactInteractions();
     const label = config.label || 'structure';
     const size = describeBytes(config.byteCount);
     setStatus(`[web] Loading Fast XYZ renderer…\n${label} (XYZ${size ? `, ${size}` : ''})`);
@@ -1254,21 +1329,26 @@
   }
 
   async function startExternalArtifact(config) {
+    disposeExternalArtifactInteractions();
     const artifact = config.externalArtifact;
-    if (!artifact || !artifact.path) {
-      throw new Error('External xyzrender renderer was selected, but no externalArtifact path was provided.');
+    if (!artifact || (!artifact.path && !artifact.inlineSvg)) {
+      throw new Error('External xyzrender renderer was selected, but no externalArtifact payload was provided.');
     }
-    const path = safeRelativeArtifactPath(artifact.path);
     setStatus(`[web] Loading xyzrender artifact…\n${config.label || 'structure'}`);
     installExternalArtifactStyles();
     const container = document.getElementById('app');
     const preset = artifact.preset ? ` · ${escapeHTML(artifact.preset)}` : '';
     const elapsed = Number.isFinite(Number(artifact.elapsedMs)) ? ` · ${Number(artifact.elapsedMs)} ms` : '';
+    const content = artifact.inlineSvg
+      ? `<div class="buret-external-artifact-stage"><div class="buret-external-artifact-inline" aria-label="${escapeHTML(config.label || 'xyzrender artifact')}">${artifact.inlineSvg}</div></div>`
+      : `<div class="buret-external-artifact-stage"><object class="buret-external-artifact-object" data="${safeRelativeArtifactPath(artifact.path)}" type="image/svg+xml" aria-label="${escapeHTML(config.label || 'xyzrender artifact')}"></object></div>`;
     container.innerHTML = `
       <div class="buret-external-artifact-root">
-        <object class="buret-external-artifact-object" data="${path}" type="image/svg+xml" aria-label="${escapeHTML(config.label || 'xyzrender artifact')}"></object>
+        ${content}
         <div class="buret-xyz-badge"><strong>External xyzrender</strong><span>SVG${preset}${elapsed}</span></div>
       </div>`;
+    const root = container.querySelector('.buret-external-artifact-root');
+    if (root) installExternalArtifactInteractions(root);
     initStaticRendererToolbar();
     setStatus(`[web] Rendered ${config.label || 'structure'} with external xyzrender`);
     setTimeout(hideStatus, 450);
@@ -1278,6 +1358,7 @@
     const toolbar = document.getElementById('buret-toolbar');
     if (!toolbar) return;
     toolbar.querySelectorAll('.buret-panel-toggle').forEach(button => { button.classList.add('hidden'); });
+    bindThemeButton(toolbar, null);
     initToolbarDrag(toolbar);
     restoreToolbarCollapsed(toolbar, null);
   }
@@ -1304,14 +1385,160 @@
     const style = document.createElement('style');
     style.id = 'buret-external-artifact-style';
     style.textContent = `
-      .buret-external-artifact-root { position: absolute; inset: 0; overflow: hidden; background: var(--buret-shell-background, #000); }
+      .buret-external-artifact-root { position: absolute; inset: 0; overflow: hidden; background: var(--buret-shell-background, #000); touch-action: none; }
       body.burette-transparent-background .buret-external-artifact-root { background: transparent; }
+      .buret-external-artifact-stage { position: absolute; inset: 0; transform: translate(0px, 0px) scale(1); transform-origin: 50% 50%; will-change: transform; cursor: grab; }
+      .buret-external-artifact-stage.dragging { cursor: grabbing; }
+      .buret-external-artifact-inline { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box; overflow: hidden; }
+      .buret-external-artifact-inline > svg { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; margin: auto; }
       .buret-external-artifact-object { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
       .buret-xyz-badge { position: absolute; left: 14px; bottom: 14px; z-index: 30; max-width: calc(100vw - 28px); box-sizing: border-box; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--buret-toolbar-border, rgba(255,255,255,0.12)); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.9)); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: 0 8px 22px rgba(0,0,0,0.20); font: 11px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; pointer-events: none; }
       .buret-xyz-badge strong { display: block; font-size: 11px; }
       .buret-xyz-badge span { display: block; opacity: 0.76; }
     `;
     document.head.appendChild(style);
+  }
+
+  function disposeExternalArtifactInteractions() {
+    if (!externalArtifactInteractionsCleanup) return;
+    try { externalArtifactInteractionsCleanup(); } catch (_) {}
+    externalArtifactInteractionsCleanup = null;
+  }
+
+  function installExternalArtifactInteractions(root) {
+    disposeExternalArtifactInteractions();
+    const stage = root.querySelector('.buret-external-artifact-stage');
+    if (!stage) return;
+
+    let scale = 1;
+    let translateX = 0;
+    let translateY = 0;
+    let dragPointerId = null;
+    let dragClientX = 0;
+    let dragClientY = 0;
+    let gestureBaseScale = 1;
+    const pointers = new Map();
+    let pinchState = null;
+
+    const clampScale = value => Math.min(8, Math.max(1, value));
+    const clampTranslation = () => {
+      if (scale <= 1.001) {
+        scale = 1;
+        translateX = 0;
+        translateY = 0;
+        return;
+      }
+      const maxX = root.clientWidth * (scale - 1) * 0.5;
+      const maxY = root.clientHeight * (scale - 1) * 0.5;
+      translateX = Math.min(maxX, Math.max(-maxX, translateX));
+      translateY = Math.min(maxY, Math.max(-maxY, translateY));
+    };
+    const apply = () => {
+      clampTranslation();
+      stage.style.transform = `translate(${translateX.toFixed(2)}px, ${translateY.toFixed(2)}px) scale(${scale.toFixed(4)})`;
+    };
+    const zoomAt = (nextScale, clientX, clientY) => {
+      const rect = root.getBoundingClientRect();
+      const anchorX = clientX - (rect.left + rect.width / 2);
+      const anchorY = clientY - (rect.top + rect.height / 2);
+      const clamped = clampScale(nextScale);
+      const ratio = clamped / scale;
+      translateX = translateX * ratio + anchorX * (1 - ratio);
+      translateY = translateY * ratio + anchorY * (1 - ratio);
+      scale = clamped;
+      apply();
+    };
+    const reset = () => {
+      scale = 1;
+      translateX = 0;
+      translateY = 0;
+      stage.classList.remove('dragging');
+      apply();
+    };
+    const pointerCenter = () => {
+      const items = Array.from(pointers.values());
+      if (items.length < 2) return null;
+      return {
+        x: (items[0].x + items[1].x) / 2,
+        y: (items[0].y + items[1].y) / 2,
+        distance: Math.hypot(items[0].x - items[1].x, items[0].y - items[1].y)
+      };
+    };
+
+    const onWheel = event => {
+      event.preventDefault();
+      const factor = Math.exp(-event.deltaY * 0.0015);
+      zoomAt(scale * factor, event.clientX, event.clientY);
+    };
+    const onPointerDown = event => {
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (pointers.size === 1) {
+        dragPointerId = event.pointerId;
+        dragClientX = event.clientX;
+        dragClientY = event.clientY;
+        try { root.setPointerCapture(event.pointerId); } catch (_) {}
+      } else if (pointers.size === 2) {
+        pinchState = pointerCenter();
+      }
+    };
+    const onPointerMove = event => {
+      if (!pointers.has(event.pointerId)) return;
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (pointers.size >= 2) {
+        const center = pointerCenter();
+        if (!center || !pinchState || pinchState.distance < 1) {
+          pinchState = center;
+          return;
+        }
+        zoomAt(scale * (center.distance / pinchState.distance), center.x, center.y);
+        pinchState = center;
+        return;
+      }
+      if (dragPointerId !== event.pointerId || scale <= 1.001) return;
+      translateX += event.clientX - dragClientX;
+      translateY += event.clientY - dragClientY;
+      dragClientX = event.clientX;
+      dragClientY = event.clientY;
+      stage.classList.add('dragging');
+      apply();
+    };
+    const finishPointer = event => {
+      pointers.delete(event.pointerId);
+      if (dragPointerId === event.pointerId) {
+        dragPointerId = null;
+        stage.classList.remove('dragging');
+        try { root.releasePointerCapture(event.pointerId); } catch (_) {}
+      }
+      if (pointers.size < 2) pinchState = null;
+    };
+    const onGestureStart = event => {
+      event.preventDefault();
+      gestureBaseScale = scale;
+    };
+    const onGestureChange = event => {
+      event.preventDefault();
+      zoomAt(gestureBaseScale * Number(event.scale || 1), Number(event.clientX || 0), Number(event.clientY || 0));
+    };
+
+    root.addEventListener('wheel', onWheel, { passive: false });
+    root.addEventListener('pointerdown', onPointerDown);
+    root.addEventListener('pointermove', onPointerMove);
+    root.addEventListener('pointerup', finishPointer);
+    root.addEventListener('pointercancel', finishPointer);
+    root.addEventListener('dblclick', reset);
+    root.addEventListener('gesturestart', onGestureStart, { passive: false });
+    root.addEventListener('gesturechange', onGestureChange, { passive: false });
+    apply();
+    externalArtifactInteractionsCleanup = () => {
+      root.removeEventListener('wheel', onWheel);
+      root.removeEventListener('pointerdown', onPointerDown);
+      root.removeEventListener('pointermove', onPointerMove);
+      root.removeEventListener('pointerup', finishPointer);
+      root.removeEventListener('pointercancel', finishPointer);
+      root.removeEventListener('dblclick', reset);
+      root.removeEventListener('gesturestart', onGestureStart);
+      root.removeEventListener('gesturechange', onGestureChange);
+    };
   }
 
   function prepareSdfStructure(text, config) {
@@ -1576,6 +1803,7 @@
     const config = requireConfig();
     activeConfig = config;
     applyConfigOptions(config);
+    disposeExternalArtifactInteractions();
     debug('config=' + JSON.stringify(config));
     const renderer = normalizeRenderer(config.renderer);
     if (renderer === 'xyz-fast') {

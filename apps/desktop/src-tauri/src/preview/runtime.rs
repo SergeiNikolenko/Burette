@@ -19,6 +19,13 @@ pub(crate) struct ViewerPreferences {
     pub(crate) xyz_fast_style: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ViewerReloadOptions {
+    pub(crate) xyzrender_orientation_ref: Option<String>,
+    pub(crate) xyzrender_preset: Option<String>,
+}
+
 impl ViewerPreferences {
     pub(crate) fn resolved_theme(&self) -> &str {
         if self.theme == "auto" {
@@ -64,6 +71,7 @@ pub(crate) fn open_document<R: Runtime>(
     app: &tauri::AppHandle<R>,
     path: PathBuf,
     preferences: &ViewerPreferences,
+    reload_options: Option<&ViewerReloadOptions>,
 ) -> Result<ViewerDocument, String> {
     let canonical = path
         .canonicalize()
@@ -118,6 +126,7 @@ pub(crate) fn open_document<R: Runtime>(
         &renderer,
         &data,
         preferences,
+        reload_options,
     )?;
     Ok(ViewerDocument {
         id: stable_id(&canonical),

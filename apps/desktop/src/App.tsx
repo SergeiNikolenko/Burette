@@ -44,7 +44,7 @@ import {
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
 import { browserDevRuntimeNeedsRefresh, openBrowserDevDocuments } from "./lib/browser-dev-documents";
 import { isTauriRuntime } from "./lib/tauri";
-import type { OpenDocumentsResult, RecentStructure } from "./types";
+import type { OpenDocumentsResult, RecentStructure, ViewerReloadOptions } from "./types";
 import { checkForUpdates as requestUpdateCheck, clearDismissedUpdate, dismissUpdate, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically, shouldPromptForUpdate } from "./update";
 import type { UpdatePreferences, UpdateRelease, UpdateState } from "./update";
 
@@ -94,6 +94,8 @@ export default function App() {
   const refreshedPersistedSessionRef = useRef(false);
   const openedBrowserDevFilesRef = useRef(false);
   const syncingBrowserDevFilesRef = useRef(false);
+  const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions | null>(null);
+  const xyzrenderOrientationRefRef = useRef<string | null>(null);
   const commandPaletteOpen = useIsCommandPaletteOpen();
   const commandPaletteQuery = useCommandPaletteSearch();
   const openCommandPalette = useOpenCommandPalette();
@@ -110,14 +112,14 @@ export default function App() {
   }, [sidebarOpen, toggleSidebar]);
 
   const openDocuments = useCallback(
-    async (paths: string[]) => {
+    async (paths: string[], reloadOptions?: ViewerReloadOptions) => {
       const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
       if (!cleanPaths.length) return;
       setStatus("Opening structures...");
       try {
         const result = isTauriRuntime()
-          ? await invoke<OpenDocumentsResult>("open_documents", { paths: cleanPaths, preferences })
-          : await openBrowserDevDocuments(cleanPaths, preferences);
+          ? await invoke<OpenDocumentsResult>("open_documents", { paths: cleanPaths, preferences, reloadOptions })
+          : await openBrowserDevDocuments(cleanPaths, preferences, reloadOptions);
         addDocuments(result.documents);
         rememberRecentStructures(result.documents);
         const openedText = "Opened " + result.documents.length + " structure" + (result.documents.length === 1 ? "" : "s");
@@ -209,7 +211,9 @@ export default function App() {
 
   const reloadActive = useCallback(async () => {
     if (!activeDocument) return;
-    await openDocuments([activeDocument.path]);
+    const reloadOptions = pendingViewerReloadOptionsRef.current ?? undefined;
+    pendingViewerReloadOptionsRef.current = null;
+    await openDocuments([activeDocument.path], reloadOptions);
   }, [activeDocument, openDocuments]);
 
   const setUpdatePreferences = useCallback((preferences: UpdatePreferences) => {
@@ -325,19 +329,40 @@ export default function App() {
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
-      const data = event.data as { source?: string; body?: { type?: string; value?: string } } | undefined;
+      const data = event.data as {
+        source?: string;
+        body?: { type?: string; value?: string; orientationRef?: string | null; text?: string | null };
+      } | undefined;
       if (data?.source !== "burrete-viewer") return;
       const body = data.body;
+      if (body?.type === "setXyzrenderOrientation") {
+        xyzrenderOrientationRefRef.current = body.text ?? body.value ?? null;
+        return;
+      }
+      if (body?.type === "setXyzrenderPreset") {
+        pendingViewerReloadOptionsRef.current = {
+          xyzrenderPreset: body.value ?? null,
+          xyzrenderOrientationRef: xyzrenderOrientationRefRef.current,
+        };
+        void reloadActive();
+        return;
+      }
       if (body?.type === "setRenderer") {
         const renderer = body.value;
         if (renderer === "auto" || renderer === "xyz-fast" || renderer === "molstar" || renderer === "xyzrender-external") {
+          if (renderer === "xyzrender-external" && body.orientationRef) {
+            xyzrenderOrientationRefRef.current = body.orientationRef;
+          }
+          pendingViewerReloadOptionsRef.current = renderer === "xyzrender-external" && body.orientationRef
+            ? { xyzrenderOrientationRef: body.orientationRef }
+            : null;
           setPreference("rendererMode", renderer);
         }
       }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [setPreference]);
+  }, [reloadActive, setPreference]);
 
   useEffect(() => {
     const loadedPreferences = loadUpdatePreferences();

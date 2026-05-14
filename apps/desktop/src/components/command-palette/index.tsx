@@ -27,7 +27,6 @@ const rendererCommands: Array<{
 }> = [
   { id: "renderer-auto", label: "Renderer: Auto", value: "auto" },
   { id: "renderer-molstar", label: "Renderer: Mol*", value: "molstar" },
-  { id: "renderer-xyz-fast", label: "Renderer: Fast XYZ", value: "xyz-fast" },
   { id: "renderer-xyzrender", label: "Renderer: xyzrender external", value: "xyzrender-external" },
 ];
 

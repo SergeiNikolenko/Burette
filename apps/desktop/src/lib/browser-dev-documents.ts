@@ -1,4 +1,4 @@
-import type { OpenDocumentsResult, ViewerDocument, ViewerPreferences } from "../types";
+import type { OpenDocumentsResult, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "../types";
 import previewFormatRegistry from "../../../../config/preview-formats.json";
 
 type FormatInfo = {
@@ -27,6 +27,15 @@ type ResolvedPreviewVisuals = {
   transparentBackground: boolean;
 };
 
+type BrowserDevExternalArtifact = {
+  inlineSvg: string;
+  outputType: "svg";
+  preset: string;
+  configArgument: string;
+  elapsedMs: number;
+  log?: string;
+};
+
 export function browserDevRuntimeNeedsRefresh(document: ViewerDocument) {
   if (document.renderer === "grid2d") return false;
   return !document.runtimePath.includes("viewer-shell.js")
@@ -47,12 +56,13 @@ function resolvePreviewVisuals(preferences: ViewerPreferences): ResolvedPreviewV
 export async function openBrowserDevDocuments(
   paths: string[],
   preferences: ViewerPreferences,
+  reloadOptions?: ViewerReloadOptions,
 ): Promise<OpenDocumentsResult> {
   const documents: ViewerDocument[] = [];
   const errors: string[] = [];
   for (const path of paths) {
     try {
-      documents.push(await openBrowserDevDocument(path, preferences));
+      documents.push(await openBrowserDevDocument(path, preferences, reloadOptions));
     } catch (error) {
       errors.push(error instanceof Error ? error.message : String(error));
     }
@@ -66,6 +76,7 @@ export async function openBrowserDevDocuments(
 async function openBrowserDevDocument(
   path: string,
   preferences: ViewerPreferences,
+  reloadOptions?: ViewerReloadOptions,
 ): Promise<ViewerDocument> {
   const response = await fetch(fsUrl(path));
   if (!response.ok) {
@@ -90,8 +101,9 @@ async function openBrowserDevDocument(
 
   const format = formatForExtension(extension);
   const requestedRenderer = resolveRenderer(format, preferences.rendererMode);
-  const { renderer, externalRendererStatus } = browserRendererPlan(format, requestedRenderer);
-  const html = viewerHtml(path, format, renderer, bytes, preferences, externalRendererStatus);
+  const { renderer, externalRendererStatus, externalArtifact, xyzrenderPresetOptions } =
+    await browserRendererPlan(path, format, requestedRenderer, reloadOptions);
+  const html = viewerHtml(path, format, renderer, bytes, preferences, externalRendererStatus, externalArtifact, xyzrenderPresetOptions);
   return browserDocument(path, extension, renderer, html, bytes.length);
 }
 
@@ -120,6 +132,8 @@ function viewerHtml(
   bytes: Uint8Array,
   preferences: ViewerPreferences,
   externalRendererStatus?: Record<string, string>,
+  externalArtifact?: BrowserDevExternalArtifact,
+  xyzrenderPresetOptions?: Array<{ value: string; label: string }>,
 ) {
   const label = fileTitle(path);
   const visuals = resolvePreviewVisuals(preferences);
@@ -143,11 +157,13 @@ function viewerHtml(
     sdfGrid: true,
     appViewer: true,
     tauriViewer: false,
-    xyzrenderViewer: false,
+    xyzrenderViewer: renderer === "xyzrender-external",
     molstarAvailable: !format.externalOnly,
     canOpenInVesta: format.canOpenInVesta,
     showPanelControls: true,
     defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" },
+    ...(externalArtifact ? { externalArtifact } : {}),
+    ...(xyzrenderPresetOptions ? { xyzrenderPresetOptions } : {}),
     ...(externalRendererStatus ? { externalRendererStatus } : {}),
     ...(renderer === "xyz-fast"
       ? {
@@ -162,7 +178,7 @@ function viewerHtml(
       : {}),
   };
   const rendererAssets =
-    renderer === "xyz-fast"
+    renderer === "xyz-fast" || renderer === "xyzrender-external"
       ? `<script src="xyz-fast.js"></script>`
       : `<link rel="stylesheet" href="molstar.css" /><script src="molstar.js"></script>`;
   const runtimeAssetVersion = String(Date.now());
@@ -189,22 +205,87 @@ function viewerHtml(
 </html>`;
 }
 
-function browserRendererPlan(format: FormatInfo, renderer: string) {
+async function browserRendererPlan(
+  path: string,
+  format: FormatInfo,
+  renderer: string,
+  reloadOptions?: ViewerReloadOptions,
+) {
   if (renderer !== "xyzrender-external") return { renderer };
-  if (format.externalOnly) {
-    throw new Error("External xyzrender previews are unavailable in browser dev mode.");
-  }
-  if (format.molstarFormat === "xyz" && !format.binary) {
+  try {
+    const result = await requestBrowserDevXyzrender(
+      path,
+      reloadOptions?.xyzrenderPreset ?? "default",
+      reloadOptions?.xyzrenderOrientationRef ?? null,
+    );
     return {
-      renderer: "xyz-fast",
+      renderer: "xyzrender-external",
+      externalArtifact: {
+        inlineSvg: result.svg,
+        outputType: "svg" as const,
+        preset: result.preset,
+        configArgument: result.configArgument,
+        elapsedMs: result.elapsedMs,
+        log: result.log,
+      },
+      xyzrenderPresetOptions: result.xyzrenderPresetOptions,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (format.externalOnly) {
+      throw new Error(message);
+    }
+    if (format.molstarFormat === "xyz" && !format.binary) {
+      return {
+        renderer: "xyz-fast",
+        externalRendererStatus: {
+          status: "fallback",
+          requested: "xyzrender-external",
+          message: `Using Fast XYZ because browser dev xyzrender failed: ${message}`,
+        },
+      };
+    }
+    return {
+      renderer: "molstar",
       externalRendererStatus: {
         status: "fallback",
         requested: "xyzrender-external",
-        message: "Using Fast XYZ because browser dev mode cannot run external xyzrender.",
+        message: `Using Mol* because browser dev xyzrender failed: ${message}`,
       },
     };
   }
-  return { renderer: "molstar" };
+}
+
+async function requestBrowserDevXyzrender(
+  path: string,
+  preset: string,
+  orientationRef: string | null,
+) {
+  const url = new URL("/__burette/xyzrender", window.location.origin);
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      path,
+      preset,
+      orientationRef: orientationRef || undefined,
+    }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(typeof payload?.error === "string" ? payload.error : `xyzrender request failed with status ${response.status}`);
+  }
+  if (typeof payload?.svg !== "string" || !payload.svg.trim()) {
+    throw new Error("xyzrender endpoint returned no SVG payload");
+  }
+  return {
+    svg: payload.svg,
+    preset: typeof payload?.preset === "string" ? payload.preset : "default",
+    configArgument: typeof payload?.configArgument === "string" ? payload.configArgument : "default",
+    elapsedMs: Number(payload?.elapsedMs) || 0,
+    log: typeof payload?.log === "string" ? payload.log : "",
+    xyzrenderPresetOptions: Array.isArray(payload?.xyzrenderPresetOptions) ? payload.xyzrenderPresetOptions : undefined,
+  };
 }
 
 async function gridHtml(
