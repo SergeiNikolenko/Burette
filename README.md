@@ -34,6 +34,13 @@ brew tap SergeiNikolenko/burrete
 brew install --cask burrete
 ```
 
+You can also install it with npm or pnpm:
+
+```bash
+npm exec --package burrete -- burrete install
+pnpm dlx burrete install
+```
+
 Or download Burrete from the GitHub Releases page:
 
 [Download the latest Burrete release](https://github.com/SergeiNikolenko/Burrete/releases/latest)
