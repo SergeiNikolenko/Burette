@@ -53,7 +53,11 @@ export function AppLayout({
       <button className="chrome-button sidebar-toggle-root" onClick={onToggleSidebar} title={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"} aria-label={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"}>
         <HugeiconsIcon icon={SidebarLeftIcon} size={18} color="currentColor" strokeWidth={2} />
       </button>
-      <header className="topbar" style={{ left: tabChromeLeft, transition: state.sidebarDragging ? "none" : undefined }}>
+      <header
+        className="topbar"
+        data-tauri-drag-region
+        style={{ left: tabChromeLeft, transition: state.sidebarDragging ? "none" : undefined }}
+      >
         <EditorTabs state={layoutState} actions={actions} />
       </header>
       <section className="workspace">
