@@ -122,7 +122,7 @@ function viewerHtml(
     molstarAvailable: !format.externalOnly,
     canOpenInVesta: format.canOpenInVesta,
     showPanelControls: true,
-    defaultLayoutState: { left: "collapsed", right: "hidden", top: "hidden", bottom: "hidden" },
+    defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" },
     ...(renderer === "xyz-fast"
       ? {
           xyzFast: {
