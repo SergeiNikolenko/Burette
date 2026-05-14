@@ -3,6 +3,11 @@ export type OpenDocumentsResult = {
   errors: string[];
 };
 
+export type ViewerReloadOptions = {
+  xyzrenderOrientationRef?: string | null;
+  xyzrenderPreset?: string | null;
+};
+
 export type ViewerDocument = {
   id: string;
   path: string;
