@@ -78,7 +78,7 @@ Burrete keeps the preview compact and Finder-friendly:
 - a small floating toolbar for fullscreen and optional Mol* panels
 - optional sequence, log, left, and right Mol* panels when you need them
 - fast static SVG previews for `.xyz` files, including first-frame multi-frame XYZ and extXYZ lattice boxes
-- external `xyzrender` previews with built-in presets, custom JSON configs, and optional advanced CLI flags
+- external `xyzrender` previews when the renderer is installed locally
 - RDKit grids for SDF, SMILES, CSV, and TSV collections
 - grid search, sorting, SMARTS filtering/highlighting, selection, and export to SMILES or CSV
 - infinite grid loading for larger collections
@@ -87,15 +87,13 @@ Burrete keeps the preview compact and Finder-friendly:
 
 Burrete runs as a menu bar app. Its settings window includes:
 
-- launch and menu bar behavior
-- transparent or opaque preview background
-- default visibility for Mol* panels
+- light, dark, automatic, and transparent preview backgrounds
 - renderer selection: Auto, Fast XYZ SVG, Mol* Interactive, or external `xyzrender`
-- `xyzrender` executable path, built-in preset/custom JSON config, and extra CLI flags
+- default Fast XYZ SVG style
 - quick `.xyz` toolbar switching between Fast SVG, Mol*, and `xyzrender`
-- grid preview enablement for SDF, SMILES, CSV, and TSV files
-- Finder file association registration
+- workspace folder opening
 - preview cache cleanup
+- Quick Look cache reset
 - log access
 - update checks for stable and beta GitHub Releases
 

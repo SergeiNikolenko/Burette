@@ -17,6 +17,7 @@ require_tool() { command -v "$1" >/dev/null 2>&1 || { echo "error: $1 is require
 require_asset() { local p="$1"; [[ -s "$p" ]] || { echo "error: missing vendored web asset: $p" >&2; echo "Run: npm ci --ignore-scripts && npm run vendor:molstar && npm run vendor:rdkit" >&2; exit 1; }; }
 
 require_tool ditto "ditto is normally present on macOS."
+require_tool shasum "shasum is normally present on macOS."
 
 require_asset PreviewExtension/Web/molstar.js
 require_asset PreviewExtension/Web/molstar.css
@@ -38,9 +39,18 @@ node --check PreviewExtension/Web/xyz-fast.js >/dev/null
 "$ROOT/scripts/build.sh"
 mkdir -p "$(dirname "$ZIP")"
 [[ -d "$APP" ]] || { echo "error: exported app is missing: $APP" >&2; exit 1; }
+"$ROOT/scripts/check-release-signature.sh" "$APP"
 
-rm -f "$ZIP"
+rm -f "$ZIP" "$ZIP.sha256"
 ditto -c -k --keepParent "$APP" "$ZIP"
+(
+  cd "$(dirname "$ZIP")"
+  shasum -a 256 "$(basename "$ZIP")" > "$(basename "$ZIP").sha256"
+)
+node "$ROOT/scripts/sign-update-manifest.mjs" "$ZIP" "$(dirname "$ZIP")"
 
 echo "Release app: $APP"
 echo "Release zip: $ZIP"
+echo "Release digest: $ZIP.sha256"
+echo "Release manifest: $ZIP.manifest.json"
+echo "Release manifest signature: $ZIP.manifest.json.sig"

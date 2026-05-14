@@ -199,11 +199,6 @@ export default function App() {
   useOpenEvents(openDocuments, setStatus);
   const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop } = useOpenDrop(openDocuments, setStatus);
 
-  const reloadActive = useCallback(async () => {
-    if (!activeDocument) return;
-    await openDocuments([activeDocument.path]);
-  }, [activeDocument, openDocuments]);
-
   const setUpdatePreferences = useCallback((preferences: UpdatePreferences) => {
     saveUpdatePreferences(preferences);
     setUpdate((previous) => ({
@@ -247,6 +242,15 @@ export default function App() {
           assetName: release.installAsset.name,
           browserDownloadUrl: release.installAsset.browserDownloadUrl,
           size: release.installAsset.size,
+          sha256AssetName: release.installAsset.sha256AssetName,
+          sha256BrowserDownloadUrl: release.installAsset.sha256BrowserDownloadUrl,
+          sha256Size: release.installAsset.sha256Size,
+          manifestAssetName: release.installAsset.manifestAssetName,
+          manifestBrowserDownloadUrl: release.installAsset.manifestBrowserDownloadUrl,
+          manifestSize: release.installAsset.manifestSize,
+          manifestSignatureAssetName: release.installAsset.manifestSignatureAssetName,
+          manifestSignatureBrowserDownloadUrl: release.installAsset.manifestSignatureBrowserDownloadUrl,
+          manifestSignatureSize: release.installAsset.manifestSignatureSize,
         },
       });
     } catch (error) {
@@ -317,9 +321,10 @@ export default function App() {
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
-      const data = event.data as { source?: string; body?: { type?: string; value?: string } } | undefined;
+      const data = event.data as { source?: string; body?: { type?: string; value?: string; documentId?: string } } | undefined;
       if (data?.source !== "burrete-viewer") return;
       const body = data.body;
+      if (!isKnownViewerMessageSource(event.source, body?.documentId)) return;
       if (body?.type === "setRenderer") {
         const renderer = body.value;
         if (renderer === "auto" || renderer === "xyz-fast" || renderer === "molstar" || renderer === "xyzrender-external") {
@@ -339,8 +344,15 @@ export default function App() {
   }, [checkForUpdates]);
 
   useEffect(() => {
-    if (activeDocument) void reloadActive();
-    // Preferences intentionally refresh only the active runtime.
+    const paths = Array.from(new Set(tabs
+      .map((tab) => tab.location.kind === "file" ? tab.location.path : null)
+      .filter((path): path is string => Boolean(path))));
+    if (paths.length === 0) return;
+    const restoreTabId = activeTabId;
+    void openDocuments(paths).then(() => {
+      if (restoreTabId) setActiveTab(restoreTabId);
+    });
+    // Preferences refresh all open runtimes so inactive tabs do not keep stale renderer/theme output.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preferences.theme, preferences.canvasBackground, preferences.rendererMode, preferences.xyzFastStyle]);
 
@@ -408,8 +420,8 @@ export default function App() {
       setStatus("Preview cache cleared");
     },
     resetQuickLook: async () => {
-      await invoke("reset_quick_look");
-      setStatus("Quick Look reset requested");
+      const report = await invoke<{ ok: boolean }>("reset_quick_look");
+      setStatus(report.ok ? "Quick Look reset completed" : "Quick Look reset reported issues");
     },
     openLogs: async () => {
       await invoke("open_logs_folder");
@@ -489,4 +501,11 @@ function parentDirectory(path: string) {
   const normalized = path.replace(/\\/g, "/");
   const index = normalized.lastIndexOf("/");
   return index > 0 ? normalized.slice(0, index) : null;
+}
+
+function isKnownViewerMessageSource(source: MessageEventSource | null, documentId?: string) {
+  if (!source || !documentId) return false;
+  return Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).some(
+    (iframe) => iframe.dataset.documentId === documentId && iframe.contentWindow === source,
+  );
 }
