@@ -3,6 +3,11 @@
   "version": "0.10.33",
   "private": true,
   "description": "macOS menu bar app and Quick Look extension for molecular previews: Mol* 3D, fast XYZ, xyzrender SVG, and RDKit grids.",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "tools/*"
+  ],
   "scripts": {
     "vendor:molstar": "node scripts/vendor-molstar.mjs",
     "vendor:rdkit": "node scripts/vendor-rdkit.mjs",
@@ -12,7 +17,7 @@
     "test:agent": "node tests/test-burette-agent.mjs && node tests/test-agent-preview-server.mjs",
     "test:ui": "node tests/test-ui-shell-contract.mjs",
     "test:tauri-structure": "node tests/test-tauri-structure.mjs",
-    "check:js": "node --check PreviewExtension/Web/viewer.js && node --check PreviewExtension/Web/viewer-shell.js && node --check PreviewExtension/Web/burette-agent.js && node --check PreviewExtension/Web/grid-viewer.js && node --check PreviewExtension/Web/xyz-fast.js && node --check scripts/vendor-molstar.mjs && node --check scripts/vendor-rdkit.mjs && node --check scripts/agent-preview.mjs && node --check scripts/check-release-version.mjs && node --check scripts/check-preview-format-registry.mjs",
+    "check:js": "node --check PreviewExtension/Web/viewer.js && node --check PreviewExtension/Web/viewer-shell.js && node --check PreviewExtension/Web/burette-agent.js && node --check PreviewExtension/Web/grid-viewer.js && node --check scripts/vendor-molstar.mjs && node --check scripts/vendor-rdkit.mjs && node --check scripts/agent-preview.mjs && node --check scripts/check-release-version.mjs && node --check scripts/check-preview-format-registry.mjs && node --check packages/burrete/bin/burrete.mjs",
     "check:formats": "node scripts/check-preview-format-registry.mjs",
     "check:release": "node scripts/check-release-version.mjs",
     "ci:fast": "bash scripts/ci-fast.sh",
