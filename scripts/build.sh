@@ -10,6 +10,12 @@ done
 ROOT="$(cd -P "$(dirname "$SCRIPT")/.." >/dev/null 2>&1 && pwd -P)"
 cd "$ROOT"
 
+if [[ $# -ne 0 ]]; then
+  echo "error: build.sh does not accept positional arguments." >&2
+  echo "Run forced preview checks with scripts/force-preview.sh after installing the app." >&2
+  exit 2
+fi
+
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 export COPYFILE_DISABLE=1
 export COPY_EXTENDED_ATTRIBUTES_DISABLE=1
@@ -20,6 +26,9 @@ PREVIEW_ID="com.local.BurreteV10.Preview"
 SAFE_ROOT_BASE="${TMPDIR:-/tmp}"
 SAFE_ROOT="$(mktemp -d "${SAFE_ROOT_BASE%/}/BurreteV10BuildSafe.XXXXXX")"
 LOCAL_APP="$ROOT/build/Burrete.app"
+SIGN_IDENTITY="${BURRETE_CODESIGN_IDENTITY:--}"
+XCODE_CONFIGURATION="${BURRETE_XCODE_CONFIGURATION:-Debug}"
+DEVELOPMENT_TEAM="${BURRETE_DEVELOPMENT_TEAM:-}"
 
 cleanup_safe_root() {
   rm -rf "$SAFE_ROOT" 2>/dev/null || true
@@ -31,6 +40,8 @@ Burrete v10 build
   source: $ROOT
   app id: $APP_ID
   preview id: $PREVIEW_ID
+  xcode configuration: $XCODE_CONFIGURATION
+  signing identity: $SIGN_IDENTITY
 HDR
 
 require_tool() { command -v "$1" >/dev/null 2>&1 || { echo "error: $1 is required. $2" >&2; exit 1; }; }
@@ -91,10 +102,9 @@ with open(target_path, "wb") as target_file:
     plistlib.dump(target, target_file, sort_keys=False)
 PY
 }
-require_asset() { local p="$1"; [[ -s "$p" ]] || { echo "error: missing vendored web asset: $p" >&2; echo "Run: npm ci --ignore-scripts && npm run vendor:molstar && npm run vendor:rdkit" >&2; exit 1; }; }
+require_asset() { local p="$1"; [[ -s "$p" ]] || { echo "error: missing vendored web asset: $p" >&2; echo "Run: bun install --frozen-lockfile --ignore-scripts && bun run vendor:molstar && bun run vendor:rdkit" >&2; exit 1; }; }
 
-require_tool node "Install it with: brew install node"
-require_tool npm "Install it with: brew install node"
+require_tool bun "Install it with: brew install oven-sh/bun/bun"
 require_tool xcodebuild "Install full Xcode from the App Store."
 require_tool rsync "rsync is normally present on macOS."
 require_tool ditto "ditto is normally present on macOS."
@@ -116,7 +126,7 @@ esac
 grep -Eq '"version": "0\.10\.[0-9]+"' package.json || { echo "error: this is not a v10 release package; package.json version is:" >&2; grep '"version"' package.json >&2 || true; exit 1; }
 grep -q 'com.local.BurreteV10.Preview' Burrete.xcodeproj/project.pbxproj || { echo "error: this Xcode project is not v10." >&2; exit 1; }
 grep -q 'config/preview-formats.json' scripts/force-preview.sh || { echo "error: force-preview.sh is not using the preview format registry." >&2; exit 1; }
-node --input-type=module -e "import { readFileSync } from 'node:fs'; const registry = JSON.parse(readFileSync('config/preview-formats.json', 'utf8')); if (!registry.formats?.some((format) => format.contentType === 'com.local.burrete10.pdb')) process.exit(1);" || { echo "error: preview format registry is not v10." >&2; exit 1; }
+bun --eval "import { readFileSync } from 'node:fs'; const registry = JSON.parse(readFileSync('config/preview-formats.json', 'utf8')); if (!registry.formats?.some((format) => format.contentType === 'com.local.burrete10.pdb')) process.exit(1);" || { echo "error: preview format registry is not v10." >&2; exit 1; }
 
 require_asset PreviewExtension/Web/molstar.js
 require_asset PreviewExtension/Web/molstar.css
@@ -129,11 +139,12 @@ require_asset PreviewExtension/Web/grid.css
 require_asset PreviewExtension/Web/rdkit/RDKit_minimal.js
 require_asset PreviewExtension/Web/rdkit/RDKit_minimal.wasm
 require_asset PreviewExtension/Web/xyz-fast.js
-node --check PreviewExtension/Web/viewer.js >/dev/null
-node --check PreviewExtension/Web/viewer-shell.js >/dev/null
-node --check PreviewExtension/Web/burette-agent.js >/dev/null
-node --check PreviewExtension/Web/grid-viewer.js >/dev/null
-node --check PreviewExtension/Web/xyz-fast.js >/dev/null
+bun scripts/check-js-syntax.mjs \
+  PreviewExtension/Web/viewer.js \
+  PreviewExtension/Web/viewer-shell.js \
+  PreviewExtension/Web/burette-agent.js \
+  PreviewExtension/Web/grid-viewer.js \
+  PreviewExtension/Web/xyz-fast.js >/dev/null
 clean_detritus "$ROOT"
 rm -f /tmp/Burrete.log "${TMPDIR:-/tmp}/Burrete.log" 2>/dev/null || true
 
@@ -142,11 +153,15 @@ clean_detritus "$SAFE_ROOT"
 
 pushd "$SAFE_ROOT" >/dev/null
 rm -rf build
-npm ci --ignore-scripts
-npm run build:tauri
-xcodebuild -project Burrete.xcodeproj -scheme BurretePreview -configuration Debug -derivedDataPath build COMPILER_INDEX_STORE_ENABLE=NO CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build
+bun install --frozen-lockfile --ignore-scripts
+bun run build:tauri
+XCODE_SIGN_ARGS=(CODE_SIGN_IDENTITY="$SIGN_IDENTITY" CODE_SIGNING_ALLOWED=YES)
+if [[ -n "$DEVELOPMENT_TEAM" ]]; then
+  XCODE_SIGN_ARGS+=(CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM")
+fi
+xcodebuild -project Burrete.xcodeproj -scheme BurretePreview -configuration "$XCODE_CONFIGURATION" -derivedDataPath build COMPILER_INDEX_STORE_ENABLE=NO "${XCODE_SIGN_ARGS[@]}" build
 TAURI_BUILT_APP="apps/desktop/src-tauri/target/release/bundle/macos/Burrete.app"
-QUICKLOOK_APPEX="build/Build/Products/Debug/BurretePreview.appex"
+QUICKLOOK_APPEX="build/Build/Products/$XCODE_CONFIGURATION/BurretePreview.appex"
 [[ -d "$TAURI_BUILT_APP" ]] || { echo "error: Tauri app bundle missing: $TAURI_BUILT_APP" >&2; exit 1; }
 [[ -d "$QUICKLOOK_APPEX" ]] || { echo "error: Quick Look extension missing: $QUICKLOOK_APPEX" >&2; exit 1; }
 mkdir -p "$TAURI_BUILT_APP/Contents/PlugIns"
@@ -155,8 +170,12 @@ ditto --norsrc --noextattr "$QUICKLOOK_APPEX" "$TAURI_BUILT_APP/Contents/PlugIns
 mark_menu_bar_app "$TAURI_BUILT_APP"
 copy_app_plist_metadata "$TAURI_BUILT_APP"
 clean_detritus "$TAURI_BUILT_APP"
-codesign --force --sign - --entitlements "$ROOT/PreviewExtension/BurretePreview.entitlements" "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex" >/dev/null
-codesign --force --sign - "$TAURI_BUILT_APP" >/dev/null
+CODESIGN_ARGS=(--force --sign "$SIGN_IDENTITY")
+if [[ "$SIGN_IDENTITY" != "-" ]]; then
+  CODESIGN_ARGS+=(--options runtime --timestamp)
+fi
+codesign "${CODESIGN_ARGS[@]}" --entitlements "$ROOT/PreviewExtension/BurretePreview.entitlements" "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex" >/dev/null
+codesign "${CODESIGN_ARGS[@]}" "$TAURI_BUILT_APP" >/dev/null
 clean_detritus "$TAURI_BUILT_APP"
 popd >/dev/null
 

@@ -220,16 +220,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             try validateVendoredMoleculeGridAssets(in: webDirectory, fileManager: fileManager, diagnostics: &diagnostics)
             let html = gridInlineHTML(title: url.lastPathComponent, preferences: preferences)
             diag("gridInlineHTML.bytes=\(html.utf8.count)")
-            let gridRecordsScript = try gridRecordsScriptWithRDKitWasm(
-                gridPreview.recordsScript,
-                bundledWebDirectory: webDirectory
-            )
             let runtimePreview = try createRuntimePreview(
                 bundledWebDirectory: webDirectory,
                 html: html,
                 configJSON: configJSONWithRequestID(gridPreview.configJSON, requestID: requestID),
-                structureBase64: nil,
-                gridRecordsScript: gridRecordsScript,
+                structureData: nil,
+                gridRecordsScript: gridPreview.recordsScript,
                 requiredAssets: ["grid-viewer.js", "grid.css"],
                 requiresRDKit: true,
                 externalArtifactSourceURL: nil,
@@ -349,8 +345,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             rendererPolicy: rendererPolicy,
             preferences: preferences
         )
-        let base64 = structureDataForWeb.base64EncodedString(options: [])
-        diag("structure.base64.chars=\(base64.count)")
+        diag("structure.payload.bytes=\(structureDataForWeb.count)")
 
         let html = inlineHTML(title: url.lastPathComponent, preferences: preferences, renderer: renderer)
         diag("inlineHTML.bytes=\(html.utf8.count)")
@@ -358,7 +353,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             bundledWebDirectory: webDirectory,
             html: html,
             configJSON: configJSON,
-            structureBase64: base64,
+            structureData: structureDataForWeb,
             gridRecordsScript: nil,
             requiredAssets: runtimeAssets(for: renderer),
             requiresRDKit: false,
@@ -382,7 +377,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         bundledWebDirectory: URL,
         html: String,
         configJSON: String,
-        structureBase64: String?,
+        structureData: Data?,
         gridRecordsScript: String?,
         requiredAssets: [String],
         requiresRDKit: Bool,
@@ -414,7 +409,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         try Data(html.utf8).write(to: indexURL, options: [.atomic])
         try Data("window.BurreteConfig = \(configJSON);\n".utf8)
             .write(to: runtimeDirectory.appendingPathComponent("preview-config.js"), options: [.atomic])
-        let dataScript = structureBase64.map { "window.BurreteDataBase64 = \"\($0)\";\n" } ?? "window.BurreteDataBase64 = null;\n"
+        if let structureData {
+            try structureData.write(to: runtimeDirectory.appendingPathComponent("preview-data.bin"), options: [.atomic])
+        }
+        let dataScript = structureData == nil ? "window.BurreteDataURL = null;\n" : "window.BurreteDataURL = './preview-data.bin';\n"
         try Data(dataScript.utf8)
             .write(to: runtimeDirectory.appendingPathComponent("preview-data.js"), options: [.atomic])
         if let gridRecordsScript {
@@ -433,6 +431,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let data = Data(configJSON.utf8)
         var payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
         payload["previewRequestID"] = requestID
+        payload["rdkitWasmPath"] = "../assets/rdkit/RDKit_minimal.wasm"
         let nextData = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes])
         guard let json = String(data: nextData, encoding: .utf8) else { throw PreviewError.couldNotCreatePreviewConfig }
         return json
@@ -503,14 +502,6 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             return ["viewer-runtime.css", "viewer-shell.js", "molstar.css", "burette-agent.js", "viewer.js"]
         }
         return ["viewer-runtime.css", "viewer-shell.js", "molstar.js", "molstar.css", "burette-agent.js", "viewer.js"]
-    }
-
-    private static func gridRecordsScriptWithRDKitWasm(_ recordsScript: String, bundledWebDirectory: URL) throws -> String {
-        let wasmURL = bundledWebDirectory
-            .appendingPathComponent("rdkit", isDirectory: true)
-            .appendingPathComponent("RDKit_minimal.wasm")
-        let wasmBase64 = try Data(contentsOf: wasmURL).base64EncodedString()
-        return recordsScript + "window.BurreteRDKitWasmBase64 = \"\(wasmBase64)\";\n"
     }
 
     private static func copyAssetIfNeeded(from source: URL, to destination: URL, fileManager: FileManager) throws -> Bool {
@@ -600,6 +591,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "previewRequestID": requestID,
             "byteCount": byteCount,
             "previewByteCount": previewByteCount,
+            "dataPath": "./preview-data.bin",
             "quickLookBuild": "v10-product",
             "debug": showDebugOverlay,
             "theme": preferences.resolvedViewerTheme,
@@ -666,6 +658,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <title>Burrete Grid - \(safeTitle)</title>
+          <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob:; connect-src 'self' file: data: blob:; script-src 'self' 'unsafe-inline' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'self' blob:;" />
           <link rel="stylesheet" href="../assets/grid.css" />
           <script>
             (function () {
@@ -730,6 +723,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <title>Burrete - \(safeTitle)</title>
+          <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob:; connect-src 'self' file: data: blob:; script-src 'self' 'unsafe-inline' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'self' blob:;" />
           <link rel="stylesheet" href="../assets/molstar.css" />
           <link rel="stylesheet" href="../assets/viewer-runtime.css" />
           <script>
@@ -1112,11 +1106,31 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
     private func handleJavaScriptAction(_ action: String) {
         appendLog("JS action=\(action)")
+        if action == "open-burrete" {
+            openCurrentPreviewInBurrete()
+            return
+        }
         if action == "open-vesta" {
             openCurrentPreviewInVesta()
             return
         }
         appendLog("unknown JS action=\(action)")
+    }
+
+    private func openCurrentPreviewInBurrete() {
+        guard let url = currentPreviewURL else {
+            appendLog("openInBurrete.missingCurrentURL")
+            return
+        }
+        BurreteLauncher.open(fileURL: url) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success:
+                self.appendLog("openInBurrete.launched=\(url.path)")
+            case .failure(let error):
+                self.appendLog("openInBurrete.failed=\(error.localizedDescription)")
+            }
+        }
     }
 
     private func openCurrentPreviewInVesta() {
@@ -1262,7 +1276,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             typeofMolstar: typeof window.molstar,
             typeofViewer: window.molstar ? typeof window.molstar.Viewer : 'no molstar',
             typeofConfig: typeof window.BurreteConfig,
-            dataBase64Chars: window.BurreteDataBase64 ? window.BurreteDataBase64.length : -1,
+            dataBytes: window.BurreteDataBytes ? window.BurreteDataBytes.length : -1,
             webgl2: (function(){ try { var c = document.createElement('canvas'); return !!c.getContext('webgl2'); } catch(e) { return 'error:' + e; } })(),
             webgl1: (function(){ try { var c = document.createElement('canvas'); return !!(c.getContext('webgl') || c.getContext('experimental-webgl')); } catch(e) { return 'error:' + e; } })()
           };
@@ -2109,6 +2123,66 @@ private enum PreviewError: LocalizedError {
             return "Could not create preview config."
         case .couldNotCreateRuntimePreview(let reason):
             return "Could not create runtime preview files: \(reason)"
+        }
+    }
+}
+
+private enum BurreteLauncher {
+    static func open(fileURL: URL, completion: @escaping (Result<Void, Error>) -> Void) {
+        if let appURL = containingApplicationURL() {
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.activates = true
+            NSWorkspace.shared.open([fileURL], withApplicationAt: appURL, configuration: configuration) { _, error in
+                DispatchQueue.main.async {
+                    if let error {
+                        completion(.failure(error))
+                    } else {
+                        completion(.success(()))
+                    }
+                }
+            }
+            return
+        }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = ["-a", "Burrete", fileURL.path]
+        let errorPipe = Pipe()
+        process.standardError = errorPipe
+        process.terminationHandler = { finished in
+            let data = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            let message = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
+            DispatchQueue.main.async {
+                if finished.terminationStatus == 0 {
+                    completion(.success(()))
+                } else {
+                    completion(.failure(BurreteLaunchError.failed(message.trimmingCharacters(in: .whitespacesAndNewlines))))
+                }
+            }
+        }
+        do {
+            try process.run()
+        } catch {
+            completion(.failure(error))
+        }
+    }
+
+    private static func containingApplicationURL() -> URL? {
+        let bundleURL = Bundle(for: PreviewViewController.self).bundleURL
+        let contentsURL = bundleURL.deletingLastPathComponent().deletingLastPathComponent()
+        guard contentsURL.lastPathComponent == "Contents" else { return nil }
+        let appURL = contentsURL.deletingLastPathComponent()
+        return appURL.pathExtension == "app" ? appURL : nil
+    }
+}
+
+private enum BurreteLaunchError: LocalizedError {
+    case failed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .failed(let message):
+            return message.isEmpty ? "Burrete could not be opened." : message
         }
     }
 }

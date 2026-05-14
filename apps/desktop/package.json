@@ -3,11 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --config vite.config.ts --host 127.0.0.1",
-    "build": "vite build --config vite.config.ts",
+    "dev": "bun --bun vite --config vite.config.ts --host 127.0.0.1",
+    "build": "bun --bun vite build --config vite.config.ts",
     "typecheck": "tsc --noEmit -p ../../tsconfig.json",
-    "dev:tauri": "tauri dev",
-    "build:tauri": "tauri build",
-    "tauri": "tauri"
+    "dev:tauri": "bunx --bun tauri dev",
+    "build:tauri": "bunx --bun tauri build",
+    "tauri": "bunx --bun tauri"
   }
 }

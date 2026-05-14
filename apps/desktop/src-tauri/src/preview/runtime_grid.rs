@@ -1,5 +1,3 @@
-use base64::engine::general_purpose::STANDARD as BASE64;
-use base64::Engine;
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::fs;
@@ -104,6 +102,7 @@ pub(crate) fn create_grid_runtime<R: Runtime>(
         "recordsIncluded": records_included,
         "recordsTruncated": collection.records_total > records_included,
         "pageSize": 96,
+        "rdkitWasmPath": asset_url(&assets.join("rdkit").join("RDKit_minimal.wasm")),
         "capabilities": {
             "selection": true,
             "export": true,
@@ -113,10 +112,6 @@ pub(crate) fn create_grid_runtime<R: Runtime>(
     });
     let config_text = serde_json::to_string(&config).map_err(|err| err.to_string())?;
     let records_text = serde_json::to_string(&records_payload).map_err(|err| err.to_string())?;
-    let wasm_path = assets.join("rdkit").join("RDKit_minimal.wasm");
-    let wasm_base64 =
-        BASE64.encode(fs::read(&wasm_path).map_err(|err| format!("read RDKit wasm: {err}"))?);
-
     fs::write(
         runtime.join("index.html"),
         grid_html(file_path, &runtime, &assets, preferences),
@@ -129,7 +124,7 @@ pub(crate) fn create_grid_runtime<R: Runtime>(
     .map_err(|err| err.to_string())?;
     fs::write(
         runtime.join("preview-grid-records.js"),
-        format!("window.BurreteGridRecords = {records_text};\nwindow.BurreteRDKitWasmBase64 = \"{wasm_base64}\";\n"),
+        format!("window.BurreteGridRecords = {records_text};\n"),
     )
     .map_err(|err| err.to_string())?;
     Ok(Some(runtime.join("index.html")))
@@ -164,6 +159,7 @@ fn grid_html(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Burrete Grid - {title}</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset: data: blob:; script-src 'self' 'unsafe-inline' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'self' blob:;" />
   <link rel="stylesheet" href="{grid_css}" />
   <script>
     window.__mqlPost = function (type, message, payload) {{
@@ -292,7 +288,7 @@ fn parse_sdf_grid(text: &str, max_records: usize) -> GridCollection {
     }
 
     for line in normalized_lines(text) {
-        if line.trim() == "$$" {
+        if line.trim() == "$$$$" {
             finish_record(
                 &mut current,
                 &mut current_has_content,
@@ -624,4 +620,41 @@ fn extract_molblock(lines: &[String]) -> String {
         return lines[..=end].join("\n");
     }
     lines.join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_standard_multi_record_sdf_separator() {
+        let collection = parse_sdf_grid(
+            r#"Mol A
+  Burrete
+
+  0  0  0  0  0  0            999 V2000
+M  END
+>  <ID>
+A1
+
+$$$$
+Mol B
+  Burrete
+
+  0  0  0  0  0  0            999 V2000
+M  END
+>  <SMILES>
+CCO
+
+$$$$
+"#,
+            5000,
+        );
+
+        assert_eq!(collection.records_total, 2);
+        assert_eq!(collection.records.len(), 2);
+        assert_eq!(collection.records[0].name, "A1");
+        assert_eq!(collection.records[1].name, "Mol B");
+        assert_eq!(collection.records[1].smiles.as_deref(), Some("CCO"));
+    }
 }

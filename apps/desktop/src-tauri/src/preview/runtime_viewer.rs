@@ -1,5 +1,3 @@
-use base64::engine::general_purpose::STANDARD as BASE64;
-use base64::Engine;
 use serde_json::json;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -7,7 +5,7 @@ use tauri::{Manager, Runtime};
 
 use super::formats::{normalize_renderer_mode, FormatInfo};
 use super::runtime::{ViewerPreferences, ViewerReloadOptions};
-use super::runtime_utils::{asset_url, escape_html, prune_runtime_dirs};
+use super::runtime_utils::{asset_url, escape_html, prune_runtime_dirs, stable_id};
 use super::xyz::{xyz_first_frame, XyzPayload};
 use super::xyzrender::{create_xyzrender_artifact, xyzrender_preset_options};
 
@@ -93,10 +91,12 @@ pub(crate) fn create_runtime<R: Runtime>(
         "label": file_path.file_name().and_then(|value| value.to_str()).unwrap_or("structure"),
         "byteCount": data.len(),
         "previewByteCount": payload.data.len(),
+        "dataPath": "./preview-data.bin",
         "quickLookBuild": "burrete-tauri",
         "debug": false,
         "theme": preferences.resolved_theme(),
         "canvasBackground": preferences.resolved_canvas_background(),
+        "documentId": stable_id(file_path),
         "uiScale": 1.0,
         "overlayOpacity": 0.90,
         "transparentBackground": preferences.resolved_transparent_background(),
@@ -154,12 +154,10 @@ pub(crate) fn create_runtime<R: Runtime>(
         format!("window.BurreteConfig = {config_text};\n"),
     )
     .map_err(|err| err.to_string())?;
+    fs::write(runtime.join("preview-data.bin"), &payload.data).map_err(|err| err.to_string())?;
     fs::write(
         runtime.join("preview-data.js"),
-        format!(
-            "window.BurreteDataBase64 = \"{}\";\n",
-            BASE64.encode(&payload.data)
-        ),
+        "window.BurreteDataURL = './preview-data.bin';\n",
     )
     .map_err(|err| err.to_string())?;
     Ok(CreatedRuntime {
@@ -283,6 +281,7 @@ fn viewer_html(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Burrete - {title}</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset: data: blob:; script-src 'self' 'unsafe-inline' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'self' blob:;" />
   {renderer_styles}
   <link rel="stylesheet" href="{runtime_css}" />
   <script src="{bridge_js}"></script>
@@ -304,6 +303,9 @@ fn viewer_html(
 fn viewer_bridge_js() -> &'static str {
     r#"(() => {
   const postToParent = (body) => {
+    if (window.BurreteConfig && window.BurreteConfig.documentId) {
+      body.documentId = String(window.BurreteConfig.documentId);
+    }
     if (window.parent && window.parent !== window) {
       try {
         window.parent.postMessage({ source: 'burrete-viewer', body }, window.location.origin);

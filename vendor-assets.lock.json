@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "bunLock": "bun.lock"
+  },
+  "packages": {
+    "molstar": {
+      "packageName": "molstar",
+      "version": "5.7.0",
+      "integrity": "sha512-Bo/QDiEkoRdhyhmFXNBPP2kiNTHZNgJO69AzqO+CrpkSj7JUrYNtBlt49vqa2AJfLUrBNgeeHcfjbxGLmfO7sQ=="
+    },
+    "@rdkit/rdkit": {
+      "packageName": "@rdkit/rdkit",
+      "version": "2025.3.4-1.0.0",
+      "integrity": "sha512-MJzNoeW2SWt2KCdIibfY213uLWyHZjFfS2ntJ/HuYNHdu6dEiim7jb6ZMU9wnt9Oovkc85BHMuupxkufIMvftQ=="
+    }
+  },
+  "assets": [
+    {
+      "path": "PreviewExtension/Web/molstar.js",
+      "package": "molstar",
+      "bytes": 4825091,
+      "sha256": "sha256-qm/7vPb1RHVdNwMUT48wxc8hgyFqIWLl/WNJ8D0sV9k="
+    },
+    {
+      "path": "PreviewExtension/Web/molstar.css",
+      "package": "molstar",
+      "bytes": 72737,
+      "sha256": "sha256-kmnt6gj9Q4SCKblx2BAt8WOFinZBfGgj2Ye44l3xJ/k="
+    },
+    {
+      "path": "PreviewExtension/Web/rdkit/RDKit_minimal.js",
+      "package": "@rdkit/rdkit",
+      "bytes": 128073,
+      "sha256": "sha256-WNPJlq3n4LATfU+TY/9sIEtUVolCj6CJjurtV573iNk="
+    },
+    {
+      "path": "PreviewExtension/Web/rdkit/RDKit_minimal.wasm",
+      "package": "@rdkit/rdkit",
+      "bytes": 6914823,
+      "sha256": "sha256-4JZ9RP7VnkSi0Hv8CPOoaCHFShTJW7fm45L+hnMzuMg="
+    }
+  ]
+}
