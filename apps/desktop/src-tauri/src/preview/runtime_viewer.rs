@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use tauri::{Manager, Runtime};
 
 use super::formats::{normalize_renderer_mode, FormatInfo};
-use super::runtime::ViewerPreferences;
+use super::runtime::{ViewerPreferences, ViewerReloadOptions};
 use super::runtime_utils::{asset_url, escape_html, prune_runtime_dirs};
 use super::xyz::{xyz_first_frame, XyzPayload};
 use super::xyzrender::{create_xyzrender_artifact, xyzrender_preset_options};
@@ -24,6 +24,7 @@ pub(crate) fn create_runtime<R: Runtime>(
     renderer: &str,
     data: &[u8],
     preferences: &ViewerPreferences,
+    reload_options: Option<&ViewerReloadOptions>,
 ) -> Result<CreatedRuntime, String> {
     let base = app
         .path()
@@ -41,7 +42,14 @@ pub(crate) fn create_runtime<R: Runtime>(
     let mut external_artifact = None;
     let mut external_status = None;
     if renderer == "xyzrender-external" {
-        match create_xyzrender_artifact(file_path, &runtime) {
+        match create_xyzrender_artifact(
+            file_path,
+            &runtime,
+            reload_options
+                .and_then(|options| options.xyzrender_preset.as_deref()),
+            reload_options
+                .and_then(|options| options.xyzrender_orientation_ref.as_deref()),
+        ) {
             Ok(artifact) => {
                 external_artifact = Some(artifact);
             }

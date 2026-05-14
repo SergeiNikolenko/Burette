@@ -6,6 +6,8 @@ import { EditorScrollContainer } from "../editor-area/editor-scroll-container";
 import type { ShellActions, ShellViewState } from "../types";
 import { SettingsSection, ToggleControl, actionRow, selectPreferenceRow, type SettingRow } from "./setting-control";
 
+const defaultRendererModeOptions: Array<ViewerPreferences["rendererMode"]> = ["auto", "molstar", "xyzrender-external"];
+
 function preferenceRow<K extends keyof ViewerPreferences & string>(
   label: string,
   description: string,
@@ -22,6 +24,10 @@ function preferenceRow<K extends keyof ViewerPreferences & string>(
     String(defaultValue),
     (next) => onChange(next as ViewerPreferences[K]),
   );
+}
+
+function visibleRendererModeOptions(current: ViewerPreferences["rendererMode"]) {
+  return current === "xyz-fast" ? [...defaultRendererModeOptions, current] : defaultRendererModeOptions;
 }
 
 export function SettingsPanel({ state, actions }: { state: ShellViewState; actions: ShellActions }) {
@@ -77,7 +83,7 @@ export function SettingsPanel({ state, actions }: { state: ShellViewState; actio
           <SettingsSection
             title="Structure Rendering"
             rows={[
-              preferenceRow<"rendererMode">("Mode", "Choose the renderer used for newly opened structures.", preferences.rendererMode, ["auto", "xyz-fast", "molstar", "xyzrender-external"], defaultPreferences.rendererMode, (rendererMode) => actions.setPreference("rendererMode", rendererMode)),
+              preferenceRow<"rendererMode">("Mode", "Choose the renderer used for newly opened structures.", preferences.rendererMode, visibleRendererModeOptions(preferences.rendererMode), defaultPreferences.rendererMode, (rendererMode) => actions.setPreference("rendererMode", rendererMode)),
               preferenceRow<"xyzFastStyle">("XYZ style", "Default drawing style for the fast XYZ renderer.", preferences.xyzFastStyle, ["default", "wire", "tube", "spacefill"], defaultPreferences.xyzFastStyle, (xyzFastStyle) => actions.setPreference("xyzFastStyle", xyzFastStyle)),
             ]}
           />
