@@ -13,6 +13,7 @@
           <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq</button>
           <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel">Log</button>
           <button class="buret-button" type="button" data-buret-action="theme" aria-label="Switch to light theme" title="Switch to light theme">Light</button>
+          <button class="buret-button" type="button" data-buret-action="open-burrete" aria-label="Open in Burrete" title="Open in Burrete">Open</button>
           <div class="buret-xyzrender-preset-slot" data-buret-xyzrender-preset-slot>
             <select class="buret-select" data-buret-xyzrender-preset aria-label="External xyzrender preset" title="External xyzrender preset"></select>
           </div>

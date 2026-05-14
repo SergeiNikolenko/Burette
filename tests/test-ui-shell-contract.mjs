@@ -24,6 +24,7 @@ const [
   commandPalette,
   editorArea,
   editorTabs,
+  editorScrollContainer,
   settingsPanel,
   settingControl,
   pageKinds,
@@ -45,12 +46,15 @@ const [
   previewRuntimeViewer,
   previewViewController,
   shortcutDocs,
-  workspaceManifest,
   styles,
   gridViewer,
   previewViewer,
   previewShell,
   previewRuntimeCss,
+  updateSource,
+  readme,
+  viewerShell,
+  viewer,
 ] = await Promise.all([
   source('apps/desktop/src/App.tsx'),
   source('apps/desktop/src/stores/ui-store.ts'),
@@ -68,6 +72,7 @@ const [
   source('apps/desktop/src/components/command-palette/index.tsx'),
   source('apps/desktop/src/components/editor-area/index.tsx'),
   source('apps/desktop/src/components/editor-area/editor-tabs.tsx'),
+  source('apps/desktop/src/components/editor-area/editor-scroll-container.tsx'),
   source('apps/desktop/src/components/settings-panel/index.tsx'),
   source('apps/desktop/src/components/settings-panel/setting-control.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/index.ts'),
@@ -89,12 +94,15 @@ const [
   source('apps/desktop/src-tauri/src/preview/runtime_viewer.rs'),
   source('PreviewExtension/Platform/PreviewViewController.swift'),
   source('docs/keyboard-shortcuts.md'),
-  source('pnpm-workspace.yaml'),
   source('apps/desktop/src/styles.css'),
   source('PreviewExtension/Web/grid-viewer.js'),
   source('PreviewExtension/Web/viewer.js'),
   source('PreviewExtension/Web/viewer-shell.js'),
   source('PreviewExtension/Web/viewer-runtime.css'),
+  source('apps/desktop/src/update.ts'),
+  source('README.md'),
+  source('PreviewExtension/Web/viewer-shell.js'),
+  source('PreviewExtension/Web/viewer.js'),
 ]);
 
 assert.match(uiStore, /export const useUIStore = create<UIState>/);
@@ -140,6 +148,9 @@ for (const exportName of [
 assert.match(sidebarHook, /export function useSidebar\(/);
 assert.match(sidebarHook, /from "\.\.\/stores\/shell-store"/);
 assert.match(sidebarHook, /sidebarWidth/);
+assert.match(viewerShell, /data-buret-action="open-burrete"/);
+assert.match(viewer, /message: 'open-burrete'/);
+assert.match(viewer, /left: 'hidden'/);
 assert.match(sidebarHook, /toggleSidebar/);
 assert.match(shellStore, /export const useShellStore = create<ShellState>/);
 assert.match(shellStore, /name: "burrete\.shell\.ui"/);
@@ -226,6 +237,8 @@ assert.match(editorTabs, /actions\.navigateBack/);
 assert.match(editorTabs, /actions\.canNavigateForward/);
 assert.match(editorTabs, /\+/);
 assert.match(editorTabs, /×/);
+assert.match(appLayout, /<header\s+className="topbar"[^>]*data-tauri-drag-region/s);
+assert.match(editorTabs, /className="tab-strip"[^>]*data-tauri-drag-region/);
 assert.match(editorTabs, /className="tab-strip-spacer" data-tauri-drag-region/);
 assert.match(pageKinds, /const kinds = \[fileKind, launcherKind, settingsKind\] as const/);
 assert.match(pageKinds, /export function pageKind/);
@@ -238,6 +251,7 @@ assert.match(fileKind, /kind: "file"/);
 assert.match(fileKind, /path: location\.path/);
 assert.match(fileKind, /className="molecule-stage"/);
 assert.match(fileKind, /className="viewer-iframe"/);
+assert.match(fileKind, /data-document-id=\{document\.id\}/);
 assert.match(fileKind, /const sandbox = tauriRuntime \? "allow-scripts allow-downloads" : "allow-scripts allow-downloads allow-same-origin"/);
 assert.match(fileKind, /srcDoc=\{document\.runtimePath\}/);
 assert.match(gridViewer, /function resolveTheme\(value\)/);
@@ -247,6 +261,8 @@ assert.doesNotMatch(gridViewer, /const theme = cfg\.theme === 'light' \? 'light'
 assert.match(styles, /\.molecule-stage/);
 assert.match(styles, /inset: var\(--chrome-height\) 0 0/);
 assert.match(styles, /--chrome-drag-height: 56px/);
+assert.match(styles, /\*\[data-tauri-drag-region\] \{[^}]*app-region: drag;[^}]*-webkit-app-region: drag;[^}]*\}/s);
+assert.match(styles, /button, select, input, textarea, \.tab, \.new-tab, \.chrome-button, \.sidebar-search-row, \.project, \.splitter \{[^}]*app-region: no-drag;[^}]*-webkit-app-region: no-drag;[^}]*\}/s);
 assert.match(styles, /\.drag-region \{[^}]*height: var\(--chrome-drag-height\);[^}]*z-index: 2/s);
 assert.match(styles, /\.main-stage \{[^}]*overflow: hidden/s);
 assert.match(styles, /\.sidebar-product:hover/);
@@ -281,6 +297,13 @@ assert.match(sidebar, /from "\.\.\/\.\.\/lib\/instance"/);
 assert.match(sidebar, /appInstanceLabel/);
 assert.match(sidebar, /className="sidebar-product"/);
 assert.match(sidebar, /sidebar-workspace-menu/);
+assert.match(sidebar, /workspaceButtonRef/);
+assert.match(sidebar, /workspaceMenuPosition/);
+assert.match(styles, /\.sidebar-workspace-menu \{[^}]*position: fixed/s);
+assert.match(styles, /--workspace-menu-left/);
+assert.match(styles, /--workspace-menu-top/);
+assert.match(styles, /--workspace-menu-max-height/);
+assert.doesNotMatch(styles, /\.sidebar-workspace-menu \{[^}]*bottom: 48px/s);
 assert.match(sidebar, /Choose workspace\.\.\./);
 assert.match(sidebar, /Open folder/);
 assert.doesNotMatch(sidebar, /actions\.openSettings/);
@@ -297,6 +320,8 @@ assert.doesNotMatch(appLayout + sidebar + editorTabs, /◧|◨/);
 assert.match(settingsPanel, /<h1>Preferences<\/h1>/);
 assert.match(settingsPanel, /className="settings-panel"/);
 assert.match(settingsPanel, /<EditorScrollContainer>/);
+assert.match(editorScrollContainer, /WebkitMaskComposite:\s*"source-over"/);
+assert.match(editorScrollContainer, /maskComposite:\s*"add"/);
 assert.match(settingsPanel, /title="Display"/);
 assert.match(settingsPanel, /title="Structure Rendering"/);
 assert.match(settingsPanel, /title="System"/);
@@ -440,14 +465,35 @@ assert.match(previewViewer, /\.buret-external-artifact-stage \{ position: absolu
 
 assert.match(shortcuts, /actions\.openCommandPalette\(\)/);
 assert.match(shortcuts, /if \(!enabled\) return undefined/);
+assert.match(app, /isKnownViewerMessageSource\(event\.source, body\?\.documentId\)/);
+assert.match(app, /querySelectorAll<HTMLIFrameElement>\("\.viewer-iframe\[data-document-id\]"\)/);
+assert.match(app, /Preferences refresh all open runtimes/);
+assert.doesNotMatch(app, /Preferences intentionally refresh only the active runtime/);
+assert.match(app, /Quick Look reset completed/);
+assert.match(app, /Quick Look reset reported issues/);
+assert.doesNotMatch(app, /Quick Look reset requested/);
 
 assert.match(shortcutDocs, /\| Cmd\+P \| Open command palette \|/);
 assert.match(shortcutDocs, /Search Open Structures/);
 assert.match(shortcutDocs, /Clear Recent Structures/);
 assert.match(shortcutDocs, /Open Recent:/);
 assert.match(shortcutDocs, /Open Structure:/);
-assert.match(workspaceManifest, /packages:\n  - apps\/\*/);
-assert.match(workspaceManifest, /catalog:/);
-assert.match(workspaceManifest, /@hugeicons\/react/);
+assert.doesNotMatch(readme, /executable path, built-in preset\/custom JSON config, and extra CLI flags/);
+assert.doesNotMatch(readme, /Finder file association registration/);
+assert.match(packageJson, /"packageManager": "bun@1\.3\.8"/);
+assert.match(packageJson, /"workspaces": \[/);
+assert.match(packageJson, /"packages\/\*"/);
+assert.match(updateSource, /const installExtensions = \["\.zip"\]/);
+assert.doesNotMatch(updateSource, /"\.dmg"|"\.pkg"/);
+assert.match(updateSource, /sha256AssetFor\(assets, asset\.name!\)/);
+assert.match(updateSource, /sha256AssetName: selected\.digest\.name!/);
+assert.match(app, /sha256BrowserDownloadUrl: release\.installAsset\.sha256BrowserDownloadUrl/);
+assert.match(updateSource, /manifestAssetFor\(assets, asset\.name!\)/);
+assert.match(updateSource, /manifestSignatureAssetFor\(assets, asset\.name!\)/);
+assert.match(app, /manifestSignatureBrowserDownloadUrl: release\.installAsset\.manifestSignatureBrowserDownloadUrl/);
+assert.match(browserDevDocuments, /documentId: stableId\(path\)/);
+assert.match(browserDevDocuments, /body\.documentId = String\(window\.BurreteConfig\.documentId\)/);
+assert.match(browserDevDocuments, /rdkitWasmPath: `\$\{WEB_ASSETS_BASE\}rdkit\/RDKit_minimal\.wasm`/);
+assert.doesNotMatch(browserDevDocuments, /BurreteRDKitWasmBase64/);
 
 console.log('ui shell contract tests passed');

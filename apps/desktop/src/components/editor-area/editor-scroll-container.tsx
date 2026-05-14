@@ -40,6 +40,8 @@ export function EditorScrollContainer({
         style={{
           WebkitMaskImage: FADE_MASK,
           maskImage: FADE_MASK,
+          WebkitMaskComposite: "source-over",
+          maskComposite: "add",
           borderTop: "12px solid transparent",
           borderBottom: "12px solid transparent",
         }}

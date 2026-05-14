@@ -151,6 +151,7 @@ function viewerHtml(
     debug: false,
     theme: visuals.theme,
     canvasBackground: visuals.canvasBackground,
+    documentId: stableId(path),
     uiScale: 1,
     overlayOpacity: 0.9,
     transparentBackground: visuals.transparentBackground,
@@ -297,10 +298,6 @@ async function gridHtml(
 ) {
   const label = fileTitle(path);
   const visuals = resolvePreviewVisuals(preferences);
-  const wasmResponse = await fetch(`${WEB_ASSETS_BASE}rdkit/RDKit_minimal.wasm`);
-  const wasmBase64 = wasmResponse.ok
-    ? bytesToBase64(new Uint8Array(await wasmResponse.arrayBuffer()))
-    : "";
   const config = {
     mode: "grid2d",
     format,
@@ -320,6 +317,7 @@ async function gridHtml(
     recordsIncluded: records.length,
     recordsTruncated: false,
     pageSize: 96,
+    rdkitWasmPath: `${WEB_ASSETS_BASE}rdkit/RDKit_minimal.wasm`,
     capabilities: {
       selection: true,
       export: true,
@@ -348,7 +346,7 @@ async function gridHtml(
   <div id="app"></div>
   <div id="status">Loading molecule grid...</div>
   <script>window.BurreteConfig = ${JSON.stringify(config)};</script>
-  <script>window.BurreteGridRecords = ${JSON.stringify(records)}; window.BurreteRDKitWasmBase64 = "${wasmBase64}";</script>
+  <script>window.BurreteGridRecords = ${JSON.stringify(records)};</script>
   <script src="rdkit/RDKit_minimal.js?v=${GRID_ASSET_VERSION}"></script>
   <script src="grid-viewer.js?v=${GRID_ASSET_VERSION}"></script>
 </body>
@@ -472,6 +470,9 @@ function parseDelimitedLine(line: string, delimiter: "," | "\t") {
 function viewerBridgeJs() {
   return `(() => {
   const postToParent = (body) => {
+    if (window.BurreteConfig && window.BurreteConfig.documentId) {
+      body.documentId = String(window.BurreteConfig.documentId);
+    }
     if (window.parent && window.parent !== window) {
       try { window.parent.postMessage({ source: 'burrete-viewer', body }, window.location.origin); }
       catch (_) { try { window.parent.postMessage({ source: 'burrete-viewer', body }, '*'); } catch (_) {} }
