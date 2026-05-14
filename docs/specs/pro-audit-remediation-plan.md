@@ -28,7 +28,7 @@ Completed in this pass:
 - Quick Look network entitlement was removed.
 - Preference changes now refresh all open preview runtimes, preserving the active tab.
 - Large desktop and Quick Look structure payloads are written as `preview-data.bin`; RDKit WASM is loaded from shared assets instead of being inlined per grid preview.
-- Vendored Molstar/RDKit assets are hash-locked against `package-lock.json`.
+- Vendored Molstar/RDKit assets are hash-locked against `bun.lock`.
 - README settings claims were reconciled with the current UI surface.
 - A checked `formats.manifest.json` now verifies the active format/UTI surface against app filters, Rust renderers, Tauri associations, AppMetadata, and forced Quick Look mappings.
 - Release packaging now publishes a `.zip.sha256` sidecar, and release validation fails if the app is not Developer ID signed, Gatekeeper-accepted, stapled, and bundled with the expected Quick Look extension.
@@ -191,7 +191,7 @@ Verification. Stub commands in tests or inject command runner. Fail `qlmanage` a
 
 ### 6. [High | confirmed] Tests/CI are mostly structural, not behavioral; current SDF bug would pass
 
-Evidence. `tests/test-tauri-structure.mjs` reads source files and asserts regexes such as modules/functions/CSS selectors; it does not call Rust parsers. `scripts/ci-fast.sh` runs `npm run check:js`, `test:agent`, `test:ui`, `test:tauri-structure`, and plist lint, but not `cargo test`. `scripts/ci.sh` then calls `./scripts/build.sh samples/mini.sdf`, but `build.sh` ignores positional args.
+Evidence. `tests/test-tauri-structure.mjs` reads source files and asserts regexes such as modules/functions/CSS selectors; it does not call Rust parsers. `scripts/ci-fast.sh` runs `bun run check:js`, `test:agent`, `test:ui`, `test:tauri-structure`, and plist lint, but not `cargo test`. `scripts/ci.sh` then calls `./scripts/build.sh samples/mini.sdf`, but `build.sh` ignores positional args.
 
 Impact. The suite protects architecture shape, but not behavior. Parser bugs, update validation bugs, external process timeout bugs, and many Quick Look failure modes can pass CI. Passing `samples/mini.sdf` to `build.sh` looks like a smoke test but currently is not one.
 
@@ -281,7 +281,7 @@ Verification. `codesign -dv --verbose=4`, `spctl --assess`, `stapler validate`, 
 
 ### 15. [Low-medium | confirmed] Vendored web assets are copied from npm packages but not hash-verified against a manifest
 
-Evidence. `vendor-molstar.mjs` copies `molstar.js/css` from `node_modules/molstar/build/viewer`; `vendor-rdkit.mjs` copies RDKit JS/WASM from `node_modules/@rdkit/rdkit`; build validates presence and `node --check`, but no hash manifest binds committed vendored assets to `package-lock` versions.
+Evidence. `vendor-molstar.mjs` copies `molstar.js/css` from `node_modules/molstar/build/viewer`; `vendor-rdkit.mjs` copies RDKit JS/WASM from `node_modules/@rdkit/rdkit`; build validates presence and syntax, but no hash manifest binds committed vendored assets to `bun.lock` versions.
 
 Impact. Vendored artifacts can drift silently. This is not catastrophic if repo is trusted, but for a previewer loading JS in Finder, asset provenance should be crisp.
 

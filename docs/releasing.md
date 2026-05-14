@@ -14,7 +14,7 @@ Feature PRs do not need a version bump. Before a release, keep these versions
 aligned:
 
 - root `package.json`
-- root `package-lock.json`
+- root `bun.lock`
 - Tauri `apps/desktop/src-tauri/tauri.conf.json`
 - Xcode `MARKETING_VERSION`
 - visible About/update version strings exposed by the Tauri shell
@@ -22,7 +22,7 @@ aligned:
 Run:
 
 ```bash
-npm run check:release
+bun run check:release
 ```
 
 ## Pre-Release Checks
@@ -30,7 +30,7 @@ npm run check:release
 Run the fast checks first:
 
 ```bash
-npm run ci:fast
+bun run ci:fast
 ```
 
 For native, packaging, Quick Look, or release changes, build the macOS bundle:
@@ -90,18 +90,19 @@ After each GitHub release, update the cask `version` and `sha256` to match the
 uploaded `Burrete-<version>.zip` asset. GitHub exposes the asset digest in the
 release metadata as `sha256:<digest>`.
 
-The npm package lives in `packages/burrete`. It is a thin CLI installer for the
-macOS app, not the app bundle itself. Publish it from that workspace package
-after npm authentication:
+The registry package lives in `packages/burrete`. It is a thin CLI installer
+for the macOS app, not the app bundle itself. Publish it from that workspace
+package after registry authentication:
 
 ```bash
-npm publish --workspace packages/burrete
+cd packages/burrete
+bun publish
 ```
 
-pnpm uses the same npm package:
+Bun installs the same published package:
 
 ```bash
-pnpm dlx burrete install
+bunx burrete install
 ```
 
 ## In-App Updates

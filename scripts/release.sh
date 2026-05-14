@@ -14,7 +14,7 @@ APP="$ROOT/build/Burrete.app"
 ZIP="$ROOT/build/release/Burrete.zip"
 
 require_tool() { command -v "$1" >/dev/null 2>&1 || { echo "error: $1 is required. $2" >&2; exit 1; }; }
-require_asset() { local p="$1"; [[ -s "$p" ]] || { echo "error: missing vendored web asset: $p" >&2; echo "Run: npm ci --ignore-scripts && npm run vendor:molstar && npm run vendor:rdkit" >&2; exit 1; }; }
+require_asset() { local p="$1"; [[ -s "$p" ]] || { echo "error: missing vendored web asset: $p" >&2; echo "Run: bun install --frozen-lockfile --ignore-scripts && bun run vendor:molstar && bun run vendor:rdkit" >&2; exit 1; }; }
 
 require_tool ditto "ditto is normally present on macOS."
 require_tool shasum "shasum is normally present on macOS."
@@ -30,11 +30,12 @@ require_asset PreviewExtension/Web/grid-viewer.js
 require_asset PreviewExtension/Web/grid.css
 require_asset PreviewExtension/Web/rdkit/RDKit_minimal.js
 require_asset PreviewExtension/Web/rdkit/RDKit_minimal.wasm
-node --check PreviewExtension/Web/viewer.js >/dev/null
-node --check PreviewExtension/Web/viewer-shell.js >/dev/null
-node --check PreviewExtension/Web/burette-agent.js >/dev/null
-node --check PreviewExtension/Web/grid-viewer.js >/dev/null
-node --check PreviewExtension/Web/xyz-fast.js >/dev/null
+bun scripts/check-js-syntax.mjs \
+  PreviewExtension/Web/viewer.js \
+  PreviewExtension/Web/viewer-shell.js \
+  PreviewExtension/Web/burette-agent.js \
+  PreviewExtension/Web/grid-viewer.js \
+  PreviewExtension/Web/xyz-fast.js >/dev/null
 
 "$ROOT/scripts/build.sh"
 mkdir -p "$(dirname "$ZIP")"
@@ -47,7 +48,7 @@ ditto -c -k --keepParent "$APP" "$ZIP"
   cd "$(dirname "$ZIP")"
   shasum -a 256 "$(basename "$ZIP")" > "$(basename "$ZIP").sha256"
 )
-node "$ROOT/scripts/sign-update-manifest.mjs" "$ZIP" "$(dirname "$ZIP")"
+bun "$ROOT/scripts/sign-update-manifest.mjs" "$ZIP" "$(dirname "$ZIP")"
 
 echo "Release app: $APP"
 echo "Release zip: $ZIP"

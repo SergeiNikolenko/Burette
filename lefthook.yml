@@ -2,6 +2,6 @@ pre-commit:
   parallel: true
   commands:
     js-syntax:
-      run: npm run check:js
+      run: bun run check:js
     plist:
       run: plutil -lint apps/desktop/src-tauri/AppMetadata.plist PreviewExtension/Info.plist PreviewExtension/BurretePreview.entitlements
