@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "formats": [
+    { "name": "PDB", "extensions": ["pdb", "ent", "pdbqt", "pqr"], "contentType": "com.local.burrete10.pdb", "renderer": "molstar", "grid": false, "desktopOpen": true, "quickLook": true, "bundleAssociation": true },
+    { "name": "CIF", "extensions": ["cif"], "contentType": "com.local.burrete10.cif", "renderer": "molstar", "grid": false, "desktopOpen": true, "quickLook": true, "bundleAssociation": true },
+    { "name": "mmCIF", "extensions": ["mcif", "mmcif"], "contentType": "com.local.burrete10.mmcif", "renderer": "molstar", "grid": false, "desktopOpen": true, "quickLook": true, "bundleAssociation": true },
+    { "name": "BinaryCIF", "extensions": ["bcif"], "contentType": "com.local.burrete10.bcif", "renderer": "molstar", "grid": false, "desktopOpen": true, "quickLook": true, "bundleAssociation": true },
+    { "name": "SDF", "extensions": ["sdf", "sd"], "contentType": "com.local.burrete10.sdf", "renderer": "molstar", "grid": true, "desktopOpen": true, "quickLook": true, "bundleAssociation": true },
+    { "name": "SMILES", "extensions": ["smi", "smiles"], "contentType": "com.local.burrete10.smiles", "renderer": "grid2d", "grid": true, "desktopOpen": true, "quickLook": true, "bundleAssociation": true },
+    { "name": "CSV", "extensions": ["csv"], "contentType": "public.comma-separated-values-text", "renderer": "grid2d", "grid": true, "desktopOpen": true, "quickLook": true, "bundleAssociation": true },
+    { "name": "TSV", "extensions": ["tsv"], "contentType": "public.tab-separated-values-text", "renderer": "grid2d", "grid": true, "desktopOpen": true, "quickLook": true, "bundleAssociation": true },
+    { "name": "MOL", "extensions": ["mol"], "contentType": "com.local.burrete10.mol", "renderer": "molstar", "grid": false, "desktopOpen": true, "quickLook": true, "bundleAssociation": true },
+    { "name": "MOL2", "extensions": ["mol2"], "contentType": "com.local.burrete10.mol2", "renderer": "molstar", "grid": false, "desktopOpen": true, "quickLook": true, "bundleAssociation": true },
+    { "name": "XYZ", "extensions": ["xyz"], "contentType": "com.local.burrete10.xyz", "renderer": "xyz-fast", "grid": false, "desktopOpen": true, "quickLook": true, "bundleAssociation": true },
+    { "name": "GRO", "extensions": ["gro"], "contentType": "com.local.burrete10.gro", "renderer": "molstar", "grid": false, "desktopOpen": true, "quickLook": true, "bundleAssociation": true },
+    { "name": "Cube", "extensions": ["cub", "cube"], "contentType": "com.local.burrete10.xyzrender-input", "renderer": "xyzrender-external", "grid": false, "desktopOpen": true, "quickLook": true, "bundleAssociation": true },
+    { "name": "Generic xyzrender input", "extensions": ["in", "log", "out", "vasp"], "contentType": "com.local.burrete10.xyzrender-input", "renderer": "xyzrender-external", "grid": false, "desktopOpen": true, "quickLook": true, "bundleAssociation": true }
+  ]
+}

@@ -72,7 +72,8 @@
       throw new Error('RDKit_minimal.js is missing. Run npm run vendor:rdkit and rebuild.');
     }
     setStatus('[grid] Loading RDKit.js...');
-    const options = { locateFile: file => `../assets/rdkit/${file}` };
+    const cfg = config();
+    const options = { locateFile: file => cfg.rdkitWasmPath || `../assets/rdkit/${file}` };
     if (window.BurreteRDKitWasmBase64) {
       options.wasmBinary = base64ToBytes(window.BurreteRDKitWasmBase64);
       window.BurreteRDKitWasmBase64 = '';

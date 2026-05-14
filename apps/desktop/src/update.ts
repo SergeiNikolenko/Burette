@@ -11,6 +11,15 @@ export type UpdateAsset = {
   name: string;
   browserDownloadUrl: string;
   size: number;
+  sha256AssetName: string;
+  sha256BrowserDownloadUrl: string;
+  sha256Size: number;
+  manifestAssetName: string;
+  manifestBrowserDownloadUrl: string;
+  manifestSize: number;
+  manifestSignatureAssetName: string;
+  manifestSignatureBrowserDownloadUrl: string;
+  manifestSignatureSize: number;
 };
 
 export type UpdateRelease = {
@@ -158,17 +167,64 @@ function normalizeRelease(release: GitHubRelease): UpdateRelease | null {
 }
 
 function installAssetFor(assets: GitHubAsset[]): UpdateAsset | null {
-  const installExtensions = [".dmg", ".zip", ".pkg"];
+  const installExtensions = [".zip"];
   const candidates = assets
     .filter((asset) => asset.name && asset.browser_download_url && Number(asset.size || 0) > 0)
-    .filter((asset) => installExtensions.some((extension) => asset.name!.toLowerCase().endsWith(extension)));
-  const selected = candidates.find((asset) => /burrete|burette/i.test(asset.name!)) ?? candidates[0];
+    .filter((asset) => installExtensions.some((extension) => asset.name!.toLowerCase().endsWith(extension)))
+    .map((asset) => ({
+      asset,
+      digest: sha256AssetFor(assets, asset.name!),
+      manifest: manifestAssetFor(assets, asset.name!),
+      signature: manifestSignatureAssetFor(assets, asset.name!),
+    }))
+    .filter((entry): entry is { asset: GitHubAsset; digest: GitHubAsset; manifest: GitHubAsset; signature: GitHubAsset } =>
+      entry.digest !== null && entry.manifest !== null && entry.signature !== null);
+  const selected = candidates.find((entry) => /burrete|burette/i.test(entry.asset.name!)) ?? candidates[0];
   if (!selected) return null;
   return {
-    name: selected.name!,
-    browserDownloadUrl: selected.browser_download_url!,
-    size: Number(selected.size || 0),
+    name: selected.asset.name!,
+    browserDownloadUrl: selected.asset.browser_download_url!,
+    size: Number(selected.asset.size || 0),
+    sha256AssetName: selected.digest.name!,
+    sha256BrowserDownloadUrl: selected.digest.browser_download_url!,
+    sha256Size: Number(selected.digest.size || 0),
+    manifestAssetName: selected.manifest.name!,
+    manifestBrowserDownloadUrl: selected.manifest.browser_download_url!,
+    manifestSize: Number(selected.manifest.size || 0),
+    manifestSignatureAssetName: selected.signature.name!,
+    manifestSignatureBrowserDownloadUrl: selected.signature.browser_download_url!,
+    manifestSignatureSize: Number(selected.signature.size || 0),
   };
+}
+
+function sha256AssetFor(assets: GitHubAsset[], archiveName: string): GitHubAsset | null {
+  const expectedName = archiveName + ".sha256";
+  return assets.find((asset) =>
+    asset.name === expectedName &&
+    asset.browser_download_url &&
+    Number(asset.size || 0) > 0 &&
+    Number(asset.size || 0) <= 4096
+  ) ?? null;
+}
+
+function manifestAssetFor(assets: GitHubAsset[], archiveName: string): GitHubAsset | null {
+  const expectedName = archiveName + ".manifest.json";
+  return assets.find((asset) =>
+    asset.name === expectedName &&
+    asset.browser_download_url &&
+    Number(asset.size || 0) > 0 &&
+    Number(asset.size || 0) <= 16384
+  ) ?? null;
+}
+
+function manifestSignatureAssetFor(assets: GitHubAsset[], archiveName: string): GitHubAsset | null {
+  const expectedName = archiveName + ".manifest.json.sig";
+  return assets.find((asset) =>
+    asset.name === expectedName &&
+    asset.browser_download_url &&
+    Number(asset.size || 0) > 0 &&
+    Number(asset.size || 0) <= 512
+  ) ?? null;
 }
 
 function parseVersion(raw: string) {

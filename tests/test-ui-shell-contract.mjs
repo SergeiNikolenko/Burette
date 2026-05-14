@@ -45,6 +45,9 @@ const [
   workspaceManifest,
   styles,
   gridViewer,
+  updateSource,
+  browserDevDocuments,
+  readme,
 ] = await Promise.all([
   source('apps/desktop/src/App.tsx'),
   source('apps/desktop/src/stores/ui-store.ts'),
@@ -83,6 +86,9 @@ const [
   source('pnpm-workspace.yaml'),
   source('apps/desktop/src/styles.css'),
   source('PreviewExtension/Web/grid-viewer.js'),
+  source('apps/desktop/src/update.ts'),
+  source('apps/desktop/src/lib/browser-dev-documents.ts'),
+  source('README.md'),
 ]);
 
 assert.match(uiStore, /export const useUIStore = create<UIState>/);
@@ -226,6 +232,7 @@ assert.match(fileKind, /kind: "file"/);
 assert.match(fileKind, /path: location\.path/);
 assert.match(fileKind, /className="molecule-stage"/);
 assert.match(fileKind, /className="viewer-iframe"/);
+assert.match(fileKind, /data-document-id=\{document\.id\}/);
 assert.match(fileKind, /const sandbox = tauriRuntime \? "allow-scripts allow-downloads" : "allow-scripts allow-downloads allow-same-origin"/);
 assert.match(fileKind, /srcDoc=\{document\.runtimePath\}/);
 assert.match(gridViewer, /function resolveTheme\(value\)/);
@@ -330,14 +337,35 @@ assert.match(instance, /"8a18"/);
 
 assert.match(shortcuts, /actions\.openCommandPalette\(\)/);
 assert.match(shortcuts, /if \(!enabled\) return undefined/);
+assert.match(app, /isKnownViewerMessageSource\(event\.source, body\?\.documentId\)/);
+assert.match(app, /querySelectorAll<HTMLIFrameElement>\("\.viewer-iframe\[data-document-id\]"\)/);
+assert.match(app, /Preferences refresh all open runtimes/);
+assert.doesNotMatch(app, /Preferences intentionally refresh only the active runtime/);
+assert.match(app, /Quick Look reset completed/);
+assert.match(app, /Quick Look reset reported issues/);
+assert.doesNotMatch(app, /Quick Look reset requested/);
 
 assert.match(shortcutDocs, /\| Cmd\+P \| Open command palette \|/);
 assert.match(shortcutDocs, /Search Open Structures/);
 assert.match(shortcutDocs, /Clear Recent Structures/);
 assert.match(shortcutDocs, /Open Recent:/);
 assert.match(shortcutDocs, /Open Structure:/);
+assert.doesNotMatch(readme, /executable path, built-in preset\/custom JSON config, and extra CLI flags/);
+assert.doesNotMatch(readme, /Finder file association registration/);
 assert.match(workspaceManifest, /packages:\n  - apps\/\*/);
 assert.match(workspaceManifest, /catalog:/);
 assert.match(workspaceManifest, /@hugeicons\/react/);
+assert.match(updateSource, /const installExtensions = \["\.zip"\]/);
+assert.doesNotMatch(updateSource, /"\.dmg"|"\.pkg"/);
+assert.match(updateSource, /sha256AssetFor\(assets, asset\.name!\)/);
+assert.match(updateSource, /sha256AssetName: selected\.digest\.name!/);
+assert.match(app, /sha256BrowserDownloadUrl: release\.installAsset\.sha256BrowserDownloadUrl/);
+assert.match(updateSource, /manifestAssetFor\(assets, asset\.name!\)/);
+assert.match(updateSource, /manifestSignatureAssetFor\(assets, asset\.name!\)/);
+assert.match(app, /manifestSignatureBrowserDownloadUrl: release\.installAsset\.manifestSignatureBrowserDownloadUrl/);
+assert.match(browserDevDocuments, /documentId: stableId\(path\)/);
+assert.match(browserDevDocuments, /body\.documentId = String\(window\.BurreteConfig\.documentId\)/);
+assert.match(browserDevDocuments, /rdkitWasmPath: `\$\{WEB_ASSETS_BASE\}rdkit\/RDKit_minimal\.wasm`/);
+assert.doesNotMatch(browserDevDocuments, /BurreteRDKitWasmBase64/);
 
 console.log('ui shell contract tests passed');

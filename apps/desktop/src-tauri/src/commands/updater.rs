@@ -1,3 +1,4 @@
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -16,6 +17,30 @@ pub(crate) struct UpdateInstallRequest {
     asset_name: String,
     browser_download_url: String,
     size: u64,
+    sha256_asset_name: String,
+    sha256_browser_download_url: String,
+    sha256_size: u64,
+    manifest_asset_name: String,
+    manifest_browser_download_url: String,
+    manifest_size: u64,
+    manifest_signature_asset_name: String,
+    manifest_signature_browser_download_url: String,
+    manifest_signature_size: u64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateManifest {
+    schema_version: u8,
+    tag_name: String,
+    version: String,
+    asset_name: String,
+    asset_url: String,
+    asset_size: u64,
+    asset_sha256: String,
+    bundle_id: String,
+    extension_id: String,
+    minimum_system_version: String,
 }
 
 #[tauri::command]
@@ -48,27 +73,51 @@ fn download_update(
     validate_request(request)?;
     let updates_dir = update_dir(app_data_dir, &request.tag_name)?;
     let archive = updates_dir.join(safe_path_component(&request.asset_name));
+    let digest = updates_dir.join(safe_path_component(&request.sha256_asset_name));
+    let manifest = updates_dir.join(safe_path_component(&request.manifest_asset_name));
+    let manifest_signature =
+        updates_dir.join(safe_path_component(&request.manifest_signature_asset_name));
     let temporary = updates_dir.join(format!(
         "{}.download",
         safe_path_component(&request.asset_name)
     ));
+    let temporary_digest = updates_dir.join(format!(
+        "{}.download",
+        safe_path_component(&request.sha256_asset_name)
+    ));
+    let temporary_manifest = updates_dir.join(format!(
+        "{}.download",
+        safe_path_component(&request.manifest_asset_name)
+    ));
+    let temporary_manifest_signature = updates_dir.join(format!(
+        "{}.download",
+        safe_path_component(&request.manifest_signature_asset_name)
+    ));
     remove_path_if_exists(&temporary)?;
+    remove_path_if_exists(&temporary_digest)?;
+    remove_path_if_exists(&temporary_manifest)?;
+    remove_path_if_exists(&temporary_manifest_signature)?;
     remove_path_if_exists(&archive)?;
+    remove_path_if_exists(&digest)?;
+    remove_path_if_exists(&manifest)?;
+    remove_path_if_exists(&manifest_signature)?;
 
-    let status = Command::new("/usr/bin/curl")
-        .args(["--fail", "--location", "--silent", "--show-error"])
-        .args([
-            "--header",
-            &format!("User-Agent: Burrete/{package_version}"),
-        ])
-        .arg("--output")
-        .arg(&temporary)
-        .arg(&request.browser_download_url)
-        .status()
-        .map_err(|err| format!("Could not start curl: {err}"))?;
-    if !status.success() {
-        return Err(format!("curl failed with status {status}."));
-    }
+    download_asset(package_version, &request.browser_download_url, &temporary)?;
+    download_asset(
+        package_version,
+        &request.sha256_browser_download_url,
+        &temporary_digest,
+    )?;
+    download_asset(
+        package_version,
+        &request.manifest_browser_download_url,
+        &temporary_manifest,
+    )?;
+    download_asset(
+        package_version,
+        &request.manifest_signature_browser_download_url,
+        &temporary_manifest_signature,
+    )?;
 
     let downloaded_size = fs::metadata(&temporary)
         .map_err(|err| err.to_string())?
@@ -80,9 +129,100 @@ fn download_update(
             request.size, downloaded_size
         ));
     }
+    let downloaded_digest_size = fs::metadata(&temporary_digest)
+        .map_err(|err| err.to_string())?
+        .len();
+    if downloaded_digest_size != request.sha256_size {
+        remove_path_if_exists(&temporary)?;
+        remove_path_if_exists(&temporary_digest)?;
+        return Err(format!(
+            "Downloaded update digest size mismatch: expected {} bytes, got {} bytes.",
+            request.sha256_size, downloaded_digest_size
+        ));
+    }
+    let downloaded_manifest_size = fs::metadata(&temporary_manifest)
+        .map_err(|err| err.to_string())?
+        .len();
+    if downloaded_manifest_size != request.manifest_size {
+        cleanup_downloads(&[
+            &temporary,
+            &temporary_digest,
+            &temporary_manifest,
+            &temporary_manifest_signature,
+        ])?;
+        return Err(format!(
+            "Downloaded update manifest size mismatch: expected {} bytes, got {} bytes.",
+            request.manifest_size, downloaded_manifest_size
+        ));
+    }
+    let downloaded_signature_size = fs::metadata(&temporary_manifest_signature)
+        .map_err(|err| err.to_string())?
+        .len();
+    if downloaded_signature_size != request.manifest_signature_size {
+        cleanup_downloads(&[
+            &temporary,
+            &temporary_digest,
+            &temporary_manifest,
+            &temporary_manifest_signature,
+        ])?;
+        return Err(format!(
+            "Downloaded update manifest signature size mismatch: expected {} bytes, got {} bytes.",
+            request.manifest_signature_size, downloaded_signature_size
+        ));
+    }
+
+    let manifest_bytes = fs::read(&temporary_manifest).map_err(|err| err.to_string())?;
+    let manifest_signature_text =
+        fs::read_to_string(&temporary_manifest_signature).map_err(|err| err.to_string())?;
+    let manifest_payload = verify_update_manifest(&manifest_bytes, &manifest_signature_text)?;
+    validate_update_manifest(&manifest_payload, request)?;
+
+    let expected_sha256 = read_expected_sha256(&temporary_digest)?;
+    if expected_sha256 != manifest_payload.asset_sha256 {
+        cleanup_downloads(&[
+            &temporary,
+            &temporary_digest,
+            &temporary_manifest,
+            &temporary_manifest_signature,
+        ])?;
+        return Err("Release digest sidecar does not match the signed update manifest.".into());
+    }
+    let actual_sha256 = file_sha256(&temporary)?;
+    if actual_sha256 != expected_sha256 {
+        cleanup_downloads(&[
+            &temporary,
+            &temporary_digest,
+            &temporary_manifest,
+            &temporary_manifest_signature,
+        ])?;
+        return Err("Downloaded update archive SHA256 does not match release digest.".into());
+    }
 
     fs::rename(&temporary, &archive).map_err(|err| err.to_string())?;
+    fs::rename(&temporary_digest, &digest).map_err(|err| err.to_string())?;
+    fs::rename(&temporary_manifest, &manifest).map_err(|err| err.to_string())?;
+    fs::rename(&temporary_manifest_signature, &manifest_signature)
+        .map_err(|err| err.to_string())?;
     Ok(archive)
+}
+
+fn download_asset(package_version: &str, url: &str, target: &Path) -> Result<(), String> {
+    let status = Command::new("/usr/bin/curl")
+        .args(["--fail", "--location", "--silent", "--show-error"])
+        .args([
+            "--header",
+            &format!("User-Agent: Burrete/{package_version}"),
+        ])
+        .arg("--output")
+        .arg(target)
+        .arg(url)
+        .status()
+        .map_err(|err| format!("Could not start curl: {err}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("curl failed with status {status}."))
+    }
 }
 
 fn unpack_and_validate_update(
@@ -115,8 +255,122 @@ fn validate_request(request: &UpdateInstallRequest) -> Result<(), String> {
     if !request.asset_name.to_lowercase().ends_with(".zip") {
         return Err("Automatic installation supports zipped Burette app archives only.".into());
     }
+    if !request
+        .sha256_browser_download_url
+        .starts_with(RELEASE_DOWNLOAD_PREFIX)
+    {
+        return Err("Only Burette GitHub release digest assets can be installed.".into());
+    }
+    if request.sha256_asset_name != format!("{}.sha256", request.asset_name) {
+        return Err("Release digest asset must be named after the zip asset with .sha256.".into());
+    }
+    if !request
+        .manifest_browser_download_url
+        .starts_with(RELEASE_DOWNLOAD_PREFIX)
+    {
+        return Err("Only Burette GitHub release manifest assets can be installed.".into());
+    }
+    if request.manifest_asset_name != format!("{}.manifest.json", request.asset_name) {
+        return Err(
+            "Release manifest asset must be named after the zip asset with .manifest.json.".into(),
+        );
+    }
+    if !request
+        .manifest_signature_browser_download_url
+        .starts_with(RELEASE_DOWNLOAD_PREFIX)
+    {
+        return Err(
+            "Only Burette GitHub release manifest signature assets can be installed.".into(),
+        );
+    }
+    if request.manifest_signature_asset_name != format!("{}.sig", request.manifest_asset_name) {
+        return Err(
+            "Release manifest signature asset must be named after the manifest asset with .sig."
+                .into(),
+        );
+    }
     if request.size == 0 {
         return Err("Release asset reports zero bytes.".into());
+    }
+    if request.sha256_size == 0 || request.sha256_size > 4096 {
+        return Err("Release digest asset size is invalid.".into());
+    }
+    if request.manifest_size == 0 || request.manifest_size > 16384 {
+        return Err("Release manifest asset size is invalid.".into());
+    }
+    if request.manifest_signature_size == 0 || request.manifest_signature_size > 512 {
+        return Err("Release manifest signature asset size is invalid.".into());
+    }
+    Ok(())
+}
+
+fn verify_update_manifest(
+    manifest_bytes: &[u8],
+    signature_text: &str,
+) -> Result<UpdateManifest, String> {
+    let public_key = option_env!("BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX").ok_or_else(|| {
+        "This Burrete build does not contain an update manifest public key.".to_string()
+    })?;
+    verify_update_manifest_with_key(manifest_bytes, signature_text, public_key)
+}
+
+fn verify_update_manifest_with_key(
+    manifest_bytes: &[u8],
+    signature_text: &str,
+    public_key_hex: &str,
+) -> Result<UpdateManifest, String> {
+    let public_key_bytes = hex_bytes(public_key_hex)?;
+    let public_key: [u8; 32] = public_key_bytes
+        .try_into()
+        .map_err(|_| "Update manifest public key must be 32 bytes.".to_string())?;
+    let verifying_key = VerifyingKey::from_bytes(&public_key)
+        .map_err(|_| "Update manifest public key is invalid.".to_string())?;
+
+    let signature_bytes = hex_bytes(signature_text)?;
+    let signature = Signature::from_slice(&signature_bytes)
+        .map_err(|_| "Update manifest signature must be 64 bytes.".to_string())?;
+    verifying_key
+        .verify(manifest_bytes, &signature)
+        .map_err(|_| "Update manifest signature is invalid.".to_string())?;
+
+    serde_json::from_slice(manifest_bytes)
+        .map_err(|err| format!("Update manifest JSON is invalid: {err}"))
+}
+
+fn validate_update_manifest(
+    manifest: &UpdateManifest,
+    request: &UpdateInstallRequest,
+) -> Result<(), String> {
+    if manifest.schema_version != 1 {
+        return Err("Update manifest schema version is unsupported.".into());
+    }
+    if manifest.tag_name != request.tag_name {
+        return Err("Update manifest tag does not match the release request.".into());
+    }
+    if manifest.version != request.tag_name.trim_start_matches('v') {
+        return Err("Update manifest version does not match the release tag.".into());
+    }
+    if manifest.asset_name != request.asset_name {
+        return Err("Update manifest asset name does not match the release request.".into());
+    }
+    if manifest.asset_url != request.browser_download_url {
+        return Err("Update manifest asset URL does not match the release request.".into());
+    }
+    if manifest.asset_size != request.size {
+        return Err("Update manifest asset size does not match the release request.".into());
+    }
+    if manifest.bundle_id != APP_ID {
+        return Err("Update manifest bundle id is invalid.".into());
+    }
+    if manifest.extension_id != EXTENSION_ID {
+        return Err("Update manifest extension id is invalid.".into());
+    }
+    if manifest.minimum_system_version.trim().is_empty() {
+        return Err("Update manifest minimum system version is missing.".into());
+    }
+    ensure_macos_version_at_least(&manifest.minimum_system_version)?;
+    if !is_sha256_hex(&manifest.asset_sha256) {
+        return Err("Update manifest archive SHA256 is invalid.".into());
     }
     Ok(())
 }
@@ -179,22 +433,54 @@ fn validate_downloaded_app_signature(app: &Path) -> Result<(), String> {
         "/usr/bin/codesign",
         &["--verify", "--deep", "--strict", path_str(app)?],
     )?;
+    run_status(
+        "/usr/sbin/spctl",
+        &["--assess", "--type", "execute", path_str(app)?],
+    )?;
 
     let current_signature = code_signature_descriptor(&current_app_bundle()?)?;
     let downloaded_signature = code_signature_descriptor(app)?;
     if downloaded_signature.identifier.as_deref() != Some(APP_ID) {
         return Err("Downloaded app signature identifier is invalid.".into());
     }
-    if let Some(current_team) = current_signature.team_identifier {
-        if downloaded_signature.team_identifier.as_deref() != Some(current_team.as_str()) {
-            return Err("Downloaded app TeamIdentifier does not match the installed app.".into());
-        }
-        if downloaded_signature.is_ad_hoc {
-            return Err(
-                "Downloaded app is ad-hoc signed while installed app uses a developer signature."
-                    .into(),
-            );
-        }
+    let Some(current_team) = current_signature.team_identifier else {
+        return Err(
+            "Automatic installation requires the installed app to be Developer ID signed.".into(),
+        );
+    };
+    if downloaded_signature.team_identifier.as_deref() != Some(current_team.as_str()) {
+        return Err("Downloaded app TeamIdentifier does not match the installed app.".into());
+    }
+    if downloaded_signature.is_ad_hoc {
+        return Err("Downloaded app is ad-hoc signed.".into());
+    }
+    validate_downloaded_extension_signature(app, &current_team)?;
+    Ok(())
+}
+
+fn validate_downloaded_extension_signature(app: &Path, expected_team: &str) -> Result<(), String> {
+    let extension = app
+        .join("Contents")
+        .join("PlugIns")
+        .join("BurretePreview.appex");
+    if !extension.is_dir() {
+        return Err("Downloaded app is missing the Quick Look extension.".into());
+    }
+    let info_plist = extension.join("Contents").join("Info.plist");
+    let bundle_id = read_plist_value(&info_plist, "CFBundleIdentifier")?;
+    if bundle_id != EXTENSION_ID {
+        return Err("Downloaded Quick Look extension bundle identifier is invalid.".into());
+    }
+    run_status(
+        "/usr/bin/codesign",
+        &["--verify", "--deep", "--strict", path_str(&extension)?],
+    )?;
+    let signature = code_signature_descriptor(&extension)?;
+    if signature.identifier.as_deref() != Some(EXTENSION_ID) {
+        return Err("Downloaded Quick Look extension signature identifier is invalid.".into());
+    }
+    if signature.team_identifier.as_deref() != Some(expected_team) || signature.is_ad_hoc {
+        return Err("Downloaded Quick Look extension signature does not match the app.".into());
     }
     Ok(())
 }
@@ -407,6 +693,89 @@ fn remove_path_if_exists(path: &Path) -> Result<(), String> {
     }
 }
 
+fn cleanup_downloads(paths: &[&Path]) -> Result<(), String> {
+    for path in paths {
+        remove_path_if_exists(path)?;
+    }
+    Ok(())
+}
+
+fn read_expected_sha256(path: &Path) -> Result<String, String> {
+    let text = fs::read_to_string(path).map_err(|err| err.to_string())?;
+    let digest = text
+        .split_whitespace()
+        .next()
+        .ok_or_else(|| "Release digest asset is empty.".to_string())?
+        .to_ascii_lowercase();
+    if !is_sha256_hex(&digest) {
+        return Err("Release digest asset does not start with a SHA256 hex digest.".into());
+    }
+    Ok(digest)
+}
+
+fn file_sha256(path: &Path) -> Result<String, String> {
+    let output = Command::new("/usr/bin/shasum")
+        .args(["-a", "256"])
+        .arg(path)
+        .output()
+        .map_err(|err| format!("Could not start shasum: {err}"))?;
+    if !output.status.success() {
+        return Err(format!("shasum failed for {}.", path.display()));
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let digest = text
+        .split_whitespace()
+        .next()
+        .ok_or_else(|| format!("shasum did not report a digest for {}.", path.display()))?
+        .to_ascii_lowercase();
+    if !is_sha256_hex(&digest) {
+        return Err(format!(
+            "shasum reported an invalid digest for {}.",
+            path.display()
+        ));
+    }
+    Ok(digest)
+}
+
+fn ensure_macos_version_at_least(minimum: &str) -> Result<(), String> {
+    let output = Command::new("/usr/bin/sw_vers")
+        .arg("-productVersion")
+        .output()
+        .map_err(|err| format!("Could not determine macOS version: {err}"))?;
+    if !output.status.success() {
+        return Err("Could not determine macOS version.".into());
+    }
+    let current = String::from_utf8_lossy(&output.stdout);
+    if compare_versions(current.trim(), minimum) < 0 {
+        return Err(format!(
+            "This update requires macOS {minimum} or newer; this Mac is running {}.",
+            current.trim()
+        ));
+    }
+    Ok(())
+}
+
+fn is_sha256_hex(value: &str) -> bool {
+    value.len() == 64 && value.chars().all(|character| character.is_ascii_hexdigit())
+}
+
+fn hex_bytes(value: &str) -> Result<Vec<u8>, String> {
+    let normalized: String = value
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .collect();
+    if normalized.len() % 2 != 0 {
+        return Err("Hex value has odd length.".into());
+    }
+    let mut bytes = Vec::with_capacity(normalized.len() / 2);
+    for index in (0..normalized.len()).step_by(2) {
+        let byte = u8::from_str_radix(&normalized[index..index + 2], 16)
+            .map_err(|_| "Hex value contains non-hex characters.".to_string())?;
+        bytes.push(byte);
+    }
+    Ok(bytes)
+}
+
 fn path_str(path: &Path) -> Result<&str, String> {
     path.to_str()
         .ok_or_else(|| format!("Path is not valid UTF-8: {}", path.display()))
@@ -469,4 +838,86 @@ fn version_parts(value: &str) -> Vec<u64> {
                 .unwrap_or(0)
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TEST_PUBLIC_KEY_HEX: &str =
+        "83acdae4aa36bc1749f7abfb138bd44a06eeaa6076640a9a118a00200beed26c";
+    const TEST_MANIFEST: &str = r#"{
+  "schemaVersion": 1,
+  "tagName": "v0.10.32",
+  "version": "0.10.32",
+  "assetName": "Burrete-0.10.32.zip",
+  "assetUrl": "https://github.com/SergeiNikolenko/Burrete/releases/download/v0.10.32/Burrete-0.10.32.zip",
+  "assetSize": 12345,
+  "assetSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "bundleId": "com.local.BurreteV10",
+  "extensionId": "com.local.BurreteV10.Preview",
+  "minimumSystemVersion": "12.0"
+}
+"#;
+    const TEST_SIGNATURE_HEX: &str = "59ff3c912e73ec4dd31cb7135cfbde9e87a052093d54d52168c312422bef645440ca148a7ac113311142465bf731a84eee67f9cbeee703937700156bd04c2d06";
+
+    fn install_request() -> UpdateInstallRequest {
+        UpdateInstallRequest {
+            tag_name: "v0.10.32".to_string(),
+            asset_name: "Burrete-0.10.32.zip".to_string(),
+            browser_download_url: "https://github.com/SergeiNikolenko/Burrete/releases/download/v0.10.32/Burrete-0.10.32.zip".to_string(),
+            size: 12345,
+            sha256_asset_name: "Burrete-0.10.32.zip.sha256".to_string(),
+            sha256_browser_download_url: "https://github.com/SergeiNikolenko/Burrete/releases/download/v0.10.32/Burrete-0.10.32.zip.sha256".to_string(),
+            sha256_size: 80,
+            manifest_asset_name: "Burrete-0.10.32.zip.manifest.json".to_string(),
+            manifest_browser_download_url: "https://github.com/SergeiNikolenko/Burrete/releases/download/v0.10.32/Burrete-0.10.32.zip.manifest.json".to_string(),
+            manifest_size: TEST_MANIFEST.len() as u64,
+            manifest_signature_asset_name: "Burrete-0.10.32.zip.manifest.json.sig".to_string(),
+            manifest_signature_browser_download_url: "https://github.com/SergeiNikolenko/Burrete/releases/download/v0.10.32/Burrete-0.10.32.zip.manifest.json.sig".to_string(),
+            manifest_signature_size: TEST_SIGNATURE_HEX.len() as u64 + 1,
+        }
+    }
+
+    #[test]
+    fn verifies_signed_update_manifest_and_request_binding() {
+        let manifest = verify_update_manifest_with_key(
+            TEST_MANIFEST.as_bytes(),
+            TEST_SIGNATURE_HEX,
+            TEST_PUBLIC_KEY_HEX,
+        )
+        .expect("signed test manifest should verify");
+
+        validate_update_manifest(&manifest, &install_request())
+            .expect("manifest should match request");
+    }
+
+    #[test]
+    fn rejects_tampered_update_manifest() {
+        let tampered = TEST_MANIFEST.replace("12345", "12346");
+        let error = verify_update_manifest_with_key(
+            tampered.as_bytes(),
+            TEST_SIGNATURE_HEX,
+            TEST_PUBLIC_KEY_HEX,
+        )
+        .expect_err("tampered manifest must fail signature verification");
+
+        assert!(error.contains("signature is invalid"));
+    }
+
+    #[test]
+    fn rejects_update_manifest_request_mismatch() {
+        let manifest = verify_update_manifest_with_key(
+            TEST_MANIFEST.as_bytes(),
+            TEST_SIGNATURE_HEX,
+            TEST_PUBLIC_KEY_HEX,
+        )
+        .expect("signed test manifest should verify");
+        let mut request = install_request();
+        request.asset_name = "Other.zip".to_string();
+
+        let error = validate_update_manifest(&manifest, &request)
+            .expect_err("manifest must be bound to the selected release asset");
+        assert!(error.contains("asset name"));
+    }
 }

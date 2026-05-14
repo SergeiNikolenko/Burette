@@ -35,9 +35,9 @@ function ViewerSurface({ document }: { document: ViewerDocument }) {
   return (
     <div className="molecule-stage">
       {tauriRuntime ? (
-        <iframe title={document.title} src={convertFileSrc(document.runtimePath)} className="viewer-iframe" sandbox={sandbox} referrerPolicy="no-referrer" />
+        <iframe title={document.title} src={convertFileSrc(document.runtimePath)} className="viewer-iframe" sandbox={sandbox} referrerPolicy="no-referrer" data-document-id={document.id} />
       ) : (
-        <iframe title={document.title} srcDoc={document.runtimePath} className="viewer-iframe" sandbox={sandbox} referrerPolicy="no-referrer" />
+        <iframe title={document.title} srcDoc={document.runtimePath} className="viewer-iframe" sandbox={sandbox} referrerPolicy="no-referrer" data-document-id={document.id} />
       )}
     </div>
   );

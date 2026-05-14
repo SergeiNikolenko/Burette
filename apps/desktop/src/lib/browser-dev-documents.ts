@@ -109,6 +109,7 @@ function viewerHtml(
     previewByteCount: bytes.length,
     quickLookBuild: "burrete-browser-dev",
     debug: false,
+    documentId: stableId(path),
     theme: preferences.theme,
     canvasBackground: preferences.canvasBackground,
     uiScale: 1,
@@ -182,10 +183,6 @@ async function gridHtml(
   byteCount: number,
 ) {
   const label = fileTitle(path);
-  const wasmResponse = await fetch(`${WEB_ASSETS_BASE}rdkit/RDKit_minimal.wasm`);
-  const wasmBase64 = wasmResponse.ok
-    ? bytesToBase64(new Uint8Array(await wasmResponse.arrayBuffer()))
-    : "";
   const config = {
     mode: "grid2d",
     format,
@@ -205,6 +202,7 @@ async function gridHtml(
     recordsIncluded: records.length,
     recordsTruncated: false,
     pageSize: 96,
+    rdkitWasmPath: `${WEB_ASSETS_BASE}rdkit/RDKit_minimal.wasm`,
     capabilities: {
       selection: true,
       export: true,
@@ -233,7 +231,7 @@ async function gridHtml(
   <div id="app"></div>
   <div id="status">Loading molecule grid...</div>
   <script>window.BurreteConfig = ${JSON.stringify(config)};</script>
-  <script>window.BurreteGridRecords = ${JSON.stringify(records)}; window.BurreteRDKitWasmBase64 = "${wasmBase64}";</script>
+  <script>window.BurreteGridRecords = ${JSON.stringify(records)};</script>
   <script src="rdkit/RDKit_minimal.js?v=${GRID_ASSET_VERSION}"></script>
   <script src="grid-viewer.js?v=${GRID_ASSET_VERSION}"></script>
 </body>
@@ -357,6 +355,9 @@ function parseDelimitedLine(line: string, delimiter: "," | "\t") {
 function viewerBridgeJs() {
   return `(() => {
   const postToParent = (body) => {
+    if (window.BurreteConfig && window.BurreteConfig.documentId) {
+      body.documentId = String(window.BurreteConfig.documentId);
+    }
     if (window.parent && window.parent !== window) {
       try { window.parent.postMessage({ source: 'burrete-viewer', body }, window.location.origin); }
       catch (_) { try { window.parent.postMessage({ source: 'burrete-viewer', body }, '*'); } catch (_) {} }

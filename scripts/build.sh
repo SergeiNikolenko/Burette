@@ -10,6 +10,12 @@ done
 ROOT="$(cd -P "$(dirname "$SCRIPT")/.." >/dev/null 2>&1 && pwd -P)"
 cd "$ROOT"
 
+if [[ $# -ne 0 ]]; then
+  echo "error: build.sh does not accept positional arguments." >&2
+  echo "Run forced preview checks with scripts/force-preview.sh after installing the app." >&2
+  exit 2
+fi
+
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 export COPYFILE_DISABLE=1
 export COPY_EXTENDED_ATTRIBUTES_DISABLE=1
@@ -20,6 +26,9 @@ PREVIEW_ID="com.local.BurreteV10.Preview"
 SAFE_ROOT_BASE="${TMPDIR:-/tmp}"
 SAFE_ROOT="$(mktemp -d "${SAFE_ROOT_BASE%/}/BurreteV10BuildSafe.XXXXXX")"
 LOCAL_APP="$ROOT/build/Burrete.app"
+SIGN_IDENTITY="${BURRETE_CODESIGN_IDENTITY:--}"
+XCODE_CONFIGURATION="${BURRETE_XCODE_CONFIGURATION:-Debug}"
+DEVELOPMENT_TEAM="${BURRETE_DEVELOPMENT_TEAM:-}"
 
 cleanup_safe_root() {
   rm -rf "$SAFE_ROOT" 2>/dev/null || true
@@ -31,6 +40,8 @@ Burrete v10 build
   source: $ROOT
   app id: $APP_ID
   preview id: $PREVIEW_ID
+  xcode configuration: $XCODE_CONFIGURATION
+  signing identity: $SIGN_IDENTITY
 HDR
 
 require_tool() { command -v "$1" >/dev/null 2>&1 || { echo "error: $1 is required. $2" >&2; exit 1; }; }
@@ -144,9 +155,13 @@ pushd "$SAFE_ROOT" >/dev/null
 rm -rf build
 npm ci --ignore-scripts
 npm run build:tauri
-xcodebuild -project Burrete.xcodeproj -scheme BurretePreview -configuration Debug -derivedDataPath build COMPILER_INDEX_STORE_ENABLE=NO CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build
+XCODE_SIGN_ARGS=(CODE_SIGN_IDENTITY="$SIGN_IDENTITY" CODE_SIGNING_ALLOWED=YES)
+if [[ -n "$DEVELOPMENT_TEAM" ]]; then
+  XCODE_SIGN_ARGS+=(CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM")
+fi
+xcodebuild -project Burrete.xcodeproj -scheme BurretePreview -configuration "$XCODE_CONFIGURATION" -derivedDataPath build COMPILER_INDEX_STORE_ENABLE=NO "${XCODE_SIGN_ARGS[@]}" build
 TAURI_BUILT_APP="apps/desktop/src-tauri/target/release/bundle/macos/Burrete.app"
-QUICKLOOK_APPEX="build/Build/Products/Debug/BurretePreview.appex"
+QUICKLOOK_APPEX="build/Build/Products/$XCODE_CONFIGURATION/BurretePreview.appex"
 [[ -d "$TAURI_BUILT_APP" ]] || { echo "error: Tauri app bundle missing: $TAURI_BUILT_APP" >&2; exit 1; }
 [[ -d "$QUICKLOOK_APPEX" ]] || { echo "error: Quick Look extension missing: $QUICKLOOK_APPEX" >&2; exit 1; }
 mkdir -p "$TAURI_BUILT_APP/Contents/PlugIns"
@@ -155,8 +170,12 @@ ditto --norsrc --noextattr "$QUICKLOOK_APPEX" "$TAURI_BUILT_APP/Contents/PlugIns
 mark_menu_bar_app "$TAURI_BUILT_APP"
 copy_app_plist_metadata "$TAURI_BUILT_APP"
 clean_detritus "$TAURI_BUILT_APP"
-codesign --force --sign - --entitlements "$ROOT/PreviewExtension/BurretePreview.entitlements" "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex" >/dev/null
-codesign --force --sign - "$TAURI_BUILT_APP" >/dev/null
+CODESIGN_ARGS=(--force --sign "$SIGN_IDENTITY")
+if [[ "$SIGN_IDENTITY" != "-" ]]; then
+  CODESIGN_ARGS+=(--options runtime --timestamp)
+fi
+codesign "${CODESIGN_ARGS[@]}" --entitlements "$ROOT/PreviewExtension/BurretePreview.entitlements" "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex" >/dev/null
+codesign "${CODESIGN_ARGS[@]}" "$TAURI_BUILT_APP" >/dev/null
 clean_detritus "$TAURI_BUILT_APP"
 popd >/dev/null
 

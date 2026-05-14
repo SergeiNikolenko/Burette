@@ -50,8 +50,52 @@ jobs:
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
 
+      - name: Import Developer ID certificate
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        run: |
+          if [[ -z "${MACOS_CERTIFICATE_P12_BASE64:-}" || -z "${MACOS_CERTIFICATE_PASSWORD:-}" || -z "${MACOS_KEYCHAIN_PASSWORD:-}" ]]; then
+            echo "Developer ID signing secrets are required for releases." >&2
+            exit 1
+          fi
+          security create-keychain -p "$MACOS_KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$MACOS_KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -lut 21600 build.keychain
+          echo "$MACOS_CERTIFICATE_P12_BASE64" | base64 --decode > certificate.p12
+          security import certificate.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$MACOS_KEYCHAIN_PASSWORD" build.keychain
+
       - name: Build app
-        run: ./scripts/build.sh samples/mini.sdf
+        env:
+          BURRETE_CODESIGN_IDENTITY: ${{ secrets.BURRETE_CODESIGN_IDENTITY }}
+          BURRETE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+          BURRETE_XCODE_CONFIGURATION: Release
+          BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX: ${{ secrets.BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX }}
+        run: ./scripts/build.sh
+
+      - name: Notarize app
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          if [[ -z "${APPLE_ID:-}" || -z "${APPLE_TEAM_ID:-}" || -z "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then
+            echo "Apple notarization secrets are required for releases." >&2
+            exit 1
+          fi
+          ditto -c -k --keepParent build/Burrete.app notarization.zip
+          xcrun notarytool submit notarization.zip \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --wait
+          xcrun stapler staple build/Burrete.app
+
+      - name: Validate release signing
+        run: ./scripts/check-release-signature.sh build/Burrete.app
 
       - name: Package app
         run: |
@@ -59,6 +103,10 @@ jobs:
           mkdir -p release
           cp -R build/Burrete.app release/Burrete.app
           ditto -c -k --keepParent release/Burrete.app "Burrete-${{ steps.version.outputs.version }}.zip"
+          shasum -a 256 "Burrete-${{ steps.version.outputs.version }}.zip" > "Burrete-${{ steps.version.outputs.version }}.zip.sha256"
+          node scripts/sign-update-manifest.mjs "Burrete-${{ steps.version.outputs.version }}.zip" .
+        env:
+          BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM: ${{ secrets.BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM }}
 
       - name: Create GitHub release
         env:
@@ -66,5 +114,8 @@ jobs:
         run: |
           gh release create "${{ steps.version.outputs.tag }}" \
             "Burrete-${{ steps.version.outputs.version }}.zip" \
+            "Burrete-${{ steps.version.outputs.version }}.zip.sha256" \
+            "Burrete-${{ steps.version.outputs.version }}.zip.manifest.json" \
+            "Burrete-${{ steps.version.outputs.version }}.zip.manifest.json.sig" \
             --title "Burrete ${{ steps.version.outputs.version }}" \
             --generate-notes

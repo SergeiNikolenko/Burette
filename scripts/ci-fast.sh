@@ -9,8 +9,10 @@ export npm_config_cache="$ROOT/build/npm-cache"
 
 npm ci --ignore-scripts
 npm run check:js
+npm run check:vendor-assets
 npm run check:formats
 npm run test:agent
 npm run test:ui
 npm run test:tauri-structure
+cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 plutil -lint apps/desktop/src-tauri/AppMetadata.plist PreviewExtension/Info.plist PreviewExtension/BurretePreview.entitlements
