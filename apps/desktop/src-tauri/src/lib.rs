@@ -11,13 +11,11 @@ use tauri::{Manager, RunEvent};
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
-            startup::emit_open_documents(
-                app,
-                startup::file_args_from_argv(argv, Some(PathBuf::from(cwd))),
-            );
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.set_focus();
+            let paths = startup::file_args_from_argv(argv, Some(PathBuf::from(cwd)));
+            if !paths.is_empty() {
+                tray::show_main_window(app);
             }
+            startup::emit_open_documents(app, paths);
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -63,6 +61,9 @@ pub fn run() {
                     .filter(|path| path.is_file())
                     .map(|path| path.to_string_lossy().to_string())
                     .collect();
+                if !paths.is_empty() {
+                    tray::show_main_window(app);
+                }
                 startup::emit_open_documents(app, paths);
             }
         });

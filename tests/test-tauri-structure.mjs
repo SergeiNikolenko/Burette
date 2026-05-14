@@ -33,6 +33,7 @@ const [
   previewRuntimeUtils,
   quickLookPreviewController,
   viewerRuntimeCSS,
+  viewerJS,
   viewerShell,
   tauriConfigSource,
   tauriPermissionSource,
@@ -40,6 +41,7 @@ const [
   buildScript,
   ciScript,
   releaseWorkflow,
+  releaseVersionCheck,
   releaseScript,
   releaseSignatureScript,
   signUpdateManifestScript,
@@ -67,6 +69,7 @@ const [
   source('apps/desktop/src-tauri/src/preview/runtime_utils.rs'),
   source('PreviewExtension/Platform/PreviewViewController.swift'),
   source('PreviewExtension/Web/viewer-runtime.css'),
+  source('PreviewExtension/Web/viewer.js'),
   source('PreviewExtension/Web/viewer-shell.js'),
   source('apps/desktop/src-tauri/tauri.conf.json'),
   source('apps/desktop/src-tauri/permissions/burrete.toml'),
@@ -74,6 +77,7 @@ const [
   source('scripts/build.sh'),
   source('scripts/ci.sh'),
   source('.github/workflows/release.yml'),
+  source('scripts/check-release-version.mjs'),
   source('scripts/release.sh'),
   source('scripts/check-release-signature.sh'),
   source('scripts/sign-update-manifest.mjs'),
@@ -97,6 +101,7 @@ assert.ok(mainWindowConfig);
 assert.equal(mainWindowConfig.windowEffects?.state, 'active');
 assert.ok(defaultCapability.permissions.includes('dialog:allow-open'));
 assert.ok(defaultCapability.permissions.includes('dialog:allow-message'));
+assert.match(previewEntitlements, /com\.apple\.security\.network\.client/);
 
 for (const moduleName of ['documents', 'preview_cache', 'quicklook', 'shell', 'startup', 'updater']) {
   assert.match(commandsIndex, new RegExp(`pub\\(crate\\) mod ${moduleName};`));
@@ -133,6 +138,8 @@ assert.match(releaseWorkflow, /BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX/);
 assert.match(releaseWorkflow, /BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM/);
 assert.match(releaseWorkflow, /zip\.manifest\.json/);
 assert.match(releaseWorkflow, /zip\.manifest\.json\.sig/);
+assert.match(releaseWorkflow, /prerelease=true/);
+assert.match(releaseWorkflow, /release_flags\+\=\(--prerelease\)/);
 assert.match(releaseScript, /sign-update-manifest\.mjs/);
 assert.match(releaseSignatureScript, /spctl --assess --type execute/);
 assert.match(releaseSignatureScript, /xcrun stapler validate/);
@@ -160,7 +167,7 @@ for (const asset of vendorAssetsLock.assets) {
 }
 assert.match(previewEntitlements, /com\.apple\.security\.app-sandbox/);
 assert.match(previewEntitlements, /com\.apple\.security\.files\.user-selected\.read-only/);
-assert.doesNotMatch(previewEntitlements, /com\.apple\.security\.network\.client/);
+assert.match(releaseVersionCheck, /semver release or prerelease/);
 assert.match(appMetadata, /<key>LSHandlerRank<\/key>\s*<string>Alternate<\/string>/);
 assert.match(installLocalScript, /broadPublicTypes/);
 assert.match(installLocalScript, /public\.comma-separated-values-text/);
@@ -170,8 +177,10 @@ assert.match(installLocalScript, /subtracting\(broadPublicTypes\)/);
 assert.match(tray, /fn status_image\(\) -> tauri::image::Image<'static>/);
 assert.match(tray, /\.icon\(status_image\(\)\)/);
 assert.match(tray, /\.icon_as_template\(true\)/);
+assert.match(tray, /pub\(crate\) fn show_main_window/);
 assert.doesNotMatch(tray, /default_window_icon/);
 assert.doesNotMatch(tray, /\.title\("B"\)/);
+assert.match(lib, /if !paths\.is_empty\(\) \{\s*tray::show_main_window\(app\);/);
 
 for (const moduleName of ['runtime_grid', 'runtime_utils', 'runtime_viewer']) {
   assert.match(previewIndex, new RegExp(`pub\\(crate\\) mod ${moduleName};`));
@@ -193,10 +202,24 @@ assert.match(previewRuntimeViewer, /viewer-runtime\.css/);
 assert.match(previewRuntimeViewer, /assets\.join\("viewer-runtime\.css"\)/);
 assert.match(previewRuntimeViewer, /Content-Security-Policy/);
 assert.match(previewRuntimeGrid, /Content-Security-Policy/);
-assert.match(quickLookPreviewController, /Content-Security-Policy/);
+assert.match(quickLookPreviewController, /<script src="preview-config\.js"><\/script>/);
+assert.match(quickLookPreviewController, /<script src="preview-data\.js"><\/script>/);
+assert.match(quickLookPreviewController, /burette-quicklook-host/);
+assert.match(quickLookPreviewController, /window\.BurreteDataBase64 = null;\\nwindow\.BurreteDataURL = null;\\n/);
+assert.match(quickLookPreviewController, /window\.BurreteDataBase64 = \\"\\\(structureData\.base64EncodedString\(\)\)\\";\\nwindow\.BurreteDataURL = '\.\/preview-data\.bin';\\n/);
+assert.match(quickLookPreviewController, /renderTimeoutWorkItem\?\.cancel\(\)/);
+assert.match(quickLookPreviewController, /PreviewError\.webRenderFailed\("The embedded WebKit process terminated while loading the Quick Look preview\."\)/);
+assert.match(quickLookPreviewController, /finishPreviewIfNeeded\(nil, requestID: activePreviewRequestID\)/);
 assert.match(previewRuntimeViewer, /"documentId": stable_id\(file_path\)/);
-assert.match(previewRuntimeViewer, /"dataPath": "\.\/preview-data\.bin"/);
+assert.match(previewRuntimeViewer, /let data_url = asset_url\(&runtime\.join\("preview-data\.bin"\)\);/);
+assert.match(previewRuntimeViewer, /"dataPath": data_url/);
 assert.match(previewRuntimeViewer, /runtime\.join\("preview-data\.bin"\)/);
+assert.match(previewRuntimeViewer, /window\.BurreteDataURL = \{data_url:\?\};\\n/);
+assert.match(previewRuntimeViewer, /window\.BurretePreviewConfigURL = \{config_js:\?\};/);
+assert.match(previewRuntimeViewer, /window\.BurretePreviewDataScriptURL = \{data_js:\?\};/);
+assert.match(previewRuntimeViewer, /window\.BurreteDataURL = \{data_bin_js:\?\};/);
+assert.match(previewRuntimeViewer, /window\.BurreteMolstarURL = \{molstar_js:\?\};/);
+assert.match(previewRuntimeViewer, /window\.BurreteXyzFastURL = \{xyz_fast_js:\?\};/);
 assert.doesNotMatch(previewRuntimeViewer, /BurreteDataBase64/);
 assert.doesNotMatch(previewRuntimeGrid, /BurreteRDKitWasmBase64/);
 assert.match(previewRuntimeGrid, /"rdkitWasmPath": asset_url/);
@@ -209,6 +232,7 @@ assert.doesNotMatch(viewerRuntimeCSS, /#buret-toolbar\.collapsed:hover/);
 assert.match(viewerRuntimeCSS, /\.buret-renderer-control\.visible/);
 assert.match(viewerRuntimeCSS, /top: var\(--buret-viewport-controls-top\) !important/);
 assert.match(viewerRuntimeCSS, /msp-layout-collapse-left\.msp-layout-hide-top\.msp-layout-hide-bottom/);
+assert.match(viewerRuntimeCSS, /body\.burette-quicklook-host .msp-plugin .msp-layout-left/);
 assert.match(previewRuntimeViewer, /viewer-shell\.js/);
 assert.match(viewerShell, /buret-renderer-choice/);
 assert.match(viewerShell, /aria-label="Collapse controls"/);
@@ -220,3 +244,11 @@ assert.match(previewRuntimeUtils, /pub\(crate\) fn stable_id/);
 assert.match(previewRuntimeUtils, /pub\(crate\) fn prune_runtime_dirs/);
 assert.match(quickLookPreviewController, /viewer-runtime\.css/);
 assert.match(quickLookPreviewController, /viewer-shell\.js/);
+assert.match(viewerJS, /function appendCacheBuster\(url, cb\)/);
+assert.match(viewerJS, /function runtimeURL\(globalName, fallback\)/);
+assert.match(viewerJS, /runtimeURL\('BurretePreviewConfigURL', '\.\/preview-config\.js'\)/);
+assert.match(viewerJS, /runtimeURL\('BurretePreviewDataScriptURL', '\.\/preview-data\.js'\)/);
+assert.match(viewerJS, /runtimeURL\('BurreteMolstarURL', '\.\/molstar\.js'\)/);
+assert.match(viewerJS, /runtimeURL\('BurreteXyzFastURL', '\.\/xyz-fast\.js'\)/);
+assert.match(viewerJS, /function isQuickLookHost\(\)/);
+assert.match(viewerJS, /powerPreference: isQuickLookHost\(\) \? 'default' : 'high-performance'/);

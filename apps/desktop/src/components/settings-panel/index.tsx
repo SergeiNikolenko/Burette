@@ -2,7 +2,6 @@ import type { ViewerPreferences } from "../../types";
 import type { UpdateChannel } from "../../update";
 import { CURRENT_VERSION, defaultUpdatePreferences } from "../../update";
 import { defaultPreferences } from "../../stores/settings-store";
-import { EditorScrollContainer } from "../editor-area/editor-scroll-container";
 import type { ShellActions, ShellViewState } from "../types";
 import { SettingsSection, ToggleControl, actionRow, selectPreferenceRow, type SettingRow } from "./setting-control";
 
@@ -64,7 +63,7 @@ export function SettingsPanel({ state, actions }: { state: ShellViewState; actio
 
   return (
     <div className="settings-panel" data-settings-panel>
-      <EditorScrollContainer>
+      <div className="settings-panel-scroll">
         <div className="settings-panel-content">
           <h1>Preferences</h1>
           <SettingsSection
@@ -98,7 +97,7 @@ export function SettingsPanel({ state, actions }: { state: ShellViewState; actio
             ]}
           />
         </div>
-      </EditorScrollContainer>
+      </div>
     </div>
   );
 }

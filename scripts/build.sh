@@ -123,7 +123,7 @@ case "$ROOT" in *"/.Trash/"*|*"/Library/Mobile Documents/.Trash/"*)
 esac
 
 # Prevent accidentally running old v5/v6/v7/v8 folders.
-grep -Eq '"version": "0\.10\.[0-9]+"' package.json || { echo "error: this is not a v10 release package; package.json version is:" >&2; grep '"version"' package.json >&2 || true; exit 1; }
+grep -Eq '"version": "0\.10\.[0-9]+(-[0-9A-Za-z.-]+)?"' package.json || { echo "error: this is not a v10 release package; package.json version is:" >&2; grep '"version"' package.json >&2 || true; exit 1; }
 grep -q 'com.local.BurreteV10.Preview' Burrete.xcodeproj/project.pbxproj || { echo "error: this Xcode project is not v10." >&2; exit 1; }
 grep -q 'config/preview-formats.json' scripts/force-preview.sh || { echo "error: force-preview.sh is not using the preview format registry." >&2; exit 1; }
 bun --eval "import { readFileSync } from 'node:fs'; const registry = JSON.parse(readFileSync('config/preview-formats.json', 'utf8')); if (!registry.formats?.some((format) => format.contentType === 'com.local.burrete10.pdb')) process.exit(1);" || { echo "error: preview format registry is not v10." >&2; exit 1; }
