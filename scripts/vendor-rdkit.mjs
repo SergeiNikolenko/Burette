@@ -25,7 +25,7 @@ for (const fileName of requiredFiles) {
   const source = findSourceFile(fileName);
   if (!source) {
     console.error(`error: cannot find ${fileName} in @rdkit/rdkit.`);
-    console.error('Run: npm install --ignore-scripts');
+    console.error('Run: bun install --frozen-lockfile --ignore-scripts');
     process.exit(1);
   }
   const destination = path.join(outputDir, fileName);

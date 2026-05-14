@@ -1,11 +1,10 @@
-# Burrete npm installer
+# Burrete CLI installer
 
 This package provides the `burrete` command for installing the Burrete macOS
 app from GitHub Releases.
 
 ```bash
-npm exec --package burrete -- burrete install
-pnpm dlx burrete install
+bunx burrete install
 ```
 
 The command downloads the latest non-prerelease `Burrete-<version>.zip`,

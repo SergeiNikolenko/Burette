@@ -3,15 +3,16 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getBunPackageSnapshot, readBunLock } from './bun-lock.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const lockPath = path.join(repoRoot, 'vendor-assets.lock.json');
-const packageLockPath = path.join(repoRoot, 'package-lock.json');
+const bunLockPath = path.join(repoRoot, 'bun.lock');
 const writeLock = process.argv.includes('--write');
 
 const packageSpecs = [
-  { name: 'molstar', packageLockPath: 'node_modules/molstar' },
-  { name: '@rdkit/rdkit', packageLockPath: 'node_modules/@rdkit/rdkit' },
+  { name: 'molstar' },
+  { name: '@rdkit/rdkit' },
 ];
 
 const assetSpecs = [
@@ -25,16 +26,10 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
 
-function packageSnapshot(packageLock, spec) {
-  const entry = packageLock.packages?.[spec.packageLockPath];
-  if (!entry) {
-    throw new Error(`Missing ${spec.packageLockPath} in package-lock.json.`);
-  }
-  if (!entry.version || !entry.integrity) {
-    throw new Error(`Missing version or integrity for ${spec.packageLockPath} in package-lock.json.`);
-  }
+function packageSnapshot(bunLock, spec) {
+  const entry = getBunPackageSnapshot(bunLock, spec.name);
   return {
-    packageLockPath: spec.packageLockPath,
+    packageName: spec.name,
     version: entry.version,
     integrity: entry.integrity,
   };
@@ -52,14 +47,14 @@ function assetSnapshot(spec) {
 }
 
 function currentSnapshot() {
-  const packageLock = readJson(packageLockPath);
+  const bunLock = readBunLock(bunLockPath);
   return {
     schemaVersion: 1,
     source: {
-      packageLock: 'package-lock.json',
+      bunLock: 'bun.lock',
     },
     packages: Object.fromEntries(
-      packageSpecs.map(spec => [spec.name, packageSnapshot(packageLock, spec)]),
+      packageSpecs.map(spec => [spec.name, packageSnapshot(bunLock, spec)]),
     ),
     assets: assetSpecs.map(assetSnapshot),
   };
@@ -78,14 +73,14 @@ if (writeLock) {
 }
 
 if (!fs.existsSync(lockPath)) {
-  console.error('vendor-assets.lock.json is missing. Run: npm run vendor:lock');
+  console.error('vendor-assets.lock.json is missing. Run: bun run vendor:lock');
   process.exit(1);
 }
 
 const expected = stableJson(readJson(lockPath));
 const actual = stableJson(snapshot);
 if (expected !== actual) {
-  console.error('Vendored asset lock is stale. Run: npm run vendor:lock');
+  console.error('Vendored asset lock is stale. Run: bun run vendor:lock');
   process.exit(1);
 }
 
