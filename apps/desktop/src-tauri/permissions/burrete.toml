@@ -7,5 +7,6 @@ commands.allow = [
   "clear_preview_cache",
   "open_logs_folder",
   "open_external_url",
-  "reset_quick_look"
+  "reset_quick_look",
+  "install_update"
 ]
