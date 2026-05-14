@@ -27,7 +27,14 @@ modeling environment.
 
 ## Download
 
-The easiest way to install Burrete is from the GitHub Releases page:
+The easiest way to install Burrete is with the Burrete Homebrew tap:
+
+```bash
+brew tap SergeiNikolenko/burrete
+brew install --cask burrete
+```
+
+Or download Burrete from the GitHub Releases page:
 
 [Download the latest Burrete release](https://github.com/SergeiNikolenko/Burrete/releases/latest)
 
@@ -94,7 +101,7 @@ Burrete runs as a menu bar app. Its settings window includes:
 
 ## Build From Source
 
-Most users should download Burrete from
+Most users should install Burrete with Homebrew, npm, pnpm, or
 [GitHub Releases](https://github.com/SergeiNikolenko/Burrete/releases/latest).
 If you want to build it yourself, clone the repository and run:
 

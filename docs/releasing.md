@@ -71,6 +71,39 @@ Every release app bundle must satisfy:
 - Finder Quick Look can preview PDB, CIF, and XYZ samples.
 - Update metadata points to the Burrete release endpoint.
 
+## Package Managers
+
+Homebrew uses the cask in `Casks/b/burrete.rb` and the public tap at
+`SergeiNikolenko/homebrew-burrete`. The working user command is:
+
+```bash
+brew tap SergeiNikolenko/burrete
+brew install --cask burrete
+```
+
+The shorter default-tap command, `brew install --cask burrete`, works only if
+the cask is accepted into `Homebrew/homebrew-cask`. The first upstream PR was
+blocked because the app is not Apple-signed/notarized and the project does not
+meet the default tap notability threshold yet.
+
+After each GitHub release, update the cask `version` and `sha256` to match the
+uploaded `Burrete-<version>.zip` asset. GitHub exposes the asset digest in the
+release metadata as `sha256:<digest>`.
+
+The npm package lives in `packages/burrete`. It is a thin CLI installer for the
+macOS app, not the app bundle itself. Publish it from that workspace package
+after npm authentication and OTP:
+
+```bash
+npm publish --workspace packages/burrete
+```
+
+pnpm uses the same npm package:
+
+```bash
+pnpm dlx burrete install
+```
+
 ## In-App Updates
 
 The desktop app checks Burrete GitHub Releases on launch and from the app menu.
