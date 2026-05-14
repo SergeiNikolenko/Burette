@@ -36,6 +36,7 @@ const [
   viewerShell,
   tauriConfigSource,
   tauriPermissionSource,
+  defaultCapabilitySource,
   buildScript,
   ciScript,
   releaseWorkflow,
@@ -69,6 +70,7 @@ const [
   source('PreviewExtension/Web/viewer-shell.js'),
   source('apps/desktop/src-tauri/tauri.conf.json'),
   source('apps/desktop/src-tauri/permissions/burrete.toml'),
+  source('apps/desktop/src-tauri/capabilities/default.json'),
   source('scripts/build.sh'),
   source('scripts/ci.sh'),
   source('.github/workflows/release.yml'),
@@ -87,11 +89,14 @@ const [
 const tauriConfig = JSON.parse(tauriConfigSource);
 const packageConfig = JSON.parse(packageSource);
 const vendorAssetsLock = JSON.parse(vendorAssetsLockSource);
+const defaultCapability = JSON.parse(defaultCapabilitySource);
 const mainWindowConfig = tauriConfig.app.windows.find((window) => window.label === 'main');
 
 assert.equal(await exists('apps/desktop/src-tauri/src/commands.rs'), false);
 assert.ok(mainWindowConfig);
 assert.equal(mainWindowConfig.windowEffects?.state, 'active');
+assert.ok(defaultCapability.permissions.includes('dialog:allow-open'));
+assert.ok(defaultCapability.permissions.includes('dialog:allow-message'));
 
 for (const moduleName of ['documents', 'preview_cache', 'quicklook', 'shell', 'startup', 'updater']) {
   assert.match(commandsIndex, new RegExp(`pub\\(crate\\) mod ${moduleName};`));
