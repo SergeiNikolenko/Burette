@@ -140,6 +140,10 @@
   let molstarSelectionControlsOpen = false;
   const draggableViewportPanels = new WeakSet();
 
+  function isQuickLookHost() {
+    return !!document.body?.classList.contains('burette-quicklook-host');
+  }
+
   function applyConfigOptions(config) {
     panelControlsVisible = config.showPanelControls !== undefined ? !!config.showPanelControls : panelControlsVisible;
     viewerTheme = normalizeViewerTheme(config.theme);
@@ -1208,13 +1212,22 @@
     return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
   }
 
+  function appendCacheBuster(url, cb) {
+    const separator = url.includes('?') ? '&' : '?';
+    return url + separator + 'v=' + encodeURIComponent(cb);
+  }
+
+  function runtimeURL(globalName, fallback) {
+    const configured = window[globalName];
+    return typeof configured === 'string' && configured.length > 0 ? configured : fallback;
+  }
+
   async function loadStructureData(config, cb) {
     if (window.BurreteDataBytes instanceof Uint8Array || window.BurreteDataBase64) return;
     const configured = typeof config.dataPath === 'string' ? config.dataPath : null;
     const scripted = typeof window.BurreteDataURL === 'string' ? window.BurreteDataURL : null;
     const url = configured || scripted || './preview-data.bin';
-    const separator = url.includes('?') ? '&' : '?';
-    const response = await fetch(url + separator + 'v=' + encodeURIComponent(cb), { cache: 'no-store' });
+    const response = await fetch(appendCacheBuster(url, cb), { cache: 'no-store' });
     if (!response.ok) {
       throw new Error('Could not load structure payload: HTTP ' + response.status);
     }
@@ -1273,7 +1286,7 @@
     if (window.BurreteConfig) return;
     try {
       if (!window.BurreteConfig) {
-        await loadScript('./preview-config.js?v=' + encodeURIComponent(cb), 'preview config', 10000);
+        await loadScript(appendCacheBuster(runtimeURL('BurretePreviewConfigURL', './preview-config.js'), cb), 'preview config', 10000);
       }
     } catch (error) {
       if (installDirectTemplateFallback()) return;
@@ -1326,7 +1339,7 @@
     const size = describeBytes(config.byteCount);
     setStatus(`[web] Loading Fast XYZ renderer…\n${label} (XYZ${size ? `, ${size}` : ''})`);
     if (!window.BurreteXYZFast) {
-      await loadScript('./xyz-fast.js?v=' + encodeURIComponent(cb), 'Fast XYZ renderer', 10000);
+      await loadScript(appendCacheBuster(runtimeURL('BurreteXyzFastURL', './xyz-fast.js'), cb), 'Fast XYZ renderer', 10000);
     }
     if (!window.BurreteXYZFast || typeof window.BurreteXYZFast.render !== 'function') {
       throw new Error('xyz-fast.js did not define window.BurreteXYZFast.render.');
@@ -1791,7 +1804,7 @@
       preferWebgl1: true,
       disableAntialiasing: true,
       viewportBackgroundColor: transparentBackground ? undefined : canvasBackgroundCSS(),
-      powerPreference: 'high-performance'
+      powerPreference: isQuickLookHost() ? 'default' : 'high-performance'
     };
   }
 
@@ -1821,7 +1834,7 @@
     activeConfig = config;
     if (!(window.BurreteDataBytes instanceof Uint8Array) && !window.BurreteDataBase64) {
       if (!config.dataPath && !window.BurreteDataURL) {
-        await loadScript('./preview-data.js?v=' + encodeURIComponent(cb), 'structure data', 30000);
+        await loadScript(appendCacheBuster(runtimeURL('BurretePreviewDataScriptURL', './preview-data.js'), cb), 'structure data', 30000);
       }
       await loadStructureData(config, cb);
     }
@@ -1844,7 +1857,7 @@
     if (!window.molstar) {
       setStatus(`[web] Loading Mol* engine…
 ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
-      await loadScript('./molstar.js?v=' + encodeURIComponent(cb), 'Mol* engine', 120000);
+      await loadScript(appendCacheBuster(runtimeURL('BurreteMolstarURL', './molstar.js'), cb), 'Mol* engine', 120000);
     }
 
     setStatus(`[web] Mol* engine loaded. Creating WebGL viewer…

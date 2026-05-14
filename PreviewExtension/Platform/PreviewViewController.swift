@@ -409,10 +409,13 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         try Data(html.utf8).write(to: indexURL, options: [.atomic])
         try Data("window.BurreteConfig = \(configJSON);\n".utf8)
             .write(to: runtimeDirectory.appendingPathComponent("preview-config.js"), options: [.atomic])
+        let dataScript: String
         if let structureData {
             try structureData.write(to: runtimeDirectory.appendingPathComponent("preview-data.bin"), options: [.atomic])
+            dataScript = "window.BurreteDataBase64 = \"\(structureData.base64EncodedString())\";\nwindow.BurreteDataURL = './preview-data.bin';\n"
+        } else {
+            dataScript = "window.BurreteDataBase64 = null;\nwindow.BurreteDataURL = null;\n"
         }
-        let dataScript = structureData == nil ? "window.BurreteDataURL = null;\n" : "window.BurreteDataURL = './preview-data.bin';\n"
         try Data(dataScript.utf8)
             .write(to: runtimeDirectory.appendingPathComponent("preview-data.js"), options: [.atomic])
         if let gridRecordsScript {
@@ -658,7 +661,6 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <title>Burrete Grid - \(safeTitle)</title>
-          <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob:; connect-src 'self' file: data: blob:; script-src 'self' 'unsafe-inline' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'self' blob:;" />
           <link rel="stylesheet" href="../assets/grid.css" />
           <script>
             (function () {
@@ -671,7 +673,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             })();
           </script>
         </head>
-        <body class="\(backgroundClass)">
+        <body class="\(backgroundClass) burette-quicklook-host">
           <div id="app"></div>
           <div id="status">Loading molecule grid...</div>
           <script>
@@ -723,7 +725,6 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <title>Burrete - \(safeTitle)</title>
-          <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob:; connect-src 'self' file: data: blob:; script-src 'self' 'unsafe-inline' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'self' blob:;" />
           <link rel="stylesheet" href="../assets/molstar.css" />
           <link rel="stylesheet" href="../assets/viewer-runtime.css" />
           <script>
@@ -788,7 +789,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             })();
           </script>
         </head>
-        <body class="\(backgroundClass)">
+        <body class="\(backgroundClass) burette-quicklook-host">
           <div id="app"></div>
           <script src="../assets/viewer-shell.js"></script>
           <div id="status" class="hidden">\(initialStatus)</div>
@@ -799,6 +800,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             window.BurreteCacheBuster = String(Date.now());
           </script>
           \(rendererAssets)
+          <script src="preview-config.js"></script>
+          <script src="preview-data.js"></script>
           <script>
             window.__mqlStatus && window.__mqlStatus('[web] About to load viewer.js from bundled resource…');
           </script>
@@ -1032,8 +1035,11 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         appendLog("WK webContentProcessDidTerminate")
         guard !hasRenderedTerminationError else { return }
         hasRenderedTerminationError = true
-        let html = Self.staticErrorHTML(title: "WebKit process terminated", details: "The embedded WebKit process crashed while parsing Mol* or initializing WebGL. Use Burrete Settings or ./scripts/tail-log.sh for logs.")
-        webView.loadHTMLString(html, baseURL: nil)
+        renderTimeoutWorkItem?.cancel()
+        renderTimeoutWorkItem = nil
+        let error = PreviewError.webRenderFailed("The embedded WebKit process terminated while loading the Quick Look preview.")
+        renderNativeError(error, fileURL: currentPreviewURL)
+        finishPreviewIfNeeded(nil, requestID: activePreviewRequestID)
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {

@@ -17,8 +17,8 @@ function git(args) {
 }
 
 const packageVersion = readJSON('package.json').version;
-if (!/^\d+\.\d+\.\d+$/.test(packageVersion)) {
-  fail(`package.json version must be a plain semver release, got ${packageVersion}`);
+if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(packageVersion)) {
+  fail(`package.json version must be a semver release or prerelease, got ${packageVersion}`);
 }
 
 const bunLock = readBunLock();
@@ -39,7 +39,7 @@ if (cargoVersion !== packageVersion) {
 }
 
 const project = readFileSync('Burrete.xcodeproj/project.pbxproj', 'utf8');
-const marketingVersions = [...project.matchAll(/MARKETING_VERSION = ([0-9]+\.[0-9]+\.[0-9]+);/g)].map(match => match[1]);
+const marketingVersions = [...project.matchAll(/MARKETING_VERSION = ([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?);/g)].map(match => match[1]);
 if (marketingVersions.length === 0) {
   fail('no MARKETING_VERSION entries found in Xcode project');
 }

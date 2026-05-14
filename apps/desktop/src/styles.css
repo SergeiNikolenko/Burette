@@ -589,6 +589,11 @@ kbd { color: var(--text-faint); font-size: 12px; font-family: inherit; font-weig
   -webkit-backdrop-filter: blur(3px);
 }
 .settings-panel { width: 100%; height: 100%; overflow: hidden; color: var(--text-primary); }
+.settings-panel-scroll {
+  height: 100%;
+  overflow-y: auto;
+  scrollbar-gutter: stable both-edges;
+}
 .settings-panel-content { width: min(672px, calc(100% - 64px)); box-sizing: border-box; margin: 0 auto; padding: 9rem 32px 96px; container-type: inline-size; }
 .settings-panel h1 { margin: 0 0 40px; color: var(--text-primary); font-size: 24px; font-weight: 650; letter-spacing: 0; }
 .settings-section { margin: 0 0 40px; }

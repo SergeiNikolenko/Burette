@@ -2,6 +2,7 @@ use serde_json::json;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{Manager, Runtime};
+use base64::Engine;
 
 use super::formats::{normalize_renderer_mode, FormatInfo};
 use super::runtime::{ViewerPreferences, ViewerReloadOptions};
@@ -91,7 +92,6 @@ pub(crate) fn create_runtime<R: Runtime>(
         "label": file_path.file_name().and_then(|value| value.to_str()).unwrap_or("structure"),
         "byteCount": data.len(),
         "previewByteCount": payload.data.len(),
-        "dataPath": "./preview-data.bin",
         "quickLookBuild": "burrete-tauri",
         "debug": false,
         "theme": preferences.resolved_theme(),
@@ -157,7 +157,10 @@ pub(crate) fn create_runtime<R: Runtime>(
     fs::write(runtime.join("preview-data.bin"), &payload.data).map_err(|err| err.to_string())?;
     fs::write(
         runtime.join("preview-data.js"),
-        "window.BurreteDataURL = './preview-data.bin';\n",
+        format!(
+            "window.BurreteDataBase64 = {:?};\nwindow.BurreteDataURL = null;\n",
+            base64::engine::general_purpose::STANDARD.encode(&payload.data)
+        ),
     )
     .map_err(|err| err.to_string())?;
     Ok(CreatedRuntime {
@@ -255,6 +258,7 @@ fn viewer_html(
     let bridge_js = asset_url(&runtime.join("viewer-bridge.js"));
     let config_js = asset_url(&runtime.join("preview-config.js"));
     let data_js = asset_url(&runtime.join("preview-data.js"));
+    let data_bin_js = asset_url(&runtime.join("preview-data.bin"));
     let agent_js = asset_url(&assets.join("burette-agent.js"));
     let viewer_js = asset_url(&assets.join("viewer.js"));
     let molstar_css = asset_url(&assets.join("molstar.css"));
@@ -281,10 +285,16 @@ fn viewer_html(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Burrete - {title}</title>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset: data: blob:; script-src 'self' 'unsafe-inline' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'self' blob:;" />
   {renderer_styles}
   <link rel="stylesheet" href="{runtime_css}" />
   <script src="{bridge_js}"></script>
+  <script>
+    window.BurretePreviewConfigURL = {config_js:?};
+    window.BurretePreviewDataScriptURL = {data_js:?};
+    window.BurreteDataURL = {data_bin_js:?};
+    window.BurreteMolstarURL = {molstar_js:?};
+    window.BurreteXyzFastURL = {xyz_fast_js:?};
+  </script>
 </head>
 <body class="{background_class}">
   <div id="app"></div>
