@@ -19,22 +19,21 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
-          cache: npm
+          bun-version: 1.3.8
 
       - name: Install dependencies
-        run: npm ci --ignore-scripts
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Validate release version
-        run: npm run check:release
+        run: bun run check:release
 
       - name: Resolve version
         id: version
         run: |
-          version="$(node -p "require('./package.json').version")"
+          version="$(bun --eval "console.log(require('./package.json').version)")"
           tag="v${version}"
 
           if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
@@ -104,7 +103,7 @@ jobs:
           cp -R build/Burrete.app release/Burrete.app
           ditto -c -k --keepParent release/Burrete.app "Burrete-${{ steps.version.outputs.version }}.zip"
           shasum -a 256 "Burrete-${{ steps.version.outputs.version }}.zip" > "Burrete-${{ steps.version.outputs.version }}.zip.sha256"
-          node scripts/sign-update-manifest.mjs "Burrete-${{ steps.version.outputs.version }}.zip" .
+          bun scripts/sign-update-manifest.mjs "Burrete-${{ steps.version.outputs.version }}.zip" .
         env:
           BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM: ${{ secrets.BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM }}
 

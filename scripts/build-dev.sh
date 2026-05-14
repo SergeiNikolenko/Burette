@@ -35,7 +35,7 @@ require_asset() {
   local path="$1"
   [[ -s "$path" ]] || {
     echo "error: missing vendored web asset: $path" >&2
-    echo "Run: npm ci --ignore-scripts && npm run vendor:molstar && npm run vendor:rdkit" >&2
+    echo "Run: bun install --frozen-lockfile --ignore-scripts && bun run vendor:molstar && bun run vendor:rdkit" >&2
     exit 1
   }
 }
@@ -97,8 +97,7 @@ with open(target_path, "wb") as target_file:
 PY
 }
 
-require_tool node "Install it with: brew install node"
-require_tool npm "Install it with: brew install node"
+require_tool bun "Install it with: brew install oven-sh/bun/bun"
 require_tool xcodebuild "Install full Xcode from the App Store."
 require_tool ditto "ditto is normally present on macOS."
 
@@ -112,16 +111,17 @@ require_asset PreviewExtension/Web/rdkit/RDKit_minimal.js
 require_asset PreviewExtension/Web/rdkit/RDKit_minimal.wasm
 require_asset PreviewExtension/Web/xyz-fast.js
 
-node --check PreviewExtension/Web/viewer.js >/dev/null
-node --check PreviewExtension/Web/burette-agent.js >/dev/null
-node --check PreviewExtension/Web/grid-viewer.js >/dev/null
-node --check PreviewExtension/Web/xyz-fast.js >/dev/null
+bun scripts/check-js-syntax.mjs \
+  PreviewExtension/Web/viewer.js \
+  PreviewExtension/Web/burette-agent.js \
+  PreviewExtension/Web/grid-viewer.js \
+  PreviewExtension/Web/xyz-fast.js >/dev/null
 
 if [[ ! -d node_modules || ! -d node_modules/@hugeicons/core-free-icons || ! -d node_modules/@tauri-apps/cli ]]; then
-  npm ci --ignore-scripts
+  bun install --frozen-lockfile --ignore-scripts
 fi
 
-npm run build:tauri
+bun run build:tauri
 mkdir -p "$XCODE_DERIVED" "$(dirname "$XCODE_LOG")"
 if ! xcodebuild -project Burrete.xcodeproj -scheme BurretePreview -configuration Debug -derivedDataPath "$XCODE_DERIVED" COMPILER_INDEX_STORE_ENABLE=NO CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build >"$XCODE_LOG" 2>&1; then
   echo "error: Xcode build failed. Last log lines:" >&2

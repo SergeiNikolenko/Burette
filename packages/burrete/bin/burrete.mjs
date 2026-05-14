@@ -72,7 +72,7 @@ async function fetchLatestRelease() {
   const response = await fetch(API_URL, {
     headers: {
       Accept: 'application/vnd.github+json',
-      'User-Agent': 'burrete-npm-installer',
+      'User-Agent': 'burrete-cli-installer',
     },
   });
   if (!response.ok) {
@@ -92,7 +92,7 @@ function findZipAsset(release) {
 async function download(url, targetPath) {
   const response = await fetch(url, {
     headers: {
-      'User-Agent': 'burrete-npm-installer',
+      'User-Agent': 'burrete-cli-installer',
     },
   });
   if (!response.ok || !response.body) {
