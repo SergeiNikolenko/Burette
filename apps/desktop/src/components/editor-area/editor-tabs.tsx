@@ -4,7 +4,7 @@ import { pageKind } from "./page-kinds";
 export function EditorTabs({ state, actions }: { state: ShellViewState; actions: ShellActions }) {
   const activeTabIndex = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
   return (
-    <div className="tab-strip" role="tablist" aria-label="Open structures">
+    <div className="tab-strip" role="tablist" aria-label="Open structures" data-tauri-drag-region>
       <div className="tab-history-controls" data-tauri-drag-region>
         <button
           type="button"
