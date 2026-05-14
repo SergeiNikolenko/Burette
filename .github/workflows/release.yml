@@ -35,6 +35,10 @@ jobs:
         run: |
           version="$(bun --eval "console.log(require('./package.json').version)")"
           tag="v${version}"
+          prerelease=false
+          if [[ "$version" == *-* ]]; then
+            prerelease=true
+          fi
 
           if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
             if [[ "${GITHUB_REF_NAME:-}" != "${tag}" ]]; then
@@ -48,6 +52,7 @@ jobs:
 
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${prerelease}" >> "$GITHUB_OUTPUT"
 
       - name: Resolve release capabilities
         id: capabilities
@@ -147,7 +152,12 @@ jobs:
           if [[ -f "Burrete-${{ steps.version.outputs.version }}.zip.manifest.json.sig" ]]; then
             assets+=("Burrete-${{ steps.version.outputs.version }}.zip.manifest.json.sig")
           fi
+          release_flags=()
+          if [[ "${{ steps.version.outputs.prerelease }}" == "true" ]]; then
+            release_flags+=(--prerelease)
+          fi
           gh release create "${{ steps.version.outputs.tag }}" \
             "${assets[@]}" \
+            "${release_flags[@]}" \
             --title "Burrete ${{ steps.version.outputs.version }}" \
             --generate-notes
