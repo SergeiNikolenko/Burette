@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
   "source": {
-    "packageLock": "package-lock.json"
+    "bunLock": "bun.lock"
   },
   "packages": {
     "molstar": {
-      "packageLockPath": "node_modules/molstar",
+      "packageName": "molstar",
       "version": "5.7.0",
       "integrity": "sha512-Bo/QDiEkoRdhyhmFXNBPP2kiNTHZNgJO69AzqO+CrpkSj7JUrYNtBlt49vqa2AJfLUrBNgeeHcfjbxGLmfO7sQ=="
     },
     "@rdkit/rdkit": {
-      "packageLockPath": "node_modules/@rdkit/rdkit",
+      "packageName": "@rdkit/rdkit",
       "version": "2025.3.4-1.0.0",
       "integrity": "sha512-MJzNoeW2SWt2KCdIibfY213uLWyHZjFfS2ntJ/HuYNHdu6dEiim7jb6ZMU9wnt9Oovkc85BHMuupxkufIMvftQ=="
     }

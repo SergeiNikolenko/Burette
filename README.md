@@ -34,11 +34,10 @@ brew tap SergeiNikolenko/burrete
 brew install --cask burrete
 ```
 
-You can also install it with npm or pnpm:
+You can also install it with Bun:
 
 ```bash
-npm exec --package burrete -- burrete install
-pnpm dlx burrete install
+bunx burrete install
 ```
 
 Or download Burrete from the GitHub Releases page:
@@ -106,7 +105,7 @@ Burrete runs as a menu bar app. Its settings window includes:
 
 ## Build From Source
 
-Most users should install Burrete with Homebrew, npm, pnpm, or
+Most users should install Burrete with Homebrew, Bun, or
 [GitHub Releases](https://github.com/SergeiNikolenko/Burrete/releases/latest).
 If you want to build it yourself, clone the repository and run:
 
@@ -129,9 +128,9 @@ Current project documentation starts at [docs/README.md](docs/README.md).
 Useful local checks:
 
 ```bash
-npm run check:js
-npm run test:agent
-npm run ci:fast
+bun run check:js
+bun run test:agent
+bun run ci:fast
 ```
 
 The Quick Look extension caches generated runtime files under the extension

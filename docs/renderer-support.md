@@ -46,7 +46,7 @@ external renderer logs.
 Use the lightweight checks first:
 
 ```bash
-npm run ci:fast
+bun run ci:fast
 ```
 
 For renderer behavior changes, also verify forced previews:
