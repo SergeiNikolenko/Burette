@@ -20,6 +20,7 @@ tauri = { version = "2", features = ["macos-private-api", "protocol-asset", "tra
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-single-instance = "2"
+url = "2"
 uuid = { version = "1", features = ["v4", "fast-rng"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
