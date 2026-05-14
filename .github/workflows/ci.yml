@@ -86,4 +86,4 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Build native bundle
-        run: ./scripts/build.sh samples/mini.sdf
+        run: ./scripts/build.sh

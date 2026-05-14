@@ -118,7 +118,11 @@ LSRegisterURL(appURL as CFURL, true)
 let bundle = Bundle(url: appURL)
 let documentTypes = bundle?.object(forInfoDictionaryKey: "CFBundleDocumentTypes") as? [[String: Any]] ?? []
 let contentTypes = documentTypes.flatMap { $0["LSItemContentTypes"] as? [String] ?? [] }
-for contentType in Set(contentTypes) {
+let broadPublicTypes: Set<String> = [
+    "public.comma-separated-values-text",
+    "public.tab-separated-values-text",
+]
+for contentType in Set(contentTypes).subtracting(broadPublicTypes) {
     LSSetDefaultRoleHandlerForContentType(contentType as CFString, .viewer, bundleID)
 }
 ' >/dev/null 2>&1 || true

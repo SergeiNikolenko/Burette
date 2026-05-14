@@ -1082,6 +1082,19 @@
     return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
   }
 
+  async function loadStructureData(config, cb) {
+    if (window.BurreteDataBytes instanceof Uint8Array || window.BurreteDataBase64) return;
+    const configured = typeof config.dataPath === 'string' ? config.dataPath : null;
+    const scripted = typeof window.BurreteDataURL === 'string' ? window.BurreteDataURL : null;
+    const url = configured || scripted || './preview-data.bin';
+    const separator = url.includes('?') ? '&' : '?';
+    const response = await fetch(url + separator + 'v=' + encodeURIComponent(cb), { cache: 'no-store' });
+    if (!response.ok) {
+      throw new Error('Could not load structure payload: HTTP ' + response.status);
+    }
+    window.BurreteDataBytes = new Uint8Array(await response.arrayBuffer());
+  }
+
   function normalizeFormat(format) {
     const value = String(format || 'auto').toLowerCase();
     if (value === 'cifcore' || value === 'corecif' || value === 'core-cif') return 'cifCore';
@@ -1131,13 +1144,10 @@
   }
 
   async function loadRuntimeInputs(cb) {
-    if (window.BurreteConfig && window.BurreteDataBase64) return;
+    if (window.BurreteConfig) return;
     try {
       if (!window.BurreteConfig) {
         await loadScript('./preview-config.js?v=' + encodeURIComponent(cb), 'preview config', 10000);
-      }
-      if (!window.BurreteDataBase64) {
-        await loadScript('./preview-data.js?v=' + encodeURIComponent(cb), 'structure data', 30000);
       }
     } catch (error) {
       if (installDirectTemplateFallback()) return;
@@ -1146,9 +1156,12 @@
   }
 
   function rawStructureData(config) {
+    if (window.BurreteDataBytes instanceof Uint8Array) {
+      return config.binary ? window.BurreteDataBytes : new TextDecoder('utf-8', { fatal: false }).decode(window.BurreteDataBytes);
+    }
     const base64 = window.BurreteDataBase64;
     if (!base64 || typeof base64 !== 'string') {
-      throw new Error('preview-data.js did not define window.BurreteDataBase64.');
+      throw new Error('Preview payload was not loaded.');
     }
     return config.binary ? base64ToBytes(base64) : base64ToText(base64);
   }
@@ -1527,6 +1540,12 @@
 
     const config = requireConfig();
     activeConfig = config;
+    if (!(window.BurreteDataBytes instanceof Uint8Array) && !window.BurreteDataBase64) {
+      if (!config.dataPath && !window.BurreteDataURL) {
+        await loadScript('./preview-data.js?v=' + encodeURIComponent(cb), 'structure data', 30000);
+      }
+      await loadStructureData(config, cb);
+    }
     applyConfigOptions(config);
     debug('config=' + JSON.stringify(config));
     const renderer = normalizeRenderer(config.renderer);
@@ -1576,7 +1595,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     applyLayoutState(viewer);
     try { viewer.handleResize(); } catch (_) {}
 
-    debug('before structureDataForMolstar: base64 chars=' + (window.BurreteDataBase64 ? window.BurreteDataBase64.length : -1));
+    debug('before structureDataForMolstar: bytes=' + (window.BurreteDataBytes ? window.BurreteDataBytes.length : -1) + '; base64 chars=' + (window.BurreteDataBase64 ? window.BurreteDataBase64.length : -1));
     const prepared = structureDataForMolstar(config);
     debug('prepared format=' + prepared.format + '; data type=' + (prepared.data && prepared.data.constructor ? prepared.data.constructor.name : typeof prepared.data) + '; data length=' + (prepared.data ? prepared.data.length : -1));
     setStatus(`[web] Parsing structure…\n${prepared.label} (${describeFormat(prepared.format, config.binary)})`);
