@@ -42,7 +42,7 @@ import {
   useSetActiveTab,
 } from "./hooks/use-tabs";
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
-import { openBrowserDevDocuments } from "./lib/browser-dev-documents";
+import { browserDevRuntimeNeedsRefresh, openBrowserDevDocuments } from "./lib/browser-dev-documents";
 import { isTauriRuntime } from "./lib/tauri";
 import type { OpenDocumentsResult, RecentStructure } from "./types";
 import { checkForUpdates as requestUpdateCheck, clearDismissedUpdate, dismissUpdate, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically, shouldPromptForUpdate } from "./update";
@@ -93,6 +93,7 @@ export default function App() {
   const sidebarSearchRef = useRef<HTMLButtonElement | null>(null);
   const refreshedPersistedSessionRef = useRef(false);
   const openedBrowserDevFilesRef = useRef(false);
+  const syncingBrowserDevFilesRef = useRef(false);
   const commandPaletteOpen = useIsCommandPaletteOpen();
   const commandPaletteQuery = useCommandPaletteSearch();
   const openCommandPalette = useOpenCommandPalette();
@@ -129,17 +130,24 @@ export default function App() {
   );
 
   useEffect(() => {
-    if (openedBrowserDevFilesRef.current || isTauriRuntime()) return;
+    if (isTauriRuntime() || syncingBrowserDevFilesRef.current) return;
     const params = new URLSearchParams(window.location.search);
     const rawFiles = params.get("devFiles");
     if (!rawFiles) return;
-    openedBrowserDevFilesRef.current = true;
     const paths = rawFiles.split("\n").map((path) => path.trim()).filter(Boolean);
+    const needsInitialOpen = !openedBrowserDevFilesRef.current;
+    const needsRuntimeRefresh = openedBrowserDevFilesRef.current
+      && documents.some((document) => paths.includes(document.path) && browserDevRuntimeNeedsRefresh(document));
+    if (!needsInitialOpen && !needsRuntimeRefresh) return;
+    openedBrowserDevFilesRef.current = true;
+    syncingBrowserDevFilesRef.current = true;
     const workspace = paths[0] ? parentDirectory(paths[0]) : null;
     if (workspace) setWorkspacePath(workspace);
     closeAllDocuments();
-    void openDocuments(paths);
-  }, [closeAllDocuments, openDocuments]);
+    void openDocuments(paths).finally(() => {
+      syncingBrowserDevFilesRef.current = false;
+    });
+  }, [closeAllDocuments, documents, openDocuments]);
 
   useEffect(() => {
     if (refreshedPersistedSessionRef.current) return;

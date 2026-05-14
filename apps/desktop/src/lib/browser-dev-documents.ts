@@ -21,6 +21,29 @@ const GRID_ASSET_VERSION = "grid-ui-v4";
 const REPO_ROOT = String(import.meta.env.BURRETE_REPO_ROOT || "");
 const WEB_ASSETS_BASE = fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
 
+type ResolvedPreviewVisuals = {
+  theme: ViewerPreferences["theme"] | "dark";
+  canvasBackground: Exclude<ViewerPreferences["canvasBackground"], "auto">;
+  transparentBackground: boolean;
+};
+
+export function browserDevRuntimeNeedsRefresh(document: ViewerDocument) {
+  if (document.renderer === "grid2d") return false;
+  return !document.runtimePath.includes("viewer-shell.js")
+    || document.runtimePath.includes('<div id="buret-toolbar"')
+    || document.runtimePath.includes("function viewerRuntimeCss");
+}
+
+function resolvePreviewVisuals(preferences: ViewerPreferences): ResolvedPreviewVisuals {
+  const theme = preferences.theme === "auto" ? "dark" : preferences.theme;
+  const canvasBackground = preferences.canvasBackground === "auto" ? "black" : preferences.canvasBackground;
+  return {
+    theme,
+    canvasBackground,
+    transparentBackground: canvasBackground === "transparent",
+  };
+}
+
 export async function openBrowserDevDocuments(
   paths: string[],
   preferences: ViewerPreferences,
@@ -66,8 +89,9 @@ async function openBrowserDevDocument(
   }
 
   const format = formatForExtension(extension);
-  const renderer = resolveRenderer(format, preferences.rendererMode);
-  const html = viewerHtml(path, format, renderer, bytes, preferences);
+  const requestedRenderer = resolveRenderer(format, preferences.rendererMode);
+  const { renderer, externalRendererStatus } = browserRendererPlan(format, requestedRenderer);
+  const html = viewerHtml(path, format, renderer, bytes, preferences, externalRendererStatus);
   return browserDocument(path, extension, renderer, html, bytes.length);
 }
 
@@ -95,8 +119,10 @@ function viewerHtml(
   renderer: string,
   bytes: Uint8Array,
   preferences: ViewerPreferences,
+  externalRendererStatus?: Record<string, string>,
 ) {
   const label = fileTitle(path);
+  const visuals = resolvePreviewVisuals(preferences);
   const config = {
     format: format.molstarFormat,
     molstarFormat: format.molstarFormat,
@@ -109,11 +135,11 @@ function viewerHtml(
     previewByteCount: bytes.length,
     quickLookBuild: "burrete-browser-dev",
     debug: false,
-    theme: preferences.theme,
-    canvasBackground: preferences.canvasBackground,
+    theme: visuals.theme,
+    canvasBackground: visuals.canvasBackground,
     uiScale: 1,
     overlayOpacity: 0.9,
-    transparentBackground: preferences.canvasBackground === "transparent",
+    transparentBackground: visuals.transparentBackground,
     sdfGrid: true,
     appViewer: true,
     tauriViewer: false,
@@ -121,7 +147,8 @@ function viewerHtml(
     molstarAvailable: !format.externalOnly,
     canOpenInVesta: format.canOpenInVesta,
     showPanelControls: true,
-    defaultLayoutState: { left: "collapsed", right: "hidden", top: "hidden", bottom: "hidden" },
+    defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" },
+    ...(externalRendererStatus ? { externalRendererStatus } : {}),
     ...(renderer === "xyz-fast"
       ? {
           xyzFast: {
@@ -138,6 +165,7 @@ function viewerHtml(
     renderer === "xyz-fast"
       ? `<script src="xyz-fast.js"></script>`
       : `<link rel="stylesheet" href="molstar.css" /><script src="molstar.js"></script>`;
+  const runtimeAssetVersion = String(Date.now());
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -145,33 +173,38 @@ function viewerHtml(
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <base href="${WEB_ASSETS_BASE}" />
   <title>Burrete - ${escapeHtml(label)}</title>
-  <style>${viewerRuntimeCss(preferences)}</style>
+  <link rel="stylesheet" href="viewer-runtime.css?v=${runtimeAssetVersion}" />
 </head>
-<body class="${preferences.canvasBackground === "transparent" ? "burette-transparent-background" : "burette-opaque-background"}">
+<body class="${visuals.transparentBackground ? "burette-transparent-background" : "burette-opaque-background"}">
   <div id="app"></div>
-  <div id="buret-toolbar" role="toolbar" aria-label="Burrete viewer controls">
-    <button class="buret-button buret-grip" type="button" data-drag-handle aria-label="Expand controls" aria-expanded="false" title="Expand controls"><span aria-hidden="true">...</span></button>
-    <button class="buret-button buret-panel-toggle active" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel"><span aria-hidden="true">L</span></button>
-    <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle right panel"><span aria-hidden="true">R</span></button>
-    <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel"><span aria-hidden="true">S</span></button>
-    <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel"><span aria-hidden="true">Log</span></button>
-    <button class="buret-button" type="button" data-buret-action="theme" aria-label="Switch theme" title="Switch theme"><span aria-hidden="true">T</span></button>
-    <div class="buret-renderer-control" data-buret-renderer-control>
-      <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="xyz-fast">Fast</button>
-      <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="molstar">Mol*</button>
-      <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="xyzrender-external">xyzr</button>
-      <select class="buret-select" data-buret-xyzrender-preset aria-label="External xyzrender preset"></select>
-    </div>
-  </div>
+  <script src="viewer-shell.js?v=${runtimeAssetVersion}"></script>
   <div id="status" class="hidden">Loading ${escapeHtml(label)}...</div>
   <script>${viewerBridgeJs()}</script>
   ${rendererAssets}
   <script>window.BurreteConfig = ${JSON.stringify(config)};</script>
   <script>window.BurreteDataBase64 = "${bytesToBase64(bytes)}";</script>
-  <script src="burette-agent.js"></script>
-  <script src="viewer.js"></script>
+  <script src="burette-agent.js?v=${runtimeAssetVersion}"></script>
+  <script src="viewer.js?v=${runtimeAssetVersion}"></script>
 </body>
 </html>`;
+}
+
+function browserRendererPlan(format: FormatInfo, renderer: string) {
+  if (renderer !== "xyzrender-external") return { renderer };
+  if (format.externalOnly) {
+    throw new Error("External xyzrender previews are unavailable in browser dev mode.");
+  }
+  if (format.molstarFormat === "xyz" && !format.binary) {
+    return {
+      renderer: "xyz-fast",
+      externalRendererStatus: {
+        status: "fallback",
+        requested: "xyzrender-external",
+        message: "Using Fast XYZ because browser dev mode cannot run external xyzrender.",
+      },
+    };
+  }
+  return { renderer: "molstar" };
 }
 
 async function gridHtml(
@@ -182,6 +215,7 @@ async function gridHtml(
   byteCount: number,
 ) {
   const label = fileTitle(path);
+  const visuals = resolvePreviewVisuals(preferences);
   const wasmResponse = await fetch(`${WEB_ASSETS_BASE}rdkit/RDKit_minimal.wasm`);
   const wasmBase64 = wasmResponse.ok
     ? bytesToBase64(new Uint8Array(await wasmResponse.arrayBuffer()))
@@ -197,10 +231,10 @@ async function gridHtml(
     debug: false,
     appViewer: true,
     tauriViewer: false,
-    theme: preferences.theme,
-    canvasBackground: preferences.canvasBackground,
+    theme: visuals.theme,
+    canvasBackground: visuals.canvasBackground,
     overlayOpacity: 0.9,
-    transparentBackground: preferences.canvasBackground === "transparent",
+    transparentBackground: visuals.transparentBackground,
     recordsTotal: records.length,
     recordsIncluded: records.length,
     recordsTruncated: false,
@@ -229,7 +263,7 @@ async function gridHtml(
     window.BurreteDebug = false;
   </script>
 </head>
-<body class="${preferences.canvasBackground === "transparent" ? "burette-transparent-background" : "burette-opaque-background"}">
+<body class="${visuals.transparentBackground ? "burette-transparent-background" : "burette-opaque-background"}">
   <div id="app"></div>
   <div id="status">Loading molecule grid...</div>
   <script>window.BurreteConfig = ${JSON.stringify(config)};</script>
@@ -371,23 +405,6 @@ function viewerBridgeJs() {
   window.BurretePanelControlsVisible = false;
   window.BurreteCacheBuster = String(Date.now());
 })();`;
-}
-
-function viewerRuntimeCss(preferences: ViewerPreferences) {
-  const background = preferences.canvasBackground === "white" ? "#f8f8f8" : "#0b0b0c";
-  return `html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;color:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif}
-.burette-opaque-background{background:${background}}
-.burette-transparent-background{background:transparent}
-#status{position:absolute;left:14px;right:14px;bottom:14px;z-index:20;padding:10px 12px;border-radius:10px;background:rgba(18,18,18,.84);font-size:12px;white-space:pre-wrap}
-#status.hidden{display:none}
-#status.error{display:block;color:#ffb4ab}
-#buret-toolbar{position:absolute;top:12px;right:12px;z-index:30;display:flex;gap:4px;align-items:center;padding:4px;border:1px solid rgba(255,255,255,.12);border-radius:10px;background:rgba(18,18,18,.72);color:rgba(255,255,255,.94);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
-.buret-button{min-width:30px;height:30px;border:0;border-radius:8px;background:transparent;color:inherit;padding:0 8px;font:600 12px -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;display:grid;place-items:center}
-.buret-button:hover,.buret-button.active{background:rgba(255,255,255,.14)}
-.buret-renderer-control{display:none;align-items:center;gap:4px;padding-left:5px;border-left:1px solid rgba(255,255,255,.12)}
-.buret-renderer-control.visible{display:flex}
-.buret-select{height:30px;max-width:118px;border:0;border-radius:8px;background:transparent;color:inherit;padding:0 22px 0 8px;font:600 12px -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif}
-.hidden{display:none!important}`;
 }
 
 function formatForExtension(extension: string): FormatInfo {

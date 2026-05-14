@@ -41,7 +41,9 @@ pub(crate) fn format_for_extension(extension: &str) -> Result<FormatInfo, String
         .into_iter()
         .find(|format| format.extensions.iter().any(|value| value == &normalized))
         .and_then(|format| {
-            format.viewer.map(|viewer| (viewer, format.can_open_in_vesta))
+            format
+                .viewer
+                .map(|viewer| (viewer, format.can_open_in_vesta))
         })
         .map(|viewer| FormatInfo {
             molstar_format: viewer.0.molstar_format,

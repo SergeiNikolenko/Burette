@@ -80,7 +80,7 @@
   }
 
   const layoutState = {
-    left: 'collapsed',
+    left: 'hidden',
     right: 'hidden',
     top: 'hidden',
     bottom: 'hidden'
@@ -90,6 +90,7 @@
     frame: 0,
     timer: 0
   };
+  let leftPanelVisibilityGuardInstalled = false;
 
   function scheduleViewerResize(viewer, delayMs = 80) {
     if (!viewer) return;
@@ -990,6 +991,7 @@
       root.classList.toggle('msp-layout-hide-top', layoutState.top === 'hidden');
       root.classList.toggle('msp-layout-hide-bottom', layoutState.bottom === 'hidden');
     }
+    syncLeftPanelVisibility();
 
     updateToolbarButtons();
     scheduleViewerResize(viewer, 40);
@@ -999,6 +1001,52 @@
       requestAnimationFrame(() => applyDefaultToolbarPosition(toolbar));
       setTimeout(() => applyDefaultToolbarPosition(toolbar), 120);
     }
+  }
+
+  function scheduleLayoutStateReapply(viewer) {
+    [250, 1000, 3000, 6000].forEach(delayMs => {
+      setTimeout(() => reapplyLayoutStateAfterMolstarPass(viewer), delayMs);
+    });
+  }
+
+  function reapplyLayoutStateAfterMolstarPass(viewer) {
+    if (layoutState.left !== 'hidden') {
+      applyLayoutState(viewer);
+      return;
+    }
+    try {
+      viewer?.plugin?.layout?.setProps?.({ regionState: { ...layoutState, left: 'full' } });
+    } catch (error) {
+      debug('layout left panel nudge failed: ' + (error && error.message || String(error)));
+    }
+    requestAnimationFrame(() => applyLayoutState(viewer));
+    setTimeout(() => applyLayoutState(viewer), 80);
+  }
+
+  function syncLeftPanelVisibility() {
+    document.querySelectorAll('.msp-layout-region.msp-layout-left').forEach(region => {
+      if (layoutState.left === 'hidden') {
+        region.style.display = 'none';
+        region.setAttribute('aria-hidden', 'true');
+      } else {
+        region.style.display = '';
+        region.removeAttribute('aria-hidden');
+      }
+    });
+  }
+
+  function installLeftPanelVisibilityGuard() {
+    if (leftPanelVisibilityGuardInstalled || !document.body) return;
+    leftPanelVisibilityGuardInstalled = true;
+    const observer = new MutationObserver(() => {
+      if (layoutState.left === 'hidden') syncLeftPanelVisibility();
+    });
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['class', 'style'],
+      childList: true,
+      subtree: true
+    });
   }
 
   function updateToolbarButtons() {
@@ -1119,7 +1167,7 @@
       canvasBackground: 'black',
       overlayOpacity: 0.9,
       defaultLayoutState: {
-        left: 'collapsed',
+        left: 'hidden',
         right: 'hidden',
         top: 'hidden',
         bottom: 'hidden'
@@ -1571,6 +1619,8 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     applyViewerUIScale(viewer);
     initViewerKeyboardShortcuts(viewer);
     initBuretToolbar(viewer);
+    installLeftPanelVisibilityGuard();
+    scheduleLayoutStateReapply(viewer);
 
     await waitForAnimationFrame();
     applyLayoutState(viewer);
@@ -1586,6 +1636,8 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       45000,
       `Mol* timed out while parsing/rendering ${prepared.label} as ${prepared.format}.`
     );
+    applyLayoutState(viewer);
+    scheduleLayoutStateReapply(viewer);
 
     try {
       window.BurreteAgent?.notifyStructureLoaded?.({ viewer, plugin: viewer.plugin, config, prepared });
@@ -1596,6 +1648,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
 
     window.addEventListener('resize', () => scheduleViewerResize(viewer, 100));
     await waitForAnimationFrame();
+    applyLayoutState(viewer);
     try { viewer.handleResize(); } catch (_) {}
 
     setStatus(`[web] Rendered ${config.label || 'structure'}`);
