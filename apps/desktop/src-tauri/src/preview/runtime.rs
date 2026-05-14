@@ -19,6 +19,35 @@ pub(crate) struct ViewerPreferences {
     pub(crate) xyz_fast_style: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ViewerReloadOptions {
+    pub(crate) xyzrender_orientation_ref: Option<String>,
+    pub(crate) xyzrender_preset: Option<String>,
+}
+
+impl ViewerPreferences {
+    pub(crate) fn resolved_theme(&self) -> &str {
+        if self.theme == "auto" {
+            "dark"
+        } else {
+            self.theme.as_str()
+        }
+    }
+
+    pub(crate) fn resolved_canvas_background(&self) -> &str {
+        if self.canvas_background == "auto" {
+            "black"
+        } else {
+            self.canvas_background.as_str()
+        }
+    }
+
+    pub(crate) fn resolved_transparent_background(&self) -> bool {
+        self.resolved_canvas_background() == "transparent"
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct OpenDocumentsResult {
@@ -42,6 +71,7 @@ pub(crate) fn open_document<R: Runtime>(
     app: &tauri::AppHandle<R>,
     path: PathBuf,
     preferences: &ViewerPreferences,
+    reload_options: Option<&ViewerReloadOptions>,
 ) -> Result<ViewerDocument, String> {
     let canonical = path
         .canonicalize()
@@ -88,7 +118,7 @@ pub(crate) fn open_document<R: Runtime>(
 
     let format = format_for_extension(&extension)?;
     let renderer = resolve_renderer(&format, &preferences.renderer_mode);
-    let runtime_path = create_runtime(
+    let runtime = create_runtime(
         app,
         &canonical,
         &extension,
@@ -96,14 +126,15 @@ pub(crate) fn open_document<R: Runtime>(
         &renderer,
         &data,
         preferences,
+        reload_options,
     )?;
     Ok(ViewerDocument {
         id: stable_id(&canonical),
         path: canonical.to_string_lossy().to_string(),
         title: file_title(&canonical),
         extension,
-        renderer,
-        runtime_path: runtime_path.to_string_lossy().to_string(),
+        renderer: runtime.renderer,
+        runtime_path: runtime.path.to_string_lossy().to_string(),
         byte_count: metadata.len(),
     })
 }

@@ -94,10 +94,10 @@ pub(crate) fn create_grid_runtime<R: Runtime>(
         "debug": false,
         "appViewer": true,
         "tauriViewer": true,
-        "theme": preferences.theme,
-        "canvasBackground": preferences.canvas_background,
+        "theme": preferences.resolved_theme(),
+        "canvasBackground": preferences.resolved_canvas_background(),
         "overlayOpacity": 0.90,
-        "transparentBackground": preferences.canvas_background == "transparent",
+        "transparentBackground": preferences.resolved_transparent_background(),
         "recordsTotal": collection.records_total,
         "recordsIncluded": records_included,
         "recordsTruncated": collection.records_total > records_included,
@@ -142,7 +142,7 @@ fn grid_html(
             .and_then(|value| value.to_str())
             .unwrap_or("molecule collection"),
     );
-    let background_class = if preferences.canvas_background == "transparent" {
+    let background_class = if preferences.resolved_transparent_background() {
         "burette-transparent-background"
     } else {
         "burette-opaque-background"
