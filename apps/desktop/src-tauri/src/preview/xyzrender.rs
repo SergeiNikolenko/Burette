@@ -302,6 +302,8 @@ mod tests {
             &directory.join("input.xyz"),
             &directory.join("xyzrender.svg"),
             &directory.join("xyzrender.log"),
+            "default",
+            None,
             Duration::from_millis(100),
         );
 
