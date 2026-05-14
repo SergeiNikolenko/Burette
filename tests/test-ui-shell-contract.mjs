@@ -43,7 +43,6 @@ const [
   windowTitle,
   instance,
   shortcutDocs,
-  workspaceManifest,
   styles,
   gridViewer,
   updateSource,
@@ -87,7 +86,6 @@ const [
   source('apps/desktop/src/components/window-title/index.tsx'),
   source('apps/desktop/src/lib/instance.ts'),
   source('docs/keyboard-shortcuts.md'),
-  source('pnpm-workspace.yaml'),
   source('apps/desktop/src/styles.css'),
   source('PreviewExtension/Web/grid-viewer.js'),
   source('apps/desktop/src/update.ts'),
@@ -370,9 +368,9 @@ assert.match(shortcutDocs, /Open Recent:/);
 assert.match(shortcutDocs, /Open Structure:/);
 assert.doesNotMatch(readme, /executable path, built-in preset\/custom JSON config, and extra CLI flags/);
 assert.doesNotMatch(readme, /Finder file association registration/);
-assert.match(workspaceManifest, /packages:\n  - apps\/\*/);
-assert.match(workspaceManifest, /catalog:/);
-assert.match(workspaceManifest, /@hugeicons\/react/);
+assert.match(packageJson, /"packageManager": "bun@1\.3\.8"/);
+assert.match(packageJson, /"workspaces": \[/);
+assert.match(packageJson, /"packages\/\*"/);
 assert.match(updateSource, /const installExtensions = \["\.zip"\]/);
 assert.doesNotMatch(updateSource, /"\.dmg"|"\.pkg"/);
 assert.match(updateSource, /sha256AssetFor\(assets, asset\.name!\)/);
