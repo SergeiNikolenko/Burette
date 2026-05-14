@@ -46,6 +46,8 @@ pub(crate) fn create_runtime<R: Runtime>(
         }
     };
 
+    let data_url = asset_url(&runtime.join("preview-data.bin"));
+
     let mut config = json!({
         "format": format.molstar_format.as_str(),
         "molstarFormat": format.molstar_format.as_str(),
@@ -56,7 +58,7 @@ pub(crate) fn create_runtime<R: Runtime>(
         "label": file_path.file_name().and_then(|value| value.to_str()).unwrap_or("structure"),
         "byteCount": data.len(),
         "previewByteCount": payload.data.len(),
-        "dataPath": "./preview-data.bin",
+        "dataPath": data_url,
         "quickLookBuild": "burrete-tauri",
         "debug": false,
         "documentId": stable_id(file_path),
@@ -120,7 +122,7 @@ pub(crate) fn create_runtime<R: Runtime>(
     fs::write(runtime.join("preview-data.bin"), &payload.data).map_err(|err| err.to_string())?;
     fs::write(
         runtime.join("preview-data.js"),
-        "window.BurreteDataURL = './preview-data.bin';\n",
+        format!("window.BurreteDataURL = {data_url:?};\n"),
     )
     .map_err(|err| err.to_string())?;
     Ok(runtime.join("index.html"))
@@ -215,6 +217,7 @@ fn viewer_html(
     let bridge_js = asset_url(&runtime.join("viewer-bridge.js"));
     let config_js = asset_url(&runtime.join("preview-config.js"));
     let data_js = asset_url(&runtime.join("preview-data.js"));
+    let data_bin_js = asset_url(&runtime.join("preview-data.bin"));
     let agent_js = asset_url(&assets.join("burette-agent.js"));
     let viewer_js = asset_url(&assets.join("viewer.js"));
     let molstar_css = asset_url(&assets.join("molstar.css"));
@@ -245,6 +248,13 @@ fn viewer_html(
   {renderer_styles}
   <link rel="stylesheet" href="{runtime_css}" />
   <script src="{bridge_js}"></script>
+  <script>
+    window.BurretePreviewConfigURL = {config_js:?};
+    window.BurretePreviewDataScriptURL = {data_js:?};
+    window.BurreteDataURL = {data_bin_js:?};
+    window.BurreteMolstarURL = {molstar_js:?};
+    window.BurreteXyzFastURL = {xyz_fast_js:?};
+  </script>
 </head>
 <body class="{background_class}">
   <div id="app"></div>

@@ -485,3 +485,27 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   color: inherit; background: transparent; font: 600 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 .buret-select:hover, .buret-select:focus { background: var(--buret-toolbar-hover); outline: none; }
+body.burette-quicklook-host .msp-plugin .msp-layout-left,
+body.burette-quicklook-host .msp-plugin .msp-layout-right,
+body.burette-quicklook-host .msp-plugin .msp-layout-top,
+body.burette-quicklook-host .msp-plugin .msp-layout-bottom,
+body.burette-quicklook-host .msp-plugin .msp-hover-box-wrapper .msp-hover-box-body,
+body.burette-quicklook-host .msp-plugin .msp-action-menu-options,
+body.burette-quicklook-host .msp-plugin .msp-action-menu-options-no-header,
+body.burette-quicklook-host .msp-plugin .msp-animation-viewport-controls-select,
+body.burette-quicklook-host .msp-plugin .msp-selection-viewport-controls-actions,
+body.burette-quicklook-host .msp-plugin .msp-panel-description-content,
+body.burette-quicklook-host .msp-plugin .msp-simple-help-section,
+body.burette-quicklook-host .msp-plugin .msp-help-text,
+body.burette-quicklook-host .msp-plugin .msp-no-webgl,
+body.burette-quicklook-host .msp-plugin .msp-log,
+body.burette-quicklook-host .msp-plugin .msp-toast-container .msp-toast-entry,
+body.burette-quicklook-host .msp-plugin .msp-viewport-controls-panel,
+body.burette-quicklook-host .msp-plugin .msp-snapshot-description-wrapper,
+body.burette-quicklook-host .msp-plugin .msp-highlight-info,
+body.burette-quicklook-host #status,
+body.burette-quicklook-host #buret-toolbar,
+body.burette-quicklook-host .buret-xyz-badge {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
