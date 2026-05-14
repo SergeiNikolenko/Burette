@@ -240,7 +240,7 @@ assert.match(fileKind, /path: location\.path/);
 assert.match(fileKind, /className="molecule-stage"/);
 assert.match(fileKind, /className="viewer-iframe"/);
 assert.match(fileKind, /data-document-id=\{document\.id\}/);
-assert.match(fileKind, /const sandbox = "allow-scripts allow-downloads allow-same-origin"/);
+assert.match(fileKind, /const sandbox = tauriRuntime \? "allow-scripts allow-downloads" : "allow-scripts allow-downloads allow-same-origin"/);
 assert.match(fileKind, /srcDoc=\{document\.runtimePath\}/);
 assert.match(gridViewer, /function resolveTheme\(value\)/);
 assert.match(gridViewer, /prefers-color-scheme: light/);

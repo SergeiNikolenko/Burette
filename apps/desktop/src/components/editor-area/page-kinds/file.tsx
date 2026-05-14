@@ -31,7 +31,7 @@ function findDocument(location: FileLocation, documents: ViewerDocument[]) {
 
 function ViewerSurface({ document }: { document: ViewerDocument }) {
   const tauriRuntime = isTauriRuntime();
-  const sandbox = "allow-scripts allow-downloads allow-same-origin";
+  const sandbox = tauriRuntime ? "allow-scripts allow-downloads" : "allow-scripts allow-downloads allow-same-origin";
   return (
     <div className="molecule-stage">
       {tauriRuntime ? (

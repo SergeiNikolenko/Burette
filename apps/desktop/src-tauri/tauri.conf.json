@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Burrete",
-  "version": "0.10.35-beta.1",
+  "version": "0.10.35-beta.2",
   "identifier": "com.local.BurreteV10",
   "build": {
     "beforeDevCommand": "bun run dev -- --host 127.0.0.1",

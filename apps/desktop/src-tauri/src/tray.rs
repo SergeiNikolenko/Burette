@@ -127,6 +127,8 @@ fn put_pixel(rgba: &mut [u8], x: u32, y: u32, alpha: u8) {
 }
 
 pub(crate) fn show_main_window<R: Runtime>(app: &tauri::AppHandle<R>) {
+    #[cfg(target_os = "macos")]
+    let _ = app.show();
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.unminimize();
