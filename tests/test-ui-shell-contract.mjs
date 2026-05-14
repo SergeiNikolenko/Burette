@@ -42,11 +42,16 @@ const [
   menuEventsHook,
   windowTitle,
   instance,
+  browserDevDocuments,
+  previewRuntimeViewer,
+  previewViewController,
   shortcutDocs,
   styles,
   gridViewer,
+  previewViewer,
+  previewShell,
+  previewRuntimeCss,
   updateSource,
-  browserDevDocuments,
   readme,
   viewerShell,
   viewer,
@@ -85,11 +90,16 @@ const [
   source('apps/desktop/src/hooks/use-menu-events.ts'),
   source('apps/desktop/src/components/window-title/index.tsx'),
   source('apps/desktop/src/lib/instance.ts'),
+  source('apps/desktop/src/lib/browser-dev-documents.ts'),
+  source('apps/desktop/src-tauri/src/preview/runtime_viewer.rs'),
+  source('PreviewExtension/Platform/PreviewViewController.swift'),
   source('docs/keyboard-shortcuts.md'),
   source('apps/desktop/src/styles.css'),
   source('PreviewExtension/Web/grid-viewer.js'),
+  source('PreviewExtension/Web/viewer.js'),
+  source('PreviewExtension/Web/viewer-shell.js'),
+  source('PreviewExtension/Web/viewer-runtime.css'),
   source('apps/desktop/src/update.ts'),
-  source('apps/desktop/src/lib/browser-dev-documents.ts'),
   source('README.md'),
   source('PreviewExtension/Web/viewer-shell.js'),
   source('PreviewExtension/Web/viewer.js'),
@@ -187,6 +197,8 @@ assert.match(app, /from "\.\/hooks\/use-settings"/);
 assert.doesNotMatch(app, /setCommandPaletteOpen/);
 assert.doesNotMatch(app, /useState\(false\).*commandPalette/i);
 assert.match(app, /refreshedPersistedSessionRef/);
+assert.match(app, /syncingBrowserDevFilesRef/);
+assert.match(app, /browserDevRuntimeNeedsRefresh/);
 assert.match(app, /isTauriRuntime\(\) \|\| documents\.length === 0/);
 assert.match(app, /void openDocuments\(paths\)/);
 assert.match(appLayout, /from "\.\/editor-area"/);
@@ -316,6 +328,10 @@ assert.match(settingsPanel, /title="System"/);
 assert.match(settingsPanel, /from "\.\/setting-control"/);
 assert.match(settingsPanel, /SettingsSection/);
 assert.match(settingsPanel, /ToggleControl/);
+assert.match(settingsPanel, /const defaultRendererModeOptions: Array<ViewerPreferences\["rendererMode"\]> = \["auto", "molstar", "xyzrender-external"\]/);
+assert.match(settingsPanel, /function visibleRendererModeOptions\(current: ViewerPreferences\["rendererMode"\]\)/);
+assert.match(settingsPanel, /current === "xyz-fast" \? \[\.\.\.defaultRendererModeOptions, current\] : defaultRendererModeOptions/);
+assert.doesNotMatch(settingsPanel, /\["auto", "xyz-fast", "molstar", "xyzrender-external"\]/);
 assert.match(settingControl, /export function SettingsSection/);
 assert.match(settingControl, /export function ToggleControl/);
 assert.match(settingControl, /role="switch"/);
@@ -331,6 +347,7 @@ assert.match(commandPalette, /Open Recent:/);
 assert.match(commandPalette, /Open Structure: /);
 assert.match(commandPalette, /Clear Recent Structures/);
 assert.match(commandPalette, /group: "Suggested"/);
+assert.doesNotMatch(commandPalette, /renderer-xyz-fast/);
 assert.match(commandPalette, /group: "Renderer"/);
 assert.match(commandPalette, /group: "Recent"/);
 assert.match(commandPalette, /className="command-palette-group"/);
@@ -342,6 +359,14 @@ assert.match(app, /useOpenDrop\(openDocuments, setStatus\)/);
 assert.match(app, /useOpenEvents\(openDocuments, setStatus\)/);
 assert.match(app, /useMenuEvents\(\{ chooseFiles, openSettings, checkForUpdates \}\)/);
 assert.match(app, /<WindowTitle activeDocument=\{activeDocument\} \/>/);
+assert.match(app, /const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions \| null>\(null\)/);
+assert.match(app, /const xyzrenderOrientationRefRef = useRef<string \| null>\(null\)/);
+assert.match(app, /if \(body\?\.type === "setXyzrenderOrientation"\)/);
+assert.match(app, /if \(body\?\.type === "setXyzrenderPreset"\)/);
+assert.match(app, /xyzrenderPreset: body\.value \?\? null/);
+assert.match(app, /pendingViewerReloadOptionsRef\.current = renderer === "xyzrender-external" && body\.orientationRef/);
+assert.match(app, /const reloadOptions = pendingViewerReloadOptionsRef\.current \?\? undefined/);
+assert.match(app, /await openDocuments\(\[activeDocument\.path\], reloadOptions\)/);
 assert.match(openDropHook, /export function useOpenDrop/);
 assert.match(openEventsHook, /export function useOpenEvents/);
 assert.match(menuEventsHook, /export function useMenuEvents/);
@@ -350,6 +375,93 @@ assert.match(windowTitle, /appInstanceLabel/);
 assert.match(instance, /VITE_BURETTE_DEV_INSTANCE/);
 assert.match(instance, /Burette Dev \$\{devInstanceSuffix\}/);
 assert.match(instance, /"8a18"/);
+assert.match(browserDevDocuments, /function browserRendererPlan/);
+assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
+assert.match(browserDevDocuments, /function resolvePreviewVisuals/);
+assert.match(browserDevDocuments, /preferences\.theme === "auto" \? "dark" : preferences\.theme/);
+assert.match(browserDevDocuments, /preferences\.canvasBackground === "auto" \? "black" : preferences\.canvasBackground/);
+assert.match(browserDevDocuments, /requestBrowserDevXyzrender/);
+assert.match(browserDevDocuments, /method: "POST"/);
+assert.match(browserDevDocuments, /reloadOptions\?\.xyzrenderPreset \?\? "default"/);
+assert.match(browserDevDocuments, /preset,/);
+assert.match(browserDevDocuments, /orientationRef: orientationRef \|\| undefined/);
+assert.match(browserDevDocuments, /Using Fast XYZ because browser dev xyzrender failed:/);
+assert.match(browserDevDocuments, /externalRendererStatus/);
+assert.match(browserDevDocuments, /xyzrenderViewer: renderer === "xyzrender-external"/);
+assert.match(browserDevDocuments, /inlineSvg: result\.svg/);
+assert.match(browserDevDocuments, /defaultLayoutState: \{ left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" \}/);
+assert.match(browserDevDocuments, /const runtimeAssetVersion = String\(Date\.now\(\)\)/);
+assert.match(browserDevDocuments, /<link rel="stylesheet" href="viewer-runtime\.css\?v=\$\{runtimeAssetVersion\}" \/>/);
+assert.match(browserDevDocuments, /<script src="viewer-shell\.js\?v=\$\{runtimeAssetVersion\}"><\/script>/);
+assert.match(browserDevDocuments, /<script src="viewer\.js\?v=\$\{runtimeAssetVersion\}"><\/script>/);
+assert.match(previewShell, /data-buret-toolbar-content/);
+assert.match(previewShell, /data-buret-action="theme"[\s\S]*data-buret-xyzrender-preset-slot[\s\S]*data-buret-renderer="xyz-fast"/);
+assert.match(previewRuntimeCss, /\.buret-xyzrender-preset-slot \{ display: none; align-items: center; \}/);
+assert.match(previewRuntimeCss, /\.buret-xyzrender-preset-slot\.visible \{ display: flex; \}/);
+assert.match(previewRuntimeCss, /transition:\s*left 180ms cubic-bezier\(0\.22, 1, 0\.36, 1\)/);
+assert.match(previewRuntimeCss, /#buret-toolbar\.buret-dragging \{ transition: none; \}/);
+assert.match(previewRuntimeCss, /#buret-toolbar\.buret-toolbar-docked \{/);
+assert.match(previewRuntimeCss, /width: auto/);
+assert.match(previewRuntimeCss, /max-width: calc\(100vw - 24px\)/);
+assert.match(previewRuntimeCss, /#buret-toolbar \{[\s\S]*flex-wrap: nowrap;[\s\S]*max-width: calc\(100vw - 24px\)/);
+assert.match(previewRuntimeCss, /#buret-toolbar \.buret-toolbar-content \{/);
+assert.match(previewRuntimeCss, /flex: 0 1 auto/);
+assert.match(previewRuntimeCss, /max-width: calc\(100vw - 72px\)/);
+assert.match(previewRuntimeCss, /#buret-toolbar\.buret-toolbar-docked \.buret-toolbar-content \{/);
+assert.match(previewRuntimeCss, /overflow-x: auto/);
+assert.match(previewRuntimeCss, /#buret-toolbar\.collapsed \.buret-toolbar-content,\s*#buret-toolbar\.buret-suppressed-by-molstar-panel \.buret-toolbar-content \{/s);
+assert.match(previewRuntimeCss, /width: 0/);
+assert.match(previewRuntimeCss, /flex-basis: 0/);
+assert.match(previewRuntimeCss, /#buret-toolbar > \* \{ flex: 0 0 auto; \}/);
+assert.doesNotMatch(browserDevDocuments, /app\.insertAdjacentHTML\('afterend'/);
+assert.doesNotMatch(browserDevDocuments, /aria-label="Expand controls"/);
+assert.doesNotMatch(browserDevDocuments, /<style>\$\{viewerRuntimeCss\(\)\}<\/style>/);
+assert.doesNotMatch(browserDevDocuments, /buret-panel-toggle active" type="button" data-buret-toggle="left"/);
+assert.match(previewViewController, /"left": "hidden"/);
+assert.match(previewViewController, /viewerTheme == "auto" \? "dark" : viewerTheme/);
+assert.match(previewViewController, /canvasBackground == "auto" \? "black" : canvasBackground/);
+assert.match(previewRuntimeViewer, /"defaultLayoutState": \{ "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" \}/);
+assert.match(previewRuntimeViewer, /preferences\.resolved_theme\(\)/);
+assert.match(previewRuntimeViewer, /preferences\.resolved_canvas_background\(\)/);
+assert.match(previewViewer, /const layoutState = \{\s*left: 'hidden',\s*right: 'hidden',\s*top: 'hidden',\s*bottom: 'hidden'\s*\}/);
+assert.match(previewViewer, /if \(region === 'left'\) layoutState\.left = layoutState\.left === 'full' \? 'hidden' : 'full'/);
+assert.match(previewViewer, /loadPreparedStructure\(viewer, prepared\)[\s\S]*?applyLayoutState\(viewer\);[\s\S]*?notifyStructureLoaded/);
+assert.match(previewViewer, /function scheduleLayoutStateReapply\(viewer\)/);
+assert.match(previewViewer, /\[250, 1000, 3000, 6000\]\.forEach/);
+assert.match(previewViewer, /function reapplyLayoutStateAfterMolstarPass\(viewer\)/);
+assert.match(previewViewer, /regionState: \{ \.\.\.layoutState, left: 'full' \}/);
+assert.match(previewViewer, /function syncLeftPanelVisibility\(\)/);
+assert.match(previewViewer, /\.msp-layout-region\.msp-layout-left/);
+assert.match(previewViewer, /function installLeftPanelVisibilityGuard\(\)/);
+assert.match(previewViewer, /applyStaticRendererTheme\(\);/);
+assert.match(previewViewer, /function applyStaticRendererTheme\(\)/);
+assert.match(previewViewer, /function resolveExternalArtifactBackgroundFill\(rect\)/);
+assert.match(previewViewer, /artifactRoot\.style\.background = artifactBackgroundFill \|\| background/);
+assert.match(previewViewer, /rect\.dataset\.buretOriginalFill = originalFill/);
+assert.match(previewViewer, /function bindThemeButton\(toolbar, viewer\)/);
+assert.match(previewViewer, /bindThemeButton\(toolbar, null\);/);
+assert.match(previewViewer, /const toolbar = document\.getElementById\('buret-toolbar'\)/);
+assert.match(previewViewer, /const presetSlot = toolbar\.querySelector\('\[data-buret-xyzrender-preset-slot\]'\)/);
+assert.match(previewViewer, /presetSlot\?\.classList\.toggle\('visible', renderer === 'xyzrender-external'\)/);
+assert.match(previewViewer, /toolbar\.classList\.add\('buret-dragging'\)/);
+assert.match(previewViewer, /toolbar\.classList\.remove\('buret-dragging'\)/);
+assert.match(previewViewer, /function dockToolbar\(toolbar\)/);
+assert.match(previewViewer, /toolbar\.classList\.add\('buret-toolbar-docked'\)/);
+assert.match(previewViewer, /function undockToolbar\(toolbar\)/);
+assert.match(previewViewer, /toolbar\.classList\.remove\('buret-toolbar-docked'\)/);
+assert.match(previewViewer, /function fitToolbarToViewport\(toolbar\)/);
+assert.match(previewViewer, /toolbar\.style\.maxWidth = Math\.max\(180, window\.innerWidth - TOOLBAR_MARGIN \* 2\) \+ 'px'/);
+assert.match(previewViewer, /const content = toolbar\.querySelector\('\[data-buret-toolbar-content\]'\)/);
+assert.match(previewViewer, /content\.style\.maxWidth = Math\.max\(0, window\.innerWidth - TOOLBAR_MARGIN \* 2 - 36\) \+ 'px'/);
+assert.match(previewViewer, /dockToolbar\(toolbar\);\s*fitToolbarToViewport\(toolbar\);\s*const top = toolbarSafeTop\(\);\s*toolbar\.dataset\.defaultPosition = '1';\s*toolbar\.style\.left = 'auto';\s*toolbar\.style\.right = TOOLBAR_MARGIN \+ 'px';\s*toolbar\.style\.top = top \+ 'px';\s*updateFloatingLayoutOffsets\(\)/s);
+assert.match(previewViewer, /fitToolbarToViewport\(toolbar\);\s*const margin = TOOLBAR_MARGIN/s);
+assert.match(previewViewer, /if \(saved\.mode === 'custom' && Number\.isFinite\(saved\.left\) && Number\.isFinite\(saved\.top\)\) \{\s*undockToolbar\(toolbar\);/s);
+assert.match(previewViewer, /if \(toolbar\.dataset\.defaultPosition === '1'\) \{\s*toolbar\.dataset\.defaultPosition = '0';\s*undockToolbar\(toolbar\);/s);
+assert.match(previewViewer, /\.buret-external-artifact-inline > svg > rect/);
+assert.match(previewViewer, /function installExternalArtifactInteractions\(root\)/);
+assert.match(previewViewer, /root\.addEventListener\('wheel', onWheel, \{ passive: false \}\)/);
+assert.match(previewViewer, /root\.addEventListener\('gesturechange', onGestureChange, \{ passive: false \}\)/);
+assert.match(previewViewer, /\.buret-external-artifact-stage \{ position: absolute; inset: 0; transform:/);
 
 assert.match(shortcuts, /actions\.openCommandPalette\(\)/);
 assert.match(shortcuts, /if \(!enabled\) return undefined/);

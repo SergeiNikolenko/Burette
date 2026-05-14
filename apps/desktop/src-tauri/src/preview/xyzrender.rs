@@ -23,17 +23,24 @@ pub(crate) struct XyzrenderArtifact {
 pub(crate) fn create_xyzrender_artifact(
     input_path: &Path,
     output_directory: &Path,
+    preset: Option<&str>,
+    orientation_ref_text: Option<&str>,
 ) -> Result<XyzrenderArtifact, String> {
     let output_path = output_directory.join("xyzrender.svg");
     let log_path = output_directory.join("xyzrender.log");
+    let orientation_ref_path = output_directory.join("orientation-ref.xyz");
     let _ = fs::remove_file(&output_path);
     let _ = fs::remove_file(&log_path);
+    let _ = fs::remove_file(&orientation_ref_path);
     let started = Instant::now();
+    let resolved_preset = normalize_preset(preset);
     let (status, log) = run_xyzrender_command(
         &resolve_xyzrender_executable()?,
         input_path,
         &output_path,
         &log_path,
+        resolved_preset,
+        write_orientation_ref(orientation_ref_text, &orientation_ref_path)?,
         XYZRENDER_TIMEOUT,
     )?;
     if !status.success() {
@@ -52,11 +59,61 @@ pub(crate) fn create_xyzrender_artifact(
     Ok(XyzrenderArtifact {
         relative_path: "xyzrender.svg",
         output_type: "svg",
-        preset: "default",
-        config_argument: "default",
+        preset: resolved_preset,
+        config_argument: resolved_preset,
         elapsed_ms: started.elapsed().as_millis(),
         log,
     })
+}
+
+fn write_orientation_ref<'a>(
+    text: Option<&str>,
+    output_path: &'a Path,
+) -> Result<Option<&'a Path>, String> {
+    let Some(normalized) = normalize_orientation_ref(text) else {
+        return Ok(None);
+    };
+    fs::write(output_path, normalized)
+        .map_err(|err| format!("Could not write xyzrender orientation reference: {err}"))?;
+    Ok(Some(output_path))
+}
+
+fn normalize_orientation_ref(text: Option<&str>) -> Option<String> {
+    let normalized = text?
+        .replace("\r\n", "\n")
+        .replace('\r', "\n");
+    if normalized.len() > 4 * 1024 * 1024 {
+        return None;
+    }
+    let lines: Vec<&str> = normalized.split('\n').collect();
+    let first = lines.first()?.trim();
+    let atom_count = first.parse::<usize>().ok()?;
+    if atom_count == 0 || lines.len() < atom_count + 2 {
+        return None;
+    }
+    Some(if normalized.ends_with('\n') {
+        normalized
+    } else {
+        normalized + "\n"
+    })
+}
+
+fn normalize_preset(value: Option<&str>) -> &'static str {
+    match value.unwrap_or("default").trim().to_ascii_lowercase().as_str() {
+        "default" => "default",
+        "flat" => "flat",
+        "paton" => "paton",
+        "pmol" => "pmol",
+        "skeletal" => "skeletal",
+        "bubble" => "bubble",
+        "tube" => "tube",
+        "btube" => "btube",
+        "mtube" => "mtube",
+        "wire" => "wire",
+        "graph" => "graph",
+        "custom" => "custom",
+        _ => "default",
+    }
 }
 
 fn run_xyzrender_command(
@@ -64,14 +121,21 @@ fn run_xyzrender_command(
     input_path: &Path,
     output_path: &Path,
     log_path: &Path,
+    preset: &str,
+    orientation_ref_path: Option<&Path>,
     timeout: Duration,
 ) -> Result<(ExitStatus, String), String> {
-    let mut child = Command::new(executable)
+    let mut command = Command::new(executable);
+    command
         .arg(input_path)
         .arg("-o")
         .arg(output_path)
         .arg("--config")
-        .arg("default")
+        .arg(preset);
+    if let Some(path) = orientation_ref_path {
+        command.arg("--ref").arg(path);
+    }
+    let mut child = command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -152,7 +216,6 @@ fn collect_xyzrender_log(
     let _ = fs::write(log_path, &log);
     log
 }
-
 fn resolve_xyzrender_executable() -> Result<PathBuf, String> {
     let mut candidates = Vec::new();
     if let Some(home) = std::env::var_os("HOME") {
