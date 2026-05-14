@@ -1,0 +1,35 @@
+{
+  "name": "burrete",
+  "version": "0.10.33",
+  "description": "CLI installer for the Burrete macOS app and Quick Look extension.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "latest": "node bin/burrete.mjs latest"
+  },
+  "bin": {
+    "burrete": "bin/burrete.mjs"
+  },
+  "files": [
+    "bin/",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "darwin"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SergeiNikolenko/Burrete.git",
+    "directory": "packages/burrete"
+  },
+  "bugs": {
+    "url": "https://github.com/SergeiNikolenko/Burrete/issues"
+  },
+  "homepage": "https://github.com/SergeiNikolenko/Burrete#readme",
+  "publishConfig": {
+    "access": "public"
+  }
+}
