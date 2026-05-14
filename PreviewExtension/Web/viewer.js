@@ -638,6 +638,10 @@
     toolbar.querySelector('[data-buret-action="theme"]')?.addEventListener('click', () => {
       toggleViewerTheme(viewer);
     });
+    toolbar.querySelector('[data-buret-action="open-burrete"]')?.addEventListener('click', () => {
+      const sent = postHostMessage({ type: 'action', message: 'open-burrete' });
+      if (!sent) setStatus('Open in Burrete is available only in Quick Look.', 'error');
+    });
     initToolbarDrag(toolbar);
     restoreToolbarCollapsed(toolbar, viewer);
     installMolstarFloatingPanelTracking();
@@ -1132,7 +1136,7 @@
       canvasBackground: 'black',
       overlayOpacity: 0.9,
       defaultLayoutState: {
-        left: 'collapsed',
+        left: 'hidden',
         right: 'hidden',
         top: 'hidden',
         bottom: 'hidden'

@@ -48,6 +48,8 @@ const [
   updateSource,
   browserDevDocuments,
   readme,
+  viewerShell,
+  viewer,
 ] = await Promise.all([
   source('apps/desktop/src/App.tsx'),
   source('apps/desktop/src/stores/ui-store.ts'),
@@ -89,6 +91,8 @@ const [
   source('apps/desktop/src/update.ts'),
   source('apps/desktop/src/lib/browser-dev-documents.ts'),
   source('README.md'),
+  source('PreviewExtension/Web/viewer-shell.js'),
+  source('PreviewExtension/Web/viewer.js'),
 ]);
 
 assert.match(uiStore, /export const useUIStore = create<UIState>/);
@@ -134,6 +138,9 @@ for (const exportName of [
 assert.match(sidebarHook, /export function useSidebar\(/);
 assert.match(sidebarHook, /from "\.\.\/stores\/shell-store"/);
 assert.match(sidebarHook, /sidebarWidth/);
+assert.match(viewerShell, /data-buret-action="open-burrete"/);
+assert.match(viewer, /message: 'open-burrete'/);
+assert.match(viewer, /left: 'hidden'/);
 assert.match(sidebarHook, /toggleSidebar/);
 assert.match(shellStore, /export const useShellStore = create<ShellState>/);
 assert.match(shellStore, /name: "burrete\.shell\.ui"/);
