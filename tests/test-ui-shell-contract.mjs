@@ -41,10 +41,14 @@ const [
   menuEventsHook,
   windowTitle,
   instance,
+  browserDevDocuments,
+  previewRuntimeViewer,
+  previewViewController,
   shortcutDocs,
   workspaceManifest,
   styles,
   gridViewer,
+  previewViewer,
 ] = await Promise.all([
   source('apps/desktop/src/App.tsx'),
   source('apps/desktop/src/stores/ui-store.ts'),
@@ -79,10 +83,14 @@ const [
   source('apps/desktop/src/hooks/use-menu-events.ts'),
   source('apps/desktop/src/components/window-title/index.tsx'),
   source('apps/desktop/src/lib/instance.ts'),
+  source('apps/desktop/src/lib/browser-dev-documents.ts'),
+  source('apps/desktop/src-tauri/src/preview/runtime_viewer.rs'),
+  source('PreviewExtension/Platform/PreviewViewController.swift'),
   source('docs/keyboard-shortcuts.md'),
   source('pnpm-workspace.yaml'),
   source('apps/desktop/src/styles.css'),
   source('PreviewExtension/Web/grid-viewer.js'),
+  source('PreviewExtension/Web/viewer.js'),
 ]);
 
 assert.match(uiStore, /export const useUIStore = create<UIState>/);
@@ -174,6 +182,8 @@ assert.match(app, /from "\.\/hooks\/use-settings"/);
 assert.doesNotMatch(app, /setCommandPaletteOpen/);
 assert.doesNotMatch(app, /useState\(false\).*commandPalette/i);
 assert.match(app, /refreshedPersistedSessionRef/);
+assert.match(app, /syncingBrowserDevFilesRef/);
+assert.match(app, /browserDevRuntimeNeedsRefresh/);
 assert.match(app, /isTauriRuntime\(\) \|\| documents\.length === 0/);
 assert.match(app, /void openDocuments\(paths\)/);
 assert.match(appLayout, /from "\.\/editor-area"/);
@@ -323,6 +333,38 @@ assert.match(windowTitle, /appInstanceLabel/);
 assert.match(instance, /VITE_BURETTE_DEV_INSTANCE/);
 assert.match(instance, /Burette Dev \$\{devInstanceSuffix\}/);
 assert.match(instance, /"8a18"/);
+assert.match(browserDevDocuments, /function browserRendererPlan/);
+assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
+assert.match(browserDevDocuments, /function resolvePreviewVisuals/);
+assert.match(browserDevDocuments, /preferences\.theme === "auto" \? "dark" : preferences\.theme/);
+assert.match(browserDevDocuments, /preferences\.canvasBackground === "auto" \? "black" : preferences\.canvasBackground/);
+assert.match(browserDevDocuments, /Using Fast XYZ because browser dev mode cannot run external xyzrender/);
+assert.match(browserDevDocuments, /externalRendererStatus/);
+assert.match(browserDevDocuments, /defaultLayoutState: \{ left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" \}/);
+assert.match(browserDevDocuments, /const runtimeAssetVersion = String\(Date\.now\(\)\)/);
+assert.match(browserDevDocuments, /<link rel="stylesheet" href="viewer-runtime\.css\?v=\$\{runtimeAssetVersion\}" \/>/);
+assert.match(browserDevDocuments, /<script src="viewer-shell\.js\?v=\$\{runtimeAssetVersion\}"><\/script>/);
+assert.match(browserDevDocuments, /<script src="viewer\.js\?v=\$\{runtimeAssetVersion\}"><\/script>/);
+assert.doesNotMatch(browserDevDocuments, /app\.insertAdjacentHTML\('afterend'/);
+assert.doesNotMatch(browserDevDocuments, /aria-label="Expand controls"/);
+assert.doesNotMatch(browserDevDocuments, /<style>\$\{viewerRuntimeCss\(\)\}<\/style>/);
+assert.doesNotMatch(browserDevDocuments, /buret-panel-toggle active" type="button" data-buret-toggle="left"/);
+assert.match(previewViewController, /"left": "hidden"/);
+assert.match(previewViewController, /viewerTheme == "auto" \? "dark" : viewerTheme/);
+assert.match(previewViewController, /canvasBackground == "auto" \? "black" : canvasBackground/);
+assert.match(previewRuntimeViewer, /"defaultLayoutState": \{ "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" \}/);
+assert.match(previewRuntimeViewer, /preferences\.resolved_theme\(\)/);
+assert.match(previewRuntimeViewer, /preferences\.resolved_canvas_background\(\)/);
+assert.match(previewViewer, /const layoutState = \{\s*left: 'hidden',\s*right: 'hidden',\s*top: 'hidden',\s*bottom: 'hidden'\s*\}/);
+assert.match(previewViewer, /if \(region === 'left'\) layoutState\.left = layoutState\.left === 'full' \? 'hidden' : 'full'/);
+assert.match(previewViewer, /loadPreparedStructure\(viewer, prepared\)[\s\S]*?applyLayoutState\(viewer\);[\s\S]*?notifyStructureLoaded/);
+assert.match(previewViewer, /function scheduleLayoutStateReapply\(viewer\)/);
+assert.match(previewViewer, /\[250, 1000, 3000, 6000\]\.forEach/);
+assert.match(previewViewer, /function reapplyLayoutStateAfterMolstarPass\(viewer\)/);
+assert.match(previewViewer, /regionState: \{ \.\.\.layoutState, left: 'full' \}/);
+assert.match(previewViewer, /function syncLeftPanelVisibility\(\)/);
+assert.match(previewViewer, /\.msp-layout-region\.msp-layout-left/);
+assert.match(previewViewer, /function installLeftPanelVisibilityGuard\(\)/);
 
 assert.match(shortcuts, /actions\.openCommandPalette\(\)/);
 assert.match(shortcuts, /if \(!enabled\) return undefined/);

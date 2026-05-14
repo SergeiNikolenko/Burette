@@ -11,6 +11,11 @@ use super::runtime_utils::{asset_url, escape_html, prune_runtime_dirs};
 use super::xyz::{xyz_first_frame, XyzPayload};
 use super::xyzrender::{create_xyzrender_artifact, xyzrender_preset_options};
 
+pub(crate) struct CreatedRuntime {
+    pub(crate) path: PathBuf,
+    pub(crate) renderer: String,
+}
+
 pub(crate) fn create_runtime<R: Runtime>(
     app: &tauri::AppHandle<R>,
     file_path: &Path,
@@ -19,7 +24,7 @@ pub(crate) fn create_runtime<R: Runtime>(
     renderer: &str,
     data: &[u8],
     preferences: &ViewerPreferences,
-) -> Result<PathBuf, String> {
+) -> Result<CreatedRuntime, String> {
     let base = app
         .path()
         .app_cache_dir()
@@ -31,6 +36,28 @@ pub(crate) fn create_runtime<R: Runtime>(
     fs::create_dir_all(&runtime).map_err(|err| err.to_string())?;
     copy_web_assets(app, &assets)?;
     prune_runtime_dirs(&base);
+
+    let mut renderer = renderer.to_string();
+    let mut external_artifact = None;
+    let mut external_status = None;
+    if renderer == "xyzrender-external" {
+        match create_xyzrender_artifact(file_path, &runtime) {
+            Ok(artifact) => {
+                external_artifact = Some(artifact);
+            }
+            Err(error)
+                if !format.external_only && format.molstar_format == "xyz" && !format.is_binary =>
+            {
+                renderer = "xyz-fast".to_string();
+                external_status = Some(json!({
+                    "status": "fallback",
+                    "requested": "xyzrender-external",
+                    "message": format!("Using Fast XYZ because external xyzrender failed: {error}")
+                }));
+            }
+            Err(error) => return Err(error),
+        }
+    }
 
     let payload = if renderer == "xyz-fast" {
         xyz_first_frame(data).unwrap_or_else(|| XyzPayload {
@@ -60,11 +87,11 @@ pub(crate) fn create_runtime<R: Runtime>(
         "previewByteCount": payload.data.len(),
         "quickLookBuild": "burrete-tauri",
         "debug": false,
-        "theme": preferences.theme,
-        "canvasBackground": preferences.canvas_background,
+        "theme": preferences.resolved_theme(),
+        "canvasBackground": preferences.resolved_canvas_background(),
         "uiScale": 1.0,
         "overlayOpacity": 0.90,
-        "transparentBackground": preferences.canvas_background == "transparent",
+        "transparentBackground": preferences.resolved_transparent_background(),
         "sdfGrid": true,
         "appViewer": true,
         "tauriViewer": true,
@@ -72,7 +99,7 @@ pub(crate) fn create_runtime<R: Runtime>(
         "molstarAvailable": !format.external_only,
         "canOpenInVesta": format.can_open_in_vesta,
         "showPanelControls": true,
-        "defaultLayoutState": { "left": "collapsed", "right": "hidden", "top": "hidden", "bottom": "hidden" }
+        "defaultLayoutState": { "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" }
     });
 
     if renderer == "xyz-fast" {
@@ -88,8 +115,7 @@ pub(crate) fn create_runtime<R: Runtime>(
         });
     }
 
-    if renderer == "xyzrender-external" {
-        let artifact = create_xyzrender_artifact(file_path, &runtime)?;
+    if let Some(artifact) = external_artifact {
         config["xyzrenderViewer"] = json!(true);
         config["xyzrenderPreset"] = json!(artifact.preset);
         config["xyzrenderPresetOptions"] = xyzrender_preset_options();
@@ -103,11 +129,14 @@ pub(crate) fn create_runtime<R: Runtime>(
             "log": artifact.log
         });
     }
+    if let Some(status) = external_status {
+        config["externalRendererStatus"] = status;
+    }
 
     let config_text = serde_json::to_string(&config).map_err(|err| err.to_string())?;
     fs::write(
         runtime.join("index.html"),
-        viewer_html(file_path, &runtime, &assets, renderer, preferences),
+        viewer_html(file_path, &runtime, &assets, &renderer, preferences),
     )
     .map_err(|err| err.to_string())?;
     fs::write(runtime.join("viewer-bridge.js"), viewer_bridge_js())
@@ -125,7 +154,10 @@ pub(crate) fn create_runtime<R: Runtime>(
         ),
     )
     .map_err(|err| err.to_string())?;
-    Ok(runtime.join("index.html"))
+    Ok(CreatedRuntime {
+        path: runtime.join("index.html"),
+        renderer,
+    })
 }
 
 pub(crate) fn copy_web_assets<R: Runtime>(

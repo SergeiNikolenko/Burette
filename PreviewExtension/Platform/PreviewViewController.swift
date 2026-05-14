@@ -206,9 +206,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             fileURL: url,
             data: structureData,
             host: .quickLook,
-            theme: preferences.viewerTheme,
-            canvasBackground: preferences.canvasBackground,
-            transparentBackground: preferences.canvasBackground == "transparent",
+            theme: preferences.resolvedViewerTheme,
+            canvasBackground: preferences.resolvedCanvasBackground,
+            transparentBackground: preferences.resolvedTransparentBackground,
             overlayOpacity: preferences.overlayOpacity,
             debug: showDebugOverlay,
             allowSelection: false,
@@ -602,11 +602,11 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "previewByteCount": previewByteCount,
             "quickLookBuild": "v10-product",
             "debug": showDebugOverlay,
-            "theme": preferences.viewerTheme,
-            "canvasBackground": preferences.canvasBackground,
+            "theme": preferences.resolvedViewerTheme,
+            "canvasBackground": preferences.resolvedCanvasBackground,
             "uiScale": 1.0,
             "overlayOpacity": preferences.overlayOpacity,
-            "transparentBackground": preferences.canvasBackground == "transparent",
+            "transparentBackground": preferences.resolvedTransparentBackground,
             "sdfGrid": true,
             "showPanelControls": preferences.showPanelControls,
             "defaultLayoutState": preferences.defaultLayoutState,
@@ -2020,6 +2020,18 @@ private struct PreviewPreferences {
     let gridFileSupport: MoleculeGridFileSupport
     let defaultLayoutState: [String: String]
 
+    var resolvedViewerTheme: String {
+        viewerTheme == "auto" ? "dark" : viewerTheme
+    }
+
+    var resolvedCanvasBackground: String {
+        canvasBackground == "auto" ? "black" : canvasBackground
+    }
+
+    var resolvedTransparentBackground: Bool {
+        resolvedCanvasBackground == "transparent"
+    }
+
     static func load() -> PreviewPreferences {
         let appID = "com.local.BurreteV10" as CFString
         let showPanelControls = (CFPreferencesCopyAppValue("showPreviewPanelControls" as CFString, appID) as? Bool) ?? true
@@ -2048,7 +2060,7 @@ private struct PreviewPreferences {
             xyzrenderExtraArguments: xyzrenderExtraArguments,
             gridFileSupport: gridFileSupport,
             defaultLayoutState: [
-                "left": "collapsed",
+                "left": "hidden",
                 "right": "hidden",
                 "top": "hidden",
                 "bottom": "hidden"
