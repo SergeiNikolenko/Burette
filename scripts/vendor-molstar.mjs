@@ -2,6 +2,7 @@
 import { createRequire } from 'node:module';
 import { copyFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -38,4 +39,11 @@ for (const file of files) {
   }
   copyFileSync(source, target);
   console.log(`Vendored ${file} -> ${target}`);
+}
+
+const lockResult = spawnSync(process.execPath, [join(projectRoot, 'scripts', 'check-vendor-assets.mjs'), '--write'], {
+  stdio: 'inherit',
+});
+if (lockResult.status !== 0) {
+  process.exit(lockResult.status ?? 1);
 }
