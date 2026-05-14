@@ -49,16 +49,37 @@ jobs:
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve release capabilities
+        id: capabilities
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+          BURRETE_CODESIGN_IDENTITY: ${{ secrets.BURRETE_CODESIGN_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX: ${{ secrets.BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX }}
+          BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM: ${{ secrets.BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM }}
+        run: |
+          if [[ -n "${MACOS_CERTIFICATE_P12_BASE64:-}" && -n "${MACOS_CERTIFICATE_PASSWORD:-}" && -n "${MACOS_KEYCHAIN_PASSWORD:-}" && -n "${BURRETE_CODESIGN_IDENTITY:-}" && -n "${APPLE_TEAM_ID:-}" && -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then
+            echo "developer_id=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "developer_id=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [[ -n "${BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX:-}" && -n "${BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" ]]; then
+            echo "signed_manifest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed_manifest=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Import Developer ID certificate
+        if: steps.capabilities.outputs.developer_id == 'true'
         env:
           MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
           MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
         run: |
-          if [[ -z "${MACOS_CERTIFICATE_P12_BASE64:-}" || -z "${MACOS_CERTIFICATE_PASSWORD:-}" || -z "${MACOS_KEYCHAIN_PASSWORD:-}" ]]; then
-            echo "Developer ID signing secrets are required for releases." >&2
-            exit 1
-          fi
           security create-keychain -p "$MACOS_KEYCHAIN_PASSWORD" build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p "$MACOS_KEYCHAIN_PASSWORD" build.keychain
@@ -73,18 +94,16 @@ jobs:
           BURRETE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
           BURRETE_XCODE_CONFIGURATION: Release
           BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX: ${{ secrets.BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX }}
+          BURRETE_RELEASE_ALLOW_ADHOC: ${{ steps.capabilities.outputs.developer_id == 'true' && '0' || '1' }}
         run: ./scripts/build.sh
 
       - name: Notarize app
+        if: steps.capabilities.outputs.developer_id == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
         run: |
-          if [[ -z "${APPLE_ID:-}" || -z "${APPLE_TEAM_ID:-}" || -z "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then
-            echo "Apple notarization secrets are required for releases." >&2
-            exit 1
-          fi
           ditto -c -k --keepParent build/Burrete.app notarization.zip
           xcrun notarytool submit notarization.zip \
             --apple-id "$APPLE_ID" \
@@ -94,27 +113,41 @@ jobs:
           xcrun stapler staple build/Burrete.app
 
       - name: Validate release signing
+        env:
+          BURRETE_RELEASE_ALLOW_ADHOC: ${{ steps.capabilities.outputs.developer_id == 'true' && '0' || '1' }}
         run: ./scripts/check-release-signature.sh build/Burrete.app
 
       - name: Package app
+        env:
+          BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM: ${{ secrets.BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM }}
+          BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX: ${{ secrets.BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX }}
         run: |
           rm -rf release
           mkdir -p release
           cp -R build/Burrete.app release/Burrete.app
           ditto -c -k --keepParent release/Burrete.app "Burrete-${{ steps.version.outputs.version }}.zip"
           shasum -a 256 "Burrete-${{ steps.version.outputs.version }}.zip" > "Burrete-${{ steps.version.outputs.version }}.zip.sha256"
-          bun scripts/sign-update-manifest.mjs "Burrete-${{ steps.version.outputs.version }}.zip" .
-        env:
-          BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM: ${{ secrets.BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM }}
+          if [[ -n "${BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" && -n "${BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX:-}" ]]; then
+            bun scripts/sign-update-manifest.mjs "Burrete-${{ steps.version.outputs.version }}.zip" .
+          fi
 
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          assets=(
+            "Burrete-${{ steps.version.outputs.version }}.zip"
+          )
+          if [[ -f "Burrete-${{ steps.version.outputs.version }}.zip.sha256" ]]; then
+            assets+=("Burrete-${{ steps.version.outputs.version }}.zip.sha256")
+          fi
+          if [[ -f "Burrete-${{ steps.version.outputs.version }}.zip.manifest.json" ]]; then
+            assets+=("Burrete-${{ steps.version.outputs.version }}.zip.manifest.json")
+          fi
+          if [[ -f "Burrete-${{ steps.version.outputs.version }}.zip.manifest.json.sig" ]]; then
+            assets+=("Burrete-${{ steps.version.outputs.version }}.zip.manifest.json.sig")
+          fi
           gh release create "${{ steps.version.outputs.tag }}" \
-            "Burrete-${{ steps.version.outputs.version }}.zip" \
-            "Burrete-${{ steps.version.outputs.version }}.zip.sha256" \
-            "Burrete-${{ steps.version.outputs.version }}.zip.manifest.json" \
-            "Burrete-${{ steps.version.outputs.version }}.zip.manifest.json.sig" \
+            "${assets[@]}" \
             --title "Burrete ${{ steps.version.outputs.version }}" \
             --generate-notes
