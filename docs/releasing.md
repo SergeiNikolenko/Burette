@@ -92,7 +92,7 @@ release metadata as `sha256:<digest>`.
 
 The npm package lives in `packages/burrete`. It is a thin CLI installer for the
 macOS app, not the app bundle itself. Publish it from that workspace package
-after npm authentication and OTP:
+after npm authentication:
 
 ```bash
 npm publish --workspace packages/burrete
