@@ -49,7 +49,7 @@
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>
 			<key>LSHandlerRank</key>
-			<string>Owner</string>
+			<string>Alternate</string>
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>com.local.burrete10.pdb</string>

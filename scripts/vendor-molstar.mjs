@@ -2,6 +2,7 @@
 import { createRequire } from 'node:module';
 import { copyFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -14,7 +15,7 @@ let molstarPkg;
 try {
   molstarPkg = require.resolve('molstar/package.json');
 } catch (error) {
-  console.error('\nMol* is not installed yet. Run:\n\n  npm ci --ignore-scripts\n  npm run vendor:molstar\n');
+  console.error('\nMol* is not installed yet. Run:\n\n  bun install --frozen-lockfile --ignore-scripts\n  bun run vendor:molstar\n');
   process.exit(1);
 }
 
@@ -38,4 +39,11 @@ for (const file of files) {
   }
   copyFileSync(source, target);
   console.log(`Vendored ${file} -> ${target}`);
+}
+
+const lockResult = spawnSync(process.execPath, [join(projectRoot, 'scripts', 'check-vendor-assets.mjs'), '--write'], {
+  stdio: 'inherit',
+});
+if (lockResult.status !== 0) {
+  process.exit(lockResult.status ?? 1);
 }

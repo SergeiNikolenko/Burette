@@ -1,6 +1,6 @@
 [package]
 name = "burrete"
-version = "0.10.33"
+version = "0.10.34"
 description = "Tauri/Rust shell for local molecular previews"
 authors = ["Burrete"]
 edition = "2021"
@@ -13,13 +13,14 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-base64 = "0.22"
+ed25519-dalek = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = ["macos-private-api", "protocol-asset", "tray-icon"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-single-instance = "2"
+url = "2"
 uuid = { version = "1", features = ["v4", "fast-rng"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]

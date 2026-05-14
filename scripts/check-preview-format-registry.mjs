@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
 const registry = JSON.parse(readFileSync('config/preview-formats.json', 'utf8'));
+const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
 
 function sorted(values) {
   return [...values].sort((a, b) => a.localeCompare(b));
@@ -20,10 +21,7 @@ function plist(path) {
   return JSON.parse(json);
 }
 
-const workspaceManifest = readFileSync('pnpm-workspace.yaml', 'utf8');
-assert.match(workspaceManifest, /packages:\n  - apps\/\*/);
-assert.doesNotMatch(workspaceManifest, /packages\/\*/);
-assert.doesNotMatch(workspaceManifest, /tools\/\*/);
+assert.deepEqual(packageJson.workspaces, ['apps/*', 'packages/*']);
 
 const appInfo = plist('apps/desktop/src-tauri/AppMetadata.plist');
 const appDocumentType = appInfo.CFBundleDocumentTypes?.[0] ?? {};
