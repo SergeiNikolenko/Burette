@@ -72,7 +72,7 @@ pub(crate) fn create_runtime<R: Runtime>(
         "molstarAvailable": !format.external_only,
         "canOpenInVesta": format.can_open_in_vesta,
         "showPanelControls": true,
-        "defaultLayoutState": { "left": "collapsed", "right": "hidden", "top": "hidden", "bottom": "hidden" }
+        "defaultLayoutState": { "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" }
     });
 
     if renderer == "xyz-fast" {
