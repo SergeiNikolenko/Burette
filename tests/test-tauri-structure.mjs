@@ -24,6 +24,7 @@ const [
   previewCacheCommand,
   shellCommand,
   quickLookCommand,
+  updaterCommand,
   tray,
   previewIndex,
   previewRuntime,
@@ -34,6 +35,7 @@ const [
   viewerRuntimeCSS,
   viewerShell,
   tauriConfigSource,
+  tauriPermissionSource,
 ] = await Promise.all([
   source('apps/desktop/src-tauri/src/commands/mod.rs'),
   source('apps/desktop/src-tauri/src/lib.rs'),
@@ -42,6 +44,7 @@ const [
   source('apps/desktop/src-tauri/src/commands/preview_cache.rs'),
   source('apps/desktop/src-tauri/src/commands/shell.rs'),
   source('apps/desktop/src-tauri/src/commands/quicklook.rs'),
+  source('apps/desktop/src-tauri/src/commands/updater.rs'),
   source('apps/desktop/src-tauri/src/tray.rs'),
   source('apps/desktop/src-tauri/src/preview/mod.rs'),
   source('apps/desktop/src-tauri/src/preview/runtime.rs'),
@@ -52,6 +55,7 @@ const [
   source('PreviewExtension/Web/viewer-runtime.css'),
   source('PreviewExtension/Web/viewer-shell.js'),
   source('apps/desktop/src-tauri/tauri.conf.json'),
+  source('apps/desktop/src-tauri/permissions/burrete.toml'),
 ]);
 
 const tauriConfig = JSON.parse(tauriConfigSource);
@@ -61,7 +65,7 @@ assert.equal(await exists('apps/desktop/src-tauri/src/commands.rs'), false);
 assert.ok(mainWindowConfig);
 assert.equal(mainWindowConfig.windowEffects?.state, 'active');
 
-for (const moduleName of ['documents', 'preview_cache', 'quicklook', 'shell', 'startup']) {
+for (const moduleName of ['documents', 'preview_cache', 'quicklook', 'shell', 'startup', 'updater']) {
   assert.match(commandsIndex, new RegExp(`pub\\(crate\\) mod ${moduleName};`));
 }
 
@@ -72,8 +76,10 @@ for (const commandPath of [
   'commands::shell::open_logs_folder',
   'commands::shell::open_external_url',
   'commands::quicklook::reset_quick_look',
+  'commands::updater::install_update',
 ]) {
   assert.match(lib, new RegExp(commandPath.replaceAll('::', '::')));
+  assert.match(tauriPermissionSource, new RegExp(`"${commandPath.split('::').at(-1)}"`));
 }
 
 assert.match(startupCommand, /#\[tauri::command\]\s+pub\(crate\) fn startup_documents/);
@@ -82,6 +88,7 @@ assert.match(previewCacheCommand, /#\[tauri::command\]\s+pub\(crate\) fn clear_p
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_logs_folder/);
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_external_url/);
 assert.match(quickLookCommand, /#\[tauri::command\]\s+pub\(crate\) fn reset_quick_look/);
+assert.match(updaterCommand, /#\[tauri::command\]\s+pub\(crate\) async fn install_update/);
 
 assert.match(tray, /fn status_image\(\) -> tauri::image::Image<'static>/);
 assert.match(tray, /\.icon\(status_image\(\)\)/);
