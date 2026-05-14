@@ -212,6 +212,8 @@ assert.match(editorTabs, /actions\.navigateBack/);
 assert.match(editorTabs, /actions\.canNavigateForward/);
 assert.match(editorTabs, /\+/);
 assert.match(editorTabs, /×/);
+assert.match(appLayout, /<header\s+className="topbar"[^>]*data-tauri-drag-region/s);
+assert.match(editorTabs, /className="tab-strip"[^>]*data-tauri-drag-region/);
 assert.match(editorTabs, /className="tab-strip-spacer" data-tauri-drag-region/);
 assert.match(pageKinds, /const kinds = \[fileKind, launcherKind, settingsKind\] as const/);
 assert.match(pageKinds, /export function pageKind/);
@@ -233,6 +235,8 @@ assert.doesNotMatch(gridViewer, /const theme = cfg\.theme === 'light' \? 'light'
 assert.match(styles, /\.molecule-stage/);
 assert.match(styles, /inset: var\(--chrome-height\) 0 0/);
 assert.match(styles, /--chrome-drag-height: 56px/);
+assert.match(styles, /\*\[data-tauri-drag-region\] \{[^}]*app-region: drag;[^}]*-webkit-app-region: drag;[^}]*\}/s);
+assert.match(styles, /button, select, input, textarea, \.tab, \.new-tab, \.chrome-button, \.sidebar-search-row, \.project, \.splitter \{[^}]*app-region: no-drag;[^}]*-webkit-app-region: no-drag;[^}]*\}/s);
 assert.match(styles, /\.drag-region \{[^}]*height: var\(--chrome-drag-height\);[^}]*z-index: 2/s);
 assert.match(styles, /\.main-stage \{[^}]*overflow: hidden/s);
 assert.match(styles, /\.sidebar-product:hover/);
