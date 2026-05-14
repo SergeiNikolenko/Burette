@@ -11,15 +11,15 @@ export type UpdateAsset = {
   name: string;
   browserDownloadUrl: string;
   size: number;
-  sha256AssetName: string;
-  sha256BrowserDownloadUrl: string;
-  sha256Size: number;
-  manifestAssetName: string;
-  manifestBrowserDownloadUrl: string;
-  manifestSize: number;
-  manifestSignatureAssetName: string;
-  manifestSignatureBrowserDownloadUrl: string;
-  manifestSignatureSize: number;
+  sha256AssetName?: string;
+  sha256BrowserDownloadUrl?: string;
+  sha256Size?: number;
+  manifestAssetName?: string;
+  manifestBrowserDownloadUrl?: string;
+  manifestSize?: number;
+  manifestSignatureAssetName?: string;
+  manifestSignatureBrowserDownloadUrl?: string;
+  manifestSignatureSize?: number;
 };
 
 export type UpdateRelease = {
@@ -181,19 +181,24 @@ function installAssetFor(assets: GitHubAsset[]): UpdateAsset | null {
       entry.digest !== null && entry.manifest !== null && entry.signature !== null);
   const selected = candidates.find((entry) => /burrete|burette/i.test(entry.asset.name!)) ?? candidates[0];
   if (!selected) return null;
+  const integrity = selected.digest && selected.manifest && selected.signature
+    ? {
+      sha256AssetName: selected.digest.name!,
+      sha256BrowserDownloadUrl: selected.digest.browser_download_url!,
+      sha256Size: Number(selected.digest.size || 0),
+      manifestAssetName: selected.manifest.name!,
+      manifestBrowserDownloadUrl: selected.manifest.browser_download_url!,
+      manifestSize: Number(selected.manifest.size || 0),
+      manifestSignatureAssetName: selected.signature.name!,
+      manifestSignatureBrowserDownloadUrl: selected.signature.browser_download_url!,
+      manifestSignatureSize: Number(selected.signature.size || 0),
+    }
+    : {};
   return {
     name: selected.asset.name!,
     browserDownloadUrl: selected.asset.browser_download_url!,
     size: Number(selected.asset.size || 0),
-    sha256AssetName: selected.digest.name!,
-    sha256BrowserDownloadUrl: selected.digest.browser_download_url!,
-    sha256Size: Number(selected.digest.size || 0),
-    manifestAssetName: selected.manifest.name!,
-    manifestBrowserDownloadUrl: selected.manifest.browser_download_url!,
-    manifestSize: Number(selected.manifest.size || 0),
-    manifestSignatureAssetName: selected.signature.name!,
-    manifestSignatureBrowserDownloadUrl: selected.signature.browser_download_url!,
-    manifestSignatureSize: Number(selected.signature.size || 0),
+    ...integrity,
   };
 }
 
