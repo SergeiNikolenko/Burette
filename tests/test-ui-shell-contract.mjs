@@ -24,6 +24,7 @@ const [
   commandPalette,
   editorArea,
   editorTabs,
+  editorScrollContainer,
   settingsPanel,
   settingControl,
   pageKinds,
@@ -62,6 +63,7 @@ const [
   source('apps/desktop/src/components/command-palette/index.tsx'),
   source('apps/desktop/src/components/editor-area/index.tsx'),
   source('apps/desktop/src/components/editor-area/editor-tabs.tsx'),
+  source('apps/desktop/src/components/editor-area/editor-scroll-container.tsx'),
   source('apps/desktop/src/components/settings-panel/index.tsx'),
   source('apps/desktop/src/components/settings-panel/setting-control.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/index.ts'),
@@ -267,6 +269,13 @@ assert.match(sidebar, /from "\.\.\/\.\.\/lib\/instance"/);
 assert.match(sidebar, /appInstanceLabel/);
 assert.match(sidebar, /className="sidebar-product"/);
 assert.match(sidebar, /sidebar-workspace-menu/);
+assert.match(sidebar, /workspaceButtonRef/);
+assert.match(sidebar, /workspaceMenuPosition/);
+assert.match(styles, /\.sidebar-workspace-menu \{[^}]*position: fixed/s);
+assert.match(styles, /--workspace-menu-left/);
+assert.match(styles, /--workspace-menu-top/);
+assert.match(styles, /--workspace-menu-max-height/);
+assert.doesNotMatch(styles, /\.sidebar-workspace-menu \{[^}]*bottom: 48px/s);
 assert.match(sidebar, /Choose workspace\.\.\./);
 assert.match(sidebar, /Open folder/);
 assert.doesNotMatch(sidebar, /actions\.openSettings/);
@@ -283,6 +292,8 @@ assert.doesNotMatch(appLayout + sidebar + editorTabs, /◧|◨/);
 assert.match(settingsPanel, /<h1>Preferences<\/h1>/);
 assert.match(settingsPanel, /className="settings-panel"/);
 assert.match(settingsPanel, /<EditorScrollContainer>/);
+assert.match(editorScrollContainer, /WebkitMaskComposite:\s*"source-over"/);
+assert.match(editorScrollContainer, /maskComposite:\s*"add"/);
 assert.match(settingsPanel, /title="Display"/);
 assert.match(settingsPanel, /title="Structure Rendering"/);
 assert.match(settingsPanel, /title="System"/);
