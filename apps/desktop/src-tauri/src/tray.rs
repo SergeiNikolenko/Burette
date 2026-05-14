@@ -126,7 +126,7 @@ fn put_pixel(rgba: &mut [u8], x: u32, y: u32, alpha: u8) {
     rgba[index + 3] = alpha;
 }
 
-fn show_main_window<R: Runtime>(app: &tauri::AppHandle<R>) {
+pub(crate) fn show_main_window<R: Runtime>(app: &tauri::AppHandle<R>) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.unminimize();
