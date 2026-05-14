@@ -2,6 +2,7 @@ use serde_json::json;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{Manager, Runtime};
+use base64::Engine;
 
 use super::formats::{normalize_renderer_mode, FormatInfo};
 use super::runtime::ViewerPreferences;
@@ -46,8 +47,6 @@ pub(crate) fn create_runtime<R: Runtime>(
         }
     };
 
-    let data_url = asset_url(&runtime.join("preview-data.bin"));
-
     let mut config = json!({
         "format": format.molstar_format.as_str(),
         "molstarFormat": format.molstar_format.as_str(),
@@ -58,7 +57,6 @@ pub(crate) fn create_runtime<R: Runtime>(
         "label": file_path.file_name().and_then(|value| value.to_str()).unwrap_or("structure"),
         "byteCount": data.len(),
         "previewByteCount": payload.data.len(),
-        "dataPath": data_url,
         "quickLookBuild": "burrete-tauri",
         "debug": false,
         "documentId": stable_id(file_path),
@@ -122,7 +120,10 @@ pub(crate) fn create_runtime<R: Runtime>(
     fs::write(runtime.join("preview-data.bin"), &payload.data).map_err(|err| err.to_string())?;
     fs::write(
         runtime.join("preview-data.js"),
-        format!("window.BurreteDataURL = {data_url:?};\n"),
+        format!(
+            "window.BurreteDataBase64 = {:?};\nwindow.BurreteDataURL = null;\n",
+            base64::engine::general_purpose::STANDARD.encode(&payload.data)
+        ),
     )
     .map_err(|err| err.to_string())?;
     Ok(runtime.join("index.html"))
@@ -244,7 +245,6 @@ fn viewer_html(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Burrete - {title}</title>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset: data: blob:; script-src 'self' 'unsafe-inline' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'self' blob:;" />
   {renderer_styles}
   <link rel="stylesheet" href="{runtime_css}" />
   <script src="{bridge_js}"></script>

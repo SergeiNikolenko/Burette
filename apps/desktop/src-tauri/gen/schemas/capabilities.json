@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"Minimal permissions for the Burrete desktop shell","local":true,"windows":["main"],"permissions":["core:event:allow-listen","core:event:allow-unlisten","dialog:allow-open","opener:allow-open-path","allow-viewer-commands"]}}
+{"default":{"identifier":"default","description":"Minimal permissions for the Burrete desktop shell","local":true,"windows":["main"],"permissions":["core:event:allow-listen","core:event:allow-unlisten","dialog:allow-message","dialog:allow-open","opener:allow-open-path","allow-viewer-commands"]}}
