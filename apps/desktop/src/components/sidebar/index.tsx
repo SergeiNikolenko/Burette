@@ -1,5 +1,5 @@
-import { forwardRef, useEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import { forwardRef, useCallback, useEffect, useRef, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import {
   Cancel01Icon,
   File02Icon,
@@ -16,28 +16,66 @@ export const Sidebar = forwardRef<HTMLButtonElement, {
   actions: ShellActions;
 }>(({ state, actions }, searchRef) => {
   const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
+  const [workspaceMenuPosition, setWorkspaceMenuPosition] = useState({
+    left: 12,
+    top: 528,
+    width: 210,
+    maxHeight: 260,
+  });
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const workspaceButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  const updateWorkspaceMenuPosition = useCallback(() => {
+    const button = workspaceButtonRef.current;
+    if (!button) return;
+    const margin = 8;
+    const menuHeight = 68;
+    const rect = button.getBoundingClientRect();
+    const width = Math.min(Math.max(rect.width, 210), window.innerWidth - margin * 2);
+    setWorkspaceMenuPosition({
+      left: Math.max(margin, Math.min(rect.left, window.innerWidth - width - margin)),
+      top: Math.max(margin, rect.top - menuHeight - margin),
+      width,
+      maxHeight: Math.max(48, rect.top - margin * 2),
+    });
+  }, []);
 
   useEffect(() => {
     if (!workspaceMenuOpen) return undefined;
+    updateWorkspaceMenuPosition();
     const onPointerDown = (event: PointerEvent) => {
       if (!menuRef.current?.contains(event.target as Node)) setWorkspaceMenuOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setWorkspaceMenuOpen(false);
     };
+    const onResize = () => updateWorkspaceMenuPosition();
     window.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", onResize);
     return () => {
       window.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", onResize);
     };
-  }, [workspaceMenuOpen]);
+  }, [updateWorkspaceMenuPosition, workspaceMenuOpen]);
 
   const runWorkspaceAction = (action: () => void | Promise<void>) => {
     setWorkspaceMenuOpen(false);
     void action();
   };
+
+  const toggleWorkspaceMenu = () => {
+    if (!workspaceMenuOpen) updateWorkspaceMenuPosition();
+    setWorkspaceMenuOpen((open) => !open);
+  };
+
+  const workspaceMenuStyle = {
+    "--workspace-menu-left": workspaceMenuPosition.left + "px",
+    "--workspace-menu-top": workspaceMenuPosition.top + "px",
+    "--workspace-menu-width": workspaceMenuPosition.width + "px",
+    "--workspace-menu-max-height": workspaceMenuPosition.maxHeight + "px",
+  } as CSSProperties;
 
   return (
     <aside className="sidebar" style={{ width: state.sidebarWidth }}>
@@ -130,7 +168,7 @@ export const Sidebar = forwardRef<HTMLButtonElement, {
       </ScrollFade>
       <div className="sidebar-footer" ref={menuRef}>
         {workspaceMenuOpen && (
-          <div className="sidebar-workspace-menu" role="menu" aria-label="Workspace actions">
+          <div className="sidebar-workspace-menu" role="menu" aria-label="Workspace actions" style={workspaceMenuStyle}>
             <button type="button" role="menuitem" onClick={() => runWorkspaceAction(actions.chooseWorkspace)}>
               Choose workspace...
             </button>
@@ -140,9 +178,10 @@ export const Sidebar = forwardRef<HTMLButtonElement, {
           </div>
         )}
         <button
+          ref={workspaceButtonRef}
           type="button"
           className="sidebar-product"
-          onClick={() => setWorkspaceMenuOpen((open) => !open)}
+          onClick={toggleWorkspaceMenu}
           aria-haspopup="menu"
           aria-expanded={workspaceMenuOpen}
           aria-label={"Open workspace menu for " + appInstanceLabel}
