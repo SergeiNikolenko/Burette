@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { readBunLock } from './bun-lock.mjs';
 
 function fail(message) {
   console.error(`error: ${message}`);
@@ -20,9 +21,10 @@ if (!/^\d+\.\d+\.\d+$/.test(packageVersion)) {
   fail(`package.json version must be a plain semver release, got ${packageVersion}`);
 }
 
-const packageLockVersion = readJSON('package-lock.json').version;
-if (packageLockVersion !== packageVersion) {
-  fail(`package-lock.json version ${packageLockVersion} does not match package.json ${packageVersion}`);
+const bunLock = readBunLock();
+const workspacePackageVersion = bunLock.workspaces?.['packages/burrete']?.version;
+if (workspacePackageVersion !== packageVersion) {
+  fail(`bun.lock workspace version ${workspacePackageVersion || 'unknown'} does not match package.json ${packageVersion}`);
 }
 
 const tauriVersion = readJSON('apps/desktop/src-tauri/tauri.conf.json').version;
