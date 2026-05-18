@@ -76,12 +76,12 @@ clean_detritus() {
     done < <(find "$p" -type d \( -name '*.app' -o -name '*.appex' \) -prune -print0 2>/dev/null)
   fi
 }
-mark_menu_bar_app() {
+mark_regular_desktop_app() {
   local app="$1"
   local plist="$app/Contents/Info.plist"
   [[ -f "$plist" ]] || { echo "error: app Info.plist missing: $plist" >&2; exit 1; }
   /usr/libexec/PlistBuddy -c 'Delete :LSUIElement' "$plist" 2>/dev/null || true
-  /usr/libexec/PlistBuddy -c 'Add :LSUIElement bool true' "$plist"
+  /usr/libexec/PlistBuddy -c 'Add :LSUIElement bool false' "$plist"
   /usr/libexec/PlistBuddy -c 'Delete :LSBackgroundOnly' "$plist" 2>/dev/null || true
 }
 copy_app_plist_metadata() {
@@ -167,7 +167,7 @@ QUICKLOOK_APPEX="build/Build/Products/$XCODE_CONFIGURATION/BurretePreview.appex"
 mkdir -p "$TAURI_BUILT_APP/Contents/PlugIns"
 rm -rf "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex"
 ditto --norsrc --noextattr "$QUICKLOOK_APPEX" "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex"
-mark_menu_bar_app "$TAURI_BUILT_APP"
+mark_regular_desktop_app "$TAURI_BUILT_APP"
 copy_app_plist_metadata "$TAURI_BUILT_APP"
 clean_detritus "$TAURI_BUILT_APP"
 CODESIGN_ARGS=(--force --sign "$SIGN_IDENTITY")
@@ -186,7 +186,7 @@ ditto --norsrc --noextattr "$SAFE_ROOT/apps/desktop/src-tauri/target/release/bun
 actual_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$LOCAL_APP/Contents/Info.plist" 2>/dev/null || true)"
 [[ "$actual_id" == "$APP_ID" ]] || { echo "error: built app id mismatch: got '${actual_id:-unknown}', expected '$APP_ID'" >&2; exit 1; }
 actual_lsui="$(/usr/libexec/PlistBuddy -c 'Print :LSUIElement' "$LOCAL_APP/Contents/Info.plist" 2>/dev/null || true)"
-[[ "$actual_lsui" == "true" ]] || { echo "error: built app is not marked as menu bar accessory (LSUIElement=true)." >&2; exit 1; }
+[[ "$actual_lsui" == "false" ]] || { echo "error: built app is not marked as a regular Dock app (LSUIElement=false)." >&2; exit 1; }
 actual_pdb_type="$(/usr/libexec/PlistBuddy -c 'Print :UTExportedTypeDeclarations:0:UTTypeIdentifier' "$LOCAL_APP/Contents/Info.plist" 2>/dev/null || true)"
 [[ "$actual_pdb_type" == "com.local.burrete10.pdb" ]] || { echo "error: built app is missing Burrete exported content types." >&2; exit 1; }
 [[ -x "$LOCAL_APP/Contents/MacOS/burrete" ]] || { echo "error: built Tauri app executable missing: $LOCAL_APP/Contents/MacOS/burrete" >&2; exit 1; }

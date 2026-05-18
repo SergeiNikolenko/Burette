@@ -19,6 +19,7 @@ async function exists(path) {
 const [
   commandsIndex,
   lib,
+  menu,
   startupCommand,
   documentsCommand,
   previewCacheCommand,
@@ -50,11 +51,13 @@ const [
   packageSource,
   vendorAssetsLockSource,
   previewEntitlements,
+  appInfoPlist,
   appMetadata,
   installLocalScript,
 ] = await Promise.all([
   source('apps/desktop/src-tauri/src/commands/mod.rs'),
   source('apps/desktop/src-tauri/src/lib.rs'),
+  source('apps/desktop/src-tauri/src/menu.rs'),
   source('apps/desktop/src-tauri/src/commands/startup.rs'),
   source('apps/desktop/src-tauri/src/commands/documents.rs'),
   source('apps/desktop/src-tauri/src/commands/preview_cache.rs'),
@@ -86,6 +89,7 @@ const [
   source('package.json'),
   source('vendor-assets.lock.json'),
   source('PreviewExtension/BurretePreview.entitlements'),
+  source('apps/desktop/src-tauri/Info.plist'),
   source('apps/desktop/src-tauri/AppMetadata.plist'),
   source('scripts/install-local.sh'),
 ]);
@@ -109,6 +113,7 @@ for (const moduleName of ['documents', 'preview_cache', 'quicklook', 'shell', 's
 
 for (const commandPath of [
   'commands::startup::startup_documents',
+  'commands::documents::pick_open_targets',
   'commands::documents::open_documents',
   'commands::preview_cache::clear_preview_cache',
   'commands::shell::open_logs_folder',
@@ -121,7 +126,11 @@ for (const commandPath of [
 }
 
 assert.match(startupCommand, /#\[tauri::command\]\s+pub\(crate\) fn startup_documents/);
+assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn pick_open_targets/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_documents/);
+assert.match(documentsCommand, /fn expand_open_targets/);
+assert.match(documentsCommand, /fn collect_supported_files/);
+assert.match(documentsCommand, /fn looks_like_supported_structure_file/);
 assert.match(previewCacheCommand, /#\[tauri::command\]\s+pub\(crate\) fn clear_preview_cache/);
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_logs_folder/);
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_external_url/);
@@ -131,6 +140,8 @@ assert.match(quickLookCommand, /QuickLookResetReport/);
 assert.match(quickLookCommand, /\.output\(\)/);
 assert.doesNotMatch(quickLookCommand, /\.spawn\(\)/);
 assert.match(buildScript, /does not accept positional arguments/);
+assert.match(buildScript, /Add :LSUIElement bool false/);
+assert.doesNotMatch(buildScript, /Add :LSUIElement bool true/);
 assert.match(ciScript, /\.\/scripts\/build\.sh\n/);
 assert.doesNotMatch(ciScript, /\.\/scripts\/build\.sh\s+samples\/mini\.sdf/);
 assert.match(ciScript, /bun run check:vendor-assets/);
@@ -167,6 +178,7 @@ for (const asset of vendorAssetsLock.assets) {
 }
 assert.match(previewEntitlements, /com\.apple\.security\.app-sandbox/);
 assert.match(previewEntitlements, /com\.apple\.security\.files\.user-selected\.read-only/);
+assert.match(appInfoPlist, /<key>LSUIElement<\/key>\s*<false\/>/);
 assert.match(releaseVersionCheck, /semver release or prerelease/);
 assert.match(appMetadata, /<key>LSHandlerRank<\/key>\s*<string>Alternate<\/string>/);
 assert.match(installLocalScript, /broadPublicTypes/);
@@ -178,9 +190,26 @@ assert.match(tray, /fn status_image\(\) -> tauri::image::Image<'static>/);
 assert.match(tray, /\.icon\(status_image\(\)\)/);
 assert.match(tray, /\.icon_as_template\(true\)/);
 assert.match(tray, /pub\(crate\) fn show_main_window/);
+assert.match(tray, /const DEFAULT_MAIN_WINDOW_WIDTH: f64 = 1180\.0;/);
+assert.match(tray, /const DEFAULT_MAIN_WINDOW_HEIGHT: f64 = 760\.0;/);
+assert.match(tray, /fn normalize_main_window/);
+assert.match(tray, /\.inner_size\(\)/);
+assert.match(tray, /window\.set_size\(Size::Logical\(LogicalSize::new\(/);
+assert.match(tray, /window\.center\(\)/);
 assert.doesNotMatch(tray, /default_window_icon/);
 assert.doesNotMatch(tray, /\.title\("B"\)/);
 assert.match(lib, /if !paths\.is_empty\(\) \{\s*tray::show_main_window\(app\);/);
+assert.match(lib, /set_activation_policy\(tauri::ActivationPolicy::Regular\)/);
+assert.match(lib, /commands::documents::pick_open_targets/);
+assert.match(lib, /commands::documents::open_documents/);
+assert.match(lib, /commands::quicklook::reset_quick_look/);
+assert.match(lib, /commands::updater::install_update/);
+assert.match(menu, /PredefinedMenuItem::about/);
+assert.match(menu, /PredefinedMenuItem::services/);
+assert.match(menu, /PredefinedMenuItem::show_all/);
+assert.match(menu, /SubmenuBuilder::new\(app, "Help"\)/);
+assert.match(menu, /Check for Updates/);
+assert.match(menu, /short_version: Some\(pkg\.version\.to_string\(\)\)/);
 
 for (const moduleName of ['runtime_grid', 'runtime_utils', 'runtime_viewer']) {
   assert.match(previewIndex, new RegExp(`pub\\(crate\\) mod ${moduleName};`));
@@ -201,6 +230,13 @@ assert.doesNotMatch(previewRuntimeViewer, /fn viewer_runtime_css/);
 assert.match(previewRuntimeViewer, /viewer-runtime\.css/);
 assert.match(previewRuntimeViewer, /assets\.join\("viewer-runtime\.css"\)/);
 assert.doesNotMatch(previewRuntimeViewer, /Content-Security-Policy/);
+assert.match(previewRuntimeViewer, /const webkit = window\.webkit \|\| \{\};/);
+assert.match(previewRuntimeViewer, /const messageHandlers = webkit\.messageHandlers \|\| \{\};/);
+assert.match(previewRuntimeViewer, /if \(!messageHandlers\.burrete\) \{/);
+assert.match(previewRuntimeViewer, /messageHandlers\.burrete = \{ postMessage: postToParent \};/);
+assert.match(previewRuntimeViewer, /window\.__mqlAction = \(name\) => messageHandlers\.burrete\.postMessage/);
+assert.match(previewRuntimeViewer, /window\.parent\.postMessage\(\{ source: 'burrete-viewer', body \}, '\*'\)/);
+assert.doesNotMatch(previewRuntimeViewer, /window\.parent\.postMessage\(\{ source: 'burrete-viewer', body \}, window\.location\.origin\)/);
 assert.match(previewRuntimeGrid, /Content-Security-Policy/);
 assert.match(quickLookPreviewController, /<script src="preview-config\.js"><\/script>/);
 assert.match(quickLookPreviewController, /<script src="preview-data\.js"><\/script>/);
@@ -210,6 +246,14 @@ assert.match(quickLookPreviewController, /window\.BurreteDataBase64 = \\"\\\(str
 assert.match(quickLookPreviewController, /renderTimeoutWorkItem\?\.cancel\(\)/);
 assert.match(quickLookPreviewController, /PreviewError\.webRenderFailed\("The embedded WebKit process terminated while loading the Quick Look preview\."\)/);
 assert.match(quickLookPreviewController, /finishPreviewIfNeeded\(nil, requestID: activePreviewRequestID\)/);
+assert.match(quickLookPreviewController, /guard let url = currentPreviewURL else \{/);
+assert.match(quickLookPreviewController, /BurreteLauncher\.open\(fileURL: url\)/);
+assert.match(quickLookPreviewController, /launchViaExecutable\(fileURL: fileURL, appURL: appURL, fallbackError: error, completion: completion\)/);
+assert.match(quickLookPreviewController, /appendingPathComponent\("MacOS", isDirectory: true\)/);
+assert.match(quickLookPreviewController, /appendingPathComponent\("burrete", isDirectory: false\)/);
+assert.match(quickLookPreviewController, /FileManager\.default\.isExecutableFile\(atPath: executableURL\.path\)/);
+assert.match(quickLookPreviewController, /DispatchQueue\.main\.asyncAfter\(deadline: \.now\(\) \+ 0\.75\)/);
+assert.match(quickLookPreviewController, /if process\.isRunning \{/);
 assert.match(previewRuntimeViewer, /"documentId": stable_id\(file_path\)/);
 assert.match(previewRuntimeViewer, /runtime\.join\("preview-data\.bin"\)/);
 assert.match(previewRuntimeViewer, /window\.BurreteDataBase64 = \{:\?\};\\nwindow\.BurreteDataURL = null;\\n/);
@@ -235,6 +279,8 @@ assert.match(viewerShell, /buret-renderer-choice/);
 assert.match(viewerShell, /aria-label="Collapse controls"/);
 assert.match(viewerShell, /aria-expanded="true"/);
 assert.match(viewerShell, />Seq</);
+assert.match(viewerShell, /id="buret-open-in-app"/);
+assert.doesNotMatch(viewerShell, /data-buret-action="open-burrete"/);
 assert.doesNotMatch(viewerShell, /VESTA/);
 assert.match(viewerRuntimeCSS, /--buret-panel-background/);
 assert.match(previewRuntimeUtils, /pub\(crate\) fn stable_id/);

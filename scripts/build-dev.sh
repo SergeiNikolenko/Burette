@@ -70,12 +70,12 @@ clean_detritus() {
     done < <(find "$path" -type d \( -name '*.app' -o -name '*.appex' \) -prune -print0 2>/dev/null)
   fi
 }
-mark_menu_bar_app() {
+mark_regular_desktop_app() {
   local app="$1"
   local plist="$app/Contents/Info.plist"
   [[ -f "$plist" ]] || { echo "error: app Info.plist missing: $plist" >&2; exit 1; }
   /usr/libexec/PlistBuddy -c 'Delete :LSUIElement' "$plist" 2>/dev/null || true
-  /usr/libexec/PlistBuddy -c 'Add :LSUIElement bool true' "$plist"
+  /usr/libexec/PlistBuddy -c 'Add :LSUIElement bool false' "$plist"
   /usr/libexec/PlistBuddy -c 'Delete :LSBackgroundOnly' "$plist" 2>/dev/null || true
 }
 copy_app_plist_metadata() {
@@ -136,7 +136,7 @@ echo "Xcode build log: $XCODE_LOG"
 mkdir -p "$TAURI_BUILT_APP/Contents/PlugIns"
 rm -rf "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex"
 ditto --norsrc --noextattr "$QUICKLOOK_APPEX" "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex"
-mark_menu_bar_app "$TAURI_BUILT_APP"
+mark_regular_desktop_app "$TAURI_BUILT_APP"
 copy_app_plist_metadata "$TAURI_BUILT_APP"
 clean_detritus "$TAURI_BUILT_APP"
 
@@ -147,7 +147,7 @@ ditto --norsrc --noextattr "$TAURI_BUILT_APP" "$LOCAL_APP"
 actual_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$LOCAL_APP/Contents/Info.plist" 2>/dev/null || true)"
 [[ "$actual_id" == "$APP_ID" ]] || { echo "error: built app id mismatch: got '${actual_id:-unknown}', expected '$APP_ID'" >&2; exit 1; }
 actual_lsui="$(/usr/libexec/PlistBuddy -c 'Print :LSUIElement' "$LOCAL_APP/Contents/Info.plist" 2>/dev/null || true)"
-[[ "$actual_lsui" == "true" ]] || { echo "error: built app is not marked as menu bar accessory (LSUIElement=true)." >&2; exit 1; }
+[[ "$actual_lsui" == "false" ]] || { echo "error: built app is not marked as a regular Dock app (LSUIElement=false)." >&2; exit 1; }
 [[ -x "$LOCAL_APP/Contents/MacOS/burrete" ]] || { echo "error: built Tauri app executable missing: $LOCAL_APP/Contents/MacOS/burrete" >&2; exit 1; }
 [[ -d "$LOCAL_APP/Contents/PlugIns/BurretePreview.appex" ]] || { echo "error: embedded Quick Look extension missing in Tauri app." >&2; exit 1; }
 grep -q 'aria-label="Collapse controls"' "$LOCAL_APP/Contents/Resources/Web/index.html" || { echo "error: built web preview shell is missing toolbar grip affordance." >&2; exit 1; }

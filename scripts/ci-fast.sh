@@ -14,4 +14,4 @@ bun run test:agent
 bun run test:ui
 bun run test:tauri-structure
 cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
-plutil -lint apps/desktop/src-tauri/AppMetadata.plist PreviewExtension/Info.plist PreviewExtension/BurretePreview.entitlements
+plutil -lint apps/desktop/src-tauri/AppMetadata.plist apps/desktop/src-tauri/Info.plist PreviewExtension/Info.plist PreviewExtension/BurretePreview.entitlements
