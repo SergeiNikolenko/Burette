@@ -12,6 +12,7 @@
   const FLOATING_LAYOUT_GAP = 12;
   const PANEL_CLOSE_HIT_WIDTH = 38;
   const VIEWER_THEME_STORAGE_KEY = 'buret.viewer.theme';
+  const DEFAULT_MOLSTAR_STYLE = 'illustrative';
   const DEFAULT_XYZRENDER_PRESETS = [
     { value: 'default', label: 'Default' },
     { value: 'flat', label: 'Flat' },
@@ -677,10 +678,7 @@
       });
     });
     bindThemeButton(toolbar, viewer);
-    toolbar.querySelector('[data-buret-action="open-burrete"]')?.addEventListener('click', () => {
-      const sent = postHostMessage({ type: 'action', message: 'open-burrete' });
-      if (!sent) setStatus('Open in Burrete is available only in Quick Look.', 'error');
-    });
+    bindQuickLookOpenButton();
     initToolbarDrag(toolbar);
     restoreToolbarCollapsed(toolbar, viewer);
     installMolstarFloatingPanelTracking();
@@ -694,6 +692,15 @@
     if (!button) return;
     button.onclick = () => {
       toggleViewerTheme(viewer);
+    };
+  }
+
+  function bindQuickLookOpenButton() {
+    const button = document.getElementById('buret-open-in-app');
+    if (!button) return;
+    button.onclick = () => {
+      const sent = postHostMessage({ type: 'action', message: 'open-burrete' });
+      if (!sent) setStatus('Open in Burrete is available only in Quick Look.', 'error');
     };
   }
 
@@ -840,9 +847,13 @@
     dockToolbar(toolbar);
     fitToolbarToViewport(toolbar);
     const top = toolbarSafeTop();
+    const mainRect = visibleRect('.msp-plugin .msp-layout-main');
+    const width = toolbar.offsetWidth || toolbar.getBoundingClientRect().width || 320;
+    const rightEdge = mainRect ? mainRect.right : window.innerWidth;
+    const left = Math.max(TOOLBAR_MARGIN, Math.round(rightEdge - width - TOOLBAR_MARGIN));
     toolbar.dataset.defaultPosition = '1';
-    toolbar.style.left = 'auto';
-    toolbar.style.right = TOOLBAR_MARGIN + 'px';
+    toolbar.style.left = left + 'px';
+    toolbar.style.right = 'auto';
     toolbar.style.top = top + 'px';
     updateFloatingLayoutOffsets();
   }
@@ -868,10 +879,12 @@
   }
 
   function fitToolbarToViewport(toolbar) {
-    toolbar.style.maxWidth = Math.max(180, window.innerWidth - TOOLBAR_MARGIN * 2) + 'px';
+    const mainRect = visibleRect('.msp-plugin .msp-layout-main');
+    const availableWidth = mainRect ? Math.floor(mainRect.width) : window.innerWidth;
+    toolbar.style.maxWidth = Math.max(180, availableWidth - TOOLBAR_MARGIN * 2) + 'px';
     const content = toolbar.querySelector('[data-buret-toolbar-content]');
     if (content) {
-      content.style.maxWidth = Math.max(0, window.innerWidth - TOOLBAR_MARGIN * 2 - 36) + 'px';
+      content.style.maxWidth = Math.max(0, availableWidth - TOOLBAR_MARGIN * 2 - 36) + 'px';
     }
   }
 
@@ -1758,15 +1771,69 @@
     return String(value).padStart(3, ' ');
   }
 
+  async function applyMolstarStyle(viewer, style) {
+    const plugin = viewer?.plugin;
+    if (!plugin) return;
+
+    if (style === 'illustrative') {
+      await plugin.managers.structure.component.setOptions({
+        ...plugin.managers.structure.component.state.options,
+        ignoreLight: true
+      });
+      if (plugin.canvas3d) {
+        const postprocessing = plugin.canvas3d.props.postprocessing;
+        plugin.canvas3d.setProps({
+          postprocessing: {
+            outline: {
+              name: 'on',
+              params: postprocessing.outline.name === 'on'
+                ? postprocessing.outline.params
+                : {
+                    scale: 1,
+                    color: 0x000000,
+                    threshold: 0.33,
+                    includeTransparent: true
+                  }
+            },
+            occlusion: {
+              name: 'on',
+              params: postprocessing.occlusion.name === 'on'
+                ? postprocessing.occlusion.params
+                : {
+                    multiScale: { name: 'off', params: {} },
+                    radius: 5,
+                    bias: 0.8,
+                    blurKernelSize: 15,
+                    blurDepthBias: 0.5,
+                    samples: 32,
+                    resolutionScale: 1,
+                    color: 0x000000,
+                    transparentThreshold: 0.4
+                  }
+            },
+            shadow: { name: 'off', params: {} }
+          }
+        });
+      }
+    }
+  }
+
   async function loadPreparedStructure(viewer, prepared) {
     if (prepared.loadPreset === 'all-models') {
       const plugin = viewer.plugin;
       const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
       const trajectory = await plugin.builders.structure.parseTrajectory(data, prepared.format);
-      await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'all-models', { useDefaultIfSingleModel: true });
+      await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'all-models', {
+        useDefaultIfSingleModel: true
+      });
+      await applyMolstarStyle(viewer, DEFAULT_MOLSTAR_STYLE);
       return;
     }
-    await viewer.loadStructureFromData(prepared.data, prepared.format, { dataLabel: prepared.label });
+    const plugin = viewer.plugin;
+    const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
+    const trajectory = await plugin.builders.structure.parseTrajectory(data, prepared.format);
+    await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default');
+    await applyMolstarStyle(viewer, DEFAULT_MOLSTAR_STYLE);
   }
 
   function withTimeout(promise, timeoutMs, message) {

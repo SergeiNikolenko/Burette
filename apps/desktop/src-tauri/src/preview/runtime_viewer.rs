@@ -318,17 +318,19 @@ fn viewer_bridge_js() -> &'static str {
     }
     if (window.parent && window.parent !== window) {
       try {
-        window.parent.postMessage({ source: 'burrete-viewer', body }, window.location.origin);
-      } catch (_) {
-        try {
-          window.parent.postMessage({ source: 'burrete-viewer', body }, '*');
-        } catch (_) {}
-      }
+        window.parent.postMessage({ source: 'burrete-viewer', body }, '*');
+      } catch (_) {}
     }
   };
-  window.webkit = window.webkit || { messageHandlers: { burrete: { postMessage: postToParent } } };
+  const webkit = window.webkit || {};
+  const messageHandlers = webkit.messageHandlers || {};
+  if (!messageHandlers.burrete) {
+    messageHandlers.burrete = { postMessage: postToParent };
+  }
+  webkit.messageHandlers = messageHandlers;
+  window.webkit = webkit;
   window.__mqlPost = (type, message) => postToParent({ type, message: message || '' });
-  window.__mqlAction = (name) => window.webkit.messageHandlers.burrete.postMessage({ type: 'action', message: name });
+  window.__mqlAction = (name) => messageHandlers.burrete.postMessage({ type: 'action', message: name });
   window.__mqlDebug = () => {};
   window.BurreteInlineMode = true;
   window.BurreteDebug = false;

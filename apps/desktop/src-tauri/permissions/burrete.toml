@@ -3,6 +3,7 @@ identifier = "allow-viewer-commands"
 description = "Allows the Burrete desktop shell to open structures and manage local viewer runtime state."
 commands.allow = [
   "startup_documents",
+  "pick_open_targets",
   "open_documents",
   "clear_preview_cache",
   "open_logs_folder",

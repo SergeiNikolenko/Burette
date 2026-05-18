@@ -7,7 +7,7 @@ pub(crate) fn file_args_from_argv(argv: Vec<String>, cwd: Option<PathBuf>) -> Ve
         .skip(1)
         .filter_map(|arg| {
             let path = file_arg_to_path(&arg, cwd.as_ref())?;
-            path.is_file().then(|| path.to_string_lossy().to_string())
+            path.exists().then(|| path.to_string_lossy().to_string())
         })
         .collect()
 }
@@ -69,6 +69,20 @@ mod tests {
             vec![file.to_string_lossy().to_string()]
         );
         fs::remove_file(file).unwrap();
+        fs::remove_dir(dir).unwrap();
+    }
+
+    #[test]
+    fn accepts_directory_arguments() {
+        let dir = std::env::temp_dir().join(format!("burrete-startup-dir-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+
+        let argv = vec!["burrete".to_string(), dir.to_string_lossy().to_string()];
+
+        assert_eq!(
+            file_args_from_argv(argv, None),
+            vec![dir.to_string_lossy().to_string()]
+        );
         fs::remove_dir(dir).unwrap();
     }
 }

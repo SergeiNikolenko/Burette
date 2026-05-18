@@ -2,6 +2,8 @@
 :root {
   --buret-viewer-ui-scale: 0.86;
   --buret-toolbar-safe-top: 12px;
+  --buret-corner-button-top: 12px;
+  --buret-corner-button-right: 12px;
   --buret-overlay-opacity: 0.90;
   --buret-overlay-strong-opacity: 0.96;
   --buret-canvas-background: #000000;
@@ -464,6 +466,28 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
     background 180ms ease,
     box-shadow 180ms ease;
 }
+.buret-corner-button {
+  position: absolute;
+  top: var(--buret-corner-button-top);
+  right: var(--buret-corner-button-right);
+  z-index: 2147483647;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--buret-toolbar-border);
+  border-radius: 12px;
+  background: var(--buret-toolbar-background);
+  color: var(--buret-toolbar-color);
+  font: 600 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.buret-corner-button:hover { background: var(--buret-toolbar-hover); }
 #buret-toolbar.buret-toolbar-docked {
   width: auto;
   max-width: calc(100vw - 24px);
@@ -560,7 +584,14 @@ body.burette-quicklook-host .msp-plugin .msp-snapshot-description-wrapper,
 body.burette-quicklook-host .msp-plugin .msp-highlight-info,
 body.burette-quicklook-host #status,
 body.burette-quicklook-host #buret-toolbar,
+body.burette-quicklook-host .buret-corner-button,
 body.burette-quicklook-host .buret-xyz-badge {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
+}
+body.burette-quicklook-host {
+  --buret-toolbar-safe-top: 56px;
+}
+body.burette-quicklook-host .buret-corner-button {
+  display: inline-flex;
 }
