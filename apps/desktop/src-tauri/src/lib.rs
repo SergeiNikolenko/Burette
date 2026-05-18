@@ -21,7 +21,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             #[cfg(target_os = "macos")]
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            app.set_activation_policy(tauri::ActivationPolicy::Regular);
             menu::configure_menu(app)?;
             tray::configure_tray(app)?;
             let startup_paths =
@@ -49,6 +49,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::startup::startup_documents,
+            commands::documents::pick_open_targets,
             commands::documents::open_documents,
             commands::preview_cache::clear_preview_cache,
             commands::shell::open_logs_folder,
@@ -63,7 +64,7 @@ pub fn run() {
                 let paths: Vec<String> = urls
                     .into_iter()
                     .filter_map(|url| url.to_file_path().ok())
-                    .filter(|path| path.is_file())
+                    .filter(|path| path.exists())
                     .map(|path| path.to_string_lossy().to_string())
                     .collect();
                 if !paths.is_empty() {

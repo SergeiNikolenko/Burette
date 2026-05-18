@@ -2136,17 +2136,7 @@ private enum PreviewError: LocalizedError {
 private enum BurreteLauncher {
     static func open(fileURL: URL, completion: @escaping (Result<Void, Error>) -> Void) {
         if let appURL = containingApplicationURL() {
-            let configuration = NSWorkspace.OpenConfiguration()
-            configuration.activates = true
-            NSWorkspace.shared.open([fileURL], withApplicationAt: appURL, configuration: configuration) { _, error in
-                DispatchQueue.main.async {
-                    if let error {
-                        completion(.failure(error))
-                    } else {
-                        completion(.success(()))
-                    }
-                }
-            }
+            openWithContainingApplication(fileURL: fileURL, appURL: appURL, completion: completion)
             return
         }
 
@@ -2170,6 +2160,57 @@ private enum BurreteLauncher {
             try process.run()
         } catch {
             completion(.failure(error))
+        }
+    }
+
+    private static func openWithContainingApplication(
+        fileURL: URL,
+        appURL: URL,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.open([fileURL], withApplicationAt: appURL, configuration: configuration) { _, error in
+            DispatchQueue.main.async {
+                if let error {
+                    launchViaExecutable(fileURL: fileURL, appURL: appURL, fallbackError: error, completion: completion)
+                } else {
+                    completion(.success(()))
+                }
+            }
+        }
+    }
+
+    private static func launchViaExecutable(
+        fileURL: URL,
+        appURL: URL,
+        fallbackError: Error,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        let executableURL = appURL
+            .appendingPathComponent("Contents", isDirectory: true)
+            .appendingPathComponent("MacOS", isDirectory: true)
+            .appendingPathComponent("burrete", isDirectory: false)
+        guard FileManager.default.isExecutableFile(atPath: executableURL.path) else {
+            completion(.failure(fallbackError))
+            return
+        }
+
+        let process = Process()
+        process.currentDirectoryURL = appURL.deletingLastPathComponent()
+        process.executableURL = executableURL
+        process.arguments = [fileURL.path]
+        do {
+            try process.run()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
+                if process.isRunning {
+                    completion(.success(()))
+                } else {
+                    completion(.failure(fallbackError))
+                }
+            }
+        } catch {
+            completion(.failure(fallbackError))
         }
     }
 
