@@ -588,13 +588,19 @@ kbd { color: var(--text-faint); font-size: 12px; font-family: inherit; font-weig
   backdrop-filter: blur(3px);
   -webkit-backdrop-filter: blur(3px);
 }
-.settings-panel { width: 100%; height: 100%; overflow: hidden; color: var(--text-primary); }
+.settings-panel {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  color: var(--text-primary);
+  padding-top: calc(var(--chrome-height) + 20px);
+}
 .settings-panel-scroll {
   height: 100%;
   overflow-y: auto;
   scrollbar-gutter: stable both-edges;
 }
-.settings-panel-content { width: min(672px, calc(100% - 64px)); box-sizing: border-box; margin: 0 auto; padding: 9rem 32px 96px; container-type: inline-size; }
+.settings-panel-content { width: min(672px, calc(100% - 64px)); box-sizing: border-box; margin: 0 auto; padding: 32px 32px 96px; container-type: inline-size; }
 .settings-panel h1 { margin: 0 0 40px; color: var(--text-primary); font-size: 24px; font-weight: 650; letter-spacing: 0; }
 .settings-section { margin: 0 0 40px; }
 .settings-section h2 { margin: 0 0 12px; color: var(--text-muted); font-size: 13px; font-weight: 500; }
@@ -684,8 +690,8 @@ kbd { color: var(--text-faint); font-size: 12px; font-family: inherit; font-weig
   .sidebar-toggle-root { left: 82px; }
   .sidebar { width: 180px !important; min-width: 180px; max-width: 180px; }
   .sidebar-search-row { padding: 0 28px 0 32px; }
-  .settings-panel-content { width: 100%; padding: 7rem 16px 72px; }
+  .settings-panel-content { width: 100%; padding: 24px 16px 72px; }
 }
 @media (max-width: 520px) {
-  .settings-panel-content { width: 100%; padding: 7rem 24px 72px; }
+  .settings-panel-content { width: 100%; padding: 24px 24px 72px; }
 }

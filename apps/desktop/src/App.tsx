@@ -96,6 +96,7 @@ export default function App() {
   const syncingBrowserDevFilesRef = useRef(false);
   const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions | null>(null);
   const xyzrenderOrientationRefRef = useRef<string | null>(null);
+  const skipNextPreferenceRefreshRef = useRef(false);
   const commandPaletteOpen = useIsCommandPaletteOpen();
   const commandPaletteQuery = useCommandPaletteSearch();
   const openCommandPalette = useOpenCommandPalette();
@@ -112,14 +113,19 @@ export default function App() {
   }, [sidebarOpen, toggleSidebar]);
 
   const openDocuments = useCallback(
-    async (paths: string[], reloadOptions?: ViewerReloadOptions) => {
+    async (
+      paths: string[],
+      reloadOptions?: ViewerReloadOptions,
+      preferencesOverride?: Partial<typeof preferences>,
+    ) => {
       const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
       if (!cleanPaths.length) return;
       setStatus("Opening structures...");
       try {
+        const effectivePreferences = preferencesOverride ? { ...preferences, ...preferencesOverride } : preferences;
         const result = isTauriRuntime()
-          ? await invoke<OpenDocumentsResult>("open_documents", { paths: cleanPaths, preferences, reloadOptions })
-          : await openBrowserDevDocuments(cleanPaths, preferences, reloadOptions);
+          ? await invoke<OpenDocumentsResult>("open_documents", { paths: cleanPaths, preferences: effectivePreferences, reloadOptions })
+          : await openBrowserDevDocuments(cleanPaths, effectivePreferences, reloadOptions);
         addDocuments(result.documents);
         rememberRecentStructures(result.documents);
         const openedText = "Opened " + result.documents.length + " structure" + (result.documents.length === 1 ? "" : "s");
@@ -170,7 +176,9 @@ export default function App() {
   );
 
   const chooseFiles = useCallback(async () => {
-    const selection = await open({ multiple: true, filters });
+    const selection = isTauriRuntime()
+      ? await invoke<string[]>("pick_open_targets")
+      : await open({ multiple: true, filters });
     const paths = Array.isArray(selection) ? selection : selection ? [selection] : [];
     await openDocuments(paths);
   }, [openDocuments]);
@@ -364,19 +372,25 @@ export default function App() {
       if (body?.type === "setRenderer") {
         const renderer = body.value;
         if (renderer === "auto" || renderer === "xyz-fast" || renderer === "molstar" || renderer === "xyzrender-external") {
+          const reloadOptions = renderer === "xyzrender-external" && body.orientationRef
+            ? { xyzrenderOrientationRef: body.orientationRef }
+            : undefined;
           if (renderer === "xyzrender-external" && body.orientationRef) {
             xyzrenderOrientationRefRef.current = body.orientationRef;
           }
-          pendingViewerReloadOptionsRef.current = renderer === "xyzrender-external" && body.orientationRef
-            ? { xyzrenderOrientationRef: body.orientationRef }
-            : null;
+          pendingViewerReloadOptionsRef.current = reloadOptions ?? null;
+          skipNextPreferenceRefreshRef.current = true;
           setPreference("rendererMode", renderer);
+          if (activeDocument) {
+            pendingViewerReloadOptionsRef.current = null;
+            void openDocuments([activeDocument.path], reloadOptions, { rendererMode: renderer });
+          }
         }
       }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [reloadActive, setPreference]);
+  }, [activeDocument, openDocuments, reloadActive, setPreference]);
 
   useEffect(() => {
     const loadedPreferences = loadUpdatePreferences();
@@ -386,6 +400,10 @@ export default function App() {
   }, [checkForUpdates]);
 
   useEffect(() => {
+    if (skipNextPreferenceRefreshRef.current) {
+      skipNextPreferenceRefreshRef.current = false;
+      return;
+    }
     const paths = Array.from(new Set(tabs
       .map((tab) => tab.location.kind === "file" ? tab.location.path : null)
       .filter((path): path is string => Boolean(path))));

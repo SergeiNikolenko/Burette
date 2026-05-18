@@ -55,7 +55,6 @@ export function AppLayout({
       </button>
       <header
         className="topbar"
-        data-tauri-drag-region
         style={{ left: tabChromeLeft, transition: state.sidebarDragging ? "none" : undefined }}
       >
         <EditorTabs state={layoutState} actions={actions} />
