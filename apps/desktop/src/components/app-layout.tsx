@@ -26,7 +26,7 @@ export function AppLayout({
 }: {
   state: ShellViewState;
   actions: ShellActions;
-  searchRef: React.Ref<HTMLButtonElement>;
+  searchRef: React.Ref<HTMLInputElement>;
   onDismissStatus: () => void;
   onToggleSidebar: () => void;
   onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
