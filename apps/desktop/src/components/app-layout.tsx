@@ -10,7 +10,7 @@ function clampSidebarWidth(width: number, maxSidebarWidth: number) {
   return Math.max(220, Math.min(maxSidebarWidth, Math.round(width)));
 }
 
-const collapsedChromeLeft = 132;
+const collapsedChromeLeft = 196;
 
 export function AppLayout({
   state,
@@ -52,9 +52,41 @@ export function AppLayout({
       onDrop={onDrop}
     >
       <div className="drag-region" data-tauri-drag-region />
-      <button className="chrome-button sidebar-toggle-root" onClick={onToggleSidebar} title={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"} aria-label={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"}>
-        <HugeiconsIcon icon={SidebarLeftIcon} size={18} color="currentColor" strokeWidth={2} />
-      </button>
+      <div className="chrome-leading-controls">
+        <button
+          className="chrome-button sidebar-toggle-root"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onToggleSidebar}
+          title={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+          aria-label={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+        >
+          <HugeiconsIcon icon={SidebarLeftIcon} size={18} color="currentColor" strokeWidth={2} />
+        </button>
+        <div className="tab-history-controls chrome-history-controls">
+          <button
+            type="button"
+            className="tab-history-button"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={actions.navigateBack}
+            disabled={!actions.canNavigateBack}
+            title="Back"
+            aria-label="Back"
+          >
+            ←
+          </button>
+          <button
+            type="button"
+            className="tab-history-button"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={actions.navigateForward}
+            disabled={!actions.canNavigateForward}
+            title="Forward"
+            aria-label="Forward"
+          >
+            →
+          </button>
+        </div>
+      </div>
       <header
         className="topbar"
         style={{ left: tabChromeLeft, transition: state.sidebarDragging ? "none" : undefined }}
