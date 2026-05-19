@@ -72,6 +72,10 @@ button, select, input, textarea, .tab, .new-tab, .chrome-button, .sidebar-search
   line-height: 1.2;
 }
 
+.app-shell[data-theme="auto"] {
+  color-scheme: light dark;
+}
+
 .app-shell[data-theme="light"] {
   --bg-base: #f5f3ef;
   --fg-base: #171716;
@@ -108,6 +112,46 @@ button, select, input, textarea, .tab, .new-tab, .chrome-button, .sidebar-search
   --text-primary: #fcfcfc;
   --tab-active-bg: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 34%), transparent);
   color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  .app-shell[data-theme="auto"] {
+    --bg-base: #f5f3ef;
+    --fg-base: #171716;
+    --bg: #f5f3ef;
+    --bg-opacity: 1;
+    --contrast: 0.22;
+    --text: #171716;
+    --text-primary: #171716;
+    --text-secondary: color-mix(in srgb, black 80%, transparent);
+    --text-muted: color-mix(in srgb, black 54%, transparent);
+    --text-faint: color-mix(in srgb, black 40%, transparent);
+    --text-icon-muted: color-mix(in srgb, black 40%, transparent);
+    --line: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
+    --line-subtle: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
+    --line-subtler: color-mix(in srgb, black calc(var(--contrast) * 15%), transparent);
+    --border-color: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
+    --surface-primary: var(--bg-base);
+    --surface-card: color-mix(in srgb, white 68%, transparent);
+    --surface-subtle: color-mix(in srgb, black calc(var(--contrast) * 18%), transparent);
+    --surface-subtle-strong: color-mix(in srgb, black calc(var(--contrast) * 36%), transparent);
+    --surface-hover: color-mix(in srgb, black calc(var(--contrast) * 26%), transparent);
+    --surface-active: color-mix(in srgb, black calc(var(--contrast) * 26%), transparent);
+    --surface-input: color-mix(in srgb, black calc(var(--contrast) * 20%), transparent);
+    --surface-palette: color-mix(in srgb, white 86%, transparent);
+    --item-hover-bg: color-mix(in srgb, black calc(var(--contrast) * 16%), transparent);
+    --item-active-bg: color-mix(in srgb, black calc(var(--contrast) * 26%), transparent);
+    --tab-active-bg: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .app-shell[data-theme="auto"] {
+    --bg: rgba(17, 17, 17, 0.715);
+    --text: #fcfcfc;
+    --text-primary: #fcfcfc;
+    --tab-active-bg: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 34%), transparent);
+  }
 }
 
 .app-shell[data-runtime="browser"] {

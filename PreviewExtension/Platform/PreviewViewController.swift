@@ -206,8 +206,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             fileURL: url,
             data: structureData,
             host: .quickLook,
-            theme: preferences.resolvedViewerTheme,
-            canvasBackground: preferences.resolvedCanvasBackground,
+            theme: preferences.runtimeViewerTheme,
+            canvasBackground: preferences.runtimeCanvasBackground,
             transparentBackground: preferences.resolvedTransparentBackground,
             overlayOpacity: preferences.overlayOpacity,
             debug: showDebugOverlay,
@@ -597,8 +597,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "dataPath": "./preview-data.bin",
             "quickLookBuild": "v10-product",
             "debug": showDebugOverlay,
-            "theme": preferences.resolvedViewerTheme,
-            "canvasBackground": preferences.resolvedCanvasBackground,
+            "theme": preferences.runtimeViewerTheme,
+            "canvasBackground": preferences.runtimeCanvasBackground,
             "uiScale": 1.0,
             "overlayOpacity": preferences.overlayOpacity,
             "transparentBackground": preferences.resolvedTransparentBackground,
@@ -2040,16 +2040,16 @@ private struct PreviewPreferences {
     let gridFileSupport: MoleculeGridFileSupport
     let defaultLayoutState: [String: String]
 
-    var resolvedViewerTheme: String {
-        viewerTheme == "auto" ? "dark" : viewerTheme
+    var runtimeViewerTheme: String {
+        ["dark", "light", "auto"].contains(viewerTheme) ? viewerTheme : "auto"
     }
 
-    var resolvedCanvasBackground: String {
-        canvasBackground == "auto" ? "black" : canvasBackground
+    var runtimeCanvasBackground: String {
+        ["auto", "black", "graphite", "white", "transparent"].contains(canvasBackground) ? canvasBackground : "auto"
     }
 
     var resolvedTransparentBackground: Bool {
-        resolvedCanvasBackground == "transparent"
+        runtimeCanvasBackground == "transparent"
     }
 
     static func load() -> PreviewPreferences {

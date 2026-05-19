@@ -22,8 +22,8 @@ const REPO_ROOT = String(import.meta.env.BURRETE_REPO_ROOT || "");
 const WEB_ASSETS_BASE = fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
 
 type ResolvedPreviewVisuals = {
-  theme: ViewerPreferences["theme"] | "dark";
-  canvasBackground: Exclude<ViewerPreferences["canvasBackground"], "auto">;
+  theme: ViewerPreferences["theme"];
+  canvasBackground: ViewerPreferences["canvasBackground"];
   transparentBackground: boolean;
 };
 
@@ -44,12 +44,10 @@ export function browserDevRuntimeNeedsRefresh(document: ViewerDocument) {
 }
 
 function resolvePreviewVisuals(preferences: ViewerPreferences): ResolvedPreviewVisuals {
-  const theme = preferences.theme === "auto" ? "dark" : preferences.theme;
-  const canvasBackground = preferences.canvasBackground === "auto" ? "black" : preferences.canvasBackground;
   return {
-    theme,
-    canvasBackground,
-    transparentBackground: canvasBackground === "transparent",
+    theme: preferences.theme,
+    canvasBackground: preferences.canvasBackground,
+    transparentBackground: preferences.canvasBackground === "transparent",
   };
 }
 
