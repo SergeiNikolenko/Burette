@@ -43,7 +43,9 @@ const [
   windowTitle,
   instance,
   browserDevDocuments,
+  viteConfig,
   previewRuntimeViewer,
+  previewXyzrender,
   previewViewController,
   shortcutDocs,
   styles,
@@ -91,7 +93,9 @@ const [
   source('apps/desktop/src/components/window-title/index.tsx'),
   source('apps/desktop/src/lib/instance.ts'),
   source('apps/desktop/src/lib/browser-dev-documents.ts'),
+  source('apps/desktop/vite.config.ts'),
   source('apps/desktop/src-tauri/src/preview/runtime_viewer.rs'),
+  source('apps/desktop/src-tauri/src/preview/xyzrender.rs'),
   source('PreviewExtension/Platform/PreviewViewController.swift'),
   source('docs/keyboard-shortcuts.md'),
   source('apps/desktop/src/styles.css'),
@@ -150,6 +154,43 @@ assert.match(sidebarHook, /from "\.\.\/stores\/shell-store"/);
 assert.match(sidebarHook, /sidebarWidth/);
 assert.match(viewerShell, /id="buret-open-in-app"/);
 assert.match(viewer, /message: 'open-burrete'/);
+assert.doesNotMatch(viewerShell, /data-buret-action="open-burrete"/);
+assert.doesNotMatch(viewerShell, /data-buret-action="xyzrender-apply"/);
+assert.match(viewerShell, /data-buret-action="xyzrender-reset"/);
+assert.match(viewerShell, /<div class="buret-xyzrender-popover-title">xyzrender<\/div>/);
+assert.match(viewerShell, /data-buret-xyzrender-crystal/);
+assert.match(viewerShell, /Transparent/);
+assert.match(viewerShell, /Gradients/);
+assert.match(viewerShell, /Fog/);
+assert.match(viewerShell, /VdW/);
+assert.match(viewerShell, /Hide bonds/);
+assert.match(viewerShell, /<summary>Appearance<\/summary>/);
+assert.match(viewerShell, /data-buret-xyzrender-appearance/);
+assert.doesNotMatch(viewerShell, /Custom JSON path/);
+assert.doesNotMatch(viewerShell, /Additional CLI flags/);
+assert.doesNotMatch(viewerShell, /Auto-applies/);
+assert.doesNotMatch(viewerShell, /Main flags/);
+assert.doesNotMatch(viewerShell, /Applies live to the current preview/);
+assert.match(viewer, /scheduleXyzrenderControlsApply/);
+assert.match(viewer, /requestXyzrenderControls\(toolbar\);/);
+assert.match(viewer, /updateXyzrenderFormVisibility\(toolbar\);\s*scheduleXyzrenderControlsApply\(toolbar, 0\);/);
+assert.match(viewer, /updateXyzrenderFormVisibility\(toolbar\);\s*scheduleXyzrenderControlsApply\(toolbar, 260\);/);
+assert.match(viewer, /body\.documentId = String\(window\.BurreteConfig\.documentId\)/);
+assert.match(viewer, /function bindXyzrenderControls\(toolbar\)/);
+assert.match(viewer, /XYZRENDER_POPOVER_OPEN_KEY_PREFIX/);
+assert.match(viewer, /function setXyzrenderPopoverVisibility\(toolbar, open\)/);
+assert.match(viewer, /function shouldRestoreXyzrenderPopoverOpen\(\)/);
+assert.match(viewer, /setXyzrenderPopoverOpenPersisted\(open\)/);
+assert.match(viewer, /setXyzrenderPopoverVisibility\(toolbar, hidden\)/);
+assert.match(viewer, /setXyzrenderPopoverVisibility\(toolbar, false\)/);
+assert.match(viewer, /if \(renderer === 'xyzrender-external'\) \{\s*if \(tuneButton && !tuneButton\.classList\.contains\('hidden'\)\) target = tuneButton;\s*else if \(presetSlot && presetSlot\.classList\.contains\('visible'\)\) target = presetSlot;/);
+assert.match(previewRuntimeCss, /#buret-toolbar\[data-active-renderer="xyzrender-external"\] \[data-buret-toggle="left"\],/);
+assert.match(previewRuntimeCss, /#buret-toolbar\[data-active-renderer="xyzrender-external"\] \[data-buret-toggle="log"\] \{\s*display: none;/);
+assert.match(browserDevDocuments, /return isXyz \? "xyzrender-external" : "molstar";/);
+assert.match(browserDevDocuments, /requestedRenderer: normalizeRendererMode\(preferences\.rendererMode\)/);
+assert.match(viteConfig, /return Number\.isFinite\(number\) && number > 0 \? number : null;/);
+assert.match(previewViewController, /Set\(\["-o", "--output", "-go", "--gif-output", "--config", "--ref"\]\)/);
+assert.match(previewXyzrender, /config_argument: resolved_config_argument/);
 assert.match(viewer, /left: 'hidden'/);
 assert.match(viewer, /const mainRect = visibleRect\('\.msp-plugin \.msp-layout-main'\);/);
 assert.match(viewer, /const rightEdge = mainRect \? mainRect\.right : window\.innerWidth;/);
@@ -215,7 +256,7 @@ assert.match(appLayout, /onDismissStatus: \(\) => void;/);
 assert.match(appLayout, /<StatusSurface status=\{state\.status\} onDismiss=\{onDismissStatus\} \/>/);
 assert.match(appLayout, /className="status-surface"/);
 assert.match(appLayout, /aria-live=\{status\.kind === "error" \? "assertive" : "polite"\}/);
-assert.match(appLayout, /const collapsedChromeLeft = 132/);
+assert.match(appLayout, /const collapsedChromeLeft = 196/);
 assert.match(appLayout, /const sidebarLayoutWidth = state\.sidebarOpen \? sidebarWidth : 0/);
 assert.match(appLayout, /className="sidebar-shell"/);
 assert.match(appLayout, /<Sidebar ref=\{searchRef\} state=\{layoutState\} actions=\{actions\} open=\{state\.sidebarOpen\} \/>/);
@@ -245,12 +286,15 @@ assert.match(editorTabs, /pageKind\(tab\.location\)/);
 assert.match(editorTabs, /actions\.selectTab\(tab\.id\)/);
 assert.match(editorTabs, /actions\.closeTab\(tab\.id\)/);
 assert.match(editorTabs, /actions\.openNewTab/);
-assert.match(editorTabs, /←/);
-assert.match(editorTabs, /→/);
-assert.match(editorTabs, /actions\.navigateBack/);
-assert.match(editorTabs, /actions\.canNavigateForward/);
 assert.match(editorTabs, /\+/);
 assert.match(editorTabs, /×/);
+assert.match(appLayout, /className="chrome-leading-controls"/);
+assert.match(appLayout, /actions\.navigateBack/);
+assert.match(appLayout, /actions\.navigateForward/);
+assert.match(appLayout, /actions\.canNavigateBack/);
+assert.match(appLayout, /actions\.canNavigateForward/);
+assert.match(appLayout, /←/);
+assert.match(appLayout, /→/);
 assert.doesNotMatch(appLayout, /<header\s+className="topbar"[^>]*data-tauri-drag-region/s);
 assert.doesNotMatch(editorTabs, /className="tab-strip"[^>]*data-tauri-drag-region/);
 assert.match(editorTabs, /className="tab-strip-spacer" data-tauri-drag-region/);
@@ -281,12 +325,16 @@ assert.match(styles, /\*\[data-tauri-drag-region\] \{[^}]*app-region: drag;[^}]*
 assert.match(styles, /button, select, input, textarea, \.tab, \.new-tab, \.chrome-button, \.sidebar-search-row, \.project, \.splitter \{[^}]*app-region: no-drag;[^}]*-webkit-app-region: no-drag;[^}]*\}/s);
 assert.match(styles, /\.drag-region \{[^}]*height: var\(--chrome-drag-height\);[^}]*z-index: 2/s);
 assert.match(styles, /\.main-stage \{[^}]*overflow: hidden/s);
+assert.match(styles, /\.app-shell\[data-theme="auto"\] \{[^}]*color-scheme: light dark/s);
+assert.match(styles, /@media \(prefers-color-scheme: light\) \{[\s\S]*\.app-shell\[data-theme="auto"\]/);
+assert.match(styles, /@media \(prefers-color-scheme: dark\) \{[\s\S]*\.app-shell\[data-theme="auto"\]/);
 assert.match(styles, /\.status-surface \{/);
 assert.match(styles, /\.status-surface\[data-kind="error"\] \{/);
 assert.match(styles, /\.status-surface-dismiss \{/);
 assert.match(styles, /\.sidebar-product:hover/);
 assert.match(styles, /\.tab-strip-spacer \{[^}]*flex: 1 1 auto/s);
-assert.match(styles, /\.topbar, \.sidebar-toggle-root, \.tab-strip/);
+assert.match(styles, /\.topbar, \.chrome-leading-controls, \.sidebar-toggle-root, \.tab-strip/);
+assert.match(styles, /\.chrome-leading-controls \{/);
 assert.doesNotMatch(styles, /instance-badge/);
 assert.doesNotMatch(styles, /sidebar-link/);
 assert.match(launcherKind, /export const launcherKind = definePageKind/);
@@ -388,20 +436,24 @@ assert.match(app, /useMenuEvents\(\{ chooseFiles, openSettings, checkForUpdates 
 assert.match(app, /await invoke<string\[]>\("pick_open_targets"\)/);
 assert.match(app, /<WindowTitle activeDocument=\{activeDocument\} \/>/);
 assert.match(app, /const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions \| null>\(null\)/);
+assert.match(app, /const pendingViewerReloadDocumentIdRef = useRef<string \| null>\(null\)/);
 assert.match(app, /const xyzrenderOrientationRefRef = useRef<string \| null>\(null\)/);
 assert.match(app, /const skipNextPreferenceRefreshRef = useRef\(false\)/);
 assert.match(app, /body\?\.type === "error"/);
 assert.match(app, /summarizeErrors\(result\.errors\)/);
 assert.match(app, /if \(body\?\.type === "setXyzrenderOrientation"\)/);
 assert.match(app, /if \(body\?\.type === "setXyzrenderPreset"\)/);
+assert.match(app, /pendingViewerReloadDocumentIdRef\.current = body\.documentId \?\? null/);
 assert.match(app, /xyzrenderPreset: body\.value \?\? null/);
 assert.match(app, /const reloadOptions = renderer === "xyzrender-external" && body\.orientationRef/);
-assert.match(app, /pendingViewerReloadOptionsRef\.current = reloadOptions \?\? null/);
+assert.match(app, /const targetDocument = \(body\.documentId/);
+assert.match(app, /pendingViewerReloadDocumentIdRef\.current = renderer === "xyzrender-external" && body\.orientationRef/);
 assert.match(app, /skipNextPreferenceRefreshRef\.current = true/);
 assert.match(app, /setPreference\("rendererMode", renderer\)/);
-assert.match(app, /void openDocuments\(\[activeDocument\.path\], reloadOptions, \{ rendererMode: renderer \}\)/);
+assert.match(app, /void openDocuments\(\[targetDocument\.path\], reloadOptions, \{ rendererMode: renderer \}\)/);
+assert.match(app, /const targetDocument = \(pendingViewerReloadDocumentIdRef\.current/);
 assert.match(app, /const reloadOptions = pendingViewerReloadOptionsRef\.current \?\? undefined/);
-assert.match(app, /await openDocuments\(\[activeDocument\.path\], reloadOptions\)/);
+assert.match(app, /await openDocuments\(\[targetDocument\.path\], reloadOptions\)/);
 assert.match(openDropHook, /export function useOpenDrop/);
 assert.match(openEventsHook, /export function useOpenEvents/);
 assert.match(menuEventsHook, /export function useMenuEvents/);
@@ -413,8 +465,12 @@ assert.match(instance, /"8a18"/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
 assert.match(browserDevDocuments, /function resolvePreviewVisuals/);
-assert.match(browserDevDocuments, /preferences\.theme === "auto" \? "dark" : preferences\.theme/);
-assert.match(browserDevDocuments, /preferences\.canvasBackground === "auto" \? "black" : preferences\.canvasBackground/);
+assert.match(browserDevDocuments, /theme: ViewerPreferences\["theme"\]/);
+assert.match(browserDevDocuments, /canvasBackground: ViewerPreferences\["canvasBackground"\]/);
+assert.match(browserDevDocuments, /theme: preferences\.theme,/);
+assert.match(browserDevDocuments, /canvasBackground: preferences\.canvasBackground,/);
+assert.doesNotMatch(browserDevDocuments, /preferences\.theme === "auto" \? "dark" : preferences\.theme/);
+assert.doesNotMatch(browserDevDocuments, /preferences\.canvasBackground === "auto" \? "black" : preferences\.canvasBackground/);
 assert.match(browserDevDocuments, /requestBrowserDevXyzrender/);
 assert.match(browserDevDocuments, /method: "POST"/);
 assert.match(browserDevDocuments, /reloadOptions\?\.xyzrenderPreset \?\? "default"/);
@@ -462,11 +518,13 @@ assert.doesNotMatch(browserDevDocuments, /aria-label="Expand controls"/);
 assert.doesNotMatch(browserDevDocuments, /<style>\$\{viewerRuntimeCss\(\)\}<\/style>/);
 assert.doesNotMatch(browserDevDocuments, /buret-panel-toggle active" type="button" data-buret-toggle="left"/);
 assert.match(previewViewController, /"left": "hidden"/);
-assert.match(previewViewController, /viewerTheme == "auto" \? "dark" : viewerTheme/);
-assert.match(previewViewController, /canvasBackground == "auto" \? "black" : canvasBackground/);
+assert.match(previewViewController, /var runtimeViewerTheme: String/);
+assert.match(previewViewController, /var runtimeCanvasBackground: String/);
+assert.doesNotMatch(previewViewController, /viewerTheme == "auto" \? "dark" : viewerTheme/);
+assert.doesNotMatch(previewViewController, /canvasBackground == "auto" \? "black" : canvasBackground/);
 assert.match(previewRuntimeViewer, /"defaultLayoutState": \{ "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" \}/);
-assert.match(previewRuntimeViewer, /preferences\.resolved_theme\(\)/);
-assert.match(previewRuntimeViewer, /preferences\.resolved_canvas_background\(\)/);
+assert.match(previewRuntimeViewer, /preferences\.theme_for_runtime\(\)/);
+assert.match(previewRuntimeViewer, /preferences\.canvas_background_for_runtime\(\)/);
 assert.match(previewViewer, /const layoutState = \{\s*left: 'hidden',\s*right: 'hidden',\s*top: 'hidden',\s*bottom: 'hidden'\s*\}/);
 assert.match(previewViewer, /const DEFAULT_MOLSTAR_STYLE = 'illustrative'/);
 assert.match(previewViewer, /if \(region === 'left'\) layoutState\.left = layoutState\.left === 'full' \? 'hidden' : 'full'/);
@@ -490,6 +548,10 @@ assert.match(previewViewer, /rect\.dataset\.buretOriginalFill = originalFill/);
 assert.match(previewViewer, /function bindThemeButton\(toolbar, viewer\)/);
 assert.match(previewViewer, /bindThemeButton\(toolbar, null\);/);
 assert.match(previewViewer, /const toolbar = document\.getElementById\('buret-toolbar'\)/);
+assert.match(previewViewer, /installToolbarAutoLayoutTracking\(toolbar\);/);
+assert.match(previewViewer, /function installToolbarAutoLayoutTracking\(toolbar\)/);
+assert.match(previewViewer, /const observer = new ResizeObserver\(handleSizeChange\);/);
+assert.match(previewViewer, /if \(toolbar\.dataset\.defaultPosition === '1'\) \{\s*applyDefaultToolbarPosition\(toolbar\);\s*\} else \{\s*fitToolbarToViewport\(toolbar\);\s*updateFloatingLayoutOffsets\(\);\s*\}/s);
 assert.match(previewViewer, /const presetSlot = toolbar\.querySelector\('\[data-buret-xyzrender-preset-slot\]'\)/);
 assert.match(previewViewer, /presetSlot\?\.classList\.toggle\('visible', renderer === 'xyzrender-external'\)/);
 assert.match(previewViewer, /toolbar\.classList\.add\('buret-dragging'\)/);

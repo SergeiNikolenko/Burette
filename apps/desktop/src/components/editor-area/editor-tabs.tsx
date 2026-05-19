@@ -5,30 +5,6 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
   const activeTabIndex = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
   return (
     <div className="tab-strip" role="tablist" aria-label="Open structures">
-      <div className="tab-history-controls">
-        <button
-          type="button"
-          className="tab-history-button"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={actions.navigateBack}
-          disabled={!actions.canNavigateBack}
-          title="Back"
-          aria-label="Back"
-        >
-          ←
-        </button>
-        <button
-          type="button"
-          className="tab-history-button"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={actions.navigateForward}
-          disabled={!actions.canNavigateForward}
-          title="Forward"
-          aria-label="Forward"
-        >
-          →
-        </button>
-      </div>
       {state.tabs.map((tab, index) => {
         const kind = pageKind(tab.location);
         const title = kind.title(tab.location, state);
