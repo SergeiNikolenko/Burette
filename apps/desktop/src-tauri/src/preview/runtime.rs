@@ -16,6 +16,7 @@ pub(crate) struct ViewerPreferences {
     pub(crate) theme: String,
     pub(crate) canvas_background: String,
     pub(crate) renderer_mode: String,
+    pub(crate) molstar_style: String,
     pub(crate) xyz_fast_style: String,
 }
 
@@ -60,6 +61,14 @@ impl ViewerPreferences {
         }
     }
 
+    pub(crate) fn resolved_molstar_style(&self) -> &str {
+        if self.molstar_style == "default" {
+            "default"
+        } else {
+            "illustrative"
+        }
+    }
+
     pub(crate) fn canvas_background_for_runtime(&self) -> &str {
         match self.canvas_background.as_str() {
             "auto" | "black" | "graphite" | "white" | "transparent" => {
@@ -83,6 +92,7 @@ mod tests {
             theme: theme.to_string(),
             canvas_background: canvas_background.to_string(),
             renderer_mode: "auto".to_string(),
+            molstar_style: "illustrative".to_string(),
             xyz_fast_style: "default".to_string(),
         }
     }
