@@ -605,6 +605,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "debug": showDebugOverlay,
             "theme": preferences.runtimeViewerTheme,
             "canvasBackground": preferences.runtimeCanvasBackground,
+            "molstarStyle": preferences.resolvedMolstarStyle,
             "uiScale": 1.0,
             "overlayOpacity": preferences.overlayOpacity,
             "transparentBackground": preferences.resolvedTransparentBackground,
@@ -2194,6 +2195,7 @@ private struct PreviewPreferences {
     let canvasBackground: String
     let overlayOpacity: Double
     let rendererMode: String
+    let molstarStyle: String
     let xyzFastStyle: String
     let xyzrenderPreset: String
     let xyzrenderCustomConfigPath: String
@@ -2214,6 +2216,10 @@ private struct PreviewPreferences {
         runtimeCanvasBackground == "transparent"
     }
 
+    var resolvedMolstarStyle: String {
+        molstarStyle == "default" ? "default" : "illustrative"
+    }
+
     static func load() -> PreviewPreferences {
         let appID = "com.local.BurreteV10" as CFString
         let showPanelControls = (CFPreferencesCopyAppValue("showPreviewPanelControls" as CFString, appID) as? Bool) ?? true
@@ -2222,6 +2228,7 @@ private struct PreviewPreferences {
         let canvasBackground = (CFPreferencesCopyAppValue("viewerCanvasBackground" as CFString, appID) as? String) ?? "auto"
         let overlayOpacity = (CFPreferencesCopyAppValue("viewerOverlayOpacity" as CFString, appID) as? Double) ?? 0.90
         let rendererMode = (CFPreferencesCopyAppValue("structureRendererMode" as CFString, appID) as? String) ?? "auto"
+        let molstarStyle = (CFPreferencesCopyAppValue("molstarStyle" as CFString, appID) as? String) ?? "illustrative"
         let xyzFastStyle = (CFPreferencesCopyAppValue("xyzFastStyle" as CFString, appID) as? String) ?? "default"
         let xyzrenderPreset = (CFPreferencesCopyAppValue("xyzrenderPreset" as CFString, appID) as? String) ?? "default"
         let xyzrenderCustomConfigPath = (CFPreferencesCopyAppValue("xyzrenderCustomConfigPath" as CFString, appID) as? String) ?? ""
@@ -2235,6 +2242,7 @@ private struct PreviewPreferences {
             canvasBackground: canvasBackground,
             overlayOpacity: min(max(overlayOpacity, 0.72), 0.98),
             rendererMode: rendererMode,
+            molstarStyle: molstarStyle,
             xyzFastStyle: xyzFastStyle,
             xyzrenderPreset: BurreteXyzrenderPreset.normalize(xyzrenderPreset),
             xyzrenderCustomConfigPath: xyzrenderCustomConfigPath,

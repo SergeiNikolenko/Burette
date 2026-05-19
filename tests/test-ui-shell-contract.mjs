@@ -407,6 +407,7 @@ assert.match(settingsPanel, /const defaultRendererModeOptions: Array<ViewerPrefe
 assert.match(settingsPanel, /function visibleRendererModeOptions\(current: ViewerPreferences\["rendererMode"\]\)/);
 assert.match(settingsPanel, /current === "xyz-fast" \? \[\.\.\.defaultRendererModeOptions, current\] : defaultRendererModeOptions/);
 assert.doesNotMatch(settingsPanel, /\["auto", "xyz-fast", "molstar", "xyzrender-external"\]/);
+assert.match(settingsPanel, /preferenceRow<"molstarStyle">\("Mol\* style", "Default appearance preset for the Mol\* renderer\.", preferences\.molstarStyle, \["default", "illustrative"\], defaultPreferences\.molstarStyle, \(molstarStyle\) => actions\.setPreference\("molstarStyle", molstarStyle\)\)/);
 assert.match(settingControl, /export function SettingsSection/);
 assert.match(settingControl, /export function ToggleControl/);
 assert.match(settingControl, /role="switch"/);
@@ -479,6 +480,7 @@ assert.match(browserDevDocuments, /orientationRef: orientationRef \|\| undefined
 assert.match(browserDevDocuments, /Using Fast XYZ because browser dev xyzrender failed:/);
 assert.match(browserDevDocuments, /externalRendererStatus/);
 assert.match(browserDevDocuments, /xyzrenderViewer: renderer === "xyzrender-external"/);
+assert.match(browserDevDocuments, /molstarStyle: preferences\.molstarStyle/);
 assert.match(browserDevDocuments, /inlineSvg: result\.svg/);
 assert.match(browserDevDocuments, /defaultLayoutState: \{ left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" \}/);
 assert.match(browserDevDocuments, /const runtimeAssetVersion = String\(Date\.now\(\)\)/);
@@ -525,11 +527,14 @@ assert.doesNotMatch(previewViewController, /canvasBackground == "auto" \? "black
 assert.match(previewRuntimeViewer, /"defaultLayoutState": \{ "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" \}/);
 assert.match(previewRuntimeViewer, /preferences\.theme_for_runtime\(\)/);
 assert.match(previewRuntimeViewer, /preferences\.canvas_background_for_runtime\(\)/);
+assert.match(previewRuntimeViewer, /"molstarStyle": preferences\.resolved_molstar_style\(\)/);
 assert.match(previewViewer, /const layoutState = \{\s*left: 'hidden',\s*right: 'hidden',\s*top: 'hidden',\s*bottom: 'hidden'\s*\}/);
 assert.match(previewViewer, /const DEFAULT_MOLSTAR_STYLE = 'illustrative'/);
+assert.match(previewViewer, /function normalizeMolstarStyle\(value\)/);
+assert.match(previewViewer, /function configuredMolstarStyle\(config\)/);
 assert.match(previewViewer, /if \(region === 'left'\) layoutState\.left = layoutState\.left === 'full' \? 'hidden' : 'full'/);
 assert.match(previewViewer, /await plugin\.builders\.structure\.hierarchy\.applyPreset\(trajectory, 'default'\)/);
-assert.match(previewViewer, /await applyMolstarStyle\(viewer, DEFAULT_MOLSTAR_STYLE\)/);
+assert.match(previewViewer, /await applyMolstarStyle\(viewer, configuredMolstarStyle\(activeConfig\)\)/);
 assert.match(previewViewer, /plugin\.managers\.structure\.component\.setOptions\(\{\s*\.\.\.plugin\.managers\.structure\.component\.state\.options,\s*ignoreLight: true\s*\}\)/s);
 assert.match(previewViewer, /postprocessing:\s*\{\s*outline:/s);
 assert.match(previewViewer, /loadPreparedStructure\(viewer, prepared\)[\s\S]*?applyLayoutState\(viewer\);[\s\S]*?notifyStructureLoaded/);

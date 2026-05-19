@@ -55,5 +55,6 @@ export type ViewerPreferences = {
   theme: "auto" | "dark" | "light";
   canvasBackground: "auto" | "black" | "graphite" | "white" | "transparent";
   rendererMode: "auto" | "xyz-fast" | "molstar" | "xyzrender-external";
+  molstarStyle: "default" | "illustrative";
   xyzFastStyle: "default" | "wire" | "tube" | "spacefill";
 };
