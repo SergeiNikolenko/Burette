@@ -214,6 +214,14 @@
     return ['dark', 'light', 'auto'].includes(value) ? value : 'auto';
   }
 
+  function normalizeMolstarStyle(value) {
+    return value === 'default' || value === 'illustrative' ? value : DEFAULT_MOLSTAR_STYLE;
+  }
+
+  function configuredMolstarStyle(config) {
+    return normalizeMolstarStyle(config && config.molstarStyle);
+  }
+
   function readStoredViewerTheme() {
     try {
       const storedTheme = window.localStorage && window.localStorage.getItem(VIEWER_THEME_STORAGE_KEY);
@@ -1651,6 +1659,7 @@
       showPanelControls: true,
       theme: 'dark',
       canvasBackground: 'black',
+      molstarStyle: DEFAULT_MOLSTAR_STYLE,
       overlayOpacity: 0.9,
       defaultLayoutState: {
         left: 'hidden',
@@ -2196,14 +2205,14 @@
       await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'all-models', {
         useDefaultIfSingleModel: true
       });
-      await applyMolstarStyle(viewer, DEFAULT_MOLSTAR_STYLE);
+      await applyMolstarStyle(viewer, configuredMolstarStyle(activeConfig));
       return;
     }
     const plugin = viewer.plugin;
     const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
     const trajectory = await plugin.builders.structure.parseTrajectory(data, prepared.format);
     await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default');
-    await applyMolstarStyle(viewer, DEFAULT_MOLSTAR_STYLE);
+    await applyMolstarStyle(viewer, configuredMolstarStyle(activeConfig));
   }
 
   function withTimeout(promise, timeoutMs, message) {

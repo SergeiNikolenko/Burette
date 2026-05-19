@@ -169,6 +169,7 @@ function viewerHtml(
     sdfGrid: true,
     appViewer: true,
     tauriViewer: false,
+    molstarStyle: preferences.molstarStyle,
     xyzrenderViewer: renderer === "xyzrender-external",
     molstarAvailable: !format.externalOnly,
     canOpenInVesta: format.canOpenInVesta,
