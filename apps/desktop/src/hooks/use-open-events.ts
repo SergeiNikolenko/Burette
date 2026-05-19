@@ -5,7 +5,10 @@ import { isTauriRuntime } from "../lib/tauri";
 
 type OpenDocuments = (paths: string[]) => void | Promise<void>;
 
-export function useOpenEvents(openDocuments: OpenDocuments, setStatus: (status: string) => void) {
+export function useOpenEvents(
+  openDocuments: OpenDocuments,
+  pushErrorStatus: (error: unknown, prefix?: string) => void,
+) {
   useEffect(() => {
     if (!isTauriRuntime()) return undefined;
 
@@ -14,7 +17,7 @@ export function useOpenEvents(openDocuments: OpenDocuments, setStatus: (status: 
         if (paths.length > 0) void openDocuments(paths);
       })
       .catch((error) => {
-        setStatus(error instanceof Error ? error.message : String(error));
+        pushErrorStatus(error, "Startup open failed");
       });
 
     let unlisten: (() => void) | undefined;
@@ -27,5 +30,5 @@ export function useOpenEvents(openDocuments: OpenDocuments, setStatus: (status: 
     return () => {
       unlisten?.();
     };
-  }, [openDocuments, setStatus]);
+  }, [openDocuments, pushErrorStatus]);
 }

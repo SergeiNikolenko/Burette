@@ -4,7 +4,7 @@ import { ask, open } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { AppLayout } from "./components/app-layout";
 import { CommandPalette } from "./components/command-palette";
-import type { ShellActions, ShellViewState } from "./components/types";
+import type { ShellActions, ShellViewState, StatusKind, StatusNotice } from "./components/types";
 import { WindowTitle } from "./components/window-title";
 import {
   useCloseCommandPalette,
@@ -81,7 +81,7 @@ export default function App() {
   const closeAllDocuments = useCloseAllTabs();
   const { sidebarOpen, sidebarWidth, setSidebarWidth, toggleSidebar } = useSidebar();
   const [sidebarDragging, setSidebarDragging] = useState(false);
-  const [status, setStatus] = useState("Ready");
+  const [status, setStatus] = useState<StatusNotice | null>(null);
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateState>(() => ({
     preferences: loadUpdatePreferences(),
@@ -97,11 +97,40 @@ export default function App() {
   const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions | null>(null);
   const xyzrenderOrientationRefRef = useRef<string | null>(null);
   const skipNextPreferenceRefreshRef = useRef(false);
+  const statusSequenceRef = useRef(0);
   const commandPaletteOpen = useIsCommandPaletteOpen();
   const commandPaletteQuery = useCommandPaletteSearch();
   const openCommandPalette = useOpenCommandPalette();
   const closeCommandPalette = useCloseCommandPalette();
   const setCommandPaletteQuery = useSetCommandPaletteSearch();
+
+  const pushStatus = useCallback((message: string, kind: StatusKind = "info", details: string[] = []) => {
+    const trimmed = message.trim();
+    if (!trimmed) return;
+    setStatus({
+      id: ++statusSequenceRef.current,
+      kind,
+      message: trimmed,
+      details: details.filter(Boolean),
+    });
+  }, []);
+
+  const pushErrorStatus = useCallback((error: unknown, prefix?: string, details: string[] = []) => {
+    const message = error instanceof Error ? error.message : String(error);
+    pushStatus(prefix ? `${prefix}: ${message}` : message, "error", details.length > 0 ? details : [message]);
+  }, [pushStatus]);
+
+  const clearStatus = useCallback(() => {
+    setStatus(null);
+  }, []);
+
+  useEffect(() => {
+    if (!status || status.kind === "error") return undefined;
+    const timeout = window.setTimeout(() => {
+      setStatus((current) => (current?.id === status.id ? null : current));
+    }, 3200);
+    return () => window.clearTimeout(timeout);
+  }, [status]);
 
   const selectDocument = useCallback((id: string) => {
     setActiveDocument(id);
@@ -120,7 +149,7 @@ export default function App() {
     ) => {
       const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
       if (!cleanPaths.length) return;
-      setStatus("Opening structures...");
+      pushStatus("Opening structures...");
       try {
         const effectivePreferences = preferencesOverride ? { ...preferences, ...preferencesOverride } : preferences;
         const result = isTauriRuntime()
@@ -129,12 +158,16 @@ export default function App() {
         addDocuments(result.documents);
         rememberRecentStructures(result.documents);
         const openedText = "Opened " + result.documents.length + " structure" + (result.documents.length === 1 ? "" : "s");
-        setStatus(result.errors.length > 0 ? openedText + "; skipped " + result.errors.length : openedText);
+        if (result.errors.length > 0) {
+          pushStatus(`${openedText}. ${summarizeErrors(result.errors)}`, "error", result.errors);
+        } else {
+          pushStatus(openedText);
+        }
       } catch (error) {
-        setStatus(error instanceof Error ? error.message : String(error));
+        pushErrorStatus(error);
       }
     },
-    [addDocuments, preferences, rememberRecentStructures],
+    [addDocuments, preferences, pushErrorStatus, pushStatus, rememberRecentStructures],
   );
 
   useEffect(() => {
@@ -176,23 +209,27 @@ export default function App() {
   );
 
   const chooseFiles = useCallback(async () => {
-    const selection = isTauriRuntime()
-      ? await invoke<string[]>("pick_open_targets")
-      : await open({ multiple: true, filters });
-    const paths = Array.isArray(selection) ? selection : selection ? [selection] : [];
-    await openDocuments(paths);
-  }, [openDocuments]);
+    try {
+      const selection = isTauriRuntime()
+        ? await invoke<string[]>("pick_open_targets")
+        : await open({ multiple: true, filters });
+      const paths = Array.isArray(selection) ? selection : selection ? [selection] : [];
+      await openDocuments(paths);
+    } catch (error) {
+      pushErrorStatus(error, "Open failed");
+    }
+  }, [openDocuments, pushErrorStatus]);
 
   const chooseWorkspace = useCallback(async () => {
     try {
       const selection = await open({ directory: true, multiple: false });
       if (!selection || Array.isArray(selection)) return;
       setWorkspacePath(selection);
-      setStatus("Workspace selected");
+      pushStatus("Workspace selected");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : String(error));
+      pushErrorStatus(error, "Workspace selection failed");
     }
-  }, []);
+  }, [pushErrorStatus, pushStatus]);
 
   const openWorkspaceFolder = useCallback(async () => {
     const fallbackPath = workspacePath ?? activeDocument?.path ?? recentStructures[0]?.path ?? null;
@@ -204,18 +241,18 @@ export default function App() {
     if (!path) return;
     try {
       await openPath(path);
-      setStatus("Opened workspace folder");
+      pushStatus("Opened workspace folder");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : String(error));
+      pushErrorStatus(error, "Open workspace folder failed");
     }
-  }, [activeDocument?.path, chooseWorkspace, recentStructures, workspacePath]);
+  }, [activeDocument?.path, chooseWorkspace, pushErrorStatus, pushStatus, recentStructures, workspacePath]);
 
   const openSettings = useCallback(() => {
     openSettingsTab();
   }, [openSettingsTab]);
 
-  useOpenEvents(openDocuments, setStatus);
-  const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop } = useOpenDrop(openDocuments, setStatus);
+  useOpenEvents(openDocuments, pushErrorStatus);
+  const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop } = useOpenDrop(openDocuments, pushStatus);
   const reloadActive = useCallback(async () => {
     if (!activeDocument) return;
     const reloadOptions = pendingViewerReloadOptionsRef.current ?? undefined;
@@ -242,7 +279,7 @@ export default function App() {
       } else {
         window.open(url, "_blank", "noopener,noreferrer");
       }
-      setStatus("Opened release page");
+      pushStatus("Opened release page");
       return;
     }
 
@@ -256,7 +293,7 @@ export default function App() {
       isInstalling: true,
       statusText: "Installing " + release.displayName + "... Burrete will restart when the update is ready.",
     }));
-    setStatus("Installing update...");
+    pushStatus("Installing update...");
     try {
       clearDismissedUpdate();
       await invoke("install_update", {
@@ -282,9 +319,9 @@ export default function App() {
         isInstalling: false,
         statusText: "Update install failed: " + (error instanceof Error ? error.message : String(error)),
       }));
-      setStatus("Update install failed");
+      pushErrorStatus(error, "Update install failed");
     }
-  }, [update.availableRelease]);
+  }, [pushErrorStatus, pushStatus, update.availableRelease]);
 
   const promptForUpdate = useCallback(async (release: UpdateRelease, automatic: boolean) => {
     if (!shouldPromptForUpdate(release, automatic)) return;
@@ -337,8 +374,9 @@ export default function App() {
         statusText: "Update check failed: " + (error instanceof Error ? error.message : String(error)),
       }));
       if (automatic) markAutomaticCheck(false);
+      if (!automatic) pushErrorStatus(error, "Update check failed");
     }
-  }, [promptForUpdate, update.preferences.channel]);
+  }, [promptForUpdate, pushErrorStatus, update.preferences.channel]);
 
   useMenuEvents({ chooseFiles, openSettings, checkForUpdates });
 
@@ -348,15 +386,20 @@ export default function App() {
         source?: string;
         body?: {
           type?: string;
+          message?: string;
           value?: string;
           documentId?: string;
           orientationRef?: string | null;
           text?: string | null;
         };
       } | undefined;
-      if (data?.source !== "burrete-viewer") return;
+      if (data?.source !== "burrete-viewer" && data?.source !== "burrete-grid") return;
       const body = data.body;
       if (!isKnownViewerMessageSource(event.source, body?.documentId)) return;
+      if (body?.type === "error") {
+        pushStatus(formatViewerError(body.message, body.documentId, documents), "error", body.message ? [body.message] : []);
+        return;
+      }
       if (body?.type === "setXyzrenderOrientation") {
         xyzrenderOrientationRefRef.current = body.text ?? body.value ?? null;
         return;
@@ -390,7 +433,7 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, openDocuments, reloadActive, setPreference]);
+  }, [activeDocument, documents, openDocuments, pushStatus, reloadActive, setPreference]);
 
   useEffect(() => {
     const loadedPreferences = loadUpdatePreferences();
@@ -465,27 +508,39 @@ export default function App() {
     closeTab,
     closeActiveDocument: () => {
       closeActiveDocument();
-      setStatus("Closed active structure");
+      pushStatus("Closed active structure");
     },
     clearAllDocuments: () => {
       closeAllDocuments();
-      setStatus("Closed all structures");
+      pushStatus("Closed all structures");
     },
     clearRecentStructures: () => {
       clearRecentStructures();
-      setStatus("Recent structures cleared");
+      pushStatus("Recent structures cleared");
     },
     clearCache: async () => {
-      await invoke("clear_preview_cache");
-      setStatus("Preview cache cleared");
+      try {
+        await invoke("clear_preview_cache");
+        pushStatus("Preview cache cleared");
+      } catch (error) {
+        pushErrorStatus(error, "Preview cache clear failed");
+      }
     },
     resetQuickLook: async () => {
-      const report = await invoke<{ ok: boolean }>("reset_quick_look");
-      setStatus(report.ok ? "Quick Look reset completed" : "Quick Look reset reported issues");
+      try {
+        const report = await invoke<{ ok: boolean }>("reset_quick_look");
+        pushStatus(report.ok ? "Quick Look reset completed" : "Quick Look reset reported issues", report.ok ? "info" : "error");
+      } catch (error) {
+        pushErrorStatus(error, "Quick Look reset failed");
+      }
     },
     openLogs: async () => {
-      await invoke("open_logs_folder");
-      setStatus("Opened logs folder");
+      try {
+        await invoke("open_logs_folder");
+        pushStatus("Opened logs folder");
+      } catch (error) {
+        pushErrorStatus(error, "Open logs folder failed");
+      }
     },
     checkForUpdates: async () => {
       await checkForUpdates(false);
@@ -494,17 +549,21 @@ export default function App() {
       await installUpdate();
     },
     openUpdateRelease: async () => {
-      const url = releasePageUrl(update.availableRelease);
-      if (isTauriRuntime()) {
-        await invoke("open_external_url", { url });
-      } else {
-        window.open(url, "_blank", "noopener,noreferrer");
+      try {
+        const url = releasePageUrl(update.availableRelease);
+        if (isTauriRuntime()) {
+          await invoke("open_external_url", { url });
+        } else {
+          window.open(url, "_blank", "noopener,noreferrer");
+        }
+        pushStatus("Opened release page");
+      } catch (error) {
+        pushErrorStatus(error, "Open release page failed");
       }
-      setStatus("Opened release page");
     },
     setPreference,
     setUpdatePreferences,
-  }), [canNavigateBack, canNavigateForward, chooseFiles, chooseWorkspace, checkForUpdates, clearRecentStructures, closeActiveDocument, closeDocument, closeTab, closeAllDocuments, focusSidebarSearch, installUpdate, navigateBack, navigateForward, openCommandPalette, openNewTab, openRecentStructure, openSettings, openWorkspaceFolder, selectDocument, setActiveTab, setPreference, setUpdatePreferences, toggleSidebar, update.availableRelease]);
+  }), [canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeTab, focusSidebarSearch, installUpdate, navigateBack, navigateForward, openCommandPalette, openNewTab, openRecentStructure, openSettings, openWorkspaceFolder, pushErrorStatus, pushStatus, selectDocument, setActiveTab, setPreference, setUpdatePreferences, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
@@ -538,6 +597,7 @@ export default function App() {
         state={state}
         actions={actions}
         searchRef={sidebarSearchRef}
+        onDismissStatus={clearStatus}
         onToggleSidebar={toggleSidebar}
         onResizeStart={startSidebarResize}
         onDragEnter={handleBrowserDrag}
@@ -564,8 +624,27 @@ function parentDirectory(path: string) {
 }
 
 function isKnownViewerMessageSource(source: MessageEventSource | null, documentId?: string) {
-  if (!source || !documentId) return false;
+  if (!source) return false;
   return Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).some(
-    (iframe) => iframe.dataset.documentId === documentId && iframe.contentWindow === source,
+    (iframe) => (!documentId || iframe.dataset.documentId === documentId) && iframe.contentWindow === source,
   );
+}
+
+function summarizeErrors(errors: string[]) {
+  const [first = "Unknown error", ...rest] = errors;
+  return rest.length > 0
+    ? `${first} (+${rest.length} more ${rest.length === 1 ? "issue" : "issues"})`
+    : first;
+}
+
+function formatViewerError(
+  message: string | undefined,
+  documentId: string | undefined,
+  documents: { id: string; title: string }[],
+) {
+  const text = (message || "Viewer error").trim();
+  const title = documentId
+    ? documents.find((document) => document.id === documentId)?.title
+    : null;
+  return title ? `${title}: ${text}` : text;
 }
