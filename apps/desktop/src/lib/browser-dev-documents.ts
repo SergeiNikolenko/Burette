@@ -1,4 +1,4 @@
-import type { OpenDocumentsResult, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "../types";
+import type { OpenDocumentsResult, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XyzrenderControls } from "../types";
 import previewFormatRegistry from "../../../../config/preview-formats.json";
 
 type FormatInfo = {
@@ -101,9 +101,19 @@ async function openBrowserDevDocument(
 
   const format = formatForExtension(extension);
   const requestedRenderer = resolveRenderer(format, preferences.rendererMode);
-  const { renderer, externalRendererStatus, externalArtifact, xyzrenderPresetOptions } =
+  const { renderer, externalRendererStatus, externalArtifact, xyzrenderPresetOptions, xyzrenderControls } =
     await browserRendererPlan(path, format, requestedRenderer, reloadOptions);
-  const html = viewerHtml(path, format, renderer, bytes, preferences, externalRendererStatus, externalArtifact, xyzrenderPresetOptions);
+  const html = viewerHtml(
+    path,
+    format,
+    renderer,
+    bytes,
+    preferences,
+    externalRendererStatus,
+    externalArtifact,
+    xyzrenderPresetOptions,
+    xyzrenderControls,
+  );
   return browserDocument(path, extension, renderer, html, bytes.length);
 }
 
@@ -134,6 +144,7 @@ function viewerHtml(
   externalRendererStatus?: Record<string, string>,
   externalArtifact?: BrowserDevExternalArtifact,
   xyzrenderPresetOptions?: Array<{ value: string; label: string }>,
+  xyzrenderControls?: XyzrenderControls | null,
 ) {
   const label = fileTitle(path);
   const visuals = resolvePreviewVisuals(preferences);
@@ -165,6 +176,7 @@ function viewerHtml(
     defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" },
     ...(externalArtifact ? { externalArtifact } : {}),
     ...(xyzrenderPresetOptions ? { xyzrenderPresetOptions } : {}),
+    ...(xyzrenderControls ? { xyzrenderControls } : {}),
     ...(externalRendererStatus ? { externalRendererStatus } : {}),
     ...(renderer === "xyz-fast"
       ? {
@@ -218,6 +230,7 @@ async function browserRendererPlan(
       path,
       reloadOptions?.xyzrenderPreset ?? "default",
       reloadOptions?.xyzrenderOrientationRef ?? null,
+      reloadOptions?.xyzrenderControls ?? null,
     );
     return {
       renderer: "xyzrender-external",
@@ -230,6 +243,7 @@ async function browserRendererPlan(
         log: result.log,
       },
       xyzrenderPresetOptions: result.xyzrenderPresetOptions,
+      xyzrenderControls: result.xyzrenderControls ?? reloadOptions?.xyzrenderControls ?? null,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -261,6 +275,7 @@ async function requestBrowserDevXyzrender(
   path: string,
   preset: string,
   orientationRef: string | null,
+  controls: XyzrenderControls | null,
 ) {
   const url = new URL("/__burette/xyzrender", window.location.origin);
   const response = await fetch(url, {
@@ -270,6 +285,7 @@ async function requestBrowserDevXyzrender(
       path,
       preset,
       orientationRef: orientationRef || undefined,
+      controls: controls || undefined,
     }),
   });
   const payload = await response.json().catch(() => ({}));
@@ -285,6 +301,7 @@ async function requestBrowserDevXyzrender(
     configArgument: typeof payload?.configArgument === "string" ? payload.configArgument : "default",
     elapsedMs: Number(payload?.elapsedMs) || 0,
     log: typeof payload?.log === "string" ? payload.log : "",
+    xyzrenderControls: typeof payload?.xyzrenderControls === "object" && payload?.xyzrenderControls ? payload.xyzrenderControls as XyzrenderControls : undefined,
     xyzrenderPresetOptions: Array.isArray(payload?.xyzrenderPresetOptions) ? payload.xyzrenderPresetOptions : undefined,
   };
 }
@@ -516,7 +533,7 @@ function resolveRenderer(format: FormatInfo, requested: ViewerPreferences["rende
   if (normalized === "molstar") return "molstar";
   if (normalized === "xyz-fast") return isXyz ? "xyz-fast" : "molstar";
   if (normalized === "xyzrender-external") return isXyz ? "xyzrender-external" : "molstar";
-  return isXyz ? "xyz-fast" : "molstar";
+  return isXyz ? "xyzrender-external" : "molstar";
 }
 
 function normalizeRendererMode(raw: string) {

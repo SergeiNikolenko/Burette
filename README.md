@@ -64,11 +64,11 @@ Burrete supports common structure and small-molecule collection formats:
 - CSV and TSV tables with SMILES-like columns
 - XYZ, extXYZ, CUBE, GRO, GROMACS-style trajectories/topologies, and related text outputs
 
-XYZ files use the lightweight Fast XYZ renderer by default in Quick Look for
-instant first-frame previews. You can switch to Mol* for interactive rotation or
-to external `xyzrender` for high-quality SVG output. If you rotate the molecule
-in Mol* and then switch to `xyzrender`, Burrete passes the current orientation to
-`xyzrender` through its reference-file workflow.
+XYZ files open with external `xyzrender` by default when it is available, with
+Fast XYZ kept as the lightweight static fallback. You can still switch to Mol*
+for interactive rotation or to Fast XYZ for a minimal first-frame preview. If
+you rotate the molecule in Mol* and then switch to `xyzrender`, Burrete passes
+the current orientation to `xyzrender` through its reference-file workflow.
 
 CUBE and XYZ previews also expose an optional VESTA handoff when VESTA is
 installed. Double-clicking a supported file can open it in Burrete; pressing

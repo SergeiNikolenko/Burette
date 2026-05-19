@@ -28,6 +28,165 @@ const XYZRENDER_PRESET_OPTIONS = [
   { value: "custom", label: "Custom JSON" },
 ];
 
+function readOptionalNumber(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function readOptionalInteger(value: unknown) {
+  const number = Number.parseInt(String(value ?? ""), 10);
+  return Number.isFinite(number) ? number : null;
+}
+
+function readOptionalBoolean(value: unknown) {
+  if (value === true || value === false) return value;
+  return null;
+}
+
+function readOptionalText(value: unknown) {
+  const text = typeof value === "string" ? value.trim() : "";
+  return text ? text : null;
+}
+
+function normalizeSupercell(value: unknown) {
+  if (!Array.isArray(value) || value.length !== 3) return null;
+  const parsed = value.map((item) => readOptionalInteger(item));
+  if (parsed.some((item) => !item || item < 1)) return null;
+  return parsed as [number, number, number];
+}
+
+function normalizeXyzrenderControls(value: unknown) {
+  const source = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return {
+    transparentBackground: readOptionalBoolean(source.transparentBackground),
+    canvasSize: readOptionalNumber(source.canvasSize),
+    atomScale: readOptionalNumber(source.atomScale),
+    bondWidth: readOptionalNumber(source.bondWidth),
+    atomStrokeWidth: readOptionalNumber(source.atomStrokeWidth),
+    molColor: readOptionalText(source.molColor),
+    gradients: readOptionalBoolean(source.gradients),
+    fog: readOptionalBoolean(source.fog),
+    fogStrength: readOptionalNumber(source.fogStrength),
+    showVdw: readOptionalBoolean(source.showVdw),
+    vdwOpacity: readOptionalNumber(source.vdwOpacity),
+    vdwScale: readOptionalNumber(source.vdwScale),
+    hideBonds: readOptionalBoolean(source.hideBonds),
+    showCell: readOptionalBoolean(source.showCell),
+    showGhosts: readOptionalBoolean(source.showGhosts),
+    showAxes: readOptionalBoolean(source.showAxes),
+    cellWidth: readOptionalNumber(source.cellWidth),
+    supercell: normalizeSupercell(source.supercell),
+    customConfigPath: readOptionalText(source.customConfigPath),
+    extraArguments: readOptionalText(source.extraArguments),
+  };
+}
+
+function splitCommandLine(value: string) {
+  const tokens: string[] = [];
+  let current = "";
+  let quote: string | null = null;
+  let escaped = false;
+  for (const character of value) {
+    if (escaped) {
+      current += character;
+      escaped = false;
+      continue;
+    }
+    if (character === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (quote) {
+      if (character === quote) {
+        quote = null;
+      } else {
+        current += character;
+      }
+      continue;
+    }
+    if (character === "'" || character === "\"") {
+      quote = character;
+      continue;
+    }
+    if (/\s/u.test(character)) {
+      if (current) {
+        tokens.push(current);
+        current = "";
+      }
+      continue;
+    }
+    current += character;
+  }
+  if (current) tokens.push(current);
+  return tokens;
+}
+
+function sanitizedExtraArguments(value: string | null) {
+  if (!value) return [];
+  const blocked = new Set(["-o", "--output", "-go", "--gif-output", "--config", "--ref"]);
+  const blockedPrefixes = [...blocked].map((flag) => `${flag}=`);
+  const result: string[] = [];
+  let skipNext = false;
+  for (const token of splitCommandLine(value)) {
+    if (skipNext) {
+      skipNext = false;
+      continue;
+    }
+    if (blocked.has(token)) {
+      skipNext = true;
+      continue;
+    }
+    if (blockedPrefixes.some((flag) => token.startsWith(flag))) continue;
+    result.push(token);
+  }
+  return result;
+}
+
+function resolveConfigArgument(preset: string, controls: ReturnType<typeof normalizeXyzrenderControls>) {
+  if (preset !== "custom") return preset;
+  return controls.customConfigPath || "default";
+}
+
+function resolveEffectivePreset(preset: string, controls: ReturnType<typeof normalizeXyzrenderControls>) {
+  return preset === "custom" && resolveConfigArgument(preset, controls) === "default" ? "default" : preset;
+}
+
+function buildXyzrenderArgs(
+  inputPath: string,
+  outputPath: string,
+  preset: string,
+  orientationRefPath: string | null,
+  controls: ReturnType<typeof normalizeXyzrenderControls>,
+) {
+  const args = [inputPath, "-o", outputPath, "--config", resolveConfigArgument(preset, controls)];
+  if (orientationRefPath) args.push("--ref", orientationRefPath);
+  if (controls.transparentBackground === true) args.push("--transparent");
+  if (controls.canvasSize) args.push("-S", String(controls.canvasSize));
+  if (controls.atomScale) args.push("-a", String(controls.atomScale));
+  if (controls.bondWidth) args.push("-b", String(controls.bondWidth));
+  if (controls.atomStrokeWidth) args.push("-s", String(controls.atomStrokeWidth));
+  if (controls.molColor) args.push("--mol-color", controls.molColor);
+  if (controls.gradients === true) args.push("--grad");
+  if (controls.gradients === false) args.push("--no-grad");
+  if (controls.fog === true) args.push("--fog");
+  if (controls.fog === false) args.push("--no-fog");
+  if (controls.fogStrength) args.push("-F", String(controls.fogStrength));
+  if (controls.showVdw === true) args.push("--vdw");
+  if (controls.vdwOpacity) args.push("--vdw-opacity", String(controls.vdwOpacity));
+  if (controls.vdwScale) args.push("--vdw-scale", String(controls.vdwScale));
+  if (controls.hideBonds === true) args.push("--no-bonds");
+  if (controls.showCell === true) args.push("--cell");
+  if (controls.showCell === false) args.push("--no-cell");
+  if (controls.showGhosts === true) args.push("--ghosts");
+  if (controls.showGhosts === false) args.push("--no-ghosts");
+  if (controls.showAxes === true) args.push("--axes");
+  if (controls.showAxes === false) args.push("--no-axes");
+  if (controls.cellWidth) args.push("--cell-width", String(controls.cellWidth));
+  if (controls.supercell) args.push("--supercell", ...controls.supercell.map(String));
+  args.push(...sanitizedExtraArguments(controls.extraArguments));
+  return args;
+}
+
 function normalizeXyzrenderPreset(value: string | null) {
   const normalized = String(value || "default").trim().toLowerCase();
   return XYZRENDER_PRESET_OPTIONS.some((option) => option.value === normalized) ? normalized : "default";
@@ -67,6 +226,7 @@ function browserDevXyzrenderPlugin() {
           }
           const preset = normalizeXyzrenderPreset(typeof body.preset === "string" ? body.preset : null);
           const orientationRef = normalizeOrientationRef(typeof body.orientationRef === "string" ? body.orientationRef : null);
+          const controls = normalizeXyzrenderControls(body.controls);
           const executable = resolveXyzrenderExecutable();
           if (!executable) {
             reply(404, { error: "External xyzrender executable was not found." });
@@ -77,10 +237,15 @@ function browserDevXyzrenderPlugin() {
           const orientationRefPath = join(tempDirectory, "orientation-ref.xyz");
           const startedAt = Date.now();
           try {
-            const args = [inputPath, "-o", outputPath, "--config", preset];
+            const args = buildXyzrenderArgs(
+              inputPath,
+              outputPath,
+              preset,
+              orientationRef ? orientationRefPath : null,
+              controls,
+            );
             if (orientationRef) {
               await writeFile(orientationRefPath, orientationRef, "utf8");
-              args.push("--ref", orientationRefPath);
             }
             const { stdout, stderr } = await execFileAsync(
               executable,
@@ -94,10 +259,11 @@ function browserDevXyzrenderPlugin() {
             }
             reply(200, {
               svg,
-              preset,
-              configArgument: preset,
+              preset: resolveEffectivePreset(preset, controls),
+              configArgument: resolveConfigArgument(preset, controls),
               elapsedMs: Date.now() - startedAt,
               log: `${stdout || ""}${stderr || ""}`,
+              xyzrenderControls: controls,
               xyzrenderPresetOptions: XYZRENDER_PRESET_OPTIONS,
             });
           } finally {
