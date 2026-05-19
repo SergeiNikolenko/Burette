@@ -72,6 +72,10 @@ button, select, input, textarea, .tab, .new-tab, .chrome-button, .sidebar-search
   line-height: 1.2;
 }
 
+.app-shell[data-theme="auto"] {
+  color-scheme: light dark;
+}
+
 .app-shell[data-theme="light"] {
   --bg-base: #f5f3ef;
   --fg-base: #171716;
@@ -110,6 +114,46 @@ button, select, input, textarea, .tab, .new-tab, .chrome-button, .sidebar-search
   color-scheme: dark;
 }
 
+@media (prefers-color-scheme: light) {
+  .app-shell[data-theme="auto"] {
+    --bg-base: #f5f3ef;
+    --fg-base: #171716;
+    --bg: #f5f3ef;
+    --bg-opacity: 1;
+    --contrast: 0.22;
+    --text: #171716;
+    --text-primary: #171716;
+    --text-secondary: color-mix(in srgb, black 80%, transparent);
+    --text-muted: color-mix(in srgb, black 54%, transparent);
+    --text-faint: color-mix(in srgb, black 40%, transparent);
+    --text-icon-muted: color-mix(in srgb, black 40%, transparent);
+    --line: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
+    --line-subtle: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
+    --line-subtler: color-mix(in srgb, black calc(var(--contrast) * 15%), transparent);
+    --border-color: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
+    --surface-primary: var(--bg-base);
+    --surface-card: color-mix(in srgb, white 68%, transparent);
+    --surface-subtle: color-mix(in srgb, black calc(var(--contrast) * 18%), transparent);
+    --surface-subtle-strong: color-mix(in srgb, black calc(var(--contrast) * 36%), transparent);
+    --surface-hover: color-mix(in srgb, black calc(var(--contrast) * 26%), transparent);
+    --surface-active: color-mix(in srgb, black calc(var(--contrast) * 26%), transparent);
+    --surface-input: color-mix(in srgb, black calc(var(--contrast) * 20%), transparent);
+    --surface-palette: color-mix(in srgb, white 86%, transparent);
+    --item-hover-bg: color-mix(in srgb, black calc(var(--contrast) * 16%), transparent);
+    --item-active-bg: color-mix(in srgb, black calc(var(--contrast) * 26%), transparent);
+    --tab-active-bg: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .app-shell[data-theme="auto"] {
+    --bg: rgba(17, 17, 17, 0.715);
+    --text: #fcfcfc;
+    --text-primary: #fcfcfc;
+    --tab-active-bg: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 34%), transparent);
+  }
+}
+
 .app-shell[data-runtime="browser"] {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
@@ -121,15 +165,25 @@ button, select, input, textarea, .tab, .new-tab, .chrome-button, .sidebar-search
   height: var(--chrome-drag-height);
   z-index: 2;
 }
-.topbar, .sidebar-toggle-root, .tab-strip, .tab-strip-spacer, .chrome-button, .new-tab, .tab, .sidebar, .sidebar-footer, .project, .sidebar-search-row { pointer-events: auto; }
-.sidebar-toggle-root {
+.topbar, .chrome-leading-controls, .sidebar-toggle-root, .tab-strip, .tab-strip-spacer, .chrome-button, .new-tab, .tab, .sidebar, .sidebar-footer, .project, .sidebar-search-row { pointer-events: auto; }
+.chrome-leading-controls {
   position: absolute;
   left: 92px;
-  top: 14px;
+  top: 0;
   z-index: 5;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
+  height: var(--chrome-height);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--chrome-control-padding) 0;
+}
+.sidebar-toggle-root {
+  position: static;
+  z-index: auto;
+  width: 32px;
+  height: var(--chrome-control-height);
+  border-radius: 8px;
+  flex: 0 0 auto;
 }
 .topbar {
   position: absolute;
@@ -173,6 +227,7 @@ button, select, input, textarea, .tab, .new-tab, .chrome-button, .sidebar-search
 }
 .tab-strip::-webkit-scrollbar { display: none; }
 .tab-history-controls { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; margin-right: 8px; }
+.chrome-history-controls { margin-right: 0; }
 .tab-strip-spacer { min-width: 28px; align-self: stretch; flex: 1 1 auto; }
 .tab-history-button {
   width: 28px;
@@ -780,7 +835,7 @@ kbd { color: var(--text-faint); font-size: 12px; font-family: inherit; font-weig
   .settings-action-button { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
 }
 @media (max-width: 760px) {
-  .sidebar-toggle-root { left: 82px; }
+  .chrome-leading-controls { left: 82px; }
   .sidebar { width: 180px !important; min-width: 180px; max-width: 180px; }
   .sidebar-search-row { padding: 0 28px 0 32px; }
   .settings-panel-content { width: 100%; padding: 24px 16px 72px; }
