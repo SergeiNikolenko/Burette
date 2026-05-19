@@ -450,6 +450,79 @@ kbd { color: var(--text-faint); font-size: 12px; font-family: inherit; font-weig
   font-size: 13px;
   font-weight: 650;
 }
+.status-surface {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 12;
+  width: min(420px, calc(100vw - 32px));
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 12px 12px 14px;
+  border: 1px solid var(--line-subtle);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-base) 82%, transparent);
+  color: var(--text-secondary);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(28px) saturate(1.2);
+  -webkit-backdrop-filter: blur(28px) saturate(1.2);
+}
+.status-surface[data-kind="error"] {
+  border-color: color-mix(in srgb, #ff7b72 42%, var(--line-strong));
+  background: color-mix(in srgb, #4b1714 38%, var(--bg-base));
+}
+.status-surface-copy {
+  min-width: 0;
+  flex: 1;
+}
+.status-surface-copy strong {
+  display: block;
+  margin: 0 0 4px;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.status-surface-copy p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.status-surface-details {
+  margin-top: 8px;
+}
+.status-surface-details summary {
+  cursor: default;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.status-surface-details ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.status-surface-dismiss {
+  flex: 0 0 auto;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--surface-input);
+  color: var(--text-secondary);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background 120ms ease, color 120ms ease;
+}
+.status-surface-dismiss:hover {
+  background: var(--surface-subtle-strong);
+  color: var(--text-primary);
+}
 .command-palette-overlay {
   position: fixed;
   inset: 0;
@@ -691,6 +764,10 @@ kbd { color: var(--text-faint); font-size: 12px; font-family: inherit; font-weig
   .sidebar { width: 180px !important; min-width: 180px; max-width: 180px; }
   .sidebar-search-row { padding: 0 28px 0 32px; }
   .settings-panel-content { width: 100%; padding: 24px 16px 72px; }
+  .status-surface {
+    left: 16px;
+    width: auto;
+  }
 }
 @media (max-width: 520px) {
   .settings-panel-content { width: 100%; padding: 24px 24px 72px; }
