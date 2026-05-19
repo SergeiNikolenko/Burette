@@ -14,7 +14,8 @@ import type { ShellActions, ShellViewState } from "../types";
 export const Sidebar = forwardRef<HTMLButtonElement, {
   state: ShellViewState;
   actions: ShellActions;
-}>(({ state, actions }, searchRef) => {
+  open: boolean;
+}>(({ state, actions, open }, searchRef) => {
   const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
   const [workspaceMenuPosition, setWorkspaceMenuPosition] = useState({
     left: 12,
@@ -78,7 +79,13 @@ export const Sidebar = forwardRef<HTMLButtonElement, {
   } as CSSProperties;
 
   return (
-    <aside className="sidebar" style={{ width: state.sidebarWidth }}>
+    <aside
+      className="sidebar"
+      data-open={open ? "true" : "false"}
+      aria-hidden={!open}
+      inert={!open}
+      style={{ width: state.sidebarWidth }}
+    >
       <div className="sidebar-spacer" data-tauri-drag-region />
       <ScrollFade className="sidebar-scroll">
         <button
