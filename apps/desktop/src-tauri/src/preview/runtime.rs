@@ -53,24 +53,67 @@ pub(crate) struct XyzrenderControls {
 }
 
 impl ViewerPreferences {
-    pub(crate) fn resolved_theme(&self) -> &str {
-        if self.theme == "auto" {
-            "dark"
-        } else {
-            self.theme.as_str()
+    pub(crate) fn theme_for_runtime(&self) -> &str {
+        match self.theme.as_str() {
+            "dark" | "light" | "auto" => self.theme.as_str(),
+            _ => "auto",
         }
     }
 
-    pub(crate) fn resolved_canvas_background(&self) -> &str {
-        if self.canvas_background == "auto" {
-            "black"
-        } else {
-            self.canvas_background.as_str()
+    pub(crate) fn canvas_background_for_runtime(&self) -> &str {
+        match self.canvas_background.as_str() {
+            "auto" | "black" | "graphite" | "white" | "transparent" => {
+                self.canvas_background.as_str()
+            }
+            _ => "auto",
         }
     }
 
     pub(crate) fn resolved_transparent_background(&self) -> bool {
-        self.resolved_canvas_background() == "transparent"
+        self.canvas_background_for_runtime() == "transparent"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ViewerPreferences;
+
+    fn preferences(theme: &str, canvas_background: &str) -> ViewerPreferences {
+        ViewerPreferences {
+            theme: theme.to_string(),
+            canvas_background: canvas_background.to_string(),
+            renderer_mode: "auto".to_string(),
+            xyz_fast_style: "default".to_string(),
+        }
+    }
+
+    #[test]
+    fn preserves_auto_theme_for_runtime() {
+        assert_eq!(preferences("auto", "auto").theme_for_runtime(), "auto");
+        assert_eq!(preferences("light", "auto").theme_for_runtime(), "light");
+        assert_eq!(preferences("weird", "auto").theme_for_runtime(), "auto");
+    }
+
+    #[test]
+    fn preserves_auto_canvas_background_for_runtime() {
+        assert_eq!(
+            preferences("auto", "auto").canvas_background_for_runtime(),
+            "auto"
+        );
+        assert_eq!(
+            preferences("auto", "white").canvas_background_for_runtime(),
+            "white"
+        );
+        assert_eq!(
+            preferences("auto", "broken").canvas_background_for_runtime(),
+            "auto"
+        );
+    }
+
+    #[test]
+    fn transparent_background_only_when_explicit() {
+        assert!(preferences("auto", "transparent").resolved_transparent_background());
+        assert!(!preferences("auto", "auto").resolved_transparent_background());
     }
 }
 
