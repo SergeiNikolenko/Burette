@@ -16,6 +16,7 @@ pub(crate) struct ViewerPreferences {
     pub(crate) theme: String,
     pub(crate) canvas_background: String,
     pub(crate) renderer_mode: String,
+    pub(crate) molstar_style: String,
     pub(crate) xyz_fast_style: String,
 }
 
@@ -58,6 +59,14 @@ impl ViewerPreferences {
             "dark"
         } else {
             self.theme.as_str()
+        }
+    }
+
+    pub(crate) fn resolved_molstar_style(&self) -> &str {
+        if self.molstar_style == "default" {
+            "default"
+        } else {
+            "illustrative"
         }
     }
 

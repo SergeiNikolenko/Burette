@@ -104,6 +104,7 @@ pub(crate) fn create_runtime<R: Runtime>(
         "sdfGrid": true,
         "appViewer": true,
         "tauriViewer": true,
+        "molstarStyle": preferences.resolved_molstar_style(),
         "xyzrenderViewer": false,
         "molstarAvailable": !format.external_only,
         "canOpenInVesta": format.can_open_in_vesta,
