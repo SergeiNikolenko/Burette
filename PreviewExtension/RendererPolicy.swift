@@ -47,7 +47,7 @@ struct BurreteRendererPolicy: Equatable {
             case BurreteRendererMode.xyzrenderExternal:
                 renderer = isXYZ ? BurreteRendererMode.xyzrenderExternal : BurreteRendererMode.molstar
             default:
-                renderer = isXYZ ? BurreteRendererMode.xyzFast : BurreteRendererMode.molstar
+                renderer = isXYZ ? BurreteRendererMode.xyzrenderExternal : BurreteRendererMode.molstar
             }
         }
 
