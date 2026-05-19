@@ -3,7 +3,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { ViewerArea } from "./editor-area";
 import { EditorTabs } from "./editor-area/editor-tabs";
 import { Sidebar } from "./sidebar";
-import type { ShellActions, ShellViewState } from "./types";
+import type { ShellActions, ShellViewState, StatusNotice } from "./types";
 import { isTauriRuntime } from "../lib/tauri";
 
 function clampSidebarWidth(width: number, maxSidebarWidth: number) {
@@ -16,6 +16,7 @@ export function AppLayout({
   state,
   actions,
   searchRef,
+  onDismissStatus,
   onToggleSidebar,
   onResizeStart,
   onDragEnter,
@@ -26,6 +27,7 @@ export function AppLayout({
   state: ShellViewState;
   actions: ShellActions;
   searchRef: React.Ref<HTMLButtonElement>;
+  onDismissStatus: () => void;
   onToggleSidebar: () => void;
   onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
   onDragEnter: (event: React.DragEvent<HTMLElement>) => void;
@@ -71,6 +73,50 @@ export function AppLayout({
           <div>Drop structures to open</div>
         </div>
       )}
+      {state.status && (
+        <StatusSurface status={state.status} onDismiss={onDismissStatus} />
+      )}
     </main>
+  );
+}
+
+function StatusSurface({
+  status,
+  onDismiss,
+}: {
+  status: StatusNotice;
+  onDismiss: () => void;
+}) {
+  const hasExtraDetails = status.details.length > 1;
+  return (
+    <section
+      className="status-surface"
+      data-kind={status.kind}
+      role={status.kind === "error" ? "alert" : "status"}
+      aria-live={status.kind === "error" ? "assertive" : "polite"}
+    >
+      <div className="status-surface-copy">
+        <strong>{status.kind === "error" ? "Issue" : "Status"}</strong>
+        <p>{status.message}</p>
+        {hasExtraDetails && (
+          <details className="status-surface-details">
+            <summary>Show details</summary>
+            <ul>
+              {status.details.map((detail) => (
+                <li key={detail}>{detail}</li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </div>
+      <button
+        type="button"
+        className="status-surface-dismiss"
+        onClick={onDismiss}
+        aria-label="Dismiss status"
+      >
+        Dismiss
+      </button>
+    </section>
   );
 }
