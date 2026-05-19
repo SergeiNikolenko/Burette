@@ -24,6 +24,32 @@ pub(crate) struct ViewerPreferences {
 pub(crate) struct ViewerReloadOptions {
     pub(crate) xyzrender_orientation_ref: Option<String>,
     pub(crate) xyzrender_preset: Option<String>,
+    pub(crate) xyzrender_controls: Option<XyzrenderControls>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct XyzrenderControls {
+    pub(crate) transparent_background: Option<bool>,
+    pub(crate) canvas_size: Option<f64>,
+    pub(crate) atom_scale: Option<f64>,
+    pub(crate) bond_width: Option<f64>,
+    pub(crate) atom_stroke_width: Option<f64>,
+    pub(crate) mol_color: Option<String>,
+    pub(crate) gradients: Option<bool>,
+    pub(crate) fog: Option<bool>,
+    pub(crate) fog_strength: Option<f64>,
+    pub(crate) show_vdw: Option<bool>,
+    pub(crate) vdw_opacity: Option<f64>,
+    pub(crate) vdw_scale: Option<f64>,
+    pub(crate) hide_bonds: Option<bool>,
+    pub(crate) show_cell: Option<bool>,
+    pub(crate) show_ghosts: Option<bool>,
+    pub(crate) show_axes: Option<bool>,
+    pub(crate) cell_width: Option<f64>,
+    pub(crate) supercell: Option<[i32; 3]>,
+    pub(crate) custom_config_path: Option<String>,
+    pub(crate) extra_arguments: Option<String>,
 }
 
 impl ViewerPreferences {
