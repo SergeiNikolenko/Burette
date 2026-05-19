@@ -969,10 +969,53 @@
     bindXyzrenderControls(toolbar);
     initToolbarDrag(toolbar);
     restoreToolbarCollapsed(toolbar, viewer);
+    installToolbarAutoLayoutTracking(toolbar);
     installMolstarFloatingPanelTracking();
     updateToolbarVisibility();
     updateThemeButton();
     applyLayoutState(viewer);
+  }
+
+  function installToolbarAutoLayoutTracking(toolbar) {
+    if (toolbar.dataset.autoLayoutBound === '1') return;
+    toolbar.dataset.autoLayoutBound = '1';
+
+    let lastWidth = 0;
+    let lastHeight = 0;
+    let frame = 0;
+
+    const schedule = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        if (toolbar.dataset.defaultPosition === '1') {
+          applyDefaultToolbarPosition(toolbar);
+        } else {
+          fitToolbarToViewport(toolbar);
+          updateFloatingLayoutOffsets();
+        }
+      });
+    };
+
+    const handleSizeChange = () => {
+      const rect = toolbar.getBoundingClientRect();
+      const width = Math.round(rect.width);
+      const height = Math.round(rect.height);
+      if (width === lastWidth && height === lastHeight) return;
+      lastWidth = width;
+      lastHeight = height;
+      schedule();
+    };
+
+    if (typeof ResizeObserver === 'function') {
+      const observer = new ResizeObserver(handleSizeChange);
+      observer.observe(toolbar);
+      const content = toolbar.querySelector('[data-buret-toolbar-content]');
+      if (content) observer.observe(content);
+    }
+
+    requestAnimationFrame(handleSizeChange);
+    setTimeout(handleSizeChange, 120);
   }
 
   function bindXyzrenderControls(toolbar) {
