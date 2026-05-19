@@ -3,6 +3,14 @@ import type { MoleculeTab } from "../stores/molecule-store";
 import type { UpdatePreferences, UpdateState } from "../update";
 
 export type AppPage = "viewer" | "settings";
+export type StatusKind = "info" | "error";
+
+export type StatusNotice = {
+  id: number;
+  kind: StatusKind;
+  message: string;
+  details: string[];
+};
 
 export type ShellActions = {
   chooseFiles: () => void | Promise<void>;
@@ -50,7 +58,7 @@ export type ShellViewState = {
   sidebarWidth: number;
   sidebarDragging: boolean;
   sidebarQuery: string;
-  status: string;
+  status: StatusNotice | null;
   dropActive: boolean;
   preferences: ViewerPreferences;
   update: UpdateState;
