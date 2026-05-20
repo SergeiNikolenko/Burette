@@ -177,7 +177,7 @@ reloads and when switching tabs.
   across Tauri, browser-dev, and Quick Look, minus the blocked unsafe flags,
   without turning the shared preview menu into a generic CLI editor.
 - Existing checks continue to pass:
-  - `npm run check:js`
-  - `npm run test:ui`
-  - `npm --prefix apps/desktop run typecheck`
+  - `bun run check:js`
+  - `bun run test:ui`
+  - `bun --cwd apps/desktop run typecheck`
   - `cargo check`
