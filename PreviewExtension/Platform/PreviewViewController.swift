@@ -18,6 +18,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private var rendererOverride: String?
     private var xyzrenderPresetOverride: String?
     private var xyzrenderOrientationRefText: String?
+    private var xyzrenderControlsOverride: [String: Any]?
     private static let showDebugOverlay = false
     private static let verboseLogging = false
     private static let defaultViewerPageZoom: CGFloat = 1.0
@@ -80,6 +81,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         rendererOverride = nil
         xyzrenderPresetOverride = nil
         xyzrenderOrientationRefText = nil
+        xyzrenderControlsOverride = nil
         resetLog()
         hasRenderedTerminationError = false
         appendLog("preparePreviewOfFile called")
@@ -170,7 +172,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         requestID: String,
         rendererOverride: String? = nil,
         xyzrenderPresetOverride: String? = nil,
-        xyzrenderOrientationRefText: String? = nil
+        xyzrenderOrientationRefText: String? = nil,
+        xyzrenderControlsOverride: [String: Any]? = nil
     ) throws -> BuildResult {
         var diagnostics: [String] = []
         func diag(_ message: String) { diagnostics.append("[build] " + message) }
@@ -206,8 +209,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             fileURL: url,
             data: structureData,
             host: .quickLook,
-            theme: preferences.resolvedViewerTheme,
-            canvasBackground: preferences.resolvedCanvasBackground,
+            theme: preferences.runtimeViewerTheme,
+            canvasBackground: preferences.runtimeCanvasBackground,
             transparentBackground: preferences.resolvedTransparentBackground,
             overlayOpacity: preferences.overlayOpacity,
             debug: showDebugOverlay,
@@ -285,7 +288,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     transparent: preferences.canvasBackground == "transparent",
                     executablePath: preferences.xyzrenderExecutablePath,
                     extraArguments: preferences.xyzrenderExtraArguments,
-                    orientationRefText: xyzrenderOrientationRefText
+                    orientationRefText: xyzrenderOrientationRefText,
+                    controls: xyzrenderControlsOverride
                 )
                 externalArtifactSourceURL = renderDirectory.appendingPathComponent("xyzrender.svg")
             } catch {
@@ -341,6 +345,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             externalArtifact: externalArtifact,
             externalStatus: externalStatus,
             xyzrenderPreset: xyzrenderPreset,
+            xyzrenderControls: xyzrenderControlsOverride,
             originalFileExtension: pathExtension,
             rendererPolicy: rendererPolicy,
             preferences: preferences
@@ -579,6 +584,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         externalArtifact: PreviewExternalXyzrenderArtifact?,
         externalStatus: [String: Any]?,
         xyzrenderPreset: String,
+        xyzrenderControls: [String: Any]?,
         originalFileExtension: String,
         rendererPolicy: BurreteRendererPolicy,
         preferences: PreviewPreferences
@@ -597,8 +603,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "dataPath": "./preview-data.bin",
             "quickLookBuild": "v10-product",
             "debug": showDebugOverlay,
-            "theme": preferences.resolvedViewerTheme,
-            "canvasBackground": preferences.resolvedCanvasBackground,
+            "theme": preferences.runtimeViewerTheme,
+            "canvasBackground": preferences.runtimeCanvasBackground,
+            "molstarStyle": preferences.resolvedMolstarStyle,
             "uiScale": 1.0,
             "overlayOpacity": preferences.overlayOpacity,
             "transparentBackground": preferences.resolvedTransparentBackground,
@@ -613,11 +620,13 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             payload["quickLookViewer"] = true
             payload["xyzrenderPreset"] = xyzrenderPreset
             payload["xyzrenderPresetOptions"] = BurreteXyzrenderPreset.pickerOptions.map { ["value": $0.0, "label": $0.1] }
+            if let xyzrenderControls { payload["xyzrenderControls"] = xyzrenderControls }
         }
         if format.molstarFormat == "xyz" && !format.isBinary {
             payload["quickLookViewer"] = true
             payload["xyzrenderPreset"] = xyzrenderPreset
             payload["xyzrenderPresetOptions"] = BurreteXyzrenderPreset.pickerOptions.map { ["value": $0.0, "label": $0.1] }
+            if let xyzrenderControls { payload["xyzrenderControls"] = xyzrenderControls }
         }
         if renderer == BurreteRendererMode.xyzFast {
             var xyzFast: [String: Any] = [
@@ -1068,6 +1077,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 setXyzrenderPresetOverride(value)
                 return
             }
+            if type == "setXyzrenderControls" {
+                setXyzrenderControlsOverride(body["controls"] as? [String: Any] ?? [:])
+                return
+            }
             if type == "setXyzrenderOrientation" {
                 setXyzrenderOrientation(body["text"] as? String ?? body["value"] as? String)
                 return
@@ -1178,6 +1191,15 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         reloadCurrentPreview()
     }
 
+    private func setXyzrenderControlsOverride(_ value: [String: Any]) {
+        let normalized = PreviewExternalXyzrenderWorker.normalizedControls(value)
+        guard NSDictionary(dictionary: xyzrenderControlsOverride ?? [:]).isEqual(to: normalized) == false
+            || rendererOverride != BurreteRendererMode.xyzrenderExternal else { return }
+        xyzrenderControlsOverride = normalized
+        rendererOverride = BurreteRendererMode.xyzrenderExternal
+        reloadCurrentPreview()
+    }
+
     @discardableResult
     private func setXyzrenderOrientation(_ text: String?) -> Bool {
         let normalized = Self.normalizedXyzrenderOrientationRef(text)
@@ -1209,7 +1231,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let rendererOverride = rendererOverride
         let xyzrenderPresetOverride = xyzrenderPresetOverride
         let xyzrenderOrientationRefText = xyzrenderOrientationRefText
-        appendLog("reloading preview rendererOverride=\(rendererOverride ?? "nil") xyzrenderPresetOverride=\(xyzrenderPresetOverride ?? "nil") orientationRef=\(xyzrenderOrientationRefText == nil ? "nil" : "set")")
+        let xyzrenderControlsOverride = xyzrenderControlsOverride
+        appendLog("reloading preview rendererOverride=\(rendererOverride ?? "nil") xyzrenderPresetOverride=\(xyzrenderPresetOverride ?? "nil") orientationRef=\(xyzrenderOrientationRefText == nil ? "nil" : "set") controls=\(xyzrenderControlsOverride == nil ? "nil" : "set")")
         previewStatus = "[native] Switching renderer...\n\(url.lastPathComponent)"
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             do {
@@ -1218,7 +1241,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     requestID: requestID.uuidString,
                     rendererOverride: rendererOverride,
                     xyzrenderPresetOverride: xyzrenderPresetOverride,
-                    xyzrenderOrientationRefText: xyzrenderOrientationRefText
+                    xyzrenderOrientationRefText: xyzrenderOrientationRefText,
+                    xyzrenderControlsOverride: xyzrenderControlsOverride
                 )
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.activePreviewRequestID == requestID else { return }
@@ -1816,7 +1840,8 @@ private enum PreviewExternalXyzrenderWorker {
         transparent: Bool,
         executablePath: String,
         extraArguments: String,
-        orientationRefText: String?
+        orientationRefText: String?,
+        controls: [String: Any]?
     ) throws -> PreviewExternalXyzrenderArtifact {
         let fileManager = FileManager.default
         let inputURL = outputDirectory.appendingPathComponent(safeInputFilename(sourceFilename))
@@ -1832,15 +1857,22 @@ private enum PreviewExternalXyzrenderWorker {
         var arguments = [inputURL.path, "-o", outputURL.path]
 
         let safePreset = BurreteXyzrenderPreset.normalize(preset)
-        let configArgument = resolveConfigArgument(preset: safePreset, customConfigPath: customConfigPath)
+        let normalizedControls = normalizedControls(controls ?? [:])
+        let configArgument = resolveConfigArgument(
+            preset: safePreset,
+            customConfigPath: normalizedControls["customConfigPath"] as? String ?? customConfigPath
+        )
         let effectivePreset = safePreset == "custom" && configArgument == "default" ? "default" : safePreset
         arguments += ["--config", configArgument]
         let orientationRefURL = try writeOrientationRef(orientationRefText, outputDirectory: outputDirectory)
         if let orientationRefURL {
             arguments += ["--ref", orientationRefURL.path]
         }
-        if transparent { arguments.append("--transparent") }
-        arguments += sanitizedExtraArguments(extraArguments)
+        if (normalizedControls["transparentBackground"] as? Bool) == true || transparent {
+            arguments.append("--transparent")
+        }
+        arguments += cliArguments(from: normalizedControls)
+        arguments += sanitizedExtraArguments((normalizedControls["extraArguments"] as? String) ?? extraArguments)
         process.arguments = arguments
         process.environment = mergedEnvironment()
 
@@ -1932,8 +1964,139 @@ private enum PreviewExternalXyzrenderWorker {
         return trimmed.isEmpty ? "default" : trimmed
     }
 
+    static func normalizedControls(_ value: [String: Any]) -> [String: Any] {
+        var result: [String: Any] = [:]
+        copyBoolean(value, key: "transparentBackground", into: &result)
+        copyNumber(value, key: "canvasSize", into: &result)
+        copyNumber(value, key: "atomScale", into: &result)
+        copyNumber(value, key: "bondWidth", into: &result)
+        copyNumber(value, key: "atomStrokeWidth", into: &result)
+        copyText(value, key: "molColor", into: &result)
+        copyBoolean(value, key: "gradients", into: &result)
+        copyBoolean(value, key: "fog", into: &result)
+        copyNumber(value, key: "fogStrength", into: &result)
+        copyBoolean(value, key: "showVdw", into: &result)
+        copyNumber(value, key: "vdwOpacity", into: &result)
+        copyNumber(value, key: "vdwScale", into: &result)
+        copyBoolean(value, key: "hideBonds", into: &result)
+        copyBoolean(value, key: "showCell", into: &result)
+        copyBoolean(value, key: "showGhosts", into: &result)
+        copyBoolean(value, key: "showAxes", into: &result)
+        copyNumber(value, key: "cellWidth", into: &result)
+        copyText(value, key: "customConfigPath", into: &result)
+        copyText(value, key: "extraArguments", into: &result)
+        if let supercell = normalizeSupercell(value["supercell"]) {
+            result["supercell"] = supercell
+        }
+        return result
+    }
+
+    private static func cliArguments(from controls: [String: Any]) -> [String] {
+        var arguments: [String] = []
+        if let value = finitePositive(controls["canvasSize"]) {
+            arguments += ["-S", formatCLI(value)]
+        }
+        if let value = finitePositive(controls["atomScale"]) {
+            arguments += ["-a", formatCLI(value)]
+        }
+        if let value = finitePositive(controls["bondWidth"]) {
+            arguments += ["-b", formatCLI(value)]
+        }
+        if let value = finitePositive(controls["atomStrokeWidth"]) {
+            arguments += ["-s", formatCLI(value)]
+        }
+        if let value = controls["molColor"] as? String {
+            arguments += ["--mol-color", value]
+        }
+        if let value = controls["gradients"] as? Bool {
+            arguments.append(value ? "--grad" : "--no-grad")
+        }
+        if let value = controls["fog"] as? Bool {
+            arguments.append(value ? "--fog" : "--no-fog")
+        }
+        if let value = finitePositive(controls["fogStrength"]) {
+            arguments += ["-F", formatCLI(value)]
+        }
+        if (controls["showVdw"] as? Bool) == true {
+            arguments.append("--vdw")
+        }
+        if let value = finitePositive(controls["vdwOpacity"]) {
+            arguments += ["--vdw-opacity", formatCLI(value)]
+        }
+        if let value = finitePositive(controls["vdwScale"]) {
+            arguments += ["--vdw-scale", formatCLI(value)]
+        }
+        if (controls["hideBonds"] as? Bool) == true {
+            arguments.append("--no-bonds")
+        }
+        if let value = controls["showCell"] as? Bool {
+            arguments.append(value ? "--cell" : "--no-cell")
+        }
+        if let value = controls["showGhosts"] as? Bool {
+            arguments.append(value ? "--ghosts" : "--no-ghosts")
+        }
+        if let value = controls["showAxes"] as? Bool {
+            arguments.append(value ? "--axes" : "--no-axes")
+        }
+        if let value = finitePositive(controls["cellWidth"]) {
+            arguments += ["--cell-width", formatCLI(value)]
+        }
+        if let supercell = controls["supercell"] as? [Int], supercell.count == 3, supercell.allSatisfy({ $0 > 0 }) {
+            arguments.append("--supercell")
+            arguments += supercell.map(String.init)
+        }
+        return arguments
+    }
+
+    private static func copyBoolean(_ source: [String: Any], key: String, into result: inout [String: Any]) {
+        if let value = source[key] as? Bool {
+            result[key] = value
+        }
+    }
+
+    private static func copyNumber(_ source: [String: Any], key: String, into result: inout [String: Any]) {
+        if let value = finitePositive(source[key]) {
+            result[key] = value
+        }
+    }
+
+    private static func copyText(_ source: [String: Any], key: String, into result: inout [String: Any]) {
+        if let value = nonEmptyText(source[key] as? String) {
+            result[key] = value
+        }
+    }
+
+    private static func finitePositive(_ value: Any?) -> Double? {
+        if let number = value as? NSNumber {
+            let resolved = number.doubleValue
+            return resolved.isFinite && resolved > 0 ? resolved : nil
+        }
+        if let text = value as? String, let resolved = Double(text), resolved.isFinite, resolved > 0 {
+            return resolved
+        }
+        return nil
+    }
+
+    private static func nonEmptyText(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func normalizeSupercell(_ value: Any?) -> [Int]? {
+        guard let values = value as? [Any], values.count == 3 else { return nil }
+        let parsed = values.compactMap { (($0 as? NSNumber)?.intValue) ?? Int(($0 as? String) ?? "") }
+        guard parsed.count == 3, parsed.allSatisfy({ $0 > 0 }) else { return nil }
+        return parsed
+    }
+
+    private static func formatCLI(_ value: Double) -> String {
+        let text = String(format: "%.6f", value)
+        return text.replacingOccurrences(of: #"(\.\d*?[1-9])0+$"#, with: "$1", options: .regularExpression)
+            .replacingOccurrences(of: #"\.0+$"#, with: "", options: .regularExpression)
+    }
+
     private static func sanitizedExtraArguments(_ value: String) -> [String] {
-        let outputFlags = Set(["-o", "--output", "-go", "--gif-output", "--config"])
+        let outputFlags = Set(["-o", "--output", "-go", "--gif-output", "--config", "--ref"])
         var result: [String] = []
         var skipNext = false
         for token in splitCommandLine(value) {
@@ -2032,6 +2195,7 @@ private struct PreviewPreferences {
     let canvasBackground: String
     let overlayOpacity: Double
     let rendererMode: String
+    let molstarStyle: String
     let xyzFastStyle: String
     let xyzrenderPreset: String
     let xyzrenderCustomConfigPath: String
@@ -2040,16 +2204,20 @@ private struct PreviewPreferences {
     let gridFileSupport: MoleculeGridFileSupport
     let defaultLayoutState: [String: String]
 
-    var resolvedViewerTheme: String {
-        viewerTheme == "auto" ? "dark" : viewerTheme
+    var runtimeViewerTheme: String {
+        ["dark", "light", "auto"].contains(viewerTheme) ? viewerTheme : "auto"
     }
 
-    var resolvedCanvasBackground: String {
-        canvasBackground == "auto" ? "black" : canvasBackground
+    var runtimeCanvasBackground: String {
+        ["auto", "black", "graphite", "white", "transparent"].contains(canvasBackground) ? canvasBackground : "auto"
     }
 
     var resolvedTransparentBackground: Bool {
-        resolvedCanvasBackground == "transparent"
+        runtimeCanvasBackground == "transparent"
+    }
+
+    var resolvedMolstarStyle: String {
+        molstarStyle == "default" ? "default" : "illustrative"
     }
 
     static func load() -> PreviewPreferences {
@@ -2060,6 +2228,7 @@ private struct PreviewPreferences {
         let canvasBackground = (CFPreferencesCopyAppValue("viewerCanvasBackground" as CFString, appID) as? String) ?? "auto"
         let overlayOpacity = (CFPreferencesCopyAppValue("viewerOverlayOpacity" as CFString, appID) as? Double) ?? 0.90
         let rendererMode = (CFPreferencesCopyAppValue("structureRendererMode" as CFString, appID) as? String) ?? "auto"
+        let molstarStyle = (CFPreferencesCopyAppValue("molstarStyle" as CFString, appID) as? String) ?? "illustrative"
         let xyzFastStyle = (CFPreferencesCopyAppValue("xyzFastStyle" as CFString, appID) as? String) ?? "default"
         let xyzrenderPreset = (CFPreferencesCopyAppValue("xyzrenderPreset" as CFString, appID) as? String) ?? "default"
         let xyzrenderCustomConfigPath = (CFPreferencesCopyAppValue("xyzrenderCustomConfigPath" as CFString, appID) as? String) ?? ""
@@ -2073,6 +2242,7 @@ private struct PreviewPreferences {
             canvasBackground: canvasBackground,
             overlayOpacity: min(max(overlayOpacity, 0.72), 0.98),
             rendererMode: rendererMode,
+            molstarStyle: molstarStyle,
             xyzFastStyle: xyzFastStyle,
             xyzrenderPreset: BurreteXyzrenderPreset.normalize(xyzrenderPreset),
             xyzrenderCustomConfigPath: xyzrenderCustomConfigPath,

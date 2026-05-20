@@ -15,7 +15,8 @@ import type { ShellActions, ShellViewState } from "../types";
 export const Sidebar = forwardRef<HTMLInputElement, {
   state: ShellViewState;
   actions: ShellActions;
-}>(({ state, actions }, searchRef) => {
+  open: boolean;
+}>(({ state, actions, open }, searchRef) => {
   const visibleProjects = filterSidebarProjects(state.sidebarProjects, state.sidebarQuery);
   const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
   const [workspaceMenuPosition, setWorkspaceMenuPosition] = useState({
@@ -80,7 +81,13 @@ export const Sidebar = forwardRef<HTMLInputElement, {
   } as CSSProperties;
 
   return (
-    <aside className="sidebar" style={{ width: state.sidebarWidth }}>
+    <aside
+      className="sidebar"
+      data-open={open ? "true" : "false"}
+      aria-hidden={!open}
+      inert={!open}
+      style={{ width: state.sidebarWidth }}
+    >
       <div className="sidebar-spacer" data-tauri-drag-region />
       <ScrollFade className="sidebar-scroll">
         <div className="sidebar-search-row">
