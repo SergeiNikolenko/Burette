@@ -43,6 +43,7 @@ import {
 } from "./hooks/use-tabs";
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
 import { browserDevRuntimeNeedsRefresh, openBrowserDevDocuments } from "./lib/browser-dev-documents";
+import { buildSidebarProjects, parentDirectory } from "./lib/sidebar-projects";
 import { isTauriRuntime } from "./lib/tauri";
 import type { OpenDocumentsResult, RecentStructure, ViewerReloadOptions } from "./types";
 import { checkForUpdates as requestUpdateCheck, clearDismissedUpdate, dismissUpdate, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically, shouldPromptForUpdate } from "./update";
@@ -79,7 +80,18 @@ export default function App() {
   const closeDocument = useCloseDocument();
   const closeActiveDocument = useCloseActiveTab();
   const closeAllDocuments = useCloseAllTabs();
-  const { sidebarOpen, sidebarWidth, setSidebarWidth, toggleSidebar } = useSidebar();
+  const {
+    sidebarOpen,
+    sidebarWidth,
+    projectRoots,
+    expandedProjectIds,
+    sidebarQuery,
+    setSidebarWidth,
+    addProjectRoot,
+    setSidebarQuery,
+    toggleProjectExpanded,
+    toggleSidebar,
+  } = useSidebar();
   const [sidebarDragging, setSidebarDragging] = useState(false);
   const [status, setStatus] = useState<StatusNotice | null>(null);
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
@@ -142,6 +154,18 @@ export default function App() {
     requestAnimationFrame(() => sidebarSearchRef.current?.focus());
   }, [sidebarOpen, toggleSidebar]);
 
+  const allSidebarProjects = useMemo(() => buildSidebarProjects({
+    documents,
+    recentStructures,
+    projectRoots,
+    activeDocumentId: activeDocument?.id ?? null,
+  }), [activeDocument?.id, documents, projectRoots, recentStructures]);
+
+  const activeProject = useMemo(
+    () => allSidebarProjects.find((project) => project.isActive) ?? null,
+    [allSidebarProjects],
+  );
+
   const openDocuments = useCallback(
     async (
       paths: string[],
@@ -184,12 +208,15 @@ export default function App() {
     openedBrowserDevFilesRef.current = true;
     syncingBrowserDevFilesRef.current = true;
     const workspace = paths[0] ? parentDirectory(paths[0]) : null;
-    if (workspace) setWorkspacePath(workspace);
+    if (workspace) {
+      setWorkspacePath(workspace);
+      addProjectRoot(workspace);
+    }
     closeAllDocuments();
     void openDocuments(paths).finally(() => {
       syncingBrowserDevFilesRef.current = false;
     });
-  }, [closeAllDocuments, documents, openDocuments]);
+  }, [addProjectRoot, closeAllDocuments, documents, openDocuments]);
 
   useEffect(() => {
     if (refreshedPersistedSessionRef.current) return;
@@ -226,27 +253,38 @@ export default function App() {
       const selection = await open({ directory: true, multiple: false });
       if (!selection || Array.isArray(selection)) return;
       setWorkspacePath(selection);
-      pushStatus("Workspace selected");
+      addProjectRoot(selection);
+      pushStatus("Project folder added");
     } catch (error) {
       pushErrorStatus(error, "Workspace selection failed");
     }
-  }, [pushErrorStatus, pushStatus]);
+  }, [addProjectRoot, pushErrorStatus, pushStatus]);
 
   const openWorkspaceFolder = useCallback(async () => {
-    const fallbackPath = workspacePath ?? activeDocument?.path ?? recentStructures[0]?.path ?? null;
+    const fallbackPath = activeProject?.rootPath ?? workspacePath ?? activeDocument?.path ?? recentStructures[0]?.path ?? null;
     if (!fallbackPath) {
       await chooseWorkspace();
       return;
     }
-    const path = workspacePath ?? parentDirectory(fallbackPath);
+    const path = activeProject?.rootPath ?? workspacePath ?? parentDirectory(fallbackPath);
     if (!path) return;
     try {
       await openPath(path);
-      pushStatus("Opened workspace folder");
+      pushStatus("Opened project folder");
     } catch (error) {
-      pushErrorStatus(error, "Open workspace folder failed");
+      pushErrorStatus(error, "Open project folder failed");
     }
-  }, [activeDocument?.path, chooseWorkspace, pushErrorStatus, pushStatus, recentStructures, workspacePath]);
+  }, [activeDocument?.path, activeProject?.rootPath, chooseWorkspace, pushErrorStatus, pushStatus, recentStructures, workspacePath]);
+
+  const openProjectFolder = useCallback(async (path: string | null) => {
+    if (!path) return;
+    try {
+      await openPath(path);
+      pushStatus("Opened project folder");
+    } catch (error) {
+      pushErrorStatus(error, "Open project folder failed");
+    }
+  }, [pushErrorStatus, pushStatus]);
 
   const openSettings = useCallback(() => {
     openSettingsTab();
@@ -534,7 +572,10 @@ export default function App() {
     openSettings,
     chooseWorkspace,
     openWorkspaceFolder,
+    openProjectFolder,
     toggleSidebar,
+    setSidebarQuery,
+    toggleProjectExpanded,
     closeDocument,
     closeTab,
     closeActiveDocument: () => {
@@ -594,7 +635,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeTab, focusSidebarSearch, installUpdate, navigateBack, navigateForward, openCommandPalette, openNewTab, openRecentStructure, openSettings, openWorkspaceFolder, pushErrorStatus, pushStatus, selectDocument, setActiveTab, setPreference, setUpdatePreferences, toggleSidebar, update.availableRelease]);
+  }), [canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeTab, focusSidebarSearch, installUpdate, navigateBack, navigateForward, openCommandPalette, openNewTab, openProjectFolder, openRecentStructure, openSettings, openWorkspaceFolder, pushErrorStatus, pushStatus, selectDocument, setActiveTab, setPreference, setSidebarQuery, setUpdatePreferences, toggleProjectExpanded, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
@@ -607,12 +648,14 @@ export default function App() {
     activeDocumentId: activeDocument?.id ?? null,
     visibleDocuments: documents,
     recentStructures,
+    sidebarProjects: allSidebarProjects,
+    expandedProjectIds,
     workspacePath,
     page,
     sidebarOpen,
     sidebarWidth,
     sidebarDragging,
-    sidebarQuery: "",
+    sidebarQuery,
     status,
     dropActive,
     preferences,
@@ -646,12 +689,6 @@ export default function App() {
       />
     </>
   );
-}
-
-function parentDirectory(path: string) {
-  const normalized = path.replace(/\\/g, "/");
-  const index = normalized.lastIndexOf("/");
-  return index > 0 ? normalized.slice(0, index) : null;
 }
 
 function isKnownViewerMessageSource(source: MessageEventSource | null, documentId?: string) {
