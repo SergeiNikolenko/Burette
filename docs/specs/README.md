@@ -16,5 +16,6 @@ historical migration notes.
 - [Preview open latency spec](burette-preview-open-latency-spec.md)
 - [Preview task cancellation spec](burette-preview-task-cancellation-spec.md)
 - [Preview theme and background spec](burette-preview-theme-and-background-spec.md)
+- [xyzrender controls spec](burette-xyzrender-controls-spec.md)
 - [Titlebar window behavior spec](burette-titlebar-window-behavior-spec.md)
 - [UI accessibility spec](burette-ui-a11y-spec.md)

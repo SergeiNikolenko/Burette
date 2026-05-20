@@ -107,6 +107,7 @@ export default function App() {
   const openedBrowserDevFilesRef = useRef(false);
   const syncingBrowserDevFilesRef = useRef(false);
   const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions | null>(null);
+  const pendingViewerReloadDocumentIdRef = useRef<string | null>(null);
   const xyzrenderOrientationRefRef = useRef<string | null>(null);
   const skipNextPreferenceRefreshRef = useRef(false);
   const statusSequenceRef = useRef(0);
@@ -292,11 +293,15 @@ export default function App() {
   useOpenEvents(openDocuments, pushErrorStatus);
   const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop } = useOpenDrop(openDocuments, pushStatus);
   const reloadActive = useCallback(async () => {
-    if (!activeDocument) return;
+    const targetDocument = (pendingViewerReloadDocumentIdRef.current
+      ? documents.find((document) => document.id === pendingViewerReloadDocumentIdRef.current)
+      : null) ?? activeDocument;
+    if (!targetDocument) return;
     const reloadOptions = pendingViewerReloadOptionsRef.current ?? undefined;
     pendingViewerReloadOptionsRef.current = null;
-    await openDocuments([activeDocument.path], reloadOptions);
-  }, [activeDocument, openDocuments]);
+    pendingViewerReloadDocumentIdRef.current = null;
+    await openDocuments([targetDocument.path], reloadOptions);
+  }, [activeDocument, documents, openDocuments]);
   const setUpdatePreferences = useCallback((preferences: UpdatePreferences) => {
     saveUpdatePreferences(preferences);
     setUpdate((previous) => ({
@@ -429,6 +434,7 @@ export default function App() {
           documentId?: string;
           orientationRef?: string | null;
           text?: string | null;
+          controls?: ViewerReloadOptions["xyzrenderControls"];
         };
       } | undefined;
       if (data?.source !== "burrete-viewer" && data?.source !== "burrete-grid") return;
@@ -443,9 +449,21 @@ export default function App() {
         return;
       }
       if (body?.type === "setXyzrenderPreset") {
+        pendingViewerReloadDocumentIdRef.current = body.documentId ?? null;
         pendingViewerReloadOptionsRef.current = {
           xyzrenderPreset: body.value ?? null,
           xyzrenderOrientationRef: xyzrenderOrientationRefRef.current,
+          xyzrenderControls: pendingViewerReloadOptionsRef.current?.xyzrenderControls ?? null,
+        };
+        void reloadActive();
+        return;
+      }
+      if (body?.type === "setXyzrenderControls") {
+        pendingViewerReloadDocumentIdRef.current = body.documentId ?? null;
+        pendingViewerReloadOptionsRef.current = {
+          xyzrenderPreset: pendingViewerReloadOptionsRef.current?.xyzrenderPreset ?? null,
+          xyzrenderOrientationRef: xyzrenderOrientationRefRef.current,
+          xyzrenderControls: body.controls ?? null,
         };
         void reloadActive();
         return;
@@ -453,18 +471,31 @@ export default function App() {
       if (body?.type === "setRenderer") {
         const renderer = body.value;
         if (renderer === "auto" || renderer === "xyz-fast" || renderer === "molstar" || renderer === "xyzrender-external") {
+          const targetDocument = (body.documentId
+            ? documents.find((document) => document.id === body.documentId)
+            : null) ?? activeDocument;
           const reloadOptions = renderer === "xyzrender-external" && body.orientationRef
             ? { xyzrenderOrientationRef: body.orientationRef }
             : undefined;
           if (renderer === "xyzrender-external" && body.orientationRef) {
             xyzrenderOrientationRefRef.current = body.orientationRef;
           }
-          pendingViewerReloadOptionsRef.current = reloadOptions ?? null;
+          pendingViewerReloadOptionsRef.current = renderer === "xyzrender-external" && body.orientationRef
+            ? {
+                xyzrenderOrientationRef: body.orientationRef,
+                xyzrenderPreset: pendingViewerReloadOptionsRef.current?.xyzrenderPreset ?? null,
+                xyzrenderControls: pendingViewerReloadOptionsRef.current?.xyzrenderControls ?? null,
+              }
+            : null;
+          pendingViewerReloadDocumentIdRef.current = renderer === "xyzrender-external" && body.orientationRef
+            ? body.documentId ?? null
+            : null;
           skipNextPreferenceRefreshRef.current = true;
           setPreference("rendererMode", renderer);
-          if (activeDocument) {
+          if (targetDocument) {
             pendingViewerReloadOptionsRef.current = null;
-            void openDocuments([activeDocument.path], reloadOptions, { rendererMode: renderer });
+            pendingViewerReloadDocumentIdRef.current = null;
+            void openDocuments([targetDocument.path], reloadOptions, { rendererMode: renderer });
           }
         }
       }
@@ -495,7 +526,7 @@ export default function App() {
     });
     // Preferences refresh all open runtimes so inactive tabs do not keep stale renderer/theme output.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preferences.theme, preferences.canvasBackground, preferences.rendererMode, preferences.xyzFastStyle]);
+  }, [preferences.theme, preferences.canvasBackground, preferences.rendererMode, preferences.molstarStyle, preferences.xyzFastStyle]);
 
   const startSidebarResize = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
