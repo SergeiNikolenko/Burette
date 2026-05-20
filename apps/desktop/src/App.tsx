@@ -90,7 +90,7 @@ export default function App() {
     statusText: "No update check has run yet.",
     availableRelease: null,
   }));
-  const sidebarSearchRef = useRef<HTMLButtonElement | null>(null);
+  const sidebarSearchRef = useRef<HTMLInputElement | null>(null);
   const refreshedPersistedSessionRef = useRef(false);
   const openedBrowserDevFilesRef = useRef(false);
   const syncingBrowserDevFilesRef = useRef(false);
