@@ -256,6 +256,7 @@ assert.match(quickLookPreviewController, /appendingPathComponent\("burrete", isD
 assert.match(quickLookPreviewController, /FileManager\.default\.isExecutableFile\(atPath: executableURL\.path\)/);
 assert.match(quickLookPreviewController, /DispatchQueue\.main\.asyncAfter\(deadline: \.now\(\) \+ 0\.75\)/);
 assert.match(quickLookPreviewController, /if process\.isRunning \{/);
+assert.doesNotMatch(quickLookPreviewController, /BurreteRDKitWasmBase64/);
 assert.match(previewRuntimeViewer, /"documentId": stable_id\(file_path\)/);
 assert.match(previewRuntimeViewer, /runtime\.join\("preview-data\.bin"\)/);
 assert.match(previewRuntimeViewer, /window\.BurreteDataBase64 = \{:\?\};\\nwindow\.BurreteDataURL = null;\\n/);
