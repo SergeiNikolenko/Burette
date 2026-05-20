@@ -7,12 +7,15 @@ use tauri::Runtime;
 #[cfg(not(target_os = "macos"))]
 use tauri_plugin_dialog::DialogExt;
 
+use crate::preview::formats::supported_structure_extensions;
 use crate::preview::runtime::{
     open_document, OpenDocumentsResult, ViewerPreferences, ViewerReloadOptions,
 };
 
 #[tauri::command]
-pub(crate) fn pick_open_targets<R: Runtime>(app: tauri::AppHandle<R>) -> Result<Vec<String>, String> {
+pub(crate) fn pick_open_targets<R: Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<Vec<String>, String> {
     #[cfg(target_os = "macos")]
     {
         return pick_open_targets_macos(&app);
@@ -26,7 +29,11 @@ pub(crate) fn pick_open_targets<R: Runtime>(app: tauri::AppHandle<R>) -> Result<
             .set_title("Open Structures")
             .blocking_pick_files()
             .unwrap_or_default();
-        return Ok(files.into_iter().filter_map(|path| path.into_path()).map(|path| path.to_string_lossy().to_string()).collect());
+        return Ok(files
+            .into_iter()
+            .filter_map(|path| path.into_path())
+            .map(|path| path.to_string_lossy().to_string())
+            .collect());
     }
 }
 
@@ -46,7 +53,8 @@ pub(crate) fn open_documents<R: Runtime>(
             }
             Ok(expanded) => {
                 for expanded_path in expanded {
-                    match open_document(&app, expanded_path, &preferences, reload_options.as_ref()) {
+                    match open_document(&app, expanded_path, &preferences, reload_options.as_ref())
+                    {
                         Ok(document) => documents.push(document),
                         Err(error) => errors.push(error),
                     }
@@ -65,23 +73,34 @@ fn expand_open_targets(path: PathBuf) -> Result<Vec<PathBuf>, String> {
     let canonical = path
         .canonicalize()
         .map_err(|err| format!("{}: {err}", path.display()))?;
-    let metadata = fs::metadata(&canonical).map_err(|err| format!("{}: {err}", canonical.display()))?;
+    let metadata =
+        fs::metadata(&canonical).map_err(|err| format!("{}: {err}", canonical.display()))?;
     if metadata.is_file() {
         return Ok(vec![canonical]);
     }
     if !metadata.is_dir() {
-        return Err(format!("{} is neither a file nor a directory", canonical.display()));
+        return Err(format!(
+            "{} is neither a file nor a directory",
+            canonical.display()
+        ));
     }
 
+    let supported_extensions = supported_structure_extensions()?;
     let mut collected = BTreeSet::new();
     let mut visited_directories = HashSet::new();
-    collect_supported_files(&canonical, &mut visited_directories, &mut collected)?;
+    collect_supported_files(
+        &canonical,
+        &mut visited_directories,
+        &supported_extensions,
+        &mut collected,
+    )?;
     Ok(collected.into_iter().collect())
 }
 
 fn collect_supported_files(
     directory: &Path,
     visited_directories: &mut HashSet<PathBuf>,
+    supported_extensions: &BTreeSet<String>,
     collected: &mut BTreeSet<PathBuf>,
 ) -> Result<(), String> {
     let canonical_directory = directory
@@ -103,69 +122,47 @@ fn collect_supported_files(
                 continue;
             };
             if target_metadata.is_dir() {
-                let _ = collect_supported_files(&path, visited_directories, collected);
+                let _ = collect_supported_files(
+                    &path,
+                    visited_directories,
+                    supported_extensions,
+                    collected,
+                );
                 continue;
             }
-            if target_metadata.is_file() && looks_like_supported_structure_file(&path) {
+            if target_metadata.is_file()
+                && looks_like_supported_structure_file(&path, supported_extensions)
+            {
                 collected.insert(path);
             }
             continue;
         }
         if metadata.is_dir() {
-            let _ = collect_supported_files(&path, visited_directories, collected);
+            let _ = collect_supported_files(
+                &path,
+                visited_directories,
+                supported_extensions,
+                collected,
+            );
             continue;
         }
-        if metadata.is_file() && looks_like_supported_structure_file(&path) {
+        if metadata.is_file() && looks_like_supported_structure_file(&path, supported_extensions) {
             collected.insert(path);
         }
     }
     Ok(())
 }
 
-fn looks_like_supported_structure_file(path: &std::path::Path) -> bool {
+fn looks_like_supported_structure_file(
+    path: &std::path::Path,
+    supported_extensions: &BTreeSet<String>,
+) -> bool {
     let extension = path
         .extension()
         .and_then(|value| value.to_str())
         .unwrap_or("")
         .to_lowercase();
-    matches!(
-        extension.as_str(),
-        "bcif"
-            | "cif"
-            | "cms"
-            | "csv"
-            | "cub"
-            | "cube"
-            | "dcd"
-            | "ent"
-            | "gro"
-            | "in"
-            | "lammpstrj"
-            | "log"
-            | "mae"
-            | "maegz"
-            | "mcif"
-            | "mmcif"
-            | "mol"
-            | "mol2"
-            | "nctraj"
-            | "out"
-            | "pdb"
-            | "pdbqt"
-            | "pqr"
-            | "prmtop"
-            | "psf"
-            | "sd"
-            | "sdf"
-            | "smi"
-            | "smiles"
-            | "top"
-            | "trr"
-            | "tsv"
-            | "vasp"
-            | "xtc"
-            | "xyz"
-    )
+    supported_extensions.contains(&extension)
 }
 
 #[cfg(target_os = "macos")]
@@ -186,7 +183,8 @@ fn pick_open_targets_macos<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<Vec<
         panel.setResolvesAliases_(YES);
 
         let title: id = msg_send![class!(NSString), alloc];
-        let title: id = msg_send![title, initWithUTF8String: b"Open Structures\0".as_ptr().cast::<c_char>()];
+        let title: id =
+            msg_send![title, initWithUTF8String: b"Open Structures\0".as_ptr().cast::<c_char>()];
         let _: () = msg_send![panel, setTitle: title];
 
         let response: NSModalResponse = panel.runModal();
@@ -212,47 +210,83 @@ fn pick_open_targets_macos<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<Vec<
     })
     .map_err(|err| err.to_string())?;
 
-    receiver
-        .recv()
-        .map_err(|err| err.to_string())?
+    receiver.recv().map_err(|err| err.to_string())?
 }
 
 #[cfg(test)]
 mod tests {
     use super::{expand_open_targets, looks_like_supported_structure_file};
+    use crate::preview::formats::supported_structure_extensions;
     use std::fs;
     #[cfg(unix)]
     use std::os::unix::fs::symlink;
 
     #[test]
     fn recognizes_supported_structure_files() {
-        assert!(looks_like_supported_structure_file(std::path::Path::new("mini.pdb")));
-        assert!(looks_like_supported_structure_file(std::path::Path::new("mini.cif")));
-        assert!(looks_like_supported_structure_file(std::path::Path::new("mini.sdf")));
-        assert!(!looks_like_supported_structure_file(std::path::Path::new("notes.txt")));
+        let supported_extensions =
+            supported_structure_extensions().expect("supported extensions should load");
+        assert!(looks_like_supported_structure_file(
+            std::path::Path::new("mini.pdb"),
+            &supported_extensions
+        ));
+        assert!(looks_like_supported_structure_file(
+            std::path::Path::new("mini.cif"),
+            &supported_extensions
+        ));
+        assert!(looks_like_supported_structure_file(
+            std::path::Path::new("mini.sdf"),
+            &supported_extensions
+        ));
+        assert!(looks_like_supported_structure_file(
+            std::path::Path::new("caffeine.com"),
+            &supported_extensions
+        ));
+        assert!(looks_like_supported_structure_file(
+            std::path::Path::new("caffeine.psi4"),
+            &supported_extensions
+        ));
+        assert!(!looks_like_supported_structure_file(
+            std::path::Path::new("mn-h2.log"),
+            &supported_extensions
+        ));
+        assert!(!looks_like_supported_structure_file(
+            std::path::Path::new("notes.txt"),
+            &supported_extensions
+        ));
     }
 
     #[test]
     fn expands_directories_into_supported_files() {
-        let root = std::env::temp_dir().join(format!("burrete-open-targets-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("burrete-open-targets-{}", std::process::id()));
         let nested = root.join("nested");
         fs::create_dir_all(&nested).unwrap();
         let pdb = root.join("mini.pdb");
         let cif = nested.join("mini.cif");
+        let input = nested.join("caffeine.com");
+        let log = root.join("mn-h2.log");
         let txt = nested.join("notes.txt");
         fs::write(&pdb, "HEADER TEST\n").unwrap();
         fs::write(&cif, "data_test\n").unwrap();
+        fs::write(&input, "%chk=test\n").unwrap();
+        fs::write(&log, "SCF DONE\n").unwrap();
         fs::write(&txt, "ignore\n").unwrap();
 
         let canonical_root = root.canonicalize().unwrap();
         let expanded = expand_open_targets(root.clone()).unwrap();
         assert_eq!(
             expanded,
-            vec![canonical_root.join("mini.pdb"), canonical_root.join("nested").join("mini.cif")]
+            vec![
+                canonical_root.join("mini.pdb"),
+                canonical_root.join("nested").join("caffeine.com"),
+                canonical_root.join("nested").join("mini.cif")
+            ]
         );
 
         fs::remove_file(txt).unwrap();
+        fs::remove_file(log).unwrap();
         fs::remove_file(cif).unwrap();
+        fs::remove_file(input).unwrap();
         fs::remove_file(pdb).unwrap();
         fs::remove_dir(nested).unwrap();
         fs::remove_dir(root).unwrap();
