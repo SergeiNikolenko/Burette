@@ -95,7 +95,7 @@ fn collect_supported_files(
             continue;
         };
         let path = entry.path();
-        let Ok(metadata) = entry.metadata() else {
+        let Ok(metadata) = fs::metadata(&path) else {
             continue;
         };
         if metadata.is_dir() {
