@@ -635,5 +635,7 @@ assert.match(browserDevDocuments, /documentId: stableId\(path\)/);
 assert.match(browserDevDocuments, /body\.documentId = String\(window\.BurreteConfig\.documentId\)/);
 assert.match(browserDevDocuments, /rdkitWasmPath: `\$\{WEB_ASSETS_BASE\}rdkit\/RDKit_minimal\.wasm`/);
 assert.doesNotMatch(browserDevDocuments, /BurreteRDKitWasmBase64/);
+assert.match(gridViewer, /if \(kind === 'error' && status && !window\.BurreteDebug && cfg\.appViewer === true\) status\.classList\.add\('hidden'\);/);
+assert.doesNotMatch(gridViewer, /post\('error', message\);/);
 
 console.log('ui shell contract tests passed');
