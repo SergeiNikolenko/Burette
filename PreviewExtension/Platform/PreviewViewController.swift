@@ -164,7 +164,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     private static let supportedStructureExtensions: Set<String> = [
-        "bcif", "cif", "cms", "csv", "cub", "cube", "dcd", "ent", "gro", "in", "lammpstrj", "log", "mae", "maegz", "mcif", "mmcif", "mol", "mol2", "nctraj", "out", "pdb", "pdbqt", "pqr", "prmtop", "psf", "sd", "sdf", "smi", "smiles", "top", "trr", "tsv", "vasp", "xtc", "xyz"
+        "abi", "bcif", "cif", "cms", "com", "csv", "cub", "cube", "dcd", "ent", "fdf", "gro", "in", "inp", "lammpstrj", "mae", "maegz", "mcif", "mmcif", "mol", "mol2", "nctraj", "nw", "out", "pdb", "pdbqt", "pqr", "prmtop", "psf", "psi4", "qcin", "sd", "sdf", "smi", "smiles", "top", "trr", "tsv", "vasp", "xtc", "xyz"
     ]
 
     private static func buildInlinePreviewHTML(
@@ -939,7 +939,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             return 40 * mib
         case "bcif":
             return 50 * mib
-        case "csv", "sdf", "sd", "mol", "mol2", "xyz", "gro", "smi", "smiles", "tsv", "cub", "cube", "in", "log", "out", "vasp", "lammpstrj", "top", "psf", "prmtop", "mae", "maegz", "cms":
+        case "abi", "com", "csv", "fdf", "sdf", "sd", "mol", "mol2", "xyz", "gro", "smi", "smiles", "tsv", "cub", "cube", "in", "inp", "nw", "out", "psi4", "qcin", "vasp", "lammpstrj", "top", "psf", "prmtop", "mae", "maegz", "cms":
             return 25 * mib
         case "xtc", "trr", "dcd", "nctraj":
             return 75 * mib
@@ -1502,8 +1502,6 @@ private enum PreviewStructureTextConverter {
             atoms = parseQuantumEspressoInput(lines)
         case "out":
             atoms = parseOrcaOutput(lines)
-        case "log":
-            atoms = parseGaussianOutput(lines) ?? parseOrcaOutput(lines)
         default:
             atoms = nil
         }
@@ -1769,7 +1767,7 @@ private struct StructureFormat {
         case "mae", "maegz", "cms":
             self.molstarFormat = "xyzrender"
             self.isBinary = false
-        case "cub", "cube", "in", "log", "out", "vasp":
+        case "abi", "com", "cub", "cube", "fdf", "in", "inp", "nw", "out", "psi4", "qcin", "vasp":
             self.molstarFormat = "xyzrender"
             self.isBinary = false
         default:
@@ -1925,15 +1923,34 @@ private enum PreviewExternalXyzrenderWorker {
     }
 
     private static func resolvedExecutable(_ configuredExecutable: String) throws -> String {
+        if let bundledExecutable = bundledExecutablePath() {
+            return bundledExecutable
+        }
         if !configuredExecutable.isEmpty { return configuredExecutable }
         let fileManager = FileManager.default
         for directory in executableSearchPaths() {
             let candidate = URL(fileURLWithPath: directory).appendingPathComponent("xyzrender").path
-            if fileManager.isExecutableFile(atPath: candidate) {
+            if fileManager.fileExists(atPath: candidate) {
                 return candidate
             }
         }
         throw PreviewExternalXyzrenderError.missingExecutable
+    }
+
+    private static func bundledExecutablePath() -> String? {
+        let appexURL = Bundle.main.bundleURL
+        let appURL = appexURL
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let candidate = appURL
+            .appendingPathComponent("Contents", isDirectory: true)
+            .appendingPathComponent("Resources", isDirectory: true)
+            .appendingPathComponent("xyzrender-runtime", isDirectory: true)
+            .appendingPathComponent("bin", isDirectory: true)
+            .appendingPathComponent("xyzrender", isDirectory: false)
+            .path
+        return FileManager.default.fileExists(atPath: candidate) ? candidate : nil
     }
 
     private static func executableSearchPaths() -> [String] {

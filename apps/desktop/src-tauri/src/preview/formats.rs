@@ -1,6 +1,10 @@
+use std::collections::BTreeSet;
+use std::sync::OnceLock;
+
 use serde::Deserialize;
 
 const FORMAT_REGISTRY_JSON: &str = include_str!("../../../../../config/preview-formats.json");
+static FORMAT_REGISTRY: OnceLock<Result<FormatRegistry, String>> = OnceLock::new();
 
 #[derive(Clone, Debug)]
 pub(crate) struct FormatInfo {
@@ -32,26 +36,43 @@ struct RegistryViewer {
     external_only: bool,
 }
 
+fn format_registry() -> Result<&'static FormatRegistry, String> {
+    match FORMAT_REGISTRY.get_or_init(|| {
+        serde_json::from_str(FORMAT_REGISTRY_JSON)
+            .map_err(|err| format!("Invalid preview format registry: {err}"))
+    }) {
+        Ok(registry) => Ok(registry),
+        Err(error) => Err(error.clone()),
+    }
+}
+
 pub(crate) fn format_for_extension(extension: &str) -> Result<FormatInfo, String> {
     let normalized = extension.trim().to_ascii_lowercase();
-    let registry: FormatRegistry = serde_json::from_str(FORMAT_REGISTRY_JSON)
-        .map_err(|err| format!("Invalid preview format registry: {err}"))?;
-    registry
+    format_registry()?
         .formats
-        .into_iter()
+        .iter()
         .find(|format| format.extensions.iter().any(|value| value == &normalized))
         .and_then(|format| {
             format
                 .viewer
+                .as_ref()
                 .map(|viewer| (viewer, format.can_open_in_vesta))
         })
-        .map(|viewer| FormatInfo {
-            molstar_format: viewer.0.molstar_format,
-            is_binary: viewer.0.binary,
-            external_only: viewer.0.external_only,
-            can_open_in_vesta: viewer.1,
+        .map(|(viewer, can_open_in_vesta)| FormatInfo {
+            molstar_format: viewer.molstar_format.clone(),
+            is_binary: viewer.binary,
+            external_only: viewer.external_only,
+            can_open_in_vesta,
         })
         .ok_or_else(|| format!("Unsupported structure extension: {normalized}"))
+}
+
+pub(crate) fn supported_structure_extensions() -> Result<BTreeSet<String>, String> {
+    Ok(format_registry()?
+        .formats
+        .iter()
+        .flat_map(|format| format.extensions.iter().cloned())
+        .collect())
 }
 
 pub(crate) fn normalize_renderer_mode(raw: &str) -> &str {
@@ -118,8 +139,21 @@ mod tests {
     }
 
     #[test]
+    fn supports_quantum_chemistry_input_extensions_via_xyzrender() {
+        for extension in ["abi", "com", "fdf", "inp", "nw", "psi4", "qcin"] {
+            let format = format_for_extension(extension)
+                .unwrap_or_else(|_| panic!("{extension} should be supported"));
+            assert_eq!(format.molstar_format, "xyz");
+            assert!(format.external_only, "{extension} should require xyzrender");
+            assert_eq!(resolve_renderer(&format, "auto"), "xyzrender-external");
+        }
+    }
+
+    #[test]
     fn rejects_unknown_extensions() {
         let error = format_for_extension("txt").expect_err("txt should not be supported");
         assert!(error.contains("Unsupported structure extension: txt"));
+        let error = format_for_extension("log").expect_err("log should not be supported");
+        assert!(error.contains("Unsupported structure extension: log"));
     }
 }

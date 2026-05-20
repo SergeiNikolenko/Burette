@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ask, open } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
+import previewFormatRegistry from "../../../config/preview-formats.json";
 import { AppLayout } from "./components/app-layout";
 import { CommandPalette } from "./components/command-palette";
 import type { ShellActions, ShellViewState, StatusKind, StatusNotice } from "./components/types";
@@ -52,7 +53,7 @@ import type { UpdatePreferences, UpdateRelease, UpdateState } from "./update";
 const filters = [
   {
     name: "Molecular structures",
-    extensions: ["pdb", "ent", "pdbqt", "pqr", "cif", "mcif", "mmcif", "bcif", "sdf", "sd", "smi", "smiles", "csv", "tsv", "mol", "mol2", "xyz", "gro", "cub", "cube", "in", "log", "out", "vasp"],
+    extensions: previewFormatRegistry.documentTypes.extensions,
   },
 ];
 

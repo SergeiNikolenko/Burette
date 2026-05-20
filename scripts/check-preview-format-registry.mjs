@@ -14,6 +14,10 @@ function assertSameSet(actual, expected, label) {
   assert.deepEqual(sorted(actual), sorted(expected), label);
 }
 
+function unique(values) {
+  return [...new Set(values)];
+}
+
 function plist(path) {
   const json = execFileSync('plutil', ['-convert', 'json', '-o', '-', path], {
     encoding: 'utf8',
@@ -22,6 +26,25 @@ function plist(path) {
 }
 
 assert.deepEqual(packageJson.workspaces, ['apps/*', 'packages/*']);
+
+const expectedQuickLookContentTypes = unique(
+  registry.formats.flatMap((format) => [format.contentType, ...(format.contentTypeAliases ?? [])]).filter(Boolean),
+);
+assertSameSet(
+  registry.quickLook.contentTypes,
+  expectedQuickLookContentTypes,
+  'Quick Look content types must match the canonical format registry',
+);
+assert.equal(
+  registry.quickLook.contentTypes.some(
+    (type) =>
+      type.startsWith('dyn.') ||
+      type.startsWith('com.local.molstarquicklook10.') ||
+      type === 'com.local.burettexyzrender.smiles',
+  ),
+  false,
+  'Quick Look content types must not include dynamic or legacy identifiers',
+);
 
 const appInfo = plist('apps/desktop/src-tauri/AppMetadata.plist');
 const appDocumentType = appInfo.CFBundleDocumentTypes?.[0] ?? {};

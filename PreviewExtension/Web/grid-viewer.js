@@ -75,13 +75,24 @@
     }
     setStatus('[grid] Loading RDKit.js...');
     const cfg = config();
-    const options = { locateFile: file => cfg.rdkitWasmPath || `../assets/rdkit/${file}` };
+    const wasmPath = cfg.rdkitWasmPath || '../assets/rdkit/RDKit_minimal.wasm';
+    const options = { locateFile: () => wasmPath };
     if (window.BurreteRDKitWasmBase64) {
       options.wasmBinary = base64ToBytes(window.BurreteRDKitWasmBase64);
       window.BurreteRDKitWasmBase64 = '';
+    } else if (wasmPath) {
+      options.wasmBinary = await loadWasmBinary(wasmPath);
     }
     state.rdkit = await window.initRDKitModule(options);
     return state.rdkit;
+  }
+
+  async function loadWasmBinary(path) {
+    const response = await fetch(String(path));
+    if (!response.ok) {
+      throw new Error(`Failed to load RDKit wasm: ${response.status} ${response.statusText}`.trim());
+    }
+    return new Uint8Array(await response.arrayBuffer());
   }
 
   function base64ToBytes(value) {
