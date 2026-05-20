@@ -867,7 +867,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             let size = ((try? fileManager.attributesOfItem(atPath: url.path)[.size]) as? NSNumber)?.intValue ?? -1
             diagnostics.append("[build] grid.asset.\(name).exists=\(exists) size=\(size)")
             guard exists else {
-                throw PreviewError.couldNotCreateRuntimePreview("Missing vendored molecule grid asset: \(name). Run npm install --ignore-scripts && npm run vendor:rdkit")
+                throw PreviewError.couldNotCreateRuntimePreview("Missing vendored molecule grid asset: \(name). Run bun install --ignore-scripts && bun run vendor:rdkit")
             }
         }
     }
@@ -2280,7 +2280,7 @@ private enum PreviewError: LocalizedError {
         case .missingWebAsset(let name):
             return "Missing bundled Web asset: \(name)"
         case .molstarAssetsNotVendored(let size):
-            return "Mol* assets were not vendored into the extension. molstar.js is only \(size) bytes. Run ./scripts/build.sh so npm copies build/viewer/molstar.js and molstar.css before Xcode signs the app."
+            return "Mol* assets were not vendored into the extension. molstar.js is only \(size) bytes. Run ./scripts/build.sh so Bun vendors build/viewer/molstar.js and molstar.css before Xcode signs the app."
         case .emptyStructureFile(let name):
             return "The structure file is empty or not downloaded locally: \(name)"
         case .unsupportedStructureFile(let name):

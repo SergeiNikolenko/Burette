@@ -8,8 +8,8 @@ Burrete's 2D molecule grid expects these vendored offline files in this director
 Generate them with:
 
 ```sh
-npm install --ignore-scripts
-npm run vendor:rdkit
+bun install --ignore-scripts
+bun run vendor:rdkit
 ```
 
 The files are vendored into the app bundle so Quick Look previews do not depend on network access.

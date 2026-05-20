@@ -31,7 +31,7 @@ com.local.burrete10.cif
 ## Common Commands
 
 ```bash
-npm run ci:fast
+bun run ci:fast
 ./scripts/build.sh
 ./scripts/install.sh
 ./scripts/force-preview.sh samples/mini.pdb
