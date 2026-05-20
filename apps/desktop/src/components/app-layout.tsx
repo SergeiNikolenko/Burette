@@ -27,7 +27,7 @@ export function AppLayout({
 }: {
   state: ShellViewState;
   actions: ShellActions;
-  searchRef: React.Ref<HTMLButtonElement>;
+  searchRef: React.Ref<HTMLInputElement>;
   onDismissStatus: () => void;
   onToggleSidebar: () => void;
   onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
@@ -62,6 +62,7 @@ export function AppLayout({
       <div className="drag-region" data-tauri-drag-region />
       <div className="chrome-leading-controls">
         <button
+          type="button"
           className="chrome-button sidebar-toggle-root"
           onMouseDown={(event) => event.preventDefault()}
           onClick={onToggleSidebar}

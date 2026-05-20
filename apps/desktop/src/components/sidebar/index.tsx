@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import {
   Cancel01Icon,
@@ -11,11 +11,12 @@ import { ScrollFade } from "../scroll-fade";
 import { rendererLabel } from "../format";
 import type { ShellActions, ShellViewState } from "../types";
 
-export const Sidebar = forwardRef<HTMLButtonElement, {
+export const Sidebar = forwardRef<HTMLInputElement, {
   state: ShellViewState;
   actions: ShellActions;
   open: boolean;
 }>(({ state, actions, open }, searchRef) => {
+  const [query, setQuery] = useState("");
   const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
   const [workspaceMenuPosition, setWorkspaceMenuPosition] = useState({
     left: 12,
@@ -78,6 +79,23 @@ export const Sidebar = forwardRef<HTMLButtonElement, {
     "--workspace-menu-max-height": workspaceMenuPosition.maxHeight + "px",
   } as CSSProperties;
 
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleDocuments = useMemo(() => {
+    if (!normalizedQuery) return state.documents;
+    return state.documents.filter((document) => {
+      const haystack = `${document.title} ${document.path} ${rendererLabel(document.renderer)}`.toLowerCase();
+      return haystack.includes(normalizedQuery);
+    });
+  }, [normalizedQuery, state.documents]);
+
+  const visibleRecentStructures = useMemo(() => {
+    if (!normalizedQuery) return state.recentStructures;
+    return state.recentStructures.filter((structure) => {
+      const haystack = `${structure.title} ${structure.path} ${rendererLabel(structure.renderer)}`.toLowerCase();
+      return haystack.includes(normalizedQuery);
+    });
+  }, [normalizedQuery, state.recentStructures]);
+
   return (
     <aside
       className="sidebar"
@@ -88,46 +106,47 @@ export const Sidebar = forwardRef<HTMLButtonElement, {
     >
       <div className="sidebar-spacer" data-tauri-drag-region />
       <ScrollFade className="sidebar-scroll">
-        <button
-          ref={searchRef}
-          type="button"
-          className="sidebar-search-row"
-          onClick={actions.openCommandPalette}
-          aria-label="Search"
-        >
+        <label className="sidebar-search-row">
           <span className="sidebar-search-icon" aria-hidden="true">
             <HugeiconsIcon icon={Search01Icon} size={16} color="currentColor" strokeWidth={2} />
           </span>
-          <span className="sidebar-search-label">Search</span>
-          <kbd>⌘<span>P</span></kbd>
-        </button>
+          <input
+            ref={searchRef}
+            className="sidebar-search-input"
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Filter structures"
+            aria-label="Filter open and recent structures"
+          />
+        </label>
         <SidebarSection title="Open">
           {state.documents.length === 0 ? (
             <div className="empty-sidebar">No open structures</div>
-          ) : state.visibleDocuments.length === 0 ? (
+          ) : visibleDocuments.length === 0 ? (
             <div className="empty-sidebar">No matching structures</div>
           ) : (
             <div className="project-list" role="list">
-              {state.visibleDocuments.map((document) => (
+              {visibleDocuments.map((document) => (
                 <div
                   key={document.id}
-                  role="button"
-                  tabIndex={0}
-                  className={state.page === "viewer" && document.id === state.activeDocumentId ? "project active" : "project"}
-                  onClick={() => actions.selectDocument(document.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      actions.selectDocument(document.id);
-                    }
-                  }}
-                  aria-label={document.title + ", " + rendererLabel(document.renderer)}
-                  title={rendererLabel(document.renderer)}
+                  role="listitem"
+                  className="project-shell"
+                  data-active={state.page === "viewer" && document.id === state.activeDocumentId || undefined}
                 >
-                  <span className="project-icon" aria-hidden="true">
-                    <HugeiconsIcon icon={File02Icon} size={16} color="currentColor" strokeWidth={2} />
-                  </span>
-                  <span className="project-name">{document.title}</span>
+                  <button
+                    type="button"
+                    className={state.page === "viewer" && document.id === state.activeDocumentId ? "project active" : "project"}
+                    onClick={() => actions.selectDocument(document.id)}
+                    aria-current={state.page === "viewer" && document.id === state.activeDocumentId ? "page" : undefined}
+                    aria-label={document.title + ", " + rendererLabel(document.renderer)}
+                    title={rendererLabel(document.renderer)}
+                  >
+                    <span className="project-icon" aria-hidden="true">
+                      <HugeiconsIcon icon={File02Icon} size={16} color="currentColor" strokeWidth={2} />
+                    </span>
+                    <span className="project-name">{document.title}</span>
+                  </button>
                   <button
                     type="button"
                     className="close-hit"
@@ -144,29 +163,27 @@ export const Sidebar = forwardRef<HTMLButtonElement, {
             </div>
           )}
         </SidebarSection>
-        {state.recentStructures.length > 0 && (
+        {visibleRecentStructures.length > 0 && (
           <SidebarSection title="Recent">
             <div className="project-list" role="list">
-              {state.recentStructures.map((structure) => (
+              {visibleRecentStructures.map((structure) => (
                 <div
                   key={structure.path}
-                  role="button"
-                  tabIndex={0}
-                  className="project recent-project"
-                  onClick={() => void actions.openRecentStructure(structure)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      void actions.openRecentStructure(structure);
-                    }
-                  }}
-                  aria-label={"Open recent " + structure.title}
-                  title={rendererLabel(structure.renderer)}
+                  role="listitem"
+                  className="project-shell"
                 >
-                  <span className="project-icon" aria-hidden="true">
-                    <HugeiconsIcon icon={File02Icon} size={16} color="currentColor" strokeWidth={2} />
-                  </span>
-                  <span className="project-name">{structure.title}</span>
+                  <button
+                    type="button"
+                    className="project recent-project"
+                    onClick={() => void actions.openRecentStructure(structure)}
+                    aria-label={"Open recent " + structure.title}
+                    title={rendererLabel(structure.renderer)}
+                  >
+                    <span className="project-icon" aria-hidden="true">
+                      <HugeiconsIcon icon={File02Icon} size={16} color="currentColor" strokeWidth={2} />
+                    </span>
+                    <span className="project-name">{structure.title}</span>
+                  </button>
                 </div>
               ))}
             </div>
