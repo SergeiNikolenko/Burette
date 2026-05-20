@@ -1,5 +1,5 @@
-import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import { forwardRef, useCallback, useEffect, useRef, useState } from "react";
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import {
   Cancel01Icon,
   File02Icon,
@@ -7,6 +7,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { appInstanceLabel } from "../../lib/instance";
+import { filterSidebarProjects, type SidebarProject, type SidebarProjectItem } from "../../lib/sidebar-projects";
 import { ScrollFade } from "../scroll-fade";
 import { rendererLabel } from "../format";
 import type { ShellActions, ShellViewState } from "../types";
@@ -16,7 +17,7 @@ export const Sidebar = forwardRef<HTMLInputElement, {
   actions: ShellActions;
   open: boolean;
 }>(({ state, actions, open }, searchRef) => {
-  const [query, setQuery] = useState("");
+  const visibleProjects = filterSidebarProjects(state.sidebarProjects, state.sidebarQuery);
   const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
   const [workspaceMenuPosition, setWorkspaceMenuPosition] = useState({
     left: 12,
@@ -79,23 +80,6 @@ export const Sidebar = forwardRef<HTMLInputElement, {
     "--workspace-menu-max-height": workspaceMenuPosition.maxHeight + "px",
   } as CSSProperties;
 
-  const normalizedQuery = query.trim().toLowerCase();
-  const visibleDocuments = useMemo(() => {
-    if (!normalizedQuery) return state.documents;
-    return state.documents.filter((document) => {
-      const haystack = `${document.title} ${document.path} ${rendererLabel(document.renderer)}`.toLowerCase();
-      return haystack.includes(normalizedQuery);
-    });
-  }, [normalizedQuery, state.documents]);
-
-  const visibleRecentStructures = useMemo(() => {
-    if (!normalizedQuery) return state.recentStructures;
-    return state.recentStructures.filter((structure) => {
-      const haystack = `${structure.title} ${structure.path} ${rendererLabel(structure.renderer)}`.toLowerCase();
-      return haystack.includes(normalizedQuery);
-    });
-  }, [normalizedQuery, state.recentStructures]);
-
   return (
     <aside
       className="sidebar"
@@ -106,98 +90,49 @@ export const Sidebar = forwardRef<HTMLInputElement, {
     >
       <div className="sidebar-spacer" data-tauri-drag-region />
       <ScrollFade className="sidebar-scroll">
-        <label className="sidebar-search-row">
+        <div className="sidebar-search-row">
           <span className="sidebar-search-icon" aria-hidden="true">
             <HugeiconsIcon icon={Search01Icon} size={16} color="currentColor" strokeWidth={2} />
           </span>
           <input
             ref={searchRef}
+            type="text"
             className="sidebar-search-input"
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Filter structures"
-            aria-label="Filter open and recent structures"
+            value={state.sidebarQuery}
+            onChange={(event) => actions.setSidebarQuery(event.target.value)}
+            placeholder="Search projects and structures"
+            aria-label="Search projects and structures"
           />
-        </label>
-        <SidebarSection title="Open">
-          {state.documents.length === 0 ? (
-            <div className="empty-sidebar">No open structures</div>
-          ) : visibleDocuments.length === 0 ? (
-            <div className="empty-sidebar">No matching structures</div>
+          <kbd>⌘<span>P</span></kbd>
+        </div>
+        <SidebarSection title="Projects">
+          {visibleProjects.length === 0 ? (
+            <div className="empty-sidebar">
+              {state.sidebarQuery.trim() ? "No matching projects or structures" : "No project structures yet"}
+            </div>
           ) : (
-            <div className="project-list" role="list">
-              {visibleDocuments.map((document) => (
-                <div
-                  key={document.id}
-                  role="listitem"
-                  className="project-shell"
-                  data-active={state.page === "viewer" && document.id === state.activeDocumentId || undefined}
-                >
-                  <button
-                    type="button"
-                    className={state.page === "viewer" && document.id === state.activeDocumentId ? "project active" : "project"}
-                    onClick={() => actions.selectDocument(document.id)}
-                    aria-current={state.page === "viewer" && document.id === state.activeDocumentId ? "page" : undefined}
-                    aria-label={document.title + ", " + rendererLabel(document.renderer)}
-                    title={rendererLabel(document.renderer)}
-                  >
-                    <span className="project-icon" aria-hidden="true">
-                      <HugeiconsIcon icon={File02Icon} size={16} color="currentColor" strokeWidth={2} />
-                    </span>
-                    <span className="project-name">{document.title}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="close-hit"
-                    aria-label={"Close " + document.title}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      actions.closeDocument(document.id);
-                    }}
-                  >
-                    <HugeiconsIcon icon={Cancel01Icon} size={14} color="currentColor" strokeWidth={2} />
-                  </button>
-                </div>
+            <div className="project-tree" role="list">
+              {visibleProjects.map((project) => (
+                <ProjectGroup
+                  key={project.id}
+                  project={project}
+                  projectCount={visibleProjects.length}
+                  state={state}
+                  actions={actions}
+                />
               ))}
             </div>
           )}
         </SidebarSection>
-        {visibleRecentStructures.length > 0 && (
-          <SidebarSection title="Recent">
-            <div className="project-list" role="list">
-              {visibleRecentStructures.map((structure) => (
-                <div
-                  key={structure.path}
-                  role="listitem"
-                  className="project-shell"
-                >
-                  <button
-                    type="button"
-                    className="project recent-project"
-                    onClick={() => void actions.openRecentStructure(structure)}
-                    aria-label={"Open recent " + structure.title}
-                    title={rendererLabel(structure.renderer)}
-                  >
-                    <span className="project-icon" aria-hidden="true">
-                      <HugeiconsIcon icon={File02Icon} size={16} color="currentColor" strokeWidth={2} />
-                    </span>
-                    <span className="project-name">{structure.title}</span>
-                  </button>
-                </div>
-              ))}
-            </div>
-          </SidebarSection>
-        )}
       </ScrollFade>
       <div className="sidebar-footer" ref={menuRef}>
         {workspaceMenuOpen && (
           <div className="sidebar-workspace-menu" role="menu" aria-label="Workspace actions" style={workspaceMenuStyle}>
             <button type="button" role="menuitem" onClick={() => runWorkspaceAction(actions.chooseWorkspace)}>
-              Choose workspace...
+              Add project folder...
             </button>
             <button type="button" role="menuitem" onClick={() => runWorkspaceAction(actions.openWorkspaceFolder)}>
-              Open folder
+              Open active project folder
             </button>
           </div>
         )}
@@ -229,10 +164,175 @@ export const Sidebar = forwardRef<HTMLInputElement, {
 });
 Sidebar.displayName = "Sidebar";
 
+function ProjectGroup({
+  project,
+  projectCount,
+  state,
+  actions,
+}: {
+  project: SidebarProject;
+  projectCount: number;
+  state: ShellViewState;
+  actions: ShellActions;
+}) {
+  const expanded = state.sidebarQuery.trim().length > 0
+    || state.expandedProjectIds.includes(project.id)
+    || project.isActive
+    || projectCount === 1;
+
+  const handleToggle = () => {
+    actions.toggleProjectExpanded(project.id);
+  };
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handleToggle();
+    }
+  };
+
+  return (
+    <div className="project-group" role="listitem">
+      <div
+        role="button"
+        tabIndex={0}
+        className={project.isActive ? "project-group-row active" : "project-group-row"}
+        onClick={handleToggle}
+        onKeyDown={handleKeyDown}
+        aria-expanded={expanded}
+        aria-label={`${project.title}, ${project.items.length} structure${project.items.length === 1 ? "" : "s"}`}
+      >
+        <span className={expanded ? "project-chevron expanded" : "project-chevron"} aria-hidden="true">
+          <ChevronIcon />
+        </span>
+        <span className="project-folder-icon" aria-hidden="true">
+          <FolderIcon />
+        </span>
+        <span className="project-group-copy">
+          <span className="project-group-title">{project.title}</span>
+          {project.subtitle && <span className="project-group-subtitle">{project.subtitle}</span>}
+        </span>
+        <span className="project-group-count" aria-hidden="true">{project.items.length}</span>
+        {project.rootPath && (
+          <button
+            type="button"
+            className="project-open-folder"
+            aria-label={`Open folder ${project.title}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              void actions.openProjectFolder(project.rootPath);
+            }}
+          >
+            <OpenFolderIcon />
+          </button>
+        )}
+      </div>
+      {expanded && (
+        <div className="project-children" role="list">
+          {project.items.map((item) => (
+            <ProjectItem key={item.key} item={item} actions={actions} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProjectItem({ item, actions }: { item: SidebarProjectItem; actions: ShellActions }) {
+  const openItem = () => {
+    if (item.documentId) {
+      actions.selectDocument(item.documentId);
+      return;
+    }
+    void actions.openRecentStructure({
+      path: item.path,
+      title: item.title,
+      extension: item.extension,
+      renderer: item.renderer,
+      byteCount: item.byteCount,
+      openedAt: item.openedAt ?? Date.now(),
+    });
+  };
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openItem();
+    }
+  };
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      className={item.isActive ? "project active nested-project" : "project nested-project"}
+      onClick={openItem}
+      onKeyDown={handleKeyDown}
+      aria-label={`${item.relativePath}, ${rendererLabel(item.renderer)}${item.isOpen ? "" : ", recent"}`}
+      title={item.relativePath}
+    >
+      <span className="project-icon" aria-hidden="true">
+        <HugeiconsIcon icon={File02Icon} size={16} color="currentColor" strokeWidth={2} />
+      </span>
+      <span className="project-copy">
+        <span className="project-name">{item.title}</span>
+        {item.relativePath !== item.title && (
+          <span className="project-subpath">{item.relativePath}</span>
+        )}
+      </span>
+      {!item.isOpen && <span className="project-source-badge">Recent</span>}
+      {item.documentId && (
+        <button
+          type="button"
+          className="close-hit"
+          aria-label={"Close " + item.title}
+          onClick={(event) => {
+            event.stopPropagation();
+            actions.closeDocument(item.documentId!);
+          }}
+        >
+          <HugeiconsIcon icon={Cancel01Icon} size={14} color="currentColor" strokeWidth={2} />
+        </button>
+      )}
+    </div>
+  );
+}
+
 function SidebarSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="sidebar-section" aria-label={title}>
+      <div className="sidebar-section-title">{title}</div>
       {children}
     </section>
+  );
+}
+
+function ChevronIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+      <path d="M3.5 2L6.5 5L3.5 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function FolderIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <path
+        d="M1.75 5.25C1.75 4.42157 2.42157 3.75 3.25 3.75H6.11861C6.4931 3.75 6.85339 3.89022 7.12964 4.14291L7.87036 4.85709C8.14661 5.10978 8.5069 5.25 8.88139 5.25H12.75C13.5784 5.25 14.25 5.92157 14.25 6.75V11.25C14.25 12.0784 13.5784 12.75 12.75 12.75H3.25C2.42157 12.75 1.75 12.0784 1.75 11.25V5.25Z"
+        stroke="currentColor"
+        strokeWidth="1.2"
+      />
+    </svg>
+  );
+}
+
+function OpenFolderIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path d="M5 3.5H3.75C3.05964 3.5 2.5 4.05964 2.5 4.75V10.25C2.5 10.9404 3.05964 11.5 3.75 11.5H9.25C9.94036 11.5 10.5 10.9404 10.5 10.25V9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M7 3H11V7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10.75 3.25L6 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
