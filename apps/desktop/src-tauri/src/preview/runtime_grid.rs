@@ -1,3 +1,4 @@
+use base64::Engine;
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::fs;
@@ -65,6 +66,10 @@ pub(crate) fn create_grid_runtime<R: Runtime>(
     prune_runtime_dirs(&base);
 
     let records_included = collection.records.len();
+    let rdkit_wasm_base64 = base64::engine::general_purpose::STANDARD.encode(
+        fs::read(assets.join("rdkit").join("RDKit_minimal.wasm"))
+            .map_err(|err| format!("read RDKit wasm: {err}"))?,
+    );
     let records_payload: Vec<_> = collection
         .records
         .iter()
@@ -102,7 +107,7 @@ pub(crate) fn create_grid_runtime<R: Runtime>(
         "recordsIncluded": records_included,
         "recordsTruncated": collection.records_total > records_included,
         "pageSize": 96,
-        "rdkitWasmPath": asset_url(&assets.join("rdkit").join("RDKit_minimal.wasm")),
+        "rdkitWasmPath": "../assets/rdkit/RDKit_minimal.wasm",
         "capabilities": {
             "selection": true,
             "export": true,
@@ -125,6 +130,11 @@ pub(crate) fn create_grid_runtime<R: Runtime>(
     fs::write(
         runtime.join("preview-grid-records.js"),
         format!("window.BurreteGridRecords = {records_text};\n"),
+    )
+    .map_err(|err| err.to_string())?;
+    fs::write(
+        runtime.join("preview-rdkit-wasm.js"),
+        format!("window.BurreteRDKitWasmBase64 = {:?};\n", rdkit_wasm_base64),
     )
     .map_err(|err| err.to_string())?;
     Ok(Some(runtime.join("index.html")))
@@ -150,6 +160,7 @@ fn grid_html(
     let grid_css = versioned_asset_url(&assets.join("grid.css"));
     let config_js = asset_url(&runtime.join("preview-config.js"));
     let records_js = asset_url(&runtime.join("preview-grid-records.js"));
+    let rdkit_wasm_js = asset_url(&runtime.join("preview-rdkit-wasm.js"));
     let rdkit_js = versioned_asset_url(&assets.join("rdkit").join("RDKit_minimal.js"));
     let grid_js = versioned_asset_url(&assets.join("grid-viewer.js"));
     format!(
@@ -177,6 +188,7 @@ fn grid_html(
   <div id="status">Loading molecule grid...</div>
   <script src="{config_js}"></script>
   <script src="{records_js}"></script>
+  <script src="{rdkit_wasm_js}"></script>
   <script src="{rdkit_js}"></script>
   <script src="{grid_js}"></script>
 </body>
@@ -185,7 +197,7 @@ fn grid_html(
 }
 
 fn versioned_asset_url(path: &Path) -> String {
-    format!("{}?v=grid-ui-v4", asset_url(path))
+    format!("{}?v=grid-ui-v5", asset_url(path))
 }
 
 fn grid_can_preview(extension: &str) -> bool {
