@@ -38,6 +38,7 @@ You can also install it with Bun:
 
 ```bash
 bunx burrete install
+bunx burrete install --beta
 ```
 
 Or download Burrete from the GitHub Releases page:

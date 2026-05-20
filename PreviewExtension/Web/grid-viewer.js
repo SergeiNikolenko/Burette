@@ -69,7 +69,7 @@
   async function initRDKit() {
     if (state.rdkit) return state.rdkit;
     if (typeof window.initRDKitModule !== 'function') {
-      throw new Error('RDKit_minimal.js is missing. Run npm run vendor:rdkit and rebuild.');
+      throw new Error('RDKit_minimal.js is missing. Run bun run vendor:rdkit and rebuild.');
     }
     setStatus('[grid] Loading RDKit.js...');
     const cfg = config();
