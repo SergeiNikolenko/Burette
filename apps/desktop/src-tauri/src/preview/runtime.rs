@@ -16,6 +16,7 @@ pub(crate) struct ViewerPreferences {
     pub(crate) theme: String,
     pub(crate) canvas_background: String,
     pub(crate) renderer_mode: String,
+    pub(crate) molstar_style: String,
     pub(crate) xyz_fast_style: String,
 }
 
@@ -24,27 +25,105 @@ pub(crate) struct ViewerPreferences {
 pub(crate) struct ViewerReloadOptions {
     pub(crate) xyzrender_orientation_ref: Option<String>,
     pub(crate) xyzrender_preset: Option<String>,
+    pub(crate) xyzrender_controls: Option<XyzrenderControls>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct XyzrenderControls {
+    pub(crate) transparent_background: Option<bool>,
+    pub(crate) canvas_size: Option<f64>,
+    pub(crate) atom_scale: Option<f64>,
+    pub(crate) bond_width: Option<f64>,
+    pub(crate) atom_stroke_width: Option<f64>,
+    pub(crate) mol_color: Option<String>,
+    pub(crate) gradients: Option<bool>,
+    pub(crate) fog: Option<bool>,
+    pub(crate) fog_strength: Option<f64>,
+    pub(crate) show_vdw: Option<bool>,
+    pub(crate) vdw_opacity: Option<f64>,
+    pub(crate) vdw_scale: Option<f64>,
+    pub(crate) hide_bonds: Option<bool>,
+    pub(crate) show_cell: Option<bool>,
+    pub(crate) show_ghosts: Option<bool>,
+    pub(crate) show_axes: Option<bool>,
+    pub(crate) cell_width: Option<f64>,
+    pub(crate) supercell: Option<[i32; 3]>,
+    pub(crate) custom_config_path: Option<String>,
+    pub(crate) extra_arguments: Option<String>,
 }
 
 impl ViewerPreferences {
-    pub(crate) fn resolved_theme(&self) -> &str {
-        if self.theme == "auto" {
-            "dark"
-        } else {
-            self.theme.as_str()
+    pub(crate) fn theme_for_runtime(&self) -> &str {
+        match self.theme.as_str() {
+            "dark" | "light" | "auto" => self.theme.as_str(),
+            _ => "auto",
         }
     }
 
-    pub(crate) fn resolved_canvas_background(&self) -> &str {
-        if self.canvas_background == "auto" {
-            "black"
+    pub(crate) fn resolved_molstar_style(&self) -> &str {
+        if self.molstar_style == "default" {
+            "default"
         } else {
-            self.canvas_background.as_str()
+            "illustrative"
+        }
+    }
+
+    pub(crate) fn canvas_background_for_runtime(&self) -> &str {
+        match self.canvas_background.as_str() {
+            "auto" | "black" | "graphite" | "white" | "transparent" => {
+                self.canvas_background.as_str()
+            }
+            _ => "auto",
         }
     }
 
     pub(crate) fn resolved_transparent_background(&self) -> bool {
-        self.resolved_canvas_background() == "transparent"
+        self.canvas_background_for_runtime() == "transparent"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ViewerPreferences;
+
+    fn preferences(theme: &str, canvas_background: &str) -> ViewerPreferences {
+        ViewerPreferences {
+            theme: theme.to_string(),
+            canvas_background: canvas_background.to_string(),
+            renderer_mode: "auto".to_string(),
+            molstar_style: "illustrative".to_string(),
+            xyz_fast_style: "default".to_string(),
+        }
+    }
+
+    #[test]
+    fn preserves_auto_theme_for_runtime() {
+        assert_eq!(preferences("auto", "auto").theme_for_runtime(), "auto");
+        assert_eq!(preferences("light", "auto").theme_for_runtime(), "light");
+        assert_eq!(preferences("weird", "auto").theme_for_runtime(), "auto");
+    }
+
+    #[test]
+    fn preserves_auto_canvas_background_for_runtime() {
+        assert_eq!(
+            preferences("auto", "auto").canvas_background_for_runtime(),
+            "auto"
+        );
+        assert_eq!(
+            preferences("auto", "white").canvas_background_for_runtime(),
+            "white"
+        );
+        assert_eq!(
+            preferences("auto", "broken").canvas_background_for_runtime(),
+            "auto"
+        );
+    }
+
+    #[test]
+    fn transparent_background_only_when_explicit() {
+        assert!(preferences("auto", "transparent").resolved_transparent_background());
+        assert!(!preferences("auto", "auto").resolved_transparent_background());
     }
 }
 
