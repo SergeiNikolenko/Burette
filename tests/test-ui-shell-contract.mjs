@@ -268,6 +268,9 @@ assert.doesNotMatch(browserDevDocuments, /window\.parent\.postMessage\(\{ source
 assert.match(gridViewer, /function resolveTheme\(value\)/);
 assert.match(gridViewer, /prefers-color-scheme: light/);
 assert.match(gridViewer, /function installThemeListener\(cfg\)/);
+assert.match(gridViewer, /async function loadWasmBinary\(path\)/);
+assert.match(gridViewer, /fetch\(String\(path\)\)/);
+assert.match(gridViewer, /new Uint8Array\(await response\.arrayBuffer\(\)\)/);
 assert.doesNotMatch(gridViewer, /const theme = cfg\.theme === 'light' \? 'light' : 'dark'/);
 assert.match(styles, /\.molecule-stage/);
 assert.match(styles, /inset: var\(--chrome-height\) 0 0/);
