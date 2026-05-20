@@ -2,7 +2,7 @@
 
 ## Mol*
 
-The preview engine vendors `molstar/build/viewer/molstar.js` and `molstar/build/viewer/molstar.css` from the `molstar` npm package at build time. Mol* is MIT-licensed by its contributors. See the `molstar` package and repository for the authoritative license text.
+The preview engine vendors `molstar/build/viewer/molstar.js` and `molstar/build/viewer/molstar.css` from the `molstar` package at build time. Mol* is MIT-licensed by its contributors. See the `molstar` package and repository for the authoritative license text.
 
 ## QuickLookProtein
 
