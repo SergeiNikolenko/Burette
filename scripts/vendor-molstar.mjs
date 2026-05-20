@@ -25,7 +25,7 @@ const files = ['molstar.js', 'molstar.css'];
 
 if (!existsSync(viewerDir) || !statSync(viewerDir).isDirectory()) {
   console.error(`Expected Mol* viewer build directory not found: ${viewerDir}`);
-  console.error('The Mol* npm package layout may have changed. Check node_modules/molstar/build/viewer.');
+  console.error('The Mol* package layout may have changed. Check node_modules/molstar/build/viewer.');
   process.exit(1);
 }
 

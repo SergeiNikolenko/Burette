@@ -11,6 +11,7 @@ bun run check:js
 bun run check:vendor-assets
 bun run check:formats
 bun run test:agent
+bun run test:update
 bun run test:ui
 bun run test:tauri-structure
 cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
