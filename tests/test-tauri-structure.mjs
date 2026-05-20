@@ -264,8 +264,10 @@ assert.match(previewRuntimeViewer, /window\.BurretePreviewDataScriptURL = \{data
 assert.match(previewRuntimeViewer, /window\.BurreteDataURL = \{data_bin_js:\?\};/);
 assert.match(previewRuntimeViewer, /window\.BurreteMolstarURL = \{molstar_js:\?\};/);
 assert.match(previewRuntimeViewer, /window\.BurreteXyzFastURL = \{xyz_fast_js:\?\};/);
-assert.doesNotMatch(previewRuntimeGrid, /BurreteRDKitWasmBase64/);
-assert.match(previewRuntimeGrid, /"rdkitWasmPath": asset_url/);
+assert.match(previewRuntimeGrid, /window\.BurreteRDKitWasmBase64 = \{:\?\};\\n/);
+assert.match(previewRuntimeGrid, /"rdkitWasmPath": "\.\.\/assets\/rdkit\/RDKit_minimal\.wasm"/);
+assert.match(previewRuntimeGrid, /runtime\.join\("preview-rdkit-wasm\.js"\)/);
+assert.match(previewRuntimeGrid, /<script src="\{rdkit_wasm_js\}"><\/script>/);
 assert.match(previewRuntimeViewer, /body\.documentId = String\(window\.BurreteConfig\.documentId\)/);
 assert.match(viewerRuntimeCSS, /--buret-toolbar-safe-top: 12px/);
 assert.match(viewerRuntimeCSS, /--buret-viewport-controls-top: 64px/);

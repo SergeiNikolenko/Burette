@@ -17,7 +17,7 @@ type GridRecord = {
 };
 
 const MAX_STRUCTURE_FILE_SIZE = 75 * 1024 * 1024;
-const GRID_ASSET_VERSION = "grid-ui-v4";
+const GRID_ASSET_VERSION = "grid-ui-v5";
 const REPO_ROOT = String(import.meta.env.BURRETE_REPO_ROOT || "");
 const WEB_ASSETS_BASE = fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
 
