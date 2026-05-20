@@ -95,9 +95,22 @@ fn collect_supported_files(
             continue;
         };
         let path = entry.path();
-        let Ok(metadata) = fs::metadata(&path) else {
+        let Ok(metadata) = fs::symlink_metadata(&path) else {
             continue;
         };
+        if metadata.file_type().is_symlink() {
+            let Ok(target_metadata) = fs::metadata(&path) else {
+                continue;
+            };
+            if target_metadata.is_dir() {
+                let _ = collect_supported_files(&path, visited_directories, collected);
+                continue;
+            }
+            if target_metadata.is_file() && looks_like_supported_structure_file(&path) {
+                collected.insert(path);
+            }
+            continue;
+        }
         if metadata.is_dir() {
             let _ = collect_supported_files(&path, visited_directories, collected);
             continue;

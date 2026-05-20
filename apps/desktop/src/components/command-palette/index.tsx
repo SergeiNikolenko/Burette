@@ -26,6 +26,7 @@ const rendererCommands: Array<{
   value: ViewerPreferences["rendererMode"];
 }> = [
   { id: "renderer-auto", label: "Renderer: Auto", value: "auto" },
+  { id: "renderer-xyz-fast", label: "Renderer: Fast XYZ", value: "xyz-fast" },
   { id: "renderer-molstar", label: "Renderer: Mol*", value: "molstar" },
   { id: "renderer-xyzrender", label: "Renderer: xyzrender external", value: "xyzrender-external" },
 ];
