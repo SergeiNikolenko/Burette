@@ -1,4 +1,5 @@
 import packageInfo from "../../../package.json";
+import { compareVersions } from "./lib/semver";
 
 export type UpdateChannel = "stable" | "beta";
 
@@ -141,14 +142,13 @@ export function releasePageUrl(release: UpdateRelease | null) {
 }
 
 function newestUpdate(releases: GitHubRelease[], channel: UpdateChannel): UpdateRelease | null {
-  const current = parseVersion(CURRENT_VERSION);
   const candidates = releases
     .filter((release) => !release.draft)
     .filter((release) => channel === "beta" || !release.prerelease)
     .map(normalizeRelease)
     .filter((release): release is UpdateRelease => release !== null)
-    .filter((release) => compareVersions(parseVersion(release.tagName), current) > 0)
-    .sort((a, b) => compareVersions(parseVersion(b.tagName), parseVersion(a.tagName)));
+    .filter((release) => compareVersions(release.tagName, CURRENT_VERSION) > 0)
+    .sort((a, b) => compareVersions(b.tagName, a.tagName));
   return candidates[0] ?? null;
 }
 
@@ -230,20 +230,6 @@ function manifestSignatureAssetFor(assets: GitHubAsset[], archiveName: string): 
     Number(asset.size || 0) > 0 &&
     Number(asset.size || 0) <= 512
   ) ?? null;
-}
-
-function parseVersion(raw: string) {
-  return raw.trim().replace(/^v/i, "").split(/[+-]/)[0].split(".").map((part) => Number.parseInt(part, 10) || 0);
-}
-
-function compareVersions(left: number[], right: number[]) {
-  const count = Math.max(left.length, right.length);
-  for (let index = 0; index < count; index += 1) {
-    const a = left[index] ?? 0;
-    const b = right[index] ?? 0;
-    if (a !== b) return a > b ? 1 : -1;
-  }
-  return 0;
 }
 
 function storedBoolean(key: string, fallback: boolean) {
