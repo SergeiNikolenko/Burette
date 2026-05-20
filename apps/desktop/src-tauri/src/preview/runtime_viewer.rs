@@ -48,6 +48,7 @@ pub(crate) fn create_runtime<R: Runtime>(
                 .and_then(|options| options.xyzrender_preset.as_deref()),
             reload_options
                 .and_then(|options| options.xyzrender_orientation_ref.as_deref()),
+            reload_options.and_then(|options| options.xyzrender_controls.as_ref()),
         ) {
             Ok(artifact) => {
                 external_artifact = Some(artifact);
@@ -94,8 +95,8 @@ pub(crate) fn create_runtime<R: Runtime>(
         "previewByteCount": payload.data.len(),
         "quickLookBuild": "burrete-tauri",
         "debug": false,
-        "theme": preferences.resolved_theme(),
-        "canvasBackground": preferences.resolved_canvas_background(),
+        "theme": preferences.theme_for_runtime(),
+        "canvasBackground": preferences.canvas_background_for_runtime(),
         "documentId": stable_id(file_path),
         "uiScale": 1.0,
         "overlayOpacity": 0.90,
@@ -103,6 +104,7 @@ pub(crate) fn create_runtime<R: Runtime>(
         "sdfGrid": true,
         "appViewer": true,
         "tauriViewer": true,
+        "molstarStyle": preferences.resolved_molstar_style(),
         "xyzrenderViewer": false,
         "molstarAvailable": !format.external_only,
         "canOpenInVesta": format.can_open_in_vesta,
@@ -127,6 +129,9 @@ pub(crate) fn create_runtime<R: Runtime>(
         config["xyzrenderViewer"] = json!(true);
         config["xyzrenderPreset"] = json!(artifact.preset);
         config["xyzrenderPresetOptions"] = xyzrender_preset_options();
+        if let Some(controls) = reload_options.and_then(|options| options.xyzrender_controls.as_ref()) {
+            config["xyzrenderControls"] = serde_json::to_value(controls).map_err(|err| err.to_string())?;
+        }
         config["externalArtifact"] = json!({
             "path": artifact.relative_path,
             "type": artifact.output_type,

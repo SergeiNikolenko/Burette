@@ -42,10 +42,12 @@
   }
 
   function setStatus(message, kind = 'info') {
+    const cfg = window.BurreteConfig && typeof window.BurreteConfig === 'object' ? window.BurreteConfig : {};
     if (status) {
       status.textContent = String(message || '');
       status.classList.toggle('error', kind === 'error');
       status.classList.toggle('hidden', kind !== 'error' && !window.BurreteDebug);
+      if (kind === 'error' && status && !window.BurreteDebug && cfg.appViewer === true) status.classList.add('hidden');
     }
     if (kind === 'error' || window.BurreteDebug) post(kind === 'error' ? 'error' : 'status', message || '');
   }
@@ -69,7 +71,7 @@
   async function initRDKit() {
     if (state.rdkit) return state.rdkit;
     if (typeof window.initRDKitModule !== 'function') {
-      throw new Error('RDKit_minimal.js is missing. Run npm run vendor:rdkit and rebuild.');
+      throw new Error('RDKit_minimal.js is missing. Run bun run vendor:rdkit and rebuild.');
     }
     setStatus('[grid] Loading RDKit.js...');
     const cfg = config();
@@ -639,7 +641,6 @@
     } catch (error) {
       const message = error && error.stack ? error.stack : String(error);
       setStatus(message, 'error');
-      post('error', message);
     }
   }
 

@@ -1,6 +1,6 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 #[cfg(target_os = "macos")]
 use std::sync::mpsc;
 use tauri::Runtime;
@@ -85,27 +85,68 @@ fn expand_open_targets(path: PathBuf) -> Result<Vec<PathBuf>, String> {
         ));
     }
 
+    let supported_extensions = supported_structure_extensions()?;
     let mut collected = BTreeSet::new();
-    collect_supported_files(&canonical, &mut collected)?;
+    let mut visited_directories = HashSet::new();
+    collect_supported_files(
+        &canonical,
+        &mut visited_directories,
+        &supported_extensions,
+        &mut collected,
+    )?;
     Ok(collected.into_iter().collect())
 }
 
 fn collect_supported_files(
-    directory: &PathBuf,
+    directory: &Path,
+    visited_directories: &mut HashSet<PathBuf>,
+    supported_extensions: &BTreeSet<String>,
     collected: &mut BTreeSet<PathBuf>,
 ) -> Result<(), String> {
-    let supported_extensions = supported_structure_extensions()?;
+    let canonical_directory = directory
+        .canonicalize()
+        .map_err(|err| format!("{}: {err}", directory.display()))?;
+    if !visited_directories.insert(canonical_directory.clone()) {
+        return Ok(());
+    }
     for entry in fs::read_dir(directory).map_err(|err| format!("{}: {err}", directory.display()))? {
-        let entry = entry.map_err(|err| err.to_string())?;
+        let Ok(entry) = entry else {
+            continue;
+        };
         let path = entry.path();
-        let metadata = entry
-            .metadata()
-            .map_err(|err| format!("{}: {err}", path.display()))?;
-        if metadata.is_dir() {
-            collect_supported_files(&path, collected)?;
+        let Ok(metadata) = fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if metadata.file_type().is_symlink() {
+            let Ok(target_metadata) = fs::metadata(&path) else {
+                continue;
+            };
+            if target_metadata.is_dir() {
+                let _ = collect_supported_files(
+                    &path,
+                    visited_directories,
+                    supported_extensions,
+                    collected,
+                );
+                continue;
+            }
+            if target_metadata.is_file()
+                && looks_like_supported_structure_file(&path, supported_extensions)
+            {
+                collected.insert(path);
+            }
             continue;
         }
-        if metadata.is_file() && looks_like_supported_structure_file(&path, &supported_extensions) {
+        if metadata.is_dir() {
+            let _ = collect_supported_files(
+                &path,
+                visited_directories,
+                supported_extensions,
+                collected,
+            );
+            continue;
+        }
+        if metadata.is_file() && looks_like_supported_structure_file(&path, supported_extensions) {
             collected.insert(path);
         }
     }
@@ -177,6 +218,8 @@ mod tests {
     use super::{expand_open_targets, looks_like_supported_structure_file};
     use crate::preview::formats::supported_structure_extensions;
     use std::fs;
+    #[cfg(unix)]
+    use std::os::unix::fs::symlink;
 
     #[test]
     fn recognizes_supported_structure_files() {
@@ -229,22 +272,88 @@ mod tests {
         fs::write(&log, "SCF DONE\n").unwrap();
         fs::write(&txt, "ignore\n").unwrap();
 
+        let canonical_root = root.canonicalize().unwrap();
         let expanded = expand_open_targets(root.clone()).unwrap();
         assert_eq!(
             expanded,
             vec![
-                pdb.canonicalize().unwrap(),
-                input.canonicalize().unwrap(),
-                cif.canonicalize().unwrap()
+                canonical_root.join("mini.pdb"),
+                canonical_root.join("nested").join("caffeine.com"),
+                canonical_root.join("nested").join("mini.cif")
             ]
         );
 
         fs::remove_file(txt).unwrap();
         fs::remove_file(log).unwrap();
-        fs::remove_file(expanded[2].clone()).unwrap();
-        fs::remove_file(expanded[1].clone()).unwrap();
-        fs::remove_file(expanded[0].clone()).unwrap();
+        fs::remove_file(cif).unwrap();
+        fs::remove_file(input).unwrap();
+        fs::remove_file(pdb).unwrap();
         fs::remove_dir(nested).unwrap();
+        fs::remove_dir(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn expands_directories_with_symlink_loops_once() {
+        let root =
+            std::env::temp_dir().join(format!("burrete-open-targets-loop-{}", std::process::id()));
+        let nested = root.join("nested");
+        let loop_link = nested.join("loop");
+        let pdb = root.join("mini.pdb");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(&pdb, "HEADER TEST\n").unwrap();
+        symlink(&root, &loop_link).unwrap();
+
+        let canonical_root = root.canonicalize().unwrap();
+        let expanded = expand_open_targets(root.clone()).unwrap();
+        assert_eq!(expanded, vec![canonical_root.join("mini.pdb")]);
+
+        fs::remove_file(loop_link).unwrap();
+        fs::remove_file(pdb).unwrap();
+        fs::remove_dir(nested).unwrap();
+        fs::remove_dir(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn skips_broken_symlinks_inside_directories() {
+        let root =
+            std::env::temp_dir().join(format!("burrete-open-targets-broken-link-{}", std::process::id()));
+        let pdb = root.join("mini.pdb");
+        let broken_link = root.join("broken.pdb");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(&pdb, "HEADER TEST\n").unwrap();
+        symlink(root.join("missing.pdb"), &broken_link).unwrap();
+
+        let canonical_root = root.canonicalize().unwrap();
+        let expanded = expand_open_targets(root.clone()).unwrap();
+        assert_eq!(expanded, vec![canonical_root.join("mini.pdb")]);
+
+        fs::remove_file(pdb).unwrap();
+        fs::remove_file(broken_link).unwrap();
+        fs::remove_dir(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preserves_symlink_alias_paths_for_nested_files() {
+        let root =
+            std::env::temp_dir().join(format!("burrete-open-targets-alias-{}", std::process::id()));
+        let real = root.join("real.pdb");
+        let alias = root.join("alias.pdb");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(&real, "HEADER TEST\n").unwrap();
+        symlink(&real, &alias).unwrap();
+
+        let canonical_root = root.canonicalize().unwrap();
+        let expanded = expand_open_targets(root.clone()).unwrap();
+        assert_eq!(
+            expanded,
+            vec![canonical_root.join("alias.pdb"), canonical_root.join("real.pdb")]
+        );
+
+        fs::remove_file(alias).unwrap();
+        fs::remove_file(real).unwrap();
         fs::remove_dir(root).unwrap();
     }
 }

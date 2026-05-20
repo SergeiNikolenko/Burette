@@ -98,7 +98,7 @@ pub(crate) fn resolve_renderer(format: &FormatInfo, requested: &str) -> String {
             "molstar"
         }
         .to_string(),
-        _ => if is_xyz { "xyz-fast" } else { "molstar" }.to_string(),
+        _ => if is_xyz { "xyzrender-external" } else { "molstar" }.to_string(),
     }
 }
 
@@ -120,9 +120,9 @@ mod tests {
     }
 
     #[test]
-    fn keeps_xyz_fast_as_default_for_xyz_files() {
+    fn keeps_xyzrender_as_default_for_xyz_files() {
         let xyz = format_for_extension("xyz").expect("xyz should be supported");
-        assert_eq!(resolve_renderer(&xyz, "auto"), "xyz-fast");
+        assert_eq!(resolve_renderer(&xyz, "auto"), "xyzrender-external");
         assert_eq!(resolve_renderer(&xyz, "mol*"), "molstar");
         assert_eq!(
             resolve_renderer(&xyz, "external-xyzrender"),
