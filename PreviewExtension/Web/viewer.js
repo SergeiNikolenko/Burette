@@ -1604,16 +1604,103 @@
     return typeof configured === 'string' && configured.length > 0 ? configured : fallback;
   }
 
+  function installNativeDataBridge() {
+    if (typeof window.BurreteReceiveNativeData === 'function') return;
+    window.BurreteReceiveNativeData = function (payload) {
+      if (!payload || typeof payload !== 'object') return;
+      if (typeof payload.base64 === 'string' && payload.base64.length > 0) {
+        window.BurreteDataBase64 = payload.base64;
+      }
+      window.dispatchEvent(new CustomEvent('BurreteNativeDataReady', { detail: payload }));
+    };
+  }
+
+  function requestStructureDataFromNative() {
+    installNativeDataBridge();
+    return new Promise((resolve, reject) => {
+      if (typeof window.__mqlPost !== 'function') {
+        reject(new Error('Native Quick Look bridge is unavailable.'));
+        return;
+      }
+      const requestToken = 'native-data-' + Math.random().toString(36).slice(2);
+      let settled = false;
+      const cleanup = () => {
+        window.removeEventListener('BurreteNativeDataReady', onReady);
+        clearTimeout(timeout);
+      };
+      const finish = (fn, value) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        fn(value);
+      };
+      const onReady = (event) => {
+        const payload = event.detail || {};
+        if (payload.requestToken !== requestToken) return;
+        if (payload.error) {
+          finish(reject, new Error(String(payload.error)));
+          return;
+        }
+        finish(resolve);
+      };
+      const timeout = setTimeout(() => {
+        finish(reject, new Error('Timed out while waiting for structure payload from native Quick Look.'));
+      }, 10000);
+      window.addEventListener('BurreteNativeDataReady', onReady);
+      try {
+        window.__mqlPost('requestData', 'requestData', { requestToken });
+      } catch (error) {
+        finish(reject, error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+  }
+
+  function loadArrayBufferViaXHR(url) {
+    return new Promise((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      request.open('GET', url, true);
+      request.responseType = 'arraybuffer';
+      request.onload = function () {
+        if (request.status && (request.status < 200 || request.status >= 300)) {
+          reject(new Error('Could not load structure payload: HTTP ' + request.status));
+          return;
+        }
+        if (!(request.response instanceof ArrayBuffer)) {
+          reject(new Error('Could not load structure payload: empty response'));
+          return;
+        }
+        resolve(new Uint8Array(request.response));
+      };
+      request.onerror = function () {
+        reject(new Error('Could not load structure payload via XMLHttpRequest.'));
+      };
+      request.send();
+    });
+  }
+
   async function loadStructureData(config, cb) {
     if (window.BurreteDataBytes instanceof Uint8Array || window.BurreteDataBase64) return;
     const configured = typeof config.dataPath === 'string' ? config.dataPath : null;
     const scripted = typeof window.BurreteDataURL === 'string' ? window.BurreteDataURL : null;
     const url = configured || scripted || './preview-data.bin';
-    const response = await fetch(appendCacheBuster(url, cb), { cache: 'no-store' });
-    if (!response.ok) {
-      throw new Error('Could not load structure payload: HTTP ' + response.status);
+    const requestURL = appendCacheBuster(url, cb);
+    try {
+      const response = await fetch(requestURL, { cache: 'no-store' });
+      if (!response.ok) {
+        throw new Error('Could not load structure payload: HTTP ' + response.status);
+      }
+      window.BurreteDataBytes = new Uint8Array(await response.arrayBuffer());
+      return;
+    } catch (error) {
+      debug('fetch preview-data.bin failed, falling back to XMLHttpRequest: ' + (error && error.message || String(error)));
     }
-    window.BurreteDataBytes = new Uint8Array(await response.arrayBuffer());
+    try {
+      window.BurreteDataBytes = await loadArrayBufferViaXHR(requestURL);
+      return;
+    } catch (error) {
+      debug('XMLHttpRequest preview-data.bin failed, requesting native structure payload: ' + (error && error.message || String(error)));
+    }
+    await requestStructureDataFromNative();
   }
 
   function normalizeFormat(format) {
@@ -2353,7 +2440,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     try { viewer.handleResize(); } catch (_) {}
 
     setStatus(`[web] Rendered ${config.label || 'structure'}`);
-    setTimeout(hideStatus, 700);
+    setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
   }
 
   function waitForFirstPaint() {
@@ -2364,6 +2451,11 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
         resolved = true;
         resolve();
       };
+      if (isQuickLookHost()) {
+        setTimeout(finish, 35);
+        requestAnimationFrame(finish);
+        return;
+      }
       setTimeout(finish, 150);
       requestAnimationFrame(() => {
         requestAnimationFrame(() => setTimeout(finish, 50));

@@ -9,6 +9,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private var pendingCompletion: ((Error?) -> Void)?
     private var activePreviewRequestID = UUID()
     private var renderTimeoutWorkItem: DispatchWorkItem?
+    private var previewSourceMonitor: DispatchSourceTimer?
+    private var previewSourceFingerprint: PreviewSourceFingerprint?
+    private var pendingPreviewSourceFingerprint: PreviewSourceFingerprint?
+    private var pendingPreviewSourceReloadWorkItem: DispatchWorkItem?
     private var logLines: [String] = []
     private let previewID = String(UUID().uuidString.prefix(8))
     private var hasRenderedTerminationError = false
@@ -24,9 +28,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private static let defaultViewerPageZoom: CGFloat = 1.0
     private static let minViewerPageZoom: CGFloat = 1.0
     private static let maxViewerPageZoom: CGFloat = 1.0
+    private static let previewSourceMonitorQueue = DispatchQueue(label: "com.local.BurreteV10.preview-source-monitor")
 
     deinit {
         renderTimeoutWorkItem?.cancel()
+        pendingPreviewSourceReloadWorkItem?.cancel()
+        previewSourceMonitor?.cancel()
         webView?.configuration.userContentController.removeScriptMessageHandler(forName: "burrete")
         appendLog("deinit")
     }
@@ -76,6 +83,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let requestID = UUID()
         activePreviewRequestID = requestID
         pendingCompletion = handler
+        stopPreviewSourceMonitoring()
         currentPreviewURL = url
         currentRuntimeDirectory = nil
         rendererOverride = nil
@@ -90,6 +98,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         appendLog("file.absoluteString=\(url.absoluteString)")
         appendFileDiagnostics(url)
         webView.stopLoading()
+        startPreviewSourceMonitoring(for: url)
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             do {
@@ -108,6 +117,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     self.previewStatus = "[native] Loading file preview into WKWebView...\n\(url.lastPathComponent)"
                     self.appendLog("calling WKWebView.loadFileURL; html.bytes=\(result.html.utf8.count); indexURL=\(result.indexURL.path); readAccessURL=\(result.readAccessURL.path)")
                     self.currentRuntimeDirectory = result.indexURL.deletingLastPathComponent()
+                    self.previewSourceFingerprint = Self.previewSourceFingerprint(for: url)
+                    self.pendingPreviewSourceFingerprint = nil
                     self.webView.loadFileURL(result.indexURL, allowingReadAccessTo: result.readAccessURL)
                     self.scheduleRenderTimeout(for: requestID)
                     if Self.showDebugOverlay {
@@ -156,11 +167,75 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         appendLog("Bundle(for: PreviewViewController.self).bundlePath=\(Bundle(for: PreviewViewController.self).bundlePath)")
     }
 
+    private func startPreviewSourceMonitoring(for url: URL) {
+        stopPreviewSourceMonitoring()
+        previewSourceFingerprint = Self.previewSourceFingerprint(for: url)
+        let timer = DispatchSource.makeTimerSource(queue: Self.previewSourceMonitorQueue)
+        timer.schedule(deadline: .now() + 0.75, repeating: 0.75)
+        timer.setEventHandler { [weak self] in
+            DispatchQueue.main.async {
+                self?.pollPreviewSourceIfNeeded()
+            }
+        }
+        previewSourceMonitor = timer
+        timer.resume()
+        appendLog("previewSourceMonitor.started path=\(url.path)")
+    }
+
+    private func stopPreviewSourceMonitoring() {
+        pendingPreviewSourceReloadWorkItem?.cancel()
+        pendingPreviewSourceReloadWorkItem = nil
+        pendingPreviewSourceFingerprint = nil
+        previewSourceMonitor?.cancel()
+        previewSourceMonitor = nil
+        previewSourceFingerprint = nil
+    }
+
+    private func pollPreviewSourceIfNeeded() {
+        guard renderTimeoutWorkItem == nil else { return }
+        guard let url = currentPreviewURL else { return }
+        guard let fingerprint = Self.previewSourceFingerprint(for: url) else { return }
+        guard let currentFingerprint = previewSourceFingerprint else {
+            previewSourceFingerprint = fingerprint
+            return
+        }
+        guard fingerprint != currentFingerprint else { return }
+        guard pendingPreviewSourceFingerprint != fingerprint else { return }
+        schedulePreviewSourceReload(for: url, fingerprint: fingerprint)
+    }
+
+    private func schedulePreviewSourceReload(for url: URL, fingerprint: PreviewSourceFingerprint) {
+        pendingPreviewSourceReloadWorkItem?.cancel()
+        pendingPreviewSourceFingerprint = fingerprint
+        appendLog("previewSource.changed size=\(fingerprint.size) fileID=\(fingerprint.fileID.map(String.init) ?? "nil")")
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            guard self.renderTimeoutWorkItem == nil else { return }
+            guard self.currentPreviewURL?.standardizedFileURL == url.standardizedFileURL else { return }
+            guard let latestFingerprint = Self.previewSourceFingerprint(for: url) else { return }
+            guard latestFingerprint == fingerprint else {
+                self.schedulePreviewSourceReload(for: url, fingerprint: latestFingerprint)
+                return
+            }
+            guard self.previewSourceFingerprint != latestFingerprint else { return }
+            self.appendLog("preview source changed on disk; reloading current preview")
+            self.reloadCurrentPreview(sourceFingerprint: latestFingerprint, reason: "source-changed")
+        }
+        pendingPreviewSourceReloadWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: workItem)
+    }
+
     private struct BuildResult {
         let html: String
         let indexURL: URL
         let readAccessURL: URL
         let diagnostics: [String]
+    }
+
+    private struct PreviewSourceFingerprint: Equatable {
+        let fileID: Int64?
+        let size: Int64
+        let modifiedAt: TimeInterval
     }
 
     private static let supportedStructureExtensions: Set<String> = [
@@ -414,15 +489,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         try Data(html.utf8).write(to: indexURL, options: [.atomic])
         try Data("window.BurreteConfig = \(configJSON);\n".utf8)
             .write(to: runtimeDirectory.appendingPathComponent("preview-config.js"), options: [.atomic])
-        let dataScript: String
         if let structureData {
             try structureData.write(to: runtimeDirectory.appendingPathComponent("preview-data.bin"), options: [.atomic])
-            dataScript = "window.BurreteDataBase64 = \"\(structureData.base64EncodedString())\";\nwindow.BurreteDataURL = './preview-data.bin';\n"
-        } else {
-            dataScript = "window.BurreteDataBase64 = null;\nwindow.BurreteDataURL = null;\n"
         }
-        try Data(dataScript.utf8)
-            .write(to: runtimeDirectory.appendingPathComponent("preview-data.js"), options: [.atomic])
         if let gridRecordsScript {
             try Data(gridRecordsScript.utf8)
                 .write(to: runtimeDirectory.appendingPathComponent("preview-grid-records.js"), options: [.atomic])
@@ -570,6 +639,14 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private static func fileSize(for url: URL, fileManager: FileManager) throws -> Int64 {
         let attrs = try fileManager.attributesOfItem(atPath: url.path)
         return (attrs[.size] as? NSNumber)?.int64Value ?? 0
+    }
+
+    private static func previewSourceFingerprint(for url: URL) -> PreviewSourceFingerprint? {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else { return nil }
+        let size = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+        let modifiedAt = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        let fileID = (attributes[.systemFileNumber] as? NSNumber)?.int64Value
+        return PreviewSourceFingerprint(fileID: fileID, size: size, modifiedAt: modifiedAt)
     }
 
     private static func previewConfigJSON(
@@ -809,7 +886,6 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           </script>
           \(rendererAssets)
           <script src="preview-config.js"></script>
-          <script src="preview-data.js"></script>
           <script>
             window.__mqlStatus && window.__mqlStatus('[web] About to load viewer.js from bundled resource…');
           </script>
@@ -987,9 +1063,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             appendLog("skipping Quick Look completion for stale preview request")
             return
         }
-        guard let completion = pendingCompletion else { return }
         renderTimeoutWorkItem?.cancel()
         renderTimeoutWorkItem = nil
+        guard let completion = pendingCompletion else { return }
         pendingCompletion = nil
         appendLog("calling Quick Look completion handler; error=\(error.map { Self.describe($0) } ?? "nil")")
         completion(error)
@@ -1084,6 +1160,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 setXyzrenderOrientation(body["text"] as? String ?? body["value"] as? String)
                 return
             }
+            if type == "requestData" {
+                handleJavaScriptStructureDataRequest(body)
+                return
+            }
             appendLog("JS message type=\(type): \(text.prefix(1600))")
             if type == "ready" {
                 guard let messageRequestID else {
@@ -1133,6 +1213,45 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             return
         }
         appendLog("unknown JS action=\(action)")
+    }
+
+    private func handleJavaScriptStructureDataRequest(_ body: [String: Any]) {
+        guard let requestToken = body["requestToken"] as? String, !requestToken.isEmpty else {
+            appendLog("requestData.missingToken")
+            return
+        }
+        guard let currentRuntimeDirectory else {
+            appendLog("requestData.missingRuntimeDirectory")
+            sendJavaScriptStructureDataResponse(requestToken: requestToken, base64: nil, error: "Quick Look runtime directory is unavailable.")
+            return
+        }
+        let dataURL = currentRuntimeDirectory.appendingPathComponent("preview-data.bin")
+        guard let data = try? Data(contentsOf: dataURL), !data.isEmpty else {
+            appendLog("requestData.missingPayload path=\(dataURL.path)")
+            sendJavaScriptStructureDataResponse(requestToken: requestToken, base64: nil, error: "Quick Look payload file is unavailable.")
+            return
+        }
+        appendLog("requestData.bytes=\(data.count)")
+        sendJavaScriptStructureDataResponse(requestToken: requestToken, base64: data.base64EncodedString(), error: nil)
+    }
+
+    private func sendJavaScriptStructureDataResponse(requestToken: String, base64: String?, error: String?) {
+        var payload: [String: Any] = ["requestToken": requestToken]
+        if let base64 {
+            payload["base64"] = base64
+        }
+        if let error {
+            payload["error"] = error
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: []),
+              let json = String(data: data, encoding: .utf8) else {
+            appendLog("requestData.responseEncodingFailed")
+            return
+        }
+        webView.evaluateJavaScript("window.BurreteReceiveNativeData && window.BurreteReceiveNativeData(\(json));") { [weak self] _, evaluationError in
+            guard let self, let evaluationError else { return }
+            self.appendLog("requestData.injectFailed=\(Self.describe(evaluationError))")
+        }
     }
 
     private func openCurrentPreviewInBurrete() {
@@ -1221,7 +1340,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         return normalized.hasSuffix("\n") ? normalized : normalized + "\n"
     }
 
-    private func reloadCurrentPreview() {
+    private func reloadCurrentPreview(sourceFingerprint: PreviewSourceFingerprint? = nil, reason: String = "manual") {
         guard let url = currentPreviewURL else { return }
         let requestID = UUID()
         activePreviewRequestID = requestID
@@ -1231,8 +1350,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let xyzrenderPresetOverride = xyzrenderPresetOverride
         let xyzrenderOrientationRefText = xyzrenderOrientationRefText
         let xyzrenderControlsOverride = xyzrenderControlsOverride
-        appendLog("reloading preview rendererOverride=\(rendererOverride ?? "nil") xyzrenderPresetOverride=\(xyzrenderPresetOverride ?? "nil") orientationRef=\(xyzrenderOrientationRefText == nil ? "nil" : "set") controls=\(xyzrenderControlsOverride == nil ? "nil" : "set")")
-        previewStatus = "[native] Switching renderer...\n\(url.lastPathComponent)"
+        appendLog("reloading preview reason=\(reason) rendererOverride=\(rendererOverride ?? "nil") xyzrenderPresetOverride=\(xyzrenderPresetOverride ?? "nil") orientationRef=\(xyzrenderOrientationRefText == nil ? "nil" : "set") controls=\(xyzrenderControlsOverride == nil ? "nil" : "set")")
+        previewStatus = reason == "source-changed"
+            ? "[native] Reloading updated preview...\n\(url.lastPathComponent)"
+            : "[native] Switching renderer...\n\(url.lastPathComponent)"
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             do {
                 let result = try Self.buildInlinePreviewHTML(
@@ -1247,12 +1368,15 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     guard let self, self.activePreviewRequestID == requestID else { return }
                     for line in result.diagnostics { self.appendLog(line) }
                     self.currentRuntimeDirectory = result.indexURL.deletingLastPathComponent()
+                    self.previewSourceFingerprint = sourceFingerprint ?? Self.previewSourceFingerprint(for: url)
+                    self.pendingPreviewSourceFingerprint = nil
                     self.webView.loadFileURL(result.indexURL, allowingReadAccessTo: result.readAccessURL)
                     self.scheduleRenderTimeout(for: requestID)
                 }
             } catch {
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.activePreviewRequestID == requestID else { return }
+                    self.pendingPreviewSourceFingerprint = nil
                     self.appendLog("native renderer switch error: \(Self.describe(error))")
                     self.renderNativeError(error, fileURL: url)
                     self.finishPreviewIfNeeded(nil, requestID: requestID)
@@ -1366,6 +1490,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         if message.contains("JS message type=status: [web] Parsing structure") { return true }
         if message.contains("JS message type=status: [web] Rendered") { return true }
         if message.contains("JS message type=ready: ready") { return true }
+        if message.hasPrefix("previewSourceMonitor.started") { return true }
+        if message.hasPrefix("previewSource.changed") { return true }
+        if message.hasPrefix("preview source changed on disk") { return true }
+        if message.hasPrefix("reloading preview reason=source-changed") { return true }
         return false
     }
 
