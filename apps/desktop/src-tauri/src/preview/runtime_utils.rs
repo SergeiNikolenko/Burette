@@ -2,6 +2,10 @@ use std::collections::hash_map::DefaultHasher;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
+use std::time::{Duration, SystemTime};
+
+const MAX_STALE_RUNTIME_DIRS: usize = 24;
+const RUNTIME_PRUNE_MIN_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 
 pub(crate) fn asset_url(path: &Path) -> String {
     #[cfg(target_os = "windows")]
@@ -61,6 +65,7 @@ pub(crate) fn stable_id(path: &Path) -> String {
 }
 
 pub(crate) fn prune_runtime_dirs(base: &Path) {
+    let now = SystemTime::now();
     let Ok(entries) = fs::read_dir(base) else {
         return;
     };
@@ -69,11 +74,14 @@ pub(crate) fn prune_runtime_dirs(base: &Path) {
         .filter(|entry| entry.file_name() != "assets")
         .filter_map(|entry| {
             let modified = entry.metadata().ok()?.modified().ok()?;
+            if now.duration_since(modified).ok()? < RUNTIME_PRUNE_MIN_AGE {
+                return None;
+            }
             Some((entry.path(), modified))
         })
         .collect();
     runtimes.sort_by_key(|(_, modified)| *modified);
-    let overflow = runtimes.len().saturating_sub(24);
+    let overflow = runtimes.len().saturating_sub(MAX_STALE_RUNTIME_DIRS);
     for (path, _) in runtimes.into_iter().take(overflow) {
         let _ = fs::remove_dir_all(path);
     }
@@ -85,4 +93,40 @@ pub(crate) fn escape_html(value: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::prune_runtime_dirs;
+    use std::fs;
+    use std::path::PathBuf;
+
+    #[test]
+    fn keeps_fresh_runtime_dirs_during_large_batches() {
+        let base = std::env::temp_dir().join(format!(
+            "burrete-runtime-prune-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let assets = base.join("assets");
+        fs::create_dir_all(&assets).expect("assets dir should be created");
+
+        let mut created = Vec::new();
+        for index in 0..52 {
+            let runtime = base.join(format!("runtime-{index:02}"));
+            fs::create_dir_all(&runtime).expect("runtime dir should be created");
+            created.push(runtime);
+        }
+
+        prune_runtime_dirs(&base);
+
+        for runtime in &created {
+            assert!(
+                runtime.is_dir(),
+                "{} should not be pruned while still fresh",
+                runtime.display()
+            );
+        }
+
+        let _ = fs::remove_dir_all(PathBuf::from(&base));
+    }
 }

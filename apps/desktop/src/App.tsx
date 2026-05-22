@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ask, open } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
+import previewFormatRegistry from "../../../config/preview-formats.json";
 import { AppLayout } from "./components/app-layout";
 import { CommandPalette } from "./components/command-palette";
 import type { ShellActions, ShellViewState, StatusKind, StatusNotice } from "./components/types";
@@ -43,6 +44,7 @@ import {
 } from "./hooks/use-tabs";
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
 import { browserDevRuntimeNeedsRefresh, openBrowserDevDocuments } from "./lib/browser-dev-documents";
+import { buildSidebarProjects, parentDirectory } from "./lib/sidebar-projects";
 import { isTauriRuntime } from "./lib/tauri";
 import type { OpenDocumentsResult, RecentStructure, ViewerReloadOptions } from "./types";
 import { checkForUpdates as requestUpdateCheck, clearDismissedUpdate, dismissUpdate, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically, shouldPromptForUpdate } from "./update";
@@ -51,7 +53,7 @@ import type { UpdatePreferences, UpdateRelease, UpdateState } from "./update";
 const filters = [
   {
     name: "Molecular structures",
-    extensions: ["pdb", "ent", "pdbqt", "pqr", "cif", "mcif", "mmcif", "bcif", "sdf", "sd", "smi", "smiles", "csv", "tsv", "mol", "mol2", "xyz", "gro", "cub", "cube", "in", "log", "out", "vasp"],
+    extensions: previewFormatRegistry.documentTypes.extensions,
   },
 ];
 
@@ -79,7 +81,18 @@ export default function App() {
   const closeDocument = useCloseDocument();
   const closeActiveDocument = useCloseActiveTab();
   const closeAllDocuments = useCloseAllTabs();
-  const { sidebarOpen, sidebarWidth, setSidebarWidth, toggleSidebar } = useSidebar();
+  const {
+    sidebarOpen,
+    sidebarWidth,
+    projectRoots,
+    expandedProjectIds,
+    sidebarQuery,
+    setSidebarWidth,
+    addProjectRoot,
+    setSidebarQuery,
+    toggleProjectExpanded,
+    toggleSidebar,
+  } = useSidebar();
   const [sidebarDragging, setSidebarDragging] = useState(false);
   const [status, setStatus] = useState<StatusNotice | null>(null);
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
@@ -90,11 +103,12 @@ export default function App() {
     statusText: "No update check has run yet.",
     availableRelease: null,
   }));
-  const sidebarSearchRef = useRef<HTMLButtonElement | null>(null);
+  const sidebarSearchRef = useRef<HTMLInputElement | null>(null);
   const refreshedPersistedSessionRef = useRef(false);
   const openedBrowserDevFilesRef = useRef(false);
   const syncingBrowserDevFilesRef = useRef(false);
   const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions | null>(null);
+  const pendingViewerReloadDocumentIdRef = useRef<string | null>(null);
   const xyzrenderOrientationRefRef = useRef<string | null>(null);
   const skipNextPreferenceRefreshRef = useRef(false);
   const statusSequenceRef = useRef(0);
@@ -141,6 +155,18 @@ export default function App() {
     requestAnimationFrame(() => sidebarSearchRef.current?.focus());
   }, [sidebarOpen, toggleSidebar]);
 
+  const allSidebarProjects = useMemo(() => buildSidebarProjects({
+    documents,
+    recentStructures,
+    projectRoots,
+    activeDocumentId: activeDocument?.id ?? null,
+  }), [activeDocument?.id, documents, projectRoots, recentStructures]);
+
+  const activeProject = useMemo(
+    () => allSidebarProjects.find((project) => project.isActive) ?? null,
+    [allSidebarProjects],
+  );
+
   const openDocuments = useCallback(
     async (
       paths: string[],
@@ -183,12 +209,15 @@ export default function App() {
     openedBrowserDevFilesRef.current = true;
     syncingBrowserDevFilesRef.current = true;
     const workspace = paths[0] ? parentDirectory(paths[0]) : null;
-    if (workspace) setWorkspacePath(workspace);
+    if (workspace) {
+      setWorkspacePath(workspace);
+      addProjectRoot(workspace);
+    }
     closeAllDocuments();
     void openDocuments(paths).finally(() => {
       syncingBrowserDevFilesRef.current = false;
     });
-  }, [closeAllDocuments, documents, openDocuments]);
+  }, [addProjectRoot, closeAllDocuments, documents, openDocuments]);
 
   useEffect(() => {
     if (refreshedPersistedSessionRef.current) return;
@@ -225,27 +254,38 @@ export default function App() {
       const selection = await open({ directory: true, multiple: false });
       if (!selection || Array.isArray(selection)) return;
       setWorkspacePath(selection);
-      pushStatus("Workspace selected");
+      addProjectRoot(selection);
+      pushStatus("Project folder added");
     } catch (error) {
       pushErrorStatus(error, "Workspace selection failed");
     }
-  }, [pushErrorStatus, pushStatus]);
+  }, [addProjectRoot, pushErrorStatus, pushStatus]);
 
   const openWorkspaceFolder = useCallback(async () => {
-    const fallbackPath = workspacePath ?? activeDocument?.path ?? recentStructures[0]?.path ?? null;
+    const fallbackPath = activeProject?.rootPath ?? workspacePath ?? activeDocument?.path ?? recentStructures[0]?.path ?? null;
     if (!fallbackPath) {
       await chooseWorkspace();
       return;
     }
-    const path = workspacePath ?? parentDirectory(fallbackPath);
+    const path = activeProject?.rootPath ?? workspacePath ?? parentDirectory(fallbackPath);
     if (!path) return;
     try {
       await openPath(path);
-      pushStatus("Opened workspace folder");
+      pushStatus("Opened project folder");
     } catch (error) {
-      pushErrorStatus(error, "Open workspace folder failed");
+      pushErrorStatus(error, "Open project folder failed");
     }
-  }, [activeDocument?.path, chooseWorkspace, pushErrorStatus, pushStatus, recentStructures, workspacePath]);
+  }, [activeDocument?.path, activeProject?.rootPath, chooseWorkspace, pushErrorStatus, pushStatus, recentStructures, workspacePath]);
+
+  const openProjectFolder = useCallback(async (path: string | null) => {
+    if (!path) return;
+    try {
+      await openPath(path);
+      pushStatus("Opened project folder");
+    } catch (error) {
+      pushErrorStatus(error, "Open project folder failed");
+    }
+  }, [pushErrorStatus, pushStatus]);
 
   const openSettings = useCallback(() => {
     openSettingsTab();
@@ -254,11 +294,15 @@ export default function App() {
   useOpenEvents(openDocuments, pushErrorStatus);
   const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop } = useOpenDrop(openDocuments, pushStatus);
   const reloadActive = useCallback(async () => {
-    if (!activeDocument) return;
+    const targetDocument = (pendingViewerReloadDocumentIdRef.current
+      ? documents.find((document) => document.id === pendingViewerReloadDocumentIdRef.current)
+      : null) ?? activeDocument;
+    if (!targetDocument) return;
     const reloadOptions = pendingViewerReloadOptionsRef.current ?? undefined;
     pendingViewerReloadOptionsRef.current = null;
-    await openDocuments([activeDocument.path], reloadOptions);
-  }, [activeDocument, openDocuments]);
+    pendingViewerReloadDocumentIdRef.current = null;
+    await openDocuments([targetDocument.path], reloadOptions);
+  }, [activeDocument, documents, openDocuments]);
   const setUpdatePreferences = useCallback((preferences: UpdatePreferences) => {
     saveUpdatePreferences(preferences);
     setUpdate((previous) => ({
@@ -391,6 +435,7 @@ export default function App() {
           documentId?: string;
           orientationRef?: string | null;
           text?: string | null;
+          controls?: ViewerReloadOptions["xyzrenderControls"];
         };
       } | undefined;
       if (data?.source !== "burrete-viewer" && data?.source !== "burrete-grid") return;
@@ -405,9 +450,21 @@ export default function App() {
         return;
       }
       if (body?.type === "setXyzrenderPreset") {
+        pendingViewerReloadDocumentIdRef.current = body.documentId ?? null;
         pendingViewerReloadOptionsRef.current = {
           xyzrenderPreset: body.value ?? null,
           xyzrenderOrientationRef: xyzrenderOrientationRefRef.current,
+          xyzrenderControls: pendingViewerReloadOptionsRef.current?.xyzrenderControls ?? null,
+        };
+        void reloadActive();
+        return;
+      }
+      if (body?.type === "setXyzrenderControls") {
+        pendingViewerReloadDocumentIdRef.current = body.documentId ?? null;
+        pendingViewerReloadOptionsRef.current = {
+          xyzrenderPreset: pendingViewerReloadOptionsRef.current?.xyzrenderPreset ?? null,
+          xyzrenderOrientationRef: xyzrenderOrientationRefRef.current,
+          xyzrenderControls: body.controls ?? null,
         };
         void reloadActive();
         return;
@@ -415,18 +472,31 @@ export default function App() {
       if (body?.type === "setRenderer") {
         const renderer = body.value;
         if (renderer === "auto" || renderer === "xyz-fast" || renderer === "molstar" || renderer === "xyzrender-external") {
+          const targetDocument = (body.documentId
+            ? documents.find((document) => document.id === body.documentId)
+            : null) ?? activeDocument;
           const reloadOptions = renderer === "xyzrender-external" && body.orientationRef
             ? { xyzrenderOrientationRef: body.orientationRef }
             : undefined;
           if (renderer === "xyzrender-external" && body.orientationRef) {
             xyzrenderOrientationRefRef.current = body.orientationRef;
           }
-          pendingViewerReloadOptionsRef.current = reloadOptions ?? null;
+          pendingViewerReloadOptionsRef.current = renderer === "xyzrender-external" && body.orientationRef
+            ? {
+                xyzrenderOrientationRef: body.orientationRef,
+                xyzrenderPreset: pendingViewerReloadOptionsRef.current?.xyzrenderPreset ?? null,
+                xyzrenderControls: pendingViewerReloadOptionsRef.current?.xyzrenderControls ?? null,
+              }
+            : null;
+          pendingViewerReloadDocumentIdRef.current = renderer === "xyzrender-external" && body.orientationRef
+            ? body.documentId ?? null
+            : null;
           skipNextPreferenceRefreshRef.current = true;
           setPreference("rendererMode", renderer);
-          if (activeDocument) {
+          if (targetDocument) {
             pendingViewerReloadOptionsRef.current = null;
-            void openDocuments([activeDocument.path], reloadOptions, { rendererMode: renderer });
+            pendingViewerReloadDocumentIdRef.current = null;
+            void openDocuments([targetDocument.path], reloadOptions, { rendererMode: renderer });
           }
         }
       }
@@ -464,7 +534,7 @@ export default function App() {
     });
     // Preferences refresh all open runtimes so inactive tabs do not keep stale renderer/theme output.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preferences.theme, preferences.canvasBackground, preferences.rendererMode, preferences.xyzFastStyle]);
+  }, [preferences.theme, preferences.canvasBackground, preferences.rendererMode, preferences.molstarStyle, preferences.xyzFastStyle]);
 
   const startSidebarResize = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -510,7 +580,10 @@ export default function App() {
     openSettings,
     chooseWorkspace,
     openWorkspaceFolder,
+    openProjectFolder,
     toggleSidebar,
+    setSidebarQuery,
+    toggleProjectExpanded,
     closeDocument,
     closeTab,
     closeActiveDocument: () => {
@@ -570,7 +643,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeTab, focusSidebarSearch, installUpdate, navigateBack, navigateForward, openCommandPalette, openNewTab, openRecentStructure, openSettings, openWorkspaceFolder, pushErrorStatus, pushStatus, selectDocument, setActiveTab, setPreference, setUpdatePreferences, toggleSidebar, update.availableRelease]);
+  }), [canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeTab, focusSidebarSearch, installUpdate, navigateBack, navigateForward, openCommandPalette, openNewTab, openProjectFolder, openRecentStructure, openSettings, openWorkspaceFolder, pushErrorStatus, pushStatus, selectDocument, setActiveTab, setPreference, setSidebarQuery, setUpdatePreferences, toggleProjectExpanded, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
@@ -583,12 +656,14 @@ export default function App() {
     activeDocumentId: activeDocument?.id ?? null,
     visibleDocuments: documents,
     recentStructures,
+    sidebarProjects: allSidebarProjects,
+    expandedProjectIds,
     workspacePath,
     page,
     sidebarOpen,
     sidebarWidth,
     sidebarDragging,
-    sidebarQuery: "",
+    sidebarQuery,
     status,
     dropActive,
     preferences,
@@ -622,12 +697,6 @@ export default function App() {
       />
     </>
   );
-}
-
-function parentDirectory(path: string) {
-  const normalized = path.replace(/\\/g, "/");
-  const index = normalized.lastIndexOf("/");
-  return index > 0 ? normalized.slice(0, index) : null;
 }
 
 function isKnownViewerMessageSource(source: MessageEventSource | null, documentId?: string) {

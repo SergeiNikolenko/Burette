@@ -27,6 +27,30 @@
     { value: 'graph', label: 'Graph' },
     { value: 'custom', label: 'Custom JSON' }
   ];
+  const DEFAULT_XYZRENDER_CONTROLS = {
+    transparentBackground: false,
+    canvasSize: null,
+    atomScale: null,
+    bondWidth: null,
+    atomStrokeWidth: null,
+    molColor: null,
+    gradients: null,
+    fog: null,
+    fogStrength: null,
+    showVdw: false,
+    vdwOpacity: null,
+    vdwScale: null,
+    hideBonds: false,
+    showCell: null,
+    showGhosts: null,
+    showAxes: null,
+    cellWidth: null,
+    supercell: null,
+    customConfigPath: null,
+    extraArguments: null
+  };
+  const XYZRENDER_POPOVER_OPEN_KEY_PREFIX = 'buret.xyzrender.popover.open';
+  let xyzrenderControlsApplyTimer = 0;
   try { window.__mqlDebug && window.__mqlDebug('[viewer.js] top-level IIFE entered; readyState=' + document.readyState); } catch (_) {}
 
   function post(type, message) {
@@ -41,6 +65,9 @@
   function postHostMessage(payload) {
     try {
       const body = { ...(payload || {}) };
+      if (window.BurreteConfig && window.BurreteConfig.documentId) {
+        body.documentId = String(window.BurreteConfig.documentId);
+      }
       if (window.BurreteConfig && window.BurreteConfig.previewRequestID) {
         body.requestID = String(window.BurreteConfig.previewRequestID);
       }
@@ -185,6 +212,14 @@
 
   function normalizeViewerTheme(value) {
     return ['dark', 'light', 'auto'].includes(value) ? value : 'auto';
+  }
+
+  function normalizeMolstarStyle(value) {
+    return value === 'default' || value === 'illustrative' ? value : DEFAULT_MOLSTAR_STYLE;
+  }
+
+  function configuredMolstarStyle(config) {
+    return normalizeMolstarStyle(config && config.molstarStyle);
   }
 
   function readStoredViewerTheme() {
@@ -409,12 +444,17 @@
     const canSwitchRenderer = (config.appViewer === true && (format === 'xyz' || format === 'sdf')) ||
       (config.quickLookViewer === true && format === 'xyz') ||
       xyzrenderViewer;
+    const tuneButton = toolbar.querySelector('[data-buret-action="xyzrender-tune"]');
+    const popover = toolbar.querySelector('[data-buret-xyzrender-popover]');
     control.classList.toggle('visible', canSwitchRenderer);
     const presetSlot = toolbar.querySelector('[data-buret-xyzrender-preset-slot]');
     presetSlot?.classList.remove('visible');
+    tuneButton?.classList.add('hidden');
+    popover?.classList.add('hidden');
     if (!canSwitchRenderer) return;
 
     const renderer = normalizeRenderer(config.renderer);
+    toolbar.dataset.activeRenderer = renderer;
     control.querySelectorAll('[data-buret-renderer]').forEach(button => {
       const value = button.getAttribute('data-buret-renderer');
       const isFastXYZOnly = value === 'xyz-fast';
@@ -425,7 +465,10 @@
       );
       button.classList.toggle('active', value === renderer);
       if (control.dataset.rendererBound !== '1') {
-        button.addEventListener('click', () => requestRendererSwitch(value));
+        button.addEventListener('click', () => {
+          applyPendingRendererSelection(toolbar, value);
+          requestRendererSwitch(value);
+        });
       }
     });
 
@@ -439,8 +482,31 @@
         select.addEventListener('change', () => requestXyzrenderPreset(select.value));
       }
     }
+    if (tuneButton) {
+      tuneButton.classList.toggle('hidden', renderer !== 'xyzrender-external');
+      tuneButton.classList.remove('active');
+      tuneButton.removeAttribute('data-open');
+      if (renderer === 'xyzrender-external') {
+        populateXyzrenderControlsForm(toolbar, normalizeXyzrenderControls(config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config));
+        updateXyzrenderFormVisibility(toolbar);
+        if (shouldRestoreXyzrenderPopoverOpen()) {
+          setXyzrenderPopoverVisibility(toolbar, true);
+        }
+      }
+      if (control.dataset.tuneBound !== '1') {
+        tuneButton.addEventListener('click', () => {
+          const hidden = popover?.classList.contains('hidden') !== false;
+          if (hidden) {
+            populateXyzrenderControlsForm(toolbar, normalizeXyzrenderControls((activeConfig && activeConfig.xyzrenderControls) || DEFAULT_XYZRENDER_CONTROLS, activeConfig || {}));
+          }
+          setXyzrenderPopoverVisibility(toolbar, hidden);
+        });
+      }
+    }
     control.dataset.rendererBound = '1';
     control.dataset.presetBound = '1';
+    control.dataset.tuneBound = '1';
+    requestAnimationFrame(() => syncToolbarViewport(toolbar, renderer));
   }
 
   function populateXyzrenderPresetSelect(select, options) {
@@ -462,6 +528,91 @@
     return DEFAULT_XYZRENDER_PRESETS.some(row => row.value === raw) ? raw : 'default';
   }
 
+  function xyzrenderPopoverStorageKey() {
+    const documentId = String(window.BurreteConfig?.documentId || '').trim();
+    return documentId ? `${XYZRENDER_POPOVER_OPEN_KEY_PREFIX}:${documentId}` : XYZRENDER_POPOVER_OPEN_KEY_PREFIX;
+  }
+
+  function setXyzrenderPopoverVisibility(toolbar, open) {
+    const popover = toolbar?.querySelector('[data-buret-xyzrender-popover]');
+    const tuneButton = toolbar?.querySelector('[data-buret-action="xyzrender-tune"]');
+    if (!popover) return;
+    popover.classList.toggle('hidden', !open);
+    if (tuneButton) {
+      tuneButton.classList.toggle('active', open);
+      tuneButton.toggleAttribute('data-open', open);
+    }
+    setXyzrenderPopoverOpenPersisted(open);
+    if (open) {
+      popover.scrollTop = 0;
+      positionXyzrenderPopover(toolbar);
+    }
+  }
+
+  function setXyzrenderPopoverOpenPersisted(open) {
+    try {
+      const key = xyzrenderPopoverStorageKey();
+      if (open) window.localStorage?.setItem(key, '1');
+      else window.localStorage?.removeItem(key);
+    } catch (_) {}
+  }
+
+  function shouldRestoreXyzrenderPopoverOpen() {
+    try {
+      return window.localStorage?.getItem(xyzrenderPopoverStorageKey()) === '1';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function normalizeXyzrenderControls(value, config = {}) {
+    const source = value && typeof value === 'object' ? value : {};
+    return {
+      transparentBackground: source.transparentBackground === true || (source.transparentBackground == null && config.transparentBackground === true),
+      canvasSize: positiveNumberOrNull(source.canvasSize),
+      atomScale: positiveNumberOrNull(source.atomScale),
+      bondWidth: positiveNumberOrNull(source.bondWidth),
+      atomStrokeWidth: positiveNumberOrNull(source.atomStrokeWidth),
+      molColor: nonEmptyText(source.molColor),
+      gradients: triStateBoolean(source.gradients),
+      fog: triStateBoolean(source.fog),
+      fogStrength: positiveNumberOrNull(source.fogStrength),
+      showVdw: source.showVdw === true,
+      vdwOpacity: positiveNumberOrNull(source.vdwOpacity),
+      vdwScale: positiveNumberOrNull(source.vdwScale),
+      hideBonds: source.hideBonds === true,
+      showCell: triStateBoolean(source.showCell),
+      showGhosts: triStateBoolean(source.showGhosts),
+      showAxes: triStateBoolean(source.showAxes),
+      cellWidth: positiveNumberOrNull(source.cellWidth),
+      supercell: normalizeSupercellValue(source.supercell),
+      customConfigPath: nonEmptyText(source.customConfigPath),
+      extraArguments: nonEmptyText(source.extraArguments)
+    };
+  }
+
+  function positiveNumberOrNull(value) {
+    const number = Number(value);
+    return Number.isFinite(number) && number > 0 ? number : null;
+  }
+
+  function triStateBoolean(value) {
+    return value === true ? true : value === false ? false : null;
+  }
+
+  function nonEmptyText(value) {
+    const text = String(value || '').trim();
+    return text ? text : null;
+  }
+
+  function normalizeSupercellValue(value) {
+    const text = Array.isArray(value) ? value.join(' ') : String(value || '').trim();
+    const parts = text.split(/[\s,]+/u).filter(Boolean);
+    if (parts.length !== 3) return null;
+    const values = parts.map(part => Number.parseInt(part, 10));
+    return values.every(number => Number.isFinite(number) && number > 0) ? values : null;
+  }
+
   function requestRendererSwitch(renderer) {
     const value = normalizeRenderer(renderer);
     const orientationRef = value === 'xyzrender-external' ? captureCurrentXyzrenderOrientationRef() : null;
@@ -481,10 +632,154 @@
     if (!sent) setStatus('Renderer switching is available only in the app or Quick Look viewer.', 'error');
   }
 
+  function applyPendingRendererSelection(toolbar, renderer) {
+    if (!toolbar) return;
+    const normalized = normalizeRenderer(renderer);
+    toolbar.dataset.activeRenderer = normalized;
+    toolbar.querySelectorAll('[data-buret-renderer]').forEach(button => {
+      button.classList.toggle('active', button.getAttribute('data-buret-renderer') === normalized);
+    });
+    const presetSlot = toolbar.querySelector('[data-buret-xyzrender-preset-slot]');
+    const preset = toolbar.querySelector('[data-buret-xyzrender-preset]');
+    const tuneButton = toolbar.querySelector('[data-buret-action="xyzrender-tune"]');
+    const popover = toolbar.querySelector('[data-buret-xyzrender-popover]');
+    const external = normalized === 'xyzrender-external';
+    presetSlot?.classList.toggle('visible', external);
+    if (preset) preset.disabled = !external;
+    tuneButton?.classList.toggle('hidden', !external);
+    if (!external) {
+      tuneButton?.classList.remove('active');
+      tuneButton?.removeAttribute('data-open');
+      popover?.classList.add('hidden');
+      setXyzrenderPopoverOpenPersisted(false);
+    }
+    requestAnimationFrame(() => syncToolbarViewport(toolbar, normalized));
+  }
+
   function requestXyzrenderPreset(preset) {
     const value = normalizeXyzrenderPreset(preset);
     const sent = postHostMessage({ type: 'setXyzrenderPreset', value });
     if (!sent) setStatus('xyzrender preset switching is available only in the app or Quick Look viewer.', 'error');
+  }
+
+  function populateXyzrenderControlsForm(toolbar, controls) {
+    if (!toolbar) return;
+    toolbar.dataset.syncingXyzrenderForm = '1';
+    const normalized = normalizeXyzrenderControls(controls, activeConfig || {});
+    const setValue = (name, value) => {
+      const field = toolbar.querySelector(`[data-buret-xctrl="${name}"]`);
+      if (!field) return;
+      if (field.type === 'checkbox') {
+        field.checked = value === true;
+        return;
+      }
+      if (field.tagName === 'SELECT') {
+        field.value = value === true ? 'on' : value === false ? 'off' : '';
+        return;
+      }
+      field.value = Array.isArray(value) ? value.join(' ') : value == null ? '' : String(value);
+    };
+    Object.entries(normalized).forEach(([name, value]) => setValue(name, value));
+    updateXyzrenderFormVisibility(toolbar);
+    toolbar.dataset.syncingXyzrenderForm = '0';
+  }
+
+  function updateXyzrenderFormVisibility(toolbar) {
+    const advanced = toolbar.querySelector('[data-buret-xyzrender-appearance]');
+    const crystal = toolbar.querySelector('[data-buret-xyzrender-crystal]');
+    const controls = toolbar.dataset.syncingXyzrenderForm === '1'
+      ? normalizeXyzrenderControls((activeConfig && activeConfig.xyzrenderControls) || DEFAULT_XYZRENDER_CONTROLS, activeConfig || {})
+      : readXyzrenderControlsForm(toolbar);
+    const looksCrystalLike = shouldShowCrystalControls(activeConfig || {}, controls);
+    const crystalActive = controls.showCell != null || controls.showGhosts != null || controls.showAxes != null || Array.isArray(controls.supercell);
+    const advancedActive = !!(
+      controls.atomScale != null ||
+      controls.bondWidth != null ||
+      controls.vdwScale != null ||
+      controls.molColor
+    );
+    if (advanced) {
+      advanced.open = advancedActive;
+    }
+    if (crystal) {
+      crystal.classList.toggle('hidden', !looksCrystalLike && !crystalActive);
+      crystal.open = crystalActive;
+    }
+    positionXyzrenderPopover(toolbar);
+  }
+
+  function shouldShowCrystalControls(config, controls) {
+    const hint = [config?.label, config?.documentId, config?.format, config?.molstarFormat]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return /cell|extxyz|cryst|lattice|periodic|supercell/iu.test(hint) ||
+      controls.showCell != null ||
+      controls.showGhosts != null ||
+      controls.showAxes != null ||
+      Array.isArray(controls.supercell);
+  }
+
+  function readXyzrenderControlsForm(toolbar) {
+    const current = normalizeXyzrenderControls((activeConfig && activeConfig.xyzrenderControls) || DEFAULT_XYZRENDER_CONTROLS, activeConfig || {});
+    const readField = name => toolbar.querySelector(`[data-buret-xctrl="${name}"]`);
+    const readCheckbox = name => {
+      const field = readField(name);
+      return field ? !!field.checked : current[name];
+    };
+    const readNumber = name => {
+      const field = readField(name);
+      return field ? positiveNumberOrNull(field.value) : current[name];
+    };
+    const readText = name => {
+      const field = readField(name);
+      return field ? nonEmptyText(field.value) : current[name];
+    };
+    const readTriState = name => {
+      const field = readField(name);
+      if (!field) return current[name];
+      const value = field.value;
+      return value === 'on' ? true : value === 'off' ? false : null;
+    };
+    return normalizeXyzrenderControls({
+      transparentBackground: readCheckbox('transparentBackground'),
+      canvasSize: current.canvasSize,
+      atomScale: readNumber('atomScale'),
+      bondWidth: readNumber('bondWidth'),
+      atomStrokeWidth: current.atomStrokeWidth,
+      molColor: readText('molColor'),
+      gradients: readTriState('gradients'),
+      fog: readTriState('fog'),
+      fogStrength: current.fogStrength,
+      showVdw: readCheckbox('showVdw'),
+      vdwOpacity: current.vdwOpacity,
+      vdwScale: readNumber('vdwScale'),
+      hideBonds: readCheckbox('hideBonds'),
+      showCell: readTriState('showCell'),
+      showGhosts: readTriState('showGhosts'),
+      showAxes: readTriState('showAxes'),
+      cellWidth: current.cellWidth,
+      supercell: normalizeSupercellValue(readField('supercell')?.value),
+      customConfigPath: readText('customConfigPath'),
+      extraArguments: readText('extraArguments')
+    }, activeConfig || {});
+  }
+
+  function requestXyzrenderControls(toolbar) {
+    const controls = readXyzrenderControlsForm(toolbar);
+    const sent = postHostMessage({ type: 'setXyzrenderControls', controls });
+    if (!sent) {
+      setStatus('xyzrender controls are available only in the app or Quick Look viewer.', 'error');
+    }
+  }
+
+  function scheduleXyzrenderControlsApply(toolbar, delayMs = 220) {
+    if (!toolbar || toolbar.dataset.syncingXyzrenderForm === '1') return;
+    if (xyzrenderControlsApplyTimer) clearTimeout(xyzrenderControlsApplyTimer);
+    xyzrenderControlsApplyTimer = setTimeout(() => {
+      xyzrenderControlsApplyTimer = 0;
+      requestXyzrenderControls(toolbar);
+    }, delayMs);
   }
 
   function captureCurrentXyzrenderOrientationRef() {
@@ -679,12 +974,93 @@
     });
     bindThemeButton(toolbar, viewer);
     bindQuickLookOpenButton();
+    bindXyzrenderControls(toolbar);
     initToolbarDrag(toolbar);
     restoreToolbarCollapsed(toolbar, viewer);
+    installToolbarAutoLayoutTracking(toolbar);
     installMolstarFloatingPanelTracking();
     updateToolbarVisibility();
     updateThemeButton();
     applyLayoutState(viewer);
+  }
+
+  function installToolbarAutoLayoutTracking(toolbar) {
+    if (toolbar.dataset.autoLayoutBound === '1') return;
+    toolbar.dataset.autoLayoutBound = '1';
+
+    let lastWidth = 0;
+    let lastHeight = 0;
+    let frame = 0;
+
+    const schedule = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        if (toolbar.dataset.defaultPosition === '1') {
+          applyDefaultToolbarPosition(toolbar);
+        } else {
+          fitToolbarToViewport(toolbar);
+          updateFloatingLayoutOffsets();
+        }
+      });
+    };
+
+    const handleSizeChange = () => {
+      const rect = toolbar.getBoundingClientRect();
+      const width = Math.round(rect.width);
+      const height = Math.round(rect.height);
+      if (width === lastWidth && height === lastHeight) return;
+      lastWidth = width;
+      lastHeight = height;
+      schedule();
+    };
+
+    if (typeof ResizeObserver === 'function') {
+      const observer = new ResizeObserver(handleSizeChange);
+      observer.observe(toolbar);
+      const content = toolbar.querySelector('[data-buret-toolbar-content]');
+      if (content) observer.observe(content);
+    }
+
+    requestAnimationFrame(handleSizeChange);
+    setTimeout(handleSizeChange, 120);
+  }
+
+  function bindXyzrenderControls(toolbar) {
+    if (!toolbar || toolbar.dataset.xyzrenderControlsBound === '1') return;
+    toolbar.querySelector('[data-buret-xyzrender-preset]')?.addEventListener('change', () => updateXyzrenderFormVisibility(toolbar));
+    toolbar.querySelector('[data-buret-action="xyzrender-reset"]')?.addEventListener('click', () => {
+      populateXyzrenderControlsForm(toolbar, {});
+      requestXyzrenderControls(toolbar);
+    });
+    toolbar.querySelectorAll('[data-buret-xctrl]').forEach(field => {
+      field.addEventListener('change', () => {
+        updateXyzrenderFormVisibility(toolbar);
+        scheduleXyzrenderControlsApply(toolbar, 0);
+      });
+      if (field.tagName !== 'SELECT' && field.type !== 'checkbox') {
+        field.addEventListener('input', () => {
+          updateXyzrenderFormVisibility(toolbar);
+          scheduleXyzrenderControlsApply(toolbar, 260);
+        });
+      }
+    });
+    document.addEventListener('click', event => {
+      const popover = toolbar.querySelector('[data-buret-xyzrender-popover]');
+      if (!popover || popover.classList.contains('hidden')) return;
+      if (toolbar.contains(event.target)) return;
+      setXyzrenderPopoverVisibility(toolbar, false);
+    }, true);
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Escape') return;
+      const popover = toolbar.querySelector('[data-buret-xyzrender-popover]');
+      if (!popover || popover.classList.contains('hidden')) return;
+      setXyzrenderPopoverVisibility(toolbar, false);
+    }, true);
+    toolbar.querySelectorAll('.buret-xyzrender-advanced').forEach(section => {
+      section.addEventListener('toggle', () => positionXyzrenderPopover(toolbar));
+    });
+    toolbar.dataset.xyzrenderControlsBound = '1';
   }
 
   function bindThemeButton(toolbar, viewer) {
@@ -829,7 +1205,30 @@
     window.addEventListener('resize', () => {
       repositionToolbar(toolbar);
       updateFloatingLayoutOffsets();
+      positionXyzrenderPopover(toolbar);
     });
+  }
+
+  function positionXyzrenderPopover(toolbar) {
+    const popover = toolbar?.querySelector('[data-buret-xyzrender-popover]');
+    if (!popover || popover.classList.contains('hidden')) return;
+    const tuneButton = toolbar.querySelector('[data-buret-action="xyzrender-tune"]');
+    popover.style.left = 'auto';
+    popover.style.right = '0';
+    popover.style.maxHeight = Math.max(220, Math.min(430, window.innerHeight - toolbarSafeTop() - 36)) + 'px';
+    const margin = 12;
+    if (tuneButton) {
+      const toolbarRect = toolbar.getBoundingClientRect();
+      const tuneRect = tuneButton.getBoundingClientRect();
+      const preferredLeft = tuneRect.right - toolbarRect.left - popover.offsetWidth;
+      const minLeft = margin - toolbarRect.left;
+      const maxLeft = window.innerWidth - margin - toolbarRect.left - popover.offsetWidth;
+      popover.style.left = Math.min(Math.max(minLeft, preferredLeft), maxLeft) + 'px';
+      popover.style.right = 'auto';
+      return;
+    }
+    const rect = popover.getBoundingClientRect();
+    if (rect.left < margin) popover.style.left = margin + 'px';
   }
 
   function repositionToolbar(toolbar) {
@@ -885,6 +1284,27 @@
     const content = toolbar.querySelector('[data-buret-toolbar-content]');
     if (content) {
       content.style.maxWidth = Math.max(0, availableWidth - TOOLBAR_MARGIN * 2 - 36) + 'px';
+    }
+  }
+
+  function syncToolbarViewport(toolbar, renderer) {
+    const content = toolbar?.querySelector('[data-buret-toolbar-content]');
+    if (!content) return;
+    const presetSlot = toolbar.querySelector('[data-buret-xyzrender-preset-slot]');
+    const tuneButton = toolbar.querySelector('[data-buret-action="xyzrender-tune"]');
+    let target = toolbar.querySelector(`[data-buret-renderer="${renderer}"]`);
+    if (renderer === 'xyzrender-external') {
+      if (tuneButton && !tuneButton.classList.contains('hidden')) target = tuneButton;
+      else if (presetSlot && presetSlot.classList.contains('visible')) target = presetSlot;
+    }
+    if (!(target instanceof HTMLElement)) return;
+    const contentRect = content.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const padding = 6;
+    if (targetRect.left < contentRect.left + padding) {
+      content.scrollLeft -= contentRect.left + padding - targetRect.left;
+    } else if (targetRect.right > contentRect.right - padding) {
+      content.scrollLeft += targetRect.right - (contentRect.right - padding);
     }
   }
 
@@ -1235,16 +1655,103 @@
     return typeof configured === 'string' && configured.length > 0 ? configured : fallback;
   }
 
+  function installNativeDataBridge() {
+    if (typeof window.BurreteReceiveNativeData === 'function') return;
+    window.BurreteReceiveNativeData = function (payload) {
+      if (!payload || typeof payload !== 'object') return;
+      if (typeof payload.base64 === 'string' && payload.base64.length > 0) {
+        window.BurreteDataBase64 = payload.base64;
+      }
+      window.dispatchEvent(new CustomEvent('BurreteNativeDataReady', { detail: payload }));
+    };
+  }
+
+  function requestStructureDataFromNative() {
+    installNativeDataBridge();
+    return new Promise((resolve, reject) => {
+      if (typeof window.__mqlPost !== 'function') {
+        reject(new Error('Native Quick Look bridge is unavailable.'));
+        return;
+      }
+      const requestToken = 'native-data-' + Math.random().toString(36).slice(2);
+      let settled = false;
+      const cleanup = () => {
+        window.removeEventListener('BurreteNativeDataReady', onReady);
+        clearTimeout(timeout);
+      };
+      const finish = (fn, value) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        fn(value);
+      };
+      const onReady = (event) => {
+        const payload = event.detail || {};
+        if (payload.requestToken !== requestToken) return;
+        if (payload.error) {
+          finish(reject, new Error(String(payload.error)));
+          return;
+        }
+        finish(resolve);
+      };
+      const timeout = setTimeout(() => {
+        finish(reject, new Error('Timed out while waiting for structure payload from native Quick Look.'));
+      }, 10000);
+      window.addEventListener('BurreteNativeDataReady', onReady);
+      try {
+        window.__mqlPost('requestData', 'requestData', { requestToken });
+      } catch (error) {
+        finish(reject, error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+  }
+
+  function loadArrayBufferViaXHR(url) {
+    return new Promise((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      request.open('GET', url, true);
+      request.responseType = 'arraybuffer';
+      request.onload = function () {
+        if (request.status && (request.status < 200 || request.status >= 300)) {
+          reject(new Error('Could not load structure payload: HTTP ' + request.status));
+          return;
+        }
+        if (!(request.response instanceof ArrayBuffer)) {
+          reject(new Error('Could not load structure payload: empty response'));
+          return;
+        }
+        resolve(new Uint8Array(request.response));
+      };
+      request.onerror = function () {
+        reject(new Error('Could not load structure payload via XMLHttpRequest.'));
+      };
+      request.send();
+    });
+  }
+
   async function loadStructureData(config, cb) {
     if (window.BurreteDataBytes instanceof Uint8Array || window.BurreteDataBase64) return;
     const configured = typeof config.dataPath === 'string' ? config.dataPath : null;
     const scripted = typeof window.BurreteDataURL === 'string' ? window.BurreteDataURL : null;
     const url = configured || scripted || './preview-data.bin';
-    const response = await fetch(appendCacheBuster(url, cb), { cache: 'no-store' });
-    if (!response.ok) {
-      throw new Error('Could not load structure payload: HTTP ' + response.status);
+    const requestURL = appendCacheBuster(url, cb);
+    try {
+      const response = await fetch(requestURL, { cache: 'no-store' });
+      if (!response.ok) {
+        throw new Error('Could not load structure payload: HTTP ' + response.status);
+      }
+      window.BurreteDataBytes = new Uint8Array(await response.arrayBuffer());
+      return;
+    } catch (error) {
+      debug('fetch preview-data.bin failed, falling back to XMLHttpRequest: ' + (error && error.message || String(error)));
     }
-    window.BurreteDataBytes = new Uint8Array(await response.arrayBuffer());
+    try {
+      window.BurreteDataBytes = await loadArrayBufferViaXHR(requestURL);
+      return;
+    } catch (error) {
+      debug('XMLHttpRequest preview-data.bin failed, requesting native structure payload: ' + (error && error.message || String(error)));
+    }
+    await requestStructureDataFromNative();
   }
 
   function normalizeFormat(format) {
@@ -1282,6 +1789,7 @@
       showPanelControls: true,
       theme: 'dark',
       canvasBackground: 'black',
+      molstarStyle: DEFAULT_MOLSTAR_STYLE,
       overlayOpacity: 0.9,
       defaultLayoutState: {
         left: 'hidden',
@@ -1402,6 +1910,7 @@
     if (!toolbar) return;
     toolbar.querySelectorAll('.buret-panel-toggle').forEach(button => { button.classList.add('hidden'); });
     bindThemeButton(toolbar, null);
+    bindXyzrenderControls(toolbar);
     initToolbarDrag(toolbar);
     restoreToolbarCollapsed(toolbar, null);
   }
@@ -1826,14 +2335,14 @@
       await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'all-models', {
         useDefaultIfSingleModel: true
       });
-      await applyMolstarStyle(viewer, DEFAULT_MOLSTAR_STYLE);
+      await applyMolstarStyle(viewer, configuredMolstarStyle(activeConfig));
       return;
     }
     const plugin = viewer.plugin;
     const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
     const trajectory = await plugin.builders.structure.parseTrajectory(data, prepared.format);
     await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default');
-    await applyMolstarStyle(viewer, DEFAULT_MOLSTAR_STYLE);
+    await applyMolstarStyle(viewer, configuredMolstarStyle(activeConfig));
   }
 
   function withTimeout(promise, timeoutMs, message) {
@@ -1983,7 +2492,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     try { viewer.handleResize(); } catch (_) {}
 
     setStatus(`[web] Rendered ${config.label || 'structure'}`);
-    setTimeout(hideStatus, 700);
+    setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
   }
 
   function waitForFirstPaint() {
@@ -1994,6 +2503,11 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
         resolved = true;
         resolve();
       };
+      if (isQuickLookHost()) {
+        setTimeout(finish, 35);
+        requestAnimationFrame(finish);
+        return;
+      }
       setTimeout(finish, 150);
       requestAnimationFrame(() => {
         requestAnimationFrame(() => setTimeout(finish, 50));
