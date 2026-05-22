@@ -15,11 +15,13 @@ The extension bundle identifier is:
 com.local.BurreteV10.Preview
 ```
 
-The forced preview content types are:
+The main forced preview content types are:
 
 ```text
 com.local.burrete10.pdb
 com.local.burrete10.cif
+com.local.burrete10.xyz
+com.local.burrete10.xyzrender-input
 ```
 
 ## Build And Install

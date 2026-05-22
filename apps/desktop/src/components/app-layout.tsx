@@ -1,5 +1,6 @@
 import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import type { CSSProperties } from "react";
 import { ViewerArea } from "./editor-area";
 import { EditorTabs } from "./editor-area/editor-tabs";
 import { Sidebar } from "./sidebar";
@@ -10,7 +11,7 @@ function clampSidebarWidth(width: number, maxSidebarWidth: number) {
   return Math.max(220, Math.min(maxSidebarWidth, Math.round(width)));
 }
 
-const collapsedChromeLeft = 132;
+const collapsedChromeLeft = 196;
 
 export function AppLayout({
   state,
@@ -26,7 +27,7 @@ export function AppLayout({
 }: {
   state: ShellViewState;
   actions: ShellActions;
-  searchRef: React.Ref<HTMLButtonElement>;
+  searchRef: React.Ref<HTMLInputElement>;
   onDismissStatus: () => void;
   onToggleSidebar: () => void;
   onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
@@ -38,32 +39,79 @@ export function AppLayout({
   const viewportWidth = typeof window === "undefined" ? 1200 : window.innerWidth;
   const maxSidebarWidth = Math.max(280, Math.min(420, Math.floor(viewportWidth * 0.35)));
   const sidebarWidth = clampSidebarWidth(state.sidebarWidth, maxSidebarWidth);
+  const sidebarLayoutWidth = state.sidebarOpen ? sidebarWidth : 0;
   const layoutState = sidebarWidth === state.sidebarWidth ? state : { ...state, sidebarWidth };
-  const tabChromeLeft = state.sidebarOpen ? Math.max(sidebarWidth + 12, collapsedChromeLeft) : collapsedChromeLeft;
+  const tabChromeLeft = Math.max(sidebarLayoutWidth + 12, collapsedChromeLeft);
+  const chromeTransition = state.sidebarDragging ? "none" : undefined;
+  const shellStyle = {
+    "--sidebar-layout-width": `${sidebarLayoutWidth}px`,
+  } as CSSProperties;
   return (
     <main
       className="app-shell"
       data-theme={state.preferences.theme}
       data-runtime={isTauriRuntime() ? "tauri" : "browser"}
       data-drop-active={state.dropActive || undefined}
+      data-sidebar-open={state.sidebarOpen ? "true" : "false"}
       onDragEnter={onDragEnter}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
+      style={shellStyle}
     >
       <div className="drag-region" data-tauri-drag-region />
-      <button className="chrome-button sidebar-toggle-root" onClick={onToggleSidebar} title={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"} aria-label={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"}>
-        <HugeiconsIcon icon={SidebarLeftIcon} size={18} color="currentColor" strokeWidth={2} />
-      </button>
+      <div className="chrome-leading-controls">
+        <button
+          type="button"
+          className="chrome-button sidebar-toggle-root"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onToggleSidebar}
+          title={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+          aria-label={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+        >
+          <HugeiconsIcon icon={SidebarLeftIcon} size={18} color="currentColor" strokeWidth={2} />
+        </button>
+        <div className="tab-history-controls chrome-history-controls">
+          <button
+            type="button"
+            className="tab-history-button"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={actions.navigateBack}
+            disabled={!actions.canNavigateBack}
+            title="Back"
+            aria-label="Back"
+          >
+            ←
+          </button>
+          <button
+            type="button"
+            className="tab-history-button"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={actions.navigateForward}
+            disabled={!actions.canNavigateForward}
+            title="Forward"
+            aria-label="Forward"
+          >
+            →
+          </button>
+        </div>
+      </div>
       <header
         className="topbar"
-        style={{ left: tabChromeLeft, transition: state.sidebarDragging ? "none" : undefined }}
+        style={{ left: tabChromeLeft, transition: chromeTransition }}
       >
         <EditorTabs state={layoutState} actions={actions} />
       </header>
       <section className="workspace">
-        {state.sidebarOpen && <Sidebar ref={searchRef} state={layoutState} actions={actions} />}
-        {state.sidebarOpen && <div className="splitter" onPointerDown={onResizeStart} data-dragging={state.sidebarDragging || undefined} />}
+        <div className="sidebar-shell" data-open={state.sidebarOpen ? "true" : "false"} style={{ transition: chromeTransition }}>
+          <Sidebar ref={searchRef} state={layoutState} actions={actions} open={state.sidebarOpen} />
+        </div>
+        <div
+          className="splitter"
+          onPointerDown={state.sidebarOpen ? onResizeStart : undefined}
+          data-open={state.sidebarOpen ? "true" : "false"}
+          data-dragging={state.sidebarDragging || undefined}
+        />
         <section className="main-stage">
           <ViewerArea state={layoutState} actions={actions} />
         </section>

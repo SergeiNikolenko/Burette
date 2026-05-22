@@ -23,7 +23,7 @@ These actions are available from the command palette.
 | Command | Action |
 | --- | --- |
 | Open Structure | Choose molecular structure files |
-| Search Open Structures | Focus the sidebar structure filter |
+| Search Projects and Structures | Focus the sidebar project filter |
 | Settings | Open Settings |
 | Hide Sidebar / Show Sidebar | Toggle sidebar |
 | Close Active Structure | Close the selected molecule tab |
@@ -35,15 +35,14 @@ These actions are available from the command palette.
 | Check for Updates | Check Burrete releases |
 | Renderer: Auto | Use automatic renderer selection |
 | Renderer: Mol* | Prefer Mol* rendering |
-| Renderer: Fast XYZ | Prefer the fast XYZ renderer |
 | Renderer: xyzrender external | Prefer the external xyzrender path |
-| Open Recent: `<title>` | Open a recent molecular structure |
-| Open Structure: `<title>` | Activate an already open molecular structure |
+| `<project>: <title>` | Open or activate a structure inside a project group |
 
 ## Sidebar
 
-The sidebar supports keyboard search focus through the command palette. Structure
-rows are tab-like pages; activating a row switches the active preview tab.
+The sidebar supports keyboard search focus through the command palette. Project
+rows toggle folder visibility. Nested structure rows switch the active preview
+tab or reopen a recent structure inside the matching project group.
 
 ## Preview
 
