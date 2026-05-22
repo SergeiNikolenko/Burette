@@ -2,6 +2,8 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 #[cfg(target_os = "macos")]
+use std::ffi::CString;
+#[cfg(target_os = "macos")]
 use std::sync::mpsc;
 use tauri::Runtime;
 #[cfg(not(target_os = "macos"))]
@@ -59,6 +61,20 @@ pub(crate) fn open_documents<R: Runtime>(
         return Err(errors.join("; "));
     }
     Ok(OpenDocumentsResult { documents, errors })
+}
+
+#[tauri::command]
+pub(crate) fn sync_viewer_preferences(preferences: ViewerPreferences) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        return sync_viewer_preferences_macos(&preferences);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = preferences;
+        Ok(())
+    }
 }
 
 fn expand_open_targets(path: PathBuf) -> Result<Vec<PathBuf>, String> {
@@ -138,6 +154,68 @@ fn looks_like_supported_structure_file(path: &std::path::Path) -> bool {
             | "xtc"
             | "xyz"
     )
+}
+
+#[cfg(target_os = "macos")]
+fn sync_viewer_preferences_macos(preferences: &ViewerPreferences) -> Result<(), String> {
+    use cocoa::base::{id, NO, YES};
+    use objc::{class, msg_send, sel, sel_impl};
+
+    unsafe {
+        let defaults: id = msg_send![class!(NSUserDefaults), standardUserDefaults];
+        set_defaults_string(defaults, "viewerTheme", &preferences.theme)?;
+        set_defaults_string(
+            defaults,
+            "viewerCanvasBackground",
+            &preferences.canvas_background,
+        )?;
+        set_defaults_string(
+            defaults,
+            "structureRendererMode",
+            &preferences.renderer_mode,
+        )?;
+        set_defaults_string(defaults, "xyzFastStyle", &preferences.xyz_fast_style)?;
+
+        let transparent_key = autoreleased_nsstring("useTransparentPreviewBackground")?;
+        let transparent_value = if preferences.resolved_transparent_background() {
+            YES
+        } else {
+            NO
+        };
+        let _: () = msg_send![defaults, setBool: transparent_value forKey: transparent_key];
+        let _: () = msg_send![defaults, synchronize];
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn set_defaults_string(defaults: cocoa::base::id, key: &str, value: &str) -> Result<(), String> {
+    use objc::{msg_send, sel, sel_impl};
+
+    unsafe {
+        let key = autoreleased_nsstring(key)?;
+        let value = autoreleased_nsstring(value)?;
+        let _: () = msg_send![defaults, setObject: value forKey: key];
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn autoreleased_nsstring(value: &str) -> Result<cocoa::base::id, String> {
+    use cocoa::base::id;
+    use objc::{class, msg_send, sel, sel_impl};
+
+    let c_value = CString::new(value).map_err(|_| format!("invalid NSString value: {value}"))?;
+    unsafe {
+        let string: id = msg_send![class!(NSString), alloc];
+        let string: id = msg_send![string, initWithUTF8String: c_value.as_ptr()];
+        if string.is_null() {
+            return Err("failed to allocate NSString".into());
+        }
+        let string: id = msg_send![string, autorelease];
+        Ok(string)
+    }
 }
 
 #[cfg(target_os = "macos")]

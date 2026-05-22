@@ -443,6 +443,13 @@ export default function App() {
   }, [checkForUpdates]);
 
   useEffect(() => {
+    if (!isTauriRuntime()) return;
+    void invoke("sync_viewer_preferences", { preferences }).catch((error) => {
+      pushErrorStatus(error, "Preview preference sync failed");
+    });
+  }, [preferences, pushErrorStatus]);
+
+  useEffect(() => {
     if (skipNextPreferenceRefreshRef.current) {
       skipNextPreferenceRefreshRef.current = false;
       return;

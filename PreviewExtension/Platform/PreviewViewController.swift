@@ -31,7 +31,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     override func loadView() {
-        let transparentBackground = PreviewPreferences.load().transparentBackground
+        let transparentBackground = PreviewPreferences.load().resolvedTransparentBackground
         let userContentController = WKUserContentController()
         userContentController.add(self, name: "burrete")
         if Self.showDebugOverlay {
@@ -653,7 +653,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
     private static func gridInlineHTML(title: String, preferences: PreviewPreferences) -> String {
         let safeTitle = escapeHTML(title)
-        let backgroundClass = preferences.transparentBackground ? "burette-transparent-background" : "burette-opaque-background"
+        let backgroundClass = preferences.resolvedTransparentBackground ? "burette-transparent-background" : "burette-opaque-background"
         return """
         <!doctype html>
         <html lang="en">
@@ -692,7 +692,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
     private static func inlineHTML(title: String, preferences: PreviewPreferences, renderer: String) -> String {
         let safeTitle = escapeHTML(title)
-        let backgroundClass = preferences.transparentBackground ? "burette-transparent-background" : "burette-opaque-background"
+        let backgroundClass = preferences.resolvedTransparentBackground ? "burette-transparent-background" : "burette-opaque-background"
         let initialStatus: String
         let rendererAssets: String
         if renderer == "xyz-fast" {
@@ -2049,7 +2049,7 @@ private struct PreviewPreferences {
     }
 
     var resolvedTransparentBackground: Bool {
-        resolvedCanvasBackground == "transparent"
+        transparentBackground || resolvedCanvasBackground == "transparent"
     }
 
     static func load() -> PreviewPreferences {
