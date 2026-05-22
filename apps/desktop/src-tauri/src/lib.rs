@@ -51,6 +51,7 @@ pub fn run() {
             commands::startup::startup_documents,
             commands::documents::pick_open_targets,
             commands::documents::open_documents,
+            commands::documents::sync_viewer_preferences,
             commands::preview_cache::clear_preview_cache,
             commands::shell::open_logs_folder,
             commands::shell::open_external_url,

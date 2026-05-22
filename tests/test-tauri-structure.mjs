@@ -115,6 +115,7 @@ for (const commandPath of [
   'commands::startup::startup_documents',
   'commands::documents::pick_open_targets',
   'commands::documents::open_documents',
+  'commands::documents::sync_viewer_preferences',
   'commands::preview_cache::clear_preview_cache',
   'commands::shell::open_logs_folder',
   'commands::shell::open_external_url',
@@ -128,6 +129,7 @@ for (const commandPath of [
 assert.match(startupCommand, /#\[tauri::command\]\s+pub\(crate\) fn startup_documents/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn pick_open_targets/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_documents/);
+assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn sync_viewer_preferences/);
 assert.match(documentsCommand, /fn expand_open_targets/);
 assert.match(documentsCommand, /fn collect_supported_files/);
 assert.match(documentsCommand, /fn looks_like_supported_structure_file/);
@@ -202,6 +204,7 @@ assert.match(lib, /if !paths\.is_empty\(\) \{\s*tray::show_main_window\(app\);/)
 assert.match(lib, /set_activation_policy\(tauri::ActivationPolicy::Regular\)/);
 assert.match(lib, /commands::documents::pick_open_targets/);
 assert.match(lib, /commands::documents::open_documents/);
+assert.match(lib, /commands::documents::sync_viewer_preferences/);
 assert.match(lib, /commands::quicklook::reset_quick_look/);
 assert.match(lib, /commands::updater::install_update/);
 assert.match(menu, /PredefinedMenuItem::about/);
