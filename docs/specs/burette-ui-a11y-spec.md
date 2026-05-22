@@ -25,7 +25,7 @@ embedded preview controls; each needs predictable focus, labels, and shortcuts.
 ## Canonical Shortcuts
 
 - `Cmd+O`: open structure files.
-- `Cmd+P`: open the command palette.
+- `Cmd+P` or `/`: open the command palette when focus is not in an editable control.
 - `Cmd+\\`: toggle sidebar.
 - `Cmd+,`: open Settings page.
 - `Cmd+W`: close active structure.

@@ -5,6 +5,7 @@ commands.allow = [
   "startup_documents",
   "pick_open_targets",
   "open_documents",
+  "sync_viewer_preferences",
   "clear_preview_cache",
   "open_logs_folder",
   "open_external_url",
