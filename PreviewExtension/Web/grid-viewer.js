@@ -132,13 +132,15 @@
 
   function applyTheme(cfg) {
     const theme = resolveTheme(cfg.theme);
-    const transparent = cfg.transparentBackground === true || cfg.canvasBackground === 'transparent';
+    const canvasBackground = resolveCanvasBackground(theme, cfg.canvasBackground);
+    const transparent = cfg.transparentBackground === true || canvasBackground === 'transparent';
     document.documentElement.dataset.buretTheme = theme;
     document.body.dataset.buretTheme = theme;
     document.body.classList.toggle('buret-theme-light', theme === 'light');
     document.body.classList.toggle('buret-theme-dark', theme !== 'light');
     document.body.classList.toggle('burette-transparent-background', transparent);
     document.body.classList.toggle('burette-opaque-background', !transparent);
+    document.documentElement.style.setProperty('--buret-grid-canvas-background', canvasBackgroundCSS(canvasBackground));
   }
 
   function resolveTheme(value) {
@@ -148,6 +150,23 @@
     } catch (_) {
       return 'dark';
     }
+  }
+
+  function normalizeCanvasBackground(value) {
+    return ['auto', 'black', 'graphite', 'white', 'transparent'].includes(value) ? value : 'auto';
+  }
+
+  function resolveCanvasBackground(theme, value) {
+    const background = normalizeCanvasBackground(value);
+    if (background === 'auto') return theme === 'light' ? 'white' : 'black';
+    return background;
+  }
+
+  function canvasBackgroundCSS(background) {
+    if (background === 'white') return '#f7f7f2';
+    if (background === 'graphite') return '#111317';
+    if (background === 'transparent') return 'transparent';
+    return '#000000';
   }
 
   function installThemeListener(cfg) {
