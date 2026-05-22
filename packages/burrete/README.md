@@ -7,8 +7,9 @@ app from GitHub Releases.
 bunx burrete install
 ```
 
-The command downloads the latest non-prerelease `Burrete-<version>.zip`,
+The command downloads the latest stable `Burrete-<version>.zip`,
 verifies the GitHub release asset SHA-256 digest when GitHub provides one, and
 installs `Burrete.app` into `~/Applications` by default.
 
 Use `burrete install --system` to install into `/Applications`.
+Use `burrete install --beta` to install from the beta channel instead.

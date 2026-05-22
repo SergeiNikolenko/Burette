@@ -23,7 +23,7 @@ where needed so agents do not need to remember nested Tauri commands.
 
 The desktop shell is a compact molecule workspace:
 
-- sidebar for open and recent structures
+- sidebar for project folders and nested structures
 - tab strip for active structure pages and settings
 - command palette for app actions
 - settings page for renderer, preview, and update preferences
