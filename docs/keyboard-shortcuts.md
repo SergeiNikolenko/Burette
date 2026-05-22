@@ -9,7 +9,7 @@ open.
 
 | Shortcut | Action |
 | --- | --- |
-| Cmd+P | Open command palette |
+| Cmd+P or / | Open command palette |
 | Cmd+O | Open molecular structure files |
 | Cmd+\ | Toggle sidebar |
 | Cmd+, | Open Settings |

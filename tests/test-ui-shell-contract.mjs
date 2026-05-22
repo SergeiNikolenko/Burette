@@ -49,6 +49,7 @@ const [
   previewViewController,
   shortcutDocs,
   styles,
+  gridCss,
   gridViewer,
   previewViewer,
   previewShell,
@@ -99,6 +100,7 @@ const [
   source('PreviewExtension/Platform/PreviewViewController.swift'),
   source('docs/keyboard-shortcuts.md'),
   source('apps/desktop/src/styles.css'),
+  source('PreviewExtension/Web/grid.css'),
   source('PreviewExtension/Web/grid-viewer.js'),
   source('PreviewExtension/Web/viewer.js'),
   source('PreviewExtension/Web/viewer-shell.js'),
@@ -329,6 +331,9 @@ assert.match(fileKind, /srcDoc=\{document\.runtimePath\}/);
 assert.match(browserDevDocuments, /window\.parent\.postMessage\(\{ source: 'burrete-viewer', body \}, '\*'\)/);
 assert.doesNotMatch(browserDevDocuments, /window\.parent\.postMessage\(\{ source: 'burrete-viewer', body \}, window\.location\.origin\)/);
 assert.match(gridViewer, /function resolveTheme\(value\)/);
+assert.match(gridViewer, /function normalizeCanvasBackground\(value\)/);
+assert.match(gridViewer, /function resolveCanvasBackground\(theme, value\)/);
+assert.match(gridViewer, /style\.setProperty\('--buret-grid-canvas-background', canvasBackgroundCSS\(canvasBackground\)\)/);
 assert.match(gridViewer, /prefers-color-scheme: light/);
 assert.match(gridViewer, /function installThemeListener\(cfg\)/);
 assert.match(gridViewer, /async function loadWasmBinary\(path\)/);
@@ -460,6 +465,7 @@ assert.match(commandPalette, /aria-selected=\{index === selectedIndex\}/);
 assert.match(app, /useOpenDrop\(openDocuments, pushStatus\)/);
 assert.match(app, /useOpenEvents\(openDocuments, pushErrorStatus\)/);
 assert.match(app, /useMenuEvents\(\{ chooseFiles, openSettings, checkForUpdates \}\)/);
+assert.match(app, /invoke\("sync_viewer_preferences", \{ preferences \}\)/);
 assert.match(app, /await invoke<string\[]>\("pick_open_targets"\)/);
 assert.match(app, /<WindowTitle activeDocument=\{activeDocument\} \/>/);
 assert.match(app, /const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions \| null>\(null\)/);
@@ -548,8 +554,15 @@ assert.doesNotMatch(browserDevDocuments, /buret-panel-toggle active" type="butto
 assert.match(previewViewController, /"left": "hidden"/);
 assert.match(previewViewController, /var runtimeViewerTheme: String/);
 assert.match(previewViewController, /var runtimeCanvasBackground: String/);
+assert.match(previewViewController, /transparentBackground \|\| runtimeCanvasBackground == "transparent"/);
+assert.match(previewViewController, /var resolvedMolstarStyle: String/);
 assert.doesNotMatch(previewViewController, /viewerTheme == "auto" \? "dark" : viewerTheme/);
 assert.doesNotMatch(previewViewController, /canvasBackground == "auto" \? "black" : canvasBackground/);
+assert.match(gridViewer, /cfg\.transparentBackground === true \|\| canvasBackground === 'transparent'/);
+assert.match(gridViewer, /if \(background === 'graphite'\) return '#111317';/);
+assert.match(gridViewer, /if \(background === 'white'\) return '#f7f7f2';/);
+assert.match(previewRuntimeCss, /--buret-canvas-background:/);
+assert.match(gridCss, /background: var\(--buret-grid-canvas-background, var\(--buret-bg\)\);/);
 assert.match(previewRuntimeViewer, /"defaultLayoutState": \{ "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" \}/);
 assert.match(previewRuntimeViewer, /preferences\.theme_for_runtime\(\)/);
 assert.match(previewRuntimeViewer, /preferences\.canvas_background_for_runtime\(\)/);
@@ -607,6 +620,7 @@ assert.match(previewViewer, /root\.addEventListener\('gesturechange', onGestureC
 assert.match(previewViewer, /\.buret-external-artifact-stage \{ position: absolute; inset: 0; transform:/);
 
 assert.match(shortcuts, /actions\.openCommandPalette\(\)/);
+assert.match(shortcuts, /key === "\/" && !isEditableTarget\(event\.target\)/);
 assert.match(shortcuts, /if \(!enabled\) return undefined/);
 assert.match(app, /isKnownViewerMessageSource\(event\.source, body\?\.documentId\)/);
 assert.match(app, /querySelectorAll<HTMLIFrameElement>\("\.viewer-iframe\[data-document-id\]"\)/);
@@ -617,7 +631,7 @@ assert.match(app, /Quick Look reset completed/);
 assert.match(app, /Quick Look reset reported issues/);
 assert.doesNotMatch(app, /Quick Look reset requested/);
 
-assert.match(shortcutDocs, /\| Cmd\+P \| Open command palette \|/);
+assert.match(shortcutDocs, /\| Cmd\+P or \/ \| Open command palette \|/);
 assert.match(shortcutDocs, /Search Projects and Structures/);
 assert.match(shortcutDocs, /Clear Recent Structures/);
 assert.match(shortcutDocs, /<project>: <title>/);
