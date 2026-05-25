@@ -6,6 +6,7 @@ mod tray;
 
 use std::path::PathBuf;
 use tauri::{Manager, RunEvent};
+use preview::grid_store::GridRuntimeRegistry;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -19,6 +20,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .manage(GridRuntimeRegistry::default())
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -50,6 +52,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::startup::startup_documents,
             commands::documents::open_documents,
+            commands::grid::grid_fetch_page,
             commands::preview_cache::clear_preview_cache,
             commands::shell::open_logs_folder,
             commands::shell::open_external_url,

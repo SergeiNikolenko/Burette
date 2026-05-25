@@ -21,12 +21,14 @@ const [
   lib,
   startupCommand,
   documentsCommand,
+  gridCommand,
   previewCacheCommand,
   shellCommand,
   quickLookCommand,
   updaterCommand,
   tray,
   previewIndex,
+  previewGridStore,
   previewRuntime,
   previewRuntimeGrid,
   previewRuntimeViewer,
@@ -52,17 +54,20 @@ const [
   previewEntitlements,
   appMetadata,
   installLocalScript,
+  previewExtensionInfoPlist,
 ] = await Promise.all([
   source('apps/desktop/src-tauri/src/commands/mod.rs'),
   source('apps/desktop/src-tauri/src/lib.rs'),
   source('apps/desktop/src-tauri/src/commands/startup.rs'),
   source('apps/desktop/src-tauri/src/commands/documents.rs'),
+  source('apps/desktop/src-tauri/src/commands/grid.rs'),
   source('apps/desktop/src-tauri/src/commands/preview_cache.rs'),
   source('apps/desktop/src-tauri/src/commands/shell.rs'),
   source('apps/desktop/src-tauri/src/commands/quicklook.rs'),
   source('apps/desktop/src-tauri/src/commands/updater.rs'),
   source('apps/desktop/src-tauri/src/tray.rs'),
   source('apps/desktop/src-tauri/src/preview/mod.rs'),
+  source('apps/desktop/src-tauri/src/preview/grid_store.rs'),
   source('apps/desktop/src-tauri/src/preview/runtime.rs'),
   source('apps/desktop/src-tauri/src/preview/runtime_grid.rs'),
   source('apps/desktop/src-tauri/src/preview/runtime_viewer.rs'),
@@ -88,6 +93,7 @@ const [
   source('PreviewExtension/BurretePreview.entitlements'),
   source('apps/desktop/src-tauri/AppMetadata.plist'),
   source('scripts/install-local.sh'),
+  source('PreviewExtension/Info.plist'),
 ]);
 
 const tauriConfig = JSON.parse(tauriConfigSource);
@@ -103,13 +109,14 @@ assert.ok(defaultCapability.permissions.includes('dialog:allow-open'));
 assert.ok(defaultCapability.permissions.includes('dialog:allow-message'));
 assert.match(previewEntitlements, /com\.apple\.security\.network\.client/);
 
-for (const moduleName of ['documents', 'preview_cache', 'quicklook', 'shell', 'startup', 'updater']) {
+for (const moduleName of ['documents', 'grid', 'preview_cache', 'quicklook', 'shell', 'startup', 'updater']) {
   assert.match(commandsIndex, new RegExp(`pub\\(crate\\) mod ${moduleName};`));
 }
 
 for (const commandPath of [
   'commands::startup::startup_documents',
   'commands::documents::open_documents',
+  'commands::grid::grid_fetch_page',
   'commands::preview_cache::clear_preview_cache',
   'commands::shell::open_logs_folder',
   'commands::shell::open_external_url',
@@ -122,6 +129,7 @@ for (const commandPath of [
 
 assert.match(startupCommand, /#\[tauri::command\]\s+pub\(crate\) fn startup_documents/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_documents/);
+assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_fetch_page/);
 assert.match(previewCacheCommand, /#\[tauri::command\]\s+pub\(crate\) fn clear_preview_cache/);
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_logs_folder/);
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_external_url/);
@@ -169,6 +177,11 @@ assert.match(previewEntitlements, /com\.apple\.security\.app-sandbox/);
 assert.match(previewEntitlements, /com\.apple\.security\.files\.user-selected\.read-only/);
 assert.match(releaseVersionCheck, /semver release or prerelease/);
 assert.match(appMetadata, /<key>LSHandlerRank<\/key>\s*<string>Alternate<\/string>/);
+assert.match(appMetadata, /<key>CFBundleTypeName<\/key>\s*<string>Molecular grid tables<\/string>/);
+assert.match(appMetadata, /<key>LSHandlerRank<\/key>\s*<string>Owner<\/string>/);
+assert.match(previewExtensionInfoPlist, /public\.comma-separated-values-text/);
+assert.match(previewExtensionInfoPlist, /public\.tab-separated-values-text/);
+assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.smiles/);
 assert.match(installLocalScript, /broadPublicTypes/);
 assert.match(installLocalScript, /public\.comma-separated-values-text/);
 assert.match(installLocalScript, /public\.tab-separated-values-text/);
@@ -185,6 +198,7 @@ assert.match(lib, /if !paths\.is_empty\(\) \{\s*tray::show_main_window\(app\);/)
 for (const moduleName of ['runtime_grid', 'runtime_utils', 'runtime_viewer']) {
   assert.match(previewIndex, new RegExp(`pub\\(crate\\) mod ${moduleName};`));
 }
+assert.match(previewIndex, /pub\(crate\) mod grid_store;/);
 
 assert.match(previewRuntime, /pub\(crate\) fn open_document/);
 assert.match(previewRuntime, /create_grid_runtime/);
@@ -192,6 +206,11 @@ assert.match(previewRuntime, /create_runtime/);
 assert.doesNotMatch(previewRuntime, /fn parse_sdf_grid/);
 assert.doesNotMatch(previewRuntime, /fn viewer_html/);
 assert.match(previewRuntimeGrid, /pub\(crate\) fn create_grid_runtime/);
+assert.match(previewRuntimeGrid, /build_grid_store/);
+assert.match(previewRuntimeGrid, /register\(document_id, database_path\)/);
+assert.match(previewRuntimeGrid, /"gridDataMode": "bridge"/);
+assert.match(previewRuntimeGrid, /"recordsIncluded": 0/);
+assert.doesNotMatch(previewRuntimeGrid, /preview-grid-records\.js/);
 assert.match(previewRuntimeGrid, /fn parse_sdf_grid/);
 assert.match(previewRuntimeGrid, /fn parse_delimited_table/);
 assert.match(previewRuntimeViewer, /pub\(crate\) fn create_runtime/);
@@ -204,9 +223,11 @@ assert.doesNotMatch(previewRuntimeViewer, /Content-Security-Policy/);
 assert.match(previewRuntimeGrid, /Content-Security-Policy/);
 assert.match(quickLookPreviewController, /<script src="preview-config\.js"><\/script>/);
 assert.match(quickLookPreviewController, /<script src="preview-data\.js"><\/script>/);
+assert.match(quickLookPreviewController, /<script src="preview-rdkit-wasm\.js"><\/script>/);
 assert.match(quickLookPreviewController, /burette-quicklook-host/);
 assert.match(quickLookPreviewController, /window\.BurreteDataBase64 = null;\\nwindow\.BurreteDataURL = null;\\n/);
 assert.match(quickLookPreviewController, /window\.BurreteDataBase64 = \\"\\\(structureData\.base64EncodedString\(\)\)\\";\\nwindow\.BurreteDataURL = '\.\/preview-data\.bin';\\n/);
+assert.match(quickLookPreviewController, /window\.BurreteRDKitWasmBase64 = \\"\\\(wasmData\.base64EncodedString\(\)\)\\";\\n/);
 assert.match(quickLookPreviewController, /renderTimeoutWorkItem\?\.cancel\(\)/);
 assert.match(quickLookPreviewController, /PreviewError\.webRenderFailed\("The embedded WebKit process terminated while loading the Quick Look preview\."\)/);
 assert.match(quickLookPreviewController, /finishPreviewIfNeeded\(nil, requestID: activePreviewRequestID\)/);
@@ -220,6 +241,10 @@ assert.match(previewRuntimeViewer, /window\.BurreteMolstarURL = \{molstar_js:\?\
 assert.match(previewRuntimeViewer, /window\.BurreteXyzFastURL = \{xyz_fast_js:\?\};/);
 assert.doesNotMatch(previewRuntimeGrid, /BurreteRDKitWasmBase64/);
 assert.match(previewRuntimeGrid, /"rdkitWasmPath": asset_url/);
+assert.match(previewGridStore, /pub\(crate\) struct GridRuntimeRegistry/);
+assert.match(previewGridStore, /pub\(crate\) fn build_grid_store/);
+assert.match(previewGridStore, /fn fetch_page/);
+assert.match(previewGridStore, /query\.limit\.max\(1\)\.min\(240\)/);
 assert.match(previewRuntimeViewer, /body\.documentId = String\(window\.BurreteConfig\.documentId\)/);
 assert.match(viewerRuntimeCSS, /--buret-toolbar-safe-top: 12px/);
 assert.match(viewerRuntimeCSS, /--buret-viewport-controls-top: 64px/);

@@ -468,6 +468,10 @@ assert.match(previewViewer, /\.buret-external-artifact-stage \{ position: absolu
 assert.match(shortcuts, /actions\.openCommandPalette\(\)/);
 assert.match(shortcuts, /if \(!enabled\) return undefined/);
 assert.match(app, /isKnownViewerMessageSource\(event\.source, body\?\.documentId\)/);
+assert.match(app, /data\?\.source !== "burrete-grid"/);
+assert.match(app, /body\?\.type !== "gridFetchPage" \|\| !body\.requestId \|\| !body\.documentId/);
+assert.match(app, /invoke\("grid_fetch_page"/);
+assert.match(app, /source: "burrete-grid-host"/);
 assert.match(app, /querySelectorAll<HTMLIFrameElement>\("\.viewer-iframe\[data-document-id\]"\)/);
 assert.match(app, /Preferences refresh all open runtimes/);
 assert.doesNotMatch(app, /Preferences intentionally refresh only the active runtime/);
@@ -495,7 +499,15 @@ assert.match(updateSource, /manifestSignatureAssetFor\(assets, asset\.name!\)/);
 assert.match(app, /manifestSignatureBrowserDownloadUrl: release\.installAsset\.manifestSignatureBrowserDownloadUrl/);
 assert.match(browserDevDocuments, /documentId: stableId\(path\)/);
 assert.match(browserDevDocuments, /body\.documentId = String\(window\.BurreteConfig\.documentId\)/);
+assert.match(browserDevDocuments, /window\.BurreteGridRecords =/);
 assert.match(browserDevDocuments, /rdkitWasmPath: `\$\{WEB_ASSETS_BASE\}rdkit\/RDKit_minimal\.wasm`/);
 assert.doesNotMatch(browserDevDocuments, /BurreteRDKitWasmBase64/);
+assert.match(gridViewer, /cfg\.appViewer === true && cfg\.gridDataMode === 'bridge'/);
+assert.match(gridViewer, /data\.source !== 'burrete-grid-host'/);
+assert.match(gridViewer, /hostRequest\('gridFetchPage'/);
+assert.match(gridViewer, /async function scanRemoteBySMARTS\(cfg, token\)/);
+assert.match(gridViewer, /function shouldCollectAllRemoteRows\(\)/);
+assert.match(gridViewer, /async function collectAllRemoteRows\(cfg\)/);
+assert.match(gridViewer, /state\.remoteMode && state\.selected\.size === 0 && !state\.smarts\.trim\(\)/);
 
 console.log('ui shell contract tests passed');

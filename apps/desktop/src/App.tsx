@@ -340,39 +340,93 @@ export default function App() {
         source?: string;
         body?: {
           type?: string;
+          requestId?: string;
           value?: string;
           documentId?: string;
           orientationRef?: string | null;
           text?: string | null;
+          query?: string | null;
+          sort?: string | null;
+          offset?: number | null;
+          limit?: number | null;
         };
       } | undefined;
-      if (data?.source !== "burrete-viewer") return;
       const body = data.body;
-      if (!isKnownViewerMessageSource(event.source, body?.documentId)) return;
-      if (body?.type === "setXyzrenderOrientation") {
-        xyzrenderOrientationRefRef.current = body.text ?? body.value ?? null;
-        return;
-      }
-      if (body?.type === "setXyzrenderPreset") {
-        pendingViewerReloadOptionsRef.current = {
-          xyzrenderPreset: body.value ?? null,
-          xyzrenderOrientationRef: xyzrenderOrientationRefRef.current,
-        };
-        void reloadActive();
-        return;
-      }
-      if (body?.type === "setRenderer") {
-        const renderer = body.value;
-        if (renderer === "auto" || renderer === "xyz-fast" || renderer === "molstar" || renderer === "xyzrender-external") {
-          if (renderer === "xyzrender-external" && body.orientationRef) {
-            xyzrenderOrientationRefRef.current = body.orientationRef;
-          }
-          pendingViewerReloadOptionsRef.current = renderer === "xyzrender-external" && body.orientationRef
-            ? { xyzrenderOrientationRef: body.orientationRef }
-            : null;
-          setPreference("rendererMode", renderer);
+      if (data?.source === "burrete-viewer") {
+        if (!isKnownViewerMessageSource(event.source, body?.documentId)) return;
+        if (body?.type === "setXyzrenderOrientation") {
+          xyzrenderOrientationRefRef.current = body.text ?? body.value ?? null;
+          return;
         }
+        if (body?.type === "setXyzrenderPreset") {
+          pendingViewerReloadOptionsRef.current = {
+            xyzrenderPreset: body.value ?? null,
+            xyzrenderOrientationRef: xyzrenderOrientationRefRef.current,
+          };
+          void reloadActive();
+          return;
+        }
+        if (body?.type === "setRenderer") {
+          const renderer = body.value;
+          if (renderer === "auto" || renderer === "xyz-fast" || renderer === "molstar" || renderer === "xyzrender-external") {
+            if (renderer === "xyzrender-external" && body.orientationRef) {
+              xyzrenderOrientationRefRef.current = body.orientationRef;
+            }
+            pendingViewerReloadOptionsRef.current = renderer === "xyzrender-external" && body.orientationRef
+              ? { xyzrenderOrientationRef: body.orientationRef }
+              : null;
+            setPreference("rendererMode", renderer);
+          }
+        }
+        return;
       }
+      if (data?.source !== "burrete-grid") return;
+      if (!isKnownViewerMessageSource(event.source, body?.documentId)) return;
+      if (body?.type !== "gridFetchPage" || !body.requestId || !body.documentId) return;
+      if (!isTauriRuntime()) {
+        postMessageToViewerSource(event.source, {
+          source: "burrete-grid-host",
+          body: {
+            type: "gridError",
+            requestId: body.requestId,
+            documentId: body.documentId,
+            error: "Desktop grid paging is unavailable outside the Tauri runtime.",
+          },
+        });
+        return;
+      }
+      void (async () => {
+        try {
+          const result = await invoke("grid_fetch_page", {
+            request: {
+              documentId: body.documentId,
+              query: typeof body.query === "string" ? body.query : "",
+              sort: typeof body.sort === "string" ? body.sort : "index",
+              offset: typeof body.offset === "number" ? body.offset : 0,
+              limit: typeof body.limit === "number" ? body.limit : 96,
+            },
+          });
+          postMessageToViewerSource(event.source, {
+            source: "burrete-grid-host",
+            body: {
+              type: "gridPage",
+              requestId: body.requestId,
+              documentId: body.documentId,
+              result,
+            },
+          });
+        } catch (error) {
+          postMessageToViewerSource(event.source, {
+            source: "burrete-grid-host",
+            body: {
+              type: "gridError",
+              requestId: body.requestId,
+              documentId: body.documentId,
+              error: error instanceof Error ? error.message : String(error),
+            },
+          });
+        }
+      })();
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
@@ -550,4 +604,11 @@ function isKnownViewerMessageSource(source: MessageEventSource | null, documentI
   return Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).some(
     (iframe) => iframe.dataset.documentId === documentId && iframe.contentWindow === source,
   );
+}
+
+function postMessageToViewerSource(source: MessageEventSource | null, payload: unknown) {
+  if (!source || typeof source !== "object" || !("postMessage" in source) || typeof source.postMessage !== "function") {
+    return;
+  }
+  source.postMessage(payload, "*");
 }

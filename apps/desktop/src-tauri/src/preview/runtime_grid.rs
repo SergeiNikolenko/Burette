@@ -1,15 +1,20 @@
 use serde_json::json;
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{Manager, Runtime};
 
+use super::grid_store::build_grid_store;
 use super::runtime::ViewerPreferences;
-use super::runtime_utils::{
-    asset_url, clipped, decode_text, escape_html, normalized_lines, prune_runtime_dirs,
-};
+use super::runtime_utils::{asset_url, escape_html, prune_runtime_dirs};
 use super::runtime_viewer::copy_web_assets;
 
+#[cfg(test)]
+use std::collections::BTreeMap;
+#[cfg(test)]
+use super::runtime_utils::{clipped, normalized_lines};
+
+#[cfg(test)]
+#[allow(dead_code)]
 #[derive(Debug)]
 struct GridCollection {
     format: &'static str,
@@ -17,6 +22,8 @@ struct GridCollection {
     records_total: usize,
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 #[derive(Debug)]
 struct GridRecord {
     index: usize,
@@ -28,27 +35,13 @@ struct GridRecord {
 
 pub(crate) fn create_grid_runtime<R: Runtime>(
     app: &tauri::AppHandle<R>,
+    document_id: &str,
     file_path: &Path,
     extension: &str,
     data: &[u8],
     preferences: &ViewerPreferences,
 ) -> Result<Option<PathBuf>, String> {
     if !grid_can_preview(extension) {
-        return Ok(None);
-    }
-
-    let text = decode_text(data);
-    let collection = match extension {
-        "csv" => parse_delimited_table_with_fallback(&text, ',', "csv", 5000)?,
-        "tsv" => parse_delimited_table_with_fallback(&text, '\t', "tsv", 5000)?,
-        "smi" | "smiles" => parse_smiles_grid(&text, 5000),
-        "sdf" | "sd" => parse_sdf_grid(&text, 5000),
-        _ => return Ok(None),
-    };
-
-    if collection.records_total == 0
-        || ((extension == "sdf" || extension == "sd") && collection.records_total <= 1)
-    {
         return Ok(None);
     }
 
@@ -63,30 +56,16 @@ pub(crate) fn create_grid_runtime<R: Runtime>(
     fs::create_dir_all(&runtime).map_err(|err| err.to_string())?;
     copy_web_assets(app, &assets)?;
     prune_runtime_dirs(&base);
-
-    let records_included = collection.records.len();
-    let records_payload: Vec<_> = collection
-        .records
-        .iter()
-        .map(|record| {
-            let mut payload = json!({
-                "index": record.index,
-                "name": record.name,
-                "props": record.props,
-            });
-            if let Some(smiles) = &record.smiles {
-                payload["smiles"] = json!(smiles);
-            }
-            if let Some(molblock) = &record.molblock {
-                payload["molblock"] = json!(molblock);
-            }
-            payload
-        })
-        .collect();
+    let Some((database_path, collection)) = build_grid_store(&runtime, extension, data)? else {
+        return Ok(None);
+    };
+    app.state::<super::grid_store::GridRuntimeRegistry>()
+        .register(document_id, database_path)?;
     let config = json!({
         "mode": "grid2d",
         "format": collection.format,
         "renderer": "grid2d",
+        "documentId": document_id,
         "label": file_path.file_name().and_then(|value| value.to_str()).unwrap_or("molecule collection"),
         "byteCount": data.len(),
         "host": "app",
@@ -94,13 +73,14 @@ pub(crate) fn create_grid_runtime<R: Runtime>(
         "debug": false,
         "appViewer": true,
         "tauriViewer": true,
+        "gridDataMode": "bridge",
         "theme": preferences.resolved_theme(),
         "canvasBackground": preferences.resolved_canvas_background(),
         "overlayOpacity": 0.90,
         "transparentBackground": preferences.resolved_transparent_background(),
         "recordsTotal": collection.records_total,
-        "recordsIncluded": records_included,
-        "recordsTruncated": collection.records_total > records_included,
+        "recordsIncluded": 0,
+        "recordsTruncated": false,
         "pageSize": 96,
         "rdkitWasmPath": asset_url(&assets.join("rdkit").join("RDKit_minimal.wasm")),
         "capabilities": {
@@ -111,7 +91,6 @@ pub(crate) fn create_grid_runtime<R: Runtime>(
         }
     });
     let config_text = serde_json::to_string(&config).map_err(|err| err.to_string())?;
-    let records_text = serde_json::to_string(&records_payload).map_err(|err| err.to_string())?;
     fs::write(
         runtime.join("index.html"),
         grid_html(file_path, &runtime, &assets, preferences),
@@ -120,11 +99,6 @@ pub(crate) fn create_grid_runtime<R: Runtime>(
     fs::write(
         runtime.join("preview-config.js"),
         format!("window.BurreteConfig = {config_text};\n"),
-    )
-    .map_err(|err| err.to_string())?;
-    fs::write(
-        runtime.join("preview-grid-records.js"),
-        format!("window.BurreteGridRecords = {records_text};\n"),
     )
     .map_err(|err| err.to_string())?;
     Ok(Some(runtime.join("index.html")))
@@ -149,7 +123,6 @@ fn grid_html(
     };
     let grid_css = versioned_asset_url(&assets.join("grid.css"));
     let config_js = asset_url(&runtime.join("preview-config.js"));
-    let records_js = asset_url(&runtime.join("preview-grid-records.js"));
     let rdkit_js = versioned_asset_url(&assets.join("rdkit").join("RDKit_minimal.js"));
     let grid_js = versioned_asset_url(&assets.join("grid-viewer.js"));
     format!(
@@ -176,7 +149,6 @@ fn grid_html(
   <div id="app"></div>
   <div id="status">Loading molecule grid...</div>
   <script src="{config_js}"></script>
-  <script src="{records_js}"></script>
   <script src="{rdkit_js}"></script>
   <script src="{grid_js}"></script>
 </body>
@@ -196,6 +168,8 @@ pub(crate) fn grid_requires_preview(extension: &str) -> bool {
     matches!(extension, "csv" | "smi" | "smiles" | "tsv")
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn parse_smiles_grid(text: &str, max_records: usize) -> GridCollection {
     let mut records = Vec::new();
     let mut records_total = 0;
@@ -233,6 +207,8 @@ fn parse_smiles_grid(text: &str, max_records: usize) -> GridCollection {
     }
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn parse_sdf_grid(text: &str, max_records: usize) -> GridCollection {
     let mut records = Vec::new();
     let mut records_total = 0;
@@ -319,6 +295,8 @@ fn parse_sdf_grid(text: &str, max_records: usize) -> GridCollection {
     }
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn parse_delimited_table_with_fallback(
     text: &str,
     separator: char,
@@ -335,6 +313,8 @@ fn parse_delimited_table_with_fallback(
     })
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn parse_delimited_table(
     text: &str,
     separator: char,
@@ -432,6 +412,8 @@ fn parse_delimited_table(
     })
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn parse_delimited_rows_as_smiles(
     text: &str,
     separator: char,
@@ -486,6 +468,8 @@ fn parse_delimited_rows_as_smiles(
     }
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn parse_delimited_line(line: &str, separator: char) -> Vec<String> {
     let chars: Vec<_> = line.chars().collect();
     let mut fields = Vec::new();
@@ -513,6 +497,8 @@ fn parse_delimited_line(line: &str, separator: char) -> Vec<String> {
     fields
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn is_smiles_column(value: &str) -> bool {
     matches!(
         value,
@@ -520,6 +506,8 @@ fn is_smiles_column(value: &str) -> bool {
     )
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn is_likely_delimited_header(cells: &[String]) -> bool {
     cells
         .iter()
@@ -533,6 +521,8 @@ fn is_likely_delimited_header(cells: &[String]) -> bool {
         })
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn looks_like_smiles(value: &str) -> bool {
     let trimmed = value.trim();
     if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.contains(char::is_whitespace) {
@@ -575,6 +565,8 @@ fn looks_like_smiles(value: &str) -> bool {
     has_atom && (!has_aromatic_atom || has_structural_marker)
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn parse_sdf_properties(lines: &[String]) -> BTreeMap<String, String> {
     let mut props = BTreeMap::new();
     let mut index = 0;
@@ -609,12 +601,16 @@ fn parse_sdf_properties(lines: &[String]) -> BTreeMap<String, String> {
     props
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn property_name(line: &str) -> Option<String> {
     let open = line.find('<')?;
     let close = line[open + 1..].find('>')? + open + 1;
     (open < close).then(|| line[open + 1..close].trim().to_string())
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn extract_molblock(lines: &[String]) -> String {
     if let Some(end) = lines.iter().position(|line| line.trim() == "M  END") {
         return lines[..=end].join("\n");
