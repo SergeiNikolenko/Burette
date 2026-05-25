@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use tauri::Manager;
 
+use super::update_progress;
+
 const APP_ID: &str = "com.local.BurreteV10";
 const EXTENSION_ID: &str = "com.local.BurreteV10.Preview";
 const RELEASE_DOWNLOAD_PREFIX: &str =
@@ -51,21 +53,40 @@ pub(crate) async fn install_update(
     let package_version = app.package_info().version.to_string();
     let app_data_dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
     let app_bundle = current_app_bundle()?;
+    let progress_app = app.clone();
 
-    tauri::async_runtime::spawn_blocking(move || {
-        let archive = download_update(&app_data_dir, &package_version, &request)?;
-        let staged_app =
-            unpack_and_validate_update(&app_data_dir, &archive, &package_version, &request)?;
+    update_progress::show(&app, "Preparing update...", Some(0.04));
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let archive = download_update(&progress_app, &app_data_dir, &package_version, &request)?;
+        let staged_app = unpack_and_validate_update(
+            &progress_app,
+            &app_data_dir,
+            &archive,
+            &package_version,
+            &request,
+        )?;
+        update_progress::show(&progress_app, "Preparing installer...", Some(0.92));
         launch_installer(&app_data_dir, &staged_app, &app_bundle, &request.tag_name)
     })
     .await
-    .map_err(|err| err.to_string())??;
+    .map_err(|err| err.to_string())
+    .and_then(|result| result);
 
-    app.exit(0);
-    Ok(())
+    match result {
+        Ok(()) => {
+            update_progress::show(&app, "Restarting Burrete...", Some(1.0));
+            app.exit(0);
+            Ok(())
+        }
+        Err(error) => {
+            update_progress::close(&app);
+            Err(error)
+        }
+    }
 }
 
 fn download_update(
+    app: &tauri::AppHandle,
     app_data_dir: &Path,
     package_version: &str,
     request: &UpdateInstallRequest,
@@ -81,7 +102,9 @@ fn download_update(
     remove_path_if_exists(&temporary)?;
     remove_path_if_exists(&archive)?;
 
+    update_progress::show(app, "Downloading update...", Some(0.10));
     download_asset(package_version, &request.browser_download_url, &temporary)?;
+    update_progress::show(app, "Checking downloaded update...", Some(0.34));
 
     let downloaded_size = fs::metadata(&temporary)
         .map_err(|err| err.to_string())?
@@ -144,6 +167,7 @@ fn download_update(
         remove_path_if_exists(&manifest)?;
         remove_path_if_exists(&manifest_signature)?;
 
+        update_progress::show(app, "Downloading update metadata...", Some(0.40));
         download_asset(package_version, digest_url, &temporary_digest)?;
         download_asset(package_version, manifest_url, &temporary_manifest)?;
         download_asset(
@@ -152,6 +176,7 @@ fn download_update(
             &temporary_manifest_signature,
         )?;
 
+        update_progress::show(app, "Verifying update metadata...", Some(0.50));
         let downloaded_digest_size = fs::metadata(&temporary_digest)
             .map_err(|err| err.to_string())?
             .len();
@@ -228,6 +253,7 @@ fn download_update(
     }
 
     fs::rename(&temporary, &archive).map_err(|err| err.to_string())?;
+    update_progress::show(app, "Download complete...", Some(0.58));
     Ok(archive)
 }
 
@@ -251,6 +277,7 @@ fn download_asset(package_version: &str, url: &str, target: &Path) -> Result<(),
 }
 
 fn unpack_and_validate_update(
+    app: &tauri::AppHandle,
     app_data_dir: &Path,
     archive: &Path,
     current_version: &str,
@@ -260,11 +287,13 @@ fn unpack_and_validate_update(
     let staging_dir = updates_dir.join(format!("Install-{}", safe_path_component(&uuid())));
     fs::create_dir_all(&staging_dir).map_err(|err| err.to_string())?;
 
+    update_progress::show(app, "Extracting update...", Some(0.64));
     run_status(
         "/usr/bin/ditto",
         &["-x", "-k", path_str(archive)?, path_str(&staging_dir)?],
     )?;
 
+    update_progress::show(app, "Validating update...", Some(0.78));
     let app = find_downloaded_app(&staging_dir)?;
     validate_downloaded_app(&app, current_version, &request.tag_name)?;
     Ok(app)
