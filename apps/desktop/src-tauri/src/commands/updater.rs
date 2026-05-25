@@ -964,35 +964,99 @@ fn uuid() -> String {
 }
 
 fn compare_versions(left: &str, right: &str) -> i8 {
-    let left_parts = version_parts(left);
-    let right_parts = version_parts(right);
-    let count = left_parts.len().max(right_parts.len());
+    let left_version = parse_version(left);
+    let right_version = parse_version(right);
+    let count = left_version.core.len().max(right_version.core.len());
     for index in 0..count {
-        let left = left_parts.get(index).copied().unwrap_or(0);
-        let right = right_parts.get(index).copied().unwrap_or(0);
+        let left = left_version.core.get(index).copied().unwrap_or(0);
+        let right = right_version.core.get(index).copied().unwrap_or(0);
         if left != right {
             return if left > right { 1 } else { -1 };
         }
     }
-    0
+    compare_prerelease(&left_version.prerelease, &right_version.prerelease)
 }
 
-fn version_parts(value: &str) -> Vec<u64> {
-    value
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ParsedVersion {
+    core: Vec<u64>,
+    prerelease: Vec<PrereleaseIdentifier>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum PrereleaseIdentifier {
+    Numeric(u64),
+    Text(String),
+}
+
+fn parse_version(value: &str) -> ParsedVersion {
+    let trimmed = value
         .trim()
-        .trim_start_matches('v')
-        .split(['-', '+'])
-        .next()
-        .unwrap_or(value)
-        .split('.')
-        .map(|part| {
-            part.chars()
-                .take_while(char::is_ascii_digit)
-                .collect::<String>()
-                .parse::<u64>()
-                .unwrap_or(0)
-        })
-        .collect()
+        .strip_prefix(['v', 'V'])
+        .unwrap_or(value.trim());
+    let release = trimmed.split_once('+').map(|(prefix, _)| prefix).unwrap_or(trimmed);
+    let (core, prerelease) = match release.split_once('-') {
+        Some((core, prerelease)) => (core, prerelease),
+        None => (release, ""),
+    };
+    ParsedVersion {
+        core: core
+            .split('.')
+            .map(|part| part.parse::<u64>().unwrap_or(0))
+            .collect(),
+        prerelease: if prerelease.is_empty() {
+            Vec::new()
+        } else {
+            prerelease
+                .split('.')
+                .filter(|part| !part.is_empty())
+                .map(|part| match part.parse::<u64>() {
+                    Ok(value) => PrereleaseIdentifier::Numeric(value),
+                    Err(_) => PrereleaseIdentifier::Text(part.to_string()),
+                })
+                .collect()
+        },
+    }
+}
+
+fn compare_prerelease(left: &[PrereleaseIdentifier], right: &[PrereleaseIdentifier]) -> i8 {
+    if left.is_empty() && right.is_empty() {
+        return 0;
+    }
+    if left.is_empty() {
+        return 1;
+    }
+    if right.is_empty() {
+        return -1;
+    }
+
+    let count = left.len().max(right.len());
+    for index in 0..count {
+        let Some(left_identifier) = left.get(index) else {
+            return -1;
+        };
+        let Some(right_identifier) = right.get(index) else {
+            return 1;
+        };
+        match (left_identifier, right_identifier) {
+            (
+                PrereleaseIdentifier::Numeric(left_value),
+                PrereleaseIdentifier::Numeric(right_value),
+            ) => {
+                if left_value != right_value {
+                    return if left_value > right_value { 1 } else { -1 };
+                }
+            }
+            (PrereleaseIdentifier::Numeric(_), PrereleaseIdentifier::Text(_)) => return -1,
+            (PrereleaseIdentifier::Text(_), PrereleaseIdentifier::Numeric(_)) => return 1,
+            (PrereleaseIdentifier::Text(left_value), PrereleaseIdentifier::Text(right_value)) => {
+                if left_value != right_value {
+                    return if left_value > right_value { 1 } else { -1 };
+                }
+            }
+        }
+    }
+    0
 }
 
 #[cfg(test)]
@@ -1049,6 +1113,29 @@ mod tests {
 
         validate_request(&request).expect("legacy zip-only request should remain supported");
         assert!(!should_verify_manifest(&request));
+    }
+
+    #[test]
+    fn compare_versions_orders_prereleases_before_stable() {
+        assert_eq!(compare_versions("1.0.0-alpha", "1.0.0"), -1);
+        assert_eq!(compare_versions("1.0.0", "1.0.0-alpha"), 1);
+    }
+
+    #[test]
+    fn compare_versions_orders_prerelease_identifiers() {
+        assert_eq!(compare_versions("v0.10.35-beta.2", "0.10.35-beta.1"), 1);
+        assert_eq!(compare_versions("0.10.35-beta.1", "0.10.35-beta.2"), -1);
+    }
+
+    #[test]
+    fn compare_versions_ignores_build_metadata() {
+        assert_eq!(compare_versions("0.10.35+build.7", "v0.10.35"), 0);
+    }
+
+    #[test]
+    fn compare_versions_accepts_uppercase_v_prefix() {
+        assert_eq!(compare_versions("V1.0.0", "1.0.0"), 0);
+        assert_eq!(compare_versions("V1.0.1", "1.0.0"), 1);
     }
 
     #[test]

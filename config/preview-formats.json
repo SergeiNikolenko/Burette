@@ -114,7 +114,8 @@
     {
       "id": "xyzrender-input",
       "contentType": "com.local.burrete10.xyzrender-input",
-      "extensions": ["cub", "cube", "in", "log", "out", "vasp"],
+      "contentTypeAliases": ["com.adobe.fdf", "com.apple.videoapps.cube", "com.gaussian.cube"],
+      "extensions": ["abi", "com", "cub", "cube", "fdf", "in", "inp", "nw", "out", "psi4", "qcin", "vasp"],
       "conformsTo": ["public.plain-text", "public.data"],
       "description": "xyzrender-compatible molecular structure file",
       "viewer": { "molstarFormat": "xyz", "binary": false, "externalOnly": true },
@@ -139,10 +140,10 @@
   "documentTypes": {
     "name": "Molecular structure files",
     "extensions": [
-      "bcif", "cif", "cms", "csv", "cub", "cube", "dcd", "ent", "gro", "mcif", "mmcif",
-      "mol", "mol2", "in", "lammpstrj", "log", "mae", "mae.gz", "maegz", "nctraj", "out",
-      "pdb", "pdbqt", "pqr", "prmtop", "psf", "sd", "sdf", "smi", "smiles", "top", "trr",
-      "tsv", "vasp", "xtc", "xyz"
+      "abi", "bcif", "cif", "cms", "com", "csv", "cub", "cube", "dcd", "ent", "fdf", "gro",
+      "in", "inp", "lammpstrj", "mae", "mae.gz", "maegz", "mcif", "mmcif", "mol",
+      "mol2", "nctraj", "nw", "out", "pdb", "pdbqt", "pqr", "prmtop", "psf", "psi4", "qcin",
+      "sd", "sdf", "smi", "smiles", "top", "trr", "tsv", "vasp", "xtc", "xyz"
     ]
   },
   "quickLook": {
@@ -215,13 +216,16 @@
       "public.delimited-values-text",
       "public.comma-separated-values-text",
       "public.tab-separated-values-text",
-      "com.schrodinger.sdf",
       "com.local.burrete10.xyz",
       "com.local.burrete10.xyzrender-input",
       "net.sourceforge.openbabel.xyz",
+      "com.adobe.fdf",
+      "com.apple.videoapps.cube",
+      "com.gaussian.cube",
       "com.local.burrete10.gro",
       "com.local.burrete10.molecular-dynamics",
       "com.local.burrete10.schrodinger",
+      "com.schrodinger.sdf",
       "com.schrodinger.pdb"
     ]
   }

@@ -1,8 +1,17 @@
 import type { RecentStructure, ViewerDocument, ViewerPreferences } from "../types";
 import type { MoleculeTab } from "../stores/molecule-store";
 import type { UpdatePreferences, UpdateState } from "../update";
+import type { SidebarProject } from "../lib/sidebar-projects";
 
 export type AppPage = "viewer" | "settings";
+export type StatusKind = "info" | "error";
+
+export type StatusNotice = {
+  id: number;
+  kind: StatusKind;
+  message: string;
+  details: string[];
+};
 
 export type ShellActions = {
   chooseFiles: () => void | Promise<void>;
@@ -19,7 +28,10 @@ export type ShellActions = {
   openSettings: () => void;
   chooseWorkspace: () => void | Promise<void>;
   openWorkspaceFolder: () => void | Promise<void>;
+  openProjectFolder: (path: string | null) => void | Promise<void>;
   toggleSidebar: () => void;
+  setSidebarQuery: (query: string) => void;
+  toggleProjectExpanded: (projectId: string) => void;
   closeDocument: (id: string) => void;
   closeTab: (id: string) => void;
   closeActiveDocument: () => void;
@@ -44,13 +56,15 @@ export type ShellViewState = {
   activeDocumentId: string | null;
   visibleDocuments: ViewerDocument[];
   recentStructures: RecentStructure[];
+  sidebarProjects: SidebarProject[];
+  expandedProjectIds: string[];
   workspacePath: string | null;
   page: AppPage;
   sidebarOpen: boolean;
   sidebarWidth: number;
   sidebarDragging: boolean;
   sidebarQuery: string;
-  status: string;
+  status: StatusNotice | null;
   dropActive: boolean;
   preferences: ViewerPreferences;
   update: UpdateState;

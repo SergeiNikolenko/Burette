@@ -61,11 +61,13 @@
     "fileAssociations": [
       {
         "ext": [
+          "abi",
           "pdb",
           "ent",
           "pdbqt",
           "pqr",
           "cif",
+          "com",
           "mcif",
           "mmcif",
           "bcif",
@@ -75,6 +77,7 @@
           "smiles",
           "csv",
           "tsv",
+          "fdf",
           "mol",
           "mol2",
           "xyz",
@@ -82,8 +85,10 @@
           "cub",
           "cube",
           "dcd",
+          "inp",
           "lammpstrj",
           "nctraj",
+          "nw",
           "top",
           "trr",
           "xtc",
@@ -92,10 +97,11 @@
           "mae.gz",
           "maegz",
           "in",
-          "log",
           "out",
           "prmtop",
           "psf",
+          "psi4",
+          "qcin",
           "vasp"
         ],
         "role": "Viewer"

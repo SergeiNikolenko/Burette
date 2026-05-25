@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ask, open } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
+import previewFormatRegistry from "../../../config/preview-formats.json";
 import { AppLayout } from "./components/app-layout";
 import { CommandPalette } from "./components/command-palette";
-import type { ShellActions, ShellViewState } from "./components/types";
+import type { ShellActions, ShellViewState, StatusKind, StatusNotice } from "./components/types";
 import { WindowTitle } from "./components/window-title";
 import {
   useCloseCommandPalette,
@@ -43,6 +44,7 @@ import {
 } from "./hooks/use-tabs";
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
 import { browserDevRuntimeNeedsRefresh, openBrowserDevDocuments } from "./lib/browser-dev-documents";
+import { buildSidebarProjects, parentDirectory } from "./lib/sidebar-projects";
 import { isTauriRuntime } from "./lib/tauri";
 import type { OpenDocumentsResult, RecentStructure, ViewerReloadOptions } from "./types";
 import { checkForUpdates as requestUpdateCheck, clearDismissedUpdate, dismissUpdate, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically, shouldPromptForUpdate } from "./update";
@@ -51,7 +53,7 @@ import type { UpdatePreferences, UpdateRelease, UpdateState } from "./update";
 const filters = [
   {
     name: "Molecular structures",
-    extensions: ["pdb", "ent", "pdbqt", "pqr", "cif", "mcif", "mmcif", "bcif", "sdf", "sd", "smi", "smiles", "csv", "tsv", "mol", "mol2", "xyz", "gro", "cub", "cube", "in", "log", "out", "vasp"],
+    extensions: previewFormatRegistry.documentTypes.extensions,
   },
 ];
 
@@ -79,9 +81,20 @@ export default function App() {
   const closeDocument = useCloseDocument();
   const closeActiveDocument = useCloseActiveTab();
   const closeAllDocuments = useCloseAllTabs();
-  const { sidebarOpen, sidebarWidth, setSidebarWidth, toggleSidebar } = useSidebar();
+  const {
+    sidebarOpen,
+    sidebarWidth,
+    projectRoots,
+    expandedProjectIds,
+    sidebarQuery,
+    setSidebarWidth,
+    addProjectRoot,
+    setSidebarQuery,
+    toggleProjectExpanded,
+    toggleSidebar,
+  } = useSidebar();
   const [sidebarDragging, setSidebarDragging] = useState(false);
-  const [status, setStatus] = useState("Ready");
+  const [status, setStatus] = useState<StatusNotice | null>(null);
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateState>(() => ({
     preferences: loadUpdatePreferences(),
@@ -90,17 +103,48 @@ export default function App() {
     statusText: "No update check has run yet.",
     availableRelease: null,
   }));
-  const sidebarSearchRef = useRef<HTMLButtonElement | null>(null);
+  const sidebarSearchRef = useRef<HTMLInputElement | null>(null);
   const refreshedPersistedSessionRef = useRef(false);
   const openedBrowserDevFilesRef = useRef(false);
   const syncingBrowserDevFilesRef = useRef(false);
   const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions | null>(null);
+  const pendingViewerReloadDocumentIdRef = useRef<string | null>(null);
   const xyzrenderOrientationRefRef = useRef<string | null>(null);
+  const skipNextPreferenceRefreshRef = useRef(false);
+  const statusSequenceRef = useRef(0);
   const commandPaletteOpen = useIsCommandPaletteOpen();
   const commandPaletteQuery = useCommandPaletteSearch();
   const openCommandPalette = useOpenCommandPalette();
   const closeCommandPalette = useCloseCommandPalette();
   const setCommandPaletteQuery = useSetCommandPaletteSearch();
+
+  const pushStatus = useCallback((message: string, kind: StatusKind = "info", details: string[] = []) => {
+    const trimmed = message.trim();
+    if (!trimmed) return;
+    setStatus({
+      id: ++statusSequenceRef.current,
+      kind,
+      message: trimmed,
+      details: details.filter(Boolean),
+    });
+  }, []);
+
+  const pushErrorStatus = useCallback((error: unknown, prefix?: string, details: string[] = []) => {
+    const message = error instanceof Error ? error.message : String(error);
+    pushStatus(prefix ? `${prefix}: ${message}` : message, "error", details.length > 0 ? details : [message]);
+  }, [pushStatus]);
+
+  const clearStatus = useCallback(() => {
+    setStatus(null);
+  }, []);
+
+  useEffect(() => {
+    if (!status || status.kind === "error") return undefined;
+    const timeout = window.setTimeout(() => {
+      setStatus((current) => (current?.id === status.id ? null : current));
+    }, 3200);
+    return () => window.clearTimeout(timeout);
+  }, [status]);
 
   const selectDocument = useCallback((id: string) => {
     setActiveDocument(id);
@@ -111,24 +155,45 @@ export default function App() {
     requestAnimationFrame(() => sidebarSearchRef.current?.focus());
   }, [sidebarOpen, toggleSidebar]);
 
+  const allSidebarProjects = useMemo(() => buildSidebarProjects({
+    documents,
+    recentStructures,
+    projectRoots,
+    activeDocumentId: activeDocument?.id ?? null,
+  }), [activeDocument?.id, documents, projectRoots, recentStructures]);
+
+  const activeProject = useMemo(
+    () => allSidebarProjects.find((project) => project.isActive) ?? null,
+    [allSidebarProjects],
+  );
+
   const openDocuments = useCallback(
-    async (paths: string[], reloadOptions?: ViewerReloadOptions) => {
+    async (
+      paths: string[],
+      reloadOptions?: ViewerReloadOptions,
+      preferencesOverride?: Partial<typeof preferences>,
+    ) => {
       const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
       if (!cleanPaths.length) return;
-      setStatus("Opening structures...");
+      pushStatus("Opening structures...");
       try {
+        const effectivePreferences = preferencesOverride ? { ...preferences, ...preferencesOverride } : preferences;
         const result = isTauriRuntime()
-          ? await invoke<OpenDocumentsResult>("open_documents", { paths: cleanPaths, preferences, reloadOptions })
-          : await openBrowserDevDocuments(cleanPaths, preferences, reloadOptions);
+          ? await invoke<OpenDocumentsResult>("open_documents", { paths: cleanPaths, preferences: effectivePreferences, reloadOptions })
+          : await openBrowserDevDocuments(cleanPaths, effectivePreferences, reloadOptions);
         addDocuments(result.documents);
         rememberRecentStructures(result.documents);
         const openedText = "Opened " + result.documents.length + " structure" + (result.documents.length === 1 ? "" : "s");
-        setStatus(result.errors.length > 0 ? openedText + "; skipped " + result.errors.length : openedText);
+        if (result.errors.length > 0) {
+          pushStatus(`${openedText}. ${summarizeErrors(result.errors)}`, "error", result.errors);
+        } else {
+          pushStatus(openedText);
+        }
       } catch (error) {
-        setStatus(error instanceof Error ? error.message : String(error));
+        pushErrorStatus(error);
       }
     },
-    [addDocuments, preferences, rememberRecentStructures],
+    [addDocuments, preferences, pushErrorStatus, pushStatus, rememberRecentStructures],
   );
 
   useEffect(() => {
@@ -144,12 +209,15 @@ export default function App() {
     openedBrowserDevFilesRef.current = true;
     syncingBrowserDevFilesRef.current = true;
     const workspace = paths[0] ? parentDirectory(paths[0]) : null;
-    if (workspace) setWorkspacePath(workspace);
+    if (workspace) {
+      setWorkspacePath(workspace);
+      addProjectRoot(workspace);
+    }
     closeAllDocuments();
     void openDocuments(paths).finally(() => {
       syncingBrowserDevFilesRef.current = false;
     });
-  }, [closeAllDocuments, documents, openDocuments]);
+  }, [addProjectRoot, closeAllDocuments, documents, openDocuments]);
 
   useEffect(() => {
     if (refreshedPersistedSessionRef.current) return;
@@ -170,50 +238,71 @@ export default function App() {
   );
 
   const chooseFiles = useCallback(async () => {
-    const selection = await open({ multiple: true, filters });
-    const paths = Array.isArray(selection) ? selection : selection ? [selection] : [];
-    await openDocuments(paths);
-  }, [openDocuments]);
+    try {
+      const selection = isTauriRuntime()
+        ? await invoke<string[]>("pick_open_targets")
+        : await open({ multiple: true, filters });
+      const paths = Array.isArray(selection) ? selection : selection ? [selection] : [];
+      await openDocuments(paths);
+    } catch (error) {
+      pushErrorStatus(error, "Open failed");
+    }
+  }, [openDocuments, pushErrorStatus]);
 
   const chooseWorkspace = useCallback(async () => {
     try {
       const selection = await open({ directory: true, multiple: false });
       if (!selection || Array.isArray(selection)) return;
       setWorkspacePath(selection);
-      setStatus("Workspace selected");
+      addProjectRoot(selection);
+      pushStatus("Project folder added");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : String(error));
+      pushErrorStatus(error, "Workspace selection failed");
     }
-  }, []);
+  }, [addProjectRoot, pushErrorStatus, pushStatus]);
 
   const openWorkspaceFolder = useCallback(async () => {
-    const fallbackPath = workspacePath ?? activeDocument?.path ?? recentStructures[0]?.path ?? null;
+    const fallbackPath = activeProject?.rootPath ?? workspacePath ?? activeDocument?.path ?? recentStructures[0]?.path ?? null;
     if (!fallbackPath) {
       await chooseWorkspace();
       return;
     }
-    const path = workspacePath ?? parentDirectory(fallbackPath);
+    const path = activeProject?.rootPath ?? workspacePath ?? parentDirectory(fallbackPath);
     if (!path) return;
     try {
       await openPath(path);
-      setStatus("Opened workspace folder");
+      pushStatus("Opened project folder");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : String(error));
+      pushErrorStatus(error, "Open project folder failed");
     }
-  }, [activeDocument?.path, chooseWorkspace, recentStructures, workspacePath]);
+  }, [activeDocument?.path, activeProject?.rootPath, chooseWorkspace, pushErrorStatus, pushStatus, recentStructures, workspacePath]);
+
+  const openProjectFolder = useCallback(async (path: string | null) => {
+    if (!path) return;
+    try {
+      await openPath(path);
+      pushStatus("Opened project folder");
+    } catch (error) {
+      pushErrorStatus(error, "Open project folder failed");
+    }
+  }, [pushErrorStatus, pushStatus]);
 
   const openSettings = useCallback(() => {
     openSettingsTab();
   }, [openSettingsTab]);
 
-  useOpenEvents(openDocuments, setStatus);
-  const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop } = useOpenDrop(openDocuments, setStatus);
+  useOpenEvents(openDocuments, pushErrorStatus);
+  const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop } = useOpenDrop(openDocuments, pushStatus);
   const reloadActive = useCallback(async () => {
-    if (!activeDocument) return;
+    const targetDocument = (pendingViewerReloadDocumentIdRef.current
+      ? documents.find((document) => document.id === pendingViewerReloadDocumentIdRef.current)
+      : null) ?? activeDocument;
+    if (!targetDocument) return;
     const reloadOptions = pendingViewerReloadOptionsRef.current ?? undefined;
     pendingViewerReloadOptionsRef.current = null;
-    await openDocuments([activeDocument.path], reloadOptions);
-  }, [activeDocument, openDocuments]);
+    pendingViewerReloadDocumentIdRef.current = null;
+    await openDocuments([targetDocument.path], reloadOptions);
+  }, [activeDocument, documents, openDocuments]);
   const setUpdatePreferences = useCallback((preferences: UpdatePreferences) => {
     saveUpdatePreferences(preferences);
     setUpdate((previous) => ({
@@ -234,7 +323,7 @@ export default function App() {
       } else {
         window.open(url, "_blank", "noopener,noreferrer");
       }
-      setStatus("Opened release page");
+      pushStatus("Opened release page");
       return;
     }
 
@@ -248,7 +337,7 @@ export default function App() {
       isInstalling: true,
       statusText: "Installing " + release.displayName + "... Burrete will restart when the update is ready.",
     }));
-    setStatus("Installing update...");
+    pushStatus("Installing update...");
     try {
       clearDismissedUpdate();
       await invoke("install_update", {
@@ -274,9 +363,9 @@ export default function App() {
         isInstalling: false,
         statusText: "Update install failed: " + (error instanceof Error ? error.message : String(error)),
       }));
-      setStatus("Update install failed");
+      pushErrorStatus(error, "Update install failed");
     }
-  }, [update.availableRelease]);
+  }, [pushErrorStatus, pushStatus, update.availableRelease]);
 
   const promptForUpdate = useCallback(async (release: UpdateRelease, automatic: boolean) => {
     if (!shouldPromptForUpdate(release, automatic)) return;
@@ -329,8 +418,9 @@ export default function App() {
         statusText: "Update check failed: " + (error instanceof Error ? error.message : String(error)),
       }));
       if (automatic) markAutomaticCheck(false);
+      if (!automatic) pushErrorStatus(error, "Update check failed");
     }
-  }, [promptForUpdate, update.preferences.channel]);
+  }, [promptForUpdate, pushErrorStatus, update.preferences.channel]);
 
   useMenuEvents({ chooseFiles, openSettings, checkForUpdates });
 
@@ -341,6 +431,7 @@ export default function App() {
         body?: {
           type?: string;
           requestId?: string;
+          message?: string;
           value?: string;
           documentId?: string;
           orientationRef?: string | null;
@@ -349,88 +440,124 @@ export default function App() {
           sort?: string | null;
           offset?: number | null;
           limit?: number | null;
+          controls?: ViewerReloadOptions["xyzrenderControls"];
         };
       } | undefined;
+      if (data?.source !== "burrete-viewer" && data?.source !== "burrete-grid") return;
       const body = data.body;
-      if (data?.source === "burrete-viewer") {
-        if (!isKnownViewerMessageSource(event.source, body?.documentId)) return;
-        if (body?.type === "setXyzrenderOrientation") {
-          xyzrenderOrientationRefRef.current = body.text ?? body.value ?? null;
-          return;
-        }
-        if (body?.type === "setXyzrenderPreset") {
-          pendingViewerReloadOptionsRef.current = {
-            xyzrenderPreset: body.value ?? null,
-            xyzrenderOrientationRef: xyzrenderOrientationRefRef.current,
-          };
-          void reloadActive();
-          return;
-        }
-        if (body?.type === "setRenderer") {
-          const renderer = body.value;
-          if (renderer === "auto" || renderer === "xyz-fast" || renderer === "molstar" || renderer === "xyzrender-external") {
-            if (renderer === "xyzrender-external" && body.orientationRef) {
-              xyzrenderOrientationRefRef.current = body.orientationRef;
-            }
-            pendingViewerReloadOptionsRef.current = renderer === "xyzrender-external" && body.orientationRef
-              ? { xyzrenderOrientationRef: body.orientationRef }
-              : null;
-            setPreference("rendererMode", renderer);
-          }
-        }
-        return;
-      }
-      if (data?.source !== "burrete-grid") return;
       if (!isKnownViewerMessageSource(event.source, body?.documentId)) return;
-      if (body?.type !== "gridFetchPage" || !body.requestId || !body.documentId) return;
-      if (!isTauriRuntime()) {
-        postMessageToViewerSource(event.source, {
-          source: "burrete-grid-host",
-          body: {
-            type: "gridError",
-            requestId: body.requestId,
-            documentId: body.documentId,
-            error: "Desktop grid paging is unavailable outside the Tauri runtime.",
-          },
-        });
-        return;
-      }
-      void (async () => {
-        try {
-          const result = await invoke("grid_fetch_page", {
-            request: {
-              documentId: body.documentId,
-              query: typeof body.query === "string" ? body.query : "",
-              sort: typeof body.sort === "string" ? body.sort : "index",
-              offset: typeof body.offset === "number" ? body.offset : 0,
-              limit: typeof body.limit === "number" ? body.limit : 96,
-            },
-          });
-          postMessageToViewerSource(event.source, {
-            source: "burrete-grid-host",
-            body: {
-              type: "gridPage",
-              requestId: body.requestId,
-              documentId: body.documentId,
-              result,
-            },
-          });
-        } catch (error) {
+      if (data.source === "burrete-grid") {
+        if (body?.type !== "gridFetchPage" || !body.requestId || !body.documentId) return;
+        if (!isTauriRuntime()) {
           postMessageToViewerSource(event.source, {
             source: "burrete-grid-host",
             body: {
               type: "gridError",
               requestId: body.requestId,
               documentId: body.documentId,
-              error: error instanceof Error ? error.message : String(error),
+              error: "Desktop grid paging is unavailable outside the Tauri runtime.",
             },
           });
+          return;
         }
-      })();
+        void (async () => {
+          try {
+            const result = await invoke("grid_fetch_page", {
+              request: {
+                documentId: body.documentId,
+                query: typeof body.query === "string" ? body.query : "",
+                sort: typeof body.sort === "string" ? body.sort : "index",
+                offset: typeof body.offset === "number" ? body.offset : 0,
+                limit: typeof body.limit === "number" ? body.limit : 96,
+              },
+            });
+            postMessageToViewerSource(event.source, {
+              source: "burrete-grid-host",
+              body: {
+                type: "gridPage",
+                requestId: body.requestId,
+                documentId: body.documentId,
+                result,
+              },
+            });
+          } catch (error) {
+            postMessageToViewerSource(event.source, {
+              source: "burrete-grid-host",
+              body: {
+                type: "gridError",
+                requestId: body.requestId,
+                documentId: body.documentId,
+                error: error instanceof Error ? error.message : String(error),
+              },
+            });
+          }
+        })();
+        return;
+      }
+      if (body?.type === "error") {
+        pushStatus(formatViewerError(body.message, body.documentId, documents), "error", body.message ? [body.message] : []);
+        return;
+      }
+      if (body?.type === "setXyzrenderOrientation") {
+        xyzrenderOrientationRefRef.current = body.text ?? body.value ?? null;
+        return;
+      }
+      if (body?.type === "setXyzrenderPreset") {
+        pendingViewerReloadDocumentIdRef.current = body.documentId ?? null;
+        pendingViewerReloadOptionsRef.current = {
+          xyzrenderPreset: body.value ?? null,
+          xyzrenderOrientationRef: xyzrenderOrientationRefRef.current,
+          xyzrenderControls: pendingViewerReloadOptionsRef.current?.xyzrenderControls ?? null,
+        };
+        void reloadActive();
+        return;
+      }
+      if (body?.type === "setXyzrenderControls") {
+        pendingViewerReloadDocumentIdRef.current = body.documentId ?? null;
+        pendingViewerReloadOptionsRef.current = {
+          xyzrenderPreset: pendingViewerReloadOptionsRef.current?.xyzrenderPreset ?? null,
+          xyzrenderOrientationRef: xyzrenderOrientationRefRef.current,
+          xyzrenderControls: body.controls ?? null,
+        };
+        void reloadActive();
+        return;
+      }
+      if (body?.type === "setRenderer") {
+        const renderer = body.value;
+        if (renderer === "auto" || renderer === "xyz-fast" || renderer === "molstar" || renderer === "xyzrender-external") {
+          const targetDocument = (body.documentId
+            ? documents.find((document) => document.id === body.documentId)
+            : null) ?? activeDocument;
+          const reloadOptions = renderer === "xyzrender-external" && body.orientationRef
+            ? { xyzrenderOrientationRef: body.orientationRef }
+            : undefined;
+          if (renderer === "xyzrender-external" && body.orientationRef) {
+            xyzrenderOrientationRefRef.current = body.orientationRef;
+          }
+          pendingViewerReloadOptionsRef.current = renderer === "xyzrender-external" && body.orientationRef
+            ? {
+                xyzrenderOrientationRef: body.orientationRef,
+                xyzrenderPreset: pendingViewerReloadOptionsRef.current?.xyzrenderPreset ?? null,
+                xyzrenderControls: pendingViewerReloadOptionsRef.current?.xyzrenderControls ?? null,
+              }
+            : null;
+          pendingViewerReloadDocumentIdRef.current = renderer === "xyzrender-external" && body.orientationRef
+            ? body.documentId ?? null
+            : null;
+          skipNextPreferenceRefreshRef.current = true;
+          setPreference("rendererMode", renderer);
+          if (targetDocument) {
+            pendingViewerReloadOptionsRef.current = null;
+            pendingViewerReloadDocumentIdRef.current = null;
+            void openDocuments([targetDocument.path], reloadOptions, { rendererMode: renderer });
+          }
+        }
+        return;
+      }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [reloadActive, setPreference]);
+  }, [activeDocument, documents, openDocuments, pushStatus, reloadActive, setPreference]);
 
   useEffect(() => {
     const loadedPreferences = loadUpdatePreferences();
@@ -440,6 +567,17 @@ export default function App() {
   }, [checkForUpdates]);
 
   useEffect(() => {
+    if (!isTauriRuntime()) return;
+    void invoke("sync_viewer_preferences", { preferences }).catch((error) => {
+      pushErrorStatus(error, "Preview preference sync failed");
+    });
+  }, [preferences, pushErrorStatus]);
+
+  useEffect(() => {
+    if (skipNextPreferenceRefreshRef.current) {
+      skipNextPreferenceRefreshRef.current = false;
+      return;
+    }
     const paths = Array.from(new Set(tabs
       .map((tab) => tab.location.kind === "file" ? tab.location.path : null)
       .filter((path): path is string => Boolean(path))));
@@ -450,7 +588,7 @@ export default function App() {
     });
     // Preferences refresh all open runtimes so inactive tabs do not keep stale renderer/theme output.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preferences.theme, preferences.canvasBackground, preferences.rendererMode, preferences.xyzFastStyle]);
+  }, [preferences.theme, preferences.canvasBackground, preferences.rendererMode, preferences.molstarStyle, preferences.xyzFastStyle]);
 
   const startSidebarResize = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -496,32 +634,47 @@ export default function App() {
     openSettings,
     chooseWorkspace,
     openWorkspaceFolder,
+    openProjectFolder,
     toggleSidebar,
+    setSidebarQuery,
+    toggleProjectExpanded,
     closeDocument,
     closeTab,
     closeActiveDocument: () => {
       closeActiveDocument();
-      setStatus("Closed active structure");
+      pushStatus("Closed active structure");
     },
     clearAllDocuments: () => {
       closeAllDocuments();
-      setStatus("Closed all structures");
+      pushStatus("Closed all structures");
     },
     clearRecentStructures: () => {
       clearRecentStructures();
-      setStatus("Recent structures cleared");
+      pushStatus("Recent structures cleared");
     },
     clearCache: async () => {
-      await invoke("clear_preview_cache");
-      setStatus("Preview cache cleared");
+      try {
+        await invoke("clear_preview_cache");
+        pushStatus("Preview cache cleared");
+      } catch (error) {
+        pushErrorStatus(error, "Preview cache clear failed");
+      }
     },
     resetQuickLook: async () => {
-      const report = await invoke<{ ok: boolean }>("reset_quick_look");
-      setStatus(report.ok ? "Quick Look reset completed" : "Quick Look reset reported issues");
+      try {
+        const report = await invoke<{ ok: boolean }>("reset_quick_look");
+        pushStatus(report.ok ? "Quick Look reset completed" : "Quick Look reset reported issues", report.ok ? "info" : "error");
+      } catch (error) {
+        pushErrorStatus(error, "Quick Look reset failed");
+      }
     },
     openLogs: async () => {
-      await invoke("open_logs_folder");
-      setStatus("Opened logs folder");
+      try {
+        await invoke("open_logs_folder");
+        pushStatus("Opened logs folder");
+      } catch (error) {
+        pushErrorStatus(error, "Open logs folder failed");
+      }
     },
     checkForUpdates: async () => {
       await checkForUpdates(false);
@@ -530,17 +683,21 @@ export default function App() {
       await installUpdate();
     },
     openUpdateRelease: async () => {
-      const url = releasePageUrl(update.availableRelease);
-      if (isTauriRuntime()) {
-        await invoke("open_external_url", { url });
-      } else {
-        window.open(url, "_blank", "noopener,noreferrer");
+      try {
+        const url = releasePageUrl(update.availableRelease);
+        if (isTauriRuntime()) {
+          await invoke("open_external_url", { url });
+        } else {
+          window.open(url, "_blank", "noopener,noreferrer");
+        }
+        pushStatus("Opened release page");
+      } catch (error) {
+        pushErrorStatus(error, "Open release page failed");
       }
-      setStatus("Opened release page");
     },
     setPreference,
     setUpdatePreferences,
-  }), [canNavigateBack, canNavigateForward, chooseFiles, chooseWorkspace, checkForUpdates, clearRecentStructures, closeActiveDocument, closeDocument, closeTab, closeAllDocuments, focusSidebarSearch, installUpdate, navigateBack, navigateForward, openCommandPalette, openNewTab, openRecentStructure, openSettings, openWorkspaceFolder, selectDocument, setActiveTab, setPreference, setUpdatePreferences, toggleSidebar, update.availableRelease]);
+  }), [canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeTab, focusSidebarSearch, installUpdate, navigateBack, navigateForward, openCommandPalette, openNewTab, openProjectFolder, openRecentStructure, openSettings, openWorkspaceFolder, pushErrorStatus, pushStatus, selectDocument, setActiveTab, setPreference, setSidebarQuery, setUpdatePreferences, toggleProjectExpanded, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
@@ -553,12 +710,14 @@ export default function App() {
     activeDocumentId: activeDocument?.id ?? null,
     visibleDocuments: documents,
     recentStructures,
+    sidebarProjects: allSidebarProjects,
+    expandedProjectIds,
     workspacePath,
     page,
     sidebarOpen,
     sidebarWidth,
     sidebarDragging,
-    sidebarQuery: "",
+    sidebarQuery,
     status,
     dropActive,
     preferences,
@@ -574,6 +733,7 @@ export default function App() {
         state={state}
         actions={actions}
         searchRef={sidebarSearchRef}
+        onDismissStatus={clearStatus}
         onToggleSidebar={toggleSidebar}
         onResizeStart={startSidebarResize}
         onDragEnter={handleBrowserDrag}
@@ -593,16 +753,10 @@ export default function App() {
   );
 }
 
-function parentDirectory(path: string) {
-  const normalized = path.replace(/\\/g, "/");
-  const index = normalized.lastIndexOf("/");
-  return index > 0 ? normalized.slice(0, index) : null;
-}
-
 function isKnownViewerMessageSource(source: MessageEventSource | null, documentId?: string) {
-  if (!source || !documentId) return false;
+  if (!source) return false;
   return Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).some(
-    (iframe) => iframe.dataset.documentId === documentId && iframe.contentWindow === source,
+    (iframe) => (!documentId || iframe.dataset.documentId === documentId) && iframe.contentWindow === source,
   );
 }
 
@@ -611,4 +765,23 @@ function postMessageToViewerSource(source: MessageEventSource | null, payload: u
     return;
   }
   source.postMessage(payload, "*");
+}
+
+function summarizeErrors(errors: string[]) {
+  const [first = "Unknown error", ...rest] = errors;
+  return rest.length > 0
+    ? `${first} (+${rest.length} more ${rest.length === 1 ? "issue" : "issues"})`
+    : first;
+}
+
+function formatViewerError(
+  message: string | undefined,
+  documentId: string | undefined,
+  documents: { id: string; title: string }[],
+) {
+  const text = (message || "Viewer error").trim();
+  const title = documentId
+    ? documents.find((document) => document.id === documentId)?.title
+    : null;
+  return title ? `${title}: ${text}` : text;
 }

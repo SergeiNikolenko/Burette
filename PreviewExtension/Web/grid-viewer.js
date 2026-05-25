@@ -47,10 +47,12 @@
   }
 
   function setStatus(message, kind = 'info') {
+    const cfg = window.BurreteConfig && typeof window.BurreteConfig === 'object' ? window.BurreteConfig : {};
     if (status) {
       status.textContent = String(message || '');
       status.classList.toggle('error', kind === 'error');
       status.classList.toggle('hidden', kind !== 'error' && !window.BurreteDebug);
+      if (kind === 'error' && status && !window.BurreteDebug && cfg.appViewer === true) status.classList.add('hidden');
     }
     if (kind === 'error' || window.BurreteDebug) post(kind === 'error' ? 'error' : 'status', message || '');
   }
@@ -111,17 +113,28 @@
   async function initRDKit() {
     if (state.rdkit) return state.rdkit;
     if (typeof window.initRDKitModule !== 'function') {
-      throw new Error('RDKit_minimal.js is missing. Run npm run vendor:rdkit and rebuild.');
+      throw new Error('RDKit_minimal.js is missing. Run bun run vendor:rdkit and rebuild.');
     }
     setStatus('[grid] Loading RDKit.js...');
     const cfg = config();
-    const options = { locateFile: file => cfg.rdkitWasmPath || `../assets/rdkit/${file}` };
+    const wasmPath = cfg.rdkitWasmPath || '../assets/rdkit/RDKit_minimal.wasm';
+    const options = { locateFile: () => wasmPath };
     if (window.BurreteRDKitWasmBase64) {
       options.wasmBinary = base64ToBytes(window.BurreteRDKitWasmBase64);
       window.BurreteRDKitWasmBase64 = '';
+    } else if (wasmPath) {
+      options.wasmBinary = await loadWasmBinary(wasmPath);
     }
     state.rdkit = await window.initRDKitModule(options);
     return state.rdkit;
+  }
+
+  async function loadWasmBinary(path) {
+    const response = await fetch(String(path));
+    if (!response.ok) {
+      throw new Error(`Failed to load RDKit wasm: ${response.status} ${response.statusText}`.trim());
+    }
+    return new Uint8Array(await response.arrayBuffer());
   }
 
   function base64ToBytes(value) {
@@ -161,13 +174,15 @@
 
   function applyTheme(cfg) {
     const theme = resolveTheme(cfg.theme);
-    const transparent = cfg.transparentBackground === true || cfg.canvasBackground === 'transparent';
+    const canvasBackground = resolveCanvasBackground(theme, cfg.canvasBackground);
+    const transparent = cfg.transparentBackground === true || canvasBackground === 'transparent';
     document.documentElement.dataset.buretTheme = theme;
     document.body.dataset.buretTheme = theme;
     document.body.classList.toggle('buret-theme-light', theme === 'light');
     document.body.classList.toggle('buret-theme-dark', theme !== 'light');
     document.body.classList.toggle('burette-transparent-background', transparent);
     document.body.classList.toggle('burette-opaque-background', !transparent);
+    document.documentElement.style.setProperty('--buret-grid-canvas-background', canvasBackgroundCSS(canvasBackground));
   }
 
   function resolveTheme(value) {
@@ -177,6 +192,23 @@
     } catch (_) {
       return 'dark';
     }
+  }
+
+  function normalizeCanvasBackground(value) {
+    return ['auto', 'black', 'graphite', 'white', 'transparent'].includes(value) ? value : 'auto';
+  }
+
+  function resolveCanvasBackground(theme, value) {
+    const background = normalizeCanvasBackground(value);
+    if (background === 'auto') return theme === 'light' ? 'white' : 'black';
+    return background;
+  }
+
+  function canvasBackgroundCSS(background) {
+    if (background === 'white') return '#f7f7f2';
+    if (background === 'graphite') return '#111317';
+    if (background === 'transparent') return 'transparent';
+    return '#000000';
   }
 
   function installThemeListener(cfg) {
@@ -467,7 +499,6 @@
     } catch (error) {
       const message = error?.message || String(error);
       setStatus(message, 'error');
-      post('error', message);
     } finally {
       state.remoteLoading = false;
     }
@@ -834,7 +865,6 @@
     } catch (error) {
       const message = error && error.stack ? error.stack : String(error);
       setStatus(message, 'error');
-      post('error', message);
     }
   }
 
