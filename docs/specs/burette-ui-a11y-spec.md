@@ -25,7 +25,7 @@ embedded preview controls; each needs predictable focus, labels, and shortcuts.
 ## Canonical Shortcuts
 
 - `Cmd+O`: open structure files.
-- `Cmd+P`: open the command palette.
+- `Cmd+P` or `/`: open the command palette when focus is not in an editable control.
 - `Cmd+\\`: toggle sidebar.
 - `Cmd+,`: open Settings page.
 - `Cmd+W`: close active structure.
@@ -37,8 +37,9 @@ embedded preview controls; each needs predictable focus, labels, and shortcuts.
 Sidebar:
 
 - Search input has an accessible name.
-- Project list uses `role="list"` or equivalent semantic structure.
-- Project rows expose file name and renderer in their accessible name.
+- Project tree uses `role="list"` or equivalent semantic structure.
+- Project group rows expose folder name and item count in their accessible name.
+- Nested structure rows expose file path and renderer in their accessible name.
 - Close buttons are focusable and labeled.
 
 Command palette:

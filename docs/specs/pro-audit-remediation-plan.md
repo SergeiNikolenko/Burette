@@ -279,7 +279,7 @@ Fix. Split build modes: `build:local` ad-hoc, explicit local-only; `build:releas
 
 Verification. `codesign -dv --verbose=4`, `spctl --assess`, `stapler validate`, embedded extension signature validation.
 
-### 15. [Low-medium | confirmed] Vendored web assets are copied from npm packages but not hash-verified against a manifest
+### 15. [Low-medium | confirmed] Vendored web assets are copied from JavaScript packages but not hash-verified against a manifest
 
 Evidence. `vendor-molstar.mjs` copies `molstar.js/css` from `node_modules/molstar/build/viewer`; `vendor-rdkit.mjs` copies RDKit JS/WASM from `node_modules/@rdkit/rdkit`; build validates presence and syntax, but no hash manifest binds committed vendored assets to `bun.lock` versions.
 
