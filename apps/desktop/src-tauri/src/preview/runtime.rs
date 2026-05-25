@@ -175,11 +175,12 @@ pub(crate) fn open_document<R: Runtime>(
         .and_then(|value| value.to_str())
         .unwrap_or("")
         .to_lowercase();
+    let document_id = stable_id(&canonical);
     if let Some(runtime_path) =
-        create_grid_runtime(app, &canonical, &extension, &data, preferences)?
+        create_grid_runtime(app, &document_id, &canonical, &extension, &data, preferences)?
     {
         return Ok(ViewerDocument {
-            id: stable_id(&canonical),
+            id: document_id.clone(),
             path: canonical.to_string_lossy().to_string(),
             title: file_title(&canonical),
             extension,
@@ -208,7 +209,7 @@ pub(crate) fn open_document<R: Runtime>(
         reload_options,
     )?;
     Ok(ViewerDocument {
-        id: stable_id(&canonical),
+        id: document_id,
         path: canonical.to_string_lossy().to_string(),
         title: file_title(&canonical),
         extension,
@@ -222,12 +223,14 @@ pub(crate) fn open_document<R: Runtime>(
 mod document_open_tests {
     use super::{open_document, ViewerPreferences};
     use crate::commands::documents::open_documents;
+    use crate::preview::grid_store::GridRuntimeRegistry;
     use std::collections::BTreeMap;
     use std::fs;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     use std::path::{Path, PathBuf};
     use std::sync::{Mutex, OnceLock};
+    use tauri::Manager;
 
     static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -239,6 +242,12 @@ mod document_open_tests {
             molstar_style: "illustrative".to_string(),
             xyz_fast_style: "ball-stick".to_string(),
         }
+    }
+
+    fn mock_app_with_grid_registry() -> tauri::App<tauri::test::MockRuntime> {
+        let app = tauri::test::mock_app();
+        app.manage(GridRuntimeRegistry::default());
+        app
     }
 
     fn repo_root() -> PathBuf {
@@ -377,7 +386,7 @@ mod document_open_tests {
     #[test]
     fn opens_supported_formats_with_expected_renderers() {
         with_fake_xyzrender(|| {
-            let app = tauri::test::mock_app();
+            let app = mock_app_with_grid_registry();
             let preferences = viewer_preferences();
             let mut opened = Vec::new();
             let mut created_files = Vec::new();
@@ -431,7 +440,7 @@ mod document_open_tests {
         assert!(structures.is_dir(), "{} should exist", structures.display());
 
         with_fake_xyzrender(|| {
-            let app = tauri::test::mock_app();
+            let app = mock_app_with_grid_registry();
             let result = open_documents(
                 app.handle().clone(),
                 vec![
