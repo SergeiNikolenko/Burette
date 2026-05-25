@@ -66,6 +66,23 @@ assert.equal(
   false,
   'Quick Look content types must not include dynamic or legacy identifiers',
 );
+const allowedSystemQuickLookContentTypes = new Set([
+  'com.adobe.fdf',
+  'com.apple.videoapps.cube',
+  'com.gaussian.cube',
+  'com.schrodinger.pdb',
+  'com.schrodinger.sdf',
+  'net.sourceforge.openbabel.xyz',
+  'public.delimited-values-text',
+  'public.comma-separated-values-text',
+  'public.tab-separated-values-text',
+]);
+for (const contentType of registry.quickLook.contentTypes) {
+  assert.ok(
+    contentType.startsWith('com.local.burrete10.') || allowedSystemQuickLookContentTypes.has(contentType),
+    `Quick Look content type must be exported by Burrete or explicitly allowed: ${contentType}`,
+  );
+}
 
 const appInfo = plist('apps/desktop/src-tauri/AppMetadata.plist');
 const appDocumentTypes = appInfo.CFBundleDocumentTypes ?? [];

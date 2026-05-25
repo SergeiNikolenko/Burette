@@ -297,8 +297,6 @@ Check extension registration:
 Forced tests:
   qlmanage -p -c com.local.burrete10.pdb "$ROOT/samples/mini.pdb"
   qlmanage -p -c com.local.burrete10.cif "$ROOT/samples/mini.cif"
-  qlmanage -p -c com.local.burrete10.csv "$ROOT/tests/fixtures/BurettePreviewSamples/tables/compounds.csv"
-  qlmanage -p -c com.local.burrete10.tsv "$ROOT/tests/fixtures/BurettePreviewSamples/tables/compounds.tsv"
   qlmanage -p -c com.local.burrete10.xyz "$ROOT/samples/mini.xyz"
 
 Normal tests:
