@@ -973,7 +973,6 @@
       });
     });
     bindThemeButton(toolbar, viewer);
-    bindQuickLookOpenButton();
     bindXyzrenderControls(toolbar);
     initToolbarDrag(toolbar);
     restoreToolbarCollapsed(toolbar, viewer);
@@ -1068,15 +1067,6 @@
     if (!button) return;
     button.onclick = () => {
       toggleViewerTheme(viewer);
-    };
-  }
-
-  function bindQuickLookOpenButton() {
-    const button = document.getElementById('buret-open-in-app');
-    if (!button) return;
-    button.onclick = () => {
-      const sent = postHostMessage({ type: 'action', message: 'open-burrete' });
-      if (!sent) setStatus('Open in Burrete is available only in Quick Look.', 'error');
     };
   }
 

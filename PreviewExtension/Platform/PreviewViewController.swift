@@ -1213,10 +1213,6 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
     private func handleJavaScriptAction(_ action: String) {
         appendLog("JS action=\(action)")
-        if action == "open-burrete" {
-            openCurrentPreviewInBurrete()
-            return
-        }
         if action == "open-vesta" {
             openCurrentPreviewInVesta()
             return
@@ -1260,22 +1256,6 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         webView.evaluateJavaScript("window.BurreteReceiveNativeData && window.BurreteReceiveNativeData(\(json));") { [weak self] _, evaluationError in
             guard let self, let evaluationError else { return }
             self.appendLog("requestData.injectFailed=\(Self.describe(evaluationError))")
-        }
-    }
-
-    private func openCurrentPreviewInBurrete() {
-        guard let url = currentPreviewURL else {
-            appendLog("openInBurrete.missingCurrentURL")
-            return
-        }
-        BurreteLauncher.open(fileURL: url) { [weak self] result in
-            guard let self else { return }
-            switch result {
-            case .success:
-                self.appendLog("openInBurrete.launched=\(url.path)")
-            case .failure(let error):
-                self.appendLog("openInBurrete.failed=\(error.localizedDescription)")
-            }
         }
     }
 
@@ -2452,107 +2432,6 @@ private enum PreviewError: LocalizedError {
             return "Could not create preview config."
         case .couldNotCreateRuntimePreview(let reason):
             return "Could not create runtime preview files: \(reason)"
-        }
-    }
-}
-
-private enum BurreteLauncher {
-    static func open(fileURL: URL, completion: @escaping (Result<Void, Error>) -> Void) {
-        if let appURL = containingApplicationURL() {
-            openWithContainingApplication(fileURL: fileURL, appURL: appURL, completion: completion)
-            return
-        }
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        process.arguments = ["-a", "Burrete", fileURL.path]
-        let errorPipe = Pipe()
-        process.standardError = errorPipe
-        process.terminationHandler = { finished in
-            let data = errorPipe.fileHandleForReading.readDataToEndOfFile()
-            let message = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
-            DispatchQueue.main.async {
-                if finished.terminationStatus == 0 {
-                    completion(.success(()))
-                } else {
-                    completion(.failure(BurreteLaunchError.failed(message.trimmingCharacters(in: .whitespacesAndNewlines))))
-                }
-            }
-        }
-        do {
-            try process.run()
-        } catch {
-            completion(.failure(error))
-        }
-    }
-
-    private static func openWithContainingApplication(
-        fileURL: URL,
-        appURL: URL,
-        completion: @escaping (Result<Void, Error>) -> Void
-    ) {
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        NSWorkspace.shared.open([fileURL], withApplicationAt: appURL, configuration: configuration) { _, error in
-            DispatchQueue.main.async {
-                if let error {
-                    launchViaExecutable(fileURL: fileURL, appURL: appURL, fallbackError: error, completion: completion)
-                } else {
-                    completion(.success(()))
-                }
-            }
-        }
-    }
-
-    private static func launchViaExecutable(
-        fileURL: URL,
-        appURL: URL,
-        fallbackError: Error,
-        completion: @escaping (Result<Void, Error>) -> Void
-    ) {
-        let executableURL = appURL
-            .appendingPathComponent("Contents", isDirectory: true)
-            .appendingPathComponent("MacOS", isDirectory: true)
-            .appendingPathComponent("burrete", isDirectory: false)
-        guard FileManager.default.isExecutableFile(atPath: executableURL.path) else {
-            completion(.failure(fallbackError))
-            return
-        }
-
-        let process = Process()
-        process.currentDirectoryURL = appURL.deletingLastPathComponent()
-        process.executableURL = executableURL
-        process.arguments = [fileURL.path]
-        do {
-            try process.run()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
-                if process.isRunning {
-                    completion(.success(()))
-                } else {
-                    completion(.failure(fallbackError))
-                }
-            }
-        } catch {
-            completion(.failure(fallbackError))
-        }
-    }
-
-    private static func containingApplicationURL() -> URL? {
-        let bundleURL = Bundle(for: PreviewViewController.self).bundleURL
-        let contentsURL = bundleURL.deletingLastPathComponent().deletingLastPathComponent()
-        guard contentsURL.lastPathComponent == "Contents" else { return nil }
-        let appURL = contentsURL.deletingLastPathComponent()
-        return appURL.pathExtension == "app" ? appURL : nil
-    }
-}
-
-private enum BurreteLaunchError: LocalizedError {
-    case failed(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .failed(let message):
-            return message.isEmpty ? "Burrete could not be opened." : message
         }
     }
 }
