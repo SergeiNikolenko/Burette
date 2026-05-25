@@ -1,11 +1,11 @@
 :root {
-  --accent: #0a84ff;
+  --accent: #0169cc;
   --bg-base: #111111;
   --fg-base: #fcfcfc;
   --ui-font: -apple-system-body, ui-sans-serif, -apple-system, system-ui, "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol";
   --editor-font: -apple-system-body, ui-sans-serif, -apple-system, system-ui, "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol";
   --bg-opacity: 0.715;
-  --contrast: 0.328;
+  --contrast: 0.55;
   --bg: rgba(17, 17, 17, 0.715);
   --text: var(--fg-base);
   --text-primary: var(--fg-base);
@@ -77,13 +77,13 @@ button, select, input, textarea, .tab, .new-tab, .chrome-button, .sidebar-search
 }
 
 .app-shell[data-theme="light"] {
-  --bg-base: #f5f3ef;
-  --fg-base: #171716;
-  --bg: #f5f3ef;
+  --bg-base: #ffffff;
+  --fg-base: #0d0d0d;
+  --bg: #ffffff;
   --bg-opacity: 1;
-  --contrast: 0.22;
-  --text: #171716;
-  --text-primary: #171716;
+  --contrast: 0.45;
+  --text: #0d0d0d;
+  --text-primary: #0d0d0d;
   --text-secondary: color-mix(in srgb, black 80%, transparent);
   --text-muted: color-mix(in srgb, black 54%, transparent);
   --text-faint: color-mix(in srgb, black 40%, transparent);
@@ -116,13 +116,13 @@ button, select, input, textarea, .tab, .new-tab, .chrome-button, .sidebar-search
 
 @media (prefers-color-scheme: light) {
   .app-shell[data-theme="auto"] {
-    --bg-base: #f5f3ef;
-    --fg-base: #171716;
-    --bg: #f5f3ef;
+    --bg-base: #ffffff;
+    --fg-base: #0d0d0d;
+    --bg: #ffffff;
     --bg-opacity: 1;
-    --contrast: 0.22;
-    --text: #171716;
-    --text-primary: #171716;
+    --contrast: 0.45;
+    --text: #0d0d0d;
+    --text-primary: #0d0d0d;
     --text-secondary: color-mix(in srgb, black 80%, transparent);
     --text-muted: color-mix(in srgb, black 54%, transparent);
     --text-faint: color-mix(in srgb, black 40%, transparent);

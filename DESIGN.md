@@ -2,11 +2,11 @@
 name: Burrete
 description: Finder-native molecular structure previews for macOS.
 colors:
-  accent-blue: "#0A84FF"
-  shell-dark: "#171816"
-  shell-light: "#F5F3EF"
-  shell-dark-text: "#F5F5F2"
-  shell-light-text: "#171716"
+  accent-blue: "#0169CC"
+  shell-dark: "#111111"
+  shell-light: "#FFFFFF"
+  shell-dark-text: "#FCFCFC"
+  shell-light-text: "#0D0D0D"
   shell-dark-line: "#353630"
   shell-light-line: "#D7D1C8"
   shell-danger: "#D96A61"
@@ -81,13 +81,13 @@ Key Characteristics:
 The palette is restrained and utility-first. Most of the interface runs on neutrals, while the accent exists for state, primary actions, and active selection.
 
 ### Primary
-- **Command Blue** (`#0A84FF`): used for focus, primary actions, active accents, and the most important state changes. It should stay rare enough that it still reads as intent.
+- **Command Blue** (`#0169CC`): used for focus, primary actions, active accents, and the most important state changes. It should stay rare enough that it still reads as intent.
 
 ### Neutral
-- **Graphite Shell** (`#171816`): the default dark shell background for the desktop workspace.
-- **Warm Paper** (`#F5F3EF`): the light shell background for the desktop workspace.
-- **Porcelain Text** (`#F5F5F2`): primary text on dark shell surfaces.
-- **Carbon Text** (`#171716`): primary text on light shell surfaces.
+- **Graphite Shell** (`#111111`): the default dark shell background for the desktop workspace.
+- **Codex White** (`#FFFFFF`): the light shell background for the desktop workspace.
+- **Porcelain Text** (`#FCFCFC`): primary text on dark shell surfaces.
+- **Carbon Text** (`#0D0D0D`): primary text on light shell surfaces.
 - **Dark Line** (`#353630`): dark-theme separators, borders, and container definition.
 - **Light Line** (`#D7D1C8`): light-theme separators, borders, and container definition.
 
