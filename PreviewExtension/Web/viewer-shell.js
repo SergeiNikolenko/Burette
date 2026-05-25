@@ -93,7 +93,6 @@
           </details>
         </div>
       </div>
-      <button id="buret-open-in-app" class="buret-corner-button" type="button" aria-label="Open in Burrete" title="Open in Burrete">Open in Burrete</button>
     `);
   }
 
