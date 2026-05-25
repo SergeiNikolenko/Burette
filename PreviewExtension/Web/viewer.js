@@ -272,7 +272,7 @@
 
   function canvasBackgroundCSS() {
     const background = resolvedCanvasBackground();
-    if (background === 'white') return '#f7f7f2';
+    if (background === 'white') return '#ffffff';
     if (background === 'graphite') return '#111317';
     if (background === 'transparent') return 'transparent';
     return '#000000';
@@ -280,7 +280,7 @@
 
   function canvasBackgroundColor() {
     const background = resolvedCanvasBackground();
-    if (background === 'white') return 0xf7f7f2;
+    if (background === 'white') return 0xffffff;
     if (background === 'graphite') return 0x111317;
     return 0x000000;
   }
