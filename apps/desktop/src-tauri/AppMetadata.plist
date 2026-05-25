@@ -7,10 +7,30 @@
 		<dict>
 			<key>CFBundleTypeExtensions</key>
 			<array>
+				<string>csv</string>
+				<string>tsv</string>
+			</array>
+			<key>CFBundleTypeName</key>
+			<string>Molecular grid tables</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.local.burrete10.csv</string>
+				<string>com.local.burrete10.tsv</string>
+				<string>public.delimited-values-text</string>
+				<string>public.comma-separated-values-text</string>
+				<string>public.tab-separated-values-text</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeExtensions</key>
+			<array>
 				<string>bcif</string>
 				<string>cif</string>
 				<string>cms</string>
-				<string>csv</string>
 				<string>cub</string>
 				<string>cube</string>
 				<string>dcd</string>
@@ -39,7 +59,6 @@
 				<string>smiles</string>
 				<string>top</string>
 				<string>trr</string>
-				<string>tsv</string>
 				<string>vasp</string>
 				<string>xtc</string>
 				<string>xyz</string>
@@ -58,17 +77,8 @@
 				<string>com.local.burrete10.bcif</string>
 				<string>com.local.burrete10.sdf</string>
 				<string>com.local.burrete10.smiles</string>
-				<string>com.local.burettexyzrender.smiles</string>
 				<string>com.local.burrete10.mol</string>
 				<string>com.local.burrete10.mol2</string>
-				<string>com.local.molstarquicklook10.pdb</string>
-				<string>com.local.molstarquicklook10.cif</string>
-				<string>com.local.molstarquicklook10.mmcif</string>
-				<string>com.local.molstarquicklook10.bcif</string>
-				<string>com.local.molstarquicklook10.sdf</string>
-				<string>com.local.molstarquicklook10.smiles</string>
-				<string>com.local.molstarquicklook10.mol</string>
-				<string>com.local.molstarquicklook10.mol2</string>
 				<string>org.wwpdb.pdb</string>
 				<string>org.wwpdb.cif</string>
 				<string>org.wwpdb.mmcif</string>
@@ -109,16 +119,12 @@
 				<string>public.pdb</string>
 				<string>public.mmcif</string>
 				<string>public.cif</string>
-				<string>public.comma-separated-values-text</string>
-				<string>public.tab-separated-values-text</string>
 				<string>com.local.burrete10.xyz</string>
 				<string>com.local.burrete10.xyzrender-input</string>
 				<string>net.sourceforge.openbabel.xyz</string>
-				<string>dyn.ah62d4rv4ge81u8p4</string>
 				<string>com.local.burrete10.gro</string>
 				<string>com.local.burrete10.molecular-dynamics</string>
 				<string>com.local.burrete10.schrodinger</string>
-				<string>dyn.ah62d4rv4ge80s6xt</string>
 			</array>
 		</dict>
 	</array>
@@ -226,7 +232,7 @@
 				<string>public.data</string>
 			</array>
 			<key>UTTypeDescription</key>
-			<string>BinaryCIF macromolecular structure file</string>
+			<string>BinaryCIF molecular structure file</string>
 			<key>UTTypeIdentifier</key>
 			<string>com.local.burrete10.bcif</string>
 			<key>UTTypeTagSpecification</key>
@@ -248,7 +254,7 @@
 				<string>public.data</string>
 			</array>
 			<key>UTTypeDescription</key>
-			<string>Structure-data file</string>
+			<string>Structure-data molecular file</string>
 			<key>UTTypeIdentifier</key>
 			<string>com.local.burrete10.sdf</string>
 			<key>UTTypeTagSpecification</key>
@@ -293,7 +299,7 @@
 				<string>public.data</string>
 			</array>
 			<key>UTTypeDescription</key>
-			<string>Tripos MOL2 structure file</string>
+			<string>Tripos MOL2 molecular structure file</string>
 			<key>UTTypeIdentifier</key>
 			<string>com.local.burrete10.mol2</string>
 			<key>UTTypeTagSpecification</key>
@@ -329,6 +335,54 @@
 				<array>
 					<string>chemical/x-daylight-smiles</string>
 					<string>chemical/x-smiles</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.comma-separated-values-text</string>
+				<string>public.delimited-values-text</string>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Comma-separated molecular structure table</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.csv</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>csv</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>text/csv</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.tab-separated-values-text</string>
+				<string>public.delimited-values-text</string>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Tab-separated molecular structure table</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.tsv</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>tsv</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>text/tab-separated-values</string>
 				</array>
 			</dict>
 		</dict>
