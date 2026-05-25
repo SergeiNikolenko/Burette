@@ -56,6 +56,16 @@ function plist(path) {
 assert.deepEqual(packageJson.workspaces, ['apps/*', 'packages/*']);
 
 const appFormats = registry.formats.filter((format) => format.contentType?.startsWith('com.local.burrete10.'));
+assert.equal(
+  registry.quickLook.contentTypes.some(
+    (type) =>
+      type.startsWith('dyn.') ||
+      type.startsWith('com.local.molstarquicklook10.') ||
+      type === 'com.local.burettexyzrender.smiles',
+  ),
+  false,
+  'Quick Look content types must not include dynamic or legacy identifiers',
+);
 
 const appInfo = plist('apps/desktop/src-tauri/AppMetadata.plist');
 const appDocumentTypes = appInfo.CFBundleDocumentTypes ?? [];

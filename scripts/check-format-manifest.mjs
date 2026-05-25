@@ -14,24 +14,21 @@ function json(relativePath) {
   return JSON.parse(text(relativePath));
 }
 
-function appFilterExtensions(appSource) {
-  const match = appSource.match(/extensions:\s*\[([^\]]+)\]/);
-  assert.ok(match, 'App file-open filter extensions were not found.');
-  return new Set([...match[1].matchAll(/"([^"]+)"/g)].map(([, extension]) => extension));
-}
-
 const manifest = json('docs/specs/formats.manifest.json');
 const formats = manifest.formats;
 const registry = json('config/preview-formats.json');
 assert.equal(manifest.schemaVersion, 1);
 assert.ok(Array.isArray(formats) && formats.length > 0);
 
-const appExtensions = appFilterExtensions(text('apps/desktop/src/App.tsx'));
+const appSource = text('apps/desktop/src/App.tsx');
 const rustGrid = text('apps/desktop/src-tauri/src/preview/runtime_grid.rs');
 const appMetadata = text('apps/desktop/src-tauri/AppMetadata.plist');
 const tauriConfig = json('apps/desktop/src-tauri/tauri.conf.json');
 const tauriExtensions = new Set(tauriConfig.bundle.fileAssociations.flatMap((association) => association.ext || []));
 const registryFormats = new Map(registry.formats.flatMap((format) => format.extensions.map((extension) => [extension, format])));
+
+assert.match(appSource, /preview-formats\.json/, 'App open dialog must use the canonical preview format registry.');
+assert.match(appSource, /previewFormatRegistry\.documentTypes\.extensions/, 'App open dialog extensions must come from previewFormatRegistry.documentTypes.extensions.');
 
 for (const format of formats) {
   assert.ok(format.name, 'Format name is required.');
@@ -42,7 +39,6 @@ for (const format of formats) {
     const registryFormat = registryFormats.get(extension);
     assert.ok(registryFormat, `${extension}: missing from canonical preview format registry.`);
     assert.equal(registryFormat.contentType, format.contentType, `${extension}: content type differs from canonical registry.`);
-    assert.ok(appExtensions.has(extension), `${extension}: missing from app file-open filter.`);
     assert.match(appMetadata, new RegExp(`<string>${extension.replace('.', '\\.')}<\\/string>`), `${extension}: missing from AppMetadata.plist.`);
     if (format.bundleAssociation) {
       assert.ok(tauriExtensions.has(extension), `${extension}: missing from tauri fileAssociations.`);

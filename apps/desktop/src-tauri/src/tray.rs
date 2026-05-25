@@ -1,8 +1,13 @@
 use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{Manager, Runtime};
+use tauri::{LogicalSize, Manager, Runtime, Size, WebviewWindow};
 
 use crate::menu;
+
+const DEFAULT_MAIN_WINDOW_WIDTH: f64 = 1180.0;
+const DEFAULT_MAIN_WINDOW_HEIGHT: f64 = 760.0;
+const MIN_REASONABLE_WINDOW_WIDTH: u32 = 640;
+const MIN_REASONABLE_WINDOW_HEIGHT: u32 = 420;
 
 pub(crate) fn configure_tray<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
     let show = MenuItemBuilder::with_id("tray.show", "Show Burrete").build(app)?;
@@ -132,6 +137,25 @@ pub(crate) fn show_main_window<R: Runtime>(app: &tauri::AppHandle<R>) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.unminimize();
+        normalize_main_window(&window);
         let _ = window.set_focus();
     }
+}
+
+fn normalize_main_window<R: Runtime>(window: &WebviewWindow<R>) {
+    let needs_reset = window
+        .inner_size()
+        .map(|size| {
+            size.width < MIN_REASONABLE_WINDOW_WIDTH || size.height < MIN_REASONABLE_WINDOW_HEIGHT
+        })
+        .unwrap_or(false);
+    if !needs_reset {
+        return;
+    }
+
+    let _ = window.set_size(Size::Logical(LogicalSize::new(
+        DEFAULT_MAIN_WINDOW_WIDTH,
+        DEFAULT_MAIN_WINDOW_HEIGHT,
+    )));
+    let _ = window.center();
 }

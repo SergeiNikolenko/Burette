@@ -4,8 +4,9 @@ import type { DragDropEvent } from "@tauri-apps/api/window";
 import { isTauriRuntime } from "../lib/tauri";
 
 type OpenDocuments = (paths: string[]) => void | Promise<void>;
+type ReportStatus = (status: string, kind?: "info" | "error") => void;
 
-export function useOpenDrop(openDocuments: OpenDocuments, setStatus: (status: string) => void) {
+export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStatus) {
   const [dropActive, setDropActive] = useState(false);
 
   const handleFileDrop = useCallback(
@@ -34,13 +35,13 @@ export function useOpenDrop(openDocuments: OpenDocuments, setStatus: (status: st
         unlisten = next;
       })
       .catch((error) => {
-        setStatus("File drop setup failed: " + (error instanceof Error ? error.message : String(error)));
+        pushStatus("File drop setup failed: " + (error instanceof Error ? error.message : String(error)), "error");
       });
 
     return () => {
       unlisten?.();
     };
-  }, [handleFileDrop, setStatus]);
+  }, [handleFileDrop, pushStatus]);
 
   const handleBrowserDrag = useCallback((event: React.DragEvent<HTMLElement>) => {
     if (!Array.from(event.dataTransfer.types).includes("Files")) return;
@@ -65,10 +66,10 @@ export function useOpenDrop(openDocuments: OpenDocuments, setStatus: (status: st
       if (paths.length > 0) {
         void openDocuments(paths);
       } else if (!isTauriRuntime()) {
-        setStatus("Drop files into the installed app window to open them.");
+        pushStatus("Drop files into the installed app window to open them.");
       }
     },
-    [openDocuments, setStatus],
+    [openDocuments, pushStatus],
   );
 
   return {

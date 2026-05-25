@@ -22,14 +22,15 @@ Mol* interactive preview is used for:
 - MOL, MOL2
 - XYZ and GRO when selected or resolved by policy
 
-Fast XYZ is used for text XYZ input when selected or when `auto` resolves to the
-fast path.
+External `xyzrender` is used for text XYZ input when selected or when `auto`
+resolves to the default preview path. Fast XYZ remains available when selected
+or when external `xyzrender` falls back.
 
 External `xyzrender` is used for XYZ-like text inputs when selected. It is also
 the required path for external-renderer-only groups:
 
 - CUB, CUBE
-- IN, LOG, OUT
+- ABI, COM, FDF, IN, INP, NW, OUT, PSI4, QCIN
 - VASP
 
 SDF, SMILES, CSV, and TSV collection previews use the grid runtime.

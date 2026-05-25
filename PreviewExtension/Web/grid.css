@@ -1,5 +1,6 @@
 :root {
   color-scheme: dark;
+  --buret-grid-canvas-background: var(--buret-bg);
   --buret-bg: #111111;
   --buret-surface: #202020;
   --buret-surface-raised: #3a3a3a;
@@ -47,7 +48,7 @@ body,
 
 body {
   overflow: auto;
-  background: var(--buret-bg);
+  background: var(--buret-grid-canvas-background, var(--buret-bg));
   color: var(--buret-text);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   letter-spacing: 0;

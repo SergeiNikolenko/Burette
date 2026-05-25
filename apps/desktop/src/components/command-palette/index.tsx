@@ -26,6 +26,7 @@ const rendererCommands: Array<{
   value: ViewerPreferences["rendererMode"];
 }> = [
   { id: "renderer-auto", label: "Renderer: Auto", value: "auto" },
+  { id: "renderer-xyz-fast", label: "Renderer: Fast XYZ", value: "xyz-fast" },
   { id: "renderer-molstar", label: "Renderer: Mol*", value: "molstar" },
   { id: "renderer-xyzrender", label: "Renderer: xyzrender external", value: "xyzrender-external" },
 ];
@@ -42,6 +43,27 @@ export function CommandPalette({
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   const items = useMemo<PaletteItem[]>(() => {
+    const projectItems = state.sidebarProjects.flatMap((project) => project.items.map((item) => ({
+      id: `${item.source}-${item.path}`,
+      group: "Projects",
+      label: `${project.title}: ${item.title}`,
+      description: `${item.relativePath} · ${rendererLabel(item.renderer)} · ${formatBytes(item.byteCount)}${item.isOpen ? "" : " · Recent"}`,
+      run: () => {
+        if (item.documentId) {
+          actions.selectDocument(item.documentId);
+          return;
+        }
+        return actions.openRecentStructure({
+          path: item.path,
+          title: item.title,
+          extension: item.extension,
+          renderer: item.renderer,
+          byteCount: item.byteCount,
+          openedAt: item.openedAt ?? Date.now(),
+        });
+      },
+    })));
+
     const commands: PaletteItem[] = [
       {
         id: "open-structure",
@@ -53,8 +75,8 @@ export function CommandPalette({
       {
         id: "search-structures",
         group: "Suggested",
-        label: "Search Open Structures",
-        description: "Focus the sidebar structure filter",
+        label: "Search Projects and Structures",
+        description: "Focus the sidebar project filter",
         run: actions.focusSidebarSearch,
       },
       {
@@ -127,23 +149,10 @@ export function CommandPalette({
         description: state.preferences.rendererMode === command.value ? "Current renderer mode" : "Switch renderer mode",
         run: () => actions.setPreference("rendererMode", command.value),
       })),
-      ...state.recentStructures.map((structure) => ({
-        id: "recent-" + structure.path,
-        group: "Recent",
-        label: "Open Recent: " + structure.title,
-        description: `${rendererLabel(structure.renderer)} · ${formatBytes(structure.byteCount)}`,
-        run: () => actions.openRecentStructure(structure),
-      })),
-      ...state.documents.map((document) => ({
-        id: "structure-" + document.id,
-        group: "Open",
-        label: "Open Structure: " + document.title,
-        description: `${rendererLabel(document.renderer)} · ${formatBytes(document.byteCount)}`,
-        run: () => actions.selectDocument(document.id),
-      })),
+      ...projectItems,
     ];
     return commands;
-  }, [actions, state.documents, state.preferences.rendererMode, state.recentStructures, state.sidebarOpen]);
+  }, [actions, state.preferences.rendererMode, state.sidebarOpen, state.sidebarProjects]);
 
   const visibleItems = useMemo(() => {
     const normalized = query.trim().toLowerCase();

@@ -28,31 +28,37 @@
 		<dict>
 			<key>CFBundleTypeExtensions</key>
 			<array>
+				<string>abi</string>
 				<string>bcif</string>
 				<string>cif</string>
 				<string>cms</string>
+				<string>com</string>
 				<string>cub</string>
 				<string>cube</string>
 				<string>dcd</string>
 				<string>ent</string>
+				<string>fdf</string>
 				<string>gro</string>
 				<string>mcif</string>
 				<string>mmcif</string>
 				<string>mol</string>
 				<string>mol2</string>
 				<string>in</string>
+				<string>inp</string>
 				<string>lammpstrj</string>
-				<string>log</string>
 				<string>mae</string>
 				<string>mae.gz</string>
 				<string>maegz</string>
 				<string>nctraj</string>
+				<string>nw</string>
 				<string>out</string>
 				<string>pdb</string>
 				<string>pdbqt</string>
 				<string>pqr</string>
 				<string>prmtop</string>
 				<string>psf</string>
+				<string>psi4</string>
+				<string>qcin</string>
 				<string>sd</string>
 				<string>sdf</string>
 				<string>smi</string>
@@ -122,6 +128,9 @@
 				<string>com.local.burrete10.xyz</string>
 				<string>com.local.burrete10.xyzrender-input</string>
 				<string>net.sourceforge.openbabel.xyz</string>
+				<string>com.adobe.fdf</string>
+				<string>com.apple.videoapps.cube</string>
+				<string>com.gaussian.cube</string>
 				<string>com.local.burrete10.gro</string>
 				<string>com.local.burrete10.molecular-dynamics</string>
 				<string>com.local.burrete10.schrodinger</string>
@@ -168,15 +177,21 @@
 			<string>com.local.burrete10.xyzrender-input</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>cub</string>
-					<string>cube</string>
-					<string>in</string>
-					<string>log</string>
-					<string>out</string>
-					<string>vasp</string>
-				</array>
+			<key>public.filename-extension</key>
+			<array>
+				<string>abi</string>
+				<string>com</string>
+				<string>cub</string>
+				<string>cube</string>
+				<string>fdf</string>
+				<string>in</string>
+				<string>inp</string>
+				<string>nw</string>
+				<string>out</string>
+				<string>psi4</string>
+				<string>qcin</string>
+				<string>vasp</string>
+			</array>
 			</dict>
 		</dict>
 		<dict>

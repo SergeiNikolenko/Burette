@@ -1,4 +1,4 @@
-import type { OpenDocumentsResult, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "../types";
+import type { OpenDocumentsResult, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XyzrenderControls } from "../types";
 import previewFormatRegistry from "../../../../config/preview-formats.json";
 
 type FormatInfo = {
@@ -17,13 +17,13 @@ type GridRecord = {
 };
 
 const MAX_STRUCTURE_FILE_SIZE = 75 * 1024 * 1024;
-const GRID_ASSET_VERSION = "grid-ui-v4";
+const GRID_ASSET_VERSION = "grid-ui-v5";
 const REPO_ROOT = String(import.meta.env.BURRETE_REPO_ROOT || "");
 const WEB_ASSETS_BASE = fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
 
 type ResolvedPreviewVisuals = {
-  theme: ViewerPreferences["theme"] | "dark";
-  canvasBackground: Exclude<ViewerPreferences["canvasBackground"], "auto">;
+  theme: ViewerPreferences["theme"];
+  canvasBackground: ViewerPreferences["canvasBackground"];
   transparentBackground: boolean;
 };
 
@@ -44,12 +44,10 @@ export function browserDevRuntimeNeedsRefresh(document: ViewerDocument) {
 }
 
 function resolvePreviewVisuals(preferences: ViewerPreferences): ResolvedPreviewVisuals {
-  const theme = preferences.theme === "auto" ? "dark" : preferences.theme;
-  const canvasBackground = preferences.canvasBackground === "auto" ? "black" : preferences.canvasBackground;
   return {
-    theme,
-    canvasBackground,
-    transparentBackground: canvasBackground === "transparent",
+    theme: preferences.theme,
+    canvasBackground: preferences.canvasBackground,
+    transparentBackground: preferences.canvasBackground === "transparent",
   };
 }
 
@@ -101,9 +99,19 @@ async function openBrowserDevDocument(
 
   const format = formatForExtension(extension);
   const requestedRenderer = resolveRenderer(format, preferences.rendererMode);
-  const { renderer, externalRendererStatus, externalArtifact, xyzrenderPresetOptions } =
+  const { renderer, externalRendererStatus, externalArtifact, xyzrenderPresetOptions, xyzrenderControls } =
     await browserRendererPlan(path, format, requestedRenderer, reloadOptions);
-  const html = viewerHtml(path, format, renderer, bytes, preferences, externalRendererStatus, externalArtifact, xyzrenderPresetOptions);
+  const html = viewerHtml(
+    path,
+    format,
+    renderer,
+    bytes,
+    preferences,
+    externalRendererStatus,
+    externalArtifact,
+    xyzrenderPresetOptions,
+    xyzrenderControls,
+  );
   return browserDocument(path, extension, renderer, html, bytes.length);
 }
 
@@ -134,6 +142,7 @@ function viewerHtml(
   externalRendererStatus?: Record<string, string>,
   externalArtifact?: BrowserDevExternalArtifact,
   xyzrenderPresetOptions?: Array<{ value: string; label: string }>,
+  xyzrenderControls?: XyzrenderControls | null,
 ) {
   const label = fileTitle(path);
   const visuals = resolvePreviewVisuals(preferences);
@@ -158,6 +167,7 @@ function viewerHtml(
     sdfGrid: true,
     appViewer: true,
     tauriViewer: false,
+    molstarStyle: preferences.molstarStyle,
     xyzrenderViewer: renderer === "xyzrender-external",
     molstarAvailable: !format.externalOnly,
     canOpenInVesta: format.canOpenInVesta,
@@ -165,6 +175,7 @@ function viewerHtml(
     defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" },
     ...(externalArtifact ? { externalArtifact } : {}),
     ...(xyzrenderPresetOptions ? { xyzrenderPresetOptions } : {}),
+    ...(xyzrenderControls ? { xyzrenderControls } : {}),
     ...(externalRendererStatus ? { externalRendererStatus } : {}),
     ...(renderer === "xyz-fast"
       ? {
@@ -218,6 +229,7 @@ async function browserRendererPlan(
       path,
       reloadOptions?.xyzrenderPreset ?? "default",
       reloadOptions?.xyzrenderOrientationRef ?? null,
+      reloadOptions?.xyzrenderControls ?? null,
     );
     return {
       renderer: "xyzrender-external",
@@ -230,6 +242,7 @@ async function browserRendererPlan(
         log: result.log,
       },
       xyzrenderPresetOptions: result.xyzrenderPresetOptions,
+      xyzrenderControls: result.xyzrenderControls ?? reloadOptions?.xyzrenderControls ?? null,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -261,6 +274,7 @@ async function requestBrowserDevXyzrender(
   path: string,
   preset: string,
   orientationRef: string | null,
+  controls: XyzrenderControls | null,
 ) {
   const url = new URL("/__burette/xyzrender", window.location.origin);
   const response = await fetch(url, {
@@ -270,6 +284,7 @@ async function requestBrowserDevXyzrender(
       path,
       preset,
       orientationRef: orientationRef || undefined,
+      controls: controls || undefined,
     }),
   });
   const payload = await response.json().catch(() => ({}));
@@ -285,6 +300,7 @@ async function requestBrowserDevXyzrender(
     configArgument: typeof payload?.configArgument === "string" ? payload.configArgument : "default",
     elapsedMs: Number(payload?.elapsedMs) || 0,
     log: typeof payload?.log === "string" ? payload.log : "",
+    xyzrenderControls: typeof payload?.xyzrenderControls === "object" && payload?.xyzrenderControls ? payload.xyzrenderControls as XyzrenderControls : undefined,
     xyzrenderPresetOptions: Array.isArray(payload?.xyzrenderPresetOptions) ? payload.xyzrenderPresetOptions : undefined,
   };
 }
@@ -474,13 +490,18 @@ function viewerBridgeJs() {
       body.documentId = String(window.BurreteConfig.documentId);
     }
     if (window.parent && window.parent !== window) {
-      try { window.parent.postMessage({ source: 'burrete-viewer', body }, window.location.origin); }
-      catch (_) { try { window.parent.postMessage({ source: 'burrete-viewer', body }, '*'); } catch (_) {} }
+      try { window.parent.postMessage({ source: 'burrete-viewer', body }, '*'); } catch (_) {}
     }
   };
-  window.webkit = window.webkit || { messageHandlers: { burrete: { postMessage: postToParent } } };
+  const webkit = window.webkit || {};
+  const messageHandlers = webkit.messageHandlers || {};
+  if (!messageHandlers.burrete) {
+    messageHandlers.burrete = { postMessage: postToParent };
+  }
+  webkit.messageHandlers = messageHandlers;
+  window.webkit = webkit;
   window.__mqlPost = (type, message) => postToParent({ type, message: message || '' });
-  window.__mqlAction = (name) => window.webkit.messageHandlers.burrete.postMessage({ type: 'action', message: name });
+  window.__mqlAction = (name) => messageHandlers.burrete.postMessage({ type: 'action', message: name });
   window.__mqlDebug = () => {};
   window.BurreteInlineMode = true;
   window.BurreteDebug = false;
@@ -511,7 +532,7 @@ function resolveRenderer(format: FormatInfo, requested: ViewerPreferences["rende
   if (normalized === "molstar") return "molstar";
   if (normalized === "xyz-fast") return isXyz ? "xyz-fast" : "molstar";
   if (normalized === "xyzrender-external") return isXyz ? "xyzrender-external" : "molstar";
-  return isXyz ? "xyz-fast" : "molstar";
+  return isXyz ? "xyzrender-external" : "molstar";
 }
 
 function normalizeRendererMode(raw: string) {
