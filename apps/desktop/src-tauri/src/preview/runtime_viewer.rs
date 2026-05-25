@@ -134,6 +134,7 @@ pub(crate) fn create_runtime<R: Runtime>(
         }
         config["externalArtifact"] = json!({
             "path": artifact.relative_path,
+            "inlineSvg": artifact.inline_svg,
             "type": artifact.output_type,
             "renderer": "xyzrender",
             "preset": artifact.preset,
