@@ -33,7 +33,7 @@
   --buret-menu-divider: rgba(255, 255, 255, 0.06);
   --buret-menu-toggle-track: rgba(255, 255, 255, 0.20);
   --buret-menu-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
-  --buret-menu-accent: #0a84ff;
+  --buret-menu-accent: #0169cc;
   --buret-select-chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='rgba(255,255,255,0.62)' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M3 4.5l3 3 3-3'/></svg>");
 }
 html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: transparent; }
@@ -59,7 +59,7 @@ body.buret-theme-light {
   --buret-molstar-border: rgba(0, 0, 0, 0.13);
   --buret-molstar-text: rgba(32, 33, 35, 0.94);
   --buret-molstar-muted-text: rgba(86, 88, 92, 0.82);
-  --buret-molstar-accent: #006bd6;
+  --buret-molstar-accent: #0169cc;
   --buret-molstar-shadow: rgba(0, 0, 0, 0.18);
   --buret-menu-background: #f6f6f4;
   --buret-menu-section-background: #efefec;
@@ -69,7 +69,7 @@ body.buret-theme-light {
   --buret-menu-divider: rgba(0, 0, 0, 0.06);
   --buret-menu-toggle-track: rgba(0, 0, 0, 0.16);
   --buret-menu-shadow: 0 16px 36px rgba(0, 0, 0, 0.15);
-  --buret-menu-accent: #0a84ff;
+  --buret-menu-accent: #0169cc;
   --buret-select-chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='rgba(51,54,59,0.66)' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M3 4.5l3 3 3-3'/></svg>");
   color: #161719;
 }
