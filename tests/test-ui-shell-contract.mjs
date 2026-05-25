@@ -560,7 +560,7 @@ assert.doesNotMatch(previewViewController, /viewerTheme == "auto" \? "dark" : vi
 assert.doesNotMatch(previewViewController, /canvasBackground == "auto" \? "black" : canvasBackground/);
 assert.match(gridViewer, /cfg\.transparentBackground === true \|\| canvasBackground === 'transparent'/);
 assert.match(gridViewer, /if \(background === 'graphite'\) return '#111317';/);
-assert.match(gridViewer, /if \(background === 'white'\) return '#f7f7f2';/);
+assert.match(gridViewer, /if \(background === 'white'\) return '#ffffff';/);
 assert.match(previewRuntimeCss, /--buret-canvas-background:/);
 assert.match(gridCss, /background: var\(--buret-grid-canvas-background, var\(--buret-bg\)\);/);
 assert.match(previewRuntimeViewer, /"defaultLayoutState": \{ "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" \}/);
