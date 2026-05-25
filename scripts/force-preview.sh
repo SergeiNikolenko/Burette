@@ -15,6 +15,10 @@ const registry = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 const fileName = basename(process.argv[3]).toLowerCase();
 const extension = fileName.endsWith('.mae.gz') ? 'mae.gz' : extname(fileName).slice(1);
 const format = registry.formats.find((candidate) => candidate.extensions.includes(extension));
+if (format?.id === 'csv' || format?.id === 'tsv') {
+  console.error('CSV/TSV table previews must be tested with normal Quick Look selection; qlmanage aborts when forcing custom table UTIs.');
+  process.exit(2);
+}
 if (format?.contentType) process.stdout.write(format.contentType);
 NODE
 )"

@@ -110,7 +110,8 @@ if [ -f "$FILE" ]; then
   fi
   case "${FILE##*.}" in
     pdb|PDB|ent|ENT|pdbqt|PDBQT|pqr|PQR) echo "./scripts/force-preview.sh '$FILE'" ;;
-    cif|CIF|mmcif|MMCIF|mcif|MCIF|bcif|BCIF|sdf|SDF|sd|SD|mol|MOL|mol2|MOL2|xyz|XYZ|gro|GRO|csv|CSV|tsv|TSV) echo "./scripts/force-preview.sh '$FILE'" ;;
+    csv|CSV|tsv|TSV) echo "qlmanage -p '$FILE'" ;;
+    cif|CIF|mmcif|MMCIF|mcif|MCIF|bcif|BCIF|sdf|SDF|sd|SD|mol|MOL|mol2|MOL2|xyz|XYZ|gro|GRO) echo "./scripts/force-preview.sh '$FILE'" ;;
   esac
   echo "qlmanage -d 4 -p '$FILE'"
 fi
