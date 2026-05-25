@@ -10,6 +10,7 @@
     rdkit: null,
     all: Array.isArray(window.BurreteGridRecords) ? window.BurreteGridRecords : [],
     rows: [],
+    totalRows: 0,
     visibleCount: 0,
     renderedCount: 0,
     query: '',
@@ -21,6 +22,10 @@
     showProperties: storedBoolean(SHOW_PROPERTIES_STORAGE_KEY, true),
     selected: new Set(),
     svgCache: new Map(),
+    hostRequests: new Map(),
+    remoteMode: false,
+    remoteLoading: false,
+    requestSeq: 0,
     token: 0,
     rendering: false,
     pendingLoad: false,
@@ -64,8 +69,45 @@
     return {
       selection: !!caps.selection,
       export: !!caps.export,
+      substructureSearch: !!caps.substructureSearch,
       rendererSwitch: cfg.appViewer === true && !!caps.rendererSwitch
     };
+  }
+
+  function isRemoteMode(cfg) {
+    return cfg.appViewer === true && cfg.gridDataMode === 'bridge' && !Array.isArray(window.BurreteGridRecords);
+  }
+
+  function installHostMessageListener() {
+    window.addEventListener('message', event => {
+      const data = event.data;
+      if (!data || data.source !== 'burrete-grid-host') return;
+      const body = data.body || {};
+      const requestId = String(body.requestId || '');
+      if (!requestId || !state.hostRequests.has(requestId)) return;
+      const pending = state.hostRequests.get(requestId);
+      state.hostRequests.delete(requestId);
+      try { clearTimeout(pending.timeoutId); } catch (_) {}
+      if (body.type === 'gridPage') pending.resolve(body.result || {});
+      else pending.reject(new Error(body.error || 'Grid host request failed.'));
+    });
+  }
+
+  function hostRequest(type, payload = {}) {
+    return new Promise((resolve, reject) => {
+      const cfg = config();
+      const requestId = `grid-${++state.requestSeq}`;
+      const timeoutId = window.setTimeout(() => {
+        state.hostRequests.delete(requestId);
+        reject(new Error('Grid host request timed out.'));
+      }, 15000);
+      state.hostRequests.set(requestId, { resolve, reject, timeoutId });
+      post(type, `[grid] ${type}`, {
+        requestId,
+        documentId: cfg.documentId,
+        ...payload
+      });
+    });
   }
 
   async function initRDKit() {
@@ -198,8 +240,8 @@
         <div class="buret-grid-toolbar">
           <div class="buret-toolbar-row buret-toolbar-row-main">
             <label class="buret-search-control">Search <input id="search" type="search" placeholder="name, SMILES, metadata" /></label>
-            <label class="buret-smarts-control">SMARTS <input id="smarts" type="search" spellcheck="false" autocapitalize="off" placeholder="[#6]=O" /></label>
-            <label class="buret-sort-control">Sort <select id="sort"><option value="index">File order</option><option value="name">Name</option><option value="smiles">SMILES</option>${propertyOptions()}</select></label>
+            <label class="buret-smarts-control" ${caps.substructureSearch ? '' : 'hidden'}>SMARTS <input id="smarts" type="search" spellcheck="false" autocapitalize="off" placeholder="[#6]=O" /></label>
+            <label class="buret-sort-control">Sort <select id="sort"><option value="index">File order</option><option value="name">Name</option><option value="smiles">SMILES</option>${propertyOptions(cfg)}</select></label>
             <label class="buret-load-control">Load batch <select id="load-batch"><option value="auto">Auto</option><option value="24">24</option><option value="60">60</option><option value="120">120</option><option value="240">240</option></select></label>
             <div id="load-status" class="buret-load-status"></div>
           </div>
@@ -217,7 +259,7 @@
       state.query = event.target.value || '';
       refresh(cfg);
     });
-    document.getElementById('smarts').addEventListener('input', event => {
+    document.getElementById('smarts')?.addEventListener('input', event => {
       state.smarts = event.target.value || '';
       refresh(cfg);
     });
@@ -264,7 +306,8 @@
     }
   }
 
-  function propertyOptions() {
+  function propertyOptions(cfg) {
+    if (isRemoteMode(cfg)) return '';
     const keys = new Set();
     for (const row of state.all) {
       Object.keys(row.props || {}).forEach(key => {
@@ -294,12 +337,17 @@
   }
 
   function refresh(cfg) {
+    if (state.remoteMode) {
+      void refreshRemote(cfg);
+      return;
+    }
     const query = normalize(state.query);
     const textRows = query
       ? state.all.filter(row => normalize([row.name, row.smiles, ...Object.entries(row.props || {}).flat()].join('\n')).includes(query))
       : state.all.slice();
     state.rows = filterBySMARTS(textRows);
     state.rows.sort((a, b) => compare(a, b, state.sort));
+    state.totalRows = state.rows.length;
     render(cfg);
   }
 
@@ -375,6 +423,7 @@
   }
 
   function hasMoreRows() {
+    if (state.remoteMode) return state.renderedCount < state.rows.length || state.rows.length < state.totalRows;
     return state.renderedCount < state.rows.length;
   }
 
@@ -401,6 +450,10 @@
   }
 
   async function loadMore(cfg) {
+    if (state.remoteMode) {
+      await loadMoreRemote(cfg);
+      return;
+    }
     if (state.rendering) {
       state.pendingLoad = hasMoreRows();
       return;
@@ -408,6 +461,120 @@
     if (!hasMoreRows()) return;
     state.visibleCount = Math.min(state.rows.length, state.visibleCount + loadBatchSize(cfg));
     await appendVisibleRows(cfg, state.token);
+  }
+
+  async function refreshRemote(cfg) {
+    const token = ++state.token;
+    state.smartsError = '';
+    state.smartsMatches = new Map();
+    state.rows = [];
+    state.totalRows = 0;
+    state.renderedCount = 0;
+    state.visibleCount = 0;
+    const grid = document.getElementById('grid');
+    if (grid) grid.innerHTML = '';
+    updateChrome(cfg);
+    try {
+      state.remoteLoading = true;
+      if (state.smarts.trim()) {
+        const matches = await scanRemoteBySMARTS(cfg, token);
+        if (token !== state.token) return;
+        state.rows = matches;
+        state.totalRows = matches.length;
+        state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
+        await appendVisibleRows(cfg, token);
+        return;
+      }
+      const result = await hostRequest('gridFetchPage', {
+        query: state.query || '',
+        sort: state.sort || 'index',
+        offset: 0,
+        limit: loadBatchSize(cfg)
+      });
+      if (token !== state.token) return;
+      state.rows = Array.isArray(result.rows) ? result.rows : [];
+      state.totalRows = Number(result.totalRows || 0);
+      state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
+      await appendVisibleRows(cfg, token);
+    } catch (error) {
+      const message = error?.message || String(error);
+      setStatus(message, 'error');
+    } finally {
+      state.remoteLoading = false;
+    }
+  }
+
+  async function scanRemoteBySMARTS(cfg, token) {
+    const pattern = state.smarts.trim();
+    if (!pattern) return [];
+    if (!state.rdkit || typeof state.rdkit.get_qmol !== 'function') {
+      state.smartsError = 'This RDKit build does not support SMARTS queries.';
+      return [];
+    }
+    let qmol = null;
+    try {
+      qmol = state.rdkit.get_qmol(pattern);
+      if (!qmol || (typeof qmol.is_valid === 'function' && !qmol.is_valid())) throw new Error('invalid SMARTS');
+      const matches = [];
+      let offset = 0;
+      let total = null;
+      const limit = Math.max(120, loadBatchSize(cfg));
+      while (total === null || offset < total) {
+        if (token !== state.token) return matches;
+        const result = await hostRequest('gridFetchPage', {
+          query: state.query || '',
+          sort: state.sort || 'index',
+          offset,
+          limit
+        });
+        const pageRows = Array.isArray(result.rows) ? result.rows : [];
+        total = Number(result.totalRows || 0);
+        for (const row of pageRows) {
+          const match = substructureMatch(row, qmol);
+          if (!match) continue;
+          state.smartsMatches.set(Number(row.index), match);
+          matches.push(row);
+        }
+        offset += pageRows.length;
+        if (!pageRows.length) break;
+        setStatus(`[grid] SMARTS scan ${Math.min(offset, total).toLocaleString()} / ${total.toLocaleString()} rows...`);
+      }
+      return matches;
+    } catch (error) {
+      state.smartsError = error?.message || String(error);
+      return [];
+    } finally {
+      try { qmol?.delete?.(); } catch (_) {}
+    }
+  }
+
+  async function loadMoreRemote(cfg) {
+    if (state.remoteLoading || !hasMoreRows()) return;
+    if (state.renderedCount < state.rows.length) {
+      state.visibleCount = Math.min(state.rows.length, state.visibleCount + loadBatchSize(cfg));
+      await appendVisibleRows(cfg, state.token);
+      return;
+    }
+    const token = state.token;
+    state.remoteLoading = true;
+    try {
+      const result = await hostRequest('gridFetchPage', {
+        query: state.query || '',
+        sort: state.sort || 'index',
+        offset: state.rows.length,
+        limit: loadBatchSize(cfg)
+      });
+      if (token !== state.token) return;
+      const nextRows = Array.isArray(result.rows) ? result.rows : [];
+      state.totalRows = Number(result.totalRows || state.totalRows);
+      state.rows.push(...nextRows);
+      state.visibleCount = Math.min(state.rows.length, state.visibleCount + loadBatchSize(cfg));
+      await appendVisibleRows(cfg, state.token);
+    } catch (error) {
+      setStatus(error?.message || String(error), 'error');
+    } finally {
+      state.remoteLoading = false;
+    }
   }
 
   async function appendVisibleRows(cfg, token) {
@@ -439,21 +606,22 @@
 
   function updateChrome(cfg) {
     const total = Number(cfg.recordsTotal || state.all.length);
-    const included = Number(cfg.recordsIncluded || state.all.length);
+    const included = state.remoteMode ? state.rows.length : Number(cfg.recordsIncluded || state.all.length);
+    const visible = state.remoteMode ? state.totalRows : state.rows.length;
     document.getElementById('summary').textContent = [
-      `${state.rows.length.toLocaleString()} visible`,
+      `${visible.toLocaleString()} visible`,
       `${state.renderedCount.toLocaleString()} shown`,
       `${included.toLocaleString()} loaded`,
       `${total.toLocaleString()} in file`,
       state.selected.size ? `${state.selected.size.toLocaleString()} selected` : ''
     ].filter(Boolean).join(' · ');
-    if (state.smarts.trim() && !state.smartsError) {
+    if (!state.remoteMode && state.smarts.trim() && !state.smartsError) {
       document.getElementById('summary').textContent += ` · SMARTS matches ${state.smartsMatches.size.toLocaleString()}`;
     }
     const loadStatus = document.getElementById('load-status');
     if (loadStatus) {
       loadStatus.textContent = hasMoreRows()
-        ? `${state.renderedCount.toLocaleString()} of ${state.rows.length.toLocaleString()} shown`
+        ? `${state.renderedCount.toLocaleString()} of ${visible.toLocaleString()} shown`
         : 'All visible molecules loaded';
     }
     const clearSMARTS = document.getElementById('clear-smarts');
@@ -462,11 +630,13 @@
     if (smartsInput) smartsInput.classList.toggle('invalid', !!state.smartsError);
     document.getElementById('footer').textContent = state.smartsError
       ? `SMARTS error: ${state.smartsError}`
-      : (total > included
+      : (total > included && !state.remoteMode
         ? `Showing first ${included.toLocaleString()} of ${total.toLocaleString()} records.`
         : (hasMoreRows()
-          ? `Scroll to load more. ${state.renderedCount.toLocaleString()} of ${state.rows.length.toLocaleString()} visible molecules are rendered.`
-          : 'Offline RDKit.js rendering. No network access required.'));
+          ? `Scroll to load more. ${state.renderedCount.toLocaleString()} of ${visible.toLocaleString()} visible molecules are rendered.`
+          : (state.remoteMode
+            ? 'Desktop grid runtime is loading rows on demand.'
+            : 'Offline RDKit.js rendering. No network access required.')));
   }
 
   function card(row, cfg) {
@@ -545,11 +715,17 @@
   }
 
   function selectedOrFiltered() {
-    return state.selected.size ? state.all.filter(row => state.selected.has(Number(row.index))) : state.rows;
+    const pool = state.remoteMode ? state.rows : state.all;
+    return state.selected.size ? pool.filter(row => state.selected.has(Number(row.index))) : state.rows;
+  }
+
+  function shouldCollectAllRemoteRows() {
+    return state.remoteMode && state.selected.size === 0 && !state.smarts.trim();
   }
 
   async function copySelected() {
-    const text = selectedOrFiltered().map(row => `${row.smiles || ''}\t${row.name || ''}`.trim()).join('\n');
+    const sourceRows = shouldCollectAllRemoteRows() ? await collectAllRemoteRows(config()) : selectedOrFiltered();
+    const text = sourceRows.map(row => `${row.smiles || ''}\t${row.name || ''}`.trim()).join('\n');
     if (canUseNativeBridge()) {
       post('copyText', '[grid] Copy selected molecules.', { text });
       setStatus('[grid] Copy requested.');
@@ -563,16 +739,17 @@
     }
   }
 
-  function exportSmiles(cfg) {
-    const text = selectedOrFiltered()
+  async function exportSmiles(cfg) {
+    const rows = shouldCollectAllRemoteRows() ? await collectAllRemoteRows(cfg) : selectedOrFiltered();
+    const text = rows
       .map(row => `${row.smiles || ''}\t${row.name || `mol_${Number(row.index) + 1}`}`.trim())
       .filter(Boolean)
       .join('\n') + '\n';
     download(text, baseName(cfg.label) + '.smi', 'chemical/x-daylight-smiles');
   }
 
-  function exportCSV(cfg) {
-    const rows = selectedOrFiltered();
+  async function exportCSV(cfg) {
+    const rows = shouldCollectAllRemoteRows() ? await collectAllRemoteRows(cfg) : selectedOrFiltered();
     const props = [...new Set(rows.flatMap(row => Object.keys(row.props || {})))];
     const data = [
       ['index', 'name', 'smiles', ...props],
@@ -606,6 +783,31 @@
 
   function baseName(value) {
     return String(value || 'molecules').replace(/\.[^.]+$/, '').replace(/[^a-z0-9._-]+/gi, '_').slice(0, 80) || 'molecules';
+  }
+
+  async function collectAllRemoteRows(cfg) {
+    if (!state.remoteMode) return state.rows;
+    if (state.rows.length >= state.totalRows && state.totalRows > 0) return state.rows.slice();
+    const rows = [];
+    let offset = 0;
+    let total = null;
+    const limit = Math.max(120, loadBatchSize(cfg));
+    setStatus('[grid] Preparing export...');
+    while (total === null || offset < total) {
+      const result = await hostRequest('gridFetchPage', {
+        query: state.query || '',
+        sort: state.sort || 'index',
+        offset,
+        limit
+      });
+      const pageRows = Array.isArray(result.rows) ? result.rows : [];
+      total = Number(result.totalRows || 0);
+      rows.push(...pageRows);
+      offset += pageRows.length;
+      if (!pageRows.length) break;
+      setStatus(`[grid] Preparing export ${Math.min(offset, total).toLocaleString()} / ${total.toLocaleString()} rows...`);
+    }
+    return rows;
   }
 
   function normalize(value) {
@@ -652,8 +854,11 @@
   async function main() {
     try {
       const cfg = config();
+      state.remoteMode = isRemoteMode(cfg);
+      state.totalRows = state.remoteMode ? 0 : state.all.length;
       applyTheme(cfg);
       installThemeListener(cfg);
+      installHostMessageListener();
       buildUI(cfg);
       await initRDKit();
       refresh(cfg);

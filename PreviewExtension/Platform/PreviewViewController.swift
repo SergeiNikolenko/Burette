@@ -496,6 +496,13 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             try Data(gridRecordsScript.utf8)
                 .write(to: runtimeDirectory.appendingPathComponent("preview-grid-records.js"), options: [.atomic])
         }
+        if requiresRDKit {
+            let wasmURL = bundledWebDirectory.appendingPathComponent("rdkit/RDKit_minimal.wasm")
+            let wasmData = try Data(contentsOf: wasmURL)
+            try Data("window.BurreteRDKitWasmBase64 = \"\(wasmData.base64EncodedString())\";\n".utf8)
+                .write(to: runtimeDirectory.appendingPathComponent("preview-rdkit-wasm.js"), options: [.atomic])
+            diagnostics.append("[build] runtime.asset.rdkit.inlineWasm.bytes=\(wasmData.count)")
+        }
         if let externalArtifactSourceURL {
             let destination = runtimeDirectory.appendingPathComponent(externalArtifactSourceURL.lastPathComponent)
             _ = try copyAssetIfNeeded(from: externalArtifactSourceURL, to: destination, fileManager: fileManager)
@@ -769,6 +776,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           </script>
           <script src="preview-config.js"></script>
           <script src="preview-grid-records.js"></script>
+          <script src="preview-rdkit-wasm.js"></script>
           <script src="../assets/rdkit/RDKit_minimal.js"></script>
           <script src="../assets/grid-viewer.js"></script>
         </body>
