@@ -96,11 +96,12 @@ pub(crate) fn open_document<R: Runtime>(
         .and_then(|value| value.to_str())
         .unwrap_or("")
         .to_lowercase();
+    let document_id = stable_id(&canonical);
     if let Some(runtime_path) =
-        create_grid_runtime(app, &canonical, &extension, &data, preferences)?
+        create_grid_runtime(app, &document_id, &canonical, &extension, &data, preferences)?
     {
         return Ok(ViewerDocument {
-            id: stable_id(&canonical),
+            id: document_id.clone(),
             path: canonical.to_string_lossy().to_string(),
             title: file_title(&canonical),
             extension,
@@ -129,7 +130,7 @@ pub(crate) fn open_document<R: Runtime>(
         reload_options,
     )?;
     Ok(ViewerDocument {
-        id: stable_id(&canonical),
+        id: document_id,
         path: canonical.to_string_lossy().to_string(),
         title: file_title(&canonical),
         extension,

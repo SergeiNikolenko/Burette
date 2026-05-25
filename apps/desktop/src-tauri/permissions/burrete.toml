@@ -4,6 +4,7 @@ description = "Allows the Burrete desktop shell to open structures and manage lo
 commands.allow = [
   "startup_documents",
   "open_documents",
+  "grid_fetch_page",
   "clear_preview_cache",
   "open_logs_folder",
   "open_external_url",
