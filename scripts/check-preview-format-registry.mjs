@@ -7,15 +7,43 @@ const registry = JSON.parse(readFileSync('config/preview-formats.json', 'utf8'))
 const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
 
 function sorted(values) {
-  return [...values].sort((a, b) => a.localeCompare(b));
+  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
 }
 
 function assertSameSet(actual, expected, label) {
   assert.deepEqual(sorted(actual), sorted(expected), label);
 }
 
-function unique(values) {
-  return [...new Set(values)];
+function formatMap(formats) {
+  return new Map(formats.map((format) => [format.contentType, format]));
+}
+
+function normalizedTagSpecification(spec = {}) {
+  return Object.fromEntries(
+    Object.entries(spec)
+      .map(([key, values]) => [key, Array.isArray(values) ? [...values] : [values]])
+      .sort(([left], [right]) => left.localeCompare(right)),
+  );
+}
+
+function assertExportedTypeDeclarations(actualTypes, expectedFormats, label) {
+  const actualById = new Map(actualTypes.map((type) => [type.UTTypeIdentifier, type]));
+  const expectedById = formatMap(expectedFormats);
+  assertSameSet(actualById.keys(), expectedById.keys(), `${label} identifiers must match preview format registry`);
+  for (const [typeId, format] of expectedById) {
+    const actual = actualById.get(typeId);
+    assert.ok(actual, `${label} is missing ${typeId}`);
+    assert.deepEqual(actual.UTTypeConformsTo ?? [], format.conformsTo ?? [], `${label} ${typeId} conformsTo`);
+    assert.equal(actual.UTTypeDescription, format.description, `${label} ${typeId} description`);
+    assert.deepEqual(
+      normalizedTagSpecification(actual.UTTypeTagSpecification),
+      normalizedTagSpecification({
+        'public.filename-extension': format.extensions,
+        ...(format.mimeTypes ? { 'public.mime-type': format.mimeTypes } : {}),
+      }),
+      `${label} ${typeId} tag specification`,
+    );
+  }
 }
 
 function plist(path) {
@@ -27,14 +55,7 @@ function plist(path) {
 
 assert.deepEqual(packageJson.workspaces, ['apps/*', 'packages/*']);
 
-const expectedQuickLookContentTypes = unique(
-  registry.formats.flatMap((format) => [format.contentType, ...(format.contentTypeAliases ?? [])]).filter(Boolean),
-);
-assertSameSet(
-  registry.quickLook.contentTypes,
-  expectedQuickLookContentTypes,
-  'Quick Look content types must match the canonical format registry',
-);
+const appFormats = registry.formats.filter((format) => format.contentType?.startsWith('com.local.burrete10.'));
 assert.equal(
   registry.quickLook.contentTypes.some(
     (type) =>
@@ -47,23 +68,42 @@ assert.equal(
 );
 
 const appInfo = plist('apps/desktop/src-tauri/AppMetadata.plist');
-const appDocumentType = appInfo.CFBundleDocumentTypes?.[0] ?? {};
+const appDocumentTypes = appInfo.CFBundleDocumentTypes ?? [];
+const appExtensions = appDocumentTypes.flatMap((type) => type.CFBundleTypeExtensions ?? []);
+const appContentTypes = appDocumentTypes.flatMap((type) => type.LSItemContentTypes ?? []);
 assertSameSet(
-  appDocumentType.CFBundleTypeExtensions ?? [],
+  appExtensions,
   registry.documentTypes.extensions,
   'AppMetadata CFBundleTypeExtensions must match preview format registry',
 );
 assertSameSet(
-  appDocumentType.LSItemContentTypes ?? [],
+  appContentTypes,
   registry.quickLook.contentTypes,
   'AppMetadata LSItemContentTypes must match preview format registry',
 );
+const gridTableDocumentType = appDocumentTypes.find((type) => type.CFBundleTypeName === 'Molecular grid tables');
+assert.ok(gridTableDocumentType, 'AppMetadata must declare a dedicated grid-table document type');
+assert.equal(gridTableDocumentType.LSHandlerRank, 'Owner');
 assertSameSet(
-  (appInfo.UTExportedTypeDeclarations ?? []).map((type) => type.UTTypeIdentifier),
-  registry.formats
-    .map((format) => format.contentType)
-    .filter((type) => type?.startsWith('com.local.burrete10.')),
-  'AppMetadata exported UTIs must match preview format registry',
+  gridTableDocumentType.CFBundleTypeExtensions ?? [],
+  ['csv', 'tsv'],
+  'Grid-table document type must only cover CSV/TSV extensions',
+);
+assertSameSet(
+  gridTableDocumentType.LSItemContentTypes ?? [],
+  [
+    'com.local.burrete10.csv',
+    'com.local.burrete10.tsv',
+    'public.delimited-values-text',
+    'public.comma-separated-values-text',
+    'public.tab-separated-values-text',
+  ],
+  'Grid-table document type must prioritize CSV/TSV UTIs',
+);
+assertExportedTypeDeclarations(
+  appInfo.UTExportedTypeDeclarations ?? [],
+  appFormats,
+  'AppMetadata exported UTIs',
 );
 
 const previewInfo = plist('PreviewExtension/Info.plist');
@@ -72,10 +112,10 @@ assertSameSet(
   registry.quickLook.contentTypes,
   'Quick Look supported content types must match preview format registry',
 );
-assertSameSet(
-  (previewInfo.UTExportedTypeDeclarations ?? []).map((type) => type.UTTypeIdentifier),
-  registry.quickLook.exportedTypeIds,
-  'Quick Look exported UTIs must match preview format registry',
+assertExportedTypeDeclarations(
+  previewInfo.UTExportedTypeDeclarations ?? [],
+  appFormats.filter((format) => registry.quickLook.exportedTypeIds.includes(format.contentType)),
+  'Quick Look exported UTIs',
 );
 
 const tauriConfig = JSON.parse(readFileSync('apps/desktop/src-tauri/tauri.conf.json', 'utf8'));

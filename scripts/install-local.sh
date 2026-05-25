@@ -43,6 +43,32 @@ if [[ "$actual_id" != "$APP_ID" ]]; then
   exit 1
 fi
 
+verify_installed_bundle() {
+  local built_version installed_version built_doc_types installed_doc_types
+  local built_supported_types installed_supported_types
+
+  built_version="$(plutil -extract CFBundleShortVersionString raw -o - "$APP/Contents/Info.plist")"
+  installed_version="$(plutil -extract CFBundleShortVersionString raw -o - "$DEST/Contents/Info.plist")"
+  if [[ "$installed_version" != "$built_version" ]]; then
+    echo "error: installed app version mismatch: expected $built_version, got ${installed_version:-unknown}" >&2
+    exit 1
+  fi
+
+  built_doc_types="$(plutil -extract CFBundleDocumentTypes json -o - "$APP/Contents/Info.plist")"
+  installed_doc_types="$(plutil -extract CFBundleDocumentTypes json -o - "$DEST/Contents/Info.plist")"
+  if [[ "$installed_doc_types" != "$built_doc_types" ]]; then
+    echo "error: installed app document types do not match build output" >&2
+    exit 1
+  fi
+
+  built_supported_types="$(plutil -extract NSExtension.NSExtensionAttributes.QLSupportedContentTypes json -o - "$APP/Contents/PlugIns/BurretePreview.appex/Contents/Info.plist")"
+  installed_supported_types="$(plutil -extract NSExtension.NSExtensionAttributes.QLSupportedContentTypes json -o - "$DEST_APPEX/Contents/Info.plist")"
+  if [[ "$installed_supported_types" != "$built_supported_types" ]]; then
+    echo "error: installed Quick Look supported content types do not match build output" >&2
+    exit 1
+  fi
+}
+
 clean_detritus() {
   local path="$1"
   [[ -e "$path" ]] || return 0
@@ -224,6 +250,7 @@ fi
 codesign --verify --deep --strict "$STAGING_DEST"
 mv "$STAGING_DEST" "$DEST"
 assert_bundled_xyzrender_runtime "after final move"
+verify_installed_bundle
 
 [[ -x "$LSREGISTER" ]] && "$LSREGISTER" -f -R "$DEST" || true
 assert_bundled_xyzrender_runtime "after lsregister"
@@ -239,6 +266,7 @@ let bundle = Bundle(url: appURL)
 let documentTypes = bundle?.object(forInfoDictionaryKey: "CFBundleDocumentTypes") as? [[String: Any]] ?? []
 let contentTypes = documentTypes.flatMap { $0["LSItemContentTypes"] as? [String] ?? [] }
 let broadPublicTypes: Set<String> = [
+    "public.delimited-values-text",
     "public.comma-separated-values-text",
     "public.tab-separated-values-text",
 ]
@@ -269,11 +297,15 @@ Check extension registration:
 Forced tests:
   qlmanage -p -c com.local.burrete10.pdb "$ROOT/samples/mini.pdb"
   qlmanage -p -c com.local.burrete10.cif "$ROOT/samples/mini.cif"
+  qlmanage -p -c com.local.burrete10.csv "$ROOT/tests/fixtures/BurettePreviewSamples/tables/compounds.csv"
+  qlmanage -p -c com.local.burrete10.tsv "$ROOT/tests/fixtures/BurettePreviewSamples/tables/compounds.tsv"
   qlmanage -p -c com.local.burrete10.xyz "$ROOT/samples/mini.xyz"
 
 Normal tests:
   qlmanage -p "$ROOT/samples/mini.pdb"
   qlmanage -p "$ROOT/samples/mini.cif"
+  qlmanage -p "$ROOT/tests/fixtures/BurettePreviewSamples/tables/compounds.csv"
+  qlmanage -p "$ROOT/tests/fixtures/BurettePreviewSamples/tables/compounds.tsv"
   qlmanage -p "$ROOT/samples/mini.xyz"
 
 Launch manually when needed:

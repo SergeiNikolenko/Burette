@@ -430,17 +430,70 @@ export default function App() {
         source?: string;
         body?: {
           type?: string;
+          requestId?: string;
           message?: string;
           value?: string;
           documentId?: string;
           orientationRef?: string | null;
           text?: string | null;
+          query?: string | null;
+          sort?: string | null;
+          offset?: number | null;
+          limit?: number | null;
           controls?: ViewerReloadOptions["xyzrenderControls"];
         };
       } | undefined;
       if (data?.source !== "burrete-viewer" && data?.source !== "burrete-grid") return;
       const body = data.body;
       if (!isKnownViewerMessageSource(event.source, body?.documentId)) return;
+      if (data.source === "burrete-grid") {
+        if (body?.type !== "gridFetchPage" || !body.requestId || !body.documentId) return;
+        if (!isTauriRuntime()) {
+          postMessageToViewerSource(event.source, {
+            source: "burrete-grid-host",
+            body: {
+              type: "gridError",
+              requestId: body.requestId,
+              documentId: body.documentId,
+              error: "Desktop grid paging is unavailable outside the Tauri runtime.",
+            },
+          });
+          return;
+        }
+        void (async () => {
+          try {
+            const result = await invoke("grid_fetch_page", {
+              request: {
+                documentId: body.documentId,
+                query: typeof body.query === "string" ? body.query : "",
+                sort: typeof body.sort === "string" ? body.sort : "index",
+                offset: typeof body.offset === "number" ? body.offset : 0,
+                limit: typeof body.limit === "number" ? body.limit : 96,
+              },
+            });
+            postMessageToViewerSource(event.source, {
+              source: "burrete-grid-host",
+              body: {
+                type: "gridPage",
+                requestId: body.requestId,
+                documentId: body.documentId,
+                result,
+              },
+            });
+          } catch (error) {
+            postMessageToViewerSource(event.source, {
+              source: "burrete-grid-host",
+              body: {
+                type: "gridError",
+                requestId: body.requestId,
+                documentId: body.documentId,
+                error: error instanceof Error ? error.message : String(error),
+              },
+            });
+          }
+        })();
+        return;
+      }
       if (body?.type === "error") {
         pushStatus(formatViewerError(body.message, body.documentId, documents), "error", body.message ? [body.message] : []);
         return;
@@ -499,6 +552,7 @@ export default function App() {
             void openDocuments([targetDocument.path], reloadOptions, { rendererMode: renderer });
           }
         }
+        return;
       }
     };
     window.addEventListener("message", onMessage);
@@ -704,6 +758,13 @@ function isKnownViewerMessageSource(source: MessageEventSource | null, documentI
   return Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).some(
     (iframe) => (!documentId || iframe.dataset.documentId === documentId) && iframe.contentWindow === source,
   );
+}
+
+function postMessageToViewerSource(source: MessageEventSource | null, payload: unknown) {
+  if (!source || typeof source !== "object" || !("postMessage" in source) || typeof source.postMessage !== "function") {
+    return;
+  }
+  source.postMessage(payload, "*");
 }
 
 function summarizeErrors(errors: string[]) {
