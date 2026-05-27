@@ -76,9 +76,10 @@ pub(crate) fn create_runtime<R: Runtime>(
     let is_xyz_trajectory = xyz_frame_count > 1;
     let xyzrender_available = xyzrender_available_for_document(format, data);
     let mut renderer = renderer.to_string();
+    let requested_renderer = normalize_renderer_mode(&preferences.renderer_mode);
     if is_xyz_trajectory
-        && renderer == "xyzrender-external"
-        && normalize_renderer_mode(&preferences.renderer_mode) == "auto"
+        && matches!(requested_renderer, "auto" | "xyz-fast")
+        && renderer != "molstar"
     {
         renderer = "molstar".to_string();
     }

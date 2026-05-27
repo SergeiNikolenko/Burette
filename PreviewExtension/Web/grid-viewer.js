@@ -56,6 +56,8 @@
     xyzrenderPreset: 'default',
     xyzrenderControls: { ...DEFAULT_XYZRENDER_CONTROLS },
     selected: new Set(),
+    selectionAnchorIndex: null,
+    selectionKeydownHandler: null,
     svgCache: new Map(),
     molblockCache: new Map(),
     xyzrenderCardCache: new Map(),
@@ -363,6 +365,11 @@
     root.querySelectorAll('[data-buret-grid-card-renderer]').forEach(button => {
       button.addEventListener('click', () => setCardRenderer(button.getAttribute('data-buret-grid-card-renderer'), cfg));
     });
+    if (state.selectionKeydownHandler) {
+      document.removeEventListener('keydown', state.selectionKeydownHandler);
+    }
+    state.selectionKeydownHandler = event => handleGridSelectionKeydown(event, cfg);
+    document.addEventListener('keydown', state.selectionKeydownHandler);
     initXyzrenderControls(cfg);
     applyGridPreferences();
     initInfiniteLoading(cfg);
@@ -926,16 +933,18 @@
   function card(row, cfg) {
     const caps = capabilities(cfg);
     const el = document.createElement('article');
+    const index = Number(row.index);
     el.className = 'buret-card';
     el.dataset.index = String(row.index);
     el.dataset.buretCardTooltip = cardTooltip(row);
-    if (state.selected.has(Number(row.index))) el.classList.add('selected');
-    if (state.smartsMatches.has(Number(row.index))) el.classList.add('smarts-match');
+    if (state.selected.has(index)) el.classList.add('selected');
+    el.setAttribute('aria-selected', state.selected.has(index) ? 'true' : 'false');
+    if (state.smartsMatches.has(index)) el.classList.add('smarts-match');
     el.innerHTML = `
       <div class="buret-molecule-picture" data-buret-molecule-picture data-xyzrender-key="">${draw(row, cfg)}</div>
       <div class="buret-card-body">
-        ${state.smartsMatches.has(Number(row.index)) ? '<div class="buret-match-badge">SMARTS match</div>' : ''}
-        <h2>${escapeHTML(row.name || `Molecule ${Number(row.index) + 1}`)}</h2>
+        ${state.smartsMatches.has(index) ? '<div class="buret-match-badge">SMARTS match</div>' : ''}
+        <h2>${escapeHTML(row.name || `Molecule ${index + 1}`)}</h2>
         ${row.smiles ? `<div class="buret-smiles">${escapeHTML(row.smiles)}</div>` : ''}
         ${metadata(row)}
       </div>
@@ -946,18 +955,10 @@
     if (caps.selection) {
       el.tabIndex = 0;
       el.role = 'button';
-      const toggle = () => {
-        const index = Number(row.index);
-        if (state.selected.has(index)) state.selected.delete(index);
-        else state.selected.add(index);
-        el.classList.toggle('selected', state.selected.has(index));
-        updateChrome(cfg);
-      };
-      el.addEventListener('click', toggle);
+      el.addEventListener('click', event => handleCardSelection(event, row, cfg, el));
       el.addEventListener('keydown', event => {
         if (event.key === ' ' || event.key === 'Enter') {
-          event.preventDefault();
-          toggle();
+          handleCardSelection(event, row, cfg, el);
         }
       });
     }
@@ -968,6 +969,80 @@
     installCardHover(el);
     installCardResizeHandle(el);
     return el;
+  }
+
+  function selectableRowIndexes() {
+    return state.rows
+      .map(row => Number(row.index))
+      .filter(index => Number.isFinite(index));
+  }
+
+  function syncRenderedSelection() {
+    root.querySelectorAll('.buret-card[data-index]').forEach(card => {
+      const index = Number(card.dataset.index);
+      const selected = state.selected.has(index);
+      card.classList.toggle('selected', selected);
+      card.setAttribute('aria-selected', selected ? 'true' : 'false');
+    });
+  }
+
+  function toggleSelection(index, cfg) {
+    if (!Number.isFinite(index)) return;
+    if (state.selected.has(index)) state.selected.delete(index);
+    else state.selected.add(index);
+    state.selectionAnchorIndex = index;
+    syncRenderedSelection();
+    updateChrome(cfg);
+  }
+
+  function selectRangeTo(index, cfg) {
+    if (!Number.isFinite(index)) return;
+    const indexes = selectableRowIndexes();
+    const targetPosition = indexes.indexOf(index);
+    const anchorPosition = indexes.indexOf(state.selectionAnchorIndex);
+    if (targetPosition < 0 || anchorPosition < 0) {
+      state.selected.add(index);
+      state.selectionAnchorIndex = index;
+      syncRenderedSelection();
+      updateChrome(cfg);
+      return;
+    }
+    const start = Math.min(anchorPosition, targetPosition);
+    const end = Math.max(anchorPosition, targetPosition);
+    indexes.slice(start, end + 1).forEach(rowIndex => state.selected.add(rowIndex));
+    syncRenderedSelection();
+    updateChrome(cfg);
+  }
+
+  function handleCardSelection(event, row, cfg, cardElement) {
+    if (event.defaultPrevented || event.target?.closest?.('[data-buret-card-resize]')) return;
+    event.preventDefault();
+    const index = Number(row.index);
+    if (event.shiftKey) selectRangeTo(index, cfg);
+    else toggleSelection(index, cfg);
+    cardElement?.focus?.({ preventScroll: true });
+  }
+
+  function handleGridSelectionKeydown(event, cfg) {
+    if (!capabilities(cfg).selection) return;
+    const target = event.target;
+    if (target?.closest?.('input, textarea, select, button, [contenteditable="true"], [data-buret-card-resize]')) return;
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
+      event.preventDefault();
+      const indexes = selectableRowIndexes();
+      indexes.forEach(index => state.selected.add(index));
+      if (indexes.length) state.selectionAnchorIndex = indexes[indexes.length - 1];
+      syncRenderedSelection();
+      updateChrome(cfg);
+      return;
+    }
+    if (event.key === 'Escape' && state.selected.size) {
+      event.preventDefault();
+      state.selected.clear();
+      state.selectionAnchorIndex = null;
+      syncRenderedSelection();
+      updateChrome(cfg);
+    }
   }
 
   function cardTooltip(row) {
