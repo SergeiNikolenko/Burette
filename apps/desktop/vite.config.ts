@@ -123,7 +123,7 @@ function normalizeXyzrenderControls(value: unknown) {
     cellWidth: readOptionalNumber(source.cellWidth),
     supercell: normalizeSupercell(source.supercell),
     fieldMode: readFieldMode(source.fieldMode),
-    fieldIso: readOptionalNonNegativeNumber(source.fieldIso),
+    fieldIso: readOptionalNumber(source.fieldIso),
     fieldOpacity: readOptionalNonNegativeNumber(source.fieldOpacity),
     fieldSurfaceStyle: readFieldSurfaceStyle(source.fieldSurfaceStyle),
     fieldMoPositiveColor: readOptionalText(source.fieldMoPositiveColor),
@@ -259,7 +259,7 @@ function buildXyzrenderArgs(
     else if (controls.fieldMode === "esp") args.push("--esp", inputPath);
     else if (controls.fieldMode === "nci") args.push("--nci-surf", inputPath);
   }
-  if (controls.fieldIso != null) args.push("--iso", String(controls.fieldIso));
+  if (controls.fieldIso != null && controls.fieldIso > 0) args.push("--iso", String(controls.fieldIso));
   if (controls.fieldOpacity != null) args.push("--opacity", String(controls.fieldOpacity));
   if (controls.fieldSurfaceStyle) args.push("--surface-style", controls.fieldSurfaceStyle);
   if (controls.fieldMoPositiveColor && controls.fieldMoNegativeColor) args.push("--mo-colors", controls.fieldMoPositiveColor, controls.fieldMoNegativeColor);

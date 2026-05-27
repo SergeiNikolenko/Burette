@@ -3,9 +3,7 @@
 
   const root = document.getElementById('app');
   const status = document.getElementById('status');
-  const LOAD_BATCH_STORAGE_KEY = 'buret.grid.loadBatch';
   const CARD_MIN_STORAGE_KEY = 'buret.grid.cardMin';
-  const LOAD_BATCH_OPTIONS = ['auto', '24', '60', '120', '240'];
   const CARD_RENDERER_OPTIONS = ['rdkit', 'xyzrender'];
   const MIN_CARD_MIN = 86;
   const MAX_CARD_MIN = 360;
@@ -52,7 +50,6 @@
     smartsError: '',
     smartsMatches: new Map(),
     sort: 'index',
-    loadBatchChoice: storedChoice(LOAD_BATCH_STORAGE_KEY, LOAD_BATCH_OPTIONS, 'auto'),
     showProperties: false,
     cardRenderer: 'rdkit',
     cardMin: storedOptionalInteger(CARD_MIN_STORAGE_KEY, MIN_CARD_MIN, MAX_CARD_MIN),
@@ -193,18 +190,8 @@
   }
 
   function loadBatchSize(cfg) {
-    if (state.loadBatchChoice !== 'auto') return Number(state.loadBatchChoice);
     const value = Number(cfg.pageSize || 72);
     return Number.isFinite(value) ? Math.max(12, Math.min(180, Math.floor(value))) : 72;
-  }
-
-  function storedChoice(key, options, fallback) {
-    try {
-      const value = window.localStorage?.getItem(key);
-      return options.includes(value) ? value : fallback;
-    } catch (_) {
-      return fallback;
-    }
   }
 
   function storedOptionalInteger(key, min, max) {
@@ -331,7 +318,6 @@
             <label class="buret-search-control">Search <input id="search" type="search" placeholder="name, SMILES, metadata" /></label>
             <label class="buret-smarts-control" ${caps.substructureSearch ? '' : 'hidden'}>SMARTS <input id="smarts" type="search" spellcheck="false" autocapitalize="off" placeholder="[#6]=O" /></label>
             <label class="buret-sort-control">Sort <select id="sort"><option value="index">File order</option><option value="name">Name</option><option value="smiles">SMILES</option>${propertyOptions(cfg)}</select></label>
-            <label class="buret-load-control">Load batch <select id="load-batch"><option value="auto">Auto</option><option value="24">24</option><option value="60">60</option><option value="120">120</option><option value="240">240</option></select></label>
             <div id="load-status" class="buret-load-status"></div>
           </div>
           <div class="buret-toolbar-row buret-toolbar-row-view">
@@ -357,11 +343,6 @@
       state.sort = event.target.value || 'index';
       refresh(cfg);
     });
-    document.getElementById('load-batch').addEventListener('change', event => {
-      state.loadBatchChoice = LOAD_BATCH_OPTIONS.includes(event.target.value) ? event.target.value : 'auto';
-      store(LOAD_BATCH_STORAGE_KEY, state.loadBatchChoice);
-      render(cfg);
-    });
     document.getElementById('show-properties').addEventListener('click', () => {
       state.showProperties = !state.showProperties;
       applyGridPreferences();
@@ -379,7 +360,6 @@
     root.querySelectorAll('[data-buret-grid-renderer]').forEach(button => {
       button.addEventListener('click', () => requestRendererSwitch(button.getAttribute('data-buret-grid-renderer'), cfg));
     });
-    root.querySelector('[data-buret-grid-sdf-poses]')?.addEventListener('click', () => requestSdfPoseDocument(cfg));
     root.querySelectorAll('[data-buret-grid-card-renderer]').forEach(button => {
       button.addEventListener('click', () => setCardRenderer(button.getAttribute('data-buret-grid-card-renderer'), cfg));
     });
@@ -400,9 +380,7 @@
       document.documentElement.style.setProperty('--buret-card-min', `${state.cardMin}px`);
       document.documentElement.style.setProperty('--buret-card-max', `${state.cardMin}px`);
     }
-    const loadBatchSelect = document.getElementById('load-batch');
     const propertiesToggle = document.getElementById('show-properties');
-    if (loadBatchSelect) loadBatchSelect.value = state.loadBatchChoice;
     if (propertiesToggle) {
       propertiesToggle.classList.toggle('active', state.showProperties);
       propertiesToggle.setAttribute('aria-pressed', state.showProperties ? 'true' : 'false');
@@ -433,9 +411,8 @@
     return `
       <div class="buret-grid-renderer-controls">
         <div class="buret-grid-renderer-switch" aria-label="3D renderer">
-          <button type="button" data-buret-grid-renderer="molstar">Mol*</button>
+          <button type="button" data-buret-grid-renderer="molstar" data-buret-grid-sdf-poses data-buret-grid-docking>Poses</button>
           <button type="button" data-buret-grid-renderer="xyzrender-external">xyzrender</button>
-          <button type="button" data-buret-grid-sdf-poses data-buret-grid-docking>Mol* poses</button>
         </div>
         <label class="buret-grid-xyzrender-preset">Preset
           <select data-buret-grid-xyzrender-preset>${presetOptions}</select>
@@ -480,6 +457,10 @@
 
   function requestRendererSwitch(renderer, cfg) {
     const value = normalizeRenderer(renderer);
+    if (value === 'molstar') {
+      requestSdfPoseDocument(cfg);
+      return;
+    }
     if (value === 'xyzrender-external') {
       const preset = root.querySelector('[data-buret-grid-xyzrender-preset]');
       state.xyzrenderPreset = normalizeXyzrenderPreset(preset?.value);
@@ -947,6 +928,7 @@
     const el = document.createElement('article');
     el.className = 'buret-card';
     el.dataset.index = String(row.index);
+    el.dataset.buretCardTooltip = cardTooltip(row);
     if (state.selected.has(Number(row.index))) el.classList.add('selected');
     if (state.smartsMatches.has(Number(row.index))) el.classList.add('smarts-match');
     el.innerHTML = `
@@ -957,6 +939,7 @@
         ${row.smiles ? `<div class="buret-smiles">${escapeHTML(row.smiles)}</div>` : ''}
         ${metadata(row)}
       </div>
+      <span class="buret-selected-indicator" aria-hidden="true"></span>
       <span class="buret-card-resize-handle buret-card-resize-handle-x" role="separator" aria-orientation="vertical" tabindex="0" title="Drag left or right to resize grid cards. Double-click to reset width." data-buret-card-resize="x"></span>
       <span class="buret-card-resize-handle buret-card-resize-handle-y" role="separator" aria-orientation="horizontal" tabindex="0" title="Drag up or down to resize grid cards. Double-click to reset size." data-buret-card-resize="y"></span>
       <span class="buret-card-resize-handle buret-card-resize-handle-xy" role="separator" aria-orientation="vertical" tabindex="0" title="Drag to resize cards in both directions. Double-click to reset size." data-buret-card-resize="xy"></span>`;
@@ -982,8 +965,31 @@
       const picture = el.querySelector('[data-buret-molecule-picture]');
       if (picture) renderXyzrenderCard(row, picture, cfg);
     }
+    installCardHover(el);
     installCardResizeHandle(el);
     return el;
+  }
+
+  function cardTooltip(row) {
+    const label = row.name || `Molecule ${Number(row.index) + 1}`;
+    const parts = [label];
+    if (row.smiles) parts.push(row.smiles);
+    const props = Object.entries(row.props || {})
+      .filter(([, value]) => String(value || '').length)
+      .slice(0, 2)
+      .map(([key, value]) => `${key}: ${value}`);
+    parts.push(...props);
+    return parts.join(' · ');
+  }
+
+  function installCardHover(card) {
+    const picture = card.querySelector('[data-buret-molecule-picture]');
+    if (!picture) return;
+    picture.addEventListener('pointerenter', () => card.classList.add('buret-card-hovering-molecule'));
+    picture.addEventListener('pointermove', () => card.classList.add('buret-card-hovering-molecule'));
+    picture.addEventListener('pointerleave', () => card.classList.remove('buret-card-hovering-molecule'));
+    card.addEventListener('focusin', () => card.classList.add('buret-card-hovering-molecule'));
+    card.addEventListener('focusout', () => card.classList.remove('buret-card-hovering-molecule'));
   }
 
   function installCardResizeHandle(card) {
@@ -1055,6 +1061,8 @@
     const limits = cardWidthLimits(card);
     document.body.classList.add('buret-grid-resizing');
     document.body.dataset.buretGridResizeAxis = axis;
+    card.classList.add('buret-card-resizing');
+    card.dataset.buretGridResizeAxis = axis;
     const pointerId = event.pointerId;
     try { event.currentTarget.setPointerCapture(pointerId); } catch (_) {}
     const onMove = moveEvent => {
@@ -1073,6 +1081,8 @@
     const onUp = () => {
       document.body.classList.remove('buret-grid-resizing');
       delete document.body.dataset.buretGridResizeAxis;
+      card.classList.remove('buret-card-resizing');
+      delete card.dataset.buretGridResizeAxis;
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
@@ -1116,7 +1126,9 @@
       html = padSVGViewBox(html, 52);
       if (!html.includes('<svg')) throw new Error('empty drawing');
     } catch (error) {
-      html = `<div class="buret-molecule-error"><strong>${escapeHTML(row.smiles || row.name || 'Molecule')}</strong><span>${escapeHTML(error.message || String(error))}</span></div>`;
+      const label = row.smiles || row.name || 'Molecule';
+      const denseClass = String(label).length > 36 ? ' buret-molecule-error-dense' : '';
+      html = `<div class="buret-molecule-error${denseClass}"><strong>${escapeHTML(label)}</strong><span>${escapeHTML(error.message || String(error))}</span></div>`;
     } finally {
       try { mol?.delete?.(); } catch {}
     }
@@ -1165,7 +1177,7 @@
     const height = bounds.y2 - bounds.y1;
     if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
     const size = Math.max(width, height);
-    const padding = Math.max(52, size * 0.5);
+    const padding = Math.max(28, size * 0.18);
     const centerX = bounds.x1 + width / 2;
     const centerY = bounds.y1 + height / 2;
     const viewSize = size + padding * 2;
@@ -1192,7 +1204,7 @@
     const content = svg.querySelectorAll('path, line, circle, ellipse, polygon, polyline, text');
     let bounds = null;
     content.forEach(node => {
-      const next = transformedNodeBounds(node);
+      const next = transformedNodeBounds(node, svg);
       if (!next) return;
       bounds = bounds
         ? {
@@ -1206,12 +1218,14 @@
     return bounds;
   }
 
-  function transformedNodeBounds(node) {
+  function transformedNodeBounds(node, svg) {
     let box = null;
     let matrix = null;
     try {
       box = node.getBBox();
-      matrix = node.getCTM();
+      const svgMatrix = svg.getCTM();
+      const nodeMatrix = node.getCTM();
+      matrix = svgMatrix && nodeMatrix ? svgMatrix.inverse().multiply(nodeMatrix) : null;
     } catch (_) {}
     if (!box || !matrix || !Number.isFinite(box.width) || !Number.isFinite(box.height)) return null;
     if (box.width <= 0 && box.height <= 0) return null;

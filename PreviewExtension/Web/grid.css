@@ -178,7 +178,7 @@ button:disabled {
 }
 
 .buret-toolbar-row-main {
-  grid-template-columns: minmax(160px, 1fr) minmax(132px, 190px) minmax(132px, 190px) minmax(98px, 128px) auto;
+  grid-template-columns: minmax(160px, 1fr) minmax(132px, 190px) minmax(132px, 190px) auto;
 }
 
 .buret-toolbar-row-view {
@@ -405,6 +405,9 @@ button:disabled {
 
 .buret-card:hover {
   background: color-mix(in srgb, var(--buret-surface-raised) 78%, var(--buret-surface));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--buret-border-strong) 72%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--buret-accent) 18%, transparent);
 }
 
 .buret-card:active {
@@ -417,12 +420,87 @@ button:disabled {
 
 .buret-card.selected {
   border-color: var(--buret-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--buret-accent) 20%, transparent);
+  background: color-mix(in srgb, var(--buret-surface-raised) 42%, var(--buret-surface));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--buret-accent) 72%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--buret-accent) 30%, transparent);
+}
+
+.buret-card.selected .buret-molecule-picture {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--buret-accent) 78%, transparent);
+}
+
+.buret-selected-indicator {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 7;
+  width: 22px;
+  height: 22px;
+  border: 1px solid color-mix(in srgb, #ffffff 82%, transparent);
+  border-radius: 999px;
+  background: var(--buret-accent);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--buret-accent) 36%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.86);
+  transition: opacity 120ms ease-out, transform 120ms ease-out;
+}
+
+.buret-selected-indicator::after {
+  position: absolute;
+  top: 4px;
+  left: 7px;
+  width: 5px;
+  height: 9px;
+  border: solid #ffffff;
+  border-width: 0 2px 2px 0;
+  content: "";
+  transform: rotate(45deg);
+}
+
+.buret-card.selected .buret-selected-indicator {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .buret-card.smarts-match {
   border-color: rgba(255, 190, 94, 0.72);
-  box-shadow: 0 0 0 3px rgba(255, 190, 94, 0.18);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 190, 94, 0.58),
+    0 0 0 3px rgba(255, 190, 94, 0.18);
+}
+
+.buret-card::after {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 5;
+  max-width: calc(100% - 20px);
+  box-sizing: border-box;
+  padding: 6px 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 7px;
+  color: #ffffff;
+  background: rgba(22, 24, 29, 0.92);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  content: attr(data-buret-card-tooltip);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.25;
+  opacity: 0;
+  pointer-events: none;
+  text-overflow: ellipsis;
+  transform: translateY(-3px);
+  transition: opacity 120ms ease-out, transform 120ms ease-out;
+  white-space: nowrap;
+}
+
+.buret-card.buret-card-hovering-molecule::after,
+.buret-card:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .buret-molecule-picture {
@@ -451,13 +529,15 @@ button:disabled {
 .buret-molecule-error {
   display: grid;
   place-items: center;
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 6px;
   box-sizing: border-box;
+  container-type: inline-size;
   width: 100%;
   min-height: var(--buret-picture-min-height);
-  padding: 12px;
+  padding: clamp(8px, 6cqi, 12px);
+  overflow: hidden;
   color: #5b2b2b;
-  font-size: 11px;
   line-height: 1.2;
   text-align: center;
   background: #fff4f4;
@@ -474,14 +554,23 @@ button:disabled {
 
 .buret-molecule-error strong {
   max-width: 100%;
-  max-height: 7.2em;
+  max-height: 9.6em;
   overflow: hidden;
   overflow-wrap: anywhere;
+  font-size: clamp(7px, 8cqi, 11px);
+  line-height: 1.08;
+}
+
+.buret-molecule-error-dense strong {
+  font-size: clamp(6px, 6cqi, 9px);
+  line-height: 1.05;
+  letter-spacing: 0;
 }
 
 .buret-molecule-error span {
   color: #8b5f5f;
-  font-size: 12px;
+  font-size: clamp(8px, 7cqi, 12px);
+  line-height: 1.1;
 }
 
 .buret-card-body {
@@ -519,33 +608,33 @@ button:disabled {
   position: absolute;
   z-index: 4;
   border: 0;
-  border-radius: 8px;
+  border-radius: 999px;
   opacity: 0;
   outline: none;
-  transition: opacity 120ms ease-out;
+  transition: opacity 120ms ease-out, background 120ms ease-out;
 }
 
 .buret-card-resize-handle-x {
   top: 0;
-  right: -6px;
+  right: 0;
   bottom: 0;
-  width: 12px;
+  width: 16px;
   cursor: col-resize;
 }
 
 .buret-card-resize-handle-y {
   right: 0;
-  bottom: -6px;
+  bottom: 0;
   left: 0;
-  height: 12px;
+  height: 16px;
   cursor: row-resize;
 }
 
 .buret-card-resize-handle-xy {
-  right: -6px;
-  bottom: -6px;
-  width: 18px;
-  height: 18px;
+  right: 0;
+  bottom: 0;
+  width: 24px;
+  height: 24px;
   cursor: nwse-resize;
 }
 
@@ -554,9 +643,10 @@ button:disabled {
   top: 20%;
   right: 5px;
   bottom: 20%;
-  width: 2px;
+  width: 4px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--buret-accent) 78%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--buret-surface) 72%, transparent);
   content: "";
 }
 
@@ -565,9 +655,10 @@ button:disabled {
   right: 20%;
   bottom: 5px;
   left: 20%;
-  height: 2px;
+  height: 4px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--buret-accent) 78%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--buret-surface) 72%, transparent);
   content: "";
 }
 
@@ -575,21 +666,41 @@ button:disabled {
   position: absolute;
   right: 5px;
   bottom: 5px;
-  width: 7px;
-  height: 7px;
-  border-right: 2px solid color-mix(in srgb, var(--buret-accent) 78%, transparent);
-  border-bottom: 2px solid color-mix(in srgb, var(--buret-accent) 78%, transparent);
+  width: 10px;
+  height: 10px;
+  border-right: 3px solid color-mix(in srgb, var(--buret-accent) 82%, transparent);
+  border-bottom: 3px solid color-mix(in srgb, var(--buret-accent) 82%, transparent);
+  filter: drop-shadow(0 0 1px color-mix(in srgb, var(--buret-surface) 88%, transparent));
   content: "";
 }
 
 .buret-card:hover .buret-card-resize-handle,
 .buret-card-resize-handle:focus-visible,
-body.buret-grid-resizing .buret-card-resize-handle {
+.buret-card.buret-card-resizing .buret-card-resize-handle {
   opacity: 1;
+}
+
+.buret-card:hover .buret-card-resize-handle-x,
+.buret-card.buret-card-resizing[data-buret-grid-resize-axis="x"] .buret-card-resize-handle-x,
+.buret-card.buret-card-resizing[data-buret-grid-resize-axis="xy"] .buret-card-resize-handle-x {
+  background: linear-gradient(to left, color-mix(in srgb, var(--buret-accent) 28%, transparent), transparent);
+}
+
+.buret-card:hover .buret-card-resize-handle-y,
+.buret-card.buret-card-resizing[data-buret-grid-resize-axis="y"] .buret-card-resize-handle-y,
+.buret-card.buret-card-resizing[data-buret-grid-resize-axis="xy"] .buret-card-resize-handle-y {
+  background: linear-gradient(to top, color-mix(in srgb, var(--buret-accent) 28%, transparent), transparent);
 }
 
 .buret-card-resize-handle:focus-visible {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--buret-accent) 24%, transparent);
+}
+
+.buret-card.buret-card-resizing {
+  border-color: var(--buret-accent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--buret-accent) 68%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--buret-accent) 18%, transparent);
 }
 
 body.buret-grid-resizing {

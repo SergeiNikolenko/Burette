@@ -30,8 +30,11 @@ export type ShellActions = {
   openWorkspaceFolder: () => void | Promise<void>;
   openProjectFolder: (path: string | null) => void | Promise<void>;
   toggleSidebar: () => void;
+  toggleProjectsOpen: () => void;
+  setExpandedProjectIds: (projectIds: string[]) => void;
   setSidebarQuery: (query: string) => void;
   toggleProjectExpanded: (projectId: string) => void;
+  togglePinnedStructure: (path: string) => void;
   closeDocument: (id: string) => void;
   closeTab: (id: string) => void;
   closeActiveDocument: () => void;
@@ -59,7 +62,9 @@ export type ShellViewState = {
   visibleDocuments: ViewerDocument[];
   recentStructures: RecentStructure[];
   sidebarProjects: SidebarProject[];
+  projectsOpen: boolean;
   expandedProjectIds: string[];
+  pinnedStructurePaths: string[];
   workspacePath: string | null;
   page: AppPage;
   sidebarOpen: boolean;

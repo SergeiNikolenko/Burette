@@ -526,6 +526,9 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   overflow-y: hidden;
   scrollbar-width: none;
 }
+#buret-toolbar.buret-popover-open .buret-toolbar-content {
+  overflow: visible;
+}
 #buret-toolbar.buret-toolbar-docked .buret-toolbar-content::-webkit-scrollbar { display: none; }
 #buret-toolbar.collapsed,
 #buret-toolbar.buret-suppressed-by-molstar-panel {

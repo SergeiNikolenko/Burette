@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { DragDropEvent } from "@tauri-apps/api/window";
+import { ligandDropPathsForTarget } from "../lib/docking-documents";
 import { hasStructureDrag, readStructureDrag } from "../lib/structure-drag";
 import { isTauriRuntime } from "../lib/tauri";
 
@@ -19,7 +20,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
 
   const openAsDocking = useCallback((paths: string[]) => {
     if (!activeDocumentPath || !openDockingDocument) return false;
-    const ligandPaths = paths.filter((path) => path && path !== activeDocumentPath);
+    const ligandPaths = ligandDropPathsForTarget(activeDocumentPath, paths);
     if (ligandPaths.length === 0) return false;
     void openDockingDocument(activeDocumentPath, ligandPaths);
     return true;
