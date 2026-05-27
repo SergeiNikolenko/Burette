@@ -410,7 +410,7 @@ fn build_xyzrender_args(
                 _ => {}
             }
         }
-        if let Some(value) = finite_non_negative(controls.field_iso) {
+        if let Some(value) = finite_positive(controls.field_iso) {
             args.push("--iso".to_string());
             args.push(value.to_string());
         }
@@ -799,7 +799,7 @@ mod tests {
     fn builds_structured_xyzrender_args() {
         let input = PathBuf::from("/tmp/in.xyz");
         let output = PathBuf::from("/tmp/out.svg");
-        let controls = XyzrenderControls {
+        let mut controls = XyzrenderControls {
             transparent_background: Some(true),
             canvas_size: Some(1024.0),
             atom_scale: Some(1.2),
@@ -866,6 +866,10 @@ mod tests {
         assert!(!joined.contains("--mo-colors red blue"));
         assert!(!joined.contains("--cmap-range -1 1"));
         assert!(!joined.contains("hacked.svg"));
+
+        controls.field_iso = Some(0.0);
+        let zero_iso_args = build_xyzrender_args(&input, &output, "default", None, Some(&controls));
+        assert!(!zero_iso_args.join(" ").contains("--iso 0"));
     }
 
     #[test]

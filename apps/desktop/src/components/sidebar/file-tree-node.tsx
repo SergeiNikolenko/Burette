@@ -100,7 +100,15 @@ export function ProjectGroup({
   );
 }
 
-function ProjectItem({ item, actions }: { item: SidebarProjectItem; actions: ShellActions }) {
+export function ProjectItem({
+  item,
+  actions,
+  nested = true,
+}: {
+  item: SidebarProjectItem;
+  actions: ShellActions;
+  nested?: boolean;
+}) {
   const openItem = () => {
     if (item.documentId) {
       actions.selectDocument(item.documentId);
@@ -131,18 +139,24 @@ function ProjectItem({ item, actions }: { item: SidebarProjectItem; actions: She
   const handleDragEnd = () => {
     actions.setStructureDragActive(false);
   };
+  const className = [
+    "project",
+    item.isActive ? "active" : "",
+    item.isPinned ? "pinned" : "",
+    nested ? "nested-project" : "",
+  ].filter(Boolean).join(" ");
 
   return (
     <div
       role="button"
       tabIndex={0}
       draggable
-      className={item.isActive ? "project active nested-project" : "project nested-project"}
+      className={className}
       onClick={openItem}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onKeyDown={handleKeyDown}
-      aria-label={`${item.relativePath}, ${rendererLabel(item.renderer)}`}
+      aria-label={`${item.relativePath}, ${rendererLabel(item.renderer)}${item.isPinned ? ", pinned" : ""}`}
       title={item.relativePath}
     >
       <span className="project-icon" aria-hidden="true">
@@ -151,6 +165,34 @@ function ProjectItem({ item, actions }: { item: SidebarProjectItem; actions: She
       <span className="project-copy">
         <span className="project-name">{item.title}</span>
       </span>
+      <span className="project-actions">
+        <button
+          type="button"
+          className={item.isPinned ? "pin-hit pinned" : "pin-hit"}
+          aria-label={(item.isPinned ? "Unpin " : "Pin ") + item.title}
+          title={item.isPinned ? "Unpin structure" : "Pin structure"}
+          onClick={(event) => {
+            event.stopPropagation();
+            actions.togglePinnedStructure(item.path);
+          }}
+        >
+          <PinIcon />
+        </button>
+      </span>
     </div>
+  );
+}
+
+function PinIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path
+        d="M8.25 1.75L12.25 5.75L10.4 7.6L9.25 6.45L6.8 8.9L7.15 11.2L6.35 12L4 9.65L1.9 11.75L1.25 11.1L3.35 9L1 6.65L1.8 5.85L4.1 6.2L6.55 3.75L5.4 2.6L8.25 1.75Z"
+        stroke="currentColor"
+        strokeWidth="1.15"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

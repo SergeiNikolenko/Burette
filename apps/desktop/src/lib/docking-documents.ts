@@ -15,6 +15,10 @@ function uniqueDockingPaths(paths: string[]) {
   return Array.from(new Set(paths.filter((path) => path && path.trim().length > 0)));
 }
 
+export function ligandDropPathsForTarget(targetPath: string, droppedPaths: string[]) {
+  return uniqueDockingPaths(droppedPaths).filter((path) => path !== targetPath);
+}
+
 export function dockingRequestForDrop(
   targetPath: string,
   droppedPaths: string[],

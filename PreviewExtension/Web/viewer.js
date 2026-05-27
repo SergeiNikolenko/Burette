@@ -511,7 +511,7 @@
     control.classList.toggle('visible', canSwitchRenderer);
     const presetSlot = toolbar.querySelector('[data-buret-xyzrender-preset-slot]');
     presetSlot?.classList.remove('visible');
-    const canOpenSdfGrid = config.sdfPosePager === true && config.sdfGrid !== false && normalizeFormat(config.molstarFormat || config.format) === 'sdf';
+    const canOpenSdfGrid = canOpenSdfGridFromConfig(config);
     sdfGridButton?.classList.toggle('hidden', !canOpenSdfGrid);
     if (sdfGridButton && toolbar.dataset.sdfGridBound !== '1') {
       sdfGridButton.addEventListener('click', requestSdfGridDocument);
@@ -612,6 +612,7 @@
     const tuneButton = toolbar?.querySelector('[data-buret-action="xyzrender-tune"]');
     if (!popover) return;
     popover.classList.toggle('hidden', !open);
+    toolbar?.classList.toggle('buret-popover-open', open);
     if (tuneButton) {
       tuneButton.classList.toggle('active', open);
       tuneButton.toggleAttribute('data-open', open);
@@ -685,7 +686,7 @@
       cellWidth: positiveNumberOrNull(source.cellWidth),
       supercell: normalizeSupercellValue(source.supercell),
       fieldMode: normalizeFieldMode(source.fieldMode),
-      fieldIso: nonNegativeNumberOrNull(source.fieldIso),
+      fieldIso: positiveNumberOrNull(source.fieldIso),
       fieldOpacity: nonNegativeNumberOrNull(source.fieldOpacity),
       fieldSurfaceStyle: normalizeFieldSurfaceStyle(source.fieldSurfaceStyle),
       fieldMoPositiveColor: nonEmptyText(source.fieldMoPositiveColor),
@@ -754,8 +755,28 @@
   }
 
   function requestSdfGridDocument() {
-    const sent = postHostMessage({ type: 'openSdfGridDocument' });
+    const payload = { type: 'openSdfGridDocument' };
+    const gridPath = sdfGridPathForConfig(activeConfig || {});
+    if (gridPath) payload.path = gridPath;
+    const sent = postHostMessage(payload);
     if (!sent) setStatus('SDF grid switching is available only in the app or Quick Look viewer.', 'error');
+  }
+
+  function sdfGridPathForConfig(config) {
+    const path = String(config?.sdfGridPath || '').trim();
+    if (path) return path;
+    const ligands = Array.isArray(config?.docking?.ligands) ? config.docking.ligands : [];
+    const sdfLigand = ligands.find((ligand) => (
+      normalizeFormat(ligand?.format || ligand?.extension) === 'sdf' &&
+      String(ligand?.path || '').trim().length > 0
+    ));
+    return sdfLigand ? String(sdfLigand.path).trim() : null;
+  }
+
+  function canOpenSdfGridFromConfig(config) {
+    const format = normalizeFormat(config?.molstarFormat || config?.format);
+    return Boolean(sdfGridPathForConfig(config)) ||
+      (config?.sdfPosePager === true && config?.sdfGrid !== false && format === 'sdf');
   }
 
   function applyPendingRendererSelection(toolbar, renderer) {
@@ -923,7 +944,7 @@
       cellWidth: current.cellWidth,
       supercell: normalizeSupercellValue(readField('supercell')?.value),
       fieldMode: normalizeFieldMode(readField('fieldMode')?.value),
-      fieldIso: readNonNegativeNumber('fieldIso'),
+      fieldIso: readNumber('fieldIso'),
       fieldOpacity: readNonNegativeNumber('fieldOpacity'),
       fieldSurfaceStyle: normalizeFieldSurfaceStyle(readField('fieldSurfaceStyle')?.value),
       fieldMoPositiveColor: readText('fieldMoPositiveColor'),
@@ -1282,6 +1303,7 @@
   }
 
   function setToolbarCollapsed(toolbar, collapsed, viewer, persist = true) {
+    if (collapsed) setXyzrenderPopoverVisibility(toolbar, false);
     toolbar.classList.toggle('collapsed', collapsed);
     const grip = toolbar.querySelector('[data-drag-handle]');
     if (grip) {
@@ -1337,6 +1359,7 @@
     });
     toolbar.addEventListener('pointerdown', event => {
       if (event.target.closest('[data-buret-toggle]')) return;
+      if (event.target.closest('[data-buret-xyzrender-popover]')) return;
       if (event.target.closest('select, input, textarea')) return;
       if (!event.target.closest('[data-drag-handle]') && event.target.closest('.buret-button')) return;
       const rect = toolbar.getBoundingClientRect();
@@ -2738,6 +2761,7 @@
   }
 
   function createViewerOptions() {
+    const showTrajectoryControls = activeConfig?.trajectoryControls === true;
     return {
       // Keep the real Mol* application UI, not a minimal canvas-only preview.
       // This is intentionally close to https://molstar.org/viewer/: right controls,
@@ -2754,8 +2778,8 @@
       viewportShowExpand: false,
       viewportShowToggleFullscreen: false,
       viewportShowSelectionMode: true,
-      viewportShowAnimation: false,
-      viewportShowTrajectoryControls: false,
+      viewportShowAnimation: showTrajectoryControls,
+      viewportShowTrajectoryControls: showTrajectoryControls,
       viewportShowSettings: true,
       collapseLeftPanel: true,
       collapseRightPanel: true,

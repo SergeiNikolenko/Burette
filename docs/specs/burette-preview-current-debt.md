@@ -46,7 +46,9 @@ does not replace the broader renderer runtime contracts.
 - Browser development `.mae.gz` loading uses a raw file endpoint so Vite does
   not decode gzip content before preview parsing.
 - Browser development previews support a bounded CMS/MAE/MaeGZ preview path by
-  extracting a small Maestro atom subset for Mol*.
+  extracting a Maestro atom subset for Mol* as PDB when Maestro residue, chain,
+  and PDB atom fields are present. This keeps protein-like CMS previews on a
+  protein-aware Mol* path instead of degrading them to bare XYZ.
 
 ## Current Verification Evidence
 
@@ -59,11 +61,11 @@ does not replace the broader renderer runtime contracts.
 - Browser smoke after `grid-ui-v17` restart confirmed 120 visible 10k-grid
   cards after scrolling, with `xyzrender` SVG bonds and atom circles present,
   no loading cards left, and no `Command failed` text.
-- Browser smoke after `grid-ui-v35` restart opened the 10k grid and confirmed
+- Browser smoke after `grid-ui-v37` restart opened the 10k grid and confirmed
   right-edge, bottom-edge, and corner card resize drags. The screenshots showed
   square cards at each size, molecule drawings contained within the white card
   pictures, and no dark empty card rectangles.
-- The same `grid-ui-v35` Browser pass scrolled the resized 10k grid and returned
+- The same `grid-ui-v37` Browser pass scrolled the resized 10k grid and returned
   to the controls. The top tab chrome ended at `y=56`, the molecule iframe
   started at `y=56`, no file-page progressive blur element was present, and no
   browser error logs were emitted.
@@ -119,25 +121,34 @@ does not replace the broader renderer runtime contracts.
   `fieldMode: "esp"`, `fieldOpacity: 0.5`, and solid surface style.
 - Remote candidate search found the user-reported real CMS on `kolmogorov` at
   `/mnt/ligandpro/shared_storage/nikolenko/nav18_metadynamics_20260526/nav18_7wel_95T_bpmd_n1_metadynamics/pose_01/SystemBuilder_01-out.cms`.
-- The remote real CMS is a 78 MB ASCII Maestro CMS with the atom table inside
-  the first 32 MB. Its atom table uses Maestro's `# First column is atom index #`
-  convention, so CMS/MAE/MaeGZ extraction now skips that comment and offsets
-  row lookups for the implicit atom index column.
+- The remote real CMS is a 78 MB ASCII Maestro CMS. It contains `full_system`,
+  `solute`, `ion`, and `solvent` CT blocks; the protein-like `solute` atom table
+  starts after the first 32 MB, so bounded CMS/MAE preview now reads the first
+  64 MB and scores CT blocks to prefer `solute` over `full_system`, ions, and
+  solvent.
+- Its atom tables use Maestro's `# First column is atom index #` convention, so
+  CMS/MAE/MaeGZ extraction skips that comment and offsets row lookups for the
+  implicit atom index column.
 - Added `tests/fixtures/real-systembuilder-mini.cms`, a small deterministic
   real-derived fixture cut from that remote `SystemBuilder_01-out.cms`, and
-  attached Rust CMS/MAE/MaeGZ parser coverage to it.
+  attached Rust CMS/MAE/MaeGZ parser coverage to both the legacy XYZ extraction
+  and the new protein-aware PDB extraction.
+- Browser smoke on a locally staged copy of the remote 78 MB
+  `SystemBuilder_01-out.cms` under
+  `qa=real-cms-full-p0-pdb-v2` confirmed the bounded 64 MB preview path opens
+  in Mol* without an issue toast and renders the protein-like `solute` CT as a
+  ribbon/cartoon representation.
 
 ## Remaining Requirements
 
-- Verify the real user-reported CMS file after making it available to the
-  local browser development runtime:
+- The exact user-reported local Desktop path is still absent on this machine:
   `/Users/nikolenko/Desktop/nav18_metadynamics_20260526/nav18_7wel_95T_bpmd_n1_metadynamics/pose_01/SystemBuilder_01-out.cms`.
-  The file currently exists on `kolmogorov` under `/mnt/ligandpro`, but the
-  matching local `/Users/...` path is absent on this machine.
+  The durable real-world source for this P0 is the matching `kolmogorov`
+  `/mnt/ligandpro` file plus the real-derived
+  `tests/fixtures/real-systembuilder-mini.cms` fixture.
 - Keep Browser smoke coverage attached to the real-derived
-  `tests/fixtures/real-systembuilder-mini.cms` fixture and, when the full
-  remote file is locally available, verify the 78 MB bounded-preview path
-  against it directly.
+  `tests/fixtures/real-systembuilder-mini.cms` fixture and the locally staged
+  78 MB remote copy when touching the Maestro parser again.
 - Add a full Browser performance pass that scrolls the 10k grid beyond the
   first rendered batch and records paging/render timing for both RDKit and
   `xyzrender` card modes.

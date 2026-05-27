@@ -49,7 +49,6 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
                 onClick={() => actions.selectTab(tab.id)}
                 onDragStart={(event) => {
                   if (!tabPath) return;
-                  actions.selectTab(tab.id);
                   writeStructureDrag(event.dataTransfer, [tabPath]);
                   actions.setStructureDragActive(true);
                 }}
