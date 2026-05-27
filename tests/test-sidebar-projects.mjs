@@ -49,26 +49,26 @@ const projects = buildSidebarProjects({
 });
 
 assert.equal(projects.length, 2);
-assert.equal(projects[0].title, "Matcha");
-assert.equal(projects[0].isActive, true);
-assert.equal(projects[0].items.length, 2);
+assert.equal(projects[0].title, "Burette");
+assert.equal(projects[0].items[0].relativePath, "mini.sdf");
+assert.equal(projects[1].title, "Matcha");
+assert.equal(projects[1].isActive, true);
+assert.equal(projects[1].items.length, 2);
 assert.deepEqual(
-  projects[0].items.map((item) => ({ path: item.path, relativePath: item.relativePath, source: item.source })),
+  projects[1].items.map((item) => ({ path: item.path, relativePath: item.relativePath, source: item.source })),
   [
-    {
-      path: "/Users/test/Matcha/ligands/mini.pdb",
-      relativePath: "ligands/mini.pdb",
-      source: "open",
-    },
     {
       path: "/Users/test/Matcha/archive/alt-mini.pdb",
       relativePath: "archive/alt-mini.pdb",
       source: "recent",
     },
+    {
+      path: "/Users/test/Matcha/ligands/mini.pdb",
+      relativePath: "ligands/mini.pdb",
+      source: "open",
+    },
   ],
 );
-assert.equal(projects[1].title, "Burette");
-assert.equal(projects[1].items[0].relativePath, "mini.sdf");
 
 const filtered = filterSidebarProjects(projects, "archive");
 assert.equal(filtered.length, 1);

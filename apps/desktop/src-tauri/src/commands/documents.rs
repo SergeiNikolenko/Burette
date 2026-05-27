@@ -1,17 +1,18 @@
 use std::collections::{BTreeSet, HashSet};
-use std::fs;
-use std::path::{Path, PathBuf};
 #[cfg(target_os = "macos")]
 use std::ffi::CString;
+use std::fs;
+use std::path::{Path, PathBuf};
 #[cfg(target_os = "macos")]
 use std::sync::mpsc;
 use tauri::Runtime;
 #[cfg(not(target_os = "macos"))]
 use tauri_plugin_dialog::DialogExt;
 
-use crate::preview::formats::supported_structure_extensions;
+use crate::preview::formats::{structure_path_extension, supported_structure_extensions};
 use crate::preview::runtime::{
-    open_document, OpenDocumentsResult, ViewerPreferences, ViewerReloadOptions,
+    DockingDocumentRequest, OpenDocumentsResult, ViewerDocument, ViewerPreferences,
+    ViewerReloadOptions, open_docking_document as open_docking_document_runtime, open_document,
 };
 
 #[tauri::command]
@@ -69,6 +70,15 @@ pub(crate) fn open_documents<R: Runtime>(
         return Err(errors.join("; "));
     }
     Ok(OpenDocumentsResult { documents, errors })
+}
+
+#[tauri::command]
+pub(crate) fn open_docking_document<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    request: DockingDocumentRequest,
+    preferences: ViewerPreferences,
+) -> Result<ViewerDocument, String> {
+    open_docking_document_runtime(&app, request, &preferences)
 }
 
 #[tauri::command]
@@ -173,17 +183,13 @@ fn looks_like_supported_structure_file(
     path: &std::path::Path,
     supported_extensions: &BTreeSet<String>,
 ) -> bool {
-    let extension = path
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or("")
-        .to_lowercase();
+    let extension = structure_path_extension(path);
     supported_extensions.contains(&extension)
 }
 
 #[cfg(target_os = "macos")]
 fn sync_viewer_preferences_macos(preferences: &ViewerPreferences) -> Result<(), String> {
-    use cocoa::base::{id, NO, YES};
+    use cocoa::base::{NO, YES, id};
     use objc::{class, msg_send, sel, sel_impl};
 
     unsafe {
@@ -201,6 +207,68 @@ fn sync_viewer_preferences_macos(preferences: &ViewerPreferences) -> Result<(), 
         )?;
         set_defaults_string(defaults, "molstarStyle", &preferences.molstar_style)?;
         set_defaults_string(defaults, "xyzFastStyle", &preferences.xyz_fast_style)?;
+        set_defaults_string(
+            defaults,
+            "themeLightAccent",
+            &preferences.theme_light_accent,
+        )?;
+        set_defaults_string(
+            defaults,
+            "themeLightBackground",
+            &preferences.theme_light_background,
+        )?;
+        set_defaults_string(
+            defaults,
+            "themeLightForeground",
+            &preferences.theme_light_foreground,
+        )?;
+        set_defaults_string(
+            defaults,
+            "themeLightUiFont",
+            &preferences.theme_light_ui_font,
+        )?;
+        set_defaults_string(
+            defaults,
+            "themeLightEditorFont",
+            &preferences.theme_light_editor_font,
+        )?;
+        set_defaults_double(
+            defaults,
+            "themeLightTranslucent",
+            preferences.theme_light_translucent,
+        )?;
+        set_defaults_double(
+            defaults,
+            "themeLightContrast",
+            preferences.theme_light_contrast,
+        )?;
+        set_defaults_string(defaults, "themeDarkAccent", &preferences.theme_dark_accent)?;
+        set_defaults_string(
+            defaults,
+            "themeDarkBackground",
+            &preferences.theme_dark_background,
+        )?;
+        set_defaults_string(
+            defaults,
+            "themeDarkForeground",
+            &preferences.theme_dark_foreground,
+        )?;
+        set_defaults_string(defaults, "themeDarkUiFont", &preferences.theme_dark_ui_font)?;
+        set_defaults_string(
+            defaults,
+            "themeDarkEditorFont",
+            &preferences.theme_dark_editor_font,
+        )?;
+        set_defaults_double(
+            defaults,
+            "themeDarkTranslucent",
+            preferences.theme_dark_translucent,
+        )?;
+        set_defaults_double(
+            defaults,
+            "themeDarkContrast",
+            preferences.theme_dark_contrast,
+        )?;
 
         let transparent_key = autoreleased_nsstring("useTransparentPreviewBackground")?;
         let transparent_value = if preferences.resolved_transparent_background() {
@@ -212,6 +280,17 @@ fn sync_viewer_preferences_macos(preferences: &ViewerPreferences) -> Result<(), 
         let _: () = msg_send![defaults, synchronize];
     }
 
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn set_defaults_double(defaults: cocoa::base::id, key: &str, value: f64) -> Result<(), String> {
+    use objc::{msg_send, sel, sel_impl};
+
+    unsafe {
+        let key = autoreleased_nsstring(key)?;
+        let _: () = msg_send![defaults, setDouble: value forKey: key];
+    }
     Ok(())
 }
 
@@ -247,7 +326,7 @@ fn autoreleased_nsstring(value: &str) -> Result<cocoa::base::id, String> {
 #[cfg(target_os = "macos")]
 fn pick_open_targets_macos<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<Vec<String>, String> {
     use cocoa::appkit::{NSApp, NSModalResponse, NSOpenPanel, NSSavePanel};
-    use cocoa::base::{id, nil, NO, YES};
+    use cocoa::base::{NO, YES, id, nil};
     use objc::{class, msg_send, sel, sel_impl};
     use std::ffi::CStr;
     use std::os::raw::c_char;
@@ -324,6 +403,14 @@ mod tests {
             std::path::Path::new("caffeine.psi4"),
             &supported_extensions
         ));
+        assert!(looks_like_supported_structure_file(
+            std::path::Path::new("ligand.mae.gz"),
+            &supported_extensions
+        ));
+        assert!(looks_like_supported_structure_file(
+            std::path::Path::new("system.cms"),
+            &supported_extensions
+        ));
         assert!(!looks_like_supported_structure_file(
             std::path::Path::new("mn-h2.log"),
             &supported_extensions
@@ -396,8 +483,10 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn skips_broken_symlinks_inside_directories() {
-        let root =
-            std::env::temp_dir().join(format!("burrete-open-targets-broken-link-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "burrete-open-targets-broken-link-{}",
+            std::process::id()
+        ));
         let pdb = root.join("mini.pdb");
         let broken_link = root.join("broken.pdb");
         fs::create_dir_all(&root).unwrap();
@@ -428,7 +517,10 @@ mod tests {
         let expanded = expand_open_targets(root.clone()).unwrap();
         assert_eq!(
             expanded,
-            vec![canonical_root.join("alias.pdb"), canonical_root.join("real.pdb")]
+            vec![
+                canonical_root.join("alias.pdb"),
+                canonical_root.join("real.pdb")
+            ]
         );
 
         fs::remove_file(alias).unwrap();

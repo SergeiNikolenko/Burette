@@ -6,8 +6,8 @@
   const MAX_SDF_GRID_ATOMS = 900;
   const MAX_SDF_GRID_BONDS = 900;
   const SDF_GRID_PADDING = 4.0;
-  const TOOLBAR_POSITION_VERSION = '11';
-  const TOOLBAR_COLLAPSED_VERSION = '3';
+  const TOOLBAR_POSITION_VERSION = '13';
+  const TOOLBAR_COLLAPSED_VERSION = '5';
   const TOOLBAR_MARGIN = 12;
   const FLOATING_LAYOUT_GAP = 12;
   const PANEL_CLOSE_HIT_WIDTH = 38;
@@ -46,6 +46,16 @@
     showAxes: null,
     cellWidth: null,
     supercell: null,
+    fieldMode: null,
+    fieldIso: null,
+    fieldOpacity: null,
+    fieldSurfaceStyle: null,
+    fieldMoPositiveColor: null,
+    fieldMoNegativeColor: null,
+    fieldDensityColor: null,
+    fieldCmapPalette: null,
+    fieldCmapMin: null,
+    fieldCmapMax: null,
     customConfigPath: null,
     extraArguments: null
   };
@@ -144,9 +154,9 @@
     });
   }
 
-  const DEFAULT_VIEWER_UI_SCALE = 1.0;
-  const MIN_VIEWER_UI_SCALE = 1.0;
-  const MAX_VIEWER_UI_SCALE = 1.0;
+  const DEFAULT_VIEWER_UI_SCALE = 0.9;
+  const MIN_VIEWER_UI_SCALE = 0.9;
+  const MAX_VIEWER_UI_SCALE = 0.9;
   const VIEWER_UI_SCALE_STEP = 0.08;
 
   let panelControlsVisible = window.BurretePanelControlsVisible !== false;
@@ -204,6 +214,7 @@
     document.body.classList.toggle('buret-theme-light', resolvedTheme === 'light');
     document.body.classList.toggle('burette-transparent-background', transparentBackground);
     document.body.classList.toggle('burette-opaque-background', !transparentBackground);
+    applyViewerThemeTokens(resolvedTheme);
     document.documentElement.style.setProperty('--buret-canvas-background', canvasBackgroundCSS());
     document.documentElement.style.setProperty('--buret-overlay-opacity', overlayOpacity.toFixed(2));
     document.documentElement.style.setProperty('--buret-overlay-strong-opacity', Math.min(overlayOpacity + 0.06, 0.99).toFixed(2));
@@ -240,6 +251,52 @@
     }
   }
 
+  function themeTokensFor(theme) {
+    const tokens = activeConfig && activeConfig.themeTokens && activeConfig.themeTokens[theme];
+    return tokens && typeof tokens === 'object' ? tokens : null;
+  }
+
+  function clampThemeNumber(value, fallback) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return fallback;
+    return Math.min(Math.max(number, 0), 100);
+  }
+
+  function applyViewerThemeTokens(resolvedTheme = resolveViewerTheme()) {
+    const tokens = themeTokensFor(resolvedTheme);
+    if (!tokens || !document.body) return;
+    const accent = typeof tokens.accent === 'string' ? tokens.accent : '#AF52DE';
+    const background = typeof tokens.background === 'string' ? tokens.background : (resolvedTheme === 'light' ? '#FFFFFF' : '#111111');
+    const foreground = typeof tokens.foreground === 'string' ? tokens.foreground : (resolvedTheme === 'light' ? '#0D0D0D' : '#FCFCFC');
+    const uiFont = typeof tokens.uiFont === 'string' ? tokens.uiFont : '';
+    const opacity = 1 - (clampThemeNumber(tokens.translucent, resolvedTheme === 'light' ? 10 : 20) / 100) * 0.95;
+    const contrast = 0.2 + (clampThemeNumber(tokens.contrast, resolvedTheme === 'light' ? 20 : 16) / 100) * 0.8;
+    const root = document.documentElement;
+    root.style.setProperty('--buret-shell-background', `color-mix(in srgb, ${background} ${Math.round(opacity * 100)}%, transparent)`);
+    root.style.setProperty('--buret-panel-background', `color-mix(in srgb, ${background} ${Math.round(Math.min(opacity + 0.08, 1) * 100)}%, transparent)`);
+    root.style.setProperty('--buret-toolbar-background', `color-mix(in srgb, ${background} ${Math.round(Math.min(opacity + 0.08, 1) * 100)}%, transparent)`);
+    root.style.setProperty('--buret-toolbar-border', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 24)}%, transparent)`);
+    root.style.setProperty('--buret-toolbar-hover', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 28)}%, transparent)`);
+    root.style.setProperty('--buret-toolbar-color', `color-mix(in srgb, ${foreground} 94%, transparent)`);
+    root.style.setProperty('--buret-molstar-panel-background', `color-mix(in srgb, ${background} ${Math.round(Math.min(opacity + 0.14, 1) * 100)}%, transparent)`);
+    root.style.setProperty('--buret-molstar-row-background', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 18)}%, transparent)`);
+    root.style.setProperty('--buret-molstar-field-background', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 24)}%, transparent)`);
+    root.style.setProperty('--buret-molstar-hover-background', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 34)}%, transparent)`);
+    root.style.setProperty('--buret-molstar-border', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 24)}%, transparent)`);
+    root.style.setProperty('--buret-molstar-text', `color-mix(in srgb, ${foreground} 94%, transparent)`);
+    root.style.setProperty('--buret-molstar-muted-text', `color-mix(in srgb, ${foreground} 64%, transparent)`);
+    root.style.setProperty('--buret-molstar-accent', accent);
+    root.style.setProperty('--buret-menu-accent', accent);
+    root.style.setProperty('--buret-menu-background', `color-mix(in srgb, ${background} ${Math.round(Math.min(opacity + 0.1, 1) * 100)}%, transparent)`);
+    root.style.setProperty('--buret-menu-section-background', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 16)}%, transparent)`);
+    root.style.setProperty('--buret-menu-input-background', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 22)}%, transparent)`);
+    root.style.setProperty('--buret-menu-input-focus-background', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 30)}%, transparent)`);
+    root.style.setProperty('--buret-menu-border', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 18)}%, transparent)`);
+    root.style.setProperty('--buret-menu-divider', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 12)}%, transparent)`);
+    root.style.setProperty('--buret-menu-toggle-track', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 28)}%, transparent)`);
+    if (uiFont) document.body.style.fontFamily = uiFont;
+  }
+
   function installThemeListener() {
     if (themeListenerInstalled || !window.matchMedia) return;
     themeListenerInstalled = true;
@@ -266,7 +323,7 @@
   }
 
   function resolvedCanvasBackground() {
-    if (canvasBackground === 'auto') return resolveViewerTheme() === 'light' ? 'white' : 'black';
+    if (canvasBackground === 'auto') return resolveViewerTheme() === 'light' ? 'white' : 'graphite';
     return canvasBackground;
   }
 
@@ -295,10 +352,10 @@
   }
 
   function applyViewerUIScale(viewer = activeViewer) {
-    // Mol* WebGL picking uses unscaled client coordinates; page/body zoom makes
-    // hover and click loci drift away from the visible cursor position.
-    postHostMessage({ type: 'viewerZoom', value: DEFAULT_VIEWER_UI_SCALE });
-    document.documentElement.style.setProperty('--buret-viewer-ui-scale', '1');
+    // Keep DOM zoom disabled; native hosts apply the fixed viewer scale through
+    // WKWebView pageZoom so Mol* keeps its own layout dimensions stable.
+    postHostMessage({ type: 'viewerZoom', value: viewerUIScale });
+    document.documentElement.style.setProperty('--buret-viewer-ui-scale', String(viewerUIScale));
     if (document.body) {
       document.body.style.zoom = '';
     }
@@ -441,36 +498,43 @@
     if (!control || !toolbar) return;
     const format = normalizeFormat(config.molstarFormat || config.format);
     const xyzrenderViewer = config.xyzrenderViewer === true;
-    const canSwitchRenderer = (config.appViewer === true && (format === 'xyz' || format === 'sdf')) ||
-      (config.quickLookViewer === true && format === 'xyz') ||
-      xyzrenderViewer;
+    const xyzrenderAvailable = config.xyzrenderAvailable !== false;
+    const renderer = normalizeRenderer(config.renderer);
+    toolbar.dataset.activeRenderer = renderer;
+    const canSwitchRenderer = xyzrenderAvailable && (
+      ((config.appViewer === true || config.quickLookViewer === true) && canUseExternalXyzrender(format)) ||
+      xyzrenderViewer
+    );
     const tuneButton = toolbar.querySelector('[data-buret-action="xyzrender-tune"]');
+    const sdfGridButton = toolbar.querySelector('[data-buret-action="sdf-grid"]');
     const popover = toolbar.querySelector('[data-buret-xyzrender-popover]');
     control.classList.toggle('visible', canSwitchRenderer);
     const presetSlot = toolbar.querySelector('[data-buret-xyzrender-preset-slot]');
     presetSlot?.classList.remove('visible');
+    const canOpenSdfGrid = config.sdfPosePager === true && config.sdfGrid !== false && normalizeFormat(config.molstarFormat || config.format) === 'sdf';
+    sdfGridButton?.classList.toggle('hidden', !canOpenSdfGrid);
+    if (sdfGridButton && toolbar.dataset.sdfGridBound !== '1') {
+      sdfGridButton.addEventListener('click', requestSdfGridDocument);
+      toolbar.dataset.sdfGridBound = '1';
+    }
     tuneButton?.classList.add('hidden');
     popover?.classList.add('hidden');
-    if (!canSwitchRenderer) return;
-
-    const renderer = normalizeRenderer(config.renderer);
-    toolbar.dataset.activeRenderer = renderer;
     control.querySelectorAll('[data-buret-renderer]').forEach(button => {
       const value = button.getAttribute('data-buret-renderer');
-      const isFastXYZOnly = value === 'xyz-fast';
-      const needsMolstar = value === 'molstar';
-      button.classList.toggle('hidden',
-        (isFastXYZOnly && format !== 'xyz') ||
-        (needsMolstar && config.molstarAvailable === false)
-      );
-      button.classList.toggle('active', value === renderer);
+      const unavailable = rendererChoiceUnavailable(value, format, config, xyzrenderAvailable);
+      button.classList.toggle('hidden', unavailable);
+      button.classList.toggle('active', !unavailable && value === renderer);
+      button.disabled = unavailable;
+      button.setAttribute('aria-disabled', unavailable ? 'true' : 'false');
       if (control.dataset.rendererBound !== '1') {
         button.addEventListener('click', () => {
+          if (button.disabled) return;
           applyPendingRendererSelection(toolbar, value);
           requestRendererSwitch(value);
         });
       }
     });
+    if (!canSwitchRenderer) return;
 
     const select = toolbar.querySelector('[data-buret-xyzrender-preset]');
     if (select) {
@@ -489,7 +553,7 @@
       if (renderer === 'xyzrender-external') {
         populateXyzrenderControlsForm(toolbar, normalizeXyzrenderControls(config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config));
         updateXyzrenderFormVisibility(toolbar);
-        if (shouldRestoreXyzrenderPopoverOpen()) {
+        if (shouldRestoreXyzrenderPopoverOpen() || (!hasXyzrenderPopoverPreference() && shouldOpenXyzrenderPopoverByDefault(config))) {
           setXyzrenderPopoverVisibility(toolbar, true);
         }
       }
@@ -506,7 +570,17 @@
     control.dataset.rendererBound = '1';
     control.dataset.presetBound = '1';
     control.dataset.tuneBound = '1';
-    requestAnimationFrame(() => syncToolbarViewport(toolbar, renderer));
+  }
+
+  function canUseExternalXyzrender(format) {
+    return ['xyz', 'sdf', 'pdb', 'pdbqt', 'mmcif', 'cifcore'].includes(normalizeFormat(format));
+  }
+
+  function rendererChoiceUnavailable(value, format, config, xyzrenderAvailable) {
+    if (value === 'xyz-fast') return format !== 'xyz';
+    if (value === 'molstar') return config.molstarAvailable === false;
+    if (value === 'xyzrender-external') return !xyzrenderAvailable || !canUseExternalXyzrender(format);
+    return false;
   }
 
   function populateXyzrenderPresetSelect(select, options) {
@@ -553,7 +627,7 @@
     try {
       const key = xyzrenderPopoverStorageKey();
       if (open) window.localStorage?.setItem(key, '1');
-      else window.localStorage?.removeItem(key);
+      else window.localStorage?.setItem(key, '0');
     } catch (_) {}
   }
 
@@ -563,6 +637,30 @@
     } catch (_) {
       return false;
     }
+  }
+
+  function hasXyzrenderPopoverPreference() {
+    try {
+      return window.localStorage?.getItem(xyzrenderPopoverStorageKey()) != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function shouldOpenXyzrenderPopoverByDefault(config) {
+    const controls = normalizeXyzrenderControls(config?.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config || {});
+    return !!(
+      controls.fieldMode ||
+      controls.fieldIso != null ||
+      controls.fieldOpacity != null ||
+      controls.fieldSurfaceStyle ||
+      controls.fieldMoPositiveColor ||
+      controls.fieldMoNegativeColor ||
+      controls.fieldDensityColor ||
+      controls.fieldCmapPalette ||
+      controls.fieldCmapMin != null ||
+      controls.fieldCmapMax != null
+    );
   }
 
   function normalizeXyzrenderControls(value, config = {}) {
@@ -586,6 +684,16 @@
       showAxes: triStateBoolean(source.showAxes),
       cellWidth: positiveNumberOrNull(source.cellWidth),
       supercell: normalizeSupercellValue(source.supercell),
+      fieldMode: normalizeFieldMode(source.fieldMode),
+      fieldIso: nonNegativeNumberOrNull(source.fieldIso),
+      fieldOpacity: nonNegativeNumberOrNull(source.fieldOpacity),
+      fieldSurfaceStyle: normalizeFieldSurfaceStyle(source.fieldSurfaceStyle),
+      fieldMoPositiveColor: nonEmptyText(source.fieldMoPositiveColor),
+      fieldMoNegativeColor: nonEmptyText(source.fieldMoNegativeColor),
+      fieldDensityColor: nonEmptyText(source.fieldDensityColor),
+      fieldCmapPalette: nonEmptyText(source.fieldCmapPalette),
+      fieldCmapMin: finiteNumberOrNull(source.fieldCmapMin),
+      fieldCmapMax: finiteNumberOrNull(source.fieldCmapMax),
       customConfigPath: nonEmptyText(source.customConfigPath),
       extraArguments: nonEmptyText(source.extraArguments)
     };
@@ -596,6 +704,16 @@
     return Number.isFinite(number) && number > 0 ? number : null;
   }
 
+  function nonNegativeNumberOrNull(value) {
+    const number = Number(value);
+    return Number.isFinite(number) && number >= 0 ? number : null;
+  }
+
+  function finiteNumberOrNull(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  }
+
   function triStateBoolean(value) {
     return value === true ? true : value === false ? false : null;
   }
@@ -603,6 +721,16 @@
   function nonEmptyText(value) {
     const text = String(value || '').trim();
     return text ? text : null;
+  }
+
+  function normalizeFieldMode(value) {
+    const text = String(value || '').trim().toLowerCase();
+    return ['auto', 'off', 'density', 'mo', 'esp', 'nci'].includes(text) ? text : null;
+  }
+
+  function normalizeFieldSurfaceStyle(value) {
+    const text = String(value || '').trim().toLowerCase();
+    return ['solid', 'mesh', 'contour', 'dot'].includes(text) ? text : null;
   }
 
   function normalizeSupercellValue(value) {
@@ -616,13 +744,6 @@
   function requestRendererSwitch(renderer) {
     const value = normalizeRenderer(renderer);
     const orientationRef = value === 'xyzrender-external' ? captureCurrentXyzrenderOrientationRef() : null;
-    if (orientationRef) {
-      postHostMessage({
-        type: 'setXyzrenderOrientation',
-        text: orientationRef.text,
-        atomCount: orientationRef.atomCount
-      });
-    }
     const payload = { type: 'setRenderer', value };
     if (orientationRef) {
       payload.orientationRef = orientationRef.text;
@@ -630,6 +751,11 @@
     }
     const sent = postHostMessage(payload);
     if (!sent) setStatus('Renderer switching is available only in the app or Quick Look viewer.', 'error');
+  }
+
+  function requestSdfGridDocument() {
+    const sent = postHostMessage({ type: 'openSdfGridDocument' });
+    if (!sent) setStatus('SDF grid switching is available only in the app or Quick Look viewer.', 'error');
   }
 
   function applyPendingRendererSelection(toolbar, renderer) {
@@ -653,7 +779,6 @@
       popover?.classList.add('hidden');
       setXyzrenderPopoverOpenPersisted(false);
     }
-    requestAnimationFrame(() => syncToolbarViewport(toolbar, normalized));
   }
 
   function requestXyzrenderPreset(preset) {
@@ -674,14 +799,27 @@
         return;
       }
       if (field.tagName === 'SELECT') {
-        field.value = value === true ? 'on' : value === false ? 'off' : '';
+        field.value = value === true ? 'on' : value === false ? 'off' : value == null ? '' : String(value);
         return;
       }
       field.value = Array.isArray(value) ? value.join(' ') : value == null ? '' : String(value);
     };
     Object.entries(normalized).forEach(([name, value]) => setValue(name, value));
+    syncXyzrenderSliders(toolbar);
     updateXyzrenderFormVisibility(toolbar);
     toolbar.dataset.syncingXyzrenderForm = '0';
+  }
+
+  function syncXyzrenderSliders(toolbar) {
+    toolbar.querySelectorAll('[data-buret-xctrl-slider]').forEach(slider => {
+      const name = slider.getAttribute('data-buret-xctrl-slider');
+      const field = name ? toolbar.querySelector(`[data-buret-xctrl="${name}"]`) : null;
+      if (!field) return;
+      const number = Number(field.value);
+      const hasValue = Number.isFinite(number);
+      slider.toggleAttribute('data-auto', !hasValue);
+      if (hasValue) slider.value = String(number);
+    });
   }
 
   function updateXyzrenderFormVisibility(toolbar) {
@@ -698,8 +836,24 @@
       controls.vdwScale != null ||
       controls.molColor
     );
+    const field = toolbar.querySelector('[data-buret-xyzrender-field]');
+    const fieldActive = !!(
+      controls.fieldMode ||
+      controls.fieldIso != null ||
+      controls.fieldOpacity != null ||
+      controls.fieldSurfaceStyle ||
+      controls.fieldMoPositiveColor ||
+      controls.fieldMoNegativeColor ||
+      controls.fieldDensityColor ||
+      controls.fieldCmapPalette ||
+      controls.fieldCmapMin != null ||
+      controls.fieldCmapMax != null
+    );
     if (advanced) {
       advanced.open = advancedActive;
+    }
+    if (field) {
+      field.open = fieldActive;
     }
     if (crystal) {
       crystal.classList.toggle('hidden', !looksCrystalLike && !crystalActive);
@@ -731,6 +885,14 @@
       const field = readField(name);
       return field ? positiveNumberOrNull(field.value) : current[name];
     };
+    const readNonNegativeNumber = name => {
+      const field = readField(name);
+      return field ? nonNegativeNumberOrNull(field.value) : current[name];
+    };
+    const readFiniteNumber = name => {
+      const field = readField(name);
+      return field ? finiteNumberOrNull(field.value) : current[name];
+    };
     const readText = name => {
       const field = readField(name);
       return field ? nonEmptyText(field.value) : current[name];
@@ -760,6 +922,16 @@
       showAxes: readTriState('showAxes'),
       cellWidth: current.cellWidth,
       supercell: normalizeSupercellValue(readField('supercell')?.value),
+      fieldMode: normalizeFieldMode(readField('fieldMode')?.value),
+      fieldIso: readNonNegativeNumber('fieldIso'),
+      fieldOpacity: readNonNegativeNumber('fieldOpacity'),
+      fieldSurfaceStyle: normalizeFieldSurfaceStyle(readField('fieldSurfaceStyle')?.value),
+      fieldMoPositiveColor: readText('fieldMoPositiveColor'),
+      fieldMoNegativeColor: readText('fieldMoNegativeColor'),
+      fieldDensityColor: readText('fieldDensityColor'),
+      fieldCmapPalette: readText('fieldCmapPalette'),
+      fieldCmapMin: readFiniteNumber('fieldCmapMin'),
+      fieldCmapMax: readFiniteNumber('fieldCmapMax'),
       customConfigPath: readText('customConfigPath'),
       extraArguments: readText('extraArguments')
     }, activeConfig || {});
@@ -1035,15 +1207,29 @@
     });
     toolbar.querySelectorAll('[data-buret-xctrl]').forEach(field => {
       field.addEventListener('change', () => {
+        syncXyzrenderSliders(toolbar);
         updateXyzrenderFormVisibility(toolbar);
         scheduleXyzrenderControlsApply(toolbar, 0);
       });
       if (field.tagName !== 'SELECT' && field.type !== 'checkbox') {
         field.addEventListener('input', () => {
+          syncXyzrenderSliders(toolbar);
           updateXyzrenderFormVisibility(toolbar);
           scheduleXyzrenderControlsApply(toolbar, 260);
         });
       }
+    });
+    toolbar.querySelectorAll('[data-buret-xctrl-slider]').forEach(slider => {
+      slider.addEventListener('input', () => {
+        const name = slider.getAttribute('data-buret-xctrl-slider');
+        const field = name ? toolbar.querySelector(`[data-buret-xctrl="${name}"]`) : null;
+        if (!field) return;
+        field.value = slider.value;
+        slider.removeAttribute('data-auto');
+        updateXyzrenderFormVisibility(toolbar);
+        scheduleXyzrenderControlsApply(toolbar, 120);
+      });
+      slider.addEventListener('change', () => scheduleXyzrenderControlsApply(toolbar, 0));
     });
     document.addEventListener('click', event => {
       const popover = toolbar.querySelector('[data-buret-xyzrender-popover]');
@@ -1245,10 +1431,9 @@
   function applyDefaultToolbarPosition(toolbar) {
     dockToolbar(toolbar);
     fitToolbarToViewport(toolbar);
-    const top = toolbarSafeTop();
-    const mainRect = visibleRect('.msp-plugin .msp-layout-main');
+    const top = defaultToolbarTop();
     const width = toolbar.offsetWidth || toolbar.getBoundingClientRect().width || 320;
-    const rightEdge = mainRect ? mainRect.right : window.innerWidth;
+    const rightEdge = window.innerWidth;
     const left = Math.max(TOOLBAR_MARGIN, Math.round(rightEdge - width - TOOLBAR_MARGIN));
     toolbar.dataset.defaultPosition = '1';
     toolbar.style.left = left + 'px';
@@ -1278,8 +1463,7 @@
   }
 
   function fitToolbarToViewport(toolbar) {
-    const mainRect = visibleRect('.msp-plugin .msp-layout-main');
-    const availableWidth = mainRect ? Math.floor(mainRect.width) : window.innerWidth;
+    const availableWidth = window.innerWidth;
     toolbar.style.maxWidth = Math.max(180, availableWidth - TOOLBAR_MARGIN * 2) + 'px';
     const content = toolbar.querySelector('[data-buret-toolbar-content]');
     if (content) {
@@ -1287,25 +1471,8 @@
     }
   }
 
-  function syncToolbarViewport(toolbar, renderer) {
-    const content = toolbar?.querySelector('[data-buret-toolbar-content]');
-    if (!content) return;
-    const presetSlot = toolbar.querySelector('[data-buret-xyzrender-preset-slot]');
-    const tuneButton = toolbar.querySelector('[data-buret-action="xyzrender-tune"]');
-    let target = toolbar.querySelector(`[data-buret-renderer="${renderer}"]`);
-    if (renderer === 'xyzrender-external') {
-      if (tuneButton && !tuneButton.classList.contains('hidden')) target = tuneButton;
-      else if (presetSlot && presetSlot.classList.contains('visible')) target = presetSlot;
-    }
-    if (!(target instanceof HTMLElement)) return;
-    const contentRect = content.getBoundingClientRect();
-    const targetRect = target.getBoundingClientRect();
-    const padding = 6;
-    if (targetRect.left < contentRect.left + padding) {
-      content.scrollLeft -= contentRect.left + padding - targetRect.left;
-    } else if (targetRect.right > contentRect.right - padding) {
-      content.scrollLeft += targetRect.right - (contentRect.right - padding);
-    }
+  function defaultToolbarTop() {
+    return toolbarSafeTop();
   }
 
   function updateFloatingLayoutOffsets() {
@@ -1826,6 +1993,96 @@
     return config.binary ? base64ToBytes(base64) : base64ToText(base64);
   }
 
+  function dockingPayloadData(source, payload) {
+    if (!payload || typeof payload.dataBase64 !== 'string') {
+      throw new Error(`Docking payload for ${source?.label || 'structure'} was not loaded.`);
+    }
+    return source?.binary ? base64ToBytes(payload.dataBase64) : base64ToText(payload.dataBase64);
+  }
+
+  function dockingPoseStorageKey(config) {
+    const documentId = String(config?.documentId || '').trim();
+    if (documentId) return `burrete.dockingPose.${documentId}`;
+    const fallback = `${config?.label || 'active'}:${window.location.pathname}:${window.location.search}`;
+    return `burrete.dockingPose.fallback-${stableTextHash(fallback)}`;
+  }
+
+  function stableTextHash(value) {
+    let hash = 2166136261;
+    const text = String(value || '');
+    for (let index = 0; index < text.length; index += 1) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+  }
+
+  function readDockingPoseIndex(config, poseCount) {
+    const fallback = Number(config.docking?.activePose || 0);
+    let value = fallback;
+    try {
+      const stored = sessionStorage.getItem(dockingPoseStorageKey(config));
+      if (stored !== null) value = Number(stored);
+    } catch (_) {}
+    if (!Number.isFinite(value)) value = 0;
+    return Math.max(0, Math.min(poseCount - 1, Math.trunc(value)));
+  }
+
+  function prepareDockingStructure(config) {
+    const docking = config.docking || {};
+    const payloads = window.BurreteDockingPayloads || {};
+    const receptor = docking.receptor;
+    if (!receptor) throw new Error('Docking view is missing a receptor.');
+    const ligandSources = Array.isArray(docking.ligands) ? docking.ligands : [];
+    const ligandPayloads = Array.isArray(payloads.ligands) ? payloads.ligands : [];
+    const poses = [];
+    ligandSources.forEach((source, ligandIndex) => {
+      const data = dockingPayloadData(source, ligandPayloads[ligandIndex]);
+      const format = normalizeFormat(source.format);
+      if (format === 'sdf') {
+        const records = splitSdfRecords(data);
+        if (records.length > 1) {
+          records.forEach((record, poseIndex) => {
+            poses.push({
+              data: `${record}\n$$$$\n`,
+              format: 'sdf',
+              label: `${source.label || `Ligand ${ligandIndex + 1}`} pose ${poseIndex + 1}`,
+              ligandIndex,
+              poseIndex,
+              poseCount: records.length
+            });
+          });
+          return;
+        }
+      }
+      poses.push({
+        data,
+        format,
+        label: source.label || `Ligand ${ligandIndex + 1}`,
+        ligandIndex,
+        poseIndex: 0,
+        poseCount: 1
+      });
+    });
+    if (poses.length === 0) throw new Error('Docking view has no ligand poses.');
+    const activePose = readDockingPoseIndex(config, poses.length);
+    return {
+      kind: 'docking',
+      label: config.label || 'Docking view',
+      activePose,
+      poseCount: poses.length,
+      ligandLabel: poses[activePose].label,
+      entries: [
+        {
+          data: dockingPayloadData(receptor, payloads.receptor),
+          format: normalizeFormat(receptor.format),
+          label: receptor.label || 'Receptor'
+        },
+        poses[activePose]
+      ]
+    };
+  }
+
   function normalizeRenderer(renderer) {
     const value = String(renderer || 'molstar').toLowerCase();
     if (value === 'xyz-fast' || value === 'fast-xyz' || value === 'xyzfast') return 'xyz-fast';
@@ -1834,6 +2091,9 @@
   }
 
   function structureDataForMolstar(config) {
+    if (config.docking) {
+      return prepareDockingStructure(config);
+    }
     const normalized = normalizeFormat(config.format);
     if (normalized === 'cifCore') {
       const pdb = coreCifToPdb(rawStructureData({ ...config, binary: false }));
@@ -1882,7 +2142,8 @@
   async function startExternalArtifact(config) {
     disposeExternalArtifactInteractions();
     const artifact = config.externalArtifact;
-    if (!artifact || (!artifact.path && !artifact.inlineSvg)) {
+    const inlineSvg = artifact?.inlineSvg || (artifact?.inlineSvgBase64 ? base64ToText(artifact.inlineSvgBase64) : '');
+    if (!artifact || (!artifact.path && !inlineSvg)) {
       throw new Error('External xyzrender renderer was selected, but no externalArtifact payload was provided.');
     }
     setStatus(`[web] Loading xyzrender artifact…\n${config.label || 'structure'}`);
@@ -1890,8 +2151,8 @@
     const container = document.getElementById('app');
     const preset = artifact.preset ? ` · ${escapeHTML(artifact.preset)}` : '';
     const elapsed = Number.isFinite(Number(artifact.elapsedMs)) ? ` · ${Number(artifact.elapsedMs)} ms` : '';
-    const content = artifact.inlineSvg
-      ? `<div class="buret-external-artifact-stage"><div class="buret-external-artifact-inline" aria-label="${escapeHTML(config.label || 'xyzrender artifact')}">${artifact.inlineSvg}</div></div>`
+    const content = inlineSvg
+      ? `<div class="buret-external-artifact-stage"><div class="buret-external-artifact-inline" aria-label="${escapeHTML(config.label || 'xyzrender artifact')}">${inlineSvg}</div></div>`
       : `<div class="buret-external-artifact-stage"><object class="buret-external-artifact-object" data="${safeRelativeArtifactPath(artifact.path)}" type="image/svg+xml" aria-label="${escapeHTML(config.label || 'xyzrender artifact')}"></object></div>`;
     container.innerHTML = `
       <div class="buret-external-artifact-root">
@@ -1942,7 +2203,7 @@
       .buret-external-artifact-stage { position: absolute; inset: 0; transform: translate(0px, 0px) scale(1); transform-origin: 50% 50%; will-change: transform; cursor: grab; }
       .buret-external-artifact-stage.dragging { cursor: grabbing; }
       .buret-external-artifact-inline { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box; overflow: hidden; }
-      .buret-external-artifact-inline > svg { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; margin: auto; }
+      .buret-external-artifact-inline > svg { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; margin: auto; border-radius: 8px; box-shadow: 0 18px 54px rgba(0,0,0,0.28); }
       .buret-external-artifact-object { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
       .buret-xyz-badge { position: absolute; left: 14px; bottom: 14px; z-index: 30; max-width: calc(100vw - 28px); box-sizing: border-box; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--buret-toolbar-border, rgba(255,255,255,0.12)); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.9)); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: 0 8px 22px rgba(0,0,0,0.20); font: 11px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; pointer-events: none; }
       .buret-xyz-badge strong { display: block; font-size: 11px; }
@@ -1972,16 +2233,16 @@
     const pointers = new Map();
     let pinchState = null;
 
-    const clampScale = value => Math.min(8, Math.max(1, value));
+    const clampScale = value => Math.min(8, Math.max(0.05, value));
     const clampTranslation = () => {
-      if (scale <= 1.001) {
+      if (Math.abs(scale - 1) < 0.001) {
         scale = 1;
         translateX = 0;
         translateY = 0;
         return;
       }
-      const maxX = root.clientWidth * (scale - 1) * 0.5;
-      const maxY = root.clientHeight * (scale - 1) * 0.5;
+      const maxX = root.clientWidth * Math.abs(scale - 1) * 0.5;
+      const maxY = root.clientHeight * Math.abs(scale - 1) * 0.5;
       translateX = Math.min(maxX, Math.max(-maxX, translateX));
       translateY = Math.min(maxY, Math.max(-maxY, translateY));
     };
@@ -2046,7 +2307,7 @@
         pinchState = center;
         return;
       }
-      if (dragPointerId !== event.pointerId || scale <= 1.001) return;
+      if (dragPointerId !== event.pointerId || Math.abs(scale - 1) < 0.001) return;
       translateX += event.clientX - dragClientX;
       translateY += event.clientY - dragClientY;
       dragClientX = event.clientX;
@@ -2096,6 +2357,9 @@
   function prepareSdfStructure(text, config) {
     const label = config.label || 'structure';
     const records = splitSdfRecords(text);
+    if (records.length > 1 && config.sdfPosePager === true) {
+      return prepareSdfPoseStructure(records, label, config);
+    }
     if (records.length > 1 && config.sdfGrid !== false) {
       const grid = buildSdfGrid(records, label);
       if (grid) return grid;
@@ -2105,6 +2369,26 @@
       format: 'sdf',
       label: records.length > 1 ? `${label} (${records.length} SDF records)` : label,
       loadPreset: records.length > 1 ? 'all-models' : 'default'
+    };
+  }
+
+  function prepareSdfPoseStructure(records, label, config) {
+    const activePose = readDockingPoseIndex(config, records.length);
+    const record = records[activePose] || records[0] || '';
+    const poseLabel = `Molecule ${activePose + 1}`;
+    return {
+      kind: 'docking',
+      label: `${label} (${records.length} SDF poses)`,
+      activePose,
+      poseCount: records.length,
+      ligandLabel: poseLabel,
+      entries: [
+        {
+          data: `${record}\n$$$$\n`,
+          format: 'sdf',
+          label: poseLabel
+        }
+      ]
     };
   }
 
@@ -2328,6 +2612,10 @@
   }
 
   async function loadPreparedStructure(viewer, prepared) {
+    if (prepared.kind === 'docking') {
+      await loadDockingPreparedStructure(viewer, prepared);
+      return;
+    }
     if (prepared.loadPreset === 'all-models') {
       const plugin = viewer.plugin;
       const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
@@ -2343,6 +2631,102 @@
     const trajectory = await plugin.builders.structure.parseTrajectory(data, prepared.format);
     await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default');
     await applyMolstarStyle(viewer, configuredMolstarStyle(activeConfig));
+  }
+
+  async function loadMolstarEntry(viewer, entry) {
+    const plugin = viewer.plugin;
+    const normalized = normalizeFormat(entry.format);
+    const payload = normalized === 'cifCore'
+      ? { data: coreCifToPdb(entry.data), format: 'pdb' }
+      : { data: entry.data, format: normalized };
+    const data = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
+    const trajectory = await plugin.builders.structure.parseTrajectory(data, payload.format);
+    await plugin.builders.structure.hierarchy.applyPreset(trajectory, entry.loadPreset || 'default');
+  }
+
+  async function loadDockingPreparedStructure(viewer, prepared) {
+    const plugin = viewer.plugin;
+    if (typeof plugin.clear === 'function') {
+      await plugin.clear();
+    }
+    for (const entry of prepared.entries) {
+      await loadMolstarEntry(viewer, entry);
+    }
+    await applyMolstarStyle(viewer, configuredMolstarStyle(activeConfig));
+    installDockingPoseControls(viewer, prepared);
+  }
+
+  let dockingPoseKeydownDisposer = null;
+
+  function isDockingPoseKeyboardTarget(target) {
+    const element = target instanceof Element ? target : null;
+    if (!element) return false;
+    const tag = element.tagName.toLowerCase();
+    return tag === 'input' || tag === 'select' || tag === 'textarea' || element.isContentEditable;
+  }
+
+  function installDockingPoseControls(viewer, prepared) {
+    document.querySelector('.buret-docking-poses')?.remove();
+    if (dockingPoseKeydownDisposer) {
+      dockingPoseKeydownDisposer();
+      dockingPoseKeydownDisposer = null;
+    }
+    if (!prepared || prepared.poseCount <= 1) return;
+    const root = document.createElement('div');
+    root.className = 'buret-docking-poses';
+    const label = document.createElement('span');
+    label.textContent = `Pose ${prepared.activePose + 1} / ${prepared.poseCount}`;
+    label.title = prepared.ligandLabel || '';
+    const previous = document.createElement('button');
+    previous.type = 'button';
+    previous.textContent = 'Prev';
+    previous.setAttribute('aria-label', 'Previous pose');
+    previous.disabled = prepared.activePose <= 0;
+    const next = document.createElement('button');
+    next.type = 'button';
+    next.textContent = 'Next';
+    next.setAttribute('aria-label', 'Next pose');
+    next.disabled = prepared.activePose >= prepared.poseCount - 1;
+    const setPose = async (index) => {
+      const nextIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
+      const previousIndex = prepared.activePose;
+      try { sessionStorage.setItem(dockingPoseStorageKey(activeConfig), String(nextIndex)); } catch (_) {}
+      previous.disabled = true;
+      next.disabled = true;
+      label.textContent = `Pose ${nextIndex + 1} / ${prepared.poseCount}`;
+      try {
+        const nextPrepared = structureDataForMolstar(activeConfig);
+        await loadDockingPreparedStructure(viewer, nextPrepared);
+        applyLayoutState(viewer);
+        scheduleLayoutStateReapply(viewer);
+        try { viewer.handleResize(); } catch (_) {}
+      } catch (error) {
+        try { sessionStorage.setItem(dockingPoseStorageKey(activeConfig), String(previousIndex)); } catch (_) {}
+        previous.disabled = prepared.activePose <= 0;
+        next.disabled = prepared.activePose >= prepared.poseCount - 1;
+        label.textContent = `Pose ${prepared.activePose + 1} / ${prepared.poseCount}`;
+        setStatus(`[web] Could not switch docking pose.\n\n${error?.message || String(error)}`, 'error');
+        // eslint-disable-next-line no-console
+        console.error(error);
+      }
+    };
+    previous.addEventListener('click', () => { void setPose(prepared.activePose - 1); });
+    next.addEventListener('click', () => { void setPose(prepared.activePose + 1); });
+    const onKeyDown = (event) => {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (isDockingPoseKeyboardTarget(event.target)) return;
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        if (prepared.activePose > 0) void setPose(prepared.activePose - 1);
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        if (prepared.activePose < prepared.poseCount - 1) void setPose(prepared.activePose + 1);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    dockingPoseKeydownDisposer = () => window.removeEventListener('keydown', onKeyDown);
+    root.append(previous, label, next);
+    document.body.appendChild(root);
   }
 
   function withTimeout(promise, timeoutMs, message) {

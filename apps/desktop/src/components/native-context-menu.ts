@@ -1,0 +1,92 @@
+import { isTauriRuntime } from "../lib/tauri";
+
+export type MenuItemSpec =
+  | { kind: "item"; id: string; text: string; action: () => void; accelerator?: string }
+  | { kind: "separator" };
+
+export async function showNativeContextMenu(
+  spec: MenuItemSpec[],
+  at?: { x: number; y: number },
+): Promise<boolean> {
+  if (!isTauriRuntime()) {
+    showWebContextMenu(spec, at);
+    return true;
+  }
+
+  const [{ LogicalPosition }, { Menu }, { MenuItem }, { PredefinedMenuItem }] = await Promise.all([
+    import("@tauri-apps/api/dpi"),
+    import("@tauri-apps/api/menu/menu"),
+    import("@tauri-apps/api/menu/menuItem"),
+    import("@tauri-apps/api/menu/predefinedMenuItem"),
+  ]);
+
+  const items = await Promise.all(
+    spec.map((entry) => {
+      if (entry.kind === "separator") {
+        return PredefinedMenuItem.new({ item: "Separator" });
+      }
+      return MenuItem.new({
+        id: entry.id,
+        text: entry.text,
+        action: entry.action,
+        ...(entry.accelerator ? { accelerator: entry.accelerator } : {}),
+      });
+    }),
+  );
+
+  const menu = await Menu.new({ items });
+  await menu.popup(at ? new LogicalPosition(at.x, at.y) : undefined);
+  return true;
+}
+
+function showWebContextMenu(spec: MenuItemSpec[], at?: { x: number; y: number }) {
+  const existing = document.querySelector(".native-context-menu");
+  existing?.remove();
+
+  const menu = document.createElement("div");
+  menu.className = "native-context-menu";
+  menu.setAttribute("role", "menu");
+  menu.tabIndex = -1;
+
+  for (const entry of spec) {
+    if (entry.kind === "separator") {
+      const separator = document.createElement("div");
+      separator.className = "native-context-menu-separator";
+      separator.setAttribute("role", "separator");
+      menu.append(separator);
+      continue;
+    }
+
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "native-context-menu-item";
+    item.setAttribute("role", "menuitem");
+    item.textContent = entry.text;
+    item.addEventListener("click", () => {
+      cleanup();
+      entry.action();
+    });
+    menu.append(item);
+  }
+
+  const cleanup = () => {
+    document.removeEventListener("pointerdown", onOutsidePointerDown);
+    document.removeEventListener("keydown", onKeyDown);
+    menu.remove();
+  };
+  const onOutsidePointerDown = (event: PointerEvent) => {
+    if (!menu.contains(event.target as Node | null)) cleanup();
+  };
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape") cleanup();
+  };
+
+  document.body.append(menu);
+  const x = Math.max(8, Math.min(at?.x ?? 8, window.innerWidth - menu.offsetWidth - 8));
+  const y = Math.max(8, Math.min(at?.y ?? 8, window.innerHeight - menu.offsetHeight - 8));
+  menu.style.left = `${x}px`;
+  menu.style.top = `${y}px`;
+  document.addEventListener("pointerdown", onOutsidePointerDown);
+  document.addEventListener("keydown", onKeyDown);
+  menu.focus();
+}

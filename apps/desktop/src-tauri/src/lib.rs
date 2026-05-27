@@ -4,9 +4,9 @@ mod preview;
 mod startup;
 mod tray;
 
+use preview::grid_store::GridRuntimeRegistry;
 use std::path::PathBuf;
 use tauri::{Manager, RunEvent};
-use preview::grid_store::GridRuntimeRegistry;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -26,8 +26,10 @@ pub fn run() {
             app.set_activation_policy(tauri::ActivationPolicy::Regular);
             menu::configure_menu(app)?;
             tray::configure_tray(app)?;
-            let startup_paths =
-                startup::file_args_from_argv(std::env::args().collect(), std::env::current_dir().ok());
+            let startup_paths = startup::file_args_from_argv(
+                std::env::args().collect(),
+                std::env::current_dir().ok(),
+            );
             if !startup_paths.is_empty() {
                 tray::show_main_window(&app.handle());
             }
@@ -53,6 +55,7 @@ pub fn run() {
             commands::startup::startup_documents,
             commands::documents::pick_open_targets,
             commands::documents::open_documents,
+            commands::documents::open_docking_document,
             commands::grid::grid_fetch_page,
             commands::documents::sync_viewer_preferences,
             commands::preview_cache::clear_preview_cache,

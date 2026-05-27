@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -60,14 +60,27 @@ struct GridInputRecord {
 
 impl GridRuntimeRegistry {
     pub(crate) fn register(&self, document_id: &str, database_path: PathBuf) -> Result<(), String> {
-        let mut entries = self.entries.lock().map_err(|_| "grid runtime registry is poisoned")?;
-        entries.insert(document_id.to_string(), RegisteredGridRuntime { database_path });
+        let mut entries = self
+            .entries
+            .lock()
+            .map_err(|_| "grid runtime registry is poisoned")?;
+        entries.insert(
+            document_id.to_string(),
+            RegisteredGridRuntime { database_path },
+        );
         Ok(())
     }
 
-    pub(crate) fn fetch_page(&self, document_id: &str, query: &GridQuery) -> Result<GridPageResult, String> {
+    pub(crate) fn fetch_page(
+        &self,
+        document_id: &str,
+        query: &GridQuery,
+    ) -> Result<GridPageResult, String> {
         let database_path = {
-            let entries = self.entries.lock().map_err(|_| "grid runtime registry is poisoned")?;
+            let entries = self
+                .entries
+                .lock()
+                .map_err(|_| "grid runtime registry is poisoned")?;
             entries
                 .get(document_id)
                 .map(|entry| entry.database_path.clone())
@@ -118,7 +131,9 @@ fn fetch_page(database_path: &Path, query: &GridQuery) -> Result<GridPageResult,
     let normalized_query = query.query.trim().to_lowercase();
     let total_rows = if normalized_query.is_empty() {
         connection
-            .query_row("select count(*) from molecules", [], |row| row.get::<_, i64>(0))
+            .query_row("select count(*) from molecules", [], |row| {
+                row.get::<_, i64>(0)
+            })
             .map_err(|err| err.to_string())? as usize
     } else {
         let pattern = like_pattern(&normalized_query);
@@ -206,7 +221,9 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
 }
 
 fn ingest_smiles(connection: &Connection, text: &str) -> Result<usize, String> {
-    let tx = connection.unchecked_transaction().map_err(|err| err.to_string())?;
+    let tx = connection
+        .unchecked_transaction()
+        .map_err(|err| err.to_string())?;
     let mut insert = tx
         .prepare(
             "insert into molecules (source_index, name, smiles, molblock, props_json, search_text)
@@ -246,7 +263,9 @@ fn ingest_smiles(connection: &Connection, text: &str) -> Result<usize, String> {
 }
 
 fn ingest_sdf(connection: &Connection, text: &str) -> Result<usize, String> {
-    let tx = connection.unchecked_transaction().map_err(|err| err.to_string())?;
+    let tx = connection
+        .unchecked_transaction()
+        .map_err(|err| err.to_string())?;
     let mut insert = tx
         .prepare(
             "insert into molecules (source_index, name, smiles, molblock, props_json, search_text)
@@ -298,11 +317,15 @@ fn finish_sdf_record(lines: &[String], has_content: bool, index: usize) -> Optio
         .find(|value| !value.trim().is_empty())
         .map(|value| clipped(value, 160))
         .unwrap_or(fallback_name);
-    let smiles = [props.get("SMILES"), props.get("Smiles"), props.get("smiles")]
-        .into_iter()
-        .flatten()
-        .next()
-        .map(|value| clipped(value, 2048));
+    let smiles = [
+        props.get("SMILES"),
+        props.get("Smiles"),
+        props.get("smiles"),
+    ]
+    .into_iter()
+    .flatten()
+    .next()
+    .map(|value| clipped(value, 2048));
     Some(GridInputRecord {
         index,
         name,
@@ -322,7 +345,11 @@ fn ingest_delimited_with_fallback(
         .or_else(|_| ingest_delimited_rows_as_smiles(connection, text, separator, format))
 }
 
-fn ingest_delimited_table(connection: &Connection, text: &str, separator: char) -> Result<usize, String> {
+fn ingest_delimited_table(
+    connection: &Connection,
+    text: &str,
+    separator: char,
+) -> Result<usize, String> {
     let rows: Vec<_> = normalized_lines(text)
         .into_iter()
         .filter(|line| !line.trim().is_empty())
@@ -344,14 +371,19 @@ fn ingest_delimited_table(connection: &Connection, text: &str, separator: char) 
     else {
         return Err("missing smiles column".to_string());
     };
-    let name_index = normalized_headers.iter().enumerate().position(|(index, value)| {
-        index != smiles_index
-            && matches!(
-                value.as_str(),
-                "compound_id" | "id" | "name" | "title" | "compound"
-            )
-    });
-    let tx = connection.unchecked_transaction().map_err(|err| err.to_string())?;
+    let name_index = normalized_headers
+        .iter()
+        .enumerate()
+        .position(|(index, value)| {
+            index != smiles_index
+                && matches!(
+                    value.as_str(),
+                    "compound_id" | "id" | "name" | "title" | "compound"
+                )
+        });
+    let tx = connection
+        .unchecked_transaction()
+        .map_err(|err| err.to_string())?;
     let mut insert = tx
         .prepare(
             "insert into molecules (source_index, name, smiles, molblock, props_json, search_text)
@@ -421,7 +453,9 @@ fn ingest_delimited_rows_as_smiles(
         .first()
         .map(|row| is_likely_delimited_header(&parse_delimited_line(row, separator)))
         .unwrap_or(false) as usize;
-    let tx = connection.unchecked_transaction().map_err(|err| err.to_string())?;
+    let tx = connection
+        .unchecked_transaction()
+        .map_err(|err| err.to_string())?;
     let mut insert = tx
         .prepare(
             "insert into molecules (source_index, name, smiles, molblock, props_json, search_text)
@@ -462,7 +496,9 @@ fn ingest_delimited_rows_as_smiles(
     drop(insert);
     tx.commit().map_err(|err| err.to_string())?;
     if records_total == 0 {
-        return Err(format!("{format} table does not contain supported molecule records"));
+        return Err(format!(
+            "{format} table does not contain supported molecule records"
+        ));
     }
     Ok(records_total)
 }
@@ -561,7 +597,15 @@ fn looks_like_smiles(value: &str) -> bool {
     let lowered = trimmed.to_lowercase();
     if matches!(
         lowered.as_str(),
-        "smiles" | "smile" | "id" | "name" | "title" | "compound" | "molecule" | "structure" | "inchi"
+        "smiles"
+            | "smile"
+            | "id"
+            | "name"
+            | "title"
+            | "compound"
+            | "molecule"
+            | "structure"
+            | "inchi"
     ) {
         return false;
     }
@@ -647,7 +691,8 @@ mod tests {
     #[test]
     fn builds_csv_store_and_fetches_sorted_pages() {
         let runtime_dir = temp_runtime_dir();
-        let csv = "smiles,name,series\nCCO,Ethanol,Alpha\nc1ccccc1,Benzene,Beta\nCCN,Ethylamine,Gamma\n";
+        let csv =
+            "smiles,name,series\nCCO,Ethanol,Alpha\nc1ccccc1,Benzene,Beta\nCCN,Ethylamine,Gamma\n";
 
         let (database_path, summary) = build_grid_store(&runtime_dir, "csv", csv.as_bytes())
             .expect("build grid store")
@@ -668,7 +713,10 @@ mod tests {
         assert_eq!(page.total_rows, 3);
         assert_eq!(page.rows.len(), 2);
         assert_eq!(page.rows[0].name, "Benzene");
-        assert_eq!(page.rows[0].props.get("series").map(String::as_str), Some("Beta"));
+        assert_eq!(
+            page.rows[0].props.get("series").map(String::as_str),
+            Some("Beta")
+        );
         assert_eq!(page.rows[1].name, "Ethanol");
 
         let filtered = fetch_page(
@@ -711,7 +759,10 @@ mod tests {
         .expect("fetch page");
         assert_eq!(page.total_rows, 2);
         assert_eq!(page.rows.len(), 2);
-        assert_eq!(page.rows[0].props.get("Column 3").map(String::as_str), Some("42"));
+        assert_eq!(
+            page.rows[0].props.get("Column 3").map(String::as_str),
+            Some("42")
+        );
         assert_eq!(page.rows[1].name, "Ethylamine");
 
         let _ = std::fs::remove_dir_all(&runtime_dir);

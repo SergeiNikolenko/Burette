@@ -124,15 +124,25 @@ The local installer places the app here:
 
 Current project documentation starts at [docs/README.md](docs/README.md).
 
-## Development Checks
+## Development
 
-Useful local checks:
+Burrete follows the Writer Computer development convention of using Vite+
+through the `vp` CLI. Use `vp` as the entrypoint for frontend work and
+JavaScript validation:
 
 ```bash
-bun run check:js
-bun run test:agent
-bun run ci:fast
+vp install
+vp dev
+vp check
+vp test
+vp build
 ```
+
+Existing Burrete package scripts may still be run through `vp run <script>` for
+project-specific checks, but day-to-day development and JavaScript validation
+should use the Vite+ built-ins above. Rust validation runs from
+`apps/desktop/src-tauri`; native release scripts remain under `scripts/`. See
+[docs/vite-plus.md](docs/vite-plus.md) and [docs/releasing.md](docs/releasing.md).
 
 The Quick Look extension caches generated runtime files under the extension
 container. After replacing the app, refresh Quick Look with:
