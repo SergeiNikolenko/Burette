@@ -113,11 +113,16 @@ export default function App() {
   const {
     sidebarOpen,
     sidebarWidth,
+    projectsOpen,
     projectRoots,
     expandedProjectIds,
+    pinnedStructurePaths,
     sidebarQuery,
     setSidebarWidth,
+    toggleProjectsOpen,
+    setExpandedProjectIds,
     addProjectRoot,
+    togglePinnedStructure,
     setSidebarQuery,
     toggleProjectExpanded,
     toggleSidebar,
@@ -189,7 +194,8 @@ export default function App() {
     recentStructures: documents.length === 0 ? recentStructures : [],
     projectRoots,
     activeDocumentId: activeDocument?.id ?? null,
-  }), [activeDocument?.id, documents, projectRoots, recentStructures]);
+    pinnedStructurePaths,
+  }), [activeDocument?.id, documents, pinnedStructurePaths, projectRoots, recentStructures]);
 
   const activeProject = useMemo(
     () => allSidebarProjects.find((project) => project.isActive) ?? null,
@@ -510,6 +516,7 @@ export default function App() {
           message?: string;
           value?: string;
           documentId?: string;
+          path?: string | null;
           orientationRef?: string | null;
           preset?: string | null;
           text?: string | null;
@@ -607,7 +614,7 @@ export default function App() {
           : null) ?? activeDocument;
         if (targetDocument) {
           pushStatus("Opening SDF poses in Mol*...");
-          void openDocuments([targetDocument.path], undefined, { rendererMode: "molstar" });
+          void openDocuments([targetDocument.path], {}, { rendererMode: "molstar" });
         }
         return;
       }
@@ -615,9 +622,12 @@ export default function App() {
         const targetDocument = (body.documentId
           ? documents.find((document) => document.id === body.documentId)
           : null) ?? activeDocument;
-        if (targetDocument) {
+        const targetPath = typeof body.path === "string" && body.path.trim().length > 0
+          ? body.path.trim()
+          : targetDocument?.path;
+        if (targetPath) {
           pushStatus("Opening SDF grid...");
-          void openDocuments([targetDocument.path], undefined, { rendererMode: "auto" });
+          void openDocuments([targetPath], undefined, { rendererMode: "auto" });
         }
         return;
       }
@@ -739,8 +749,11 @@ export default function App() {
     openWorkspaceFolder,
     openProjectFolder,
     toggleSidebar,
+    toggleProjectsOpen,
+    setExpandedProjectIds,
     setSidebarQuery,
     toggleProjectExpanded,
+    togglePinnedStructure,
     closeDocument,
     closeTab,
     closeActiveDocument: () => {
@@ -802,7 +815,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeTab, focusSidebarSearch, installUpdate, navigateBack, navigateForward, openCommandPalette, openDockingDocument, openNewTab, openProjectFolder, openRecentStructure, openSettings, openWorkspaceFolder, pushErrorStatus, pushStatus, selectDocument, setActiveTab, setPreference, setSidebarQuery, setUpdatePreferences, toggleProjectExpanded, toggleSidebar, update.availableRelease]);
+  }), [canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeTab, focusSidebarSearch, installUpdate, navigateBack, navigateForward, openCommandPalette, openDockingDocument, openNewTab, openProjectFolder, openRecentStructure, openSettings, openWorkspaceFolder, pushErrorStatus, pushStatus, selectDocument, setActiveTab, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
@@ -816,7 +829,9 @@ export default function App() {
     visibleDocuments: documents,
     recentStructures,
     sidebarProjects: allSidebarProjects,
+    projectsOpen,
     expandedProjectIds,
+    pinnedStructurePaths,
     workspacePath,
     page,
     sidebarOpen,

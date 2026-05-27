@@ -32,6 +32,14 @@ const recentStructures = [
     openedAt: 8,
   },
   {
+    path: "/Users/test/Matcha/zrecent.pdb",
+    title: "zrecent.pdb",
+    extension: "pdb",
+    renderer: "molstar",
+    byteCount: 96,
+    openedAt: 12,
+  },
+  {
     path: "/Users/test/Burette/mini.sdf",
     title: "mini.sdf",
     extension: "sdf",
@@ -44,28 +52,42 @@ const recentStructures = [
 const projects = buildSidebarProjects({
   documents,
   recentStructures,
-  projectRoots: ["/Users/test/Matcha", "/Users/test/Burette"],
+  projectRoots: ["/Users/test/Matcha", "/Users/test/Burette", "/Users/test/Empty"],
   activeDocumentId: "doc-1",
+  pinnedStructurePaths: ["/Users/test/Matcha/archive/alt-mini.pdb"],
 });
 
-assert.equal(projects.length, 2);
-assert.equal(projects[0].title, "Burette");
-assert.equal(projects[0].items[0].relativePath, "mini.sdf");
-assert.equal(projects[1].title, "Matcha");
-assert.equal(projects[1].isActive, true);
-assert.equal(projects[1].items.length, 2);
+assert.equal(projects.length, 3);
+const buretteProject = projects.find((project) => project.title === "Burette");
+const emptyProject = projects.find((project) => project.title === "Empty");
+const matchaProject = projects.find((project) => project.title === "Matcha");
+assert.ok(buretteProject);
+assert.ok(emptyProject);
+assert.ok(matchaProject);
+assert.equal(buretteProject.items[0].relativePath, "mini.sdf");
+assert.equal(emptyProject.items.length, 0);
+assert.equal(matchaProject.isActive, true);
+assert.equal(matchaProject.items.length, 3);
 assert.deepEqual(
-  projects[1].items.map((item) => ({ path: item.path, relativePath: item.relativePath, source: item.source })),
+  matchaProject.items.map((item) => ({ path: item.path, relativePath: item.relativePath, source: item.source, isPinned: item.isPinned })),
   [
     {
       path: "/Users/test/Matcha/archive/alt-mini.pdb",
       relativePath: "archive/alt-mini.pdb",
       source: "recent",
+      isPinned: true,
     },
     {
       path: "/Users/test/Matcha/ligands/mini.pdb",
       relativePath: "ligands/mini.pdb",
       source: "open",
+      isPinned: false,
+    },
+    {
+      path: "/Users/test/Matcha/zrecent.pdb",
+      relativePath: "zrecent.pdb",
+      source: "recent",
+      isPinned: false,
     },
   ],
 );

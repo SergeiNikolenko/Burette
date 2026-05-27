@@ -23,13 +23,27 @@ type Atom = {
   z: number;
 };
 
+type ConvertedStructureData = {
+  bytes: Uint8Array;
+  molstarFormat: string;
+};
+
+type MaestroAtom = Atom & {
+  atomName: string;
+  residueName: string;
+  residueNumber: number;
+  chainName: string;
+};
+
 const MAX_STRUCTURE_FILE_SIZE = 75 * 1024 * 1024;
-const MAESTRO_PREVIEW_READ_LIMIT = 32 * 1024 * 1024;
+const MAESTRO_PREVIEW_READ_LIMIT = 64 * 1024 * 1024;
 const MAESTRO_PREVIEW_ATOM_LIMIT = 3000;
+const MAESTRO_PDB_PREVIEW_ATOM_LIMIT = 30000;
 const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT = 1500;
+const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
-const GRID_ASSET_VERSION = "grid-ui-v35";
-const VIEWER_ASSET_VERSION = "viewer-ui-v9";
+const GRID_ASSET_VERSION = "grid-ui-v45";
+const VIEWER_ASSET_VERSION = "viewer-ui-v10";
 const REPO_ROOT = String(import.meta.env.BURRETE_REPO_ROOT || "");
 const WEB_ASSETS_BASE = fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
 
@@ -149,6 +163,11 @@ export async function openBrowserDevDockingDocument(
   const id = stableId(`docking:${receptor.path}:${ligands.map((ligand) => ligand.path).join("|")}`);
   const label = `Docking: ${receptor.title} + ${ligands.length} ligand${ligands.length === 1 ? "" : "s"}`;
   const visuals = resolvePreviewVisuals(preferences);
+  const sdfGridPath = ligands.find((ligand) => (
+    ligand.format.molstarFormat === "sdf"
+      && !ligand.format.binary
+      && parseSdf(decodeUtf8(ligand.bytes)).length > 1
+  ))?.path ?? null;
   const config = {
     format: receptor.format.molstarFormat,
     molstarFormat: receptor.format.molstarFormat,
@@ -169,6 +188,7 @@ export async function openBrowserDevDockingDocument(
     overlayOpacity: 0.9,
     transparentBackground: visuals.transparentBackground,
     sdfGrid: false,
+    sdfGridPath,
     appViewer: true,
     tauriViewer: false,
     molstarStyle: preferences.molstarStyle,
@@ -243,7 +263,8 @@ async function openBrowserDevDocument(
   const grid = gridPayload(path, extension, text);
   const requestedMode = normalizeRendererMode(preferences.rendererMode);
   const explicitSdfViewer = isSdfExtension(extension)
-    && (requestedMode === "molstar" || (requestedMode === "xyzrender-external" && Boolean(reloadOptions)));
+    && Boolean(reloadOptions)
+    && (requestedMode === "molstar" || requestedMode === "xyzrender-external");
   if (grid && !(grid.format === "sdf" && explicitSdfViewer)) {
     const html = await gridHtml(path, grid.records, grid.format, preferences, bytes.length);
     return browserDocument(path, extension, "grid2d", html, bytes.length);
@@ -253,27 +274,34 @@ async function openBrowserDevDocument(
   }
 
   const format = formatForExtension(extension);
-  const maestroPreviewBytes = isMaestroPreviewExtension(extension)
-    ? xyzDataFromText(text, extension, fileTitle(path))
+  const maestroPreview = isMaestroPreviewExtension(extension)
+    ? convertedDataFromText(text, extension, fileTitle(path))
     : null;
-  if (isMaestroPreviewExtension(extension) && !maestroPreviewBytes) {
+  if (isMaestroPreviewExtension(extension) && !maestroPreview) {
     throw new Error(`${path}: no Maestro atom table could be extracted for preview`);
   }
-  const runtimeFormat = maestroPreviewBytes
-    ? { ...format, molstarFormat: "xyz", binary: false, externalOnly: false }
+  const runtimeFormat = maestroPreview
+    ? { ...format, molstarFormat: maestroPreview.molstarFormat, binary: false, externalOnly: false }
     : format;
-  const sourceXyzBytes = maestroPreviewBytes ?? xyzDataFromText(text, extension, fileTitle(path));
-  const molstarBytes: Uint8Array | null = sourceXyzBytes && (format.externalOnly || shouldUseConvertedMolstarData(format, sourceXyzBytes))
-    ? sourceXyzBytes
+  const sourceXyzBytes = xyzDataFromText(text, extension, fileTitle(path));
+  const convertedMolstarData = maestroPreview ?? convertedDataFromText(text, extension, fileTitle(path));
+  const molstarBytes: Uint8Array | null = convertedMolstarData?.bytes && (format.externalOnly || shouldUseConvertedMolstarData(format, convertedMolstarData.bytes))
+    ? convertedMolstarData.bytes
     : null;
-  const xyzrenderAvailable = maestroPreviewBytes ? false : xyzrenderAvailableForDocument(format, text);
+  const xyzFrameCount = runtimeFormat.molstarFormat === "xyz" && !runtimeFormat.binary ? countXyzFrames(text) : 0;
+  const shouldOpenXyzTrajectoryInMolstar = xyzFrameCount > 1 && requestedMode === "auto";
+  const xyzrenderAvailable = maestroPreview ? false : xyzrenderAvailableForDocument(format, text);
   const requestedRenderer = resolveRenderer(
     runtimeFormat,
-    maestroPreviewBytes ? "molstar" : (xyzrenderAvailable ? defaultRendererModeForDocument(extension, requestedMode, reloadOptions) : "molstar"),
+    maestroPreview
+      ? "molstar"
+      : (shouldOpenXyzTrajectoryInMolstar
+        ? "molstar"
+        : (xyzrenderAvailable ? defaultRendererModeForDocument(extension, requestedMode, reloadOptions) : "molstar")),
     Boolean(molstarBytes),
   );
   const defaultXyzrender = await defaultXyzrenderPlanForDocument(path, extension, text);
-  const xyzrenderInputBytes = extension === "cub" || extension === "cube" ? null : molstarBytes;
+  const xyzrenderInputBytes = extension === "cub" || extension === "cube" ? null : sourceXyzBytes;
   const { renderer, externalRendererStatus, externalArtifact, xyzrenderPresetOptions, xyzrenderControls } =
     await browserRendererPlan(
       defaultXyzrender?.inputPath ?? path,
@@ -285,8 +313,8 @@ async function openBrowserDevDocument(
       xyzrenderInputBytes,
     );
   const viewerBytes = renderer === "molstar" && molstarBytes ? molstarBytes : bytes;
-  const viewerFormat = renderer === "molstar" && molstarBytes && (!format.externalOnly || maestroPreviewBytes)
-    ? { ...runtimeFormat, molstarFormat: "xyz", binary: false, externalOnly: false }
+  const viewerFormat = renderer === "molstar" && molstarBytes && convertedMolstarData
+    ? { ...runtimeFormat, molstarFormat: convertedMolstarData.molstarFormat, binary: false, externalOnly: false }
     : runtimeFormat;
   const html = viewerHtml(
     path,
@@ -301,6 +329,9 @@ async function openBrowserDevDocument(
     externalArtifact,
     xyzrenderPresetOptions,
     xyzrenderControls,
+    "",
+    undefined,
+    xyzFrameCount,
   );
   return browserDocument(path, extension, renderer, html, sourceByteCount);
 }
@@ -344,14 +375,14 @@ async function readBrowserDevDockingPayload(path: string): Promise<BrowserDevDoc
   const format = formatForExtension(extension);
   const title = fileTitle(path);
   const text = decodeUtf8(originalBytes);
-  const converted = xyzDataFromText(text, extension, title);
-  if (converted && (format.externalOnly || shouldUseConvertedMolstarData(format, converted))) {
+  const converted = convertedDataFromText(text, extension, title);
+  if (converted && (format.externalOnly || shouldUseConvertedMolstarData(format, converted.bytes))) {
     return {
       path,
       title,
       extension,
-      format: { ...format, molstarFormat: "xyz", binary: false, externalOnly: false },
-      bytes: converted,
+      format: { ...format, molstarFormat: converted.molstarFormat, binary: false, externalOnly: false },
+      bytes: converted.bytes,
       byteCount: originalBytes.length,
     };
   }
@@ -387,6 +418,7 @@ function viewerHtml(
   xyzrenderControls?: XyzrenderControls | null,
   extraWindowScript = "",
   configOverride?: Record<string, unknown>,
+  trajectoryFrameCount = 0,
 ) {
   const label = fileTitle(path);
   const visuals = resolvePreviewVisuals(preferences);
@@ -411,6 +443,8 @@ function viewerHtml(
     transparentBackground: visuals.transparentBackground,
     sdfGrid: true,
     sdfPosePager: renderer === "molstar" && format.molstarFormat === "sdf" && !format.binary,
+    trajectoryControls: renderer === "molstar" && trajectoryFrameCount > 1,
+    trajectoryFrameCount,
     appViewer: true,
     tauriViewer: false,
     molstarStyle: preferences.molstarStyle,
@@ -873,6 +907,23 @@ function defaultRendererModeForDocument(extension: string, requestedMode: string
   return requestedMode;
 }
 
+function countXyzFrames(text: string) {
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  let index = 0;
+  let frames = 0;
+  while (index < lines.length && frames < 100000) {
+    while (index < lines.length && !lines[index].trim()) index += 1;
+    const atomCount = Number.parseInt(lines[index]?.trim().split(/\s+/u)[0] ?? "", 10);
+    if (!Number.isFinite(atomCount) || atomCount <= 0) break;
+    if (index + atomCount + 1 >= lines.length) break;
+    const atomLines = lines.slice(index + 2, index + 2 + atomCount);
+    if (atomLines.length !== atomCount || atomLines.some((line) => !line.trim())) break;
+    frames += 1;
+    index += atomCount + 2;
+  }
+  return frames;
+}
+
 type DefaultXyzrenderPlan = {
   controls: XyzrenderControls;
   inputPath?: string;
@@ -1039,7 +1090,41 @@ function browserDevSourceByteCount(response: Response, fallback: number) {
   return Number.isFinite(contentLength) && contentLength > 0 ? contentLength : fallback;
 }
 
+function convertedDataFromText(text: string, extension: string, label: string): ConvertedStructureData | null {
+  if (isMaestroPreviewExtension(extension)) {
+    const bytes = maestroPdbDataFromText(text);
+    return bytes ? { bytes, molstarFormat: "pdb" } : null;
+  }
+  const bytes = pdbDataFromText(text, extension, label);
+  return bytes ? { bytes, molstarFormat: "pdb" } : null;
+}
+
 function xyzDataFromText(text: string, extension: string, label: string) {
+  const atoms = atomsFromText(text, extension);
+  if (!atoms?.length) return null;
+  const xyz = [
+    String(atoms.length),
+    `Converted from ${label}`,
+    ...atoms.map((atom) => `${atom.symbol} ${formatCoordinate(atom.x)} ${formatCoordinate(atom.y)} ${formatCoordinate(atom.z)}`),
+    "",
+  ].join("\n");
+  return new TextEncoder().encode(xyz);
+}
+
+function pdbDataFromText(text: string, extension: string, label: string) {
+  const atoms = atomsFromText(text, extension);
+  if (!atoms?.length) return null;
+  const pdb = [
+    `REMARK Converted from ${label}`,
+    ...atoms.slice(0, 99999).map((atom, index) => genericPdbAtomLine(index + 1, atom)),
+    ...pdbConectLines(atoms),
+    "END",
+    "",
+  ].join("\n");
+  return new TextEncoder().encode(pdb);
+}
+
+function atomsFromText(text: string, extension: string) {
   const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
   let atoms: Atom[] | null = null;
   if (extension === "cub" || extension === "cube") {
@@ -1056,19 +1141,38 @@ function xyzDataFromText(text: string, extension: string, label: string) {
     atoms = parseMaestroAtoms(lines, MAESTRO_PREVIEW_ATOM_LIMIT);
   }
   atoms ??= parseBestCoordinateBlock(lines);
+  return atoms;
+}
+
+function maestroPdbDataFromText(text: string) {
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const atoms = parseMaestroPdbAtoms(lines, MAESTRO_PDB_PREVIEW_ATOM_LIMIT);
   if (!atoms?.length) return null;
-  const xyz = [
-    String(atoms.length),
-    `Converted from ${label}`,
-    ...atoms.map((atom) => `${atom.symbol} ${formatCoordinate(atom.x)} ${formatCoordinate(atom.y)} ${formatCoordinate(atom.z)}`),
+  const pdb = [
+    ...atoms.map((atom, index) => maestroPdbAtomLine(index + 1, atom)),
+    ...pdbConectLines(atoms),
+    "END",
     "",
   ].join("\n");
-  return new TextEncoder().encode(xyz);
+  return new TextEncoder().encode(pdb);
 }
 
 function parseMaestroAtoms(lines: string[], atomLimit: number) {
+  return parseMaestroPdbAtoms(lines, atomLimit)?.map(({ symbol, x, y, z }) => ({ symbol, x, y, z })) ?? null;
+}
+
+function parseMaestroPdbAtoms(lines: string[], atomLimit: number) {
+  let currentCtType = "";
+  let bestScore = -1;
+  let bestAtoms: MaestroAtom[] | null = null;
   for (let index = 0; index < lines.length; index += 1) {
     const trimmed = lines[index].trim();
+    if (trimmed === "f_m_ct {") {
+      const result = parseMaestroCtType(lines, index + 1);
+      currentCtType = result.ctType;
+      index = result.nextIndex - 1;
+      continue;
+    }
     if (!trimmed.startsWith("m_atom[") || !trimmed.endsWith("{")) continue;
 
     const headers: string[] = [];
@@ -1097,8 +1201,12 @@ function parseMaestroAtoms(lines: string[], atomLimit: number) {
     const atomicNumberIndex = maestroHeaderIndex(headers, "i_m_atomic_number");
     const elementIndex = firstPresentHeaderIndex(headers, ["s_m_element", "s_m_pdb_element"]);
     const atomNameIndex = firstPresentHeaderIndex(headers, ["s_m_atom_name", "s_m_pdb_atom_name"]);
+    const pdbAtomNameIndex = firstPresentHeaderIndex(headers, ["s_m_pdb_atom_name", "s_m_atom_name"]);
+    const residueNameIndex = firstPresentHeaderIndex(headers, ["s_m_pdb_residue_name", "s_m_mmod_res"]);
+    const residueNumberIndex = maestroHeaderIndex(headers, "i_m_residue_number");
+    const chainNameIndex = maestroHeaderIndex(headers, "s_m_chain_name");
 
-    const atoms: Atom[] = [];
+    const atoms: MaestroAtom[] = [];
     while (index < lines.length) {
       const rowLine = lines[index].trim();
       index += 1;
@@ -1111,12 +1219,188 @@ function parseMaestroAtoms(lines: string[], atomLimit: number) {
       const z = Number(row[zIndex + rowOffset]);
       const symbol = maestroAtomSymbol(row, rowOffset, atomicNumberIndex, elementIndex, atomNameIndex);
       if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z) || !symbol) continue;
-      atoms.push({ symbol, x, y, z });
+      const atomName = normalizePdbAtomName((pdbAtomNameIndex >= 0 ? row[pdbAtomNameIndex + rowOffset] : symbol) || symbol);
+      const residueName = normalizePdbResidueName((residueNameIndex >= 0 ? row[residueNameIndex + rowOffset] : "MOL") || "MOL") || "MOL";
+      const residueNumber = Number.parseInt((residueNumberIndex >= 0 ? row[residueNumberIndex + rowOffset] : "1") || "1", 10);
+      const chainName = normalizePdbChainName((chainNameIndex >= 0 ? row[chainNameIndex + rowOffset] : "A") || "A");
+      atoms.push({
+        symbol,
+        atomName: atomName || symbol,
+        residueName,
+        residueNumber: Number.isFinite(residueNumber) ? residueNumber : 1,
+        chainName,
+        x,
+        y,
+        z,
+      });
       if (atoms.length >= atomLimit) break;
     }
-    if (atoms.length) return atoms;
+    if (atoms.length) {
+      const score = maestroCtScore(currentCtType);
+      if (score > bestScore) {
+        bestScore = score;
+        bestAtoms = atoms;
+      }
+    }
   }
-  return null;
+  return bestAtoms;
+}
+
+function parseMaestroCtType(lines: string[], startIndex: number) {
+  let index = startIndex;
+  const headers: string[] = [];
+  while (index < lines.length) {
+    const line = lines[index].trim();
+    index += 1;
+    if (line === ":::") break;
+    if (line.startsWith("m_atom[") || line === "}") return { ctType: "", nextIndex: index - 1 };
+    headers.push(...fields(line));
+  }
+  const ctTypeIndex = maestroHeaderIndex(headers, "s_ffio_ct_type");
+  const values: string[] = [];
+  while (index < lines.length) {
+    const line = lines[index].trim();
+    if (line.startsWith("m_atom[") || line === "}") break;
+    values.push(...cifTokens(line));
+    index += 1;
+  }
+  return { ctType: (values[ctTypeIndex] || "").trim().toLowerCase(), nextIndex: index };
+}
+
+function maestroCtScore(ctType: string) {
+  if (ctType === "solute") return 4;
+  if (ctType === "full_system") return 3;
+  if (ctType === "ion") return 1;
+  if (ctType === "solvent") return 0;
+  return 2;
+}
+
+function maestroPdbAtomLine(serial: number, atom: MaestroAtom) {
+  const residueName = truncateAscii(atom.residueName, 3) || "MOL";
+  const atomName = formatPdbAtomName(atom.atomName, atom.symbol);
+  const chainName = truncateAscii(atom.chainName, 1) || "A";
+  const record = isStandardPolymerResidue(residueName) ? "ATOM" : "HETATM";
+  return [
+    record.padEnd(6, " "),
+    String(Math.min(serial, 99999)).padStart(5, " "),
+    " ",
+    atomName.padEnd(4, " ").slice(0, 4),
+    " ",
+    residueName.padStart(3, " "),
+    " ",
+    chainName,
+    String(clamp(atom.residueNumber, -999, 9999)).padStart(4, " "),
+    "    ",
+    formatPdbCoordinate(atom.x),
+    formatPdbCoordinate(atom.y),
+    formatPdbCoordinate(atom.z),
+    "  1.00 10.00          ",
+    truncateAscii(atom.symbol, 2).padStart(2, " "),
+  ].join("");
+}
+
+function genericPdbAtomLine(serial: number, atom: Atom) {
+  const symbol = normalizeElementSymbol(atom.symbol);
+  const atomName = formatPdbAtomName(symbol, symbol);
+  return [
+    "HETATM",
+    String(Math.min(serial, 99999)).padStart(5, " "),
+    " ",
+    atomName.padEnd(4, " ").slice(0, 4),
+    " ",
+    "MOL",
+    " ",
+    "A",
+    String(1).padStart(4, " "),
+    "    ",
+    formatPdbCoordinate(atom.x),
+    formatPdbCoordinate(atom.y),
+    formatPdbCoordinate(atom.z),
+    "  1.00 10.00          ",
+    truncateAscii(symbol, 2).padStart(2, " "),
+  ].join("");
+}
+
+function pdbConectLines(atoms: Atom[]) {
+  const bonds = inferPdbBonds(atoms);
+  if (!bonds.length) return [];
+  const adjacency = Array.from({ length: Math.min(atoms.length, 99999) }, () => [] as number[]);
+  for (const [left, right] of bonds) {
+    adjacency[left].push(right + 1);
+    adjacency[right].push(left + 1);
+  }
+  const lines: string[] = [];
+  adjacency.forEach((neighbors, index) => {
+    for (let offset = 0; offset < neighbors.length; offset += 4) {
+      lines.push(`CONECT${String(index + 1).padStart(5, " ")}${neighbors.slice(offset, offset + 4).map((serial) => String(serial).padStart(5, " ")).join("")}`);
+    }
+  });
+  return lines;
+}
+
+function inferPdbBonds(atoms: Atom[]) {
+  const cappedAtoms = atoms.slice(0, 99999);
+  if (cappedAtoms.length > 2000) return [];
+  const bonds: Array<[number, number]> = [];
+  for (let left = 0; left < cappedAtoms.length; left += 1) {
+    const leftRadius = covalentRadius(cappedAtoms[left].symbol);
+    if (!leftRadius) continue;
+    for (let right = left + 1; right < cappedAtoms.length; right += 1) {
+      const rightRadius = covalentRadius(cappedAtoms[right].symbol);
+      if (!rightRadius) continue;
+      const dx = cappedAtoms[left].x - cappedAtoms[right].x;
+      const dy = cappedAtoms[left].y - cappedAtoms[right].y;
+      const dz = cappedAtoms[left].z - cappedAtoms[right].z;
+      const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      const maxDistance = Math.min(leftRadius + rightRadius + 0.45, 2.25);
+      if (distance >= 0.35 && distance <= maxDistance) bonds.push([left, right]);
+    }
+  }
+  return bonds;
+}
+
+function covalentRadius(symbol: string) {
+  const radii: Record<string, number> = {
+    H: 0.31, He: 0.28, Li: 1.28, Be: 0.96, B: 0.84, C: 0.76, N: 0.71, O: 0.66, F: 0.57, Ne: 0.58,
+    Na: 1.66, Mg: 1.41, Al: 1.21, Si: 1.11, P: 1.07, S: 1.05, Cl: 1.02, Ar: 1.06, K: 2.03, Ca: 1.76,
+    Fe: 1.24, Co: 1.18, Ni: 1.17, Cu: 1.22, Zn: 1.22, Br: 1.20, I: 1.39,
+  };
+  return radii[normalizeElementSymbol(symbol)] ?? 0;
+}
+
+function formatPdbAtomName(atomName: string, symbol: string) {
+  return truncateAscii(atomName, 4) || truncateAscii(symbol, 2) || "X";
+}
+
+function formatPdbCoordinate(value: number) {
+  return value.toFixed(3).padStart(8, " ");
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function truncateAscii(value: string, maxLength: number) {
+  return String(value || "").replace(/[^A-Za-z0-9]/gu, "").slice(0, maxLength);
+}
+
+function normalizePdbAtomName(value: string) {
+  return String(value || "").trim().replace(/^['"]|['"]$/gu, "").trim();
+}
+
+function normalizePdbResidueName(value: string) {
+  return truncateAscii(String(value || "").trim().replace(/^['"]|['"]$/gu, "").trim(), 3).toUpperCase();
+}
+
+function normalizePdbChainName(value: string) {
+  return truncateAscii(String(value || "").trim().replace(/^['"]|['"]$/gu, "").trim(), 1) || "A";
+}
+
+function isStandardPolymerResidue(residueName: string) {
+  return new Set([
+    "ALA", "ARG", "ASN", "ASP", "CYS", "CYX", "GLN", "GLU", "GLY", "HIS", "HID", "HIE", "HIP",
+    "ILE", "LEU", "LYS", "MET", "PHE", "PRO", "SER", "THR", "TRP", "TYR", "VAL",
+  ]).has(residueName);
 }
 
 function maestroHeaderIndex(headers: string[], name: string) {
@@ -1276,6 +1560,9 @@ function parseCubeAtoms(lines: string[]) {
   if (lines.length < 6) return null;
   const count = Math.abs(Number.parseInt(fields(lines[2])[0] || "", 10));
   if (!Number.isFinite(count) || count <= 0 || lines.length < 6 + count) return null;
+  const axisCounts = [fields(lines[3])[0], fields(lines[4])[0], fields(lines[5])[0]]
+    .map((value) => Number.parseInt(value || "", 10));
+  const coordinateScale = axisCounts.every((value) => Number.isFinite(value) && value > 0) ? BOHR_TO_ANGSTROM : 1;
   const atoms: Atom[] = [];
   for (let index = 0; index < count; index += 1) {
     const parts = fields(lines[6 + index]);
@@ -1284,7 +1571,7 @@ function parseCubeAtoms(lines: string[]) {
     const y = Number(parts[3]);
     const z = Number(parts[4]);
     if (!Number.isFinite(number) || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null;
-    atoms.push({ symbol: symbolForAtomicNumber(number), x, y, z });
+    atoms.push({ symbol: symbolForAtomicNumber(number), x: x * coordinateScale, y: y * coordinateScale, z: z * coordinateScale });
   }
   return atoms;
 }

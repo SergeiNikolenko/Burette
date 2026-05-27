@@ -1,6 +1,7 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useCallback, useState } from "react";
 import type { ViewerDocument } from "../../../types";
+import { ligandDropPathsForTarget } from "../../../lib/docking-documents";
 import { hasStructureDrag, readStructureDrag } from "../../../lib/structure-drag";
 import { isTauriRuntime } from "../../../lib/tauri";
 import type { ShellActions } from "../../types";
@@ -62,7 +63,7 @@ function ViewerSurface({
     event.stopPropagation();
     setDockingDropActive(false);
     actions.setStructureDragActive(false);
-    const paths = readStructureDrag(event.dataTransfer).filter((path) => path !== document.path);
+    const paths = ligandDropPathsForTarget(document.path, readStructureDrag(event.dataTransfer));
     if (paths.length > 0) void actions.openDockingDocument(document.path, paths);
   }, [actions, document.path]);
 

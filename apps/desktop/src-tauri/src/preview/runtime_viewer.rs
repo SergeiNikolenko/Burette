@@ -7,7 +7,7 @@ use tauri::{Manager, Runtime};
 use super::formats::{FormatInfo, normalize_renderer_mode};
 use super::runtime::{ViewerPreferences, ViewerReloadOptions};
 use super::runtime_utils::{asset_url, escape_html, prune_runtime_dirs, stable_id};
-use super::text_xyz::xyz_data_from_text;
+use super::text_xyz::{converted_data_from_text, xyz_data_from_text};
 use super::xyz::{XyzPayload, xyz_first_frame};
 use super::xyzrender::{
     create_xyzrender_artifact, default_xyzrender_document_defaults, xyzrender_preset_options,
@@ -57,14 +57,31 @@ pub(crate) fn create_runtime<R: Runtime>(
         .and_then(|value| value.to_str())
         .unwrap_or("structure");
     let source_xyz_data = xyz_data_from_text(data, extension, label);
+    let converted_molstar_data = converted_data_from_text(data, extension, label);
     let external_molstar_data =
-        if format.external_only || should_use_converted_molstar_data(format, &source_xyz_data) {
-            source_xyz_data.clone()
+        if format.external_only || should_use_converted_molstar_data(format, &converted_molstar_data) {
+            converted_molstar_data.clone()
         } else {
             None
         };
+    let xyz_payload = if format.molstar_format == "xyz" && !format.is_binary {
+        xyz_first_frame(data)
+    } else {
+        None
+    };
+    let xyz_frame_count = xyz_payload
+        .as_ref()
+        .and_then(|payload| payload.frame_count)
+        .unwrap_or(0);
+    let is_xyz_trajectory = xyz_frame_count > 1;
     let xyzrender_available = xyzrender_available_for_document(format, data);
     let mut renderer = renderer.to_string();
+    if is_xyz_trajectory
+        && renderer == "xyzrender-external"
+        && normalize_renderer_mode(&preferences.renderer_mode) == "auto"
+    {
+        renderer = "molstar".to_string();
+    }
     if renderer == "xyzrender-external" && !xyzrender_available {
         renderer = "molstar".to_string();
     }
@@ -125,14 +142,15 @@ pub(crate) fn create_runtime<R: Runtime>(
     let payload = if renderer == "molstar" {
         XyzPayload {
             data: external_molstar_data
-                .clone()
+                .as_ref()
+                .map(|converted| converted.data.clone())
                 .unwrap_or_else(|| data.to_vec()),
             atom_count: None,
             frame_count: None,
             comment: None,
         }
     } else if renderer == "xyz-fast" {
-        xyz_first_frame(data).unwrap_or_else(|| XyzPayload {
+        xyz_payload.unwrap_or_else(|| XyzPayload {
             data: data.to_vec(),
             atom_count: None,
             frame_count: None,
@@ -148,8 +166,11 @@ pub(crate) fn create_runtime<R: Runtime>(
     };
 
     let molstar_format =
-        if renderer == "molstar" && external_molstar_data.is_some() && !format.external_only {
-            "xyz"
+        if renderer == "molstar" && external_molstar_data.is_some() {
+            external_molstar_data
+                .as_ref()
+                .map(|converted| converted.extension)
+                .unwrap_or(format.molstar_format.as_str())
         } else {
             format.molstar_format.as_str()
         };
@@ -174,6 +195,8 @@ pub(crate) fn create_runtime<R: Runtime>(
         "transparentBackground": preferences.resolved_transparent_background(),
         "sdfGrid": true,
         "sdfPosePager": renderer == "molstar" && molstar_format == "sdf" && !format.is_binary,
+        "trajectoryControls": renderer == "molstar" && is_xyz_trajectory,
+        "trajectoryFrameCount": xyz_frame_count,
         "appViewer": true,
         "tauriViewer": true,
         "molstarStyle": preferences.resolved_molstar_style(),
@@ -291,6 +314,10 @@ pub(crate) fn create_docking_runtime<R: Runtime>(
             "byteCount": source.byte_count
         })
     };
+    let sdf_grid_path = ligands
+        .iter()
+        .find(|ligand| ligand.format == "sdf" && sdf_record_count(&ligand.data) > 1)
+        .map(|ligand| ligand.path.as_str());
     let config = json!({
         "format": receptor.format.as_str(),
         "molstarFormat": receptor.format.as_str(),
@@ -311,6 +338,7 @@ pub(crate) fn create_docking_runtime<R: Runtime>(
         "overlayOpacity": 0.90,
         "transparentBackground": preferences.resolved_transparent_background(),
         "sdfGrid": false,
+        "sdfGridPath": sdf_grid_path,
         "appViewer": true,
         "tauriViewer": true,
         "molstarStyle": preferences.resolved_molstar_style(),
@@ -362,7 +390,17 @@ pub(crate) fn create_docking_runtime<R: Runtime>(
     })
 }
 
-fn should_use_converted_molstar_data(format: &FormatInfo, data: &Option<Vec<u8>>) -> bool {
+fn sdf_record_count(data: &[u8]) -> usize {
+    String::from_utf8_lossy(data)
+        .split("$$$$")
+        .filter(|record| !record.trim().is_empty())
+        .count()
+}
+
+fn should_use_converted_molstar_data(
+    format: &FormatInfo,
+    data: &Option<super::text_xyz::ConvertedStructureData>,
+) -> bool {
     data.is_some()
         && !format.is_binary
         && matches!(format.molstar_format.as_str(), "mmcif" | "cifCore")

@@ -13,6 +13,7 @@ export type SidebarProjectItem = {
   documentId: string | null;
   isActive: boolean;
   isOpen: boolean;
+  isPinned: boolean;
   matchText: string;
 };
 
@@ -34,18 +35,26 @@ export function buildSidebarProjects({
   recentStructures,
   projectRoots,
   activeDocumentId,
+  pinnedStructurePaths = [],
 }: {
   documents: ViewerDocument[];
   recentStructures: RecentStructure[];
   projectRoots: string[];
   activeDocumentId: string | null;
+  pinnedStructurePaths?: string[];
 }) {
   const normalizedRoots = dedupeRoots(projectRoots);
+  const pinnedPaths = new Set(pinnedStructurePaths.map((path) => normalizePath(path)));
   const openPaths = new Set(documents.map((document) => normalizePath(document.path)));
   const projects = new Map<string, SidebarProject>();
 
+  for (const rootPath of normalizedRoots) {
+    const projectId = `project:${rootPath}`;
+    projects.set(projectId, createProject(projectId, rootPath, true));
+  }
+
   for (const document of documents) {
-    addStructureToProjects(projects, normalizedRoots, {
+    addStructureToProjects(projects, normalizedRoots, pinnedPaths, {
       structure: document,
       activeDocumentId,
       source: "open",
@@ -54,7 +63,7 @@ export function buildSidebarProjects({
 
   for (const structure of recentStructures) {
     if (openPaths.has(normalizePath(structure.path))) continue;
-    addStructureToProjects(projects, normalizedRoots, {
+    addStructureToProjects(projects, normalizedRoots, pinnedPaths, {
       structure,
       activeDocumentId,
       source: "recent",
@@ -109,6 +118,7 @@ function dedupeRoots(projectRoots: string[]) {
 function addStructureToProjects(
   projects: Map<string, SidebarProject>,
   projectRoots: string[],
+  pinnedPaths: Set<string>,
   {
     structure,
     activeDocumentId,
@@ -139,6 +149,7 @@ function addStructureToProjects(
     documentId: "id" in structure ? structure.id : null,
     isActive: "id" in structure && structure.id === activeDocumentId,
     isOpen: source === "open",
+    isPinned: pinnedPaths.has(normalizedPath),
     matchText: `${project.title} ${relativePath} ${itemTitle}`.trim().toLowerCase(),
   } satisfies SidebarProjectItem;
   project.items.push(item);
@@ -182,6 +193,7 @@ function relativeToRoot(rootPath: string, path: string) {
 }
 
 function compareProjectItems(left: SidebarProjectItem, right: SidebarProjectItem) {
+  if (left.isPinned !== right.isPinned) return left.isPinned ? -1 : 1;
   return left.relativePath.localeCompare(right.relativePath);
 }
 

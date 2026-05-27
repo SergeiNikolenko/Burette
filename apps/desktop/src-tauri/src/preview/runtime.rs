@@ -11,10 +11,10 @@ use super::formats::{
 use super::runtime_grid::{create_grid_runtime, grid_requires_preview};
 use super::runtime_utils::{file_title, stable_id};
 use super::runtime_viewer::{DockingRuntimeSource, create_docking_runtime, create_runtime};
-use super::text_xyz::xyz_data_from_text;
+use super::text_xyz::converted_data_from_text;
 
 const MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
-const MAESTRO_PREVIEW_READ_LIMIT: u64 = 32 * 1024 * 1024;
+const MAESTRO_PREVIEW_READ_LIMIT: u64 = 64 * 1024 * 1024;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -318,20 +318,21 @@ pub(crate) fn open_document<R: Runtime>(
     let document_id = stable_id(&canonical);
     let title = file_title(&canonical);
     let maestro_preview_data = if is_maestro_preview_extension(&extension) {
-        xyz_data_from_text(&data, &extension, &title)
+        converted_data_from_text(&data, &extension, &title)
     } else {
         None
     };
     if uses_bounded_maestro_preview && maestro_preview_data.is_none() {
         return Err(format!(
-            "{} is larger than the normal preview limit and no Maestro atom table could be extracted from the first 32 MB",
+            "{} is larger than the normal preview limit and no Maestro atom table could be extracted from the first 64 MB",
             canonical.display()
         ));
     }
     let requested_renderer = normalize_renderer_mode(&preferences.renderer_mode);
     let should_use_viewer_for_sdf = matches!(extension.as_str(), "sd" | "sdf")
+        && reload_options.is_some()
         && (requested_renderer == "molstar"
-            || (requested_renderer == "xyzrender-external" && reload_options.is_some()));
+            || requested_renderer == "xyzrender-external");
     if !should_use_viewer_for_sdf {
         if let Some(runtime_path) = create_grid_runtime(
             app,
@@ -361,12 +362,14 @@ pub(crate) fn open_document<R: Runtime>(
         ));
     }
 
-    let runtime_extension = if maestro_preview_data.is_some() {
-        "xyz"
-    } else {
-        extension.as_str()
-    };
-    let runtime_data = maestro_preview_data.as_deref().unwrap_or(&data);
+    let runtime_extension = maestro_preview_data
+        .as_ref()
+        .map(|preview| preview.extension)
+        .unwrap_or(extension.as_str());
+    let runtime_data = maestro_preview_data
+        .as_ref()
+        .map(|preview| preview.data.as_slice())
+        .unwrap_or(&data);
     let format = format_for_extension(runtime_extension)?;
     let requested_renderer_for_document =
         if maestro_preview_data.is_some() {
@@ -495,7 +498,7 @@ fn read_docking_source(path: &str) -> Result<DockingRuntimeSource, String> {
     let format = format_for_extension(&extension)?;
     let label = file_title(&canonical);
     if format.external_only {
-        let converted = xyz_data_from_text(&data, &extension, &label).ok_or_else(|| {
+        let converted = converted_data_from_text(&data, &extension, &label).ok_or_else(|| {
             format!(
                 "{} cannot be added to Mol* docking view because it needs xyzrender conversion",
                 canonical.display()
@@ -505,9 +508,9 @@ fn read_docking_source(path: &str) -> Result<DockingRuntimeSource, String> {
             path: canonical.to_string_lossy().to_string(),
             label,
             extension,
-            format: "xyz".to_string(),
+            format: converted.extension.to_string(),
             binary: false,
-            data: converted,
+            data: converted.data,
             byte_count: metadata.len() as usize,
         });
     }
@@ -793,7 +796,33 @@ CARTESIAN COORDINATES (ANGSTROEM)
                 .join("preview-data.bin"),
         )
         .expect("converted preview data should be written");
-        assert!(preview_data.starts_with("2\nConverted from probe.out\n"));
+        assert!(preview_data.starts_with("REMARK Converted from probe.out\nHETATM"));
+        remove_runtime_artifacts(&document.runtime_path);
+        if let Some(parent) = path.parent() {
+            let _ = fs::remove_dir_all(parent);
+        }
+    }
+
+    #[test]
+    fn opens_multiframe_xyz_in_molstar_with_trajectory_controls_on_auto() {
+        let app = mock_app_with_grid_registry();
+        let preferences = viewer_preferences();
+        let path = create_temp_file(
+            "xyz",
+            b"2\nfirst frame\nH 0 0 0\nO 0 0 1\n2\nsecond frame\nH 1 0 0\nO 1 0 1\n",
+        );
+
+        let document = open_document(&app.handle(), path.clone(), &preferences, None)
+            .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
+        assert_eq!(document.renderer, "molstar");
+        let runtime_dir = Path::new(&document.runtime_path)
+            .parent()
+            .expect("runtime html should have a parent");
+        let config = fs::read_to_string(runtime_dir.join("preview-config.js"))
+            .expect("preview config should be written");
+        assert!(config.contains("\"trajectoryControls\":true"));
+        assert!(config.contains("\"trajectoryFrameCount\":2"));
+
         remove_runtime_artifacts(&document.runtime_path);
         if let Some(parent) = path.parent() {
             let _ = fs::remove_dir_all(parent);
