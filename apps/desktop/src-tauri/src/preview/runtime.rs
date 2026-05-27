@@ -830,6 +830,33 @@ CARTESIAN COORDINATES (ANGSTROEM)
     }
 
     #[test]
+    fn keeps_multiframe_xyz_in_molstar_when_global_renderer_is_fast() {
+        let app = mock_app_with_grid_registry();
+        let mut preferences = viewer_preferences();
+        preferences.renderer_mode = "xyz-fast".to_string();
+        let path = create_temp_file(
+            "xyz",
+            b"2\nfirst frame\nH 0 0 0\nO 0 0 1\n2\nsecond frame\nH 1 0 0\nO 1 0 1\n",
+        );
+
+        let document = open_document(&app.handle(), path.clone(), &preferences, None)
+            .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
+        assert_eq!(document.renderer, "molstar");
+        let runtime_dir = Path::new(&document.runtime_path)
+            .parent()
+            .expect("runtime html should have a parent");
+        let config = fs::read_to_string(runtime_dir.join("preview-config.js"))
+            .expect("preview config should be written");
+        assert!(config.contains("\"trajectoryControls\":true"));
+        assert!(config.contains("\"trajectoryFrameCount\":2"));
+
+        remove_runtime_artifacts(&document.runtime_path);
+        if let Some(parent) = path.parent() {
+            let _ = fs::remove_dir_all(parent);
+        }
+    }
+
+    #[test]
     fn applies_cube_surface_defaults_to_xyzrender_config() {
         with_fake_xyzrender(|| {
             let app = mock_app_with_grid_registry();

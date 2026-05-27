@@ -42,7 +42,7 @@ const MAESTRO_PDB_PREVIEW_ATOM_LIMIT = 30000;
 const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT = 1500;
 const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
-const GRID_ASSET_VERSION = "grid-ui-v45";
+const GRID_ASSET_VERSION = "grid-ui-v46";
 const VIEWER_ASSET_VERSION = "viewer-ui-v10";
 const REPO_ROOT = String(import.meta.env.BURRETE_REPO_ROOT || "");
 const WEB_ASSETS_BASE = fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
@@ -289,7 +289,7 @@ async function openBrowserDevDocument(
     ? convertedMolstarData.bytes
     : null;
   const xyzFrameCount = runtimeFormat.molstarFormat === "xyz" && !runtimeFormat.binary ? countXyzFrames(text) : 0;
-  const shouldOpenXyzTrajectoryInMolstar = xyzFrameCount > 1 && requestedMode === "auto";
+  const shouldOpenXyzTrajectoryInMolstar = xyzFrameCount > 1 && (requestedMode === "auto" || requestedMode === "xyz-fast");
   const xyzrenderAvailable = maestroPreview ? false : xyzrenderAvailableForDocument(format, text);
   const requestedRenderer = resolveRenderer(
     runtimeFormat,
