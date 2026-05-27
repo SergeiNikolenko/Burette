@@ -22,32 +22,46 @@ pub(crate) struct XyzrenderArtifact {
     pub(crate) log: String,
 }
 
+pub(crate) struct XyzrenderDocumentDefaults {
+    pub(crate) controls: XyzrenderControls,
+    pub(crate) input_path: Option<PathBuf>,
+}
+
 pub(crate) fn create_xyzrender_artifact(
     input_path: &Path,
     output_directory: &Path,
     preset: Option<&str>,
     orientation_ref_text: Option<&str>,
     controls: Option<&XyzrenderControls>,
+    converted_input: Option<&[u8]>,
 ) -> Result<XyzrenderArtifact, String> {
     let output_path = output_directory.join("xyzrender.svg");
     let log_path = output_directory.join("xyzrender.log");
+    let converted_input_path = output_directory.join("xyzrender-input.xyz");
     let orientation_ref_path = output_directory.join("orientation-ref.xyz");
     let _ = fs::remove_file(&output_path);
     let _ = fs::remove_file(&log_path);
+    let _ = fs::remove_file(&converted_input_path);
     let _ = fs::remove_file(&orientation_ref_path);
     let started = Instant::now();
     let resolved_preset = normalize_preset(preset);
     let resolved_config_argument = resolve_config_argument(resolved_preset, controls).to_string();
-    let effective_preset =
-        if resolved_preset == "custom" && resolved_config_argument == "default" {
-            "default"
-        } else {
-            resolved_preset
-        };
+    let effective_preset = if resolved_preset == "custom" && resolved_config_argument == "default" {
+        "default"
+    } else {
+        resolved_preset
+    };
+    let effective_input_path = if let Some(data) = converted_input.filter(|data| !data.is_empty()) {
+        fs::write(&converted_input_path, data)
+            .map_err(|err| format!("Could not write converted xyzrender input: {err}"))?;
+        converted_input_path.as_path()
+    } else {
+        input_path
+    };
     let (status, log) = run_xyzrender_command(
         &resolve_xyzrender_executable()?,
         build_xyzrender_args(
-            input_path,
+            effective_input_path,
             &output_path,
             resolved_preset,
             write_orientation_ref(orientation_ref_text, &orientation_ref_path)?,
@@ -79,6 +93,165 @@ pub(crate) fn create_xyzrender_artifact(
     })
 }
 
+pub(crate) fn default_xyzrender_document_defaults(
+    extension: &str,
+    input_path: &Path,
+    data: &[u8],
+) -> Option<XyzrenderDocumentDefaults> {
+    if !matches!(extension, "cub" | "cube") {
+        return None;
+    }
+    let text = String::from_utf8_lossy(data);
+    let descriptor = cube_descriptor(&text, input_path);
+    let paired_density = paired_density_cube_path(input_path, &descriptor);
+    Some(XyzrenderDocumentDefaults {
+        controls: XyzrenderControls {
+            extra_arguments: Some(
+                default_cube_surface_arguments(&text, input_path, paired_density.is_some())
+                    .join(" "),
+            ),
+            ..XyzrenderControls::default()
+        },
+        input_path: paired_density,
+    })
+}
+
+fn default_cube_surface_arguments(
+    text: &str,
+    input_path: &Path,
+    has_paired_density_cube: bool,
+) -> Vec<String> {
+    let descriptor = cube_descriptor(text, input_path);
+    match descriptor.as_str() {
+        value if value.contains("electrostatic potential") || value.contains("_esp") => Vec::new(),
+        value
+            if value.contains("molecular orbital")
+                || value.contains("_homo")
+                || value.contains("_lumo") =>
+        {
+            vec![
+                "--mo".to_string(),
+                "--opacity".to_string(),
+                "0.62".to_string(),
+                "--surface-style".to_string(),
+                "solid".to_string(),
+            ]
+        }
+        value
+            if value.contains("reduced density gradient")
+                || value.contains("rdg")
+                || value.contains("_grad")
+                || value.contains("-grad") =>
+        {
+            if has_paired_density_cube {
+                vec![
+                    "--nci-surf".to_string(),
+                    quote_command_token(&input_path.display().to_string()),
+                    "--iso".to_string(),
+                    "0.3".to_string(),
+                    "--opacity".to_string(),
+                    "0.45".to_string(),
+                    "--surface-style".to_string(),
+                    "solid".to_string(),
+                ]
+            } else {
+                vec![
+                    "--dens".to_string(),
+                    "--iso".to_string(),
+                    "0.3".to_string(),
+                    "--opacity".to_string(),
+                    "0.45".to_string(),
+                    "--surface-style".to_string(),
+                    "solid".to_string(),
+                ]
+            }
+        }
+        _ => vec![
+            "--dens".to_string(),
+            "--opacity".to_string(),
+            "0.45".to_string(),
+            "--surface-style".to_string(),
+            "solid".to_string(),
+        ],
+    }
+}
+
+fn paired_density_cube_path(input_path: &Path, descriptor: &str) -> Option<PathBuf> {
+    let is_gradient = descriptor.contains("reduced density gradient")
+        || descriptor.contains("rdg")
+        || descriptor.contains("_grad")
+        || descriptor.contains("-grad");
+    if !is_gradient {
+        return None;
+    }
+    paired_density_cube_candidates(input_path)
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+}
+
+fn paired_density_cube_candidates(input_path: &Path) -> Vec<PathBuf> {
+    let Some(name) = input_path.file_name().and_then(|value| value.to_str()) else {
+        return Vec::new();
+    };
+    let Some(parent) = input_path.parent() else {
+        return Vec::new();
+    };
+    let replacements = [
+        ("_esp.cube", "_dens.cube"),
+        ("_esp.cube", "_density.cube"),
+        ("-esp.cube", "-dens.cube"),
+        ("-esp.cube", "-density.cube"),
+        ("_esp.cub", "_dens.cub"),
+        ("_esp.cub", "_density.cub"),
+        ("-esp.cub", "-dens.cub"),
+        ("-esp.cub", "-density.cub"),
+        ("_grad.cube", "_dens.cube"),
+        ("_grad.cube", "_density.cube"),
+        ("-grad.cube", "-dens.cube"),
+        ("-grad.cube", "-density.cube"),
+        ("_grad.cub", "_dens.cub"),
+        ("_grad.cub", "_density.cub"),
+        ("-grad.cub", "-dens.cub"),
+        ("-grad.cub", "-density.cub"),
+    ];
+    let lower = name.to_ascii_lowercase();
+    let mut candidates = Vec::new();
+    for (from, to) in replacements {
+        if !lower.ends_with(from) {
+            continue;
+        }
+        let prefix_len = name.len().saturating_sub(from.len());
+        let candidate = parent.join(format!("{}{}", &name[..prefix_len], to));
+        if candidate != input_path && !candidates.contains(&candidate) {
+            candidates.push(candidate);
+        }
+    }
+    candidates
+}
+
+fn cube_descriptor(text: &str, input_path: &Path) -> String {
+    let mut descriptor = input_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    for line in text.lines().take(2) {
+        descriptor.push('\n');
+        descriptor.push_str(&line.to_ascii_lowercase());
+    }
+    descriptor
+}
+
+fn quote_command_token(value: &str) -> String {
+    if value
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || "/._-+=:".contains(character))
+    {
+        return value.to_string();
+    }
+    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
 fn write_orientation_ref<'a>(
     text: Option<&str>,
     output_path: &'a Path,
@@ -92,9 +265,7 @@ fn write_orientation_ref<'a>(
 }
 
 fn normalize_orientation_ref(text: Option<&str>) -> Option<String> {
-    let normalized = text?
-        .replace("\r\n", "\n")
-        .replace('\r', "\n");
+    let normalized = text?.replace("\r\n", "\n").replace('\r', "\n");
     if normalized.len() > 4 * 1024 * 1024 {
         return None;
     }
@@ -112,7 +283,12 @@ fn normalize_orientation_ref(text: Option<&str>) -> Option<String> {
 }
 
 fn normalize_preset(value: Option<&str>) -> &'static str {
-    match value.unwrap_or("default").trim().to_ascii_lowercase().as_str() {
+    match value
+        .unwrap_or("default")
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
         "default" => "default",
         "flat" => "flat",
         "paton" => "paton",
@@ -208,16 +384,97 @@ fn build_xyzrender_args(
             args.push("--cell-width".to_string());
             args.push(value.to_string());
         }
-        if let Some(values) = controls.supercell.filter(|row| row.iter().all(|value| *value > 0)) {
+        if let Some(values) = controls
+            .supercell
+            .filter(|row| row.iter().all(|value| *value > 0))
+        {
             args.push("--supercell".to_string());
             args.extend(values.iter().map(ToString::to_string));
         }
-        args.extend(sanitized_extra_arguments(controls.extra_arguments.as_deref()));
+        args.extend(sanitized_extra_arguments(
+            controls.extra_arguments.as_deref(),
+            controls.field_mode.is_some(),
+        ));
+        if let Some(mode) = normalized_field_mode(controls.field_mode.as_deref()) {
+            match mode {
+                "density" => args.push("--dens".to_string()),
+                "mo" => args.push("--mo".to_string()),
+                "esp" => {
+                    args.push("--esp".to_string());
+                    args.push(input_path.display().to_string());
+                }
+                "nci" => {
+                    args.push("--nci-surf".to_string());
+                    args.push(input_path.display().to_string());
+                }
+                _ => {}
+            }
+        }
+        if let Some(value) = finite_non_negative(controls.field_iso) {
+            args.push("--iso".to_string());
+            args.push(value.to_string());
+        }
+        if let Some(value) = finite_non_negative(controls.field_opacity) {
+            args.push("--opacity".to_string());
+            args.push(value.to_string());
+        }
+        if let Some(value) = normalized_surface_style(controls.field_surface_style.as_deref()) {
+            args.push("--surface-style".to_string());
+            args.push(value.to_string());
+        }
+        if let (Some(positive), Some(negative)) = (
+            non_empty_text(controls.field_mo_positive_color.as_deref()),
+            non_empty_text(controls.field_mo_negative_color.as_deref()),
+        ) {
+            args.push("--mo-colors".to_string());
+            args.push(positive.to_string());
+            args.push(negative.to_string());
+        }
+        if let Some(value) = non_empty_text(controls.field_density_color.as_deref()) {
+            args.push("--dens-color".to_string());
+            args.push(value.to_string());
+        }
+        if let Some(value) = non_empty_text(controls.field_cmap_palette.as_deref()) {
+            args.push("--cmap-palette".to_string());
+            args.push(value.to_string());
+        }
+        if let (Some(min), Some(max)) = (
+            finite_number(controls.field_cmap_min),
+            finite_number(controls.field_cmap_max),
+        ) {
+            args.push("--cmap-range".to_string());
+            args.push(min.to_string());
+            args.push(max.to_string());
+        }
     }
     args
 }
 
-fn resolve_config_argument<'a>(preset: &'static str, controls: Option<&'a XyzrenderControls>) -> &'a str {
+fn normalized_field_mode(value: Option<&str>) -> Option<&'static str> {
+    match value.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+        Some("density") => Some("density"),
+        Some("mo") => Some("mo"),
+        Some("esp") => Some("esp"),
+        Some("nci") => Some("nci"),
+        Some("auto") | Some("off") | None => None,
+        _ => None,
+    }
+}
+
+fn normalized_surface_style(value: Option<&str>) -> Option<&'static str> {
+    match value.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+        Some("solid") => Some("solid"),
+        Some("mesh") => Some("mesh"),
+        Some("contour") => Some("contour"),
+        Some("dot") => Some("dot"),
+        _ => None,
+    }
+}
+
+fn resolve_config_argument<'a>(
+    preset: &'static str,
+    controls: Option<&'a XyzrenderControls>,
+) -> &'a str {
     if preset != "custom" {
         return preset;
     }
@@ -231,25 +488,68 @@ fn finite_positive(value: Option<f64>) -> Option<f64> {
     (number.is_finite() && number > 0.0).then_some(number)
 }
 
+fn finite_non_negative(value: Option<f64>) -> Option<f64> {
+    let number = value?;
+    (number.is_finite() && number >= 0.0).then_some(number)
+}
+
+fn finite_number(value: Option<f64>) -> Option<f64> {
+    let number = value?;
+    number.is_finite().then_some(number)
+}
+
 fn non_empty_text(value: Option<&str>) -> Option<&str> {
     let text = value?.trim();
     (!text.is_empty()).then_some(text)
 }
 
-fn sanitized_extra_arguments(value: Option<&str>) -> Vec<String> {
-    let blocked = ["-o", "--output", "-go", "--gif-output", "--config", "--ref"];
+fn sanitized_extra_arguments(value: Option<&str>, strip_field_arguments: bool) -> Vec<String> {
+    let mut blocked_value_flags = vec!["-o", "--output", "-go", "--gif-output", "--config", "--ref"];
+    let mut blocked_value_count_flags = Vec::new();
+    let mut blocked = blocked_value_flags.clone();
+    if strip_field_arguments {
+        blocked_value_flags.extend([
+            "--esp",
+            "--nci-surf",
+            "--iso",
+            "--opacity",
+            "--surface-style",
+            "--dens-color",
+            "--cmap-palette",
+        ]);
+        blocked_value_count_flags.extend([("--mo-colors", 2usize), ("--cmap-range", 2usize)]);
+        blocked.extend([
+            "--esp",
+            "--nci-surf",
+            "--iso",
+            "--opacity",
+            "--surface-style",
+            "--dens-color",
+            "--cmap-palette",
+            "--mo-colors",
+            "--cmap-range",
+            "--mo",
+            "--dens",
+        ]);
+    }
     let mut result = Vec::new();
-    let mut skip_next = false;
+    let mut skip_next = 0usize;
     for token in split_command_line(value.unwrap_or_default()) {
-        if skip_next {
-            skip_next = false;
+        if skip_next > 0 {
+            skip_next -= 1;
             continue;
         }
         if blocked.contains(&token.as_str()) {
-            skip_next = true;
+            skip_next = blocked_value_count_flags
+                .iter()
+                .find_map(|(flag, count)| (*flag == token).then_some(*count))
+                .unwrap_or_else(|| usize::from(blocked_value_flags.contains(&token.as_str())));
             continue;
         }
-        if blocked.iter().any(|flag| token.starts_with(&format!("{flag}="))) {
+        if blocked
+            .iter()
+            .any(|flag| token.starts_with(&format!("{flag}=")))
+        {
             continue;
         }
         result.push(token);
@@ -518,8 +818,18 @@ mod tests {
             show_axes: Some(true),
             cell_width: Some(2.0),
             supercell: Some([2, 3, 4]),
+            field_mode: Some("mo".into()),
+            field_iso: Some(0.35),
+            field_opacity: Some(0.55),
+            field_surface_style: Some("mesh".into()),
+            field_mo_positive_color: Some("cyan".into()),
+            field_mo_negative_color: Some("purple".into()),
+            field_density_color: Some("green".into()),
+            field_cmap_palette: Some("coolwarm".into()),
+            field_cmap_min: Some(-0.2),
+            field_cmap_max: Some(0.4),
             custom_config_path: Some("/tmp/custom.json".into()),
-            extra_arguments: Some("--output hacked.svg --axis 111 --measure d".into()),
+            extra_arguments: Some("--output hacked.svg --axis 111 --measure d --opacity 0.9 --mo-colors red blue --cmap-range -1 1".into()),
         };
 
         let args = build_xyzrender_args(
@@ -542,8 +852,129 @@ mod tests {
         assert!(joined.contains("--no-ghosts"));
         assert!(joined.contains("--axes"));
         assert!(joined.contains("--supercell 2 3 4"));
+        assert!(joined.contains("--mo"));
+        assert!(joined.contains("--iso 0.35"));
+        assert!(joined.contains("--opacity 0.55"));
+        assert!(joined.contains("--surface-style mesh"));
+        assert!(joined.contains("--mo-colors cyan purple"));
+        assert!(joined.contains("--dens-color green"));
+        assert!(joined.contains("--cmap-palette coolwarm"));
+        assert!(joined.contains("--cmap-range -0.2 0.4"));
         assert!(joined.contains("--axis 111"));
         assert!(joined.contains("--measure d"));
+        assert!(!joined.contains("--opacity 0.9"));
+        assert!(!joined.contains("--mo-colors red blue"));
+        assert!(!joined.contains("--cmap-range -1 1"));
         assert!(!joined.contains("hacked.svg"));
+    }
+
+    #[test]
+    fn chooses_cube_surface_arguments_from_header() {
+        let path = Path::new("/tmp/caffeine_homo.cube");
+        let defaults = default_xyzrender_document_defaults(
+            "cube",
+            path,
+            b"Cube data generated by ORCA\nMolecular orbital 50 of operator 0\n",
+        )
+        .expect("cube should get default controls");
+        assert!(
+            defaults
+                .controls
+                .extra_arguments
+                .as_deref()
+                .unwrap_or_default()
+                .contains("--mo --opacity 0.62")
+        );
+
+        let defaults = default_xyzrender_document_defaults(
+            "cube",
+            Path::new("/tmp/caffeine_esp.cube"),
+            b"Cube data generated by ORCA\nElectrostatic Potential\n",
+        )
+        .expect("cube should get default controls");
+        assert!(
+            defaults
+                .controls
+                .extra_arguments
+                .as_deref()
+                .unwrap_or_default()
+                .is_empty()
+        );
+
+        let defaults = default_xyzrender_document_defaults(
+            "cube",
+            Path::new("/tmp/caffeine_dens.cube"),
+            b"Cube data generated by ORCA\nTotal electron density\n",
+        )
+        .expect("cube should get default controls");
+        assert!(
+            defaults
+                .controls
+                .extra_arguments
+                .as_deref()
+                .unwrap_or_default()
+                .contains("--dens --opacity 0.45")
+        );
+    }
+
+    #[test]
+    fn keeps_esp_light_and_pairs_gradient_with_sibling_density_cube() {
+        let directory =
+            std::env::temp_dir().join(format!("burrete-cube-pair-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&directory).expect("test directory should be created");
+        let dens_path = directory.join("caffeine_dens.cube");
+        let esp_path = directory.join("caffeine_esp.cube");
+        fs::write(&dens_path, b"density").expect("density cube fixture should be written");
+        fs::write(&esp_path, b"esp").expect("esp cube fixture should be written");
+
+        let defaults = default_xyzrender_document_defaults(
+            "cube",
+            &esp_path,
+            b"Cube data generated by ORCA\nElectrostatic Potential\n",
+        )
+        .expect("esp cube should get defaults");
+        assert_eq!(defaults.input_path.as_deref(), None);
+        assert!(
+            defaults
+                .controls
+                .extra_arguments
+                .as_deref()
+                .unwrap_or_default()
+                .is_empty()
+        );
+        assert!(
+            !defaults
+                .controls
+                .extra_arguments
+                .as_deref()
+                .unwrap_or_default()
+                .contains("--esp")
+        );
+
+        let base_pair_dens = directory.join("base-pair-dens.cube");
+        let base_pair_grad = directory.join("base-pair-grad.cube");
+        fs::write(&base_pair_dens, b"density").expect("density cube fixture should be written");
+        fs::write(&base_pair_grad, b"gradient").expect("gradient cube fixture should be written");
+
+        let defaults = default_xyzrender_document_defaults(
+            "cube",
+            &base_pair_grad,
+            b"Cube data generated by ORCA\nReduced density gradient\n",
+        )
+        .expect("gradient cube should get defaults");
+        assert_eq!(
+            defaults.input_path.as_deref(),
+            Some(base_pair_dens.as_path())
+        );
+        assert!(
+            defaults
+                .controls
+                .extra_arguments
+                .as_deref()
+                .unwrap_or_default()
+                .contains("--nci-surf")
+        );
+
+        let _ = fs::remove_dir_all(directory);
     }
 }

@@ -41,12 +41,14 @@ import {
   useNavigateForward,
   useSetActiveDocument,
   useSetActiveTab,
+  useSetDocuments,
 } from "./hooks/use-tabs";
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
-import { browserDevRuntimeNeedsRefresh, openBrowserDevDocuments } from "./lib/browser-dev-documents";
+import { browserDevRuntimeNeedsRefresh, openBrowserDevDockingDocument, openBrowserDevDocuments } from "./lib/browser-dev-documents";
+import { dockingRequestForDrop } from "./lib/docking-documents";
 import { buildSidebarProjects, parentDirectory } from "./lib/sidebar-projects";
 import { isTauriRuntime } from "./lib/tauri";
-import type { OpenDocumentsResult, RecentStructure, ViewerReloadOptions } from "./types";
+import type { DockingDocumentRequest, OpenDocumentsResult, RecentStructure, ViewerDocument, ViewerReloadOptions } from "./types";
 import { checkForUpdates as requestUpdateCheck, clearDismissedUpdate, dismissUpdate, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically, shouldPromptForUpdate } from "./update";
 import type { UpdatePreferences, UpdateRelease, UpdateState } from "./update";
 
@@ -57,6 +59,32 @@ const filters = [
   },
 ];
 
+async function browserDevFilesFromLocation() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.has("devDocking")) return [];
+  if (params.has("devFiles")) {
+    return splitDevFiles(params.get("devFiles") ?? "");
+  }
+  const response = await fetch("/__burette/dev-files", { cache: "no-store" });
+  if (!response.ok) return [];
+  const payload = await response.json() as { files?: unknown };
+  return Array.isArray(payload.files)
+    ? payload.files.filter((path): path is string => typeof path === "string" && path.trim().length > 0)
+    : [];
+}
+
+function splitDevFiles(rawFiles: string) {
+  return rawFiles.split("\n").map((path) => path.trim()).filter(Boolean);
+}
+
+function browserDevDockingFromLocation(): DockingDocumentRequest | null {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has("devDocking")) return null;
+  const paths = splitDevFiles(params.get("devDocking") ?? "");
+  if (paths.length < 2) return null;
+  return dockingRequestForDrop(paths[0], paths.slice(1));
+}
+
 export default function App() {
   const preferences = useViewerPreferences();
   const setPreference = useSetViewerPreference();
@@ -66,6 +94,7 @@ export default function App() {
   const activeTab = useActiveTab();
   const activeDocument = useActiveDocument();
   const addDocuments = useAddTabs();
+  const setDocuments = useSetDocuments();
   const openNewTab = useOpenNewTab();
   const openSettingsTab = useOpenSettingsTab();
   const canNavigateBack = useCanNavigateBack();
@@ -94,6 +123,7 @@ export default function App() {
     toggleSidebar,
   } = useSidebar();
   const [sidebarDragging, setSidebarDragging] = useState(false);
+  const [structureDragActive, setStructureDragActive] = useState(false);
   const [status, setStatus] = useState<StatusNotice | null>(null);
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateState>(() => ({
@@ -103,9 +133,9 @@ export default function App() {
     statusText: "No update check has run yet.",
     availableRelease: null,
   }));
-  const sidebarSearchRef = useRef<HTMLInputElement | null>(null);
   const refreshedPersistedSessionRef = useRef(false);
-  const openedBrowserDevFilesRef = useRef(false);
+  const openedBrowserDevFilesRef = useRef<string | null>(null);
+  const openedBrowserDevDockingRef = useRef<string | null>(null);
   const syncingBrowserDevFilesRef = useRef(false);
   const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions | null>(null);
   const pendingViewerReloadDocumentIdRef = useRef<string | null>(null);
@@ -151,13 +181,12 @@ export default function App() {
   }, [setActiveDocument]);
 
   const focusSidebarSearch = useCallback(() => {
-    if (!sidebarOpen) toggleSidebar();
-    requestAnimationFrame(() => sidebarSearchRef.current?.focus());
-  }, [sidebarOpen, toggleSidebar]);
+    openCommandPalette();
+  }, [openCommandPalette]);
 
   const allSidebarProjects = useMemo(() => buildSidebarProjects({
     documents,
-    recentStructures,
+    recentStructures: documents.length === 0 ? recentStructures : [],
     projectRoots,
     activeDocumentId: activeDocument?.id ?? null,
   }), [activeDocument?.id, documents, projectRoots, recentStructures]);
@@ -172,6 +201,7 @@ export default function App() {
       paths: string[],
       reloadOptions?: ViewerReloadOptions,
       preferencesOverride?: Partial<typeof preferences>,
+      options: { replace?: boolean } = {},
     ) => {
       const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
       if (!cleanPaths.length) return;
@@ -181,7 +211,8 @@ export default function App() {
         const result = isTauriRuntime()
           ? await invoke<OpenDocumentsResult>("open_documents", { paths: cleanPaths, preferences: effectivePreferences, reloadOptions })
           : await openBrowserDevDocuments(cleanPaths, effectivePreferences, reloadOptions);
-        addDocuments(result.documents);
+        if (options.replace) setDocuments(result.documents);
+        else addDocuments(result.documents);
         rememberRecentStructures(result.documents);
         const openedText = "Opened " + result.documents.length + " structure" + (result.documents.length === 1 ? "" : "s");
         if (result.errors.length > 0) {
@@ -193,31 +224,38 @@ export default function App() {
         pushErrorStatus(error);
       }
     },
-    [addDocuments, preferences, pushErrorStatus, pushStatus, rememberRecentStructures],
+    [addDocuments, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setDocuments],
   );
 
   useEffect(() => {
     if (isTauriRuntime() || syncingBrowserDevFilesRef.current) return;
-    const params = new URLSearchParams(window.location.search);
-    const rawFiles = params.get("devFiles");
-    if (!rawFiles) return;
-    const paths = rawFiles.split("\n").map((path) => path.trim()).filter(Boolean);
-    const needsInitialOpen = !openedBrowserDevFilesRef.current;
-    const needsRuntimeRefresh = openedBrowserDevFilesRef.current
-      && documents.some((document) => paths.includes(document.path) && browserDevRuntimeNeedsRefresh(document));
-    if (!needsInitialOpen && !needsRuntimeRefresh) return;
-    openedBrowserDevFilesRef.current = true;
-    syncingBrowserDevFilesRef.current = true;
-    const workspace = paths[0] ? parentDirectory(paths[0]) : null;
-    if (workspace) {
-      setWorkspacePath(workspace);
-      addProjectRoot(workspace);
-    }
-    closeAllDocuments();
-    void openDocuments(paths).finally(() => {
+    let cancelled = false;
+    void (async () => {
+      const paths = await browserDevFilesFromLocation();
+      if (cancelled || paths.length === 0) return;
+      const normalizedFiles = paths.join("\n");
+      const needsInitialOpen = openedBrowserDevFilesRef.current !== normalizedFiles;
+      const needsRuntimeRefresh = !needsInitialOpen
+        && documents.some((document) => paths.includes(document.path) && browserDevRuntimeNeedsRefresh(document));
+      if (!needsInitialOpen && !needsRuntimeRefresh) return;
+      openedBrowserDevFilesRef.current = normalizedFiles;
+      syncingBrowserDevFilesRef.current = true;
+      const workspace = paths[0] ? parentDirectory(paths[0]) : null;
+      if (workspace) {
+        setWorkspacePath(workspace);
+        addProjectRoot(workspace);
+      }
+      closeAllDocuments();
+      await openDocuments(paths, undefined, undefined, { replace: true });
+      syncingBrowserDevFilesRef.current = false;
+    })().catch((error) => {
+      if (!cancelled) pushErrorStatus(error, "Open dev files failed");
       syncingBrowserDevFilesRef.current = false;
     });
-  }, [addProjectRoot, closeAllDocuments, documents, openDocuments]);
+    return () => {
+      cancelled = true;
+    };
+  }, [addProjectRoot, closeAllDocuments, documents, openDocuments, pushErrorStatus, setWorkspacePath]);
 
   useEffect(() => {
     if (refreshedPersistedSessionRef.current) return;
@@ -248,6 +286,41 @@ export default function App() {
       pushErrorStatus(error, "Open failed");
     }
   }, [openDocuments, pushErrorStatus]);
+
+  const openDockingDocument = useCallback(async (targetPath: string, droppedPaths: string[]) => {
+    const existingDockingRequest = documents.find((document) => document.path === targetPath || document.id === targetPath)?.dockingRequest;
+    const request = dockingRequestForDrop(targetPath, droppedPaths, existingDockingRequest);
+    if (request.ligandPaths.length === 0) return;
+    pushStatus("Opening Mol* docking view...");
+    try {
+      const document = isTauriRuntime()
+        ? await invoke<ViewerDocument>("open_docking_document", { request, preferences })
+        : await openBrowserDevDockingDocument(request.receptorPath, request.ligandPaths, preferences);
+      addDocuments([document]);
+      rememberRecentStructures([document]);
+      setStructureDragActive(false);
+      pushStatus(`Opened docking view with ${request.ligandPaths.length} ligand${request.ligandPaths.length === 1 ? "" : "s"}`);
+    } catch (error) {
+      setStructureDragActive(false);
+      pushErrorStatus(error, "Docking view failed");
+    }
+  }, [addDocuments, documents, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
+
+  useEffect(() => {
+    if (isTauriRuntime()) return;
+    const request = browserDevDockingFromLocation();
+    if (!request) return;
+    const normalizedDocking = [request.receptorPath, ...request.ligandPaths].join("\n");
+    if (openedBrowserDevDockingRef.current === normalizedDocking) return;
+    openedBrowserDevDockingRef.current = normalizedDocking;
+    const workspace = parentDirectory(request.receptorPath);
+    if (workspace) {
+      setWorkspacePath(workspace);
+      addProjectRoot(workspace);
+    }
+    closeAllDocuments();
+    void openDockingDocument(request.receptorPath, request.ligandPaths);
+  }, [addProjectRoot, closeAllDocuments, openDockingDocument]);
 
   const chooseWorkspace = useCallback(async () => {
     try {
@@ -292,7 +365,10 @@ export default function App() {
   }, [openSettingsTab]);
 
   useOpenEvents(openDocuments, pushErrorStatus);
-  const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop } = useOpenDrop(openDocuments, pushStatus);
+  const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop } = useOpenDrop(openDocuments, pushStatus, {
+    activeDocumentPath: activeDocument?.path ?? null,
+    openDockingDocument,
+  });
   const reloadActive = useCallback(async () => {
     const targetDocument = (pendingViewerReloadDocumentIdRef.current
       ? documents.find((document) => document.id === pendingViewerReloadDocumentIdRef.current)
@@ -435,6 +511,7 @@ export default function App() {
           value?: string;
           documentId?: string;
           orientationRef?: string | null;
+          preset?: string | null;
           text?: string | null;
           query?: string | null;
           sort?: string | null;
@@ -447,52 +524,54 @@ export default function App() {
       const body = data.body;
       if (!isKnownViewerMessageSource(event.source, body?.documentId)) return;
       if (data.source === "burrete-grid") {
-        if (body?.type !== "gridFetchPage" || !body.requestId || !body.documentId) return;
-        if (!isTauriRuntime()) {
-          postMessageToViewerSource(event.source, {
-            source: "burrete-grid-host",
-            body: {
-              type: "gridError",
-              requestId: body.requestId,
-              documentId: body.documentId,
-              error: "Desktop grid paging is unavailable outside the Tauri runtime.",
-            },
-          });
-          return;
-        }
-        void (async () => {
-          try {
-            const result = await invoke("grid_fetch_page", {
-              request: {
-                documentId: body.documentId,
-                query: typeof body.query === "string" ? body.query : "",
-                sort: typeof body.sort === "string" ? body.sort : "index",
-                offset: typeof body.offset === "number" ? body.offset : 0,
-                limit: typeof body.limit === "number" ? body.limit : 96,
-              },
-            });
-            postMessageToViewerSource(event.source, {
-              source: "burrete-grid-host",
-              body: {
-                type: "gridPage",
-                requestId: body.requestId,
-                documentId: body.documentId,
-                result,
-              },
-            });
-          } catch (error) {
+        if (body?.type === "gridFetchPage") {
+          if (!body.requestId || !body.documentId) return;
+          if (!isTauriRuntime()) {
             postMessageToViewerSource(event.source, {
               source: "burrete-grid-host",
               body: {
                 type: "gridError",
                 requestId: body.requestId,
                 documentId: body.documentId,
-                error: error instanceof Error ? error.message : String(error),
+                error: "Desktop grid paging is unavailable outside the Tauri runtime.",
               },
             });
+            return;
           }
-        })();
-        return;
+          void (async () => {
+            try {
+              const result = await invoke("grid_fetch_page", {
+                request: {
+                  documentId: body.documentId,
+                  query: typeof body.query === "string" ? body.query : "",
+                  sort: typeof body.sort === "string" ? body.sort : "index",
+                  offset: typeof body.offset === "number" ? body.offset : 0,
+                  limit: typeof body.limit === "number" ? body.limit : 96,
+                },
+              });
+              postMessageToViewerSource(event.source, {
+                source: "burrete-grid-host",
+                body: {
+                  type: "gridPage",
+                  requestId: body.requestId,
+                  documentId: body.documentId,
+                  result,
+                },
+              });
+            } catch (error) {
+              postMessageToViewerSource(event.source, {
+                source: "burrete-grid-host",
+                body: {
+                  type: "gridError",
+                  requestId: body.requestId,
+                  documentId: body.documentId,
+                  error: error instanceof Error ? error.message : String(error),
+                },
+              });
+            }
+          })();
+          return;
+        }
       }
       if (body?.type === "error") {
         pushStatus(formatViewerError(body.message, body.documentId, documents), "error", body.message ? [body.message] : []);
@@ -522,26 +601,50 @@ export default function App() {
         void reloadActive();
         return;
       }
+      if (body?.type === "openSdfPoseDocument") {
+        const targetDocument = (body.documentId
+          ? documents.find((document) => document.id === body.documentId)
+          : null) ?? activeDocument;
+        if (targetDocument) {
+          pushStatus("Opening SDF poses in Mol*...");
+          void openDocuments([targetDocument.path], undefined, { rendererMode: "molstar" });
+        }
+        return;
+      }
+      if (body?.type === "openSdfGridDocument") {
+        const targetDocument = (body.documentId
+          ? documents.find((document) => document.id === body.documentId)
+          : null) ?? activeDocument;
+        if (targetDocument) {
+          pushStatus("Opening SDF grid...");
+          void openDocuments([targetDocument.path], undefined, { rendererMode: "auto" });
+        }
+        return;
+      }
       if (body?.type === "setRenderer") {
         const renderer = body.value;
         if (renderer === "auto" || renderer === "xyz-fast" || renderer === "molstar" || renderer === "xyzrender-external") {
           const targetDocument = (body.documentId
             ? documents.find((document) => document.id === body.documentId)
             : null) ?? activeDocument;
-          const reloadOptions = renderer === "xyzrender-external" && body.orientationRef
-            ? { xyzrenderOrientationRef: body.orientationRef }
+          const reloadOptions = renderer === "xyzrender-external"
+            ? {
+                xyzrenderOrientationRef: body.orientationRef ?? xyzrenderOrientationRefRef.current,
+                xyzrenderPreset: body.preset ?? pendingViewerReloadOptionsRef.current?.xyzrenderPreset ?? null,
+                xyzrenderControls: body.controls ?? pendingViewerReloadOptionsRef.current?.xyzrenderControls ?? null,
+              }
             : undefined;
           if (renderer === "xyzrender-external" && body.orientationRef) {
             xyzrenderOrientationRefRef.current = body.orientationRef;
           }
-          pendingViewerReloadOptionsRef.current = renderer === "xyzrender-external" && body.orientationRef
+          pendingViewerReloadOptionsRef.current = renderer === "xyzrender-external"
             ? {
-                xyzrenderOrientationRef: body.orientationRef,
-                xyzrenderPreset: pendingViewerReloadOptionsRef.current?.xyzrenderPreset ?? null,
-                xyzrenderControls: pendingViewerReloadOptionsRef.current?.xyzrenderControls ?? null,
+                xyzrenderOrientationRef: body.orientationRef ?? xyzrenderOrientationRefRef.current,
+                xyzrenderPreset: body.preset ?? pendingViewerReloadOptionsRef.current?.xyzrenderPreset ?? null,
+                xyzrenderControls: body.controls ?? pendingViewerReloadOptionsRef.current?.xyzrenderControls ?? null,
               }
             : null;
-          pendingViewerReloadDocumentIdRef.current = renderer === "xyzrender-external" && body.orientationRef
+          pendingViewerReloadDocumentIdRef.current = renderer === "xyzrender-external"
             ? body.documentId ?? null
             : null;
           skipNextPreferenceRefreshRef.current = true;
@@ -588,7 +691,7 @@ export default function App() {
     });
     // Preferences refresh all open runtimes so inactive tabs do not keep stale renderer/theme output.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preferences.theme, preferences.canvasBackground, preferences.rendererMode, preferences.molstarStyle, preferences.xyzFastStyle]);
+  }, [preferences]);
 
   const startSidebarResize = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -648,6 +751,8 @@ export default function App() {
       closeAllDocuments();
       pushStatus("Closed all structures");
     },
+    openDockingDocument,
+    setStructureDragActive,
     clearRecentStructures: () => {
       clearRecentStructures();
       pushStatus("Recent structures cleared");
@@ -697,7 +802,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeTab, focusSidebarSearch, installUpdate, navigateBack, navigateForward, openCommandPalette, openNewTab, openProjectFolder, openRecentStructure, openSettings, openWorkspaceFolder, pushErrorStatus, pushStatus, selectDocument, setActiveTab, setPreference, setSidebarQuery, setUpdatePreferences, toggleProjectExpanded, toggleSidebar, update.availableRelease]);
+  }), [canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeTab, focusSidebarSearch, installUpdate, navigateBack, navigateForward, openCommandPalette, openDockingDocument, openNewTab, openProjectFolder, openRecentStructure, openSettings, openWorkspaceFolder, pushErrorStatus, pushStatus, selectDocument, setActiveTab, setPreference, setSidebarQuery, setUpdatePreferences, toggleProjectExpanded, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
@@ -717,6 +822,7 @@ export default function App() {
     sidebarOpen,
     sidebarWidth,
     sidebarDragging,
+    structureDragActive,
     sidebarQuery,
     status,
     dropActive,
@@ -732,7 +838,6 @@ export default function App() {
       <AppLayout
         state={state}
         actions={actions}
-        searchRef={sidebarSearchRef}
         onDismissStatus={clearStatus}
         onToggleSidebar={toggleSidebar}
         onResizeStart={startSidebarResize}
@@ -764,14 +869,18 @@ function postMessageToViewerSource(source: MessageEventSource | null, payload: u
   if (!source || typeof source !== "object" || !("postMessage" in source) || typeof source.postMessage !== "function") {
     return;
   }
-  source.postMessage(payload, "*");
+  (source as Window).postMessage(payload, "*");
 }
 
 function summarizeErrors(errors: string[]) {
-  const [first = "Unknown error", ...rest] = errors;
+  const [first = "Unknown error", ...rest] = errors.map(summarizeErrorText);
   return rest.length > 0
     ? `${first} (+${rest.length} more ${rest.length === 1 ? "issue" : "issues"})`
     : first;
+}
+
+function summarizeErrorText(message: string) {
+  return (message || "Unknown error").trim().split(/\r?\n| Error:| at /)[0]?.trim() || "Unknown error";
 }
 
 function formatViewerError(
@@ -783,5 +892,6 @@ function formatViewerError(
   const title = documentId
     ? documents.find((document) => document.id === documentId)?.title
     : null;
-  return title ? `${title}: ${text}` : text;
+  const summary = summarizeErrorText(text);
+  return title ? `${title}: ${summary}` : summary;
 }

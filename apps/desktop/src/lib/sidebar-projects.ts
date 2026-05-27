@@ -182,16 +182,9 @@ function relativeToRoot(rootPath: string, path: string) {
 }
 
 function compareProjectItems(left: SidebarProjectItem, right: SidebarProjectItem) {
-  if (left.isActive !== right.isActive) return left.isActive ? -1 : 1;
-  if (left.isOpen !== right.isOpen) return left.isOpen ? -1 : 1;
-  if (left.openedAt !== right.openedAt) return (right.openedAt ?? 0) - (left.openedAt ?? 0);
   return left.relativePath.localeCompare(right.relativePath);
 }
 
 function compareProjects(left: SidebarProject, right: SidebarProject) {
-  if (left.isActive !== right.isActive) return left.isActive ? -1 : 1;
-  const leftOpenCount = left.items.filter((item) => item.isOpen).length;
-  const rightOpenCount = right.items.filter((item) => item.isOpen).length;
-  if (leftOpenCount !== rightOpenCount) return rightOpenCount - leftOpenCount;
   return left.title.localeCompare(right.title);
 }

@@ -1,0 +1,151 @@
+# Burette Preview Current Debt
+
+This file tracks the active preview debt being closed in the desktop browser
+development surface. It is intentionally scoped to the current preview work and
+does not replace the broader renderer runtime contracts.
+
+## Verified Requirements
+
+- The browser development default file set includes the large 10k SMILES CSV
+  plus the two Desktop molecule sample folders when those paths exist.
+- The 10k SMILES grid supports the `xyzrender` card renderer by converting
+  SMILES rows to RDKit molblocks before calling the external renderer, so
+  `xyzrender` receives coordinates and bonds instead of bare SMILES text.
+- `xyzrender` grid cards default to the normal `default` preset; the skeletal
+  preset remains available only as a manual style choice.
+- Empty `xyzrender` card tuning fields stay in automatic mode instead of being
+  coerced to minimum atom and bond scale values.
+- `xyzrender` card failures fall back to the RDKit drawing path instead of
+  rendering a long command-line failure dump inside a card.
+- The grid toolbar is not sticky and does not apply a backdrop blur over the
+  molecule grid.
+- Grid molecule pictures use a plain white drawing background.
+- New grid documents start in RDKit card rendering mode. The previous
+  `xyzrender` card choice is not restored from local storage into a new grid.
+- Grid molecule titles and metadata are hidden by default. The Properties
+  toggle affects the current view but is not persisted as the next default.
+- Grid view exposes right, bottom, and corner resize handles on molecule cards.
+  The handles resize one square card dimension, keep the card picture square,
+  and keep the automatic bounds between roughly 3 and 30 cards per row.
+- Grid select controls keep stable arrow backgrounds on hover/focus, and the
+  `xyzrender` Tune controls render inside the toolbar flow instead of as a
+  fixed overlay that can cover cards or escape the viewport.
+- Cube previews expose manual field overlay controls for mode, iso value,
+  opacity, surface style, MO lobe colors, density color, color-map palette,
+  and color-map range. Iso, opacity, and color-map range also expose visible
+  sliders in the `xyzrender` controls popover.
+- Cube volumetric control scope is intentionally limited to those field
+  overlay controls for now. HOMO/LUMO and ESP previews need direct control over
+  mode, threshold, transparency, surface style, and colors; more specialized
+  volume rendering controls should be added only when a concrete user workflow
+  requires them.
+- Cube defaults choose a field overlay mode from the cube descriptor:
+  electrostatic potential for ESP cubes, molecular orbital for HOMO/LUMO cubes,
+  density for ordinary density cubes, and NCI-style pairing for matching
+  density/gradient cube pairs.
+- Browser development `.mae.gz` loading uses a raw file endpoint so Vite does
+  not decode gzip content before preview parsing.
+- Browser development previews support a bounded CMS/MAE/MaeGZ preview path by
+  extracting a small Maestro atom subset for Mol*.
+
+## Current Verification Evidence
+
+- `bunx --bun vp run test-ui`
+- `bunx --bun vp check`
+- `git diff --check` on the touched preview/browser/test files
+- Browser smoke on the 10k grid:
+  `60 of 10,000 visible molecules are rendered`, with no `Command failed` text
+  and no `-a 0.1` or `-b 0.01` arguments in the rendered page text.
+- Browser smoke after `grid-ui-v17` restart confirmed 120 visible 10k-grid
+  cards after scrolling, with `xyzrender` SVG bonds and atom circles present,
+  no loading cards left, and no `Command failed` text.
+- Browser smoke after `grid-ui-v35` restart opened the 10k grid and confirmed
+  right-edge, bottom-edge, and corner card resize drags. The screenshots showed
+  square cards at each size, molecule drawings contained within the white card
+  pictures, and no dark empty card rectangles.
+- The same `grid-ui-v35` Browser pass scrolled the resized 10k grid and returned
+  to the controls. The top tab chrome ended at `y=56`, the molecule iframe
+  started at `y=56`, no file-page progressive blur element was present, and no
+  browser error logs were emitted.
+- Browser all-files smoke opened 70 files at
+  `qa=all-files-grid-v20-clean-1779911319863`: the 10k CSV, the CMS fixture,
+  the Desktop BurettePreviewSamples set, and the Desktop xyzrender examples.
+  The negative `no-molecule-column.csv` fixture was intentionally excluded from
+  this clean smoke because it is expected to raise an issue.
+- Browser smoke on `litr_moses_10k.csv` under `grid-ui-v20` confirmed 10,000
+  rows loaded, 60 cards shown by default, RDKit active, Properties false, and
+  no molecule names visible.
+- Browser smoke after switching the 10k grid to `xyzrender` card mode showed
+  bonded molecule drawings and no `invalid molecule` or `Command failed` text.
+- Browser exact Fast smoke on `single.xyz` clicked
+  `[data-buret-renderer="xyz-fast"]` with no visible issue and no browser error
+  logs. Broader representative format smoke also produced no issue text, but
+  still needs a deterministic active-renderer assertion.
+- Contract coverage now asserts that SMILES-backed `xyzrender` grid cards use
+  generated SDF/molblock input and no longer submit `.smi` input to
+  `xyzrender`.
+- Browser visual smoke after the SMILES-to-SDF fix opened
+  `samples/large/litr_moses_10k.csv`, confirmed normal bonded `xyzrender`
+  cards on the first page, then scrolled to the next batch around molecules
+  50-75 with bonded `xyzrender` cards still visible and no console errors
+  beyond ordinary Vite/React development logs.
+- Browser layout audit on the 10k grid showed the top tab bar ending at
+  `y=56` and the molecule iframe starting at `y=56`, with no topbar/iframe
+  intersection.
+- Browser smoke on `tests/fixtures/maestro-preview.cms`.
+- Browser smoke on a temporary workspace `.maegz` generated from
+  `tests/fixtures/maestro-preview.cms`, with Mol* runtime HTML created and no
+  `ISSUE` or `Command failed` message.
+- Browser smoke on `caffeine_homo.cube`; the generated runtime HTML includes
+  the expanded field controls and no `ISSUE` or `Command failed` message.
+- Browser smoke on `caffeine_lumo.cube`; the generated runtime HTML includes
+  the expanded field controls and no `ISSUE` or `Command failed` message.
+- Browser visual smoke on `caffeine_esp.cube` confirmed the `xyzrender`
+  controls popover opens for field-overlay cube previews and shows the Field
+  overlay sliders. Changing the opacity slider reruns the external
+  `xyzrender` command without console errors.
+- Contract coverage now asserts that renderer buttons expose deterministic
+  active and disabled DOM state: Fast is disabled for non-XYZ formats,
+  unavailable `xyzrender` is disabled for large/protein-like formats, and
+  disabled renderer buttons cannot request a switch.
+- Browser regression on `samples/mini.xyz` confirmed clicking Fast sets
+  `#buret-toolbar[data-active-renderer="xyz-fast"]` and leaves Fast active and
+  enabled.
+- Browser regression on `1HTB.pdb` confirmed the toolbar stays on Mol*, the
+  renderer switch is not visible, and Fast plus external `xyzrender` are both
+  hidden and disabled.
+- Browser regression on `caffeine_esp.cube` confirmed the preview opens in
+  external `xyzrender` mode with field controls present and default
+  `fieldMode: "esp"`, `fieldOpacity: 0.5`, and solid surface style.
+- Remote candidate search found the user-reported real CMS on `kolmogorov` at
+  `/mnt/ligandpro/shared_storage/nikolenko/nav18_metadynamics_20260526/nav18_7wel_95T_bpmd_n1_metadynamics/pose_01/SystemBuilder_01-out.cms`.
+- The remote real CMS is a 78 MB ASCII Maestro CMS with the atom table inside
+  the first 32 MB. Its atom table uses Maestro's `# First column is atom index #`
+  convention, so CMS/MAE/MaeGZ extraction now skips that comment and offsets
+  row lookups for the implicit atom index column.
+- Added `tests/fixtures/real-systembuilder-mini.cms`, a small deterministic
+  real-derived fixture cut from that remote `SystemBuilder_01-out.cms`, and
+  attached Rust CMS/MAE/MaeGZ parser coverage to it.
+
+## Remaining Requirements
+
+- Verify the real user-reported CMS file after making it available to the
+  local browser development runtime:
+  `/Users/nikolenko/Desktop/nav18_metadynamics_20260526/nav18_7wel_95T_bpmd_n1_metadynamics/pose_01/SystemBuilder_01-out.cms`.
+  The file currently exists on `kolmogorov` under `/mnt/ligandpro`, but the
+  matching local `/Users/...` path is absent on this machine.
+- Keep Browser smoke coverage attached to the real-derived
+  `tests/fixtures/real-systembuilder-mini.cms` fixture and, when the full
+  remote file is locally available, verify the 78 MB bounded-preview path
+  against it directly.
+- Add a full Browser performance pass that scrolls the 10k grid beyond the
+  first rendered batch and records paging/render timing for both RDKit and
+  `xyzrender` card modes.
+- Implement the SDF/docking Mol* interaction flow as a separate, explicit
+  feature slice:
+  - open an SDF series/grid as a Mol* docking document on demand;
+  - keep stable pose order and left/right pose navigation;
+  - support dragging ligands/receptors from the sidebar or active document into
+    a Mol* docking view;
+  - define receptor/ligand combination rules for file-to-file drops;
+  - cover the workflow with Browser and unit tests.
