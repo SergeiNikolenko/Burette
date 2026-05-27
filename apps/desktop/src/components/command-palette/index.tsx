@@ -73,13 +73,6 @@ export function CommandPalette({
         run: actions.chooseFiles,
       },
       {
-        id: "search-structures",
-        group: "Suggested",
-        label: "Search Projects and Structures",
-        description: "Focus the sidebar project filter",
-        run: actions.focusSidebarSearch,
-      },
-      {
         id: "open-settings",
         group: "Suggested",
         label: "Settings",

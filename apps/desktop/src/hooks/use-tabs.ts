@@ -43,6 +43,10 @@ export function useAddTabs() {
   return useMoleculeStore((state) => state.addDocuments);
 }
 
+export function useSetDocuments() {
+  return useMoleculeStore((state) => state.setDocuments);
+}
+
 export function useOpenNewTab() {
   return useMoleculeStore((state) => state.openNewTab);
 }

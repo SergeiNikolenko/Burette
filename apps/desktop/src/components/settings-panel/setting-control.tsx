@@ -68,6 +68,85 @@ export function SelectControl({
   );
 }
 
+const HEX_COLOR = /^#([0-9a-f]{6}|[0-9a-f]{3})$/i;
+
+export function ColorControl({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const swatch = HEX_COLOR.test(value) ? value : "#000000";
+  return (
+    <div className="settings-color-control">
+      <span className="settings-color-swatch" style={{ backgroundColor: swatch }}>
+        <input
+          type="color"
+          value={swatch}
+          aria-label="Pick color"
+          onChange={(event) => onChange(event.target.value.toUpperCase())}
+        />
+      </span>
+      <input
+        type="text"
+        value={value}
+        spellCheck={false}
+        onChange={(event) => onChange(event.target.value)}
+        onBlur={(event) => {
+          if (!HEX_COLOR.test(event.target.value)) onChange(swatch.toUpperCase());
+        }}
+      />
+    </div>
+  );
+}
+
+export function TextControl({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <input
+      type="text"
+      className="settings-text-control"
+      value={value}
+      spellCheck={false}
+      onChange={(event) => onChange(event.target.value)}
+    />
+  );
+}
+
+export function RangeControl({
+  value,
+  min,
+  max,
+  step,
+  onChange,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div className="settings-range-control">
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+      <span>{Math.round(value)}</span>
+    </div>
+  );
+}
+
 export function ToggleControl({
   label,
   checked,
@@ -104,6 +183,54 @@ export function selectPreferenceRow(
     label,
     description,
     control: <SelectControl value={value} options={options} onChange={onChange} />,
+    reset: () => onChange(defaultValue),
+    isModified: value !== defaultValue,
+  };
+}
+
+export function colorPreferenceRow(
+  label: string,
+  description: string,
+  value: string,
+  defaultValue: string,
+  onChange: (value: string) => void,
+): SettingRow {
+  return {
+    label,
+    description,
+    control: <ColorControl value={value} onChange={onChange} />,
+    reset: () => onChange(defaultValue),
+    isModified: value.toUpperCase() !== defaultValue.toUpperCase(),
+  };
+}
+
+export function textPreferenceRow(
+  label: string,
+  description: string,
+  value: string,
+  defaultValue: string,
+  onChange: (value: string) => void,
+): SettingRow {
+  return {
+    label,
+    description,
+    control: <TextControl value={value} onChange={onChange} />,
+    reset: () => onChange(defaultValue),
+    isModified: value !== defaultValue,
+  };
+}
+
+export function rangePreferenceRow(
+  label: string,
+  description: string,
+  value: number,
+  defaultValue: number,
+  onChange: (value: number) => void,
+): SettingRow {
+  return {
+    label,
+    description,
+    control: <RangeControl value={value} min={0} max={100} step={1} onChange={onChange} />,
     reset: () => onChange(defaultValue),
     isModified: value !== defaultValue,
   };

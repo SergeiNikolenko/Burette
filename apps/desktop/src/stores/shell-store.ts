@@ -20,16 +20,20 @@ function normalizeRoot(root: string) {
   return root.replace(/\\/g, "/").replace(/\/+$/g, "");
 }
 
+function normalizeSidebarWidth(width: number) {
+  return Math.max(220, Math.min(420, Math.round(width)));
+}
+
 export const useShellStore = create<ShellState>()(
   persist<ShellState, [], [], PersistedShellState>(
     (set) => ({
       sidebarOpen: true,
-      sidebarWidth: 268,
+      sidebarWidth: 240,
       projectRoots: [],
       expandedProjectIds: [],
       sidebarQuery: "",
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
-      setSidebarWidth: (width) => set({ sidebarWidth: Math.max(220, Math.min(420, Math.round(width))) }),
+      setSidebarWidth: (width) => set({ sidebarWidth: normalizeSidebarWidth(width) }),
       addProjectRoot: (root) =>
         set((state) => {
           const normalized = normalizeRoot(root);
@@ -64,7 +68,7 @@ export const useShellStore = create<ShellState>()(
         return {
           ...current,
           sidebarOpen: stored?.sidebarOpen ?? current.sidebarOpen,
-          sidebarWidth: stored?.sidebarWidth ?? current.sidebarWidth,
+          sidebarWidth: normalizeSidebarWidth(stored?.sidebarWidth ?? current.sidebarWidth),
           projectRoots: stored?.projectRoots ?? current.projectRoots,
           expandedProjectIds: stored?.expandedProjectIds ?? current.expandedProjectIds,
         };

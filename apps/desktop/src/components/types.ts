@@ -36,6 +36,8 @@ export type ShellActions = {
   closeTab: (id: string) => void;
   closeActiveDocument: () => void;
   clearAllDocuments: () => void;
+  openDockingDocument: (receptorPath: string, ligandPaths: string[]) => void | Promise<void>;
+  setStructureDragActive: (active: boolean) => void;
   clearRecentStructures: () => void;
   clearCache: () => void | Promise<void>;
   resetQuickLook: () => void | Promise<void>;
@@ -63,6 +65,7 @@ export type ShellViewState = {
   sidebarOpen: boolean;
   sidebarWidth: number;
   sidebarDragging: boolean;
+  structureDragActive: boolean;
   sidebarQuery: string;
   status: StatusNotice | null;
   dropActive: boolean;

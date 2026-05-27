@@ -8,6 +8,8 @@ contains only documents that describe the active project.
 - [Architecture](architecture.md): repository boundaries and runtime shape.
 - [Renderer support](renderer-support.md): renderer modes, supported formats,
   artifacts, and checks.
+- [Vite+ workflow](vite-plus.md): `vp` entrypoints for frontend development and
+  JavaScript validation.
 - [Quick Look debugging](quicklook-debugging.md): Finder preview diagnosis and
   cache reset workflow.
 - [Releasing](releasing.md): version, build, signing, update, and artifact

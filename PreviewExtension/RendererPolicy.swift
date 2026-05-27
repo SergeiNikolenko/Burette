@@ -39,13 +39,14 @@ struct BurreteRendererPolicy: Equatable {
             renderer = BurreteRendererMode.xyzrenderExternal
         } else {
             let isXYZ = format.molstarFormat == "xyz" && !format.isBinary
+            let canUseXyzrender = isXYZ || (!format.isBinary && ["sdf", "pdb", "pdbqt", "mmcif", "cifCore"].contains(format.molstarFormat))
             switch requestedMode {
             case BurreteRendererMode.molstar:
                 renderer = BurreteRendererMode.molstar
             case BurreteRendererMode.xyzFast:
                 renderer = isXYZ ? BurreteRendererMode.xyzFast : BurreteRendererMode.molstar
             case BurreteRendererMode.xyzrenderExternal:
-                renderer = isXYZ ? BurreteRendererMode.xyzrenderExternal : BurreteRendererMode.molstar
+                renderer = canUseXyzrender ? BurreteRendererMode.xyzrenderExternal : BurreteRendererMode.molstar
             default:
                 renderer = isXYZ ? BurreteRendererMode.xyzrenderExternal : BurreteRendererMode.molstar
             }
