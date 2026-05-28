@@ -428,7 +428,6 @@
       <div class="buret-grid-renderer-controls">
         <div class="buret-grid-renderer-switch" aria-label="3D renderer">
           <button type="button" data-buret-grid-renderer="molstar" data-buret-grid-sdf-poses data-buret-grid-docking>Poses</button>
-          <button type="button" data-buret-grid-renderer="xyzrender-external">xyzrender</button>
         </div>
       </div>`;
   }
