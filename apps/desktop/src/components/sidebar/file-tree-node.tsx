@@ -8,7 +8,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { isMoleculeCollectionPath } from "../../lib/collection-documents";
 import { dockingRequestForDrop } from "../../lib/docking-documents";
 import type { SidebarProject, SidebarProjectItem } from "../../lib/sidebar-projects";
-import { hasStructureDrag, readStructureDrag, writeStructureDrag } from "../../lib/structure-drag";
+import { hasStructureDrag, readStructureDragPayload, writeStructureDrag } from "../../lib/structure-drag";
 import { rendererLabel } from "../format";
 import { showNativeContextMenu } from "../native-context-menu";
 import type { ShellActions, ShellViewState } from "../types";
@@ -143,23 +143,31 @@ export function ProjectItem({
   };
   const handleDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
     if (!hasStructureDrag(event.dataTransfer)) return;
-    const paths = readStructureDrag(event.dataTransfer);
+    const payload = readStructureDragPayload(event.dataTransfer);
+    const paths = payload.paths;
     const canMergeCollection = isMoleculeCollectionPath(item.path) && paths.some(isMoleculeCollectionPath);
     const canOpenDocking = Boolean(dockingRequestForDrop(item.path, paths)) || item.path.startsWith("burrete-docking://");
-    if (!canMergeCollection && !canOpenDocking) return;
+    const canAddToXyzrenderSheet = item.renderer === "xyzrender-external" && Boolean(item.documentId) && (paths.length > 0 || payload.records.length > 0);
+    if (!canMergeCollection && !canOpenDocking && !canAddToXyzrenderSheet) return;
     event.preventDefault();
     event.stopPropagation();
     event.dataTransfer.dropEffect = "copy";
   };
   const handleDrop = (event: ReactDragEvent<HTMLDivElement>) => {
     if (!hasStructureDrag(event.dataTransfer)) return;
-    const paths = readStructureDrag(event.dataTransfer);
+    const payload = readStructureDragPayload(event.dataTransfer);
+    const paths = payload.paths;
     const canMergeCollection = isMoleculeCollectionPath(item.path) && paths.some(isMoleculeCollectionPath);
     const dockingRequest = dockingRequestForDrop(item.path, paths);
-    if (!canMergeCollection && !dockingRequest && !item.path.startsWith("burrete-docking://")) return;
+    const canAddToXyzrenderSheet = item.renderer === "xyzrender-external" && Boolean(item.documentId) && (paths.length > 0 || payload.records.length > 0);
+    if (!canMergeCollection && !dockingRequest && !item.path.startsWith("burrete-docking://") && !canAddToXyzrenderSheet) return;
     event.preventDefault();
     event.stopPropagation();
     actions.setStructureDragActive(false);
+    if (canAddToXyzrenderSheet && item.documentId) {
+      actions.addXyzrenderSheetItems(item.documentId, payload);
+      return;
+    }
     if (canMergeCollection) {
       void actions.mergeMoleculeCollections(item.documentId ?? item.path, paths);
       return;

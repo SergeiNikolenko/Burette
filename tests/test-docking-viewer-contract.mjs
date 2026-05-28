@@ -63,6 +63,15 @@ assert.match(viewer, /canvas3d\.identify\(\[event\.clientX - rect\.left, event\.
 assert.match(viewer, /canvas3d\.getLoci\(pickingId\)/);
 assert.match(viewer, /const pickedStructure = molstarContextMenuPick\?\.loci\?\.structure \|\| null;/);
 assert.match(viewer, /return data === pickedStructure \|\| data\?\.root === pickedStructure\?\.root;/);
+assert.match(viewer, /function molstarContextTarget\(\)/);
+assert.match(viewer, /scope: 'receptor'/);
+assert.match(viewer, /scope: 'ligand'/);
+assert.match(viewer, /function pdbEnvironmentForLigand\(receptor, ligand, radiusAngstrom = 6\)/);
+assert.match(viewer, /function molstarContextDocumentPayload\(target\)/);
+assert.match(viewer, /contextDocument = molstarContextDocumentPayload\(target\)/);
+assert.match(viewer, /selects\.select\(pick, true\)/);
+assert.match(viewer, /function focusMolstarContextPick\(\)/);
+assert.match(app, /openBrowserDevMolstarContextDocument\(body\.contextDocument, preferences\)/);
 assert.match(viewer, /\['select', 'Select molecule'\]/);
 assert.match(viewer, /if \(!contextPick\) \{\s*hideMolstarContextMenu\(\);/);
 
@@ -75,7 +84,7 @@ assert.match(viewer, /installNativeTrajectoryPoseSync\(prepared\.poseCount/);
 assert.match(openDropHook, /const request = dockingRequestForDrop\(activeDocumentPath, paths, activeDockingRequest\)/);
 assert.match(openDropHook, /void openDockingDocument\(request\.receptorPath, request\.ligandPaths\)/);
 assert.match(openDropHook, /if \(isOverActiveViewer\(event\.position\) && openAsDocking\(event\.paths\)\) return;/);
-assert.match(openDropHook, /if \(openAsDocking\(paths\)\) return;/);
+assert.match(openDropHook, /if \(openAsDocking\(payload\.paths\)\) return;/);
 
 assert.match(fileKind, /const request = dockingRequestForDrop\(document\.path, droppedPaths, document\.dockingRequest\)/);
 assert.match(fileKind, /void actions\.openDockingDocument\(request\.receptorPath, request\.ligandPaths\)/);

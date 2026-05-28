@@ -44,10 +44,11 @@ import {
   useSetDocuments,
 } from "./hooks/use-tabs";
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
-import { browserDevRuntimeNeedsRefresh, openBrowserDevDockingDocument, openBrowserDevDocuments, openBrowserDevMergedCollection, readBrowserDevCollectionText } from "./lib/browser-dev-documents";
+import { browserDevRuntimeNeedsRefresh, openBrowserDevDockingDocument, openBrowserDevDocuments, openBrowserDevMergedCollection, openBrowserDevMolstarContextDocument, readBrowserDevCollectionText } from "./lib/browser-dev-documents";
 import { isMoleculeCollectionPath } from "./lib/collection-documents";
 import { dockingRequestForDrop, isProteinLikeDockingSource } from "./lib/docking-documents";
 import { basename, buildSidebarProjects, parentDirectory } from "./lib/sidebar-projects";
+import type { StructureDragPayload } from "./lib/structure-drag";
 import { isTauriRuntime } from "./lib/tauri";
 import type { DockingDocumentRequest, OpenDocumentsResult, RecentStructure, ViewerDocument, ViewerReloadOptions } from "./types";
 import { checkForUpdates as requestUpdateCheck, clearDismissedUpdate, dismissUpdate, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically, shouldPromptForUpdate } from "./update";
@@ -145,6 +146,7 @@ export default function App() {
   const syncingBrowserDevFilesRef = useRef(false);
   const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions | null>(null);
   const pendingViewerReloadDocumentIdRef = useRef<string | null>(null);
+  const pendingXyzrenderSheetDropRef = useRef<{ documentId: string; payload: StructureDragPayload } | null>(null);
   const xyzrenderOrientationRefRef = useRef<string | null>(null);
   const skipNextPreferenceRefreshRef = useRef(false);
   const statusSequenceRef = useRef(0);
@@ -429,10 +431,9 @@ export default function App() {
     openSettingsTab();
   }, [openSettingsTab]);
 
-  const addXyzrenderSheetItems = useCallback((paths: string[]) => {
-    if (activeDocument?.renderer !== "xyzrender-external" || paths.length === 0) return false;
+  const postXyzrenderSheetItems = useCallback((documentId: string, payload: StructureDragPayload) => {
     const iframe = Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).find(
-      (item) => item.dataset.documentId === activeDocument.id,
+      (item) => item.dataset.documentId === documentId,
     );
     if (!iframe?.contentWindow) return false;
     iframe.contentWindow.postMessage(
@@ -440,15 +441,49 @@ export default function App() {
         source: "burrete-host",
         body: {
           type: "addXyzrenderSheetItems",
-          documentId: activeDocument.id,
-          paths,
+          documentId,
+          paths: payload.paths,
+          records: payload.records,
         },
       },
       "*",
     );
-    pushStatus(`Adding ${paths.length} structure${paths.length === 1 ? "" : "s"} to xyzrender sheet`);
     return true;
-  }, [activeDocument?.id, activeDocument?.renderer, pushStatus]);
+  }, []);
+
+  const addXyzrenderSheetItemsToDocument = useCallback((targetDocumentId: string, payload: StructureDragPayload) => {
+    const targetDocument = documents.find((document) => document.id === targetDocumentId);
+    if (
+      !targetDocument ||
+      targetDocument.renderer !== "xyzrender-external" ||
+      (payload.paths.length === 0 && payload.records.length === 0)
+    ) return false;
+    const posted = postXyzrenderSheetItems(targetDocument.id, payload);
+    if (!posted) {
+      pendingXyzrenderSheetDropRef.current = { documentId: targetDocument.id, payload };
+      const tab = tabs.find((item) => item.location.kind === "file" && (
+        item.location.documentId === targetDocument.id ||
+        item.location.path === targetDocument.path
+      ));
+      if (tab) setActiveTab(tab.id);
+    }
+    const count = payload.paths.length + payload.records.length;
+    pushStatus(`Adding ${count} structure${count === 1 ? "" : "s"} to xyzrender sheet`);
+    return true;
+  }, [documents, postXyzrenderSheetItems, pushStatus, setActiveTab, tabs]);
+
+  const addXyzrenderSheetItems = useCallback((payload: StructureDragPayload) => {
+    if (!activeDocument) return false;
+    return addXyzrenderSheetItemsToDocument(activeDocument.id, payload);
+  }, [activeDocument, addXyzrenderSheetItemsToDocument]);
+
+  useEffect(() => {
+    const pending = pendingXyzrenderSheetDropRef.current;
+    if (!pending || activeDocument?.id !== pending.documentId) return;
+    if (postXyzrenderSheetItems(pending.documentId, pending.payload)) {
+      pendingXyzrenderSheetDropRef.current = null;
+    }
+  }, [activeDocument?.id, postXyzrenderSheetItems]);
 
   useOpenEvents(openDocuments, pushErrorStatus);
   const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop } = useOpenDrop(openDocuments, pushStatus, {
@@ -614,6 +649,9 @@ export default function App() {
           offset?: number | null;
           limit?: number | null;
           controls?: ViewerReloadOptions["xyzrenderControls"];
+          contextDocument?: Parameters<typeof openBrowserDevMolstarContextDocument>[0];
+          inputDataBase64?: string | null;
+          inputExtension?: string | null;
         };
       } | undefined;
       if (data?.source !== "burrete-viewer" && data?.source !== "burrete-grid") return;
@@ -780,6 +818,17 @@ export default function App() {
         return;
       }
       if (body?.type === "openMolstarContextDocument") {
+        if (body.contextDocument && typeof body.contextDocument === "object") {
+          pushStatus("Opening selected Mol* context...");
+          void openBrowserDevMolstarContextDocument(body.contextDocument, preferences)
+            .then((document) => {
+              addDocuments([document]);
+              rememberRecentStructures([document]);
+              pushStatus("Opened selected Mol* context");
+            })
+            .catch((error) => pushErrorStatus(error, "Mol* context view failed"));
+          return;
+        }
         const targetDocument = (body.documentId
           ? documents.find((document) => document.id === body.documentId)
           : null) ?? activeDocument;
@@ -928,6 +977,7 @@ export default function App() {
       pushStatus("Closed all structures");
     },
     openDockingDocument,
+    addXyzrenderSheetItems: addXyzrenderSheetItemsToDocument,
     mergeMoleculeCollections,
     saveMoleculeCollectionAs,
     setStructureDragActive,
@@ -980,7 +1030,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeTab, focusSidebarSearch, installUpdate, mergeMoleculeCollections, navigateBack, navigateForward, openCommandPalette, openDockingDocument, openNewTab, openProjectFolder, openRecentStructure, openSettings, openWorkspaceFolder, pushErrorStatus, pushStatus, saveMoleculeCollectionAs, selectDocument, setActiveTab, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
+  }), [addXyzrenderSheetItemsToDocument, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeTab, focusSidebarSearch, installUpdate, mergeMoleculeCollections, navigateBack, navigateForward, openCommandPalette, openDockingDocument, openNewTab, openProjectFolder, openRecentStructure, openSettings, openWorkspaceFolder, pushErrorStatus, pushStatus, saveMoleculeCollectionAs, selectDocument, setActiveTab, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 

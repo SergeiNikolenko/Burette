@@ -69,6 +69,7 @@
   let molstarWindowResizeHandler = null;
   let molstarContextMenuCleanup = null;
   let molstarContextMenuPick = null;
+  let activeDockingPrepared = null;
   try { window.__mqlDebug && window.__mqlDebug('[viewer.js] top-level IIFE entered; readyState=' + document.readyState); } catch (_) {}
 
   function post(type, message) {
@@ -2250,13 +2251,12 @@
     const ligandSources = Array.isArray(docking.ligands) ? docking.ligands : [];
     const ligandPayloads = Array.isArray(payloads.ligands) ? payloads.ligands : [];
     const poses = [];
-    const entries = [
-      {
-        data: dockingPayloadData(receptor, payloads.receptor),
-        format: normalizeFormat(receptor.format),
-        label: receptor.label || 'Receptor'
-      }
-    ];
+    const receptorEntry = {
+      data: dockingPayloadData(receptor, payloads.receptor),
+      format: normalizeFormat(receptor.format),
+      label: receptor.label || 'Receptor'
+    };
+    const entries = [receptorEntry];
     let nativeTrajectoryPoseCount = 0;
     ligandSources.forEach((source, ligandIndex) => {
       const data = dockingPayloadData(source, ligandPayloads[ligandIndex]);
@@ -2308,6 +2308,8 @@
         poseCount: nativeTrajectoryPoseCount,
         nativeTrajectoryControls: true,
         ligandLabel: 'Mol* trajectory',
+        receptorEntry,
+        poses,
         entries
       };
     }
@@ -2317,6 +2319,8 @@
       activePose,
       poseCount: poses.length,
       ligandLabel: poses[activePose].label,
+      receptorEntry,
+      poses,
       entries: [
         entries[0],
         poses[activePose]
@@ -2438,10 +2442,11 @@
   }
 
   function rotatableArtifactControlsHTML() {
-    const degreeLabels = [-60, -45, -30, 0, 30, 45, 60, 90, 120]
+    const rotationDegrees = [-120, -90, -60, -45, -30, 0, 30, 45, 60, 90, 120, 150, 180];
+    const degreeLabels = rotationDegrees
       .map(degree => `<span class="buret-xyzrender-rotate-label" data-buret-degree="${degree}" style="--buret-degree-angle: ${degree}deg; --buret-degree-counter-angle: ${-degree}deg;">${degree}°</span>`)
       .join('');
-    const ticks = [-60, -45, -30, 0, 30, 45, 60, 90, 120]
+    const ticks = rotationDegrees
       .map(degree => `<span class="buret-xyzrender-rotate-tick" style="--buret-degree-angle: ${degree}deg;"></span>`)
       .join('');
     const resizeHandles = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']
@@ -2489,11 +2494,11 @@
       .buret-external-artifact-stage.dragging { cursor: grabbing; }
       .buret-external-artifact-root.sheet-drop-active::after { content: "Drop onto xyzrender sheet"; position: absolute; inset: 14px; z-index: 36; border: 2px solid color-mix(in srgb, var(--buret-accent, #b45cff) 72%, transparent); border-radius: 14px; background: color-mix(in srgb, var(--buret-accent, #b45cff) 12%, transparent); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); display: flex; align-items: center; justify-content: center; font: 700 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; pointer-events: none; }
       .buret-external-artifact-inline { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box; overflow: visible; pointer-events: none; }
-      .buret-external-artifact-card { --buret-card-x: 0px; --buret-card-y: 0px; --buret-card-width: auto; --buret-card-height: auto; --buret-card-fit-scale: 1; --buret-sheet-rotation: 0deg; --buret-sheet-rotation-negative: 0deg; --buret-active-angle: 0deg; position: relative; display: grid; max-width: 100%; max-height: 100%; transform: translate(var(--buret-card-x), var(--buret-card-y)) rotate(var(--buret-sheet-rotation)) scale(var(--buret-card-fit-scale)); transform-origin: 50% 50%; border-radius: 8px; outline: 0 solid transparent; pointer-events: auto; touch-action: none; cursor: grab; }
+      .buret-external-artifact-card { --buret-card-x: 0px; --buret-card-y: 0px; --buret-card-width: auto; --buret-card-height: auto; --buret-card-fit-scale: 1; --buret-sheet-rotation: 0deg; --buret-sheet-rotation-negative: 0deg; --buret-active-angle: 0deg; --buret-rotate-radius: 108px; --buret-rotate-handle-scale: 1; position: relative; display: grid; max-width: 100%; max-height: 100%; transform: translate(var(--buret-card-x), var(--buret-card-y)) rotate(var(--buret-sheet-rotation)) scale(var(--buret-card-fit-scale)); transform-origin: 50% 50%; border-radius: 8px; outline: 0 solid transparent; pointer-events: auto; touch-action: none; cursor: grab; }
       .buret-external-artifact-card.resized { width: var(--buret-card-width); height: var(--buret-card-height); }
       .buret-external-artifact-card.dragging { cursor: grabbing; }
       .buret-external-artifact-card.resizing { cursor: nwse-resize; }
-      .buret-external-artifact-card.selected { outline: 2px solid var(--buret-accent, #b45cff); box-shadow: 0 0 0 3px color-mix(in srgb, var(--buret-accent, #b45cff) 24%, transparent); }
+      .buret-external-artifact-card.selected { outline: 1.5px solid color-mix(in srgb, var(--buret-accent, #b45cff) 58%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--buret-accent, #b45cff) 12%, transparent); }
       .buret-external-artifact-card-background { grid-area: 1 / 1; position: absolute; inset: 0; z-index: 0; border-radius: 8px; background: #fff; box-shadow: 0 18px 54px rgba(0,0,0,0.28); pointer-events: none; }
       .buret-external-artifact-card-body { grid-area: 1 / 1; position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; max-width: 100%; max-height: 100%; pointer-events: none; }
       .buret-external-artifact-card-body > svg { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; margin: auto; border-radius: 8px; }
@@ -2502,40 +2507,40 @@
       .buret-external-artifact-card.resized .buret-external-artifact-object { width: 100%; height: 100%; }
       .buret-external-artifact-object { width: min(100vw - 48px, 1024px); height: min(100vh - 48px, 768px); max-width: 100%; max-height: 100%; border: 0; display: block; border-radius: 8px; }
       .buret-xyzrender-sheet { position: absolute; inset: 0; z-index: 14; pointer-events: none; }
-      .buret-xyzrender-sheet-item { --buret-sheet-rotation: 0deg; --buret-sheet-rotation-negative: 0deg; --buret-active-angle: 0deg; position: absolute; left: 50%; top: 50%; width: clamp(118px, 24vw, 280px); height: clamp(118px, 24vw, 280px); transform: translate(-50%, -50%) rotate(var(--buret-sheet-rotation)); transform-origin: 50% 50%; pointer-events: auto; touch-action: none; cursor: grab; border-radius: 10px; outline: 0 solid transparent; }
+      .buret-xyzrender-sheet-item { --buret-sheet-rotation: 0deg; --buret-sheet-rotation-negative: 0deg; --buret-active-angle: 0deg; --buret-rotate-radius: 64px; --buret-rotate-handle-scale: 1; position: absolute; left: 50%; top: 50%; width: clamp(118px, 24vw, 280px); height: clamp(118px, 24vw, 280px); transform: translate(-50%, -50%) rotate(var(--buret-sheet-rotation)); transform-origin: 50% 50%; pointer-events: auto; touch-action: none; cursor: grab; border-radius: 10px; outline: 0 solid transparent; }
       .buret-xyzrender-sheet-item.dragging { cursor: grabbing; }
       .buret-xyzrender-sheet-item.rotating { cursor: grabbing; }
       .buret-xyzrender-sheet-item.resizing { cursor: nwse-resize; }
-      .buret-xyzrender-sheet-item.selected { outline: 2px solid var(--buret-accent, #b45cff); box-shadow: 0 0 0 3px color-mix(in srgb, var(--buret-accent, #b45cff) 24%, transparent); }
+      .buret-xyzrender-sheet-item.selected { outline: 1.5px solid color-mix(in srgb, var(--buret-accent, #b45cff) 58%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--buret-accent, #b45cff) 12%, transparent); }
       .buret-xyzrender-sheet-item-background { position: absolute; inset: 0; z-index: 0; border-radius: 10px; background: #fff; pointer-events: none; }
       .buret-xyzrender-sheet-item-body { position: relative; z-index: 1; width: 100%; height: 100%; pointer-events: none; }
       .buret-xyzrender-sheet-item-body > svg { display: block; width: 100%; height: 100%; overflow: visible; }
-      .buret-xyzrender-rotate-hud { --buret-rotate-radius: 86px; position: absolute; left: 50%; top: 50%; z-index: 7; width: calc(var(--buret-rotate-radius) * 2 + 42px); height: calc(var(--buret-rotate-radius) * 2 + 42px); transform: translate(-50%, -50%) rotate(var(--buret-sheet-rotation-negative)); transform-origin: 50% 50%; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
-      .buret-xyzrender-rotate-ring { position: absolute; inset: 21px; border: 1px dashed rgba(125, 142, 183, 0.36); border-radius: 999px; }
-      .buret-xyzrender-rotate-needle { position: absolute; left: 50%; top: 50%; width: 1px; height: var(--buret-rotate-radius); transform: translateX(-50%) rotate(var(--buret-active-angle)); transform-origin: 50% 0%; border-left: 1.5px dashed #3e63ff; }
-      .buret-xyzrender-rotate-needle::after { content: ""; position: absolute; left: 50%; bottom: -8px; width: 17px; height: 17px; transform: translateX(-50%); border-radius: 999px; background: #3e63ff; box-shadow: 0 5px 18px rgba(62,99,255,0.38); }
-      .buret-xyzrender-rotate-live { position: absolute; left: 50%; top: 15px; transform: translateX(-50%); color: rgba(255,255,255,0.94); background: rgba(17,19,24,0.82); border: 1px solid rgba(255,255,255,0.16); border-radius: 999px; padding: 2px 7px; font: 700 12px/1.25 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; box-shadow: 0 6px 16px rgba(0,0,0,0.22); }
+      .buret-xyzrender-rotate-hud { position: absolute; left: 50%; top: 50%; z-index: 7; width: calc(var(--buret-rotate-radius) * 2 + 42px); height: calc(var(--buret-rotate-radius) * 2 + 42px); transform: translate(-50%, -50%) rotate(var(--buret-sheet-rotation-negative)); transform-origin: 50% 50%; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
+      .buret-xyzrender-rotate-ring { position: absolute; inset: 21px; border: 1px dashed color-mix(in srgb, var(--buret-accent, #b45cff) 24%, rgba(160,173,214,0.26)); border-radius: 999px; }
+      .buret-xyzrender-rotate-needle { position: absolute; left: 50%; top: 50%; width: 1px; height: var(--buret-rotate-radius); transform: translateX(-50%) rotate(var(--buret-active-angle)); transform-origin: 50% 0%; border-left: 1.5px dashed color-mix(in srgb, var(--buret-accent, #b45cff) 54%, transparent); }
+      .buret-xyzrender-rotate-needle::after { content: ""; position: absolute; left: 50%; bottom: -7px; width: 15px; height: 15px; transform: translateX(-50%); border-radius: 999px; background: color-mix(in srgb, var(--buret-accent, #b45cff) 72%, var(--buret-toolbar-background, #111)); box-shadow: 0 5px 14px color-mix(in srgb, var(--buret-accent, #b45cff) 22%, transparent); }
+      .buret-xyzrender-rotate-live { position: absolute; left: 50%; top: 15px; transform: translateX(-50%); color: var(--buret-toolbar-color, rgba(255,255,255,0.94)); background: color-mix(in srgb, var(--buret-toolbar-background, rgba(17,19,24,0.82)) 86%, transparent); border: 1px solid var(--buret-toolbar-border, rgba(255,255,255,0.16)); border-radius: 999px; padding: 2px 7px; font: 700 12px/1.25 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; box-shadow: 0 6px 16px rgba(0,0,0,0.18); }
       .buret-xyzrender-rotate-label { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(var(--buret-degree-angle)) translateY(calc(-1 * (var(--buret-rotate-radius) + 22px))) rotate(var(--buret-degree-counter-angle)); color: rgba(160,173,214,0.74); font: 600 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
-      .buret-xyzrender-rotate-label.active { color: #3e63ff; }
+      .buret-xyzrender-rotate-label.active { color: color-mix(in srgb, var(--buret-accent, #b45cff) 76%, var(--buret-toolbar-color, #fff)); }
       .buret-xyzrender-rotate-tick { position: absolute; left: 50%; top: 50%; width: 1px; height: 9px; transform: translate(-50%, -50%) rotate(var(--buret-degree-angle)) translateY(calc(-1 * var(--buret-rotate-radius))); transform-origin: 50% 100%; background: rgba(125,142,183,0.28); border-radius: 999px; }
-      .buret-xyzrender-sheet-rotate-handle { position: absolute; left: 50%; top: -42px; z-index: 12; width: 32px; height: 32px; transform: translateX(-50%); border: 0; border-radius: 999px; cursor: grab; opacity: 0; pointer-events: none; touch-action: none; transition: opacity 120ms ease, transform 120ms ease; }
-      .buret-xyzrender-sheet-rotate-handle::before { content: ""; position: absolute; left: 50%; top: 25px; width: 2px; height: 25px; transform: translateX(-50%); background: var(--buret-accent, #b45cff); border-radius: 999px; }
-      .buret-xyzrender-rotate-handle-dot { position: absolute; left: 50%; top: 50%; width: 19px; height: 19px; transform: translate(-50%, -50%); border: 2px solid var(--buret-accent, #b45cff); border-radius: 999px; background: var(--buret-toolbar-background, rgba(12,13,14,0.92)); box-shadow: 0 8px 18px rgba(0,0,0,0.28); }
-      .buret-xyzrender-rotate-handle-degree { position: absolute; left: calc(100% + 3px); top: 50%; transform: translateY(-50%) rotate(var(--buret-sheet-rotation-negative)); transform-origin: 0 50%; padding: 2px 6px; border-radius: 999px; color: #fff; background: #3e63ff; font: 700 10px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; opacity: 0; white-space: nowrap; box-shadow: 0 5px 14px rgba(62,99,255,0.28); }
+      .buret-xyzrender-sheet-rotate-handle { position: absolute; left: 50%; top: 50%; z-index: 12; width: 32px; height: 32px; transform: translate(-50%, calc(-1 * var(--buret-rotate-radius) - 50%)) scale(var(--buret-rotate-handle-scale)); border: 0; border-radius: 999px; cursor: grab; opacity: 0; pointer-events: none; touch-action: none; transition: opacity 120ms ease, transform 120ms ease; }
+      .buret-xyzrender-sheet-rotate-handle::before { content: ""; position: absolute; left: 50%; top: 25px; width: 1.5px; height: max(18px, calc(var(--buret-rotate-radius) - 14px)); transform: translateX(-50%); background: color-mix(in srgb, var(--buret-accent, #b45cff) 45%, transparent); border-radius: 999px; }
+      .buret-xyzrender-rotate-handle-dot { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; transform: translate(-50%, -50%); border: 1.5px solid color-mix(in srgb, var(--buret-accent, #b45cff) 72%, var(--buret-toolbar-color, #fff)); border-radius: 999px; background: var(--buret-toolbar-background, rgba(12,13,14,0.92)); box-shadow: 0 7px 16px rgba(0,0,0,0.24); }
+      .buret-xyzrender-rotate-handle-degree { position: absolute; left: calc(100% + 3px); top: 50%; transform: translateY(-50%) rotate(var(--buret-sheet-rotation-negative)); transform-origin: 0 50%; padding: 2px 6px; border-radius: 999px; color: var(--buret-toolbar-color, #fff); background: color-mix(in srgb, var(--buret-accent, #b45cff) 48%, var(--buret-toolbar-background, #111)); font: 700 10px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; opacity: 0; white-space: nowrap; box-shadow: 0 5px 14px color-mix(in srgb, var(--buret-accent, #b45cff) 18%, transparent); }
       .buret-external-artifact-card.selected .buret-xyzrender-sheet-rotate-handle,
       .buret-external-artifact-card:hover .buret-xyzrender-sheet-rotate-handle,
       .buret-xyzrender-sheet-item.selected .buret-xyzrender-sheet-rotate-handle,
       .buret-xyzrender-sheet-item:hover .buret-xyzrender-sheet-rotate-handle { opacity: 1; pointer-events: auto; }
-      .buret-external-artifact-card.selected .buret-xyzrender-rotate-hud,
       .buret-external-artifact-card.rotating .buret-xyzrender-rotate-hud,
-      .buret-xyzrender-sheet-item.selected .buret-xyzrender-rotate-hud,
       .buret-xyzrender-sheet-item.rotating .buret-xyzrender-rotate-hud { opacity: 1; }
       .buret-xyzrender-sheet-rotate-handle:hover,
       .buret-external-artifact-card.rotating .buret-xyzrender-sheet-rotate-handle,
-      .buret-xyzrender-sheet-item.rotating .buret-xyzrender-sheet-rotate-handle { transform: translateX(-50%) scale(1.12); }
+      .buret-xyzrender-sheet-item.rotating .buret-xyzrender-sheet-rotate-handle { --buret-rotate-handle-scale: 1.1; }
+      .buret-external-artifact-card.rotating .buret-xyzrender-sheet-rotate-handle,
+      .buret-xyzrender-sheet-item.rotating .buret-xyzrender-sheet-rotate-handle { transition: none; }
       .buret-external-artifact-card.rotating .buret-xyzrender-rotate-handle-degree,
       .buret-xyzrender-sheet-item.rotating .buret-xyzrender-rotate-handle-degree { opacity: 1; }
-      .buret-xyzrender-resize-handle { position: absolute; z-index: 11; opacity: 0; pointer-events: none; touch-action: none; border-radius: 999px; background: color-mix(in srgb, var(--buret-accent, #b45cff) 86%, #fff); box-shadow: 0 0 0 2px rgba(13,14,16,0.9), 0 5px 14px rgba(0,0,0,0.25); transition: opacity 120ms ease, transform 120ms ease; }
+      .buret-xyzrender-resize-handle { position: absolute; z-index: 11; opacity: 0; pointer-events: none; touch-action: none; border-radius: 999px; background: color-mix(in srgb, var(--buret-accent, #b45cff) 62%, var(--buret-toolbar-background, #111)); box-shadow: 0 0 0 1.5px rgba(13,14,16,0.78), 0 5px 14px rgba(0,0,0,0.20); transition: opacity 120ms ease, transform 120ms ease; }
       .buret-external-artifact-card.selected .buret-xyzrender-resize-handle,
       .buret-external-artifact-card:hover .buret-xyzrender-resize-handle,
       .buret-xyzrender-sheet-item.selected .buret-xyzrender-resize-handle,
@@ -2871,6 +2876,29 @@
     });
   }
 
+  function resetRotatableArtifactRotateRadius(item) {
+    if (!item) return;
+    const rect = item.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const offset = item.classList.contains('buret-external-artifact-card') ? 42 : 24;
+    const radius = Math.min(520, Math.max(48, rect.height / 2 + offset));
+    item.style.setProperty('--buret-rotate-radius', `${radius.toFixed(1)}px`);
+  }
+
+  function updateRotatableArtifactRotateRadius(item, event) {
+    if (!item || !event) return;
+    const rect = item.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const distance = Math.hypot(event.clientX - centerX, event.clientY - centerY);
+    if (!Number.isFinite(distance) || distance <= 0) return;
+    const minRadius = Math.max(48, Math.min(rect.width, rect.height) * 0.28);
+    const maxRadius = Math.max(minRadius, Math.min(360, Math.max(rect.width, rect.height) * 0.88));
+    const nextRadius = Math.min(maxRadius, Math.max(minRadius, distance));
+    item.style.setProperty('--buret-rotate-radius', `${nextRadius.toFixed(1)}px`);
+  }
+
   function updateExternalArtifactCardFit(item) {
     if (!item?.classList?.contains('buret-external-artifact-card')) return;
     const container = item.closest('.buret-external-artifact-inline');
@@ -3040,6 +3068,7 @@
       } else {
         setSheetItemSize(nextWidth, nextHeight);
       }
+      resetRotatableArtifactRotateRadius(item);
       updateExternalArtifactCardFit(item);
     };
 
@@ -3071,9 +3100,13 @@
       installRotatableArtifactResize(card, getStageScale);
       installRotatableArtifactKeyboard(card, { removable: false });
       updateRotatableArtifactDegree(card, parseFloat(card.dataset.rotation || '0') || 0);
+      resetRotatableArtifactRotateRadius(card);
       updateExternalArtifactCardFit(card);
       if (typeof ResizeObserver === 'function') {
-        const observer = new ResizeObserver(() => updateExternalArtifactCardFit(card));
+        const observer = new ResizeObserver(() => {
+          resetRotatableArtifactRotateRadius(card);
+          updateExternalArtifactCardFit(card);
+        });
         const container = card.closest('.buret-external-artifact-inline');
         if (container) observer.observe(container);
       }
@@ -3177,6 +3210,7 @@
       selectRotatableArtifact(item);
       try { item.focus({ preventScroll: true }); } catch (_) {}
       pointerId = event.pointerId;
+      updateRotatableArtifactRotateRadius(item, event);
       startAngle = angleForEvent(event);
       startRotation = parseFloat(item.dataset.rotation || '0') || 0;
       item.classList.add('rotating');
@@ -3184,6 +3218,7 @@
     };
     const onPointerMove = event => {
       if (pointerId !== event.pointerId) return;
+      updateRotatableArtifactRotateRadius(item, event);
       setSheetItemRotation(item, snapRotation(startRotation + angleForEvent(event) - startAngle, event));
     };
     const finish = event => {
@@ -3196,6 +3231,7 @@
     handle.addEventListener('pointermove', onPointerMove);
     handle.addEventListener('pointerup', finish);
     handle.addEventListener('pointercancel', finish);
+    resetRotatableArtifactRotateRadius(item);
   }
 
   function installExternalArtifactInteractions(root) {
@@ -3593,6 +3629,7 @@
       await loadDockingPreparedStructure(viewer, prepared);
       return;
     }
+    activeDockingPrepared = null;
     if (prepared.loadPreset === 'all-models') {
       const plugin = viewer.plugin;
       const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
@@ -3623,6 +3660,7 @@
 
   async function loadDockingPreparedStructure(viewer, prepared) {
     const plugin = viewer.plugin;
+    activeDockingPrepared = prepared;
     if (typeof plugin.clear === 'function') {
       await plugin.clear();
     }
@@ -4043,19 +4081,64 @@
     return Array.isArray(hierarchy?.current?.structures) ? hierarchy.current.structures : [];
   }
 
-  function molstarContextTargetStructures() {
+  function molstarContextPickedStructureInfo(structures) {
     const pickedStructure = molstarContextMenuPick?.loci?.structure || null;
-    const structures = molstarContextStructures();
-    if (!structures.length) return [];
     if (pickedStructure) {
-      const picked = structures.find(structure => {
+      const index = structures.findIndex(structure => {
         const data = structure?.cell?.obj?.data || structure?.obj?.data || null;
         return data === pickedStructure || data?.root === pickedStructure?.root;
       });
-      if (picked) return [picked];
+      if (index >= 0) return { index, structure: structures[index] };
     }
-    if (activeConfig?.docking && structures.length > 1) return structures.slice(1);
-    return structures.length === 1 ? structures : [structures[structures.length - 1]];
+    return null;
+  }
+
+  function currentDockingPoseSource(prepared) {
+    const poses = Array.isArray(prepared?.poses) ? prepared.poses : [];
+    if (!poses.length) return null;
+    const index = prepared?.nativeTrajectoryControls
+      ? readNativeTrajectoryPosition(poses.length)
+      : Math.max(0, Math.min(poses.length - 1, Number(prepared?.activePose || 0)));
+    return poses[index] || poses[0] || null;
+  }
+
+  function molstarContextTarget() {
+    const structures = molstarContextStructures();
+    if (!structures.length) {
+      return { structures: [], label: activeConfig?.label || 'Mol* structure', scope: 'none' };
+    }
+    const picked = molstarContextPickedStructureInfo(structures);
+    const targetStructure = picked?.structure || (structures.length === 1 ? structures[0] : structures[structures.length - 1]);
+    const targetStructures = targetStructure ? [targetStructure] : [];
+    if (activeConfig?.docking && activeDockingPrepared) {
+      if (picked?.index === 0) {
+        return {
+          structures: targetStructures,
+          label: activeDockingPrepared.receptorEntry?.label || 'Receptor',
+          scope: 'receptor',
+          receptor: activeDockingPrepared.receptorEntry || null
+        };
+      }
+      if (picked && picked.index > 0) {
+        const pose = currentDockingPoseSource(activeDockingPrepared);
+        return {
+          structures: targetStructures,
+          label: pose?.label || 'Ligand',
+          scope: 'ligand',
+          receptor: activeDockingPrepared.receptorEntry || null,
+          ligand: pose
+        };
+      }
+    }
+    return {
+      structures: targetStructures,
+      label: molstarContextTargetLabel(targetStructures),
+      scope: 'structure'
+    };
+  }
+
+  function molstarContextTargetStructures() {
+    return molstarContextTarget().structures;
   }
 
   function molstarContextTargetLabel(structures) {
@@ -4065,6 +4148,110 @@
     if (labels.length === 1) return labels[0];
     if (labels.length > 1) return `${labels.length} structures`;
     return activeConfig?.label || 'Mol* structure';
+  }
+
+  function parsePdbAtomLine(line) {
+    if (!/^(ATOM  |HETATM)/.test(line)) return null;
+    const x = Number(line.slice(30, 38));
+    const y = Number(line.slice(38, 46));
+    const z = Number(line.slice(46, 54));
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null;
+    return {
+      line,
+      x,
+      y,
+      z,
+      residueKey: `${line.slice(17, 20)}:${line.slice(21, 22)}:${line.slice(22, 27)}`
+    };
+  }
+
+  function ligandAtomCoordinates(source) {
+    if (!source || normalizeFormat(source.format) !== 'sdf') return [];
+    const records = splitSdfRecords(source.data);
+    const molecule = parseV2000SdfRecord(records[0] || source.data);
+    return molecule?.atoms?.map(atom => ({ x: atom.x, y: atom.y, z: atom.z })) || [];
+  }
+
+  function pdbEnvironmentForLigand(receptor, ligand, radiusAngstrom = 6) {
+    const receptorFormat = normalizeFormat(receptor?.format);
+    const receptorData = typeof receptor?.data === 'string' ? receptor.data : '';
+    const ligandAtoms = ligandAtomCoordinates(ligand);
+    if (receptorFormat !== 'pdb' || !receptorData || ligandAtoms.length === 0) {
+      return { data: receptorData, label: receptor?.label || 'Receptor', fallback: true };
+    }
+    const atoms = receptorData.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').map(parsePdbAtomLine).filter(Boolean);
+    if (!atoms.length) return { data: receptorData, label: receptor?.label || 'Receptor', fallback: true };
+    const radiusSq = radiusAngstrom * radiusAngstrom;
+    const selectedResidues = new Set();
+    for (const atom of atoms) {
+      for (const ligandAtom of ligandAtoms) {
+        const dx = atom.x - ligandAtom.x;
+        const dy = atom.y - ligandAtom.y;
+        const dz = atom.z - ligandAtom.z;
+        if ((dx * dx + dy * dy + dz * dz) <= radiusSq) {
+          selectedResidues.add(atom.residueKey);
+          break;
+        }
+      }
+    }
+    if (selectedResidues.size === 0) {
+      return { data: receptorData, label: receptor?.label || 'Receptor', fallback: true };
+    }
+    const selectedLines = [];
+    for (const line of receptorData.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')) {
+      const atom = parsePdbAtomLine(line);
+      if (atom && selectedResidues.has(atom.residueKey)) selectedLines.push(line);
+    }
+    return {
+      data: ['HEADER    BURRETE DOCKING CONTEXT', ...selectedLines, 'END', ''].join('\n'),
+      label: `${receptor?.label || 'Receptor'} environment`,
+      fallback: false,
+      residueCount: selectedResidues.size
+    };
+  }
+
+  function molstarContextDocumentPayload(target) {
+    if (target?.scope === 'ligand' && target.receptor && target.ligand) {
+      const environment = pdbEnvironmentForLigand(target.receptor, target.ligand);
+      return {
+        label: `${target.ligand.label || 'Ligand'} + protein environment`,
+        entries: [
+          {
+            role: 'receptor',
+            label: environment.label,
+            format: normalizeFormat(target.receptor.format),
+            data: environment.data
+          },
+          {
+            role: 'ligand',
+            label: target.ligand.label || 'Ligand',
+            format: normalizeFormat(target.ligand.format),
+            data: target.ligand.data
+          }
+        ],
+        context: {
+          scope: 'ligand',
+          radiusAngstrom: 6,
+          receptorEnvironmentFallback: environment.fallback === true,
+          residueCount: environment.residueCount || 0
+        }
+      };
+    }
+    if (target?.scope === 'receptor' && target.receptor) {
+      return {
+        label: target.receptor.label || 'Receptor',
+        entries: [
+          {
+            role: 'receptor',
+            label: target.receptor.label || 'Receptor',
+            format: normalizeFormat(target.receptor.format),
+            data: target.receptor.data
+          }
+        ],
+        context: { scope: 'receptor' }
+      };
+    }
+    return null;
   }
 
   async function resetMolstarCameraForContext() {
@@ -4106,14 +4293,25 @@
     if (!pick?.loci || molstarLociIsEmpty(pick.loci)) return false;
     const selects = activeViewer?.plugin?.managers?.interactivity?.lociSelects;
     if (typeof selects?.select !== 'function') return false;
-    selects.select(pick);
+    if (typeof selects.deselectAll === 'function') selects.deselectAll();
+    selects.select(pick, true);
+    return true;
+  }
+
+  function focusMolstarContextPick() {
+    const loci = molstarContextMenuPick?.loci;
+    if (!loci || molstarLociIsEmpty(loci)) return false;
+    const camera = activeViewer?.plugin?.managers?.camera;
+    if (typeof camera?.focusLoci !== 'function') return false;
+    camera.focusLoci(loci, { durationMs: 250 });
     return true;
   }
 
   async function moleculeContextMenuAction(action, label) {
     const hierarchy = activeViewer?.plugin?.managers?.structure?.hierarchy;
-    const targets = molstarContextTargetStructures();
-    const targetLabel = molstarContextTargetLabel(targets);
+    const target = molstarContextTarget();
+    const targets = target.structures;
+    const targetLabel = target.label;
     try {
       if (action === 'inspect') {
         await inspectMolstarContextTarget(targetLabel);
@@ -4129,14 +4327,16 @@
         await hierarchy.remove(targets, true);
         setStatus(`[web] Deleted ${targetLabel}.`);
       } else if (action === 'molstar') {
-        const handled = await resetMolstarCameraForContext();
+        const handled = focusMolstarContextPick() || await resetMolstarCameraForContext();
         setStatus(handled ? `[web] Focused ${targetLabel} in Mol*.` : `[web] ${targetLabel} is already open in Mol*.`);
       } else if (action === 'separate-window') {
+        const contextDocument = molstarContextDocumentPayload(target);
         const posted = postHostMessage({
           type: 'openMolstarContextDocument',
-          renderer: 'molstar'
+          renderer: 'molstar',
+          contextDocument
         });
-        setStatus(posted ? `[web] Opening ${activeConfig?.label || targetLabel} in a separate Mol* view...` : '[web] Separate Mol* view is unavailable in this host.');
+        setStatus(posted ? `[web] Opening ${targetLabel} in a separate Mol* view...` : '[web] Separate Mol* view is unavailable in this host.');
       } else {
         setStatus(`[web] ${label} is unavailable.`);
       }
@@ -4164,7 +4364,7 @@
     title.textContent = 'Molecule actions';
     const subtitle = document.createElement('div');
     subtitle.className = 'buret-molecule-context-menu-subtitle';
-    subtitle.textContent = activeConfig?.label || 'Mol* structure';
+    subtitle.textContent = molstarContextTarget().label;
     const actions = [
       ['select', 'Select molecule'],
       ['remove', 'Delete molecule'],
