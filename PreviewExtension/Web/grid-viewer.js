@@ -325,6 +325,10 @@
           <div class="buret-toolbar-row buret-toolbar-row-view">
             <button id="show-properties" class="buret-toggle-button" type="button" aria-pressed="false">Properties</button>
             <button id="clear-smarts" class="buret-toggle-button buret-clear-smarts" type="button" hidden>Clear SMARTS</button>
+            <div class="buret-selection-actions" ${caps.selection ? '' : 'hidden'}>
+              <button id="select-all" class="buret-toggle-button" type="button">Select all</button>
+              <button id="clear-selection" class="buret-toggle-button" type="button">Clear selection</button>
+            </div>
             ${caps.xyzrenderCards ? cardRendererSwitchHTML() : ''}
             ${caps.rendererSwitch ? rendererSwitchHTML() : ''}
           </div>
@@ -349,6 +353,8 @@
       state.showProperties = !state.showProperties;
       applyGridPreferences();
     });
+    document.getElementById('select-all')?.addEventListener('click', () => selectAllRows(cfg));
+    document.getElementById('clear-selection')?.addEventListener('click', () => clearSelection(cfg));
     document.getElementById('copy-selected')?.addEventListener('click', copySelected);
     document.getElementById('export-smi')?.addEventListener('click', () => exportSmiles(cfg));
     document.getElementById('export-csv')?.addEventListener('click', () => exportCSV(cfg));
@@ -916,6 +922,12 @@
     if (clearSMARTS) clearSMARTS.hidden = !state.smarts.trim();
     const smartsInput = document.getElementById('smarts');
     if (smartsInput) smartsInput.classList.toggle('invalid', !!state.smartsError);
+    const selectableIndexes = selectableRowIndexes();
+    const allCurrentSelected = selectableIndexes.length > 0 && selectableIndexes.every(index => state.selected.has(index));
+    const selectAllButton = document.getElementById('select-all');
+    if (selectAllButton) selectAllButton.disabled = selectableIndexes.length === 0 || allCurrentSelected;
+    const clearSelectionButton = document.getElementById('clear-selection');
+    if (clearSelectionButton) clearSelectionButton.disabled = state.selected.size === 0;
     const cardRendererStatus = state.cardRenderer === 'xyzrender' && capabilities(cfg).xyzrenderCards
       ? 'External xyzrender card rendering. Loaded cards are cached in this view.'
       : 'Offline RDKit.js rendering. No network access required.';
@@ -1014,6 +1026,21 @@
     updateChrome(cfg);
   }
 
+  function selectAllRows(cfg) {
+    const indexes = selectableRowIndexes();
+    state.selected = new Set(indexes);
+    state.selectionAnchorIndex = indexes.length ? indexes[indexes.length - 1] : null;
+    syncRenderedSelection();
+    updateChrome(cfg);
+  }
+
+  function clearSelection(cfg) {
+    state.selected.clear();
+    state.selectionAnchorIndex = null;
+    syncRenderedSelection();
+    updateChrome(cfg);
+  }
+
   function handleCardSelection(event, row, cfg, cardElement) {
     if (event.defaultPrevented || event.target?.closest?.('[data-buret-card-resize]')) return;
     event.preventDefault();
@@ -1029,19 +1056,12 @@
     if (target?.closest?.('input, textarea, select, button, [contenteditable="true"], [data-buret-card-resize]')) return;
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
       event.preventDefault();
-      const indexes = selectableRowIndexes();
-      indexes.forEach(index => state.selected.add(index));
-      if (indexes.length) state.selectionAnchorIndex = indexes[indexes.length - 1];
-      syncRenderedSelection();
-      updateChrome(cfg);
+      selectAllRows(cfg);
       return;
     }
     if (event.key === 'Escape' && state.selected.size) {
       event.preventDefault();
-      state.selected.clear();
-      state.selectionAnchorIndex = null;
-      syncRenderedSelection();
-      updateChrome(cfg);
+      clearSelection(cfg);
     }
   }
 
