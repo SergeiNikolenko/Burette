@@ -31,7 +31,9 @@ import {
   useCloseAllTabs,
   useCloseDocument,
   useCloseTab,
+  useMoveTab,
   useOpenDocuments,
+  useOpenKetcherTab,
   useOpenNewTab,
   useOpenSettingsTab,
   useOpenTabs,
@@ -98,6 +100,7 @@ export default function App() {
   const addDocuments = useAddTabs();
   const setDocuments = useSetDocuments();
   const openNewTab = useOpenNewTab();
+  const openKetcherTab = useOpenKetcherTab();
   const openSettingsTab = useOpenSettingsTab();
   const canNavigateBack = useCanNavigateBack();
   const canNavigateForward = useCanNavigateForward();
@@ -112,6 +115,7 @@ export default function App() {
   const closeDocument = useCloseDocument();
   const closeActiveDocument = useCloseActiveTab();
   const closeAllDocuments = useCloseAllTabs();
+  const moveTab = useMoveTab();
   const {
     sidebarOpen,
     sidebarWidth,
@@ -430,6 +434,11 @@ export default function App() {
   const openSettings = useCallback(() => {
     openSettingsTab();
   }, [openSettingsTab]);
+
+  const openKetcher = useCallback(() => {
+    openKetcherTab();
+    pushStatus("Opened Ketcher tab");
+  }, [openKetcherTab, pushStatus]);
 
   const postXyzrenderSheetItems = useCallback((documentId: string, payload: StructureDragPayload) => {
     const iframe = Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).find(
@@ -957,6 +966,8 @@ export default function App() {
     focusSidebarSearch,
     openCommandPalette,
     openSettings,
+    openKetcher,
+    moveTab,
     chooseWorkspace,
     openWorkspaceFolder,
     openProjectFolder,
@@ -1030,7 +1041,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [addXyzrenderSheetItemsToDocument, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeTab, focusSidebarSearch, installUpdate, mergeMoleculeCollections, navigateBack, navigateForward, openCommandPalette, openDockingDocument, openNewTab, openProjectFolder, openRecentStructure, openSettings, openWorkspaceFolder, pushErrorStatus, pushStatus, saveMoleculeCollectionAs, selectDocument, setActiveTab, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
+  }), [addXyzrenderSheetItemsToDocument, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeTab, focusSidebarSearch, installUpdate, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openCommandPalette, openDockingDocument, openKetcher, openNewTab, openProjectFolder, openRecentStructure, openSettings, openWorkspaceFolder, pushErrorStatus, pushStatus, saveMoleculeCollectionAs, selectDocument, setActiveTab, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 

@@ -513,7 +513,19 @@ export default defineConfig({
   root: desktopRoot,
   plugins: [react(), browserDevXyzrenderPlugin()],
   define: {
+    global: "globalThis",
     "import.meta.env.BURRETE_REPO_ROOT": JSON.stringify(repoRoot),
+    process: JSON.stringify({ env: {} }),
+    "process.env": "{}",
+  },
+  optimizeDeps: {
+    esbuildOptions: {
+      define: {
+        global: "globalThis",
+        process: JSON.stringify({ env: {} }),
+        "process.env": "{}",
+      },
+    },
   },
   server: {
     port: 1420,

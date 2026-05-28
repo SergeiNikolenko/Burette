@@ -22,6 +22,7 @@ use crate::preview::text_xyz::xyz_data_from_text;
 use crate::preview::xyzrender::create_xyzrender_artifact;
 
 const XYZRENDER_SHEET_MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
+const KETCHER_IMPORT_MAX_STRUCTURE_FILE_SIZE: u64 = 10 * 1024 * 1024;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -103,6 +104,24 @@ pub(crate) fn open_documents<R: Runtime>(
         return Err(errors.join("; "));
     }
     Ok(OpenDocumentsResult { documents, errors })
+}
+
+#[tauri::command]
+pub(crate) fn read_structure_text(path: String) -> Result<String, String> {
+    let input_path = PathBuf::from(&path);
+    let extension = structure_path_extension(&input_path);
+    let supported = supported_structure_extensions()?;
+    if !supported.contains(&extension) {
+        return Err(format!("Unsupported structure extension: {extension}"));
+    }
+    let metadata = fs::metadata(&input_path).map_err(|err| format!("{}: {err}", input_path.display()))?;
+    if !metadata.is_file() {
+        return Err(format!("{} is not a file", input_path.display()));
+    }
+    if metadata.len() > KETCHER_IMPORT_MAX_STRUCTURE_FILE_SIZE {
+        return Err(format!("{} is too large for Ketcher import", input_path.display()));
+    }
+    fs::read_to_string(&input_path).map_err(|err| format!("{}: {err}", input_path.display()))
 }
 
 #[tauri::command]
