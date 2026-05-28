@@ -390,10 +390,12 @@
     document.body.classList.toggle('buret-hide-properties', !state.showProperties);
     if (state.cardMin == null) {
       document.body.classList.remove('buret-grid-manual-size');
+      document.documentElement.style.removeProperty('--buret-card-effective-min');
       document.documentElement.style.removeProperty('--buret-card-min');
       document.documentElement.style.removeProperty('--buret-card-max');
     } else {
       document.body.classList.add('buret-grid-manual-size');
+      document.documentElement.style.setProperty('--buret-card-effective-min', `${state.cardMin}px`);
       document.documentElement.style.setProperty('--buret-card-min', `${state.cardMin}px`);
       document.documentElement.style.setProperty('--buret-card-max', `${state.cardMin}px`);
     }
