@@ -782,6 +782,7 @@ assert.match(browserDevDocuments, /function proteinLikeAtomRecordCount\(text: st
 assert.match(browserDevDocuments, /shouldOpenXyzTrajectoryInMolstar[\s\S]*\? "molstar"[\s\S]*xyzrenderAvailable \? defaultRendererModeForDocument\(extension, requestedMode, reloadOptions\) : "molstar"/);
 assert.match(browserDevDocuments, /trajectoryControls: renderer === "molstar" && trajectoryFrameCount > 1/);
 assert.match(browserDevDocuments, /xyzrenderAvailable,/);
+assert.match(browserDevDocuments, /dataPath: renderer === "xyzrender-external" \? browserDevReadUrl\(path, fileExtension\(path\)\) : undefined/);
 assert.match(browserDevDocuments, /inputDataBase64: inputBytes \? bytesToBase64\(inputBytes\) : undefined/);
 assert.match(browserDevDocuments, /function parseCifCoreAtoms\(lines: string\[\]\)/);
 assert.match(browserDevDocuments, /function xyzDataFromText\(text: string, extension: string, label: string\)/);
@@ -944,7 +945,10 @@ assert.match(previewViewer, /if \(button\.disabled\) return;\s*applyPendingRende
 assert.match(previewViewer, /function requestBrowserDevRendererSwitch\(renderer\)/);
 assert.match(previewViewer, /return requestBrowserDevXyzrenderUpdate\(\{ rendererSwitch: true \}\);/);
 assert.match(previewViewer, /async function switchBrowserDevMolstar\(\)/);
-assert.match(previewViewer, /await startMolstar\(nextConfig, window\.BurreteCacheBuster \|\| String\(Date\.now\(\)\)\);/);
+assert.match(previewViewer, /await ensureBrowserDevMolstarData\(nextConfig, cb\);\s*await startMolstar\(nextConfig, cb\);/s);
+assert.match(previewViewer, /function embeddedStructureDataByteLength\(\)/);
+assert.match(previewViewer, /async function ensureBrowserDevMolstarData\(config, cb\)/);
+assert.match(previewViewer, /window\.BurreteDataBytes = null;\s*window\.BurreteDataBase64 = null;\s*await loadStructureData\(config, cb\);/);
 assert.match(previewViewer, /function disposeActiveMolstarViewer\(\)/);
 assert.match(previewViewer, /function startMolstar\(config, cb\)/);
 assert.match(previewViewer, /if \(toolbar\.dataset\.panelTogglesBound !== '1'\)/);

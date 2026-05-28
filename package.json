@@ -17,7 +17,7 @@
     "agent:preview": "bun scripts/agent-preview.mjs",
     "test:agent": "bun tests/test-burette-agent.mjs && bun tests/test-agent-preview-server.mjs",
     "test:update": "bun tests/test-update-versioning.mjs && bun tests/test-bun-installer-structure.mjs && bun tests/test-bun-installer-behavior.mjs",
-    "test:ui": "bun tests/test-sidebar-projects.mjs && bun tests/test-docking-documents.mjs && bun tests/test-ui-shell-contract.mjs",
+    "test:ui": "bun tests/test-sidebar-projects.mjs && bun tests/test-docking-documents.mjs && bun tests/test-ui-shell-contract.mjs && bun tests/test-collection-documents.mjs",
     "test:tauri-structure": "bun tests/test-tauri-structure.mjs",
     "check:js": "bun scripts/check-js-syntax.mjs PreviewExtension/Web/viewer.js PreviewExtension/Web/viewer-shell.js PreviewExtension/Web/burette-agent.js PreviewExtension/Web/grid-viewer.js PreviewExtension/Web/xyz-fast.js scripts/vendor-molstar.mjs scripts/vendor-rdkit.mjs scripts/check-vendor-assets.mjs scripts/check-format-manifest.mjs scripts/check-preview-format-registry.mjs scripts/sign-update-manifest.mjs scripts/agent-preview.mjs scripts/check-release-version.mjs packages/burrete/bin/burrete.mjs",
     "check:vendor-assets": "bun scripts/check-vendor-assets.mjs",

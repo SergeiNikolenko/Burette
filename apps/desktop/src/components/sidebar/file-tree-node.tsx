@@ -5,8 +5,9 @@ import {
   Folder02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { isMoleculeCollectionPath } from "../../lib/collection-documents";
 import type { SidebarProject, SidebarProjectItem } from "../../lib/sidebar-projects";
-import { writeStructureDrag } from "../../lib/structure-drag";
+import { hasStructureDrag, readStructureDrag, writeStructureDrag } from "../../lib/structure-drag";
 import { rendererLabel } from "../format";
 import { showNativeContextMenu } from "../native-context-menu";
 import type { ShellActions, ShellViewState } from "../types";
@@ -139,6 +140,56 @@ export function ProjectItem({
   const handleDragEnd = () => {
     actions.setStructureDragActive(false);
   };
+  const handleDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!isMoleculeCollectionPath(item.path) || !hasStructureDrag(event.dataTransfer)) return;
+    const paths = readStructureDrag(event.dataTransfer);
+    if (!paths.some(isMoleculeCollectionPath)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "copy";
+  };
+  const handleDrop = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!isMoleculeCollectionPath(item.path) || !hasStructureDrag(event.dataTransfer)) return;
+    const paths = readStructureDrag(event.dataTransfer);
+    if (!paths.some(isMoleculeCollectionPath)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    actions.setStructureDragActive(false);
+    void actions.mergeMoleculeCollections(item.documentId ?? item.path, paths);
+  };
+  const handleContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const items = [
+      {
+        kind: "item" as const,
+        id: "open-structure",
+        text: "Open",
+        action: openItem,
+      },
+      ...(isMoleculeCollectionPath(item.path)
+        ? [
+            { kind: "separator" as const },
+            {
+              kind: "item" as const,
+              id: "save-collection-as",
+              text: "Save Collection As...",
+              action: () => {
+                void actions.saveMoleculeCollectionAs(item.documentId ?? item.path);
+              },
+            },
+          ]
+        : []),
+      { kind: "separator" as const },
+      {
+        kind: "item" as const,
+        id: item.isPinned ? "unpin-structure" : "pin-structure",
+        text: item.isPinned ? "Unpin" : "Pin",
+        action: () => actions.togglePinnedStructure(item.path),
+      },
+    ];
+    void showNativeContextMenu(items, { x: event.clientX, y: event.clientY });
+  };
   const className = [
     "project",
     item.isActive ? "active" : "",
@@ -155,6 +206,9 @@ export function ProjectItem({
       onClick={openItem}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      onContextMenu={handleContextMenu}
       onKeyDown={handleKeyDown}
       aria-label={`${item.relativePath}, ${rendererLabel(item.renderer)}${item.isPinned ? ", pinned" : ""}`}
       title={item.relativePath}
