@@ -1,6 +1,6 @@
 /* Shared Quick Look viewer shell style. Keep app runtimes linked here; do not fork host-specific Mol* chrome. */
 :root {
-  --buret-viewer-ui-scale: 0.86;
+  --buret-viewer-ui-scale: 0.9;
   --buret-toolbar-safe-top: 12px;
   --buret-overlay-opacity: 0.90;
   --buret-overlay-strong-opacity: 0.96;
@@ -20,7 +20,7 @@
   --buret-molstar-border: rgba(255, 255, 255, 0.10);
   --buret-molstar-text: rgba(246, 247, 249, 0.94);
   --buret-molstar-muted-text: rgba(190, 196, 204, 0.82);
-  --buret-molstar-accent: #8fc7ff;
+  --buret-molstar-accent: #AF52DE;
   --buret-molstar-shadow: rgba(0, 0, 0, 0.38);
   --buret-molstar-panel-radius: 10px;
   --buret-menu-background: #2a2d33;
@@ -31,7 +31,7 @@
   --buret-menu-divider: rgba(255, 255, 255, 0.06);
   --buret-menu-toggle-track: rgba(255, 255, 255, 0.20);
   --buret-menu-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
-  --buret-menu-accent: #0169cc;
+  --buret-menu-accent: #AF52DE;
   --buret-select-chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='rgba(255,255,255,0.62)' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M3 4.5l3 3 3-3'/></svg>");
 }
 html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: transparent; }
@@ -57,7 +57,7 @@ body.buret-theme-light {
   --buret-molstar-border: rgba(0, 0, 0, 0.13);
   --buret-molstar-text: rgba(32, 33, 35, 0.94);
   --buret-molstar-muted-text: rgba(86, 88, 92, 0.82);
-  --buret-molstar-accent: #0169cc;
+  --buret-molstar-accent: #AF52DE;
   --buret-molstar-shadow: rgba(0, 0, 0, 0.18);
   --buret-menu-background: #f6f6f4;
   --buret-menu-section-background: #efefec;
@@ -67,7 +67,7 @@ body.buret-theme-light {
   --buret-menu-divider: rgba(0, 0, 0, 0.06);
   --buret-menu-toggle-track: rgba(0, 0, 0, 0.16);
   --buret-menu-shadow: 0 16px 36px rgba(0, 0, 0, 0.15);
-  --buret-menu-accent: #0169cc;
+  --buret-menu-accent: #AF52DE;
   --buret-select-chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='rgba(51,54,59,0.66)' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M3 4.5l3 3 3-3'/></svg>");
   color: #161719;
 }
@@ -85,7 +85,7 @@ body.buret-theme-dark {
   --buret-molstar-border: rgba(255, 255, 255, 0.10);
   --buret-molstar-text: rgba(246, 247, 249, 0.94);
   --buret-molstar-muted-text: rgba(190, 196, 204, 0.82);
-  --buret-molstar-accent: #8fc7ff;
+  --buret-molstar-accent: #AF52DE;
   --buret-molstar-shadow: rgba(0, 0, 0, 0.38);
 }
 body.burette-opaque-background,
@@ -464,6 +464,53 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
 }
 #status.error { color: #ffd4d4; background: rgba(70, 0, 0, 0.82); }
 #status.hidden { display: none; }
+.buret-molecule-context-menu {
+  position: fixed;
+  z-index: 2147483647;
+  min-width: 210px;
+  box-sizing: border-box;
+  padding: 6px;
+  border: 1px solid var(--buret-toolbar-border);
+  border-radius: 12px;
+  color: var(--buret-toolbar-color);
+  background: var(--buret-toolbar-background);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow:
+    0 16px 42px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.buret-molecule-context-menu-title {
+  padding: 6px 8px 1px;
+  font: 700 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+.buret-molecule-context-menu-subtitle {
+  max-width: 260px;
+  overflow: hidden;
+  padding: 0 8px 6px;
+  color: var(--buret-molstar-muted-text);
+  font: 500 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.buret-molecule-context-menu button {
+  display: block;
+  width: 100%;
+  min-height: 30px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 8px;
+  color: inherit;
+  background: transparent;
+  font: 600 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  text-align: left;
+}
+.buret-molecule-context-menu button:hover,
+.buret-molecule-context-menu button:focus {
+  outline: none;
+  background: var(--buret-toolbar-hover);
+}
 #buret-toolbar {
   position: absolute; top: var(--buret-toolbar-safe-top); right: 12px; left: auto; z-index: 2147483646;
   display: flex; align-items: center; flex-wrap: nowrap; max-width: calc(100vw - 24px); gap: 6px; padding: 6px;
@@ -476,13 +523,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
     0 8px 22px rgba(0, 0, 0, 0.22),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
   user-select: none; touch-action: none;
-  transition:
-    left 180ms cubic-bezier(0.22, 1, 0.36, 1),
-    top 180ms cubic-bezier(0.22, 1, 0.36, 1),
-    gap 180ms cubic-bezier(0.22, 1, 0.36, 1),
-    padding 180ms cubic-bezier(0.22, 1, 0.36, 1),
-    background 180ms ease,
-    box-shadow 180ms ease;
+  transition: background 180ms ease, box-shadow 180ms ease;
 }
 #buret-toolbar.buret-toolbar-docked {
   width: auto;
@@ -507,6 +548,9 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
+}
+#buret-toolbar.buret-popover-open .buret-toolbar-content {
+  overflow: visible;
 }
 #buret-toolbar.buret-toolbar-docked .buret-toolbar-content::-webkit-scrollbar { display: none; }
 #buret-toolbar.collapsed,
@@ -695,6 +739,24 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   background: var(--buret-menu-input-focus-background);
 }
 .buret-textarea { resize: vertical; min-height: 72px; }
+.buret-slider-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 58px;
+  align-items: center;
+  gap: 8px;
+}
+.buret-slider {
+  width: 100%;
+  accent-color: var(--buret-menu-accent);
+}
+.buret-slider[data-auto] {
+  opacity: 0.62;
+}
+.buret-slider-value {
+  min-width: 0;
+  padding-inline: 6px;
+  text-align: right;
+}
 .buret-field.hidden { display: none; }
 .buret-xyzrender-advanced {
   border: 1px solid var(--buret-menu-border);
@@ -765,9 +827,6 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   #buret-toolbar[data-active-renderer="xyzrender-external"] [data-buret-action="theme"] {
     display: none;
   }
-  #buret-toolbar[data-active-renderer="xyzrender-external"] [data-buret-renderer="xyz-fast"] {
-    display: none;
-  }
   #buret-toolbar[data-active-renderer="xyzrender-external"] .buret-renderer-control {
     gap: 2px;
     padding-left: 4px;
@@ -811,4 +870,54 @@ body.burette-quicklook-host .buret-xyz-badge {
 }
 body.burette-quicklook-host {
   --buret-toolbar-safe-top: 56px;
+}
+body.burette-quicklook-host .buret-corner-button {
+  display: inline-flex;
+}
+.buret-docking-poses {
+  position: fixed;
+  left: 14px;
+  bottom: 14px;
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(16, 16, 16, 0.82);
+  color: #f8fafc;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  font: 650 12px/1.1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  box-sizing: border-box;
+  max-width: calc(100vw - 24px);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.buret-docking-poses.buret-docking-poses-dragging {
+  cursor: grabbing;
+  transition: none;
+}
+.buret-docking-poses button {
+  height: 26px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 9px;
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+.buret-docking-poses button:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+.buret-docking-poses button:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+.buret-docking-poses span {
+  min-width: 76px;
+  text-align: center;
 }

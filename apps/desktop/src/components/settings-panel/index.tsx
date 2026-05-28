@@ -3,11 +3,18 @@ import type { UpdateChannel } from "../../update";
 import { CURRENT_VERSION, defaultUpdatePreferences } from "../../update";
 import { defaultPreferences } from "../../stores/settings-store";
 import type { ShellActions, ShellViewState } from "../types";
-import { SettingsSection, ToggleControl, actionRow, selectPreferenceRow, type SettingRow } from "./setting-control";
+import {
+  SettingsSection,
+  ToggleControl,
+  actionRow,
+  selectPreferenceRow,
+  type SettingRow,
+} from "./setting-control";
+import { ThemesSection } from "./themes-section";
 
-const defaultRendererModeOptions: Array<ViewerPreferences["rendererMode"]> = ["auto", "xyz-fast", "molstar", "xyzrender-external"];
+const defaultRendererModeOptions: Array<ViewerPreferences["rendererMode"]> = ["auto", "molstar", "xyzrender-external"];
 
-function preferenceRow<K extends keyof ViewerPreferences & string>(
+function preferenceRow<K extends Extract<keyof ViewerPreferences, string>>(
   label: string,
   description: string,
   value: ViewerPreferences[K],
@@ -75,12 +82,12 @@ export function SettingsPanel({ state, actions }: { state: ShellViewState; actio
               preferenceRow<"canvasBackground">("Canvas", "Default viewer canvas background for structure previews.", preferences.canvasBackground, ["auto", "black", "graphite", "white", "transparent"], defaultPreferences.canvasBackground, (canvasBackground) => actions.setPreference("canvasBackground", canvasBackground)),
             ]}
           />
+          <ThemesSection preferences={preferences} actions={actions} />
           <SettingsSection
             title="Structure Rendering"
             rows={[
               preferenceRow<"rendererMode">("Mode", "Choose the renderer used for newly opened structures.", preferences.rendererMode, defaultRendererModeOptions, defaultPreferences.rendererMode, (rendererMode) => actions.setPreference("rendererMode", rendererMode)),
               preferenceRow<"molstarStyle">("Mol* style", "Default appearance preset for the Mol* renderer.", preferences.molstarStyle, ["default", "illustrative"], defaultPreferences.molstarStyle, (molstarStyle) => actions.setPreference("molstarStyle", molstarStyle)),
-              preferenceRow<"xyzFastStyle">("XYZ style", "Default drawing style for the fast XYZ renderer.", preferences.xyzFastStyle, ["default", "wire", "tube", "spacefill"], defaultPreferences.xyzFastStyle, (xyzFastStyle) => actions.setPreference("xyzFastStyle", xyzFastStyle)),
             ]}
           />
           <SettingsSection title="Updates" rows={updateRows} />

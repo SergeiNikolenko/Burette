@@ -80,6 +80,7 @@ enum MoleculeGridPreviewBuilder {
         theme: String,
         canvasBackground: String,
         transparentBackground: Bool,
+        themeTokens: [String: Any]? = nil,
         overlayOpacity: Double = 0.90,
         debug: Bool,
         allowSelection: Bool,
@@ -122,7 +123,7 @@ enum MoleculeGridPreviewBuilder {
             return payload
         }
 
-        let config: [String: Any] = [
+        var config: [String: Any] = [
             "mode": "grid2d",
             "format": collection.format,
             "label": fileURL.lastPathComponent,
@@ -146,6 +147,9 @@ enum MoleculeGridPreviewBuilder {
                 "rendererSwitch": host == .app && collection.format == "sdf"
             ]
         ]
+        if let themeTokens {
+            config["themeTokens"] = themeTokens
+        }
 
         let configData = try JSONSerialization.data(withJSONObject: config, options: [.sortedKeys, .withoutEscapingSlashes])
         let recordsData = try JSONSerialization.data(withJSONObject: recordPayload, options: [.sortedKeys, .withoutEscapingSlashes])

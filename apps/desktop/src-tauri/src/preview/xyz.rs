@@ -1,3 +1,4 @@
+#[derive(Clone)]
 pub(crate) struct XyzPayload {
     pub(crate) data: Vec<u8>,
     pub(crate) atom_count: Option<usize>,

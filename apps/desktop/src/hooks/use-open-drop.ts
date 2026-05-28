@@ -1,13 +1,42 @@
 import { useCallback, useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { DragDropEvent } from "@tauri-apps/api/window";
+import { ligandDropPathsForTarget } from "../lib/docking-documents";
+import { hasStructureDrag, readStructureDrag } from "../lib/structure-drag";
 import { isTauriRuntime } from "../lib/tauri";
 
 type OpenDocuments = (paths: string[]) => void | Promise<void>;
+type OpenDockingDocument = (receptorPath: string, ligandPaths: string[]) => void | Promise<void>;
+type AddXyzrenderSheetItems = (paths: string[]) => boolean;
+type MergeMoleculeCollections = (paths: string[]) => boolean;
 type ReportStatus = (status: string, kind?: "info" | "error") => void;
 
-export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStatus) {
+type OpenDropOptions = {
+  activeDocumentPath?: string | null;
+  openDockingDocument?: OpenDockingDocument;
+  addXyzrenderSheetItems?: AddXyzrenderSheetItems;
+  mergeMoleculeCollections?: MergeMoleculeCollections;
+};
+
+export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStatus, options: OpenDropOptions = {}) {
   const [dropActive, setDropActive] = useState(false);
+  const { activeDocumentPath = null, openDockingDocument, addXyzrenderSheetItems, mergeMoleculeCollections } = options;
+
+  const openAsDocking = useCallback((paths: string[]) => {
+    if (!activeDocumentPath || !openDockingDocument) return false;
+    const ligandPaths = ligandDropPathsForTarget(activeDocumentPath, paths);
+    if (ligandPaths.length === 0) return false;
+    void openDockingDocument(activeDocumentPath, ligandPaths);
+    return true;
+  }, [activeDocumentPath, openDockingDocument]);
+
+  const isOverActiveViewer = useCallback((position: { x: number; y: number } | null = null) => {
+    if (!activeDocumentPath || typeof document === "undefined") return false;
+    const element = position
+      ? document.elementFromPoint(position.x / window.devicePixelRatio, position.y / window.devicePixelRatio)
+      : document.activeElement;
+    return Boolean(element?.closest(".molecule-stage, .main-stage"));
+  }, [activeDocumentPath]);
 
   const handleFileDrop = useCallback(
     (event: DragDropEvent) => {
@@ -17,10 +46,13 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       }
       setDropActive(false);
       if (event.type === "drop") {
+        if (isOverActiveViewer(event.position) && mergeMoleculeCollections?.(event.paths)) return;
+        if (isOverActiveViewer(event.position) && addXyzrenderSheetItems?.(event.paths)) return;
+        if (isOverActiveViewer(event.position) && openAsDocking(event.paths)) return;
         void openDocuments(event.paths);
       }
     },
-    [openDocuments],
+    [addXyzrenderSheetItems, isOverActiveViewer, mergeMoleculeCollections, openAsDocking, openDocuments],
   );
 
   useEffect(() => {
@@ -44,10 +76,12 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
   }, [handleFileDrop, pushStatus]);
 
   const handleBrowserDrag = useCallback((event: React.DragEvent<HTMLElement>) => {
-    if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+    const fileDrop = Array.from(event.dataTransfer.types).includes("Files");
+    const structureDrop = hasStructureDrag(event.dataTransfer);
+    if (!fileDrop && !structureDrop) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
-    setDropActive(true);
+    if (!structureDrop) setDropActive(true);
   }, []);
 
   const handleBrowserDragLeave = useCallback((event: React.DragEvent<HTMLElement>) => {
@@ -57,19 +91,29 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
 
   const handleBrowserDrop = useCallback(
     (event: React.DragEvent<HTMLElement>) => {
-      if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+      const structureDrop = hasStructureDrag(event.dataTransfer);
+      const fileDrop = Array.from(event.dataTransfer.types).includes("Files");
+      if (!fileDrop && !structureDrop) return;
       event.preventDefault();
       setDropActive(false);
-      const paths = Array.from(event.dataTransfer.files)
-        .map((file) => (file as File & { path?: string }).path)
-        .filter((path): path is string => Boolean(path));
+      const paths = structureDrop
+        ? readStructureDrag(event.dataTransfer)
+        : Array.from(event.dataTransfer.files)
+            .map((file) => (file as File & { path?: string }).path)
+            .filter((path): path is string => Boolean(path));
       if (paths.length > 0) {
+        const target = event.target instanceof Element ? event.target : null;
+        if (target?.closest(".molecule-stage, .main-stage")) {
+          if (mergeMoleculeCollections?.(paths)) return;
+          if (addXyzrenderSheetItems?.(paths)) return;
+          if (openAsDocking(paths)) return;
+        }
         void openDocuments(paths);
       } else if (!isTauriRuntime()) {
         pushStatus("Drop files into the installed app window to open them.");
       }
     },
-    [openDocuments, pushStatus],
+    [addXyzrenderSheetItems, mergeMoleculeCollections, openAsDocking, openDocuments, pushStatus],
   );
 
   return {

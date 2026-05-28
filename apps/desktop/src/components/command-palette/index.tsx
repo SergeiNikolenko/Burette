@@ -26,7 +26,6 @@ const rendererCommands: Array<{
   value: ViewerPreferences["rendererMode"];
 }> = [
   { id: "renderer-auto", label: "Renderer: Auto", value: "auto" },
-  { id: "renderer-xyz-fast", label: "Renderer: Fast XYZ", value: "xyz-fast" },
   { id: "renderer-molstar", label: "Renderer: Mol*", value: "molstar" },
   { id: "renderer-xyzrender", label: "Renderer: xyzrender external", value: "xyzrender-external" },
 ];
@@ -71,13 +70,6 @@ export function CommandPalette({
         label: "Open Structure",
         description: "Choose molecular structure files",
         run: actions.chooseFiles,
-      },
-      {
-        id: "search-structures",
-        group: "Suggested",
-        label: "Search Projects and Structures",
-        description: "Focus the sidebar project filter",
-        run: actions.focusSidebarSearch,
       },
       {
         id: "open-settings",

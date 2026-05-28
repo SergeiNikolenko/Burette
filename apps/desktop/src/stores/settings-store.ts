@@ -7,12 +7,28 @@ type SettingsState = {
   setPreference: <K extends keyof ViewerPreferences>(key: K, value: ViewerPreferences[K]) => void;
 };
 
+const systemFont = "-apple-system-body, ui-sans-serif, -apple-system, system-ui, \"Segoe UI\", Helvetica, \"Apple Color Emoji\", Arial, sans-serif, \"Segoe UI Emoji\", \"Segoe UI Symbol\"";
+
 export const defaultPreferences: ViewerPreferences = {
   theme: "auto",
   canvasBackground: "auto",
   rendererMode: "auto",
   molstarStyle: "illustrative",
   xyzFastStyle: "default",
+  themeLightAccent: "#AF52DE",
+  themeLightBackground: "#FFFFFF",
+  themeLightForeground: "#0D0D0D",
+  themeLightUiFont: systemFont,
+  themeLightEditorFont: systemFont,
+  themeLightTranslucent: 10,
+  themeLightContrast: 20,
+  themeDarkAccent: "#AF52DE",
+  themeDarkBackground: "#111111",
+  themeDarkForeground: "#FCFCFC",
+  themeDarkUiFont: systemFont,
+  themeDarkEditorFont: systemFont,
+  themeDarkTranslucent: 20,
+  themeDarkContrast: 16,
 };
 
 type PersistedSettingsState = Pick<SettingsState, "preferences">;
