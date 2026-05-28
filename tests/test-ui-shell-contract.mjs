@@ -1201,6 +1201,7 @@ assert.match(gridViewer, /function showMoleculeContextMenu\(event, row\)/);
 assert.match(gridViewer, /className = 'buret-grid-molecule-context-menu'/);
 assert.match(gridViewer, /Open in Mol\*/);
 assert.match(gridViewer, /Delete molecule/);
+assert.doesNotMatch(gridViewer, /separateWindow/);
 assert.match(gridCss, /\.buret-grid-molecule-context-menu \{/);
 assert.match(gridCss, /\.buret-grid-molecule-context-menu button:hover,/);
 assert.doesNotMatch(gridViewer, /function drawXyzrenderFallback/);
