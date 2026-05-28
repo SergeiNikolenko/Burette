@@ -512,6 +512,9 @@ function normalizeOrientationRef(value: string | null) {
 export default defineConfig({
   root: desktopRoot,
   plugins: [react(), browserDevXyzrenderPlugin()],
+  resolve: {
+    dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
+  },
   define: {
     global: "globalThis",
     "import.meta.env.BURRETE_REPO_ROOT": JSON.stringify(repoRoot),
