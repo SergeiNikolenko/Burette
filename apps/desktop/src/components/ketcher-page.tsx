@@ -135,19 +135,26 @@ export function KetcherPage({
     });
   }, [collectionTargets, openSketch]);
 
-  const importStructures = useCallback(async (paths: string[]) => {
+  const importStructures = useCallback(async (paths: string[], fragments: Array<{ title: string; text: string }> = []) => {
     if (!ketcher) {
       setStatus("Ketcher is not ready");
       return;
     }
     const cleanPaths = Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
-    if (cleanPaths.length === 0) return;
-    const label = cleanPaths.length === 1 ? fileName(cleanPaths[0]) : `${cleanPaths.length} structures`;
+    const cleanFragments = fragments.filter((fragment) => fragment.text.trim());
+    if (cleanPaths.length === 0 && cleanFragments.length === 0) return;
+    const itemCount = cleanPaths.length + cleanFragments.length;
+    const label = itemCount === 1
+      ? (cleanPaths[0] ? fileName(cleanPaths[0]) : cleanFragments[0]?.title || "structure")
+      : `${itemCount} structures`;
     try {
       setStatus("Adding " + label);
       for (const path of cleanPaths) {
         const text = await readStructureText(path);
         await ketcher.addFragment(text, { needZoom: true });
+      }
+      for (const fragment of cleanFragments) {
+        await ketcher.addFragment(fragment.text, { needZoom: true });
       }
       setOutput("");
       setStatus("Added " + label);
@@ -160,7 +167,7 @@ export function KetcherPage({
     const request = state.ketcherImportRequest;
     if (!request || !isActive || !ketcher || handledImportRequestIdRef.current === request.id) return;
     handledImportRequestIdRef.current = request.id;
-    void importStructures(request.paths).finally(() => {
+    void importStructures(request.paths, request.fragments).finally(() => {
       actions.clearKetcherImportRequest(request.id);
     });
   }, [actions, importStructures, isActive, ketcher, state.ketcherImportRequest]);

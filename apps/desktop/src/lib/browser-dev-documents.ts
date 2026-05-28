@@ -41,6 +41,8 @@ const MAESTRO_PREVIEW_READ_LIMIT = 64 * 1024 * 1024;
 const MAESTRO_PREVIEW_ATOM_LIMIT = 3000;
 const MAESTRO_PDB_PREVIEW_ATOM_LIMIT = 30000;
 const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT = 1500;
+const KETCHER_EDIT_MAX_BYTES = 1024 * 1024;
+const KETCHER_EDIT_MAX_ATOMS = 300;
 const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
 const GRID_ASSET_VERSION = "grid-ui-v71";
@@ -541,6 +543,7 @@ async function openBrowserDevDocumentFromBytes(
     "",
     undefined,
     Math.max(xyzFrameCount, sdfRecordCount),
+    ketcherEditConfig(path, extension, text, sourceByteCount, sdfRecordCount),
   );
   return browserDocument(path, extension, renderer, html, sourceByteCount);
 }
@@ -708,6 +711,7 @@ function viewerHtml(
   extraWindowScript = "",
   configOverride?: Record<string, unknown>,
   trajectoryFrameCount = 0,
+  ketcherConfig: Record<string, unknown> | null = null,
 ) {
   const label = fileTitle(path);
   const visuals = resolvePreviewVisuals(preferences);
@@ -746,6 +750,7 @@ function viewerHtml(
     canOpenInVesta: format.canOpenInVesta,
     showPanelControls: true,
     defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" },
+    ...(ketcherConfig ? { ketcherEditable: true, ...ketcherConfig } : { ketcherEditable: false }),
     ...(externalArtifact ? { externalArtifact } : {}),
     ...(xyzrenderPresetOptions ? { xyzrenderPresetOptions } : {}),
     ...(xyzrenderControls ? { xyzrenderControls } : {}),
@@ -1196,6 +1201,45 @@ function defaultRendererModeForDocument(extension: string, requestedMode: string
     return "molstar";
   }
   return requestedMode;
+}
+
+function ketcherEditConfig(
+  path: string,
+  extension: string,
+  text: string,
+  sourceByteCount: number,
+  sdfRecordCount: number,
+): Record<string, unknown> | null {
+  if (sourceByteCount > KETCHER_EDIT_MAX_BYTES) return null;
+  const normalized = extension.toLowerCase();
+  let atomCount = 0;
+  if (normalized === "mol") {
+    atomCount = molfileAtomCount(text);
+  } else if (isSdfExtension(normalized)) {
+    if (sdfRecordCount !== 1) return null;
+    const record = parseSdf(text)[0]?.molblock ?? text;
+    atomCount = molfileAtomCount(record);
+  } else {
+    return null;
+  }
+  if (atomCount <= 0 || atomCount > KETCHER_EDIT_MAX_ATOMS) return null;
+  const virtualText = browserDevVirtualTextDocuments.get(path);
+  return {
+    ketcherSourcePath: path,
+    ketcherSourceExtension: normalized,
+    ketcherSourceTitle: fileTitle(path),
+    ketcherAtomCount: atomCount,
+    ketcherMaxAtoms: KETCHER_EDIT_MAX_ATOMS,
+    ketcherMaxBytes: KETCHER_EDIT_MAX_BYTES,
+    ...(virtualText !== undefined ? { ketcherSourceTextBase64: bytesToBase64(new TextEncoder().encode(virtualText)) } : {}),
+  };
+}
+
+function molfileAtomCount(text: string) {
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const countsLine = lines[3] ?? "";
+  const count = Number.parseInt(countsLine.slice(0, 3).trim(), 10);
+  return Number.isFinite(count) ? count : 0;
 }
 
 function countXyzFrames(text: string) {

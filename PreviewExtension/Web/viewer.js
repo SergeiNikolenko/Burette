@@ -519,6 +519,7 @@
     );
     const tuneButton = toolbar.querySelector('[data-buret-action="xyzrender-tune"]');
     const sdfGridButton = toolbar.querySelector('[data-buret-action="sdf-grid"]');
+    const ketcherButton = toolbar.querySelector('[data-buret-action="ketcher"]');
     const popover = toolbar.querySelector('[data-buret-xyzrender-popover]');
     control.classList.toggle('visible', canSwitchRenderer);
     const presetSlot = toolbar.querySelector('[data-buret-xyzrender-preset-slot]');
@@ -528,6 +529,12 @@
     if (sdfGridButton && toolbar.dataset.sdfGridBound !== '1') {
       sdfGridButton.addEventListener('click', requestSdfGridDocument);
       toolbar.dataset.sdfGridBound = '1';
+    }
+    const canOpenKetcher = config.ketcherEditable === true && config.appViewer === true;
+    ketcherButton?.classList.toggle('hidden', !canOpenKetcher);
+    if (ketcherButton && toolbar.dataset.ketcherBound !== '1') {
+      ketcherButton.addEventListener('click', requestOpenInKetcher);
+      toolbar.dataset.ketcherBound = '1';
     }
     const popoverWasOpen = popover?.classList.contains('hidden') === false;
     const popoverScrollTop = popover?.scrollTop || 0;
@@ -843,6 +850,25 @@
     if (gridPath) payload.path = gridPath;
     const sent = postHostMessage(payload);
     if (!sent) setStatus('SDF grid switching is available only in the app or Quick Look viewer.', 'error');
+  }
+
+  function requestOpenInKetcher() {
+    const config = activeConfig || window.BurreteConfig || {};
+    if (config.ketcherEditable !== true) {
+      setStatus('This structure is too large or not supported by Ketcher.', 'error');
+      return;
+    }
+    const payload = {
+      type: 'openInKetcher',
+      path: String(config.ketcherSourcePath || config.sourcePath || '').trim(),
+      title: String(config.ketcherSourceTitle || config.label || 'structure').trim(),
+      extension: String(config.ketcherSourceExtension || config.format || '').trim()
+    };
+    if (typeof config.ketcherSourceTextBase64 === 'string' && config.ketcherSourceTextBase64.trim()) {
+      payload.textBase64 = config.ketcherSourceTextBase64.trim();
+    }
+    const sent = postHostMessage(payload);
+    if (!sent) setStatus('Ketcher handoff is available only in the app viewer.', 'error');
   }
 
   function sdfGridPathForConfig(config) {
@@ -4770,7 +4796,8 @@
       viewportShowExpand: false,
       viewportShowToggleFullscreen: false,
       viewportShowSelectionMode: true,
-      viewportShowAnimation: showTrajectoryControls,
+      // Keep the native Mol* top-left animation button on every Mol* screen. Do not remove.
+      viewportShowAnimation: true,
       viewportShowTrajectoryControls: showTrajectoryControls,
       viewportShowSettings: true,
       collapseLeftPanel: true,
