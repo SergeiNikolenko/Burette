@@ -22,6 +22,8 @@
   --buret-picture-min-height: clamp(136px, 18vw, 190px);
   --buret-drawing-max-width: 100%;
   --buret-drawing-max-height: 100%;
+  --buret-control-height: 36px;
+  --buret-segment-height: 28px;
 }
 
 html[data-buret-theme="light"] {
@@ -71,7 +73,7 @@ button,
 .buret-grid-toolbar input[type="search"],
 .buret-grid-toolbar select {
   box-sizing: border-box;
-  min-height: 36px;
+  min-height: var(--buret-control-height);
   border: 1px solid var(--buret-border);
   border-radius: 8px;
   color: var(--buret-text);
@@ -190,11 +192,13 @@ button:disabled {
 }
 
 .buret-selection-actions {
+  box-sizing: border-box;
   display: inline-flex;
   align-self: end;
   align-items: center;
   gap: 6px;
-  min-height: 36px;
+  height: var(--buret-control-height);
+  min-height: var(--buret-control-height);
   padding: 3px;
   border: 1px solid var(--buret-border);
   border-radius: 8px;
@@ -202,11 +206,13 @@ button:disabled {
 }
 
 .buret-grid-card-renderer-switch {
+  box-sizing: border-box;
   display: inline-flex;
   align-self: end;
   align-items: center;
   gap: 2px;
-  min-height: 36px;
+  height: var(--buret-control-height);
+  min-height: var(--buret-control-height);
   padding: 3px;
   border: 1px solid var(--buret-border);
   border-radius: 8px;
@@ -221,7 +227,7 @@ button:disabled {
 }
 
 .buret-grid-card-renderer-switch button {
-  min-height: 28px;
+  min-height: var(--buret-segment-height);
   padding: 4px 10px;
   border: 0;
   border-radius: 6px;
@@ -238,11 +244,13 @@ button:disabled {
 }
 
 .buret-grid-toolbar .buret-rdkit-coords-control {
+  box-sizing: border-box;
   display: inline-flex;
   align-self: end;
   align-items: center;
   gap: 8px;
-  min-height: 36px;
+  height: var(--buret-control-height);
+  min-height: var(--buret-control-height);
   padding: 0 10px;
   border: 1px solid var(--buret-border);
   border-radius: 8px;
@@ -293,7 +301,7 @@ button:disabled {
 }
 
 .buret-sort-control select {
-  min-height: 34px;
+  min-height: var(--buret-control-height);
   padding: 6px 26px 6px 9px;
   font-size: 12px;
 }
@@ -356,10 +364,12 @@ button:disabled {
 }
 
 .buret-grid-renderer-switch {
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  min-height: 36px;
+  height: var(--buret-control-height);
+  min-height: var(--buret-control-height);
   padding: 3px;
   border: 1px solid var(--buret-border);
   border-radius: 8px;
@@ -367,7 +377,7 @@ button:disabled {
 }
 
 .buret-grid-renderer-switch button {
-  min-height: 28px;
+  min-height: var(--buret-segment-height);
   padding: 4px 10px;
   border: 0;
   border-radius: 6px;
