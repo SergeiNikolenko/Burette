@@ -201,6 +201,35 @@ button:disabled {
   background: var(--buret-input);
 }
 
+.buret-grid-toolbar .buret-rdkit-coords-control {
+  display: inline-flex;
+  align-self: end;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--buret-border);
+  border-radius: 8px;
+  background: var(--buret-input);
+  color: var(--buret-muted);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1;
+  text-transform: none;
+}
+
+.buret-grid-toolbar .buret-rdkit-coords-control input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--buret-accent);
+}
+
+.buret-grid-toolbar .buret-rdkit-coords-control:has(input:checked) {
+  color: var(--buret-text);
+  border-color: var(--buret-border-strong);
+  background: var(--buret-surface-raised);
+}
+
 .buret-grid-toolbar label {
   display: grid;
   gap: 5px;
