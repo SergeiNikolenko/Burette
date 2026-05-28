@@ -1,10 +1,12 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useCallback, useRef, useState } from "react";
 import type { ViewerDocument } from "../../../types";
+import { isMoleculeCollectionPath } from "../../../lib/collection-documents";
 import { ligandDropPathsForTarget } from "../../../lib/docking-documents";
 import { hasStructureDrag, readStructureDrag } from "../../../lib/structure-drag";
 import { isTauriRuntime } from "../../../lib/tauri";
 import type { ShellActions } from "../../types";
+import { showNativeContextMenu } from "../../native-context-menu";
 import { definePageKind } from "./types";
 
 export type FileLocation = { kind: "file"; documentId?: string; path: string };
@@ -45,6 +47,7 @@ function ViewerSurface({
   const [dockingDropActive, setDockingDropActive] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const sheetDropTarget = document.renderer === "xyzrender-external";
+  const collectionDropTarget = document.renderer === "grid2d";
 
   const postXyzrenderSheetItems = useCallback((paths: string[]) => {
     if (!sheetDropTarget || paths.length === 0) return false;
@@ -82,10 +85,30 @@ function ViewerSurface({
     setDockingDropActive(false);
     actions.setStructureDragActive(false);
     const droppedPaths = readStructureDrag(event.dataTransfer);
+    if (collectionDropTarget && droppedPaths.some(isMoleculeCollectionPath)) {
+      void actions.mergeMoleculeCollections(document.path, droppedPaths);
+      return;
+    }
     if (postXyzrenderSheetItems(droppedPaths)) return;
     const paths = ligandDropPathsForTarget(document.path, droppedPaths);
     if (paths.length > 0) void actions.openDockingDocument(document.path, paths);
-  }, [actions, document.path, postXyzrenderSheetItems]);
+  }, [actions, collectionDropTarget, document.path, postXyzrenderSheetItems]);
+
+  const handleContextMenu = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (!collectionDropTarget) return;
+    event.preventDefault();
+    event.stopPropagation();
+    void showNativeContextMenu([
+      {
+        kind: "item",
+        id: "save-collection-as",
+        text: "Save Collection As...",
+        action: () => {
+          void actions.saveMoleculeCollectionAs(document.id);
+        },
+      },
+    ], { x: event.clientX, y: event.clientY });
+  }, [actions, collectionDropTarget, document.id]);
 
   return (
     <div
@@ -94,6 +117,7 @@ function ViewerSurface({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      onContextMenu={handleContextMenu}
     >
       {tauriRuntime ? (
         <iframe ref={iframeRef} title={document.title} src={convertFileSrc(document.runtimePath)} className="viewer-iframe" sandbox={sandbox} referrerPolicy="no-referrer" data-document-id={document.id} />
@@ -102,7 +126,7 @@ function ViewerSurface({
       )}
       {dockingDropActive && (
         <div className="docking-drop-overlay">
-          <div>{sheetDropTarget ? "Add to xyzrender sheet" : "Add to Mol* docking view"}</div>
+          <div>{collectionDropTarget ? "Merge molecule collections" : sheetDropTarget ? "Add to xyzrender sheet" : "Add to Mol* docking view"}</div>
         </div>
       )}
     </div>
