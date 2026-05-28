@@ -44,7 +44,7 @@ const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT = 1500;
 const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
 const GRID_ASSET_VERSION = "grid-ui-v71";
-const VIEWER_ASSET_VERSION = "viewer-ui-v14";
+const VIEWER_ASSET_VERSION = "viewer-ui-v15";
 const REPO_ROOT = String(import.meta.env.BURRETE_REPO_ROOT || "");
 const WEB_ASSETS_BASE = fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
 
@@ -72,6 +72,19 @@ type BrowserDevExternalArtifact = {
   configArgument: string;
   elapsedMs: number;
   log?: string;
+};
+
+export type BrowserDevMolstarContextDocument = {
+  label?: string;
+  entries?: BrowserDevMolstarContextEntry[];
+  context?: Record<string, unknown>;
+};
+
+type BrowserDevMolstarContextEntry = {
+  role?: "receptor" | "ligand" | "structure";
+  label?: string;
+  format?: string;
+  data?: string;
 };
 
 export function browserDevRuntimeNeedsRefresh(document: ViewerDocument) {
@@ -237,6 +250,122 @@ export async function openBrowserDevDockingDocument(
       receptorPath: receptor.path,
       ligandPaths: ligands.map((ligand) => ligand.path),
     } satisfies DockingDocumentRequest,
+  };
+}
+
+export async function openBrowserDevMolstarContextDocument(
+  contextDocument: BrowserDevMolstarContextDocument,
+  preferences: ViewerPreferences,
+): Promise<ViewerDocument> {
+  const entries = (contextDocument.entries ?? [])
+    .filter((entry): entry is Required<Pick<BrowserDevMolstarContextEntry, "data">> & BrowserDevMolstarContextEntry => (
+      typeof entry?.data === "string" && entry.data.length > 0
+    ))
+    .map((entry, index) => browserDevContextPayload(entry, index));
+  if (entries.length === 0) throw new Error("No Mol* context structure was provided");
+  const label = contextDocument.label?.trim() || entries.map((entry) => entry.title).join(" + ");
+  const id = stableId(`molstar-context:${label}:${entries.map((entry) => `${entry.title}:${entry.bytes.length}`).join("|")}`);
+  if (entries.length === 1) {
+    const entry = entries[0];
+    const config = browserDevContextConfig(label, entry.format, entry.bytes.length, preferences, id);
+    const html = viewerHtml(
+      label,
+      entry.format,
+      "molstar",
+      entry.bytes,
+      entry.bytes.length,
+      preferences,
+      false,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "",
+      config,
+    );
+    return {
+      id,
+      path: `burrete-context://${id}`,
+      title: label,
+      extension: entry.extension,
+      renderer: "molstar",
+      runtimePath: html,
+      byteCount: entry.bytes.length,
+      virtual: true,
+    };
+  }
+
+  const receptor = entries.find((entry) => entry.role === "receptor") ?? entries[0];
+  const ligands = entries.filter((entry) => entry !== receptor);
+  if (ligands.length === 0) return openBrowserDevMolstarContextDocument({ label, entries: [contextDocument.entries?.[0] ?? {}] }, preferences);
+  const byteCount = receptor.bytes.length + ligands.reduce((total, ligand) => total + ligand.bytes.length, 0);
+  const visuals = resolvePreviewVisuals(preferences);
+  const config = {
+    format: receptor.format.molstarFormat,
+    molstarFormat: receptor.format.molstarFormat,
+    binary: false,
+    renderer: "molstar",
+    requestedRenderer: "molstar",
+    allowMolstarFallback: false,
+    label,
+    byteCount,
+    previewByteCount: byteCount,
+    quickLookBuild: "burrete-browser-dev-context-docking",
+    debug: false,
+    theme: visuals.theme,
+    themeTokens: previewThemeTokens(preferences),
+    canvasBackground: visuals.canvasBackground,
+    documentId: id,
+    uiScale: 0.9,
+    overlayOpacity: 0.9,
+    transparentBackground: visuals.transparentBackground,
+    sdfGrid: false,
+    sdfPosePager: false,
+    appViewer: true,
+    tauriViewer: false,
+    molstarStyle: preferences.molstarStyle,
+    xyzrenderViewer: false,
+    xyzrenderAvailable: false,
+    molstarAvailable: true,
+    canOpenInVesta: false,
+    showPanelControls: true,
+    defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" },
+    dockingContext: contextDocument.context ?? {},
+    docking: {
+      receptor: dockingConfigSource(receptor),
+      ligands: ligands.map(dockingConfigSource),
+    },
+  };
+  const payloads = {
+    receptor: { dataBase64: bytesToBase64(receptor.bytes) },
+    ligands: ligands.map((ligand) => ({ dataBase64: bytesToBase64(ligand.bytes) })),
+  };
+  const html = viewerHtml(
+    label,
+    receptor.format,
+    "molstar",
+    new Uint8Array([10]),
+    byteCount,
+    preferences,
+    false,
+    false,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    `<script>window.BurreteDockingPayloads = ${JSON.stringify(payloads)};</script>`,
+    config,
+  );
+  return {
+    id,
+    path: `burrete-context://${id}`,
+    title: label,
+    extension: "docking",
+    renderer: "molstar",
+    runtimePath: html,
+    byteCount,
+    virtual: true,
   };
 }
 
@@ -413,6 +542,10 @@ type BrowserDevDockingPayload = {
   byteCount: number;
 };
 
+type BrowserDevContextPayload = BrowserDevDockingPayload & {
+  role?: BrowserDevMolstarContextEntry["role"];
+};
+
 async function readBrowserDevDockingPayload(path: string): Promise<BrowserDevDockingPayload> {
   const response = await fetch(fsUrl(path));
   if (!response.ok) throw new Error(`${path}: ${response.status} ${response.statusText}`);
@@ -451,6 +584,82 @@ function dockingConfigSource(source: BrowserDevDockingPayload) {
     binary: source.format.binary,
     byteCount: source.byteCount,
   };
+}
+
+function browserDevContextPayload(entry: BrowserDevMolstarContextEntry, index: number): BrowserDevContextPayload {
+  const formatName = normalizeContextMolstarFormat(entry.format);
+  const data = entry.data ?? "";
+  const bytes = new TextEncoder().encode(data);
+  if (bytes.length > MAX_STRUCTURE_FILE_SIZE) {
+    throw new Error(`${entry.label || "Mol* context structure"} is larger than the 75 MB preview limit`);
+  }
+  return {
+    path: `burrete-context-entry://${index}`,
+    title: entry.label?.trim() || `Context structure ${index + 1}`,
+    extension: contextExtensionForFormat(formatName),
+    format: {
+      molstarFormat: formatName,
+      binary: false,
+      externalOnly: false,
+      canOpenInVesta: false,
+    },
+    bytes,
+    byteCount: bytes.length,
+    role: entry.role,
+  };
+}
+
+function browserDevContextConfig(
+  label: string,
+  format: FormatInfo,
+  byteCount: number,
+  preferences: ViewerPreferences,
+  id: string,
+) {
+  const visuals = resolvePreviewVisuals(preferences);
+  return {
+    format: format.molstarFormat,
+    molstarFormat: format.molstarFormat,
+    binary: false,
+    renderer: "molstar",
+    requestedRenderer: "molstar",
+    allowMolstarFallback: false,
+    label,
+    byteCount,
+    previewByteCount: byteCount,
+    quickLookBuild: "burrete-browser-dev-context",
+    debug: false,
+    theme: visuals.theme,
+    themeTokens: previewThemeTokens(preferences),
+    canvasBackground: visuals.canvasBackground,
+    documentId: id,
+    uiScale: 0.9,
+    overlayOpacity: 0.9,
+    transparentBackground: visuals.transparentBackground,
+    sdfGrid: false,
+    appViewer: true,
+    tauriViewer: false,
+    molstarStyle: preferences.molstarStyle,
+    xyzrenderViewer: false,
+    xyzrenderAvailable: false,
+    molstarAvailable: true,
+    canOpenInVesta: false,
+    showPanelControls: true,
+    defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" },
+  };
+}
+
+function normalizeContextMolstarFormat(format: string | undefined) {
+  const value = String(format || "pdb").toLowerCase();
+  if (value === "cif" || value === "mmcif" || value === "mcif") return "mmcif";
+  if (value === "sd") return "sdf";
+  return value;
+}
+
+function contextExtensionForFormat(format: string) {
+  if (format === "mmcif") return "cif";
+  if (format === "sdf") return "sdf";
+  return format || "pdb";
 }
 
 function viewerHtml(

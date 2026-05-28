@@ -1,5 +1,6 @@
 import type { RecentStructure, ViewerDocument, ViewerPreferences } from "../types";
 import type { MoleculeTab } from "../stores/molecule-store";
+import type { StructureDragPayload } from "../lib/structure-drag";
 import type { UpdatePreferences, UpdateState } from "../update";
 import type { SidebarProject } from "../lib/sidebar-projects";
 
@@ -40,6 +41,7 @@ export type ShellActions = {
   closeActiveDocument: () => void;
   clearAllDocuments: () => void;
   openDockingDocument: (receptorPath: string, ligandPaths: string[]) => void | Promise<void>;
+  addXyzrenderSheetItems: (targetDocumentId: string, payload: StructureDragPayload) => boolean;
   mergeMoleculeCollections: (targetPath: string | null, paths: string[]) => void | Promise<void>;
   saveMoleculeCollectionAs: (targetPath: string) => void | Promise<void>;
   setStructureDragActive: (active: boolean) => void;

@@ -1,6 +1,6 @@
 import type { ShellActions, ShellViewState } from "../types";
 import { ScrollFade } from "../scroll-fade";
-import { writeStructureDrag } from "../../lib/structure-drag";
+import { hasStructureDrag, readStructureDragPayload, writeStructureDrag } from "../../lib/structure-drag";
 import { pageKind } from "./page-kinds";
 
 export function EditorTabs({ state, actions }: { state: ShellViewState; actions: ShellActions }) {
@@ -36,7 +36,12 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
           const kind = pageKind(tab.location);
           const title = kind.title(tab.location, state);
           const active = index === activeTabIndex;
-          const tabPath = tab.location.kind === "file" ? tab.location.path : null;
+          const fileLocation = tab.location.kind === "file" ? tab.location : null;
+          const tabPath = fileLocation?.path ?? null;
+          const tabDocument = fileLocation
+            ? state.documents.find((document) => document.id === fileLocation.documentId || document.path === fileLocation.path) ?? null
+            : null;
+          const sheetDropTarget = tabDocument?.renderer === "xyzrender-external";
           return (
             <div key={tab.id} className="tab-shell" data-active={active || undefined}>
               <button
@@ -53,6 +58,21 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
                   actions.setStructureDragActive(true);
                 }}
                 onDragEnd={() => actions.setStructureDragActive(false)}
+                onDragOver={(event) => {
+                  if (!sheetDropTarget || !hasStructureDrag(event.dataTransfer)) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  event.dataTransfer.dropEffect = "copy";
+                }}
+                onDrop={(event) => {
+                  if (!tabDocument || !sheetDropTarget || !hasStructureDrag(event.dataTransfer)) return;
+                  const payload = readStructureDragPayload(event.dataTransfer);
+                  if (payload.paths.length === 0 && payload.records.length === 0) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  actions.setStructureDragActive(false);
+                  actions.addXyzrenderSheetItems(tabDocument.id, payload);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();

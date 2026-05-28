@@ -3,12 +3,13 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { DragDropEvent } from "@tauri-apps/api/window";
 import type { DockingDocumentRequest } from "../types";
 import { dockingRequestForDrop } from "../lib/docking-documents";
-import { hasStructureDrag, readStructureDrag } from "../lib/structure-drag";
+import { hasStructureDrag, readStructureDragPayload } from "../lib/structure-drag";
+import type { StructureDragPayload } from "../lib/structure-drag";
 import { isTauriRuntime } from "../lib/tauri";
 
 type OpenDocuments = (paths: string[]) => void | Promise<void>;
 type OpenDockingDocument = (receptorPath: string, ligandPaths: string[]) => void | Promise<void>;
-type AddXyzrenderSheetItems = (paths: string[]) => boolean;
+type AddXyzrenderSheetItems = (payload: StructureDragPayload) => boolean;
 type MergeMoleculeCollections = (paths: string[]) => boolean;
 type ReportStatus = (status: string, kind?: "info" | "error") => void;
 
@@ -48,8 +49,9 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       }
       setDropActive(false);
       if (event.type === "drop") {
+        const payload: StructureDragPayload = { paths: event.paths, records: [] };
         if (isOverActiveViewer(event.position) && mergeMoleculeCollections?.(event.paths)) return;
-        if (isOverActiveViewer(event.position) && addXyzrenderSheetItems?.(event.paths)) return;
+        if (isOverActiveViewer(event.position) && addXyzrenderSheetItems?.(payload)) return;
         if (isOverActiveViewer(event.position) && openAsDocking(event.paths)) return;
         void openDocuments(event.paths);
       }
@@ -98,19 +100,23 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       if (!fileDrop && !structureDrop) return;
       event.preventDefault();
       setDropActive(false);
-      const paths = structureDrop
-        ? readStructureDrag(event.dataTransfer)
-        : Array.from(event.dataTransfer.files)
-            .map((file) => (file as File & { path?: string }).path)
-            .filter((path): path is string => Boolean(path));
-      if (paths.length > 0) {
+      const payload = structureDrop
+        ? readStructureDragPayload(event.dataTransfer)
+        : {
+            paths: Array.from(event.dataTransfer.files)
+              .map((file) => (file as File & { path?: string }).path)
+              .filter((path): path is string => Boolean(path)),
+            records: [],
+          };
+      if (payload.paths.length > 0 || payload.records.length > 0) {
         const target = event.target instanceof Element ? event.target : null;
         if (target?.closest(".molecule-stage, .main-stage")) {
-          if (mergeMoleculeCollections?.(paths)) return;
-          if (addXyzrenderSheetItems?.(paths)) return;
-          if (openAsDocking(paths)) return;
+          if (mergeMoleculeCollections?.(payload.paths)) return;
+          if (addXyzrenderSheetItems?.(payload)) return;
+          if (openAsDocking(payload.paths)) return;
         }
-        void openDocuments(paths);
+        if (payload.paths.length > 0) void openDocuments(payload.paths);
+        else if (!isTauriRuntime()) pushStatus("Drop this molecule onto an xyzrender sheet to add it.");
       } else if (!isTauriRuntime()) {
         pushStatus("Drop files into the installed app window to open them.");
       }
