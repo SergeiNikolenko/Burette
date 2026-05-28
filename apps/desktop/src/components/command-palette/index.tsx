@@ -78,6 +78,13 @@ export function CommandPalette({
         description: "Open Burette settings",
         run: actions.openSettings,
       },
+    {
+      id: "open-ketcher",
+      group: "Suggested",
+      label: "Ketcher",
+      description: "Open molecule sketch tab",
+      run: actions.openKetcher,
+    },
       {
         id: "toggle-sidebar",
         group: "Suggested",

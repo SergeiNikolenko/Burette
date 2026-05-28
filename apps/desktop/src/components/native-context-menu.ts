@@ -1,7 +1,7 @@
 import { isTauriRuntime } from "../lib/tauri";
 
 export type MenuItemSpec =
-  | { kind: "item"; id: string; text: string; action: () => void; accelerator?: string }
+  | { kind: "item"; id: string; text: string; action?: () => void; accelerator?: string; disabled?: boolean }
   | { kind: "separator" };
 
 export async function showNativeContextMenu(
@@ -28,7 +28,8 @@ export async function showNativeContextMenu(
       return MenuItem.new({
         id: entry.id,
         text: entry.text,
-        action: entry.action,
+        enabled: !entry.disabled,
+        ...(entry.disabled || !entry.action ? {} : { action: entry.action }),
         ...(entry.accelerator ? { accelerator: entry.accelerator } : {}),
       });
     }),
@@ -62,10 +63,15 @@ function showWebContextMenu(spec: MenuItemSpec[], at?: { x: number; y: number })
     item.className = "native-context-menu-item";
     item.setAttribute("role", "menuitem");
     item.textContent = entry.text;
-    item.addEventListener("click", () => {
-      cleanup();
-      entry.action();
-    });
+    item.disabled = Boolean(entry.disabled);
+    if (entry.disabled) {
+      item.setAttribute("aria-disabled", "true");
+    } else if (entry.action) {
+      item.addEventListener("click", () => {
+        cleanup();
+        entry.action?.();
+      });
+    }
     menu.append(item);
   }
 
@@ -81,7 +87,8 @@ function showWebContextMenu(spec: MenuItemSpec[], at?: { x: number; y: number })
     if (event.key === "Escape") cleanup();
   };
 
-  document.body.append(menu);
+  const themeHost = document.querySelector(".app-shell") ?? document.body;
+  themeHost.append(menu);
   const x = Math.max(8, Math.min(at?.x ?? 8, window.innerWidth - menu.offsetWidth - 8));
   const y = Math.max(8, Math.min(at?.y ?? 8, window.innerHeight - menu.offsetHeight - 8));
   menu.style.left = `${x}px`;

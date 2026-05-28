@@ -1,4 +1,4 @@
-import type { DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
+import { useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import {
   File02Icon,
   Folder01Icon,
@@ -13,6 +13,8 @@ import { rendererLabel } from "../format";
 import { showNativeContextMenu } from "../native-context-menu";
 import type { ShellActions, ShellViewState } from "../types";
 
+const COLLAPSED_PROJECT_ITEM_LIMIT = 5;
+
 export function ProjectGroup({
   project,
   state,
@@ -22,8 +24,16 @@ export function ProjectGroup({
   state: ShellViewState;
   actions: ShellActions;
 }) {
+  const [showAllItems, setShowAllItems] = useState(false);
   const expanded = state.sidebarQuery.trim().length > 0
     || state.expandedProjectIds.includes(project.id);
+  const shouldLimitItems = state.sidebarQuery.trim().length === 0
+    && project.items.length > COLLAPSED_PROJECT_ITEM_LIMIT
+    && !showAllItems;
+  const visibleItems = shouldLimitItems
+    ? project.items.slice(0, COLLAPSED_PROJECT_ITEM_LIMIT)
+    : project.items;
+  const hiddenItemCount = project.items.length - COLLAPSED_PROJECT_ITEM_LIMIT;
 
   const handleToggle = () => {
     actions.toggleProjectExpanded(project.id);
@@ -39,37 +49,17 @@ export function ProjectGroup({
   const handleContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    const items = project.rootPath
-      ? [
-          {
-            kind: "item" as const,
-            id: "open-project-folder",
-            text: "Open Project Folder",
-            action: () => {
-              void actions.openProjectFolder(project.rootPath);
-            },
-          },
-          { kind: "separator" as const },
-          {
-            kind: "item" as const,
-            id: "add-project-folder",
-            text: "Add Project Folder...",
-            action: () => {
-              void actions.chooseWorkspace();
-            },
-          },
-        ]
-      : [
-          {
-            kind: "item" as const,
-            id: "add-project-folder",
-            text: "Add Project Folder...",
-            action: () => {
-              void actions.chooseWorkspace();
-            },
-          },
-        ];
-    void showNativeContextMenu(items, { x: event.clientX, y: event.clientY });
+    void showNativeContextMenu(projectMenuItems(project, actions), { x: event.clientX, y: event.clientY });
+  };
+
+  const handleMenuClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    void showNativeContextMenu(projectMenuItems(project, actions), {
+      x: Math.round(rect.left),
+      y: Math.round(rect.bottom + 4),
+    });
   };
 
   return (
@@ -90,16 +80,77 @@ export function ProjectGroup({
         <span className="project-group-copy">
           <span className="project-group-title">{project.title}</span>
         </span>
+        <span className="project-group-actions">
+          <button
+            type="button"
+            className="project-group-menu-button"
+            aria-label={`${project.title} options`}
+            aria-haspopup="menu"
+            onClick={handleMenuClick}
+          >
+            <MoreIcon />
+          </button>
+        </span>
       </div>
       {expanded && (
         <div className="project-children" role="list">
-          {project.items.map((item) => (
+          {visibleItems.map((item) => (
             <ProjectItem key={item.key} item={item} actions={actions} />
           ))}
+          {project.items.length > COLLAPSED_PROJECT_ITEM_LIMIT && state.sidebarQuery.trim().length === 0 && (
+            <button
+              type="button"
+              className="project-show-more"
+              onClick={() => setShowAllItems((value) => !value)}
+              aria-label={showAllItems ? `Show fewer files in ${project.title}` : `Show ${hiddenItemCount} more files in ${project.title}`}
+            >
+              {showAllItems ? "Show less" : "Show more"}
+            </button>
+          )}
         </div>
       )}
     </div>
   );
+}
+
+function projectMenuItems(project: SidebarProject, actions: ShellActions) {
+  return [
+    {
+      kind: "item" as const,
+      id: "pin-project",
+      text: "Pin project",
+      disabled: true,
+    },
+    {
+      kind: "item" as const,
+      id: "open-project-folder",
+      text: "Open in Finder",
+      disabled: !project.rootPath,
+      action: () => {
+        void actions.openProjectFolder(project.rootPath);
+      },
+    },
+    { kind: "separator" as const },
+    {
+      kind: "item" as const,
+      id: "rename-project",
+      text: "Rename project",
+      disabled: true,
+    },
+    {
+      kind: "item" as const,
+      id: "archive-project-chats",
+      text: "Archive chats",
+      disabled: true,
+    },
+    { kind: "separator" as const },
+    {
+      kind: "item" as const,
+      id: "remove-project",
+      text: "Remove",
+      disabled: true,
+    },
+  ];
 }
 
 export function ProjectItem({
@@ -268,6 +319,16 @@ function PinIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+
+function MoreIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="4" cy="8" r="1.2" fill="currentColor" />
+      <circle cx="8" cy="8" r="1.2" fill="currentColor" />
+      <circle cx="12" cy="8" r="1.2" fill="currentColor" />
     </svg>
   );
 }

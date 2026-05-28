@@ -1,11 +1,12 @@
 import { fileKind, type FileLocation } from "./file";
+import { ketcherKind, type KetcherLocation } from "./ketcher";
 import { launcherKind, type LauncherLocation } from "./launcher";
 import { settingsKind, type SettingsLocation } from "./settings";
 import type { AnyPageKind, PageKind, SerializedLocation } from "./types";
 
-const kinds = [fileKind, launcherKind, settingsKind] as const;
+const kinds = [fileKind, ketcherKind, launcherKind, settingsKind] as const;
 
-export type Location = FileLocation | LauncherLocation | SettingsLocation;
+export type Location = FileLocation | KetcherLocation | LauncherLocation | SettingsLocation;
 
 const byKind: Map<string, AnyPageKind> = new Map(
   kinds.map((kind) => [kind.kind, kind as unknown as AnyPageKind]),
@@ -34,5 +35,6 @@ export function deserializeLocation(data: SerializedLocation | null | undefined)
 
 export type { AnyPageKind, PageKind, SerializedLocation } from "./types";
 export type { FileLocation } from "./file";
+export type { KetcherLocation } from "./ketcher";
 export type { LauncherLocation } from "./launcher";
 export type { SettingsLocation } from "./settings";
