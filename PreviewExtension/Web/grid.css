@@ -301,8 +301,7 @@ button:disabled {
   max-width: 100%;
 }
 
-.buret-grid-renderer-switch,
-.buret-grid-card-renderer-switch {
+.buret-grid-renderer-switch {
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -313,19 +312,7 @@ button:disabled {
   background: var(--buret-input);
 }
 
-.buret-grid-card-renderer-switch {
-  align-self: end;
-}
-
-.buret-grid-card-renderer-switch span {
-  padding: 0 6px;
-  color: var(--buret-muted);
-  font-size: 11px;
-  font-weight: 720;
-}
-
-.buret-grid-renderer-switch button,
-.buret-grid-card-renderer-switch button {
+.buret-grid-renderer-switch button {
   min-height: 28px;
   padding: 4px 10px;
   border: 0;
@@ -337,9 +324,7 @@ button:disabled {
 }
 
 .buret-grid-renderer-switch button:hover,
-.buret-grid-renderer-switch button.active,
-.buret-grid-card-renderer-switch button:hover,
-.buret-grid-card-renderer-switch button.active {
+.buret-grid-renderer-switch button.active {
   color: var(--buret-text);
   background: color-mix(in srgb, var(--buret-text) 8%, transparent);
 }
