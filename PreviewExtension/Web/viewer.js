@@ -3116,7 +3116,7 @@
   function prepareSdfStructure(text, config) {
     const label = config.label || 'structure';
     const records = splitSdfRecords(text);
-    if (records.length > 1 && config.sdfPosePager === true) {
+    if (records.length >= 1 && config.sdfPosePager === true) {
       return {
         data: text,
         format: 'sdf',
@@ -3126,7 +3126,7 @@
         poseCount: records.length
       };
     }
-    if (records.length > 1 && config.sdfGrid !== false) {
+    if (records.length >= 1 && config.sdfGrid !== false) {
       const grid = buildSdfGrid(records, label);
       if (grid) return grid;
     }
