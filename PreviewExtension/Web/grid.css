@@ -182,9 +182,10 @@ button:disabled {
 }
 
 .buret-toolbar-row-view {
-  grid-template-columns: repeat(5, auto);
+  display: flex;
+  flex-wrap: wrap;
   justify-content: start;
-  justify-items: start;
+  align-items: end;
 }
 
 .buret-selection-actions {
@@ -841,8 +842,7 @@ body.buret-hide-properties .buret-card-body {
     margin-top: 12px;
   }
 
-  .buret-toolbar-row-main,
-  .buret-toolbar-row-view {
+  .buret-toolbar-row-main {
     grid-template-columns: 1fr;
   }
 
