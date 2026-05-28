@@ -804,9 +804,6 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   #buret-toolbar[data-active-renderer="xyzrender-external"] [data-buret-action="theme"] {
     display: none;
   }
-  #buret-toolbar[data-active-renderer="xyzrender-external"] [data-buret-renderer="xyz-fast"] {
-    display: none;
-  }
   #buret-toolbar[data-active-renderer="xyzrender-external"] .buret-renderer-control {
     gap: 2px;
     padding-left: 4px;
@@ -871,6 +868,15 @@ body.burette-quicklook-host .buret-corner-button {
   color: #f8fafc;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
   font: 650 12px/1.1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  box-sizing: border-box;
+  max-width: calc(100vw - 24px);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.buret-docking-poses.buret-docking-poses-dragging {
+  cursor: grabbing;
+  transition: none;
 }
 .buret-docking-poses button {
   height: 26px;
@@ -879,6 +885,7 @@ body.burette-quicklook-host .buret-corner-button {
   padding: 0 9px;
   background: rgba(255, 255, 255, 0.12);
   color: inherit;
+  cursor: pointer;
   font: inherit;
 }
 .buret-docking-poses button:not(:disabled):hover {
@@ -886,6 +893,7 @@ body.burette-quicklook-host .buret-corner-button {
 }
 .buret-docking-poses button:disabled {
   opacity: 0.38;
+  cursor: default;
 }
 .buret-docking-poses span {
   min-width: 76px;

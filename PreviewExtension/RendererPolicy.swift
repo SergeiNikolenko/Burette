@@ -44,7 +44,7 @@ struct BurreteRendererPolicy: Equatable {
             case BurreteRendererMode.molstar:
                 renderer = BurreteRendererMode.molstar
             case BurreteRendererMode.xyzFast:
-                renderer = isXYZ ? BurreteRendererMode.xyzFast : BurreteRendererMode.molstar
+                renderer = BurreteRendererMode.molstar
             case BurreteRendererMode.xyzrenderExternal:
                 renderer = canUseXyzrender ? BurreteRendererMode.xyzrenderExternal : BurreteRendererMode.molstar
             default:
@@ -60,7 +60,7 @@ struct BurreteRendererPolicy: Equatable {
     }
 
     static func fallbackRenderer(for format: BurreteRendererFormat) -> String {
-        format.molstarFormat == "xyz" && !format.isBinary ? BurreteRendererMode.xyzFast : BurreteRendererMode.molstar
+        BurreteRendererMode.molstar
     }
 }
 

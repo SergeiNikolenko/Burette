@@ -9,6 +9,8 @@
   const MAX_CARD_MIN = 360;
   const DEFAULT_CARD_MIN = 174;
   const RDKIT_SVG_SIZE = 260;
+  const SVG_FIT_MIN_PADDING = 12;
+  const SVG_FIT_PADDING_FRACTION = 0.08;
   const XYZRENDER_CARD_CONCURRENCY = 4;
   const DEFAULT_XYZRENDER_PRESETS = [
     { value: 'default', label: 'Default' },
@@ -398,6 +400,7 @@
       propertiesToggle.classList.toggle('active', state.showProperties);
       propertiesToggle.setAttribute('aria-pressed', state.showProperties ? 'true' : 'false');
     }
+    requestAnimationFrame(fitRenderedGridSVGs);
     root.querySelectorAll('[data-buret-grid-card-renderer]').forEach(button => {
       const active = button.getAttribute('data-buret-grid-card-renderer') === state.cardRenderer;
       button.classList.toggle('active', active);
@@ -1265,6 +1268,10 @@
     card.querySelectorAll('svg[data-buret-rdkit-svg="true"]').forEach(svg => fitSVGToContent(svg));
   }
 
+  function fitRenderedGridSVGs() {
+    root.querySelectorAll('svg[data-buret-rdkit-svg="true"]').forEach(svg => fitSVGToContent(svg));
+  }
+
   function fitSVGToContent(svg) {
     const bounds = contentBounds(svg) || svgBounds(svg);
     if (!bounds) return;
@@ -1272,7 +1279,7 @@
     const height = bounds.y2 - bounds.y1;
     if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
     const size = Math.max(width, height);
-    const padding = Math.max(28, size * 0.18);
+    const padding = Math.max(SVG_FIT_MIN_PADDING, size * SVG_FIT_PADDING_FRACTION);
     const centerX = bounds.x1 + width / 2;
     const centerY = bounds.y1 + height / 2;
     const viewSize = size + padding * 2;
