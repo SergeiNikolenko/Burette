@@ -4405,7 +4405,10 @@
       return { structures: [], label: activeConfig?.label || 'Mol* structure', scope: 'none' };
     }
     const picked = molstarContextPickedStructureInfo(structures);
-    const targetStructure = picked?.structure || (structures.length === 1 ? structures[0] : structures[structures.length - 1]);
+    if (!picked?.structure) {
+      return { structures: [], label: activeConfig?.label || 'Mol* structure', scope: 'none' };
+    }
+    const targetStructure = picked.structure;
     const targetStructures = targetStructure ? [targetStructure] : [];
     if (activeConfig?.docking && activeDockingPrepared) {
       const pickedAtom = molstarContextAtomFromLoci(molstarContextMenuPick?.loci);
@@ -4695,6 +4698,11 @@
   function showMolstarContextMenu(event, pick) {
     hideMolstarContextMenu();
     molstarContextMenuPick = pick || null;
+    const menuTarget = molstarContextTarget();
+    if (!menuTarget.structures.length || menuTarget.scope === 'none') {
+      hideMolstarContextMenu();
+      return;
+    }
     const menu = document.createElement('div');
     menu.className = 'buret-molecule-context-menu';
     menu.setAttribute('role', 'menu');
@@ -4704,7 +4712,6 @@
     title.textContent = 'Molecule actions';
     const subtitle = document.createElement('div');
     subtitle.className = 'buret-molecule-context-menu-subtitle';
-    const menuTarget = molstarContextTarget();
     subtitle.textContent = menuTarget.label;
     const actions = [
       ['select', 'Select molecule'],
