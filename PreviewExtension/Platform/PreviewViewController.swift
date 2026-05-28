@@ -344,7 +344,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             fileExtension: pathExtension,
             label: url.lastPathComponent
            ) {
-            renderer = BurreteRendererMode.xyzFast
+            renderer = BurreteRendererMode.molstar
             format = .xyzFastCompatible
             structureDataForWeb = convertedXYZ
             diag("xyzrender.default=built-in-text-parser")
@@ -375,7 +375,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     fileExtension: pathExtension,
                     label: url.lastPathComponent
                    ) {
-                    renderer = BurreteRendererMode.xyzFast
+                    renderer = BurreteRendererMode.molstar
                     format = .xyzFastCompatible
                     structureDataForWeb = convertedXYZ
                     externalStatus = [

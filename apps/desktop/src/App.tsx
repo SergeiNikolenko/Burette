@@ -45,7 +45,7 @@ import {
 } from "./hooks/use-tabs";
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
 import { browserDevRuntimeNeedsRefresh, openBrowserDevDockingDocument, openBrowserDevDocuments } from "./lib/browser-dev-documents";
-import { dockingRequestForDrop } from "./lib/docking-documents";
+import { dockingRequestForDrop, isProteinLikeDockingSource } from "./lib/docking-documents";
 import { buildSidebarProjects, parentDirectory } from "./lib/sidebar-projects";
 import { isTauriRuntime } from "./lib/tauri";
 import type { DockingDocumentRequest, OpenDocumentsResult, RecentStructure, ViewerDocument, ViewerReloadOptions } from "./types";
@@ -613,8 +613,16 @@ export default function App() {
           ? documents.find((document) => document.id === body.documentId)
           : null) ?? activeDocument;
         if (targetDocument) {
-          pushStatus("Opening SDF poses in Mol*...");
-          void openDocuments([targetDocument.path], {}, { rendererMode: "molstar" });
+          const receptorDocument = documents.find((document) => (
+            document.path !== targetDocument.path && isProteinLikeDockingSource(document.path)
+          ));
+          if (receptorDocument) {
+            pushStatus("Opening SDF poses in Mol* docking view...");
+            void openDockingDocument(receptorDocument.path, [targetDocument.path]);
+          } else {
+            pushStatus("Opening SDF poses in Mol*...");
+            void openDocuments([targetDocument.path], {}, { rendererMode: "molstar" });
+          }
         }
         return;
       }
@@ -670,7 +678,7 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, documents, openDocuments, pushStatus, reloadActive, setPreference]);
+  }, [activeDocument, documents, openDockingDocument, openDocuments, pushStatus, reloadActive, setPreference]);
 
   useEffect(() => {
     const loadedPreferences = loadUpdatePreferences();
