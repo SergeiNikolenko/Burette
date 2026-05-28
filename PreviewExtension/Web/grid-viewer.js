@@ -5,7 +5,6 @@
   const status = document.getElementById('status');
   const CARD_MIN_STORAGE_KEY = 'buret.grid.cardMin';
   const RDKIT_USE_INPUT_COORDS_STORAGE_KEY = 'buret.grid.rdkitUseInputCoords';
-  const CARD_RENDERER_OPTIONS = ['rdkit', 'xyzrender'];
   const MIN_CARD_MIN = 86;
   const MAX_CARD_MIN = 360;
   const DEFAULT_CARD_MIN = 174;
@@ -14,7 +13,6 @@
   const SVG_FIT_PADDING_FRACTION = 0.08;
   const SVG_FIT_BOTTOM_PADDING_MULTIPLIER = 1.7;
   const SVG_FIT_VERTICAL_BIAS_FRACTION = 0.08;
-  const XYZRENDER_CARD_CONCURRENCY = 4;
   const DEFAULT_XYZRENDER_PRESETS = [
     { value: 'default', label: 'Default' },
     { value: 'flat', label: 'Flat' },
@@ -56,7 +54,6 @@
     smartsMatches: new Map(),
     sort: 'index',
     showProperties: false,
-    cardRenderer: 'rdkit',
     rdkitUseInputCoords: storedBoolean(RDKIT_USE_INPUT_COORDS_STORAGE_KEY, false),
     cardMin: storedOptionalInteger(CARD_MIN_STORAGE_KEY, MIN_CARD_MIN, MAX_CARD_MIN),
     xyzrenderPreset: 'default',
@@ -65,11 +62,6 @@
     selectionAnchorIndex: null,
     selectionKeydownHandler: null,
     svgCache: new Map(),
-    molblockCache: new Map(),
-    xyzrenderCardCache: new Map(),
-    xyzrenderCardRequests: new Map(),
-    xyzrenderCardQueue: [],
-    xyzrenderCardActive: 0,
     hostRequests: new Map(),
     remoteMode: false,
     remoteLoading: false,
@@ -124,8 +116,7 @@
       selection: !!caps.selection,
       export: !!caps.export,
       substructureSearch: !!caps.substructureSearch,
-      rendererSwitch: cfg.appViewer === true && !!caps.rendererSwitch,
-      xyzrenderCards: cfg.appViewer === true && !!caps.xyzrenderCards && !!cfg.xyzrenderEndpoint
+      rendererSwitch: cfg.appViewer === true && !!caps.rendererSwitch
     };
   }
 
@@ -354,7 +345,6 @@
               <button id="select-all" class="buret-toggle-button" type="button">Select all</button>
               <button id="clear-selection" class="buret-toggle-button" type="button">Clear selection</button>
             </div>
-            ${caps.xyzrenderCards ? cardRendererSwitchHTML() : ''}
             ${rdkitCoordinatesControlHTML()}
             ${caps.rendererSwitch ? rendererSwitchHTML() : ''}
           </div>
@@ -394,9 +384,6 @@
     root.querySelectorAll('[data-buret-grid-renderer]').forEach(button => {
       button.addEventListener('click', () => requestRendererSwitch(button.getAttribute('data-buret-grid-renderer'), cfg));
     });
-    root.querySelectorAll('[data-buret-grid-card-renderer]').forEach(button => {
-      button.addEventListener('click', () => setCardRenderer(button.getAttribute('data-buret-grid-card-renderer'), cfg));
-    });
     initRdkitCoordinatesControl(cfg);
     if (state.selectionKeydownHandler) {
       document.removeEventListener('keydown', state.selectionKeydownHandler);
@@ -428,11 +415,6 @@
       propertiesToggle.setAttribute('aria-pressed', state.showProperties ? 'true' : 'false');
     }
     requestAnimationFrame(fitRenderedGridSVGs);
-    root.querySelectorAll('[data-buret-grid-card-renderer]').forEach(button => {
-      const active = button.getAttribute('data-buret-grid-card-renderer') === state.cardRenderer;
-      button.classList.toggle('active', active);
-      button.setAttribute('aria-pressed', active ? 'true' : 'false');
-    });
     syncRdkitCoordinatesControl();
   }
 
@@ -480,15 +462,6 @@
       </div>`;
   }
 
-  function cardRendererSwitchHTML() {
-    return `
-      <div class="buret-grid-card-renderer-switch" aria-label="Card renderer">
-        <span>Cards</span>
-        <button type="button" data-buret-grid-card-renderer="rdkit" aria-pressed="true">RDKit</button>
-        <button type="button" data-buret-grid-card-renderer="xyzrender" aria-pressed="false">xyzrender</button>
-      </div>`;
-  }
-
   function rdkitCoordinatesControlHTML() {
     return `
       <label id="rdkit-use-input-coords-control" class="buret-rdkit-coords-control" hidden>
@@ -514,23 +487,13 @@
     const control = document.getElementById('rdkit-use-input-coords-control');
     const input = document.getElementById('rdkit-use-input-coords');
     if (!control || !input) return;
-    control.hidden = state.cardRenderer !== 'rdkit' || !hasInputCoordinateRows();
+    control.hidden = !hasInputCoordinateRows();
     input.checked = state.rdkitUseInputCoords;
   }
 
   function hasInputCoordinateRows() {
     const rows = state.rows.length ? state.rows : state.all;
     return rows.some(row => hasMolblockInputCoordinates(row.molblock));
-  }
-
-  function setCardRenderer(renderer, cfg) {
-    const value = CARD_RENDERER_OPTIONS.includes(String(renderer || '').toLowerCase())
-      ? String(renderer || '').toLowerCase()
-      : 'rdkit';
-    if (state.cardRenderer === value) return;
-    state.cardRenderer = value;
-    applyGridPreferences();
-    render(cfg);
   }
 
   function requestRendererSwitch(renderer, cfg) {
@@ -569,7 +532,6 @@
       preset.value = state.xyzrenderPreset;
       preset.addEventListener('change', event => {
         state.xyzrenderPreset = normalizeXyzrenderPreset(event.target.value);
-        if (state.cardRenderer === 'xyzrender') render(config());
       });
     }
     writeXyzrenderControls();
@@ -585,7 +547,6 @@
       });
       input.addEventListener('change', () => {
         state.xyzrenderControls = readXyzrenderControls();
-        if (state.cardRenderer === 'xyzrender') render(config());
       });
     });
   }
@@ -993,9 +954,6 @@
     if (selectAllButton) selectAllButton.disabled = selectableIndexes.length === 0 || allCurrentSelected;
     const clearSelectionButton = document.getElementById('clear-selection');
     if (clearSelectionButton) clearSelectionButton.disabled = state.selected.size === 0;
-    const cardRendererStatus = state.cardRenderer === 'xyzrender' && capabilities(cfg).xyzrenderCards
-      ? 'External xyzrender card rendering. Loaded cards are cached in this view.'
-      : 'Offline RDKit.js rendering. No network access required.';
     document.getElementById('footer').textContent = state.smartsError
       ? `SMARTS error: ${state.smartsError}`
       : (total > included && !state.remoteMode
@@ -1004,7 +962,7 @@
           ? `Scroll to load more. ${state.renderedCount.toLocaleString()} of ${visible.toLocaleString()} visible molecules are rendered.`
           : (state.remoteMode
             ? 'Desktop grid runtime is loading rows on demand.'
-            : cardRendererStatus)));
+            : 'Offline RDKit.js rendering. No network access required.')));
   }
 
   function card(row, cfg) {
@@ -1018,7 +976,7 @@
     el.setAttribute('aria-selected', state.selected.has(index) ? 'true' : 'false');
     if (state.smartsMatches.has(index)) el.classList.add('smarts-match');
     el.innerHTML = `
-      <div class="buret-molecule-picture" data-buret-molecule-picture data-xyzrender-key="">${draw(row, cfg)}</div>
+      <div class="buret-molecule-picture" data-buret-molecule-picture>${draw(row)}</div>
       <div class="buret-card-body">
         ${state.smartsMatches.has(index) ? '<div class="buret-match-badge">SMARTS match</div>' : ''}
         <h2>${escapeHTML(row.name || `Molecule ${index + 1}`)}</h2>
@@ -1037,10 +995,6 @@
           handleCardSelection(event, row, cfg, el);
         }
       });
-    }
-    if (state.cardRenderer === 'xyzrender' && capabilities(cfg).xyzrenderCards) {
-      const picture = el.querySelector('[data-buret-molecule-picture]');
-      if (picture) renderXyzrenderCard(row, picture, cfg);
     }
     el.addEventListener('contextmenu', event => showMoleculeContextMenu(event, row));
     installCardHover(el);
@@ -1159,7 +1113,6 @@
     const label = row.name || `Molecule ${Number(row.index) + 1}`;
     const actionLabels = {
       remove: 'Delete molecule',
-      separateWindow: 'Open in separate window',
       molstar: 'Open in Mol*',
       hide: 'Hide molecule',
       inspect: 'Inspect properties'
@@ -1186,7 +1139,6 @@
     subtitle.textContent = row.smiles || 'SDF molecule';
     const actions = [
       ['remove', 'Delete molecule'],
-      ['separateWindow', 'Open in separate window'],
       ['molstar', 'Open in Mol*'],
       ['hide', 'Hide molecule'],
       ['inspect', 'Inspect properties']
@@ -1339,10 +1291,7 @@
     window.addEventListener('pointercancel', onUp, { once: true });
   }
 
-  function draw(row, cfg) {
-    if (state.cardRenderer === 'xyzrender' && capabilities(cfg).xyzrenderCards) {
-      return '<div class="buret-molecule-loading">Rendering with xyzrender...</div>';
-    }
+  function draw(row) {
     return drawRdkit(row);
   }
 
@@ -1523,144 +1472,6 @@
       x2: Math.max(...xs),
       y2: Math.max(...ys)
     };
-  }
-
-  function drawXyzrenderFallback(row, error) {
-    const fallback = drawRdkit(row);
-    if (fallback.includes('buret-molecule-error')) return fallback;
-    return `<div class="buret-molecule-fallback" title="${escapeAttr(`xyzrender failed: ${error?.message || String(error)}`)}">${fallback}</div>`;
-  }
-
-  function renderXyzrenderCard(row, picture, cfg) {
-    const key = xyzrenderCardKey(row);
-    picture.dataset.xyzrenderKey = key;
-    const cached = state.xyzrenderCardCache.get(key);
-    if (cached) {
-      picture.innerHTML = cached;
-      return;
-    }
-    const existing = state.xyzrenderCardRequests.get(key);
-    const request = existing || enqueueXyzrenderCard(row, cfg)
-      .then(html => {
-        state.xyzrenderCardCache.set(key, html);
-        while (state.xyzrenderCardCache.size > 180) state.xyzrenderCardCache.delete(state.xyzrenderCardCache.keys().next().value);
-        return html;
-      })
-      .catch(error => drawXyzrenderFallback(row, error))
-      .finally(() => {
-        state.xyzrenderCardRequests.delete(key);
-      });
-    if (!existing) state.xyzrenderCardRequests.set(key, request);
-    request.then(html => {
-      if (picture.dataset.xyzrenderKey === key && state.cardRenderer === 'xyzrender') {
-        picture.innerHTML = html;
-      }
-    });
-  }
-
-  function enqueueXyzrenderCard(row, cfg) {
-    return new Promise((resolve, reject) => {
-      state.xyzrenderCardQueue.push({ row, cfg, resolve, reject });
-      pumpXyzrenderCardQueue();
-    });
-  }
-
-  function pumpXyzrenderCardQueue() {
-    while (state.xyzrenderCardActive < XYZRENDER_CARD_CONCURRENCY && state.xyzrenderCardQueue.length) {
-      const task = state.xyzrenderCardQueue.shift();
-      state.xyzrenderCardActive += 1;
-      requestXyzrenderCard(task.row, task.cfg)
-        .then(task.resolve, task.reject)
-        .finally(() => {
-          state.xyzrenderCardActive = Math.max(0, state.xyzrenderCardActive - 1);
-          pumpXyzrenderCardQueue();
-        });
-    }
-  }
-
-  async function requestXyzrenderCard(row, cfg) {
-    const input = xyzrenderInputForRow(row);
-    const response = await fetch(String(cfg.xyzrenderEndpoint || '/__burette/xyzrender'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        path: `${slug(row.name || `molecule-${Number(row.index) + 1}`)}.${input.extension}`,
-        inputExtension: input.extension,
-        inputDataBase64: bytesToBase64(new TextEncoder().encode(input.text)),
-        preset: state.xyzrenderPreset,
-        controls: state.xyzrenderControls
-      })
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(typeof payload?.error === 'string' ? payload.error : `xyzrender request failed with status ${response.status}`);
-    }
-    if (typeof payload?.svg !== 'string' || !payload.svg.trim()) {
-      throw new Error('xyzrender endpoint returned no SVG payload');
-    }
-    return sanitizeSVG(payload.svg);
-  }
-
-  function xyzrenderInputForRow(row) {
-    if (row.molblock) {
-      const text = String(row.molblock).trimEnd();
-      return { extension: 'sdf', text: text.endsWith('$$$$') ? `${text}\n` : `${text}\n$$$$\n` };
-    }
-    const text = molblockForRow(row).trimEnd();
-    return { extension: 'sdf', text: text.endsWith('$$$$') ? `${text}\n` : `${text}\n$$$$\n` };
-  }
-
-  function molblockForRow(row) {
-    const smiles = String(row.smiles || '').trim();
-    if (!smiles) throw new Error('No SDF molblock or SMILES data for xyzrender.');
-    const key = `${row.index}|${smiles}`;
-    const cached = state.molblockCache.get(key);
-    if (cached) return cached;
-    if (!state.rdkit || typeof state.rdkit.get_mol !== 'function') {
-      throw new Error('RDKit is not ready to prepare xyzrender input.');
-    }
-    let mol = null;
-    try {
-      mol = state.rdkit.get_mol(smiles);
-      if (!mol || (typeof mol.is_valid === 'function' && !mol.is_valid())) throw new Error('invalid molecule');
-      const molblock = String(
-        typeof mol.get_molblock === 'function'
-          ? mol.get_molblock()
-          : typeof mol.get_v3Kmolblock === 'function'
-            ? mol.get_v3Kmolblock()
-            : ''
-      ).trim();
-      if (!molblock) throw new Error('RDKit returned no molblock.');
-      state.molblockCache.set(key, molblock);
-      while (state.molblockCache.size > 360) state.molblockCache.delete(state.molblockCache.keys().next().value);
-      return molblock;
-    } finally {
-      try { mol?.delete?.(); } catch {}
-    }
-  }
-
-  function xyzrenderCardKey(row) {
-    return [
-      row.index,
-      row.smiles || '',
-      hash(row.molblock || ''),
-      state.xyzrenderPreset,
-      JSON.stringify(state.xyzrenderControls)
-    ].join('|');
-  }
-
-  function bytesToBase64(bytes) {
-    let binary = '';
-    const chunk = 0x8000;
-    for (let index = 0; index < bytes.length; index += chunk) {
-      binary += String.fromCharCode(...bytes.subarray(index, index + chunk));
-    }
-    return btoa(binary);
-  }
-
-  function slug(value) {
-    const normalized = String(value || 'molecule').trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
-    return normalized || 'molecule';
   }
 
   function metadata(row) {
