@@ -930,6 +930,8 @@
     const controls = options.controls || (toolbar ? readXyzrenderControlsForm(toolbar) : normalizeXyzrenderControls(config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config));
     const preset = normalizeXyzrenderPreset(options.preset || config.externalArtifact?.preset || config.xyzrenderPreset || 'default');
     const orientationRef = captureCurrentXyzrenderOrientationRef();
+    const inputDataBase64 = typeof config.xyzrenderInputDataBase64 === 'string' ? config.xyzrenderInputDataBase64.trim() : '';
+    const inputExtension = typeof config.xyzrenderInputExtension === 'string' ? config.xyzrenderInputExtension.trim() : '';
     const serial = ++xyzrenderInlineRequestSerial;
     setStatus(`[web] Updating xyzrender artifact…\n${config.label || 'structure'}`);
     fetch(endpoint, {
@@ -939,7 +941,9 @@
         path: sourcePath,
         preset,
         orientationRef: orientationRef?.text || undefined,
-        controls
+        controls,
+        inputDataBase64: inputDataBase64 || undefined,
+        inputExtension: inputDataBase64 && inputExtension ? inputExtension : undefined
       })
     })
       .then(response => response.json().catch(() => ({})).then(payload => ({ response, payload })))
