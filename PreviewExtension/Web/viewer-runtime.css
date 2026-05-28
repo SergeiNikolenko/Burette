@@ -880,7 +880,8 @@ body.burette-quicklook-host .buret-corner-button {
   bottom: 14px;
   z-index: 40;
   display: inline-flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 6px;
   min-height: 34px;
   padding: 5px;
@@ -896,7 +897,8 @@ body.burette-quicklook-host .buret-corner-button {
   touch-action: none;
   user-select: none;
 }
-body.buret-docking-pose-controls-active .msp-animation-viewport-controls {
+body.buret-docking-pose-controls-active .msp-animation-viewport-controls,
+body.buret-docking-pose-controls-active .msp-traj-controls {
   visibility: hidden !important;
   pointer-events: none !important;
 }
@@ -924,12 +926,30 @@ body.buret-docking-pose-controls-active .msp-animation-viewport-controls {
   opacity: 0.38;
   cursor: default;
 }
+.buret-docking-pose-main,
+.buret-docking-pose-animation {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.buret-docking-pose-animation {
+  display: none;
+  padding-top: 1px;
+}
+.buret-docking-poses.buret-docking-poses-animation-open .buret-docking-pose-animation {
+  display: inline-flex;
+}
+.buret-docking-pose-animation-button {
+  width: 28px;
+  padding: 0 !important;
+}
 .buret-docking-poses span {
   min-width: 76px;
   text-align: center;
 }
 .buret-docking-pose-slider {
-  width: 96px;
+  flex: 1 1 96px;
+  width: 100%;
   min-width: 72px;
   accent-color: #93c5fd;
   cursor: pointer;
