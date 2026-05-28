@@ -4,6 +4,7 @@
   const root = document.getElementById('app');
   const status = document.getElementById('status');
   const CARD_MIN_STORAGE_KEY = 'buret.grid.cardMin';
+  const RDKIT_USE_INPUT_COORDS_STORAGE_KEY = 'buret.grid.rdkitUseInputCoords';
   const CARD_RENDERER_OPTIONS = ['rdkit', 'xyzrender'];
   const MIN_CARD_MIN = 86;
   const MAX_CARD_MIN = 360;
@@ -56,6 +57,7 @@
     sort: 'index',
     showProperties: false,
     cardRenderer: 'rdkit',
+    rdkitUseInputCoords: storedBoolean(RDKIT_USE_INPUT_COORDS_STORAGE_KEY, false),
     cardMin: storedOptionalInteger(CARD_MIN_STORAGE_KEY, MIN_CARD_MIN, MAX_CARD_MIN),
     xyzrenderPreset: 'default',
     xyzrenderControls: { ...DEFAULT_XYZRENDER_CONTROLS },
@@ -218,6 +220,17 @@
     }
   }
 
+  function storedBoolean(key, fallback) {
+    try {
+      const value = window.localStorage?.getItem(key);
+      if (value === 'true') return true;
+      if (value === 'false') return false;
+      return fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
   function clampInteger(value, min, max, fallback) {
     const number = Number(value);
     if (!Number.isFinite(number)) return fallback;
@@ -342,6 +355,7 @@
               <button id="clear-selection" class="buret-toggle-button" type="button">Clear selection</button>
             </div>
             ${caps.xyzrenderCards ? cardRendererSwitchHTML() : ''}
+            ${rdkitCoordinatesControlHTML()}
             ${caps.rendererSwitch ? rendererSwitchHTML() : ''}
           </div>
         </div>
@@ -383,6 +397,7 @@
     root.querySelectorAll('[data-buret-grid-card-renderer]').forEach(button => {
       button.addEventListener('click', () => setCardRenderer(button.getAttribute('data-buret-grid-card-renderer'), cfg));
     });
+    initRdkitCoordinatesControl(cfg);
     if (state.selectionKeydownHandler) {
       document.removeEventListener('keydown', state.selectionKeydownHandler);
     }
@@ -418,6 +433,7 @@
       button.classList.toggle('active', active);
       button.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
+    syncRdkitCoordinatesControl();
   }
 
   function propertyOptions(cfg) {
@@ -471,6 +487,40 @@
         <button type="button" data-buret-grid-card-renderer="rdkit" aria-pressed="true">RDKit</button>
         <button type="button" data-buret-grid-card-renderer="xyzrender" aria-pressed="false">xyzrender</button>
       </div>`;
+  }
+
+  function rdkitCoordinatesControlHTML() {
+    return `
+      <label id="rdkit-use-input-coords-control" class="buret-rdkit-coords-control" hidden>
+        <input id="rdkit-use-input-coords" type="checkbox" />
+        <span>Use file coords</span>
+      </label>`;
+  }
+
+  function initRdkitCoordinatesControl(cfg) {
+    const input = document.getElementById('rdkit-use-input-coords');
+    if (!input) return;
+    input.checked = state.rdkitUseInputCoords;
+    input.addEventListener('change', event => {
+      state.rdkitUseInputCoords = event.target.checked === true;
+      store(RDKIT_USE_INPUT_COORDS_STORAGE_KEY, state.rdkitUseInputCoords ? 'true' : 'false');
+      state.svgCache.clear();
+      render(cfg);
+    });
+    syncRdkitCoordinatesControl();
+  }
+
+  function syncRdkitCoordinatesControl() {
+    const control = document.getElementById('rdkit-use-input-coords-control');
+    const input = document.getElementById('rdkit-use-input-coords');
+    if (!control || !input) return;
+    control.hidden = state.cardRenderer !== 'rdkit' || !hasInputCoordinateRows();
+    input.checked = state.rdkitUseInputCoords;
+  }
+
+  function hasInputCoordinateRows() {
+    const rows = state.rows.length ? state.rows : state.all;
+    return rows.some(row => hasMolblockInputCoordinates(row.molblock));
   }
 
   function setCardRenderer(renderer, cfg) {
@@ -1298,7 +1348,8 @@
 
   function drawRdkit(row) {
     const match = state.smartsMatches.get(Number(row.index));
-    const key = `${row.index}|${row.smiles || ''}|${hash(row.molblock || '')}|${state.smarts}|${match ? `${match.atoms.join(',')}:${match.bonds.join(',')}` : ''}`;
+    const useInputCoords = state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock);
+    const key = `${row.index}|${row.smiles || ''}|${hash(row.molblock || '')}|${state.smarts}|${useInputCoords ? 'file-coords' : 'new-coords'}|${match ? `${match.atoms.join(',')}:${match.bonds.join(',')}` : ''}`;
     if (state.svgCache.has(key)) return state.svgCache.get(key);
     let mol = null;
     let html = '';
@@ -1306,7 +1357,9 @@
       mol = state.rdkit.get_mol(row.molblock || row.smiles || '');
       if (!mol || (typeof mol.is_valid === 'function' && !mol.is_valid())) throw new Error('invalid molecule');
       try {
-        try { mol.set_new_coords?.(); } catch (_) {}
+        if (!useInputCoords) {
+          try { mol.set_new_coords?.(); } catch (_) {}
+        }
         html = match && typeof mol.get_svg_with_highlights === 'function'
           ? mol.get_svg_with_highlights(JSON.stringify({
               atoms: match.atoms,
@@ -1332,6 +1385,28 @@
     state.svgCache.set(key, html);
     while (state.svgCache.size > 360) state.svgCache.delete(state.svgCache.keys().next().value);
     return html;
+  }
+
+  function hasMolblockInputCoordinates(value) {
+    const text = String(value || '');
+    if (!text.includes('\n')) return false;
+    const lines = text.split(/\r?\n/u);
+    const countsIndex = lines.findIndex(line => /\bV(2000|3000)\b/u.test(line) || /^\s*\d+\s+\d+\s+/u.test(line));
+    if (countsIndex < 0) return false;
+    if (/\bV3000\b/u.test(lines[countsIndex])) {
+      return lines.some(line => /M\s+V30\s+\d+\s+\S+\s+[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?\s+[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?\s+[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?/u.test(line));
+    }
+    const countText = lines[countsIndex].slice(0, 3).trim() || lines[countsIndex].trim().split(/\s+/u)[0];
+    const atomCount = Number.parseInt(countText, 10);
+    if (!Number.isFinite(atomCount) || atomCount <= 0) return false;
+    return lines.slice(countsIndex + 1, countsIndex + 1 + atomCount).some(line => {
+      const parts = line.trim().split(/\s+/u);
+      if (parts.length < 4) return false;
+      const x = Number(parts[0]);
+      const y = Number(parts[1]);
+      const z = Number(parts[2]);
+      return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z);
+    });
   }
 
   function stripSVGClipping(svg) {
