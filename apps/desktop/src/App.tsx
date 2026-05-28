@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ask, open } from "@tauri-apps/plugin-dialog";
+import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import previewFormatRegistry from "../../../config/preview-formats.json";
 import { AppLayout } from "./components/app-layout";
@@ -44,9 +44,10 @@ import {
   useSetDocuments,
 } from "./hooks/use-tabs";
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
-import { browserDevRuntimeNeedsRefresh, openBrowserDevDockingDocument, openBrowserDevDocuments } from "./lib/browser-dev-documents";
+import { browserDevRuntimeNeedsRefresh, openBrowserDevDockingDocument, openBrowserDevDocuments, openBrowserDevMergedCollection, readBrowserDevCollectionText } from "./lib/browser-dev-documents";
+import { isMoleculeCollectionPath } from "./lib/collection-documents";
 import { dockingRequestForDrop, isProteinLikeDockingSource } from "./lib/docking-documents";
-import { buildSidebarProjects, parentDirectory } from "./lib/sidebar-projects";
+import { basename, buildSidebarProjects, parentDirectory } from "./lib/sidebar-projects";
 import { isTauriRuntime } from "./lib/tauri";
 import type { DockingDocumentRequest, OpenDocumentsResult, RecentStructure, ViewerDocument, ViewerReloadOptions } from "./types";
 import { checkForUpdates as requestUpdateCheck, clearDismissedUpdate, dismissUpdate, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically, shouldPromptForUpdate } from "./update";
@@ -313,6 +314,63 @@ export default function App() {
     }
   }, [addDocuments, documents, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
 
+  const collectionSourcePaths = useCallback((path: string | null) => {
+    if (!path) return [];
+    const document = documents.find((candidate) => candidate.path === path || candidate.id === path);
+    if (document?.mergedCollection) return document.mergedCollection.sourcePaths;
+    return [path];
+  }, [documents]);
+
+  const mergeMoleculeCollections = useCallback(async (targetPath: string | null, paths: string[]) => {
+    const sourcePaths = Array.from(new Set([
+      ...collectionSourcePaths(targetPath),
+      ...paths.flatMap((path) => collectionSourcePaths(path)),
+    ].filter(isMoleculeCollectionPath)));
+    if (sourcePaths.length < 2) {
+      pushStatus("Drop another SDF, SMILES, CSV, or TSV collection to merge it.", "error");
+      return;
+    }
+    pushStatus("Merging molecule collections...");
+    try {
+      const document = isTauriRuntime()
+        ? await invoke<ViewerDocument>("open_merged_collection", {
+            request: { paths: sourcePaths },
+            preferences,
+          })
+        : await openBrowserDevMergedCollection(sourcePaths, preferences);
+      addDocuments([document]);
+      setStructureDragActive(false);
+      pushStatus(`Merged ${sourcePaths.length} collection${sourcePaths.length === 1 ? "" : "s"}`);
+    } catch (error) {
+      setStructureDragActive(false);
+      pushErrorStatus(error, "Merge collections failed");
+    }
+  }, [addDocuments, collectionSourcePaths, preferences, pushErrorStatus, pushStatus]);
+
+  const saveMoleculeCollectionAs = useCallback(async (targetPath: string) => {
+    const document = documents.find((candidate) => candidate.path === targetPath || candidate.id === targetPath);
+    const path = document?.path ?? targetPath;
+    const suggestedFileName = document?.mergedCollection?.suggestedFileName ?? basename(path);
+    try {
+      if (isTauriRuntime()) {
+        const outputPath = await save({
+          defaultPath: suggestedFileName,
+          filters: [{ name: "Molecule collections", extensions: ["sdf", "sd", "smi", "smiles", "csv", "tsv"] }],
+        });
+        if (!outputPath) return;
+        await invoke("save_molecule_collection_as", { path, outputPath });
+        pushStatus(`Saved ${basename(outputPath)}`);
+        return;
+      }
+
+      const text = document?.mergedCollection?.text ?? await readBrowserDevCollectionText(path);
+      downloadTextFile(suggestedFileName || "molecule-collection.sdf", text);
+      pushStatus(`Saved ${suggestedFileName}`);
+    } catch (error) {
+      pushErrorStatus(error, "Save collection failed");
+    }
+  }, [documents, pushErrorStatus, pushStatus]);
+
   useEffect(() => {
     if (isTauriRuntime()) return;
     const request = browserDevDockingFromLocation();
@@ -397,6 +455,13 @@ export default function App() {
     activeDocumentPath: activeDocument?.path ?? null,
     openDockingDocument,
     addXyzrenderSheetItems,
+    mergeMoleculeCollections: activeDocument?.renderer === "grid2d"
+      ? (paths) => {
+          if (!paths.some(isMoleculeCollectionPath)) return false;
+          void mergeMoleculeCollections(activeDocument.path, paths);
+          return true;
+        }
+      : undefined,
   });
   const reloadActive = useCallback(async () => {
     const targetDocument = (pendingViewerReloadDocumentIdRef.current
@@ -845,6 +910,8 @@ export default function App() {
       pushStatus("Closed all structures");
     },
     openDockingDocument,
+    mergeMoleculeCollections,
+    saveMoleculeCollectionAs,
     setStructureDragActive,
     clearRecentStructures: () => {
       clearRecentStructures();
@@ -895,7 +962,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeTab, focusSidebarSearch, installUpdate, navigateBack, navigateForward, openCommandPalette, openDockingDocument, openNewTab, openProjectFolder, openRecentStructure, openSettings, openWorkspaceFolder, pushErrorStatus, pushStatus, selectDocument, setActiveTab, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
+  }), [canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeTab, focusSidebarSearch, installUpdate, mergeMoleculeCollections, navigateBack, navigateForward, openCommandPalette, openDockingDocument, openNewTab, openProjectFolder, openRecentStructure, openSettings, openWorkspaceFolder, pushErrorStatus, pushStatus, saveMoleculeCollectionAs, selectDocument, setActiveTab, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
@@ -976,6 +1043,19 @@ function summarizeErrors(errors: string[]) {
 
 function summarizeErrorText(message: string) {
   return (message || "Unknown error").trim().split(/\r?\n| Error:| at /)[0]?.trim() || "Unknown error";
+}
+
+function downloadTextFile(fileName: string, text: string) {
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.style.display = "none";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function formatViewerError(

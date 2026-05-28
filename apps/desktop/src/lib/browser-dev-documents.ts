@@ -1,3 +1,4 @@
+import { collectionExtension, mergeCollectionSources } from "./collection-documents";
 import type { DockingDocumentRequest, OpenDocumentsResult, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XyzrenderControls } from "../types";
 import previewFormatRegistry from "../../../../config/preview-formats.json";
 
@@ -239,6 +240,47 @@ export async function openBrowserDevDockingDocument(
   };
 }
 
+export async function openBrowserDevMergedCollection(
+  paths: string[],
+  preferences: ViewerPreferences,
+): Promise<ViewerDocument> {
+  const uniquePaths = Array.from(new Set(paths.filter(Boolean)));
+  const sources = await Promise.all(uniquePaths.map(async (path) => {
+    const extension = collectionExtension(path);
+    return { path, extension, text: await readBrowserDevCollectionText(path) };
+  }));
+  const merged = mergeCollectionSources(sources);
+  const grid = gridPayload(merged.suggestedFileName, merged.extension, merged.text);
+  if (!grid) throw new Error("Merged collection does not contain supported molecule grid records.");
+
+  const id = stableId(`merged:${merged.sourcePaths.join("|")}:${merged.text.length}`);
+  const path = `burrete-collection://${id}/${merged.suggestedFileName}`;
+  const html = await gridHtml(path, grid.records, grid.format, preferences, new TextEncoder().encode(merged.text).byteLength);
+  return {
+    id,
+    path,
+    title: merged.suggestedFileName,
+    extension: merged.extension,
+    renderer: "grid2d",
+    runtimePath: html,
+    byteCount: new TextEncoder().encode(merged.text).byteLength,
+    virtual: true,
+    mergedCollection: {
+      sourcePaths: merged.sourcePaths,
+      format: merged.extension,
+      text: merged.text,
+      suggestedFileName: merged.suggestedFileName,
+    },
+  };
+}
+
+export async function readBrowserDevCollectionText(path: string) {
+  const extension = collectionExtension(path);
+  const response = await fetch(browserDevReadUrl(path, extension));
+  if (!response.ok) throw new Error(`${path}: ${response.status} ${response.statusText}`);
+  return await response.text();
+}
+
 async function openBrowserDevDocument(
   path: string,
   preferences: ViewerPreferences,
@@ -433,6 +475,7 @@ function viewerHtml(
     label,
     byteCount: sourceByteCount,
     previewByteCount: bytes.length,
+    dataPath: renderer === "xyzrender-external" ? browserDevReadUrl(path, fileExtension(path)) : undefined,
     sourcePath: path,
     quickLookBuild: "burrete-browser-dev",
     debug: false,
