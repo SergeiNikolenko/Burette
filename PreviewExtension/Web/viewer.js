@@ -4044,8 +4044,16 @@
   }
 
   function molstarContextTargetStructures() {
+    const pickedStructure = molstarContextMenuPick?.loci?.structure || null;
     const structures = molstarContextStructures();
     if (!structures.length) return [];
+    if (pickedStructure) {
+      const picked = structures.find(structure => {
+        const data = structure?.cell?.obj?.data || structure?.obj?.data || null;
+        return data === pickedStructure || data?.root === pickedStructure?.root;
+      });
+      if (picked) return [picked];
+    }
     if (activeConfig?.docking && structures.length > 1) return structures.slice(1);
     return structures.length === 1 ? structures : [structures[structures.length - 1]];
   }
