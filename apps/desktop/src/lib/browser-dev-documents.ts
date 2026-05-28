@@ -276,7 +276,14 @@ export async function openBrowserDevMergedCollection(
 
 export async function readBrowserDevCollectionText(path: string) {
   const extension = collectionExtension(path);
-  const response = await fetch(browserDevReadUrl(path, extension));
+  const url = browserDevReadUrl(path, extension);
+  let response: Response;
+  try {
+    response = await fetch(url);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`${path}: failed to fetch collection data from ${url}: ${message}`);
+  }
   if (!response.ok) throw new Error(`${path}: ${response.status} ${response.statusText}`);
   return await response.text();
 }
@@ -681,7 +688,7 @@ async function gridHtml(
     recordsIncluded: records.length,
     recordsTruncated: false,
     pageSize: 96,
-    rdkitWasmPath: `${WEB_ASSETS_BASE}rdkit/RDKit_minimal.wasm`,
+    rdkitWasmPath: "/__burette/rdkit-wasm",
     xyzrenderPreset: "default",
     xyzrenderPresetOptions: [
       { value: "default", label: "Default" },
