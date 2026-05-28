@@ -1,5 +1,5 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { ViewerDocument } from "../../../types";
 import { ligandDropPathsForTarget } from "../../../lib/docking-documents";
 import { hasStructureDrag, readStructureDrag } from "../../../lib/structure-drag";
@@ -43,6 +43,24 @@ function ViewerSurface({
   const tauriRuntime = isTauriRuntime();
   const sandbox = tauriRuntime ? "allow-scripts allow-downloads" : "allow-scripts allow-downloads allow-same-origin";
   const [dockingDropActive, setDockingDropActive] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const sheetDropTarget = document.renderer === "xyzrender-external";
+
+  const postXyzrenderSheetItems = useCallback((paths: string[]) => {
+    if (!sheetDropTarget || paths.length === 0) return false;
+    iframeRef.current?.contentWindow?.postMessage(
+      {
+        source: "burrete-host",
+        body: {
+          type: "addXyzrenderSheetItems",
+          documentId: document.id,
+          paths,
+        },
+      },
+      "*",
+    );
+    return true;
+  }, [document.id, sheetDropTarget]);
 
   const handleDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     if (!hasStructureDrag(event.dataTransfer)) return;
@@ -63,9 +81,11 @@ function ViewerSurface({
     event.stopPropagation();
     setDockingDropActive(false);
     actions.setStructureDragActive(false);
-    const paths = ligandDropPathsForTarget(document.path, readStructureDrag(event.dataTransfer));
+    const droppedPaths = readStructureDrag(event.dataTransfer);
+    if (postXyzrenderSheetItems(droppedPaths)) return;
+    const paths = ligandDropPathsForTarget(document.path, droppedPaths);
     if (paths.length > 0) void actions.openDockingDocument(document.path, paths);
-  }, [actions, document.path]);
+  }, [actions, document.path, postXyzrenderSheetItems]);
 
   return (
     <div
@@ -76,13 +96,13 @@ function ViewerSurface({
       onDrop={handleDrop}
     >
       {tauriRuntime ? (
-        <iframe title={document.title} src={convertFileSrc(document.runtimePath)} className="viewer-iframe" sandbox={sandbox} referrerPolicy="no-referrer" data-document-id={document.id} />
+        <iframe ref={iframeRef} title={document.title} src={convertFileSrc(document.runtimePath)} className="viewer-iframe" sandbox={sandbox} referrerPolicy="no-referrer" data-document-id={document.id} />
       ) : (
-        <iframe title={document.title} srcDoc={document.runtimePath} className="viewer-iframe" sandbox={sandbox} referrerPolicy="no-referrer" data-document-id={document.id} />
+        <iframe ref={iframeRef} title={document.title} srcDoc={document.runtimePath} className="viewer-iframe" sandbox={sandbox} referrerPolicy="no-referrer" data-document-id={document.id} />
       )}
       {dockingDropActive && (
         <div className="docking-drop-overlay">
-          <div>Add to Mol* docking view</div>
+          <div>{sheetDropTarget ? "Add to xyzrender sheet" : "Add to Mol* docking view"}</div>
         </div>
       )}
     </div>

@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashSet};
 #[cfg(target_os = "macos")]
 use std::ffi::CString;
@@ -5,15 +6,38 @@ use std::fs;
 use std::path::{Path, PathBuf};
 #[cfg(target_os = "macos")]
 use std::sync::mpsc;
-use tauri::Runtime;
+use tauri::{Manager, Runtime};
 #[cfg(not(target_os = "macos"))]
 use tauri_plugin_dialog::DialogExt;
 
-use crate::preview::formats::{structure_path_extension, supported_structure_extensions};
-use crate::preview::runtime::{
-    DockingDocumentRequest, OpenDocumentsResult, ViewerDocument, ViewerPreferences,
-    ViewerReloadOptions, open_docking_document as open_docking_document_runtime, open_document,
+use crate::preview::formats::{
+    format_for_extension, structure_path_extension, supported_structure_extensions,
 };
+use crate::preview::runtime::{
+    open_docking_document as open_docking_document_runtime, open_document, DockingDocumentRequest,
+    OpenDocumentsResult, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XyzrenderControls,
+};
+use crate::preview::text_xyz::xyz_data_from_text;
+use crate::preview::xyzrender::create_xyzrender_artifact;
+
+const XYZRENDER_SHEET_MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct XyzrenderSheetRenderRequest {
+    path: String,
+    preset: Option<String>,
+    controls: Option<XyzrenderControls>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct XyzrenderSheetRenderResult {
+    svg: String,
+    preset: String,
+    elapsed_ms: u128,
+    log: String,
+}
 
 #[tauri::command]
 pub(crate) fn pick_open_targets<R: Runtime>(
@@ -79,6 +103,72 @@ pub(crate) fn open_docking_document<R: Runtime>(
     preferences: ViewerPreferences,
 ) -> Result<ViewerDocument, String> {
     open_docking_document_runtime(&app, request, &preferences)
+}
+
+#[tauri::command]
+pub(crate) fn render_xyzrender_sheet_item<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    request: XyzrenderSheetRenderRequest,
+) -> Result<XyzrenderSheetRenderResult, String> {
+    let input_path = PathBuf::from(&request.path)
+        .canonicalize()
+        .map_err(|err| format!("{}: {err}", request.path))?;
+    let metadata =
+        fs::metadata(&input_path).map_err(|err| format!("{}: {err}", input_path.display()))?;
+    if !metadata.is_file() {
+        return Err(format!("{} is not a file", input_path.display()));
+    }
+    if metadata.len() > XYZRENDER_SHEET_MAX_STRUCTURE_FILE_SIZE {
+        return Err(format!(
+            "{} is too large for an xyzrender sheet item",
+            input_path.display()
+        ));
+    }
+
+    let extension = structure_path_extension(&input_path);
+    let format = format_for_extension(&extension)?;
+    if format.is_binary {
+        return Err(format!(
+            "{} is a binary format and cannot be added to an xyzrender sheet",
+            input_path.display()
+        ));
+    }
+
+    let data = fs::read(&input_path).map_err(|err| format!("{}: {err}", input_path.display()))?;
+    let label = input_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("structure");
+    let converted_xyz = if matches!(extension.as_str(), "cub" | "cube") {
+        None
+    } else {
+        xyz_data_from_text(&data, &extension, label)
+    };
+    let output_directory = app
+        .path()
+        .app_cache_dir()
+        .map_err(|err| err.to_string())?
+        .join("viewer")
+        .join("sheet")
+        .join(uuid::Uuid::new_v4().to_string());
+    fs::create_dir_all(&output_directory).map_err(|err| err.to_string())?;
+    let artifact = create_xyzrender_artifact(
+        &input_path,
+        &output_directory,
+        request.preset.as_deref(),
+        None,
+        request.controls.as_ref(),
+        converted_xyz.as_deref(),
+    )?;
+    let svg_path = output_directory.join(artifact.relative_path);
+    let svg =
+        fs::read_to_string(&svg_path).map_err(|err| format!("{}: {err}", svg_path.display()))?;
+    Ok(XyzrenderSheetRenderResult {
+        svg,
+        preset: artifact.preset.to_string(),
+        elapsed_ms: artifact.elapsed_ms,
+        log: artifact.log,
+    })
 }
 
 #[tauri::command]
@@ -189,7 +279,7 @@ fn looks_like_supported_structure_file(
 
 #[cfg(target_os = "macos")]
 fn sync_viewer_preferences_macos(preferences: &ViewerPreferences) -> Result<(), String> {
-    use cocoa::base::{NO, YES, id};
+    use cocoa::base::{id, NO, YES};
     use objc::{class, msg_send, sel, sel_impl};
 
     unsafe {
@@ -326,7 +416,7 @@ fn autoreleased_nsstring(value: &str) -> Result<cocoa::base::id, String> {
 #[cfg(target_os = "macos")]
 fn pick_open_targets_macos<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<Vec<String>, String> {
     use cocoa::appkit::{NSApp, NSModalResponse, NSOpenPanel, NSSavePanel};
-    use cocoa::base::{NO, YES, id, nil};
+    use cocoa::base::{id, nil, NO, YES};
     use objc::{class, msg_send, sel, sel_impl};
     use std::ffi::CStr;
     use std::os::raw::c_char;

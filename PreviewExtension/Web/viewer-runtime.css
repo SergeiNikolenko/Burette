@@ -466,6 +466,53 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
 }
 #status.error { color: #ffd4d4; background: rgba(70, 0, 0, 0.82); }
 #status.hidden { display: none; }
+.buret-molecule-context-menu {
+  position: fixed;
+  z-index: 2147483647;
+  min-width: 210px;
+  box-sizing: border-box;
+  padding: 6px;
+  border: 1px solid var(--buret-toolbar-border);
+  border-radius: 12px;
+  color: var(--buret-toolbar-color);
+  background: var(--buret-toolbar-background);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow:
+    0 16px 42px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.buret-molecule-context-menu-title {
+  padding: 6px 8px 1px;
+  font: 700 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+.buret-molecule-context-menu-subtitle {
+  max-width: 260px;
+  overflow: hidden;
+  padding: 0 8px 6px;
+  color: var(--buret-molstar-muted-text);
+  font: 500 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.buret-molecule-context-menu button {
+  display: block;
+  width: 100%;
+  min-height: 30px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 8px;
+  color: inherit;
+  background: transparent;
+  font: 600 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  text-align: left;
+}
+.buret-molecule-context-menu button:hover,
+.buret-molecule-context-menu button:focus {
+  outline: none;
+  background: var(--buret-toolbar-hover);
+}
 #buret-toolbar {
   position: absolute; top: var(--buret-toolbar-safe-top); right: 12px; left: auto; z-index: 2147483646;
   display: flex; align-items: center; flex-wrap: nowrap; max-width: calc(100vw - 24px); gap: 6px; padding: 6px;
