@@ -4209,6 +4209,29 @@
     return target.closest('canvas') || target.closest('.msp-plugin')?.querySelector('canvas') || null;
   }
 
+  function molstarContextBackgroundRgb() {
+    const color = canvasBackgroundColor();
+    return [(color >> 16) & 255, (color >> 8) & 255, color & 255];
+  }
+
+  function molstarContextCanvasPixelLooksEmpty(canvas, clientX, clientY) {
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    if (!gl || typeof gl.readPixels !== 'function') return false;
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.min(Math.max(0, Math.floor((clientX - rect.left) * (canvas.width / rect.width))), canvas.width - 1);
+    const y = Math.min(Math.max(0, Math.floor((rect.bottom - clientY) * (canvas.height / rect.height))), canvas.height - 1);
+    const pixel = new Uint8Array(4);
+    try {
+      gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+    } catch (_) {
+      return false;
+    }
+    if (pixel[3] <= 8) return true;
+    const background = molstarContextBackgroundRgb();
+    const distance = Math.abs(pixel[0] - background[0]) + Math.abs(pixel[1] - background[1]) + Math.abs(pixel[2] - background[2]);
+    return distance <= 18;
+  }
+
   function molstarContextPickFromEvent(event) {
     const canvas3d = activeViewer?.plugin?.canvas3d;
     if (!canvas3d || typeof canvas3d.identify !== 'function' || typeof canvas3d.getLoci !== 'function') return null;
@@ -4216,6 +4239,7 @@
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
     if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) return null;
+    if (molstarContextCanvasPixelLooksEmpty(canvas, event.clientX, event.clientY)) return null;
     const previousPickPadding = Number.isFinite(Number(canvas3d.props?.pickPadding)) ? canvas3d.props.pickPadding : undefined;
     const shouldRestorePickPadding = previousPickPadding !== undefined && previousPickPadding !== 0 && typeof canvas3d.setProps === 'function';
     try {
