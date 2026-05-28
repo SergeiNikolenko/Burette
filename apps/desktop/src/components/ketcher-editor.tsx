@@ -26,6 +26,7 @@ export function KetcherEditor({
 
   return (
     <Editor
+      disableMacromoleculesEditor
       staticResourcesUrl={import.meta.env.BASE_URL}
       structServiceProvider={structServiceProvider}
       onInit={handleInit}
