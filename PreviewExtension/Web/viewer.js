@@ -4147,6 +4147,162 @@
     return poses[index] || poses[0] || null;
   }
 
+  const MOLSTAR_CONTEXT_STANDARD_RESIDUES = new Set([
+    'ALA', 'ARG', 'ASN', 'ASP', 'CYS', 'GLN', 'GLU', 'GLY', 'HIS', 'ILE',
+    'LEU', 'LYS', 'MET', 'PHE', 'PRO', 'SER', 'THR', 'TRP', 'TYR', 'VAL',
+    'SEC', 'PYL', 'ASX', 'GLX', 'UNK',
+    'A', 'C', 'G', 'T', 'U', 'DA', 'DC', 'DG', 'DT', 'DU', 'I', 'DI',
+    'PSU', '5MC', 'OMC', 'OMG', '1MA', '2MG', 'M2G', '7MG'
+  ]);
+  const MOLSTAR_CONTEXT_WATER = new Set(['HOH', 'WAT', 'H2O', 'DOD']);
+  const MOLSTAR_CONTEXT_COMMON_IONS = new Set([
+    'NA', 'K', 'CL', 'CA', 'MG', 'ZN', 'FE', 'MN', 'CU', 'CO', 'NI', 'CD',
+    'HG', 'BR', 'IOD', 'I', 'F', 'LI', 'CS', 'RB', 'SR', 'BA', 'AL', 'AG',
+    'AU', 'PT', 'PB', 'SE', 'SO4', 'PO4', 'NO3'
+  ]);
+
+  function molstarContextValueAt(column, index) {
+    if (index == null || index < 0 || !column) return undefined;
+    try {
+      if (typeof column.value === 'function') return molstarContextNormalizeMissing(column.value(index));
+      if (Array.isArray(column) || ArrayBuffer.isView(column)) return molstarContextNormalizeMissing(column[index]);
+      if (column.array) return molstarContextNormalizeMissing(column.array[index]);
+      if (column.data) return molstarContextNormalizeMissing(column.data[index]);
+      return molstarContextNormalizeMissing(column[index]);
+    } catch (_) {
+      return undefined;
+    }
+  }
+
+  function molstarContextNormalizeMissing(value) {
+    if (value == null || value === '?' || value === '.') return undefined;
+    return value;
+  }
+
+  function molstarContextNumberOrUndefined(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : undefined;
+  }
+
+  function molstarContextSegmentIndex(segment, atomIndex) {
+    const value = molstarContextValueAt(segment?.index, atomIndex);
+    return Number.isInteger(value) ? value : molstarContextNumberOrUndefined(value);
+  }
+
+  function molstarContextEntityType(model, labelEntityId) {
+    if (!model || labelEntityId == null) return undefined;
+    try {
+      const entities = model.entities;
+      let index = typeof entities?.getEntityIndex === 'function' ? entities.getEntityIndex(labelEntityId) : undefined;
+      if (index == null && entities?.data?.id) {
+        const rowCount = entities.data._rowCount || entities.data.rowCount || 0;
+        for (let i = 0; i < rowCount; i++) {
+          if (String(molstarContextValueAt(entities.data.id, i)) === String(labelEntityId)) {
+            index = i;
+            break;
+          }
+        }
+      }
+      return molstarContextValueAt(entities?.data?.type, index);
+    } catch (_) {
+      return undefined;
+    }
+  }
+
+  function firstMolstarOrderedSetIndex(indices) {
+    if (indices == null) return undefined;
+    if (Number.isInteger(indices)) return indices;
+    if (typeof indices === 'number' && Number.isFinite(indices)) {
+      try {
+        const buffer = new ArrayBuffer(8);
+        const view = new DataView(buffer);
+        view.setFloat64(0, indices, true);
+        const first = view.getInt32(0, true);
+        const second = view.getInt32(4, true);
+        const candidates = [first, second].filter(value => Number.isInteger(value) && value >= 0);
+        if (candidates.length) return Math.min(...candidates);
+      } catch (_) {}
+    }
+    if (Array.isArray(indices) || ArrayBuffer.isView(indices)) return molstarContextNumberOrUndefined(indices[0]);
+    if (typeof indices?.[Symbol.iterator] === 'function') {
+      for (const value of indices) return molstarContextNumberOrUndefined(value);
+    }
+    if (indices.array) {
+      const offset = Number.isInteger(indices.start) ? indices.start : 0;
+      return molstarContextNumberOrUndefined(indices.array[offset] ?? indices.array[0]);
+    }
+    for (const key of ['min', 'start', 'from', 'begin']) {
+      const value = molstarContextNumberOrUndefined(indices[key]);
+      if (value != null) return value;
+    }
+    return undefined;
+  }
+
+  function molstarContextAtomFromLoci(loci) {
+    const element = Array.isArray(loci?.elements) ? loci.elements[0] : null;
+    const unit = element?.unit;
+    const model = unit?.model;
+    const ah = model?.atomicHierarchy;
+    window.__buretMolstarAtomDebug = {
+      hasElement: !!element,
+      unitKeys: Object.keys(unit || {}),
+      hasModel: !!model,
+      hasAtomicHierarchy: !!ah,
+      indices: element?.indices,
+      elementsLength: unit?.elements?.length
+    };
+    if (!unit || !ah) return null;
+    const elementIndex = firstMolstarOrderedSetIndex(element.indices);
+    window.__buretMolstarAtomDebug.elementIndex = elementIndex;
+    if (elementIndex == null) return null;
+    const atomIndex = molstarContextNumberOrUndefined(unit.elements?.[elementIndex] ?? elementIndex);
+    window.__buretMolstarAtomDebug.atomIndex = atomIndex;
+    if (atomIndex == null) return null;
+    const residueIndex = molstarContextSegmentIndex(ah.residueAtomSegments, atomIndex);
+    const chainIndex = molstarContextSegmentIndex(ah.chainAtomSegments, atomIndex);
+    window.__buretMolstarAtomDebug.residueIndex = residueIndex;
+    window.__buretMolstarAtomDebug.chainIndex = chainIndex;
+    const atoms = ah.atoms || {};
+    const residues = ah.residues || {};
+    const chains = ah.chains || {};
+    const labelEntityId = molstarContextValueAt(chains.label_entity_id, chainIndex);
+    const labelCompId = molstarContextValueAt(residues.label_comp_id, residueIndex);
+    const authCompId = molstarContextValueAt(residues.auth_comp_id, residueIndex) || labelCompId;
+    const entityType = molstarContextEntityType(model, labelEntityId);
+    return {
+      atomIndex,
+      residueIndex,
+      chainIndex,
+      label_entity_id: labelEntityId,
+      label_asym_id: molstarContextValueAt(chains.label_asym_id, chainIndex),
+      auth_asym_id: molstarContextValueAt(chains.auth_asym_id, chainIndex),
+      label_seq_id: molstarContextNumberOrUndefined(molstarContextValueAt(residues.label_seq_id, residueIndex)),
+      auth_seq_id: molstarContextNumberOrUndefined(molstarContextValueAt(residues.auth_seq_id, residueIndex)),
+      label_comp_id: labelCompId,
+      auth_comp_id: authCompId,
+      label_atom_id: molstarContextValueAt(atoms.label_atom_id, atomIndex),
+      auth_atom_id: molstarContextValueAt(atoms.auth_atom_id, atomIndex),
+      entityType
+    };
+  }
+
+  function molstarContextAtomKind(atom) {
+    const comp = String(atom?.label_comp_id || atom?.auth_comp_id || '').toUpperCase();
+    const entityType = String(atom?.entityType || '').toLowerCase();
+    if (!comp || MOLSTAR_CONTEXT_WATER.has(comp) || entityType === 'water') return 'water';
+    if (MOLSTAR_CONTEXT_STANDARD_RESIDUES.has(comp)) return entityType === 'polymer' ? 'polymer' : 'biopolymer';
+    if (entityType === 'polymer') return 'polymer';
+    if (MOLSTAR_CONTEXT_COMMON_IONS.has(comp)) return 'ion';
+    return 'ligand';
+  }
+
+  function molstarContextResidueLabel(atom) {
+    const comp = String(atom?.auth_comp_id || atom?.label_comp_id || 'Ligand').trim();
+    const chain = String(atom?.auth_asym_id || atom?.label_asym_id || '').trim();
+    const seq = atom?.auth_seq_id ?? atom?.label_seq_id ?? '';
+    return [comp, chain, seq].filter(value => String(value).trim()).join(' ') || 'Ligand';
+  }
+
   function molstarContextTarget() {
     const structures = molstarContextStructures();
     if (!structures.length) {
@@ -4156,12 +4312,34 @@
     const targetStructure = picked?.structure || (structures.length === 1 ? structures[0] : structures[structures.length - 1]);
     const targetStructures = targetStructure ? [targetStructure] : [];
     if (activeConfig?.docking && activeDockingPrepared) {
+      const pickedAtom = molstarContextAtomFromLoci(molstarContextMenuPick?.loci);
+      const contextDebug = {
+        pickedIndex: picked?.index ?? null,
+        pickedAtom,
+        atomKind: pickedAtom ? molstarContextAtomKind(pickedAtom) : null,
+        atomDebug: window.__buretMolstarAtomDebug || null,
+        elementKeys: Object.keys(molstarContextMenuPick?.loci?.elements?.[0] || {}),
+        indicesType: Object.prototype.toString.call(molstarContextMenuPick?.loci?.elements?.[0]?.indices || null),
+        indicesKeys: Object.keys(molstarContextMenuPick?.loci?.elements?.[0]?.indices || {})
+      };
+      console.warn('[buret-context-debug]', JSON.stringify(contextDebug));
+      if (pickedAtom && molstarContextAtomKind(pickedAtom) === 'ligand') {
+        const ligand = pdbLigandForResidue(activeDockingPrepared.receptorEntry, pickedAtom);
+        return {
+          structures: targetStructures,
+          label: ligand?.label || molstarContextResidueLabel(pickedAtom),
+          scope: 'ligand',
+          receptor: activeDockingPrepared.receptorEntry || null,
+          ligand: ligand || currentDockingPoseSource(activeDockingPrepared)
+        };
+      }
       if (picked?.index === 0) {
         return {
           structures: targetStructures,
           label: activeDockingPrepared.receptorEntry?.label || 'Receptor',
           scope: 'receptor',
-          receptor: activeDockingPrepared.receptorEntry || null
+          receptor: activeDockingPrepared.receptorEntry || null,
+          debug: contextDebug
         };
       }
       if (picked && picked.index > 0) {
@@ -4206,15 +4384,45 @@
       x,
       y,
       z,
+      compId: line.slice(17, 20).trim(),
+      chainId: line.slice(21, 22).trim(),
+      seqId: line.slice(22, 27).trim(),
       residueKey: `${line.slice(17, 20)}:${line.slice(21, 22)}:${line.slice(22, 27)}`
     };
   }
 
   function ligandAtomCoordinates(source) {
-    if (!source || normalizeFormat(source.format) !== 'sdf') return [];
+    if (!source) return [];
+    const format = normalizeFormat(source.format);
+    if (format === 'pdb') {
+      return String(source.data || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+        .map(parsePdbAtomLine)
+        .filter(Boolean)
+        .map(atom => ({ x: atom.x, y: atom.y, z: atom.z }));
+    }
+    if (format !== 'sdf') return [];
     const records = splitSdfRecords(source.data);
     const molecule = parseV2000SdfRecord(records[0] || source.data);
     return molecule?.atoms?.map(atom => ({ x: atom.x, y: atom.y, z: atom.z })) || [];
+  }
+
+  function pdbLigandForResidue(receptor, atom) {
+    if (!receptor || normalizeFormat(receptor.format) !== 'pdb') return null;
+    const compId = String(atom?.auth_comp_id || atom?.label_comp_id || '').trim();
+    const chainId = String(atom?.auth_asym_id || atom?.label_asym_id || '').trim();
+    const seqId = String(atom?.auth_seq_id ?? atom?.label_seq_id ?? '').trim();
+    if (!compId || !seqId) return null;
+    const lines = String(receptor.data || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(line => {
+      const parsed = parsePdbAtomLine(line);
+      if (!parsed) return false;
+      return parsed.compId === compId && parsed.seqId === seqId && (!chainId || parsed.chainId === chainId);
+    });
+    if (!lines.length) return null;
+    return {
+      data: ['HEADER    BURRETE PICKED LIGAND', ...lines, 'END', ''].join('\n'),
+      format: 'pdb',
+      label: [compId, chainId, seqId].filter(Boolean).join(' ')
+    };
   }
 
   function pdbEnvironmentForLigand(receptor, ligand, radiusAngstrom = 6) {
@@ -4409,7 +4617,10 @@
     title.textContent = 'Molecule actions';
     const subtitle = document.createElement('div');
     subtitle.className = 'buret-molecule-context-menu-subtitle';
-    subtitle.textContent = molstarContextTarget().label;
+    const menuTarget = molstarContextTarget();
+    subtitle.textContent = menuTarget.label;
+    subtitle.dataset.buretDebugScope = menuTarget.scope || '';
+    subtitle.dataset.buretDebug = JSON.stringify(menuTarget.debug || {});
     const actions = [
       ['select', 'Select molecule'],
       ['remove', 'Delete molecule'],

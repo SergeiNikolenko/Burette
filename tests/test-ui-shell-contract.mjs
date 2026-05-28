@@ -1030,7 +1030,6 @@ assert.match(previewViewer, /function isMolstarContextMenuTarget\(target\)/);
 assert.match(previewViewer, /function molstarContextPickFromEvent\(event\)/);
 assert.match(previewViewer, /canvas3d\.identify\(\[event\.clientX - rect\.left, event\.clientY - rect\.top\]\)/);
 assert.match(previewViewer, /canvas3d\.getLoci\(picking\.id\)/);
-assert.match(previewViewer, /canvas3d\.getLoci\(pickingId\)/);
 assert.match(previewViewer, /\.msp-plugin \.msp-viewport-host/);
 assert.match(previewViewer, /className = 'buret-molecule-context-menu'/);
 assert.match(previewViewer, /Select molecule/);
