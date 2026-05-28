@@ -1043,6 +1043,15 @@
     menu.style.top = `${Math.round(top)}px`;
   }
 
+  function isMoleculeGraphicContextTarget(target) {
+    if (!(target instanceof Element)) return false;
+    if (target.closest('[data-buret-card-resize], .buret-card-body, button, input, select, textarea, [contenteditable="true"]')) return false;
+    const picture = target.closest('[data-buret-molecule-picture]');
+    if (!picture) return false;
+    if (target.closest('.buret-molecule-error')) return true;
+    return !!target.closest('path, line, circle, ellipse, polygon, polyline, text, image');
+  }
+
   function removeGridRow(row) {
     const index = Number(row.index);
     state.selected.delete(index);
@@ -1070,6 +1079,12 @@
     const label = row.name || `Molecule ${Number(row.index) + 1}`;
     if (action === 'inspect') {
       setStatus(`[grid] ${describeGridRow(row)}`);
+    } else if (action === 'select') {
+      state.selected.add(Number(row.index));
+      state.selectionAnchorIndex = Number(row.index);
+      syncRenderedSelection();
+      updateChrome(cfg);
+      setStatus(`[grid] Selected ${label}.`);
     } else if (action === 'hide') {
       state.hiddenRows.add(Number(row.index));
       state.selected.delete(Number(row.index));
@@ -1092,6 +1107,12 @@
 
   function showMoleculeContextMenu(event, row) {
     if (event.target?.closest?.('[data-buret-card-resize]')) return;
+    if (!isMoleculeGraphicContextTarget(event.target)) {
+      event.preventDefault();
+      event.stopPropagation();
+      hideMoleculeContextMenu();
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     hideMoleculeContextMenu();
@@ -1107,6 +1128,7 @@
     subtitle.className = 'buret-grid-molecule-context-menu-subtitle';
     subtitle.textContent = row.smiles || 'SDF molecule';
     const actions = [
+      ['select', 'Select molecule'],
       ['remove', 'Delete molecule'],
       ['molstar', 'Open in Mol*'],
       ['hide', 'Hide molecule'],
