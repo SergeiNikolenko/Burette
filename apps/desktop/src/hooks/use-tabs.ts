@@ -51,6 +51,10 @@ export function useOpenNewTab() {
   return useMoleculeStore((state) => state.openNewTab);
 }
 
+export function useOpenKetcherTab() {
+  return useMoleculeStore((state) => state.openKetcherTab);
+}
+
 export function useOpenSettingsTab() {
   return useMoleculeStore((state) => state.openSettingsTab);
 }
@@ -95,6 +99,10 @@ export function useSetActiveTab() {
 
 export function useSetActiveDocument() {
   return useMoleculeStore((state) => state.setActiveDocument);
+}
+
+export function useMoveTab() {
+  return useMoleculeStore((state) => state.moveTab);
 }
 
 export function useCloseTab() {

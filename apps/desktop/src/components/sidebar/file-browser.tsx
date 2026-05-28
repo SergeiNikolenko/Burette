@@ -1,5 +1,5 @@
-import type { MouseEvent as ReactMouseEvent } from "react";
-import { Search01Icon } from "@hugeicons/core-free-icons";
+import { useState, type MouseEvent as ReactMouseEvent } from "react";
+import { Atom01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { filterSidebarProjects } from "../../lib/sidebar-projects";
 import { ScrollFade } from "../scroll-fade";
@@ -14,9 +14,19 @@ export function FileBrowser({
   state: ShellViewState;
   actions: ShellActions;
 }) {
+  const [pinnedOpen, setPinnedOpen] = useState(true);
   const visibleProjects = filterSidebarProjects(state.sidebarProjects, state.sidebarQuery);
   const pinnedItems = visibleProjects.flatMap((project) => project.items.filter((item) => item.isPinned));
+  const pinnedExpanded = pinnedOpen || state.sidebarQuery.trim().length > 0;
   const projectsExpanded = state.projectsOpen || state.sidebarQuery.trim().length > 0;
+  const visibleProjectIds = visibleProjects.map((project) => project.id);
+  const allVisibleProjectsExpanded = visibleProjectIds.length > 0
+    && visibleProjectIds.every((projectId) => state.expandedProjectIds.includes(projectId));
+
+  const toggleAllProjectFolders = () => {
+    if (!projectsExpanded) actions.toggleProjectsOpen();
+    actions.setExpandedProjectIds(allVisibleProjectsExpanded ? [] : state.sidebarProjects.map((project) => project.id));
+  };
 
   const showProjectsMenu = (event: ReactMouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
@@ -34,18 +44,10 @@ export function FileBrowser({
         { kind: "separator" as const },
         {
           kind: "item" as const,
-          id: "expand-all-project-folders",
-          text: "Expand All Project Folders",
+          id: "close-all-tabs",
+          text: "Close All Tabs",
           action: () => {
-            actions.setExpandedProjectIds(state.sidebarProjects.map((project) => project.id));
-          },
-        },
-        {
-          kind: "item" as const,
-          id: "collapse-all-project-folders",
-          text: "Collapse All Project Folders",
-          action: () => {
-            actions.setExpandedProjectIds([]);
+            actions.clearAllDocuments();
           },
         },
       ],
@@ -67,14 +69,40 @@ export function FileBrowser({
         <span className="sidebar-search-label">Search</span>
         <kbd>⌘<span>P</span></kbd>
       </button>
+      <button
+        type="button"
+        className="sidebar-tool-row"
+        onClick={actions.openKetcher}
+        aria-label="Open Ketcher"
+      >
+        <span className="sidebar-tool-icon" aria-hidden="true">
+          <HugeiconsIcon icon={Atom01Icon} size={16} color="currentColor" strokeWidth={2} />
+        </span>
+        <span className="sidebar-tool-label">Ketcher</span>
+      </button>
       {pinnedItems.length > 0 && (
         <section className="sidebar-section pinned-section" aria-label="Pinned structures">
-          <div className="sidebar-section-title">Pinned</div>
-          <div className="pinned-structures" role="list">
-            {pinnedItems.map((item) => (
-              <ProjectItem key={`pinned:${item.key}`} item={item} actions={actions} nested={false} />
-            ))}
+          <div className="sidebar-section-header">
+            <button
+              type="button"
+              className="sidebar-section-title-button"
+              onClick={() => setPinnedOpen((value) => !value)}
+              aria-expanded={pinnedExpanded}
+              aria-controls="sidebar-pinned-tree"
+            >
+              <span>Pinned</span>
+              <span className={pinnedExpanded ? "sidebar-section-chevron expanded" : "sidebar-section-chevron"} aria-hidden="true">
+                <ChevronIcon />
+              </span>
+            </button>
           </div>
+          {pinnedExpanded && (
+            <div className="pinned-structures" role="list" id="sidebar-pinned-tree">
+              {pinnedItems.map((item) => (
+                <ProjectItem key={`pinned:${item.key}`} item={item} actions={actions} nested={false} />
+              ))}
+            </div>
+          )}
         </section>
       )}
       <section className="sidebar-section" aria-label="Projects">
@@ -90,6 +118,15 @@ export function FileBrowser({
             <span className={projectsExpanded ? "sidebar-section-chevron expanded" : "sidebar-section-chevron"} aria-hidden="true">
               <ChevronIcon />
             </span>
+          </button>
+          <button
+            type="button"
+            className="sidebar-section-menu-button"
+            aria-label={allVisibleProjectsExpanded ? "Collapse all project folders" : "Expand all project folders"}
+            title={allVisibleProjectsExpanded ? "Collapse all project folders" : "Expand all project folders"}
+            onClick={toggleAllProjectFolders}
+          >
+            <ExpandCollapseIcon collapsed={allVisibleProjectsExpanded} />
           </button>
           <button
             type="button"
@@ -121,6 +158,24 @@ export function FileBrowser({
         )}
       </section>
     </ScrollFade>
+  );
+}
+
+function ExpandCollapseIcon({ collapsed }: { collapsed: boolean }) {
+  return collapsed ? (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M3.5 3.5L6.9 6.9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M6.9 4.7V6.9H4.7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12.5 12.5L9.1 9.1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M9.1 11.3V9.1H11.3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ) : (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M6.9 6.9L3.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M3.5 5.7V3.5H5.7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9.1 9.1L12.5 12.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M12.5 10.3V12.5H10.3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 

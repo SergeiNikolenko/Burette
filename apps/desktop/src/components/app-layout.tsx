@@ -86,6 +86,12 @@ export function AppLayout({
         <div
           className="splitter"
           onPointerDown={state.sidebarOpen ? onResizeStart : undefined}
+          role="separator"
+          aria-orientation="vertical"
+          aria-valuemin={220}
+          aria-valuemax={maxSidebarWidth}
+          aria-valuenow={sidebarWidth}
+          aria-label="Resize sidebar"
           data-open={state.sidebarOpen ? "true" : "false"}
           data-dragging={state.sidebarDragging || undefined}
         />

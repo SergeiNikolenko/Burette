@@ -34,11 +34,13 @@ type MoleculeState = {
   rememberRecentStructures: (documents: ViewerDocument[]) => void;
   clearRecentStructures: () => void;
   openNewTab: () => void;
+  openKetcherTab: () => void;
   openSettingsTab: () => void;
   navigateBack: () => void;
   navigateForward: () => void;
   setActiveTab: (id: string) => void;
   setActiveDocument: (id: string) => void;
+  moveTab: (id: string, toIndex: number) => void;
   closeTab: (id: string) => void;
   closeDocument: (id: string) => void;
   closeActiveDocument: () => void;
@@ -98,6 +100,10 @@ export function createSettingsTab(id = createTabId()): MoleculeTab {
   return { id, location: { kind: "settings" }, back: [], forward: [] };
 }
 
+export function createKetcherTab(id = createTabId()): MoleculeTab {
+  return { id, location: { kind: "ketcher" }, back: [], forward: [] };
+}
+
 function cloneTab(tab: MoleculeTab): MoleculeTab {
   return { ...tab, back: [...tab.back], forward: [...tab.forward] };
 }
@@ -140,6 +146,17 @@ function activeDocumentIdFrom(tabs: MoleculeTab[], activeTabId: string | null, d
 function activeTabIdOrFirst(tabs: MoleculeTab[], activeTabId: string | null) {
   if (activeTabId && tabs.some((tab) => tab.id === activeTabId)) return activeTabId;
   return tabs[0]?.id ?? null;
+}
+
+function moveTabToIndex(tabs: MoleculeTab[], id: string, toIndex: number) {
+  const fromIndex = tabs.findIndex((tab) => tab.id === id);
+  if (fromIndex < 0) return tabs;
+  const nextIndex = Math.max(0, Math.min(tabs.length - 1, Math.round(toIndex)));
+  if (fromIndex === nextIndex) return tabs;
+  const nextTabs = [...tabs];
+  const [tab] = nextTabs.splice(fromIndex, 1);
+  nextTabs.splice(nextIndex, 0, tab);
+  return nextTabs;
 }
 
 function ensureTabs(tabs: MoleculeTab[]) {
@@ -258,6 +275,12 @@ export const useMoleculeStore = create<MoleculeState>()(
           const tabs = [...state.tabs, tab];
           return { tabs, activeTabId: tab.id, activeDocumentId: null };
         }),
+      openKetcherTab: () =>
+        set((state) => {
+          const tab = createKetcherTab();
+          const tabs = [...state.tabs, tab];
+          return { tabs, activeTabId: tab.id, activeDocumentId: null };
+        }),
       openSettingsTab: () =>
         set((state) => {
           const existing = state.tabs.find((tab) => tab.location.kind === "settings");
@@ -304,6 +327,11 @@ export const useMoleculeStore = create<MoleculeState>()(
           }
           const tab = createFileTab(document);
           return { tabs: [...state.tabs, tab], activeTabId: tab.id, activeDocumentId: document.id };
+        }),
+      moveTab: (id, toIndex) =>
+        set((state) => {
+          const tabs = moveTabToIndex(state.tabs, id, toIndex);
+          return tabs === state.tabs ? state : { tabs };
         }),
       closeTab: (id) =>
         set((state) => {

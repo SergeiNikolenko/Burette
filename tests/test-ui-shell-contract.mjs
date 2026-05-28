@@ -38,6 +38,7 @@ const [
   pageKinds,
   pageKindTypes,
   fileKind,
+  ketcherKind,
   launcherKind,
   settingsKind,
   welcome,
@@ -97,6 +98,7 @@ const [
   source('apps/desktop/src/components/editor-area/page-kinds/index.ts'),
   source('apps/desktop/src/components/editor-area/page-kinds/types.ts'),
   source('apps/desktop/src/components/editor-area/page-kinds/file.tsx'),
+  source('apps/desktop/src/components/editor-area/page-kinds/ketcher.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/launcher.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/settings.tsx'),
   source('apps/desktop/src/components/welcome/index.tsx'),
@@ -415,9 +417,9 @@ assert.match(editorTabs, /←/);
 assert.match(editorTabs, /→/);
 assert.doesNotMatch(appLayout, /<header\s+className="topbar"[^>]*data-tauri-drag-region/s);
 assert.match(editorTabs, /className="tab-strip" data-tauri-drag-region/);
-assert.match(editorTabs, /className="tab-scroll-region" role="tablist" aria-label="Open structures"/);
+assert.match(editorTabs, /className="tab-scroll-region"[\s\S]*role="tablist"[\s\S]*aria-label="Open structures"/);
 assert.match(editorTabs, /className="tab-strip-spacer" data-tauri-drag-region/);
-assert.match(pageKinds, /const kinds = \[fileKind, launcherKind, settingsKind\] as const/);
+assert.match(pageKinds, /const kinds = \[fileKind, ketcherKind, launcherKind, settingsKind\] as const/);
 assert.match(pageKinds, /export function pageKind/);
 assert.match(pageKinds, /export function serializeLocation/);
 assert.match(pageKinds, /export function deserializeLocation/);
@@ -508,7 +510,7 @@ assert.match(styles, /--chrome-drag-height: 72px/);
 assert.match(styles, /\.app-shell\[data-theme="light"\] \{[^}]*--bg-base: #ffffff;[^}]*--fg-base: #0d0d0d;[^}]*--surface-card: transparent;/s);
 assert.match(styles, /@media \(prefers-color-scheme: light\) \{[\s\S]*\.app-shell\[data-theme="auto"\] \{[^}]*--bg-base: #ffffff;[^}]*--surface-card: transparent;/);
 assert.match(styles, /\*\[data-tauri-drag-region\] \{[^}]*app-region: drag;[^}]*-webkit-app-region: drag;[^}]*\}/s);
-assert.match(styles, /button, select, input, textarea, \.tab, \.new-tab, \.chrome-button, \.tab-history-button, \.sidebar-search-row, \.sidebar-section-title-button, \.sidebar-section-menu-button, \.project-group-row, \.project, \.pin-hit, \.splitter \{[^}]*app-region: no-drag;[^}]*-webkit-app-region: no-drag;[^}]*\}/s);
+assert.match(styles, /button, select, input, textarea, \.tab-shell, \.tab, \.new-tab, \.chrome-button, \.tab-history-button, \.sidebar-search-row, \.sidebar-tool-row, \.sidebar-section-title-button, \.sidebar-section-menu-button, \.project-group-row, \.project, \.project-show-more, \.pin-hit, \.splitter \{[^}]*app-region: no-drag;[^}]*-webkit-app-region: no-drag;[^}]*\}/s);
 assert.match(styles, /\.drag-region \{[^}]*height: var\(--chrome-drag-height\);[^}]*z-index: 2/s);
 assert.match(styles, /\.main-stage \{[^}]*overflow: hidden/s);
 assert.match(styles, /\.app-shell\[data-theme="auto"\] \{[^}]*color-scheme: light dark/s);
@@ -539,6 +541,8 @@ assert.doesNotMatch(styles, /instance-badge/);
 assert.doesNotMatch(styles, /sidebar-link/);
 assert.match(launcherKind, /export const launcherKind = definePageKind/);
 assert.match(launcherKind, /<WelcomeScreen actions=\{actions\} \/>/);
+assert.match(ketcherKind, /export const ketcherKind = definePageKind/);
+assert.match(ketcherKind, /<KetcherPage actions=\{actions\} \/>/);
 assert.match(settingsKind, /export const settingsKind = definePageKind/);
 assert.match(settingsKind, /<SettingsPanel state=\{state\} actions=\{actions\} \/>/);
 assert.match(welcome, /export function WelcomeScreen/);
@@ -603,8 +607,9 @@ assert.match(sidebarSurface, /appInstanceLabel/);
 assert.match(sidebarSurface, /className="sidebar-product"/);
 assert.match(sidebarSurface, /showNativeContextMenu/);
 assert.match(sidebarSurface, /Project options/);
-assert.match(sidebarSurface, /Expand All Project Folders/);
-assert.match(sidebarSurface, /Collapse All Project Folders/);
+assert.match(sidebarSurface, /Expand all project folders/);
+assert.match(sidebarSurface, /Collapse all project folders/);
+assert.match(sidebarSurface, /Close All Tabs/);
 assert.match(nativeContextMenu, /export async function showNativeContextMenu/);
 assert.match(nativeContextMenu, /showWebContextMenu\(spec, at\)/);
 assert.match(nativeContextMenu, /\.native-context-menu/);
@@ -1355,10 +1360,19 @@ assert.match(dockingDocuments, /function uniqueDockingPaths\(paths: string\[\]\)
 assert.match(dockingDocuments, /existingDockingRequest/);
 assert.match(dockingDocuments, /receptorPath: existingDockingRequest\.receptorPath/);
 assert.match(editorTabs, /from "\.\.\/\.\.\/lib\/structure-drag"/);
-assert.match(editorTabs, /draggable=\{Boolean\(tabPath\)\}/);
+assert.match(editorTabs, /const TAB_DRAG_MIME = "application\/x-burrete-tab-id"/);
+assert.match(editorTabs, /const TAB_DRAG_ACTIVATE_DELAY_MS = 520/);
+assert.match(editorTabs, /const TAB_MOUSE_REORDER_THRESHOLD_PX = 8/);
+assert.match(editorTabs, /draggable\s+tabIndex=/);
+assert.match(editorTabs, /onMouseDown=\{\(event\) => startMouseTabReorder\(tab\.id, event\)\}/);
+assert.match(editorTabs, /event\.dataTransfer\.setData\(TAB_DRAG_MIME, tab\.id\)/);
 assert.match(editorTabs, /writeStructureDrag\(event\.dataTransfer, \[tabPath\]\)/);
 assert.match(editorTabs, /readStructureDragPayload\(event\.dataTransfer\)/);
 assert.match(editorTabs, /actions\.addXyzrenderSheetItems\(tabDocument\.id, payload\)/);
+assert.match(editorTabs, /event\.dataTransfer\.effectAllowed = tabPath \? "copyMove" : "move"/);
+assert.match(editorTabs, /actions\.moveTab\(tabId, targetIndex\)/);
+assert.match(editorTabs, /actions\.selectTab\(tabId\)/);
+assert.match(editorTabs, /scheduleDragActivation\(tab\.id\)/);
 assert.match(editorTabs, /actions\.setStructureDragActive\(true\)/);
 assert.doesNotMatch(editorTabDragStart, /actions\.selectTab\(tab\.id\)/);
 assert.match(sidebarFileTreeNode, /from "\.\.\/\.\.\/lib\/structure-drag"/);
