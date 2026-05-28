@@ -3,7 +3,8 @@ import { useCallback, useRef, useState } from "react";
 import type { ViewerDocument } from "../../../types";
 import { isMoleculeCollectionPath } from "../../../lib/collection-documents";
 import { dockingRequestForDrop } from "../../../lib/docking-documents";
-import { hasStructureDrag, readStructureDrag } from "../../../lib/structure-drag";
+import { hasStructureDrag, readStructureDragPayload } from "../../../lib/structure-drag";
+import type { StructureDragPayload } from "../../../lib/structure-drag";
 import { isTauriRuntime } from "../../../lib/tauri";
 import type { ShellActions } from "../../types";
 import { showNativeContextMenu } from "../../native-context-menu";
@@ -49,15 +50,16 @@ function ViewerSurface({
   const sheetDropTarget = document.renderer === "xyzrender-external";
   const collectionDropTarget = document.renderer === "grid2d";
 
-  const postXyzrenderSheetItems = useCallback((paths: string[]) => {
-    if (!sheetDropTarget || paths.length === 0) return false;
+  const postXyzrenderSheetItems = useCallback((payload: StructureDragPayload) => {
+    if (!sheetDropTarget || (payload.paths.length === 0 && payload.records.length === 0)) return false;
     iframeRef.current?.contentWindow?.postMessage(
       {
         source: "burrete-host",
         body: {
           type: "addXyzrenderSheetItems",
           documentId: document.id,
-          paths,
+          paths: payload.paths,
+          records: payload.records,
         },
       },
       "*",
@@ -84,12 +86,13 @@ function ViewerSurface({
     event.stopPropagation();
     setDockingDropActive(false);
     actions.setStructureDragActive(false);
-    const droppedPaths = readStructureDrag(event.dataTransfer);
+    const droppedPayload = readStructureDragPayload(event.dataTransfer);
+    const droppedPaths = droppedPayload.paths;
     if (collectionDropTarget && droppedPaths.some(isMoleculeCollectionPath)) {
       void actions.mergeMoleculeCollections(document.path, droppedPaths);
       return;
     }
-    if (postXyzrenderSheetItems(droppedPaths)) return;
+    if (postXyzrenderSheetItems(droppedPayload)) return;
     const request = dockingRequestForDrop(document.path, droppedPaths, document.dockingRequest);
     if (request) void actions.openDockingDocument(request.receptorPath, request.ligandPaths);
   }, [actions, collectionDropTarget, document.dockingRequest, document.path, postXyzrenderSheetItems]);
