@@ -8,7 +8,7 @@
   const SDF_GRID_PADDING = 4.0;
   const TOOLBAR_POSITION_VERSION = '13';
   const TOOLBAR_COLLAPSED_VERSION = '5';
-  const DOCKING_POSE_POSITION_VERSION = '1';
+  const DOCKING_POSE_POSITION_VERSION = '2';
   const TOOLBAR_MARGIN = 12;
   const FLOATING_LAYOUT_GAP = 12;
   const PANEL_CLOSE_HIT_WIDTH = 38;
@@ -3933,14 +3933,25 @@
     document.body.classList.add('buret-docking-pose-controls-active');
     const root = document.createElement('div');
     root.className = 'buret-docking-poses';
+    root.setAttribute('aria-label', 'Docking pose controls');
     let activePose = Math.max(0, Math.min(prepared.poseCount - 1, Number(prepared.activePose || 0)));
     let loopTimer = null;
     let loopBusy = false;
+    let poseRepeatDelayTimer = null;
+    let poseRepeatTimer = null;
+    let poseRepeatBusy = false;
+    let poseRepeatTriggered = false;
+    let suppressPoseClick = false;
+    const mainRow = document.createElement('div');
+    mainRow.className = 'buret-docking-pose-main';
+    const animationRow = document.createElement('div');
+    animationRow.className = 'buret-docking-pose-animation';
     const label = document.createElement('span');
     label.title = prepared.ligandLabel || '';
     const animation = document.createElement('button');
     animation.type = 'button';
-    animation.textContent = 'Anim';
+    animation.className = 'buret-docking-pose-animation-button';
+    animation.textContent = '⏯';
     animation.setAttribute('aria-label', 'Select Molstar animation');
     animation.title = 'Select animation';
     const previous = document.createElement('button');
@@ -3968,6 +3979,10 @@
       next.disabled = activePose >= prepared.poseCount - 1;
       slider.value = String(activePose + 1);
     };
+    const setAnimationOptionsOpen = (open) => {
+      root.classList.toggle('buret-docking-poses-animation-open', Boolean(open));
+      animation.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
     const setLoopActive = (active) => {
       if (!active && loopTimer) {
         clearInterval(loopTimer);
@@ -3976,6 +3991,7 @@
       loop.classList.toggle('active', Boolean(active));
       loop.textContent = active ? 'Stop' : 'Loop';
       loop.setAttribute('aria-label', active ? 'Stop pose loop' : 'Play pose loop');
+      if (active) setAnimationOptionsOpen(true);
     };
     updateControls();
     const setPose = async (index) => {
@@ -4007,7 +4023,62 @@
         console.error(error);
       }
     };
+    const stopPoseRepeat = () => {
+      if (poseRepeatDelayTimer) {
+        clearTimeout(poseRepeatDelayTimer);
+        poseRepeatDelayTimer = null;
+      }
+      if (poseRepeatTimer) {
+        clearInterval(poseRepeatTimer);
+        poseRepeatTimer = null;
+      }
+      if (poseRepeatTriggered) {
+        suppressPoseClick = true;
+        window.setTimeout(() => { suppressPoseClick = false; }, 250);
+      }
+      poseRepeatTriggered = false;
+    };
+    const repeatPoseStep = (direction) => {
+      if (poseRepeatBusy) return;
+      const nextIndex = activePose + direction;
+      const wrappedIndex = nextIndex < 0
+        ? prepared.poseCount - 1
+        : nextIndex >= prepared.poseCount
+          ? 0
+          : nextIndex;
+      poseRepeatBusy = true;
+      void setPose(wrappedIndex).finally(() => {
+        poseRepeatBusy = false;
+      });
+    };
+    const bindPoseStepButton = (button, direction) => {
+      button.addEventListener('pointerdown', event => {
+        if (event.button !== 0 || button.disabled) return;
+        poseRepeatTriggered = false;
+        poseRepeatDelayTimer = window.setTimeout(() => {
+          poseRepeatTriggered = true;
+          repeatPoseStep(direction);
+          poseRepeatTimer = window.setInterval(() => repeatPoseStep(direction), 320);
+        }, 360);
+        try { button.setPointerCapture(event.pointerId); } catch (_) {}
+      });
+      button.addEventListener('pointerup', event => {
+        try { button.releasePointerCapture(event.pointerId); } catch (_) {}
+        stopPoseRepeat();
+      });
+      button.addEventListener('pointercancel', stopPoseRepeat);
+      button.addEventListener('lostpointercapture', stopPoseRepeat);
+      button.addEventListener('click', event => {
+        if (suppressPoseClick) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        void setPose(activePose + direction);
+      });
+    };
     animation.addEventListener('click', () => {
+      setAnimationOptionsOpen(true);
       const button = nativeAnimationSelectButton();
       if (button && !button.disabled && button.getAttribute('aria-disabled') !== 'true') {
         button.click();
@@ -4015,8 +4086,8 @@
         setStatus('[web] Mol* animation selector is not available for this document.', 'error');
       }
     });
-    previous.addEventListener('click', () => { void setPose(activePose - 1); });
-    next.addEventListener('click', () => { void setPose(activePose + 1); });
+    bindPoseStepButton(previous, -1);
+    bindPoseStepButton(next, 1);
     loop.addEventListener('click', () => {
       if (loopTimer) {
         setLoopActive(false);
@@ -4052,7 +4123,9 @@
     };
     window.addEventListener('keydown', onKeyDown);
     dockingPoseKeydownDisposer = () => window.removeEventListener('keydown', onKeyDown);
-    root.append(animation, previous, label, next, loop, slider);
+    mainRow.append(animation, previous, label, next);
+    animationRow.append(loop, slider);
+    root.append(mainRow, animationRow);
     document.body.appendChild(root);
     restoreDockingPoseControlsPosition(root);
     const dragDisposer = initDockingPoseControlsDrag(root);
@@ -4063,6 +4136,7 @@
         })
       : null;
     dockingPoseControlsDisposer = () => {
+      stopPoseRepeat();
       setLoopActive(false);
       syncDisposer?.();
       dragDisposer?.();
@@ -4243,25 +4317,13 @@
     const unit = element?.unit;
     const model = unit?.model;
     const ah = model?.atomicHierarchy;
-    window.__buretMolstarAtomDebug = {
-      hasElement: !!element,
-      unitKeys: Object.keys(unit || {}),
-      hasModel: !!model,
-      hasAtomicHierarchy: !!ah,
-      indices: element?.indices,
-      elementsLength: unit?.elements?.length
-    };
     if (!unit || !ah) return null;
     const elementIndex = firstMolstarOrderedSetIndex(element.indices);
-    window.__buretMolstarAtomDebug.elementIndex = elementIndex;
     if (elementIndex == null) return null;
     const atomIndex = molstarContextNumberOrUndefined(unit.elements?.[elementIndex] ?? elementIndex);
-    window.__buretMolstarAtomDebug.atomIndex = atomIndex;
     if (atomIndex == null) return null;
     const residueIndex = molstarContextSegmentIndex(ah.residueAtomSegments, atomIndex);
     const chainIndex = molstarContextSegmentIndex(ah.chainAtomSegments, atomIndex);
-    window.__buretMolstarAtomDebug.residueIndex = residueIndex;
-    window.__buretMolstarAtomDebug.chainIndex = chainIndex;
     const atoms = ah.atoms || {};
     const residues = ah.residues || {};
     const chains = ah.chains || {};
@@ -4289,10 +4351,12 @@
   function molstarContextAtomKind(atom) {
     const comp = String(atom?.label_comp_id || atom?.auth_comp_id || '').toUpperCase();
     const entityType = String(atom?.entityType || '').toLowerCase();
-    if (!comp || MOLSTAR_CONTEXT_WATER.has(comp) || entityType === 'water') return 'water';
+    if (MOLSTAR_CONTEXT_WATER.has(comp) || entityType === 'water') return 'water';
     if (MOLSTAR_CONTEXT_STANDARD_RESIDUES.has(comp)) return entityType === 'polymer' ? 'polymer' : 'biopolymer';
     if (entityType === 'polymer') return 'polymer';
     if (MOLSTAR_CONTEXT_COMMON_IONS.has(comp)) return 'ion';
+    if (entityType === 'non-polymer') return 'ligand';
+    if (!comp) return 'unknown';
     return 'ligand';
   }
 
@@ -4313,16 +4377,6 @@
     const targetStructures = targetStructure ? [targetStructure] : [];
     if (activeConfig?.docking && activeDockingPrepared) {
       const pickedAtom = molstarContextAtomFromLoci(molstarContextMenuPick?.loci);
-      const contextDebug = {
-        pickedIndex: picked?.index ?? null,
-        pickedAtom,
-        atomKind: pickedAtom ? molstarContextAtomKind(pickedAtom) : null,
-        atomDebug: window.__buretMolstarAtomDebug || null,
-        elementKeys: Object.keys(molstarContextMenuPick?.loci?.elements?.[0] || {}),
-        indicesType: Object.prototype.toString.call(molstarContextMenuPick?.loci?.elements?.[0]?.indices || null),
-        indicesKeys: Object.keys(molstarContextMenuPick?.loci?.elements?.[0]?.indices || {})
-      };
-      console.warn('[buret-context-debug]', JSON.stringify(contextDebug));
       if (pickedAtom && molstarContextAtomKind(pickedAtom) === 'ligand') {
         const ligand = pdbLigandForResidue(activeDockingPrepared.receptorEntry, pickedAtom);
         return {
@@ -4338,8 +4392,7 @@
           structures: targetStructures,
           label: activeDockingPrepared.receptorEntry?.label || 'Receptor',
           scope: 'receptor',
-          receptor: activeDockingPrepared.receptorEntry || null,
-          debug: contextDebug
+          receptor: activeDockingPrepared.receptorEntry || null
         };
       }
       if (picked && picked.index > 0) {
@@ -4411,17 +4464,19 @@
     const compId = String(atom?.auth_comp_id || atom?.label_comp_id || '').trim();
     const chainId = String(atom?.auth_asym_id || atom?.label_asym_id || '').trim();
     const seqId = String(atom?.auth_seq_id ?? atom?.label_seq_id ?? '').trim();
-    if (!compId || !seqId) return null;
+    if (!seqId) return null;
     const lines = String(receptor.data || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(line => {
       const parsed = parsePdbAtomLine(line);
       if (!parsed) return false;
-      return parsed.compId === compId && parsed.seqId === seqId && (!chainId || parsed.chainId === chainId);
+      return (!compId || parsed.compId === compId) && parsed.seqId === seqId && (!chainId || parsed.chainId === chainId);
     });
     if (!lines.length) return null;
+    const firstAtom = parsePdbAtomLine(lines[0]);
+    const resolvedCompId = compId || firstAtom?.compId || 'Ligand';
     return {
       data: ['HEADER    BURRETE PICKED LIGAND', ...lines, 'END', ''].join('\n'),
       format: 'pdb',
-      label: [compId, chainId, seqId].filter(Boolean).join(' ')
+      label: [resolvedCompId, chainId, seqId].filter(Boolean).join(' ')
     };
   }
 
@@ -4619,8 +4674,6 @@
     subtitle.className = 'buret-molecule-context-menu-subtitle';
     const menuTarget = molstarContextTarget();
     subtitle.textContent = menuTarget.label;
-    subtitle.dataset.buretDebugScope = menuTarget.scope || '';
-    subtitle.dataset.buretDebug = JSON.stringify(menuTarget.debug || {});
     const actions = [
       ['select', 'Select molecule'],
       ['remove', 'Delete molecule'],
