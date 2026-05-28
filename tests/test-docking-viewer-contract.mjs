@@ -43,10 +43,17 @@ assert.match(viewer, /nativeTrajectoryControls: true/);
 assert.match(viewer, /entries:\s*\[\s*entries\[0\],\s*poses\[activePose\]\s*\]/);
 
 assert.match(viewer, /function installDockingPoseControls\(viewer, prepared\)/);
+assert.match(viewer, /function nativeAnimationSelectButton\(\)/);
+assert.match(viewer, /animation\.textContent = 'Anim'/);
 assert.match(viewer, /previous\.textContent = 'Prev'/);
 assert.match(viewer, /next\.textContent = 'Next'/);
+assert.match(viewer, /loop\.textContent = 'Loop'/);
+assert.match(viewer, /slider\.type = 'range'/);
 assert.match(viewer, /label\.textContent = `Pose \$\{activePose \+ 1\} \/ \$\{prepared\.poseCount\}`/);
 assert.match(viewer, /sessionStorage\.setItem\(dockingPoseStorageKey\(activeConfig\), String\(nextIndex\)\)/);
+assert.match(viewer, /button\.click\(\)/);
+assert.match(viewer, /window\.setInterval\(\(\) => \{/);
+assert.match(viewer, /void setPose\(Number\(slider\.value\) - 1\)/);
 assert.match(viewer, /if \(event\.key === 'ArrowLeft'\)/);
 assert.match(viewer, /if \(activePose > 0\) void setPose\(activePose - 1\)/);
 assert.match(viewer, /if \(event\.key === 'ArrowRight'\)/);

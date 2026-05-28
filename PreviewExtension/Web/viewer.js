@@ -2431,8 +2431,33 @@
         <div class="buret-external-artifact-card selected" role="button" tabindex="0" aria-label="${safeLabel}">
           <div class="buret-external-artifact-card-background"></div>
           <div class="buret-external-artifact-card-body">${content}</div>
-          <div class="buret-xyzrender-sheet-rotate-handle" aria-label="Rotate structure" title="Rotate"></div>
+          ${rotatableArtifactControlsHTML()}
         </div>
+      </div>`;
+  }
+
+  function rotatableArtifactControlsHTML() {
+    const degreeLabels = [-60, -45, -30, 0, 30, 45, 60, 90, 120]
+      .map(degree => `<span class="buret-xyzrender-rotate-label" data-buret-degree="${degree}" style="--buret-degree-angle: ${degree}deg; --buret-degree-counter-angle: ${-degree}deg;">${degree}°</span>`)
+      .join('');
+    const ticks = [-60, -45, -30, 0, 30, 45, 60, 90, 120]
+      .map(degree => `<span class="buret-xyzrender-rotate-tick" style="--buret-degree-angle: ${degree}deg;"></span>`)
+      .join('');
+    const resizeHandles = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']
+      .map(handle => `<span class="buret-xyzrender-resize-handle buret-xyzrender-resize-${handle}" data-buret-resize-handle="${handle}" aria-hidden="true"></span>`)
+      .join('');
+    return `
+      <div class="buret-xyzrender-rotate-hud" aria-hidden="true">
+        <div class="buret-xyzrender-rotate-ring"></div>
+        <div class="buret-xyzrender-rotate-needle"></div>
+        <div class="buret-xyzrender-rotate-live">0°</div>
+        ${ticks}
+        ${degreeLabels}
+      </div>
+      ${resizeHandles}
+      <div class="buret-xyzrender-sheet-rotate-handle" aria-label="Rotate structure" title="Rotate">
+        <span class="buret-xyzrender-rotate-handle-dot"></span>
+        <span class="buret-xyzrender-rotate-handle-degree">0°</span>
       </div>`;
   }
 
@@ -2463,30 +2488,74 @@
       .buret-external-artifact-stage.dragging { cursor: grabbing; }
       .buret-external-artifact-root.sheet-drop-active::after { content: "Drop onto xyzrender sheet"; position: absolute; inset: 14px; z-index: 36; border: 2px solid color-mix(in srgb, var(--buret-accent, #b45cff) 72%, transparent); border-radius: 14px; background: color-mix(in srgb, var(--buret-accent, #b45cff) 12%, transparent); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); display: flex; align-items: center; justify-content: center; font: 700 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; pointer-events: none; }
       .buret-external-artifact-inline { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box; overflow: visible; pointer-events: none; }
-      .buret-external-artifact-card { --buret-card-x: 0px; --buret-card-y: 0px; --buret-card-fit-scale: 1; --buret-sheet-rotation: 0deg; position: relative; display: grid; max-width: 100%; max-height: 100%; transform: translate(var(--buret-card-x), var(--buret-card-y)) rotate(var(--buret-sheet-rotation)) scale(var(--buret-card-fit-scale)); transform-origin: 50% 50%; border-radius: 8px; outline: 0 solid transparent; pointer-events: auto; touch-action: none; cursor: grab; }
+      .buret-external-artifact-card { --buret-card-x: 0px; --buret-card-y: 0px; --buret-card-width: auto; --buret-card-height: auto; --buret-card-fit-scale: 1; --buret-sheet-rotation: 0deg; --buret-sheet-rotation-negative: 0deg; --buret-active-angle: 0deg; position: relative; display: grid; max-width: 100%; max-height: 100%; transform: translate(var(--buret-card-x), var(--buret-card-y)) rotate(var(--buret-sheet-rotation)) scale(var(--buret-card-fit-scale)); transform-origin: 50% 50%; border-radius: 8px; outline: 0 solid transparent; pointer-events: auto; touch-action: none; cursor: grab; }
+      .buret-external-artifact-card.resized { width: var(--buret-card-width); height: var(--buret-card-height); }
       .buret-external-artifact-card.dragging { cursor: grabbing; }
+      .buret-external-artifact-card.resizing { cursor: nwse-resize; }
       .buret-external-artifact-card.selected { outline: 2px solid var(--buret-accent, #b45cff); box-shadow: 0 0 0 3px color-mix(in srgb, var(--buret-accent, #b45cff) 24%, transparent); }
       .buret-external-artifact-card-background { grid-area: 1 / 1; position: absolute; inset: 0; z-index: 0; border-radius: 8px; background: #fff; box-shadow: 0 18px 54px rgba(0,0,0,0.28); pointer-events: none; }
       .buret-external-artifact-card-body { grid-area: 1 / 1; position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; max-width: 100%; max-height: 100%; pointer-events: none; }
       .buret-external-artifact-card-body > svg { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; margin: auto; border-radius: 8px; }
+      .buret-external-artifact-card.resized .buret-external-artifact-card-body,
+      .buret-external-artifact-card.resized .buret-external-artifact-card-body > svg,
+      .buret-external-artifact-card.resized .buret-external-artifact-object { width: 100%; height: 100%; }
       .buret-external-artifact-object { width: min(100vw - 48px, 1024px); height: min(100vh - 48px, 768px); max-width: 100%; max-height: 100%; border: 0; display: block; border-radius: 8px; }
       .buret-xyzrender-sheet { position: absolute; inset: 0; z-index: 14; pointer-events: none; }
-      .buret-xyzrender-sheet-item { --buret-sheet-rotation: 0deg; position: absolute; left: 50%; top: 50%; width: clamp(118px, 24vw, 280px); height: clamp(118px, 24vw, 280px); transform: translate(-50%, -50%) rotate(var(--buret-sheet-rotation)); transform-origin: 50% 50%; pointer-events: auto; touch-action: none; cursor: grab; border-radius: 10px; outline: 0 solid transparent; }
+      .buret-xyzrender-sheet-item { --buret-sheet-rotation: 0deg; --buret-sheet-rotation-negative: 0deg; --buret-active-angle: 0deg; position: absolute; left: 50%; top: 50%; width: clamp(118px, 24vw, 280px); height: clamp(118px, 24vw, 280px); transform: translate(-50%, -50%) rotate(var(--buret-sheet-rotation)); transform-origin: 50% 50%; pointer-events: auto; touch-action: none; cursor: grab; border-radius: 10px; outline: 0 solid transparent; }
       .buret-xyzrender-sheet-item.dragging { cursor: grabbing; }
       .buret-xyzrender-sheet-item.rotating { cursor: grabbing; }
+      .buret-xyzrender-sheet-item.resizing { cursor: nwse-resize; }
       .buret-xyzrender-sheet-item.selected { outline: 2px solid var(--buret-accent, #b45cff); box-shadow: 0 0 0 3px color-mix(in srgb, var(--buret-accent, #b45cff) 24%, transparent); }
       .buret-xyzrender-sheet-item-background { position: absolute; inset: 0; z-index: 0; border-radius: 10px; background: #fff; pointer-events: none; }
       .buret-xyzrender-sheet-item-body { position: relative; z-index: 1; width: 100%; height: 100%; pointer-events: none; }
       .buret-xyzrender-sheet-item-body > svg { display: block; width: 100%; height: 100%; overflow: visible; }
-      .buret-xyzrender-sheet-rotate-handle { position: absolute; left: 50%; top: -34px; width: 17px; height: 17px; transform: translateX(-50%); border: 2px solid var(--buret-accent, #b45cff); border-radius: 999px; background: var(--buret-toolbar-background, rgba(12,13,14,0.92)); box-shadow: 0 8px 18px rgba(0,0,0,0.28); cursor: grab; opacity: 0; pointer-events: none; touch-action: none; transition: opacity 120ms ease, transform 120ms ease; }
-      .buret-xyzrender-sheet-rotate-handle::before { content: ""; position: absolute; left: 50%; top: 17px; width: 2px; height: 17px; transform: translateX(-50%); background: var(--buret-accent, #b45cff); border-radius: 999px; }
+      .buret-xyzrender-rotate-hud { --buret-rotate-radius: 86px; position: absolute; left: 50%; top: 50%; z-index: 7; width: calc(var(--buret-rotate-radius) * 2 + 42px); height: calc(var(--buret-rotate-radius) * 2 + 42px); transform: translate(-50%, -50%) rotate(var(--buret-sheet-rotation-negative)); transform-origin: 50% 50%; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
+      .buret-xyzrender-rotate-ring { position: absolute; inset: 21px; border: 1px dashed rgba(125, 142, 183, 0.36); border-radius: 999px; }
+      .buret-xyzrender-rotate-needle { position: absolute; left: 50%; top: 50%; width: 1px; height: var(--buret-rotate-radius); transform: translateX(-50%) rotate(var(--buret-active-angle)); transform-origin: 50% 0%; border-left: 1.5px dashed #3e63ff; }
+      .buret-xyzrender-rotate-needle::after { content: ""; position: absolute; left: 50%; bottom: -8px; width: 17px; height: 17px; transform: translateX(-50%); border-radius: 999px; background: #3e63ff; box-shadow: 0 5px 18px rgba(62,99,255,0.38); }
+      .buret-xyzrender-rotate-live { position: absolute; left: 50%; top: 15px; transform: translateX(-50%); color: rgba(255,255,255,0.94); background: rgba(17,19,24,0.82); border: 1px solid rgba(255,255,255,0.16); border-radius: 999px; padding: 2px 7px; font: 700 12px/1.25 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; box-shadow: 0 6px 16px rgba(0,0,0,0.22); }
+      .buret-xyzrender-rotate-label { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(var(--buret-degree-angle)) translateY(calc(-1 * (var(--buret-rotate-radius) + 22px))) rotate(var(--buret-degree-counter-angle)); color: rgba(160,173,214,0.74); font: 600 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
+      .buret-xyzrender-rotate-label.active { color: #3e63ff; }
+      .buret-xyzrender-rotate-tick { position: absolute; left: 50%; top: 50%; width: 1px; height: 9px; transform: translate(-50%, -50%) rotate(var(--buret-degree-angle)) translateY(calc(-1 * var(--buret-rotate-radius))); transform-origin: 50% 100%; background: rgba(125,142,183,0.28); border-radius: 999px; }
+      .buret-xyzrender-sheet-rotate-handle { position: absolute; left: 50%; top: -42px; z-index: 12; width: 32px; height: 32px; transform: translateX(-50%); border: 0; border-radius: 999px; cursor: grab; opacity: 0; pointer-events: none; touch-action: none; transition: opacity 120ms ease, transform 120ms ease; }
+      .buret-xyzrender-sheet-rotate-handle::before { content: ""; position: absolute; left: 50%; top: 25px; width: 2px; height: 25px; transform: translateX(-50%); background: var(--buret-accent, #b45cff); border-radius: 999px; }
+      .buret-xyzrender-rotate-handle-dot { position: absolute; left: 50%; top: 50%; width: 19px; height: 19px; transform: translate(-50%, -50%); border: 2px solid var(--buret-accent, #b45cff); border-radius: 999px; background: var(--buret-toolbar-background, rgba(12,13,14,0.92)); box-shadow: 0 8px 18px rgba(0,0,0,0.28); }
+      .buret-xyzrender-rotate-handle-degree { position: absolute; left: calc(100% + 3px); top: 50%; transform: translateY(-50%) rotate(var(--buret-sheet-rotation-negative)); transform-origin: 0 50%; padding: 2px 6px; border-radius: 999px; color: #fff; background: #3e63ff; font: 700 10px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; opacity: 0; white-space: nowrap; box-shadow: 0 5px 14px rgba(62,99,255,0.28); }
       .buret-external-artifact-card.selected .buret-xyzrender-sheet-rotate-handle,
       .buret-external-artifact-card:hover .buret-xyzrender-sheet-rotate-handle,
       .buret-xyzrender-sheet-item.selected .buret-xyzrender-sheet-rotate-handle,
       .buret-xyzrender-sheet-item:hover .buret-xyzrender-sheet-rotate-handle { opacity: 1; pointer-events: auto; }
+      .buret-external-artifact-card.selected .buret-xyzrender-rotate-hud,
+      .buret-external-artifact-card.rotating .buret-xyzrender-rotate-hud,
+      .buret-xyzrender-sheet-item.selected .buret-xyzrender-rotate-hud,
+      .buret-xyzrender-sheet-item.rotating .buret-xyzrender-rotate-hud { opacity: 1; }
       .buret-xyzrender-sheet-rotate-handle:hover,
       .buret-external-artifact-card.rotating .buret-xyzrender-sheet-rotate-handle,
-      .buret-xyzrender-sheet-item.rotating .buret-xyzrender-sheet-rotate-handle { transform: translateX(-50%) scale(1.08); }
+      .buret-xyzrender-sheet-item.rotating .buret-xyzrender-sheet-rotate-handle { transform: translateX(-50%) scale(1.12); }
+      .buret-external-artifact-card.rotating .buret-xyzrender-rotate-handle-degree,
+      .buret-xyzrender-sheet-item.rotating .buret-xyzrender-rotate-handle-degree { opacity: 1; }
+      .buret-xyzrender-resize-handle { position: absolute; z-index: 11; opacity: 0; pointer-events: none; touch-action: none; border-radius: 999px; background: color-mix(in srgb, var(--buret-accent, #b45cff) 86%, #fff); box-shadow: 0 0 0 2px rgba(13,14,16,0.9), 0 5px 14px rgba(0,0,0,0.25); transition: opacity 120ms ease, transform 120ms ease; }
+      .buret-external-artifact-card.selected .buret-xyzrender-resize-handle,
+      .buret-external-artifact-card:hover .buret-xyzrender-resize-handle,
+      .buret-xyzrender-sheet-item.selected .buret-xyzrender-resize-handle,
+      .buret-xyzrender-sheet-item:hover .buret-xyzrender-resize-handle { opacity: 1; pointer-events: auto; }
+      .buret-xyzrender-resize-handle:hover { transform: scale(1.16); }
+      .buret-xyzrender-resize-n,
+      .buret-xyzrender-resize-s { left: 50%; width: 32px; height: 10px; transform: translateX(-50%); cursor: ns-resize; }
+      .buret-xyzrender-resize-n { top: -5px; }
+      .buret-xyzrender-resize-s { bottom: -5px; }
+      .buret-xyzrender-resize-e,
+      .buret-xyzrender-resize-w { top: 50%; width: 10px; height: 32px; transform: translateY(-50%); cursor: ew-resize; }
+      .buret-xyzrender-resize-e { right: -5px; }
+      .buret-xyzrender-resize-w { left: -5px; }
+      .buret-xyzrender-resize-ne,
+      .buret-xyzrender-resize-nw,
+      .buret-xyzrender-resize-se,
+      .buret-xyzrender-resize-sw { width: 14px; height: 14px; }
+      .buret-xyzrender-resize-ne { top: -7px; right: -7px; cursor: nesw-resize; }
+      .buret-xyzrender-resize-nw { top: -7px; left: -7px; cursor: nwse-resize; }
+      .buret-xyzrender-resize-se { bottom: -7px; right: -7px; cursor: nwse-resize; }
+      .buret-xyzrender-resize-sw { bottom: -7px; left: -7px; cursor: nesw-resize; }
       .buret-xyzrender-sheet-item-label { position: absolute; left: 50%; bottom: -23px; transform: translateX(-50%); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 7px; border-radius: 999px; color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.84)); font: 10px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; opacity: 0; transition: opacity 120ms ease; }
       .buret-xyzrender-sheet-item.selected .buret-xyzrender-sheet-item-label { opacity: 1; }
       .buret-xyz-badge { position: absolute; left: 14px; bottom: 14px; z-index: 30; max-width: calc(100vw - 28px); box-sizing: border-box; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--buret-toolbar-border, rgba(255,255,255,0.12)); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.9)); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: 0 8px 22px rgba(0,0,0,0.20); font: 11px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; pointer-events: none; }
@@ -2761,11 +2830,12 @@
     const fallbackY = rect.height * (0.42 + (Math.floor((serial - 1) / 4) % 4) * 0.06);
     item.style.left = `${Number.isFinite(point?.x) ? point.x : fallbackX}px`;
     item.style.top = `${Number.isFinite(point?.y) ? point.y : fallbackY}px`;
-    item.innerHTML = `<div class="buret-xyzrender-sheet-item-background"></div><div class="buret-xyzrender-sheet-item-body">${svg}</div><div class="buret-xyzrender-sheet-rotate-handle" aria-label="Rotate structure" title="Rotate"></div><div class="buret-xyzrender-sheet-item-label">${escapeHTML(path.split('/').pop() || path)}</div>`;
+    item.innerHTML = `<div class="buret-xyzrender-sheet-item-background"></div><div class="buret-xyzrender-sheet-item-body">${svg}</div>${rotatableArtifactControlsHTML()}<div class="buret-xyzrender-sheet-item-label">${escapeHTML(path.split('/').pop() || path)}</div>`;
     sheet.appendChild(item);
     selectRotatableArtifact(item);
     installXyzrenderSheetItemDrag(item, getStageScale);
     installXyzrenderSheetItemRotation(item);
+    installRotatableArtifactResize(item, getStageScale);
     installRotatableArtifactKeyboard(item, { removable: true });
   }
 
@@ -2773,7 +2843,31 @@
     const normalized = Number.isFinite(rotation) ? rotation : 0;
     item.dataset.rotation = String(normalized);
     item.style.setProperty('--buret-sheet-rotation', `${normalized}deg`);
+    item.style.setProperty('--buret-sheet-rotation-negative', `${-normalized}deg`);
+    updateRotatableArtifactDegree(item, normalized);
     updateExternalArtifactCardFit(item);
+  }
+
+  function normalizedDisplayRotation(rotation) {
+    const normalized = ((((Number(rotation) || 0) + 180) % 360) + 360) % 360 - 180;
+    return Object.is(normalized, -0) ? 0 : normalized;
+  }
+
+  function snapRotation(rotation, event) {
+    const step = event?.ctrlKey ? 1 : 15;
+    return Math.round(rotation / step) * step;
+  }
+
+  function updateRotatableArtifactDegree(item, rotation) {
+    const displayRotation = Math.round(normalizedDisplayRotation(rotation));
+    item.dataset.currentDegree = String(displayRotation);
+    item.style.setProperty('--buret-active-angle', `${displayRotation + 180}deg`);
+    item.querySelectorAll('.buret-xyzrender-rotate-live, .buret-xyzrender-rotate-handle-degree').forEach(node => {
+      node.textContent = `${displayRotation}°`;
+    });
+    item.querySelectorAll('.buret-xyzrender-rotate-label').forEach(node => {
+      node.classList.toggle('active', Number(node.getAttribute('data-buret-degree')) === displayRotation);
+    });
   }
 
   function updateExternalArtifactCardFit(item) {
@@ -2781,7 +2875,6 @@
     const container = item.closest('.buret-external-artifact-inline');
     if (!container) return;
     item.style.setProperty('--buret-card-fit-scale', '1');
-    const cardRect = item.getBoundingClientRect();
     const containerRect = container.getBoundingClientRect();
     const style = window.getComputedStyle(container);
     const availableWidth = containerRect.width - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);
@@ -2789,8 +2882,10 @@
     const rotation = ((parseFloat(item.dataset.rotation || '0') || 0) * Math.PI) / 180;
     const cos = Math.abs(Math.cos(rotation));
     const sin = Math.abs(Math.sin(rotation));
-    const rotatedWidth = cardRect.width * cos + cardRect.height * sin;
-    const rotatedHeight = cardRect.width * sin + cardRect.height * cos;
+    const cardWidth = item.offsetWidth || item.getBoundingClientRect().width;
+    const cardHeight = item.offsetHeight || item.getBoundingClientRect().height;
+    const rotatedWidth = cardWidth * cos + cardHeight * sin;
+    const rotatedHeight = cardWidth * sin + cardHeight * cos;
     if (availableWidth <= 0 || availableHeight <= 0 || rotatedWidth <= 0 || rotatedHeight <= 0) return;
     const fitScale = Math.min(1, availableWidth / rotatedWidth, availableHeight / rotatedHeight);
     item.style.setProperty('--buret-card-fit-scale', String(Math.max(0.1, fitScale)));
@@ -2827,7 +2922,140 @@
     item.addEventListener('keydown', onKeyDown);
   }
 
-  function installExternalArtifactCardInteractions(root) {
+  function localResizeDelta(dx, dy, rotationRadians) {
+    const cos = Math.cos(rotationRadians);
+    const sin = Math.sin(rotationRadians);
+    return {
+      x: dx * cos + dy * sin,
+      y: -dx * sin + dy * cos
+    };
+  }
+
+  function screenDeltaFromLocal(dx, dy, rotationRadians) {
+    const cos = Math.cos(rotationRadians);
+    const sin = Math.sin(rotationRadians);
+    return {
+      x: dx * cos - dy * sin,
+      y: dx * sin + dy * cos
+    };
+  }
+
+  function installRotatableArtifactResize(item, getStageScale) {
+    if (!item || item.dataset.buretResizeInstalled === 'true') return;
+    item.dataset.buretResizeInstalled = 'true';
+    const minSize = 72;
+    const maxSize = 1800;
+    let pointerId = null;
+    let handleName = '';
+    let startX = 0;
+    let startY = 0;
+    let startWidth = 0;
+    let startHeight = 0;
+    let startLeft = 0;
+    let startTop = 0;
+    let startTranslateX = 0;
+    let startTranslateY = 0;
+    let startRotation = 0;
+
+    const setExternalCardSize = (width, height) => {
+      item.classList.add('resized');
+      item.style.setProperty('--buret-card-width', `${width.toFixed(2)}px`);
+      item.style.setProperty('--buret-card-height', `${height.toFixed(2)}px`);
+      item.style.width = `${width.toFixed(2)}px`;
+      item.style.height = `${height.toFixed(2)}px`;
+    };
+
+    const setSheetItemSize = (width, height) => {
+      item.style.width = `${width.toFixed(2)}px`;
+      item.style.height = `${height.toFixed(2)}px`;
+    };
+
+    const setCenterOffset = (dx, dy) => {
+      if (item.classList.contains('buret-external-artifact-card')) {
+        const nextX = startTranslateX + dx;
+        const nextY = startTranslateY + dy;
+        item.dataset.translateX = String(nextX);
+        item.dataset.translateY = String(nextY);
+        item.style.setProperty('--buret-card-x', `${nextX.toFixed(2)}px`);
+        item.style.setProperty('--buret-card-y', `${nextY.toFixed(2)}px`);
+      } else {
+        item.style.left = `${(startLeft + dx).toFixed(2)}px`;
+        item.style.top = `${(startTop + dy).toFixed(2)}px`;
+      }
+    };
+
+    const onPointerDown = event => {
+      const handle = event.target?.closest?.('[data-buret-resize-handle]');
+      if (!handle || !item.contains(handle)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      selectRotatableArtifact(item);
+      try { item.focus({ preventScroll: true }); } catch (_) {}
+      pointerId = event.pointerId;
+      handleName = String(handle.getAttribute('data-buret-resize-handle') || '');
+      startX = event.clientX;
+      startY = event.clientY;
+      startWidth = parseFloat(item.style.width || '') || item.offsetWidth || item.getBoundingClientRect().width;
+      startHeight = parseFloat(item.style.height || '') || item.offsetHeight || item.getBoundingClientRect().height;
+      startLeft = parseFloat(item.style.left || '0') || 0;
+      startTop = parseFloat(item.style.top || '0') || 0;
+      startTranslateX = parseFloat(item.dataset.translateX || '0') || 0;
+      startTranslateY = parseFloat(item.dataset.translateY || '0') || 0;
+      startRotation = ((parseFloat(item.dataset.rotation || '0') || 0) * Math.PI) / 180;
+      item.classList.add('resizing');
+      try { handle.setPointerCapture(event.pointerId); } catch (_) {}
+    };
+
+    const onPointerMove = event => {
+      if (pointerId !== event.pointerId) return;
+      const stageScale = Math.max(0.05, Number(getStageScale?.() || 1));
+      const delta = localResizeDelta((event.clientX - startX) / stageScale, (event.clientY - startY) / stageScale, startRotation);
+      let nextWidth = startWidth;
+      let nextHeight = startHeight;
+      let centerLocalX = 0;
+      let centerLocalY = 0;
+
+      if (handleName.includes('e')) {
+        nextWidth = Math.min(maxSize, Math.max(minSize, startWidth + delta.x));
+        centerLocalX = (nextWidth - startWidth) / 2;
+      }
+      if (handleName.includes('w')) {
+        nextWidth = Math.min(maxSize, Math.max(minSize, startWidth - delta.x));
+        centerLocalX = -(nextWidth - startWidth) / 2;
+      }
+      if (handleName.includes('s')) {
+        nextHeight = Math.min(maxSize, Math.max(minSize, startHeight + delta.y));
+        centerLocalY = (nextHeight - startHeight) / 2;
+      }
+      if (handleName.includes('n')) {
+        nextHeight = Math.min(maxSize, Math.max(minSize, startHeight - delta.y));
+        centerLocalY = -(nextHeight - startHeight) / 2;
+      }
+
+      const center = screenDeltaFromLocal(centerLocalX, centerLocalY, startRotation);
+      setCenterOffset(center.x, center.y);
+      if (item.classList.contains('buret-external-artifact-card')) {
+        setExternalCardSize(nextWidth, nextHeight);
+      } else {
+        setSheetItemSize(nextWidth, nextHeight);
+      }
+      updateExternalArtifactCardFit(item);
+    };
+
+    const finish = event => {
+      if (pointerId !== event.pointerId) return;
+      pointerId = null;
+      item.classList.remove('resizing');
+      try { event.target?.releasePointerCapture?.(event.pointerId); } catch (_) {}
+    };
+
+    item.addEventListener('pointerdown', onPointerDown);
+    item.addEventListener('pointermove', onPointerMove);
+    item.addEventListener('pointerup', finish);
+    item.addEventListener('pointercancel', finish);
+  }
+
+  function installExternalArtifactCardInteractions(root, getStageScale) {
     if (!root) return;
     root.querySelectorAll('.buret-external-artifact-card').forEach(card => {
       if (card.dataset.buretRotatableInstalled === 'true') return;
@@ -2839,7 +3067,9 @@
       });
       installExternalArtifactCardDrag(card);
       installXyzrenderSheetItemRotation(card);
+      installRotatableArtifactResize(card, getStageScale);
       installRotatableArtifactKeyboard(card, { removable: false });
+      updateRotatableArtifactDegree(card, parseFloat(card.dataset.rotation || '0') || 0);
       updateExternalArtifactCardFit(card);
       if (typeof ResizeObserver === 'function') {
         const observer = new ResizeObserver(() => updateExternalArtifactCardFit(card));
@@ -2856,7 +3086,7 @@
     let startTranslateX = 0;
     let startTranslateY = 0;
     const onPointerDown = event => {
-      if (event.target?.closest?.('.buret-xyzrender-sheet-rotate-handle')) return;
+      if (event.target?.closest?.('.buret-xyzrender-sheet-rotate-handle, [data-buret-resize-handle]')) return;
       event.preventDefault();
       event.stopPropagation();
       selectRotatableArtifact(card);
@@ -2897,7 +3127,7 @@
     let startLeft = 0;
     let startTop = 0;
     const onPointerDown = event => {
-      if (event.target?.closest?.('.buret-xyzrender-sheet-rotate-handle')) return;
+      if (event.target?.closest?.('.buret-xyzrender-sheet-rotate-handle, [data-buret-resize-handle]')) return;
       event.preventDefault();
       event.stopPropagation();
       selectRotatableArtifact(item);
@@ -2953,7 +3183,7 @@
     };
     const onPointerMove = event => {
       if (pointerId !== event.pointerId) return;
-      setSheetItemRotation(item, startRotation + angleForEvent(event) - startAngle);
+      setSheetItemRotation(item, snapRotation(startRotation + angleForEvent(event) - startAngle, event));
     };
     const finish = event => {
       if (pointerId !== event.pointerId) return;
@@ -3088,7 +3318,7 @@
         y: (Number(clientY) - rect.top - translateY) / scale
       };
     };
-    installExternalArtifactCardInteractions(root);
+    installExternalArtifactCardInteractions(root, () => scale);
     const sheetCleanup = installExternalArtifactSheet(root, stage, toStagePoint, () => scale);
 
     root.addEventListener('wheel', onWheel, { passive: false });
@@ -3530,6 +3760,17 @@
     }) || null;
   }
 
+  function nativeAnimationSelectButton() {
+    const roots = Array.from(document.querySelectorAll('.msp-viewport-top-left-controls, .msp-animation-viewport-controls'));
+    for (const root of roots) {
+      const button = Array.from(root.querySelectorAll('button')).find(candidate => (
+        /\bselect animation\b/i.test(`${candidate.getAttribute('title') || ''} ${candidate.getAttribute('aria-label') || ''}`)
+      ));
+      if (button) return button;
+    }
+    return null;
+  }
+
   function readNativeTrajectoryPosition(expectedCount) {
     const root = nativeTrajectoryControlsRoot();
     const text = root?.textContent || '';
@@ -3603,12 +3844,21 @@
       dockingPoseControlsDisposer();
       dockingPoseControlsDisposer = null;
     }
+    document.body.classList.remove('buret-docking-pose-controls-active');
     if (!prepared || prepared.poseCount <= 1) return;
+    document.body.classList.add('buret-docking-pose-controls-active');
     const root = document.createElement('div');
     root.className = 'buret-docking-poses';
     let activePose = Math.max(0, Math.min(prepared.poseCount - 1, Number(prepared.activePose || 0)));
+    let loopTimer = null;
+    let loopBusy = false;
     const label = document.createElement('span');
     label.title = prepared.ligandLabel || '';
+    const animation = document.createElement('button');
+    animation.type = 'button';
+    animation.textContent = 'Anim';
+    animation.setAttribute('aria-label', 'Select Molstar animation');
+    animation.title = 'Select animation';
     const previous = document.createElement('button');
     previous.type = 'button';
     previous.textContent = 'Prev';
@@ -3617,10 +3867,31 @@
     next.type = 'button';
     next.textContent = 'Next';
     next.setAttribute('aria-label', 'Next pose');
+    const loop = document.createElement('button');
+    loop.type = 'button';
+    loop.textContent = 'Loop';
+    loop.setAttribute('aria-label', 'Play pose loop');
+    const slider = document.createElement('input');
+    slider.className = 'buret-docking-pose-slider';
+    slider.type = 'range';
+    slider.min = '1';
+    slider.max = String(prepared.poseCount);
+    slider.step = '1';
+    slider.setAttribute('aria-label', 'Pose slider');
     const updateControls = () => {
       label.textContent = `Pose ${activePose + 1} / ${prepared.poseCount}`;
       previous.disabled = activePose <= 0;
       next.disabled = activePose >= prepared.poseCount - 1;
+      slider.value = String(activePose + 1);
+    };
+    const setLoopActive = (active) => {
+      if (!active && loopTimer) {
+        clearInterval(loopTimer);
+        loopTimer = null;
+      }
+      loop.classList.toggle('active', Boolean(active));
+      loop.textContent = active ? 'Stop' : 'Loop';
+      loop.setAttribute('aria-label', active ? 'Stop pose loop' : 'Play pose loop');
     };
     updateControls();
     const setPose = async (index) => {
@@ -3652,8 +3923,38 @@
         console.error(error);
       }
     };
+    animation.addEventListener('click', () => {
+      const button = nativeAnimationSelectButton();
+      if (button && !button.disabled && button.getAttribute('aria-disabled') !== 'true') {
+        button.click();
+      } else {
+        setStatus('[web] Mol* animation selector is not available for this document.', 'error');
+      }
+    });
     previous.addEventListener('click', () => { void setPose(activePose - 1); });
     next.addEventListener('click', () => { void setPose(activePose + 1); });
+    loop.addEventListener('click', () => {
+      if (loopTimer) {
+        setLoopActive(false);
+        return;
+      }
+      setLoopActive(true);
+      loopTimer = window.setInterval(() => {
+        if (loopBusy) return;
+        loopBusy = true;
+        const nextIndex = activePose >= prepared.poseCount - 1 ? 0 : activePose + 1;
+        void setPose(nextIndex).finally(() => {
+          loopBusy = false;
+        });
+      }, 1200);
+    });
+    slider.addEventListener('input', () => {
+      const previewIndex = Math.max(0, Math.min(prepared.poseCount - 1, Number(slider.value) - 1));
+      label.textContent = `Pose ${previewIndex + 1} / ${prepared.poseCount}`;
+    });
+    slider.addEventListener('change', () => {
+      void setPose(Number(slider.value) - 1);
+    });
     const onKeyDown = (event) => {
       if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
       if (isDockingPoseKeyboardTarget(event.target)) return;
@@ -3667,7 +3968,7 @@
     };
     window.addEventListener('keydown', onKeyDown);
     dockingPoseKeydownDisposer = () => window.removeEventListener('keydown', onKeyDown);
-    root.append(previous, label, next);
+    root.append(animation, previous, label, next, loop, slider);
     document.body.appendChild(root);
     restoreDockingPoseControlsPosition(root);
     const dragDisposer = initDockingPoseControlsDrag(root);
@@ -3678,8 +3979,10 @@
         })
       : null;
     dockingPoseControlsDisposer = () => {
+      setLoopActive(false);
       syncDisposer?.();
       dragDisposer?.();
+      document.body.classList.remove('buret-docking-pose-controls-active');
     };
   }
 
