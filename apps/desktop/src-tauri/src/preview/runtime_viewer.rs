@@ -121,11 +121,11 @@ pub(crate) fn create_runtime<R: Runtime>(
             Err(error)
                 if !format.external_only && format.molstar_format == "xyz" && !format.is_binary =>
             {
-                renderer = "xyz-fast".to_string();
+                renderer = "molstar".to_string();
                 external_status = Some(json!({
                     "status": "fallback",
                     "requested": "xyzrender-external",
-                    "message": format!("Using Fast XYZ because external xyzrender failed: {error}")
+                    "message": format!("Using Mol* because external xyzrender failed: {error}")
                 }));
             }
             Err(error) if external_molstar_data.is_some() => {

@@ -42,7 +42,7 @@ const MAESTRO_PDB_PREVIEW_ATOM_LIMIT = 30000;
 const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT = 1500;
 const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
-const GRID_ASSET_VERSION = "grid-ui-v47";
+const GRID_ASSET_VERSION = "grid-ui-v48";
 const VIEWER_ASSET_VERSION = "viewer-ui-v10";
 const REPO_ROOT = String(import.meta.env.BURRETE_REPO_ROOT || "");
 const WEB_ASSETS_BASE = fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
@@ -261,6 +261,7 @@ async function openBrowserDevDocument(
   const sourceByteCount = browserDevSourceByteCount(response, bytes.length);
   const text = await decodeStructureText(bytes, extension);
   const grid = gridPayload(path, extension, text);
+  const sdfRecordCount = grid?.format === "sdf" ? grid.records.length : 0;
   const requestedMode = normalizeRendererMode(preferences.rendererMode);
   const explicitSdfViewer = isSdfExtension(extension)
     && Boolean(reloadOptions)
@@ -331,7 +332,7 @@ async function openBrowserDevDocument(
     xyzrenderControls,
     "",
     undefined,
-    xyzFrameCount,
+    Math.max(xyzFrameCount, sdfRecordCount),
   );
   return browserDocument(path, extension, renderer, html, sourceByteCount);
 }
@@ -432,6 +433,7 @@ function viewerHtml(
     label,
     byteCount: sourceByteCount,
     previewByteCount: bytes.length,
+    sourcePath: path,
     quickLookBuild: "burrete-browser-dev",
     debug: false,
     theme: visuals.theme,
@@ -450,6 +452,7 @@ function viewerHtml(
     molstarStyle: preferences.molstarStyle,
     xyzrenderViewer: renderer === "xyzrender-external",
     xyzrenderAvailable,
+    xyzrenderEndpoint: "/__burette/xyzrender",
     molstarAvailable: !format.externalOnly || externalMolstarAvailable,
     canOpenInVesta: format.canOpenInVesta,
     showPanelControls: true,
@@ -549,11 +552,11 @@ async function browserRendererPlan(
     }
     if (format.molstarFormat === "xyz" && !format.binary) {
       return {
-        renderer: "xyz-fast",
+        renderer: "molstar",
         externalRendererStatus: {
           status: "fallback",
           requested: "xyzrender-external",
-          message: `Using Fast XYZ because browser dev xyzrender failed: ${message}`,
+          message: `Using Mol* because browser dev xyzrender failed: ${message}`,
         },
       };
     }
@@ -869,7 +872,7 @@ function resolveRenderer(format: FormatInfo, requested: string, externalMolstarA
   const isXyz = format.molstarFormat === "xyz" && !format.binary;
   const canUseXyzrender = isXyz || canUseExternalXyzrender(format);
   if (normalized === "molstar") return "molstar";
-  if (normalized === "xyz-fast") return isXyz ? "xyz-fast" : "molstar";
+  if (normalized === "xyz-fast") return "molstar";
   if (normalized === "xyzrender-external") return canUseXyzrender ? "xyzrender-external" : "molstar";
   return isXyz ? "xyzrender-external" : "molstar";
 }

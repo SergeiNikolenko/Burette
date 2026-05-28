@@ -114,7 +114,7 @@ pub(crate) fn resolve_renderer(format: &FormatInfo, requested: &str) -> String {
     let can_use_xyzrender = is_xyz || can_use_external_xyzrender(format);
     match normalized {
         "molstar" => "molstar".to_string(),
-        "xyz-fast" => if is_xyz { "xyz-fast" } else { "molstar" }.to_string(),
+        "xyz-fast" => "molstar".to_string(),
         "xyzrender-external" => if can_use_xyzrender {
             "xyzrender-external"
         } else {

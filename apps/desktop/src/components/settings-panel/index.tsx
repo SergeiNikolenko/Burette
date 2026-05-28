@@ -12,7 +12,7 @@ import {
 } from "./setting-control";
 import { ThemesSection } from "./themes-section";
 
-const defaultRendererModeOptions: Array<ViewerPreferences["rendererMode"]> = ["auto", "xyz-fast", "molstar", "xyzrender-external"];
+const defaultRendererModeOptions: Array<ViewerPreferences["rendererMode"]> = ["auto", "molstar", "xyzrender-external"];
 
 function preferenceRow<K extends Extract<keyof ViewerPreferences, string>>(
   label: string,
@@ -88,7 +88,6 @@ export function SettingsPanel({ state, actions }: { state: ShellViewState; actio
             rows={[
               preferenceRow<"rendererMode">("Mode", "Choose the renderer used for newly opened structures.", preferences.rendererMode, defaultRendererModeOptions, defaultPreferences.rendererMode, (rendererMode) => actions.setPreference("rendererMode", rendererMode)),
               preferenceRow<"molstarStyle">("Mol* style", "Default appearance preset for the Mol* renderer.", preferences.molstarStyle, ["default", "illustrative"], defaultPreferences.molstarStyle, (molstarStyle) => actions.setPreference("molstarStyle", molstarStyle)),
-              preferenceRow<"xyzFastStyle">("XYZ style", "Default drawing style for the fast XYZ renderer.", preferences.xyzFastStyle, ["default", "wire", "tube", "spacefill"], defaultPreferences.xyzFastStyle, (xyzFastStyle) => actions.setPreference("xyzFastStyle", xyzFastStyle)),
             ]}
           />
           <SettingsSection title="Updates" rows={updateRows} />
