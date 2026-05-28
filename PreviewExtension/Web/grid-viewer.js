@@ -4,6 +4,7 @@
   const root = document.getElementById('app');
   const status = document.getElementById('status');
   const CARD_MIN_STORAGE_KEY = 'buret.grid.cardMin';
+  const CARD_RENDERER_STORAGE_KEY = 'buret.grid.cardRenderer';
   const RDKIT_USE_INPUT_COORDS_STORAGE_KEY = 'buret.grid.rdkitUseInputCoords';
   const MIN_CARD_MIN = 86;
   const MAX_CARD_MIN = 360;
@@ -13,6 +14,7 @@
   const SVG_FIT_PADDING_FRACTION = 0.08;
   const SVG_FIT_BOTTOM_PADDING_MULTIPLIER = 1.7;
   const SVG_FIT_VERTICAL_BIAS_FRACTION = 0.08;
+  const XYZRENDER_CARD_CONCURRENCY = 4;
   const STRUCTURE_DRAG_MIME = 'application/x-burrete-structure-paths';
   const state = {
     rdkit: null,
@@ -27,6 +29,7 @@
     smartsMatches: new Map(),
     sort: 'index',
     showProperties: false,
+    cardRenderer: storedCardRenderer(),
     rdkitUseInputCoords: storedBoolean(RDKIT_USE_INPUT_COORDS_STORAGE_KEY, false),
     cardMin: storedOptionalInteger(CARD_MIN_STORAGE_KEY, MIN_CARD_MIN, MAX_CARD_MIN),
     hiddenRows: new Set(),
@@ -34,6 +37,9 @@
     selectionAnchorIndex: null,
     selectionKeydownHandler: null,
     svgCache: new Map(),
+    xyzrenderCardCache: new Map(),
+    xyzrenderCardQueue: [],
+    xyzrenderCardsRunning: 0,
     hostRequests: new Map(),
     remoteMode: false,
     remoteLoading: false,
@@ -183,6 +189,14 @@
     }
   }
 
+  function storedCardRenderer() {
+    try {
+      return window.localStorage?.getItem(CARD_RENDERER_STORAGE_KEY) === 'xyzrender' ? 'xyzrender' : 'rdkit';
+    } catch (_) {
+      return 'rdkit';
+    }
+  }
+
   function storedBoolean(key, fallback) {
     try {
       const value = window.localStorage?.getItem(key);
@@ -305,22 +319,24 @@
         </header>
         <div class="buret-grid-toolbar">
           <div class="buret-toolbar-row buret-toolbar-row-main">
-            <label class="buret-search-control buret-filter-control ${caps.substructureSearch ? 'has-smarts' : ''}">
+            <label class="buret-search-control buret-filter-control">
               Search
-              <span class="buret-filter-fields">
-                <input id="search" type="search" aria-label="Search molecules" placeholder="name, SMILES, metadata" />
-                <input id="smarts" type="search" aria-label="SMARTS substructure" spellcheck="false" autocapitalize="off" placeholder="SMARTS [#6]=O" ${caps.substructureSearch ? '' : 'hidden'} />
-              </span>
+              <input id="search" type="search" aria-label="Search molecules and SMARTS" spellcheck="false" autocapitalize="off" placeholder="${caps.substructureSearch ? 'name, SMILES, metadata, SMARTS' : 'name, SMILES, metadata'}" />
             </label>
             <label class="buret-sort-control">Sort <select id="sort"><option value="index">File order</option><option value="name">Name</option><option value="smiles">SMILES</option>${propertyOptions(cfg)}</select></label>
             <div id="load-status" class="buret-load-status"></div>
           </div>
           <div class="buret-toolbar-row buret-toolbar-row-view">
             <button id="show-properties" class="buret-toggle-button" type="button" aria-pressed="false">Properties</button>
-            <button id="clear-smarts" class="buret-toggle-button buret-clear-smarts" type="button" hidden>Clear SMARTS</button>
+            <button id="clear-smarts" class="buret-toggle-button buret-clear-smarts" type="button" hidden>Clear search</button>
             <div class="buret-selection-actions" ${caps.selection ? '' : 'hidden'}>
               <button id="select-all" class="buret-toggle-button" type="button">Select all</button>
               <button id="clear-selection" class="buret-toggle-button" type="button">Clear selection</button>
+            </div>
+            <div class="buret-grid-card-renderer-switch" role="group" aria-label="Grid card renderer">
+              <span>Cards</span>
+              <button type="button" data-buret-grid-card-renderer="rdkit" aria-pressed="false">RDKit</button>
+              <button type="button" data-buret-grid-card-renderer="xyzrender" aria-pressed="false">xyzrender</button>
             </div>
             ${rdkitCoordinatesControlHTML()}
             ${caps.rendererSwitch ? rendererSwitchHTML() : ''}
@@ -331,11 +347,7 @@
         <footer id="footer" class="buret-grid-footer"></footer>
       </section>`;
     document.getElementById('search').addEventListener('input', event => {
-      state.query = event.target.value || '';
-      refresh(cfg);
-    });
-    document.getElementById('smarts')?.addEventListener('input', event => {
-      state.smarts = event.target.value || '';
+      setUnifiedSearchQuery(event.target.value || '', cfg);
       refresh(cfg);
     });
     document.getElementById('sort').addEventListener('change', event => {
@@ -352,14 +364,18 @@
     document.getElementById('export-smi')?.addEventListener('click', () => exportSmiles(cfg));
     document.getElementById('export-csv')?.addEventListener('click', () => exportCSV(cfg));
     document.getElementById('clear-smarts')?.addEventListener('click', () => {
+      state.query = '';
       state.smarts = '';
-      const input = document.getElementById('smarts');
+      const input = document.getElementById('search');
       if (input) input.value = '';
       refresh(cfg);
       input?.focus();
     });
     root.querySelectorAll('[data-buret-grid-renderer]').forEach(button => {
       button.addEventListener('click', () => requestRendererSwitch(button.getAttribute('data-buret-grid-renderer'), cfg));
+    });
+    root.querySelectorAll('[data-buret-grid-card-renderer]').forEach(button => {
+      button.addEventListener('click', () => setCardRenderer(button.getAttribute('data-buret-grid-card-renderer'), cfg));
     });
     initRdkitCoordinatesControl(cfg);
     if (state.selectionKeydownHandler) {
@@ -391,6 +407,7 @@
       propertiesToggle.setAttribute('aria-pressed', state.showProperties ? 'true' : 'false');
     }
     requestAnimationFrame(fitRenderedGridSVGs);
+    syncCardRendererSwitch();
     syncRdkitCoordinatesControl();
   }
 
@@ -424,6 +441,25 @@
       </label>`;
   }
 
+  function setCardRenderer(value, cfg) {
+    const next = value === 'xyzrender' ? 'xyzrender' : 'rdkit';
+    if (state.cardRenderer === next) return;
+    state.cardRenderer = next;
+    store(CARD_RENDERER_STORAGE_KEY, next);
+    syncCardRendererSwitch();
+    syncRdkitCoordinatesControl();
+    render(cfg);
+  }
+
+  function syncCardRendererSwitch() {
+    document.body.dataset.buretGridCardRenderer = state.cardRenderer;
+    root.querySelectorAll('[data-buret-grid-card-renderer]').forEach(button => {
+      const active = button.getAttribute('data-buret-grid-card-renderer') === state.cardRenderer;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
   function initRdkitCoordinatesControl(cfg) {
     const input = document.getElementById('rdkit-use-input-coords');
     if (!input) return;
@@ -441,7 +477,7 @@
     const control = document.getElementById('rdkit-use-input-coords-control');
     const input = document.getElementById('rdkit-use-input-coords');
     if (!control || !input) return;
-    control.hidden = !hasInputCoordinateRows();
+    control.hidden = state.cardRenderer !== 'rdkit' || !hasInputCoordinateRows();
     input.checked = state.rdkitUseInputCoords;
   }
 
@@ -473,12 +509,22 @@
     return value === 'xyzrender-external' || value === 'xyzrender' ? 'xyzrender-external' : 'molstar';
   }
 
+  function queryLooksLikeSMARTS(value) {
+    const text = String(value || '').trim();
+    return !!text && !/\s/u.test(text) && /[\[\]#@:+\\/$()=~!;]/u.test(text);
+  }
+
+  function setUnifiedSearchQuery(value, cfg) {
+    state.query = value || '';
+    state.smarts = capabilities(cfg).substructureSearch && queryLooksLikeSMARTS(value) ? value || '' : '';
+  }
+
   function refresh(cfg) {
     if (state.remoteMode) {
       void refreshRemote(cfg);
       return;
     }
-    const query = normalize(state.query);
+    const query = state.smarts.trim() ? '' : normalize(state.query);
     const allRows = state.all.filter(row => !state.hiddenRows.has(Number(row.index)));
     const textRows = query
       ? allRows.filter(row => normalize([row.name, row.smiles, ...Object.entries(row.props || {}).flat()].join('\n')).includes(query))
@@ -660,7 +706,7 @@
       while (total === null || offset < total) {
         if (token !== state.token) return matches;
         const result = await hostRequest('gridFetchPage', {
-          query: state.query || '',
+          query: '',
           sort: state.sort || 'index',
           offset,
           limit
@@ -683,6 +729,17 @@
       return [];
     } finally {
       try { qmol?.delete?.(); } catch (_) {}
+    }
+  }
+
+  function pumpXyzrenderCardQueue() {
+    while (state.xyzrenderCardsRunning < XYZRENDER_CARD_CONCURRENCY && state.xyzrenderCardQueue.length) {
+      const job = state.xyzrenderCardQueue.shift();
+      state.xyzrenderCardsRunning++;
+      void job().finally(() => {
+        state.xyzrenderCardsRunning--;
+        pumpXyzrenderCardQueue();
+      });
     }
   }
 
@@ -769,9 +826,9 @@
         : 'All visible molecules loaded';
     }
     const clearSMARTS = document.getElementById('clear-smarts');
-    if (clearSMARTS) clearSMARTS.hidden = !state.smarts.trim();
-    const smartsInput = document.getElementById('smarts');
-    if (smartsInput) smartsInput.classList.toggle('invalid', !!state.smartsError);
+    if (clearSMARTS) clearSMARTS.hidden = !state.query.trim();
+    const searchInput = document.getElementById('search');
+    if (searchInput) searchInput.classList.toggle('invalid', !!state.smartsError);
     const selectableIndexes = selectableRowIndexes();
     const allCurrentSelected = selectableIndexes.length > 0 && selectableIndexes.every(index => state.selected.has(index));
     const selectAllButton = document.getElementById('select-all');
@@ -786,7 +843,9 @@
           ? `Scroll to load more. ${state.renderedCount.toLocaleString()} of ${visible.toLocaleString()} visible molecules are rendered.`
           : (state.remoteMode
             ? 'Desktop grid runtime is loading rows on demand.'
-            : 'Offline RDKit.js rendering. No network access required.')));
+            : (state.cardRenderer === 'xyzrender'
+              ? 'External xyzrender card rendering.'
+              : 'Offline RDKit.js rendering. No network access required.'))));
   }
 
   function card(row, cfg) {
@@ -800,7 +859,7 @@
     el.setAttribute('aria-selected', state.selected.has(index) ? 'true' : 'false');
     if (state.smartsMatches.has(index)) el.classList.add('smarts-match');
     el.innerHTML = `
-      <div class="buret-molecule-picture" data-buret-molecule-picture>${draw(row)}</div>
+      <div class="buret-molecule-picture" data-buret-molecule-picture>${draw(row, cfg)}</div>
       <div class="buret-card-body">
         ${state.smartsMatches.has(index) ? '<div class="buret-match-badge">SMARTS match</div>' : ''}
         <h2>${escapeHTML(row.name || `Molecule ${index + 1}`)}</h2>
@@ -1202,8 +1261,8 @@
     window.addEventListener('pointercancel', onUp, { once: true });
   }
 
-  function draw(row) {
-    return drawRdkit(row);
+  function draw(row, cfg) {
+    return state.cardRenderer === 'xyzrender' ? drawXyzrenderCard(row, cfg) : drawRdkit(row);
   }
 
   function drawRdkit(row) {
@@ -1245,6 +1304,63 @@
     state.svgCache.set(key, html);
     while (state.svgCache.size > 360) state.svgCache.delete(state.svgCache.keys().next().value);
     return html;
+  }
+
+  function drawXyzrenderCard(row, cfg) {
+    const record = gridDragRecord(row);
+    if (!record) return '<div class="buret-molecule-error"><strong>Molecule</strong><span>No structure data</span></div>';
+    const key = xyzrenderCardKey(row, record);
+    const cached = state.xyzrenderCardCache.get(key);
+    if (cached?.html) return cached.html;
+    if (cached?.error) return `<div class="buret-molecule-error"><strong>${escapeHTML(row.name || `Molecule ${Number(row.index) + 1}`)}</strong><span>${escapeHTML(cached.error)}</span></div>`;
+    if (!cached?.pending) {
+      state.xyzrenderCardCache.set(key, { pending: true });
+      state.xyzrenderCardQueue.push(() => requestXyzrenderCard(row, cfg, record, key));
+      pumpXyzrenderCardQueue();
+    }
+    return `<div class="buret-molecule-loading" data-buret-xyzrender-card-key="${escapeAttr(key)}">Rendering xyzrender...</div>`;
+  }
+
+  function xyzrenderCardKey(row, record) {
+    return `${row.index}|${record.inputExtension}|${hash(record.text || '')}|${state.smarts}`;
+  }
+
+  async function requestXyzrenderCard(row, cfg, record, key) {
+    const endpoint = String(cfg.xyzrenderEndpoint || '/__burette/xyzrender');
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: record.path,
+          preset: 'default',
+          inputDataBase64: textToBase64(record.text),
+          inputExtension: record.inputExtension
+        })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof payload?.error === 'string' ? payload.error : `xyzrender request failed with status ${response.status}`);
+      if (typeof payload?.svg !== 'string' || !payload.svg.trim()) throw new Error('xyzrender endpoint returned no SVG payload');
+      const html = sanitizeSVG(String(payload.svg || ''));
+      if (!html.includes('<svg')) throw new Error('empty xyzrender drawing');
+      state.xyzrenderCardCache.set(key, { html });
+      updateXyzrenderCard(key, html);
+    } catch (error) {
+      const message = error?.message || String(error);
+      state.xyzrenderCardCache.set(key, { error: message });
+      updateXyzrenderCard(key, `<div class="buret-molecule-error"><strong>${escapeHTML(row.name || `Molecule ${Number(row.index) + 1}`)}</strong><span>${escapeHTML(message)}</span></div>`);
+    }
+  }
+
+  function updateXyzrenderCard(key, html) {
+    root.querySelectorAll('[data-buret-xyzrender-card-key]').forEach(target => {
+      if (target.getAttribute('data-buret-xyzrender-card-key') !== key) return;
+      target.classList.remove('buret-molecule-loading');
+      target.removeAttribute('data-buret-xyzrender-card-key');
+      target.innerHTML = html;
+      const card = target.closest('.buret-card');
+      if (card) fitCardSVGs(card);
+    });
   }
 
   function hasMolblockInputCoordinates(value) {
@@ -1299,6 +1415,7 @@
   }
 
   function fitCardSVGs(card) {
+    if (!card) return;
     card.querySelectorAll('svg[data-buret-rdkit-svg="true"]').forEach(svg => fitSVGToContent(svg));
   }
 
@@ -1495,6 +1612,15 @@
     let h = 0;
     for (let i = 0; i < value.length; i++) h = ((h << 5) - h + value.charCodeAt(i)) | 0;
     return h >>> 0;
+  }
+
+  function textToBase64(value) {
+    const bytes = new TextEncoder().encode(String(value || ''));
+    let binary = '';
+    for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+    }
+    return btoa(binary);
   }
 
   function canUseNativeBridge() {
