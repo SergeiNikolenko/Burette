@@ -179,7 +179,7 @@ button:disabled {
 }
 
 .buret-toolbar-row-main {
-  grid-template-columns: minmax(260px, 1fr) minmax(112px, 148px) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(112px, 148px) auto;
 }
 
 .buret-toolbar-row-view {
@@ -874,10 +874,11 @@ body.buret-hide-properties .buret-card-body {
   }
 
   .buret-toolbar-row-main {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(112px, 148px);
   }
 
   .buret-load-status {
+    grid-column: 1 / -1;
     justify-content: flex-start;
   }
 }
