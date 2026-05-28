@@ -2530,7 +2530,7 @@
       .buret-external-artifact-card.resizing { cursor: nwse-resize; }
       .buret-external-artifact-card.selected { outline: 0 solid transparent; box-shadow: none; }
       .buret-external-artifact-card:has(.buret-xyzrender-resize-handle:hover),
-      .buret-external-artifact-card.resizing { outline: 1px solid color-mix(in srgb, var(--buret-accent, #b45cff) 70%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--buret-accent, #b45cff) 16%, transparent); }
+      .buret-external-artifact-card.resizing { outline: 1.5px solid color-mix(in srgb, var(--buret-accent, #b45cff) 74%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--buret-accent, #b45cff) 18%, transparent); }
       .buret-external-artifact-card-background { grid-area: 1 / 1; position: absolute; inset: 0; z-index: 0; border-radius: 8px; background: #fff; box-shadow: 0 18px 54px rgba(0,0,0,0.28); pointer-events: none; }
       .buret-external-artifact-card-body { grid-area: 1 / 1; position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; max-width: 100%; max-height: 100%; pointer-events: none; }
       .buret-external-artifact-card-body > svg { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; margin: auto; border-radius: 8px; }
@@ -2545,7 +2545,7 @@
       .buret-xyzrender-sheet-item.resizing { cursor: nwse-resize; }
       .buret-xyzrender-sheet-item.selected { outline: 0 solid transparent; box-shadow: none; }
       .buret-xyzrender-sheet-item:has(.buret-xyzrender-resize-handle:hover),
-      .buret-xyzrender-sheet-item.resizing { outline: 1px solid color-mix(in srgb, var(--buret-accent, #b45cff) 70%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--buret-accent, #b45cff) 16%, transparent); }
+      .buret-xyzrender-sheet-item.resizing { outline: 1.5px solid color-mix(in srgb, var(--buret-accent, #b45cff) 74%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--buret-accent, #b45cff) 18%, transparent); }
       .buret-xyzrender-sheet-item-background { position: absolute; inset: 0; z-index: 0; border-radius: 10px; background: #fff; pointer-events: none; }
       .buret-xyzrender-sheet-item-body { position: relative; z-index: 1; width: 100%; height: 100%; pointer-events: none; }
       .buret-xyzrender-sheet-item-body > svg { display: block; width: 100%; height: 100%; overflow: visible; }
@@ -2581,29 +2581,29 @@
       .buret-external-artifact-card.resizing .buret-xyzrender-resize-handle::after,
       .buret-xyzrender-sheet-item.resizing .buret-xyzrender-resize-handle::after { opacity: 1; transform: translate(-50%, -50%) scale(1); }
       .buret-xyzrender-resize-n,
-      .buret-xyzrender-resize-s { left: 50%; width: 40px; height: 16px; transform: translateX(-50%); cursor: ns-resize; }
+      .buret-xyzrender-resize-s { left: 50%; width: 56px; height: 22px; transform: translateX(-50%); cursor: ns-resize; }
       .buret-xyzrender-resize-n::after,
       .buret-xyzrender-resize-s::after { width: 18px; height: 5px; }
-      .buret-xyzrender-resize-n { top: -8px; }
-      .buret-xyzrender-resize-s { bottom: -8px; }
+      .buret-xyzrender-resize-n { top: -11px; }
+      .buret-xyzrender-resize-s { bottom: -11px; }
       .buret-xyzrender-resize-e,
-      .buret-xyzrender-resize-w { top: 50%; width: 16px; height: 40px; transform: translateY(-50%); cursor: ew-resize; }
+      .buret-xyzrender-resize-w { top: 50%; width: 22px; height: 56px; transform: translateY(-50%); cursor: ew-resize; }
       .buret-xyzrender-resize-e::after,
       .buret-xyzrender-resize-w::after { width: 5px; height: 18px; }
-      .buret-xyzrender-resize-e { right: -8px; }
-      .buret-xyzrender-resize-w { left: -8px; }
+      .buret-xyzrender-resize-e { right: -11px; }
+      .buret-xyzrender-resize-w { left: -11px; }
       .buret-xyzrender-resize-ne,
       .buret-xyzrender-resize-nw,
       .buret-xyzrender-resize-se,
-      .buret-xyzrender-resize-sw { width: 20px; height: 20px; }
+      .buret-xyzrender-resize-sw { width: 26px; height: 26px; }
       .buret-xyzrender-resize-ne::after,
       .buret-xyzrender-resize-nw::after,
       .buret-xyzrender-resize-se::after,
       .buret-xyzrender-resize-sw::after { width: 8px; height: 8px; }
-      .buret-xyzrender-resize-ne { top: -10px; right: -10px; cursor: nesw-resize; }
-      .buret-xyzrender-resize-nw { top: -10px; left: -10px; cursor: nwse-resize; }
-      .buret-xyzrender-resize-se { bottom: -10px; right: -10px; cursor: nwse-resize; }
-      .buret-xyzrender-resize-sw { bottom: -10px; left: -10px; cursor: nesw-resize; }
+      .buret-xyzrender-resize-ne { top: -13px; right: -13px; cursor: nesw-resize; }
+      .buret-xyzrender-resize-nw { top: -13px; left: -13px; cursor: nwse-resize; }
+      .buret-xyzrender-resize-se { bottom: -13px; right: -13px; cursor: nwse-resize; }
+      .buret-xyzrender-resize-sw { bottom: -13px; left: -13px; cursor: nesw-resize; }
       .buret-xyzrender-sheet-item-label { position: absolute; left: 50%; bottom: -23px; transform: translateX(-50%); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 7px; border-radius: 999px; color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.84)); font: 10px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; opacity: 0; transition: opacity 120ms ease; }
       .buret-xyzrender-sheet-item.selected .buret-xyzrender-sheet-item-label { opacity: 1; }
       .buret-xyz-badge { position: absolute; left: 14px; bottom: 14px; z-index: 30; max-width: calc(100vw - 28px); box-sizing: border-box; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--buret-toolbar-border, rgba(255,255,255,0.12)); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.9)); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: 0 8px 22px rgba(0,0,0,0.20); font: 11px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; pointer-events: none; }
