@@ -259,6 +259,9 @@ assert.match(viteConfig, /join\(homedir\(\), "Desktop", "BurettePreviewSamples"\
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "xyzrender-main"\)/);
 assert.match(viteConfig, /join\(repoRoot, "samples", "large", "litr_moses_10k\.csv"\)/);
 assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/dev-files"/);
+assert.match(viteConfig, /const RDKIT_WASM_PATH = join\(repoRoot, "PreviewExtension", "Web", "rdkit", "RDKit_minimal\.wasm"\)/);
+assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/rdkit-wasm"/);
+assert.match(viteConfig, /res\.setHeader\("Content-Type", "application\/wasm"\)/);
 assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/read-file"/);
 assert.match(viteConfig, /function isDevFileReadAllowed\(path: string\)/);
 assert.match(viteConfig, /async function collectDefaultDevFiles\(\)/);
@@ -461,6 +464,8 @@ assert.doesNotMatch(styles, /\.viewer-iframe\s*\{[^}]*filter:/s);
 assert.match(gridViewer, /function installThemeListener\(cfg\)/);
 assert.match(gridViewer, /async function loadWasmBinary\(path\)/);
 assert.match(gridViewer, /fetch\(String\(path\)\)/);
+assert.match(gridViewer, /Failed to fetch RDKit wasm from \$\{path\}: \$\{message\}/);
+assert.match(gridViewer, /Failed to load RDKit wasm from \$\{path\}: \$\{response\.status\} \$\{response\.statusText\}/);
 assert.match(gridViewer, /new Uint8Array\(await response\.arrayBuffer\(\)\)/);
 assert.doesNotMatch(gridViewer, /const theme = cfg\.theme === 'light' \? 'light' : 'dark'/);
 assert.match(styles, /\.molecule-stage/);
@@ -801,6 +806,7 @@ assert.match(browserDevDocuments, /if \(name\.toLowerCase\(\)\.endsWith\("\.mae\
 assert.match(browserDevDocuments, /isMaestroPreviewExtension\(extension\) && extension !== "maegz"/);
 assert.match(browserDevDocuments, /function browserDevReadUrl\(path: string, extension: string\)/);
 assert.match(browserDevDocuments, /extension === "maegz"/);
+assert.match(browserDevDocuments, /failed to fetch collection data from \$\{url\}: \$\{message\}/);
 assert.match(browserDevDocuments, /hasImplicitAtomIndex \|\|= headerLine\.toLowerCase\(\)\.includes\("first column is atom index"\)/);
 assert.match(browserDevDocuments, /const rowOffset = hasImplicitAtomIndex \? 1 : 0/);
 assert.match(browserDevDocuments, /\/__burette\/read-file\?path=\$\{encodeURIComponent\(path\)\}/);
@@ -1033,7 +1039,7 @@ assert.match(app, /manifestSignatureBrowserDownloadUrl: release\.installAsset\.m
 assert.match(browserDevDocuments, /documentId: stableId\(path\)/);
 assert.match(browserDevDocuments, /body\.documentId = String\(window\.BurreteConfig\.documentId\)/);
 assert.match(browserDevDocuments, /window\.BurreteGridRecords =/);
-assert.match(browserDevDocuments, /rdkitWasmPath: `\$\{WEB_ASSETS_BASE\}rdkit\/RDKit_minimal\.wasm`/);
+assert.match(browserDevDocuments, /rdkitWasmPath: "\/__burette\/rdkit-wasm"/);
 assert.doesNotMatch(browserDevDocuments, /BurreteRDKitWasmBase64/);
 assert.match(gridViewer, /cfg\.appViewer === true && cfg\.gridDataMode === 'bridge'/);
 assert.match(gridViewer, /data\.source !== 'burrete-grid-host'/);
