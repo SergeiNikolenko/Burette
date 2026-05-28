@@ -201,6 +201,42 @@ button:disabled {
   background: var(--buret-input);
 }
 
+.buret-grid-card-renderer-switch {
+  display: inline-flex;
+  align-self: end;
+  align-items: center;
+  gap: 2px;
+  min-height: 36px;
+  padding: 3px;
+  border: 1px solid var(--buret-border);
+  border-radius: 8px;
+  background: var(--buret-input);
+}
+
+.buret-grid-card-renderer-switch span {
+  padding: 0 7px;
+  color: var(--buret-muted);
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.buret-grid-card-renderer-switch button {
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--buret-muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.buret-grid-card-renderer-switch button:hover,
+.buret-grid-card-renderer-switch button.active {
+  color: var(--buret-text);
+  background: color-mix(in srgb, var(--buret-text) 8%, transparent);
+}
+
 .buret-grid-toolbar .buret-rdkit-coords-control {
   display: inline-flex;
   align-self: end;
@@ -216,6 +252,10 @@ button:disabled {
   font-weight: 650;
   line-height: 1;
   text-transform: none;
+}
+
+.buret-grid-toolbar .buret-rdkit-coords-control[hidden] {
+  display: none;
 }
 
 .buret-grid-toolbar .buret-rdkit-coords-control input {
@@ -239,21 +279,6 @@ button:disabled {
   font-weight: 680;
   line-height: 1.25;
   text-transform: uppercase;
-}
-
-.buret-filter-fields {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 6px;
-  min-width: 0;
-}
-
-.buret-filter-control.has-smarts .buret-filter-fields {
-  grid-template-columns: minmax(160px, 1fr) minmax(112px, 170px);
-}
-
-.buret-filter-fields input[hidden] {
-  display: none;
 }
 
 .buret-sort-control {
@@ -555,6 +580,16 @@ button:disabled {
 .buret-molecule-loading {
   display: grid;
   place-items: center;
+  width: 100%;
+  height: 100%;
+  color: var(--buret-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.buret-molecule-loading {
+  display: grid;
+  place-items: center;
   min-height: var(--buret-picture-min-height);
   color: var(--buret-muted);
   font-size: 12px;
@@ -839,10 +874,6 @@ body.buret-hide-properties .buret-card-body {
   }
 
   .buret-toolbar-row-main {
-    grid-template-columns: 1fr;
-  }
-
-  .buret-filter-control.has-smarts .buret-filter-fields {
     grid-template-columns: 1fr;
   }
 
