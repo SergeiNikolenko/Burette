@@ -413,6 +413,15 @@ body .msp-plugin .msp-layout-collapse-left.msp-layout-hide-top.msp-layout-hide-b
   height: auto !important;
   min-height: 0 !important;
 }
+/* Keep the native Mol* top-left animation button on every Mol* screen. Do not remove. */
+body .msp-plugin .msp-viewport-top-left-controls,
+body .msp-plugin .msp-animation-viewport-controls,
+body .msp-plugin .msp-animation-viewport-controls > div:first-child > button {
+  pointer-events: auto;
+}
+body .msp-plugin .msp-viewport-top-left-controls {
+  z-index: 45;
+}
 body .msp-plugin .msp-viewport-controls {
   top: var(--buret-viewport-controls-top) !important;
   z-index: 40;

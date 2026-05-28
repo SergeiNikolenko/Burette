@@ -27,6 +27,10 @@ export type KetcherSketchRequest = {
 export type KetcherImportRequest = {
   id: number;
   paths: string[];
+  fragments?: Array<{
+    title: string;
+    text: string;
+  }>;
 };
 
 export type ShellActions = {
