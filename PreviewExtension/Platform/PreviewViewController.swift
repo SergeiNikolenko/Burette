@@ -730,6 +730,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         if let externalArtifact {
             payload["externalArtifact"] = [
                 "path": externalArtifact.relativePath,
+                "inlineSvg": externalArtifact.inlineSvg,
                 "type": externalArtifact.outputType,
                 "renderer": "xyzrender",
                 "preset": externalArtifact.preset,
@@ -1938,6 +1939,7 @@ private extension BurreteRendererFormat {
 
 private struct PreviewExternalXyzrenderArtifact {
     let relativePath: String
+    let inlineSvg: String
     let outputType: String
     let preset: String
     let configArgument: String
@@ -2016,9 +2018,11 @@ private enum PreviewExternalXyzrenderWorker {
         guard fileManager.fileExists(atPath: outputURL.path) else {
             throw PreviewExternalXyzrenderError.missingOutput
         }
+        let inlineSvg = try String(contentsOf: outputURL, encoding: .utf8)
         let elapsedMs = Int(Date().timeIntervalSince(started) * 1000)
         return PreviewExternalXyzrenderArtifact(
             relativePath: "xyzrender.svg",
+            inlineSvg: inlineSvg,
             outputType: "svg",
             preset: effectivePreset,
             configArgument: configArgument,

@@ -15,6 +15,7 @@ const XYZRENDER_LOG_CAPTURE_BYTES: usize = 64 * 1024;
 
 pub(crate) struct XyzrenderArtifact {
     pub(crate) relative_path: &'static str,
+    pub(crate) inline_svg: String,
     pub(crate) output_type: &'static str,
     pub(crate) preset: &'static str,
     pub(crate) config_argument: String,
@@ -83,8 +84,11 @@ pub(crate) fn create_xyzrender_artifact(
     if metadata.len() == 0 {
         return Err("External xyzrender produced an empty SVG output file".into());
     }
+    let inline_svg = fs::read_to_string(&output_path)
+        .map_err(|err| format!("Could not read external xyzrender SVG output: {err}"))?;
     Ok(XyzrenderArtifact {
         relative_path: "xyzrender.svg",
+        inline_svg,
         output_type: "svg",
         preset: effective_preset,
         config_argument: resolved_config_argument,
