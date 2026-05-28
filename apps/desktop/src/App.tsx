@@ -650,6 +650,8 @@ export default function App() {
                 path: body.path,
                 preset: body.preset ?? null,
                 controls: body.controls ?? null,
+                inputDataBase64: body.inputDataBase64 ?? null,
+                inputExtension: body.inputExtension ?? null,
               },
             });
             reply({
@@ -774,6 +776,21 @@ export default function App() {
         if (targetPath) {
           pushStatus("Opening SDF grid...");
           void openDocuments([targetPath], undefined, { rendererMode: "auto" });
+        }
+        return;
+      }
+      if (body?.type === "openMolstarContextDocument") {
+        const targetDocument = (body.documentId
+          ? documents.find((document) => document.id === body.documentId)
+          : null) ?? activeDocument;
+        if (targetDocument?.dockingRequest) {
+          pushStatus("Opening separate Mol* docking view...");
+          void openDockingDocument(targetDocument.dockingRequest.receptorPath, targetDocument.dockingRequest.ligandPaths);
+        } else if (targetDocument?.path && !targetDocument.virtual) {
+          pushStatus("Opening separate Mol* view...");
+          void openDocuments([targetDocument.path], undefined, { rendererMode: "molstar" });
+        } else {
+          pushStatus("This virtual structure cannot be opened separately.", "error");
         }
         return;
       }

@@ -1,3 +1,4 @@
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashSet};
 #[cfg(target_os = "macos")]
@@ -28,6 +29,8 @@ pub(crate) struct XyzrenderSheetRenderRequest {
     path: String,
     preset: Option<String>,
     controls: Option<XyzrenderControls>,
+    input_data_base64: Option<String>,
+    input_extension: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -159,40 +162,6 @@ pub(crate) fn render_xyzrender_sheet_item<R: Runtime>(
     app: tauri::AppHandle<R>,
     request: XyzrenderSheetRenderRequest,
 ) -> Result<XyzrenderSheetRenderResult, String> {
-    let input_path = PathBuf::from(&request.path)
-        .canonicalize()
-        .map_err(|err| format!("{}: {err}", request.path))?;
-    let metadata =
-        fs::metadata(&input_path).map_err(|err| format!("{}: {err}", input_path.display()))?;
-    if !metadata.is_file() {
-        return Err(format!("{} is not a file", input_path.display()));
-    }
-    if metadata.len() > XYZRENDER_SHEET_MAX_STRUCTURE_FILE_SIZE {
-        return Err(format!(
-            "{} is too large for an xyzrender sheet item",
-            input_path.display()
-        ));
-    }
-
-    let extension = structure_path_extension(&input_path);
-    let format = format_for_extension(&extension)?;
-    if format.is_binary {
-        return Err(format!(
-            "{} is a binary format and cannot be added to an xyzrender sheet",
-            input_path.display()
-        ));
-    }
-
-    let data = fs::read(&input_path).map_err(|err| format!("{}: {err}", input_path.display()))?;
-    let label = input_path
-        .file_name()
-        .and_then(|value| value.to_str())
-        .unwrap_or("structure");
-    let converted_xyz = if matches!(extension.as_str(), "cub" | "cube") {
-        None
-    } else {
-        xyz_data_from_text(&data, &extension, label)
-    };
     let output_directory = app
         .path()
         .app_cache_dir()
@@ -201,6 +170,70 @@ pub(crate) fn render_xyzrender_sheet_item<R: Runtime>(
         .join("sheet")
         .join(uuid::Uuid::new_v4().to_string());
     fs::create_dir_all(&output_directory).map_err(|err| err.to_string())?;
+
+    let inline_data = match request.input_data_base64.as_deref().filter(|value| !value.is_empty()) {
+        Some(value) => Some(
+            base64::engine::general_purpose::STANDARD
+                .decode(value)
+                .map_err(|err| format!("Could not decode inline xyzrender sheet input: {err}"))?,
+        ),
+        None => None,
+    };
+
+    let (input_path, extension, data, label) = if let Some(data) = inline_data {
+        if data.len() as u64 > XYZRENDER_SHEET_MAX_STRUCTURE_FILE_SIZE {
+            return Err("Inline structure is too large for an xyzrender sheet item".into());
+        }
+        let extension = normalize_inline_structure_extension(
+            request.input_extension.as_deref(),
+            Path::new(&request.path),
+        )?;
+        let input_path = output_directory.join(format!("sheet-input.{extension}"));
+        fs::write(&input_path, &data).map_err(|err| format!("{}: {err}", input_path.display()))?;
+        let label = Path::new(&request.path)
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("structure")
+            .to_string();
+        (input_path, extension, data, label)
+    } else {
+        let input_path = PathBuf::from(&request.path)
+            .canonicalize()
+            .map_err(|err| format!("{}: {err}", request.path))?;
+        let metadata =
+            fs::metadata(&input_path).map_err(|err| format!("{}: {err}", input_path.display()))?;
+        if !metadata.is_file() {
+            return Err(format!("{} is not a file", input_path.display()));
+        }
+        if metadata.len() > XYZRENDER_SHEET_MAX_STRUCTURE_FILE_SIZE {
+            return Err(format!(
+                "{} is too large for an xyzrender sheet item",
+                input_path.display()
+            ));
+        }
+        let extension = structure_path_extension(&input_path);
+        let data =
+            fs::read(&input_path).map_err(|err| format!("{}: {err}", input_path.display()))?;
+        let label = input_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("structure")
+            .to_string();
+        (input_path, extension, data, label)
+    };
+    let format = format_for_extension(&extension)?;
+    if format.is_binary {
+        return Err(format!(
+            "{} is a binary format and cannot be added to an xyzrender sheet",
+            input_path.display()
+        ));
+    }
+
+    let converted_xyz = if matches!(extension.as_str(), "cub" | "cube") {
+        None
+    } else {
+        xyz_data_from_text(&data, &extension, &label)
+    };
     let artifact = create_xyzrender_artifact(
         &input_path,
         &output_directory,
@@ -218,6 +251,18 @@ pub(crate) fn render_xyzrender_sheet_item<R: Runtime>(
         elapsed_ms: artifact.elapsed_ms,
         log: artifact.log,
     })
+}
+
+fn normalize_inline_structure_extension(
+    input_extension: Option<&str>,
+    path: &Path,
+) -> Result<String, String> {
+    let extension = input_extension
+        .map(|value| value.trim().trim_start_matches('.').to_lowercase())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| structure_path_extension(path));
+    format_for_extension(&extension)?;
+    Ok(extension)
 }
 
 #[tauri::command]

@@ -439,13 +439,16 @@
       fastRect.setAttribute('fill', background);
     }
     const artifactRoot = document.querySelector('.buret-external-artifact-root');
-    const artifactRect = document.querySelector('.buret-external-artifact-inline > svg > rect');
+    const artifactRect = document.querySelector('.buret-external-artifact-card-body > svg > rect');
     const artifactBackgroundFill = resolveExternalArtifactBackgroundFill(artifactRect);
     if (artifactRoot) {
-      artifactRoot.style.background = artifactBackgroundFill || background;
+      artifactRoot.style.background = background;
     }
+    document.querySelectorAll('.buret-external-artifact-card-background, .buret-xyzrender-sheet-item-background').forEach(layer => {
+      layer.style.background = artifactBackgroundFill || '#fff';
+    });
     if (artifactRect && artifactRect.getAttribute('width') === '100%' && artifactRect.getAttribute('height') === '100%') {
-      artifactRect.setAttribute('fill', artifactBackgroundFill || background);
+      artifactRect.setAttribute('fill', 'transparent');
     }
   }
 
@@ -932,12 +935,15 @@
   function updateBrowserDevXyzrenderArtifact(payload, requestedControls, requestedPreset) {
     const inline = document.querySelector('.buret-external-artifact-inline');
     const object = document.querySelector('.buret-external-artifact-object');
+    const label = (activeConfig || {}).label || 'xyzrender artifact';
     if (inline) {
-      inline.innerHTML = payload.svg;
+      inline.outerHTML = externalArtifactCardHTML(payload.svg, label);
+      installExternalArtifactCardInteractions(document.querySelector('.buret-external-artifact-root'));
     } else if (object) {
       const stage = object.closest('.buret-external-artifact-stage');
       if (stage) {
-        stage.innerHTML = `<div class="buret-external-artifact-inline" aria-label="${escapeHTML((activeConfig || {}).label || 'xyzrender artifact')}">${payload.svg}</div><div class="buret-xyzrender-sheet" aria-label="xyzrender sheet overlays"></div>`;
+        stage.innerHTML = `${externalArtifactCardHTML(payload.svg, label)}<div class="buret-xyzrender-sheet" aria-label="xyzrender sheet overlays"></div>`;
+        installExternalArtifactCardInteractions(document.querySelector('.buret-external-artifact-root'));
       }
     } else {
       disposeActiveMolstarViewer();
@@ -946,7 +952,7 @@
       if (container) {
         container.innerHTML = `
           <div class="buret-external-artifact-root">
-            <div class="buret-external-artifact-stage"><div class="buret-external-artifact-inline" aria-label="${escapeHTML((activeConfig || {}).label || 'xyzrender artifact')}">${payload.svg}</div><div class="buret-xyzrender-sheet" aria-label="xyzrender sheet overlays"></div></div>
+            <div class="buret-external-artifact-stage">${externalArtifactCardHTML(payload.svg, label)}<div class="buret-xyzrender-sheet" aria-label="xyzrender sheet overlays"></div></div>
             <div class="buret-xyz-badge"><strong>External xyzrender</strong><span>SVG</span></div>
           </div>`;
         const root = container.querySelector('.buret-external-artifact-root');
@@ -2004,6 +2010,16 @@
     return bytes;
   }
 
+  function bytesToBase64(bytes) {
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      const chunk = bytes.subarray(offset, offset + chunkSize);
+      binary += String.fromCharCode(...chunk);
+    }
+    return btoa(binary);
+  }
+
   function base64ToText(base64) {
     const bytes = base64ToBytes(base64);
     return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
@@ -2376,8 +2392,8 @@
     const preset = artifact.preset ? ` · ${escapeHTML(artifact.preset)}` : '';
     const elapsed = Number.isFinite(Number(artifact.elapsedMs)) ? ` · ${Number(artifact.elapsedMs)} ms` : '';
     const content = inlineSvg
-      ? `<div class="buret-external-artifact-stage"><div class="buret-external-artifact-inline" aria-label="${escapeHTML(config.label || 'xyzrender artifact')}">${inlineSvg}</div><div class="buret-xyzrender-sheet" aria-label="xyzrender sheet overlays"></div></div>`
-      : `<div class="buret-external-artifact-stage"><object class="buret-external-artifact-object" data="${safeRelativeArtifactPath(artifact.path)}" type="image/svg+xml" aria-label="${escapeHTML(config.label || 'xyzrender artifact')}"></object><div class="buret-xyzrender-sheet" aria-label="xyzrender sheet overlays"></div></div>`;
+      ? `<div class="buret-external-artifact-stage">${externalArtifactCardHTML(inlineSvg, config.label || 'xyzrender artifact')}<div class="buret-xyzrender-sheet" aria-label="xyzrender sheet overlays"></div></div>`
+      : `<div class="buret-external-artifact-stage">${externalArtifactObjectHTML(artifact.path, config.label || 'xyzrender artifact')}<div class="buret-xyzrender-sheet" aria-label="xyzrender sheet overlays"></div></div>`;
     container.innerHTML = `
       <div class="buret-external-artifact-root">
         ${content}
@@ -2408,6 +2424,25 @@
     return value;
   }
 
+  function externalArtifactCardHTML(content, label) {
+    const safeLabel = escapeHTML(label || 'xyzrender artifact');
+    return `
+      <div class="buret-external-artifact-inline" aria-label="${safeLabel}">
+        <div class="buret-external-artifact-card selected" role="button" tabindex="0" aria-label="${safeLabel}">
+          <div class="buret-external-artifact-card-background"></div>
+          <div class="buret-external-artifact-card-body">${content}</div>
+          <div class="buret-xyzrender-sheet-rotate-handle" aria-label="Rotate structure" title="Rotate"></div>
+        </div>
+      </div>`;
+  }
+
+  function externalArtifactObjectHTML(path, label) {
+    return externalArtifactCardHTML(
+      `<object class="buret-external-artifact-object" data="${safeRelativeArtifactPath(path)}" type="image/svg+xml" aria-label="${escapeHTML(label || 'xyzrender artifact')}"></object>`,
+      label
+    );
+  }
+
   function escapeHTML(value) {
     return String(value == null ? '' : value)
       .replace(/&/gu, '&amp;')
@@ -2427,21 +2462,29 @@
       .buret-external-artifact-stage { position: absolute; inset: 0; transform: translate(0px, 0px) scale(1); transform-origin: 50% 50%; will-change: transform; cursor: grab; }
       .buret-external-artifact-stage.dragging { cursor: grabbing; }
       .buret-external-artifact-root.sheet-drop-active::after { content: "Drop onto xyzrender sheet"; position: absolute; inset: 14px; z-index: 36; border: 2px solid color-mix(in srgb, var(--buret-accent, #b45cff) 72%, transparent); border-radius: 14px; background: color-mix(in srgb, var(--buret-accent, #b45cff) 12%, transparent); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); display: flex; align-items: center; justify-content: center; font: 700 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; pointer-events: none; }
-      .buret-external-artifact-inline { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box; overflow: hidden; }
-      .buret-external-artifact-inline > svg { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; margin: auto; border-radius: 8px; box-shadow: 0 18px 54px rgba(0,0,0,0.28); }
-      .buret-external-artifact-object { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
+      .buret-external-artifact-inline { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box; overflow: hidden; pointer-events: none; }
+      .buret-external-artifact-card { --buret-sheet-rotation: 0deg; position: relative; display: grid; max-width: 100%; max-height: 100%; transform: rotate(var(--buret-sheet-rotation)); transform-origin: 50% 50%; border-radius: 8px; outline: 0 solid transparent; pointer-events: auto; touch-action: none; }
+      .buret-external-artifact-card.selected { outline: 2px solid var(--buret-accent, #b45cff); box-shadow: 0 0 0 3px color-mix(in srgb, var(--buret-accent, #b45cff) 24%, transparent); }
+      .buret-external-artifact-card-background { grid-area: 1 / 1; position: absolute; inset: 0; z-index: 0; border-radius: 8px; background: #fff; box-shadow: 0 18px 54px rgba(0,0,0,0.28); pointer-events: none; }
+      .buret-external-artifact-card-body { grid-area: 1 / 1; position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; max-width: 100%; max-height: 100%; pointer-events: none; }
+      .buret-external-artifact-card-body > svg { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; margin: auto; border-radius: 8px; }
+      .buret-external-artifact-object { width: min(100vw - 48px, 1024px); height: min(100vh - 48px, 768px); max-width: 100%; max-height: 100%; border: 0; display: block; border-radius: 8px; }
       .buret-xyzrender-sheet { position: absolute; inset: 0; z-index: 14; pointer-events: none; }
-      .buret-xyzrender-sheet-item { --buret-sheet-rotation: 0deg; position: absolute; left: 50%; top: 50%; width: clamp(118px, 24vw, 280px); height: clamp(118px, 24vw, 280px); transform: translate(-50%, -50%); transform-origin: 50% 50%; pointer-events: auto; touch-action: none; cursor: grab; border-radius: 10px; outline: 0 solid transparent; }
+      .buret-xyzrender-sheet-item { --buret-sheet-rotation: 0deg; position: absolute; left: 50%; top: 50%; width: clamp(118px, 24vw, 280px); height: clamp(118px, 24vw, 280px); transform: translate(-50%, -50%) rotate(var(--buret-sheet-rotation)); transform-origin: 50% 50%; pointer-events: auto; touch-action: none; cursor: grab; border-radius: 10px; outline: 0 solid transparent; }
       .buret-xyzrender-sheet-item.dragging { cursor: grabbing; }
       .buret-xyzrender-sheet-item.rotating { cursor: grabbing; }
       .buret-xyzrender-sheet-item.selected { outline: 2px solid var(--buret-accent, #b45cff); box-shadow: 0 0 0 3px color-mix(in srgb, var(--buret-accent, #b45cff) 24%, transparent); }
-      .buret-xyzrender-sheet-item-body { width: 100%; height: 100%; transform: rotate(var(--buret-sheet-rotation)); transform-origin: 50% 50%; pointer-events: none; }
+      .buret-xyzrender-sheet-item-background { position: absolute; inset: 0; z-index: 0; border-radius: 10px; background: #fff; pointer-events: none; }
+      .buret-xyzrender-sheet-item-body { position: relative; z-index: 1; width: 100%; height: 100%; pointer-events: none; }
       .buret-xyzrender-sheet-item-body > svg { display: block; width: 100%; height: 100%; overflow: visible; }
       .buret-xyzrender-sheet-rotate-handle { position: absolute; left: 50%; top: -34px; width: 17px; height: 17px; transform: translateX(-50%); border: 2px solid var(--buret-accent, #b45cff); border-radius: 999px; background: var(--buret-toolbar-background, rgba(12,13,14,0.92)); box-shadow: 0 8px 18px rgba(0,0,0,0.28); cursor: grab; opacity: 0; pointer-events: none; touch-action: none; transition: opacity 120ms ease, transform 120ms ease; }
       .buret-xyzrender-sheet-rotate-handle::before { content: ""; position: absolute; left: 50%; top: 17px; width: 2px; height: 17px; transform: translateX(-50%); background: var(--buret-accent, #b45cff); border-radius: 999px; }
+      .buret-external-artifact-card.selected .buret-xyzrender-sheet-rotate-handle,
+      .buret-external-artifact-card:hover .buret-xyzrender-sheet-rotate-handle,
       .buret-xyzrender-sheet-item.selected .buret-xyzrender-sheet-rotate-handle,
       .buret-xyzrender-sheet-item:hover .buret-xyzrender-sheet-rotate-handle { opacity: 1; pointer-events: auto; }
       .buret-xyzrender-sheet-rotate-handle:hover,
+      .buret-external-artifact-card.rotating .buret-xyzrender-sheet-rotate-handle,
       .buret-xyzrender-sheet-item.rotating .buret-xyzrender-sheet-rotate-handle { transform: translateX(-50%) scale(1.08); }
       .buret-xyzrender-sheet-item-label { position: absolute; left: 50%; bottom: -23px; transform: translateX(-50%); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 7px; border-radius: 999px; color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.84)); font: 10px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; opacity: 0; transition: opacity 120ms ease; }
       .buret-xyzrender-sheet-item.selected .buret-xyzrender-sheet-item-label { opacity: 1; }
@@ -2459,28 +2502,52 @@
   }
 
   function readStructureDropPaths(dataTransfer) {
-    if (!dataTransfer) return [];
-    const paths = [];
+    return readStructureDropPayload(dataTransfer).paths;
+  }
+
+  function readStructureDropPayload(dataTransfer) {
+    const payload = { paths: [], records: [] };
+    if (!dataTransfer) return payload;
     try {
       const custom = dataTransfer.getData(STRUCTURE_DRAG_MIME);
       if (custom) {
         const parsed = JSON.parse(custom);
-        if (Array.isArray(parsed)) paths.push(...parsed);
-        else if (Array.isArray(parsed?.paths)) paths.push(...parsed.paths);
+        if (Array.isArray(parsed)) payload.paths.push(...parsed);
+        else {
+          if (Array.isArray(parsed?.paths)) payload.paths.push(...parsed.paths);
+          if (Array.isArray(parsed?.records)) payload.records.push(...parsed.records.map(normalizeStructureDropRecord).filter(Boolean));
+        }
       }
     } catch (_) {}
-    if (paths.length === 0) {
+    if (payload.paths.length === 0 && payload.records.length === 0) {
       try {
         const text = dataTransfer.getData('text/plain');
-        if (text) paths.push(...text.split(/\r?\n/gu));
+        if (text) payload.paths.push(...text.split(/\r?\n/gu));
       } catch (_) {}
     }
-    if (paths.length === 0 && dataTransfer.files) {
+    if (payload.paths.length === 0 && payload.records.length === 0 && dataTransfer.files) {
       for (const file of Array.from(dataTransfer.files)) {
-        if (file && typeof file.path === 'string') paths.push(file.path);
+        if (file && typeof file.path === 'string') payload.paths.push(file.path);
       }
     }
-    return paths.map(path => String(path || '').trim()).filter(Boolean);
+    payload.paths = payload.paths.map(path => String(path || '').trim()).filter(Boolean);
+    return payload;
+  }
+
+  function normalizeStructureDropRecord(record) {
+    if (!record || typeof record !== 'object') return null;
+    const text = String(record.text || '').trim();
+    if (!text) return null;
+    const extension = String(record.inputExtension || record.extension || 'xyz')
+      .trim()
+      .toLowerCase()
+      .replace(/^\./u, '');
+    const path = String(record.path || `structure.${extension || 'xyz'}`).trim();
+    return {
+      path: path || `structure.${extension || 'xyz'}`,
+      inputExtension: extension || 'xyz',
+      text
+    };
   }
 
   function ensureXyzrenderSheet(stage) {
@@ -2498,14 +2565,17 @@
     const sheet = ensureXyzrenderSheet(stage);
     let sheetItemSerial = sheet.querySelectorAll('.buret-xyzrender-sheet-item').length;
 
-    const renderSheetItem = async (path, preset, controls) => {
+    const renderSheetItem = async (entry, preset, controls) => {
       const config = activeConfig || window.BurreteConfig || {};
       const endpoint = String(config.xyzrenderEndpoint || '').trim();
-      if (!endpoint) return requestHostXyzrenderSheetItem(path, preset, controls);
+      const path = sheetEntryLabel(entry);
+      const inputDataBase64 = sheetEntryInputDataBase64(entry);
+      const inputExtension = sheetEntryInputExtension(entry);
+      if (!endpoint) return requestHostXyzrenderSheetItem(entry, preset, controls);
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, preset, controls })
+        body: JSON.stringify({ path, preset, controls, inputDataBase64, inputExtension })
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(typeof payload?.error === 'string' ? payload.error : `xyzrender sheet request failed with status ${response.status}`);
@@ -2513,11 +2583,11 @@
       return payload;
     };
 
-    const addSheetItems = async (paths, point = null) => {
+    const addSheetItems = async (entries, point = null) => {
       const config = activeConfig || window.BurreteConfig || {};
-      const cleanPaths = Array.from(new Set((paths || []).map(path => String(path || '').trim()).filter(Boolean)));
-      if (cleanPaths.length === 0) return;
-      setStatus(`[web] Adding ${cleanPaths.length} structure${cleanPaths.length === 1 ? '' : 's'} to xyzrender sheet…`);
+      const cleanEntries = uniqueSheetEntries(entries);
+      if (cleanEntries.length === 0) return;
+      setStatus(`[web] Adding ${cleanEntries.length} structure${cleanEntries.length === 1 ? '' : 's'} to xyzrender sheet…`);
       const baseControls = normalizeXyzrenderControls(config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config);
       const controls = {
         ...baseControls,
@@ -2528,20 +2598,22 @@
         showAxes: false
       };
       const preset = normalizeXyzrenderPreset(config.externalArtifact?.preset || config.xyzrenderPreset || 'default');
-      for (const path of cleanPaths) {
+      for (const entry of cleanEntries) {
+        const label = sheetEntryLabel(entry);
         try {
-          const payload = await renderSheetItem(path, preset, controls);
+          const payload = await renderSheetItem(entry, preset, controls);
           sheetItemSerial += 1;
-          addXyzrenderSheetItem(sheet, payload.svg, path, point, sheetItemSerial, getStageScale);
+          addXyzrenderSheetItem(sheet, payload.svg, label, point, sheetItemSerial, getStageScale);
         } catch (error) {
-          setStatus(`Could not add ${path} to xyzrender sheet: ${error instanceof Error ? error.message : String(error)}`, 'error');
+          setStatus(`Could not add ${label} to xyzrender sheet: ${error instanceof Error ? error.message : String(error)}`, 'error');
         }
       }
       setTimeout(hideStatus, 450);
     };
 
     const onDragOver = event => {
-      if (readStructureDropPaths(event.dataTransfer).length === 0) return;
+      const payload = readStructureDropPayload(event.dataTransfer);
+      if (payload.paths.length === 0 && payload.records.length === 0) return;
       event.preventDefault();
       event.stopPropagation();
       root.classList.add('sheet-drop-active');
@@ -2552,12 +2624,13 @@
       root.classList.remove('sheet-drop-active');
     };
     const onDrop = event => {
-      const paths = readStructureDropPaths(event.dataTransfer);
-      if (paths.length === 0) return;
+      const payload = readStructureDropPayload(event.dataTransfer);
+      const entries = [...payload.paths, ...payload.records];
+      if (entries.length === 0) return;
       event.preventDefault();
       event.stopPropagation();
       root.classList.remove('sheet-drop-active');
-      void addSheetItems(paths, toStagePoint(event.clientX, event.clientY));
+      void addSheetItems(entries, toStagePoint(event.clientX, event.clientY));
     };
     const onMessage = event => {
       const data = event.data || {};
@@ -2572,7 +2645,7 @@
       if (data.source !== 'burrete-host' || body.type !== 'addXyzrenderSheetItems') return;
       const documentId = String((activeConfig || window.BurreteConfig || {}).documentId || '');
       if (body.documentId && documentId && String(body.documentId) !== documentId) return;
-      void addSheetItems(body.paths || null, null);
+      void addSheetItems([...(body.paths || []), ...(body.records || [])], null);
     };
 
     root.addEventListener('dragover', onDragOver);
@@ -2588,8 +2661,48 @@
     };
   }
 
-  function requestHostXyzrenderSheetItem(path, preset, controls) {
+  function uniqueSheetEntries(entries) {
+    const seen = new Set();
+    const result = [];
+    for (const entry of entries || []) {
+      const normalized = normalizeSheetEntry(entry);
+      if (!normalized) continue;
+      const key = typeof normalized === 'string'
+        ? `path:${normalized}`
+        : `record:${normalized.path}:${normalized.inputExtension}:${normalized.text}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(normalized);
+    }
+    return result;
+  }
+
+  function normalizeSheetEntry(entry) {
+    if (typeof entry === 'string') {
+      const path = entry.trim();
+      return path ? path : null;
+    }
+    return normalizeStructureDropRecord(entry);
+  }
+
+  function sheetEntryLabel(entry) {
+    return typeof entry === 'string' ? entry : String(entry?.path || 'structure.xyz');
+  }
+
+  function sheetEntryInputExtension(entry) {
+    return typeof entry === 'string' ? undefined : String(entry?.inputExtension || 'xyz');
+  }
+
+  function sheetEntryInputDataBase64(entry) {
+    if (typeof entry === 'string') return undefined;
+    const text = String(entry?.text || '');
+    if (!text) return undefined;
+    return bytesToBase64(new TextEncoder().encode(text));
+  }
+
+  function requestHostXyzrenderSheetItem(entry, preset, controls) {
     const requestId = `xyzrender-sheet-${++xyzrenderSheetRequestSerial}`;
+    const path = sheetEntryLabel(entry);
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         xyzrenderSheetRequests.delete(requestId);
@@ -2601,7 +2714,9 @@
         requestId,
         path,
         preset,
-        controls
+        controls,
+        inputDataBase64: sheetEntryInputDataBase64(entry),
+        inputExtension: sheetEntryInputExtension(entry)
       });
       if (!sent) {
         clearTimeout(timeout);
@@ -2645,11 +2760,12 @@
     const fallbackY = rect.height * (0.42 + (Math.floor((serial - 1) / 4) % 4) * 0.06);
     item.style.left = `${Number.isFinite(point?.x) ? point.x : fallbackX}px`;
     item.style.top = `${Number.isFinite(point?.y) ? point.y : fallbackY}px`;
-    item.innerHTML = `<div class="buret-xyzrender-sheet-item-body">${svg}</div><div class="buret-xyzrender-sheet-rotate-handle" aria-label="Rotate structure" title="Rotate"></div><div class="buret-xyzrender-sheet-item-label">${escapeHTML(path.split('/').pop() || path)}</div>`;
-    sheet.querySelectorAll('.buret-xyzrender-sheet-item.selected').forEach(existing => existing.classList.remove('selected'));
+    item.innerHTML = `<div class="buret-xyzrender-sheet-item-background"></div><div class="buret-xyzrender-sheet-item-body">${svg}</div><div class="buret-xyzrender-sheet-rotate-handle" aria-label="Rotate structure" title="Rotate"></div><div class="buret-xyzrender-sheet-item-label">${escapeHTML(path.split('/').pop() || path)}</div>`;
     sheet.appendChild(item);
+    selectRotatableArtifact(item);
     installXyzrenderSheetItemDrag(item, getStageScale);
     installXyzrenderSheetItemRotation(item);
+    installRotatableArtifactKeyboard(item, { removable: true });
   }
 
   function setSheetItemRotation(item, rotation) {
@@ -2658,23 +2774,68 @@
     item.style.setProperty('--buret-sheet-rotation', `${normalized}deg`);
   }
 
+  function selectRotatableArtifact(item) {
+    const root = item?.closest?.('.buret-external-artifact-root') || document;
+    root.querySelectorAll('.buret-xyzrender-sheet-item.selected, .buret-external-artifact-card.selected').forEach(existing => {
+      if (existing !== item) existing.classList.remove('selected');
+    });
+    item.classList.add('selected');
+  }
+
+  function installRotatableArtifactKeyboard(item, options = {}) {
+    const removable = options.removable !== false;
+    const onKeyDown = event => {
+      if ((event.key === 'Backspace' || event.key === 'Delete') && removable && item.classList.contains('selected')) {
+        event.preventDefault();
+        item.remove();
+        return;
+      }
+      if (!item.classList.contains('selected')) return;
+      if (event.key === '[' || event.key === ']') {
+        event.preventDefault();
+        const direction = event.key === ']' ? 1 : -1;
+        setSheetItemRotation(item, (parseFloat(item.dataset.rotation || '0') || 0) + direction * 15);
+        return;
+      }
+      if (event.key === '0') {
+        event.preventDefault();
+        setSheetItemRotation(item, 0);
+      }
+    };
+    item.addEventListener('keydown', onKeyDown);
+  }
+
+  function installExternalArtifactCardInteractions(root) {
+    if (!root) return;
+    root.querySelectorAll('.buret-external-artifact-card').forEach(card => {
+      if (card.dataset.buretRotatableInstalled === 'true') return;
+      card.dataset.buretRotatableInstalled = 'true';
+      card.addEventListener('pointerdown', event => {
+        if (event.target?.closest?.('.buret-xyzrender-sheet-rotate-handle')) return;
+        event.stopPropagation();
+        selectRotatableArtifact(card);
+      });
+      card.addEventListener('click', event => {
+        event.stopPropagation();
+        selectRotatableArtifact(card);
+        try { card.focus({ preventScroll: true }); } catch (_) {}
+      });
+      installXyzrenderSheetItemRotation(card);
+      installRotatableArtifactKeyboard(card, { removable: false });
+    });
+  }
+
   function installXyzrenderSheetItemDrag(item, getStageScale) {
     let pointerId = null;
     let startX = 0;
     let startY = 0;
     let startLeft = 0;
     let startTop = 0;
-    const select = () => {
-      item.parentElement?.querySelectorAll('.buret-xyzrender-sheet-item.selected').forEach(existing => {
-        if (existing !== item) existing.classList.remove('selected');
-      });
-      item.classList.add('selected');
-    };
     const onPointerDown = event => {
       if (event.target?.closest?.('.buret-xyzrender-sheet-rotate-handle')) return;
       event.preventDefault();
       event.stopPropagation();
-      select();
+      selectRotatableArtifact(item);
       pointerId = event.pointerId;
       startX = event.clientX;
       startY = event.clientY;
@@ -2695,30 +2856,11 @@
       item.classList.remove('dragging');
       try { item.releasePointerCapture(event.pointerId); } catch (_) {}
     };
-    const onKeyDown = event => {
-      if ((event.key === 'Backspace' || event.key === 'Delete') && item.classList.contains('selected')) {
-        event.preventDefault();
-        item.remove();
-        return;
-      }
-      if (!item.classList.contains('selected')) return;
-      if (event.key === '[' || event.key === ']') {
-        event.preventDefault();
-        const direction = event.key === ']' ? 1 : -1;
-        setSheetItemRotation(item, (parseFloat(item.dataset.rotation || '0') || 0) + direction * 15);
-        return;
-      }
-      if (event.key === '0') {
-        event.preventDefault();
-        setSheetItemRotation(item, 0);
-      }
-    };
     item.addEventListener('pointerdown', onPointerDown);
     item.addEventListener('pointermove', onPointerMove);
     item.addEventListener('pointerup', finish);
     item.addEventListener('pointercancel', finish);
-    item.addEventListener('click', event => { event.stopPropagation(); select(); });
-    item.addEventListener('keydown', onKeyDown);
+    item.addEventListener('click', event => { event.stopPropagation(); selectRotatableArtifact(item); });
   }
 
   function installXyzrenderSheetItemRotation(item) {
@@ -2733,17 +2875,11 @@
       const centerY = rect.top + rect.height / 2;
       return Math.atan2(event.clientY - centerY, event.clientX - centerX) * 180 / Math.PI;
     };
-    const select = () => {
-      item.parentElement?.querySelectorAll('.buret-xyzrender-sheet-item.selected').forEach(existing => {
-        if (existing !== item) existing.classList.remove('selected');
-      });
-      item.classList.add('selected');
-      try { item.focus({ preventScroll: true }); } catch (_) {}
-    };
     const onPointerDown = event => {
       event.preventDefault();
       event.stopPropagation();
-      select();
+      selectRotatableArtifact(item);
+      try { item.focus({ preventScroll: true }); } catch (_) {}
       pointerId = event.pointerId;
       startAngle = angleForEvent(event);
       startRotation = parseFloat(item.dataset.rotation || '0') || 0;
@@ -2887,6 +3023,7 @@
         y: (Number(clientY) - rect.top - translateY) / scale
       };
     };
+    installExternalArtifactCardInteractions(root);
     const sheetCleanup = installExternalArtifactSheet(root, stage, toStagePoint, () => scale);
 
     root.addEventListener('wheel', onWheel, { passive: false });
@@ -3500,9 +3637,93 @@
     menu.style.top = `${Math.round(top)}px`;
   }
 
-  function moleculeContextMenuAction(action, label) {
-    setStatus(`[web] ${label} is not implemented yet.`);
-    hideMolstarContextMenu();
+  function molstarContextStructures() {
+    const hierarchy = activeViewer?.plugin?.managers?.structure?.hierarchy;
+    return Array.isArray(hierarchy?.current?.structures) ? hierarchy.current.structures : [];
+  }
+
+  function molstarContextTargetStructures() {
+    const structures = molstarContextStructures();
+    if (!structures.length) return [];
+    if (activeConfig?.docking && structures.length > 1) return structures.slice(1);
+    return structures.length === 1 ? structures : [structures[structures.length - 1]];
+  }
+
+  function molstarContextTargetLabel(structures) {
+    const labels = structures
+      .map(structure => structure?.cell?.obj?.label || structure?.obj?.label || '')
+      .filter(Boolean);
+    if (labels.length === 1) return labels[0];
+    if (labels.length > 1) return `${labels.length} structures`;
+    return activeConfig?.label || 'Mol* structure';
+  }
+
+  async function resetMolstarCameraForContext() {
+    try {
+      const result = await window.BurreteAgent?.run?.({
+        command: 'resetCamera',
+        args: { durationMs: 250 }
+      });
+      if (result?.ok !== false) return true;
+    } catch (_) {}
+    try {
+      activeViewer?.plugin?.canvas3d?.requestCameraReset?.({ durationMs: 250 });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function inspectMolstarContextTarget(targetLabel) {
+    const result = await window.BurreteAgent?.run?.({
+      command: 'summary',
+      args: { includeLigands: true }
+    });
+    if (!result || result.ok === false) {
+      throw new Error(result?.error?.message || 'Mol* summary is unavailable.');
+    }
+    const counts = result.result?.counts || {};
+    const parts = [
+      `${counts.structures ?? 0} structures`,
+      `${counts.atoms ?? 0} atoms`,
+      `${counts.residues ?? 0} residues`,
+      `${counts.ligands ?? 0} ligands`
+    ];
+    setStatus(`[web] ${targetLabel}: ${parts.join(' · ')}`);
+  }
+
+  async function moleculeContextMenuAction(action, label) {
+    const hierarchy = activeViewer?.plugin?.managers?.structure?.hierarchy;
+    const targets = molstarContextTargetStructures();
+    const targetLabel = molstarContextTargetLabel(targets);
+    try {
+      if (action === 'inspect') {
+        await inspectMolstarContextTarget(targetLabel);
+      } else if (action === 'hide') {
+        if (!targets.length || typeof hierarchy?.toggleVisibility !== 'function') throw new Error('No Mol* structure is available to hide.');
+        hierarchy.toggleVisibility(targets, 'hide');
+        setStatus(`[web] Hidden ${targetLabel}.`);
+      } else if (action === 'remove') {
+        if (!targets.length || typeof hierarchy?.remove !== 'function') throw new Error('No Mol* structure is available to delete.');
+        await hierarchy.remove(targets, true);
+        setStatus(`[web] Deleted ${targetLabel}.`);
+      } else if (action === 'molstar') {
+        const handled = await resetMolstarCameraForContext();
+        setStatus(handled ? `[web] Focused ${targetLabel} in Mol*.` : `[web] ${targetLabel} is already open in Mol*.`);
+      } else if (action === 'separate-window') {
+        const posted = postHostMessage({
+          type: 'openMolstarContextDocument',
+          renderer: 'molstar'
+        });
+        setStatus(posted ? `[web] Opening ${activeConfig?.label || targetLabel} in a separate Mol* view...` : '[web] Separate Mol* view is unavailable in this host.');
+      } else {
+        setStatus(`[web] ${label} is unavailable.`);
+      }
+    } catch (error) {
+      setStatus(`[web] ${label} failed.\n\n${error?.message || String(error)}`, 'error');
+    } finally {
+      hideMolstarContextMenu();
+    }
   }
 
   function hideMolstarContextMenu() {
@@ -3535,7 +3756,7 @@
       button.setAttribute('role', 'menuitem');
       button.dataset.buretMoleculeAction = action;
       button.textContent = label;
-      button.addEventListener('click', () => moleculeContextMenuAction(action, label));
+      button.addEventListener('click', () => { void moleculeContextMenuAction(action, label); });
       menu.appendChild(button);
     });
     document.body.appendChild(menu);
