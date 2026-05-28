@@ -789,11 +789,15 @@
     const config = activeConfig || window.BurreteConfig || {};
     if (config.tauriViewer !== false) return;
     const cb = window.BurreteCacheBuster || String(Date.now());
+    const format = normalizeFormat(config.molstarFormat || config.format);
+    const trajectoryFrameCount = Number(config.trajectoryFrameCount || 0);
     const nextConfig = {
       ...config,
       renderer: 'molstar',
       xyzrenderViewer: false,
-      externalArtifact: null
+      externalArtifact: null,
+      sdfPosePager: format === 'sdf' && config.binary !== true,
+      trajectoryControls: config.trajectoryControls === true || trajectoryFrameCount > 1
     };
     activeConfig = nextConfig;
     window.BurreteConfig = nextConfig;
