@@ -121,6 +121,8 @@ for (const commandPath of [
   'commands::startup::startup_documents',
   'commands::documents::pick_open_targets',
   'commands::documents::open_documents',
+  'commands::documents::read_structure_text',
+  'commands::documents::open_text_structure',
   'commands::grid::grid_fetch_page',
   'commands::documents::sync_viewer_preferences',
   'commands::preview_cache::clear_preview_cache',
@@ -136,6 +138,8 @@ for (const commandPath of [
 assert.match(startupCommand, /#\[tauri::command\]\s+pub\(crate\) fn startup_documents/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn pick_open_targets/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_documents/);
+assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn read_structure_text/);
+assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_text_structure/);
 assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_fetch_page/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn sync_viewer_preferences/);
 assert.match(documentsCommand, /"molstarStyle"/);
