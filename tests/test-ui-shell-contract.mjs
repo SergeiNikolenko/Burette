@@ -1060,6 +1060,8 @@ assert.match(previewViewer, /document\.addEventListener\('contextmenu', onContex
 assert.match(previewViewer, /if \(event\.button === 2\) \{\s*openFromEvent\(event\);\s*return;/);
 assert.match(previewViewer, /function isMolstarContextMenuTarget\(target\)/);
 assert.match(previewViewer, /function molstarContextPickFromEvent\(event\)/);
+assert.match(previewViewer, /canvas3d\.setProps\(\{ pickPadding: 0 \}\)/);
+assert.match(previewViewer, /canvas3d\.setProps\(\{ pickPadding: previousPickPadding \}\)/);
 assert.match(previewViewer, /canvas3d\.identify\(\[event\.clientX - rect\.left, event\.clientY - rect\.top\]\)/);
 assert.match(previewViewer, /canvas3d\.getLoci\(picking\.id\)/);
 assert.match(previewViewer, /\.msp-plugin \.msp-viewport-host/);

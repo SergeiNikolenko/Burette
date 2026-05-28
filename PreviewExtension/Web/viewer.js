@@ -4216,7 +4216,10 @@
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
     if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) return null;
+    const previousPickPadding = Number.isFinite(Number(canvas3d.props?.pickPadding)) ? canvas3d.props.pickPadding : undefined;
+    const shouldRestorePickPadding = previousPickPadding !== undefined && previousPickPadding !== 0 && typeof canvas3d.setProps === 'function';
     try {
+      if (shouldRestorePickPadding) canvas3d.setProps({ pickPadding: 0 });
       const picking = canvas3d.identify([event.clientX - rect.left, event.clientY - rect.top]);
       const pick = picking?.id ? canvas3d.getLoci(picking.id) : null;
       if (!pick?.loci || molstarLociIsEmpty(pick.loci)) return null;
@@ -4224,6 +4227,8 @@
     } catch (error) {
       debug('Mol* context pick failed: ' + (error?.message || String(error)));
       return null;
+    } finally {
+      if (shouldRestorePickPadding) canvas3d.setProps({ pickPadding: previousPickPadding });
     }
   }
 
