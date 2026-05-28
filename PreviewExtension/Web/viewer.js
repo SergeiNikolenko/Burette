@@ -2498,7 +2498,9 @@
       .buret-external-artifact-card.resized { width: var(--buret-card-width); height: var(--buret-card-height); }
       .buret-external-artifact-card.dragging { cursor: grabbing; }
       .buret-external-artifact-card.resizing { cursor: nwse-resize; }
-      .buret-external-artifact-card.selected { outline: 1.5px solid color-mix(in srgb, var(--buret-accent, #b45cff) 58%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--buret-accent, #b45cff) 12%, transparent); }
+      .buret-external-artifact-card.selected { outline: 0 solid transparent; box-shadow: none; }
+      .buret-external-artifact-card:has(.buret-xyzrender-resize-handle:hover),
+      .buret-external-artifact-card.resizing { outline: 1px solid color-mix(in srgb, var(--buret-accent, #b45cff) 70%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--buret-accent, #b45cff) 16%, transparent); }
       .buret-external-artifact-card-background { grid-area: 1 / 1; position: absolute; inset: 0; z-index: 0; border-radius: 8px; background: #fff; box-shadow: 0 18px 54px rgba(0,0,0,0.28); pointer-events: none; }
       .buret-external-artifact-card-body { grid-area: 1 / 1; position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; max-width: 100%; max-height: 100%; pointer-events: none; }
       .buret-external-artifact-card-body > svg { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; margin: auto; border-radius: 8px; }
@@ -2511,22 +2513,24 @@
       .buret-xyzrender-sheet-item.dragging { cursor: grabbing; }
       .buret-xyzrender-sheet-item.rotating { cursor: grabbing; }
       .buret-xyzrender-sheet-item.resizing { cursor: nwse-resize; }
-      .buret-xyzrender-sheet-item.selected { outline: 1.5px solid color-mix(in srgb, var(--buret-accent, #b45cff) 58%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--buret-accent, #b45cff) 12%, transparent); }
+      .buret-xyzrender-sheet-item.selected { outline: 0 solid transparent; box-shadow: none; }
+      .buret-xyzrender-sheet-item:has(.buret-xyzrender-resize-handle:hover),
+      .buret-xyzrender-sheet-item.resizing { outline: 1px solid color-mix(in srgb, var(--buret-accent, #b45cff) 70%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--buret-accent, #b45cff) 16%, transparent); }
       .buret-xyzrender-sheet-item-background { position: absolute; inset: 0; z-index: 0; border-radius: 10px; background: #fff; pointer-events: none; }
       .buret-xyzrender-sheet-item-body { position: relative; z-index: 1; width: 100%; height: 100%; pointer-events: none; }
       .buret-xyzrender-sheet-item-body > svg { display: block; width: 100%; height: 100%; overflow: visible; }
       .buret-xyzrender-rotate-hud { position: absolute; left: 50%; top: 50%; z-index: 7; width: calc(var(--buret-rotate-radius) * 2 + 42px); height: calc(var(--buret-rotate-radius) * 2 + 42px); transform: translate(-50%, -50%) rotate(var(--buret-sheet-rotation-negative)); transform-origin: 50% 50%; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
-      .buret-xyzrender-rotate-ring { position: absolute; inset: 21px; border: 1px dashed color-mix(in srgb, var(--buret-accent, #b45cff) 24%, rgba(160,173,214,0.26)); border-radius: 999px; }
-      .buret-xyzrender-rotate-needle { position: absolute; left: 50%; top: 50%; width: 1px; height: var(--buret-rotate-radius); transform: translateX(-50%) rotate(var(--buret-active-angle)); transform-origin: 50% 0%; border-left: 1.5px dashed color-mix(in srgb, var(--buret-accent, #b45cff) 54%, transparent); }
-      .buret-xyzrender-rotate-needle::after { content: ""; position: absolute; left: 50%; bottom: -7px; width: 15px; height: 15px; transform: translateX(-50%); border-radius: 999px; background: color-mix(in srgb, var(--buret-accent, #b45cff) 72%, var(--buret-toolbar-background, #111)); box-shadow: 0 5px 14px color-mix(in srgb, var(--buret-accent, #b45cff) 22%, transparent); }
+      .buret-xyzrender-rotate-ring { position: absolute; inset: 21px; border: 1px dashed color-mix(in srgb, var(--buret-accent, #b45cff) 16%, rgba(160,173,214,0.20)); border-radius: 999px; }
+      .buret-xyzrender-rotate-needle { position: absolute; left: 50%; top: 50%; width: 1px; height: var(--buret-rotate-radius); transform: translateX(-50%) rotate(var(--buret-active-angle)); transform-origin: 50% 0%; border-left: 1.25px dashed color-mix(in srgb, var(--buret-accent, #b45cff) 38%, transparent); }
+      .buret-xyzrender-rotate-needle::after { content: ""; position: absolute; left: 50%; bottom: -6px; width: 13px; height: 13px; transform: translateX(-50%); border-radius: 999px; background: color-mix(in srgb, var(--buret-accent, #b45cff) 46%, var(--buret-toolbar-background, #111)); box-shadow: 0 5px 12px color-mix(in srgb, var(--buret-accent, #b45cff) 14%, transparent); }
       .buret-xyzrender-rotate-live { position: absolute; left: 50%; top: 15px; transform: translateX(-50%); color: var(--buret-toolbar-color, rgba(255,255,255,0.94)); background: color-mix(in srgb, var(--buret-toolbar-background, rgba(17,19,24,0.82)) 86%, transparent); border: 1px solid var(--buret-toolbar-border, rgba(255,255,255,0.16)); border-radius: 999px; padding: 2px 7px; font: 700 12px/1.25 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; box-shadow: 0 6px 16px rgba(0,0,0,0.18); }
-      .buret-xyzrender-rotate-label { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(var(--buret-degree-angle)) translateY(calc(-1 * (var(--buret-rotate-radius) + 22px))) rotate(var(--buret-degree-counter-angle)); color: rgba(160,173,214,0.74); font: 600 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
-      .buret-xyzrender-rotate-label.active { color: color-mix(in srgb, var(--buret-accent, #b45cff) 76%, var(--buret-toolbar-color, #fff)); }
-      .buret-xyzrender-rotate-tick { position: absolute; left: 50%; top: 50%; width: 1px; height: 9px; transform: translate(-50%, -50%) rotate(var(--buret-degree-angle)) translateY(calc(-1 * var(--buret-rotate-radius))); transform-origin: 50% 100%; background: rgba(125,142,183,0.28); border-radius: 999px; }
+      .buret-xyzrender-rotate-label { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(var(--buret-degree-angle)) translateY(calc(-1 * (var(--buret-rotate-radius) + 22px))) rotate(var(--buret-degree-counter-angle)); color: rgba(160,173,214,0.56); font: 600 11px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
+      .buret-xyzrender-rotate-label.active { color: color-mix(in srgb, var(--buret-accent, #b45cff) 58%, var(--buret-toolbar-color, #fff)); }
+      .buret-xyzrender-rotate-tick { position: absolute; left: 50%; top: 50%; width: 1px; height: 8px; transform: translate(-50%, -50%) rotate(var(--buret-degree-angle)) translateY(calc(-1 * var(--buret-rotate-radius))); transform-origin: 50% 100%; background: rgba(125,142,183,0.20); border-radius: 999px; }
       .buret-xyzrender-sheet-rotate-handle { position: absolute; left: 50%; top: 50%; z-index: 12; width: 32px; height: 32px; transform: translate(-50%, calc(-1 * var(--buret-rotate-radius) - 50%)) scale(var(--buret-rotate-handle-scale)); border: 0; border-radius: 999px; cursor: grab; opacity: 0; pointer-events: none; touch-action: none; transition: opacity 120ms ease, transform 120ms ease; }
-      .buret-xyzrender-sheet-rotate-handle::before { content: ""; position: absolute; left: 50%; top: 25px; width: 1.5px; height: max(18px, calc(var(--buret-rotate-radius) - 14px)); transform: translateX(-50%); background: color-mix(in srgb, var(--buret-accent, #b45cff) 45%, transparent); border-radius: 999px; }
-      .buret-xyzrender-rotate-handle-dot { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; transform: translate(-50%, -50%); border: 1.5px solid color-mix(in srgb, var(--buret-accent, #b45cff) 72%, var(--buret-toolbar-color, #fff)); border-radius: 999px; background: var(--buret-toolbar-background, rgba(12,13,14,0.92)); box-shadow: 0 7px 16px rgba(0,0,0,0.24); }
-      .buret-xyzrender-rotate-handle-degree { position: absolute; left: calc(100% + 3px); top: 50%; transform: translateY(-50%) rotate(var(--buret-sheet-rotation-negative)); transform-origin: 0 50%; padding: 2px 6px; border-radius: 999px; color: var(--buret-toolbar-color, #fff); background: color-mix(in srgb, var(--buret-accent, #b45cff) 48%, var(--buret-toolbar-background, #111)); font: 700 10px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; opacity: 0; white-space: nowrap; box-shadow: 0 5px 14px color-mix(in srgb, var(--buret-accent, #b45cff) 18%, transparent); }
+      .buret-xyzrender-sheet-rotate-handle::before { content: ""; position: absolute; left: 50%; top: 25px; width: 1.25px; height: max(18px, calc(var(--buret-rotate-radius) - 14px)); transform: translateX(-50%); background: color-mix(in srgb, var(--buret-accent, #b45cff) 28%, transparent); border-radius: 999px; }
+      .buret-xyzrender-rotate-handle-dot { position: absolute; left: 50%; top: 50%; width: 17px; height: 17px; transform: translate(-50%, -50%); border: 1.25px solid color-mix(in srgb, var(--buret-accent, #b45cff) 54%, var(--buret-toolbar-color, #fff)); border-radius: 999px; background: var(--buret-toolbar-background, rgba(12,13,14,0.92)); box-shadow: 0 7px 14px rgba(0,0,0,0.20); }
+      .buret-xyzrender-rotate-handle-degree { position: absolute; left: calc(100% + 3px); top: 50%; transform: translateY(-50%) rotate(var(--buret-sheet-rotation-negative)); transform-origin: 0 50%; padding: 2px 6px; border-radius: 999px; color: var(--buret-toolbar-color, #fff); background: color-mix(in srgb, var(--buret-accent, #b45cff) 30%, var(--buret-toolbar-background, #111)); font: 700 10px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; opacity: 0; white-space: nowrap; box-shadow: 0 5px 14px color-mix(in srgb, var(--buret-accent, #b45cff) 12%, transparent); }
       .buret-external-artifact-card.selected .buret-xyzrender-sheet-rotate-handle,
       .buret-external-artifact-card:hover .buret-xyzrender-sheet-rotate-handle,
       .buret-xyzrender-sheet-item.selected .buret-xyzrender-sheet-rotate-handle,
@@ -2540,28 +2544,35 @@
       .buret-xyzrender-sheet-item.rotating .buret-xyzrender-sheet-rotate-handle { transition: none; }
       .buret-external-artifact-card.rotating .buret-xyzrender-rotate-handle-degree,
       .buret-xyzrender-sheet-item.rotating .buret-xyzrender-rotate-handle-degree { opacity: 1; }
-      .buret-xyzrender-resize-handle { position: absolute; z-index: 11; opacity: 0; pointer-events: none; touch-action: none; border-radius: 999px; background: color-mix(in srgb, var(--buret-accent, #b45cff) 62%, var(--buret-toolbar-background, #111)); box-shadow: 0 0 0 1.5px rgba(13,14,16,0.78), 0 5px 14px rgba(0,0,0,0.20); transition: opacity 120ms ease, transform 120ms ease; }
-      .buret-external-artifact-card.selected .buret-xyzrender-resize-handle,
-      .buret-external-artifact-card:hover .buret-xyzrender-resize-handle,
-      .buret-xyzrender-sheet-item.selected .buret-xyzrender-resize-handle,
-      .buret-xyzrender-sheet-item:hover .buret-xyzrender-resize-handle { opacity: 1; pointer-events: auto; }
-      .buret-xyzrender-resize-handle:hover { transform: scale(1.16); }
+      .buret-xyzrender-resize-handle { position: absolute; z-index: 11; pointer-events: auto; touch-action: none; border-radius: 999px; background: transparent; }
+      .buret-xyzrender-resize-handle::after { content: ""; position: absolute; left: 50%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(0.92); border-radius: 999px; background: color-mix(in srgb, var(--buret-accent, #b45cff) 86%, var(--buret-toolbar-color, #fff)); box-shadow: 0 0 0 1px rgba(13,14,16,0.72), 0 4px 12px color-mix(in srgb, var(--buret-accent, #b45cff) 24%, transparent); transition: opacity 100ms ease, transform 100ms ease; }
+      .buret-xyzrender-resize-handle:hover::after,
+      .buret-external-artifact-card.resizing .buret-xyzrender-resize-handle::after,
+      .buret-xyzrender-sheet-item.resizing .buret-xyzrender-resize-handle::after { opacity: 1; transform: translate(-50%, -50%) scale(1); }
       .buret-xyzrender-resize-n,
-      .buret-xyzrender-resize-s { left: 50%; width: 32px; height: 10px; transform: translateX(-50%); cursor: ns-resize; }
-      .buret-xyzrender-resize-n { top: -5px; }
-      .buret-xyzrender-resize-s { bottom: -5px; }
+      .buret-xyzrender-resize-s { left: 50%; width: 40px; height: 16px; transform: translateX(-50%); cursor: ns-resize; }
+      .buret-xyzrender-resize-n::after,
+      .buret-xyzrender-resize-s::after { width: 18px; height: 5px; }
+      .buret-xyzrender-resize-n { top: -8px; }
+      .buret-xyzrender-resize-s { bottom: -8px; }
       .buret-xyzrender-resize-e,
-      .buret-xyzrender-resize-w { top: 50%; width: 10px; height: 32px; transform: translateY(-50%); cursor: ew-resize; }
-      .buret-xyzrender-resize-e { right: -5px; }
-      .buret-xyzrender-resize-w { left: -5px; }
+      .buret-xyzrender-resize-w { top: 50%; width: 16px; height: 40px; transform: translateY(-50%); cursor: ew-resize; }
+      .buret-xyzrender-resize-e::after,
+      .buret-xyzrender-resize-w::after { width: 5px; height: 18px; }
+      .buret-xyzrender-resize-e { right: -8px; }
+      .buret-xyzrender-resize-w { left: -8px; }
       .buret-xyzrender-resize-ne,
       .buret-xyzrender-resize-nw,
       .buret-xyzrender-resize-se,
-      .buret-xyzrender-resize-sw { width: 14px; height: 14px; }
-      .buret-xyzrender-resize-ne { top: -7px; right: -7px; cursor: nesw-resize; }
-      .buret-xyzrender-resize-nw { top: -7px; left: -7px; cursor: nwse-resize; }
-      .buret-xyzrender-resize-se { bottom: -7px; right: -7px; cursor: nwse-resize; }
-      .buret-xyzrender-resize-sw { bottom: -7px; left: -7px; cursor: nesw-resize; }
+      .buret-xyzrender-resize-sw { width: 20px; height: 20px; }
+      .buret-xyzrender-resize-ne::after,
+      .buret-xyzrender-resize-nw::after,
+      .buret-xyzrender-resize-se::after,
+      .buret-xyzrender-resize-sw::after { width: 8px; height: 8px; }
+      .buret-xyzrender-resize-ne { top: -10px; right: -10px; cursor: nesw-resize; }
+      .buret-xyzrender-resize-nw { top: -10px; left: -10px; cursor: nwse-resize; }
+      .buret-xyzrender-resize-se { bottom: -10px; right: -10px; cursor: nwse-resize; }
+      .buret-xyzrender-resize-sw { bottom: -10px; left: -10px; cursor: nesw-resize; }
       .buret-xyzrender-sheet-item-label { position: absolute; left: 50%; bottom: -23px; transform: translateX(-50%); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 7px; border-radius: 999px; color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.84)); font: 10px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; opacity: 0; transition: opacity 120ms ease; }
       .buret-xyzrender-sheet-item.selected .buret-xyzrender-sheet-item-label { opacity: 1; }
       .buret-xyz-badge { position: absolute; left: 14px; bottom: 14px; z-index: 30; max-width: calc(100vw - 28px); box-sizing: border-box; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--buret-toolbar-border, rgba(255,255,255,0.12)); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.9)); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: 0 8px 22px rgba(0,0,0,0.20); font: 11px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; pointer-events: none; }
@@ -2928,6 +2939,23 @@
     item.classList.add('selected');
   }
 
+  function clearRotatableArtifactSelection(root = document) {
+    root.querySelectorAll('.buret-xyzrender-sheet-item.selected, .buret-external-artifact-card.selected').forEach(existing => {
+      existing.classList.remove('selected');
+      existing.classList.remove('rotating', 'resizing', 'dragging');
+    });
+  }
+
+  function installRotatableArtifactSelectionClear(root) {
+    if (!root || root.dataset.buretSelectionClearInstalled === 'true') return;
+    root.dataset.buretSelectionClearInstalled = 'true';
+    root.addEventListener('pointerdown', event => {
+      if (event.button !== 0) return;
+      if (event.target?.closest?.('.buret-external-artifact-card, .buret-xyzrender-sheet-item, #buret-toolbar, .buret-xyzrender-popover, .buret-xyz-badge')) return;
+      clearRotatableArtifactSelection(root);
+    });
+  }
+
   function installRotatableArtifactKeyboard(item, options = {}) {
     const removable = options.removable !== false;
     const onKeyDown = event => {
@@ -3087,6 +3115,7 @@
 
   function installExternalArtifactCardInteractions(root, getStageScale) {
     if (!root) return;
+    installRotatableArtifactSelectionClear(root);
     root.querySelectorAll('.buret-external-artifact-card').forEach(card => {
       if (card.dataset.buretRotatableInstalled === 'true') return;
       card.dataset.buretRotatableInstalled = 'true';
@@ -3198,6 +3227,16 @@
     let pointerId = null;
     let startAngle = 0;
     let startRotation = 0;
+    const removeGlobalRotationGuards = () => {
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+      window.removeEventListener('blur', cancelRotation);
+    };
+    const cancelRotation = () => {
+      pointerId = null;
+      item.classList.remove('rotating');
+      removeGlobalRotationGuards();
+    };
     const angleForEvent = event => {
       const rect = item.getBoundingClientRect();
       const centerX = rect.left + rect.width / 2;
@@ -3215,6 +3254,9 @@
       startRotation = parseFloat(item.dataset.rotation || '0') || 0;
       item.classList.add('rotating');
       try { handle.setPointerCapture(event.pointerId); } catch (_) {}
+      window.addEventListener('pointerup', finish);
+      window.addEventListener('pointercancel', finish);
+      window.addEventListener('blur', cancelRotation);
     };
     const onPointerMove = event => {
       if (pointerId !== event.pointerId) return;
@@ -3226,11 +3268,13 @@
       pointerId = null;
       item.classList.remove('rotating');
       try { handle.releasePointerCapture(event.pointerId); } catch (_) {}
+      removeGlobalRotationGuards();
     };
     handle.addEventListener('pointerdown', onPointerDown);
     handle.addEventListener('pointermove', onPointerMove);
     handle.addEventListener('pointerup', finish);
     handle.addEventListener('pointercancel', finish);
+    handle.addEventListener('lostpointercapture', cancelRotation);
     resetRotatableArtifactRotateRadius(item);
   }
 
@@ -4066,10 +4110,10 @@
     const rect = canvas.getBoundingClientRect();
     if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) return null;
     try {
-      const pickingId = canvas3d.identify([event.clientX - rect.left, event.clientY - rect.top]);
-      const pick = pickingId ? canvas3d.getLoci(pickingId) : null;
+      const picking = canvas3d.identify([event.clientX - rect.left, event.clientY - rect.top]);
+      const pick = picking?.id ? canvas3d.getLoci(picking.id) : null;
       if (!pick?.loci || molstarLociIsEmpty(pick.loci)) return null;
-      return pick;
+      return { ...pick, position: picking.position };
     } catch (error) {
       debug('Mol* context pick failed: ' + (error?.message || String(error)));
       return null;
@@ -4393,7 +4437,7 @@
       molstarContextMenuCleanup();
       molstarContextMenuCleanup = null;
     }
-    const onContextMenu = (event) => {
+    const openFromEvent = (event) => {
       if (!viewer || !isMolstarContextMenuTarget(event.target)) return;
       event.preventDefault();
       event.stopPropagation();
@@ -4404,7 +4448,14 @@
       }
       showMolstarContextMenu(event, contextPick);
     };
+    const onContextMenu = (event) => {
+      openFromEvent(event);
+    };
     const onPointerDown = (event) => {
+      if (event.button === 2) {
+        openFromEvent(event);
+        return;
+      }
       const target = event.target;
       if (target instanceof Element && target.closest('.buret-molecule-context-menu')) return;
       hideMolstarContextMenu();
