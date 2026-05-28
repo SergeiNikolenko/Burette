@@ -896,6 +896,10 @@ body.burette-quicklook-host .buret-corner-button {
   touch-action: none;
   user-select: none;
 }
+body.buret-docking-pose-controls-active .msp-animation-viewport-controls {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
 .buret-docking-poses.buret-docking-poses-dragging {
   cursor: grabbing;
   transition: none;
@@ -913,6 +917,9 @@ body.burette-quicklook-host .buret-corner-button {
 .buret-docking-poses button:not(:disabled):hover {
   background: rgba(255, 255, 255, 0.18);
 }
+.buret-docking-poses button.active {
+  background: rgba(59, 130, 246, 0.35);
+}
 .buret-docking-poses button:disabled {
   opacity: 0.38;
   cursor: default;
@@ -920,4 +927,10 @@ body.burette-quicklook-host .buret-corner-button {
 .buret-docking-poses span {
   min-width: 76px;
   text-align: center;
+}
+.buret-docking-pose-slider {
+  width: 96px;
+  min-width: 72px;
+  accent-color: #93c5fd;
+  cursor: pointer;
 }
