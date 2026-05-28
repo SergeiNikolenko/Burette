@@ -76,7 +76,9 @@
     rendering: false,
     pendingLoad: false,
     loadObserver: null,
-    scrollHandler: null
+    scrollHandler: null,
+    contextMenuOutsideHandler: null,
+    contextMenuKeyHandler: null
   };
 
   function post(type, message, payload = {}) {
@@ -985,6 +987,7 @@
       const picture = el.querySelector('[data-buret-molecule-picture]');
       if (picture) renderXyzrenderCard(row, picture, cfg);
     }
+    el.addEventListener('contextmenu', event => showMoleculeContextMenu(event, row));
     installCardHover(el);
     installCardResizeHandle(el);
     return el;
@@ -1070,6 +1073,93 @@
       event.preventDefault();
       clearSelection(cfg);
     }
+  }
+
+  function hideMoleculeContextMenu() {
+    root.querySelector('.buret-grid-molecule-context-menu')?.remove();
+    if (state.contextMenuOutsideHandler) {
+      document.removeEventListener('pointerdown', state.contextMenuOutsideHandler, true);
+      window.removeEventListener('scroll', state.contextMenuOutsideHandler, true);
+      window.removeEventListener('resize', state.contextMenuOutsideHandler, true);
+      state.contextMenuOutsideHandler = null;
+    }
+    if (state.contextMenuKeyHandler) {
+      document.removeEventListener('keydown', state.contextMenuKeyHandler);
+      state.contextMenuKeyHandler = null;
+    }
+  }
+
+  function positionMoleculeContextMenu(menu, clientX, clientY) {
+    const margin = 8;
+    menu.style.left = margin + 'px';
+    menu.style.top = margin + 'px';
+    const rect = menu.getBoundingClientRect();
+    const left = Math.min(Math.max(margin, clientX), Math.max(margin, window.innerWidth - rect.width - margin));
+    const top = Math.min(Math.max(margin, clientY), Math.max(margin, window.innerHeight - rect.height - margin));
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(top)}px`;
+  }
+
+  function moleculeContextMenuAction(action, row) {
+    const label = row.name || `Molecule ${Number(row.index) + 1}`;
+    const actionLabels = {
+      remove: 'Delete molecule',
+      separateWindow: 'Open in separate window',
+      molstar: 'Open in Mol*',
+      hide: 'Hide molecule',
+      inspect: 'Inspect properties'
+    };
+    setStatus(`[grid] ${actionLabels[action] || 'Molecule action'} is not implemented yet for ${label}.`);
+    hideMoleculeContextMenu();
+  }
+
+  function showMoleculeContextMenu(event, row) {
+    if (event.target?.closest?.('[data-buret-card-resize]')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    hideMoleculeContextMenu();
+    const index = Number(row.index);
+    const menu = document.createElement('div');
+    menu.className = 'buret-grid-molecule-context-menu';
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', 'Molecule actions');
+    const title = document.createElement('div');
+    title.className = 'buret-grid-molecule-context-menu-title';
+    title.textContent = row.name || `Molecule ${index + 1}`;
+    const subtitle = document.createElement('div');
+    subtitle.className = 'buret-grid-molecule-context-menu-subtitle';
+    subtitle.textContent = row.smiles || 'SDF molecule';
+    const actions = [
+      ['remove', 'Delete molecule'],
+      ['separateWindow', 'Open in separate window'],
+      ['molstar', 'Open in Mol*'],
+      ['hide', 'Hide molecule'],
+      ['inspect', 'Inspect properties']
+    ];
+    menu.append(title, subtitle);
+    actions.forEach(([action, label]) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.setAttribute('role', 'menuitem');
+      button.dataset.buretMoleculeAction = action;
+      button.textContent = label;
+      button.addEventListener('click', () => moleculeContextMenuAction(action, row));
+      menu.appendChild(button);
+    });
+    root.appendChild(menu);
+    positionMoleculeContextMenu(menu, event.clientX, event.clientY);
+    menu.querySelector('button')?.focus();
+    state.contextMenuOutsideHandler = outsideEvent => {
+      if (outsideEvent.target instanceof Element && outsideEvent.target.closest('.buret-grid-molecule-context-menu')) return;
+      hideMoleculeContextMenu();
+    };
+    state.contextMenuKeyHandler = keyEvent => {
+      if (keyEvent.key === 'Escape') hideMoleculeContextMenu();
+    };
+    document.addEventListener('pointerdown', state.contextMenuOutsideHandler, true);
+    window.addEventListener('scroll', state.contextMenuOutsideHandler, true);
+    window.addEventListener('resize', state.contextMenuOutsideHandler, true);
+    document.addEventListener('keydown', state.contextMenuKeyHandler);
   }
 
   function cardTooltip(row) {

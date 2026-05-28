@@ -47,6 +47,13 @@ export type DockingDocumentRequest = {
   ligandPaths: string[];
 };
 
+export type MergedCollectionDocument = {
+  sourcePaths: string[];
+  format: string;
+  text?: string;
+  suggestedFileName: string;
+};
+
 export type ViewerDocument = {
   id: string;
   path: string;
@@ -57,6 +64,7 @@ export type ViewerDocument = {
   byteCount: number;
   virtual?: boolean;
   dockingRequest?: DockingDocumentRequest;
+  mergedCollection?: MergedCollectionDocument;
 };
 
 export type RecentStructure = {

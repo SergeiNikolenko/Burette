@@ -7,16 +7,18 @@ import { isTauriRuntime } from "../lib/tauri";
 
 type OpenDocuments = (paths: string[]) => void | Promise<void>;
 type OpenDockingDocument = (receptorPath: string, ligandPaths: string[]) => void | Promise<void>;
+type AddXyzrenderSheetItems = (paths: string[]) => boolean;
 type ReportStatus = (status: string, kind?: "info" | "error") => void;
 
 type OpenDropOptions = {
   activeDocumentPath?: string | null;
   openDockingDocument?: OpenDockingDocument;
+  addXyzrenderSheetItems?: AddXyzrenderSheetItems;
 };
 
 export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStatus, options: OpenDropOptions = {}) {
   const [dropActive, setDropActive] = useState(false);
-  const { activeDocumentPath = null, openDockingDocument } = options;
+  const { activeDocumentPath = null, openDockingDocument, addXyzrenderSheetItems } = options;
 
   const openAsDocking = useCallback((paths: string[]) => {
     if (!activeDocumentPath || !openDockingDocument) return false;
@@ -42,11 +44,12 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       }
       setDropActive(false);
       if (event.type === "drop") {
+        if (isOverActiveViewer(event.position) && addXyzrenderSheetItems?.(event.paths)) return;
         if (isOverActiveViewer(event.position) && openAsDocking(event.paths)) return;
         void openDocuments(event.paths);
       }
     },
-    [isOverActiveViewer, openAsDocking, openDocuments],
+    [addXyzrenderSheetItems, isOverActiveViewer, openAsDocking, openDocuments],
   );
 
   useEffect(() => {
@@ -97,13 +100,16 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
             .filter((path): path is string => Boolean(path));
       if (paths.length > 0) {
         const target = event.target instanceof Element ? event.target : null;
-        if (target?.closest(".molecule-stage, .main-stage") && openAsDocking(paths)) return;
+        if (target?.closest(".molecule-stage, .main-stage")) {
+          if (addXyzrenderSheetItems?.(paths)) return;
+          if (openAsDocking(paths)) return;
+        }
         void openDocuments(paths);
       } else if (!isTauriRuntime()) {
         pushStatus("Drop files into the installed app window to open them.");
       }
     },
-    [openAsDocking, openDocuments, pushStatus],
+    [addXyzrenderSheetItems, openAsDocking, openDocuments, pushStatus],
   );
 
   return {
