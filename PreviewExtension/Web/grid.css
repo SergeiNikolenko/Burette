@@ -14,7 +14,8 @@
   --buret-shadow: rgba(0, 0, 0, 0.16);
   --buret-picture-bg: #ffffff;
   --buret-picture-bg-soft: #ffffff;
-  --buret-card-gap: 12px;
+  --buret-card-effective-min: var(--buret-card-auto-min);
+  --buret-card-gap: clamp(5px, calc(var(--buret-card-effective-min) * 0.06), 12px);
   --buret-card-auto-min: clamp(136px, 18vw, 190px);
   --buret-card-min: clamp(calc((100% - (var(--buret-card-gap) * 29)) / 30), var(--buret-card-auto-min), calc((100% - (var(--buret-card-gap) * 2)) / 3));
   --buret-card-max: min(clamp(188px, 23vw, 236px), calc((100% - (var(--buret-card-gap) * 2)) / 3));
