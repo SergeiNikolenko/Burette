@@ -377,6 +377,10 @@
     root.querySelectorAll('[data-buret-grid-card-renderer]').forEach(button => {
       button.addEventListener('click', () => setCardRenderer(button.getAttribute('data-buret-grid-card-renderer'), cfg));
     });
+    if (root.dataset.contextMenuBound !== '1') {
+      root.addEventListener('contextmenu', handleGridShellContextMenu);
+      root.dataset.contextMenuBound = '1';
+    }
     initRdkitCoordinatesControl(cfg);
     if (state.selectionKeydownHandler) {
       document.removeEventListener('keydown', state.selectionKeydownHandler);
@@ -508,9 +512,24 @@
     return value === 'xyzrender-external' || value === 'xyzrender' ? 'xyzrender-external' : 'molstar';
   }
 
-  function queryLooksLikeSMARTS(value) {
+  function queryLooksLikeExplicitSMARTS(value) {
     const text = String(value || '').trim();
     return !!text && !/\s/u.test(text) && /[\[\]#@:+\\/$()=~!;]/u.test(text);
+  }
+
+  function queryLooksLikeSMILESFragment(value) {
+    const text = String(value || '').trim();
+    if (!text || /\s/u.test(text) || queryLooksLikeExplicitSMARTS(text)) return false;
+    const withoutAtomsAndBonds = text.replace(/Cl|Br|[BCNOFPSIbcHnops]|\d|%[0-9]{2}|[.=#\-+:\\/\\\\@*]/gu, '');
+    return withoutAtomsAndBonds === '' && /Cl|Br|[BCNOFPSIbcHnops]/u.test(text);
+  }
+
+  function queryLooksLikeSMARTS(value) {
+    return queryLooksLikeExplicitSMARTS(value) || queryLooksLikeSMILESFragment(value);
+  }
+
+  function shouldFallbackSMARTSToTextSearch() {
+    return !!state.smartsError && !!state.smarts.trim() && !queryLooksLikeExplicitSMARTS(state.query);
   }
 
   function setUnifiedSearchQuery(value, cfg) {
@@ -529,6 +548,14 @@
       ? allRows.filter(row => normalize([row.name, row.smiles, ...Object.entries(row.props || {}).flat()].join('\n')).includes(query))
       : allRows.slice();
     state.rows = filterBySMARTS(textRows);
+    if (shouldFallbackSMARTSToTextSearch()) {
+      const fallbackQuery = normalize(state.query);
+      state.smartsError = '';
+      state.smartsMatches = new Map();
+      state.rows = fallbackQuery
+        ? allRows.filter(row => normalize([row.name, row.smiles, ...Object.entries(row.props || {}).flat()].join('\n')).includes(fallbackQuery))
+        : allRows.slice();
+    }
     state.rows.sort((a, b) => compare(a, b, state.sort));
     state.totalRows = state.rows.length;
     render(cfg);
@@ -662,11 +689,15 @@
       if (state.smarts.trim()) {
         const matches = await scanRemoteBySMARTS(cfg, token);
         if (token !== state.token) return;
-        state.rows = matches;
-        state.totalRows = matches.length;
-        state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
-        await appendVisibleRows(cfg, token);
-        return;
+        if (!shouldFallbackSMARTSToTextSearch()) {
+          state.rows = matches;
+          state.totalRows = matches.length;
+          state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
+          await appendVisibleRows(cfg, token);
+          return;
+        }
+        state.smartsError = '';
+        state.smartsMatches = new Map();
       }
       const result = await hostRequest('gridFetchPage', {
         query: state.query || '',
@@ -1030,6 +1061,17 @@
       document.removeEventListener('keydown', state.contextMenuKeyHandler);
       state.contextMenuKeyHandler = null;
     }
+  }
+
+  function handleGridShellContextMenu(event) {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (target.closest('.buret-grid-molecule-context-menu')) return;
+    if (target.closest('button, input, select, textarea, [contenteditable="true"]')) return;
+    if (target.closest('.buret-card')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    hideMoleculeContextMenu();
   }
 
   function positionMoleculeContextMenu(menu, clientX, clientY) {

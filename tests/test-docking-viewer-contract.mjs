@@ -61,6 +61,8 @@ assert.match(viewer, /if \(activePose < prepared\.poseCount - 1\) void setPose\(
 assert.match(viewer, /function molstarContextPickFromEvent\(event\)/);
 assert.match(viewer, /canvas3d\.identify\(\[event\.clientX - rect\.left, event\.clientY - rect\.top\]\)/);
 assert.match(viewer, /canvas3d\.getLoci\(pickingId\)/);
+assert.match(viewer, /const pickedStructure = molstarContextMenuPick\?\.loci\?\.structure \|\| null;/);
+assert.match(viewer, /return data === pickedStructure \|\| data\?\.root === pickedStructure\?\.root;/);
 assert.match(viewer, /\['select', 'Select molecule'\]/);
 assert.match(viewer, /if \(!contextPick\) \{\s*hideMolstarContextMenu\(\);/);
 
