@@ -1369,7 +1369,14 @@
     const countsIndex = lines.findIndex(line => /\bV(2000|3000)\b/u.test(line) || /^\s*\d+\s+\d+\s+/u.test(line));
     if (countsIndex < 0) return false;
     if (/\bV3000\b/u.test(lines[countsIndex])) {
-      return lines.some(line => /M\s+V30\s+\d+\s+\S+\s+[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?\s+[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?\s+[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?/u.test(line));
+      return lines.some(line => {
+        if (!/^\s*M\s+V30\s+\d+\s+\S+\s+/u.test(line)) return false;
+        const parts = line.trim().split(/\s+/u);
+        const x = Number(parts[4]);
+        const y = Number(parts[5]);
+        const z = Number(parts[6]);
+        return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z) && Math.abs(z) > 1e-6;
+      });
     }
     const countText = lines[countsIndex].slice(0, 3).trim() || lines[countsIndex].trim().split(/\s+/u)[0];
     const atomCount = Number.parseInt(countText, 10);
@@ -1380,7 +1387,7 @@
       const x = Number(parts[0]);
       const y = Number(parts[1]);
       const z = Number(parts[2]);
-      return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z);
+      return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z) && Math.abs(z) > 1e-6;
     });
   }
 
