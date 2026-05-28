@@ -454,6 +454,19 @@ export default function App() {
     pushStatus(`Adding ${cleanPaths.length} structure${cleanPaths.length === 1 ? "" : "s"} to Ketcher`);
   }, [openKetcherTab, pushStatus]);
 
+  const openKetcherWithFragment = useCallback((title: string, text: string) => {
+    const cleanText = text.trim();
+    if (!cleanText) return;
+    openKetcherTab();
+    setStructureDragActive(false);
+    setKetcherImportRequest({
+      id: ++ketcherImportSequenceRef.current,
+      paths: [],
+      fragments: [{ title: title.trim() || "structure", text }],
+    });
+    pushStatus(`Adding ${title.trim() || "structure"} to Ketcher`);
+  }, [openKetcherTab, pushStatus]);
+
   const clearKetcherImportRequest = useCallback((id: number) => {
     setKetcherImportRequest((request) => (request?.id === id ? null : request));
   }, []);
@@ -729,6 +742,9 @@ export default function App() {
           value?: string;
           documentId?: string;
           path?: string | null;
+          title?: string | null;
+          extension?: string | null;
+          textBase64?: string | null;
           orientationRef?: string | null;
           preset?: string | null;
           text?: string | null;
@@ -931,6 +947,32 @@ export default function App() {
         }
         return;
       }
+      if (body?.type === "openInKetcher") {
+        const title = typeof body.title === "string" && body.title.trim()
+          ? body.title.trim()
+          : "structure";
+        const textBase64 = typeof body.textBase64 === "string" ? body.textBase64.trim() : "";
+        if (textBase64) {
+          try {
+            const bytes = Uint8Array.from(atob(textBase64), (char) => char.charCodeAt(0));
+            const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+            openKetcherWithFragment(title, text);
+          } catch (error) {
+            pushStatus(`Open in Ketcher failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+          }
+          return;
+        }
+        const targetDocument = (body.documentId
+          ? documents.find((document) => document.id === body.documentId)
+          : null) ?? activeDocument;
+        const targetPath = typeof body.path === "string" && body.path.trim().length > 0
+          ? body.path.trim()
+          : targetDocument?.path;
+        if (targetPath) {
+          openKetcherWithStructures([targetPath]);
+        }
+        return;
+      }
       if (body?.type === "setRenderer") {
         const renderer = body.value;
         if (renderer === "auto" || renderer === "xyz-fast" || renderer === "molstar" || renderer === "xyzrender-external") {
@@ -970,7 +1012,7 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, documents, openDockingDocument, openDocuments, pushStatus, reloadActive, setPreference]);
+  }, [activeDocument, addDocuments, documents, openDockingDocument, openDocuments, openKetcherWithFragment, openKetcherWithStructures, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference]);
 
   useEffect(() => {
     const loadedPreferences = loadUpdatePreferences();

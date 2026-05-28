@@ -14,6 +14,8 @@ use super::xyzrender::{
 };
 
 const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT: usize = 1500;
+const KETCHER_EDIT_MAX_BYTES: usize = 1024 * 1024;
+const KETCHER_EDIT_MAX_ATOMS: usize = 300;
 
 pub(crate) struct CreatedRuntime {
     pub(crate) path: PathBuf,
@@ -205,9 +207,20 @@ pub(crate) fn create_runtime<R: Runtime>(
         "xyzrenderAvailable": xyzrender_available,
         "molstarAvailable": !format.external_only || external_molstar_data.is_some(),
         "canOpenInVesta": format.can_open_in_vesta,
+        "ketcherEditable": false,
         "showPanelControls": true,
         "defaultLayoutState": { "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" }
     });
+
+    if let Some(ketcher_config) =
+        ketcher_edit_config(file_path, extension, data, data.len(), sdf_record_count(data))
+    {
+        if let Some(object) = ketcher_config.as_object() {
+            for (key, value) in object {
+                config[key.as_str()] = value.clone();
+            }
+        }
+    }
 
     if renderer == "xyz-fast" {
         config["xyzFast"] = json!({
@@ -397,6 +410,54 @@ fn sdf_record_count(data: &[u8]) -> usize {
         .split("$$$$")
         .filter(|record| !record.trim().is_empty())
         .count()
+}
+
+fn ketcher_edit_config(
+    file_path: &Path,
+    extension: &str,
+    data: &[u8],
+    source_byte_count: usize,
+    sdf_record_count: usize,
+) -> Option<serde_json::Value> {
+    if source_byte_count > KETCHER_EDIT_MAX_BYTES {
+        return None;
+    }
+    let text = String::from_utf8_lossy(data);
+    let atom_count = match extension {
+        "mol" => molfile_atom_count(&text),
+        "sdf" | "sd" => {
+            if sdf_record_count != 1 {
+                return None;
+            }
+            let record = text.split("$$$$").next().unwrap_or(text.as_ref());
+            molfile_atom_count(record)
+        }
+        _ => return None,
+    };
+    if atom_count == 0 || atom_count > KETCHER_EDIT_MAX_ATOMS {
+        return None;
+    }
+    let title = file_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("structure");
+    Some(json!({
+        "ketcherEditable": true,
+        "ketcherSourcePath": file_path.to_string_lossy(),
+        "ketcherSourceExtension": extension,
+        "ketcherSourceTitle": title,
+        "ketcherAtomCount": atom_count,
+        "ketcherMaxAtoms": KETCHER_EDIT_MAX_ATOMS,
+        "ketcherMaxBytes": KETCHER_EDIT_MAX_BYTES
+    }))
+}
+
+fn molfile_atom_count(text: &str) -> usize {
+    text.lines()
+        .nth(3)
+        .and_then(|line| line.get(..3))
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .unwrap_or(0)
 }
 
 fn should_use_converted_molstar_data(
