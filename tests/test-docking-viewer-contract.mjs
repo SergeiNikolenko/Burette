@@ -60,6 +60,7 @@ assert.match(viewer, /if \(event\.key === 'ArrowRight'\)/);
 assert.match(viewer, /if \(activePose < prepared\.poseCount - 1\) void setPose\(activePose \+ 1\)/);
 assert.match(viewer, /function molstarContextPickFromEvent\(event\)/);
 assert.match(viewer, /canvas3d\.identify\(\[event\.clientX - rect\.left, event\.clientY - rect\.top\]\)/);
+assert.match(viewer, /canvas3d\.getLoci\(picking\.id\)/);
 assert.match(viewer, /canvas3d\.getLoci\(pickingId\)/);
 assert.match(viewer, /const pickedStructure = molstarContextMenuPick\?\.loci\?\.structure \|\| null;/);
 assert.match(viewer, /return data === pickedStructure \|\| data\?\.root === pickedStructure\?\.root;/);
