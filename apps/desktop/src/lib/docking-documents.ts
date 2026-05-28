@@ -42,8 +42,10 @@ export function dockingRequestForDrop(
   const paths = uniqueDockingPaths([targetPath, ...droppedPaths]);
   const receptorPath = isProteinLikeDockingSource(targetPath) ? targetPath : paths.find(isProteinLikeDockingSource);
   if (!receptorPath) return null;
+  const ligandPaths = ligandLikeDockingPaths(paths.filter((path) => path !== receptorPath));
+  if (ligandPaths.length === 0) return null;
   return {
     receptorPath,
-    ligandPaths: ligandLikeDockingPaths(paths.filter((path) => path !== receptorPath)),
+    ligandPaths,
   };
 }

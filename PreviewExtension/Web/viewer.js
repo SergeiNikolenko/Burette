@@ -2431,10 +2431,18 @@
       .buret-external-artifact-inline > svg { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; margin: auto; border-radius: 8px; box-shadow: 0 18px 54px rgba(0,0,0,0.28); }
       .buret-external-artifact-object { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
       .buret-xyzrender-sheet { position: absolute; inset: 0; z-index: 14; pointer-events: none; }
-      .buret-xyzrender-sheet-item { position: absolute; left: 50%; top: 50%; width: clamp(118px, 24vw, 280px); height: clamp(118px, 24vw, 280px); transform: translate(-50%, -50%); transform-origin: 50% 50%; pointer-events: auto; touch-action: none; cursor: grab; border-radius: 10px; outline: 0 solid transparent; }
+      .buret-xyzrender-sheet-item { --buret-sheet-rotation: 0deg; position: absolute; left: 50%; top: 50%; width: clamp(118px, 24vw, 280px); height: clamp(118px, 24vw, 280px); transform: translate(-50%, -50%); transform-origin: 50% 50%; pointer-events: auto; touch-action: none; cursor: grab; border-radius: 10px; outline: 0 solid transparent; }
       .buret-xyzrender-sheet-item.dragging { cursor: grabbing; }
+      .buret-xyzrender-sheet-item.rotating { cursor: grabbing; }
       .buret-xyzrender-sheet-item.selected { outline: 2px solid var(--buret-accent, #b45cff); box-shadow: 0 0 0 3px color-mix(in srgb, var(--buret-accent, #b45cff) 24%, transparent); }
-      .buret-xyzrender-sheet-item > svg { display: block; width: 100%; height: 100%; overflow: visible; }
+      .buret-xyzrender-sheet-item-body { width: 100%; height: 100%; transform: rotate(var(--buret-sheet-rotation)); transform-origin: 50% 50%; pointer-events: none; }
+      .buret-xyzrender-sheet-item-body > svg { display: block; width: 100%; height: 100%; overflow: visible; }
+      .buret-xyzrender-sheet-rotate-handle { position: absolute; left: 50%; top: -34px; width: 17px; height: 17px; transform: translateX(-50%); border: 2px solid var(--buret-accent, #b45cff); border-radius: 999px; background: var(--buret-toolbar-background, rgba(12,13,14,0.92)); box-shadow: 0 8px 18px rgba(0,0,0,0.28); cursor: grab; opacity: 0; pointer-events: none; touch-action: none; transition: opacity 120ms ease, transform 120ms ease; }
+      .buret-xyzrender-sheet-rotate-handle::before { content: ""; position: absolute; left: 50%; top: 17px; width: 2px; height: 17px; transform: translateX(-50%); background: var(--buret-accent, #b45cff); border-radius: 999px; }
+      .buret-xyzrender-sheet-item.selected .buret-xyzrender-sheet-rotate-handle,
+      .buret-xyzrender-sheet-item:hover .buret-xyzrender-sheet-rotate-handle { opacity: 1; pointer-events: auto; }
+      .buret-xyzrender-sheet-rotate-handle:hover,
+      .buret-xyzrender-sheet-item.rotating .buret-xyzrender-sheet-rotate-handle { transform: translateX(-50%) scale(1.08); }
       .buret-xyzrender-sheet-item-label { position: absolute; left: 50%; bottom: -23px; transform: translateX(-50%); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 7px; border-radius: 999px; color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.84)); font: 10px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; opacity: 0; transition: opacity 120ms ease; }
       .buret-xyzrender-sheet-item.selected .buret-xyzrender-sheet-item-label { opacity: 1; }
       .buret-xyz-badge { position: absolute; left: 14px; bottom: 14px; z-index: 30; max-width: calc(100vw - 28px); box-sizing: border-box; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--buret-toolbar-border, rgba(255,255,255,0.12)); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.9)); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: 0 8px 22px rgba(0,0,0,0.20); font: 11px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; pointer-events: none; }
@@ -2637,10 +2645,17 @@
     const fallbackY = rect.height * (0.42 + (Math.floor((serial - 1) / 4) % 4) * 0.06);
     item.style.left = `${Number.isFinite(point?.x) ? point.x : fallbackX}px`;
     item.style.top = `${Number.isFinite(point?.y) ? point.y : fallbackY}px`;
-    item.innerHTML = `${svg}<div class="buret-xyzrender-sheet-item-label">${escapeHTML(path.split('/').pop() || path)}</div>`;
+    item.innerHTML = `<div class="buret-xyzrender-sheet-item-body">${svg}</div><div class="buret-xyzrender-sheet-rotate-handle" aria-label="Rotate structure" title="Rotate"></div><div class="buret-xyzrender-sheet-item-label">${escapeHTML(path.split('/').pop() || path)}</div>`;
     sheet.querySelectorAll('.buret-xyzrender-sheet-item.selected').forEach(existing => existing.classList.remove('selected'));
     sheet.appendChild(item);
     installXyzrenderSheetItemDrag(item, getStageScale);
+    installXyzrenderSheetItemRotation(item);
+  }
+
+  function setSheetItemRotation(item, rotation) {
+    const normalized = Number.isFinite(rotation) ? rotation : 0;
+    item.dataset.rotation = String(normalized);
+    item.style.setProperty('--buret-sheet-rotation', `${normalized}deg`);
   }
 
   function installXyzrenderSheetItemDrag(item, getStageScale) {
@@ -2656,6 +2671,7 @@
       item.classList.add('selected');
     };
     const onPointerDown = event => {
+      if (event.target?.closest?.('.buret-xyzrender-sheet-rotate-handle')) return;
       event.preventDefault();
       event.stopPropagation();
       select();
@@ -2683,6 +2699,18 @@
       if ((event.key === 'Backspace' || event.key === 'Delete') && item.classList.contains('selected')) {
         event.preventDefault();
         item.remove();
+        return;
+      }
+      if (!item.classList.contains('selected')) return;
+      if (event.key === '[' || event.key === ']') {
+        event.preventDefault();
+        const direction = event.key === ']' ? 1 : -1;
+        setSheetItemRotation(item, (parseFloat(item.dataset.rotation || '0') || 0) + direction * 15);
+        return;
+      }
+      if (event.key === '0') {
+        event.preventDefault();
+        setSheetItemRotation(item, 0);
       }
     };
     item.addEventListener('pointerdown', onPointerDown);
@@ -2691,6 +2719,51 @@
     item.addEventListener('pointercancel', finish);
     item.addEventListener('click', event => { event.stopPropagation(); select(); });
     item.addEventListener('keydown', onKeyDown);
+  }
+
+  function installXyzrenderSheetItemRotation(item) {
+    const handle = item.querySelector('.buret-xyzrender-sheet-rotate-handle');
+    if (!handle) return;
+    let pointerId = null;
+    let startAngle = 0;
+    let startRotation = 0;
+    const angleForEvent = event => {
+      const rect = item.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      return Math.atan2(event.clientY - centerY, event.clientX - centerX) * 180 / Math.PI;
+    };
+    const select = () => {
+      item.parentElement?.querySelectorAll('.buret-xyzrender-sheet-item.selected').forEach(existing => {
+        if (existing !== item) existing.classList.remove('selected');
+      });
+      item.classList.add('selected');
+      try { item.focus({ preventScroll: true }); } catch (_) {}
+    };
+    const onPointerDown = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      select();
+      pointerId = event.pointerId;
+      startAngle = angleForEvent(event);
+      startRotation = parseFloat(item.dataset.rotation || '0') || 0;
+      item.classList.add('rotating');
+      try { handle.setPointerCapture(event.pointerId); } catch (_) {}
+    };
+    const onPointerMove = event => {
+      if (pointerId !== event.pointerId) return;
+      setSheetItemRotation(item, startRotation + angleForEvent(event) - startAngle);
+    };
+    const finish = event => {
+      if (pointerId !== event.pointerId) return;
+      pointerId = null;
+      item.classList.remove('rotating');
+      try { handle.releasePointerCapture(event.pointerId); } catch (_) {}
+    };
+    handle.addEventListener('pointerdown', onPointerDown);
+    handle.addEventListener('pointermove', onPointerMove);
+    handle.addEventListener('pointerup', finish);
+    handle.addEventListener('pointercancel', finish);
   }
 
   function installExternalArtifactInteractions(root) {
@@ -3413,7 +3486,7 @@
     if (target.closest('#buret-toolbar, .buret-docking-poses, .buret-molecule-context-menu')) return false;
     if (target.closest('button, input, select, textarea, [contenteditable="true"]')) return false;
     if (target.closest('.msp-viewport-controls, .msp-viewport-top-left-controls, .msp-selection-viewport-controls')) return false;
-    return !!target.closest('.msp-plugin .msp-viewport, .msp-plugin canvas');
+    return !!target.closest('.msp-plugin .msp-viewport, .msp-plugin .msp-viewport-host, .msp-plugin canvas');
   }
 
   function positionMolstarContextMenu(menu, clientX, clientY) {
@@ -3451,6 +3524,7 @@
     const actions = [
       ['remove', 'Delete molecule'],
       ['separate-window', 'Open in separate window'],
+      ['molstar', 'Open in Mol*'],
       ['hide', 'Hide molecule'],
       ['inspect', 'Inspect properties']
     ];

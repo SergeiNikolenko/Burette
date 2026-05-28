@@ -453,6 +453,7 @@ export default function App() {
   useOpenEvents(openDocuments, pushErrorStatus);
   const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop } = useOpenDrop(openDocuments, pushStatus, {
     activeDocumentPath: activeDocument?.path ?? null,
+    activeDockingRequest: activeDocument?.dockingRequest ?? null,
     openDockingDocument,
     addXyzrenderSheetItems,
     mergeMoleculeCollections: activeDocument?.renderer === "grid2d"

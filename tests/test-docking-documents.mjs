@@ -43,11 +43,16 @@ assert.equal(
   null,
 );
 
-assert.deepEqual(
+assert.equal(
   dockingRequestForDrop("/tmp/receptor-a.pdb", ["/tmp/receptor-b.cif"]),
+  null,
+);
+
+assert.deepEqual(
+  dockingRequestForDrop("/tmp/receptor-a.pdb", ["/tmp/receptor-b.cif", "/tmp/pose-a.sdf"]),
   {
     receptorPath: "/tmp/receptor-a.pdb",
-    ligandPaths: [],
+    ligandPaths: ["/tmp/pose-a.sdf"],
   },
 );
 

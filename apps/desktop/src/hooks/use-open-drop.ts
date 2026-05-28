@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { DragDropEvent } from "@tauri-apps/api/window";
-import { ligandDropPathsForTarget } from "../lib/docking-documents";
+import type { DockingDocumentRequest } from "../types";
+import { dockingRequestForDrop } from "../lib/docking-documents";
 import { hasStructureDrag, readStructureDrag } from "../lib/structure-drag";
 import { isTauriRuntime } from "../lib/tauri";
 
@@ -13,6 +14,7 @@ type ReportStatus = (status: string, kind?: "info" | "error") => void;
 
 type OpenDropOptions = {
   activeDocumentPath?: string | null;
+  activeDockingRequest?: DockingDocumentRequest | null;
   openDockingDocument?: OpenDockingDocument;
   addXyzrenderSheetItems?: AddXyzrenderSheetItems;
   mergeMoleculeCollections?: MergeMoleculeCollections;
@@ -20,15 +22,15 @@ type OpenDropOptions = {
 
 export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStatus, options: OpenDropOptions = {}) {
   const [dropActive, setDropActive] = useState(false);
-  const { activeDocumentPath = null, openDockingDocument, addXyzrenderSheetItems, mergeMoleculeCollections } = options;
+  const { activeDocumentPath = null, activeDockingRequest = null, openDockingDocument, addXyzrenderSheetItems, mergeMoleculeCollections } = options;
 
   const openAsDocking = useCallback((paths: string[]) => {
     if (!activeDocumentPath || !openDockingDocument) return false;
-    const ligandPaths = ligandDropPathsForTarget(activeDocumentPath, paths);
-    if (ligandPaths.length === 0) return false;
-    void openDockingDocument(activeDocumentPath, ligandPaths);
+    const request = dockingRequestForDrop(activeDocumentPath, paths, activeDockingRequest);
+    if (!request) return false;
+    void openDockingDocument(request.receptorPath, request.ligandPaths);
     return true;
-  }, [activeDocumentPath, openDockingDocument]);
+  }, [activeDockingRequest, activeDocumentPath, openDockingDocument]);
 
   const isOverActiveViewer = useCallback((position: { x: number; y: number } | null = null) => {
     if (!activeDocumentPath || typeof document === "undefined") return false;

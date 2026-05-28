@@ -6,6 +6,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { isMoleculeCollectionPath } from "../../lib/collection-documents";
+import { dockingRequestForDrop } from "../../lib/docking-documents";
 import type { SidebarProject, SidebarProjectItem } from "../../lib/sidebar-projects";
 import { hasStructureDrag, readStructureDrag, writeStructureDrag } from "../../lib/structure-drag";
 import { rendererLabel } from "../format";
@@ -141,21 +142,33 @@ export function ProjectItem({
     actions.setStructureDragActive(false);
   };
   const handleDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
-    if (!isMoleculeCollectionPath(item.path) || !hasStructureDrag(event.dataTransfer)) return;
+    if (!hasStructureDrag(event.dataTransfer)) return;
     const paths = readStructureDrag(event.dataTransfer);
-    if (!paths.some(isMoleculeCollectionPath)) return;
+    const canMergeCollection = isMoleculeCollectionPath(item.path) && paths.some(isMoleculeCollectionPath);
+    const canOpenDocking = Boolean(dockingRequestForDrop(item.path, paths)) || item.path.startsWith("burrete-docking://");
+    if (!canMergeCollection && !canOpenDocking) return;
     event.preventDefault();
     event.stopPropagation();
     event.dataTransfer.dropEffect = "copy";
   };
   const handleDrop = (event: ReactDragEvent<HTMLDivElement>) => {
-    if (!isMoleculeCollectionPath(item.path) || !hasStructureDrag(event.dataTransfer)) return;
+    if (!hasStructureDrag(event.dataTransfer)) return;
     const paths = readStructureDrag(event.dataTransfer);
-    if (!paths.some(isMoleculeCollectionPath)) return;
+    const canMergeCollection = isMoleculeCollectionPath(item.path) && paths.some(isMoleculeCollectionPath);
+    const dockingRequest = dockingRequestForDrop(item.path, paths);
+    if (!canMergeCollection && !dockingRequest && !item.path.startsWith("burrete-docking://")) return;
     event.preventDefault();
     event.stopPropagation();
     actions.setStructureDragActive(false);
-    void actions.mergeMoleculeCollections(item.documentId ?? item.path, paths);
+    if (canMergeCollection) {
+      void actions.mergeMoleculeCollections(item.documentId ?? item.path, paths);
+      return;
+    }
+    if (dockingRequest) {
+      void actions.openDockingDocument(dockingRequest.receptorPath, dockingRequest.ligandPaths);
+      return;
+    }
+    void actions.openDockingDocument(item.documentId ?? item.path, paths);
   };
   const handleContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
