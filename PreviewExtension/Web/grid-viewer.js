@@ -13,34 +13,7 @@
   const SVG_FIT_PADDING_FRACTION = 0.08;
   const SVG_FIT_BOTTOM_PADDING_MULTIPLIER = 1.7;
   const SVG_FIT_VERTICAL_BIAS_FRACTION = 0.08;
-  const DEFAULT_XYZRENDER_PRESETS = [
-    { value: 'default', label: 'Default' },
-    { value: 'flat', label: 'Flat' },
-    { value: 'paton', label: 'Paton' },
-    { value: 'pmol', label: 'PMol' },
-    { value: 'skeletal', label: 'Skeletal' },
-    { value: 'bubble', label: 'Bubble' },
-    { value: 'tube', label: 'Tube' },
-    { value: 'btube', label: 'BTube' },
-    { value: 'mtube', label: 'MTube' },
-    { value: 'wire', label: 'Wire' },
-    { value: 'graph', label: 'Graph' },
-    { value: 'custom', label: 'Custom JSON' }
-  ];
-  const DEFAULT_XYZRENDER_CONTROLS = {
-    transparentBackground: true,
-    gradients: null,
-    fog: null,
-    showVdw: null,
-    hideBonds: null,
-    atomScale: null,
-    bondWidth: null,
-    molColor: '',
-    showCell: null,
-    showGhosts: null,
-    showAxes: null,
-    supercell: null
-  };
+  const STRUCTURE_DRAG_MIME = 'application/x-burrete-structure-paths';
   const state = {
     rdkit: null,
     all: Array.isArray(window.BurreteGridRecords) ? window.BurreteGridRecords : [],
@@ -56,8 +29,7 @@
     showProperties: false,
     rdkitUseInputCoords: storedBoolean(RDKIT_USE_INPUT_COORDS_STORAGE_KEY, false),
     cardMin: storedOptionalInteger(CARD_MIN_STORAGE_KEY, MIN_CARD_MIN, MAX_CARD_MIN),
-    xyzrenderPreset: 'default',
-    xyzrenderControls: { ...DEFAULT_XYZRENDER_CONTROLS },
+    hiddenRows: new Set(),
     selected: new Set(),
     selectionAnchorIndex: null,
     selectionKeydownHandler: null,
@@ -333,8 +305,13 @@
         </header>
         <div class="buret-grid-toolbar">
           <div class="buret-toolbar-row buret-toolbar-row-main">
-            <label class="buret-search-control">Search <input id="search" type="search" placeholder="name, SMILES, metadata" /></label>
-            <label class="buret-smarts-control" ${caps.substructureSearch ? '' : 'hidden'}>SMARTS <input id="smarts" type="search" spellcheck="false" autocapitalize="off" placeholder="[#6]=O" /></label>
+            <label class="buret-search-control buret-filter-control ${caps.substructureSearch ? 'has-smarts' : ''}">
+              Search
+              <span class="buret-filter-fields">
+                <input id="search" type="search" aria-label="Search molecules" placeholder="name, SMILES, metadata" />
+                <input id="smarts" type="search" aria-label="SMARTS substructure" spellcheck="false" autocapitalize="off" placeholder="SMARTS [#6]=O" ${caps.substructureSearch ? '' : 'hidden'} />
+              </span>
+            </label>
             <label class="buret-sort-control">Sort <select id="sort"><option value="index">File order</option><option value="name">Name</option><option value="smiles">SMILES</option>${propertyOptions(cfg)}</select></label>
             <div id="load-status" class="buret-load-status"></div>
           </div>
@@ -390,7 +367,6 @@
     }
     state.selectionKeydownHandler = event => handleGridSelectionKeydown(event, cfg);
     document.addEventListener('keydown', state.selectionKeydownHandler);
-    initXyzrenderControls(cfg);
     applyGridPreferences();
     initInfiniteLoading(cfg);
   }
@@ -431,33 +407,11 @@
   }
 
   function rendererSwitchHTML() {
-    const presetOptions = xyzrenderPresetOptions()
-      .map(option => `<option value="${escapeAttr(option.value)}">${escapeHTML(option.label)}</option>`)
-      .join('');
     return `
       <div class="buret-grid-renderer-controls">
         <div class="buret-grid-renderer-switch" aria-label="3D renderer">
           <button type="button" data-buret-grid-renderer="molstar" data-buret-grid-sdf-poses data-buret-grid-docking>Poses</button>
           <button type="button" data-buret-grid-renderer="xyzrender-external">xyzrender</button>
-        </div>
-        <label class="buret-grid-xyzrender-preset">Preset
-          <select data-buret-grid-xyzrender-preset>${presetOptions}</select>
-        </label>
-        <button class="buret-grid-xyzrender-tune" type="button" data-buret-grid-xyzrender-tune aria-expanded="false">Tune</button>
-        <div class="buret-grid-xyzrender-popover hidden" data-buret-grid-xyzrender-popover>
-          <div class="buret-grid-xyzrender-popover-title">xyzrender</div>
-          <label><input type="checkbox" data-buret-grid-xctrl="transparentBackground" /> Transparent background</label>
-          <label>Gradients ${triStateSelectHTML('gradients')}</label>
-          <label>Fog ${triStateSelectHTML('fog')}</label>
-          <label>VDW style ${triStateSelectHTML('showVdw')}</label>
-          <label>Hide bonds ${triStateSelectHTML('hideBonds')}</label>
-          <label>Atom scale <input type="number" min="0.1" max="3" step="0.05" data-buret-grid-xctrl="atomScale" placeholder="auto" /></label>
-          <label>Bond width <input type="number" min="0.01" max="1" step="0.01" data-buret-grid-xctrl="bondWidth" placeholder="auto" /></label>
-          <label>Molecule color <input type="text" data-buret-grid-xctrl="molColor" placeholder="#AF52DE or auto" /></label>
-          <label>Cell ${triStateSelectHTML('showCell')}</label>
-          <label>Ghost cells ${triStateSelectHTML('showGhosts')}</label>
-          <label>Axes ${triStateSelectHTML('showAxes')}</label>
-          <label>Supercell <input type="text" data-buret-grid-xctrl="supercell" placeholder="1,1,1" /></label>
         </div>
       </div>`;
   }
@@ -502,15 +456,10 @@
       requestSdfPoseDocument(cfg);
       return;
     }
-    if (value === 'xyzrender-external') {
-      const preset = root.querySelector('[data-buret-grid-xyzrender-preset]');
-      state.xyzrenderPreset = normalizeXyzrenderPreset(preset?.value);
-      state.xyzrenderControls = readXyzrenderControls();
-    }
-    const payload = value === 'xyzrender-external'
-      ? { value, documentId: cfg?.documentId || null, preset: state.xyzrenderPreset, controls: { ...state.xyzrenderControls } }
-      : { value, documentId: cfg?.documentId || null };
-    post('setRenderer', `[grid] Switch renderer to ${value}.`, payload);
+    post('setRenderer', `[grid] Switch renderer to ${value}.`, {
+      value,
+      documentId: cfg?.documentId || null
+    });
   }
 
   function requestSdfPoseDocument(cfg) {
@@ -524,145 +473,16 @@
     return value === 'xyzrender-external' || value === 'xyzrender' ? 'xyzrender-external' : 'molstar';
   }
 
-  function initXyzrenderControls(cfg) {
-    state.xyzrenderPreset = normalizeXyzrenderPreset(cfg.xyzrenderPreset);
-    state.xyzrenderControls = normalizeXyzrenderControls(cfg.xyzrenderControls);
-    const preset = root.querySelector('[data-buret-grid-xyzrender-preset]');
-    if (preset) {
-      preset.value = state.xyzrenderPreset;
-      preset.addEventListener('change', event => {
-        state.xyzrenderPreset = normalizeXyzrenderPreset(event.target.value);
-      });
-    }
-    writeXyzrenderControls();
-    root.querySelector('[data-buret-grid-xyzrender-tune]')?.addEventListener('click', event => {
-      const popover = root.querySelector('[data-buret-grid-xyzrender-popover]');
-      if (!popover) return;
-      const isHidden = popover.classList.toggle('hidden');
-      event.currentTarget.setAttribute('aria-expanded', isHidden ? 'false' : 'true');
-    });
-    root.querySelectorAll('[data-buret-grid-xctrl]').forEach(input => {
-      input.addEventListener('input', () => {
-        state.xyzrenderControls = readXyzrenderControls();
-      });
-      input.addEventListener('change', () => {
-        state.xyzrenderControls = readXyzrenderControls();
-      });
-    });
-  }
-
-  function xyzrenderPresetOptions() {
-    const configured = window.BurreteConfig?.xyzrenderPresetOptions;
-    return Array.isArray(configured) && configured.length
-      ? configured.map(option => ({
-          value: normalizeXyzrenderPreset(rawXyzrenderPresetValue(option)),
-          label: String(option?.label || option?.value || 'Default')
-        }))
-      : DEFAULT_XYZRENDER_PRESETS;
-  }
-
-  function rawXyzrenderPresetValue(option) {
-    if (typeof option === 'string') return option;
-    if (!option || typeof option !== 'object') return '';
-    const explicit = option.value || option.id || option.key || option.preset;
-    if (explicit) return explicit;
-    const label = String(option.label || '').trim().toLowerCase();
-    return DEFAULT_XYZRENDER_PRESETS.find(preset => preset.label.toLowerCase() === label)?.value || '';
-  }
-
-  function knownXyzrenderPresetValues() {
-    const values = new Set(DEFAULT_XYZRENDER_PRESETS.map(option => option.value));
-    const configured = window.BurreteConfig?.xyzrenderPresetOptions;
-    if (Array.isArray(configured)) {
-      configured.forEach(option => {
-        const value = String(rawXyzrenderPresetValue(option) || '').toLowerCase();
-        if (value) values.add(value);
-      });
-    }
-    return values;
-  }
-
-  function normalizeXyzrenderPreset(value) {
-    const raw = String(value || 'default').toLowerCase();
-    return knownXyzrenderPresetValues().has(raw) ? raw : 'default';
-  }
-
-  function normalizeXyzrenderControls(value) {
-    const controls = value && typeof value === 'object' ? value : {};
-    return {
-      transparentBackground: controls.transparentBackground === false ? false : DEFAULT_XYZRENDER_CONTROLS.transparentBackground,
-      gradients: triState(controls.gradients),
-      fog: triState(controls.fog),
-      showVdw: triState(controls.showVdw),
-      hideBonds: triState(controls.hideBonds),
-      atomScale: numberOrNull(controls.atomScale, 0.1, 3),
-      bondWidth: numberOrNull(controls.bondWidth, 0.01, 1),
-      molColor: typeof controls.molColor === 'string' ? controls.molColor : '',
-      showCell: triState(controls.showCell),
-      showGhosts: triState(controls.showGhosts),
-      showAxes: triState(controls.showAxes),
-      supercell: normalizeSupercell(controls.supercell)
-    };
-  }
-
-  function writeXyzrenderControls() {
-    for (const [key, value] of Object.entries(state.xyzrenderControls)) {
-      const input = root.querySelector(`[data-buret-grid-xctrl="${key}"]`);
-      if (!input) continue;
-      if (input.type === 'checkbox') input.checked = value === true;
-      else if (input.tagName === 'SELECT') input.value = value === null ? '' : String(value);
-      else input.value = value ?? '';
-    }
-  }
-
-  function readXyzrenderControls() {
-    const controls = { ...state.xyzrenderControls };
-    root.querySelectorAll('[data-buret-grid-xctrl]').forEach(input => {
-      const key = input.getAttribute('data-buret-grid-xctrl');
-      if (!key) return;
-      if (input.type === 'checkbox') controls[key] = input.checked;
-      else if (input.tagName === 'SELECT') controls[key] = triState(input.value);
-      else if (key === 'atomScale') controls[key] = numberOrNull(input.value, 0.1, 3);
-      else if (key === 'bondWidth') controls[key] = numberOrNull(input.value, 0.01, 1);
-      else if (key === 'supercell') controls[key] = normalizeSupercell(input.value);
-      else controls[key] = String(input.value || '').trim();
-    });
-    return normalizeXyzrenderControls(controls);
-  }
-
-  function triStateSelectHTML(key) {
-    return `<select data-buret-grid-xctrl="${escapeAttr(key)}"><option value="">Auto</option><option value="true">On</option><option value="false">Off</option></select>`;
-  }
-
-  function triState(value) {
-    if (value === true || value === 'true') return true;
-    if (value === false || value === 'false') return false;
-    return null;
-  }
-
-  function numberOrNull(value, min, max) {
-    if (value === null || value === undefined || String(value).trim() === '') return null;
-    const number = Number(value);
-    if (!Number.isFinite(number)) return null;
-    return Math.min(max, Math.max(min, number));
-  }
-
-  function normalizeSupercell(value) {
-    const source = Array.isArray(value) ? value : String(value || '').split(/[,\s]+/u);
-    const parsed = source.map(item => Number.parseInt(String(item), 10));
-    if (parsed.length !== 3 || parsed.some(item => !Number.isFinite(item) || item < 1)) return null;
-    return parsed;
-  }
-
   function refresh(cfg) {
     if (state.remoteMode) {
       void refreshRemote(cfg);
       return;
     }
     const query = normalize(state.query);
+    const allRows = state.all.filter(row => !state.hiddenRows.has(Number(row.index)));
     const textRows = query
-      ? state.all.filter(row => normalize([row.name, row.smiles, ...Object.entries(row.props || {}).flat()].join('\n')).includes(query))
-      : state.all.slice();
+      ? allRows.filter(row => normalize([row.name, row.smiles, ...Object.entries(row.props || {}).flat()].join('\n')).includes(query))
+      : allRows.slice();
     state.rows = filterBySMARTS(textRows);
     state.rows.sort((a, b) => compare(a, b, state.sort));
     state.totalRows = state.rows.length;
@@ -810,7 +630,7 @@
         limit: loadBatchSize(cfg)
       });
       if (token !== state.token) return;
-      state.rows = Array.isArray(result.rows) ? result.rows : [];
+      state.rows = filterHiddenRows(Array.isArray(result.rows) ? result.rows : []);
       state.totalRows = Number(result.totalRows || 0);
       state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
       await appendVisibleRows(cfg, token);
@@ -883,7 +703,7 @@
         limit: loadBatchSize(cfg)
       });
       if (token !== state.token) return;
-      const nextRows = Array.isArray(result.rows) ? result.rows : [];
+      const nextRows = filterHiddenRows(Array.isArray(result.rows) ? result.rows : []);
       state.totalRows = Number(result.totalRows || state.totalRows);
       state.rows.push(...nextRows);
       state.visibleCount = Math.min(state.rows.length, state.visibleCount + loadBatchSize(cfg));
@@ -893,6 +713,10 @@
     } finally {
       state.remoteLoading = false;
     }
+  }
+
+  function filterHiddenRows(rows) {
+    return rows.filter(row => !state.hiddenRows.has(Number(row.index)));
   }
 
   async function appendVisibleRows(cfg, token) {
@@ -999,7 +823,59 @@
     el.addEventListener('contextmenu', event => showMoleculeContextMenu(event, row));
     installCardHover(el);
     installCardResizeHandle(el);
+    installCardDrag(el, row);
     return el;
+  }
+
+  function installCardDrag(el, row) {
+    const record = gridDragRecord(row);
+    if (!record) return;
+    el.draggable = true;
+    el.addEventListener('dragstart', event => {
+      if (event.target?.closest?.('[data-buret-card-resize]')) {
+        event.preventDefault();
+        return;
+      }
+      const payload = { paths: [], records: [record] };
+      try {
+        event.dataTransfer?.setData(STRUCTURE_DRAG_MIME, JSON.stringify(payload));
+        event.dataTransfer?.setData('text/plain', record.text);
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy';
+      } catch (_) {}
+    });
+  }
+
+  function gridDragRecord(row) {
+    const label = String(row?.name || `Molecule ${Number(row?.index) + 1 || 1}`).trim() || 'Molecule';
+    const baseName = safeStructureFileStem(label, Number(row?.index));
+    const molblock = String(row?.molblock || '').trim();
+    if (molblock) {
+      const text = molblock.includes('$$$$') ? molblock : `${molblock}\n$$$$`;
+      return {
+        path: `${baseName}.sdf`,
+        inputExtension: 'sdf',
+        text: `${text.trimEnd()}\n`
+      };
+    }
+    const smiles = String(row?.smiles || '').trim();
+    if (smiles) {
+      return {
+        path: `${baseName}.smi`,
+        inputExtension: 'smi',
+        text: `${smiles} ${label}\n`
+      };
+    }
+    return null;
+  }
+
+  function safeStructureFileStem(value, index) {
+    const fallback = Number.isFinite(index) ? `molecule-${index + 1}` : 'molecule';
+    const stem = String(value || fallback)
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/gu, '-')
+      .replace(/^-+|-+$/gu, '')
+      .slice(0, 80);
+    return stem || fallback;
   }
 
   function selectableRowIndexes() {
@@ -1109,15 +985,50 @@
     menu.style.top = `${Math.round(top)}px`;
   }
 
+  function removeGridRow(row) {
+    const index = Number(row.index);
+    state.selected.delete(index);
+    state.hiddenRows.add(index);
+    if (!state.remoteMode) {
+      const allIndex = state.all.findIndex(candidate => Number(candidate.index) === index);
+      if (allIndex >= 0) state.all.splice(allIndex, 1);
+    }
+    state.rows = state.rows.filter(candidate => Number(candidate.index) !== index);
+    state.totalRows = Math.max(0, state.totalRows - 1);
+  }
+
+  function describeGridRow(row) {
+    const props = Object.entries(row.props || {});
+    const parts = [
+      row.name || `Molecule ${Number(row.index) + 1}`,
+      row.smiles ? `SMILES: ${row.smiles}` : '',
+      props.length ? `${props.length} properties` : 'no properties'
+    ].filter(Boolean);
+    return parts.join(' · ');
+  }
+
   function moleculeContextMenuAction(action, row) {
+    const cfg = config();
     const label = row.name || `Molecule ${Number(row.index) + 1}`;
-    const actionLabels = {
-      remove: 'Delete molecule',
-      molstar: 'Open in Mol*',
-      hide: 'Hide molecule',
-      inspect: 'Inspect properties'
-    };
-    setStatus(`[grid] ${actionLabels[action] || 'Molecule action'} is not implemented yet for ${label}.`);
+    if (action === 'inspect') {
+      setStatus(`[grid] ${describeGridRow(row)}`);
+    } else if (action === 'hide') {
+      state.hiddenRows.add(Number(row.index));
+      state.selected.delete(Number(row.index));
+      refresh(cfg);
+      setStatus(`[grid] Hidden ${label}.`);
+    } else if (action === 'remove') {
+      removeGridRow(row);
+      void render(cfg);
+      setStatus(`[grid] Deleted ${label} from this view.`);
+    } else if (action === 'molstar') {
+      state.selected.clear();
+      state.selected.add(Number(row.index));
+      requestSdfPoseDocument(cfg);
+      setStatus(`[grid] Opening ${label} in Mol* pose view.`);
+    } else {
+      setStatus(`[grid] Molecule action is unavailable for ${label}.`);
+    }
     hideMoleculeContextMenu();
   }
 

@@ -179,7 +179,7 @@ button:disabled {
 }
 
 .buret-toolbar-row-main {
-  grid-template-columns: minmax(160px, 1fr) minmax(132px, 190px) minmax(132px, 190px) auto;
+  grid-template-columns: minmax(260px, 1fr) minmax(112px, 148px) auto;
 }
 
 .buret-toolbar-row-view {
@@ -241,11 +241,36 @@ button:disabled {
   text-transform: uppercase;
 }
 
+.buret-filter-fields {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  min-width: 0;
+}
+
+.buret-filter-control.has-smarts .buret-filter-fields {
+  grid-template-columns: minmax(160px, 1fr) minmax(112px, 170px);
+}
+
+.buret-filter-fields input[hidden] {
+  display: none;
+}
+
+.buret-sort-control {
+  width: min(148px, 100%);
+}
+
 .buret-grid-toolbar input[type="search"],
 .buret-grid-toolbar select {
   width: 100%;
   padding: 8px 10px;
   text-transform: none;
+}
+
+.buret-sort-control select {
+  min-height: 34px;
+  padding: 6px 26px 6px 9px;
+  font-size: 12px;
 }
 
 .buret-grid-toolbar select {
@@ -259,6 +284,13 @@ button:disabled {
     right 10px center;
   background-size: 5px 5px, 5px 5px;
   background-repeat: no-repeat;
+}
+
+.buret-sort-control select {
+  padding-right: 26px;
+  background-position:
+    right 13px center,
+    right 8px center;
 }
 
 .buret-grid-toolbar input.invalid {
@@ -292,12 +324,9 @@ button:disabled {
 }
 
 .buret-grid-renderer-controls {
-  position: relative;
-  display: grid;
-  grid-template-columns: auto 138px auto;
+  display: inline-flex;
   align-self: end;
-  align-items: end;
-  gap: 8px;
+  align-items: center;
   max-width: 100%;
 }
 
@@ -327,78 +356,6 @@ button:disabled {
 .buret-grid-renderer-switch button.active {
   color: var(--buret-text);
   background: color-mix(in srgb, var(--buret-text) 8%, transparent);
-}
-
-.buret-grid-xyzrender-preset {
-  width: 100%;
-}
-
-.buret-grid-xyzrender-tune {
-  align-self: end;
-}
-
-.buret-grid-xyzrender-popover {
-  grid-column: 1 / -1;
-  z-index: 30;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(164px, 1fr));
-  gap: 10px 12px;
-  width: min(520px, 100%);
-  max-height: min(360px, calc(100vh - 170px));
-  overflow: auto;
-  box-sizing: border-box;
-  padding: 14px;
-  border: 1px solid var(--buret-border-strong);
-  border-radius: 12px;
-  background: var(--buret-surface);
-  box-shadow: 0 18px 48px color-mix(in srgb, var(--buret-shadow) 90%, transparent);
-}
-
-.buret-grid-xyzrender-popover.hidden {
-  display: none;
-}
-
-.buret-grid-xyzrender-popover-title {
-  grid-column: 1 / -1;
-  color: var(--buret-text);
-  font-size: 13px;
-  font-weight: 720;
-}
-
-.buret-grid-xyzrender-popover label {
-  display: grid;
-  gap: 5px;
-  min-width: 0;
-  color: var(--buret-muted);
-  font-size: 11px;
-  font-weight: 680;
-  line-height: 1.25;
-  text-transform: none;
-}
-
-.buret-grid-xyzrender-popover label:has(input[type="checkbox"]) {
-  grid-template-columns: 18px 1fr;
-  align-items: center;
-}
-
-.buret-grid-xyzrender-popover input[type="text"],
-.buret-grid-xyzrender-popover input[type="number"],
-.buret-grid-xyzrender-popover select {
-  width: 100%;
-  min-height: 32px;
-  padding: 6px 9px;
-  border: 1px solid var(--buret-border);
-  border-radius: 8px;
-  box-sizing: border-box;
-  color: var(--buret-text);
-  background: var(--buret-input);
-  outline: none;
-}
-
-.buret-grid-xyzrender-popover input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--buret-accent);
 }
 
 .buret-grid {
@@ -882,6 +839,10 @@ body.buret-hide-properties .buret-card-body {
   }
 
   .buret-toolbar-row-main {
+    grid-template-columns: 1fr;
+  }
+
+  .buret-filter-control.has-smarts .buret-filter-fields {
     grid-template-columns: 1fr;
   }
 
