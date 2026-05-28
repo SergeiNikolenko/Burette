@@ -843,7 +843,11 @@ assert.match(browserDevDocuments, /shouldOpenXyzTrajectoryInMolstar[\s\S]*\? "mo
 assert.match(browserDevDocuments, /trajectoryControls: renderer === "molstar" && trajectoryFrameCount > 1/);
 assert.match(browserDevDocuments, /xyzrenderAvailable,/);
 assert.match(browserDevDocuments, /dataPath: renderer === "xyzrender-external" \? browserDevReadUrl\(path, fileExtension\(path\)\) : undefined/);
+assert.match(browserDevDocuments, /browserDevVirtualTextDocuments\.has\(path\) \? bytes : null/);
+assert.match(browserDevDocuments, /xyzrenderInputDataBase64: bytesToBase64\(bytes\)/);
+assert.match(browserDevDocuments, /return `data:text\/plain;charset=utf-8,\$\{encodeURIComponent\(virtualText\)\}`;/);
 assert.match(browserDevDocuments, /inputDataBase64: inputBytes \? bytesToBase64\(inputBytes\) : undefined/);
+assert.match(browserDevDocuments, /inputExtension: inputBytes \? inputExtension : undefined/);
 assert.match(browserDevDocuments, /function parseCifCoreAtoms\(lines: string\[\]\)/);
 assert.match(browserDevDocuments, /function xyzDataFromText\(text: string, extension: string, label: string\)/);
 assert.match(browserDevDocuments, /function convertedDataFromText\(text: string, extension: string, label: string\)/);

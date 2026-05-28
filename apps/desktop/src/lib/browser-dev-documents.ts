@@ -513,6 +513,8 @@ async function openBrowserDevDocumentFromBytes(
   );
   const defaultXyzrender = await defaultXyzrenderPlanForDocument(path, extension, text);
   const xyzrenderInputBytes = extension === "cub" || extension === "cube" ? null : sourceXyzBytes;
+  const virtualXyzrenderInputBytes = xyzrenderInputBytes ?? (browserDevVirtualTextDocuments.has(path) ? bytes : null);
+  const xyzrenderInputExtension = xyzrenderInputBytes ? "xyz" : extension;
   const { renderer, externalRendererStatus, externalArtifact, xyzrenderPresetOptions, xyzrenderControls } =
     await browserRendererPlan(
       defaultXyzrender?.inputPath ?? path,
@@ -521,7 +523,8 @@ async function openBrowserDevDocumentFromBytes(
       reloadOptions,
       molstarBytes,
       defaultXyzrender?.controls ?? null,
-      xyzrenderInputBytes,
+      virtualXyzrenderInputBytes,
+      xyzrenderInputExtension,
     );
   const viewerBytes = renderer === "molstar" && molstarBytes ? molstarBytes : bytes;
   const viewerFormat = renderer === "molstar" && molstarBytes && convertedMolstarData
@@ -754,6 +757,12 @@ function viewerHtml(
     ...(externalArtifact ? { externalArtifact } : {}),
     ...(xyzrenderPresetOptions ? { xyzrenderPresetOptions } : {}),
     ...(xyzrenderControls ? { xyzrenderControls } : {}),
+    ...(renderer === "xyzrender-external" && browserDevVirtualTextDocuments.has(path)
+      ? {
+          xyzrenderInputDataBase64: bytesToBase64(bytes),
+          xyzrenderInputExtension: fileExtension(path),
+        }
+      : {}),
     ...(externalRendererStatus ? { externalRendererStatus } : {}),
     ...(renderer === "xyz-fast"
       ? {
@@ -805,6 +814,7 @@ async function browserRendererPlan(
   molstarBytes: Uint8Array | null = null,
   defaultControls: XyzrenderControls | null = null,
   xyzrenderInputBytes: Uint8Array | null = molstarBytes,
+  xyzrenderInputExtension = "xyz",
 ) {
   if (renderer !== "xyzrender-external") return { renderer };
   const controls = reloadOptions?.xyzrenderControls ?? defaultControls ?? null;
@@ -815,6 +825,7 @@ async function browserRendererPlan(
       reloadOptions?.xyzrenderOrientationRef ?? null,
       controls,
       xyzrenderInputBytes,
+      xyzrenderInputExtension,
     );
     return {
       renderer: "xyzrender-external",
@@ -871,6 +882,7 @@ async function requestBrowserDevXyzrender(
   orientationRef: string | null,
   controls: XyzrenderControls | null,
   inputBytes: Uint8Array | null,
+  inputExtension = "xyz",
 ) {
   const url = new URL("/__burette/xyzrender", window.location.origin);
   const response = await fetch(url, {
@@ -882,6 +894,7 @@ async function requestBrowserDevXyzrender(
       orientationRef: orientationRef || undefined,
       controls: controls || undefined,
       inputDataBase64: inputBytes ? bytesToBase64(inputBytes) : undefined,
+      inputExtension: inputBytes ? inputExtension : undefined,
     }),
   });
   const payload = await response.json().catch(() => ({}));
@@ -1394,6 +1407,10 @@ function fsUrl(path: string) {
 }
 
 function browserDevReadUrl(path: string, extension: string) {
+  const virtualText = browserDevVirtualTextDocuments.get(path);
+  if (virtualText !== undefined) {
+    return `data:text/plain;charset=utf-8,${encodeURIComponent(virtualText)}`;
+  }
   if (extension === "maegz") {
     return `/__burette/read-file?path=${encodeURIComponent(path)}`;
   }
