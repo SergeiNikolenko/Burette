@@ -56,6 +56,7 @@ pub fn run() {
             commands::documents::pick_open_targets,
             commands::documents::open_documents,
             commands::documents::read_structure_text,
+            commands::documents::open_text_structure,
             commands::documents::open_docking_document,
             commands::documents::open_merged_collection,
             commands::documents::save_molecule_collection_as,
