@@ -182,9 +182,21 @@ button:disabled {
 }
 
 .buret-toolbar-row-view {
-  grid-template-columns: auto auto auto auto;
+  grid-template-columns: repeat(5, auto);
   justify-content: start;
   justify-items: start;
+}
+
+.buret-selection-actions {
+  display: inline-flex;
+  align-self: end;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 3px;
+  border: 1px solid var(--buret-border);
+  border-radius: 8px;
+  background: var(--buret-input);
 }
 
 .buret-grid-toolbar label {
