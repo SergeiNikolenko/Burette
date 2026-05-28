@@ -44,7 +44,11 @@ assert.match(viewer, /entries:\s*\[\s*entries\[0\],\s*poses\[activePose\]\s*\]/)
 
 assert.match(viewer, /function installDockingPoseControls\(viewer, prepared\)/);
 assert.match(viewer, /function nativeAnimationSelectButton\(\)/);
-assert.match(viewer, /animation\.textContent = 'Anim'/);
+assert.match(viewer, /animation\.textContent = '⏯'/);
+assert.match(viewer, /setAnimationOptionsOpen\(true\)/);
+assert.match(viewer, /bindPoseStepButton\(previous, -1\)/);
+assert.match(viewer, /bindPoseStepButton\(next, 1\)/);
+assert.match(viewer, /poseRepeatTimer = window\.setInterval\(\(\) => repeatPoseStep\(direction\), 320\)/);
 assert.match(viewer, /previous\.textContent = 'Prev'/);
 assert.match(viewer, /next\.textContent = 'Next'/);
 assert.match(viewer, /loop\.textContent = 'Loop'/);
