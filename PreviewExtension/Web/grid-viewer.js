@@ -11,6 +11,8 @@
   const RDKIT_SVG_SIZE = 260;
   const SVG_FIT_MIN_PADDING = 12;
   const SVG_FIT_PADDING_FRACTION = 0.08;
+  const SVG_FIT_BOTTOM_PADDING_MULTIPLIER = 1.7;
+  const SVG_FIT_VERTICAL_BIAS_FRACTION = 0.08;
   const XYZRENDER_CARD_CONCURRENCY = 4;
   const DEFAULT_XYZRENDER_PRESETS = [
     { value: 'default', label: 'Default' },
@@ -1280,9 +1282,12 @@
     if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
     const size = Math.max(width, height);
     const padding = Math.max(SVG_FIT_MIN_PADDING, size * SVG_FIT_PADDING_FRACTION);
+    const bottomPadding = padding * SVG_FIT_BOTTOM_PADDING_MULTIPLIER;
     const centerX = bounds.x1 + width / 2;
-    const centerY = bounds.y1 + height / 2;
-    const viewSize = size + padding * 2;
+    const viewSize = Math.max(width + padding * 2, height + padding + bottomPadding);
+    const baseCenterY = bounds.y1 + height / 2 + (bottomPadding - padding) / 2;
+    const maxSafeBias = Math.max(0, bounds.y1 - padding + viewSize / 2 - baseCenterY);
+    const centerY = baseCenterY + Math.min(viewSize * SVG_FIT_VERTICAL_BIAS_FRACTION, maxSafeBias);
     svg.setAttribute('viewBox', `${centerX - viewSize / 2} ${centerY - viewSize / 2} ${viewSize} ${viewSize}`);
     svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
     svg.removeAttribute('width');
