@@ -471,7 +471,7 @@ async function openBrowserDevDocumentFromBytes(
 ): Promise<ViewerDocument> {
   const text = await decodeStructureText(bytes, extension);
   const grid = gridPayload(path, extension, text);
-  const sdfRecordCount = grid?.format === "sdf" ? grid.records.length : 0;
+  const sdfRecordCount = isSdfExtension(extension) ? parseSdf(text).length : 0;
   const requestedMode = normalizeRendererMode(preferences.rendererMode);
   const explicitSdfViewer = isSdfExtension(extension)
     && Boolean(reloadOptions)
