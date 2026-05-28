@@ -183,9 +183,15 @@
   }
 
   async function loadWasmBinary(path) {
-    const response = await fetch(String(path));
+    let response;
+    try {
+      response = await fetch(String(path));
+    } catch (error) {
+      const message = error && error.message ? error.message : String(error);
+      throw new Error(`Failed to fetch RDKit wasm from ${path}: ${message}`);
+    }
     if (!response.ok) {
-      throw new Error(`Failed to load RDKit wasm: ${response.status} ${response.statusText}`.trim());
+      throw new Error(`Failed to load RDKit wasm from ${path}: ${response.status} ${response.statusText}`.trim());
     }
     return new Uint8Array(await response.arrayBuffer());
   }

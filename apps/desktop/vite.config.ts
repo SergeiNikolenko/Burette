@@ -33,6 +33,7 @@ const defaultFsAllow = defaultDevFileSources.map((path) => {
 const devFsAllowRoots = [repoRoot, ...defaultFsAllow, ...extraFsAllow].map((path) => resolve(path));
 const execFileAsync = promisify(execFile);
 const DEV_FILE_SIZE_LIMIT = 75 * 1024 * 1024;
+const RDKIT_WASM_PATH = join(repoRoot, "PreviewExtension", "Web", "rdkit", "RDKit_minimal.wasm");
 const DEV_FILE_EXTENSIONS = new Set([
   "abi", "bcif", "cif", "cms", "com", "csv", "cub", "cube", "dcd", "ent", "fdf", "gro",
   "in", "inp", "lammpstrj", "mae", "mae.gz", "maegz", "mcif", "mmcif", "mol",
@@ -300,6 +301,20 @@ export function browserDevXyzrenderPlugin() {
           res.statusCode = 200;
           res.setHeader("Content-Type", "application/json; charset=utf-8");
           res.end(JSON.stringify({ files }));
+        } catch (error) {
+          res.statusCode = 500;
+          res.setHeader("Content-Type", "application/json; charset=utf-8");
+          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+        }
+      });
+      server.middlewares.use("/__burette/rdkit-wasm", async (_req, res) => {
+        try {
+          const bytes = await readFile(RDKIT_WASM_PATH);
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "application/wasm");
+          res.setHeader("Content-Length", String(bytes.length));
+          res.setHeader("Cache-Control", "no-cache");
+          res.end(bytes);
         } catch (error) {
           res.statusCode = 500;
           res.setHeader("Content-Type", "application/json; charset=utf-8");
