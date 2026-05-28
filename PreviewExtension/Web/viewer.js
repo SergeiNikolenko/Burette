@@ -68,6 +68,7 @@
   const xyzrenderSheetRequests = new Map();
   let molstarWindowResizeHandler = null;
   let molstarContextMenuCleanup = null;
+  let molstarContextMenuPick = null;
   try { window.__mqlDebug && window.__mqlDebug('[viewer.js] top-level IIFE entered; readyState=' + document.readyState); } catch (_) {}
 
   function post(type, message) {
@@ -4005,6 +4006,38 @@
     menu.style.top = `${Math.round(top)}px`;
   }
 
+  function molstarLociIsEmpty(loci) {
+    if (!loci || loci.kind === 'empty-loci') return true;
+    if (Array.isArray(loci.elements) && loci.elements.length === 0) return true;
+    if (Array.isArray(loci.bonds) && loci.bonds.length === 0) return true;
+    return false;
+  }
+
+  function molstarContextCanvasFromEvent(event) {
+    const target = event?.target;
+    if (!(target instanceof Element)) return null;
+    if (target instanceof HTMLCanvasElement) return target;
+    return target.closest('canvas') || target.closest('.msp-plugin')?.querySelector('canvas') || null;
+  }
+
+  function molstarContextPickFromEvent(event) {
+    const canvas3d = activeViewer?.plugin?.canvas3d;
+    if (!canvas3d || typeof canvas3d.identify !== 'function' || typeof canvas3d.getLoci !== 'function') return null;
+    const canvas = molstarContextCanvasFromEvent(event);
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) return null;
+    try {
+      const pickingId = canvas3d.identify([event.clientX - rect.left, event.clientY - rect.top]);
+      const pick = pickingId ? canvas3d.getLoci(pickingId) : null;
+      if (!pick?.loci || molstarLociIsEmpty(pick.loci)) return null;
+      return pick;
+    } catch (error) {
+      debug('Mol* context pick failed: ' + (error?.message || String(error)));
+      return null;
+    }
+  }
+
   function molstarContextStructures() {
     const hierarchy = activeViewer?.plugin?.managers?.structure?.hierarchy;
     return Array.isArray(hierarchy?.current?.structures) ? hierarchy.current.structures : [];
@@ -4060,6 +4093,15 @@
     setStatus(`[web] ${targetLabel}: ${parts.join(' · ')}`);
   }
 
+  function selectMolstarContextPick() {
+    const pick = molstarContextMenuPick;
+    if (!pick?.loci || molstarLociIsEmpty(pick.loci)) return false;
+    const selects = activeViewer?.plugin?.managers?.interactivity?.lociSelects;
+    if (typeof selects?.select !== 'function') return false;
+    selects.select(pick);
+    return true;
+  }
+
   async function moleculeContextMenuAction(action, label) {
     const hierarchy = activeViewer?.plugin?.managers?.structure?.hierarchy;
     const targets = molstarContextTargetStructures();
@@ -4067,6 +4109,9 @@
     try {
       if (action === 'inspect') {
         await inspectMolstarContextTarget(targetLabel);
+      } else if (action === 'select') {
+        if (!selectMolstarContextPick()) throw new Error('No Mol* molecule is available to select.');
+        setStatus(`[web] Selected ${targetLabel}.`);
       } else if (action === 'hide') {
         if (!targets.length || typeof hierarchy?.toggleVisibility !== 'function') throw new Error('No Mol* structure is available to hide.');
         hierarchy.toggleVisibility(targets, 'hide');
@@ -4096,10 +4141,12 @@
 
   function hideMolstarContextMenu() {
     document.querySelector('.buret-molecule-context-menu')?.remove();
+    molstarContextMenuPick = null;
   }
 
-  function showMolstarContextMenu(event) {
+  function showMolstarContextMenu(event, pick) {
     hideMolstarContextMenu();
+    molstarContextMenuPick = pick || null;
     const menu = document.createElement('div');
     menu.className = 'buret-molecule-context-menu';
     menu.setAttribute('role', 'menu');
@@ -4111,6 +4158,7 @@
     subtitle.className = 'buret-molecule-context-menu-subtitle';
     subtitle.textContent = activeConfig?.label || 'Mol* structure';
     const actions = [
+      ['select', 'Select molecule'],
       ['remove', 'Delete molecule'],
       ['separate-window', 'Open in separate window'],
       ['molstar', 'Open in Mol*'],
@@ -4141,7 +4189,12 @@
       if (!viewer || !isMolstarContextMenuTarget(event.target)) return;
       event.preventDefault();
       event.stopPropagation();
-      showMolstarContextMenu(event);
+      const contextPick = molstarContextPickFromEvent(event);
+      if (!contextPick) {
+        hideMolstarContextMenu();
+        return;
+      }
+      showMolstarContextMenu(event, contextPick);
     };
     const onPointerDown = (event) => {
       const target = event.target;
