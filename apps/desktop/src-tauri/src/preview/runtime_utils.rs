@@ -103,10 +103,8 @@ mod tests {
 
     #[test]
     fn keeps_fresh_runtime_dirs_during_large_batches() {
-        let base = std::env::temp_dir().join(format!(
-            "burrete-runtime-prune-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let base =
+            std::env::temp_dir().join(format!("burrete-runtime-prune-{}", uuid::Uuid::new_v4()));
         let assets = base.join("assets");
         fs::create_dir_all(&assets).expect("assets dir should be created");
 

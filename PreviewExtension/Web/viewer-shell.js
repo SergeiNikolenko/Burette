@@ -19,8 +19,8 @@
           <button class="buret-button buret-xyzrender-tune hidden" type="button" data-buret-action="xyzrender-tune" aria-label="Tune xyzrender" title="Tune xyzrender">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H4v2h6V5Zm10 0h-6v2h6V5ZM14 11H4v2h10v-2Zm6 0h-2v2h2v-2ZM8 17H4v2h4v-2Zm12 0h-8v2h8v-2Z" fill="currentColor"/></svg>
           </button>
+          <button class="buret-button hidden" type="button" data-buret-action="sdf-grid" aria-label="Show SDF grid" title="Show SDF grid">Grid</button>
           <div class="buret-renderer-control" data-buret-renderer-control>
-            <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="xyz-fast" aria-label="Use Fast XYZ SVG" title="Use Fast XYZ SVG">Fast</button>
             <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="molstar" aria-label="Use Mol* Interactive" title="Use Mol* Interactive">Mol*</button>
             <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="xyzrender-external" aria-label="Use external xyzrender" title="Use external xyzrender">xyzr</button>
           </div>
@@ -77,6 +77,23 @@
                   <span class="buret-flag-copy"><span class="buret-flag-label">Supercell</span></span>
                   <input class="buret-input" type="text" placeholder="2 2 1" data-buret-xctrl="supercell" />
                 </label>
+              </div>
+            </div>
+          </details>
+          <details class="buret-xyzrender-advanced" data-buret-xyzrender-field>
+            <summary>Field overlay</summary>
+            <div class="buret-xyzrender-section buret-xyzrender-section-advanced">
+              <div class="buret-field-grid">
+                <label class="buret-field"><span>Mode</span><select class="buret-input" data-buret-xctrl="fieldMode"><option value="">Auto</option><option value="off">Off</option><option value="density">Density</option><option value="mo">MO</option><option value="esp">ESP</option><option value="nci">NCI</option></select></label>
+                <label class="buret-field"><span>Iso</span><span class="buret-slider-row"><input class="buret-slider" type="range" min="0.01" max="2" step="0.01" value="0.3" data-buret-xctrl-slider="fieldIso" /><input class="buret-input buret-slider-value" type="number" min="0.01" step="0.01" placeholder="auto" data-buret-xctrl="fieldIso" /></span></label>
+                <label class="buret-field"><span>Opacity</span><span class="buret-slider-row"><input class="buret-slider" type="range" min="0" max="1" step="0.01" value="0.5" data-buret-xctrl-slider="fieldOpacity" /><input class="buret-input buret-slider-value" type="number" min="0" max="1" step="0.01" placeholder="auto" data-buret-xctrl="fieldOpacity" /></span></label>
+                <label class="buret-field"><span>Surface</span><select class="buret-input" data-buret-xctrl="fieldSurfaceStyle"><option value="">Auto</option><option value="solid">Solid</option><option value="mesh">Mesh</option><option value="contour">Contour</option><option value="dot">Dot</option></select></label>
+                <label class="buret-field"><span>MO + color</span><input class="buret-input" type="text" placeholder="steelblue" data-buret-xctrl="fieldMoPositiveColor" /></label>
+                <label class="buret-field"><span>MO - color</span><input class="buret-input" type="text" placeholder="maroon" data-buret-xctrl="fieldMoNegativeColor" /></label>
+                <label class="buret-field"><span>Density color</span><input class="buret-input" type="text" placeholder="steelblue" data-buret-xctrl="fieldDensityColor" /></label>
+                <label class="buret-field"><span>Palette</span><input class="buret-input" type="text" placeholder="viridis" data-buret-xctrl="fieldCmapPalette" /></label>
+                <label class="buret-field"><span>Range min</span><span class="buret-slider-row"><input class="buret-slider" type="range" min="-5" max="5" step="0.05" value="-1" data-buret-xctrl-slider="fieldCmapMin" /><input class="buret-input buret-slider-value" type="number" step="0.05" placeholder="auto" data-buret-xctrl="fieldCmapMin" /></span></label>
+                <label class="buret-field"><span>Range max</span><span class="buret-slider-row"><input class="buret-slider" type="range" min="-5" max="5" step="0.05" value="1" data-buret-xctrl-slider="fieldCmapMax" /><input class="buret-input buret-slider-value" type="number" step="0.05" placeholder="auto" data-buret-xctrl="fieldCmapMax" /></span></label>
               </div>
             </div>
           </details>

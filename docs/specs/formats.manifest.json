@@ -14,6 +14,7 @@
     { "name": "XYZ", "extensions": ["xyz"], "contentType": "com.local.burrete10.xyz", "renderer": "xyz-fast", "grid": false, "desktopOpen": true, "quickLook": true, "bundleAssociation": true },
     { "name": "GRO", "extensions": ["gro"], "contentType": "com.local.burrete10.gro", "renderer": "molstar", "grid": false, "desktopOpen": true, "quickLook": true, "bundleAssociation": true },
     { "name": "Cube", "extensions": ["cub", "cube"], "contentType": "com.local.burrete10.xyzrender-input", "contentTypeAliases": ["com.apple.videoapps.cube", "com.gaussian.cube"], "renderer": "xyzrender-external", "grid": false, "desktopOpen": true, "quickLook": true, "bundleAssociation": true },
-    { "name": "Generic xyzrender input", "extensions": ["abi", "com", "fdf", "in", "inp", "nw", "out", "psi4", "qcin", "vasp"], "contentType": "com.local.burrete10.xyzrender-input", "contentTypeAliases": ["com.adobe.fdf"], "renderer": "xyzrender-external", "grid": false, "desktopOpen": true, "quickLook": true, "bundleAssociation": true }
+    { "name": "Generic xyzrender input", "extensions": ["abi", "com", "fdf", "in", "inp", "nw", "out", "psi4", "qcin", "vasp"], "contentType": "com.local.burrete10.xyzrender-input", "contentTypeAliases": ["com.adobe.fdf"], "renderer": "xyzrender-external", "grid": false, "desktopOpen": true, "quickLook": true, "bundleAssociation": true },
+    { "name": "Schrodinger", "extensions": ["mae", "mae.gz", "maegz", "cms"], "contentType": "com.local.burrete10.schrodinger", "renderer": "xyzrender-external", "grid": false, "desktopOpen": true, "quickLook": true, "bundleAssociation": true }
   ]
 }

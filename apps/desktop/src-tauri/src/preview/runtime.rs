@@ -1,14 +1,20 @@
 use serde::{Deserialize, Serialize};
-use std::fs;
+use serde_json::{Value, json};
+use std::fs::{self, File};
+use std::io::Read;
 use std::path::PathBuf;
 use tauri::Runtime;
 
-use super::formats::{format_for_extension, resolve_renderer};
+use super::formats::{
+    format_for_extension, normalize_renderer_mode, resolve_renderer, structure_path_extension,
+};
 use super::runtime_grid::{create_grid_runtime, grid_requires_preview};
 use super::runtime_utils::{file_title, stable_id};
-use super::runtime_viewer::create_runtime;
+use super::runtime_viewer::{DockingRuntimeSource, create_docking_runtime, create_runtime};
+use super::text_xyz::converted_data_from_text;
 
 const MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
+const MAESTRO_PREVIEW_READ_LIMIT: u64 = 64 * 1024 * 1024;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -18,6 +24,34 @@ pub(crate) struct ViewerPreferences {
     pub(crate) renderer_mode: String,
     pub(crate) molstar_style: String,
     pub(crate) xyz_fast_style: String,
+    #[serde(default = "default_light_accent")]
+    pub(crate) theme_light_accent: String,
+    #[serde(default = "default_light_background")]
+    pub(crate) theme_light_background: String,
+    #[serde(default = "default_light_foreground")]
+    pub(crate) theme_light_foreground: String,
+    #[serde(default = "default_system_font")]
+    pub(crate) theme_light_ui_font: String,
+    #[serde(default = "default_system_font")]
+    pub(crate) theme_light_editor_font: String,
+    #[serde(default = "default_light_translucent")]
+    pub(crate) theme_light_translucent: f64,
+    #[serde(default = "default_light_contrast")]
+    pub(crate) theme_light_contrast: f64,
+    #[serde(default = "default_dark_accent")]
+    pub(crate) theme_dark_accent: String,
+    #[serde(default = "default_dark_background")]
+    pub(crate) theme_dark_background: String,
+    #[serde(default = "default_dark_foreground")]
+    pub(crate) theme_dark_foreground: String,
+    #[serde(default = "default_system_font")]
+    pub(crate) theme_dark_ui_font: String,
+    #[serde(default = "default_system_font")]
+    pub(crate) theme_dark_editor_font: String,
+    #[serde(default = "default_dark_translucent")]
+    pub(crate) theme_dark_translucent: f64,
+    #[serde(default = "default_dark_contrast")]
+    pub(crate) theme_dark_contrast: f64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -49,6 +83,16 @@ pub(crate) struct XyzrenderControls {
     pub(crate) show_axes: Option<bool>,
     pub(crate) cell_width: Option<f64>,
     pub(crate) supercell: Option<[i32; 3]>,
+    pub(crate) field_mode: Option<String>,
+    pub(crate) field_iso: Option<f64>,
+    pub(crate) field_opacity: Option<f64>,
+    pub(crate) field_surface_style: Option<String>,
+    pub(crate) field_mo_positive_color: Option<String>,
+    pub(crate) field_mo_negative_color: Option<String>,
+    pub(crate) field_density_color: Option<String>,
+    pub(crate) field_cmap_palette: Option<String>,
+    pub(crate) field_cmap_min: Option<f64>,
+    pub(crate) field_cmap_max: Option<f64>,
     pub(crate) custom_config_path: Option<String>,
     pub(crate) extra_arguments: Option<String>,
 }
@@ -81,11 +125,83 @@ impl ViewerPreferences {
     pub(crate) fn resolved_transparent_background(&self) -> bool {
         self.canvas_background_for_runtime() == "transparent"
     }
+
+    pub(crate) fn theme_tokens(&self) -> Value {
+        json!({
+            "light": {
+                "accent": self.theme_light_accent,
+                "background": self.theme_light_background,
+                "foreground": self.theme_light_foreground,
+                "uiFont": self.theme_light_ui_font,
+                "editorFont": self.theme_light_editor_font,
+                "translucent": self.theme_light_translucent,
+                "contrast": self.theme_light_contrast,
+            },
+            "dark": {
+                "accent": self.theme_dark_accent,
+                "background": self.theme_dark_background,
+                "foreground": self.theme_dark_foreground,
+                "uiFont": self.theme_dark_ui_font,
+                "editorFont": self.theme_dark_editor_font,
+                "translucent": self.theme_dark_translucent,
+                "contrast": self.theme_dark_contrast,
+            }
+        })
+    }
+}
+
+fn default_system_font() -> String {
+    "-apple-system-body, ui-sans-serif, -apple-system, system-ui, \"Segoe UI\", Helvetica, \"Apple Color Emoji\", Arial, sans-serif, \"Segoe UI Emoji\", \"Segoe UI Symbol\"".to_string()
+}
+
+fn default_light_accent() -> String {
+    "#AF52DE".to_string()
+}
+
+fn default_light_background() -> String {
+    "#FFFFFF".to_string()
+}
+
+fn default_light_foreground() -> String {
+    "#0D0D0D".to_string()
+}
+
+fn default_light_translucent() -> f64 {
+    10.0
+}
+
+fn default_light_contrast() -> f64 {
+    20.0
+}
+
+fn default_dark_accent() -> String {
+    "#AF52DE".to_string()
+}
+
+fn default_dark_background() -> String {
+    "#111111".to_string()
+}
+
+fn default_dark_foreground() -> String {
+    "#FCFCFC".to_string()
+}
+
+fn default_dark_translucent() -> f64 {
+    20.0
+}
+
+fn default_dark_contrast() -> f64 {
+    16.0
 }
 
 #[cfg(test)]
 mod viewer_preferences_tests {
-    use super::ViewerPreferences;
+    use super::{
+        ViewerPreferences, default_dark_accent, default_dark_background, default_dark_contrast,
+        default_dark_foreground, default_dark_translucent, default_light_accent,
+        default_light_background, default_light_contrast, default_light_foreground,
+        default_light_translucent, default_system_font,
+    };
 
     fn preferences(theme: &str, canvas_background: &str) -> ViewerPreferences {
         ViewerPreferences {
@@ -94,6 +210,20 @@ mod viewer_preferences_tests {
             renderer_mode: "auto".to_string(),
             molstar_style: "illustrative".to_string(),
             xyz_fast_style: "default".to_string(),
+            theme_light_accent: default_light_accent(),
+            theme_light_background: default_light_background(),
+            theme_light_foreground: default_light_foreground(),
+            theme_light_ui_font: default_system_font(),
+            theme_light_editor_font: default_system_font(),
+            theme_light_translucent: default_light_translucent(),
+            theme_light_contrast: default_light_contrast(),
+            theme_dark_accent: default_dark_accent(),
+            theme_dark_background: default_dark_background(),
+            theme_dark_foreground: default_dark_foreground(),
+            theme_dark_ui_font: default_system_font(),
+            theme_dark_editor_font: default_system_font(),
+            theme_dark_translucent: default_dark_translucent(),
+            theme_dark_contrast: default_dark_contrast(),
         }
     }
 
@@ -144,6 +274,14 @@ pub(crate) struct ViewerDocument {
     renderer: String,
     runtime_path: String,
     byte_count: u64,
+    #[serde(rename = "virtual", skip_serializing_if = "is_false")]
+    is_virtual: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    docking_request: Option<DockingDocumentRequest>,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 pub(crate) fn open_document<R: Runtime>(
@@ -159,6 +297,193 @@ pub(crate) fn open_document<R: Runtime>(
     if !metadata.is_file() {
         return Err(format!("{} is not a file", canonical.display()));
     }
+    let extension = structure_path_extension(&canonical);
+    let uses_bounded_maestro_preview =
+        is_maestro_preview_extension(&extension) && metadata.len() > MAX_STRUCTURE_FILE_SIZE;
+    if metadata.len() > MAX_STRUCTURE_FILE_SIZE && !uses_bounded_maestro_preview {
+        return Err(format!(
+            "{} is larger than the 75 MB preview limit",
+            canonical.display()
+        ));
+    }
+    let data = if uses_bounded_maestro_preview {
+        read_file_prefix(&canonical, MAESTRO_PREVIEW_READ_LIMIT)?
+    } else {
+        fs::read(&canonical).map_err(|err| err.to_string())?
+    };
+    if data.is_empty() {
+        return Err(format!("{} is empty", canonical.display()));
+    }
+
+    let document_id = stable_id(&canonical);
+    let title = file_title(&canonical);
+    let maestro_preview_data = if is_maestro_preview_extension(&extension) {
+        converted_data_from_text(&data, &extension, &title)
+    } else {
+        None
+    };
+    if uses_bounded_maestro_preview && maestro_preview_data.is_none() {
+        return Err(format!(
+            "{} is larger than the normal preview limit and no Maestro atom table could be extracted from the first 64 MB",
+            canonical.display()
+        ));
+    }
+    let requested_renderer = normalize_renderer_mode(&preferences.renderer_mode);
+    let should_use_viewer_for_sdf = matches!(extension.as_str(), "sd" | "sdf")
+        && reload_options.is_some()
+        && (requested_renderer == "molstar"
+            || requested_renderer == "xyzrender-external");
+    if !should_use_viewer_for_sdf {
+        if let Some(runtime_path) = create_grid_runtime(
+            app,
+            &document_id,
+            &canonical,
+            &extension,
+            &data,
+            preferences,
+        )? {
+            return Ok(ViewerDocument {
+                id: document_id.clone(),
+                path: canonical.to_string_lossy().to_string(),
+                title: file_title(&canonical),
+                extension,
+                renderer: "grid2d".to_string(),
+                runtime_path: runtime_path.to_string_lossy().to_string(),
+                byte_count: metadata.len(),
+                is_virtual: false,
+                docking_request: None,
+            });
+        }
+    }
+    if grid_requires_preview(&extension) {
+        return Err(format!(
+            "{} does not contain supported molecule grid records",
+            canonical.display()
+        ));
+    }
+
+    let runtime_extension = maestro_preview_data
+        .as_ref()
+        .map(|preview| preview.extension)
+        .unwrap_or(extension.as_str());
+    let runtime_data = maestro_preview_data
+        .as_ref()
+        .map(|preview| preview.data.as_slice())
+        .unwrap_or(&data);
+    let format = format_for_extension(runtime_extension)?;
+    let requested_renderer_for_document =
+        if maestro_preview_data.is_some() {
+            "molstar"
+        } else {
+            default_renderer_mode_for_document(&extension, requested_renderer, reload_options)
+        };
+    let renderer = resolve_renderer(&format, requested_renderer_for_document);
+    let runtime = create_runtime(
+        app,
+        &canonical,
+        runtime_extension,
+        &format,
+        &renderer,
+        runtime_data,
+        preferences,
+        reload_options,
+    )?;
+    Ok(ViewerDocument {
+        id: document_id,
+        path: canonical.to_string_lossy().to_string(),
+        title,
+        extension,
+        renderer: runtime.renderer,
+        runtime_path: runtime.path.to_string_lossy().to_string(),
+        byte_count: metadata.len(),
+        is_virtual: false,
+        docking_request: None,
+    })
+}
+
+fn is_maestro_preview_extension(extension: &str) -> bool {
+    matches!(extension, "cms" | "mae" | "maegz")
+}
+
+fn read_file_prefix(path: &PathBuf, max_bytes: u64) -> Result<Vec<u8>, String> {
+    let mut file = File::open(path).map_err(|err| err.to_string())?;
+    let mut data = Vec::with_capacity(max_bytes.min(usize::MAX as u64) as usize);
+    file.by_ref()
+        .take(max_bytes)
+        .read_to_end(&mut data)
+        .map_err(|err| err.to_string())?;
+    Ok(data)
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DockingDocumentRequest {
+    receptor_path: String,
+    ligand_paths: Vec<String>,
+}
+
+pub(crate) fn open_docking_document<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    request: DockingDocumentRequest,
+    preferences: &ViewerPreferences,
+) -> Result<ViewerDocument, String> {
+    let receptor = read_docking_source(&request.receptor_path)?;
+    let ligands = request
+        .ligand_paths
+        .iter()
+        .map(|path| read_docking_source(path))
+        .collect::<Result<Vec<_>, _>>()?;
+    if ligands.is_empty() {
+        return Err("Choose at least one ligand or pose file for docking view".to_string());
+    }
+    let source_id = format!(
+        "docking:{}:{}",
+        receptor.path,
+        ligands
+            .iter()
+            .map(|ligand| ligand.path.as_str())
+            .collect::<Vec<_>>()
+            .join("|")
+    );
+    let document_id = stable_id(PathBuf::from(&source_id).as_path());
+    let title = format!(
+        "Docking: {} + {} ligand{}",
+        receptor.label,
+        ligands.len(),
+        if ligands.len() == 1 { "" } else { "s" }
+    );
+    let byte_count = receptor.byte_count as u64
+        + ligands
+            .iter()
+            .map(|ligand| ligand.byte_count as u64)
+            .sum::<u64>();
+    let docking_request = DockingDocumentRequest {
+        receptor_path: receptor.path.clone(),
+        ligand_paths: ligands.iter().map(|ligand| ligand.path.clone()).collect(),
+    };
+    let runtime =
+        create_docking_runtime(app, &document_id, &title, receptor, ligands, preferences)?;
+    Ok(ViewerDocument {
+        id: document_id.clone(),
+        path: format!("burrete-docking://{document_id}"),
+        title,
+        extension: "docking".to_string(),
+        renderer: runtime.renderer,
+        runtime_path: runtime.path.to_string_lossy().to_string(),
+        byte_count,
+        is_virtual: true,
+        docking_request: Some(docking_request),
+    })
+}
+
+fn read_docking_source(path: &str) -> Result<DockingRuntimeSource, String> {
+    let canonical = PathBuf::from(path)
+        .canonicalize()
+        .map_err(|err| format!("{path}: {err}"))?;
+    let metadata = fs::metadata(&canonical).map_err(|err| err.to_string())?;
+    if !metadata.is_file() {
+        return Err(format!("{} is not a file", canonical.display()));
+    }
     if metadata.len() > MAX_STRUCTURE_FILE_SIZE {
         return Err(format!(
             "{} is larger than the 75 MB preview limit",
@@ -169,59 +494,59 @@ pub(crate) fn open_document<R: Runtime>(
     if data.is_empty() {
         return Err(format!("{} is empty", canonical.display()));
     }
-
-    let extension = canonical
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-    let document_id = stable_id(&canonical);
-    if let Some(runtime_path) =
-        create_grid_runtime(app, &document_id, &canonical, &extension, &data, preferences)?
-    {
-        return Ok(ViewerDocument {
-            id: document_id.clone(),
+    let extension = structure_path_extension(&canonical);
+    let format = format_for_extension(&extension)?;
+    let label = file_title(&canonical);
+    if format.external_only {
+        let converted = converted_data_from_text(&data, &extension, &label).ok_or_else(|| {
+            format!(
+                "{} cannot be added to Mol* docking view because it needs xyzrender conversion",
+                canonical.display()
+            )
+        })?;
+        return Ok(DockingRuntimeSource {
             path: canonical.to_string_lossy().to_string(),
-            title: file_title(&canonical),
+            label,
             extension,
-            renderer: "grid2d".to_string(),
-            runtime_path: runtime_path.to_string_lossy().to_string(),
-            byte_count: metadata.len(),
+            format: converted.extension.to_string(),
+            binary: false,
+            data: converted.data,
+            byte_count: metadata.len() as usize,
         });
     }
-    if grid_requires_preview(&extension) {
-        return Err(format!(
-            "{} does not contain supported molecule grid records",
-            canonical.display()
-        ));
-    }
-
-    let format = format_for_extension(&extension)?;
-    let renderer = resolve_renderer(&format, &preferences.renderer_mode);
-    let runtime = create_runtime(
-        app,
-        &canonical,
-        &extension,
-        &format,
-        &renderer,
-        &data,
-        preferences,
-        reload_options,
-    )?;
-    Ok(ViewerDocument {
-        id: document_id,
+    Ok(DockingRuntimeSource {
         path: canonical.to_string_lossy().to_string(),
-        title: file_title(&canonical),
+        label,
         extension,
-        renderer: runtime.renderer,
-        runtime_path: runtime.path.to_string_lossy().to_string(),
-        byte_count: metadata.len(),
+        format: format.molstar_format,
+        binary: format.is_binary,
+        data,
+        byte_count: metadata.len() as usize,
     })
+}
+
+fn default_renderer_mode_for_document<'a>(
+    extension: &str,
+    requested_renderer: &'a str,
+    reload_options: Option<&ViewerReloadOptions>,
+) -> &'a str {
+    if matches!(extension, "sd" | "sdf")
+        && requested_renderer == "xyzrender-external"
+        && reload_options.is_none()
+    {
+        return "molstar";
+    }
+    requested_renderer
 }
 
 #[cfg(test)]
 mod document_open_tests {
-    use super::{open_document, ViewerPreferences};
+    use super::{
+        ViewerPreferences, default_dark_accent, default_dark_background, default_dark_contrast,
+        default_dark_foreground, default_dark_translucent, default_light_accent,
+        default_light_background, default_light_contrast, default_light_foreground,
+        default_light_translucent, default_system_font, open_document,
+    };
     use crate::commands::documents::open_documents;
     use crate::preview::grid_store::GridRuntimeRegistry;
     use std::collections::BTreeMap;
@@ -241,6 +566,20 @@ mod document_open_tests {
             renderer_mode: "auto".to_string(),
             molstar_style: "illustrative".to_string(),
             xyz_fast_style: "ball-stick".to_string(),
+            theme_light_accent: default_light_accent(),
+            theme_light_background: default_light_background(),
+            theme_light_foreground: default_light_foreground(),
+            theme_light_ui_font: default_system_font(),
+            theme_light_editor_font: default_system_font(),
+            theme_light_translucent: default_light_translucent(),
+            theme_light_contrast: default_light_contrast(),
+            theme_dark_accent: default_dark_accent(),
+            theme_dark_background: default_dark_background(),
+            theme_dark_foreground: default_dark_foreground(),
+            theme_dark_ui_font: default_system_font(),
+            theme_dark_editor_font: default_system_font(),
+            theme_dark_translucent: default_dark_translucent(),
+            theme_dark_contrast: default_dark_contrast(),
         }
     }
 
@@ -367,9 +706,10 @@ mod document_open_tests {
     }
 
     fn expected_real_renderer(path: &Path) -> &'static str {
-        match path.extension().and_then(|value| value.to_str()).unwrap_or("") {
+        match super::structure_path_extension(path).as_str() {
             "abi" | "com" | "cub" | "cube" | "fdf" | "in" | "inp" | "nw" | "out" | "psi4"
             | "qcin" | "vasp" => "xyzrender-external",
+            "cms" | "mae" | "maegz" => "xyzrender-external",
             "cif" | "mol2" | "pdb" => "molstar",
             "sdf" => {
                 if path.file_name().and_then(|value| value.to_str()) == Some("multi_mol.sdf") {
@@ -393,8 +733,10 @@ mod document_open_tests {
 
             let cube = create_temp_file("cube", b"dummy cube");
             let com = create_temp_file("com", b"dummy input");
+            let mae_gz = create_temp_file("mae.gz", b"dummy schrodinger maestro");
             created_files.push(cube.clone());
             created_files.push(com.clone());
+            created_files.push(mae_gz.clone());
 
             let cases = vec![
                 (fixture_path("xyz/single.xyz"), "xyzrender-external"),
@@ -403,6 +745,7 @@ mod document_open_tests {
                 (fixture_path("sdf/multi.sdf"), "grid2d"),
                 (cube, "xyzrender-external"),
                 (com, "xyzrender-external"),
+                (mae_gz, "xyzrender-external"),
             ];
 
             for (path, expected_renderer) in cases {
@@ -426,6 +769,132 @@ mod document_open_tests {
                 }
             }
         });
+    }
+
+    #[test]
+    fn opens_convertible_external_text_as_molstar_when_requested() {
+        let app = mock_app_with_grid_registry();
+        let mut preferences = viewer_preferences();
+        preferences.renderer_mode = "molstar".to_string();
+        let path = create_temp_file(
+            "out",
+            br#"
+CARTESIAN COORDINATES (ANGSTROEM)
+---------------------------------
+  O     -2.304659   -0.473599    0.509723
+  C     -2.246527    0.624277   -0.047679
+"#,
+        );
+
+        let document = open_document(&app.handle(), path.clone(), &preferences, None)
+            .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
+        assert_eq!(document.renderer, "molstar");
+        let preview_data = fs::read_to_string(
+            Path::new(&document.runtime_path)
+                .parent()
+                .expect("runtime html should have a parent")
+                .join("preview-data.bin"),
+        )
+        .expect("converted preview data should be written");
+        assert!(preview_data.starts_with("REMARK Converted from probe.out\nHETATM"));
+        remove_runtime_artifacts(&document.runtime_path);
+        if let Some(parent) = path.parent() {
+            let _ = fs::remove_dir_all(parent);
+        }
+    }
+
+    #[test]
+    fn opens_multiframe_xyz_in_molstar_with_trajectory_controls_on_auto() {
+        let app = mock_app_with_grid_registry();
+        let preferences = viewer_preferences();
+        let path = create_temp_file(
+            "xyz",
+            b"2\nfirst frame\nH 0 0 0\nO 0 0 1\n2\nsecond frame\nH 1 0 0\nO 1 0 1\n",
+        );
+
+        let document = open_document(&app.handle(), path.clone(), &preferences, None)
+            .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
+        assert_eq!(document.renderer, "molstar");
+        let runtime_dir = Path::new(&document.runtime_path)
+            .parent()
+            .expect("runtime html should have a parent");
+        let config = fs::read_to_string(runtime_dir.join("preview-config.js"))
+            .expect("preview config should be written");
+        assert!(config.contains("\"trajectoryControls\":true"));
+        assert!(config.contains("\"trajectoryFrameCount\":2"));
+
+        remove_runtime_artifacts(&document.runtime_path);
+        if let Some(parent) = path.parent() {
+            let _ = fs::remove_dir_all(parent);
+        }
+    }
+
+    #[test]
+    fn keeps_multiframe_xyz_in_molstar_when_global_renderer_is_fast() {
+        let app = mock_app_with_grid_registry();
+        let mut preferences = viewer_preferences();
+        preferences.renderer_mode = "xyz-fast".to_string();
+        let path = create_temp_file(
+            "xyz",
+            b"2\nfirst frame\nH 0 0 0\nO 0 0 1\n2\nsecond frame\nH 1 0 0\nO 1 0 1\n",
+        );
+
+        let document = open_document(&app.handle(), path.clone(), &preferences, None)
+            .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
+        assert_eq!(document.renderer, "molstar");
+        let runtime_dir = Path::new(&document.runtime_path)
+            .parent()
+            .expect("runtime html should have a parent");
+        let config = fs::read_to_string(runtime_dir.join("preview-config.js"))
+            .expect("preview config should be written");
+        assert!(config.contains("\"trajectoryControls\":true"));
+        assert!(config.contains("\"trajectoryFrameCount\":2"));
+
+        remove_runtime_artifacts(&document.runtime_path);
+        if let Some(parent) = path.parent() {
+            let _ = fs::remove_dir_all(parent);
+        }
+    }
+
+    #[test]
+    fn applies_cube_surface_defaults_to_xyzrender_config() {
+        with_fake_xyzrender(|| {
+            let app = mock_app_with_grid_registry();
+            let preferences = viewer_preferences();
+            let path = create_temp_file(
+                "cube",
+                b"Cube data generated by ORCA\nMolecular orbital 50 of operator 0\n   -1 0 0 0\n",
+            );
+
+            let document = open_document(&app.handle(), path.clone(), &preferences, None)
+                .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
+            assert_eq!(document.renderer, "xyzrender-external");
+            let runtime_dir = Path::new(&document.runtime_path)
+                .parent()
+                .expect("runtime html should have a parent");
+            let config = fs::read_to_string(runtime_dir.join("preview-config.js"))
+                .expect("preview config should be written");
+            assert!(config.contains("\"extraArguments\":\"--mo --opacity 0.62"));
+            assert!(!config.contains("--vdw"));
+
+            remove_runtime_artifacts(&document.runtime_path);
+            if let Some(parent) = path.parent() {
+                let _ = fs::remove_dir_all(parent);
+            }
+        });
+    }
+
+    #[test]
+    fn keeps_single_sdf_in_molstar_when_global_renderer_is_xyzrender() {
+        let app = mock_app_with_grid_registry();
+        let mut preferences = viewer_preferences();
+        preferences.renderer_mode = "xyzrender-external".to_string();
+        let path = fixture_path("sdf/single.sdf");
+
+        let document = open_document(&app.handle(), path.clone(), &preferences, None)
+            .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
+        assert_eq!(document.renderer, "molstar");
+        remove_runtime_artifacts(&document.runtime_path);
     }
 
     #[test]

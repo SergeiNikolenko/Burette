@@ -31,12 +31,33 @@ com.local.burrete10.cif
 ## Common Commands
 
 ```bash
-bun run ci:fast
+vp install
+vp dev
+vp check
+vp test
+vp build
 ./scripts/build.sh
 ./scripts/install.sh
 ./scripts/force-preview.sh samples/mini.pdb
 ./scripts/force-preview.sh samples/mini.cif
 ./scripts/force-preview.sh samples/mini.xyz
+```
+
+Use Vite+ through the `vp` CLI for frontend development and JavaScript
+validation. Prefer `vp dev`, `vp check`, `vp test`, and `vp build` over direct
+package-manager or Vite commands. Existing package scripts may still be run
+through `vp run <script>` when they cover project-specific validation not yet
+folded into a Vite+ built-in. Direct Bun commands remain implementation details
+inside repository-owned build, release, and installer scripts until a separate
+toolchain migration replaces those paths.
+
+Rust validation runs from the Tauri crate:
+
+```bash
+cd apps/desktop/src-tauri
+cargo test
+cargo clippy
+cargo fmt --check
 ```
 
 After replacing the app, refresh Quick Look:

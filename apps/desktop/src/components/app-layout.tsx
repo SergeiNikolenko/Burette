@@ -6,17 +6,15 @@ import { EditorTabs } from "./editor-area/editor-tabs";
 import { Sidebar } from "./sidebar";
 import type { ShellActions, ShellViewState, StatusNotice } from "./types";
 import { isTauriRuntime } from "../lib/tauri";
+import { buildThemeStyle, resolveThemeMode } from "../lib/theme";
 
 function clampSidebarWidth(width: number, maxSidebarWidth: number) {
   return Math.max(220, Math.min(maxSidebarWidth, Math.round(width)));
 }
 
-const collapsedChromeLeft = 196;
-
 export function AppLayout({
   state,
   actions,
-  searchRef,
   onDismissStatus,
   onToggleSidebar,
   onResizeStart,
@@ -27,7 +25,6 @@ export function AppLayout({
 }: {
   state: ShellViewState;
   actions: ShellActions;
-  searchRef: React.Ref<HTMLInputElement>;
   onDismissStatus: () => void;
   onToggleSidebar: () => void;
   onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
@@ -41,17 +38,21 @@ export function AppLayout({
   const sidebarWidth = clampSidebarWidth(state.sidebarWidth, maxSidebarWidth);
   const sidebarLayoutWidth = state.sidebarOpen ? sidebarWidth : 0;
   const layoutState = sidebarWidth === state.sidebarWidth ? state : { ...state, sidebarWidth };
-  const tabChromeLeft = Math.max(sidebarLayoutWidth + 12, collapsedChromeLeft);
+  const tabChromeLeft = state.sidebarOpen ? sidebarLayoutWidth + 12 : 132;
   const chromeTransition = state.sidebarDragging ? "none" : undefined;
   const shellStyle = {
+    ...buildThemeStyle(state.preferences),
     "--sidebar-layout-width": `${sidebarLayoutWidth}px`,
   } as CSSProperties;
+  const effectiveTheme = resolveThemeMode(state.preferences.theme);
   return (
     <main
       className="app-shell"
       data-theme={state.preferences.theme}
+      data-effective-theme={effectiveTheme}
       data-runtime={isTauriRuntime() ? "tauri" : "browser"}
       data-drop-active={state.dropActive || undefined}
+      data-structure-drag-active={state.structureDragActive ? "true" : undefined}
       data-sidebar-open={state.sidebarOpen ? "true" : "false"}
       onDragEnter={onDragEnter}
       onDragOver={onDragOver}
@@ -71,30 +72,6 @@ export function AppLayout({
         >
           <HugeiconsIcon icon={SidebarLeftIcon} size={18} color="currentColor" strokeWidth={2} />
         </button>
-        <div className="tab-history-controls chrome-history-controls">
-          <button
-            type="button"
-            className="tab-history-button"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={actions.navigateBack}
-            disabled={!actions.canNavigateBack}
-            title="Back"
-            aria-label="Back"
-          >
-            ←
-          </button>
-          <button
-            type="button"
-            className="tab-history-button"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={actions.navigateForward}
-            disabled={!actions.canNavigateForward}
-            title="Forward"
-            aria-label="Forward"
-          >
-            →
-          </button>
-        </div>
       </div>
       <header
         className="topbar"
@@ -104,7 +81,7 @@ export function AppLayout({
       </header>
       <section className="workspace">
         <div className="sidebar-shell" data-open={state.sidebarOpen ? "true" : "false"} style={{ transition: chromeTransition }}>
-          <Sidebar ref={searchRef} state={layoutState} actions={actions} open={state.sidebarOpen} />
+          <Sidebar state={layoutState} actions={actions} open={state.sidebarOpen} />
         </div>
         <div
           className="splitter"
@@ -135,7 +112,9 @@ function StatusSurface({
   status: StatusNotice;
   onDismiss: () => void;
 }) {
-  const hasExtraDetails = status.details.length > 1;
+  const message = compactStatusMessage(status.message);
+  const details = message === status.message ? status.details : [status.message, ...status.details];
+  const hasExtraDetails = details.length > 0;
   return (
     <section
       className="status-surface"
@@ -145,13 +124,13 @@ function StatusSurface({
     >
       <div className="status-surface-copy">
         <strong>{status.kind === "error" ? "Issue" : "Status"}</strong>
-        <p>{status.message}</p>
+        <p>{message}</p>
         {hasExtraDetails && (
           <details className="status-surface-details">
             <summary>Show details</summary>
             <ul>
-              {status.details.map((detail) => (
-                <li key={detail}>{detail}</li>
+              {details.map((detail, index) => (
+                <li key={`${index}:${detail}`}>{detail}</li>
               ))}
             </ul>
           </details>
@@ -167,4 +146,8 @@ function StatusSurface({
       </button>
     </section>
   );
+}
+
+function compactStatusMessage(message: string) {
+  return message.trim().split(/\r?\n| Error:| at /)[0]?.trim() || message;
 }
