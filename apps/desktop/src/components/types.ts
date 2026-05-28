@@ -14,6 +14,21 @@ export type StatusNotice = {
   details: string[];
 };
 
+export type KetcherSketchTarget = "molstar" | "xyzrender" | "collection";
+
+export type KetcherSketchRequest = {
+  title: string;
+  extension: "sdf";
+  text: string;
+  target: KetcherSketchTarget;
+  collectionTargetPath?: string | null;
+};
+
+export type KetcherImportRequest = {
+  id: number;
+  paths: string[];
+};
+
 export type ShellActions = {
   chooseFiles: () => void | Promise<void>;
   openRecentStructure: (structure: RecentStructure) => void | Promise<void>;
@@ -28,6 +43,9 @@ export type ShellActions = {
   openCommandPalette: () => void;
   openSettings: () => void;
   openKetcher: () => void;
+  openKetcherWithStructures: (paths: string[]) => void;
+  openKetcherSketch: (request: KetcherSketchRequest) => void | Promise<void>;
+  clearKetcherImportRequest: (id: number) => void;
   moveTab: (id: string, toIndex: number) => void;
   chooseWorkspace: () => void | Promise<void>;
   openWorkspaceFolder: () => void | Promise<void>;
@@ -77,6 +95,7 @@ export type ShellViewState = {
   sidebarWidth: number;
   sidebarDragging: boolean;
   structureDragActive: boolean;
+  ketcherImportRequest: KetcherImportRequest | null;
   sidebarQuery: string;
   status: StatusNotice | null;
   dropActive: boolean;

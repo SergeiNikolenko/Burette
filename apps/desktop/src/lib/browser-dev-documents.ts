@@ -47,6 +47,7 @@ const GRID_ASSET_VERSION = "grid-ui-v71";
 const VIEWER_ASSET_VERSION = "viewer-ui-v16";
 const REPO_ROOT = String(import.meta.env.BURRETE_REPO_ROOT || "");
 const WEB_ASSETS_BASE = fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
+const browserDevVirtualTextDocuments = new Map<string, string>();
 
 type ResolvedPreviewVisuals = {
   theme: ViewerPreferences["theme"];
@@ -163,6 +164,22 @@ export async function openBrowserDevDocuments(
     throw new Error(errors.join("; "));
   }
   return { documents, errors };
+}
+
+export async function openBrowserDevTextDocument(
+  title: string,
+  extension: string,
+  text: string,
+  preferences: ViewerPreferences,
+  reloadOptions?: ViewerReloadOptions,
+): Promise<ViewerDocument> {
+  const cleanExtension = extension.toLowerCase().replace(/^\./u, "");
+  const cleanTitle = fileTitle(title).replace(/[\\/]/gu, "").trim() || `ketcher-sketch.${cleanExtension}`;
+  const path = `burrete-ketcher://${stableId(`${cleanTitle}:${text}`)}/${cleanTitle}`;
+  const bytes = new TextEncoder().encode(text);
+  browserDevVirtualTextDocuments.set(path, text);
+  const document = await openBrowserDevDocumentFromBytes(path, cleanExtension, bytes, bytes.length, preferences, reloadOptions);
+  return { ...document, virtual: true };
 }
 
 export async function openBrowserDevDockingDocument(
@@ -404,6 +421,8 @@ export async function openBrowserDevMergedCollection(
 }
 
 export async function readBrowserDevCollectionText(path: string) {
+  const virtualText = browserDevVirtualTextDocuments.get(path);
+  if (virtualText !== undefined) return virtualText;
   const extension = collectionExtension(path);
   const url = browserDevReadUrl(path, extension);
   let response: Response;
@@ -437,6 +456,17 @@ async function openBrowserDevDocument(
   }
 
   const sourceByteCount = browserDevSourceByteCount(response, bytes.length);
+  return openBrowserDevDocumentFromBytes(path, extension, bytes, sourceByteCount, preferences, reloadOptions);
+}
+
+async function openBrowserDevDocumentFromBytes(
+  path: string,
+  extension: string,
+  bytes: Uint8Array,
+  sourceByteCount: number,
+  preferences: ViewerPreferences,
+  reloadOptions?: ViewerReloadOptions,
+): Promise<ViewerDocument> {
   const text = await decodeStructureText(bytes, extension);
   const grid = gridPayload(path, extension, text);
   const sdfRecordCount = grid?.format === "sdf" ? grid.records.length : 0;

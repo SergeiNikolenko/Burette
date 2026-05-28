@@ -2,30 +2,44 @@ import {
   Component,
   useCallback,
   useEffect,
+  useMemo,
+  useRef,
   useState,
   type ComponentType,
   type DragEvent,
   type ErrorInfo,
+  type MouseEvent,
   type ReactNode,
 } from "react";
 
 import ligandProLogo from "../assets/short-logo-ligandpro.svg";
+import { collectionExtension, collectionFamily } from "../lib/collection-documents";
 import { readStructureText } from "../lib/structure-text";
 import { hasStructureDrag, readStructureDrag } from "../lib/structure-drag";
 import type { KetcherEditorApi } from "./ketcher-editor";
-import type { ShellActions } from "./types";
+import { showNativeContextMenu } from "./native-context-menu";
+import type { KetcherSketchTarget, ShellActions, ShellViewState } from "./types";
 
 type KetcherEditorComponent = ComponentType<{
   onReady: (api: KetcherEditorApi) => void;
   onStatus: (status: string) => void;
 }>;
 
-export function KetcherPage({ actions }: { actions: ShellActions }) {
+export function KetcherPage({
+  state,
+  actions,
+  isActive,
+}: {
+  state: ShellViewState;
+  actions: ShellActions;
+  isActive: boolean;
+}) {
   const [ketcher, setKetcher] = useState<KetcherEditorApi | null>(null);
   const [status, setStatus] = useState("Loading editor");
   const [output, setOutput] = useState("");
   const [editorReloadKey, setEditorReloadKey] = useState(0);
   const [dropActive, setDropActive] = useState(false);
+  const handledImportRequestIdRef = useRef<number | null>(null);
 
   const handleReady = useCallback((instance: KetcherEditorApi) => {
     setKetcher(instance);
@@ -36,6 +50,15 @@ export function KetcherPage({ actions }: { actions: ShellActions }) {
     setStatus("Loading editor");
     setEditorReloadKey((key) => key + 1);
   }, []);
+
+  const collectionTargets = useMemo(() => (
+    state.documents
+      .filter((document) => collectionFamily(collectionExtension(document.path)) === "sdf")
+      .map((document) => ({
+        path: document.path,
+        title: document.title || fileName(document.path),
+      }))
+  ), [state.documents]);
 
   const exportSmiles = useCallback(async () => {
     if (!ketcher) return;
@@ -49,21 +72,98 @@ export function KetcherPage({ actions }: { actions: ShellActions }) {
     setOutput(molfile || "Empty structure");
   }, [ketcher]);
 
-  const importStructure = useCallback(async (path: string) => {
+  const openSketch = useCallback(async (target: KetcherSketchTarget, collectionTargetPath?: string | null) => {
+    if (!ketcher) return;
+    try {
+      setStatus("Exporting sketch");
+      const [smiles, molfile] = await Promise.all([
+        ketcher.getSmiles(),
+        ketcher.getMolfile("v2000"),
+      ]);
+      if (!smiles.trim() || !molfile.trim()) {
+        setStatus("Draw a molecule first");
+        return;
+      }
+      await actions.openKetcherSketch({
+        title: "ketcher-sketch.sdf",
+        extension: "sdf",
+        text: molfileToSdf(molfile, smiles),
+        target,
+        collectionTargetPath,
+      });
+      setStatus(target === "collection" ? "Sent sketch to collection" : "Opened sketch in viewer");
+    } catch (error) {
+      setStatus("Ketcher export failed: " + (error instanceof Error ? error.message : String(error)));
+    }
+  }, [actions, ketcher]);
+
+  const showCollectionTargetMenu = useCallback((event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const items = [
+      ...(collectionTargets.length > 0
+        ? collectionTargets.map((target, index) => ({
+            kind: "item" as const,
+            id: `add-to-collection-${index}`,
+            text: `Add to ${target.title}`,
+            action: () => {
+              void openSketch("collection", target.path);
+            },
+          }))
+        : [
+            {
+              kind: "item" as const,
+              id: "no-open-sdf-collections",
+              text: "No open SDF collections",
+              disabled: true,
+            },
+          ]),
+      { kind: "separator" as const },
+      {
+        kind: "item" as const,
+        id: "open-as-new-collection",
+        text: "Open as new collection",
+        action: () => {
+          void openSketch("collection", null);
+        },
+      },
+    ];
+    void showNativeContextMenu(items, {
+      x: Math.round(rect.left),
+      y: Math.round(rect.bottom + 4),
+    });
+  }, [collectionTargets, openSketch]);
+
+  const importStructures = useCallback(async (paths: string[]) => {
     if (!ketcher) {
       setStatus("Ketcher is not ready");
       return;
     }
+    const cleanPaths = Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
+    if (cleanPaths.length === 0) return;
+    const label = cleanPaths.length === 1 ? fileName(cleanPaths[0]) : `${cleanPaths.length} structures`;
     try {
-      setStatus("Importing " + fileName(path));
-      const text = await readStructureText(path);
-      await ketcher.setMolecule(text, { needZoom: true });
+      setStatus("Adding " + label);
+      for (const path of cleanPaths) {
+        const text = await readStructureText(path);
+        await ketcher.addFragment(text, { needZoom: true });
+      }
       setOutput("");
-      setStatus("Imported " + fileName(path));
+      setStatus("Added " + label);
     } catch (error) {
       setStatus("Ketcher import failed: " + (error instanceof Error ? error.message : String(error)));
     }
   }, [ketcher]);
+
+  useEffect(() => {
+    const request = state.ketcherImportRequest;
+    if (!request || !isActive || !ketcher || handledImportRequestIdRef.current === request.id) return;
+    handledImportRequestIdRef.current = request.id;
+    void importStructures(request.paths).finally(() => {
+      actions.clearKetcherImportRequest(request.id);
+    });
+  }, [actions, importStructures, isActive, ketcher, state.ketcherImportRequest]);
 
   const handleDragOver = useCallback((event: DragEvent<HTMLElement>) => {
     if (!hasStructureDrag(event.dataTransfer)) return;
@@ -84,13 +184,20 @@ export function KetcherPage({ actions }: { actions: ShellActions }) {
     event.stopPropagation();
     actions.setStructureDragActive(false);
     setDropActive(false);
-    const [path] = readStructureDrag(event.dataTransfer);
-    if (!path) return;
-    void importStructure(path);
-  }, [actions, importStructure]);
+    const paths = readStructureDrag(event.dataTransfer);
+    if (paths.length === 0) return;
+    void importStructures(paths);
+  }, [actions, importStructures]);
 
   return (
-    <section className="ketcher-page" aria-label="Ketcher">
+    <section
+      className="ketcher-page"
+      aria-label="Ketcher"
+      data-drop-active={dropActive || undefined}
+      onDragOverCapture={handleDragOver}
+      onDragLeaveCapture={handleDragLeave}
+      onDropCapture={handleDrop}
+    >
       <header className="ketcher-page-header">
         <div className="ketcher-page-title">
           <span className="ketcher-page-icon" aria-hidden="true">
@@ -101,14 +208,16 @@ export function KetcherPage({ actions }: { actions: ShellActions }) {
             <p>New molecule sketch</p>
           </div>
         </div>
+        <div className="ketcher-page-actions" aria-label="Sketch actions">
+          <button type="button" disabled={!ketcher} onClick={() => void openSketch("molstar")}>Mol*</button>
+          <button type="button" disabled={!ketcher} onClick={() => void openSketch("xyzrender")}>xyzrender</button>
+          <button type="button" disabled={!ketcher} onClick={showCollectionTargetMenu}>Add to collection</button>
+        </div>
       </header>
       <div className="ketcher-page-body">
         <div
           className="ketcher-editor-shell"
           data-drop-active={dropActive || undefined}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
         >
           <KetcherErrorBoundary>
             <KetcherEditorLoader
@@ -123,7 +232,7 @@ export function KetcherPage({ actions }: { actions: ShellActions }) {
           </div>
           {dropActive && (
             <div className="ketcher-drop-overlay">
-              <div>Import into Ketcher</div>
+              <div>Add to Ketcher</div>
             </div>
           )}
         </div>
@@ -138,6 +247,17 @@ export function KetcherPage({ actions }: { actions: ShellActions }) {
       </footer>
     </section>
   );
+}
+
+function molfileToSdf(molfile: string, smiles: string) {
+  return [
+    molfile.trimEnd(),
+    "> <SMILES>",
+    smiles.trim(),
+    "",
+    "$$$$",
+    "",
+  ].join("\n");
 }
 
 function fileName(path: string) {

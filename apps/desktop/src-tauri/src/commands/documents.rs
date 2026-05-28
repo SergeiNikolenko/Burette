@@ -49,6 +49,14 @@ pub(crate) struct MergedCollectionRequest {
     paths: Vec<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TextStructureRequest {
+    title: String,
+    extension: String,
+    text: String,
+}
+
 #[tauri::command]
 pub(crate) fn pick_open_targets<R: Runtime>(
     app: tauri::AppHandle<R>,
@@ -122,6 +130,47 @@ pub(crate) fn read_structure_text(path: String) -> Result<String, String> {
         return Err(format!("{} is too large for Ketcher import", input_path.display()));
     }
     fs::read_to_string(&input_path).map_err(|err| format!("{}: {err}", input_path.display()))
+}
+
+#[tauri::command]
+pub(crate) fn open_text_structure<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    request: TextStructureRequest,
+    preferences: ViewerPreferences,
+    reload_options: Option<ViewerReloadOptions>,
+) -> Result<ViewerDocument, String> {
+    let extension = request
+        .extension
+        .trim()
+        .trim_start_matches('.')
+        .to_lowercase();
+    if extension.is_empty() {
+        return Err("Missing structure extension".to_string());
+    }
+    let supported = supported_structure_extensions()?;
+    if !supported.contains(&extension) {
+        return Err(format!("Unsupported structure extension: {extension}"));
+    }
+    if request.text.trim().is_empty() {
+        return Err("Structure text is empty".to_string());
+    }
+    let byte_count = request.text.as_bytes().len() as u64;
+    if byte_count > KETCHER_IMPORT_MAX_STRUCTURE_FILE_SIZE {
+        return Err("Structure text is too large".to_string());
+    }
+
+    let output_directory = app
+        .path()
+        .app_cache_dir()
+        .map_err(|err| err.to_string())?
+        .join("viewer")
+        .join("ketcher")
+        .join(uuid::Uuid::new_v4().to_string());
+    fs::create_dir_all(&output_directory).map_err(|err| err.to_string())?;
+    let output_path = output_directory.join(safe_text_structure_file_name(&request.title, &extension));
+    fs::write(&output_path, request.text)
+        .map_err(|err| format!("{}: {err}", output_path.display()))?;
+    open_document(&app, output_path, &preferences, reload_options.as_ref())
 }
 
 #[tauri::command]
@@ -282,6 +331,31 @@ fn normalize_inline_structure_extension(
         .unwrap_or_else(|| structure_path_extension(path));
     format_for_extension(&extension)?;
     Ok(extension)
+}
+
+fn safe_text_structure_file_name(title: &str, extension: &str) -> String {
+    let raw_stem = Path::new(title)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("ketcher-sketch");
+    let stem: String = raw_stem
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
+                ch
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches(['-', '_', '.'])
+        .to_string();
+    let stem = if stem.is_empty() {
+        "ketcher-sketch".to_string()
+    } else {
+        stem
+    };
+    format!("{stem}.{extension}")
 }
 
 #[tauri::command]

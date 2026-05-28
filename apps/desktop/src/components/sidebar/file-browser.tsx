@@ -1,7 +1,8 @@
-import { useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useState, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { Atom01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { filterSidebarProjects } from "../../lib/sidebar-projects";
+import { hasStructureDrag, readStructureDrag } from "../../lib/structure-drag";
 import { ScrollFade } from "../scroll-fade";
 import { showNativeContextMenu } from "../native-context-menu";
 import type { ShellActions, ShellViewState } from "../types";
@@ -15,6 +16,7 @@ export function FileBrowser({
   actions: ShellActions;
 }) {
   const [pinnedOpen, setPinnedOpen] = useState(true);
+  const [ketcherDropActive, setKetcherDropActive] = useState(false);
   const visibleProjects = filterSidebarProjects(state.sidebarProjects, state.sidebarQuery);
   const pinnedItems = visibleProjects.flatMap((project) => project.items.filter((item) => item.isPinned));
   const pinnedExpanded = pinnedOpen || state.sidebarQuery.trim().length > 0;
@@ -55,6 +57,30 @@ export function FileBrowser({
     );
   };
 
+  const handleKetcherDragOver = (event: ReactDragEvent<HTMLButtonElement>) => {
+    if (!hasStructureDrag(event.dataTransfer)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "copy";
+    setKetcherDropActive(true);
+  };
+
+  const handleKetcherDragLeave = (event: ReactDragEvent<HTMLButtonElement>) => {
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+    setKetcherDropActive(false);
+  };
+
+  const handleKetcherDrop = (event: ReactDragEvent<HTMLButtonElement>) => {
+    if (!hasStructureDrag(event.dataTransfer)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const paths = readStructureDrag(event.dataTransfer);
+    setKetcherDropActive(false);
+    actions.setStructureDragActive(false);
+    if (paths.length === 0) return;
+    actions.openKetcherWithStructures(paths);
+  };
+
   return (
     <ScrollFade className="sidebar-scroll">
       <button
@@ -73,6 +99,10 @@ export function FileBrowser({
         type="button"
         className="sidebar-tool-row"
         onClick={actions.openKetcher}
+        onDragOver={handleKetcherDragOver}
+        onDragLeave={handleKetcherDragLeave}
+        onDrop={handleKetcherDrop}
+        data-drop-active={ketcherDropActive || undefined}
         aria-label="Open Ketcher"
       >
         <span className="sidebar-tool-icon" aria-hidden="true">

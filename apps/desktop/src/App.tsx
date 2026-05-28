@@ -5,7 +5,7 @@ import { openPath } from "@tauri-apps/plugin-opener";
 import previewFormatRegistry from "../../../config/preview-formats.json";
 import { AppLayout } from "./components/app-layout";
 import { CommandPalette } from "./components/command-palette";
-import type { ShellActions, ShellViewState, StatusKind, StatusNotice } from "./components/types";
+import type { KetcherImportRequest, KetcherSketchRequest, ShellActions, ShellViewState, StatusKind, StatusNotice } from "./components/types";
 import { WindowTitle } from "./components/window-title";
 import {
   useCloseCommandPalette,
@@ -46,13 +46,13 @@ import {
   useSetDocuments,
 } from "./hooks/use-tabs";
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
-import { browserDevRuntimeNeedsRefresh, openBrowserDevDockingDocument, openBrowserDevDocuments, openBrowserDevMergedCollection, openBrowserDevMolstarContextDocument, readBrowserDevCollectionText } from "./lib/browser-dev-documents";
+import { browserDevRuntimeNeedsRefresh, openBrowserDevDockingDocument, openBrowserDevDocuments, openBrowserDevMergedCollection, openBrowserDevMolstarContextDocument, openBrowserDevTextDocument, readBrowserDevCollectionText } from "./lib/browser-dev-documents";
 import { isMoleculeCollectionPath } from "./lib/collection-documents";
 import { dockingRequestForDrop, isProteinLikeDockingSource } from "./lib/docking-documents";
 import { basename, buildSidebarProjects, parentDirectory } from "./lib/sidebar-projects";
 import type { StructureDragPayload } from "./lib/structure-drag";
 import { isTauriRuntime } from "./lib/tauri";
-import type { DockingDocumentRequest, OpenDocumentsResult, RecentStructure, ViewerDocument, ViewerReloadOptions } from "./types";
+import type { DockingDocumentRequest, OpenDocumentsResult, RecentStructure, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "./types";
 import { checkForUpdates as requestUpdateCheck, clearDismissedUpdate, dismissUpdate, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically, shouldPromptForUpdate } from "./update";
 import type { UpdatePreferences, UpdateRelease, UpdateState } from "./update";
 
@@ -135,6 +135,7 @@ export default function App() {
   } = useSidebar();
   const [sidebarDragging, setSidebarDragging] = useState(false);
   const [structureDragActive, setStructureDragActive] = useState(false);
+  const [ketcherImportRequest, setKetcherImportRequest] = useState<KetcherImportRequest | null>(null);
   const [status, setStatus] = useState<StatusNotice | null>(null);
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateState>(() => ({
@@ -154,6 +155,7 @@ export default function App() {
   const xyzrenderOrientationRefRef = useRef<string | null>(null);
   const skipNextPreferenceRefreshRef = useRef(false);
   const statusSequenceRef = useRef(0);
+  const ketcherImportSequenceRef = useRef(0);
   const commandPaletteOpen = useIsCommandPaletteOpen();
   const commandPaletteQuery = useCommandPaletteSearch();
   const openCommandPalette = useOpenCommandPalette();
@@ -439,6 +441,83 @@ export default function App() {
     openKetcherTab();
     pushStatus("Opened Ketcher tab");
   }, [openKetcherTab, pushStatus]);
+
+  const openKetcherWithStructures = useCallback((paths: string[]) => {
+    const cleanPaths = Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
+    if (cleanPaths.length === 0) return;
+    openKetcherTab();
+    setStructureDragActive(false);
+    setKetcherImportRequest({
+      id: ++ketcherImportSequenceRef.current,
+      paths: cleanPaths,
+    });
+    pushStatus(`Adding ${cleanPaths.length} structure${cleanPaths.length === 1 ? "" : "s"} to Ketcher`);
+  }, [openKetcherTab, pushStatus]);
+
+  const clearKetcherImportRequest = useCallback((id: number) => {
+    setKetcherImportRequest((request) => (request?.id === id ? null : request));
+  }, []);
+
+  const openKetcherSketch = useCallback(async (request: KetcherSketchRequest) => {
+    const rendererMode: ViewerPreferences["rendererMode"] = request.target === "molstar"
+      ? "molstar"
+      : request.target === "xyzrender"
+        ? "xyzrender-external"
+        : "auto";
+    const reloadOptions = request.target === "collection" ? undefined : {};
+    const effectivePreferences = { ...preferences, rendererMode };
+    pushStatus("Opening Ketcher sketch...");
+    try {
+      if (request.target === "collection" && request.collectionTargetPath) {
+        const sketchDocument = isTauriRuntime()
+          ? await invoke<ViewerDocument>("open_text_structure", {
+              request: {
+                title: request.title,
+                extension: request.extension,
+                text: request.text,
+              },
+              preferences: effectivePreferences,
+              reloadOptions,
+            })
+          : await openBrowserDevTextDocument(
+              request.title,
+              request.extension,
+              request.text,
+              effectivePreferences,
+              reloadOptions,
+            );
+        await mergeMoleculeCollections(request.collectionTargetPath, [sketchDocument.path]);
+        return;
+      }
+
+      const document = isTauriRuntime()
+        ? await invoke<ViewerDocument>("open_text_structure", {
+            request: {
+              title: request.title,
+              extension: request.extension,
+              text: request.text,
+            },
+            preferences: effectivePreferences,
+            reloadOptions,
+          })
+        : await openBrowserDevTextDocument(
+            request.title,
+            request.extension,
+            request.text,
+            effectivePreferences,
+            reloadOptions,
+          );
+      addDocuments([document]);
+      rememberRecentStructures([document]);
+      pushStatus(
+        request.target === "collection"
+          ? "Added Ketcher sketch to collection view"
+          : `Opened Ketcher sketch in ${request.target === "molstar" ? "Mol*" : "xyzrender"}`,
+      );
+    } catch (error) {
+      pushErrorStatus(error, "Open Ketcher sketch failed");
+    }
+  }, [addDocuments, mergeMoleculeCollections, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
 
   const postXyzrenderSheetItems = useCallback((documentId: string, payload: StructureDragPayload) => {
     const iframe = Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).find(
@@ -967,6 +1046,9 @@ export default function App() {
     openCommandPalette,
     openSettings,
     openKetcher,
+    openKetcherWithStructures,
+    openKetcherSketch,
+    clearKetcherImportRequest,
     moveTab,
     chooseWorkspace,
     openWorkspaceFolder,
@@ -1041,7 +1123,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [addXyzrenderSheetItemsToDocument, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeTab, focusSidebarSearch, installUpdate, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openCommandPalette, openDockingDocument, openKetcher, openNewTab, openProjectFolder, openRecentStructure, openSettings, openWorkspaceFolder, pushErrorStatus, pushStatus, saveMoleculeCollectionAs, selectDocument, setActiveTab, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
+  }), [addXyzrenderSheetItemsToDocument, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeTab, focusSidebarSearch, installUpdate, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openCommandPalette, openDockingDocument, openKetcher, openKetcherSketch, openKetcherWithStructures, openNewTab, openProjectFolder, openRecentStructure, openSettings, openWorkspaceFolder, pushErrorStatus, pushStatus, saveMoleculeCollectionAs, selectDocument, setActiveTab, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
@@ -1064,6 +1146,7 @@ export default function App() {
     sidebarWidth,
     sidebarDragging,
     structureDragActive,
+    ketcherImportRequest,
     sidebarQuery,
     status,
     dropActive,
