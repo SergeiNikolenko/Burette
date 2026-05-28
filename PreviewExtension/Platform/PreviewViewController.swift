@@ -16,7 +16,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private var logLines: [String] = []
     private let previewID = String(UUID().uuidString.prefix(8))
     private var hasRenderedTerminationError = false
-    private var currentViewerPageZoom: CGFloat = 1.0
+    private var currentViewerPageZoom: CGFloat = 0.9
     private var currentPreviewURL: URL?
     private var currentRuntimeDirectory: URL?
     private var rendererOverride: String?
@@ -25,9 +25,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private var xyzrenderControlsOverride: [String: Any]?
     private static let showDebugOverlay = false
     private static let verboseLogging = false
-    private static let defaultViewerPageZoom: CGFloat = 1.0
-    private static let minViewerPageZoom: CGFloat = 1.0
-    private static let maxViewerPageZoom: CGFloat = 1.0
+    private static let defaultViewerPageZoom: CGFloat = 0.9
+    private static let minViewerPageZoom: CGFloat = 0.9
+    private static let maxViewerPageZoom: CGFloat = 0.9
     private static let previewSourceMonitorQueue = DispatchQueue(label: "com.local.BurreteV10.preview-source-monitor")
 
     deinit {
@@ -287,6 +287,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             theme: preferences.runtimeViewerTheme,
             canvasBackground: preferences.runtimeCanvasBackground,
             transparentBackground: preferences.resolvedTransparentBackground,
+            themeTokens: preferences.themeTokens,
             overlayOpacity: preferences.overlayOpacity,
             debug: showDebugOverlay,
             allowSelection: false,
@@ -343,7 +344,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             fileExtension: pathExtension,
             label: url.lastPathComponent
            ) {
-            renderer = BurreteRendererMode.xyzFast
+            renderer = BurreteRendererMode.molstar
             format = .xyzFastCompatible
             structureDataForWeb = convertedXYZ
             diag("xyzrender.default=built-in-text-parser")
@@ -374,7 +375,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     fileExtension: pathExtension,
                     label: url.lastPathComponent
                    ) {
-                    renderer = BurreteRendererMode.xyzFast
+                    renderer = BurreteRendererMode.molstar
                     format = .xyzFastCompatible
                     structureDataForWeb = convertedXYZ
                     externalStatus = [
@@ -688,9 +689,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "quickLookBuild": "v10-product",
             "debug": showDebugOverlay,
             "theme": preferences.runtimeViewerTheme,
+            "themeTokens": preferences.themeTokens,
             "canvasBackground": preferences.runtimeCanvasBackground,
             "molstarStyle": preferences.resolvedMolstarStyle,
-            "uiScale": 1.0,
+            "uiScale": 0.9,
             "overlayOpacity": preferences.overlayOpacity,
             "transparentBackground": preferences.resolvedTransparentBackground,
             "sdfGrid": true,
@@ -731,7 +733,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 "type": externalArtifact.outputType,
                 "renderer": "xyzrender",
                 "preset": externalArtifact.preset,
-                "config": externalArtifact.configArgument,
+                "configArgument": externalArtifact.configArgument,
                 "orientationRef": externalArtifact.usedOrientationRef,
                 "elapsedMs": externalArtifact.elapsedMs,
                 "log": externalArtifact.log
@@ -2334,6 +2336,20 @@ private struct PreviewPreferences {
     let xyzrenderCustomConfigPath: String
     let xyzrenderExecutablePath: String
     let xyzrenderExtraArguments: String
+    let themeLightAccent: String
+    let themeLightBackground: String
+    let themeLightForeground: String
+    let themeLightUiFont: String
+    let themeLightEditorFont: String
+    let themeLightTranslucent: Double
+    let themeLightContrast: Double
+    let themeDarkAccent: String
+    let themeDarkBackground: String
+    let themeDarkForeground: String
+    let themeDarkUiFont: String
+    let themeDarkEditorFont: String
+    let themeDarkTranslucent: Double
+    let themeDarkContrast: Double
     let gridFileSupport: MoleculeGridFileSupport
     let defaultLayoutState: [String: String]
 
@@ -2353,6 +2369,29 @@ private struct PreviewPreferences {
         molstarStyle == "default" ? "default" : "illustrative"
     }
 
+    var themeTokens: [String: Any] {
+        [
+            "light": [
+                "accent": themeLightAccent,
+                "background": themeLightBackground,
+                "foreground": themeLightForeground,
+                "uiFont": themeLightUiFont,
+                "editorFont": themeLightEditorFont,
+                "translucent": themeLightTranslucent,
+                "contrast": themeLightContrast
+            ],
+            "dark": [
+                "accent": themeDarkAccent,
+                "background": themeDarkBackground,
+                "foreground": themeDarkForeground,
+                "uiFont": themeDarkUiFont,
+                "editorFont": themeDarkEditorFont,
+                "translucent": themeDarkTranslucent,
+                "contrast": themeDarkContrast
+            ]
+        ]
+    }
+
     static func load() -> PreviewPreferences {
         let appID = "com.local.BurreteV10" as CFString
         let showPanelControls = (CFPreferencesCopyAppValue("showPreviewPanelControls" as CFString, appID) as? Bool) ?? true
@@ -2367,6 +2406,21 @@ private struct PreviewPreferences {
         let xyzrenderCustomConfigPath = (CFPreferencesCopyAppValue("xyzrenderCustomConfigPath" as CFString, appID) as? String) ?? ""
         let xyzrenderExecutablePath = (CFPreferencesCopyAppValue("xyzrenderExecutablePath" as CFString, appID) as? String) ?? ""
         let xyzrenderExtraArguments = (CFPreferencesCopyAppValue("xyzrenderExtraArguments" as CFString, appID) as? String) ?? ""
+        let themeLightAccent = (CFPreferencesCopyAppValue("themeLightAccent" as CFString, appID) as? String) ?? "#AF52DE"
+        let themeLightBackground = (CFPreferencesCopyAppValue("themeLightBackground" as CFString, appID) as? String) ?? "#FFFFFF"
+        let themeLightForeground = (CFPreferencesCopyAppValue("themeLightForeground" as CFString, appID) as? String) ?? "#0D0D0D"
+        let defaultSystemFont = "-apple-system-body, ui-sans-serif, -apple-system, system-ui, \"Segoe UI\", Helvetica, \"Apple Color Emoji\", Arial, sans-serif, \"Segoe UI Emoji\", \"Segoe UI Symbol\""
+        let themeLightUiFont = (CFPreferencesCopyAppValue("themeLightUiFont" as CFString, appID) as? String) ?? defaultSystemFont
+        let themeLightEditorFont = (CFPreferencesCopyAppValue("themeLightEditorFont" as CFString, appID) as? String) ?? defaultSystemFont
+        let themeLightTranslucent = (CFPreferencesCopyAppValue("themeLightTranslucent" as CFString, appID) as? Double) ?? 10
+        let themeLightContrast = (CFPreferencesCopyAppValue("themeLightContrast" as CFString, appID) as? Double) ?? 20
+        let themeDarkAccent = (CFPreferencesCopyAppValue("themeDarkAccent" as CFString, appID) as? String) ?? "#AF52DE"
+        let themeDarkBackground = (CFPreferencesCopyAppValue("themeDarkBackground" as CFString, appID) as? String) ?? "#111111"
+        let themeDarkForeground = (CFPreferencesCopyAppValue("themeDarkForeground" as CFString, appID) as? String) ?? "#FCFCFC"
+        let themeDarkUiFont = (CFPreferencesCopyAppValue("themeDarkUiFont" as CFString, appID) as? String) ?? defaultSystemFont
+        let themeDarkEditorFont = (CFPreferencesCopyAppValue("themeDarkEditorFont" as CFString, appID) as? String) ?? defaultSystemFont
+        let themeDarkTranslucent = (CFPreferencesCopyAppValue("themeDarkTranslucent" as CFString, appID) as? Double) ?? 20
+        let themeDarkContrast = (CFPreferencesCopyAppValue("themeDarkContrast" as CFString, appID) as? Double) ?? 16
         let gridFileSupport = MoleculeGridFileSupport.loadFromAppPreferences(appID: appID)
         return PreviewPreferences(
             showPanelControls: showPanelControls,
@@ -2381,6 +2435,20 @@ private struct PreviewPreferences {
             xyzrenderCustomConfigPath: xyzrenderCustomConfigPath,
             xyzrenderExecutablePath: xyzrenderExecutablePath,
             xyzrenderExtraArguments: xyzrenderExtraArguments,
+            themeLightAccent: themeLightAccent,
+            themeLightBackground: themeLightBackground,
+            themeLightForeground: themeLightForeground,
+            themeLightUiFont: themeLightUiFont,
+            themeLightEditorFont: themeLightEditorFont,
+            themeLightTranslucent: min(max(themeLightTranslucent, 0.0), 100.0),
+            themeLightContrast: min(max(themeLightContrast, 0.0), 100.0),
+            themeDarkAccent: themeDarkAccent,
+            themeDarkBackground: themeDarkBackground,
+            themeDarkForeground: themeDarkForeground,
+            themeDarkUiFont: themeDarkUiFont,
+            themeDarkEditorFont: themeDarkEditorFont,
+            themeDarkTranslucent: min(max(themeDarkTranslucent, 0.0), 100.0),
+            themeDarkContrast: min(max(themeDarkContrast, 0.0), 100.0),
             gridFileSupport: gridFileSupport,
             defaultLayoutState: [
                 "left": "hidden",

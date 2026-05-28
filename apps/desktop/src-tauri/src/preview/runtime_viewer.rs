@@ -1,24 +1,39 @@
+use base64::Engine;
 use serde_json::json;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{Manager, Runtime};
-use base64::Engine;
 
-use super::formats::{normalize_renderer_mode, FormatInfo};
+use super::formats::{FormatInfo, normalize_renderer_mode};
 use super::runtime::{ViewerPreferences, ViewerReloadOptions};
 use super::runtime_utils::{asset_url, escape_html, prune_runtime_dirs, stable_id};
-use super::xyz::{xyz_first_frame, XyzPayload};
-use super::xyzrender::{create_xyzrender_artifact, xyzrender_preset_options};
+use super::text_xyz::{converted_data_from_text, xyz_data_from_text};
+use super::xyz::{XyzPayload, xyz_first_frame};
+use super::xyzrender::{
+    create_xyzrender_artifact, default_xyzrender_document_defaults, xyzrender_preset_options,
+};
+
+const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT: usize = 1500;
 
 pub(crate) struct CreatedRuntime {
     pub(crate) path: PathBuf,
     pub(crate) renderer: String,
 }
 
+pub(crate) struct DockingRuntimeSource {
+    pub(crate) path: String,
+    pub(crate) label: String,
+    pub(crate) extension: String,
+    pub(crate) format: String,
+    pub(crate) binary: bool,
+    pub(crate) data: Vec<u8>,
+    pub(crate) byte_count: usize,
+}
+
 pub(crate) fn create_runtime<R: Runtime>(
     app: &tauri::AppHandle<R>,
     file_path: &Path,
-    _extension: &str,
+    extension: &str,
     format: &FormatInfo,
     renderer: &str,
     data: &[u8],
@@ -37,18 +52,68 @@ pub(crate) fn create_runtime<R: Runtime>(
     copy_web_assets(app, &assets)?;
     prune_runtime_dirs(&base);
 
+    let label = file_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("structure");
+    let source_xyz_data = xyz_data_from_text(data, extension, label);
+    let converted_molstar_data = converted_data_from_text(data, extension, label);
+    let external_molstar_data =
+        if format.external_only || should_use_converted_molstar_data(format, &converted_molstar_data) {
+            converted_molstar_data.clone()
+        } else {
+            None
+        };
+    let xyz_payload = if format.molstar_format == "xyz" && !format.is_binary {
+        xyz_first_frame(data)
+    } else {
+        None
+    };
+    let xyz_frame_count = xyz_payload
+        .as_ref()
+        .and_then(|payload| payload.frame_count)
+        .unwrap_or(0);
+    let is_xyz_trajectory = xyz_frame_count > 1;
+    let xyzrender_available = xyzrender_available_for_document(format, data);
     let mut renderer = renderer.to_string();
+    let requested_renderer = normalize_renderer_mode(&preferences.renderer_mode);
+    if is_xyz_trajectory
+        && matches!(requested_renderer, "auto" | "xyz-fast")
+        && renderer != "molstar"
+    {
+        renderer = "molstar".to_string();
+    }
+    if renderer == "xyzrender-external" && !xyzrender_available {
+        renderer = "molstar".to_string();
+    }
+    if renderer == "molstar" && format.external_only && external_molstar_data.is_none() {
+        renderer = "xyzrender-external".to_string();
+    }
     let mut external_artifact = None;
     let mut external_status = None;
+    let default_xyzrender = default_xyzrender_document_defaults(extension, file_path, data);
+    let xyzrender_controls = reload_options
+        .and_then(|options| options.xyzrender_controls.as_ref())
+        .or(default_xyzrender
+            .as_ref()
+            .map(|defaults| &defaults.controls));
+    let xyzrender_artifact_input = default_xyzrender
+        .as_ref()
+        .and_then(|defaults| defaults.input_path.as_deref())
+        .unwrap_or(file_path);
+    let xyzrender_input_data = if matches!(extension, "cub" | "cube") {
+        None
+    } else {
+        source_xyz_data.as_deref()
+    };
     if renderer == "xyzrender-external" {
         match create_xyzrender_artifact(
-            file_path,
+            xyzrender_artifact_input,
             &runtime,
-            reload_options
-                .and_then(|options| options.xyzrender_preset.as_deref()),
-            reload_options
-                .and_then(|options| options.xyzrender_orientation_ref.as_deref()),
-            reload_options.and_then(|options| options.xyzrender_controls.as_ref()),
+            reload_options.and_then(|options| options.xyzrender_preset.as_deref()),
+            reload_options.and_then(|options| options.xyzrender_orientation_ref.as_deref()),
+            xyzrender_controls,
+            xyzrender_input_data,
         ) {
             Ok(artifact) => {
                 external_artifact = Some(artifact);
@@ -56,19 +121,37 @@ pub(crate) fn create_runtime<R: Runtime>(
             Err(error)
                 if !format.external_only && format.molstar_format == "xyz" && !format.is_binary =>
             {
-                renderer = "xyz-fast".to_string();
+                renderer = "molstar".to_string();
                 external_status = Some(json!({
                     "status": "fallback",
                     "requested": "xyzrender-external",
-                    "message": format!("Using Fast XYZ because external xyzrender failed: {error}")
+                    "message": format!("Using Mol* because external xyzrender failed: {error}")
+                }));
+            }
+            Err(error) if external_molstar_data.is_some() => {
+                renderer = "molstar".to_string();
+                external_status = Some(json!({
+                    "status": "fallback",
+                    "requested": "xyzrender-external",
+                    "message": format!("Using Mol* because external xyzrender failed: {error}")
                 }));
             }
             Err(error) => return Err(error),
         }
     }
 
-    let payload = if renderer == "xyz-fast" {
-        xyz_first_frame(data).unwrap_or_else(|| XyzPayload {
+    let payload = if renderer == "molstar" {
+        XyzPayload {
+            data: external_molstar_data
+                .as_ref()
+                .map(|converted| converted.data.clone())
+                .unwrap_or_else(|| data.to_vec()),
+            atom_count: None,
+            frame_count: None,
+            comment: None,
+        }
+    } else if renderer == "xyz-fast" {
+        xyz_payload.unwrap_or_else(|| XyzPayload {
             data: data.to_vec(),
             atom_count: None,
             frame_count: None,
@@ -83,30 +166,44 @@ pub(crate) fn create_runtime<R: Runtime>(
         }
     };
 
+    let molstar_format =
+        if renderer == "molstar" && external_molstar_data.is_some() {
+            external_molstar_data
+                .as_ref()
+                .map(|converted| converted.extension)
+                .unwrap_or(format.molstar_format.as_str())
+        } else {
+            format.molstar_format.as_str()
+        };
     let mut config = json!({
-        "format": format.molstar_format.as_str(),
-        "molstarFormat": format.molstar_format.as_str(),
+        "format": molstar_format,
+        "molstarFormat": molstar_format,
         "binary": format.is_binary,
         "renderer": renderer,
         "requestedRenderer": normalize_renderer_mode(&preferences.renderer_mode),
         "allowMolstarFallback": true,
-        "label": file_path.file_name().and_then(|value| value.to_str()).unwrap_or("structure"),
+        "label": label,
         "byteCount": data.len(),
         "previewByteCount": payload.data.len(),
         "quickLookBuild": "burrete-tauri",
         "debug": false,
         "theme": preferences.theme_for_runtime(),
+        "themeTokens": preferences.theme_tokens(),
         "canvasBackground": preferences.canvas_background_for_runtime(),
         "documentId": stable_id(file_path),
-        "uiScale": 1.0,
+        "uiScale": 0.9,
         "overlayOpacity": 0.90,
         "transparentBackground": preferences.resolved_transparent_background(),
         "sdfGrid": true,
+        "sdfPosePager": renderer == "molstar" && molstar_format == "sdf" && !format.is_binary,
+        "trajectoryControls": renderer == "molstar" && is_xyz_trajectory,
+        "trajectoryFrameCount": xyz_frame_count,
         "appViewer": true,
         "tauriViewer": true,
         "molstarStyle": preferences.resolved_molstar_style(),
         "xyzrenderViewer": false,
-        "molstarAvailable": !format.external_only,
+        "xyzrenderAvailable": xyzrender_available,
+        "molstarAvailable": !format.external_only || external_molstar_data.is_some(),
         "canOpenInVesta": format.can_open_in_vesta,
         "showPanelControls": true,
         "defaultLayoutState": { "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" }
@@ -129,15 +226,16 @@ pub(crate) fn create_runtime<R: Runtime>(
         config["xyzrenderViewer"] = json!(true);
         config["xyzrenderPreset"] = json!(artifact.preset);
         config["xyzrenderPresetOptions"] = xyzrender_preset_options();
-        if let Some(controls) = reload_options.and_then(|options| options.xyzrender_controls.as_ref()) {
-            config["xyzrenderControls"] = serde_json::to_value(controls).map_err(|err| err.to_string())?;
+        if let Some(controls) = xyzrender_controls {
+            config["xyzrenderControls"] =
+                serde_json::to_value(controls).map_err(|err| err.to_string())?;
         }
         config["externalArtifact"] = json!({
             "path": artifact.relative_path,
             "type": artifact.output_type,
             "renderer": "xyzrender",
             "preset": artifact.preset,
-            "config": artifact.config_argument,
+            "configArgument": artifact.config_argument,
             "elapsedMs": artifact.elapsed_ms,
             "log": artifact.log
         });
@@ -172,6 +270,217 @@ pub(crate) fn create_runtime<R: Runtime>(
         path: runtime.join("index.html"),
         renderer,
     })
+}
+
+pub(crate) fn create_docking_runtime<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    document_id: &str,
+    label: &str,
+    receptor: DockingRuntimeSource,
+    ligands: Vec<DockingRuntimeSource>,
+    preferences: &ViewerPreferences,
+) -> Result<CreatedRuntime, String> {
+    if ligands.is_empty() {
+        return Err("Choose at least one ligand or pose file for docking view".to_string());
+    }
+    let base = app
+        .path()
+        .app_cache_dir()
+        .map_err(|err| err.to_string())?
+        .join("viewer");
+    let assets = base.join("assets");
+    let runtime = base.join(uuid::Uuid::new_v4().to_string());
+    fs::create_dir_all(&assets).map_err(|err| err.to_string())?;
+    fs::create_dir_all(&runtime).map_err(|err| err.to_string())?;
+    copy_web_assets(app, &assets)?;
+    prune_runtime_dirs(&base);
+
+    let preview_byte_count = receptor.data.len()
+        + ligands
+            .iter()
+            .map(|ligand| ligand.data.len())
+            .sum::<usize>();
+    let byte_count = receptor.byte_count
+        + ligands
+            .iter()
+            .map(|ligand| ligand.byte_count)
+            .sum::<usize>();
+    let source_config = |source: &DockingRuntimeSource| {
+        json!({
+            "path": source.path,
+            "label": source.label,
+            "extension": source.extension,
+            "format": source.format,
+            "binary": source.binary,
+            "byteCount": source.byte_count
+        })
+    };
+    let sdf_grid_path = ligands
+        .iter()
+        .find(|ligand| ligand.format == "sdf" && sdf_record_count(&ligand.data) > 1)
+        .map(|ligand| ligand.path.as_str());
+    let config = json!({
+        "format": receptor.format.as_str(),
+        "molstarFormat": receptor.format.as_str(),
+        "binary": receptor.binary,
+        "renderer": "molstar",
+        "requestedRenderer": "molstar",
+        "allowMolstarFallback": false,
+        "label": label,
+        "byteCount": byte_count,
+        "previewByteCount": preview_byte_count,
+        "quickLookBuild": "burrete-tauri-docking",
+        "debug": false,
+        "theme": preferences.theme_for_runtime(),
+        "themeTokens": preferences.theme_tokens(),
+        "canvasBackground": preferences.canvas_background_for_runtime(),
+        "documentId": document_id,
+        "uiScale": 0.9,
+        "overlayOpacity": 0.90,
+        "transparentBackground": preferences.resolved_transparent_background(),
+        "sdfGrid": false,
+        "sdfGridPath": sdf_grid_path,
+        "appViewer": true,
+        "tauriViewer": true,
+        "molstarStyle": preferences.resolved_molstar_style(),
+        "xyzrenderViewer": false,
+        "xyzrenderAvailable": false,
+        "molstarAvailable": true,
+        "canOpenInVesta": false,
+        "showPanelControls": true,
+        "defaultLayoutState": { "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" },
+        "docking": {
+            "receptor": source_config(&receptor),
+            "ligands": ligands.iter().map(source_config).collect::<Vec<_>>()
+        }
+    });
+    let payloads = json!({
+        "receptor": {
+            "dataBase64": base64::engine::general_purpose::STANDARD.encode(&receptor.data)
+        },
+        "ligands": ligands.iter().map(|ligand| json!({
+            "dataBase64": base64::engine::general_purpose::STANDARD.encode(&ligand.data)
+        })).collect::<Vec<_>>()
+    });
+    let config_text = serde_json::to_string(&config).map_err(|err| err.to_string())?;
+    let payload_text = serde_json::to_string(&payloads).map_err(|err| err.to_string())?;
+    let title_path = PathBuf::from(label);
+    fs::write(
+        runtime.join("index.html"),
+        viewer_html(&title_path, &runtime, &assets, "molstar", preferences),
+    )
+    .map_err(|err| err.to_string())?;
+    fs::write(runtime.join("viewer-bridge.js"), viewer_bridge_js())
+        .map_err(|err| err.to_string())?;
+    fs::write(
+        runtime.join("preview-config.js"),
+        format!("window.BurreteConfig = {config_text};\n"),
+    )
+    .map_err(|err| err.to_string())?;
+    fs::write(runtime.join("preview-data.bin"), b"\n").map_err(|err| err.to_string())?;
+    fs::write(
+        runtime.join("preview-data.js"),
+        format!(
+            "window.BurreteDataBase64 = \"Cg==\";\nwindow.BurreteDataURL = null;\nwindow.BurreteDockingPayloads = {payload_text};\n"
+        ),
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(CreatedRuntime {
+        path: runtime.join("index.html"),
+        renderer: "molstar".to_string(),
+    })
+}
+
+fn sdf_record_count(data: &[u8]) -> usize {
+    String::from_utf8_lossy(data)
+        .split("$$$$")
+        .filter(|record| !record.trim().is_empty())
+        .count()
+}
+
+fn should_use_converted_molstar_data(
+    format: &FormatInfo,
+    data: &Option<super::text_xyz::ConvertedStructureData>,
+) -> bool {
+    data.is_some()
+        && !format.is_binary
+        && matches!(format.molstar_format.as_str(), "mmcif" | "cifCore")
+}
+
+fn xyzrender_available_for_document(format: &FormatInfo, data: &[u8]) -> bool {
+    if format.external_only || !can_use_external_xyzrender(format) {
+        return true;
+    }
+    if !matches!(
+        format.molstar_format.as_str(),
+        "pdb" | "pdbqt" | "mmcif" | "cifCore"
+    ) {
+        return true;
+    }
+    let atom_count = protein_like_atom_record_count(data);
+    atom_count == 0 || atom_count <= XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT
+}
+
+fn can_use_external_xyzrender(format: &FormatInfo) -> bool {
+    !format.is_binary
+        && matches!(
+            format.molstar_format.as_str(),
+            "sdf" | "pdb" | "pdbqt" | "mmcif" | "cifCore"
+        )
+}
+
+fn protein_like_atom_record_count(data: &[u8]) -> usize {
+    let text = String::from_utf8_lossy(data);
+    let mut count = 0;
+    for line in text.lines() {
+        if line.starts_with("ATOM") || line.starts_with("HETATM") {
+            count += 1;
+            if count > XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT {
+                return count;
+            }
+        }
+    }
+    count
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{protein_like_atom_record_count, xyzrender_available_for_document};
+    use crate::preview::formats::FormatInfo;
+
+    fn format(molstar_format: &str) -> FormatInfo {
+        FormatInfo {
+            molstar_format: molstar_format.to_string(),
+            is_binary: false,
+            external_only: false,
+            can_open_in_vesta: false,
+        }
+    }
+
+    #[test]
+    fn disables_xyzrender_for_large_protein_like_pdb() {
+        let data = (0..1501)
+            .map(|index| {
+                format!(
+                    "ATOM  {:5}  CA  ALA A{:4}       0.000   0.000   0.000  1.00 20.00           C\n",
+                    index + 1,
+                    index + 1
+                )
+            })
+            .collect::<String>();
+        assert_eq!(protein_like_atom_record_count(data.as_bytes()), 1501);
+        assert!(!xyzrender_available_for_document(
+            &format("pdb"),
+            data.as_bytes()
+        ));
+    }
+
+    #[test]
+    fn keeps_xyzrender_for_small_pdb_ligand() {
+        let data =
+            b"ATOM      1  C   LIG A   1       0.000   0.000   0.000  1.00 20.00           C\n";
+        assert!(xyzrender_available_for_document(&format("pdb"), data));
+    }
 }
 
 pub(crate) fn copy_web_assets<R: Runtime>(

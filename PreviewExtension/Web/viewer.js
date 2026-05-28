@@ -6,8 +6,9 @@
   const MAX_SDF_GRID_ATOMS = 900;
   const MAX_SDF_GRID_BONDS = 900;
   const SDF_GRID_PADDING = 4.0;
-  const TOOLBAR_POSITION_VERSION = '11';
-  const TOOLBAR_COLLAPSED_VERSION = '3';
+  const TOOLBAR_POSITION_VERSION = '13';
+  const TOOLBAR_COLLAPSED_VERSION = '5';
+  const DOCKING_POSE_POSITION_VERSION = '1';
   const TOOLBAR_MARGIN = 12;
   const FLOATING_LAYOUT_GAP = 12;
   const PANEL_CLOSE_HIT_WIDTH = 38;
@@ -46,11 +47,27 @@
     showAxes: null,
     cellWidth: null,
     supercell: null,
+    fieldMode: null,
+    fieldIso: null,
+    fieldOpacity: null,
+    fieldSurfaceStyle: null,
+    fieldMoPositiveColor: null,
+    fieldMoNegativeColor: null,
+    fieldDensityColor: null,
+    fieldCmapPalette: null,
+    fieldCmapMin: null,
+    fieldCmapMax: null,
     customConfigPath: null,
     extraArguments: null
   };
+  const STRUCTURE_DRAG_MIME = 'application/x-burrete-structure-paths';
   const XYZRENDER_POPOVER_OPEN_KEY_PREFIX = 'buret.xyzrender.popover.open';
   let xyzrenderControlsApplyTimer = 0;
+  let xyzrenderInlineRequestSerial = 0;
+  let xyzrenderSheetRequestSerial = 0;
+  const xyzrenderSheetRequests = new Map();
+  let molstarWindowResizeHandler = null;
+  let molstarContextMenuCleanup = null;
   try { window.__mqlDebug && window.__mqlDebug('[viewer.js] top-level IIFE entered; readyState=' + document.readyState); } catch (_) {}
 
   function post(type, message) {
@@ -144,9 +161,9 @@
     });
   }
 
-  const DEFAULT_VIEWER_UI_SCALE = 1.0;
-  const MIN_VIEWER_UI_SCALE = 1.0;
-  const MAX_VIEWER_UI_SCALE = 1.0;
+  const DEFAULT_VIEWER_UI_SCALE = 0.9;
+  const MIN_VIEWER_UI_SCALE = 0.9;
+  const MAX_VIEWER_UI_SCALE = 0.9;
   const VIEWER_UI_SCALE_STEP = 0.08;
 
   let panelControlsVisible = window.BurretePanelControlsVisible !== false;
@@ -204,6 +221,7 @@
     document.body.classList.toggle('buret-theme-light', resolvedTheme === 'light');
     document.body.classList.toggle('burette-transparent-background', transparentBackground);
     document.body.classList.toggle('burette-opaque-background', !transparentBackground);
+    applyViewerThemeTokens(resolvedTheme);
     document.documentElement.style.setProperty('--buret-canvas-background', canvasBackgroundCSS());
     document.documentElement.style.setProperty('--buret-overlay-opacity', overlayOpacity.toFixed(2));
     document.documentElement.style.setProperty('--buret-overlay-strong-opacity', Math.min(overlayOpacity + 0.06, 0.99).toFixed(2));
@@ -240,6 +258,52 @@
     }
   }
 
+  function themeTokensFor(theme) {
+    const tokens = activeConfig && activeConfig.themeTokens && activeConfig.themeTokens[theme];
+    return tokens && typeof tokens === 'object' ? tokens : null;
+  }
+
+  function clampThemeNumber(value, fallback) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return fallback;
+    return Math.min(Math.max(number, 0), 100);
+  }
+
+  function applyViewerThemeTokens(resolvedTheme = resolveViewerTheme()) {
+    const tokens = themeTokensFor(resolvedTheme);
+    if (!tokens || !document.body) return;
+    const accent = typeof tokens.accent === 'string' ? tokens.accent : '#AF52DE';
+    const background = typeof tokens.background === 'string' ? tokens.background : (resolvedTheme === 'light' ? '#FFFFFF' : '#111111');
+    const foreground = typeof tokens.foreground === 'string' ? tokens.foreground : (resolvedTheme === 'light' ? '#0D0D0D' : '#FCFCFC');
+    const uiFont = typeof tokens.uiFont === 'string' ? tokens.uiFont : '';
+    const opacity = 1 - (clampThemeNumber(tokens.translucent, resolvedTheme === 'light' ? 10 : 20) / 100) * 0.95;
+    const contrast = 0.2 + (clampThemeNumber(tokens.contrast, resolvedTheme === 'light' ? 20 : 16) / 100) * 0.8;
+    const root = document.documentElement;
+    root.style.setProperty('--buret-shell-background', `color-mix(in srgb, ${background} ${Math.round(opacity * 100)}%, transparent)`);
+    root.style.setProperty('--buret-panel-background', `color-mix(in srgb, ${background} ${Math.round(Math.min(opacity + 0.08, 1) * 100)}%, transparent)`);
+    root.style.setProperty('--buret-toolbar-background', `color-mix(in srgb, ${background} ${Math.round(Math.min(opacity + 0.08, 1) * 100)}%, transparent)`);
+    root.style.setProperty('--buret-toolbar-border', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 24)}%, transparent)`);
+    root.style.setProperty('--buret-toolbar-hover', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 28)}%, transparent)`);
+    root.style.setProperty('--buret-toolbar-color', `color-mix(in srgb, ${foreground} 94%, transparent)`);
+    root.style.setProperty('--buret-molstar-panel-background', `color-mix(in srgb, ${background} ${Math.round(Math.min(opacity + 0.14, 1) * 100)}%, transparent)`);
+    root.style.setProperty('--buret-molstar-row-background', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 18)}%, transparent)`);
+    root.style.setProperty('--buret-molstar-field-background', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 24)}%, transparent)`);
+    root.style.setProperty('--buret-molstar-hover-background', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 34)}%, transparent)`);
+    root.style.setProperty('--buret-molstar-border', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 24)}%, transparent)`);
+    root.style.setProperty('--buret-molstar-text', `color-mix(in srgb, ${foreground} 94%, transparent)`);
+    root.style.setProperty('--buret-molstar-muted-text', `color-mix(in srgb, ${foreground} 64%, transparent)`);
+    root.style.setProperty('--buret-molstar-accent', accent);
+    root.style.setProperty('--buret-menu-accent', accent);
+    root.style.setProperty('--buret-menu-background', `color-mix(in srgb, ${background} ${Math.round(Math.min(opacity + 0.1, 1) * 100)}%, transparent)`);
+    root.style.setProperty('--buret-menu-section-background', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 16)}%, transparent)`);
+    root.style.setProperty('--buret-menu-input-background', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 22)}%, transparent)`);
+    root.style.setProperty('--buret-menu-input-focus-background', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 30)}%, transparent)`);
+    root.style.setProperty('--buret-menu-border', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 18)}%, transparent)`);
+    root.style.setProperty('--buret-menu-divider', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 12)}%, transparent)`);
+    root.style.setProperty('--buret-menu-toggle-track', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 28)}%, transparent)`);
+    if (uiFont) document.body.style.fontFamily = uiFont;
+  }
+
   function installThemeListener() {
     if (themeListenerInstalled || !window.matchMedia) return;
     themeListenerInstalled = true;
@@ -266,7 +330,7 @@
   }
 
   function resolvedCanvasBackground() {
-    if (canvasBackground === 'auto') return resolveViewerTheme() === 'light' ? 'white' : 'black';
+    if (canvasBackground === 'auto') return resolveViewerTheme() === 'light' ? 'white' : 'graphite';
     return canvasBackground;
   }
 
@@ -295,10 +359,10 @@
   }
 
   function applyViewerUIScale(viewer = activeViewer) {
-    // Mol* WebGL picking uses unscaled client coordinates; page/body zoom makes
-    // hover and click loci drift away from the visible cursor position.
-    postHostMessage({ type: 'viewerZoom', value: DEFAULT_VIEWER_UI_SCALE });
-    document.documentElement.style.setProperty('--buret-viewer-ui-scale', '1');
+    // Keep DOM zoom disabled; native hosts apply the fixed viewer scale through
+    // WKWebView pageZoom so Mol* keeps its own layout dimensions stable.
+    postHostMessage({ type: 'viewerZoom', value: viewerUIScale });
+    document.documentElement.style.setProperty('--buret-viewer-ui-scale', String(viewerUIScale));
     if (document.body) {
       document.body.style.zoom = '';
     }
@@ -441,36 +505,47 @@
     if (!control || !toolbar) return;
     const format = normalizeFormat(config.molstarFormat || config.format);
     const xyzrenderViewer = config.xyzrenderViewer === true;
-    const canSwitchRenderer = (config.appViewer === true && (format === 'xyz' || format === 'sdf')) ||
-      (config.quickLookViewer === true && format === 'xyz') ||
-      xyzrenderViewer;
+    const xyzrenderAvailable = config.xyzrenderAvailable !== false;
+    const renderer = normalizeRenderer(config.renderer);
+    toolbar.dataset.activeRenderer = renderer;
+    const canSwitchRenderer = xyzrenderAvailable && (
+      ((config.appViewer === true || config.quickLookViewer === true) && canUseExternalXyzrender(format)) ||
+      xyzrenderViewer
+    );
     const tuneButton = toolbar.querySelector('[data-buret-action="xyzrender-tune"]');
+    const sdfGridButton = toolbar.querySelector('[data-buret-action="sdf-grid"]');
     const popover = toolbar.querySelector('[data-buret-xyzrender-popover]');
     control.classList.toggle('visible', canSwitchRenderer);
     const presetSlot = toolbar.querySelector('[data-buret-xyzrender-preset-slot]');
     presetSlot?.classList.remove('visible');
-    tuneButton?.classList.add('hidden');
-    popover?.classList.add('hidden');
-    if (!canSwitchRenderer) return;
-
-    const renderer = normalizeRenderer(config.renderer);
-    toolbar.dataset.activeRenderer = renderer;
+    const canOpenSdfGrid = canOpenSdfGridFromConfig(config);
+    sdfGridButton?.classList.toggle('hidden', !canOpenSdfGrid);
+    if (sdfGridButton && toolbar.dataset.sdfGridBound !== '1') {
+      sdfGridButton.addEventListener('click', requestSdfGridDocument);
+      toolbar.dataset.sdfGridBound = '1';
+    }
+    const popoverWasOpen = popover?.classList.contains('hidden') === false;
+    const popoverScrollTop = popover?.scrollTop || 0;
     control.querySelectorAll('[data-buret-renderer]').forEach(button => {
       const value = button.getAttribute('data-buret-renderer');
-      const isFastXYZOnly = value === 'xyz-fast';
-      const needsMolstar = value === 'molstar';
-      button.classList.toggle('hidden',
-        (isFastXYZOnly && format !== 'xyz') ||
-        (needsMolstar && config.molstarAvailable === false)
-      );
-      button.classList.toggle('active', value === renderer);
+      const unavailable = rendererChoiceUnavailable(value, format, config, xyzrenderAvailable);
+      button.classList.toggle('hidden', unavailable);
+      button.classList.toggle('active', !unavailable && value === renderer);
+      button.disabled = unavailable;
+      button.setAttribute('aria-disabled', unavailable ? 'true' : 'false');
       if (control.dataset.rendererBound !== '1') {
         button.addEventListener('click', () => {
+          if (button.disabled) return;
           applyPendingRendererSelection(toolbar, value);
           requestRendererSwitch(value);
         });
       }
     });
+    if (!canSwitchRenderer) {
+      tuneButton?.classList.add('hidden');
+      setXyzrenderPopoverVisibility(toolbar, false, { persist: false });
+      return;
+    }
 
     const select = toolbar.querySelector('[data-buret-xyzrender-preset]');
     if (select) {
@@ -484,13 +559,15 @@
     }
     if (tuneButton) {
       tuneButton.classList.toggle('hidden', renderer !== 'xyzrender-external');
-      tuneButton.classList.remove('active');
-      tuneButton.removeAttribute('data-open');
+      if (renderer !== 'xyzrender-external') {
+        setXyzrenderPopoverVisibility(toolbar, false, { persist: false });
+      }
       if (renderer === 'xyzrender-external') {
         populateXyzrenderControlsForm(toolbar, normalizeXyzrenderControls(config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config));
         updateXyzrenderFormVisibility(toolbar);
-        if (shouldRestoreXyzrenderPopoverOpen()) {
-          setXyzrenderPopoverVisibility(toolbar, true);
+        if (popoverWasOpen || shouldRestoreXyzrenderPopoverOpen() || (!hasXyzrenderPopoverPreference() && shouldOpenXyzrenderPopoverByDefault(config))) {
+          setXyzrenderPopoverVisibility(toolbar, true, { resetScroll: false });
+          if (popover) popover.scrollTop = popoverScrollTop;
         }
       }
       if (control.dataset.tuneBound !== '1') {
@@ -499,14 +576,24 @@
           if (hidden) {
             populateXyzrenderControlsForm(toolbar, normalizeXyzrenderControls((activeConfig && activeConfig.xyzrenderControls) || DEFAULT_XYZRENDER_CONTROLS, activeConfig || {}));
           }
-          setXyzrenderPopoverVisibility(toolbar, hidden);
+          setXyzrenderPopoverVisibility(toolbar, hidden, { resetScroll: hidden });
         });
       }
     }
     control.dataset.rendererBound = '1';
     control.dataset.presetBound = '1';
     control.dataset.tuneBound = '1';
-    requestAnimationFrame(() => syncToolbarViewport(toolbar, renderer));
+  }
+
+  function canUseExternalXyzrender(format) {
+    return ['xyz', 'sdf', 'pdb', 'pdbqt', 'mmcif', 'cifcore'].includes(normalizeFormat(format));
+  }
+
+  function rendererChoiceUnavailable(value, format, config, xyzrenderAvailable) {
+    if (value === 'xyz-fast') return format !== 'xyz';
+    if (value === 'molstar') return config.molstarAvailable === false;
+    if (value === 'xyzrender-external') return !xyzrenderAvailable || !canUseExternalXyzrender(format);
+    return false;
   }
 
   function populateXyzrenderPresetSelect(select, options) {
@@ -533,18 +620,21 @@
     return documentId ? `${XYZRENDER_POPOVER_OPEN_KEY_PREFIX}:${documentId}` : XYZRENDER_POPOVER_OPEN_KEY_PREFIX;
   }
 
-  function setXyzrenderPopoverVisibility(toolbar, open) {
+  function setXyzrenderPopoverVisibility(toolbar, open, options = {}) {
     const popover = toolbar?.querySelector('[data-buret-xyzrender-popover]');
     const tuneButton = toolbar?.querySelector('[data-buret-action="xyzrender-tune"]');
     if (!popover) return;
+    const resetScroll = options.resetScroll === true;
+    const persist = options.persist !== false;
     popover.classList.toggle('hidden', !open);
+    toolbar?.classList.toggle('buret-popover-open', open);
     if (tuneButton) {
       tuneButton.classList.toggle('active', open);
       tuneButton.toggleAttribute('data-open', open);
     }
-    setXyzrenderPopoverOpenPersisted(open);
+    if (persist) setXyzrenderPopoverOpenPersisted(open);
     if (open) {
-      popover.scrollTop = 0;
+      if (resetScroll) popover.scrollTop = 0;
       positionXyzrenderPopover(toolbar);
     }
   }
@@ -553,7 +643,7 @@
     try {
       const key = xyzrenderPopoverStorageKey();
       if (open) window.localStorage?.setItem(key, '1');
-      else window.localStorage?.removeItem(key);
+      else window.localStorage?.setItem(key, '0');
     } catch (_) {}
   }
 
@@ -563,6 +653,30 @@
     } catch (_) {
       return false;
     }
+  }
+
+  function hasXyzrenderPopoverPreference() {
+    try {
+      return window.localStorage?.getItem(xyzrenderPopoverStorageKey()) != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function shouldOpenXyzrenderPopoverByDefault(config) {
+    const controls = normalizeXyzrenderControls(config?.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config || {});
+    return !!(
+      controls.fieldMode ||
+      controls.fieldIso != null ||
+      controls.fieldOpacity != null ||
+      controls.fieldSurfaceStyle ||
+      controls.fieldMoPositiveColor ||
+      controls.fieldMoNegativeColor ||
+      controls.fieldDensityColor ||
+      controls.fieldCmapPalette ||
+      controls.fieldCmapMin != null ||
+      controls.fieldCmapMax != null
+    );
   }
 
   function normalizeXyzrenderControls(value, config = {}) {
@@ -586,6 +700,16 @@
       showAxes: triStateBoolean(source.showAxes),
       cellWidth: positiveNumberOrNull(source.cellWidth),
       supercell: normalizeSupercellValue(source.supercell),
+      fieldMode: normalizeFieldMode(source.fieldMode),
+      fieldIso: positiveNumberOrNull(source.fieldIso),
+      fieldOpacity: nonNegativeNumberOrNull(source.fieldOpacity),
+      fieldSurfaceStyle: normalizeFieldSurfaceStyle(source.fieldSurfaceStyle),
+      fieldMoPositiveColor: nonEmptyText(source.fieldMoPositiveColor),
+      fieldMoNegativeColor: nonEmptyText(source.fieldMoNegativeColor),
+      fieldDensityColor: nonEmptyText(source.fieldDensityColor),
+      fieldCmapPalette: nonEmptyText(source.fieldCmapPalette),
+      fieldCmapMin: finiteNumberOrNull(source.fieldCmapMin),
+      fieldCmapMax: finiteNumberOrNull(source.fieldCmapMax),
       customConfigPath: nonEmptyText(source.customConfigPath),
       extraArguments: nonEmptyText(source.extraArguments)
     };
@@ -596,6 +720,16 @@
     return Number.isFinite(number) && number > 0 ? number : null;
   }
 
+  function nonNegativeNumberOrNull(value) {
+    const number = Number(value);
+    return Number.isFinite(number) && number >= 0 ? number : null;
+  }
+
+  function finiteNumberOrNull(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  }
+
   function triStateBoolean(value) {
     return value === true ? true : value === false ? false : null;
   }
@@ -603,6 +737,16 @@
   function nonEmptyText(value) {
     const text = String(value || '').trim();
     return text ? text : null;
+  }
+
+  function normalizeFieldMode(value) {
+    const text = String(value || '').trim().toLowerCase();
+    return ['auto', 'off', 'density', 'mo', 'esp', 'nci'].includes(text) ? text : null;
+  }
+
+  function normalizeFieldSurfaceStyle(value) {
+    const text = String(value || '').trim().toLowerCase();
+    return ['solid', 'mesh', 'contour', 'dot'].includes(text) ? text : null;
   }
 
   function normalizeSupercellValue(value) {
@@ -615,14 +759,8 @@
 
   function requestRendererSwitch(renderer) {
     const value = normalizeRenderer(renderer);
+    if (requestBrowserDevRendererSwitch(value)) return;
     const orientationRef = value === 'xyzrender-external' ? captureCurrentXyzrenderOrientationRef() : null;
-    if (orientationRef) {
-      postHostMessage({
-        type: 'setXyzrenderOrientation',
-        text: orientationRef.text,
-        atomCount: orientationRef.atomCount
-      });
-    }
     const payload = { type: 'setRenderer', value };
     if (orientationRef) {
       payload.orientationRef = orientationRef.text;
@@ -630,6 +768,93 @@
     }
     const sent = postHostMessage(payload);
     if (!sent) setStatus('Renderer switching is available only in the app or Quick Look viewer.', 'error');
+  }
+
+  function requestBrowserDevRendererSwitch(renderer) {
+    const config = activeConfig || window.BurreteConfig || {};
+    if (config.tauriViewer !== false) return false;
+    const value = normalizeRenderer(renderer);
+    if (value === normalizeRenderer(config.renderer)) return true;
+    if (value === 'xyzrender-external') {
+      return requestBrowserDevXyzrenderUpdate({ rendererSwitch: true });
+    }
+    if (value === 'molstar') {
+      void switchBrowserDevMolstar();
+      return true;
+    }
+    return false;
+  }
+
+  async function switchBrowserDevMolstar() {
+    const config = activeConfig || window.BurreteConfig || {};
+    if (config.tauriViewer !== false) return;
+    const cb = window.BurreteCacheBuster || String(Date.now());
+    const format = normalizeFormat(config.molstarFormat || config.format);
+    const trajectoryFrameCount = Number(config.trajectoryFrameCount || 0);
+    const nextConfig = {
+      ...config,
+      renderer: 'molstar',
+      xyzrenderViewer: false,
+      externalArtifact: null,
+      sdfPosePager: format === 'sdf' && config.binary !== true,
+      trajectoryControls: config.trajectoryControls === true || trajectoryFrameCount > 1
+    };
+    activeConfig = nextConfig;
+    window.BurreteConfig = nextConfig;
+    xyzrenderInlineRequestSerial += 1;
+    disposeExternalArtifactInteractions();
+    applyConfigOptions(nextConfig);
+    try {
+      await ensureBrowserDevMolstarData(nextConfig, cb);
+      await startMolstar(nextConfig, cb);
+    } catch (error) {
+      setStatus(`Mol* renderer switch failed.\n\n${error && error.message || String(error)}`, 'error');
+    }
+  }
+
+  function embeddedStructureDataByteLength() {
+    if (window.BurreteDataBytes instanceof Uint8Array) return window.BurreteDataBytes.length;
+    if (typeof window.BurreteDataBase64 !== 'string') return 0;
+    const text = window.BurreteDataBase64.trim();
+    if (!text) return 0;
+    const padding = text.endsWith('==') ? 2 : text.endsWith('=') ? 1 : 0;
+    return Math.max(0, Math.floor(text.length * 3 / 4) - padding);
+  }
+
+  async function ensureBrowserDevMolstarData(config, cb) {
+    if (config.tauriViewer !== false) return;
+    if (typeof config.dataPath !== 'string' || !config.dataPath.trim()) return;
+    const expectedBytes = Number(config.previewByteCount || config.byteCount || 0);
+    if (!Number.isFinite(expectedBytes) || expectedBytes <= 1) return;
+    if (embeddedStructureDataByteLength() > 1) return;
+    window.BurreteDataBytes = null;
+    window.BurreteDataBase64 = null;
+    await loadStructureData(config, cb);
+  }
+
+  function requestSdfGridDocument() {
+    const payload = { type: 'openSdfGridDocument' };
+    const gridPath = sdfGridPathForConfig(activeConfig || {});
+    if (gridPath) payload.path = gridPath;
+    const sent = postHostMessage(payload);
+    if (!sent) setStatus('SDF grid switching is available only in the app or Quick Look viewer.', 'error');
+  }
+
+  function sdfGridPathForConfig(config) {
+    const path = String(config?.sdfGridPath || '').trim();
+    if (path) return path;
+    const ligands = Array.isArray(config?.docking?.ligands) ? config.docking.ligands : [];
+    const sdfLigand = ligands.find((ligand) => (
+      normalizeFormat(ligand?.format || ligand?.extension) === 'sdf' &&
+      String(ligand?.path || '').trim().length > 0
+    ));
+    return sdfLigand ? String(sdfLigand.path).trim() : null;
+  }
+
+  function canOpenSdfGridFromConfig(config) {
+    const format = normalizeFormat(config?.molstarFormat || config?.format);
+    return Boolean(sdfGridPathForConfig(config)) ||
+      (config?.sdfPosePager === true && config?.sdfGrid !== false && format === 'sdf');
   }
 
   function applyPendingRendererSelection(toolbar, renderer) {
@@ -653,13 +878,108 @@
       popover?.classList.add('hidden');
       setXyzrenderPopoverOpenPersisted(false);
     }
-    requestAnimationFrame(() => syncToolbarViewport(toolbar, normalized));
   }
 
   function requestXyzrenderPreset(preset) {
     const value = normalizeXyzrenderPreset(preset);
+    if (requestBrowserDevXyzrenderUpdate({ preset: value })) return;
     const sent = postHostMessage({ type: 'setXyzrenderPreset', value });
     if (!sent) setStatus('xyzrender preset switching is available only in the app or Quick Look viewer.', 'error');
+  }
+
+  function requestBrowserDevXyzrenderUpdate(options = {}) {
+    const config = activeConfig || window.BurreteConfig || {};
+    const endpoint = String(config.xyzrenderEndpoint || '').trim();
+    const sourcePath = String(config.xyzrenderSourcePath || config.sourcePath || '').trim();
+    const renderer = options.rendererSwitch === true ? 'xyzrender-external' : normalizeRenderer(config.renderer);
+    if (config.tauriViewer !== false || !endpoint || !sourcePath || renderer !== 'xyzrender-external') {
+      return false;
+    }
+    const toolbar = document.getElementById('buret-toolbar');
+    const controls = options.controls || (toolbar ? readXyzrenderControlsForm(toolbar) : normalizeXyzrenderControls(config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config));
+    const preset = normalizeXyzrenderPreset(options.preset || config.externalArtifact?.preset || config.xyzrenderPreset || 'default');
+    const orientationRef = captureCurrentXyzrenderOrientationRef();
+    const serial = ++xyzrenderInlineRequestSerial;
+    setStatus(`[web] Updating xyzrender artifact…\n${config.label || 'structure'}`);
+    fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        path: sourcePath,
+        preset,
+        orientationRef: orientationRef?.text || undefined,
+        controls
+      })
+    })
+      .then(response => response.json().catch(() => ({})).then(payload => ({ response, payload })))
+      .then(({ response, payload }) => {
+        if (serial !== xyzrenderInlineRequestSerial) return;
+        if (!response.ok) {
+          throw new Error(typeof payload?.error === 'string' ? payload.error : `xyzrender request failed with status ${response.status}`);
+        }
+        if (typeof payload?.svg !== 'string' || !payload.svg.trim()) {
+          throw new Error('xyzrender endpoint returned no SVG payload');
+        }
+        updateBrowserDevXyzrenderArtifact(payload, controls, preset);
+      })
+      .catch(error => {
+        if (serial !== xyzrenderInlineRequestSerial) return;
+        setStatus(error instanceof Error ? error.message : String(error), 'error');
+      });
+    return true;
+  }
+
+  function updateBrowserDevXyzrenderArtifact(payload, requestedControls, requestedPreset) {
+    const inline = document.querySelector('.buret-external-artifact-inline');
+    const object = document.querySelector('.buret-external-artifact-object');
+    if (inline) {
+      inline.innerHTML = payload.svg;
+    } else if (object) {
+      const stage = object.closest('.buret-external-artifact-stage');
+      if (stage) {
+        stage.innerHTML = `<div class="buret-external-artifact-inline" aria-label="${escapeHTML((activeConfig || {}).label || 'xyzrender artifact')}">${payload.svg}</div><div class="buret-xyzrender-sheet" aria-label="xyzrender sheet overlays"></div>`;
+      }
+    } else {
+      disposeActiveMolstarViewer();
+      installExternalArtifactStyles();
+      const container = document.getElementById('app');
+      if (container) {
+        container.innerHTML = `
+          <div class="buret-external-artifact-root">
+            <div class="buret-external-artifact-stage"><div class="buret-external-artifact-inline" aria-label="${escapeHTML((activeConfig || {}).label || 'xyzrender artifact')}">${payload.svg}</div><div class="buret-xyzrender-sheet" aria-label="xyzrender sheet overlays"></div></div>
+            <div class="buret-xyz-badge"><strong>External xyzrender</strong><span>SVG</span></div>
+          </div>`;
+        const root = container.querySelector('.buret-external-artifact-root');
+        if (root) installExternalArtifactInteractions(root);
+      }
+    }
+    const preset = normalizeXyzrenderPreset(payload.preset || requestedPreset);
+    const controls = normalizeXyzrenderControls(payload.xyzrenderControls || requestedControls || DEFAULT_XYZRENDER_CONTROLS, activeConfig || {});
+    const elapsed = Number(payload.elapsedMs) || 0;
+    const badge = document.querySelector('.buret-xyz-badge span');
+    if (badge) badge.textContent = `SVG · ${preset}${elapsed ? ` · ${elapsed} ms` : ''}`;
+    activeConfig = {
+      ...(activeConfig || window.BurreteConfig || {}),
+      renderer: 'xyzrender-external',
+      xyzrenderControls: controls,
+      xyzrenderPreset: preset,
+      xyzrenderPresetOptions: Array.isArray(payload.xyzrenderPresetOptions)
+        ? payload.xyzrenderPresetOptions
+        : (activeConfig || {}).xyzrenderPresetOptions,
+      externalArtifact: {
+        ...((activeConfig || {}).externalArtifact || {}),
+        inlineSvg: payload.svg,
+        outputType: 'svg',
+        preset,
+        configArgument: typeof payload.configArgument === 'string' ? payload.configArgument : preset,
+        elapsedMs: elapsed,
+        log: typeof payload.log === 'string' ? payload.log : ''
+      }
+    };
+    window.BurreteConfig = { ...(window.BurreteConfig || {}), ...activeConfig };
+    configureRendererControls(activeConfig);
+    setStatus(`[web] Rendered ${(activeConfig || {}).label || 'structure'} with external xyzrender`);
+    setTimeout(hideStatus, 450);
   }
 
   function populateXyzrenderControlsForm(toolbar, controls) {
@@ -674,14 +994,27 @@
         return;
       }
       if (field.tagName === 'SELECT') {
-        field.value = value === true ? 'on' : value === false ? 'off' : '';
+        field.value = value === true ? 'on' : value === false ? 'off' : value == null ? '' : String(value);
         return;
       }
       field.value = Array.isArray(value) ? value.join(' ') : value == null ? '' : String(value);
     };
     Object.entries(normalized).forEach(([name, value]) => setValue(name, value));
+    syncXyzrenderSliders(toolbar);
     updateXyzrenderFormVisibility(toolbar);
     toolbar.dataset.syncingXyzrenderForm = '0';
+  }
+
+  function syncXyzrenderSliders(toolbar) {
+    toolbar.querySelectorAll('[data-buret-xctrl-slider]').forEach(slider => {
+      const name = slider.getAttribute('data-buret-xctrl-slider');
+      const field = name ? toolbar.querySelector(`[data-buret-xctrl="${name}"]`) : null;
+      if (!field) return;
+      const number = Number(field.value);
+      const hasValue = Number.isFinite(number);
+      slider.toggleAttribute('data-auto', !hasValue);
+      if (hasValue) slider.value = String(number);
+    });
   }
 
   function updateXyzrenderFormVisibility(toolbar) {
@@ -698,12 +1031,32 @@
       controls.vdwScale != null ||
       controls.molColor
     );
+    const field = toolbar.querySelector('[data-buret-xyzrender-field]');
+    const fieldActive = !!(
+      controls.fieldMode ||
+      controls.fieldIso != null ||
+      controls.fieldOpacity != null ||
+      controls.fieldSurfaceStyle ||
+      controls.fieldMoPositiveColor ||
+      controls.fieldMoNegativeColor ||
+      controls.fieldDensityColor ||
+      controls.fieldCmapPalette ||
+      controls.fieldCmapMin != null ||
+      controls.fieldCmapMax != null
+    );
     if (advanced) {
-      advanced.open = advancedActive;
+      if (advancedActive) advanced.open = true;
+    }
+    if (field) {
+      if (fieldActive) field.open = true;
     }
     if (crystal) {
       crystal.classList.toggle('hidden', !looksCrystalLike && !crystalActive);
-      crystal.open = crystalActive;
+      if (crystalActive) {
+        crystal.open = true;
+      } else if (crystal.classList.contains('hidden')) {
+        crystal.open = false;
+      }
     }
     positionXyzrenderPopover(toolbar);
   }
@@ -730,6 +1083,14 @@
     const readNumber = name => {
       const field = readField(name);
       return field ? positiveNumberOrNull(field.value) : current[name];
+    };
+    const readNonNegativeNumber = name => {
+      const field = readField(name);
+      return field ? nonNegativeNumberOrNull(field.value) : current[name];
+    };
+    const readFiniteNumber = name => {
+      const field = readField(name);
+      return field ? finiteNumberOrNull(field.value) : current[name];
     };
     const readText = name => {
       const field = readField(name);
@@ -760,6 +1121,16 @@
       showAxes: readTriState('showAxes'),
       cellWidth: current.cellWidth,
       supercell: normalizeSupercellValue(readField('supercell')?.value),
+      fieldMode: normalizeFieldMode(readField('fieldMode')?.value),
+      fieldIso: readNumber('fieldIso'),
+      fieldOpacity: readNonNegativeNumber('fieldOpacity'),
+      fieldSurfaceStyle: normalizeFieldSurfaceStyle(readField('fieldSurfaceStyle')?.value),
+      fieldMoPositiveColor: readText('fieldMoPositiveColor'),
+      fieldMoNegativeColor: readText('fieldMoNegativeColor'),
+      fieldDensityColor: readText('fieldDensityColor'),
+      fieldCmapPalette: readText('fieldCmapPalette'),
+      fieldCmapMin: readFiniteNumber('fieldCmapMin'),
+      fieldCmapMax: readFiniteNumber('fieldCmapMax'),
       customConfigPath: readText('customConfigPath'),
       extraArguments: readText('extraArguments')
     }, activeConfig || {});
@@ -767,6 +1138,7 @@
 
   function requestXyzrenderControls(toolbar) {
     const controls = readXyzrenderControlsForm(toolbar);
+    if (requestBrowserDevXyzrenderUpdate({ controls })) return;
     const sent = postHostMessage({ type: 'setXyzrenderControls', controls });
     if (!sent) {
       setStatus('xyzrender controls are available only in the app or Quick Look viewer.', 'error');
@@ -967,11 +1339,14 @@
     const toolbar = document.getElementById('buret-toolbar');
     if (!toolbar) return;
 
-    toolbar.querySelectorAll('[data-buret-toggle]').forEach(button => {
-      button.addEventListener('click', () => {
-        toggleLayoutRegion(button.getAttribute('data-buret-toggle'), viewer);
+    if (toolbar.dataset.panelTogglesBound !== '1') {
+      toolbar.querySelectorAll('[data-buret-toggle]').forEach(button => {
+        button.addEventListener('click', () => {
+          toggleLayoutRegion(button.getAttribute('data-buret-toggle'), activeViewer || viewer);
+        });
       });
-    });
+      toolbar.dataset.panelTogglesBound = '1';
+    }
     bindThemeButton(toolbar, viewer);
     bindXyzrenderControls(toolbar);
     initToolbarDrag(toolbar);
@@ -1034,15 +1409,29 @@
     });
     toolbar.querySelectorAll('[data-buret-xctrl]').forEach(field => {
       field.addEventListener('change', () => {
+        syncXyzrenderSliders(toolbar);
         updateXyzrenderFormVisibility(toolbar);
         scheduleXyzrenderControlsApply(toolbar, 0);
       });
       if (field.tagName !== 'SELECT' && field.type !== 'checkbox') {
         field.addEventListener('input', () => {
+          syncXyzrenderSliders(toolbar);
           updateXyzrenderFormVisibility(toolbar);
           scheduleXyzrenderControlsApply(toolbar, 260);
         });
       }
+    });
+    toolbar.querySelectorAll('[data-buret-xctrl-slider]').forEach(slider => {
+      slider.addEventListener('input', () => {
+        const name = slider.getAttribute('data-buret-xctrl-slider');
+        const field = name ? toolbar.querySelector(`[data-buret-xctrl="${name}"]`) : null;
+        if (!field) return;
+        field.value = slider.value;
+        slider.removeAttribute('data-auto');
+        updateXyzrenderFormVisibility(toolbar);
+        scheduleXyzrenderControlsApply(toolbar, 120);
+      });
+      slider.addEventListener('change', () => scheduleXyzrenderControlsApply(toolbar, 0));
     });
     document.addEventListener('click', event => {
       const popover = toolbar.querySelector('[data-buret-xyzrender-popover]');
@@ -1086,6 +1475,7 @@
   }
 
   function setToolbarCollapsed(toolbar, collapsed, viewer, persist = true) {
+    if (collapsed) setXyzrenderPopoverVisibility(toolbar, false);
     toolbar.classList.toggle('collapsed', collapsed);
     const grip = toolbar.querySelector('[data-drag-handle]');
     if (grip) {
@@ -1107,6 +1497,8 @@
   }
 
   function initToolbarDrag(toolbar) {
+    if (toolbar.dataset.dragBound === '1') return;
+    toolbar.dataset.dragBound = '1';
     let hasSavedPosition = false;
     try {
       const raw = window.localStorage && window.localStorage.getItem('buret.toolbar.position');
@@ -1141,6 +1533,7 @@
     });
     toolbar.addEventListener('pointerdown', event => {
       if (event.target.closest('[data-buret-toggle]')) return;
+      if (event.target.closest('[data-buret-xyzrender-popover]')) return;
       if (event.target.closest('select, input, textarea')) return;
       if (!event.target.closest('[data-drag-handle]') && event.target.closest('.buret-button')) return;
       const rect = toolbar.getBoundingClientRect();
@@ -1235,10 +1628,9 @@
   function applyDefaultToolbarPosition(toolbar) {
     dockToolbar(toolbar);
     fitToolbarToViewport(toolbar);
-    const top = toolbarSafeTop();
-    const mainRect = visibleRect('.msp-plugin .msp-layout-main');
+    const top = defaultToolbarTop();
     const width = toolbar.offsetWidth || toolbar.getBoundingClientRect().width || 320;
-    const rightEdge = mainRect ? mainRect.right : window.innerWidth;
+    const rightEdge = window.innerWidth;
     const left = Math.max(TOOLBAR_MARGIN, Math.round(rightEdge - width - TOOLBAR_MARGIN));
     toolbar.dataset.defaultPosition = '1';
     toolbar.style.left = left + 'px';
@@ -1268,8 +1660,7 @@
   }
 
   function fitToolbarToViewport(toolbar) {
-    const mainRect = visibleRect('.msp-plugin .msp-layout-main');
-    const availableWidth = mainRect ? Math.floor(mainRect.width) : window.innerWidth;
+    const availableWidth = window.innerWidth;
     toolbar.style.maxWidth = Math.max(180, availableWidth - TOOLBAR_MARGIN * 2) + 'px';
     const content = toolbar.querySelector('[data-buret-toolbar-content]');
     if (content) {
@@ -1277,25 +1668,8 @@
     }
   }
 
-  function syncToolbarViewport(toolbar, renderer) {
-    const content = toolbar?.querySelector('[data-buret-toolbar-content]');
-    if (!content) return;
-    const presetSlot = toolbar.querySelector('[data-buret-xyzrender-preset-slot]');
-    const tuneButton = toolbar.querySelector('[data-buret-action="xyzrender-tune"]');
-    let target = toolbar.querySelector(`[data-buret-renderer="${renderer}"]`);
-    if (renderer === 'xyzrender-external') {
-      if (tuneButton && !tuneButton.classList.contains('hidden')) target = tuneButton;
-      else if (presetSlot && presetSlot.classList.contains('visible')) target = presetSlot;
-    }
-    if (!(target instanceof HTMLElement)) return;
-    const contentRect = content.getBoundingClientRect();
-    const targetRect = target.getBoundingClientRect();
-    const padding = 6;
-    if (targetRect.left < contentRect.left + padding) {
-      content.scrollLeft -= contentRect.left + padding - targetRect.left;
-    } else if (targetRect.right > contentRect.right - padding) {
-      content.scrollLeft += targetRect.right - (contentRect.right - padding);
-    }
+  function defaultToolbarTop() {
+    return toolbarSafeTop();
   }
 
   function updateFloatingLayoutOffsets() {
@@ -1816,6 +2190,123 @@
     return config.binary ? base64ToBytes(base64) : base64ToText(base64);
   }
 
+  function dockingPayloadData(source, payload) {
+    if (!payload || typeof payload.dataBase64 !== 'string') {
+      throw new Error(`Docking payload for ${source?.label || 'structure'} was not loaded.`);
+    }
+    return source?.binary ? base64ToBytes(payload.dataBase64) : base64ToText(payload.dataBase64);
+  }
+
+  function dockingPoseStorageKey(config) {
+    const documentId = String(config?.documentId || '').trim();
+    if (documentId) return `burrete.dockingPose.${documentId}`;
+    const fallback = `${config?.label || 'active'}:${window.location.pathname}:${window.location.search}`;
+    return `burrete.dockingPose.fallback-${stableTextHash(fallback)}`;
+  }
+
+  function stableTextHash(value) {
+    let hash = 2166136261;
+    const text = String(value || '');
+    for (let index = 0; index < text.length; index += 1) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+  }
+
+  function readDockingPoseIndex(config, poseCount) {
+    const fallback = Number(config.docking?.activePose || 0);
+    let value = fallback;
+    try {
+      const stored = sessionStorage.getItem(dockingPoseStorageKey(config));
+      if (stored !== null) value = Number(stored);
+    } catch (_) {}
+    if (!Number.isFinite(value)) value = 0;
+    return Math.max(0, Math.min(poseCount - 1, Math.trunc(value)));
+  }
+
+  function prepareDockingStructure(config) {
+    const docking = config.docking || {};
+    const payloads = window.BurreteDockingPayloads || {};
+    const receptor = docking.receptor;
+    if (!receptor) throw new Error('Docking view is missing a receptor.');
+    const ligandSources = Array.isArray(docking.ligands) ? docking.ligands : [];
+    const ligandPayloads = Array.isArray(payloads.ligands) ? payloads.ligands : [];
+    const poses = [];
+    const entries = [
+      {
+        data: dockingPayloadData(receptor, payloads.receptor),
+        format: normalizeFormat(receptor.format),
+        label: receptor.label || 'Receptor'
+      }
+    ];
+    let nativeTrajectoryPoseCount = 0;
+    ligandSources.forEach((source, ligandIndex) => {
+      const data = dockingPayloadData(source, ligandPayloads[ligandIndex]);
+      const format = normalizeFormat(source.format);
+      if (format === 'sdf') {
+        const records = splitSdfRecords(data);
+        if (records.length > 1) {
+          nativeTrajectoryPoseCount += records.length;
+          entries.push({
+            data,
+            format: 'sdf',
+            label: source.label || `Ligand ${ligandIndex + 1}`,
+            loadPreset: 'default'
+          });
+          records.forEach((record, poseIndex) => {
+            poses.push({
+              data: `${record}\n$$$$\n`,
+              format: 'sdf',
+              label: `${source.label || `Ligand ${ligandIndex + 1}`} pose ${poseIndex + 1}`,
+              ligandIndex,
+              poseIndex,
+              poseCount: records.length
+            });
+          });
+          return;
+        }
+      }
+      entries.push({
+        data,
+        format,
+        label: source.label || `Ligand ${ligandIndex + 1}`
+      });
+      poses.push({
+        data,
+        format,
+        label: source.label || `Ligand ${ligandIndex + 1}`,
+        ligandIndex,
+        poseIndex: 0,
+        poseCount: 1
+      });
+    });
+    if (poses.length === 0) throw new Error('Docking view has no ligand poses.');
+    const activePose = readDockingPoseIndex(config, poses.length);
+    if (nativeTrajectoryPoseCount > 1) {
+      return {
+        kind: 'docking',
+        label: config.label || 'Docking view',
+        activePose: 0,
+        poseCount: nativeTrajectoryPoseCount,
+        nativeTrajectoryControls: true,
+        ligandLabel: 'Mol* trajectory',
+        entries
+      };
+    }
+    return {
+      kind: 'docking',
+      label: config.label || 'Docking view',
+      activePose,
+      poseCount: poses.length,
+      ligandLabel: poses[activePose].label,
+      entries: [
+        entries[0],
+        poses[activePose]
+      ]
+    };
+  }
+
   function normalizeRenderer(renderer) {
     const value = String(renderer || 'molstar').toLowerCase();
     if (value === 'xyz-fast' || value === 'fast-xyz' || value === 'xyzfast') return 'xyz-fast';
@@ -1824,6 +2315,9 @@
   }
 
   function structureDataForMolstar(config) {
+    if (config.docking) {
+      return prepareDockingStructure(config);
+    }
     const normalized = normalizeFormat(config.format);
     if (normalized === 'cifCore') {
       const pdb = coreCifToPdb(rawStructureData({ ...config, binary: false }));
@@ -1872,7 +2366,8 @@
   async function startExternalArtifact(config) {
     disposeExternalArtifactInteractions();
     const artifact = config.externalArtifact;
-    if (!artifact || (!artifact.path && !artifact.inlineSvg)) {
+    const inlineSvg = artifact?.inlineSvg || (artifact?.inlineSvgBase64 ? base64ToText(artifact.inlineSvgBase64) : '');
+    if (!artifact || (!artifact.path && !inlineSvg)) {
       throw new Error('External xyzrender renderer was selected, but no externalArtifact payload was provided.');
     }
     setStatus(`[web] Loading xyzrender artifact…\n${config.label || 'structure'}`);
@@ -1880,9 +2375,9 @@
     const container = document.getElementById('app');
     const preset = artifact.preset ? ` · ${escapeHTML(artifact.preset)}` : '';
     const elapsed = Number.isFinite(Number(artifact.elapsedMs)) ? ` · ${Number(artifact.elapsedMs)} ms` : '';
-    const content = artifact.inlineSvg
-      ? `<div class="buret-external-artifact-stage"><div class="buret-external-artifact-inline" aria-label="${escapeHTML(config.label || 'xyzrender artifact')}">${artifact.inlineSvg}</div></div>`
-      : `<div class="buret-external-artifact-stage"><object class="buret-external-artifact-object" data="${safeRelativeArtifactPath(artifact.path)}" type="image/svg+xml" aria-label="${escapeHTML(config.label || 'xyzrender artifact')}"></object></div>`;
+    const content = inlineSvg
+      ? `<div class="buret-external-artifact-stage"><div class="buret-external-artifact-inline" aria-label="${escapeHTML(config.label || 'xyzrender artifact')}">${inlineSvg}</div><div class="buret-xyzrender-sheet" aria-label="xyzrender sheet overlays"></div></div>`
+      : `<div class="buret-external-artifact-stage"><object class="buret-external-artifact-object" data="${safeRelativeArtifactPath(artifact.path)}" type="image/svg+xml" aria-label="${escapeHTML(config.label || 'xyzrender artifact')}"></object><div class="buret-xyzrender-sheet" aria-label="xyzrender sheet overlays"></div></div>`;
     container.innerHTML = `
       <div class="buret-external-artifact-root">
         ${content}
@@ -1931,9 +2426,17 @@
       body.burette-transparent-background .buret-external-artifact-root { background: transparent; }
       .buret-external-artifact-stage { position: absolute; inset: 0; transform: translate(0px, 0px) scale(1); transform-origin: 50% 50%; will-change: transform; cursor: grab; }
       .buret-external-artifact-stage.dragging { cursor: grabbing; }
+      .buret-external-artifact-root.sheet-drop-active::after { content: "Drop onto xyzrender sheet"; position: absolute; inset: 14px; z-index: 36; border: 2px solid color-mix(in srgb, var(--buret-accent, #b45cff) 72%, transparent); border-radius: 14px; background: color-mix(in srgb, var(--buret-accent, #b45cff) 12%, transparent); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); display: flex; align-items: center; justify-content: center; font: 700 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; pointer-events: none; }
       .buret-external-artifact-inline { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box; overflow: hidden; }
-      .buret-external-artifact-inline > svg { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; margin: auto; }
+      .buret-external-artifact-inline > svg { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; margin: auto; border-radius: 8px; box-shadow: 0 18px 54px rgba(0,0,0,0.28); }
       .buret-external-artifact-object { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
+      .buret-xyzrender-sheet { position: absolute; inset: 0; z-index: 14; pointer-events: none; }
+      .buret-xyzrender-sheet-item { position: absolute; left: 50%; top: 50%; width: clamp(118px, 24vw, 280px); height: clamp(118px, 24vw, 280px); transform: translate(-50%, -50%); transform-origin: 50% 50%; pointer-events: auto; touch-action: none; cursor: grab; border-radius: 10px; outline: 0 solid transparent; }
+      .buret-xyzrender-sheet-item.dragging { cursor: grabbing; }
+      .buret-xyzrender-sheet-item.selected { outline: 2px solid var(--buret-accent, #b45cff); box-shadow: 0 0 0 3px color-mix(in srgb, var(--buret-accent, #b45cff) 24%, transparent); }
+      .buret-xyzrender-sheet-item > svg { display: block; width: 100%; height: 100%; overflow: visible; }
+      .buret-xyzrender-sheet-item-label { position: absolute; left: 50%; bottom: -23px; transform: translateX(-50%); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 7px; border-radius: 999px; color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.84)); font: 10px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; opacity: 0; transition: opacity 120ms ease; }
+      .buret-xyzrender-sheet-item.selected .buret-xyzrender-sheet-item-label { opacity: 1; }
       .buret-xyz-badge { position: absolute; left: 14px; bottom: 14px; z-index: 30; max-width: calc(100vw - 28px); box-sizing: border-box; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--buret-toolbar-border, rgba(255,255,255,0.12)); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.9)); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: 0 8px 22px rgba(0,0,0,0.20); font: 11px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; pointer-events: none; }
       .buret-xyz-badge strong { display: block; font-size: 11px; }
       .buret-xyz-badge span { display: block; opacity: 0.76; }
@@ -1945,6 +2448,249 @@
     if (!externalArtifactInteractionsCleanup) return;
     try { externalArtifactInteractionsCleanup(); } catch (_) {}
     externalArtifactInteractionsCleanup = null;
+  }
+
+  function readStructureDropPaths(dataTransfer) {
+    if (!dataTransfer) return [];
+    const paths = [];
+    try {
+      const custom = dataTransfer.getData(STRUCTURE_DRAG_MIME);
+      if (custom) {
+        const parsed = JSON.parse(custom);
+        if (Array.isArray(parsed)) paths.push(...parsed);
+        else if (Array.isArray(parsed?.paths)) paths.push(...parsed.paths);
+      }
+    } catch (_) {}
+    if (paths.length === 0) {
+      try {
+        const text = dataTransfer.getData('text/plain');
+        if (text) paths.push(...text.split(/\r?\n/gu));
+      } catch (_) {}
+    }
+    if (paths.length === 0 && dataTransfer.files) {
+      for (const file of Array.from(dataTransfer.files)) {
+        if (file && typeof file.path === 'string') paths.push(file.path);
+      }
+    }
+    return paths.map(path => String(path || '').trim()).filter(Boolean);
+  }
+
+  function ensureXyzrenderSheet(stage) {
+    let sheet = stage.querySelector('.buret-xyzrender-sheet');
+    if (!sheet) {
+      sheet = document.createElement('div');
+      sheet.className = 'buret-xyzrender-sheet';
+      sheet.setAttribute('aria-label', 'xyzrender sheet overlays');
+      stage.appendChild(sheet);
+    }
+    return sheet;
+  }
+
+  function installExternalArtifactSheet(root, stage, toStagePoint, getStageScale) {
+    const sheet = ensureXyzrenderSheet(stage);
+    let sheetItemSerial = sheet.querySelectorAll('.buret-xyzrender-sheet-item').length;
+
+    const renderSheetItem = async (path, preset, controls) => {
+      const config = activeConfig || window.BurreteConfig || {};
+      const endpoint = String(config.xyzrenderEndpoint || '').trim();
+      if (!endpoint) return requestHostXyzrenderSheetItem(path, preset, controls);
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, preset, controls })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof payload?.error === 'string' ? payload.error : `xyzrender sheet request failed with status ${response.status}`);
+      if (typeof payload?.svg !== 'string' || !payload.svg.trim()) throw new Error('xyzrender sheet endpoint returned no SVG payload');
+      return payload;
+    };
+
+    const addSheetItems = async (paths, point = null) => {
+      const config = activeConfig || window.BurreteConfig || {};
+      const cleanPaths = Array.from(new Set((paths || []).map(path => String(path || '').trim()).filter(Boolean)));
+      if (cleanPaths.length === 0) return;
+      setStatus(`[web] Adding ${cleanPaths.length} structure${cleanPaths.length === 1 ? '' : 's'} to xyzrender sheet…`);
+      const baseControls = normalizeXyzrenderControls(config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config);
+      const controls = {
+        ...baseControls,
+        transparentBackground: true,
+        fieldMode: 'off',
+        showCell: false,
+        showGhosts: false,
+        showAxes: false
+      };
+      const preset = normalizeXyzrenderPreset(config.externalArtifact?.preset || config.xyzrenderPreset || 'default');
+      for (const path of cleanPaths) {
+        try {
+          const payload = await renderSheetItem(path, preset, controls);
+          sheetItemSerial += 1;
+          addXyzrenderSheetItem(sheet, payload.svg, path, point, sheetItemSerial, getStageScale);
+        } catch (error) {
+          setStatus(`Could not add ${path} to xyzrender sheet: ${error instanceof Error ? error.message : String(error)}`, 'error');
+        }
+      }
+      setTimeout(hideStatus, 450);
+    };
+
+    const onDragOver = event => {
+      if (readStructureDropPaths(event.dataTransfer).length === 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      root.classList.add('sheet-drop-active');
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    };
+    const onDragLeave = event => {
+      if (root.contains(event.relatedTarget)) return;
+      root.classList.remove('sheet-drop-active');
+    };
+    const onDrop = event => {
+      const paths = readStructureDropPaths(event.dataTransfer);
+      if (paths.length === 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      root.classList.remove('sheet-drop-active');
+      void addSheetItems(paths, toStagePoint(event.clientX, event.clientY));
+    };
+    const onMessage = event => {
+      const data = event.data || {};
+      const body = data.body || {};
+      if (data.source === 'burrete-host' && (
+        body.type === 'xyzrenderSheetItemRendered' ||
+        body.type === 'xyzrenderSheetItemError'
+      )) {
+        resolveHostXyzrenderSheetItem(body);
+        return;
+      }
+      if (data.source !== 'burrete-host' || body.type !== 'addXyzrenderSheetItems') return;
+      const documentId = String((activeConfig || window.BurreteConfig || {}).documentId || '');
+      if (body.documentId && documentId && String(body.documentId) !== documentId) return;
+      void addSheetItems(body.paths || null, null);
+    };
+
+    root.addEventListener('dragover', onDragOver);
+    root.addEventListener('dragleave', onDragLeave);
+    root.addEventListener('drop', onDrop);
+    window.addEventListener('message', onMessage);
+    return () => {
+      root.removeEventListener('dragover', onDragOver);
+      root.removeEventListener('dragleave', onDragLeave);
+      root.removeEventListener('drop', onDrop);
+      window.removeEventListener('message', onMessage);
+      root.classList.remove('sheet-drop-active');
+    };
+  }
+
+  function requestHostXyzrenderSheetItem(path, preset, controls) {
+    const requestId = `xyzrender-sheet-${++xyzrenderSheetRequestSerial}`;
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        xyzrenderSheetRequests.delete(requestId);
+        reject(new Error('xyzrender sheet render timed out'));
+      }, 30000);
+      xyzrenderSheetRequests.set(requestId, { resolve, reject, timeout });
+      const sent = postHostMessage({
+        type: 'renderXyzrenderSheetItem',
+        requestId,
+        path,
+        preset,
+        controls
+      });
+      if (!sent) {
+        clearTimeout(timeout);
+        xyzrenderSheetRequests.delete(requestId);
+        reject(new Error('xyzrender sheet rendering is available only in Burette or browser-dev.'));
+      }
+    });
+  }
+
+  function resolveHostXyzrenderSheetItem(body) {
+    const requestId = String(body?.requestId || '');
+    if (!requestId) return;
+    const pending = xyzrenderSheetRequests.get(requestId);
+    if (!pending) return;
+    xyzrenderSheetRequests.delete(requestId);
+    clearTimeout(pending.timeout);
+    if (body.type === 'xyzrenderSheetItemError') {
+      pending.reject(new Error(String(body.error || 'Could not render xyzrender sheet item')));
+      return;
+    }
+    if (typeof body.svg !== 'string' || !body.svg.trim()) {
+      pending.reject(new Error('Host returned no xyzrender SVG payload'));
+      return;
+    }
+    pending.resolve({
+      svg: body.svg,
+      preset: body.preset || null,
+      elapsedMs: body.elapsedMs || null,
+      log: body.log || ''
+    });
+  }
+
+  function addXyzrenderSheetItem(sheet, svg, path, point, serial, getStageScale) {
+    const item = document.createElement('div');
+    item.className = 'buret-xyzrender-sheet-item selected';
+    item.setAttribute('role', 'button');
+    item.setAttribute('tabindex', '0');
+    item.setAttribute('aria-label', `Sheet structure ${path}`);
+    const rect = sheet.getBoundingClientRect();
+    const fallbackX = rect.width * (0.42 + ((serial - 1) % 4) * 0.06);
+    const fallbackY = rect.height * (0.42 + (Math.floor((serial - 1) / 4) % 4) * 0.06);
+    item.style.left = `${Number.isFinite(point?.x) ? point.x : fallbackX}px`;
+    item.style.top = `${Number.isFinite(point?.y) ? point.y : fallbackY}px`;
+    item.innerHTML = `${svg}<div class="buret-xyzrender-sheet-item-label">${escapeHTML(path.split('/').pop() || path)}</div>`;
+    sheet.querySelectorAll('.buret-xyzrender-sheet-item.selected').forEach(existing => existing.classList.remove('selected'));
+    sheet.appendChild(item);
+    installXyzrenderSheetItemDrag(item, getStageScale);
+  }
+
+  function installXyzrenderSheetItemDrag(item, getStageScale) {
+    let pointerId = null;
+    let startX = 0;
+    let startY = 0;
+    let startLeft = 0;
+    let startTop = 0;
+    const select = () => {
+      item.parentElement?.querySelectorAll('.buret-xyzrender-sheet-item.selected').forEach(existing => {
+        if (existing !== item) existing.classList.remove('selected');
+      });
+      item.classList.add('selected');
+    };
+    const onPointerDown = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      select();
+      pointerId = event.pointerId;
+      startX = event.clientX;
+      startY = event.clientY;
+      startLeft = parseFloat(item.style.left) || 0;
+      startTop = parseFloat(item.style.top) || 0;
+      item.classList.add('dragging');
+      try { item.setPointerCapture(event.pointerId); } catch (_) {}
+    };
+    const onPointerMove = event => {
+      if (pointerId !== event.pointerId) return;
+      const stageScale = Math.max(0.05, Number(getStageScale?.() || 1));
+      item.style.left = `${startLeft + (event.clientX - startX) / stageScale}px`;
+      item.style.top = `${startTop + (event.clientY - startY) / stageScale}px`;
+    };
+    const finish = event => {
+      if (pointerId !== event.pointerId) return;
+      pointerId = null;
+      item.classList.remove('dragging');
+      try { item.releasePointerCapture(event.pointerId); } catch (_) {}
+    };
+    const onKeyDown = event => {
+      if ((event.key === 'Backspace' || event.key === 'Delete') && item.classList.contains('selected')) {
+        event.preventDefault();
+        item.remove();
+      }
+    };
+    item.addEventListener('pointerdown', onPointerDown);
+    item.addEventListener('pointermove', onPointerMove);
+    item.addEventListener('pointerup', finish);
+    item.addEventListener('pointercancel', finish);
+    item.addEventListener('click', event => { event.stopPropagation(); select(); });
+    item.addEventListener('keydown', onKeyDown);
   }
 
   function installExternalArtifactInteractions(root) {
@@ -1962,16 +2708,16 @@
     const pointers = new Map();
     let pinchState = null;
 
-    const clampScale = value => Math.min(8, Math.max(1, value));
+    const clampScale = value => Math.min(8, Math.max(0.05, value));
     const clampTranslation = () => {
-      if (scale <= 1.001) {
+      if (Math.abs(scale - 1) < 0.001) {
         scale = 1;
         translateX = 0;
         translateY = 0;
         return;
       }
-      const maxX = root.clientWidth * (scale - 1) * 0.5;
-      const maxY = root.clientHeight * (scale - 1) * 0.5;
+      const maxX = root.clientWidth * Math.abs(scale - 1) * 0.5;
+      const maxY = root.clientHeight * Math.abs(scale - 1) * 0.5;
       translateX = Math.min(maxX, Math.max(-maxX, translateX));
       translateY = Math.min(maxY, Math.max(-maxY, translateY));
     };
@@ -2036,7 +2782,7 @@
         pinchState = center;
         return;
       }
-      if (dragPointerId !== event.pointerId || scale <= 1.001) return;
+      if (dragPointerId !== event.pointerId || Math.abs(scale - 1) < 0.001) return;
       translateX += event.clientX - dragClientX;
       translateY += event.clientY - dragClientY;
       dragClientX = event.clientX;
@@ -2061,6 +2807,14 @@
       event.preventDefault();
       zoomAt(gestureBaseScale * Number(event.scale || 1), Number(event.clientX || 0), Number(event.clientY || 0));
     };
+    const toStagePoint = (clientX, clientY) => {
+      const rect = root.getBoundingClientRect();
+      return {
+        x: (Number(clientX) - rect.left - translateX) / scale,
+        y: (Number(clientY) - rect.top - translateY) / scale
+      };
+    };
+    const sheetCleanup = installExternalArtifactSheet(root, stage, toStagePoint, () => scale);
 
     root.addEventListener('wheel', onWheel, { passive: false });
     root.addEventListener('pointerdown', onPointerDown);
@@ -2080,12 +2834,23 @@
       root.removeEventListener('dblclick', reset);
       root.removeEventListener('gesturestart', onGestureStart);
       root.removeEventListener('gesturechange', onGestureChange);
+      sheetCleanup?.();
     };
   }
 
   function prepareSdfStructure(text, config) {
     const label = config.label || 'structure';
     const records = splitSdfRecords(text);
+    if (records.length > 1 && config.sdfPosePager === true) {
+      return {
+        data: text,
+        format: 'sdf',
+        label: `${label} (${records.length} SDF poses)`,
+        loadPreset: 'default',
+        nativeTrajectoryControls: true,
+        poseCount: records.length
+      };
+    }
     if (records.length > 1 && config.sdfGrid !== false) {
       const grid = buildSdfGrid(records, label);
       if (grid) return grid;
@@ -2318,6 +3083,10 @@
   }
 
   async function loadPreparedStructure(viewer, prepared) {
+    if (prepared.kind === 'docking') {
+      await loadDockingPreparedStructure(viewer, prepared);
+      return;
+    }
     if (prepared.loadPreset === 'all-models') {
       const plugin = viewer.plugin;
       const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
@@ -2335,6 +3104,404 @@
     await applyMolstarStyle(viewer, configuredMolstarStyle(activeConfig));
   }
 
+  async function loadMolstarEntry(viewer, entry) {
+    const plugin = viewer.plugin;
+    const normalized = normalizeFormat(entry.format);
+    const payload = normalized === 'cifCore'
+      ? { data: coreCifToPdb(entry.data), format: 'pdb' }
+      : { data: entry.data, format: normalized };
+    const data = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
+    const trajectory = await plugin.builders.structure.parseTrajectory(data, payload.format);
+    await plugin.builders.structure.hierarchy.applyPreset(trajectory, entry.loadPreset || 'default');
+  }
+
+  async function loadDockingPreparedStructure(viewer, prepared) {
+    const plugin = viewer.plugin;
+    if (typeof plugin.clear === 'function') {
+      await plugin.clear();
+    }
+    for (const entry of prepared.entries) {
+      await loadMolstarEntry(viewer, entry);
+    }
+    await applyMolstarStyle(viewer, configuredMolstarStyle(activeConfig));
+    installDockingPoseControls(viewer, prepared);
+  }
+
+  let dockingPoseKeydownDisposer = null;
+  let dockingPoseControlsDisposer = null;
+
+  function isDockingPoseKeyboardTarget(target) {
+    const element = target instanceof Element ? target : null;
+    if (!element) return false;
+    const tag = element.tagName.toLowerCase();
+    return tag === 'input' || tag === 'select' || tag === 'textarea' || element.isContentEditable;
+  }
+
+  function moveDockingPoseControls(root, left, top) {
+    const margin = TOOLBAR_MARGIN;
+    const width = root.offsetWidth || root.getBoundingClientRect().width || 180;
+    const height = root.offsetHeight || root.getBoundingClientRect().height || 40;
+    const maxLeft = Math.max(margin, window.innerWidth - width - margin);
+    const maxTop = Math.max(margin, window.innerHeight - height - margin);
+    root.style.left = Math.round(Math.min(Math.max(margin, left), maxLeft)) + 'px';
+    root.style.top = Math.round(Math.min(Math.max(margin, top), maxTop)) + 'px';
+    root.style.right = 'auto';
+    root.style.bottom = 'auto';
+  }
+
+  function saveDockingPoseControlsPosition(root) {
+    try {
+      const rect = root.getBoundingClientRect();
+      window.localStorage && window.localStorage.setItem('buret.dockingPoseControls.position', JSON.stringify({ left: rect.left, top: rect.top, mode: 'custom' }));
+      window.localStorage && window.localStorage.setItem('buret.dockingPoseControls.position.version', DOCKING_POSE_POSITION_VERSION);
+    } catch (_) {}
+  }
+
+  function restoreDockingPoseControlsPosition(root) {
+    let restored = false;
+    try {
+      const raw = window.localStorage && window.localStorage.getItem('buret.dockingPoseControls.position');
+      const version = window.localStorage && window.localStorage.getItem('buret.dockingPoseControls.position.version');
+      if (raw && version === DOCKING_POSE_POSITION_VERSION) {
+        const saved = JSON.parse(raw);
+        if (saved.mode === 'custom' && Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
+          root.dataset.defaultPosition = '0';
+          moveDockingPoseControls(root, saved.left, saved.top);
+          restored = true;
+        }
+      } else if (raw) {
+        window.localStorage && window.localStorage.removeItem('buret.dockingPoseControls.position');
+      }
+    } catch (_) {}
+    if (restored) return;
+    root.dataset.defaultPosition = '1';
+    root.style.left = '14px';
+    root.style.right = 'auto';
+    root.style.top = 'auto';
+    root.style.bottom = '14px';
+  }
+
+  function repositionDockingPoseControls(root) {
+    if (root.dataset.defaultPosition === '1') return;
+    const rect = root.getBoundingClientRect();
+    moveDockingPoseControls(root, rect.left, rect.top);
+    saveDockingPoseControlsPosition(root);
+  }
+
+  function initDockingPoseControlsDrag(root) {
+    let drag = null;
+    const onPointerDown = (event) => {
+      if (event.button !== 0) return;
+      if (event.target.closest('button, input, select, textarea, [contenteditable="true"]')) return;
+      const rect = root.getBoundingClientRect();
+      drag = {
+        pointerId: event.pointerId,
+        dx: event.clientX - rect.left,
+        dy: event.clientY - rect.top,
+        startX: event.clientX,
+        startY: event.clientY,
+        moved: false
+      };
+      root.setPointerCapture(event.pointerId);
+      root.classList.add('buret-docking-poses-dragging');
+      event.preventDefault();
+    };
+    const onPointerMove = (event) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      if (!drag.moved) {
+        drag.moved = Math.abs(event.clientX - drag.startX) > 4 || Math.abs(event.clientY - drag.startY) > 4;
+      }
+      if (!drag.moved) return;
+      root.dataset.defaultPosition = '0';
+      moveDockingPoseControls(root, event.clientX - drag.dx, event.clientY - drag.dy);
+      event.preventDefault();
+    };
+    const finishDrag = (event) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      try { root.releasePointerCapture(event.pointerId); } catch (_) {}
+      if (drag.moved) saveDockingPoseControlsPosition(root);
+      root.classList.remove('buret-docking-poses-dragging');
+      drag = null;
+    };
+    const cancelDrag = () => {
+      root.classList.remove('buret-docking-poses-dragging');
+      drag = null;
+    };
+    const onResize = () => repositionDockingPoseControls(root);
+    root.addEventListener('pointerdown', onPointerDown);
+    root.addEventListener('pointermove', onPointerMove);
+    root.addEventListener('pointerup', finishDrag);
+    root.addEventListener('pointercancel', cancelDrag);
+    root.addEventListener('lostpointercapture', cancelDrag);
+    window.addEventListener('pointermove', onPointerMove, true);
+    window.addEventListener('pointerup', finishDrag, true);
+    window.addEventListener('pointercancel', cancelDrag, true);
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove, true);
+      window.removeEventListener('pointerup', finishDrag, true);
+      window.removeEventListener('pointercancel', cancelDrag, true);
+      window.removeEventListener('resize', onResize);
+    };
+  }
+
+  function nativeTrajectoryControlsRoot() {
+    const roots = Array.from(document.querySelectorAll('.msp-viewport-top-left-controls, .msp-animation-viewport-controls'));
+    return roots.find(root => {
+      if (/\b(?:Model|Frame)\s+\d+\s*\/\s*\d+/i.test(root.textContent || '')) return true;
+      return Array.from(root.querySelectorAll('button')).some(button => (
+        /\b(Model|Frame)\b/i.test(`${button.getAttribute('title') || ''} ${button.getAttribute('aria-label') || ''}`)
+      ));
+    }) || null;
+  }
+
+  function readNativeTrajectoryPosition(expectedCount) {
+    const root = nativeTrajectoryControlsRoot();
+    const text = root?.textContent || '';
+    const match = text.match(/\b(?:Model|Frame)\s+(\d+)\s*\/\s*(\d+)/i) || text.match(/\b(\d+)\s*\/\s*(\d+)\b/);
+    if (!match) return null;
+    const index = Number(match[1]) - 1;
+    const total = Number(match[2]);
+    if (!Number.isFinite(index) || !Number.isFinite(total) || index < 0) return null;
+    if (expectedCount > 0 && total !== expectedCount) return null;
+    return { index, total };
+  }
+
+  function nativeTrajectoryStepButton(direction) {
+    const root = nativeTrajectoryControlsRoot();
+    if (!root) return null;
+    const buttons = Array.from(root.querySelectorAll('button')).filter(button => (
+      /\b(Model|Frame)\b/i.test(`${button.getAttribute('title') || ''} ${button.getAttribute('aria-label') || ''}`)
+    ));
+    const named = buttons.find(button => {
+      const name = `${button.getAttribute('title') || ''} ${button.getAttribute('aria-label') || ''}`.toLowerCase();
+      return direction > 0
+        ? /\b(next|forward)\b/.test(name)
+        : /\b(prev|previous|back)\b/.test(name);
+    });
+    if (named) return named;
+    if (buttons.length < 2) return null;
+    return direction > 0 ? buttons[buttons.length - 1] : buttons[buttons.length - 2];
+  }
+
+  function afterNativeTrajectoryPaint() {
+    return new Promise(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    });
+  }
+
+  async function setNativeTrajectoryPose(index, poseCount) {
+    const current = readNativeTrajectoryPosition(poseCount);
+    if (!current) return false;
+    const target = Math.max(0, Math.min(poseCount - 1, index));
+    if (current.index === target) return true;
+    const direction = target > current.index ? 1 : -1;
+    for (let step = current.index; step !== target; step += direction) {
+      const button = nativeTrajectoryStepButton(direction);
+      if (!button || button.disabled || button.getAttribute('aria-disabled') === 'true') return false;
+      button.click();
+      await afterNativeTrajectoryPaint();
+    }
+    return true;
+  }
+
+  function installNativeTrajectoryPoseSync(poseCount, onPoseChange) {
+    const root = nativeTrajectoryControlsRoot();
+    if (!root) return null;
+    const sync = () => {
+      const position = readNativeTrajectoryPosition(poseCount);
+      if (position) onPoseChange(position.index);
+    };
+    const observer = new MutationObserver(sync);
+    observer.observe(root, { attributes: true, childList: true, characterData: true, subtree: true });
+    sync();
+    return () => observer.disconnect();
+  }
+
+  function installDockingPoseControls(viewer, prepared) {
+    document.querySelector('.buret-docking-poses')?.remove();
+    if (dockingPoseKeydownDisposer) {
+      dockingPoseKeydownDisposer();
+      dockingPoseKeydownDisposer = null;
+    }
+    if (dockingPoseControlsDisposer) {
+      dockingPoseControlsDisposer();
+      dockingPoseControlsDisposer = null;
+    }
+    if (!prepared || prepared.poseCount <= 1) return;
+    const root = document.createElement('div');
+    root.className = 'buret-docking-poses';
+    let activePose = Math.max(0, Math.min(prepared.poseCount - 1, Number(prepared.activePose || 0)));
+    const label = document.createElement('span');
+    label.title = prepared.ligandLabel || '';
+    const previous = document.createElement('button');
+    previous.type = 'button';
+    previous.textContent = 'Prev';
+    previous.setAttribute('aria-label', 'Previous pose');
+    const next = document.createElement('button');
+    next.type = 'button';
+    next.textContent = 'Next';
+    next.setAttribute('aria-label', 'Next pose');
+    const updateControls = () => {
+      label.textContent = `Pose ${activePose + 1} / ${prepared.poseCount}`;
+      previous.disabled = activePose <= 0;
+      next.disabled = activePose >= prepared.poseCount - 1;
+    };
+    updateControls();
+    const setPose = async (index) => {
+      const nextIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
+      const previousIndex = activePose;
+      try { sessionStorage.setItem(dockingPoseStorageKey(activeConfig), String(nextIndex)); } catch (_) {}
+      previous.disabled = true;
+      next.disabled = true;
+      label.textContent = `Pose ${nextIndex + 1} / ${prepared.poseCount}`;
+      try {
+        if (prepared.nativeTrajectoryControls) {
+          const switched = await setNativeTrajectoryPose(nextIndex, prepared.poseCount);
+          if (!switched) throw new Error('Mol* trajectory controls are not available.');
+          activePose = readNativeTrajectoryPosition(prepared.poseCount)?.index ?? nextIndex;
+          updateControls();
+        } else {
+          const nextPrepared = structureDataForMolstar(activeConfig);
+          await loadDockingPreparedStructure(viewer, nextPrepared);
+          applyLayoutState(viewer);
+          scheduleLayoutStateReapply(viewer);
+          try { viewer.handleResize(); } catch (_) {}
+        }
+      } catch (error) {
+        try { sessionStorage.setItem(dockingPoseStorageKey(activeConfig), String(previousIndex)); } catch (_) {}
+        activePose = previousIndex;
+        updateControls();
+        setStatus(`[web] Could not switch docking pose.\n\n${error?.message || String(error)}`, 'error');
+        // eslint-disable-next-line no-console
+        console.error(error);
+      }
+    };
+    previous.addEventListener('click', () => { void setPose(activePose - 1); });
+    next.addEventListener('click', () => { void setPose(activePose + 1); });
+    const onKeyDown = (event) => {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (isDockingPoseKeyboardTarget(event.target)) return;
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        if (activePose > 0) void setPose(activePose - 1);
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        if (activePose < prepared.poseCount - 1) void setPose(activePose + 1);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    dockingPoseKeydownDisposer = () => window.removeEventListener('keydown', onKeyDown);
+    root.append(previous, label, next);
+    document.body.appendChild(root);
+    restoreDockingPoseControlsPosition(root);
+    const dragDisposer = initDockingPoseControlsDrag(root);
+    const syncDisposer = prepared.nativeTrajectoryControls
+      ? installNativeTrajectoryPoseSync(prepared.poseCount, index => {
+          activePose = Math.max(0, Math.min(prepared.poseCount - 1, index));
+          updateControls();
+        })
+      : null;
+    dockingPoseControlsDisposer = () => {
+      syncDisposer?.();
+      dragDisposer?.();
+    };
+  }
+
+  function isMolstarContextMenuTarget(target) {
+    if (!(target instanceof Element)) return false;
+    if (target.closest('#buret-toolbar, .buret-docking-poses, .buret-molecule-context-menu')) return false;
+    if (target.closest('button, input, select, textarea, [contenteditable="true"]')) return false;
+    if (target.closest('.msp-viewport-controls, .msp-viewport-top-left-controls, .msp-selection-viewport-controls')) return false;
+    return !!target.closest('.msp-plugin .msp-viewport, .msp-plugin canvas');
+  }
+
+  function positionMolstarContextMenu(menu, clientX, clientY) {
+    const margin = 8;
+    menu.style.left = margin + 'px';
+    menu.style.top = margin + 'px';
+    const rect = menu.getBoundingClientRect();
+    const left = Math.min(Math.max(margin, clientX), Math.max(margin, window.innerWidth - rect.width - margin));
+    const top = Math.min(Math.max(margin, clientY), Math.max(margin, window.innerHeight - rect.height - margin));
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(top)}px`;
+  }
+
+  function moleculeContextMenuAction(action, label) {
+    setStatus(`[web] ${label} is not implemented yet.`);
+    hideMolstarContextMenu();
+  }
+
+  function hideMolstarContextMenu() {
+    document.querySelector('.buret-molecule-context-menu')?.remove();
+  }
+
+  function showMolstarContextMenu(event) {
+    hideMolstarContextMenu();
+    const menu = document.createElement('div');
+    menu.className = 'buret-molecule-context-menu';
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', 'Molecule actions');
+    const title = document.createElement('div');
+    title.className = 'buret-molecule-context-menu-title';
+    title.textContent = 'Molecule actions';
+    const subtitle = document.createElement('div');
+    subtitle.className = 'buret-molecule-context-menu-subtitle';
+    subtitle.textContent = activeConfig?.label || 'Mol* structure';
+    const actions = [
+      ['remove', 'Delete molecule'],
+      ['separate-window', 'Open in separate window'],
+      ['hide', 'Hide molecule'],
+      ['inspect', 'Inspect properties']
+    ];
+    menu.append(title, subtitle);
+    actions.forEach(([action, label]) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.setAttribute('role', 'menuitem');
+      button.dataset.buretMoleculeAction = action;
+      button.textContent = label;
+      button.addEventListener('click', () => moleculeContextMenuAction(action, label));
+      menu.appendChild(button);
+    });
+    document.body.appendChild(menu);
+    positionMolstarContextMenu(menu, event.clientX, event.clientY);
+    menu.querySelector('button')?.focus();
+  }
+
+  function installMolstarContextMenu(viewer) {
+    if (molstarContextMenuCleanup) {
+      molstarContextMenuCleanup();
+      molstarContextMenuCleanup = null;
+    }
+    const onContextMenu = (event) => {
+      if (!viewer || !isMolstarContextMenuTarget(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      showMolstarContextMenu(event);
+    };
+    const onPointerDown = (event) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest('.buret-molecule-context-menu')) return;
+      hideMolstarContextMenu();
+    };
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') hideMolstarContextMenu();
+    };
+    const onResize = () => hideMolstarContextMenu();
+    document.addEventListener('contextmenu', onContextMenu, true);
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('keydown', onKeyDown);
+    window.addEventListener('resize', onResize);
+    molstarContextMenuCleanup = () => {
+      document.removeEventListener('contextmenu', onContextMenu, true);
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('resize', onResize);
+      hideMolstarContextMenu();
+    };
+  }
+
   function withTimeout(promise, timeoutMs, message) {
     let timer;
     const timeout = new Promise((_, reject) => {
@@ -2344,6 +3511,9 @@
   }
 
   function createViewerOptions() {
+    const showTrajectoryControls = activeConfig?.trajectoryControls === true ||
+      activeConfig?.sdfPosePager === true ||
+      Boolean(activeConfig?.docking && sdfGridPathForConfig(activeConfig));
     return {
       // Keep the real Mol* application UI, not a minimal canvas-only preview.
       // This is intentionally close to https://molstar.org/viewer/: right controls,
@@ -2360,8 +3530,8 @@
       viewportShowExpand: false,
       viewportShowToggleFullscreen: false,
       viewportShowSelectionMode: true,
-      viewportShowAnimation: false,
-      viewportShowTrajectoryControls: false,
+      viewportShowAnimation: showTrajectoryControls,
+      viewportShowTrajectoryControls: showTrajectoryControls,
       viewportShowSettings: true,
       collapseLeftPanel: true,
       collapseRightPanel: true,
@@ -2389,34 +3559,35 @@
     return new window.molstar.Viewer('app', createViewerOptions());
   }
 
-  async function start() {
-    debug('viewer.js executed');
-    setStatus('[web] Booting Burrete viewer JavaScript…');
+  function ensureMolstarStylesheet() {
+    if (document.querySelector('link[href*="molstar.css"]')) return;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = runtimeURL('BurreteMolstarCSSURL', './molstar.css');
+    document.head.appendChild(link);
+  }
 
-    const cb = window.BurreteCacheBuster || String(Date.now());
-    await loadRuntimeInputs(cb);
+  function disposeActiveMolstarViewer() {
+    const viewer = activeViewer || window.BurreteViewer || window.BuretteViewer;
+    try { viewer?.plugin?.dispose?.(); } catch (_) {}
+    if (molstarContextMenuCleanup) {
+      molstarContextMenuCleanup();
+      molstarContextMenuCleanup = null;
+    }
+    if (molstarWindowResizeHandler) {
+      window.removeEventListener('resize', molstarWindowResizeHandler);
+      molstarWindowResizeHandler = null;
+    }
+    activeViewer = null;
+    window.BurreteViewer = null;
+    window.BuretteViewer = null;
+  }
 
-    const config = requireConfig();
-    activeConfig = config;
-    if (!(window.BurreteDataBytes instanceof Uint8Array) && !window.BurreteDataBase64) {
-      if (!config.dataPath && !window.BurreteDataURL) {
-        await loadScript(appendCacheBuster(runtimeURL('BurretePreviewDataScriptURL', './preview-data.js'), cb), 'structure data', 30000);
-      }
-      await loadStructureData(config, cb);
-    }
-    applyConfigOptions(config);
-    disposeExternalArtifactInteractions();
-    debug('config=' + JSON.stringify(config));
-    const renderer = normalizeRenderer(config.renderer);
-    if (renderer === 'xyz-fast') {
-      await startXYZFast(config, cb);
-      return;
-    }
-    if (renderer === 'xyzrender-external') {
-      await startExternalArtifact(config);
-      return;
-    }
-
+  async function startMolstar(config, cb) {
+    disposeActiveMolstarViewer();
+    ensureMolstarStylesheet();
+    const container = document.getElementById('app');
+    if (container) container.innerHTML = '';
     const size = describeBytes(config.byteCount);
     const formatLabel = describeFormat(config.format, config.binary);
 
@@ -2449,6 +3620,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     applyViewerUIScale(viewer);
     initViewerKeyboardShortcuts(viewer);
     initBuretToolbar(viewer);
+    installMolstarContextMenu(viewer);
     installLeftPanelVisibilityGuard();
     scheduleLayoutStateReapply(viewer);
 
@@ -2476,13 +3648,46 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     }
     trackMolstarOrientation(viewer, config);
 
-    window.addEventListener('resize', () => scheduleViewerResize(viewer, 100));
+    if (molstarWindowResizeHandler) window.removeEventListener('resize', molstarWindowResizeHandler);
+    molstarWindowResizeHandler = () => scheduleViewerResize(viewer, 100);
+    window.addEventListener('resize', molstarWindowResizeHandler);
     await waitForAnimationFrame();
     applyLayoutState(viewer);
     try { viewer.handleResize(); } catch (_) {}
 
     setStatus(`[web] Rendered ${config.label || 'structure'}`);
     setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
+  }
+
+  async function start() {
+    debug('viewer.js executed');
+    setStatus('[web] Booting Burrete viewer JavaScript…');
+
+    const cb = window.BurreteCacheBuster || String(Date.now());
+    await loadRuntimeInputs(cb);
+
+    const config = requireConfig();
+    activeConfig = config;
+    if (!(window.BurreteDataBytes instanceof Uint8Array) && !window.BurreteDataBase64) {
+      if (!config.dataPath && !window.BurreteDataURL) {
+        await loadScript(appendCacheBuster(runtimeURL('BurretePreviewDataScriptURL', './preview-data.js'), cb), 'structure data', 30000);
+      }
+      await loadStructureData(config, cb);
+    }
+    applyConfigOptions(config);
+    disposeExternalArtifactInteractions();
+    debug('config=' + JSON.stringify(config));
+    const renderer = normalizeRenderer(config.renderer);
+    if (renderer === 'xyz-fast') {
+      await startXYZFast(config, cb);
+      return;
+    }
+    if (renderer === 'xyzrender-external') {
+      await startExternalArtifact(config);
+      return;
+    }
+
+    await startMolstar(config, cb);
   }
 
   function waitForFirstPaint() {

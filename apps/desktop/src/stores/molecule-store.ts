@@ -113,6 +113,15 @@ function toRecentStructure(document: ViewerDocument): RecentStructure {
   };
 }
 
+function persistedDocuments(documents: ViewerDocument[]) {
+  return documents.filter((document) => !document.virtual);
+}
+
+function persistedTabs(tabs: MoleculeTab[], documents: ViewerDocument[]) {
+  const paths = new Set(persistedDocuments(documents).map((document) => document.path));
+  return tabs.filter((tab) => tab.location.kind !== "file" || paths.has(tab.location.path));
+}
+
 function documentForLocation(location: Location, documents: ViewerDocument[]) {
   if (location.kind !== "file") return null;
   return (
@@ -162,6 +171,21 @@ function buildFileTabs(documents: ViewerDocument[]) {
   return documents.length > 0 ? documents.map((document) => createFileTab(document)) : [createLauncherTab()];
 }
 
+function shouldIgnorePersistedSession() {
+  if (typeof window === "undefined") return false;
+  if (new URLSearchParams(window.location.search).has("devFiles")) return true;
+  return window.location.protocol === "http:" && (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost");
+}
+
+function devFilesPersistedSession(recentStructures: RecentStructure[]): PersistedMoleculeState {
+  return {
+    documents: [],
+    tabs: [{ id: "tab-1", location: { kind: "launcher" }, back: [], forward: [] }],
+    activeTabId: "tab-1",
+    recentStructures,
+  };
+}
+
 export function getMoleculeSessionSnapshot(state: Pick<MoleculeState, "tabs" | "activeTabId">) {
   const tabs = state.tabs.map(serializeTab).filter((tab): tab is SessionTab => tab !== null);
   const activeIndex = state.activeTabId ? state.tabs.findIndex((tab) => tab.id === state.activeTabId) : null;
@@ -191,16 +215,21 @@ export const useMoleculeStore = create<MoleculeState>()(
             .filter((tab) => tab.location.kind !== "launcher")
             .map(cloneTab)
             .filter((tab) => tab.location.kind !== "file" || byPath.has(tab.location.path));
+          const tabByPath = new Map<string, MoleculeTab>();
+          for (const tab of tabs) {
+            if (tab.location.kind === "file") tabByPath.set(tab.location.path, tab);
+          }
 
           let openedTabId: string | null = null;
           for (const document of incoming) {
-            const existing = tabs.find((tab) => tab.location.kind === "file" && tab.location.path === document.path);
+            const existing = tabByPath.get(document.path);
             if (existing) {
               existing.location = { kind: "file", documentId: document.id, path: document.path };
               openedTabId ??= existing.id;
             } else {
               const tab = createFileTab(document);
               tabs.push(tab);
+              tabByPath.set(document.path, tab);
               openedTabId ??= tab.id;
             }
           }
@@ -213,7 +242,9 @@ export const useMoleculeStore = create<MoleculeState>()(
       rememberRecentStructures: (incoming) =>
         set((state) => {
           const byPath = new Map(state.recentStructures.map((structure) => [structure.path, structure]));
-          for (const document of incoming) byPath.set(document.path, toRecentStructure(document));
+          for (const document of incoming) {
+            if (!document.virtual) byPath.set(document.path, toRecentStructure(document));
+          }
           return {
             recentStructures: Array.from(byPath.values())
               .sort((a, b) => b.openedAt - a.openedAt)
@@ -323,14 +354,22 @@ export const useMoleculeStore = create<MoleculeState>()(
     }),
     {
       name: "burrete.molecule.session",
-      partialize: (state) => ({
-        documents: state.documents,
-        tabs: state.tabs,
-        activeTabId: state.activeTabId,
-        recentStructures: state.recentStructures,
-      }),
+      partialize: (state) => shouldIgnorePersistedSession()
+        ? devFilesPersistedSession(state.recentStructures)
+        : ({
+            documents: persistedDocuments(state.documents),
+            tabs: persistedTabs(state.tabs, state.documents),
+            activeTabId: state.activeTabId,
+            recentStructures: state.recentStructures,
+          }),
       merge: (persisted, current) => {
         const stored = persisted as Partial<PersistedMoleculeState> | undefined;
+        if (shouldIgnorePersistedSession()) {
+          return {
+            ...current,
+            recentStructures: stored?.recentStructures ?? current.recentStructures,
+          };
+        }
         const documents = stored?.documents ?? current.documents;
         const tabs = dedupeTabIds(ensureTabs((stored?.tabs ?? current.tabs).map(cloneTab)));
         const activeTabId = activeTabIdOrFirst(tabs, stored?.activeTabId ?? current.activeTabId);

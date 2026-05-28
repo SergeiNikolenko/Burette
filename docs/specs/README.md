@@ -8,6 +8,7 @@ historical migration notes.
 - [Quick Look extension boundary](quicklook-extension-boundary.md)
 - [Renderer runtime contract](renderer-runtime-contract.md)
 - [Desktop shell](desktop-shell.md)
+- [Writer Computer shell port](writer-computer-shell-port.md)
 
 ## Feature Specs
 
@@ -16,6 +17,7 @@ historical migration notes.
 - [Preview open latency spec](burette-preview-open-latency-spec.md)
 - [Preview task cancellation spec](burette-preview-task-cancellation-spec.md)
 - [Preview theme and background spec](burette-preview-theme-and-background-spec.md)
+- [Preview current debt](burette-preview-current-debt.md)
 - [xyzrender controls spec](burette-xyzrender-controls-spec.md)
 - [Titlebar window behavior spec](burette-titlebar-window-behavior-spec.md)
 - [UI accessibility spec](burette-ui-a11y-spec.md)

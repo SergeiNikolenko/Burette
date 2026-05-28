@@ -1,4 +1,6 @@
-use tauri::menu::{AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
+use tauri::menu::{
+    AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder,
+};
 use tauri::{Emitter, Manager, Runtime};
 
 pub(crate) const MENU_OPEN_SETTINGS_EVENT: &str = "menu:open-settings";
@@ -68,9 +70,7 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         ])
         .build()?;
     let help_menu = SubmenuBuilder::new(app, "Help")
-        .items(&[
-            &updates,
-        ])
+        .items(&[&updates])
         .build()?;
     let menu = MenuBuilder::new(app)
         .items(&[&app_menu, &file_menu, &edit_menu, &window_menu, &help_menu])

@@ -1023,7 +1023,10 @@ fn parse_version(value: &str) -> ParsedVersion {
         .trim()
         .strip_prefix(['v', 'V'])
         .unwrap_or(value.trim());
-    let release = trimmed.split_once('+').map(|(prefix, _)| prefix).unwrap_or(trimmed);
+    let release = trimmed
+        .split_once('+')
+        .map(|(prefix, _)| prefix)
+        .unwrap_or(trimmed);
     let (core, prerelease) = match release.split_once('-') {
         Some((core, prerelease)) => (core, prerelease),
         None => (release, ""),

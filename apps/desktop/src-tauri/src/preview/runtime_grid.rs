@@ -10,9 +10,9 @@ use super::runtime_utils::{asset_url, escape_html, prune_runtime_dirs};
 use super::runtime_viewer::copy_web_assets;
 
 #[cfg(test)]
-use std::collections::BTreeMap;
-#[cfg(test)]
 use super::runtime_utils::{clipped, normalized_lines};
+#[cfg(test)]
+use std::collections::BTreeMap;
 
 #[cfg(test)]
 #[allow(dead_code)]
@@ -80,6 +80,7 @@ pub(crate) fn create_grid_runtime<R: Runtime>(
         "tauriViewer": true,
         "gridDataMode": "bridge",
         "theme": preferences.theme_for_runtime(),
+        "themeTokens": preferences.theme_tokens(),
         "canvasBackground": preferences.canvas_background_for_runtime(),
         "overlayOpacity": 0.90,
         "transparentBackground": preferences.resolved_transparent_background(),
@@ -169,7 +170,7 @@ fn grid_html(
 }
 
 fn versioned_asset_url(path: &Path) -> String {
-    format!("{}?v=grid-ui-v5", asset_url(path))
+    format!("{}?v=grid-ui-v9", asset_url(path))
 }
 
 fn grid_can_preview(extension: &str) -> bool {

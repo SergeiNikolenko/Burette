@@ -1,18 +1,49 @@
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashSet};
+#[cfg(target_os = "macos")]
+use std::ffi::CString;
 use std::fs;
 use std::path::{Path, PathBuf};
 #[cfg(target_os = "macos")]
-use std::ffi::CString;
-#[cfg(target_os = "macos")]
 use std::sync::mpsc;
-use tauri::Runtime;
+use tauri::{Manager, Runtime};
 #[cfg(not(target_os = "macos"))]
 use tauri_plugin_dialog::DialogExt;
 
-use crate::preview::formats::supported_structure_extensions;
-use crate::preview::runtime::{
-    open_document, OpenDocumentsResult, ViewerPreferences, ViewerReloadOptions,
+use crate::preview::formats::{
+    format_for_extension, structure_path_extension, supported_structure_extensions,
 };
+use crate::preview::runtime::{
+    open_docking_document as open_docking_document_runtime, open_document, DockingDocumentRequest,
+    OpenDocumentsResult, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XyzrenderControls,
+};
+use crate::preview::text_xyz::xyz_data_from_text;
+use crate::preview::xyzrender::create_xyzrender_artifact;
+
+const XYZRENDER_SHEET_MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct XyzrenderSheetRenderRequest {
+    path: String,
+    preset: Option<String>,
+    controls: Option<XyzrenderControls>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct XyzrenderSheetRenderResult {
+    svg: String,
+    preset: String,
+    elapsed_ms: u128,
+    log: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MergedCollectionRequest {
+    paths: Vec<String>,
+}
 
 #[tauri::command]
 pub(crate) fn pick_open_targets<R: Runtime>(
@@ -72,6 +103,124 @@ pub(crate) fn open_documents<R: Runtime>(
 }
 
 #[tauri::command]
+pub(crate) fn open_docking_document<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    request: DockingDocumentRequest,
+    preferences: ViewerPreferences,
+) -> Result<ViewerDocument, String> {
+    open_docking_document_runtime(&app, request, &preferences)
+}
+
+#[tauri::command]
+pub(crate) fn open_merged_collection<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    request: MergedCollectionRequest,
+    preferences: ViewerPreferences,
+) -> Result<ViewerDocument, String> {
+    let (extension, text) = merge_collection_files(&request.paths)?;
+    let output_directory = app
+        .path()
+        .app_cache_dir()
+        .map_err(|err| err.to_string())?
+        .join("viewer")
+        .join("merged")
+        .join(uuid::Uuid::new_v4().to_string());
+    fs::create_dir_all(&output_directory).map_err(|err| err.to_string())?;
+    let output_path = output_directory.join(format!("merged-collection.{extension}"));
+    fs::write(&output_path, text).map_err(|err| format!("{}: {err}", output_path.display()))?;
+    open_document(&app, output_path, &preferences, None)
+}
+
+#[tauri::command]
+pub(crate) fn save_molecule_collection_as(path: String, output_path: String) -> Result<String, String> {
+    let input_path = PathBuf::from(&path)
+        .canonicalize()
+        .map_err(|err| format!("{path}: {err}"))?;
+    let extension = structure_path_extension(&input_path);
+    if collection_family(&extension).is_none() {
+        return Err(format!("{} is not a supported molecule collection", input_path.display()));
+    }
+    let output = PathBuf::from(&output_path);
+    if let Some(parent) = output.parent() {
+        fs::create_dir_all(parent).map_err(|err| format!("{}: {err}", parent.display()))?;
+    }
+    fs::copy(&input_path, &output).map_err(|err| {
+        format!(
+            "{} -> {}: {err}",
+            input_path.display(),
+            output.display()
+        )
+    })?;
+    Ok(output.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub(crate) fn render_xyzrender_sheet_item<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    request: XyzrenderSheetRenderRequest,
+) -> Result<XyzrenderSheetRenderResult, String> {
+    let input_path = PathBuf::from(&request.path)
+        .canonicalize()
+        .map_err(|err| format!("{}: {err}", request.path))?;
+    let metadata =
+        fs::metadata(&input_path).map_err(|err| format!("{}: {err}", input_path.display()))?;
+    if !metadata.is_file() {
+        return Err(format!("{} is not a file", input_path.display()));
+    }
+    if metadata.len() > XYZRENDER_SHEET_MAX_STRUCTURE_FILE_SIZE {
+        return Err(format!(
+            "{} is too large for an xyzrender sheet item",
+            input_path.display()
+        ));
+    }
+
+    let extension = structure_path_extension(&input_path);
+    let format = format_for_extension(&extension)?;
+    if format.is_binary {
+        return Err(format!(
+            "{} is a binary format and cannot be added to an xyzrender sheet",
+            input_path.display()
+        ));
+    }
+
+    let data = fs::read(&input_path).map_err(|err| format!("{}: {err}", input_path.display()))?;
+    let label = input_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("structure");
+    let converted_xyz = if matches!(extension.as_str(), "cub" | "cube") {
+        None
+    } else {
+        xyz_data_from_text(&data, &extension, label)
+    };
+    let output_directory = app
+        .path()
+        .app_cache_dir()
+        .map_err(|err| err.to_string())?
+        .join("viewer")
+        .join("sheet")
+        .join(uuid::Uuid::new_v4().to_string());
+    fs::create_dir_all(&output_directory).map_err(|err| err.to_string())?;
+    let artifact = create_xyzrender_artifact(
+        &input_path,
+        &output_directory,
+        request.preset.as_deref(),
+        None,
+        request.controls.as_ref(),
+        converted_xyz.as_deref(),
+    )?;
+    let svg_path = output_directory.join(artifact.relative_path);
+    let svg =
+        fs::read_to_string(&svg_path).map_err(|err| format!("{}: {err}", svg_path.display()))?;
+    Ok(XyzrenderSheetRenderResult {
+        svg,
+        preset: artifact.preset.to_string(),
+        elapsed_ms: artifact.elapsed_ms,
+        log: artifact.log,
+    })
+}
+
+#[tauri::command]
 pub(crate) fn sync_viewer_preferences(preferences: ViewerPreferences) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
@@ -111,6 +260,109 @@ fn expand_open_targets(path: PathBuf) -> Result<Vec<PathBuf>, String> {
         &mut collected,
     )?;
     Ok(collected.into_iter().collect())
+}
+
+fn merge_collection_files(paths: &[String]) -> Result<(String, String), String> {
+    let mut seen = HashSet::new();
+    let mut sources: Vec<(CollectionFamily, String)> = Vec::new();
+    for path in paths {
+        let canonical = PathBuf::from(path)
+            .canonicalize()
+            .map_err(|err| format!("{path}: {err}"))?;
+        if !seen.insert(canonical.clone()) {
+            continue;
+        }
+        let metadata =
+            fs::metadata(&canonical).map_err(|err| format!("{}: {err}", canonical.display()))?;
+        if !metadata.is_file() {
+            return Err(format!("{} is not a file", canonical.display()));
+        }
+        let extension = structure_path_extension(&canonical);
+        let family = collection_family(&extension).ok_or_else(|| {
+            format!("{} is not a supported molecule collection", canonical.display())
+        })?;
+        let text = fs::read_to_string(&canonical)
+            .map_err(|err| format!("{}: {err}", canonical.display()))?;
+        sources.push((family, text));
+    }
+    if sources.len() < 2 {
+        return Err("Drop at least two molecule collections to merge them".to_string());
+    }
+    let family = sources[0].0;
+    if sources.iter().any(|(next_family, _)| *next_family != family) {
+        return Err(
+            "Collection merge supports one format family at a time: SDF, SMILES, CSV, or TSV"
+                .to_string(),
+        );
+    }
+    let texts: Vec<&str> = sources.iter().map(|(_, text)| text.as_str()).collect();
+    let text = merge_collection_text(family, &texts);
+    if text.trim().is_empty() {
+        return Err("Merged collection is empty".to_string());
+    }
+    Ok((family.default_extension().to_string(), text))
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CollectionFamily {
+    Sdf,
+    Smiles,
+    Csv,
+    Tsv,
+}
+
+impl CollectionFamily {
+    fn default_extension(self) -> &'static str {
+        match self {
+            Self::Sdf => "sdf",
+            Self::Smiles => "smi",
+            Self::Csv => "csv",
+            Self::Tsv => "tsv",
+        }
+    }
+}
+
+fn collection_family(extension: &str) -> Option<CollectionFamily> {
+    match extension {
+        "sd" | "sdf" => Some(CollectionFamily::Sdf),
+        "smi" | "smiles" => Some(CollectionFamily::Smiles),
+        "csv" => Some(CollectionFamily::Csv),
+        "tsv" => Some(CollectionFamily::Tsv),
+        _ => None,
+    }
+}
+
+fn merge_collection_text(family: CollectionFamily, texts: &[&str]) -> String {
+    match family {
+        CollectionFamily::Sdf => {
+            let records: Vec<String> = texts
+                .iter()
+                .flat_map(|text| text.split("$$$$").map(str::trim).filter(|record| !record.is_empty()))
+                .map(|record| format!("{record}\n$$$$"))
+                .collect();
+            format!("{}\n", records.join("\n"))
+        }
+        CollectionFamily::Smiles => {
+            let lines: Vec<&str> = texts
+                .iter()
+                .flat_map(|text| text.lines().map(str::trim).filter(|line| !line.is_empty()))
+                .collect();
+            format!("{}\n", lines.join("\n"))
+        }
+        CollectionFamily::Csv | CollectionFamily::Tsv => {
+            let mut lines = Vec::new();
+            for (index, text) in texts.iter().enumerate() {
+                let mut file_lines = text.lines().filter(|line| !line.trim().is_empty());
+                if index == 0 {
+                    lines.extend(file_lines);
+                } else {
+                    let _ = file_lines.next();
+                    lines.extend(file_lines);
+                }
+            }
+            format!("{}\n", lines.join("\n"))
+        }
+    }
 }
 
 fn collect_supported_files(
@@ -173,11 +425,7 @@ fn looks_like_supported_structure_file(
     path: &std::path::Path,
     supported_extensions: &BTreeSet<String>,
 ) -> bool {
-    let extension = path
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or("")
-        .to_lowercase();
+    let extension = structure_path_extension(path);
     supported_extensions.contains(&extension)
 }
 
@@ -201,6 +449,68 @@ fn sync_viewer_preferences_macos(preferences: &ViewerPreferences) -> Result<(), 
         )?;
         set_defaults_string(defaults, "molstarStyle", &preferences.molstar_style)?;
         set_defaults_string(defaults, "xyzFastStyle", &preferences.xyz_fast_style)?;
+        set_defaults_string(
+            defaults,
+            "themeLightAccent",
+            &preferences.theme_light_accent,
+        )?;
+        set_defaults_string(
+            defaults,
+            "themeLightBackground",
+            &preferences.theme_light_background,
+        )?;
+        set_defaults_string(
+            defaults,
+            "themeLightForeground",
+            &preferences.theme_light_foreground,
+        )?;
+        set_defaults_string(
+            defaults,
+            "themeLightUiFont",
+            &preferences.theme_light_ui_font,
+        )?;
+        set_defaults_string(
+            defaults,
+            "themeLightEditorFont",
+            &preferences.theme_light_editor_font,
+        )?;
+        set_defaults_double(
+            defaults,
+            "themeLightTranslucent",
+            preferences.theme_light_translucent,
+        )?;
+        set_defaults_double(
+            defaults,
+            "themeLightContrast",
+            preferences.theme_light_contrast,
+        )?;
+        set_defaults_string(defaults, "themeDarkAccent", &preferences.theme_dark_accent)?;
+        set_defaults_string(
+            defaults,
+            "themeDarkBackground",
+            &preferences.theme_dark_background,
+        )?;
+        set_defaults_string(
+            defaults,
+            "themeDarkForeground",
+            &preferences.theme_dark_foreground,
+        )?;
+        set_defaults_string(defaults, "themeDarkUiFont", &preferences.theme_dark_ui_font)?;
+        set_defaults_string(
+            defaults,
+            "themeDarkEditorFont",
+            &preferences.theme_dark_editor_font,
+        )?;
+        set_defaults_double(
+            defaults,
+            "themeDarkTranslucent",
+            preferences.theme_dark_translucent,
+        )?;
+        set_defaults_double(
+            defaults,
+            "themeDarkContrast",
+            preferences.theme_dark_contrast,
+        )?;
 
         let transparent_key = autoreleased_nsstring("useTransparentPreviewBackground")?;
         let transparent_value = if preferences.resolved_transparent_background() {
@@ -212,6 +522,17 @@ fn sync_viewer_preferences_macos(preferences: &ViewerPreferences) -> Result<(), 
         let _: () = msg_send![defaults, synchronize];
     }
 
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn set_defaults_double(defaults: cocoa::base::id, key: &str, value: f64) -> Result<(), String> {
+    use objc::{msg_send, sel, sel_impl};
+
+    unsafe {
+        let key = autoreleased_nsstring(key)?;
+        let _: () = msg_send![defaults, setDouble: value forKey: key];
+    }
     Ok(())
 }
 
@@ -324,6 +645,14 @@ mod tests {
             std::path::Path::new("caffeine.psi4"),
             &supported_extensions
         ));
+        assert!(looks_like_supported_structure_file(
+            std::path::Path::new("ligand.mae.gz"),
+            &supported_extensions
+        ));
+        assert!(looks_like_supported_structure_file(
+            std::path::Path::new("system.cms"),
+            &supported_extensions
+        ));
         assert!(!looks_like_supported_structure_file(
             std::path::Path::new("mn-h2.log"),
             &supported_extensions
@@ -396,8 +725,10 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn skips_broken_symlinks_inside_directories() {
-        let root =
-            std::env::temp_dir().join(format!("burrete-open-targets-broken-link-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "burrete-open-targets-broken-link-{}",
+            std::process::id()
+        ));
         let pdb = root.join("mini.pdb");
         let broken_link = root.join("broken.pdb");
         fs::create_dir_all(&root).unwrap();
@@ -428,7 +759,10 @@ mod tests {
         let expanded = expand_open_targets(root.clone()).unwrap();
         assert_eq!(
             expanded,
-            vec![canonical_root.join("alias.pdb"), canonical_root.join("real.pdb")]
+            vec![
+                canonical_root.join("alias.pdb"),
+                canonical_root.join("real.pdb")
+            ]
         );
 
         fs::remove_file(alias).unwrap();

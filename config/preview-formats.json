@@ -134,7 +134,8 @@
       "contentType": "com.local.burrete10.schrodinger",
       "extensions": ["mae", "mae.gz", "maegz", "cms"],
       "conformsTo": ["public.data"],
-      "description": "Schrodinger molecular structure file"
+      "description": "Schrodinger molecular structure file",
+      "viewer": { "molstarFormat": "xyz", "binary": false, "externalOnly": true }
     }
   ],
   "documentTypes": {
