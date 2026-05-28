@@ -60,9 +60,14 @@
     customConfigPath: null,
     extraArguments: null
   };
+  const STRUCTURE_DRAG_MIME = 'application/x-burrete-structure-paths';
   const XYZRENDER_POPOVER_OPEN_KEY_PREFIX = 'buret.xyzrender.popover.open';
   let xyzrenderControlsApplyTimer = 0;
   let xyzrenderInlineRequestSerial = 0;
+  let xyzrenderSheetRequestSerial = 0;
+  const xyzrenderSheetRequests = new Map();
+  let molstarWindowResizeHandler = null;
+  let molstarContextMenuCleanup = null;
   try { window.__mqlDebug && window.__mqlDebug('[viewer.js] top-level IIFE entered; readyState=' + document.readyState); } catch (_) {}
 
   function post(type, message) {
@@ -783,6 +788,7 @@
   async function switchBrowserDevMolstar() {
     const config = activeConfig || window.BurreteConfig || {};
     if (config.tauriViewer !== false) return;
+    const cb = window.BurreteCacheBuster || String(Date.now());
     const nextConfig = {
       ...config,
       renderer: 'molstar',
@@ -795,10 +801,31 @@
     disposeExternalArtifactInteractions();
     applyConfigOptions(nextConfig);
     try {
-      await startMolstar(nextConfig, window.BurreteCacheBuster || String(Date.now()));
+      await ensureBrowserDevMolstarData(nextConfig, cb);
+      await startMolstar(nextConfig, cb);
     } catch (error) {
       setStatus(`Mol* renderer switch failed.\n\n${error && error.message || String(error)}`, 'error');
     }
+  }
+
+  function embeddedStructureDataByteLength() {
+    if (window.BurreteDataBytes instanceof Uint8Array) return window.BurreteDataBytes.length;
+    if (typeof window.BurreteDataBase64 !== 'string') return 0;
+    const text = window.BurreteDataBase64.trim();
+    if (!text) return 0;
+    const padding = text.endsWith('==') ? 2 : text.endsWith('=') ? 1 : 0;
+    return Math.max(0, Math.floor(text.length * 3 / 4) - padding);
+  }
+
+  async function ensureBrowserDevMolstarData(config, cb) {
+    if (config.tauriViewer !== false) return;
+    if (typeof config.dataPath !== 'string' || !config.dataPath.trim()) return;
+    const expectedBytes = Number(config.previewByteCount || config.byteCount || 0);
+    if (!Number.isFinite(expectedBytes) || expectedBytes <= 1) return;
+    if (embeddedStructureDataByteLength() > 1) return;
+    window.BurreteDataBytes = null;
+    window.BurreteDataBase64 = null;
+    await loadStructureData(config, cb);
   }
 
   function requestSdfGridDocument() {
@@ -906,7 +933,20 @@
     } else if (object) {
       const stage = object.closest('.buret-external-artifact-stage');
       if (stage) {
-        stage.innerHTML = `<div class="buret-external-artifact-inline" aria-label="${escapeHTML((activeConfig || {}).label || 'xyzrender artifact')}">${payload.svg}</div>`;
+        stage.innerHTML = `<div class="buret-external-artifact-inline" aria-label="${escapeHTML((activeConfig || {}).label || 'xyzrender artifact')}">${payload.svg}</div><div class="buret-xyzrender-sheet" aria-label="xyzrender sheet overlays"></div>`;
+      }
+    } else {
+      disposeActiveMolstarViewer();
+      installExternalArtifactStyles();
+      const container = document.getElementById('app');
+      if (container) {
+        container.innerHTML = `
+          <div class="buret-external-artifact-root">
+            <div class="buret-external-artifact-stage"><div class="buret-external-artifact-inline" aria-label="${escapeHTML((activeConfig || {}).label || 'xyzrender artifact')}">${payload.svg}</div><div class="buret-xyzrender-sheet" aria-label="xyzrender sheet overlays"></div></div>
+            <div class="buret-xyz-badge"><strong>External xyzrender</strong><span>SVG</span></div>
+          </div>`;
+        const root = container.querySelector('.buret-external-artifact-root');
+        if (root) installExternalArtifactInteractions(root);
       }
     }
     const preset = normalizeXyzrenderPreset(payload.preset || requestedPreset);
@@ -933,6 +973,7 @@
       }
     };
     window.BurreteConfig = { ...(window.BurreteConfig || {}), ...activeConfig };
+    configureRendererControls(activeConfig);
     setStatus(`[web] Rendered ${(activeConfig || {}).label || 'structure'} with external xyzrender`);
     setTimeout(hideStatus, 450);
   }
@@ -2341,8 +2382,8 @@
     const preset = artifact.preset ? ` · ${escapeHTML(artifact.preset)}` : '';
     const elapsed = Number.isFinite(Number(artifact.elapsedMs)) ? ` · ${Number(artifact.elapsedMs)} ms` : '';
     const content = inlineSvg
-      ? `<div class="buret-external-artifact-stage"><div class="buret-external-artifact-inline" aria-label="${escapeHTML(config.label || 'xyzrender artifact')}">${inlineSvg}</div></div>`
-      : `<div class="buret-external-artifact-stage"><object class="buret-external-artifact-object" data="${safeRelativeArtifactPath(artifact.path)}" type="image/svg+xml" aria-label="${escapeHTML(config.label || 'xyzrender artifact')}"></object></div>`;
+      ? `<div class="buret-external-artifact-stage"><div class="buret-external-artifact-inline" aria-label="${escapeHTML(config.label || 'xyzrender artifact')}">${inlineSvg}</div><div class="buret-xyzrender-sheet" aria-label="xyzrender sheet overlays"></div></div>`
+      : `<div class="buret-external-artifact-stage"><object class="buret-external-artifact-object" data="${safeRelativeArtifactPath(artifact.path)}" type="image/svg+xml" aria-label="${escapeHTML(config.label || 'xyzrender artifact')}"></object><div class="buret-xyzrender-sheet" aria-label="xyzrender sheet overlays"></div></div>`;
     container.innerHTML = `
       <div class="buret-external-artifact-root">
         ${content}
@@ -2391,9 +2432,17 @@
       body.burette-transparent-background .buret-external-artifact-root { background: transparent; }
       .buret-external-artifact-stage { position: absolute; inset: 0; transform: translate(0px, 0px) scale(1); transform-origin: 50% 50%; will-change: transform; cursor: grab; }
       .buret-external-artifact-stage.dragging { cursor: grabbing; }
+      .buret-external-artifact-root.sheet-drop-active::after { content: "Drop onto xyzrender sheet"; position: absolute; inset: 14px; z-index: 36; border: 2px solid color-mix(in srgb, var(--buret-accent, #b45cff) 72%, transparent); border-radius: 14px; background: color-mix(in srgb, var(--buret-accent, #b45cff) 12%, transparent); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); display: flex; align-items: center; justify-content: center; font: 700 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; pointer-events: none; }
       .buret-external-artifact-inline { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box; overflow: hidden; }
       .buret-external-artifact-inline > svg { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; margin: auto; border-radius: 8px; box-shadow: 0 18px 54px rgba(0,0,0,0.28); }
       .buret-external-artifact-object { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
+      .buret-xyzrender-sheet { position: absolute; inset: 0; z-index: 14; pointer-events: none; }
+      .buret-xyzrender-sheet-item { position: absolute; left: 50%; top: 50%; width: clamp(118px, 24vw, 280px); height: clamp(118px, 24vw, 280px); transform: translate(-50%, -50%); transform-origin: 50% 50%; pointer-events: auto; touch-action: none; cursor: grab; border-radius: 10px; outline: 0 solid transparent; }
+      .buret-xyzrender-sheet-item.dragging { cursor: grabbing; }
+      .buret-xyzrender-sheet-item.selected { outline: 2px solid var(--buret-accent, #b45cff); box-shadow: 0 0 0 3px color-mix(in srgb, var(--buret-accent, #b45cff) 24%, transparent); }
+      .buret-xyzrender-sheet-item > svg { display: block; width: 100%; height: 100%; overflow: visible; }
+      .buret-xyzrender-sheet-item-label { position: absolute; left: 50%; bottom: -23px; transform: translateX(-50%); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 7px; border-radius: 999px; color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.84)); font: 10px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; opacity: 0; transition: opacity 120ms ease; }
+      .buret-xyzrender-sheet-item.selected .buret-xyzrender-sheet-item-label { opacity: 1; }
       .buret-xyz-badge { position: absolute; left: 14px; bottom: 14px; z-index: 30; max-width: calc(100vw - 28px); box-sizing: border-box; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--buret-toolbar-border, rgba(255,255,255,0.12)); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.9)); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: 0 8px 22px rgba(0,0,0,0.20); font: 11px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; pointer-events: none; }
       .buret-xyz-badge strong { display: block; font-size: 11px; }
       .buret-xyz-badge span { display: block; opacity: 0.76; }
@@ -2405,6 +2454,249 @@
     if (!externalArtifactInteractionsCleanup) return;
     try { externalArtifactInteractionsCleanup(); } catch (_) {}
     externalArtifactInteractionsCleanup = null;
+  }
+
+  function readStructureDropPaths(dataTransfer) {
+    if (!dataTransfer) return [];
+    const paths = [];
+    try {
+      const custom = dataTransfer.getData(STRUCTURE_DRAG_MIME);
+      if (custom) {
+        const parsed = JSON.parse(custom);
+        if (Array.isArray(parsed)) paths.push(...parsed);
+        else if (Array.isArray(parsed?.paths)) paths.push(...parsed.paths);
+      }
+    } catch (_) {}
+    if (paths.length === 0) {
+      try {
+        const text = dataTransfer.getData('text/plain');
+        if (text) paths.push(...text.split(/\r?\n/gu));
+      } catch (_) {}
+    }
+    if (paths.length === 0 && dataTransfer.files) {
+      for (const file of Array.from(dataTransfer.files)) {
+        if (file && typeof file.path === 'string') paths.push(file.path);
+      }
+    }
+    return paths.map(path => String(path || '').trim()).filter(Boolean);
+  }
+
+  function ensureXyzrenderSheet(stage) {
+    let sheet = stage.querySelector('.buret-xyzrender-sheet');
+    if (!sheet) {
+      sheet = document.createElement('div');
+      sheet.className = 'buret-xyzrender-sheet';
+      sheet.setAttribute('aria-label', 'xyzrender sheet overlays');
+      stage.appendChild(sheet);
+    }
+    return sheet;
+  }
+
+  function installExternalArtifactSheet(root, stage, toStagePoint, getStageScale) {
+    const sheet = ensureXyzrenderSheet(stage);
+    let sheetItemSerial = sheet.querySelectorAll('.buret-xyzrender-sheet-item').length;
+
+    const renderSheetItem = async (path, preset, controls) => {
+      const config = activeConfig || window.BurreteConfig || {};
+      const endpoint = String(config.xyzrenderEndpoint || '').trim();
+      if (!endpoint) return requestHostXyzrenderSheetItem(path, preset, controls);
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, preset, controls })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof payload?.error === 'string' ? payload.error : `xyzrender sheet request failed with status ${response.status}`);
+      if (typeof payload?.svg !== 'string' || !payload.svg.trim()) throw new Error('xyzrender sheet endpoint returned no SVG payload');
+      return payload;
+    };
+
+    const addSheetItems = async (paths, point = null) => {
+      const config = activeConfig || window.BurreteConfig || {};
+      const cleanPaths = Array.from(new Set((paths || []).map(path => String(path || '').trim()).filter(Boolean)));
+      if (cleanPaths.length === 0) return;
+      setStatus(`[web] Adding ${cleanPaths.length} structure${cleanPaths.length === 1 ? '' : 's'} to xyzrender sheet…`);
+      const baseControls = normalizeXyzrenderControls(config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config);
+      const controls = {
+        ...baseControls,
+        transparentBackground: true,
+        fieldMode: 'off',
+        showCell: false,
+        showGhosts: false,
+        showAxes: false
+      };
+      const preset = normalizeXyzrenderPreset(config.externalArtifact?.preset || config.xyzrenderPreset || 'default');
+      for (const path of cleanPaths) {
+        try {
+          const payload = await renderSheetItem(path, preset, controls);
+          sheetItemSerial += 1;
+          addXyzrenderSheetItem(sheet, payload.svg, path, point, sheetItemSerial, getStageScale);
+        } catch (error) {
+          setStatus(`Could not add ${path} to xyzrender sheet: ${error instanceof Error ? error.message : String(error)}`, 'error');
+        }
+      }
+      setTimeout(hideStatus, 450);
+    };
+
+    const onDragOver = event => {
+      if (readStructureDropPaths(event.dataTransfer).length === 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      root.classList.add('sheet-drop-active');
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    };
+    const onDragLeave = event => {
+      if (root.contains(event.relatedTarget)) return;
+      root.classList.remove('sheet-drop-active');
+    };
+    const onDrop = event => {
+      const paths = readStructureDropPaths(event.dataTransfer);
+      if (paths.length === 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      root.classList.remove('sheet-drop-active');
+      void addSheetItems(paths, toStagePoint(event.clientX, event.clientY));
+    };
+    const onMessage = event => {
+      const data = event.data || {};
+      const body = data.body || {};
+      if (data.source === 'burrete-host' && (
+        body.type === 'xyzrenderSheetItemRendered' ||
+        body.type === 'xyzrenderSheetItemError'
+      )) {
+        resolveHostXyzrenderSheetItem(body);
+        return;
+      }
+      if (data.source !== 'burrete-host' || body.type !== 'addXyzrenderSheetItems') return;
+      const documentId = String((activeConfig || window.BurreteConfig || {}).documentId || '');
+      if (body.documentId && documentId && String(body.documentId) !== documentId) return;
+      void addSheetItems(body.paths || null, null);
+    };
+
+    root.addEventListener('dragover', onDragOver);
+    root.addEventListener('dragleave', onDragLeave);
+    root.addEventListener('drop', onDrop);
+    window.addEventListener('message', onMessage);
+    return () => {
+      root.removeEventListener('dragover', onDragOver);
+      root.removeEventListener('dragleave', onDragLeave);
+      root.removeEventListener('drop', onDrop);
+      window.removeEventListener('message', onMessage);
+      root.classList.remove('sheet-drop-active');
+    };
+  }
+
+  function requestHostXyzrenderSheetItem(path, preset, controls) {
+    const requestId = `xyzrender-sheet-${++xyzrenderSheetRequestSerial}`;
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        xyzrenderSheetRequests.delete(requestId);
+        reject(new Error('xyzrender sheet render timed out'));
+      }, 30000);
+      xyzrenderSheetRequests.set(requestId, { resolve, reject, timeout });
+      const sent = postHostMessage({
+        type: 'renderXyzrenderSheetItem',
+        requestId,
+        path,
+        preset,
+        controls
+      });
+      if (!sent) {
+        clearTimeout(timeout);
+        xyzrenderSheetRequests.delete(requestId);
+        reject(new Error('xyzrender sheet rendering is available only in Burette or browser-dev.'));
+      }
+    });
+  }
+
+  function resolveHostXyzrenderSheetItem(body) {
+    const requestId = String(body?.requestId || '');
+    if (!requestId) return;
+    const pending = xyzrenderSheetRequests.get(requestId);
+    if (!pending) return;
+    xyzrenderSheetRequests.delete(requestId);
+    clearTimeout(pending.timeout);
+    if (body.type === 'xyzrenderSheetItemError') {
+      pending.reject(new Error(String(body.error || 'Could not render xyzrender sheet item')));
+      return;
+    }
+    if (typeof body.svg !== 'string' || !body.svg.trim()) {
+      pending.reject(new Error('Host returned no xyzrender SVG payload'));
+      return;
+    }
+    pending.resolve({
+      svg: body.svg,
+      preset: body.preset || null,
+      elapsedMs: body.elapsedMs || null,
+      log: body.log || ''
+    });
+  }
+
+  function addXyzrenderSheetItem(sheet, svg, path, point, serial, getStageScale) {
+    const item = document.createElement('div');
+    item.className = 'buret-xyzrender-sheet-item selected';
+    item.setAttribute('role', 'button');
+    item.setAttribute('tabindex', '0');
+    item.setAttribute('aria-label', `Sheet structure ${path}`);
+    const rect = sheet.getBoundingClientRect();
+    const fallbackX = rect.width * (0.42 + ((serial - 1) % 4) * 0.06);
+    const fallbackY = rect.height * (0.42 + (Math.floor((serial - 1) / 4) % 4) * 0.06);
+    item.style.left = `${Number.isFinite(point?.x) ? point.x : fallbackX}px`;
+    item.style.top = `${Number.isFinite(point?.y) ? point.y : fallbackY}px`;
+    item.innerHTML = `${svg}<div class="buret-xyzrender-sheet-item-label">${escapeHTML(path.split('/').pop() || path)}</div>`;
+    sheet.querySelectorAll('.buret-xyzrender-sheet-item.selected').forEach(existing => existing.classList.remove('selected'));
+    sheet.appendChild(item);
+    installXyzrenderSheetItemDrag(item, getStageScale);
+  }
+
+  function installXyzrenderSheetItemDrag(item, getStageScale) {
+    let pointerId = null;
+    let startX = 0;
+    let startY = 0;
+    let startLeft = 0;
+    let startTop = 0;
+    const select = () => {
+      item.parentElement?.querySelectorAll('.buret-xyzrender-sheet-item.selected').forEach(existing => {
+        if (existing !== item) existing.classList.remove('selected');
+      });
+      item.classList.add('selected');
+    };
+    const onPointerDown = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      select();
+      pointerId = event.pointerId;
+      startX = event.clientX;
+      startY = event.clientY;
+      startLeft = parseFloat(item.style.left) || 0;
+      startTop = parseFloat(item.style.top) || 0;
+      item.classList.add('dragging');
+      try { item.setPointerCapture(event.pointerId); } catch (_) {}
+    };
+    const onPointerMove = event => {
+      if (pointerId !== event.pointerId) return;
+      const stageScale = Math.max(0.05, Number(getStageScale?.() || 1));
+      item.style.left = `${startLeft + (event.clientX - startX) / stageScale}px`;
+      item.style.top = `${startTop + (event.clientY - startY) / stageScale}px`;
+    };
+    const finish = event => {
+      if (pointerId !== event.pointerId) return;
+      pointerId = null;
+      item.classList.remove('dragging');
+      try { item.releasePointerCapture(event.pointerId); } catch (_) {}
+    };
+    const onKeyDown = event => {
+      if ((event.key === 'Backspace' || event.key === 'Delete') && item.classList.contains('selected')) {
+        event.preventDefault();
+        item.remove();
+      }
+    };
+    item.addEventListener('pointerdown', onPointerDown);
+    item.addEventListener('pointermove', onPointerMove);
+    item.addEventListener('pointerup', finish);
+    item.addEventListener('pointercancel', finish);
+    item.addEventListener('click', event => { event.stopPropagation(); select(); });
+    item.addEventListener('keydown', onKeyDown);
   }
 
   function installExternalArtifactInteractions(root) {
@@ -2521,6 +2813,14 @@
       event.preventDefault();
       zoomAt(gestureBaseScale * Number(event.scale || 1), Number(event.clientX || 0), Number(event.clientY || 0));
     };
+    const toStagePoint = (clientX, clientY) => {
+      const rect = root.getBoundingClientRect();
+      return {
+        x: (Number(clientX) - rect.left - translateX) / scale,
+        y: (Number(clientY) - rect.top - translateY) / scale
+      };
+    };
+    const sheetCleanup = installExternalArtifactSheet(root, stage, toStagePoint, () => scale);
 
     root.addEventListener('wheel', onWheel, { passive: false });
     root.addEventListener('pointerdown', onPointerDown);
@@ -2540,6 +2840,7 @@
       root.removeEventListener('dblclick', reset);
       root.removeEventListener('gesturestart', onGestureStart);
       root.removeEventListener('gesturechange', onGestureChange);
+      sheetCleanup?.();
     };
   }
 
@@ -3113,6 +3414,100 @@
     };
   }
 
+  function isMolstarContextMenuTarget(target) {
+    if (!(target instanceof Element)) return false;
+    if (target.closest('#buret-toolbar, .buret-docking-poses, .buret-molecule-context-menu')) return false;
+    if (target.closest('button, input, select, textarea, [contenteditable="true"]')) return false;
+    if (target.closest('.msp-viewport-controls, .msp-viewport-top-left-controls, .msp-selection-viewport-controls')) return false;
+    return !!target.closest('.msp-plugin .msp-viewport, .msp-plugin canvas');
+  }
+
+  function positionMolstarContextMenu(menu, clientX, clientY) {
+    const margin = 8;
+    menu.style.left = margin + 'px';
+    menu.style.top = margin + 'px';
+    const rect = menu.getBoundingClientRect();
+    const left = Math.min(Math.max(margin, clientX), Math.max(margin, window.innerWidth - rect.width - margin));
+    const top = Math.min(Math.max(margin, clientY), Math.max(margin, window.innerHeight - rect.height - margin));
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(top)}px`;
+  }
+
+  function moleculeContextMenuAction(action, label) {
+    setStatus(`[web] ${label} is not implemented yet.`);
+    hideMolstarContextMenu();
+  }
+
+  function hideMolstarContextMenu() {
+    document.querySelector('.buret-molecule-context-menu')?.remove();
+  }
+
+  function showMolstarContextMenu(event) {
+    hideMolstarContextMenu();
+    const menu = document.createElement('div');
+    menu.className = 'buret-molecule-context-menu';
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', 'Molecule actions');
+    const title = document.createElement('div');
+    title.className = 'buret-molecule-context-menu-title';
+    title.textContent = 'Molecule actions';
+    const subtitle = document.createElement('div');
+    subtitle.className = 'buret-molecule-context-menu-subtitle';
+    subtitle.textContent = activeConfig?.label || 'Mol* structure';
+    const actions = [
+      ['remove', 'Delete molecule'],
+      ['separate-window', 'Open in separate window'],
+      ['hide', 'Hide molecule'],
+      ['inspect', 'Inspect properties']
+    ];
+    menu.append(title, subtitle);
+    actions.forEach(([action, label]) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.setAttribute('role', 'menuitem');
+      button.dataset.buretMoleculeAction = action;
+      button.textContent = label;
+      button.addEventListener('click', () => moleculeContextMenuAction(action, label));
+      menu.appendChild(button);
+    });
+    document.body.appendChild(menu);
+    positionMolstarContextMenu(menu, event.clientX, event.clientY);
+    menu.querySelector('button')?.focus();
+  }
+
+  function installMolstarContextMenu(viewer) {
+    if (molstarContextMenuCleanup) {
+      molstarContextMenuCleanup();
+      molstarContextMenuCleanup = null;
+    }
+    const onContextMenu = (event) => {
+      if (!viewer || !isMolstarContextMenuTarget(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      showMolstarContextMenu(event);
+    };
+    const onPointerDown = (event) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest('.buret-molecule-context-menu')) return;
+      hideMolstarContextMenu();
+    };
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') hideMolstarContextMenu();
+    };
+    const onResize = () => hideMolstarContextMenu();
+    document.addEventListener('contextmenu', onContextMenu, true);
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('keydown', onKeyDown);
+    window.addEventListener('resize', onResize);
+    molstarContextMenuCleanup = () => {
+      document.removeEventListener('contextmenu', onContextMenu, true);
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('resize', onResize);
+      hideMolstarContextMenu();
+    };
+  }
+
   function withTimeout(promise, timeoutMs, message) {
     let timer;
     const timeout = new Promise((_, reject) => {
@@ -3181,6 +3576,14 @@
   function disposeActiveMolstarViewer() {
     const viewer = activeViewer || window.BurreteViewer || window.BuretteViewer;
     try { viewer?.plugin?.dispose?.(); } catch (_) {}
+    if (molstarContextMenuCleanup) {
+      molstarContextMenuCleanup();
+      molstarContextMenuCleanup = null;
+    }
+    if (molstarWindowResizeHandler) {
+      window.removeEventListener('resize', molstarWindowResizeHandler);
+      molstarWindowResizeHandler = null;
+    }
     activeViewer = null;
     window.BurreteViewer = null;
     window.BuretteViewer = null;
@@ -3223,6 +3626,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     applyViewerUIScale(viewer);
     initViewerKeyboardShortcuts(viewer);
     initBuretToolbar(viewer);
+    installMolstarContextMenu(viewer);
     installLeftPanelVisibilityGuard();
     scheduleLayoutStateReapply(viewer);
 
@@ -3250,7 +3654,9 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     }
     trackMolstarOrientation(viewer, config);
 
-    window.addEventListener('resize', () => scheduleViewerResize(viewer, 100));
+    if (molstarWindowResizeHandler) window.removeEventListener('resize', molstarWindowResizeHandler);
+    molstarWindowResizeHandler = () => scheduleViewerResize(viewer, 100);
+    window.addEventListener('resize', molstarWindowResizeHandler);
     await waitForAnimationFrame();
     applyLayoutState(viewer);
     try { viewer.handleResize(); } catch (_) {}
@@ -3287,72 +3693,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       return;
     }
 
-    const size = describeBytes(config.byteCount);
-    const formatLabel = describeFormat(config.format, config.binary);
-
-    if (!window.molstar) {
-      setStatus(`[web] Loading Mol* engine…
-${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
-      await loadScript(appendCacheBuster(runtimeURL('BurreteMolstarURL', './molstar.js'), cb), 'Mol* engine', 120000);
-    }
-
-    setStatus(`[web] Mol* engine loaded. Creating WebGL viewer…
-${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
-    await waitForFirstPaint();
-    const viewer = await withTimeout(
-      createViewer(),
-      25000,
-      'Mol* timed out while creating the WebGL viewer. This usually means WebKit/WebGL failed inside Quick Look.'
-    );
-    setStatus(`[web] WebGL viewer created. Parsing structure…
-${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
-    applyViewerBackground(viewer);
-    window.BurreteViewer = viewer;
-    window.BuretteViewer = viewer;
-    try {
-      window.BurreteAgent?.attach?.({ viewer, plugin: viewer.plugin, config });
-    } catch (error) {
-      debug('BurreteAgent attach failed: ' + (error && error.message || String(error)));
-    }
-    activeViewer = viewer;
-    window.BurreteHandleResize = () => scheduleViewerResize(viewer, 60);
-    applyViewerUIScale(viewer);
-    initViewerKeyboardShortcuts(viewer);
-    initBuretToolbar(viewer);
-    installLeftPanelVisibilityGuard();
-    scheduleLayoutStateReapply(viewer);
-
-    await waitForAnimationFrame();
-    applyLayoutState(viewer);
-    try { viewer.handleResize(); } catch (_) {}
-
-    debug('before structureDataForMolstar: bytes=' + (window.BurreteDataBytes ? window.BurreteDataBytes.length : -1) + '; base64 chars=' + (window.BurreteDataBase64 ? window.BurreteDataBase64.length : -1));
-    const prepared = structureDataForMolstar(config);
-    debug('prepared format=' + prepared.format + '; data type=' + (prepared.data && prepared.data.constructor ? prepared.data.constructor.name : typeof prepared.data) + '; data length=' + (prepared.data ? prepared.data.length : -1));
-    setStatus(`[web] Parsing structure…\n${prepared.label} (${describeFormat(prepared.format, config.binary)})`);
-
-    await withTimeout(
-      loadPreparedStructure(viewer, prepared),
-      45000,
-      `Mol* timed out while parsing/rendering ${prepared.label} as ${prepared.format}.`
-    );
-    applyLayoutState(viewer);
-    scheduleLayoutStateReapply(viewer);
-
-    try {
-      window.BurreteAgent?.notifyStructureLoaded?.({ viewer, plugin: viewer.plugin, config, prepared });
-    } catch (error) {
-      debug('BurreteAgent notifyStructureLoaded failed: ' + (error && error.message || String(error)));
-    }
-    trackMolstarOrientation(viewer, config);
-
-    window.addEventListener('resize', () => scheduleViewerResize(viewer, 100));
-    await waitForAnimationFrame();
-    applyLayoutState(viewer);
-    try { viewer.handleResize(); } catch (_) {}
-
-    setStatus(`[web] Rendered ${config.label || 'structure'}`);
-    setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
+    await startMolstar(config, cb);
   }
 
   function waitForFirstPaint() {

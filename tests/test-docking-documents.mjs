@@ -38,10 +38,23 @@ assert.deepEqual(
   },
 );
 
+assert.equal(
+  dockingRequestForDrop("/tmp/pose-a.sdf", ["/tmp/pose-b.sdf"]),
+  null,
+);
+
+assert.deepEqual(
+  dockingRequestForDrop("/tmp/receptor-a.pdb", ["/tmp/receptor-b.cif"]),
+  {
+    receptorPath: "/tmp/receptor-a.pdb",
+    ligandPaths: [],
+  },
+);
+
 assert.deepEqual(
   dockingRequestForDrop(
     "burrete-docking://active-view",
-    ["/tmp/new-pose.sdf", "/tmp/receptor.pdb", "/tmp/old-pose.sdf", "/tmp/new-pose.sdf"],
+    ["/tmp/new-pose.sdf", "/tmp/receptor.pdb", "/tmp/alternate-receptor.cif", "/tmp/old-pose.sdf", "/tmp/new-pose.sdf"],
     {
       receptorPath: "/tmp/receptor.pdb",
       ligandPaths: ["/tmp/old-pose.sdf"],
@@ -51,6 +64,30 @@ assert.deepEqual(
     receptorPath: "/tmp/receptor.pdb",
     ligandPaths: ["/tmp/old-pose.sdf", "/tmp/new-pose.sdf"],
   },
+);
+
+assert.equal(
+  dockingRequestForDrop(
+    "burrete-docking://active-view",
+    ["/tmp/alternate-receptor.cif"],
+    {
+      receptorPath: "/tmp/receptor.pdb",
+      ligandPaths: ["/tmp/old-pose.sdf"],
+    },
+  ),
+  null,
+);
+
+assert.equal(
+  dockingRequestForDrop(
+    "burrete-docking://active-view",
+    ["/tmp/old-pose.sdf"],
+    {
+      receptorPath: "/tmp/receptor.pdb",
+      ligandPaths: ["/tmp/old-pose.sdf"],
+    },
+  ),
+  null,
 );
 
 console.log("docking document tests passed");

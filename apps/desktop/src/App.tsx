@@ -296,6 +296,7 @@ export default function App() {
   const openDockingDocument = useCallback(async (targetPath: string, droppedPaths: string[]) => {
     const existingDockingRequest = documents.find((document) => document.path === targetPath || document.id === targetPath)?.dockingRequest;
     const request = dockingRequestForDrop(targetPath, droppedPaths, existingDockingRequest);
+    if (!request) return;
     if (request.ligandPaths.length === 0) return;
     pushStatus("Opening Mol* docking view...");
     try {
@@ -370,10 +371,32 @@ export default function App() {
     openSettingsTab();
   }, [openSettingsTab]);
 
+  const addXyzrenderSheetItems = useCallback((paths: string[]) => {
+    if (activeDocument?.renderer !== "xyzrender-external" || paths.length === 0) return false;
+    const iframe = Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).find(
+      (item) => item.dataset.documentId === activeDocument.id,
+    );
+    if (!iframe?.contentWindow) return false;
+    iframe.contentWindow.postMessage(
+      {
+        source: "burrete-host",
+        body: {
+          type: "addXyzrenderSheetItems",
+          documentId: activeDocument.id,
+          paths,
+        },
+      },
+      "*",
+    );
+    pushStatus(`Adding ${paths.length} structure${paths.length === 1 ? "" : "s"} to xyzrender sheet`);
+    return true;
+  }, [activeDocument?.id, activeDocument?.renderer, pushStatus]);
+
   useOpenEvents(openDocuments, pushErrorStatus);
   const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop } = useOpenDrop(openDocuments, pushStatus, {
     activeDocumentPath: activeDocument?.path ?? null,
     openDockingDocument,
+    addXyzrenderSheetItems,
   });
   const reloadActive = useCallback(async () => {
     const targetDocument = (pendingViewerReloadDocumentIdRef.current
@@ -530,6 +553,55 @@ export default function App() {
       if (data?.source !== "burrete-viewer" && data?.source !== "burrete-grid") return;
       const body = data.body;
       if (!isKnownViewerMessageSource(event.source, body?.documentId)) return;
+      if (data.source === "burrete-viewer" && body?.type === "renderXyzrenderSheetItem") {
+        if (!body.requestId) return;
+        const reply = (bodyPayload: Record<string, unknown>) => {
+          postMessageToViewerSource(event.source, {
+            source: "burrete-host",
+            body: {
+              requestId: body.requestId,
+              documentId: body.documentId,
+              ...bodyPayload,
+            },
+          });
+        };
+        if (!isTauriRuntime()) {
+          reply({
+            type: "xyzrenderSheetItemError",
+            error: "Desktop xyzrender sheet rendering is unavailable outside the Tauri runtime.",
+          });
+          return;
+        }
+        void (async () => {
+          try {
+            const result = await invoke<{
+              svg: string;
+              preset?: string;
+              elapsedMs?: number;
+              log?: string;
+            }>("render_xyzrender_sheet_item", {
+              request: {
+                path: body.path,
+                preset: body.preset ?? null,
+                controls: body.controls ?? null,
+              },
+            });
+            reply({
+              type: "xyzrenderSheetItemRendered",
+              svg: result.svg,
+              preset: result.preset ?? null,
+              elapsedMs: result.elapsedMs ?? null,
+              log: result.log ?? "",
+            });
+          } catch (error) {
+            reply({
+              type: "xyzrenderSheetItemError",
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        })();
+        return;
+      }
       if (data.source === "burrete-grid") {
         if (body?.type === "gridFetchPage") {
           if (!body.requestId || !body.documentId) return;

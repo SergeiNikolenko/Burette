@@ -478,6 +478,64 @@ button:disabled {
   transform: scale(1);
 }
 
+.buret-grid-molecule-context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 216px;
+  box-sizing: border-box;
+  padding: 6px;
+  border: 1px solid var(--buret-border-strong);
+  border-radius: 12px;
+  color: var(--buret-text);
+  background: color-mix(in srgb, var(--buret-surface) 92%, #000000);
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.buret-grid-molecule-context-menu-title {
+  padding: 6px 8px 1px;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 720;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.buret-grid-molecule-context-menu-subtitle {
+  max-width: 280px;
+  padding: 0 8px 6px;
+  overflow: hidden;
+  color: var(--buret-muted);
+  font-size: 11px;
+  font-weight: 560;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.buret-grid-molecule-context-menu button {
+  display: block;
+  width: 100%;
+  min-height: 30px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 8px;
+  color: inherit;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 620;
+  text-align: left;
+}
+
+.buret-grid-molecule-context-menu button:hover,
+.buret-grid-molecule-context-menu button:focus {
+  outline: none;
+  background: color-mix(in srgb, var(--buret-accent) 20%, transparent);
+}
+
 .buret-card.smarts-match {
   border-color: rgba(255, 190, 94, 0.72);
   box-shadow:
