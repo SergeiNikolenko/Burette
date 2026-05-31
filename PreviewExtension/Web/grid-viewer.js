@@ -512,6 +512,30 @@
     });
   }
 
+  function requestOpenInKetcher(row, cfg) {
+    const record = gridDragRecord(row);
+    const label = row?.name || `Molecule ${Number(row?.index) + 1 || 1}`;
+    if (!record) {
+      setStatus(`[grid] ${label} has no structure data for Ketcher.`, 'error');
+      return;
+    }
+    post('openInKetcher', `[grid] Open ${label} in Ketcher.`, {
+      title: record.path,
+      extension: record.inputExtension,
+      textBase64: textToBase64(ketcherFragmentText(record)),
+      documentId: cfg?.documentId || null
+    });
+  }
+
+  function ketcherFragmentText(record) {
+    const text = String(record?.text || '').trim();
+    const extension = String(record?.inputExtension || '').toLowerCase();
+    if (extension === 'sdf' || extension === 'sd') {
+      return text.replace(/\n?\$\$\$\$\s*$/u, '').trimEnd() + '\n';
+    }
+    return text;
+  }
+
   function normalizeRenderer(renderer) {
     const value = String(renderer || 'molstar').toLowerCase();
     return value === 'xyzrender-external' || value === 'xyzrender' ? 'xyzrender-external' : 'molstar';
@@ -1409,6 +1433,9 @@
       state.selected.add(Number(row.index));
       requestSdfPoseDocument(cfg);
       setStatus(`[grid] Opening ${label} in Mol* pose view.`);
+    } else if (action === 'ketcher') {
+      requestOpenInKetcher(row, cfg);
+      setStatus(`[grid] Opening ${label} in Ketcher.`);
     } else {
       setStatus(`[grid] Molecule action is unavailable for ${label}.`);
     }
@@ -1440,6 +1467,7 @@
     const actions = [
       ['select', 'Select molecule'],
       ['remove', 'Delete molecule'],
+      ['ketcher', 'Open in Ketcher'],
       ['molstar', 'Open in Mol*'],
       ['hide', 'Hide molecule'],
       ['inspect', 'Inspect properties']

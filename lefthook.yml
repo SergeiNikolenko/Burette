@@ -3,5 +3,7 @@ pre-commit:
   commands:
     js-syntax:
       run: bun run check:js
+    rust-fmt:
+      run: bun run check:rust:fmt
     plist:
       run: plutil -lint apps/desktop/src-tauri/AppMetadata.plist apps/desktop/src-tauri/Info.plist PreviewExtension/Info.plist PreviewExtension/BurretePreview.entitlements
