@@ -442,16 +442,19 @@ export default function App() {
     pushStatus("Opened Ketcher tab");
   }, [openKetcherTab, pushStatus]);
 
-  const openKetcherWithStructures = useCallback((paths: string[]) => {
+  const openKetcherWithStructures = useCallback((paths: string[], fragments: KetcherImportRequest["fragments"] = []) => {
     const cleanPaths = Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
-    if (cleanPaths.length === 0) return;
+    const cleanFragments = fragments?.filter((fragment) => fragment.text.trim()) ?? [];
+    if (cleanPaths.length === 0 && cleanFragments.length === 0) return;
     openKetcherTab();
     setStructureDragActive(false);
     setKetcherImportRequest({
       id: ++ketcherImportSequenceRef.current,
       paths: cleanPaths,
+      fragments: cleanFragments,
     });
-    pushStatus(`Adding ${cleanPaths.length} structure${cleanPaths.length === 1 ? "" : "s"} to Ketcher`);
+    const count = cleanPaths.length + cleanFragments.length;
+    pushStatus(`Adding ${count} structure${count === 1 ? "" : "s"} to Ketcher`);
   }, [openKetcherTab, pushStatus]);
 
   const openKetcherWithFragment = useCallback((title: string, text: string) => {
