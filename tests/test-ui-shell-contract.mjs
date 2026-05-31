@@ -230,6 +230,8 @@ assert.match(viewer, /function updateBrowserDevXyzrenderArtifact\(payload, reque
 assert.match(viewer, /function rotatableArtifactControlsHTML\(\)/);
 assert.match(viewer, /class="buret-xyzrender-rotate-hud"/);
 assert.match(viewer, /data-buret-resize-handle="\$\{handle\}"/);
+assert.match(viewer, /function sheetItemCenterPosition\(item\)/);
+assert.match(viewer, /rect\.left - parentRect\.left \+ rect\.width \/ 2/);
 assert.match(viewer, /function installRotatableArtifactResize\(item, getStageScale\)/);
 assert.match(viewer, /function snapRotation\(rotation, event\)/);
 assert.match(viewer, /event\?\.ctrlKey \? 1 : 15/);

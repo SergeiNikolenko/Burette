@@ -2989,6 +2989,29 @@
     };
   }
 
+  function sheetItemCenterPosition(item) {
+    const inlineLeft = String(item.style.left || '');
+    const inlineTop = String(item.style.top || '');
+    if (inlineLeft.endsWith('px') && inlineTop.endsWith('px')) {
+      return {
+        left: parseFloat(inlineLeft) || 0,
+        top: parseFloat(inlineTop) || 0
+      };
+    }
+    const parentRect = item.offsetParent?.getBoundingClientRect?.() || item.parentElement?.getBoundingClientRect?.();
+    const rect = item.getBoundingClientRect();
+    if (parentRect && rect.width > 0 && rect.height > 0) {
+      return {
+        left: rect.left - parentRect.left + rect.width / 2,
+        top: rect.top - parentRect.top + rect.height / 2
+      };
+    }
+    return {
+      left: item.offsetLeft || 0,
+      top: item.offsetTop || 0
+    };
+  }
+
   function installRotatableArtifactResize(item, getStageScale) {
     if (!item || item.dataset.buretResizeInstalled === 'true') return;
     item.dataset.buretResizeInstalled = 'true';
@@ -3027,8 +3050,9 @@
       startY = event.clientY;
       startWidth = parseFloat(item.style.width || '') || item.offsetWidth || item.getBoundingClientRect().width;
       startHeight = parseFloat(item.style.height || '') || item.offsetHeight || item.getBoundingClientRect().height;
-      startLeft = parseFloat(item.style.left || '0') || 0;
-      startTop = parseFloat(item.style.top || '0') || 0;
+      const position = sheetItemCenterPosition(item);
+      startLeft = position.left;
+      startTop = position.top;
       startRotation = ((parseFloat(item.dataset.rotation || '0') || 0) * Math.PI) / 180;
       item.classList.add('resizing');
       try { handle.setPointerCapture(event.pointerId); } catch (_) {}
@@ -3121,8 +3145,9 @@
       pointerId = event.pointerId;
       startX = event.clientX;
       startY = event.clientY;
-      startLeft = parseFloat(item.style.left) || 0;
-      startTop = parseFloat(item.style.top) || 0;
+      const position = sheetItemCenterPosition(item);
+      startLeft = position.left;
+      startTop = position.top;
       item.classList.add('dragging');
       try { item.setPointerCapture(event.pointerId); } catch (_) {}
     };
