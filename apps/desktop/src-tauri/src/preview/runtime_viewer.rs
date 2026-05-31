@@ -4,11 +4,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{Manager, Runtime};
 
-use super::formats::{FormatInfo, normalize_renderer_mode};
+use super::formats::{normalize_renderer_mode, FormatInfo};
 use super::runtime::{ViewerPreferences, ViewerReloadOptions};
 use super::runtime_utils::{asset_url, escape_html, prune_runtime_dirs, stable_id};
 use super::text_xyz::{converted_data_from_text, xyz_data_from_text};
-use super::xyz::{XyzPayload, xyz_first_frame};
+use super::xyz::{xyz_first_frame, XyzPayload};
 use super::xyzrender::{
     create_xyzrender_artifact, default_xyzrender_document_defaults, xyzrender_preset_options,
 };
@@ -60,12 +60,13 @@ pub(crate) fn create_runtime<R: Runtime>(
         .unwrap_or("structure");
     let source_xyz_data = xyz_data_from_text(data, extension, label);
     let converted_molstar_data = converted_data_from_text(data, extension, label);
-    let external_molstar_data =
-        if format.external_only || should_use_converted_molstar_data(format, &converted_molstar_data) {
-            converted_molstar_data.clone()
-        } else {
-            None
-        };
+    let external_molstar_data = if format.external_only
+        || should_use_converted_molstar_data(format, &converted_molstar_data)
+    {
+        converted_molstar_data.clone()
+    } else {
+        None
+    };
     let xyz_payload = if format.molstar_format == "xyz" && !format.is_binary {
         xyz_first_frame(data)
     } else {
@@ -168,15 +169,14 @@ pub(crate) fn create_runtime<R: Runtime>(
         }
     };
 
-    let molstar_format =
-        if renderer == "molstar" && external_molstar_data.is_some() {
-            external_molstar_data
-                .as_ref()
-                .map(|converted| converted.extension)
-                .unwrap_or(format.molstar_format.as_str())
-        } else {
-            format.molstar_format.as_str()
-        };
+    let molstar_format = if renderer == "molstar" && external_molstar_data.is_some() {
+        external_molstar_data
+            .as_ref()
+            .map(|converted| converted.extension)
+            .unwrap_or(format.molstar_format.as_str())
+    } else {
+        format.molstar_format.as_str()
+    };
     let mut config = json!({
         "format": molstar_format,
         "molstarFormat": molstar_format,
@@ -212,9 +212,13 @@ pub(crate) fn create_runtime<R: Runtime>(
         "defaultLayoutState": { "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" }
     });
 
-    if let Some(ketcher_config) =
-        ketcher_edit_config(file_path, extension, data, data.len(), sdf_record_count(data))
-    {
+    if let Some(ketcher_config) = ketcher_edit_config(
+        file_path,
+        extension,
+        data,
+        data.len(),
+        sdf_record_count(data),
+    ) {
         if let Some(object) = ketcher_config.as_object() {
             for (key, value) in object {
                 config[key.as_str()] = value.clone();

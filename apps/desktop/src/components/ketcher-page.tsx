@@ -15,7 +15,7 @@ import {
 import ligandProLogo from "../assets/short-logo-ligandpro.svg";
 import { collectionExtension, collectionFamily } from "../lib/collection-documents";
 import { readStructureText } from "../lib/structure-text";
-import { hasStructureDrag, readStructureDrag } from "../lib/structure-drag";
+import { hasStructureDrag, readStructureDragPayload, structureDragRecordsToFragments } from "../lib/structure-drag";
 import type { KetcherEditorApi } from "./ketcher-editor";
 import { showNativeContextMenu } from "./native-context-menu";
 import type { KetcherSketchTarget, ShellActions, ShellViewState } from "./types";
@@ -149,12 +149,23 @@ export function KetcherPage({
       : `${itemCount} structures`;
     try {
       setStatus("Adding " + label);
+      let hasImportedStructure = false;
+      const addStructure = async (text: string) => {
+        const importText = normalizeKetcherImportText(text);
+        if (!importText.trim()) return;
+        if (hasImportedStructure) {
+          await ketcher.addFragment(importText, { needZoom: true });
+          return;
+        }
+        await ketcher.setMolecule(importText, { needZoom: true });
+        hasImportedStructure = true;
+      };
       for (const path of cleanPaths) {
         const text = await readStructureText(path);
-        await ketcher.addFragment(text, { needZoom: true });
+        await addStructure(text);
       }
       for (const fragment of cleanFragments) {
-        await ketcher.addFragment(fragment.text, { needZoom: true });
+        await addStructure(fragment.text);
       }
       setOutput("");
       setStatus("Added " + label);
@@ -191,9 +202,10 @@ export function KetcherPage({
     event.stopPropagation();
     actions.setStructureDragActive(false);
     setDropActive(false);
-    const paths = readStructureDrag(event.dataTransfer);
-    if (paths.length === 0) return;
-    void importStructures(paths);
+    const payload = readStructureDragPayload(event.dataTransfer);
+    const fragments = structureDragRecordsToFragments(payload.records);
+    if (payload.paths.length === 0 && fragments.length === 0) return;
+    void importStructures(payload.paths, fragments);
   }, [actions, importStructures]);
 
   return (
@@ -265,6 +277,18 @@ function molfileToSdf(molfile: string, smiles: string) {
     "$$$$",
     "",
   ].join("\n");
+}
+
+function normalizeKetcherImportText(text: string) {
+  const trimmed = text.trim();
+  if (looksLikeSdfRecord(trimmed)) {
+    return trimmed.replace(/\n?\$\$\$\$\s*$/u, "").trimEnd() + "\n";
+  }
+  return trimmed;
+}
+
+function looksLikeSdfRecord(text: string) {
+  return /\nM\s+END(?:\n|$)/u.test(text) && /\n?\$\$\$\$\s*$/u.test(text);
 }
 
 function fileName(path: string) {
