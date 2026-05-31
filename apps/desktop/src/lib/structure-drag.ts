@@ -45,6 +45,14 @@ export function readStructureDragPayload(dataTransfer: DataTransfer): StructureD
         .map((file) => (file as File & { path?: string }).path)
         .filter((path): path is string => Boolean(path)),
     );
+    if (payload.paths.length === 0) {
+      const plainText = dataTransfer.getData("text/plain").trim();
+      if (plainText) {
+        const inlineRecord = structureDragRecordFromPlainText(plainText);
+        if (inlineRecord) payload.records.push(inlineRecord);
+        else payload.paths.push(...plainText.split(/\r?\n/u));
+      }
+    }
   }
   payload.paths = Array.from(new Set(
     payload.paths
@@ -93,5 +101,18 @@ function normalizeStructureDragRecord(record: unknown): StructureDragRecord | nu
 
 export function hasStructureDrag(dataTransfer: DataTransfer) {
   const types = Array.from(dataTransfer.types);
-  return types.includes(STRUCTURE_DRAG_MIME) || types.includes("Files");
+  return types.includes(STRUCTURE_DRAG_MIME) || types.includes("Files") || types.includes("text/plain");
+}
+
+function structureDragRecordFromPlainText(text: string): StructureDragRecord | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  if (/^[/~.]|\r?\n[/~.]/u.test(trimmed)) return null;
+  if (!/\r?\n/u.test(trimmed)) return null;
+  if (!/(?:V2000|V3000|\$\$\$\$|M\s+END)/u.test(trimmed)) return null;
+  return {
+    path: "structure.sdf",
+    inputExtension: "sdf",
+    text: trimmed,
+  };
 }
