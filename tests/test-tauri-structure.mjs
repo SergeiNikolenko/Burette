@@ -109,6 +109,8 @@ const mainWindowConfig = tauriConfig.app.windows.find((window) => window.label =
 assert.equal(await exists('apps/desktop/src-tauri/src/commands.rs'), false);
 assert.ok(mainWindowConfig);
 assert.equal(mainWindowConfig.windowEffects?.state, 'active');
+assert.match(tauriConfig.app.security.csp, /'unsafe-eval'/);
+assert.match(tauriConfig.app.security.csp, /'wasm-unsafe-eval'/);
 assert.ok(defaultCapability.permissions.includes('dialog:allow-open'));
 assert.ok(defaultCapability.permissions.includes('dialog:allow-message'));
 assert.match(previewEntitlements, /com\.apple\.security\.network\.client/);
@@ -267,6 +269,7 @@ assert.match(previewRuntimeViewer, /window\.__mqlAction = \(name\) => messageHan
 assert.match(previewRuntimeViewer, /window\.parent\.postMessage\(\{ source: 'burrete-viewer', body \}, '\*'\)/);
 assert.doesNotMatch(previewRuntimeViewer, /window\.parent\.postMessage\(\{ source: 'burrete-viewer', body \}, window\.location\.origin\)/);
 assert.match(previewRuntimeGrid, /Content-Security-Policy/);
+assert.match(previewRuntimeGrid, /'unsafe-eval'/);
 assert.match(previewRuntimeGrid, /'wasm-unsafe-eval'/);
 assert.match(quickLookPreviewController, /<script src="preview-config\.js"><\/script>/);
 assert.match(quickLookPreviewController, /<script src="preview-rdkit-wasm\.js"><\/script>/);
