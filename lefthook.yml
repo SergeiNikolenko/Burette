@@ -5,3 +5,8 @@ pre-commit:
       run: bun run check:js
     plist:
       run: plutil -lint apps/desktop/src-tauri/AppMetadata.plist apps/desktop/src-tauri/Info.plist PreviewExtension/Info.plist PreviewExtension/BurretePreview.entitlements
+
+pre-push:
+  commands:
+    ci-fast:
+      run: bun run ci:fast
