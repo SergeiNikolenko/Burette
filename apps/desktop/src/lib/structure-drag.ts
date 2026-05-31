@@ -59,6 +59,15 @@ export function readStructureDrag(dataTransfer: DataTransfer) {
   return readStructureDragPayload(dataTransfer).paths;
 }
 
+export function structureDragRecordsToFragments(records: StructureDragRecord[]) {
+  return records
+    .map((record) => ({
+      title: record.path.trim() || `structure.${record.inputExtension}`,
+      text: record.text,
+    }))
+    .filter((fragment) => fragment.text.trim().length > 0);
+}
+
 function normalizeStructureDragRecord(record: unknown): StructureDragRecord | null {
   if (!record || typeof record !== "object") return null;
   const candidate = record as Partial<StructureDragRecord>;

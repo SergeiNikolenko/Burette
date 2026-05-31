@@ -8,5 +8,5 @@ export const ketcherKind = definePageKind<"ketcher", KetcherLocation>({
   title: () => "Ketcher",
   description: "Molecule sketch editor",
   Component: ({ state, actions, isActive }) => <KetcherPage state={state} actions={actions} isActive={isActive} />,
-  keepAlive: true,
+  keepAlive: false,
 });

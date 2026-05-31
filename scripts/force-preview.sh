@@ -25,4 +25,31 @@ NODE
 if [[ -z "$TYPE" ]]; then
   TYPE="$(mdls -raw -name kMDItemContentType "$FILE" 2>/dev/null || true)"
 fi
+if [[ "$TYPE" == "com.local.burrete10.xyz" ]]; then
+  # qlmanage aborts when forcing XYZ UTIs after the preview extension starts.
+  # Normal Quick Look resolves XYZ to the registered Open Babel alias.
+  set +e
+  qlmanage -p "$FILE"
+  STATUS=$?
+  set -e
+  if [[ "$STATUS" -eq 134 ]]; then
+    sleep 2
+    ABS_FILE="$(cd -P "$(dirname "$FILE")" && pwd -P)/$(basename "$FILE")"
+    LOG_ROOT="$HOME/Library/Containers/com.local.BurreteV10.Preview/Data/Library"
+    for LOG_FILE in \
+      "$LOG_ROOT/Caches/Burrete/BurreteV10.log" \
+      "$LOG_ROOT/Caches/Burrete/Burrete.log" \
+      "$LOG_ROOT/Application Support/Burrete/BurreteV10.log" \
+      "$LOG_ROOT/Application Support/Burrete/Burrete.log"
+    do
+      if [[ -f "$LOG_FILE" ]] && \
+        tail -n 80 "$LOG_FILE" | grep -F "file.path=$ABS_FILE" >/dev/null && \
+        tail -n 80 "$LOG_FILE" | grep -F "JS message type=ready: ready" >/dev/null; then
+        echo "warning: qlmanage aborted after launching XYZ preview, but BurretePreview reported ready." >&2
+        exit 0
+      fi
+    done
+  fi
+  exit "$STATUS"
+fi
 qlmanage -p -c "$TYPE" "$FILE"
