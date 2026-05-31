@@ -311,7 +311,7 @@ assert.match(previewRuntimeViewer, /window\.BurreteXyzFastURL = \{xyz_fast_js:\?
 assert.match(previewGridStore, /pub\(crate\) struct GridRuntimeRegistry/);
 assert.match(previewGridStore, /pub\(crate\) fn build_grid_store/);
 assert.match(previewGridStore, /fn fetch_page/);
-assert.match(previewGridStore, /query\.limit\.max\(1\)\.min\(240\)/);
+assert.match(previewGridStore, /query\.limit\.clamp\(1, 240\)/);
 assert.match(previewRuntimeGrid, /window\.BurreteRDKitWasmBase64 = \{:\?\};\\n/);
 assert.match(previewRuntimeGrid, /"rdkitWasmPath": "\.\.\/assets\/rdkit\/RDKit_minimal\.wasm"/);
 assert.match(previewRuntimeGrid, /runtime\.join\("preview-rdkit-wasm\.js"\)/);
