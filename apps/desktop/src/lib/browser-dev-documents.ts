@@ -403,7 +403,8 @@ export async function openBrowserDevMergedCollection(
 
   const id = stableId(`merged:${merged.sourcePaths.join("|")}:${merged.text.length}`);
   const path = `burrete-collection://${id}/${merged.suggestedFileName}`;
-  const html = await gridHtml(path, grid.records, grid.format, preferences, new TextEncoder().encode(merged.text).byteLength);
+  browserDevVirtualTextDocuments.set(path, merged.text);
+  const html = await gridHtml(path, id, grid.records, grid.format, preferences, new TextEncoder().encode(merged.text).byteLength);
   return {
     id,
     path,
@@ -477,7 +478,8 @@ async function openBrowserDevDocumentFromBytes(
     && Boolean(reloadOptions)
     && (requestedMode === "molstar" || requestedMode === "xyzrender-external");
   if (grid && !(grid.format === "sdf" && explicitSdfViewer)) {
-    const html = await gridHtml(path, grid.records, grid.format, preferences, bytes.length);
+    const id = stableId(path);
+    const html = await gridHtml(path, id, grid.records, grid.format, preferences, bytes.length);
     return browserDocument(path, extension, "grid2d", html, bytes.length);
   }
   if (gridRequiresPreview(extension)) {
@@ -583,17 +585,17 @@ type BrowserDevContextPayload = BrowserDevDockingPayload & {
 };
 
 async function readBrowserDevDockingPayload(path: string): Promise<BrowserDevDockingPayload> {
-  const response = await fetch(fsUrl(path));
+  const extension = fileExtension(path);
+  const response = await fetch(browserDevReadUrl(path, extension));
   if (!response.ok) throw new Error(`${path}: ${response.status} ${response.statusText}`);
   const originalBytes = new Uint8Array(await response.arrayBuffer());
   if (originalBytes.length === 0) throw new Error(`${path} is empty`);
   if (originalBytes.length > MAX_STRUCTURE_FILE_SIZE) {
     throw new Error(`${path} is larger than the 75 MB preview limit`);
   }
-  const extension = fileExtension(path);
   const format = formatForExtension(extension);
   const title = fileTitle(path);
-  const text = decodeUtf8(originalBytes);
+  const text = await decodeStructureText(originalBytes, extension);
   const converted = convertedDataFromText(text, extension, title);
   if (converted && (format.externalOnly || shouldUseConvertedMolstarData(format, converted.bytes))) {
     return {
@@ -917,6 +919,7 @@ async function requestBrowserDevXyzrender(
 
 async function gridHtml(
   path: string,
+  documentId: string,
   records: GridRecord[],
   format: string,
   preferences: ViewerPreferences,
@@ -928,6 +931,8 @@ async function gridHtml(
     mode: "grid2d",
     format,
     renderer: "grid2d",
+    documentId,
+    sourcePath: path,
     label,
     byteCount,
     host: "browser-dev",
