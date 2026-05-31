@@ -39,6 +39,7 @@ const [
   pageKindTypes,
   fileKind,
   ketcherKind,
+  ketcherPage,
   launcherKind,
   settingsKind,
   welcome,
@@ -99,6 +100,7 @@ const [
   source('apps/desktop/src/components/editor-area/page-kinds/types.ts'),
   source('apps/desktop/src/components/editor-area/page-kinds/file.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/ketcher.tsx'),
+  source('apps/desktop/src/components/ketcher-page.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/launcher.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/settings.tsx'),
   source('apps/desktop/src/components/welcome/index.tsx'),
@@ -543,11 +545,20 @@ assert.match(launcherKind, /export const launcherKind = definePageKind/);
 assert.match(launcherKind, /<WelcomeScreen actions=\{actions\} \/>/);
 assert.match(ketcherKind, /export const ketcherKind = definePageKind/);
 assert.match(ketcherKind, /<KetcherPage state=\{state\} actions=\{actions\} isActive=\{isActive\} \/>/);
+assert.match(ketcherPage, /function normalizeKetcherImportText\(text: string\)/);
+assert.match(ketcherPage, /function looksLikeSdfRecord\(text: string\)/);
+assert.match(ketcherPage, /trimmed\.replace\(\/\\n\?\\\$\\\$\\\$\\\$\\s\*\$\/u, ""\)\.trimEnd\(\) \+ "\\n"/);
+assert.match(ketcherPage, /const importText = normalizeKetcherImportText\(text\)/);
+assert.match(ketcherPage, /await ketcher\.setMolecule\(importText, \{ needZoom: true \}\)/);
+assert.match(ketcherPage, /await ketcher\.addFragment\(importText, \{ needZoom: true \}\)/);
+assert.match(ketcherPage, /hasImportedStructure = true/);
 assert.match(app, /body\?\.type === "openInKetcher"/);
 assert.match(app, /const openKetcherWithFragment = useCallback/);
 assert.match(app, /textBase64/);
 assert.match(app, /openKetcherWithStructures = useCallback\(\(paths: string\[\], fragments: KetcherImportRequest\["fragments"\] = \[\]\)/);
 assert.match(structureDrag, /export function structureDragRecordsToFragments/);
+assert.match(structureDrag, /function structureDragRecordFragmentText/);
+assert.match(structureDrag, /replace\(\/\\n\?\\\$\\\$\\\$\\\$\\s\*\$\/u, ""\)/);
 assert.match(settingsKind, /export const settingsKind = definePageKind/);
 assert.match(settingsKind, /<SettingsPanel state=\{state\} actions=\{actions\} \/>/);
 assert.match(welcome, /export function WelcomeScreen/);
@@ -964,11 +975,15 @@ assert.match(previewViewer, /function normalizeMolstarStyle\(value\)/);
 assert.match(previewViewer, /function configuredMolstarStyle\(config\)/);
 assert.match(previewViewer, /if \(canvasBackground === 'auto'\) return resolveViewerTheme\(\) === 'light' \? 'white' : 'graphite';/);
 assert.match(previewViewer, /\.buret-external-artifact-card \{[^}]*--buret-card-fit-scale: 1;[^}]*transform: translate\(var\(--buret-card-x\), var\(--buret-card-y\)\) rotate\(var\(--buret-sheet-rotation\)\) scale\(var\(--buret-card-fit-scale\)\);/s);
-assert.match(previewViewer, /\.buret-external-artifact-inline \{[^}]*overflow: visible;/s);
+assert.match(previewViewer, /\.buret-external-artifact-inline \{[^}]*padding: 44px;[^}]*overflow: visible;/s);
 assert.match(previewViewer, /function updateExternalArtifactCardFit\(item\)/);
 assert.match(previewViewer, /availableWidth \/ rotatedWidth/);
 assert.match(previewViewer, /new ResizeObserver\(\(\) => \{\s*resetRotatableArtifactRotateRadius\(card\);\s*updateExternalArtifactCardFit\(card\);/);
 assert.match(previewViewer, /\.buret-external-artifact-card-background \{[^}]*border-radius: 8px;[^}]*box-shadow: 0 18px 54px rgba\(0,0,0,0\.28\);/);
+assert.match(previewViewer, /\.buret-xyzrender-rotate-hud \{[^}]*width: calc\(var\(--buret-rotate-radius\) \* 2 \+ 78px\);/);
+assert.match(previewViewer, /\.buret-xyzrender-sheet-rotate-handle \{[^}]*width: 48px;[^}]*height: 48px;/);
+assert.match(previewViewer, /\.buret-xyzrender-resize-n,\s*\.buret-xyzrender-resize-s \{[^}]*width: 68px;[^}]*height: 26px;/);
+assert.match(previewViewer, /\.buret-xyzrender-resize-ne,\s*\.buret-xyzrender-resize-nw,\s*\.buret-xyzrender-resize-se,\s*\.buret-xyzrender-resize-sw \{[^}]*width: 32px;[^}]*height: 32px;/);
 assert.match(previewViewer, /if \(region === 'left'\) layoutState\.left = layoutState\.left === 'full' \? 'hidden' : 'full'/);
 assert.match(previewViewer, /await plugin\.builders\.structure\.hierarchy\.applyPreset\(trajectory, 'default'\)/);
 assert.match(previewViewer, /await applyMolstarStyle\(viewer, configuredMolstarStyle\(activeConfig\)\)/);
@@ -1024,7 +1039,8 @@ assert.match(previewViewer, /type: 'openInKetcher'/);
 assert.match(previewViewer, /payload\.textBase64 = config\.ketcherSourceTextBase64\.trim\(\)/);
 assert.match(gridViewer, /function requestOpenInKetcher\(row, cfg\)/);
 assert.match(gridViewer, /\['ketcher', 'Open in Ketcher'\]/);
-assert.match(gridViewer, /textBase64: textToBase64\(record\.text\)/);
+assert.match(gridViewer, /textBase64: textToBase64\(ketcherFragmentText\(record\)\)/);
+assert.match(gridViewer, /function ketcherFragmentText\(record\)/);
 assert.match(previewViewer, /const inputDataBase64 = typeof config\.xyzrenderInputDataBase64 === 'string'/);
 assert.match(previewViewer, /inputDataBase64: inputDataBase64 \|\| undefined/);
 assert.match(previewViewer, /inputExtension: inputDataBase64 && inputExtension \? inputExtension : undefined/);
@@ -1062,13 +1078,14 @@ assert.match(previewViewer, /className = 'buret-docking-poses'/);
 assert.match(previewViewer, /document\.body\.classList\.add\('buret-docking-pose-controls-active'\)/);
 assert.match(previewViewer, /function installMolstarContextMenu\(viewer\)/);
 assert.match(previewViewer, /document\.addEventListener\('contextmenu', onContextMenu, true\)/);
+assert.match(previewViewer, /if \(!viewer \|\| !isMolstarContextMenuTarget\(event\.target\)\) \{\s*hideMolstarContextMenu\(\);\s*return;/);
 assert.match(previewViewer, /if \(event\.button === 2\) \{\s*openFromEvent\(event\);\s*return;/);
 assert.match(previewViewer, /function isMolstarContextMenuTarget\(target\)/);
 assert.match(previewViewer, /function molstarContextPickFromEvent\(event\)/);
 assert.doesNotMatch(previewViewer, /function molstarContextCanvasPixelLooksEmpty/);
 assert.doesNotMatch(previewViewer, /gl\.readPixels/);
-assert.match(previewViewer, /canvas3d\.setProps\(\{ pickPadding: 0 \}\)/);
-assert.match(previewViewer, /canvas3d\.setProps\(\{ pickPadding: previousPickPadding \}\)/);
+assert.doesNotMatch(previewViewer, /canvas3d\.setProps\(\{ pickPadding: 0 \}\)/);
+assert.doesNotMatch(previewViewer, /canvas3d\.setProps\(\{ pickPadding: previousPickPadding \}\)/);
 assert.match(previewViewer, /canvas3d\.identify\(\[event\.clientX - rect\.left, event\.clientY - rect\.top\]\)/);
 assert.match(previewViewer, /canvas3d\.getLoci\(picking\.id\)/);
 assert.match(previewViewer, /\.msp-plugin \.msp-viewport-host/);

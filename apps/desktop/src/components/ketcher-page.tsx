@@ -149,12 +149,23 @@ export function KetcherPage({
       : `${itemCount} structures`;
     try {
       setStatus("Adding " + label);
+      let hasImportedStructure = false;
+      const addStructure = async (text: string) => {
+        const importText = normalizeKetcherImportText(text);
+        if (!importText.trim()) return;
+        if (hasImportedStructure) {
+          await ketcher.addFragment(importText, { needZoom: true });
+          return;
+        }
+        await ketcher.setMolecule(importText, { needZoom: true });
+        hasImportedStructure = true;
+      };
       for (const path of cleanPaths) {
         const text = await readStructureText(path);
-        await ketcher.addFragment(text, { needZoom: true });
+        await addStructure(text);
       }
       for (const fragment of cleanFragments) {
-        await ketcher.addFragment(fragment.text, { needZoom: true });
+        await addStructure(fragment.text);
       }
       setOutput("");
       setStatus("Added " + label);
@@ -266,6 +277,18 @@ function molfileToSdf(molfile: string, smiles: string) {
     "$$$$",
     "",
   ].join("\n");
+}
+
+function normalizeKetcherImportText(text: string) {
+  const trimmed = text.trim();
+  if (looksLikeSdfRecord(trimmed)) {
+    return trimmed.replace(/\n?\$\$\$\$\s*$/u, "").trimEnd() + "\n";
+  }
+  return trimmed;
+}
+
+function looksLikeSdfRecord(text: string) {
+  return /\nM\s+END(?:\n|$)/u.test(text) && /\n?\$\$\$\$\s*$/u.test(text);
 }
 
 function fileName(path: string) {
