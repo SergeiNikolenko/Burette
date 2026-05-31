@@ -522,9 +522,18 @@
     post('openInKetcher', `[grid] Open ${label} in Ketcher.`, {
       title: record.path,
       extension: record.inputExtension,
-      textBase64: textToBase64(record.text),
+      textBase64: textToBase64(ketcherFragmentText(record)),
       documentId: cfg?.documentId || null
     });
+  }
+
+  function ketcherFragmentText(record) {
+    const text = String(record?.text || '').trim();
+    const extension = String(record?.inputExtension || '').toLowerCase();
+    if (extension === 'sdf' || extension === 'sd') {
+      return text.replace(/\n?\$\$\$\$\s*$/u, '').trimEnd() + '\n';
+    }
+    return text;
   }
 
   function normalizeRenderer(renderer) {
