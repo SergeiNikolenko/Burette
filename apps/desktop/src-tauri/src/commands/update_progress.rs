@@ -77,7 +77,7 @@ unsafe fn ensure_progress_window() -> NativeUpdateProgressWindow {
 #[cfg(target_os = "macos")]
 unsafe fn create_progress_window() -> NativeUpdateProgressWindow {
     use cocoa::appkit::{NSApp, NSBackingStoreType, NSWindow, NSWindowStyleMask};
-    use cocoa::base::{NO, YES, id, nil};
+    use cocoa::base::{id, nil, NO, YES};
     use cocoa::foundation::{NSPoint, NSRect, NSSize};
     use objc::{class, msg_send, sel, sel_impl};
     use std::os::raw::c_void;
@@ -155,7 +155,7 @@ unsafe fn update_progress_window(
     message: &str,
     progress: Option<f64>,
 ) {
-    use cocoa::base::{NO, YES, id, nil};
+    use cocoa::base::{id, nil, NO, YES};
     use objc::{msg_send, sel, sel_impl};
 
     let message_label = window.message_label as id;
@@ -176,7 +176,7 @@ unsafe fn update_progress_window(
 
 #[cfg(target_os = "macos")]
 unsafe fn hide_standard_button(window: cocoa::base::id, button: u64) {
-    use cocoa::base::{YES, id};
+    use cocoa::base::{id, YES};
     use objc::{msg_send, sel, sel_impl};
 
     let standard_button: id = msg_send![window, standardWindowButton: button];

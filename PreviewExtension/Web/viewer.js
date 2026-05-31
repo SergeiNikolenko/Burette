@@ -2523,7 +2523,7 @@
       .buret-external-artifact-stage { position: absolute; inset: 0; transform: translate(0px, 0px) scale(1); transform-origin: 50% 50%; will-change: transform; cursor: grab; }
       .buret-external-artifact-stage.dragging { cursor: grabbing; }
       .buret-external-artifact-root.sheet-drop-active::after { content: "Drop onto xyzrender sheet"; position: absolute; inset: 14px; z-index: 36; border: 2px solid color-mix(in srgb, var(--buret-accent, #b45cff) 72%, transparent); border-radius: 14px; background: color-mix(in srgb, var(--buret-accent, #b45cff) 12%, transparent); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); display: flex; align-items: center; justify-content: center; font: 700 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; pointer-events: none; }
-      .buret-external-artifact-inline { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box; overflow: visible; pointer-events: none; }
+      .buret-external-artifact-inline { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 44px; box-sizing: border-box; overflow: visible; pointer-events: none; }
       .buret-external-artifact-card { --buret-card-x: 0px; --buret-card-y: 0px; --buret-card-width: auto; --buret-card-height: auto; --buret-card-fit-scale: 1; --buret-sheet-rotation: 0deg; --buret-sheet-rotation-negative: 0deg; --buret-active-angle: 0deg; --buret-rotate-radius: 124px; --buret-rotate-lift: 42px; --buret-rotate-handle-scale: 1; position: relative; display: grid; max-width: 100%; max-height: 100%; transform: translate(var(--buret-card-x), var(--buret-card-y)) rotate(var(--buret-sheet-rotation)) scale(var(--buret-card-fit-scale)); transform-origin: 50% 50%; border-radius: 8px; outline: 0 solid transparent; pointer-events: auto; touch-action: none; cursor: grab; }
       .buret-external-artifact-card.resized { width: var(--buret-card-width); height: var(--buret-card-height); }
       .buret-external-artifact-card.dragging { cursor: grabbing; }
@@ -2549,19 +2549,19 @@
       .buret-xyzrender-sheet-item-background { position: absolute; inset: 0; z-index: 0; border-radius: 10px; background: #fff; pointer-events: none; }
       .buret-xyzrender-sheet-item-body { position: relative; z-index: 1; width: 100%; height: 100%; pointer-events: none; }
       .buret-xyzrender-sheet-item-body > svg { display: block; width: 100%; height: 100%; overflow: visible; }
-      .buret-xyzrender-rotate-hud { position: absolute; left: 50%; top: 50%; z-index: 7; width: calc(var(--buret-rotate-radius) * 2 + 58px); height: calc(var(--buret-rotate-radius) * 2 + 58px); transform: translate(-50%, -50%) rotate(var(--buret-sheet-rotation-negative)); transform-origin: 50% 50%; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
+      .buret-xyzrender-rotate-hud { position: absolute; left: 50%; top: 50%; z-index: 7; width: calc(var(--buret-rotate-radius) * 2 + 78px); height: calc(var(--buret-rotate-radius) * 2 + 78px); transform: translate(-50%, -50%) rotate(var(--buret-sheet-rotation-negative)); transform-origin: 50% 50%; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
       .buret-xyzrender-rotate-ring { position: absolute; inset: 29px; border: 1.25px dashed color-mix(in srgb, var(--buret-accent, #b45cff) 18%, rgba(160,173,214,0.24)); border-radius: 999px; }
       .buret-xyzrender-rotate-needle { position: absolute; left: 50%; top: 50%; width: 1px; height: var(--buret-rotate-radius); transform: translateX(-50%) rotate(var(--buret-active-angle)); transform-origin: 50% 0%; border-left: 1.5px dashed color-mix(in srgb, var(--buret-accent, #b45cff) 46%, transparent); }
       .buret-xyzrender-rotate-needle::after { content: ""; position: absolute; left: 50%; bottom: -7px; width: 15px; height: 15px; transform: translateX(-50%); border-radius: 999px; background: color-mix(in srgb, var(--buret-accent, #b45cff) 58%, var(--buret-toolbar-background, #111)); box-shadow: 0 6px 14px color-mix(in srgb, var(--buret-accent, #b45cff) 18%, transparent); }
       .buret-xyzrender-rotate-current { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(var(--buret-active-angle)) translateY(calc(-1 * (var(--buret-rotate-radius) + 18px))) rotate(calc(-1 * var(--buret-active-angle))); transform-origin: 50% 50%; color: var(--buret-toolbar-color, rgba(255,255,255,0.94)); }
-      .buret-xyzrender-rotate-current span { display: block; padding: 3px 8px; border-radius: 999px; background: color-mix(in srgb, var(--buret-toolbar-background, rgba(17,19,24,0.82)) 84%, transparent); border: 1px solid color-mix(in srgb, var(--buret-accent, #b45cff) 34%, var(--buret-toolbar-border, rgba(255,255,255,0.16))); font: 800 14px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; box-shadow: 0 8px 18px rgba(0,0,0,0.20); }
-      .buret-xyzrender-rotate-label { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(var(--buret-degree-angle)) translateY(calc(-1 * (var(--buret-rotate-radius) + 29px))) rotate(var(--buret-degree-counter-angle)); color: rgba(160,173,214,0.64); font: 700 13px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
+      .buret-xyzrender-rotate-current span { display: block; padding: 4px 10px; border-radius: 999px; background: color-mix(in srgb, var(--buret-toolbar-background, rgba(17,19,24,0.82)) 84%, transparent); border: 1px solid color-mix(in srgb, var(--buret-accent, #b45cff) 34%, var(--buret-toolbar-border, rgba(255,255,255,0.16))); font: 800 17px/1.15 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; box-shadow: 0 8px 18px rgba(0,0,0,0.20); }
+      .buret-xyzrender-rotate-label { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(var(--buret-degree-angle)) translateY(calc(-1 * (var(--buret-rotate-radius) + 34px))) rotate(var(--buret-degree-counter-angle)); color: rgba(160,173,214,0.64); font: 800 15px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
       .buret-xyzrender-rotate-label.active { color: color-mix(in srgb, var(--buret-accent, #b45cff) 70%, var(--buret-toolbar-color, #fff)); }
       .buret-xyzrender-rotate-tick { position: absolute; left: 50%; top: 50%; width: 1.25px; height: 10px; transform: translate(-50%, -50%) rotate(var(--buret-degree-angle)) translateY(calc(-1 * var(--buret-rotate-radius))); transform-origin: 50% 100%; background: rgba(125,142,183,0.25); border-radius: 999px; }
-      .buret-xyzrender-sheet-rotate-handle { position: absolute; left: 50%; top: 0; z-index: 12; width: 40px; height: 40px; transform: translate(-50%, calc(-1 * var(--buret-rotate-lift) - 50%)) scale(var(--buret-rotate-handle-scale)); border: 0; border-radius: 999px; cursor: grab; opacity: 0; pointer-events: auto; touch-action: none; transition: opacity 120ms ease, transform 120ms ease; }
+      .buret-xyzrender-sheet-rotate-handle { position: absolute; left: 50%; top: 0; z-index: 12; width: 48px; height: 48px; transform: translate(-50%, calc(-1 * var(--buret-rotate-lift) - 50%)) scale(var(--buret-rotate-handle-scale)); border: 0; border-radius: 999px; cursor: grab; opacity: 0; pointer-events: auto; touch-action: none; transition: opacity 120ms ease, transform 120ms ease; }
       .buret-xyzrender-sheet-rotate-handle::before { content: ""; position: absolute; left: 50%; top: 31px; width: 1.5px; height: max(16px, calc(var(--buret-rotate-lift) - 11px)); transform: translateX(-50%); background: color-mix(in srgb, var(--buret-accent, #b45cff) 34%, transparent); border-radius: 999px; }
-      .buret-xyzrender-rotate-handle-dot { position: absolute; left: 50%; top: 50%; width: 20px; height: 20px; transform: translate(-50%, -50%); border: 1.5px solid color-mix(in srgb, var(--buret-accent, #b45cff) 66%, var(--buret-toolbar-color, #fff)); border-radius: 999px; background: var(--buret-toolbar-background, rgba(12,13,14,0.92)); box-shadow: 0 8px 16px rgba(0,0,0,0.22); }
-      .buret-xyzrender-rotate-handle-degree { position: absolute; left: calc(100% + 4px); top: 50%; transform: translateY(-50%) rotate(var(--buret-sheet-rotation-negative)); transform-origin: 0 50%; padding: 3px 8px; border-radius: 999px; color: var(--buret-toolbar-color, #fff); background: color-mix(in srgb, var(--buret-accent, #b45cff) 36%, var(--buret-toolbar-background, #111)); font: 800 12px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; opacity: 0; white-space: nowrap; box-shadow: 0 6px 15px color-mix(in srgb, var(--buret-accent, #b45cff) 14%, transparent); }
+      .buret-xyzrender-rotate-handle-dot { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; transform: translate(-50%, -50%); border: 1.5px solid color-mix(in srgb, var(--buret-accent, #b45cff) 70%, var(--buret-toolbar-color, #fff)); border-radius: 999px; background: var(--buret-toolbar-background, rgba(12,13,14,0.92)); box-shadow: 0 8px 16px rgba(0,0,0,0.22); }
+      .buret-xyzrender-rotate-handle-degree { position: absolute; left: calc(100% + 4px); top: 50%; transform: translateY(-50%) rotate(var(--buret-sheet-rotation-negative)); transform-origin: 0 50%; padding: 4px 9px; border-radius: 999px; color: var(--buret-toolbar-color, #fff); background: color-mix(in srgb, var(--buret-accent, #b45cff) 36%, var(--buret-toolbar-background, #111)); font: 800 14px/1.15 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; opacity: 0; white-space: nowrap; box-shadow: 0 6px 15px color-mix(in srgb, var(--buret-accent, #b45cff) 14%, transparent); }
       .buret-xyzrender-resize-n:hover ~ .buret-xyzrender-sheet-rotate-handle,
       .buret-xyzrender-sheet-rotate-handle:hover,
       .buret-external-artifact-card.rotating .buret-xyzrender-sheet-rotate-handle,
@@ -2581,29 +2581,29 @@
       .buret-external-artifact-card.resizing .buret-xyzrender-resize-handle::after,
       .buret-xyzrender-sheet-item.resizing .buret-xyzrender-resize-handle::after { opacity: 1; transform: translate(-50%, -50%) scale(1); }
       .buret-xyzrender-resize-n,
-      .buret-xyzrender-resize-s { left: 50%; width: 56px; height: 22px; transform: translateX(-50%); cursor: ns-resize; }
+      .buret-xyzrender-resize-s { left: 50%; width: 68px; height: 26px; transform: translateX(-50%); cursor: ns-resize; }
       .buret-xyzrender-resize-n::after,
-      .buret-xyzrender-resize-s::after { width: 18px; height: 5px; }
-      .buret-xyzrender-resize-n { top: -11px; }
-      .buret-xyzrender-resize-s { bottom: -11px; }
+      .buret-xyzrender-resize-s::after { width: 26px; height: 6px; }
+      .buret-xyzrender-resize-n { top: -13px; }
+      .buret-xyzrender-resize-s { bottom: -13px; }
       .buret-xyzrender-resize-e,
-      .buret-xyzrender-resize-w { top: 50%; width: 22px; height: 56px; transform: translateY(-50%); cursor: ew-resize; }
+      .buret-xyzrender-resize-w { top: 50%; width: 26px; height: 68px; transform: translateY(-50%); cursor: ew-resize; }
       .buret-xyzrender-resize-e::after,
-      .buret-xyzrender-resize-w::after { width: 5px; height: 18px; }
-      .buret-xyzrender-resize-e { right: -11px; }
-      .buret-xyzrender-resize-w { left: -11px; }
+      .buret-xyzrender-resize-w::after { width: 6px; height: 26px; }
+      .buret-xyzrender-resize-e { right: -13px; }
+      .buret-xyzrender-resize-w { left: -13px; }
       .buret-xyzrender-resize-ne,
       .buret-xyzrender-resize-nw,
       .buret-xyzrender-resize-se,
-      .buret-xyzrender-resize-sw { width: 26px; height: 26px; }
+      .buret-xyzrender-resize-sw { width: 32px; height: 32px; }
       .buret-xyzrender-resize-ne::after,
       .buret-xyzrender-resize-nw::after,
       .buret-xyzrender-resize-se::after,
-      .buret-xyzrender-resize-sw::after { width: 8px; height: 8px; }
-      .buret-xyzrender-resize-ne { top: -13px; right: -13px; cursor: nesw-resize; }
-      .buret-xyzrender-resize-nw { top: -13px; left: -13px; cursor: nwse-resize; }
-      .buret-xyzrender-resize-se { bottom: -13px; right: -13px; cursor: nwse-resize; }
-      .buret-xyzrender-resize-sw { bottom: -13px; left: -13px; cursor: nesw-resize; }
+      .buret-xyzrender-resize-sw::after { width: 11px; height: 11px; }
+      .buret-xyzrender-resize-ne { top: -16px; right: -16px; cursor: nesw-resize; }
+      .buret-xyzrender-resize-nw { top: -16px; left: -16px; cursor: nwse-resize; }
+      .buret-xyzrender-resize-se { bottom: -16px; right: -16px; cursor: nwse-resize; }
+      .buret-xyzrender-resize-sw { bottom: -16px; left: -16px; cursor: nesw-resize; }
       .buret-xyzrender-sheet-item-label { position: absolute; left: 50%; bottom: -23px; transform: translateX(-50%); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 7px; border-radius: 999px; color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.84)); font: 10px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; opacity: 0; transition: opacity 120ms ease; }
       .buret-xyzrender-sheet-item.selected .buret-xyzrender-sheet-item-label { opacity: 1; }
       .buret-xyz-badge { position: absolute; left: 14px; bottom: 14px; z-index: 30; max-width: calc(100vw - 28px); box-sizing: border-box; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--buret-toolbar-border, rgba(255,255,255,0.12)); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.9)); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: 0 8px 22px rgba(0,0,0,0.20); font: 11px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; pointer-events: none; }
@@ -2922,7 +2922,7 @@
     if (!item) return;
     const rect = item.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
-    const offset = item.classList.contains('buret-external-artifact-card') ? 42 : 24;
+    const offset = item.classList.contains('buret-external-artifact-card') ? 26 : 24;
     const radius = Math.min(520, Math.max(48, rect.height / 2 + offset));
     item.style.setProperty('--buret-rotate-radius', `${radius.toFixed(1)}px`);
     item.style.setProperty('--buret-rotate-lift', `${Math.max(18, radius - rect.height / 2).toFixed(1)}px`);
@@ -4209,29 +4209,6 @@
     return target.closest('canvas') || target.closest('.msp-plugin')?.querySelector('canvas') || null;
   }
 
-  function molstarContextBackgroundRgb() {
-    const color = canvasBackgroundColor();
-    return [(color >> 16) & 255, (color >> 8) & 255, color & 255];
-  }
-
-  function molstarContextCanvasPixelLooksEmpty(canvas, clientX, clientY) {
-    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-    if (!gl || typeof gl.readPixels !== 'function') return false;
-    const rect = canvas.getBoundingClientRect();
-    const x = Math.min(Math.max(0, Math.floor((clientX - rect.left) * (canvas.width / rect.width))), canvas.width - 1);
-    const y = Math.min(Math.max(0, Math.floor((rect.bottom - clientY) * (canvas.height / rect.height))), canvas.height - 1);
-    const pixel = new Uint8Array(4);
-    try {
-      gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
-    } catch (_) {
-      return false;
-    }
-    if (pixel[3] <= 8) return true;
-    const background = molstarContextBackgroundRgb();
-    const distance = Math.abs(pixel[0] - background[0]) + Math.abs(pixel[1] - background[1]) + Math.abs(pixel[2] - background[2]);
-    return distance <= 18;
-  }
-
   function molstarContextPickFromEvent(event) {
     const canvas3d = activeViewer?.plugin?.canvas3d;
     if (!canvas3d || typeof canvas3d.identify !== 'function' || typeof canvas3d.getLoci !== 'function') return null;
@@ -4239,11 +4216,7 @@
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
     if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) return null;
-    if (molstarContextCanvasPixelLooksEmpty(canvas, event.clientX, event.clientY)) return null;
-    const previousPickPadding = Number.isFinite(Number(canvas3d.props?.pickPadding)) ? canvas3d.props.pickPadding : undefined;
-    const shouldRestorePickPadding = previousPickPadding !== undefined && previousPickPadding !== 0 && typeof canvas3d.setProps === 'function';
     try {
-      if (shouldRestorePickPadding) canvas3d.setProps({ pickPadding: 0 });
       const picking = canvas3d.identify([event.clientX - rect.left, event.clientY - rect.top]);
       const pick = picking?.id ? canvas3d.getLoci(picking.id) : null;
       if (!pick?.loci || molstarLociIsEmpty(pick.loci)) return null;
@@ -4251,8 +4224,6 @@
     } catch (error) {
       debug('Mol* context pick failed: ' + (error?.message || String(error)));
       return null;
-    } finally {
-      if (shouldRestorePickPadding) canvas3d.setProps({ pickPadding: previousPickPadding });
     }
   }
 
@@ -4771,7 +4742,10 @@
       molstarContextMenuCleanup = null;
     }
     const openFromEvent = (event) => {
-      if (!viewer || !isMolstarContextMenuTarget(event.target)) return;
+      if (!viewer || !isMolstarContextMenuTarget(event.target)) {
+        hideMolstarContextMenu();
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       const contextPick = molstarContextPickFromEvent(event);
