@@ -15,7 +15,7 @@ import {
 import ligandProLogo from "../assets/short-logo-ligandpro.svg";
 import { collectionExtension, collectionFamily } from "../lib/collection-documents";
 import { readStructureText } from "../lib/structure-text";
-import { hasStructureDrag, readStructureDrag } from "../lib/structure-drag";
+import { hasStructureDrag, readStructureDragPayload, structureDragRecordsToFragments } from "../lib/structure-drag";
 import type { KetcherEditorApi } from "./ketcher-editor";
 import { showNativeContextMenu } from "./native-context-menu";
 import type { KetcherSketchTarget, ShellActions, ShellViewState } from "./types";
@@ -191,9 +191,10 @@ export function KetcherPage({
     event.stopPropagation();
     actions.setStructureDragActive(false);
     setDropActive(false);
-    const paths = readStructureDrag(event.dataTransfer);
-    if (paths.length === 0) return;
-    void importStructures(paths);
+    const payload = readStructureDragPayload(event.dataTransfer);
+    const fragments = structureDragRecordsToFragments(payload.records);
+    if (payload.paths.length === 0 && fragments.length === 0) return;
+    void importStructures(payload.paths, fragments);
   }, [actions, importStructures]);
 
   return (
