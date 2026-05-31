@@ -441,12 +441,12 @@
       fastRect.setAttribute('fill', background);
     }
     const artifactRoot = document.querySelector('.buret-external-artifact-root');
-    const artifactRect = document.querySelector('.buret-external-artifact-card-body > svg > rect');
+    const artifactRect = document.querySelector('.buret-xyzrender-sheet-item-base .buret-xyzrender-sheet-item-body > svg > rect');
     const artifactBackgroundFill = resolveExternalArtifactBackgroundFill(artifactRect);
     if (artifactRoot) {
       artifactRoot.style.background = background;
     }
-    document.querySelectorAll('.buret-external-artifact-card-background, .buret-xyzrender-sheet-item-background').forEach(layer => {
+    document.querySelectorAll('.buret-xyzrender-sheet-item-background').forEach(layer => {
       layer.style.background = artifactBackgroundFill || '#fff';
     });
     if (artifactRect && artifactRect.getAttribute('width') === '100%' && artifactRect.getAttribute('height') === '100%') {
@@ -965,17 +965,17 @@
   }
 
   function updateBrowserDevXyzrenderArtifact(payload, requestedControls, requestedPreset) {
-    const inline = document.querySelector('.buret-external-artifact-inline');
+    const baseItem = document.querySelector('.buret-xyzrender-sheet-item-base');
     const object = document.querySelector('.buret-external-artifact-object');
     const label = (activeConfig || {}).label || 'xyzrender artifact';
-    if (inline) {
-      inline.outerHTML = externalArtifactCardHTML(payload.svg, label);
-      installExternalArtifactCardInteractions(document.querySelector('.buret-external-artifact-root'));
+    if (baseItem) {
+      baseItem.outerHTML = externalArtifactBaseItemHTML(payload.svg, label);
+      installExternalArtifactBaseItemInteractions(document.querySelector('.buret-external-artifact-root'));
     } else if (object) {
       const stage = object.closest('.buret-external-artifact-stage');
       if (stage) {
-        stage.innerHTML = `${externalArtifactCardHTML(payload.svg, label)}<div class="buret-xyzrender-sheet" aria-label="xyzrender sheet overlays"></div>`;
-        installExternalArtifactCardInteractions(document.querySelector('.buret-external-artifact-root'));
+        stage.innerHTML = externalArtifactSheetHTML(externalArtifactBaseItemHTML(payload.svg, label));
+        installExternalArtifactBaseItemInteractions(document.querySelector('.buret-external-artifact-root'));
       }
     } else {
       disposeActiveMolstarViewer();
@@ -984,7 +984,7 @@
       if (container) {
         container.innerHTML = `
           <div class="buret-external-artifact-root">
-            <div class="buret-external-artifact-stage">${externalArtifactCardHTML(payload.svg, label)}<div class="buret-xyzrender-sheet" aria-label="xyzrender sheet overlays"></div></div>
+            <div class="buret-external-artifact-stage">${externalArtifactSheetHTML(externalArtifactBaseItemHTML(payload.svg, label))}</div>
             <div class="buret-xyz-badge"><strong>External xyzrender</strong><span>SVG</span></div>
           </div>`;
         const root = container.querySelector('.buret-external-artifact-root');
@@ -2427,8 +2427,8 @@
     const preset = artifact.preset ? ` · ${escapeHTML(artifact.preset)}` : '';
     const elapsed = Number.isFinite(Number(artifact.elapsedMs)) ? ` · ${Number(artifact.elapsedMs)} ms` : '';
     const content = inlineSvg
-      ? `<div class="buret-external-artifact-stage">${externalArtifactCardHTML(inlineSvg, config.label || 'xyzrender artifact')}<div class="buret-xyzrender-sheet" aria-label="xyzrender sheet overlays"></div></div>`
-      : `<div class="buret-external-artifact-stage">${externalArtifactObjectHTML(artifact.path, config.label || 'xyzrender artifact')}<div class="buret-xyzrender-sheet" aria-label="xyzrender sheet overlays"></div></div>`;
+      ? `<div class="buret-external-artifact-stage">${externalArtifactSheetHTML(externalArtifactBaseItemHTML(inlineSvg, config.label || 'xyzrender artifact'))}</div>`
+      : `<div class="buret-external-artifact-stage">${externalArtifactSheetHTML(externalArtifactObjectHTML(artifact.path, config.label || 'xyzrender artifact'))}</div>`;
     container.innerHTML = `
       <div class="buret-external-artifact-root">
         ${content}
@@ -2459,16 +2459,18 @@
     return value;
   }
 
-  function externalArtifactCardHTML(content, label) {
+  function externalArtifactBaseItemHTML(content, label) {
     const safeLabel = escapeHTML(label || 'xyzrender artifact');
     return `
-      <div class="buret-external-artifact-inline" aria-label="${safeLabel}">
-        <div class="buret-external-artifact-card selected" role="button" tabindex="0" aria-label="${safeLabel}">
-          <div class="buret-external-artifact-card-background"></div>
-          <div class="buret-external-artifact-card-body">${content}</div>
-          ${rotatableArtifactControlsHTML()}
-        </div>
+      <div class="buret-xyzrender-sheet-item buret-xyzrender-sheet-item-base selected" role="button" tabindex="0" aria-label="${safeLabel}">
+        <div class="buret-xyzrender-sheet-item-background"></div>
+        <div class="buret-xyzrender-sheet-item-body">${content}</div>
+        ${rotatableArtifactControlsHTML()}
       </div>`;
+  }
+
+  function externalArtifactSheetHTML(content) {
+    return `<div class="buret-xyzrender-sheet" aria-label="xyzrender sheet overlays">${content}</div>`;
   }
 
   function rotatableArtifactControlsHTML() {
@@ -2498,7 +2500,7 @@
   }
 
   function externalArtifactObjectHTML(path, label) {
-    return externalArtifactCardHTML(
+    return externalArtifactBaseItemHTML(
       `<object class="buret-external-artifact-object" data="${safeRelativeArtifactPath(path)}" type="image/svg+xml" aria-label="${escapeHTML(label || 'xyzrender artifact')}"></object>`,
       label
     );
@@ -2523,23 +2525,10 @@
       .buret-external-artifact-stage { position: absolute; inset: 0; transform: translate(0px, 0px) scale(1); transform-origin: 50% 50%; will-change: transform; cursor: grab; }
       .buret-external-artifact-stage.dragging { cursor: grabbing; }
       .buret-external-artifact-root.sheet-drop-active::after { content: "Drop onto xyzrender sheet"; position: absolute; inset: 14px; z-index: 36; border: 2px solid color-mix(in srgb, var(--buret-accent, #b45cff) 72%, transparent); border-radius: 14px; background: color-mix(in srgb, var(--buret-accent, #b45cff) 12%, transparent); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); display: flex; align-items: center; justify-content: center; font: 700 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; pointer-events: none; }
-      .buret-external-artifact-inline { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 84px 64px 64px; box-sizing: border-box; overflow: visible; pointer-events: none; }
-      .buret-external-artifact-card { --buret-card-x: 0px; --buret-card-y: 0px; --buret-card-width: auto; --buret-card-height: auto; --buret-card-fit-scale: 1; --buret-sheet-rotation: 0deg; --buret-sheet-rotation-negative: 0deg; --buret-active-angle: 0deg; --buret-rotate-radius: 124px; --buret-rotate-lift: 26px; --buret-rotate-handle-scale: 1; position: relative; display: grid; max-width: 100%; max-height: 100%; transform: translate(var(--buret-card-x), var(--buret-card-y)) rotate(var(--buret-sheet-rotation)) scale(var(--buret-card-fit-scale)); transform-origin: 50% 50%; border-radius: 8px; outline: 0 solid transparent; pointer-events: auto; touch-action: none; cursor: grab; }
-      .buret-external-artifact-card.resized { width: var(--buret-card-width); height: var(--buret-card-height); }
-      .buret-external-artifact-card.dragging { cursor: grabbing; }
-      .buret-external-artifact-card.resizing { cursor: nwse-resize; }
-      .buret-external-artifact-card.selected { outline: 0 solid transparent; box-shadow: none; }
-      .buret-external-artifact-card:has(.buret-xyzrender-resize-handle:hover),
-      .buret-external-artifact-card.resizing { outline: 1.5px solid color-mix(in srgb, var(--buret-accent, #b45cff) 74%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--buret-accent, #b45cff) 18%, transparent); }
-      .buret-external-artifact-card-background { grid-area: 1 / 1; position: absolute; inset: 0; z-index: 0; border-radius: 8px; background: #fff; box-shadow: 0 18px 54px rgba(0,0,0,0.28); pointer-events: none; }
-      .buret-external-artifact-card-body { grid-area: 1 / 1; position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; max-width: 100%; max-height: 100%; pointer-events: none; }
-      .buret-external-artifact-card-body > svg { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; margin: auto; border-radius: 8px; }
-      .buret-external-artifact-card.resized .buret-external-artifact-card-body,
-      .buret-external-artifact-card.resized .buret-external-artifact-card-body > svg,
-      .buret-external-artifact-card.resized .buret-external-artifact-object { width: 100%; height: 100%; }
-      .buret-external-artifact-object { width: min(100vw - 48px, 1024px); height: min(100vh - 48px, 768px); max-width: 100%; max-height: 100%; border: 0; display: block; border-radius: 8px; }
       .buret-xyzrender-sheet { position: absolute; inset: 0; z-index: 14; pointer-events: none; }
       .buret-xyzrender-sheet-item { --buret-sheet-rotation: 0deg; --buret-sheet-rotation-negative: 0deg; --buret-active-angle: 0deg; --buret-rotate-radius: 76px; --buret-rotate-lift: 24px; --buret-rotate-handle-scale: 1; position: absolute; left: 50%; top: 50%; width: clamp(118px, 24vw, 280px); height: clamp(118px, 24vw, 280px); transform: translate(-50%, -50%) rotate(var(--buret-sheet-rotation)); transform-origin: 50% 50%; pointer-events: auto; touch-action: none; cursor: grab; border-radius: 10px; outline: 0 solid transparent; }
+      .buret-xyzrender-sheet-item:not(.buret-xyzrender-sheet-item-base) { z-index: 2; }
+      .buret-xyzrender-sheet-item-base { width: max(180px, min(calc(100vw - 128px), 1024px)); height: max(180px, min(calc(100vh - 148px), 768px)); border-radius: 8px; z-index: 1; }
       .buret-xyzrender-sheet-item.dragging { cursor: grabbing; }
       .buret-xyzrender-sheet-item.rotating { cursor: grabbing; }
       .buret-xyzrender-sheet-item.resizing { cursor: nwse-resize; }
@@ -2547,8 +2536,10 @@
       .buret-xyzrender-sheet-item:has(.buret-xyzrender-resize-handle:hover),
       .buret-xyzrender-sheet-item.resizing { outline: 1.5px solid color-mix(in srgb, var(--buret-accent, #b45cff) 74%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--buret-accent, #b45cff) 18%, transparent); }
       .buret-xyzrender-sheet-item-background { position: absolute; inset: 0; z-index: 0; border-radius: 10px; background: #fff; pointer-events: none; }
+      .buret-xyzrender-sheet-item-base .buret-xyzrender-sheet-item-background { border-radius: 8px; box-shadow: 0 18px 54px rgba(0,0,0,0.28); }
       .buret-xyzrender-sheet-item-body { position: relative; z-index: 1; width: 100%; height: 100%; pointer-events: none; }
-      .buret-xyzrender-sheet-item-body > svg { display: block; width: 100%; height: 100%; overflow: visible; }
+      .buret-xyzrender-sheet-item-body > svg,
+      .buret-external-artifact-object { display: block; width: 100%; height: 100%; overflow: visible; border: 0; border-radius: inherit; }
       .buret-xyzrender-rotate-hud { position: absolute; left: 50%; top: 50%; z-index: 7; width: calc(var(--buret-rotate-radius) * 2 + 78px); height: calc(var(--buret-rotate-radius) * 2 + 78px); transform: translate(-50%, -50%) rotate(var(--buret-sheet-rotation-negative)); transform-origin: 50% 50%; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
       .buret-xyzrender-rotate-ring { position: absolute; inset: 29px; border: 1.25px dashed color-mix(in srgb, var(--buret-accent, #b45cff) 18%, rgba(160,173,214,0.24)); border-radius: 999px; }
       .buret-xyzrender-rotate-needle { position: absolute; left: 50%; top: 50%; width: 1px; height: var(--buret-rotate-radius); transform: translateX(-50%) rotate(var(--buret-active-angle)); transform-origin: 50% 0%; border-left: 1.5px dashed color-mix(in srgb, var(--buret-accent, #b45cff) 46%, transparent); }
@@ -2564,21 +2555,15 @@
       .buret-xyzrender-rotate-handle-degree { position: absolute; left: calc(100% + 4px); top: 50%; transform: translateY(-50%) rotate(var(--buret-sheet-rotation-negative)); transform-origin: 0 50%; padding: 4px 9px; border-radius: 999px; color: var(--buret-toolbar-color, #fff); background: color-mix(in srgb, var(--buret-accent, #b45cff) 36%, var(--buret-toolbar-background, #111)); font: 800 14px/1.15 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; opacity: 0; white-space: nowrap; box-shadow: 0 6px 15px color-mix(in srgb, var(--buret-accent, #b45cff) 14%, transparent); }
       .buret-xyzrender-resize-n:hover ~ .buret-xyzrender-sheet-rotate-handle,
       .buret-xyzrender-sheet-rotate-handle:hover,
-      .buret-external-artifact-card.rotating .buret-xyzrender-sheet-rotate-handle,
       .buret-xyzrender-sheet-item.rotating .buret-xyzrender-sheet-rotate-handle { opacity: 1; }
-      .buret-external-artifact-card.rotating .buret-xyzrender-rotate-hud,
       .buret-xyzrender-sheet-item.rotating .buret-xyzrender-rotate-hud { opacity: 1; }
       .buret-xyzrender-sheet-rotate-handle:hover,
-      .buret-external-artifact-card.rotating .buret-xyzrender-sheet-rotate-handle,
       .buret-xyzrender-sheet-item.rotating .buret-xyzrender-sheet-rotate-handle { --buret-rotate-handle-scale: 1.1; }
-      .buret-external-artifact-card.rotating .buret-xyzrender-sheet-rotate-handle,
       .buret-xyzrender-sheet-item.rotating .buret-xyzrender-sheet-rotate-handle { transition: none; }
-      .buret-external-artifact-card.rotating .buret-xyzrender-rotate-handle-degree,
       .buret-xyzrender-sheet-item.rotating .buret-xyzrender-rotate-handle-degree { opacity: 1; }
       .buret-xyzrender-resize-handle { position: absolute; z-index: 11; pointer-events: auto; touch-action: none; border-radius: 999px; background: transparent; }
       .buret-xyzrender-resize-handle::after { content: ""; position: absolute; left: 50%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(0.92); border-radius: 999px; background: color-mix(in srgb, var(--buret-accent, #b45cff) 86%, var(--buret-toolbar-color, #fff)); box-shadow: 0 0 0 1px rgba(13,14,16,0.72), 0 4px 12px color-mix(in srgb, var(--buret-accent, #b45cff) 24%, transparent); transition: opacity 100ms ease, transform 100ms ease; }
       .buret-xyzrender-resize-handle:hover::after,
-      .buret-external-artifact-card.resizing .buret-xyzrender-resize-handle::after,
       .buret-xyzrender-sheet-item.resizing .buret-xyzrender-resize-handle::after { opacity: 1; transform: translate(-50%, -50%) scale(1); }
       .buret-xyzrender-resize-n,
       .buret-xyzrender-resize-s { left: 50%; width: 68px; height: 26px; transform: translateX(-50%); cursor: ns-resize; }
@@ -2881,10 +2866,7 @@
     item.innerHTML = `<div class="buret-xyzrender-sheet-item-background"></div><div class="buret-xyzrender-sheet-item-body">${svg}</div>${rotatableArtifactControlsHTML()}<div class="buret-xyzrender-sheet-item-label">${escapeHTML(path.split('/').pop() || path)}</div>`;
     sheet.appendChild(item);
     selectRotatableArtifact(item);
-    installXyzrenderSheetItemDrag(item, getStageScale);
-    installXyzrenderSheetItemRotation(item);
-    installRotatableArtifactResize(item, getStageScale);
-    installRotatableArtifactKeyboard(item, { removable: true });
+    installXyzrenderSheetItemInteractions(item, getStageScale, { removable: true });
   }
 
   function setSheetItemRotation(item, rotation) {
@@ -2893,7 +2875,6 @@
     item.style.setProperty('--buret-sheet-rotation', `${normalized}deg`);
     item.style.setProperty('--buret-sheet-rotation-negative', `${-normalized}deg`);
     updateRotatableArtifactDegree(item, normalized);
-    updateExternalArtifactCardFit(item);
   }
 
   function normalizedDisplayRotation(rotation) {
@@ -2922,8 +2903,7 @@
     if (!item) return;
     const rect = item.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
-    const offset = item.classList.contains('buret-external-artifact-card') ? 26 : 24;
-    const radius = Math.min(520, Math.max(48, rect.height / 2 + offset));
+    const radius = Math.min(520, Math.max(48, rect.height / 2 + 24));
     item.style.setProperty('--buret-rotate-radius', `${radius.toFixed(1)}px`);
     item.style.setProperty('--buret-rotate-lift', `${Math.max(18, radius - rect.height / 2).toFixed(1)}px`);
   }
@@ -2943,37 +2923,16 @@
     item.style.setProperty('--buret-rotate-lift', `${Math.max(18, nextRadius - rect.height / 2).toFixed(1)}px`);
   }
 
-  function updateExternalArtifactCardFit(item) {
-    if (!item?.classList?.contains('buret-external-artifact-card')) return;
-    const container = item.closest('.buret-external-artifact-inline');
-    if (!container) return;
-    item.style.setProperty('--buret-card-fit-scale', '1');
-    const containerRect = container.getBoundingClientRect();
-    const style = window.getComputedStyle(container);
-    const availableWidth = containerRect.width - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);
-    const availableHeight = containerRect.height - (parseFloat(style.paddingTop) || 0) - (parseFloat(style.paddingBottom) || 0);
-    const rotation = ((parseFloat(item.dataset.rotation || '0') || 0) * Math.PI) / 180;
-    const cos = Math.abs(Math.cos(rotation));
-    const sin = Math.abs(Math.sin(rotation));
-    const cardWidth = item.offsetWidth || item.getBoundingClientRect().width;
-    const cardHeight = item.offsetHeight || item.getBoundingClientRect().height;
-    const rotatedWidth = cardWidth * cos + cardHeight * sin;
-    const rotatedHeight = cardWidth * sin + cardHeight * cos;
-    if (availableWidth <= 0 || availableHeight <= 0 || rotatedWidth <= 0 || rotatedHeight <= 0) return;
-    const fitScale = Math.min(1, availableWidth / rotatedWidth, availableHeight / rotatedHeight);
-    item.style.setProperty('--buret-card-fit-scale', String(Math.max(0.1, fitScale)));
-  }
-
   function selectRotatableArtifact(item) {
     const root = item?.closest?.('.buret-external-artifact-root') || document;
-    root.querySelectorAll('.buret-xyzrender-sheet-item.selected, .buret-external-artifact-card.selected').forEach(existing => {
+    root.querySelectorAll('.buret-xyzrender-sheet-item.selected').forEach(existing => {
       if (existing !== item) existing.classList.remove('selected');
     });
     item.classList.add('selected');
   }
 
   function clearRotatableArtifactSelection(root = document) {
-    root.querySelectorAll('.buret-xyzrender-sheet-item.selected, .buret-external-artifact-card.selected').forEach(existing => {
+    root.querySelectorAll('.buret-xyzrender-sheet-item.selected').forEach(existing => {
       existing.classList.remove('selected');
       existing.classList.remove('rotating', 'resizing', 'dragging');
     });
@@ -2984,7 +2943,7 @@
     root.dataset.buretSelectionClearInstalled = 'true';
     root.addEventListener('pointerdown', event => {
       if (event.button !== 0) return;
-      if (event.target?.closest?.('.buret-external-artifact-card, .buret-xyzrender-sheet-item, #buret-toolbar, .buret-xyzrender-popover, .buret-xyz-badge')) return;
+      if (event.target?.closest?.('.buret-xyzrender-sheet-item, #buret-toolbar, .buret-xyzrender-popover, .buret-xyz-badge')) return;
       clearRotatableArtifactSelection(root);
     });
   }
@@ -3043,17 +3002,7 @@
     let startHeight = 0;
     let startLeft = 0;
     let startTop = 0;
-    let startTranslateX = 0;
-    let startTranslateY = 0;
     let startRotation = 0;
-
-    const setExternalCardSize = (width, height) => {
-      item.classList.add('resized');
-      item.style.setProperty('--buret-card-width', `${width.toFixed(2)}px`);
-      item.style.setProperty('--buret-card-height', `${height.toFixed(2)}px`);
-      item.style.width = `${width.toFixed(2)}px`;
-      item.style.height = `${height.toFixed(2)}px`;
-    };
 
     const setSheetItemSize = (width, height) => {
       item.style.width = `${width.toFixed(2)}px`;
@@ -3061,17 +3010,8 @@
     };
 
     const setCenterOffset = (dx, dy) => {
-      if (item.classList.contains('buret-external-artifact-card')) {
-        const nextX = startTranslateX + dx;
-        const nextY = startTranslateY + dy;
-        item.dataset.translateX = String(nextX);
-        item.dataset.translateY = String(nextY);
-        item.style.setProperty('--buret-card-x', `${nextX.toFixed(2)}px`);
-        item.style.setProperty('--buret-card-y', `${nextY.toFixed(2)}px`);
-      } else {
-        item.style.left = `${(startLeft + dx).toFixed(2)}px`;
-        item.style.top = `${(startTop + dy).toFixed(2)}px`;
-      }
+      item.style.left = `${(startLeft + dx).toFixed(2)}px`;
+      item.style.top = `${(startTop + dy).toFixed(2)}px`;
     };
 
     const onPointerDown = event => {
@@ -3089,8 +3029,6 @@
       startHeight = parseFloat(item.style.height || '') || item.offsetHeight || item.getBoundingClientRect().height;
       startLeft = parseFloat(item.style.left || '0') || 0;
       startTop = parseFloat(item.style.top || '0') || 0;
-      startTranslateX = parseFloat(item.dataset.translateX || '0') || 0;
-      startTranslateY = parseFloat(item.dataset.translateY || '0') || 0;
       startRotation = ((parseFloat(item.dataset.rotation || '0') || 0) * Math.PI) / 180;
       item.classList.add('resizing');
       try { handle.setPointerCapture(event.pointerId); } catch (_) {}
@@ -3124,13 +3062,8 @@
 
       const center = screenDeltaFromLocal(centerLocalX, centerLocalY, startRotation);
       setCenterOffset(center.x, center.y);
-      if (item.classList.contains('buret-external-artifact-card')) {
-        setExternalCardSize(nextWidth, nextHeight);
-      } else {
-        setSheetItemSize(nextWidth, nextHeight);
-      }
+      setSheetItemSize(nextWidth, nextHeight);
       resetRotatableArtifactRotateRadius(item);
-      updateExternalArtifactCardFit(item);
     };
 
     const finish = event => {
@@ -3146,74 +3079,32 @@
     item.addEventListener('pointercancel', finish);
   }
 
-  function installExternalArtifactCardInteractions(root, getStageScale) {
+  function installExternalArtifactBaseItemInteractions(root, getStageScale) {
     if (!root) return;
     installRotatableArtifactSelectionClear(root);
-    root.querySelectorAll('.buret-external-artifact-card').forEach(card => {
-      if (card.dataset.buretRotatableInstalled === 'true') return;
-      card.dataset.buretRotatableInstalled = 'true';
-      card.addEventListener('click', event => {
-        event.stopPropagation();
-        selectRotatableArtifact(card);
-        try { card.focus({ preventScroll: true }); } catch (_) {}
-      });
-      installExternalArtifactCardDrag(card);
-      installXyzrenderSheetItemRotation(card);
-      installRotatableArtifactResize(card, getStageScale);
-      installRotatableArtifactKeyboard(card, { removable: false });
-      updateRotatableArtifactDegree(card, parseFloat(card.dataset.rotation || '0') || 0);
-      resetRotatableArtifactRotateRadius(card);
-      updateExternalArtifactCardFit(card);
-      if (typeof ResizeObserver === 'function') {
-        const observer = new ResizeObserver(() => {
-          resetRotatableArtifactRotateRadius(card);
-          updateExternalArtifactCardFit(card);
-        });
-        const container = card.closest('.buret-external-artifact-inline');
-        if (container) observer.observe(container);
-      }
+    root.querySelectorAll('.buret-xyzrender-sheet-item-base').forEach(item => {
+      installXyzrenderSheetItemInteractions(item, getStageScale, { removable: false });
     });
   }
 
-  function installExternalArtifactCardDrag(card) {
-    let pointerId = null;
-    let startX = 0;
-    let startY = 0;
-    let startTranslateX = 0;
-    let startTranslateY = 0;
-    const onPointerDown = event => {
-      if (event.target?.closest?.('.buret-xyzrender-sheet-rotate-handle, [data-buret-resize-handle]')) return;
-      event.preventDefault();
+  function installXyzrenderSheetItemInteractions(item, getStageScale, options = {}) {
+    if (!item || item.dataset.buretRotatableInstalled === 'true') return;
+    item.dataset.buretRotatableInstalled = 'true';
+    item.addEventListener('click', event => {
       event.stopPropagation();
-      selectRotatableArtifact(card);
-      try { card.focus({ preventScroll: true }); } catch (_) {}
-      pointerId = event.pointerId;
-      startX = event.clientX;
-      startY = event.clientY;
-      startTranslateX = parseFloat(card.dataset.translateX || '0') || 0;
-      startTranslateY = parseFloat(card.dataset.translateY || '0') || 0;
-      card.classList.add('dragging');
-      try { card.setPointerCapture(event.pointerId); } catch (_) {}
-    };
-    const onPointerMove = event => {
-      if (pointerId !== event.pointerId) return;
-      const nextX = startTranslateX + event.clientX - startX;
-      const nextY = startTranslateY + event.clientY - startY;
-      card.dataset.translateX = String(nextX);
-      card.dataset.translateY = String(nextY);
-      card.style.setProperty('--buret-card-x', `${nextX.toFixed(2)}px`);
-      card.style.setProperty('--buret-card-y', `${nextY.toFixed(2)}px`);
-    };
-    const finish = event => {
-      if (pointerId !== event.pointerId) return;
-      pointerId = null;
-      card.classList.remove('dragging');
-      try { card.releasePointerCapture(event.pointerId); } catch (_) {}
-    };
-    card.addEventListener('pointerdown', onPointerDown);
-    card.addEventListener('pointermove', onPointerMove);
-    card.addEventListener('pointerup', finish);
-    card.addEventListener('pointercancel', finish);
+      selectRotatableArtifact(item);
+      try { item.focus({ preventScroll: true }); } catch (_) {}
+    });
+    installXyzrenderSheetItemDrag(item, getStageScale);
+    installXyzrenderSheetItemRotation(item);
+    installRotatableArtifactResize(item, getStageScale);
+    installRotatableArtifactKeyboard(item, options);
+    updateRotatableArtifactDegree(item, parseFloat(item.dataset.rotation || '0') || 0);
+    resetRotatableArtifactRotateRadius(item);
+    if (typeof ResizeObserver === 'function') {
+      const observer = new ResizeObserver(() => resetRotatableArtifactRotateRadius(item));
+      observer.observe(item);
+    }
   }
 
   function installXyzrenderSheetItemDrag(item, getStageScale) {
@@ -3432,7 +3323,7 @@
         y: (Number(clientY) - rect.top - translateY) / scale
       };
     };
-    installExternalArtifactCardInteractions(root, () => scale);
+    installExternalArtifactBaseItemInteractions(root, () => scale);
     const sheetCleanup = installExternalArtifactSheet(root, stage, toStagePoint, () => scale);
 
     root.addEventListener('wheel', onWheel, { passive: false });
