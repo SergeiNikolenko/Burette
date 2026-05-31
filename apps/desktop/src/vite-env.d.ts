@@ -7,3 +7,8 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+declare module "raphael" {
+  const raphael: unknown;
+  export default raphael;
+}

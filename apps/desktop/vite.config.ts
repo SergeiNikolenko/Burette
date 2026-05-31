@@ -5,7 +5,7 @@ import { delimiter, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 
 const desktopRoot = fileURLToPath(new URL(".", import.meta.url));
@@ -509,9 +509,25 @@ function normalizeOrientationRef(value: string | null) {
   return normalized.endsWith("\n") ? normalized : `${normalized}\n`;
 }
 
+function ketcherRaphaelRequireShimPlugin(): Plugin {
+  const target = 'require("raphael")';
+  const replacement = 'globalThis.__burreteRequire("raphael")';
+
+  return {
+    name: "burrete-ketcher-raphael-require-shim",
+    enforce: "post",
+    renderChunk(code, chunk) {
+      void chunk;
+      if (!code.includes(target)) return null;
+      return { code: code.replaceAll(target, replacement), map: null };
+    },
+  };
+}
+
 export default defineConfig({
   root: desktopRoot,
-  plugins: [react(), browserDevXyzrenderPlugin()],
+  base: "./",
+  plugins: [react(), ketcherRaphaelRequireShimPlugin(), browserDevXyzrenderPlugin()],
   resolve: {
     dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
   },

@@ -10,6 +10,9 @@ use tauri::{Manager, RunEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "macos")]
+    disable_macos_state_restoration();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             let paths = startup::file_args_from_argv(argv, Some(PathBuf::from(cwd)));
@@ -85,4 +88,32 @@ pub fn run() {
                 startup::emit_open_documents(app, paths);
             }
         });
+}
+
+#[cfg(target_os = "macos")]
+fn disable_macos_state_restoration() {
+    use cocoa::base::{id, NO, YES};
+    use objc::{class, msg_send, sel, sel_impl};
+    use std::ffi::CString;
+
+    unsafe fn nsstring(value: &str) -> Option<id> {
+        use objc::{class, msg_send, sel, sel_impl};
+        let c_value = CString::new(value).ok()?;
+        let string: id = msg_send![class!(NSString), alloc];
+        let string: id = msg_send![string, initWithUTF8String: c_value.as_ptr()];
+        Some(msg_send![string, autorelease])
+    }
+
+    unsafe {
+        let defaults: id = msg_send![class!(NSUserDefaults), standardUserDefaults];
+        let Some(ignore_state_key) = nsstring("ApplePersistenceIgnoreState") else {
+            return;
+        };
+        let Some(keep_windows_key) = nsstring("NSQuitAlwaysKeepsWindows") else {
+            return;
+        };
+        let _: () = msg_send![defaults, setBool: YES forKey: ignore_state_key];
+        let _: () = msg_send![defaults, setBool: NO forKey: keep_windows_key];
+        let _: () = msg_send![defaults, synchronize];
+    }
 }
