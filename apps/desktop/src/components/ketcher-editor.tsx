@@ -4,7 +4,7 @@ import type { Ketcher } from "ketcher-core";
 import { StandaloneStructServiceProvider } from "ketcher-standalone";
 import "ketcher-react/dist/index.css";
 
-export type KetcherEditorApi = Pick<Ketcher, "addFragment" | "getMolfile" | "getSmiles">;
+export type KetcherEditorApi = Pick<Ketcher, "addFragment" | "getMolfile" | "getSmiles" | "setMolecule">;
 
 export function KetcherEditor({
   onReady,

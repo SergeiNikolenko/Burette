@@ -63,9 +63,17 @@ export function structureDragRecordsToFragments(records: StructureDragRecord[]) 
   return records
     .map((record) => ({
       title: record.path.trim() || `structure.${record.inputExtension}`,
-      text: record.text,
+      text: structureDragRecordFragmentText(record),
     }))
     .filter((fragment) => fragment.text.trim().length > 0);
+}
+
+function structureDragRecordFragmentText(record: StructureDragRecord) {
+  const text = record.text.trim();
+  if (record.inputExtension === "sdf" || record.inputExtension === "sd") {
+    return text.replace(/\n?\$\$\$\$\s*$/u, "").trimEnd() + "\n";
+  }
+  return text;
 }
 
 function normalizeStructureDragRecord(record: unknown): StructureDragRecord | null {
