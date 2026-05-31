@@ -348,8 +348,8 @@ fn parse_maestro_pdb_atoms(lines: &[&str], atom_limit: usize) -> Option<Vec<Maes
             .or_else(|| maestro_optional_header_index(&headers, "s_m_pdb_element"));
         let atom_name_index = maestro_optional_header_index(&headers, "s_m_atom_name")
             .or_else(|| maestro_optional_header_index(&headers, "s_m_pdb_atom_name"));
-        let pdb_atom_name_index = maestro_optional_header_index(&headers, "s_m_pdb_atom_name")
-            .or(atom_name_index);
+        let pdb_atom_name_index =
+            maestro_optional_header_index(&headers, "s_m_pdb_atom_name").or(atom_name_index);
         let residue_name_index = maestro_optional_header_index(&headers, "s_m_pdb_residue_name")
             .or_else(|| maestro_optional_header_index(&headers, "s_m_mmod_res"));
         let residue_number_index = maestro_optional_header_index(&headers, "i_m_residue_number");
@@ -1011,7 +1011,7 @@ const ATOMIC_SYMBOLS: [&str; 86] = [
 #[cfg(test)]
 mod tests {
     use super::{converted_data_from_text, xyz_data_from_text};
-    use flate2::{Compression, write::GzEncoder};
+    use flate2::{write::GzEncoder, Compression};
     use std::io::Write;
 
     #[test]

@@ -11,6 +11,7 @@ bun run check:release
 bun run check:js
 bun run check:vendor-assets
 bun run check:formats
+bun run check:rust
 bun run test:agent
 bun run test:update
 bun run test:ui
