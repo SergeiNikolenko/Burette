@@ -520,8 +520,12 @@
   }
 
   function requestSdfPoseDocument(cfg) {
+    const sourcePath = String(cfg?.sourcePath || '').trim();
+    const receptorPath = String(cfg?.dockingReceptorPath || '').trim();
     post('openSdfPoseDocument', '[grid] Open SDF poses in Mol*.', {
-      documentId: cfg?.documentId || null
+      documentId: cfg?.documentId || null,
+      path: sourcePath || null,
+      receptorPath: receptorPath || null
     });
   }
 

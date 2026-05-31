@@ -4640,6 +4640,7 @@
         setStatus(handled ? `[web] Focused ${targetLabel} in Mol*.` : `[web] ${targetLabel} is already open in Mol*.`);
       } else if (action === 'separate-window') {
         const contextDocument = molstarContextDocumentPayload(target);
+        if (!contextDocument) throw new Error('No molecule-level Mol* context is available for this target.');
         const posted = postHostMessage({
           type: 'openMolstarContextDocument',
           renderer: 'molstar',
