@@ -385,7 +385,7 @@ export const useMoleculeStore = create<MoleculeState>()(
       partialize: (state) => shouldIgnorePersistedSession()
         ? devFilesPersistedSession(state.recentStructures)
         : ({
-            documents: persistedDocuments(state.documents),
+            documents: [],
             tabs: persistedTabs(state.tabs, state.documents),
             activeTabId: state.activeTabId,
             recentStructures: state.recentStructures,
@@ -398,7 +398,7 @@ export const useMoleculeStore = create<MoleculeState>()(
             recentStructures: stored?.recentStructures ?? current.recentStructures,
           };
         }
-        const documents = stored?.documents ?? current.documents;
+        const documents = current.documents;
         const tabs = dedupeTabIds(ensureTabs((stored?.tabs ?? current.tabs).map(cloneTab)));
         const activeTabId = activeTabIdOrFirst(tabs, stored?.activeTabId ?? current.activeTabId);
         return {

@@ -18,6 +18,7 @@
   const STRUCTURE_DRAG_MIME = 'application/x-burrete-structure-paths';
   const state = {
     rdkit: null,
+    rdkitError: '',
     all: Array.isArray(window.BurreteGridRecords) ? window.BurreteGridRecords : [],
     rows: [],
     totalRows: 0,
@@ -55,7 +56,8 @@
     railCloseTimer: null,
     railHoverIndex: null,
     railDragging: false,
-    pendingGridScrollIndex: null
+    pendingGridScrollIndex: null,
+    pendingGridRailPosition: null
   };
 
   function post(type, message, payload = {}) {
@@ -849,6 +851,7 @@
         if (state.renderedCount % 16 === 0) await new Promise(resolve => setTimeout(resolve, 0));
       }
       updateChrome(cfg);
+      scrollPendingGridRow();
       post('ready', 'ready');
       if (status && !window.BurreteDebug) status.classList.add('hidden');
     } finally {
@@ -917,14 +920,16 @@
     if (!rail || !ticks || !popover) return;
     rail.addEventListener('focusin', () => setGridRailOpen(true));
     ticks.addEventListener('click', event => {
-      const target = event.target instanceof Element ? event.target.closest('[data-buret-grid-rail-index]') : null;
+      const target = event.target instanceof Element ? event.target.closest('[data-buret-grid-rail-position], [data-buret-grid-rail-index]') : null;
       if (!target) {
         setGridRailOpen(true);
         return;
       }
+      const position = Number(target.getAttribute('data-buret-grid-rail-position'));
       const index = Number(target.getAttribute('data-buret-grid-rail-index'));
       setGridRailOpen(true);
-      scrollToGridRow(index, cfg);
+      if (Number.isFinite(position)) scrollToGridPosition(position, cfg);
+      else scrollToGridRow(index, cfg);
     });
     if (state.railOutsideHandler) {
       document.removeEventListener('click', state.railOutsideHandler, true);
@@ -1002,16 +1007,17 @@
     const popover = root.querySelector('[data-buret-grid-rail-popover]');
     if (!rail || !ticks || !popover) return;
     const rows = state.rows || [];
-    rail.hidden = rows.length < 2;
+    rail.hidden = gridRailTotalRows() < 2;
     if (rail.hidden) return;
     const wasOpen = popover.dataset.state === 'open';
     const list = popover.querySelector('.buret-grid-rail-popover-list');
     const listScrollTop = wasOpen && list ? list.scrollTop : 0;
     const railRows = gridRailRows(rows);
-    ticks.innerHTML = railRows.map(({ row, active }) => {
-      const index = Number(row.index);
-      const title = escapeAttr(row.name || `Molecule ${index + 1}`);
-      return `<button type="button" class="buret-grid-rail-tick${active ? ' is-active' : ''}" data-buret-grid-rail-index="${index}" title="${title}" aria-label="${title}"></button>`;
+    ticks.innerHTML = railRows.map(({ row, position, active }) => {
+      const index = row ? Number(row.index) : null;
+      const title = escapeAttr(row?.name || `Molecule ${position + 1}`);
+      const indexAttr = Number.isFinite(index) ? ` data-buret-grid-rail-index="${index}"` : '';
+      return `<button type="button" class="buret-grid-rail-tick${active ? ' is-active' : ''}" data-buret-grid-rail-position="${position}"${indexAttr} title="${title}" aria-label="${title}"></button>`;
     }).join('');
     popover.innerHTML = `
       <div class="buret-grid-rail-popover-title">Molecules</div>
@@ -1031,12 +1037,22 @@
   }
 
   function gridRailRows(rows) {
+    const total = gridRailTotalRows();
     const limit = 96;
-    if (rows.length <= limit) return rows.map(row => ({ row, active: false }));
-    const step = rows.length / limit;
+    if (total <= limit) {
+      return Array.from({ length: total }, (_, position) => ({ row: rows[position] || null, position, active: false }));
+    }
+    const step = total / limit;
     const sampled = [];
-    for (let i = 0; i < limit; i++) sampled.push({ row: rows[Math.floor(i * step)], active: false });
+    for (let i = 0; i < limit; i++) {
+      const position = Math.min(total - 1, Math.floor(i * step));
+      sampled.push({ row: rows[position] || null, position, active: false });
+    }
     return sampled;
+  }
+
+  function gridRailTotalRows() {
+    return state.remoteMode ? Math.max(state.totalRows, state.rows.length) : state.rows.length;
   }
 
   function updateGridRailActive() {
@@ -1059,7 +1075,8 @@
     const marker = root.querySelector('[data-buret-grid-rail-active]');
     const ticks = root.querySelector('[data-buret-grid-rail-ticks]');
     const rows = state.rows || [];
-    if (!marker || !ticks || rows.length < 2 || !Number.isFinite(activeIndex)) {
+    const total = gridRailTotalRows();
+    if (!marker || !ticks || total < 2 || !Number.isFinite(activeIndex)) {
       if (marker) marker.hidden = true;
       return;
     }
@@ -1071,7 +1088,7 @@
     }
     const ticksRect = ticks.getBoundingClientRect();
     const height = ticksRect.height || Math.min(window.innerHeight * 0.58, 420);
-    const progress = rowPosition / Math.max(1, rows.length - 1);
+    const progress = rowPosition / Math.max(1, total - 1);
     const offset = (progress - 0.5) * height;
     marker.hidden = false;
     marker.style.setProperty('--buret-grid-rail-active-offset', `${offset.toFixed(2)}px`);
@@ -1110,6 +1127,58 @@
     state.pendingGridScrollIndex = null;
   }
 
+  async function scrollToGridPosition(position, cfg) {
+    if (!Number.isFinite(position)) return;
+    const total = gridRailTotalRows();
+    const target = Math.max(0, Math.min(total - 1, Math.round(position)));
+    if (state.remoteMode && target >= state.rows.length) {
+      await loadRemoteRowsThrough(target, cfg);
+    }
+    const row = state.rows[target];
+    if (row) scrollToGridRow(Number(row.index), cfg);
+  }
+
+  async function loadRemoteRowsThrough(position, cfg) {
+    if (!state.remoteMode || state.remoteLoading) {
+      state.pendingGridRailPosition = position;
+      return;
+    }
+    const token = state.token;
+    state.remoteLoading = true;
+    try {
+      while (token === state.token && state.rows.length <= position && state.rows.length < state.totalRows) {
+        const result = await hostRequest('gridFetchPage', {
+          query: state.query || '',
+          sort: state.sort || 'index',
+          offset: state.rows.length,
+          limit: Math.max(loadBatchSize(cfg), 240)
+        });
+        if (token !== state.token) return;
+        const nextRows = filterHiddenRows(Array.isArray(result.rows) ? result.rows : []);
+        state.totalRows = Number(result.totalRows || state.totalRows);
+        if (!nextRows.length) break;
+        state.rows.push(...nextRows);
+      }
+      if (position < state.rows.length) {
+        const row = state.rows[position];
+        if (row) state.pendingGridScrollIndex = Number(row.index);
+        state.visibleCount = Math.min(state.rows.length, Math.max(state.visibleCount, position + 1));
+        if (state.rendering) {
+          state.pendingLoad = true;
+          return;
+        }
+        await appendVisibleRows(cfg, state.token);
+      }
+    } catch (error) {
+      setStatus(error?.message || String(error), 'error');
+    } finally {
+      state.remoteLoading = false;
+      const pending = state.pendingGridRailPosition;
+      state.pendingGridRailPosition = null;
+      if (pending != null && pending !== position) void scrollToGridPosition(pending, cfg);
+    }
+  }
+
   function scrollPendingGridRow() {
     if (state.pendingGridScrollIndex == null) return false;
     const card = document.querySelector(`.buret-card[data-index="${state.pendingGridScrollIndex}"]`);
@@ -1138,9 +1207,9 @@
     const pointerId = event.pointerId;
     try { marker.setPointerCapture(pointerId); } catch (_) {}
     const updateFromPoint = clientY => {
-      const index = gridRailIndexFromPointer(clientY, ticks);
-      if (index == null) return;
-      scrollToGridRow(index, cfg);
+      const position = gridRailIndexFromPointer(clientY, ticks);
+      if (position == null) return;
+      scrollToGridPosition(position, cfg);
     };
     updateFromPoint(event.clientY);
     const onMove = moveEvent => {
@@ -1161,13 +1230,13 @@
   }
 
   function gridRailIndexFromPointer(clientY, ticks) {
-    const rows = state.rows || [];
-    if (!rows.length) return null;
+    const total = gridRailTotalRows();
+    if (!total) return null;
     const rect = ticks.getBoundingClientRect();
     if (!rect.height) return null;
     const y = Math.max(rect.top, Math.min(clientY, rect.bottom));
     const progress = (y - rect.top) / Math.max(1, rect.height);
-    return Math.max(0, Math.min(rows.length - 1, Math.round(progress * (rows.length - 1))));
+    return Math.max(0, Math.min(total - 1, Math.round(progress * (total - 1))));
   }
 
   function card(row, cfg) {
@@ -1625,6 +1694,12 @@
   }
 
   function drawRdkit(row) {
+    if (!state.rdkit) {
+      const label = row.smiles || row.name || 'Molecule';
+      const message = state.rdkitError || 'RDKit renderer is unavailable.';
+      const denseClass = String(label).length > 36 ? ' buret-molecule-error-dense' : '';
+      return `<div class="buret-molecule-error${denseClass}"><strong>${escapeHTML(label)}</strong><span>${escapeHTML(message)}</span></div>`;
+    }
     const match = state.smartsMatches.get(Number(row.index));
     const useInputCoords = state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock);
     const key = `${row.index}|${row.smiles || ''}|${hash(row.molblock || '')}|${state.smarts}|${useInputCoords ? 'file-coords' : 'new-coords'}|${match ? `${match.atoms.join(',')}:${match.bonds.join(',')}` : ''}`;
@@ -2029,7 +2104,13 @@
       installThemeListener(cfg);
       installHostMessageListener();
       buildUI(cfg);
-      await initRDKit();
+      try {
+        await initRDKit();
+        state.rdkitError = '';
+      } catch (rdkitError) {
+        state.rdkitError = rdkitError?.message || String(rdkitError);
+        setStatus(`RDKit renderer unavailable: ${state.rdkitError}`, 'error');
+      }
       refresh(cfg);
     } catch (error) {
       const message = error && error.stack ? error.stack : String(error);
