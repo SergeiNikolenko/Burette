@@ -71,6 +71,7 @@ pub(crate) fn create_grid_runtime<R: Runtime>(
         "format": collection.format,
         "renderer": "grid2d",
         "documentId": document_id,
+        "sourcePath": file_path.to_string_lossy(),
         "label": file_path.file_name().and_then(|value| value.to_str()).unwrap_or("molecule collection"),
         "byteCount": data.len(),
         "host": "app",
