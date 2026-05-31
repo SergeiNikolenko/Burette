@@ -693,6 +693,9 @@ fn collect_xyzrender_log(
 }
 fn resolve_xyzrender_executable() -> Result<PathBuf, String> {
     let mut candidates = Vec::new();
+    if let Ok(executable) = std::env::current_exe() {
+        candidates.extend(bundled_xyzrender_candidates_from_executable(&executable));
+    }
     if let Some(home) = std::env::var_os("HOME") {
         candidates.push(PathBuf::from(home).join(".local/bin/xyzrender"));
     }
@@ -709,6 +712,28 @@ fn resolve_xyzrender_executable() -> Result<PathBuf, String> {
         }
     }
     Err("External xyzrender executable was not found or is not executable. Install xyzrender in ~/.local/bin or make it available on PATH.".into())
+}
+
+fn bundled_xyzrender_candidates_from_executable(executable: &Path) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    for ancestor in executable.ancestors() {
+        candidates.push(
+            ancestor
+                .join("Resources")
+                .join("xyzrender-runtime")
+                .join("bin")
+                .join("xyzrender"),
+        );
+        candidates.push(
+            ancestor
+                .join("Contents")
+                .join("Resources")
+                .join("xyzrender-runtime")
+                .join("bin")
+                .join("xyzrender"),
+        );
+    }
+    candidates
 }
 
 #[cfg(unix)]
@@ -797,6 +822,22 @@ mod tests {
 
         assert!(text.len() < XYZRENDER_LOG_CAPTURE_BYTES + 128);
         assert!(text.contains("log truncated"));
+    }
+
+    #[test]
+    fn finds_bundled_xyzrender_runtime_from_app_and_appex_executables() {
+        let app_executable = Path::new(
+            "/Applications/Burrete.app/Contents/MacOS/burrete",
+        );
+        let appex_executable = Path::new(
+            "/Applications/Burrete.app/Contents/PlugIns/BurretePreview.appex/Contents/MacOS/BurretePreview",
+        );
+        let bundled = PathBuf::from(
+            "/Applications/Burrete.app/Contents/Resources/xyzrender-runtime/bin/xyzrender",
+        );
+
+        assert!(bundled_xyzrender_candidates_from_executable(app_executable).contains(&bundled));
+        assert!(bundled_xyzrender_candidates_from_executable(appex_executable).contains(&bundled));
     }
 
     #[test]

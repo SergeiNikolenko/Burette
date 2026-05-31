@@ -2,7 +2,7 @@ import { useState, type DragEvent as ReactDragEvent, type MouseEvent as ReactMou
 import { Atom01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { filterSidebarProjects } from "../../lib/sidebar-projects";
-import { hasStructureDrag, readStructureDrag } from "../../lib/structure-drag";
+import { hasStructureDrag, readStructureDragPayload, structureDragRecordsToFragments } from "../../lib/structure-drag";
 import { ScrollFade } from "../scroll-fade";
 import { showNativeContextMenu } from "../native-context-menu";
 import type { ShellActions, ShellViewState } from "../types";
@@ -74,11 +74,12 @@ export function FileBrowser({
     if (!hasStructureDrag(event.dataTransfer)) return;
     event.preventDefault();
     event.stopPropagation();
-    const paths = readStructureDrag(event.dataTransfer);
+    const payload = readStructureDragPayload(event.dataTransfer);
     setKetcherDropActive(false);
     actions.setStructureDragActive(false);
-    if (paths.length === 0) return;
-    actions.openKetcherWithStructures(paths);
+    const fragments = structureDragRecordsToFragments(payload.records);
+    if (payload.paths.length === 0 && fragments.length === 0) return;
+    actions.openKetcherWithStructures(payload.paths, fragments);
   };
 
   return (

@@ -39,6 +39,7 @@ const [
   pageKindTypes,
   fileKind,
   ketcherKind,
+  ketcherEditor,
   launcherKind,
   settingsKind,
   welcome,
@@ -99,6 +100,7 @@ const [
   source('apps/desktop/src/components/editor-area/page-kinds/types.ts'),
   source('apps/desktop/src/components/editor-area/page-kinds/file.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/ketcher.tsx'),
+  source('apps/desktop/src/components/ketcher-editor.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/launcher.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/settings.tsx'),
   source('apps/desktop/src/components/welcome/index.tsx'),
@@ -268,6 +270,17 @@ assert.match(browserDevDocuments, /xyzrenderEndpoint: "\/__burette\/xyzrender"/)
 assert.match(browserDevDocuments, /const shouldOpenXyzTrajectoryInMolstar = xyzFrameCount > 1 && \(requestedMode === "auto" \|\| requestedMode === "xyz-fast"\);/);
 assert.match(browserDevDocuments, /function countXyzFrames\(text: string\)/);
 assert.match(viteConfig, /return Number\.isFinite\(number\) && number > 0 \? number : null;/);
+assert.match(viteConfig, /base: "\.\/"/);
+assert.doesNotMatch(viteConfig, /const KETCHER_CHUNK_PACKAGES = \[/);
+assert.doesNotMatch(viteConfig, /manualChunks:\s*ketcherManualChunk/);
+assert.doesNotMatch(viteConfig, /onlyExplicitManualChunks/);
+assert.doesNotMatch(viteConfig, /require: "globalThis\.__burreteRequire"/);
+assert.match(viteConfig, /function ketcherRaphaelRequireShimPlugin\(\)/);
+assert.match(viteConfig, /const target = 'require\("raphael"\)'/);
+assert.match(viteConfig, /const replacement = 'globalThis\.__burreteRequire\("raphael"\)'/);
+assert.match(viteConfig, /renderChunk\(code, chunk\)/);
+assert.match(viteConfig, /if \(!code\.includes\(target\)\) return null/);
+assert.match(viteConfig, /plugins: \[react\(\), ketcherRaphaelRequireShimPlugin\(\), browserDevXyzrenderPlugin\(\)\]/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "BurettePreviewSamples"\)/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "xyzrender-main"\)/);
 assert.match(viteConfig, /join\(repoRoot, "samples", "large", "litr_moses_10k\.csv"\)/);
@@ -310,8 +323,6 @@ assert.match(moleculeStore, /export type MoleculeTab/);
 assert.match(moleculeStore, /export type SessionTab/);
 assert.match(moleculeStore, /createFileTab/);
 assert.match(moleculeStore, /createSettingsTab/);
-assert.match(moleculeStore, /syncTabSequence/);
-assert.match(moleculeStore, /dedupeTabIds/);
 assert.match(moleculeStore, /navigateBack:/);
 assert.match(moleculeStore, /navigateForward:/);
 assert.match(moleculeStore, /restoreSession:/);
@@ -321,10 +332,9 @@ assert.match(moleculeStore, /recentStructures: \[\]/);
 assert.match(moleculeStore, /rememberRecentStructures:/);
 assert.match(moleculeStore, /clearRecentStructures:/);
 assert.match(moleculeStore, /name: "burrete\.molecule\.session"/);
-assert.match(moleculeStore, /function shouldIgnorePersistedSession\(\)/);
-assert.match(moleculeStore, /window\.location\.hostname === "127\.0\.0\.1" \|\| window\.location\.hostname === "localhost"/);
-assert.match(moleculeStore, /function devFilesPersistedSession\(recentStructures: RecentStructure\[\]\): PersistedMoleculeState/);
-assert.match(moleculeStore, /partialize: \(state\) => shouldIgnorePersistedSession\(\)\s*\?\s*devFilesPersistedSession\(state\.recentStructures\)/);
+assert.match(moleculeStore, /type PersistedMoleculeState = Pick<MoleculeState, "recentStructures">/);
+assert.match(moleculeStore, /partialize: \(state\) => \(\{ recentStructures: state\.recentStructures \}\)/);
+assert.doesNotMatch(moleculeStore, /documents: persistedDocuments|tabs: persistedTabs|activeTabId: state\.activeTabId/);
 assert.match(app, /async function browserDevFilesFromLocation\(\)/);
 assert.match(app, /if \(params\.has\("devDocking"\)\) return \[\];/);
 assert.match(app, /params\.has\("devFiles"\)/);
@@ -543,9 +553,21 @@ assert.match(launcherKind, /export const launcherKind = definePageKind/);
 assert.match(launcherKind, /<WelcomeScreen actions=\{actions\} \/>/);
 assert.match(ketcherKind, /export const ketcherKind = definePageKind/);
 assert.match(ketcherKind, /<KetcherPage state=\{state\} actions=\{actions\} isActive=\{isActive\} \/>/);
+assert.match(ketcherKind, /keepAlive: false/);
 assert.match(app, /body\?\.type === "openInKetcher"/);
 assert.match(app, /const openKetcherWithFragment = useCallback/);
 assert.match(app, /textBase64/);
+assert.match(app, /openKetcherWithStructures = useCallback\(\(paths: string\[\], fragments: KetcherImportRequest\["fragments"\] = \[\]\)/);
+assert.match(structureDrag, /export function structureDragRecordsToFragments/);
+assert.match(ketcherEditor, /import\("ketcher-react"\)/);
+assert.match(ketcherEditor, /import\("ketcher-standalone"\)/);
+assert.match(ketcherEditor, /import\("ketcher-react\/dist\/index\.css"\)/);
+assert.match(ketcherEditor, /await installKetcherRuntimeShims\(\)/);
+assert.match(ketcherEditor, /import\("raphael"\)/);
+assert.match(ketcherEditor, /moduleName === "raphael"/);
+assert.match(ketcherEditor, /browserGlobal\.__burreteRequire = requireShim/);
+assert.doesNotMatch(ketcherEditor, /from "ketcher-react";/);
+assert.doesNotMatch(ketcherEditor, /from "ketcher-standalone";/);
 assert.match(settingsKind, /export const settingsKind = definePageKind/);
 assert.match(settingsKind, /<SettingsPanel state=\{state\} actions=\{actions\} \/>/);
 assert.match(welcome, /export function WelcomeScreen/);
@@ -1020,6 +1042,10 @@ assert.match(previewViewer, /const canOpenKetcher = config\.ketcherEditable === 
 assert.match(previewViewer, /function requestOpenInKetcher\(\)/);
 assert.match(previewViewer, /type: 'openInKetcher'/);
 assert.match(previewViewer, /payload\.textBase64 = config\.ketcherSourceTextBase64\.trim\(\)/);
+assert.match(gridViewer, /function requestOpenInKetcher\(row, cfg\)/);
+assert.match(gridViewer, /type, message, payload/);
+assert.match(gridViewer, /\['ketcher', 'Open in Ketcher'\]/);
+assert.match(gridViewer, /textBase64: textToBase64\(record\.text\)/);
 assert.match(previewViewer, /const inputDataBase64 = typeof config\.xyzrenderInputDataBase64 === 'string'/);
 assert.match(previewViewer, /inputDataBase64: inputDataBase64 \|\| undefined/);
 assert.match(previewViewer, /inputExtension: inputDataBase64 && inputExtension \? inputExtension : undefined/);
@@ -1415,6 +1441,9 @@ assert.match(editorTabs, /actions\.selectTab\(tabId\)/);
 assert.match(editorTabs, /scheduleDragActivation\(tab\.id\)/);
 assert.match(editorTabs, /actions\.setStructureDragActive\(true\)/);
 assert.doesNotMatch(editorTabDragStart, /actions\.selectTab\(tab\.id\)/);
+assert.match(sidebarFileBrowser, /readStructureDragPayload\(event\.dataTransfer\)/);
+assert.match(sidebarFileBrowser, /structureDragRecordsToFragments\(payload\.records\)/);
+assert.match(sidebarFileBrowser, /actions\.openKetcherWithStructures\(payload\.paths, fragments\)/);
 assert.match(sidebarFileTreeNode, /from "\.\.\/\.\.\/lib\/structure-drag"/);
 assert.match(sidebarFileTreeNode, /from "\.\.\/\.\.\/lib\/docking-documents"/);
 assert.match(sidebarFileTreeNode, /draggable/);
@@ -1455,8 +1484,7 @@ assert.match(previewViewer, /aria-label', 'Previous pose'/);
 assert.match(previewViewer, /aria-label', 'Next pose'/);
 assert.match(previewViewer, /event\.key === 'ArrowLeft'/);
 assert.match(previewViewer, /event\.key === 'ArrowRight'/);
-assert.match(moleculeStore, /function persistedDocuments\(documents: ViewerDocument\[\]\)/);
-assert.match(moleculeStore, /return documents\.filter\(\(document\) => !document\.virtual\)/);
+assert.doesNotMatch(moleculeStore, /function persistedDocuments\(documents: ViewerDocument\[\]\)/);
 assert.match(moleculeStore, /if \(!document\.virtual\) byPath\.set\(document\.path, toRecentStructure\(document\)\)/);
 
 console.log('ui shell contract tests passed');
