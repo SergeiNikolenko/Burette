@@ -201,7 +201,7 @@ export default function App() {
 
   const allSidebarProjects = useMemo(() => buildSidebarProjects({
     documents,
-    recentStructures: documents.length === 0 ? recentStructures : [],
+    recentStructures,
     projectRoots,
     activeDocumentId: activeDocument?.id ?? null,
     pinnedStructurePaths,
