@@ -129,9 +129,14 @@ for (const commandPath of [
   'commands::startup::startup_documents',
   'commands::documents::pick_open_targets',
   'commands::documents::open_documents',
+  'commands::documents::open_delimited_grid_document',
   'commands::documents::read_structure_text',
   'commands::documents::open_text_structure',
+  'commands::documents::save_text_as',
   'commands::grid::grid_fetch_page',
+  'commands::grid::grid_append_records',
+  'commands::grid::grid_delimited_columns',
+  'commands::grid::grid_append_delimited_records',
   'commands::documents::render_xyzrender_sheet_item',
   'commands::documents::sync_viewer_preferences',
   'commands::preview_cache::clear_preview_cache',
@@ -150,9 +155,26 @@ assert.match(lib, /NSQuitAlwaysKeepsWindows/);
 assert.match(startupCommand, /#\[tauri::command\]\s+pub\(crate\) fn startup_documents/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn pick_open_targets/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_documents/);
+assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_delimited_grid_document/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn read_structure_text/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_text_structure/);
+assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn save_text_as/);
 assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_fetch_page/);
+assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_append_records/);
+assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_delimited_columns/);
+assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_append_delimited_records/);
+assert.match(gridCommand, /struct GridAppendRequest/);
+assert.match(gridCommand, /registry\.append_text/);
+assert.match(gridCommand, /registry\.append_text_with_options/);
+assert.match(previewGridStore, /fn resolve_smiles_column/);
+assert.match(previewGridStore, /struct GridParseOptions/);
+assert.match(previewGridStore, /struct GridDelimitedColumnChoice/);
+assert.match(previewGridStore, /fn infer_smiles_columns_from_values/);
+assert.match(previewGridStore, /fn delimited_smiles_column_choices/);
+assert.match(previewGridStore, /multiple possible structure columns/);
+assert.match(previewGridStore, /fn rejects_ambiguous_delimited_structure_columns/);
+assert.match(previewGridStore, /fn uses_explicit_column_for_ambiguous_delimited_table/);
+assert.match(previewGridStore, /fn lists_delimited_structure_column_choices/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn sync_viewer_preferences/);
 assert.match(documentsCommand, /"molstarStyle"/);
 assert.match(documentsCommand, /fn expand_open_targets/);
@@ -267,6 +289,8 @@ for (const moduleName of ['runtime_grid', 'runtime_utils', 'runtime_viewer']) {
 assert.match(previewIndex, /pub\(crate\) mod grid_store;/);
 
 assert.match(previewRuntime, /pub\(crate\) fn open_document/);
+assert.match(previewRuntime, /active_pose: Option<usize>/);
+assert.match(previewRuntime, /request\.active_pose/);
 assert.match(previewRuntime, /create_grid_runtime/);
 assert.match(previewRuntime, /create_runtime/);
 assert.doesNotMatch(previewRuntime, /fn parse_sdf_grid/);
@@ -274,13 +298,15 @@ assert.doesNotMatch(previewRuntime, /fn viewer_html/);
 assert.match(previewRuntimeGrid, /pub\(crate\) fn create_grid_runtime/);
 assert.match(previewRuntimeGrid, /build_grid_store/);
 assert.match(previewRuntimeGrid, /"sourcePath": file_path\.to_string_lossy\(\)/);
-assert.match(previewRuntimeGrid, /register\(document_id, database_path\)/);
+assert.match(previewRuntimeGrid, /register\(document_id, database_path, collection\.format\)/);
 assert.match(previewRuntimeGrid, /"gridDataMode": "bridge"/);
 assert.match(previewRuntimeGrid, /"recordsIncluded": 0/);
 assert.doesNotMatch(previewRuntimeGrid, /preview-grid-records\.js/);
 assert.match(previewRuntimeGrid, /fn parse_sdf_grid/);
 assert.match(previewRuntimeGrid, /fn parse_delimited_table/);
 assert.match(previewRuntimeViewer, /pub\(crate\) fn create_runtime/);
+assert.match(previewRuntimeViewer, /active_pose: Option<usize>/);
+assert.match(previewRuntimeViewer, /"activePose": active_pose/);
 assert.match(previewRuntimeViewer, /pub\(crate\) fn copy_web_assets/);
 assert.match(previewRuntimeViewer, /fn viewer_html/);
 assert.doesNotMatch(previewRuntimeViewer, /fn viewer_runtime_css/);
@@ -306,6 +332,8 @@ assert.match(gridViewerJS, /function supportsXyzrenderCards\(cfg\)/);
 assert.match(gridViewerJS, /cfg\?\.appViewer === true && cfg\?\.gridDataMode === 'bridge'/);
 assert.match(gridViewerJS, /hostRequest\('renderXyzrenderCard'/);
 assert.match(gridViewerJS, /body\.type === 'gridPage' \|\| body\.type === 'xyzrenderCard'/);
+assert.match(gridViewerJS, /body\.type === 'gridRecordsAppended'/);
+assert.match(gridViewerJS, /void refreshRemote\(config\(\)\)/);
 assert.match(gridViewerJS, /function xyzrenderFragmentText\(record\)/);
 assert.match(gridViewerJS, /const smiles = firstLine\.trim\(\)\.split\(\/\\s\+\/u\)\[0\]/);
 assert.match(gridViewerJS, /inputDataBase64: textToBase64\(xyzrenderFragmentText\(record\)\)/);
@@ -355,6 +383,8 @@ assert.match(previewRuntimeViewer, /window\.BurreteMolstarURL = \{molstar_js:\?\
 assert.match(previewRuntimeViewer, /window\.BurreteXyzFastURL = \{xyz_fast_js:\?\};/);
 assert.match(previewGridStore, /pub\(crate\) struct GridRuntimeRegistry/);
 assert.match(previewGridStore, /pub\(crate\) fn build_grid_store/);
+assert.match(previewGridStore, /pub\(crate\) fn append_text/);
+assert.match(previewGridStore, /fn append_grid_text/);
 assert.match(previewGridStore, /fn fetch_page/);
 assert.match(previewGridStore, /query\.limit\.clamp\(1, 240\)/);
 assert.match(previewRuntimeGrid, /window\.BurreteRDKitWasmBase64 = \{:\?\};\\n/);

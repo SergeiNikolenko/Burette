@@ -22,6 +22,7 @@ export function AppLayout({
   onDragOver,
   onDragLeave,
   onDrop,
+  onPaste,
 }: {
   state: ShellViewState;
   actions: ShellActions;
@@ -32,6 +33,7 @@ export function AppLayout({
   onDragOver: (event: React.DragEvent<HTMLElement>) => void;
   onDragLeave: (event: React.DragEvent<HTMLElement>) => void;
   onDrop: (event: React.DragEvent<HTMLElement>) => void;
+  onPaste: (event: React.ClipboardEvent<HTMLElement>) => void;
 }) {
   const viewportWidth = typeof window === "undefined" ? 1200 : window.innerWidth;
   const maxSidebarWidth = Math.max(280, Math.min(420, Math.floor(viewportWidth * 0.35)));
@@ -61,6 +63,7 @@ export function AppLayout({
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
+      onPaste={onPaste}
       style={shellStyle}
     >
       <div className="drag-region" data-tauri-drag-region />

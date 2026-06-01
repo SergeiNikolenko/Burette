@@ -188,6 +188,7 @@ export async function openBrowserDevDockingDocument(
   receptorPath: string,
   ligandPaths: string[],
   preferences: ViewerPreferences,
+  options: { activePose?: number | null } = {},
 ): Promise<ViewerDocument> {
   const receptor = await readBrowserDevDockingPayload(receptorPath);
   const ligands = await Promise.all(Array.from(new Set(ligandPaths)).map(readBrowserDevDockingPayload));
@@ -232,6 +233,7 @@ export async function openBrowserDevDockingDocument(
     showPanelControls: true,
     defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" },
     docking: {
+      activePose: options.activePose ?? null,
       receptor: dockingConfigSource(receptor),
       ligands: ligands.map(dockingConfigSource),
     },
@@ -268,6 +270,7 @@ export async function openBrowserDevDockingDocument(
     dockingRequest: {
       receptorPath: receptor.path,
       ligandPaths: ligands.map((ligand) => ligand.path),
+      activePose: options.activePose ?? null,
     } satisfies DockingDocumentRequest,
   };
 }

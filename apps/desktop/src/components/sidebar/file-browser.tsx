@@ -2,7 +2,8 @@ import { useState, type DragEvent as ReactDragEvent, type MouseEvent as ReactMou
 import { Atom01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { filterSidebarProjects } from "../../lib/sidebar-projects";
-import { hasStructureDrag, readStructureDragPayload, structureDragRecordsToFragments } from "../../lib/structure-drag";
+import { hasStructureDrag, readStructureDragPayload } from "../../lib/structure-drag";
+import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
 import { ScrollFade } from "../scroll-fade";
 import { showNativeContextMenu } from "../native-context-menu";
 import type { ShellActions, ShellViewState } from "../types";
@@ -61,6 +62,8 @@ export function FileBrowser({
 
   const handleKetcherDragOver = (event: ReactDragEvent<HTMLButtonElement>) => {
     if (!hasStructureDrag(event.dataTransfer)) return;
+    const payload = readStructureDragPayload(event.dataTransfer);
+    if (shellDropActionChoices(payload, { kind: "ketcher" }, { kind: "unknown" }).length === 0) return;
     event.preventDefault();
     event.stopPropagation();
     event.dataTransfer.dropEffect = "copy";
@@ -77,11 +80,11 @@ export function FileBrowser({
     event.preventDefault();
     event.stopPropagation();
     const payload = readStructureDragPayload(event.dataTransfer);
+    const choices = shellDropActionChoices(payload, { kind: "ketcher" }, { kind: "unknown" });
+    if (choices.length === 0) return;
     setKetcherDropActive(false);
     actions.setStructureDragActive(false);
-    const fragments = structureDragRecordsToFragments(payload.records);
-    if (payload.paths.length === 0 && fragments.length === 0) return;
-    actions.openKetcherWithStructures(payload.paths, fragments);
+    runShellDropActionChoices(actions, payload, choices, { x: event.clientX, y: event.clientY });
   };
 
   return (
@@ -132,7 +135,7 @@ export function FileBrowser({
           {pinnedExpanded && (
             <div className="pinned-structures" role="list" id="sidebar-pinned-tree">
               {pinnedItems.map((item) => (
-                <ProjectItem key={`pinned:${item.key}`} item={item} actions={actions} nested={false} />
+                <ProjectItem key={`pinned:${item.key}`} item={item} state={state} actions={actions} nested={false} />
               ))}
             </div>
           )}

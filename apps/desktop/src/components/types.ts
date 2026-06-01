@@ -1,4 +1,4 @@
-import type { RecentStructure, ViewerDocument, ViewerPreferences } from "../types";
+import type { FepSetupRequest, RecentStructure, ViewerDocument, ViewerPreferences } from "../types";
 import type { MoleculeTab } from "../stores/molecule-store";
 import type { StructureDragPayload } from "../lib/structure-drag";
 import type { UpdatePreferences, UpdateState } from "../update";
@@ -35,6 +35,8 @@ export type KetcherImportRequest = {
 
 export type ShellActions = {
   chooseFiles: () => void | Promise<void>;
+  openStructurePaths: (paths: string[]) => void | Promise<void>;
+  openStructureRecords: (records: StructureDragPayload["records"]) => void | Promise<void>;
   openRecentStructure: (structure: RecentStructure) => void | Promise<void>;
   selectDocument: (id: string) => void;
   selectTab: (id: string) => void;
@@ -45,9 +47,11 @@ export type ShellActions = {
   navigateForward: () => void;
   focusSidebarSearch: () => void;
   openCommandPalette: () => void;
+  openClipboard: () => void | Promise<void>;
   openSettings: () => void;
   openKetcher: () => void;
   openKetcherWithStructures: (paths: string[], fragments?: KetcherImportRequest["fragments"]) => void;
+  openFepSetupWorkspace: (request: FepSetupRequest) => void;
   openKetcherSketch: (request: KetcherSketchRequest) => void | Promise<void>;
   clearKetcherImportRequest: (id: number) => void;
   moveTab: (id: string, toIndex: number) => void;
@@ -64,7 +68,9 @@ export type ShellActions = {
   closeTab: (id: string) => void;
   closeActiveDocument: () => void;
   clearAllDocuments: () => void;
-  openDockingDocument: (receptorPath: string, ligandPaths: string[]) => void | Promise<void>;
+  openDockingDocument: (receptorPath: string, ligandPaths: string[], options?: { activePose?: number | null }) => void | Promise<ViewerDocument | null>;
+  openDockingStructureRecords: (receptorPath: string, ligandPaths: string[], records: StructureDragPayload["records"]) => void | Promise<void>;
+  appendGridRecords: (targetDocumentId: string, payload: StructureDragPayload) => boolean;
   addXyzrenderSheetItems: (targetDocumentId: string, payload: StructureDragPayload) => boolean;
   mergeMoleculeCollections: (targetPath: string | null, paths: string[]) => void | Promise<void>;
   saveMoleculeCollectionAs: (targetPath: string) => void | Promise<void>;
@@ -99,6 +105,7 @@ export type ShellViewState = {
   sidebarWidth: number;
   sidebarDragging: boolean;
   structureDragActive: boolean;
+  poseReviewSelections: Record<string, number>;
   ketcherImportRequest: KetcherImportRequest | null;
   sidebarQuery: string;
   status: StatusNotice | null;

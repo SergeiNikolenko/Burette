@@ -2314,6 +2314,7 @@
               data: `${record}\n$$$$\n`,
               format: 'sdf',
               label: `${source.label || `Ligand ${ligandIndex + 1}`} pose ${poseIndex + 1}`,
+              sourcePath: source.path || '',
               ligandIndex,
               poseIndex,
               poseCount: records.length
@@ -2331,6 +2332,7 @@
         data,
         format,
         label: source.label || `Ligand ${ligandIndex + 1}`,
+        sourcePath: source.path || '',
         ligandIndex,
         poseIndex: 0,
         poseCount: 1
@@ -2342,7 +2344,7 @@
       return {
         kind: 'docking',
         label: config.label || 'Docking view',
-        activePose: 0,
+        activePose,
         poseCount: nativeTrajectoryPoseCount,
         nativeTrajectoryControls: true,
         ligandLabel: 'Mol* trajectory',
@@ -3918,6 +3920,18 @@
     return () => observer.disconnect();
   }
 
+  function notifyDockingPoseChanged(activePose, prepared) {
+    const poses = Array.isArray(prepared?.poses) ? prepared.poses : [];
+    const index = Math.max(0, Math.min(poses.length - 1, Math.trunc(Number(activePose) || 0)));
+    const pose = poses[index] || null;
+    postHostMessage({
+      type: 'dockingPoseChanged',
+      activePose: index,
+      poseCount: poses.length,
+      sourcePath: pose?.sourcePath || ''
+    });
+  }
+
   function installDockingPoseControls(viewer, prepared) {
     document.querySelector('.buret-docking-poses')?.remove();
     if (dockingPoseKeydownDisposer) {
@@ -3935,6 +3949,7 @@
     root.className = 'buret-docking-poses';
     root.setAttribute('aria-label', 'Docking pose controls');
     let activePose = Math.max(0, Math.min(prepared.poseCount - 1, Number(prepared.activePose || 0)));
+    const initialPose = activePose;
     let loopTimer = null;
     let loopBusy = false;
     let poseRepeatDelayTimer = null;
@@ -4010,10 +4025,13 @@
         } else {
           const nextPrepared = structureDataForMolstar(activeConfig);
           await loadDockingPreparedStructure(viewer, nextPrepared);
+          activePose = nextIndex;
+          updateControls();
           applyLayoutState(viewer);
           scheduleLayoutStateReapply(viewer);
           try { viewer.handleResize(); } catch (_) {}
         }
+        notifyDockingPoseChanged(activePose, prepared);
       } catch (error) {
         try { sessionStorage.setItem(dockingPoseStorageKey(activeConfig), String(previousIndex)); } catch (_) {}
         activePose = previousIndex;
@@ -4133,8 +4151,14 @@
       ? installNativeTrajectoryPoseSync(prepared.poseCount, index => {
           activePose = Math.max(0, Math.min(prepared.poseCount - 1, index));
           updateControls();
+          notifyDockingPoseChanged(activePose, prepared);
         })
       : null;
+    if (prepared.nativeTrajectoryControls && initialPose > 0) {
+      void setPose(initialPose);
+    } else {
+      notifyDockingPoseChanged(activePose, prepared);
+    }
     dockingPoseControlsDisposer = () => {
       stopPoseRepeat();
       setLoopActive(false);

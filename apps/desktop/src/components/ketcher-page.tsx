@@ -16,8 +16,11 @@ import {
 import ligandProLogo from "../assets/short-logo-ligandpro.svg";
 import { collectionExtension, collectionFamily } from "../lib/collection-documents";
 import { readStructureText } from "../lib/structure-text";
-import { hasStructureDrag, readStructureDragPayload, structureDragRecordsToFragments } from "../lib/structure-drag";
+import { hasStructureDrag, readStructureDragPayload, structureDragRecordsToFragments, writeStructureDragRecords } from "../lib/structure-drag";
+import type { StructureDragRecord } from "../lib/structure-drag";
+import { runShellDropActionChoices, shellDropActionChoices } from "./drop-action-executor";
 import type { KetcherEditorApi } from "./ketcher-editor";
+import { showNativeContextMenu } from "./native-context-menu";
 import type { KetcherSketchTarget, ShellActions, ShellViewState } from "./types";
 
 type KetcherEditorComponent = ComponentType<{
@@ -48,6 +51,7 @@ export function KetcherPage({
   const [exportingSketch, setExportingSketch] = useState(false);
   const [ketcherUIScaleIndex, setKetcherUIScaleIndex] = useState(DEFAULT_KETCHER_UI_SCALE_INDEX);
   const handledImportRequestIdRef = useRef<number | null>(null);
+  const sketchDragRecordRef = useRef<StructureDragRecord | null>(null);
   const shouldMountEditor = isActive || editorHasActivated;
   const ketcherUIScale = KETCHER_UI_SCALES[ketcherUIScaleIndex];
   const ketcherUIScalePercent = Math.round(ketcherUIScale * 100);
@@ -139,11 +143,78 @@ export function KetcherPage({
     }
   }, [actions, exportingSketch, ketcher]);
 
+  const sketchDragRecord = useCallback(async () => {
+    if (!ketcher) return null;
+    const [smiles, molfile] = await Promise.all([
+      ketcher.getSmiles(),
+      ketcher.getMolfile("v2000"),
+    ]);
+    if (!smiles.trim() || !molfile.trim()) return null;
+    return {
+      path: "ketcher-sketch.sdf",
+      inputExtension: "sdf",
+      text: molfileToSdf(molfile, smiles),
+    };
+  }, [ketcher]);
+
+  const prepareSketchDrag = useCallback(() => {
+    if (!ketcher) return;
+    void sketchDragRecord()
+      .then((record) => {
+        sketchDragRecordRef.current = record;
+      })
+      .catch(() => {
+        sketchDragRecordRef.current = null;
+      });
+  }, [ketcher, sketchDragRecord]);
+
+  const handleSketchDragStart = useCallback((event: DragEvent<HTMLElement>) => {
+    const record = sketchDragRecordRef.current;
+    if (!record || !writeStructureDragRecords(event.dataTransfer, [record])) {
+      event.preventDefault();
+      setStatus("Draw a molecule first");
+      return;
+    }
+    actions.setStructureDragActive(true);
+    setStatus("Dragging Ketcher sketch");
+  }, [actions]);
+
   const addSketchToCollection = useCallback((event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    const latestCollection = collectionTargets.at(-1);
-    void openSketch("collection", latestCollection?.path ?? null);
+    const rect = event.currentTarget.getBoundingClientRect();
+    const items = [
+      ...(collectionTargets.length > 0
+        ? collectionTargets.map((target, index) => ({
+            kind: "item" as const,
+            id: `add-to-collection-${index}`,
+            text: `Add to ${target.title}`,
+            action: () => {
+              void openSketch("collection", target.path);
+            },
+          }))
+        : [
+            {
+              kind: "item" as const,
+              id: "no-open-sdf-collections",
+              text: "No open SDF collections",
+              disabled: true,
+            },
+          ]),
+      { kind: "separator" as const },
+      {
+        kind: "item" as const,
+        id: "open-as-new-collection",
+        text: "Open as new collection",
+        action: () => {
+          void openSketch("collection", null);
+        },
+      },
+    ];
+    void showNativeContextMenu(items, {
+      x: Math.round(rect.left),
+      y: Math.round(rect.bottom + 4),
+    });
   }, [collectionTargets, openSketch]);
 
   const importStructures = useCallback(async (paths: string[], fragments: Array<{ title: string; text: string }> = []) => {
@@ -196,6 +267,8 @@ export function KetcherPage({
 
   const handleDragOver = useCallback((event: DragEvent<HTMLElement>) => {
     if (!hasStructureDrag(event.dataTransfer)) return;
+    const payload = readStructureDragPayload(event.dataTransfer);
+    if (shellDropActionChoices(payload, { kind: "ketcher" }, { kind: "ketcher" }).length === 0) return;
     event.preventDefault();
     event.stopPropagation();
     event.dataTransfer.dropEffect = "copy";
@@ -214,10 +287,16 @@ export function KetcherPage({
     actions.setStructureDragActive(false);
     setDropActive(false);
     const payload = readStructureDragPayload(event.dataTransfer);
-    const fragments = structureDragRecordsToFragments(payload.records);
-    if (payload.paths.length === 0 && fragments.length === 0) return;
-    void importStructures(payload.paths, fragments);
-  }, [actions, importStructures]);
+    const choices = shellDropActionChoices(payload, { kind: "ketcher" }, { kind: "ketcher" });
+    if (choices.length === 0) return;
+    runShellDropActionChoices(actions, payload, choices.slice(0, 1), { x: event.clientX, y: event.clientY }, {
+      importKetcherStructures: (actionPayload) => {
+        if (!ketcher) return false;
+        void importStructures(actionPayload.paths, structureDragRecordsToFragments(actionPayload.records));
+        return true;
+      },
+    });
+  }, [actions, importStructures, ketcher]);
 
   const decreaseKetcherScale = useCallback(() => {
     setKetcherUIScaleIndex((index) => Math.max(0, index - 1));
@@ -238,7 +317,17 @@ export function KetcherPage({
     >
       <header className="ketcher-page-header">
         <div className="ketcher-page-title">
-          <span className="ketcher-page-icon" aria-hidden="true">
+          <span
+            className="ketcher-page-icon"
+            aria-hidden="true"
+            draggable={Boolean(ketcher)}
+            data-ketcher-sketch-drag-source
+            onPointerDown={prepareSketchDrag}
+            onMouseEnter={prepareSketchDrag}
+            onFocus={prepareSketchDrag}
+            onDragStart={handleSketchDragStart}
+            onDragEnd={() => actions.setStructureDragActive(false)}
+          >
             <KetcherLogo />
           </span>
           <div>

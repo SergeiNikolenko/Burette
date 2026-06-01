@@ -29,6 +29,9 @@ const [
   sidebarProjects,
   structureDrag,
   dockingDocuments,
+  dropActions,
+  dropActionExecutor,
+  componentsTypes,
   commandPalette,
   editorArea,
   editorTabs,
@@ -39,11 +42,14 @@ const [
   pageKinds,
   pageKindTypes,
   fileKind,
+  fepSetupKind,
   ketcherKind,
+  poseReviewKind,
   ketcherPage,
   ketcherEditor,
   launcherKind,
   settingsKind,
+  viewerFrame,
   welcome,
   errorBoundary,
   scrollFade,
@@ -92,6 +98,9 @@ const [
   source('apps/desktop/src/lib/sidebar-projects.ts'),
   source('apps/desktop/src/lib/structure-drag.ts'),
   source('apps/desktop/src/lib/docking-documents.ts'),
+  source('apps/desktop/src/lib/drop-actions.ts'),
+  source('apps/desktop/src/components/drop-action-executor.ts'),
+  source('apps/desktop/src/components/types.ts'),
   source('apps/desktop/src/components/command-palette/index.tsx'),
   source('apps/desktop/src/components/editor-area/index.tsx'),
   source('apps/desktop/src/components/editor-area/editor-tabs.tsx'),
@@ -102,11 +111,14 @@ const [
   source('apps/desktop/src/components/editor-area/page-kinds/index.ts'),
   source('apps/desktop/src/components/editor-area/page-kinds/types.ts'),
   source('apps/desktop/src/components/editor-area/page-kinds/file.tsx'),
+  source('apps/desktop/src/components/editor-area/page-kinds/fep-setup.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/ketcher.tsx'),
+  source('apps/desktop/src/components/editor-area/page-kinds/pose-review.tsx'),
   source('apps/desktop/src/components/ketcher-page.tsx'),
   source('apps/desktop/src/components/ketcher-editor.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/launcher.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/settings.tsx'),
+  source('apps/desktop/src/components/editor-area/viewer-frame.tsx'),
   source('apps/desktop/src/components/welcome/index.tsx'),
   source('apps/desktop/src/components/error-boundary.tsx'),
   source('apps/desktop/src/components/scroll-fade.tsx'),
@@ -137,6 +149,7 @@ const [
 const commandDocuments = await source('apps/desktop/src-tauri/src/commands/documents.rs');
 const tauriLib = await source('apps/desktop/src-tauri/src/lib.rs');
 const burretePermissions = await source('apps/desktop/src-tauri/permissions/burrete.toml');
+const fepSetupStoreTest = await source('tests/test-fep-setup-store.mjs');
 
 const sidebarSurface = [sidebar, sidebarFileBrowser, sidebarFileTreeNode, sidebarWorkspaceSwitcher].join('\n');
 const editorTabDragStart = editorTabs.match(/onDragStart=\{\(event\) => \{[\s\S]*?\n                \}\}/)?.[0] ?? '';
@@ -171,6 +184,8 @@ for (const exportName of [
   'useCloseActiveTab',
   'useCloseAllTabs',
   'useOpenNewTab',
+  'useOpenFepSetupTab',
+  'useOpenPoseReviewTab',
   'useOpenSettingsTab',
   'useCanNavigateBack',
   'useCanNavigateForward',
@@ -324,6 +339,10 @@ assert.match(shellStore, /setSidebarQuery:/);
 assert.match(shellStore, /toggleProjectExpanded:/);
 assert.match(packageJson, /"@hugeicons\/core-free-icons"/);
 assert.match(packageJson, /"@hugeicons\/react"/);
+assert.match(packageJson, /bun tests\/test-fep-setup-store\.mjs/);
+assert.match(fepSetupStoreTest, /openFepSetupTab/);
+assert.match(fepSetupStoreTest, /candidatePayload/);
+assert.match(fepSetupStoreTest, /activeDocumentId, dockingDocument\.id/);
 
 assert.match(moleculeStore, /export const useMoleculeStore = create<MoleculeState>/);
 assert.match(moleculeStore, /documents: \[\]/);
@@ -332,6 +351,14 @@ assert.match(moleculeStore, /export type MoleculeTab/);
 assert.match(moleculeStore, /export type SessionTab/);
 assert.match(moleculeStore, /createFileTab/);
 assert.match(moleculeStore, /createSettingsTab/);
+assert.match(moleculeStore, /createFepSetupTab/);
+assert.match(moleculeStore, /createPoseReviewTab/);
+assert.match(moleculeStore, /openFepSetupTab:/);
+assert.match(moleculeStore, /openPoseReviewTab:/);
+assert.match(moleculeStore, /tab\.location\.kind !== "fep-setup"/);
+assert.match(moleculeStore, /tab\.location\.kind !== "pose-review"/);
+assert.match(moleculeStore, /location\.kind === "fep-setup" \|\| location\.kind === "pose-review"/);
+assert.match(moleculeStore, /location\.kind === "pose-review"/);
 assert.match(moleculeStore, /navigateBack:/);
 assert.match(moleculeStore, /navigateForward:/);
 assert.match(moleculeStore, /restoreSession:/);
@@ -449,8 +476,8 @@ assert.match(editorTabs, /→/);
 assert.doesNotMatch(appLayout, /<header\s+className="topbar"[^>]*data-tauri-drag-region/s);
 assert.match(editorTabs, /className="tab-strip" data-tauri-drag-region/);
 assert.match(editorTabs, /className="tab-scroll-region"[\s\S]*role="tablist"[\s\S]*aria-label="Open structures"/);
-assert.match(editorTabs, /className="tab-strip-spacer" data-tauri-drag-region/);
-assert.match(pageKinds, /const kinds = \[fileKind, ketcherKind, launcherKind, settingsKind\] as const/);
+assert.match(editorTabs, /className="tab-strip-spacer"[\s\S]*data-tauri-drag-region/);
+assert.match(pageKinds, /const kinds = \[fileKind, fepSetupKind, ketcherKind, launcherKind, poseReviewKind, settingsKind\] as const/);
 assert.match(pageKinds, /export function pageKind/);
 assert.match(pageKinds, /export function serializeLocation/);
 assert.match(pageKinds, /export function deserializeLocation/);
@@ -461,16 +488,39 @@ assert.match(fileKind, /keepAlive: false/);
 assert.match(fileKind, /kind: "file"/);
 assert.match(fileKind, /path: location\.path/);
 assert.match(fileKind, /className="molecule-stage"/);
-assert.match(fileKind, /className="viewer-iframe"/);
-assert.match(fileKind, /data-document-id=\{document\.id\}/);
-assert.match(fileKind, /const sandbox = tauriRuntime \? "allow-scripts allow-downloads" : "allow-scripts allow-downloads allow-same-origin"/);
-assert.match(fileKind, /srcDoc=\{document\.runtimePath\}/);
+assert.match(fileKind, /<ViewerFrame document=\{document\} iframeRef=\{iframeRef\} \/>/);
+assert.match(viewerFrame, /export function ViewerFrame/);
+assert.match(viewerFrame, /className = "viewer-iframe"/);
+assert.match(viewerFrame, /"data-document-id": document\.id/);
+assert.match(viewerFrame, /srcDoc=\{document\.runtimePath\}/);
+assert.match(viewerFrame, /convertFileSrc\(document\.runtimePath\)/);
+assert.match(viewerFrame, /"allow-scripts allow-downloads allow-same-origin"/);
 assert.match(fileKind, /const sheetDropTarget = document\.renderer === "xyzrender-external"/);
+assert.match(fileKind, /const collectionDropTarget = document\.renderer === "grid2d"/);
+assert.match(fileKind, /const dropTarget = useMemo/);
+assert.match(fileKind, /kind: "active-viewer" as const/);
+assert.match(fileKind, /documentId: document\.id/);
+assert.match(fileKind, /documentPath: document\.path/);
+assert.match(fileKind, /dockingRequest: document\.dockingRequest \?\? null/);
+assert.match(fileKind, /const viewerDropActionChoices = useCallback/);
+assert.match(fileKind, /shellDropActionChoices\(payload, dropTarget\)\.filter/);
+assert.match(fileKind, /choice\.action\.kind !== "open-documents" && choice\.action\.kind !== "open-structure-records"/);
 assert.match(fileKind, /type: "addXyzrenderSheetItems"/);
 assert.match(fileKind, /Add to xyzrender sheet/);
+assert.match(fileKind, /Append to grid/);
 assert.match(openDropHook, /addXyzrenderSheetItems\?: AddXyzrenderSheetItems/);
+assert.match(openDropHook, /appendGridRecords\?: AppendGridRecords/);
+assert.match(openDropHook, /type AppendGridRecords = \(targetDocumentId: string, payload: StructureDragPayload\) => boolean/);
 assert.match(openDropHook, /type AddXyzrenderSheetItems = \(payload: StructureDragPayload\) => boolean/);
-assert.match(openDropHook, /addXyzrenderSheetItems\?\.\(payload\)/);
+assert.match(openDropHook, /type OpenFepSetupWorkspace = \(request: FepSetupRequest\) => void/);
+assert.match(openDropHook, /fepSetupRequest\?: FepSetupRequest \| null/);
+assert.match(openDropHook, /openFepSetupWorkspace\?: OpenFepSetupWorkspace/);
+assert.match(openDropHook, /element\?\.closest\("\.pose-review-workspace, \.fep-setup-workspace"\)/);
+assert.match(openDropHook, /action\.kind === "append-grid-records"/);
+assert.match(openDropHook, /appendGridRecords\?\.\(action\.targetDocumentId, action\.payload\)/);
+assert.match(openDropHook, /addXyzrenderSheetItems\?\.\(action\.payload\)/);
+assert.match(openDropHook, /action\.kind === "prepare-fep-setup"/);
+assert.match(openDropHook, /openFepSetupWorkspace\(action\.request\)/);
 assert.match(viewer, /function installExternalArtifactSheet\(root, stage, toStagePoint, getStageScale\)/);
 assert.match(viewer, /STRUCTURE_DRAG_MIME = 'application\/x-burrete-structure-paths'/);
 assert.match(viewer, /function readStructureDropPayload\(dataTransfer\)/);
@@ -568,6 +618,10 @@ assert.match(gridViewer, /popover\.hidden = !open;/);
 assert.match(gridViewer, /popover\.inert = !open;/);
 assert.doesNotMatch(gridViewer, /rail\.addEventListener\('focusin', \(\) => setGridRailOpen\(true\)\)/);
 assert.doesNotMatch(gridViewer, /ticks\.addEventListener\('click', \(\) => setGridRailOpen\(true\)\)/);
+assert.match(gridViewer, /<nav class="buret-grid-rail" data-buret-grid-rail aria-label="Molecule navigation">/);
+assert.match(gridViewer, /data-buret-grid-rail-popover data-state="closed"/);
+assert.match(gridViewer, /function initGridRail\(cfg\)/);
+assert.match(gridCss, /\.buret-grid-rail \{/);
 assert.match(styles, /\.app-shell\[data-runtime="browser"\]\s*\{[^}]*backdrop-filter: none;[^}]*-webkit-backdrop-filter: none;/s);
 assert.match(styles, /\.app-shell\[data-runtime="tauri"\]\[data-active-page-kind="ketcher"\]\s*\{[^}]*backdrop-filter: none;[^}]*-webkit-backdrop-filter: none;/s);
 assert.match(styles, /\.page-surface\[data-page-kind="ketcher"\]:not\(\[data-active\]\) \{ display: block; \}/);
@@ -679,6 +733,40 @@ assert.match(ketcherEditor, /box\.width >= minWidth && box\.height >= minHeight/
 assert.match(ketcherEditor, /path\.style\.setProperty\("fill", "none", "important"\)/);
 assert.match(ketcherEditor, /new MutationObserver\(suppress\)/);
 assert.doesNotMatch(ketcherEditor, /describeBlackArtifactProbe|Ready \| probe/);
+assert.match(fepSetupKind, /export const fepSetupKind = definePageKind/);
+assert.match(fepSetupKind, /kind: "fep-setup"/);
+assert.match(fepSetupKind, /serialize: \(\) => null/);
+assert.match(fepSetupKind, /className="fep-setup-workspace"/);
+assert.match(fepSetupKind, /fep-setup-pane-docking/);
+assert.match(fepSetupKind, /fep-setup-pane-grid/);
+assert.match(fepSetupKind, /location\.candidatePayload/);
+assert.match(fepSetupKind, /Candidate ligand input/);
+assert.match(fepSetupKind, /className="fep-setup-candidates"/);
+assert.match(fepSetupKind, /function payloadSummary/);
+assert.match(fepSetupKind, /function candidateLabels/);
+assert.match(fepSetupKind, /Source files remain unchanged/);
+assert.match(fepSetupKind, /<ViewerFrame document=\{docking\} \/>/);
+assert.match(fepSetupKind, /<ViewerFrame document=\{grid\} \/>/);
+assert.match(poseReviewKind, /export const poseReviewKind = definePageKind/);
+assert.match(poseReviewKind, /kind: "pose-review"/);
+assert.match(poseReviewKind, /serialize: \(\) => null/);
+assert.match(poseReviewKind, /className="pose-review-workspace"/);
+assert.match(poseReviewKind, /pose-review-pane-docking/);
+assert.match(poseReviewKind, /pose-review-pane-grid/);
+assert.match(poseReviewKind, /actions\.openFepSetupWorkspace/);
+assert.match(poseReviewKind, />FEP Setup<\/button>/);
+assert.match(poseReviewKind, /<ViewerFrame document=\{docking\} \/>/);
+assert.match(poseReviewKind, /<ViewerFrame document=\{grid\} \/>/);
+assert.match(styles, /\.pose-review-workspace \{/);
+assert.match(styles, /grid-template-columns: minmax\(360px, 1\.1fr\) minmax\(320px, 0\.9fr\);/);
+assert.match(styles, /\.pose-review-pane \{/);
+assert.match(styles, /\.pose-review-actions \{/);
+assert.match(styles, /\.pose-review-missing \{/);
+assert.match(styles, /\.fep-setup-workspace \{/);
+assert.match(styles, /grid-template-columns: minmax\(360px, 1\.05fr\) minmax\(220px, 260px\) minmax\(320px, 0\.95fr\);/);
+assert.match(styles, /\.fep-setup-panel \{/);
+assert.match(styles, /\.fep-setup-candidates \{/);
+assert.match(styles, /\.fep-setup-missing \{/);
 assert.match(ketcherPage, /function normalizeKetcherImportText\(text: string\)/);
 assert.match(ketcherPage, /function looksLikeSdfRecord\(text: string\)/);
 assert.match(ketcherPage, /trimmed\.replace\(\/\\n\?\\\$\\\$\\\$\\\$\\s\*\$\/u, ""\)\.trimEnd\(\) \+ "\\n"/);
@@ -686,6 +774,16 @@ assert.match(ketcherPage, /const importText = normalizeKetcherImportText\(text\)
 assert.match(ketcherPage, /await ketcher\.setMolecule\(importText, \{ needZoom: true \}\)/);
 assert.match(ketcherPage, /await ketcher\.addFragment\(importText, \{ needZoom: true \}\)/);
 assert.match(ketcherPage, /hasImportedStructure = true/);
+assert.match(ketcherPage, /shellDropActionChoices\(payload, \{ kind: "ketcher" \}, \{ kind: "ketcher" \}\)/);
+assert.match(ketcherPage, /runShellDropActionChoices\(actions, payload, choices\.slice\(0, 1\), \{ x: event\.clientX, y: event\.clientY \}/);
+assert.match(ketcherPage, /importKetcherStructures: \(actionPayload\) =>/);
+assert.match(ketcherPage, /if \(!ketcher\) return false/);
+assert.match(ketcherPage, /importStructures\(actionPayload\.paths, structureDragRecordsToFragments\(actionPayload\.records\)\)/);
+assert.match(ketcherPage, /writeStructureDragRecords/);
+assert.match(ketcherPage, /const sketchDragRecordRef = useRef<StructureDragRecord \| null>\(null\)/);
+assert.match(ketcherPage, /data-ketcher-sketch-drag-source/);
+assert.match(ketcherPage, /onPointerDown=\{prepareSketchDrag\}/);
+assert.match(ketcherPage, /onDragStart=\{handleSketchDragStart\}/);
 assert.match(app, /body\?\.type === "openInKetcher"/);
 assert.match(app, /const openKetcherWithFragment = useCallback/);
 assert.match(app, /textBase64/);
@@ -847,6 +945,9 @@ assert.match(styles, /\.page-surface\[data-page-kind="settings"\] \{[^}]*overflo
 assert.match(styles, /\.page-surface:not\(\[data-active\]\) \{[^}]*display: none/s);
 assert.match(styles, /\.editor-progressive-blur/);
 assert.match(commandPalette, /group: "Projects"/);
+assert.match(commandPalette, /id: "open-clipboard"/);
+assert.match(commandPalette, /Open from Clipboard/);
+assert.match(commandPalette, /run: actions\.openClipboard/);
 assert.match(commandPalette, /Clear Recent Structures/);
 assert.match(commandPalette, /group: "Suggested"/);
 assert.doesNotMatch(commandPalette, /renderer-xyz-fast/);
@@ -857,8 +958,26 @@ assert.match(commandPalette, /ArrowDown/);
 assert.match(commandPalette, /ArrowUp/);
 assert.match(commandPalette, /aria-selected=\{index === selectedIndex\}/);
 assert.match(app, /useOpenDrop\(openDocuments, pushStatus, \{/);
+assert.match(app, /openClipboardText/);
+assert.match(app, /navigator\.clipboard\?\.readText/);
+assert.match(app, /await navigator\.clipboard\.readText\(\)/);
+assert.match(app, /openClipboardText\(text\)/);
+assert.match(app, /openClipboard,/);
+assert.match(app, /openStructurePaths: openDocuments/);
+assert.match(app, /openStructureRecords,/);
+assert.match(app, /activeTabKind: activeTab\?\.location\.kind \?\? null/);
 assert.match(app, /activeDocumentPath: activeDocument\?\.path \?\? null/);
 assert.match(app, /openDockingDocument,/);
+assert.match(app, /const openStructureRecordDocuments = useCallback/);
+assert.match(app, /const openDockingStructureRecords = useCallback/);
+assert.match(app, /if \(opened\.length > 0\) addDocuments\(opened\)/);
+assert.match(app, /addDocuments\(\[dockingDocument\]\)/);
+assert.match(app, /openDockingStructureRecords,/);
+assert.match(app, /const openStructureRecords = useCallback/);
+assert.match(app, /invoke<ViewerDocument>\("open_text_structure"/);
+assert.match(app, /openBrowserDevTextDocument\(record\.path, record\.inputExtension, record\.text, preferences\)/);
+assert.match(app, /openStructureRecords,/);
+assert.match(app, /openKetcherWithStructures,/);
 assert.match(app, /existingDockingRequest = documents\.find/);
 assert.match(app, /dockingRequestForDrop\(targetPath, droppedPaths, existingDockingRequest\)/);
 assert.match(app, /useOpenEvents\(openDocuments, pushErrorStatus\)/);
@@ -885,7 +1004,22 @@ assert.match(app, /void openDocuments\(\[targetDocument\.path\], reloadOptions, 
 assert.match(app, /body\?\.type === "openSdfPoseDocument"/);
 assert.match(app, /const targetPath = typeof body\.path === "string" && body\.path\.trim\(\)\.length > 0/);
 assert.match(app, /const requestedReceptorPath = typeof body\.receptorPath === "string"/);
+assert.match(app, /document\.path === requestedReceptorPath/);
 assert.match(app, /isProteinLikeDockingSource\(document\.path\)/);
+assert.match(app, /body\?\.type === "dockingPoseChanged"/);
+assert.match(app, /setPoseReviewSelections/);
+assert.match(app, /notifyGridPoseReviewSelection/);
+assert.match(app, /pushStatus\("Opening pose-review workspace\.\.\."\)/);
+assert.match(app, /const openPoseReviewWorkspace = useCallback/);
+assert.match(app, /openPoseReviewTab\(\{/);
+assert.match(app, /const openFepSetupWorkspace = useCallback/);
+assert.match(app, /openFepSetupTab\(\{/);
+assert.match(app, /kind: "fep-setup"/);
+assert.match(app, /pushStatus\("Opened FEP setup workspace"\)/);
+assert.match(app, /const currentFepSetupRequest = useMemo<FepSetupRequest \| null>/);
+assert.match(app, /fepSetupRequest: currentFepSetupRequest/);
+assert.match(app, /openFepSetupWorkspace,/);
+assert.match(app, /void openPoseReviewWorkspace\(receptorDocument, poseTargetDocument, activePose\)/);
 assert.match(app, /pushStatus\("Opening SDF poses in Mol\* docking view\.\.\."\)/);
 assert.match(app, /void openDockingDocument\(receptorDocument\.path, \[targetPath\]\)/);
 assert.match(app, /pushStatus\("Opening SDF poses in Mol\*\.\.\."\)/);
@@ -900,23 +1034,85 @@ assert.match(app, /void openDockingDocument\(targetDocument\.dockingRequest\.rec
 assert.match(app, /const targetDocument = \(pendingViewerReloadDocumentIdRef\.current/);
 assert.match(app, /const reloadOptions = pendingViewerReloadOptionsRef\.current \?\? undefined/);
 assert.match(app, /await openDocuments\(\[targetDocument\.path\], reloadOptions\)/);
+assert.match(app, /from "\.\/components\/native-context-menu"/);
+assert.match(app, /import type \{ DropActionChoice \} from "\.\/lib\/drop-actions"/);
+assert.match(app, /const chooseDropAction = useCallback/);
+assert.match(app, /choices\.length < 2/);
+assert.match(app, /showNativeContextMenu\(/);
+assert.match(app, /text: choice\.confidence === "default" \? `\$\{choice\.label\} \(default\)` : choice\.label/);
+assert.match(app, /pushErrorStatus\(error, "Drop action menu failed"\)/);
+assert.match(app, /runChoice\(choices\[0\]\)/);
+assert.match(app, /chooseDropAction,/);
+assert.match(app, /handleBrowserPaste/);
+assert.match(app, /onPaste=\{handleBrowserPaste\}/);
+assert.match(appLayout, /onPaste,/);
+assert.match(appLayout, /onPaste: \(event: React\.ClipboardEvent<HTMLElement>\) => void/);
+assert.match(appLayout, /onPaste=\{onPaste\}/);
 assert.match(openDropHook, /export function useOpenDrop/);
-assert.match(openDropHook, /from "\.\.\/lib\/docking-documents"/);
+assert.match(openDropHook, /from "\.\.\/lib\/drop-actions"/);
+assert.match(openDropHook, /resolveDropActionChoices/);
+assert.match(openDropHook, /import type \{ DropSourceContext, DropTargetContext \} from "\.\.\/lib\/drop-actions"/);
+assert.match(openDropHook, /import type \{ DropAction, DropActionChoice \} from "\.\.\/lib\/drop-actions"/);
+assert.match(openDropHook, /StructureDragRecord/);
 assert.match(openDropHook, /from "\.\.\/lib\/structure-drag"/);
+assert.match(openDropHook, /structureDragRecordsToFragments/);
+assert.match(openDropHook, /structureDragPayloadFromText/);
+assert.match(openDropHook, /activeTabKind\?: string \| null/);
 assert.match(openDropHook, /activeDocumentPath\?: string \| null/);
+assert.match(openDropHook, /activeDocumentRenderer\?: string \| null/);
 assert.match(openDropHook, /activeDockingRequest\?: DockingDocumentRequest \| null/);
 assert.match(openDropHook, /openDockingDocument\?: OpenDockingDocument/);
-assert.match(openDropHook, /const openAsDocking = useCallback/);
-assert.match(openDropHook, /const request = dockingRequestForDrop\(activeDocumentPath, paths, activeDockingRequest\)/);
-assert.match(openDropHook, /void openDockingDocument\(request\.receptorPath, request\.ligandPaths\)/);
+assert.match(openDropHook, /type OpenDockingStructureRecords = \(receptorPath: string, ligandPaths: string\[\], records: StructureDragRecord\[\]\) => void \| Promise<void>/);
+assert.match(openDropHook, /openDockingStructureRecords\?: OpenDockingStructureRecords/);
+assert.match(openDropHook, /openStructureRecords\?: OpenStructureRecords/);
+assert.match(openDropHook, /openKetcherWithStructures\?: OpenKetcherWithStructures/);
+assert.match(openDropHook, /chooseDropAction\?: ChooseDropAction/);
+assert.match(openDropHook, /type ChooseDropAction = \(/);
+assert.match(openDropHook, /const activeViewerTarget = useCallback/);
+assert.match(openDropHook, /const dropTargetForElement = useCallback/);
+assert.match(openDropHook, /element\?\.closest\("\.ketcher-page"\)/);
+assert.match(openDropHook, /activeTabKind === "ketcher"/);
+assert.match(openDropHook, /const dropTargetForPosition = useCallback/);
+assert.match(openDropHook, /const dropTargetForClipboard = useCallback/);
+assert.match(openDropHook, /return activeViewerTarget\(\) \?\? \{ kind: "workspace" \}/);
+assert.match(openDropHook, /const executeDropAction = useCallback/);
+assert.match(openDropHook, /action\.kind === "open-docking-with-records"/);
+assert.match(openDropHook, /openDockingStructureRecords\(action\.receptorPath, action\.ligandPaths, action\.records\)/);
+assert.match(openDropHook, /action\.kind === "import-ketcher-structures"/);
+assert.match(openDropHook, /openKetcherWithStructures\(action\.payload\.paths, structureDragRecordsToFragments\(action\.payload\.records\)\)/);
+assert.match(openDropHook, /action\.kind === "open-structure-records"/);
+assert.match(openDropHook, /openStructureRecords\(action\.records\)/);
+assert.match(openDropHook, /const runDropAction = useCallback/);
+assert.match(openDropHook, /const choices = resolveDropActionChoices/);
+assert.match(openDropHook, /source: DropSourceContext = \{ kind: "unknown" \}/);
+assert.match(openDropHook, /resolveDropActionChoices\(\s*payload,\s*target,\s*source,\s*\)/s);
+assert.match(openDropHook, /choices\.length === 0/);
+assert.match(openDropHook, /const runChoice = \(choice: DropActionChoice\) => executeDropAction\(choice\.action, payload\)/);
+assert.match(openDropHook, /choices\.length > 1 && chooseDropAction/);
+assert.match(openDropHook, /chooseDropAction\(choices, payload\.point, runChoice\)/);
+assert.match(openDropHook, /if \(!handled\) runChoice\(choices\[0\]\)/);
+assert.match(openDropHook, /documentPath: activeDocumentPath/);
+assert.match(openDropHook, /renderer: activeDocumentRenderer/);
+assert.match(openDropHook, /void openDockingDocument\(action\.request\.receptorPath, action\.request\.ligandPaths\)/);
 assert.match(openDropHook, /document\.elementFromPoint\(position\.x \/ window\.devicePixelRatio, position\.y \/ window\.devicePixelRatio\)/);
 assert.match(openDropHook, /element\?\.closest\("\.molecule-stage, \.main-stage"\)/);
-assert.match(openDropHook, /isOverActiveViewer\(event\.position\) && openAsDocking\(event\.paths\)/);
+assert.match(openDropHook, /runDropAction\(payload, dropTargetForPosition\(event\.position\), \{ kind: "finder" \}\)/);
 assert.match(openDropHook, /const structureDrop = hasStructureDrag\(event\.dataTransfer\)/);
 assert.match(openDropHook, /readStructureDragPayload\(event\.dataTransfer\)/);
-assert.match(openDropHook, /if \(target\?\.closest\("\.molecule-stage, \.main-stage"\)\) \{/);
-assert.match(openDropHook, /if \(addXyzrenderSheetItems\?\.\(payload\)\) return;/);
-assert.match(openDropHook, /if \(openAsDocking\(payload\.paths\)\) return;/);
+assert.match(openDropHook, /const source: DropSourceContext = fileDrop && !structureDrop \? \{ kind: "finder" \} : \{ kind: "unknown" \}/);
+assert.match(openDropHook, /runDropAction\(payload, dropTargetForElement\(target\), source\)/);
+assert.match(openDropHook, /const handleBrowserPaste = useCallback/);
+assert.match(openDropHook, /isEditablePasteTarget\(event\.target\)/);
+assert.match(openDropHook, /const hasPlainText = Array\.from\(event\.clipboardData\.types\)\.includes\("text\/plain"\)/);
+assert.match(openDropHook, /hasStructureDrag\(event\.clipboardData\)/);
+assert.match(openDropHook, /Clipboard text is not a supported molecular structure or path list\./);
+assert.match(openDropHook, /readStructureDragPayload\(event\.clipboardData\)/);
+assert.match(openDropHook, /const openClipboardText = useCallback/);
+assert.match(openDropHook, /const payload = structureDragPayloadFromText\(text\)/);
+assert.match(openDropHook, /runDropAction\(payload, dropTargetForElement\(target\), \{ kind: "clipboard" \}\)/);
+assert.match(openDropHook, /runDropAction\(payload, dropTargetForClipboard\(\), \{ kind: "clipboard" \}\)/);
+assert.match(openDropHook, /handleBrowserPaste,/);
+assert.match(openDropHook, /openClipboardText,/);
 assert.match(openEventsHook, /export function useOpenEvents/);
 assert.match(menuEventsHook, /export function useMenuEvents/);
 assert.match(windowTitle, /useWindowTitle/);
@@ -1318,9 +1514,58 @@ assert.match(shortcuts, /key === "\/" && !isEditableTarget\(event\.target\)/);
 assert.match(shortcuts, /if \(!enabled\) return undefined/);
 assert.match(app, /isKnownViewerMessageSource\(event\.source, body\?\.documentId\)/);
 assert.match(app, /data\?\.source !== "burrete-grid"/);
+assert.match(app, /body\?\.type === "copyText"/);
+assert.match(app, /navigator\.clipboard\.writeText\(text\)/);
+assert.match(app, /body\?\.type === "exportText"/);
+assert.match(app, /const outputPath = await save\(/);
+assert.match(app, /invoke<string>\("save_text_as"/);
+assert.match(app, /body\?\.type === "saveGridAs"/);
+assert.match(app, /type: "gridSavedAs"/);
+assert.match(app, /type: "gridSaveAsError"/);
+assert.match(app, /pushErrorStatus\(error, "Grid Save As failed"\)/);
+assert.match(app, /function safeExportFileName\(name: string\)/);
+assert.match(app, /function exportDialogFilters\(fileName: string, mimeType: string\)/);
 assert.match(app, /if \(body\?\.type === "gridFetchPage"\) \{\s*if \(!body\.requestId \|\| !body\.documentId\) return;/s);
 assert.match(app, /invoke\("grid_fetch_page"/);
 assert.match(app, /source: "burrete-grid-host"/);
+assert.match(app, /type GridDelimitedColumnChoice = \{/);
+assert.match(app, /function isDelimitedColumnAmbiguity\(error: unknown\)/);
+assert.match(app, /multiple possible structure columns/);
+assert.match(app, /const openDelimitedGridDocument = useCallback/);
+assert.match(app, /invoke<ViewerDocument>\("open_delimited_grid_document"/);
+assert.match(app, /const showDelimitedGridColumnOpenMenu = useCallback/);
+assert.match(app, /invoke<GridDelimitedColumnChoice\[\]>\("grid_delimited_columns"/);
+assert.match(app, /void showDelimitedGridColumnOpenMenu\(cleanPaths\[0\], effectivePreferences, options\.replace === true\)/);
+assert.match(app, /const appendGridRecords = useCallback/);
+assert.match(app, /invoke<GridAppendResult>\("grid_append_records"/);
+assert.match(app, /const appendDelimitedGridRecords = useCallback/);
+assert.match(app, /invoke<GridAppendResult>\("grid_append_delimited_records"/);
+assert.match(app, /const showDelimitedGridColumnAppendMenu = useCallback/);
+assert.match(app, /void showDelimitedGridColumnAppendMenu\(targetDocument, payload\.paths\[0\]\)/);
+assert.match(app, /notifyGridRecordsAppended\(targetDocument\.id, result\)/);
+assert.match(app, /type: "gridRecordsAppended"/);
+assert.match(app, /appendGridRecords,/);
+assert.match(gridViewer, /dirty: false/);
+assert.match(gridViewer, /dirtyReason: ''/);
+assert.match(gridViewer, /rowPatches: new Map\(\)/);
+assert.match(gridViewer, /body\.type === 'gridSavedAs'/);
+assert.match(gridViewer, /body\.type === 'gridSaveAsError'/);
+assert.match(gridViewer, /<button id="save-grid-as" type="button">Save As\.\.\.<\/button>/);
+assert.match(gridViewer, /document\.getElementById\('save-grid-as'\)\?\.addEventListener\('click', \(\) => saveGridAs\(cfg\)\)/);
+assert.match(gridViewer, /markGridDirty\('appended molecules'\)/);
+assert.match(gridViewer, /function saveGridAs\(cfg\)/);
+assert.match(gridViewer, /post\('saveGridAs'/);
+assert.match(gridViewer, /function collectCurrentCollectionRows\(cfg\)/);
+assert.match(gridViewer, /collectAllRemoteRows\(cfg, '', 'index'\)/);
+assert.match(gridViewer, /function gridSaveAsSnapshot\(rows, cfg\)/);
+assert.match(gridViewer, /function serializeSdfRows\(rows\)/);
+assert.match(gridViewer, /function serializeDelimitedRows\(rows, separator\)/);
+assert.match(gridViewer, /function applyVirtualGridEdits\(rows\)/);
+assert.match(gridViewer, /state\.rowPatches\.set\(index/);
+assert.match(gridViewer, /state\.dirty \? `unsaved \$\{state\.dirtyReason \|\| 'edits'\}` : ''/);
+assert.match(gridViewer, /Virtual grid has unsaved \$\{state\.dirtyReason \|\| 'edits'\}\. Export to keep changes; the source file is unchanged\./);
+assert.match(gridViewer, /function markGridDirty\(reason\)/);
+assert.match(gridViewer, /Source file is unchanged/);
 assert.match(app, /if \(body\?\.type === "renderXyzrenderCard"\) \{/);
 assert.match(app, /type: "xyzrenderCard"/);
 assert.match(browserDevDocuments, /if \(window\.BurreteConfig && window\.BurreteConfig\.documentId\) body\.documentId = String\(window\.BurreteConfig\.documentId\);/);
@@ -1535,6 +1780,9 @@ assert.match(gridViewer, /post\('openSdfPoseDocument', '\[grid\] Open SDF poses 
 assert.match(gridViewer, /documentId: cfg\?\.documentId \|\| null/);
 assert.match(gridViewer, /path: sourcePath \|\| null/);
 assert.match(gridViewer, /receptorPath: receptorPath \|\| null/);
+assert.match(gridViewer, /activePoseReviewIndex\(\)/);
+assert.match(gridViewer, /body\.type === 'poseReviewSelection'/);
+assert.match(gridViewer, /function selectPoseReviewRow\(activePose, cfg\)/);
 assert.match(gridViewer, /if \(value === 'molstar'\) \{\s*requestSdfPoseDocument\(cfg\);\s*return;\s*\}/s);
 assert.match(gridViewer, /async function requestXyzrenderCard\(row, cfg, record, key\)/);
 assert.match(gridViewer, /function pumpXyzrenderCardQueue\(\)/);
@@ -1559,7 +1807,20 @@ assert.match(gridViewer, /function isMoleculeGraphicContextTarget\(target\)/);
 assert.match(gridViewer, /target\.closest\('path, line, circle, ellipse, polygon, polyline, text, image, img'\)/);
 assert.match(gridViewer, /STRUCTURE_DRAG_MIME = 'application\/x-burrete-structure-paths'/);
 assert.match(gridViewer, /function installCardDrag\(el, row\)/);
+assert.match(gridViewer, /const records = gridDragRecordsForRow\(row\)/);
 assert.match(gridViewer, /event\.dataTransfer\?\.setData\(STRUCTURE_DRAG_MIME, JSON\.stringify\(payload\)\)/);
+assert.match(gridViewer, /records\.map\(item => item\.text\.trimEnd\(\)\)\.join\('\\n'\) \+ '\\n'/);
+assert.match(gridViewer, /installCardDrop\(el, row, cfg\)/);
+assert.match(gridViewer, /function installCardDrop\(el, row, cfg\)/);
+assert.match(gridViewer, /function dataTransferHasStructurePayload\(dataTransfer\)/);
+assert.match(gridViewer, /function readStructureDropPayload\(dataTransfer\)/);
+assert.match(gridViewer, /payload\.paths\.length \|\| payload\.records\.length !== 1/);
+assert.match(gridViewer, /function recordToGridRowPatch\(record, row\)/);
+assert.match(gridViewer, /function replaceGridRow\(row, patch, cfg\)/);
+assert.match(gridViewer, /markGridDirty\('row edits'\)/);
+assert.match(gridCss, /\.buret-card\.buret-card-drop-target\s*\{/);
+assert.match(gridViewer, /function gridDragRecordsForRow\(row\)/);
+assert.match(gridViewer, /state\.selected\.has\(rowIndex\) \|\| state\.selected\.size < 2/);
 assert.match(gridViewer, /function gridDragRecord\(row\)/);
 assert.match(gridViewer, /function showMoleculeContextMenu\(event, row\)/);
 assert.match(gridViewer, /if \(!isMoleculeGraphicContextTarget\(event\.target\)\) \{/);
@@ -1569,6 +1830,7 @@ assert.match(gridViewer, /state\.selected\.add\(Number\(row\.index\)\)/);
 assert.match(gridViewer, /Open in Mol\*/);
 assert.match(gridViewer, /Delete molecule/);
 assert.match(gridViewer, /removeGridRow\(row\)/);
+assert.match(gridViewer, /markGridDirty\('row edits'\)/);
 assert.doesNotMatch(gridViewer, /separateWindow/);
 assert.match(gridCss, /\.buret-grid-molecule-context-menu \{/);
 assert.match(gridCss, /--buret-menu-surface: #f4f4f6/);
@@ -1585,13 +1847,14 @@ assert.match(gridViewer, /requestRendererSwitch\(button\.getAttribute\('data-bur
 assert.match(gridViewer, /post\('setRenderer', `\[grid\] Switch renderer to \$\{value\}\.`, \{\s*value,\s*documentId: cfg\?\.documentId \|\| null\s*\}\)/);
 assert.match(gridViewer, /async function scanRemoteBySMARTS\(cfg, token\)/);
 assert.match(gridViewer, /function shouldCollectAllRemoteRows\(\)/);
-assert.match(gridViewer, /async function collectAllRemoteRows\(cfg\)/);
+assert.match(gridViewer, /async function collectAllRemoteRows\(cfg, query = state\.query \|\| '', sort = state\.sort \|\| 'index'\)/);
 assert.match(gridViewer, /state\.remoteMode && state\.selected\.size === 0 && !state\.smarts\.trim\(\)/);
 assert.match(gridViewer, /if \(kind === 'error' && status && !window\.BurreteDebug && cfg\.appViewer === true\) status\.classList\.add\('hidden'\);/);
 assert.doesNotMatch(gridViewer, /post\('error', message\);/);
 assert.match(gridViewer, /buildUI\(cfg\);\s*refresh\(cfg\);\s*try \{\s*await initRDKit\(\);\s*state\.rdkitError = '';\s*if \(state\.cardRenderer === 'rdkit'\) render\(cfg\);\s*\} catch \(rdkitError\) \{/s);
 assert.match(structureDrag, /export const STRUCTURE_DRAG_MIME = "application\/x-burrete-structure-paths"/);
 assert.match(structureDrag, /export function writeStructureDrag/);
+assert.match(structureDrag, /export function writeStructureDragRecords/);
 assert.match(structureDrag, /export function readStructureDrag/);
 assert.match(structureDrag, /export function hasStructureDrag/);
 assert.match(structureDrag, /types\.includes\("text\/plain"\)/);
@@ -1602,19 +1865,94 @@ assert.match(structureDrag, /function structureDragRecordFromPlainText\(text: st
 assert.match(structureDrag, /V2000\|V3000/);
 assert.match(dockingDocuments, /export function ligandDropPathsForTarget/);
 assert.match(dockingDocuments, /export function dockingRequestForDrop/);
+assert.match(dockingDocuments, /export function dockingCandidatesForDrop/);
 assert.match(dockingDocuments, /function uniqueDockingPaths\(paths: string\[\]\)/);
 assert.match(dockingDocuments, /existingDockingRequest/);
 assert.match(dockingDocuments, /receptorPath: existingDockingRequest\.receptorPath/);
+assert.match(dropActions, /export type DropTargetContext/);
+assert.match(dropActions, /export type DropSourceContext/);
+assert.match(dropActions, /export type DropAction/);
+assert.match(dropActions, /export type DropActionChoice/);
+assert.match(dropActions, /source\?: DropSourceContext/);
+assert.match(dropActions, /const UNKNOWN_DROP_SOURCE: DropSourceContext = \{ kind: "unknown" \}/);
+assert.match(dropActions, /export function resolveDropAction/);
+assert.match(dropActions, /export function resolveDropActionChoices/);
+assert.match(dropActions, /source: DropSourceContext = UNKNOWN_DROP_SOURCE/);
+assert.match(dropActions, /dockingCandidatesForDrop/);
+assert.match(dropActions, /kind: "ketcher"/);
+assert.match(dropActions, /kind: "merge-collection"/);
+assert.match(dropActions, /kind: "append-grid-records"/);
+assert.match(dropActions, /targetDocumentId: string/);
+assert.match(dropActions, /function gridAppendPayload/);
+assert.match(dropActions, /kind: "add-xyzrender-sheet-items"/);
+assert.match(dropActions, /kind: "open-docking"/);
+assert.match(dropActions, /kind: "open-docking-with-records"/);
+assert.match(dropActions, /kind: "prepare-fep-setup"/);
+assert.match(dropActions, /kind: "fep-setup"/);
+assert.match(dropActions, /candidatePayload: semanticPayload\(payload\)/);
+assert.match(dropActions, /function semanticPayload\(payload: StructureDragPayload\): StructureDragPayload/);
+assert.match(dropActions, /function dockingActionChoices/);
+assert.match(dropActions, /function dockingRecordActionChoices/);
+assert.match(dropActions, /function dockingRecordCandidates/);
+assert.match(dropActions, /`Dock with \$\{fileName\(request\.receptorPath\)\}`/);
+assert.match(dropActions, /kind: "import-ketcher-structures"/);
+assert.match(dropActions, /"Add to Ketcher"/);
+assert.match(dropActions, /kind: "open-structure-records"/);
+assert.match(dropActions, /records: StructureDragRecord\[\]/);
+assert.match(dropActions, /const openSeparately = workspaceDropAction\(payload\)/);
+assert.match(dropActions, /function tagChoicesWithSource/);
+assert.match(dropActions, /if \(source\.kind !== "unknown"\) result\.source = source/);
+assert.match(dropActionExecutor, /resolveDropActionChoices/);
+assert.match(dropActionExecutor, /type DropSourceContext/);
+assert.match(dropActionExecutor, /export function shellDropActionChoices/);
+assert.match(dropActionExecutor, /source: DropSourceContext = \{ kind: "unknown" \}/);
+assert.match(dropActionExecutor, /resolveDropActionChoices\(payload, target, source\)/);
+assert.match(dropActionExecutor, /type ShellDropActionHandlers = \{/);
+assert.match(dropActionExecutor, /addXyzrenderSheetItems\?: \(targetDocumentId: string, payload: StructureDragPayload\) => boolean/);
+assert.match(dropActionExecutor, /importKetcherStructures\?: \(payload: StructureDragPayload\) => boolean/);
+assert.match(dropActionExecutor, /export function runShellDropActionChoices/);
+assert.match(dropActionExecutor, /showNativeContextMenu/);
+assert.match(dropActionExecutor, /choices\.length === 1/);
+assert.match(dropActionExecutor, /\.catch\(\(\) => runChoice\(choices\[0\]\)\)/);
+assert.match(dropActionExecutor, /action\.kind === "open-docking-with-records"/);
+assert.match(dropActionExecutor, /actions\.openDockingStructureRecords\(action\.receptorPath, action\.ligandPaths, action\.records\)/);
+assert.match(dropActionExecutor, /action\.kind === "add-xyzrender-sheet-items"/);
+assert.match(dropActionExecutor, /handlers\.addXyzrenderSheetItems\?\.\(action\.targetDocumentId, action\.payload\)/);
+assert.match(dropActionExecutor, /actions\.addXyzrenderSheetItems\(action\.targetDocumentId, action\.payload\)/);
+assert.match(dropActionExecutor, /action\.kind === "import-ketcher-structures"/);
+assert.match(dropActionExecutor, /handlers\.importKetcherStructures\?\.\(action\.payload\)/);
+assert.match(dropActionExecutor, /structureDragRecordsToFragments\(action\.payload\.records\)/);
+assert.match(dropActionExecutor, /action\.kind === "prepare-fep-setup"/);
+assert.match(dropActionExecutor, /actions\.openFepSetupWorkspace\(action\.request\)/);
+assert.match(componentsTypes, /openDockingStructureRecords: \(receptorPath: string, ligandPaths: string\[\], records: StructureDragPayload\["records"\]\)/);
+assert.match(componentsTypes, /addXyzrenderSheetItems: \(targetDocumentId: string, payload: StructureDragPayload\) => boolean/);
 assert.match(editorTabs, /from "\.\.\/\.\.\/lib\/structure-drag"/);
+assert.match(editorTabs, /from "\.\.\/drop-action-executor"/);
+assert.doesNotMatch(editorTabs, /from "\.\.\/\.\.\/lib\/docking-documents"/);
 assert.match(editorTabs, /const TAB_DRAG_MIME = "application\/x-burrete-tab-id"/);
 assert.match(editorTabs, /const TAB_DRAG_ACTIVATE_DELAY_MS = 520/);
 assert.match(editorTabs, /const TAB_MOUSE_REORDER_THRESHOLD_PX = 8/);
+assert.doesNotMatch(editorTabs, /const openStructurePayloadAsTabs = useCallback/);
+assert.match(editorTabs, /const handleEmptyTabStripDragOver = useCallback/);
+assert.match(editorTabs, /target\?\.closest\("\.tab-shell"\)/);
+assert.match(editorTabs, /event\.dataTransfer\.dropEffect = "copy"/);
+assert.match(editorTabs, /const handleEmptyTabStripDrop = useCallback/);
+assert.match(editorTabs, /shellDropActionChoices\(payload, \{ kind: "workspace" \}, \{ kind: "tab" \}\)/);
+assert.match(editorTabs, /runShellDropActionChoices\(actions, payload, choices, \{ x: event\.clientX, y: event\.clientY \}\)/);
 assert.match(editorTabs, /draggable\s+tabIndex=/);
 assert.match(editorTabs, /onMouseDown=\{\(event\) => startMouseTabReorder\(tab\.id, event\)\}/);
 assert.match(editorTabs, /event\.dataTransfer\.setData\(TAB_DRAG_MIME, tab\.id\)/);
 assert.match(editorTabs, /writeStructureDrag\(event\.dataTransfer, \[tabPath\]\)/);
 assert.match(editorTabs, /readStructureDragPayload\(event\.dataTransfer\)/);
-assert.match(editorTabs, /actions\.addXyzrenderSheetItems\(tabDocument\.id, payload\)/);
+assert.match(editorTabs, /const tabDropTarget = tabDocument/);
+assert.match(editorTabs, /kind: "active-viewer" as const/);
+assert.match(editorTabs, /documentId: tabDocument\.id/);
+assert.match(editorTabs, /dockingRequest: tabDocument\.dockingRequest \?\? null/);
+assert.match(editorTabs, /shellDropActionChoices\(payload, tabDropTarget, \{ kind: "tab" \}\)/);
+assert.match(editorTabs, /runShellDropActionChoices\(actions, payload, choices, \{ x: event\.clientX, y: event\.clientY \}\)/);
+assert.doesNotMatch(editorTabs, /dockingRequestForDrop/);
+assert.doesNotMatch(editorTabs, /actions\.appendGridRecords\(tabDocument\.id, payload\)/);
+assert.match(editorTabs, /className="tab-strip-spacer"[\s\S]*onDragOver=\{handleEmptyTabStripDragOver\}[\s\S]*onDrop=\{handleEmptyTabStripDrop\}/);
 assert.match(editorTabs, /event\.dataTransfer\.effectAllowed = tabPath \? "copyMove" : "move"/);
 assert.match(editorTabs, /actions\.moveTab\(tabId, targetIndex\)/);
 assert.match(editorTabs, /actions\.selectTab\(tabId\)/);
@@ -1622,30 +1960,44 @@ assert.match(editorTabs, /scheduleDragActivation\(tab\.id\)/);
 assert.match(editorTabs, /actions\.setStructureDragActive\(true\)/);
 assert.doesNotMatch(editorTabDragStart, /actions\.selectTab\(tab\.id\)/);
 assert.match(sidebarFileBrowser, /readStructureDragPayload\(event\.dataTransfer\)/);
-assert.match(sidebarFileBrowser, /structureDragRecordsToFragments\(payload\.records\)/);
-assert.match(sidebarFileBrowser, /actions\.openKetcherWithStructures\(payload\.paths, fragments\)/);
+assert.match(sidebarFileBrowser, /shellDropActionChoices\(payload, \{ kind: "ketcher" \}, \{ kind: "unknown" \}\)/);
+assert.match(sidebarFileBrowser, /runShellDropActionChoices\(actions, payload, choices, \{ x: event\.clientX, y: event\.clientY \}\)/);
+assert.doesNotMatch(sidebarFileBrowser, /choices\.slice\(0, 1\)/);
+assert.doesNotMatch(sidebarFileBrowser, /structureDragRecordsToFragments\(payload\.records\)/);
+assert.doesNotMatch(sidebarFileBrowser, /actions\.openKetcherWithStructures\(payload\.paths, fragments\)/);
 assert.match(sidebarFileTreeNode, /from "\.\.\/\.\.\/lib\/structure-drag"/);
-assert.match(sidebarFileTreeNode, /from "\.\.\/\.\.\/lib\/docking-documents"/);
+assert.match(sidebarFileTreeNode, /from "\.\.\/drop-action-executor"/);
+assert.doesNotMatch(sidebarFileTreeNode, /from "\.\.\/\.\.\/lib\/docking-documents"/);
 assert.match(sidebarFileTreeNode, /draggable/);
 assert.match(sidebarFileTreeNode, /writeStructureDrag\(event\.dataTransfer, \[item\.path\]\)/);
 assert.match(sidebarFileTreeNode, /readStructureDragPayload\(event\.dataTransfer\)/);
-assert.match(sidebarFileTreeNode, /actions\.addXyzrenderSheetItems\(item\.documentId, payload\)/);
+assert.match(sidebarFileTreeNode, /shellDropActionChoices\(payload, sidebarDropTarget\(item, state\), \{ kind: "sidebar" \}\)/);
+assert.match(sidebarFileTreeNode, /runShellDropActionChoices\(actions, payload, choices, \{ x: event\.clientX, y: event\.clientY \}\)/);
+assert.match(sidebarFileTreeNode, /function sidebarDropTarget\(item: SidebarProjectItem, state: ShellViewState\)/);
+assert.match(sidebarFileTreeNode, /dockingRequest: document\?\.dockingRequest \?\? null/);
 assert.match(sidebarFileTreeNode, /actions\.setStructureDragActive\(true\)/);
-assert.match(sidebarFileTreeNode, /const dockingRequest = dockingRequestForDrop\(item\.path, paths\)/);
-assert.match(sidebarFileTreeNode, /actions\.openDockingDocument\(dockingRequest\.receptorPath, dockingRequest\.ligandPaths\)/);
+assert.doesNotMatch(sidebarFileTreeNode, /dockingRequestForDrop/);
+assert.doesNotMatch(sidebarFileTreeNode, /actions\.appendGridRecords\(item\.documentId, payload\)/);
 assert.match(fileKind, /from "\.\.\/\.\.\/\.\.\/lib\/structure-drag"/);
-assert.match(fileKind, /from "\.\.\/\.\.\/\.\.\/lib\/docking-documents"/);
+assert.doesNotMatch(fileKind, /from "\.\.\/\.\.\/\.\.\/lib\/docking-documents"/);
+assert.match(fileKind, /from "\.\.\/\.\.\/drop-action-executor"/);
 assert.match(fileKind, /const droppedPayload = readStructureDragPayload\(event\.dataTransfer\)/);
 assert.match(fileKind, /droppedPayload\.point = \{ x: event\.clientX, y: event\.clientY \}/);
+assert.match(fileKind, /const choices = viewerDropActionChoices\(droppedPayload\)/);
+assert.match(fileKind, /if \(choices\.length === 0\) return/);
+assert.match(fileKind, /runShellDropActionChoices\(actions, droppedPayload, choices, \{ x: event\.clientX, y: event\.clientY \}/);
 assert.match(fileKind, /const point = payload\.point && iframeRect && Number\.isFinite\(payload\.point\.x\) && Number\.isFinite\(payload\.point\.y\)/);
-assert.match(fileKind, /if \(postXyzrenderSheetItems\(droppedPayload\)\) return/);
-assert.match(fileKind, /const request = dockingRequestForDrop\(document\.path, droppedPaths, document\.dockingRequest\)/);
-assert.match(fileKind, /actions\.openDockingDocument\(request\.receptorPath, request\.ligandPaths\)/);
+assert.match(fileKind, /addXyzrenderSheetItems: \(targetDocumentId, payload\) =>/);
+assert.match(fileKind, /targetDocumentId === document\.id && postXyzrenderSheetItems\(payload\)/);
+assert.doesNotMatch(fileKind, /dockingRequestForDrop/);
+assert.doesNotMatch(fileKind, /hasGridAppendInput/);
 assert.match(fileKind, /Add to Mol\* docking view/);
 assert.match(app, /openBrowserDevDockingDocument/);
 assert.match(app, /const openDockingDocument = useCallback/);
 assert.match(app, /browserDevDockingFromLocation\(\)/);
 assert.match(app, /void openDockingDocument\(request\.receptorPath, request\.ligandPaths\)/);
+assert.match(app, /request\.activePose = options\.activePose \?\? null/);
+assert.match(app, /openBrowserDevDockingDocument\(request\.receptorPath, request\.ligandPaths, preferences, options\)/);
 assert.match(app, /const point = payload\.point && Number\.isFinite\(payload\.point\.x\) && Number\.isFinite\(payload\.point\.y\)/);
 assert.match(app, /point,/);
 assert.match(app, /invoke<ViewerDocument>\("open_docking_document"/);
@@ -1671,6 +2023,10 @@ assert.match(previewViewer, /payload\.path = gridPath/);
 assert.match(previewViewer, /postHostMessage\(payload\)/);
 assert.match(previewViewer, /aria-label', 'Previous pose'/);
 assert.match(previewViewer, /aria-label', 'Next pose'/);
+assert.match(previewViewer, /function notifyDockingPoseChanged\(activePose, prepared\)/);
+assert.match(previewViewer, /type: 'dockingPoseChanged'/);
+assert.match(previewViewer, /const initialPose = activePose/);
+assert.match(previewViewer, /prepared\.nativeTrajectoryControls && initialPose > 0/);
 assert.match(previewViewer, /event\.key === 'ArrowLeft'/);
 assert.match(previewViewer, /event\.key === 'ArrowRight'/);
 assert.match(moleculeStore, /function persistedDocuments\(documents: ViewerDocument\[\]\)/);

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 
-const { dockingRequestForDrop, extensionForDocking, isProteinLikeDockingSource, ligandDropPathsForTarget } =
+const { dockingCandidatesForDrop, dockingRequestForDrop, extensionForDocking, isProteinLikeDockingSource, ligandDropPathsForTarget } =
   await import("../apps/desktop/src/lib/docking-documents.ts");
 
 assert.equal(extensionForDocking("/tmp/protein.mae.gz"), "maegz");
@@ -74,6 +74,42 @@ assert.deepEqual(
 );
 
 assert.deepEqual(
+  dockingRequestForDrop("/tmp/pose-a.sdf", ["/tmp/receptor-a.pdb", "/tmp/receptor-b.cif", "/tmp/pose-b.sdf"]),
+  {
+    receptorPath: "/tmp/receptor-a.pdb",
+    ligandPaths: ["/tmp/pose-a.sdf", "/tmp/pose-b.sdf"],
+  },
+);
+
+assert.deepEqual(
+  dockingCandidatesForDrop("/tmp/pose-a.sdf", ["/tmp/receptor-a.pdb", "/tmp/receptor-b.cif", "/tmp/pose-b.sdf"]),
+  [
+    {
+      receptorPath: "/tmp/receptor-a.pdb",
+      ligandPaths: ["/tmp/pose-a.sdf", "/tmp/pose-b.sdf"],
+    },
+    {
+      receptorPath: "/tmp/receptor-b.cif",
+      ligandPaths: ["/tmp/pose-a.sdf", "/tmp/pose-b.sdf"],
+    },
+  ],
+);
+
+assert.deepEqual(
+  dockingCandidatesForDrop("/tmp/receptor-a.pdb", ["/tmp/receptor-b.cif", "/tmp/pose-a.sdf"]),
+  [
+    {
+      receptorPath: "/tmp/receptor-a.pdb",
+      ligandPaths: ["/tmp/pose-a.sdf"],
+    },
+    {
+      receptorPath: "/tmp/receptor-b.cif",
+      ligandPaths: ["/tmp/pose-a.sdf"],
+    },
+  ],
+);
+
+assert.deepEqual(
   dockingRequestForDrop(
     "burrete-docking://active-view",
     ["/tmp/new-pose.sdf", "/tmp/receptor.pdb", "/tmp/alternate-receptor.cif", "/tmp/old-pose.sdf", "/tmp/new-pose.sdf"],
@@ -98,6 +134,21 @@ assert.equal(
     },
   ),
   null,
+);
+
+assert.deepEqual(
+  dockingRequestForDrop(
+    "burrete-docking://active-view",
+    ["/tmp/new-pose.sdf", "/tmp/new-protein.pdb", "/tmp/new-pose-2.mol2"],
+    {
+      receptorPath: "/tmp/receptor.pdb",
+      ligandPaths: ["/tmp/old-pose.sdf"],
+    },
+  ),
+  {
+    receptorPath: "/tmp/receptor.pdb",
+    ligandPaths: ["/tmp/old-pose.sdf", "/tmp/new-pose.sdf", "/tmp/new-pose-2.mol2"],
+  },
 );
 
 assert.equal(
