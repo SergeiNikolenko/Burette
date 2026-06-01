@@ -148,12 +148,17 @@
     return bonds;
   }
 
+  const DEFAULT_STYLE_OPTIONS = { atomScale: 0.62, minAtomRadius: 7.5, maxAtomRadius: 18.0, bondWidth: 4.2, showBonds: true };
+  const STYLE_OPTIONS = {
+    wire: { atomScale: 0.22, minAtomRadius: 3.4, maxAtomRadius: 8.5, bondWidth: 2.2, showBonds: true },
+    tube: { atomScale: 0.42, minAtomRadius: 6.0, maxAtomRadius: 13.0, bondWidth: 7.5, showBonds: true },
+    spacefill: { atomScale: 1.0, minAtomRadius: 11.0, maxAtomRadius: 28.0, bondWidth: 0, showBonds: false },
+    vdw: { atomScale: 1.0, minAtomRadius: 11.0, maxAtomRadius: 28.0, bondWidth: 0, showBonds: false }
+  };
+
   function styleOptions(styleName) {
     const name = String(styleName || 'default').toLowerCase();
-    if (name === 'wire') return { atomScale: 0.22, minAtomRadius: 3.4, maxAtomRadius: 8.5, bondWidth: 2.2, showBonds: true };
-    if (name === 'tube') return { atomScale: 0.42, minAtomRadius: 6.0, maxAtomRadius: 13.0, bondWidth: 7.5, showBonds: true };
-    if (name === 'spacefill' || name === 'vdw') return { atomScale: 1.0, minAtomRadius: 11.0, maxAtomRadius: 28.0, bondWidth: 0, showBonds: false };
-    return { atomScale: 0.62, minAtomRadius: 7.5, maxAtomRadius: 18.0, bondWidth: 4.2, showBonds: true };
+    return STYLE_OPTIONS[name] || DEFAULT_STYLE_OPTIONS;
   }
 
   function cellCorners(cell) {
