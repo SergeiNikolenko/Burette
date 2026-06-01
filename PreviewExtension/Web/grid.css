@@ -1058,7 +1058,7 @@ body.buret-hide-properties .buret-no-metadata {
 
 body.buret-hide-properties .buret-card {
   aspect-ratio: 1 / 1;
-  grid-template-rows: minmax(var(--buret-picture-min-height), auto);
+  grid-template-rows: minmax(0, 1fr);
 }
 
 body.buret-hide-properties .buret-molecule-picture {
