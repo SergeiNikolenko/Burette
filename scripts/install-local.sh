@@ -94,6 +94,7 @@ clean_detritus() {
   if [[ "$path" == *.app || "$path" == *.appex ]]; then
     clean_bundle "$path"
   elif [[ -d "$path" ]]; then
+    xattr -cr "$path" 2>/dev/null || true
     find "$path" \( -name '._*' -o -name '.DS_Store' \) -delete 2>/dev/null || true
     while IFS= read -r -d '' bundle; do
       clean_bundle "$bundle"
@@ -185,7 +186,6 @@ assert_bundled_xyzrender_runtime() {
     exit 1
   }
 }
-
 assert_bundled_xyzrender_runner() {
   local runtime="$1"
   local python_root="$2"
@@ -221,6 +221,9 @@ sign_bundled_xyzrender_runtime() {
 mkdir -p "$DEST_DIR"
 rm -rf "$STAGING_DEST" "$DEST" "$LEGACY_OLD_DEST" "$LEGACY_BURET_DEST" "$LEGACY_XYZ_DEST"
 ditto --norsrc --noextattr "$APP" "$STAGING_DEST"
+rm -rf "$STAGING_DEST/Contents/Resources/Web" "$STAGING_APPEX/Contents/Resources/Web"
+ditto --norsrc --noextattr "$ROOT/PreviewExtension/Web" "$STAGING_DEST/Contents/Resources/Web"
+ditto --norsrc --noextattr "$ROOT/PreviewExtension/Web" "$STAGING_APPEX/Contents/Resources/Web"
 if [[ -d "$LOCAL_XYZRENDER_ENV" ]]; then
   [[ -n "$LOCAL_XYZRENDER_PYTHON_ROOT" && -x "$LOCAL_XYZRENDER_PYTHON_ROOT/bin/python3" ]] || {
     echo "error: could not resolve relocatable xyzrender python runtime from $LOCAL_XYZRENDER_ENV/pyvenv.cfg" >&2
@@ -232,6 +235,7 @@ if [[ -d "$LOCAL_XYZRENDER_ENV" ]]; then
   rm -rf "$STAGING_XYZRENDER_PYTHON"
   mkdir -p "$STAGING_XYZRENDER_PYTHON"
   rsync -aL --delete "$LOCAL_XYZRENDER_PYTHON_ROOT/" "$STAGING_XYZRENDER_PYTHON/"
+  clean_detritus "$STAGING_XYZRENDER_PYTHON"
   cat >"$STAGING_XYZRENDER_ENV/bin/xyzrender" <<'EOF'
 #!/bin/sh
 set -eu
@@ -271,7 +275,24 @@ if [[ -d "$LOCAL_XYZRENDER_ENV" ]]; then
   assert_bundled_xyzrender_runner "$STAGING_XYZRENDER_ENV" "$STAGING_XYZRENDER_PYTHON" "after signing"
 fi
 codesign --verify --deep --strict "$STAGING_DEST"
+rm -rf "$DEST"
+if [[ -e "$DEST" ]]; then
+  echo "error: could not remove existing installed app before final move: $DEST" >&2
+  exit 1
+fi
 mv "$STAGING_DEST" "$DEST"
+if [[ ! -d "$DEST/Contents" ]]; then
+  echo "error: installed app has invalid bundle layout: $DEST/Contents is missing" >&2
+  exit 1
+fi
+if ! cmp -s "$ROOT/PreviewExtension/Web/grid-viewer.js" "$DEST/Contents/Resources/Web/grid-viewer.js"; then
+  echo "error: installed app grid viewer does not match PreviewExtension/Web/grid-viewer.js" >&2
+  exit 1
+fi
+if ! cmp -s "$ROOT/PreviewExtension/Web/grid-viewer.js" "$DEST_APPEX/Contents/Resources/Web/grid-viewer.js"; then
+  echo "error: installed Quick Look grid viewer does not match PreviewExtension/Web/grid-viewer.js" >&2
+  exit 1
+fi
 assert_bundled_xyzrender_runner "$DEST_XYZRENDER_ENV" "$DEST_XYZRENDER_PYTHON" "after final move"
 verify_installed_bundle
 
@@ -306,6 +327,7 @@ assert_bundled_xyzrender_runner "$DEST_XYZRENDER_ENV" "$DEST_XYZRENDER_PYTHON" "
 qlmanage -r >/dev/null 2>&1 || true
 qlmanage -r cache >/dev/null 2>&1 || true
 killall quicklookd 2>/dev/null || true
+rm -rf "$HOME/Library/Caches/$APP_ID/viewer/assets" 2>/dev/null || true
 assert_bundled_xyzrender_runner "$DEST_XYZRENDER_ENV" "$DEST_XYZRENDER_PYTHON" "after quicklook reset"
 
 touch "$ROOT/samples/mini.pdb" "$ROOT/samples/mini.cif" "$ROOT/samples/mini.xyz" 2>/dev/null || true

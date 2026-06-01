@@ -119,7 +119,7 @@
       const pending = state.hostRequests.get(requestId);
       state.hostRequests.delete(requestId);
       try { clearTimeout(pending.timeoutId); } catch (_) {}
-      if (body.type === 'gridPage') pending.resolve(body.result || {});
+      if (body.type === 'gridPage' || body.type === 'xyzrenderCard') pending.resolve(body.result || {});
       else pending.reject(new Error(body.error || 'Grid host request failed.'));
     });
   }
@@ -202,6 +202,17 @@
     } catch (_) {
       return 'rdkit';
     }
+  }
+
+  function supportsXyzrenderCards(cfg) {
+    return (cfg?.appViewer === true && cfg?.gridDataMode === 'bridge')
+      || (typeof cfg?.xyzrenderEndpoint === 'string' && cfg.xyzrenderEndpoint.trim().length > 0);
+  }
+
+  function normalizeCardRenderer(cfg) {
+    if (state.cardRenderer !== 'xyzrender' || supportsXyzrenderCards(cfg)) return;
+    state.cardRenderer = 'rdkit';
+    store(CARD_RENDERER_STORAGE_KEY, 'rdkit');
   }
 
   function storedBoolean(key, fallback) {
@@ -343,7 +354,7 @@
             <div class="buret-grid-card-renderer-switch" role="group" aria-label="Grid card renderer">
               <span>Cards</span>
               <button type="button" data-buret-grid-card-renderer="rdkit" aria-pressed="false">RDKit</button>
-              <button type="button" data-buret-grid-card-renderer="xyzrender" aria-pressed="false">xyzrender</button>
+              ${supportsXyzrenderCards(cfg) ? '<button type="button" data-buret-grid-card-renderer="xyzrender" aria-pressed="false">xyzrender</button>' : ''}
             </div>
             ${rdkitCoordinatesControlHTML()}
             ${caps.rendererSwitch ? rendererSwitchHTML() : ''}
@@ -452,7 +463,7 @@
   }
 
   function setCardRenderer(value, cfg) {
-    const next = value === 'xyzrender' ? 'xyzrender' : 'rdkit';
+    const next = value === 'xyzrender' && supportsXyzrenderCards(cfg) ? 'xyzrender' : 'rdkit';
     if (state.cardRenderer === next) return;
     state.cardRenderer = next;
     store(CARD_RENDERER_STORAGE_KEY, next);
@@ -534,6 +545,17 @@
     const extension = String(record?.inputExtension || '').toLowerCase();
     if (extension === 'sdf' || extension === 'sd') {
       return text.replace(/\n?\$\$\$\$\s*$/u, '').trimEnd() + '\n';
+    }
+    return text;
+  }
+
+  function xyzrenderFragmentText(record) {
+    const text = String(record?.text || '').trim();
+    const extension = String(record?.inputExtension || '').toLowerCase();
+    if (extension === 'smi' || extension === 'smiles') {
+      const firstLine = text.split(/\r?\n/u).find(line => line.trim()) || '';
+      const smiles = firstLine.trim().split(/\s+/u)[0] || '';
+      return smiles ? `${smiles}\n` : text;
     }
     return text;
   }
@@ -1452,7 +1474,7 @@
     const picture = target.closest('[data-buret-molecule-picture]');
     if (!picture) return false;
     if (target.closest('.buret-molecule-error')) return true;
-    return !!target.closest('path, line, circle, ellipse, polygon, polyline, text, image');
+    return !!target.closest('path, line, circle, ellipse, polygon, polyline, text, image, img');
   }
 
   function removeGridRow(row) {
@@ -1762,21 +1784,31 @@
   async function requestXyzrenderCard(row, cfg, record, key) {
     const endpoint = String(cfg.xyzrenderEndpoint || '/__burette/xyzrender');
     try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          path: record.path,
-          preset: 'default',
-          inputDataBase64: textToBase64(record.text),
-          inputExtension: record.inputExtension
-        })
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(typeof payload?.error === 'string' ? payload.error : `xyzrender request failed with status ${response.status}`);
+      const request = {
+        path: record.path,
+        preset: 'default',
+        inputDataBase64: textToBase64(xyzrenderFragmentText(record)),
+        inputExtension: record.inputExtension
+      };
+      let payload;
+      if (cfg.appViewer === true && cfg.gridDataMode === 'bridge') {
+        payload = await hostRequest('renderXyzrenderCard', request);
+      } else {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            path: request.path,
+            preset: request.preset,
+            inputDataBase64: request.inputDataBase64,
+            inputExtension: request.inputExtension
+          })
+        });
+        payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(typeof payload?.error === 'string' ? payload.error : `xyzrender request failed with status ${response.status}`);
+      }
       if (typeof payload?.svg !== 'string' || !payload.svg.trim()) throw new Error('xyzrender endpoint returned no SVG payload');
-      const html = sanitizeSVG(String(payload.svg || ''));
-      if (!html.includes('<svg')) throw new Error('empty xyzrender drawing');
+      const html = xyzrenderCardImageHTML(payload.svg, row);
       state.xyzrenderCardCache.set(key, { html });
       updateXyzrenderCard(key, html);
     } catch (error) {
@@ -1784,6 +1816,13 @@
       state.xyzrenderCardCache.set(key, { error: message });
       updateXyzrenderCard(key, `<div class="buret-molecule-error"><strong>${escapeHTML(row.name || `Molecule ${Number(row.index) + 1}`)}</strong><span>${escapeHTML(message)}</span></div>`);
     }
+  }
+
+  function xyzrenderCardImageHTML(svg, row) {
+    const sanitized = sanitizeSVG(String(svg || ''));
+    if (!sanitized.includes('<svg')) throw new Error('empty xyzrender drawing');
+    const label = row?.name || `Molecule ${Number(row?.index) + 1 || 1}`;
+    return `<img class="buret-xyzrender-card-image" alt="${escapeAttr(label)}" src="data:image/svg+xml;base64,${textToBase64(sanitized)}">`;
   }
 
   function updateXyzrenderCard(key, html) {
@@ -2103,15 +2142,17 @@
       applyTheme(cfg);
       installThemeListener(cfg);
       installHostMessageListener();
+      normalizeCardRenderer(cfg);
       buildUI(cfg);
+      refresh(cfg);
       try {
         await initRDKit();
         state.rdkitError = '';
+        if (state.cardRenderer === 'rdkit') render(cfg);
       } catch (rdkitError) {
         state.rdkitError = rdkitError?.message || String(rdkitError);
         setStatus(`RDKit renderer unavailable: ${state.rdkitError}`, 'error');
       }
-      refresh(cfg);
     } catch (error) {
       const message = error && error.stack ? error.stack : String(error);
       setStatus(message, 'error');
