@@ -214,10 +214,9 @@ assert.match(appMetadata, /<key>LSHandlerRank<\/key>\s*<string>Owner<\/string>/)
 assert.match(previewExtensionInfoPlist, /public\.comma-separated-values-text/);
 assert.match(previewExtensionInfoPlist, /public\.tab-separated-values-text/);
 assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.smiles/);
-assert.match(installLocalScript, /broadPublicTypes/);
-assert.match(installLocalScript, /public\.comma-separated-values-text/);
-assert.match(installLocalScript, /public\.tab-separated-values-text/);
-assert.match(installLocalScript, /subtracting\(broadPublicTypes\)/);
+assert.doesNotMatch(installLocalScript, /broadPublicTypes/);
+assert.match(installLocalScript, /let contentTypes = documentTypes\.flatMap/);
+assert.match(installLocalScript, /for contentType in Set\(contentTypes\)/);
 assert.match(installLocalScript, /assert_bundled_xyzrender_runtime\(\)\s*\{/);
 assert.match(installLocalScript, /assert_bundled_xyzrender_runner\(\)\s*\{/);
 assert.match(installLocalScript, /sign_bundled_xyzrender_runtime\(\)\s*\{/);
