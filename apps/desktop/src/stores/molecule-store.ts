@@ -374,7 +374,7 @@ export const useMoleculeStore = create<MoleculeState>()(
       },
       restoreSession: (sessionTabs, activeIndex) =>
         set((state) => {
-        const tabs = dedupeTabIds(ensureTabs(sessionTabs.map((tab) => hydrateTab(tab)).filter((tab): tab is MoleculeTab => tab !== null)));
+          const tabs = dedupeTabIds(ensureTabs(sessionTabs.map((tab) => hydrateTab(tab)).filter((tab): tab is MoleculeTab => tab !== null)));
           const requested = activeIndex === null ? null : tabs[activeIndex]?.id ?? null;
           const activeTabId = activeTabIdOrFirst(tabs, requested);
           return { tabs, activeTabId, activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, state.documents) };

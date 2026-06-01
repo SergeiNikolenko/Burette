@@ -172,20 +172,50 @@ unregister_bundle "$APP"
 unregister_legacy_launch_services_bundles
 
 assert_bundled_xyzrender_runtime() {
-  local stage="$1"
+  local runtime="$1"
+  local python_root="$2"
+  local stage="$3"
   [[ -d "$LOCAL_XYZRENDER_ENV" ]] || return 0
-  [[ -f "$DEST_XYZRENDER_ENV/bin/xyzrender" ]] || {
-    echo "error: bundled xyzrender runtime disappeared $stage: $DEST_XYZRENDER_ENV/bin/xyzrender" >&2
+  [[ -f "$runtime/bin/xyzrender" ]] || {
+    echo "error: bundled xyzrender runtime disappeared $stage: $runtime/bin/xyzrender" >&2
     exit 1
   }
-  [[ -x "$DEST_XYZRENDER_PYTHON/bin/python3" ]] || {
-    echo "error: bundled xyzrender python runtime disappeared $stage: $DEST_XYZRENDER_PYTHON/bin/python3" >&2
+  [[ -x "$python_root/bin/python3" ]] || {
+    echo "error: bundled xyzrender python runtime disappeared $stage: $python_root/bin/python3" >&2
     exit 1
   }
-  "$DEST_XYZRENDER_ENV/bin/xyzrender" --help >/dev/null || {
-    echo "error: bundled xyzrender wrapper is not runnable $stage" >&2
-    exit 1
-  }
+}
+
+assert_bundled_xyzrender_runner() {
+  local runtime="$1"
+  local python_root="$2"
+  local stage="$3"
+  assert_bundled_xyzrender_runtime "$runtime" "$python_root" "$stage"
+  for attempt in 1 2 3; do
+    if "$runtime/bin/xyzrender" --help >/dev/null; then
+      return 0
+    fi
+    [[ "$attempt" == 3 ]] && break
+    sleep 1
+  done
+  echo "error: bundled xyzrender wrapper is not runnable $stage" >&2
+  exit 1
+}
+
+sign_bundled_xyzrender_runtime() {
+  local runtime="$1"
+  local python_root="$2"
+  [[ -d "$runtime" && -d "$python_root" ]] || return 0
+  while IFS= read -r binary; do
+    codesign --force --sign - "$binary" >/dev/null
+  done < <(
+    find "$runtime" "$python_root" -type f \( \
+      -name python3 -o \
+      -name 'python3.*' -o \
+      -name '*.dylib' -o \
+      -name '*.so' \
+    \)
+  )
 }
 
 mkdir -p "$DEST_DIR"
@@ -230,30 +260,23 @@ EOF
     echo "error: bundled xyzrender runtime is missing after staging: $STAGING_XYZRENDER_ENV/bin/xyzrender" >&2
     exit 1
   }
-  "$STAGING_XYZRENDER_ENV/bin/xyzrender" --help >/dev/null || {
-    echo "error: bundled xyzrender wrapper is not runnable before signing" >&2
-    exit 1
-  }
+  assert_bundled_xyzrender_runtime "$STAGING_XYZRENDER_ENV" "$STAGING_XYZRENDER_PYTHON" "before signing"
 fi
 codesign --force --sign - --entitlements "$ROOT/PreviewExtension/BurretePreview.entitlements" "$STAGING_APPEX" >/dev/null
+if [[ -d "$LOCAL_XYZRENDER_ENV" ]]; then
+  sign_bundled_xyzrender_runtime "$STAGING_XYZRENDER_ENV" "$STAGING_XYZRENDER_PYTHON"
+fi
 codesign --force --sign - "$STAGING_DEST" >/dev/null
 if [[ -d "$LOCAL_XYZRENDER_ENV" ]]; then
-  [[ -f "$STAGING_XYZRENDER_ENV/bin/xyzrender" ]] || {
-    echo "error: bundled xyzrender runtime disappeared before verification: $STAGING_XYZRENDER_ENV/bin/xyzrender" >&2
-    exit 1
-  }
-  "$STAGING_XYZRENDER_ENV/bin/xyzrender" --help >/dev/null || {
-    echo "error: bundled xyzrender wrapper is not runnable after signing" >&2
-    exit 1
-  }
+  assert_bundled_xyzrender_runner "$STAGING_XYZRENDER_ENV" "$STAGING_XYZRENDER_PYTHON" "after signing"
 fi
 codesign --verify --deep --strict "$STAGING_DEST"
 mv "$STAGING_DEST" "$DEST"
-assert_bundled_xyzrender_runtime "after final move"
+assert_bundled_xyzrender_runner "$DEST_XYZRENDER_ENV" "$DEST_XYZRENDER_PYTHON" "after final move"
 verify_installed_bundle
 
 [[ -x "$LSREGISTER" ]] && "$LSREGISTER" -f -R "$DEST" || true
-assert_bundled_xyzrender_runtime "after lsregister"
+assert_bundled_xyzrender_runner "$DEST_XYZRENDER_ENV" "$DEST_XYZRENDER_PYTHON" "after lsregister"
 if [[ -x /usr/bin/swift ]]; then
   BURRETE_APP_PATH="$DEST" /usr/bin/swift -e '
 import Foundation
@@ -275,15 +298,15 @@ for contentType in Set(contentTypes).subtracting(broadPublicTypes) {
 }
 ' >/dev/null 2>&1 || true
 fi
-assert_bundled_xyzrender_runtime "after launch services defaults"
+assert_bundled_xyzrender_runner "$DEST_XYZRENDER_ENV" "$DEST_XYZRENDER_PYTHON" "after launch services defaults"
 [[ -d "$DEST_APPEX" ]] && pluginkit -a "$DEST_APPEX" 2>/dev/null || true
 pluginkit -e use -i "$EXT_ID" 2>/dev/null || true
-assert_bundled_xyzrender_runtime "after pluginkit"
+assert_bundled_xyzrender_runner "$DEST_XYZRENDER_ENV" "$DEST_XYZRENDER_PYTHON" "after pluginkit"
 
 qlmanage -r >/dev/null 2>&1 || true
 qlmanage -r cache >/dev/null 2>&1 || true
 killall quicklookd 2>/dev/null || true
-assert_bundled_xyzrender_runtime "after quicklook reset"
+assert_bundled_xyzrender_runner "$DEST_XYZRENDER_ENV" "$DEST_XYZRENDER_PYTHON" "after quicklook reset"
 
 touch "$ROOT/samples/mini.pdb" "$ROOT/samples/mini.cif" "$ROOT/samples/mini.xyz" 2>/dev/null || true
 
@@ -297,7 +320,7 @@ Check extension registration:
 Forced tests:
   qlmanage -p -c com.local.burrete10.pdb "$ROOT/samples/mini.pdb"
   qlmanage -p -c com.local.burrete10.cif "$ROOT/samples/mini.cif"
-  qlmanage -p -c com.local.burrete10.xyz "$ROOT/samples/mini.xyz"
+  qlmanage -p "$ROOT/samples/mini.xyz"
 
 Normal tests:
   qlmanage -p "$ROOT/samples/mini.pdb"

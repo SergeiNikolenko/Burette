@@ -23,6 +23,7 @@ import type { KetcherSketchTarget, ShellActions, ShellViewState } from "./types"
 type KetcherEditorComponent = ComponentType<{
   onReady: (api: KetcherEditorApi) => void;
   onStatus: (status: string) => void;
+  onLoadError?: (error: Error) => void;
 }>;
 
 export function KetcherPage({
@@ -342,7 +343,7 @@ function KetcherEditorLoader({
     return <div className="ketcher-loading">Loading editor</div>;
   }
 
-  return <EditorComponent onReady={onReady} onStatus={onStatus} />;
+  return <EditorComponent onReady={onReady} onStatus={onStatus} onLoadError={setLoadError} />;
 }
 
 function KetcherErrorPanel({ error, onRetry }: { error: Error; onRetry: () => void }) {

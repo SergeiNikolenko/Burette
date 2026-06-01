@@ -34,6 +34,7 @@ const [
   previewRuntimeGrid,
   previewRuntimeViewer,
   previewRuntimeUtils,
+  previewXyzrender,
   quickLookPreviewController,
   viewerRuntimeCSS,
   viewerJS,
@@ -75,6 +76,7 @@ const [
   source('apps/desktop/src-tauri/src/preview/runtime_grid.rs'),
   source('apps/desktop/src-tauri/src/preview/runtime_viewer.rs'),
   source('apps/desktop/src-tauri/src/preview/runtime_utils.rs'),
+  source('apps/desktop/src-tauri/src/preview/xyzrender.rs'),
   source('PreviewExtension/Platform/PreviewViewController.swift'),
   source('PreviewExtension/Web/viewer-runtime.css'),
   source('PreviewExtension/Web/viewer.js'),
@@ -113,6 +115,7 @@ assert.match(tauriConfig.app.security.csp, /'unsafe-eval'/);
 assert.match(tauriConfig.app.security.csp, /'wasm-unsafe-eval'/);
 assert.ok(defaultCapability.permissions.includes('dialog:allow-open'));
 assert.ok(defaultCapability.permissions.includes('dialog:allow-message'));
+assert.match(tauriConfig.app.security.csp, /script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' asset: http:\/\/asset\.localhost/);
 assert.match(previewEntitlements, /com\.apple\.security\.network\.client/);
 
 for (const moduleName of ['documents', 'grid', 'preview_cache', 'quicklook', 'shell', 'startup', 'updater']) {
@@ -137,6 +140,9 @@ for (const commandPath of [
   assert.match(tauriPermissionSource, new RegExp(`"${commandPath.split('::').at(-1)}"`));
 }
 
+assert.match(lib, /disable_macos_state_restoration\(\);/);
+assert.match(lib, /ApplePersistenceIgnoreState/);
+assert.match(lib, /NSQuitAlwaysKeepsWindows/);
 assert.match(startupCommand, /#\[tauri::command\]\s+pub\(crate\) fn startup_documents/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn pick_open_targets/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_documents/);
@@ -209,6 +215,22 @@ assert.match(installLocalScript, /broadPublicTypes/);
 assert.match(installLocalScript, /public\.comma-separated-values-text/);
 assert.match(installLocalScript, /public\.tab-separated-values-text/);
 assert.match(installLocalScript, /subtracting\(broadPublicTypes\)/);
+assert.match(installLocalScript, /assert_bundled_xyzrender_runtime\(\)\s*\{/);
+assert.match(installLocalScript, /assert_bundled_xyzrender_runner\(\)\s*\{/);
+assert.match(installLocalScript, /sign_bundled_xyzrender_runtime\(\)\s*\{/);
+assert.match(installLocalScript, /find "\$runtime" "\$python_root" -type f/);
+assert.match(installLocalScript, /sign_bundled_xyzrender_runtime "\$STAGING_XYZRENDER_ENV" "\$STAGING_XYZRENDER_PYTHON"/);
+assert.match(installLocalScript, /codesign --force --sign - --entitlements "\$ROOT\/PreviewExtension\/BurretePreview\.entitlements" "\$STAGING_APPEX"/);
+assert.match(installLocalScript, /codesign --force --sign - "\$STAGING_DEST"/);
+assert.doesNotMatch(installLocalScript, /codesign --force --deep --sign - "\$STAGING_DEST"/);
+assert.match(installLocalScript, /codesign --verify --deep --strict "\$STAGING_DEST"/);
+assert.match(installLocalScript, /for attempt in 1 2 3/);
+assert.match(installLocalScript, /assert_bundled_xyzrender_runtime "\$STAGING_XYZRENDER_ENV" "\$STAGING_XYZRENDER_PYTHON" "before signing"/);
+assert.match(installLocalScript, /assert_bundled_xyzrender_runner "\$STAGING_XYZRENDER_ENV" "\$STAGING_XYZRENDER_PYTHON" "after signing"/);
+assert.doesNotMatch(installLocalScript, /\$STAGING_XYZRENDER_ENV\/bin\/xyzrender" --help/);
+assert.match(previewXyzrender, /bundled_xyzrender_candidates_from_executable/);
+assert.match(previewXyzrender, /Contents"\)\s*\.join\("Resources"\)\s*\.join\("xyzrender-runtime"\)/);
+assert.match(previewXyzrender, /std::env::current_exe\(\)/);
 
 assert.match(tray, /fn status_image\(\) -> tauri::image::Image<'static>/);
 assert.match(tray, /\.icon\(status_image\(\)\)/);
