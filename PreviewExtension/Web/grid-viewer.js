@@ -62,6 +62,7 @@
     contextMenuOutsideHandler: null,
     contextMenuKeyHandler: null,
     railOutsideHandler: null,
+    railKeyHandler: null,
     railCloseTimer: null,
     railHoverIndex: null,
     railDragging: false,
@@ -978,12 +979,21 @@
       window.removeEventListener('resize', state.railOutsideHandler, true);
       state.railOutsideHandler = null;
     }
+    if (state.railKeyHandler) {
+      document.removeEventListener('keydown', state.railKeyHandler);
+      state.railKeyHandler = null;
+    }
     state.railOutsideHandler = event => {
       const target = event.target instanceof Element ? event.target : null;
       if (target?.closest?.('[data-buret-grid-rail]')) return;
       setGridRailOpen(false);
     };
+    state.railKeyHandler = event => {
+      if (event.key !== 'Escape' || popover.dataset.state !== 'open') return;
+      setGridRailOpen(false);
+    };
     document.addEventListener('click', state.railOutsideHandler, true);
+    document.addEventListener('keydown', state.railKeyHandler);
     marker?.addEventListener('pointerdown', event => startGridRailDrag(event, cfg));
     hoverTarget?.addEventListener('click', () => setGridRailOpen(true));
     popover.addEventListener('click', event => {
@@ -1063,13 +1073,13 @@
       return `<button type="button" class="buret-grid-rail-tick${active ? ' is-active' : ''}" data-buret-grid-rail-position="${position}"${indexAttr} title="${title}" aria-label="${title}"></button>`;
     }).join('');
     popover.innerHTML = `
-      <div class="buret-grid-rail-popover-title">Molecules</div>
-      <div class="buret-grid-rail-popover-list">
+      <div class="buret-grid-rail-popover-title" id="buret-grid-rail-popover-title">Molecules</div>
+      <div class="buret-grid-rail-popover-list" role="listbox" aria-labelledby="buret-grid-rail-popover-title">
         ${rows.map(row => {
           const index = Number(row.index);
           const name = escapeHTML(row.name || `Molecule ${index + 1}`);
           const detail = escapeHTML(row.smiles || `#${index + 1}`);
-          return `<button type="button" class="buret-grid-rail-popover-row" data-buret-grid-rail-index="${index}"><span>${name}</span><small>${detail}</small></button>`;
+          return `<button type="button" class="buret-grid-rail-popover-row" role="option" aria-selected="false" data-buret-grid-rail-index="${index}"><span>${name}</span><small>${detail}</small></button>`;
         }).join('')}
       </div>`;
     if (wasOpen && list) {
@@ -1109,7 +1119,9 @@
     }
     updateGridRailActiveMarker(activeIndex);
     root.querySelectorAll('.buret-grid-rail-popover-row[data-buret-grid-rail-index]').forEach(item => {
-      item.classList.toggle('is-active', Number(item.getAttribute('data-buret-grid-rail-index')) === activeIndex);
+      const active = Number(item.getAttribute('data-buret-grid-rail-index')) === activeIndex;
+      item.classList.toggle('is-active', active);
+      item.setAttribute('aria-selected', active ? 'true' : 'false');
     });
     updateGridRailHoverHighlight();
   }
