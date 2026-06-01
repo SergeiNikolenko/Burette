@@ -299,15 +299,18 @@ pub(crate) fn render_xyzrender_sheet_item<R: Runtime>(
             .to_string();
         (input_path, extension, data, label)
     };
-    let format = format_for_extension(&extension)?;
-    if format.is_binary {
-        return Err(format!(
-            "{} is a binary format and cannot be added to an xyzrender sheet",
-            input_path.display()
-        ));
+    let is_smiles_input = matches!(extension.as_str(), "smi" | "smiles");
+    if !is_smiles_input {
+        let format = format_for_extension(&extension)?;
+        if format.is_binary {
+            return Err(format!(
+                "{} is a binary format and cannot be added to an xyzrender sheet",
+                input_path.display()
+            ));
+        }
     }
 
-    let converted_xyz = if matches!(extension.as_str(), "cub" | "cube") {
+    let converted_xyz = if is_smiles_input || matches!(extension.as_str(), "cub" | "cube") {
         None
     } else {
         xyz_data_from_text(&data, &extension, &label)
@@ -339,6 +342,9 @@ fn normalize_inline_structure_extension(
         .map(|value| value.trim().trim_start_matches('.').to_lowercase())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| structure_path_extension(path));
+    if matches!(extension.as_str(), "smi" | "smiles") {
+        return Ok("smi".to_string());
+    }
     format_for_extension(&extension)?;
     Ok(extension)
 }
@@ -772,7 +778,10 @@ fn pick_open_targets_macos<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<Vec<
 
 #[cfg(test)]
 mod tests {
-    use super::{expand_open_targets, looks_like_supported_structure_file};
+    use super::{
+        expand_open_targets, looks_like_supported_structure_file,
+        normalize_inline_structure_extension,
+    };
     use crate::preview::formats::supported_structure_extensions;
     use std::fs;
     #[cfg(unix)]
@@ -818,6 +827,23 @@ mod tests {
             std::path::Path::new("notes.txt"),
             &supported_extensions
         ));
+    }
+
+    #[test]
+    fn normalizes_inline_smiles_for_xyzrender_sheet_items() {
+        assert_eq!(
+            normalize_inline_structure_extension(
+                Some("smiles"),
+                std::path::Path::new("molecules.csv")
+            )
+            .unwrap(),
+            "smi"
+        );
+        assert_eq!(
+            normalize_inline_structure_extension(Some(".smi"), std::path::Path::new("row.csv"))
+                .unwrap(),
+            "smi"
+        );
     }
 
     #[test]

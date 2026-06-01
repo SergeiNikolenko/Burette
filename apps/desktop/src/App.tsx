@@ -884,6 +884,59 @@ export default function App() {
           })();
           return;
         }
+        if (body?.type === "renderXyzrenderCard") {
+          if (!body.requestId || !body.documentId) return;
+          const reply = (bodyPayload: Record<string, unknown>) => {
+            postMessageToViewerSource(event.source, {
+              source: "burrete-grid-host",
+              body: {
+                requestId: body.requestId,
+                documentId: body.documentId,
+                ...bodyPayload,
+              },
+            });
+          };
+          if (!isTauriRuntime()) {
+            reply({
+              type: "gridError",
+              error: "Desktop xyzrender grid rendering is unavailable outside the Tauri runtime.",
+            });
+            return;
+          }
+          void (async () => {
+            try {
+              const result = await invoke<{
+                svg: string;
+                preset?: string;
+                elapsedMs?: number;
+                log?: string;
+              }>("render_xyzrender_sheet_item", {
+                request: {
+                  path: body.path,
+                  preset: body.preset ?? null,
+                  controls: body.controls ?? null,
+                  inputDataBase64: body.inputDataBase64 ?? null,
+                  inputExtension: body.inputExtension ?? null,
+                },
+              });
+              reply({
+                type: "xyzrenderCard",
+                result: {
+                  svg: result.svg,
+                  preset: result.preset ?? null,
+                  elapsedMs: result.elapsedMs ?? null,
+                  log: result.log ?? "",
+                },
+              });
+            } catch (error) {
+              reply({
+                type: "gridError",
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          })();
+          return;
+        }
       }
       if (body?.type === "error") {
         pushStatus(formatViewerError(body.message, body.documentId, documents), "error", body.message ? [body.message] : []);

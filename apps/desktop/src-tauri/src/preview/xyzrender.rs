@@ -712,7 +712,7 @@ fn resolve_xyzrender_executable() -> Result<PathBuf, String> {
             return Ok(path);
         }
     }
-    Err("External xyzrender executable was not found or is not executable. Install xyzrender in ~/.local/bin or make it available on PATH.".into())
+    Err("External xyzrender executable was not found or is not executable. Bundle xyzrender-runtime with Burrete, install xyzrender in ~/.local/bin, or make it available on PATH.".into())
 }
 
 fn bundled_xyzrender_candidates_from_executable(executable: &Path) -> Vec<PathBuf> {

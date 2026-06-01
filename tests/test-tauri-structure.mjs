@@ -38,6 +38,7 @@ const [
   quickLookPreviewController,
   viewerRuntimeCSS,
   viewerJS,
+  gridViewerJS,
   viewerShell,
   tauriConfigSource,
   tauriPermissionSource,
@@ -80,6 +81,7 @@ const [
   source('PreviewExtension/Platform/PreviewViewController.swift'),
   source('PreviewExtension/Web/viewer-runtime.css'),
   source('PreviewExtension/Web/viewer.js'),
+  source('PreviewExtension/Web/grid-viewer.js'),
   source('PreviewExtension/Web/viewer-shell.js'),
   source('apps/desktop/src-tauri/tauri.conf.json'),
   source('apps/desktop/src-tauri/permissions/burrete.toml'),
@@ -129,6 +131,7 @@ for (const commandPath of [
   'commands::documents::read_structure_text',
   'commands::documents::open_text_structure',
   'commands::grid::grid_fetch_page',
+  'commands::documents::render_xyzrender_sheet_item',
   'commands::documents::sync_viewer_preferences',
   'commands::preview_cache::clear_preview_cache',
   'commands::shell::open_logs_folder',
@@ -293,6 +296,22 @@ assert.doesNotMatch(previewRuntimeViewer, /window\.parent\.postMessage\(\{ sourc
 assert.match(previewRuntimeGrid, /Content-Security-Policy/);
 assert.match(previewRuntimeGrid, /'unsafe-eval'/);
 assert.match(previewRuntimeGrid, /'wasm-unsafe-eval'/);
+assert.match(previewRuntimeGrid, /grid-ui-v10/);
+assert.match(previewXyzrender, /std::env::current_exe\(\)/);
+assert.match(previewXyzrender, /xyzrender-runtime/);
+assert.match(gridViewerJS, /buildUI\(cfg\);\n\s+refresh\(cfg\);\n\s+try \{\n\s+await initRDKit\(\);/);
+assert.match(gridViewerJS, /if \(state\.cardRenderer === 'rdkit'\) render\(cfg\);/);
+assert.match(gridViewerJS, /function supportsXyzrenderCards\(cfg\)/);
+assert.match(gridViewerJS, /cfg\?\.appViewer === true && cfg\?\.gridDataMode === 'bridge'/);
+assert.match(gridViewerJS, /hostRequest\('renderXyzrenderCard'/);
+assert.match(gridViewerJS, /body\.type === 'gridPage' \|\| body\.type === 'xyzrenderCard'/);
+assert.match(gridViewerJS, /function xyzrenderFragmentText\(record\)/);
+assert.match(gridViewerJS, /const smiles = firstLine\.trim\(\)\.split\(\/\\s\+\/u\)\[0\]/);
+assert.match(gridViewerJS, /inputDataBase64: textToBase64\(xyzrenderFragmentText\(record\)\)/);
+assert.match(gridViewerJS, /function xyzrenderCardImageHTML\(svg, row\)/);
+assert.match(gridViewerJS, /data:image\/svg\+xml;base64,\$\{textToBase64\(sanitized\)\}/);
+assert.match(gridViewerJS, /state\.cardRenderer = 'rdkit';\n\s+store\(CARD_RENDERER_STORAGE_KEY, 'rdkit'\);/);
+assert.match(gridViewerJS, /\$\{supportsXyzrenderCards\(cfg\) \? '<button type="button" data-buret-grid-card-renderer="xyzrender"/);
 assert.match(quickLookPreviewController, /<script src="preview-config\.js"><\/script>/);
 assert.match(quickLookPreviewController, /<script src="preview-rdkit-wasm\.js"><\/script>/);
 assert.match(quickLookPreviewController, /burette-quicklook-host/);
