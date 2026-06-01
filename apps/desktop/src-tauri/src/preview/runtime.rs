@@ -8,7 +8,8 @@ use tauri::Runtime;
 use super::formats::{
     format_for_extension, normalize_renderer_mode, resolve_renderer, structure_path_extension,
 };
-use super::runtime_grid::{create_grid_runtime, grid_requires_preview};
+use super::grid_store::GridParseOptions;
+use super::runtime_grid::{create_grid_runtime_with_options, grid_requires_preview};
 use super::runtime_utils::{file_title, stable_id};
 use super::runtime_viewer::{create_docking_runtime, create_runtime, DockingRuntimeSource};
 use super::text_xyz::converted_data_from_text;
@@ -290,6 +291,22 @@ pub(crate) fn open_document<R: Runtime>(
     preferences: &ViewerPreferences,
     reload_options: Option<&ViewerReloadOptions>,
 ) -> Result<ViewerDocument, String> {
+    open_document_with_grid_options(
+        app,
+        path,
+        preferences,
+        reload_options,
+        &GridParseOptions::default(),
+    )
+}
+
+pub(crate) fn open_document_with_grid_options<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    path: PathBuf,
+    preferences: &ViewerPreferences,
+    reload_options: Option<&ViewerReloadOptions>,
+    grid_options: &GridParseOptions,
+) -> Result<ViewerDocument, String> {
     let canonical = path
         .canonicalize()
         .map_err(|err| format!("{}: {err}", path.display()))?;
@@ -333,13 +350,14 @@ pub(crate) fn open_document<R: Runtime>(
         && reload_options.is_some()
         && (requested_renderer == "molstar" || requested_renderer == "xyzrender-external");
     if !should_use_viewer_for_sdf {
-        if let Some(runtime_path) = create_grid_runtime(
+        if let Some(runtime_path) = create_grid_runtime_with_options(
             app,
             &document_id,
             &canonical,
             &extension,
             &data,
             preferences,
+            grid_options,
         )? {
             return Ok(ViewerDocument {
                 id: document_id.clone(),
@@ -418,6 +436,7 @@ fn read_file_prefix(path: &PathBuf, max_bytes: u64) -> Result<Vec<u8>, String> {
 pub(crate) struct DockingDocumentRequest {
     receptor_path: String,
     ligand_paths: Vec<String>,
+    active_pose: Option<usize>,
 }
 
 pub(crate) fn open_docking_document<R: Runtime>(
@@ -458,9 +477,17 @@ pub(crate) fn open_docking_document<R: Runtime>(
     let docking_request = DockingDocumentRequest {
         receptor_path: receptor.path.clone(),
         ligand_paths: ligands.iter().map(|ligand| ligand.path.clone()).collect(),
+        active_pose: request.active_pose,
     };
-    let runtime =
-        create_docking_runtime(app, &document_id, &title, receptor, ligands, preferences)?;
+    let runtime = create_docking_runtime(
+        app,
+        &document_id,
+        &title,
+        receptor,
+        ligands,
+        request.active_pose,
+        preferences,
+    )?;
     Ok(ViewerDocument {
         id: document_id.clone(),
         path: format!("burrete-docking://{document_id}"),

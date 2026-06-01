@@ -6,9 +6,9 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { isMoleculeCollectionPath } from "../../lib/collection-documents";
-import { dockingRequestForDrop } from "../../lib/docking-documents";
 import type { SidebarProject, SidebarProjectItem } from "../../lib/sidebar-projects";
 import { hasStructureDrag, readStructureDragPayload, writeStructureDrag } from "../../lib/structure-drag";
+import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
 import { rendererLabel } from "../format";
 import { showNativeContextMenu } from "../native-context-menu";
 import type { ShellActions, ShellViewState } from "../types";
@@ -96,7 +96,7 @@ export function ProjectGroup({
       {expanded && (
         <div className="project-children" role="list">
           {visibleItems.map((item) => (
-            <ProjectItem key={item.key} item={item} actions={actions} />
+            <ProjectItem key={item.key} item={item} state={state} actions={actions} />
           ))}
           {project.items.length > COLLAPSED_PROJECT_ITEM_LIMIT && !hasSidebarQuery && (
             <button
@@ -156,10 +156,12 @@ function projectMenuItems(project: SidebarProject, actions: ShellActions) {
 
 export function ProjectItem({
   item,
+  state,
   actions,
   nested = true,
 }: {
   item: SidebarProjectItem;
+  state: ShellViewState;
   actions: ShellActions;
   nested?: boolean;
 }) {
@@ -196,11 +198,7 @@ export function ProjectItem({
   const handleDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
     if (!hasStructureDrag(event.dataTransfer)) return;
     const payload = readStructureDragPayload(event.dataTransfer);
-    const paths = payload.paths;
-    const canMergeCollection = isMoleculeCollectionPath(item.path) && paths.some(isMoleculeCollectionPath);
-    const canOpenDocking = Boolean(dockingRequestForDrop(item.path, paths)) || item.path.startsWith("burrete-docking://");
-    const canAddToXyzrenderSheet = item.renderer === "xyzrender-external" && Boolean(item.documentId) && (paths.length > 0 || payload.records.length > 0);
-    if (!canMergeCollection && !canOpenDocking && !canAddToXyzrenderSheet) return;
+    if (shellDropActionChoices(payload, sidebarDropTarget(item, state), { kind: "sidebar" }).length === 0) return;
     event.preventDefault();
     event.stopPropagation();
     event.dataTransfer.dropEffect = "copy";
@@ -208,27 +206,12 @@ export function ProjectItem({
   const handleDrop = (event: ReactDragEvent<HTMLDivElement>) => {
     if (!hasStructureDrag(event.dataTransfer)) return;
     const payload = readStructureDragPayload(event.dataTransfer);
-    const paths = payload.paths;
-    const canMergeCollection = isMoleculeCollectionPath(item.path) && paths.some(isMoleculeCollectionPath);
-    const dockingRequest = dockingRequestForDrop(item.path, paths);
-    const canAddToXyzrenderSheet = item.renderer === "xyzrender-external" && Boolean(item.documentId) && (paths.length > 0 || payload.records.length > 0);
-    if (!canMergeCollection && !dockingRequest && !item.path.startsWith("burrete-docking://") && !canAddToXyzrenderSheet) return;
+    const choices = shellDropActionChoices(payload, sidebarDropTarget(item, state), { kind: "sidebar" });
+    if (choices.length === 0) return;
     event.preventDefault();
     event.stopPropagation();
     actions.setStructureDragActive(false);
-    if (canAddToXyzrenderSheet && item.documentId) {
-      actions.addXyzrenderSheetItems(item.documentId, payload);
-      return;
-    }
-    if (canMergeCollection) {
-      void actions.mergeMoleculeCollections(item.documentId ?? item.path, paths);
-      return;
-    }
-    if (dockingRequest) {
-      void actions.openDockingDocument(dockingRequest.receptorPath, dockingRequest.ligandPaths);
-      return;
-    }
-    void actions.openDockingDocument(item.documentId ?? item.path, paths);
+    runShellDropActionChoices(actions, payload, choices, { x: event.clientX, y: event.clientY });
   };
   const handleContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -308,6 +291,19 @@ export function ProjectItem({
       </span>
     </div>
   );
+}
+
+function sidebarDropTarget(item: SidebarProjectItem, state: ShellViewState) {
+  const document = item.documentId
+    ? state.documents.find((candidate) => candidate.id === item.documentId)
+    : state.documents.find((candidate) => candidate.path === item.path);
+  return {
+    kind: "active-viewer" as const,
+    documentId: item.documentId,
+    documentPath: item.path,
+    renderer: item.renderer,
+    dockingRequest: document?.dockingRequest ?? null,
+  };
 }
 
 function PinIcon() {

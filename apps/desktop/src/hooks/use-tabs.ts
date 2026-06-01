@@ -55,6 +55,14 @@ export function useOpenKetcherTab() {
   return useMoleculeStore((state) => state.openKetcherTab);
 }
 
+export function useOpenFepSetupTab() {
+  return useMoleculeStore((state) => state.openFepSetupTab);
+}
+
+export function useOpenPoseReviewTab() {
+  return useMoleculeStore((state) => state.openPoseReviewTab);
+}
+
 export function useOpenSettingsTab() {
   return useMoleculeStore((state) => state.openSettingsTab);
 }

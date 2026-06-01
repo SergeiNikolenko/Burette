@@ -1,3 +1,5 @@
+import type { StructureDragPayload } from "./lib/structure-drag";
+
 export type XyzrenderControls = {
   transparentBackground?: boolean | null;
   canvasSize?: number | null;
@@ -45,6 +47,17 @@ export type ViewerReloadOptions = {
 export type DockingDocumentRequest = {
   receptorPath: string;
   ligandPaths: string[];
+  activePose?: number | null;
+};
+
+export type FepSetupRequest = {
+  receptorPath: string;
+  gridDocumentId: string;
+  gridPath: string;
+  dockingDocumentId: string;
+  dockingPath: string;
+  referencePose: number;
+  candidatePayload?: StructureDragPayload;
 };
 
 export type MergedCollectionDocument = {

@@ -14,9 +14,11 @@ use tauri_plugin_dialog::DialogExt;
 use crate::preview::formats::{
     format_for_extension, structure_path_extension, supported_structure_extensions,
 };
+use crate::preview::grid_store::GridParseOptions;
 use crate::preview::runtime::{
-    open_docking_document as open_docking_document_runtime, open_document, DockingDocumentRequest,
-    OpenDocumentsResult, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XyzrenderControls,
+    open_docking_document as open_docking_document_runtime, open_document,
+    open_document_with_grid_options, DockingDocumentRequest, OpenDocumentsResult, ViewerDocument,
+    ViewerPreferences, ViewerReloadOptions, XyzrenderControls,
 };
 use crate::preview::text_xyz::xyz_data_from_text;
 use crate::preview::xyzrender::create_xyzrender_artifact;
@@ -55,6 +57,13 @@ pub(crate) struct TextStructureRequest {
     title: String,
     extension: String,
     text: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DelimitedGridOpenRequest {
+    path: String,
+    smiles_column: String,
 }
 
 #[tauri::command]
@@ -112,6 +121,23 @@ pub(crate) fn open_documents<R: Runtime>(
         return Err(errors.join("; "));
     }
     Ok(OpenDocumentsResult { documents, errors })
+}
+
+#[tauri::command]
+pub(crate) fn open_delimited_grid_document<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    request: DelimitedGridOpenRequest,
+    preferences: ViewerPreferences,
+) -> Result<ViewerDocument, String> {
+    open_document_with_grid_options(
+        &app,
+        PathBuf::from(request.path),
+        &preferences,
+        None,
+        &GridParseOptions {
+            smiles_column: Some(request.smiles_column),
+        },
+    )
 }
 
 #[tauri::command]
@@ -228,6 +254,16 @@ pub(crate) fn save_molecule_collection_as(
     }
     fs::copy(&input_path, &output)
         .map_err(|err| format!("{} -> {}: {err}", input_path.display(), output.display()))?;
+    Ok(output.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub(crate) fn save_text_as(text: String, output_path: String) -> Result<String, String> {
+    let output = PathBuf::from(&output_path);
+    if let Some(parent) = output.parent() {
+        fs::create_dir_all(parent).map_err(|err| format!("{}: {err}", parent.display()))?;
+    }
+    fs::write(&output, text).map_err(|err| format!("{}: {err}", output.display()))?;
     Ok(output.to_string_lossy().to_string())
 }
 

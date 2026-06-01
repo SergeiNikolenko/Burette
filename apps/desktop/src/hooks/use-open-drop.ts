@@ -1,24 +1,51 @@
 import { useCallback, useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { DragDropEvent } from "@tauri-apps/api/window";
-import type { DockingDocumentRequest } from "../types";
-import { dockingRequestForDrop } from "../lib/docking-documents";
-import { hasStructureDrag, readStructureDragPayload } from "../lib/structure-drag";
-import type { StructureDragPayload } from "../lib/structure-drag";
+import type { DockingDocumentRequest, FepSetupRequest, ViewerDocument } from "../types";
+import { resolveDropActionChoices } from "../lib/drop-actions";
+import type { DropSourceContext, DropTargetContext } from "../lib/drop-actions";
+import type { DropAction, DropActionChoice } from "../lib/drop-actions";
+import { hasStructureDrag, readStructureDragPayload, structureDragPayloadFromText, structureDragRecordsToFragments } from "../lib/structure-drag";
+import type { StructureDragPayload, StructureDragRecord } from "../lib/structure-drag";
 import { isTauriRuntime } from "../lib/tauri";
 
 type OpenDocuments = (paths: string[]) => void | Promise<void>;
-type OpenDockingDocument = (receptorPath: string, ligandPaths: string[]) => void | Promise<void>;
+type OpenDockingDocument = (
+  receptorPath: string,
+  ligandPaths: string[],
+  options?: { activePose?: number | null },
+) => void | Promise<ViewerDocument | null>;
+type OpenDockingStructureRecords = (receptorPath: string, ligandPaths: string[], records: StructureDragRecord[]) => void | Promise<void>;
+type OpenStructureRecords = (records: StructureDragRecord[]) => void | Promise<void>;
+type OpenKetcherWithStructures = (paths: string[], fragments?: Array<{ title: string; text: string }>) => void;
+type OpenFepSetupWorkspace = (request: FepSetupRequest) => void;
+type AppendGridRecords = (targetDocumentId: string, payload: StructureDragPayload) => boolean;
 type AddXyzrenderSheetItems = (payload: StructureDragPayload) => boolean;
 type MergeMoleculeCollections = (paths: string[]) => boolean;
 type ReportStatus = (status: string, kind?: "info" | "error") => void;
+type DropPoint = { x: number; y: number };
+type ChooseDropAction = (
+  choices: DropActionChoice[],
+  at: DropPoint | null | undefined,
+  runChoice: (choice: DropActionChoice) => void,
+) => boolean | Promise<boolean>;
 
 type OpenDropOptions = {
+  activeTabKind?: string | null;
+  activeDocumentId?: string | null;
   activeDocumentPath?: string | null;
+  activeDocumentRenderer?: string | null;
   activeDockingRequest?: DockingDocumentRequest | null;
+  fepSetupRequest?: FepSetupRequest | null;
   openDockingDocument?: OpenDockingDocument;
+  openDockingStructureRecords?: OpenDockingStructureRecords;
+  openStructureRecords?: OpenStructureRecords;
+  openKetcherWithStructures?: OpenKetcherWithStructures;
+  openFepSetupWorkspace?: OpenFepSetupWorkspace;
+  appendGridRecords?: AppendGridRecords;
   addXyzrenderSheetItems?: AddXyzrenderSheetItems;
   mergeMoleculeCollections?: MergeMoleculeCollections;
+  chooseDropAction?: ChooseDropAction;
 };
 
 function browserDropPoint(event: React.DragEvent<HTMLElement>) {
@@ -33,23 +60,170 @@ function tauriDropPoint(position: { x: number; y: number } | null | undefined) {
 
 export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStatus, options: OpenDropOptions = {}) {
   const [dropActive, setDropActive] = useState(false);
-  const { activeDocumentPath = null, activeDockingRequest = null, openDockingDocument, addXyzrenderSheetItems, mergeMoleculeCollections } = options;
+  const {
+    activeTabKind = null,
+    activeDocumentId = null,
+    activeDocumentPath = null,
+    activeDocumentRenderer = null,
+    activeDockingRequest = null,
+    fepSetupRequest = null,
+    openDockingDocument,
+    openDockingStructureRecords,
+    openStructureRecords,
+    openKetcherWithStructures,
+    openFepSetupWorkspace,
+    appendGridRecords,
+    addXyzrenderSheetItems,
+    mergeMoleculeCollections,
+    chooseDropAction,
+  } = options;
 
-  const openAsDocking = useCallback((paths: string[]) => {
-    if (!activeDocumentPath || !openDockingDocument) return false;
-    const request = dockingRequestForDrop(activeDocumentPath, paths, activeDockingRequest);
-    if (!request) return false;
-    void openDockingDocument(request.receptorPath, request.ligandPaths);
-    return true;
-  }, [activeDockingRequest, activeDocumentPath, openDockingDocument]);
+  const activeViewerTarget = useCallback((): DropTargetContext | null => {
+    if (!activeDocumentPath) return null;
+    return {
+      kind: "active-viewer",
+      documentId: activeDocumentId,
+      documentPath: activeDocumentPath,
+      renderer: activeDocumentRenderer,
+      dockingRequest: activeDockingRequest,
+    };
+  }, [activeDockingRequest, activeDocumentId, activeDocumentPath, activeDocumentRenderer]);
 
-  const isOverActiveViewer = useCallback((position: { x: number; y: number } | null = null) => {
-    if (!activeDocumentPath || typeof document === "undefined") return false;
+  const dropTargetForElement = useCallback((element: Element | null): DropTargetContext => {
+    if (fepSetupRequest && element?.closest(".pose-review-workspace, .fep-setup-workspace")) {
+      return { kind: "fep-setup", request: fepSetupRequest };
+    }
+    if (element?.closest(".ketcher-page")) return { kind: "ketcher" };
+    if (element?.closest(".molecule-stage, .main-stage")) {
+      if (activeTabKind === "ketcher") return { kind: "ketcher" };
+      return activeViewerTarget() ?? { kind: "workspace" };
+    }
+    if (activeTabKind === "ketcher") return { kind: "ketcher" };
+    return { kind: "workspace" };
+  }, [activeTabKind, activeViewerTarget, fepSetupRequest]);
+
+  const dropTargetForPosition = useCallback((position: { x: number; y: number } | null = null): DropTargetContext => {
+    if (typeof document === "undefined") return activeTabKind === "ketcher" ? { kind: "ketcher" } : { kind: "workspace" };
     const element = position
       ? document.elementFromPoint(position.x / window.devicePixelRatio, position.y / window.devicePixelRatio)
       : document.activeElement;
-    return Boolean(element?.closest(".molecule-stage, .main-stage"));
-  }, [activeDocumentPath]);
+    return dropTargetForElement(element);
+  }, [activeTabKind, dropTargetForElement]);
+
+  const dropTargetForClipboard = useCallback((): DropTargetContext => {
+    if (activeTabKind === "ketcher") return { kind: "ketcher" };
+    return activeViewerTarget() ?? { kind: "workspace" };
+  }, [activeTabKind, activeViewerTarget]);
+
+  const executeDropAction = useCallback((action: DropAction, payload: StructureDragPayload) => {
+    if (action.kind === "merge-collection") {
+      if (mergeMoleculeCollections?.(action.paths)) return;
+      void openDocuments(payload.paths);
+      return;
+    }
+    if (action.kind === "append-grid-records") {
+      if (appendGridRecords?.(action.targetDocumentId, action.payload)) return;
+      if (mergeMoleculeCollections?.(action.payload.paths)) return;
+      if (action.payload.paths.length > 0) void openDocuments(action.payload.paths);
+      return;
+    }
+    if (action.kind === "add-xyzrender-sheet-items") {
+      if (addXyzrenderSheetItems?.(action.payload)) return;
+      if (payload.paths.length > 0) void openDocuments(payload.paths);
+      return;
+    }
+    if (action.kind === "open-docking") {
+      if (openDockingDocument) {
+        void openDockingDocument(action.request.receptorPath, action.request.ligandPaths);
+        return;
+      }
+      void openDocuments(payload.paths);
+      return;
+    }
+    if (action.kind === "open-docking-with-records") {
+      if (openDockingStructureRecords) {
+        void openDockingStructureRecords(action.receptorPath, action.ligandPaths, action.records);
+        return;
+      }
+      if (openDockingDocument && action.ligandPaths.length > 0) {
+        void openDockingDocument(action.receptorPath, action.ligandPaths);
+        return;
+      }
+      if (action.records.length > 0 && openStructureRecords) {
+        void openStructureRecords(action.records);
+        return;
+      }
+      void openDocuments(payload.paths);
+      return;
+    }
+    if (action.kind === "import-ketcher-structures") {
+      if (openKetcherWithStructures) {
+        openKetcherWithStructures(action.payload.paths, structureDragRecordsToFragments(action.payload.records));
+        return;
+      }
+      void openDocuments(payload.paths);
+      return;
+    }
+    if (action.kind === "prepare-fep-setup") {
+      if (openFepSetupWorkspace) {
+        openFepSetupWorkspace(action.request);
+        return;
+      }
+      void openDocuments(payload.paths);
+      return;
+    }
+    if (action.kind === "open-documents") {
+      void openDocuments(action.paths);
+      return;
+    }
+    if (action.kind === "open-structure-records") {
+      if (action.paths.length > 0) void openDocuments(action.paths);
+      if (action.records.length > 0 && openStructureRecords) {
+        void openStructureRecords(action.records);
+        return;
+      }
+      if (!isTauriRuntime()) pushStatus("Drop this molecule onto an xyzrender sheet to add it.");
+      return;
+    }
+    if (!isTauriRuntime()) pushStatus("Drop this molecule onto an xyzrender sheet to add it.");
+  }, [
+    addXyzrenderSheetItems,
+    appendGridRecords,
+    mergeMoleculeCollections,
+    openDockingDocument,
+    openDockingStructureRecords,
+    openDocuments,
+    openFepSetupWorkspace,
+    openKetcherWithStructures,
+    openStructureRecords,
+    pushStatus,
+  ]);
+
+  const runDropAction = useCallback((
+    payload: StructureDragPayload,
+    target: DropTargetContext,
+    source: DropSourceContext = { kind: "unknown" },
+  ) => {
+    const choices = resolveDropActionChoices(
+      payload,
+      target,
+      source,
+    );
+    if (choices.length === 0) return;
+    const runChoice = (choice: DropActionChoice) => executeDropAction(choice.action, payload);
+    if (choices.length > 1 && chooseDropAction) {
+      void Promise.resolve(chooseDropAction(choices, payload.point, runChoice))
+        .then((handled) => {
+          if (!handled) runChoice(choices[0]);
+        })
+        .catch(() => runChoice(choices[0]));
+      return;
+    }
+    runChoice(choices[0]);
+  }, [
+    chooseDropAction,
+    executeDropAction,
+  ]);
 
   const handleFileDrop = useCallback(
     (event: DragDropEvent) => {
@@ -60,13 +234,10 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       setDropActive(false);
       if (event.type === "drop") {
         const payload: StructureDragPayload = { paths: event.paths, records: [], point: tauriDropPoint(event.position) };
-        if (isOverActiveViewer(event.position) && mergeMoleculeCollections?.(event.paths)) return;
-        if (isOverActiveViewer(event.position) && addXyzrenderSheetItems?.(payload)) return;
-        if (isOverActiveViewer(event.position) && openAsDocking(event.paths)) return;
-        void openDocuments(event.paths);
+        runDropAction(payload, dropTargetForPosition(event.position), { kind: "finder" });
       }
     },
-    [addXyzrenderSheetItems, isOverActiveViewer, mergeMoleculeCollections, openAsDocking, openDocuments],
+    [dropTargetForPosition, runDropAction],
   );
 
   useEffect(() => {
@@ -121,24 +292,52 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       payload.point = browserDropPoint(event);
       if (payload.paths.length > 0 || payload.records.length > 0) {
         const target = event.target instanceof Element ? event.target : null;
-        if (target?.closest(".molecule-stage, .main-stage")) {
-          if (mergeMoleculeCollections?.(payload.paths)) return;
-          if (addXyzrenderSheetItems?.(payload)) return;
-          if (openAsDocking(payload.paths)) return;
-        }
-        if (payload.paths.length > 0) void openDocuments(payload.paths);
-        else if (!isTauriRuntime()) pushStatus("Drop this molecule onto an xyzrender sheet to add it.");
+        const source: DropSourceContext = fileDrop && !structureDrop ? { kind: "finder" } : { kind: "unknown" };
+        runDropAction(payload, dropTargetForElement(target), source);
       } else if (!isTauriRuntime()) {
         pushStatus("Drop files into the installed app window to open them.");
       }
     },
-    [addXyzrenderSheetItems, mergeMoleculeCollections, openAsDocking, openDocuments, pushStatus],
+    [dropTargetForElement, pushStatus, runDropAction],
   );
+
+  const handleBrowserPaste = useCallback((event: React.ClipboardEvent<HTMLElement>) => {
+    if (isEditablePasteTarget(event.target)) return;
+    const hasPlainText = Array.from(event.clipboardData.types).includes("text/plain");
+    if (!hasStructureDrag(event.clipboardData)) {
+      if (hasPlainText) pushStatus("Clipboard text is not a supported molecular structure or path list.", "error");
+      return;
+    }
+    const payload = readStructureDragPayload(event.clipboardData);
+    if (payload.paths.length === 0 && payload.records.length === 0) {
+      if (hasPlainText) pushStatus("Clipboard text is not a supported molecular structure or path list.", "error");
+      return;
+    }
+    event.preventDefault();
+    const target = event.target instanceof Element ? event.target : null;
+    runDropAction(payload, dropTargetForElement(target), { kind: "clipboard" });
+  }, [dropTargetForElement, pushStatus, runDropAction]);
+
+  const openClipboardText = useCallback((text: string) => {
+    const payload = structureDragPayloadFromText(text);
+    if (payload.paths.length === 0 && payload.records.length === 0) return false;
+    runDropAction(payload, dropTargetForClipboard(), { kind: "clipboard" });
+    return true;
+  }, [dropTargetForClipboard, runDropAction]);
 
   return {
     dropActive,
     handleBrowserDrag,
     handleBrowserDragLeave,
     handleBrowserDrop,
+    handleBrowserPaste,
+    openClipboardText,
   };
+}
+
+function isEditablePasteTarget(target: EventTarget | null) {
+  if (!(target instanceof Element)) return false;
+  if (target.closest('[contenteditable="true"]')) return true;
+  const element = target.closest("input, textarea, select");
+  return Boolean(element);
 }
