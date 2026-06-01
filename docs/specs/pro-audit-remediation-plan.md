@@ -223,11 +223,11 @@ Verification. Mock GitHub releases with `.zip`, `.dmg`, `.pkg`, mixed assets. As
 
 Evidence. `AppMetadata.plist` declares `LSHandlerRank` as Owner, includes public CSV/TSV content types and many molecular/legacy UTIs; `install-local.sh` calls `LSSetDefaultRoleHandlerForContentType` for every content type in the app’s document types.
 
-Impact. Burrete may become the default viewer for CSV/TSV or broad molecular types without a clear user opt-in. On macOS this feels invasive; users may blame Burrete when double-click behavior changes outside molecular workflows.
+Impact. Burrete intentionally becomes the default viewer for CSV/TSV so molecular tables open in the RDKit grid from Finder and Quick Look. Non-molecular tables rely on the Quick Look fallback path.
 
-Fix. Do not set defaults for public CSV/TSV automatically. Prefer `LSHandlerRank=Alternate` for broad types, or expose per-type association toggles with explicit confirmation. Keep Quick Look registration separate from double-click default ownership.
+Fix. Keep the default-handler behavior explicit in installer code and tests. If user-facing opt-in is added later, it must preserve molecular CSV/TSV Quick Look as the default path unless disabled by the user.
 
-Verification. After install, query default handlers for public CSV/TSV and molecular UTIs. Ensure defaults are not changed unless user opted in.
+Verification. After install, query default handlers for public CSV/TSV and molecular UTIs. Molecular tables should open through Burrete; non-molecular tables should fall back to the system preview.
 
 ### 10. [Medium | confirmed] Runtime model duplicates large data as base64 JS and inlines RDKit WASM per grid preview
 
