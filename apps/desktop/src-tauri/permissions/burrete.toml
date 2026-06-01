@@ -8,6 +8,7 @@ commands.allow = [
   "read_structure_text",
   "open_text_structure",
   "grid_fetch_page",
+  "render_xyzrender_sheet_item",
   "sync_viewer_preferences",
   "clear_preview_cache",
   "open_logs_folder",

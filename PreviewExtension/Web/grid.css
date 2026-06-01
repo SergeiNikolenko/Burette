@@ -788,6 +788,15 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   object-fit: contain;
 }
 
+.buret-molecule-picture img.buret-xyzrender-card-image {
+  display: block;
+  width: 100%;
+  max-width: var(--buret-drawing-max-width);
+  height: 100%;
+  max-height: var(--buret-drawing-max-height);
+  object-fit: contain;
+}
+
 .buret-molecule-error {
   display: grid;
   place-items: center;
