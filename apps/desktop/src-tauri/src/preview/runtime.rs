@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::PathBuf;
@@ -10,7 +10,7 @@ use super::formats::{
 };
 use super::runtime_grid::{create_grid_runtime, grid_requires_preview};
 use super::runtime_utils::{file_title, stable_id};
-use super::runtime_viewer::{DockingRuntimeSource, create_docking_runtime, create_runtime};
+use super::runtime_viewer::{create_docking_runtime, create_runtime, DockingRuntimeSource};
 use super::text_xyz::converted_data_from_text;
 
 const MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
@@ -197,10 +197,10 @@ fn default_dark_contrast() -> f64 {
 #[cfg(test)]
 mod viewer_preferences_tests {
     use super::{
-        ViewerPreferences, default_dark_accent, default_dark_background, default_dark_contrast,
+        default_dark_accent, default_dark_background, default_dark_contrast,
         default_dark_foreground, default_dark_translucent, default_light_accent,
         default_light_background, default_light_contrast, default_light_foreground,
-        default_light_translucent, default_system_font,
+        default_light_translucent, default_system_font, ViewerPreferences,
     };
 
     fn preferences(theme: &str, canvas_background: &str) -> ViewerPreferences {
@@ -331,8 +331,7 @@ pub(crate) fn open_document<R: Runtime>(
     let requested_renderer = normalize_renderer_mode(&preferences.renderer_mode);
     let should_use_viewer_for_sdf = matches!(extension.as_str(), "sd" | "sdf")
         && reload_options.is_some()
-        && (requested_renderer == "molstar"
-            || requested_renderer == "xyzrender-external");
+        && (requested_renderer == "molstar" || requested_renderer == "xyzrender-external");
     if !should_use_viewer_for_sdf {
         if let Some(runtime_path) = create_grid_runtime(
             app,
@@ -371,12 +370,11 @@ pub(crate) fn open_document<R: Runtime>(
         .map(|preview| preview.data.as_slice())
         .unwrap_or(&data);
     let format = format_for_extension(runtime_extension)?;
-    let requested_renderer_for_document =
-        if maestro_preview_data.is_some() {
-            "molstar"
-        } else {
-            default_renderer_mode_for_document(&extension, requested_renderer, reload_options)
-        };
+    let requested_renderer_for_document = if maestro_preview_data.is_some() {
+        "molstar"
+    } else {
+        default_renderer_mode_for_document(&extension, requested_renderer, reload_options)
+    };
     let renderer = resolve_renderer(&format, requested_renderer_for_document);
     let runtime = create_runtime(
         app,
@@ -542,10 +540,10 @@ fn default_renderer_mode_for_document<'a>(
 #[cfg(test)]
 mod document_open_tests {
     use super::{
-        ViewerPreferences, default_dark_accent, default_dark_background, default_dark_contrast,
+        default_dark_accent, default_dark_background, default_dark_contrast,
         default_dark_foreground, default_dark_translucent, default_light_accent,
         default_light_background, default_light_contrast, default_light_foreground,
-        default_light_translucent, default_system_font, open_document,
+        default_light_translucent, default_system_font, open_document, ViewerPreferences,
     };
     use crate::commands::documents::open_documents;
     use crate::preview::grid_store::GridRuntimeRegistry;
@@ -749,7 +747,7 @@ mod document_open_tests {
             ];
 
             for (path, expected_renderer) in cases {
-                let document = open_document(&app.handle(), path.clone(), &preferences, None)
+                let document = open_document(app.handle(), path.clone(), &preferences, None)
                     .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
                 assert_eq!(document.renderer, expected_renderer, "{}", path.display());
                 assert!(
@@ -786,7 +784,7 @@ CARTESIAN COORDINATES (ANGSTROEM)
 "#,
         );
 
-        let document = open_document(&app.handle(), path.clone(), &preferences, None)
+        let document = open_document(app.handle(), path.clone(), &preferences, None)
             .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
         assert_eq!(document.renderer, "molstar");
         let preview_data = fs::read_to_string(
@@ -812,7 +810,7 @@ CARTESIAN COORDINATES (ANGSTROEM)
             b"2\nfirst frame\nH 0 0 0\nO 0 0 1\n2\nsecond frame\nH 1 0 0\nO 1 0 1\n",
         );
 
-        let document = open_document(&app.handle(), path.clone(), &preferences, None)
+        let document = open_document(app.handle(), path.clone(), &preferences, None)
             .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
         assert_eq!(document.renderer, "molstar");
         let runtime_dir = Path::new(&document.runtime_path)
@@ -839,7 +837,7 @@ CARTESIAN COORDINATES (ANGSTROEM)
             b"2\nfirst frame\nH 0 0 0\nO 0 0 1\n2\nsecond frame\nH 1 0 0\nO 1 0 1\n",
         );
 
-        let document = open_document(&app.handle(), path.clone(), &preferences, None)
+        let document = open_document(app.handle(), path.clone(), &preferences, None)
             .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
         assert_eq!(document.renderer, "molstar");
         let runtime_dir = Path::new(&document.runtime_path)
@@ -866,7 +864,7 @@ CARTESIAN COORDINATES (ANGSTROEM)
                 b"Cube data generated by ORCA\nMolecular orbital 50 of operator 0\n   -1 0 0 0\n",
             );
 
-            let document = open_document(&app.handle(), path.clone(), &preferences, None)
+            let document = open_document(app.handle(), path.clone(), &preferences, None)
                 .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
             assert_eq!(document.renderer, "xyzrender-external");
             let runtime_dir = Path::new(&document.runtime_path)
@@ -891,7 +889,7 @@ CARTESIAN COORDINATES (ANGSTROEM)
         preferences.renderer_mode = "xyzrender-external".to_string();
         let path = fixture_path("sdf/single.sdf");
 
-        let document = open_document(&app.handle(), path.clone(), &preferences, None)
+        let document = open_document(app.handle(), path.clone(), &preferences, None)
             .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
         assert_eq!(document.renderer, "molstar");
         remove_runtime_artifacts(&document.runtime_path);

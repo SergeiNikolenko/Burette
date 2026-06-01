@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Ketcher } from "ketcher-core";
 
-export type KetcherEditorApi = Pick<Ketcher, "addFragment" | "getMolfile" | "getSmiles">;
+export type KetcherEditorApi = Pick<Ketcher, "addFragment" | "getMolfile" | "getSmiles" | "setMolecule">;
 type KetcherReactModule = typeof import("ketcher-react");
 type KetcherStandaloneModule = typeof import("ketcher-standalone");
 type KetcherRequireShim = ((moduleName: string) => unknown) & { __burreteKetcherShim?: true };
