@@ -56,7 +56,7 @@ export function readStructureDragPayload(dataTransfer: DataTransfer): StructureD
       if (plainText) {
         const inlineRecord = structureDragRecordFromPlainText(plainText);
         if (inlineRecord) payload.records.push(inlineRecord);
-        else payload.paths.push(...plainText.split(/\r?\n/u));
+        else payload.paths.push(...structureDragPathsFromPlainText(plainText));
       }
     }
   }
@@ -107,7 +107,15 @@ function normalizeStructureDragRecord(record: unknown): StructureDragRecord | nu
 
 export function hasStructureDrag(dataTransfer: DataTransfer) {
   const types = Array.from(dataTransfer.types);
-  return types.includes(STRUCTURE_DRAG_MIME) || types.includes("Files") || types.includes("text/plain");
+  if (types.includes(STRUCTURE_DRAG_MIME) || types.includes("Files")) return true;
+  if (!types.includes("text/plain")) return false;
+  let plainText = "";
+  try {
+    plainText = dataTransfer.getData("text/plain").trim();
+  } catch {
+    return false;
+  }
+  return Boolean(structureDragRecordFromPlainText(plainText) || structureDragPathsFromPlainText(plainText).length > 0);
 }
 
 function structureDragRecordFromPlainText(text: string): StructureDragRecord | null {
@@ -121,4 +129,17 @@ function structureDragRecordFromPlainText(text: string): StructureDragRecord | n
     inputExtension: "sdf",
     text: trimmed,
   };
+}
+
+function structureDragPathsFromPlainText(text: string) {
+  return text
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(looksLikeStructurePathLine);
+}
+
+function looksLikeStructurePathLine(line: string) {
+  if (!line || /\s/u.test(line)) return false;
+  if (/^(?:file:\/\/|\/|~\/|\.{1,2}\/|[A-Za-z]:[\\/])/u.test(line)) return true;
+  return /\.(?:abi|bcif|cif|cms|com|cub|cube|csv|ent|fdf|in|inp|mae|maegz|mmcif|mol|mol2|nw|out|pdb|psi4|qcin|sd|sdf|smi|smiles|tsv|vasp|xyz)$/iu.test(line);
 }

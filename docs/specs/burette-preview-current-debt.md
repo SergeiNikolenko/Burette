@@ -55,6 +55,9 @@ does not replace the broader renderer runtime contracts.
 - Drag/drop into the `xyzrender` SVG sheet accepts paths and grid records from
   the desktop shell and preserves the viewport drop point when the drop lands on
   the active viewer.
+- Drag/drop parsing treats `text/plain` as structure data only when it contains
+  an inline SDF/Mol record or a supported file-like structure path, so arbitrary
+  copied text no longer routes through the structure drop pipeline.
 - The SVG-sheet transform model is shared by the base `xyzrender` artifact and
   all added sheet structures: drag, resize, selection clearing, keyboard
   rotation, and Ketcher-style hover rotation controls all use the same
@@ -143,6 +146,10 @@ does not replace the broader renderer runtime contracts.
 - Browser smoke in a separate worktree confirmed the base SVG-sheet artifact can
   be dragged from its body, rotated from the keyboard, and deselected by clicking
   outside the artifact.
+- Browser smoke in the finish-interactions worktree reconfirmed Fast activation
+  on `benzene.xyz`, hidden/disabled Fast policy on `1HTB.pdb`, SDF grid `Poses`
+  opening a Mol* docking tab, and the 10k RDKit grid loading 96 cards without
+  `Failed to fetch`, `ISSUE`, or browser error logs.
 - The SVG-sheet background is now a hit target, so clicking blank sheet space
   clears the current structure selection without requiring a precise click on a
   molecule card.

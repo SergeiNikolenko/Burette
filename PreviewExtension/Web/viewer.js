@@ -2652,16 +2652,18 @@
         }
       }
     } catch (_) {}
-    if (payload.paths.length === 0 && payload.records.length === 0) {
-      try {
-        const text = dataTransfer.getData('text/plain');
-        if (text) payload.paths.push(...text.split(/\r?\n/gu));
-      } catch (_) {}
-    }
     if (payload.paths.length === 0 && payload.records.length === 0 && dataTransfer.files) {
       for (const file of Array.from(dataTransfer.files)) {
         if (file && typeof file.path === 'string') payload.paths.push(file.path);
       }
+    }
+    if (payload.paths.length === 0 && payload.records.length === 0) {
+      try {
+        const text = dataTransfer.getData('text/plain');
+        const inlineRecord = structureDropRecordFromPlainText(text);
+        if (inlineRecord) payload.records.push(inlineRecord);
+        else payload.paths.push(...structureDropPathsFromPlainText(text));
+      } catch (_) {}
     }
     payload.paths = payload.paths.map(path => String(path || '').trim()).filter(Boolean);
     return payload;
@@ -2681,6 +2683,32 @@
       inputExtension: extension || 'xyz',
       text
     };
+  }
+
+  function structureDropRecordFromPlainText(text) {
+    const trimmed = String(text || '').trim();
+    if (!trimmed) return null;
+    if (/^[/~.]|\r?\n[/~.]/u.test(trimmed)) return null;
+    if (!/\r?\n/u.test(trimmed)) return null;
+    if (!/(?:V2000|V3000|\$\$\$\$|M\s+END)/u.test(trimmed)) return null;
+    return {
+      path: 'structure.sdf',
+      inputExtension: 'sdf',
+      text: trimmed
+    };
+  }
+
+  function structureDropPathsFromPlainText(text) {
+    return String(text || '')
+      .split(/\r?\n/gu)
+      .map(line => line.trim())
+      .filter(looksLikeStructurePathLine);
+  }
+
+  function looksLikeStructurePathLine(line) {
+    if (!line || /\s/u.test(line)) return false;
+    if (/^(?:file:\/\/|\/|~\/|\.{1,2}\/|[A-Za-z]:[\\/])/u.test(line)) return true;
+    return /\.(?:abi|bcif|cif|cms|com|cub|cube|csv|ent|fdf|in|inp|mae|maegz|mmcif|mol|mol2|nw|out|pdb|psi4|qcin|sd|sdf|smi|smiles|tsv|vasp|xyz)$/iu.test(line);
   }
 
   function normalizeSheetClientPoint(point) {
