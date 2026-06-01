@@ -719,7 +719,9 @@
   }
 
   function triStateBoolean(value) {
-    return value === true ? true : value === false ? false : null;
+    if (value === true) return true;
+    if (value === false) return false;
+    return null;
   }
 
   function nonEmptyText(value) {

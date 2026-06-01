@@ -25,9 +25,10 @@ export function ProjectGroup({
   actions: ShellActions;
 }) {
   const [showAllItems, setShowAllItems] = useState(false);
-  const expanded = state.sidebarQuery.trim().length > 0
-    || state.expandedProjectIds.includes(project.id);
-  const shouldLimitItems = state.sidebarQuery.trim().length === 0
+  const sidebarQuery = state.sidebarQuery.trim();
+  const hasSidebarQuery = sidebarQuery.length > 0;
+  const expanded = hasSidebarQuery || state.expandedProjectIds.includes(project.id);
+  const shouldLimitItems = !hasSidebarQuery
     && project.items.length > COLLAPSED_PROJECT_ITEM_LIMIT
     && !showAllItems;
   const visibleItems = shouldLimitItems
@@ -97,7 +98,7 @@ export function ProjectGroup({
           {visibleItems.map((item) => (
             <ProjectItem key={item.key} item={item} actions={actions} />
           ))}
-          {project.items.length > COLLAPSED_PROJECT_ITEM_LIMIT && state.sidebarQuery.trim().length === 0 && (
+          {project.items.length > COLLAPSED_PROJECT_ITEM_LIMIT && !hasSidebarQuery && (
             <button
               type="button"
               className="project-show-more"

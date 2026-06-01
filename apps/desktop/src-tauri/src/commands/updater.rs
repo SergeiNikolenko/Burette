@@ -69,8 +69,7 @@ pub(crate) async fn install_update(
         launch_installer(&app_data_dir, &staged_app, &app_bundle, &request.tag_name)
     })
     .await
-    .map_err(|err| err.to_string())
-    .and_then(|result| result);
+    .map_err(|err| err.to_string())?;
 
     match result {
         Ok(()) => {
