@@ -63,7 +63,7 @@ pub(crate) fn pick_open_targets<R: Runtime>(
 ) -> Result<Vec<String>, String> {
     #[cfg(target_os = "macos")]
     {
-        return pick_open_targets_macos(&app);
+        pick_open_targets_macos(&app)
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -74,11 +74,11 @@ pub(crate) fn pick_open_targets<R: Runtime>(
             .set_title("Open Structures")
             .blocking_pick_files()
             .unwrap_or_default();
-        return Ok(files
+        Ok(files
             .into_iter()
             .filter_map(|path| path.into_path())
             .map(|path| path.to_string_lossy().to_string())
-            .collect());
+            .collect())
     }
 }
 
@@ -122,12 +122,16 @@ pub(crate) fn read_structure_text(path: String) -> Result<String, String> {
     if !supported.contains(&extension) {
         return Err(format!("Unsupported structure extension: {extension}"));
     }
-    let metadata = fs::metadata(&input_path).map_err(|err| format!("{}: {err}", input_path.display()))?;
+    let metadata =
+        fs::metadata(&input_path).map_err(|err| format!("{}: {err}", input_path.display()))?;
     if !metadata.is_file() {
         return Err(format!("{} is not a file", input_path.display()));
     }
     if metadata.len() > KETCHER_IMPORT_MAX_STRUCTURE_FILE_SIZE {
-        return Err(format!("{} is too large for Ketcher import", input_path.display()));
+        return Err(format!(
+            "{} is too large for Ketcher import",
+            input_path.display()
+        ));
     }
     fs::read_to_string(&input_path).map_err(|err| format!("{}: {err}", input_path.display()))
 }
@@ -154,7 +158,7 @@ pub(crate) fn open_text_structure<R: Runtime>(
     if request.text.trim().is_empty() {
         return Err("Structure text is empty".to_string());
     }
-    let byte_count = request.text.as_bytes().len() as u64;
+    let byte_count = request.text.len() as u64;
     if byte_count > KETCHER_IMPORT_MAX_STRUCTURE_FILE_SIZE {
         return Err("Structure text is too large".to_string());
     }
@@ -167,7 +171,8 @@ pub(crate) fn open_text_structure<R: Runtime>(
         .join("ketcher")
         .join(uuid::Uuid::new_v4().to_string());
     fs::create_dir_all(&output_directory).map_err(|err| err.to_string())?;
-    let output_path = output_directory.join(safe_text_structure_file_name(&request.title, &extension));
+    let output_path =
+        output_directory.join(safe_text_structure_file_name(&request.title, &extension));
     fs::write(&output_path, request.text)
         .map_err(|err| format!("{}: {err}", output_path.display()))?;
     open_document(&app, output_path, &preferences, reload_options.as_ref())
@@ -203,25 +208,26 @@ pub(crate) fn open_merged_collection<R: Runtime>(
 }
 
 #[tauri::command]
-pub(crate) fn save_molecule_collection_as(path: String, output_path: String) -> Result<String, String> {
+pub(crate) fn save_molecule_collection_as(
+    path: String,
+    output_path: String,
+) -> Result<String, String> {
     let input_path = PathBuf::from(&path)
         .canonicalize()
         .map_err(|err| format!("{path}: {err}"))?;
     let extension = structure_path_extension(&input_path);
     if collection_family(&extension).is_none() {
-        return Err(format!("{} is not a supported molecule collection", input_path.display()));
+        return Err(format!(
+            "{} is not a supported molecule collection",
+            input_path.display()
+        ));
     }
     let output = PathBuf::from(&output_path);
     if let Some(parent) = output.parent() {
         fs::create_dir_all(parent).map_err(|err| format!("{}: {err}", parent.display()))?;
     }
-    fs::copy(&input_path, &output).map_err(|err| {
-        format!(
-            "{} -> {}: {err}",
-            input_path.display(),
-            output.display()
-        )
-    })?;
+    fs::copy(&input_path, &output)
+        .map_err(|err| format!("{} -> {}: {err}", input_path.display(), output.display()))?;
     Ok(output.to_string_lossy().to_string())
 }
 
@@ -239,7 +245,11 @@ pub(crate) fn render_xyzrender_sheet_item<R: Runtime>(
         .join(uuid::Uuid::new_v4().to_string());
     fs::create_dir_all(&output_directory).map_err(|err| err.to_string())?;
 
-    let inline_data = match request.input_data_base64.as_deref().filter(|value| !value.is_empty()) {
+    let inline_data = match request
+        .input_data_base64
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
         Some(value) => Some(
             base64::engine::general_purpose::STANDARD
                 .decode(value)
@@ -362,7 +372,7 @@ fn safe_text_structure_file_name(title: &str, extension: &str) -> String {
 pub(crate) fn sync_viewer_preferences(preferences: ViewerPreferences) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        return sync_viewer_preferences_macos(&preferences);
+        sync_viewer_preferences_macos(&preferences)
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -417,7 +427,10 @@ fn merge_collection_files(paths: &[String]) -> Result<(String, String), String> 
         }
         let extension = structure_path_extension(&canonical);
         let family = collection_family(&extension).ok_or_else(|| {
-            format!("{} is not a supported molecule collection", canonical.display())
+            format!(
+                "{} is not a supported molecule collection",
+                canonical.display()
+            )
         })?;
         let text = fs::read_to_string(&canonical)
             .map_err(|err| format!("{}: {err}", canonical.display()))?;
@@ -427,7 +440,10 @@ fn merge_collection_files(paths: &[String]) -> Result<(String, String), String> 
         return Err("Drop at least two molecule collections to merge them".to_string());
     }
     let family = sources[0].0;
-    if sources.iter().any(|(next_family, _)| *next_family != family) {
+    if sources
+        .iter()
+        .any(|(next_family, _)| *next_family != family)
+    {
         return Err(
             "Collection merge supports one format family at a time: SDF, SMILES, CSV, or TSV"
                 .to_string(),
@@ -475,7 +491,11 @@ fn merge_collection_text(family: CollectionFamily, texts: &[&str]) -> String {
         CollectionFamily::Sdf => {
             let records: Vec<String> = texts
                 .iter()
-                .flat_map(|text| text.split("$$$$").map(str::trim).filter(|record| !record.is_empty()))
+                .flat_map(|text| {
+                    text.split("$$$$")
+                        .map(str::trim)
+                        .filter(|record| !record.is_empty())
+                })
                 .map(|record| format!("{record}\n$$$$"))
                 .collect();
             format!("{}\n", records.join("\n"))
@@ -721,8 +741,7 @@ fn pick_open_targets_macos<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<Vec<
         panel.setResolvesAliases_(YES);
 
         let title: id = msg_send![class!(NSString), alloc];
-        let title: id =
-            msg_send![title, initWithUTF8String: b"Open Structures\0".as_ptr().cast::<c_char>()];
+        let title: id = msg_send![title, initWithUTF8String: c"Open Structures".as_ptr()];
         let _: () = msg_send![panel, setTitle: title];
 
         let response: NSModalResponse = panel.runModal();
