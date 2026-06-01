@@ -1,4 +1,4 @@
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -167,7 +167,7 @@ fn fetch_page(database_path: &Path, query: &GridQuery) -> Result<GridPageResult,
              limit ?2 offset ?3"
         )
     };
-    let limit = query.limit.max(1).min(240);
+    let limit = query.limit.clamp(1, 240);
     let offset = query.offset;
     let mut statement = connection.prepare(&sql).map_err(|err| err.to_string())?;
     let mut rows = if normalized_query.is_empty() {

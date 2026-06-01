@@ -6,7 +6,7 @@ import { EditorTabs } from "./editor-area/editor-tabs";
 import { Sidebar } from "./sidebar";
 import type { ShellActions, ShellViewState, StatusNotice } from "./types";
 import { isTauriRuntime } from "../lib/tauri";
-import { buildThemeStyle, resolveThemeMode } from "../lib/theme";
+import { buildThemeStyle, resolveThemeMode, useSystemThemeMode } from "../lib/theme";
 
 function clampSidebarWidth(width: number, maxSidebarWidth: number) {
   return Math.max(220, Math.min(maxSidebarWidth, Math.round(width)));
@@ -40,11 +40,12 @@ export function AppLayout({
   const layoutState = sidebarWidth === state.sidebarWidth ? state : { ...state, sidebarWidth };
   const tabChromeLeft = state.sidebarOpen ? sidebarLayoutWidth + 12 : 132;
   const chromeTransition = state.sidebarDragging ? "none" : undefined;
+  const systemThemeMode = useSystemThemeMode();
   const shellStyle = {
-    ...buildThemeStyle(state.preferences),
+    ...buildThemeStyle(state.preferences, systemThemeMode),
     "--sidebar-layout-width": `${sidebarLayoutWidth}px`,
   } as CSSProperties;
-  const effectiveTheme = resolveThemeMode(state.preferences.theme);
+  const effectiveTheme = resolveThemeMode(state.preferences.theme, systemThemeMode);
   return (
     <main
       className="app-shell"

@@ -1,7 +1,7 @@
-import type { CSSProperties } from "react";
+import { useSyncExternalStore, type CSSProperties } from "react";
 import type { ViewerPreferences } from "../types";
 
-type ThemeMode = "light" | "dark";
+export type ThemeMode = "light" | "dark";
 
 type ThemeTokens = {
   accent: string;
@@ -13,10 +13,29 @@ type ThemeTokens = {
   contrast: number;
 };
 
-export function resolveThemeMode(theme: ViewerPreferences["theme"]): ThemeMode {
-  if (theme === "light" || theme === "dark") return theme;
-  if (typeof window === "undefined") return "dark";
+export function readSystemThemeMode(): ThemeMode {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return "dark";
   return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+}
+
+export function subscribeSystemThemeMode(onChange: () => void): () => void {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return () => {};
+  const media = window.matchMedia("(prefers-color-scheme: light)");
+  if (typeof media.addEventListener === "function") {
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }
+  media.addListener(onChange);
+  return () => media.removeListener(onChange);
+}
+
+export function useSystemThemeMode(): ThemeMode {
+  return useSyncExternalStore(subscribeSystemThemeMode, readSystemThemeMode, () => "dark");
+}
+
+export function resolveThemeMode(theme: ViewerPreferences["theme"], systemThemeMode = readSystemThemeMode()): ThemeMode {
+  if (theme === "light" || theme === "dark") return theme;
+  return systemThemeMode;
 }
 
 export function readThemeTokens(preferences: ViewerPreferences, mode: ThemeMode): ThemeTokens {
@@ -42,8 +61,8 @@ export function readThemeTokens(preferences: ViewerPreferences, mode: ThemeMode)
   };
 }
 
-export function buildThemeStyle(preferences: ViewerPreferences): CSSProperties {
-  const mode = resolveThemeMode(preferences.theme);
+export function buildThemeStyle(preferences: ViewerPreferences, systemThemeMode?: ThemeMode): CSSProperties {
+  const mode = resolveThemeMode(preferences.theme, systemThemeMode);
   const tokens = readThemeTokens(preferences, mode);
   const bgOpacity = 1 - (clamp(tokens.translucent, 0, 100) / 100) * 0.95;
   const contrast = 0.2 + (clamp(tokens.contrast, 0, 100) / 100) * 0.8;

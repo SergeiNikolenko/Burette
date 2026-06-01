@@ -18,6 +18,7 @@ const [
   settingsHook,
   shellStore,
   packageJson,
+  themeSource,
   appLayout,
   main,
   sidebar,
@@ -39,6 +40,7 @@ const [
   pageKindTypes,
   fileKind,
   ketcherKind,
+  ketcherPage,
   ketcherEditor,
   launcherKind,
   settingsKind,
@@ -79,6 +81,7 @@ const [
   source('apps/desktop/src/hooks/use-settings.ts'),
   source('apps/desktop/src/stores/shell-store.ts'),
   source('package.json'),
+  source('apps/desktop/src/lib/theme.ts'),
   source('apps/desktop/src/components/app-layout.tsx'),
   source('apps/desktop/src/main.tsx'),
   source('apps/desktop/src/components/sidebar/index.tsx'),
@@ -100,6 +103,7 @@ const [
   source('apps/desktop/src/components/editor-area/page-kinds/types.ts'),
   source('apps/desktop/src/components/editor-area/page-kinds/file.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/ketcher.tsx'),
+  source('apps/desktop/src/components/ketcher-page.tsx'),
   source('apps/desktop/src/components/ketcher-editor.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/launcher.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/settings.tsx'),
@@ -219,10 +223,12 @@ assert.match(viewer, /updateXyzrenderFormVisibility\(toolbar\);\s*scheduleXyzren
 assert.match(viewer, /body\.documentId = String\(window\.BurreteConfig\.documentId\)/);
 assert.match(viewer, /function bindXyzrenderControls\(toolbar\)/);
 assert.match(viewer, /XYZRENDER_POPOVER_OPEN_KEY_PREFIX/);
+assert.match(viewer, /buret\.xyzrender\.popover\.open\.v2/);
+assert.doesNotMatch(viewer, /buret\.xyzrender\.popover\.open';/);
 assert.match(viewer, /function setXyzrenderPopoverVisibility\(toolbar, open, options = \{\}\)/);
 assert.match(viewer, /toolbar\?\.classList\.toggle\('buret-popover-open', open\)/);
 assert.match(viewer, /function shouldRestoreXyzrenderPopoverOpen\(\)/);
-assert.match(viewer, /function shouldOpenXyzrenderPopoverByDefault\(config\)/);
+assert.doesNotMatch(viewer, /shouldOpenXyzrenderPopoverByDefault/);
 assert.match(viewer, /function syncXyzrenderSliders\(toolbar\)/);
 assert.match(viewer, /function requestBrowserDevXyzrenderUpdate\(options = \{\}\)/);
 assert.match(viewer, /fetch\(endpoint, \{/);
@@ -230,6 +236,8 @@ assert.match(viewer, /function updateBrowserDevXyzrenderArtifact\(payload, reque
 assert.match(viewer, /function rotatableArtifactControlsHTML\(\)/);
 assert.match(viewer, /class="buret-xyzrender-rotate-hud"/);
 assert.match(viewer, /data-buret-resize-handle="\$\{handle\}"/);
+assert.match(viewer, /function sheetItemCenterPosition\(item\)/);
+assert.match(viewer, /rect\.left - parentRect\.left \+ rect\.width \/ 2/);
 assert.match(viewer, /function installRotatableArtifactResize\(item, getStageScale\)/);
 assert.match(viewer, /function snapRotation\(rotation, event\)/);
 assert.match(viewer, /event\?\.ctrlKey \? 1 : 15/);
@@ -332,9 +340,12 @@ assert.match(moleculeStore, /recentStructures: \[\]/);
 assert.match(moleculeStore, /rememberRecentStructures:/);
 assert.match(moleculeStore, /clearRecentStructures:/);
 assert.match(moleculeStore, /name: "burrete\.molecule\.session"/);
-assert.match(moleculeStore, /type PersistedMoleculeState = Pick<MoleculeState, "recentStructures">/);
-assert.match(moleculeStore, /partialize: \(state\) => \(\{ recentStructures: state\.recentStructures \}\)/);
-assert.doesNotMatch(moleculeStore, /documents: persistedDocuments|tabs: persistedTabs|activeTabId: state\.activeTabId/);
+assert.match(moleculeStore, /function shouldIgnorePersistedSession\(\)/);
+assert.match(moleculeStore, /window\.location\.hostname === "127\.0\.0\.1" \|\| window\.location\.hostname === "localhost"/);
+assert.match(moleculeStore, /function devFilesPersistedSession\(recentStructures: RecentStructure\[\]\): PersistedMoleculeState/);
+assert.match(moleculeStore, /partialize: \(state\) => shouldIgnorePersistedSession\(\)\s*\?\s*devFilesPersistedSession\(state\.recentStructures\)/);
+assert.match(moleculeStore, /documents: \[\],\s*tabs: persistedTabs\(state\.tabs, state\.documents\)/);
+assert.match(moleculeStore, /const documents = current\.documents/);
 assert.match(app, /async function browserDevFilesFromLocation\(\)/);
 assert.match(app, /if \(params\.has\("devDocking"\)\) return \[\];/);
 assert.match(app, /params\.has\("devFiles"\)/);
@@ -371,7 +382,10 @@ assert.match(app, /refreshedPersistedSessionRef/);
 assert.match(app, /syncingBrowserDevFilesRef/);
 assert.match(app, /openedBrowserDevDockingRef/);
 assert.match(app, /browserDevRuntimeNeedsRefresh/);
+assert.match(app, /openedPersistedTabsRef/);
 assert.match(app, /buildSidebarProjects/);
+assert.match(app, /buildSidebarProjects\(\{\s*documents,\s*recentStructures,/);
+assert.doesNotMatch(app, /recentStructures:\s*documents\.length === 0 \? recentStructures : \[\]/);
 assert.match(app, /pinnedStructurePaths,/);
 assert.match(app, /sidebarProjects/);
 assert.match(app, /isTauriRuntime\(\) \|\| documents\.length === 0/);
@@ -469,18 +483,19 @@ assert.match(viewer, /body\.type !== 'addXyzrenderSheetItems'/);
 assert.match(viewer, /function addXyzrenderSheetItem\(sheet, svg, path, point, serial, getStageScale\)/);
 assert.match(viewer, /buret-xyzrender-sheet-rotate-handle/);
 assert.match(viewer, /--buret-sheet-rotation/);
-assert.match(viewer, /function externalArtifactCardHTML\(content, label\)/);
-assert.match(viewer, /buret-external-artifact-card-background/);
-assert.match(viewer, /function installExternalArtifactCardInteractions\(root, getStageScale\)/);
-assert.match(viewer, /function installExternalArtifactCardDrag\(card\)/);
-assert.match(viewer, /--buret-card-x/);
-assert.match(viewer, /--buret-card-y/);
+assert.match(viewer, /function externalArtifactBaseItemHTML\(content, label\)/);
+assert.match(viewer, /buret-xyzrender-sheet-item-base selected/);
+assert.match(viewer, /function externalArtifactSheetHTML\(content\)/);
+assert.match(viewer, /function installExternalArtifactBaseItemInteractions\(root, getStageScale\)/);
+assert.match(viewer, /function installXyzrenderSheetItemInteractions\(item, getStageScale, options = \{\}\)/);
+assert.doesNotMatch(viewer, /--buret-card-x/);
+assert.doesNotMatch(viewer, /--buret-card-y/);
 assert.match(viewer, /artifactRoot\.style\.background = background/);
 assert.match(viewer, /function setSheetItemRotation\(item, rotation\)/);
 assert.match(viewer, /function clearRotatableArtifactSelection\(root = document\)/);
 assert.match(viewer, /function installRotatableArtifactSelectionClear\(root\)/);
 assert.match(viewer, /installRotatableArtifactSelectionClear\(root\)/);
-assert.match(viewer, /\.buret-external-artifact-card, \.buret-xyzrender-sheet-item, #buret-toolbar, \.buret-xyzrender-popover, \.buret-xyz-badge/);
+assert.match(viewer, /\.buret-xyzrender-sheet-item, #buret-toolbar, \.buret-xyzrender-popover, \.buret-xyz-badge/);
 assert.match(viewer, /function installXyzrenderSheetItemRotation\(item\)/);
 assert.match(viewer, /event\.target\?\.\s*closest\?\.\('\.buret-xyzrender-sheet-rotate-handle, \[data-buret-resize-handle\]'\)/);
 assert.doesNotMatch(fileKind, /frameDocument\.write\(document\.runtimePath\)/);
@@ -519,6 +534,13 @@ assert.match(styles, /--accent: #af52de/);
 assert.match(styles, /--chrome-drag-height: 72px/);
 assert.match(styles, /\.app-shell\[data-theme="light"\] \{[^}]*--bg-base: #ffffff;[^}]*--fg-base: #0d0d0d;[^}]*--surface-card: transparent;/s);
 assert.match(styles, /@media \(prefers-color-scheme: light\) \{[\s\S]*\.app-shell\[data-theme="auto"\] \{[^}]*--bg-base: #ffffff;[^}]*--surface-card: transparent;/);
+assert.match(themeSource, /useSyncExternalStore/);
+assert.match(themeSource, /function subscribeSystemThemeMode\(onChange: \(\) => void\): \(\) => void/);
+assert.match(themeSource, /media\.addEventListener\("change", onChange\)/);
+assert.match(themeSource, /media\.removeEventListener\("change", onChange\)/);
+assert.match(appLayout, /const systemThemeMode = useSystemThemeMode\(\)/);
+assert.match(appLayout, /buildThemeStyle\(state\.preferences, systemThemeMode\)/);
+assert.match(appLayout, /resolveThemeMode\(state\.preferences\.theme, systemThemeMode\)/);
 assert.match(styles, /\*\[data-tauri-drag-region\] \{[^}]*app-region: drag;[^}]*-webkit-app-region: drag;[^}]*\}/s);
 assert.match(styles, /button, select, input, textarea, \.tab-shell, \.tab, \.new-tab, \.chrome-button, \.tab-history-button, \.sidebar-search-row, \.sidebar-tool-row, \.sidebar-section-title-button, \.sidebar-section-menu-button, \.project-group-row, \.project-group-menu-button, \.project, \.project-show-more, \.pin-hit, \.splitter \{[^}]*app-region: no-drag;[^}]*-webkit-app-region: no-drag;[^}]*\}/s);
 assert.match(styles, /\.drag-region \{[^}]*height: var\(--chrome-drag-height\);[^}]*z-index: 2/s);
@@ -554,6 +576,13 @@ assert.match(launcherKind, /<WelcomeScreen actions=\{actions\} \/>/);
 assert.match(ketcherKind, /export const ketcherKind = definePageKind/);
 assert.match(ketcherKind, /<KetcherPage state=\{state\} actions=\{actions\} isActive=\{isActive\} \/>/);
 assert.match(ketcherKind, /keepAlive: false/);
+assert.match(ketcherPage, /function normalizeKetcherImportText\(text: string\)/);
+assert.match(ketcherPage, /function looksLikeSdfRecord\(text: string\)/);
+assert.match(ketcherPage, /trimmed\.replace\(\/\\n\?\\\$\\\$\\\$\\\$\\s\*\$\/u, ""\)\.trimEnd\(\) \+ "\\n"/);
+assert.match(ketcherPage, /const importText = normalizeKetcherImportText\(text\)/);
+assert.match(ketcherPage, /await ketcher\.setMolecule\(importText, \{ needZoom: true \}\)/);
+assert.match(ketcherPage, /await ketcher\.addFragment\(importText, \{ needZoom: true \}\)/);
+assert.match(ketcherPage, /hasImportedStructure = true/);
 assert.match(app, /body\?\.type === "openInKetcher"/);
 assert.match(app, /const openKetcherWithFragment = useCallback/);
 assert.match(app, /textBase64/);
@@ -568,6 +597,8 @@ assert.match(ketcherEditor, /moduleName === "raphael"/);
 assert.match(ketcherEditor, /browserGlobal\.__burreteRequire = requireShim/);
 assert.doesNotMatch(ketcherEditor, /from "ketcher-react";/);
 assert.doesNotMatch(ketcherEditor, /from "ketcher-standalone";/);
+assert.match(structureDrag, /function structureDragRecordFragmentText/);
+assert.match(structureDrag, /replace\(\/\\n\?\\\$\\\$\\\$\\\$\\s\*\$\/u, ""\)/);
 assert.match(settingsKind, /export const settingsKind = definePageKind/);
 assert.match(settingsKind, /<SettingsPanel state=\{state\} actions=\{actions\} \/>/);
 assert.match(welcome, /export function WelcomeScreen/);
@@ -790,7 +821,7 @@ assert.match(instance, /Burette Dev \$\{devInstanceSuffix\}/);
 assert.match(instance, /"8a18"/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
-assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v83"/);
+assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v84"/);
 assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v17"/);
 assert.match(browserDevDocuments, /const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT = 1500/);
 assert.match(browserDevDocuments, /if \(document\.renderer === "grid2d"\) return !document\.runtimePath\.includes\(GRID_ASSET_VERSION\);/);
@@ -983,12 +1014,17 @@ assert.match(previewViewer, /const DEFAULT_MOLSTAR_STYLE = 'illustrative'/);
 assert.match(previewViewer, /function normalizeMolstarStyle\(value\)/);
 assert.match(previewViewer, /function configuredMolstarStyle\(config\)/);
 assert.match(previewViewer, /if \(canvasBackground === 'auto'\) return resolveViewerTheme\(\) === 'light' \? 'white' : 'graphite';/);
-assert.match(previewViewer, /\.buret-external-artifact-card \{[^}]*--buret-card-fit-scale: 1;[^}]*transform: translate\(var\(--buret-card-x\), var\(--buret-card-y\)\) rotate\(var\(--buret-sheet-rotation\)\) scale\(var\(--buret-card-fit-scale\)\);/s);
-assert.match(previewViewer, /\.buret-external-artifact-inline \{[^}]*overflow: visible;/s);
-assert.match(previewViewer, /function updateExternalArtifactCardFit\(item\)/);
-assert.match(previewViewer, /availableWidth \/ rotatedWidth/);
-assert.match(previewViewer, /new ResizeObserver\(\(\) => \{\s*resetRotatableArtifactRotateRadius\(card\);\s*updateExternalArtifactCardFit\(card\);/);
-assert.match(previewViewer, /\.buret-external-artifact-card-background \{[^}]*border-radius: 8px;[^}]*box-shadow: 0 18px 54px rgba\(0,0,0,0\.28\);/);
+assert.match(previewViewer, /\.buret-xyzrender-sheet-item \{[^}]*transform: translate\(-50%, -50%\) rotate\(var\(--buret-sheet-rotation\)\);/s);
+assert.match(previewViewer, /\.buret-xyzrender-sheet-item-base \{[^}]*width: max\(180px, min\(calc\(100vw - 128px\), 1024px\)\);[^}]*height: max\(180px, min\(calc\(100vh - 148px\), 768px\)\);/s);
+assert.match(previewViewer, /\.buret-xyzrender-sheet-item-base \.buret-xyzrender-sheet-item-background \{[^}]*border-radius: 8px;[^}]*box-shadow: 0 18px 54px rgba\(0,0,0,0\.28\);/s);
+assert.match(previewViewer, /\.buret-xyzrender-resize-n:hover ~ \.buret-xyzrender-sheet-rotate-handle,/);
+assert.doesNotMatch(previewViewer, /\.buret-xyzrender-sheet-item\.selected \.buret-xyzrender-sheet-rotate-handle,/);
+assert.doesNotMatch(previewViewer, /function updateExternalArtifactCardFit\(item\)/);
+assert.match(previewViewer, /new ResizeObserver\(\(\) => resetRotatableArtifactRotateRadius\(item\)\)/);
+assert.match(previewViewer, /\.buret-xyzrender-rotate-hud \{[^}]*width: calc\(var\(--buret-rotate-radius\) \* 2 \+ 78px\);/);
+assert.match(previewViewer, /\.buret-xyzrender-sheet-rotate-handle \{[^}]*width: 48px;[^}]*height: 48px;/);
+assert.match(previewViewer, /\.buret-xyzrender-resize-n,\s*\.buret-xyzrender-resize-s \{[^}]*width: 68px;[^}]*height: 26px;/);
+assert.match(previewViewer, /\.buret-xyzrender-resize-ne,\s*\.buret-xyzrender-resize-nw,\s*\.buret-xyzrender-resize-se,\s*\.buret-xyzrender-resize-sw \{[^}]*width: 32px;[^}]*height: 32px;/);
 assert.match(previewViewer, /if \(region === 'left'\) layoutState\.left = layoutState\.left === 'full' \? 'hidden' : 'full'/);
 assert.match(previewViewer, /await plugin\.builders\.structure\.hierarchy\.applyPreset\(trajectory, 'default'\)/);
 assert.match(previewViewer, /await applyMolstarStyle\(viewer, configuredMolstarStyle\(activeConfig\)\)/);
@@ -1033,7 +1069,7 @@ assert.match(previewViewer, /function defaultToolbarTop\(\)/);
 assert.match(previewViewer, /fitToolbarToViewport\(toolbar\);\s*const margin = TOOLBAR_MARGIN/s);
 assert.match(previewViewer, /if \(saved\.mode === 'custom' && Number\.isFinite\(saved\.left\) && Number\.isFinite\(saved\.top\)\) \{\s*undockToolbar\(toolbar\);/s);
 assert.match(previewViewer, /if \(toolbar\.dataset\.defaultPosition === '1'\) \{\s*toolbar\.dataset\.defaultPosition = '0';\s*undockToolbar\(toolbar\);/s);
-assert.match(previewViewer, /\.buret-external-artifact-card-body > svg > rect/);
+assert.match(previewViewer, /\.buret-xyzrender-sheet-item-base \.buret-xyzrender-sheet-item-body > svg > rect/);
 assert.match(previewViewer, /function installExternalArtifactInteractions\(root\)/);
 assert.match(previewViewer, /const clampScale = value => Math\.min\(8, Math\.max\(0\.05, value\)\)/);
 assert.match(previewViewer, /const xyzrenderAvailable = config\.xyzrenderAvailable !== false;/);
@@ -1045,7 +1081,8 @@ assert.match(previewViewer, /payload\.textBase64 = config\.ketcherSourceTextBase
 assert.match(gridViewer, /function requestOpenInKetcher\(row, cfg\)/);
 assert.match(gridViewer, /type, message, payload/);
 assert.match(gridViewer, /\['ketcher', 'Open in Ketcher'\]/);
-assert.match(gridViewer, /textBase64: textToBase64\(record\.text\)/);
+assert.match(gridViewer, /textBase64: textToBase64\(ketcherFragmentText\(record\)\)/);
+assert.match(gridViewer, /function ketcherFragmentText\(record\)/);
 assert.match(previewViewer, /const inputDataBase64 = typeof config\.xyzrenderInputDataBase64 === 'string'/);
 assert.match(previewViewer, /inputDataBase64: inputDataBase64 \|\| undefined/);
 assert.match(previewViewer, /inputExtension: inputDataBase64 && inputExtension \? inputExtension : undefined/);
@@ -1083,14 +1120,14 @@ assert.match(previewViewer, /className = 'buret-docking-poses'/);
 assert.match(previewViewer, /document\.body\.classList\.add\('buret-docking-pose-controls-active'\)/);
 assert.match(previewViewer, /function installMolstarContextMenu\(viewer\)/);
 assert.match(previewViewer, /document\.addEventListener\('contextmenu', onContextMenu, true\)/);
+assert.match(previewViewer, /if \(!viewer \|\| !isMolstarContextMenuTarget\(event\.target\)\) \{\s*hideMolstarContextMenu\(\);\s*return;/);
 assert.match(previewViewer, /if \(event\.button === 2\) \{\s*openFromEvent\(event\);\s*return;/);
 assert.match(previewViewer, /function isMolstarContextMenuTarget\(target\)/);
 assert.match(previewViewer, /function molstarContextPickFromEvent\(event\)/);
-assert.match(previewViewer, /function molstarContextCanvasPixelLooksEmpty\(canvas, clientX, clientY\)/);
-assert.match(previewViewer, /gl\.readPixels\(x, y, 1, 1, gl\.RGBA, gl\.UNSIGNED_BYTE, pixel\)/);
-assert.match(previewViewer, /if \(molstarContextCanvasPixelLooksEmpty\(canvas, event\.clientX, event\.clientY\)\) return null;/);
-assert.match(previewViewer, /canvas3d\.setProps\(\{ pickPadding: 0 \}\)/);
-assert.match(previewViewer, /canvas3d\.setProps\(\{ pickPadding: previousPickPadding \}\)/);
+assert.doesNotMatch(previewViewer, /function molstarContextCanvasPixelLooksEmpty/);
+assert.doesNotMatch(previewViewer, /gl\.readPixels/);
+assert.doesNotMatch(previewViewer, /canvas3d\.setProps\(\{ pickPadding: 0 \}\)/);
+assert.doesNotMatch(previewViewer, /canvas3d\.setProps\(\{ pickPadding: previousPickPadding \}\)/);
 assert.match(previewViewer, /canvas3d\.identify\(\[event\.clientX - rect\.left, event\.clientY - rect\.top\]\)/);
 assert.match(previewViewer, /canvas3d\.getLoci\(picking\.id\)/);
 assert.match(previewViewer, /\.msp-plugin \.msp-viewport-host/);
@@ -1237,6 +1274,7 @@ assert.match(gridViewer, /const CARD_RENDERER_STORAGE_KEY = 'buret\.grid\.cardRe
 assert.doesNotMatch(gridViewer, /SHOW_PROPERTIES_STORAGE_KEY/);
 assert.match(gridViewer, /showProperties: false/);
 assert.match(gridViewer, /cardRenderer: storedCardRenderer\(\)/);
+assert.match(gridViewer, /rdkitError: ''/);
 assert.match(gridViewer, /const RDKIT_USE_INPUT_COORDS_STORAGE_KEY = 'buret\.grid\.rdkitUseInputCoords'/);
 assert.match(gridViewer, /rdkitUseInputCoords: storedBoolean\(RDKIT_USE_INPUT_COORDS_STORAGE_KEY, false\)/);
 assert.doesNotMatch(gridViewer, /buret-load-control/);
@@ -1372,6 +1410,7 @@ assert.match(gridViewer, /if \(value === 'molstar'\) \{\s*requestSdfPoseDocument
 assert.match(gridViewer, /async function requestXyzrenderCard\(row, cfg, record, key\)/);
 assert.match(gridViewer, /function pumpXyzrenderCardQueue\(\)/);
 assert.match(gridViewer, /function drawRdkit\(row\)/);
+assert.match(gridViewer, /if \(!state\.rdkit\) \{/);
 assert.match(gridViewer, /function drawXyzrenderCard\(row, cfg\)/);
 assert.match(gridViewer, /el\.dataset\.buretCardTooltip = cardTooltip\(row\)/);
 assert.match(gridViewer, /function cardTooltip\(row\)/);
@@ -1416,10 +1455,14 @@ assert.match(gridViewer, /async function collectAllRemoteRows\(cfg\)/);
 assert.match(gridViewer, /state\.remoteMode && state\.selected\.size === 0 && !state\.smarts\.trim\(\)/);
 assert.match(gridViewer, /if \(kind === 'error' && status && !window\.BurreteDebug && cfg\.appViewer === true\) status\.classList\.add\('hidden'\);/);
 assert.doesNotMatch(gridViewer, /post\('error', message\);/);
+assert.match(gridViewer, /try \{\s*await initRDKit\(\);\s*state\.rdkitError = '';\s*\} catch \(rdkitError\) \{/s);
 assert.match(structureDrag, /export const STRUCTURE_DRAG_MIME = "application\/x-burrete-structure-paths"/);
 assert.match(structureDrag, /export function writeStructureDrag/);
 assert.match(structureDrag, /export function readStructureDrag/);
 assert.match(structureDrag, /export function hasStructureDrag/);
+assert.match(structureDrag, /types\.includes\("text\/plain"\)/);
+assert.match(structureDrag, /function structureDragRecordFromPlainText\(text: string\)/);
+assert.match(structureDrag, /V2000\|V3000/);
 assert.match(dockingDocuments, /export function ligandDropPathsForTarget/);
 assert.match(dockingDocuments, /export function dockingRequestForDrop/);
 assert.match(dockingDocuments, /function uniqueDockingPaths\(paths: string\[\]\)/);
@@ -1484,7 +1527,7 @@ assert.match(previewViewer, /aria-label', 'Previous pose'/);
 assert.match(previewViewer, /aria-label', 'Next pose'/);
 assert.match(previewViewer, /event\.key === 'ArrowLeft'/);
 assert.match(previewViewer, /event\.key === 'ArrowRight'/);
-assert.doesNotMatch(moleculeStore, /function persistedDocuments\(documents: ViewerDocument\[\]\)/);
+assert.match(moleculeStore, /function persistedDocuments\(documents: ViewerDocument\[\]\)/);
 assert.match(moleculeStore, /if \(!document\.virtual\) byPath\.set\(document\.path, toRecentStructure\(document\)\)/);
 
 console.log('ui shell contract tests passed');

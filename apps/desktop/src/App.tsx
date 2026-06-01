@@ -146,6 +146,7 @@ export default function App() {
     availableRelease: null,
   }));
   const refreshedPersistedSessionRef = useRef(false);
+  const openedPersistedTabsRef = useRef(false);
   const openedBrowserDevFilesRef = useRef<string | null>(null);
   const openedBrowserDevDockingRef = useRef<string | null>(null);
   const syncingBrowserDevFilesRef = useRef(false);
@@ -200,7 +201,7 @@ export default function App() {
 
   const allSidebarProjects = useMemo(() => buildSidebarProjects({
     documents,
-    recentStructures: documents.length === 0 ? recentStructures : [],
+    recentStructures,
     projectRoots,
     activeDocumentId: activeDocument?.id ?? null,
     pinnedStructurePaths,
@@ -282,6 +283,20 @@ export default function App() {
       .sort((a, b) => (a === activePath ? -1 : b === activePath ? 1 : 0));
     void openDocuments(paths);
   }, [activeDocument, documents, openDocuments]);
+
+  useEffect(() => {
+    if (openedPersistedTabsRef.current) return;
+    if (!isTauriRuntime() || documents.length > 0) return;
+    const paths = Array.from(new Set(tabs
+      .map((tab) => tab.location.kind === "file" ? tab.location.path : null)
+      .filter((path): path is string => Boolean(path))));
+    if (paths.length === 0) return;
+    openedPersistedTabsRef.current = true;
+    const restoreTabId = activeTabId;
+    void openDocuments(paths).then(() => {
+      if (restoreTabId) setActiveTab(restoreTabId);
+    });
+  }, [activeTabId, documents.length, openDocuments, setActiveTab, tabs]);
 
   const openRecentStructure = useCallback(
     async (structure: RecentStructure) => {

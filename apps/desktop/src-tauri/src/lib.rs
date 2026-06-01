@@ -1,3 +1,6 @@
+#![allow(deprecated, unexpected_cfgs)]
+#![allow(clippy::items_after_test_module, clippy::too_many_arguments)]
+
 mod commands;
 mod menu;
 mod preview;
@@ -34,7 +37,7 @@ pub fn run() {
                 std::env::current_dir().ok(),
             );
             if !startup_paths.is_empty() {
-                tray::show_main_window(&app.handle());
+                tray::show_main_window(app.handle());
             }
             let app_handle = app.handle().clone();
             app.on_menu_event(move |app, event| match event.id().0.as_str() {

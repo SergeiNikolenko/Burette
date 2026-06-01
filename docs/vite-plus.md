@@ -43,6 +43,7 @@ Rust and native macOS validation still run from the Tauri crate or the existing
 release scripts:
 
 ```bash
+vp run check:rust
 cd apps/desktop/src-tauri
 cargo test
 cargo clippy
