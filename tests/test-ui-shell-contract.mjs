@@ -221,10 +221,12 @@ assert.match(viewer, /updateXyzrenderFormVisibility\(toolbar\);\s*scheduleXyzren
 assert.match(viewer, /body\.documentId = String\(window\.BurreteConfig\.documentId\)/);
 assert.match(viewer, /function bindXyzrenderControls\(toolbar\)/);
 assert.match(viewer, /XYZRENDER_POPOVER_OPEN_KEY_PREFIX/);
+assert.match(viewer, /buret\.xyzrender\.popover\.open\.v2/);
+assert.doesNotMatch(viewer, /buret\.xyzrender\.popover\.open';/);
 assert.match(viewer, /function setXyzrenderPopoverVisibility\(toolbar, open, options = \{\}\)/);
 assert.match(viewer, /toolbar\?\.classList\.toggle\('buret-popover-open', open\)/);
 assert.match(viewer, /function shouldRestoreXyzrenderPopoverOpen\(\)/);
-assert.match(viewer, /function shouldOpenXyzrenderPopoverByDefault\(config\)/);
+assert.doesNotMatch(viewer, /shouldOpenXyzrenderPopoverByDefault/);
 assert.match(viewer, /function syncXyzrenderSliders\(toolbar\)/);
 assert.match(viewer, /function requestBrowserDevXyzrenderUpdate\(options = \{\}\)/);
 assert.match(viewer, /fetch\(endpoint, \{/);
