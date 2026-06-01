@@ -52,6 +52,10 @@ function ViewerSurface({
 
   const postXyzrenderSheetItems = useCallback((payload: StructureDragPayload) => {
     if (!sheetDropTarget || (payload.paths.length === 0 && payload.records.length === 0)) return false;
+    const iframeRect = iframeRef.current?.getBoundingClientRect();
+    const point = payload.point && iframeRect && Number.isFinite(payload.point.x) && Number.isFinite(payload.point.y)
+      ? { x: payload.point.x - iframeRect.left, y: payload.point.y - iframeRect.top }
+      : null;
     iframeRef.current?.contentWindow?.postMessage(
       {
         source: "burrete-host",
@@ -60,6 +64,7 @@ function ViewerSurface({
           documentId: document.id,
           paths: payload.paths,
           records: payload.records,
+          point,
         },
       },
       "*",
@@ -87,6 +92,7 @@ function ViewerSurface({
     setDockingDropActive(false);
     actions.setStructureDragActive(false);
     const droppedPayload = readStructureDragPayload(event.dataTransfer);
+    droppedPayload.point = { x: event.clientX, y: event.clientY };
     const droppedPaths = droppedPayload.paths;
     if (collectionDropTarget && droppedPaths.some(isMoleculeCollectionPath)) {
       void actions.mergeMoleculeCollections(document.path, droppedPaths);

@@ -555,6 +555,10 @@ export default function App() {
       (item) => item.dataset.documentId === documentId,
     );
     if (!iframe?.contentWindow) return false;
+    const iframeRect = iframe.getBoundingClientRect();
+    const point = payload.point && Number.isFinite(payload.point.x) && Number.isFinite(payload.point.y)
+      ? { x: payload.point.x - iframeRect.left, y: payload.point.y - iframeRect.top }
+      : null;
     iframe.contentWindow.postMessage(
       {
         source: "burrete-host",
@@ -563,6 +567,7 @@ export default function App() {
           documentId,
           paths: payload.paths,
           records: payload.records,
+          point,
         },
       },
       "*",
