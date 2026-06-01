@@ -24,11 +24,17 @@ const [app, gridViewer, viewer, dockingDocuments, fileKind, openDropHook, sideba
 assert.match(gridViewer, /data-buret-grid-sdf-poses data-buret-grid-docking>Poses<\/button>/);
 assert.match(gridViewer, /post\('openSdfPoseDocument', '\[grid\] Open SDF poses in Mol\*.'/);
 assert.match(gridViewer, /documentId: cfg\?\.documentId \|\| null/);
+assert.match(gridViewer, /path: sourcePath \|\| null/);
+assert.match(gridViewer, /receptorPath: receptorPath \|\| null/);
 
 assert.match(app, /body\?\.type === "openSdfPoseDocument"/);
-assert.match(app, /documents\.find\(\(document\) => \(\s*document\.path !== targetDocument\.path && isProteinLikeDockingSource\(document\.path\)\s*\)\)/);
-assert.match(app, /void openDockingDocument\(receptorDocument\.path, \[targetDocument\.path\]\)/);
-assert.match(app, /void openDocuments\(\[targetDocument\.path\], \{\}, \{ rendererMode: "molstar" \}\)/);
+assert.match(app, /const targetPath = typeof body\.path === "string" && body\.path\.trim\(\)\.length > 0/);
+assert.match(app, /const requestedReceptorPath = typeof body\.receptorPath === "string"/);
+assert.match(app, /document\.path === requestedReceptorPath/);
+assert.match(app, /document\.path !== targetPath && isProteinLikeDockingSource\(document\.path\)/);
+assert.match(app, /pushErrorStatus\("Selected receptor is not available for SDF poses\.", "SDF poses failed"\)/);
+assert.match(app, /void openDockingDocument\(receptorDocument\.path, \[targetPath\]\)/);
+assert.match(app, /void openDocuments\(\[targetPath\], \{\}, \{ rendererMode: "molstar" \}\)/);
 
 assert.match(dockingDocuments, /export function dockingRequestForDrop/);
 assert.match(dockingDocuments, /existingDockingRequest/);
@@ -73,6 +79,7 @@ assert.match(viewer, /scope: 'ligand'/);
 assert.match(viewer, /function pdbEnvironmentForLigand\(receptor, ligand, radiusAngstrom = 6\)/);
 assert.match(viewer, /function molstarContextDocumentPayload\(target\)/);
 assert.match(viewer, /contextDocument = molstarContextDocumentPayload\(target\)/);
+assert.match(viewer, /if \(!contextDocument\) throw new Error\('No molecule-level Mol\* context is available for this target\.'\)/);
 assert.match(viewer, /selects\.select\(pick, true\)/);
 assert.match(viewer, /function focusMolstarContextPick\(\)/);
 assert.match(app, /openBrowserDevMolstarContextDocument\(body\.contextDocument, preferences\)/);

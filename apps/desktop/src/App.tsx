@@ -969,17 +969,37 @@ export default function App() {
       if (body?.type === "openSdfPoseDocument") {
         const targetDocument = (body.documentId
           ? documents.find((document) => document.id === body.documentId)
-          : null) ?? activeDocument;
-        if (targetDocument) {
-          const receptorDocument = documents.find((document) => (
-            document.path !== targetDocument.path && isProteinLikeDockingSource(document.path)
-          ));
+          : null)
+          ?? (typeof body.path === "string"
+            ? documents.find((document) => document.path === body.path.trim())
+            : null)
+          ?? activeDocument;
+        const targetPath = typeof body.path === "string" && body.path.trim().length > 0
+          ? body.path.trim()
+          : targetDocument?.path;
+        if (targetPath) {
+          const requestedReceptorPath = typeof body.receptorPath === "string"
+            ? body.receptorPath.trim()
+            : "";
+          const receptorDocument = requestedReceptorPath
+            ? documents.find((document) => (
+              document.path === requestedReceptorPath &&
+              document.path !== targetPath &&
+              isProteinLikeDockingSource(document.path)
+            ))
+            : documents.find((document) => (
+              document.path !== targetPath && isProteinLikeDockingSource(document.path)
+            ));
+          if (requestedReceptorPath && !receptorDocument) {
+            pushErrorStatus("Selected receptor is not available for SDF poses.", "SDF poses failed");
+            return;
+          }
           if (receptorDocument) {
             pushStatus("Opening SDF poses in Mol* docking view...");
-            void openDockingDocument(receptorDocument.path, [targetDocument.path]);
+            void openDockingDocument(receptorDocument.path, [targetPath]);
           } else {
             pushStatus("Opening SDF poses in Mol*...");
-            void openDocuments([targetDocument.path], {}, { rendererMode: "molstar" });
+            void openDocuments([targetPath], {}, { rendererMode: "molstar" });
           }
         }
         return;

@@ -273,6 +273,7 @@ assert.doesNotMatch(previewRuntime, /fn parse_sdf_grid/);
 assert.doesNotMatch(previewRuntime, /fn viewer_html/);
 assert.match(previewRuntimeGrid, /pub\(crate\) fn create_grid_runtime/);
 assert.match(previewRuntimeGrid, /build_grid_store/);
+assert.match(previewRuntimeGrid, /"sourcePath": file_path\.to_string_lossy\(\)/);
 assert.match(previewRuntimeGrid, /register\(document_id, database_path\)/);
 assert.match(previewRuntimeGrid, /"gridDataMode": "bridge"/);
 assert.match(previewRuntimeGrid, /"recordsIncluded": 0/);
