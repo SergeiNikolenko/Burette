@@ -61,7 +61,7 @@
     extraArguments: null
   };
   const STRUCTURE_DRAG_MIME = 'application/x-burrete-structure-paths';
-  const XYZRENDER_POPOVER_OPEN_KEY_PREFIX = 'buret.xyzrender.popover.open';
+  const XYZRENDER_POPOVER_OPEN_KEY_PREFIX = 'buret.xyzrender.popover.open.v2';
   let xyzrenderControlsApplyTimer = 0;
   let xyzrenderInlineRequestSerial = 0;
   let xyzrenderSheetRequestSerial = 0;
@@ -577,7 +577,7 @@
       if (renderer === 'xyzrender-external') {
         populateXyzrenderControlsForm(toolbar, normalizeXyzrenderControls(config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config));
         updateXyzrenderFormVisibility(toolbar);
-        if (popoverWasOpen || shouldRestoreXyzrenderPopoverOpen() || (!hasXyzrenderPopoverPreference() && shouldOpenXyzrenderPopoverByDefault(config))) {
+        if (popoverWasOpen || shouldRestoreXyzrenderPopoverOpen()) {
           setXyzrenderPopoverVisibility(toolbar, true, { resetScroll: false });
           if (popover) popover.scrollTop = popoverScrollTop;
         }
@@ -665,30 +665,6 @@
     } catch (_) {
       return false;
     }
-  }
-
-  function hasXyzrenderPopoverPreference() {
-    try {
-      return window.localStorage?.getItem(xyzrenderPopoverStorageKey()) != null;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  function shouldOpenXyzrenderPopoverByDefault(config) {
-    const controls = normalizeXyzrenderControls(config?.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config || {});
-    return !!(
-      controls.fieldMode ||
-      controls.fieldIso != null ||
-      controls.fieldOpacity != null ||
-      controls.fieldSurfaceStyle ||
-      controls.fieldMoPositiveColor ||
-      controls.fieldMoNegativeColor ||
-      controls.fieldDensityColor ||
-      controls.fieldCmapPalette ||
-      controls.fieldCmapMin != null ||
-      controls.fieldCmapMax != null
-    );
   }
 
   function normalizeXyzrenderControls(value, config = {}) {
