@@ -784,11 +784,12 @@ export default function App() {
       if (data?.source !== "burrete-viewer" && data?.source !== "burrete-grid") return;
       const body = data.body;
       if (!isKnownViewerMessageSource(event.source, body?.documentId)) return;
-      if (data.source === "burrete-viewer" && body?.type === "renderXyzrenderSheetItem") {
+      if ((data.source === "burrete-viewer" || data.source === "burrete-grid") && body?.type === "renderXyzrenderSheetItem") {
         if (!body.requestId) return;
+        const replySource = data.source === "burrete-grid" ? "burrete-grid-host" : "burrete-host";
         const reply = (bodyPayload: Record<string, unknown>) => {
           postMessageToViewerSource(event.source, {
-            source: "burrete-host",
+            source: replySource,
             body: {
               requestId: body.requestId,
               documentId: body.documentId,

@@ -24,7 +24,7 @@ pub(crate) fn grid_fetch_page(
             query: request.query.unwrap_or_default(),
             sort: request.sort.unwrap_or_else(|| "index".to_string()),
             offset: request.offset.unwrap_or(0),
-            limit: request.limit.unwrap_or(96),
+            limit: request.limit.unwrap_or(48),
         },
     )
 }
