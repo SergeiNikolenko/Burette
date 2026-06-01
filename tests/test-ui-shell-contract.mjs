@@ -369,6 +369,8 @@ assert.match(app, /openedBrowserDevDockingRef/);
 assert.match(app, /browserDevRuntimeNeedsRefresh/);
 assert.match(app, /openedPersistedTabsRef/);
 assert.match(app, /buildSidebarProjects/);
+assert.match(app, /buildSidebarProjects\(\{\s*documents,\s*recentStructures,/);
+assert.doesNotMatch(app, /recentStructures:\s*documents\.length === 0 \? recentStructures : \[\]/);
 assert.match(app, /pinnedStructurePaths,/);
 assert.match(app, /sidebarProjects/);
 assert.match(app, /isTauriRuntime\(\) \|\| documents\.length === 0/);
