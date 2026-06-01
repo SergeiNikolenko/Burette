@@ -19,10 +19,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             let paths = startup::file_args_from_argv(argv, Some(PathBuf::from(cwd)));
-            if !paths.is_empty() {
-                tray::show_main_window(app);
-            }
-            startup::emit_open_documents(app, paths);
+            show_and_emit_open_documents(app, paths);
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -36,9 +33,7 @@ pub fn run() {
                 std::env::args().collect(),
                 std::env::current_dir().ok(),
             );
-            if !startup_paths.is_empty() {
-                tray::show_main_window(app.handle());
-            }
+            show_and_emit_open_documents(app.handle(), startup_paths);
             let app_handle = app.handle().clone();
             app.on_menu_event(move |app, event| match event.id().0.as_str() {
                 "settings.open" => {
@@ -85,12 +80,16 @@ pub fn run() {
                     .filter(|path| path.exists())
                     .map(|path| path.to_string_lossy().to_string())
                     .collect();
-                if !paths.is_empty() {
-                    tray::show_main_window(app);
-                }
-                startup::emit_open_documents(app, paths);
+                show_and_emit_open_documents(app, paths);
             }
         });
+}
+
+fn show_and_emit_open_documents<R: tauri::Runtime>(app: &tauri::AppHandle<R>, paths: Vec<String>) {
+    if !paths.is_empty() {
+        tray::show_main_window(app);
+    }
+    startup::emit_open_documents(app, paths);
 }
 
 #[cfg(target_os = "macos")]
