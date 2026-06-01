@@ -20,6 +20,7 @@ const [
   packageJson,
   themeSource,
   appLayout,
+  notificationPopup,
   main,
   sidebar,
   sidebarFileBrowser,
@@ -83,6 +84,7 @@ const [
   source('package.json'),
   source('apps/desktop/src/lib/theme.ts'),
   source('apps/desktop/src/components/app-layout.tsx'),
+  source('apps/desktop/src/components/notification-popup.tsx'),
   source('apps/desktop/src/main.tsx'),
   source('apps/desktop/src/components/sidebar/index.tsx'),
   source('apps/desktop/src/components/sidebar/file-browser.tsx'),
@@ -398,13 +400,16 @@ assert.match(app, /void openDocuments\(paths\)/);
 assert.match(appLayout, /from "\.\/editor-area"/);
 assert.match(appLayout, /from "\.\/editor-area\/editor-tabs"/);
 assert.match(appLayout, /from "\.\/sidebar"/);
+assert.match(appLayout, /from "\.\/notification-popup"/);
 assert.match(appLayout, /SidebarLeftIcon/);
 assert.match(appLayout, /HugeiconsIcon/);
 assert.match(appLayout, /onDismissStatus: \(\) => void;/);
-assert.match(appLayout, /<StatusSurface status=\{state\.status\} onDismiss=\{onDismissStatus\} \/>/);
-assert.match(appLayout, /className="status-surface"/);
-assert.match(appLayout, /aria-live=\{status\.kind === "error" \? "assertive" : "polite"\}/);
-assert.match(appLayout, /compactStatusMessage/);
+assert.match(appLayout, /<NotificationPopup notice=\{state\.status\} onDismiss=\{onDismissStatus\} \/>/);
+assert.doesNotMatch(appLayout, /StatusSurface/);
+assert.match(notificationPopup, /export function NotificationPopup/);
+assert.match(notificationPopup, /className="notification-popup"/);
+assert.match(notificationPopup, /aria-live=\{notice\.kind === "error" \? "assertive" : "polite"\}/);
+assert.match(notificationPopup, /compactNotificationMessage/);
 assert.match(appLayout, /const sidebarLayoutWidth = state\.sidebarOpen \? sidebarWidth : 0/);
 assert.match(appLayout, /const tabChromeLeft = state\.sidebarOpen \? sidebarLayoutWidth \+ 12 : 132/);
 assert.match(appLayout, /const activePageKind = state\.activeTab\?\.location\.kind \?\? null/);
@@ -611,10 +616,10 @@ assert.match(styles, /\.main-stage \{[^}]*overflow: hidden/s);
 assert.match(styles, /\.app-shell\[data-theme="auto"\] \{[^}]*color-scheme: light dark/s);
 assert.match(styles, /@media \(prefers-color-scheme: light\) \{[\s\S]*\.app-shell\[data-theme="auto"\]/);
 assert.match(styles, /@media \(prefers-color-scheme: dark\) \{[\s\S]*\.app-shell\[data-theme="auto"\]/);
-assert.match(styles, /\.status-surface \{/);
-assert.match(styles, /\.status-surface\[data-kind="error"\] \{/);
-assert.match(styles, /\.status-surface-copy p \{[^}]*max-height: calc\(1\.35em \* 2\)/s);
-assert.match(styles, /\.status-surface-dismiss \{/);
+assert.match(styles, /\.notification-popup \{/);
+assert.match(styles, /\.notification-popup\[data-kind="error"\] \{/);
+assert.match(styles, /\.notification-popup-copy p \{[^}]*max-height: calc\(1\.35em \* 2\)/s);
+assert.match(styles, /\.notification-popup-dismiss \{/);
 assert.match(styles, /\.sidebar-product:hover/);
 assert.match(styles, /\.sidebar-section-title-button/);
 assert.match(styles, /\.sidebar-section-menu-button/);
@@ -772,6 +777,10 @@ assert.match(sidebarSurface, /Close All Tabs/);
 assert.match(nativeContextMenu, /export async function showNativeContextMenu/);
 assert.match(nativeContextMenu, /showWebContextMenu\(spec, at\)/);
 assert.match(nativeContextMenu, /\.native-context-menu/);
+assert.match(nativeContextMenu, /ArrowDown/);
+assert.match(nativeContextMenu, /ArrowUp/);
+assert.match(nativeContextMenu, /Home/);
+assert.match(nativeContextMenu, /End/);
 assert.match(nativeContextMenu, /@tauri-apps\/api\/menu\/menu/);
 assert.match(nativeContextMenu, /@tauri-apps\/api\/menu\/menuItem/);
 assert.match(nativeContextMenu, /@tauri-apps\/api\/menu\/predefinedMenuItem/);
@@ -1469,6 +1478,10 @@ assert.match(gridViewer, /function selectRangeTo\(index, cfg\)/);
 assert.match(gridViewer, /function handleCardSelection\(event, row, cfg, cardElement\)/);
 assert.match(gridViewer, /event\.shiftKey/);
 assert.match(gridViewer, /aria-selected/);
+assert.match(gridViewer, /railKeyHandler: null/);
+assert.match(gridViewer, /event\.key !== 'Escape' \|\| popover\.dataset\.state !== 'open'/);
+assert.match(gridViewer, /role="listbox"/);
+assert.match(gridViewer, /role="option" aria-selected="false"/);
 assert.match(gridViewer, /event\.key\.toLowerCase\(\) === 'a'/);
 assert.match(gridViewer, /state\.selected\.clear\(\)/);
 assert.match(gridCss, /--buret-control-height: 36px;/);

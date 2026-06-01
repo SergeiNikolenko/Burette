@@ -3,8 +3,9 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import type { CSSProperties } from "react";
 import { ViewerArea } from "./editor-area";
 import { EditorTabs } from "./editor-area/editor-tabs";
+import { NotificationPopup } from "./notification-popup";
 import { Sidebar } from "./sidebar";
-import type { ShellActions, ShellViewState, StatusNotice } from "./types";
+import type { ShellActions, ShellViewState } from "./types";
 import { isTauriRuntime } from "../lib/tauri";
 import { buildThemeStyle, resolveThemeMode, useSystemThemeMode } from "../lib/theme";
 
@@ -108,55 +109,8 @@ export function AppLayout({
         </div>
       )}
       {state.status && (
-        <StatusSurface status={state.status} onDismiss={onDismissStatus} />
+        <NotificationPopup notice={state.status} onDismiss={onDismissStatus} />
       )}
     </main>
   );
-}
-
-function StatusSurface({
-  status,
-  onDismiss,
-}: {
-  status: StatusNotice;
-  onDismiss: () => void;
-}) {
-  const message = compactStatusMessage(status.message);
-  const details = message === status.message ? status.details : [status.message, ...status.details];
-  const hasExtraDetails = details.length > 0;
-  return (
-    <section
-      className="status-surface"
-      data-kind={status.kind}
-      role={status.kind === "error" ? "alert" : "status"}
-      aria-live={status.kind === "error" ? "assertive" : "polite"}
-    >
-      <div className="status-surface-copy">
-        <strong>{status.kind === "error" ? "Issue" : "Status"}</strong>
-        <p>{message}</p>
-        {hasExtraDetails && (
-          <details className="status-surface-details">
-            <summary>Show details</summary>
-            <ul>
-              {details.map((detail, index) => (
-                <li key={`${index}:${detail}`}>{detail}</li>
-              ))}
-            </ul>
-          </details>
-        )}
-      </div>
-      <button
-        type="button"
-        className="status-surface-dismiss"
-        onClick={onDismiss}
-        aria-label="Dismiss status"
-      >
-        Dismiss
-      </button>
-    </section>
-  );
-}
-
-function compactStatusMessage(message: string) {
-  return message.trim().split(/\r?\n| Error:| at /)[0]?.trim() || message;
 }
