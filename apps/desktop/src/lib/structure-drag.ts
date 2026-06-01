@@ -30,6 +30,16 @@ export function writeStructureDrag(dataTransfer: DataTransfer, paths: string[]) 
   dataTransfer.effectAllowed = "copy";
 }
 
+export function writeStructureDragRecords(dataTransfer: DataTransfer, records: StructureDragRecord[]) {
+  const cleanRecords = records.map(normalizeStructureDragRecord).filter((record): record is StructureDragRecord => record !== null);
+  if (cleanRecords.length === 0) return false;
+  const payload: StructureDragPayload = { paths: [], records: cleanRecords };
+  dataTransfer.setData(STRUCTURE_DRAG_MIME, JSON.stringify(payload));
+  dataTransfer.setData("text/plain", cleanRecords.map((record) => record.text.trimEnd()).join("\n") + "\n");
+  dataTransfer.effectAllowed = "copy";
+  return true;
+}
+
 export function readStructureDragPayload(dataTransfer: DataTransfer): StructureDragPayload {
   const payload = emptyStructureDragPayload();
   const explicit = dataTransfer.getData(STRUCTURE_DRAG_MIME);
@@ -54,9 +64,9 @@ export function readStructureDragPayload(dataTransfer: DataTransfer): StructureD
     if (payload.paths.length === 0) {
       const plainText = dataTransfer.getData("text/plain").trim();
       if (plainText) {
-        const inlineRecord = structureDragRecordFromPlainText(plainText);
-        if (inlineRecord) payload.records.push(inlineRecord);
-        else payload.paths.push(...structureDragPathsFromPlainText(plainText));
+        const textPayload = structureDragPayloadFromText(plainText);
+        payload.paths.push(...textPayload.paths);
+        payload.records.push(...textPayload.records);
       }
     }
   }
@@ -71,6 +81,16 @@ export function readStructureDragPayload(dataTransfer: DataTransfer): StructureD
 
 export function readStructureDrag(dataTransfer: DataTransfer) {
   return readStructureDragPayload(dataTransfer).paths;
+}
+
+export function structureDragPayloadFromText(text: string): StructureDragPayload {
+  const plainText = text.trim();
+  if (!plainText) return emptyStructureDragPayload();
+  const inlineRecord = structureDragRecordFromPlainText(plainText);
+  if (inlineRecord) {
+    return { paths: [], records: [inlineRecord] };
+  }
+  return { paths: structureDragPathsFromPlainText(plainText), records: [] };
 }
 
 export function structureDragRecordsToFragments(records: StructureDragRecord[]) {
@@ -122,13 +142,53 @@ function structureDragRecordFromPlainText(text: string): StructureDragRecord | n
   const trimmed = text.trim();
   if (!trimmed) return null;
   if (/^[/~.]|\r?\n[/~.]/u.test(trimmed)) return null;
-  if (!/\r?\n/u.test(trimmed)) return null;
-  if (!/(?:V2000|V3000|\$\$\$\$|M\s+END)/u.test(trimmed)) return null;
+  const classified = classifyStructurePlainText(trimmed);
+  if (!classified) return null;
   return {
-    path: "structure.sdf",
-    inputExtension: "sdf",
-    text: trimmed,
+    path: `structure.${classified.inputExtension}`,
+    inputExtension: classified.inputExtension,
+    text: classified.text,
   };
+}
+
+function classifyStructurePlainText(text: string): { inputExtension: string; text: string } | null {
+  if (looksLikeSdfOrMolText(text)) return { inputExtension: "sdf", text };
+  if (looksLikePdbText(text)) return { inputExtension: "pdb", text };
+  if (looksLikeCifText(text)) return { inputExtension: "cif", text };
+  if (looksLikeXyzText(text)) return { inputExtension: "xyz", text };
+  if (looksLikeSmilesText(text)) return { inputExtension: "smi", text: text.trim() + "\n" };
+  return null;
+}
+
+function looksLikeSdfOrMolText(text: string) {
+  return /\r?\n/u.test(text) && /(?:V2000|V3000|\$\$\$\$|M\s+END)/u.test(text);
+}
+
+function looksLikePdbText(text: string) {
+  return /^(?:HEADER|TITLE|CRYST1|MODEL|ATOM\s|HETATM)/mu.test(text);
+}
+
+function looksLikeCifText(text: string) {
+  return /^data_[^\s]*/imu.test(text) || /(?:^|\n)_atom_site\./u.test(text);
+}
+
+function looksLikeXyzText(text: string) {
+  const lines = text.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
+  if (lines.length < 3) return false;
+  const atomCount = Number(lines[0]);
+  if (!Number.isInteger(atomCount) || atomCount < 1 || lines.length < atomCount + 2) return false;
+  return lines.slice(2, atomCount + 2).every((line) => (
+    /^[A-Z][a-z]?\s+[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?\s+[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?\s+[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?(?:\s|$)/u.test(line)
+  ));
+}
+
+function looksLikeSmilesText(text: string) {
+  if (/\r?\n/u.test(text)) return false;
+  const [smiles, ...rest] = text.trim().split(/\s+/u);
+  if (!smiles || rest.length > 2) return false;
+  const withoutAtoms = smiles.replace(/Br|Cl|\[[^\]]+\]|[BCNOFPSIHKbcnops]/gu, "");
+  if (!Array.from(withoutAtoms).every((char) => "0123456789@+-[]()\\/%=#$:.".includes(char))) return false;
+  return withoutAtoms.length < smiles.length;
 }
 
 function structureDragPathsFromPlainText(text: string) {

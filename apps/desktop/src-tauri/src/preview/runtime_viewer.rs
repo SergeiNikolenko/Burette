@@ -297,6 +297,7 @@ pub(crate) fn create_docking_runtime<R: Runtime>(
     label: &str,
     receptor: DockingRuntimeSource,
     ligands: Vec<DockingRuntimeSource>,
+    active_pose: Option<usize>,
     preferences: &ViewerPreferences,
 ) -> Result<CreatedRuntime, String> {
     if ligands.is_empty() {
@@ -369,6 +370,7 @@ pub(crate) fn create_docking_runtime<R: Runtime>(
         "showPanelControls": true,
         "defaultLayoutState": { "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" },
         "docking": {
+            "activePose": active_pose,
             "receptor": source_config(&receptor),
             "ligands": ligands.iter().map(source_config).collect::<Vec<_>>()
         }

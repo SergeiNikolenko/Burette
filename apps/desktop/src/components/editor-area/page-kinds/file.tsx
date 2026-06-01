@@ -1,12 +1,10 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { ViewerDocument } from "../../../types";
-import { isMoleculeCollectionPath } from "../../../lib/collection-documents";
-import { dockingRequestForDrop } from "../../../lib/docking-documents";
 import { hasStructureDrag, readStructureDragPayload } from "../../../lib/structure-drag";
 import type { StructureDragPayload } from "../../../lib/structure-drag";
-import { isTauriRuntime } from "../../../lib/tauri";
+import { runShellDropActionChoices, shellDropActionChoices } from "../../drop-action-executor";
 import type { ShellActions } from "../../types";
+import { ViewerFrame } from "../viewer-frame";
 import { showNativeContextMenu } from "../../native-context-menu";
 import { definePageKind } from "./types";
 
@@ -43,12 +41,23 @@ function ViewerSurface({
   document: ViewerDocument;
   actions: ShellActions;
 }) {
-  const tauriRuntime = isTauriRuntime();
-  const sandbox = tauriRuntime ? "allow-scripts allow-downloads" : "allow-scripts allow-downloads allow-same-origin";
   const [dockingDropActive, setDockingDropActive] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const sheetDropTarget = document.renderer === "xyzrender-external";
   const collectionDropTarget = document.renderer === "grid2d";
+  const dropTarget = useMemo(() => ({
+    kind: "active-viewer" as const,
+    documentId: document.id,
+    documentPath: document.path,
+    renderer: document.renderer,
+    dockingRequest: document.dockingRequest ?? null,
+  }), [document.dockingRequest, document.id, document.path, document.renderer]);
+
+  const viewerDropActionChoices = useCallback((payload: StructureDragPayload) => (
+    shellDropActionChoices(payload, dropTarget).filter((choice) => (
+      choice.action.kind !== "open-documents" && choice.action.kind !== "open-structure-records"
+    ))
+  ), [dropTarget]);
 
   const postXyzrenderSheetItems = useCallback((payload: StructureDragPayload) => {
     if (!sheetDropTarget || (payload.paths.length === 0 && payload.records.length === 0)) return false;
@@ -74,11 +83,13 @@ function ViewerSurface({
 
   const handleDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     if (!hasStructureDrag(event.dataTransfer)) return;
+    const payload = readStructureDragPayload(event.dataTransfer);
+    if (viewerDropActionChoices(payload).length === 0) return;
     event.preventDefault();
     event.stopPropagation();
     event.dataTransfer.dropEffect = "copy";
     setDockingDropActive(true);
-  }, []);
+  }, [viewerDropActionChoices]);
 
   const handleDragLeave = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
@@ -87,21 +98,20 @@ function ViewerSurface({
 
   const handleDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     if (!hasStructureDrag(event.dataTransfer)) return;
+    const droppedPayload = readStructureDragPayload(event.dataTransfer);
+    droppedPayload.point = { x: event.clientX, y: event.clientY };
+    const choices = viewerDropActionChoices(droppedPayload);
+    if (choices.length === 0) return;
     event.preventDefault();
     event.stopPropagation();
     setDockingDropActive(false);
     actions.setStructureDragActive(false);
-    const droppedPayload = readStructureDragPayload(event.dataTransfer);
-    droppedPayload.point = { x: event.clientX, y: event.clientY };
-    const droppedPaths = droppedPayload.paths;
-    if (collectionDropTarget && droppedPaths.some(isMoleculeCollectionPath)) {
-      void actions.mergeMoleculeCollections(document.path, droppedPaths);
-      return;
-    }
-    if (postXyzrenderSheetItems(droppedPayload)) return;
-    const request = dockingRequestForDrop(document.path, droppedPaths, document.dockingRequest);
-    if (request) void actions.openDockingDocument(request.receptorPath, request.ligandPaths);
-  }, [actions, collectionDropTarget, document.dockingRequest, document.path, postXyzrenderSheetItems]);
+    runShellDropActionChoices(actions, droppedPayload, choices, { x: event.clientX, y: event.clientY }, {
+      addXyzrenderSheetItems: (targetDocumentId, payload) => (
+        targetDocumentId === document.id && postXyzrenderSheetItems(payload)
+      ),
+    });
+  }, [actions, document.id, postXyzrenderSheetItems, viewerDropActionChoices]);
 
   const handleContextMenu = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (!collectionDropTarget) return;
@@ -128,14 +138,10 @@ function ViewerSurface({
       onDrop={handleDrop}
       onContextMenu={handleContextMenu}
     >
-      {tauriRuntime ? (
-        <iframe ref={iframeRef} title={document.title} src={convertFileSrc(document.runtimePath)} className="viewer-iframe" sandbox={sandbox} referrerPolicy="no-referrer" data-document-id={document.id} />
-      ) : (
-        <iframe ref={iframeRef} title={document.title} srcDoc={document.runtimePath} className="viewer-iframe" sandbox={sandbox} referrerPolicy="no-referrer" data-document-id={document.id} />
-      )}
+      <ViewerFrame document={document} iframeRef={iframeRef} />
       {dockingDropActive && (
         <div className="docking-drop-overlay">
-          <div>{collectionDropTarget ? "Merge molecule collections" : sheetDropTarget ? "Add to xyzrender sheet" : "Add to Mol* docking view"}</div>
+          <div>{collectionDropTarget ? "Append to grid" : sheetDropTarget ? "Add to xyzrender sheet" : "Add to Mol* docking view"}</div>
         </div>
       )}
     </div>

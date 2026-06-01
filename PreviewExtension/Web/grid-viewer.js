@@ -53,6 +53,9 @@
     hostRequests: new Map(),
     remoteMode: false,
     remoteLoading: false,
+    dirty: false,
+    dirtyReason: '',
+    rowPatches: new Map(),
     requestSeq: 0,
     token: 0,
     rendering: false,
@@ -123,6 +126,31 @@
       const data = event.data;
       if (!data || data.source !== 'burrete-grid-host') return;
       const body = data.body || {};
+      if (body.type === 'gridRecordsAppended') {
+        state.hiddenRows.clear();
+        state.selected.clear();
+        state.svgCache.clear();
+        state.xyzrenderCardCache.clear();
+        markGridDirty('appended molecules');
+        setStatus(`[grid] Added ${Number(body.recordsAppended || 0).toLocaleString()} molecule${Number(body.recordsAppended || 0) === 1 ? '' : 's'}.`);
+        void refreshRemote(config());
+        return;
+      }
+      if (body.type === 'poseReviewSelection') {
+        selectPoseReviewRow(body.activePose, config());
+        return;
+      }
+      if (body.type === 'gridSavedAs') {
+        state.dirty = false;
+        state.dirtyReason = '';
+        setStatus(`[grid] Saved as ${body.name || 'collection file'}. Source file is unchanged.`);
+        updateChrome(config());
+        return;
+      }
+      if (body.type === 'gridSaveAsError') {
+        setStatus(body.error || '[grid] Save As failed.', 'error');
+        return;
+      }
       const requestId = String(body.requestId || '');
       if (!requestId || !state.hostRequests.has(requestId)) return;
       const pending = state.hostRequests.get(requestId);
@@ -341,6 +369,7 @@
           </div>
           <div class="buret-actions" ${caps.export ? '' : 'hidden'}>
             <button id="copy-selected" type="button">Copy selected</button>
+            <button id="save-grid-as" type="button">Save As...</button>
             <button id="export-smi" type="button">Export SMILES</button>
             <button id="export-csv" type="button">Export CSV</button>
           </div>
@@ -395,6 +424,7 @@
     document.getElementById('select-all')?.addEventListener('click', () => selectAllRows(cfg));
     document.getElementById('clear-selection')?.addEventListener('click', () => clearSelection(cfg));
     document.getElementById('copy-selected')?.addEventListener('click', copySelected);
+    document.getElementById('save-grid-as')?.addEventListener('click', () => saveGridAs(cfg));
     document.getElementById('export-smi')?.addEventListener('click', () => exportSmiles(cfg));
     document.getElementById('export-csv')?.addEventListener('click', () => exportCSV(cfg));
     document.getElementById('clear-smarts')?.addEventListener('click', () => {
@@ -536,11 +566,21 @@
   function requestSdfPoseDocument(cfg) {
     const sourcePath = String(cfg?.sourcePath || '').trim();
     const receptorPath = String(cfg?.dockingReceptorPath || '').trim();
+    const activePose = activePoseReviewIndex();
     post('openSdfPoseDocument', '[grid] Open SDF poses in Mol*.', {
       documentId: cfg?.documentId || null,
       path: sourcePath || null,
-      receptorPath: receptorPath || null
+      receptorPath: receptorPath || null,
+      activePose
     });
+  }
+
+  function activePoseReviewIndex() {
+    const selected = Array.from(state.selected)
+      .map(value => Number(value))
+      .filter(value => Number.isFinite(value))
+      .sort((a, b) => a - b);
+    return selected.length ? selected[0] : 0;
   }
 
   function requestOpenInKetcher(row, cfg) {
@@ -614,7 +654,7 @@
       return;
     }
     const query = state.smarts.trim() ? '' : normalize(state.query);
-    const allRows = state.all.filter(row => !state.hiddenRows.has(Number(row.index)));
+    const allRows = currentLocalCollectionRows();
     const textRows = query
       ? allRows.filter(row => normalize([row.name, row.smiles, ...Object.entries(row.props || {}).flat()].join('\n')).includes(query))
       : allRows.slice();
@@ -780,7 +820,7 @@
         limit: loadBatchSize(cfg)
       });
       if (token !== state.token) return;
-      state.rows = filterHiddenRows(Array.isArray(result.rows) ? result.rows : []);
+      state.rows = applyVirtualGridEdits(Array.isArray(result.rows) ? result.rows : []);
       state.totalRows = Number(result.totalRows || 0);
       state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
       await appendVisibleRows(cfg, token);
@@ -865,7 +905,7 @@
         limit: loadBatchSize(cfg)
       });
       if (token !== state.token) return;
-      const nextRows = filterHiddenRows(Array.isArray(result.rows) ? result.rows : []);
+      const nextRows = applyVirtualGridEdits(Array.isArray(result.rows) ? result.rows : []);
       state.totalRows = Number(result.totalRows || state.totalRows);
       state.rows.push(...nextRows);
       state.visibleCount = Math.min(state.rows.length, state.visibleCount + loadBatchSize(cfg));
@@ -877,8 +917,25 @@
     }
   }
 
-  function filterHiddenRows(rows) {
-    return rows.filter(row => !state.hiddenRows.has(Number(row.index)));
+  function applyVirtualGridEdits(rows) {
+    return rows
+      .filter(row => !state.hiddenRows.has(Number(row.index)))
+      .map(row => {
+        const index = Number(row.index);
+        const patch = state.rowPatches.get(index);
+        if (!patch) return row;
+        return {
+          ...row,
+          name: patch.name,
+          molblock: patch.molblock,
+          smiles: patch.smiles,
+          props: patch.props || row.props || {}
+        };
+      });
+  }
+
+  function currentLocalCollectionRows() {
+    return applyVirtualGridEdits(state.all).sort((a, b) => Number(a.index) - Number(b.index));
   }
 
   async function appendVisibleRows(cfg, token) {
@@ -921,6 +978,7 @@
       `${state.renderedCount.toLocaleString()} shown`,
       `${included.toLocaleString()} loaded`,
       `${total.toLocaleString()} in file`,
+      state.dirty ? `unsaved ${state.dirtyReason || 'edits'}` : '',
       state.selected.size ? `${state.selected.size.toLocaleString()} selected` : ''
     ].filter(Boolean).join(' · ');
     if (!state.remoteMode && state.smarts.trim() && !state.smartsError) {
@@ -944,7 +1002,9 @@
     if (clearSelectionButton) clearSelectionButton.disabled = state.selected.size === 0;
     document.getElementById('footer').textContent = state.smartsError
       ? `SMARTS error: ${state.smartsError}`
-      : (total > included && !state.remoteMode
+      : (state.dirty
+        ? `Virtual grid has unsaved ${state.dirtyReason || 'edits'}. Export to keep changes; the source file is unchanged.`
+        : (total > included && !state.remoteMode
         ? `Showing first ${included.toLocaleString()} of ${total.toLocaleString()} records.`
         : (hasMoreRows()
           ? `Scroll to load more. ${state.renderedCount.toLocaleString()} of ${visible.toLocaleString()} visible molecules are rendered.`
@@ -952,7 +1012,7 @@
             ? 'Desktop grid runtime is loading rows on demand.'
             : (state.cardRenderer === 'xyzrender'
               ? 'External xyzrender card rendering.'
-              : 'Offline RDKit.js rendering. No network access required.'))));
+              : 'Offline RDKit.js rendering. No network access required.')))));
     updateGridRail();
   }
 
@@ -1197,7 +1257,7 @@
           limit: Math.max(loadBatchSize(cfg), 240)
         });
         if (token !== state.token) return;
-        const nextRows = filterHiddenRows(Array.isArray(result.rows) ? result.rows : []);
+        const nextRows = applyVirtualGridEdits(Array.isArray(result.rows) ? result.rows : []);
         state.totalRows = Number(result.totalRows || state.totalRows);
         if (!nextRows.length) break;
         state.rows.push(...nextRows);
@@ -1317,6 +1377,7 @@
     installCardHover(el);
     installCardResizeHandle(el);
     installCardDrag(el, row);
+    installCardDrop(el, row, cfg);
     return el;
   }
 
@@ -1329,13 +1390,173 @@
         event.preventDefault();
         return;
       }
-      const payload = { paths: [], records: [record] };
+      const records = gridDragRecordsForRow(row);
+      if (!records.length) {
+        event.preventDefault();
+        return;
+      }
+      const payload = { paths: [], records };
       try {
         event.dataTransfer?.setData(STRUCTURE_DRAG_MIME, JSON.stringify(payload));
-        event.dataTransfer?.setData('text/plain', record.text);
+        event.dataTransfer?.setData('text/plain', records.map(item => item.text.trimEnd()).join('\n') + '\n');
         if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy';
       } catch (_) {}
     });
+  }
+
+  function installCardDrop(el, row, cfg) {
+    el.addEventListener('dragover', event => {
+      if (!dataTransferHasStructurePayload(event.dataTransfer)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+      el.classList.add('buret-card-drop-target');
+    });
+    el.addEventListener('dragleave', event => {
+      const next = event.relatedTarget;
+      if (next instanceof Node && el.contains(next)) return;
+      el.classList.remove('buret-card-drop-target');
+    });
+    el.addEventListener('drop', event => {
+      if (!dataTransferHasStructurePayload(event.dataTransfer)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      el.classList.remove('buret-card-drop-target');
+      const payload = readStructureDropPayload(event.dataTransfer);
+      if (!payload || payload.paths.length || payload.records.length !== 1) {
+        setStatus('[grid] Drop a single molecule record to replace a grid row.', 'error');
+        return;
+      }
+      const patch = recordToGridRowPatch(payload.records[0], row);
+      if (!patch) {
+        setStatus('[grid] Dropped molecule record is not supported for grid row replacement.', 'error');
+        return;
+      }
+      if (replaceGridRow(row, patch, cfg)) {
+        setStatus(`[grid] Replaced ${row.name || `Molecule ${Number(row.index) + 1}`} with ${patch.name}. Source file is unchanged.`);
+      }
+    });
+  }
+
+  function dataTransferHasStructurePayload(dataTransfer) {
+    const types = dataTransfer?.types;
+    if (!types) return false;
+    if (typeof types.includes === 'function') return types.includes(STRUCTURE_DRAG_MIME);
+    if (typeof types.contains === 'function') return types.contains(STRUCTURE_DRAG_MIME);
+    try { return Array.from(types).includes(STRUCTURE_DRAG_MIME); } catch (_) { return false; }
+  }
+
+  function readStructureDropPayload(dataTransfer) {
+    try {
+      const raw = dataTransfer?.getData(STRUCTURE_DRAG_MIME);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      const paths = Array.isArray(parsed?.paths)
+        ? parsed.paths.map(path => String(path || '').trim()).filter(Boolean)
+        : [];
+      const records = Array.isArray(parsed?.records)
+        ? parsed.records.map(normalizeStructureDropRecord).filter(Boolean)
+        : [];
+      return { paths, records };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function normalizeStructureDropRecord(record) {
+    const text = String(record?.text || '').trim();
+    if (!text) return null;
+    const path = String(record?.path || '').trim();
+    const inputExtension = structureRecordExtension(record, path);
+    return { path, inputExtension, text };
+  }
+
+  function structureRecordExtension(record, path) {
+    const explicit = String(record?.inputExtension || '').trim().toLowerCase().replace(/^\./u, '');
+    if (explicit) return explicit;
+    const match = String(path || '').match(/\.([a-z0-9]+)$/iu);
+    return match ? match[1].toLowerCase() : '';
+  }
+
+  function recordToGridRowPatch(record, row) {
+    const extension = structureRecordExtension(record, record?.path);
+    const text = String(record?.text || '').trim();
+    if (!text) return null;
+    const fallbackName = row?.name || `Molecule ${Number(row?.index) + 1 || 1}`;
+    if (extension === 'sdf' || extension === 'sd' || extension === 'mol') {
+      const molblock = text.replace(/\n?\$\$\$\$\s*$/u, '').trimEnd();
+      if (!molblock) return null;
+      const title = molblock.split(/\r?\n/u).find(line => line.trim()) || '';
+      return {
+        name: structureRecordDisplayName(record, title, fallbackName),
+        molblock,
+        smiles: ''
+      };
+    }
+    if (extension === 'smi' || extension === 'smiles') {
+      const firstLine = text.split(/\r?\n/u).find(line => line.trim()) || '';
+      const parts = firstLine.trim().split(/\s+/u);
+      const smiles = parts[0] || '';
+      if (!smiles) return null;
+      const inlineName = parts.slice(1).join(' ');
+      return {
+        name: structureRecordDisplayName(record, inlineName, fallbackName),
+        molblock: '',
+        smiles
+      };
+    }
+    return null;
+  }
+
+  function structureRecordDisplayName(record, preferred, fallback) {
+    const value = String(preferred || '').trim();
+    if (value) return value;
+    const path = String(record?.path || '').trim();
+    const base = path.split(/[\\/]/u).pop()?.replace(/\.[^.]+$/u, '').trim();
+    return base || String(fallback || '').trim() || 'Molecule';
+  }
+
+  function replaceGridRow(row, patch, cfg) {
+    const index = Number(row?.index);
+    if (!Number.isFinite(index)) return false;
+    let replaced = false;
+    const replace = candidate => {
+      if (Number(candidate?.index) !== index) return candidate;
+      replaced = true;
+      return {
+        ...candidate,
+        name: patch.name,
+        molblock: patch.molblock,
+        smiles: patch.smiles,
+        index: candidate.index,
+        props: candidate.props || {}
+      };
+    };
+    state.rows = state.rows.map(replace);
+    if (!replaced) return false;
+    if (!state.remoteMode) state.all = state.all.map(replace);
+    state.rowPatches.set(index, {
+      name: patch.name,
+      molblock: patch.molblock,
+      smiles: patch.smiles,
+      props: row.props || {}
+    });
+    state.svgCache.clear();
+    state.xyzrenderCardCache.clear();
+    markGridDirty('row edits');
+    void render(cfg);
+    return true;
+  }
+
+  function gridDragRecordsForRow(row) {
+    const rowIndex = Number(row?.index);
+    if (!Number.isFinite(rowIndex) || !state.selected.has(rowIndex) || state.selected.size < 2) {
+      return [gridDragRecord(row)].filter(Boolean);
+    }
+    return state.rows
+      .filter(candidate => state.selected.has(Number(candidate.index)))
+      .map(candidate => gridDragRecord(candidate))
+      .filter(Boolean);
   }
 
   function gridDragRecord(row) {
@@ -1418,6 +1639,15 @@
     const indexes = selectableRowIndexes();
     state.selected = new Set(indexes);
     state.selectionAnchorIndex = indexes.length ? indexes[indexes.length - 1] : null;
+    syncRenderedSelection();
+    updateChrome(cfg);
+  }
+
+  function selectPoseReviewRow(activePose, cfg) {
+    const index = Math.max(0, Math.trunc(Number(activePose) || 0));
+    state.selected.clear();
+    state.selected.add(index);
+    state.selectionAnchorIndex = index;
     syncRenderedSelection();
     updateChrome(cfg);
   }
@@ -1508,6 +1738,12 @@
     }
     state.rows = state.rows.filter(candidate => Number(candidate.index) !== index);
     state.totalRows = Math.max(0, state.totalRows - 1);
+    markGridDirty('row edits');
+  }
+
+  function markGridDirty(reason) {
+    state.dirty = true;
+    state.dirtyReason = reason || state.dirtyReason || 'edits';
   }
 
   function describeGridRow(row) {
@@ -2254,10 +2490,97 @@
     download(data.map(row => row.map(csv).join(',')).join('\n') + '\n', baseName(cfg.label) + '.csv', 'text/csv');
   }
 
+  async function saveGridAs(cfg) {
+    const rows = await collectCurrentCollectionRows(cfg);
+    if (!rows.length) {
+      setStatus('[grid] There are no molecules to save.', 'error');
+      return;
+    }
+    const snapshot = gridSaveAsSnapshot(rows, cfg);
+    if (canUseNativeBridge()) {
+      post('saveGridAs', `[grid] Save As ${snapshot.name}.`, snapshot);
+      setStatus(`[grid] Save As requested: ${snapshot.name}. Source file is unchanged.`);
+      return;
+    }
+    download(snapshot.text, snapshot.name, snapshot.mimeType);
+    state.dirty = false;
+    state.dirtyReason = '';
+    setStatus(`[grid] Saved as ${snapshot.name}. Source file is unchanged.`);
+    updateChrome(cfg);
+  }
+
+  async function collectCurrentCollectionRows(cfg) {
+    if (state.remoteMode) return collectAllRemoteRows(cfg, '', 'index');
+    return currentLocalCollectionRows();
+  }
+
+  function gridSaveAsSnapshot(rows, cfg) {
+    const label = baseName(cfg.label);
+    if (cfg.format === 'sdf' && rows.every(row => String(row.molblock || '').trim())) {
+      return {
+        text: serializeSdfRows(rows),
+        name: `${label}.sdf`,
+        mimeType: 'chemical/x-mdl-sdfile'
+      };
+    }
+    if (cfg.format === 'smiles' && rows.every(row => String(row.smiles || '').trim())) {
+      return {
+        text: serializeSmilesRows(rows),
+        name: `${label}.smi`,
+        mimeType: 'chemical/x-daylight-smiles'
+      };
+    }
+    const separator = cfg.format === 'tsv' ? '\t' : ',';
+    const extension = cfg.format === 'tsv' ? 'tsv' : 'csv';
+    return {
+      text: serializeDelimitedRows(rows, separator),
+      name: `${label}.${extension}`,
+      mimeType: extension === 'tsv' ? 'text/tab-separated-values' : 'text/csv'
+    };
+  }
+
+  function serializeSmilesRows(rows) {
+    return rows
+      .map(row => `${row.smiles || ''}\t${row.name || `mol_${Number(row.index) + 1}`}`.trim())
+      .filter(Boolean)
+      .join('\n') + '\n';
+  }
+
+  function serializeSdfRows(rows) {
+    return rows.map(row => {
+      const molblock = String(row.molblock || '').replace(/\n?\$\$\$\$\s*$/u, '').trimEnd();
+      const props = {
+        Name: row.name || `Molecule ${Number(row.index) + 1}`,
+        ...(row.smiles ? { SMILES: row.smiles } : {}),
+        ...(row.props || {})
+      };
+      const propText = Object.entries(props)
+        .filter(([, value]) => String(value ?? '').trim().length > 0)
+        .map(([key, value]) => `> <${String(key).replace(/[<>]/g, '')}>\n${String(value)}\n`)
+        .join('\n');
+      return `${molblock}${propText ? `\n\n${propText}\n` : '\n'}$$$$`;
+    }).join('\n') + '\n';
+  }
+
+  function serializeDelimitedRows(rows, separator) {
+    const props = [...new Set(rows.flatMap(row => Object.keys(row.props || {})))];
+    const data = [
+      ['index', 'name', 'smiles', 'molblock', ...props],
+      ...rows.map(row => [
+        row.index,
+        row.name || '',
+        row.smiles || '',
+        row.molblock || '',
+        ...props.map(prop => (row.props || {})[prop] || '')
+      ])
+    ];
+    return data.map(row => row.map(value => separator === '\t' ? tsv(value) : csv(value)).join(separator)).join('\n') + '\n';
+  }
+
   function download(text, name, type) {
     if (canUseNativeBridge()) {
       post('exportText', `[grid] Export ${name}.`, { text, name, mimeType: type });
-      setStatus(`[grid] Export requested: ${name}`);
+      setStatus(state.dirty ? `[grid] Export requested: ${name}. Source file is unchanged.` : `[grid] Export requested: ${name}`);
       return;
     }
     const url = URL.createObjectURL(new Blob([text], { type }));
@@ -2277,13 +2600,19 @@
     return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
   }
 
+  function tsv(value) {
+    return String(value ?? '').replace(/\t/g, ' ').replace(/\r?\n/g, '\\n');
+  }
+
   function baseName(value) {
     return String(value || 'molecules').replace(/\.[^.]+$/, '').replace(/[^a-z0-9._-]+/gi, '_').slice(0, 80) || 'molecules';
   }
 
-  async function collectAllRemoteRows(cfg) {
+  async function collectAllRemoteRows(cfg, query = state.query || '', sort = state.sort || 'index') {
     if (!state.remoteMode) return state.rows;
-    if (state.rows.length >= state.totalRows && state.totalRows > 0) return state.rows.slice();
+    if (query === (state.query || '') && sort === (state.sort || 'index') && state.rows.length >= state.totalRows && state.totalRows > 0) {
+      return state.rows.slice();
+    }
     const rows = [];
     let offset = 0;
     let total = null;
@@ -2291,16 +2620,16 @@
     setStatus('[grid] Preparing export...');
     while (total === null || offset < total) {
       const result = await hostRequest('gridFetchPage', {
-        query: state.query || '',
-        sort: state.sort || 'index',
+        query,
+        sort,
         offset,
         limit
       });
-      const pageRows = Array.isArray(result.rows) ? result.rows : [];
+      const pageRows = applyVirtualGridEdits(Array.isArray(result.rows) ? result.rows : []);
       total = Number(result.totalRows || 0);
       rows.push(...pageRows);
-      offset += pageRows.length;
-      if (!pageRows.length) break;
+      offset += Math.max(pageRows.length, Number(result.rows?.length || 0));
+      if (!Array.isArray(result.rows) || result.rows.length === 0) break;
       setStatus(`[grid] Preparing export ${Math.min(offset, total).toLocaleString()} / ${total.toLocaleString()} rows...`);
     }
     return rows;

@@ -3,7 +3,9 @@ import { persist } from "zustand/middleware";
 import {
   deserializeLocation,
   serializeLocation,
+  type FepSetupLocation,
   type Location,
+  type PoseReviewLocation,
   type SerializedLocation,
 } from "../components/editor-area/page-kinds";
 import type { RecentStructure, ViewerDocument } from "../types";
@@ -34,7 +36,9 @@ type MoleculeState = {
   rememberRecentStructures: (documents: ViewerDocument[]) => void;
   clearRecentStructures: () => void;
   openNewTab: () => void;
+  openFepSetupTab: (location: FepSetupLocation) => void;
   openKetcherTab: () => void;
+  openPoseReviewTab: (location: PoseReviewLocation) => void;
   openSettingsTab: () => void;
   navigateBack: () => void;
   navigateForward: () => void;
@@ -104,6 +108,14 @@ export function createKetcherTab(id = createTabId()): MoleculeTab {
   return { id, location: { kind: "ketcher" }, back: [], forward: [] };
 }
 
+export function createFepSetupTab(location: FepSetupLocation, id = createTabId()): MoleculeTab {
+  return { id, location, back: [], forward: [] };
+}
+
+export function createPoseReviewTab(location: PoseReviewLocation, id = createTabId()): MoleculeTab {
+  return { id, location, back: [], forward: [] };
+}
+
 function cloneTab(tab: MoleculeTab): MoleculeTab {
   return { ...tab, back: [...tab.back], forward: [...tab.forward] };
 }
@@ -125,10 +137,21 @@ function persistedDocuments(documents: ViewerDocument[]) {
 
 function persistedTabs(tabs: MoleculeTab[], documents: ViewerDocument[]) {
   const paths = new Set(persistedDocuments(documents).map((document) => document.path));
-  return tabs.filter((tab) => tab.location.kind !== "file" || paths.has(tab.location.path));
+  return tabs.filter((tab) => (
+    tab.location.kind !== "fep-setup" &&
+    tab.location.kind !== "pose-review" &&
+    (tab.location.kind !== "file" || paths.has(tab.location.path))
+  ));
 }
 
 function documentForLocation(location: Location, documents: ViewerDocument[]) {
+  if (location.kind === "fep-setup" || location.kind === "pose-review") {
+    return (
+      documents.find((document) => document.id === location.dockingDocumentId) ??
+      documents.find((document) => document.path === location.dockingPath) ??
+      null
+    );
+  }
   if (location.kind !== "file") return null;
   return (
     documents.find((document) => document.id === location.documentId) ??
@@ -285,6 +308,25 @@ export const useMoleculeStore = create<MoleculeState>()(
           const tabs = [...state.tabs, tab];
           return { tabs, activeTabId: tab.id, activeDocumentId: null };
         }),
+      openFepSetupTab: (location) =>
+        set((state) => {
+          const existing = state.tabs.find((tab) => (
+            tab.location.kind === "fep-setup" &&
+            tab.location.gridPath === location.gridPath &&
+            tab.location.dockingPath === location.dockingPath
+          ));
+          if (existing) {
+            const tabs = state.tabs.map((tab) => (tab.id === existing.id ? { ...tab, location } : tab));
+            return {
+              tabs,
+              activeTabId: existing.id,
+              activeDocumentId: activeDocumentIdFrom(tabs, existing.id, state.documents),
+            };
+          }
+          const tab = createFepSetupTab(location);
+          const tabs = [...state.tabs.filter((candidate) => candidate.location.kind !== "launcher"), tab];
+          return { tabs, activeTabId: tab.id, activeDocumentId: activeDocumentIdFrom(tabs, tab.id, state.documents) };
+        }),
       openKetcherTab: () =>
         set((state) => {
           const existing = state.tabs.find((tab) => tab.location.kind === "ketcher");
@@ -292,6 +334,25 @@ export const useMoleculeStore = create<MoleculeState>()(
           const tab = createKetcherTab();
           const tabs = [...state.tabs, tab];
           return { tabs, activeTabId: tab.id, activeDocumentId: null };
+        }),
+      openPoseReviewTab: (location) =>
+        set((state) => {
+          const existing = state.tabs.find((tab) => (
+            tab.location.kind === "pose-review" &&
+            tab.location.gridPath === location.gridPath &&
+            tab.location.dockingPath === location.dockingPath
+          ));
+          if (existing) {
+            const tabs = state.tabs.map((tab) => (tab.id === existing.id ? { ...tab, location } : tab));
+            return {
+              tabs,
+              activeTabId: existing.id,
+              activeDocumentId: activeDocumentIdFrom(tabs, existing.id, state.documents),
+            };
+          }
+          const tab = createPoseReviewTab(location);
+          const tabs = [...state.tabs.filter((candidate) => candidate.location.kind !== "launcher"), tab];
+          return { tabs, activeTabId: tab.id, activeDocumentId: activeDocumentIdFrom(tabs, tab.id, state.documents) };
         }),
       openSettingsTab: () =>
         set((state) => {
