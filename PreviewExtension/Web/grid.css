@@ -19,7 +19,6 @@
   --buret-card-gap: clamp(5px, calc(var(--buret-card-effective-min) * 0.06), 12px);
   --buret-card-auto-min: clamp(136px, 18vw, 190px);
   --buret-card-min: clamp(calc((100% - (var(--buret-card-gap) * 29)) / 30), var(--buret-card-auto-min), calc((100% - (var(--buret-card-gap) * 2)) / 3));
-  --buret-card-max: min(clamp(188px, 23vw, 236px), calc((100% - (var(--buret-card-gap) * 2)) / 3));
   --buret-picture-min-height: clamp(136px, 18vw, 190px);
   --buret-drawing-max-width: 100%;
   --buret-drawing-max-height: 100%;
@@ -400,10 +399,11 @@ button:disabled {
 
 .buret-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--buret-card-min), max(var(--buret-card-min), var(--buret-card-max))));
+  box-sizing: border-box;
+  grid-template-columns: repeat(auto-fill, minmax(var(--buret-card-min), 1fr));
   gap: var(--buret-card-gap);
-  justify-content: start;
-  padding-left: 24px;
+  justify-content: stretch;
+  padding-inline: 24px;
 }
 
 .buret-grid-rail {
@@ -795,6 +795,14 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   height: 100%;
   max-height: var(--buret-drawing-max-height);
   object-fit: contain;
+}
+
+.buret-xyzrender-preview {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  min-height: var(--buret-picture-min-height);
 }
 
 .buret-molecule-error {

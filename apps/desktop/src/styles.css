@@ -169,6 +169,12 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   -webkit-backdrop-filter: none;
 }
 
+.app-shell[data-runtime="tauri"][data-active-page-kind="ketcher"] {
+  background: var(--bg-base);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
 .drag-region {
   position: absolute;
   inset: 0 0 auto 0;
@@ -835,6 +841,7 @@ kbd span { margin-left: 2px; }
 .page-stack { position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
 .page-surface { position: absolute; inset: 0; min-width: 0; min-height: 0; overflow: hidden; visibility: hidden; pointer-events: none; }
 .page-surface:not([data-active]) { display: none; }
+.page-surface[data-page-kind="ketcher"]:not([data-active]) { display: block; }
 .page-surface[data-active] { z-index: 1; visibility: visible; pointer-events: auto; }
 .page-surface[data-page-kind="settings"] { overflow: hidden; }
 .page-surface[data-page-kind="ketcher"] { overflow: hidden; }
@@ -918,6 +925,33 @@ kbd span { margin-left: 2px; }
 .ketcher-page-actions button:disabled {
   opacity: 0.45;
 }
+.ketcher-scale-control {
+  min-width: 92px;
+  height: 30px;
+  display: inline-grid;
+  grid-template-columns: 28px minmax(34px, 1fr) 28px;
+  align-items: center;
+  overflow: hidden;
+  border-radius: 7px;
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+}
+.ketcher-scale-control button {
+  width: 28px;
+  height: 30px;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+}
+.ketcher-scale-control span {
+  min-width: 0;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
 .ketcher-page-body {
   min-height: 0;
   padding: 18px;
@@ -930,24 +964,62 @@ kbd span { margin-left: 2px; }
   min-width: 0;
   min-height: 0;
   border: 1px solid var(--line-subtler);
-  border-radius: 8px;
   background: #f5f5f5;
   overflow: hidden;
+  isolation: isolate;
+}
+.ketcher-editor-root,
+.ketcher-editor-root > [class*="Editor-module_editor"],
+.ketcher-editor-shell [class*="Editor-module_editorsWrapper"],
+.ketcher-editor-shell [class*="App-module_app"],
+.ketcher-editor-shell [class*="App-module_top"],
+.ketcher-editor-shell [class*="App-module_canvas"] {
+  min-width: 0;
+  max-width: 100%;
+}
+.ketcher-editor-root,
+.ketcher-editor-root > [class*="Editor-module_editor"],
+.ketcher-editor-shell [class*="Editor-module_editorsWrapper"],
+.ketcher-editor-shell [class*="App-module_app"] {
+  width: 100%;
+  height: 100%;
+}
+.ketcher-editor-root {
+  position: relative;
+  z-index: 2;
+  width: calc(100% * var(--ketcher-ui-scale-inverse, 1));
+  height: calc(100% * var(--ketcher-ui-scale-inverse, 1));
+  transform: scale(var(--ketcher-ui-scale, 1));
+  transform-origin: 0 0;
+}
+.ketcher-editor-shell [class*="Editor-module_editor"],
+.ketcher-editor-shell [class*="App-module_canvas"],
+.ketcher-editor-shell [class*="StructEditor-module_canvas"],
+.ketcher-editor-shell [class*="StructEditor-module_intermediateCanvas"],
+.ketcher-editor-shell svg {
+  background-color: #f5f5f5;
+}
+.ketcher-editor-shell [class*="App-module_canvas"] {
+  position: relative;
+  z-index: 1;
+}
+.ketcher-editor-shell [class*="App-module_top"],
+.ketcher-editor-shell [class*="App-module_left"],
+.ketcher-editor-shell [class*="App-module_right"],
+.ketcher-editor-shell [class*="App-module_bottom"] {
+  position: relative;
+  z-index: 2;
 }
 .ketcher-empty-watermark {
   position: absolute;
-  inset: 78px 64px 44px 104px;
-  display: grid;
-  place-items: center;
-  pointer-events: none;
-  opacity: 0.14;
-  z-index: 2;
-}
-.ketcher-empty-watermark img {
-  width: min(160px, 28vw);
-  max-width: 42%;
+  left: 50%;
+  top: 50%;
+  z-index: 3;
+  width: min(164px, 26vw, 28vh);
   height: auto;
-  display: block;
+  opacity: 0.12;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
   filter: grayscale(0.12);
 }
 .ketcher-drop-overlay {

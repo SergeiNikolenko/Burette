@@ -88,7 +88,7 @@ pub(crate) fn create_grid_runtime<R: Runtime>(
         "recordsTotal": collection.records_total,
         "recordsIncluded": 0,
         "recordsTruncated": false,
-        "pageSize": 96,
+        "pageSize": 48,
         "rdkitWasmPath": "../assets/rdkit/RDKit_minimal.wasm",
         "capabilities": {
             "selection": true,
