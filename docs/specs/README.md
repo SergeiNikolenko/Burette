@@ -13,6 +13,7 @@ historical migration notes.
 ## Feature Specs
 
 - [Auto update Tauri spec](burette-auto-update-tauri-spec.md)
+- [Domain drag-and-drop user stories](burrete-domain-drag-drop-user-stories.md)
 - [Filesystem open resilience spec](burette-filesystem-open-resilience-spec.md)
 - [Preview open latency spec](burette-preview-open-latency-spec.md)
 - [Preview task cancellation spec](burette-preview-task-cancellation-spec.md)

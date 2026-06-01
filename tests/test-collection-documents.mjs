@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 
 const {
+  collectionFamily,
   collectionExtension,
   isMoleculeCollectionPath,
   mergeCollectionSources,
@@ -9,7 +10,13 @@ const {
 
 assert.equal(collectionExtension("/tmp/a.MAE.GZ"), "gz");
 assert.equal(isMoleculeCollectionPath("/tmp/a.sdf"), true);
+assert.equal(isMoleculeCollectionPath("/tmp/a.SMI"), true);
 assert.equal(isMoleculeCollectionPath("/tmp/a.pdb"), false);
+assert.equal(collectionFamily("sd"), "sdf");
+assert.equal(collectionFamily("SDF"), "sdf");
+assert.equal(collectionFamily("smiles"), "smiles");
+assert.equal(collectionFamily("tsv"), "tsv");
+assert.equal(collectionFamily("pdb"), null);
 
 const sdf = mergeCollectionSources([
   { path: "/tmp/a.sdf", extension: "sdf", text: "a\n  CDK\n$$$$\n" },
@@ -32,12 +39,26 @@ const csv = mergeCollectionSources([
 ]);
 assert.equal(csv.text.trim(), "SMILES,name\nCCO,ethanol\nO,water");
 
+const tsv = mergeCollectionSources([
+  { path: "/tmp/a.tsv", extension: "tsv", text: "SMILES\tname\nCCO\tethanol\n" },
+  { path: "/tmp/b.tsv", extension: "tsv", text: "SMILES\tname\nO\twater\n" },
+]);
+assert.equal(tsv.extension, "tsv");
+assert.equal(tsv.text.trim(), "SMILES\tname\nCCO\tethanol\nO\twater");
+
 assert.throws(
   () => mergeCollectionSources([
     { path: "/tmp/a.sdf", extension: "sdf", text: "a\n$$$$\n" },
     { path: "/tmp/b.smi", extension: "smi", text: "CCO" },
   ]),
   /one format family/,
+);
+
+assert.throws(
+  () => mergeCollectionSources([
+    { path: "/tmp/a.sdf", extension: "sdf", text: "a\n$$$$\n" },
+  ]),
+  /Drop at least two/,
 );
 
 console.log("collection document tests passed");

@@ -72,6 +72,13 @@ export function CommandPalette({
         run: actions.chooseFiles,
       },
       {
+        id: "open-clipboard",
+        group: "Suggested",
+        label: "Open from Clipboard",
+        description: "Open molecular text or copied structure paths",
+        run: actions.openClipboard,
+      },
+      {
         id: "open-settings",
         group: "Suggested",
         label: "Settings",

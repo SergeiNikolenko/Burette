@@ -5,6 +5,7 @@ import { openPath } from "@tauri-apps/plugin-opener";
 import previewFormatRegistry from "../../../config/preview-formats.json";
 import { AppLayout } from "./components/app-layout";
 import { CommandPalette } from "./components/command-palette";
+import { showNativeContextMenu } from "./components/native-context-menu";
 import type { KetcherImportRequest, KetcherSketchRequest, ShellActions, ShellViewState, StatusKind, StatusNotice } from "./components/types";
 import { WindowTitle } from "./components/window-title";
 import {
@@ -33,8 +34,10 @@ import {
   useCloseTab,
   useMoveTab,
   useOpenDocuments,
+  useOpenFepSetupTab,
   useOpenKetcherTab,
   useOpenNewTab,
+  useOpenPoseReviewTab,
   useOpenSettingsTab,
   useOpenTabs,
   useRecentStructures,
@@ -49,10 +52,11 @@ import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settin
 import { browserDevRuntimeNeedsRefresh, openBrowserDevDockingDocument, openBrowserDevDocuments, openBrowserDevMergedCollection, openBrowserDevMolstarContextDocument, openBrowserDevTextDocument, readBrowserDevCollectionText } from "./lib/browser-dev-documents";
 import { isMoleculeCollectionPath } from "./lib/collection-documents";
 import { dockingRequestForDrop, isProteinLikeDockingSource } from "./lib/docking-documents";
+import type { DropActionChoice } from "./lib/drop-actions";
 import { basename, buildSidebarProjects, parentDirectory } from "./lib/sidebar-projects";
-import type { StructureDragPayload } from "./lib/structure-drag";
+import type { StructureDragPayload, StructureDragRecord } from "./lib/structure-drag";
 import { isTauriRuntime } from "./lib/tauri";
-import type { DockingDocumentRequest, OpenDocumentsResult, RecentStructure, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "./types";
+import type { DockingDocumentRequest, FepSetupRequest, OpenDocumentsResult, RecentStructure, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "./types";
 import { checkForUpdates as requestUpdateCheck, clearDismissedUpdate, dismissUpdate, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically, shouldPromptForUpdate } from "./update";
 import type { UpdatePreferences, UpdateRelease, UpdateState } from "./update";
 
@@ -62,6 +66,26 @@ const filters = [
     extensions: previewFormatRegistry.documentTypes.extensions,
   },
 ];
+
+type GridAppendResult = {
+  recordsAppended: number;
+  totalRows: number;
+  errors: string[];
+};
+
+type GridDelimitedColumnChoice = {
+  index: number;
+  name: string;
+};
+
+function isDelimitedColumnAmbiguity(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("multiple possible structure columns");
+}
+
+function delimitedColumnChoiceLabel(choice: GridDelimitedColumnChoice) {
+  return `${choice.name} (column ${choice.index})`;
+}
 
 async function browserDevFilesFromLocation() {
   const params = new URLSearchParams(window.location.search);
@@ -101,6 +125,8 @@ export default function App() {
   const setDocuments = useSetDocuments();
   const openNewTab = useOpenNewTab();
   const openKetcherTab = useOpenKetcherTab();
+  const openFepSetupTab = useOpenFepSetupTab();
+  const openPoseReviewTab = useOpenPoseReviewTab();
   const openSettingsTab = useOpenSettingsTab();
   const canNavigateBack = useCanNavigateBack();
   const canNavigateForward = useCanNavigateForward();
@@ -137,6 +163,7 @@ export default function App() {
   const [structureDragActive, setStructureDragActive] = useState(false);
   const [ketcherImportRequest, setKetcherImportRequest] = useState<KetcherImportRequest | null>(null);
   const [status, setStatus] = useState<StatusNotice | null>(null);
+  const [poseReviewSelections, setPoseReviewSelections] = useState<Record<string, number>>({});
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateState>(() => ({
     preferences: loadUpdatePreferences(),
@@ -212,6 +239,50 @@ export default function App() {
     [allSidebarProjects],
   );
 
+  const openDelimitedGridDocument = useCallback(
+    async (
+      path: string,
+      smilesColumn: string,
+      effectivePreferences: ViewerPreferences,
+      replace: boolean,
+    ) => {
+      const document = await invoke<ViewerDocument>("open_delimited_grid_document", {
+        request: { path, smilesColumn },
+        preferences: effectivePreferences,
+      });
+      if (replace) setDocuments([document]);
+      else addDocuments([document]);
+      rememberRecentStructures([document]);
+      pushStatus(`Opened ${document.title}`);
+    },
+    [addDocuments, pushStatus, rememberRecentStructures, setDocuments],
+  );
+
+  const showDelimitedGridColumnOpenMenu = useCallback(
+    async (path: string, effectivePreferences: ViewerPreferences, replace: boolean) => {
+      const choices = await invoke<GridDelimitedColumnChoice[]>("grid_delimited_columns", {
+        request: { path },
+      });
+      if (choices.length === 0) {
+        pushStatus("No structure columns were found in the delimited file", "error");
+        return;
+      }
+      pushStatus("Choose a structure column for the delimited file");
+      await showNativeContextMenu(
+        choices.map((choice) => ({
+          kind: "item" as const,
+          id: `delimited-column-open-${choice.index}`,
+          text: delimitedColumnChoiceLabel(choice),
+          action: () => {
+            void openDelimitedGridDocument(path, String(choice.index), effectivePreferences, replace)
+              .catch((error) => pushErrorStatus(error, "Open failed"));
+          },
+        })),
+      );
+    },
+    [openDelimitedGridDocument, pushErrorStatus, pushStatus],
+  );
+
   const openDocuments = useCallback(
     async (
       paths: string[],
@@ -221,9 +292,9 @@ export default function App() {
     ) => {
       const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
       if (!cleanPaths.length) return;
+      const effectivePreferences = preferencesOverride ? { ...preferences, ...preferencesOverride } : preferences;
       pushStatus("Opening structures...");
       try {
-        const effectivePreferences = preferencesOverride ? { ...preferences, ...preferencesOverride } : preferences;
         const result = isTauriRuntime()
           ? await invoke<OpenDocumentsResult>("open_documents", { paths: cleanPaths, preferences: effectivePreferences, reloadOptions })
           : await openBrowserDevDocuments(cleanPaths, effectivePreferences, reloadOptions);
@@ -237,10 +308,15 @@ export default function App() {
           pushStatus(openedText);
         }
       } catch (error) {
+        if (isTauriRuntime() && cleanPaths.length === 1 && isDelimitedColumnAmbiguity(error)) {
+          void showDelimitedGridColumnOpenMenu(cleanPaths[0], effectivePreferences, options.replace === true)
+            .catch((menuError) => pushErrorStatus(menuError, "Structure column menu failed"));
+          return;
+        }
         pushErrorStatus(error);
       }
     },
-    [addDocuments, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setDocuments],
+    [addDocuments, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setDocuments, showDelimitedGridColumnOpenMenu],
   );
 
   useEffect(() => {
@@ -305,6 +381,48 @@ export default function App() {
     [openDocuments],
   );
 
+  const openStructureRecordDocuments = useCallback(async (records: StructureDragRecord[]) => {
+    const cleanRecords = records.filter((record) => record.text.trim().length > 0);
+    if (cleanRecords.length === 0) return { opened: [], errors: [] };
+    const opened: ViewerDocument[] = [];
+    const errors: string[] = [];
+    for (const record of cleanRecords) {
+      try {
+        const document = isTauriRuntime()
+          ? await invoke<ViewerDocument>("open_text_structure", {
+              request: {
+                title: record.path,
+                extension: record.inputExtension,
+                text: record.text,
+              },
+              preferences,
+              reloadOptions: undefined,
+            })
+          : await openBrowserDevTextDocument(record.path, record.inputExtension, record.text, preferences);
+        opened.push(document);
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : String(error));
+      }
+    }
+    return { opened, errors };
+  }, [preferences]);
+
+  const openStructureRecords = useCallback(async (records: StructureDragRecord[]) => {
+    pushStatus("Opening pasted structures...");
+    const { opened, errors } = await openStructureRecordDocuments(records);
+    if (opened.length === 0 && errors.length === 0) return;
+    if (opened.length > 0) {
+      addDocuments(opened);
+      rememberRecentStructures(opened);
+    }
+    const openedText = "Opened " + opened.length + " pasted structure" + (opened.length === 1 ? "" : "s");
+    if (errors.length > 0) {
+      pushStatus(opened.length > 0 ? `${openedText}. ${summarizeErrors(errors)}` : summarizeErrors(errors), "error", errors);
+      return;
+    }
+    pushStatus(openedText);
+  }, [addDocuments, openStructureRecordDocuments, pushStatus, rememberRecentStructures]);
+
   const chooseFiles = useCallback(async () => {
     try {
       const selection = isTauriRuntime()
@@ -317,25 +435,71 @@ export default function App() {
     }
   }, [openDocuments, pushErrorStatus]);
 
-  const openDockingDocument = useCallback(async (targetPath: string, droppedPaths: string[]) => {
+  const openDockingDocument = useCallback(async (
+    targetPath: string,
+    droppedPaths: string[],
+    options: { activePose?: number | null } = {},
+  ) => {
     const existingDockingRequest = documents.find((document) => document.path === targetPath || document.id === targetPath)?.dockingRequest;
     const request = dockingRequestForDrop(targetPath, droppedPaths, existingDockingRequest);
-    if (!request) return;
-    if (request.ligandPaths.length === 0) return;
+    if (!request) return null;
+    if (request.ligandPaths.length === 0) return null;
+    request.activePose = options.activePose ?? null;
     pushStatus("Opening Mol* docking view...");
     try {
       const document = isTauriRuntime()
         ? await invoke<ViewerDocument>("open_docking_document", { request, preferences })
-        : await openBrowserDevDockingDocument(request.receptorPath, request.ligandPaths, preferences);
+        : await openBrowserDevDockingDocument(request.receptorPath, request.ligandPaths, preferences, options);
       addDocuments([document]);
       rememberRecentStructures([document]);
       setStructureDragActive(false);
       pushStatus(`Opened docking view with ${request.ligandPaths.length} ligand${request.ligandPaths.length === 1 ? "" : "s"}`);
+      return document;
+    } catch (error) {
+      setStructureDragActive(false);
+      pushErrorStatus(error, "Docking view failed");
+      return null;
+    }
+  }, [addDocuments, documents, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
+
+  const openDockingStructureRecords = useCallback(async (
+    receptorPath: string,
+    ligandPaths: string[],
+    records: StructureDragRecord[],
+  ) => {
+    const cleanLigandPaths = Array.from(new Set(ligandPaths.map((path) => path.trim()).filter(Boolean)));
+    const cleanRecords = records.filter((record) => record.text.trim().length > 0);
+    if (!receptorPath || (cleanLigandPaths.length === 0 && cleanRecords.length === 0)) return;
+    pushStatus("Opening Mol* docking view...");
+    try {
+      const { opened, errors } = await openStructureRecordDocuments(cleanRecords);
+      if (errors.length > 0 && opened.length === 0 && cleanLigandPaths.length === 0) {
+        pushStatus(summarizeErrors(errors), "error", errors);
+        return;
+      }
+      const request: DockingDocumentRequest = {
+        receptorPath,
+        ligandPaths: [...cleanLigandPaths, ...opened.map((document) => document.path)],
+      };
+      if (request.ligandPaths.length === 0) return;
+      const dockingDocument = isTauriRuntime()
+        ? await invoke<ViewerDocument>("open_docking_document", { request, preferences })
+        : await openBrowserDevDockingDocument(request.receptorPath, request.ligandPaths, preferences);
+      if (opened.length > 0) addDocuments(opened);
+      addDocuments([dockingDocument]);
+      rememberRecentStructures([...opened, dockingDocument]);
+      setStructureDragActive(false);
+      const message = `Opened docking view with ${request.ligandPaths.length} ligand${request.ligandPaths.length === 1 ? "" : "s"}`;
+      if (errors.length > 0) {
+        pushStatus(`${message}. ${summarizeErrors(errors)}`, "error", errors);
+      } else {
+        pushStatus(message);
+      }
     } catch (error) {
       setStructureDragActive(false);
       pushErrorStatus(error, "Docking view failed");
     }
-  }, [addDocuments, documents, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
+  }, [addDocuments, openStructureRecordDocuments, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
 
   const collectionSourcePaths = useCallback((path: string | null) => {
     if (!path) return [];
@@ -601,6 +765,140 @@ export default function App() {
     return addXyzrenderSheetItemsToDocument(activeDocument.id, payload);
   }, [activeDocument, addXyzrenderSheetItemsToDocument]);
 
+  const notifyGridRecordsAppended = useCallback((targetDocumentId: string, result: GridAppendResult) => {
+    const iframe = Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).find(
+      (item) => item.dataset.documentId === targetDocumentId,
+    );
+    iframe?.contentWindow?.postMessage({
+      source: "burrete-grid-host",
+      body: {
+        type: "gridRecordsAppended",
+        documentId: targetDocumentId,
+        recordsAppended: result.recordsAppended,
+        totalRows: result.totalRows,
+      },
+    }, "*");
+  }, []);
+
+  const notifyGridPoseReviewSelection = useCallback((targetDocumentId: string, activePose: number) => {
+    const iframe = Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).find(
+      (item) => item.dataset.documentId === targetDocumentId,
+    );
+    iframe?.contentWindow?.postMessage({
+      source: "burrete-grid-host",
+      body: {
+        type: "poseReviewSelection",
+        documentId: targetDocumentId,
+        activePose,
+      },
+    }, "*");
+  }, []);
+
+  const openPoseReviewWorkspace = useCallback(async (
+    receptorDocument: ViewerDocument,
+    gridDocument: ViewerDocument,
+    activePose: number,
+  ) => {
+    const dockingDocument = await openDockingDocument(receptorDocument.path, [gridDocument.path], { activePose });
+    if (!dockingDocument) return;
+    openPoseReviewTab({
+      kind: "pose-review",
+      receptorPath: receptorDocument.path,
+      gridDocumentId: gridDocument.id,
+      gridPath: gridDocument.path,
+      dockingDocumentId: dockingDocument.id,
+      dockingPath: dockingDocument.path,
+    });
+    notifyGridPoseReviewSelection(gridDocument.id, activePose);
+    pushStatus("Opened pose-review workspace");
+  }, [notifyGridPoseReviewSelection, openDockingDocument, openPoseReviewTab, pushStatus]);
+
+  const openFepSetupWorkspace = useCallback((request: FepSetupRequest) => {
+    openFepSetupTab({
+      kind: "fep-setup",
+      ...request,
+    });
+    pushStatus("Opened FEP setup workspace");
+  }, [openFepSetupTab, pushStatus]);
+
+  const appendDelimitedGridRecords = useCallback(
+    async (targetDocument: ViewerDocument, path: string, smilesColumn: string) => {
+      const result = await invoke<GridAppendResult>("grid_append_delimited_records", {
+        request: {
+          documentId: targetDocument.id,
+          path,
+          smilesColumn,
+        },
+      });
+      notifyGridRecordsAppended(targetDocument.id, result);
+      const message = `Appended ${result.recordsAppended} molecule${result.recordsAppended === 1 ? "" : "s"} to grid`;
+      if (result.errors.length > 0) {
+        pushStatus(`${message}. ${summarizeErrors(result.errors)}`, "error", result.errors);
+      } else {
+        pushStatus(message);
+      }
+    },
+    [notifyGridRecordsAppended, pushStatus],
+  );
+
+  const showDelimitedGridColumnAppendMenu = useCallback(
+    async (targetDocument: ViewerDocument, path: string) => {
+      const choices = await invoke<GridDelimitedColumnChoice[]>("grid_delimited_columns", {
+        request: { path },
+      });
+      if (choices.length === 0) {
+        pushStatus("No structure columns were found in the delimited file", "error");
+        return;
+      }
+      pushStatus("Choose a structure column to append to the grid");
+      await showNativeContextMenu(
+        choices.map((choice) => ({
+          kind: "item" as const,
+          id: `delimited-column-append-${choice.index}`,
+          text: delimitedColumnChoiceLabel(choice),
+          action: () => {
+            void appendDelimitedGridRecords(targetDocument, path, String(choice.index))
+              .catch((error) => pushErrorStatus(error, "Grid append failed"));
+          },
+        })),
+      );
+    },
+    [appendDelimitedGridRecords, pushErrorStatus, pushStatus],
+  );
+
+  const appendGridRecords = useCallback((targetDocumentId: string, payload: StructureDragPayload) => {
+    if (payload.paths.length === 0 && payload.records.length === 0) return false;
+    const targetDocument = documents.find((document) => document.id === targetDocumentId);
+    if (!targetDocument || targetDocument.renderer !== "grid2d") return false;
+    if (!isTauriRuntime()) return false;
+    void (async () => {
+      try {
+        const result = await invoke<GridAppendResult>("grid_append_records", {
+          request: {
+            documentId: targetDocument.id,
+            paths: payload.paths,
+            records: payload.records,
+          },
+        });
+        notifyGridRecordsAppended(targetDocument.id, result);
+        const message = `Appended ${result.recordsAppended} molecule${result.recordsAppended === 1 ? "" : "s"} to grid`;
+        if (result.errors.length > 0) {
+          pushStatus(`${message}. ${summarizeErrors(result.errors)}`, "error", result.errors);
+        } else {
+          pushStatus(message);
+        }
+      } catch (error) {
+        if (payload.paths.length === 1 && payload.records.length === 0 && isDelimitedColumnAmbiguity(error)) {
+          void showDelimitedGridColumnAppendMenu(targetDocument, payload.paths[0])
+            .catch((menuError) => pushErrorStatus(menuError, "Structure column menu failed"));
+          return;
+        }
+        pushErrorStatus(error, "Grid append failed");
+      }
+    })();
+    return true;
+  }, [documents, notifyGridRecordsAppended, pushErrorStatus, pushStatus, showDelimitedGridColumnAppendMenu]);
+
   useEffect(() => {
     const pending = pendingXyzrenderSheetDropRef.current;
     if (!pending || activeDocument?.id !== pending.documentId) return;
@@ -609,12 +907,77 @@ export default function App() {
     }
   }, [activeDocument?.id, postXyzrenderSheetItems]);
 
+  useEffect(() => {
+    if (!activeDocument || activeDocument.renderer !== "grid2d") return;
+    const activePose = poseReviewSelections[activeDocument.id];
+    if (!Number.isFinite(activePose)) return;
+    notifyGridPoseReviewSelection(activeDocument.id, activePose);
+  }, [activeDocument, notifyGridPoseReviewSelection, poseReviewSelections]);
+
+  const chooseDropAction = useCallback((
+    choices: DropActionChoice[],
+    at: { x: number; y: number } | null | undefined,
+    runChoice: (choice: DropActionChoice) => void,
+  ) => {
+    if (choices.length < 2) return false;
+    void showNativeContextMenu(
+      choices.map((choice, index) => ({
+        kind: "item" as const,
+        id: `drop-action-${index}-${choice.id}`,
+        text: choice.confidence === "default" ? `${choice.label} (default)` : choice.label,
+        action: () => runChoice(choice),
+      })),
+      at ?? undefined,
+    ).catch((error) => {
+      pushErrorStatus(error, "Drop action menu failed");
+      runChoice(choices[0]);
+    });
+    return true;
+  }, [pushErrorStatus]);
+
+  const currentFepSetupRequest = useMemo<FepSetupRequest | null>(() => {
+    const location = activeTab?.location;
+    if (!location) return null;
+    if (location.kind === "fep-setup") {
+      return {
+        receptorPath: location.receptorPath,
+        gridDocumentId: location.gridDocumentId,
+        gridPath: location.gridPath,
+        dockingDocumentId: location.dockingDocumentId,
+        dockingPath: location.dockingPath,
+        referencePose: location.referencePose,
+      };
+    }
+    if (location.kind !== "pose-review") return null;
+    const grid = documents.find((document) => document.id === location.gridDocumentId || document.path === location.gridPath);
+    const docking = documents.find((document) => document.id === location.dockingDocumentId || document.path === location.dockingPath);
+    if (!grid || !docking) return null;
+    return {
+      receptorPath: location.receptorPath,
+      gridDocumentId: grid.id,
+      gridPath: grid.path,
+      dockingDocumentId: docking.id,
+      dockingPath: docking.path,
+      referencePose: poseReviewSelections[grid.id] ?? 0,
+    };
+  }, [activeTab?.location, documents, poseReviewSelections]);
+
   useOpenEvents(openDocuments, pushErrorStatus);
-  const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop } = useOpenDrop(openDocuments, pushStatus, {
+  const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop, handleBrowserPaste, openClipboardText } = useOpenDrop(openDocuments, pushStatus, {
+    activeTabKind: activeTab?.location.kind ?? null,
+    activeDocumentId: activeDocument?.id ?? null,
     activeDocumentPath: activeDocument?.path ?? null,
+    activeDocumentRenderer: activeDocument?.renderer ?? null,
     activeDockingRequest: activeDocument?.dockingRequest ?? null,
+    fepSetupRequest: currentFepSetupRequest,
     openDockingDocument,
+    openDockingStructureRecords,
+    openStructureRecords,
+    openKetcherWithStructures,
+    openFepSetupWorkspace,
+    appendGridRecords,
     addXyzrenderSheetItems,
+    chooseDropAction,
     mergeMoleculeCollections: activeDocument?.renderer === "grid2d"
       ? (paths) => {
           if (!paths.some(isMoleculeCollectionPath)) return false;
@@ -623,6 +986,20 @@ export default function App() {
         }
       : undefined,
   });
+  const openClipboard = useCallback(async () => {
+    try {
+      if (!navigator.clipboard?.readText) {
+        pushStatus("Clipboard text is not available in this environment.", "error");
+        return;
+      }
+      const text = await navigator.clipboard.readText();
+      if (!openClipboardText(text)) {
+        pushStatus("Clipboard does not contain a supported molecular structure.", "error");
+      }
+    } catch (error) {
+      pushErrorStatus(error, "Open from clipboard failed");
+    }
+  }, [openClipboardText, pushErrorStatus, pushStatus]);
   const reloadActive = useCallback(async () => {
     const targetDocument = (pendingViewerReloadDocumentIdRef.current
       ? documents.find((document) => document.id === pendingViewerReloadDocumentIdRef.current)
@@ -775,15 +1152,37 @@ export default function App() {
           sort?: string | null;
           offset?: number | null;
           limit?: number | null;
+          activePose?: number | null;
+          sourcePath?: string | null;
+          receptorPath?: string | null;
           controls?: ViewerReloadOptions["xyzrenderControls"];
           contextDocument?: Parameters<typeof openBrowserDevMolstarContextDocument>[0];
           inputDataBase64?: string | null;
           inputExtension?: string | null;
+          name?: string | null;
+          mimeType?: string | null;
         };
       } | undefined;
       if (data?.source !== "burrete-viewer" && data?.source !== "burrete-grid") return;
       const body = data.body;
       if (!isKnownViewerMessageSource(event.source, body?.documentId)) return;
+      if (data.source === "burrete-viewer" && body?.type === "dockingPoseChanged") {
+        const dockingDocument = body.documentId
+          ? documents.find((document) => document.id === body.documentId)
+          : activeDocument;
+        const sourcePath = typeof body.sourcePath === "string" && body.sourcePath.trim().length > 0
+          ? body.sourcePath.trim()
+          : dockingDocument?.dockingRequest?.ligandPaths[0];
+        const gridDocument = sourcePath
+          ? documents.find((document) => document.path === sourcePath && document.renderer === "grid2d")
+          : null;
+        const activePose = Math.max(0, Math.trunc(Number(body.activePose) || 0));
+        if (gridDocument) {
+          setPoseReviewSelections((previous) => ({ ...previous, [gridDocument.id]: activePose }));
+          notifyGridPoseReviewSelection(gridDocument.id, activePose);
+        }
+        return;
+      }
       if ((data.source === "burrete-viewer" || data.source === "burrete-grid") && body?.type === "renderXyzrenderSheetItem") {
         if (!body.requestId) return;
         const replySource = data.source === "burrete-grid" ? "burrete-grid-host" : "burrete-host";
@@ -837,6 +1236,73 @@ export default function App() {
         return;
       }
       if (data.source === "burrete-grid") {
+        if (body?.type === "copyText") {
+          const text = typeof body.text === "string" ? body.text : "";
+          void navigator.clipboard.writeText(text)
+            .then(() => pushStatus("Copied grid text"))
+            .catch((error) => pushErrorStatus(error, "Grid copy failed"));
+          return;
+        }
+        if (body?.type === "exportText") {
+          const text = typeof body.text === "string" ? body.text : "";
+          const name = safeExportFileName(body.name ?? "grid-export.txt");
+          void (async () => {
+            try {
+              if (!isTauriRuntime()) {
+                downloadTextFile(name, text);
+                pushStatus(`Exported ${name}`);
+                return;
+              }
+              const outputPath = await save({
+                defaultPath: name,
+                filters: exportDialogFilters(name, body.mimeType ?? ""),
+              });
+              if (!outputPath) return;
+              const savedPath = await invoke<string>("save_text_as", { text, outputPath });
+              pushStatus(`Exported ${basename(savedPath)}`);
+            } catch (error) {
+              pushErrorStatus(error, "Grid export failed");
+            }
+          })();
+          return;
+        }
+        if (body?.type === "saveGridAs") {
+          const text = typeof body.text === "string" ? body.text : "";
+          const name = safeExportFileName(body.name ?? "grid-save-as.csv");
+          const reply = (bodyPayload: Record<string, unknown>) => {
+            postMessageToViewerSource(event.source, {
+              source: "burrete-grid-host",
+              body: {
+                documentId: body.documentId,
+                ...bodyPayload,
+              },
+            });
+          };
+          void (async () => {
+            try {
+              if (!isTauriRuntime()) {
+                downloadTextFile(name, text);
+                pushStatus(`Saved ${name}`);
+                reply({ type: "gridSavedAs", name });
+                return;
+              }
+              const outputPath = await save({
+                defaultPath: name,
+                filters: exportDialogFilters(name, body.mimeType ?? ""),
+              });
+              if (!outputPath) return;
+              const savedPath = await invoke<string>("save_text_as", { text, outputPath });
+              const savedName = basename(savedPath);
+              pushStatus(`Saved ${savedName}`);
+              reply({ type: "gridSavedAs", name: savedName });
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              reply({ type: "gridSaveAsError", error: message });
+              pushErrorStatus(error, "Grid Save As failed");
+            }
+          })();
+          return;
+        }
         if (body?.type === "gridFetchPage") {
           if (!body.requestId || !body.documentId) return;
           if (!isTauriRuntime()) {
@@ -968,17 +1434,24 @@ export default function App() {
         return;
       }
       if (body?.type === "openSdfPoseDocument") {
+        const requestedPath = typeof body.path === "string" ? body.path.trim() : "";
+        const pathDocument = requestedPath.length > 0
+          ? documents.find((document) => document.path === requestedPath) ?? null
+          : null;
         const targetDocument = (body.documentId
           ? documents.find((document) => document.id === body.documentId)
           : null)
-          ?? (typeof body.path === "string"
-            ? documents.find((document) => document.path === body.path.trim())
-            : null)
+          ?? pathDocument
           ?? activeDocument;
-        const targetPath = typeof body.path === "string" && body.path.trim().length > 0
-          ? body.path.trim()
+        const targetPath = requestedPath.length > 0
+          ? requestedPath
           : targetDocument?.path;
         if (targetPath) {
+          const poseTargetDocument = targetDocument?.path === targetPath ? targetDocument : pathDocument;
+          const activePose = Math.max(0, Math.trunc(Number(body.activePose) || 0));
+          if (poseTargetDocument) {
+            setPoseReviewSelections((previous) => ({ ...previous, [poseTargetDocument.id]: activePose }));
+          }
           const requestedReceptorPath = typeof body.receptorPath === "string"
             ? body.receptorPath.trim()
             : "";
@@ -995,7 +1468,10 @@ export default function App() {
             pushErrorStatus("Selected receptor is not available for SDF poses.", "SDF poses failed");
             return;
           }
-          if (receptorDocument) {
+          if (receptorDocument && poseTargetDocument) {
+            pushStatus("Opening pose-review workspace...");
+            void openPoseReviewWorkspace(receptorDocument, poseTargetDocument, activePose);
+          } else if (receptorDocument) {
             pushStatus("Opening SDF poses in Mol* docking view...");
             void openDockingDocument(receptorDocument.path, [targetPath]);
           } else {
@@ -1109,7 +1585,7 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, addDocuments, documents, openDockingDocument, openDocuments, openKetcherWithFragment, openKetcherWithStructures, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference]);
+  }, [activeDocument, addDocuments, documents, notifyGridPoseReviewSelection, openDockingDocument, openDocuments, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference]);
 
   useEffect(() => {
     const loadedPreferences = loadUpdatePreferences();
@@ -1173,6 +1649,8 @@ export default function App() {
 
   const actions = useMemo<ShellActions>(() => ({
     chooseFiles,
+    openStructurePaths: openDocuments,
+    openStructureRecords,
     openRecentStructure,
     selectDocument,
     selectTab: setActiveTab,
@@ -1183,9 +1661,11 @@ export default function App() {
     navigateForward,
     focusSidebarSearch,
     openCommandPalette,
+    openClipboard,
     openSettings,
     openKetcher,
     openKetcherWithStructures,
+    openFepSetupWorkspace,
     openKetcherSketch,
     clearKetcherImportRequest,
     moveTab,
@@ -1209,6 +1689,8 @@ export default function App() {
       pushStatus("Closed all structures");
     },
     openDockingDocument,
+    openDockingStructureRecords,
+    appendGridRecords,
     addXyzrenderSheetItems: addXyzrenderSheetItemsToDocument,
     mergeMoleculeCollections,
     saveMoleculeCollectionAs,
@@ -1262,7 +1744,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [addXyzrenderSheetItemsToDocument, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeTab, focusSidebarSearch, installUpdate, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openCommandPalette, openDockingDocument, openKetcher, openKetcherSketch, openKetcherWithStructures, openNewTab, openProjectFolder, openRecentStructure, openSettings, openWorkspaceFolder, pushErrorStatus, pushStatus, saveMoleculeCollectionAs, selectDocument, setActiveTab, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
+  }), [addXyzrenderSheetItemsToDocument, appendGridRecords, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeTab, focusSidebarSearch, installUpdate, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDocuments, openFepSetupWorkspace, openKetcher, openKetcherSketch, openKetcherWithStructures, openNewTab, openProjectFolder, openRecentStructure, openSettings, openStructureRecords, openWorkspaceFolder, pushErrorStatus, pushStatus, saveMoleculeCollectionAs, selectDocument, setActiveTab, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
@@ -1285,6 +1767,7 @@ export default function App() {
     sidebarWidth,
     sidebarDragging,
     structureDragActive,
+    poseReviewSelections,
     ketcherImportRequest,
     sidebarQuery,
     status,
@@ -1308,6 +1791,7 @@ export default function App() {
         onDragOver={handleBrowserDrag}
         onDragLeave={handleBrowserDragLeave}
         onDrop={handleBrowserDrop}
+        onPaste={handleBrowserPaste}
       />
       <CommandPalette
         state={state}
@@ -1357,6 +1841,23 @@ function downloadTextFile(fileName: string, text: string) {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function safeExportFileName(name: string) {
+  return (name || "export.txt")
+    .replace(/[\\/:*?"<>|]+/g, "_")
+    .replace(/^\.+/g, "")
+    .trim()
+    .slice(0, 120) || "export.txt";
+}
+
+function exportDialogFilters(fileName: string, mimeType: string) {
+  const extension = fileName.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase();
+  if (!extension) return undefined;
+  const name = mimeType.includes("csv")
+    ? "CSV"
+    : (mimeType.includes("smiles") || extension === "smi" || extension === "smiles" ? "SMILES" : "Text");
+  return [{ name, extensions: [extension] }];
 }
 
 function formatViewerError(
