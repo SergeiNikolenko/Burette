@@ -12,3 +12,8 @@ declare module "raphael" {
   const raphael: unknown;
   export default raphael;
 }
+
+declare module "eve-raphael" {
+  const eve: unknown;
+  export default eve;
+}

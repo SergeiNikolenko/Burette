@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type ComponentType,
+  type CSSProperties,
   type DragEvent,
   type ErrorInfo,
   type MouseEvent,
@@ -17,7 +18,6 @@ import { collectionExtension, collectionFamily } from "../lib/collection-documen
 import { readStructureText } from "../lib/structure-text";
 import { hasStructureDrag, readStructureDragPayload, structureDragRecordsToFragments } from "../lib/structure-drag";
 import type { KetcherEditorApi } from "./ketcher-editor";
-import { showNativeContextMenu } from "./native-context-menu";
 import type { KetcherSketchTarget, ShellActions, ShellViewState } from "./types";
 
 type KetcherEditorComponent = ComponentType<{
@@ -25,6 +25,10 @@ type KetcherEditorComponent = ComponentType<{
   onStatus: (status: string) => void;
   onLoadError?: (error: Error) => void;
 }>;
+
+const KETCHER_UI_SCALES = [0.76, 0.82, 0.88, 0.94, 1] as const;
+const DEFAULT_KETCHER_UI_SCALE_INDEX = 2;
+const KETCHER_EXPORT_TIMEOUT_MS = 4500;
 
 export function KetcherPage({
   state,
@@ -40,7 +44,32 @@ export function KetcherPage({
   const [output, setOutput] = useState("");
   const [editorReloadKey, setEditorReloadKey] = useState(0);
   const [dropActive, setDropActive] = useState(false);
+  const [editorHasActivated, setEditorHasActivated] = useState(false);
+  const [exportingSketch, setExportingSketch] = useState(false);
+  const [ketcherUIScaleIndex, setKetcherUIScaleIndex] = useState(DEFAULT_KETCHER_UI_SCALE_INDEX);
   const handledImportRequestIdRef = useRef<number | null>(null);
+  const shouldMountEditor = isActive || editorHasActivated;
+  const ketcherUIScale = KETCHER_UI_SCALES[ketcherUIScaleIndex];
+  const ketcherUIScalePercent = Math.round(ketcherUIScale * 100);
+  const ketcherUIScaleStyle = useMemo(() => ({
+    "--ketcher-ui-scale": String(ketcherUIScale),
+    "--ketcher-ui-scale-inverse": String(1 / ketcherUIScale),
+  }) as CSSProperties, [ketcherUIScale]);
+
+  useEffect(() => {
+    if (!isActive || editorHasActivated) return;
+    let firstFrame = 0;
+    let secondFrame = 0;
+    firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
+        setEditorHasActivated(true);
+      });
+    });
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
+    };
+  }, [editorHasActivated, isActive]);
 
   const handleReady = useCallback((instance: KetcherEditorApi) => {
     setKetcher(instance);
@@ -63,77 +92,58 @@ export function KetcherPage({
 
   const exportSmiles = useCallback(async () => {
     if (!ketcher) return;
-    const smiles = await ketcher.getSmiles();
-    setOutput(smiles || "Empty structure");
+    setStatus("Exporting SMILES");
+    try {
+      const smiles = await withKetcherTimeout(ketcher.getSmiles(), "SMILES export");
+      setOutput(smiles || "Empty structure");
+      setStatus("Ready");
+    } catch (error) {
+      setStatus(ketcherExportErrorMessage(error));
+    }
   }, [ketcher]);
 
   const exportMolfile = useCallback(async () => {
     if (!ketcher) return;
-    const molfile = await ketcher.getMolfile("v3000");
-    setOutput(molfile || "Empty structure");
+    setStatus("Exporting Molfile");
+    try {
+      const molfile = await withKetcherTimeout(ketcher.getMolfile("v3000"), "Molfile export");
+      setOutput(molfile || "Empty structure");
+      setStatus("Ready");
+    } catch (error) {
+      setStatus(ketcherExportErrorMessage(error));
+    }
   }, [ketcher]);
 
   const openSketch = useCallback(async (target: KetcherSketchTarget, collectionTargetPath?: string | null) => {
-    if (!ketcher) return;
+    if (!ketcher || exportingSketch) return;
+    setExportingSketch(true);
     try {
       setStatus("Exporting sketch");
-      const [smiles, molfile] = await Promise.all([
-        ketcher.getSmiles(),
-        ketcher.getMolfile("v2000"),
-      ]);
-      if (!smiles.trim() || !molfile.trim()) {
+      const molfile = await withKetcherTimeout(ketcher.getMolfile("v2000"), "Sketch export");
+      if (!molfile.trim()) {
         setStatus("Draw a molecule first");
         return;
       }
       await actions.openKetcherSketch({
         title: "ketcher-sketch.sdf",
         extension: "sdf",
-        text: molfileToSdf(molfile, smiles),
+        text: molfileToSdf(molfile),
         target,
         collectionTargetPath,
       });
       setStatus(target === "collection" ? "Sent sketch to collection" : "Opened sketch in viewer");
     } catch (error) {
-      setStatus("Ketcher export failed: " + (error instanceof Error ? error.message : String(error)));
+      setStatus(ketcherExportErrorMessage(error));
+    } finally {
+      setExportingSketch(false);
     }
-  }, [actions, ketcher]);
+  }, [actions, exportingSketch, ketcher]);
 
-  const showCollectionTargetMenu = useCallback((event: MouseEvent<HTMLButtonElement>) => {
+  const addSketchToCollection = useCallback((event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    const rect = event.currentTarget.getBoundingClientRect();
-    const items = [
-      ...(collectionTargets.length > 0
-        ? collectionTargets.map((target, index) => ({
-            kind: "item" as const,
-            id: `add-to-collection-${index}`,
-            text: `Add to ${target.title}`,
-            action: () => {
-              void openSketch("collection", target.path);
-            },
-          }))
-        : [
-            {
-              kind: "item" as const,
-              id: "no-open-sdf-collections",
-              text: "No open SDF collections",
-              disabled: true,
-            },
-          ]),
-      { kind: "separator" as const },
-      {
-        kind: "item" as const,
-        id: "open-as-new-collection",
-        text: "Open as new collection",
-        action: () => {
-          void openSketch("collection", null);
-        },
-      },
-    ];
-    void showNativeContextMenu(items, {
-      x: Math.round(rect.left),
-      y: Math.round(rect.bottom + 4),
-    });
+    const latestCollection = collectionTargets.at(-1);
+    void openSketch("collection", latestCollection?.path ?? null);
   }, [collectionTargets, openSketch]);
 
   const importStructures = useCallback(async (paths: string[], fragments: Array<{ title: string; text: string }> = []) => {
@@ -209,6 +219,14 @@ export function KetcherPage({
     void importStructures(payload.paths, fragments);
   }, [actions, importStructures]);
 
+  const decreaseKetcherScale = useCallback(() => {
+    setKetcherUIScaleIndex((index) => Math.max(0, index - 1));
+  }, []);
+
+  const increaseKetcherScale = useCallback(() => {
+    setKetcherUIScaleIndex((index) => Math.min(KETCHER_UI_SCALES.length - 1, index + 1));
+  }, []);
+
   return (
     <section
       className="ketcher-page"
@@ -229,27 +247,35 @@ export function KetcherPage({
           </div>
         </div>
         <div className="ketcher-page-actions" aria-label="Sketch actions">
-          <button type="button" disabled={!ketcher} onClick={() => void openSketch("molstar")}>Mol*</button>
-          <button type="button" disabled={!ketcher} onClick={() => void openSketch("xyzrender")}>xyzrender</button>
-          <button type="button" disabled={!ketcher} onClick={showCollectionTargetMenu}>Add to collection</button>
+          <button type="button" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("molstar")}>Mol*</button>
+          <button type="button" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("xyzrender")}>xyzrender</button>
+          <button type="button" disabled={!ketcher || exportingSketch} onClick={addSketchToCollection}>Add to collection</button>
+          <div className="ketcher-scale-control" aria-label="Ketcher scale">
+            <button type="button" aria-label="Decrease Ketcher scale" disabled={ketcherUIScaleIndex === 0} onClick={decreaseKetcherScale}>-</button>
+            <span>{ketcherUIScalePercent}%</span>
+            <button type="button" aria-label="Increase Ketcher scale" disabled={ketcherUIScaleIndex === KETCHER_UI_SCALES.length - 1} onClick={increaseKetcherScale}>+</button>
+          </div>
         </div>
       </header>
       <div className="ketcher-page-body">
         <div
           className="ketcher-editor-shell"
           data-drop-active={dropActive || undefined}
+          style={ketcherUIScaleStyle}
         >
-          <KetcherErrorBoundary>
-            <KetcherEditorLoader
-              key={editorReloadKey}
-              onReady={handleReady}
-              onStatus={setStatus}
-              onRetry={retryEditorLoad}
-            />
-          </KetcherErrorBoundary>
-          <div className="ketcher-empty-watermark" aria-hidden="true">
-            <KetcherLogo />
-          </div>
+          {shouldMountEditor ? (
+            <KetcherErrorBoundary>
+              <KetcherEditorLoader
+                key={editorReloadKey}
+                onReady={handleReady}
+                onStatus={setStatus}
+                onRetry={retryEditorLoad}
+              />
+            </KetcherErrorBoundary>
+          ) : (
+            <div className="ketcher-loading">Loading editor</div>
+          )}
+          <img className="ketcher-empty-watermark" src={ligandProLogo} alt="" aria-hidden="true" />
           {dropActive && (
             <div className="ketcher-drop-overlay">
               <div>Add to Ketcher</div>
@@ -269,15 +295,38 @@ export function KetcherPage({
   );
 }
 
-function molfileToSdf(molfile: string, smiles: string) {
+function molfileToSdf(molfile: string, smiles?: string) {
+  const fields = smiles?.trim()
+    ? ["> <SMILES>", smiles.trim(), ""]
+    : [];
   return [
     molfile.trimEnd(),
-    "> <SMILES>",
-    smiles.trim(),
-    "",
+    ...fields,
     "$$$$",
     "",
   ].join("\n");
+}
+
+function withKetcherTimeout<T>(operation: Promise<T>, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      reject(new Error(`${label} timed out`));
+    }, KETCHER_EXPORT_TIMEOUT_MS);
+
+    operation
+      .then(resolve, reject)
+      .finally(() => {
+        window.clearTimeout(timeout);
+      });
+  });
+}
+
+function ketcherExportErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/timed out/i.test(message)) {
+    return "Ketcher did not return a sketch. Draw a molecule first or try again.";
+  }
+  return "Ketcher export failed: " + message;
 }
 
 function normalizeKetcherImportText(text: string) {

@@ -116,6 +116,7 @@ pub(crate) fn create_runtime<R: Runtime>(
             reload_options.and_then(|options| options.xyzrender_preset.as_deref()),
             reload_options.and_then(|options| options.xyzrender_orientation_ref.as_deref()),
             xyzrender_controls,
+            None,
             xyzrender_input_data,
         ) {
             Ok(artifact) => {

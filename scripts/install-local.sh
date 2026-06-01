@@ -78,6 +78,7 @@ clean_detritus() {
     com.apple.provenance
     com.apple.ResourceFork
   )
+  xattr -cr "$path" 2>/dev/null || true
   clean_bundle() {
     local bundle="$1"
     xattr -cr "$bundle" 2>/dev/null || true
@@ -220,6 +221,12 @@ sign_bundled_xyzrender_runtime() {
 
 mkdir -p "$DEST_DIR"
 rm -rf "$STAGING_DEST" "$DEST" "$LEGACY_OLD_DEST" "$LEGACY_BURET_DEST" "$LEGACY_XYZ_DEST"
+if [[ -e "$STAGING_DEST" || -e "$DEST" ]]; then
+  echo "error: could not remove previous install staging or destination" >&2
+  echo "  staging: $STAGING_DEST" >&2
+  echo "  destination: $DEST" >&2
+  exit 1
+fi
 ditto --norsrc --noextattr "$APP" "$STAGING_DEST"
 rm -rf "$STAGING_DEST/Contents/Resources/Web" "$STAGING_APPEX/Contents/Resources/Web"
 ditto --norsrc --noextattr "$ROOT/PreviewExtension/Web" "$STAGING_DEST/Contents/Resources/Web"
@@ -260,6 +267,7 @@ exec "$PYTHON_ROOT/bin/python3" -m xyzrender.cli "$@"
 EOF
   chmod +x "$STAGING_XYZRENDER_ENV/bin/xyzrender"
   clean_detritus "$STAGING_XYZRENDER_ENV"
+  codesign --force --sign - "$STAGING_XYZRENDER_PYTHON/bin/python3" >/dev/null
   [[ -f "$STAGING_XYZRENDER_ENV/bin/xyzrender" ]] || {
     echo "error: bundled xyzrender runtime is missing after staging: $STAGING_XYZRENDER_ENV/bin/xyzrender" >&2
     exit 1
@@ -293,8 +301,17 @@ if ! cmp -s "$ROOT/PreviewExtension/Web/grid-viewer.js" "$DEST_APPEX/Contents/Re
   echo "error: installed Quick Look grid viewer does not match PreviewExtension/Web/grid-viewer.js" >&2
   exit 1
 fi
+if ! cmp -s "$ROOT/PreviewExtension/Web/grid.css" "$DEST/Contents/Resources/Web/grid.css"; then
+  echo "error: installed app grid CSS does not match PreviewExtension/Web/grid.css" >&2
+  exit 1
+fi
+if ! cmp -s "$ROOT/PreviewExtension/Web/grid.css" "$DEST_APPEX/Contents/Resources/Web/grid.css"; then
+  echo "error: installed Quick Look grid CSS does not match PreviewExtension/Web/grid.css" >&2
+  exit 1
+fi
 assert_bundled_xyzrender_runner "$DEST_XYZRENDER_ENV" "$DEST_XYZRENDER_PYTHON" "after final move"
 verify_installed_bundle
+rm -rf "$STAGING_DEST"
 
 [[ -x "$LSREGISTER" ]] && "$LSREGISTER" -f -R "$DEST" || true
 assert_bundled_xyzrender_runner "$DEST_XYZRENDER_ENV" "$DEST_XYZRENDER_PYTHON" "after lsregister"
