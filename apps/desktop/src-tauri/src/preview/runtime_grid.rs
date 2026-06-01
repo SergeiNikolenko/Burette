@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{Manager, Runtime};
 
-use super::grid_store::build_grid_store;
+use super::grid_store::{build_grid_store_with_options, GridParseOptions};
 use super::runtime::ViewerPreferences;
 use super::runtime_utils::{asset_url, escape_html, prune_runtime_dirs};
 use super::runtime_viewer::copy_web_assets;
@@ -34,13 +34,14 @@ struct GridRecord {
     props: BTreeMap<String, String>,
 }
 
-pub(crate) fn create_grid_runtime<R: Runtime>(
+pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
     app: &tauri::AppHandle<R>,
     document_id: &str,
     file_path: &Path,
     extension: &str,
     data: &[u8],
     preferences: &ViewerPreferences,
+    options: &GridParseOptions,
 ) -> Result<Option<PathBuf>, String> {
     if !grid_can_preview(extension) {
         return Ok(None);
@@ -57,11 +58,13 @@ pub(crate) fn create_grid_runtime<R: Runtime>(
     fs::create_dir_all(&runtime).map_err(|err| err.to_string())?;
     copy_web_assets(app, &assets)?;
     prune_runtime_dirs(&base);
-    let Some((database_path, collection)) = build_grid_store(&runtime, extension, data)? else {
+    let Some((database_path, collection)) =
+        build_grid_store_with_options(&runtime, extension, data, options)?
+    else {
         return Ok(None);
     };
     app.state::<super::grid_store::GridRuntimeRegistry>()
-        .register(document_id, database_path)?;
+        .register(document_id, database_path, collection.format)?;
     let rdkit_wasm_base64 = base64::engine::general_purpose::STANDARD.encode(
         fs::read(assets.join("rdkit").join("RDKit_minimal.wasm"))
             .map_err(|err| format!("read RDKit wasm: {err}"))?,

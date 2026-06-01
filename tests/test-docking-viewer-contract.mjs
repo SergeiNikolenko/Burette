@@ -7,12 +7,14 @@ async function source(path) {
   return readFile(resolve(path), "utf8");
 }
 
-const [app, gridViewer, viewer, dockingDocuments, fileKind, openDropHook, sidebarFileTreeNode, editorTabs, vpContract, packageJson] =
+const [app, gridViewer, viewer, dockingDocuments, dropActions, dropActionExecutor, fileKind, openDropHook, sidebarFileTreeNode, editorTabs, vpContract, packageJson] =
   await Promise.all([
     source("apps/desktop/src/App.tsx"),
     source("PreviewExtension/Web/grid-viewer.js"),
     source("PreviewExtension/Web/viewer.js"),
     source("apps/desktop/src/lib/docking-documents.ts"),
+    source("apps/desktop/src/lib/drop-actions.ts"),
+    source("apps/desktop/src/components/drop-action-executor.ts"),
     source("apps/desktop/src/components/editor-area/page-kinds/file.tsx"),
     source("apps/desktop/src/hooks/use-open-drop.ts"),
     source("apps/desktop/src/components/sidebar/file-tree-node.tsx"),
@@ -26,27 +28,52 @@ assert.match(gridViewer, /post\('openSdfPoseDocument', '\[grid\] Open SDF poses 
 assert.match(gridViewer, /documentId: cfg\?\.documentId \|\| null/);
 assert.match(gridViewer, /path: sourcePath \|\| null/);
 assert.match(gridViewer, /receptorPath: receptorPath \|\| null/);
+assert.match(gridViewer, /activePose/);
+assert.match(gridViewer, /function activePoseReviewIndex\(\)/);
+assert.match(gridViewer, /body\.type === 'poseReviewSelection'/);
+assert.match(gridViewer, /function selectPoseReviewRow\(activePose, cfg\)/);
 
 assert.match(app, /body\?\.type === "openSdfPoseDocument"/);
+assert.match(app, /const \[poseReviewSelections, setPoseReviewSelections\] = useState<Record<string, number>>\(\{\}\)/);
+assert.match(app, /body\?\.type === "dockingPoseChanged"/);
+assert.match(app, /notifyGridPoseReviewSelection\(gridDocument\.id, activePose\)/);
 assert.match(app, /const targetPath = typeof body\.path === "string" && body\.path\.trim\(\)\.length > 0/);
 assert.match(app, /const requestedReceptorPath = typeof body\.receptorPath === "string"/);
 assert.match(app, /document\.path === requestedReceptorPath/);
 assert.match(app, /document\.path !== targetPath && isProteinLikeDockingSource\(document\.path\)/);
 assert.match(app, /pushErrorStatus\("Selected receptor is not available for SDF poses\.", "SDF poses failed"\)/);
+assert.match(app, /const openPoseReviewWorkspace = useCallback/);
+assert.match(app, /openPoseReviewTab\(\{/);
+assert.match(app, /void openPoseReviewWorkspace\(receptorDocument, poseTargetDocument, activePose\)/);
 assert.match(app, /void openDockingDocument\(receptorDocument\.path, \[targetPath\]\)/);
 assert.match(app, /void openDocuments\(\[targetPath\], \{\}, \{ rendererMode: "molstar" \}\)/);
 
 assert.match(dockingDocuments, /export function dockingRequestForDrop/);
 assert.match(dockingDocuments, /existingDockingRequest/);
 assert.match(dockingDocuments, /ligandLikeDockingPaths\(\[\.\.\.existingDockingRequest\.ligandPaths, \.\.\.addedLigands\]\)/);
+assert.match(dropActions, /export type DropAction/);
+assert.match(dropActions, /export type DropActionChoice/);
+assert.match(dropActions, /export type DropSourceContext/);
+assert.match(dropActions, /export function resolveDropAction/);
+assert.match(dropActions, /export function resolveDropActionChoices/);
+assert.match(dropActions, /kind: "merge-collection"/);
+assert.match(dropActions, /kind: "add-xyzrender-sheet-items"/);
+assert.match(dropActions, /kind: "open-docking"/);
 
 assert.match(viewer, /function prepareDockingStructure\(config\)/);
 assert.match(viewer, /ligandSources\.forEach\(\(source, ligandIndex\) =>/);
 assert.match(viewer, /records\.forEach\(\(record, poseIndex\) =>/);
 assert.match(viewer, /label: `\$\{source\.label \|\| `Ligand \$\{ligandIndex \+ 1\}`\} pose \$\{poseIndex \+ 1\}`/);
+assert.match(viewer, /sourcePath: source\.path \|\| ''/);
 assert.match(viewer, /const activePose = readDockingPoseIndex\(config, poses\.length\)/);
 assert.match(viewer, /nativeTrajectoryControls: true/);
+assert.match(viewer, /activePose,\s*poseCount: nativeTrajectoryPoseCount/s);
 assert.match(viewer, /entries:\s*\[\s*entries\[0\],\s*poses\[activePose\]\s*\]/);
+assert.match(viewer, /function notifyDockingPoseChanged\(activePose, prepared\)/);
+assert.match(viewer, /type: 'dockingPoseChanged'/);
+assert.match(viewer, /const initialPose = activePose/);
+assert.match(viewer, /prepared\.nativeTrajectoryControls && initialPose > 0/);
+assert.match(viewer, /notifyDockingPoseChanged\(activePose, prepared\)/);
 
 assert.match(viewer, /function installDockingPoseControls\(viewer, prepared\)/);
 assert.match(viewer, /function nativeAnimationSelectButton\(\)/);
@@ -92,19 +119,32 @@ assert.match(viewer, /nativeTrajectoryStepButton\(direction\)/);
 assert.match(viewer, /button\.click\(\)/);
 assert.match(viewer, /installNativeTrajectoryPoseSync\(prepared\.poseCount/);
 
-assert.match(openDropHook, /const request = dockingRequestForDrop\(activeDocumentPath, paths, activeDockingRequest\)/);
-assert.match(openDropHook, /void openDockingDocument\(request\.receptorPath, request\.ligandPaths\)/);
-assert.match(openDropHook, /if \(isOverActiveViewer\(event\.position\) && openAsDocking\(event\.paths\)\) return;/);
-assert.match(openDropHook, /if \(openAsDocking\(payload\.paths\)\) return;/);
+assert.match(openDropHook, /from "\.\.\/lib\/drop-actions"/);
+assert.match(openDropHook, /resolveDropActionChoices/);
+assert.match(openDropHook, /const choices = resolveDropActionChoices/);
+assert.match(openDropHook, /choices\.length > 1 && chooseDropAction/);
+assert.match(openDropHook, /kind: "active-viewer"/);
+assert.match(openDropHook, /documentPath: activeDocumentPath/);
+assert.match(openDropHook, /void openDockingDocument\(action\.request\.receptorPath, action\.request\.ligandPaths\)/);
+assert.match(app, /const chooseDropAction = useCallback/);
+assert.match(app, /showNativeContextMenu\(/);
+assert.match(app, /chooseDropAction,/);
 
-assert.match(fileKind, /const request = dockingRequestForDrop\(document\.path, droppedPaths, document\.dockingRequest\)/);
-assert.match(fileKind, /void actions\.openDockingDocument\(request\.receptorPath, request\.ligandPaths\)/);
+assert.match(fileKind, /shellDropActionChoices\(payload, dropTarget\)\.filter/);
+assert.match(fileKind, /runShellDropActionChoices\(actions, droppedPayload, choices, \{ x: event\.clientX, y: event\.clientY \}/);
+assert.match(fileKind, /dockingRequest: document\.dockingRequest \?\? null/);
+assert.doesNotMatch(fileKind, /dockingRequestForDrop/);
 assert.match(fileKind, /Add to Mol\* docking view/);
 
 assert.match(sidebarFileTreeNode, /writeStructureDrag\(event\.dataTransfer, \[item\.path\]\)/);
-assert.match(sidebarFileTreeNode, /const dockingRequest = dockingRequestForDrop\(item\.path, paths\)/);
-assert.match(sidebarFileTreeNode, /item\.path\.startsWith\("burrete-docking:\/\/"\)/);
-assert.match(sidebarFileTreeNode, /void actions\.openDockingDocument\(item\.documentId \?\? item\.path, paths\)/);
+assert.match(sidebarFileTreeNode, /shellDropActionChoices\(payload, sidebarDropTarget\(item, state\), \{ kind: "sidebar" \}\)/);
+assert.match(sidebarFileTreeNode, /runShellDropActionChoices\(actions, payload, choices, \{ x: event\.clientX, y: event\.clientY \}\)/);
+assert.match(sidebarFileTreeNode, /dockingRequest: document\?\.dockingRequest \?\? null/);
+assert.doesNotMatch(sidebarFileTreeNode, /dockingRequestForDrop/);
+assert.match(dropActionExecutor, /action\.kind === "open-docking"/);
+assert.match(dropActionExecutor, /actions\.openDockingDocument\(action\.request\.receptorPath, action\.request\.ligandPaths\)/);
+assert.match(dropActionExecutor, /action\.kind === "open-docking-with-records"/);
+assert.match(dropActionExecutor, /actions\.openDockingStructureRecords\(action\.receptorPath, action\.ligandPaths, action\.records\)/);
 
 assert.match(editorTabs, /writeStructureDrag\(event\.dataTransfer, \[tabPath\]\)/);
 

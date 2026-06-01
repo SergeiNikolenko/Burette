@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import type { ShellActions, ShellViewState } from "../types";
 import { ScrollFade } from "../scroll-fade";
 import { hasStructureDrag, readStructureDragPayload, writeStructureDrag } from "../../lib/structure-drag";
+import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
 import { showNativeContextMenu } from "../native-context-menu";
 import { pageKind } from "./page-kinds";
 
@@ -160,6 +161,35 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
     moveDraggedTab(tabId, event.clientX);
   }, [moveDraggedTab]);
 
+  const handleEmptyTabStripDragOver = useCallback((event: React.DragEvent<HTMLElement>) => {
+    updateNativeTabDrag(event);
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest(".tab-shell")) return;
+    clearDragActivation();
+    if (draggingTabIdRef.current || !hasStructureDrag(event.dataTransfer)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "copy";
+  }, [clearDragActivation, updateNativeTabDrag]);
+
+  const handleEmptyTabStripDrop = useCallback((event: React.DragEvent<HTMLElement>) => {
+    if (draggingTabIdRef.current) {
+      event.preventDefault();
+      event.stopPropagation();
+      stopTabDrag();
+      return;
+    }
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest(".tab-shell") || !hasStructureDrag(event.dataTransfer)) return;
+    const payload = readStructureDragPayload(event.dataTransfer);
+    if (payload.paths.length === 0 && payload.records.length === 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    actions.setStructureDragActive(false);
+    const choices = shellDropActionChoices(payload, { kind: "workspace" }, { kind: "tab" });
+    runShellDropActionChoices(actions, payload, choices, { x: event.clientX, y: event.clientY });
+  }, [actions, stopTabDrag]);
+
   return (
     <div className="tab-strip" data-tauri-drag-region>
       <div className="tab-history-controls">
@@ -192,17 +222,8 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
         role="tablist"
         aria-label="Open structures"
         data-tauri-drag-region
-        onDragOver={(event) => {
-          updateNativeTabDrag(event);
-          const target = event.target instanceof Element ? event.target : null;
-          if (!target?.closest(".tab-shell")) clearDragActivation();
-        }}
-        onDrop={(event) => {
-          if (!draggingTabIdRef.current) return;
-          event.preventDefault();
-          event.stopPropagation();
-          stopTabDrag();
-        }}
+        onDragOver={handleEmptyTabStripDragOver}
+        onDrop={handleEmptyTabStripDrop}
       >
         {state.tabs.map((tab, index) => {
           const kind = pageKind(tab.location);
@@ -213,8 +234,16 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
           const tabDocument = fileLocation
             ? state.documents.find((document) => document.id === fileLocation.documentId || document.path === fileLocation.path) ?? null
             : null;
-          const sheetDropTarget = tabDocument?.renderer === "xyzrender-external";
           const isDragging = draggingTabId === tab.id;
+          const tabDropTarget = tabDocument
+            ? {
+                kind: "active-viewer" as const,
+                documentId: tabDocument.id,
+                documentPath: tabDocument.path,
+                renderer: tabDocument.renderer,
+                dockingRequest: tabDocument.dockingRequest ?? null,
+              }
+            : null;
           const showTabMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
             event.preventDefault();
             event.stopPropagation();
@@ -288,19 +317,24 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
                 }}
                 onDragEnd={stopTabDrag}
                 onDragOver={(event) => {
-                  if (!sheetDropTarget || !hasStructureDrag(event.dataTransfer)) return;
+                  if (!hasStructureDrag(event.dataTransfer)) return;
+                  const payload = readStructureDragPayload(event.dataTransfer);
+                  if (!tabDropTarget || shellDropActionChoices(payload, tabDropTarget, { kind: "tab" }).length === 0) return;
                   event.preventDefault();
                   event.stopPropagation();
                   event.dataTransfer.dropEffect = "copy";
                 }}
                 onDrop={(event) => {
-                  if (!tabDocument || !sheetDropTarget || !hasStructureDrag(event.dataTransfer)) return;
+                  if (!tabDocument || !hasStructureDrag(event.dataTransfer)) return;
                   const payload = readStructureDragPayload(event.dataTransfer);
                   if (payload.paths.length === 0 && payload.records.length === 0) return;
+                  if (!tabDropTarget) return;
+                  const choices = shellDropActionChoices(payload, tabDropTarget, { kind: "tab" });
+                  if (choices.length === 0) return;
                   event.preventDefault();
                   event.stopPropagation();
                   actions.setStructureDragActive(false);
-                  actions.addXyzrenderSheetItems(tabDocument.id, payload);
+                  runShellDropActionChoices(actions, payload, choices, { x: event.clientX, y: event.clientY });
                 }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
@@ -354,7 +388,12 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
       <button type="button" className="new-tab" onClick={actions.openNewTab} title="New tab" aria-label="New tab">
         +
       </button>
-      <div className="tab-strip-spacer" data-tauri-drag-region />
+      <div
+        className="tab-strip-spacer"
+        data-tauri-drag-region
+        onDragOver={handleEmptyTabStripDragOver}
+        onDrop={handleEmptyTabStripDrop}
+      />
     </div>
   );
 }
