@@ -5,9 +5,18 @@ const { dockingRequestForDrop, extensionForDocking, isProteinLikeDockingSource, 
   await import("../apps/desktop/src/lib/docking-documents.ts");
 
 assert.equal(extensionForDocking("/tmp/protein.mae.gz"), "maegz");
+assert.equal(extensionForDocking("/tmp/protein.MAE.GZ"), "maegz");
 assert.equal(extensionForDocking("/tmp/ligands.sdf"), "sdf");
 assert.equal(isProteinLikeDockingSource("/tmp/receptor.pdb"), true);
+assert.equal(isProteinLikeDockingSource("/tmp/receptor.cif"), true);
+assert.equal(isProteinLikeDockingSource("/tmp/receptor.cms"), true);
+assert.equal(isProteinLikeDockingSource("/tmp/receptor.mae"), true);
+assert.equal(isProteinLikeDockingSource("/tmp/receptor.mae.gz"), true);
+assert.equal(isProteinLikeDockingSource("/tmp/receptor.maegz"), true);
+assert.equal(isProteinLikeDockingSource("/tmp/receptor.pdbqt"), true);
 assert.equal(isProteinLikeDockingSource("/tmp/poses.sdf"), false);
+assert.equal(isProteinLikeDockingSource("/tmp/field.cube"), false);
+assert.equal(isProteinLikeDockingSource("/tmp/field.cub"), false);
 
 assert.deepEqual(
   ligandDropPathsForTarget("/tmp/receptor.pdb", ["/tmp/poses.sdf", "/tmp/poses.sdf", "/tmp/receptor.pdb", "", "  "]),
@@ -26,6 +35,14 @@ assert.deepEqual(
   dockingRequestForDrop("/tmp/poses.sdf", ["/tmp/receptor.cif", "/tmp/extra.sdf"]),
   {
     receptorPath: "/tmp/receptor.cif",
+    ligandPaths: ["/tmp/poses.sdf", "/tmp/extra.sdf"],
+  },
+);
+
+assert.deepEqual(
+  dockingRequestForDrop("/tmp/poses.sdf", ["/tmp/receptor.mae.gz", "/tmp/extra.sdf"]),
+  {
+    receptorPath: "/tmp/receptor.mae.gz",
     ligandPaths: ["/tmp/poses.sdf", "/tmp/extra.sdf"],
   },
 );
