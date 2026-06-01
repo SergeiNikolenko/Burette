@@ -17,10 +17,12 @@ export function FileBrowser({
 }) {
   const [pinnedOpen, setPinnedOpen] = useState(true);
   const [ketcherDropActive, setKetcherDropActive] = useState(false);
+  const sidebarQuery = state.sidebarQuery.trim();
+  const hasSidebarQuery = sidebarQuery.length > 0;
   const visibleProjects = filterSidebarProjects(state.sidebarProjects, state.sidebarQuery);
   const pinnedItems = visibleProjects.flatMap((project) => project.items.filter((item) => item.isPinned));
-  const pinnedExpanded = pinnedOpen || state.sidebarQuery.trim().length > 0;
-  const projectsExpanded = state.projectsOpen || state.sidebarQuery.trim().length > 0;
+  const pinnedExpanded = pinnedOpen || hasSidebarQuery;
+  const projectsExpanded = state.projectsOpen || hasSidebarQuery;
   const visibleProjectIds = visibleProjects.map((project) => project.id);
   const allVisibleProjectsExpanded = visibleProjectIds.length > 0
     && visibleProjectIds.every((projectId) => state.expandedProjectIds.includes(projectId));
@@ -172,7 +174,7 @@ export function FileBrowser({
         {projectsExpanded && (
           visibleProjects.length === 0 ? (
             <div className="empty-sidebar">
-              {state.sidebarQuery.trim() ? "No matching projects or structures" : "No project structures yet"}
+              {hasSidebarQuery ? "No matching projects or structures" : "No project structures yet"}
             </div>
           ) : (
             <div className="project-tree" role="list" id="sidebar-projects-tree">

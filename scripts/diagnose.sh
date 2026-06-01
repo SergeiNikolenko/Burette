@@ -10,18 +10,7 @@ APP="$HOME/Applications/Burrete.app"
 BUILT_APP="$ROOT/build/Burrete.app"
 EXT_ID="com.local.BurreteV10.Preview"
 CONTAINER_LOG="$HOME/Library/Containers/com.local.BurreteV10.Preview/Data/Library/Caches/Burrete/Burrete.log"
-CUSTOM_TYPE="$(
-  node --input-type=module - "$ROOT/config/preview-formats.json" "$FILE" <<'NODE'
-import { readFileSync } from 'node:fs';
-import { basename, extname } from 'node:path';
-
-const registry = JSON.parse(readFileSync(process.argv[2], 'utf8'));
-const fileName = basename(process.argv[3]).toLowerCase();
-const extension = fileName.endsWith('.mae.gz') ? 'mae.gz' : extname(fileName).slice(1);
-const format = registry.formats.find((candidate) => candidate.extensions.includes(extension));
-if (format?.contentType) process.stdout.write(format.contentType);
-NODE
-)"
+CUSTOM_TYPE="$("$ROOT/scripts/preview-content-type.mjs" "$FILE")"
 
 printf '\n== File ==\n%s\n' "$FILE"
 if [ -f "$FILE" ]; then
