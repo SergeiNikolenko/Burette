@@ -45,7 +45,7 @@ const KETCHER_EDIT_MAX_BYTES = 1024 * 1024;
 const KETCHER_EDIT_MAX_ATOMS = 300;
 const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
-const GRID_ASSET_VERSION = "grid-ui-v84";
+const GRID_ASSET_VERSION = "grid-ui-v89";
 const VIEWER_ASSET_VERSION = "viewer-ui-v17";
 const REPO_ROOT = String(import.meta.env.BURRETE_REPO_ROOT || "");
 const WEB_ASSETS_BASE = fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
@@ -949,7 +949,7 @@ async function gridHtml(
     recordsTotal: records.length,
     recordsIncluded: records.length,
     recordsTruncated: false,
-    pageSize: 96,
+    pageSize: 48,
     rdkitWasmPath: "/__burette/rdkit-wasm",
     xyzrenderPreset: "default",
     xyzrenderPresetOptions: [

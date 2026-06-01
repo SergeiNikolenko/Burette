@@ -232,7 +232,7 @@ pub(crate) fn save_molecule_collection_as(
 }
 
 #[tauri::command]
-pub(crate) fn render_xyzrender_sheet_item<R: Runtime>(
+pub(crate) async fn render_xyzrender_sheet_item<R: Runtime>(
     app: tauri::AppHandle<R>,
     request: XyzrenderSheetRenderRequest,
 ) -> Result<XyzrenderSheetRenderResult, String> {
@@ -243,6 +243,17 @@ pub(crate) fn render_xyzrender_sheet_item<R: Runtime>(
         .join("viewer")
         .join("sheet")
         .join(uuid::Uuid::new_v4().to_string());
+    tauri::async_runtime::spawn_blocking(move || {
+        render_xyzrender_sheet_item_blocking(output_directory, request)
+    })
+    .await
+    .map_err(|err| format!("xyzrender sheet render task failed: {err}"))?
+}
+
+fn render_xyzrender_sheet_item_blocking(
+    output_directory: PathBuf,
+    request: XyzrenderSheetRenderRequest,
+) -> Result<XyzrenderSheetRenderResult, String> {
     fs::create_dir_all(&output_directory).map_err(|err| err.to_string())?;
 
     let inline_data = match request
@@ -299,8 +310,9 @@ pub(crate) fn render_xyzrender_sheet_item<R: Runtime>(
             .to_string();
         (input_path, extension, data, label)
     };
-    let is_smiles_input = matches!(extension.as_str(), "smi" | "smiles");
-    if !is_smiles_input {
+    let direct_smiles = if matches!(extension.as_str(), "smi" | "smiles") {
+        Some(smiles_from_sheet_data(&data)?)
+    } else {
         let format = format_for_extension(&extension)?;
         if format.is_binary {
             return Err(format!(
@@ -308,9 +320,10 @@ pub(crate) fn render_xyzrender_sheet_item<R: Runtime>(
                 input_path.display()
             ));
         }
-    }
+        None
+    };
 
-    let converted_xyz = if is_smiles_input || matches!(extension.as_str(), "cub" | "cube") {
+    let converted_xyz = if direct_smiles.is_some() || matches!(extension.as_str(), "cub" | "cube") {
         None
     } else {
         xyz_data_from_text(&data, &extension, &label)
@@ -321,6 +334,7 @@ pub(crate) fn render_xyzrender_sheet_item<R: Runtime>(
         request.preset.as_deref(),
         None,
         request.controls.as_ref(),
+        direct_smiles.as_deref(),
         converted_xyz.as_deref(),
     )?;
     let svg_path = output_directory.join(artifact.relative_path);
@@ -347,6 +361,28 @@ fn normalize_inline_structure_extension(
     }
     format_for_extension(&extension)?;
     Ok(extension)
+}
+
+fn smiles_from_sheet_data(data: &[u8]) -> Result<String, String> {
+    let text = String::from_utf8_lossy(data);
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let candidate = trimmed
+            .split(|ch: char| ch.is_whitespace() || ch == ',')
+            .find(|value| !value.trim().is_empty())
+            .unwrap_or_default()
+            .trim();
+        if candidate.eq_ignore_ascii_case("smiles") || candidate.eq_ignore_ascii_case("smile") {
+            continue;
+        }
+        if !candidate.is_empty() {
+            return Ok(candidate.to_string());
+        }
+    }
+    Err("SMILES sheet input is empty".to_string())
 }
 
 fn safe_text_structure_file_name(title: &str, extension: &str) -> String {
@@ -780,7 +816,7 @@ fn pick_open_targets_macos<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<Vec<
 mod tests {
     use super::{
         expand_open_targets, looks_like_supported_structure_file,
-        normalize_inline_structure_extension,
+        normalize_inline_structure_extension, smiles_from_sheet_data,
     };
     use crate::preview::formats::supported_structure_extensions;
     use std::fs;
@@ -843,6 +879,10 @@ mod tests {
             normalize_inline_structure_extension(Some(".smi"), std::path::Path::new("row.csv"))
                 .unwrap(),
             "smi"
+        );
+        assert_eq!(
+            smiles_from_sheet_data(b"SMILES name\n\nc1ccccc1 benzene\n").unwrap(),
+            "c1ccccc1"
         );
     }
 

@@ -115,6 +115,7 @@ assert.ok(mainWindowConfig);
 assert.equal(mainWindowConfig.windowEffects?.state, 'active');
 assert.match(tauriConfig.app.security.csp, /'unsafe-eval'/);
 assert.match(tauriConfig.app.security.csp, /'wasm-unsafe-eval'/);
+assert.match(tauriConfig.app.security.csp, /style-src[^;]*'unsafe-inline'/);
 assert.ok(defaultCapability.permissions.includes('dialog:allow-open'));
 assert.ok(defaultCapability.permissions.includes('dialog:allow-message'));
 assert.match(tauriConfig.app.security.csp, /script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' asset: http:\/\/asset\.localhost/);
@@ -308,8 +309,8 @@ assert.match(gridViewerJS, /body\.type === 'gridPage' \|\| body\.type === 'xyzre
 assert.match(gridViewerJS, /function xyzrenderFragmentText\(record\)/);
 assert.match(gridViewerJS, /const smiles = firstLine\.trim\(\)\.split\(\/\\s\+\/u\)\[0\]/);
 assert.match(gridViewerJS, /inputDataBase64: textToBase64\(xyzrenderFragmentText\(record\)\)/);
-assert.match(gridViewerJS, /function xyzrenderCardImageHTML\(svg, row\)/);
-assert.match(gridViewerJS, /data:image\/svg\+xml;base64,\$\{textToBase64\(sanitized\)\}/);
+assert.match(gridViewerJS, /function prepareXyzrenderCardSVG\(svg\)/);
+assert.match(gridViewerJS, /markSVGForFitting\(html, 'data-buret-xyzrender-svg'\)/);
 assert.match(gridViewerJS, /state\.cardRenderer = 'rdkit';\n\s+store\(CARD_RENDERER_STORAGE_KEY, 'rdkit'\);/);
 assert.match(gridViewerJS, /\$\{supportsXyzrenderCards\(cfg\) \? '<button type="button" data-buret-grid-card-renderer="xyzrender"/);
 assert.match(quickLookPreviewController, /<script src="preview-config\.js"><\/script>/);

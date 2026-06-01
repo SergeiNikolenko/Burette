@@ -12,9 +12,9 @@
   const RDKIT_SVG_SIZE = 260;
   const SVG_FIT_MIN_PADDING = 12;
   const SVG_FIT_PADDING_FRACTION = 0.08;
-  const SVG_FIT_BOTTOM_PADDING_MULTIPLIER = 1.7;
-  const SVG_FIT_VERTICAL_BIAS_FRACTION = 0.08;
   const XYZRENDER_CARD_CONCURRENCY = 4;
+  const RDKIT_CARD_ROOT_MARGIN = '900px 0px';
+  const XYZRENDER_CARD_ROOT_MARGIN = '720px 0px';
   const STRUCTURE_DRAG_MIME = 'application/x-burrete-structure-paths';
   const state = {
     rdkit: null,
@@ -38,9 +38,18 @@
     selectionAnchorIndex: null,
     selectionKeydownHandler: null,
     svgCache: new Map(),
+    rdkitCardQueue: [],
+    rdkitCardRendering: false,
+    rdkitCardPending: new Map(),
+    rdkitCardSeq: 0,
+    rdkitCardObserver: null,
+    rdkitCardLazyJobs: new WeakMap(),
     xyzrenderCardCache: new Map(),
     xyzrenderCardQueue: [],
     xyzrenderCardsRunning: 0,
+    xyzrenderCardSeq: 0,
+    xyzrenderCardObserver: null,
+    xyzrenderCardLazyJobs: new WeakMap(),
     hostRequests: new Map(),
     remoteMode: false,
     remoteLoading: false,
@@ -120,6 +129,7 @@
       state.hostRequests.delete(requestId);
       try { clearTimeout(pending.timeoutId); } catch (_) {}
       if (body.type === 'gridPage' || body.type === 'xyzrenderCard') pending.resolve(body.result || {});
+      else if (body.type === 'xyzrenderSheetItemRendered') pending.resolve(body);
       else pending.reject(new Error(body.error || 'Grid host request failed.'));
     });
   }
@@ -182,8 +192,8 @@
   }
 
   function loadBatchSize(cfg) {
-    const value = Number(cfg.pageSize || 72);
-    return Number.isFinite(value) ? Math.max(12, Math.min(180, Math.floor(value))) : 72;
+    const value = Number(cfg.pageSize || 48);
+    return Number.isFinite(value) ? Math.max(12, Math.min(48, Math.floor(value))) : 48;
   }
 
   function storedOptionalInteger(key, min, max) {
@@ -360,6 +370,12 @@
             ${caps.rendererSwitch ? rendererSwitchHTML() : ''}
           </div>
         </div>
+        <nav class="buret-grid-rail" data-buret-grid-rail aria-label="Molecule navigation">
+          <div class="buret-grid-rail-hover-target" data-buret-grid-rail-hover-target aria-hidden="true"></div>
+          <span class="buret-grid-rail-active-marker" data-buret-grid-rail-active aria-hidden="true"></span>
+          <div class="buret-grid-rail-ticks" data-buret-grid-rail-ticks></div>
+          <div class="buret-grid-rail-popover buret-floating-surface" data-buret-grid-rail-popover data-state="closed" role="dialog" aria-label="Molecule navigation" aria-hidden="true" hidden inert></div>
+        </nav>
         <main id="grid" class="buret-grid"></main>
         <div id="load-sentinel" class="buret-load-sentinel" aria-hidden="true"></div>
         <footer id="footer" class="buret-grid-footer"></footer>
@@ -406,6 +422,7 @@
     state.selectionKeydownHandler = event => handleGridSelectionKeydown(event, cfg);
     document.addEventListener('keydown', state.selectionKeydownHandler);
     applyGridPreferences();
+    initGridRail(cfg);
     initInfiniteLoading(cfg);
   }
 
@@ -416,19 +433,16 @@
       document.body.classList.remove('buret-grid-manual-size');
       document.documentElement.style.removeProperty('--buret-card-effective-min');
       document.documentElement.style.removeProperty('--buret-card-min');
-      document.documentElement.style.removeProperty('--buret-card-max');
     } else {
       document.body.classList.add('buret-grid-manual-size');
       document.documentElement.style.setProperty('--buret-card-effective-min', `${state.cardMin}px`);
       document.documentElement.style.setProperty('--buret-card-min', `${state.cardMin}px`);
-      document.documentElement.style.setProperty('--buret-card-max', `${state.cardMin}px`);
     }
     const propertiesToggle = document.getElementById('show-properties');
     if (propertiesToggle) {
       propertiesToggle.classList.toggle('active', state.showProperties);
       propertiesToggle.setAttribute('aria-pressed', state.showProperties ? 'true' : 'false');
     }
-    requestAnimationFrame(fitRenderedGridSVGs);
     syncCardRendererSwitch();
     syncRdkitCoordinatesControl();
   }
@@ -704,6 +718,9 @@
   async function render(cfg) {
     const token = ++state.token;
     const grid = document.getElementById('grid');
+    resetRdkitCardObserver();
+    resetXyzrenderCardObserver();
+    resetCardRenderQueues();
     grid.innerHTML = '';
     state.renderedCount = 0;
     state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
@@ -821,9 +838,10 @@
 
   function pumpXyzrenderCardQueue() {
     while (state.xyzrenderCardsRunning < XYZRENDER_CARD_CONCURRENCY && state.xyzrenderCardQueue.length) {
+      state.xyzrenderCardQueue.sort(compareCardRenderJobs);
       const job = state.xyzrenderCardQueue.shift();
       state.xyzrenderCardsRunning++;
-      void job().finally(() => {
+      void requestXyzrenderCard(job.row, job.cfg, job.record, job.key).finally(() => {
         state.xyzrenderCardsRunning--;
         pumpXyzrenderCardQueue();
       });
@@ -872,9 +890,10 @@
         if (token !== state.token) return;
         const nextCard = card(row, cfg);
         grid.appendChild(nextCard);
-        fitCardSVGs(nextCard);
+        scheduleRdkitCard(nextCard, row);
+        scheduleXyzrenderCard(nextCard, row, cfg);
         state.renderedCount++;
-        if (state.renderedCount % 16 === 0) await new Promise(resolve => setTimeout(resolve, 0));
+        if (state.renderedCount % 8 === 0) await new Promise(resolve => requestAnimationFrame(resolve));
       }
       updateChrome(cfg);
       scrollPendingGridRow();
@@ -944,16 +963,12 @@
     const ticks = root.querySelector('[data-buret-grid-rail-ticks]');
     const popover = root.querySelector('[data-buret-grid-rail-popover]');
     if (!rail || !ticks || !popover) return;
-    rail.addEventListener('focusin', () => setGridRailOpen(true));
     ticks.addEventListener('click', event => {
       const target = event.target instanceof Element ? event.target.closest('[data-buret-grid-rail-position], [data-buret-grid-rail-index]') : null;
-      if (!target) {
-        setGridRailOpen(true);
-        return;
-      }
+      if (!target) return;
       const position = Number(target.getAttribute('data-buret-grid-rail-position'));
       const index = Number(target.getAttribute('data-buret-grid-rail-index'));
-      setGridRailOpen(true);
+      setGridRailOpen(false);
       if (Number.isFinite(position)) scrollToGridPosition(position, cfg);
       else scrollToGridRow(index, cfg);
     });
@@ -971,7 +986,6 @@
     document.addEventListener('click', state.railOutsideHandler, true);
     marker?.addEventListener('pointerdown', event => startGridRailDrag(event, cfg));
     hoverTarget?.addEventListener('click', () => setGridRailOpen(true));
-    ticks.addEventListener('click', () => setGridRailOpen(true));
     popover.addEventListener('click', event => {
       const target = event.target instanceof Element ? event.target.closest('[data-buret-grid-rail-index]') : null;
       if (!target) return;
@@ -1020,6 +1034,9 @@
     if (!ticks || !popover) return;
     ticks.dataset.open = open ? 'true' : 'false';
     popover.dataset.state = open ? 'open' : 'closed';
+    popover.setAttribute('aria-hidden', open ? 'false' : 'true');
+    popover.hidden = !open;
+    popover.inert = !open;
     if (!open) {
       state.railHoverIndex = null;
       updateGridRailHoverHighlight();
@@ -1687,6 +1704,14 @@
     card.classList.add('buret-card-resizing');
     card.dataset.buretGridResizeAxis = axis;
     const pointerId = event.pointerId;
+    let pendingWidth = startWidth;
+    let resizeFrame = 0;
+    const applyPendingWidth = () => {
+      resizeFrame = 0;
+      if (state.cardMin === pendingWidth) return;
+      state.cardMin = pendingWidth;
+      applyGridPreferences();
+    };
     try { event.currentTarget.setPointerCapture(pointerId); } catch (_) {}
     const onMove = moveEvent => {
       const deltaX = moveEvent.clientX - startX;
@@ -1694,14 +1719,15 @@
       const delta = axis === 'x'
         ? deltaX
         : (axis === 'y' ? deltaY : (Math.abs(deltaX) >= Math.abs(deltaY) ? deltaX : deltaY));
-      const nextWidth = clampInteger(startWidth + delta, limits.min, limits.max, DEFAULT_CARD_MIN);
-      if (state.cardMin !== nextWidth) {
-        state.cardMin = nextWidth;
-        store(CARD_MIN_STORAGE_KEY, nextWidth);
-        applyGridPreferences();
-      }
+      pendingWidth = clampInteger(startWidth + delta, limits.min, limits.max, DEFAULT_CARD_MIN);
+      if (!resizeFrame) resizeFrame = requestAnimationFrame(applyPendingWidth);
     };
     const onUp = () => {
+      if (resizeFrame) {
+        cancelAnimationFrame(resizeFrame);
+        applyPendingWidth();
+      }
+      store(CARD_MIN_STORAGE_KEY, state.cardMin || pendingWidth);
       document.body.classList.remove('buret-grid-resizing');
       delete document.body.dataset.buretGridResizeAxis;
       card.classList.remove('buret-card-resizing');
@@ -1716,7 +1742,19 @@
   }
 
   function draw(row, cfg) {
-    return state.cardRenderer === 'xyzrender' ? drawXyzrenderCard(row, cfg) : drawRdkit(row);
+    return state.cardRenderer === 'xyzrender' ? drawXyzrenderCard(row, cfg) : drawRdkitPlaceholder(row);
+  }
+
+  function rdkitCardKey(row) {
+    const match = state.smartsMatches.get(Number(row.index));
+    const useInputCoords = state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock);
+    return `${row.index}|${row.smiles || ''}|${hash(row.molblock || '')}|${state.smarts}|${useInputCoords ? 'file-coords' : 'new-coords'}|${match ? `${match.atoms.join(',')}:${match.bonds.join(',')}` : ''}`;
+  }
+
+  function drawRdkitPlaceholder(row) {
+    const key = rdkitCardKey(row);
+    if (state.svgCache.has(key)) return state.svgCache.get(key);
+    return `<div class="buret-molecule-loading" data-buret-rdkit-card-key="${escapeAttr(key)}">Rendering molecule...</div>`;
   }
 
   function drawRdkit(row) {
@@ -1728,7 +1766,7 @@
     }
     const match = state.smartsMatches.get(Number(row.index));
     const useInputCoords = state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock);
-    const key = `${row.index}|${row.smiles || ''}|${hash(row.molblock || '')}|${state.smarts}|${useInputCoords ? 'file-coords' : 'new-coords'}|${match ? `${match.atoms.join(',')}:${match.bonds.join(',')}` : ''}`;
+    const key = rdkitCardKey(row);
     if (state.svgCache.has(key)) return state.svgCache.get(key);
     let mol = null;
     let html = '';
@@ -1766,6 +1804,100 @@
     return html;
   }
 
+  function scheduleRdkitCard(card, row) {
+    const target = card.querySelector('[data-buret-rdkit-card-key]');
+    if (!target) return;
+    const key = target.getAttribute('data-buret-rdkit-card-key');
+    if (!key) return;
+    const start = () => enqueueRdkitCard(row, key, target);
+    state.rdkitCardLazyJobs.set(target, start);
+    const observer = ensureRdkitCardObserver();
+    if (observer) {
+      observer.observe(target);
+      return;
+    }
+    window.setTimeout(() => startLazyRdkitCard(target), 0);
+  }
+
+  function ensureRdkitCardObserver() {
+    if (typeof IntersectionObserver !== 'function') return null;
+    if (state.rdkitCardObserver) return state.rdkitCardObserver;
+    state.rdkitCardObserver = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        startLazyRdkitCard(entry.target);
+      }
+    }, { root: null, rootMargin: RDKIT_CARD_ROOT_MARGIN });
+    return state.rdkitCardObserver;
+  }
+
+  function startLazyRdkitCard(target) {
+    state.rdkitCardObserver?.unobserve?.(target);
+    const start = state.rdkitCardLazyJobs.get(target);
+    if (!start) return;
+    state.rdkitCardLazyJobs.delete(target);
+    start();
+  }
+
+  function enqueueRdkitCard(row, key, target) {
+    if (state.svgCache.has(key)) return;
+    const existing = state.rdkitCardPending.get(key);
+    if (existing) {
+      existing.target = target || existing.target;
+      return;
+    }
+    const job = { row, key, target, seq: state.rdkitCardSeq++ };
+    state.rdkitCardPending.set(key, job);
+    state.rdkitCardQueue.push(job);
+    pumpRdkitCardQueue();
+  }
+
+  function pumpRdkitCardQueue() {
+    if (state.rdkitCardRendering || !state.rdkitCardQueue.length) return;
+    state.rdkitCardQueue.sort(compareCardRenderJobs);
+    const job = state.rdkitCardQueue.shift();
+    state.rdkitCardRendering = true;
+    requestAnimationFrame(() => {
+      try {
+        updateRdkitCard(job.key, drawRdkit(job.row));
+      } finally {
+        state.rdkitCardPending.delete(job.key);
+        state.rdkitCardRendering = false;
+        window.setTimeout(pumpRdkitCardQueue, 0);
+      }
+    });
+  }
+
+  function compareCardRenderJobs(a, b) {
+    const delta = cardRenderPriority(a.target) - cardRenderPriority(b.target);
+    return delta || ((a.seq || 0) - (b.seq || 0));
+  }
+
+  function cardRenderPriority(target) {
+    if (!target || typeof target.getBoundingClientRect !== 'function') return Number.MAX_SAFE_INTEGER;
+    const rect = target.getBoundingClientRect();
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    if (!Number.isFinite(rect.top) || !Number.isFinite(rect.bottom)) return Number.MAX_SAFE_INTEGER;
+    if (rect.bottom >= 0 && rect.top <= viewportHeight) return 0;
+    if (rect.top > viewportHeight) return rect.top - viewportHeight;
+    return Math.abs(rect.bottom);
+  }
+
+  function updateRdkitCard(key, html) {
+    root.querySelectorAll('[data-buret-rdkit-card-key]').forEach(target => {
+      if (target.getAttribute('data-buret-rdkit-card-key') !== key) return;
+      target.classList.remove('buret-molecule-loading');
+      target.removeAttribute('data-buret-rdkit-card-key');
+      target.innerHTML = html;
+    });
+  }
+
+  function resetRdkitCardObserver() {
+    state.rdkitCardObserver?.disconnect?.();
+    state.rdkitCardObserver = null;
+    state.rdkitCardLazyJobs = new WeakMap();
+  }
+
   function drawXyzrenderCard(row, cfg) {
     const record = gridDragRecord(row);
     if (!record) return '<div class="buret-molecule-error"><strong>Molecule</strong><span>No structure data</span></div>';
@@ -1773,16 +1905,77 @@
     const cached = state.xyzrenderCardCache.get(key);
     if (cached?.html) return cached.html;
     if (cached?.error) return `<div class="buret-molecule-error"><strong>${escapeHTML(row.name || `Molecule ${Number(row.index) + 1}`)}</strong><span>${escapeHTML(cached.error)}</span></div>`;
-    if (!cached?.pending) {
-      state.xyzrenderCardCache.set(key, { pending: true });
-      state.xyzrenderCardQueue.push(() => requestXyzrenderCard(row, cfg, record, key));
-      pumpXyzrenderCardQueue();
-    }
-    return `<div class="buret-molecule-loading" data-buret-xyzrender-card-key="${escapeAttr(key)}">Rendering xyzrender...</div>`;
+    const preview = drawRdkitPlaceholder(row);
+    return `<div class="buret-xyzrender-preview" data-buret-xyzrender-card-key="${escapeAttr(key)}">${preview}</div>`;
   }
 
   function xyzrenderCardKey(row, record) {
     return `${row.index}|${record.inputExtension}|${hash(record.text || '')}|${state.smarts}`;
+  }
+
+  function scheduleXyzrenderCard(card, row, cfg) {
+    if (state.cardRenderer !== 'xyzrender') return;
+    const target = card.querySelector('[data-buret-xyzrender-card-key]');
+    if (!target) return;
+    const record = gridDragRecord(row);
+    if (!record) return;
+    const key = xyzrenderCardKey(row, record);
+    const start = () => enqueueXyzrenderCard(row, cfg, record, key, target);
+    state.xyzrenderCardLazyJobs.set(target, start);
+    const observer = ensureXyzrenderCardObserver();
+    if (observer) {
+      observer.observe(target);
+      return;
+    }
+    window.setTimeout(() => startLazyXyzrenderCard(target), 0);
+  }
+
+  function ensureXyzrenderCardObserver() {
+    if (typeof IntersectionObserver !== 'function') return null;
+    if (state.xyzrenderCardObserver) return state.xyzrenderCardObserver;
+    state.xyzrenderCardObserver = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        startLazyXyzrenderCard(entry.target);
+      }
+    }, { root: null, rootMargin: XYZRENDER_CARD_ROOT_MARGIN });
+    return state.xyzrenderCardObserver;
+  }
+
+  function startLazyXyzrenderCard(target) {
+    state.xyzrenderCardObserver?.unobserve?.(target);
+    const start = state.xyzrenderCardLazyJobs.get(target);
+    if (!start) return;
+    state.xyzrenderCardLazyJobs.delete(target);
+    start();
+  }
+
+  function resetXyzrenderCardObserver() {
+    state.xyzrenderCardObserver?.disconnect?.();
+    state.xyzrenderCardObserver = null;
+    state.xyzrenderCardLazyJobs = new WeakMap();
+  }
+
+  function resetCardRenderQueues() {
+    state.rdkitCardQueue = [];
+    state.rdkitCardPending.clear();
+    state.xyzrenderCardQueue = [];
+    state.xyzrenderCardCache.forEach((value, key) => {
+      if (value?.pending) state.xyzrenderCardCache.delete(key);
+    });
+  }
+
+  function enqueueXyzrenderCard(row, cfg, record, key, target) {
+    const cached = state.xyzrenderCardCache.get(key);
+    if (cached?.html || cached?.error) return;
+    if (cached?.pending) {
+      cached.target = target || cached.target;
+      return;
+    }
+    const job = { row, cfg, record, key, target, seq: state.xyzrenderCardSeq++ };
+    state.xyzrenderCardCache.set(key, { pending: true, target, job });
+    state.xyzrenderCardQueue.push(job);
+    pumpXyzrenderCardQueue();
   }
 
   async function requestXyzrenderCard(row, cfg, record, key) {
@@ -1812,7 +2005,8 @@
         if (!response.ok) throw new Error(typeof payload?.error === 'string' ? payload.error : `xyzrender request failed with status ${response.status}`);
       }
       if (typeof payload?.svg !== 'string' || !payload.svg.trim()) throw new Error('xyzrender endpoint returned no SVG payload');
-      const html = xyzrenderCardImageHTML(payload.svg, row);
+      const html = prepareXyzrenderCardSVG(payload.svg);
+      if (!html.includes('<svg')) throw new Error('empty xyzrender drawing');
       state.xyzrenderCardCache.set(key, { html });
       updateXyzrenderCard(key, html);
     } catch (error) {
@@ -1822,17 +2016,44 @@
     }
   }
 
-  function xyzrenderCardImageHTML(svg, row) {
-    const sanitized = sanitizeSVG(String(svg || ''));
-    if (!sanitized.includes('<svg')) throw new Error('empty xyzrender drawing');
-    const label = row?.name || `Molecule ${Number(row?.index) + 1 || 1}`;
-    return `<img class="buret-xyzrender-card-image" alt="${escapeAttr(label)}" src="data:image/svg+xml;base64,${textToBase64(sanitized)}">`;
+  async function fetchXyzrenderCard(endpoint, request) {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request)
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(typeof payload?.error === 'string' ? payload.error : `xyzrender request failed with status ${response.status}`);
+    }
+    return payload;
+  }
+
+  function prepareXyzrenderCardSVG(svg) {
+    let html = sanitizeSVG(String(svg || ''));
+    html = stripSVGClipping(html);
+    html = markSVGForFitting(html, 'data-buret-xyzrender-svg');
+    return html;
+  }
+
+  function markSVGForFitting(svg, marker) {
+    return String(svg || '').replace(/<svg\b([^>]*)>/i, (tag, attrs) => {
+      let next = tag;
+      if (!new RegExp(`\\s${marker}=`, 'i').test(attrs)) {
+        next = next.replace('<svg', `<svg ${marker}="true"`);
+      }
+      if (!/\spreserveAspectRatio=/i.test(attrs)) {
+        next = next.replace('<svg', '<svg preserveAspectRatio="xMidYMid meet"');
+      }
+      return next;
+    });
   }
 
   function updateXyzrenderCard(key, html) {
     root.querySelectorAll('[data-buret-xyzrender-card-key]').forEach(target => {
       if (target.getAttribute('data-buret-xyzrender-card-key') !== key) return;
       target.classList.remove('buret-molecule-loading');
+      target.classList.remove('buret-xyzrender-preview');
       target.removeAttribute('data-buret-xyzrender-card-key');
       target.innerHTML = html;
       const card = target.closest('.buret-card');
@@ -1900,11 +2121,11 @@
 
   function fitCardSVGs(card) {
     if (!card) return;
-    card.querySelectorAll('svg[data-buret-rdkit-svg="true"]').forEach(svg => fitSVGToContent(svg));
+    card.querySelectorAll('svg[data-buret-rdkit-svg="true"], svg[data-buret-xyzrender-svg="true"]').forEach(svg => fitSVGToContent(svg));
   }
 
   function fitRenderedGridSVGs() {
-    root.querySelectorAll('svg[data-buret-rdkit-svg="true"]').forEach(svg => fitSVGToContent(svg));
+    root.querySelectorAll('svg[data-buret-rdkit-svg="true"], svg[data-buret-xyzrender-svg="true"]').forEach(svg => fitSVGToContent(svg));
   }
 
   function fitSVGToContent(svg) {
@@ -1915,12 +2136,9 @@
     if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
     const size = Math.max(width, height);
     const padding = Math.max(SVG_FIT_MIN_PADDING, size * SVG_FIT_PADDING_FRACTION);
-    const bottomPadding = padding * SVG_FIT_BOTTOM_PADDING_MULTIPLIER;
     const centerX = bounds.x1 + width / 2;
-    const viewSize = Math.max(width + padding * 2, height + padding + bottomPadding);
-    const baseCenterY = bounds.y1 + height / 2 + (bottomPadding - padding) / 2;
-    const maxSafeBias = Math.max(0, bounds.y1 - padding + viewSize / 2 - baseCenterY);
-    const centerY = baseCenterY + Math.min(viewSize * SVG_FIT_VERTICAL_BIAS_FRACTION, maxSafeBias);
+    const centerY = bounds.y1 + height / 2;
+    const viewSize = size + padding * 2;
     svg.setAttribute('viewBox', `${centerX - viewSize / 2} ${centerY - viewSize / 2} ${viewSize} ${viewSize}`);
     svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
     svg.removeAttribute('width');
