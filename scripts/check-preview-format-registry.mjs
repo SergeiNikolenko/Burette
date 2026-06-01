@@ -150,9 +150,15 @@ assert.match(browserDevDocuments, /preview-formats\.json/);
 assert.doesNotMatch(browserDevDocuments, /\["pdb", "ent", "pdbqt", "pqr"\]/);
 
 const forcePreview = readFileSync('scripts/force-preview.sh', 'utf8');
-assert.match(forcePreview, /config\/preview-formats\.json/);
+assert.match(forcePreview, /preview-content-type\.mjs/);
 assert.doesNotMatch(forcePreview, /pdb\|PDB\|ent\|ENT/);
 assert.match(forcePreview, /com\.local\.burrete10\.xyz/);
 assert.match(forcePreview, /Normal Quick Look resolves XYZ/);
+
+const previewContentType = readFileSync('scripts/preview-content-type.mjs', 'utf8');
+assert.match(previewContentType, /config['"], ['"]preview-formats\.json/);
+assert.match(previewContentType, /mae\.gz/);
+assert.match(previewContentType, /format\?\.contentType/);
+assert.doesNotMatch(previewContentType, /pdb\|PDB\|ent\|ENT/);
 
 console.log('preview format registry check passed');
