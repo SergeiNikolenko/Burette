@@ -46,11 +46,13 @@ export function AppLayout({
     "--sidebar-layout-width": `${sidebarLayoutWidth}px`,
   } as CSSProperties;
   const effectiveTheme = resolveThemeMode(state.preferences.theme, systemThemeMode);
+  const activePageKind = state.activeTab?.location.kind ?? null;
   return (
     <main
       className="app-shell"
       data-theme={state.preferences.theme}
       data-effective-theme={effectiveTheme}
+      data-active-page-kind={activePageKind ?? undefined}
       data-runtime={isTauriRuntime() ? "tauri" : "browser"}
       data-drop-active={state.dropActive || undefined}
       data-structure-drag-active={state.structureDragActive ? "true" : undefined}

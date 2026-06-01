@@ -163,6 +163,16 @@ function ensureTabs(tabs: MoleculeTab[]) {
   return tabs.length > 0 ? tabs : [createLauncherTab()];
 }
 
+function collapseDuplicateKetcherTabs(tabs: MoleculeTab[], preferredActiveId: string | null = null) {
+  const ketcherTabs = tabs.filter((tab) => tab.location.kind === "ketcher");
+  if (ketcherTabs.length <= 1) return tabs;
+
+  const keepId = (
+    preferredActiveId ? ketcherTabs.find((tab) => tab.id === preferredActiveId)?.id : null
+  ) ?? ketcherTabs[0].id;
+  return tabs.filter((tab) => tab.location.kind !== "ketcher" || tab.id === keepId);
+}
+
 function serializeTab(tab: MoleculeTab): SessionTab | null {
   const location = serializeLocation(tab.location);
   if (!location) return null;
@@ -277,6 +287,8 @@ export const useMoleculeStore = create<MoleculeState>()(
         }),
       openKetcherTab: () =>
         set((state) => {
+          const existing = state.tabs.find((tab) => tab.location.kind === "ketcher");
+          if (existing) return { activeTabId: existing.id, activeDocumentId: null };
           const tab = createKetcherTab();
           const tabs = [...state.tabs, tab];
           return { tabs, activeTabId: tab.id, activeDocumentId: null };
@@ -374,8 +386,9 @@ export const useMoleculeStore = create<MoleculeState>()(
       },
       restoreSession: (sessionTabs, activeIndex) =>
         set((state) => {
-          const tabs = dedupeTabIds(ensureTabs(sessionTabs.map((tab) => hydrateTab(tab)).filter((tab): tab is MoleculeTab => tab !== null)));
-          const requested = activeIndex === null ? null : tabs[activeIndex]?.id ?? null;
+          const hydratedTabs = ensureTabs(sessionTabs.map((tab) => hydrateTab(tab)).filter((tab): tab is MoleculeTab => tab !== null));
+          const requested = activeIndex === null ? null : hydratedTabs[activeIndex]?.id ?? null;
+          const tabs = dedupeTabIds(ensureTabs(collapseDuplicateKetcherTabs(hydratedTabs, requested)));
           const activeTabId = activeTabIdOrFirst(tabs, requested);
           return { tabs, activeTabId, activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, state.documents) };
         }),
@@ -386,7 +399,7 @@ export const useMoleculeStore = create<MoleculeState>()(
         ? devFilesPersistedSession(state.recentStructures)
         : ({
             documents: [],
-            tabs: persistedTabs(state.tabs, state.documents),
+            tabs: persistedTabs(collapseDuplicateKetcherTabs(state.tabs, state.activeTabId), state.documents),
             activeTabId: state.activeTabId,
             recentStructures: state.recentStructures,
           }),
@@ -399,7 +412,10 @@ export const useMoleculeStore = create<MoleculeState>()(
           };
         }
         const documents = current.documents;
-        const tabs = dedupeTabIds(ensureTabs((stored?.tabs ?? current.tabs).map(cloneTab)));
+        const tabs = collapseDuplicateKetcherTabs(
+          dedupeTabIds(ensureTabs((stored?.tabs ?? current.tabs).map(cloneTab))),
+          stored?.activeTabId ?? current.activeTabId,
+        );
         const activeTabId = activeTabIdOrFirst(tabs, stored?.activeTabId ?? current.activeTabId);
         return {
           ...current,

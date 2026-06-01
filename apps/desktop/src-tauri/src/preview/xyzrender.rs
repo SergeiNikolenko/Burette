@@ -34,6 +34,7 @@ pub(crate) fn create_xyzrender_artifact(
     preset: Option<&str>,
     orientation_ref_text: Option<&str>,
     controls: Option<&XyzrenderControls>,
+    direct_smiles: Option<&str>,
     converted_input: Option<&[u8]>,
 ) -> Result<XyzrenderArtifact, String> {
     let output_path = output_directory.join("xyzrender.svg");
@@ -67,6 +68,7 @@ pub(crate) fn create_xyzrender_artifact(
             resolved_preset,
             write_orientation_ref(orientation_ref_text, &orientation_ref_path)?,
             controls,
+            direct_smiles,
         ),
         &log_path,
         XYZRENDER_TIMEOUT,
@@ -315,14 +317,19 @@ fn build_xyzrender_args(
     preset: &'static str,
     orientation_ref_path: Option<&Path>,
     controls: Option<&XyzrenderControls>,
+    direct_smiles: Option<&str>,
 ) -> Vec<String> {
-    let mut args = vec![
-        input_path.display().to_string(),
+    let mut args = if let Some(smiles) = direct_smiles.filter(|value| !value.trim().is_empty()) {
+        vec!["--smi".to_string(), smiles.trim().to_string()]
+    } else {
+        vec![input_path.display().to_string()]
+    };
+    args.extend([
         "-o".to_string(),
         output_path.display().to_string(),
         "--config".to_string(),
         resolve_config_argument(preset, controls).to_string(),
-    ];
+    ]);
     if let Some(path) = orientation_ref_path {
         args.push("--ref".to_string());
         args.push(path.display().to_string());
@@ -399,19 +406,21 @@ fn build_xyzrender_args(
             controls.extra_arguments.as_deref(),
             controls.field_mode.is_some(),
         ));
-        if let Some(mode) = normalized_field_mode(controls.field_mode.as_deref()) {
-            match mode {
-                "density" => args.push("--dens".to_string()),
-                "mo" => args.push("--mo".to_string()),
-                "esp" => {
-                    args.push("--esp".to_string());
-                    args.push(input_path.display().to_string());
+        if direct_smiles.is_none() {
+            if let Some(mode) = normalized_field_mode(controls.field_mode.as_deref()) {
+                match mode {
+                    "density" => args.push("--dens".to_string()),
+                    "mo" => args.push("--mo".to_string()),
+                    "esp" => {
+                        args.push("--esp".to_string());
+                        args.push(input_path.display().to_string());
+                    }
+                    "nci" => {
+                        args.push("--nci-surf".to_string());
+                        args.push(input_path.display().to_string());
+                    }
+                    _ => {}
                 }
-                "nci" => {
-                    args.push("--nci-surf".to_string());
-                    args.push(input_path.display().to_string());
-                }
-                _ => {}
             }
         }
         if let Some(value) = finite_positive(controls.field_iso) {
@@ -882,6 +891,7 @@ mod tests {
             "custom",
             Some(Path::new("/tmp/ref.xyz")),
             Some(&controls),
+            None,
         );
 
         let joined = args.join(" ");
@@ -912,8 +922,33 @@ mod tests {
         assert!(!joined.contains("hacked.svg"));
 
         controls.field_iso = Some(0.0);
-        let zero_iso_args = build_xyzrender_args(&input, &output, "default", None, Some(&controls));
+        let zero_iso_args =
+            build_xyzrender_args(&input, &output, "default", None, Some(&controls), None);
         assert!(!zero_iso_args.join(" ").contains("--iso 0"));
+    }
+
+    #[test]
+    fn builds_direct_smiles_xyzrender_args() {
+        let input = PathBuf::from("/tmp/in.smi");
+        let output = PathBuf::from("/tmp/out.svg");
+        let controls = XyzrenderControls {
+            field_mode: Some("esp".into()),
+            ..XyzrenderControls::default()
+        };
+
+        let args = build_xyzrender_args(
+            &input,
+            &output,
+            "default",
+            None,
+            Some(&controls),
+            Some("c1ccccc1"),
+        );
+        let joined = args.join(" ");
+
+        assert!(joined.starts_with("--smi c1ccccc1 -o /tmp/out.svg --config default"));
+        assert!(!joined.contains("/tmp/in.smi"));
+        assert!(!joined.contains("--esp"));
     }
 
     #[test]

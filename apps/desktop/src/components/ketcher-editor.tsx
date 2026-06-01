@@ -1,18 +1,134 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Ketcher } from "ketcher-core";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Ketcher, Struct } from "ketcher-core";
+import "ketcher-react/dist/index.css";
 
-export type KetcherEditorApi = Pick<Ketcher, "addFragment" | "getMolfile" | "getSmiles" | "setMolecule">;
+export type KetcherEditorApi = {
+  addFragment: Ketcher["addFragment"];
+  getMolfile: Ketcher["getMolfile"];
+  getSmiles: Ketcher["getSmiles"];
+  setMolecule: Ketcher["setMolecule"];
+};
+
 type KetcherReactModule = typeof import("ketcher-react");
+type EveModule = typeof import("eve-raphael");
+type RaphaelModule = typeof import("raphael");
+type KetcherCoreModule = typeof import("ketcher-core");
 type KetcherStandaloneModule = typeof import("ketcher-standalone");
-type KetcherRequireShim = ((moduleName: string) => unknown) & { __burreteKetcherShim?: true };
-type KetcherEditorDeps = {
-  Editor: KetcherReactModule["Editor"];
-  StandaloneStructServiceProvider: KetcherStandaloneModule["StandaloneStructServiceProvider"];
+type BrowserRequire = (id: string) => unknown;
+type KetcherStruct = Struct & { isBlank?: () => boolean };
+type KetcherWithEditorStruct = Ketcher & { editor: { struct: () => KetcherStruct } };
+
+function ajvEqual(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (!left || !right || typeof left !== "object" || typeof right !== "object") {
+    return left !== left && right !== right;
+  }
+  if (left.constructor !== right.constructor) return false;
+  if (Array.isArray(left)) {
+    if (!Array.isArray(right) || left.length !== right.length) return false;
+    return left.every((item, index) => ajvEqual(item, right[index]));
+  }
+  if (left instanceof RegExp && right instanceof RegExp) {
+    return left.source === right.source && left.flags === right.flags;
+  }
+  const leftKeys = Object.keys(left);
+  const rightRecord = right as Record<string, unknown>;
+  if (leftKeys.length !== Object.keys(rightRecord).length) return false;
+  return leftKeys.every((key) => Object.prototype.hasOwnProperty.call(rightRecord, key) &&
+    ajvEqual((left as Record<string, unknown>)[key], rightRecord[key]));
+}
+
+function ajvUcs2Length(value: string): number {
+  let length = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    length += 1;
+    const code = value.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff && index + 1 < value.length) {
+      const next = value.charCodeAt(index + 1);
+      if ((next & 0xfc00) === 0xdc00) index += 1;
+    }
+  }
+  return length;
+}
+
+class AjvValidationError extends Error {
+  errors: unknown;
+  ajv = true;
+  validation = true;
+
+  constructor(errors: unknown) {
+    super("validation failed");
+    this.errors = errors;
+  }
+}
+
+const browserRequireModules: Record<string, unknown> = {
+  "ajv/dist/runtime/equal": { default: ajvEqual },
+  "ajv/dist/runtime/ucs2length": { default: ajvUcs2Length },
+  "ajv/dist/runtime/uri": { default: {} },
+  "ajv/dist/runtime/validation_error": { default: AjvValidationError },
 };
 
-type KetcherGlobal = typeof globalThis & {
-  __burreteRequire?: KetcherRequireShim;
-};
+function installKetcherBrowserRequire() {
+  const globalWithRequire = globalThis as typeof globalThis & { require?: BrowserRequire };
+  Object.defineProperty(globalWithRequire, "require", {
+    configurable: true,
+    writable: true,
+    value: (id: string) => {
+      if (id in browserRequireModules) return browserRequireModules[id];
+      throw new Error(`Unsupported browser require: ${id}`);
+    },
+  });
+}
+
+function resolveDefaultModule<T>(module: T): unknown {
+  return (module as T & { default?: unknown }).default ?? module;
+}
+
+function installRaphaelBrowserModules(eveModule: EveModule, raphaelModule: RaphaelModule) {
+  browserRequireModules.eve = resolveDefaultModule(eveModule);
+  browserRequireModules.raphael = resolveDefaultModule(raphaelModule);
+}
+
+function suppressFilledKetcherSelectionPaths(root: HTMLElement) {
+  const rootRect = root.getBoundingClientRect();
+  const minWidth = rootRect.width * 0.45;
+  const minHeight = rootRect.height * 0.45;
+
+  for (const path of root.querySelectorAll<SVGPathElement>("svg path")) {
+    const style = getComputedStyle(path);
+    if (style.fill !== "rgb(0, 0, 0)") continue;
+
+    let box: DOMRect | SVGRect;
+    try {
+      box = path.getBBox();
+    } catch {
+      continue;
+    }
+
+    if (box.width >= minWidth && box.height >= minHeight) {
+      path.style.setProperty("fill", "none", "important");
+    }
+  }
+}
+
+function createKetcherEditorApi(
+  instance: Ketcher,
+  MolSerializer: KetcherCoreModule["MolSerializer"],
+): KetcherEditorApi {
+  return {
+    addFragment: instance.addFragment.bind(instance),
+    getMolfile: async () => serializeCurrentMolfile(instance, MolSerializer),
+    getSmiles: instance.getSmiles.bind(instance),
+    setMolecule: instance.setMolecule.bind(instance),
+  };
+}
+
+function serializeCurrentMolfile(instance: Ketcher, MolSerializer: KetcherCoreModule["MolSerializer"]) {
+  const struct = (instance as KetcherWithEditorStruct).editor.struct();
+  if (struct.isBlank?.()) return "";
+  return new MolSerializer().serialize(struct);
+}
 
 export function KetcherEditor({
   onReady,
@@ -23,27 +139,38 @@ export function KetcherEditor({
   onStatus: (status: string) => void;
   onLoadError?: (error: Error) => void;
 }) {
-  const [deps, setDeps] = useState<KetcherEditorDeps | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [runtime, setRuntime] = useState<{
+    Editor: KetcherReactModule["Editor"];
+    MolSerializer: KetcherCoreModule["MolSerializer"];
+    StandaloneStructServiceProvider: KetcherStandaloneModule["StandaloneStructServiceProvider"];
+  } | null>(null);
   const [loadError, setLoadError] = useState<Error | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    onStatus("Loading editor");
+    installKetcherBrowserRequire();
     setLoadError(null);
-    setDeps(null);
-
-    void (async () => {
-      await installKetcherRuntimeShims();
-      const ketcherStandalone = await import("ketcher-standalone");
-      const ketcherReact = await import("ketcher-react");
-      await import("ketcher-react/dist/index.css");
-      return { ketcherReact, ketcherStandalone };
-    })()
-      .then(({ ketcherReact, ketcherStandalone }) => {
+    setRuntime(null);
+    import("eve-raphael")
+      .then((eveModule) => (
+        import("raphael").then((raphaelModule) => {
+          installRaphaelBrowserModules(eveModule, raphaelModule);
+        })
+      ))
+      .then(() => {
+        return Promise.all([
+          import("ketcher-react"),
+          import("ketcher-core"),
+          import("ketcher-standalone"),
+        ]);
+      })
+      .then(([reactModule, coreModule, standaloneModule]) => {
         if (cancelled) return;
-        setDeps({
-          Editor: ketcherReact.Editor,
-          StandaloneStructServiceProvider: ketcherStandalone.StandaloneStructServiceProvider,
+        setRuntime({
+          Editor: reactModule.Editor,
+          MolSerializer: coreModule.MolSerializer,
+          StandaloneStructServiceProvider: standaloneModule.StandaloneStructServiceProvider,
         });
       })
       .catch((error: unknown) => {
@@ -59,48 +186,64 @@ export function KetcherEditor({
     };
   }, [onLoadError, onStatus]);
 
-  const structServiceProvider = useMemo(() => (
-    deps ? new deps.StandaloneStructServiceProvider() : null
-  ), [deps]);
+  const structServiceProvider = useMemo(() => {
+    if (!runtime) return null;
+    return new runtime.StandaloneStructServiceProvider();
+  }, [runtime]);
 
   const handleInit = useCallback((instance: Ketcher) => {
-    onReady(instance);
+    if (!runtime) return;
+    onReady(createKetcherEditorApi(instance, runtime.MolSerializer));
     onStatus("Ready");
-  }, [onReady, onStatus]);
+  }, [onReady, onStatus, runtime]);
 
   const handleError = useCallback((message: string) => {
     onStatus(message);
   }, [onStatus]);
 
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!runtime || !root) return;
+
+    const suppress = () => suppressFilledKetcherSelectionPaths(root);
+    suppress();
+
+    const observer = new MutationObserver(suppress);
+    observer.observe(root, {
+      attributes: true,
+      attributeFilter: ["d", "fill", "style", "stroke", "stroke-dasharray"],
+      childList: true,
+      subtree: true,
+    });
+
+    const resizeObserver = new ResizeObserver(suppress);
+    resizeObserver.observe(root);
+
+    return () => {
+      observer.disconnect();
+      resizeObserver.disconnect();
+    };
+  }, [runtime]);
+
   if (loadError) {
-    return null;
+    throw loadError;
   }
 
-  if (!deps || !structServiceProvider) {
+  if (!runtime || !structServiceProvider) {
     return <div className="ketcher-loading">Loading editor</div>;
   }
 
-  const Editor = deps.Editor;
+  const { Editor } = runtime;
 
   return (
-    <Editor
-      disableMacromoleculesEditor
-      staticResourcesUrl={import.meta.env.BASE_URL}
-      structServiceProvider={structServiceProvider}
-      onInit={handleInit}
-      errorHandler={handleError}
-    />
+    <div ref={rootRef} className="ketcher-editor-root">
+      <Editor
+        disableMacromoleculesEditor
+        staticResourcesUrl={import.meta.env.BASE_URL}
+        structServiceProvider={structServiceProvider}
+        onInit={handleInit}
+        errorHandler={handleError}
+      />
+    </div>
   );
-}
-
-async function installKetcherRuntimeShims() {
-  const browserGlobal = globalThis as KetcherGlobal;
-  if (browserGlobal.__burreteRequire?.__burreteKetcherShim) return;
-  const raphaelModule = await import("raphael");
-  const requireShim: KetcherRequireShim = (moduleName: string) => {
-    if (moduleName === "raphael") return raphaelModule;
-    throw new Error(`Unsupported Ketcher CommonJS module: ${moduleName}`);
-  };
-  requireShim.__burreteKetcherShim = true;
-  browserGlobal.__burreteRequire = requireShim;
 }

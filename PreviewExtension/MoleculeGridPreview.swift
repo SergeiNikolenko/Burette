@@ -139,7 +139,7 @@ enum MoleculeGridPreviewBuilder {
             "recordsTotal": collection.recordsTotal,
             "recordsIncluded": includedRecords.count,
             "recordsTruncated": collection.recordsTotal > includedRecords.count,
-            "pageSize": host == .quickLook ? 60 : 96,
+            "pageSize": 48,
             "capabilities": [
                 "selection": allowSelection,
                 "export": allowExport,
