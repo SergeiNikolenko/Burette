@@ -1374,7 +1374,7 @@ kbd span { margin-left: 2px; }
   font-size: 13px;
   font-weight: 650;
 }
-.status-surface {
+.notification-popup {
   position: absolute;
   right: 16px;
   bottom: 16px;
@@ -1392,16 +1392,16 @@ kbd span { margin-left: 2px; }
   backdrop-filter: blur(28px) saturate(1.2);
   -webkit-backdrop-filter: blur(28px) saturate(1.2);
 }
-.status-surface[data-kind="error"] {
+.notification-popup[data-kind="error"] {
   border-color: color-mix(in srgb, #ff7b72 42%, var(--line-strong));
   background: color-mix(in srgb, var(--bg-base) 88%, transparent);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.24), inset 0 0 0 1px color-mix(in srgb, #ff7b72 12%, transparent);
 }
-.status-surface-copy {
+.notification-popup-copy {
   min-width: 0;
   flex: 1;
 }
-.status-surface-copy strong {
+.notification-popup-copy strong {
   display: block;
   margin: 0 0 4px;
   color: var(--text-primary);
@@ -1410,7 +1410,7 @@ kbd span { margin-left: 2px; }
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-.status-surface-copy p {
+.notification-popup-copy p {
   margin: 0;
   color: var(--text-secondary);
   font-size: 13px;
@@ -1419,22 +1419,22 @@ kbd span { margin-left: 2px; }
   overflow: hidden;
   max-height: calc(1.35em * 2);
 }
-.status-surface-details {
+.notification-popup-details {
   margin-top: 8px;
 }
-.status-surface-details summary {
+.notification-popup-details summary {
   cursor: default;
   color: var(--text-muted);
   font-size: 12px;
 }
-.status-surface-details ul {
+.notification-popup-details ul {
   margin: 8px 0 0;
   padding-left: 18px;
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.4;
 }
-.status-surface-dismiss {
+.notification-popup-dismiss {
   flex: 0 0 auto;
   height: 28px;
   border: 0;
@@ -1446,7 +1446,7 @@ kbd span { margin-left: 2px; }
   font-weight: 600;
   transition: background 120ms ease, color 120ms ease;
 }
-.status-surface-dismiss:hover {
+.notification-popup-dismiss:hover {
   background: var(--surface-subtle-strong);
   color: var(--text-primary);
 }
@@ -1781,7 +1781,7 @@ kbd span { margin-left: 2px; }
   .tab-history-controls { display: none; }
   .sidebar-search-row { padding: 0 28px 0 32px; }
   .settings-panel-content { width: 100%; padding: 24px 16px 72px; }
-  .status-surface {
+  .notification-popup {
     left: 16px;
     width: auto;
   }

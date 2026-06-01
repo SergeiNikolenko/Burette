@@ -80,11 +80,36 @@ function showWebContextMenu(spec: MenuItemSpec[], at?: { x: number; y: number })
     document.removeEventListener("keydown", onKeyDown);
     menu.remove();
   };
+  const menuItems = () => Array.from(menu.querySelectorAll<HTMLButtonElement>(".native-context-menu-item:not(:disabled)"));
+  const focusMenuItem = (index: number) => {
+    const items = menuItems();
+    if (items.length === 0) {
+      menu.focus();
+      return;
+    }
+    items[(index + items.length) % items.length]?.focus();
+  };
   const onOutsidePointerDown = (event: PointerEvent) => {
     if (!menu.contains(event.target as Node | null)) cleanup();
   };
   const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Escape") cleanup();
+    if (event.key === "Escape") {
+      cleanup();
+      return;
+    }
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+
+    event.preventDefault();
+    const items = menuItems();
+    const activeIndex = items.findIndex((item) => item === document.activeElement);
+    if (event.key === "Home") {
+      focusMenuItem(0);
+    } else if (event.key === "End") {
+      focusMenuItem(items.length - 1);
+    } else {
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      focusMenuItem(activeIndex === -1 ? (direction === 1 ? 0 : items.length - 1) : activeIndex + direction);
+    }
   };
 
   const themeHost = document.querySelector(".app-shell") ?? document.body;
@@ -95,5 +120,5 @@ function showWebContextMenu(spec: MenuItemSpec[], at?: { x: number; y: number })
   menu.style.top = `${y}px`;
   document.addEventListener("pointerdown", onOutsidePointerDown);
   document.addEventListener("keydown", onKeyDown);
-  menu.focus();
+  focusMenuItem(0);
 }
