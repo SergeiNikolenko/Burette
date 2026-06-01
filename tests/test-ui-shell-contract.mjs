@@ -18,6 +18,7 @@ const [
   settingsHook,
   shellStore,
   packageJson,
+  themeSource,
   appLayout,
   main,
   sidebar,
@@ -79,6 +80,7 @@ const [
   source('apps/desktop/src/hooks/use-settings.ts'),
   source('apps/desktop/src/stores/shell-store.ts'),
   source('package.json'),
+  source('apps/desktop/src/lib/theme.ts'),
   source('apps/desktop/src/components/app-layout.tsx'),
   source('apps/desktop/src/main.tsx'),
   source('apps/desktop/src/components/sidebar/index.tsx'),
@@ -517,6 +519,13 @@ assert.match(styles, /--accent: #af52de/);
 assert.match(styles, /--chrome-drag-height: 72px/);
 assert.match(styles, /\.app-shell\[data-theme="light"\] \{[^}]*--bg-base: #ffffff;[^}]*--fg-base: #0d0d0d;[^}]*--surface-card: transparent;/s);
 assert.match(styles, /@media \(prefers-color-scheme: light\) \{[\s\S]*\.app-shell\[data-theme="auto"\] \{[^}]*--bg-base: #ffffff;[^}]*--surface-card: transparent;/);
+assert.match(themeSource, /useSyncExternalStore/);
+assert.match(themeSource, /function subscribeSystemThemeMode\(onChange: \(\) => void\): \(\) => void/);
+assert.match(themeSource, /media\.addEventListener\("change", onChange\)/);
+assert.match(themeSource, /media\.removeEventListener\("change", onChange\)/);
+assert.match(appLayout, /const systemThemeMode = useSystemThemeMode\(\)/);
+assert.match(appLayout, /buildThemeStyle\(state\.preferences, systemThemeMode\)/);
+assert.match(appLayout, /resolveThemeMode\(state\.preferences\.theme, systemThemeMode\)/);
 assert.match(styles, /\*\[data-tauri-drag-region\] \{[^}]*app-region: drag;[^}]*-webkit-app-region: drag;[^}]*\}/s);
 assert.match(styles, /button, select, input, textarea, \.tab-shell, \.tab, \.new-tab, \.chrome-button, \.tab-history-button, \.sidebar-search-row, \.sidebar-tool-row, \.sidebar-section-title-button, \.sidebar-section-menu-button, \.project-group-row, \.project-group-menu-button, \.project, \.project-show-more, \.pin-hit, \.splitter \{[^}]*app-region: no-drag;[^}]*-webkit-app-region: no-drag;[^}]*\}/s);
 assert.match(styles, /\.drag-region \{[^}]*height: var\(--chrome-drag-height\);[^}]*z-index: 2/s);
