@@ -49,6 +49,16 @@ does not replace the broader renderer runtime contracts.
   extracting a Maestro atom subset for Mol* as PDB when Maestro residue, chain,
   and PDB atom fields are present. This keeps protein-like CMS previews on a
   protein-aware Mol* path instead of degrading them to bare XYZ.
+- SDF series expose an explicit Mol* pose-browser path from the grid. The
+  `Poses` action opens a receptor + ligand docking document, preserves SDF
+  record order as pose order, and exposes previous/next pose controls in Mol*.
+- Drag/drop into the `xyzrender` SVG sheet accepts paths and grid records from
+  the desktop shell and preserves the viewport drop point when the drop lands on
+  the active viewer.
+- The SVG-sheet transform model is shared by the base `xyzrender` artifact and
+  all added sheet structures: drag, resize, selection clearing, keyboard
+  rotation, and Ketcher-style hover rotation controls all use the same
+  interaction installer.
 
 ## Current Verification Evidence
 
@@ -113,12 +123,29 @@ does not replace the broader renderer runtime contracts.
 - Browser regression on `samples/mini.xyz` confirmed clicking Fast sets
   `#buret-toolbar[data-active-renderer="xyz-fast"]` and leaves Fast active and
   enabled.
+- Browser regression in the separate finish-interactions worktree confirmed
+  `single.xyz` exposes Fast, clicking it switches
+  `#buret-toolbar[data-active-renderer="xyz-fast"]`, renders a
+  `.buret-xyz-fast-root`, and emits no issue toast.
 - Browser regression on `1HTB.pdb` confirmed the toolbar stays on Mol*, the
   renderer switch is not visible, and Fast plus external `xyzrender` are both
   hidden and disabled.
+- Browser regression in the separate finish-interactions worktree confirmed
+  `1HTB.pdb` keeps Fast hidden and disabled with `aria-disabled="true"`.
 - Browser regression on `caffeine_esp.cube` confirmed the preview opens in
   external `xyzrender` mode with field controls present and default
   `fieldMode: "esp"`, `fieldOpacity: 0.5`, and solid surface style.
+- Browser smoke in a separate worktree confirmed the 10k RDKit grid loads 96
+  visible cards via `/__burette/rdkit-wasm` served as `application/wasm`.
+- Browser smoke in a separate worktree confirmed SDF grid `Poses` opens
+  `Docking: 1HTB.pdb + 1 ligand` and Mol* pose controls switch `Pose 1 / 2`
+  to `Pose 2 / 2` and back with no visible issue.
+- Browser smoke in a separate worktree confirmed the base SVG-sheet artifact can
+  be dragged from its body, rotated from the keyboard, and deselected by clicking
+  outside the artifact.
+- The SVG-sheet background is now a hit target, so clicking blank sheet space
+  clears the current structure selection without requiring a precise click on a
+  molecule card.
 - Remote candidate search found the user-reported real CMS on `kolmogorov` at
   `/mnt/ligandpro/shared_storage/nikolenko/nav18_metadynamics_20260526/nav18_7wel_95T_bpmd_n1_metadynamics/pose_01/SystemBuilder_01-out.cms`.
 - The remote real CMS is a 78 MB ASCII Maestro CMS. It contains `full_system`,
@@ -152,11 +179,7 @@ does not replace the broader renderer runtime contracts.
 - Add a full Browser performance pass that scrolls the 10k grid beyond the
   first rendered batch and records paging/render timing for both RDKit and
   `xyzrender` card modes.
-- Implement the SDF/docking Mol* interaction flow as a separate, explicit
-  feature slice:
-  - open an SDF series/grid as a Mol* docking document on demand;
-  - keep stable pose order and left/right pose navigation;
-  - support dragging ligands/receptors from the sidebar or active document into
-    a Mol* docking view;
-  - define receptor/ligand combination rules for file-to-file drops;
-  - cover the workflow with Browser and unit tests.
+- Keep extending docking drag/drop only when a concrete docking workflow needs a
+  new combination rule. The current supported path is receptor + SDF series
+  opened through the grid `Poses` action, with sidebar/active-document drops
+  routed through the existing receptor/ligand rules.

@@ -500,7 +500,7 @@ async function openBrowserDevDocumentFromBytes(
     ? convertedMolstarData.bytes
     : null;
   const xyzFrameCount = runtimeFormat.molstarFormat === "xyz" && !runtimeFormat.binary ? countXyzFrames(text) : 0;
-  const shouldOpenXyzTrajectoryInMolstar = xyzFrameCount > 1 && (requestedMode === "auto" || requestedMode === "xyz-fast");
+  const shouldOpenXyzTrajectoryInMolstar = xyzFrameCount > 1 && requestedMode === "auto";
   const xyzrenderAvailable = maestroPreview ? false : xyzrenderAvailableForDocument(format, text);
   const requestedRenderer = resolveRenderer(
     runtimeFormat,
@@ -1178,7 +1178,7 @@ function resolveRenderer(format: FormatInfo, requested: string, externalMolstarA
   const isXyz = format.molstarFormat === "xyz" && !format.binary;
   const canUseXyzrender = isXyz || canUseExternalXyzrender(format);
   if (normalized === "molstar") return "molstar";
-  if (normalized === "xyz-fast") return "molstar";
+  if (normalized === "xyz-fast") return isXyz ? "xyz-fast" : "molstar";
   if (normalized === "xyzrender-external") return canUseXyzrender ? "xyzrender-external" : "molstar";
   return isXyz ? "xyzrender-external" : "molstar";
 }

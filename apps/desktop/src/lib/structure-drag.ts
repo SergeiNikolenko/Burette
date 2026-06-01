@@ -6,9 +6,15 @@ export type StructureDragRecord = {
   text: string;
 };
 
+export type StructureDragPoint = {
+  x: number;
+  y: number;
+};
+
 export type StructureDragPayload = {
   paths: string[];
   records: StructureDragRecord[];
+  point?: StructureDragPoint | null;
 };
 
 export function emptyStructureDragPayload(): StructureDragPayload {

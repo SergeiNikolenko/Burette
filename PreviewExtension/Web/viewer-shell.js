@@ -22,6 +22,7 @@
           </button>
           <button class="buret-button hidden" type="button" data-buret-action="sdf-grid" aria-label="Show SDF grid" title="Show SDF grid">Grid</button>
           <div class="buret-renderer-control" data-buret-renderer-control>
+            <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="xyz-fast" aria-label="Use Fast XYZ" title="Use Fast XYZ">Fast</button>
             <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="molstar" aria-label="Use Mol* Interactive" title="Use Mol* Interactive">Mol*</button>
             <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="xyzrender-external" aria-label="Use external xyzrender" title="Use external xyzrender">xyzr</button>
           </div>

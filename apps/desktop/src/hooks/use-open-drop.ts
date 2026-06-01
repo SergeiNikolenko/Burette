@@ -21,6 +21,16 @@ type OpenDropOptions = {
   mergeMoleculeCollections?: MergeMoleculeCollections;
 };
 
+function browserDropPoint(event: React.DragEvent<HTMLElement>) {
+  return { x: event.clientX, y: event.clientY };
+}
+
+function tauriDropPoint(position: { x: number; y: number } | null | undefined) {
+  if (!position || typeof window === "undefined") return null;
+  const scale = Math.max(1, window.devicePixelRatio || 1);
+  return { x: position.x / scale, y: position.y / scale };
+}
+
 export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStatus, options: OpenDropOptions = {}) {
   const [dropActive, setDropActive] = useState(false);
   const { activeDocumentPath = null, activeDockingRequest = null, openDockingDocument, addXyzrenderSheetItems, mergeMoleculeCollections } = options;
@@ -49,7 +59,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       }
       setDropActive(false);
       if (event.type === "drop") {
-        const payload: StructureDragPayload = { paths: event.paths, records: [] };
+        const payload: StructureDragPayload = { paths: event.paths, records: [], point: tauriDropPoint(event.position) };
         if (isOverActiveViewer(event.position) && mergeMoleculeCollections?.(event.paths)) return;
         if (isOverActiveViewer(event.position) && addXyzrenderSheetItems?.(payload)) return;
         if (isOverActiveViewer(event.position) && openAsDocking(event.paths)) return;
@@ -108,6 +118,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
               .filter((path): path is string => Boolean(path)),
             records: [],
           };
+      payload.point = browserDropPoint(event);
       if (payload.paths.length > 0 || payload.records.length > 0) {
         const target = event.target instanceof Element ? event.target : null;
         if (target?.closest(".molecule-stage, .main-stage")) {
