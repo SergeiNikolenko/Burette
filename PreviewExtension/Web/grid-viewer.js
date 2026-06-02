@@ -22,6 +22,10 @@
     all: Array.isArray(window.BurreteGridRecords) ? window.BurreteGridRecords : [],
     rows: [],
     totalRows: 0,
+    recordsIndexed: 0,
+    recordsTotalHint: null,
+    indexReady: true,
+    indexing: false,
     visibleCount: 0,
     renderedCount: 0,
     query: '',
@@ -56,6 +60,7 @@
     dirty: false,
     dirtyReason: '',
     rowPatches: new Map(),
+    indexPollTimer: null,
     requestSeq: 0,
     token: 0,
     rendering: false,
@@ -178,6 +183,22 @@
         ...payload
       });
     });
+  }
+
+  function applyGridPageState(result) {
+    state.totalRows = Number(result.totalRows || 0);
+    state.recordsIndexed = Number(result.recordsIndexed || state.totalRows || 0);
+    state.recordsTotalHint = result.recordsTotalHint == null ? null : Number(result.recordsTotalHint || 0);
+    state.indexReady = result.indexReady !== false;
+    state.indexing = result.indexing === true || !state.indexReady;
+  }
+
+  function scheduleIndexPoll(cfg) {
+    if (!state.remoteMode || !state.indexing || state.indexPollTimer) return;
+    state.indexPollTimer = window.setTimeout(() => {
+      state.indexPollTimer = null;
+      if (state.indexing) void loadMoreRemote(cfg);
+    }, 500);
   }
 
   async function initRDKit() {
@@ -745,7 +766,7 @@
   }
 
   function hasMoreRows() {
-    if (state.remoteMode) return state.renderedCount < state.rows.length || state.rows.length < state.totalRows;
+    if (state.remoteMode) return state.renderedCount < state.rows.length || state.rows.length < state.totalRows || state.indexing;
     return state.renderedCount < state.rows.length;
   }
 
@@ -822,9 +843,11 @@
       });
       if (token !== state.token) return;
       state.rows = applyVirtualGridEdits(Array.isArray(result.rows) ? result.rows : []);
-      state.totalRows = Number(result.totalRows || 0);
+      state.rows = applyVirtualGridEdits(Array.isArray(result.rows) ? result.rows : []);
+      applyGridPageState(result);
       state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
       await appendVisibleRows(cfg, token);
+      scheduleIndexPoll(cfg);
     } catch (error) {
       const message = error?.message || String(error);
       setStatus(message, 'error');
@@ -857,6 +880,7 @@
           limit
         });
         const pageRows = Array.isArray(result.rows) ? result.rows : [];
+        applyGridPageState(result);
         total = Number(result.totalRows || 0);
         for (const row of pageRows) {
           const match = substructureMatch(row, qmol);
@@ -907,10 +931,11 @@
       });
       if (token !== state.token) return;
       const nextRows = applyVirtualGridEdits(Array.isArray(result.rows) ? result.rows : []);
-      state.totalRows = Number(result.totalRows || state.totalRows);
+      applyGridPageState(result);
       state.rows.push(...nextRows);
       state.visibleCount = Math.min(state.rows.length, state.visibleCount + loadBatchSize(cfg));
       await appendVisibleRows(cfg, state.token);
+      if (!nextRows.length && state.indexing) scheduleIndexPoll(cfg);
     } catch (error) {
       setStatus(error?.message || String(error), 'error');
     } finally {
@@ -971,15 +996,19 @@
   }
 
   function updateChrome(cfg) {
-    const total = Number(cfg.recordsTotal || state.all.length);
-    const included = state.remoteMode ? state.rows.length : Number(cfg.recordsIncluded || state.all.length);
+    const total = state.remoteMode
+      ? (state.recordsTotalHint || state.recordsIndexed || state.totalRows)
+      : Number(cfg.recordsTotal || state.all.length);
+    const included = state.remoteMode ? state.recordsIndexed : Number(cfg.recordsIncluded || state.all.length);
     const visible = state.remoteMode ? state.totalRows : state.rows.length;
     document.getElementById('summary').textContent = [
       `${visible.toLocaleString()} visible`,
       `${state.renderedCount.toLocaleString()} shown`,
       `${included.toLocaleString()} loaded`,
-      `${total.toLocaleString()} in file`,
       state.dirty ? `unsaved ${state.dirtyReason || 'edits'}` : '',
+      state.indexing
+        ? `${included.toLocaleString()} indexed`
+        : `${total.toLocaleString()} in file`,
       state.selected.size ? `${state.selected.size.toLocaleString()} selected` : ''
     ].filter(Boolean).join(' · ');
     if (!state.remoteMode && state.smarts.trim() && !state.smartsError) {
@@ -987,7 +1016,9 @@
     }
     const loadStatus = document.getElementById('load-status');
     if (loadStatus) {
-      loadStatus.textContent = hasMoreRows()
+      loadStatus.textContent = state.indexing
+        ? `Indexing ${included.toLocaleString()}${state.recordsTotalHint ? ` / ${state.recordsTotalHint.toLocaleString()}` : ''} molecules`
+        : hasMoreRows()
         ? `${state.renderedCount.toLocaleString()} of ${visible.toLocaleString()} shown`
         : 'All visible molecules loaded';
     }
@@ -1001,19 +1032,25 @@
     if (selectAllButton) selectAllButton.disabled = selectableIndexes.length === 0 || allCurrentSelected;
     const clearSelectionButton = document.getElementById('clear-selection');
     if (clearSelectionButton) clearSelectionButton.disabled = state.selected.size === 0;
-    document.getElementById('footer').textContent = state.smartsError
-      ? `SMARTS error: ${state.smartsError}`
-      : (state.dirty
-        ? `Virtual grid has unsaved ${state.dirtyReason || 'edits'}. Export to keep changes; the source file is unchanged.`
-        : (total > included && !state.remoteMode
-        ? `Showing first ${included.toLocaleString()} of ${total.toLocaleString()} records.`
-        : (hasMoreRows()
-          ? `Scroll to load more. ${state.renderedCount.toLocaleString()} of ${visible.toLocaleString()} visible molecules are rendered.`
-          : (state.remoteMode
-            ? 'Desktop grid runtime is loading rows on demand.'
-            : (state.cardRenderer === 'xyzrender'
-              ? 'External xyzrender card rendering.'
-              : 'Offline RDKit.js rendering. No network access required.')))));
+    let footerText;
+    if (state.smartsError) {
+      footerText = `SMARTS error: ${state.smartsError}`;
+    } else if (state.dirty) {
+      footerText = `Virtual grid has unsaved ${state.dirtyReason || 'edits'}. Export to keep changes; the source file is unchanged.`;
+    } else if (state.indexing) {
+      footerText = `Indexing continues in the background. Search and sort use ${included.toLocaleString()} indexed molecules so far.`;
+    } else if (total > included && !state.remoteMode) {
+      footerText = `Showing first ${included.toLocaleString()} of ${total.toLocaleString()} records.`;
+    } else if (hasMoreRows()) {
+      footerText = `Scroll to load more. ${state.renderedCount.toLocaleString()} of ${visible.toLocaleString()} visible molecules are rendered.`;
+    } else if (state.remoteMode) {
+      footerText = 'Desktop grid runtime is loading rows on demand.';
+    } else {
+      footerText = state.cardRenderer === 'xyzrender'
+        ? 'External xyzrender card rendering.'
+        : 'Offline RDKit.js rendering. No network access required.';
+    }
+    document.getElementById('footer').textContent = footerText;
     updateGridRail();
   }
 
@@ -2638,6 +2675,7 @@
         limit
       });
       const pageRows = applyVirtualGridEdits(Array.isArray(result.rows) ? result.rows : []);
+      applyGridPageState(result);
       total = Number(result.totalRows || 0);
       rows.push(...pageRows);
       offset += Math.max(pageRows.length, Number(result.rows?.length || 0));

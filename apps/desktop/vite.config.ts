@@ -524,10 +524,40 @@ function ketcherRaphaelRequireShimPlugin(): Plugin {
   };
 }
 
+function deferKetcherCssPlugin(): Plugin {
+  return {
+    name: "burrete-defer-ketcher-css",
+    transformIndexHtml(html) {
+      return html.replace(/\n\s*<link rel="stylesheet" crossorigin href="\.\/assets\/ketcher-[^"]+\.css">/gu, "");
+    },
+  };
+}
+
+function desktopManualChunks(id: string) {
+  const normalized = id.replaceAll("\\", "/");
+  if (normalized.includes("/node_modules/molstar/")) return "molstar";
+  if (
+    normalized.includes("/node_modules/ketcher-core/")
+    || normalized.includes("/node_modules/ketcher-react/")
+    || normalized.includes("/node_modules/ketcher-standalone/")
+    || normalized.includes("/node_modules/indigo-ketcher/")
+    || normalized.includes("/node_modules/raphael/")
+    || normalized.includes("/node_modules/eve-raphael/")
+  ) {
+    return "ketcher";
+  }
+  return undefined;
+}
+
+function resolveModulePreloadDependencies(_url: string, deps: string[], context: { hostType: "html" | "js" }) {
+  if (context.hostType !== "html") return deps;
+  return deps.filter((dep) => !dep.includes("ketcher"));
+}
+
 export default defineConfig({
   root: desktopRoot,
   base: "./",
-  plugins: [react(), ketcherRaphaelRequireShimPlugin(), browserDevXyzrenderPlugin()],
+  plugins: [react(), ketcherRaphaelRequireShimPlugin(), deferKetcherCssPlugin(), browserDevXyzrenderPlugin()],
   resolve: {
     dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
   },
@@ -555,6 +585,14 @@ export default defineConfig({
   build: {
     outDir: desktopDist,
     emptyOutDir: true,
+    modulePreload: {
+      resolveDependencies: resolveModulePreloadDependencies,
+    },
+    rollupOptions: {
+      output: {
+        manualChunks: desktopManualChunks,
+      },
+    },
   },
   clearScreen: false,
 });

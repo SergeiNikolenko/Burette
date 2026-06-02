@@ -12,6 +12,7 @@ const OWNER = 'SergeiNikolenko';
 const REPO = 'Burrete';
 const RELEASES_URL = `https://api.github.com/repos/${OWNER}/${REPO}/releases`;
 const APP_NAME = 'Burrete.app';
+const QUICK_LOOK_EXTENSION_NAME = 'BurretePreview.appex';
 const UPDATE_CHANNELS = new Set(['stable', 'beta']);
 
 async function main() {
@@ -40,21 +41,37 @@ async function main() {
     return;
   }
 
+  if (command === 'doctor') {
+    const { system } = parseOptions(args.slice(1));
+    const report = await buildDoctorReport({ system });
+    printDoctorReport(report);
+    if (report.some(item => !item.ok)) {
+      process.exit(1);
+    }
+    return;
+  }
+
   fail(`Unknown command: ${command}`);
 }
 
 async function install({ system, channel }) {
   const installDir = system ? '/Applications' : path.join(homedir(), 'Applications');
+  const installScope = system ? 'system-wide' : 'current-user';
   const release = await fetchLatestRelease(channel);
   const asset = findZipAsset(release);
   const workDir = path.join(tmpdir(), `burrete-${process.pid}`);
   const zipPath = path.join(workDir, asset.name);
   const extractDir = path.join(workDir, 'extract');
 
+  logStep(`Installing ${release.tag_name} from the ${channel} channel.`);
+  logStep(`Install scope: ${installScope} (${installDir}).`);
   await mkdir(extractDir, { recursive: true });
+  logStep(`Downloading ${asset.name}.`);
   await download(asset.browser_download_url, zipPath);
+  logStep(asset.digest ? 'Verifying release checksum.' : 'No GitHub checksum was provided; skipping checksum verification.');
   await verifyDigest(zipPath, asset.digest);
 
+  logStep('Unpacking release archive.');
   run('/usr/bin/ditto', ['-x', '-k', zipPath, extractDir], 'Failed to unzip Burrete release.');
   await mkdir(installDir, { recursive: true });
 
@@ -62,17 +79,22 @@ async function install({ system, channel }) {
   await ensureExists(sourceApp, `Release archive does not contain ${APP_NAME}.`);
   const targetApp = path.join(installDir, APP_NAME);
   try {
+    logStep(`Replacing ${targetApp}.`);
     await replaceInstalledApp({ sourceApp, targetApp });
   } catch (error) {
-    fail(`Failed to install Burrete.app: ${error?.message || String(error)}`);
+    fail(`Failed to install Burrete.app. The previous app was preserved when possible. ${error?.message || String(error)}`);
   }
+  logStep('Refreshing Quick Look registration.');
   run('/usr/bin/qlmanage', ['-r'], 'Installed Burrete, but Quick Look refresh failed.', { allowFailure: true });
   run('/usr/bin/qlmanage', ['-r', 'cache'], 'Installed Burrete, but Quick Look cache refresh failed.', { allowFailure: true });
   run('/usr/bin/killall', ['quicklookd'], 'Installed Burrete, but quicklookd restart failed.', { allowFailure: true });
   await rm(workDir, { recursive: true, force: true });
 
   console.log(`Installed ${APP_NAME} ${release.tag_name} to ${targetApp}`);
-  console.log('Open Burrete once so macOS registers the Quick Look extension.');
+  console.log('Next steps:');
+  console.log('  1. Open Burrete once so macOS registers the Quick Look extension.');
+  console.log('  2. Select a supported molecule file in Finder and press Space.');
+  console.log('  3. Run `burrete doctor` if Finder previews do not appear.');
 }
 
 function parseOptions(args) {
@@ -111,7 +133,7 @@ function parseOptions(args) {
   return { system, channel: channel || 'stable' };
 }
 
-async function fetchLatestRelease(channel) {
+export async function fetchLatestRelease(channel) {
   const response = await fetch(RELEASES_URL, {
     headers: {
       Accept: 'application/vnd.github+json',
@@ -121,10 +143,14 @@ async function fetchLatestRelease(channel) {
   if (!response.ok) {
     fail(`Could not fetch latest Burrete release: HTTP ${response.status}`);
   }
-  return selectRelease(await response.json(), channel);
+  try {
+    return selectRelease(await response.json(), channel);
+  } catch (error) {
+    fail(`Could not select a ${channel} Burrete release: ${error?.message || String(error)}`);
+  }
 }
 
-function selectRelease(releases, channel) {
+export function selectRelease(releases, channel) {
   const release = releases
     .filter(item => item && item.draft !== true)
     .filter(item => channel === 'beta' || item.prerelease !== true)
@@ -136,7 +162,7 @@ function selectRelease(releases, channel) {
   return release;
 }
 
-function findZipAsset(release, required = true) {
+export function findZipAsset(release, required = true) {
   const asset = release.assets?.find(item => /^Burrete-.+\.zip$/.test(item.name));
   if (!asset && required) {
     fail(`Release ${release.tag_name || 'unknown'} does not include a Burrete zip asset.`);
@@ -235,7 +261,60 @@ export async function replaceInstalledApp({
   }
 }
 
-function compareVersions(left, right) {
+export async function buildDoctorReport({
+  system = false,
+  exists = pathExists,
+  runCommand = spawnSync,
+} = {}) {
+  const installDir = system ? '/Applications' : path.join(homedir(), 'Applications');
+  const appPath = path.join(installDir, APP_NAME);
+  const quickLookPath = path.join(appPath, 'Contents', 'PlugIns', QUICK_LOOK_EXTENSION_NAME);
+  const appInstalled = await exists(appPath);
+  const quickLookInstalled = await exists(quickLookPath);
+  const qlmanageAvailable = await exists('/usr/bin/qlmanage');
+  const version = appInstalled ? readAppVersion(appPath, runCommand) : null;
+  return [
+    {
+      ok: appInstalled,
+      label: 'Burrete app',
+      detail: appInstalled ? appPath : `Not found at ${appPath}`,
+    },
+    {
+      ok: quickLookInstalled,
+      label: 'Quick Look extension',
+      detail: quickLookInstalled ? quickLookPath : `Not found at ${quickLookPath}`,
+    },
+    {
+      ok: qlmanageAvailable,
+      label: 'Quick Look reset tool',
+      detail: qlmanageAvailable ? '/usr/bin/qlmanage' : 'qlmanage was not found at /usr/bin/qlmanage',
+    },
+    {
+      ok: Boolean(version),
+      label: 'App version',
+      detail: version || 'Version unavailable because the app is missing or Info.plist could not be read',
+    },
+  ];
+}
+
+function printDoctorReport(report) {
+  console.log('Burrete doctor');
+  for (const item of report) {
+    console.log(`${item.ok ? 'ok' : 'fail'} - ${item.label}: ${item.detail}`);
+  }
+}
+
+function readAppVersion(appPath, runCommand = spawnSync) {
+  const plistPath = path.join(appPath, 'Contents', 'Info.plist');
+  const result = runCommand('/usr/libexec/PlistBuddy', ['-c', 'Print:CFBundleShortVersionString', plistPath], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (result.status !== 0) return null;
+  return result.stdout.trim() || null;
+}
+
+export function compareVersions(left, right) {
   const leftVersion = parseVersion(left);
   const rightVersion = parseVersion(right);
   const coreComparison = compareNumericParts(leftVersion.core, rightVersion.core);
@@ -308,21 +387,32 @@ function run(command, args, errorMessage, options = {}) {
   }
 }
 
+function logStep(message) {
+  console.log(`- ${message}`);
+}
+
 function printHelp() {
   console.log(`Burrete installer
 
 Usage:
   burrete install [--system] [--beta|--channel stable|beta]
   burrete latest [--beta|--channel stable|beta]
+  burrete doctor [--system]
 
 Commands:
   install   Download the latest Burrete release and install Burrete.app.
   latest    Print the latest release tag and zip URL.
+  doctor    Check app installation, Quick Look extension, qlmanage, and version.
 
 Options:
-  --system           Install to /Applications instead of ~/Applications.
+  --system           Use /Applications instead of ~/Applications for install or doctor.
   --beta             Select the beta update channel.
   --channel <name>   Select stable or beta releases explicitly.
+
+Launch registration:
+  For registration-only app launches, use BURRETE_LAUNCH_MODE=register with
+  Burrete.app. The installer itself registers LaunchServices and Quick Look
+  without launching the full app.
 `);
 }
 

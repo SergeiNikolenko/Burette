@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import previewFormatRegistry from "../../../config/preview-formats.json";
 import { AppLayout } from "./components/app-layout";
-import { CommandPalette } from "./components/command-palette";
+import { formatBytes } from "./components/format";
 import { showNativeContextMenu } from "./components/native-context-menu";
 import type { KetcherImportRequest, KetcherSketchRequest, ShellActions, ShellViewState, StatusKind, StatusNotice } from "./components/types";
 import { WindowTitle } from "./components/window-title";
@@ -53,12 +53,17 @@ import { browserDevRuntimeNeedsRefresh, openBrowserDevDockingDocument, openBrows
 import { isMoleculeCollectionPath } from "./lib/collection-documents";
 import { dockingRequestForDrop, isProteinLikeDockingSource } from "./lib/docking-documents";
 import type { DropActionChoice } from "./lib/drop-actions";
+import { collectPerformanceMarks, markPerformanceOnce, measureAsync } from "./lib/performance";
 import { basename, buildSidebarProjects, parentDirectory } from "./lib/sidebar-projects";
 import type { StructureDragPayload, StructureDragRecord } from "./lib/structure-drag";
 import { isTauriRuntime } from "./lib/tauri";
 import type { DockingDocumentRequest, FepSetupRequest, OpenDocumentsResult, RecentStructure, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "./types";
 import { checkForUpdates as requestUpdateCheck, clearDismissedUpdate, dismissUpdate, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically, shouldPromptForUpdate } from "./update";
 import type { UpdatePreferences, UpdateRelease, UpdateState } from "./update";
+
+const CommandPalette = lazy(() => import("./components/command-palette").then((module) => ({
+  default: module.CommandPalette,
+})));
 
 const filters = [
   {
@@ -103,6 +108,45 @@ async function browserDevFilesFromLocation() {
 
 function splitDevFiles(rawFiles: string) {
   return rawFiles.split("\n").map((path) => path.trim()).filter(Boolean);
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer) {
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  for (let index = 0; index < bytes.length; index += 1) {
+    binary += String.fromCharCode(bytes[index]);
+  }
+  return btoa(binary);
+}
+
+async function svgToPngBase64(svg: string) {
+  const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  try {
+    const image = new Image();
+    image.decoding = "async";
+    const loaded = new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error("Preview SVG could not be rasterized"));
+    });
+    image.src = url;
+    await loaded;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, image.naturalWidth || image.width);
+    canvas.height = Math.max(1, image.naturalHeight || image.height);
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Canvas is unavailable");
+    context.drawImage(image, 0, 0);
+    const pngBlob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((value) => {
+        if (value) resolve(value);
+        else reject(new Error("PNG export failed"));
+      }, "image/png");
+    });
+    return arrayBufferToBase64(await pngBlob.arrayBuffer());
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 function browserDevDockingFromLocation(): DockingDocumentRequest | null {
@@ -160,6 +204,11 @@ export default function App() {
     toggleSidebar,
   } = useSidebar();
   const [sidebarDragging, setSidebarDragging] = useState(false);
+
+  const closeGridRuntime = useCallback((documentId: string | null | undefined) => {
+    if (!documentId || !isTauriRuntime()) return;
+    void invoke("grid_close_runtime", { documentId }).catch(() => {});
+  }, []);
   const [structureDragActive, setStructureDragActive] = useState(false);
   const [ketcherImportRequest, setKetcherImportRequest] = useState<KetcherImportRequest | null>(null);
   const [status, setStatus] = useState<StatusNotice | null>(null);
@@ -183,6 +232,7 @@ export default function App() {
   const xyzrenderOrientationRefRef = useRef<string | null>(null);
   const skipNextPreferenceRefreshRef = useRef(false);
   const statusSequenceRef = useRef(0);
+  const recentErrorsRef = useRef<Array<{ message: string; details: string[]; timestampMs: number }>>([]);
   const ketcherImportSequenceRef = useRef(0);
   const commandPaletteOpen = useIsCommandPaletteOpen();
   const commandPaletteQuery = useCommandPaletteSearch();
@@ -190,14 +240,30 @@ export default function App() {
   const closeCommandPalette = useCloseCommandPalette();
   const setCommandPaletteQuery = useSetCommandPaletteSearch();
 
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      markPerformanceOnce("app:shell-visible");
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
   const pushStatus = useCallback((message: string, kind: StatusKind = "info", details: string[] = []) => {
     const trimmed = message.trim();
     if (!trimmed) return;
+    const normalizedDetails = details.filter(Boolean);
+    if (kind === "error") {
+      recentErrorsRef.current.push({
+        message: trimmed,
+        details: normalizedDetails,
+        timestampMs: Date.now(),
+      });
+      recentErrorsRef.current = recentErrorsRef.current.slice(-20);
+    }
     setStatus({
       id: ++statusSequenceRef.current,
       kind,
       message: trimmed,
-      details: details.filter(Boolean),
+      details: normalizedDetails,
     });
   }, []);
 
@@ -223,7 +289,7 @@ export default function App() {
   }, [setActiveDocument]);
 
   const focusSidebarSearch = useCallback(() => {
-    openCommandPalette();
+    openCommandPalette("search");
   }, [openCommandPalette]);
 
   const allSidebarProjects = useMemo(() => buildSidebarProjects({
@@ -300,6 +366,7 @@ export default function App() {
           : await openBrowserDevDocuments(cleanPaths, effectivePreferences, reloadOptions);
         if (options.replace) setDocuments(result.documents);
         else addDocuments(result.documents);
+        if (result.documents.length > 0) markPerformanceOnce("app:first-document-opened");
         rememberRecentStructures(result.documents);
         const openedText = "Opened " + result.documents.length + " structure" + (result.documents.length === 1 ? "" : "s");
         if (result.errors.length > 0) {
@@ -422,6 +489,15 @@ export default function App() {
     }
     pushStatus(openedText);
   }, [addDocuments, openStructureRecordDocuments, pushStatus, rememberRecentStructures]);
+
+  const openMostRecentStructure = useCallback(async () => {
+    const structure = recentStructures[0];
+    if (!structure) {
+      pushStatus("No recent structures to open", "error");
+      return;
+    }
+    await openRecentStructure(structure);
+  }, [openRecentStructure, pushStatus, recentStructures]);
 
   const chooseFiles = useCallback(async () => {
     try {
@@ -557,6 +633,102 @@ export default function App() {
       pushErrorStatus(error, "Save collection failed");
     }
   }, [documents, pushErrorStatus, pushStatus]);
+
+  const revealDocument = useCallback(async (document: ViewerDocument) => {
+    try {
+      if (isTauriRuntime()) {
+        await invoke("reveal_path", { path: document.path });
+      } else {
+        await openPath(parentDirectory(document.path) ?? document.path);
+      }
+      pushStatus("Revealed structure in Finder");
+    } catch (error) {
+      pushErrorStatus(error, "Reveal in Finder failed");
+    }
+  }, [pushErrorStatus, pushStatus]);
+
+  const revealActiveDocument = useCallback(async () => {
+    if (!activeDocument) {
+      pushStatus("No active structure to reveal", "error");
+      return;
+    }
+    await revealDocument(activeDocument);
+  }, [activeDocument, pushStatus, revealDocument]);
+
+  const copyDocumentPath = useCallback(async (document: ViewerDocument) => {
+    try {
+      await navigator.clipboard.writeText(document.path);
+      pushStatus("Copied structure path");
+    } catch (error) {
+      pushErrorStatus(error, "Copy path failed");
+    }
+  }, [pushErrorStatus, pushStatus]);
+
+  const copyActiveDocumentPath = useCallback(async () => {
+    if (!activeDocument) {
+      pushStatus("No active structure path to copy", "error");
+      return;
+    }
+    await copyDocumentPath(activeDocument);
+  }, [activeDocument, copyDocumentPath, pushStatus]);
+
+  const showDocumentMetadata = useCallback((document: ViewerDocument) => {
+    pushStatus(document.title, "info", [
+      `Path: ${document.path}`,
+      `Renderer: ${document.renderer}`,
+      `Format: ${document.extension.toUpperCase()}`,
+      `Size: ${formatBytes(document.byteCount)}`,
+    ]);
+  }, [pushStatus]);
+
+  const showActiveDocumentMetadata = useCallback(() => {
+    if (!activeDocument) {
+      pushStatus("No active structure metadata to show", "error");
+      return;
+    }
+    showDocumentMetadata(activeDocument);
+  }, [activeDocument, pushStatus, showDocumentMetadata]);
+
+  const readActiveExternalPreviewSvg = useCallback(async () => {
+    if (!activeDocument) throw new Error("No active structure preview to export");
+    if (!isTauriRuntime()) throw new Error("Preview export is available in the desktop app only");
+    return invoke<string>("read_external_preview_svg", { runtimePath: activeDocument.runtimePath });
+  }, [activeDocument]);
+
+  const exportActivePreviewAsSvg = useCallback(async () => {
+    try {
+      const svg = await readActiveExternalPreviewSvg();
+      const outputPath = await save({
+        defaultPath: `${activeDocument?.title ?? "preview"}.svg`,
+        filters: [{ name: "SVG", extensions: ["svg"] }],
+      });
+      if (!outputPath) return;
+      const savedPath = await invoke<string>("write_text_file", {
+        request: { outputPath, contents: svg },
+      });
+      pushStatus(`Exported preview to ${basename(savedPath)}`);
+    } catch (error) {
+      pushErrorStatus(error, "Export SVG failed");
+    }
+  }, [activeDocument?.title, pushErrorStatus, pushStatus, readActiveExternalPreviewSvg]);
+
+  const exportActivePreviewAsPng = useCallback(async () => {
+    try {
+      const svg = await readActiveExternalPreviewSvg();
+      const pngBase64 = await svgToPngBase64(svg);
+      const outputPath = await save({
+        defaultPath: `${activeDocument?.title ?? "preview"}.png`,
+        filters: [{ name: "PNG", extensions: ["png"] }],
+      });
+      if (!outputPath) return;
+      const savedPath = await invoke<string>("write_base64_file", {
+        request: { outputPath, contentsBase64: pngBase64 },
+      });
+      pushStatus(`Exported preview to ${basename(savedPath)}`);
+    } catch (error) {
+      pushErrorStatus(error, "Export PNG failed");
+    }
+  }, [activeDocument?.title, pushErrorStatus, pushStatus, readActiveExternalPreviewSvg]);
 
   useEffect(() => {
     if (isTauriRuntime()) return;
@@ -1129,7 +1301,47 @@ export default function App() {
     }
   }, [promptForUpdate, pushErrorStatus, update.preferences.channel]);
 
-  useMenuEvents({ chooseFiles, openSettings, checkForUpdates });
+  const clearCache = useCallback(async () => {
+    try {
+      await invoke("clear_preview_cache");
+      pushStatus("Preview cache cleared");
+    } catch (error) {
+      pushErrorStatus(error, "Preview cache clear failed");
+    }
+  }, [pushErrorStatus, pushStatus]);
+
+  const resetQuickLook = useCallback(async () => {
+    try {
+      const report = await invoke<{ ok: boolean }>("reset_quick_look");
+      pushStatus(report.ok ? "Quick Look reset completed" : "Quick Look reset reported issues", report.ok ? "info" : "error");
+    } catch (error) {
+      pushErrorStatus(error, "Quick Look reset failed");
+    }
+  }, [pushErrorStatus, pushStatus]);
+
+  const openLogs = useCallback(async () => {
+    try {
+      await invoke("open_logs_folder");
+      pushStatus("Opened logs folder");
+    } catch (error) {
+      pushErrorStatus(error, "Open logs folder failed");
+    }
+  }, [pushErrorStatus, pushStatus]);
+
+  useMenuEvents({
+    chooseFiles,
+    openMostRecentStructure,
+    revealActiveDocument,
+    copyActiveDocumentPath,
+    showActiveDocumentMetadata,
+    exportActivePreviewAsPng,
+    exportActivePreviewAsSvg,
+    clearCache,
+    resetQuickLook,
+    openLogs,
+    openSettings,
+    checkForUpdates,
+  });
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -1142,6 +1354,7 @@ export default function App() {
           value?: string;
           documentId?: string;
           path?: string | null;
+          receptorPath?: string | null;
           title?: string | null;
           extension?: string | null;
           textBase64?: string | null;
@@ -1154,7 +1367,6 @@ export default function App() {
           limit?: number | null;
           activePose?: number | null;
           sourcePath?: string | null;
-          receptorPath?: string | null;
           controls?: ViewerReloadOptions["xyzrenderControls"];
           contextDocument?: Parameters<typeof openBrowserDevMolstarContextDocument>[0];
           inputDataBase64?: string | null;
@@ -1182,6 +1394,12 @@ export default function App() {
           notifyGridPoseReviewSelection(gridDocument.id, activePose);
         }
         return;
+      }
+      if (
+        data.source === "burrete-viewer" &&
+        (body?.type === "ready" || (body?.type === "status" && body.message?.startsWith("[web] Rendered ")))
+      ) {
+        markPerformanceOnce("viewer:first-render");
       }
       if ((data.source === "burrete-viewer" || data.source === "burrete-grid") && body?.type === "renderXyzrenderSheetItem") {
         if (!body.requestId) return;
@@ -1589,9 +1807,11 @@ export default function App() {
 
   useEffect(() => {
     const loadedPreferences = loadUpdatePreferences();
-    if (shouldCheckAutomatically(loadedPreferences)) {
+    if (!shouldCheckAutomatically(loadedPreferences)) return undefined;
+    const timeout = window.setTimeout(() => {
       void checkForUpdates(true, loadedPreferences.channel);
-    }
+    }, 1200);
+    return () => window.clearTimeout(timeout);
   }, [checkForUpdates]);
 
   useEffect(() => {
@@ -1652,6 +1872,7 @@ export default function App() {
     openStructurePaths: openDocuments,
     openStructureRecords,
     openRecentStructure,
+    openMostRecentStructure,
     selectDocument,
     selectTab: setActiveTab,
     openNewTab,
@@ -1678,13 +1899,29 @@ export default function App() {
     setSidebarQuery,
     toggleProjectExpanded,
     togglePinnedStructure,
-    closeDocument,
-    closeTab,
+    closeDocument: (id: string) => {
+      closeGridRuntime(id);
+      closeDocument(id);
+    },
+    closeTab: (id: string) => {
+      const tab = tabs.find((candidate) => candidate.id === id);
+      if (tab?.location.kind === "file") {
+        const location = tab.location;
+        const document = documents.find((candidate) => (
+          candidate.id === location.documentId ||
+          candidate.path === location.path
+        ));
+        closeGridRuntime(document?.id ?? location.documentId);
+      }
+      closeTab(id);
+    },
     closeActiveDocument: () => {
+      closeGridRuntime(activeDocument?.id);
       closeActiveDocument();
       pushStatus("Closed active structure");
     },
     clearAllDocuments: () => {
+      for (const document of documents) closeGridRuntime(document.id);
       closeAllDocuments();
       pushStatus("Closed all structures");
     },
@@ -1694,33 +1931,42 @@ export default function App() {
     addXyzrenderSheetItems: addXyzrenderSheetItemsToDocument,
     mergeMoleculeCollections,
     saveMoleculeCollectionAs,
+    revealActiveDocument,
+    revealDocument,
+    copyActiveDocumentPath,
+    copyDocumentPath,
+    showActiveDocumentMetadata,
+    showDocumentMetadata,
+    exportActivePreviewAsPng,
+    exportActivePreviewAsSvg,
     setStructureDragActive,
     clearRecentStructures: () => {
       clearRecentStructures();
       pushStatus("Recent structures cleared");
     },
-    clearCache: async () => {
+    clearCache,
+    resetQuickLook,
+    openLogs,
+    exportDiagnostics: async () => {
       try {
-        await invoke("clear_preview_cache");
-        pushStatus("Preview cache cleared");
+        if (!isTauriRuntime()) {
+          pushStatus("Diagnostics export is available in the desktop app only.", "error");
+          return;
+        }
+        const outputPath = await save({
+          title: "Export Diagnostics Bundle",
+          defaultPath: `Burrete-Diagnostics-${new Date().toISOString().replace(/[:.]/g, "-")}.diagnostics`,
+          filters: [{ name: "Burrete diagnostics", extensions: ["diagnostics"] }],
+        });
+        if (!outputPath) return;
+        const exportedPath = await measureAsync("ipc:export-diagnostics", () => invoke<string>("export_diagnostics_bundle", {
+          outputPath,
+          performanceMarks: collectPerformanceMarks(),
+          recentErrors: recentErrorsRef.current,
+        }));
+        pushStatus(`Exported diagnostics to ${basename(exportedPath)}`);
       } catch (error) {
-        pushErrorStatus(error, "Preview cache clear failed");
-      }
-    },
-    resetQuickLook: async () => {
-      try {
-        const report = await invoke<{ ok: boolean }>("reset_quick_look");
-        pushStatus(report.ok ? "Quick Look reset completed" : "Quick Look reset reported issues", report.ok ? "info" : "error");
-      } catch (error) {
-        pushErrorStatus(error, "Quick Look reset failed");
-      }
-    },
-    openLogs: async () => {
-      try {
-        await invoke("open_logs_folder");
-        pushStatus("Opened logs folder");
-      } catch (error) {
-        pushErrorStatus(error, "Open logs folder failed");
+        pushErrorStatus(error, "Diagnostics export failed");
       }
     },
     checkForUpdates: async () => {
@@ -1744,7 +1990,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [addXyzrenderSheetItemsToDocument, appendGridRecords, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeTab, focusSidebarSearch, installUpdate, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDocuments, openFepSetupWorkspace, openKetcher, openKetcherSketch, openKetcherWithStructures, openNewTab, openProjectFolder, openRecentStructure, openSettings, openStructureRecords, openWorkspaceFolder, pushErrorStatus, pushStatus, saveMoleculeCollectionAs, selectDocument, setActiveTab, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
+  }), [activeDocument?.id, addXyzrenderSheetItemsToDocument, appendGridRecords, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeGridRuntime, closeTab, copyActiveDocumentPath, copyDocumentPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, installUpdate, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDocuments, openFepSetupWorkspace, openKetcher, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openProjectFolder, openRecentStructure, openSettings, openStructureRecords, openWorkspaceFolder, pushErrorStatus, pushStatus, resetQuickLook, revealActiveDocument, revealDocument, saveMoleculeCollectionAs, selectDocument, setActiveTab, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, tabs, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
@@ -1793,14 +2039,18 @@ export default function App() {
         onDrop={handleBrowserDrop}
         onPaste={handleBrowserPaste}
       />
-      <CommandPalette
-        state={state}
-        actions={actions}
-        isOpen={commandPaletteOpen}
-        query={commandPaletteQuery}
-        onQueryChange={setCommandPaletteQuery}
-        onClose={closeCommandPalette}
-      />
+      {commandPaletteOpen ? (
+        <Suspense fallback={null}>
+          <CommandPalette
+            state={state}
+            actions={actions}
+            isOpen={commandPaletteOpen}
+            query={commandPaletteQuery}
+            onQueryChange={setCommandPaletteQuery}
+            onClose={closeCommandPalette}
+          />
+        </Suspense>
+      ) : null}
     </>
   );
 }

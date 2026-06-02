@@ -63,6 +63,7 @@ const [
   instance,
   browserDevDocuments,
   viteConfig,
+  bundleReportScript,
   previewRuntimeViewer,
   previewXyzrender,
   previewViewController,
@@ -133,6 +134,7 @@ const [
   source('apps/desktop/src/lib/instance.ts'),
   source('apps/desktop/src/lib/browser-dev-documents.ts'),
   source('apps/desktop/vite.config.ts'),
+  source('scripts/bundle-report.mjs'),
   source('apps/desktop/src-tauri/src/preview/runtime_viewer.rs'),
   source('apps/desktop/src-tauri/src/preview/xyzrender.rs'),
   source('PreviewExtension/Platform/PreviewViewController.swift'),
@@ -298,15 +300,27 @@ assert.match(browserDevDocuments, /function countXyzFrames\(text: string\)/);
 assert.match(viteConfig, /return Number\.isFinite\(number\) && number > 0 \? number : null;/);
 assert.match(viteConfig, /base: "\.\/"/);
 assert.doesNotMatch(viteConfig, /const KETCHER_CHUNK_PACKAGES = \[/);
-assert.doesNotMatch(viteConfig, /manualChunks:\s*ketcherManualChunk/);
 assert.doesNotMatch(viteConfig, /onlyExplicitManualChunks/);
 assert.doesNotMatch(viteConfig, /require: "globalThis\.__burreteRequire"/);
+assert.match(viteConfig, /function desktopManualChunks\(id: string\)/);
+assert.match(viteConfig, /manualChunks: desktopManualChunks/);
+assert.match(viteConfig, /normalized\.includes\("\/node_modules\/molstar\/"\)/);
+assert.match(viteConfig, /normalized\.includes\("\/node_modules\/ketcher-core\/"\)/);
+assert.match(viteConfig, /normalized\.includes\("\/node_modules\/ketcher-react\/"\)/);
+assert.match(viteConfig, /normalized\.includes\("\/node_modules\/ketcher-standalone\/"\)/);
+assert.match(viteConfig, /normalized\.includes\("\/node_modules\/indigo-ketcher\/"\)/);
+assert.match(viteConfig, /return "ketcher";/);
+assert.match(viteConfig, /function resolveModulePreloadDependencies\(_url: string, deps: string\[\], context: \{ hostType: "html" \| "js" \}\)/);
+assert.match(viteConfig, /resolveDependencies: resolveModulePreloadDependencies/);
 assert.match(viteConfig, /function ketcherRaphaelRequireShimPlugin\(\)/);
 assert.match(viteConfig, /const target = 'require\("raphael"\)'/);
 assert.match(viteConfig, /const replacement = 'globalThis\.__burreteRequire\("raphael"\)'/);
 assert.match(viteConfig, /renderChunk\(code, chunk\)/);
 assert.match(viteConfig, /if \(!code\.includes\(target\)\) return null/);
-assert.match(viteConfig, /plugins: \[react\(\), ketcherRaphaelRequireShimPlugin\(\), browserDevXyzrenderPlugin\(\)\]/);
+assert.match(viteConfig, /function deferKetcherCssPlugin\(\)/);
+assert.match(viteConfig, /burrete-defer-ketcher-css/);
+assert.match(viteConfig, /assets\\\/ketcher-\[\^"\]\+\\\.css/);
+assert.match(viteConfig, /plugins: \[react\(\), ketcherRaphaelRequireShimPlugin\(\), deferKetcherCssPlugin\(\), browserDevXyzrenderPlugin\(\)\]/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "BurettePreviewSamples"\)/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "xyzrender-main"\)/);
 assert.match(viteConfig, /join\(repoRoot, "samples", "large", "litr_moses_10k\.csv"\)/);
@@ -407,6 +421,19 @@ assert.doesNotMatch(shellStore, /setPreference:/);
 assert.match(app, /from "\.\/hooks\/use-command-palette"/);
 assert.match(app, /from "\.\/hooks\/use-tabs"/);
 assert.match(app, /from "\.\/hooks\/use-settings"/);
+assert.match(app, /lazy\(\(\) => import\("\.\/components\/command-palette"\)/);
+assert.match(app, /markPerformanceOnce\("app:shell-visible"\)/);
+assert.match(app, /markPerformanceOnce\("app:first-document-opened"\)/);
+assert.match(app, /markPerformanceOnce\("viewer:first-render"\)/);
+assert.match(main, /import "\.\/performance-start"/);
+assert.match(main, /markPerformanceOnce\("app:react-mounted"\)/);
+assert.match(packageJson, /scripts\/bundle-report\.mjs/);
+assert.match(bundleReportScript, /source\.includes\("ketcher-core"\)/);
+assert.match(bundleReportScript, /source\.includes\("indigo-ketcher"\)/);
+assert.match(bundleReportScript, /relativePath\.toLowerCase\(\)\.includes\("ketcher"\)/);
+assert.match(bundleReportScript, /const initialKetcherAssets = assets\.filter\(\(asset\) => asset\.role === "ketcher" && asset\.initial\)/);
+assert.match(bundleReportScript, /const ketcherBoundaryOk = ketcherChunks\.length > 0 && initialKetcherAssets\.length === 0/);
+assert.match(bundleReportScript, /Ketcher lazy boundary failed/);
 assert.match(app, /useState<StatusNotice \| null>\(null\)/);
 assert.match(app, /const pushStatus = useCallback/);
 assert.match(app, /const pushErrorStatus = useCallback/);
@@ -696,6 +723,8 @@ assert.doesNotMatch(styles, /sidebar-link/);
 assert.match(launcherKind, /export const launcherKind = definePageKind/);
 assert.match(launcherKind, /<WelcomeScreen actions=\{actions\} \/>/);
 assert.match(ketcherKind, /export const ketcherKind = definePageKind/);
+assert.match(ketcherKind, /lazy\(\(\) => import\("\.\.\/\.\.\/ketcher-page"\)/);
+assert.match(ketcherKind, /<Suspense fallback=\{null\}>/);
 assert.match(ketcherKind, /<KetcherPage state=\{state\} actions=\{actions\} isActive=\{isActive\} \/>/);
 assert.match(ketcherKind, /keepAlive: false/);
 assert.match(ketcherPage, /const \[editorHasActivated, setEditorHasActivated\] = useState\(false\)/);
@@ -806,6 +835,8 @@ assert.doesNotMatch(ketcherEditor, /from "ketcher-standalone";/);
 assert.match(structureDrag, /function structureDragRecordFragmentText/);
 assert.match(structureDrag, /replace\(\/\\n\?\\\$\\\$\\\$\\\$\\s\*\$\/u, ""\)/);
 assert.match(settingsKind, /export const settingsKind = definePageKind/);
+assert.match(settingsKind, /lazy\(\(\) => import\("\.\.\/\.\.\/settings-panel"\)/);
+assert.match(settingsKind, /<Suspense fallback=\{null\}>/);
 assert.match(settingsKind, /<SettingsPanel state=\{state\} actions=\{actions\} \/>/);
 assert.match(welcome, /export function WelcomeScreen/);
 assert.match(welcome, /new-tab-copy/);
@@ -965,7 +996,19 @@ assert.match(commandPalette, /className="command-palette-group"/);
 assert.match(commandPalette, /command-palette-group-heading/);
 assert.match(commandPalette, /ArrowDown/);
 assert.match(commandPalette, /ArrowUp/);
+assert.match(commandPalette, /id="command-palette-input"/);
+assert.match(commandPalette, /const listboxId = "command-palette-listbox"/);
+assert.match(commandPalette, /const activeDescendantId = selectedItem \? `command-palette-option-\$\{selectedItem\.id\}` : undefined/);
+assert.match(commandPalette, /aria-controls=\{listboxId\}/);
+assert.match(commandPalette, /aria-activedescendant=\{activeDescendantId\}/);
+assert.match(commandPalette, /role="listbox" id=\{listboxId\} aria-label="Command results"/);
+assert.match(commandPalette, /id=\{`command-palette-option-\$\{item\.id\}`\}/);
 assert.match(commandPalette, /aria-selected=\{index === selectedIndex\}/);
+assert.match(app, /useKeyboardShortcuts\(state, actions, toggleSidebar, !commandPaletteOpen\)/);
+assert.match(styles, /--focus-ring: color-mix\(in srgb, var\(--accent\) 72%, var\(--fg-base\)\)/);
+assert.match(styles, /\.sidebar-search-row:focus-visible,[\s\S]*\.command-palette-input:focus-visible,[\s\S]*\.settings-action-button:focus-visible:not\(:disabled\) \{[\s\S]*outline: 2px solid var\(--focus-ring\)/);
+assert.match(styles, /\.command-palette-input:focus-visible,[\s\S]*\.settings-text-control:focus-visible \{[\s\S]*box-shadow: inset 0 0 0 1px var\(--focus-ring\)/);
+assert.match(styles, /\.command-palette-item:focus-visible \{[\s\S]*outline: 2px solid var\(--focus-ring\)/);
 assert.match(app, /useOpenDrop\(openDocuments, pushStatus, \{/);
 assert.match(app, /openClipboardText/);
 assert.match(app, /navigator\.clipboard\?\.readText/);
@@ -990,7 +1033,10 @@ assert.match(app, /openKetcherWithStructures,/);
 assert.match(app, /existingDockingRequest = documents\.find/);
 assert.match(app, /dockingRequestForDrop\(targetPath, droppedPaths, existingDockingRequest\)/);
 assert.match(app, /useOpenEvents\(openDocuments, pushErrorStatus\)/);
-assert.match(app, /useMenuEvents\(\{ chooseFiles, openSettings, checkForUpdates \}\)/);
+assert.match(
+  app,
+  /useMenuEvents\(\{\s*chooseFiles,\s*openMostRecentStructure,\s*revealActiveDocument,\s*copyActiveDocumentPath,\s*showActiveDocumentMetadata,\s*exportActivePreviewAsPng,\s*exportActivePreviewAsSvg,\s*clearCache,\s*resetQuickLook,\s*openLogs,\s*openSettings,\s*checkForUpdates,\s*\}\)/s,
+);
 assert.match(app, /invoke\("sync_viewer_preferences", \{ preferences \}\)/);
 assert.match(app, /await invoke<string\[]>\("pick_open_targets"\)/);
 assert.match(app, /<WindowTitle activeDocument=\{activeDocument\} \/>/);
@@ -1247,9 +1293,21 @@ assert.match(browserDevDocuments, /molstarStyle: preferences\.molstarStyle/);
 assert.match(browserDevDocuments, /uiScale: 0\.9/);
 assert.match(browserDevDocuments, /inlineSvgBase64: bytesToBase64\(new TextEncoder\(\)\.encode\(result\.svg\)\)/);
 assert.match(previewRuntimeViewer, /"inlineSvg": artifact\.inline_svg/);
+assert.match(previewRuntimeViewer, /"cacheKey": artifact\.cache_key/);
+assert.match(previewRuntimeViewer, /"cacheHit": artifact\.cache_hit/);
+assert.match(previewRuntimeViewer, /"cacheMiss": !artifact\.cache_hit/);
 assert.match(previewXyzrender, /inline_svg: String/);
+assert.match(previewXyzrender, /fn xyzrender_cache_key/);
+assert.match(previewXyzrender, /fn prune_xyzrender_cache/);
+assert.match(previewXyzrender, /read_cached_xyzrender_artifact/);
 assert.match(previewXyzrender, /let inline_svg = fs::read_to_string\(&output_path\)/);
+assert.match(previewViewController, /import CryptoKit/);
 assert.match(previewViewController, /"inlineSvg": externalArtifact\.inlineSvg/);
+assert.match(previewViewController, /"cacheKey": externalArtifact\.cacheKey/);
+assert.match(previewViewController, /"cacheHit": externalArtifact\.cacheHit/);
+assert.match(previewViewController, /"cacheMiss": !externalArtifact\.cacheHit/);
+assert.match(previewViewController, /private static func xyzrenderCacheKey/);
+assert.match(previewViewController, /private static func pruneCache/);
 assert.match(previewViewController, /let inlineSvg = try String\(contentsOf: outputURL, encoding: \.utf8\)/);
 assert.match(browserDevDocuments, /defaultLayoutState: \{ left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" \}/);
 assert.match(browserDevDocuments, /const runtimeAssetVersion = `\$\{VIEWER_ASSET_VERSION\}-\$\{Date\.now\(\)\}`/);
@@ -1521,6 +1579,37 @@ assert.match(previewViewer, /\.buret-external-artifact-stage \{ position: absolu
 assert.match(shortcuts, /actions\.openCommandPalette\(\)/);
 assert.match(shortcuts, /key === "\/" && !isEditableTarget\(event\.target\)/);
 assert.match(shortcuts, /if \(!enabled\) return undefined/);
+assert.match(shortcuts, /actions\.openMostRecentStructure\(\)/);
+assert.match(shortcuts, /actions\.revealActiveDocument\(\)/);
+assert.match(shortcuts, /actions\.copyActiveDocumentPath\(\)/);
+assert.match(shortcuts, /actions\.showActiveDocumentMetadata\(\)/);
+assert.match(shortcuts, /actions\.exportActivePreviewAsPng\(\)/);
+assert.match(shortcuts, /actions\.exportActivePreviewAsSvg\(\)/);
+assert.match(menuEventsHook, /MENU_OPEN_RECENT_EVENT/);
+assert.match(menuEventsHook, /MENU_REVEAL_ACTIVE_EVENT/);
+assert.match(menuEventsHook, /MENU_COPY_ACTIVE_PATH_EVENT/);
+assert.match(menuEventsHook, /MENU_SHOW_ACTIVE_METADATA_EVENT/);
+assert.match(menuEventsHook, /MENU_EXPORT_PREVIEW_PNG_EVENT/);
+assert.match(menuEventsHook, /MENU_EXPORT_PREVIEW_SVG_EVENT/);
+assert.match(menuEventsHook, /MENU_CLEAR_PREVIEW_CACHE_EVENT/);
+assert.match(menuEventsHook, /MENU_RESET_QUICK_LOOK_EVENT/);
+assert.match(menuEventsHook, /MENU_OPEN_LOGS_EVENT/);
+assert.match(commandPalette, /id: "open-recent"/);
+assert.match(commandPalette, /id: "search-projects"/);
+assert.match(commandPalette, /id: "reveal-active"/);
+assert.match(commandPalette, /id: "copy-active-path"/);
+assert.match(commandPalette, /id: "show-active-metadata"/);
+assert.match(commandPalette, /id: "export-preview-png"/);
+assert.match(commandPalette, /id: "export-preview-svg"/);
+assert.match(editorTabs, /id: "reveal-tab-document"/);
+assert.match(editorTabs, /id: "copy-tab-document-path"/);
+assert.match(editorTabs, /id: "show-tab-document-metadata"/);
+assert.match(windowTitle, /activeDocument\.path/);
+assert.match(app, /invoke\("reveal_path"/);
+assert.match(app, /navigator\.clipboard\.writeText\(document\.path\)/);
+assert.match(app, /invoke<string>\("read_external_preview_svg"/);
+assert.match(app, /invoke<string>\("write_text_file"/);
+assert.match(app, /invoke<string>\("write_base64_file"/);
 assert.match(app, /isKnownViewerMessageSource\(event\.source, body\?\.documentId\)/);
 assert.match(app, /data\?\.source !== "burrete-grid"/);
 assert.match(app, /body\?\.type === "copyText"/);
@@ -1587,7 +1676,19 @@ assert.match(app, /Quick Look reset reported issues/);
 assert.doesNotMatch(app, /Quick Look reset requested/);
 
 assert.match(shortcutDocs, /\| Cmd\+P or \/ \| Open command palette \|/);
+assert.match(shortcutDocs, /\| Cmd\+Shift\+O \| Open most recent structure \|/);
+assert.match(shortcutDocs, /\| Cmd\+Shift\+R \| Reveal active structure in Finder \|/);
+assert.match(shortcutDocs, /\| Cmd\+Shift\+C \| Copy active structure path \|/);
+assert.match(shortcutDocs, /\| Cmd\+I \| Show active structure metadata \|/);
+assert.match(shortcutDocs, /\| Cmd\+Shift\+E \| Export active external preview as PNG \|/);
+assert.match(shortcutDocs, /\| Cmd\+Option\+E \| Export active external preview as SVG \|/);
 assert.match(shortcutDocs, /Search Projects and Structures/);
+assert.match(shortcutDocs, /Open Recent/);
+assert.match(shortcutDocs, /Reveal in Finder/);
+assert.match(shortcutDocs, /Copy Path/);
+assert.match(shortcutDocs, /Show Metadata/);
+assert.match(shortcutDocs, /Export Preview as PNG/);
+assert.match(shortcutDocs, /Export Preview as SVG/);
 assert.match(shortcutDocs, /Clear Recent Structures/);
 assert.match(shortcutDocs, /<project>: <title>/);
 assert.doesNotMatch(readme, /executable path, built-in preset\/custom JSON config, and extra CLI flags/);
