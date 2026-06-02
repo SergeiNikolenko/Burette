@@ -248,6 +248,35 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
             event.preventDefault();
             event.stopPropagation();
             const items = [
+              ...(tabDocument
+                ? [
+                    {
+                      kind: "item" as const,
+                      id: "reveal-tab-document",
+                      text: "Reveal in Finder",
+                      action: () => {
+                        void actions.revealDocument(tabDocument);
+                      },
+                    },
+                    {
+                      kind: "item" as const,
+                      id: "copy-tab-document-path",
+                      text: "Copy Path",
+                      action: () => {
+                        void actions.copyDocumentPath(tabDocument);
+                      },
+                    },
+                    {
+                      kind: "item" as const,
+                      id: "show-tab-document-metadata",
+                      text: "Show Metadata",
+                      action: () => {
+                        actions.showDocumentMetadata(tabDocument);
+                      },
+                    },
+                    { kind: "separator" as const },
+                  ]
+                : []),
               {
                 kind: "item" as const,
                 id: "close-tab",

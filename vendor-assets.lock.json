@@ -1,7 +1,8 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "source": {
-    "bunLock": "bun.lock"
+    "bunLock": "bun.lock",
+    "profiles": "config/web-runtime-profiles.json"
   },
   "packages": {
     "molstar": {
@@ -40,5 +41,59 @@
       "bytes": 6914823,
       "sha256": "sha256-4JZ9RP7VnkSi0Hv8CPOoaCHFShTJW7fm45L+hnMzuMg="
     }
-  ]
+  ],
+  "profiles": {
+    "desktop-molstar": [
+      "molstar.js",
+      "molstar.css",
+      "viewer-runtime.css",
+      "viewer-shell.js",
+      "burette-agent.js",
+      "viewer.js"
+    ],
+    "desktop-grid": [
+      "grid-viewer.js",
+      "grid.css",
+      "rdkit/RDKit_minimal.js",
+      "rdkit/RDKit_minimal.wasm"
+    ],
+    "quicklook-molstar": [
+      "molstar.js",
+      "molstar.css",
+      "viewer-runtime.css",
+      "viewer-shell.js",
+      "burette-agent.js",
+      "viewer.js"
+    ],
+    "quicklook-grid": [
+      "grid-viewer.js",
+      "grid.css",
+      "rdkit/RDKit_minimal.js",
+      "rdkit/RDKit_minimal.wasm"
+    ],
+    "external-artifact": [
+      "viewer-runtime.css",
+      "viewer-shell.js",
+      "burette-agent.js",
+      "viewer.js"
+    ]
+  },
+  "bundleTargets": {
+    "tauri": {
+      "profiles": [
+        "desktop-molstar",
+        "desktop-grid",
+        "external-artifact"
+      ],
+      "resourceRoot": "apps/desktop/src-tauri/tauri.conf.json#/bundle/resources/../../../PreviewExtension/Web"
+    },
+    "quicklook": {
+      "profiles": [
+        "quicklook-molstar",
+        "quicklook-grid",
+        "external-artifact"
+      ],
+      "resourceRoot": "Burrete.xcodeproj/project.pbxproj#PreviewExtension/Web"
+    }
+  }
 }

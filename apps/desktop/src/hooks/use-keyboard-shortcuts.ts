@@ -21,7 +21,35 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
       }
       if (commandKey && key === "o") {
         event.preventDefault();
-        void actions.chooseFiles();
+        if (event.shiftKey) {
+          void actions.openMostRecentStructure();
+        } else {
+          void actions.chooseFiles();
+        }
+        return;
+      }
+      if (commandKey && event.shiftKey && key === "r") {
+        event.preventDefault();
+        void actions.revealActiveDocument();
+        return;
+      }
+      if (commandKey && event.shiftKey && key === "c") {
+        event.preventDefault();
+        void actions.copyActiveDocumentPath();
+        return;
+      }
+      if (commandKey && key === "i") {
+        event.preventDefault();
+        void actions.showActiveDocumentMetadata();
+        return;
+      }
+      if (commandKey && key === "e" && (event.shiftKey || event.altKey)) {
+        event.preventDefault();
+        if (event.altKey) {
+          void actions.exportActivePreviewAsSvg();
+        } else {
+          void actions.exportActivePreviewAsPng();
+        }
         return;
       }
       if (commandKey && key === "p") {

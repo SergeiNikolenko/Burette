@@ -7,12 +7,19 @@ Burrete's Quick Look extension is built from `PreviewExtension/` through
 
 ```text
 build/Burrete.app/Contents/PlugIns/BurretePreview.appex
+build/Burrete.app/Contents/PlugIns/BurreteThumbnail.appex
 ```
 
-The extension bundle identifier is:
+The preview extension bundle identifier is:
 
 ```text
 com.local.BurreteV10.Preview
+```
+
+The thumbnail extension bundle identifier is:
+
+```text
+com.local.BurreteV10.Thumbnail
 ```
 
 The main forced preview content types are:
@@ -77,11 +84,28 @@ Tail logs through the project helper:
 ./scripts/tail-log.sh
 ```
 
+The desktop app can export a local diagnostics bundle from Settings > System >
+Diagnostics or from the command palette. The exported `.diagnostics` directory
+contains app logs, Quick Look logs, environment information, an app size report,
+web performance marks, and recent UI or render errors. The app log format is:
+
+```text
+timestamp level subsystem documentId event elapsedMs message
+```
+
+Diagnostics bundles are local files only. They do not upload telemetry and do
+not include raw molecule file contents or structure payloads.
+
+Runtime cache layout, asset profiles, binary payload loading, and the boundary
+between desktop previews and Finder previews are documented in
+[Performance architecture](performance.md).
+
 ## Common Failure Points
 
 - The app was rebuilt but not reinstalled into the location Finder is using.
 - Quick Look cache was not refreshed after replacing the app.
 - The final Tauri bundle does not contain `BurretePreview.appex`.
+- The final Tauri bundle does not contain `BurreteThumbnail.appex`.
 - Vendored web assets under `PreviewExtension/Web/` are missing or stale.
 - Launch Services is still pointing at an older app bundle.
 - The selected file type is not registered to the expected forced content type.
@@ -96,6 +120,7 @@ assets:
 ./scripts/build.sh
 codesign --verify --deep --strict build/Burrete.app
 test -d build/Burrete.app/Contents/PlugIns/BurretePreview.appex
+test -d build/Burrete.app/Contents/PlugIns/BurreteThumbnail.appex
 ./scripts/force-preview.sh samples/mini.pdb
 ./scripts/force-preview.sh samples/mini.cif
 ./scripts/force-preview.sh samples/mini.xyz

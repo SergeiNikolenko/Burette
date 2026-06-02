@@ -5,6 +5,15 @@ use tauri::{Emitter, Manager, Runtime};
 
 pub(crate) const MENU_OPEN_SETTINGS_EVENT: &str = "menu:open-settings";
 pub(crate) const MENU_OPEN_FILES_EVENT: &str = "menu:open-files";
+pub(crate) const MENU_OPEN_RECENT_EVENT: &str = "menu:open-recent";
+pub(crate) const MENU_REVEAL_ACTIVE_EVENT: &str = "menu:reveal-active";
+pub(crate) const MENU_COPY_ACTIVE_PATH_EVENT: &str = "menu:copy-active-path";
+pub(crate) const MENU_SHOW_ACTIVE_METADATA_EVENT: &str = "menu:show-active-metadata";
+pub(crate) const MENU_EXPORT_PREVIEW_PNG_EVENT: &str = "menu:export-preview-png";
+pub(crate) const MENU_EXPORT_PREVIEW_SVG_EVENT: &str = "menu:export-preview-svg";
+pub(crate) const MENU_CLEAR_PREVIEW_CACHE_EVENT: &str = "menu:clear-preview-cache";
+pub(crate) const MENU_RESET_QUICK_LOOK_EVENT: &str = "menu:reset-quick-look";
+pub(crate) const MENU_OPEN_LOGS_EVENT: &str = "menu:open-logs";
 pub(crate) const MENU_CHECK_UPDATES_EVENT: &str = "menu:check-updates";
 
 pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
@@ -15,6 +24,33 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
     let open = MenuItemBuilder::with_id("file.open", "Open...")
         .accelerator("CmdOrCtrl+O")
         .build(app)?;
+    let open_recent = MenuItemBuilder::with_id("file.open-recent", "Open Recent")
+        .accelerator("CmdOrCtrl+Shift+O")
+        .build(app)?;
+    let reveal_active = MenuItemBuilder::with_id("file.reveal-active", "Reveal in Finder")
+        .accelerator("CmdOrCtrl+Shift+R")
+        .build(app)?;
+    let copy_active_path = MenuItemBuilder::with_id("file.copy-active-path", "Copy Path")
+        .accelerator("CmdOrCtrl+Shift+C")
+        .build(app)?;
+    let show_active_metadata =
+        MenuItemBuilder::with_id("file.show-active-metadata", "Show Metadata")
+            .accelerator("CmdOrCtrl+I")
+            .build(app)?;
+    let export_preview_png =
+        MenuItemBuilder::with_id("file.export-preview-png", "Export Preview as PNG...")
+            .accelerator("CmdOrCtrl+Shift+E")
+            .build(app)?;
+    let export_preview_svg =
+        MenuItemBuilder::with_id("file.export-preview-svg", "Export Preview as SVG...")
+            .accelerator("CmdOrCtrl+Alt+E")
+            .build(app)?;
+    let clear_preview_cache =
+        MenuItemBuilder::with_id("maintenance.clear-preview-cache", "Clear Preview Cache")
+            .build(app)?;
+    let reset_quick_look =
+        MenuItemBuilder::with_id("maintenance.reset-quick-look", "Reset Quick Look").build(app)?;
+    let open_logs = MenuItemBuilder::with_id("maintenance.open-logs", "Open Logs").build(app)?;
     let updates = MenuItemBuilder::with_id("updater.check", "Check for Updates...")
         .accelerator("CmdOrCtrl+U")
         .build(app)?;
@@ -46,6 +82,14 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
     let file_menu = SubmenuBuilder::new(app, "File")
         .items(&[
             &open,
+            &open_recent,
+            &PredefinedMenuItem::separator(app)?,
+            &reveal_active,
+            &copy_active_path,
+            &show_active_metadata,
+            &PredefinedMenuItem::separator(app)?,
+            &export_preview_png,
+            &export_preview_svg,
             &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::close_window(app, None)?,
         ])
@@ -70,7 +114,13 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         ])
         .build()?;
     let help_menu = SubmenuBuilder::new(app, "Help")
-        .items(&[&updates])
+        .items(&[
+            &clear_preview_cache,
+            &reset_quick_look,
+            &open_logs,
+            &PredefinedMenuItem::separator(app)?,
+            &updates,
+        ])
         .build()?;
     let menu = MenuBuilder::new(app)
         .items(&[&app_menu, &file_menu, &edit_menu, &window_menu, &help_menu])

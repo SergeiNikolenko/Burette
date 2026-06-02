@@ -26,9 +26,21 @@ PREVIEW_ID="com.local.BurreteV10.Preview"
 SAFE_ROOT_BASE="${TMPDIR:-/tmp}"
 SAFE_ROOT="$(mktemp -d "${SAFE_ROOT_BASE%/}/BurreteV10BuildSafe.XXXXXX")"
 LOCAL_APP="$ROOT/build/Burrete.app"
+BUILD_MODE="${BURRETE_BUILD_MODE:-local}"
 SIGN_IDENTITY="${BURRETE_CODESIGN_IDENTITY:--}"
-XCODE_CONFIGURATION="${BURRETE_XCODE_CONFIGURATION:-Debug}"
 DEVELOPMENT_TEAM="${BURRETE_DEVELOPMENT_TEAM:-}"
+case "$BUILD_MODE" in
+  local) DEFAULT_XCODE_CONFIGURATION="Debug" ;;
+  release) DEFAULT_XCODE_CONFIGURATION="Release" ;;
+  *) echo "error: BURRETE_BUILD_MODE must be local or release, got: $BUILD_MODE" >&2; exit 2 ;;
+esac
+XCODE_CONFIGURATION="${BURRETE_XCODE_CONFIGURATION:-$DEFAULT_XCODE_CONFIGURATION}"
+
+if [[ "$BUILD_MODE" == "release" ]]; then
+  [[ "$SIGN_IDENTITY" == Developer\ ID\ Application:* ]] || { echo "error: release builds require BURRETE_CODESIGN_IDENTITY='Developer ID Application: ...'." >&2; exit 1; }
+  [[ -n "$DEVELOPMENT_TEAM" ]] || { echo "error: release builds require BURRETE_DEVELOPMENT_TEAM." >&2; exit 1; }
+  [[ "$XCODE_CONFIGURATION" == "Release" ]] || { echo "error: release builds require BURRETE_XCODE_CONFIGURATION=Release." >&2; exit 1; }
+fi
 
 cleanup_safe_root() {
   rm -rf "$SAFE_ROOT" 2>/dev/null || true
@@ -40,11 +52,27 @@ Burrete v10 build
   source: $ROOT
   app id: $APP_ID
   preview id: $PREVIEW_ID
+  build mode: $BUILD_MODE
   xcode configuration: $XCODE_CONFIGURATION
   signing identity: $SIGN_IDENTITY
 HDR
 
 require_tool() { command -v "$1" >/dev/null 2>&1 || { echo "error: $1 is required. $2" >&2; exit 1; }; }
+enable_release_hardened_runtime() {
+  local config="$SAFE_ROOT/apps/desktop/src-tauri/tauri.conf.json"
+  /usr/bin/python3 - "$config" <<'PY'
+import json
+import sys
+
+config_path = sys.argv[1]
+with open(config_path, "r", encoding="utf-8") as config_file:
+    config = json.load(config_file)
+config.setdefault("bundle", {}).setdefault("macOS", {})["hardenedRuntime"] = True
+with open(config_path, "w", encoding="utf-8") as config_file:
+    json.dump(config, config_file, indent=2)
+    config_file.write("\n")
+PY
+}
 clean_detritus() {
   local p="$1"
   [[ -e "$p" ]] || return 0
@@ -105,6 +133,7 @@ PY
 require_asset() { local p="$1"; [[ -s "$p" ]] || { echo "error: missing vendored web asset: $p" >&2; echo "Run: bun install --frozen-lockfile --ignore-scripts && bun run vendor:molstar && bun run vendor:rdkit" >&2; exit 1; }; }
 
 require_tool bun "Install it with: brew install oven-sh/bun/bun"
+require_tool cargo "Install Rust from: https://www.rust-lang.org/tools/install"
 require_tool xcodebuild "Install full Xcode from the App Store."
 require_tool rsync "rsync is normally present on macOS."
 require_tool ditto "ditto is normally present on macOS."
@@ -151,23 +180,36 @@ rm -f /tmp/Burrete.log "${TMPDIR:-/tmp}/Burrete.log" 2>/dev/null || true
 
 rsync -a --delete --exclude build --exclude node_modules --exclude .git --exclude apps/desktop/src-tauri/target "$ROOT/" "$SAFE_ROOT/"
 clean_detritus "$SAFE_ROOT"
+if [[ "$BUILD_MODE" == "release" ]]; then
+  enable_release_hardened_runtime
+fi
 
 pushd "$SAFE_ROOT" >/dev/null
 rm -rf build
 bun install --frozen-lockfile --ignore-scripts
 bun run build:tauri
+cargo build --release --bin burrete-core-bridge
 XCODE_SIGN_ARGS=(CODE_SIGN_IDENTITY="$SIGN_IDENTITY" CODE_SIGNING_ALLOWED=YES)
 if [[ -n "$DEVELOPMENT_TEAM" ]]; then
   XCODE_SIGN_ARGS+=(CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM")
 fi
 xcodebuild -project Burrete.xcodeproj -scheme BurretePreview -configuration "$XCODE_CONFIGURATION" -derivedDataPath build COMPILER_INDEX_STORE_ENABLE=NO "${XCODE_SIGN_ARGS[@]}" build
+xcodebuild -project Burrete.xcodeproj -scheme BurreteThumbnail -configuration "$XCODE_CONFIGURATION" -derivedDataPath build COMPILER_INDEX_STORE_ENABLE=NO "${XCODE_SIGN_ARGS[@]}" build
 TAURI_BUILT_APP="apps/desktop/src-tauri/target/release/bundle/macos/Burrete.app"
 QUICKLOOK_APPEX="build/Build/Products/$XCODE_CONFIGURATION/BurretePreview.appex"
+THUMBNAIL_APPEX="build/Build/Products/$XCODE_CONFIGURATION/BurreteThumbnail.appex"
+CORE_BRIDGE="target/release/burrete-core-bridge"
 [[ -d "$TAURI_BUILT_APP" ]] || { echo "error: Tauri app bundle missing: $TAURI_BUILT_APP" >&2; exit 1; }
 [[ -d "$QUICKLOOK_APPEX" ]] || { echo "error: Quick Look extension missing: $QUICKLOOK_APPEX" >&2; exit 1; }
+[[ -d "$THUMBNAIL_APPEX" ]] || { echo "error: Quick Look thumbnail extension missing: $THUMBNAIL_APPEX" >&2; exit 1; }
+[[ -x "$CORE_BRIDGE" ]] || { echo "error: burrete-core bridge helper missing: $CORE_BRIDGE" >&2; exit 1; }
+ditto --norsrc --noextattr "$CORE_BRIDGE" "$QUICKLOOK_APPEX/Contents/Resources/burrete-core-bridge"
+chmod 755 "$QUICKLOOK_APPEX/Contents/Resources/burrete-core-bridge"
 mkdir -p "$TAURI_BUILT_APP/Contents/PlugIns"
 rm -rf "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex"
+rm -rf "$TAURI_BUILT_APP/Contents/PlugIns/BurreteThumbnail.appex"
 ditto --norsrc --noextattr "$QUICKLOOK_APPEX" "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex"
+ditto --norsrc --noextattr "$THUMBNAIL_APPEX" "$TAURI_BUILT_APP/Contents/PlugIns/BurreteThumbnail.appex"
 mark_regular_desktop_app "$TAURI_BUILT_APP"
 copy_app_plist_metadata "$TAURI_BUILT_APP"
 clean_detritus "$TAURI_BUILT_APP"
@@ -175,7 +217,9 @@ CODESIGN_ARGS=(--force --sign "$SIGN_IDENTITY")
 if [[ "$SIGN_IDENTITY" != "-" ]]; then
   CODESIGN_ARGS+=(--options runtime --timestamp)
 fi
+codesign "${CODESIGN_ARGS[@]}" "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex/Contents/Resources/burrete-core-bridge" >/dev/null
 codesign "${CODESIGN_ARGS[@]}" --entitlements "$ROOT/PreviewExtension/BurretePreview.entitlements" "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex" >/dev/null
+codesign "${CODESIGN_ARGS[@]}" --entitlements "$ROOT/PreviewExtension/BurretePreview.entitlements" "$TAURI_BUILT_APP/Contents/PlugIns/BurreteThumbnail.appex" >/dev/null
 codesign "${CODESIGN_ARGS[@]}" "$TAURI_BUILT_APP" >/dev/null
 clean_detritus "$TAURI_BUILT_APP"
 popd >/dev/null
@@ -192,6 +236,10 @@ actual_pdb_type="$(/usr/libexec/PlistBuddy -c 'Print :UTExportedTypeDeclarations
 [[ "$actual_pdb_type" == "com.local.burrete10.pdb" ]] || { echo "error: built app is missing Burrete exported content types." >&2; exit 1; }
 [[ -x "$LOCAL_APP/Contents/MacOS/burrete" ]] || { echo "error: built Tauri app executable missing: $LOCAL_APP/Contents/MacOS/burrete" >&2; exit 1; }
 [[ -d "$LOCAL_APP/Contents/PlugIns/BurretePreview.appex" ]] || { echo "error: embedded Quick Look extension missing in Tauri app." >&2; exit 1; }
+[[ -x "$LOCAL_APP/Contents/PlugIns/BurretePreview.appex/Contents/Resources/burrete-core-bridge" ]] || { echo "error: embedded Quick Look extension is missing burrete-core bridge helper." >&2; exit 1; }
+[[ -d "$LOCAL_APP/Contents/PlugIns/BurreteThumbnail.appex" ]] || { echo "error: embedded Quick Look thumbnail extension missing in Tauri app." >&2; exit 1; }
+thumbnail_point="$(/usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$LOCAL_APP/Contents/PlugIns/BurreteThumbnail.appex/Contents/Info.plist" 2>/dev/null || true)"
+[[ "$thumbnail_point" == "com.apple.quicklook.thumbnail" ]] || { echo "error: embedded thumbnail extension has wrong extension point: ${thumbnail_point:-unknown}" >&2; exit 1; }
 BUILT_WEB_INDEX="$LOCAL_APP/Contents/Resources/Web/index.html"
 BUILT_VIEWER_SHELL="$LOCAL_APP/Contents/Resources/Web/viewer-shell.js"
 [[ -s "$BUILT_WEB_INDEX" ]] || { echo "error: built web preview shell missing: $BUILT_WEB_INDEX" >&2; exit 1; }

@@ -1,4 +1,3 @@
-use base64::Engine;
 use serde_json::json;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -7,7 +6,9 @@ use tauri::{Manager, Runtime};
 use super::grid_store::{build_grid_store_with_options, GridParseOptions};
 use super::runtime::ViewerPreferences;
 use super::runtime_utils::{asset_url, escape_html, prune_runtime_dirs};
-use super::runtime_viewer::copy_web_assets;
+use super::runtime_viewer::{copy_web_assets, AssetProfile};
+
+const GRID_RUNTIME_CSP: &str = "default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'self' blob:;";
 
 #[cfg(test)]
 use super::runtime_utils::{clipped, normalized_lines};
@@ -56,19 +57,20 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
     let runtime = base.join(uuid::Uuid::new_v4().to_string());
     fs::create_dir_all(&assets).map_err(|err| err.to_string())?;
     fs::create_dir_all(&runtime).map_err(|err| err.to_string())?;
-    copy_web_assets(app, &assets)?;
+    copy_web_assets(app, &assets, AssetProfile::Grid)?;
     prune_runtime_dirs(&base);
-    let Some((database_path, collection)) =
-        build_grid_store_with_options(&runtime, extension, data, options)?
+    let Some(grid_store) = build_grid_store_with_options(&runtime, extension, data, options)?
     else {
         return Ok(None);
     };
+    let collection = grid_store.summary;
     app.state::<super::grid_store::GridRuntimeRegistry>()
-        .register(document_id, database_path, collection.format)?;
-    let rdkit_wasm_base64 = base64::engine::general_purpose::STANDARD.encode(
-        fs::read(assets.join("rdkit").join("RDKit_minimal.wasm"))
-            .map_err(|err| format!("read RDKit wasm: {err}"))?,
-    );
+        .register(
+            document_id,
+            grid_store.database_path,
+            collection.format,
+            grid_store.cancel_token,
+        )?;
     let config = json!({
         "mode": "grid2d",
         "format": collection.format,
@@ -89,6 +91,9 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
         "overlayOpacity": 0.90,
         "transparentBackground": preferences.resolved_transparent_background(),
         "recordsTotal": collection.records_total,
+        "recordsIndexed": collection.records_indexed,
+        "indexing": !collection.index_ready,
+        "indexReady": collection.index_ready,
         "recordsIncluded": 0,
         "recordsTruncated": false,
         "pageSize": 48,
@@ -109,11 +114,6 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
     fs::write(
         runtime.join("preview-config.js"),
         format!("window.BurreteConfig = {config_text};\n"),
-    )
-    .map_err(|err| err.to_string())?;
-    fs::write(
-        runtime.join("preview-rdkit-wasm.js"),
-        format!("window.BurreteRDKitWasmBase64 = {:?};\n", rdkit_wasm_base64),
     )
     .map_err(|err| err.to_string())?;
     Ok(Some(runtime.join("index.html")))
@@ -138,7 +138,6 @@ fn grid_html(
     };
     let grid_css = versioned_asset_url(&assets.join("grid.css"));
     let config_js = asset_url(&runtime.join("preview-config.js"));
-    let rdkit_wasm_js = asset_url(&runtime.join("preview-rdkit-wasm.js"));
     let rdkit_js = versioned_asset_url(&assets.join("rdkit").join("RDKit_minimal.js"));
     let grid_js = versioned_asset_url(&assets.join("grid-viewer.js"));
     format!(
@@ -148,7 +147,7 @@ fn grid_html(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Burrete Grid - {title}</title>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset: data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'self' blob:;" />
+  <meta http-equiv="Content-Security-Policy" content="{GRID_RUNTIME_CSP}" />
   <link rel="stylesheet" href="{grid_css}" />
   <script>
     window.__mqlPost = function (type, message, payload) {{
@@ -165,7 +164,6 @@ fn grid_html(
   <div id="app"></div>
   <div id="status">Loading molecule grid...</div>
   <script src="{config_js}"></script>
-  <script src="{rdkit_wasm_js}"></script>
   <script src="{rdkit_js}"></script>
   <script src="{grid_js}"></script>
 </body>

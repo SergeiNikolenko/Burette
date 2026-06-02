@@ -1,4 +1,5 @@
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Read;
 #[cfg(unix)]
@@ -6,12 +7,15 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use super::runtime::XyzrenderControls;
 
 const XYZRENDER_TIMEOUT: Duration = Duration::from_secs(20);
 const XYZRENDER_LOG_CAPTURE_BYTES: usize = 64 * 1024;
+const XYZRENDER_CACHE_MAX_AGE: Duration = Duration::from_secs(14 * 24 * 60 * 60);
+const XYZRENDER_CACHE_MAX_ENTRIES: usize = 96;
+const XYZRENDER_CACHE_MAX_BYTES: u64 = 256 * 1024 * 1024;
 
 pub(crate) struct XyzrenderArtifact {
     pub(crate) relative_path: &'static str,
@@ -21,6 +25,8 @@ pub(crate) struct XyzrenderArtifact {
     pub(crate) config_argument: String,
     pub(crate) elapsed_ms: u128,
     pub(crate) log: String,
+    pub(crate) cache_key: String,
+    pub(crate) cache_hit: bool,
 }
 
 pub(crate) struct XyzrenderDocumentDefaults {
@@ -31,6 +37,7 @@ pub(crate) struct XyzrenderDocumentDefaults {
 pub(crate) fn create_xyzrender_artifact(
     input_path: &Path,
     output_directory: &Path,
+    cache_directory: Option<&Path>,
     preset: Option<&str>,
     orientation_ref_text: Option<&str>,
     controls: Option<&XyzrenderControls>,
@@ -46,6 +53,7 @@ pub(crate) fn create_xyzrender_artifact(
     let _ = fs::remove_file(&converted_input_path);
     let _ = fs::remove_file(&orientation_ref_path);
     let started = Instant::now();
+    let executable = resolve_xyzrender_executable()?;
     let resolved_preset = normalize_preset(preset);
     let resolved_config_argument = resolve_config_argument(resolved_preset, controls).to_string();
     let effective_preset = if resolved_preset == "custom" && resolved_config_argument == "default" {
@@ -53,6 +61,29 @@ pub(crate) fn create_xyzrender_artifact(
     } else {
         resolved_preset
     };
+    let cache_key = xyzrender_cache_key(
+        input_path,
+        converted_input,
+        orientation_ref_text,
+        resolved_preset,
+        &resolved_config_argument,
+        controls,
+        &executable,
+    )?;
+    let cache_entry = cache_directory.map(|directory| directory.join(&cache_key));
+    if let Some(entry) = cache_entry.as_deref() {
+        prune_xyzrender_cache(entry.parent().unwrap_or(entry));
+        if let Some(artifact) = read_cached_xyzrender_artifact(
+            entry,
+            &output_path,
+            &log_path,
+            &cache_key,
+            effective_preset,
+            &resolved_config_argument,
+        )? {
+            return Ok(artifact);
+        }
+    }
     let effective_input_path = if let Some(data) = converted_input.filter(|data| !data.is_empty()) {
         fs::write(&converted_input_path, data)
             .map_err(|err| format!("Could not write converted xyzrender input: {err}"))?;
@@ -61,7 +92,7 @@ pub(crate) fn create_xyzrender_artifact(
         input_path
     };
     let (status, log) = run_xyzrender_command(
-        &resolve_xyzrender_executable()?,
+        &executable,
         build_xyzrender_args(
             effective_input_path,
             &output_path,
@@ -88,6 +119,16 @@ pub(crate) fn create_xyzrender_artifact(
     }
     let inline_svg = fs::read_to_string(&output_path)
         .map_err(|err| format!("Could not read external xyzrender SVG output: {err}"))?;
+    if let Some(entry) = cache_entry.as_deref() {
+        write_xyzrender_cache_entry(
+            entry,
+            &output_path,
+            &log_path,
+            &cache_key,
+            &log,
+            started.elapsed().as_millis(),
+        )?;
+    }
     Ok(XyzrenderArtifact {
         relative_path: "xyzrender.svg",
         inline_svg,
@@ -96,7 +137,79 @@ pub(crate) fn create_xyzrender_artifact(
         config_argument: resolved_config_argument,
         elapsed_ms: started.elapsed().as_millis(),
         log,
+        cache_key,
+        cache_hit: false,
     })
+}
+
+fn read_cached_xyzrender_artifact(
+    entry: &Path,
+    output_path: &Path,
+    log_path: &Path,
+    cache_key: &str,
+    preset: &'static str,
+    config_argument: &str,
+) -> Result<Option<XyzrenderArtifact>, String> {
+    let cached_svg = entry.join("xyzrender.svg");
+    let cached_log = entry.join("log.txt");
+    let metadata = match fs::metadata(&cached_svg) {
+        Ok(metadata) if metadata.len() > 0 => metadata,
+        _ => return Ok(None),
+    };
+    if cache_entry_expired(&metadata) {
+        let _ = fs::remove_dir_all(entry);
+        return Ok(None);
+    }
+    fs::create_dir_all(output_path.parent().unwrap_or_else(|| Path::new(".")))
+        .map_err(|err| format!("Could not prepare xyzrender cache hit output: {err}"))?;
+    fs::copy(&cached_svg, output_path)
+        .map_err(|err| format!("Could not copy cached xyzrender SVG: {err}"))?;
+    if cached_log.is_file() {
+        let _ = fs::copy(&cached_log, log_path);
+    }
+    let inline_svg = fs::read_to_string(output_path)
+        .map_err(|err| format!("Could not read cached xyzrender SVG: {err}"))?;
+    let log = fs::read_to_string(&cached_log).unwrap_or_default();
+    Ok(Some(XyzrenderArtifact {
+        relative_path: "xyzrender.svg",
+        inline_svg,
+        output_type: "svg",
+        preset,
+        config_argument: config_argument.to_string(),
+        elapsed_ms: 0,
+        log,
+        cache_key: cache_key.to_string(),
+        cache_hit: true,
+    }))
+}
+
+fn write_xyzrender_cache_entry(
+    entry: &Path,
+    output_path: &Path,
+    log_path: &Path,
+    cache_key: &str,
+    log: &str,
+    elapsed_ms: u128,
+) -> Result<(), String> {
+    fs::create_dir_all(entry).map_err(|err| format!("Could not create xyzrender cache: {err}"))?;
+    fs::copy(output_path, entry.join("xyzrender.svg"))
+        .map_err(|err| format!("Could not cache xyzrender SVG: {err}"))?;
+    if log_path.is_file() {
+        let _ = fs::copy(log_path, entry.join("log.txt"));
+    } else {
+        let _ = fs::write(entry.join("log.txt"), log);
+    }
+    let meta = json!({
+        "cacheKey": cache_key,
+        "elapsedMs": elapsed_ms,
+        "cachedAtMs": system_time_millis(SystemTime::now()),
+    });
+    fs::write(
+        entry.join("meta.json"),
+        serde_json::to_vec_pretty(&meta).unwrap_or_default(),
+    )
+    .map_err(|err| format!("Could not write xyzrender cache metadata: {err}"))?;
+    Ok(())
 }
 
 pub(crate) fn default_xyzrender_document_defaults(
@@ -516,6 +629,129 @@ fn non_empty_text(value: Option<&str>) -> Option<&str> {
     (!text.is_empty()).then_some(text)
 }
 
+fn xyzrender_cache_key(
+    input_path: &Path,
+    converted_input: Option<&[u8]>,
+    orientation_ref_text: Option<&str>,
+    preset: &'static str,
+    config_argument: &str,
+    controls: Option<&XyzrenderControls>,
+    executable: &Path,
+) -> Result<String, String> {
+    let source_metadata = fs::metadata(input_path).ok();
+    let executable_metadata = fs::metadata(executable).ok();
+    let payload = json!({
+        "version": 1,
+        "sourcePath": canonical_path_string(input_path),
+        "sourceSize": source_metadata.as_ref().map(fs::Metadata::len),
+        "sourceModifiedMs": source_metadata.as_ref().and_then(|metadata| metadata.modified().ok()).map(system_time_millis),
+        "convertedInputSha256": converted_input.filter(|data| !data.is_empty()).map(sha256_hex),
+        "orientationRefSha256": normalize_orientation_ref(orientation_ref_text).map(|text| sha256_hex(text.as_bytes())),
+        "preset": preset,
+        "configArgument": config_argument,
+        "controls": controls.and_then(|value| serde_json::to_value(value).ok()),
+        "executablePath": canonical_path_string(executable),
+        "executableSize": executable_metadata.as_ref().map(fs::Metadata::len),
+        "executableModifiedMs": executable_metadata.as_ref().and_then(|metadata| metadata.modified().ok()).map(system_time_millis),
+        "xyzrenderVersion": serde_json::Value::Null,
+    });
+    serde_json::to_vec(&payload)
+        .map(|bytes| sha256_hex(&bytes))
+        .map_err(|err| format!("Could not build xyzrender cache key: {err}"))
+}
+
+fn canonical_path_string(path: &Path) -> String {
+    path.canonicalize()
+        .unwrap_or_else(|_| path.to_path_buf())
+        .to_string_lossy()
+        .to_string()
+}
+
+fn sha256_hex(data: &[u8]) -> String {
+    let digest = Sha256::digest(data);
+    let mut text = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(text, "{byte:02x}");
+    }
+    text
+}
+
+fn system_time_millis(value: SystemTime) -> u128 {
+    value
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or_default()
+}
+
+fn cache_entry_expired(metadata: &fs::Metadata) -> bool {
+    metadata
+        .modified()
+        .ok()
+        .and_then(|modified| SystemTime::now().duration_since(modified).ok())
+        .is_some_and(|age| age > XYZRENDER_CACHE_MAX_AGE)
+}
+
+fn prune_xyzrender_cache(cache_directory: &Path) {
+    let Ok(entries) = fs::read_dir(cache_directory) else {
+        return;
+    };
+    let mut cache_entries = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let svg = path.join("xyzrender.svg");
+        let Ok(metadata) = fs::metadata(&svg) else {
+            let _ = fs::remove_dir_all(&path);
+            continue;
+        };
+        if cache_entry_expired(&metadata) {
+            let _ = fs::remove_dir_all(&path);
+            continue;
+        }
+        let modified = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+        let size = directory_size(&path);
+        cache_entries.push((path, modified, size));
+    }
+    cache_entries.sort_by_key(|(_, modified, _)| *modified);
+    let mut total_size: u64 = cache_entries.iter().map(|(_, _, size)| *size).sum();
+    let overflow = cache_entries
+        .len()
+        .saturating_sub(XYZRENDER_CACHE_MAX_ENTRIES);
+    for (path, _, size) in cache_entries.iter().take(overflow) {
+        let _ = fs::remove_dir_all(path);
+        total_size = total_size.saturating_sub(*size);
+    }
+    for (path, _, size) in cache_entries.into_iter().skip(overflow) {
+        if total_size <= XYZRENDER_CACHE_MAX_BYTES {
+            break;
+        }
+        let _ = fs::remove_dir_all(path);
+        total_size = total_size.saturating_sub(size);
+    }
+}
+
+fn directory_size(path: &Path) -> u64 {
+    let Ok(entries) = fs::read_dir(path) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .map(|entry| {
+            let path = entry.path();
+            if path.is_dir() {
+                directory_size(&path)
+            } else {
+                fs::metadata(&path)
+                    .map(|metadata| metadata.len())
+                    .unwrap_or(0)
+            }
+        })
+        .sum()
+}
+
 fn sanitized_extra_arguments(value: Option<&str>, strip_field_arguments: bool) -> Vec<String> {
     let mut blocked_value_flags =
         vec!["-o", "--output", "-go", "--gif-output", "--config", "--ref"];
@@ -832,6 +1068,80 @@ mod tests {
 
         assert!(text.len() < XYZRENDER_LOG_CAPTURE_BYTES + 128);
         assert!(text.contains("log truncated"));
+    }
+
+    #[test]
+    fn xyzrender_cache_key_changes_for_file_and_controls() {
+        let directory = std::env::temp_dir().join(format!(
+            "burrete-xyzrender-cache-key-{}",
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir_all(&directory).expect("test directory should be created");
+        let input = directory.join("input.xyz");
+        let executable = directory.join("xyzrender");
+        fs::write(&input, "1\nA\nH 0 0 0\n").expect("input should be written");
+        fs::write(&executable, "#!/bin/sh\n").expect("executable should be written");
+
+        let base_key =
+            xyzrender_cache_key(&input, None, None, "default", "default", None, &executable)
+                .expect("cache key should be built");
+        let controls = XyzrenderControls {
+            atom_scale: Some(1.4),
+            ..XyzrenderControls::default()
+        };
+        let controls_key = xyzrender_cache_key(
+            &input,
+            None,
+            None,
+            "default",
+            "default",
+            Some(&controls),
+            &executable,
+        )
+        .expect("cache key should include controls");
+        fs::write(&input, "2\nA\nH 0 0 0\nH 0 0 1\n").expect("input should change");
+        let changed_file_key =
+            xyzrender_cache_key(&input, None, None, "default", "default", None, &executable)
+                .expect("cache key should include file metadata");
+
+        assert_ne!(base_key, controls_key);
+        assert_ne!(base_key, changed_file_key);
+        let _ = fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn cached_xyzrender_artifact_copies_svg_without_process() {
+        let directory = std::env::temp_dir().join(format!(
+            "burrete-xyzrender-cache-hit-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let entry = directory.join("entry");
+        let runtime = directory.join("runtime");
+        fs::create_dir_all(&entry).expect("cache entry should be created");
+        fs::create_dir_all(&runtime).expect("runtime should be created");
+        fs::write(entry.join("xyzrender.svg"), "<svg id=\"cached\" />")
+            .expect("cached svg should be written");
+        fs::write(entry.join("log.txt"), "cached log").expect("cached log should be written");
+
+        let artifact = read_cached_xyzrender_artifact(
+            &entry,
+            &runtime.join("xyzrender.svg"),
+            &runtime.join("xyzrender.log"),
+            "cache-key",
+            "default",
+            "default",
+        )
+        .expect("cache read should not fail")
+        .expect("cache entry should be valid");
+
+        assert!(artifact.cache_hit);
+        assert_eq!(artifact.cache_key, "cache-key");
+        assert!(artifact.inline_svg.contains("cached"));
+        assert_eq!(
+            fs::read_to_string(runtime.join("xyzrender.log")).expect("runtime log should exist"),
+            "cached log"
+        );
+        let _ = fs::remove_dir_all(&directory);
     }
 
     #[test]

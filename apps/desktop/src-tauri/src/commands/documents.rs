@@ -367,6 +367,7 @@ fn render_xyzrender_sheet_item_blocking(
     let artifact = create_xyzrender_artifact(
         &input_path,
         &output_directory,
+        None,
         request.preset.as_deref(),
         None,
         request.controls.as_ref(),
