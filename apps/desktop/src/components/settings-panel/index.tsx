@@ -103,6 +103,7 @@ export function SettingsPanel({ state, actions }: { state: ShellViewState; actio
             rows={[
               actionRow("Quick Look", "Refresh Finder preview registration and cache.", "Reset", () => void actions.resetQuickLook()),
               actionRow("Logs", "Open the Quick Look extension log folder.", "Open", () => void actions.openLogs()),
+              actionRow("Diagnostics", "Export logs, environment, size report, performance marks, and recent errors.", "Export", () => void actions.exportDiagnostics()),
               actionRow("Preview cache", "Delete generated viewer runtimes except shared assets.", "Clear", () => void actions.clearCache()),
             ]}
           />

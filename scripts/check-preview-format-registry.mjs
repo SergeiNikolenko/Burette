@@ -143,7 +143,9 @@ assertSameSet(
 );
 
 const rustFormats = readFileSync('apps/desktop/src-tauri/src/preview/formats.rs', 'utf8');
-assert.match(rustFormats, /include_str!\("\.\.\/\.\.\/\.\.\/\.\.\/\.\.\/config\/preview-formats\.json"\)/);
+assert.match(rustFormats, /pub\(crate\) use burrete_core::/);
+const coreFormats = readFileSync('crates/burrete-core/src/lib.rs', 'utf8');
+assert.match(coreFormats, /include_str!\("\.\.\/\.\.\/\.\.\/config\/preview-formats\.json"\)/);
 
 const browserDevDocuments = readFileSync('apps/desktop/src/lib/browser-dev-documents.ts', 'utf8');
 assert.match(browserDevDocuments, /preview-formats\.json/);
