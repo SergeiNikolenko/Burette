@@ -80,7 +80,6 @@ const [
   architectureDocsSource,
   rendererSupportDocsSource,
   performanceDocsSource,
-  formatManifestSource,
 ] = await Promise.all([
   source('apps/desktop/src-tauri/src/commands/mod.rs'),
   source('apps/desktop/src-tauri/src/lib.rs'),
@@ -145,7 +144,6 @@ const [
   source('docs/architecture.md'),
   source('docs/renderer-support.md'),
   source('docs/performance.md'),
-  source('docs/specs/formats.manifest.json'),
 ]);
 const previewFormatsSource = previewFormats;
 
@@ -155,7 +153,6 @@ const vendorAssetsLock = JSON.parse(vendorAssetsLockSource);
 const webRuntimeProfiles = JSON.parse(webRuntimeProfilesSource);
 const defaultCapability = JSON.parse(defaultCapabilitySource);
 const mainWindowConfig = tauriConfig.app.windows.find((window) => window.label === 'main');
-const formatManifest = JSON.parse(formatManifestSource);
 
 assert.equal(await exists('apps/desktop/src-tauri/src/commands.rs'), false);
 assert.ok(mainWindowConfig);
@@ -180,7 +177,6 @@ assert.match(performanceDocsSource, /RDKit_minimal\.wasm/);
 assert.match(performanceDocsSource, /molecules_fts/);
 assert.match(performanceDocsSource, /BURRETE_PERF_RUN_GRID_FTS=1 \.\/scripts\/perf-smoke\.sh/);
 assert.match(performanceDocsSource, /Do Not Regress/);
-assert.equal(formatManifest.formats.find((format) => format.name === 'XYZ')?.renderer, 'molstar');
 
 for (const moduleName of ['documents', 'grid', 'preview_cache', 'quicklook', 'shell', 'startup', 'updater']) {
   assert.match(commandsIndex, new RegExp(`pub\\(crate\\) mod ${moduleName};`));
@@ -323,7 +319,7 @@ assert.match(updaterCommand, /manifest_asset_name/);
 assert.match(updaterCommand, /asset_sha256/);
 assert.equal(packageConfig.packageManager, 'bun@1.3.8');
 assert.deepEqual(packageConfig.workspaces, ['apps/*', 'packages/*']);
-assert.equal(packageConfig.scripts['check:formats'], 'bun scripts/check-preview-format-registry.mjs && bun scripts/check-format-manifest.mjs');
+assert.equal(packageConfig.scripts['check:formats'], 'bun scripts/check-preview-format-registry.mjs');
 assert.equal(packageConfig.scripts['check:vendor-assets'], 'bun scripts/check-vendor-assets.mjs');
 assert.equal(packageConfig.scripts['test:update'], 'bun tests/test-update-versioning.mjs && bun tests/test-bun-installer-structure.mjs && bun tests/test-bun-installer-behavior.mjs && bun tests/test-runner-contract.mjs');
 assert.equal(packageConfig.scripts['vendor:lock'], 'bun scripts/check-vendor-assets.mjs --write');
