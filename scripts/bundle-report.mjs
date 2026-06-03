@@ -27,8 +27,9 @@ function assetRefs(html, pattern) {
   return Array.from(html.matchAll(pattern), (match) => match[1]?.replace(/^\.\//u, "")).filter(Boolean);
 }
 
-function classifyChunk(path, source, entryScript) {
+function classifyChunk(path, source, entryScript, bootstrapScripts) {
   const lower = path.toLowerCase();
+  if (bootstrapScripts.has(path)) return "bootstrap";
   if (lower.includes("ketcher")) return "ketcher";
   if (lower.includes("molstar")) return "molstar";
   if (lower.includes("command-palette")) return "command-palette";
@@ -56,9 +57,12 @@ function formatBytes(bytes) {
 }
 
 const html = await readFile(indexHtmlPath, "utf8");
-const entryScripts = assetRefs(html, /<script[^>]+src="([^"]+)"/gu);
+const scriptRefs = assetRefs(html, /<script[^>]+src="([^"]+)"/gu);
+const moduleEntryScripts = assetRefs(html, /<script[^>]+\btype="module"[^>]+src="([^"]+)"/gu);
 const initialStyles = new Set(assetRefs(html, /<link[^>]+rel="stylesheet"[^>]+href="([^"]+)"/gu));
-const entryScript = entryScripts[0] ?? null;
+const entryScript = moduleEntryScripts[0] ?? null;
+const initialScripts = new Set(scriptRefs);
+const bootstrapScripts = new Set(scriptRefs.filter((script) => script !== entryScript));
 const files = await listFiles(distRoot);
 const assets = [];
 
@@ -69,7 +73,7 @@ for (const path of files) {
   const content = await readFile(path);
   const source = extension === ".js" ? content.toString("utf8") : "";
   const role = extension === ".js"
-    ? classifyChunk(relativePath, source, entryScript)
+    ? classifyChunk(relativePath, source, entryScript, bootstrapScripts)
     : relativePath.toLowerCase().includes("ketcher")
       ? "ketcher"
       : "style";
@@ -78,7 +82,7 @@ for (const path of files) {
     bytes: content.byteLength,
     type: extension.slice(1),
     role,
-    initial: relativePath === entryScript || initialStyles.has(relativePath),
+    initial: initialScripts.has(relativePath) || initialStyles.has(relativePath),
   });
 }
 
@@ -88,16 +92,20 @@ const mainChunk = assets.find((asset) => asset.role === "main" && asset.type ===
 const ketcherChunks = assets.filter((asset) => asset.role === "ketcher" && asset.type === "js");
 const molstarChunks = assets.filter((asset) => asset.role === "molstar" && asset.type === "js");
 const initialKetcherAssets = assets.filter((asset) => asset.role === "ketcher" && asset.initial);
-const ketcherBoundaryOk = ketcherChunks.length > 0 && initialKetcherAssets.length === 0;
+const mainChunkSource = mainChunk ? await readFile(join(distRoot, mainChunk.path), "utf8") : "";
+const mainImportsKetcher = /from\s*["']\.\/ketcher-/u.test(mainChunkSource);
+const ketcherBoundaryOk = ketcherChunks.length > 0 && initialKetcherAssets.length === 0 && !mainImportsKetcher;
 
 const report = {
   generatedAt: new Date().toISOString(),
   distRoot,
   entryScript,
+  bootstrapScripts: [...bootstrapScripts],
   initialStyles: [...initialStyles],
   mainChunk,
   ketcherChunks,
   initialKetcherAssets,
+  mainImportsKetcher,
   ketcherBoundaryOk,
   molstarChunks,
   assets,
@@ -111,9 +119,11 @@ await writeFile(textPath, [
   `Dist: ${distRoot}`,
   "",
   `Main JS: ${mainChunk ? `${mainChunk.path} ${formatBytes(mainChunk.bytes)}` : "not found"}`,
+  `Bootstrap JS: ${[...bootstrapScripts].join(", ") || "none"}`,
   `Initial CSS: ${[...initialStyles].join(", ") || "none"}`,
   `Ketcher JS chunks: ${ketcherChunks.length}`,
   `Ketcher initial assets: ${initialKetcherAssets.length ? initialKetcherAssets.map((asset) => asset.path).join(", ") : "none"}`,
+  `Main imports Ketcher: ${mainImportsKetcher ? "yes" : "no"}`,
   `Ketcher lazy boundary: ${ketcherBoundaryOk ? "ok" : "failed"}`,
   `Molstar JS chunks: ${molstarChunks.length}`,
   "",

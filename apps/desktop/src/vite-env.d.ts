@@ -8,6 +8,13 @@ interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
 
+interface Window {
+  __BURRETE_BOOT_OVERLAY__?: {
+    report: (message: string, details?: string) => void;
+    markMounted: () => void;
+  };
+}
+
 declare module "raphael" {
   const raphael: unknown;
   export default raphael;
