@@ -1090,6 +1090,24 @@ mod tests {
     }
 
     #[test]
+    fn merges_csv_collections_without_duplicate_headers() {
+        let merged = super::merge_collection_text(
+            super::CollectionFamily::Csv,
+            &[
+                "smiles,name\nCCO,ethanol\n",
+                "smiles,name\nc1ccccc1,benzene\n",
+                "\nsmiles,name\nCCN,ethylamine\n",
+            ],
+        );
+
+        assert_eq!(
+            merged,
+            "smiles,name\nCCO,ethanol\nc1ccccc1,benzene\nCCN,ethylamine\n"
+        );
+        assert_eq!(merged.matches("smiles,name").count(), 1);
+    }
+
+    #[test]
     fn opens_inline_single_sdf_as_grid_when_explicitly_requested() {
         let app = mock_app_with_grid_registry();
         let mut preferences = viewer_preferences();

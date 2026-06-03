@@ -697,4 +697,113 @@ $$$$
         assert_eq!(collection.records[1].name, "Mol B");
         assert_eq!(collection.records[1].smiles.as_deref(), Some("CCO"));
     }
+
+    #[test]
+    fn delimited_table_keeps_quoted_commas_and_extra_properties() {
+        let collection = parse_delimited_table(
+            r#"smiles,name,assay note,score
+"CC(=O)O","Acetic, acid","active, primary",7.5
+C1=CC=CC=C1,Benzene,,3.1
+"#,
+            ',',
+            "csv",
+            5000,
+        )
+        .expect("csv with smiles header should parse");
+
+        assert_eq!(collection.records_total, 2);
+        assert_eq!(collection.records[0].name, "Acetic, acid");
+        assert_eq!(collection.records[0].smiles.as_deref(), Some("CC(=O)O"));
+        assert_eq!(
+            collection.records[0]
+                .props
+                .get("assay note")
+                .map(String::as_str),
+            Some("active, primary")
+        );
+        assert_eq!(
+            collection.records[0].props.get("score").map(String::as_str),
+            Some("7.5")
+        );
+        assert!(!collection.records[1].props.contains_key("assay note"));
+    }
+
+    #[test]
+    fn delimited_rows_fallback_skips_header_and_non_smiles_rows() {
+        let collection = parse_delimited_rows_as_smiles(
+            r#"name	value
+not-a-smiles	ignored
+CCO	Ethanol	liquid
+c1ccccc1	Benzene	aromatic
+"#,
+            '\t',
+            "tsv",
+            5000,
+        );
+
+        assert_eq!(collection.records_total, 2);
+        assert_eq!(collection.records[0].index, 0);
+        assert_eq!(collection.records[0].name, "Ethanol");
+        assert_eq!(collection.records[0].smiles.as_deref(), Some("CCO"));
+        assert_eq!(
+            collection.records[0]
+                .props
+                .get("Column 3")
+                .map(String::as_str),
+            Some("liquid")
+        );
+        assert_eq!(collection.records[1].name, "Benzene");
+    }
+
+    #[test]
+    fn smiles_detection_rejects_headers_and_plain_words() {
+        for value in [
+            "smiles",
+            "name",
+            "compound",
+            "ethanol",
+            "water sample",
+            "#comment",
+        ] {
+            assert!(
+                !looks_like_smiles(value),
+                "{value} should not parse as SMILES"
+            );
+        }
+
+        for value in ["CCO", "C1=CC=CC=C1", "c1ccccc1", "ClCBr"] {
+            assert!(looks_like_smiles(value), "{value} should parse as SMILES");
+        }
+    }
+
+    #[test]
+    fn sdf_properties_and_molblock_stop_at_m_end() {
+        let lines = normalized_lines(
+            r#"Mol A
+  Burrete
+
+  0  0  0  0  0  0            999 V2000
+M  END
+>  <ID>
+A1
+
+>  <Long Note>
+line one
+line two
+
+$$$$
+"#,
+        );
+
+        let props = parse_sdf_properties(&lines);
+        assert_eq!(props.get("ID").map(String::as_str), Some("A1"));
+        assert_eq!(
+            props.get("Long Note").map(String::as_str),
+            Some("line one\nline two")
+        );
+
+        let molblock = extract_molblock(&lines);
+        assert!(molblock.contains("M  END"));
+        assert!(!molblock.contains("<ID>"));
+    }
 }
