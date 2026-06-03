@@ -5,7 +5,7 @@
   --ui-font: -apple-system-body, ui-sans-serif, -apple-system, system-ui, "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol";
   --editor-font: -apple-system-body, ui-sans-serif, -apple-system, system-ui, "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol";
   --bg-opacity: 0.715;
-  --contrast: 0.55;
+  --contrast: 0.328;
   --bg: rgba(17, 17, 17, 0.715);
   --text: var(--fg-base);
   --text-primary: var(--fg-base);
@@ -1702,20 +1702,13 @@ kbd span { margin-left: 2px; }
   height: 100%;
   overflow: hidden;
   color: var(--text-primary);
-  padding-top: calc(var(--chrome-height) + 20px);
 }
-.settings-panel-scroll {
-  height: 100%;
-  overflow-y: auto;
-  scrollbar-gutter: stable both-edges;
-}
-.settings-panel-content { width: min(672px, calc(100% - 64px)); box-sizing: border-box; margin: 0 auto; padding: 32px 32px 96px; container-type: inline-size; }
+.settings-panel-content { width: min(672px, calc(100% - 64px)); box-sizing: border-box; margin: 0 auto; padding: 128px 32px 96px; container-type: inline-size; }
 .settings-panel h1 { margin: 0 0 40px; color: var(--text-primary); font-size: 24px; font-weight: 650; letter-spacing: 0; }
 .settings-section { margin: 0 0 40px; }
 .settings-section h2 { margin: 0 0 12px; color: var(--text-muted); font-size: 13px; font-weight: 500; }
 .settings-card { margin: 0 -16px; overflow: hidden; border: 1px solid var(--line-subtler); border-radius: 16px; background: var(--surface-card); }
 .settings-control {
-  min-height: 64px;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -1740,8 +1733,8 @@ kbd span { margin-left: 2px; }
 .settings-reset-button:hover { background: var(--surface-subtle-strong); color: var(--text-primary); }
 .settings-reset-button[data-hidden] { visibility: hidden; pointer-events: none; }
 .settings-select {
-  width: 220px;
-  height: 32px;
+  min-width: 140px;
+  height: 36px;
   appearance: none;
   border: 1px solid transparent;
   border-radius: 8px;
@@ -1752,29 +1745,26 @@ kbd span { margin-left: 2px; }
 }
 .settings-select:focus-visible {
   border-color: var(--focus-border);
-  outline: 2px solid var(--focus-ring);
-  outline-offset: -2px;
 }
 .settings-color-control {
   width: 176px;
-  height: 32px;
+  height: 36px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
   border: 1px solid transparent;
   border-radius: 8px;
   background: var(--surface-input);
-  padding: 3px 10px 3px 3px;
+  padding: 4px 12px 4px 4px;
   transition: border-color 120ms ease, background 120ms ease;
 }
 .settings-color-control:focus-within {
   border-color: var(--focus-border);
-  box-shadow: inset 0 0 0 1px var(--focus-ring);
 }
 .settings-color-swatch {
   position: relative;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   flex: 0 0 auto;
   overflow: hidden;
   border-radius: 6px;
@@ -1801,7 +1791,7 @@ kbd span { margin-left: 2px; }
 }
 .settings-text-control {
   width: min(320px, 42vw);
-  height: 32px;
+  height: 36px;
   min-width: 0;
   border: 1px solid transparent;
   border-radius: 8px;
@@ -1813,8 +1803,6 @@ kbd span { margin-left: 2px; }
 }
 .settings-text-control:focus-visible {
   border-color: var(--focus-border);
-  outline: 2px solid var(--focus-ring);
-  outline-offset: -2px;
 }
 .settings-range-control {
   display: inline-flex;
@@ -1831,8 +1819,8 @@ kbd span { margin-left: 2px; }
 }
 .settings-range-control input::-webkit-slider-thumb {
   appearance: none;
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   border-radius: 999px;
   background: var(--fg-base);
   box-shadow: 0 1px 6px color-mix(in srgb, black 22%, transparent);
@@ -1896,14 +1884,17 @@ kbd span { margin-left: 2px; }
   .chrome-leading-controls { left: 82px; }
   .tab-history-controls { display: none; }
   .sidebar-search-row { padding: 0 28px 0 32px; }
-  .settings-panel-content { width: 100%; padding: 24px 16px 72px; }
+  .settings-panel-content { width: 100%; padding: 96px 16px 72px; }
   .notification-popup {
     left: 16px;
     width: auto;
   }
 }
 @media (max-width: 520px) {
-  .settings-panel-content { width: 100%; padding: 24px 24px 72px; }
+  .settings-panel-content { width: 100%; padding: 96px 24px 72px; }
+}
+@media (min-width: 760px) {
+  .settings-panel-content { padding-top: 144px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .chrome-button,
