@@ -78,17 +78,23 @@ button,
 .buret-grid-toolbar select {
   box-sizing: border-box;
   min-height: var(--buret-control-height);
-  border: 1px solid var(--buret-border);
+  border: 0;
   border-radius: 8px;
   color: var(--buret-text);
   background: var(--buret-input);
   outline: none;
-  transition: background 140ms ease-out, border-color 140ms ease-out, box-shadow 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
+  transition: background 140ms ease-out, box-shadow 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
 }
 
 button {
   padding: 7px 12px;
   font-weight: 590;
+}
+
+.buret-grid-toolbar input[type="search"],
+.buret-grid-toolbar select {
+  border: 1px solid var(--buret-border);
+  transition: background 140ms ease-out, border-color 140ms ease-out, box-shadow 140ms ease-out, color 140ms ease-out;
 }
 
 button:not(:disabled):active {
@@ -98,15 +104,23 @@ button:not(:disabled):active {
 button:not(:disabled):hover,
 .buret-grid-toolbar input[type="search"]:hover,
 .buret-grid-toolbar select:hover {
-  border-color: var(--buret-border-strong);
   background-color: var(--buret-surface-raised);
+}
+
+.buret-grid-toolbar input[type="search"]:hover,
+.buret-grid-toolbar select:hover {
+  border-color: var(--buret-border-strong);
 }
 
 button:focus-visible,
 .buret-grid-toolbar input[type="search"]:focus,
 .buret-grid-toolbar select:focus {
-  border-color: var(--buret-accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--buret-accent) 24%, transparent);
+}
+
+.buret-grid-toolbar input[type="search"]:focus,
+.buret-grid-toolbar select:focus {
+  border-color: var(--buret-accent);
 }
 
 button:disabled {
@@ -162,7 +176,7 @@ button:disabled {
 }
 
 .buret-actions button {
-  background: transparent;
+  background: var(--buret-input);
 }
 
 .buret-grid-toolbar {
@@ -173,7 +187,7 @@ button:disabled {
   gap: 10px;
   margin-bottom: 14px;
   padding: 12px;
-  border: 1px solid color-mix(in srgb, var(--buret-border-strong) 72%, transparent);
+  border: 0;
   border-radius: 12px;
   background: var(--buret-bg);
   box-shadow: 0 10px 24px color-mix(in srgb, var(--buret-shadow) 35%, transparent);
@@ -205,7 +219,7 @@ button:disabled {
   height: var(--buret-control-height);
   min-height: var(--buret-control-height);
   padding: 3px;
-  border: 1px solid var(--buret-border);
+  border: 0;
   border-radius: 8px;
   background: var(--buret-input);
 }
@@ -219,7 +233,7 @@ button:disabled {
   height: var(--buret-control-height);
   min-height: var(--buret-control-height);
   padding: 3px;
-  border: 1px solid var(--buret-border);
+  border: 0;
   border-radius: 8px;
   background: var(--buret-input);
 }
@@ -257,7 +271,7 @@ button:disabled {
   height: var(--buret-control-height);
   min-height: var(--buret-control-height);
   padding: 0 10px;
-  border: 1px solid var(--buret-border);
+  border: 0;
   border-radius: 8px;
   background: var(--buret-input);
   color: var(--buret-muted);
@@ -279,7 +293,6 @@ button:disabled {
 
 .buret-grid-toolbar .buret-rdkit-coords-control:has(input:checked) {
   color: var(--buret-text);
-  border-color: var(--buret-border-strong);
   background: var(--buret-surface-raised);
 }
 
