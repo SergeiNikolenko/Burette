@@ -7,8 +7,9 @@ export type MenuItemSpec =
 export async function showNativeContextMenu(
   spec: MenuItemSpec[],
   at?: { x: number; y: number },
+  options: { forceWeb?: boolean } = {},
 ): Promise<boolean> {
-  if (!isTauriRuntime()) {
+  if (options.forceWeb || !isTauriRuntime()) {
     showWebContextMenu(spec, at);
     return true;
   }

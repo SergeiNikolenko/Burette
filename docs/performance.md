@@ -104,6 +104,11 @@ Search uses SQLite FTS5 through `molecules_fts` when available and falls back to
 command path so the web runtime does not need to hold the entire collection in
 memory.
 
+Grid bridge page sizes are intentionally split by host. Desktop Tauri and
+browser-dev runtimes request 72 rows per page to keep scrolling responsive
+without the earlier aggressive 144-row batches. Quick Look requests 48 rows per
+page to keep Finder extension memory lower.
+
 `scripts/perf-smoke.sh` includes an opt-in FTS perf smoke:
 
 ```bash
