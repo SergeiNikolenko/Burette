@@ -2,14 +2,23 @@
 set -euo pipefail
 
 ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+APP_ID="com.local.BurreteV10"
+EXT_ID="com.local.BurreteV10.Preview"
+APP_BUNDLE_NAME="Burrete.app"
+if [[ -n "${BURRETE_DEV_FLAVOR:-}" ]]; then
+  command -v bun >/dev/null 2>&1 || { echo "error: BURRETE_DEV_FLAVOR requires bun to compute the dev namespace." >&2; exit 1; }
+  eval "$(bun "$ROOT/scripts/dev-namespace.mjs" shell-env)"
+  APP_ID="$BURRETE_APP_ID"
+  EXT_ID="$BURRETE_PREVIEW_ID"
+  APP_BUNDLE_NAME="$BURRETE_APP_BUNDLE_NAME"
+fi
 FILE="${1:-$ROOT/samples/mini.pdb}"
 if [[ -f "$FILE" ]]; then
   FILE="$(cd -P "$(dirname "$FILE")" && pwd -P)/$(basename "$FILE")"
 fi
-APP="$HOME/Applications/Burrete.app"
-BUILT_APP="$ROOT/build/Burrete.app"
-EXT_ID="com.local.BurreteV10.Preview"
-CONTAINER_LOG="$HOME/Library/Containers/com.local.BurreteV10.Preview/Data/Library/Caches/Burrete/Burrete.log"
+APP="$HOME/Applications/$APP_BUNDLE_NAME"
+BUILT_APP="$ROOT/build/$APP_BUNDLE_NAME"
+CONTAINER_LOG="$HOME/Library/Containers/$EXT_ID/Data/Library/Caches/Burrete/Burrete.log"
 CUSTOM_TYPE="$("$ROOT/scripts/preview-content-type.mjs" "$FILE")"
 
 printf '\n== File ==\n%s\n' "$FILE"

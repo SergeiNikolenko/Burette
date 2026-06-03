@@ -2,10 +2,26 @@
 set -euo pipefail
 
 ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-APP="$ROOT/build/Burrete.app"
+APP_ID="com.local.BurreteV10"
+EXT_ID="com.local.BurreteV10.Preview"
+PDB_CONTENT_TYPE="com.local.burrete10.pdb"
+CIF_CONTENT_TYPE="com.local.burrete10.cif"
+APP_BUNDLE_NAME="Burrete.app"
+IS_DEV_FLAVOR=0
+if [[ -n "${BURRETE_DEV_FLAVOR:-}" ]]; then
+  command -v bun >/dev/null 2>&1 || { echo "error: BURRETE_DEV_FLAVOR requires bun to compute the dev namespace." >&2; exit 1; }
+  eval "$(bun "$ROOT/scripts/dev-namespace.mjs" shell-env)"
+  APP_ID="$BURRETE_APP_ID"
+  EXT_ID="$BURRETE_PREVIEW_ID"
+  PDB_CONTENT_TYPE="$BURRETE_PDB_CONTENT_TYPE"
+  CIF_CONTENT_TYPE="${BURRETE_CONTENT_TYPE_PREFIX}cif"
+  APP_BUNDLE_NAME="$BURRETE_APP_BUNDLE_NAME"
+  IS_DEV_FLAVOR=1
+fi
+APP="$ROOT/build/$APP_BUNDLE_NAME"
 DEST_DIR="$HOME/Applications"
-DEST="$DEST_DIR/Burrete.app"
-STAGING_DEST="$DEST_DIR/.Burrete.installing.app"
+DEST="$DEST_DIR/$APP_BUNDLE_NAME"
+STAGING_DEST="$DEST_DIR/.${APP_BUNDLE_NAME%.app}.installing.app"
 LOCAL_XYZRENDER_ENV="$HOME/.local/share/uv/tools/xyzrender"
 DEST_XYZRENDER_ENV="$DEST/Contents/Resources/xyzrender-runtime"
 STAGING_XYZRENDER_ENV="$STAGING_DEST/Contents/Resources/xyzrender-runtime"
@@ -21,8 +37,6 @@ LEGACY_BURET_DEST="$DEST_DIR/Buret.app"
 LEGACY_XYZ_DEST="$DEST_DIR/Burette XYZRender.app"
 STAGING_APPEX="$STAGING_DEST/Contents/PlugIns/BurretePreview.appex"
 DEST_APPEX="$DEST/Contents/PlugIns/BurretePreview.appex"
-EXT_ID="com.local.BurreteV10.Preview"
-APP_ID="com.local.BurreteV10"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
 if [[ ! -d "$APP" ]]; then
@@ -134,44 +148,49 @@ pkill -f "$DEST/Contents/MacOS/burrete" 2>/dev/null || true
 pkill -f "$LEGACY_OLD_DEST/Contents/MacOS/MolstarQuickLook" 2>/dev/null || true
 pkill -f "$LEGACY_XYZ_DEST" 2>/dev/null || true
 pkill -f "$ROOT/build/Build/Products/Debug/MolstarQuickLook" 2>/dev/null || true
-for OLD_ID in \
-  com.local.Burrete.Preview \
-  com.local.BurreteV4.Preview \
-  com.local.BurreteV5.Preview \
-  com.local.BurreteV6.Preview \
-  com.local.BurreteV7.Preview \
-  com.local.BurreteV8.Preview \
-  com.local.BurreteV9.Preview \
-  com.local.BurreteV10.Preview \
-  com.local.BuretteXyzRender.Preview \
-  com.local.MolstarQuickLook.Preview \
-  com.local.MolstarQuickLookV8.Preview \
-  com.local.MolstarQuickLookV10.Preview
-do
-  pluginkit -r "$OLD_ID" 2>/dev/null || true
-done
-while IFS= read -r OLD_ENTRY; do
-  OLD_APPEX="${OLD_ENTRY##*$'\t'}"
-  if [[ "$OLD_APPEX" == *Burrete*.appex || "$OLD_APPEX" == *Burette*.appex || "$OLD_APPEX" == *MolstarQuickLook*.appex ]]; then
-    pluginkit -r "$OLD_APPEX" 2>/dev/null || true
-  fi
-done < <(pluginkit -m -v -p com.apple.quicklook.preview 2>/dev/null | grep -Ei 'Burrete|Burette|MolstarQuickLook' || true)
-while IFS= read -r OLD_APPEX; do
-  [[ "$OLD_APPEX" == "$DEST_APPEX" ]] && continue
-  if [[ "$OLD_APPEX" == *Burrete*.appex || "$OLD_APPEX" == *Burette*.appex || "$OLD_APPEX" == *MolstarQuickLook*.appex ]]; then
-    pluginkit -r "$OLD_APPEX" 2>/dev/null || true
-    if [[ "$OLD_APPEX" == */Contents/PlugIns/*.appex ]]; then
-      unregister_bundle "${OLD_APPEX%/Contents/PlugIns/*}.app"
+pluginkit -r "$EXT_ID" 2>/dev/null || true
+if [[ "$IS_DEV_FLAVOR" != "1" ]]; then
+  for OLD_ID in \
+    com.local.Burrete.Preview \
+    com.local.BurreteV4.Preview \
+    com.local.BurreteV5.Preview \
+    com.local.BurreteV6.Preview \
+    com.local.BurreteV7.Preview \
+    com.local.BurreteV8.Preview \
+    com.local.BurreteV9.Preview \
+    com.local.BurreteV10.Preview \
+    com.local.BuretteXyzRender.Preview \
+    com.local.MolstarQuickLook.Preview \
+    com.local.MolstarQuickLookV8.Preview \
+    com.local.MolstarQuickLookV10.Preview
+  do
+    pluginkit -r "$OLD_ID" 2>/dev/null || true
+  done
+  while IFS= read -r OLD_ENTRY; do
+    OLD_APPEX="${OLD_ENTRY##*$'\t'}"
+    if [[ "$OLD_APPEX" == *Burrete*.appex || "$OLD_APPEX" == *Burette*.appex || "$OLD_APPEX" == *MolstarQuickLook*.appex ]]; then
+      pluginkit -r "$OLD_APPEX" 2>/dev/null || true
     fi
-  fi
-done < <(pluginkit -m -A -D -vvv -p com.apple.quicklook.preview 2>/dev/null | sed -n 's/^[[:space:]]*Path = //p' | grep -Ei 'Burrete|Burette|MolstarQuickLook' || true)
+  done < <(pluginkit -m -v -p com.apple.quicklook.preview 2>/dev/null | grep -Ei 'Burrete|Burette|MolstarQuickLook' || true)
+  while IFS= read -r OLD_APPEX; do
+    [[ "$OLD_APPEX" == "$DEST_APPEX" ]] && continue
+    if [[ "$OLD_APPEX" == *Burrete*.appex || "$OLD_APPEX" == *Burette*.appex || "$OLD_APPEX" == *MolstarQuickLook*.appex ]]; then
+      pluginkit -r "$OLD_APPEX" 2>/dev/null || true
+      if [[ "$OLD_APPEX" == */Contents/PlugIns/*.appex ]]; then
+        unregister_bundle "${OLD_APPEX%/Contents/PlugIns/*}.app"
+      fi
+    fi
+  done < <(pluginkit -m -A -D -vvv -p com.apple.quicklook.preview 2>/dev/null | sed -n 's/^[[:space:]]*Path = //p' | grep -Ei 'Burrete|Burette|MolstarQuickLook' || true)
+fi
 
 unregister_bundle "$DEST"
 unregister_bundle "$LEGACY_OLD_DEST"
 unregister_bundle "$LEGACY_BURET_DEST"
 unregister_bundle "$LEGACY_XYZ_DEST"
 unregister_bundle "$APP"
-unregister_legacy_launch_services_bundles
+if [[ "$IS_DEV_FLAVOR" != "1" ]]; then
+  unregister_legacy_launch_services_bundles
+fi
 
 assert_bundled_xyzrender_runtime() {
   local runtime="$1"
@@ -316,18 +335,21 @@ rm -rf "$STAGING_DEST"
 [[ -x "$LSREGISTER" ]] && "$LSREGISTER" -f -R "$DEST" || true
 assert_bundled_xyzrender_runner "$DEST_XYZRENDER_ENV" "$DEST_XYZRENDER_PYTHON" "after lsregister"
 if [[ -x /usr/bin/swift ]]; then
-  BURRETE_APP_PATH="$DEST" /usr/bin/swift -e '
+  BURRETE_APP_PATH="$DEST" BURRETE_APP_ID="$APP_ID" BURRETE_IS_DEV_FLAVOR="$IS_DEV_FLAVOR" /usr/bin/swift -e '
 import Foundation
 import CoreServices
 
 let appURL = URL(fileURLWithPath: ProcessInfo.processInfo.environment["BURRETE_APP_PATH"] ?? "")
-let bundleID = "com.local.BurreteV10" as CFString
+let bundleID = (ProcessInfo.processInfo.environment["BURRETE_APP_ID"] ?? "com.local.BurreteV10") as CFString
+let isDevFlavor = ProcessInfo.processInfo.environment["BURRETE_IS_DEV_FLAVOR"] == "1"
 LSRegisterURL(appURL as CFURL, true)
-let bundle = Bundle(url: appURL)
-let documentTypes = bundle?.object(forInfoDictionaryKey: "CFBundleDocumentTypes") as? [[String: Any]] ?? []
-let contentTypes = documentTypes.flatMap { $0["LSItemContentTypes"] as? [String] ?? [] }
-for contentType in Set(contentTypes) {
-    LSSetDefaultRoleHandlerForContentType(contentType as CFString, .viewer, bundleID)
+if !isDevFlavor {
+    let bundle = Bundle(url: appURL)
+    let documentTypes = bundle?.object(forInfoDictionaryKey: "CFBundleDocumentTypes") as? [[String: Any]] ?? []
+    let contentTypes = documentTypes.flatMap { $0["LSItemContentTypes"] as? [String] ?? [] }
+    for contentType in Set(contentTypes) {
+        LSSetDefaultRoleHandlerForContentType(contentType as CFString, .viewer, bundleID)
+    }
 }
 ' >/dev/null 2>&1 || true
 fi
@@ -344,6 +366,24 @@ assert_bundled_xyzrender_runner "$DEST_XYZRENDER_ENV" "$DEST_XYZRENDER_PYTHON" "
 
 touch "$ROOT/samples/mini.pdb" "$ROOT/samples/mini.cif" "$ROOT/samples/mini.xyz" 2>/dev/null || true
 
+NORMAL_TESTS=$(
+  if [[ "$IS_DEV_FLAVOR" == "1" ]]; then
+    cat <<DEV
+Normal Finder previews remain globally owned by file extension. For this dev
+flavor, prefer the forced tests above.
+DEV
+  else
+    cat <<NORMAL
+Normal tests:
+  qlmanage -p "$ROOT/samples/mini.pdb"
+  qlmanage -p "$ROOT/samples/mini.cif"
+  qlmanage -p "$ROOT/tests/fixtures/BurettePreviewSamples/tables/compounds.csv"
+  qlmanage -p "$ROOT/tests/fixtures/BurettePreviewSamples/tables/compounds.tsv"
+  qlmanage -p "$ROOT/samples/mini.xyz"
+NORMAL
+  fi
+)
+
 cat <<REPORT
 Installed local copy:
   $DEST
@@ -352,16 +392,11 @@ Check extension registration:
   pluginkit -m -p com.apple.quicklook.preview | grep -i Burrete
 
 Forced tests:
-  qlmanage -p -c com.local.burrete10.pdb "$ROOT/samples/mini.pdb"
-  qlmanage -p -c com.local.burrete10.cif "$ROOT/samples/mini.cif"
+  qlmanage -p -c $PDB_CONTENT_TYPE "$ROOT/samples/mini.pdb"
+  qlmanage -p -c $CIF_CONTENT_TYPE "$ROOT/samples/mini.cif"
   qlmanage -p "$ROOT/samples/mini.xyz"
 
-Normal tests:
-  qlmanage -p "$ROOT/samples/mini.pdb"
-  qlmanage -p "$ROOT/samples/mini.cif"
-  qlmanage -p "$ROOT/tests/fixtures/BurettePreviewSamples/tables/compounds.csv"
-  qlmanage -p "$ROOT/tests/fixtures/BurettePreviewSamples/tables/compounds.tsv"
-  qlmanage -p "$ROOT/samples/mini.xyz"
+$NORMAL_TESTS
 
 Launch manually when needed:
   open "$DEST"
