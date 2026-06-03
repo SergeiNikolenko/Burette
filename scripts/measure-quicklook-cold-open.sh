@@ -5,7 +5,13 @@ ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 FILE="${1:-$ROOT/samples/mini.pdb}"
 RUNS="${RUNS:-3}"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-30}"
-CONTAINER_BASE="$HOME/Library/Containers/com.local.BurreteV10.Preview/Data/Library/Caches/Burrete"
+PREVIEW_ID="com.local.BurreteV10.Preview"
+if [[ -n "${BURRETE_DEV_FLAVOR:-}" ]]; then
+  command -v bun >/dev/null 2>&1 || { echo "error: BURRETE_DEV_FLAVOR requires bun to compute the dev namespace." >&2; exit 1; }
+  eval "$(bun "$ROOT/scripts/dev-namespace.mjs" shell-env)"
+  PREVIEW_ID="$BURRETE_PREVIEW_ID"
+fi
+CONTAINER_BASE="$HOME/Library/Containers/$PREVIEW_ID/Data/Library/Caches/Burrete"
 LOG_PATH="$CONTAINER_BASE/Burrete.log"
 METRICS_PATH="${METRICS_PATH:-$ROOT/metrics.json}"
 

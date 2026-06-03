@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
 import { basename, extname, resolve } from 'node:path';
+import { transformContentType } from './dev-namespace.mjs';
 
 function usage() {
   console.error('usage: preview-content-type.mjs [--reject-table] /path/to/structure-file');
@@ -27,5 +28,5 @@ if (rejectTable && (format?.id === 'csv' || format?.id === 'tsv')) {
 }
 
 if (format?.contentType) {
-  process.stdout.write(format.contentType);
+  process.stdout.write(transformContentType(format.contentType));
 }
