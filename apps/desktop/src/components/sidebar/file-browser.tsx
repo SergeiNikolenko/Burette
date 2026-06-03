@@ -1,11 +1,11 @@
-import { useState, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { useState, type DragEvent as ReactDragEvent } from "react";
 import { Atom01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { filterSidebarProjects } from "../../lib/sidebar-projects";
 import { hasStructureDrag, readStructureDragPayload } from "../../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
+import { RadixDropdownMenu } from "../radix-menu";
 import { ScrollFade } from "../scroll-fade";
-import { showNativeContextMenu } from "../native-context-menu";
 import type { ShellActions, ShellViewState } from "../types";
 import { ProjectGroup, ProjectItem } from "./file-tree-node";
 
@@ -31,33 +31,6 @@ export function FileBrowser({
   const toggleAllProjectFolders = () => {
     if (!projectsExpanded) actions.toggleProjectsOpen();
     actions.setExpandedProjectIds(allVisibleProjectsExpanded ? [] : state.sidebarProjects.map((project) => project.id));
-  };
-
-  const showProjectsMenu = (event: ReactMouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-    const rect = event.currentTarget.getBoundingClientRect();
-    void showNativeContextMenu(
-      [
-        {
-          kind: "item" as const,
-          id: "add-project-folder",
-          text: "Add Project Folder...",
-          action: () => {
-            void actions.chooseWorkspace();
-          },
-        },
-        { kind: "separator" as const },
-        {
-          kind: "item" as const,
-          id: "close-all-tabs",
-          text: "Close All Tabs",
-          action: () => {
-            actions.clearAllDocuments();
-          },
-        },
-      ],
-      { x: Math.round(rect.left), y: Math.round(rect.bottom + 4) },
-    );
   };
 
   const handleKetcherDragOver = (event: ReactDragEvent<HTMLButtonElement>) => {
@@ -164,15 +137,34 @@ export function FileBrowser({
           >
             <ExpandCollapseIcon collapsed={allVisibleProjectsExpanded} />
           </button>
-          <button
-            type="button"
-            className="sidebar-section-menu-button"
-            aria-label="Project options"
-            aria-haspopup="menu"
-            onClick={showProjectsMenu}
-          >
-            <MoreIcon />
-          </button>
+          <RadixDropdownMenu
+            items={[
+              {
+                kind: "item",
+                id: "add-project-folder",
+                text: "Add Project Folder...",
+                action: () => {
+                  void actions.chooseWorkspace();
+                },
+              },
+              { kind: "separator" },
+              {
+                kind: "item",
+                id: "close-all-tabs",
+                text: "Close All Tabs",
+                action: actions.clearAllDocuments,
+              },
+            ]}
+            trigger={(
+              <button
+                type="button"
+                className="sidebar-section-menu-button"
+                aria-label="Project options"
+              >
+                <MoreIcon />
+              </button>
+            )}
+          />
         </div>
         {projectsExpanded && (
           visibleProjects.length === 0 ? (

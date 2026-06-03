@@ -1,6 +1,6 @@
+import type { CSSProperties } from "react";
 import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { CSSProperties } from "react";
 import { ViewerArea } from "./editor-area";
 import { EditorTabs } from "./editor-area/editor-tabs";
 import { NotificationPopup } from "./notification-popup";

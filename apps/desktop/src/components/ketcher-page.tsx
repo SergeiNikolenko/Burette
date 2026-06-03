@@ -9,7 +9,6 @@ import {
   type CSSProperties,
   type DragEvent,
   type ErrorInfo,
-  type MouseEvent,
   type ReactNode,
 } from "react";
 
@@ -21,6 +20,7 @@ import type { StructureDragRecord } from "../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "./drop-action-executor";
 import type { KetcherLocation } from "./editor-area/page-kinds";
 import type { KetcherEditorApi } from "./ketcher-editor";
+import { RadixDropdownMenu } from "./radix-menu";
 import type { KetcherSketchTarget, ShellActions, ShellViewState } from "./types";
 
 type KetcherEditorComponent = ComponentType<{
@@ -53,8 +53,6 @@ export function KetcherPage({
   const [exportingSketch, setExportingSketch] = useState(false);
   const [ketcherUIScaleIndex, setKetcherUIScaleIndex] = useState(DEFAULT_KETCHER_UI_SCALE_INDEX);
   const [selectedCollectionPath, setSelectedCollectionPath] = useState("");
-  const [collectionChooserOpen, setCollectionChooserOpen] = useState(false);
-  const collectionChooserRef = useRef<HTMLDivElement | null>(null);
   const handledImportRequestIdRef = useRef<number | null>(null);
   const sketchDragRecordRef = useRef<StructureDragRecord | null>(null);
   const restoredDraftRef = useRef("");
@@ -129,23 +127,6 @@ export function KetcherPage({
       return collectionTargets[0]?.path ?? "";
     });
   }, [collectionTargets]);
-
-  useEffect(() => {
-    if (!collectionChooserOpen) return;
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (collectionChooserRef.current?.contains(event.target as Node | null)) return;
-      setCollectionChooserOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setCollectionChooserOpen(false);
-    };
-    document.addEventListener("pointerdown", closeOnOutsidePointer);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutsidePointer);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [collectionChooserOpen]);
 
   const exportSmiles = useCallback(async () => {
     if (!ketcher) return;
@@ -240,14 +221,7 @@ export function KetcherPage({
     setStatus("Dragging Ketcher sketch");
   }, [actions]);
 
-  const openCollectionChooser = useCallback((event: MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setCollectionChooserOpen((open) => !open);
-  }, []);
-
   const addSketchToCollection = useCallback((collectionPath: string | null) => {
-    setCollectionChooserOpen(false);
     void openSketch("collection", collectionPath);
   }, [openSketch]);
 
@@ -373,40 +347,39 @@ export function KetcherPage({
           <button type="button" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("grid")}>Grid</button>
           <button type="button" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("molstar")}>Molstar</button>
           <button type="button" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("xyzrender")}>xyzrender</button>
-          <div className="ketcher-collection-menu-anchor" ref={collectionChooserRef}>
-            <button
-              type="button"
-              aria-haspopup="menu"
-              aria-expanded={collectionChooserOpen}
-              disabled={!ketcher || exportingSketch}
-              onClick={openCollectionChooser}
-            >
-              Add to collection
-            </button>
-            {collectionChooserOpen ? (
-              <div className="ketcher-collection-menu" role="menu" aria-label="Collection target">
-                {collectionTargets.length === 0 ? (
-                  <div className="ketcher-collection-menu-empty">No open SDF collections</div>
-                ) : collectionTargets.map((target) => (
-                  <button
-                    key={target.path}
-                    type="button"
-                    role="menuitem"
-                    className={target.path === selectedCollectionPath ? "is-selected" : undefined}
-                    onClick={() => {
+          <RadixDropdownMenu
+            align="end"
+            items={[
+              ...(collectionTargets.length === 0
+                ? [{
+                    kind: "item" as const,
+                    id: "no-open-collections",
+                    text: "No open SDF collections",
+                    disabled: true,
+                  }]
+                : collectionTargets.map((target) => ({
+                    kind: "item" as const,
+                    id: `collection-${target.path}`,
+                    text: target.path === selectedCollectionPath ? `✓ ${target.title}` : target.title,
+                    action: () => {
                       setSelectedCollectionPath(target.path);
                       addSketchToCollection(target.path);
-                    }}
-                  >
-                    {target.title}
-                  </button>
-                ))}
-                <button type="button" role="menuitem" onClick={() => addSketchToCollection(null)}>
-                  New collection...
-                </button>
-              </div>
-            ) : null}
-          </div>
+                    },
+                  }))),
+              { kind: "separator" as const },
+              {
+                kind: "item" as const,
+                id: "new-collection",
+                text: "New collection...",
+                action: () => addSketchToCollection(null),
+              },
+            ]}
+            trigger={(
+              <button type="button" disabled={!ketcher || exportingSketch}>
+                Add to collection
+              </button>
+            )}
+          />
           <div className="ketcher-scale-control" aria-label="Ketcher scale">
             <button type="button" aria-label="Decrease Ketcher scale" disabled={ketcherUIScaleIndex === 0} onClick={decreaseKetcherScale}>-</button>
             <span>{ketcherUIScalePercent}%</span>
