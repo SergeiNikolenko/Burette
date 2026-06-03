@@ -537,12 +537,16 @@ function desktopManualChunks(id: string) {
   const normalized = id.replaceAll("\\", "/");
   if (normalized.includes("/node_modules/molstar/")) return "molstar";
   if (
+    normalized.includes("/node_modules/raphael/")
+    || normalized.includes("/node_modules/eve-raphael/")
+  ) {
+    return "ketcher-raphael";
+  }
+  if (
     normalized.includes("/node_modules/ketcher-core/")
     || normalized.includes("/node_modules/ketcher-react/")
     || normalized.includes("/node_modules/ketcher-standalone/")
     || normalized.includes("/node_modules/indigo-ketcher/")
-    || normalized.includes("/node_modules/raphael/")
-    || normalized.includes("/node_modules/eve-raphael/")
   ) {
     return "ketcher";
   }

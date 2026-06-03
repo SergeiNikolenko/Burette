@@ -22,6 +22,8 @@ TAURI_BUILT_APP="$ROOT/apps/desktop/src-tauri/target/release/bundle/macos/Burret
 XCODE_DERIVED="${BURRETE_DEV_DERIVED_DATA:-/private/tmp/BurreteV10XcodeDev}"
 XCODE_LOG="$ROOT/build/xcode-dev.log"
 QUICKLOOK_APPEX="$XCODE_DERIVED/Build/Products/Debug/BurretePreview.appex"
+REUSE_QUICKLOOK="${BURRETE_DEV_REUSE_QUICKLOOK:-0}"
+EXISTING_PREVIEW_APPEX="$LOCAL_APP/Contents/PlugIns/BurretePreview.appex"
 
 cat <<HDR
 Burrete v10 dev build
@@ -74,9 +76,11 @@ mark_regular_desktop_app() {
   local app="$1"
   local plist="$app/Contents/Info.plist"
   [[ -f "$plist" ]] || { echo "error: app Info.plist missing: $plist" >&2; exit 1; }
+  printf 'APPL????' > "$app/Contents/PkgInfo"
   /usr/libexec/PlistBuddy -c 'Delete :LSUIElement' "$plist" 2>/dev/null || true
   /usr/libexec/PlistBuddy -c 'Add :LSUIElement bool false' "$plist"
   /usr/libexec/PlistBuddy -c 'Delete :LSBackgroundOnly' "$plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c 'Delete :LSRequiresCarbon' "$plist" 2>/dev/null || true
 }
 copy_app_plist_metadata() {
   local app="$1"
@@ -122,20 +126,31 @@ if [[ ! -d node_modules || ! -d node_modules/@hugeicons/core-free-icons || ! -d 
 fi
 
 bun run build:tauri
-mkdir -p "$XCODE_DERIVED" "$(dirname "$XCODE_LOG")"
-if ! xcodebuild -project Burrete.xcodeproj -scheme BurretePreview -configuration Debug -derivedDataPath "$XCODE_DERIVED" COMPILER_INDEX_STORE_ENABLE=NO CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build >"$XCODE_LOG" 2>&1; then
-  echo "error: Xcode build failed. Last log lines:" >&2
-  tail -80 "$XCODE_LOG" >&2
-  exit 1
+QUICKLOOK_APPEX_SOURCE="$QUICKLOOK_APPEX"
+if [[ "$REUSE_QUICKLOOK" == "1" ]]; then
+  [[ -d "$EXISTING_PREVIEW_APPEX" ]] || {
+    echo "error: BURRETE_DEV_REUSE_QUICKLOOK=1 requires an existing preview extension at: $EXISTING_PREVIEW_APPEX" >&2
+    echo "Run ./scripts/build-dev.sh once without BURRETE_DEV_REUSE_QUICKLOOK=1 after changing Swift or extension packaging." >&2
+    exit 1
+  }
+  QUICKLOOK_APPEX_SOURCE="$EXISTING_PREVIEW_APPEX"
+  echo "Reusing Quick Look extension: $QUICKLOOK_APPEX_SOURCE"
+else
+  mkdir -p "$XCODE_DERIVED" "$(dirname "$XCODE_LOG")"
+  if ! xcodebuild -project Burrete.xcodeproj -scheme BurretePreview -configuration Debug -derivedDataPath "$XCODE_DERIVED" COMPILER_INDEX_STORE_ENABLE=NO CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build >"$XCODE_LOG" 2>&1; then
+    echo "error: Xcode build failed. Last log lines:" >&2
+    tail -80 "$XCODE_LOG" >&2
+    exit 1
+  fi
+  echo "Xcode build log: $XCODE_LOG"
 fi
-echo "Xcode build log: $XCODE_LOG"
 
 [[ -d "$TAURI_BUILT_APP" ]] || { echo "error: Tauri app bundle missing: $TAURI_BUILT_APP" >&2; exit 1; }
-[[ -d "$QUICKLOOK_APPEX" ]] || { echo "error: Quick Look extension missing: $QUICKLOOK_APPEX" >&2; exit 1; }
+[[ -d "$QUICKLOOK_APPEX_SOURCE" ]] || { echo "error: Quick Look extension missing: $QUICKLOOK_APPEX_SOURCE" >&2; exit 1; }
 
 mkdir -p "$TAURI_BUILT_APP/Contents/PlugIns"
 rm -rf "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex"
-ditto --norsrc --noextattr "$QUICKLOOK_APPEX" "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex"
+ditto --norsrc --noextattr "$QUICKLOOK_APPEX_SOURCE" "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex"
 mark_regular_desktop_app "$TAURI_BUILT_APP"
 copy_app_plist_metadata "$TAURI_BUILT_APP"
 clean_detritus "$TAURI_BUILT_APP"
@@ -148,6 +163,10 @@ actual_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$LOCAL_APP/
 [[ "$actual_id" == "$APP_ID" ]] || { echo "error: built app id mismatch: got '${actual_id:-unknown}', expected '$APP_ID'" >&2; exit 1; }
 actual_lsui="$(/usr/libexec/PlistBuddy -c 'Print :LSUIElement' "$LOCAL_APP/Contents/Info.plist" 2>/dev/null || true)"
 [[ "$actual_lsui" == "false" ]] || { echo "error: built app is not marked as a regular Dock app (LSUIElement=false)." >&2; exit 1; }
+actual_carbon="$(/usr/libexec/PlistBuddy -c 'Print :LSRequiresCarbon' "$LOCAL_APP/Contents/Info.plist" 2>/dev/null || true)"
+[[ -z "$actual_carbon" ]] || { echo "error: built app must not set LSRequiresCarbon." >&2; exit 1; }
+actual_pkg_info="$(cat "$LOCAL_APP/Contents/PkgInfo" 2>/dev/null || true)"
+[[ "$actual_pkg_info" == "APPL????" ]] || { echo "error: built app PkgInfo missing or invalid." >&2; exit 1; }
 [[ -x "$LOCAL_APP/Contents/MacOS/burrete" ]] || { echo "error: built Tauri app executable missing: $LOCAL_APP/Contents/MacOS/burrete" >&2; exit 1; }
 [[ -d "$LOCAL_APP/Contents/PlugIns/BurretePreview.appex" ]] || { echo "error: embedded Quick Look extension missing in Tauri app." >&2; exit 1; }
 grep -q 'aria-label="Collapse controls"' "$LOCAL_APP/Contents/Resources/Web/index.html" || { echo "error: built web preview shell is missing toolbar grip affordance." >&2; exit 1; }
