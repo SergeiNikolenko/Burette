@@ -935,7 +935,7 @@ fn viewer_bridge_js() -> &'static str {
   }
   webkit.messageHandlers = messageHandlers;
   window.webkit = webkit;
-  window.__mqlPost = (type, message) => postToParent({ type, message: message || '' });
+  window.__mqlPost = (type, message, payload) => postToParent({ type, message: message || '', ...(payload || {}) });
   window.__mqlAction = (name) => messageHandlers.burrete.postMessage({ type: 'action', message: name });
   window.__mqlDebug = () => {};
   window.BurreteInlineMode = true;

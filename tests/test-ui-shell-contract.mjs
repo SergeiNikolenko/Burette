@@ -80,6 +80,10 @@ const [
   previewRuntimeCss,
   updateSource,
   readme,
+  buildScript,
+  buildDevScript,
+  remoteCheckScript,
+  patchWebAssetsScript,
 ] = await Promise.all([
   source('apps/desktop/index.html'),
   source('apps/desktop/src/App.tsx'),
@@ -153,16 +157,22 @@ const [
   source('PreviewExtension/Web/viewer-runtime.css'),
   source('apps/desktop/src/update.ts'),
   source('README.md'),
+  source('scripts/build.sh'),
+  source('scripts/build-dev.sh'),
+  source('scripts/check-remote.sh'),
+  source('scripts/patch-web-assets.sh'),
 ]);
 const viewerShell = previewShell;
 const viewer = previewViewer;
 const commandDocuments = await source('apps/desktop/src-tauri/src/commands/documents.rs');
 const tauriLib = await source('apps/desktop/src-tauri/src/lib.rs');
 const burretePermissions = await source('apps/desktop/src-tauri/permissions/burrete.toml');
+const defaultCapability = await source('apps/desktop/src-tauri/capabilities/default.json');
 const fepSetupStoreTest = await source('tests/test-fep-setup-store.mjs');
 
 const sidebarSurface = [sidebar, sidebarFileBrowser, sidebarFileTreeNode, sidebarWorkspaceSwitcher].join('\n');
 const editorTabDragStart = editorTabs.match(/onDragStart=\{\(event\) => \{[\s\S]*?\n                \}\}/)?.[0] ?? '';
+const packageConfig = JSON.parse(packageJson);
 
 assert.match(uiStore, /export const useUIStore = create<UIState>/);
 assert.match(uiStore, /openCommandPalette:/);
@@ -317,6 +327,7 @@ assert.match(viteConfig, /normalized\.includes\("\/node_modules\/ketcher-react\/
 assert.match(viteConfig, /normalized\.includes\("\/node_modules\/ketcher-standalone\/"\)/);
 assert.match(viteConfig, /normalized\.includes\("\/node_modules\/indigo-ketcher\/"\)/);
 assert.match(viteConfig, /return "ketcher";/);
+assert.match(viteConfig, /normalized\.includes\("\/node_modules\/raphael\/"\)[\s\S]*return "ketcher-raphael";[\s\S]*normalized\.includes\("\/node_modules\/ketcher-core\/"\)[\s\S]*return "ketcher";/);
 assert.match(viteConfig, /function resolveModulePreloadDependencies\(_url: string, deps: string\[\], context: \{ hostType: "html" \| "js" \}\)/);
 assert.match(viteConfig, /resolveDependencies: resolveModulePreloadDependencies/);
 assert.match(viteConfig, /function ketcherRaphaelRequireShimPlugin\(\)/);
@@ -327,6 +338,38 @@ assert.match(viteConfig, /if \(!code\.includes\(target\)\) return null/);
 assert.match(viteConfig, /function deferKetcherCssPlugin\(\)/);
 assert.match(viteConfig, /burrete-defer-ketcher-css/);
 assert.match(viteConfig, /assets\\\/ketcher-\[\^"\]\+\\\.css/);
+for (const script of [buildScript, buildDevScript]) {
+  assert.match(script, /printf 'APPL\?\?\?\?' > "\$app\/Contents\/PkgInfo"/);
+  assert.match(script, /Delete :LSRequiresCarbon/);
+  assert.match(script, /built app must not set LSRequiresCarbon/);
+  assert.match(script, /built app PkgInfo missing or invalid/);
+}
+assert.match(buildDevScript, /BURRETE_DEV_REUSE_QUICKLOOK/);
+assert.match(buildDevScript, /Reusing Quick Look extension/);
+assert.match(buildDevScript, /requires an existing preview extension/);
+assert.match(remoteCheckScript, /BURRETE_REMOTE_HOST/);
+assert.match(remoteCheckScript, /rsync -az --delete/);
+for (const excludedPath of [".git/", ".codegraph/", "build/", "node_modules/", "target/", "apps/desktop/src-tauri/target/"]) {
+  assert.match(remoteCheckScript, new RegExp(`--exclude '${excludedPath.replaceAll("/", "\\/")}'`));
+}
+assert.match(remoteCheckScript, /node tests\/test-ui-shell-contract\.mjs/);
+assert.match(remoteCheckScript, /node tests\/test-tauri-structure\.mjs/);
+assert.equal(packageConfig.scripts.design, 'bun run dev:desktop');
+assert.equal(packageConfig.scripts['check:remote'], 'bash scripts/check-remote.sh');
+assert.equal(packageConfig.scripts['patch:web-assets'], 'bash scripts/patch-web-assets.sh');
+assert.match(patchWebAssetsScript, /BURRETE_APP_PATH/);
+assert.match(patchWebAssetsScript, /APP_WEB="\$APP\/Contents\/Resources\/Web"/);
+assert.match(patchWebAssetsScript, /APPEX_WEB="\$APPEX\/Contents\/Resources\/Web"/);
+assert.match(patchWebAssetsScript, /bun scripts\/check-js-syntax\.mjs/);
+assert.match(patchWebAssetsScript, /ditto --norsrc --noextattr "\$WEB_SOURCE" "\$APP_WEB"/);
+assert.match(patchWebAssetsScript, /ditto --norsrc --noextattr "\$WEB_SOURCE" "\$APPEX_WEB"/);
+assert.match(patchWebAssetsScript, /codesign --force --sign - --entitlements "\$ENTITLEMENTS" "\$APPEX"/);
+assert.match(patchWebAssetsScript, /codesign --force --sign - "\$APP"/);
+assert.match(patchWebAssetsScript, /codesign --verify --deep --strict "\$APP"/);
+assert.match(patchWebAssetsScript, /WEB ASSET PATCH SUCCEEDED/);
+assert.doesNotMatch(patchWebAssetsScript, /xcodebuild/);
+assert.doesNotMatch(patchWebAssetsScript, /cargo build/);
+assert.doesNotMatch(patchWebAssetsScript, /build:tauri/);
 assert.match(viteConfig, /plugins: \[react\(\), ketcherRaphaelRequireShimPlugin\(\), deferKetcherCssPlugin\(\), browserDevXyzrenderPlugin\(\)\]/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "BurettePreviewSamples"\)/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "xyzrender-main"\)/);
@@ -554,6 +597,7 @@ assert.doesNotMatch(appLayout, /<header\s+className="topbar"[^>]*data-tauri-drag
 assert.match(editorTabs, /className="tab-strip" data-tauri-drag-region/);
 assert.match(editorTabs, /className="tab-scroll-region"[\s\S]*role="tablist"[\s\S]*aria-label="Open structures"/);
 assert.match(editorTabs, /className="tab-strip-spacer"[\s\S]*data-tauri-drag-region/);
+assert.match(defaultCapability, /"core:window:allow-start-dragging"/);
 assert.match(pageKinds, /const kinds = \[fileKind, fepSetupKind, ketcherKind, launcherKind, poseReviewKind, settingsKind\] as const/);
 assert.match(pageKinds, /export function pageKind/);
 assert.match(pageKinds, /export function serializeLocation/);
@@ -912,6 +956,7 @@ assert.match(ketcherEditor, /const browserRequire: BrowserRequire = \(id: string
 assert.match(ketcherEditor, /__burreteRequire\?: BrowserRequire/);
 assert.match(ketcherEditor, /Object\.defineProperty\(globalWithRequire, "__burreteRequire"/);
 assert.match(ketcherEditor, /value: browserRequire/);
+assert.match(ketcherEditor, /installKetcherBrowserRequire\(\);\n\nfunction resolveDefaultModule/);
 assert.doesNotMatch(ketcherEditor, /KETCHER_COORDINATE_EVENT_TYPES/);
 assert.doesNotMatch(ketcherEditor, /installScaledKetcherEventBridge/);
 assert.doesNotMatch(ketcherEditor, /new PointerEvent\(event\.type/);

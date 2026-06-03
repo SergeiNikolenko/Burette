@@ -91,6 +91,8 @@ function installKetcherBrowserRequire() {
   });
 }
 
+installKetcherBrowserRequire();
+
 function resolveDefaultModule<T>(module: T): unknown {
   return (module as T & { default?: unknown }).default ?? module;
 }
