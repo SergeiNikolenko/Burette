@@ -591,6 +591,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: desktopManualChunks,
+        onlyExplicitManualChunks: true,
       },
     },
   },
