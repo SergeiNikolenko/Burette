@@ -180,3 +180,11 @@ fn read_grid_append_path(
         .map(|text| (extension, text))
         .map_err(|err| format!("{}: {err}", input_path.display()))
 }
+
+#[tauri::command]
+pub(crate) fn grid_close_runtime(
+    registry: State<'_, GridRuntimeRegistry>,
+    document_id: String,
+) -> Result<(), String> {
+    registry.unregister(&document_id)
+}

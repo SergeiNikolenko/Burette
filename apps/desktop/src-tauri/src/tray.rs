@@ -142,6 +142,14 @@ pub(crate) fn show_main_window<R: Runtime>(app: &tauri::AppHandle<R>) {
     }
 }
 
+pub(crate) fn hide_main_window<R: Runtime>(app: &tauri::AppHandle<R>) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.hide();
+    }
+    #[cfg(target_os = "macos")]
+    let _ = app.hide();
+}
+
 fn normalize_main_window<R: Runtime>(window: &WebviewWindow<R>) {
     let needs_reset = window
         .inner_size()

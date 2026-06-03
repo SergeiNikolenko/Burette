@@ -39,6 +39,7 @@ For native, packaging, Quick Look, or release changes, build the macOS bundle:
 ./scripts/build.sh
 codesign --verify --deep --strict build/Burrete.app
 test -d build/Burrete.app/Contents/PlugIns/BurretePreview.appex
+test -d build/Burrete.app/Contents/PlugIns/BurreteThumbnail.appex
 ```
 
 If Quick Look or renderer behavior changed, install and run forced previews:
@@ -58,8 +59,40 @@ Use the repository release script:
 ./scripts/release.sh
 ```
 
-The script expects a clean version state and produces release artifacts for the
-GitHub release workflow.
+Production releases require Developer ID signing and Apple notarization:
+
+```bash
+export BURRETE_CODESIGN_IDENTITY="Developer ID Application: Example, Inc. (TEAMID)"
+export BURRETE_DEVELOPMENT_TEAM="TEAMID"
+export APPLE_ID="release@example.com"
+export APPLE_TEAM_ID="TEAMID"
+export APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"
+./scripts/release.sh
+```
+
+Instead of Apple ID credentials, a local notarytool keychain profile can be
+used:
+
+```bash
+export BURRETE_NOTARY_KEYCHAIN_PROFILE="BurreteNotary"
+./scripts/release.sh
+```
+
+For CI and pull-request validation, run the release dry run. It checks the
+release script prerequisites and JavaScript syntax but does not build, sign,
+notarize, staple, package, or publish:
+
+```bash
+./scripts/release.sh --dry-run
+```
+
+The local `./scripts/build.sh` path remains an ad-hoc debug build by default.
+Release builds are explicit: `scripts/release.sh` sets
+`BURRETE_BUILD_MODE=release`, requires a Developer ID Application identity,
+uses the Xcode Release configuration, enables the Tauri macOS hardened runtime
+inside the temporary build copy, signs with hardened runtime options, submits
+the app to Apple notarytool, staples the notarization ticket, and then packages
+zip and dmg artifacts.
 
 ## Artifact Requirements
 
@@ -67,9 +100,22 @@ Every release app bundle must satisfy:
 
 - `Burrete.app` launches as the desktop shell.
 - `Burrete.app/Contents/PlugIns/BurretePreview.appex` exists.
+- `Burrete.app/Contents/PlugIns/BurreteThumbnail.appex` exists.
 - Deep codesign verification passes.
+- `codesign -dv --verbose=4 build/Burrete.app` shows a Developer ID
+  Application authority, a TeamIdentifier, and hardened runtime metadata.
+- `spctl --assess --type execute build/Burrete.app` passes.
+- `xcrun stapler validate build/Burrete.app` passes.
 - Finder Quick Look can preview PDB, CIF, and XYZ samples.
 - Update metadata points to the Burrete release endpoint.
+
+The zip artifact is the in-app updater artifact. The dmg artifact is for manual
+distribution and is not currently consumed by the updater.
+
+Before publishing performance-sensitive changes, regenerate the size and perf
+smoke reports described in [Performance architecture](performance.md). The
+release artifact should keep web asset profile membership explainable through
+`config/web-runtime-profiles.json` and `scripts/size-report.sh`.
 
 ## Package Managers
 
@@ -103,7 +149,15 @@ Bun installs the same published package:
 
 ```bash
 bunx burrete install
+bunx burrete doctor
 ```
+
+The CLI installer installs to `~/Applications` by default and to
+`/Applications` only with `--system`. It prints each install step, verifies the
+GitHub `sha256:<digest>` asset checksum when release metadata provides one,
+stages replacement through `Burrete.app.updating`, and restores the previous app
+bundle if replacement fails. `burrete doctor` checks the installed app, embedded
+Quick Look extension, `qlmanage`, and the app version.
 
 ## In-App Updates
 

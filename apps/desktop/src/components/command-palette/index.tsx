@@ -40,6 +40,7 @@ export function CommandPalette({
 }: CommandPaletteProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const listboxId = "command-palette-listbox";
 
   const items = useMemo<PaletteItem[]>(() => {
     const projectItems = state.sidebarProjects.flatMap((project) => project.items.map((item) => ({
@@ -77,6 +78,20 @@ export function CommandPalette({
         label: "Open from Clipboard",
         description: "Open molecular text or copied structure paths",
         run: actions.openClipboard,
+      },
+      {
+        id: "open-recent",
+        group: "Suggested",
+        label: "Open Recent",
+        description: "Open the most recent structure",
+        run: actions.openMostRecentStructure,
+      },
+      {
+        id: "search-projects",
+        group: "Suggested",
+        label: "Search Projects and Structures",
+        description: "Focus project and structure search",
+        run: actions.focusSidebarSearch,
       },
       {
         id: "open-settings",
@@ -128,6 +143,41 @@ export function CommandPalette({
         run: actions.clearCache,
       },
       {
+        id: "reveal-active",
+        group: "Active Structure",
+        label: "Reveal in Finder",
+        description: "Show the active structure in Finder",
+        run: actions.revealActiveDocument,
+      },
+      {
+        id: "copy-active-path",
+        group: "Active Structure",
+        label: "Copy Path",
+        description: "Copy the active structure path",
+        run: actions.copyActiveDocumentPath,
+      },
+      {
+        id: "show-active-metadata",
+        group: "Active Structure",
+        label: "Show Metadata",
+        description: "Show active structure path, renderer, format, and size",
+        run: actions.showActiveDocumentMetadata,
+      },
+      {
+        id: "export-preview-png",
+        group: "Active Structure",
+        label: "Export Preview as PNG",
+        description: "Save the active external SVG preview as PNG",
+        run: actions.exportActivePreviewAsPng,
+      },
+      {
+        id: "export-preview-svg",
+        group: "Active Structure",
+        label: "Export Preview as SVG",
+        description: "Save the active external SVG preview",
+        run: actions.exportActivePreviewAsSvg,
+      },
+      {
         id: "reset-quicklook",
         group: "Suggested",
         label: "Reset Quick Look",
@@ -140,6 +190,13 @@ export function CommandPalette({
         label: "Open Logs Folder",
         description: "Show Burette runtime logs",
         run: actions.openLogs,
+      },
+      {
+        id: "export-diagnostics",
+        group: "Suggested",
+        label: "Export Diagnostics",
+        description: "Save logs, environment, size report, and performance marks",
+        run: actions.exportDiagnostics,
       },
       {
         id: "check-updates",
@@ -211,6 +268,8 @@ export function CommandPalette({
     if (!visibleItems.length) return;
     setSelectedIndex((index) => (index + direction + visibleItems.length) % visibleItems.length);
   };
+  const selectedItem = visibleItems[selectedIndex];
+  const activeDescendantId = selectedItem ? `command-palette-option-${selectedItem.id}` : undefined;
 
   return (
     <div className="command-palette-overlay" role="presentation" onMouseDown={onClose}>
@@ -230,6 +289,7 @@ export function CommandPalette({
       >
         <input
           ref={inputRef}
+          id="command-palette-input"
           className="command-palette-input"
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
@@ -248,8 +308,10 @@ export function CommandPalette({
           autoFocus
           placeholder="Search commands and structures..."
           aria-label="Search commands and open structures"
+          aria-controls={listboxId}
+          aria-activedescendant={activeDescendantId}
         />
-        <div className="command-palette-list" role="listbox">
+        <div className="command-palette-list" role="listbox" id={listboxId} aria-label="Command results">
           {visibleItems.length === 0 ? (
             <div className="command-palette-empty">No results found.</div>
           ) : (
@@ -259,6 +321,7 @@ export function CommandPalette({
                 {group.items.map(({ item, index }) => (
                   <button
                     key={item.id}
+                    id={`command-palette-option-${item.id}`}
                     className="command-palette-item"
                     data-selected={index === selectedIndex || undefined}
                     onClick={() => runItem(item)}

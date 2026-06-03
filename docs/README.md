@@ -8,10 +8,14 @@ contains only documents that describe the active project.
 - [Architecture](architecture.md): repository boundaries and runtime shape.
 - [Renderer support](renderer-support.md): renderer modes, supported formats,
   artifacts, and checks.
+- [Performance architecture](performance.md): runtime profiles, caches, binary
+  payloads, grid search, and no-regression guardrails.
 - [Vite+ workflow](vite-plus.md): `vp` entrypoints for frontend development and
   JavaScript validation.
 - [Quick Look debugging](quicklook-debugging.md): Finder preview diagnosis and
   cache reset workflow.
+- [Launch modes](launch-modes.md): normal, file-open, tray, and registration
+  launch semantics.
 - [Releasing](releasing.md): version, build, signing, update, and artifact
   requirements.
 - [Keyboard shortcuts](keyboard-shortcuts.md): app shortcuts and command palette

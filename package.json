@@ -36,7 +36,7 @@
     "dev:tauri": "cd apps/desktop && bun run dev:tauri",
     "dev:desktop": "cd apps/desktop && bun run dev -- --host 127.0.0.1",
     "dev-desktop": "bun run dev:desktop",
-    "build:web": "cd apps/desktop && bun run build",
+    "build:web": "cd apps/desktop && bun run build && cd ../.. && bun scripts/bundle-report.mjs",
     "build-web": "bun run build:web",
     "build:web:desktop": "bun run build:web",
     "build:tauri": "cd apps/desktop && bun run build:tauri",

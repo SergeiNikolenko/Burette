@@ -882,6 +882,52 @@ CARTESIAN COORDINATES (ANGSTROEM)
     }
 
     #[test]
+    fn default_desktop_runtime_uses_binary_preview_data_without_base64_script() {
+        let app = mock_app_with_grid_registry();
+        let preferences = viewer_preferences();
+        let path = fixture_path("1HTB.pdb");
+
+        let document = open_document(app.handle(), path.clone(), &preferences, None)
+            .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
+        assert_eq!(document.renderer, "molstar");
+        let runtime_dir = Path::new(&document.runtime_path)
+            .parent()
+            .expect("runtime html should have a parent");
+        let html = fs::read_to_string(runtime_dir.join("index.html"))
+            .expect("runtime HTML should be written");
+        assert!(runtime_dir.join("preview-data.bin").is_file());
+        assert!(!runtime_dir.join("preview-data.js").exists());
+        assert!(html.contains("window.BurreteDataURL = "));
+        assert!(!html.contains("preview-data.js\"></script>"));
+
+        remove_runtime_artifacts(&document.runtime_path);
+    }
+
+    #[test]
+    fn grid_runtime_uses_rdkit_wasm_path_without_base64_script() {
+        let app = mock_app_with_grid_registry();
+        let preferences = viewer_preferences();
+        let path = fixture_path("sdf/multi.sdf");
+
+        let document = open_document(app.handle(), path.clone(), &preferences, None)
+            .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
+        assert_eq!(document.renderer, "grid2d");
+        let runtime_dir = Path::new(&document.runtime_path)
+            .parent()
+            .expect("runtime html should have a parent");
+        let html = fs::read_to_string(runtime_dir.join("index.html"))
+            .expect("runtime HTML should be written");
+        let config = fs::read_to_string(runtime_dir.join("preview-config.js"))
+            .expect("preview config should be written");
+        assert!(config.contains(r#""rdkitWasmPath":"../assets/rdkit/RDKit_minimal.wasm""#));
+        assert!(!runtime_dir.join("preview-rdkit-wasm.js").exists());
+        assert!(!html.contains("preview-rdkit-wasm.js"));
+        assert!(html.contains("RDKit_minimal.js"));
+
+        remove_runtime_artifacts(&document.runtime_path);
+    }
+
+    #[test]
     fn applies_cube_surface_defaults_to_xyzrender_config() {
         with_fake_xyzrender(|| {
             let app = mock_app_with_grid_registry();
