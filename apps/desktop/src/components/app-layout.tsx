@@ -68,7 +68,7 @@ export function AppLayout({
       style={shellStyle}
     >
       <div className="drag-region" data-tauri-drag-region />
-      <div className="chrome-leading-controls">
+      <div className="chrome-leading-controls" data-tauri-drag-region>
         <button
           type="button"
           className="chrome-button sidebar-toggle-root"

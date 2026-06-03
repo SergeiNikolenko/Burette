@@ -359,7 +359,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .tab-shell:focus-within .tab-close { opacity: 1; pointer-events: auto; transform: translate(0, -50%); }
 .tab-close:hover { color: var(--text-secondary); }
 .utility-tab { min-width: auto; }
-.workspace { position: relative; z-index: 1; min-height: 0; flex: 1; display: flex; }
+.workspace { position: relative; min-height: 0; flex: 1; display: flex; }
 .sidebar-shell {
   width: var(--sidebar-layout-width, 0px);
   min-width: 0;

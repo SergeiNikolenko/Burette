@@ -589,6 +589,7 @@ assert.match(editorTabs, /\+/);
 assert.match(editorTabs, /×/);
 assert.match(appLayout, /className="chrome-leading-controls"/);
 assert.match(tauriConfig, /"trafficLightPosition":\s*\{\s*"x":\s*20,\s*"y":\s*29\s*\}/);
+assert.match(appLayout, /className="chrome-leading-controls" data-tauri-drag-region/);
 assert.match(editorTabs, /actions\.navigateBack/);
 assert.match(editorTabs, /actions\.navigateForward/);
 assert.match(editorTabs, /actions\.canNavigateBack/);
@@ -835,6 +836,8 @@ assert.match(appLayout, /resolveThemeMode\(state\.preferences\.theme, systemThem
 assert.match(styles, /\*\[data-tauri-drag-region\] \{[^}]*app-region: drag;[^}]*-webkit-app-region: drag;[^}]*\}/s);
 assert.match(styles, /button, select, input, textarea, \.tab-shell, \.tab, \.new-tab, \.chrome-button, \.tab-history-button, \.sidebar-search-row, \.sidebar-tool-row, \.sidebar-section-title-button, \.sidebar-section-menu-button, \.project-group-row, \.project-group-menu-button, \.project, \.project-show-more, \.pin-hit, \.splitter \{[^}]*app-region: no-drag;[^}]*-webkit-app-region: no-drag;[^}]*\}/s);
 assert.match(styles, /\.drag-region \{[^}]*height: var\(--chrome-drag-height\);[^}]*z-index: 2/s);
+assert.doesNotMatch(styles, /\.workspace \{[^}]*z-index:/s);
+assert.match(styles, /\.splitter \{[^}]*z-index: 3;/s);
 assert.match(styles, /\.main-stage \{[^}]*overflow: hidden/s);
 assert.match(styles, /\.app-shell\[data-theme="auto"\] \{[^}]*color-scheme: light dark/s);
 assert.match(styles, /@media \(prefers-color-scheme: light\) \{[\s\S]*\.app-shell\[data-theme="auto"\]/);
