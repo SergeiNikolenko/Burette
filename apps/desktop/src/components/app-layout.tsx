@@ -87,21 +87,24 @@ export function AppLayout({
         <EditorTabs state={layoutState} actions={actions} />
       </header>
       <section className="workspace">
-        <div className="sidebar-shell" data-open={state.sidebarOpen ? "true" : "false"} style={{ transition: chromeTransition }}>
-          <Sidebar state={layoutState} actions={actions} open={state.sidebarOpen} />
+        <div className="sidebar-shell" style={{ transition: chromeTransition }}>
+          <div className="sidebar-shell-inner" style={{ width: sidebarWidth }}>
+            <Sidebar state={layoutState} actions={actions} open={state.sidebarOpen} />
+          </div>
         </div>
-        <div
-          className="splitter"
-          onPointerDown={state.sidebarOpen ? onResizeStart : undefined}
-          role="separator"
-          aria-orientation="vertical"
-          aria-valuemin={220}
-          aria-valuemax={maxSidebarWidth}
-          aria-valuenow={sidebarWidth}
-          aria-label="Resize sidebar"
-          data-open={state.sidebarOpen ? "true" : "false"}
-          data-dragging={state.sidebarDragging || undefined}
-        />
+        {state.sidebarOpen && (
+          <div
+            className="splitter"
+            onPointerDown={onResizeStart}
+            role="separator"
+            aria-orientation="vertical"
+            aria-valuemin={220}
+            aria-valuemax={maxSidebarWidth}
+            aria-valuenow={sidebarWidth}
+            aria-label="Resize sidebar"
+            data-dragging={state.sidebarDragging || undefined}
+          />
+        )}
         <section className="main-stage">
           <ViewerArea state={layoutState} actions={actions} />
         </section>
