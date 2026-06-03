@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
+import { useThemePortalContainer } from "../radix-menu";
 
 export type SettingRow = {
   label: string;
@@ -6,6 +8,7 @@ export type SettingRow = {
   control: ReactNode;
   reset?: () => void;
   isModified?: boolean;
+  confirm?: boolean;
 };
 
 export function SettingsSection({ title, rows }: { title: string; rows: SettingRow[] }) {
@@ -30,17 +33,31 @@ export function SettingControl({ row }: { row: SettingRow }) {
       </div>
       <div className="settings-control-actions">
         {row.reset && (
-          <button
-            type="button"
-            className="settings-reset-button"
-            onClick={row.reset}
-            aria-hidden={!row.isModified}
-            tabIndex={row.isModified ? 0 : -1}
-            title="Reset to default"
-            data-hidden={!row.isModified || undefined}
-          >
-            Reset
-          </button>
+          row.confirm ? (
+            <ConfirmActionButton
+              className="settings-reset-button"
+              disabled={!row.isModified}
+              hidden={!row.isModified}
+              title="Reset to default"
+              label="Reset"
+              dialogTitle={`Reset ${row.label}?`}
+              dialogDescription="This will restore the default value for this setting."
+              confirmLabel="Reset"
+              onConfirm={row.reset}
+            />
+          ) : (
+            <button
+              type="button"
+              className="settings-reset-button"
+              onClick={row.reset}
+              aria-hidden={!row.isModified}
+              tabIndex={row.isModified ? 0 : -1}
+              title="Reset to default"
+              data-hidden={!row.isModified || undefined}
+            >
+              Reset
+            </button>
+          )
         )}
         {row.control}
       </div>
@@ -236,12 +253,12 @@ export function rangePreferenceRow(
   };
 }
 
-export function actionRow(label: string, description: string, buttonLabel: string, onClick: () => void, disabled?: boolean): SettingRow {
+export function actionRow(label: string, description: string, buttonLabel: string, onClick: () => void, disabled?: boolean, confirm?: boolean): SettingRow {
   return {
     label,
     description,
     control: (
-      <SettingsActionButton onClick={onClick} disabled={disabled}>
+      <SettingsActionButton onClick={onClick} disabled={disabled} confirm={confirm} label={buttonLabel} dialogTitle={`${buttonLabel} ${label}?`}>
         {buttonLabel}
       </SettingsActionButton>
     ),
@@ -287,14 +304,102 @@ export function SettingsActionButton({
   children,
   disabled,
   onClick,
+  confirm,
+  label,
+  dialogTitle,
 }: {
   children: ReactNode;
   disabled?: boolean;
   onClick: () => void;
+  confirm?: boolean;
+  label?: string;
+  dialogTitle?: string;
 }) {
+  if (confirm) {
+    return (
+      <ConfirmActionButton
+        className="settings-action-button"
+        disabled={disabled}
+        label={label ?? children}
+        dialogTitle={dialogTitle ?? "Confirm action"}
+        dialogDescription="This action changes the current workspace state."
+        confirmLabel={label ?? "Confirm"}
+        onConfirm={onClick}
+      />
+    );
+  }
+
   return (
     <button type="button" className="settings-action-button" disabled={disabled} onClick={onClick}>
       {children}
     </button>
+  );
+}
+
+function ConfirmActionButton({
+  className,
+  disabled,
+  hidden,
+  title,
+  label,
+  dialogTitle,
+  dialogDescription,
+  confirmLabel,
+  onConfirm,
+}: {
+  className: string;
+  disabled?: boolean;
+  hidden?: boolean;
+  title?: string;
+  label: ReactNode;
+  dialogTitle: string;
+  dialogDescription: string;
+  confirmLabel: ReactNode;
+  onConfirm: () => void;
+}) {
+  const portalContainer = useThemePortalContainer();
+
+  return (
+    <Dialog.Root>
+      <Dialog.Trigger asChild>
+        <button
+          type="button"
+          className={className}
+          disabled={disabled}
+          aria-hidden={hidden}
+          tabIndex={hidden ? -1 : 0}
+          title={title}
+          data-hidden={hidden || undefined}
+        >
+          {label}
+        </button>
+      </Dialog.Trigger>
+      <Dialog.Portal container={portalContainer}>
+        <Dialog.Overlay className="radix-dialog-overlay" />
+        <Dialog.Content className="radix-dialog" aria-describedby="settings-confirm-description">
+          <div className="radix-dialog-header">
+            <Dialog.Title>{dialogTitle}</Dialog.Title>
+            <Dialog.Close asChild>
+              <button type="button" className="radix-dialog-close" aria-label="Cancel">
+                ×
+              </button>
+            </Dialog.Close>
+          </div>
+          <Dialog.Description id="settings-confirm-description" className="radix-dialog-description">
+            {dialogDescription}
+          </Dialog.Description>
+          <div className="radix-dialog-actions">
+            <Dialog.Close asChild>
+              <button type="button" className="settings-action-button">Cancel</button>
+            </Dialog.Close>
+            <Dialog.Close asChild>
+              <button type="button" className="settings-action-button" onClick={onConfirm}>
+                {confirmLabel}
+              </button>
+            </Dialog.Close>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
