@@ -7,7 +7,7 @@ async function source(path) {
   return readFile(resolve(path), "utf8");
 }
 
-const [app, gridViewer, viewer, dockingDocuments, dropActions, dropActionExecutor, fileKind, openDropHook, sidebarFileTreeNode, editorTabs, vpContract, packageJson] =
+const [app, gridViewer, viewer, dockingDocuments, dropActions, dropActionExecutor, fileKind, openDropHook, sidebarFileTreeNode, editorTabs, vpContract, packageJson, burretePermission] =
   await Promise.all([
     source("apps/desktop/src/App.tsx"),
     source("PreviewExtension/Web/grid-viewer.js"),
@@ -21,18 +21,25 @@ const [app, gridViewer, viewer, dockingDocuments, dropActions, dropActionExecuto
     source("apps/desktop/src/components/editor-area/editor-tabs.tsx"),
     source("tests/vp-contract.test.mjs"),
     source("package.json"),
+    source("apps/desktop/src-tauri/permissions/burrete.toml"),
   ]);
 
-assert.match(gridViewer, /data-buret-grid-sdf-poses data-buret-grid-docking>Poses<\/button>/);
-assert.match(gridViewer, /post\('openSdfPoseDocument', '\[grid\] Open SDF poses in Mol\*.'/);
+assert.match(gridViewer, /data-buret-grid-sdf-poses data-buret-grid-docking>Molstar<\/button>/);
+assert.match(gridViewer, /setStatus\('\[grid\] Select one or more molecules before opening Molstar\.', 'error'\)/);
+assert.match(gridViewer, /post\('openSdfMolstarDocument', '\[grid\] Open selected molecules in Molstar.'/);
 assert.match(gridViewer, /documentId: cfg\?\.documentId \|\| null/);
-assert.match(gridViewer, /path: sourcePath \|\| null/);
+assert.match(gridViewer, /textBase64: textToBase64\(records\.join\('\\n'\)\)/);
 assert.match(gridViewer, /receptorPath: receptorPath \|\| null/);
 assert.match(gridViewer, /activePose/);
-assert.match(gridViewer, /function activePoseReviewIndex\(\)/);
 assert.match(gridViewer, /body\.type === 'poseReviewSelection'/);
 assert.match(gridViewer, /function selectPoseReviewRow\(activePose, cfg\)/);
+assert.match(gridViewer, /function selectedMolstarRows\(\)/);
+assert.match(gridViewer, /function sdfRecordTextForMolstar\(row\)/);
 
+assert.match(app, /body\?\.type === "openSdfMolstarDocument"/);
+assert.match(app, /invoke<ViewerDocument>\("open_text_structure"/);
+assert.match(app, /rendererMode: "molstar" as const/);
+assert.match(app, /void openDockingDocument\(receptorDocument\.path, \[document\.path\]\)/);
 assert.match(app, /body\?\.type === "openSdfPoseDocument"/);
 assert.match(app, /const \[poseReviewSelections, setPoseReviewSelections\] = useState<Record<string, number>>\(\{\}\)/);
 assert.match(app, /body\?\.type === "dockingPoseChanged"/);
@@ -46,7 +53,8 @@ assert.match(app, /const openPoseReviewWorkspace = useCallback/);
 assert.match(app, /openPoseReviewTab\(\{/);
 assert.match(app, /void openPoseReviewWorkspace\(receptorDocument, poseTargetDocument, activePose\)/);
 assert.match(app, /void openDockingDocument\(receptorDocument\.path, \[targetPath\]\)/);
-assert.match(app, /void openDocuments\(\[targetPath\], \{\}, \{ rendererMode: "molstar" \}\)/);
+assert.match(app, /void openDocuments\(\[targetPath\], \{\}, \{ rendererMode: "molstar" \}, \{ inActiveTab: true \}\)/);
+assert.match(burretePermission, /"open_docking_document"/);
 
 assert.match(dockingDocuments, /export function dockingRequestForDrop/);
 assert.match(dockingDocuments, /existingDockingRequest/);

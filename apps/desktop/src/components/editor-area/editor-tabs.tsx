@@ -5,6 +5,7 @@ import { hasStructureDrag, readStructureDragPayload, writeStructureDrag } from "
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
 import { showNativeContextMenu } from "../native-context-menu";
 import { pageKind } from "./page-kinds";
+import { isMoleculeCollectionPath } from "../../lib/collection-documents";
 
 const TAB_DRAG_MIME = "application/x-burrete-tab-id";
 const TAB_REORDER_ANIMATION_MS = 170;
@@ -247,7 +248,21 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
           const showTabMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
             event.preventDefault();
             event.stopPropagation();
+            const canSaveAs = tabDocument && isMoleculeCollectionPath(tabDocument.path);
             const items = [
+              ...(canSaveAs
+                ? [
+                    {
+                      kind: "item" as const,
+                      id: "save-as",
+                      text: "Save As...",
+                      action: () => {
+                        void actions.saveMoleculeCollectionAs(tabDocument.id);
+                      },
+                    },
+                    { kind: "separator" as const },
+                  ]
+                : []),
               ...(tabDocument
                 ? [
                     {
@@ -305,7 +320,7 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
                 action: actions.clearAllDocuments,
               },
             ];
-            void showNativeContextMenu(items, { x: event.clientX, y: event.clientY });
+            void showNativeContextMenu(items, { x: event.clientX, y: event.clientY }, { forceWeb: true });
           };
           return (
             <div
@@ -333,7 +348,13 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
                 aria-selected={active}
                 className={active ? "tab active" : "tab"}
                 aria-grabbed={isDragging || undefined}
-                onMouseDown={(event) => startMouseTabReorder(tab.id, event)}
+                onMouseDown={(event) => {
+                  if (event.button === 2) {
+                    showTabMenu(event);
+                    return;
+                  }
+                  startMouseTabReorder(tab.id, event);
+                }}
                 onClick={() => actions.selectTab(tab.id)}
                 onContextMenu={showTabMenu}
                 onDragStart={(event) => {

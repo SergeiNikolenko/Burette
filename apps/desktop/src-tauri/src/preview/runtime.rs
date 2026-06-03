@@ -281,6 +281,13 @@ pub(crate) struct ViewerDocument {
     docking_request: Option<DockingDocumentRequest>,
 }
 
+impl ViewerDocument {
+    pub(crate) fn into_virtual(mut self) -> Self {
+        self.is_virtual = true;
+        self
+    }
+}
+
 fn is_false(value: &bool) -> bool {
     !*value
 }

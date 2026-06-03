@@ -13,15 +13,15 @@ export type FileLocation = { kind: "file"; documentId?: string; path: string };
 export const fileKind = definePageKind<"file", FileLocation>({
   kind: "file",
   title: (location, state) => {
-    const document = findDocument(location, state.documents) ?? state.activeDocument;
+    const document = findDocument(location, state.documents);
     return document?.title ?? "Structure";
   },
   description: "Open structure",
   Component: ({ location, state, actions }) => {
-    const document = findDocument(location, state.documents) ?? state.activeDocument;
+    const document = findDocument(location, state.documents);
     return document ? <ViewerSurface document={document} actions={actions} /> : null;
   },
-  keepAlive: false,
+  keepAlive: true,
   fromPayload: (data) => (typeof data.path === "string" ? { kind: "file", documentId: typeof data.documentId === "string" ? data.documentId : undefined, path: data.path } : null),
   serialize: (location) => ({ documentId: location.documentId, path: location.path }),
 });

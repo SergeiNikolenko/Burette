@@ -22,6 +22,9 @@
   --buret-picture-min-height: clamp(136px, 18vw, 190px);
   --buret-drawing-max-width: 100%;
   --buret-drawing-max-height: 100%;
+  --buret-grid-shell-padding: 18px;
+  --buret-grid-rail-gutter: 42px;
+  --buret-grid-content-padding-inline: 24px;
   --buret-control-height: 36px;
   --buret-segment-height: 28px;
 }
@@ -113,7 +116,7 @@ button:disabled {
 .buret-grid-shell {
   box-sizing: border-box;
   min-height: 100vh;
-  padding: 18px;
+  padding: var(--buret-grid-shell-padding) var(--buret-grid-shell-padding) var(--buret-grid-shell-padding) calc(var(--buret-grid-shell-padding) + var(--buret-grid-rail-gutter));
 }
 
 .buret-grid-header {
@@ -172,10 +175,8 @@ button:disabled {
   padding: 12px;
   border: 1px solid color-mix(in srgb, var(--buret-border-strong) 72%, transparent);
   border-radius: 12px;
-  background: color-mix(in srgb, var(--buret-bg) 66%, transparent);
+  background: var(--buret-bg);
   box-shadow: 0 10px 24px color-mix(in srgb, var(--buret-shadow) 35%, transparent);
-  backdrop-filter: blur(14px) saturate(135%);
-  -webkit-backdrop-filter: blur(14px) saturate(135%);
 }
 
 .buret-toolbar-row {
@@ -280,6 +281,14 @@ button:disabled {
   color: var(--buret-text);
   border-color: var(--buret-border-strong);
   background: var(--buret-surface-raised);
+}
+
+.buret-grid-toolbar .buret-rdkit-coords-control[aria-disabled="true"] {
+  opacity: 0.58;
+}
+
+.buret-grid-toolbar .buret-rdkit-coords-control[aria-disabled="true"] input {
+  cursor: not-allowed;
 }
 
 .buret-grid-toolbar label {
@@ -403,15 +412,15 @@ button:disabled {
   grid-template-columns: repeat(auto-fill, minmax(var(--buret-card-min), 1fr));
   gap: var(--buret-card-gap);
   justify-content: stretch;
-  padding-inline: 24px;
+  padding-inline: var(--buret-grid-content-padding-inline);
 }
 
 .buret-grid-rail {
   position: fixed;
   top: 50%;
-  left: 12px;
+  left: var(--buret-grid-shell-padding);
   z-index: 900;
-  width: 296px;
+  width: var(--buret-grid-rail-gutter);
   min-height: 160px;
   pointer-events: none;
   transform: translateY(-50%);
@@ -419,17 +428,6 @@ button:disabled {
 
 .buret-grid-rail[hidden] {
   display: none;
-}
-
-.buret-grid-rail-hover-target {
-  position: absolute;
-  top: 50%;
-  left: -14px;
-  z-index: 1;
-  width: 68px;
-  height: min(62vh, 450px);
-  pointer-events: auto;
-  transform: translateY(-50%);
 }
 
 .buret-grid-rail-active-marker {
@@ -485,12 +483,6 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   transition: transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 240ms ease;
 }
 
-.buret-grid-rail-ticks[data-open="true"] {
-  transform: translateY(-50%) translateX(0) scale(1);
-  opacity: 1;
-  pointer-events: none;
-}
-
 .buret-grid-rail-tick {
   width: 13px;
   height: 2px;
@@ -508,114 +500,6 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
 .buret-grid-rail-tick:hover {
   width: 20px;
   background: color-mix(in srgb, var(--buret-text) 42%, transparent);
-}
-
-.buret-grid-rail-popover {
-  position: absolute;
-  top: 50%;
-  left: 24px;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  width: min(260px, calc(100vw - 48px));
-  max-height: min(56vh, 390px);
-  padding: 14px 12px;
-  overflow: hidden;
-  color: var(--buret-text);
-  pointer-events: auto;
-  transform: translateY(-50%) translateX(4px) scale(1);
-  transform-origin: left center;
-  opacity: 1;
-  transition: transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 220ms ease;
-}
-
-.buret-grid-rail-popover[data-state="closed"] {
-  transform: translateY(-50%) translateX(0) scale(0.95);
-  opacity: 0;
-  pointer-events: none;
-}
-
-.buret-grid-rail-popover-title {
-  padding: 0 8px 8px;
-  color: var(--buret-text);
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1.25;
-}
-
-.buret-grid-rail-popover-list {
-  display: grid;
-  gap: 4px;
-  min-height: 0;
-  overflow: auto;
-  scroll-behavior: smooth;
-  scrollbar-color: color-mix(in srgb, var(--buret-text) 28%, transparent) transparent;
-  scrollbar-gutter: stable;
-}
-
-.buret-grid-rail-popover-list::-webkit-scrollbar {
-  width: 10px;
-}
-
-.buret-grid-rail-popover-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.buret-grid-rail-popover-list::-webkit-scrollbar-thumb {
-  min-height: 44px;
-  border: 3px solid transparent;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--buret-text) 28%, transparent);
-  background-clip: content-box;
-}
-
-.buret-grid-rail-popover-list::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--buret-accent) 54%, var(--buret-text));
-  background-clip: content-box;
-}
-
-.buret-grid-rail-popover-row {
-  display: grid;
-  gap: 4px;
-  width: 100%;
-  min-height: 48px;
-  padding: 7px 8px;
-  border: 0;
-  border-radius: 8px;
-  color: var(--buret-muted);
-  background: transparent;
-  text-align: left;
-  transition: color 180ms ease, background 180ms ease;
-}
-
-.buret-grid-rail-popover-row:hover,
-.buret-grid-rail-popover-row:focus-visible {
-  color: var(--buret-text);
-  background: color-mix(in srgb, var(--buret-text) 8%, transparent);
-  outline: none;
-}
-
-.buret-grid-rail-popover-row.is-active {
-  color: var(--buret-accent);
-}
-
-.buret-grid-rail-popover-row span,
-.buret-grid-rail-popover-row small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.buret-grid-rail-popover-row span {
-  font-size: 13px;
-  font-weight: 650;
-  line-height: 1.2;
-}
-
-.buret-grid-rail-popover-row small {
-  color: var(--buret-faint);
-  font-size: 11px;
-  font-weight: 520;
-  line-height: 1.2;
 }
 
 .buret-card {
@@ -807,6 +691,8 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
 .buret-xyzrender-preview {
   display: grid;
   place-items: center;
+  align-self: stretch;
+  justify-self: stretch;
   width: 100%;
   height: 100%;
   min-height: var(--buret-picture-min-height);
@@ -815,11 +701,14 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
 .buret-molecule-error {
   display: grid;
   place-items: center;
+  align-self: stretch;
+  justify-self: stretch;
   grid-template-rows: minmax(0, 1fr) auto;
   gap: 6px;
   box-sizing: border-box;
   container-type: inline-size;
   width: 100%;
+  height: 100%;
   min-height: var(--buret-picture-min-height);
   padding: clamp(8px, 6cqi, 12px);
   overflow: hidden;
@@ -832,20 +721,26 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
 .buret-molecule-loading {
   display: grid;
   place-items: center;
+  align-self: stretch;
+  justify-self: stretch;
   width: 100%;
   height: 100%;
-  color: var(--buret-muted);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.buret-molecule-loading {
-  display: grid;
-  place-items: center;
   min-height: var(--buret-picture-min-height);
   color: var(--buret-muted);
   font-size: 12px;
   font-weight: 650;
+}
+
+.buret-molecule-loading::before {
+  content: "";
+  display: block;
+  width: min(42%, 96px);
+  aspect-ratio: 1.6;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, transparent, color-mix(in srgb, var(--buret-accent) 18%, transparent), transparent),
+    color-mix(in srgb, var(--buret-muted) 12%, transparent);
+  opacity: 0.7;
 }
 
 .buret-molecule-error strong {
@@ -1137,6 +1032,8 @@ body.buret-hide-properties .buret-card-body {
 
 @media (max-width: 520px) {
   .buret-grid-shell {
-    padding: 12px;
+    --buret-grid-shell-padding: 12px;
+    --buret-grid-rail-gutter: 32px;
+    --buret-grid-content-padding-inline: 12px;
   }
 }

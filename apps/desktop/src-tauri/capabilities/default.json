@@ -9,6 +9,7 @@
     "core:event:allow-unlisten",
     "dialog:allow-message",
     "dialog:allow-open",
+    "dialog:allow-save",
     "opener:allow-open-path",
     "allow-viewer-commands"
   ]

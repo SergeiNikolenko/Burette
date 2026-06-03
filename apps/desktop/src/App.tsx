@@ -34,6 +34,7 @@ import {
   useCloseTab,
   useMoveTab,
   useOpenDocuments,
+  useOpenDocumentsInActiveTab,
   useOpenFepSetupTab,
   useOpenKetcherTab,
   useOpenNewTab,
@@ -57,6 +58,7 @@ import { collectPerformanceMarks, markPerformanceOnce, measureAsync } from "./li
 import { basename, buildSidebarProjects, parentDirectory } from "./lib/sidebar-projects";
 import type { StructureDragPayload, StructureDragRecord } from "./lib/structure-drag";
 import { isTauriRuntime } from "./lib/tauri";
+import { isTemporaryDocumentPath } from "./lib/temporary-documents";
 import type { DockingDocumentRequest, FepSetupRequest, OpenDocumentsResult, RecentStructure, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "./types";
 import { checkForUpdates as requestUpdateCheck, clearDismissedUpdate, dismissUpdate, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically, shouldPromptForUpdate } from "./update";
 import type { UpdatePreferences, UpdateRelease, UpdateState } from "./update";
@@ -166,6 +168,7 @@ export default function App() {
   const activeTab = useActiveTab();
   const activeDocument = useActiveDocument();
   const addDocuments = useAddTabs();
+  const openDocumentsInActiveTab = useOpenDocumentsInActiveTab();
   const setDocuments = useSetDocuments();
   const openNewTab = useOpenNewTab();
   const openKetcherTab = useOpenKetcherTab();
@@ -211,6 +214,7 @@ export default function App() {
   }, []);
   const [structureDragActive, setStructureDragActive] = useState(false);
   const [ketcherImportRequest, setKetcherImportRequest] = useState<KetcherImportRequest | null>(null);
+  const [ketcherDraftMolfile, setKetcherDraftMolfile] = useState("");
   const [status, setStatus] = useState<StatusNotice | null>(null);
   const [poseReviewSelections, setPoseReviewSelections] = useState<Record<string, number>>({});
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
@@ -354,7 +358,7 @@ export default function App() {
       paths: string[],
       reloadOptions?: ViewerReloadOptions,
       preferencesOverride?: Partial<typeof preferences>,
-      options: { replace?: boolean } = {},
+      options: { replace?: boolean; inActiveTab?: boolean } = {},
     ) => {
       const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
       if (!cleanPaths.length) return;
@@ -365,6 +369,7 @@ export default function App() {
           ? await invoke<OpenDocumentsResult>("open_documents", { paths: cleanPaths, preferences: effectivePreferences, reloadOptions })
           : await openBrowserDevDocuments(cleanPaths, effectivePreferences, reloadOptions);
         if (options.replace) setDocuments(result.documents);
+        else if (options.inActiveTab) openDocumentsInActiveTab(result.documents);
         else addDocuments(result.documents);
         if (result.documents.length > 0) markPerformanceOnce("app:first-document-opened");
         rememberRecentStructures(result.documents);
@@ -383,7 +388,7 @@ export default function App() {
         pushErrorStatus(error);
       }
     },
-    [addDocuments, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setDocuments, showDelimitedGridColumnOpenMenu],
+    [addDocuments, openDocumentsInActiveTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setDocuments, showDelimitedGridColumnOpenMenu],
   );
 
   useEffect(() => {
@@ -423,7 +428,9 @@ export default function App() {
     const activePath = activeDocument?.path;
     const paths = documents
       .map((document) => document.path)
+      .filter((path) => !isTemporaryDocumentPath(path))
       .sort((a, b) => (a === activePath ? -1 : b === activePath ? 1 : 0));
+    if (paths.length === 0) return;
     void openDocuments(paths);
   }, [activeDocument, documents, openDocuments]);
 
@@ -432,7 +439,7 @@ export default function App() {
     if (!isTauriRuntime() || documents.length > 0) return;
     const paths = Array.from(new Set(tabs
       .map((tab) => tab.location.kind === "file" ? tab.location.path : null)
-      .filter((path): path is string => Boolean(path))));
+      .filter((path): path is string => typeof path === "string" && !isTemporaryDocumentPath(path))));
     if (paths.length === 0) return;
     openedPersistedTabsRef.current = true;
     const restoreTabId = activeTabId;
@@ -521,7 +528,7 @@ export default function App() {
     if (!request) return null;
     if (request.ligandPaths.length === 0) return null;
     request.activePose = options.activePose ?? null;
-    pushStatus("Opening Mol* docking view...");
+    pushStatus("Opening Molstar docking view...");
     try {
       const document = isTauriRuntime()
         ? await invoke<ViewerDocument>("open_docking_document", { request, preferences })
@@ -546,7 +553,7 @@ export default function App() {
     const cleanLigandPaths = Array.from(new Set(ligandPaths.map((path) => path.trim()).filter(Boolean)));
     const cleanRecords = records.filter((record) => record.text.trim().length > 0);
     if (!receptorPath || (cleanLigandPaths.length === 0 && cleanRecords.length === 0)) return;
-    pushStatus("Opening Mol* docking view...");
+    pushStatus("Opening Molstar docking view...");
     try {
       const { opened, errors } = await openStructureRecordDocuments(cleanRecords);
       if (errors.length > 0 && opened.length === 0 && cleanLigandPaths.length === 0) {
@@ -826,7 +833,9 @@ export default function App() {
   }, []);
 
   const openKetcherSketch = useCallback(async (request: KetcherSketchRequest) => {
-    const rendererMode: ViewerPreferences["rendererMode"] = request.target === "molstar"
+    const rendererMode: ViewerPreferences["rendererMode"] = request.target === "grid"
+      ? "grid2d"
+      : request.target === "molstar"
       ? "molstar"
       : request.target === "xyzrender"
         ? "xyzrender-external"
@@ -836,24 +845,65 @@ export default function App() {
     pushStatus("Opening Ketcher sketch...");
     try {
       if (request.target === "collection" && request.collectionTargetPath) {
-        const sketchDocument = isTauriRuntime()
-          ? await invoke<ViewerDocument>("open_text_structure", {
-              request: {
-                title: request.title,
-                extension: request.extension,
-                text: request.text,
-              },
-              preferences: effectivePreferences,
-              reloadOptions,
-            })
-          : await openBrowserDevTextDocument(
-              request.title,
-              request.extension,
-              request.text,
-              effectivePreferences,
-              reloadOptions,
-            );
+        if (isTauriRuntime()) {
+          const document = await invoke<ViewerDocument>("append_to_molecule_collection", {
+            request: {
+              targetPath: request.collectionTargetPath,
+              extension: request.extension,
+              text: request.text,
+            },
+            preferences: effectivePreferences,
+          });
+          openDocumentsInActiveTab([document]);
+          rememberRecentStructures([document]);
+          pushStatus(`Added Ketcher sketch to ${basename(document.path)}`);
+          return;
+        }
+
+        const sketchDocument = await openBrowserDevTextDocument(
+          request.title,
+          request.extension,
+          request.text,
+          effectivePreferences,
+          reloadOptions,
+        );
         await mergeMoleculeCollections(request.collectionTargetPath, [sketchDocument.path]);
+        return;
+      }
+      if (request.target === "collection") {
+        if (isTauriRuntime()) {
+          const outputPath = await save({
+            defaultPath: "ketcher-collection.sdf",
+            filters: [{ name: "SDF collections", extensions: ["sdf", "sd"] }],
+          });
+          if (!outputPath) {
+            pushStatus("New collection canceled");
+            return;
+          }
+          const document = await invoke<ViewerDocument>("create_molecule_collection", {
+            request: {
+              outputPath,
+              extension: request.extension,
+              text: request.text,
+            },
+            preferences: effectivePreferences,
+          });
+          openDocumentsInActiveTab([document]);
+          rememberRecentStructures([document]);
+          pushStatus(`Created ${basename(document.path)}`);
+          return;
+        }
+
+        const document = await openBrowserDevTextDocument(
+          "ketcher-collection.sdf",
+          request.extension,
+          request.text,
+          effectivePreferences,
+          reloadOptions,
+        );
+        openDocumentsInActiveTab([document]);
+        downloadTextFile("ketcher-collection.sdf", request.text);
+        pushStatus("Created ketcher-collection.sdf");
         return;
       }
 
@@ -874,17 +924,19 @@ export default function App() {
             effectivePreferences,
             reloadOptions,
           );
-      addDocuments([document]);
+      openDocumentsInActiveTab([document], {
+        backLocation: request.draftKet?.trim() || request.draftMolfile?.trim()
+          ? { kind: "ketcher", draftKet: request.draftKet, draftMolfile: request.draftMolfile }
+          : undefined,
+      });
       rememberRecentStructures([document]);
       pushStatus(
-        request.target === "collection"
-          ? "Added Ketcher sketch to collection view"
-          : `Opened Ketcher sketch in ${request.target === "molstar" ? "Mol*" : "xyzrender"}`,
+        `Opened Ketcher sketch in ${request.target === "grid" ? "grid" : request.target === "molstar" ? "Molstar" : "xyzrender"}`,
       );
     } catch (error) {
       pushErrorStatus(error, "Open Ketcher sketch failed");
     }
-  }, [addDocuments, mergeMoleculeCollections, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
+  }, [mergeMoleculeCollections, openDocumentsInActiveTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
 
   const postXyzrenderSheetItems = useCallback((documentId: string, payload: StructureDragPayload) => {
     const iframe = Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).find(
@@ -1344,7 +1396,7 @@ export default function App() {
   });
 
   useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
+    const onMessage = async (event: MessageEvent) => {
       const data = event.data as {
         source?: string;
         body?: {
@@ -1651,6 +1703,66 @@ export default function App() {
         void reloadActive();
         return;
       }
+      if (body?.type === "openSdfMolstarDocument") {
+        const title = typeof body.title === "string" && body.title.trim()
+          ? body.title.trim()
+          : "selected-molecules.sdf";
+        const textBase64 = typeof body.textBase64 === "string" ? body.textBase64.trim() : "";
+        if (!textBase64) {
+          pushErrorStatus("Select one or more molecules before opening Molstar.", "Molstar view failed");
+          return;
+        }
+        const requestedReceptorPath = typeof body.receptorPath === "string"
+          ? body.receptorPath.trim()
+          : "";
+        const receptorDocument = requestedReceptorPath
+          ? documents.find((document) => (
+            document.path === requestedReceptorPath &&
+            isProteinLikeDockingSource(document.path)
+          ))
+          : null;
+        if (requestedReceptorPath && !receptorDocument) {
+          pushErrorStatus("Selected receptor is not available for Molstar.", "Molstar view failed");
+          return;
+        }
+        try {
+          const bytes = Uint8Array.from(atob(textBase64), (char) => char.charCodeAt(0));
+          const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+          if (!text.trim()) {
+            pushErrorStatus("Selected molecules do not have SDF structure data for Molstar.", "Molstar view failed");
+            return;
+          }
+          const molstarPreferences = { ...preferences, rendererMode: "molstar" as const };
+          const document = isTauriRuntime()
+            ? await invoke<ViewerDocument>("open_text_structure", {
+                request: {
+                  title,
+                  extension: "sdf",
+                  text,
+                },
+                preferences: molstarPreferences,
+                reloadOptions: {},
+              })
+            : await openBrowserDevTextDocument(
+                title,
+                "sdf",
+                text,
+                molstarPreferences,
+                {},
+              );
+          if (receptorDocument && document.path) {
+            pushStatus("Opening selected molecules in Molstar docking view...");
+            void openDockingDocument(receptorDocument.path, [document.path]);
+            return;
+          }
+          openDocumentsInActiveTab([document]);
+          rememberRecentStructures([document]);
+          pushStatus("Opened selected molecules in Molstar");
+        } catch (error) {
+          pushErrorStatus(error, "Molstar view failed");
+        }
+        return;
+      }
       if (body?.type === "openSdfPoseDocument") {
         const requestedPath = typeof body.path === "string" ? body.path.trim() : "";
         const pathDocument = requestedPath.length > 0
@@ -1690,11 +1802,11 @@ export default function App() {
             pushStatus("Opening pose-review workspace...");
             void openPoseReviewWorkspace(receptorDocument, poseTargetDocument, activePose);
           } else if (receptorDocument) {
-            pushStatus("Opening SDF poses in Mol* docking view...");
+            pushStatus("Opening SDF poses in Molstar docking view...");
             void openDockingDocument(receptorDocument.path, [targetPath]);
           } else {
-            pushStatus("Opening SDF poses in Mol*...");
-            void openDocuments([targetPath], {}, { rendererMode: "molstar" });
+            pushStatus("Opening SDF poses in Molstar...");
+            void openDocuments([targetPath], {}, { rendererMode: "molstar" }, { inActiveTab: true });
           }
         }
         return;
@@ -1708,31 +1820,31 @@ export default function App() {
           : targetDocument?.path;
         if (targetPath) {
           pushStatus("Opening SDF grid...");
-          void openDocuments([targetPath], undefined, { rendererMode: "auto" });
+          void openDocuments([targetPath], undefined, { rendererMode: "auto" }, { inActiveTab: true });
         }
         return;
       }
       if (body?.type === "openMolstarContextDocument") {
         if (body.contextDocument && typeof body.contextDocument === "object") {
-          pushStatus("Opening selected Mol* context...");
+          pushStatus("Opening selected Molstar context...");
           void openBrowserDevMolstarContextDocument(body.contextDocument, preferences)
             .then((document) => {
               addDocuments([document]);
               rememberRecentStructures([document]);
-              pushStatus("Opened selected Mol* context");
+              pushStatus("Opened selected Molstar context");
             })
-            .catch((error) => pushErrorStatus(error, "Mol* context view failed"));
+            .catch((error) => pushErrorStatus(error, "Molstar context view failed"));
           return;
         }
         const targetDocument = (body.documentId
           ? documents.find((document) => document.id === body.documentId)
           : null) ?? activeDocument;
         if (targetDocument?.dockingRequest) {
-          pushStatus("Opening separate Mol* docking view...");
+          pushStatus("Opening separate Molstar docking view...");
           void openDockingDocument(targetDocument.dockingRequest.receptorPath, targetDocument.dockingRequest.ligandPaths);
         } else if (targetDocument?.path && !targetDocument.virtual) {
-          pushStatus("Opening separate Mol* view...");
-          void openDocuments([targetDocument.path], undefined, { rendererMode: "molstar" });
+          pushStatus("Opening separate Molstar view...");
+          void openDocuments([targetDocument.path], undefined, { rendererMode: "molstar" }, { inActiveTab: true });
         } else {
           pushStatus("This virtual structure cannot be opened separately.", "error");
         }
@@ -1795,7 +1907,7 @@ export default function App() {
           if (targetDocument) {
             pendingViewerReloadOptionsRef.current = null;
             pendingViewerReloadDocumentIdRef.current = null;
-            void openDocuments([targetDocument.path], reloadOptions, { rendererMode: renderer });
+            void openDocuments([targetDocument.path], reloadOptions, { rendererMode: renderer }, { inActiveTab: true });
           }
         }
         return;
@@ -1803,7 +1915,7 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, addDocuments, documents, notifyGridPoseReviewSelection, openDockingDocument, openDocuments, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference]);
+  }, [activeDocument, addDocuments, documents, notifyGridPoseReviewSelection, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference]);
 
   useEffect(() => {
     const loadedPreferences = loadUpdatePreferences();
@@ -1828,7 +1940,7 @@ export default function App() {
     }
     const paths = Array.from(new Set(tabs
       .map((tab) => tab.location.kind === "file" ? tab.location.path : null)
-      .filter((path): path is string => Boolean(path))));
+      .filter((path): path is string => typeof path === "string" && !isTemporaryDocumentPath(path))));
     if (paths.length === 0) return;
     const restoreTabId = activeTabId;
     void openDocuments(paths).then(() => {
@@ -1888,6 +2000,7 @@ export default function App() {
     openKetcherWithStructures,
     openFepSetupWorkspace,
     openKetcherSketch,
+    saveKetcherDraft: setKetcherDraftMolfile,
     clearKetcherImportRequest,
     moveTab,
     chooseWorkspace,
@@ -2015,6 +2128,7 @@ export default function App() {
     structureDragActive,
     poseReviewSelections,
     ketcherImportRequest,
+    ketcherDraftMolfile,
     sidebarQuery,
     status,
     dropActive,
@@ -2063,10 +2177,21 @@ function isKnownViewerMessageSource(source: MessageEventSource | null, documentI
 }
 
 function postMessageToViewerSource(source: MessageEventSource | null, payload: unknown) {
-  if (!source || typeof source !== "object" || !("postMessage" in source) || typeof source.postMessage !== "function") {
+  if (source && typeof source === "object" && "postMessage" in source && typeof source.postMessage === "function") {
+    (source as Window).postMessage(payload, "*");
     return;
   }
-  (source as Window).postMessage(payload, "*");
+  const documentId = payload && typeof payload === "object"
+    && "body" in payload
+    && payload.body
+    && typeof payload.body === "object"
+    && "documentId" in payload.body
+    && typeof payload.body.documentId === "string"
+    ? payload.body.documentId
+    : null;
+  if (!documentId) return;
+  const iframe = document.querySelector<HTMLIFrameElement>(`.viewer-iframe[data-document-id="${CSS.escape(documentId)}"]`);
+  iframe?.contentWindow?.postMessage(payload, "*");
 }
 
 function summarizeErrors(errors: string[]) {

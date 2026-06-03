@@ -95,6 +95,8 @@ pub fn run() {
             commands::documents::open_delimited_grid_document,
             commands::documents::open_docking_document,
             commands::documents::open_merged_collection,
+            commands::documents::append_to_molecule_collection,
+            commands::documents::create_molecule_collection,
             commands::documents::save_molecule_collection_as,
             commands::documents::save_text_as,
             commands::documents::render_xyzrender_sheet_item,

@@ -147,6 +147,7 @@ pub(crate) fn grid_append_delimited_records(
         &text,
         &GridParseOptions {
             smiles_column: Some(request.smiles_column),
+            ..GridParseOptions::default()
         },
     )?;
     Ok(GridAppendResult {

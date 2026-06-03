@@ -13,8 +13,14 @@
   const SVG_FIT_MIN_PADDING = 12;
   const SVG_FIT_PADDING_FRACTION = 0.08;
   const XYZRENDER_CARD_CONCURRENCY = 4;
+  const GRID_LOAD_AHEAD_PX = 720;
   const RDKIT_CARD_ROOT_MARGIN = '900px 0px';
   const XYZRENDER_CARD_ROOT_MARGIN = '720px 0px';
+  const BACKGROUND_CARD_RENDER_BATCH = 16;
+  const BACKGROUND_GRID_WORK_DELAY_MS = 120;
+  const RDKIT_CARD_FRAME_BATCH = 6;
+  const RDKIT_CARD_FRAME_BUDGET_MS = 8;
+  const RDKIT_SVG_CACHE_LIMIT = 600;
   const STRUCTURE_DRAG_MIME = 'application/x-burrete-structure-paths';
   const state = {
     rdkit: null,
@@ -48,12 +54,14 @@
     rdkitCardSeq: 0,
     rdkitCardObserver: null,
     rdkitCardLazyJobs: new WeakMap(),
+    rdkitCardLazyTargets: [],
     xyzrenderCardCache: new Map(),
     xyzrenderCardQueue: [],
     xyzrenderCardsRunning: 0,
     xyzrenderCardSeq: 0,
     xyzrenderCardObserver: null,
     xyzrenderCardLazyJobs: new WeakMap(),
+    xyzrenderCardLazyTargets: [],
     hostRequests: new Map(),
     remoteMode: false,
     remoteLoading: false,
@@ -69,13 +77,10 @@
     scrollHandler: null,
     contextMenuOutsideHandler: null,
     contextMenuKeyHandler: null,
-    railOutsideHandler: null,
-    railKeyHandler: null,
-    railCloseTimer: null,
-    railHoverIndex: null,
     railDragging: false,
     pendingGridScrollIndex: null,
-    pendingGridRailPosition: null
+    pendingGridRailPosition: null,
+    backgroundGridWorkTimer: 0
   };
 
   function post(type, message, payload = {}) {
@@ -242,8 +247,8 @@
   }
 
   function loadBatchSize(cfg) {
-    const value = Number(cfg.pageSize || 48);
-    return Number.isFinite(value) ? Math.max(12, Math.min(48, Math.floor(value))) : 48;
+    const value = Number(cfg.pageSize || 72);
+    return Number.isFinite(value) ? Math.max(12, Math.min(120, Math.floor(value))) : 72;
   }
 
   function storedOptionalInteger(key, min, max) {
@@ -422,10 +427,8 @@
           </div>
         </div>
         <nav class="buret-grid-rail" data-buret-grid-rail aria-label="Molecule navigation">
-          <div class="buret-grid-rail-hover-target" data-buret-grid-rail-hover-target aria-hidden="true"></div>
           <span class="buret-grid-rail-active-marker" data-buret-grid-rail-active aria-hidden="true"></span>
           <div class="buret-grid-rail-ticks" data-buret-grid-rail-ticks></div>
-          <div class="buret-grid-rail-popover buret-floating-surface" data-buret-grid-rail-popover data-state="closed" role="dialog" aria-label="Molecule navigation" aria-hidden="true" hidden inert></div>
         </nav>
         <main id="grid" class="buret-grid"></main>
         <div id="load-sentinel" class="buret-load-sentinel" aria-hidden="true"></div>
@@ -515,7 +518,7 @@
     return `
       <div class="buret-grid-renderer-controls">
         <div class="buret-grid-renderer-switch" aria-label="3D renderer">
-          <button type="button" data-buret-grid-renderer="molstar" data-buret-grid-sdf-poses data-buret-grid-docking>Poses</button>
+          <button type="button" data-buret-grid-renderer="molstar" data-buret-grid-sdf-poses data-buret-grid-docking>Molstar</button>
         </div>
       </div>`;
   }
@@ -564,8 +567,12 @@
     const control = document.getElementById('rdkit-use-input-coords-control');
     const input = document.getElementById('rdkit-use-input-coords');
     if (!control || !input) return;
-    control.hidden = state.cardRenderer !== 'rdkit' || !hasInputCoordinateRows();
-    input.checked = state.rdkitUseInputCoords;
+    const hasInputCoordinates = hasInputCoordinateRows();
+    control.hidden = state.cardRenderer !== 'rdkit' || !hasInputCoordinates;
+    control.toggleAttribute('aria-disabled', !hasInputCoordinates);
+    control.title = hasInputCoordinates ? 'Use coordinates embedded in the file' : 'No file coordinates in this grid';
+    input.disabled = !hasInputCoordinates;
+    input.checked = hasInputCoordinates && state.rdkitUseInputCoords;
   }
 
   function hasInputCoordinateRows() {
@@ -586,23 +593,46 @@
   }
 
   function requestSdfPoseDocument(cfg) {
-    const sourcePath = String(cfg?.sourcePath || '').trim();
     const receptorPath = String(cfg?.dockingReceptorPath || '').trim();
-    const activePose = activePoseReviewIndex();
-    post('openSdfPoseDocument', '[grid] Open SDF poses in Mol*.', {
+    const rows = selectedMolstarRows();
+    if (!rows.length) {
+      setStatus('[grid] Select one or more molecules before opening Molstar.', 'error');
+      return;
+    }
+    const records = rows
+      .map(row => sdfRecordTextForMolstar(row))
+      .filter(text => typeof text === 'string' && text.trim().length > 0);
+    if (!records.length) {
+      setStatus('[grid] Selected molecules do not have SDF structure data for Molstar.', 'error');
+      return;
+    }
+    const title = records.length === 1
+      ? `${safeStructureFileStem(rows[0]?.name || `molecule-${Number(rows[0]?.index) + 1 || 1}`, Number(rows[0]?.index))}.sdf`
+      : `selected-${records.length}-molecules.sdf`;
+    post('openSdfMolstarDocument', '[grid] Open selected molecules in Molstar.', {
       documentId: cfg?.documentId || null,
-      path: sourcePath || null,
-      receptorPath: receptorPath || null,
-      activePose
+      title,
+      extension: 'sdf',
+      textBase64: textToBase64(records.join('\n')),
+      receptorPath: receptorPath || null
     });
+    setStatus(`[grid] Opening ${records.length.toLocaleString()} selected molecule${records.length === 1 ? '' : 's'} in Molstar.`);
   }
 
-  function activePoseReviewIndex() {
-    const selected = Array.from(state.selected)
-      .map(value => Number(value))
-      .filter(value => Number.isFinite(value))
-      .sort((a, b) => a - b);
-    return selected.length ? selected[0] : 0;
+  function selectedMolstarRows() {
+    if (!state.selected.size) return [];
+    const pool = state.remoteMode ? state.rows : state.all;
+    return pool
+      .filter(row => state.selected.has(Number(row.index)))
+      .sort((a, b) => Number(a.index) - Number(b.index));
+  }
+
+  function sdfRecordTextForMolstar(row) {
+    const record = gridDragRecord(row);
+    if (!record || record.inputExtension !== 'sdf') return null;
+    const text = String(record.text || '').trim();
+    if (!text) return null;
+    return `${text.replace(/\n?\$\$\$\$\s*$/u, '').trimEnd()}\n$$$$\n`;
   }
 
   function requestOpenInKetcher(row, cfg) {
@@ -757,7 +787,7 @@
     if (typeof IntersectionObserver === 'function') {
       state.loadObserver = new IntersectionObserver(entries => {
         if (entries.some(entry => entry.isIntersecting)) loadMore(cfg);
-      }, { root: null, rootMargin: '520px 0px' });
+      }, { root: null, rootMargin: `${GRID_LOAD_AHEAD_PX}px 0px` });
       state.loadObserver.observe(sentinel);
     }
     if (state.scrollHandler) window.removeEventListener('scroll', state.scrollHandler);
@@ -774,12 +804,13 @@
     if (!hasMoreRows()) return;
     const sentinel = document.getElementById('load-sentinel');
     const rect = sentinel?.getBoundingClientRect();
-    if (!rect || rect.top <= window.innerHeight + 520) loadMore(cfg);
+    if (!rect || rect.top <= window.innerHeight + GRID_LOAD_AHEAD_PX) loadMore(cfg);
   }
 
   async function render(cfg) {
     const token = ++state.token;
     const grid = document.getElementById('grid');
+    cancelBackgroundGridWork();
     resetRdkitCardObserver();
     resetXyzrenderCardObserver();
     resetCardRenderQueues();
@@ -914,7 +945,11 @@
   }
 
   async function loadMoreRemote(cfg) {
-    if (state.remoteLoading || !hasMoreRows()) return;
+    if (state.remoteLoading) {
+      state.pendingLoad = true;
+      return;
+    }
+    if (!hasMoreRows()) return;
     if (state.renderedCount < state.rows.length) {
       state.visibleCount = Math.min(state.rows.length, state.visibleCount + loadBatchSize(cfg));
       await appendVisibleRows(cfg, state.token);
@@ -940,6 +975,7 @@
       setStatus(error?.message || String(error), 'error');
     } finally {
       state.remoteLoading = false;
+      if (token === state.token) scheduleBackgroundGridWork(cfg, token);
     }
   }
 
@@ -982,6 +1018,7 @@
       scrollPendingGridRow();
       post('ready', 'ready');
       if (status && !window.BurreteDebug) status.classList.add('hidden');
+      scheduleBackgroundGridWork(cfg, token);
     } finally {
       state.rendering = false;
       if (token === state.token) {
@@ -993,6 +1030,45 @@
         }
       }
     }
+  }
+
+  function cancelBackgroundGridWork() {
+    if (!state.backgroundGridWorkTimer) return;
+    window.clearTimeout(state.backgroundGridWorkTimer);
+    state.backgroundGridWorkTimer = 0;
+  }
+
+  function scheduleBackgroundGridWork(cfg, token = state.token) {
+    if (state.backgroundGridWorkTimer || token !== state.token) return;
+    state.backgroundGridWorkTimer = window.setTimeout(() => {
+      state.backgroundGridWorkTimer = 0;
+      void runBackgroundGridWork(cfg, token);
+    }, BACKGROUND_GRID_WORK_DELAY_MS);
+  }
+
+  async function runBackgroundGridWork(cfg, token) {
+    if (token !== state.token) return;
+    if (state.rendering || state.remoteLoading) {
+      scheduleBackgroundGridWork(cfg, token);
+      return;
+    }
+    const didWork = startBackgroundCardRenderJobs(BACKGROUND_CARD_RENDER_BATCH) > 0;
+    if (token === state.token && (didWork || hasBackgroundGridWork())) {
+      scheduleBackgroundGridWork(cfg, token);
+    }
+  }
+
+  function hasBackgroundGridWork() {
+    return hasLazyCardTargets(state.cardRenderer === 'xyzrender'
+        ? state.xyzrenderCardLazyTargets
+        : state.rdkitCardLazyTargets);
+  }
+
+  function hasLazyCardTargets(targets) {
+    return targets.some(target => target?.isConnected && (
+      target.hasAttribute('data-buret-rdkit-card-key')
+      || target.hasAttribute('data-buret-xyzrender-card-key')
+    ));
   }
 
   function updateChrome(cfg) {
@@ -1032,6 +1108,7 @@
     if (selectAllButton) selectAllButton.disabled = selectableIndexes.length === 0 || allCurrentSelected;
     const clearSelectionButton = document.getElementById('clear-selection');
     if (clearSelectionButton) clearSelectionButton.disabled = state.selected.size === 0;
+    syncRdkitCoordinatesControl();
     let footerText;
     if (state.smartsError) {
       footerText = `SMARTS error: ${state.smartsError}`;
@@ -1056,133 +1133,38 @@
 
   function initGridRail(cfg) {
     const rail = root.querySelector('[data-buret-grid-rail]');
-    const hoverTarget = root.querySelector('[data-buret-grid-rail-hover-target]');
     const marker = root.querySelector('[data-buret-grid-rail-active]');
     const ticks = root.querySelector('[data-buret-grid-rail-ticks]');
-    const popover = root.querySelector('[data-buret-grid-rail-popover]');
-    if (!rail || !ticks || !popover) return;
+    if (!rail || !ticks) return;
+    rail.addEventListener('focusin', () => updateGridRailActive());
     ticks.addEventListener('click', event => {
       const target = event.target instanceof Element ? event.target.closest('[data-buret-grid-rail-position], [data-buret-grid-rail-index]') : null;
       if (!target) return;
       const position = Number(target.getAttribute('data-buret-grid-rail-position'));
       const index = Number(target.getAttribute('data-buret-grid-rail-index'));
-      setGridRailOpen(false);
-      if (Number.isFinite(position)) scrollToGridPosition(position, cfg);
+      if (Number.isFinite(position)) void scrollToGridPosition(position, cfg);
       else scrollToGridRow(index, cfg);
     });
-    if (state.railOutsideHandler) {
-      document.removeEventListener('click', state.railOutsideHandler, true);
-      window.removeEventListener('scroll', state.railOutsideHandler, true);
-      window.removeEventListener('resize', state.railOutsideHandler, true);
-      state.railOutsideHandler = null;
-    }
-    if (state.railKeyHandler) {
-      document.removeEventListener('keydown', state.railKeyHandler);
-      state.railKeyHandler = null;
-    }
-    state.railOutsideHandler = event => {
-      const target = event.target instanceof Element ? event.target : null;
-      if (target?.closest?.('[data-buret-grid-rail]')) return;
-      setGridRailOpen(false);
-    };
-    state.railKeyHandler = event => {
-      if (event.key !== 'Escape' || popover.dataset.state !== 'open') return;
-      setGridRailOpen(false);
-    };
-    document.addEventListener('click', state.railOutsideHandler, true);
-    document.addEventListener('keydown', state.railKeyHandler);
     marker?.addEventListener('pointerdown', event => startGridRailDrag(event, cfg));
-    hoverTarget?.addEventListener('click', () => setGridRailOpen(true));
-    popover.addEventListener('click', event => {
-      const target = event.target instanceof Element ? event.target.closest('[data-buret-grid-rail-index]') : null;
-      if (!target) return;
-      const index = Number(target.getAttribute('data-buret-grid-rail-index'));
-      scrollToGridRow(index, cfg);
-      setGridRailOpen(false);
-    });
-    popover.addEventListener('pointerdown', event => {
-      if (event.button != null && event.button !== 0) return;
-      const target = event.target instanceof Element ? event.target.closest('[data-buret-grid-rail-index]') : null;
-      if (!target || !popover.contains(target)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      const index = Number(target.getAttribute('data-buret-grid-rail-index'));
-      state.railHoverIndex = index;
-      updateGridRailHoverHighlight();
-      scrollToGridRow(index, cfg);
-      setGridRailOpen(false);
-    });
-    const handlePopoverHover = event => {
-      if (event.buttons) return;
-      const target = event.target instanceof Element ? event.target.closest('[data-buret-grid-rail-index]') : null;
-      if (!target || !popover.contains(target)) return;
-      const index = Number(target.getAttribute('data-buret-grid-rail-index'));
-      if (state.railHoverIndex === index) return;
-      state.railHoverIndex = index;
-      updateGridRailHoverHighlight();
-      scrollToGridRow(index, cfg);
-    };
-    popover.addEventListener('pointerover', handlePopoverHover);
-    popover.addEventListener('pointermove', handlePopoverHover);
-    popover.addEventListener('mouseover', handlePopoverHover);
-    popover.addEventListener('mousemove', handlePopoverHover);
     window.addEventListener('scroll', updateGridRailActive, { passive: true });
     window.addEventListener('resize', updateGridRailActive, { passive: true });
     updateGridRail();
   }
 
-  function setGridRailOpen(open) {
-    if (state.railCloseTimer) {
-      clearTimeout(state.railCloseTimer);
-      state.railCloseTimer = null;
-    }
-    const ticks = root.querySelector('[data-buret-grid-rail-ticks]');
-    const popover = root.querySelector('[data-buret-grid-rail-popover]');
-    if (!ticks || !popover) return;
-    ticks.dataset.open = open ? 'true' : 'false';
-    popover.dataset.state = open ? 'open' : 'closed';
-    popover.setAttribute('aria-hidden', open ? 'false' : 'true');
-    popover.hidden = !open;
-    popover.inert = !open;
-    if (!open) {
-      state.railHoverIndex = null;
-      updateGridRailHoverHighlight();
-    }
-    if (open) updateGridRailActive();
-  }
-
   function updateGridRail() {
     const rail = root.querySelector('[data-buret-grid-rail]');
     const ticks = root.querySelector('[data-buret-grid-rail-ticks]');
-    const popover = root.querySelector('[data-buret-grid-rail-popover]');
-    if (!rail || !ticks || !popover) return;
+    if (!rail || !ticks) return;
     const rows = state.rows || [];
     rail.hidden = gridRailTotalRows() < 2;
     if (rail.hidden) return;
-    const wasOpen = popover.dataset.state === 'open';
-    const list = popover.querySelector('.buret-grid-rail-popover-list');
-    const listScrollTop = wasOpen && list ? list.scrollTop : 0;
     const railRows = gridRailRows(rows);
     ticks.innerHTML = railRows.map(({ row, position, active }) => {
       const index = row ? Number(row.index) : null;
       const title = escapeAttr(row?.name || `Molecule ${position + 1}`);
       const indexAttr = Number.isFinite(index) ? ` data-buret-grid-rail-index="${index}"` : '';
-      return `<button type="button" class="buret-grid-rail-tick${active ? ' is-active' : ''}" data-buret-grid-rail-position="${position}"${indexAttr} title="${title}" aria-label="${title}"></button>`;
+      return `<button type="button" class="buret-grid-rail-tick${active ? ' is-active' : ''}" data-buret-grid-rail-position="${position}"${indexAttr} aria-label="${title}"></button>`;
     }).join('');
-    popover.innerHTML = `
-      <div class="buret-grid-rail-popover-title" id="buret-grid-rail-popover-title">Molecules</div>
-      <div class="buret-grid-rail-popover-list" role="listbox" aria-labelledby="buret-grid-rail-popover-title">
-        ${rows.map(row => {
-          const index = Number(row.index);
-          const name = escapeHTML(row.name || `Molecule ${index + 1}`);
-          const detail = escapeHTML(row.smiles || `#${index + 1}`);
-          return `<button type="button" class="buret-grid-rail-popover-row" role="option" aria-selected="false" data-buret-grid-rail-index="${index}"><span>${name}</span><small>${detail}</small></button>`;
-        }).join('')}
-      </div>`;
-    if (wasOpen && list) {
-      const nextList = popover.querySelector('.buret-grid-rail-popover-list');
-      if (nextList) nextList.scrollTop = listScrollTop;
-    }
     updateGridRailActive();
   }
 
@@ -1215,12 +1197,6 @@
       else break;
     }
     updateGridRailActiveMarker(activeIndex);
-    root.querySelectorAll('.buret-grid-rail-popover-row[data-buret-grid-rail-index]').forEach(item => {
-      const active = Number(item.getAttribute('data-buret-grid-rail-index')) === activeIndex;
-      item.classList.toggle('is-active', active);
-      item.setAttribute('aria-selected', active ? 'true' : 'false');
-    });
-    updateGridRailHoverHighlight();
   }
 
   function updateGridRailActiveMarker(activeIndex) {
@@ -1244,16 +1220,6 @@
     const offset = (progress - 0.5) * height;
     marker.hidden = false;
     marker.style.setProperty('--buret-grid-rail-active-offset', `${offset.toFixed(2)}px`);
-  }
-
-  function updateGridRailHoverHighlight() {
-    root.querySelectorAll('.buret-card.buret-card-rail-hover').forEach(card => {
-      const active = state.railHoverIndex != null && Number(card.getAttribute('data-index')) === state.railHoverIndex;
-      card.classList.toggle('buret-card-rail-hover', active);
-    });
-    if (state.railHoverIndex == null) return;
-    const card = root.querySelector(`.buret-card[data-index="${state.railHoverIndex}"]`);
-    card?.classList.add('buret-card-rail-hover');
   }
 
   function scrollToGridRow(index, cfg) {
@@ -1353,8 +1319,6 @@
     event.preventDefault();
     event.stopPropagation();
     state.railDragging = true;
-    state.railHoverIndex = null;
-    updateGridRailHoverHighlight();
     document.body.classList.add('buret-grid-rail-dragging');
     const pointerId = event.pointerId;
     try { marker.setPointerCapture(pointerId); } catch (_) {}
@@ -1829,7 +1793,7 @@
       state.selected.clear();
       state.selected.add(Number(row.index));
       requestSdfPoseDocument(cfg);
-      setStatus(`[grid] Opening ${label} in Mol* pose view.`);
+      setStatus(`[grid] Opening ${label} in Molstar pose view.`);
     } else if (action === 'ketcher') {
       requestOpenInKetcher(row, cfg);
       setStatus(`[grid] Opening ${label} in Ketcher.`);
@@ -1865,7 +1829,7 @@
       ['select', 'Select molecule'],
       ['remove', 'Delete molecule'],
       ['ketcher', 'Open in Ketcher'],
-      ['molstar', 'Open in Mol*'],
+      ['molstar', 'Open in Molstar'],
       ['hide', 'Hide molecule'],
       ['inspect', 'Inspect properties']
     ];
@@ -2039,15 +2003,14 @@
   function drawRdkitPlaceholder(row) {
     const key = rdkitCardKey(row);
     if (state.svgCache.has(key)) return state.svgCache.get(key);
-    return `<div class="buret-molecule-loading" data-buret-rdkit-card-key="${escapeAttr(key)}">Rendering molecule...</div>`;
+    return `<div class="buret-molecule-loading" data-buret-rdkit-card-key="${escapeAttr(key)}" aria-label="Rendering molecule"></div>`;
   }
 
   function drawRdkit(row) {
     if (!state.rdkit) {
       const label = row.smiles || row.name || 'Molecule';
       const message = state.rdkitError || 'RDKit renderer is unavailable.';
-      const denseClass = String(label).length > 36 ? ' buret-molecule-error-dense' : '';
-      return `<div class="buret-molecule-error${denseClass}"><strong>${escapeHTML(label)}</strong><span>${escapeHTML(message)}</span></div>`;
+      return moleculeErrorHTML(label, message);
     }
     const match = state.smartsMatches.get(Number(row.index));
     const useInputCoords = state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock);
@@ -2077,15 +2040,15 @@
       html = stripSVGClipping(html);
       html = padSVGViewBox(html, 52);
       if (!html.includes('<svg')) throw new Error('empty drawing');
+      if (isDegenerateMoleculeSVG(html)) throw new Error('invalid molecule drawing');
     } catch (error) {
       const label = row.smiles || row.name || 'Molecule';
-      const denseClass = String(label).length > 36 ? ' buret-molecule-error-dense' : '';
-      html = `<div class="buret-molecule-error${denseClass}"><strong>${escapeHTML(label)}</strong><span>${escapeHTML(error.message || String(error))}</span></div>`;
+      html = moleculeErrorHTML(label, error.message || String(error));
     } finally {
       try { mol?.delete?.(); } catch {}
     }
     state.svgCache.set(key, html);
-    while (state.svgCache.size > 360) state.svgCache.delete(state.svgCache.keys().next().value);
+    while (state.svgCache.size > RDKIT_SVG_CACHE_LIMIT) state.svgCache.delete(state.svgCache.keys().next().value);
     return html;
   }
 
@@ -2096,6 +2059,7 @@
     if (!key) return;
     const start = () => enqueueRdkitCard(row, key, target);
     state.rdkitCardLazyJobs.set(target, start);
+    state.rdkitCardLazyTargets.push(target);
     const observer = ensureRdkitCardObserver();
     if (observer) {
       observer.observe(target);
@@ -2140,15 +2104,26 @@
   function pumpRdkitCardQueue() {
     if (state.rdkitCardRendering || !state.rdkitCardQueue.length) return;
     state.rdkitCardQueue.sort(compareCardRenderJobs);
-    const job = state.rdkitCardQueue.shift();
     state.rdkitCardRendering = true;
     requestAnimationFrame(() => {
+      const startedAt = typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? performance.now()
+        : Date.now();
+      let processed = 0;
       try {
-        updateRdkitCard(job.key, drawRdkit(job.row));
+        while (state.rdkitCardQueue.length && processed < RDKIT_CARD_FRAME_BATCH) {
+          const job = state.rdkitCardQueue.shift();
+          updateRdkitCard(job.key, drawRdkit(job.row));
+          state.rdkitCardPending.delete(job.key);
+          processed++;
+          const now = typeof performance !== 'undefined' && typeof performance.now === 'function'
+            ? performance.now()
+            : Date.now();
+          if (processed >= 2 && now - startedAt >= RDKIT_CARD_FRAME_BUDGET_MS) break;
+        }
       } finally {
-        state.rdkitCardPending.delete(job.key);
         state.rdkitCardRendering = false;
-        window.setTimeout(pumpRdkitCardQueue, 0);
+        if (state.rdkitCardQueue.length) window.setTimeout(pumpRdkitCardQueue, 0);
       }
     });
   }
@@ -2168,6 +2143,47 @@
     return Math.abs(rect.bottom);
   }
 
+  function startBackgroundCardRenderJobs(limit) {
+    if (limit <= 0) return 0;
+    if (state.cardRenderer === 'xyzrender') {
+      return startBackgroundXyzrenderCards(limit);
+    }
+    return startBackgroundRdkitCards(limit);
+  }
+
+  function startBackgroundRdkitCards(limit) {
+    if (!state.rdkit && !state.rdkitError) return 0;
+    let started = 0;
+    const waiting = [];
+    for (const target of state.rdkitCardLazyTargets) {
+      if (!target?.isConnected || !target.hasAttribute('data-buret-rdkit-card-key')) continue;
+      if (started < limit) {
+        startLazyRdkitCard(target);
+        started++;
+      } else {
+        waiting.push(target);
+      }
+    }
+    state.rdkitCardLazyTargets = waiting;
+    return started;
+  }
+
+  function startBackgroundXyzrenderCards(limit) {
+    let started = 0;
+    const waiting = [];
+    for (const target of state.xyzrenderCardLazyTargets) {
+      if (!target?.isConnected || !target.hasAttribute('data-buret-xyzrender-card-key')) continue;
+      if (started < limit) {
+        startLazyXyzrenderCard(target);
+        started++;
+      } else {
+        waiting.push(target);
+      }
+    }
+    state.xyzrenderCardLazyTargets = waiting;
+    return started;
+  }
+
   function updateRdkitCard(key, html) {
     root.querySelectorAll('[data-buret-rdkit-card-key]').forEach(target => {
       if (target.getAttribute('data-buret-rdkit-card-key') !== key) return;
@@ -2181,6 +2197,7 @@
     state.rdkitCardObserver?.disconnect?.();
     state.rdkitCardObserver = null;
     state.rdkitCardLazyJobs = new WeakMap();
+    state.rdkitCardLazyTargets = [];
   }
 
   function drawXyzrenderCard(row, cfg) {
@@ -2207,6 +2224,7 @@
     const key = xyzrenderCardKey(row, record);
     const start = () => enqueueXyzrenderCard(row, cfg, record, key, target);
     state.xyzrenderCardLazyJobs.set(target, start);
+    state.xyzrenderCardLazyTargets.push(target);
     const observer = ensureXyzrenderCardObserver();
     if (observer) {
       observer.observe(target);
@@ -2239,6 +2257,7 @@
     state.xyzrenderCardObserver?.disconnect?.();
     state.xyzrenderCardObserver = null;
     state.xyzrenderCardLazyJobs = new WeakMap();
+    state.xyzrenderCardLazyTargets = [];
   }
 
   function resetCardRenderQueues() {
@@ -2248,6 +2267,28 @@
     state.xyzrenderCardCache.forEach((value, key) => {
       if (value?.pending) state.xyzrenderCardCache.delete(key);
     });
+  }
+
+  function resetDocumentRuntimeState() {
+    cancelBackgroundGridWork();
+    state.query = '';
+    state.smarts = '';
+    state.smartsError = '';
+    state.smartsMatches = new Map();
+    state.rows = [];
+    state.all = [];
+    state.selected = new Set();
+    state.hiddenRows = new Set();
+    state.selectionAnchorIndex = null;
+    state.visibleCount = 0;
+    state.renderedCount = 0;
+    state.totalRows = 0;
+    state.pendingLoad = false;
+    state.pendingGridScrollIndex = null;
+    state.pendingGridRailPosition = null;
+    resetRdkitCardObserver();
+    resetXyzrenderCardObserver();
+    resetCardRenderQueues();
   }
 
   function enqueueXyzrenderCard(row, cfg, record, key, target) {
@@ -2321,6 +2362,22 @@
     return html;
   }
 
+  function moleculeErrorHTML(label, message) {
+    const denseClass = String(label).length > 36 ? ' buret-molecule-error-dense' : '';
+    return `<div class="buret-molecule-error${denseClass}"><strong>${escapeHTML(label)}</strong><span>${escapeHTML(message)}</span></div>`;
+  }
+
+  function isDegenerateMoleculeSVG(svg) {
+    const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+    if (doc.querySelector('parsererror')) return false;
+    const atomsAndBonds = doc.querySelectorAll('path, line, polygon, polyline, circle, ellipse').length;
+    const labels = [...doc.querySelectorAll('text')]
+      .map(node => String(node.textContent || '').trim())
+      .filter(Boolean);
+    if (atomsAndBonds > 0) return false;
+    return labels.length > 0;
+  }
+
   function markSVGForFitting(svg, marker) {
     return String(svg || '').replace(/<svg\b([^>]*)>/i, (tag, attrs) => {
       let next = tag;
@@ -2359,7 +2416,8 @@
         const x = Number(parts[4]);
         const y = Number(parts[5]);
         const z = Number(parts[6]);
-        return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z) && Math.abs(z) > 1e-6;
+        return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)
+          && (Math.abs(x) > 1e-6 || Math.abs(y) > 1e-6 || Math.abs(z) > 1e-6);
       });
     }
     const countText = lines[countsIndex].slice(0, 3).trim() || lines[countsIndex].trim().split(/\s+/u)[0];
@@ -2371,7 +2429,8 @@
       const x = Number(parts[0]);
       const y = Number(parts[1]);
       const z = Number(parts[2]);
-      return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z) && Math.abs(z) > 1e-6;
+      return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)
+        && (Math.abs(x) > 1e-6 || Math.abs(y) > 1e-6 || Math.abs(z) > 1e-6);
     });
   }
 
@@ -2738,6 +2797,7 @@
   async function main() {
     try {
       const cfg = config();
+      resetDocumentRuntimeState();
       state.remoteMode = isRemoteMode(cfg);
       state.totalRows = state.remoteMode ? 0 : state.all.length;
       applyTheme(cfg);

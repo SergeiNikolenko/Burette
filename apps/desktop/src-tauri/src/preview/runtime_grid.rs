@@ -3,6 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{Manager, Runtime};
 
+use super::formats::normalize_renderer_mode;
 use super::grid_store::{build_grid_store_with_options, GridParseOptions};
 use super::runtime::ViewerPreferences;
 use super::runtime_utils::{asset_url, escape_html, prune_runtime_dirs};
@@ -59,7 +60,11 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
     fs::create_dir_all(&runtime).map_err(|err| err.to_string())?;
     copy_web_assets(app, &assets, AssetProfile::Grid)?;
     prune_runtime_dirs(&base);
-    let Some(grid_store) = build_grid_store_with_options(&runtime, extension, data, options)?
+    let grid_options = GridParseOptions {
+        smiles_column: options.smiles_column.clone(),
+        include_single_sdf: normalize_renderer_mode(&preferences.renderer_mode) == "grid2d",
+    };
+    let Some(grid_store) = build_grid_store_with_options(&runtime, extension, data, &grid_options)?
     else {
         return Ok(None);
     };
@@ -96,7 +101,7 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
         "indexReady": collection.index_ready,
         "recordsIncluded": 0,
         "recordsTruncated": false,
-        "pageSize": 48,
+        "pageSize": 72,
         "rdkitWasmPath": "../assets/rdkit/RDKit_minimal.wasm",
         "capabilities": {
             "selection": true,
@@ -627,10 +632,34 @@ fn property_name(line: &str) -> Option<String> {
 #[cfg(test)]
 #[allow(dead_code)]
 fn extract_molblock(lines: &[String]) -> String {
-    if let Some(end) = lines.iter().position(|line| line.trim() == "M  END") {
-        return lines[..=end].join("\n");
+    let mut molblock_lines =
+        if let Some(end) = lines.iter().position(|line| line.trim() == "M  END") {
+            lines[..=end].to_vec()
+        } else {
+            lines.to_vec()
+        };
+    normalize_molblock_header(&mut molblock_lines);
+    molblock_lines.join("\n")
+}
+
+#[cfg(test)]
+fn normalize_molblock_header(lines: &mut Vec<String>) {
+    let Some(mut counts_index) = lines.iter().position(|line| is_molfile_counts_line(line)) else {
+        return;
+    };
+    while counts_index < 3 {
+        lines.insert(counts_index, String::new());
+        counts_index += 1;
     }
-    lines.join("\n")
+}
+
+#[cfg(test)]
+fn is_molfile_counts_line(line: &str) -> bool {
+    let fields: Vec<&str> = line.split_whitespace().collect();
+    fields.len() >= 10
+        && matches!(fields.last(), Some(&"V2000" | &"V3000"))
+        && fields[0].parse::<usize>().is_ok()
+        && fields[1].parse::<usize>().is_ok()
 }
 
 #[cfg(test)]

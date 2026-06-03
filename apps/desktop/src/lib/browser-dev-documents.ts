@@ -952,7 +952,7 @@ async function gridHtml(
     recordsTotal: records.length,
     recordsIncluded: records.length,
     recordsTruncated: false,
-    pageSize: 48,
+    pageSize: 72,
     rdkitWasmPath: "/__burette/rdkit-wasm",
     xyzrenderPreset: "default",
     xyzrenderPresetOptions: [
@@ -1379,6 +1379,7 @@ function isSdfExtension(extension: string) {
 
 function normalizeRendererMode(raw: string) {
   const value = raw.trim().toLowerCase();
+  if (["grid2d", "grid", "grid-2d"].includes(value)) return "grid2d";
   if (["xyz-fast", "fast-xyz", "xyzfast"].includes(value)) return "xyz-fast";
   if (["molstar", "mol*", "interactive"].includes(value)) return "molstar";
   if (["xyzrender-external", "external-xyzrender", "xyzrender"].includes(value)) {
