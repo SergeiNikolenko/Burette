@@ -811,7 +811,7 @@ kbd span { margin-left: 2px; }
   z-index: 1000;
   min-width: 184px;
   padding: 6px;
-  border: 1px solid var(--line-subtler);
+  border: 0;
   border-radius: 9px;
   background: color-mix(in srgb, var(--bg-base) 86%, transparent);
   color: var(--text-primary);
