@@ -80,8 +80,6 @@ const [
   previewRuntimeCss,
   updateSource,
   readme,
-  viewerShell,
-  viewer,
 ] = await Promise.all([
   source('apps/desktop/index.html'),
   source('apps/desktop/src/App.tsx'),
@@ -155,9 +153,9 @@ const [
   source('PreviewExtension/Web/viewer-runtime.css'),
   source('apps/desktop/src/update.ts'),
   source('README.md'),
-  source('PreviewExtension/Web/viewer-shell.js'),
-  source('PreviewExtension/Web/viewer.js'),
 ]);
+const viewerShell = previewShell;
+const viewer = previewViewer;
 const commandDocuments = await source('apps/desktop/src-tauri/src/commands/documents.rs');
 const tauriLib = await source('apps/desktop/src-tauri/src/lib.rs');
 const burretePermissions = await source('apps/desktop/src-tauri/permissions/burrete.toml');
