@@ -95,17 +95,17 @@ export function SettingsPanel({ state, actions }: { state: ShellViewState; actio
           <SettingsSection
             title="Workspace"
             rows={[
-              actionRow("Open structures", state.documents.length + " open, " + state.recentStructures.length + " recent.", "Close all", actions.clearAllDocuments),
-              actionRow("Recent structures", "Clear saved recent structure entries.", "Clear", actions.clearRecentStructures, state.recentStructures.length === 0),
+              actionRow("Open structures", state.documents.length + " open, " + state.recentStructures.length + " recent.", "Close all", actions.clearAllDocuments, false, true),
+              actionRow("Recent structures", "Clear saved recent structure entries.", "Clear", actions.clearRecentStructures, state.recentStructures.length === 0, true),
             ]}
           />
           <SettingsSection
             title="System"
             rows={[
-              actionRow("Quick Look", "Refresh Finder preview registration and cache.", "Reset", () => void actions.resetQuickLook()),
+              actionRow("Quick Look", "Refresh Finder preview registration and cache.", "Reset", () => void actions.resetQuickLook(), false, true),
               actionRow("Logs", "Open the Quick Look extension log folder.", "Open", () => void actions.openLogs()),
               actionRow("Diagnostics", "Export logs, environment, size report, performance marks, and recent errors.", "Export", () => void actions.exportDiagnostics()),
-              actionRow("Preview cache", "Delete generated viewer runtimes except shared assets.", "Clear", () => void actions.clearCache()),
+              actionRow("Preview cache", "Delete generated viewer runtimes except shared assets.", "Clear", () => void actions.clearCache(), false, true),
             ]}
           />
         </div>

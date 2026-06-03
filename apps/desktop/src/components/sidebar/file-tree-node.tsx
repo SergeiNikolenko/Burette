@@ -11,6 +11,7 @@ import { hasStructureDrag, readStructureDragPayload, writeStructureDrag } from "
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
 import { rendererLabel } from "../format";
 import { showNativeContextMenu } from "../native-context-menu";
+import { RadixDropdownMenu } from "../radix-menu";
 import type { ShellActions, ShellViewState } from "../types";
 
 const COLLAPSED_PROJECT_ITEM_LIMIT = 5;
@@ -53,16 +54,6 @@ export function ProjectGroup({
     void showNativeContextMenu(projectMenuItems(project, actions), { x: event.clientX, y: event.clientY });
   };
 
-  const handleMenuClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const rect = event.currentTarget.getBoundingClientRect();
-    void showNativeContextMenu(projectMenuItems(project, actions), {
-      x: Math.round(rect.left),
-      y: Math.round(rect.bottom + 4),
-    });
-  };
-
   return (
     <div className="project-group" role="listitem">
       <div
@@ -82,15 +73,21 @@ export function ProjectGroup({
           <span className="project-group-title">{project.title}</span>
         </span>
         <span className="project-group-actions">
-          <button
-            type="button"
-            className="project-group-menu-button"
-            aria-label={`${project.title} options`}
-            aria-haspopup="menu"
-            onClick={handleMenuClick}
-          >
-            <MoreIcon />
-          </button>
+          <RadixDropdownMenu
+            items={projectMenuItems(project, actions)}
+            trigger={(
+              <button
+                type="button"
+                className="project-group-menu-button"
+                aria-label={`${project.title} options`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                }}
+              >
+                <MoreIcon />
+              </button>
+            )}
+          />
         </span>
       </div>
       {expanded && (
@@ -293,19 +290,6 @@ export function ProjectItem({
   );
 }
 
-function sidebarDropTarget(item: SidebarProjectItem, state: ShellViewState) {
-  const document = item.documentId
-    ? state.documents.find((candidate) => candidate.id === item.documentId)
-    : state.documents.find((candidate) => candidate.path === item.path);
-  return {
-    kind: "active-viewer" as const,
-    documentId: item.documentId,
-    documentPath: item.path,
-    renderer: item.renderer,
-    dockingRequest: document?.dockingRequest ?? null,
-  };
-}
-
 function PinIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
@@ -328,4 +312,17 @@ function MoreIcon() {
       <circle cx="12" cy="8" r="1.2" fill="currentColor" />
     </svg>
   );
+}
+
+function sidebarDropTarget(item: SidebarProjectItem, state: ShellViewState) {
+  const document = item.documentId
+    ? state.documents.find((candidate) => candidate.id === item.documentId)
+    : state.documents.find((candidate) => candidate.path === item.path);
+  return {
+    kind: "active-viewer" as const,
+    documentId: item.documentId,
+    documentPath: item.path,
+    renderer: item.renderer,
+    dockingRequest: document?.dockingRequest ?? null,
+  };
 }

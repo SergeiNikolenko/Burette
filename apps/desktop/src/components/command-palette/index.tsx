@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "cmdk";
 import { formatBytes, rendererLabel } from "../format";
 import type { ShellActions, ShellViewState } from "../types";
 import type { ViewerPreferences } from "../../types";
@@ -38,9 +46,12 @@ export function CommandPalette({
   onQueryChange,
   onClose,
 }: CommandPaletteProps) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const listboxId = "command-palette-listbox";
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const [portalContainer, setPortalContainer] = useState<HTMLElement>();
+
+  useLayoutEffect(() => {
+    setPortalContainer(document.querySelector<HTMLElement>(".app-shell") ?? document.body);
+  }, [isOpen]);
 
   const items = useMemo<PaletteItem[]>(() => {
     const projectItems = state.sidebarProjects.flatMap((project) => project.items.map((item) => ({
@@ -100,13 +111,13 @@ export function CommandPalette({
         description: "Open Burette settings",
         run: actions.openSettings,
       },
-    {
-      id: "open-ketcher",
-      group: "Suggested",
-      label: "Ketcher",
-      description: "Open molecule sketch tab",
-      run: actions.openKetcher,
-    },
+      {
+        id: "open-ketcher",
+        group: "Suggested",
+        label: "Ketcher",
+        description: "Open molecule sketch tab",
+        run: actions.openKetcher,
+      },
       {
         id: "toggle-sidebar",
         group: "Suggested",
@@ -227,8 +238,7 @@ export function CommandPalette({
   }, [items, query]);
 
   const visibleGroups = useMemo(() => {
-    let itemIndex = 0;
-    const groups: Array<{ heading: string; items: Array<{ item: PaletteItem; index: number }> }> = [];
+    const groups: Array<{ heading: string; items: PaletteItem[] }> = [];
     for (const item of visibleItems) {
       const heading = query.trim() ? "Results" : item.group;
       let group = groups.find((candidate) => candidate.heading === heading);
@@ -236,108 +246,60 @@ export function CommandPalette({
         group = { heading, items: [] };
         groups.push(group);
       }
-      group.items.push({ item, index: itemIndex });
-      itemIndex += 1;
+      group.items.push(item);
     }
     return groups;
   }, [query, visibleItems]);
 
-  useEffect(() => {
-    setSelectedIndex(0);
-  }, [query, isOpen]);
+  const firstValue = visibleItems[0]?.id ?? "";
+  const [selectedValue, setSelectedValue] = useState(firstValue);
 
   useEffect(() => {
-    if (selectedIndex >= visibleItems.length) {
-      setSelectedIndex(Math.max(0, visibleItems.length - 1));
-    }
-  }, [selectedIndex, visibleItems.length]);
-
-  if (!isOpen) return null;
+    setSelectedValue(firstValue);
+    listRef.current?.scrollTo({ top: 0 });
+  }, [firstValue, isOpen, query]);
 
   const runItem = (item: PaletteItem) => {
     onClose();
     void item.run();
   };
 
-  const runSelectedItem = () => {
-    const item = visibleItems[selectedIndex];
-    if (item) runItem(item);
-  };
-
-  const moveSelection = (direction: 1 | -1) => {
-    if (!visibleItems.length) return;
-    setSelectedIndex((index) => (index + direction + visibleItems.length) % visibleItems.length);
-  };
-  const selectedItem = visibleItems[selectedIndex];
-  const activeDescendantId = selectedItem ? `command-palette-option-${selectedItem.id}` : undefined;
+  if (!portalContainer) return null;
 
   return (
-    <div className="command-palette-overlay" role="presentation" onMouseDown={onClose}>
-      <section
-        className="command-palette"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Command Palette"
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            event.preventDefault();
-            event.stopPropagation();
-            onClose();
-          }
-        }}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <input
-          ref={inputRef}
-          id="command-palette-input"
-          className="command-palette-input"
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowDown") {
-              event.preventDefault();
-              moveSelection(1);
-            } else if (event.key === "ArrowUp") {
-              event.preventDefault();
-              moveSelection(-1);
-            } else if (event.key === "Enter") {
-              event.preventDefault();
-              runSelectedItem();
-            }
-          }}
-          autoFocus
-          placeholder="Search commands and structures..."
-          aria-label="Search commands and open structures"
-          aria-controls={listboxId}
-          aria-activedescendant={activeDescendantId}
-        />
-        <div className="command-palette-list" role="listbox" id={listboxId} aria-label="Command results">
-          {visibleItems.length === 0 ? (
-            <div className="command-palette-empty">No results found.</div>
-          ) : (
-            visibleGroups.map((group) => (
-              <div className="command-palette-group" key={group.heading} role="group" aria-label={group.heading}>
-                <div className="command-palette-group-heading">{group.heading}</div>
-                {group.items.map(({ item, index }) => (
-                  <button
-                    key={item.id}
-                    id={`command-palette-option-${item.id}`}
-                    className="command-palette-item"
-                    data-selected={index === selectedIndex || undefined}
-                    onClick={() => runItem(item)}
-                    onMouseMove={() => setSelectedIndex(index)}
-                    role="option"
-                    aria-selected={index === selectedIndex}
-                  >
-                    <span>{item.label}</span>
-                    <small>{item.description}</small>
-                  </button>
-                ))}
-              </div>
-            ))
-          )}
-        </div>
-      </section>
-    </div>
+    <CommandDialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      label="Command Palette"
+      shouldFilter={false}
+      value={selectedValue}
+      onValueChange={setSelectedValue}
+      container={portalContainer}
+    >
+      <CommandInput
+        value={query}
+        onValueChange={onQueryChange}
+        placeholder="Search commands and structures..."
+        aria-label="Search commands and open structures"
+      />
+      <CommandList ref={listRef}>
+        {visibleItems.length === 0 ? (
+          <CommandEmpty>No results found.</CommandEmpty>
+        ) : (
+          visibleGroups.map((group) => (
+            <CommandGroup key={group.heading} heading={group.heading}>
+              {group.items.map((item) => (
+                <CommandItem key={item.id} value={item.id} onSelect={() => runItem(item)}>
+                  <span>{item.label}</span>
+                  <small>{item.description}</small>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          ))
+        )}
+      </CommandList>
+    </CommandDialog>
   );
 }
