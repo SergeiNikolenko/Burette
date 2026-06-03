@@ -53,6 +53,22 @@ pub(crate) struct MergedCollectionRequest {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct AppendCollectionRequest {
+    target_path: String,
+    extension: String,
+    text: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CreateCollectionRequest {
+    output_path: String,
+    extension: String,
+    text: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct TextStructureRequest {
     title: String,
     extension: String,
@@ -136,6 +152,7 @@ pub(crate) fn open_delimited_grid_document<R: Runtime>(
         None,
         &GridParseOptions {
             smiles_column: Some(request.smiles_column),
+            ..GridParseOptions::default()
         },
     )
 }
@@ -202,6 +219,7 @@ pub(crate) fn open_text_structure<R: Runtime>(
     fs::write(&output_path, request.text)
         .map_err(|err| format!("{}: {err}", output_path.display()))?;
     open_document(&app, output_path, &preferences, reload_options.as_ref())
+        .map(|document| document.into_virtual())
 }
 
 #[tauri::command]
@@ -230,6 +248,101 @@ pub(crate) fn open_merged_collection<R: Runtime>(
     fs::create_dir_all(&output_directory).map_err(|err| err.to_string())?;
     let output_path = output_directory.join(format!("merged-collection.{extension}"));
     fs::write(&output_path, text).map_err(|err| format!("{}: {err}", output_path.display()))?;
+    open_document(&app, output_path, &preferences, None).map(|document| document.into_virtual())
+}
+
+#[tauri::command]
+pub(crate) fn append_to_molecule_collection<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    request: AppendCollectionRequest,
+    preferences: ViewerPreferences,
+) -> Result<ViewerDocument, String> {
+    let target_path = PathBuf::from(&request.target_path)
+        .canonicalize()
+        .map_err(|err| format!("{}: {err}", request.target_path))?;
+    let metadata =
+        fs::metadata(&target_path).map_err(|err| format!("{}: {err}", target_path.display()))?;
+    if !metadata.is_file() {
+        return Err(format!("{} is not a file", target_path.display()));
+    }
+
+    let target_extension = structure_path_extension(&target_path);
+    let target_family = collection_family(&target_extension).ok_or_else(|| {
+        format!(
+            "{} is not a supported molecule collection",
+            target_path.display()
+        )
+    })?;
+    let append_extension = request
+        .extension
+        .trim()
+        .trim_start_matches('.')
+        .to_lowercase();
+    let append_family = collection_family(&append_extension)
+        .ok_or_else(|| format!("Unsupported structure extension: {append_extension}"))?;
+    if target_family != append_family {
+        return Err(
+            "Collection append supports one format family at a time: SDF, SMILES, CSV, or TSV"
+                .to_string(),
+        );
+    }
+    if target_family != CollectionFamily::Sdf {
+        return Err("Ketcher sketches can only be added to SDF collections".to_string());
+    }
+    if request.text.trim().is_empty() {
+        return Err("Structure text is empty".to_string());
+    }
+
+    let existing = fs::read_to_string(&target_path)
+        .map_err(|err| format!("{}: {err}", target_path.display()))?;
+    let merged = merge_collection_text(target_family, &[existing.as_str(), request.text.as_str()]);
+    if merged.trim().is_empty() {
+        return Err("Merged collection is empty".to_string());
+    }
+    write_text_atomically(&target_path, &merged)?;
+    open_document(&app, target_path, &preferences, None)
+}
+
+#[tauri::command]
+pub(crate) fn create_molecule_collection<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    request: CreateCollectionRequest,
+    preferences: ViewerPreferences,
+) -> Result<ViewerDocument, String> {
+    let output_path = PathBuf::from(&request.output_path);
+    if output_path.as_os_str().is_empty() {
+        return Err("Missing collection output path".to_string());
+    }
+    let extension = structure_path_extension(&output_path);
+    let output_family = collection_family(&extension).ok_or_else(|| {
+        format!(
+            "{} is not a supported molecule collection",
+            output_path.display()
+        )
+    })?;
+    let request_extension = request
+        .extension
+        .trim()
+        .trim_start_matches('.')
+        .to_lowercase();
+    let request_family = collection_family(&request_extension)
+        .ok_or_else(|| format!("Unsupported structure extension: {request_extension}"))?;
+    if output_family != request_family {
+        return Err(
+            "New collection extension must match the exported structure family".to_string(),
+        );
+    }
+    if output_family != CollectionFamily::Sdf {
+        return Err("Ketcher sketches can only create SDF collections".to_string());
+    }
+    if request.text.trim().is_empty() {
+        return Err("Structure text is empty".to_string());
+    }
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent).map_err(|err| format!("{}: {err}", parent.display()))?;
+    }
+    let merged = merge_collection_text(output_family, &[request.text.as_str()]);
+    write_text_atomically(&output_path, &merged)?;
     open_document(&app, output_path, &preferences, None)
 }
 
@@ -602,6 +715,24 @@ fn merge_collection_text(family: CollectionFamily, texts: &[&str]) -> String {
     }
 }
 
+fn write_text_atomically(path: &Path, text: &str) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("{} has no parent directory", path.display()))?;
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("collection");
+    let temporary_path = parent.join(format!(".{file_name}.tmp-{}", uuid::Uuid::new_v4()));
+    fs::write(&temporary_path, text)
+        .map_err(|err| format!("{}: {err}", temporary_path.display()))?;
+    if let Err(error) = fs::rename(&temporary_path, path) {
+        let _ = fs::remove_file(&temporary_path);
+        return Err(format!("{}: {error}", path.display()));
+    }
+    Ok(())
+}
+
 fn collect_supported_files(
     directory: &Path,
     visited_directories: &mut HashSet<PathBuf>,
@@ -853,12 +984,47 @@ fn pick_open_targets_macos<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<Vec<
 mod tests {
     use super::{
         expand_open_targets, looks_like_supported_structure_file,
-        normalize_inline_structure_extension, smiles_from_sheet_data,
+        normalize_inline_structure_extension, open_text_structure, smiles_from_sheet_data,
+        TextStructureRequest,
     };
     use crate::preview::formats::supported_structure_extensions;
+    use crate::preview::grid_store::GridRuntimeRegistry;
+    use crate::preview::runtime::ViewerPreferences;
     use std::fs;
     #[cfg(unix)]
     use std::os::unix::fs::symlink;
+    use std::path::Path;
+    use tauri::Manager;
+
+    fn viewer_preferences() -> ViewerPreferences {
+        ViewerPreferences {
+            theme: "auto".to_string(),
+            canvas_background: "auto".to_string(),
+            renderer_mode: "auto".to_string(),
+            molstar_style: "illustrative".to_string(),
+            xyz_fast_style: "ball-stick".to_string(),
+            theme_light_accent: "#AF52DE".to_string(),
+            theme_light_background: "#FFFFFF".to_string(),
+            theme_light_foreground: "#0D0D0D".to_string(),
+            theme_light_ui_font: "-apple-system-body".to_string(),
+            theme_light_editor_font: "-apple-system-body".to_string(),
+            theme_light_translucent: 10.0,
+            theme_light_contrast: 20.0,
+            theme_dark_accent: "#AF52DE".to_string(),
+            theme_dark_background: "#111111".to_string(),
+            theme_dark_foreground: "#FCFCFC".to_string(),
+            theme_dark_ui_font: "-apple-system-body".to_string(),
+            theme_dark_editor_font: "-apple-system-body".to_string(),
+            theme_dark_translucent: 20.0,
+            theme_dark_contrast: 16.0,
+        }
+    }
+
+    fn mock_app_with_grid_registry() -> tauri::App<tauri::test::MockRuntime> {
+        let app = tauri::test::mock_app();
+        app.manage(GridRuntimeRegistry::default());
+        app
+    }
 
     #[test]
     fn recognizes_supported_structure_files() {
@@ -920,6 +1086,54 @@ mod tests {
         assert_eq!(
             smiles_from_sheet_data(b"SMILES name\n\nc1ccccc1 benzene\n").unwrap(),
             "c1ccccc1"
+        );
+    }
+
+    #[test]
+    fn opens_inline_single_sdf_as_grid_when_explicitly_requested() {
+        let app = mock_app_with_grid_registry();
+        let mut preferences = viewer_preferences();
+        preferences.renderer_mode = "grid2d".to_string();
+
+        let document = open_text_structure(
+            app.handle().clone(),
+            TextStructureRequest {
+                title: "ketcher-sketch.sdf".to_string(),
+                extension: "sdf".to_string(),
+                text: concat!(
+                    "Ketcher sketch\n",
+                    "\n",
+                    "\n",
+                    "  3  2  0  0  0  0  0  0  0  0999 V2000\n",
+                    "   10.3881   -6.0500    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n",
+                    "   11.2541   -5.5500    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n",
+                    "    9.5221   -5.5500    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n",
+                    "  1  2  1  0     0  0\n",
+                    "  1  3  1  0     0  0\n",
+                    "M  END\n",
+                    "$$$$\n",
+                )
+                .to_string(),
+            },
+            preferences,
+            Some(super::ViewerReloadOptions {
+                xyzrender_orientation_ref: None,
+                xyzrender_preset: None,
+                xyzrender_controls: None,
+            }),
+        )
+        .expect("explicit grid Ketcher SDF should open");
+
+        let value = serde_json::to_value(document).expect("document should serialize");
+        assert_eq!(value["renderer"], "grid2d");
+        assert!(
+            Path::new(
+                value["runtimePath"]
+                    .as_str()
+                    .expect("runtime path should be present")
+            )
+            .is_file(),
+            "grid runtime HTML should be created"
         );
     }
 

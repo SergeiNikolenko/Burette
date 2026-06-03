@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { isTemporaryDocumentPath } from "../lib/temporary-documents";
 
 type ShellState = {
   sidebarOpen: boolean;
@@ -23,6 +24,19 @@ type PersistedShellState = Pick<ShellState, "sidebarOpen" | "sidebarWidth" | "pr
 
 function normalizeRoot(root: string) {
   return root.replace(/\\/g, "/").replace(/\/+$/g, "");
+}
+
+function persistentRoots(roots: string[]) {
+  return roots.map(normalizeRoot).filter((root) => root && !isTemporaryDocumentPath(root));
+}
+
+function persistentPinnedPaths(paths: string[]) {
+  return paths.map(normalizeRoot).filter((path) => path && !isTemporaryDocumentPath(path));
+}
+
+function persistentExpandedProjectIds(projectIds: string[], projectRoots: string[]) {
+  const allowed = new Set(projectRoots.map((root) => `project:${root}`));
+  return projectIds.filter((projectId) => !projectId.startsWith("project:") || allowed.has(projectId));
 }
 
 function normalizeSidebarWidth(width: number) {
@@ -80,20 +94,21 @@ export const useShellStore = create<ShellState>()(
         sidebarOpen: state.sidebarOpen,
         sidebarWidth: state.sidebarWidth,
         projectsOpen: state.projectsOpen,
-        projectRoots: state.projectRoots,
-        expandedProjectIds: state.expandedProjectIds,
-        pinnedStructurePaths: state.pinnedStructurePaths,
+        projectRoots: persistentRoots(state.projectRoots),
+        expandedProjectIds: persistentExpandedProjectIds(state.expandedProjectIds, persistentRoots(state.projectRoots)),
+        pinnedStructurePaths: persistentPinnedPaths(state.pinnedStructurePaths),
       }),
       merge: (persisted, current) => {
         const stored = persisted as Partial<PersistedShellState> | undefined;
+        const projectRoots = persistentRoots(stored?.projectRoots ?? current.projectRoots);
         return {
           ...current,
           sidebarOpen: stored?.sidebarOpen ?? current.sidebarOpen,
           sidebarWidth: normalizeSidebarWidth(stored?.sidebarWidth ?? current.sidebarWidth),
           projectsOpen: stored?.projectsOpen ?? current.projectsOpen,
-          projectRoots: stored?.projectRoots ?? current.projectRoots,
-          expandedProjectIds: stored?.expandedProjectIds ?? current.expandedProjectIds,
-          pinnedStructurePaths: stored?.pinnedStructurePaths ?? current.pinnedStructurePaths,
+          projectRoots,
+          expandedProjectIds: persistentExpandedProjectIds(stored?.expandedProjectIds ?? current.expandedProjectIds, projectRoots),
+          pinnedStructurePaths: persistentPinnedPaths(stored?.pinnedStructurePaths ?? current.pinnedStructurePaths),
         };
       },
     },

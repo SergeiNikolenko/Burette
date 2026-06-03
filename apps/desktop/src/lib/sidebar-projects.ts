@@ -1,4 +1,5 @@
 import type { RecentStructure, ViewerDocument } from "../types";
+import { isPersistentViewerDocument, isTemporaryDocumentPath, normalizeDocumentPath } from "./temporary-documents";
 
 export type SidebarProjectItem = {
   key: string;
@@ -43,9 +44,14 @@ export function buildSidebarProjects({
   activeDocumentId: string | null;
   pinnedStructurePaths?: string[];
 }) {
-  const normalizedRoots = dedupeRoots(projectRoots);
-  const pinnedPaths = new Set(pinnedStructurePaths.map((path) => normalizePath(path)));
-  const openPaths = new Set(documents.map((document) => normalizePath(document.path)));
+  const normalizedRoots = dedupeRoots(projectRoots.filter((root) => !isTemporaryDocumentPath(root)));
+  const pinnedPaths = new Set(
+    pinnedStructurePaths
+      .filter((path) => !isTemporaryDocumentPath(path))
+      .map((path) => normalizePath(path)),
+  );
+  const projectDocuments = documents.filter(isPersistentViewerDocument);
+  const openPaths = new Set(projectDocuments.map((document) => normalizePath(document.path)));
   const projects = new Map<string, SidebarProject>();
 
   for (const rootPath of normalizedRoots) {
@@ -53,7 +59,7 @@ export function buildSidebarProjects({
     projects.set(projectId, createProject(projectId, rootPath, true));
   }
 
-  for (const document of documents) {
+  for (const document of projectDocuments) {
     addStructureToProjects(projects, normalizedRoots, pinnedPaths, {
       structure: document,
       activeDocumentId,
@@ -61,7 +67,7 @@ export function buildSidebarProjects({
     });
   }
 
-  for (const structure of recentStructures) {
+  for (const structure of recentStructures.filter((structure) => !isTemporaryDocumentPath(structure.path))) {
     if (openPaths.has(normalizePath(structure.path))) continue;
     addStructureToProjects(projects, normalizedRoots, pinnedPaths, {
       structure,
@@ -94,7 +100,7 @@ export function filterSidebarProjects(projects: SidebarProject[], query: string)
 }
 
 export function normalizePath(path: string) {
-  return path.replace(/\\/g, "/").replace(/\/+$/g, "");
+  return normalizeDocumentPath(path);
 }
 
 export function parentDirectory(path: string) {

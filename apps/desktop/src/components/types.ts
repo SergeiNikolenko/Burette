@@ -14,12 +14,14 @@ export type StatusNotice = {
   details: string[];
 };
 
-export type KetcherSketchTarget = "molstar" | "xyzrender" | "collection";
+export type KetcherSketchTarget = "grid" | "molstar" | "xyzrender" | "collection";
 
 export type KetcherSketchRequest = {
   title: string;
   extension: "sdf";
   text: string;
+  draftKet?: string;
+  draftMolfile?: string;
   target: KetcherSketchTarget;
   collectionTargetPath?: string | null;
 };
@@ -54,6 +56,7 @@ export type ShellActions = {
   openKetcherWithStructures: (paths: string[], fragments?: KetcherImportRequest["fragments"]) => void;
   openFepSetupWorkspace: (request: FepSetupRequest) => void;
   openKetcherSketch: (request: KetcherSketchRequest) => void | Promise<void>;
+  saveKetcherDraft: (molfile: string) => void;
   clearKetcherImportRequest: (id: number) => void;
   moveTab: (id: string, toIndex: number) => void;
   chooseWorkspace: () => void | Promise<void>;
@@ -117,6 +120,7 @@ export type ShellViewState = {
   structureDragActive: boolean;
   poseReviewSelections: Record<string, number>;
   ketcherImportRequest: KetcherImportRequest | null;
+  ketcherDraftMolfile: string;
   sidebarQuery: string;
   status: StatusNotice | null;
   dropActive: boolean;

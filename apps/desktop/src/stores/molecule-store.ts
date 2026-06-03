@@ -9,6 +9,11 @@ import {
   type SerializedLocation,
 } from "../components/editor-area/page-kinds";
 import type { RecentStructure, ViewerDocument } from "../types";
+import {
+  isPersistentRecentStructure,
+  isPersistentViewerDocument,
+  isTemporaryDocumentPath,
+} from "../lib/temporary-documents";
 
 const MAX_RECENT_STRUCTURES = 12;
 
@@ -33,6 +38,7 @@ type MoleculeState = {
   recentStructures: RecentStructure[];
   setDocuments: (documents: ViewerDocument[]) => void;
   addDocuments: (documents: ViewerDocument[]) => void;
+  openDocumentsInActiveTab: (documents: ViewerDocument[], options?: { backLocation?: Location }) => void;
   rememberRecentStructures: (documents: ViewerDocument[]) => void;
   clearRecentStructures: () => void;
   openNewTab: () => void;
@@ -100,6 +106,10 @@ export function createFileTab(document: ViewerDocument, id = createTabId()): Mol
   };
 }
 
+function fileLocation(document: ViewerDocument): Location {
+  return { kind: "file", documentId: document.id, path: document.path };
+}
+
 export function createSettingsTab(id = createTabId()): MoleculeTab {
   return { id, location: { kind: "settings" }, back: [], forward: [] };
 }
@@ -120,6 +130,12 @@ function cloneTab(tab: MoleculeTab): MoleculeTab {
   return { ...tab, back: [...tab.back], forward: [...tab.forward] };
 }
 
+function sameLocation(left: Location, right: Location) {
+  if (left.kind !== right.kind) return false;
+  if (left.kind === "file" && right.kind === "file") return left.path === right.path;
+  return true;
+}
+
 function toRecentStructure(document: ViewerDocument): RecentStructure {
   return {
     path: document.path,
@@ -132,7 +148,7 @@ function toRecentStructure(document: ViewerDocument): RecentStructure {
 }
 
 function persistedDocuments(documents: ViewerDocument[]) {
-  return documents.filter((document) => !document.virtual);
+  return documents.filter(isPersistentViewerDocument);
 }
 
 function persistedTabs(tabs: MoleculeTab[], documents: ViewerDocument[]) {
@@ -140,7 +156,10 @@ function persistedTabs(tabs: MoleculeTab[], documents: ViewerDocument[]) {
   return tabs.filter((tab) => (
     tab.location.kind !== "fep-setup" &&
     tab.location.kind !== "pose-review" &&
-    (tab.location.kind !== "file" || paths.has(tab.location.path))
+    (
+      tab.location.kind !== "file" ||
+      (paths.has(tab.location.path) && !isTemporaryDocumentPath(tab.location.path))
+    )
   ));
 }
 
@@ -232,7 +251,7 @@ function devFilesPersistedSession(recentStructures: RecentStructure[]): Persiste
     documents: [],
     tabs: [{ id: "tab-1", location: { kind: "launcher" }, back: [], forward: [] }],
     activeTabId: "tab-1",
-    recentStructures,
+    recentStructures: recentStructures.filter(isPersistentRecentStructure),
   };
 }
 
@@ -289,11 +308,60 @@ export const useMoleculeStore = create<MoleculeState>()(
           activeTabId = activeTabIdOrFirst(nextTabs, activeTabId);
           return { documents, tabs: nextTabs, activeTabId, activeDocumentId: activeDocumentIdFrom(nextTabs, activeTabId, documents) };
         }),
+      openDocumentsInActiveTab: (incoming, options = {}) =>
+        set((state) => {
+          if (incoming.length === 0) return state;
+          const byPath = new Map(state.documents.map((document) => [document.path, document]));
+          for (const document of incoming) byPath.set(document.path, document);
+          const documents = Array.from(byPath.values());
+          const active = state.tabs.find((tab) => tab.id === state.activeTabId);
+          let tabs = state.tabs
+            .filter((tab) => tab.location.kind !== "launcher")
+            .map(cloneTab)
+            .filter((tab) => tab.location.kind !== "file" || byPath.has(tab.location.path));
+
+          const firstDocument = incoming[0];
+          const nextLocation = fileLocation(firstDocument);
+          let targetTab = active ? tabs.find((tab) => tab.id === active.id) ?? cloneTab(active) : createFileTab(firstDocument);
+          const previousLocation = options.backLocation ?? targetTab.location;
+          targetTab = {
+            ...targetTab,
+            location: nextLocation,
+            back: sameLocation(previousLocation, nextLocation) ? targetTab.back : [...targetTab.back, previousLocation],
+            forward: [],
+          };
+          tabs = tabs.filter((tab) => (
+            tab.id !== targetTab.id &&
+            (tab.location.kind !== "file" || tab.location.path !== firstDocument.path)
+          ));
+          tabs.push(targetTab);
+
+          const tabByPath = new Map<string, MoleculeTab>();
+          for (const tab of tabs) {
+            if (tab.location.kind === "file") tabByPath.set(tab.location.path, tab);
+          }
+          tabByPath.set(firstDocument.path, targetTab);
+
+          for (const document of incoming.slice(1)) {
+            const existing = tabByPath.get(document.path);
+            if (existing) {
+              existing.location = fileLocation(document);
+            } else {
+              const tab = createFileTab(document);
+              tabs.push(tab);
+              tabByPath.set(document.path, tab);
+            }
+          }
+
+          const nextTabs = ensureTabs(tabs);
+          const activeTabId = activeTabIdOrFirst(nextTabs, targetTab.id);
+          return { documents, tabs: nextTabs, activeTabId, activeDocumentId: activeDocumentIdFrom(nextTabs, activeTabId, documents) };
+        }),
       rememberRecentStructures: (incoming) =>
         set((state) => {
           const byPath = new Map(state.recentStructures.map((structure) => [structure.path, structure]));
           for (const document of incoming) {
-            if (!document.virtual) byPath.set(document.path, toRecentStructure(document));
+            if (isPersistentViewerDocument(document)) byPath.set(document.path, toRecentStructure(document));
           }
           return {
             recentStructures: Array.from(byPath.values())
@@ -462,19 +530,22 @@ export const useMoleculeStore = create<MoleculeState>()(
             documents: [],
             tabs: persistedTabs(collapseDuplicateKetcherTabs(state.tabs, state.activeTabId), state.documents),
             activeTabId: state.activeTabId,
-            recentStructures: state.recentStructures,
+            recentStructures: state.recentStructures.filter(isPersistentRecentStructure),
           }),
       merge: (persisted, current) => {
         const stored = persisted as Partial<PersistedMoleculeState> | undefined;
         if (shouldIgnorePersistedSession()) {
           return {
             ...current,
-            recentStructures: stored?.recentStructures ?? current.recentStructures,
+            recentStructures: (stored?.recentStructures ?? current.recentStructures).filter(isPersistentRecentStructure),
           };
         }
         const documents = current.documents;
+        const storedTabs = (stored?.tabs ?? current.tabs).filter((tab) => (
+          tab.location.kind !== "file" || !isTemporaryDocumentPath(tab.location.path)
+        ));
         const tabs = collapseDuplicateKetcherTabs(
-          dedupeTabIds(ensureTabs((stored?.tabs ?? current.tabs).map(cloneTab))),
+          dedupeTabIds(ensureTabs(storedTabs.map(cloneTab))),
           stored?.activeTabId ?? current.activeTabId,
         );
         const activeTabId = activeTabIdOrFirst(tabs, stored?.activeTabId ?? current.activeTabId);
@@ -484,7 +555,7 @@ export const useMoleculeStore = create<MoleculeState>()(
           tabs,
           activeTabId,
           activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, documents),
-          recentStructures: stored?.recentStructures ?? current.recentStructures,
+          recentStructures: (stored?.recentStructures ?? current.recentStructures).filter(isPersistentRecentStructure),
         };
       },
     },

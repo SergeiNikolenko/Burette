@@ -4,6 +4,7 @@ import "ketcher-react/dist/index.css";
 
 export type KetcherEditorApi = {
   addFragment: Ketcher["addFragment"];
+  getKet: Ketcher["getKet"];
   getMolfile: Ketcher["getMolfile"];
   getSmiles: Ketcher["getSmiles"];
   setMolecule: Ketcher["setMolecule"];
@@ -70,14 +71,23 @@ const browserRequireModules: Record<string, unknown> = {
 };
 
 function installKetcherBrowserRequire() {
-  const globalWithRequire = globalThis as typeof globalThis & { require?: BrowserRequire };
+  const browserRequire: BrowserRequire = (id: string) => {
+    if (id in browserRequireModules) return browserRequireModules[id];
+    throw new Error(`Unsupported browser require: ${id}`);
+  };
+  const globalWithRequire = globalThis as typeof globalThis & {
+    require?: BrowserRequire;
+    __burreteRequire?: BrowserRequire;
+  };
   Object.defineProperty(globalWithRequire, "require", {
     configurable: true,
     writable: true,
-    value: (id: string) => {
-      if (id in browserRequireModules) return browserRequireModules[id];
-      throw new Error(`Unsupported browser require: ${id}`);
-    },
+    value: browserRequire,
+  });
+  Object.defineProperty(globalWithRequire, "__burreteRequire", {
+    configurable: true,
+    writable: true,
+    value: browserRequire,
   });
 }
 
@@ -107,7 +117,7 @@ function suppressFilledKetcherSelectionPaths(root: HTMLElement) {
     }
 
     if (box.width >= minWidth && box.height >= minHeight) {
-      path.style.setProperty("fill", "none", "important");
+      path.style.setProperty("fill", "transparent", "important");
     }
   }
 }
@@ -118,7 +128,11 @@ function createKetcherEditorApi(
 ): KetcherEditorApi {
   return {
     addFragment: instance.addFragment.bind(instance),
-    getMolfile: async () => serializeCurrentMolfile(instance, MolSerializer),
+    getKet: instance.getKet.bind(instance),
+    getMolfile: (async (...args: Parameters<Ketcher["getMolfile"]>) => {
+      const molfile = await instance.getMolfile(...args);
+      return molfile.trim() ? molfile : serializeCurrentMolfile(instance, MolSerializer);
+    }) as Ketcher["getMolfile"],
     getSmiles: instance.getSmiles.bind(instance),
     setMolecule: instance.setMolecule.bind(instance),
   };

@@ -112,6 +112,7 @@ pub fn quick_look_size_limit_for_extension(extension: &str) -> i64 {
 
 pub fn normalize_renderer_mode(raw: &str) -> &'static str {
     match raw.trim().to_ascii_lowercase().as_str() {
+        "grid2d" | "grid" | "grid-2d" => "grid2d",
         "xyz-fast" | "fast-xyz" | "xyzfast" => "xyz-fast",
         "molstar" | "mol*" | "interactive" => "molstar",
         "xyzrender-external" | "external-xyzrender" | "xyzrender" => "xyzrender-external",
@@ -262,6 +263,8 @@ mod tests {
     #[test]
     fn normalizes_renderer_mode_aliases() {
         assert_eq!(normalize_renderer_mode(" mol* "), "molstar");
+        assert_eq!(normalize_renderer_mode("grid"), "grid2d");
+        assert_eq!(normalize_renderer_mode("grid-2d"), "grid2d");
         assert_eq!(normalize_renderer_mode("fast-xyz"), "xyz-fast");
         assert_eq!(normalize_renderer_mode("xyzrender"), "xyzrender-external");
         assert_eq!(normalize_renderer_mode("unknown"), "auto");
