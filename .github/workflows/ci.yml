@@ -38,7 +38,9 @@ jobs:
           native=false
           while IFS= read -r path; do
             case "$path" in
-              App/*|PreviewExtension/*|Burrete.xcodeproj/*|apps/desktop/src-tauri/*|scripts/build*.sh|scripts/install*.sh|scripts/ci.sh|package.json|bun.lock|.github/workflows/ci.yml)
+              PreviewExtension/Web/*)
+                ;;
+              App/*|PreviewExtension/*|Burrete.xcodeproj/*|apps/desktop/src-tauri/*|scripts/build*.sh|scripts/install*.sh|scripts/ci.sh|package.json|bun.lock)
                 native=true
                 ;;
             esac
@@ -67,7 +69,7 @@ jobs:
     needs:
       - changes
       - validate
-    if: needs.changes.outputs.native == 'true'
+    if: github.event_name == 'pull_request' && needs.changes.outputs.native == 'true'
     runs-on: macos-latest
     steps:
       - name: Checkout
