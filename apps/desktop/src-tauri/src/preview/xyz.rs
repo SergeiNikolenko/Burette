@@ -105,4 +105,17 @@ mod tests {
         assert!(xyz_first_frame(b"0\ncomment\n").is_none());
         assert!(xyz_first_frame(b"2\ncomment\nH 0 0 0\n").is_none());
     }
+
+    #[test]
+    fn stops_counting_on_malformed_following_frame() {
+        let payload = xyz_first_frame(b"1\nfirst\nC 0 0 0\n2\nbroken\nH 0 0 0\n")
+            .expect("first frame is valid");
+
+        assert_eq!(payload.atom_count, Some(1));
+        assert_eq!(payload.frame_count, Some(1));
+        assert_eq!(
+            String::from_utf8(payload.data).expect("payload should be utf8"),
+            "1\nfirst\nC 0 0 0\n"
+        );
+    }
 }

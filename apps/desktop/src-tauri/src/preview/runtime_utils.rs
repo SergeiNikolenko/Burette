@@ -97,9 +97,38 @@ pub(crate) fn escape_html(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::prune_runtime_dirs;
+    use super::{asset_url, clipped, escape_html, normalized_lines, prune_runtime_dirs, stable_id};
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn asset_url_percent_encodes_unsafe_path_bytes() {
+        let url = asset_url(Path::new("/tmp/Burrete Preview/a+b #1.pdb"));
+
+        #[cfg(target_os = "windows")]
+        assert!(url.starts_with("http://asset.localhost/"));
+        #[cfg(not(target_os = "windows"))]
+        assert!(url.starts_with("asset://localhost/"));
+
+        assert!(url.contains("%2Ftmp%2FBurrete%20Preview%2Fa%2Bb%20%231.pdb"));
+    }
+
+    #[test]
+    fn text_helpers_normalize_clip_escape_and_stabilize_ids() {
+        assert_eq!(normalized_lines("a\r\nb\rc\n"), ["a", "b", "c", ""]);
+        assert_eq!(clipped("abcdef", 6), "abcdef");
+        assert_eq!(clipped("abcdef", 5), "ab...");
+        assert_eq!(
+            escape_html(r#"<tag name="a&b">"#),
+            "&lt;tag name=&quot;a&amp;b&quot;&gt;"
+        );
+
+        let left = stable_id(Path::new("/tmp/mini.pdb"));
+        let right = stable_id(Path::new("/tmp/mini.pdb"));
+        let other = stable_id(Path::new("/tmp/other.pdb"));
+        assert_eq!(left, right);
+        assert_ne!(left, other);
+    }
 
     #[test]
     fn keeps_fresh_runtime_dirs_during_large_batches() {

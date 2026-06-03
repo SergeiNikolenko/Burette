@@ -75,7 +75,6 @@ const [
   cargoWorkspaceSource,
   tauriCargoSource,
   coreCargoSource,
-  previewFormatsSource,
   burreteCoreSource,
   docsReadmeSource,
   architectureDocsSource,
@@ -141,7 +140,6 @@ const [
   source('Cargo.toml'),
   source('apps/desktop/src-tauri/Cargo.toml'),
   source('crates/burrete-core/Cargo.toml'),
-  source('apps/desktop/src-tauri/src/preview/formats.rs'),
   source('crates/burrete-core/src/lib.rs'),
   source('docs/README.md'),
   source('docs/architecture.md'),
@@ -149,6 +147,7 @@ const [
   source('docs/performance.md'),
   source('docs/specs/formats.manifest.json'),
 ]);
+const previewFormatsSource = previewFormats;
 
 const tauriConfig = JSON.parse(tauriConfigSource);
 const packageConfig = JSON.parse(packageSource);
@@ -326,7 +325,7 @@ assert.equal(packageConfig.packageManager, 'bun@1.3.8');
 assert.deepEqual(packageConfig.workspaces, ['apps/*', 'packages/*']);
 assert.equal(packageConfig.scripts['check:formats'], 'bun scripts/check-preview-format-registry.mjs && bun scripts/check-format-manifest.mjs');
 assert.equal(packageConfig.scripts['check:vendor-assets'], 'bun scripts/check-vendor-assets.mjs');
-assert.equal(packageConfig.scripts['test:update'], 'bun tests/test-update-versioning.mjs && bun tests/test-bun-installer-structure.mjs && bun tests/test-bun-installer-behavior.mjs');
+assert.equal(packageConfig.scripts['test:update'], 'bun tests/test-update-versioning.mjs && bun tests/test-bun-installer-structure.mjs && bun tests/test-bun-installer-behavior.mjs && bun tests/test-runner-contract.mjs');
 assert.equal(packageConfig.scripts['vendor:lock'], 'bun scripts/check-vendor-assets.mjs --write');
 assert.match(cargoWorkspaceSource, /"apps\/desktop\/src-tauri"/);
 assert.match(cargoWorkspaceSource, /"crates\/burrete-core"/);

@@ -1076,6 +1076,61 @@ generated
     }
 
     #[test]
+    fn rejects_truncated_cube_without_coordinate_fallback() {
+        let data = br#"broken cube
+generated
+2 0.0 0.0 0.0
+1 1.0 0.0 0.0
+1 0.0 1.0 0.0
+1 0.0 0.0 1.0
+8 0.0 0.000 0.000 0.000
+"#;
+
+        assert!(xyz_data_from_text(data, "cube", "broken.cube").is_none());
+        assert!(converted_data_from_text(data, "cube", "broken.cube").is_none());
+    }
+
+    #[test]
+    fn converts_quantum_espresso_atomic_positions_until_block_end() {
+        let data = br#"
+&CONTROL
+/
+ATOMIC_POSITIONS angstrom
+C 0.000 0.000 0.000
+O 1.200 0.000 0.000
+K_POINTS automatic
+1 1 1 0 0 0
+"#;
+
+        let xyz = String::from_utf8(xyz_data_from_text(data, "in", "qe.in").unwrap()).unwrap();
+
+        assert!(xyz.starts_with("2\nConverted from qe.in\n"));
+        assert!(xyz.contains("C 0.000000 0.000000 0.000000"));
+        assert!(xyz.contains("O 1.200000 0.000000 0.000000"));
+        assert!(!xyz.contains("K_POINTS"));
+    }
+
+    #[test]
+    fn falls_back_to_best_coordinate_block_for_plain_logs() {
+        let data = br#"
+header
+C 0.000 0.100 0.200
+not coordinates
+O -1.000 0.000 0.000
+H -1.500 0.750 0.000
+footer
+"#;
+
+        let xyz =
+            String::from_utf8(xyz_data_from_text(data, "log", "coords.log").unwrap()).unwrap();
+
+        assert!(xyz.starts_with("2\nConverted from coords.log\n"));
+        assert!(!xyz.contains("C 0.000000 0.100000 0.200000"));
+        assert!(xyz.contains("O -1.000000 0.000000 0.000000"));
+        assert!(xyz.contains("H -1.500000 0.750000 0.000000"));
+    }
+
+    #[test]
     fn converts_maestro_atom_table_to_xyz_preview() {
         let data = br#"
 f_m_ct {
