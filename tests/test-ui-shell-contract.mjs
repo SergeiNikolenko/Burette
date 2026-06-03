@@ -8,6 +8,7 @@ async function source(path) {
 }
 
 const [
+  desktopIndex,
   app,
   uiStore,
   commandPaletteHook,
@@ -22,6 +23,7 @@ const [
   appLayout,
   notificationPopup,
   main,
+  bootOverlayScript,
   sidebar,
   sidebarFileBrowser,
   sidebarFileTreeNode,
@@ -81,6 +83,7 @@ const [
   viewerShell,
   viewer,
 ] = await Promise.all([
+  source('apps/desktop/index.html'),
   source('apps/desktop/src/App.tsx'),
   source('apps/desktop/src/stores/ui-store.ts'),
   source('apps/desktop/src/hooks/use-command-palette.ts'),
@@ -95,6 +98,7 @@ const [
   source('apps/desktop/src/components/app-layout.tsx'),
   source('apps/desktop/src/components/notification-popup.tsx'),
   source('apps/desktop/src/main.tsx'),
+  source('apps/desktop/public/boot-overlay.js'),
   source('apps/desktop/src/components/sidebar/index.tsx'),
   source('apps/desktop/src/components/sidebar/file-browser.tsx'),
   source('apps/desktop/src/components/sidebar/file-tree-node.tsx'),
@@ -305,7 +309,7 @@ assert.match(browserDevDocuments, /function countXyzFrames\(text: string\)/);
 assert.match(viteConfig, /return Number\.isFinite\(number\) && number > 0 \? number : null;/);
 assert.match(viteConfig, /base: "\.\/"/);
 assert.doesNotMatch(viteConfig, /const KETCHER_CHUNK_PACKAGES = \[/);
-assert.doesNotMatch(viteConfig, /onlyExplicitManualChunks/);
+assert.match(viteConfig, /onlyExplicitManualChunks: true/);
 assert.doesNotMatch(viteConfig, /require: "globalThis\.__burreteRequire"/);
 assert.match(viteConfig, /function desktopManualChunks\(id: string\)/);
 assert.match(viteConfig, /manualChunks: desktopManualChunks/);
@@ -444,14 +448,28 @@ assert.match(app, /lazy\(\(\) => import\("\.\/components\/command-palette"\)/);
 assert.match(app, /markPerformanceOnce\("app:shell-visible"\)/);
 assert.match(app, /markPerformanceOnce\("app:first-document-opened"\)/);
 assert.match(app, /markPerformanceOnce\("viewer:first-render"\)/);
+assert.match(desktopIndex, /<script src="\.\/boot-overlay\.js"><\/script>[\s\S]*?<body>\s*<div id="root"><\/div>\s*<script type="module" src="\/src\/main\.tsx"><\/script>/);
+assert.doesNotMatch(desktopIndex, /<script(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/);
 assert.match(main, /import "\.\/performance-start"/);
 assert.match(main, /markPerformanceOnce\("app:react-mounted"\)/);
+assert.doesNotMatch(main, /window\.__BURRETE_BOOT_OVERLAY__\?\.markMounted\(\)/);
+assert.match(bootOverlayScript, /const overlayId = "burrete-boot-overlay"/);
+assert.match(bootOverlayScript, /function whenBodyReady/);
+assert.match(bootOverlayScript, /window\.addEventListener\("error"/);
+assert.match(bootOverlayScript, /window\.addEventListener\("unhandledrejection"/);
+assert.match(bootOverlayScript, /The desktop UI did not mount within 3 seconds/);
+assert.match(bootOverlayScript, /Burrete UI failed to start/);
+assert.match(bootOverlayScript, /document\.getElementById\(styleId\)/);
+assert.doesNotMatch(bootOverlayScript, /\bimport\b/);
+assert.doesNotThrow(() => new Function(bootOverlayScript));
 assert.match(packageJson, /scripts\/bundle-report\.mjs/);
+assert.match(app, /markPerformanceOnce\("app:shell-visible"\);[\s\S]*?window\.__BURRETE_BOOT_OVERLAY__\?\.markMounted\(\)/);
 assert.match(bundleReportScript, /source\.includes\("ketcher-core"\)/);
 assert.match(bundleReportScript, /source\.includes\("indigo-ketcher"\)/);
 assert.match(bundleReportScript, /relativePath\.toLowerCase\(\)\.includes\("ketcher"\)/);
 assert.match(bundleReportScript, /const initialKetcherAssets = assets\.filter\(\(asset\) => asset\.role === "ketcher" && asset\.initial\)/);
-assert.match(bundleReportScript, /const ketcherBoundaryOk = ketcherChunks\.length > 0 && initialKetcherAssets\.length === 0/);
+assert.match(bundleReportScript, /const mainImportsKetcher = \/from\\s\*\["'\]\\\.\\\/ketcher-/);
+assert.match(bundleReportScript, /const ketcherBoundaryOk = ketcherChunks\.length > 0 && initialKetcherAssets\.length === 0 && !mainImportsKetcher/);
 assert.match(bundleReportScript, /Ketcher lazy boundary failed/);
 assert.match(app, /useState<StatusNotice \| null>\(null\)/);
 assert.match(app, /const pushStatus = useCallback/);

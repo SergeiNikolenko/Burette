@@ -247,6 +247,7 @@ export default function App() {
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       markPerformanceOnce("app:shell-visible");
+      window.__BURRETE_BOOT_OVERLAY__?.markMounted();
     });
     return () => window.cancelAnimationFrame(frame);
   }, []);
