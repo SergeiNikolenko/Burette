@@ -1,3 +1,5 @@
+import * as Dialog from "@radix-ui/react-dialog";
+import { useThemePortalContainer } from "./radix-menu";
 import type { StatusNotice } from "./types";
 
 export function NotificationPopup({
@@ -10,6 +12,7 @@ export function NotificationPopup({
   const message = compactNotificationMessage(notice.message);
   const details = message === notice.message ? notice.details : [notice.message, ...notice.details];
   const hasExtraDetails = details.length > 0;
+  const portalContainer = useThemePortalContainer();
 
   return (
     <section
@@ -22,14 +25,31 @@ export function NotificationPopup({
         <strong>{notice.kind === "error" ? "Issue" : "Status"}</strong>
         <p>{message}</p>
         {hasExtraDetails && (
-          <details className="notification-popup-details">
-            <summary>Show details</summary>
-            <ul>
-              {details.map((detail, index) => (
-                <li key={`${index}:${detail}`}>{detail}</li>
-              ))}
-            </ul>
-          </details>
+          <Dialog.Root>
+            <Dialog.Trigger asChild>
+              <button type="button" className="notification-popup-details-trigger">Show details</button>
+            </Dialog.Trigger>
+            <Dialog.Portal container={portalContainer}>
+              <Dialog.Overlay className="radix-dialog-overlay" />
+              <Dialog.Content className="radix-dialog" aria-describedby="notification-details-body">
+                <div className="radix-dialog-header">
+                  <Dialog.Title>{notice.kind === "error" ? "Issue details" : "Status details"}</Dialog.Title>
+                    <Dialog.Close asChild>
+                      <button type="button" className="radix-dialog-close" aria-label="Close details">
+                      ×
+                      </button>
+                    </Dialog.Close>
+                </div>
+                <div id="notification-details-body" className="radix-dialog-body">
+                  <ul>
+                    {details.map((detail, index) => (
+                      <li key={`${index}:${detail}`}>{detail}</li>
+                    ))}
+                  </ul>
+                </div>
+              </Dialog.Content>
+            </Dialog.Portal>
+          </Dialog.Root>
         )}
       </div>
       <button
