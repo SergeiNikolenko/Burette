@@ -178,7 +178,7 @@ bun scripts/check-js-syntax.mjs \
 clean_detritus "$ROOT"
 rm -f /tmp/Burrete.log "${TMPDIR:-/tmp}/Burrete.log" 2>/dev/null || true
 
-rsync -a --delete --exclude build --exclude node_modules --exclude .git --exclude apps/desktop/src-tauri/target "$ROOT/" "$SAFE_ROOT/"
+rsync -a --delete --exclude build --exclude node_modules --exclude .git --exclude target --exclude apps/desktop/src-tauri/target "$ROOT/" "$SAFE_ROOT/"
 clean_detritus "$SAFE_ROOT"
 if [[ "$BUILD_MODE" == "release" ]]; then
   enable_release_hardened_runtime
@@ -195,11 +195,21 @@ if [[ -n "$DEVELOPMENT_TEAM" ]]; then
 fi
 xcodebuild -project Burrete.xcodeproj -scheme BurretePreview -configuration "$XCODE_CONFIGURATION" -derivedDataPath build COMPILER_INDEX_STORE_ENABLE=NO "${XCODE_SIGN_ARGS[@]}" build
 xcodebuild -project Burrete.xcodeproj -scheme BurreteThumbnail -configuration "$XCODE_CONFIGURATION" -derivedDataPath build COMPILER_INDEX_STORE_ENABLE=NO "${XCODE_SIGN_ARGS[@]}" build
-TAURI_BUILT_APP="apps/desktop/src-tauri/target/release/bundle/macos/Burrete.app"
+TAURI_BUILT_APP_CANDIDATES=(
+  "apps/desktop/src-tauri/target/release/bundle/macos/Burrete.app"
+  "target/release/bundle/macos/Burrete.app"
+)
+TAURI_BUILT_APP=""
+for candidate in "${TAURI_BUILT_APP_CANDIDATES[@]}"; do
+  if [[ -d "$candidate" ]]; then
+    TAURI_BUILT_APP="$candidate"
+    break
+  fi
+done
 QUICKLOOK_APPEX="build/Build/Products/$XCODE_CONFIGURATION/BurretePreview.appex"
 THUMBNAIL_APPEX="build/Build/Products/$XCODE_CONFIGURATION/BurreteThumbnail.appex"
 CORE_BRIDGE="target/release/burrete-core-bridge"
-[[ -d "$TAURI_BUILT_APP" ]] || { echo "error: Tauri app bundle missing: $TAURI_BUILT_APP" >&2; exit 1; }
+[[ -n "$TAURI_BUILT_APP" ]] || { echo "error: Tauri app bundle missing. Checked: ${TAURI_BUILT_APP_CANDIDATES[*]}" >&2; exit 1; }
 [[ -d "$QUICKLOOK_APPEX" ]] || { echo "error: Quick Look extension missing: $QUICKLOOK_APPEX" >&2; exit 1; }
 [[ -d "$THUMBNAIL_APPEX" ]] || { echo "error: Quick Look thumbnail extension missing: $THUMBNAIL_APPEX" >&2; exit 1; }
 [[ -x "$CORE_BRIDGE" ]] || { echo "error: burrete-core bridge helper missing: $CORE_BRIDGE" >&2; exit 1; }
@@ -226,7 +236,7 @@ popd >/dev/null
 
 rm -rf "$LOCAL_APP"
 mkdir -p "$(dirname "$LOCAL_APP")"
-ditto --norsrc --noextattr "$SAFE_ROOT/apps/desktop/src-tauri/target/release/bundle/macos/Burrete.app" "$LOCAL_APP"
+ditto --norsrc --noextattr "$SAFE_ROOT/$TAURI_BUILT_APP" "$LOCAL_APP"
 
 actual_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$LOCAL_APP/Contents/Info.plist" 2>/dev/null || true)"
 [[ "$actual_id" == "$APP_ID" ]] || { echo "error: built app id mismatch: got '${actual_id:-unknown}', expected '$APP_ID'" >&2; exit 1; }
@@ -254,7 +264,7 @@ fi
 VERIFY_APP="$SAFE_ROOT/verify/Burrete.app"
 rm -rf "$SAFE_ROOT/verify"
 mkdir -p "$SAFE_ROOT/verify"
-ditto --norsrc --noextattr "$SAFE_ROOT/apps/desktop/src-tauri/target/release/bundle/macos/Burrete.app" "$VERIFY_APP"
+ditto --norsrc --noextattr "$SAFE_ROOT/$TAURI_BUILT_APP" "$VERIFY_APP"
 clean_detritus "$VERIFY_APP"
 codesign --verify --deep --strict "$VERIFY_APP"
 
