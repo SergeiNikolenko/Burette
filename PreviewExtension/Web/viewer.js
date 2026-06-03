@@ -2066,6 +2066,7 @@
   }
 
   function appendCacheBuster(url, cb) {
+    if (String(url || '').startsWith('asset://')) return url;
     const separator = url.includes('?') ? '&' : '?';
     return url + separator + 'v=' + encodeURIComponent(cb);
   }

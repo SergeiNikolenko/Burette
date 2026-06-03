@@ -12,6 +12,8 @@ contains only documents that describe the active project.
   payloads, grid search, and no-regression guardrails.
 - [Vite+ workflow](vite-plus.md): `vp` entrypoints for frontend development and
   JavaScript validation.
+- [Development loops](development-loops.md): fast edit, debug, patch, and remote
+  check paths that avoid full local rebuilds.
 - [Quick Look debugging](quicklook-debugging.md): Finder preview diagnosis and
   cache reset workflow.
 - [Launch modes](launch-modes.md): normal, file-open, tray, and registration
