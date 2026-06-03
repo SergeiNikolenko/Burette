@@ -23,12 +23,15 @@ export COPY_EXTENDED_ATTRIBUTES_DISABLE_RECURSIVE=1
 
 APP_ID="com.local.BurreteV10"
 PREVIEW_ID="com.local.BurreteV10.Preview"
+THUMBNAIL_ID="com.local.BurreteV10.Thumbnail"
+PDB_CONTENT_TYPE="com.local.burrete10.pdb"
 SAFE_ROOT_BASE="${TMPDIR:-/tmp}"
 SAFE_ROOT="$(mktemp -d "${SAFE_ROOT_BASE%/}/BurreteV10BuildSafe.XXXXXX")"
 LOCAL_APP="$ROOT/build/Burrete.app"
 BUILD_MODE="${BURRETE_BUILD_MODE:-local}"
 SIGN_IDENTITY="${BURRETE_CODESIGN_IDENTITY:--}"
 DEVELOPMENT_TEAM="${BURRETE_DEVELOPMENT_TEAM:-}"
+APP_METADATA_PLIST="$ROOT/apps/desktop/src-tauri/AppMetadata.plist"
 case "$BUILD_MODE" in
   local) DEFAULT_XCODE_CONFIGURATION="Debug" ;;
   release) DEFAULT_XCODE_CONFIGURATION="Release" ;;
@@ -37,9 +40,20 @@ esac
 XCODE_CONFIGURATION="${BURRETE_XCODE_CONFIGURATION:-$DEFAULT_XCODE_CONFIGURATION}"
 
 if [[ "$BUILD_MODE" == "release" ]]; then
+  [[ -z "${BURRETE_DEV_FLAVOR:-}" ]] || { echo "error: BURRETE_DEV_FLAVOR is only supported for local builds." >&2; exit 2; }
   [[ "$SIGN_IDENTITY" == Developer\ ID\ Application:* ]] || { echo "error: release builds require BURRETE_CODESIGN_IDENTITY='Developer ID Application: ...'." >&2; exit 1; }
   [[ -n "$DEVELOPMENT_TEAM" ]] || { echo "error: release builds require BURRETE_DEVELOPMENT_TEAM." >&2; exit 1; }
   [[ "$XCODE_CONFIGURATION" == "Release" ]] || { echo "error: release builds require BURRETE_XCODE_CONFIGURATION=Release." >&2; exit 1; }
+fi
+
+if [[ -n "${BURRETE_DEV_FLAVOR:-}" ]]; then
+  command -v bun >/dev/null 2>&1 || { echo "error: BURRETE_DEV_FLAVOR requires bun to compute the dev namespace." >&2; exit 1; }
+  eval "$(bun "$ROOT/scripts/dev-namespace.mjs" shell-env)"
+  APP_ID="$BURRETE_APP_ID"
+  PREVIEW_ID="$BURRETE_PREVIEW_ID"
+  THUMBNAIL_ID="$BURRETE_THUMBNAIL_ID"
+  PDB_CONTENT_TYPE="$BURRETE_PDB_CONTENT_TYPE"
+  LOCAL_APP="$ROOT/build/$BURRETE_APP_BUNDLE_NAME"
 fi
 
 cleanup_safe_root() {
@@ -52,6 +66,7 @@ Burrete v10 build
   source: $ROOT
   app id: $APP_ID
   preview id: $PREVIEW_ID
+  thumbnail id: $THUMBNAIL_ID
   build mode: $BUILD_MODE
   xcode configuration: $XCODE_CONFIGURATION
   signing identity: $SIGN_IDENTITY
@@ -117,7 +132,7 @@ mark_regular_desktop_app() {
 copy_app_plist_metadata() {
   local app="$1"
   local plist="$app/Contents/Info.plist"
-  /usr/bin/python3 - "$ROOT/apps/desktop/src-tauri/AppMetadata.plist" "$plist" <<'PY'
+  /usr/bin/python3 - "$APP_METADATA_PLIST" "$plist" <<'PY'
 import plistlib
 import sys
 
@@ -182,6 +197,10 @@ rm -f /tmp/Burrete.log "${TMPDIR:-/tmp}/Burrete.log" 2>/dev/null || true
 
 rsync -a --delete --exclude build --exclude node_modules --exclude .git --exclude target --exclude apps/desktop/src-tauri/target "$ROOT/" "$SAFE_ROOT/"
 clean_detritus "$SAFE_ROOT"
+APP_METADATA_PLIST="$SAFE_ROOT/apps/desktop/src-tauri/AppMetadata.plist"
+if [[ -n "${BURRETE_DEV_FLAVOR:-}" ]]; then
+  bun "$ROOT/scripts/dev-namespace.mjs" patch-tree "$SAFE_ROOT" >/dev/null
+fi
 if [[ "$BUILD_MODE" == "release" ]]; then
   enable_release_hardened_runtime
 fi
@@ -249,7 +268,7 @@ actual_carbon="$(/usr/libexec/PlistBuddy -c 'Print :LSRequiresCarbon' "$LOCAL_AP
 actual_pkg_info="$(cat "$LOCAL_APP/Contents/PkgInfo" 2>/dev/null || true)"
 [[ "$actual_pkg_info" == "APPL????" ]] || { echo "error: built app PkgInfo missing or invalid." >&2; exit 1; }
 actual_pdb_type="$(/usr/libexec/PlistBuddy -c 'Print :UTExportedTypeDeclarations:0:UTTypeIdentifier' "$LOCAL_APP/Contents/Info.plist" 2>/dev/null || true)"
-[[ "$actual_pdb_type" == "com.local.burrete10.pdb" ]] || { echo "error: built app is missing Burrete exported content types." >&2; exit 1; }
+[[ "$actual_pdb_type" == "$PDB_CONTENT_TYPE" ]] || { echo "error: built app is missing Burrete exported content types." >&2; exit 1; }
 [[ -x "$LOCAL_APP/Contents/MacOS/burrete" ]] || { echo "error: built Tauri app executable missing: $LOCAL_APP/Contents/MacOS/burrete" >&2; exit 1; }
 [[ -d "$LOCAL_APP/Contents/PlugIns/BurretePreview.appex" ]] || { echo "error: embedded Quick Look extension missing in Tauri app." >&2; exit 1; }
 [[ -x "$LOCAL_APP/Contents/PlugIns/BurretePreview.appex/Contents/Resources/burrete-core-bridge" ]] || { echo "error: embedded Quick Look extension is missing burrete-core bridge helper." >&2; exit 1; }

@@ -15,6 +15,13 @@ export COPYFILE_DISABLE=1
 export COPY_EXTENDED_ATTRIBUTES_DISABLE=1
 export COPY_EXTENDED_ATTRIBUTES_DISABLE_RECURSIVE=1
 
+if [[ -n "${BURRETE_DEV_FLAVOR:-}" ]]; then
+  echo "error: BURRETE_DEV_FLAVOR is supported by scripts/build.sh, not scripts/build-dev.sh." >&2
+  echo "The fast dev build works in-place and must keep the source-tree bundle identifiers unchanged." >&2
+  echo "Run: BURRETE_DEV_FLAVOR=$BURRETE_DEV_FLAVOR ./scripts/build.sh" >&2
+  exit 2
+fi
+
 APP_ID="com.local.BurreteV10"
 PREVIEW_ID="com.local.BurreteV10.Preview"
 LOCAL_APP="$ROOT/build/Burrete.app"
