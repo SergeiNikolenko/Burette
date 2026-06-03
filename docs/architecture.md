@@ -16,7 +16,7 @@ Look preview extension for molecular structure files.
   workflows.
 - `config/web-runtime-profiles.json` owns the web asset profile manifest used by
   desktop and Quick Look runtime packaging checks.
-- `docs/` owns current documentation and specs.
+- `docs/` owns current documentation.
 
 Root scripts are the public command surface. They delegate into `apps/desktop`
 where needed so agents do not need to remember nested Tauri commands.
@@ -73,5 +73,5 @@ migration.
 ## Documentation Graph
 
 Use [docs/README.md](README.md) as the documentation map. Current specs live in
-[docs/specs/](specs/README.md). Historical reference snapshots and migration
+the active engineering docs above. Historical reference snapshots and migration
 handoffs are intentionally not part of the repository docs graph.

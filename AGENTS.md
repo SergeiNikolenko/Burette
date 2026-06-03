@@ -11,7 +11,6 @@ molecular structure files.
 - Renderer support: [docs/renderer-support.md](docs/renderer-support.md)
 - Quick Look debugging: [docs/quicklook-debugging.md](docs/quicklook-debugging.md)
 - Release process: [docs/releasing.md](docs/releasing.md)
-- Specs: [docs/specs/README.md](docs/specs/README.md)
 
 ## Stable Runtime Identifiers
 
@@ -71,7 +70,6 @@ killall quicklookd 2>/dev/null || true
 ## Maintenance Rules
 
 - Keep current docs under `docs/`.
-- Keep specs under `docs/specs/`.
 - Do not reintroduce imported reference snapshots or migration handoff logs into
   the active docs graph.
 - Verify doc claims against source, scripts, or runtime output before updating
