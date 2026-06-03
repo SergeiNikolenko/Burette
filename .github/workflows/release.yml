@@ -93,17 +93,22 @@ jobs:
           security import certificate.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$MACOS_KEYCHAIN_PASSWORD" build.keychain
 
+      - name: Require Developer ID release secrets
+        if: steps.capabilities.outputs.developer_id != 'true'
+        run: |
+          echo "Developer ID signing and Apple notarization secrets are required for public releases." >&2
+          exit 1
+
       - name: Build app
         env:
+          BURRETE_BUILD_MODE: release
           BURRETE_CODESIGN_IDENTITY: ${{ secrets.BURRETE_CODESIGN_IDENTITY }}
           BURRETE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
           BURRETE_XCODE_CONFIGURATION: Release
           BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX: ${{ secrets.BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX }}
-          BURRETE_RELEASE_ALLOW_ADHOC: ${{ steps.capabilities.outputs.developer_id == 'true' && '0' || '1' }}
         run: ./scripts/build.sh
 
       - name: Notarize app
-        if: steps.capabilities.outputs.developer_id == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -118,8 +123,6 @@ jobs:
           xcrun stapler staple build/Burrete.app
 
       - name: Validate release signing
-        env:
-          BURRETE_RELEASE_ALLOW_ADHOC: ${{ steps.capabilities.outputs.developer_id == 'true' && '0' || '1' }}
         run: ./scripts/check-release-signature.sh build/Burrete.app
 
       - name: Package app
@@ -132,6 +135,8 @@ jobs:
           cp -R build/Burrete.app release/Burrete.app
           ditto -c -k --keepParent release/Burrete.app "Burrete-${{ steps.version.outputs.version }}.zip"
           shasum -a 256 "Burrete-${{ steps.version.outputs.version }}.zip" > "Burrete-${{ steps.version.outputs.version }}.zip.sha256"
+          hdiutil create -volname Burrete -srcfolder release/Burrete.app -ov -format UDZO "Burrete-${{ steps.version.outputs.version }}.dmg"
+          shasum -a 256 "Burrete-${{ steps.version.outputs.version }}.dmg" > "Burrete-${{ steps.version.outputs.version }}.dmg.sha256"
           if [[ -n "${BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" && -n "${BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX:-}" ]]; then
             bun scripts/sign-update-manifest.mjs "Burrete-${{ steps.version.outputs.version }}.zip" .
           fi
@@ -142,9 +147,13 @@ jobs:
         run: |
           assets=(
             "Burrete-${{ steps.version.outputs.version }}.zip"
+            "Burrete-${{ steps.version.outputs.version }}.dmg"
           )
           if [[ -f "Burrete-${{ steps.version.outputs.version }}.zip.sha256" ]]; then
             assets+=("Burrete-${{ steps.version.outputs.version }}.zip.sha256")
+          fi
+          if [[ -f "Burrete-${{ steps.version.outputs.version }}.dmg.sha256" ]]; then
+            assets+=("Burrete-${{ steps.version.outputs.version }}.dmg.sha256")
           fi
           if [[ -f "Burrete-${{ steps.version.outputs.version }}.zip.manifest.json" ]]; then
             assets+=("Burrete-${{ steps.version.outputs.version }}.zip.manifest.json")

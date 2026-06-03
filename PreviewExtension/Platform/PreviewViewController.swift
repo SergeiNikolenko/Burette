@@ -1,4 +1,5 @@
 import AppKit
+import CryptoKit
 import QuickLookUI
 import SwiftUI
 import WebKit
@@ -29,6 +30,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private static let minViewerPageZoom: CGFloat = 0.9
     private static let maxViewerPageZoom: CGFloat = 0.9
     private static let previewSourceMonitorQueue = DispatchQueue(label: "com.local.BurreteV10.preview-source-monitor")
+    private static let gridRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'self' blob:;"
+    private static let molstarRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file:; script-src 'self' 'unsafe-inline' 'unsafe-eval' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'self' blob:;"
+    private static let externalArtifactRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file:; script-src 'self' 'unsafe-inline' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'none';"
+    private static let minimalRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file:; script-src 'self' 'unsafe-inline' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'none';"
 
     deinit {
         renderTimeoutWorkItem?.cancel()
@@ -116,6 +121,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     for line in result.diagnostics { self.appendLog(line) }
                     self.previewStatus = "[native] Loading file preview into WKWebView...\n\(url.lastPathComponent)"
                     self.appendLog("calling WKWebView.loadFileURL; html.bytes=\(result.html.utf8.count); indexURL=\(result.indexURL.path); readAccessURL=\(result.readAccessURL.path)")
+                    self.appendLog("elapsed.wkLoadStartMs=0")
                     self.currentRuntimeDirectory = result.indexURL.deletingLastPathComponent()
                     self.previewSourceFingerprint = Self.previewSourceFingerprint(for: url)
                     self.pendingPreviewSourceFingerprint = nil
@@ -254,7 +260,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         func diag(_ message: String) { diagnostics.append("[build] " + message) }
 
         let pathExtension = structurePathExtension(for: url)
-        guard supportedStructureExtensions.contains(pathExtension) else {
+        let isSupportedStructure = BurreteCoreBridge.supportedExtension(pathExtension)
+            ?? supportedStructureExtensions.contains(pathExtension)
+        guard isSupportedStructure else {
             throw PreviewError.unsupportedStructureFile(url.lastPathComponent)
         }
 
@@ -267,14 +275,18 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
         let webDirectory = try locateBundledWebDirectory(fileManager: fileManager, diagnostics: &diagnostics)
         diag("webDirectory=\(webDirectory.path)")
+        let assetValidationStarted = Date()
         try validateVendoredWebAssets(in: webDirectory, fileManager: fileManager, diagnostics: &diagnostics)
+        diag("elapsed.assetValidationMs=\(elapsedMs(since: assetValidationStarted))")
 
         let structureSize = try fileSize(for: url, fileManager: fileManager)
         let sizeLimit = quickLookSizeLimit(for: url)
         guard structureSize <= sizeLimit else {
             throw PreviewError.fileTooLarge(url.lastPathComponent, structureSize, sizeLimit)
         }
+        let fileReadStarted = Date()
         let structureData = try Data(contentsOf: url)
+        diag("elapsed.fileReadMs=\(elapsedMs(since: fileReadStarted))")
         guard !structureData.isEmpty else { throw PreviewError.emptyStructureFile(url.lastPathComponent) }
         diag("structureData.bytes=\(structureData.count)")
 
@@ -296,9 +308,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             fileSupport: gridFileSupport
         ) {
             diag("detected.previewMode=grid2d format=\(gridPreview.format) records=\(gridPreview.recordsIncluded)/\(gridPreview.recordsTotal)")
+            let gridAssetValidationStarted = Date()
             try validateVendoredMoleculeGridAssets(in: webDirectory, fileManager: fileManager, diagnostics: &diagnostics)
+            diag("elapsed.gridAssetValidationMs=\(elapsedMs(since: gridAssetValidationStarted))")
             let html = gridInlineHTML(title: url.lastPathComponent, preferences: preferences)
             diag("gridInlineHTML.bytes=\(html.utf8.count)")
+            let runtimeWriteStarted = Date()
             let runtimePreview = try createRuntimePreview(
                 bundledWebDirectory: webDirectory,
                 html: html,
@@ -311,6 +326,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 fileManager: fileManager,
                 diagnostics: &diagnostics
             )
+            diag("elapsed.runtimeWriteMs=\(elapsedMs(since: runtimeWriteStarted))")
             let indexURL = runtimePreview.indexURL
             diag("runtimeDirectory=\(runtimePreview.runtimeDirectory.path)")
             diag("runtime.index.exists=\(fileManager.fileExists(atPath: indexURL.path))")
@@ -326,7 +342,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         var format = StructureFormat(url: url, data: structureData)
         let rendererPolicy = BurreteRendererPolicy.resolve(
             format: BurreteRendererFormat(format),
-            requestedMode: rendererOverride ?? preferences.rendererMode
+            requestedMode: rendererOverride ?? preferences.rendererMode,
+            fileExtension: pathExtension
         )
         let requestedRendererMode = rendererPolicy.requestedMode
         var renderer = rendererPolicy.renderer
@@ -430,6 +447,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
         let html = inlineHTML(title: url.lastPathComponent, preferences: preferences, renderer: renderer)
         diag("inlineHTML.bytes=\(html.utf8.count)")
+        let runtimeWriteStarted = Date()
         let runtimePreview = try createRuntimePreview(
             bundledWebDirectory: webDirectory,
             html: html,
@@ -442,6 +460,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             fileManager: fileManager,
             diagnostics: &diagnostics
         )
+        diag("elapsed.runtimeWriteMs=\(elapsedMs(since: runtimeWriteStarted))")
         let indexURL = runtimePreview.indexURL
         diag("runtimeDirectory=\(runtimePreview.runtimeDirectory.path)")
         diag("runtime.index.exists=\(fileManager.fileExists(atPath: indexURL.path))")
@@ -497,13 +516,6 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             try Data(gridRecordsScript.utf8)
                 .write(to: runtimeDirectory.appendingPathComponent("preview-grid-records.js"), options: [.atomic])
         }
-        if requiresRDKit {
-            let wasmURL = bundledWebDirectory.appendingPathComponent("rdkit/RDKit_minimal.wasm")
-            let wasmData = try Data(contentsOf: wasmURL)
-            try Data("window.BurreteRDKitWasmBase64 = \"\(wasmData.base64EncodedString())\";\n".utf8)
-                .write(to: runtimeDirectory.appendingPathComponent("preview-rdkit-wasm.js"), options: [.atomic])
-            diagnostics.append("[build] runtime.asset.rdkit.inlineWasm.bytes=\(wasmData.count)")
-        }
         if let externalArtifactSourceURL {
             let destination = runtimeDirectory.appendingPathComponent(externalArtifactSourceURL.lastPathComponent)
             _ = try copyAssetIfNeeded(from: externalArtifactSourceURL, to: destination, fileManager: fileManager)
@@ -520,6 +532,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let nextData = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes])
         guard let json = String(data: nextData, encoding: .utf8) else { throw PreviewError.couldNotCreatePreviewConfig }
         return json
+    }
+
+    private static func elapsedMs(since started: Date) -> Int {
+        max(0, Int(Date().timeIntervalSince(started) * 1000))
     }
 
     private static func pruneRuntimePreviews(
@@ -736,6 +752,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 "preset": externalArtifact.preset,
                 "configArgument": externalArtifact.configArgument,
                 "orientationRef": externalArtifact.usedOrientationRef,
+                "cacheKey": externalArtifact.cacheKey,
+                "cacheHit": externalArtifact.cacheHit,
+                "cacheMiss": !externalArtifact.cacheHit,
                 "elapsedMs": externalArtifact.elapsedMs,
                 "log": externalArtifact.log
             ]
@@ -756,6 +775,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         <head>
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <meta http-equiv="Content-Security-Policy" content="\(gridRuntimeCSP)" />
           <title>Burrete Grid - \(safeTitle)</title>
           <link rel="stylesheet" href="../assets/grid.css" />
           <script>
@@ -779,7 +799,6 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           </script>
           <script src="preview-config.js"></script>
           <script src="preview-grid-records.js"></script>
-          <script src="preview-rdkit-wasm.js"></script>
           <script src="../assets/rdkit/RDKit_minimal.js"></script>
           <script src="../assets/grid-viewer.js"></script>
         </body>
@@ -790,6 +809,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private static func inlineHTML(title: String, preferences: PreviewPreferences, renderer: String) -> String {
         let safeTitle = escapeHTML(title)
         let backgroundClass = preferences.resolvedTransparentBackground ? "burette-transparent-background" : "burette-opaque-background"
+        let csp = runtimeCSP(for: renderer)
         let initialStatus: String
         let rendererAssets: String
         if renderer == "xyz-fast" {
@@ -821,6 +841,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         <head>
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <meta http-equiv="Content-Security-Policy" content="\(csp)" />
           <title>Burrete - \(safeTitle)</title>
           <link rel="stylesheet" href="../assets/molstar.css" />
           <link rel="stylesheet" href="../assets/viewer-runtime.css" />
@@ -909,6 +930,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         </body>
         </html>
         """
+    }
+
+    private static func runtimeCSP(for renderer: String) -> String {
+        if renderer == "xyzrender-external" { return externalArtifactRuntimeCSP }
+        if renderer == "xyz-fast" { return minimalRuntimeCSP }
+        return molstarRuntimeCSP
     }
 
     private static func locateBundledWebDirectory(fileManager: FileManager, diagnostics: inout [String]) throws -> URL {
@@ -1018,8 +1045,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     private static func quickLookSizeLimit(for url: URL) -> Int64 {
+        let fileExtension = structurePathExtension(for: url)
+        if let bridgeLimit = BurreteCoreBridge.quickLookSizeLimit(fileExtension: fileExtension) {
+            return bridgeLimit
+        }
         let mib: Int64 = 1024 * 1024
-        switch structurePathExtension(for: url) {
+        switch fileExtension {
         case "pdb", "ent", "pdbqt", "pqr":
             return 35 * mib
         case "cif", "mmcif", "mcif":
@@ -1178,11 +1209,14 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             }
             appendLog("JS message type=\(type): \(text.prefix(1600))")
             if type == "ready" {
+                appendLog("elapsed.jsReadyMs=0")
                 guard let messageRequestID else {
                     appendLog("ignoring ready without requestID")
                     return
                 }
                 finishPreviewIfNeeded(nil, requestID: messageRequestID)
+            } else if type == "status" && text.hasPrefix("[web] Rendered") {
+                appendLog("elapsed.renderCompleteMs=0")
             } else if type == "error" {
                 guard let messageRequestID else {
                     appendLog("ignoring error without requestID")
@@ -1362,6 +1396,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     self.currentRuntimeDirectory = result.indexURL.deletingLastPathComponent()
                     self.previewSourceFingerprint = sourceFingerprint ?? Self.previewSourceFingerprint(for: url)
                     self.pendingPreviewSourceFingerprint = nil
+                    self.appendLog("elapsed.wkLoadStartMs=0")
                     self.webView.loadFileURL(result.indexURL, allowingReadAccessTo: result.readAccessURL)
                     self.scheduleRenderTimeout(for: requestID)
                 }
@@ -1460,7 +1495,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         if message == "preparePreviewOfFile called" { return true }
         if message.hasPrefix("file.path=") { return true }
         if message.hasPrefix("resource.typeIdentifier=") { return true }
+        if message.hasPrefix("elapsed.") { return true }
         if message.hasPrefix("[build] detected.format=") { return true }
+        if message.hasPrefix("[build] elapsed.") { return true }
         if message.hasPrefix("calling WKWebView.loadFileURL") { return true }
         if message.hasPrefix("WK didCommit") { return true }
         if message.hasPrefix("WK didFinish") { return true }
@@ -1835,63 +1872,59 @@ private struct StructureFormat {
     let molstarFormat: String
     let isBinary: Bool
     var prefersTransparentBackground: Bool { molstarFormat == "sdf" }
-    var isExternalXyzrenderOnly: Bool { molstarFormat == "xyzrender" }
+    let isExternalXyzrenderOnly: Bool
 
-    static let xyzFastCompatible = StructureFormat(molstarFormat: "xyz", isBinary: false)
+    static let xyzFastCompatible = StructureFormat(
+        molstarFormat: "xyz",
+        isBinary: false,
+        isExternalXyzrenderOnly: false
+    )
 
-    private init(molstarFormat: String, isBinary: Bool) {
+    private init(molstarFormat: String, isBinary: Bool, isExternalXyzrenderOnly: Bool = false) {
         self.molstarFormat = molstarFormat
         self.isBinary = isBinary
+        self.isExternalXyzrenderOnly = isExternalXyzrenderOnly
     }
 
     init(url: URL, data: Data) {
         let ext = url.lastPathComponent.lowercased().hasSuffix(".mae.gz") ? "maegz" : url.pathExtension.lowercased()
+        if let bridgeFormat = BurreteCoreBridge.format(fileExtension: ext) {
+            self.molstarFormat = ext == "cif" ? Self.detectCIFFormat(data: data) : bridgeFormat.molstarFormat
+            self.isBinary = bridgeFormat.isBinary
+            self.isExternalXyzrenderOnly = bridgeFormat.isExternalXyzrenderOnly
+            return
+        }
         switch ext {
         case "pdb", "ent", "pqr":
-            self.molstarFormat = "pdb"
-            self.isBinary = false
+            self = Self(molstarFormat: "pdb", isBinary: false)
         case "pdbqt":
-            self.molstarFormat = "pdbqt"
-            self.isBinary = false
+            self = Self(molstarFormat: "pdbqt", isBinary: false)
         case "cif":
-            self.molstarFormat = Self.detectCIFFormat(data: data)
-            self.isBinary = false
+            self = Self(molstarFormat: Self.detectCIFFormat(data: data), isBinary: false)
         case "mmcif", "mcif":
-            self.molstarFormat = "mmcif"
-            self.isBinary = false
+            self = Self(molstarFormat: "mmcif", isBinary: false)
         case "bcif":
-            self.molstarFormat = "mmcif"
-            self.isBinary = true
+            self = Self(molstarFormat: "mmcif", isBinary: true)
         case "sdf", "sd":
-            self.molstarFormat = "sdf"
-            self.isBinary = false
+            self = Self(molstarFormat: "sdf", isBinary: false)
         case "mol":
-            self.molstarFormat = "mol"
-            self.isBinary = false
+            self = Self(molstarFormat: "mol", isBinary: false)
         case "mol2":
-            self.molstarFormat = "mol2"
-            self.isBinary = false
+            self = Self(molstarFormat: "mol2", isBinary: false)
         case "xyz":
-            self.molstarFormat = "xyz"
-            self.isBinary = false
+            self = Self(molstarFormat: "xyz", isBinary: false)
         case "gro":
-            self.molstarFormat = "gro"
-            self.isBinary = false
+            self = Self(molstarFormat: "gro", isBinary: false)
         case "xtc", "trr", "dcd", "nctraj":
-            self.molstarFormat = ext
-            self.isBinary = true
+            self = Self(molstarFormat: ext, isBinary: true)
         case "lammpstrj", "top", "psf", "prmtop":
-            self.molstarFormat = ext
-            self.isBinary = false
+            self = Self(molstarFormat: ext, isBinary: false)
         case "mae", "maegz", "cms":
-            self.molstarFormat = "xyzrender"
-            self.isBinary = false
+            self = Self(molstarFormat: "xyzrender", isBinary: false, isExternalXyzrenderOnly: true)
         case "abi", "com", "cub", "cube", "fdf", "in", "inp", "nw", "out", "psi4", "qcin", "vasp":
-            self.molstarFormat = "xyzrender"
-            self.isBinary = false
+            self = Self(molstarFormat: "xyzrender", isBinary: false, isExternalXyzrenderOnly: true)
         default:
-            self.molstarFormat = "mmcif"
-            self.isBinary = false
+            self = Self(molstarFormat: "mmcif", isBinary: false)
         }
     }
 
@@ -1946,9 +1979,15 @@ private struct PreviewExternalXyzrenderArtifact {
     let usedOrientationRef: Bool
     let elapsedMs: Int
     let log: String
+    let cacheKey: String
+    let cacheHit: Bool
 }
 
 private enum PreviewExternalXyzrenderWorker {
+    private static let cacheMaxAge: TimeInterval = 14 * 24 * 60 * 60
+    private static let cacheMaxEntries = 96
+    private static let cacheMaxBytes: UInt64 = 256 * 1024 * 1024
+
     static func render(
         inputData: Data,
         sourceFilename: String,
@@ -1969,10 +2008,8 @@ private enum PreviewExternalXyzrenderWorker {
         try? fileManager.removeItem(at: logURL)
         try inputData.write(to: inputURL, options: [.atomic])
 
-        let process = Process()
         let configuredExecutable = executablePath.trimmingCharacters(in: .whitespacesAndNewlines)
-        process.executableURL = URL(fileURLWithPath: try resolvedExecutable(configuredExecutable))
-        var arguments = [inputURL.path, "-o", outputURL.path]
+        let resolvedExecutablePath = try resolvedExecutable(configuredExecutable)
 
         let safePreset = BurreteXyzrenderPreset.normalize(preset)
         let normalizedControls = normalizedControls(controls ?? [:])
@@ -1981,6 +2018,33 @@ private enum PreviewExternalXyzrenderWorker {
             customConfigPath: normalizedControls["customConfigPath"] as? String ?? customConfigPath
         )
         let effectivePreset = safePreset == "custom" && configArgument == "default" ? "default" : safePreset
+        let cacheKey = xyzrenderCacheKey(
+            inputData: inputData,
+            sourceFilename: sourceFilename,
+            preset: safePreset,
+            configArgument: configArgument,
+            controls: normalizedControls,
+            orientationRefText: orientationRefText,
+            executablePath: resolvedExecutablePath
+        )
+        if let cacheEntry = cacheEntryURL(for: cacheKey) {
+            pruneCache(cacheEntry.deletingLastPathComponent())
+            if let cached = try cachedArtifact(
+                entry: cacheEntry,
+                outputURL: outputURL,
+                logURL: logURL,
+                preset: effectivePreset,
+                configArgument: configArgument,
+                usedOrientationRef: normalizedOrientationRef(orientationRefText) != nil,
+                cacheKey: cacheKey
+            ) {
+                return cached
+            }
+        }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: resolvedExecutablePath)
+        var arguments = [inputURL.path, "-o", outputURL.path]
         arguments += ["--config", configArgument]
         let orientationRefURL = try writeOrientationRef(orientationRefText, outputDirectory: outputDirectory)
         if let orientationRefURL {
@@ -2020,7 +2084,7 @@ private enum PreviewExternalXyzrenderWorker {
         }
         let inlineSvg = try String(contentsOf: outputURL, encoding: .utf8)
         let elapsedMs = Int(Date().timeIntervalSince(started) * 1000)
-        return PreviewExternalXyzrenderArtifact(
+        let artifact = PreviewExternalXyzrenderArtifact(
             relativePath: "xyzrender.svg",
             inlineSvg: inlineSvg,
             outputType: "svg",
@@ -2028,8 +2092,14 @@ private enum PreviewExternalXyzrenderWorker {
             configArgument: configArgument,
             usedOrientationRef: orientationRefURL != nil,
             elapsedMs: elapsedMs,
-            log: log
+            log: log,
+            cacheKey: cacheKey,
+            cacheHit: false
         )
+        if let cacheEntry = cacheEntryURL(for: cacheKey) {
+            try? writeCacheEntry(cacheEntry, outputURL: outputURL, logURL: logURL, elapsedMs: elapsedMs)
+        }
+        return artifact
     }
 
     private static func safeInputFilename(_ filename: String) -> String {
@@ -2038,10 +2108,168 @@ private enum PreviewExternalXyzrenderWorker {
     }
 
     private static func writeOrientationRef(_ text: String?, outputDirectory: URL) throws -> URL? {
-        guard let text, !text.isEmpty else { return nil }
+        guard let text = normalizedOrientationRef(text) else { return nil }
         let url = outputDirectory.appendingPathComponent("xyzrender-orientation-ref.xyz")
         try Data(text.utf8).write(to: url, options: [.atomic])
         return url
+    }
+
+    private static func normalizedOrientationRef(_ text: String?) -> String? {
+        guard let text, !text.isEmpty else { return nil }
+        return text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+    }
+
+    private static func cacheEntryURL(for key: String) -> URL? {
+        guard let cacheRoot = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        return cacheRoot
+            .appendingPathComponent("Burrete", isDirectory: true)
+            .appendingPathComponent("xyzrender-cache", isDirectory: true)
+            .appendingPathComponent(key, isDirectory: true)
+    }
+
+    private static func cachedArtifact(
+        entry: URL,
+        outputURL: URL,
+        logURL: URL,
+        preset: String,
+        configArgument: String,
+        usedOrientationRef: Bool,
+        cacheKey: String
+    ) throws -> PreviewExternalXyzrenderArtifact? {
+        let fileManager = FileManager.default
+        let cachedSvg = entry.appendingPathComponent("xyzrender.svg")
+        let cachedLog = entry.appendingPathComponent("log.txt")
+        guard fileManager.fileExists(atPath: cachedSvg.path) else { return nil }
+        let attributes = try fileManager.attributesOfItem(atPath: cachedSvg.path)
+        if let modified = attributes[.modificationDate] as? Date,
+           Date().timeIntervalSince(modified) > cacheMaxAge {
+            try? fileManager.removeItem(at: entry)
+            return nil
+        }
+        try copyItemReplacingExisting(from: cachedSvg, to: outputURL)
+        if fileManager.fileExists(atPath: cachedLog.path) {
+            try? copyItemReplacingExisting(from: cachedLog, to: logURL)
+        }
+        let inlineSvg = try String(contentsOf: outputURL, encoding: .utf8)
+        let log = (try? String(contentsOf: cachedLog, encoding: .utf8)) ?? ""
+        return PreviewExternalXyzrenderArtifact(
+            relativePath: "xyzrender.svg",
+            inlineSvg: inlineSvg,
+            outputType: "svg",
+            preset: preset,
+            configArgument: configArgument,
+            usedOrientationRef: usedOrientationRef,
+            elapsedMs: 0,
+            log: log,
+            cacheKey: cacheKey,
+            cacheHit: true
+        )
+    }
+
+    private static func writeCacheEntry(_ entry: URL, outputURL: URL, logURL: URL, elapsedMs: Int) throws {
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: entry, withIntermediateDirectories: true)
+        try copyItemReplacingExisting(from: outputURL, to: entry.appendingPathComponent("xyzrender.svg"))
+        if fileManager.fileExists(atPath: logURL.path) {
+            try? copyItemReplacingExisting(from: logURL, to: entry.appendingPathComponent("log.txt"))
+        }
+        let metadata: [String: Any] = [
+            "elapsedMs": elapsedMs,
+            "cachedAtMs": Int(Date().timeIntervalSince1970 * 1000)
+        ]
+        if let data = try? JSONSerialization.data(withJSONObject: metadata, options: [.prettyPrinted, .sortedKeys]) {
+            try? data.write(to: entry.appendingPathComponent("meta.json"), options: [.atomic])
+        }
+    }
+
+    private static func pruneCache(_ cacheDirectory: URL) {
+        let fileManager = FileManager.default
+        guard let entries = try? fileManager.contentsOfDirectory(
+            at: cacheDirectory,
+            includingPropertiesForKeys: [.contentModificationDateKey, .totalFileAllocatedSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+        var rows: [(url: URL, modified: Date, bytes: UInt64)] = []
+        for entry in entries {
+            let svg = entry.appendingPathComponent("xyzrender.svg")
+            guard fileManager.fileExists(atPath: svg.path) else {
+                try? fileManager.removeItem(at: entry)
+                continue
+            }
+            let modified = (try? svg.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            if Date().timeIntervalSince(modified) > cacheMaxAge {
+                try? fileManager.removeItem(at: entry)
+                continue
+            }
+            rows.append((entry, modified, directorySize(entry)))
+        }
+        rows.sort { $0.modified < $1.modified }
+        var totalBytes = rows.reduce(UInt64(0)) { $0 + $1.bytes }
+        let overflow = max(0, rows.count - cacheMaxEntries)
+        for row in rows.prefix(overflow) {
+            try? fileManager.removeItem(at: row.url)
+            totalBytes = totalBytes > row.bytes ? totalBytes - row.bytes : 0
+        }
+        for row in rows.dropFirst(overflow) where totalBytes > cacheMaxBytes {
+            try? fileManager.removeItem(at: row.url)
+            totalBytes = totalBytes > row.bytes ? totalBytes - row.bytes : 0
+        }
+    }
+
+    private static func copyItemReplacingExisting(from source: URL, to destination: URL) throws {
+        let fileManager = FileManager.default
+        try? fileManager.removeItem(at: destination)
+        try fileManager.copyItem(at: source, to: destination)
+    }
+
+    private static func directorySize(_ url: URL) -> UInt64 {
+        let fileManager = FileManager.default
+        guard let enumerator = fileManager.enumerator(at: url, includingPropertiesForKeys: [.totalFileAllocatedSizeKey]) else {
+            return 0
+        }
+        var total: UInt64 = 0
+        for case let item as URL in enumerator {
+            total += UInt64((try? item.resourceValues(forKeys: [.totalFileAllocatedSizeKey]).totalFileAllocatedSize) ?? 0)
+        }
+        return total
+    }
+
+    private static func xyzrenderCacheKey(
+        inputData: Data,
+        sourceFilename: String,
+        preset: String,
+        configArgument: String,
+        controls: [String: Any],
+        orientationRefText: String?,
+        executablePath: String
+    ) -> String {
+        let executableURL = URL(fileURLWithPath: executablePath)
+        let executableAttributes = (try? FileManager.default.attributesOfItem(atPath: executablePath)) ?? [:]
+        let executableModified = (executableAttributes[.modificationDate] as? Date)?.timeIntervalSince1970
+        let executableSize = executableAttributes[.size] as? NSNumber
+        let payload: [String: Any] = [
+            "version": 1,
+            "sourceFilename": sourceFilename,
+            "inputSha256": sha256Hex(inputData),
+            "orientationRefSha256": normalizedOrientationRef(orientationRefText).map { sha256Hex(Data($0.utf8)) } as Any,
+            "preset": preset,
+            "configArgument": configArgument,
+            "controls": controls,
+            "executablePath": executableURL.standardizedFileURL.path,
+            "executableSize": executableSize?.uint64Value as Any,
+            "executableModifiedMs": executableModified.map { Int($0 * 1000) } as Any,
+            "xyzrenderVersion": NSNull()
+        ]
+        let data = (try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])) ?? Data()
+        return sha256Hex(data)
+    }
+
+    private static func sha256Hex(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     private static func resolvedExecutable(_ configuredExecutable: String) throws -> String {

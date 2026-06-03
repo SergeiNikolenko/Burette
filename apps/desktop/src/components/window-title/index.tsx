@@ -3,6 +3,6 @@ import { appInstanceLabel } from "../../lib/instance";
 import { useWindowTitle } from "./use-window-title";
 
 export function WindowTitle({ activeDocument }: { activeDocument: ViewerDocument | null }) {
-  useWindowTitle(activeDocument ? `${activeDocument.title} - ${appInstanceLabel}` : appInstanceLabel);
+  useWindowTitle(activeDocument ? `${activeDocument.title} - ${activeDocument.path} - ${appInstanceLabel}` : appInstanceLabel);
   return null;
 }

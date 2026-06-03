@@ -7,7 +7,7 @@ RUNS="${RUNS:-3}"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-30}"
 CONTAINER_BASE="$HOME/Library/Containers/com.local.BurreteV10.Preview/Data/Library/Caches/Burrete"
 LOG_PATH="$CONTAINER_BASE/Burrete.log"
-METRICS_PATH="$ROOT/metrics.json"
+METRICS_PATH="${METRICS_PATH:-$ROOT/metrics.json}"
 
 if [[ ! -f "$FILE" ]]; then
   echo "error: structure file not found: $FILE" >&2

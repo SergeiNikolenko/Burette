@@ -14,6 +14,8 @@ Look preview extension for molecular structure files.
 - `Burrete.xcodeproj` owns the Quick Look extension build target.
 - `scripts/` owns local build, install, release, vendor, preview, and diagnostic
   workflows.
+- `config/web-runtime-profiles.json` owns the web asset profile manifest used by
+  desktop and Quick Look runtime packaging checks.
 - `docs/` owns current documentation and specs.
 
 Root scripts are the public command surface. They delegate into `apps/desktop`
@@ -32,6 +34,10 @@ The desktop shell is a compact molecule workspace:
 Open molecule pages stay mounted while inactive when their renderer state should
 survive tab switches.
 
+Normal app launch remains a visible full-window launch. Registration-only
+maintenance may opt into `BURRETE_LAUNCH_MODE=register`; file-open and tray/menu
+paths still show the full app. See [Launch modes](launch-modes.md).
+
 ## Preview Runtime
 
 The Tauri preview service prepares runtime artifacts for the desktop app. The
@@ -40,9 +46,12 @@ Quick Look extension prepares its own artifacts in the extension container.
 Both paths use the same bundled viewer assets where possible:
 
 - Mol* for interactive structure previews
-- Fast XYZ SVG for lightweight XYZ first frames
 - external `xyzrender` when configured
 - RDKit/grid runtime for SDF, SMILES, CSV, and TSV collections
+
+Runtime asset selection, generated runtime cache layout, binary payload loading,
+RDKit WASM loading, grid search, and performance budgets are documented in
+[Performance architecture](performance.md).
 
 ## Quick Look Boundary
 

@@ -8,7 +8,6 @@ runtime under `PreviewExtension/`.
 
 - `auto`: choose the fastest compatible renderer for the file.
 - `molstar`: interactive Mol* preview.
-- `fast-xyz`: lightweight SVG for XYZ first frames.
 - `xyzrender-external`: call an external `xyzrender` executable when configured.
 - `grid`: collection preview for table-like molecule files.
 
@@ -23,11 +22,8 @@ Mol* interactive preview is used for:
 - XYZ and GRO when selected or resolved by policy
 
 External `xyzrender` is used for text XYZ input when selected or when `auto`
-resolves to the default preview path. Fast XYZ remains available when selected
-or when external `xyzrender` falls back.
-
-External `xyzrender` is used for XYZ-like text inputs when selected. It is also
-the required path for external-renderer-only groups:
+resolves to the default preview path. It is also the required path for
+external-renderer-only groups:
 
 - CUB, CUBE
 - ABI, COM, FDF, IN, INP, NW, OUT, PSI4, QCIN
@@ -41,6 +37,11 @@ The desktop app writes generated preview artifacts through the Tauri preview
 service. Quick Look writes its own cache under the extension container. Artifacts
 can include source copies, generated HTML, generated SVG, renderer metadata, and
 external renderer logs.
+
+Desktop and Quick Look web assets are grouped by runtime profile in
+`config/web-runtime-profiles.json`. See [Performance architecture](performance.md)
+for profile membership, cache layout, binary payload loading, RDKit WASM
+loading, grid search, and no-regression guardrails.
 
 ## Verification
 
