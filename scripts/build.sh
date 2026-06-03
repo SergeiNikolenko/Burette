@@ -108,9 +108,11 @@ mark_regular_desktop_app() {
   local app="$1"
   local plist="$app/Contents/Info.plist"
   [[ -f "$plist" ]] || { echo "error: app Info.plist missing: $plist" >&2; exit 1; }
+  printf 'APPL????' > "$app/Contents/PkgInfo"
   /usr/libexec/PlistBuddy -c 'Delete :LSUIElement' "$plist" 2>/dev/null || true
   /usr/libexec/PlistBuddy -c 'Add :LSUIElement bool false' "$plist"
   /usr/libexec/PlistBuddy -c 'Delete :LSBackgroundOnly' "$plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c 'Delete :LSRequiresCarbon' "$plist" 2>/dev/null || true
 }
 copy_app_plist_metadata() {
   local app="$1"
@@ -242,6 +244,10 @@ actual_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$LOCAL_APP/
 [[ "$actual_id" == "$APP_ID" ]] || { echo "error: built app id mismatch: got '${actual_id:-unknown}', expected '$APP_ID'" >&2; exit 1; }
 actual_lsui="$(/usr/libexec/PlistBuddy -c 'Print :LSUIElement' "$LOCAL_APP/Contents/Info.plist" 2>/dev/null || true)"
 [[ "$actual_lsui" == "false" ]] || { echo "error: built app is not marked as a regular Dock app (LSUIElement=false)." >&2; exit 1; }
+actual_carbon="$(/usr/libexec/PlistBuddy -c 'Print :LSRequiresCarbon' "$LOCAL_APP/Contents/Info.plist" 2>/dev/null || true)"
+[[ -z "$actual_carbon" ]] || { echo "error: built app must not set LSRequiresCarbon." >&2; exit 1; }
+actual_pkg_info="$(cat "$LOCAL_APP/Contents/PkgInfo" 2>/dev/null || true)"
+[[ "$actual_pkg_info" == "APPL????" ]] || { echo "error: built app PkgInfo missing or invalid." >&2; exit 1; }
 actual_pdb_type="$(/usr/libexec/PlistBuddy -c 'Print :UTExportedTypeDeclarations:0:UTTypeIdentifier' "$LOCAL_APP/Contents/Info.plist" 2>/dev/null || true)"
 [[ "$actual_pdb_type" == "com.local.burrete10.pdb" ]] || { echo "error: built app is missing Burrete exported content types." >&2; exit 1; }
 [[ -x "$LOCAL_APP/Contents/MacOS/burrete" ]] || { echo "error: built Tauri app executable missing: $LOCAL_APP/Contents/MacOS/burrete" >&2; exit 1; }
