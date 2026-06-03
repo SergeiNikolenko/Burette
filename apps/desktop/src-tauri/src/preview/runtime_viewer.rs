@@ -2,6 +2,7 @@ use base64::Engine;
 use serde_json::json;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 use tauri::{Manager, Runtime};
 
 use super::formats::{normalize_renderer_mode, FormatInfo};
@@ -16,6 +17,9 @@ use super::xyzrender::{
 const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT: usize = 1500;
 const KETCHER_EDIT_MAX_BYTES: usize = 1024 * 1024;
 const KETCHER_EDIT_MAX_ATOMS: usize = 300;
+const VIEWER_MOLSTAR_CSP: &str = "default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset:; script-src 'self' 'unsafe-inline' 'unsafe-eval' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'self' blob:;";
+const VIEWER_EXTERNAL_ARTIFACT_CSP: &str = "default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset:; script-src 'self' 'unsafe-inline' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'none';";
+const VIEWER_MINIMAL_CSP: &str = "default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset:; script-src 'self' 'unsafe-inline' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'none';";
 
 pub(crate) struct CreatedRuntime {
     pub(crate) path: PathBuf,
@@ -51,7 +55,6 @@ pub(crate) fn create_runtime<R: Runtime>(
     let runtime = base.join(uuid::Uuid::new_v4().to_string());
     fs::create_dir_all(&assets).map_err(|err| err.to_string())?;
     fs::create_dir_all(&runtime).map_err(|err| err.to_string())?;
-    copy_web_assets(app, &assets)?;
     prune_runtime_dirs(&base);
 
     let label = file_path
@@ -113,6 +116,7 @@ pub(crate) fn create_runtime<R: Runtime>(
         match create_xyzrender_artifact(
             xyzrender_artifact_input,
             &runtime,
+            Some(&base.join("xyzrender-cache")),
             reload_options.and_then(|options| options.xyzrender_preset.as_deref()),
             reload_options.and_then(|options| options.xyzrender_orientation_ref.as_deref()),
             xyzrender_controls,
@@ -143,6 +147,7 @@ pub(crate) fn create_runtime<R: Runtime>(
             Err(error) => return Err(error),
         }
     }
+    copy_web_assets(app, &assets, AssetProfile::for_viewer_renderer(&renderer))?;
 
     let payload = if renderer == "molstar" {
         XyzPayload {
@@ -255,6 +260,9 @@ pub(crate) fn create_runtime<R: Runtime>(
             "renderer": "xyzrender",
             "preset": artifact.preset,
             "configArgument": artifact.config_argument,
+            "cacheKey": artifact.cache_key,
+            "cacheHit": artifact.cache_hit,
+            "cacheMiss": !artifact.cache_hit,
             "elapsedMs": artifact.elapsed_ms,
             "log": artifact.log
         });
@@ -266,7 +274,7 @@ pub(crate) fn create_runtime<R: Runtime>(
     let config_text = serde_json::to_string(&config).map_err(|err| err.to_string())?;
     fs::write(
         runtime.join("index.html"),
-        viewer_html(file_path, &runtime, &assets, &renderer, preferences),
+        viewer_html(file_path, &runtime, &assets, &renderer, preferences, false),
     )
     .map_err(|err| err.to_string())?;
     fs::write(runtime.join("viewer-bridge.js"), viewer_bridge_js())
@@ -277,14 +285,6 @@ pub(crate) fn create_runtime<R: Runtime>(
     )
     .map_err(|err| err.to_string())?;
     fs::write(runtime.join("preview-data.bin"), &payload.data).map_err(|err| err.to_string())?;
-    fs::write(
-        runtime.join("preview-data.js"),
-        format!(
-            "window.BurreteDataBase64 = {:?};\nwindow.BurreteDataURL = null;\n",
-            base64::engine::general_purpose::STANDARD.encode(&payload.data)
-        ),
-    )
-    .map_err(|err| err.to_string())?;
     Ok(CreatedRuntime {
         path: runtime.join("index.html"),
         renderer,
@@ -312,7 +312,7 @@ pub(crate) fn create_docking_runtime<R: Runtime>(
     let runtime = base.join(uuid::Uuid::new_v4().to_string());
     fs::create_dir_all(&assets).map_err(|err| err.to_string())?;
     fs::create_dir_all(&runtime).map_err(|err| err.to_string())?;
-    copy_web_assets(app, &assets)?;
+    copy_web_assets(app, &assets, AssetProfile::Molstar)?;
     prune_runtime_dirs(&base);
 
     let preview_byte_count = receptor.data.len()
@@ -388,7 +388,7 @@ pub(crate) fn create_docking_runtime<R: Runtime>(
     let title_path = PathBuf::from(label);
     fs::write(
         runtime.join("index.html"),
-        viewer_html(&title_path, &runtime, &assets, "molstar", preferences),
+        viewer_html(&title_path, &runtime, &assets, "molstar", preferences, true),
     )
     .map_err(|err| err.to_string())?;
     fs::write(runtime.join("viewer-bridge.js"), viewer_bridge_js())
@@ -514,8 +514,14 @@ fn protein_like_atom_record_count(data: &[u8]) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{protein_like_atom_record_count, xyzrender_available_for_document};
+    use super::{
+        copy_web_assets, protein_like_atom_record_count, xyzrender_available_for_document,
+        AssetProfile,
+    };
     use crate::preview::formats::FormatInfo;
+    use crate::preview::runtime::ViewerPreferences;
+    use std::fs;
+    use std::path::Path;
 
     fn format(molstar_format: &str) -> FormatInfo {
         FormatInfo {
@@ -523,6 +529,30 @@ mod tests {
             is_binary: false,
             external_only: false,
             can_open_in_vesta: false,
+        }
+    }
+
+    fn preferences() -> ViewerPreferences {
+        ViewerPreferences {
+            theme: "auto".to_string(),
+            canvas_background: "opaque".to_string(),
+            renderer_mode: "auto".to_string(),
+            molstar_style: "default".to_string(),
+            xyz_fast_style: "ball-stick".to_string(),
+            theme_light_accent: "#0066cc".to_string(),
+            theme_light_background: "#ffffff".to_string(),
+            theme_light_foreground: "#111111".to_string(),
+            theme_light_ui_font: "system".to_string(),
+            theme_light_editor_font: "monospace".to_string(),
+            theme_light_translucent: 0.8,
+            theme_light_contrast: 1.0,
+            theme_dark_accent: "#66aaff".to_string(),
+            theme_dark_background: "#111111".to_string(),
+            theme_dark_foreground: "#ffffff".to_string(),
+            theme_dark_ui_font: "system".to_string(),
+            theme_dark_editor_font: "monospace".to_string(),
+            theme_dark_translucent: 0.8,
+            theme_dark_contrast: 1.0,
         }
     }
 
@@ -550,30 +580,176 @@ mod tests {
             b"ATOM      1  C   LIG A   1       0.000   0.000   0.000  1.00 20.00           C\n";
         assert!(xyzrender_available_for_document(&format("pdb"), data));
     }
+
+    #[test]
+    fn maps_asset_profiles_to_only_required_files() {
+        assert_eq!(
+            AssetProfile::for_viewer_renderer("molstar"),
+            AssetProfile::Molstar
+        );
+        assert_eq!(
+            AssetProfile::for_viewer_renderer("xyzrender-external"),
+            AssetProfile::ExternalXyzrender
+        );
+        assert_eq!(
+            AssetProfile::for_viewer_renderer("xyz-fast"),
+            AssetProfile::MinimalShell
+        );
+        assert!(AssetProfile::Grid.copies_rdkit());
+        assert!(!AssetProfile::Molstar.files().contains(&"grid-viewer.js"));
+        assert!(!AssetProfile::Molstar.files().contains(&"xyz-fast.js"));
+        assert!(!AssetProfile::Grid.files().contains(&"molstar.js"));
+        assert!(!AssetProfile::ExternalXyzrender
+            .files()
+            .contains(&"molstar.js"));
+    }
+
+    #[test]
+    fn molstar_profile_does_not_copy_grid_or_rdkit_assets() {
+        let app = tauri::test::mock_app();
+        let assets = std::env::temp_dir().join(format!("burrete-assets-{}", uuid::Uuid::new_v4()));
+
+        copy_web_assets(app.handle(), &assets, AssetProfile::Molstar)
+            .expect("molstar assets should copy");
+
+        assert!(assets.join("molstar.js").is_file());
+        assert!(assets.join("molstar.css").is_file());
+        assert!(assets.join("viewer.js").is_file());
+        assert!(!assets.join("grid-viewer.js").exists());
+        assert!(!assets.join("grid.css").exists());
+        assert!(!assets.join("rdkit").exists());
+
+        let _ = fs::remove_dir_all(assets);
+    }
+
+    #[test]
+    fn grid_profile_copies_rdkit_once_and_skips_matching_files() {
+        let app = tauri::test::mock_app();
+        let assets = std::env::temp_dir().join(format!("burrete-assets-{}", uuid::Uuid::new_v4()));
+
+        copy_web_assets(app.handle(), &assets, AssetProfile::Grid)
+            .expect("grid assets should copy");
+        let wasm = assets.join("rdkit").join("RDKit_minimal.wasm");
+        let first_modified = fs::metadata(&wasm)
+            .expect("RDKit wasm should exist")
+            .modified()
+            .expect("RDKit wasm mtime should be readable");
+
+        copy_web_assets(app.handle(), &assets, AssetProfile::Grid)
+            .expect("matching grid assets should be skipped");
+        let second_modified = fs::metadata(&wasm)
+            .expect("RDKit wasm should still exist")
+            .modified()
+            .expect("RDKit wasm mtime should still be readable");
+
+        assert_eq!(first_modified, second_modified);
+        assert!(assets.join("grid-viewer.js").is_file());
+        assert!(assets.join("grid.css").is_file());
+        assert!(!assets.join("molstar.js").exists());
+
+        let _ = fs::remove_dir_all(assets);
+    }
+
+    #[test]
+    fn external_artifact_csp_does_not_grant_eval_or_wasm() {
+        let html = super::viewer_html(
+            Path::new("example.pdb"),
+            Path::new("/tmp/runtime"),
+            Path::new("/tmp/assets"),
+            "xyzrender-external",
+            &preferences(),
+            false,
+        );
+
+        assert!(html.contains("Content-Security-Policy"));
+        assert!(!html.contains("unsafe-eval"));
+        assert!(!html.contains("wasm-unsafe-eval"));
+        assert!(html.contains("worker-src 'none'"));
+    }
+
+    #[test]
+    fn molstar_csp_keeps_eval_without_wasm_eval() {
+        let html = super::viewer_html(
+            Path::new("example.pdb"),
+            Path::new("/tmp/runtime"),
+            Path::new("/tmp/assets"),
+            "molstar",
+            &preferences(),
+            false,
+        );
+
+        assert!(html.contains("Content-Security-Policy"));
+        assert!(html.contains("unsafe-eval"));
+        assert!(!html.contains("wasm-unsafe-eval"));
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AssetProfile {
+    Molstar,
+    Grid,
+    ExternalXyzrender,
+    MinimalShell,
+}
+
+impl AssetProfile {
+    fn files(self) -> &'static [&'static str] {
+        match self {
+            Self::Molstar => &[
+                "molstar.js",
+                "molstar.css",
+                "viewer-runtime.css",
+                "viewer-shell.js",
+                "burette-agent.js",
+                "viewer.js",
+            ],
+            Self::Grid => &["grid-viewer.js", "grid.css"],
+            Self::ExternalXyzrender => &[
+                "molstar.css",
+                "viewer-runtime.css",
+                "viewer-shell.js",
+                "burette-agent.js",
+                "viewer.js",
+            ],
+            Self::MinimalShell => &[
+                "viewer-runtime.css",
+                "viewer-shell.js",
+                "burette-agent.js",
+                "viewer.js",
+                "xyz-fast.js",
+            ],
+        }
+    }
+
+    fn copies_rdkit(self) -> bool {
+        self == Self::Grid
+    }
+
+    fn for_viewer_renderer(renderer: &str) -> Self {
+        match renderer {
+            "molstar" => Self::Molstar,
+            "xyzrender-external" => Self::ExternalXyzrender,
+            "xyz-fast" => Self::MinimalShell,
+            _ => Self::MinimalShell,
+        }
+    }
 }
 
 pub(crate) fn copy_web_assets<R: Runtime>(
     app: &tauri::AppHandle<R>,
     assets: &Path,
+    profile: AssetProfile,
 ) -> Result<(), String> {
     let source = bundled_web_dir(app)?;
-    for name in [
-        "molstar.js",
-        "molstar.css",
-        "viewer-runtime.css",
-        "viewer-shell.js",
-        "burette-agent.js",
-        "viewer.js",
-        "xyz-fast.js",
-        "grid-viewer.js",
-        "grid.css",
-    ] {
-        fs::copy(source.join(name), assets.join(name))
-            .map_err(|err| format!("copy {name}: {err}"))?;
+    fs::create_dir_all(assets).map_err(|err| err.to_string())?;
+    for name in profile.files() {
+        copy_file_if_needed(&source.join(name), &assets.join(name), name)?;
     }
-    let rdkit_source = source.join("rdkit");
-    if rdkit_source.exists() {
-        copy_dir_all(&rdkit_source, &assets.join("rdkit"))?;
+    if profile.copies_rdkit() {
+        let rdkit_source = source.join("rdkit");
+        if rdkit_source.exists() {
+            copy_dir_if_needed(&rdkit_source, &assets.join("rdkit"))?;
+        }
     }
     Ok(())
 }
@@ -600,22 +776,53 @@ fn bundled_web_dir<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, Str
     Err("Burrete Web runtime assets were not found".into())
 }
 
-fn copy_dir_all(source: &Path, destination: &Path) -> Result<(), String> {
-    if destination.exists() {
-        fs::remove_dir_all(destination).map_err(|err| err.to_string())?;
-    }
+fn copy_dir_if_needed(source: &Path, destination: &Path) -> Result<(), String> {
     fs::create_dir_all(destination).map_err(|err| err.to_string())?;
     for entry in fs::read_dir(source).map_err(|err| err.to_string())? {
         let entry = entry.map_err(|err| err.to_string())?;
         let ty = entry.file_type().map_err(|err| err.to_string())?;
         let next_dest = destination.join(entry.file_name());
         if ty.is_dir() {
-            copy_dir_all(&entry.path(), &next_dest)?;
+            copy_dir_if_needed(&entry.path(), &next_dest)?;
         } else {
-            fs::copy(entry.path(), next_dest).map_err(|err| err.to_string())?;
+            let entry_path = entry.path();
+            let label = entry_path.strip_prefix(source).unwrap_or(&entry_path);
+            copy_file_if_needed(
+                &entry_path,
+                &next_dest,
+                &format!("rdkit/{}", label.display()),
+            )?;
         }
     }
     Ok(())
+}
+
+fn copy_file_if_needed(source: &Path, destination: &Path, label: &str) -> Result<(), String> {
+    if destination_matches_source(source, destination)? {
+        eprintln!("Burrete asset skipped: {label}");
+        return Ok(());
+    }
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+    }
+    fs::copy(source, destination).map_err(|err| format!("copy {label}: {err}"))?;
+    eprintln!("Burrete asset copied: {label}");
+    Ok(())
+}
+
+fn destination_matches_source(source: &Path, destination: &Path) -> Result<bool, String> {
+    let source_metadata = fs::metadata(source).map_err(|err| err.to_string())?;
+    let Ok(destination_metadata) = fs::metadata(destination) else {
+        return Ok(false);
+    };
+    if source_metadata.len() != destination_metadata.len() {
+        return Ok(false);
+    }
+    let source_modified = source_metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+    let destination_modified = destination_metadata
+        .modified()
+        .unwrap_or(SystemTime::UNIX_EPOCH);
+    Ok(destination_modified >= source_modified)
 }
 
 fn viewer_html(
@@ -624,6 +831,7 @@ fn viewer_html(
     assets: &Path,
     renderer: &str,
     preferences: &ViewerPreferences,
+    include_data_script: bool,
 ) -> String {
     let title = escape_html(
         file_path
@@ -642,6 +850,12 @@ fn viewer_html(
     let config_js = asset_url(&runtime.join("preview-config.js"));
     let data_js = asset_url(&runtime.join("preview-data.js"));
     let data_bin_js = asset_url(&runtime.join("preview-data.bin"));
+    let data_script = if include_data_script {
+        format!(r#"<script src="{data_js}"></script>"#)
+    } else {
+        String::new()
+    };
+    let csp = viewer_csp(renderer);
     let agent_js = asset_url(&assets.join("burette-agent.js"));
     let viewer_js = asset_url(&assets.join("viewer.js"));
     let molstar_css = asset_url(&assets.join("molstar.css"));
@@ -667,6 +881,7 @@ fn viewer_html(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="{csp}" />
   <title>Burrete - {title}</title>
   {renderer_styles}
   <link rel="stylesheet" href="{runtime_css}" />
@@ -685,12 +900,20 @@ fn viewer_html(
   <div id="status" class="hidden">Loading {title}...</div>
   {renderer_scripts}
   <script src="{config_js}"></script>
-  <script src="{data_js}"></script>
+  {data_script}
   <script src="{agent_js}"></script>
   <script src="{viewer_js}"></script>
 </body>
 </html>"#
     )
+}
+
+fn viewer_csp(renderer: &str) -> &'static str {
+    match renderer {
+        "molstar" => VIEWER_MOLSTAR_CSP,
+        "xyzrender-external" => VIEWER_EXTERNAL_ARTIFACT_CSP,
+        _ => VIEWER_MINIMAL_CSP,
+    }
 }
 
 fn viewer_bridge_js() -> &'static str {

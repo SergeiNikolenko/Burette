@@ -25,21 +25,55 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(GridRuntimeRegistry::default())
         .setup(|app| {
+            let argv: Vec<String> = std::env::args().collect();
+            let launch_mode = startup::LaunchMode::current(&argv);
+            let startup_paths = startup::file_args_from_argv(argv, std::env::current_dir().ok());
             #[cfg(target_os = "macos")]
-            app.set_activation_policy(tauri::ActivationPolicy::Regular);
+            app.set_activation_policy(if launch_mode.is_register() && startup_paths.is_empty() {
+                tauri::ActivationPolicy::Accessory
+            } else {
+                tauri::ActivationPolicy::Regular
+            });
             menu::configure_menu(app)?;
             tray::configure_tray(app)?;
-            let startup_paths = startup::file_args_from_argv(
-                std::env::args().collect(),
-                std::env::current_dir().ok(),
-            );
-            show_and_emit_open_documents(app.handle(), startup_paths);
+            if !startup_paths.is_empty() {
+                show_and_emit_open_documents(app.handle(), startup_paths);
+            } else if launch_mode.is_register() {
+                tray::hide_main_window(app.handle());
+            }
             let app_handle = app.handle().clone();
             app.on_menu_event(move |app, event| match event.id().0.as_str() {
                 "settings.open" => {
                     menu::emit_to_focused_window(app, menu::MENU_OPEN_SETTINGS_EVENT)
                 }
                 "file.open" => menu::emit_to_focused_window(app, menu::MENU_OPEN_FILES_EVENT),
+                "file.open-recent" => {
+                    menu::emit_to_focused_window(app, menu::MENU_OPEN_RECENT_EVENT)
+                }
+                "file.reveal-active" => {
+                    menu::emit_to_focused_window(app, menu::MENU_REVEAL_ACTIVE_EVENT)
+                }
+                "file.copy-active-path" => {
+                    menu::emit_to_focused_window(app, menu::MENU_COPY_ACTIVE_PATH_EVENT)
+                }
+                "file.show-active-metadata" => {
+                    menu::emit_to_focused_window(app, menu::MENU_SHOW_ACTIVE_METADATA_EVENT)
+                }
+                "file.export-preview-png" => {
+                    menu::emit_to_focused_window(app, menu::MENU_EXPORT_PREVIEW_PNG_EVENT)
+                }
+                "file.export-preview-svg" => {
+                    menu::emit_to_focused_window(app, menu::MENU_EXPORT_PREVIEW_SVG_EVENT)
+                }
+                "maintenance.clear-preview-cache" => {
+                    menu::emit_to_focused_window(app, menu::MENU_CLEAR_PREVIEW_CACHE_EVENT)
+                }
+                "maintenance.reset-quick-look" => {
+                    menu::emit_to_focused_window(app, menu::MENU_RESET_QUICK_LOOK_EVENT)
+                }
+                "maintenance.open-logs" => {
+                    menu::emit_to_focused_window(app, menu::MENU_OPEN_LOGS_EVENT)
+                }
                 "updater.check" => {
                     menu::emit_to_focused_window(app, menu::MENU_CHECK_UPDATES_EVENT)
                 }
@@ -68,10 +102,16 @@ pub fn run() {
             commands::grid::grid_append_records,
             commands::grid::grid_delimited_columns,
             commands::grid::grid_append_delimited_records,
+            commands::grid::grid_close_runtime,
             commands::documents::sync_viewer_preferences,
             commands::preview_cache::clear_preview_cache,
+            commands::shell::export_diagnostics_bundle,
             commands::shell::open_logs_folder,
             commands::shell::open_external_url,
+            commands::shell::read_external_preview_svg,
+            commands::shell::reveal_path,
+            commands::shell::write_base64_file,
+            commands::shell::write_text_file,
             commands::quicklook::reset_quick_look,
             commands::updater::install_update,
         ])

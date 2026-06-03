@@ -18,6 +18,7 @@
   --line-subtle: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 24%), transparent);
   --line-subtler: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 15%), transparent);
   --focus-border: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 65%), transparent);
+  --focus-ring: color-mix(in srgb, var(--accent) 72%, var(--fg-base));
   --line-strong: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 65%), transparent);
   --sidebar-divider-right: var(--line-subtler);
   --surface-primary: var(--bg-base);
@@ -92,6 +93,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   --line-subtle: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
   --line-subtler: color-mix(in srgb, black calc(var(--contrast) * 15%), transparent);
   --focus-border: color-mix(in srgb, black calc(var(--contrast) * 65%), transparent);
+  --focus-ring: color-mix(in srgb, var(--accent) 72%, black);
   --line-strong: color-mix(in srgb, black calc(var(--contrast) * 65%), transparent);
   --border-color: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
   --surface-primary: var(--bg-base);
@@ -136,6 +138,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
     --line-subtle: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
     --line-subtler: color-mix(in srgb, black calc(var(--contrast) * 15%), transparent);
     --focus-border: color-mix(in srgb, black calc(var(--contrast) * 65%), transparent);
+    --focus-ring: color-mix(in srgb, var(--accent) 72%, black);
     --line-strong: color-mix(in srgb, black calc(var(--contrast) * 65%), transparent);
     --border-color: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
     --surface-primary: var(--bg-base);
@@ -811,8 +814,34 @@ kbd span { margin-left: 2px; }
 .tab-history-button:focus-visible,
 .tab:focus-visible,
 .sidebar-product:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: -2px;
+}
+.sidebar-search-row:focus-visible,
+.sidebar-tool-row:focus-visible,
+.project-group-row:focus-visible,
+.project:focus-visible,
+.project-show-more:focus-visible,
+.sidebar-section-title-button:focus-visible,
+.sidebar-section-menu-button:focus-visible,
+.project-group-menu-button:focus-visible,
+.pin-hit:focus-visible,
+.native-context-menu-item:focus-visible,
+.status-surface-dismiss:focus-visible,
+.welcome button:focus-visible,
+.ketcher-page-actions button:focus-visible:not(:disabled),
+.ketcher-page-footer button:focus-visible:not(:disabled),
+.command-palette-input:focus-visible,
+.command-palette-item:focus-visible,
+.settings-reset-button:focus-visible:not(:disabled),
+.settings-action-button:focus-visible:not(:disabled) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+.command-palette-input:focus-visible,
+.settings-select:focus-visible,
+.settings-text-control:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--focus-ring);
 }
 .project-group-row:focus-visible,
 .project:focus-visible,
@@ -820,7 +849,7 @@ kbd span { margin-left: 2px; }
 .sidebar-section-menu-button:focus-visible,
 .project-group-menu-button:focus-visible,
 .pin-hit:focus-visible {
-  outline: none;
+  box-shadow: inset 0 0 0 1px var(--focus-ring);
 }
 .splitter {
   width: 8px;
@@ -922,7 +951,8 @@ kbd span { margin-left: 2px; }
 .ketcher-page-actions button:focus-visible:not(:disabled) {
   background: var(--surface-hover);
   color: var(--text-primary);
-  outline: none;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 .ketcher-page-actions button:disabled {
   opacity: 0.45;
@@ -1131,7 +1161,12 @@ kbd span { margin-left: 2px; }
   font-size: 13px;
 }
 .ketcher-page-footer button:hover:not(:disabled),
-.ketcher-page-footer button:focus-visible:not(:disabled) { background: var(--surface-hover); color: var(--text-primary); outline: none; }
+.ketcher-page-footer button:focus-visible:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
 .ketcher-page-footer button:disabled {
   opacity: 0.45;
 }
@@ -1528,7 +1563,8 @@ kbd span { margin-left: 2px; }
 .command-palette-item:focus-visible {
   background: var(--surface-subtle);
   color: var(--text-secondary);
-  outline: none;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 .command-palette-item span {
   min-width: 0;
@@ -1641,7 +1677,11 @@ kbd span { margin-left: 2px; }
   padding: 0 32px 0 12px;
   outline: none;
 }
-.settings-select:focus-visible { border-color: var(--focus-border); outline: none; }
+.settings-select:focus-visible {
+  border-color: var(--focus-border);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
 .settings-color-control {
   width: 176px;
   height: 32px;
@@ -1656,6 +1696,7 @@ kbd span { margin-left: 2px; }
 }
 .settings-color-control:focus-within {
   border-color: var(--focus-border);
+  box-shadow: inset 0 0 0 1px var(--focus-ring);
 }
 .settings-color-swatch {
   position: relative;
@@ -1699,6 +1740,8 @@ kbd span { margin-left: 2px; }
 }
 .settings-text-control:focus-visible {
   border-color: var(--focus-border);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 .settings-range-control {
   display: inline-flex;

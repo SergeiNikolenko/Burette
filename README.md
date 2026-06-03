@@ -39,7 +39,14 @@ You can also install it with Bun:
 ```bash
 bunx burrete install
 bunx burrete install --beta
+bunx burrete doctor
 ```
+
+The Bun installer places Burrete in `~/Applications` by default. Use
+`bunx burrete install --system` only when you intentionally want the app in
+`/Applications` for all users. If Finder previews do not appear after install,
+run `bunx burrete doctor` to check the app bundle, Quick Look extension,
+`qlmanage`, and installed version.
 
 Or download Burrete from the GitHub Releases page:
 
