@@ -23,10 +23,10 @@
   --buret-molstar-accent: #AF52DE;
   --buret-molstar-shadow: rgba(0, 0, 0, 0.38);
   --buret-molstar-panel-radius: 10px;
-  --buret-menu-background: #2a2d33;
-  --buret-menu-section-background: #31343b;
-  --buret-menu-input-background: #383c44;
-  --buret-menu-input-focus-background: #40454e;
+  --buret-menu-background: rgba(42, 45, 51, 0.86);
+  --buret-menu-section-background: rgba(255, 255, 255, 0.06);
+  --buret-menu-input-background: rgba(255, 255, 255, 0.09);
+  --buret-menu-input-focus-background: rgba(255, 255, 255, 0.12);
   --buret-menu-border: rgba(255, 255, 255, 0.08);
   --buret-menu-divider: rgba(255, 255, 255, 0.06);
   --buret-menu-toggle-track: rgba(255, 255, 255, 0.20);
@@ -59,10 +59,10 @@ body.buret-theme-light {
   --buret-molstar-muted-text: rgba(86, 88, 92, 0.82);
   --buret-molstar-accent: #AF52DE;
   --buret-molstar-shadow: rgba(0, 0, 0, 0.18);
-  --buret-menu-background: #f6f6f4;
-  --buret-menu-section-background: #efefec;
-  --buret-menu-input-background: #e8e8e5;
-  --buret-menu-input-focus-background: #e0e0dc;
+  --buret-menu-background: rgba(246, 246, 244, 0.88);
+  --buret-menu-section-background: rgba(0, 0, 0, 0.045);
+  --buret-menu-input-background: rgba(0, 0, 0, 0.06);
+  --buret-menu-input-focus-background: rgba(0, 0, 0, 0.085);
   --buret-menu-border: rgba(0, 0, 0, 0.08);
   --buret-menu-divider: rgba(0, 0, 0, 0.06);
   --buret-menu-toggle-track: rgba(0, 0, 0, 0.16);
@@ -479,15 +479,13 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   min-width: 210px;
   box-sizing: border-box;
   padding: 6px;
-  border: 1px solid var(--buret-toolbar-border);
+  border: 0;
   border-radius: 12px;
   color: var(--buret-toolbar-color);
-  background: var(--buret-toolbar-background);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  box-shadow:
-    0 16px 42px rgba(0, 0, 0, 0.32),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  background: var(--buret-menu-background);
+  -webkit-backdrop-filter: blur(30px) saturate(1.35);
+  backdrop-filter: blur(30px) saturate(1.35);
+  box-shadow: var(--buret-menu-shadow);
 }
 .buret-molecule-context-menu-title {
   padding: 6px 8px 1px;
@@ -518,7 +516,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
 .buret-molecule-context-menu button:hover,
 .buret-molecule-context-menu button:focus {
   outline: none;
-  background: var(--buret-toolbar-hover);
+  background: var(--buret-menu-input-background);
 }
 #buret-toolbar {
   position: absolute; top: var(--buret-toolbar-safe-top); right: 12px; left: auto; z-index: 2147483646;
@@ -629,11 +627,13 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   padding: 5px;
   display: grid;
   gap: 5px;
-  border: 1px solid var(--buret-menu-border);
-  border-radius: 10px;
+  border: 0;
+  border-radius: 12px;
   color: var(--buret-toolbar-color);
   background: var(--buret-menu-background);
   box-shadow: var(--buret-menu-shadow);
+  -webkit-backdrop-filter: blur(30px) saturate(1.35);
+  backdrop-filter: blur(30px) saturate(1.35);
 }
 .buret-xyzrender-popover.hidden { display: none; }
 .buret-xyzrender-popover-header {
@@ -664,7 +664,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   gap: 4px;
   padding: 5px 8px;
   border-radius: 9px;
-  border: 1px solid var(--buret-menu-border);
+  border: 0;
   background: var(--buret-menu-section-background);
 }
 .buret-xyzrender-section-flags {
@@ -768,7 +768,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
 }
 .buret-field.hidden { display: none; }
 .buret-xyzrender-advanced {
-  border: 1px solid var(--buret-menu-border);
+  border: 0;
   border-radius: 9px;
   background: var(--buret-menu-section-background);
 }
