@@ -40,8 +40,10 @@ const [
   previewRuntimeGrid,
   previewRuntimeViewer,
   previewRuntimeUtils,
+  previewFormats,
   previewXyzrender,
   quickLookPreviewController,
+  moleculeGridPreview,
   viewerRuntimeCSS,
   viewerJS,
   gridViewerJS,
@@ -74,6 +76,7 @@ const [
   tauriCargoSource,
   coreCargoSource,
   previewFormatsSource,
+  burreteCoreSource,
   docsReadmeSource,
   architectureDocsSource,
   rendererSupportDocsSource,
@@ -103,8 +106,10 @@ const [
   source('apps/desktop/src-tauri/src/preview/runtime_grid.rs'),
   source('apps/desktop/src-tauri/src/preview/runtime_viewer.rs'),
   source('apps/desktop/src-tauri/src/preview/runtime_utils.rs'),
+  source('apps/desktop/src-tauri/src/preview/formats.rs'),
   source('apps/desktop/src-tauri/src/preview/xyzrender.rs'),
   source('PreviewExtension/Platform/PreviewViewController.swift'),
+  source('PreviewExtension/MoleculeGridPreview.swift'),
   source('PreviewExtension/Web/viewer-runtime.css'),
   source('PreviewExtension/Web/viewer.js'),
   source('PreviewExtension/Web/grid-viewer.js'),
@@ -137,6 +142,7 @@ const [
   source('apps/desktop/src-tauri/Cargo.toml'),
   source('crates/burrete-core/Cargo.toml'),
   source('apps/desktop/src-tauri/src/preview/formats.rs'),
+  source('crates/burrete-core/src/lib.rs'),
   source('docs/README.md'),
   source('docs/architecture.md'),
   source('docs/renderer-support.md'),
@@ -161,6 +167,7 @@ assert.match(tauriConfig.app.security.csp, /'wasm-unsafe-eval'/);
 assert.match(tauriConfig.app.security.csp, /style-src[^;]*'unsafe-inline'/);
 assert.ok(defaultCapability.permissions.includes('dialog:allow-open'));
 assert.ok(defaultCapability.permissions.includes('dialog:allow-message'));
+assert.ok(defaultCapability.permissions.includes('dialog:allow-save'));
 assert.match(tauriConfig.app.security.csp, /script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' asset: http:\/\/asset\.localhost/);
 assert.match(previewEntitlements, /com\.apple\.security\.network\.client/);
 assert.match(docsReadmeSource, /Performance architecture/);
@@ -224,6 +231,9 @@ assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_delim
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn read_structure_text/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_text_structure/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn save_text_as/);
+assert.match(previewRuntime, /impl ViewerDocument \{\s*pub\(crate\) fn into_virtual\(mut self\) -> Self \{\s*self\.is_virtual = true;\s*self\s*\}\s*\}/);
+assert.match(documentsCommand, /open_document\(&app, output_path, &preferences, reload_options\.as_ref\(\)\)\s*\.map\(\|document\| document\.into_virtual\(\)\)/);
+assert.match(documentsCommand, /open_document\(&app, output_path, &preferences, None\)\s*\.map\(\|document\| document\.into_virtual\(\)\)/);
 assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_fetch_page/);
 assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_append_records/);
 assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_delimited_columns/);
@@ -479,10 +489,14 @@ assert.match(previewRuntime, /active_pose: Option<usize>/);
 assert.match(previewRuntime, /request\.active_pose/);
 assert.match(previewRuntime, /create_grid_runtime/);
 assert.match(previewRuntime, /create_runtime/);
+assert.match(previewFormats, /pub\(crate\) use burrete_core::\{/);
+assert.match(burreteCoreSource, /"grid2d" \| "grid" \| "grid-2d" => "grid2d"/);
 assert.doesNotMatch(previewRuntime, /fn parse_sdf_grid/);
 assert.doesNotMatch(previewRuntime, /fn viewer_html/);
 assert.match(previewRuntimeGrid, /pub\(crate\) fn create_grid_runtime/);
 assert.match(previewRuntimeGrid, /build_grid_store/);
+assert.match(previewRuntimeGrid, /include_single_sdf: normalize_renderer_mode\(&preferences\.renderer_mode\) == "grid2d"/);
+assert.match(previewGridStore, /!options\.include_single_sdf\s*&& \(\(extension == "sdf" \|\| extension == "sd"\) && records_indexed <= 1\)/);
 assert.match(previewRuntimeGrid, /"sourcePath": file_path\.to_string_lossy\(\)/);
 assert.match(previewRuntimeGrid, /register\(\s*document_id,\s*grid_store\.database_path,\s*collection\.format,\s*grid_store\.cancel_token,\s*\)/);
 assert.match(previewRuntimeGrid, /"gridDataMode": "bridge"/);
@@ -514,10 +528,13 @@ assert.match(previewRuntimeGrid, /'wasm-unsafe-eval'/);
 assert.match(previewRuntimeGrid, /grid-ui-v10/);
 assert.match(previewXyzrender, /std::env::current_exe\(\)/);
 assert.match(previewXyzrender, /xyzrender-runtime/);
+assert.match(gridViewerJS, /resetDocumentRuntimeState\(\);\n\s+state\.remoteMode = isRemoteMode\(cfg\);/);
 assert.match(gridViewerJS, /buildUI\(cfg\);\n\s+refresh\(cfg\);\n\s+try \{\n\s+await initRDKit\(\);/);
 assert.match(gridViewerJS, /if \(state\.cardRenderer === 'rdkit'\) render\(cfg\);/);
 assert.match(gridViewerJS, /function supportsXyzrenderCards\(cfg\)/);
 assert.match(gridViewerJS, /cfg\?\.appViewer === true && cfg\?\.gridDataMode === 'bridge'/);
+assert.match(previewRuntimeGrid, /"pageSize": 72/);
+assert.match(moleculeGridPreview, /"pageSize": 48/);
 assert.match(gridViewerJS, /hostRequest\('renderXyzrenderCard'/);
 assert.match(gridViewerJS, /body\.type === 'gridPage' \|\| body\.type === 'xyzrenderCard'/);
 assert.match(gridViewerJS, /body\.type === 'gridRecordsAppended'/);

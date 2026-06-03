@@ -63,6 +63,7 @@ pub(crate) struct GridAppendSummary {
 #[derive(Debug, Default)]
 pub(crate) struct GridParseOptions {
     pub(crate) smiles_column: Option<String>,
+    pub(crate) include_single_sdf: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -248,7 +249,10 @@ pub(crate) fn build_grid_store_with_options(
         first_batch.complete,
         None,
     )?;
-    if first_batch.complete && ((extension == "sdf" || extension == "sd") && records_indexed <= 1) {
+    if first_batch.complete
+        && !options.include_single_sdf
+        && ((extension == "sdf" || extension == "sd") && records_indexed <= 1)
+    {
         let _ = std::fs::remove_file(&database_path);
         return Ok(None);
     }
@@ -580,7 +584,10 @@ fn spawn_grid_ingest_worker(
         let Ok(connection) = Connection::open(&database_path) else {
             return;
         };
-        let options = GridParseOptions { smiles_column };
+        let options = GridParseOptions {
+            smiles_column,
+            ..GridParseOptions::default()
+        };
         loop {
             if cancel_token.load(Ordering::Relaxed) {
                 return;
@@ -1438,10 +1445,32 @@ fn property_name(line: &str) -> Option<String> {
 }
 
 fn extract_molblock(lines: &[String]) -> String {
-    if let Some(end) = lines.iter().position(|line| line.trim() == "M  END") {
-        return lines[..=end].join("\n");
+    let mut molblock_lines =
+        if let Some(end) = lines.iter().position(|line| line.trim() == "M  END") {
+            lines[..=end].to_vec()
+        } else {
+            lines.to_vec()
+        };
+    normalize_molblock_header(&mut molblock_lines);
+    molblock_lines.join("\n")
+}
+
+fn normalize_molblock_header(lines: &mut Vec<String>) {
+    let Some(mut counts_index) = lines.iter().position(|line| is_molfile_counts_line(line)) else {
+        return;
+    };
+    while counts_index < 3 {
+        lines.insert(counts_index, String::new());
+        counts_index += 1;
     }
-    lines.join("\n")
+}
+
+fn is_molfile_counts_line(line: &str) -> bool {
+    let fields: Vec<&str> = line.split_whitespace().collect();
+    fields.len() >= 10
+        && matches!(fields.last(), Some(&"V2000" | &"V3000"))
+        && fields[0].parse::<usize>().is_ok()
+        && fields[1].parse::<usize>().is_ok()
 }
 
 #[cfg(test)]
@@ -1522,6 +1551,37 @@ mod tests {
         assert_eq!(filtered.total_rows, 1);
         assert_eq!(filtered.rows.len(), 1);
         assert_eq!(filtered.rows[0].name, "Ethylamine");
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn ingests_canonical_smiles_csv_fixture() {
+        let runtime_dir = temp_runtime_dir();
+        let csv = "compound_id,canonical_smiles,pIC50,vendor\n\
+                   CMPD-001,CCO,5.1,TestVendor\n\
+                   CMPD-002,c1ccccc1,6.4,TestVendor\n\
+                   CMPD-003,CC(=O)O,4.8,Reference\n\
+                   CMPD-004,CCN(CC)CC,7.2,Reference\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.format, "csv");
+        assert_eq!(summary.records_total, 4);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                offset: 0,
+                limit: 144,
+            },
+        )
+        .expect("fetch page");
+        assert_eq!(page.total_rows, 4);
+        assert_eq!(page.rows.len(), 4);
+        assert_eq!(page.rows[0].name, "CMPD-001");
+        assert_eq!(page.rows[0].smiles.as_deref(), Some("CCO"));
 
         let _ = std::fs::remove_dir_all(&runtime_dir);
     }
@@ -1624,6 +1684,7 @@ mod tests {
             csv.as_bytes(),
             &GridParseOptions {
                 smiles_column: Some("decoy".to_string()),
+                ..GridParseOptions::default()
             },
         )
         .expect("build grid store")
@@ -2047,5 +2108,22 @@ mod tests {
         assert_eq!(page.rows[0].name, "Third");
 
         let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn normalizes_ketcher_molblock_with_missing_header_line() {
+        let lines = vec![
+            "Ketcher sketch".to_string(),
+            "".to_string(),
+            "  6  6  0  0  0  0  0  0  0  0999 V2000".to_string(),
+            "    5.1809   -4.2751    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0".to_string(),
+            "M  END".to_string(),
+        ];
+        let molblock = extract_molblock(&lines);
+        let normalized: Vec<&str> = molblock.lines().collect();
+        assert_eq!(
+            normalized[3].trim(),
+            "6  6  0  0  0  0  0  0  0  0999 V2000"
+        );
     }
 }
