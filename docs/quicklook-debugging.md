@@ -40,6 +40,20 @@ Build and install locally:
 ./scripts/install.sh
 ```
 
+For parallel local worktrees, use a dev flavor so the installed app, extension
+IDs, container paths, and forced content types do not collide with the release
+namespace or with another dev install:
+
+```bash
+BURRETE_DEV_FLAVOR=chat85b0 ./scripts/build.sh
+BURRETE_DEV_FLAVOR=chat85b0 ./scripts/install.sh
+```
+
+The example above installs `~/Applications/Burrete-chat85b0.app` and registers
+`com.local.BurreteV10.Dev.chat85b0.Preview`. Normal Finder ownership for file
+extensions remains global, so use forced previews for flavor-specific smoke
+tests.
+
 Refresh Quick Look after replacing the app:
 
 ```bash
@@ -56,6 +70,12 @@ Use forced previews to bypass Launch Services ambiguity while debugging:
 ./scripts/force-preview.sh samples/mini.pdb
 ./scripts/force-preview.sh samples/mini.cif
 ./scripts/force-preview.sh samples/mini.xyz
+```
+
+For a dev flavor, keep the same environment variable on the smoke command:
+
+```bash
+BURRETE_DEV_FLAVOR=chat85b0 ./scripts/force-preview.sh samples/mini.pdb
 ```
 
 For a real desktop file:

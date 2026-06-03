@@ -346,6 +346,7 @@ for (const script of [buildScript, buildDevScript]) {
   assert.match(script, /built app PkgInfo missing or invalid/);
 }
 assert.match(buildDevScript, /BURRETE_DEV_REUSE_QUICKLOOK/);
+assert.match(buildDevScript, /BURRETE_DEV_FLAVOR is supported by scripts\/build\.sh, not scripts\/build-dev\.sh/);
 assert.match(buildDevScript, /Reusing Quick Look extension/);
 assert.match(buildDevScript, /requires an existing preview extension/);
 assert.match(remoteCheckScript, /BURRETE_REMOTE_HOST/);

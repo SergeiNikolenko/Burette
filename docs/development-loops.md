@@ -32,6 +32,32 @@ Use a packaged rebuild only when the change must be verified in the final bundle
 bun run build:tauri
 ```
 
+## Parallel Dev App Identities
+
+Use a dev flavor when multiple local worktrees need to build and install Burrete
+without competing for the same Launch Services and Quick Look bundle IDs:
+
+```bash
+BURRETE_DEV_FLAVOR=chat85b0 ./scripts/build.sh
+BURRETE_DEV_FLAVOR=chat85b0 ./scripts/install.sh
+```
+
+This keeps the release identifiers untouched, but writes the local build to
+`build/Burrete-chat85b0.app`, installs it as
+`~/Applications/Burrete-chat85b0.app`, and uses isolated identifiers such as
+`com.local.BurreteV10.Dev.chat85b0.Preview` and
+`com.local.burrete10.dev.chat85b0.pdb`.
+
+Use the same flavor for forced preview and diagnostics:
+
+```bash
+BURRETE_DEV_FLAVOR=chat85b0 ./scripts/force-preview.sh samples/mini.pdb
+BURRETE_DEV_FLAVOR=chat85b0 ./scripts/diagnose.sh samples/mini.pdb
+```
+
+`scripts/build-dev.sh` intentionally does not support `BURRETE_DEV_FLAVOR`
+because it builds in-place and must not rewrite source-tree bundle identifiers.
+
 ## Preview Web Assets
 
 Use the web asset patch loop when changing `PreviewExtension/Web/*`, including
