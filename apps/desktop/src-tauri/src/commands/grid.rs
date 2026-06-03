@@ -189,3 +189,69 @@ pub(crate) fn grid_close_runtime(
 ) -> Result<(), String> {
     registry.unregister(&document_id)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::read_grid_append_path;
+    use std::collections::BTreeSet;
+    use std::fs;
+
+    fn supported_extensions() -> BTreeSet<String> {
+        ["pdb", "sdf", "xyz"]
+            .into_iter()
+            .map(str::to_string)
+            .collect()
+    }
+
+    fn temp_path(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "burrete-grid-command-{}-{name}",
+            uuid::Uuid::new_v4()
+        ))
+    }
+
+    #[test]
+    fn read_grid_append_path_rejects_unsupported_extension_before_io() {
+        let path = temp_path("unsupported.txt");
+        let error = read_grid_append_path(&path.to_string_lossy(), &supported_extensions())
+            .expect_err("unsupported extensions should be rejected");
+
+        assert_eq!(error, "Unsupported structure extension: txt");
+    }
+
+    #[test]
+    fn read_grid_append_path_rejects_missing_supported_file() {
+        let path = temp_path("missing.pdb");
+        let error = read_grid_append_path(&path.to_string_lossy(), &supported_extensions())
+            .expect_err("missing supported files should surface an IO error");
+
+        assert!(error.contains(&path.display().to_string()));
+        assert!(error.contains("No such file") || error.contains("os error 2"));
+    }
+
+    #[test]
+    fn read_grid_append_path_rejects_directories() {
+        let path = temp_path("directory.sdf");
+        fs::create_dir_all(&path).expect("temp directory should be created");
+
+        let error = read_grid_append_path(&path.to_string_lossy(), &supported_extensions())
+            .expect_err("directories should not be append sources");
+
+        assert_eq!(error, format!("{} is not a file", path.display()));
+        let _ = fs::remove_dir_all(path);
+    }
+
+    #[test]
+    fn read_grid_append_path_reads_supported_text() {
+        let path = temp_path("ligand.xyz");
+        fs::write(&path, "1\nwater\nO 0 0 0\n").expect("temp xyz should be writable");
+
+        let (extension, text) =
+            read_grid_append_path(&path.to_string_lossy(), &supported_extensions())
+                .expect("supported files should read");
+
+        assert_eq!(extension, "xyz");
+        assert_eq!(text, "1\nwater\nO 0 0 0\n");
+        let _ = fs::remove_file(path);
+    }
+}

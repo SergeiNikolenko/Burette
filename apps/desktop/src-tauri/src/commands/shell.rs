@@ -376,3 +376,83 @@ fn unix_timestamp_ms() -> u128 {
         .map(|duration| duration.as_millis())
         .unwrap_or(0)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        read_external_preview_svg, write_base64_file, write_text_file, WriteBase64FileRequest,
+        WriteTextFileRequest,
+    };
+    use base64::Engine;
+    use std::fs;
+
+    fn temp_dir(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "burrete-shell-command-{}-{name}",
+            uuid::Uuid::new_v4()
+        ))
+    }
+
+    #[test]
+    fn reads_inline_external_preview_svg_from_runtime_config() {
+        let runtime = temp_dir("inline-svg");
+        fs::create_dir_all(&runtime).expect("runtime dir should be created");
+        let index = runtime.join("index.html");
+        fs::write(&index, "<!doctype html>").expect("index should be writable");
+        fs::write(
+            runtime.join("preview-config.js"),
+            r#"window.BurreteConfig = {"externalArtifact":{"type":"svg","inlineSvg":"<svg id=\"molecule\"></svg>"}};"#,
+        )
+        .expect("config should be writable");
+
+        let svg = read_external_preview_svg(index.to_string_lossy().to_string())
+            .expect("inline SVG should be returned");
+
+        assert_eq!(svg, r#"<svg id="molecule"></svg>"#);
+        let _ = fs::remove_dir_all(runtime);
+    }
+
+    #[test]
+    fn reads_external_preview_svg_from_relative_artifact_path() {
+        let runtime = temp_dir("path-svg");
+        fs::create_dir_all(&runtime).expect("runtime dir should be created");
+        let index = runtime.join("index.html");
+        fs::write(&index, "<!doctype html>").expect("index should be writable");
+        fs::write(runtime.join("preview.svg"), "<svg></svg>").expect("svg should be writable");
+        fs::write(
+            runtime.join("preview-config.js"),
+            r#"window.BurreteConfig = {"externalArtifact":{"type":"svg","path":"preview.svg"}};"#,
+        )
+        .expect("config should be writable");
+
+        let svg = read_external_preview_svg(index.to_string_lossy().to_string())
+            .expect("relative SVG should be returned");
+
+        assert_eq!(svg, "<svg></svg>");
+        let _ = fs::remove_dir_all(runtime);
+    }
+
+    #[test]
+    fn write_file_commands_create_parent_directories() {
+        let root = temp_dir("write-files");
+        let text_path = root.join("nested").join("note.txt");
+        let binary_path = root.join("binary").join("payload.bin");
+
+        let written_text = write_text_file(WriteTextFileRequest {
+            output_path: text_path.to_string_lossy().to_string(),
+            contents: "hello\n".to_string(),
+        })
+        .expect("text file should be written");
+        let written_binary = write_base64_file(WriteBase64FileRequest {
+            output_path: binary_path.to_string_lossy().to_string(),
+            contents_base64: base64::engine::general_purpose::STANDARD.encode([0, 1, 2, 255]),
+        })
+        .expect("base64 file should be written");
+
+        assert_eq!(written_text, text_path.to_string_lossy());
+        assert_eq!(written_binary, binary_path.to_string_lossy());
+        assert_eq!(fs::read_to_string(&text_path).unwrap(), "hello\n");
+        assert_eq!(fs::read(&binary_path).unwrap(), [0, 1, 2, 255]);
+        let _ = fs::remove_dir_all(root);
+    }
+}

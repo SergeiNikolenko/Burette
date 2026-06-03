@@ -284,6 +284,18 @@ assert.deepEqual(resolveDropActionChoices(
     },
   },
 ]);
+assert.deepEqual(
+  resolveDropActionChoices(
+    payload([], [{ path: "grid-ligand.sdf", inputExtension: "sdf", text: "mol\nM  END\n$$$$\n" }]),
+    {
+      kind: "active-viewer",
+      documentPath: "/tmp/receptor.pdb",
+      renderer: "molstar",
+    },
+    { kind: "clipboard" },
+  ).map((choice) => choice.source),
+  [{ kind: "clipboard" }, { kind: "clipboard" }],
+);
 
 const ligandOnDocking = resolveDropAction(payload(["/tmp/new-ligand.sdf", "/tmp/receptor-2.pdb"]), {
   kind: "active-viewer",
