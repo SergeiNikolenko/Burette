@@ -369,7 +369,7 @@
 
   function canvasBackgroundCSS(background) {
     if (background === 'white') return '#ffffff';
-    if (background === 'graphite') return '#111317';
+    if (background === 'graphite') return '#111111';
     if (background === 'transparent') return 'transparent';
     return '#000000';
   }
