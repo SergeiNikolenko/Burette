@@ -8,7 +8,7 @@
   const SDF_GRID_PADDING = 4.0;
   const TOOLBAR_POSITION_VERSION = '13';
   const TOOLBAR_COLLAPSED_VERSION = '5';
-  const DOCKING_POSE_POSITION_VERSION = '2';
+  const DOCKING_POSE_POSITION_VERSION = '3';
   const TOOLBAR_MARGIN = 12;
   const FLOATING_LAYOUT_GAP = 12;
   const PANEL_CLOSE_HIT_WIDTH = 38;
@@ -2321,6 +2321,86 @@
     return Math.max(0, Math.min(poseCount - 1, Math.trunc(value)));
   }
 
+  function trajectoryControlStorageKey(config, prepared) {
+    if (prepared?.kind === 'docking') return dockingPoseStorageKey(config);
+    const documentId = String(config?.documentId || '').trim();
+    if (documentId) return `burrete.trajectoryControl.${documentId}`;
+    const fallback = `${config?.label || 'active'}:${window.location.pathname}:${window.location.search}`;
+    return `burrete.trajectoryControl.fallback-${stableTextHash(fallback)}`;
+  }
+
+  function readTrajectoryControlIndex(config, prepared, poseCount) {
+    if (prepared?.kind === 'docking') return readDockingPoseIndex(config, poseCount);
+    let value = Number(config?.activeModel || 0);
+    try {
+      const stored = sessionStorage.getItem(trajectoryControlStorageKey(config, prepared));
+      if (stored !== null) value = Number(stored);
+    } catch (_) {}
+    if (!Number.isFinite(value)) value = 0;
+    return Math.max(0, Math.min(poseCount - 1, Math.trunc(value)));
+  }
+
+  const DEFAULT_TRAJECTORY_LOOP_FPS = 2;
+
+  function trajectoryLoopFpsStorageKey(config, prepared) {
+    return `${trajectoryControlStorageKey(config, prepared)}.fps.v1`;
+  }
+
+  function minimumTrajectoryLoopDelay(prepared) {
+    return prepared?.nativeTrajectoryControls ? 40 : 300;
+  }
+
+  function minimumTrajectoryLoopTimerDelay(prepared) {
+    return prepared?.nativeTrajectoryControls ? 8 : 60;
+  }
+
+  function maximumTrajectoryLoopFps(prepared) {
+    return Math.round((1000 / minimumTrajectoryLoopDelay(prepared)) * 100) / 100;
+  }
+
+  function trajectoryFpsToDelay(value, prepared) {
+    const fps = Number(value);
+    const clamped = Number.isFinite(fps) ? Math.min(Math.max(fps, 0.1), maximumTrajectoryLoopFps(prepared)) : DEFAULT_TRAJECTORY_LOOP_FPS;
+    return Math.max(minimumTrajectoryLoopDelay(prepared), Math.round(1000 / clamped));
+  }
+
+  function trajectoryDelayToFps(delayMs, prepared) {
+    const delay = Number(delayMs);
+    if (!Number.isFinite(delay) || delay <= 0) return DEFAULT_TRAJECTORY_LOOP_FPS;
+    return Math.min(Math.max(1000 / delay, 0.1), maximumTrajectoryLoopFps(prepared));
+  }
+
+  function formatTrajectoryFps(value) {
+    const fps = Number(value);
+    if (!Number.isFinite(fps)) return String(DEFAULT_TRAJECTORY_LOOP_FPS);
+    return String(Math.round(fps * 100) / 100);
+  }
+
+  function readTrajectoryLoopFps(config, prepared) {
+    try {
+      const stored = Number(localStorage.getItem(trajectoryLoopFpsStorageKey(config, prepared)));
+      if (Number.isFinite(stored) && stored > 0) return Math.min(Math.max(stored, 0.1), maximumTrajectoryLoopFps(prepared));
+    } catch (_) {}
+    return DEFAULT_TRAJECTORY_LOOP_FPS;
+  }
+
+  function trajectoryControlsForPrepared(prepared) {
+    const poseCount = Number(prepared?.poseCount || activeConfig?.trajectoryFrameCount || 0);
+    const enabled = prepared?.nativeTrajectoryControls === true ||
+      activeConfig?.trajectoryControls === true ||
+      activeConfig?.sdfPosePager === true;
+    if (!enabled || !Number.isFinite(poseCount) || poseCount <= 1) return null;
+    const label = activeConfig?.sdfPosePager === true ? 'Pose' : 'Model';
+    return {
+      kind: 'trajectory',
+      activePose: readTrajectoryControlIndex(activeConfig, prepared, poseCount),
+      poseCount,
+      nativeTrajectoryControls: true,
+      ligandLabel: prepared?.label || activeConfig?.label || 'Mol* trajectory',
+      controlLabel: label
+    };
+  }
+
   function prepareDockingStructure(config) {
     const docking = config.docking || {};
     const payloads = window.BurreteDockingPayloads || {};
@@ -3685,6 +3765,38 @@
     }
   }
 
+  function isMolstarWaterComponent(component) {
+    if (!component) return false;
+    const key = String(component.key || '');
+    if (key.split(',').includes('water')) return true;
+    const label = String(component.cell?.obj?.label || '');
+    return label.toLowerCase() === 'water';
+  }
+
+  async function applyMolstarWaterLineRepresentation(viewer) {
+    const plugin = viewer?.plugin;
+    const structures = plugin?.managers?.structure?.hierarchy?.current?.structures || [];
+    const waterComponents = [];
+    for (const structure of structures) {
+      for (const component of structure.components || []) {
+        if (isMolstarWaterComponent(component)) waterComponents.push(component);
+      }
+    }
+    if (!waterComponents.length) return;
+
+    await plugin.managers.structure.component.removeRepresentations(waterComponents);
+    for (const component of waterComponents) {
+      await plugin.builders.structure.representation.addRepresentation(component.cell, {
+        type: 'line',
+        typeParams: {
+          alpha: 0.6,
+          visuals: ['intra-bond', 'element-point']
+        },
+        color: 'element-symbol'
+      }, { tag: 'water' });
+    }
+  }
+
   async function loadPreparedStructure(viewer, prepared) {
     if (prepared.kind === 'docking') {
       await loadDockingPreparedStructure(viewer, prepared);
@@ -3699,6 +3811,8 @@
         useDefaultIfSingleModel: true
       });
       await applyMolstarStyle(viewer, configuredMolstarStyle(activeConfig));
+      await applyMolstarWaterLineRepresentation(viewer);
+      installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
       return;
     }
     const plugin = viewer.plugin;
@@ -3706,6 +3820,8 @@
     const trajectory = await plugin.builders.structure.parseTrajectory(data, prepared.format);
     await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default');
     await applyMolstarStyle(viewer, configuredMolstarStyle(activeConfig));
+    await applyMolstarWaterLineRepresentation(viewer);
+    installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
   }
 
   async function loadMolstarEntry(viewer, entry) {
@@ -3796,6 +3912,7 @@
       await loadMolstarEntry(viewer, entry);
     }
     await applyMolstarStyle(viewer, configuredMolstarStyle(activeConfig));
+    await applyMolstarWaterLineRepresentation(viewer);
     installDockingPoseControls(viewer, prepared);
   }
 
@@ -3815,16 +3932,18 @@
     const height = root.offsetHeight || root.getBoundingClientRect().height || 40;
     const maxLeft = Math.max(margin, window.innerWidth - width - margin);
     const maxTop = Math.max(margin, window.innerHeight - height - margin);
-    root.style.left = Math.round(Math.min(Math.max(margin, left), maxLeft)) + 'px';
-    root.style.top = Math.round(Math.min(Math.max(margin, top), maxTop)) + 'px';
+    const clampedLeft = Math.round(Math.min(Math.max(margin, left), maxLeft));
+    const clampedTop = Math.round(Math.min(Math.max(margin, top), maxTop));
+    root.style.left = clampedLeft + 'px';
+    root.style.top = 'auto';
     root.style.right = 'auto';
-    root.style.bottom = 'auto';
+    root.style.bottom = Math.max(margin, Math.round(window.innerHeight - clampedTop - height)) + 'px';
   }
 
   function saveDockingPoseControlsPosition(root) {
     try {
       const rect = root.getBoundingClientRect();
-      window.localStorage && window.localStorage.setItem('buret.dockingPoseControls.position', JSON.stringify({ left: rect.left, top: rect.top, mode: 'custom' }));
+      window.localStorage && window.localStorage.setItem('buret.dockingPoseControls.position', JSON.stringify({ left: rect.left, bottom: window.innerHeight - rect.bottom, mode: 'custom' }));
       window.localStorage && window.localStorage.setItem('buret.dockingPoseControls.position.version', DOCKING_POSE_POSITION_VERSION);
     } catch (_) {}
   }
@@ -3836,9 +3955,13 @@
       const version = window.localStorage && window.localStorage.getItem('buret.dockingPoseControls.position.version');
       if (raw && version === DOCKING_POSE_POSITION_VERSION) {
         const saved = JSON.parse(raw);
-        if (saved.mode === 'custom' && Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
+        if (saved.mode === 'custom' && Number.isFinite(saved.left) && Number.isFinite(saved.bottom)) {
           root.dataset.defaultPosition = '0';
-          moveDockingPoseControls(root, saved.left, saved.top);
+          root.style.left = Math.round(saved.left) + 'px';
+          root.style.right = 'auto';
+          root.style.top = 'auto';
+          root.style.bottom = Math.max(TOOLBAR_MARGIN, Math.round(saved.bottom)) + 'px';
+          repositionDockingPoseControls(root);
           restored = true;
         }
       } else if (raw) {
@@ -3938,7 +4061,7 @@
     return null;
   }
 
-  function readNativeTrajectoryPosition(expectedCount) {
+  function readNativeTrajectoryPositionFromDom(expectedCount) {
     const root = nativeTrajectoryControlsRoot();
     const text = root?.textContent || '';
     const match = text.match(/\b(?:Model|Frame)\s+(\d+)\s*\/\s*(\d+)/i) || text.match(/\b(\d+)\s*\/\s*(\d+)\b/);
@@ -3948,6 +4071,66 @@
     if (!Number.isFinite(index) || !Number.isFinite(total) || index < 0) return null;
     if (expectedCount > 0 && total !== expectedCount) return null;
     return { index, total };
+  }
+
+  function nativeTrajectoryFrameCount(plugin, cell) {
+    const parentRef = cell?.transform?.parent;
+    const parent = parentRef ? plugin?.state?.data?.cells?.get?.(parentRef) : null;
+    const frameCount = Number(parent?.obj?.data?.frameCount || 0);
+    return Number.isFinite(frameCount) && frameCount > 0 ? frameCount : 0;
+  }
+
+  function nativeTrajectoryModelTransform(expectedCount = 0) {
+    const plugin = activeViewer?.plugin;
+    const data = plugin?.state?.data;
+    if (!plugin || !data) return null;
+    const selection = plugin?.managers?.structure?.hierarchy?.selection;
+    const selectedRefs = new Set((selection?.structures || [])
+      .map(structure => structure?.model?.cell?.transform?.ref)
+      .filter(Boolean));
+    const matches = [];
+    data.cells?.forEach?.(cell => {
+      const transform = cell?.transform;
+      const params = transform?.params;
+      if (!transform?.ref || !params || !Object.prototype.hasOwnProperty.call(params, 'modelIndex')) return;
+      const transformerId = String(transform.transformer?.id || transform.transformer?.definition?.name || '');
+      if (transformerId && transformerId !== 'model-from-trajectory' && !transformerId.endsWith('.model-from-trajectory')) return;
+      const frameCount = nativeTrajectoryFrameCount(plugin, cell);
+      if (expectedCount > 0 && frameCount > 0 && frameCount !== expectedCount) return;
+      matches.push({
+        plugin,
+        ref: transform.ref,
+        params,
+        frameCount,
+        selected: selectedRefs.has(transform.ref)
+      });
+    });
+    if (matches.length) {
+      return matches.find(match => match.selected) ||
+        matches.find(match => match.frameCount > 1) ||
+        matches[0];
+    }
+    if (!selection || selection.structures?.length !== 1) return null;
+    const model = selection.structures[0]?.model;
+    const ref = model?.cell?.transform?.ref;
+    const params = model?.cell?.transform?.params;
+    if (!ref || !params || !Object.prototype.hasOwnProperty.call(params, 'modelIndex')) return null;
+    return { plugin, ref, params, frameCount: expectedCount || 0, selected: true };
+  }
+
+  function readNativeTrajectoryPosition(expectedCount) {
+    const transform = nativeTrajectoryModelTransform(expectedCount);
+    if (transform) {
+      const index = Number(transform.params.modelIndex);
+      const total = transform.frameCount || expectedCount;
+      if (Number.isFinite(index) && index >= 0 && Number.isFinite(total) && total > 0) {
+        return {
+          index: Math.max(0, Math.min(total - 1, Math.round(index))),
+          total
+        };
+      }
+    }
+    return readNativeTrajectoryPositionFromDom(expectedCount);
   }
 
   function nativeTrajectoryStepButton(direction) {
@@ -3973,10 +4156,25 @@
     });
   }
 
+  async function setNativeTrajectoryPoseDirect(index, poseCount) {
+    const target = Math.max(0, Math.min(poseCount - 1, index));
+    const transform = nativeTrajectoryModelTransform(poseCount);
+    if (!transform) return false;
+    await transform.plugin.state.updateTransform(
+      transform.plugin.state.data,
+      transform.ref,
+      { ...transform.params, modelIndex: target },
+      'Model Index'
+    );
+    await afterNativeTrajectoryPaint();
+    return true;
+  }
+
   async function setNativeTrajectoryPose(index, poseCount) {
+    const target = Math.max(0, Math.min(poseCount - 1, index));
+    if (await setNativeTrajectoryPoseDirect(target, poseCount)) return true;
     const current = readNativeTrajectoryPosition(poseCount);
     if (!current) return false;
-    const target = Math.max(0, Math.min(poseCount - 1, index));
     if (current.index === target) return true;
     const direction = target > current.index ? 1 : -1;
     for (let step = current.index; step !== target; step += direction) {
@@ -3989,19 +4187,19 @@
   }
 
   function installNativeTrajectoryPoseSync(poseCount, onPoseChange) {
-    const root = nativeTrajectoryControlsRoot();
-    if (!root) return null;
+    const state = activeViewer?.plugin?.state?.data;
+    if (!state?.events?.changed?.subscribe) return null;
     const sync = () => {
       const position = readNativeTrajectoryPosition(poseCount);
       if (position) onPoseChange(position.index);
     };
-    const observer = new MutationObserver(sync);
-    observer.observe(root, { attributes: true, childList: true, characterData: true, subtree: true });
+    const subscription = state.events.changed.subscribe(sync);
     sync();
-    return () => observer.disconnect();
+    return () => subscription?.unsubscribe?.();
   }
 
   function notifyDockingPoseChanged(activePose, prepared) {
+    if (prepared?.kind !== 'docking') return;
     const poses = Array.isArray(prepared?.poses) ? prepared.poses : [];
     const index = Math.max(0, Math.min(poses.length - 1, Math.trunc(Number(activePose) || 0)));
     const pose = poses[index] || null;
@@ -4028,16 +4226,24 @@
     document.body.classList.add('buret-docking-pose-controls-active');
     const root = document.createElement('div');
     root.className = 'buret-docking-poses';
-    root.setAttribute('aria-label', 'Docking pose controls');
-    let activePose = Math.max(0, Math.min(prepared.poseCount - 1, Number(prepared.activePose || 0)));
+    const controlLabel = String(prepared.controlLabel || 'Pose');
+    const controlLabelLower = controlLabel.toLowerCase();
+    root.setAttribute('aria-label', `${controlLabel} controls`);
+    let activePose = readTrajectoryControlIndex(activeConfig, prepared, prepared.poseCount);
     const initialPose = activePose;
     let loopTimer = null;
+    let loopActive = false;
     let loopBusy = false;
+    let loopStartedAt = 0;
+    let loopStartPose = activePose;
     let poseRepeatDelayTimer = null;
     let poseRepeatTimer = null;
     let poseRepeatBusy = false;
     let poseRepeatTriggered = false;
     let suppressPoseClick = false;
+    let sliderInputTimer = null;
+    let sliderInputBusy = false;
+    let pendingSliderIndex = null;
     const mainRow = document.createElement('div');
     mainRow.className = 'buret-docking-pose-main';
     const animationRow = document.createElement('div');
@@ -4049,28 +4255,39 @@
     animation.className = 'buret-docking-pose-animation-button';
     animation.textContent = '⏯';
     animation.setAttribute('aria-label', 'Select Molstar animation');
+    animation.setAttribute('aria-expanded', 'false');
     animation.title = 'Select animation';
     const previous = document.createElement('button');
     previous.type = 'button';
     previous.textContent = 'Prev';
-    previous.setAttribute('aria-label', 'Previous pose');
+    previous.setAttribute('aria-label', `Previous ${controlLabelLower}`);
     const next = document.createElement('button');
     next.type = 'button';
     next.textContent = 'Next';
-    next.setAttribute('aria-label', 'Next pose');
+    next.setAttribute('aria-label', `Next ${controlLabelLower}`);
     const loop = document.createElement('button');
     loop.type = 'button';
     loop.textContent = 'Loop';
-    loop.setAttribute('aria-label', 'Play pose loop');
+    loop.setAttribute('aria-label', `Play ${controlLabelLower} loop`);
+    const speed = document.createElement('input');
+    speed.className = 'buret-docking-pose-speed';
+    speed.setAttribute('aria-label', `${controlLabel} loop frames per second`);
+    speed.type = 'number';
+    speed.min = '0.1';
+    speed.max = formatTrajectoryFps(maximumTrajectoryLoopFps(prepared));
+    speed.step = '0.1';
+    speed.inputMode = 'decimal';
+    speed.value = formatTrajectoryFps(readTrajectoryLoopFps(activeConfig, prepared));
+    speed.title = 'Frames per second (FPS)';
     const slider = document.createElement('input');
     slider.className = 'buret-docking-pose-slider';
     slider.type = 'range';
     slider.min = '1';
     slider.max = String(prepared.poseCount);
     slider.step = '1';
-    slider.setAttribute('aria-label', 'Pose slider');
+    slider.setAttribute('aria-label', `${controlLabel} slider`);
     const updateControls = () => {
-      label.textContent = `Pose ${activePose + 1} / ${prepared.poseCount}`;
+      label.textContent = `${controlLabel} ${activePose + 1} / ${prepared.poseCount}`;
       previous.disabled = activePose <= 0;
       next.disabled = activePose >= prepared.poseCount - 1;
       slider.value = String(activePose + 1);
@@ -4079,24 +4296,71 @@
       root.classList.toggle('buret-docking-poses-animation-open', Boolean(open));
       animation.setAttribute('aria-expanded', open ? 'true' : 'false');
     };
+    const isAnimationOptionsOpen = () => root.classList.contains('buret-docking-poses-animation-open');
     const setLoopActive = (active) => {
+      loopActive = Boolean(active);
       if (!active && loopTimer) {
-        clearInterval(loopTimer);
+        clearTimeout(loopTimer);
         loopTimer = null;
+        loopBusy = false;
+      }
+      if (active) {
+        loopStartedAt = loopNow();
+        loopStartPose = activePose;
       }
       loop.classList.toggle('active', Boolean(active));
       loop.textContent = active ? 'Stop' : 'Loop';
-      loop.setAttribute('aria-label', active ? 'Stop pose loop' : 'Play pose loop');
+      loop.setAttribute('aria-label', active ? `Stop ${controlLabelLower} loop` : `Play ${controlLabelLower} loop`);
       if (active) setAnimationOptionsOpen(true);
     };
     updateControls();
+    const loopDelayMs = () => {
+      const delay = trajectoryFpsToDelay(speed.value, prepared);
+      return Number.isFinite(delay) && delay > 0 ? delay : 1200;
+    };
+    const loopNow = () => (typeof performance !== 'undefined' && typeof performance.now === 'function')
+      ? performance.now()
+      : Date.now();
+    const loopTargetIndex = () => {
+      const delay = loopDelayMs();
+      const elapsed = Math.max(0, loopNow() - loopStartedAt);
+      const frameOffset = Math.floor(elapsed / delay);
+      return (loopStartPose + frameOffset) % prepared.poseCount;
+    };
+    const loopNextDelay = () => {
+      const delay = loopDelayMs();
+      const elapsed = Math.max(0, loopNow() - loopStartedAt);
+      const untilNextFrame = delay - (elapsed % delay);
+      return Math.max(minimumTrajectoryLoopTimerDelay(prepared), Math.min(delay, untilNextFrame));
+    };
+    const scheduleLoopStep = (delayMs = loopNextDelay()) => {
+      loopTimer = window.setTimeout(() => {
+        loopTimer = null;
+        if (!loopActive) return;
+        if (loopBusy) {
+          scheduleLoopStep();
+          return;
+        }
+        const nextIndex = loopTargetIndex();
+        if (nextIndex === activePose) {
+          scheduleLoopStep();
+          return;
+        }
+        loopBusy = true;
+        void setPose(nextIndex).finally(() => {
+          loopBusy = false;
+          if (!loopActive) return;
+          scheduleLoopStep();
+        });
+      }, Math.max(minimumTrajectoryLoopTimerDelay(prepared), delayMs));
+    };
     const setPose = async (index) => {
       const nextIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
       const previousIndex = activePose;
-      try { sessionStorage.setItem(dockingPoseStorageKey(activeConfig), String(nextIndex)); } catch (_) {}
+      try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(nextIndex)); } catch (_) {}
       previous.disabled = true;
       next.disabled = true;
-      label.textContent = `Pose ${nextIndex + 1} / ${prepared.poseCount}`;
+      label.textContent = `${controlLabel} ${nextIndex + 1} / ${prepared.poseCount}`;
       try {
         if (prepared.nativeTrajectoryControls) {
           const switched = await setNativeTrajectoryPose(nextIndex, prepared.poseCount);
@@ -4114,10 +4378,10 @@
         }
         notifyDockingPoseChanged(activePose, prepared);
       } catch (error) {
-        try { sessionStorage.setItem(dockingPoseStorageKey(activeConfig), String(previousIndex)); } catch (_) {}
+        try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(previousIndex)); } catch (_) {}
         activePose = previousIndex;
         updateControls();
-        setStatus(`[web] Could not switch docking pose.\n\n${error?.message || String(error)}`, 'error');
+        setStatus(`[web] Could not switch ${controlLabelLower}.\n\n${error?.message || String(error)}`, 'error');
         // eslint-disable-next-line no-console
         console.error(error);
       }
@@ -4176,8 +4440,28 @@
         void setPose(activePose + direction);
       });
     };
+    const flushPendingSliderInput = () => {
+      if (sliderInputBusy || pendingSliderIndex === null) return;
+      const nextIndex = pendingSliderIndex;
+      pendingSliderIndex = null;
+      sliderInputBusy = true;
+      void setPose(nextIndex).finally(() => {
+        sliderInputBusy = false;
+        flushPendingSliderInput();
+      });
+    };
+    const scheduleSliderInputPose = (index) => {
+      pendingSliderIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
+      if (sliderInputTimer) clearTimeout(sliderInputTimer);
+      sliderInputTimer = window.setTimeout(() => {
+        sliderInputTimer = null;
+        flushPendingSliderInput();
+      }, 24);
+    };
     animation.addEventListener('click', () => {
-      setAnimationOptionsOpen(true);
+      const open = !isAnimationOptionsOpen();
+      setAnimationOptionsOpen(open);
+      if (!open) return;
       const button = nativeAnimationSelectButton();
       if (button && !button.disabled && button.getAttribute('aria-disabled') !== 'true') {
         button.click();
@@ -4188,26 +4472,39 @@
     bindPoseStepButton(previous, -1);
     bindPoseStepButton(next, 1);
     loop.addEventListener('click', () => {
-      if (loopTimer) {
+      if (loopActive) {
         setLoopActive(false);
         return;
       }
       setLoopActive(true);
-      loopTimer = window.setInterval(() => {
-        if (loopBusy) return;
-        loopBusy = true;
-        const nextIndex = activePose >= prepared.poseCount - 1 ? 0 : activePose + 1;
-        void setPose(nextIndex).finally(() => {
-          loopBusy = false;
-        });
-      }, 1200);
+      scheduleLoopStep();
+    });
+    speed.addEventListener('change', () => {
+      const delay = loopDelayMs();
+      const fps = trajectoryDelayToFps(delay, prepared);
+      speed.value = formatTrajectoryFps(fps);
+      try { localStorage.setItem(trajectoryLoopFpsStorageKey(activeConfig, prepared), String(fps)); } catch (_) {}
+      if (!loopActive) return;
+      setLoopActive(false);
+      loop.click();
     });
     slider.addEventListener('input', () => {
       const previewIndex = Math.max(0, Math.min(prepared.poseCount - 1, Number(slider.value) - 1));
-      label.textContent = `Pose ${previewIndex + 1} / ${prepared.poseCount}`;
+      label.textContent = `${controlLabel} ${previewIndex + 1} / ${prepared.poseCount}`;
+      if (prepared.nativeTrajectoryControls) scheduleSliderInputPose(previewIndex);
     });
     slider.addEventListener('change', () => {
-      void setPose(Number(slider.value) - 1);
+      const nextIndex = Math.max(0, Math.min(prepared.poseCount - 1, Number(slider.value) - 1));
+      if (prepared.nativeTrajectoryControls) {
+        if (sliderInputTimer) {
+          clearTimeout(sliderInputTimer);
+          sliderInputTimer = null;
+        }
+        pendingSliderIndex = nextIndex;
+        flushPendingSliderInput();
+        return;
+      }
+      void setPose(nextIndex);
     });
     const onKeyDown = (event) => {
       if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
@@ -4223,7 +4520,7 @@
     window.addEventListener('keydown', onKeyDown);
     dockingPoseKeydownDisposer = () => window.removeEventListener('keydown', onKeyDown);
     mainRow.append(animation, previous, label, next);
-    animationRow.append(loop, slider);
+    animationRow.append(speed, loop, slider);
     root.append(mainRow, animationRow);
     document.body.appendChild(root);
     restoreDockingPoseControlsPosition(root);
@@ -4242,6 +4539,11 @@
     }
     dockingPoseControlsDisposer = () => {
       stopPoseRepeat();
+      if (sliderInputTimer) {
+        clearTimeout(sliderInputTimer);
+        sliderInputTimer = null;
+      }
+      pendingSliderIndex = null;
       setLoopActive(false);
       syncDisposer?.();
       dragDisposer?.();
@@ -4320,8 +4622,9 @@
   function currentDockingPoseSource(prepared) {
     const poses = Array.isArray(prepared?.poses) ? prepared.poses : [];
     if (!poses.length) return null;
-    const index = prepared?.nativeTrajectoryControls
-      ? readNativeTrajectoryPosition(poses.length)
+    const position = prepared?.nativeTrajectoryControls ? readNativeTrajectoryPosition(poses.length) : null;
+    const index = position
+      ? position.index
       : Math.max(0, Math.min(poses.length - 1, Number(prepared?.activePose || 0)));
     return poses[index] || poses[0] || null;
   }

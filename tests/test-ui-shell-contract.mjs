@@ -75,6 +75,7 @@ const [
   shortcutDocs,
   styles,
   gridCss,
+  gridUi,
   gridViewer,
   previewViewer,
   previewShell,
@@ -85,6 +86,7 @@ const [
   buildDevScript,
   remoteCheckScript,
   patchWebAssetsScript,
+  desmondPreviewExtract,
 ] = await Promise.all([
   source('apps/desktop/index.html'),
   source('apps/desktop/src/App.tsx'),
@@ -153,6 +155,7 @@ const [
   source('docs/keyboard-shortcuts.md'),
   source('apps/desktop/src/styles.css'),
   source('PreviewExtension/Web/grid.css'),
+  source('apps/desktop/src/preview-grid/grid-ui.tsx'),
   source('PreviewExtension/Web/grid-viewer.js'),
   source('PreviewExtension/Web/viewer.js'),
   source('PreviewExtension/Web/viewer-shell.js'),
@@ -163,6 +166,7 @@ const [
   source('scripts/build-dev.sh'),
   source('scripts/check-remote.sh'),
   source('scripts/patch-web-assets.sh'),
+  source('scripts/desmond_preview_extract.py'),
 ]);
 const viewerShell = previewShell;
 const viewer = previewViewer;
@@ -315,8 +319,14 @@ assert.match(browserDevDocuments, /return normalized === "molstar" && externalMo
 assert.match(browserDevDocuments, /requestedRenderer: normalizeRendererMode\(preferences\.rendererMode\)/);
 assert.match(browserDevDocuments, /sourcePath: path/);
 assert.match(browserDevDocuments, /xyzrenderEndpoint: "\/__burette\/xyzrender"/);
-assert.match(browserDevDocuments, /const shouldOpenXyzTrajectoryInMolstar = xyzFrameCount > 1 && requestedMode === "auto";/);
+assert.match(browserDevDocuments, /const pdbModelCount = runtimeFormat\.molstarFormat === "pdb" && !runtimeFormat\.binary \? countPdbModels\(text\) : 0;/);
+assert.match(browserDevDocuments, /const trajectoryFrameCount = Math\.max\(xyzFrameCount, pdbModelCount\);/);
+assert.match(browserDevDocuments, /const shouldOpenTrajectoryInMolstar = trajectoryFrameCount > 1 && requestedMode === "auto";/);
 assert.match(browserDevDocuments, /function countXyzFrames\(text: string\)/);
+assert.match(browserDevDocuments, /function countPdbModels\(text: string\)/);
+assert.match(browserDevDocuments, /requestBrowserDevDesmondPreview/);
+assert.match(browserDevDocuments, /\/__burette\/desmond-preview\?path=/);
+assert.match(browserDevDocuments, /`\$\{path\}\.desmond-preview\.pdb`/);
 assert.match(viteConfig, /return Number\.isFinite\(number\) && number > 0 \? number : null;/);
 assert.match(viteConfig, /base: "\.\/"/);
 assert.doesNotMatch(viteConfig, /const KETCHER_CHUNK_PACKAGES = \[/);
@@ -378,6 +388,15 @@ assert.match(patchWebAssetsScript, /WEB ASSET PATCH SUCCEEDED/);
 assert.doesNotMatch(patchWebAssetsScript, /xcodebuild/);
 assert.doesNotMatch(patchWebAssetsScript, /cargo build/);
 assert.doesNotMatch(patchWebAssetsScript, /build:tauri/);
+assert.match(desmondPreviewExtract, /from schrodinger\.application\.desmond\.packages import topo, traj/);
+assert.match(desmondPreviewExtract, /def resolve_inputs/);
+assert.match(desmondPreviewExtract, /casebook_trj_candidates/);
+assert.match(desmondPreviewExtract, /BACKBONE_NAMES = \{"N", "CA", "C", "O", "P"\}/);
+assert.match(desmondPreviewExtract, /LIPID_RESIDUES = \{"POPC", "POPE", "POPG", "POPS", "DPPC", "DOPC", "CHL", "CHOL"\}/);
+assert.match(desmondPreviewExtract, /ligand_or_ion_heavy = \[/);
+assert.match(desmondPreviewExtract, /lipid_heavy = \[/);
+assert.match(desmondPreviewExtract, /parser\.add_argument\("--frames"/);
+assert.match(desmondPreviewExtract, /parser\.add_argument\("--output"/);
 assert.match(viteConfig, /plugins: \[react\(\), ketcherRaphaelRequireShimPlugin\(\), deferKetcherCssPlugin\(\), browserDevXyzrenderPlugin\(\)\]/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "BurettePreviewSamples"\)/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "xyzrender-main"\)/);
@@ -387,6 +406,12 @@ assert.match(viteConfig, /const RDKIT_WASM_PATH = join\(repoRoot, "PreviewExtens
 assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/rdkit-wasm"/);
 assert.match(viteConfig, /res\.setHeader\("Content-Type", "application\/wasm"\)/);
 assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/read-file"/);
+assert.match(viteConfig, /const SCHRODINGER_RUN = "\/opt\/schrodinger\/suites2026-1\/run"/);
+assert.match(viteConfig, /desmond_preview_extract\.py/);
+assert.match(viteConfig, /"--frames", "30", "--atoms", "6000"/);
+assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/desmond-preview"/);
+assert.match(viteConfig, /function isDesmondPreviewCandidate/);
+assert.match(viteConfig, /"dtr"/);
 assert.match(viteConfig, /function isDevFileReadAllowed\(path: string\)/);
 assert.match(viteConfig, /async function collectDefaultDevFiles\(\)/);
 assert.match(viteConfig, /if \(path\.endsWith\("\/no-molecule-column\.csv"\)\) return;/);
@@ -806,7 +831,7 @@ assert.match(gridCss, /\.buret-molecule-picture \{[^}]*min-width: 0;/s);
 assert.doesNotMatch(gridCss, /\.buret-molecule-picture \{[^}]*linear-gradient/s);
 assert.match(gridCss, /\.buret-grid-toolbar \{[^}]*position: sticky;/s);
 assert.match(gridCss, /\.buret-grid-toolbar \{[^}]*top: 0;/s);
-assert.match(gridCss, /\.buret-grid-toolbar \{[^}]*background: var\(--buret-bg\);/s);
+assert.match(gridCss, /\.buret-grid-toolbar \{[^}]*background: color-mix\(in srgb, var\(--buret-bg\) 92%, transparent\);/s);
 assert.doesNotMatch(gridCss, /\.buret-grid-toolbar \{[^}]*backdrop-filter:/s);
 assert.doesNotMatch(gridCss, /\.buret-grid-toolbar \{[^}]*-webkit-backdrop-filter:/s);
 assert.match(gridCss, /html,\s*body,\s*#app \{[^}]*overflow-anchor: none;/s);
@@ -1503,8 +1528,8 @@ assert.match(instance, /Burette Dev \$\{devInstanceSuffix\}/);
 assert.match(instance, /"8a18"/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
-assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v91"/);
-assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v18"/);
+assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v94"/);
+assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v34"/);
 assert.match(browserDevDocuments, /const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT = 1500/);
 assert.match(browserDevDocuments, /if \(document\.renderer === "grid2d"\) return !document\.runtimePath\.includes\(GRID_ASSET_VERSION\);/);
 assert.match(browserDevDocuments, /if \(!document\.runtimePath\.includes\(VIEWER_ASSET_VERSION\)\) return true;/);
@@ -1576,7 +1601,10 @@ assert.match(previewRuntimeViewer, /const KETCHER_EDIT_MAX_BYTES: usize = 1024 \
 assert.match(previewRuntimeViewer, /const KETCHER_EDIT_MAX_ATOMS: usize = 300;/);
 assert.match(previewRuntimeViewer, /fn ketcher_edit_config\(/);
 assert.match(previewRuntimeViewer, /"ketcherEditable": true/);
-assert.match(browserDevDocuments, /shouldOpenXyzTrajectoryInMolstar[\s\S]*\? "molstar"[\s\S]*xyzrenderAvailable \? defaultRendererModeForDocument\(extension, requestedMode, reloadOptions\) : "molstar"/);
+assert.match(browserDevDocuments, /shouldOpenTrajectoryInMolstar[\s\S]*\? "molstar"[\s\S]*xyzrenderAvailable \? defaultRendererModeForDocument\(extension, requestedMode, reloadOptions\) : "molstar"/);
+assert.match(browserDevDocuments, /function defaultMolstarStyleForDocument\(/);
+assert.match(browserDevDocuments, /return trajectoryFrameCount > 1 \? "default" : preferences\.molstarStyle;/);
+assert.match(browserDevDocuments, /const molstarStyle = defaultMolstarStyleForDocument\(preferences, trajectoryFrameCount\);/);
 assert.match(browserDevDocuments, /trajectoryControls: renderer === "molstar" && trajectoryFrameCount > 1/);
 assert.match(previewViewController, /let isXYZTrajectory = \(xyzPayload\?\.frameCount \?\? 0\) > 1/);
 assert.match(previewViewController, /requestedRendererMode == BurreteRendererMode\.auto/);
@@ -1746,6 +1774,12 @@ assert.match(previewViewer, /\.buret-xyzrender-resize-ne,\s*\.buret-xyzrender-re
 assert.match(previewViewer, /if \(region === 'left'\) layoutState\.left = layoutState\.left === 'full' \? 'hidden' : 'full'/);
 assert.match(previewViewer, /await plugin\.builders\.structure\.hierarchy\.applyPreset\(trajectory, 'default'\)/);
 assert.match(previewViewer, /await applyMolstarStyle\(viewer, configuredMolstarStyle\(activeConfig\)\)/);
+assert.match(previewViewer, /function isMolstarWaterComponent\(component\)/);
+assert.match(previewViewer, /key\.split\(','\)\.includes\('water'\)/);
+assert.match(previewViewer, /async function applyMolstarWaterLineRepresentation\(viewer\)/);
+assert.match(previewViewer, /await plugin\.managers\.structure\.component\.removeRepresentations\(waterComponents\)/);
+assert.match(previewViewer, /type: 'line',\s*typeParams: \{\s*alpha: 0\.6,\s*visuals: \['intra-bond', 'element-point'\]\s*\},\s*color: 'element-symbol'/s);
+assert.match(previewViewer, /await applyMolstarStyle\(viewer, configuredMolstarStyle\(activeConfig\)\);\s*await applyMolstarWaterLineRepresentation\(viewer\);/);
 assert.match(previewViewer, /plugin\.managers\.structure\.component\.setOptions\(\{\s*\.\.\.plugin\.managers\.structure\.component\.state\.options,\s*ignoreLight: true\s*\}\)/s);
 assert.match(previewViewer, /postprocessing:\s*\{\s*outline:/s);
 assert.match(previewViewer, /loadPreparedStructure\(viewer, prepared\)[\s\S]*?applyLayoutState\(viewer\);[\s\S]*?notifyStructureLoaded/);
@@ -1890,36 +1924,91 @@ assert.match(previewRuntimeCss, /\.buret-molecule-context-menu button:hover,/);
 assert.match(previewRuntimeCss, /\.buret-xyzrender-popover \{[\s\S]*border: 0;/);
 assert.match(previewViewer, /function readNativeTrajectoryPosition\(expectedCount\)/);
 assert.match(previewViewer, /function nativeAnimationSelectButton\(\)/);
+assert.match(previewViewer, /function trajectoryControlsForPrepared\(prepared\)/);
+assert.match(previewViewer, /const label = activeConfig\?\.sdfPosePager === true \? 'Pose' : 'Model'/);
+assert.match(previewViewer, /installDockingPoseControls\(viewer, trajectoryControlsForPrepared\(prepared\)\)/);
+assert.match(previewViewer, /function minimumTrajectoryLoopDelay\(prepared\)/);
+assert.match(previewViewer, /return prepared\?\.nativeTrajectoryControls \? 40 : 300/);
+assert.match(previewViewer, /function minimumTrajectoryLoopTimerDelay\(prepared\)/);
+assert.match(previewViewer, /return prepared\?\.nativeTrajectoryControls \? 8 : 60/);
+assert.match(previewViewer, /const DEFAULT_TRAJECTORY_LOOP_FPS = 2/);
+assert.match(previewViewer, /\.fps\.v1`/);
+assert.match(previewViewer, /function maximumTrajectoryLoopFps\(prepared\)/);
+assert.match(previewViewer, /function trajectoryFpsToDelay\(value, prepared\)/);
+assert.match(previewViewer, /return Math\.max\(minimumTrajectoryLoopDelay\(prepared\), Math\.round\(1000 \/ clamped\)\)/);
+assert.match(previewViewer, /function trajectoryDelayToFps\(delayMs, prepared\)/);
 assert.match(previewViewer, /animation\.textContent = '⏯'/);
+assert.match(previewViewer, /animation\.setAttribute\('aria-expanded', 'false'\)/);
 assert.match(previewViewer, /setAnimationOptionsOpen\(true\)/);
+assert.match(previewViewer, /const isAnimationOptionsOpen = \(\) => root\.classList\.contains\('buret-docking-poses-animation-open'\)/);
 assert.match(previewViewer, /bindPoseStepButton\(previous, -1\)/);
 assert.match(previewViewer, /bindPoseStepButton\(next, 1\)/);
 assert.match(previewViewer, /poseRepeatTimer = window\.setInterval\(\(\) => repeatPoseStep\(direction\), 320\)/);
 assert.match(previewViewer, /function nativeTrajectoryStepButton\(direction\)/);
+assert.match(previewViewer, /function readNativeTrajectoryPositionFromDom\(expectedCount\)/);
+assert.match(previewViewer, /function nativeTrajectoryFrameCount\(plugin, cell\)/);
+assert.match(previewViewer, /function nativeTrajectoryModelTransform\(expectedCount = 0\)/);
+assert.match(previewViewer, /data\.cells\?\.forEach\?\.\(cell => \{/);
+assert.match(previewViewer, /transformerId !== 'model-from-trajectory' && !transformerId\.endsWith\('\.model-from-trajectory'\)/);
+assert.match(previewViewer, /async function setNativeTrajectoryPoseDirect\(index, poseCount\)/);
+assert.match(previewViewer, /plugin\.state\.updateTransform\(/);
+assert.match(previewViewer, /\{ \.\.\.transform\.params, modelIndex: target \}/);
 assert.match(previewViewer, /async function setNativeTrajectoryPose\(index, poseCount\)/);
+assert.match(previewViewer, /if \(await setNativeTrajectoryPoseDirect\(target, poseCount\)\) return true;/);
 assert.match(previewViewer, /if \(prepared\.nativeTrajectoryControls\) \{/);
 assert.match(previewViewer, /const switched = await setNativeTrajectoryPose\(nextIndex, prepared\.poseCount\)/);
 assert.match(previewViewer, /loop\.textContent = 'Loop'/);
+assert.match(previewViewer, /speed\.className = 'buret-docking-pose-speed'/);
+assert.match(previewViewer, /speed\.type = 'number'/);
+assert.match(previewViewer, /speed\.setAttribute\('aria-label', `\$\{controlLabel\} loop frames per second`\)/);
+assert.match(previewViewer, /speed\.max = formatTrajectoryFps\(maximumTrajectoryLoopFps\(prepared\)\)/);
+assert.match(previewViewer, /speed\.inputMode = 'decimal'/);
+assert.match(previewViewer, /speed\.value = formatTrajectoryFps\(readTrajectoryLoopFps\(activeConfig, prepared\)\)/);
+assert.match(previewViewer, /speed\.title = 'Frames per second \(FPS\)'/);
+assert.match(previewViewer, /speed\.addEventListener\('change', \(\) => \{/);
+assert.match(previewViewer, /localStorage\.setItem\(trajectoryLoopFpsStorageKey\(activeConfig, prepared\), String\(fps\)\)/);
 assert.match(previewViewer, /loop\.addEventListener\('click', \(\) => \{/);
-assert.match(previewViewer, /loopTimer = window\.setInterval\(\(\) => \{/);
+assert.match(previewViewer, /let loopActive = false/);
+assert.match(previewViewer, /loopActive = Boolean\(active\)/);
+assert.match(previewViewer, /const open = !isAnimationOptionsOpen\(\);\s*setAnimationOptionsOpen\(open\);\s*if \(!open\) return;/);
+assert.match(previewViewer, /const loopTargetIndex = \(\) => \{/);
+assert.match(previewViewer, /const frameOffset = Math\.floor\(elapsed \/ delay\)/);
+assert.match(previewViewer, /const scheduleLoopStep = \(delayMs = loopNextDelay\(\)\) => \{/);
+assert.match(previewViewer, /loopTimer = window\.setTimeout\(\(\) => \{/);
+assert.match(previewViewer, /const nextIndex = loopTargetIndex\(\)/);
+assert.match(previewViewer, /if \(nextIndex === activePose\) \{/);
 assert.match(previewViewer, /slider\.className = 'buret-docking-pose-slider'/);
+assert.match(previewViewer, /const scheduleSliderInputPose = \(index\) => \{/);
+assert.match(previewViewer, /if \(prepared\.nativeTrajectoryControls\) scheduleSliderInputPose\(previewIndex\)/);
 assert.match(previewViewer, /slider\.addEventListener\('change', \(\) => \{/);
 assert.match(previewViewer, /function installNativeTrajectoryPoseSync\(poseCount, onPoseChange\)/);
-assert.match(previewViewer, /const DOCKING_POSE_POSITION_VERSION = '2'/);
+assert.match(previewViewer, /state\.events\.changed\.subscribe\(sync\)/);
+assert.match(previewViewer, /const DOCKING_POSE_POSITION_VERSION = '3'/);
 assert.match(previewViewer, /function initDockingPoseControlsDrag\(root\)/);
-assert.match(previewViewer, /window\.localStorage && window\.localStorage\.setItem\('buret\.dockingPoseControls\.position'/);
+assert.match(previewViewer, /window\.localStorage && window\.localStorage\.setItem\('buret\.dockingPoseControls\.position', JSON\.stringify\(\{ left: rect\.left, bottom: window\.innerHeight - rect\.bottom, mode: 'custom' \}\)\)/);
 assert.match(previewViewer, /root\.classList\.add\('buret-docking-poses-dragging'\)/);
 assert.match(previewViewer, /root\.dataset\.defaultPosition = '0';\s*moveDockingPoseControls\(root, event\.clientX - drag\.dx, event\.clientY - drag\.dy\);/);
 assert.match(previewViewer, /window\.addEventListener\('pointermove', onPointerMove, true\)/);
 assert.match(previewViewer, /window\.addEventListener\('pointerup', finishDrag, true\)/);
 assert.match(previewViewer, /function stableTextHash\(value\)/);
-assert.match(previewViewer, /sessionStorage\.setItem\(dockingPoseStorageKey\(activeConfig\), String\(nextIndex\)\)/);
-assert.match(previewViewer, /sessionStorage\.setItem\(dockingPoseStorageKey\(activeConfig\), String\(previousIndex\)\)/);
-assert.match(previewViewer, /Could not switch docking pose/);
+assert.match(previewViewer, /sessionStorage\.setItem\(trajectoryControlStorageKey\(activeConfig, prepared\), String\(nextIndex\)\)/);
+assert.match(previewViewer, /sessionStorage\.setItem\(trajectoryControlStorageKey\(activeConfig, prepared\), String\(previousIndex\)\)/);
+assert.match(previewViewer, /Could not switch \$\{controlLabelLower\}/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses \{/);
 assert.match(previewRuntimeCss, /body\.buret-docking-pose-controls-active \.msp-animation-viewport-controls,\s*body\.buret-docking-pose-controls-active \.msp-traj-controls \{/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-slider \{/);
-assert.match(previewRuntimeCss, /\.buret-docking-poses\.buret-docking-poses-animation-open \.buret-docking-pose-animation \{/);
+assert.match(previewRuntimeCss, /\.buret-docking-pose-speed \{/);
+assert.match(previewRuntimeCss, /\.buret-docking-pose-speed \{[\s\S]*appearance: textfield;/);
+assert.match(previewRuntimeCss, /\.buret-docking-pose-speed \{[\s\S]*width: 44px;/);
+assert.match(previewRuntimeCss, /\.buret-docking-pose-speed::-webkit-inner-spin-button,\s*\.buret-docking-pose-speed::-webkit-outer-spin-button \{[\s\S]*-webkit-appearance: none;/);
+assert.match(previewRuntimeCss, /\.buret-docking-pose-slider \{[\s\S]*flex: 0 0 110px;/);
+assert.match(previewViewer, /animationRow\.append\(speed, loop, slider\)/);
+assert.match(previewViewer, /root\.style\.bottom = Math\.max\(margin, Math\.round\(window\.innerHeight - clampedTop - height\)\) \+ 'px'/);
+assert.match(previewViewer, /if \(saved\.mode === 'custom' && Number\.isFinite\(saved\.left\) && Number\.isFinite\(saved\.bottom\)\) \{/);
+assert.match(previewRuntimeCss, /\.buret-docking-poses \{[\s\S]*gap: 0;/);
+assert.match(previewRuntimeCss, /\.buret-docking-pose-animation \{[\s\S]*max-height: 0;[\s\S]*margin-top: 0;[\s\S]*opacity: 0;[\s\S]*transform: translateY\(6px\);[\s\S]*pointer-events: none;[\s\S]*transition:/);
+assert.match(previewRuntimeCss, /\.buret-docking-poses\.buret-docking-poses-animation-open \.buret-docking-pose-animation \{[\s\S]*max-height: 34px;[\s\S]*margin-top: 6px;[\s\S]*opacity: 1;[\s\S]*transform: translateY\(0\);[\s\S]*pointer-events: auto;/);
+assert.match(previewRuntimeCss, /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*\.buret-docking-pose-animation \{[\s\S]*transition: none;/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses \{[\s\S]*cursor: grab;[\s\S]*touch-action: none;[\s\S]*user-select: none;/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses\.buret-docking-poses-dragging \{[\s\S]*cursor: grabbing;[\s\S]*transition: none;/);
 assert.match(previewViewer, /root\.addEventListener\('wheel', onWheel, \{ passive: false \}\)/);
@@ -1998,8 +2087,8 @@ assert.match(gridViewer, /dirtyReason: ''/);
 assert.match(gridViewer, /rowPatches: new Map\(\)/);
 assert.match(gridViewer, /body\.type === 'gridSavedAs'/);
 assert.match(gridViewer, /body\.type === 'gridSaveAsError'/);
-assert.match(gridViewer, /<button id="save-grid-as" type="button">Save As\.\.\.<\/button>/);
-assert.match(gridViewer, /document\.getElementById\('save-grid-as'\)\?\.addEventListener\('click', \(\) => saveGridAs\(cfg\)\)/);
+assert.match(gridUi, /<button id="save-grid-as" type="button" onClick=\{props\.onSaveGridAs\}>Save As\.\.\.<\/button>/);
+assert.match(gridViewer, /onSaveGridAs\(\) \{ saveGridAs\(cfg\); \}/);
 assert.match(gridViewer, /markGridDirty\('appended molecules'\)/);
 assert.match(gridViewer, /function saveGridAs\(cfg\)/);
 assert.match(gridViewer, /post\('saveGridAs'/);
@@ -2075,9 +2164,9 @@ assert.match(gridViewer, /window\.parent\?\.postMessage\(\{ source: 'burrete-gri
 assert.match(gridViewer, /hostRequest\('gridFetchPage'/);
 assert.match(gridViewer, /hostRequest\('renderXyzrenderCard'/);
 assert.match(gridViewer, /body\.type === 'gridPage' \|\| body\.type === 'xyzrenderCard'/);
-assert.match(gridViewer, /buret-search-control buret-filter-control/);
-assert.match(gridViewer, /aria-label="Search molecules and SMARTS"/);
-assert.match(gridViewer, /placeholder="\$\{caps\.substructureSearch \? 'name, SMILES, metadata, SMARTS' : 'name, SMILES, metadata'\}"/);
+assert.match(gridUi, /buret-search-control buret-filter-control/);
+assert.match(gridUi, /aria-label="Search molecules and SMARTS"/);
+assert.match(gridUi, /placeholder=\{searchPlaceholder\}/);
 assert.match(gridViewer, /function queryLooksLikeExplicitSMARTS\(value\)/);
 assert.match(gridViewer, /function queryLooksLikeSMILESFragment\(value\)/);
 assert.match(gridViewer, /function queryLooksLikeSMARTS\(value\)/);
@@ -2160,10 +2249,10 @@ assert.match(gridCss, /\.buret-card\.buret-card-resizing \.buret-card-resize-han
 assert.doesNotMatch(gridViewer, /buret-selected-indicator/);
 assert.match(gridViewer, /selectionAnchorIndex: null/);
 assert.match(gridViewer, /selectionKeydownHandler: null/);
-assert.match(gridViewer, /id="select-all"/);
-assert.match(gridViewer, /id="clear-selection"/);
-assert.match(gridViewer, /id="rdkit-use-input-coords"/);
-assert.match(gridViewer, /Use file coords/);
+assert.match(gridUi, /id="select-all"/);
+assert.match(gridUi, /id="clear-selection"/);
+assert.match(gridUi, /id="rdkit-use-input-coords"/);
+assert.match(gridUi, /Use file coords/);
 assert.match(gridViewer, /function initRdkitCoordinatesControl\(cfg\)/);
 assert.match(gridViewer, /function syncRdkitCoordinatesControl\(\)/);
 assert.match(gridViewer, /const hasInputCoordinates = hasInputCoordinateRows\(\)/);
@@ -2192,12 +2281,25 @@ assert.doesNotMatch(gridViewer, /role="option" aria-selected="false"/);
 assert.match(gridViewer, /event\.key\.toLowerCase\(\) === 'a'/);
 assert.match(gridViewer, /state\.selected\.clear\(\)/);
 assert.match(gridCss, /--buret-control-height: 36px;/);
+assert.match(gridCss, /--buret-control-surface: rgba\(255, 255, 255, 0\.075\);/);
+assert.match(gridCss, /--buret-control-hover: rgba\(255, 255, 255, 0\.11\);/);
+assert.match(gridCss, /--buret-control-active: rgba\(255, 255, 255, 0\.14\);/);
+assert.match(gridCss, /button,[\s\S]*\.buret-grid-toolbar input\[type="search"\],[\s\S]*\.buret-grid-toolbar select \{[\s\S]*background: var\(--buret-control-surface\);/);
+assert.match(gridCss, /button,[\s\S]*\.buret-grid-toolbar input\[type="search"\],[\s\S]*\.buret-grid-toolbar select \{[\s\S]*font: 500 13px\/1\.2 -apple-system/);
+assert.match(gridCss, /button:disabled \{[\s\S]*color: var\(--buret-faint\);[\s\S]*background: var\(--buret-control-surface\);[\s\S]*opacity: 1;/);
 assert.match(gridCss, /--buret-segment-height: 28px;/);
 assert.match(gridCss, /\.buret-selection-actions\s*\{[^}]*box-sizing: border-box;[^}]*height: var\(--buret-control-height\);/s);
 assert.match(gridCss, /\.buret-selection-actions\s*\{[^}]*display: inline-flex;/s);
+assert.match(gridCss, /\.buret-selection-actions\s*\{[^}]*background: transparent;/s);
 assert.match(gridCss, /\.buret-grid-card-renderer-switch\s*\{[^}]*box-sizing: border-box;[^}]*height: var\(--buret-control-height\);/s);
+assert.match(gridCss, /\.buret-grid-card-renderer-switch button\s*\{[^}]*background: var\(--buret-control-surface\);/s);
+assert.match(gridCss, /\.buret-grid-card-renderer-switch button:hover,[\s\S]*\.buret-grid-card-renderer-switch button\.active\s*\{[^}]*background: var\(--buret-control-active\);/s);
 assert.match(gridCss, /\.buret-grid-toolbar \.buret-rdkit-coords-control\s*\{[^}]*display: inline-flex;/s);
 assert.match(gridCss, /\.buret-grid-toolbar \.buret-rdkit-coords-control\s*\{[^}]*box-sizing: border-box;[^}]*height: var\(--buret-control-height\);/s);
+assert.match(gridCss, /\.buret-grid-toolbar \.buret-rdkit-coords-control\s*\{[^}]*background: var\(--buret-control-surface\);/s);
+assert.match(gridCss, /\.buret-grid-renderer-switch\s*\{[^}]*background: transparent;/s);
+assert.match(gridCss, /\.buret-grid-renderer-switch button\s*\{[^}]*background: var\(--buret-control-surface\);/s);
+assert.match(gridCss, /\.buret-grid-renderer-switch button:hover,[\s\S]*\.buret-grid-renderer-switch button\.active\s*\{[^}]*background: var\(--buret-control-active\);/s);
 assert.match(gridCss, /\.buret-grid-toolbar \.buret-rdkit-coords-control\[hidden\]\s*\{[^}]*display: none;/s);
 assert.match(gridCss, /\.buret-grid-toolbar \.buret-rdkit-coords-control:has\(input:checked\)\s*\{/);
 assert.match(gridCss, /\.buret-grid-toolbar \.buret-rdkit-coords-control\[aria-disabled="true"\]\s*\{[^}]*opacity: 0\.58;/s);
@@ -2270,14 +2372,16 @@ assert.match(gridViewer, /window\.clearTimeout\(state\.xyzrenderBatchTimer\)/);
 assert.match(gridViewer, /const preview = drawRdkitPlaceholder\(row\);/);
 assert.doesNotMatch(gridViewer, /function drawXyzrenderPlaceholder\(row\)/);
 assert.doesNotMatch(gridViewer, /target\.classList\.remove\('buret-xyzrender-preview'\)/);
-assert.match(gridViewer, /data-buret-grid-card-renderer="rdkit"/);
-assert.match(gridViewer, /data-buret-grid-card-renderer="xyzrender"/);
+assert.match(gridUi, /data-buret-grid-card-renderer="rdkit"/);
+assert.match(gridUi, /data-buret-grid-card-renderer="xyzrender"/);
 assert.match(gridViewer, /const value = Number\(cfg\.pageSize \|\| 720\)/);
 assert.match(browserDevDocuments, /pageSize: 720/);
 assert.match(gridViewer, /function setCardRenderer\(value, cfg\)/);
 assert.match(gridViewer, /function syncCardRendererSwitch\(\)/);
 assert.match(gridCss, /\.buret-grid-card-renderer-switch\s*\{/);
-assert.match(gridViewer, /data-buret-grid-renderer="molstar" data-buret-grid-sdf-poses data-buret-grid-docking>Molstar/);
+assert.match(gridUi, /data-buret-grid-renderer="molstar"/);
+assert.match(gridUi, /data-buret-grid-sdf-poses/);
+assert.match(gridUi, /data-buret-grid-docking/);
 assert.doesNotMatch(gridViewer, /data-buret-grid-renderer="xyzrender-external">xyzrender/);
 assert.match(gridViewer, /function requestSdfPoseDocument\(cfg\)/);
 assert.match(gridViewer, /setStatus\('\[grid\] Select one or more molecules before opening Molstar\.', 'error'\)/);
@@ -2349,6 +2453,8 @@ assert.match(gridCss, /\.buret-grid-molecule-context-menu \{/);
 assert.match(gridCss, /--buret-menu-surface: rgb\(244 244 246 \/ 0\.88\)/);
 assert.match(gridCss, /\.buret-grid-molecule-context-menu \{[\s\S]*border: 0;/);
 assert.match(gridCss, /\.buret-grid-molecule-context-menu \{[\s\S]*background: var\(--buret-menu-surface\);/);
+assert.match(gridCss, /\.buret-grid-molecule-context-menu button \{[\s\S]*display: flex;/);
+assert.match(gridCss, /\.buret-grid-molecule-context-menu button \{[\s\S]*font: 500 13px\/1\.2 -apple-system/);
 assert.match(gridCss, /\.buret-grid-molecule-context-menu button:hover,/);
 assert.match(gridCss, /\.buret-grid-molecule-context-menu button:hover,[\s\S]*background: color-mix\(in srgb, var\(--buret-text\) 8%, transparent\);/);
 assert.doesNotMatch(gridCss, /\.buret-grid-molecule-context-menu button:hover,[\s\S]*var\(--buret-accent\) 20%/);
@@ -2359,8 +2465,9 @@ assert.doesNotMatch(gridViewer, /return \{ extension: 'smi'/);
 assert.match(gridViewer, /fetch\(endpoint, \{/);
 assert.doesNotMatch(gridViewer, /if \(value === null \|\| value === undefined \|\| String\(value\)\.trim\(\) === ''\) return null;/);
 assert.doesNotMatch(gridViewer, /\{ value: 'flat', label: 'Flat' \}/);
-assert.match(gridViewer, /requestRendererSwitch\(button\.getAttribute\('data-buret-grid-renderer'\), cfg\)/);
 assert.match(gridViewer, /cfg\?\.quickLookViewer === true[\s\S]*post\('setRenderer', '\[grid\] Switch renderer to molstar\.', \{\s*value,/);
+assert.match(gridUi, /onClick=\{\(\) => props\.onRendererSwitch\("molstar"\)\}/);
+assert.match(gridViewer, /onRendererSwitch\(value\) \{ requestRendererSwitch\(value, cfg\); \}/);
 assert.match(gridViewer, /post\('setRenderer', `\[grid\] Switch renderer to \$\{value\}\.`, \{\s*value,\s*documentId: cfg\?\.documentId \|\| null\s*\}\)/);
 assert.match(gridViewer, /async function scanRemoteBySMARTS\(cfg, token\)/);
 assert.match(gridViewer, /function shouldCollectAllRemoteRows\(\)/);
@@ -2539,9 +2646,10 @@ assert.match(previewViewer, /point \? toStagePoint\(point\.x, point\.y\) : null/
 assert.match(previewViewer, /sdfGridButton\.addEventListener\('click', requestSdfGridDocument\)/);
 assert.match(previewViewer, /payload\.path = gridPath/);
 assert.match(previewViewer, /postHostMessage\(payload\)/);
-assert.match(previewViewer, /aria-label', 'Previous pose'/);
-assert.match(previewViewer, /aria-label', 'Next pose'/);
+assert.match(previewViewer, /aria-label', `Previous \$\{controlLabelLower\}`/);
+assert.match(previewViewer, /aria-label', `Next \$\{controlLabelLower\}`/);
 assert.match(previewViewer, /function notifyDockingPoseChanged\(activePose, prepared\)/);
+assert.match(previewViewer, /if \(prepared\?\.kind !== 'docking'\) return;/);
 assert.match(previewViewer, /type: 'dockingPoseChanged'/);
 assert.match(previewViewer, /const initialPose = activePose/);
 assert.match(previewViewer, /prepared\.nativeTrajectoryControls && initialPose > 0/);
