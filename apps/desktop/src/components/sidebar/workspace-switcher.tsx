@@ -1,8 +1,27 @@
 import { appInstanceLabel } from "../../lib/instance";
 import { RadixDropdownMenu } from "../radix-menu";
-import type { ShellActions } from "../types";
+import type { BuildInfo, ShellActions, ShellViewState } from "../types";
 
-export function WorkspaceSwitcher({ actions }: { actions: ShellActions }) {
+function buildLabel(info: BuildInfo) {
+  if (info.isBrowserDev) return `BROWSER DEV · v${info.version}`;
+  if (info.isDevBuild) return `DEV ${info.flavor ?? "local"} · v${info.version}`;
+  return `v${info.version}`;
+}
+
+function buildDetail(info: BuildInfo) {
+  const details = info.limitations.length > 0 ? info.limitations : info.notes;
+  return details.join(" · ");
+}
+
+export function WorkspaceSwitcher({ state, actions }: { state: ShellViewState; actions: ShellActions }) {
+  const buildInfo = state.buildInfo;
+  const buildTitle = [
+    `${buildInfo.name} ${buildLabel(buildInfo)}`,
+    buildInfo.identifier,
+    ...buildInfo.notes,
+    ...buildInfo.limitations,
+  ].filter(Boolean).join("\n");
+
   return (
     <div className="sidebar-footer">
       <RadixDropdownMenu
@@ -47,6 +66,14 @@ export function WorkspaceSwitcher({ actions }: { actions: ShellActions }) {
           </button>
         )}
       />
+      <div
+        className="sidebar-build-badge"
+        title={buildTitle}
+        aria-label={buildTitle}
+      >
+        <span className="sidebar-build-label">{buildLabel(buildInfo)}</span>
+        <span className="sidebar-build-detail">{buildDetail(buildInfo)}</span>
+      </div>
     </div>
   );
 }

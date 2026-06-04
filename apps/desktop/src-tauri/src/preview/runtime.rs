@@ -915,7 +915,7 @@ CARTESIAN COORDINATES (ANGSTROEM)
     }
 
     #[test]
-    fn grid_runtime_uses_rdkit_wasm_path_without_base64_script() {
+    fn grid_runtime_embeds_rdkit_wasm_binary_for_tauri_asset_protocol() {
         let app = mock_app_with_grid_registry();
         let preferences = viewer_preferences();
         let path = fixture_path("sdf/multi.sdf");
@@ -930,9 +930,11 @@ CARTESIAN COORDINATES (ANGSTROEM)
             .expect("runtime HTML should be written");
         let config = fs::read_to_string(runtime_dir.join("preview-config.js"))
             .expect("preview config should be written");
-        assert!(config.contains(r#""rdkitWasmPath":"../assets/rdkit/RDKit_minimal.wasm""#));
-        assert!(!runtime_dir.join("preview-rdkit-wasm.js").exists());
-        assert!(!html.contains("preview-rdkit-wasm.js"));
+        assert!(config.contains(r#""rdkitWasmPath":"asset://localhost/"#));
+        assert!(config.contains("RDKit_minimal.wasm"));
+        assert!(runtime_dir.join("RDKit_minimal.wasm").exists());
+        assert!(runtime_dir.join("preview-rdkit-wasm.js").exists());
+        assert!(html.contains("preview-rdkit-wasm.js"));
         assert!(html.contains("RDKit_minimal.js"));
 
         remove_runtime_artifacts(&document.runtime_path);
