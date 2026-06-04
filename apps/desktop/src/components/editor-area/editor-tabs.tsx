@@ -121,7 +121,7 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
     setDraggingTabId(null);
   }, [actions, clearDragActivation, removeMouseDragListeners]);
 
-  const startMouseTabReorder = useCallback((tabId: string, event: React.MouseEvent<HTMLButtonElement>) => {
+  const startMouseTabReorder = useCallback((tabId: string, tabHasStructurePath: boolean, event: React.MouseEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;
     removeMouseDragListeners();
     mouseDragRef.current = { tabId, startX: event.clientX, active: false };
@@ -138,7 +138,7 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
         drag.active = true;
         draggingTabIdRef.current = tabId;
         setDraggingTabId(tabId);
-        actions.setStructureDragActive(true);
+        if (tabHasStructurePath) actions.setStructureDragActive(true);
       }
       moveDraggedTab(tabId, moveEvent.clientX);
     };
@@ -353,7 +353,7 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
                     showTabMenu(event);
                     return;
                   }
-                  startMouseTabReorder(tab.id, event);
+                  startMouseTabReorder(tab.id, Boolean(tabPath), event);
                 }}
                 onClick={() => actions.selectTab(tab.id)}
                 onContextMenu={showTabMenu}
@@ -362,8 +362,10 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
                   setDraggingTabId(tab.id);
                   event.dataTransfer.effectAllowed = tabPath ? "copyMove" : "move";
                   event.dataTransfer.setData(TAB_DRAG_MIME, tab.id);
-                  if (tabPath) writeStructureDrag(event.dataTransfer, [tabPath]);
-                  actions.setStructureDragActive(true);
+                  if (tabPath) {
+                    writeStructureDrag(event.dataTransfer, [tabPath]);
+                    actions.setStructureDragActive(true);
+                  }
                 }}
                 onDragEnd={stopTabDrag}
                 onDragOver={(event) => {
