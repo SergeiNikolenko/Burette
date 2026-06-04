@@ -360,18 +360,31 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .tab-shell:focus-within .tab-close { opacity: 1; pointer-events: auto; transform: translate(0, -50%); }
 .tab-close:hover { color: var(--text-secondary); }
 .utility-tab { min-width: auto; }
-.workspace { position: relative; min-height: 0; flex: 1; display: flex; }
+.workspace { position: relative; min-height: 0; flex: 1; display: flex; overflow: hidden; }
 .sidebar-shell {
+  position: absolute;
+  inset: 0 auto 0 0;
   width: var(--sidebar-layout-width, 0px);
   min-width: 0;
   max-width: 420px;
   flex: 0 0 auto;
   overflow: hidden;
-  transition: width 140ms ease-out;
-  will-change: width;
+  pointer-events: none;
+  z-index: 2;
 }
 .sidebar-shell-inner {
   height: 100%;
+  opacity: 0;
+  transform: translateX(-16px);
+  transition: transform 140ms ease-out, opacity 100ms ease-out;
+  will-change: transform, opacity;
+}
+.app-shell[data-sidebar-open="true"] .sidebar-shell-inner {
+  opacity: 1;
+  transform: translateX(0);
+}
+.app-shell[data-sidebar-open="true"] .sidebar-shell {
+  pointer-events: auto;
 }
 .sidebar {
   position: relative;
@@ -911,11 +924,13 @@ kbd span { margin-left: 2px; }
   box-shadow: inset 0 0 0 1px var(--focus-ring);
 }
 .splitter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--sidebar-layout-width, 0px) - 4px);
   width: 8px;
-  flex: 0 0 8px;
-  margin-left: -4px;
-  margin-right: -4px;
-  position: relative;
+  flex: none;
+  margin: 0;
   z-index: 3;
   cursor: col-resize;
   touch-action: none;
