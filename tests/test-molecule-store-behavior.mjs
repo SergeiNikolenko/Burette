@@ -45,6 +45,7 @@ function resetStore() {
   storage.clear();
   useMoleculeStore.setState({
     documents: [],
+    textDocuments: [],
     tabs: [{ id: "tab-1", location: { kind: "launcher" }, back: [], forward: [] }],
     activeTabId: "tab-1",
     activeDocumentId: null,

@@ -1,4 +1,4 @@
-import type { FepSetupRequest, RecentStructure, ViewerDocument, ViewerPreferences } from "../types";
+import type { FepSetupRequest, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences } from "../types";
 import type { MoleculeTab } from "../stores/molecule-store";
 import type { StructureDragPayload } from "../lib/structure-drag";
 import type { UpdatePreferences, UpdateState } from "../update";
@@ -49,6 +49,7 @@ export type BuildInfo = {
 export type ShellActions = {
   chooseFiles: () => void | Promise<void>;
   openStructurePaths: (paths: string[]) => void | Promise<void>;
+  openPaths: (paths: string[]) => void | Promise<void>;
   openStructureRecords: (records: StructureDragPayload["records"]) => void | Promise<void>;
   openRecentStructure: (structure: RecentStructure) => void | Promise<void>;
   openMostRecentStructure: () => void | Promise<void>;
@@ -91,10 +92,13 @@ export type ShellActions = {
   saveMoleculeCollectionAs: (targetPath: string) => void | Promise<void>;
   revealActiveDocument: () => void | Promise<void>;
   revealDocument: (document: ViewerDocument) => void | Promise<void>;
+  revealPath: (path: string, label?: string) => void | Promise<void>;
   copyActiveDocumentPath: () => void | Promise<void>;
   copyDocumentPath: (document: ViewerDocument) => void | Promise<void>;
+  copyPath: (path: string, label?: string) => void | Promise<void>;
   showActiveDocumentMetadata: () => void | Promise<void>;
   showDocumentMetadata: (document: ViewerDocument) => void | Promise<void>;
+  showTextFileMetadata: (document: TextFileDocument) => void | Promise<void>;
   exportActivePreviewAsPng: () => void | Promise<void>;
   exportActivePreviewAsSvg: () => void | Promise<void>;
   setStructureDragActive: (active: boolean) => void;
@@ -112,6 +116,7 @@ export type ShellActions = {
 
 export type ShellViewState = {
   documents: ViewerDocument[];
+  textDocuments: TextFileDocument[];
   tabs: MoleculeTab[];
   activeTab: MoleculeTab | null;
   activeTabId: string | null;
