@@ -113,8 +113,6 @@
     if (kind === 'error' || window.BurreteDebug) return true;
     return text.startsWith('[web] Loading Mol* engine') ||
       text.startsWith('[web] Mol* engine loaded') ||
-      text.startsWith('[web] Loading Fast XYZ renderer') ||
-      text.startsWith('[web] Fast XYZ renderer loaded') ||
       text.startsWith('[web] Loading xyzrender artifact') ||
       text.startsWith('[web] WebGL viewer created') ||
       text.startsWith('[web] Parsing structure') ||
@@ -432,14 +430,6 @@
 
   function applyStaticRendererTheme() {
     const background = transparentBackground ? 'transparent' : canvasBackgroundCSS();
-    const fastRoot = document.querySelector('.buret-xyz-fast-root');
-    if (fastRoot) {
-      fastRoot.style.background = background;
-    }
-    const fastRect = document.querySelector('.buret-xyz-svg rect');
-    if (fastRect) {
-      fastRect.setAttribute('fill', background);
-    }
     const artifactRoot = document.querySelector('.buret-external-artifact-root');
     const artifactRect = document.querySelector('.buret-xyzrender-sheet-item-base .buret-xyzrender-sheet-item-body > svg > rect');
     const artifactBackgroundFill = resolveExternalArtifactBackgroundFill(artifactRect);
@@ -602,7 +592,6 @@
   }
 
   function rendererChoiceUnavailable(value, format, config, xyzrenderAvailable) {
-    if (value === 'xyz-fast') return format !== 'xyz';
     if (value === 'molstar') return config.molstarAvailable === false;
     if (value === 'xyzrender-external') return !xyzrenderAvailable || !canUseExternalXyzrender(format);
     return false;
@@ -768,10 +757,6 @@
     if (value === 'xyzrender-external') {
       return requestBrowserDevXyzrenderUpdate({ rendererSwitch: true });
     }
-    if (value === 'xyz-fast') {
-      void switchBrowserDevXyzFast();
-      return true;
-    }
     if (value === 'molstar') {
       void switchBrowserDevMolstar();
       return true;
@@ -803,32 +788,6 @@
       await startMolstar(nextConfig, cb);
     } catch (error) {
       setStatus(`Mol* renderer switch failed.\n\n${error && error.message || String(error)}`, 'error');
-    }
-  }
-
-  async function switchBrowserDevXyzFast() {
-    const config = activeConfig || window.BurreteConfig || {};
-    if (config.tauriViewer !== false) return;
-    const cb = window.BurreteCacheBuster || String(Date.now());
-    const nextConfig = {
-      ...config,
-      renderer: 'xyz-fast',
-      xyzrenderViewer: false,
-      externalArtifact: null,
-      xyzFast: {
-        ...(config.xyzFast || {}),
-        firstFrameOnly: true
-      }
-    };
-    activeConfig = nextConfig;
-    window.BurreteConfig = nextConfig;
-    xyzrenderInlineRequestSerial += 1;
-    applyConfigOptions(nextConfig);
-    try {
-      await ensureBrowserDevStructureData(nextConfig, cb);
-      await startXYZFast(nextConfig, cb);
-    } catch (error) {
-      setStatus(`Fast XYZ renderer switch failed.\n\n${error && error.message || String(error)}`, 'error');
     }
   }
 
@@ -2371,7 +2330,6 @@
 
   function normalizeRenderer(renderer) {
     const value = String(renderer || 'molstar').toLowerCase();
-    if (value === 'xyz-fast' || value === 'fast-xyz' || value === 'xyzfast') return 'xyz-fast';
     if (value === 'xyzrender-external' || value === 'external-xyzrender') return 'xyzrender-external';
     return 'molstar';
   }
@@ -2398,31 +2356,6 @@
       format: normalized,
       label: config.label || 'structure'
     };
-  }
-
-  async function startXYZFast(config, cb) {
-    disposeExternalArtifactInteractions();
-    const label = config.label || 'structure';
-    const size = describeBytes(config.byteCount);
-    setStatus(`[web] Loading Fast XYZ renderer…\n${label} (XYZ${size ? `, ${size}` : ''})`);
-    if (!window.BurreteXYZFast) {
-      await loadScript(appendCacheBuster(runtimeURL('BurreteXyzFastURL', './xyz-fast.js'), cb), 'Fast XYZ renderer', 10000);
-    }
-    if (!window.BurreteXYZFast || typeof window.BurreteXYZFast.render !== 'function') {
-      throw new Error('xyz-fast.js did not define window.BurreteXYZFast.render.');
-    }
-
-    setStatus(`[web] Fast XYZ renderer loaded. Rendering static preview…\n${label}`);
-    const container = document.getElementById('app');
-    const result = window.BurreteXYZFast.render({
-      container,
-      text: rawStructureData({ ...config, binary: false }),
-      config
-    });
-    initStaticRendererToolbar();
-    const fallback = config.externalRendererStatus?.status === 'fallback' ? `\nExternal xyzrender fallback: ${config.externalRendererStatus.message || 'not available'}` : '';
-    setStatus(`[web] Rendered ${label} with Fast XYZ SVG (${result.atoms} atoms, ${result.bonds} bonds)${fallback}`);
-    setTimeout(hideStatus, 450);
   }
 
   async function startExternalArtifact(config) {
@@ -4955,10 +4888,6 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     disposeExternalArtifactInteractions();
     debug('config=' + JSON.stringify(config));
     const renderer = normalizeRenderer(config.renderer);
-    if (renderer === 'xyz-fast') {
-      await startXYZFast(config, cb);
-      return;
-    }
     if (renderer === 'xyzrender-external') {
       await startExternalArtifact(config);
       return;

@@ -124,7 +124,7 @@
       selection: !!caps.selection,
       export: !!caps.export,
       substructureSearch: !!caps.substructureSearch,
-      rendererSwitch: cfg.appViewer === true && !!caps.rendererSwitch
+      rendererSwitch: (cfg.appViewer === true || cfg.quickLookViewer === true) && !!caps.rendererSwitch
     };
   }
 
@@ -583,6 +583,13 @@
   function requestRendererSwitch(renderer, cfg) {
     const value = normalizeRenderer(renderer);
     if (value === 'molstar') {
+      if (cfg?.quickLookViewer === true) {
+        post('setRenderer', '[grid] Switch renderer to molstar.', {
+          value,
+          documentId: cfg?.documentId || null
+        });
+        return;
+      }
       requestSdfPoseDocument(cfg);
       return;
     }

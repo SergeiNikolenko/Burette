@@ -1,9 +1,7 @@
 #[derive(Clone)]
 pub(crate) struct XyzPayload {
     pub(crate) data: Vec<u8>,
-    pub(crate) atom_count: Option<usize>,
     pub(crate) frame_count: Option<usize>,
-    pub(crate) comment: Option<String>,
 }
 
 pub(crate) fn xyz_first_frame(data: &[u8]) -> Option<XyzPayload> {
@@ -29,9 +27,7 @@ pub(crate) fn xyz_first_frame(data: &[u8]) -> Option<XyzPayload> {
     }
     Some(XyzPayload {
         data: first_frame.into_bytes(),
-        atom_count: Some(atom_count),
         frame_count: count_xyz_frames(&lines, start),
-        comment: lines.get(start + 1).map(|value| value.to_string()),
     })
 }
 
@@ -79,9 +75,7 @@ mod tests {
         )
         .expect("valid xyz should produce a payload");
 
-        assert_eq!(payload.atom_count, Some(2));
         assert_eq!(payload.frame_count, Some(2));
-        assert_eq!(payload.comment.as_deref(), Some("first frame"));
         assert_eq!(
             String::from_utf8(payload.data).expect("payload should be utf8"),
             "2\nfirst frame\nH 0 0 0\nO 0 0 1\n"
@@ -111,7 +105,6 @@ mod tests {
         let payload = xyz_first_frame(b"1\nfirst\nC 0 0 0\n2\nbroken\nH 0 0 0\n")
             .expect("first frame is valid");
 
-        assert_eq!(payload.atom_count, Some(1));
         assert_eq!(payload.frame_count, Some(1));
         assert_eq!(
             String::from_utf8(payload.data).expect("payload should be utf8"),

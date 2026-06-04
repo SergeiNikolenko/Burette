@@ -185,13 +185,11 @@ require_asset PreviewExtension/Web/grid-viewer.js
 require_asset PreviewExtension/Web/grid.css
 require_asset PreviewExtension/Web/rdkit/RDKit_minimal.js
 require_asset PreviewExtension/Web/rdkit/RDKit_minimal.wasm
-require_asset PreviewExtension/Web/xyz-fast.js
 bun scripts/check-js-syntax.mjs \
   PreviewExtension/Web/viewer.js \
   PreviewExtension/Web/viewer-shell.js \
   PreviewExtension/Web/burette-agent.js \
-  PreviewExtension/Web/grid-viewer.js \
-  PreviewExtension/Web/xyz-fast.js >/dev/null
+  PreviewExtension/Web/grid-viewer.js >/dev/null
 clean_detritus "$ROOT"
 rm -f /tmp/Burrete.log "${TMPDIR:-/tmp}/Burrete.log" 2>/dev/null || true
 
