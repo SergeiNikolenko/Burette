@@ -292,7 +292,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
         let preferences = PreviewPreferences.load()
         let gridFileSupport = preferences.gridFileSupport
-        if let gridPreview = try MoleculeGridPreviewBuilder.makePreview(
+        let shouldBuildGridPreview = rendererOverride == nil || rendererOverride == BurreteRendererMode.auto
+        if shouldBuildGridPreview, let gridPreview = try MoleculeGridPreviewBuilder.makePreview(
             fileURL: url,
             data: structureData,
             host: .quickLook,
@@ -353,6 +354,15 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         var externalStatus: [String: Any]?
         var temporaryExternalDirectory: URL?
         let xyzrenderPreset = BurreteXyzrenderPreset.normalize(xyzrenderPresetOverride ?? preferences.xyzrenderPreset)
+        let xyzPayload = format.molstarFormat == "xyz" && !format.isBinary ? makeXYZPayload(from: structureDataForWeb) : nil
+        let isXYZTrajectory = (xyzPayload?.frameCount ?? 0) > 1
+        if isXYZTrajectory,
+           rendererOverride == nil,
+           requestedRendererMode == BurreteRendererMode.auto,
+           renderer != BurreteRendererMode.molstar {
+            renderer = BurreteRendererMode.molstar
+            diag("xyz.trajectory.default=molstar frames=\(xyzPayload?.frameCount ?? -1)")
+        }
         if renderer == BurreteRendererMode.xyzrenderExternal,
            rendererOverride == nil,
            format.isExternalXyzrenderOnly,
@@ -362,7 +372,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             label: url.lastPathComponent
            ) {
             renderer = BurreteRendererMode.molstar
-            format = .xyzFastCompatible
+            format = .convertedXYZ
             structureDataForWeb = convertedXYZ
             diag("xyzrender.default=built-in-text-parser")
         }
@@ -393,7 +403,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     label: url.lastPathComponent
                    ) {
                     renderer = BurreteRendererMode.molstar
-                    format = .xyzFastCompatible
+                    format = .convertedXYZ
                     structureDataForWeb = convertedXYZ
                     externalStatus = [
                         "status": "fallback",
@@ -419,12 +429,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 try? fileManager.removeItem(at: temporaryExternalDirectory)
             }
         }
-        let xyzFastPayload = renderer == BurreteRendererMode.xyzFast ? makeXYZFastPayload(from: structureDataForWeb) : nil
-        structureDataForWeb = xyzFastPayload?.data ?? structureDataForWeb
         diag("detected.format=\(format.molstarFormat) binary=\(format.isBinary) renderer=\(renderer)")
-        if let xyzFastPayload {
-            diag("xyzFast.firstFrame.bytes=\(xyzFastPayload.data.count) atoms=\(xyzFastPayload.atomCount ?? -1) frames=\(xyzFastPayload.frameCount ?? -1)")
-        }
 
         let configJSON = try previewConfigJSON(
             format: format,
@@ -434,11 +439,11 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             byteCount: structureData.count,
             previewByteCount: structureDataForWeb.count,
             renderer: renderer,
-            xyzFastPayload: xyzFastPayload,
             externalArtifact: externalArtifact,
             externalStatus: externalStatus,
             xyzrenderPreset: xyzrenderPreset,
             xyzrenderControls: xyzrenderControlsOverride,
+            trajectoryFrameCount: renderer == BurreteRendererMode.molstar ? xyzPayload?.frameCount : nil,
             originalFileExtension: pathExtension,
             rendererPolicy: rendererPolicy,
             preferences: preferences
@@ -596,9 +601,6 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     private static func runtimeAssets(for renderer: String) -> [String] {
-        if renderer == BurreteRendererMode.xyzFast {
-            return ["viewer-runtime.css", "viewer-shell.js", "xyz-fast.js", "burette-agent.js", "viewer.js"]
-        }
         if renderer == BurreteRendererMode.xyzrenderExternal {
             return ["viewer-runtime.css", "viewer-shell.js", "molstar.css", "burette-agent.js", "viewer.js"]
         }
@@ -681,15 +683,16 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         byteCount: Int,
         previewByteCount: Int,
         renderer: String,
-        xyzFastPayload: XYZFastPayload?,
         externalArtifact: PreviewExternalXyzrenderArtifact?,
         externalStatus: [String: Any]?,
         xyzrenderPreset: String,
         xyzrenderControls: [String: Any]?,
+        trajectoryFrameCount: Int?,
         originalFileExtension: String,
         rendererPolicy: BurreteRendererPolicy,
         preferences: PreviewPreferences
     ) throws -> String {
+        let resolvedTrajectoryFrameCount = trajectoryFrameCount ?? 0
         var payload: [String: Any] = [
             "format": format.molstarFormat,
             "molstarFormat": format.molstarFormat,
@@ -703,6 +706,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "previewByteCount": previewByteCount,
             "dataPath": "./preview-data.bin",
             "quickLookBuild": "v10-product",
+            "quickLookViewer": true,
             "debug": showDebugOverlay,
             "theme": preferences.runtimeViewerTheme,
             "themeTokens": preferences.themeTokens,
@@ -712,6 +716,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "overlayOpacity": preferences.overlayOpacity,
             "transparentBackground": preferences.resolvedTransparentBackground,
             "sdfGrid": true,
+            "sdfPosePager": renderer == BurreteRendererMode.molstar && format.molstarFormat == "sdf" && !format.isBinary,
+            "trajectoryControls": renderer == BurreteRendererMode.molstar && resolvedTrajectoryFrameCount > 1,
+            "trajectoryFrameCount": resolvedTrajectoryFrameCount,
             "showPanelControls": preferences.showPanelControls,
             "defaultLayoutState": preferences.defaultLayoutState,
             "canOpenInVesta": canOpenInVesta(fileExtension: originalFileExtension)
@@ -719,29 +726,14 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         if renderer == BurreteRendererMode.xyzrenderExternal {
             payload["xyzrenderViewer"] = true
             payload["molstarAvailable"] = rendererPolicy.molstarAvailable
-            payload["quickLookViewer"] = true
             payload["xyzrenderPreset"] = xyzrenderPreset
             payload["xyzrenderPresetOptions"] = BurreteXyzrenderPreset.pickerOptions.map { ["value": $0.0, "label": $0.1] }
             if let xyzrenderControls { payload["xyzrenderControls"] = xyzrenderControls }
         }
         if format.molstarFormat == "xyz" && !format.isBinary {
-            payload["quickLookViewer"] = true
             payload["xyzrenderPreset"] = xyzrenderPreset
             payload["xyzrenderPresetOptions"] = BurreteXyzrenderPreset.pickerOptions.map { ["value": $0.0, "label": $0.1] }
             if let xyzrenderControls { payload["xyzrenderControls"] = xyzrenderControls }
-        }
-        if renderer == BurreteRendererMode.xyzFast {
-            var xyzFast: [String: Any] = [
-                "style": preferences.xyzFastStyle,
-                "firstFrameOnly": true,
-                "showCell": true,
-                "sourceByteCount": byteCount,
-                "previewByteCount": previewByteCount
-            ]
-            if let atomCount = xyzFastPayload?.atomCount { xyzFast["atomCount"] = atomCount }
-            if let frameCount = xyzFastPayload?.frameCount { xyzFast["frameCount"] = frameCount }
-            if let comment = xyzFastPayload?.comment, !comment.isEmpty { xyzFast["comment"] = comment }
-            payload["xyzFast"] = xyzFast
         }
         if let externalArtifact {
             payload["externalArtifact"] = [
@@ -812,15 +804,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let csp = runtimeCSP(for: renderer)
         let initialStatus: String
         let rendererAssets: String
-        if renderer == "xyz-fast" {
-            initialStatus = "[web] HTML body created. Waiting for Fast XYZ renderer…"
-            rendererAssets = """
-              <script src="../assets/xyz-fast.js"></script>
-              <script>
-                window.__mqlStatus && window.__mqlStatus('[web] xyz-fast.js parsed. typeof BurreteXYZFast=' + typeof window.BurreteXYZFast);
-              </script>
-            """
-        } else if renderer == "xyzrender-external" {
+        if renderer == "xyzrender-external" {
             initialStatus = "[web] HTML body created. Waiting for xyzrender artifact…"
             rendererAssets = ""
         } else {
@@ -859,8 +843,6 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                   text.indexOf('[web] About to load viewer.js') === 0 ||
                   text.indexOf('[web] Loading Mol* engine') === 0 ||
                   text.indexOf('[web] Mol* engine loaded') === 0 ||
-                  text.indexOf('[web] Loading Fast XYZ renderer') === 0 ||
-                  text.indexOf('[web] Fast XYZ renderer loaded') === 0 ||
                   text.indexOf('[web] Loading xyzrender artifact') === 0 ||
                   text.indexOf('[web] WebGL viewer created') === 0 ||
                   text.indexOf('[web] Parsing structure') === 0 ||
@@ -934,7 +916,6 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
     private static func runtimeCSP(for renderer: String) -> String {
         if renderer == "xyzrender-external" { return externalArtifactRuntimeCSP }
-        if renderer == "xyz-fast" { return minimalRuntimeCSP }
         return molstarRuntimeCSP
     }
 
@@ -954,7 +935,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     private static func validateVendoredWebAssets(in webDirectory: URL, fileManager: FileManager, diagnostics: inout [String]) throws {
-        let required = ["viewer.js", "burette-agent.js", "viewer-shell.js", "xyz-fast.js", "molstar.js", "molstar.css", "viewer-runtime.css"]
+        let required = ["viewer.js", "burette-agent.js", "viewer-shell.js", "molstar.js", "molstar.css", "viewer-runtime.css"]
         for name in required {
             let url = webDirectory.appendingPathComponent(name)
             let exists = fileManager.fileExists(atPath: url.path)
@@ -999,14 +980,13 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         throw PreviewError.ubiquitousFileNotDownloaded(url.lastPathComponent)
     }
 
-    private struct XYZFastPayload {
-        let data: Data
+    private struct XYZPayload {
         let atomCount: Int?
         let frameCount: Int?
         let comment: String?
     }
 
-    private static func makeXYZFastPayload(from data: Data) -> XYZFastPayload? {
+    private static func makeXYZPayload(from data: Data) -> XYZPayload? {
         let text = decodeText(data).replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         var start = 0
@@ -1014,13 +994,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         guard start < lines.count else { return nil }
         let firstToken = lines[start].trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ").first
         guard let token = firstToken, let atomCount = Int(token), atomCount > 0 else { return nil }
-        let end = min(lines.count, start + atomCount + 2)
-        guard end > start + 1 else { return nil }
-        var firstFrame = lines[start..<end].joined(separator: "\n")
-        if !firstFrame.hasSuffix("\n") { firstFrame += "\n" }
         let frameCount = countXYZFrames(lines: lines, start: start)
         let comment = start + 1 < lines.count ? lines[start + 1] : nil
-        return XYZFastPayload(data: Data(firstFrame.utf8), atomCount: atomCount, frameCount: frameCount, comment: comment)
+        return XYZPayload(atomCount: atomCount, frameCount: frameCount, comment: comment)
     }
 
     private static func countXYZFrames(lines: [String], start: Int) -> Int? {
@@ -1057,8 +1033,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             return 40 * mib
         case "bcif":
             return 50 * mib
-        case "abi", "com", "csv", "fdf", "sdf", "sd", "mol", "mol2", "xyz", "gro", "smi", "smiles", "tsv", "cub", "cube", "in", "inp", "nw", "out", "psi4", "qcin", "vasp", "lammpstrj", "top", "psf", "prmtop", "mae", "maegz", "cms":
+        case "abi", "com", "csv", "fdf", "sdf", "sd", "mol", "mol2", "xyz", "gro", "smi", "smiles", "tsv", "cub", "cube", "in", "inp", "nw", "out", "psi4", "qcin", "vasp", "lammpstrj", "top", "psf", "prmtop":
             return 25 * mib
+        case "mae", "maegz", "cms":
+            return 64 * mib
         case "xtc", "trr", "dcd", "nctraj":
             return 75 * mib
         default:
@@ -1189,6 +1167,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             }
             if type == "setRenderer", let value = body["value"] as? String {
                 setRendererOverride(value, orientationRefText: body["orientationRef"] as? String)
+                return
+            }
+            if type == "openSdfGridDocument" {
+                openGridPreview()
                 return
             }
             if type == "setXyzrenderPreset", let value = body["value"] as? String {
@@ -1324,6 +1306,18 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
         guard rendererOverride != renderer || hasNewOrientation else { return }
         rendererOverride = renderer
+        reloadCurrentPreview()
+    }
+
+    private func openGridPreview() {
+        guard rendererOverride != nil || xyzrenderPresetOverride != nil || xyzrenderControlsOverride != nil || xyzrenderOrientationRefText != nil else {
+            reloadCurrentPreview()
+            return
+        }
+        rendererOverride = nil
+        xyzrenderPresetOverride = nil
+        xyzrenderControlsOverride = nil
+        xyzrenderOrientationRefText = nil
         reloadCurrentPreview()
     }
 
@@ -1874,7 +1868,7 @@ private struct StructureFormat {
     var prefersTransparentBackground: Bool { molstarFormat == "sdf" }
     let isExternalXyzrenderOnly: Bool
 
-    static let xyzFastCompatible = StructureFormat(
+    static let convertedXYZ = StructureFormat(
         molstarFormat: "xyz",
         isBinary: false,
         isExternalXyzrenderOnly: false
@@ -2563,7 +2557,6 @@ private struct PreviewPreferences {
     let overlayOpacity: Double
     let rendererMode: String
     let molstarStyle: String
-    let xyzFastStyle: String
     let xyzrenderPreset: String
     let xyzrenderCustomConfigPath: String
     let xyzrenderExecutablePath: String
@@ -2633,7 +2626,6 @@ private struct PreviewPreferences {
         let overlayOpacity = (CFPreferencesCopyAppValue("viewerOverlayOpacity" as CFString, appID) as? Double) ?? 0.90
         let rendererMode = (CFPreferencesCopyAppValue("structureRendererMode" as CFString, appID) as? String) ?? "auto"
         let molstarStyle = (CFPreferencesCopyAppValue("molstarStyle" as CFString, appID) as? String) ?? "illustrative"
-        let xyzFastStyle = (CFPreferencesCopyAppValue("xyzFastStyle" as CFString, appID) as? String) ?? "default"
         let xyzrenderPreset = (CFPreferencesCopyAppValue("xyzrenderPreset" as CFString, appID) as? String) ?? "default"
         let xyzrenderCustomConfigPath = (CFPreferencesCopyAppValue("xyzrenderCustomConfigPath" as CFString, appID) as? String) ?? ""
         let xyzrenderExecutablePath = (CFPreferencesCopyAppValue("xyzrenderExecutablePath" as CFString, appID) as? String) ?? ""
@@ -2662,7 +2654,6 @@ private struct PreviewPreferences {
             overlayOpacity: min(max(overlayOpacity, 0.72), 0.98),
             rendererMode: rendererMode,
             molstarStyle: molstarStyle,
-            xyzFastStyle: xyzFastStyle,
             xyzrenderPreset: BurreteXyzrenderPreset.normalize(xyzrenderPreset),
             xyzrenderCustomConfigPath: xyzrenderCustomConfigPath,
             xyzrenderExecutablePath: xyzrenderExecutablePath,

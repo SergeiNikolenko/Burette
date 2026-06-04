@@ -10,4 +10,4 @@ This project follows the same broad product idea as QuickLookProtein: a host mac
 
 ## xyzrender
 
-Burrete can call a user-installed `xyzrender` executable from the standalone app and includes an independent dependency-free JavaScript Fast XYZ renderer for Quick Look and app previews. The `xyzrender` Python package is MIT-licensed by Alister S. Goodfellow and contributors. `xyzrender` itself is not bundled with Burrete.
+Burrete can call a user-installed `xyzrender` executable from the standalone app and Quick Look previews. The `xyzrender` Python package is MIT-licensed by Alister S. Goodfellow and contributors. `xyzrender` itself is not bundled with Burrete.

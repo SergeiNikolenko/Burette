@@ -1879,7 +1879,7 @@ export default function App() {
       }
       if (body?.type === "setRenderer") {
         const renderer = body.value;
-        if (renderer === "auto" || renderer === "xyz-fast" || renderer === "molstar" || renderer === "xyzrender-external") {
+        if (renderer === "auto" || renderer === "molstar" || renderer === "xyzrender-external") {
           const targetDocument = (body.documentId
             ? documents.find((document) => document.id === body.documentId)
             : null) ?? activeDocument;

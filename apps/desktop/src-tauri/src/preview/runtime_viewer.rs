@@ -83,10 +83,7 @@ pub(crate) fn create_runtime<R: Runtime>(
     let xyzrender_available = xyzrender_available_for_document(format, data);
     let mut renderer = renderer.to_string();
     let requested_renderer = normalize_renderer_mode(&preferences.renderer_mode);
-    if is_xyz_trajectory
-        && matches!(requested_renderer, "auto" | "xyz-fast")
-        && renderer != "molstar"
-    {
+    if is_xyz_trajectory && requested_renderer == "auto" && renderer != "molstar" {
         renderer = "molstar".to_string();
     }
     if renderer == "xyzrender-external" && !xyzrender_available {
@@ -155,23 +152,12 @@ pub(crate) fn create_runtime<R: Runtime>(
                 .as_ref()
                 .map(|converted| converted.data.clone())
                 .unwrap_or_else(|| data.to_vec()),
-            atom_count: None,
             frame_count: None,
-            comment: None,
         }
-    } else if renderer == "xyz-fast" {
-        xyz_payload.unwrap_or_else(|| XyzPayload {
-            data: data.to_vec(),
-            atom_count: None,
-            frame_count: None,
-            comment: None,
-        })
     } else {
         XyzPayload {
             data: data.to_vec(),
-            atom_count: None,
             frame_count: None,
-            comment: None,
         }
     };
 
@@ -230,19 +216,6 @@ pub(crate) fn create_runtime<R: Runtime>(
                 config[key.as_str()] = value.clone();
             }
         }
-    }
-
-    if renderer == "xyz-fast" {
-        config["xyzFast"] = json!({
-            "style": preferences.xyz_fast_style,
-            "firstFrameOnly": true,
-            "showCell": true,
-            "sourceByteCount": data.len(),
-            "previewByteCount": payload.data.len(),
-            "atomCount": payload.atom_count,
-            "frameCount": payload.frame_count,
-            "comment": payload.comment
-        });
     }
 
     if let Some(artifact) = external_artifact {
@@ -538,7 +511,6 @@ mod tests {
             canvas_background: "opaque".to_string(),
             renderer_mode: "auto".to_string(),
             molstar_style: "default".to_string(),
-            xyz_fast_style: "ball-stick".to_string(),
             theme_light_accent: "#0066cc".to_string(),
             theme_light_background: "#ffffff".to_string(),
             theme_light_foreground: "#111111".to_string(),
@@ -590,10 +562,6 @@ mod tests {
         assert_eq!(
             AssetProfile::for_viewer_renderer("xyzrender-external"),
             AssetProfile::ExternalXyzrender
-        );
-        assert_eq!(
-            AssetProfile::for_viewer_renderer("xyz-fast"),
-            AssetProfile::MinimalShell
         );
         assert!(AssetProfile::Grid.copies_rdkit());
         assert!(!AssetProfile::Molstar.files().contains(&"grid-viewer.js"));
@@ -689,7 +657,6 @@ pub(crate) enum AssetProfile {
     Molstar,
     Grid,
     ExternalXyzrender,
-    MinimalShell,
 }
 
 impl AssetProfile {
@@ -711,13 +678,6 @@ impl AssetProfile {
                 "burette-agent.js",
                 "viewer.js",
             ],
-            Self::MinimalShell => &[
-                "viewer-runtime.css",
-                "viewer-shell.js",
-                "burette-agent.js",
-                "viewer.js",
-                "xyz-fast.js",
-            ],
         }
     }
 
@@ -729,8 +689,7 @@ impl AssetProfile {
         match renderer {
             "molstar" => Self::Molstar,
             "xyzrender-external" => Self::ExternalXyzrender,
-            "xyz-fast" => Self::MinimalShell,
-            _ => Self::MinimalShell,
+            _ => Self::Molstar,
         }
     }
 }
@@ -860,12 +819,7 @@ fn viewer_html(
     let viewer_js = asset_url(&assets.join("viewer.js"));
     let molstar_css = asset_url(&assets.join("molstar.css"));
     let molstar_js = asset_url(&assets.join("molstar.js"));
-    let xyz_fast_js = asset_url(&assets.join("xyz-fast.js"));
     let (renderer_styles, renderer_scripts) = match renderer {
-        "xyz-fast" => (
-            "".to_string(),
-            format!(r#"<script src="{xyz_fast_js}"></script>"#),
-        ),
         "xyzrender-external" => (
             format!(r#"<link rel="stylesheet" href="{molstar_css}" />"#),
             "".to_string(),
@@ -891,7 +845,6 @@ fn viewer_html(
     window.BurretePreviewDataScriptURL = {data_js:?};
     window.BurreteDataURL = {data_bin_js:?};
     window.BurreteMolstarURL = {molstar_js:?};
-    window.BurreteXyzFastURL = {xyz_fast_js:?};
   </script>
 </head>
 <body class="{background_class}">

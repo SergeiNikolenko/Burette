@@ -92,9 +92,8 @@ export type RecentStructure = {
 export type ViewerPreferences = {
   theme: "auto" | "dark" | "light";
   canvasBackground: "auto" | "black" | "graphite" | "white" | "transparent";
-  rendererMode: "auto" | "grid2d" | "xyz-fast" | "molstar" | "xyzrender-external";
+  rendererMode: "auto" | "grid2d" | "molstar" | "xyzrender-external";
   molstarStyle: "default" | "illustrative";
-  xyzFastStyle: "default" | "wire" | "tube" | "spacefill";
   themeLightAccent: string;
   themeLightBackground: string;
   themeLightForeground: string;
