@@ -29,8 +29,8 @@ type KetcherEditorComponent = ComponentType<{
   onLoadError?: (error: Error) => void;
 }>;
 
-const KETCHER_UI_SCALES = [0.64, 0.7, 0.76, 0.82, 0.88, 0.94, 1, 1.08, 1.16, 1.24, 1.36] as const;
-const DEFAULT_KETCHER_UI_SCALE_INDEX = 4;
+const KETCHER_UI_SCALES = [0.1, 0.2, 0.3, 0.4, 0.5, 0.64, 0.7, 0.76, 0.82, 0.88, 0.94, 1, 1.08, 1.16, 1.24, 1.36] as const;
+const DEFAULT_KETCHER_UI_SCALE_INDEX = 3;
 const KETCHER_EXPORT_TIMEOUT_MS = 4500;
 
 export function KetcherPage({
