@@ -105,6 +105,20 @@
           "vasp"
         ],
         "role": "Viewer"
+      },
+      {
+        "ext": [
+          "md",
+          "markdown",
+          "mdx",
+          "txt",
+          "log",
+          "err",
+          "sh",
+          "bash",
+          "zsh"
+        ],
+        "role": "Viewer"
       }
     ],
     "icon": [
