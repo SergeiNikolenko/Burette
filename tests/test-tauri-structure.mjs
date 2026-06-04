@@ -170,6 +170,8 @@ assert.match(tauriConfig.app.security.csp, /style-src[^;]*'unsafe-inline'/);
 assert.ok(defaultCapability.permissions.includes('dialog:allow-open'));
 assert.ok(defaultCapability.permissions.includes('dialog:allow-message'));
 assert.ok(defaultCapability.permissions.includes('dialog:allow-save'));
+assert.ok(defaultCapability.permissions.includes('core:menu:allow-new'));
+assert.ok(defaultCapability.permissions.includes('core:menu:allow-popup'));
 assert.match(tauriConfig.app.security.csp, /script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' asset: http:\/\/asset\.localhost/);
 assert.match(previewEntitlements, /com\.apple\.security\.network\.client/);
 assert.match(docsReadmeSource, /Performance architecture/);
