@@ -645,6 +645,7 @@ assert.doesNotMatch(appLayout, /<header\s+className="topbar"[^>]*data-tauri-drag
 assert.match(editorTabs, /className="tab-strip" data-tauri-drag-region/);
 assert.match(editorTabs, /className="tab-scroll-region"[\s\S]*role="tablist"[\s\S]*aria-label="Open structures"/);
 assert.match(editorTabs, /className="tab-strip-spacer"[\s\S]*data-tauri-drag-region/);
+assert.match(defaultCapability, /"core:window:allow-internal-toggle-maximize"/);
 assert.match(defaultCapability, /"core:window:allow-start-dragging"/);
 assert.match(pageKinds, /const kinds = \[fileKind, fepSetupKind, ketcherKind, launcherKind, poseReviewKind, settingsKind\] as const/);
 assert.match(pageKinds, /export function pageKind/);
