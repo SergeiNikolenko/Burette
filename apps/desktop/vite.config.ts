@@ -629,17 +629,20 @@ function normalizeOrientationRef(value: string | null) {
   return normalized.endsWith("\n") ? normalized : `${normalized}\n`;
 }
 
-function ketcherRaphaelRequireShimPlugin(): Plugin {
-  const target = 'require("raphael")';
-  const replacement = 'globalThis.__burreteRequire("raphael")';
+function ketcherRaphaelImportShimPlugin(): Plugin {
+  const target = "raphaelModule = require('raphael');";
+  const replacement = "raphaelModule = __burreteRaphael;";
 
   return {
-    name: "burrete-ketcher-raphael-require-shim",
-    enforce: "post",
-    renderChunk(code, chunk) {
-      void chunk;
+    name: "burrete-ketcher-raphael-import-shim",
+    transform(code, id) {
+      const normalized = id.replaceAll("\\", "/");
+      if (!normalized.endsWith("/node_modules/ketcher-core/dist/index.modern.js")) return null;
       if (!code.includes(target)) return null;
-      return { code: code.replaceAll(target, replacement), map: null };
+      return {
+        code: `import __burreteRaphael from "raphael";\n${code.replaceAll(target, replacement)}`,
+        map: null,
+      };
     },
   };
 }
@@ -677,7 +680,7 @@ function resolveModulePreloadDependencies(_url: string, deps: string[], context:
 export default defineConfig({
   root: desktopRoot,
   base: "./",
-  plugins: [react(), ketcherRaphaelRequireShimPlugin(), deferKetcherCssPlugin(), browserDevXyzrenderPlugin()],
+  plugins: [react(), ketcherRaphaelImportShimPlugin(), deferKetcherCssPlugin(), browserDevXyzrenderPlugin()],
   resolve: {
     dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
   },
