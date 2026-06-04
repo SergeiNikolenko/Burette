@@ -59,7 +59,8 @@ Use the repository release script:
 ./scripts/release.sh
 ```
 
-Production releases require Developer ID signing and Apple notarization:
+Developer ID signing and Apple notarization are used when the credentials are
+available:
 
 ```bash
 export BURRETE_CODESIGN_IDENTITY="Developer ID Application: Example, Inc. (TEAMID)"
@@ -78,6 +79,14 @@ export BURRETE_NOTARY_KEYCHAIN_PROFILE="BurreteNotary"
 ./scripts/release.sh
 ```
 
+If Developer ID credentials are not available, release artifacts can be built
+and published with ad-hoc signing and without notarization:
+
+```bash
+export BURRETE_RELEASE_ALLOW_ADHOC=1
+./scripts/release.sh
+```
+
 For CI and pull-request validation, run the release dry run. It checks the
 release script prerequisites and JavaScript syntax but does not build, sign,
 notarize, staple, package, or publish:
@@ -88,11 +97,11 @@ notarize, staple, package, or publish:
 
 The local `./scripts/build.sh` path remains an ad-hoc debug build by default.
 Release builds are explicit: `scripts/release.sh` sets
-`BURRETE_BUILD_MODE=release`, requires a Developer ID Application identity,
-uses the Xcode Release configuration, enables the Tauri macOS hardened runtime
-inside the temporary build copy, signs with hardened runtime options, submits
-the app to Apple notarytool, staples the notarization ticket, and then packages
-zip and dmg artifacts.
+`BURRETE_BUILD_MODE=release` and uses the Xcode Release configuration. With
+Developer ID credentials it enables the notarized path: hardened runtime,
+Developer ID signing, Apple notarytool submission, stapling, and then zip/dmg
+packaging. With `BURRETE_RELEASE_ALLOW_ADHOC=1`, it skips notarization and
+publishes ad-hoc signed zip/dmg artifacts.
 
 ## Artifact Requirements
 
@@ -102,10 +111,14 @@ Every release app bundle must satisfy:
 - `Burrete.app/Contents/PlugIns/BurretePreview.appex` exists.
 - `Burrete.app/Contents/PlugIns/BurreteThumbnail.appex` exists.
 - Deep codesign verification passes.
-- `codesign -dv --verbose=4 build/Burrete.app` shows a Developer ID
-  Application authority, a TeamIdentifier, and hardened runtime metadata.
-- `spctl --assess --type execute build/Burrete.app` passes.
-- `xcrun stapler validate build/Burrete.app` passes.
+- Developer ID releases: `codesign -dv --verbose=4 build/Burrete.app` shows a
+  Developer ID Application authority, a TeamIdentifier, and hardened runtime
+  metadata.
+- Developer ID releases: `spctl --assess --type execute build/Burrete.app`
+  passes.
+- Developer ID releases: `xcrun stapler validate build/Burrete.app` passes.
+- Ad-hoc releases: `BURRETE_RELEASE_ALLOW_ADHOC=1
+  ./scripts/check-release-signature.sh build/Burrete.app` passes.
 - Finder Quick Look can preview PDB, CIF, and XYZ samples.
 - Update metadata points to the Burrete release endpoint.
 

@@ -77,6 +77,11 @@ jobs:
           else
             echo "signed_manifest=false" >> "$GITHUB_OUTPUT"
           fi
+          if [[ -n "${MACOS_CERTIFICATE_P12_BASE64:-}" && -n "${MACOS_CERTIFICATE_PASSWORD:-}" && -n "${MACOS_KEYCHAIN_PASSWORD:-}" && -n "${BURRETE_CODESIGN_IDENTITY:-}" && -n "${APPLE_TEAM_ID:-}" && -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then
+            echo "allow_adhoc=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "allow_adhoc=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Import Developer ID certificate
         if: steps.capabilities.outputs.developer_id == 'true'
@@ -93,15 +98,10 @@ jobs:
           security import certificate.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$MACOS_KEYCHAIN_PASSWORD" build.keychain
 
-      - name: Require Developer ID release secrets
-        if: steps.capabilities.outputs.developer_id != 'true'
-        run: |
-          echo "Developer ID signing and Apple notarization secrets are required for public releases." >&2
-          exit 1
-
       - name: Build app
         env:
           BURRETE_BUILD_MODE: release
+          BURRETE_RELEASE_ALLOW_ADHOC: ${{ steps.capabilities.outputs.allow_adhoc == 'true' && '1' || '0' }}
           BURRETE_CODESIGN_IDENTITY: ${{ secrets.BURRETE_CODESIGN_IDENTITY }}
           BURRETE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
           BURRETE_XCODE_CONFIGURATION: Release
@@ -109,6 +109,7 @@ jobs:
         run: ./scripts/build.sh
 
       - name: Notarize app
+        if: steps.capabilities.outputs.developer_id == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -123,6 +124,8 @@ jobs:
           xcrun stapler staple build/Burrete.app
 
       - name: Validate release signing
+        env:
+          BURRETE_RELEASE_ALLOW_ADHOC: ${{ steps.capabilities.outputs.allow_adhoc == 'true' && '1' || '0' }}
         run: ./scripts/check-release-signature.sh build/Burrete.app
 
       - name: Package app

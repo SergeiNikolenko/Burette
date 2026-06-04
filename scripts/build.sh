@@ -31,6 +31,7 @@ LOCAL_APP="$ROOT/build/Burrete.app"
 BUILD_MODE="${BURRETE_BUILD_MODE:-local}"
 SIGN_IDENTITY="${BURRETE_CODESIGN_IDENTITY:--}"
 DEVELOPMENT_TEAM="${BURRETE_DEVELOPMENT_TEAM:-}"
+ALLOW_ADHOC_RELEASE="${BURRETE_RELEASE_ALLOW_ADHOC:-0}"
 APP_METADATA_PLIST="$ROOT/apps/desktop/src-tauri/AppMetadata.plist"
 VITE_BURRETE_BUILD_IDENTIFIER="$APP_ID"
 VITE_BURRETE_BUILD_FLAVOR=""
@@ -44,8 +45,10 @@ XCODE_CONFIGURATION="${BURRETE_XCODE_CONFIGURATION:-$DEFAULT_XCODE_CONFIGURATION
 
 if [[ "$BUILD_MODE" == "release" ]]; then
   [[ -z "${BURRETE_DEV_FLAVOR:-}" ]] || { echo "error: BURRETE_DEV_FLAVOR is only supported for local builds." >&2; exit 2; }
-  [[ "$SIGN_IDENTITY" == Developer\ ID\ Application:* ]] || { echo "error: release builds require BURRETE_CODESIGN_IDENTITY='Developer ID Application: ...'." >&2; exit 1; }
-  [[ -n "$DEVELOPMENT_TEAM" ]] || { echo "error: release builds require BURRETE_DEVELOPMENT_TEAM." >&2; exit 1; }
+  if [[ "$ALLOW_ADHOC_RELEASE" != "1" ]]; then
+    [[ "$SIGN_IDENTITY" == Developer\ ID\ Application:* ]] || { echo "error: release builds require BURRETE_CODESIGN_IDENTITY='Developer ID Application: ...'." >&2; exit 1; }
+    [[ -n "$DEVELOPMENT_TEAM" ]] || { echo "error: release builds require BURRETE_DEVELOPMENT_TEAM." >&2; exit 1; }
+  fi
   [[ "$XCODE_CONFIGURATION" == "Release" ]] || { echo "error: release builds require BURRETE_XCODE_CONFIGURATION=Release." >&2; exit 1; }
 fi
 
