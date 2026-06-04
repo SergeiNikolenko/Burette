@@ -891,14 +891,14 @@ body.burette-quicklook-host .buret-corner-button {
   display: inline-flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 6px;
+  gap: 0;
   min-height: 34px;
   padding: 5px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--buret-menu-border);
   border-radius: 8px;
-  background: rgba(16, 16, 16, 0.82);
-  color: #f8fafc;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  background: var(--buret-menu-background);
+  color: var(--buret-toolbar-color);
+  box-shadow: var(--buret-menu-shadow);
   font: 650 12px/1.1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   box-sizing: border-box;
   max-width: calc(100vw - 24px);
@@ -920,16 +920,17 @@ body.buret-docking-pose-controls-active .msp-traj-controls {
   border: 0;
   border-radius: 6px;
   padding: 0 9px;
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--buret-menu-section-background);
   color: inherit;
   cursor: pointer;
   font: inherit;
 }
 .buret-docking-poses button:not(:disabled):hover {
-  background: rgba(255, 255, 255, 0.18);
+  background: var(--buret-menu-input-focus-background);
 }
 .buret-docking-poses button.active {
-  background: rgba(59, 130, 246, 0.35);
+  background: var(--buret-molstar-accent);
+  color: #fff;
 }
 .buret-docking-poses button:disabled {
   opacity: 0.38;
@@ -942,12 +943,28 @@ body.buret-docking-pose-controls-active .msp-traj-controls {
   gap: 6px;
 }
 .buret-docking-pose-animation {
-  display: none;
-  padding-top: 1px;
+  max-height: 0;
+  margin-top: 0;
+  overflow: hidden;
+  opacity: 0;
+  padding-top: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition:
+    max-height 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    margin-top 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 140ms ease,
+    padding-top 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
   width: max-content;
 }
 .buret-docking-poses.buret-docking-poses-animation-open .buret-docking-pose-animation {
-  display: inline-flex;
+  max-height: 34px;
+  margin-top: 6px;
+  opacity: 1;
+  padding-top: 1px;
+  transform: translateY(0);
+  pointer-events: auto;
 }
 .buret-docking-pose-animation-button {
   width: 28px;
@@ -964,7 +981,7 @@ body.buret-docking-pose-controls-active .msp-traj-controls {
   border-radius: 7px;
   padding: 0 7px;
   color: inherit;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--buret-menu-input-background);
   font: 600 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   cursor: text;
   text-align: center;
@@ -977,16 +994,21 @@ body.buret-docking-pose-controls-active .msp-traj-controls {
 .buret-docking-pose-speed:hover,
 .buret-docking-pose-speed:focus {
   outline: none;
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--buret-menu-input-focus-background);
 }
 .buret-docking-poses span {
   min-width: 76px;
   text-align: center;
 }
 .buret-docking-pose-slider {
-  flex: 0 0 78px;
-  width: 78px;
+  flex: 0 0 110px;
+  width: 110px;
   min-width: 60px;
-  accent-color: #93c5fd;
+  accent-color: var(--buret-molstar-accent);
   cursor: pointer;
+}
+@media (prefers-reduced-motion: reduce) {
+  .buret-docking-pose-animation {
+    transition: none;
+  }
 }
