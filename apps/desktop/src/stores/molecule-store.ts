@@ -7,8 +7,9 @@ import {
   type Location,
   type PoseReviewLocation,
   type SerializedLocation,
+  type TextFileLocation,
 } from "../components/editor-area/page-kinds";
-import type { RecentStructure, ViewerDocument } from "../types";
+import type { RecentStructure, TextFileDocument, ViewerDocument } from "../types";
 import {
   isPersistentRecentStructure,
   isPersistentViewerDocument,
@@ -30,6 +31,7 @@ export type SessionTab = {
 
 type MoleculeState = {
   documents: ViewerDocument[];
+  textDocuments: TextFileDocument[];
   tabs: MoleculeTab[];
   activeTabId: string | null;
   activeDocumentId: string | null;
@@ -37,6 +39,8 @@ type MoleculeState = {
   setDocuments: (documents: ViewerDocument[]) => void;
   addDocuments: (documents: ViewerDocument[]) => void;
   openDocumentsInActiveTab: (documents: ViewerDocument[], options?: { backLocation?: Location }) => void;
+  addTextDocuments: (documents: TextFileDocument[]) => void;
+  openTextDocumentsInActiveTab: (documents: TextFileDocument[], options?: { backLocation?: Location }) => void;
   rememberRecentStructures: (documents: ViewerDocument[]) => void;
   clearRecentStructures: () => void;
   openNewTab: () => void;
@@ -108,6 +112,19 @@ function fileLocation(document: ViewerDocument): Location {
   return { kind: "file", documentId: document.id, path: document.path };
 }
 
+export function createTextFileTab(document: TextFileDocument, id = createTabId()): MoleculeTab {
+  return {
+    id,
+    location: { kind: "text-file", documentId: document.id, path: document.path },
+    back: [],
+    forward: [],
+  };
+}
+
+function textFileLocation(document: TextFileDocument): Location {
+  return { kind: "text-file", documentId: document.id, path: document.path };
+}
+
 export function createSettingsTab(id = createTabId()): MoleculeTab {
   return { id, location: { kind: "settings" }, back: [], forward: [] };
 }
@@ -131,6 +148,7 @@ function cloneTab(tab: MoleculeTab): MoleculeTab {
 function sameLocation(left: Location, right: Location) {
   if (left.kind !== right.kind) return false;
   if (left.kind === "file" && right.kind === "file") return left.path === right.path;
+  if (left.kind === "text-file" && right.kind === "text-file") return left.path === right.path;
   return true;
 }
 
@@ -263,6 +281,7 @@ export const useMoleculeStore = create<MoleculeState>()(
   persist<MoleculeState, [], [], PersistedMoleculeState>(
     (set) => ({
       documents: [],
+      textDocuments: [],
       tabs: [createLauncherTab()],
       activeTabId: "tab-1",
       activeDocumentId: null,
@@ -271,7 +290,7 @@ export const useMoleculeStore = create<MoleculeState>()(
         set(() => {
           const tabs = buildFileTabs(documents);
           const activeTabId = tabs[0]?.id ?? null;
-          return { documents, tabs, activeTabId, activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, documents) };
+          return { documents, textDocuments: [], tabs, activeTabId, activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, documents) };
         }),
       addDocuments: (incoming) =>
         set((state) => {
@@ -354,6 +373,88 @@ export const useMoleculeStore = create<MoleculeState>()(
           const nextTabs = ensureTabs(tabs);
           const activeTabId = activeTabIdOrFirst(nextTabs, targetTab.id);
           return { documents, tabs: nextTabs, activeTabId, activeDocumentId: activeDocumentIdFrom(nextTabs, activeTabId, documents) };
+        }),
+      addTextDocuments: (incoming) =>
+        set((state) => {
+          const byPath = new Map(state.textDocuments.map((document) => [document.path, document]));
+          for (const document of incoming) byPath.set(document.path, document);
+          const textDocuments = Array.from(byPath.values());
+          const tabs = state.tabs
+            .filter((tab) => tab.location.kind !== "launcher")
+            .map(cloneTab)
+            .filter((tab) => tab.location.kind !== "text-file" || byPath.has(tab.location.path));
+          const tabByPath = new Map<string, MoleculeTab>();
+          for (const tab of tabs) {
+            if (tab.location.kind === "text-file") tabByPath.set(tab.location.path, tab);
+          }
+
+          let openedTabId: string | null = null;
+          for (const document of incoming) {
+            const existing = tabByPath.get(document.path);
+            if (existing) {
+              existing.location = textFileLocation(document);
+              openedTabId ??= existing.id;
+            } else {
+              const tab = createTextFileTab(document);
+              tabs.push(tab);
+              tabByPath.set(document.path, tab);
+              openedTabId ??= tab.id;
+            }
+          }
+
+          const nextTabs = ensureTabs(tabs);
+          let activeTabId = openedTabId ?? state.activeTabId;
+          activeTabId = activeTabIdOrFirst(nextTabs, activeTabId);
+          return { textDocuments, tabs: nextTabs, activeTabId, activeDocumentId: activeDocumentIdFrom(nextTabs, activeTabId, state.documents) };
+        }),
+      openTextDocumentsInActiveTab: (incoming, options = {}) =>
+        set((state) => {
+          if (incoming.length === 0) return state;
+          const byPath = new Map(state.textDocuments.map((document) => [document.path, document]));
+          for (const document of incoming) byPath.set(document.path, document);
+          const textDocuments = Array.from(byPath.values());
+          const active = state.tabs.find((tab) => tab.id === state.activeTabId);
+          let tabs = state.tabs
+            .filter((tab) => tab.location.kind !== "launcher")
+            .map(cloneTab)
+            .filter((tab) => tab.location.kind !== "text-file" || byPath.has(tab.location.path));
+
+          const firstDocument = incoming[0];
+          const nextLocation = textFileLocation(firstDocument);
+          let targetTab = active ? tabs.find((tab) => tab.id === active.id) ?? cloneTab(active) : createTextFileTab(firstDocument);
+          const previousLocation = options.backLocation ?? targetTab.location;
+          targetTab = {
+            ...targetTab,
+            location: nextLocation,
+            back: sameLocation(previousLocation, nextLocation) ? targetTab.back : [...targetTab.back, previousLocation],
+            forward: [],
+          };
+          tabs = tabs.filter((tab) => (
+            tab.id !== targetTab.id &&
+            (tab.location.kind !== "text-file" || tab.location.path !== firstDocument.path)
+          ));
+          tabs.push(targetTab);
+
+          const tabByPath = new Map<string, MoleculeTab>();
+          for (const tab of tabs) {
+            if (tab.location.kind === "text-file") tabByPath.set(tab.location.path, tab);
+          }
+          tabByPath.set(firstDocument.path, targetTab);
+
+          for (const document of incoming.slice(1)) {
+            const existing = tabByPath.get(document.path);
+            if (existing) {
+              existing.location = textFileLocation(document);
+            } else {
+              const tab = createTextFileTab(document);
+              tabs.push(tab);
+              tabByPath.set(document.path, tab);
+            }
+          }
+
+          const nextTabs = ensureTabs(tabs);
+          const activeTabId = activeTabIdOrFirst(nextTabs, targetTab.id);
+          return { textDocuments, tabs: nextTabs, activeTabId, activeDocumentId: activeDocumentIdFrom(nextTabs, activeTabId, state.documents) };
         }),
       rememberRecentStructures: (incoming) =>
         set((state) => {
@@ -475,13 +576,18 @@ export const useMoleculeStore = create<MoleculeState>()(
         set((state) => {
           const closing = state.tabs.find((tab) => tab.id === id);
           let documents = state.documents;
+          let textDocuments = state.textDocuments;
           if (closing && closing.location.kind === "file") {
             const path = closing.location.path;
             documents = state.documents.filter((document) => document.path !== path);
           }
+          if (closing && closing.location.kind === "text-file") {
+            const path = closing.location.path;
+            textDocuments = state.textDocuments.filter((document) => document.path !== path);
+          }
           const tabs = ensureTabs(state.tabs.filter((tab) => tab.id !== id));
           const activeTabId = activeTabIdOrFirst(tabs, state.activeTabId === id ? null : state.activeTabId);
-          return { documents, tabs, activeTabId, activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, documents) };
+          return { documents, textDocuments, tabs, activeTabId, activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, documents) };
         }),
       closeDocument: (id) =>
         set((state) => {
@@ -498,17 +604,21 @@ export const useMoleculeStore = create<MoleculeState>()(
           const activeTab = state.tabs.find((tab) => tab.id === state.activeTabId);
           if (!activeTab) return state;
           let documents = state.documents;
+          let textDocuments = state.textDocuments;
           const location = activeTab.location;
           if (location.kind === "file") {
             documents = state.documents.filter((document) => document.path !== location.path);
           }
+          if (location.kind === "text-file") {
+            textDocuments = state.textDocuments.filter((document) => document.path !== location.path);
+          }
           const tabs = ensureTabs(state.tabs.filter((tab) => tab.id !== activeTab.id));
           const activeTabId = activeTabIdOrFirst(tabs, null);
-          return { documents, tabs, activeTabId, activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, documents) };
+          return { documents, textDocuments, tabs, activeTabId, activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, documents) };
         }),
       closeAllDocuments: () => {
         const tab = createLauncherTab();
-        return set({ documents: [], tabs: [tab], activeTabId: tab.id, activeDocumentId: null });
+        return set({ documents: [], textDocuments: [], tabs: [tab], activeTabId: tab.id, activeDocumentId: null });
       },
       restoreSession: (sessionTabs, activeIndex) =>
         set((state) => {
@@ -539,7 +649,8 @@ export const useMoleculeStore = create<MoleculeState>()(
         }
         const documents = current.documents;
         const storedTabs = (stored?.tabs ?? current.tabs).filter((tab) => (
-          tab.location.kind !== "file" || !isTemporaryDocumentPath(tab.location.path)
+          (tab.location.kind !== "file" && tab.location.kind !== "text-file") ||
+          !isTemporaryDocumentPath(tab.location.path)
         ));
         const tabs = collapseDuplicateKetcherTabs(
           dedupeTabIds(ensureTabs(storedTabs.map(cloneTab))),
