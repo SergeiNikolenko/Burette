@@ -1003,6 +1003,9 @@ assert.match(ketcherPage, /while \(lines\.findIndex\(isMolfileCountsLine\) < 3\)
 assert.match(ketcherPage, /function isMolfileCountsLine\(line: string\)/);
 assert.match(ketcherPage, /className="ketcher-empty-watermark" src=\{ligandProLogo\}/);
 assert.match(ketcherPage, /await withKetcherTimeout\(ketcher\.getMolfile\("v2000"\), "Sketch export"\)/);
+assert.match(ketcherPage, /if \(isBlankKetcherMolfile\(molfile\)\)/);
+assert.match(ketcherPage, /function isBlankKetcherMolfile\(molfile: string\)/);
+assert.match(ketcherPage, /return counts\[0\] === "0" && counts\[1\] === "0"/);
 assert.doesNotMatch(ketcherPage, /restoredDraftMolfileRef\.current = molfile\.trim\(\)/);
 assert.match(ketcherPage, /await withKetcherTimeout\(ketcher\.getKet\(\), "Sketch draft export"\)/);
 assert.match(ketcherPage, /draftKet,/);
