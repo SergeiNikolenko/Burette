@@ -235,6 +235,10 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
           const tabDocument = fileLocation
             ? state.documents.find((document) => document.id === fileLocation.documentId || document.path === fileLocation.path) ?? null
             : null;
+          const textFileLocation = tab.location.kind === "text-file" ? tab.location : null;
+          const textDocument = textFileLocation
+            ? state.textDocuments.find((document) => document.id === textFileLocation.documentId || document.path === textFileLocation.path) ?? null
+            : null;
           const isDragging = draggingTabId === tab.id;
           const tabDropTarget = tabDocument
             ? {
@@ -287,6 +291,35 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
                       text: "Show Metadata",
                       action: () => {
                         actions.showDocumentMetadata(tabDocument);
+                      },
+                    },
+                    { kind: "separator" as const },
+                  ]
+                : []),
+              ...(textDocument
+                ? [
+                    {
+                      kind: "item" as const,
+                      id: "reveal-tab-text-file",
+                      text: "Reveal in Finder",
+                      action: () => {
+                        void actions.revealPath(textDocument.path, "file");
+                      },
+                    },
+                    {
+                      kind: "item" as const,
+                      id: "copy-tab-text-file-path",
+                      text: "Copy Path",
+                      action: () => {
+                        void actions.copyPath(textDocument.path, "file");
+                      },
+                    },
+                    {
+                      kind: "item" as const,
+                      id: "show-tab-text-file-metadata",
+                      text: "Show Metadata",
+                      action: () => {
+                        actions.showTextFileMetadata(textDocument);
                       },
                     },
                     { kind: "separator" as const },

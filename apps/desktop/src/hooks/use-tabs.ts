@@ -15,6 +15,10 @@ export function useOpenDocuments() {
   return useMoleculeStore((state) => state.documents);
 }
 
+export function useOpenTextDocuments() {
+  return useMoleculeStore((state) => state.textDocuments);
+}
+
 export function useTabOrder() {
   return useMoleculeStore((state) => state.tabs.map((tab) => tab.id));
 }
@@ -43,8 +47,16 @@ export function useAddTabs() {
   return useMoleculeStore((state) => state.addDocuments);
 }
 
+export function useAddTextTabs() {
+  return useMoleculeStore((state) => state.addTextDocuments);
+}
+
 export function useOpenDocumentsInActiveTab() {
   return useMoleculeStore((state) => state.openDocumentsInActiveTab);
+}
+
+export function useOpenTextDocumentsInActiveTab() {
+  return useMoleculeStore((state) => state.openTextDocumentsInActiveTab);
 }
 
 export function useSetDocuments() {
