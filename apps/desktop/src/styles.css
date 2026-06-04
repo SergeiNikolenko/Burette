@@ -1096,10 +1096,10 @@ kbd span { margin-left: 2px; }
   position: relative;
   min-width: 0;
   min-height: 0;
-  --ketcher-toolbar-button-size: clamp(24px, calc(32px * var(--ketcher-ui-scale, 1)), 40px);
-  --ketcher-toolbar-icon-size: clamp(18px, calc(22px * var(--ketcher-ui-scale, 1)), 28px);
-  --ketcher-toolbar-margin: clamp(1px, calc(4px * var(--ketcher-ui-scale, 1)), 5px);
-  --ketcher-toolbar-group-gap: clamp(3px, calc(6px * var(--ketcher-ui-scale, 1)), 8px);
+  --ketcher-toolbar-button-size: clamp(3px, calc(32px * var(--ketcher-ui-scale, 1)), 40px);
+  --ketcher-toolbar-icon-size: clamp(2px, calc(22px * var(--ketcher-ui-scale, 1)), 28px);
+  --ketcher-toolbar-margin: clamp(0px, calc(4px * var(--ketcher-ui-scale, 1)), 5px);
+  --ketcher-toolbar-group-gap: clamp(1px, calc(6px * var(--ketcher-ui-scale, 1)), 8px);
   --ketcher-side-rail-width: calc(var(--ketcher-toolbar-button-size) + 13px);
   border: 1px solid var(--line-subtler);
   background: #f5f5f5;

@@ -830,8 +830,7 @@ export default function App() {
 
   const openKetcher = useCallback(() => {
     openKetcherTab();
-    pushStatus("Opened Ketcher tab");
-  }, [openKetcherTab, pushStatus]);
+  }, [openKetcherTab]);
 
   const openKetcherWithStructures = useCallback((paths: string[], fragments: KetcherImportRequest["fragments"] = []) => {
     const cleanPaths = Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
@@ -1975,6 +1974,31 @@ export default function App() {
           : targetDocument?.path;
         if (targetPath) {
           openKetcherWithStructures([targetPath]);
+        }
+        return;
+      }
+      if (body?.type === "openSdfKetcherDocument") {
+        const rawFragments = Array.isArray(body.fragments) ? body.fragments : [];
+        const fragments = rawFragments.flatMap((fragment) => {
+          if (!fragment || typeof fragment !== "object") return [];
+          const textBase64 = typeof fragment.textBase64 === "string" ? fragment.textBase64.trim() : "";
+          if (!textBase64) return [];
+          try {
+            const bytes = Uint8Array.from(atob(textBase64), (char) => char.charCodeAt(0));
+            const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+            if (!text.trim()) return [];
+            const title = typeof fragment.title === "string" && fragment.title.trim()
+              ? fragment.title.trim()
+              : "ketcher-sketch.sdf";
+            return [{ title, text }];
+          } catch {
+            return [];
+          }
+        });
+        if (fragments.length > 0) {
+          openKetcherWithStructures([], fragments);
+        } else {
+          pushStatus("Open in Ketcher failed: selected molecules do not have structure data.", "error");
         }
         return;
       }
