@@ -12,7 +12,6 @@ import type { RecentStructure, ViewerDocument } from "../types";
 import {
   isPersistentRecentStructure,
   isPersistentViewerDocument,
-  isTemporaryDocumentPath,
 } from "../lib/temporary-documents";
 
 const MAX_RECENT_STRUCTURES = 12;
@@ -147,19 +146,11 @@ function toRecentStructure(document: ViewerDocument): RecentStructure {
   };
 }
 
-function persistedDocuments(documents: ViewerDocument[]) {
-  return documents.filter(isPersistentViewerDocument);
-}
-
-function persistedTabs(tabs: MoleculeTab[], documents: ViewerDocument[]) {
-  const paths = new Set(persistedDocuments(documents).map((document) => document.path));
+function persistedTabs(tabs: MoleculeTab[]) {
   return tabs.filter((tab) => (
+    tab.location.kind !== "file" &&
     tab.location.kind !== "fep-setup" &&
-    tab.location.kind !== "pose-review" &&
-    (
-      tab.location.kind !== "file" ||
-      (paths.has(tab.location.path) && !isTemporaryDocumentPath(tab.location.path))
-    )
+    tab.location.kind !== "pose-review"
   ));
 }
 
@@ -528,7 +519,7 @@ export const useMoleculeStore = create<MoleculeState>()(
         ? devFilesPersistedSession(state.recentStructures)
         : ({
             documents: [],
-            tabs: persistedTabs(collapseDuplicateKetcherTabs(state.tabs, state.activeTabId), state.documents),
+            tabs: persistedTabs(collapseDuplicateKetcherTabs(state.tabs, state.activeTabId)),
             activeTabId: state.activeTabId,
             recentStructures: state.recentStructures.filter(isPersistentRecentStructure),
           }),
@@ -541,9 +532,7 @@ export const useMoleculeStore = create<MoleculeState>()(
           };
         }
         const documents = current.documents;
-        const storedTabs = (stored?.tabs ?? current.tabs).filter((tab) => (
-          tab.location.kind !== "file" || !isTemporaryDocumentPath(tab.location.path)
-        ));
+        const storedTabs = (stored?.tabs ?? current.tabs).filter((tab) => tab.location.kind !== "file");
         const tabs = collapseDuplicateKetcherTabs(
           dedupeTabIds(ensureTabs(storedTabs.map(cloneTab))),
           stored?.activeTabId ?? current.activeTabId,

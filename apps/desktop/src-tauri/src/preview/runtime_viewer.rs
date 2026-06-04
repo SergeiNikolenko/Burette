@@ -123,17 +123,7 @@ pub(crate) fn create_runtime<R: Runtime>(
             Ok(artifact) => {
                 external_artifact = Some(artifact);
             }
-            Err(error)
-                if !format.external_only && format.molstar_format == "xyz" && !format.is_binary =>
-            {
-                renderer = "molstar".to_string();
-                external_status = Some(json!({
-                    "status": "fallback",
-                    "requested": "xyzrender-external",
-                    "message": format!("Using Mol* because external xyzrender failed: {error}")
-                }));
-            }
-            Err(error) if external_molstar_data.is_some() => {
+            Err(error) if !format.external_only || external_molstar_data.is_some() => {
                 renderer = "molstar".to_string();
                 external_status = Some(json!({
                     "status": "fallback",
@@ -247,7 +237,7 @@ pub(crate) fn create_runtime<R: Runtime>(
     let config_text = serde_json::to_string(&config).map_err(|err| err.to_string())?;
     fs::write(
         runtime.join("index.html"),
-        viewer_html(file_path, &runtime, &assets, &renderer, preferences, false),
+        viewer_html(file_path, &runtime, &assets, &renderer, preferences, true),
     )
     .map_err(|err| err.to_string())?;
     fs::write(runtime.join("viewer-bridge.js"), viewer_bridge_js())
@@ -258,6 +248,14 @@ pub(crate) fn create_runtime<R: Runtime>(
     )
     .map_err(|err| err.to_string())?;
     fs::write(runtime.join("preview-data.bin"), &payload.data).map_err(|err| err.to_string())?;
+    fs::write(
+        runtime.join("preview-data.js"),
+        format!(
+            "window.BurreteDataBase64 = \"{}\";\nwindow.BurreteDataURL = null;\n",
+            base64::engine::general_purpose::STANDARD.encode(&payload.data)
+        ),
+    )
+    .map_err(|err| err.to_string())?;
     Ok(CreatedRuntime {
         path: runtime.join("index.html"),
         renderer,
@@ -716,7 +714,7 @@ pub(crate) fn copy_web_assets<R: Runtime>(
 fn bundled_web_dir<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
     if let Ok(resource) = app
         .path()
-        .resolve("Web", tauri::path::BaseDirectory::Resource)
+        .resolve("ViewerWeb", tauri::path::BaseDirectory::Resource)
     {
         if resource.exists() {
             return Ok(resource);

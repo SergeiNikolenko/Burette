@@ -229,8 +229,6 @@ export default function App() {
     statusText: "No update check has run yet.",
     availableRelease: null,
   }));
-  const refreshedPersistedSessionRef = useRef(false);
-  const openedPersistedTabsRef = useRef(false);
   const openedBrowserDevFilesRef = useRef<string | null>(null);
   const openedBrowserDevDockingRef = useRef<string | null>(null);
   const syncingBrowserDevFilesRef = useRef(false);
@@ -406,6 +404,10 @@ export default function App() {
     },
     [addDocuments, openDocumentsInActiveTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setDocuments, showDelimitedGridColumnOpenMenu],
   );
+  useOpenEvents(
+    (paths, options) => openDocuments(paths, undefined, undefined, options),
+    pushErrorStatus,
+  );
 
   useEffect(() => {
     if (isTauriRuntime() || syncingBrowserDevFilesRef.current) return;
@@ -436,33 +438,6 @@ export default function App() {
       cancelled = true;
     };
   }, [addProjectRoot, closeAllDocuments, documents, openDocuments, pushErrorStatus, setWorkspacePath]);
-
-  useEffect(() => {
-    if (refreshedPersistedSessionRef.current) return;
-    if (!isTauriRuntime() || documents.length === 0) return;
-    refreshedPersistedSessionRef.current = true;
-    const activePath = activeDocument?.path;
-    const paths = documents
-      .map((document) => document.path)
-      .filter((path) => !isTemporaryDocumentPath(path))
-      .sort((a, b) => (a === activePath ? -1 : b === activePath ? 1 : 0));
-    if (paths.length === 0) return;
-    void openDocuments(paths);
-  }, [activeDocument, documents, openDocuments]);
-
-  useEffect(() => {
-    if (openedPersistedTabsRef.current) return;
-    if (!isTauriRuntime() || documents.length > 0) return;
-    const paths = Array.from(new Set(tabs
-      .map((tab) => tab.location.kind === "file" ? tab.location.path : null)
-      .filter((path): path is string => typeof path === "string" && !isTemporaryDocumentPath(path))));
-    if (paths.length === 0) return;
-    openedPersistedTabsRef.current = true;
-    const restoreTabId = activeTabId;
-    void openDocuments(paths).then(() => {
-      if (restoreTabId) setActiveTab(restoreTabId);
-    });
-  }, [activeTabId, documents.length, openDocuments, setActiveTab, tabs]);
 
   const openRecentStructure = useCallback(
     async (structure: RecentStructure) => {
@@ -1190,6 +1165,14 @@ export default function App() {
     return true;
   }, [pushErrorStatus]);
 
+  const addDroppedProjectRoots = useCallback((paths: string[]) => {
+    const cleanPaths = Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
+    if (cleanPaths.length === 0) return;
+    for (const path of cleanPaths) addProjectRoot(path);
+    setWorkspacePath(cleanPaths[0]);
+    pushStatus("Project folder added");
+  }, [addProjectRoot, pushStatus]);
+
   const currentFepSetupRequest = useMemo<FepSetupRequest | null>(() => {
     const location = activeTab?.location;
     if (!location) return null;
@@ -1217,7 +1200,6 @@ export default function App() {
     };
   }, [activeTab?.location, documents, poseReviewSelections]);
 
-  useOpenEvents(openDocuments, pushErrorStatus);
   const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop, handleBrowserPaste, openClipboardText } = useOpenDrop(openDocuments, pushStatus, {
     activeTabKind: activeTab?.location.kind ?? null,
     activeDocumentId: activeDocument?.id ?? null,
@@ -1232,6 +1214,7 @@ export default function App() {
     openFepSetupWorkspace,
     appendGridRecords,
     addXyzrenderSheetItems,
+    addProjectRoots: addDroppedProjectRoots,
     chooseDropAction,
     mergeMoleculeCollections: activeDocument?.renderer === "grid2d"
       ? (paths) => {
@@ -2038,15 +2021,15 @@ export default function App() {
       skipNextPreferenceRefreshRef.current = false;
       return;
     }
-    const paths = Array.from(new Set(tabs
-      .map((tab) => tab.location.kind === "file" ? tab.location.path : null)
-      .filter((path): path is string => typeof path === "string" && !isTemporaryDocumentPath(path))));
-    if (paths.length === 0) return;
+    const path = activeTab?.location.kind === "file" && !isTemporaryDocumentPath(activeTab.location.path)
+      ? activeTab.location.path
+      : null;
+    if (!path) return;
     const restoreTabId = activeTabId;
-    void openDocuments(paths).then(() => {
+    void openDocuments([path]).then(() => {
       if (restoreTabId) setActiveTab(restoreTabId);
     });
-    // Preferences refresh all open runtimes so inactive tabs do not keep stale renderer/theme output.
+    // Preferences refresh only the mounted file runtime. Inactive file tabs are unloaded.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preferences]);
 
