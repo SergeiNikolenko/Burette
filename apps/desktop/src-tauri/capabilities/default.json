@@ -9,6 +9,7 @@
     "core:event:allow-unlisten",
     "core:menu:allow-new",
     "core:menu:allow-popup",
+    "core:window:allow-internal-toggle-maximize",
     "core:window:allow-start-dragging",
     "dialog:allow-message",
     "dialog:allow-open",
