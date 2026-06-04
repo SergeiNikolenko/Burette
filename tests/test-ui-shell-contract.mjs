@@ -1523,6 +1523,12 @@ assert.match(previewViewController, /"trajectoryControls": renderer == BurreteRe
 assert.match(previewViewController, /"trajectoryFrameCount": resolvedTrajectoryFrameCount/);
 assert.match(previewViewController, /"quickLookViewer": true/);
 assert.match(previewViewController, /"sdfPosePager": renderer == BurreteRendererMode\.molstar && format\.molstarFormat == "sdf" && !format\.isBinary/);
+assert.match(previewViewController, /private static let maestroPreviewReadLimit = 64 \* 1024 \* 1024/);
+assert.match(previewViewController, /let usesBoundedMaestroPreview = structureSize > sizeLimit && isMaestroPreviewExtension\(pathExtension\)/);
+assert.match(previewViewController, /\? try readFilePrefix\(url, maxBytes: maestroPreviewReadLimit\)/);
+assert.match(previewViewController, /case "cms", "mae", "maegz":\s*atoms = parseMaestroAtoms\(lines, atomLimit: 20_000\)/);
+assert.match(previewViewController, /private static func parseMaestroAtoms\(_ lines: \[String\], atomLimit: Int\) -> \[Atom\]\?/);
+assert.match(previewViewController, /case \.couldNotExtractBoundedMaestroPreview\(let name, let limit\):/);
 assert.match(browserDevDocuments, /xyzrenderAvailable,/);
 assert.match(browserDevDocuments, /dataPath: renderer === "xyzrender-external" \? browserDevReadUrl\(path, fileExtension\(path\)\) : undefined/);
 assert.match(browserDevDocuments, /browserDevVirtualTextDocuments\.has\(path\) \? bytes : null/);
