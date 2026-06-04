@@ -55,14 +55,12 @@ require_asset "$WEB_SOURCE/grid-viewer.js"
 require_asset "$WEB_SOURCE/grid.css"
 require_asset "$WEB_SOURCE/rdkit/RDKit_minimal.js"
 require_asset "$WEB_SOURCE/rdkit/RDKit_minimal.wasm"
-require_asset "$WEB_SOURCE/xyz-fast.js"
 
 bun scripts/check-js-syntax.mjs \
   PreviewExtension/Web/viewer.js \
   PreviewExtension/Web/viewer-shell.js \
   PreviewExtension/Web/burette-agent.js \
-  PreviewExtension/Web/grid-viewer.js \
-  PreviewExtension/Web/xyz-fast.js >/dev/null
+  PreviewExtension/Web/grid-viewer.js >/dev/null
 
 cat <<MSG
 Burrete web asset patch

@@ -104,13 +104,10 @@ enum BurreteCoreBridge {
 enum BurreteRendererMode {
     static let auto = "auto"
     static let molstar = "molstar"
-    static let xyzFast = "xyz-fast"
     static let xyzrenderExternal = "xyzrender-external"
 
     static func normalize(_ value: String) -> String {
         switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-        case "xyz-fast", "fast-xyz", "xyzfast":
-            return xyzFast
         case "molstar", "mol*", "interactive":
             return molstar
         case "xyzrender-external", "external-xyzrender", "xyzrender":
@@ -154,8 +151,6 @@ struct BurreteRendererPolicy: Equatable {
             let canUseXyzrender = isXYZ || (!format.isBinary && ["sdf", "pdb", "pdbqt", "mmcif", "cifCore"].contains(format.molstarFormat))
             switch requestedMode {
             case BurreteRendererMode.molstar:
-                renderer = BurreteRendererMode.molstar
-            case BurreteRendererMode.xyzFast:
                 renderer = BurreteRendererMode.molstar
             case BurreteRendererMode.xyzrenderExternal:
                 renderer = canUseXyzrender ? BurreteRendererMode.xyzrenderExternal : BurreteRendererMode.molstar

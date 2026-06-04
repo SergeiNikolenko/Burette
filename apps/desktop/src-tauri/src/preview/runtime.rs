@@ -24,7 +24,6 @@ pub(crate) struct ViewerPreferences {
     pub(crate) canvas_background: String,
     pub(crate) renderer_mode: String,
     pub(crate) molstar_style: String,
-    pub(crate) xyz_fast_style: String,
     #[serde(default = "default_light_accent")]
     pub(crate) theme_light_accent: String,
     #[serde(default = "default_light_background")]
@@ -210,7 +209,6 @@ mod viewer_preferences_tests {
             canvas_background: canvas_background.to_string(),
             renderer_mode: "auto".to_string(),
             molstar_style: "illustrative".to_string(),
-            xyz_fast_style: "default".to_string(),
             theme_light_accent: default_light_accent(),
             theme_light_background: default_light_background(),
             theme_light_foreground: default_light_foreground(),
@@ -597,7 +595,6 @@ mod document_open_tests {
             canvas_background: "auto".to_string(),
             renderer_mode: "auto".to_string(),
             molstar_style: "illustrative".to_string(),
-            xyz_fast_style: "ball-stick".to_string(),
             theme_light_accent: default_light_accent(),
             theme_light_background: default_light_background(),
             theme_light_foreground: default_light_foreground(),
@@ -730,7 +727,6 @@ mod document_open_tests {
                 let _ = fs::remove_file(viewer_dir.join("assets").join("viewer-shell.js"));
                 let _ = fs::remove_file(viewer_dir.join("assets").join("burette-agent.js"));
                 let _ = fs::remove_file(viewer_dir.join("assets").join("viewer.js"));
-                let _ = fs::remove_file(viewer_dir.join("assets").join("xyz-fast.js"));
                 let _ = fs::remove_file(viewer_dir.join("assets").join("grid-viewer.js"));
                 let _ = fs::remove_file(viewer_dir.join("assets").join("grid.css"));
             }
@@ -775,6 +771,14 @@ mod document_open_tests {
                 (fixture_path("1HTB.pdb"), "molstar"),
                 (fixture_path("sdf/single.sdf"), "molstar"),
                 (fixture_path("sdf/multi.sdf"), "grid2d"),
+                (fixture_path("md/minimal.xtc"), "molstar"),
+                (fixture_path("md/minimal.trr"), "molstar"),
+                (fixture_path("md/minimal.dcd"), "molstar"),
+                (fixture_path("md/minimal.nctraj"), "molstar"),
+                (fixture_path("md/minimal.lammpstrj"), "molstar"),
+                (fixture_path("md/minimal.top"), "molstar"),
+                (fixture_path("md/minimal.psf"), "molstar"),
+                (fixture_path("md/minimal.prmtop"), "molstar"),
                 (cube, "xyzrender-external"),
                 (com, "xyzrender-external"),
                 (mae_gz, "xyzrender-external"),
@@ -862,7 +866,7 @@ CARTESIAN COORDINATES (ANGSTROEM)
     }
 
     #[test]
-    fn keeps_multiframe_xyz_in_molstar_when_global_renderer_is_fast() {
+    fn treats_removed_fast_renderer_preference_as_auto_for_multiframe_xyz() {
         let app = mock_app_with_grid_registry();
         let mut preferences = viewer_preferences();
         preferences.renderer_mode = "xyz-fast".to_string();

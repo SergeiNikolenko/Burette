@@ -72,7 +72,6 @@ require_asset PreviewExtension/Web/viewer-runtime.css
 require_asset PreviewExtension/Web/viewer-shell.js
 require_asset PreviewExtension/Web/burette-agent.js
 require_asset PreviewExtension/Web/viewer.js
-require_asset PreviewExtension/Web/xyz-fast.js
 require_asset PreviewExtension/Web/grid-viewer.js
 require_asset PreviewExtension/Web/grid.css
 require_asset PreviewExtension/Web/rdkit/RDKit_minimal.js
@@ -81,8 +80,7 @@ bun scripts/check-js-syntax.mjs \
   PreviewExtension/Web/viewer.js \
   PreviewExtension/Web/viewer-shell.js \
   PreviewExtension/Web/burette-agent.js \
-  PreviewExtension/Web/grid-viewer.js \
-  PreviewExtension/Web/xyz-fast.js >/dev/null
+  PreviewExtension/Web/grid-viewer.js >/dev/null
 
 if [[ "$DRY_RUN" == "1" ]]; then
   echo "Release dry run passed."

@@ -14,7 +14,6 @@ export const defaultPreferences: ViewerPreferences = {
   canvasBackground: "auto",
   rendererMode: "auto",
   molstarStyle: "illustrative",
-  xyzFastStyle: "default",
   themeLightAccent: "#AF52DE",
   themeLightBackground: "#FFFFFF",
   themeLightForeground: "#0D0D0D",

@@ -769,21 +769,10 @@ function viewerHtml(
         }
       : {}),
     ...(externalRendererStatus ? { externalRendererStatus } : {}),
-    ...(renderer === "xyz-fast"
-      ? {
-          xyzFast: {
-            style: preferences.xyzFastStyle,
-            firstFrameOnly: true,
-            showCell: true,
-            sourceByteCount,
-            previewByteCount: bytes.length,
-          },
-        }
-      : {}),
   };
   const rendererAssets =
-    renderer === "xyz-fast" || renderer === "xyzrender-external"
-      ? `<script src="xyz-fast.js"></script>`
+    renderer === "xyzrender-external"
+      ? `<link rel="stylesheet" href="molstar.css" />`
       : `<link rel="stylesheet" href="molstar.css" /><script src="molstar.js"></script>`;
   const runtimeAssetVersion = `${VIEWER_ASSET_VERSION}-${Date.now()}`;
   const embeddedBytes = renderer === "xyzrender-external" ? new Uint8Array([10]) : bytes;
@@ -1164,6 +1153,8 @@ function viewerBridgeJs() {
 }
 
 function formatForExtension(extension: string): FormatInfo {
+  const mdFormat = molstarFormatForExtension(extension);
+  if (mdFormat) return mdFormat;
   const format = previewFormatRegistry.formats.find((candidate) =>
     candidate.extensions.includes(extension),
   );
@@ -1178,6 +1169,16 @@ function formatForExtension(extension: string): FormatInfo {
   throw new Error(`Unsupported structure extension: ${extension}`);
 }
 
+function molstarFormatForExtension(extension: string): FormatInfo | null {
+  if (["xtc", "trr", "dcd", "nctraj"].includes(extension)) {
+    return { molstarFormat: extension, binary: true, externalOnly: false, canOpenInVesta: false };
+  }
+  if (["lammpstrj", "top", "psf", "prmtop"].includes(extension)) {
+    return { molstarFormat: extension, binary: false, externalOnly: false, canOpenInVesta: false };
+  }
+  return null;
+}
+
 function resolveRenderer(format: FormatInfo, requested: string, externalMolstarAvailable = false) {
   const normalized = normalizeRendererMode(requested);
   if (format.externalOnly) {
@@ -1186,7 +1187,6 @@ function resolveRenderer(format: FormatInfo, requested: string, externalMolstarA
   const isXyz = format.molstarFormat === "xyz" && !format.binary;
   const canUseXyzrender = isXyz || canUseExternalXyzrender(format);
   if (normalized === "molstar") return "molstar";
-  if (normalized === "xyz-fast") return isXyz ? "xyz-fast" : "molstar";
   if (normalized === "xyzrender-external") return canUseXyzrender ? "xyzrender-external" : "molstar";
   return isXyz ? "xyzrender-external" : "molstar";
 }
@@ -1380,7 +1380,6 @@ function isSdfExtension(extension: string) {
 function normalizeRendererMode(raw: string) {
   const value = raw.trim().toLowerCase();
   if (["grid2d", "grid", "grid-2d"].includes(value)) return "grid2d";
-  if (["xyz-fast", "fast-xyz", "xyzfast"].includes(value)) return "xyz-fast";
   if (["molstar", "mol*", "interactive"].includes(value)) return "molstar";
   if (["xyzrender-external", "external-xyzrender", "xyzrender"].includes(value)) {
     return "xyzrender-external";

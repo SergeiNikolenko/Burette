@@ -816,7 +816,6 @@ fn sync_viewer_preferences_macos(preferences: &ViewerPreferences) -> Result<(), 
             &preferences.renderer_mode,
         )?;
         set_defaults_string(defaults, "molstarStyle", &preferences.molstar_style)?;
-        set_defaults_string(defaults, "xyzFastStyle", &preferences.xyz_fast_style)?;
         set_defaults_string(
             defaults,
             "themeLightAccent",
@@ -1002,7 +1001,6 @@ mod tests {
             canvas_background: "auto".to_string(),
             renderer_mode: "auto".to_string(),
             molstar_style: "illustrative".to_string(),
-            xyz_fast_style: "ball-stick".to_string(),
             theme_light_accent: "#AF52DE".to_string(),
             theme_light_background: "#FFFFFF".to_string(),
             theme_light_foreground: "#0D0D0D".to_string(),
