@@ -20,7 +20,7 @@
   --focus-border: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 65%), transparent);
   --focus-ring: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 95%), transparent);
   --line-strong: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 65%), transparent);
-  --sidebar-divider-right: var(--line-subtler);
+  --sidebar-divider-right: var(--line-subtle);
   --surface-primary: var(--bg-base);
   --surface-card: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 16%), transparent);
   --surface-subtle: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 18%), transparent);
