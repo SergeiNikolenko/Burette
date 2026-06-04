@@ -184,7 +184,6 @@ print_web_asset_duplication() {
     "grid.css"
     "rdkit/RDKit_minimal.js"
     "rdkit/RDKit_minimal.wasm"
-    "xyz-fast.js"
   )
   if [[ ! -d "$desktop_web" || ! -d "$appex_web" ]]; then
     echo "Desktop or Quick Look Web bundle is missing."

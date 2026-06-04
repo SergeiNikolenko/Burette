@@ -49,6 +49,9 @@ fn format_registry() -> Result<&'static FormatRegistry, String> {
 
 pub fn format_for_extension(extension: &str) -> Result<FormatInfo, String> {
     let normalized = extension.trim().to_ascii_lowercase();
+    if let Some(format) = molstar_format_for_extension(&normalized) {
+        return Ok(format);
+    }
     format_registry()?
         .formats
         .iter()
@@ -66,6 +69,24 @@ pub fn format_for_extension(extension: &str) -> Result<FormatInfo, String> {
             can_open_in_vesta,
         })
         .ok_or_else(|| format!("Unsupported structure extension: {normalized}"))
+}
+
+fn molstar_format_for_extension(extension: &str) -> Option<FormatInfo> {
+    match extension {
+        "xtc" | "trr" | "dcd" | "nctraj" => Some(FormatInfo {
+            molstar_format: extension.to_string(),
+            is_binary: true,
+            external_only: false,
+            can_open_in_vesta: false,
+        }),
+        "lammpstrj" | "top" | "psf" | "prmtop" => Some(FormatInfo {
+            molstar_format: extension.to_string(),
+            is_binary: false,
+            external_only: false,
+            can_open_in_vesta: false,
+        }),
+        _ => None,
+    }
 }
 
 pub fn structure_path_extension(path: &Path) -> String {
@@ -104,7 +125,8 @@ pub fn quick_look_size_limit_for_extension(extension: &str) -> i64 {
         "bcif" => 50 * mib,
         "abi" | "com" | "csv" | "fdf" | "sdf" | "sd" | "mol" | "mol2" | "xyz" | "gro" | "smi"
         | "smiles" | "tsv" | "cub" | "cube" | "in" | "inp" | "nw" | "out" | "psi4" | "qcin"
-        | "vasp" | "lammpstrj" | "top" | "psf" | "prmtop" | "mae" | "maegz" | "cms" => 25 * mib,
+        | "vasp" | "lammpstrj" | "top" | "psf" | "prmtop" => 25 * mib,
+        "mae" | "maegz" | "cms" => 64 * mib,
         "xtc" | "trr" | "dcd" | "nctraj" => 75 * mib,
         _ => 20 * mib,
     }
@@ -113,7 +135,6 @@ pub fn quick_look_size_limit_for_extension(extension: &str) -> i64 {
 pub fn normalize_renderer_mode(raw: &str) -> &'static str {
     match raw.trim().to_ascii_lowercase().as_str() {
         "grid2d" | "grid" | "grid-2d" => "grid2d",
-        "xyz-fast" | "fast-xyz" | "xyzfast" => "xyz-fast",
         "molstar" | "mol*" | "interactive" => "molstar",
         "xyzrender-external" | "external-xyzrender" | "xyzrender" => "xyzrender-external",
         _ => "auto",
@@ -134,7 +155,6 @@ pub fn resolve_renderer(format: &FormatInfo, requested: &str) -> String {
     let can_use_xyzrender = is_xyz || can_use_external_xyzrender(format);
     match normalized {
         "molstar" => "molstar".to_string(),
-        "xyz-fast" => "molstar".to_string(),
         "xyzrender-external" => if can_use_xyzrender {
             "xyzrender-external"
         } else {
@@ -179,7 +199,6 @@ mod tests {
 
         let cif = format_for_extension("mmcif").expect("mmcif should be supported");
         assert_eq!(cif.molstar_format, "mmcif");
-        assert_eq!(resolve_renderer(&cif, "xyz-fast"), "molstar");
     }
 
     #[test]
@@ -227,7 +246,6 @@ mod tests {
         assert!(cube.external_only);
         assert_eq!(resolve_renderer(&cube, "auto"), "xyzrender-external");
         assert_eq!(resolve_renderer(&cube, "molstar"), "molstar");
-        assert_eq!(resolve_renderer(&cube, "xyz-fast"), "xyzrender-external");
 
         let cub = format_for_extension("cub").expect("cub should be supported");
         assert!(cub.external_only);
@@ -261,11 +279,32 @@ mod tests {
     }
 
     #[test]
+    fn routes_md_trajectory_and_topology_extensions_to_molstar() {
+        for extension in ["xtc", "trr", "dcd", "nctraj"] {
+            let format = format_for_extension(extension)
+                .unwrap_or_else(|_| panic!("{extension} should be supported"));
+            assert_eq!(format.molstar_format, extension);
+            assert!(format.is_binary, "{extension} should be binary");
+            assert!(!format.external_only, "{extension} should be Mol* capable");
+            assert_eq!(resolve_renderer(&format, "auto"), "molstar");
+        }
+
+        for extension in ["lammpstrj", "top", "psf", "prmtop"] {
+            let format = format_for_extension(extension)
+                .unwrap_or_else(|_| panic!("{extension} should be supported"));
+            assert_eq!(format.molstar_format, extension);
+            assert!(!format.is_binary, "{extension} should be text");
+            assert!(!format.external_only, "{extension} should be Mol* capable");
+            assert_eq!(resolve_renderer(&format, "auto"), "molstar");
+        }
+    }
+
+    #[test]
     fn normalizes_renderer_mode_aliases() {
         assert_eq!(normalize_renderer_mode(" mol* "), "molstar");
         assert_eq!(normalize_renderer_mode("grid"), "grid2d");
         assert_eq!(normalize_renderer_mode("grid-2d"), "grid2d");
-        assert_eq!(normalize_renderer_mode("fast-xyz"), "xyz-fast");
+        assert_eq!(normalize_renderer_mode("fast-xyz"), "auto");
         assert_eq!(normalize_renderer_mode("xyzrender"), "xyzrender-external");
         assert_eq!(normalize_renderer_mode("unknown"), "auto");
     }
@@ -295,7 +334,7 @@ mod tests {
         assert_eq!(quick_look_size_limit_for_extension("mmcif"), 40 * mib);
         assert_eq!(quick_look_size_limit_for_extension("bcif"), 50 * mib);
         assert_eq!(quick_look_size_limit_for_extension("sdf"), 25 * mib);
-        assert_eq!(quick_look_size_limit_for_extension("mae.gz"), 25 * mib);
+        assert_eq!(quick_look_size_limit_for_extension("mae.gz"), 64 * mib);
         assert_eq!(quick_look_size_limit_for_extension("xtc"), 75 * mib);
         assert_eq!(quick_look_size_limit_for_extension("txt"), 20 * mib);
     }
