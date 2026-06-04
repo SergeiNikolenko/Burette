@@ -11,6 +11,7 @@ type ShellState = {
   pinnedStructurePaths: string[];
   sidebarQuery: string;
   toggleSidebar: () => void;
+  closeSidebar: () => void;
   setSidebarWidth: (width: number) => void;
   toggleProjectsOpen: () => void;
   setExpandedProjectIds: (projectIds: string[]) => void;
@@ -54,6 +55,7 @@ export const useShellStore = create<ShellState>()(
       pinnedStructurePaths: [],
       sidebarQuery: "",
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+      closeSidebar: () => set({ sidebarOpen: false }),
       setSidebarWidth: (width) => set({ sidebarWidth: normalizeSidebarWidth(width) }),
       toggleProjectsOpen: () => set((state) => ({ projectsOpen: !state.projectsOpen })),
       setExpandedProjectIds: (projectIds) => set({ expandedProjectIds: Array.from(new Set(projectIds)) }),

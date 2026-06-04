@@ -20,7 +20,9 @@
   --focus-border: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 65%), transparent);
   --focus-ring: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 95%), transparent);
   --line-strong: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 65%), transparent);
-  --sidebar-divider-right: var(--line-subtle);
+  --sidebar-divider-right: transparent;
+  --workspace-edge-border: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 22%), transparent);
+  --workspace-edge-shadow: rgb(0 0 0 / 0.055);
   --surface-primary: var(--bg-base);
   --surface-card: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 16%), transparent);
   --surface-subtle: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 18%), transparent);
@@ -920,9 +922,17 @@ kbd span { margin-left: 2px; }
 }
 .splitter::before { content: ""; position: absolute; inset: 0; }
 .splitter::after { content: ""; position: absolute; inset: 0 auto 0 3px; width: 1px; background: transparent; transition: background 120ms ease; }
-.splitter::after { background: var(--sidebar-divider-right); }
-.splitter:hover::after, .splitter[data-dragging]::after { background: var(--line-subtle); }
-.main-stage { position: relative; min-width: 0; flex: 1; display: grid; background: var(--bg-base); overflow: hidden; }
+.main-stage {
+  position: relative;
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  background: var(--bg-base);
+  overflow: hidden;
+  border-left: 1px solid var(--workspace-edge-border);
+  border-radius: 20px 0 0 20px;
+  box-shadow: -12px 0 28px var(--workspace-edge-shadow);
+}
 .page-stack { position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
 .page-surface { position: absolute; inset: 0; min-width: 0; min-height: 0; overflow: hidden; visibility: hidden; pointer-events: none; }
 .page-surface:not([data-active]) { display: none; }
