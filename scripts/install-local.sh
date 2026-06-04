@@ -320,6 +320,14 @@ if ! cmp -s "$ROOT/PreviewExtension/Web/grid-viewer.js" "$DEST_APPEX/Contents/Re
   echo "error: installed Quick Look grid viewer does not match PreviewExtension/Web/grid-viewer.js" >&2
   exit 1
 fi
+if ! cmp -s "$ROOT/PreviewExtension/Web/grid-ui.js" "$DEST/Contents/Resources/Web/grid-ui.js"; then
+  echo "error: installed app grid UI does not match PreviewExtension/Web/grid-ui.js" >&2
+  exit 1
+fi
+if ! cmp -s "$ROOT/PreviewExtension/Web/grid-ui.js" "$DEST_APPEX/Contents/Resources/Web/grid-ui.js"; then
+  echo "error: installed Quick Look grid UI does not match PreviewExtension/Web/grid-ui.js" >&2
+  exit 1
+fi
 if ! cmp -s "$ROOT/PreviewExtension/Web/grid.css" "$DEST/Contents/Resources/Web/grid.css"; then
   echo "error: installed app grid CSS does not match PreviewExtension/Web/grid.css" >&2
   exit 1

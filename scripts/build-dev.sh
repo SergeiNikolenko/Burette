@@ -116,6 +116,7 @@ require_asset PreviewExtension/Web/molstar.js
 require_asset PreviewExtension/Web/molstar.css
 require_asset PreviewExtension/Web/burette-agent.js
 require_asset PreviewExtension/Web/viewer.js
+require_asset PreviewExtension/Web/grid-ui.js
 require_asset PreviewExtension/Web/grid-viewer.js
 require_asset PreviewExtension/Web/grid.css
 require_asset PreviewExtension/Web/rdkit/RDKit_minimal.js
@@ -124,6 +125,7 @@ require_asset PreviewExtension/Web/rdkit/RDKit_minimal.wasm
 bun scripts/check-js-syntax.mjs \
   PreviewExtension/Web/viewer.js \
   PreviewExtension/Web/burette-agent.js \
+  PreviewExtension/Web/grid-ui.js \
   PreviewExtension/Web/grid-viewer.js >/dev/null
 
 if [[ ! -d node_modules || ! -d node_modules/@hugeicons/core-free-icons || ! -d node_modules/@tauri-apps/cli ]]; then
