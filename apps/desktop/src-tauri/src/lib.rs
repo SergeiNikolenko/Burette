@@ -100,6 +100,7 @@ pub fn run() {
             commands::documents::save_molecule_collection_as,
             commands::documents::save_text_as,
             commands::documents::render_xyzrender_sheet_item,
+            commands::documents::render_xyzrender_sheet_items,
             commands::grid::grid_fetch_page,
             commands::grid::grid_append_records,
             commands::grid::grid_delimited_columns,
