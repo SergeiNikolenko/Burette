@@ -1,7 +1,8 @@
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Write};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -16,6 +17,57 @@ const XYZRENDER_LOG_CAPTURE_BYTES: usize = 64 * 1024;
 const XYZRENDER_CACHE_MAX_AGE: Duration = Duration::from_secs(14 * 24 * 60 * 60);
 const XYZRENDER_CACHE_MAX_ENTRIES: usize = 96;
 const XYZRENDER_CACHE_MAX_BYTES: u64 = 256 * 1024 * 1024;
+const XYZRENDER_GRID_BATCH_TIMEOUT: Duration = Duration::from_secs(30);
+
+pub(crate) struct XyzrenderSmilesBatchRequest {
+    pub(crate) id: String,
+    pub(crate) input_path: PathBuf,
+    pub(crate) output_directory: PathBuf,
+    pub(crate) cache_directory: Option<PathBuf>,
+    pub(crate) preset: Option<String>,
+    pub(crate) controls: Option<XyzrenderControls>,
+    pub(crate) direct_smiles: String,
+}
+
+pub(crate) struct XyzrenderSmilesBatchResult {
+    pub(crate) id: String,
+    pub(crate) svg: Option<String>,
+    pub(crate) preset: String,
+    pub(crate) elapsed_ms: u128,
+    pub(crate) log: String,
+    pub(crate) cache_hit: bool,
+    pub(crate) error: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct XyzrenderSmilesBatchHelperPayload<'a> {
+    items: Vec<XyzrenderSmilesBatchHelperItem<'a>>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct XyzrenderSmilesBatchHelperItem<'a> {
+    id: &'a str,
+    smiles: &'a str,
+    output_path: String,
+    config: &'a str,
+    canvas_size: Option<f64>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct XyzrenderSmilesBatchHelperResponse {
+    results: Vec<XyzrenderSmilesBatchHelperResult>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct XyzrenderSmilesBatchHelperResult {
+    id: String,
+    log: Option<String>,
+    error: Option<String>,
+}
 
 pub(crate) struct XyzrenderArtifact {
     pub(crate) relative_path: &'static str,
@@ -64,6 +116,7 @@ pub(crate) fn create_xyzrender_artifact(
     let cache_key = xyzrender_cache_key(
         input_path,
         converted_input,
+        direct_smiles,
         orientation_ref_text,
         resolved_preset,
         &resolved_config_argument,
@@ -141,6 +194,365 @@ pub(crate) fn create_xyzrender_artifact(
         cache_hit: false,
     })
 }
+
+pub(crate) fn create_xyzrender_smiles_batch_artifacts(
+    requests: Vec<XyzrenderSmilesBatchRequest>,
+) -> Vec<XyzrenderSmilesBatchResult> {
+    if requests.is_empty() {
+        return Vec::new();
+    }
+    let executable = match resolve_xyzrender_executable() {
+        Ok(value) => value,
+        Err(error) => {
+            return requests
+                .into_iter()
+                .map(|request| XyzrenderSmilesBatchResult {
+                    id: request.id,
+                    svg: None,
+                    preset: "default".to_string(),
+                    elapsed_ms: 0,
+                    log: String::new(),
+                    cache_hit: false,
+                    error: Some(error.clone()),
+                })
+                .collect();
+        }
+    };
+    let mut results = Vec::new();
+    let mut misses = Vec::new();
+    for request in requests {
+        let output_path = request.output_directory.join("xyzrender.svg");
+        let log_path = request.output_directory.join("xyzrender.log");
+        let _ = fs::remove_file(&output_path);
+        let _ = fs::remove_file(&log_path);
+        let started = Instant::now();
+        let resolved_preset = normalize_preset(request.preset.as_deref());
+        let resolved_config_argument =
+            resolve_config_argument(resolved_preset, request.controls.as_ref()).to_string();
+        let effective_preset =
+            if resolved_preset == "custom" && resolved_config_argument == "default" {
+                "default"
+            } else {
+                resolved_preset
+            };
+        let cache_key = match xyzrender_cache_key(
+            &request.input_path,
+            None,
+            Some(&request.direct_smiles),
+            None,
+            resolved_preset,
+            &resolved_config_argument,
+            request.controls.as_ref(),
+            &executable,
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                results.push(XyzrenderSmilesBatchResult {
+                    id: request.id,
+                    svg: None,
+                    preset: effective_preset.to_string(),
+                    elapsed_ms: started.elapsed().as_millis(),
+                    log: String::new(),
+                    cache_hit: false,
+                    error: Some(error),
+                });
+                continue;
+            }
+        };
+        let cache_entry = request
+            .cache_directory
+            .as_ref()
+            .map(|directory| directory.join(&cache_key));
+        if let Some(entry) = cache_entry.as_deref() {
+            prune_xyzrender_cache(entry.parent().unwrap_or(entry));
+            match read_cached_xyzrender_artifact(
+                entry,
+                &output_path,
+                &log_path,
+                &cache_key,
+                effective_preset,
+                &resolved_config_argument,
+            ) {
+                Ok(Some(artifact)) => {
+                    results.push(XyzrenderSmilesBatchResult {
+                        id: request.id,
+                        svg: Some(artifact.inline_svg),
+                        preset: artifact.preset.to_string(),
+                        elapsed_ms: artifact.elapsed_ms,
+                        log: artifact.log,
+                        cache_hit: true,
+                        error: None,
+                    });
+                    continue;
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    results.push(XyzrenderSmilesBatchResult {
+                        id: request.id,
+                        svg: None,
+                        preset: effective_preset.to_string(),
+                        elapsed_ms: started.elapsed().as_millis(),
+                        log: String::new(),
+                        cache_hit: false,
+                        error: Some(error),
+                    });
+                    continue;
+                }
+            }
+        }
+        misses.push(XyzrenderPreparedSmilesBatchMiss {
+            request,
+            output_path,
+            log_path,
+            cache_entry,
+            cache_key,
+            effective_preset,
+            resolved_config_argument,
+            started,
+        });
+    }
+    if misses.is_empty() {
+        return results;
+    }
+    match run_xyzrender_smiles_batch_helper(&executable, &misses) {
+        Ok(helper_results) => {
+            for miss in misses {
+                let Some(helper_result) = helper_results
+                    .iter()
+                    .find(|result| result.id == miss.request.id)
+                else {
+                    results.push(batch_miss_error(
+                        miss,
+                        "xyzrender batch helper returned no result",
+                    ));
+                    continue;
+                };
+                if let Some(error) = helper_result
+                    .error
+                    .as_deref()
+                    .filter(|value| !value.is_empty())
+                {
+                    results.push(batch_miss_error(miss, error));
+                    continue;
+                }
+                let svg = match fs::read_to_string(&miss.output_path) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        results.push(batch_miss_error(
+                            miss,
+                            &format!("Could not read xyzrender batch SVG output: {error}"),
+                        ));
+                        continue;
+                    }
+                };
+                let log = helper_result.log.clone().unwrap_or_default();
+                if let Some(entry) = miss.cache_entry.as_deref() {
+                    if let Err(error) = write_xyzrender_cache_entry(
+                        entry,
+                        &miss.output_path,
+                        &miss.log_path,
+                        &miss.cache_key,
+                        &log,
+                        miss.started.elapsed().as_millis(),
+                    ) {
+                        results.push(batch_miss_error(miss, &error));
+                        continue;
+                    }
+                }
+                results.push(XyzrenderSmilesBatchResult {
+                    id: miss.request.id,
+                    svg: Some(svg),
+                    preset: miss.effective_preset.to_string(),
+                    elapsed_ms: miss.started.elapsed().as_millis(),
+                    log,
+                    cache_hit: false,
+                    error: None,
+                });
+            }
+        }
+        Err(error) => {
+            for miss in misses {
+                results.push(batch_miss_error(miss, &error));
+            }
+        }
+    }
+    results
+}
+
+struct XyzrenderPreparedSmilesBatchMiss {
+    request: XyzrenderSmilesBatchRequest,
+    output_path: PathBuf,
+    log_path: PathBuf,
+    cache_entry: Option<PathBuf>,
+    cache_key: String,
+    effective_preset: &'static str,
+    resolved_config_argument: String,
+    started: Instant,
+}
+
+fn batch_miss_error(
+    miss: XyzrenderPreparedSmilesBatchMiss,
+    error: &str,
+) -> XyzrenderSmilesBatchResult {
+    XyzrenderSmilesBatchResult {
+        id: miss.request.id,
+        svg: None,
+        preset: miss.effective_preset.to_string(),
+        elapsed_ms: miss.started.elapsed().as_millis(),
+        log: String::new(),
+        cache_hit: false,
+        error: Some(error.to_string()),
+    }
+}
+
+fn run_xyzrender_smiles_batch_helper(
+    executable: &Path,
+    misses: &[XyzrenderPreparedSmilesBatchMiss],
+) -> Result<Vec<XyzrenderSmilesBatchHelperResult>, String> {
+    let python = python_interpreter_from_script(executable).ok_or_else(|| {
+        "Could not resolve Python interpreter for xyzrender batch helper.".to_string()
+    })?;
+    let helper_path = std::env::temp_dir().join("burrete-xyzrender-grid-batch-helper.py");
+    fs::write(&helper_path, XYZRENDER_GRID_BATCH_HELPER)
+        .map_err(|err| format!("Could not write xyzrender batch helper: {err}"))?;
+    let payload = XyzrenderSmilesBatchHelperPayload {
+        items: misses
+            .iter()
+            .map(|miss| XyzrenderSmilesBatchHelperItem {
+                id: &miss.request.id,
+                smiles: &miss.request.direct_smiles,
+                output_path: miss.output_path.display().to_string(),
+                config: &miss.resolved_config_argument,
+                canvas_size: miss
+                    .request
+                    .controls
+                    .as_ref()
+                    .and_then(|controls| finite_positive(controls.canvas_size)),
+            })
+            .collect(),
+    };
+    let input = serde_json::to_vec(&payload)
+        .map_err(|err| format!("Could not encode xyzrender batch payload: {err}"))?;
+    let mut child = Command::new(python)
+        .arg(helper_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|err| format!("Could not start xyzrender batch helper: {err}"))?;
+    {
+        let stdin = child
+            .stdin
+            .as_mut()
+            .ok_or_else(|| "Could not open xyzrender batch helper stdin.".to_string())?;
+        stdin
+            .write_all(&input)
+            .map_err(|err| format!("Could not send xyzrender batch payload: {err}"))?;
+    }
+    drop(child.stdin.take());
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Could not capture xyzrender batch helper stdout.".to_string())?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "Could not capture xyzrender batch helper stderr.".to_string())?;
+    let stdout_reader = thread::spawn(move || read_capped_bytes(stdout));
+    let stderr_reader = thread::spawn(move || read_capped_text(stderr));
+    let started = Instant::now();
+    loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|err| format!("Could not wait for xyzrender batch helper: {err}"))?
+        {
+            let stdout = stdout_reader.join().unwrap_or_default();
+            let stderr = stderr_reader.join().unwrap_or_default();
+            if !status.success() {
+                return Err(format!(
+                    "xyzrender batch helper failed with exit status {}. {}",
+                    status.code().unwrap_or(-1),
+                    truncate_text(&stderr, 320)
+                ));
+            }
+            let response: XyzrenderSmilesBatchHelperResponse = serde_json::from_slice(&stdout)
+                .map_err(|err| {
+                    format!(
+                        "Could not decode xyzrender batch helper response: {err}. {}",
+                        truncate_text(&stderr, 320)
+                    )
+                })?;
+            return Ok(response.results);
+        }
+        if started.elapsed() >= XYZRENDER_GRID_BATCH_TIMEOUT {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = stdout_reader.join();
+            let stderr = stderr_reader.join().unwrap_or_default();
+            return Err(format!(
+                "xyzrender batch helper timed out after {} seconds. {}",
+                XYZRENDER_GRID_BATCH_TIMEOUT.as_secs(),
+                truncate_text(&stderr, 320)
+            ));
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn python_interpreter_from_script(script: &Path) -> Option<PathBuf> {
+    let text = fs::read_to_string(script).ok()?;
+    let first_line = text.lines().next()?.trim();
+    let shebang = first_line.strip_prefix("#!")?.trim();
+    let first = shebang.split_whitespace().next()?;
+    if first.is_empty() {
+        None
+    } else {
+        Some(PathBuf::from(first))
+    }
+}
+
+fn read_capped_bytes(mut reader: impl Read) -> Vec<u8> {
+    let mut stored = Vec::new();
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let read = match reader.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(read) => read,
+            Err(_) => break,
+        };
+        let remaining = XYZRENDER_LOG_CAPTURE_BYTES.saturating_sub(stored.len());
+        if remaining > 0 {
+            let keep = remaining.min(read);
+            stored.extend_from_slice(&buffer[..keep]);
+        }
+    }
+    stored
+}
+
+const XYZRENDER_GRID_BATCH_HELPER: &str = r#"
+import json
+import sys
+from pathlib import Path
+
+from xyzrender import load, render
+
+payload = json.load(sys.stdin)
+results = []
+for item in payload.get("items", []):
+    item_id = str(item.get("id", ""))
+    try:
+        mol = load(str(item.get("smiles", "")), smiles=True)
+        kwargs = {"config": item.get("config") or "default"}
+        canvas_size = item.get("canvasSize")
+        if canvas_size:
+            kwargs["canvas_size"] = canvas_size
+        svg = render(mol, **kwargs)
+        Path(item["outputPath"]).write_text(str(svg))
+        results.append({"id": item_id, "log": ""})
+    except Exception as exc:
+        results.append({"id": item_id, "error": str(exc)})
+print(json.dumps({"results": results}))
+"#;
 
 fn read_cached_xyzrender_artifact(
     entry: &Path,
@@ -632,20 +1044,32 @@ fn non_empty_text(value: Option<&str>) -> Option<&str> {
 fn xyzrender_cache_key(
     input_path: &Path,
     converted_input: Option<&[u8]>,
+    direct_smiles: Option<&str>,
     orientation_ref_text: Option<&str>,
     preset: &'static str,
     config_argument: &str,
     controls: Option<&XyzrenderControls>,
     executable: &Path,
 ) -> Result<String, String> {
-    let source_metadata = fs::metadata(input_path).ok();
+    let has_content_input = converted_input
+        .map(|data| !data.is_empty())
+        .unwrap_or(false)
+        || direct_smiles
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false);
+    let source_metadata = if has_content_input {
+        None
+    } else {
+        fs::metadata(input_path).ok()
+    };
     let executable_metadata = fs::metadata(executable).ok();
     let payload = json!({
         "version": 1,
-        "sourcePath": canonical_path_string(input_path),
+        "sourcePath": if has_content_input { None } else { Some(canonical_path_string(input_path)) },
         "sourceSize": source_metadata.as_ref().map(fs::Metadata::len),
         "sourceModifiedMs": source_metadata.as_ref().and_then(|metadata| metadata.modified().ok()).map(system_time_millis),
         "convertedInputSha256": converted_input.filter(|data| !data.is_empty()).map(sha256_hex),
+        "directSmilesSha256": direct_smiles.map(str::trim).filter(|value| !value.is_empty()).map(|value| sha256_hex(value.as_bytes())),
         "orientationRefSha256": normalize_orientation_ref(orientation_ref_text).map(|text| sha256_hex(text.as_bytes())),
         "preset": preset,
         "configArgument": config_argument,
@@ -1082,15 +1506,24 @@ mod tests {
         fs::write(&input, "1\nA\nH 0 0 0\n").expect("input should be written");
         fs::write(&executable, "#!/bin/sh\n").expect("executable should be written");
 
-        let base_key =
-            xyzrender_cache_key(&input, None, None, "default", "default", None, &executable)
-                .expect("cache key should be built");
+        let base_key = xyzrender_cache_key(
+            &input,
+            None,
+            None,
+            None,
+            "default",
+            "default",
+            None,
+            &executable,
+        )
+        .expect("cache key should be built");
         let controls = XyzrenderControls {
             atom_scale: Some(1.4),
             ..XyzrenderControls::default()
         };
         let controls_key = xyzrender_cache_key(
             &input,
+            None,
             None,
             None,
             "default",
@@ -1100,12 +1533,76 @@ mod tests {
         )
         .expect("cache key should include controls");
         fs::write(&input, "2\nA\nH 0 0 0\nH 0 0 1\n").expect("input should change");
-        let changed_file_key =
-            xyzrender_cache_key(&input, None, None, "default", "default", None, &executable)
-                .expect("cache key should include file metadata");
+        let changed_file_key = xyzrender_cache_key(
+            &input,
+            None,
+            None,
+            None,
+            "default",
+            "default",
+            None,
+            &executable,
+        )
+        .expect("cache key should include file metadata");
 
         assert_ne!(base_key, controls_key);
         assert_ne!(base_key, changed_file_key);
+        let _ = fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn xyzrender_cache_key_uses_inline_content_not_temporary_path() {
+        let directory = std::env::temp_dir().join(format!(
+            "burrete-xyzrender-inline-cache-key-{}",
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir_all(&directory).expect("test directory should be created");
+        let input_a = directory.join("a").join("sheet-input.mol");
+        let input_b = directory.join("b").join("sheet-input.mol");
+        let executable = directory.join("xyzrender");
+        fs::create_dir_all(input_a.parent().unwrap()).expect("input directory should be created");
+        fs::create_dir_all(input_b.parent().unwrap()).expect("input directory should be created");
+        fs::write(&input_a, "temporary A").expect("input should be written");
+        fs::write(&input_b, "temporary B").expect("input should be written");
+        fs::write(&executable, "#!/bin/sh\n").expect("executable should be written");
+        let converted = b"2\ninline\nH 0 0 0\nH 0 0 1\n";
+
+        let key_a = xyzrender_cache_key(
+            &input_a,
+            Some(converted),
+            None,
+            None,
+            "default",
+            "default",
+            None,
+            &executable,
+        )
+        .expect("cache key should be built");
+        let key_b = xyzrender_cache_key(
+            &input_b,
+            Some(converted),
+            None,
+            None,
+            "default",
+            "default",
+            None,
+            &executable,
+        )
+        .expect("cache key should be built");
+        let smiles_key = xyzrender_cache_key(
+            &input_b,
+            None,
+            Some("CCO"),
+            None,
+            "default",
+            "default",
+            None,
+            &executable,
+        )
+        .expect("cache key should include direct smiles");
+
+        assert_eq!(key_a, key_b);
+        assert_ne!(key_a, smiles_key);
         let _ = fs::remove_dir_all(&directory);
     }
 

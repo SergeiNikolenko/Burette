@@ -21,7 +21,7 @@ export function Sidebar({
     >
       <div className="sidebar-spacer" data-tauri-drag-region />
       <FileBrowser state={state} actions={actions} />
-      <WorkspaceSwitcher actions={actions} />
+      <WorkspaceSwitcher state={state} actions={actions} />
     </aside>
   );
 }

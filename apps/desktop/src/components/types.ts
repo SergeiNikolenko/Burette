@@ -35,6 +35,17 @@ export type KetcherImportRequest = {
   }>;
 };
 
+export type BuildInfo = {
+  name: string;
+  version: string;
+  identifier: string;
+  flavor: string | null;
+  isDevBuild: boolean;
+  isBrowserDev: boolean;
+  notes: string[];
+  limitations: string[];
+};
+
 export type ShellActions = {
   chooseFiles: () => void | Promise<void>;
   openStructurePaths: (paths: string[]) => void | Promise<void>;
@@ -126,4 +137,5 @@ export type ShellViewState = {
   dropActive: boolean;
   preferences: ViewerPreferences;
   update: UpdateState;
+  buildInfo: BuildInfo;
 };
