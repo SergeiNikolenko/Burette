@@ -67,6 +67,7 @@
   let xyzrenderSheetRequestSerial = 0;
   const xyzrenderSheetRequests = new Map();
   let molstarWindowResizeHandler = null;
+  let molstarContainerResizeCleanup = null;
   let molstarContextMenuCleanup = null;
   let molstarContextMenuPick = null;
   let activeDockingPrepared = null;
@@ -5227,9 +5228,33 @@
     document.head.appendChild(link);
   }
 
+  function installMolstarContainerResizeObserver(viewer) {
+    if (typeof ResizeObserver !== 'function') return null;
+    const app = document.getElementById('app');
+    if (!app) return null;
+    let lastWidth = -1;
+    let lastHeight = -1;
+    const observer = new ResizeObserver(entries => {
+      const entry = entries && entries[0];
+      const rect = entry?.contentRect || app.getBoundingClientRect();
+      const width = Math.round(rect.width);
+      const height = Math.round(rect.height);
+      if (width === lastWidth && height === lastHeight) return;
+      lastWidth = width;
+      lastHeight = height;
+      scheduleViewerResize(viewer, 20);
+    });
+    observer.observe(app);
+    return () => observer.disconnect();
+  }
+
   function disposeActiveMolstarViewer() {
     const viewer = activeViewer || window.BurreteViewer || window.BuretteViewer;
     try { viewer?.plugin?.dispose?.(); } catch (_) {}
+    if (molstarContainerResizeCleanup) {
+      molstarContainerResizeCleanup();
+      molstarContainerResizeCleanup = null;
+    }
     if (molstarContextMenuCleanup) {
       molstarContextMenuCleanup();
       molstarContextMenuCleanup = null;
@@ -5277,6 +5302,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     }
     activeViewer = viewer;
     window.BurreteHandleResize = () => scheduleViewerResize(viewer, 60);
+    molstarContainerResizeCleanup = installMolstarContainerResizeObserver(viewer);
     applyViewerUIScale(viewer);
     initViewerKeyboardShortcuts(viewer);
     initBuretToolbar(viewer);
