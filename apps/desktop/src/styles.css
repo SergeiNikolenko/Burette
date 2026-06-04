@@ -173,7 +173,6 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 }
 
 .app-shell[data-runtime="tauri"][data-active-page-kind="ketcher"] {
-  background: var(--bg-base);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
