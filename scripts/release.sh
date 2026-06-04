@@ -15,6 +15,7 @@ ZIP="$ROOT/build/release/Burrete.zip"
 DMG="$ROOT/build/release/Burrete.dmg"
 NOTARIZATION_ZIP="$ROOT/build/release/Burrete-notarization.zip"
 DRY_RUN=0
+ALLOW_ADHOC="${BURRETE_RELEASE_ALLOW_ADHOC:-0}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -30,6 +31,9 @@ done
 require_tool() { command -v "$1" >/dev/null 2>&1 || { echo "error: $1 is required. $2" >&2; exit 1; }; }
 require_asset() { local p="$1"; [[ -s "$p" ]] || { echo "error: missing vendored web asset: $p" >&2; echo "Run: bun install --frozen-lockfile --ignore-scripts && bun run vendor:molstar && bun run vendor:rdkit" >&2; exit 1; }; }
 require_release_env() {
+  if [[ "$ALLOW_ADHOC" == "1" ]]; then
+    return 0
+  fi
   local missing=0
   [[ "${BURRETE_CODESIGN_IDENTITY:-}" == Developer\ ID\ Application:* ]] || { echo "error: BURRETE_CODESIGN_IDENTITY must be a Developer ID Application identity." >&2; missing=1; }
   [[ -n "${BURRETE_DEVELOPMENT_TEAM:-}" ]] || { echo "error: BURRETE_DEVELOPMENT_TEAM is required." >&2; missing=1; }
@@ -87,10 +91,12 @@ bun scripts/check-js-syntax.mjs \
 if [[ "$DRY_RUN" == "1" ]]; then
   echo "Release dry run passed."
   echo "No build, notarization, stapling, packaging, or publishing was performed."
-  echo "Production release requires:"
+  echo "Developer ID release requires:"
   echo "  BURRETE_CODESIGN_IDENTITY='Developer ID Application: ...'"
   echo "  BURRETE_DEVELOPMENT_TEAM=<Apple team id>"
   echo "  BURRETE_NOTARY_KEYCHAIN_PROFILE or APPLE_ID + APPLE_TEAM_ID + APPLE_APP_SPECIFIC_PASSWORD"
+  echo "Ad-hoc release without notarization can be built with:"
+  echo "  BURRETE_RELEASE_ALLOW_ADHOC=1"
   exit 0
 fi
 
@@ -104,8 +110,12 @@ export BURRETE_XCODE_CONFIGURATION="${BURRETE_XCODE_CONFIGURATION:-Release}"
 "$ROOT/scripts/build.sh"
 mkdir -p "$(dirname "$ZIP")"
 [[ -d "$APP" ]] || { echo "error: exported app is missing: $APP" >&2; exit 1; }
-notarize_and_staple
-"$ROOT/scripts/check-release-signature.sh" "$APP"
+if [[ "$ALLOW_ADHOC" == "1" ]]; then
+  BURRETE_RELEASE_ALLOW_ADHOC=1 "$ROOT/scripts/check-release-signature.sh" "$APP"
+else
+  notarize_and_staple
+  "$ROOT/scripts/check-release-signature.sh" "$APP"
+fi
 
 rm -f "$ZIP" "$ZIP.sha256" "$DMG" "$DMG.sha256"
 ditto -c -k --keepParent "$APP" "$ZIP"
