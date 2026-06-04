@@ -35,11 +35,11 @@ vp dev
 vp check
 vp test
 vp build
-./scripts/build.sh
-./scripts/install.sh
-./scripts/force-preview.sh samples/mini.pdb
-./scripts/force-preview.sh samples/mini.cif
-./scripts/force-preview.sh samples/mini.xyz
+BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/build.sh
+BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/install.sh
+BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/force-preview.sh samples/mini.pdb
+BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/force-preview.sh samples/mini.cif
+BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/force-preview.sh samples/mini.xyz
 ```
 
 Use Vite+ through the `vp` CLI for frontend development and JavaScript
@@ -49,6 +49,23 @@ through `vp run <script>` when they cover project-specific validation not yet
 folded into a Vite+ built-in. Direct Bun commands remain implementation details
 inside repository-owned build, release, and installer scripts until a separate
 toolchain migration replaces those paths.
+
+When an agent builds or installs a packaged app for local testing, always use a
+dev flavor with a unique slug, preferably the worktree suffix:
+
+```bash
+BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/build.sh
+BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/install.sh
+BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/force-preview.sh samples/mini.pdb
+```
+
+This keeps the app, Quick Look extension, thumbnail extension, content types,
+and Launch Services registrations isolated from other worktrees and from the
+release bundle. Do not run unflavored `./scripts/build.sh`,
+`./scripts/install.sh`, or packaged preview smoke commands unless the user
+explicitly asks for a release or final non-dev bundle. `scripts/build-dev.sh`
+does not support dev flavors; agents should prefer the flavored
+`./scripts/build.sh` path for packaged local builds.
 
 Rust validation runs from the Tauri crate:
 
