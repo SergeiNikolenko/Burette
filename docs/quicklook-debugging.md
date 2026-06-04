@@ -33,21 +33,18 @@ com.local.burrete10.xyzrender-input
 
 ## Build And Install
 
-Build and install locally:
-
-```bash
-./scripts/build.sh
-./scripts/install.sh
-```
-
-For parallel local worktrees, use a dev flavor so the installed app, extension
-IDs, container paths, and forced content types do not collide with the release
-namespace or with another dev install:
+Build and install locally with a dev flavor:
 
 ```bash
 BURRETE_DEV_FLAVOR=chat85b0 ./scripts/build.sh
 BURRETE_DEV_FLAVOR=chat85b0 ./scripts/install.sh
 ```
+
+Agents should always use a dev flavor for local packaged builds and installs so
+the installed app, extension IDs, container paths, and forced content types do
+not collide with the release namespace or with another dev install. Run
+unflavored `./scripts/build.sh` and `./scripts/install.sh` only when explicitly
+producing a release or final non-dev bundle.
 
 The example above installs `~/Applications/Burrete-chat85b0.app` and registers
 `com.local.BurreteV10.Dev.chat85b0.Preview`. Normal Finder ownership for file
@@ -67,21 +64,18 @@ killall quicklookd 2>/dev/null || true
 Use forced previews to bypass Launch Services ambiguity while debugging:
 
 ```bash
-./scripts/force-preview.sh samples/mini.pdb
-./scripts/force-preview.sh samples/mini.cif
-./scripts/force-preview.sh samples/mini.xyz
-```
-
-For a dev flavor, keep the same environment variable on the smoke command:
-
-```bash
 BURRETE_DEV_FLAVOR=chat85b0 ./scripts/force-preview.sh samples/mini.pdb
+BURRETE_DEV_FLAVOR=chat85b0 ./scripts/force-preview.sh samples/mini.cif
+BURRETE_DEV_FLAVOR=chat85b0 ./scripts/force-preview.sh samples/mini.xyz
 ```
+
+Keep the same `BURRETE_DEV_FLAVOR` value across build, install, diagnostics,
+and smoke commands.
 
 For a real desktop file:
 
 ```bash
-./scripts/force-preview.sh ~/Desktop/1HTB.pdb
+BURRETE_DEV_FLAVOR=chat85b0 ./scripts/force-preview.sh ~/Desktop/1HTB.pdb
 ```
 
 ## Logs And Cache
@@ -137,11 +131,11 @@ Run these after changes to `PreviewExtension/`, `Burrete.xcodeproj`,
 assets:
 
 ```bash
-./scripts/build.sh
-codesign --verify --deep --strict build/Burrete.app
-test -d build/Burrete.app/Contents/PlugIns/BurretePreview.appex
-test -d build/Burrete.app/Contents/PlugIns/BurreteThumbnail.appex
-./scripts/force-preview.sh samples/mini.pdb
-./scripts/force-preview.sh samples/mini.cif
-./scripts/force-preview.sh samples/mini.xyz
+BURRETE_DEV_FLAVOR=chat85b0 ./scripts/build.sh
+codesign --verify --deep --strict build/Burrete-chat85b0.app
+test -d build/Burrete-chat85b0.app/Contents/PlugIns/BurretePreview.appex
+test -d build/Burrete-chat85b0.app/Contents/PlugIns/BurreteThumbnail.appex
+BURRETE_DEV_FLAVOR=chat85b0 ./scripts/force-preview.sh samples/mini.pdb
+BURRETE_DEV_FLAVOR=chat85b0 ./scripts/force-preview.sh samples/mini.cif
+BURRETE_DEV_FLAVOR=chat85b0 ./scripts/force-preview.sh samples/mini.xyz
 ```

@@ -35,7 +35,8 @@ bun run build:tauri
 ## Parallel Dev App Identities
 
 Use a dev flavor when multiple local worktrees need to build and install Burrete
-without competing for the same Launch Services and Quick Look bundle IDs:
+without competing for the same Launch Services and Quick Look bundle IDs.
+Agents must treat this as the default for any packaged local build or install:
 
 ```bash
 BURRETE_DEV_FLAVOR=chat85b0 ./scripts/build.sh
@@ -73,20 +74,26 @@ app:
 - `build/Burrete.app/Contents/Resources/Web`
 - `build/Burrete.app/Contents/PlugIns/BurretePreview.appex/Contents/Resources/Web`
 
+For agent-driven work in a flavored build, set `BURRETE_APP_PATH` to the
+flavored app path before patching.
+
 Restart Burrete or reopen the preview after patching so the WebView reloads the
 updated files.
 
 ## Quick Look Native Extension
 
-Use the dev build when the Swift Quick Look extension or extension packaging
-changed:
+Use the flavored full build when the Swift Quick Look extension or extension
+packaging changed in an agent-managed worktree:
 
 ```bash
-./scripts/build-dev.sh
+BURRETE_DEV_FLAVOR=chat85b0 ./scripts/build.sh
 ```
 
-When Swift and extension packaging did not change, reuse the existing embedded
-preview extension:
+`scripts/build-dev.sh` remains available for a deliberately unflavored in-place
+debug loop, but agents should not use it unless the user explicitly asks for
+that path. When Swift and extension packaging did not change and an unflavored
+in-place build is explicitly desired, reuse the existing embedded preview
+extension:
 
 ```bash
 BURRETE_DEV_REUSE_QUICKLOOK=1 ./scripts/build-dev.sh
@@ -136,8 +143,11 @@ Use the full macOS build only for final bundle validation, release work, or
 changes that cross several native layers:
 
 ```bash
-./scripts/build.sh
+BURRETE_DEV_FLAVOR=chat85b0 ./scripts/build.sh
 ```
 
 The full build runs the JavaScript/Tauri build, Rust release build, Xcode Quick
 Look builds, bundle assembly, signing, and bundle validation.
+
+Run unflavored `./scripts/build.sh` only when explicitly producing a release or
+final non-dev bundle.
