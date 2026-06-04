@@ -409,7 +409,7 @@ fn run_xyzrender_smiles_batch_helper(
     executable: &Path,
     misses: &[XyzrenderPreparedSmilesBatchMiss],
 ) -> Result<Vec<XyzrenderSmilesBatchHelperResult>, String> {
-    let python = python_interpreter_from_script(executable).ok_or_else(|| {
+    let helper_launch = xyzrender_batch_helper_launch(executable).ok_or_else(|| {
         "Could not resolve Python interpreter for xyzrender batch helper.".to_string()
     })?;
     let helper_path = std::env::temp_dir().join("burrete-xyzrender-grid-batch-helper.py");
@@ -433,8 +433,12 @@ fn run_xyzrender_smiles_batch_helper(
     };
     let input = serde_json::to_vec(&payload)
         .map_err(|err| format!("Could not encode xyzrender batch payload: {err}"))?;
-    let mut child = Command::new(python)
-        .arg(helper_path)
+    let mut command = Command::new(&helper_launch.program);
+    command.arg(helper_path);
+    for (key, value) in helper_launch.envs {
+        command.env(key, value);
+    }
+    let mut child = command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -499,12 +503,64 @@ fn run_xyzrender_smiles_batch_helper(
     }
 }
 
+struct XyzrenderBatchHelperLaunch {
+    program: PathBuf,
+    envs: Vec<(&'static str, String)>,
+}
+
+fn xyzrender_batch_helper_launch(script: &Path) -> Option<XyzrenderBatchHelperLaunch> {
+    bundled_xyzrender_python_launch(script).or_else(|| {
+        python_interpreter_from_script(script).map(|program| XyzrenderBatchHelperLaunch {
+            program,
+            envs: Vec::new(),
+        })
+    })
+}
+
+fn bundled_xyzrender_python_launch(script: &Path) -> Option<XyzrenderBatchHelperLaunch> {
+    let bin = script.parent()?;
+    let runtime_root = bin.parent()?;
+    let resources = runtime_root.parent()?;
+    let python = resources
+        .join("xyzrender-python")
+        .join("bin")
+        .join("python3");
+    if !python.is_file() {
+        return None;
+    }
+    let site_packages = find_site_packages(&runtime_root.join("lib"))?;
+    Some(XyzrenderBatchHelperLaunch {
+        program: python,
+        envs: vec![
+            ("PYTHONNOUSERSITE", "1".to_string()),
+            ("PYTHONPATH", site_packages.display().to_string()),
+        ],
+    })
+}
+
+fn find_site_packages(root: &Path) -> Option<PathBuf> {
+    let entries = fs::read_dir(root).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.file_name().and_then(|name| name.to_str()) == Some("site-packages") && path.is_dir()
+        {
+            return Some(path);
+        }
+        if path.is_dir() {
+            if let Some(site_packages) = find_site_packages(&path) {
+                return Some(site_packages);
+            }
+        }
+    }
+    None
+}
+
 fn python_interpreter_from_script(script: &Path) -> Option<PathBuf> {
     let text = fs::read_to_string(script).ok()?;
     let first_line = text.lines().next()?.trim();
     let shebang = first_line.strip_prefix("#!")?.trim();
     let first = shebang.split_whitespace().next()?;
-    if first.is_empty() {
+    if first.is_empty() || first.ends_with("/sh") {
         None
     } else {
         Some(PathBuf::from(first))
@@ -1653,6 +1709,34 @@ mod tests {
 
         assert!(bundled_xyzrender_candidates_from_executable(app_executable).contains(&bundled));
         assert!(bundled_xyzrender_candidates_from_executable(appex_executable).contains(&bundled));
+    }
+
+    #[test]
+    fn resolves_bundled_xyzrender_batch_helper_python_from_shell_wrapper() {
+        let directory = std::env::temp_dir().join(format!(
+            "burrete-xyzrender-batch-python-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let runtime_bin = directory.join("Resources/xyzrender-runtime/bin");
+        let site_packages =
+            directory.join("Resources/xyzrender-runtime/lib/python3.13/site-packages");
+        let python_bin = directory.join("Resources/xyzrender-python/bin");
+        fs::create_dir_all(&runtime_bin).expect("runtime bin should be created");
+        fs::create_dir_all(&site_packages).expect("site-packages should be created");
+        fs::create_dir_all(&python_bin).expect("python bin should be created");
+        let wrapper = runtime_bin.join("xyzrender");
+        let python = python_bin.join("python3");
+        fs::write(&wrapper, "#!/bin/sh\nexec \"$0\"\n").expect("wrapper should be written");
+        fs::write(&python, "").expect("python should be written");
+
+        let launch = xyzrender_batch_helper_launch(&wrapper)
+            .expect("bundled shell wrapper should resolve adjacent python");
+
+        assert_eq!(launch.program, python);
+        assert!(launch.envs.iter().any(|(key, value)| {
+            *key == "PYTHONPATH" && value == &site_packages.display().to_string()
+        }));
+        let _ = fs::remove_dir_all(&directory);
     }
 
     #[test]

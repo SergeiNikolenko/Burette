@@ -29,7 +29,7 @@ function buildInfoFromValues(
     isBrowserDev,
     notes: isDevBuild
       ? ["Full desktop features", isBrowserDev ? "Vite browser runtime" : "Isolated app and Quick Look identifiers"]
-      : ["Release build"],
+      : [],
     limitations: isBrowserDev
       ? ["Native app bundle, installer, and Quick Look registration are not active in browser dev."]
       : [],

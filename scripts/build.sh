@@ -287,9 +287,11 @@ actual_pdb_type="$(/usr/libexec/PlistBuddy -c 'Print :UTExportedTypeDeclarations
 [[ -d "$LOCAL_APP/Contents/PlugIns/BurreteThumbnail.appex" ]] || { echo "error: embedded Quick Look thumbnail extension missing in Tauri app." >&2; exit 1; }
 thumbnail_point="$(/usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$LOCAL_APP/Contents/PlugIns/BurreteThumbnail.appex/Contents/Info.plist" 2>/dev/null || true)"
 [[ "$thumbnail_point" == "com.apple.quicklook.thumbnail" ]] || { echo "error: embedded thumbnail extension has wrong extension point: ${thumbnail_point:-unknown}" >&2; exit 1; }
-BUILT_WEB_INDEX="$LOCAL_APP/Contents/Resources/Web/index.html"
-BUILT_VIEWER_SHELL="$LOCAL_APP/Contents/Resources/Web/viewer-shell.js"
-[[ -s "$BUILT_WEB_INDEX" ]] || { echo "error: built web preview shell missing: $BUILT_WEB_INDEX" >&2; exit 1; }
+BUILT_VIEWER_SHELL="$LOCAL_APP/Contents/Resources/ViewerWeb/viewer-shell.js"
+if [[ -e "$LOCAL_APP/Contents/Resources/Web/index.html" ]] && grep -q 'Burrete Preview' "$LOCAL_APP/Contents/Resources/Web/index.html"; then
+  echo "error: built desktop app Resources/Web was overwritten by the preview shell." >&2
+  exit 1
+fi
 [[ -s "$BUILT_VIEWER_SHELL" ]] || { echo "error: built shared viewer shell missing: $BUILT_VIEWER_SHELL" >&2; exit 1; }
 grep -q 'buret-renderer-choice' "$BUILT_VIEWER_SHELL" || { echo "error: built shared viewer shell is missing compact renderer controls." >&2; exit 1; }
 grep -q 'aria-label="Collapse controls"' "$BUILT_VIEWER_SHELL" || { echo "error: built shared viewer shell is missing toolbar grip affordance." >&2; exit 1; }
