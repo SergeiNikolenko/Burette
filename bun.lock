@@ -42,7 +42,7 @@
     },
     "packages/burrete": {
       "name": "burrete",
-      "version": "0.10.43",
+      "version": "0.10.44",
       "bin": "bin/burrete.mjs",
     },
   },

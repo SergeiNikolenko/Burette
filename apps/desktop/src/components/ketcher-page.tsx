@@ -158,7 +158,7 @@ export function KetcherPage({
     try {
       setStatus("Exporting sketch");
       const molfile = await withKetcherTimeout(ketcher.getMolfile("v2000"), "Sketch export");
-      if (!molfile.trim()) {
+      if (isBlankKetcherMolfile(molfile)) {
         setStatus("Draw a molecule first");
         return;
       }
@@ -461,6 +461,14 @@ function normalizeKetcherMolfileHeader(lines: string[]) {
 
 function isMolfileCountsLine(line: string) {
   return /^\s*\d+\s+\d+\s+(?:\d+\s+){6,}\d+\s+V(?:2000|3000)\s*$/u.test(line);
+}
+
+function isBlankKetcherMolfile(molfile: string) {
+  if (!molfile.trim()) return true;
+  const countsLine = molfile.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n").find(isMolfileCountsLine);
+  if (!countsLine) return false;
+  const counts = countsLine.trim().split(/\s+/u);
+  return counts[0] === "0" && counts[1] === "0";
 }
 
 async function restoreKetcherDraft(instance: KetcherEditorApi, draft: { ket?: string; molfile?: string }) {
