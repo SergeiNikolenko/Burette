@@ -503,44 +503,7 @@
     const caps = capabilities(cfg);
     root.innerHTML = `
       <section class="buret-grid-shell">
-        <header class="buret-grid-header">
-          <div>
-            <div class="buret-eyebrow">${escapeHTML(cfg.format === 'sdf' ? 'SDF collection' : 'SMILES collection')}</div>
-            <h1>${escapeHTML(cfg.label || 'Molecule collection')}</h1>
-            <div id="summary" class="buret-summary"></div>
-          </div>
-          <div class="buret-actions" ${caps.export ? '' : 'hidden'}>
-            <button id="copy-selected" type="button">Copy selected</button>
-            <button id="save-grid-as" type="button">Save As...</button>
-            <button id="export-smi" type="button">Export SMILES</button>
-            <button id="export-csv" type="button">Export CSV</button>
-          </div>
-        </header>
-        <div class="buret-grid-toolbar">
-          <div class="buret-toolbar-row buret-toolbar-row-main">
-            <label class="buret-search-control buret-filter-control">
-              Search
-              <input id="search" type="search" aria-label="Search molecules and SMARTS" spellcheck="false" autocapitalize="off" placeholder="${caps.substructureSearch ? 'name, SMILES, metadata, SMARTS' : 'name, SMILES, metadata'}" />
-            </label>
-            <label class="buret-sort-control">Sort <select id="sort"><option value="index">File order</option><option value="name">Name</option><option value="smiles">SMILES</option>${propertyOptions(cfg)}</select></label>
-            <div id="load-status" class="buret-load-status"></div>
-          </div>
-          <div class="buret-toolbar-row buret-toolbar-row-view">
-            <button id="show-properties" class="buret-toggle-button" type="button" aria-pressed="false">Properties</button>
-            <button id="clear-smarts" class="buret-toggle-button buret-clear-smarts" type="button" hidden>Clear search</button>
-            <div class="buret-selection-actions" ${caps.selection ? '' : 'hidden'}>
-              <button id="select-all" class="buret-toggle-button" type="button">Select all</button>
-              <button id="clear-selection" class="buret-toggle-button" type="button">Clear selection</button>
-            </div>
-            <div class="buret-grid-card-renderer-switch" role="group" aria-label="Grid card renderer">
-              <span>Cards</span>
-              <button type="button" data-buret-grid-card-renderer="rdkit" aria-pressed="false">RDKit</button>
-              ${supportsXyzrenderCards(cfg) ? '<button type="button" data-buret-grid-card-renderer="xyzrender" aria-pressed="false">xyzrender</button>' : ''}
-            </div>
-            ${rdkitCoordinatesControlHTML()}
-            ${caps.rendererSwitch ? rendererSwitchHTML() : ''}
-          </div>
-        </div>
+        <div id="grid-controls"></div>
         <nav class="buret-grid-rail" data-buret-grid-rail aria-label="Molecule navigation">
           <span class="buret-grid-rail-active-marker" data-buret-grid-rail-active aria-hidden="true"></span>
           <div class="buret-grid-rail-ticks" data-buret-grid-rail-ticks></div>
@@ -553,38 +516,7 @@
         <div id="load-sentinel" class="buret-load-sentinel" aria-hidden="true"></div>
         <footer id="footer" class="buret-grid-footer"></footer>
       </section>`;
-    document.getElementById('search').addEventListener('input', event => {
-      setUnifiedSearchQuery(event.target.value || '', cfg);
-      refresh(cfg);
-    });
-    document.getElementById('sort').addEventListener('change', event => {
-      state.sort = event.target.value || 'index';
-      refresh(cfg);
-    });
-    document.getElementById('show-properties').addEventListener('click', () => {
-      state.showProperties = !state.showProperties;
-      applyGridPreferences();
-    });
-    document.getElementById('select-all')?.addEventListener('click', () => selectAllRows(cfg));
-    document.getElementById('clear-selection')?.addEventListener('click', () => clearSelection(cfg));
-    document.getElementById('copy-selected')?.addEventListener('click', copySelected);
-    document.getElementById('save-grid-as')?.addEventListener('click', () => saveGridAs(cfg));
-    document.getElementById('export-smi')?.addEventListener('click', () => exportSmiles(cfg));
-    document.getElementById('export-csv')?.addEventListener('click', () => exportCSV(cfg));
-    document.getElementById('clear-smarts')?.addEventListener('click', () => {
-      state.query = '';
-      state.smarts = '';
-      const input = document.getElementById('search');
-      if (input) input.value = '';
-      refresh(cfg);
-      input?.focus();
-    });
-    root.querySelectorAll('[data-buret-grid-renderer]').forEach(button => {
-      button.addEventListener('click', () => requestRendererSwitch(button.getAttribute('data-buret-grid-renderer'), cfg));
-    });
-    root.querySelectorAll('[data-buret-grid-card-renderer]').forEach(button => {
-      button.addEventListener('click', () => setCardRenderer(button.getAttribute('data-buret-grid-card-renderer'), cfg));
-    });
+    mountGridControls(cfg, caps);
     if (root.dataset.contextMenuBound !== '1') {
       root.addEventListener('contextmenu', handleGridShellContextMenu);
       root.dataset.contextMenuBound = '1';
@@ -598,6 +530,57 @@
     applyGridPreferences();
     initGridRail(cfg);
     initInfiniteLoading(cfg);
+  }
+
+  function mountGridControls(cfg, caps) {
+    const host = document.getElementById('grid-controls');
+    if (!host || !window.BurreteGridUI || typeof window.BurreteGridUI.mountGridControls !== 'function') {
+      throw new Error('BurreteGridUI is missing. Ensure grid-ui.js loads before grid-viewer.js.');
+    }
+    window.BurreteGridUI.mountGridControls(host, {
+      format: cfg.format === 'sdf' ? 'sdf' : 'smiles',
+      label: cfg.label || 'Molecule collection',
+      exportEnabled: caps.export,
+      selectionEnabled: caps.selection,
+      substructureSearch: caps.substructureSearch,
+      supportsXyzrenderCards: supportsXyzrenderCards(cfg),
+      rendererSwitch: caps.rendererSwitch,
+      sortOptions: propertyOptionList(cfg),
+      onSearchInput(value) {
+        setUnifiedSearchQuery(value || '', cfg);
+        refresh(cfg);
+      },
+      onSortChange(value) {
+        state.sort = value || 'index';
+        refresh(cfg);
+      },
+      onShowProperties() {
+        state.showProperties = !state.showProperties;
+        applyGridPreferences();
+      },
+      onClearSmarts() {
+        state.query = '';
+        state.smarts = '';
+        const input = document.getElementById('search');
+        if (input) input.value = '';
+        refresh(cfg);
+        input?.focus();
+      },
+      onSelectAll() { selectAllRows(cfg); },
+      onClearSelection() { clearSelection(cfg); },
+      onCopySelected() { copySelected(); },
+      onSaveGridAs() { saveGridAs(cfg); },
+      onExportSmiles() { exportSmiles(cfg); },
+      onExportCSV() { exportCSV(cfg); },
+      onSetCardRenderer(value) { setCardRenderer(value, cfg); },
+      onRendererSwitch(value) { requestRendererSwitch(value, cfg); },
+      onRdkitUseInputCoordsChange(checked) {
+        state.rdkitUseInputCoords = checked === true;
+        store(RDKIT_USE_INPUT_COORDS_STORAGE_KEY, state.rdkitUseInputCoords ? 'true' : 'false');
+        state.svgCache.clear();
+        render(cfg);
+      }
+    });
   }
 
   function applyGridPreferences() {
@@ -621,8 +604,13 @@
     syncRdkitCoordinatesControl();
   }
 
-  function propertyOptions(cfg) {
-    if (isRemoteMode(cfg)) return '';
+  function propertyOptionList(cfg) {
+    const options = [
+      { value: 'index', label: 'File order' },
+      { value: 'name', label: 'Name' },
+      { value: 'smiles', label: 'SMILES' }
+    ];
+    if (isRemoteMode(cfg)) return options;
     const keys = new Set();
     for (const row of state.all) {
       Object.keys(row.props || {}).forEach(key => {
@@ -630,24 +618,8 @@
       });
       if (keys.size >= 24) break;
     }
-    return [...keys].sort().map(key => `<option value="prop:${escapeAttr(key)}">${escapeHTML(key)}</option>`).join('');
-  }
-
-  function rendererSwitchHTML() {
-    return `
-      <div class="buret-grid-renderer-controls">
-        <div class="buret-grid-renderer-switch" aria-label="3D renderer">
-          <button type="button" data-buret-grid-renderer="molstar" data-buret-grid-sdf-poses data-buret-grid-docking>Molstar</button>
-        </div>
-      </div>`;
-  }
-
-  function rdkitCoordinatesControlHTML() {
-    return `
-      <label id="rdkit-use-input-coords-control" class="buret-rdkit-coords-control" hidden>
-        <input id="rdkit-use-input-coords" type="checkbox" />
-        <span>Use file coords</span>
-      </label>`;
+    for (const key of [...keys].sort()) options.push({ value: `prop:${key}`, label: key });
+    return options;
   }
 
   function setCardRenderer(value, cfg) {
@@ -673,12 +645,6 @@
     const input = document.getElementById('rdkit-use-input-coords');
     if (!input) return;
     input.checked = state.rdkitUseInputCoords;
-    input.addEventListener('change', event => {
-      state.rdkitUseInputCoords = event.target.checked === true;
-      store(RDKIT_USE_INPUT_COORDS_STORAGE_KEY, state.rdkitUseInputCoords ? 'true' : 'false');
-      state.svgCache.clear();
-      render(cfg);
-    });
     syncRdkitCoordinatesControl();
   }
 

@@ -39,7 +39,10 @@ const DEV_FILE_EXTENSIONS = new Set([
   "in", "inp", "lammpstrj", "mae", "mae.gz", "maegz", "mcif", "mmcif", "mol",
   "mol2", "nctraj", "nw", "out", "pdb", "pdbqt", "pqr", "prmtop", "psf", "psi4", "qcin",
   "sd", "sdf", "smi", "smiles", "top", "trr", "tsv", "vasp", "xtc", "xyz",
+  "dtr",
 ]);
+const SCHRODINGER_RUN = "/opt/schrodinger/suites2026-1/run";
+const DESMOND_PREVIEW_EXTRACTOR = join(repoRoot, "scripts", "desmond_preview_extract.py");
 const XYZRENDER_PRESET_OPTIONS = [
   { value: "default", label: "Default" },
   { value: "flat", label: "Flat" },
@@ -363,6 +366,71 @@ export function browserDevXyzrenderPlugin() {
           res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
         }
       });
+      server.middlewares.use("/__burette/desmond-preview", async (req, res) => {
+        if ((req.method || "GET").toUpperCase() !== "GET") {
+          res.statusCode = 405;
+          res.setHeader("Content-Type", "application/json; charset=utf-8");
+          res.end(JSON.stringify({ error: "Method not allowed" }));
+          return;
+        }
+        try {
+          const url = new URL(req.url || "", "http://127.0.0.1");
+          const path = url.searchParams.get("path");
+          if (!path) {
+            res.statusCode = 400;
+            res.setHeader("Content-Type", "application/json; charset=utf-8");
+            res.end(JSON.stringify({ error: "Missing path" }));
+            return;
+          }
+          const filePath = resolve(path);
+          if (!isDevFileReadAllowed(filePath)) {
+            res.statusCode = 403;
+            res.setHeader("Content-Type", "application/json; charset=utf-8");
+            res.end(JSON.stringify({ error: "Forbidden" }));
+            return;
+          }
+          if (!isDesmondPreviewCandidate(filePath)) {
+            res.statusCode = 404;
+            res.setHeader("Content-Type", "application/json; charset=utf-8");
+            res.end(JSON.stringify({ error: "No Desmond trajectory candidate found." }));
+            return;
+          }
+          if (!existsSync(SCHRODINGER_RUN) || !existsSync(DESMOND_PREVIEW_EXTRACTOR)) {
+            res.statusCode = 404;
+            res.setHeader("Content-Type", "application/json; charset=utf-8");
+            res.end(JSON.stringify({ error: "Schrodinger Desmond preview extractor is unavailable." }));
+            return;
+          }
+          const tempDirectory = await mkdtemp(join(tmpdir(), "burrete-desmond-preview-"));
+          const outputPath = join(tempDirectory, "desmond-preview.pdb");
+          try {
+            await execFileAsync(
+              SCHRODINGER_RUN,
+              ["python3", DESMOND_PREVIEW_EXTRACTOR, filePath, "--frames", "30", "--atoms", "6000", "--output", outputPath],
+              { timeout: 60_000, maxBuffer: 4 * 1024 * 1024 },
+            );
+            const bytes = await readFile(outputPath);
+            if (!bytes.length) {
+              res.statusCode = 500;
+              res.setHeader("Content-Type", "application/json; charset=utf-8");
+              res.end(JSON.stringify({ error: "Desmond preview extractor produced an empty PDB file." }));
+              return;
+            }
+            res.statusCode = 200;
+            res.setHeader("Content-Type", "application/octet-stream");
+            res.setHeader("Content-Length", String(bytes.length));
+            res.setHeader("Cache-Control", "no-cache");
+            res.setHeader("X-Burrete-Preview-Extension", "pdb");
+            res.end(bytes);
+          } finally {
+            await rm(tempDirectory, { recursive: true, force: true });
+          }
+        } catch (error) {
+          res.statusCode = 500;
+          res.setHeader("Content-Type", "application/json; charset=utf-8");
+          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+        }
+      });
       server.middlewares.use("/__burette/xyzrender", async (req, res) => {
         const reply = (status: number, body: unknown) => {
           res.statusCode = status;
@@ -488,6 +556,58 @@ function fileExtension(path: string) {
   if (lower.endsWith(".mae.gz")) return "mae.gz";
   const index = lower.lastIndexOf(".");
   return index >= 0 ? lower.slice(index + 1) : "";
+}
+
+function candidateDesmondBases(path: string) {
+  const name = path.replace(/\\/g, "/").split("/").pop() || "";
+  const extension = fileExtension(name);
+  const stem = extension ? name.slice(0, Math.max(0, name.length - extension.length - 1)) : name;
+  const bases = [stem];
+  if (stem.endsWith("-out")) bases.push(stem.slice(0, -4));
+  if (stem.endsWith("_out")) bases.push(stem.slice(0, -4));
+  return Array.from(new Set(bases.filter(Boolean)));
+}
+
+function casebookSourceFilesParts(path: string) {
+  const normalized = resolve(path).replace(/\\/g, "/");
+  const marker = "/source_files/";
+  const index = normalized.indexOf(marker);
+  if (index < 0) return null;
+  return {
+    root: normalized.slice(0, index + marker.length - 1),
+    rest: normalized.slice(index + marker.length).split("/").filter(Boolean),
+  };
+}
+
+function casebookTrjCandidates(path: string, base: string) {
+  const resolved = casebookSourceFilesParts(path);
+  if (!resolved || !resolved.rest[0]?.startsWith("mnt__")) return [];
+  const mapped = resolved.rest[0].split("__");
+  return [join(resolved.root, ...mapped, ...resolved.rest.slice(1, -1), `${base}_trj`)];
+}
+
+function casebookCmsCandidates(trjDirectory: string, base: string) {
+  const resolved = casebookSourceFilesParts(trjDirectory);
+  if (!resolved || resolved.rest.length < 4 || resolved.rest.slice(0, 3).join("/") !== "mnt/ligandpro/crim3s") return [];
+  const mappedDirectory = join(resolved.root, resolved.rest.slice(0, 4).join("__"));
+  return [join(mappedDirectory, `${base}-out.cms`), join(mappedDirectory, `${base}.cms`)];
+}
+
+function isDesmondPreviewCandidate(path: string) {
+  const extension = fileExtension(path);
+  if (extension === "dtr") {
+    const trjDirectory = dirname(path);
+    const base = trjDirectory.replace(/\\/g, "/").split("/").pop()?.replace(/_trj$/u, "") || "";
+    return statSync(trjDirectory).isDirectory()
+      && [join(dirname(trjDirectory), `${base}-out.cms`), join(dirname(trjDirectory), `${base}.cms`), ...casebookCmsCandidates(trjDirectory, base)]
+        .some((candidate) => existsSync(candidate));
+  }
+  if (extension !== "cms") return false;
+  for (const base of candidateDesmondBases(path)) {
+    const candidates = [join(dirname(path), `${base}_trj`), ...casebookTrjCandidates(path, base)];
+    if (candidates.some((candidate) => existsSync(candidate) && statSync(candidate).isDirectory())) return true;
+  }
+  return false;
 }
 
 async function readJsonBody(req: import("node:http").IncomingMessage) {

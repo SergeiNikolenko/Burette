@@ -45,8 +45,8 @@ const KETCHER_EDIT_MAX_BYTES = 1024 * 1024;
 const KETCHER_EDIT_MAX_ATOMS = 300;
 const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
-const GRID_ASSET_VERSION = "grid-ui-v91";
-const VIEWER_ASSET_VERSION = "viewer-ui-v18";
+const GRID_ASSET_VERSION = "grid-ui-v94";
+const VIEWER_ASSET_VERSION = "viewer-ui-v34";
 const REPO_ROOT = String(import.meta.env.BURRETE_REPO_ROOT || "");
 const WEB_ASSETS_BASE = fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
 const browserDevVirtualTextDocuments = new Map<string, string>();
@@ -448,6 +448,17 @@ async function openBrowserDevDocument(
   reloadOptions?: ViewerReloadOptions,
 ): Promise<ViewerDocument> {
   const extension = fileExtension(path);
+  const desmondPreview = await requestBrowserDevDesmondPreview(path, extension);
+  if (desmondPreview) {
+    return openBrowserDevDocumentFromBytes(
+      `${path}.desmond-preview.pdb`,
+      "pdb",
+      desmondPreview.bytes,
+      desmondPreview.sourceByteCount,
+      preferences,
+      reloadOptions,
+    );
+  }
   const useBoundedMaestroPreview = isMaestroPreviewExtension(extension) && extension !== "maegz";
   const response = await fetch(browserDevReadUrl(path, extension), useBoundedMaestroPreview ? {
     headers: { Range: `bytes=0-${MAESTRO_PREVIEW_READ_LIMIT - 1}` },
@@ -463,6 +474,19 @@ async function openBrowserDevDocument(
 
   const sourceByteCount = browserDevSourceByteCount(response, bytes.length);
   return openBrowserDevDocumentFromBytes(path, extension, bytes, sourceByteCount, preferences, reloadOptions);
+}
+
+async function requestBrowserDevDesmondPreview(path: string, extension: string) {
+  if (extension !== "cms" && extension !== "dtr") return null;
+  const response = await fetch(`/__burette/desmond-preview?path=${encodeURIComponent(path)}`);
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    const message = await response.text().catch(() => response.statusText);
+    throw new Error(`${path}: Desmond preview failed: ${message || response.statusText}`);
+  }
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (!bytes.length) return null;
+  return { bytes, sourceByteCount: bytes.length };
 }
 
 async function openBrowserDevDocumentFromBytes(
@@ -505,13 +529,15 @@ async function openBrowserDevDocumentFromBytes(
     ? convertedMolstarData.bytes
     : null;
   const xyzFrameCount = runtimeFormat.molstarFormat === "xyz" && !runtimeFormat.binary ? countXyzFrames(text) : 0;
-  const shouldOpenXyzTrajectoryInMolstar = xyzFrameCount > 1 && requestedMode === "auto";
+  const pdbModelCount = runtimeFormat.molstarFormat === "pdb" && !runtimeFormat.binary ? countPdbModels(text) : 0;
+  const trajectoryFrameCount = Math.max(xyzFrameCount, pdbModelCount);
+  const shouldOpenTrajectoryInMolstar = trajectoryFrameCount > 1 && requestedMode === "auto";
   const xyzrenderAvailable = maestroPreview ? false : xyzrenderAvailableForDocument(format, text);
   const requestedRenderer = resolveRenderer(
     runtimeFormat,
     maestroPreview
       ? "molstar"
-      : (shouldOpenXyzTrajectoryInMolstar
+      : (shouldOpenTrajectoryInMolstar
         ? "molstar"
         : (xyzrenderAvailable ? defaultRendererModeForDocument(extension, requestedMode, reloadOptions) : "molstar")),
     Boolean(molstarBytes),
@@ -550,7 +576,7 @@ async function openBrowserDevDocumentFromBytes(
     xyzrenderControls,
     "",
     undefined,
-    Math.max(xyzFrameCount, sdfRecordCount),
+    Math.max(trajectoryFrameCount, sdfRecordCount),
     ketcherEditConfig(path, extension, text, sourceByteCount, sdfRecordCount),
   );
   return browserDocument(path, extension, renderer, html, sourceByteCount);
@@ -723,6 +749,7 @@ function viewerHtml(
 ) {
   const label = fileTitle(path);
   const visuals = resolvePreviewVisuals(preferences);
+  const molstarStyle = defaultMolstarStyleForDocument(preferences, trajectoryFrameCount);
   const config = configOverride ?? {
     format: format.molstarFormat,
     molstarFormat: format.molstarFormat,
@@ -750,7 +777,7 @@ function viewerHtml(
     trajectoryFrameCount,
     appViewer: true,
     tauriViewer: false,
-    molstarStyle: preferences.molstarStyle,
+    molstarStyle,
     xyzrenderViewer: renderer === "xyzrender-external",
     xyzrenderAvailable,
     xyzrenderEndpoint: "/__burette/xyzrender",
@@ -798,6 +825,13 @@ function viewerHtml(
   <script src="viewer.js?v=${runtimeAssetVersion}"></script>
 </body>
 </html>`;
+}
+
+function defaultMolstarStyleForDocument(
+  preferences: ViewerPreferences,
+  trajectoryFrameCount: number,
+): ViewerPreferences["molstarStyle"] {
+  return trajectoryFrameCount > 1 ? "default" : preferences.molstarStyle;
 }
 
 async function browserRendererPlan(
@@ -1006,6 +1040,7 @@ async function gridHtml(
   <script>window.BurreteConfig = ${JSON.stringify(config)};</script>
   <script>window.BurreteGridRecords = ${JSON.stringify(records)};</script>
   <script src="rdkit/RDKit_minimal.js?v=${GRID_ASSET_VERSION}"></script>
+  <script src="grid-ui.js?v=${GRID_ASSET_VERSION}"></script>
   <script src="grid-viewer.js?v=${GRID_ASSET_VERSION}"></script>
 </body>
 </html>`;
@@ -1278,6 +1313,11 @@ function countXyzFrames(text: string) {
     index += atomCount + 2;
   }
   return frames;
+}
+
+function countPdbModels(text: string) {
+  const matches = text.match(/^MODEL\b/gmu);
+  return matches?.length ?? 0;
 }
 
 type DefaultXyzrenderPlan = {

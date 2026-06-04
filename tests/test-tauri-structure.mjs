@@ -47,6 +47,7 @@ const [
   viewerRuntimeCSS,
   viewerJS,
   gridViewerJS,
+  gridUiTSX,
   viewerShell,
   tauriConfigSource,
   tauriPermissionSource,
@@ -113,6 +114,7 @@ const [
   source('PreviewExtension/Web/viewer-runtime.css'),
   source('PreviewExtension/Web/viewer.js'),
   source('PreviewExtension/Web/grid-viewer.js'),
+  source('apps/desktop/src/preview-grid/grid-ui.tsx'),
   source('PreviewExtension/Web/viewer-shell.js'),
   source('apps/desktop/src-tauri/tauri.conf.json'),
   source('apps/desktop/src-tauri/permissions/burrete.toml'),
@@ -558,7 +560,7 @@ assert.match(gridViewerJS, /inputDataBase64: textToBase64\(xyzrenderFragmentText
 assert.match(gridViewerJS, /function prepareXyzrenderCardSVG\(svg\)/);
 assert.match(gridViewerJS, /markSVGForFitting\(html, 'data-buret-xyzrender-svg'\)/);
 assert.match(gridViewerJS, /state\.cardRenderer = 'rdkit';\n\s+store\(CARD_RENDERER_STORAGE_KEY, 'rdkit'\);/);
-assert.match(gridViewerJS, /\$\{supportsXyzrenderCards\(cfg\) \? '<button type="button" data-buret-grid-card-renderer="xyzrender"/);
+assert.match(gridUiTSX, /data-buret-grid-card-renderer="xyzrender"/);
 assert.match(quickLookPreviewController, /<script src="preview-config\.js"><\/script>/);
 assert.match(quickLookPreviewController, /gridRuntimeCSP/);
 assert.match(quickLookPreviewController, /molstarRuntimeCSP/);
