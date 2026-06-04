@@ -123,4 +123,17 @@ assert.equal(restored.tabs.length, 2);
 assert.equal(restored.tabs.find((tab) => tab.id === restored.activeTabId)?.location.kind, "ketcher");
 assert.equal(restored.activeDocumentId, null);
 
+resetStore();
+const manyDocuments = Array.from({ length: 14 }, (_, index) => (
+  document(`recent-${index}`, `/tmp/project/file-${String(index).padStart(2, "0")}.pdb`)
+));
+useMoleculeStore.getState().rememberRecentStructures(manyDocuments);
+
+const recent = useMoleculeStore.getState().recentStructures;
+assert.equal(recent.length, manyDocuments.length);
+assert.deepEqual(
+  recent.map((structure) => structure.path).sort(),
+  manyDocuments.map((structure) => structure.path).sort(),
+);
+
 console.log("molecule store behavior tests passed");
