@@ -34,6 +34,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private static let molstarRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file:; script-src 'self' 'unsafe-inline' 'unsafe-eval' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'self' blob:;"
     private static let externalArtifactRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file:; script-src 'self' 'unsafe-inline' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'none';"
     private static let minimalRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file:; script-src 'self' 'unsafe-inline' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'none';"
+    private static let maestroPreviewReadLimit = 64 * 1024 * 1024
 
     deinit {
         renderTimeoutWorkItem?.cancel()
@@ -281,14 +282,20 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
         let structureSize = try fileSize(for: url, fileManager: fileManager)
         let sizeLimit = quickLookSizeLimit(for: url)
-        guard structureSize <= sizeLimit else {
+        let usesBoundedMaestroPreview = structureSize > sizeLimit && isMaestroPreviewExtension(pathExtension)
+        guard structureSize <= sizeLimit || usesBoundedMaestroPreview else {
             throw PreviewError.fileTooLarge(url.lastPathComponent, structureSize, sizeLimit)
         }
         let fileReadStarted = Date()
-        let structureData = try Data(contentsOf: url)
+        let structureData = usesBoundedMaestroPreview
+            ? try readFilePrefix(url, maxBytes: maestroPreviewReadLimit)
+            : try Data(contentsOf: url)
         diag("elapsed.fileReadMs=\(elapsedMs(since: fileReadStarted))")
         guard !structureData.isEmpty else { throw PreviewError.emptyStructureFile(url.lastPathComponent) }
         diag("structureData.bytes=\(structureData.count)")
+        if usesBoundedMaestroPreview {
+            diag("structureData.boundedMaestroPreview=true originalBytes=\(structureSize) prefixBytes=\(structureData.count)")
+        }
 
         let preferences = PreviewPreferences.load()
         let gridFileSupport = preferences.gridFileSupport
@@ -376,6 +383,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             structureDataForWeb = convertedXYZ
             diag("xyzrender.default=built-in-text-parser")
         }
+        if usesBoundedMaestroPreview, format.isExternalXyzrenderOnly {
+            throw PreviewError.couldNotExtractBoundedMaestroPreview(url.lastPathComponent, Self.maestroPreviewReadLimit)
+        }
         if renderer == BurreteRendererMode.xyzrenderExternal {
             let renderDirectory = fileManager.temporaryDirectory
                 .appendingPathComponent("BurreteXYZRender-\(UUID().uuidString)", isDirectory: true)
@@ -436,7 +446,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             label: url.lastPathComponent,
             requestID: requestID,
             requestedRendererMode: requestedRendererMode,
-            byteCount: structureData.count,
+            byteCount: Int(min(structureSize, Int64(Int.max))),
             previewByteCount: structureDataForWeb.count,
             renderer: renderer,
             externalArtifact: externalArtifact,
@@ -1042,6 +1052,16 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         default:
             return 20 * mib
         }
+    }
+
+    private static func isMaestroPreviewExtension(_ fileExtension: String) -> Bool {
+        ["cms", "mae", "maegz"].contains(fileExtension.lowercased())
+    }
+
+    private static func readFilePrefix(_ url: URL, maxBytes: Int) throws -> Data {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        return try handle.read(upToCount: maxBytes) ?? Data()
     }
 
     private static func structurePathExtension(for url: URL) -> String {
@@ -1652,6 +1672,8 @@ private enum PreviewStructureTextConverter {
             atoms = parseQuantumEspressoInput(lines)
         case "out":
             atoms = parseOrcaOutput(lines)
+        case "cms", "mae", "maegz":
+            atoms = parseMaestroAtoms(lines, atomLimit: 20_000)
         default:
             atoms = nil
         }
@@ -1661,6 +1683,155 @@ private enum PreviewStructureTextConverter {
             xyz += "\(atom.symbol) \(format(atom.x)) \(format(atom.y)) \(format(atom.z))\n"
         }
         return Data(xyz.utf8)
+    }
+
+    private static func parseMaestroAtoms(_ lines: [String], atomLimit: Int) -> [Atom]? {
+        var index = 0
+        var bestAtoms: [Atom]?
+        while index < lines.count {
+            let trimmed = lines[index].trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.hasPrefix("m_atom["), trimmed.hasSuffix("{") else {
+                index += 1
+                continue
+            }
+            index += 1
+
+            var headers: [String] = []
+            var hasImplicitAtomIndex = false
+            while index < lines.count {
+                let headerLine = lines[index].trimmingCharacters(in: .whitespacesAndNewlines)
+                index += 1
+                if headerLine == ":::" { break }
+                if headerLine.hasPrefix("#") {
+                    hasImplicitAtomIndex = hasImplicitAtomIndex || headerLine.lowercased().contains("first column is atom index")
+                    continue
+                }
+                if headerLine == "}" {
+                    headers.removeAll()
+                    break
+                }
+                headers += fields(headerLine)
+            }
+            guard !headers.isEmpty,
+                  let xIndex = maestroHeaderIndex(headers, "r_m_x_coord"),
+                  let yIndex = maestroHeaderIndex(headers, "r_m_y_coord"),
+                  let zIndex = maestroHeaderIndex(headers, "r_m_z_coord") else {
+                continue
+            }
+            let atomicNumberIndex = maestroHeaderIndex(headers, "i_m_atomic_number")
+            let elementIndex = maestroHeaderIndex(headers, "s_m_element") ?? maestroHeaderIndex(headers, "s_m_pdb_element")
+            let atomNameIndex = maestroHeaderIndex(headers, "s_m_atom_name") ?? maestroHeaderIndex(headers, "s_m_pdb_atom_name")
+            let rowOffset = hasImplicitAtomIndex ? 1 : 0
+            var atoms: [Atom] = []
+
+            while index < lines.count {
+                let rowLine = lines[index].trimmingCharacters(in: .whitespacesAndNewlines)
+                index += 1
+                if rowLine == ":::" || rowLine == "}" { break }
+                if rowLine.isEmpty { continue }
+                let row = maestroTokens(rowLine)
+                guard let x = rowValue(row, xIndex + rowOffset).flatMap(Double.init),
+                      let y = rowValue(row, yIndex + rowOffset).flatMap(Double.init),
+                      let z = rowValue(row, zIndex + rowOffset).flatMap(Double.init),
+                      let symbol = maestroAtomSymbol(
+                        row,
+                        rowOffset: rowOffset,
+                        atomicNumberIndex: atomicNumberIndex,
+                        elementIndex: elementIndex,
+                        atomNameIndex: atomNameIndex
+                      ) else {
+                    continue
+                }
+                atoms.append(Atom(symbol: symbol, x: x, y: y, z: z))
+                if atoms.count >= atomLimit { break }
+            }
+            if !atoms.isEmpty, atoms.count > (bestAtoms?.count ?? 0) {
+                bestAtoms = atoms
+            }
+        }
+        return bestAtoms
+    }
+
+    private static func maestroHeaderIndex(_ headers: [String], _ name: String) -> Int? {
+        headers.firstIndex { $0.caseInsensitiveCompare(name) == .orderedSame }
+    }
+
+    private static func maestroTokens(_ line: String) -> [String] {
+        var tokens: [String] = []
+        var current = ""
+        var quote: Character?
+        var escaped = false
+        for character in line {
+            if escaped {
+                current.append(character)
+                escaped = false
+                continue
+            }
+            if character == "\\" {
+                escaped = true
+                continue
+            }
+            if let activeQuote = quote {
+                if character == activeQuote {
+                    quote = nil
+                } else {
+                    current.append(character)
+                }
+                continue
+            }
+            if character == "\"" || character == "'" {
+                quote = character
+                continue
+            }
+            if character == " " || character == "\t" {
+                if !current.isEmpty {
+                    tokens.append(current)
+                    current = ""
+                }
+                continue
+            }
+            current.append(character)
+        }
+        if !current.isEmpty { tokens.append(current) }
+        return tokens
+    }
+
+    private static func rowValue(_ row: [String], _ index: Int) -> String? {
+        guard index >= 0, index < row.count else { return nil }
+        let value = row[index].trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty || value == "<>" ? nil : value
+    }
+
+    private static func maestroAtomSymbol(
+        _ row: [String],
+        rowOffset: Int,
+        atomicNumberIndex: Int?,
+        elementIndex: Int?,
+        atomNameIndex: Int?
+    ) -> String? {
+        if let atomicNumberIndex,
+           let value = rowValue(row, atomicNumberIndex + rowOffset),
+           let atomicNumber = Int(value) {
+            return symbol(for: atomicNumber)
+        }
+        if let elementIndex,
+           let value = rowValue(row, elementIndex + rowOffset) {
+            let normalized = value.trimmingCharacters(in: CharacterSet(charactersIn: "\"'")).capitalized
+            if isElementSymbol(normalized) { return normalized }
+        }
+        if let atomNameIndex,
+           let value = rowValue(row, atomNameIndex + rowOffset) {
+            let letters = value.filter { $0.isLetter }
+            if let first = letters.first {
+                let one = String(first).capitalized
+                if isElementSymbol(one) { return one }
+                if letters.count >= 2 {
+                    let two = String(letters.prefix(2)).capitalized
+                    if isElementSymbol(two) { return two }
+                }
+            }
+        }
+        return nil
     }
 
     private static func parseCube(_ lines: [String]) -> [Atom]? {
@@ -2691,6 +2862,7 @@ private enum PreviewError: LocalizedError {
     case unsupportedStructureFile(String)
     case gridFileTypeDisabled(String)
     case fileTooLarge(String, Int64, Int64)
+    case couldNotExtractBoundedMaestroPreview(String, Int)
     case ubiquitousFileNotDownloaded(String)
     case webRenderFailed(String)
     case webRenderTimedOut
@@ -2713,6 +2885,8 @@ private enum PreviewError: LocalizedError {
             return ".\(ext) molecule grid previews are disabled in Burrete Settings."
         case .fileTooLarge(let name, let size, let limit):
             return "\(name) is too large for Quick Look preview (\(size) bytes; limit \(limit) bytes). Open it in the Burrete app viewer or use a smaller file."
+        case .couldNotExtractBoundedMaestroPreview(let name, let limit):
+            return "\(name) is too large for full Quick Look loading, and Burrete could not extract a Maestro atom table from the first \(limit) bytes."
         case .ubiquitousFileNotDownloaded(let name):
             return "\(name) is in iCloud and is not downloaded locally. Download it in Finder, then open Quick Look again."
         case .webRenderFailed(let message):
