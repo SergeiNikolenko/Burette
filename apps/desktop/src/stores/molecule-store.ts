@@ -15,8 +15,6 @@ import {
   isTemporaryDocumentPath,
 } from "../lib/temporary-documents";
 
-const MAX_RECENT_STRUCTURES = 12;
-
 export type MoleculeTab = {
   id: string;
   location: Location;
@@ -365,8 +363,7 @@ export const useMoleculeStore = create<MoleculeState>()(
           }
           return {
             recentStructures: Array.from(byPath.values())
-              .sort((a, b) => b.openedAt - a.openedAt)
-              .slice(0, MAX_RECENT_STRUCTURES),
+              .sort((a, b) => b.openedAt - a.openedAt),
           };
         }),
       clearRecentStructures: () => set({ recentStructures: [] }),
