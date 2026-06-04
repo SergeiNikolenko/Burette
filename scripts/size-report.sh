@@ -180,6 +180,7 @@ print_web_asset_duplication() {
     "viewer-shell.js"
     "burette-agent.js"
     "viewer.js"
+    "grid-ui.js"
     "grid-viewer.js"
     "grid.css"
     "rdkit/RDKit_minimal.js"

@@ -51,6 +51,7 @@ require_asset "$WEB_SOURCE/viewer-runtime.css"
 require_asset "$WEB_SOURCE/viewer-shell.js"
 require_asset "$WEB_SOURCE/burette-agent.js"
 require_asset "$WEB_SOURCE/viewer.js"
+require_asset "$WEB_SOURCE/grid-ui.js"
 require_asset "$WEB_SOURCE/grid-viewer.js"
 require_asset "$WEB_SOURCE/grid.css"
 require_asset "$WEB_SOURCE/rdkit/RDKit_minimal.js"
@@ -60,6 +61,7 @@ bun scripts/check-js-syntax.mjs \
   PreviewExtension/Web/viewer.js \
   PreviewExtension/Web/viewer-shell.js \
   PreviewExtension/Web/burette-agent.js \
+  PreviewExtension/Web/grid-ui.js \
   PreviewExtension/Web/grid-viewer.js >/dev/null
 
 cat <<MSG
@@ -80,6 +82,8 @@ codesign --verify --deep --strict "$APP"
 
 cmp -s "$WEB_SOURCE/viewer.js" "$APP_WEB/viewer.js" || { echo "error: app viewer.js does not match source." >&2; exit 1; }
 cmp -s "$WEB_SOURCE/viewer.js" "$APPEX_WEB/viewer.js" || { echo "error: appex viewer.js does not match source." >&2; exit 1; }
+cmp -s "$WEB_SOURCE/grid-ui.js" "$APP_WEB/grid-ui.js" || { echo "error: app grid-ui.js does not match source." >&2; exit 1; }
+cmp -s "$WEB_SOURCE/grid-ui.js" "$APPEX_WEB/grid-ui.js" || { echo "error: appex grid-ui.js does not match source." >&2; exit 1; }
 cmp -s "$WEB_SOURCE/grid-viewer.js" "$APP_WEB/grid-viewer.js" || { echo "error: app grid-viewer.js does not match source." >&2; exit 1; }
 cmp -s "$WEB_SOURCE/grid-viewer.js" "$APPEX_WEB/grid-viewer.js" || { echo "error: appex grid-viewer.js does not match source." >&2; exit 1; }
 cmp -s "$WEB_SOURCE/grid.css" "$APP_WEB/grid.css" || { echo "error: app grid.css does not match source." >&2; exit 1; }

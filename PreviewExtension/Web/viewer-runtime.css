@@ -944,6 +944,7 @@ body.buret-docking-pose-controls-active .msp-traj-controls {
 .buret-docking-pose-animation {
   display: none;
   padding-top: 1px;
+  width: max-content;
 }
 .buret-docking-poses.buret-docking-poses-animation-open .buret-docking-pose-animation {
   display: inline-flex;
@@ -952,14 +953,40 @@ body.buret-docking-pose-controls-active .msp-traj-controls {
   width: 28px;
   padding: 0 !important;
 }
+.buret-docking-pose-speed {
+  appearance: textfield;
+  -moz-appearance: textfield;
+  -webkit-appearance: none;
+  height: 28px;
+  width: 44px;
+  min-width: 44px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0 7px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.08);
+  font: 600 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  cursor: text;
+  text-align: center;
+}
+.buret-docking-pose-speed::-webkit-inner-spin-button,
+.buret-docking-pose-speed::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.buret-docking-pose-speed:hover,
+.buret-docking-pose-speed:focus {
+  outline: none;
+  background: rgba(255, 255, 255, 0.14);
+}
 .buret-docking-poses span {
   min-width: 76px;
   text-align: center;
 }
 .buret-docking-pose-slider {
-  flex: 1 1 96px;
-  width: 100%;
-  min-width: 72px;
+  flex: 0 0 78px;
+  width: 78px;
+  min-width: 60px;
   accent-color: #93c5fd;
   cursor: pointer;
 }

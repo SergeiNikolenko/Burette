@@ -7,10 +7,11 @@ async function source(path) {
   return readFile(resolve(path), "utf8");
 }
 
-const [app, gridViewer, viewer, dockingDocuments, dropActions, dropActionExecutor, fileKind, openDropHook, sidebarFileTreeNode, editorTabs, vpContract, packageJson, burretePermission] =
+const [app, gridViewer, gridUi, viewer, dockingDocuments, dropActions, dropActionExecutor, fileKind, openDropHook, sidebarFileTreeNode, editorTabs, vpContract, packageJson, burretePermission] =
   await Promise.all([
     source("apps/desktop/src/App.tsx"),
     source("PreviewExtension/Web/grid-viewer.js"),
+    source("apps/desktop/src/preview-grid/grid-ui.tsx"),
     source("PreviewExtension/Web/viewer.js"),
     source("apps/desktop/src/lib/docking-documents.ts"),
     source("apps/desktop/src/lib/drop-actions.ts"),
@@ -24,7 +25,9 @@ const [app, gridViewer, viewer, dockingDocuments, dropActions, dropActionExecuto
     source("apps/desktop/src-tauri/permissions/burrete.toml"),
   ]);
 
-assert.match(gridViewer, /data-buret-grid-sdf-poses data-buret-grid-docking>Molstar<\/button>/);
+assert.match(gridUi, /data-buret-grid-sdf-poses/);
+assert.match(gridUi, /data-buret-grid-docking/);
+assert.match(gridUi, />\s*Molstar\s*<\/button>/);
 assert.match(gridViewer, /setStatus\('\[grid\] Select one or more molecules before opening Molstar\.', 'error'\)/);
 assert.match(gridViewer, /post\('openSdfMolstarDocument', '\[grid\] Open selected molecules in Molstar.'/);
 assert.match(gridViewer, /documentId: cfg\?\.documentId \|\| null/);
@@ -93,11 +96,15 @@ assert.match(viewer, /poseRepeatTimer = window\.setInterval\(\(\) => repeatPoseS
 assert.match(viewer, /previous\.textContent = 'Prev'/);
 assert.match(viewer, /next\.textContent = 'Next'/);
 assert.match(viewer, /loop\.textContent = 'Loop'/);
+assert.match(viewer, /speed\.className = 'buret-docking-pose-speed'/);
+assert.match(viewer, /speed\.type = 'number'/);
 assert.match(viewer, /slider\.type = 'range'/);
-assert.match(viewer, /label\.textContent = `Pose \$\{activePose \+ 1\} \/ \$\{prepared\.poseCount\}`/);
-assert.match(viewer, /sessionStorage\.setItem\(dockingPoseStorageKey\(activeConfig\), String\(nextIndex\)\)/);
+assert.match(viewer, /label\.textContent = `\$\{controlLabel\} \$\{activePose \+ 1\} \/ \$\{prepared\.poseCount\}`/);
+assert.match(viewer, /sessionStorage\.setItem\(trajectoryControlStorageKey\(activeConfig, prepared\), String\(nextIndex\)\)/);
 assert.match(viewer, /button\.click\(\)/);
-assert.match(viewer, /window\.setInterval\(\(\) => \{/);
+assert.match(viewer, /function trajectorySpeedToDelay\(value, prepared\)/);
+assert.match(viewer, /const scheduleLoopStep = \(delayMs = loopDelayMs\(\)\) => \{/);
+assert.match(viewer, /loopTimer = window\.setTimeout\(\(\) => \{/);
 assert.match(viewer, /void setPose\(Number\(slider\.value\) - 1\)/);
 assert.match(viewer, /if \(event\.key === 'ArrowLeft'\)/);
 assert.match(viewer, /if \(activePose > 0\) void setPose\(activePose - 1\)/);

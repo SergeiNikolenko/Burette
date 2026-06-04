@@ -328,7 +328,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 configJSON: configJSONWithRequestID(gridPreview.configJSON, requestID: requestID),
                 structureData: nil,
                 gridRecordsScript: gridPreview.recordsScript,
-                requiredAssets: ["grid-viewer.js", "grid.css"],
+                requiredAssets: ["grid-ui.js", "grid-viewer.js", "grid.css"],
                 requiresRDKit: true,
                 externalArtifactSourceURL: nil,
                 fileManager: fileManager,
@@ -802,6 +802,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           <script src="preview-config.js"></script>
           <script src="preview-grid-records.js"></script>
           <script src="../assets/rdkit/RDKit_minimal.js"></script>
+          <script src="../assets/grid-ui.js"></script>
           <script src="../assets/grid-viewer.js"></script>
         </body>
         </html>
@@ -961,6 +962,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
     private static func validateVendoredMoleculeGridAssets(in webDirectory: URL, fileManager: FileManager, diagnostics: inout [String]) throws {
         let required = [
+            "grid-ui.js",
             "grid-viewer.js",
             "grid.css",
             "rdkit/RDKit_minimal.js",

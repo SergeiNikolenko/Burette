@@ -2241,6 +2241,81 @@
     return Math.max(0, Math.min(poseCount - 1, Math.trunc(value)));
   }
 
+  function trajectoryControlStorageKey(config, prepared) {
+    if (prepared?.kind === 'docking') return dockingPoseStorageKey(config);
+    const documentId = String(config?.documentId || '').trim();
+    if (documentId) return `burrete.trajectoryControl.${documentId}`;
+    const fallback = `${config?.label || 'active'}:${window.location.pathname}:${window.location.search}`;
+    return `burrete.trajectoryControl.fallback-${stableTextHash(fallback)}`;
+  }
+
+  function readTrajectoryControlIndex(config, prepared, poseCount) {
+    if (prepared?.kind === 'docking') return readDockingPoseIndex(config, poseCount);
+    let value = Number(config?.activeModel || 0);
+    try {
+      const stored = sessionStorage.getItem(trajectoryControlStorageKey(config, prepared));
+      if (stored !== null) value = Number(stored);
+    } catch (_) {}
+    if (!Number.isFinite(value)) value = 0;
+    return Math.max(0, Math.min(poseCount - 1, Math.trunc(value)));
+  }
+
+  function trajectoryLoopSpeedStorageKey(config, prepared) {
+    return `${trajectoryControlStorageKey(config, prepared)}.speed`;
+  }
+
+  function minimumTrajectoryLoopDelay(prepared) {
+    return prepared?.nativeTrajectoryControls ? 40 : 300;
+  }
+
+  function minimumTrajectoryLoopTimerDelay(prepared) {
+    return prepared?.nativeTrajectoryControls ? 8 : 60;
+  }
+
+  function trajectorySpeedToDelay(value, prepared) {
+    const speed = Number(value);
+    const clamped = Number.isFinite(speed) ? Math.min(Math.max(speed, 0.1), 30) : 1;
+    return Math.max(minimumTrajectoryLoopDelay(prepared), Math.round(1200 / clamped));
+  }
+
+  function trajectoryDelayToSpeed(delayMs) {
+    const delay = Number(delayMs);
+    if (!Number.isFinite(delay) || delay <= 0) return 1;
+    return Math.min(Math.max(1200 / delay, 0.1), 30);
+  }
+
+  function formatTrajectorySpeed(value) {
+    const speed = Number(value);
+    if (!Number.isFinite(speed)) return '1';
+    return String(Math.round(speed * 100) / 100);
+  }
+
+  function readTrajectoryLoopDelay(config, prepared) {
+    const fallback = 1200;
+    try {
+      const stored = Number(localStorage.getItem(trajectoryLoopSpeedStorageKey(config, prepared)));
+      if (Number.isFinite(stored) && stored > 0) return Math.max(minimumTrajectoryLoopDelay(prepared), stored);
+    } catch (_) {}
+    return fallback;
+  }
+
+  function trajectoryControlsForPrepared(prepared) {
+    const poseCount = Number(prepared?.poseCount || activeConfig?.trajectoryFrameCount || 0);
+    const enabled = prepared?.nativeTrajectoryControls === true ||
+      activeConfig?.trajectoryControls === true ||
+      activeConfig?.sdfPosePager === true;
+    if (!enabled || !Number.isFinite(poseCount) || poseCount <= 1) return null;
+    const label = activeConfig?.sdfPosePager === true ? 'Pose' : 'Model';
+    return {
+      kind: 'trajectory',
+      activePose: readTrajectoryControlIndex(activeConfig, prepared, poseCount),
+      poseCount,
+      nativeTrajectoryControls: true,
+      ligandLabel: prepared?.label || activeConfig?.label || 'Mol* trajectory',
+      controlLabel: label
+    };
+  }
+
   function prepareDockingStructure(config) {
     const docking = config.docking || {};
     const payloads = window.BurreteDockingPayloads || {};
@@ -3619,6 +3694,7 @@
         useDefaultIfSingleModel: true
       });
       await applyMolstarStyle(viewer, configuredMolstarStyle(activeConfig));
+      installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
       return;
     }
     const plugin = viewer.plugin;
@@ -3626,6 +3702,7 @@
     const trajectory = await plugin.builders.structure.parseTrajectory(data, prepared.format);
     await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default');
     await applyMolstarStyle(viewer, configuredMolstarStyle(activeConfig));
+    installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
   }
 
   async function loadMolstarEntry(viewer, entry) {
@@ -3855,6 +3932,7 @@
   }
 
   function notifyDockingPoseChanged(activePose, prepared) {
+    if (prepared?.kind !== 'docking') return;
     const poses = Array.isArray(prepared?.poses) ? prepared.poses : [];
     const index = Math.max(0, Math.min(poses.length - 1, Math.trunc(Number(activePose) || 0)));
     const pose = poses[index] || null;
@@ -3881,8 +3959,10 @@
     document.body.classList.add('buret-docking-pose-controls-active');
     const root = document.createElement('div');
     root.className = 'buret-docking-poses';
-    root.setAttribute('aria-label', 'Docking pose controls');
-    let activePose = Math.max(0, Math.min(prepared.poseCount - 1, Number(prepared.activePose || 0)));
+    const controlLabel = String(prepared.controlLabel || 'Pose');
+    const controlLabelLower = controlLabel.toLowerCase();
+    root.setAttribute('aria-label', `${controlLabel} controls`);
+    let activePose = readTrajectoryControlIndex(activeConfig, prepared, prepared.poseCount);
     const initialPose = activePose;
     let loopTimer = null;
     let loopBusy = false;
@@ -3902,28 +3982,39 @@
     animation.className = 'buret-docking-pose-animation-button';
     animation.textContent = '⏯';
     animation.setAttribute('aria-label', 'Select Molstar animation');
+    animation.setAttribute('aria-expanded', 'false');
     animation.title = 'Select animation';
     const previous = document.createElement('button');
     previous.type = 'button';
     previous.textContent = 'Prev';
-    previous.setAttribute('aria-label', 'Previous pose');
+    previous.setAttribute('aria-label', `Previous ${controlLabelLower}`);
     const next = document.createElement('button');
     next.type = 'button';
     next.textContent = 'Next';
-    next.setAttribute('aria-label', 'Next pose');
+    next.setAttribute('aria-label', `Next ${controlLabelLower}`);
     const loop = document.createElement('button');
     loop.type = 'button';
     loop.textContent = 'Loop';
-    loop.setAttribute('aria-label', 'Play pose loop');
+    loop.setAttribute('aria-label', `Play ${controlLabelLower} loop`);
+    const speed = document.createElement('input');
+    speed.className = 'buret-docking-pose-speed';
+    speed.setAttribute('aria-label', `${controlLabel} loop speed`);
+    speed.type = 'number';
+    speed.min = '0.1';
+    speed.max = '30';
+    speed.step = '0.1';
+    speed.inputMode = 'decimal';
+    speed.value = formatTrajectorySpeed(trajectoryDelayToSpeed(readTrajectoryLoopDelay(activeConfig, prepared)));
+    speed.title = 'Playback speed';
     const slider = document.createElement('input');
     slider.className = 'buret-docking-pose-slider';
     slider.type = 'range';
     slider.min = '1';
     slider.max = String(prepared.poseCount);
     slider.step = '1';
-    slider.setAttribute('aria-label', 'Pose slider');
+    slider.setAttribute('aria-label', `${controlLabel} slider`);
     const updateControls = () => {
-      label.textContent = `Pose ${activePose + 1} / ${prepared.poseCount}`;
+      label.textContent = `${controlLabel} ${activePose + 1} / ${prepared.poseCount}`;
       previous.disabled = activePose <= 0;
       next.disabled = activePose >= prepared.poseCount - 1;
       slider.value = String(activePose + 1);
@@ -3932,24 +4023,52 @@
       root.classList.toggle('buret-docking-poses-animation-open', Boolean(open));
       animation.setAttribute('aria-expanded', open ? 'true' : 'false');
     };
+    const isAnimationOptionsOpen = () => root.classList.contains('buret-docking-poses-animation-open');
     const setLoopActive = (active) => {
       if (!active && loopTimer) {
-        clearInterval(loopTimer);
+        clearTimeout(loopTimer);
         loopTimer = null;
+        loopBusy = false;
       }
       loop.classList.toggle('active', Boolean(active));
       loop.textContent = active ? 'Stop' : 'Loop';
-      loop.setAttribute('aria-label', active ? 'Stop pose loop' : 'Play pose loop');
+      loop.setAttribute('aria-label', active ? `Stop ${controlLabelLower} loop` : `Play ${controlLabelLower} loop`);
       if (active) setAnimationOptionsOpen(true);
     };
     updateControls();
+    const loopDelayMs = () => {
+      const delay = trajectorySpeedToDelay(speed.value, prepared);
+      return Number.isFinite(delay) && delay > 0 ? delay : 1200;
+    };
+    const loopNow = () => (typeof performance !== 'undefined' && typeof performance.now === 'function')
+      ? performance.now()
+      : Date.now();
+    const scheduleLoopStep = (delayMs = loopDelayMs()) => {
+      loopTimer = window.setTimeout(() => {
+        loopTimer = null;
+        if (!loop.classList.contains('active')) return;
+        if (loopBusy) {
+          scheduleLoopStep(loopDelayMs());
+          return;
+        }
+        loopBusy = true;
+        const startedAt = loopNow();
+        const nextIndex = activePose >= prepared.poseCount - 1 ? 0 : activePose + 1;
+        void setPose(nextIndex).finally(() => {
+          loopBusy = false;
+          if (!loop.classList.contains('active')) return;
+          const elapsed = loopNow() - startedAt;
+          scheduleLoopStep(Math.max(minimumTrajectoryLoopTimerDelay(prepared), loopDelayMs() - elapsed));
+        });
+      }, Math.max(minimumTrajectoryLoopTimerDelay(prepared), delayMs));
+    };
     const setPose = async (index) => {
       const nextIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
       const previousIndex = activePose;
-      try { sessionStorage.setItem(dockingPoseStorageKey(activeConfig), String(nextIndex)); } catch (_) {}
+      try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(nextIndex)); } catch (_) {}
       previous.disabled = true;
       next.disabled = true;
-      label.textContent = `Pose ${nextIndex + 1} / ${prepared.poseCount}`;
+      label.textContent = `${controlLabel} ${nextIndex + 1} / ${prepared.poseCount}`;
       try {
         if (prepared.nativeTrajectoryControls) {
           const switched = await setNativeTrajectoryPose(nextIndex, prepared.poseCount);
@@ -3967,10 +4086,10 @@
         }
         notifyDockingPoseChanged(activePose, prepared);
       } catch (error) {
-        try { sessionStorage.setItem(dockingPoseStorageKey(activeConfig), String(previousIndex)); } catch (_) {}
+        try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(previousIndex)); } catch (_) {}
         activePose = previousIndex;
         updateControls();
-        setStatus(`[web] Could not switch docking pose.\n\n${error?.message || String(error)}`, 'error');
+        setStatus(`[web] Could not switch ${controlLabelLower}.\n\n${error?.message || String(error)}`, 'error');
         // eslint-disable-next-line no-console
         console.error(error);
       }
@@ -4030,7 +4149,9 @@
       });
     };
     animation.addEventListener('click', () => {
-      setAnimationOptionsOpen(true);
+      const open = !isAnimationOptionsOpen();
+      setAnimationOptionsOpen(open);
+      if (!open) return;
       const button = nativeAnimationSelectButton();
       if (button && !button.disabled && button.getAttribute('aria-disabled') !== 'true') {
         button.click();
@@ -4046,18 +4167,19 @@
         return;
       }
       setLoopActive(true);
-      loopTimer = window.setInterval(() => {
-        if (loopBusy) return;
-        loopBusy = true;
-        const nextIndex = activePose >= prepared.poseCount - 1 ? 0 : activePose + 1;
-        void setPose(nextIndex).finally(() => {
-          loopBusy = false;
-        });
-      }, 1200);
+      scheduleLoopStep();
+    });
+    speed.addEventListener('change', () => {
+      const delay = loopDelayMs();
+      speed.value = formatTrajectorySpeed(trajectoryDelayToSpeed(delay));
+      try { localStorage.setItem(trajectoryLoopSpeedStorageKey(activeConfig, prepared), String(delay)); } catch (_) {}
+      if (!loopTimer) return;
+      setLoopActive(false);
+      loop.click();
     });
     slider.addEventListener('input', () => {
       const previewIndex = Math.max(0, Math.min(prepared.poseCount - 1, Number(slider.value) - 1));
-      label.textContent = `Pose ${previewIndex + 1} / ${prepared.poseCount}`;
+      label.textContent = `${controlLabel} ${previewIndex + 1} / ${prepared.poseCount}`;
     });
     slider.addEventListener('change', () => {
       void setPose(Number(slider.value) - 1);
@@ -4076,7 +4198,7 @@
     window.addEventListener('keydown', onKeyDown);
     dockingPoseKeydownDisposer = () => window.removeEventListener('keydown', onKeyDown);
     mainRow.append(animation, previous, label, next);
-    animationRow.append(loop, slider);
+    animationRow.append(speed, loop, slider);
     root.append(mainRow, animationRow);
     document.body.appendChild(root);
     restoreDockingPoseControlsPosition(root);

@@ -45,8 +45,8 @@ const KETCHER_EDIT_MAX_BYTES = 1024 * 1024;
 const KETCHER_EDIT_MAX_ATOMS = 300;
 const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
-const GRID_ASSET_VERSION = "grid-ui-v91";
-const VIEWER_ASSET_VERSION = "viewer-ui-v18";
+const GRID_ASSET_VERSION = "grid-ui-v94";
+const VIEWER_ASSET_VERSION = "viewer-ui-v27";
 const REPO_ROOT = String(import.meta.env.BURRETE_REPO_ROOT || "");
 const WEB_ASSETS_BASE = fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
 const browserDevVirtualTextDocuments = new Map<string, string>();
@@ -1006,6 +1006,7 @@ async function gridHtml(
   <script>window.BurreteConfig = ${JSON.stringify(config)};</script>
   <script>window.BurreteGridRecords = ${JSON.stringify(records)};</script>
   <script src="rdkit/RDKit_minimal.js?v=${GRID_ASSET_VERSION}"></script>
+  <script src="grid-ui.js?v=${GRID_ASSET_VERSION}"></script>
   <script src="grid-viewer.js?v=${GRID_ASSET_VERSION}"></script>
 </body>
 </html>`;
