@@ -385,8 +385,10 @@
   }
 
   function supportsXyzrenderCards(cfg) {
-    return (cfg?.appViewer === true && cfg?.gridDataMode === 'bridge')
-      || (typeof cfg?.xyzrenderEndpoint === 'string' && cfg.xyzrenderEndpoint.trim().length > 0);
+    return cfg?.appViewer === true && (
+      cfg?.gridDataMode === 'bridge'
+      || (typeof cfg?.xyzrenderEndpoint === 'string' && cfg.xyzrenderEndpoint.trim().length > 0)
+    );
   }
 
   function normalizeCardRenderer(cfg) {

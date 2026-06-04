@@ -636,29 +636,13 @@ mod document_open_tests {
             .join(relative)
     }
 
-    fn prepend_fake_xyzrender_environment() -> PathBuf {
+    fn prepend_fake_xyzrender_environment(script: &str) -> PathBuf {
         let root =
             std::env::temp_dir().join(format!("burrete-open-document-{}", uuid::Uuid::new_v4()));
         let bin_dir = root.join(".local").join("bin");
         fs::create_dir_all(&bin_dir).expect("fake xyzrender bin dir should be created");
         let executable = bin_dir.join("xyzrender");
-        fs::write(
-            &executable,
-            concat!(
-                "#!/bin/sh\n",
-                "out=\"\"\n",
-                "while [ \"$#\" -gt 0 ]; do\n",
-                "  if [ \"$1\" = \"-o\" ]; then\n",
-                "    out=\"$2\"\n",
-                "    shift 2\n",
-                "    continue\n",
-                "  fi\n",
-                "  shift\n",
-                "done\n",
-                "printf '%s\\n' '<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>' > \"$out\"\n"
-            ),
-        )
-        .expect("fake xyzrender should be written");
+        fs::write(&executable, script).expect("fake xyzrender should be written");
         #[cfg(unix)]
         {
             let mut permissions = fs::metadata(&executable)
@@ -672,11 +656,41 @@ mod document_open_tests {
     }
 
     fn with_fake_xyzrender<T>(run: impl FnOnce() -> T) -> T {
+        with_fake_xyzrender_script(
+            concat!(
+                "#!/bin/sh\n",
+                "out=\"\"\n",
+                "while [ \"$#\" -gt 0 ]; do\n",
+                "  if [ \"$1\" = \"-o\" ]; then\n",
+                "    out=\"$2\"\n",
+                "    shift 2\n",
+                "    continue\n",
+                "  fi\n",
+                "  shift\n",
+                "done\n",
+                "printf '%s\\n' '<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>' > \"$out\"\n"
+            ),
+            run,
+        )
+    }
+
+    fn with_failing_fake_xyzrender<T>(run: impl FnOnce() -> T) -> T {
+        with_fake_xyzrender_script(
+            concat!(
+                "#!/bin/sh\n",
+                "printf '%s\\n' 'fake xyzrender failure' >&2\n",
+                "exit 1\n"
+            ),
+            run,
+        )
+    }
+
+    fn with_fake_xyzrender_script<T>(script: &str, run: impl FnOnce() -> T) -> T {
         let _lock = ENV_LOCK
             .get_or_init(|| Mutex::new(()))
             .lock()
             .expect("env lock should not be poisoned");
-        let fake_home = prepend_fake_xyzrender_environment();
+        let fake_home = prepend_fake_xyzrender_environment(script);
         let old_home = std::env::var_os("HOME");
         let old_path = std::env::var_os("PATH");
         let mut joined_path = vec![fake_home.join(".local").join("bin")];
@@ -893,7 +907,7 @@ CARTESIAN COORDINATES (ANGSTROEM)
     }
 
     #[test]
-    fn default_desktop_runtime_uses_binary_preview_data_without_base64_script() {
+    fn default_desktop_runtime_embeds_preview_data_script_for_tauri_asset_protocol() {
         let app = mock_app_with_grid_registry();
         let preferences = viewer_preferences();
         let path = fixture_path("1HTB.pdb");
@@ -907,9 +921,13 @@ CARTESIAN COORDINATES (ANGSTROEM)
         let html = fs::read_to_string(runtime_dir.join("index.html"))
             .expect("runtime HTML should be written");
         assert!(runtime_dir.join("preview-data.bin").is_file());
-        assert!(!runtime_dir.join("preview-data.js").exists());
+        assert!(runtime_dir.join("preview-data.js").is_file());
         assert!(html.contains("window.BurreteDataURL = "));
-        assert!(!html.contains("preview-data.js\"></script>"));
+        assert!(html.contains("preview-data.js\"></script>"));
+        let data_script = fs::read_to_string(runtime_dir.join("preview-data.js"))
+            .expect("preview data script should be written");
+        assert!(data_script.contains("window.BurreteDataBase64 = "));
+        assert!(data_script.contains("window.BurreteDataURL = null;"));
 
         remove_runtime_artifacts(&document.runtime_path);
     }
@@ -979,6 +997,28 @@ CARTESIAN COORDINATES (ANGSTROEM)
             .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
         assert_eq!(document.renderer, "molstar");
         remove_runtime_artifacts(&document.runtime_path);
+    }
+
+    #[test]
+    fn falls_back_to_molstar_for_cif_when_xyzrender_fails() {
+        with_failing_fake_xyzrender(|| {
+            let app = mock_app_with_grid_registry();
+            let mut preferences = viewer_preferences();
+            preferences.renderer_mode = "xyzrender-external".to_string();
+            let path = fixture_path("mini.cif");
+
+            let document = open_document(app.handle(), path.clone(), &preferences, None)
+                .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
+            assert_eq!(document.renderer, "molstar");
+            let runtime_dir = Path::new(&document.runtime_path)
+                .parent()
+                .expect("runtime html should have a parent");
+            let config = fs::read_to_string(runtime_dir.join("preview-config.js"))
+                .expect("preview config should be written");
+            assert!(config.contains("\"externalRendererStatus\""));
+            assert!(config.contains("Using Mol* because external xyzrender failed"));
+            remove_runtime_artifacts(&document.runtime_path);
+        });
     }
 
     #[test]

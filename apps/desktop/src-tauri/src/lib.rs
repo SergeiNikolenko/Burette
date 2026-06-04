@@ -24,6 +24,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(GridRuntimeRegistry::default())
+        .manage(startup::PendingOpenDocuments::default())
         .setup(|app| {
             let argv: Vec<String> = std::env::args().collect();
             let launch_mode = startup::LaunchMode::current(&argv);
@@ -89,6 +90,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::startup::startup_documents,
             commands::documents::pick_open_targets,
+            commands::documents::classify_open_paths,
             commands::documents::open_documents,
             commands::documents::read_structure_text,
             commands::documents::open_text_structure,
@@ -137,7 +139,7 @@ fn show_and_emit_open_documents<R: tauri::Runtime>(app: &tauri::AppHandle<R>, pa
     if !paths.is_empty() {
         tray::show_main_window(app);
     }
-    startup::emit_open_documents(app, paths);
+    startup::signal_open_documents(app, paths);
 }
 
 #[cfg(target_os = "macos")]

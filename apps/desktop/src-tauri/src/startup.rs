@@ -1,6 +1,27 @@
 use std::path::PathBuf;
-use tauri::{Emitter, Runtime};
+use std::sync::Mutex;
+use tauri::{Emitter, Manager, Runtime};
 use url::Url;
+
+#[derive(Default)]
+pub(crate) struct PendingOpenDocuments {
+    paths: Mutex<Vec<String>>,
+}
+
+impl PendingOpenDocuments {
+    pub(crate) fn push(&self, paths: Vec<String>) {
+        if paths.is_empty() {
+            return;
+        }
+        let mut pending = self.paths.lock().unwrap();
+        pending.extend(paths);
+    }
+
+    pub(crate) fn drain(&self) -> Vec<String> {
+        let mut pending = self.paths.lock().unwrap();
+        std::mem::take(&mut *pending)
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum LaunchMode {
@@ -84,9 +105,10 @@ fn launch_mode_from_value(value: Option<&str>) -> Option<LaunchMode> {
     }
 }
 
-pub(crate) fn emit_open_documents<R: Runtime>(app: &tauri::AppHandle<R>, paths: Vec<String>) {
+pub(crate) fn signal_open_documents<R: Runtime>(app: &tauri::AppHandle<R>, paths: Vec<String>) {
     if !paths.is_empty() {
-        let _ = app.emit("open-documents", paths);
+        app.state::<PendingOpenDocuments>().push(paths);
+        let _ = app.emit("open-documents", ());
     }
 }
 
