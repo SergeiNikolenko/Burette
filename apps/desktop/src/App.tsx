@@ -76,6 +76,7 @@ const filters = [
 ];
 
 const GRID_PERF_REPORT_PATH = "/private/tmp/burrete-grid-real-app-perf.jsonl";
+const SIDEBAR_DRAG_CLOSE_WIDTH = 180;
 
 type GridAppendResult = {
   recordsAppended: number;
@@ -208,6 +209,7 @@ export default function App() {
     setSidebarQuery,
     toggleProjectExpanded,
     toggleSidebar,
+    closeSidebar,
   } = useSidebar();
   const [sidebarDragging, setSidebarDragging] = useState(false);
 
@@ -2055,28 +2057,68 @@ export default function App() {
       if (event.button !== 0) return;
       event.preventDefault();
       setSidebarDragging(true);
+      const resizeTarget = event.currentTarget;
+      const pointerId = event.pointerId;
       const startX = event.clientX;
       const startWidth = sidebarWidth;
       const previousCursor = document.documentElement.style.cursor;
       const previousUserSelect = document.body.style.userSelect;
       document.documentElement.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
-      const onMove = (move: PointerEvent) => {
-        setSidebarWidth(startWidth + move.clientX - startX);
-      };
+      let didCloseSidebar = false;
+      let didStop = false;
       const stop = () => {
+        if (didStop) return;
+        didStop = true;
         setSidebarDragging(false);
         document.documentElement.style.cursor = previousCursor;
         document.body.style.userSelect = previousUserSelect;
+        try {
+          if (resizeTarget.hasPointerCapture(pointerId)) {
+            resizeTarget.releasePointerCapture(pointerId);
+          }
+        } catch {
+          // The pointer may already be gone if the native window lost focus.
+        }
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", stop);
         window.removeEventListener("pointercancel", stop);
+        window.removeEventListener("blur", stop);
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+        resizeTarget.removeEventListener("lostpointercapture", stop);
       };
+      const onVisibilityChange = () => {
+        if (document.hidden) stop();
+      };
+      const onMove = (move: PointerEvent) => {
+        if (move.buttons === 0) {
+          stop();
+          return;
+        }
+        const nextWidth = startWidth + move.clientX - startX;
+        if (nextWidth < SIDEBAR_DRAG_CLOSE_WIDTH) {
+          if (!didCloseSidebar) {
+            didCloseSidebar = true;
+            closeSidebar();
+          }
+          stop();
+          return;
+        }
+        setSidebarWidth(nextWidth);
+      };
+      try {
+        resizeTarget.setPointerCapture(pointerId);
+      } catch {
+        // Keep the window-level fallback listeners active if capture is unavailable.
+      }
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", stop);
       window.addEventListener("pointercancel", stop);
+      window.addEventListener("blur", stop);
+      document.addEventListener("visibilitychange", onVisibilityChange);
+      resizeTarget.addEventListener("lostpointercapture", stop);
     },
-    [setSidebarWidth, sidebarWidth],
+    [closeSidebar, setSidebarWidth, sidebarWidth],
   );
 
   const actions = useMemo<ShellActions>(() => ({
