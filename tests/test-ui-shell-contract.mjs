@@ -51,6 +51,7 @@ const [
   poseReviewKind,
   ketcherPage,
   ketcherEditor,
+  ketcherBrowserRequire,
   componentTypes,
   launcherKind,
   settingsKind,
@@ -131,6 +132,7 @@ const [
   source('apps/desktop/src/components/editor-area/page-kinds/pose-review.tsx'),
   source('apps/desktop/src/components/ketcher-page.tsx'),
   source('apps/desktop/src/components/ketcher-editor.tsx'),
+  source('apps/desktop/src/lib/ketcher-browser-require.ts'),
   source('apps/desktop/src/components/types.ts'),
   source('apps/desktop/src/components/editor-area/page-kinds/launcher.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/settings.tsx'),
@@ -335,12 +337,15 @@ assert.doesNotMatch(viteConfig, /require: "globalThis\.__burreteRequire"/);
 assert.match(viteConfig, /function desktopManualChunks\(id: string\)/);
 assert.match(viteConfig, /manualChunks: desktopManualChunks/);
 assert.match(viteConfig, /normalized\.includes\("\/node_modules\/molstar\/"\)/);
+assert.match(viteConfig, /normalized\.includes\("\/node_modules\/raphael\/"\)/);
+assert.match(viteConfig, /normalized\.includes\("\/node_modules\/eve-raphael\/"\)/);
 assert.match(viteConfig, /normalized\.includes\("\/node_modules\/ketcher-core\/"\)/);
 assert.match(viteConfig, /normalized\.includes\("\/node_modules\/ketcher-react\/"\)/);
 assert.match(viteConfig, /normalized\.includes\("\/node_modules\/ketcher-standalone\/"\)/);
 assert.match(viteConfig, /normalized\.includes\("\/node_modules\/indigo-ketcher\/"\)/);
 assert.match(viteConfig, /return "ketcher";/);
-assert.match(viteConfig, /normalized\.includes\("\/node_modules\/raphael\/"\)[\s\S]*return "ketcher-raphael";[\s\S]*normalized\.includes\("\/node_modules\/ketcher-core\/"\)[\s\S]*return "ketcher";/);
+assert.doesNotMatch(viteConfig, /return "ketcher-raphael";/);
+assert.match(viteConfig, /normalized\.includes\("\/node_modules\/raphael\/"\)[\s\S]*normalized\.includes\("\/node_modules\/ketcher-core\/"\)[\s\S]*return "ketcher";/);
 assert.match(viteConfig, /function resolveModulePreloadDependencies\(_url: string, deps: string\[\], context: \{ hostType: "html" \| "js" \}\)/);
 assert.match(viteConfig, /resolveDependencies: resolveModulePreloadDependencies/);
 assert.match(viteConfig, /function ketcherRaphaelRequireShimPlugin\(\)/);
@@ -1048,21 +1053,29 @@ assert.match(ketcherPage, /\{shouldMountEditor \? \(/);
 assert.doesNotMatch(ketcherEditor, /import raphael from "raphael"/);
 assert.match(ketcherEditor, /import\("raphael"\)/);
 assert.doesNotMatch(ketcherEditor, /from "ajv\/dist\/runtime\//);
-assert.match(ketcherEditor, /function ajvEqual\(/);
-assert.match(ketcherEditor, /class AjvValidationError extends Error/);
-assert.match(ketcherEditor, /function installKetcherBrowserRequire\(\)/);
-assert.match(ketcherEditor, /const browserRequire: BrowserRequire = \(id: string\) => \{/);
-assert.match(ketcherEditor, /__burreteRequire\?: BrowserRequire/);
-assert.match(ketcherEditor, /Object\.defineProperty\(globalWithRequire, "__burreteRequire"/);
-assert.match(ketcherEditor, /value: browserRequire/);
-assert.match(ketcherEditor, /installKetcherBrowserRequire\(\);\n\nfunction resolveDefaultModule/);
+assert.doesNotMatch(ketcherEditor, /function ajvEqual\(/);
+assert.match(ketcherEditor, /import \{ installKetcherBrowserRequire, installKetcherRaphaelBrowserModules \} from "\.\.\/lib\/ketcher-browser-require"/);
+assert.match(main, /import \{ installKetcherBrowserRequire \} from "\.\/lib\/ketcher-browser-require"/);
+assert.match(main, /installKetcherBrowserRequire\(\);\n\nfunction Root/);
+assert.match(ketcherBrowserRequire, /function ajvEqual\(/);
+assert.match(ketcherBrowserRequire, /class AjvValidationError extends Error/);
+assert.match(ketcherBrowserRequire, /export function installKetcherBrowserRequire\(\)/);
+assert.match(ketcherBrowserRequire, /const browserRequire: BrowserRequire = \(id: string\) => \{/);
+assert.match(ketcherBrowserRequire, /__burreteRequire\?: BrowserRequire/);
+assert.match(ketcherBrowserRequire, /Object\.defineProperty\(globalWithRequire, "__burreteRequire"/);
+assert.match(ketcherBrowserRequire, /value: browserRequire/);
+assert.match(ketcherBrowserRequire, /function resolveGlobalKetcherRequireModule\(id: string\)/);
+assert.match(ketcherBrowserRequire, /id === "eve" && globalWithKetcherLibraries\.eve/);
+assert.match(ketcherBrowserRequire, /id === "raphael" && globalWithKetcherLibraries\.Raphael/);
+assert.match(ketcherBrowserRequire, /const globalModule = resolveGlobalKetcherRequireModule\(id\)/);
 assert.doesNotMatch(ketcherEditor, /KETCHER_COORDINATE_EVENT_TYPES/);
 assert.doesNotMatch(ketcherEditor, /installScaledKetcherEventBridge/);
 assert.doesNotMatch(ketcherEditor, /new PointerEvent\(event\.type/);
 assert.doesNotMatch(ketcherEditor, /stopImmediatePropagation\(\)/);
 assert.match(ketcherEditor, /import\("eve-raphael"\)/);
-assert.match(ketcherEditor, /browserRequireModules\.eve = resolveDefaultModule\(eveModule\)/);
-assert.match(ketcherEditor, /browserRequireModules\.raphael = resolveDefaultModule\(raphaelModule\)/);
+assert.match(ketcherEditor, /installKetcherRaphaelBrowserModules\(eveModule, raphaelModule\)/);
+assert.match(ketcherBrowserRequire, /browserRequireModules\.eve = resolveDefaultModule\(eveModule\)/);
+assert.match(ketcherBrowserRequire, /browserRequireModules\.raphael = resolveDefaultModule\(raphaelModule\)/);
 assert.match(ketcherEditor, /import\("ketcher-react"\)/);
 assert.match(ketcherEditor, /import\("ketcher-standalone"\)/);
 assert.match(ketcherEditor, /import type \{ Ketcher, Struct \} from "ketcher-core"/);
@@ -1145,8 +1158,7 @@ assert.match(ketcherEditor, /import\("ketcher-standalone"\)/);
 assert.match(ketcherEditor, /import "ketcher-react\/dist\/index\.css";/);
 assert.doesNotMatch(ketcherEditor, /installKetcherRuntimeShims/);
 assert.match(ketcherEditor, /import\("raphael"\)/);
-assert.match(ketcherEditor, /browserRequireModules\.raphael = resolveDefaultModule\(raphaelModule\)/);
-assert.match(ketcherEditor, /browserRequireModules\.eve = resolveDefaultModule\(eveModule\)/);
+assert.match(ketcherEditor, /installKetcherRaphaelBrowserModules\(eveModule, raphaelModule\)/);
 assert.doesNotMatch(ketcherEditor, /from "ketcher-react";/);
 assert.doesNotMatch(ketcherEditor, /from "ketcher-standalone";/);
 assert.match(structureDrag, /function structureDragRecordFragmentText/);
