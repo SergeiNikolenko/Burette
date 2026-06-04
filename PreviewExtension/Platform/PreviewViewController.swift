@@ -4,6 +4,11 @@ import QuickLookUI
 import SwiftUI
 import WebKit
 
+fileprivate struct RuntimeAuxiliaryFile {
+    let path: String
+    let data: Data
+}
+
 final class PreviewViewController: NSViewController, QLPreviewingController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     private var webView: WKWebView!
     private var previewStatus = ""
@@ -127,7 +132,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     self.previewSourceFingerprint = Self.previewSourceFingerprint(for: url)
                     self.pendingPreviewSourceFingerprint = nil
                     self.webView.loadFileURL(result.indexURL, allowingReadAccessTo: result.readAccessURL)
-                    self.scheduleRenderTimeout(for: requestID)
+                    self.scheduleRenderTimeout(for: requestID, timeoutSeconds: result.renderTimeoutSeconds)
                     if Self.showDebugOverlay {
                         self.scheduleJavaScriptProbes()
                     }
@@ -237,7 +242,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let indexURL: URL
         let readAccessURL: URL
         let diagnostics: [String]
+        let renderTimeoutSeconds: TimeInterval
     }
+
+    private static let defaultRenderTimeoutSeconds: TimeInterval = 30
+    private static let largeStructureRenderTimeoutSeconds: TimeInterval = 120
+    private static let largeStructureRenderTimeoutThresholdBytes = 16 * 1024 * 1024
 
     private struct PreviewSourceFingerprint: Equatable {
         let fileID: Int64?
@@ -327,6 +337,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 html: html,
                 configJSON: configJSONWithRequestID(gridPreview.configJSON, requestID: requestID),
                 structureData: nil,
+                auxiliaryFiles: [],
                 gridRecordsScript: gridPreview.recordsScript,
                 requiredAssets: ["grid-viewer.js", "grid.css"],
                 requiresRDKit: true,
@@ -338,7 +349,13 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             let indexURL = runtimePreview.indexURL
             diag("runtimeDirectory=\(runtimePreview.runtimeDirectory.path)")
             diag("runtime.index.exists=\(fileManager.fileExists(atPath: indexURL.path))")
-            return BuildResult(html: html, indexURL: indexURL, readAccessURL: runtimePreview.readAccessURL, diagnostics: diagnostics)
+            return BuildResult(
+                html: html,
+                indexURL: indexURL,
+                readAccessURL: runtimePreview.readAccessURL,
+                diagnostics: diagnostics,
+                renderTimeoutSeconds: defaultRenderTimeoutSeconds
+            )
         }
         if MoleculeGridFileSupport.requiresGridPreview(fileExtension: pathExtension) {
             if !gridFileSupport.supports(fileExtension: pathExtension) {
@@ -356,6 +373,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let requestedRendererMode = rendererPolicy.requestedMode
         var renderer = rendererPolicy.renderer
         var structureDataForWeb = structureData
+        var auxiliaryRuntimeFiles: [RuntimeAuxiliaryFile] = []
+        var stagedEntries: [[String: Any]] = []
         var externalArtifact: PreviewExternalXyzrenderArtifact?
         var externalArtifactSourceURL: URL?
         var externalStatus: [String: Any]?
@@ -373,14 +392,16 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         if renderer == BurreteRendererMode.xyzrenderExternal,
            rendererOverride == nil,
            format.isExternalXyzrenderOnly,
-           let convertedXYZ = PreviewStructureTextConverter.xyzData(
+           let convertedStructure = PreviewStructureTextConverter.convertedData(
             from: structureData,
             fileExtension: pathExtension,
             label: url.lastPathComponent
            ) {
             renderer = BurreteRendererMode.molstar
-            format = .convertedXYZ
-            structureDataForWeb = convertedXYZ
+            format = convertedStructure.format
+            structureDataForWeb = convertedStructure.data
+            auxiliaryRuntimeFiles = convertedStructure.auxiliaryFiles
+            stagedEntries = convertedStructure.stagedEntries
             diag("xyzrender.default=built-in-text-parser")
         }
         if usesBoundedMaestroPreview, format.isExternalXyzrenderOnly {
@@ -407,14 +428,16 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 externalArtifactSourceURL = renderDirectory.appendingPathComponent("xyzrender.svg")
             } catch {
                 if format.isExternalXyzrenderOnly,
-                   let convertedXYZ = PreviewStructureTextConverter.xyzData(
+                   let convertedStructure = PreviewStructureTextConverter.convertedData(
                     from: structureData,
                     fileExtension: pathExtension,
                     label: url.lastPathComponent
                    ) {
                     renderer = BurreteRendererMode.molstar
-                    format = .convertedXYZ
-                    structureDataForWeb = convertedXYZ
+                    format = convertedStructure.format
+                    structureDataForWeb = convertedStructure.data
+                    auxiliaryRuntimeFiles = convertedStructure.auxiliaryFiles
+                    stagedEntries = convertedStructure.stagedEntries
                     externalStatus = [
                         "status": "fallback",
                         "requested": BurreteRendererMode.xyzrenderExternal,
@@ -453,12 +476,24 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             externalStatus: externalStatus,
             xyzrenderPreset: xyzrenderPreset,
             xyzrenderControls: xyzrenderControlsOverride,
+            stagedEntries: stagedEntries,
             trajectoryFrameCount: renderer == BurreteRendererMode.molstar ? xyzPayload?.frameCount : nil,
             originalFileExtension: pathExtension,
             rendererPolicy: rendererPolicy,
             preferences: preferences
         )
         diag("structure.payload.bytes=\(structureDataForWeb.count)")
+        let renderTimeoutInputBytes = max(
+            structureDataForWeb.count,
+            Int(min(structureSize, Int64(Int.max))),
+            auxiliaryRuntimeFiles.reduce(0) { $0 + $1.data.count }
+        )
+        let renderTimeoutSeconds = self.renderTimeoutSeconds(
+            byteCount: renderTimeoutInputBytes,
+            renderer: renderer
+        )
+        diag("render.timeout.input.bytes=\(renderTimeoutInputBytes)")
+        diag("render.timeout.seconds=\(Int(renderTimeoutSeconds))")
 
         let html = inlineHTML(title: url.lastPathComponent, preferences: preferences, renderer: renderer)
         diag("inlineHTML.bytes=\(html.utf8.count)")
@@ -468,6 +503,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             html: html,
             configJSON: configJSON,
             structureData: structureDataForWeb,
+            auxiliaryFiles: auxiliaryRuntimeFiles,
             gridRecordsScript: nil,
             requiredAssets: runtimeAssets(for: renderer),
             requiresRDKit: false,
@@ -479,7 +515,22 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let indexURL = runtimePreview.indexURL
         diag("runtimeDirectory=\(runtimePreview.runtimeDirectory.path)")
         diag("runtime.index.exists=\(fileManager.fileExists(atPath: indexURL.path))")
-        return BuildResult(html: html, indexURL: indexURL, readAccessURL: runtimePreview.readAccessURL, diagnostics: diagnostics)
+        return BuildResult(
+            html: html,
+            indexURL: indexURL,
+            readAccessURL: runtimePreview.readAccessURL,
+            diagnostics: diagnostics,
+            renderTimeoutSeconds: renderTimeoutSeconds
+        )
+    }
+
+    private static func renderTimeoutSeconds(byteCount: Int, renderer: String) -> TimeInterval {
+        guard renderer == BurreteRendererMode.molstar else {
+            return defaultRenderTimeoutSeconds
+        }
+        return byteCount >= largeStructureRenderTimeoutThresholdBytes
+            ? largeStructureRenderTimeoutSeconds
+            : defaultRenderTimeoutSeconds
     }
 
     private struct RuntimePreview {
@@ -493,6 +544,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         html: String,
         configJSON: String,
         structureData: Data?,
+        auxiliaryFiles: [RuntimeAuxiliaryFile],
         gridRecordsScript: String?,
         requiredAssets: [String],
         requiresRDKit: Bool,
@@ -526,6 +578,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             .write(to: runtimeDirectory.appendingPathComponent("preview-config.js"), options: [.atomic])
         if let structureData {
             try structureData.write(to: runtimeDirectory.appendingPathComponent("preview-data.bin"), options: [.atomic])
+        }
+        for auxiliaryFile in auxiliaryFiles {
+            try auxiliaryFile.data.write(to: runtimeDirectory.appendingPathComponent(auxiliaryFile.path), options: [.atomic])
         }
         if let gridRecordsScript {
             try Data(gridRecordsScript.utf8)
@@ -697,12 +752,16 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         externalStatus: [String: Any]?,
         xyzrenderPreset: String,
         xyzrenderControls: [String: Any]?,
+        stagedEntries: [[String: Any]],
         trajectoryFrameCount: Int?,
         originalFileExtension: String,
         rendererPolicy: BurreteRendererPolicy,
         preferences: PreviewPreferences
     ) throws -> String {
         let resolvedTrajectoryFrameCount = trajectoryFrameCount ?? 0
+        let normalizedOriginalExtension = originalFileExtension.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let usesStagedMaestroSolvent = !stagedEntries.isEmpty && ["cms", "mae", "maegz"].contains(normalizedOriginalExtension)
+        let resolvedMolstarStyle = usesStagedMaestroSolvent ? "default" : preferences.resolvedMolstarStyle
         var payload: [String: Any] = [
             "format": format.molstarFormat,
             "molstarFormat": format.molstarFormat,
@@ -715,13 +774,14 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "byteCount": byteCount,
             "previewByteCount": previewByteCount,
             "dataPath": "./preview-data.bin",
+            "stagedEntries": stagedEntries,
             "quickLookBuild": "v10-product",
             "quickLookViewer": true,
             "debug": showDebugOverlay,
             "theme": preferences.runtimeViewerTheme,
             "themeTokens": preferences.themeTokens,
             "canvasBackground": preferences.runtimeCanvasBackground,
-            "molstarStyle": preferences.resolvedMolstarStyle,
+            "molstarStyle": resolvedMolstarStyle,
             "uiScale": 0.9,
             "overlayOpacity": preferences.overlayOpacity,
             "transparentBackground": preferences.resolvedTransparentBackground,
@@ -1087,16 +1147,16 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
     }
 
-    private func scheduleRenderTimeout(for requestID: UUID) {
+    private func scheduleRenderTimeout(for requestID: UUID, timeoutSeconds: TimeInterval) {
         renderTimeoutWorkItem?.cancel()
         let workItem = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            self.appendLog("render timeout waiting for JS ready")
+            self.appendLog("render timeout waiting for JS ready after \(Int(timeoutSeconds)) seconds")
             self.renderNativeError(PreviewError.webRenderTimedOut, fileURL: nil)
             self.finishPreviewIfNeeded(nil, requestID: requestID)
         }
         renderTimeoutWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeoutSeconds, execute: workItem)
     }
 
     private func finishPreviewIfNeeded(_ error: Error?, requestID: UUID? = nil) {
@@ -1209,6 +1269,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 handleJavaScriptStructureDataRequest(body)
                 return
             }
+            if type == "requestRuntimeFile" {
+                handleJavaScriptRuntimeFileRequest(body)
+                return
+            }
             appendLog("JS message type=\(type): \(text.prefix(1600))")
             if type == "ready" {
                 appendLog("elapsed.jsReadyMs=0")
@@ -1279,6 +1343,50 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         sendJavaScriptStructureDataResponse(requestToken: requestToken, base64: data.base64EncodedString(), error: nil)
     }
 
+    private func handleJavaScriptRuntimeFileRequest(_ body: [String: Any]) {
+        guard let requestToken = body["requestToken"] as? String, !requestToken.isEmpty else {
+            appendLog("requestRuntimeFile.missingToken")
+            return
+        }
+        guard let requestedPath = body["path"] as? String else {
+            appendLog("requestRuntimeFile.missingPath")
+            sendJavaScriptRuntimeFileResponse(requestToken: requestToken, base64: nil, error: "Runtime file path is missing.")
+            return
+        }
+        guard let currentRuntimeDirectory else {
+            appendLog("requestRuntimeFile.missingRuntimeDirectory")
+            sendJavaScriptRuntimeFileResponse(requestToken: requestToken, base64: nil, error: "Quick Look runtime directory is unavailable.")
+            return
+        }
+        var normalizedPath = requestedPath
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\\", with: "/")
+        while normalizedPath.hasPrefix("./") {
+            normalizedPath.removeFirst(2)
+        }
+        guard !normalizedPath.isEmpty, !normalizedPath.hasPrefix("/") else {
+            appendLog("requestRuntimeFile.invalidPath=\(requestedPath)")
+            sendJavaScriptRuntimeFileResponse(requestToken: requestToken, base64: nil, error: "Runtime file path is invalid.")
+            return
+        }
+        let rootPath = currentRuntimeDirectory.standardizedFileURL.path
+        let fileURL = currentRuntimeDirectory
+            .appendingPathComponent(normalizedPath, isDirectory: false)
+            .standardizedFileURL
+        guard fileURL.path.hasPrefix(rootPath + "/") else {
+            appendLog("requestRuntimeFile.rejectedPath=\(requestedPath)")
+            sendJavaScriptRuntimeFileResponse(requestToken: requestToken, base64: nil, error: "Runtime file path is outside the preview directory.")
+            return
+        }
+        guard let data = try? Data(contentsOf: fileURL), !data.isEmpty else {
+            appendLog("requestRuntimeFile.missingPayload path=\(fileURL.path)")
+            sendJavaScriptRuntimeFileResponse(requestToken: requestToken, base64: nil, error: "Runtime file is unavailable.")
+            return
+        }
+        appendLog("requestRuntimeFile.bytes=\(data.count) path=\(normalizedPath)")
+        sendJavaScriptRuntimeFileResponse(requestToken: requestToken, base64: data.base64EncodedString(), error: nil)
+    }
+
     private func sendJavaScriptStructureDataResponse(requestToken: String, base64: String?, error: String?) {
         var payload: [String: Any] = ["requestToken": requestToken]
         if let base64 {
@@ -1295,6 +1403,25 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         webView.evaluateJavaScript("window.BurreteReceiveNativeData && window.BurreteReceiveNativeData(\(json));") { [weak self] _, evaluationError in
             guard let self, let evaluationError else { return }
             self.appendLog("requestData.injectFailed=\(Self.describe(evaluationError))")
+        }
+    }
+
+    private func sendJavaScriptRuntimeFileResponse(requestToken: String, base64: String?, error: String?) {
+        var payload: [String: Any] = ["requestToken": requestToken]
+        if let base64 {
+            payload["base64"] = base64
+        }
+        if let error {
+            payload["error"] = error
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: []),
+              let json = String(data: data, encoding: .utf8) else {
+            appendLog("requestRuntimeFile.responseEncodingFailed")
+            return
+        }
+        webView.evaluateJavaScript("window.BurreteReceiveNativeRuntimeFile && window.BurreteReceiveNativeRuntimeFile(\(json));") { [weak self] _, evaluationError in
+            guard let self, let evaluationError else { return }
+            self.appendLog("requestRuntimeFile.injectFailed=\(Self.describe(evaluationError))")
         }
     }
 
@@ -1412,7 +1539,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     self.pendingPreviewSourceFingerprint = nil
                     self.appendLog("elapsed.wkLoadStartMs=0")
                     self.webView.loadFileURL(result.indexURL, allowingReadAccessTo: result.readAccessURL)
-                    self.scheduleRenderTimeout(for: requestID)
+                    self.scheduleRenderTimeout(for: requestID, timeoutSeconds: result.renderTimeoutSeconds)
                 }
             } catch {
                 DispatchQueue.main.async { [weak self] in
@@ -1655,7 +1782,63 @@ private enum PreviewStructureTextConverter {
         let z: Double
     }
 
+    fileprivate struct ConvertedStructure {
+        let data: Data
+        let format: StructureFormat
+        let auxiliaryFiles: [RuntimeAuxiliaryFile]
+        let stagedEntries: [[String: Any]]
+    }
+
+    private struct MaestroAtom {
+        let symbol: String
+        let atomName: String
+        let residueName: String
+        let residueNumber: Int
+        let chainName: String
+        let x: Double
+        let y: Double
+        let z: Double
+    }
+
+    private struct MaestroPDBCandidate {
+        let atoms: [MaestroAtom]
+        let solventAtoms: [MaestroAtom]
+        let proteinAtomCount: Int
+        let omittedSolventAtomCount: Int
+        let nonWaterAtomCount: Int
+    }
+
+    private struct MaestroPDBBundle {
+        let primaryAtoms: [MaestroAtom]
+        let solventAtoms: [MaestroAtom]
+    }
+
     private typealias Vec3 = (Double, Double, Double)
+
+    fileprivate static func convertedData(from data: Data, fileExtension: String, label: String) -> ConvertedStructure? {
+        if isMaestroExtension(fileExtension), let bundle = maestroPDBBundle(from: data), !bundle.primaryAtoms.isEmpty {
+            let solventPath = "preview-solvent.pdb"
+            let solventData = bundle.solventAtoms.isEmpty
+                ? nil
+                : maestroPDBData(from: bundle.solventAtoms, remark: "Burrete staged CMS solvent preview")
+            let auxiliaryFiles = solventData.map { [RuntimeAuxiliaryFile(path: solventPath, data: $0)] } ?? []
+            let stagedEntries: [[String: Any]] = solventData == nil ? [] : [[
+                "path": "./\(solventPath)",
+                "format": "pdb",
+                "binary": false,
+                "label": "\(label) solvent",
+                "representation": "solvent-lines"
+            ]]
+            return ConvertedStructure(
+                data: maestroPDBData(from: bundle.primaryAtoms, remark: "Burrete staged CMS protein and ligand preview"),
+                format: .convertedPDB,
+                auxiliaryFiles: auxiliaryFiles,
+                stagedEntries: stagedEntries
+            )
+        }
+        guard let xyz = xyzData(from: data, fileExtension: fileExtension, label: label) else { return nil }
+        return ConvertedStructure(data: xyz, format: .convertedXYZ, auxiliaryFiles: [], stagedEntries: [])
+    }
 
     static func xyzData(from data: Data, fileExtension: String, label: String) -> Data? {
         let text = decodeText(data)
@@ -1683,6 +1866,178 @@ private enum PreviewStructureTextConverter {
             xyz += "\(atom.symbol) \(format(atom.x)) \(format(atom.y)) \(format(atom.z))\n"
         }
         return Data(xyz.utf8)
+    }
+
+    private static func maestroPDBData(from atoms: [MaestroAtom], remark: String) -> Data {
+        var pdb = "REMARK \(remark)\n"
+        for (index, atom) in atoms.prefix(99_999).enumerated() {
+            pdb += maestroPDBAtomLine(serial: index + 1, atom: atom)
+            pdb += "\n"
+        }
+        pdb += "END\n"
+        return Data(pdb.utf8)
+    }
+
+    private static func maestroPDBBundle(from data: Data) -> MaestroPDBBundle? {
+        let text = decodeText(data)
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        return parseMaestroPDBBundle(lines, atomLimit: 99_999)
+    }
+
+    private static func parseMaestroPDBBundle(_ lines: [String], atomLimit: Int) -> MaestroPDBBundle? {
+        var index = 0
+        var bestCandidate: MaestroPDBCandidate?
+        var bestSolventCandidate: MaestroPDBCandidate?
+        while index < lines.count {
+            let trimmed = lines[index].trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.hasPrefix("m_atom["), trimmed.hasSuffix("{") else {
+                index += 1
+                continue
+            }
+            index += 1
+
+            var headers: [String] = []
+            var hasImplicitAtomIndex = false
+            while index < lines.count {
+                let headerLine = lines[index].trimmingCharacters(in: .whitespacesAndNewlines)
+                index += 1
+                if headerLine == ":::" { break }
+                if headerLine.hasPrefix("#") {
+                    hasImplicitAtomIndex = hasImplicitAtomIndex || headerLine.lowercased().contains("first column is atom index")
+                    continue
+                }
+                if headerLine == "}" {
+                    headers.removeAll()
+                    break
+                }
+                headers += fields(headerLine)
+            }
+            guard !headers.isEmpty,
+                  let xIndex = maestroHeaderIndex(headers, "r_m_x_coord"),
+                  let yIndex = maestroHeaderIndex(headers, "r_m_y_coord"),
+                  let zIndex = maestroHeaderIndex(headers, "r_m_z_coord") else {
+                continue
+            }
+            let atomicNumberIndex = maestroHeaderIndex(headers, "i_m_atomic_number")
+            let elementIndex = maestroHeaderIndex(headers, "s_m_element") ?? maestroHeaderIndex(headers, "s_m_pdb_element")
+            let atomNameIndex = maestroHeaderIndex(headers, "s_m_atom_name") ?? maestroHeaderIndex(headers, "s_m_pdb_atom_name")
+            let pdbAtomNameIndex = maestroHeaderIndex(headers, "s_m_pdb_atom_name") ?? atomNameIndex
+            let residueNameIndex = maestroHeaderIndex(headers, "s_m_pdb_residue_name") ?? maestroHeaderIndex(headers, "s_m_mmod_res")
+            let residueNumberIndex = maestroHeaderIndex(headers, "i_m_residue_number")
+            let chainNameIndex = maestroHeaderIndex(headers, "s_m_chain_name")
+            let rowOffset = hasImplicitAtomIndex ? 1 : 0
+            var atoms: [MaestroAtom] = []
+
+            while index < lines.count {
+                let rowLine = lines[index].trimmingCharacters(in: .whitespacesAndNewlines)
+                index += 1
+                if rowLine == ":::" || rowLine == "}" { break }
+                if rowLine.isEmpty { continue }
+                let row = maestroTokens(rowLine)
+                guard let x = rowValue(row, xIndex + rowOffset).flatMap(Double.init),
+                      let y = rowValue(row, yIndex + rowOffset).flatMap(Double.init),
+                      let z = rowValue(row, zIndex + rowOffset).flatMap(Double.init),
+                      let symbol = maestroAtomSymbol(
+                        row,
+                        rowOffset: rowOffset,
+                        atomicNumberIndex: atomicNumberIndex,
+                        elementIndex: elementIndex,
+                        atomNameIndex: atomNameIndex
+                      ) else {
+                    continue
+                }
+                var atomName = symbol
+                if let pdbAtomNameIndex,
+                   let value = rowValue(row, pdbAtomNameIndex + rowOffset) {
+                    let normalized = normalizePDBAtomName(value)
+                    if !normalized.isEmpty { atomName = normalized }
+                }
+                var residueName = "MOL"
+                if let residueNameIndex,
+                   let value = rowValue(row, residueNameIndex + rowOffset) {
+                    let normalized = normalizePDBResidueName(value)
+                    if !normalized.isEmpty { residueName = normalized }
+                }
+                let residueNumber = residueNumberIndex
+                    .flatMap { rowValue(row, $0 + rowOffset) }
+                    .flatMap(Int.init) ?? 1
+                let chainName = chainNameIndex
+                    .flatMap { rowValue(row, $0 + rowOffset) }
+                    .flatMap { $0.first(where: { $0.isASCII && $0.isLetter || $0.isNumber }) }
+                    .map(String.init) ?? "A"
+                atoms.append(MaestroAtom(
+                    symbol: symbol,
+                    atomName: atomName,
+                    residueName: residueName,
+                    residueNumber: residueNumber,
+                    chainName: chainName,
+                    x: x,
+                    y: y,
+                    z: z
+                ))
+                if atoms.count >= atomLimit { break }
+            }
+            if let candidate = maestroPDBCandidate(from: atoms),
+               isBetterMaestroPDBCandidate(candidate, than: bestCandidate) {
+                bestCandidate = candidate
+            }
+            if let candidate = maestroPDBCandidate(from: atoms),
+               isBetterMaestroSolventCandidate(candidate, than: bestSolventCandidate) {
+                bestSolventCandidate = candidate
+            }
+        }
+        guard let bestCandidate else { return nil }
+        return MaestroPDBBundle(
+            primaryAtoms: bestCandidate.atoms,
+            solventAtoms: bestSolventCandidate?.solventAtoms ?? bestCandidate.solventAtoms
+        )
+    }
+
+    private static func maestroPDBCandidate(from atoms: [MaestroAtom]) -> MaestroPDBCandidate? {
+        let solventAtoms = atoms.filter { isSolventAtom($0) }
+        let previewAtoms = atoms.filter { !isSolventAtom($0) }
+        guard !previewAtoms.isEmpty else { return nil }
+        let proteinAtomCount = previewAtoms.filter { isStandardPolymerResidue($0.residueName) }.count
+        return MaestroPDBCandidate(
+            atoms: previewAtoms,
+            solventAtoms: solventAtoms,
+            proteinAtomCount: proteinAtomCount,
+            omittedSolventAtomCount: solventAtoms.count,
+            nonWaterAtomCount: previewAtoms.count
+        )
+    }
+
+    private static func isBetterMaestroPDBCandidate(
+        _ candidate: MaestroPDBCandidate,
+        than current: MaestroPDBCandidate?
+    ) -> Bool {
+        guard let current else { return true }
+        if candidate.proteinAtomCount != current.proteinAtomCount {
+            return candidate.proteinAtomCount > current.proteinAtomCount
+        }
+        if candidate.omittedSolventAtomCount != current.omittedSolventAtomCount {
+            return candidate.omittedSolventAtomCount < current.omittedSolventAtomCount
+        }
+        if candidate.nonWaterAtomCount != current.nonWaterAtomCount {
+            return candidate.nonWaterAtomCount > current.nonWaterAtomCount
+        }
+        return candidate.atoms.count > current.atoms.count
+    }
+
+    private static func isBetterMaestroSolventCandidate(
+        _ candidate: MaestroPDBCandidate,
+        than current: MaestroPDBCandidate?
+    ) -> Bool {
+        guard let current else { return !candidate.solventAtoms.isEmpty }
+        if candidate.solventAtoms.count != current.solventAtoms.count {
+            return candidate.solventAtoms.count > current.solventAtoms.count
+        }
+        if candidate.proteinAtomCount != current.proteinAtomCount {
+            return candidate.proteinAtomCount > current.proteinAtomCount
+        }
+        return candidate.atoms.count > current.atoms.count
     }
 
     private static func parseMaestroAtoms(_ lines: [String], atomLimit: Int) -> [Atom]? {
@@ -1832,6 +2187,85 @@ private enum PreviewStructureTextConverter {
             }
         }
         return nil
+    }
+
+    private static func maestroPDBAtomLine(serial: Int, atom: MaestroAtom) -> String {
+        let residueName = isWaterResidue(atom.residueName) ? "HOH" : truncateASCII(atom.residueName, maxLength: 3)
+        let atomName = formatPDBAtomName(atom.atomName, symbol: atom.symbol)
+        let chain = truncateASCII(atom.chainName, maxLength: 1)
+        let record = isStandardPolymerResidue(residueName) ? "ATOM" : "HETATM"
+        let recordField = record.padding(toLength: 6, withPad: " ", startingAt: 0)
+        let atomNameField = atomName.padding(toLength: 4, withPad: " ", startingAt: 0)
+        let residueNameField = String(repeating: " ", count: max(0, 3 - residueName.count)) + residueName
+        let chainField = chain.isEmpty ? "A" : chain
+        let elementField = String(repeating: " ", count: max(0, 2 - atom.symbol.count)) + truncateASCII(atom.symbol, maxLength: 2)
+        return String(
+            format: "%@%5d %@ %@ %@%4d    %8.3f%8.3f%8.3f  1.00 10.00          %@",
+            recordField,
+            min(serial, 99_999),
+            atomNameField,
+            residueNameField,
+            chainField,
+            min(max(atom.residueNumber, -999), 9999),
+            atom.x,
+            atom.y,
+            atom.z,
+            elementField
+        )
+    }
+
+    private static func formatPDBAtomName(_ atomName: String, symbol: String) -> String {
+        let cleaned = String(atomName.filter { ($0.isASCII && $0.isLetter) || $0.isNumber }.prefix(4))
+        return cleaned.isEmpty ? symbol : cleaned
+    }
+
+    private static func truncateASCII(_ value: String, maxLength: Int) -> String {
+        String(value.filter { ($0.isASCII && $0.isLetter) || $0.isNumber }.prefix(maxLength))
+    }
+
+    private static func normalizePDBAtomName(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"'")))
+    }
+
+    private static func normalizePDBResidueName(_ value: String) -> String {
+        String(normalizePDBAtomName(value)
+            .filter { ($0.isASCII && $0.isLetter) || $0.isNumber }
+            .prefix(3))
+            .uppercased()
+    }
+
+    private static func isStandardPolymerResidue(_ residueName: String) -> Bool {
+        [
+            "ALA", "ARG", "ASN", "ASP", "CYS", "CYX", "GLN", "GLU", "GLY", "HIS",
+            "HID", "HIE", "HIP", "ILE", "LEU", "LYS", "MET", "PHE", "PRO", "SER",
+            "THR", "TRP", "TYR", "VAL"
+        ].contains(residueName)
+    }
+
+    private static func isWaterResidue(_ residueName: String) -> Bool {
+        let normalized = normalizePDBResidueName(residueName)
+        return ["HOH", "WAT", "H2O", "SOL", "T3P", "TP3", "SPC", "TIP"].contains(normalized)
+            || normalized.hasPrefix("TIP")
+    }
+
+    private static func isSolventAtom(_ atom: MaestroAtom) -> Bool {
+        isWaterResidue(atom.residueName) || isIonResidue(atom.residueName, symbol: atom.symbol)
+    }
+
+    private static func isIonResidue(_ residueName: String, symbol: String) -> Bool {
+        let normalizedResidue = normalizePDBResidueName(residueName)
+        let normalizedSymbol = symbol.trimmingCharacters(in: .whitespacesAndNewlines).capitalized
+        return [
+            "LI", "NA", "K", "RB", "CS", "MG", "CA", "SR", "BA",
+            "ZN", "MN", "FE", "CO", "NI", "CU", "CL", "BR", "IOD"
+        ].contains(normalizedResidue) || [
+            "Li", "Na", "K", "Rb", "Cs", "Mg", "Ca", "Sr", "Ba",
+            "Zn", "Mn", "Fe", "Co", "Ni", "Cu", "Cl", "Br", "I"
+        ].contains(normalizedSymbol)
+    }
+
+    private static func isMaestroExtension(_ fileExtension: String) -> Bool {
+        ["cms", "mae", "maegz"].contains(fileExtension.lowercased())
     }
 
     private static func parseCube(_ lines: [String]) -> [Atom]? {
@@ -2041,6 +2475,12 @@ private struct StructureFormat {
 
     static let convertedXYZ = StructureFormat(
         molstarFormat: "xyz",
+        isBinary: false,
+        isExternalXyzrenderOnly: false
+    )
+
+    static let convertedPDB = StructureFormat(
+        molstarFormat: "pdb",
         isBinary: false,
         isExternalXyzrenderOnly: false
     )
@@ -2892,7 +3332,7 @@ private enum PreviewError: LocalizedError {
         case .webRenderFailed(let message):
             return "Web rendering failed: \(message)"
         case .webRenderTimedOut:
-            return "Mol* web rendering did not become ready within 30 seconds."
+            return "Mol* web rendering did not become ready within the preview timeout."
         case .couldNotCreatePreviewConfig:
             return "Could not create preview config."
         case .couldNotCreateRuntimePreview(let reason):
