@@ -51,6 +51,7 @@ import {
 } from "./hooks/use-tabs";
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
 import { browserDevRuntimeNeedsRefresh, openBrowserDevDockingDocument, openBrowserDevDocuments, openBrowserDevMergedCollection, openBrowserDevMolstarContextDocument, openBrowserDevTextDocument, readBrowserDevCollectionText } from "./lib/browser-dev-documents";
+import { defaultBuildInfo, loadBuildInfo } from "./lib/build-info";
 import { isMoleculeCollectionPath } from "./lib/collection-documents";
 import { dockingRequestForDrop, isProteinLikeDockingSource } from "./lib/docking-documents";
 import type { DropActionChoice } from "./lib/drop-actions";
@@ -73,6 +74,8 @@ const filters = [
     extensions: previewFormatRegistry.documentTypes.extensions,
   },
 ];
+
+const GRID_PERF_REPORT_PATH = "/private/tmp/burrete-grid-real-app-perf.jsonl";
 
 type GridAppendResult = {
   recordsAppended: number;
@@ -216,6 +219,7 @@ export default function App() {
   const [ketcherImportRequest, setKetcherImportRequest] = useState<KetcherImportRequest | null>(null);
   const [ketcherDraftMolfile, setKetcherDraftMolfile] = useState("");
   const [status, setStatus] = useState<StatusNotice | null>(null);
+  const [buildInfo, setBuildInfo] = useState(defaultBuildInfo);
   const [poseReviewSelections, setPoseReviewSelections] = useState<Record<string, number>>({});
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateState>(() => ({
@@ -237,6 +241,7 @@ export default function App() {
   const skipNextPreferenceRefreshRef = useRef(false);
   const statusSequenceRef = useRef(0);
   const recentErrorsRef = useRef<Array<{ message: string; details: string[]; timestampMs: number }>>([]);
+  const gridPerfMetricsRef = useRef<string[]>([]);
   const ketcherImportSequenceRef = useRef(0);
   const commandPaletteOpen = useIsCommandPaletteOpen();
   const commandPaletteQuery = useCommandPaletteSearch();
@@ -250,6 +255,16 @@ export default function App() {
       window.__BURRETE_BOOT_OVERLAY__?.markMounted();
     });
     return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadBuildInfo().then((info) => {
+      if (!cancelled) setBuildInfo(info);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const pushStatus = useCallback((message: string, kind: StatusKind = "info", details: string[] = []) => {
@@ -737,6 +752,21 @@ export default function App() {
       pushErrorStatus(error, "Export PNG failed");
     }
   }, [activeDocument?.title, pushErrorStatus, pushStatus, readActiveExternalPreviewSvg]);
+
+  const writeGridPerfMetric = useCallback((body: unknown) => {
+    if (!isTauriRuntime()) return;
+    const line = JSON.stringify({
+      receivedAtMs: Date.now(),
+      metric: body,
+    });
+    gridPerfMetricsRef.current = [...gridPerfMetricsRef.current.slice(-399), line];
+    void invoke("write_text_file", {
+      request: {
+        outputPath: GRID_PERF_REPORT_PATH,
+        contents: `${gridPerfMetricsRef.current.join("\n")}\n`,
+      },
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (isTauriRuntime()) return;
@@ -1424,6 +1454,7 @@ export default function App() {
           contextDocument?: Parameters<typeof openBrowserDevMolstarContextDocument>[0];
           inputDataBase64?: string | null;
           inputExtension?: string | null;
+          items?: Record<string, unknown>[] | null;
           name?: string | null;
           mimeType?: string | null;
         };
@@ -1507,6 +1538,11 @@ export default function App() {
         return;
       }
       if (data.source === "burrete-grid") {
+        if (body?.type === "gridPerfMetric") {
+          console.info("[Burrete grid perf]", JSON.stringify(body));
+          writeGridPerfMetric(body);
+          return;
+        }
         if (body?.type === "copyText") {
           const text = typeof body.text === "string" ? body.text : "";
           void navigator.clipboard.writeText(text)
@@ -1648,6 +1684,7 @@ export default function App() {
                 preset?: string;
                 elapsedMs?: number;
                 log?: string;
+                cacheHit?: boolean;
               }>("render_xyzrender_sheet_item", {
                 request: {
                   path: body.path,
@@ -1655,6 +1692,7 @@ export default function App() {
                   controls: body.controls ?? null,
                   inputDataBase64: body.inputDataBase64 ?? null,
                   inputExtension: body.inputExtension ?? null,
+                  cacheScope: "grid-card",
                 },
               });
               reply({
@@ -1664,6 +1702,67 @@ export default function App() {
                   preset: result.preset ?? null,
                   elapsedMs: result.elapsedMs ?? null,
                   log: result.log ?? "",
+                  cacheHit: result.cacheHit ?? false,
+                },
+              });
+            } catch (error) {
+              reply({
+                type: "gridError",
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          })();
+          return;
+        }
+        if (body?.type === "renderXyzrenderCards") {
+          if (!body.requestId || !body.documentId) return;
+          const reply = (bodyPayload: Record<string, unknown>) => {
+            postMessageToViewerSource(event.source, {
+              source: "burrete-grid-host",
+              body: {
+                requestId: body.requestId,
+                documentId: body.documentId,
+                ...bodyPayload,
+              },
+            });
+          };
+          if (!isTauriRuntime()) {
+            reply({
+              type: "gridError",
+              error: "Desktop xyzrender grid rendering is unavailable outside the Tauri runtime.",
+            });
+            return;
+          }
+          void (async () => {
+            try {
+              const items = Array.isArray(body.items) ? body.items : [];
+              const result = await invoke<{
+                items?: Array<{
+                  id?: string;
+                  svg?: string;
+                  preset?: string;
+                  elapsedMs?: number;
+                  log?: string;
+                  cacheHit?: boolean;
+                  error?: string;
+                }>;
+              }>("render_xyzrender_sheet_items", {
+                request: {
+                  items: items.map((item: Record<string, unknown>) => ({
+                    id: typeof item.id === "string" ? item.id : "",
+                    path: typeof item.path === "string" ? item.path : "",
+                    preset: item.preset ?? null,
+                    controls: item.controls ?? null,
+                    inputDataBase64: item.inputDataBase64 ?? null,
+                    inputExtension: item.inputExtension ?? null,
+                    cacheScope: "grid-card",
+                  })),
+                },
+              });
+              reply({
+                type: "xyzrenderCard",
+                result: {
+                  items: result.items ?? [],
                 },
               });
             } catch (error) {
@@ -1916,7 +2015,7 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, addDocuments, documents, notifyGridPoseReviewSelection, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference]);
+  }, [activeDocument, addDocuments, documents, notifyGridPoseReviewSelection, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, writeGridPerfMetric]);
 
   useEffect(() => {
     const loadedPreferences = loadUpdatePreferences();
@@ -2135,6 +2234,7 @@ export default function App() {
     dropActive,
     preferences,
     update,
+    buildInfo,
   };
 
   useKeyboardShortcuts(state, actions, toggleSidebar, !commandPaletteOpen);
