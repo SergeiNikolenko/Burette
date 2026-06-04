@@ -90,6 +90,8 @@ pub fn run() {
             commands::startup::startup_documents,
             commands::documents::pick_open_targets,
             commands::documents::open_documents,
+            commands::text_files::read_text_file,
+            commands::text_files::open_text_files,
             commands::documents::read_structure_text,
             commands::documents::open_text_structure,
             commands::documents::open_delimited_grid_document,
