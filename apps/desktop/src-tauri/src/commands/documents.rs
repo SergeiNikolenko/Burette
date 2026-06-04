@@ -21,7 +21,9 @@ use crate::preview::runtime::{
     ViewerPreferences, ViewerReloadOptions, XyzrenderControls,
 };
 use crate::preview::text_xyz::xyz_data_from_text;
-use crate::preview::xyzrender::create_xyzrender_artifact;
+use crate::preview::xyzrender::{
+    create_xyzrender_artifact, create_xyzrender_smiles_batch_artifacts, XyzrenderSmilesBatchRequest,
+};
 
 const XYZRENDER_SHEET_MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
 const KETCHER_IMPORT_MAX_STRUCTURE_FILE_SIZE: u64 = 10 * 1024 * 1024;
@@ -34,6 +36,7 @@ pub(crate) struct XyzrenderSheetRenderRequest {
     controls: Option<XyzrenderControls>,
     input_data_base64: Option<String>,
     input_extension: Option<String>,
+    cache_scope: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -43,6 +46,39 @@ pub(crate) struct XyzrenderSheetRenderResult {
     preset: String,
     elapsed_ms: u128,
     log: String,
+    cache_hit: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct XyzrenderSheetRenderBatchRequest {
+    items: Vec<XyzrenderSheetRenderBatchItemRequest>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct XyzrenderSheetRenderBatchItemRequest {
+    id: String,
+    #[serde(flatten)]
+    request: XyzrenderSheetRenderRequest,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct XyzrenderSheetRenderBatchResult {
+    items: Vec<XyzrenderSheetRenderBatchItemResult>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct XyzrenderSheetRenderBatchItemResult {
+    id: String,
+    svg: Option<String>,
+    preset: Option<String>,
+    elapsed_ms: Option<u128>,
+    log: String,
+    cache_hit: bool,
+    error: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -385,22 +421,182 @@ pub(crate) async fn render_xyzrender_sheet_item<R: Runtime>(
     app: tauri::AppHandle<R>,
     request: XyzrenderSheetRenderRequest,
 ) -> Result<XyzrenderSheetRenderResult, String> {
-    let output_directory = app
+    let viewer_cache_directory = app
         .path()
         .app_cache_dir()
         .map_err(|err| err.to_string())?
-        .join("viewer")
+        .join("viewer");
+    let output_directory = viewer_cache_directory
         .join("sheet")
         .join(uuid::Uuid::new_v4().to_string());
+    let cache_directory = match request.cache_scope.as_deref() {
+        Some("grid-card") => Some(viewer_cache_directory.join("grid-xyzrender-card-cache")),
+        _ => None,
+    };
     tauri::async_runtime::spawn_blocking(move || {
-        render_xyzrender_sheet_item_blocking(output_directory, request)
+        render_xyzrender_sheet_item_blocking(output_directory, cache_directory, request)
     })
     .await
     .map_err(|err| format!("xyzrender sheet render task failed: {err}"))?
 }
 
+#[tauri::command]
+pub(crate) async fn render_xyzrender_sheet_items<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    request: XyzrenderSheetRenderBatchRequest,
+) -> Result<XyzrenderSheetRenderBatchResult, String> {
+    let viewer_cache_directory = app
+        .path()
+        .app_cache_dir()
+        .map_err(|err| err.to_string())?
+        .join("viewer");
+    tauri::async_runtime::spawn_blocking(move || {
+        render_xyzrender_sheet_items_blocking(viewer_cache_directory, request)
+    })
+    .await
+    .map_err(|err| format!("xyzrender sheet batch render task failed: {err}"))?
+}
+
+fn render_xyzrender_sheet_items_blocking(
+    viewer_cache_directory: PathBuf,
+    request: XyzrenderSheetRenderBatchRequest,
+) -> Result<XyzrenderSheetRenderBatchResult, String> {
+    let mut results = Vec::new();
+    let mut batch_requests = Vec::new();
+    for item in request.items {
+        let output_directory = viewer_cache_directory
+            .join("sheet")
+            .join(uuid::Uuid::new_v4().to_string());
+        let cache_directory = match item.request.cache_scope.as_deref() {
+            Some("grid-card") => Some(viewer_cache_directory.join("grid-xyzrender-card-cache")),
+            _ => None,
+        };
+        if let Some(batch_request) = prepare_xyzrender_smiles_batch_request(
+            &item,
+            &output_directory,
+            cache_directory.clone(),
+        ) {
+            match batch_request {
+                Ok(value) => {
+                    batch_requests.push(value);
+                    continue;
+                }
+                Err(error) => {
+                    results.push(XyzrenderSheetRenderBatchItemResult {
+                        id: item.id,
+                        svg: None,
+                        preset: Some("default".to_string()),
+                        elapsed_ms: Some(0),
+                        log: String::new(),
+                        cache_hit: false,
+                        error: Some(error),
+                    });
+                    continue;
+                }
+            }
+        }
+        match render_xyzrender_sheet_item_blocking(output_directory, cache_directory, item.request)
+        {
+            Ok(result) => results.push(XyzrenderSheetRenderBatchItemResult {
+                id: item.id,
+                svg: Some(result.svg),
+                preset: Some(result.preset),
+                elapsed_ms: Some(result.elapsed_ms),
+                log: result.log,
+                cache_hit: result.cache_hit,
+                error: None,
+            }),
+            Err(error) => results.push(XyzrenderSheetRenderBatchItemResult {
+                id: item.id,
+                svg: None,
+                preset: Some("default".to_string()),
+                elapsed_ms: Some(0),
+                log: String::new(),
+                cache_hit: false,
+                error: Some(error),
+            }),
+        }
+    }
+    results.extend(
+        create_xyzrender_smiles_batch_artifacts(batch_requests)
+            .into_iter()
+            .map(|result| XyzrenderSheetRenderBatchItemResult {
+                id: result.id,
+                svg: result.svg,
+                preset: Some(result.preset),
+                elapsed_ms: Some(result.elapsed_ms),
+                log: result.log,
+                cache_hit: result.cache_hit,
+                error: result.error,
+            }),
+    );
+    Ok(XyzrenderSheetRenderBatchResult { items: results })
+}
+
+fn prepare_xyzrender_smiles_batch_request(
+    item: &XyzrenderSheetRenderBatchItemRequest,
+    output_directory: &Path,
+    cache_directory: Option<PathBuf>,
+) -> Option<Result<XyzrenderSmilesBatchRequest, String>> {
+    let request = &item.request;
+    if request.controls.is_some() {
+        return None;
+    }
+    if !matches!(request.preset.as_deref(), None | Some("default")) {
+        return None;
+    }
+    let input_data_base64 = request
+        .input_data_base64
+        .as_deref()
+        .filter(|value| !value.is_empty())?;
+    let extension = match normalize_inline_structure_extension(
+        request.input_extension.as_deref(),
+        Path::new(&request.path),
+    ) {
+        Ok(value) => value,
+        Err(error) => return Some(Err(error)),
+    };
+    if !matches!(extension.as_str(), "smi" | "smiles") {
+        return None;
+    }
+    let data = match base64::engine::general_purpose::STANDARD.decode(input_data_base64) {
+        Ok(value) => value,
+        Err(error) => {
+            return Some(Err(format!(
+                "Could not decode inline xyzrender sheet input: {error}"
+            )))
+        }
+    };
+    if data.len() as u64 > XYZRENDER_SHEET_MAX_STRUCTURE_FILE_SIZE {
+        return Some(Err(
+            "Inline structure is too large for an xyzrender sheet item".into(),
+        ));
+    }
+    if let Err(error) = fs::create_dir_all(output_directory) {
+        return Some(Err(error.to_string()));
+    }
+    let input_path = output_directory.join("sheet-input.smi");
+    if let Err(error) = fs::write(&input_path, &data) {
+        return Some(Err(format!("{}: {error}", input_path.display())));
+    }
+    let direct_smiles = match smiles_from_sheet_data(&data) {
+        Ok(value) => value,
+        Err(error) => return Some(Err(error)),
+    };
+    Some(Ok(XyzrenderSmilesBatchRequest {
+        id: item.id.clone(),
+        input_path,
+        output_directory: output_directory.to_path_buf(),
+        cache_directory,
+        preset: request.preset.clone(),
+        controls: request.controls.clone(),
+        direct_smiles,
+    }))
+}
+
 fn render_xyzrender_sheet_item_blocking(
     output_directory: PathBuf,
+    cache_directory: Option<PathBuf>,
     request: XyzrenderSheetRenderRequest,
 ) -> Result<XyzrenderSheetRenderResult, String> {
     fs::create_dir_all(&output_directory).map_err(|err| err.to_string())?;
@@ -480,7 +676,7 @@ fn render_xyzrender_sheet_item_blocking(
     let artifact = create_xyzrender_artifact(
         &input_path,
         &output_directory,
-        None,
+        cache_directory.as_deref(),
         request.preset.as_deref(),
         None,
         request.controls.as_ref(),
@@ -495,6 +691,7 @@ fn render_xyzrender_sheet_item_blocking(
         preset: artifact.preset.to_string(),
         elapsed_ms: artifact.elapsed_ms,
         log: artifact.log,
+        cache_hit: artifact.cache_hit,
     })
 }
 
