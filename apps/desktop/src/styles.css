@@ -864,6 +864,9 @@ kbd span { margin-left: 2px; }
 .sidebar-product:active { transform: scale(0.99); }
 .sidebar-product-icon { width: 20px; height: 16px; flex: 0 0 20px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-icon-muted); }
 .sidebar-product-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-build-badge { min-width: 0; padding: 2px 10px 0 30px; display: grid; gap: 2px; color: var(--text-muted); line-height: 1.15; }
+.sidebar-build-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 650; letter-spacing: 0; text-transform: uppercase; color: var(--text-secondary); }
+.sidebar-build-detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-faint); }
 .chrome-button:focus-visible,
 .new-tab:focus-visible,
 .tab-history-button:focus-visible,
@@ -1796,6 +1799,9 @@ kbd span { margin-left: 2px; }
   font-size: 13px;
 }
 .new-tab-page { width: 100%; height: 100%; display: grid; place-items: center; padding: 40px 24px; color: var(--text-secondary); }
+.new-tab-eyebrow-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.new-tab-build-badge { min-height: 22px; max-width: 260px; border-radius: 6px; padding: 3px 8px; display: inline-flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: var(--surface-subtle); color: var(--text-secondary); font-size: 11px; font-weight: 650; letter-spacing: 0; text-transform: uppercase; }
+.new-tab-build-detail { max-width: 760px; margin: 10px 0 0; color: var(--text-muted); font-size: 13px; line-height: 1.35; }
 .new-tab-actions { display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .new-tab-page button { border: 0; border-radius: 8px; background: transparent; color: var(--text-secondary); font-size: 13px; font-weight: 500; height: 28px; padding: 0 8px; display: inline-flex; align-items: center; gap: 6px; transition: color 120ms ease, background 120ms ease; }
 .new-tab-page button:hover { color: var(--text-primary); background: transparent; }

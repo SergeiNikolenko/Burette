@@ -7,6 +7,6 @@ export const launcherKind = definePageKind<"launcher", LauncherLocation>({
   kind: "launcher",
   title: () => "New tab",
   description: "Open a structure",
-  Component: ({ actions }) => <WelcomeScreen actions={actions} />,
+  Component: ({ state, actions }) => <WelcomeScreen actions={actions} buildInfo={state.buildInfo} />,
   serialize: () => null,
 });
