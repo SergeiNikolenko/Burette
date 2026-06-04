@@ -19,6 +19,7 @@ commands.allow = [
   "grid_delimited_columns",
   "grid_append_delimited_records",
   "render_xyzrender_sheet_item",
+  "render_xyzrender_sheet_items",
   "sync_viewer_preferences",
   "clear_preview_cache",
   "export_diagnostics_bundle",

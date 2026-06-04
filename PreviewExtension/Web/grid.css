@@ -53,6 +53,7 @@ body,
   min-height: 100%;
   margin: 0;
   padding: 0;
+  overflow-anchor: none;
 }
 
 body {
@@ -425,7 +426,15 @@ button:disabled {
   grid-template-columns: repeat(auto-fill, minmax(var(--buret-card-min), 1fr));
   gap: var(--buret-card-gap);
   justify-content: stretch;
+  overflow-anchor: none;
   padding-inline: var(--buret-grid-content-padding-inline);
+}
+
+.buret-grid-spacer {
+  grid-column: 1 / -1;
+  min-width: 0;
+  overflow-anchor: none;
+  pointer-events: none;
 }
 
 .buret-grid-rail {
@@ -475,6 +484,7 @@ button:disabled {
 
 body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   cursor: grabbing;
+  transition: none;
 }
 
 .buret-grid-rail-ticks {
@@ -515,6 +525,41 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   background: color-mix(in srgb, var(--buret-text) 42%, transparent);
 }
 
+.buret-grid-rail-popover {
+  position: absolute;
+  top: 50%;
+  left: 30px;
+  z-index: 6;
+  min-width: 118px;
+  max-width: 220px;
+  padding: 8px 10px 9px;
+  border: 1px solid var(--buret-border);
+  border-radius: 8px;
+  background: var(--buret-surface-raised);
+  color: var(--buret-text);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.14);
+  pointer-events: none;
+  transform: translateY(calc(-50% + var(--buret-grid-rail-popover-offset, 0px)));
+}
+
+.buret-grid-rail-popover[hidden] {
+  display: none;
+}
+
+.buret-grid-rail-popover-index {
+  font: 700 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  white-space: nowrap;
+}
+
+.buret-grid-rail-popover-name {
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--buret-muted);
+  font: 600 12px/1.25 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+
 .buret-card {
   position: relative;
   display: grid;
@@ -525,6 +570,7 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   border-radius: 8px;
   background: var(--buret-surface);
   box-shadow: none;
+  contain: layout paint style;
   transition: background 140ms ease-out, border-color 140ms ease-out, box-shadow 140ms ease-out, transform 140ms ease-out;
 }
 
@@ -692,8 +738,11 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   object-fit: contain;
 }
 
+.buret-molecule-picture img.buret-rdkit-card-image,
 .buret-molecule-picture img.buret-xyzrender-card-image {
   display: block;
+  align-self: stretch;
+  justify-self: stretch;
   width: 100%;
   max-width: var(--buret-drawing-max-width);
   height: 100%;

@@ -1,3 +1,4 @@
+use base64::Engine;
 use serde_json::json;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -76,6 +77,17 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
             collection.format,
             grid_store.cancel_token,
         )?;
+    let rdkit_wasm = runtime.join("RDKit_minimal.wasm");
+    fs::copy(assets.join("rdkit").join("RDKit_minimal.wasm"), &rdkit_wasm)
+        .map_err(|err| err.to_string())?;
+    let rdkit_wasm_base64 = base64::engine::general_purpose::STANDARD
+        .encode(fs::read(&rdkit_wasm).map_err(|err| err.to_string())?);
+    fs::write(
+        runtime.join("preview-rdkit-wasm.js"),
+        format!("window.BurreteRDKitWasmBase64 = \"{rdkit_wasm_base64}\";\n"),
+    )
+    .map_err(|err| err.to_string())?;
+    let rdkit_wasm_path = asset_url(&rdkit_wasm);
     let config = json!({
         "mode": "grid2d",
         "format": collection.format,
@@ -101,8 +113,8 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
         "indexReady": collection.index_ready,
         "recordsIncluded": 0,
         "recordsTruncated": false,
-        "pageSize": 72,
-        "rdkitWasmPath": "../assets/rdkit/RDKit_minimal.wasm",
+        "pageSize": 720,
+        "rdkitWasmPath": rdkit_wasm_path,
         "capabilities": {
             "selection": true,
             "export": true,
@@ -143,6 +155,7 @@ fn grid_html(
     };
     let grid_css = versioned_asset_url(&assets.join("grid.css"));
     let config_js = asset_url(&runtime.join("preview-config.js"));
+    let rdkit_wasm_js = asset_url(&runtime.join("preview-rdkit-wasm.js"));
     let rdkit_js = versioned_asset_url(&assets.join("rdkit").join("RDKit_minimal.js"));
     let grid_js = versioned_asset_url(&assets.join("grid-viewer.js"));
     format!(
@@ -169,6 +182,7 @@ fn grid_html(
   <div id="app"></div>
   <div id="status">Loading molecule grid...</div>
   <script src="{config_js}"></script>
+  <script src="{rdkit_wasm_js}"></script>
   <script src="{rdkit_js}"></script>
   <script src="{grid_js}"></script>
 </body>

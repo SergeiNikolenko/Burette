@@ -52,6 +52,7 @@ const [
   tauriPermissionSource,
   defaultCapabilitySource,
   buildScript,
+  buildDevScript,
   ciScript,
   releaseWorkflow,
   releaseVersionCheck,
@@ -69,6 +70,7 @@ const [
   appInfoPlist,
   appMetadata,
   installLocalScript,
+  devNamespaceScript,
   previewExtensionInfoPlist,
   thumbnailInfoPlist,
   thumbnailProviderSource,
@@ -116,6 +118,7 @@ const [
   source('apps/desktop/src-tauri/permissions/burrete.toml'),
   source('apps/desktop/src-tauri/capabilities/default.json'),
   source('scripts/build.sh'),
+  source('scripts/build-dev.sh'),
   source('scripts/ci.sh'),
   source('.github/workflows/release.yml'),
   source('scripts/check-release-version.mjs'),
@@ -133,6 +136,7 @@ const [
   source('apps/desktop/src-tauri/Info.plist'),
   source('apps/desktop/src-tauri/AppMetadata.plist'),
   source('scripts/install-local.sh'),
+  source('scripts/dev-namespace.mjs'),
   source('PreviewExtension/Info.plist'),
   source('PreviewExtension/ThumbnailInfo.plist'),
   source('PreviewExtension/ThumbnailProvider.swift'),
@@ -195,6 +199,7 @@ for (const commandPath of [
   'commands::grid::grid_delimited_columns',
   'commands::grid::grid_append_delimited_records',
   'commands::documents::render_xyzrender_sheet_item',
+  'commands::documents::render_xyzrender_sheet_items',
   'commands::documents::sync_viewer_preferences',
   'commands::preview_cache::clear_preview_cache',
   'commands::shell::export_diagnostics_bundle',
@@ -324,6 +329,17 @@ assert.deepEqual(packageConfig.workspaces, ['apps/*', 'packages/*']);
 assert.equal(packageConfig.scripts['check:formats'], 'bun scripts/check-preview-format-registry.mjs');
 assert.equal(packageConfig.scripts['check:vendor-assets'], 'bun scripts/check-vendor-assets.mjs');
 assert.equal(packageConfig.scripts['test:update'], 'bun tests/test-update-versioning.mjs && bun tests/test-bun-installer-structure.mjs && bun tests/test-bun-installer-behavior.mjs && bun tests/test-runner-contract.mjs && bun tests/test-dev-namespace.mjs && bun tests/test-quicklook-preview-smoke-contract.mjs');
+assert.match(packageConfig.scripts['check:js'], /scripts\/dev-namespace\.mjs/);
+assert.match(buildScript, /BURRETE_DEV_FLAVOR/);
+assert.match(buildScript, /bun "\$ROOT\/scripts\/dev-namespace\.mjs" shell-env/);
+assert.match(buildScript, /LOCAL_APP="\$ROOT\/build\/\$BURRETE_APP_BUNDLE_NAME"/);
+assert.match(buildScript, /bun "\$ROOT\/scripts\/dev-namespace\.mjs" patch-tree "\$SAFE_ROOT"/);
+assert.match(buildDevScript, /BURRETE_DEV_FLAVOR is supported by scripts\/build\.sh, not scripts\/build-dev\.sh/);
+assert.match(installLocalScript, /BURRETE_DEV_FLAVOR/);
+assert.match(installLocalScript, /DEST="\$DEST_DIR\/\$APP_BUNDLE_NAME"/);
+assert.match(installLocalScript, /pluginkit -r "\$EXT_ID"/);
+assert.match(devNamespaceScript, /export function namespaceForFlavor/);
+assert.match(devNamespaceScript, /appId: `\$\{BASE\.appId\}\.Dev\.\$\{slug\}`/);
 assert.equal(packageConfig.scripts['vendor:lock'], 'bun scripts/check-vendor-assets.mjs --write');
 assert.match(cargoWorkspaceSource, /"apps\/desktop\/src-tauri"/);
 assert.match(cargoWorkspaceSource, /"crates\/burrete-core"/);
@@ -527,7 +543,7 @@ assert.match(previewXyzrender, /std::env::current_exe\(\)/);
 assert.match(previewXyzrender, /xyzrender-runtime/);
 assert.match(gridViewerJS, /resetDocumentRuntimeState\(\);\n\s+state\.remoteMode = isRemoteMode\(cfg\);/);
 assert.match(gridViewerJS, /buildUI\(cfg\);\n\s+refresh\(cfg\);\n\s+try \{\n\s+await initRDKit\(\);/);
-assert.match(gridViewerJS, /if \(state\.cardRenderer === 'rdkit'\) render\(cfg\);/);
+assert.match(gridViewerJS, /if \(state\.cardRenderer === 'rdkit'\) \{\n\s+if \(state\.remoteMode\) \{\n\s+if \(state\.rows\.length\) void renderVirtualWindow\(cfg, state\.token, \{ force: true \}\);\n\s+\} else \{\n\s+render\(cfg\);\n\s+\}\n\s+\}/);
 assert.match(gridViewerJS, /function supportsXyzrenderCards\(cfg\)/);
 assert.match(gridViewerJS, /cfg\?\.appViewer === true && cfg\?\.gridDataMode === 'bridge'/);
 assert.match(previewRuntimeGrid, /"pageSize": 72/);
@@ -610,13 +626,17 @@ assert.match(previewGridStore, /pub\(crate\) fn append_text/);
 assert.match(previewGridStore, /fn append_grid_text/);
 assert.match(previewGridStore, /fn fetch_page/);
 assert.match(previewGridStore, /query\.limit\.clamp\(1, 240\)/);
-assert.doesNotMatch(previewRuntimeGrid, /BurreteRDKitWasmBase64/);
-assert.match(previewRuntimeGrid, /"rdkitWasmPath": "\.\.\/assets\/rdkit\/RDKit_minimal\.wasm"/);
+assert.match(previewRuntimeGrid, /use base64::Engine;/);
+assert.match(previewRuntimeGrid, /let rdkit_wasm = runtime\.join\("RDKit_minimal\.wasm"\)/);
+assert.match(previewRuntimeGrid, /fs::copy\(assets\.join\("rdkit"\)\.join\("RDKit_minimal\.wasm"\), &rdkit_wasm\)/);
+assert.match(previewRuntimeGrid, /window\.BurreteRDKitWasmBase64 =/);
+assert.match(previewRuntimeGrid, /let rdkit_wasm_path = asset_url\(&rdkit_wasm\)/);
+assert.match(previewRuntimeGrid, /"rdkitWasmPath": rdkit_wasm_path/);
 assert.match(previewRuntimeGrid, /const GRID_RUNTIME_CSP/);
 assert.match(previewRuntimeGrid, /'wasm-unsafe-eval'/);
 assert.match(previewRuntimeGrid, /<meta http-equiv="Content-Security-Policy" content="\{GRID_RUNTIME_CSP\}"/);
-assert.doesNotMatch(previewRuntimeGrid, /runtime\.join\("preview-rdkit-wasm\.js"\)/);
-assert.doesNotMatch(previewRuntimeGrid, /<script src="\{rdkit_wasm_js\}"><\/script>/);
+assert.match(previewRuntimeGrid, /runtime\.join\("preview-rdkit-wasm\.js"\)/);
+assert.match(previewRuntimeGrid, /<script src="\{rdkit_wasm_js\}"><\/script>/);
 assert.match(previewRuntimeViewer, /body\.documentId = String\(window\.BurreteConfig\.documentId\)/);
 assert.match(viewerRuntimeCSS, /--buret-toolbar-safe-top: 12px/);
 assert.match(viewerRuntimeCSS, /--buret-viewport-controls-top: 64px/);
