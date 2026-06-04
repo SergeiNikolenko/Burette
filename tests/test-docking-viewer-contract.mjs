@@ -28,8 +28,12 @@ const [app, gridViewer, gridUi, viewer, dockingDocuments, dropActions, dropActio
 assert.match(gridUi, /data-buret-grid-sdf-poses/);
 assert.match(gridUi, /data-buret-grid-docking/);
 assert.match(gridUi, />\s*Molstar\s*<\/button>/);
+assert.match(gridUi, /data-buret-grid-ketcher/);
+assert.match(gridUi, />\s*Ketcher\s*<\/button>/);
 assert.match(gridViewer, /setStatus\('\[grid\] Select one or more molecules before opening Molstar\.', 'error'\)/);
 assert.match(gridViewer, /post\('openSdfMolstarDocument', '\[grid\] Open selected molecules in Molstar.'/);
+assert.match(gridViewer, /setStatus\('\[grid\] Select one or more molecules before opening Ketcher\.', 'error'\)/);
+assert.match(gridViewer, /post\('openSdfKetcherDocument', '\[grid\] Open selected molecules in Ketcher.'/);
 assert.match(gridViewer, /documentId: cfg\?\.documentId \|\| null/);
 assert.match(gridViewer, /textBase64: textToBase64\(records\.join\('\\n'\)\)/);
 assert.match(gridViewer, /receptorPath: receptorPath \|\| null/);
@@ -40,6 +44,8 @@ assert.match(gridViewer, /function selectedMolstarRows\(\)/);
 assert.match(gridViewer, /function sdfRecordTextForMolstar\(row\)/);
 
 assert.match(app, /body\?\.type === "openSdfMolstarDocument"/);
+assert.match(app, /body\?\.type === "openSdfKetcherDocument"/);
+assert.match(app, /openKetcherWithStructures\(\[\], fragments\)/);
 assert.match(app, /invoke<ViewerDocument>\("open_text_structure"/);
 assert.match(app, /rendererMode: "molstar" as const/);
 assert.match(app, /void openDockingDocument\(receptorDocument\.path, \[document\.path\]\)/);
