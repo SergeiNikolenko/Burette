@@ -15,12 +15,18 @@
   const XYZRENDER_CARD_CONCURRENCY = 4;
   const GRID_LOAD_AHEAD_PX = 720;
   const RDKIT_CARD_ROOT_MARGIN = '900px 0px';
-  const XYZRENDER_CARD_ROOT_MARGIN = '720px 0px';
-  const BACKGROUND_CARD_RENDER_BATCH = 16;
-  const BACKGROUND_GRID_WORK_DELAY_MS = 120;
+  const XYZRENDER_CARD_ROOT_MARGIN = '120px 0px';
+  const XYZRENDER_CARD_BATCH_SIZE = 12;
+  const XYZRENDER_CARD_BATCH_MIN_CONCURRENCY = 1;
+  const XYZRENDER_CARD_BATCH_MAX_CONCURRENCY = 3;
+  const XYZRENDER_CARD_BATCH_DELAY_MS = 16;
   const RDKIT_CARD_FRAME_BATCH = 6;
   const RDKIT_CARD_FRAME_BUDGET_MS = 8;
-  const RDKIT_SVG_CACHE_LIMIT = 600;
+  const GRID_WINDOW_OVERSCAN_ROWS = 4;
+  const GRID_MAX_WINDOW_ROWS = 18;
+  const GRID_MIN_ESTIMATED_ROW_HEIGHT = 190;
+  const RDKIT_SVG_CACHE_LIMIT = 220;
+  const XYZRENDER_CARD_CACHE_LIMIT = 180;
   const STRUCTURE_DRAG_MIME = 'application/x-burrete-structure-paths';
   const state = {
     rdkit: null,
@@ -58,6 +64,8 @@
     xyzrenderCardCache: new Map(),
     xyzrenderCardQueue: [],
     xyzrenderCardsRunning: 0,
+    xyzrenderBatchesRunning: 0,
+    xyzrenderBatchTimer: 0,
     xyzrenderCardSeq: 0,
     xyzrenderCardObserver: null,
     xyzrenderCardLazyJobs: new WeakMap(),
@@ -72,15 +80,23 @@
     requestSeq: 0,
     token: 0,
     rendering: false,
+    pendingRender: false,
     pendingLoad: false,
     loadObserver: null,
     scrollHandler: null,
+    resizeHandler: null,
+    virtualFrame: 0,
+    lastPerfMetricAt: 0,
+    windowStart: 0,
+    windowEnd: 0,
+    estimatedColumnCount: 1,
+    estimatedRowHeight: GRID_MIN_ESTIMATED_ROW_HEIGHT,
+    estimatedGridGap: 10,
     contextMenuOutsideHandler: null,
     contextMenuKeyHandler: null,
     railDragging: false,
     pendingGridScrollIndex: null,
-    pendingGridRailPosition: null,
-    backgroundGridWorkTimer: 0
+    pendingGridRailPosition: null
   };
 
   function post(type, message, payload = {}) {
@@ -98,6 +114,37 @@
         window.webkit?.messageHandlers?.burrete?.postMessage(body);
       }
     } catch (_) {}
+  }
+
+  function nowMs() {
+    return typeof performance !== 'undefined' && typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now();
+  }
+
+  function emitGridPerfMetric(cfg, phase, startedAt, payload = {}) {
+    if (!cfg || cfg.appViewer !== true) return;
+    const now = nowMs();
+    const elapsedMs = Math.max(0, now - Number(startedAt || now));
+    if (!payload.force && phase === 'window-render' && now - state.lastPerfMetricAt < 500) return;
+    state.lastPerfMetricAt = now;
+    post('gridPerfMetric', '[grid] Performance metric.', {
+      phase,
+      renderer: state.cardRenderer,
+      remoteMode: state.remoteMode,
+      elapsedMs: Math.round(elapsedMs * 10) / 10,
+      rowsLoaded: state.rows.length,
+      totalRows: state.totalRows,
+      renderedCount: state.renderedCount,
+      windowStart: state.windowStart,
+      windowEnd: state.windowEnd,
+      cards: root ? root.querySelectorAll('.buret-card').length : 0,
+      rdkitImages: root ? root.querySelectorAll('.buret-rdkit-card-image').length : 0,
+      xyzrenderImages: root ? root.querySelectorAll('.buret-xyzrender-card-image').length : 0,
+      domNodes: root ? root.getElementsByTagName('*').length : 0,
+      scrollY: Math.round(window.scrollY || document.documentElement.scrollTop || 0),
+      ...payload
+    });
   }
 
   function setStatus(message, kind = 'info') {
@@ -213,16 +260,63 @@
     }
     setStatus('[grid] Loading RDKit.js...');
     const cfg = config();
-    const wasmPath = cfg.rdkitWasmPath || '../assets/rdkit/RDKit_minimal.wasm';
+    const wasmPaths = rdkitWasmCandidates(cfg);
+    let wasmPath = wasmPaths[0] || '../assets/rdkit/RDKit_minimal.wasm';
     const options = { locateFile: () => wasmPath };
     if (window.BurreteRDKitWasmBase64) {
       options.wasmBinary = base64ToBytes(window.BurreteRDKitWasmBase64);
       window.BurreteRDKitWasmBase64 = '';
-    } else if (wasmPath) {
-      options.wasmBinary = await loadWasmBinary(wasmPath);
+    } else if (wasmPaths.length) {
+      const loaded = await loadFirstWasmBinary(wasmPaths);
+      wasmPath = loaded.path;
+      options.locateFile = () => wasmPath;
+      options.wasmBinary = loaded.bytes;
     }
     state.rdkit = await window.initRDKitModule(options);
     return state.rdkit;
+  }
+
+  function rdkitWasmCandidates(cfg) {
+    const paths = [];
+    const push = value => {
+      const path = String(value || '').trim();
+      if (path && !paths.includes(path)) paths.push(path);
+    };
+    push(cfg.rdkitWasmPath);
+    push(rdkitWasmAssetURLFromLocation());
+    try {
+      push(new URL('../assets/rdkit/RDKit_minimal.wasm', window.location.href).href);
+    } catch (_) {}
+    push('../assets/rdkit/RDKit_minimal.wasm');
+    return paths;
+  }
+
+  function rdkitWasmAssetURLFromLocation() {
+    const prefix = 'asset://localhost/';
+    const href = String(window.location.href || '');
+    if (!href.startsWith(prefix)) return '';
+    const encodedPath = href.slice(prefix.length).split(/[?#]/u)[0];
+    let filePath = '';
+    try {
+      filePath = decodeURIComponent(encodedPath);
+    } catch (_) {
+      return '';
+    }
+    const assetPath = filePath.replace(/\/viewer\/[^/]+\/index\.html$/u, '/viewer/assets/rdkit/RDKit_minimal.wasm');
+    if (assetPath === filePath) return '';
+    return `${prefix}${encodeURIComponent(assetPath)}`;
+  }
+
+  async function loadFirstWasmBinary(paths) {
+    let lastError = null;
+    for (const path of paths) {
+      try {
+        return { path, bytes: await loadWasmBinary(path) };
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError || new Error('Failed to load RDKit wasm.');
   }
 
   async function loadWasmBinary(path) {
@@ -230,13 +324,34 @@
     try {
       response = await fetch(String(path));
     } catch (error) {
-      const message = error && error.message ? error.message : String(error);
-      throw new Error(`Failed to fetch RDKit wasm from ${path}: ${message}`);
+      try {
+        return await loadWasmBinaryViaXHR(path);
+      } catch (xhrError) {
+        const message = xhrError && xhrError.message ? xhrError.message : String(error);
+        throw new Error(`Failed to fetch RDKit wasm from ${path}: ${message}`);
+      }
     }
     if (!response.ok) {
       throw new Error(`Failed to load RDKit wasm from ${path}: ${response.status} ${response.statusText}`.trim());
     }
     return new Uint8Array(await response.arrayBuffer());
+  }
+
+  function loadWasmBinaryViaXHR(path) {
+    return new Promise((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      request.open('GET', String(path), true);
+      request.responseType = 'arraybuffer';
+      request.onload = () => {
+        if ((request.status >= 200 && request.status < 300) || (request.status === 0 && request.response)) {
+          resolve(new Uint8Array(request.response));
+          return;
+        }
+        reject(new Error(`${request.status} ${request.statusText}`.trim()));
+      };
+      request.onerror = () => reject(new Error('XHR load failed'));
+      request.send();
+    });
   }
 
   function base64ToBytes(value) {
@@ -247,8 +362,8 @@
   }
 
   function loadBatchSize(cfg) {
-    const value = Number(cfg.pageSize || 72);
-    return Number.isFinite(value) ? Math.max(12, Math.min(120, Math.floor(value))) : 72;
+    const value = Number(cfg.pageSize || 720);
+    return Number.isFinite(value) ? Math.max(12, Math.min(1000, Math.floor(value))) : 720;
   }
 
   function storedOptionalInteger(key, min, max) {
@@ -392,6 +507,10 @@
         <nav class="buret-grid-rail" data-buret-grid-rail aria-label="Molecule navigation">
           <span class="buret-grid-rail-active-marker" data-buret-grid-rail-active aria-hidden="true"></span>
           <div class="buret-grid-rail-ticks" data-buret-grid-rail-ticks></div>
+          <div class="buret-grid-rail-popover" data-buret-grid-rail-popover hidden>
+            <div class="buret-grid-rail-popover-index" data-buret-grid-rail-popover-index></div>
+            <div class="buret-grid-rail-popover-name" data-buret-grid-rail-popover-name></div>
+          </div>
         </nav>
         <main id="grid" class="buret-grid"></main>
         <div id="load-sentinel" class="buret-load-sentinel" aria-hidden="true"></div>
@@ -764,13 +883,27 @@
       state.loadObserver.observe(sentinel);
     }
     if (state.scrollHandler) window.removeEventListener('scroll', state.scrollHandler);
-    state.scrollHandler = () => maybeLoadMore(cfg);
+    state.scrollHandler = () => handleGridScroll(cfg);
     window.addEventListener('scroll', state.scrollHandler, { passive: true });
+    if (state.resizeHandler) window.removeEventListener('resize', state.resizeHandler);
+    state.resizeHandler = () => {
+      updateVirtualGridMetrics();
+      scheduleVirtualWindowRender(cfg);
+      updateGridRailActive();
+      maybeLoadMore(cfg);
+    };
+    window.addEventListener('resize', state.resizeHandler, { passive: true });
+  }
+
+  function handleGridScroll(cfg) {
+    scheduleVirtualWindowRender(cfg);
+    maybeLoadMore(cfg);
+    updateGridRailActive();
   }
 
   function hasMoreRows() {
-    if (state.remoteMode) return state.renderedCount < state.rows.length || state.rows.length < state.totalRows || state.indexing;
-    return state.renderedCount < state.rows.length;
+    if (state.remoteMode) return state.visibleCount < state.rows.length || state.rows.length < state.totalRows || state.indexing;
+    return false;
   }
 
   function maybeLoadMore(cfg) {
@@ -783,20 +916,23 @@
   async function render(cfg) {
     const token = ++state.token;
     const grid = document.getElementById('grid');
-    cancelBackgroundGridWork();
+    cancelVirtualWindowRender();
     resetRdkitCardObserver();
     resetXyzrenderCardObserver();
     resetCardRenderQueues();
+    root.querySelector('.buret-grid-molecule-context-menu')?.remove();
     grid.innerHTML = '';
     state.renderedCount = 0;
-    state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
+    state.windowStart = 0;
+    state.windowEnd = 0;
+    state.visibleCount = state.remoteMode ? Math.min(loadBatchSize(cfg), state.rows.length) : state.rows.length;
     if (!state.rows.length) {
       grid.innerHTML = '<div class="buret-empty">No molecules match this search.</div>';
       updateChrome(cfg);
       post('ready', 'ready');
       return;
     }
-    await appendVisibleRows(cfg, token);
+    await renderVirtualWindow(cfg, token, { force: true });
   }
 
   async function loadMore(cfg) {
@@ -809,8 +945,10 @@
       return;
     }
     if (!hasMoreRows()) return;
-    state.visibleCount = Math.min(state.rows.length, state.visibleCount + loadBatchSize(cfg));
-    await appendVisibleRows(cfg, state.token);
+    state.visibleCount = state.remoteMode
+      ? Math.min(state.rows.length, state.visibleCount + loadBatchSize(cfg))
+      : state.rows.length;
+    await renderVirtualWindow(cfg, state.token, { force: true });
   }
 
   async function refreshRemote(cfg) {
@@ -833,7 +971,7 @@
           state.rows = matches;
           state.totalRows = matches.length;
           state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
-          await appendVisibleRows(cfg, token);
+          await renderVirtualWindow(cfg, token, { force: true });
           return;
         }
         state.smartsError = '';
@@ -847,10 +985,9 @@
       });
       if (token !== state.token) return;
       state.rows = applyVirtualGridEdits(Array.isArray(result.rows) ? result.rows : []);
-      state.rows = applyVirtualGridEdits(Array.isArray(result.rows) ? result.rows : []);
       applyGridPageState(result);
       state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
-      await appendVisibleRows(cfg, token);
+      await renderVirtualWindow(cfg, token, { force: true });
       scheduleIndexPoll(cfg);
     } catch (error) {
       const message = error?.message || String(error);
@@ -906,6 +1043,11 @@
   }
 
   function pumpXyzrenderCardQueue() {
+    const cfg = config();
+    if (cfg.appViewer === true && cfg.gridDataMode === 'bridge') {
+      scheduleXyzrenderCardBatchQueue();
+      return;
+    }
     while (state.xyzrenderCardsRunning < XYZRENDER_CARD_CONCURRENCY && state.xyzrenderCardQueue.length) {
       state.xyzrenderCardQueue.sort(compareCardRenderJobs);
       const job = state.xyzrenderCardQueue.shift();
@@ -917,15 +1059,70 @@
     }
   }
 
+  function scheduleXyzrenderCardBatchQueue() {
+    if (
+      state.xyzrenderBatchesRunning >= xyzrenderCardBatchConcurrency()
+      || state.xyzrenderBatchTimer
+      || !state.xyzrenderCardQueue.length
+    ) return;
+    state.xyzrenderBatchTimer = window.setTimeout(() => {
+      state.xyzrenderBatchTimer = 0;
+      pumpXyzrenderCardBatchQueue();
+    }, XYZRENDER_CARD_BATCH_DELAY_MS);
+  }
+
+  function pumpXyzrenderCardBatchQueue() {
+    if (!state.xyzrenderCardQueue.length) return;
+    const concurrency = xyzrenderCardBatchConcurrency();
+    while (
+      state.xyzrenderBatchesRunning < concurrency
+      && state.xyzrenderCardQueue.length
+    ) {
+      state.xyzrenderCardQueue.sort(compareCardRenderJobs);
+      const jobs = takeXyzrenderCardBatchJobs();
+      if (!jobs.length) return;
+      state.xyzrenderBatchesRunning++;
+      void requestXyzrenderCardBatch(jobs).finally(() => {
+        state.xyzrenderBatchesRunning = Math.max(0, state.xyzrenderBatchesRunning - 1);
+        scheduleXyzrenderCardBatchQueue();
+      });
+    }
+  }
+
+  function xyzrenderCardBatchConcurrency() {
+    const cores = typeof navigator !== 'undefined' ? Number(navigator.hardwareConcurrency || 0) : 0;
+    if (!Number.isFinite(cores) || cores <= 0) return 2;
+    if (cores >= 12) return XYZRENDER_CARD_BATCH_MAX_CONCURRENCY;
+    if (cores >= 8) return 2;
+    return XYZRENDER_CARD_BATCH_MIN_CONCURRENCY;
+  }
+
+  function takeXyzrenderCardBatchJobs() {
+    const visible = [];
+    const deferred = [];
+    for (const job of state.xyzrenderCardQueue) {
+      if (visible.length < XYZRENDER_CARD_BATCH_SIZE && cardRenderPriority(job.target) === 0) {
+        visible.push(job);
+      } else {
+        deferred.push(job);
+      }
+    }
+    const jobs = visible.length ? visible : deferred.splice(0, XYZRENDER_CARD_BATCH_SIZE);
+    if (!jobs.length) return;
+    const selected = new Set(jobs);
+    state.xyzrenderCardQueue = state.xyzrenderCardQueue.filter(job => !selected.has(job));
+    return jobs;
+  }
+
   async function loadMoreRemote(cfg) {
     if (state.remoteLoading) {
       state.pendingLoad = true;
       return;
     }
     if (!hasMoreRows()) return;
-    if (state.renderedCount < state.rows.length) {
+    if (state.visibleCount < state.rows.length) {
       state.visibleCount = Math.min(state.rows.length, state.visibleCount + loadBatchSize(cfg));
-      await appendVisibleRows(cfg, state.token);
+      await renderVirtualWindow(cfg, state.token, { force: true });
       return;
     }
     const token = state.token;
@@ -942,13 +1139,13 @@
       applyGridPageState(result);
       state.rows.push(...nextRows);
       state.visibleCount = Math.min(state.rows.length, state.visibleCount + loadBatchSize(cfg));
-      await appendVisibleRows(cfg, state.token);
+      await renderVirtualWindow(cfg, state.token, { force: true });
       if (!nextRows.length && state.indexing) scheduleIndexPoll(cfg);
+      else if (hasMoreRows()) window.setTimeout(() => loadMoreRemote(cfg), 0);
     } catch (error) {
       setStatus(error?.message || String(error), 'error');
     } finally {
       state.remoteLoading = false;
-      if (token === state.token) scheduleBackgroundGridWork(cfg, token);
     }
   }
 
@@ -973,75 +1170,159 @@
     return applyVirtualGridEdits(state.all).sort((a, b) => Number(a.index) - Number(b.index));
   }
 
-  async function appendVisibleRows(cfg, token) {
+  function cancelVirtualWindowRender() {
+    if (!state.virtualFrame) return;
+    window.cancelAnimationFrame(state.virtualFrame);
+    state.virtualFrame = 0;
+  }
+
+  function scheduleVirtualWindowRender(cfg) {
+    if (state.virtualFrame || state.rendering || !state.rows.length) return;
+    state.virtualFrame = window.requestAnimationFrame(() => {
+      state.virtualFrame = 0;
+      void renderVirtualWindow(cfg, state.token);
+    });
+  }
+
+  async function renderVirtualWindow(cfg, token, options = {}) {
     const grid = document.getElementById('grid');
-    const rows = state.rows.slice(state.renderedCount, state.visibleCount);
+    if (!grid || token !== state.token) return;
+    if (state.rendering) {
+      state.pendingRender = true;
+      return;
+    }
+    const startedAt = nowMs();
+    const range = virtualWindowRange(grid);
+    if (!options.force && range.start === state.windowStart && range.end === state.windowEnd) {
+      updateChrome(cfg);
+      return;
+    }
     state.rendering = true;
     try {
+      resetRdkitCardObserver();
+      resetXyzrenderCardObserver();
+      resetCardRenderQueues();
+      const fragment = document.createDocumentFragment();
+      const cards = [];
+      if (range.topHeight > 0) fragment.appendChild(gridSpacer('top', range.topHeight));
+      const rows = state.rows.slice(range.start, range.end);
       for (const row of rows) {
         if (token !== state.token) return;
         const nextCard = card(row, cfg);
-        grid.appendChild(nextCard);
+        cards.push({ row, card: nextCard });
+        fragment.appendChild(nextCard);
+      }
+      if (range.bottomHeight > 0) fragment.appendChild(gridSpacer('bottom', range.bottomHeight));
+      grid.replaceChildren(fragment);
+      for (const { row, card: nextCard } of cards) {
         scheduleRdkitCard(nextCard, row);
         scheduleXyzrenderCard(nextCard, row, cfg);
-        state.renderedCount++;
-        if (state.renderedCount % 8 === 0) await new Promise(resolve => requestAnimationFrame(resolve));
       }
+      state.windowStart = range.start;
+      state.windowEnd = range.end;
+      state.renderedCount = Math.max(0, range.end - range.start);
+      updateVirtualGridMetrics();
       updateChrome(cfg);
       scrollPendingGridRow();
       post('ready', 'ready');
+      emitGridPerfMetric(cfg, 'window-render', startedAt, { force: true });
       if (status && !window.BurreteDebug) status.classList.add('hidden');
-      scheduleBackgroundGridWork(cfg, token);
     } finally {
       state.rendering = false;
       if (token === state.token) {
+        if (state.pendingRender) {
+          state.pendingRender = false;
+          requestAnimationFrame(() => {
+            void renderVirtualWindow(cfg, token, { force: true });
+            maybeLoadMore(cfg);
+          });
+          return;
+        }
         if (state.pendingLoad) {
           state.pendingLoad = false;
           loadMore(cfg);
         } else {
-          requestAnimationFrame(() => maybeLoadMore(cfg));
+          requestAnimationFrame(() => {
+            scheduleVirtualWindowRender(cfg);
+            maybeLoadMore(cfg);
+          });
         }
       }
     }
   }
 
-  function cancelBackgroundGridWork() {
-    if (!state.backgroundGridWorkTimer) return;
-    window.clearTimeout(state.backgroundGridWorkTimer);
-    state.backgroundGridWorkTimer = 0;
+  function gridSpacer(position, height) {
+    const spacer = document.createElement('div');
+    spacer.className = `buret-grid-spacer buret-grid-spacer-${position}`;
+    spacer.style.height = `${Math.max(0, Math.round(height))}px`;
+    spacer.setAttribute('aria-hidden', 'true');
+    return spacer;
   }
 
-  function scheduleBackgroundGridWork(cfg, token = state.token) {
-    if (state.backgroundGridWorkTimer || token !== state.token) return;
-    state.backgroundGridWorkTimer = window.setTimeout(() => {
-      state.backgroundGridWorkTimer = 0;
-      void runBackgroundGridWork(cfg, token);
-    }, BACKGROUND_GRID_WORK_DELAY_MS);
+  function virtualWindowRange(grid) {
+    updateVirtualGridMetrics();
+    const visibleRows = Math.min(state.visibleCount, state.rows.length);
+    if (!visibleRows) return { start: 0, end: 0, topHeight: 0, bottomHeight: 0 };
+    const columns = Math.max(1, state.estimatedColumnCount);
+    const totalGridRows = Math.ceil(visibleRows / columns);
+    const gridTop = grid.getBoundingClientRect().top + scrollTop();
+    const viewportTop = Math.max(0, scrollTop() - gridTop);
+    const viewportBottom = viewportTop + viewportHeight();
+    const rowHeight = estimatedRowStride();
+    const firstGridRow = Math.max(0, Math.floor(viewportTop / rowHeight) - GRID_WINDOW_OVERSCAN_ROWS);
+    const lastGridRow = Math.min(
+      totalGridRows,
+      Math.ceil(viewportBottom / rowHeight) + GRID_WINDOW_OVERSCAN_ROWS
+    );
+    const cappedLastGridRow = Math.min(totalGridRows, firstGridRow + GRID_MAX_WINDOW_ROWS);
+    const start = Math.min(visibleRows, firstGridRow * columns);
+    const end = Math.min(visibleRows, Math.max(start + columns, cappedLastGridRow * columns));
+    return {
+      start,
+      end,
+      topHeight: firstGridRow * rowHeight,
+      bottomHeight: Math.max(0, (totalGridRows - Math.ceil(end / columns)) * rowHeight)
+    };
   }
 
-  async function runBackgroundGridWork(cfg, token) {
-    if (token !== state.token) return;
-    if (state.rendering || state.remoteLoading) {
-      scheduleBackgroundGridWork(cfg, token);
+  function updateVirtualGridMetrics() {
+    const grid = document.getElementById('grid');
+    if (!grid) return;
+    const styles = getComputedStyle(grid);
+    const gap = cssPixels(styles.rowGap || styles.gap, state.estimatedGridGap || 10);
+    state.estimatedGridGap = gap;
+    const card = grid.querySelector('.buret-card');
+    const gridWidth = grid.getBoundingClientRect().width || window.innerWidth || DEFAULT_CARD_MIN;
+    if (card) {
+      const rect = card.getBoundingClientRect();
+      if (Number.isFinite(rect.width) && rect.width > 0) {
+        state.estimatedColumnCount = Math.max(1, Math.floor((gridWidth + gap) / (rect.width + gap)));
+      }
+      if (Number.isFinite(rect.height) && rect.height > 0) {
+        state.estimatedRowHeight = Math.max(GRID_MIN_ESTIMATED_ROW_HEIGHT, rect.height);
+      }
       return;
     }
-    const didWork = startBackgroundCardRenderJobs(BACKGROUND_CARD_RENDER_BATCH) > 0;
-    if (token === state.token && (didWork || hasBackgroundGridWork())) {
-      scheduleBackgroundGridWork(cfg, token);
-    }
+    const cardMin = state.cardMin || DEFAULT_CARD_MIN;
+    state.estimatedColumnCount = Math.max(1, Math.floor((gridWidth + gap) / (cardMin + gap)));
+    state.estimatedRowHeight = Math.max(GRID_MIN_ESTIMATED_ROW_HEIGHT, cardMin + (state.showProperties ? 120 : 0));
   }
 
-  function hasBackgroundGridWork() {
-    return hasLazyCardTargets(state.cardRenderer === 'xyzrender'
-        ? state.xyzrenderCardLazyTargets
-        : state.rdkitCardLazyTargets);
+  function cssPixels(value, fallback) {
+    const number = Number.parseFloat(String(value || ''));
+    return Number.isFinite(number) ? number : fallback;
   }
 
-  function hasLazyCardTargets(targets) {
-    return targets.some(target => target?.isConnected && (
-      target.hasAttribute('data-buret-rdkit-card-key')
-      || target.hasAttribute('data-buret-xyzrender-card-key')
-    ));
+  function estimatedRowStride() {
+    return Math.max(GRID_MIN_ESTIMATED_ROW_HEIGHT, state.estimatedRowHeight + state.estimatedGridGap);
+  }
+
+  function scrollTop() {
+    return window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+  }
+
+  function viewportHeight() {
+    return window.innerHeight || document.documentElement.clientHeight || 800;
   }
 
   function updateChrome(cfg) {
@@ -1050,9 +1331,11 @@
       : Number(cfg.recordsTotal || state.all.length);
     const included = state.remoteMode ? state.recordsIndexed : Number(cfg.recordsIncluded || state.all.length);
     const visible = state.remoteMode ? state.totalRows : state.rows.length;
+    const scrollable = Math.min(state.visibleCount, state.rows.length);
     document.getElementById('summary').textContent = [
       `${visible.toLocaleString()} visible`,
-      `${state.renderedCount.toLocaleString()} shown`,
+      `${scrollable.toLocaleString()} scrollable`,
+      `${state.renderedCount.toLocaleString()} mounted`,
       `${included.toLocaleString()} loaded`,
       state.dirty ? `unsaved ${state.dirtyReason || 'edits'}` : '',
       state.indexing
@@ -1068,7 +1351,7 @@
       loadStatus.textContent = state.indexing
         ? `Indexing ${included.toLocaleString()}${state.recordsTotalHint ? ` / ${state.recordsTotalHint.toLocaleString()}` : ''} molecules`
         : hasMoreRows()
-        ? `${state.renderedCount.toLocaleString()} of ${visible.toLocaleString()} shown`
+        ? `${scrollable.toLocaleString()} of ${visible.toLocaleString()} scrollable`
         : 'All visible molecules loaded';
     }
     const clearSMARTS = document.getElementById('clear-smarts');
@@ -1092,13 +1375,13 @@
     } else if (total > included && !state.remoteMode) {
       footerText = `Showing first ${included.toLocaleString()} of ${total.toLocaleString()} records.`;
     } else if (hasMoreRows()) {
-      footerText = `Scroll to load more. ${state.renderedCount.toLocaleString()} of ${visible.toLocaleString()} visible molecules are rendered.`;
+      footerText = `Scroll to load more. ${scrollable.toLocaleString()} of ${visible.toLocaleString()} visible molecules are scrollable.`;
     } else if (state.remoteMode) {
-      footerText = 'Desktop grid runtime is loading rows on demand.';
+      footerText = 'Desktop grid runtime loads rows on demand and keeps only the active window mounted.';
     } else {
       footerText = state.cardRenderer === 'xyzrender'
         ? 'External xyzrender card rendering.'
-        : 'Offline RDKit.js rendering. No network access required.';
+        : 'Offline RDKit.js rendering with windowed cards. No network access required.';
     }
     document.getElementById('footer').textContent = footerText;
     updateGridRail();
@@ -1115,9 +1398,13 @@
       if (!target) return;
       const position = Number(target.getAttribute('data-buret-grid-rail-position'));
       const index = Number(target.getAttribute('data-buret-grid-rail-index'));
-      if (Number.isFinite(position)) void scrollToGridPosition(position, cfg);
-      else scrollToGridRow(index, cfg);
+      if (Number.isFinite(position)) void scrollToGridPosition(position, cfg, { behavior: 'smooth' });
+      else scrollToGridRow(index, cfg, { behavior: 'smooth' });
     });
+    ticks.addEventListener('pointerenter', event => updateGridRailPopoverFromPointer(event.clientY));
+    ticks.addEventListener('pointermove', event => updateGridRailPopoverFromPointer(event.clientY));
+    ticks.addEventListener('pointerleave', hideGridRailPopover);
+    ticks.addEventListener('pointerdown', event => startGridRailTrackPointer(event, cfg));
     marker?.addEventListener('pointerdown', event => startGridRailDrag(event, cfg));
     window.addEventListener('scroll', updateGridRailActive, { passive: true });
     window.addEventListener('resize', updateGridRailActive, { passive: true });
@@ -1195,41 +1482,72 @@
     marker.style.setProperty('--buret-grid-rail-active-offset', `${offset.toFixed(2)}px`);
   }
 
-  function scrollToGridRow(index, cfg) {
+  function updateGridRailPopoverFromPointer(clientY) {
+    const ticks = root.querySelector('[data-buret-grid-rail-ticks]');
+    if (!ticks) return;
+    const position = gridRailIndexFromPointer(clientY, ticks);
+    if (position == null) return;
+    showGridRailPopover(position, clientY);
+  }
+
+  function showGridRailPopover(position, clientY) {
+    const popover = root.querySelector('[data-buret-grid-rail-popover]');
+    const ticks = root.querySelector('[data-buret-grid-rail-ticks]');
+    if (!popover || !ticks) return;
+    const total = gridRailTotalRows();
+    if (total < 2) return;
+    const target = Math.max(0, Math.min(total - 1, Math.round(position)));
+    const row = state.rows[target];
+    const indexNode = popover.querySelector('[data-buret-grid-rail-popover-index]');
+    const nameNode = popover.querySelector('[data-buret-grid-rail-popover-name]');
+    if (indexNode) indexNode.textContent = `${(target + 1).toLocaleString()} / ${total.toLocaleString()}`;
+    if (nameNode) nameNode.textContent = row?.name || `Molecule ${target + 1}`;
+    const rect = ticks.getBoundingClientRect();
+    const y = Math.max(rect.top, Math.min(clientY, rect.bottom));
+    popover.style.setProperty('--buret-grid-rail-popover-offset', `${(y - rect.top - rect.height / 2).toFixed(2)}px`);
+    popover.hidden = false;
+  }
+
+  function hideGridRailPopover() {
+    const popover = root.querySelector('[data-buret-grid-rail-popover]');
+    if (popover) popover.hidden = true;
+  }
+
+  function scrollToGridRow(index, cfg, options = {}) {
+    const behavior = options.behavior || (state.railDragging ? 'auto' : 'smooth');
     let card = document.querySelector(`.buret-card[data-index="${index}"]`);
     if (card) {
       state.pendingGridScrollIndex = null;
-      scrollGridCardIntoView(card, state.railDragging ? 'auto' : 'smooth');
+      scrollGridCardIntoView(card, behavior);
       return;
     }
-    if (hasMoreRows()) {
-      const rowIndex = state.rows.findIndex(row => Number(row.index) === index);
-      if (rowIndex >= 0) {
-        state.pendingGridScrollIndex = index;
-        state.visibleCount = Math.min(state.rows.length, Math.max(state.visibleCount, rowIndex + 1));
-        if (state.rendering) {
-          state.pendingLoad = true;
-          return;
-        }
-        void appendVisibleRows(cfg, state.token);
+    const rowIndex = state.rows.findIndex(row => Number(row.index) === index);
+    if (rowIndex >= 0) {
+      state.pendingGridScrollIndex = index;
+      state.visibleCount = Math.min(state.rows.length, Math.max(state.visibleCount, rowIndex + 1));
+      scrollToEstimatedGridRow(rowIndex, behavior);
+      if (state.rendering) {
+        state.pendingLoad = true;
+        return;
       }
+      void renderVirtualWindow(cfg, state.token, { force: true });
       return;
     }
     state.pendingGridScrollIndex = null;
   }
 
-  async function scrollToGridPosition(position, cfg) {
+  async function scrollToGridPosition(position, cfg, options = {}) {
     if (!Number.isFinite(position)) return;
     const total = gridRailTotalRows();
     const target = Math.max(0, Math.min(total - 1, Math.round(position)));
     if (state.remoteMode && target >= state.rows.length) {
-      await loadRemoteRowsThrough(target, cfg);
+      await loadRemoteRowsThrough(target, cfg, options);
     }
     const row = state.rows[target];
-    if (row) scrollToGridRow(Number(row.index), cfg);
+    if (row) scrollToGridRow(Number(row.index), cfg, options);
   }
 
-  async function loadRemoteRowsThrough(position, cfg) {
+  async function loadRemoteRowsThrough(position, cfg, options = {}) {
     if (!state.remoteMode || state.remoteLoading) {
       state.pendingGridRailPosition = position;
       return;
@@ -1258,7 +1576,8 @@
           state.pendingLoad = true;
           return;
         }
-        await appendVisibleRows(cfg, state.token);
+        scrollToEstimatedGridRow(position, options.behavior || 'auto');
+        await renderVirtualWindow(cfg, state.token, { force: true });
       }
     } catch (error) {
       setStatus(error?.message || String(error), 'error');
@@ -1266,7 +1585,7 @@
       state.remoteLoading = false;
       const pending = state.pendingGridRailPosition;
       state.pendingGridRailPosition = null;
-      if (pending != null && pending !== position) void scrollToGridPosition(pending, cfg);
+      if (pending != null && pending !== position) void scrollToGridPosition(pending, cfg, options);
     }
   }
 
@@ -1284,6 +1603,15 @@
     updateGridRailActive();
   }
 
+  function scrollToEstimatedGridRow(position, behavior = state.railDragging ? 'auto' : 'smooth') {
+    const grid = document.getElementById('grid');
+    if (!grid || !Number.isFinite(position)) return;
+    updateVirtualGridMetrics();
+    const gridTop = grid.getBoundingClientRect().top + scrollTop();
+    const row = Math.floor(Math.max(0, position) / Math.max(1, state.estimatedColumnCount));
+    window.scrollTo({ top: Math.max(0, gridTop + row * estimatedRowStride()), behavior });
+  }
+
   function startGridRailDrag(event, cfg) {
     if (event.button != null && event.button !== 0) return;
     const marker = event.currentTarget;
@@ -1298,7 +1626,8 @@
     const updateFromPoint = clientY => {
       const position = gridRailIndexFromPointer(clientY, ticks);
       if (position == null) return;
-      scrollToGridPosition(position, cfg);
+      showGridRailPopover(position, clientY);
+      scrollToGridPosition(position, cfg, { behavior: 'auto' });
     };
     updateFromPoint(event.clientY);
     const onMove = moveEvent => {
@@ -1311,6 +1640,52 @@
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onEnd);
       window.removeEventListener('pointercancel', onEnd);
+      hideGridRailPopover();
+      updateGridRailActive();
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onEnd, { once: true });
+    window.addEventListener('pointercancel', onEnd, { once: true });
+  }
+
+  function startGridRailTrackPointer(event, cfg) {
+    if (event.button != null && event.button !== 0) return;
+    const ticks = root.querySelector('[data-buret-grid-rail-ticks]');
+    if (!ticks) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const pointerId = event.pointerId;
+    let dragging = false;
+    let lastClientY = event.clientY;
+    const startClientY = event.clientY;
+    try { ticks.setPointerCapture(pointerId); } catch (_) {}
+    updateGridRailPopoverFromPointer(event.clientY);
+    const scrollFromPoint = (clientY, behavior) => {
+      const position = gridRailIndexFromPointer(clientY, ticks);
+      if (position == null) return;
+      showGridRailPopover(position, clientY);
+      scrollToGridPosition(position, cfg, { behavior });
+    };
+    const onMove = moveEvent => {
+      if (moveEvent.pointerId !== pointerId) return;
+      lastClientY = moveEvent.clientY;
+      if (Math.abs(lastClientY - startClientY) > 4) dragging = true;
+      if (!dragging) {
+        updateGridRailPopoverFromPointer(lastClientY);
+        return;
+      }
+      state.railDragging = true;
+      document.body.classList.add('buret-grid-rail-dragging');
+      scrollFromPoint(lastClientY, 'auto');
+    };
+    const onEnd = () => {
+      if (!dragging) scrollFromPoint(lastClientY, 'smooth');
+      state.railDragging = false;
+      document.body.classList.remove('buret-grid-rail-dragging');
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onEnd);
+      window.removeEventListener('pointercancel', onEnd);
+      hideGridRailPopover();
       updateGridRailActive();
     };
     window.addEventListener('pointermove', onMove);
@@ -2011,7 +2386,7 @@
       }
       html = sanitizeSVG(String(html || ''));
       html = stripSVGClipping(html);
-      html = padSVGViewBox(html, 52);
+      html = padSVGViewBox(html, 8);
       if (!html.includes('<svg')) throw new Error('empty drawing');
       if (isDegenerateMoleculeSVG(html)) throw new Error('invalid molecule drawing');
     } catch (error) {
@@ -2079,9 +2454,7 @@
     state.rdkitCardQueue.sort(compareCardRenderJobs);
     state.rdkitCardRendering = true;
     requestAnimationFrame(() => {
-      const startedAt = typeof performance !== 'undefined' && typeof performance.now === 'function'
-        ? performance.now()
-        : Date.now();
+      const startedAt = nowMs();
       let processed = 0;
       try {
         while (state.rdkitCardQueue.length && processed < RDKIT_CARD_FRAME_BATCH) {
@@ -2089,12 +2462,13 @@
           updateRdkitCard(job.key, drawRdkit(job.row));
           state.rdkitCardPending.delete(job.key);
           processed++;
-          const now = typeof performance !== 'undefined' && typeof performance.now === 'function'
-            ? performance.now()
-            : Date.now();
+          const now = nowMs();
           if (processed >= 2 && now - startedAt >= RDKIT_CARD_FRAME_BUDGET_MS) break;
         }
       } finally {
+        try {
+          emitGridPerfMetric(config(), 'rdkit-batch', startedAt, { processed });
+        } catch (_) {}
         state.rdkitCardRendering = false;
         if (state.rdkitCardQueue.length) window.setTimeout(pumpRdkitCardQueue, 0);
       }
@@ -2116,53 +2490,14 @@
     return Math.abs(rect.bottom);
   }
 
-  function startBackgroundCardRenderJobs(limit) {
-    if (limit <= 0) return 0;
-    if (state.cardRenderer === 'xyzrender') {
-      return startBackgroundXyzrenderCards(limit);
-    }
-    return startBackgroundRdkitCards(limit);
-  }
-
-  function startBackgroundRdkitCards(limit) {
-    if (!state.rdkit && !state.rdkitError) return 0;
-    let started = 0;
-    const waiting = [];
-    for (const target of state.rdkitCardLazyTargets) {
-      if (!target?.isConnected || !target.hasAttribute('data-buret-rdkit-card-key')) continue;
-      if (started < limit) {
-        startLazyRdkitCard(target);
-        started++;
-      } else {
-        waiting.push(target);
-      }
-    }
-    state.rdkitCardLazyTargets = waiting;
-    return started;
-  }
-
-  function startBackgroundXyzrenderCards(limit) {
-    let started = 0;
-    const waiting = [];
-    for (const target of state.xyzrenderCardLazyTargets) {
-      if (!target?.isConnected || !target.hasAttribute('data-buret-xyzrender-card-key')) continue;
-      if (started < limit) {
-        startLazyXyzrenderCard(target);
-        started++;
-      } else {
-        waiting.push(target);
-      }
-    }
-    state.xyzrenderCardLazyTargets = waiting;
-    return started;
-  }
-
   function updateRdkitCard(key, html) {
     root.querySelectorAll('[data-buret-rdkit-card-key]').forEach(target => {
       if (target.getAttribute('data-buret-rdkit-card-key') !== key) return;
       target.classList.remove('buret-molecule-loading');
       target.removeAttribute('data-buret-rdkit-card-key');
       target.innerHTML = html;
+      const card = target.closest('.buret-card');
+      if (card) fitCardSVGs(card);
     });
   }
 
@@ -2181,7 +2516,7 @@
     if (cached?.html) return cached.html;
     if (cached?.error) return `<div class="buret-molecule-error"><strong>${escapeHTML(row.name || `Molecule ${Number(row.index) + 1}`)}</strong><span>${escapeHTML(cached.error)}</span></div>`;
     const preview = drawRdkitPlaceholder(row);
-    return `<div class="buret-xyzrender-preview" data-buret-xyzrender-card-key="${escapeAttr(key)}">${preview}</div>`;
+    return `<div class="buret-molecule-picture buret-xyzrender-preview" data-buret-xyzrender-card-key="${escapeAttr(key)}">${preview}</div>`;
   }
 
   function xyzrenderCardKey(row, record) {
@@ -2237,19 +2572,24 @@
     state.rdkitCardQueue = [];
     state.rdkitCardPending.clear();
     state.xyzrenderCardQueue = [];
+    state.xyzrenderBatchesRunning = 0;
+    if (state.xyzrenderBatchTimer) {
+      window.clearTimeout(state.xyzrenderBatchTimer);
+      state.xyzrenderBatchTimer = 0;
+    }
     state.xyzrenderCardCache.forEach((value, key) => {
       if (value?.pending) state.xyzrenderCardCache.delete(key);
     });
   }
 
   function resetDocumentRuntimeState() {
-    cancelBackgroundGridWork();
+    cancelVirtualWindowRender();
     state.query = '';
     state.smarts = '';
     state.smartsError = '';
     state.smartsMatches = new Map();
     state.rows = [];
-    state.all = [];
+    state.all = Array.isArray(window.BurreteGridRecords) ? window.BurreteGridRecords : [];
     state.selected = new Set();
     state.hiddenRows = new Set();
     state.selectionAnchorIndex = null;
@@ -2259,6 +2599,8 @@
     state.pendingLoad = false;
     state.pendingGridScrollIndex = null;
     state.pendingGridRailPosition = null;
+    state.windowStart = 0;
+    state.windowEnd = 0;
     resetRdkitCardObserver();
     resetXyzrenderCardObserver();
     resetCardRenderQueues();
@@ -2279,6 +2621,7 @@
 
   async function requestXyzrenderCard(row, cfg, record, key) {
     const endpoint = String(cfg.xyzrenderEndpoint || '/__burette/xyzrender');
+    const startedAt = nowMs();
     try {
       const request = {
         path: record.path,
@@ -2304,15 +2647,88 @@
         if (!response.ok) throw new Error(typeof payload?.error === 'string' ? payload.error : `xyzrender request failed with status ${response.status}`);
       }
       if (typeof payload?.svg !== 'string' || !payload.svg.trim()) throw new Error('xyzrender endpoint returned no SVG payload');
-      const html = prepareXyzrenderCardSVG(payload.svg);
-      if (!html.includes('<svg')) throw new Error('empty xyzrender drawing');
+      const svg = prepareXyzrenderCardSVG(payload.svg);
+      if (!svg.includes('<svg')) throw new Error('empty xyzrender drawing');
+      const html = svgDataImageHTML(svg, 'buret-xyzrender-card-image', row.name || `Molecule ${Number(row.index) + 1}`);
       state.xyzrenderCardCache.set(key, { html });
+      evictXyzrenderCardCache();
       updateXyzrenderCard(key, html);
+      emitGridPerfMetric(cfg, 'xyzrender-card', startedAt, {
+        rowIndex: Number(row.index),
+        xyzrenderElapsedMs: Number(payload?.elapsedMs) || null,
+        cacheHit: payload?.cacheHit === true
+      });
     } catch (error) {
       const message = error?.message || String(error);
       state.xyzrenderCardCache.set(key, { error: message });
       updateXyzrenderCard(key, `<div class="buret-molecule-error"><strong>${escapeHTML(row.name || `Molecule ${Number(row.index) + 1}`)}</strong><span>${escapeHTML(message)}</span></div>`);
+      emitGridPerfMetric(cfg, 'xyzrender-card-error', startedAt, {
+        rowIndex: Number(row.index),
+        error: message
+      });
     }
+  }
+
+  async function requestXyzrenderCardBatch(jobs) {
+    if (!jobs.length) return;
+    const cfg = jobs[0].cfg;
+    const startedAt = nowMs();
+    try {
+      const payload = await hostRequest('renderXyzrenderCards', {
+        items: jobs.map(job => ({
+          id: job.key,
+          path: job.record.path,
+          preset: 'default',
+          inputDataBase64: textToBase64(xyzrenderFragmentText(job.record)),
+          inputExtension: job.record.inputExtension
+        }))
+      });
+      const results = Array.isArray(payload?.items) ? payload.items : [];
+      const byId = new Map(results.map(item => [String(item?.id || ''), item]));
+      for (const job of jobs) {
+        const item = byId.get(job.key);
+        if (!item) {
+          markXyzrenderCardError(job, 'xyzrender batch returned no result');
+          continue;
+        }
+        if (item.error) {
+          markXyzrenderCardError(job, String(item.error));
+          continue;
+        }
+        if (typeof item.svg !== 'string' || !item.svg.trim()) {
+          markXyzrenderCardError(job, 'xyzrender batch returned no SVG payload');
+          continue;
+        }
+        const svg = prepareXyzrenderCardSVG(item.svg);
+        if (!svg.includes('<svg')) {
+          markXyzrenderCardError(job, 'empty xyzrender drawing');
+          continue;
+        }
+        const html = svgDataImageHTML(svg, 'buret-xyzrender-card-image', job.row.name || `Molecule ${Number(job.row.index) + 1}`);
+        state.xyzrenderCardCache.set(job.key, { html });
+        evictXyzrenderCardCache();
+        updateXyzrenderCard(job.key, html);
+        emitGridPerfMetric(cfg, 'xyzrender-card', startedAt, {
+          rowIndex: Number(job.row.index),
+          xyzrenderElapsedMs: Number(item.elapsedMs) || null,
+          cacheHit: item.cacheHit === true,
+          batchSize: jobs.length,
+          batchConcurrency: xyzrenderCardBatchConcurrency()
+        });
+      }
+    } catch (error) {
+      const message = error?.message || String(error);
+      for (const job of jobs) markXyzrenderCardError(job, message);
+    }
+  }
+
+  function markXyzrenderCardError(job, message) {
+    state.xyzrenderCardCache.set(job.key, { error: message });
+    updateXyzrenderCard(job.key, `<div class="buret-molecule-error"><strong>${escapeHTML(job.row.name || `Molecule ${Number(job.row.index) + 1}`)}</strong><span>${escapeHTML(message)}</span></div>`);
+    emitGridPerfMetric(job.cfg, 'xyzrender-card-error', nowMs(), {
+      rowIndex: Number(job.row.index),
+      error: message
+    });
   }
 
   async function fetchXyzrenderCard(endpoint, request) {
@@ -2333,6 +2749,12 @@
     html = stripSVGClipping(html);
     html = markSVGForFitting(html, 'data-buret-xyzrender-svg');
     return html;
+  }
+
+  function evictXyzrenderCardCache() {
+    while (state.xyzrenderCardCache.size > XYZRENDER_CARD_CACHE_LIMIT) {
+      state.xyzrenderCardCache.delete(state.xyzrenderCardCache.keys().next().value);
+    }
   }
 
   function moleculeErrorHTML(label, message) {
@@ -2368,7 +2790,6 @@
     root.querySelectorAll('[data-buret-xyzrender-card-key]').forEach(target => {
       if (target.getAttribute('data-buret-xyzrender-card-key') !== key) return;
       target.classList.remove('buret-molecule-loading');
-      target.classList.remove('buret-xyzrender-preview');
       target.removeAttribute('data-buret-xyzrender-card-key');
       target.innerHTML = html;
       const card = target.closest('.buret-card');
@@ -2434,6 +2855,11 @@
         return `viewBox="${x - padding} ${y - padding} ${width + padding * 2} ${height + padding * 2}"`;
       });
     });
+  }
+
+  function svgDataImageHTML(svg, className, label) {
+    const encoded = encodeURIComponent(String(svg || ''));
+    return `<img class="${escapeAttr(className)}" alt="${escapeAttr(label || 'Molecule')}" src="data:image/svg+xml;charset=utf-8,${encoded}" />`;
   }
 
   function fitCardSVGs(card) {
@@ -2782,7 +3208,13 @@
       try {
         await initRDKit();
         state.rdkitError = '';
-        if (state.cardRenderer === 'rdkit') render(cfg);
+        if (state.cardRenderer === 'rdkit') {
+          if (state.remoteMode) {
+            if (state.rows.length) void renderVirtualWindow(cfg, state.token, { force: true });
+          } else {
+            render(cfg);
+          }
+        }
       } catch (rdkitError) {
         state.rdkitError = rdkitError?.message || String(rdkitError);
         setStatus(`RDKit renderer unavailable: ${state.rdkitError}`, 'error');

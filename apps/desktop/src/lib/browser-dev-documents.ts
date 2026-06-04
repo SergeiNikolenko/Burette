@@ -975,7 +975,7 @@ async function gridHtml(
     recordsTotal: records.length,
     recordsIncluded: records.length,
     recordsTruncated: false,
-    pageSize: 72,
+    pageSize: 720,
     rdkitWasmPath: "/__burette/rdkit-wasm",
     xyzrenderPreset: "default",
     xyzrenderPresetOptions: [
