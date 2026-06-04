@@ -885,6 +885,7 @@ assert.match(gridViewer, /function initGridRail\(cfg\)/);
 assert.match(gridCss, /\.buret-grid-rail \{/);
 assert.match(styles, /\.app-shell\[data-runtime="browser"\]\s*\{[^}]*backdrop-filter: none;[^}]*-webkit-backdrop-filter: none;/s);
 assert.match(styles, /\.app-shell\[data-runtime="tauri"\]\[data-active-page-kind="ketcher"\]\s*\{[^}]*backdrop-filter: none;[^}]*-webkit-backdrop-filter: none;/s);
+assert.doesNotMatch(styles, /\.app-shell\[data-runtime="tauri"\]\[data-active-page-kind="ketcher"\]\s*\{[^}]*background: var\(--bg-base\);/s);
 assert.match(styles, /\.page-surface\[data-page-kind="file"\]:not\(\[data-active\]\),\s*\.page-surface\[data-page-kind="ketcher"\]:not\(\[data-active\]\) \{ display: block; \}/);
 assert.match(styles, /\.ketcher-editor-shell\s*\{[^}]*overflow: hidden;[^}]*isolation: isolate;/s);
 assert.doesNotMatch(styles, /\.ketcher-editor-shell\s*\{[^}]*contain: layout paint;/s);
