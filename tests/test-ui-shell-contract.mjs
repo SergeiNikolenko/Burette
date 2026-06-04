@@ -846,6 +846,9 @@ assert.match(styles, /button, select, input, textarea, \.tab-shell, \.tab, \.new
 assert.match(styles, /\.drag-region \{[^}]*height: var\(--chrome-drag-height\);[^}]*z-index: 2/s);
 assert.doesNotMatch(styles, /\.workspace \{[^}]*z-index:/s);
 assert.match(styles, /\.splitter \{[^}]*z-index: 3;/s);
+assert.match(styles, /--sidebar-divider-right: var\(--line-subtle\)/);
+assert.match(styles, /\.sidebar::after \{[^}]*background: var\(--sidebar-divider-right\);/s);
+assert.match(styles, /\.splitter::after \{ background: var\(--sidebar-divider-right\); \}/);
 assert.match(styles, /\.main-stage \{[^}]*background: var\(--bg-base\);[^}]*overflow: hidden/s);
 assert.match(styles, /\.app-shell\[data-theme="auto"\] \{[^}]*color-scheme: light dark/s);
 assert.match(styles, /@media \(prefers-color-scheme: light\) \{[\s\S]*\.app-shell\[data-theme="auto"\]/);
