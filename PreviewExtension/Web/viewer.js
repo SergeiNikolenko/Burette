@@ -589,7 +589,7 @@
   }
 
   function canUseExternalXyzrender(format) {
-    return ['xyz', 'sdf', 'pdb', 'pdbqt', 'mmcif', 'cifcore'].includes(normalizeFormat(format));
+    return ['xyz', 'sdf', 'pdb', 'pdbqt', 'mmcif', 'cifCore'].includes(normalizeFormat(format));
   }
 
   function rendererChoiceUnavailable(value, format, config, xyzrenderAvailable) {
@@ -1163,7 +1163,7 @@
   function captureCurrentXyzrenderOrientationRef() {
     const config = activeConfig || {};
     const format = normalizeFormat(config.molstarFormat || config.format);
-    if (format !== 'xyz' || config.binary === true || !activeViewer) return null;
+    if (config.binary === true || !activeViewer || !canUseExternalXyzrender(format)) return null;
     const nextRef = buildXyzrenderOrientationRef(activeViewer, config);
     if (nextRef) latestXyzrenderOrientationRef = nextRef;
     return nextRef || latestXyzrenderOrientationRef;
@@ -1175,7 +1175,7 @@
       orientationTrackingCleanup = null;
     }
     latestXyzrenderOrientationRef = null;
-    if (normalizeFormat(config.molstarFormat || config.format) !== 'xyz' || config.binary === true) return;
+    if (config.binary === true || !canUseExternalXyzrender(config.molstarFormat || config.format)) return;
 
     const disposers = [];
     const update = debounce(() => {
@@ -1218,7 +1218,7 @@
   }
 
   function buildXyzrenderOrientationRef(viewer, config) {
-    const frame = parseFirstXYZFrame(rawStructureData({ ...config, binary: false }));
+    const frame = orientationFrameFromConfig(config);
     if (!frame || !frame.atoms.length || frame.atoms.length > 50000) return null;
     const snapshot = readCameraSnapshot(viewer);
     const basis = cameraBasis(snapshot, frame.atoms);
@@ -1242,6 +1242,97 @@
     const text = lines.join('\n') + '\n';
     if (text.length > 4 * 1024 * 1024) return null;
     return { text, atomCount: frame.atoms.length };
+  }
+
+  function orientationFrameFromConfig(config) {
+    if (!config || config.binary === true) return null;
+    const format = normalizeFormat(config.molstarFormat || config.format);
+    const text = rawStructureData({ ...config, binary: false });
+    if (format === 'xyz') return parseFirstXYZFrame(text);
+    if (format === 'pdb' || format === 'pdbqt') return orientationFrameFromPdbText(text);
+    if (format === 'sdf') return orientationFrameFromSdfText(text);
+    if (format === 'mmcif' || format === 'cifCore') return orientationFrameFromCifText(text);
+    return null;
+  }
+
+  function orientationFrameFromPdbText(text) {
+    const atoms = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+      .map(line => {
+        const atom = parsePdbAtomLine(line);
+        if (!atom) return null;
+        return { symbol: pdbAtomSymbol(line), x: atom.x, y: atom.y, z: atom.z };
+      })
+      .filter(Boolean);
+    return atoms.length ? { atoms } : null;
+  }
+
+  function orientationFrameFromSdfText(text) {
+    const records = splitSdfRecords(text);
+    const molecule = parseV2000SdfRecord(records[0] || text);
+    const atoms = molecule?.atoms?.map(atom => ({
+      symbol: sdfAtomSymbol(atom),
+      x: atom.x,
+      y: atom.y,
+      z: atom.z
+    })) || [];
+    return atoms.length ? { atoms } : null;
+  }
+
+  function orientationFrameFromCifText(text) {
+    const cif = parseCif(text);
+    const atomLoop = cif.loops.find(loop => {
+      const tags = new Set(loop.tags);
+      return hasAnyCifTag(tags, ['_atom_site.cartn_x', '_atom_site_cartn_x', '_atom_site.fract_x', '_atom_site_fract_x']) &&
+        hasAnyCifTag(tags, ['_atom_site.type_symbol', '_atom_site_type_symbol', '_atom_site.label_atom_id', '_atom_site_label_atom_id', '_atom_site.label', '_atom_site_label']);
+    });
+    if (!atomLoop) return null;
+    const idx = Object.fromEntries(atomLoop.tags.map((tag, i) => [tag, i]));
+    const width = atomLoop.tags.length;
+    const scalar = (...tags) => tags.map(tag => cif.scalars.get(tag)).find(value => value != null);
+    const a = parseFloatLoose(scalar('_cell.length_a', '_cell_length_a'));
+    const b = parseFloatLoose(scalar('_cell.length_b', '_cell_length_b'));
+    const c = parseFloatLoose(scalar('_cell.length_c', '_cell_length_c'));
+    const alpha = deg2rad(parseFloatLoose(scalar('_cell.angle_alpha', '_cell_angle_alpha')) || 90);
+    const beta = deg2rad(parseFloatLoose(scalar('_cell.angle_beta', '_cell_angle_beta')) || 90);
+    const gamma = deg2rad(parseFloatLoose(scalar('_cell.angle_gamma', '_cell_angle_gamma')) || 90);
+    const haveCell = Number.isFinite(a) && Number.isFinite(b) && Number.isFinite(c);
+    const atoms = [];
+    for (let rowStart = 0; rowStart + width <= atomLoop.values.length; rowStart += width) {
+      const get = (...tags) => {
+        for (const tag of tags) {
+          const index = idx[tag];
+          if (index != null) return atomLoop.values[rowStart + index];
+        }
+        return undefined;
+      };
+      const label = get('_atom_site.label_atom_id', '_atom_site_label_atom_id', '_atom_site.auth_atom_id', '_atom_site_auth_atom_id', '_atom_site.label', '_atom_site_label') || 'X';
+      let x = parseFloatLoose(get('_atom_site.cartn_x', '_atom_site_cartn_x'));
+      let y = parseFloatLoose(get('_atom_site.cartn_y', '_atom_site_cartn_y'));
+      let z = parseFloatLoose(get('_atom_site.cartn_z', '_atom_site_cartn_z'));
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+        const fx = parseFloatLoose(get('_atom_site.fract_x', '_atom_site_fract_x'));
+        const fy = parseFloatLoose(get('_atom_site.fract_y', '_atom_site_fract_y'));
+        const fz = parseFloatLoose(get('_atom_site.fract_z', '_atom_site_fract_z'));
+        if (!haveCell || !Number.isFinite(fx) || !Number.isFinite(fy) || !Number.isFinite(fz)) continue;
+        [x, y, z] = fracToCart(fx, fy, fz, a, b, c, alpha, beta, gamma);
+      }
+      if ([x, y, z].every(Number.isFinite)) {
+        atoms.push({ symbol: cleanElement(get('_atom_site.type_symbol', '_atom_site_type_symbol') || label), x, y, z });
+      }
+    }
+    return atoms.length ? { atoms } : null;
+  }
+
+  function hasAnyCifTag(tags, candidates) {
+    return candidates.some(tag => tags.has(tag));
+  }
+
+  function pdbAtomSymbol(line) {
+    return cleanElement(line.slice(76, 78).trim() || line.slice(12, 16).replace(/[0-9]/gu, '').trim() || 'X');
+  }
+
+  function sdfAtomSymbol(atom) {
+    return cleanElement(String(atom?.tail || '').trim().split(/\s+/u)[0] || 'X');
   }
 
   function parseFirstXYZFrame(text) {
