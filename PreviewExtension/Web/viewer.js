@@ -2086,6 +2086,57 @@
     });
   }
 
+  function installNativeRuntimeFileBridge() {
+    if (typeof window.BurreteReceiveNativeRuntimeFile === 'function') return;
+    window.BurreteReceiveNativeRuntimeFile = function (payload) {
+      window.dispatchEvent(new CustomEvent('BurreteNativeRuntimeFileReady', { detail: payload || {} }));
+    };
+  }
+
+  function requestRuntimeFileFromNative(path) {
+    installNativeRuntimeFileBridge();
+    return new Promise((resolve, reject) => {
+      if (typeof window.__mqlPost !== 'function') {
+        reject(new Error('Native Quick Look bridge is unavailable.'));
+        return;
+      }
+      const requestToken = 'native-file-' + Math.random().toString(36).slice(2);
+      let settled = false;
+      const cleanup = () => {
+        window.removeEventListener('BurreteNativeRuntimeFileReady', onReady);
+        clearTimeout(timeout);
+      };
+      const finish = (fn, value) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        fn(value);
+      };
+      const onReady = (event) => {
+        const payload = event.detail || {};
+        if (payload.requestToken !== requestToken) return;
+        if (payload.error) {
+          finish(reject, new Error(String(payload.error)));
+          return;
+        }
+        if (typeof payload.base64 !== 'string' || payload.base64.length === 0) {
+          finish(reject, new Error('Native Quick Look bridge returned an empty runtime file.'));
+          return;
+        }
+        finish(resolve, base64ToBytes(payload.base64));
+      };
+      const timeout = setTimeout(() => {
+        finish(reject, new Error('Timed out while waiting for runtime file from native Quick Look.'));
+      }, 10000);
+      window.addEventListener('BurreteNativeRuntimeFileReady', onReady);
+      try {
+        window.__mqlPost('requestRuntimeFile', 'requestRuntimeFile', { requestToken, path });
+      } catch (error) {
+        finish(reject, error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+  }
+
   function loadArrayBufferViaXHR(url) {
     return new Promise((resolve, reject) => {
       const request = new XMLHttpRequest();
@@ -2132,6 +2183,35 @@
       debug('XMLHttpRequest preview-data.bin failed, requesting native structure payload: ' + (error && error.message || String(error)));
     }
     await requestStructureDataFromNative();
+  }
+
+  async function loadPayloadBytes(path, cb) {
+    const requestURL = appendCacheBuster(path, cb);
+    try {
+      const response = await fetch(requestURL, { cache: 'no-store' });
+      if (!response.ok) {
+        throw new Error('Could not load staged payload: HTTP ' + response.status);
+      }
+      return new Uint8Array(await response.arrayBuffer());
+    } catch (error) {
+      debug('fetch staged payload failed, falling back to XMLHttpRequest: ' + (error && error.message || String(error)));
+    }
+    try {
+      return await loadArrayBufferViaXHR(requestURL);
+    } catch (error) {
+      debug('XMLHttpRequest staged payload failed, requesting native runtime file: ' + (error && error.message || String(error)));
+    }
+    return requestRuntimeFileFromNative(path);
+  }
+
+  async function loadStagedEntryData(entry, cb) {
+    if (typeof entry?.dataBase64 === 'string' && entry.dataBase64.trim()) {
+      return entry.binary ? base64ToBytes(entry.dataBase64) : base64ToText(entry.dataBase64);
+    }
+    const path = typeof entry?.path === 'string' ? entry.path.trim() : '';
+    if (!path) throw new Error('Staged Mol* entry is missing path.');
+    const bytes = await loadPayloadBytes(path, cb);
+    return entry.binary ? bytes : new TextDecoder('utf-8', { fatal: false }).decode(bytes);
   }
 
   function normalizeFormat(format) {
@@ -3639,6 +3719,73 @@
     await plugin.builders.structure.hierarchy.applyPreset(trajectory, entry.loadPreset || 'default');
   }
 
+  async function loadMolstarEntryAsLines(viewer, entry) {
+    const plugin = viewer.plugin;
+    const normalized = normalizeFormat(entry.format);
+    const payload = normalized === 'cifCore'
+      ? { data: coreCifToPdb(entry.data), format: 'pdb' }
+      : { data: entry.data, format: normalized };
+    const data = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
+    const trajectory = await plugin.builders.structure.parseTrajectory(data, payload.format);
+    const model = await plugin.builders.structure.createModel(trajectory);
+    const structure = await plugin.builders.structure.createStructure(model, { name: 'model', params: {} });
+    let created = 0;
+    for (const kind of ['water', 'ion', 'ligand']) {
+      const component = await plugin.builders.structure.tryCreateComponentStatic(structure, kind);
+      if (!component) continue;
+      await plugin.builders.structure.representation.addRepresentation(component, {
+        type: 'line',
+        typeParams: { sizeFactor: 0.16 },
+        color: 'element-symbol'
+      });
+      created += 1;
+    }
+    if (created > 0) return;
+    const component = await plugin.builders.structure.tryCreateComponentStatic(structure, 'all');
+    if (!component) throw new Error('Mol* could not create staged solvent component.');
+    await plugin.builders.structure.representation.addRepresentation(component, {
+      type: 'line',
+      typeParams: { sizeFactor: 0.16 },
+      color: 'element-symbol'
+    });
+  }
+
+  async function loadStagedMolstarEntry(viewer, entry, cb) {
+    const data = await loadStagedEntryData(entry, cb);
+    const prepared = {
+      ...entry,
+      data,
+      format: normalizeFormat(entry.format || 'pdb'),
+      label: entry.label || 'staged structure'
+    };
+    if (entry.representation === 'solvent-lines') {
+      try {
+        await loadMolstarEntryAsLines(viewer, prepared);
+        return;
+      } catch (error) {
+        debug('staged solvent line representation failed, falling back to default preset: ' + (error && error.message || String(error)));
+      }
+    }
+    await loadMolstarEntry(viewer, prepared);
+  }
+
+  async function loadStagedMolstarEntries(viewer, config, cb) {
+    const entries = Array.isArray(config?.stagedEntries) ? config.stagedEntries : [];
+    if (!entries.length) return;
+    setStatus(`[web] Loading ${entries[0]?.label || 'staged structure'}…`);
+    await waitForAnimationFrame();
+    for (const entry of entries) {
+      const label = entry?.label || 'staged structure';
+      setStatus(`[web] Loading ${label}…`);
+      await loadStagedMolstarEntry(viewer, entry, cb);
+      applyLayoutState(viewer);
+      scheduleLayoutStateReapply(viewer);
+      try { viewer.handleResize(); } catch (_) {}
+      setStatus(`[web] Loaded ${label}`);
+    }
+    setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
+  }
+
   async function loadDockingPreparedStructure(viewer, prepared) {
     const plugin = viewer.plugin;
     activeDockingPrepared = prepared;
@@ -4866,6 +5013,15 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     try { viewer.handleResize(); } catch (_) {}
 
     setStatus(`[web] Rendered ${config.label || 'structure'}`);
+    if (Array.isArray(config.stagedEntries) && config.stagedEntries.length > 0) {
+      window.setTimeout(() => {
+        void loadStagedMolstarEntries(viewer, config, cb).catch(error => {
+          setStatus(`[web] Could not load staged solvent.\n\n${error?.message || String(error)}`, 'error');
+          // eslint-disable-next-line no-console
+          console.error(error);
+        });
+      }, 0);
+    }
     setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
   }
 
