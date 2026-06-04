@@ -171,6 +171,7 @@
       selection: !!caps.selection,
       export: !!caps.export,
       substructureSearch: !!caps.substructureSearch,
+      ketcherOpen: cfg.appViewer === true && !!caps.rendererSwitch,
       rendererSwitch: (cfg.appViewer === true || cfg.quickLookViewer === true) && !!caps.rendererSwitch
     };
   }
@@ -544,6 +545,7 @@
       selectionEnabled: caps.selection,
       substructureSearch: caps.substructureSearch,
       supportsXyzrenderCards: supportsXyzrenderCards(cfg),
+      ketcherOpen: caps.ketcherOpen,
       rendererSwitch: caps.rendererSwitch,
       sortOptions: propertyOptionList(cfg),
       onSearchInput(value) {
@@ -573,6 +575,7 @@
       onExportSmiles() { exportSmiles(cfg); },
       onExportCSV() { exportCSV(cfg); },
       onSetCardRenderer(value) { setCardRenderer(value, cfg); },
+      onOpenKetcher() { requestSelectedKetcherDocument(cfg); },
       onRendererSwitch(value) { requestRendererSwitch(value, cfg); },
       onRdkitUseInputCoordsChange(checked) {
         state.rdkitUseInputCoords = checked === true;
@@ -709,6 +712,34 @@
       receptorPath: receptorPath || null
     });
     setStatus(`[grid] Opening ${records.length.toLocaleString()} selected molecule${records.length === 1 ? '' : 's'} in Molstar.`);
+  }
+
+  function requestSelectedKetcherDocument(cfg) {
+    const rows = selectedMolstarRows();
+    if (!rows.length) {
+      setStatus('[grid] Select one or more molecules before opening Ketcher.', 'error');
+      return;
+    }
+    const fragments = rows.map(row => {
+      const record = gridDragRecord(row);
+      if (!record) return null;
+      const text = ketcherFragmentText(record);
+      if (!text.trim()) return null;
+      return {
+        title: record.path,
+        extension: record.inputExtension,
+        textBase64: textToBase64(text)
+      };
+    }).filter(Boolean);
+    if (!fragments.length) {
+      setStatus('[grid] Selected molecules do not have structure data for Ketcher.', 'error');
+      return;
+    }
+    post('openSdfKetcherDocument', '[grid] Open selected molecules in Ketcher.', {
+      documentId: cfg?.documentId || null,
+      fragments
+    });
+    setStatus(`[grid] Opening ${fragments.length.toLocaleString()} selected molecule${fragments.length === 1 ? '' : 's'} in Ketcher.`);
   }
 
   function selectedMolstarRows() {

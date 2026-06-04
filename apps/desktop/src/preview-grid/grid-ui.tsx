@@ -14,6 +14,7 @@ type GridControlProps = {
   selectionEnabled: boolean;
   substructureSearch: boolean;
   supportsXyzrenderCards: boolean;
+  ketcherOpen: boolean;
   rendererSwitch: boolean;
   sortOptions: SortOption[];
   onSearchInput: (value: string) => void;
@@ -27,6 +28,7 @@ type GridControlProps = {
   onExportSmiles: () => void;
   onExportCSV: () => void;
   onSetCardRenderer: (value: "rdkit" | "xyzrender") => void;
+  onOpenKetcher: () => void;
   onRendererSwitch: (value: "molstar") => void;
   onRdkitUseInputCoordsChange: (checked: boolean) => void;
 };
@@ -140,18 +142,29 @@ function GridControls(props: GridControlProps) {
             />
             <span>Use file coords</span>
           </label>
-          {props.rendererSwitch ? (
+          {props.rendererSwitch || props.ketcherOpen ? (
             <div className="buret-grid-renderer-controls">
               <div className="buret-grid-renderer-switch" aria-label="3D renderer">
-                <button
-                  type="button"
-                  data-buret-grid-renderer="molstar"
-                  data-buret-grid-sdf-poses
-                  data-buret-grid-docking
-                  onClick={() => props.onRendererSwitch("molstar")}
-                >
-                  Molstar
-                </button>
+                {props.rendererSwitch ? (
+                  <button
+                    type="button"
+                    data-buret-grid-renderer="molstar"
+                    data-buret-grid-sdf-poses
+                    data-buret-grid-docking
+                    onClick={() => props.onRendererSwitch("molstar")}
+                  >
+                    Molstar
+                  </button>
+                ) : null}
+                {props.ketcherOpen ? (
+                  <button
+                    type="button"
+                    data-buret-grid-ketcher
+                    onClick={props.onOpenKetcher}
+                  >
+                    Ketcher
+                  </button>
+                ) : null}
               </div>
             </div>
           ) : null}
