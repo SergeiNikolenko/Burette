@@ -157,6 +157,7 @@ fn grid_html(
     let config_js = asset_url(&runtime.join("preview-config.js"));
     let rdkit_wasm_js = asset_url(&runtime.join("preview-rdkit-wasm.js"));
     let rdkit_js = versioned_asset_url(&assets.join("rdkit").join("RDKit_minimal.js"));
+    let grid_ui_js = versioned_asset_url(&assets.join("grid-ui.js"));
     let grid_js = versioned_asset_url(&assets.join("grid-viewer.js"));
     format!(
         r#"<!doctype html>
@@ -184,6 +185,7 @@ fn grid_html(
   <script src="{config_js}"></script>
   <script src="{rdkit_wasm_js}"></script>
   <script src="{rdkit_js}"></script>
+  <script src="{grid_ui_js}"></script>
   <script src="{grid_js}"></script>
 </body>
 </html>"#

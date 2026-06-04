@@ -670,7 +670,7 @@ impl AssetProfile {
                 "burette-agent.js",
                 "viewer.js",
             ],
-            Self::Grid => &["grid-viewer.js", "grid.css"],
+            Self::Grid => &["grid-ui.js", "grid-viewer.js", "grid.css"],
             Self::ExternalXyzrender => &[
                 "molstar.css",
                 "viewer-runtime.css",
