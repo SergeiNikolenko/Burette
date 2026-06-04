@@ -75,6 +75,7 @@ const [
   shortcutDocs,
   styles,
   gridCss,
+  gridUi,
   gridViewer,
   previewViewer,
   previewShell,
@@ -153,6 +154,7 @@ const [
   source('docs/keyboard-shortcuts.md'),
   source('apps/desktop/src/styles.css'),
   source('PreviewExtension/Web/grid.css'),
+  source('apps/desktop/src/preview-grid/grid-ui.tsx'),
   source('PreviewExtension/Web/grid-viewer.js'),
   source('PreviewExtension/Web/viewer.js'),
   source('PreviewExtension/Web/viewer-shell.js'),
@@ -766,7 +768,7 @@ assert.match(gridCss, /\.buret-molecule-picture \{[^}]*min-width: 0;/s);
 assert.doesNotMatch(gridCss, /\.buret-molecule-picture \{[^}]*linear-gradient/s);
 assert.match(gridCss, /\.buret-grid-toolbar \{[^}]*position: sticky;/s);
 assert.match(gridCss, /\.buret-grid-toolbar \{[^}]*top: 0;/s);
-assert.match(gridCss, /\.buret-grid-toolbar \{[^}]*background: var\(--buret-bg\);/s);
+assert.match(gridCss, /\.buret-grid-toolbar \{[^}]*background: color-mix\(in srgb, var\(--buret-bg\) 92%, transparent\);/s);
 assert.doesNotMatch(gridCss, /\.buret-grid-toolbar \{[^}]*backdrop-filter:/s);
 assert.doesNotMatch(gridCss, /\.buret-grid-toolbar \{[^}]*-webkit-backdrop-filter:/s);
 assert.match(gridCss, /\.buret-grid \{[^}]*box-sizing: border-box;/s);
@@ -1441,8 +1443,8 @@ assert.match(instance, /Burette Dev \$\{devInstanceSuffix\}/);
 assert.match(instance, /"8a18"/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
-assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v91"/);
-assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v18"/);
+assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v94"/);
+assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v27"/);
 assert.match(browserDevDocuments, /const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT = 1500/);
 assert.match(browserDevDocuments, /if \(document\.renderer === "grid2d"\) return !document\.runtimePath\.includes\(GRID_ASSET_VERSION\);/);
 assert.match(browserDevDocuments, /if \(!document\.runtimePath\.includes\(VIEWER_ASSET_VERSION\)\) return true;/);
@@ -1821,8 +1823,18 @@ assert.match(previewRuntimeCss, /\.buret-molecule-context-menu button:hover,/);
 assert.match(previewRuntimeCss, /\.buret-xyzrender-popover \{[\s\S]*border: 0;/);
 assert.match(previewViewer, /function readNativeTrajectoryPosition\(expectedCount\)/);
 assert.match(previewViewer, /function nativeAnimationSelectButton\(\)/);
+assert.match(previewViewer, /function trajectoryControlsForPrepared\(prepared\)/);
+assert.match(previewViewer, /const label = activeConfig\?\.sdfPosePager === true \? 'Pose' : 'Model'/);
+assert.match(previewViewer, /installDockingPoseControls\(viewer, trajectoryControlsForPrepared\(prepared\)\)/);
+assert.match(previewViewer, /function minimumTrajectoryLoopDelay\(prepared\)/);
+assert.match(previewViewer, /return prepared\?\.nativeTrajectoryControls \? 40 : 300/);
+assert.match(previewViewer, /function minimumTrajectoryLoopTimerDelay\(prepared\)/);
+assert.match(previewViewer, /return prepared\?\.nativeTrajectoryControls \? 8 : 60/);
+assert.match(previewViewer, /function trajectorySpeedToDelay\(value, prepared\)/);
 assert.match(previewViewer, /animation\.textContent = '⏯'/);
+assert.match(previewViewer, /animation\.setAttribute\('aria-expanded', 'false'\)/);
 assert.match(previewViewer, /setAnimationOptionsOpen\(true\)/);
+assert.match(previewViewer, /const isAnimationOptionsOpen = \(\) => root\.classList\.contains\('buret-docking-poses-animation-open'\)/);
 assert.match(previewViewer, /bindPoseStepButton\(previous, -1\)/);
 assert.match(previewViewer, /bindPoseStepButton\(next, 1\)/);
 assert.match(previewViewer, /poseRepeatTimer = window\.setInterval\(\(\) => repeatPoseStep\(direction\), 320\)/);
@@ -1831,8 +1843,17 @@ assert.match(previewViewer, /async function setNativeTrajectoryPose\(index, pose
 assert.match(previewViewer, /if \(prepared\.nativeTrajectoryControls\) \{/);
 assert.match(previewViewer, /const switched = await setNativeTrajectoryPose\(nextIndex, prepared\.poseCount\)/);
 assert.match(previewViewer, /loop\.textContent = 'Loop'/);
+assert.match(previewViewer, /speed\.className = 'buret-docking-pose-speed'/);
+assert.match(previewViewer, /speed\.type = 'number'/);
+assert.match(previewViewer, /speed\.max = '30'/);
+assert.match(previewViewer, /speed\.inputMode = 'decimal'/);
+assert.match(previewViewer, /speed\.addEventListener\('change', \(\) => \{/);
 assert.match(previewViewer, /loop\.addEventListener\('click', \(\) => \{/);
-assert.match(previewViewer, /loopTimer = window\.setInterval\(\(\) => \{/);
+assert.match(previewViewer, /const open = !isAnimationOptionsOpen\(\);\s*setAnimationOptionsOpen\(open\);\s*if \(!open\) return;/);
+assert.match(previewViewer, /const scheduleLoopStep = \(delayMs = loopDelayMs\(\)\) => \{/);
+assert.match(previewViewer, /loopTimer = window\.setTimeout\(\(\) => \{/);
+assert.match(previewViewer, /const elapsed = loopNow\(\) - startedAt;/);
+assert.match(previewViewer, /scheduleLoopStep\(Math\.max\(minimumTrajectoryLoopTimerDelay\(prepared\), loopDelayMs\(\) - elapsed\)\)/);
 assert.match(previewViewer, /slider\.className = 'buret-docking-pose-slider'/);
 assert.match(previewViewer, /slider\.addEventListener\('change', \(\) => \{/);
 assert.match(previewViewer, /function installNativeTrajectoryPoseSync\(poseCount, onPoseChange\)/);
@@ -1844,12 +1865,17 @@ assert.match(previewViewer, /root\.dataset\.defaultPosition = '0';\s*moveDocking
 assert.match(previewViewer, /window\.addEventListener\('pointermove', onPointerMove, true\)/);
 assert.match(previewViewer, /window\.addEventListener\('pointerup', finishDrag, true\)/);
 assert.match(previewViewer, /function stableTextHash\(value\)/);
-assert.match(previewViewer, /sessionStorage\.setItem\(dockingPoseStorageKey\(activeConfig\), String\(nextIndex\)\)/);
-assert.match(previewViewer, /sessionStorage\.setItem\(dockingPoseStorageKey\(activeConfig\), String\(previousIndex\)\)/);
-assert.match(previewViewer, /Could not switch docking pose/);
+assert.match(previewViewer, /sessionStorage\.setItem\(trajectoryControlStorageKey\(activeConfig, prepared\), String\(nextIndex\)\)/);
+assert.match(previewViewer, /sessionStorage\.setItem\(trajectoryControlStorageKey\(activeConfig, prepared\), String\(previousIndex\)\)/);
+assert.match(previewViewer, /Could not switch \$\{controlLabelLower\}/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses \{/);
 assert.match(previewRuntimeCss, /body\.buret-docking-pose-controls-active \.msp-animation-viewport-controls,\s*body\.buret-docking-pose-controls-active \.msp-traj-controls \{/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-slider \{/);
+assert.match(previewRuntimeCss, /\.buret-docking-pose-speed \{/);
+assert.match(previewRuntimeCss, /\.buret-docking-pose-speed \{[\s\S]*appearance: textfield;/);
+assert.match(previewRuntimeCss, /\.buret-docking-pose-speed \{[\s\S]*width: 44px;/);
+assert.match(previewRuntimeCss, /\.buret-docking-pose-speed::-webkit-inner-spin-button,\s*\.buret-docking-pose-speed::-webkit-outer-spin-button \{[\s\S]*-webkit-appearance: none;/);
+assert.match(previewRuntimeCss, /\.buret-docking-pose-slider \{[\s\S]*flex: 0 0 78px;/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses\.buret-docking-poses-animation-open \.buret-docking-pose-animation \{/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses \{[\s\S]*cursor: grab;[\s\S]*touch-action: none;[\s\S]*user-select: none;/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses\.buret-docking-poses-dragging \{[\s\S]*cursor: grabbing;[\s\S]*transition: none;/);
@@ -1929,8 +1955,8 @@ assert.match(gridViewer, /dirtyReason: ''/);
 assert.match(gridViewer, /rowPatches: new Map\(\)/);
 assert.match(gridViewer, /body\.type === 'gridSavedAs'/);
 assert.match(gridViewer, /body\.type === 'gridSaveAsError'/);
-assert.match(gridViewer, /<button id="save-grid-as" type="button">Save As\.\.\.<\/button>/);
-assert.match(gridViewer, /document\.getElementById\('save-grid-as'\)\?\.addEventListener\('click', \(\) => saveGridAs\(cfg\)\)/);
+assert.match(gridUi, /<button id="save-grid-as" type="button" onClick=\{props\.onSaveGridAs\}>Save As\.\.\.<\/button>/);
+assert.match(gridViewer, /onSaveGridAs\(\) \{ saveGridAs\(cfg\); \}/);
 assert.match(gridViewer, /markGridDirty\('appended molecules'\)/);
 assert.match(gridViewer, /function saveGridAs\(cfg\)/);
 assert.match(gridViewer, /post\('saveGridAs'/);
@@ -2004,9 +2030,9 @@ assert.match(gridViewer, /window\.parent\?\.postMessage\(\{ source: 'burrete-gri
 assert.match(gridViewer, /hostRequest\('gridFetchPage'/);
 assert.match(gridViewer, /hostRequest\('renderXyzrenderCard'/);
 assert.match(gridViewer, /body\.type === 'gridPage' \|\| body\.type === 'xyzrenderCard'/);
-assert.match(gridViewer, /buret-search-control buret-filter-control/);
-assert.match(gridViewer, /aria-label="Search molecules and SMARTS"/);
-assert.match(gridViewer, /placeholder="\$\{caps\.substructureSearch \? 'name, SMILES, metadata, SMARTS' : 'name, SMILES, metadata'\}"/);
+assert.match(gridUi, /buret-search-control buret-filter-control/);
+assert.match(gridUi, /aria-label="Search molecules and SMARTS"/);
+assert.match(gridUi, /placeholder=\{searchPlaceholder\}/);
 assert.match(gridViewer, /function queryLooksLikeExplicitSMARTS\(value\)/);
 assert.match(gridViewer, /function queryLooksLikeSMILESFragment\(value\)/);
 assert.match(gridViewer, /function queryLooksLikeSMARTS\(value\)/);
@@ -2089,10 +2115,10 @@ assert.match(gridCss, /\.buret-card\.buret-card-resizing \.buret-card-resize-han
 assert.doesNotMatch(gridViewer, /buret-selected-indicator/);
 assert.match(gridViewer, /selectionAnchorIndex: null/);
 assert.match(gridViewer, /selectionKeydownHandler: null/);
-assert.match(gridViewer, /id="select-all"/);
-assert.match(gridViewer, /id="clear-selection"/);
-assert.match(gridViewer, /id="rdkit-use-input-coords"/);
-assert.match(gridViewer, /Use file coords/);
+assert.match(gridUi, /id="select-all"/);
+assert.match(gridUi, /id="clear-selection"/);
+assert.match(gridUi, /id="rdkit-use-input-coords"/);
+assert.match(gridUi, /Use file coords/);
 assert.match(gridViewer, /function initRdkitCoordinatesControl\(cfg\)/);
 assert.match(gridViewer, /function syncRdkitCoordinatesControl\(\)/);
 assert.match(gridViewer, /const hasInputCoordinates = hasInputCoordinateRows\(\)/);
@@ -2121,12 +2147,25 @@ assert.doesNotMatch(gridViewer, /role="option" aria-selected="false"/);
 assert.match(gridViewer, /event\.key\.toLowerCase\(\) === 'a'/);
 assert.match(gridViewer, /state\.selected\.clear\(\)/);
 assert.match(gridCss, /--buret-control-height: 36px;/);
+assert.match(gridCss, /--buret-control-surface: rgba\(255, 255, 255, 0\.075\);/);
+assert.match(gridCss, /--buret-control-hover: rgba\(255, 255, 255, 0\.11\);/);
+assert.match(gridCss, /--buret-control-active: rgba\(255, 255, 255, 0\.14\);/);
+assert.match(gridCss, /button,[\s\S]*\.buret-grid-toolbar input\[type="search"\],[\s\S]*\.buret-grid-toolbar select \{[\s\S]*background: var\(--buret-control-surface\);/);
+assert.match(gridCss, /button,[\s\S]*\.buret-grid-toolbar input\[type="search"\],[\s\S]*\.buret-grid-toolbar select \{[\s\S]*font: 500 13px\/1\.2 -apple-system/);
+assert.match(gridCss, /button:disabled \{[\s\S]*color: var\(--buret-faint\);[\s\S]*background: var\(--buret-control-surface\);[\s\S]*opacity: 1;/);
 assert.match(gridCss, /--buret-segment-height: 28px;/);
 assert.match(gridCss, /\.buret-selection-actions\s*\{[^}]*box-sizing: border-box;[^}]*height: var\(--buret-control-height\);/s);
 assert.match(gridCss, /\.buret-selection-actions\s*\{[^}]*display: inline-flex;/s);
+assert.match(gridCss, /\.buret-selection-actions\s*\{[^}]*background: transparent;/s);
 assert.match(gridCss, /\.buret-grid-card-renderer-switch\s*\{[^}]*box-sizing: border-box;[^}]*height: var\(--buret-control-height\);/s);
+assert.match(gridCss, /\.buret-grid-card-renderer-switch button\s*\{[^}]*background: var\(--buret-control-surface\);/s);
+assert.match(gridCss, /\.buret-grid-card-renderer-switch button:hover,[\s\S]*\.buret-grid-card-renderer-switch button\.active\s*\{[^}]*background: var\(--buret-control-active\);/s);
 assert.match(gridCss, /\.buret-grid-toolbar \.buret-rdkit-coords-control\s*\{[^}]*display: inline-flex;/s);
 assert.match(gridCss, /\.buret-grid-toolbar \.buret-rdkit-coords-control\s*\{[^}]*box-sizing: border-box;[^}]*height: var\(--buret-control-height\);/s);
+assert.match(gridCss, /\.buret-grid-toolbar \.buret-rdkit-coords-control\s*\{[^}]*background: var\(--buret-control-surface\);/s);
+assert.match(gridCss, /\.buret-grid-renderer-switch\s*\{[^}]*background: transparent;/s);
+assert.match(gridCss, /\.buret-grid-renderer-switch button\s*\{[^}]*background: var\(--buret-control-surface\);/s);
+assert.match(gridCss, /\.buret-grid-renderer-switch button:hover,[\s\S]*\.buret-grid-renderer-switch button\.active\s*\{[^}]*background: var\(--buret-control-active\);/s);
 assert.match(gridCss, /\.buret-grid-toolbar \.buret-rdkit-coords-control\[hidden\]\s*\{[^}]*display: none;/s);
 assert.match(gridCss, /\.buret-grid-toolbar \.buret-rdkit-coords-control:has\(input:checked\)\s*\{/);
 assert.match(gridCss, /\.buret-grid-toolbar \.buret-rdkit-coords-control\[aria-disabled="true"\]\s*\{[^}]*opacity: 0\.58;/s);
@@ -2179,14 +2218,16 @@ assert.match(gridViewer, /preserveAspectRatio="xMidYMid meet"/);
 assert.match(gridCss, /body\.buret-hide-properties \.buret-card-body\s*\{[^}]*display: none;/);
 assert.match(gridCss, /body\.buret-hide-properties \.buret-card\s*\{[^}]*aspect-ratio: 1 \/ 1;[^}]*grid-template-rows: minmax\(0, 1fr\);/s);
 assert.match(gridViewer, /const XYZRENDER_CARD_CONCURRENCY = 4/);
-assert.match(gridViewer, /data-buret-grid-card-renderer="rdkit"/);
-assert.match(gridViewer, /data-buret-grid-card-renderer="xyzrender"/);
+assert.match(gridUi, /data-buret-grid-card-renderer="rdkit"/);
+assert.match(gridUi, /data-buret-grid-card-renderer="xyzrender"/);
 assert.match(gridViewer, /const value = Number\(cfg\.pageSize \|\| 72\)/);
 assert.match(browserDevDocuments, /pageSize: 72/);
 assert.match(gridViewer, /function setCardRenderer\(value, cfg\)/);
 assert.match(gridViewer, /function syncCardRendererSwitch\(\)/);
 assert.match(gridCss, /\.buret-grid-card-renderer-switch\s*\{/);
-assert.match(gridViewer, /data-buret-grid-renderer="molstar" data-buret-grid-sdf-poses data-buret-grid-docking>Molstar/);
+assert.match(gridUi, /data-buret-grid-renderer="molstar"/);
+assert.match(gridUi, /data-buret-grid-sdf-poses/);
+assert.match(gridUi, /data-buret-grid-docking/);
 assert.doesNotMatch(gridViewer, /data-buret-grid-renderer="xyzrender-external">xyzrender/);
 assert.match(gridViewer, /function requestSdfPoseDocument\(cfg\)/);
 assert.match(gridViewer, /setStatus\('\[grid\] Select one or more molecules before opening Molstar\.', 'error'\)/);
@@ -2254,6 +2295,8 @@ assert.match(gridCss, /\.buret-grid-molecule-context-menu \{/);
 assert.match(gridCss, /--buret-menu-surface: rgb\(244 244 246 \/ 0\.88\)/);
 assert.match(gridCss, /\.buret-grid-molecule-context-menu \{[\s\S]*border: 0;/);
 assert.match(gridCss, /\.buret-grid-molecule-context-menu \{[\s\S]*background: var\(--buret-menu-surface\);/);
+assert.match(gridCss, /\.buret-grid-molecule-context-menu button \{[\s\S]*display: flex;/);
+assert.match(gridCss, /\.buret-grid-molecule-context-menu button \{[\s\S]*font: 500 13px\/1\.2 -apple-system/);
 assert.match(gridCss, /\.buret-grid-molecule-context-menu button:hover,/);
 assert.match(gridCss, /\.buret-grid-molecule-context-menu button:hover,[\s\S]*background: color-mix\(in srgb, var\(--buret-text\) 8%, transparent\);/);
 assert.doesNotMatch(gridCss, /\.buret-grid-molecule-context-menu button:hover,[\s\S]*var\(--buret-accent\) 20%/);
@@ -2264,8 +2307,9 @@ assert.doesNotMatch(gridViewer, /return \{ extension: 'smi'/);
 assert.match(gridViewer, /fetch\(endpoint, \{/);
 assert.doesNotMatch(gridViewer, /if \(value === null \|\| value === undefined \|\| String\(value\)\.trim\(\) === ''\) return null;/);
 assert.doesNotMatch(gridViewer, /\{ value: 'flat', label: 'Flat' \}/);
-assert.match(gridViewer, /requestRendererSwitch\(button\.getAttribute\('data-buret-grid-renderer'\), cfg\)/);
 assert.match(gridViewer, /cfg\?\.quickLookViewer === true[\s\S]*post\('setRenderer', '\[grid\] Switch renderer to molstar\.', \{\s*value,/);
+assert.match(gridUi, /onClick=\{\(\) => props\.onRendererSwitch\("molstar"\)\}/);
+assert.match(gridViewer, /onRendererSwitch\(value\) \{ requestRendererSwitch\(value, cfg\); \}/);
 assert.match(gridViewer, /post\('setRenderer', `\[grid\] Switch renderer to \$\{value\}\.`, \{\s*value,\s*documentId: cfg\?\.documentId \|\| null\s*\}\)/);
 assert.match(gridViewer, /async function scanRemoteBySMARTS\(cfg, token\)/);
 assert.match(gridViewer, /function shouldCollectAllRemoteRows\(\)/);
@@ -2443,9 +2487,10 @@ assert.match(previewViewer, /point \? toStagePoint\(point\.x, point\.y\) : null/
 assert.match(previewViewer, /sdfGridButton\.addEventListener\('click', requestSdfGridDocument\)/);
 assert.match(previewViewer, /payload\.path = gridPath/);
 assert.match(previewViewer, /postHostMessage\(payload\)/);
-assert.match(previewViewer, /aria-label', 'Previous pose'/);
-assert.match(previewViewer, /aria-label', 'Next pose'/);
+assert.match(previewViewer, /aria-label', `Previous \$\{controlLabelLower\}`/);
+assert.match(previewViewer, /aria-label', `Next \$\{controlLabelLower\}`/);
 assert.match(previewViewer, /function notifyDockingPoseChanged\(activePose, prepared\)/);
+assert.match(previewViewer, /if \(prepared\?\.kind !== 'docking'\) return;/);
 assert.match(previewViewer, /type: 'dockingPoseChanged'/);
 assert.match(previewViewer, /const initialPose = activePose/);
 assert.match(previewViewer, /prepared\.nativeTrajectoryControls && initialPose > 0/);

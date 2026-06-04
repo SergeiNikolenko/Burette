@@ -5,6 +5,10 @@
   --buret-surface: #202020;
   --buret-surface-raised: #3a3a3a;
   --buret-input: #333333;
+  --buret-control-surface: rgba(255, 255, 255, 0.075);
+  --buret-control-hover: rgba(255, 255, 255, 0.11);
+  --buret-control-active: rgba(255, 255, 255, 0.14);
+  --buret-control-focus: rgba(255, 255, 255, 0.16);
   --buret-menu-surface: rgb(37 37 40 / 0.86);
   --buret-border: rgba(255, 255, 255, 0.09);
   --buret-border-strong: rgba(255, 255, 255, 0.14);
@@ -35,6 +39,10 @@ html[data-buret-theme="light"] {
   --buret-surface: transparent;
   --buret-surface-raised: rgba(0, 0, 0, 0.055);
   --buret-input: rgba(0, 0, 0, 0.04);
+  --buret-control-surface: rgba(0, 0, 0, 0.045);
+  --buret-control-hover: rgba(0, 0, 0, 0.075);
+  --buret-control-active: rgba(0, 0, 0, 0.10);
+  --buret-control-focus: rgba(0, 0, 0, 0.13);
   --buret-menu-surface: rgb(244 244 246 / 0.88);
   --buret-border: rgba(0, 0, 0, 0.08);
   --buret-border-strong: rgba(0, 0, 0, 0.14);
@@ -81,20 +89,14 @@ button,
   border: 0;
   border-radius: 8px;
   color: var(--buret-text);
-  background: var(--buret-input);
+  background: var(--buret-control-surface);
   outline: none;
+  font: 500 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   transition: background 140ms ease-out, box-shadow 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
 }
 
 button {
-  padding: 7px 12px;
-  font-weight: 590;
-}
-
-.buret-grid-toolbar input[type="search"],
-.buret-grid-toolbar select {
-  border: 1px solid var(--buret-border);
-  transition: background 140ms ease-out, border-color 140ms ease-out, box-shadow 140ms ease-out, color 140ms ease-out;
+  padding: 0 12px;
 }
 
 button:not(:disabled):active {
@@ -104,27 +106,19 @@ button:not(:disabled):active {
 button:not(:disabled):hover,
 .buret-grid-toolbar input[type="search"]:hover,
 .buret-grid-toolbar select:hover {
-  background-color: var(--buret-surface-raised);
-}
-
-.buret-grid-toolbar input[type="search"]:hover,
-.buret-grid-toolbar select:hover {
-  border-color: var(--buret-border-strong);
+  background-color: var(--buret-control-hover);
 }
 
 button:focus-visible,
 .buret-grid-toolbar input[type="search"]:focus,
 .buret-grid-toolbar select:focus {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--buret-accent) 24%, transparent);
-}
-
-.buret-grid-toolbar input[type="search"]:focus,
-.buret-grid-toolbar select:focus {
-  border-color: var(--buret-accent);
+  box-shadow: 0 0 0 1px var(--buret-control-focus);
 }
 
 button:disabled {
-  opacity: 0.45;
+  color: var(--buret-faint);
+  background: var(--buret-control-surface);
+  opacity: 1;
 }
 
 .buret-grid-shell {
@@ -176,7 +170,7 @@ button:disabled {
 }
 
 .buret-actions button {
-  background: var(--buret-input);
+  background: var(--buret-control-surface);
 }
 
 .buret-grid-toolbar {
@@ -189,8 +183,8 @@ button:disabled {
   padding: 12px;
   border: 0;
   border-radius: 12px;
-  background: var(--buret-bg);
-  box-shadow: 0 10px 24px color-mix(in srgb, var(--buret-shadow) 35%, transparent);
+  background: color-mix(in srgb, var(--buret-bg) 92%, transparent);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--buret-shadow) 28%, transparent);
 }
 
 .buret-toolbar-row {
@@ -218,10 +212,10 @@ button:disabled {
   gap: 6px;
   height: var(--buret-control-height);
   min-height: var(--buret-control-height);
-  padding: 3px;
+  padding: 0;
   border: 0;
   border-radius: 8px;
-  background: var(--buret-input);
+  background: transparent;
 }
 
 .buret-grid-card-renderer-switch {
@@ -232,10 +226,10 @@ button:disabled {
   gap: 2px;
   height: var(--buret-control-height);
   min-height: var(--buret-control-height);
-  padding: 3px;
+  padding: 0;
   border: 0;
   border-radius: 8px;
-  background: var(--buret-input);
+  background: transparent;
 }
 
 .buret-grid-card-renderer-switch span {
@@ -246,20 +240,19 @@ button:disabled {
 }
 
 .buret-grid-card-renderer-switch button {
-  min-height: var(--buret-segment-height);
-  padding: 4px 10px;
+  min-height: var(--buret-control-height);
+  padding: 0 10px;
   border: 0;
-  border-radius: 6px;
-  background: transparent;
+  border-radius: 8px;
+  background: var(--buret-control-surface);
   color: var(--buret-muted);
-  font-size: 12px;
-  font-weight: 650;
+  font: 500 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 
 .buret-grid-card-renderer-switch button:hover,
 .buret-grid-card-renderer-switch button.active {
   color: var(--buret-text);
-  background: color-mix(in srgb, var(--buret-text) 8%, transparent);
+  background: var(--buret-control-active);
 }
 
 .buret-grid-toolbar .buret-rdkit-coords-control {
@@ -273,11 +266,9 @@ button:disabled {
   padding: 0 10px;
   border: 0;
   border-radius: 8px;
-  background: var(--buret-input);
+  background: var(--buret-control-surface);
   color: var(--buret-muted);
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 1;
+  font: 500 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   text-transform: none;
 }
 
@@ -293,7 +284,7 @@ button:disabled {
 
 .buret-grid-toolbar .buret-rdkit-coords-control:has(input:checked) {
   color: var(--buret-text);
-  background: var(--buret-surface-raised);
+  background: var(--buret-control-active);
 }
 
 .buret-grid-toolbar .buret-rdkit-coords-control[aria-disabled="true"] {
@@ -322,14 +313,13 @@ button:disabled {
 .buret-grid-toolbar input[type="search"],
 .buret-grid-toolbar select {
   width: 100%;
-  padding: 8px 10px;
+  padding: 0 10px;
   text-transform: none;
 }
 
 .buret-sort-control select {
   min-height: var(--buret-control-height);
-  padding: 6px 26px 6px 9px;
-  font-size: 12px;
+  padding: 0 26px 0 10px;
 }
 
 .buret-grid-toolbar select {
@@ -378,8 +368,7 @@ button:disabled {
 
 .buret-toggle-button.active {
   color: var(--buret-text);
-  border-color: var(--buret-border-strong);
-  background: var(--buret-surface-raised);
+  background: var(--buret-control-active);
 }
 
 .buret-grid-renderer-controls {
@@ -396,27 +385,26 @@ button:disabled {
   gap: 2px;
   height: var(--buret-control-height);
   min-height: var(--buret-control-height);
-  padding: 3px;
-  border: 1px solid var(--buret-border);
+  padding: 0;
+  border: 0;
   border-radius: 8px;
-  background: var(--buret-input);
+  background: transparent;
 }
 
 .buret-grid-renderer-switch button {
-  min-height: var(--buret-segment-height);
-  padding: 4px 10px;
+  min-height: var(--buret-control-height);
+  padding: 0 10px;
   border: 0;
-  border-radius: 6px;
-  background: transparent;
+  border-radius: 8px;
+  background: var(--buret-control-surface);
   color: var(--buret-muted);
-  font-size: 12px;
-  font-weight: 650;
+  font: 500 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 
 .buret-grid-renderer-switch button:hover,
 .buret-grid-renderer-switch button.active {
   color: var(--buret-text);
-  background: color-mix(in srgb, var(--buret-text) 8%, transparent);
+  background: var(--buret-control-active);
 }
 
 .buret-grid {
@@ -610,18 +598,24 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
 }
 
 .buret-grid-molecule-context-menu button {
-  display: block;
+  appearance: none;
+  -webkit-appearance: none;
+  display: flex;
+  align-items: center;
   width: 100%;
   min-height: 30px;
   box-sizing: border-box;
   border: 0;
-  border-radius: 8px;
-  padding: 6px 8px;
+  border-radius: 7px;
+  margin: 0;
+  padding: 5px 10px;
   color: inherit;
   background: transparent;
-  font-size: 12px;
-  font-weight: 620;
+  font: 500 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   text-align: left;
+  white-space: nowrap;
+  cursor: default;
+  transition: background 120ms ease, color 120ms ease;
 }
 
 .buret-grid-molecule-context-menu button:hover,
