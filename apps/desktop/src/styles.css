@@ -1797,6 +1797,16 @@ kbd span { margin-left: 2px; }
   line-height: 1.35;
   white-space: pre-wrap;
 }
+.ketcher-output-input {
+  width: 100%;
+  min-height: 42px;
+  resize: vertical;
+  outline: none;
+}
+.ketcher-output-input:focus {
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 1px var(--focus-ring) inset;
+}
 .ketcher-page-footer {
   min-height: 52px;
   padding: 10px 18px;
@@ -1827,7 +1837,8 @@ kbd span { margin-left: 2px; }
   transition: background 120ms ease, color 120ms ease, transform 120ms ease;
 }
 .ketcher-page-footer button:hover:not(:disabled),
-.ketcher-page-footer button:focus-visible:not(:disabled) {
+.ketcher-page-footer button:focus-visible:not(:disabled),
+.ketcher-page-footer button.is-active:not(:disabled) {
   background: var(--surface-hover);
   color: var(--text-primary);
   outline: 2px solid var(--focus-ring);
