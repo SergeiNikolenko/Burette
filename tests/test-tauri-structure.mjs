@@ -590,6 +590,8 @@ assert.doesNotMatch(quickLookPreviewController, /window\.BurreteDataBase64 = nul
 assert.doesNotMatch(quickLookPreviewController, /window\.BurreteDataBase64 = \\"\\\(structureData\.base64EncodedString\(\)\)\\";\\nwindow\.BurreteDataURL = '\.\/preview-data\.bin';\\n/);
 assert.doesNotMatch(quickLookPreviewController, /preview-data\.js"\), options: \[\.atomic\]/);
 assert.match(quickLookPreviewController, /renderTimeoutWorkItem\?\.cancel\(\)/);
+assert.match(quickLookPreviewController, /finishPreviewIfNeeded\(nil, requestID: requestID, cancelRenderTimeout: false\)/);
+assert.match(quickLookPreviewController, /private func finishPreviewIfNeeded\(_ error: Error\?, requestID: UUID\? = nil, cancelRenderTimeout: Bool = true\)/);
 assert.match(quickLookPreviewController, /private var previewSourceMonitor: DispatchSourceTimer\?/);
 assert.match(quickLookPreviewController, /private var pendingPreviewSourceReloadWorkItem: DispatchWorkItem\?/);
 assert.match(quickLookPreviewController, /startPreviewSourceMonitoring\(for: url\)/);

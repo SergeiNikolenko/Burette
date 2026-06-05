@@ -134,6 +134,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     self.pendingPreviewSourceFingerprint = nil
                     self.webView.loadFileURL(result.indexURL, allowingReadAccessTo: result.readAccessURL)
                     self.scheduleRenderTimeout(for: requestID, timeoutSeconds: result.renderTimeoutSeconds)
+                    self.finishPreviewIfNeeded(nil, requestID: requestID, cancelRenderTimeout: false)
                     if Self.showDebugOverlay {
                         self.scheduleJavaScriptProbes()
                     }
@@ -419,6 +420,15 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
         if usesBoundedMaestroPreview, format.isExternalXyzrenderOnly {
             throw PreviewError.couldNotExtractBoundedMaestroPreview(url.lastPathComponent, Self.maestroPreviewReadLimit)
+        }
+        if shouldRequireExtractedStandaloneCoordinates(fileExtension: pathExtension),
+           format.isExternalXyzrenderOnly,
+           PreviewStructureTextConverter.convertedData(
+            from: structureData,
+            fileExtension: pathExtension,
+            label: url.lastPathComponent
+           ) == nil {
+            throw PreviewError.notRenderableStandaloneStructure(url.lastPathComponent)
         }
         if renderer == BurreteRendererMode.xyzrenderExternal {
             let renderDirectory = fileManager.temporaryDirectory
@@ -1151,6 +1161,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         ["xyz", "cub", "cube"].contains(fileExtension.lowercased())
     }
 
+    private static func shouldRequireExtractedStandaloneCoordinates(fileExtension: String) -> Bool {
+        fileExtension.lowercased() == "out"
+    }
+
     private static func shouldAllowSystemFallback(for error: Error, fileExtension: String) -> Bool {
         let lowercasedExtension = fileExtension.lowercased()
         guard ["csv", "tsv"].contains(lowercasedExtension) else { return false }
@@ -1175,13 +1189,15 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         DispatchQueue.main.asyncAfter(deadline: .now() + timeoutSeconds, execute: workItem)
     }
 
-    private func finishPreviewIfNeeded(_ error: Error?, requestID: UUID? = nil) {
+    private func finishPreviewIfNeeded(_ error: Error?, requestID: UUID? = nil, cancelRenderTimeout: Bool = true) {
         if let requestID, requestID != activePreviewRequestID {
             appendLog("skipping Quick Look completion for stale preview request")
             return
         }
-        renderTimeoutWorkItem?.cancel()
-        renderTimeoutWorkItem = nil
+        if cancelRenderTimeout {
+            renderTimeoutWorkItem?.cancel()
+            renderTimeoutWorkItem = nil
+        }
         guard let completion = pendingCompletion else { return }
         pendingCompletion = nil
         appendLog("calling Quick Look completion handler; error=\(error.map { Self.describe($0) } ?? "nil")")
@@ -3924,6 +3940,7 @@ private enum PreviewError: LocalizedError {
     case gridFileTypeDisabled(String)
     case fileTooLarge(String, Int64, Int64)
     case couldNotExtractBoundedMaestroPreview(String, Int)
+    case notRenderableStandaloneStructure(String)
     case ubiquitousFileNotDownloaded(String)
     case webRenderFailed(String)
     case webRenderTimedOut
@@ -3948,6 +3965,8 @@ private enum PreviewError: LocalizedError {
             return "\(name) is too large for Quick Look preview (\(size) bytes; limit \(limit) bytes). Open it in the Burrete app viewer or use a smaller file."
         case .couldNotExtractBoundedMaestroPreview(let name, let limit):
             return "\(name) is too large for full Quick Look loading, and Burrete could not extract a Maestro atom table from the first \(limit) bytes."
+        case .notRenderableStandaloneStructure(let name):
+            return "\(name) does not contain standalone molecular coordinates Burrete can preview. Open the referenced structure file directly if this output report points to one."
         case .ubiquitousFileNotDownloaded(let name):
             return "\(name) is in iCloud and is not downloaded locally. Download it in Finder, then open Quick Look again."
         case .webRenderFailed(let message):

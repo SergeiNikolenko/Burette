@@ -385,6 +385,9 @@ export default function App() {
         if (options.replace) setDocuments(result.documents);
         else if (options.inActiveTab) openDocumentsInActiveTab(result.documents);
         else addDocuments(result.documents);
+        if (!options.replace && !options.inActiveTab && result.documents[0]) {
+          setActiveDocument(result.documents[0].id);
+        }
         if (result.documents.length > 0) markPerformanceOnce("app:first-document-opened");
         rememberRecentStructures(result.documents);
         const openedText = "Opened " + result.documents.length + " structure" + (result.documents.length === 1 ? "" : "s");
@@ -402,7 +405,7 @@ export default function App() {
         pushErrorStatus(error);
       }
     },
-    [addDocuments, openDocumentsInActiveTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setDocuments, showDelimitedGridColumnOpenMenu],
+    [addDocuments, openDocumentsInActiveTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setActiveDocument, setDocuments, showDelimitedGridColumnOpenMenu],
   );
   useOpenEvents(
     (paths, options) => openDocuments(paths, undefined, undefined, options),
