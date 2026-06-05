@@ -43,6 +43,8 @@ const [
   settingsPanel,
   themesSection,
   settingControl,
+  dockPanel,
+  closeIcon,
   pageKinds,
   pageKindTypes,
   fileKind,
@@ -124,6 +126,8 @@ const [
   source('apps/desktop/src/components/settings-panel/index.tsx'),
   source('apps/desktop/src/components/settings-panel/themes-section.tsx'),
   source('apps/desktop/src/components/settings-panel/setting-control.tsx'),
+  source('apps/desktop/src/components/dock-panel.tsx'),
+  source('apps/desktop/src/components/close-icon.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/index.ts'),
   source('apps/desktop/src/components/editor-area/page-kinds/types.ts'),
   source('apps/desktop/src/components/editor-area/page-kinds/file.tsx'),
@@ -506,7 +510,8 @@ assert.match(moleculeStore, /const storedTabs = \(stored\?\.tabs \?\? current\.t
 assert.match(app, /async function browserDevFilesFromLocation\(\)/);
 assert.match(app, /if \(params\.has\("devDocking"\)\) return \[\];/);
 assert.match(app, /params\.has\("devFiles"\)/);
-assert.match(app, /fetch\("\/__burette\/dev-files", \{ cache: "no-store" \}\)/);
+assert.match(app, /return \[\];\s*}\s*function splitDevFiles/);
+assert.doesNotMatch(app, /fetch\("\/__burette\/dev-files", \{ cache: "no-store" \}\)/);
 assert.match(app, /function splitDevFiles\(rawFiles: string\)/);
 assert.match(app, /function browserDevDockingFromLocation\(\): DockingDocumentRequest \| null/);
 assert.match(app, /params\.has\("devDocking"\)/);
@@ -628,13 +633,15 @@ assert.match(editorTabs, /const canSaveAs = tabDocument && isMoleculeCollectionP
 assert.match(editorTabs, /id: "save-as"/);
 assert.match(editorTabs, /text: "Save As\.\.\."/);
 assert.match(editorTabs, /actions\.saveMoleculeCollectionAs\(tabDocument\.id\)/);
-assert.match(editorTabs, /onMouseDown=\{\(event\) => \{\s*if \(event\.button === 2\) \{\s*showTabMenu\(event\);\s*return;\s*\}\s*startMouseTabReorder\(tab\.id, Boolean\(tabPath\), event\);/s);
+assert.match(editorTabs, /kind: tab\.location\.kind === "ketcher" \? "ketcher" as const : tab\.location\.kind === "text-file" \? "writer" as const : "tab" as const/);
+assert.match(editorTabs, /startMouseTabReorder\(tab\.id, true, event\);/);
 assert.match(editorTabs, /showNativeContextMenu\(items, \{ x: event\.clientX, y: event\.clientY \}, \{ forceWeb: true \}\)/);
 assert.match(editorTabs, /actions\.openNewTab/);
 assert.doesNotMatch(editorTabs, /from "lucide-react"/);
 assert.match(editorTabs, /←/);
 assert.match(editorTabs, /→/);
-assert.match(editorTabs, /×/);
+assert.match(editorTabs, /import \{ CloseIcon \} from "\.\.\/close-icon"/);
+assert.match(editorTabs, /<CloseIcon size=\{13\} \/>/);
 assert.match(appLayout, /className="chrome-leading-controls"/);
 assert.match(tauriConfig, /"trafficLightPosition":\s*\{\s*"x":\s*20,\s*"y":\s*29\s*\}/);
 assert.match(appLayout, /className="chrome-leading-controls" data-tauri-drag-region/);
@@ -892,7 +899,7 @@ assert.match(gridCss, /\.buret-grid-rail \{/);
 assert.match(styles, /\.app-shell\[data-runtime="browser"\]\s*\{[^}]*backdrop-filter: none;[^}]*-webkit-backdrop-filter: none;/s);
 assert.match(styles, /\.app-shell\[data-runtime="tauri"\]\[data-active-page-kind="ketcher"\]\s*\{[^}]*backdrop-filter: none;[^}]*-webkit-backdrop-filter: none;/s);
 assert.doesNotMatch(styles, /\.app-shell\[data-runtime="tauri"\]\[data-active-page-kind="ketcher"\]\s*\{[^}]*background: var\(--bg-base\);/s);
-assert.match(styles, /\.page-surface\[data-page-kind="file"\]:not\(\[data-active\]\),\s*\.page-surface\[data-page-kind="ketcher"\]:not\(\[data-active\]\) \{ display: block; \}/);
+assert.match(styles, /\.page-surface\[data-page-kind="file"\]:not\(\[data-active\]\),\s*\.page-surface\[data-page-kind="text-file"\]:not\(\[data-active\]\),\s*\.page-surface\[data-page-kind="ketcher"\]:not\(\[data-active\]\) \{ display: block; \}/);
 assert.match(styles, /\.ketcher-editor-shell\s*\{[^}]*overflow: hidden;[^}]*isolation: isolate;/s);
 assert.doesNotMatch(styles, /\.ketcher-editor-shell\s*\{[^}]*contain: layout paint;/s);
 assert.match(styles, /\.ketcher-scale-control\s*\{[^}]*grid-template-columns: 28px minmax\(34px, 1fr\) 28px;/s);
@@ -968,7 +975,48 @@ assert.match(styles, /\.tab-close \{[^}]*transform: translate\(100%, -50%\);/s);
 assert.match(styles, /\.tab-shell:hover \.tab-close/);
 assert.match(styles, /\.tab-shell:focus-within \.tab-close \{[^}]*transform: translate\(0, -50%\);/s);
 assert.match(styles, /\.tab-close:hover \{ color: var\(--text-secondary\); \}/);
-assert.match(styles, /\.topbar, \.chrome-leading-controls, \.sidebar-toggle-root, \.tab-strip/);
+assert.match(closeIcon, /export function CloseIcon/);
+assert.match(closeIcon, /className="close-glyph"/);
+assert.match(closeIcon, /strokeLinecap="round"/);
+for (const sourceText of [dockPanel, editorTabs, notificationPopup, settingControl]) {
+  assert.doesNotMatch(sourceText, /className="(?:tab-close|dock-tab-close|radix-dialog-close)"[\s\S]*?>\s*[x×]\s*<\/button>/);
+}
+assert.doesNotMatch(dockPanel, /aria-label=\{`Close \$\{area\} dock`\}[\s\S]*?>\s*x\s*<\/button>/);
+assert.match(styles, /\.close-glyph \{/);
+assert.match(styles, /\.dock-tab-shell:hover \.dock-tab-close,\s*\.dock-tab-shell:focus-within \.dock-tab-close \{/);
+assert.doesNotMatch(styles, /\.dock-tab\[data-active\] \+ \.dock-tab-close/);
+assert.match(styles, /\.dock-tab-shell:hover \.dock-tab svg,\s*\.dock-tab-shell:focus-within \.dock-tab svg \{/);
+assert.doesNotMatch(styles, /\.dock-tab\[data-active\] svg \{\s*opacity: 0/s);
+assert.match(app, /const RIGHT_DOCK_CLOSE_THRESHOLD = 180/);
+assert.match(app, /const BOTTOM_DOCK_CLOSE_THRESHOLD = 120/);
+assert.match(app, /if \(nextWidth <= RIGHT_DOCK_CLOSE_THRESHOLD\) \{/);
+assert.match(app, /setDockOpen\("right", false\)/);
+assert.match(app, /if \(nextHeight <= BOTTOM_DOCK_CLOSE_THRESHOLD\) \{/);
+assert.match(app, /setDockOpen\("bottom", false\)/);
+assert.match(app, /\[rightDockWidth, setDockOpen, setDockSize\]/);
+assert.match(app, /\[bottomDockHeight, setDockOpen, setDockSize\]/);
+assert.match(dockPanel, /data-open=\{open \? "true" : "false"\}/);
+assert.match(dockPanel, /data-dragging=\{dragging \|\| undefined\}/);
+assert.doesNotMatch(dockPanel, /if \(!open\) return null/);
+assert.match(styles, /--dock-divider-color: color-mix\(in srgb, var\(--text-primary\) 52%, var\(--bg-base\)\)/);
+assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.dock-panel \{[\s\S]*--dock-divider-color: color-mix\(in srgb, var\(--text-primary\) 60%, var\(--bg-base\)\)/);
+assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.dock-panel \{/);
+assert.match(styles, /\.dock-panel \{[\s\S]*transition: width 180ms cubic-bezier\(0\.2, 0, 0, 1\), height 180ms cubic-bezier\(0\.2, 0, 0, 1\), opacity 140ms ease-out;/);
+assert.match(styles, /\.dock-panel\[data-dragging\] \{[\s\S]*transition: width 90ms linear, height 90ms linear, opacity 90ms linear;/);
+assert.match(styles, /\.dock-panel\[data-open="false"\] \{/);
+assert.match(styles, /\.dock-panel\[data-open="false"\] > :not\(\.dock-resizer\) \{[\s\S]*visibility: hidden;/);
+assert.match(styles, /\.dock-panel\[data-area="right"\]\[data-open="false"\] \{[\s\S]*min-width: 0;/);
+assert.match(styles, /\.dock-panel\[data-area="bottom"\]\[data-open="false"\] \{[\s\S]*min-height: 0;/);
+assert.doesNotMatch(styles, /\.dock-panel\[data-area="right"\] \{[^}]*box-shadow: inset 1px 0 0 var\(--dock-divider-color\);/);
+assert.doesNotMatch(styles, /\.dock-panel\[data-area="bottom"\] \{[^}]*box-shadow: inset 0 1px 0 var\(--dock-divider-color\);/);
+assert.match(styles, /\.dock-panel\[data-area="right"\] \.dock-resizer::after \{[\s\S]*top: var\(--chrome-height\);/);
+assert.match(styles, /\.dock-panel\[data-area="right"\] \.dock-resizer::after \{[\s\S]*width: 1px;/);
+assert.match(styles, /\.dock-panel\[data-area="bottom"\] \.dock-resizer::after \{[\s\S]*height: 1px;/);
+assert.match(styles, /\.dock-viewer \.ketcher-page \{[\s\S]*position: relative;[\s\S]*inset: auto;[\s\S]*overflow: hidden;/);
+assert.match(styles, /\.dock-viewer \.ketcher-page-header \{[\s\S]*grid-template-columns: minmax\(0, 1fr\);/);
+assert.match(styles, /\.dock-viewer \.ketcher-page-actions \{[\s\S]*overflow-x: auto;/);
+assert.match(styles, /\.dock-viewer \.ketcher-page-body \{[\s\S]*overflow: hidden;[\s\S]*padding: 12px;/);
+assert.match(styles, /\.topbar, \.chrome-leading-controls, \.chrome-trailing-controls, \.sidebar-toggle-root, \.tab-strip/);
 assert.match(styles, /\.chrome-leading-controls \{/);
 assert.doesNotMatch(styles, /instance-badge/);
 assert.doesNotMatch(styles, /sidebar-link/);
@@ -1403,6 +1451,7 @@ assert.match(app, /openClipboardText\(text\)/);
 assert.match(app, /openClipboard,/);
 assert.match(app, /openStructurePaths: async \(paths: string\[\]\) => \{\s*await openDocuments\(paths\);\s*\}/s);
 assert.match(app, /openPaths,/);
+assert.match(app, /openStructurePaths: async \(paths: string\[\]\) => \{/);
 assert.match(app, /openStructureRecords,/);
 assert.match(app, /activeTabKind: activeTab\?\.location\.kind \?\? null/);
 assert.match(app, /activeDocumentPath: activeDocument\?\.path \?\? null/);
@@ -2300,7 +2349,9 @@ assert.match(gridCss, /\.buret-card-resize-handle-xy\s*\{/);
 assert.doesNotMatch(gridCss, /buret-selected-indicator/);
 assert.match(gridCss, /\.buret-card:hover\s*\{[^}]*box-shadow:\s*[\s\S]*inset 0 0 0 1px[\s\S]*0 0 0 3px/s);
 assert.match(gridCss, /\.buret-card::after\s*\{[^}]*content: attr\(data-buret-card-tooltip\);[\s\S]*text-overflow: ellipsis;[\s\S]*white-space: nowrap;/s);
-assert.match(gridCss, /\.buret-card::after\s*\{[^}]*color: #ffffff;[\s\S]*background: rgba\(22, 24, 29, 0\.92\);/s);
+assert.match(gridCss, /\.buret-card::after\s*\{[^}]*z-index: 20;[\s\S]*background: rgba\(18, 20, 24, 0\.98\);/s);
+assert.match(gridCss, /\.buret-card::after\s*\{[^}]*backdrop-filter: blur\(16px\) saturate\(1\.2\);/s);
+assert.match(gridCss, /\.buret-card::after\s*\{[^}]*-webkit-backdrop-filter: blur\(16px\) saturate\(1\.2\);/s);
 assert.match(gridCss, /\.buret-card\.buret-card-hovering-molecule::after,\s*\.buret-card:focus-visible::after\s*\{[^}]*opacity: 1;/s);
 assert.match(gridCss, /\.buret-card-resize-handle-x\s*\{[^}]*width: 16px;/s);
 assert.match(gridCss, /\.buret-card-resize-handle-y\s*\{[^}]*height: 16px;/s);
@@ -2632,10 +2683,13 @@ assert.match(editorTabs, /const handleEmptyTabStripDrop = useCallback/);
 assert.match(editorTabs, /shellDropActionChoices\(payload, \{ kind: "workspace" \}, \{ kind: "tab" \}\)/);
 assert.match(editorTabs, /runShellDropActionChoices\(actions, payload, choices, \{ x: event\.clientX, y: event\.clientY \}\)/);
 assert.match(editorTabs, /draggable\s+tabIndex=/);
-assert.match(editorTabs, /startMouseTabReorder\(tab\.id, Boolean\(tabPath\), event\)/);
+assert.match(editorTabs, /startMouseTabReorder\(tab\.id, true, event\)/);
 assert.match(editorTabs, /event\.dataTransfer\.setData\(TAB_DRAG_MIME, tab\.id\)/);
-assert.match(editorTabs, /if \(tabPath\) \{\s*writeStructureDrag\(event\.dataTransfer, \[tabPath\]\);\s*actions\.setStructureDragActive\(true\);\s*\}/s);
-assert.doesNotMatch(editorTabs, /if \(tabPath\) writeStructureDrag\(event\.dataTransfer, \[tabPath\]\);\s*actions\.setStructureDragActive\(true\);/);
+assert.match(editorTabs, /writeStructureDragPayload\(event\.dataTransfer, \{/);
+assert.match(editorTabs, /paths: tabPath \? \[tabPath\] : \[\]/);
+assert.match(editorTabs, /items: \[tabDragItem\]/);
+assert.match(editorTabs, /actions\.setStructureDragActive\(true\)/);
+assert.doesNotMatch(editorTabs, /writeStructureDrag\(event\.dataTransfer, \[tabPath\]\)/);
 assert.match(editorTabs, /readStructureDragPayload\(event\.dataTransfer\)/);
 assert.match(editorTabs, /const tabDropTarget = tabDocument/);
 assert.match(editorTabs, /kind: "active-viewer" as const/);
@@ -2646,11 +2700,11 @@ assert.match(editorTabs, /runShellDropActionChoices\(actions, payload, choices, 
 assert.doesNotMatch(editorTabs, /dockingRequestForDrop/);
 assert.doesNotMatch(editorTabs, /actions\.appendGridRecords\(tabDocument\.id, payload\)/);
 assert.match(editorTabs, /className="tab-strip-spacer"[\s\S]*onDragOver=\{handleEmptyTabStripDragOver\}[\s\S]*onDrop=\{handleEmptyTabStripDrop\}/);
-assert.match(editorTabs, /event\.dataTransfer\.effectAllowed = tabPath \? "copyMove" : "move"/);
+assert.match(editorTabs, /event\.dataTransfer\.effectAllowed = "copyMove"/);
 assert.match(editorTabs, /actions\.moveTab\(tabId, targetIndex\)/);
 assert.match(editorTabs, /actions\.selectTab\(tabId\)/);
 assert.match(editorTabs, /scheduleDragActivation\(tab\.id\)/);
-assert.match(editorTabs, /if \(tabHasStructurePath\) actions\.setStructureDragActive\(true\)/);
+assert.match(editorTabs, /if \(tabHasDockPayload\) actions\.setStructureDragActive\(true\)/);
 assert.doesNotMatch(editorTabDragStart, /actions\.selectTab\(tab\.id\)/);
 assert.match(sidebarFileBrowser, /readStructureDragPayload\(event\.dataTransfer\)/);
 assert.match(sidebarFileBrowser, /shellDropActionChoices\(payload, \{ kind: "ketcher" \}, \{ kind: "unknown" \}\)/);
@@ -2662,7 +2716,11 @@ assert.match(sidebarFileTreeNode, /from "\.\.\/\.\.\/lib\/structure-drag"/);
 assert.match(sidebarFileTreeNode, /from "\.\.\/drop-action-executor"/);
 assert.doesNotMatch(sidebarFileTreeNode, /from "\.\.\/\.\.\/lib\/docking-documents"/);
 assert.match(sidebarFileTreeNode, /draggable/);
-assert.match(sidebarFileTreeNode, /writeStructureDrag\(event\.dataTransfer, \[item\.path\]\)/);
+assert.match(sidebarFileTreeNode, /writeStructureDragPayload\(event\.dataTransfer, \{/);
+assert.match(sidebarFileTreeNode, /paths: \[item\.path\]/);
+assert.match(sidebarFileTreeNode, /kind: "file"/);
+assert.match(sidebarFileTreeNode, /title: item\.title/);
+assert.match(sidebarFileTreeNode, /detail: item\.relativePath/);
 assert.match(sidebarFileTreeNode, /readStructureDragPayload\(event\.dataTransfer\)/);
 assert.match(sidebarFileTreeNode, /shellDropActionChoices\(payload, sidebarDropTarget\(item, state\), \{ kind: "sidebar" \}\)/);
 assert.match(sidebarFileTreeNode, /runShellDropActionChoices\(actions, payload, choices, \{ x: event\.clientX, y: event\.clientY \}\)/);

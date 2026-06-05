@@ -167,7 +167,9 @@ assert.match(fileKind, /dockingRequest: document\.dockingRequest \?\? null/);
 assert.doesNotMatch(fileKind, /dockingRequestForDrop/);
 assert.match(fileKind, /Add to Mol\* docking view/);
 
-assert.match(sidebarFileTreeNode, /writeStructureDrag\(event\.dataTransfer, \[item\.path\]\)/);
+assert.match(sidebarFileTreeNode, /writeStructureDragPayload\(event\.dataTransfer, \{/);
+assert.match(sidebarFileTreeNode, /paths: \[item\.path\]/);
+assert.match(sidebarFileTreeNode, /kind: "file"/);
 assert.match(sidebarFileTreeNode, /shellDropActionChoices\(payload, sidebarDropTarget\(item, state\), \{ kind: "sidebar" \}\)/);
 assert.match(sidebarFileTreeNode, /runShellDropActionChoices\(actions, payload, choices, \{ x: event\.clientX, y: event\.clientY \}\)/);
 assert.match(sidebarFileTreeNode, /dockingRequest: document\?\.dockingRequest \?\? null/);
@@ -177,7 +179,9 @@ assert.match(dropActionExecutor, /actions\.openDockingDocument\(action\.request\
 assert.match(dropActionExecutor, /action\.kind === "open-docking-with-records"/);
 assert.match(dropActionExecutor, /actions\.openDockingStructureRecords\(action\.receptorPath, action\.ligandPaths, action\.records\)/);
 
-assert.match(editorTabs, /writeStructureDrag\(event\.dataTransfer, \[tabPath\]\)/);
+assert.match(editorTabs, /writeStructureDragPayload\(event\.dataTransfer, \{/);
+assert.match(editorTabs, /paths: tabPath \? \[tabPath\] : \[\]/);
+assert.match(editorTabs, /items: \[tabDragItem\]/);
 
 assert.match(vpContract, /"test-docking-viewer-contract\.mjs"/);
 assert.match(packageJson, /bun tests\/test-docking-viewer-contract\.mjs/);
