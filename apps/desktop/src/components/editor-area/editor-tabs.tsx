@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ShellActions, ShellViewState } from "../types";
 import { ScrollFade } from "../scroll-fade";
-import { hasStructureDrag, readStructureDragPayload, writeStructureDrag } from "../../lib/structure-drag";
+import { hasStructureDrag, readStructureDragPayload, writeStructureDragPayload } from "../../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
 import { showNativeContextMenu } from "../native-context-menu";
 import { pageKind } from "./page-kinds";
 import { isMoleculeCollectionPath } from "../../lib/collection-documents";
+import { CloseIcon } from "../close-icon";
 
 const TAB_DRAG_MIME = "application/x-burrete-tab-id";
 const TAB_REORDER_ANIMATION_MS = 170;
@@ -121,7 +122,7 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
     setDraggingTabId(null);
   }, [actions, clearDragActivation, removeMouseDragListeners]);
 
-  const startMouseTabReorder = useCallback((tabId: string, tabHasStructurePath: boolean, event: React.MouseEvent<HTMLButtonElement>) => {
+  const startMouseTabReorder = useCallback((tabId: string, tabHasDockPayload: boolean, event: React.MouseEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;
     removeMouseDragListeners();
     mouseDragRef.current = { tabId, startX: event.clientX, active: false };
@@ -138,7 +139,7 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
         drag.active = true;
         draggingTabIdRef.current = tabId;
         setDraggingTabId(tabId);
-        if (tabHasStructurePath) actions.setStructureDragActive(true);
+        if (tabHasDockPayload) actions.setStructureDragActive(true);
       }
       moveDraggedTab(tabId, moveEvent.clientX);
     };
@@ -231,11 +232,17 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
           const title = kind.title(tab.location, state);
           const active = index === activeTabIndex;
           const fileLocation = tab.location.kind === "file" ? tab.location : null;
-          const tabPath = fileLocation?.path ?? null;
+          const textFileLocation = tab.location.kind === "text-file" ? tab.location : null;
+          const tabPath = fileLocation?.path ?? textFileLocation?.path ?? null;
+          const tabDragItem = {
+            kind: tab.location.kind === "ketcher" ? "ketcher" as const : tab.location.kind === "text-file" ? "writer" as const : "tab" as const,
+            title,
+            detail: kind.description,
+            path: tabPath ?? undefined,
+          };
           const tabDocument = fileLocation
             ? state.documents.find((document) => document.id === fileLocation.documentId || document.path === fileLocation.path) ?? null
             : null;
-          const textFileLocation = tab.location.kind === "text-file" ? tab.location : null;
           const textDocument = textFileLocation
             ? state.textDocuments.find((document) => document.id === textFileLocation.documentId || document.path === textFileLocation.path) ?? null
             : null;
@@ -386,19 +393,21 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
                     showTabMenu(event);
                     return;
                   }
-                  startMouseTabReorder(tab.id, Boolean(tabPath), event);
+                  startMouseTabReorder(tab.id, true, event);
                 }}
                 onClick={() => actions.selectTab(tab.id)}
                 onContextMenu={showTabMenu}
                 onDragStart={(event) => {
                   draggingTabIdRef.current = tab.id;
                   setDraggingTabId(tab.id);
-                  event.dataTransfer.effectAllowed = tabPath ? "copyMove" : "move";
+                  event.dataTransfer.effectAllowed = "copyMove";
                   event.dataTransfer.setData(TAB_DRAG_MIME, tab.id);
-                  if (tabPath) {
-                    writeStructureDrag(event.dataTransfer, [tabPath]);
-                    actions.setStructureDragActive(true);
-                  }
+                  writeStructureDragPayload(event.dataTransfer, {
+                    paths: tabPath ? [tabPath] : [],
+                    records: [],
+                    items: [tabDragItem],
+                  });
+                  actions.setStructureDragActive(true);
                 }}
                 onDragEnd={stopTabDrag}
                 onDragOver={(event) => {
@@ -464,7 +473,7 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
                   actions.closeTab(tab.id);
                 }}
               >
-                ×
+                <CloseIcon size={13} />
               </button>
             </div>
           );
