@@ -47,8 +47,16 @@ export function useAddTabs() {
   return useMoleculeStore((state) => state.addDocuments);
 }
 
+export function useAddBackgroundDocuments() {
+  return useMoleculeStore((state) => state.addBackgroundDocuments);
+}
+
 export function useAddTextTabs() {
   return useMoleculeStore((state) => state.addTextDocuments);
+}
+
+export function useAddBackgroundTextDocuments() {
+  return useMoleculeStore((state) => state.addBackgroundTextDocuments);
 }
 
 export function useOpenDocumentsInActiveTab() {

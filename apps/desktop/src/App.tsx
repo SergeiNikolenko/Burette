@@ -17,6 +17,7 @@ import {
 } from "./hooks/use-command-palette";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
 import { useMenuEvents } from "./hooks/use-menu-events";
+import { useDockLayout } from "./hooks/use-dock-layout";
 import { useOpenDrop } from "./hooks/use-open-drop";
 import { useOpenEvents } from "./hooks/use-open-events";
 import { useSidebar } from "./hooks/use-sidebar";
@@ -24,6 +25,8 @@ import {
   useActiveDocument,
   useActiveTab,
   useActiveTabId,
+  useAddBackgroundDocuments,
+  useAddBackgroundTextDocuments,
   useAddTextTabs,
   useAddTabs,
   useClearRecentStructures,
@@ -108,6 +111,8 @@ const structureFirstTextExtensions = new Set(["out"]);
 
 const GRID_PERF_REPORT_PATH = "/private/tmp/burrete-grid-real-app-perf.jsonl";
 const SIDEBAR_DRAG_CLOSE_WIDTH = 180;
+const RIGHT_DOCK_CLOSE_THRESHOLD = 180;
+const BOTTOM_DOCK_CLOSE_THRESHOLD = 120;
 
 type GridAppendResult = {
   recordsAppended: number;
@@ -135,12 +140,7 @@ async function browserDevFilesFromLocation() {
   if (params.has("devFiles")) {
     return splitDevFiles(params.get("devFiles") ?? "");
   }
-  const response = await fetch("/__burette/dev-files", { cache: "no-store" });
-  if (!response.ok) return [];
-  const payload = await response.json() as { files?: unknown };
-  return Array.isArray(payload.files)
-    ? payload.files.filter((path): path is string => typeof path === "string" && path.trim().length > 0)
-    : [];
+  return [];
 }
 
 function splitDevFiles(rawFiles: string) {
@@ -203,6 +203,8 @@ export default function App() {
   const activeTabId = useActiveTabId();
   const activeTab = useActiveTab();
   const activeDocument = useActiveDocument();
+  const addBackgroundDocuments = useAddBackgroundDocuments();
+  const addBackgroundTextDocuments = useAddBackgroundTextDocuments();
   const addDocuments = useAddTabs();
   const addTextDocuments = useAddTextTabs();
   const openDocumentsInActiveTab = useOpenDocumentsInActiveTab();
@@ -245,7 +247,33 @@ export default function App() {
     toggleSidebar,
     closeSidebar,
   } = useSidebar();
+  const {
+    rightDockOpen,
+    rightDockWidth,
+    rightDockTabs,
+    rightDockActiveTab,
+    rightDockDocumentId,
+    rightDockTool,
+    bottomDockOpen,
+    bottomDockHeight,
+    bottomDockTabs,
+    bottomDockActiveTab,
+    bottomDockDocumentId,
+    bottomDockTool,
+    dockDroppedStructures,
+    toggleDock,
+    setDockOpen,
+    setDockSize,
+    openDockTab,
+    closeDockTab,
+    setDockActiveTab,
+    setDockDocument,
+    setDockTool,
+    addDockDrop,
+  } = useDockLayout();
   const [sidebarDragging, setSidebarDragging] = useState(false);
+  const [rightDockDragging, setRightDockDragging] = useState(false);
+  const [bottomDockDragging, setBottomDockDragging] = useState(false);
 
   const closeGridRuntime = useCallback((documentId: string | null | undefined) => {
     if (!documentId || !isTauriRuntime()) return;
@@ -454,7 +482,7 @@ export default function App() {
   const openTextDocuments = useCallback(
     async (
       paths: string[],
-      options: { inActiveTab?: boolean } = {},
+      options: { inActiveTab?: boolean; background?: boolean } = {},
     ) => {
       const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
       if (!cleanPaths.length) return null;
@@ -463,7 +491,8 @@ export default function App() {
         const result = isTauriRuntime()
           ? await invoke<OpenTextFilesResult>("open_text_files", { paths: cleanPaths })
           : await openBrowserDevTextFiles(cleanPaths);
-        if (options.inActiveTab) openTextDocumentsInActiveTab(result.documents);
+        if (options.background) addBackgroundTextDocuments(result.documents);
+        else if (options.inActiveTab) openTextDocumentsInActiveTab(result.documents);
         else addTextDocuments(result.documents);
         const openedText = "Opened " + result.documents.length + " text file" + (result.documents.length === 1 ? "" : "s");
         if (result.errors.length > 0) {
@@ -477,7 +506,7 @@ export default function App() {
         return null;
       }
     },
-    [addTextDocuments, openTextDocumentsInActiveTab, pushErrorStatus, pushStatus],
+    [addBackgroundTextDocuments, addTextDocuments, openTextDocumentsInActiveTab, pushErrorStatus, pushStatus],
   );
 
   const openPaths = useCallback(async (paths: string[]) => {
@@ -545,7 +574,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [addProjectRoot, closeAllDocuments, documents, openDocuments, openPaths, pushErrorStatus, setWorkspacePath]);
+  }, [addProjectRoot, closeAllDocuments, documents, openPaths, pushErrorStatus, setWorkspacePath]);
 
   useEffect(() => {
     if (refreshedPersistedSessionRef.current) return;
@@ -622,6 +651,108 @@ export default function App() {
     }
     pushStatus(openedText);
   }, [addDocuments, openStructureRecordDocuments, pushStatus, rememberRecentStructures]);
+
+  const openDockPayload = useCallback(async (input: Parameters<ShellActions["openDockPayload"]>[0]) => {
+    const ketcherItem = input.payload.items?.find((item) => item.kind === "ketcher") ?? null;
+    const itemPaths = (input.payload.items ?? [])
+      .map((item) => item.path)
+      .filter((path): path is string => Boolean(path));
+    const cleanPaths = Array.from(new Set([...input.payload.paths, ...itemPaths].map((path) => path.trim()).filter(Boolean)));
+    const cleanRecords = input.payload.records;
+    if (ketcherItem && cleanPaths.length === 0 && cleanRecords.length === 0) {
+      setDockTool(input.area, "ketcher");
+      addDockDrop(input);
+      pushStatus(`Opened Ketcher in ${input.area === "right" ? "right dock" : "bottom dock"}`);
+      return;
+    }
+    if (cleanPaths.length === 0 && cleanRecords.length === 0) {
+      addDockDrop(input);
+      return;
+    }
+
+    pushStatus(`Opening in ${input.area === "right" ? "right dock" : "bottom dock"}...`);
+    try {
+      const structurePaths: string[] = [];
+      const textPaths: string[] = [];
+      const structureFirstTextPaths: string[] = [];
+      for (const path of cleanPaths) {
+        const extension = pathExtension(path);
+        if (structureFirstTextExtensions.has(extension)) {
+          structureFirstTextPaths.push(path);
+        } else if (structureExtensions.has(extension)) {
+          structurePaths.push(path);
+        } else if (preferredTextExtensions.has(extension) || extension.length > 0) {
+          textPaths.push(path);
+        } else {
+          textPaths.push(path);
+        }
+      }
+
+      const structurePathResult = structurePaths.length > 0
+        ? isTauriRuntime()
+          ? await invoke<OpenDocumentsResult>("open_documents", { paths: structurePaths, preferences, reloadOptions: undefined })
+          : await openBrowserDevDocuments(structurePaths, preferences, undefined)
+        : { documents: [], errors: [] };
+      const fallbackTextPaths: string[] = [];
+      const structureFirstResults: OpenDocumentsResult[] = [];
+      for (const path of structureFirstTextPaths) {
+        try {
+          const result = isTauriRuntime()
+            ? await invoke<OpenDocumentsResult>("open_documents", { paths: [path], preferences, reloadOptions: undefined })
+            : await openBrowserDevDocuments([path], preferences, undefined);
+          if (result.documents.length > 0) {
+            structureFirstResults.push(result);
+          } else {
+            fallbackTextPaths.push(path);
+          }
+        } catch {
+          fallbackTextPaths.push(path);
+        }
+      }
+      const textOpenPaths = [...textPaths, ...fallbackTextPaths];
+      const textResult = textOpenPaths.length > 0
+        ? isTauriRuntime()
+          ? await invoke<OpenTextFilesResult>("open_text_files", { paths: textOpenPaths })
+          : await openBrowserDevTextFiles(textOpenPaths)
+        : { documents: [], errors: [] };
+      const recordResult = cleanRecords.length > 0
+        ? await openStructureRecordDocuments(cleanRecords)
+        : { opened: [], errors: [] };
+      const openedStructures = [
+        ...structurePathResult.documents,
+        ...structureFirstResults.flatMap((result) => result.documents),
+        ...recordResult.opened,
+      ];
+      const openedTextDocuments = textResult.documents;
+      const errors = [
+        ...structurePathResult.errors,
+        ...structureFirstResults.flatMap((result) => result.errors),
+        ...textResult.errors,
+        ...recordResult.errors,
+      ];
+      if (openedStructures.length > 0) {
+        addBackgroundDocuments(openedStructures);
+        rememberRecentStructures(openedStructures);
+      }
+      if (openedTextDocuments.length > 0) {
+        addBackgroundTextDocuments(openedTextDocuments);
+      }
+      const firstDockDocumentId = openedStructures[0]?.id ?? openedTextDocuments[0]?.id ?? null;
+      if (firstDockDocumentId) {
+        setDockDocument(input.area, firstDockDocumentId);
+        addDockDrop(input);
+      }
+      const openedCount = openedStructures.length + openedTextDocuments.length;
+      const openedText = `Opened ${openedCount} item${openedCount === 1 ? "" : "s"} in ${input.area === "right" ? "right dock" : "bottom dock"}`;
+      if (errors.length > 0) {
+        pushStatus(openedCount > 0 ? `${openedText}. ${summarizeErrors(errors)}` : summarizeErrors(errors), "error", errors);
+        return;
+      }
+      pushStatus(openedText);
+    } catch (error) {
+      pushErrorStatus(error, "Dock open failed");
+    }
+  }, [addBackgroundDocuments, addBackgroundTextDocuments, addDockDrop, openStructureRecordDocuments, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setDockDocument, setDockTool]);
 
   const openMostRecentStructure = useCallback(async () => {
     const structure = recentStructures[0];
@@ -2285,6 +2416,90 @@ export default function App() {
     [closeSidebar, setSidebarWidth, sidebarWidth],
   );
 
+  const startRightDockResize = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      setRightDockDragging(true);
+      const startX = event.clientX;
+      const startWidth = rightDockWidth;
+      let closedByDrag = false;
+      const previousCursor = document.documentElement.style.cursor;
+      const previousUserSelect = document.body.style.userSelect;
+      document.documentElement.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      const onMove = (move: PointerEvent) => {
+        const nextWidth = startWidth + startX - move.clientX;
+        if (nextWidth <= RIGHT_DOCK_CLOSE_THRESHOLD) {
+          if (!closedByDrag) {
+            closedByDrag = true;
+            setDockOpen("right", false);
+          }
+          return;
+        }
+        if (closedByDrag) {
+          closedByDrag = false;
+          setDockOpen("right", true);
+        }
+        setDockSize("right", nextWidth);
+      };
+      const stop = () => {
+        setRightDockDragging(false);
+        document.documentElement.style.cursor = previousCursor;
+        document.body.style.userSelect = previousUserSelect;
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", stop);
+        window.removeEventListener("pointercancel", stop);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", stop);
+      window.addEventListener("pointercancel", stop);
+    },
+    [rightDockWidth, setDockOpen, setDockSize],
+  );
+
+  const startBottomDockResize = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      setBottomDockDragging(true);
+      const startY = event.clientY;
+      const startHeight = bottomDockHeight;
+      let closedByDrag = false;
+      const previousCursor = document.documentElement.style.cursor;
+      const previousUserSelect = document.body.style.userSelect;
+      document.documentElement.style.cursor = "row-resize";
+      document.body.style.userSelect = "none";
+      const onMove = (move: PointerEvent) => {
+        const nextHeight = startHeight + startY - move.clientY;
+        if (nextHeight <= BOTTOM_DOCK_CLOSE_THRESHOLD) {
+          if (!closedByDrag) {
+            closedByDrag = true;
+            setDockOpen("bottom", false);
+          }
+          return;
+        }
+        if (closedByDrag) {
+          closedByDrag = false;
+          setDockOpen("bottom", true);
+        }
+        setDockSize("bottom", nextHeight);
+      };
+      const stop = () => {
+        setBottomDockDragging(false);
+        document.documentElement.style.cursor = previousCursor;
+        document.body.style.userSelect = previousUserSelect;
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", stop);
+        window.removeEventListener("pointercancel", stop);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", stop);
+      window.addEventListener("pointercancel", stop);
+    },
+    [bottomDockHeight, setDockOpen, setDockSize],
+  );
+
   const actions = useMemo<ShellActions>(() => ({
     chooseFiles,
     openStructurePaths: async (paths: string[]) => {
@@ -2316,6 +2531,21 @@ export default function App() {
     openWorkspaceFolder,
     openProjectFolder,
     toggleSidebar,
+    toggleDock,
+    setDockOpen,
+    setDockSize,
+    openDockTab,
+    closeDockTab,
+    setDockActiveTab,
+    setDockDocument,
+    setDockTool,
+    addDockDrop: (input) => {
+      addDockDrop(input);
+      const count = input.payload.paths.length + input.payload.records.length + (input.payload.items?.length ?? 0);
+      const target = input.area === "right" ? "right dock" : "bottom dock";
+      pushStatus(`Added ${count} item${count === 1 ? "" : "s"} to ${target}`);
+    },
+    openDockPayload,
     toggleProjectsOpen,
     setExpandedProjectIds,
     setSidebarQuery,
@@ -2415,7 +2645,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [activeDocument?.id, addXyzrenderSheetItemsToDocument, appendGridRecords, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeGridRuntime, closeTab, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, installUpdate, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDocuments, openFepSetupWorkspace, openKetcher, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openPaths, openProjectFolder, openRecentStructure, openSettings, openStructureRecords, openWorkspaceFolder, pushErrorStatus, pushStatus, resetQuickLook, revealActiveDocument, revealDocument, revealPath, saveMoleculeCollectionAs, selectDocument, setActiveTab, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
+  }), [activeDocument?.id, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, installUpdate, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepSetupWorkspace, openKetcher, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openPaths, openProjectFolder, openRecentStructure, openSettings, openStructureRecords, openWorkspaceFolder, pushErrorStatus, pushStatus, resetQuickLook, revealActiveDocument, revealDocument, revealPath, saveMoleculeCollectionAs, selectDocument, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
@@ -2438,6 +2668,21 @@ export default function App() {
     sidebarOpen,
     sidebarWidth,
     sidebarDragging,
+    rightDockOpen,
+    rightDockWidth,
+    rightDockTabs,
+    rightDockActiveTab,
+    rightDockDocumentId,
+    rightDockTool,
+    rightDockDragging,
+    bottomDockOpen,
+    bottomDockHeight,
+    bottomDockTabs,
+    bottomDockActiveTab,
+    bottomDockDocumentId,
+    bottomDockTool,
+    bottomDockDragging,
+    dockDroppedStructures,
     structureDragActive,
     poseReviewSelections,
     ketcherImportRequest,
@@ -2461,6 +2706,8 @@ export default function App() {
         onDismissStatus={clearStatus}
         onToggleSidebar={toggleSidebar}
         onResizeStart={startSidebarResize}
+        onRightDockResizeStart={startRightDockResize}
+        onBottomDockResizeStart={startBottomDockResize}
         onDragEnter={handleBrowserDrag}
         onDragOver={handleBrowserDrag}
         onDragLeave={handleBrowserDragLeave}

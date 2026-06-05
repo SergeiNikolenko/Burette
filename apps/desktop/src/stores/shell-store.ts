@@ -1,10 +1,35 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import {
+  type DockArea,
+  type DockDropInput,
+  type DockDroppedStructure,
+  type DockTab,
+  type DockTabKind,
+  type DockToolKind,
+  createDockTab,
+  firstDockTabKind,
+  normalizeDockActiveTab,
+  normalizeDockTabs,
+} from "../lib/dock";
 import { isTemporaryDocumentPath } from "../lib/temporary-documents";
 
 type ShellState = {
   sidebarOpen: boolean;
   sidebarWidth: number;
+  rightDockOpen: boolean;
+  rightDockWidth: number;
+  rightDockTabs: DockTab[];
+  rightDockActiveTab: DockTabKind;
+  rightDockDocumentId: string | null;
+  rightDockTool: DockToolKind | null;
+  bottomDockOpen: boolean;
+  bottomDockHeight: number;
+  bottomDockTabs: DockTab[];
+  bottomDockActiveTab: DockTabKind;
+  bottomDockDocumentId: string | null;
+  bottomDockTool: DockToolKind | null;
+  dockDroppedStructures: DockDroppedStructure[];
   projectsOpen: boolean;
   projectRoots: string[];
   expandedProjectIds: string[];
@@ -13,6 +38,15 @@ type ShellState = {
   toggleSidebar: () => void;
   closeSidebar: () => void;
   setSidebarWidth: (width: number) => void;
+  toggleDock: (area: DockArea) => void;
+  setDockOpen: (area: DockArea, open: boolean) => void;
+  setDockSize: (area: DockArea, size: number) => void;
+  openDockTab: (area: DockArea, kind: DockTabKind) => void;
+  closeDockTab: (area: DockArea, tabId: string) => void;
+  setDockActiveTab: (area: DockArea, kind: DockTabKind) => void;
+  setDockDocument: (area: DockArea, documentId: string | null) => void;
+  setDockTool: (area: DockArea, tool: DockToolKind | null) => void;
+  addDockDrop: (input: DockDropInput) => void;
   toggleProjectsOpen: () => void;
   setExpandedProjectIds: (projectIds: string[]) => void;
   addProjectRoot: (root: string) => void;
@@ -21,7 +55,23 @@ type ShellState = {
   toggleProjectExpanded: (projectId: string) => void;
 };
 
-type PersistedShellState = Pick<ShellState, "sidebarOpen" | "sidebarWidth" | "projectsOpen" | "projectRoots" | "expandedProjectIds" | "pinnedStructurePaths">;
+type PersistedShellState = Pick<
+  ShellState,
+  | "sidebarOpen"
+  | "sidebarWidth"
+  | "rightDockOpen"
+  | "rightDockWidth"
+  | "rightDockTabs"
+  | "rightDockActiveTab"
+  | "bottomDockOpen"
+  | "bottomDockHeight"
+  | "bottomDockTabs"
+  | "bottomDockActiveTab"
+  | "projectsOpen"
+  | "projectRoots"
+  | "expandedProjectIds"
+  | "pinnedStructurePaths"
+>;
 
 function normalizeRoot(root: string) {
   return root.replace(/\\/g, "/").replace(/\/+$/g, "");
@@ -44,11 +94,67 @@ function normalizeSidebarWidth(width: number) {
   return Math.max(220, Math.min(420, Math.round(width)));
 }
 
+function normalizeRightDockWidth(width: number) {
+  return Math.max(260, Math.min(960, Math.round(width)));
+}
+
+function normalizeBottomDockHeight(height: number) {
+  return Math.max(180, Math.min(720, Math.round(height)));
+}
+
+function dockTabState(area: DockArea, state: ShellState) {
+  return area === "right"
+    ? { tabs: state.rightDockTabs, activeTab: state.rightDockActiveTab }
+    : { tabs: state.bottomDockTabs, activeTab: state.bottomDockActiveTab };
+}
+
+function dockDropItems(input: DockDropInput): DockDroppedStructure[] {
+  const now = Date.now();
+  const paths = input.payload.paths.map((path, index) => ({
+    id: `${now}-${input.area}-${input.tabKind}-path-${index}-${path}`,
+    area: input.area,
+    tabKind: input.tabKind,
+    title: path.split(/[\\/]/u).pop() || path,
+    detail: path,
+    addedAt: now + index,
+  }));
+  const records = input.payload.records.map((record, index) => ({
+    id: `${now}-${input.area}-${input.tabKind}-record-${index}-${record.path}`,
+    area: input.area,
+    tabKind: input.tabKind,
+    title: record.path,
+    detail: `${record.inputExtension.toUpperCase()} inline structure`,
+    addedAt: now + paths.length + index,
+  }));
+  const items = (input.payload.items ?? []).map((item, index) => ({
+    id: `${now}-${input.area}-${input.tabKind}-item-${index}-${item.kind}-${item.title}`,
+    area: input.area,
+    tabKind: input.tabKind,
+    title: item.title,
+    detail: item.detail ?? item.path ?? item.kind,
+    addedAt: now + paths.length + records.length + index,
+  }));
+  return [...paths, ...records, ...items];
+}
+
 export const useShellStore = create<ShellState>()(
   persist<ShellState, [], [], PersistedShellState>(
     (set) => ({
       sidebarOpen: true,
       sidebarWidth: 240,
+      rightDockOpen: true,
+      rightDockWidth: 360,
+      rightDockTabs: normalizeDockTabs("right", undefined),
+      rightDockActiveTab: firstDockTabKind("right"),
+      rightDockDocumentId: null,
+      rightDockTool: null,
+      bottomDockOpen: true,
+      bottomDockHeight: 260,
+      bottomDockTabs: normalizeDockTabs("bottom", undefined),
+      bottomDockActiveTab: firstDockTabKind("bottom"),
+      bottomDockDocumentId: null,
+      bottomDockTool: null,
+      dockDroppedStructures: [],
       projectsOpen: true,
       projectRoots: [],
       expandedProjectIds: [],
@@ -57,6 +163,63 @@ export const useShellStore = create<ShellState>()(
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       closeSidebar: () => set({ sidebarOpen: false }),
       setSidebarWidth: (width) => set({ sidebarWidth: normalizeSidebarWidth(width) }),
+      toggleDock: (area) => set((state) => (
+        area === "right"
+          ? { rightDockOpen: !state.rightDockOpen }
+          : { bottomDockOpen: !state.bottomDockOpen }
+      )),
+      setDockOpen: (area, open) => set(area === "right" ? { rightDockOpen: open } : { bottomDockOpen: open }),
+      setDockSize: (area, size) => set(area === "right"
+        ? { rightDockWidth: normalizeRightDockWidth(size) }
+        : { bottomDockHeight: normalizeBottomDockHeight(size) }),
+      openDockTab: (area, kind) =>
+        set((state) => {
+          const current = dockTabState(area, state);
+          const tabs = current.tabs.some((tab) => tab.kind === kind) ? current.tabs : [...current.tabs, createDockTab(kind)];
+          return area === "right"
+            ? { rightDockOpen: true, rightDockTabs: tabs, rightDockActiveTab: kind }
+            : { bottomDockOpen: true, bottomDockTabs: tabs, bottomDockActiveTab: kind };
+        }),
+      closeDockTab: (area, tabId) =>
+        set((state) => {
+          const current = dockTabState(area, state);
+          const tabs = normalizeDockTabs(area, current.tabs.filter((tab) => tab.id !== tabId));
+          const activeTab = tabs.some((tab) => tab.kind === current.activeTab) ? current.activeTab : tabs[0].kind;
+          return area === "right"
+            ? { rightDockTabs: tabs, rightDockActiveTab: activeTab }
+            : { bottomDockTabs: tabs, bottomDockActiveTab: activeTab };
+        }),
+      setDockActiveTab: (area, kind) =>
+        set((state) => {
+          const current = dockTabState(area, state);
+          if (!current.tabs.some((tab) => tab.kind === kind)) return state;
+          return area === "right"
+            ? { rightDockActiveTab: kind }
+            : { bottomDockActiveTab: kind };
+        }),
+      setDockDocument: (area, documentId) =>
+        set(area === "right"
+          ? { rightDockOpen: true, rightDockDocumentId: documentId, rightDockTool: null, rightDockActiveTab: "files" }
+          : { bottomDockOpen: true, bottomDockDocumentId: documentId, bottomDockTool: null, bottomDockActiveTab: "files" }),
+      setDockTool: (area, tool) =>
+        set(area === "right"
+          ? { rightDockOpen: true, rightDockDocumentId: null, rightDockTool: tool, rightDockActiveTab: "files" }
+          : { bottomDockOpen: true, bottomDockDocumentId: null, bottomDockTool: tool, bottomDockActiveTab: "files" }),
+      addDockDrop: (input) =>
+        set((state) => {
+          const items = dockDropItems(input);
+          if (items.length === 0) return state;
+          const current = dockTabState(input.area, state);
+          const tabs = current.tabs.some((tab) => tab.kind === input.tabKind)
+            ? current.tabs
+            : [...current.tabs, createDockTab(input.tabKind)];
+          return {
+            ...(input.area === "right"
+              ? { rightDockOpen: true, rightDockTabs: tabs, rightDockActiveTab: input.tabKind }
+              : { bottomDockOpen: true, bottomDockTabs: tabs, bottomDockActiveTab: input.tabKind }),
+            dockDroppedStructures: [...items, ...state.dockDroppedStructures].slice(0, 60),
+          };
+        }),
       toggleProjectsOpen: () => set((state) => ({ projectsOpen: !state.projectsOpen })),
       setExpandedProjectIds: (projectIds) => set({ expandedProjectIds: Array.from(new Set(projectIds)) }),
       addProjectRoot: (root) =>
@@ -95,6 +258,14 @@ export const useShellStore = create<ShellState>()(
       partialize: (state) => ({
         sidebarOpen: state.sidebarOpen,
         sidebarWidth: state.sidebarWidth,
+        rightDockOpen: state.rightDockOpen,
+        rightDockWidth: state.rightDockWidth,
+        rightDockTabs: normalizeDockTabs("right", state.rightDockTabs),
+        rightDockActiveTab: normalizeDockActiveTab("right", normalizeDockTabs("right", state.rightDockTabs), state.rightDockActiveTab),
+        bottomDockOpen: state.bottomDockOpen,
+        bottomDockHeight: state.bottomDockHeight,
+        bottomDockTabs: normalizeDockTabs("bottom", state.bottomDockTabs),
+        bottomDockActiveTab: normalizeDockActiveTab("bottom", normalizeDockTabs("bottom", state.bottomDockTabs), state.bottomDockActiveTab),
         projectsOpen: state.projectsOpen,
         projectRoots: persistentRoots(state.projectRoots),
         expandedProjectIds: persistentExpandedProjectIds(state.expandedProjectIds, persistentRoots(state.projectRoots)),
@@ -107,6 +278,22 @@ export const useShellStore = create<ShellState>()(
           ...current,
           sidebarOpen: stored?.sidebarOpen ?? current.sidebarOpen,
           sidebarWidth: normalizeSidebarWidth(stored?.sidebarWidth ?? current.sidebarWidth),
+          rightDockOpen: stored?.rightDockOpen ?? current.rightDockOpen,
+          rightDockWidth: normalizeRightDockWidth(stored?.rightDockWidth ?? current.rightDockWidth),
+          rightDockTabs: normalizeDockTabs("right", stored?.rightDockTabs ?? current.rightDockTabs),
+          rightDockActiveTab: normalizeDockActiveTab(
+            "right",
+            normalizeDockTabs("right", stored?.rightDockTabs ?? current.rightDockTabs),
+            stored?.rightDockActiveTab ?? current.rightDockActiveTab,
+          ),
+          bottomDockOpen: stored?.bottomDockOpen ?? current.bottomDockOpen,
+          bottomDockHeight: normalizeBottomDockHeight(stored?.bottomDockHeight ?? current.bottomDockHeight),
+          bottomDockTabs: normalizeDockTabs("bottom", stored?.bottomDockTabs ?? current.bottomDockTabs),
+          bottomDockActiveTab: normalizeDockActiveTab(
+            "bottom",
+            normalizeDockTabs("bottom", stored?.bottomDockTabs ?? current.bottomDockTabs),
+            stored?.bottomDockActiveTab ?? current.bottomDockActiveTab,
+          ),
           projectsOpen: stored?.projectsOpen ?? current.projectsOpen,
           projectRoots,
           expandedProjectIds: persistentExpandedProjectIds(stored?.expandedProjectIds ?? current.expandedProjectIds, projectRoots),
