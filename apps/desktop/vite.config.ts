@@ -34,7 +34,15 @@ const devFsAllowRoots = [repoRoot, ...defaultFsAllow, ...extraFsAllow].map((path
 const execFileAsync = promisify(execFile);
 const DEV_FILE_SIZE_LIMIT = 75 * 1024 * 1024;
 const TEXT_FILE_READ_LIMIT = 12 * 1024 * 1024;
+const DESMOND_PREVIEW_TARGET_MB = 24;
 const RDKIT_WASM_PATH = join(repoRoot, "PreviewExtension", "Web", "rdkit", "RDKit_minimal.wasm");
+type StructureAttachmentRole = "topology" | "trajectory" | "trajectoryPointer" | "configuration";
+type StructureFileBundle = {
+  kind: "desmond" | "md" | "single";
+  primaryPath: string;
+  inputPath: string;
+  attachments: Array<{ role: StructureAttachmentRole; path: string }>;
+};
 const DEV_FILE_EXTENSIONS = new Set([
   "abi", "bcif", "cif", "cms", "com", "csv", "cub", "cube", "dcd", "ent", "fdf", "gro",
   "in", "inp", "lammpstrj", "mae", "mae.gz", "maegz", "mcif", "mmcif", "mol",
@@ -427,6 +435,40 @@ export function browserDevXyzrenderPlugin() {
           res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
         }
       });
+      server.middlewares.use("/__burette/file-bundle", async (req, res) => {
+        if ((req.method || "GET").toUpperCase() !== "GET") {
+          res.statusCode = 405;
+          res.setHeader("Content-Type", "application/json; charset=utf-8");
+          res.end(JSON.stringify({ error: "Method not allowed" }));
+          return;
+        }
+        try {
+          const url = new URL(req.url || "", "http://127.0.0.1");
+          const path = url.searchParams.get("path");
+          if (!path) {
+            res.statusCode = 400;
+            res.setHeader("Content-Type", "application/json; charset=utf-8");
+            res.end(JSON.stringify({ error: "Missing path" }));
+            return;
+          }
+          const filePath = resolve(path);
+          if (!isDevFileReadAllowed(filePath)) {
+            res.statusCode = 403;
+            res.setHeader("Content-Type", "application/json; charset=utf-8");
+            res.end(JSON.stringify({ error: "Forbidden" }));
+            return;
+          }
+          const bundle = resolveStructureFileBundle(filePath);
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "application/json; charset=utf-8");
+          res.setHeader("Cache-Control", "no-cache");
+          res.end(JSON.stringify(bundle));
+        } catch (error) {
+          res.statusCode = 500;
+          res.setHeader("Content-Type", "application/json; charset=utf-8");
+          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+        }
+      });
       server.middlewares.use("/__burette/desmond-preview", async (req, res) => {
         if ((req.method || "GET").toUpperCase() !== "GET") {
           res.statusCode = 405;
@@ -450,7 +492,8 @@ export function browserDevXyzrenderPlugin() {
             res.end(JSON.stringify({ error: "Forbidden" }));
             return;
           }
-          if (!isDesmondPreviewCandidate(filePath)) {
+          const bundle = resolveStructureFileBundle(filePath);
+          if (bundle.kind !== "desmond") {
             res.statusCode = 404;
             res.setHeader("Content-Type", "application/json; charset=utf-8");
             res.end(JSON.stringify({ error: "No Desmond trajectory candidate found." }));
@@ -467,8 +510,20 @@ export function browserDevXyzrenderPlugin() {
           try {
             await execFileAsync(
               SCHRODINGER_RUN,
-              ["python3", DESMOND_PREVIEW_EXTRACTOR, filePath, "--frames", "30", "--atoms", "6000", "--output", outputPath],
-              { timeout: 60_000, maxBuffer: 4 * 1024 * 1024 },
+              [
+                "python3",
+                DESMOND_PREVIEW_EXTRACTOR,
+                bundle.inputPath,
+                "--frames",
+                "0",
+                "--atoms",
+                "0",
+                "--target-mb",
+                String(DESMOND_PREVIEW_TARGET_MB),
+                "--output",
+                outputPath,
+              ],
+              { timeout: 0, maxBuffer: 16 * 1024 * 1024 },
             );
             const bytes = await readFile(outputPath);
             if (!bytes.length) {
@@ -682,21 +737,105 @@ function casebookCmsCandidates(trjDirectory: string, base: string) {
   return [join(mappedDirectory, `${base}-out.cms`), join(mappedDirectory, `${base}.cms`)];
 }
 
-function isDesmondPreviewCandidate(path: string) {
+function existingFileCandidate(candidates: string[]) {
+  return candidates.find((candidate) => existsSync(candidate) && statSync(candidate).isFile()) || null;
+}
+
+function existingDirectoryCandidate(candidates: string[]) {
+  return candidates.find((candidate) => existsSync(candidate) && statSync(candidate).isDirectory()) || null;
+}
+
+function resolveStructureFileBundle(path: string): StructureFileBundle {
+  return resolveDesmondFileBundle(path) ?? resolveMdFileBundle(path) ?? {
+    kind: "single",
+    primaryPath: path,
+    inputPath: path,
+    attachments: [],
+  };
+}
+
+function resolveDesmondFileBundle(path: string): StructureFileBundle | null {
   const extension = fileExtension(path);
   if (extension === "dtr") {
     const trjDirectory = dirname(path);
     const base = trjDirectory.replace(/\\/g, "/").split("/").pop()?.replace(/_trj$/u, "") || "";
-    return statSync(trjDirectory).isDirectory()
-      && [join(dirname(trjDirectory), `${base}-out.cms`), join(dirname(trjDirectory), `${base}.cms`), ...casebookCmsCandidates(trjDirectory, base)]
-        .some((candidate) => existsSync(candidate));
+    const cmsPath = existingFileCandidate([
+      join(dirname(trjDirectory), `${base}-out.cms`),
+      join(dirname(trjDirectory), `${base}.cms`),
+      ...casebookCmsCandidates(trjDirectory, base),
+    ]);
+    if (!cmsPath || !existsSync(trjDirectory) || !statSync(trjDirectory).isDirectory()) return null;
+    return {
+      kind: "desmond",
+      primaryPath: cmsPath,
+      inputPath: path,
+      attachments: [
+        { role: "topology", path: cmsPath },
+        { role: "trajectory", path: trjDirectory },
+        { role: "trajectoryPointer", path },
+      ],
+    };
   }
-  if (extension !== "cms") return false;
+  if (extension !== "cms") return null;
   for (const base of candidateDesmondBases(path)) {
-    const candidates = [join(dirname(path), `${base}_trj`), ...casebookTrjCandidates(path, base)];
-    if (candidates.some((candidate) => existsSync(candidate) && statSync(candidate).isDirectory())) return true;
+    const trjDirectory = existingDirectoryCandidate([join(dirname(path), `${base}_trj`), ...casebookTrjCandidates(path, base)]);
+    if (!trjDirectory) continue;
+    const clickme = join(trjDirectory, "clickme.dtr");
+    const attachments: StructureFileBundle["attachments"] = [
+      { role: "topology", path },
+      { role: "trajectory", path: trjDirectory },
+    ];
+    if (existsSync(clickme) && statSync(clickme).isFile()) {
+      attachments.push({ role: "trajectoryPointer", path: clickme });
+    }
+    return {
+      kind: "desmond",
+      primaryPath: path,
+      inputPath: path,
+      attachments,
+    };
   }
-  return false;
+  return null;
+}
+
+function resolveMdFileBundle(path: string): StructureFileBundle | null {
+  const extension = fileExtension(path);
+  const base = path.slice(0, Math.max(0, path.length - extension.length - 1));
+  if (["xtc", "trr", "dcd", "nctraj"].includes(extension)) {
+    const topology = existingFileCandidate(
+      ["pdb", "gro", "cif", "mmcif", "bcif", "psf", "prmtop", "top"].map((candidate) => `${base}.${candidate}`),
+    );
+    if (!topology) return null;
+    return {
+      kind: "md",
+      primaryPath: topology,
+      inputPath: path,
+      attachments: [
+        { role: "topology", path: topology },
+        { role: "trajectory", path },
+      ],
+    };
+  }
+  if (["pdb", "gro", "cif", "mmcif", "bcif", "psf", "prmtop", "top"].includes(extension)) {
+    const trajectory = existingFileCandidate(
+      ["xtc", "trr", "dcd", "nctraj"].map((candidate) => `${base}.${candidate}`),
+    );
+    if (!trajectory) return null;
+    return {
+      kind: "md",
+      primaryPath: path,
+      inputPath: path,
+      attachments: [
+        { role: "topology", path },
+        { role: "trajectory", path: trajectory },
+      ],
+    };
+  }
+  return null;
+}
+
+function isDesmondPreviewCandidate(path: string) {
+  return resolveDesmondFileBundle(path) !== null;
 }
 
 async function readJsonBody(req: import("node:http").IncomingMessage) {
