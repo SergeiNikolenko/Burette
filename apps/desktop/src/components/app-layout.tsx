@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { DockPanel } from "./dock-panel";
 import { ViewerArea } from "./editor-area";
 import { EditorTabs } from "./editor-area/editor-tabs";
 import { NotificationPopup } from "./notification-popup";
@@ -19,6 +20,8 @@ export function AppLayout({
   onDismissStatus,
   onToggleSidebar,
   onResizeStart,
+  onRightDockResizeStart,
+  onBottomDockResizeStart,
   onDragEnter,
   onDragOver,
   onDragLeave,
@@ -30,6 +33,8 @@ export function AppLayout({
   onDismissStatus: () => void;
   onToggleSidebar: () => void;
   onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
+  onRightDockResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
+  onBottomDockResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
   onDragEnter: (event: React.DragEvent<HTMLElement>) => void;
   onDragOver: (event: React.DragEvent<HTMLElement>) => void;
   onDragLeave: (event: React.DragEvent<HTMLElement>) => void;
@@ -42,11 +47,14 @@ export function AppLayout({
   const sidebarLayoutWidth = state.sidebarOpen ? sidebarWidth : 0;
   const layoutState = sidebarWidth === state.sidebarWidth ? state : { ...state, sidebarWidth };
   const tabChromeLeft = state.sidebarOpen ? sidebarLayoutWidth + 12 : 132;
-  const chromeTransition = state.sidebarDragging ? "none" : undefined;
+  const dockDragging = state.sidebarDragging || state.rightDockDragging || state.bottomDockDragging;
+  const chromeTransition = dockDragging ? "none" : undefined;
   const systemThemeMode = useSystemThemeMode();
   const shellStyle = {
     ...buildThemeStyle(state.preferences, systemThemeMode),
     "--sidebar-layout-width": `${sidebarLayoutWidth}px`,
+    "--right-dock-width": `${state.rightDockOpen ? state.rightDockWidth : 0}px`,
+    "--bottom-dock-height": `${state.bottomDockOpen ? state.bottomDockHeight : 0}px`,
   } as CSSProperties;
   const effectiveTheme = resolveThemeMode(state.preferences.theme, systemThemeMode);
   const activePageKind = state.activeTab?.location.kind ?? null;
@@ -80,6 +88,30 @@ export function AppLayout({
           <HugeiconsIcon icon={SidebarLeftIcon} size={18} color="currentColor" strokeWidth={2} />
         </button>
       </div>
+      <div className="chrome-trailing-controls" data-tauri-drag-region>
+        <button
+          type="button"
+          className="chrome-button dock-toggle-button"
+          data-active={state.bottomDockOpen || undefined}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => actions.toggleDock("bottom")}
+          title={state.bottomDockOpen ? "Hide bottom dock" : "Show bottom dock"}
+          aria-label={state.bottomDockOpen ? "Hide bottom dock" : "Show bottom dock"}
+        >
+          <HugeiconsIcon className="dock-toggle-icon-bottom" icon={SidebarLeftIcon} size={18} color="currentColor" strokeWidth={2} />
+        </button>
+        <button
+          type="button"
+          className="chrome-button dock-toggle-button"
+          data-active={state.rightDockOpen || undefined}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => actions.toggleDock("right")}
+          title={state.rightDockOpen ? "Hide right dock" : "Show right dock"}
+          aria-label={state.rightDockOpen ? "Hide right dock" : "Show right dock"}
+        >
+          <HugeiconsIcon className="dock-toggle-icon-right" icon={SidebarLeftIcon} size={18} color="currentColor" strokeWidth={2} />
+        </button>
+      </div>
       <header
         className="topbar"
         style={{ left: tabChromeLeft, transition: chromeTransition }}
@@ -105,8 +137,24 @@ export function AppLayout({
             data-dragging={state.sidebarDragging || undefined}
           />
         )}
-        <section className="main-stage">
-          <ViewerArea state={layoutState} actions={actions} />
+        <section className="workbench">
+          <section className="workbench-main">
+            <section className="main-stage">
+              <ViewerArea state={layoutState} actions={actions} />
+            </section>
+            <DockPanel
+              area="bottom"
+              state={layoutState}
+              actions={actions}
+              onResizeStart={onBottomDockResizeStart}
+            />
+          </section>
+          <DockPanel
+            area="right"
+            state={layoutState}
+            actions={actions}
+            onResizeStart={onRightDockResizeStart}
+          />
         </section>
       </section>
       {state.dropActive && (

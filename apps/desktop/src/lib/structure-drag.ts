@@ -11,9 +11,17 @@ export type StructureDragPoint = {
   y: number;
 };
 
+export type StructureDragItem = {
+  kind: "file" | "tab" | "tool" | "ketcher" | "writer";
+  title: string;
+  detail?: string;
+  path?: string;
+};
+
 export type StructureDragPayload = {
   paths: string[];
   records: StructureDragRecord[];
+  items?: StructureDragItem[];
   point?: StructureDragPoint | null;
 };
 
@@ -21,23 +29,37 @@ export function emptyStructureDragPayload(): StructureDragPayload {
   return { paths: [], records: [] };
 }
 
+export function writeStructureDragPayload(dataTransfer: DataTransfer, input: StructureDragPayload) {
+  const paths = Array.from(new Set(input.paths.map((path) => path.trim()).filter(Boolean)));
+  const records = input.records.map(normalizeStructureDragRecord).filter((record): record is StructureDragRecord => record !== null);
+  const items = (input.items ?? []).map(normalizeStructureDragItem).filter((item): item is StructureDragItem => item !== null);
+  if (paths.length === 0 && records.length === 0 && items.length === 0) return false;
+  const payload: StructureDragPayload = { paths, records, items };
+  dataTransfer.setData(STRUCTURE_DRAG_MIME, JSON.stringify(payload));
+  const plainText = [
+    ...paths,
+    ...records.map((record) => record.text.trimEnd()),
+    ...items.map((item) => item.path ?? item.title),
+  ].filter(Boolean).join("\n");
+  if (plainText) dataTransfer.setData("text/plain", plainText + (records.length > 0 ? "\n" : ""));
+  dataTransfer.effectAllowed = "copy";
+  return true;
+}
+
 export function writeStructureDrag(dataTransfer: DataTransfer, paths: string[]) {
   const cleanPaths = Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
   if (cleanPaths.length === 0) return;
-  const payload: StructureDragPayload = { paths: cleanPaths, records: [] };
-  dataTransfer.setData(STRUCTURE_DRAG_MIME, JSON.stringify(payload));
-  dataTransfer.setData("text/plain", cleanPaths.join("\n"));
-  dataTransfer.effectAllowed = "copy";
+  writeStructureDragPayload(dataTransfer, { paths: cleanPaths, records: [] });
 }
 
 export function writeStructureDragRecords(dataTransfer: DataTransfer, records: StructureDragRecord[]) {
   const cleanRecords = records.map(normalizeStructureDragRecord).filter((record): record is StructureDragRecord => record !== null);
   if (cleanRecords.length === 0) return false;
-  const payload: StructureDragPayload = { paths: [], records: cleanRecords };
-  dataTransfer.setData(STRUCTURE_DRAG_MIME, JSON.stringify(payload));
-  dataTransfer.setData("text/plain", cleanRecords.map((record) => record.text.trimEnd()).join("\n") + "\n");
-  dataTransfer.effectAllowed = "copy";
-  return true;
+  return writeStructureDragPayload(dataTransfer, { paths: [], records: cleanRecords });
+}
+
+export function writeStructureDragItems(dataTransfer: DataTransfer, items: StructureDragItem[]) {
+  return writeStructureDragPayload(dataTransfer, { paths: [], records: [], items });
 }
 
 export function readStructureDragPayload(dataTransfer: DataTransfer): StructureDragPayload {
@@ -51,6 +73,10 @@ export function readStructureDragPayload(dataTransfer: DataTransfer): StructureD
       } else {
         if (Array.isArray(parsed.paths)) payload.paths.push(...parsed.paths);
         if (Array.isArray(parsed.records)) payload.records.push(...parsed.records);
+        if (Array.isArray(parsed.items)) {
+          payload.items ??= [];
+          payload.items.push(...parsed.items);
+        }
       }
     } catch {
       return payload;
@@ -76,6 +102,9 @@ export function readStructureDragPayload(dataTransfer: DataTransfer): StructureD
       .filter(Boolean),
   ));
   payload.records = payload.records.map(normalizeStructureDragRecord).filter((record): record is StructureDragRecord => record !== null);
+  const items = (payload.items ?? []).map(normalizeStructureDragItem).filter((item): item is StructureDragItem => item !== null);
+  if (items.length > 0) payload.items = items;
+  else delete payload.items;
   return payload;
 }
 
@@ -123,6 +152,19 @@ function normalizeStructureDragRecord(record: unknown): StructureDragRecord | nu
     ? candidate.path.trim()
     : `structure.${extension}`;
   return { path, inputExtension: extension, text };
+}
+
+function normalizeStructureDragItem(item: unknown): StructureDragItem | null {
+  if (!item || typeof item !== "object") return null;
+  const candidate = item as Partial<StructureDragItem>;
+  const title = typeof candidate.title === "string" ? candidate.title.trim() : "";
+  if (!title) return null;
+  const kind = candidate.kind === "file" || candidate.kind === "tab" || candidate.kind === "tool" || candidate.kind === "ketcher" || candidate.kind === "writer"
+    ? candidate.kind
+    : "file";
+  const detail = typeof candidate.detail === "string" && candidate.detail.trim() ? candidate.detail.trim() : undefined;
+  const path = typeof candidate.path === "string" && candidate.path.trim() ? candidate.path.trim() : undefined;
+  return { kind, title, detail, path };
 }
 
 export function hasStructureDrag(dataTransfer: DataTransfer) {
