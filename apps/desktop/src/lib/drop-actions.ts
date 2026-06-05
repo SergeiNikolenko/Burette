@@ -103,10 +103,16 @@ export function resolveDropActionChoices(
   if (payload.paths.length === 0 && payload.records.length === 0) return [];
   if (target.kind === "workspace") return [choiceForWorkspaceDrop(payload, source)];
   if (target.kind === "ketcher") {
-    return withOpenSeparately(payload, {
-      kind: "import-ketcher-structures",
-      payload,
-    }, "Add to Ketcher", source);
+    const importPayload = ketcherImportPayload(payload);
+    if (importPayload.paths.length === 0 && importPayload.records.length === 0) {
+      return [choiceForWorkspaceDrop(payload, source)];
+    }
+    return withOpenSeparatelyChoices(payload, [
+      choice("import-ketcher-structures", "Add to Ketcher", "default", {
+        kind: "import-ketcher-structures",
+        payload: importPayload,
+      }, source),
+    ], source);
   }
   if (target.kind === "fep-setup") {
     return withOpenSeparately(payload, {
@@ -177,6 +183,27 @@ function semanticPayload(payload: StructureDragPayload): StructureDragPayload {
     paths: payload.paths,
     records: payload.records,
   };
+}
+
+function ketcherImportPayload(payload: StructureDragPayload): StructureDragPayload {
+  return {
+    paths: payload.paths.filter(isKetcherImportPath),
+    records: payload.records.filter((record) => isKetcherImportExtension(record.inputExtension || record.path)),
+  };
+}
+
+function isKetcherImportPath(path: string) {
+  return isKetcherImportExtension(fileExtension(path));
+}
+
+function isKetcherImportExtension(extension: string) {
+  return ["mol", "sd", "sdf", "smi", "smiles"].includes(extension.trim().replace(/^\./u, "").toLowerCase());
+}
+
+function fileExtension(path: string) {
+  const name = path.replace(/\\/g, "/").split("/").filter(Boolean).pop() ?? "";
+  const index = name.lastIndexOf(".");
+  return index >= 0 ? name.slice(index + 1).toLowerCase() : "";
 }
 
 function withOpenSeparately(
