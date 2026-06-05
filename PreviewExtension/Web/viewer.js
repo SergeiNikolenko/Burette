@@ -15,6 +15,16 @@
   const MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX = 4;
   const VIEWER_THEME_STORAGE_KEY = 'buret.viewer.theme';
   const DEFAULT_MOLSTAR_STYLE = 'illustrative';
+  const MOLSTAR_STYLE_OPTIONS = [
+    { value: 'default', label: 'Default' },
+    { value: 'illustrative', label: 'Illustrative' },
+    { value: 'polymer-ligand', label: 'Polymer+Ligand' },
+    { value: 'cartoon', label: 'Cartoon' },
+    { value: 'ball-and-stick', label: 'Ball+Stick' },
+    { value: 'spacefill', label: 'Spacefill' },
+    { value: 'line', label: 'Line' },
+    { value: 'molecular-surface', label: 'Surface' }
+  ];
   const DEFAULT_XYZRENDER_PRESETS = [
     { value: 'default', label: 'Default' },
     { value: 'flat', label: 'Flat' },
@@ -488,6 +498,9 @@
   let viewerUIScale = DEFAULT_VIEWER_UI_SCALE;
   let activeViewer = null;
   let activeConfig = null;
+  let activeMolstarPrepared = null;
+  let activeMolstarCacheBuster = null;
+  let molstarStyleApplySerial = 0;
   let latestXyzrenderOrientationRef = null;
   let orientationTrackingCleanup = null;
   let externalArtifactInteractionsCleanup = null;
@@ -547,7 +560,8 @@
   }
 
   function normalizeMolstarStyle(value) {
-    return value === 'default' || value === 'illustrative' ? value : DEFAULT_MOLSTAR_STYLE;
+    const normalized = String(value || '').trim().toLowerCase();
+    return MOLSTAR_STYLE_OPTIONS.some(option => option.value === normalized) ? normalized : DEFAULT_MOLSTAR_STYLE;
   }
 
   function configuredMolstarStyle(config) {
@@ -826,6 +840,14 @@
     const ketcherButton = toolbar.querySelector('[data-buret-action="ketcher"]');
     const popover = toolbar.querySelector('[data-buret-xyzrender-popover]');
     control.classList.toggle('visible', canSwitchRenderer);
+    const molstarStyleSlot = toolbar.querySelector('[data-buret-molstar-style-slot]');
+    const molstarStyleSelect = toolbar.querySelector('[data-buret-molstar-style]');
+    molstarStyleSlot?.classList.toggle('visible', renderer === 'molstar');
+    if (molstarStyleSelect) {
+      populateMolstarStyleSelect(molstarStyleSelect);
+      molstarStyleSelect.value = configuredMolstarStyle(config);
+      molstarStyleSelect.disabled = renderer !== 'molstar';
+    }
     const presetSlot = toolbar.querySelector('[data-buret-xyzrender-preset-slot]');
     presetSlot?.classList.remove('visible');
     const canOpenSdfGrid = canOpenSdfGridFromConfig(config);
@@ -1178,9 +1200,13 @@
     });
     const presetSlot = toolbar.querySelector('[data-buret-xyzrender-preset-slot]');
     const preset = toolbar.querySelector('[data-buret-xyzrender-preset]');
+    const molstarStyleSlot = toolbar.querySelector('[data-buret-molstar-style-slot]');
+    const molstarStyleSelect = toolbar.querySelector('[data-buret-molstar-style]');
     const tuneButton = toolbar.querySelector('[data-buret-action="xyzrender-tune"]');
     const popover = toolbar.querySelector('[data-buret-xyzrender-popover]');
     const external = normalized === 'xyzrender-external';
+    molstarStyleSlot?.classList.toggle('visible', !external);
+    if (molstarStyleSelect) molstarStyleSelect.disabled = external;
     presetSlot?.classList.toggle('visible', external);
     if (preset) preset.disabled = !external;
     tuneButton?.classList.toggle('hidden', !external);
@@ -1190,6 +1216,70 @@
       popover?.classList.add('hidden');
       setXyzrenderPopoverOpenPersisted(false);
     }
+  }
+
+  function populateMolstarStyleSelect(select) {
+    if (!select || select.dataset.populated === '1') return;
+    select.innerHTML = MOLSTAR_STYLE_OPTIONS
+      .map(option => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`)
+      .join('');
+    select.dataset.populated = '1';
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function requestMolstarStyle(style) {
+    const value = normalizeMolstarStyle(style);
+    activeConfig = {
+      ...(activeConfig || window.BurreteConfig || {}),
+      molstarStyle: value
+    };
+    window.BurreteConfig = { ...(window.BurreteConfig || {}), ...activeConfig };
+    const toolbar = document.getElementById('buret-toolbar');
+    const select = toolbar?.querySelector('[data-buret-molstar-style]');
+    if (select) select.value = value;
+    if (!activeViewer) {
+      setStatus('Mol* style can be changed after the viewer loads.', 'error');
+      return;
+    }
+    const serial = ++molstarStyleApplySerial;
+    setStatus(`[web] Applying Mol* ${molstarStyleLabel(value)} style…`);
+    void reloadMolstarStyle(activeViewer, value, serial).catch(error => {
+      if (serial !== molstarStyleApplySerial) return;
+      setStatus(`Mol* style switch failed.\n\n${error?.message || String(error)}`, 'error');
+    });
+  }
+
+  function molstarStyleLabel(value) {
+    return MOLSTAR_STYLE_OPTIONS.find(option => option.value === value)?.label || value;
+  }
+
+  async function reloadMolstarStyle(viewer, style, serial) {
+    const prepared = activeMolstarPrepared;
+    if (!prepared) {
+      await applyMolstarStyle(viewer, style);
+      return;
+    }
+    const plugin = viewer?.plugin;
+    if (typeof plugin?.clear === 'function') {
+      await plugin.clear();
+    }
+    await loadPreparedStructure(viewer, prepared);
+    if (serial !== molstarStyleApplySerial) return;
+    if (Array.isArray(activeConfig?.stagedEntries) && activeConfig.stagedEntries.length > 0) {
+      await loadStagedMolstarEntries(viewer, activeConfig, activeMolstarCacheBuster || String(Date.now()));
+    }
+    applyLayoutState(viewer);
+    scheduleLayoutStateReapply(viewer);
+    try { viewer.handleResize(); } catch (_) {}
+    setStatus(`[web] Applied Mol* ${molstarStyleLabel(style)} style`);
+    setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
   }
 
   function requestXyzrenderPreset(preset) {
@@ -1759,6 +1849,7 @@
     }
     bindThemeButton(toolbar, viewer);
     bindSaveModifiedStructureButton(toolbar);
+    bindMolstarStyleControls(toolbar);
     bindXyzrenderControls(toolbar);
     initToolbarDrag(toolbar);
     restoreToolbarCollapsed(toolbar, viewer);
@@ -1840,6 +1931,17 @@
 
     requestAnimationFrame(handleSizeChange);
     setTimeout(handleSizeChange, 120);
+  }
+
+  function bindMolstarStyleControls(toolbar) {
+    if (!toolbar || toolbar.dataset.molstarStyleBound === '1') return;
+    const select = toolbar.querySelector('[data-buret-molstar-style]');
+    populateMolstarStyleSelect(select);
+    if (select) {
+      select.value = configuredMolstarStyle(activeConfig || window.BurreteConfig || {});
+      select.addEventListener('change', () => requestMolstarStyle(select.value));
+    }
+    toolbar.dataset.molstarStyleBound = '1';
   }
 
   function bindXyzrenderControls(toolbar) {
@@ -2687,6 +2789,7 @@
       theme: 'dark',
       canvasBackground: 'black',
       molstarStyle: DEFAULT_MOLSTAR_STYLE,
+      waterRepresentation: 'line',
       overlayOpacity: 0.9,
       defaultLayoutState: {
         left: 'hidden',
@@ -4155,11 +4258,153 @@
     return String(value).padStart(3, ' ');
   }
 
+  function molstarCurrentStructures(viewer) {
+    return viewer?.plugin?.managers?.structure?.hierarchy?.current?.structures || [];
+  }
+
+  function isMolstarBoxComponent(component) {
+    const key = String(component?.key || '').toLowerCase();
+    const label = String(component?.cell?.obj?.label || '').trim().toLowerCase();
+    return key.includes('box') || label === 'box' || label.includes(' box');
+  }
+
+  async function tryCreateMolstarComponent(plugin, structure, kind) {
+    for (const target of [structure?.cell, structure]) {
+      if (!target) continue;
+      try {
+        const component = await plugin.builders.structure.tryCreateComponentStatic(target, kind);
+        if (component) return component;
+      } catch (error) {
+        debug(`Mol* static ${kind} component creation failed: ` + (error && error.message || String(error)));
+      }
+    }
+    return null;
+  }
+
+  async function clearMolstarMainRepresentations(viewer) {
+    const plugin = viewer?.plugin;
+    const components = [];
+    for (const structure of molstarCurrentStructures(viewer)) {
+      for (const component of structure.components || []) {
+        if (isMolstarWaterComponent(component) || isMolstarBoxComponent(component)) continue;
+        components.push(component);
+      }
+    }
+    if (components.length) {
+      await plugin.managers.structure.component.removeRepresentations(components);
+    }
+  }
+
+  async function addMolstarRepresentation(plugin, component, representation) {
+    if (!component) return false;
+    try {
+      await plugin.builders.structure.representation.addRepresentation(component.cell || component, representation);
+      return true;
+    } catch (error) {
+      debug('Mol* representation failed: ' + (error && error.message || String(error)));
+      return false;
+    }
+  }
+
+  async function applyMolstarUniformRepresentation(viewer, representation) {
+    const plugin = viewer?.plugin;
+    if (!plugin) return;
+    await clearMolstarMainRepresentations(viewer);
+    let created = 0;
+    for (const structure of molstarCurrentStructures(viewer)) {
+      const component = await tryCreateMolstarComponent(plugin, structure, 'all');
+      if (await addMolstarRepresentation(plugin, component, representation)) created += 1;
+    }
+    if (created === 0) throw new Error('Mol* could not create a component for this style.');
+  }
+
+  async function applyMolstarPolymerLigandRepresentation(viewer, polymerRepresentation, ligandRepresentation) {
+    const plugin = viewer?.plugin;
+    if (!plugin) return;
+    await clearMolstarMainRepresentations(viewer);
+    let created = 0;
+    for (const structure of molstarCurrentStructures(viewer)) {
+      const polymer = await tryCreateMolstarComponent(plugin, structure, 'polymer');
+      if (await addMolstarRepresentation(plugin, polymer, polymerRepresentation)) created += 1;
+      for (const kind of ['ligand', 'ion']) {
+        const component = await tryCreateMolstarComponent(plugin, structure, kind);
+        if (await addMolstarRepresentation(plugin, component, ligandRepresentation)) created += 1;
+      }
+    }
+    if (created === 0) await applyMolstarUniformRepresentation(viewer, ligandRepresentation);
+  }
+
+  function resetMolstarPostprocessing(viewer) {
+    const canvas = viewer?.plugin?.canvas3d;
+    if (!canvas) return;
+    canvas.setProps({
+      postprocessing: {
+        outline: { name: 'off', params: {} },
+        occlusion: { name: 'off', params: {} },
+        shadow: { name: 'off', params: {} }
+      }
+    });
+  }
+
   async function applyMolstarStyle(viewer, style) {
     const plugin = viewer?.plugin;
     if (!plugin) return;
+    const normalized = normalizeMolstarStyle(style);
 
-    if (style === 'illustrative') {
+    if (normalized !== 'illustrative') {
+      await plugin.managers.structure.component.setOptions({
+        ...plugin.managers.structure.component.state.options,
+        ignoreLight: false
+      });
+      resetMolstarPostprocessing(viewer);
+    }
+
+    if (normalized === 'line') {
+      await applyMolstarUniformRepresentation(viewer, {
+        type: 'line',
+        typeParams: { sizeFactor: 0.08 },
+        color: 'element-symbol'
+      });
+      return;
+    }
+    if (normalized === 'ball-and-stick') {
+      await applyMolstarUniformRepresentation(viewer, {
+        type: 'ball-and-stick',
+        typeParams: { sizeFactor: 0.16 },
+        color: 'element-symbol'
+      });
+      return;
+    }
+    if (normalized === 'spacefill') {
+      await applyMolstarUniformRepresentation(viewer, {
+        type: 'spacefill',
+        typeParams: { sizeFactor: 0.45 },
+        color: 'element-symbol'
+      });
+      return;
+    }
+    if (normalized === 'molecular-surface') {
+      await applyMolstarUniformRepresentation(viewer, {
+        type: 'molecular-surface',
+        typeParams: { alpha: 0.72 },
+        color: 'element-symbol'
+      });
+      return;
+    }
+    if (normalized === 'cartoon' || normalized === 'polymer-ligand') {
+      await applyMolstarPolymerLigandRepresentation(
+        viewer,
+        { type: 'cartoon', color: 'chain-id' },
+        {
+          type: normalized === 'cartoon' ? 'line' : 'ball-and-stick',
+          typeParams: normalized === 'cartoon' ? { sizeFactor: 0.08 } : { sizeFactor: 0.16 },
+          color: 'element-symbol'
+        }
+      );
+      return;
+    }
+
+    if (normalized === 'illustrative') {
       await plugin.managers.structure.component.setOptions({
         ...plugin.managers.structure.component.state.options,
         ignoreLight: true
@@ -4204,32 +4449,87 @@
 
   function isMolstarWaterComponent(component) {
     if (!component) return false;
+    const format = normalizeFormat(activeConfig?.molstarFormat || activeConfig?.format || '');
+    const isGroDocument = format === 'gro';
     const key = String(component.key || '');
-    if (key.split(',').includes('water')) return true;
+    const keyParts = key.split(',').map(part => part.trim().toLowerCase());
+    if (keyParts.includes('water') || keyParts.includes('solvent')) return true;
+    if (keyParts.some(part => part.includes('water') || part.includes('solvent'))) return true;
     const label = String(component.cell?.obj?.label || '');
-    return label.toLowerCase() === 'water';
+    const normalizedLabel = label.trim().toLowerCase();
+    if (isGroDocument && normalizedLabel.includes('non-standard')) return true;
+    return ['water', 'solvent', 'hoh', 'wat', 'sol', 'tip3', 'tip3p', 'spc', 'tip4p'].some(name => (
+      normalizedLabel === name || normalizedLabel.includes(name)
+    ));
+  }
+
+  async function tryCreateMolstarWaterComponent(plugin, structure) {
+    for (const target of [structure?.cell, structure]) {
+      if (!target) continue;
+      try {
+        const component = await plugin.builders.structure.tryCreateComponentStatic(target, 'water');
+        if (component) return component;
+      } catch (error) {
+        debug('Mol* static water component creation failed: ' + (error && error.message || String(error)));
+      }
+    }
+    return null;
+  }
+
+  function shouldUseMolstarWaterLines(config) {
+    const value = String(config?.waterRepresentation || 'line').trim().toLowerCase();
+    return value === 'line' || value === 'lines' || value === 'solvent-lines';
   }
 
   async function applyMolstarWaterLineRepresentation(viewer) {
+    if (!shouldUseMolstarWaterLines(activeConfig)) return;
     const plugin = viewer?.plugin;
     const structures = plugin?.managers?.structure?.hierarchy?.current?.structures || [];
     const waterComponents = [];
+    const createdWaterComponents = [];
     for (const structure of structures) {
+      let structureWaterCount = 0;
       for (const component of structure.components || []) {
-        if (isMolstarWaterComponent(component)) waterComponents.push(component);
+        if (!isMolstarWaterComponent(component)) continue;
+        waterComponents.push(component);
+        structureWaterCount += 1;
+      }
+      if (structureWaterCount === 0) {
+        const component = await tryCreateMolstarWaterComponent(plugin, structure);
+        if (component) createdWaterComponents.push(component);
       }
     }
-    if (!waterComponents.length) return;
+    if (!waterComponents.length && !createdWaterComponents.length) return;
 
-    await plugin.managers.structure.component.removeRepresentations(waterComponents);
+    if (waterComponents.length) {
+      await plugin.managers.structure.component.removeRepresentations(waterComponents);
+    }
     for (const component of waterComponents) {
       await plugin.builders.structure.representation.addRepresentation(component.cell, {
         type: 'line',
         typeParams: {
-          alpha: 0.6,
-          visuals: ['intra-bond', 'element-point']
+          alpha: 0.32,
+          sizeFactor: 0.035,
+          visuals: ['intra-bond']
         },
-        color: 'element-symbol'
+        color: 'uniform',
+        colorParams: { value: 0x8aa4b8 },
+        size: 'uniform',
+        sizeParams: { value: 0.03 }
+      }, { tag: 'water' });
+    }
+    for (const component of createdWaterComponents) {
+      await plugin.builders.structure.representation.addRepresentation(component.cell || component, {
+        type: 'line',
+        typeParams: {
+          alpha: 0.32,
+          sizeFactor: 0.035,
+          visuals: ['intra-bond']
+        },
+        color: 'uniform',
+        colorParams: { value: 0x8aa4b8 },
+        size: 'uniform',
+        sizeParams: { value: 0.03 }
       }, { tag: 'water' });
     }
     return waterComponents.length;
@@ -4339,6 +4639,7 @@
   };
 
   async function loadPreparedStructure(viewer, prepared) {
+    activeMolstarPrepared = prepared;
     if (prepared.kind === 'docking') {
       await loadDockingPreparedStructure(viewer, prepared);
       return;
@@ -4407,6 +4708,32 @@
     });
   }
 
+  async function loadMolstarEntryAsBoxLines(viewer, entry) {
+    const plugin = viewer.plugin;
+    const normalized = normalizeFormat(entry.format);
+    const payload = normalized === 'cifCore'
+      ? { data: coreCifToPdb(entry.data), format: 'pdb' }
+      : { data: entry.data, format: normalized };
+    const data = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
+    const trajectory = await plugin.builders.structure.parseTrajectory(data, payload.format);
+    const model = await plugin.builders.structure.createModel(trajectory);
+    const structure = await plugin.builders.structure.createStructure(model, { name: 'model', params: {} });
+    const component = await plugin.builders.structure.tryCreateComponentStatic(structure, 'all');
+    if (!component) throw new Error('Mol* could not create staged box component.');
+    await plugin.builders.structure.representation.addRepresentation(component, {
+      type: 'line',
+      typeParams: {
+        alpha: 0.72,
+        sizeFactor: 0.02,
+        visuals: ['intra-bond']
+      },
+      color: 'uniform',
+      colorParams: { value: 0x2f6f66 },
+      size: 'uniform',
+      sizeParams: { value: 0.018 }
+    });
+  }
+
   async function loadStagedMolstarEntry(viewer, entry, cb) {
     const data = await loadStagedEntryData(entry, cb);
     const prepared = {
@@ -4421,6 +4748,14 @@
         return;
       } catch (error) {
         debug('staged solvent line representation failed, falling back to default preset: ' + (error && error.message || String(error)));
+      }
+    }
+    if (entry.representation === 'box-lines') {
+      try {
+        await loadMolstarEntryAsBoxLines(viewer, prepared);
+        return;
+      } catch (error) {
+        debug('staged box line representation failed, falling back to default preset: ' + (error && error.message || String(error)));
       }
     }
     await loadMolstarEntry(viewer, prepared);
@@ -6665,6 +7000,8 @@
       burreteAgentActionPollTimer = 0;
     }
     activeViewer = null;
+    activeMolstarPrepared = null;
+    activeMolstarCacheBuster = null;
     window.BurreteViewer = null;
     window.BuretteViewer = null;
   }
@@ -6717,6 +7054,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
 
     debug('before structureDataForMolstar: bytes=' + (window.BurreteDataBytes ? window.BurreteDataBytes.length : -1) + '; base64 chars=' + (window.BurreteDataBase64 ? window.BurreteDataBase64.length : -1));
     const prepared = structureDataForMolstar(config);
+    activeMolstarCacheBuster = cb;
     debug('prepared format=' + prepared.format + '; data type=' + (prepared.data && prepared.data.constructor ? prepared.data.constructor.name : typeof prepared.data) + '; data length=' + (prepared.data ? prepared.data.length : -1));
     setStatus(`[web] Parsing structure…\n${prepared.label} (${describeFormat(prepared.format, config.binary)})`);
 

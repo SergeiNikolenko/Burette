@@ -27,6 +27,7 @@ type Atom = {
 type ConvertedStructureData = {
   bytes: Uint8Array;
   molstarFormat: string;
+  stagedEntries?: Array<Record<string, unknown>>;
 };
 
 type MaestroAtom = Atom & {
@@ -35,6 +36,8 @@ type MaestroAtom = Atom & {
   residueNumber: number;
   chainName: string;
 };
+
+type BoxVectors = [[number, number, number], [number, number, number], [number, number, number]];
 
 const MAX_STRUCTURE_FILE_SIZE = 75 * 1024 * 1024;
 const MAESTRO_PREVIEW_READ_LIMIT = 64 * 1024 * 1024;
@@ -226,6 +229,7 @@ export async function openBrowserDevDockingDocument(
     appViewer: true,
     tauriViewer: false,
     molstarStyle: preferences.molstarStyle,
+    waterRepresentation: "line",
     xyzrenderViewer: false,
     xyzrenderAvailable: false,
     molstarAvailable: true,
@@ -361,6 +365,7 @@ export async function openBrowserDevMolstarContextDocument(
     appViewer: true,
     tauriViewer: false,
     molstarStyle: preferences.molstarStyle,
+    waterRepresentation: "line",
     xyzrenderViewer: false,
     xyzrenderAvailable: false,
     molstarAvailable: true,
@@ -597,6 +602,7 @@ async function openBrowserDevDocumentFromBytes(
     undefined,
     Math.max(trajectoryFrameCount, sdfRecordCount),
     ketcherEditConfig(path, extension, text, sourceByteCount, sdfRecordCount),
+    convertedMolstarData?.stagedEntries,
   );
   return browserDocument(path, extension, renderer, html, sourceByteCount);
 }
@@ -726,6 +732,7 @@ function browserDevContextConfig(
     appViewer: true,
     tauriViewer: false,
     molstarStyle: preferences.molstarStyle,
+    waterRepresentation: "line",
     xyzrenderViewer: false,
     xyzrenderAvailable: false,
     molstarAvailable: true,
@@ -770,6 +777,7 @@ function viewerHtml(
   configOverride?: Record<string, unknown>,
   trajectoryFrameCount = 0,
   ketcherConfig: Record<string, unknown> | null = null,
+  stagedEntries?: Array<Record<string, unknown>>,
 ) {
   const label = fileTitle(path);
   const visuals = resolvePreviewVisuals(preferences);
@@ -802,6 +810,8 @@ function viewerHtml(
     appViewer: true,
     tauriViewer: false,
     molstarStyle,
+    waterRepresentation: "line",
+    ...(stagedEntries?.length ? { stagedEntries } : {}),
     xyzrenderViewer: renderer === "xyzrender-external",
     xyzrenderAvailable,
     xyzrenderEndpoint: "/__burette/xyzrender",
@@ -1273,7 +1283,7 @@ function proteinLikeAtomRecordCount(text: string) {
 }
 
 function shouldUseConvertedMolstarData(format: FormatInfo, xyzBytes: Uint8Array | null) {
-  return Boolean(xyzBytes) && !format.binary && ["mmcif", "cifCore"].includes(format.molstarFormat);
+  return Boolean(xyzBytes) && !format.binary && ["gro", "mmcif", "cifCore"].includes(format.molstarFormat);
 }
 
 function defaultRendererModeForDocument(extension: string, requestedMode: string, reloadOptions?: ViewerReloadOptions) {
@@ -1519,6 +1529,10 @@ function convertedDataFromText(text: string, extension: string, label: string): 
     const bytes = maestroPdbDataFromText(text);
     return bytes ? { bytes, molstarFormat: "pdb" } : null;
   }
+  if (extension === "gro") {
+    const converted = groPdbDataFromText(text, label);
+    return converted ? { molstarFormat: "pdb", ...converted } : null;
+  }
   const bytes = pdbDataFromText(text, extension, label);
   return bytes ? { bytes, molstarFormat: "pdb" } : null;
 }
@@ -1579,6 +1593,150 @@ function maestroPdbDataFromText(text: string) {
     "",
   ].join("\n");
   return new TextEncoder().encode(pdb);
+}
+
+function groPdbDataFromText(text: string, label: string) {
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const atoms = parseGroPdbAtoms(lines);
+  if (!atoms?.length) return null;
+  const box = parseGroBox(lines);
+  const mainAtoms = atoms.filter((atom) => atom.residueName !== "HOH");
+  const waterAtoms = atoms.filter((atom) => atom.residueName === "HOH");
+  const pdb = [
+    ...(box ? [pdbCryst1Line(box)] : []),
+    `REMARK Converted from ${label}`,
+    ...mainAtoms.slice(0, 99999).map((atom, index) => maestroPdbAtomLine(index + 1, atom)),
+    "END",
+    "",
+  ].join("\n");
+  const bytes = new TextEncoder().encode(pdb);
+  const stagedEntries: Array<Record<string, unknown>> = [];
+  if (box) {
+    stagedEntries.push({
+      label: "Box",
+      format: "pdb",
+      binary: false,
+      representation: "box-lines",
+      dataBase64: bytesToBase64(new TextEncoder().encode(boxPdbFromVectors(box, label))),
+    });
+  }
+  if (waterAtoms.length) {
+    const waterPdb = [
+      `REMARK Water split from ${label}`,
+      ...waterAtoms.slice(0, 99999).map((atom, index) => maestroPdbAtomLine(index + 1, atom)),
+      "END",
+      "",
+    ].join("\n");
+    stagedEntries.push({
+      label: "Water",
+      format: "pdb",
+      binary: false,
+      representation: "solvent-lines",
+      dataBase64: bytesToBase64(new TextEncoder().encode(waterPdb)),
+    });
+  }
+  if (!stagedEntries.length) return { bytes };
+  return {
+    bytes,
+    stagedEntries,
+  };
+}
+
+function parseGroPdbAtoms(lines: string[]) {
+  if (lines.length < 3) return null;
+  const atomCount = Number.parseInt(lines[1].trim(), 10);
+  if (!Number.isFinite(atomCount) || atomCount <= 0 || lines.length < atomCount + 2) return null;
+  const atoms: MaestroAtom[] = [];
+  for (let index = 0; index < atomCount; index += 1) {
+    const line = lines[index + 2] || "";
+    const fixed = parseGroFixedAtomLine(line);
+    const parsed = fixed ?? parseGroLooseAtomLine(line);
+    if (!parsed) continue;
+    const residueName = isGroWaterResidue(parsed.residueName) ? "HOH" : normalizePdbResidueName(parsed.residueName);
+    const atomName = normalizePdbAtomName(parsed.atomName) || parsed.symbol;
+    atoms.push({
+      symbol: parsed.symbol,
+      atomName,
+      residueName: residueName || "MOL",
+      residueNumber: parsed.residueNumber,
+      chainName: "A",
+      x: parsed.x * 10,
+      y: parsed.y * 10,
+      z: parsed.z * 10,
+    });
+  }
+  return atoms.length ? atoms : null;
+}
+
+function parseGroBox(lines: string[]): BoxVectors | null {
+  if (lines.length < 3) return null;
+  const atomCount = Number.parseInt(lines[1].trim(), 10);
+  const boxLine = lines[atomCount + 2]?.trim();
+  if (!Number.isFinite(atomCount) || !boxLine) return null;
+  const values = fields(boxLine).map((value) => Number.parseFloat(value));
+  if (values.length !== 3 && values.length !== 9) return null;
+  if (values.some((value) => !Number.isFinite(value))) return null;
+  const angstrom = values.map((value) => value * 10);
+  if (angstrom.length === 3) {
+    return [
+      [angstrom[0], 0, 0],
+      [0, angstrom[1], 0],
+      [0, 0, angstrom[2]],
+    ];
+  }
+  return [
+    [angstrom[0], angstrom[3], angstrom[4]],
+    [angstrom[5], angstrom[1], angstrom[6]],
+    [angstrom[7], angstrom[8], angstrom[2]],
+  ];
+}
+
+function parseGroFixedAtomLine(line: string) {
+  if (line.length < 44) return null;
+  const residueNumber = Number.parseInt(line.slice(0, 5).trim(), 10);
+  const residueName = line.slice(5, 10).trim();
+  const atomName = line.slice(10, 15).trim();
+  const x = Number.parseFloat(line.slice(20, 28).trim());
+  const y = Number.parseFloat(line.slice(28, 36).trim());
+  const z = Number.parseFloat(line.slice(36, 44).trim());
+  const symbol = groElementSymbol(atomName, residueName);
+  if (!Number.isFinite(residueNumber) || !residueName || !atomName || !symbol || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null;
+  return { residueNumber, residueName, atomName, symbol, x, y, z };
+}
+
+function parseGroLooseAtomLine(line: string) {
+  const parts = fields(line);
+  if (parts.length < 6) return null;
+  const residueToken = parts[0];
+  const residueMatch = residueToken.match(/^(\d+)([A-Za-z0-9]+)$/u);
+  const residueNumber = Number.parseInt(residueMatch?.[1] ?? residueToken, 10);
+  const residueName = residueMatch?.[2] ?? parts[1];
+  const atomName = residueMatch ? parts[1] : parts[2];
+  const offset = residueMatch ? 3 : 4;
+  const x = Number.parseFloat(parts[offset] || "");
+  const y = Number.parseFloat(parts[offset + 1] || "");
+  const z = Number.parseFloat(parts[offset + 2] || "");
+  const symbol = groElementSymbol(atomName, residueName);
+  if (!Number.isFinite(residueNumber) || !residueName || !atomName || !symbol || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null;
+  return { residueNumber, residueName, atomName, symbol, x, y, z };
+}
+
+function isGroWaterResidue(residueName: string) {
+  return ["SOL", "WAT", "HOH", "H2O", "TIP", "TIP3", "TIP3P", "TIP4", "TIP4P", "TP3", "TP4", "SPC", "SPCE"].includes(residueName.trim().toUpperCase());
+}
+
+function groElementSymbol(atomName: string, residueName: string) {
+  const cleaned = atomName.replace(/^[0-9]+/u, "").replace(/[^A-Za-z]/gu, "").toUpperCase();
+  if (!cleaned) return null;
+  if (isGroWaterResidue(residueName)) return cleaned.startsWith("H") ? "H" : "O";
+  if (cleaned.startsWith("CL")) return "Cl";
+  if (cleaned.startsWith("BR")) return "Br";
+  if (cleaned.startsWith("NA")) return "Na";
+  if (cleaned.startsWith("MG")) return "Mg";
+  if (cleaned.startsWith("ZN")) return "Zn";
+  if (cleaned.startsWith("FE")) return "Fe";
+  if (cleaned.startsWith("CA") && residueName.trim().toUpperCase() === "CA") return "Ca";
+  return normalizeElementSymbol(cleaned[0]);
 }
 
 function parseMaestroAtoms(lines: string[], atomLimit: number) {
@@ -1798,6 +1956,58 @@ function formatPdbAtomName(atomName: string, symbol: string) {
 
 function formatPdbCoordinate(value: number) {
   return value.toFixed(3).padStart(8, " ");
+}
+
+function vectorLength(vector: [number, number, number]) {
+  return Math.hypot(...vector);
+}
+
+function vectorAngle(first: [number, number, number], second: [number, number, number]) {
+  const denominator = vectorLength(first) * vectorLength(second);
+  if (denominator <= 0) return 90;
+  const cosine = (first[0] * second[0] + first[1] * second[1] + first[2] * second[2]) / denominator;
+  return Math.acos(clamp(cosine, -1, 1)) * 180 / Math.PI;
+}
+
+function pdbCryst1Line(box: BoxVectors) {
+  const [a, b, c] = box;
+  return `CRYST1${vectorLength(a).toFixed(3).padStart(9, " ")}${vectorLength(b).toFixed(3).padStart(9, " ")}${vectorLength(c).toFixed(3).padStart(9, " ")}${vectorAngle(b, c).toFixed(2).padStart(7, " ")}${vectorAngle(a, c).toFixed(2).padStart(7, " ")}${vectorAngle(a, b).toFixed(2).padStart(7, " ")} P 1           1`;
+}
+
+function boxVertices(box: BoxVectors) {
+  const [a, b, c] = box;
+  const add = (first: [number, number, number], second: [number, number, number]): [number, number, number] => [
+    first[0] + second[0],
+    first[1] + second[1],
+    first[2] + second[2],
+  ];
+  const origin: [number, number, number] = [0, 0, 0];
+  const ab = add(a, b);
+  const ac = add(a, c);
+  const bc = add(b, c);
+  return [origin, a, ab, b, c, ac, add(ab, c), bc];
+}
+
+function pdbBoxAtomLine(serial: number, name: string, [x, y, z]: [number, number, number]) {
+  return `HETATM${String(serial).padStart(5, " ")} ${name.padEnd(4, " ")} BOX Z9999    ${formatPdbCoordinate(x)}${formatPdbCoordinate(y)}${formatPdbCoordinate(z)}  1.00  0.00           C  `;
+}
+
+function pdbBoxLines(box: BoxVectors, serialStart: number) {
+  const lines = boxVertices(box).map((vertex, index) => pdbBoxAtomLine(serialStart + index, `B${index + 1}`, vertex));
+  for (const [first, second] of [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]]) {
+    lines.push(`CONECT${String(serialStart + first).padStart(5, " ")}${String(serialStart + second).padStart(5, " ")}`);
+  }
+  return lines;
+}
+
+function boxPdbFromVectors(box: BoxVectors, label: string) {
+  return [
+    pdbCryst1Line(box),
+    `REMARK Box split from ${label}`,
+    ...pdbBoxLines(box, 1),
+    "END",
+    "",
+  ].join("\n");
 }
 
 function clamp(value: number, min: number, max: number) {
