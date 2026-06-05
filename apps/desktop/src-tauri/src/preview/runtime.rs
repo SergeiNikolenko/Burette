@@ -854,6 +854,27 @@ CARTESIAN COORDINATES (ANGSTROEM)
     }
 
     #[test]
+    fn opens_non_coordinate_output_report_as_not_renderable_preview() {
+        let app = mock_app_with_grid_registry();
+        let preferences = viewer_preferences();
+        let path = create_temp_file(
+            "out",
+            b"/home/example/ppm_report_source.pdb\nPPM report without embedded coordinates\n",
+        );
+
+        let document = open_document(app.handle(), path.clone(), &preferences, None)
+            .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
+        assert_eq!(document.renderer, "not-renderable");
+        let html = fs::read_to_string(&document.runtime_path)
+            .expect("not-renderable runtime HTML should be written");
+        assert!(html.contains("does not contain standalone molecular coordinates"));
+        remove_runtime_artifacts(&document.runtime_path);
+        if let Some(parent) = path.parent() {
+            let _ = fs::remove_dir_all(parent);
+        }
+    }
+
+    #[test]
     fn opens_multiframe_xyz_in_molstar_with_trajectory_controls_on_auto() {
         let app = mock_app_with_grid_registry();
         let preferences = viewer_preferences();

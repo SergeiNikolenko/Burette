@@ -65,6 +65,7 @@ const [
   openEventsHook,
   menuEventsHook,
   windowTitle,
+  componentFormat,
   instance,
   browserDevDocuments,
   temporaryDocuments,
@@ -146,6 +147,7 @@ const [
   source('apps/desktop/src/hooks/use-open-events.ts'),
   source('apps/desktop/src/hooks/use-menu-events.ts'),
   source('apps/desktop/src/components/window-title/index.tsx'),
+  source('apps/desktop/src/components/format.ts'),
   source('apps/desktop/src/lib/instance.ts'),
   source('apps/desktop/src/lib/browser-dev-documents.ts'),
   source('apps/desktop/src/lib/temporary-documents.ts'),
@@ -1046,6 +1048,7 @@ assert.match(app, /const openDocumentsInActiveTab = useOpenDocumentsInActiveTab\
 assert.match(app, /const \[ketcherDraftMolfile, setKetcherDraftMolfile\] = useState\(""\)/);
 assert.match(app, /saveKetcherDraft: setKetcherDraftMolfile/);
 assert.match(app, /openDocumentsInActiveTab\(result\.documents\)/);
+assert.match(app, /if \(!options\.replace && !options\.inActiveTab && result\.documents\[0\]\) \{\s*setActiveDocument\(result\.documents\[0\]\.id\);\s*\}/);
 assert.match(app, /openDocumentsInActiveTab\(\[document\], \{\s*backLocation: request\.draftKet\?\.trim\(\) \|\| request\.draftMolfile\?\.trim\(\)\s*\?\s*\{ kind: "ketcher", draftKet: request\.draftKet, draftMolfile: request\.draftMolfile \}/s);
 assert.match(app, /request\.target === "molstar" \? "Molstar" : "xyzrender"/);
 assert.match(app, /request\.target === "collection" && request\.collectionTargetPath/);
@@ -1734,6 +1737,9 @@ assert.match(previewViewController, /"cacheMiss": !externalArtifact\.cacheHit/);
 assert.match(previewViewController, /private static func xyzrenderCacheKey/);
 assert.match(previewViewController, /private static func pruneCache/);
 assert.match(previewViewController, /let inlineSvg = try String\(contentsOf: outputURL, encoding: \.utf8\)/);
+assert.match(previewViewController, /PreviewError\.notRenderableStandaloneStructure\(url\.lastPathComponent\)/);
+assert.match(previewRuntimeViewer, /renderer: "not-renderable"\.to_string\(\)/);
+assert.match(componentFormat, /if \(renderer === "not-renderable"\) return "Preview";/);
 assert.match(previewViewController, /if usesPDBTextFallback\(fileExtension\),\s*let pdb = pdbData\(from: data, fileExtension: fileExtension, label: label\) \{\s*return ConvertedStructure\(data: pdb, format: \.convertedPDB,/);
 assert.match(previewViewController, /if PreviewStructureTextConverter\.shouldPreferConvertedMolstarData\(fileExtension: pathExtension\),\s*let convertedStructure = PreviewStructureTextConverter\.convertedData/s);
 assert.match(previewViewController, /if isGROExtension\(fileExtension\),\s*let pdb = groPDBData\(from: data, label: label\) \{\s*return ConvertedStructure\(data: pdb, format: \.convertedPDB,/);
