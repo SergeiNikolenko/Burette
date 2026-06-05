@@ -256,6 +256,37 @@ button:disabled {
   background: var(--buret-control-active);
 }
 
+.buret-grid-toolbar .buret-grid-xyzrender-preset-control {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-self: end;
+  align-items: center;
+  gap: 7px;
+  height: var(--buret-control-height);
+  min-height: var(--buret-control-height);
+  padding: 0 9px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--buret-control-surface);
+  color: var(--buret-muted);
+  font: 600 12px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+
+.buret-grid-toolbar .buret-grid-xyzrender-preset-control[hidden] {
+  display: none;
+}
+
+.buret-grid-toolbar .buret-grid-xyzrender-preset-control select {
+  width: 104px;
+  min-width: 0;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--buret-control-active);
+  color: var(--buret-text);
+  font: 500 12px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+
 .buret-grid-toolbar .buret-rdkit-coords-control {
   box-sizing: border-box;
   display: inline-flex;
