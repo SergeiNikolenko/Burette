@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import math
+import re
 import sys
 from pathlib import Path
 
@@ -37,6 +39,8 @@ STANDARD_RESIDUES = {
 }
 WATER_RESIDUES = {"HOH", "H2O", "SOL", "TIP", "T3P", "T4P", "WAT"}
 LIPID_RESIDUES = {"POPC", "POPE", "POPG", "POPS", "DPPC", "DOPC", "CHL", "CHOL"}
+ESTIMATED_PDB_ATOM_BYTES = 96
+BoxVectors = tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]]
 
 
 def candidate_bases(stem: str) -> list[str]:
@@ -116,9 +120,43 @@ def resolve_inputs(input_path: Path) -> tuple[Path, Path]:
     return input_path, find_trj_for_cms(input_path)
 
 
-def frame_indices(frame_count: int, limit: int) -> list[int]:
+def candidate_cfg_paths(cms_path: Path) -> list[Path]:
+    candidates: list[Path] = []
+    for base in candidate_bases(cms_path.stem):
+        candidates.extend(
+            [
+                cms_path.with_name(f"{base}-out.cfg"),
+                cms_path.with_name(f"{base}.cfg"),
+                cms_path.with_name(f"{base}.cpt.cfg"),
+            ]
+        )
+    return list(dict.fromkeys(candidates))
+
+
+def desmond_box_from_cfg(cms_path: Path) -> BoxVectors | None:
+    for cfg_path in candidate_cfg_paths(cms_path):
+        if not cfg_path.is_file():
+            continue
+        text = cfg_path.read_text(encoding="utf-8", errors="ignore")
+        match = re.search(r"\bbox\s*=\s*\[([^\]]+)\]", text, re.DOTALL)
+        if not match:
+            continue
+        values = [float(value) for value in re.findall(r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?", match.group(1))]
+        if len(values) != 9:
+            continue
+        return (
+            (values[0], values[1], values[2]),
+            (values[3], values[4], values[5]),
+            (values[6], values[7], values[8]),
+        )
+    return None
+
+
+def frame_indices(frame_count: int, limit: int | None) -> list[int]:
     if frame_count <= 0:
         return []
+    if limit is None:
+        return list(range(frame_count))
     if frame_count <= limit:
         return list(range(frame_count))
     step = (frame_count - 1) / max(limit - 1, 1)
@@ -137,30 +175,26 @@ def is_hydrogen(atom) -> bool:
     return str(getattr(atom, "element", "")).strip().upper() == "H"
 
 
-def selected_atom_indices(structure, atom_limit: int) -> list[int]:
+def selected_atom_indices(structure, atom_limit: int | None) -> list[int]:
     atoms = list(structure.atom)
+    if atom_limit is None:
+        return [atom.index for atom in atoms]
     selected: list[int] = []
     selected_set: set[int] = set()
 
-    def append_indices(indices: list[int]) -> bool:
+    def append_indices(indices: list[int], limit: int | None = None) -> bool:
+        added = 0
         for index in indices:
             if index in selected_set:
                 continue
+            if limit is not None and added >= limit:
+                return len(selected) >= atom_limit
             if len(selected) >= atom_limit:
                 return True
             selected.append(index)
             selected_set.add(index)
+            added += 1
         return len(selected) >= atom_limit
-
-    backbone = [
-        atom.index
-        for atom in atoms
-        if residue_name(atom) in STANDARD_RESIDUES
-        and atom_pdb_name(atom) in BACKBONE_NAMES
-        and not is_hydrogen(atom)
-    ]
-    if append_indices(backbone):
-        return selected
 
     ligand_or_ion_heavy = [
         atom.index
@@ -170,8 +204,13 @@ def selected_atom_indices(structure, atom_limit: int) -> list[int]:
         and residue_name(atom) not in LIPID_RESIDUES
         and not is_hydrogen(atom)
     ]
-    if append_indices(ligand_or_ion_heavy):
-        return selected
+    backbone = [
+        atom.index
+        for atom in atoms
+        if residue_name(atom) in STANDARD_RESIDUES
+        and atom_pdb_name(atom) in BACKBONE_NAMES
+        and not is_hydrogen(atom)
+    ]
 
     lipid_heavy = [
         atom.index
@@ -179,8 +218,6 @@ def selected_atom_indices(structure, atom_limit: int) -> list[int]:
         if residue_name(atom) in LIPID_RESIDUES
         and not is_hydrogen(atom)
     ]
-    if append_indices(lipid_heavy):
-        return selected
 
     waters_by_residue: dict[tuple[str, int, str], list[int]] = {}
     for atom in atoms:
@@ -192,10 +229,24 @@ def selected_atom_indices(structure, atom_limit: int) -> list[int]:
             str(getattr(atom, "inscode", "") or " "),
         )
         waters_by_residue.setdefault(key, []).append(atom.index)
-    for water in waters_by_residue.values():
-        if append_indices(water):
-            break
+
+    ligand_quota = max(64, atom_limit // 5)
+    backbone_quota = max(128, atom_limit // 2)
+    lipid_quota = max(64, atom_limit // 5)
+    water_quota = max(0, atom_limit - ligand_quota - backbone_quota - lipid_quota)
+
+    if append_indices(ligand_or_ion_heavy, ligand_quota):
+        return selected
+    if append_indices(backbone, backbone_quota):
+        return selected
+    if append_indices(lipid_heavy, lipid_quota):
+        return selected
+    water_indices = [index for water in waters_by_residue.values() for index in water]
+    if append_indices(water_indices, water_quota):
+        return selected
     if selected:
+        if len(selected) < atom_limit:
+            append_indices([atom.index for atom in atoms if not is_hydrogen(atom)])
         return selected
 
     protein_heavy = [
@@ -210,6 +261,34 @@ def selected_atom_indices(structure, atom_limit: int) -> list[int]:
     if heavy:
         return heavy[:atom_limit]
     return [atom.index for atom in atoms[:atom_limit]]
+
+
+def adaptive_atom_limit(frame_count: int, atom_limit: int | None, target_mb: int | None) -> int | None:
+    if atom_limit is not None or target_mb is None or target_mb <= 0 or frame_count <= 0:
+        return atom_limit
+    target_bytes = target_mb * 1024 * 1024
+    per_frame = max(1, target_bytes // frame_count)
+    return max(250, int(per_frame // ESTIMATED_PDB_ATOM_BYTES))
+
+
+def vector_length(vector: tuple[float, float, float]) -> float:
+    return math.sqrt(sum(value * value for value in vector))
+
+
+def vector_angle(first: tuple[float, float, float], second: tuple[float, float, float]) -> float:
+    denominator = vector_length(first) * vector_length(second)
+    if denominator <= 0:
+        return 90.0
+    cosine = sum(a * b for a, b in zip(first, second)) / denominator
+    return math.degrees(math.acos(max(-1.0, min(1.0, cosine))))
+
+
+def pdb_cryst1_line(box: BoxVectors) -> str:
+    a, b, c = box
+    return (
+        f"CRYST1{vector_length(a):9.3f}{vector_length(b):9.3f}{vector_length(c):9.3f}"
+        f"{vector_angle(b, c):7.2f}{vector_angle(a, c):7.2f}{vector_angle(a, b):7.2f} P 1           1\n"
+    )
 
 
 def atom_symbol(atom) -> str:
@@ -256,17 +335,84 @@ def pdb_atom_line(serial: int, atom) -> str:
     )
 
 
-def write_pdb_frame(output, structure, selected_indices: list[int], frame_index: int, frame_count: int) -> None:
+def pdb_box_atom_line(serial: int, name: str, x: float, y: float, z: float) -> str:
+    return (
+        f"HETATM{serial:5d} {name:<4} BOX Z9999    "
+        f"{x:8.3f}{y:8.3f}{z:8.3f}{1.0:6.2f}{0.0:6.2f}"
+        f"           C  \n"
+    )
+
+
+def centered_box_vertices(box: BoxVectors) -> list[tuple[float, float, float]]:
+    a, b, c = box
+    vertices: list[tuple[float, float, float]] = []
+    for sa, sb, sc in (
+        (-0.5, -0.5, -0.5),
+        (0.5, -0.5, -0.5),
+        (0.5, 0.5, -0.5),
+        (-0.5, 0.5, -0.5),
+        (-0.5, -0.5, 0.5),
+        (0.5, -0.5, 0.5),
+        (0.5, 0.5, 0.5),
+        (-0.5, 0.5, 0.5),
+    ):
+        vertices.append(
+            (
+                sa * a[0] + sb * b[0] + sc * c[0],
+                sa * a[1] + sb * b[1] + sc * c[1],
+                sa * a[2] + sb * b[2] + sc * c[2],
+            )
+        )
+    return vertices
+
+
+def write_pdb_box(output, box: BoxVectors, serial_start: int) -> None:
+    vertices = centered_box_vertices(box)
+    for offset, (x, y, z) in enumerate(vertices):
+        output.write(pdb_box_atom_line(serial_start + offset, f"B{offset + 1}", x, y, z))
+    for first, second in (
+        (0, 1),
+        (1, 2),
+        (2, 3),
+        (3, 0),
+        (4, 5),
+        (5, 6),
+        (6, 7),
+        (7, 4),
+        (0, 4),
+        (1, 5),
+        (2, 6),
+        (3, 7),
+    ):
+        output.write(f"CONECT{serial_start + first:5d}{serial_start + second:5d}\n")
+
+
+def write_pdb_frame(
+    output,
+    structure,
+    selected_indices: list[int],
+    frame_index: int,
+    frame_count: int,
+    box: BoxVectors | None,
+) -> None:
     atoms_by_index = {atom.index: atom for atom in structure.atom}
     selected = [atoms_by_index[index] for index in selected_indices if index in atoms_by_index]
     output.write(f"MODEL     {frame_index + 1:4d}\n")
     output.write(f"REMARK   Desmond preview frame {frame_index + 1} / {frame_count}\n")
     for serial, atom in enumerate(selected, start=1):
         output.write(pdb_atom_line(serial, atom))
+    if box is not None:
+        write_pdb_box(output, box, len(selected) + 1)
     output.write("ENDMDL\n")
 
 
-def extract(input_path: Path, frame_limit: int, atom_limit: int, output_path: Path | None) -> None:
+def extract(
+    input_path: Path,
+    frame_limit: int | None,
+    atom_limit: int | None,
+    target_mb: int | None,
+    output_path: Path | None,
+) -> None:
     cms_path, trj_dir = resolve_inputs(input_path)
     _, cms_model = topo.read_cms(str(cms_path))
     trajectory = traj.read_traj(str(trj_dir))
@@ -275,15 +421,18 @@ def extract(input_path: Path, frame_limit: int, atom_limit: int, output_path: Pa
         raise RuntimeError(f"No frames found in {trj_dir}")
 
     first_structure = topo.update_ct(cms_model.fsys_ct, cms_model, trajectory[indices[0]]).copy()
-    selected_indices = selected_atom_indices(first_structure, atom_limit)
+    selected_indices = selected_atom_indices(first_structure, adaptive_atom_limit(len(indices), atom_limit, target_mb))
     if not selected_indices:
         raise RuntimeError(f"No atoms selected from {cms_path}")
 
+    box = desmond_box_from_cfg(cms_path)
     output = output_path.open("w", encoding="utf-8") if output_path else sys.stdout
     try:
+        if box is not None:
+            output.write(pdb_cryst1_line(box))
         for index in indices:
             structure = topo.update_ct(cms_model.fsys_ct, cms_model, trajectory[index]).copy()
-            write_pdb_frame(output, structure, selected_indices, index, len(trajectory))
+            write_pdb_frame(output, structure, selected_indices, index, len(trajectory), box)
     finally:
         if output_path:
             output.close()
@@ -293,13 +442,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("input", help="Desmond .cms file or clickme.dtr pointer")
     parser.add_argument("--output", help="Output multi-frame XYZ path")
-    parser.add_argument("--frames", type=int, default=60)
-    parser.add_argument("--atoms", type=int, default=3000)
+    parser.add_argument("--frames", type=int, default=0, help="Maximum frames to include; 0 means all frames")
+    parser.add_argument("--atoms", type=int, default=0, help="Maximum atoms to include; 0 means all atoms unless --target-mb is set")
+    parser.add_argument("--target-mb", type=int, default=0, help="Approximate output size target for adaptive all-frame atom selection")
     args = parser.parse_args()
 
-    frame_limit = max(1, min(args.frames, 300))
-    atom_limit = max(1, min(args.atoms, 10000))
-    extract(Path(args.input).resolve(), frame_limit, atom_limit, Path(args.output).resolve() if args.output else None)
+    frame_limit = None if args.frames <= 0 else max(1, args.frames)
+    atom_limit = None if args.atoms <= 0 else max(1, args.atoms)
+    target_mb = None if args.target_mb <= 0 else max(1, args.target_mb)
+    extract(Path(args.input).resolve(), frame_limit, atom_limit, target_mb, Path(args.output).resolve() if args.output else None)
     return 0
 
 

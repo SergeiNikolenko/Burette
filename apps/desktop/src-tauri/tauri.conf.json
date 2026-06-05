@@ -52,7 +52,8 @@
     "active": true,
     "targets": "app",
     "resources": {
-      "../../../PreviewExtension/Web": "Web"
+      "../../../PreviewExtension/Web": "Web",
+      "../../../scripts/desmond_preview_extract.py": "desmond_preview_extract.py"
     },
     "macOS": {
       "minimumSystemVersion": "12.0",

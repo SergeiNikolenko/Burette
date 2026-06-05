@@ -71,6 +71,8 @@ const [
   viteConfig,
   bundleReportScript,
   previewRuntimeViewer,
+  previewRuntimeSource,
+  previewTextXyz,
   previewXyzrender,
   previewViewController,
   shortcutDocs,
@@ -152,6 +154,8 @@ const [
   source('apps/desktop/vite.config.ts'),
   source('scripts/bundle-report.mjs'),
   source('apps/desktop/src-tauri/src/preview/runtime_viewer.rs'),
+  source('apps/desktop/src-tauri/src/preview/runtime.rs'),
+  source('apps/desktop/src-tauri/src/preview/text_xyz.rs'),
   source('apps/desktop/src-tauri/src/preview/xyzrender.rs'),
   source('PreviewExtension/Platform/PreviewViewController.swift'),
   source('docs/keyboard-shortcuts.md'),
@@ -405,6 +409,17 @@ assert.match(desmondPreviewExtract, /LIPID_RESIDUES = \{"POPC", "POPE", "POPG", 
 assert.match(desmondPreviewExtract, /ligand_or_ion_heavy = \[/);
 assert.match(desmondPreviewExtract, /lipid_heavy = \[/);
 assert.match(desmondPreviewExtract, /parser\.add_argument\("--frames"/);
+assert.match(desmondPreviewExtract, /0 means all frames/);
+assert.match(desmondPreviewExtract, /def adaptive_atom_limit/);
+assert.match(desmondPreviewExtract, /def desmond_box_from_cfg/);
+assert.match(desmondPreviewExtract, /def pdb_cryst1_line/);
+assert.match(desmondPreviewExtract, /def write_pdb_box/);
+assert.match(desmondPreviewExtract, /CRYST1/);
+assert.match(desmondPreviewExtract, /CONECT/);
+assert.match(desmondPreviewExtract, /ligand_quota = max\(64, atom_limit \/\/ 5\)/);
+assert.match(desmondPreviewExtract, /backbone_quota = max\(128, atom_limit \/\/ 2\)/);
+assert.match(desmondPreviewExtract, /0 means all atoms unless --target-mb is set/);
+assert.match(desmondPreviewExtract, /parser\.add_argument\("--target-mb"/);
 assert.match(desmondPreviewExtract, /parser\.add_argument\("--output"/);
 assert.match(viteConfig, /plugins: \[react\(\), ketcherRaphaelImportShimPlugin\(\), deferKetcherCssPlugin\(\), browserDevXyzrenderPlugin\(\)\]/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "BurettePreviewSamples"\)/);
@@ -418,12 +433,28 @@ assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/read-file"/);
 assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/read-text-file"/);
 assert.match(viteConfig, /const TEXT_FILE_READ_LIMIT = 12 \* 1024 \* 1024/);
 assert.match(viteConfig, /function languageForTextExtension/);
+assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/file-bundle"/);
 assert.match(viteConfig, /const SCHRODINGER_RUN = "\/opt\/schrodinger\/suites2026-1\/run"/);
+assert.match(viteConfig, /const DESMOND_PREVIEW_TARGET_MB = 24/);
 assert.match(viteConfig, /desmond_preview_extract\.py/);
-assert.match(viteConfig, /"--frames", "30", "--atoms", "6000"/);
+assert.match(viteConfig, /"--frames",\s*"0",\s*"--atoms",\s*"0",\s*"--target-mb",\s*String\(DESMOND_PREVIEW_TARGET_MB\)/s);
+assert.match(viteConfig, /timeout: 0/);
 assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/desmond-preview"/);
 assert.match(viteConfig, /function isDesmondPreviewCandidate/);
+assert.match(viteConfig, /function resolveStructureFileBundle\(path: string\): StructureFileBundle/);
+assert.match(viteConfig, /function resolveDesmondFileBundle\(path: string\): StructureFileBundle \| null/);
+assert.match(viteConfig, /function resolveMdFileBundle\(path: string\): StructureFileBundle \| null/);
+assert.match(viteConfig, /casebookCmsCandidates\(trjDirectory, base\)/);
 assert.match(viteConfig, /"dtr"/);
+assert.match(tauriConfig, /"[^"]*scripts\/desmond_preview_extract\.py": "desmond_preview_extract\.py"/);
+assert.match(previewRuntimeSource, /fn create_desmond_trajectory_preview/);
+assert.match(previewRuntimeSource, /const DESMOND_PREVIEW_TARGET_MB: &str = "24"/);
+assert.match(previewRuntimeSource, /\.arg\("--frames"\)\s*\.arg\("0"\)\s*\.arg\("--atoms"\)\s*\.arg\("0"\)\s*\.arg\("--target-mb"\)\s*\.arg\(DESMOND_PREVIEW_TARGET_MB\)/s);
+assert.match(previewRuntimeSource, /fn is_desmond_preview_candidate/);
+assert.match(previewRuntimeSource, /fn resolve_structure_file_bundle\(path: &Path, extension: &str\) -> StructureFileBundle/);
+assert.match(previewRuntimeSource, /fn resolve_desmond_file_bundle\(path: &Path, extension: &str\) -> Option<StructureFileBundle>/);
+assert.match(previewRuntimeSource, /fn resolve_md_file_bundle\(path: &Path, extension: &str\) -> Option<StructureFileBundle>/);
+assert.match(previewRuntimeSource, /fn casebook_cms_candidates\(trj_dir: &Path, base: &str\) -> Vec<PathBuf>/);
 assert.match(viteConfig, /function isDevFileReadAllowed\(path: string\)/);
 assert.match(viteConfig, /async function collectDefaultDevFiles\(\)/);
 assert.match(viteConfig, /if \(path\.endsWith\("\/no-molecule-column\.csv"\)\) return;/);
@@ -1649,12 +1680,22 @@ assert.match(browserDevDocuments, /shouldOpenTrajectoryInMolstar[\s\S]*\? "molst
 assert.match(browserDevDocuments, /function defaultMolstarStyleForDocument\(/);
 assert.match(browserDevDocuments, /return trajectoryFrameCount > 1 \? "default" : preferences\.molstarStyle;/);
 assert.match(browserDevDocuments, /const molstarStyle = defaultMolstarStyleForDocument\(preferences, trajectoryFrameCount\);/);
+assert.match(browserDevDocuments, /waterRepresentation: "line"/);
+assert.match(browserDevDocuments, /function groPdbDataFromText\(text: string, label: string\)/);
+assert.match(browserDevDocuments, /representation: "solvent-lines"/);
+assert.match(browserDevDocuments, /"TP3", "TP4"/);
+assert.match(browserDevDocuments, /function parseGroBox\(lines: string\[\]\)/);
+assert.match(browserDevDocuments, /function pdbCryst1Line\(box: BoxVectors\)/);
+assert.match(browserDevDocuments, /function pdbBoxLines\(box: BoxVectors, serialStart: number\)/);
+assert.match(browserDevDocuments, /representation: "box-lines"/);
+assert.match(browserDevDocuments, /function boxPdbFromVectors\(box: BoxVectors, label: string\)/);
 assert.match(browserDevDocuments, /trajectoryControls: renderer === "molstar" && trajectoryFrameCount > 1/);
 assert.match(previewViewController, /let isXYZTrajectory = \(xyzPayload\?\.frameCount \?\? 0\) > 1/);
 assert.match(previewViewController, /requestedRendererMode == BurreteRendererMode\.auto/);
 assert.match(previewViewController, /renderer = BurreteRendererMode\.molstar/);
 assert.match(previewViewController, /"trajectoryControls": renderer == BurreteRendererMode\.molstar && resolvedTrajectoryFrameCount > 1/);
 assert.match(previewViewController, /"trajectoryFrameCount": resolvedTrajectoryFrameCount/);
+assert.match(previewViewController, /"waterRepresentation": "line"/);
 assert.match(previewViewController, /"quickLookViewer": true/);
 assert.match(previewViewController, /"sdfPosePager": renderer == BurreteRendererMode\.molstar && format\.molstarFormat == "sdf" && !format\.isBinary/);
 assert.match(previewViewController, /private static let maestroPreviewReadLimit = 64 \* 1024 \* 1024/);
@@ -1738,11 +1779,15 @@ assert.match(browserDevDocuments, /if \(!messageHandlers\.burrete\) \{/);
 assert.match(browserDevDocuments, /window\.__mqlAction = \(name\) => messageHandlers\.burrete\.postMessage/);
 assert.match(previewShell, /data-buret-toolbar-content/);
 assert.match(previewShell, /data-buret-action="ketcher"/);
+assert.match(previewShell, /data-buret-molstar-style-slot/);
+assert.match(previewShell, /data-buret-molstar-style aria-label="Mol\* preview style"/);
 assert.doesNotMatch(previewShell, /data-buret-renderer="xyz-fast"/);
 assert.doesNotMatch(previewShell, /id="buret-open-in-app"/);
 assert.doesNotMatch(previewShell, /data-buret-action="open-burrete"/);
 assert.match(previewRuntimeCss, /\.buret-xyzrender-preset-slot \{ display: none; align-items: center; \}/);
 assert.match(previewRuntimeCss, /\.buret-xyzrender-preset-slot\.visible \{ display: flex; \}/);
+assert.match(previewRuntimeCss, /\.buret-molstar-style-slot \{ display: none; align-items: center; \}/);
+assert.match(previewRuntimeCss, /\.buret-molstar-style-slot\.visible \{ display: flex; \}/);
 assert.match(previewRuntimeCss, /\.buret-corner-button \{/);
 assert.match(previewRuntimeCss, /body\.burette-quicklook-host \{\s*--buret-toolbar-safe-top: 56px;/s);
 assert.match(previewRuntimeCss, /body\.burette-quicklook-host \.buret-corner-button \{/);
@@ -1799,8 +1844,30 @@ assert.match(previewRuntimeViewer, /"defaultLayoutState": \{ "left": "hidden", "
 assert.match(previewRuntimeViewer, /preferences\.theme_for_runtime\(\)/);
 assert.match(previewRuntimeViewer, /preferences\.canvas_background_for_runtime\(\)/);
 assert.match(previewRuntimeViewer, /"molstarStyle": preferences\.resolved_molstar_style\(\)/);
+assert.match(previewRuntimeViewer, /"waterRepresentation": "line"/);
+assert.match(previewRuntimeViewer, /config\["stagedEntries"\]/);
+assert.match(previewTextXyz, /fn gro_pdb_data_from_text\(/);
+assert.match(previewTextXyz, /representation: "solvent-lines"/);
+assert.match(previewTextXyz, /"TP3"\s*\|\s*"TP4"/);
+assert.match(previewTextXyz, /fn parse_gro_box\(lines: &\[&str\]\) -> Option<BoxVectors>/);
+assert.match(previewTextXyz, /fn pdb_cryst1_line\(box_vectors: &BoxVectors\) -> String/);
+assert.match(previewTextXyz, /fn push_pdb_box_lines\(pdb: &mut String, box_vectors: &BoxVectors, serial_start: usize\)/);
+assert.match(previewTextXyz, /representation: "box-lines"/);
+assert.match(previewTextXyz, /fn box_pdb_from_vectors\(box_vectors: &BoxVectors, label: &str\) -> String/);
 assert.match(previewViewer, /const layoutState = \{\s*left: 'hidden',\s*right: 'hidden',\s*top: 'hidden',\s*bottom: 'hidden'\s*\}/);
 assert.match(previewViewer, /const DEFAULT_MOLSTAR_STYLE = 'illustrative'/);
+assert.match(previewViewer, /const MOLSTAR_STYLE_OPTIONS = \[/);
+assert.match(previewViewer, /\{ value: 'molecular-surface', label: 'Surface' \}/);
+assert.match(previewViewer, /function populateMolstarStyleSelect\(select\)/);
+assert.match(previewViewer, /function bindMolstarStyleControls\(toolbar\)/);
+assert.match(previewViewer, /function requestMolstarStyle\(style\)/);
+assert.match(previewViewer, /async function reloadMolstarStyle\(viewer, style, serial\)/);
+assert.match(previewViewer, /async function applyMolstarUniformRepresentation\(viewer, representation\)/);
+assert.match(previewViewer, /async function applyMolstarPolymerLigandRepresentation\(viewer, polymerRepresentation, ligandRepresentation\)/);
+assert.match(previewViewer, /type: 'molecular-surface'/);
+assert.match(previewViewer, /type: 'spacefill'/);
+assert.match(previewViewer, /type: 'ball-and-stick'/);
+assert.match(previewViewer, /type: 'cartoon'/);
 assert.match(previewViewer, /function normalizeMolstarStyle\(value\)/);
 assert.match(previewViewer, /function configuredMolstarStyle\(config\)/);
 assert.match(previewViewer, /if \(canvasBackground === 'auto'\) return resolveViewerTheme\(\) === 'light' \? 'white' : 'graphite';/);
@@ -1819,10 +1886,21 @@ assert.match(previewViewer, /if \(region === 'left'\) layoutState\.left = layout
 assert.match(previewViewer, /await plugin\.builders\.structure\.hierarchy\.applyPreset\(trajectory, 'default'\)/);
 assert.match(previewViewer, /await applyMolstarStyle\(viewer, configuredMolstarStyle\(activeConfig\)\)/);
 assert.match(previewViewer, /function isMolstarWaterComponent\(component\)/);
-assert.match(previewViewer, /key\.split\(','\)\.includes\('water'\)/);
+assert.match(previewViewer, /const isGroDocument = format === 'gro'/);
+assert.match(previewViewer, /isGroDocument && normalizedLabel\.includes\('non-standard'\)/);
+assert.match(previewViewer, /keyParts\.includes\('water'\) \|\| keyParts\.includes\('solvent'\)/);
+assert.match(previewViewer, /'hoh', 'wat', 'sol', 'tip3', 'tip3p', 'spc', 'tip4p'/);
+assert.match(previewViewer, /async function tryCreateMolstarWaterComponent\(plugin, structure\)/);
+assert.match(previewViewer, /tryCreateComponentStatic\(target, 'water'\)/);
+assert.match(previewViewer, /function shouldUseMolstarWaterLines\(config\)/);
+assert.match(previewViewer, /waterRepresentation \|\| 'line'/);
 assert.match(previewViewer, /async function applyMolstarWaterLineRepresentation\(viewer\)/);
 assert.match(previewViewer, /await plugin\.managers\.structure\.component\.removeRepresentations\(waterComponents\)/);
-assert.match(previewViewer, /type: 'line',\s*typeParams: \{\s*alpha: 0\.6,\s*visuals: \['intra-bond', 'element-point'\]\s*\},\s*color: 'element-symbol'/s);
+assert.match(previewViewer, /type: 'line',\s*typeParams: \{\s*alpha: 0\.32,\s*sizeFactor: 0\.035,\s*visuals: \['intra-bond'\]\s*\},\s*color: 'uniform',\s*colorParams: \{ value: 0x8aa4b8 \},\s*size: 'uniform',\s*sizeParams: \{ value: 0\.03 \}/s);
+assert.match(previewViewer, /async function loadMolstarEntryAsBoxLines\(viewer, entry\)/);
+assert.match(previewViewer, /entry\.representation === 'box-lines'/);
+assert.match(previewViewer, /colorParams: \{ value: 0x2f6f66 \}/);
+assert.doesNotMatch(previewViewer, /visuals: \['intra-bond', 'element-point'\]/);
 assert.match(previewViewer, /await applyMolstarStyle\(viewer, configuredMolstarStyle\(activeConfig\)\);\s*await applyMolstarWaterLineRepresentation\(viewer\);/);
 assert.match(previewViewer, /plugin\.managers\.structure\.component\.setOptions\(\{\s*\.\.\.plugin\.managers\.structure\.component\.state\.options,\s*ignoreLight: true\s*\}\)/s);
 assert.match(previewViewer, /postprocessing:\s*\{\s*outline:/s);

@@ -608,6 +608,8 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
 }
 .buret-renderer-control.visible { display: flex; }
 .buret-renderer-choice { min-width: 38px; }
+.buret-molstar-style-slot { display: none; align-items: center; }
+.buret-molstar-style-slot.visible { display: flex; }
 .buret-xyzrender-preset-slot { display: none; align-items: center; }
 .buret-xyzrender-preset-slot.visible { display: flex; }
 .buret-xyzrender-tune.hidden { display: none; }
