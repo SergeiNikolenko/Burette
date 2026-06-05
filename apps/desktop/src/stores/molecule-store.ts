@@ -47,7 +47,7 @@ type MoleculeState = {
   clearRecentStructures: () => void;
   openNewTab: () => void;
   openFepSetupTab: (location: FepSetupLocation) => void;
-  openKetcherTab: () => void;
+  openKetcherTab: (location?: { draftKet?: string; draftMolfile?: string }) => void;
   openPoseReviewTab: (location: PoseReviewLocation) => void;
   openSettingsTab: () => void;
   navigateBack: () => void;
@@ -131,8 +131,8 @@ export function createSettingsTab(id = createTabId()): MoleculeTab {
   return { id, location: { kind: "settings" }, back: [], forward: [] };
 }
 
-export function createKetcherTab(id = createTabId()): MoleculeTab {
-  return { id, location: { kind: "ketcher" }, back: [], forward: [] };
+export function createKetcherTab(id = createTabId(), location: { draftKet?: string; draftMolfile?: string } = {}): MoleculeTab {
+  return { id, location: { kind: "ketcher", ...location }, back: [], forward: [] };
 }
 
 export function createFepSetupTab(location: FepSetupLocation, id = createTabId()): MoleculeTab {
@@ -510,11 +510,20 @@ export const useMoleculeStore = create<MoleculeState>()(
           const tabs = [...state.tabs.filter((candidate) => candidate.location.kind !== "launcher"), tab];
           return { tabs, activeTabId: tab.id, activeDocumentId: activeDocumentIdFrom(tabs, tab.id, state.documents) };
         }),
-      openKetcherTab: () =>
+      openKetcherTab: (location = {}) =>
         set((state) => {
           const existing = state.tabs.find((tab) => tab.location.kind === "ketcher");
-          if (existing) return { activeTabId: existing.id, activeDocumentId: null };
-          const tab = createKetcherTab();
+          if (existing) {
+            const hasDraft = Boolean(location.draftKet?.trim() || location.draftMolfile?.trim());
+            const tabs = hasDraft
+              ? state.tabs.map((tab) => (tab.id === existing.id ? {
+                  ...tab,
+                  location: { kind: "ketcher" as const, ...location },
+                } : tab))
+              : state.tabs;
+            return { tabs, activeTabId: existing.id, activeDocumentId: null };
+          }
+          const tab = createKetcherTab(createTabId(), location);
           const tabs = [...state.tabs, tab];
           return { tabs, activeTabId: tab.id, activeDocumentId: null };
         }),
