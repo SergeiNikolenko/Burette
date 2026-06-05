@@ -6,6 +6,20 @@
   const CARD_MIN_STORAGE_KEY = 'buret.grid.cardMin';
   const CARD_RENDERER_STORAGE_KEY = 'buret.grid.cardRenderer';
   const RDKIT_USE_INPUT_COORDS_STORAGE_KEY = 'buret.grid.rdkitUseInputCoords';
+  const DEFAULT_XYZRENDER_PRESETS = [
+    { value: 'default', label: 'Default' },
+    { value: 'flat', label: 'Flat' },
+    { value: 'paton', label: 'Paton' },
+    { value: 'pmol', label: 'PMol' },
+    { value: 'skeletal', label: 'Skeletal' },
+    { value: 'bubble', label: 'Bubble' },
+    { value: 'tube', label: 'Tube' },
+    { value: 'btube', label: 'BTube' },
+    { value: 'mtube', label: 'MTube' },
+    { value: 'wire', label: 'Wire' },
+    { value: 'graph', label: 'Graph' },
+    { value: 'custom', label: 'Custom JSON' }
+  ];
   const MIN_CARD_MIN = 86;
   const MAX_CARD_MIN = 360;
   const DEFAULT_CARD_MIN = 174;
@@ -47,6 +61,7 @@
     sort: 'index',
     showProperties: false,
     cardRenderer: storedCardRenderer(),
+    xyzrenderPreset: null,
     rdkitUseInputCoords: storedBoolean(RDKIT_USE_INPUT_COORDS_STORAGE_KEY, false),
     cardMin: storedOptionalInteger(CARD_MIN_STORAGE_KEY, MIN_CARD_MIN, MAX_CARD_MIN),
     hiddenRows: new Set(),
@@ -545,6 +560,9 @@
       selectionEnabled: caps.selection,
       substructureSearch: caps.substructureSearch,
       supportsXyzrenderCards: supportsXyzrenderCards(cfg),
+      cardRenderer: state.cardRenderer,
+      xyzrenderPreset: currentXyzrenderPreset(cfg),
+      xyzrenderPresetOptions: xyzrenderPresetOptions(cfg),
       ketcherOpen: caps.ketcherOpen,
       rendererSwitch: caps.rendererSwitch,
       sortOptions: propertyOptionList(cfg),
@@ -575,6 +593,7 @@
       onExportSmiles() { exportSmiles(cfg); },
       onExportCSV() { exportCSV(cfg); },
       onSetCardRenderer(value) { setCardRenderer(value, cfg); },
+      onXyzrenderPresetChange(value) { setXyzrenderPreset(value, cfg); },
       onOpenKetcher() { requestSelectedKetcherDocument(cfg); },
       onRendererSwitch(value) { requestRendererSwitch(value, cfg); },
       onRdkitUseInputCoordsChange(checked) {
@@ -604,7 +623,46 @@
       propertiesToggle.setAttribute('aria-pressed', state.showProperties ? 'true' : 'false');
     }
     syncCardRendererSwitch();
+    syncXyzrenderPresetControl(cfg);
     syncRdkitCoordinatesControl();
+  }
+
+  function xyzrenderPresetOptions(cfg) {
+    const seen = new Set();
+    const rows = Array.isArray(cfg?.xyzrenderPresetOptions) && cfg.xyzrenderPresetOptions.length
+      ? cfg.xyzrenderPresetOptions
+      : DEFAULT_XYZRENDER_PRESETS;
+    const options = [];
+    for (const row of rows) {
+      const value = normalizeXyzrenderPreset(row?.value);
+      if (seen.has(value)) continue;
+      seen.add(value);
+      options.push({ value, label: String(row?.label || value) });
+    }
+    return options.length ? options : DEFAULT_XYZRENDER_PRESETS;
+  }
+
+  function normalizeXyzrenderPreset(value) {
+    const raw = String(value || 'default').trim().toLowerCase();
+    return DEFAULT_XYZRENDER_PRESETS.some(row => row.value === raw) ? raw : 'default';
+  }
+
+  function currentXyzrenderPreset(cfg) {
+    if (state.xyzrenderPreset) return state.xyzrenderPreset;
+    const preset = normalizeXyzrenderPreset(cfg?.externalArtifact?.preset || cfg?.xyzrenderPreset || 'default');
+    state.xyzrenderPreset = preset;
+    return preset;
+  }
+
+  function setXyzrenderPreset(value, cfg) {
+    const next = normalizeXyzrenderPreset(value);
+    if (currentXyzrenderPreset(cfg) === next) return;
+    state.xyzrenderPreset = next;
+    resetXyzrenderCardObserver();
+    state.xyzrenderCardCache.clear();
+    resetCardRenderQueues();
+    syncXyzrenderPresetControl(cfg);
+    if (state.cardRenderer === 'xyzrender') render(cfg);
   }
 
   function propertyOptionList(cfg) {
@@ -631,6 +689,7 @@
     state.cardRenderer = next;
     store(CARD_RENDERER_STORAGE_KEY, next);
     syncCardRendererSwitch();
+    syncXyzrenderPresetControl(cfg);
     syncRdkitCoordinatesControl();
     render(cfg);
   }
@@ -642,6 +701,16 @@
       button.classList.toggle('active', active);
       button.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
+  }
+
+  function syncXyzrenderPresetControl(cfg) {
+    const control = document.getElementById('xyzrender-preset-control');
+    const select = document.getElementById('xyzrender-preset');
+    if (!control || !select) return;
+    const enabled = state.cardRenderer === 'xyzrender';
+    control.hidden = !enabled;
+    select.disabled = !enabled;
+    select.value = currentXyzrenderPreset(cfg);
   }
 
   function initRdkitCoordinatesControl(cfg) {
@@ -2551,7 +2620,7 @@
   }
 
   function xyzrenderCardKey(row, record) {
-    return `${row.index}|${record.inputExtension}|${hash(record.text || '')}|${state.smarts}`;
+    return `${row.index}|${record.inputExtension}|${currentXyzrenderPreset(config())}|${hash(record.text || '')}|${state.smarts}`;
   }
 
   function scheduleXyzrenderCard(card, row, cfg) {
@@ -2623,6 +2692,7 @@
     state.all = Array.isArray(window.BurreteGridRecords) ? window.BurreteGridRecords : [];
     state.selected = new Set();
     state.hiddenRows = new Set();
+    state.xyzrenderPreset = null;
     state.selectionAnchorIndex = null;
     state.visibleCount = 0;
     state.renderedCount = 0;
@@ -2656,7 +2726,7 @@
     try {
       const request = {
         path: record.path,
-        preset: 'default',
+        preset: currentXyzrenderPreset(cfg),
         inputDataBase64: textToBase64(xyzrenderFragmentText(record)),
         inputExtension: record.inputExtension
       };
@@ -2709,7 +2779,7 @@
         items: jobs.map(job => ({
           id: job.key,
           path: job.record.path,
-          preset: 'default',
+          preset: currentXyzrenderPreset(job.cfg),
           inputDataBase64: textToBase64(xyzrenderFragmentText(job.record)),
           inputExtension: job.record.inputExtension
         }))
