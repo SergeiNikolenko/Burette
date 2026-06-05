@@ -868,6 +868,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "themeTokens": preferences.themeTokens,
             "canvasBackground": preferences.runtimeCanvasBackground,
             "molstarStyle": resolvedMolstarStyle,
+            "waterRepresentation": "line",
             "uiScale": 0.9,
             "overlayOpacity": preferences.overlayOpacity,
             "transparentBackground": preferences.resolvedTransparentBackground,
