@@ -12,6 +12,7 @@
     {
       "id": "cif",
       "contentType": "com.local.burrete10.cif",
+      "contentTypeAliases": ["public.cif"],
       "extensions": ["cif"],
       "mimeTypes": ["chemical/x-cif", "chemical/x-mmcif"],
       "conformsTo": ["public.plain-text", "public.data"],
@@ -87,6 +88,7 @@
     {
       "id": "mol2",
       "contentType": "com.local.burrete10.mol2",
+      "contentTypeAliases": ["com.schrodinger.mol"],
       "extensions": ["mol2"],
       "mimeTypes": ["chemical/x-mol2"],
       "conformsTo": ["public.plain-text", "public.data"],
@@ -132,6 +134,7 @@
     {
       "id": "schrodinger",
       "contentType": "com.local.burrete10.schrodinger",
+      "contentTypeAliases": ["com.schrodinger.mae"],
       "extensions": ["mae", "mae.gz", "maegz", "cms"],
       "conformsTo": ["public.plain-text", "public.data"],
       "description": "Schrodinger molecular structure file",
@@ -168,6 +171,7 @@
     "contentTypes": [
       "com.local.burrete10.pdb",
       "com.local.burrete10.cif",
+      "public.cif",
       "com.local.burrete10.mmcif",
       "com.local.burrete10.bcif",
       "com.local.burrete10.sdf",
@@ -176,6 +180,7 @@
       "com.local.burrete10.tsv",
       "com.local.burrete10.mol",
       "com.local.burrete10.mol2",
+      "com.schrodinger.mol",
       "com.schrodinger.pdb",
       "com.schrodinger.sdf",
       "public.delimited-values-text",
@@ -189,6 +194,7 @@
       "com.gaussian.cube",
       "com.local.burrete10.gro",
       "com.local.burrete10.molecular-dynamics",
+      "com.schrodinger.mae",
       "com.local.burrete10.schrodinger"
     ]
   }
