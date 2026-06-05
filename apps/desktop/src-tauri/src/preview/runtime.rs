@@ -2,8 +2,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs::{self, File};
 use std::io::Read;
-use std::path::PathBuf;
-use tauri::Runtime;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use tauri::{Manager, Runtime};
 
 use super::formats::{
     format_for_extension, normalize_renderer_mode, resolve_renderer, structure_path_extension,
@@ -16,6 +17,36 @@ use super::text_xyz::converted_data_from_text;
 
 const MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
 const MAESTRO_PREVIEW_READ_LIMIT: u64 = 64 * 1024 * 1024;
+const DESMOND_PREVIEW_TARGET_MB: &str = "24";
+const SCHRODINGER_RUN: &str = "/opt/schrodinger/suites2026-1/run";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum StructureAttachmentRole {
+    Topology,
+    Trajectory,
+    TrajectoryPointer,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct StructureAttachment {
+    role: StructureAttachmentRole,
+    path: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum StructureBundleKind {
+    Desmond,
+    Md,
+    Single,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct StructureFileBundle {
+    kind: StructureBundleKind,
+    primary_path: PathBuf,
+    input_path: PathBuf,
+    attachments: Vec<StructureAttachment>,
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -320,6 +351,30 @@ pub(crate) fn open_document_with_grid_options<R: Runtime>(
         return Err(format!("{} is not a file", canonical.display()));
     }
     let extension = structure_path_extension(&canonical);
+    if let Some(desmond_preview) = create_desmond_trajectory_preview(app, &canonical, &extension)? {
+        let format = format_for_extension("pdb")?;
+        let runtime = create_runtime(
+            app,
+            &canonical,
+            "pdb",
+            &format,
+            "molstar",
+            &desmond_preview,
+            preferences,
+            reload_options,
+        )?;
+        return Ok(ViewerDocument {
+            id: stable_id(&canonical),
+            path: canonical.to_string_lossy().to_string(),
+            title: file_title(&canonical),
+            extension,
+            renderer: runtime.renderer,
+            runtime_path: runtime.path.to_string_lossy().to_string(),
+            byte_count: metadata.len(),
+            is_virtual: false,
+            docking_request: None,
+        });
+    }
     let uses_bounded_maestro_preview =
         is_maestro_preview_extension(&extension) && metadata.len() > MAX_STRUCTURE_FILE_SIZE;
     if metadata.len() > MAX_STRUCTURE_FILE_SIZE && !uses_bounded_maestro_preview {
@@ -424,6 +479,298 @@ pub(crate) fn open_document_with_grid_options<R: Runtime>(
 
 fn is_maestro_preview_extension(extension: &str) -> bool {
     matches!(extension, "cms" | "mae" | "maegz")
+}
+
+fn create_desmond_trajectory_preview<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    path: &Path,
+    extension: &str,
+) -> Result<Option<Vec<u8>>, String> {
+    let bundle = resolve_structure_file_bundle(path, extension);
+    if bundle.kind != StructureBundleKind::Desmond || !is_desmond_preview_candidate(path, extension)
+    {
+        return Ok(None);
+    }
+    let extractor = desmond_preview_extractor_path(app)?;
+    if !Path::new(SCHRODINGER_RUN).exists() {
+        return Err("Schrodinger Desmond preview extractor is unavailable.".to_string());
+    }
+    let temp_dir =
+        std::env::temp_dir().join(format!("burrete-desmond-preview-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(&temp_dir).map_err(|err| err.to_string())?;
+    let output_path = temp_dir.join("desmond-preview.pdb");
+    let output = Command::new(SCHRODINGER_RUN)
+        .arg("python3")
+        .arg(&extractor)
+        .arg(&bundle.input_path)
+        .arg("--frames")
+        .arg("0")
+        .arg("--atoms")
+        .arg("0")
+        .arg("--target-mb")
+        .arg(DESMOND_PREVIEW_TARGET_MB)
+        .arg("--output")
+        .arg(&output_path)
+        .output()
+        .map_err(|err| format!("Could not start Schrodinger Desmond preview extractor: {err}"));
+    let result = match output {
+        Ok(output) if output.status.success() => fs::read(&output_path)
+            .map_err(|err| format!("Could not read Desmond trajectory preview: {err}"))
+            .and_then(|data| {
+                if data.is_empty() {
+                    Err("Desmond preview extractor produced an empty PDB file.".to_string())
+                } else {
+                    Ok(data)
+                }
+            }),
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let details = if stderr.is_empty() { stdout } else { stderr };
+            Err(format!(
+                "Desmond preview extractor failed with exit status {}. {}",
+                output.status, details
+            ))
+        }
+        Err(error) => Err(error),
+    };
+    let _ = fs::remove_dir_all(&temp_dir);
+    result.map(Some)
+}
+
+fn desmond_preview_extractor_path<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> Result<PathBuf, String> {
+    if let Ok(resource) = app.path().resolve(
+        "desmond_preview_extract.py",
+        tauri::path::BaseDirectory::Resource,
+    ) {
+        if resource.exists() {
+            return Ok(resource);
+        }
+    }
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let repo_root = manifest_dir
+        .parent()
+        .and_then(Path::parent)
+        .and_then(Path::parent)
+        .unwrap_or(&manifest_dir);
+    let source = repo_root.join("scripts").join("desmond_preview_extract.py");
+    if source.exists() {
+        return Ok(source);
+    }
+    Err("Schrodinger Desmond preview extractor is unavailable.".to_string())
+}
+
+fn is_desmond_preview_candidate(path: &Path, extension: &str) -> bool {
+    resolve_desmond_file_bundle(path, extension).is_some()
+}
+
+fn resolve_structure_file_bundle(path: &Path, extension: &str) -> StructureFileBundle {
+    resolve_desmond_file_bundle(path, extension)
+        .or_else(|| resolve_md_file_bundle(path, extension))
+        .unwrap_or_else(|| StructureFileBundle {
+            kind: StructureBundleKind::Single,
+            primary_path: path.to_path_buf(),
+            input_path: path.to_path_buf(),
+            attachments: Vec::new(),
+        })
+}
+
+fn resolve_desmond_file_bundle(path: &Path, extension: &str) -> Option<StructureFileBundle> {
+    match extension {
+        "cms" => {
+            let parent = path.parent()?;
+            for base in candidate_desmond_bases(path) {
+                let mut candidates = vec![parent.join(format!("{base}_trj"))];
+                candidates.extend(casebook_trj_candidates(path, &base));
+                let Some(trj_dir) = candidates.into_iter().find(|candidate| candidate.is_dir())
+                else {
+                    continue;
+                };
+                let clickme = trj_dir.join("clickme.dtr");
+                let mut attachments = vec![
+                    StructureAttachment {
+                        role: StructureAttachmentRole::Topology,
+                        path: path.to_path_buf(),
+                    },
+                    StructureAttachment {
+                        role: StructureAttachmentRole::Trajectory,
+                        path: trj_dir,
+                    },
+                ];
+                if clickme.is_file() {
+                    attachments.push(StructureAttachment {
+                        role: StructureAttachmentRole::TrajectoryPointer,
+                        path: clickme,
+                    });
+                }
+                return Some(StructureFileBundle {
+                    kind: StructureBundleKind::Desmond,
+                    primary_path: path.to_path_buf(),
+                    input_path: path.to_path_buf(),
+                    attachments,
+                });
+            }
+            None
+        }
+        "dtr" => {
+            let trj_dir = path.parent()?;
+            let base = trj_dir
+                .file_name()
+                .and_then(|value| value.to_str())
+                .map(|value| value.strip_suffix("_trj").unwrap_or(value).to_string())?;
+            if !trj_dir.is_dir() {
+                return None;
+            }
+            let mut candidates = trj_dir
+                .parent()
+                .map(|parent| {
+                    vec![
+                        parent.join(format!("{base}-out.cms")),
+                        parent.join(format!("{base}.cms")),
+                    ]
+                })
+                .unwrap_or_default();
+            candidates.extend(casebook_cms_candidates(trj_dir, &base));
+            let cms_path = candidates
+                .into_iter()
+                .find(|candidate| candidate.is_file())?;
+            Some(StructureFileBundle {
+                kind: StructureBundleKind::Desmond,
+                primary_path: cms_path.clone(),
+                input_path: path.to_path_buf(),
+                attachments: vec![
+                    StructureAttachment {
+                        role: StructureAttachmentRole::Topology,
+                        path: cms_path,
+                    },
+                    StructureAttachment {
+                        role: StructureAttachmentRole::Trajectory,
+                        path: trj_dir.to_path_buf(),
+                    },
+                    StructureAttachment {
+                        role: StructureAttachmentRole::TrajectoryPointer,
+                        path: path.to_path_buf(),
+                    },
+                ],
+            })
+        }
+        _ => None,
+    }
+}
+
+fn resolve_md_file_bundle(path: &Path, extension: &str) -> Option<StructureFileBundle> {
+    let base = path.with_extension("");
+    if matches!(extension, "xtc" | "trr" | "dcd" | "nctraj") {
+        let topology = ["pdb", "gro", "cif", "mmcif", "bcif", "psf", "prmtop", "top"]
+            .into_iter()
+            .map(|candidate| base.with_extension(candidate))
+            .find(|candidate| candidate.is_file())?;
+        return Some(StructureFileBundle {
+            kind: StructureBundleKind::Md,
+            primary_path: topology.clone(),
+            input_path: path.to_path_buf(),
+            attachments: vec![
+                StructureAttachment {
+                    role: StructureAttachmentRole::Topology,
+                    path: topology,
+                },
+                StructureAttachment {
+                    role: StructureAttachmentRole::Trajectory,
+                    path: path.to_path_buf(),
+                },
+            ],
+        });
+    }
+    if matches!(
+        extension,
+        "pdb" | "gro" | "cif" | "mmcif" | "bcif" | "psf" | "prmtop" | "top"
+    ) {
+        let trajectory = ["xtc", "trr", "dcd", "nctraj"]
+            .into_iter()
+            .map(|candidate| base.with_extension(candidate))
+            .find(|candidate| candidate.is_file())?;
+        return Some(StructureFileBundle {
+            kind: StructureBundleKind::Md,
+            primary_path: path.to_path_buf(),
+            input_path: path.to_path_buf(),
+            attachments: vec![
+                StructureAttachment {
+                    role: StructureAttachmentRole::Topology,
+                    path: path.to_path_buf(),
+                },
+                StructureAttachment {
+                    role: StructureAttachmentRole::Trajectory,
+                    path: trajectory,
+                },
+            ],
+        });
+    }
+    None
+}
+
+fn candidate_desmond_bases(path: &Path) -> Vec<String> {
+    let Some(stem) = path.file_stem().and_then(|value| value.to_str()) else {
+        return Vec::new();
+    };
+    let mut bases = vec![stem.to_string()];
+    for suffix in ["-out", "_out"] {
+        if let Some(base) = stem.strip_suffix(suffix) {
+            if !base.is_empty() && !bases.iter().any(|value| value == base) {
+                bases.push(base.to_string());
+            }
+        }
+    }
+    bases
+}
+
+fn casebook_source_files_parts(path: &Path) -> Option<(PathBuf, Vec<String>)> {
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    let marker = "/source_files/";
+    let index = normalized.find(marker)?;
+    let root = PathBuf::from(&normalized[..index + marker.len() - 1]);
+    let rest = normalized[index + marker.len()..]
+        .split('/')
+        .filter(|part| !part.is_empty())
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    Some((root, rest))
+}
+
+fn casebook_trj_candidates(cms_path: &Path, base: &str) -> Vec<PathBuf> {
+    let Some((root, rest)) = casebook_source_files_parts(cms_path) else {
+        return Vec::new();
+    };
+    let Some(first) = rest.first() else {
+        return Vec::new();
+    };
+    if !first.starts_with("mnt__") {
+        return Vec::new();
+    }
+    let mut path = root;
+    for part in first.split("__") {
+        path.push(part);
+    }
+    for part in rest.iter().skip(1).take(rest.len().saturating_sub(2)) {
+        path.push(part);
+    }
+    path.push(format!("{base}_trj"));
+    vec![path]
+}
+
+fn casebook_cms_candidates(trj_dir: &Path, base: &str) -> Vec<PathBuf> {
+    let Some((root, rest)) = casebook_source_files_parts(trj_dir) else {
+        return Vec::new();
+    };
+    if rest.len() < 4 || rest[0] != "mnt" || rest[1] != "ligandpro" || rest[2] != "crim3s" {
+        return Vec::new();
+    }
+    let mapped_dir = root.join(rest[0..4].join("__"));
+    vec![
+        mapped_dir.join(format!("{base}-out.cms")),
+        mapped_dir.join(format!("{base}.cms")),
+    ]
 }
 
 fn read_file_prefix(path: &PathBuf, max_bytes: u64) -> Result<Vec<u8>, String> {
