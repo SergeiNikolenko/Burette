@@ -88,6 +88,45 @@ assert.deepEqual(resolveDropActionChoices(payload(["/tmp/a.sdf"]), { kind: "ketc
   { kind: "tab" },
 ]);
 
+assert.deepEqual(resolveDropActionChoices(payload(["/tmp/receptor.pdb"]), { kind: "ketcher" }), [{
+  id: "open-documents",
+  label: "Open as document tabs",
+  confidence: "default",
+  action: {
+    kind: "open-documents",
+    paths: ["/tmp/receptor.pdb"],
+  },
+}]);
+assert.deepEqual(resolveDropActionChoices(payload(["/tmp/receptor.pdb", "/tmp/a.sdf"]), { kind: "ketcher" }), [
+  {
+    id: "import-ketcher-structures",
+    label: "Add to Ketcher",
+    confidence: "default",
+    action: {
+      kind: "import-ketcher-structures",
+      payload: payload(["/tmp/a.sdf"]),
+    },
+  },
+  {
+    id: "open-documents",
+    label: "Open separately",
+    confidence: "alternative",
+    action: {
+      kind: "open-documents",
+      paths: ["/tmp/receptor.pdb", "/tmp/a.sdf"],
+    },
+  },
+]);
+assert.deepEqual(resolveDropActionChoices(payload(["/tmp/receptor.pdb", "/tmp/protein.cif"]), { kind: "ketcher" }), [{
+  id: "open-documents",
+  label: "Open as document tabs",
+  confidence: "default",
+  action: {
+    kind: "open-documents",
+    paths: ["/tmp/receptor.pdb", "/tmp/protein.cif"],
+  },
+}]);
+
 const inlineOnKetcher = resolveDropAction(
   payload([], [{ path: "structure.smi", inputExtension: "smi", text: "CCO\n" }]),
   { kind: "ketcher" },
@@ -187,6 +226,31 @@ assert.deepEqual(resolveDropAction(payload(["/tmp/a.sdf"]), {
   targetPath: "/tmp/grid.sdf",
   paths: ["/tmp/a.sdf"],
 });
+assert.deepEqual(resolveDropActionChoices(payload(["/tmp/a.sdf"]), {
+  kind: "active-viewer",
+  documentPath: "/tmp/grid.sdf",
+  renderer: "grid2d",
+}), [
+  {
+    id: "merge-collection",
+    label: "Merge molecule collections",
+    confidence: "default",
+    action: {
+      kind: "merge-collection",
+      targetPath: "/tmp/grid.sdf",
+      paths: ["/tmp/a.sdf"],
+    },
+  },
+  {
+    id: "open-documents",
+    label: "Open separately",
+    confidence: "alternative",
+    action: {
+      kind: "open-documents",
+      paths: ["/tmp/a.sdf"],
+    },
+  },
+]);
 
 const structureOnXyzrender = resolveDropAction(payload(["/tmp/a.xyz"]), {
   kind: "active-viewer",
@@ -384,6 +448,14 @@ assert.deepEqual(resolveDropActionChoices(payload(["/tmp/receptor-b.cif", "/tmp/
       ligandPaths: ["/tmp/ligand.sdf"],
     },
   },
+});
+assert.deepEqual(resolveDropAction(payload(["/tmp/receptor-b.cif"]), {
+  kind: "active-viewer",
+  documentPath: "/tmp/receptor-a.pdb",
+  renderer: "molstar",
+}), {
+  kind: "open-documents",
+  paths: ["/tmp/receptor-b.cif"],
 });
 
 assert.deepEqual(resolveDropActionChoices(
