@@ -56,7 +56,7 @@ import {
   useSetDocuments,
 } from "./hooks/use-tabs";
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
-import { browserDevRuntimeNeedsRefresh, openBrowserDevDockingDocument, openBrowserDevDocuments, openBrowserDevMergedCollection, openBrowserDevMolstarContextDocument, openBrowserDevTextDocument, readBrowserDevCollectionText } from "./lib/browser-dev-documents";
+import { browserDevRuntimeNeedsRefresh, openBrowserDevDockingDocument, openBrowserDevDocuments, openBrowserDevMergedCollection, openBrowserDevMolstarContextDocument, openBrowserDevTextDocument, readBrowserDevCollectionText, readBrowserDevVirtualTextDocument } from "./lib/browser-dev-documents";
 import { openBrowserDevTextFiles } from "./lib/browser-dev-text-files";
 import { defaultBuildInfo, loadBuildInfo } from "./lib/build-info";
 import { isMoleculeCollectionPath } from "./lib/collection-documents";
@@ -1104,22 +1104,50 @@ export default function App() {
 
   const openKetcherWithStructures = useCallback((paths: string[], fragments: KetcherImportRequest["fragments"] = []) => {
     const cleanPaths = Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
-    const cleanFragments = fragments?.filter((fragment) => fragment.text.trim()) ?? [];
-    if (cleanPaths.length === 0 && cleanFragments.length === 0) return;
+    const virtualFragments: KetcherImportRequest["fragments"] = [];
+    const readablePaths = cleanPaths.filter((path) => {
+      const virtualText = readBrowserDevVirtualTextDocument(path);
+      if (virtualText === null) return true;
+      virtualFragments.push({ title: basename(path), text: virtualText });
+      return false;
+    });
+    const cleanFragments = [...(fragments?.filter((fragment) => fragment.text.trim()) ?? []), ...virtualFragments];
+    if (readablePaths.length === 0 && cleanFragments.length === 0) return;
+    if (readablePaths.length === 0 && cleanFragments.length === 1) {
+      const [fragment] = cleanFragments;
+      const draftMolfile = ketcherDraftMolfileFromImportText(fragment.text);
+      if (draftMolfile) {
+        openKetcherTab({ draftMolfile });
+        setStructureDragActive(false);
+        setKetcherDraftMolfile(draftMolfile);
+        setKetcherImportRequest(null);
+        pushStatus(`Opened ${fragment.title.trim() || "structure"} in Ketcher`);
+        return;
+      }
+    }
     openKetcherTab();
     setStructureDragActive(false);
     setKetcherImportRequest({
       id: ++ketcherImportSequenceRef.current,
-      paths: cleanPaths,
+      paths: readablePaths,
       fragments: cleanFragments,
     });
-    const count = cleanPaths.length + cleanFragments.length;
+    const count = readablePaths.length + cleanFragments.length;
     pushStatus(`Adding ${count} structure${count === 1 ? "" : "s"} to Ketcher`);
   }, [openKetcherTab, pushStatus]);
 
   const openKetcherWithFragment = useCallback((title: string, text: string) => {
     const cleanText = text.trim();
     if (!cleanText) return;
+    const draftMolfile = ketcherDraftMolfileFromImportText(cleanText);
+    if (draftMolfile) {
+      openKetcherTab({ draftMolfile });
+      setStructureDragActive(false);
+      setKetcherDraftMolfile(draftMolfile);
+      setKetcherImportRequest(null);
+      pushStatus(`Opened ${title.trim() || "structure"} in Ketcher`);
+      return;
+    }
     openKetcherTab();
     setStructureDragActive(false);
     setKetcherImportRequest({
@@ -1226,11 +1254,7 @@ export default function App() {
             effectivePreferences,
             reloadOptions,
           );
-      openDocumentsInActiveTab([document], {
-        backLocation: request.draftKet?.trim() || request.draftMolfile?.trim()
-          ? { kind: "ketcher", draftKet: request.draftKet, draftMolfile: request.draftMolfile }
-          : undefined,
-      });
+      addDocuments([document]);
       rememberRecentStructures([document]);
       pushStatus(
         `Opened Ketcher sketch in ${request.target === "grid" ? "grid" : request.target === "molstar" ? "Molstar" : "xyzrender"}`,
@@ -1238,7 +1262,7 @@ export default function App() {
     } catch (error) {
       pushErrorStatus(error, "Open Ketcher sketch failed");
     }
-  }, [mergeMoleculeCollections, openDocumentsInActiveTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
+  }, [addDocuments, mergeMoleculeCollections, openDocumentsInActiveTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
 
   const postXyzrenderSheetItems = useCallback((documentId: string, payload: StructureDragPayload) => {
     const iframe = Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).find(
@@ -1757,6 +1781,29 @@ export default function App() {
       ) {
         markPerformanceOnce("viewer:first-render");
       }
+      if (data.source === "burrete-viewer" && body?.type === "exportText") {
+        const text = typeof body.text === "string" ? body.text : "";
+        const name = safeExportFileName(body.name ?? "molstar-export.cif");
+        void (async () => {
+          try {
+            if (!isTauriRuntime()) {
+              downloadTextFile(name, text);
+              pushStatus(`Exported ${name}`);
+              return;
+            }
+            const outputPath = await save({
+              defaultPath: name,
+              filters: exportDialogFilters(name, body.mimeType ?? ""),
+            });
+            if (!outputPath) return;
+            const savedPath = await invoke<string>("save_text_as", { text, outputPath });
+            pushStatus(`Exported ${basename(savedPath)}`);
+          } catch (error) {
+            pushErrorStatus(error, "Molstar export failed");
+          }
+        })();
+        return;
+      }
       if ((data.source === "burrete-viewer" || data.source === "burrete-grid") && body?.type === "renderXyzrenderSheetItem") {
         if (!body.requestId) return;
         const replySource = data.source === "burrete-grid" ? "burrete-grid-host" : "burrete-host";
@@ -2244,6 +2291,11 @@ export default function App() {
           ? body.path.trim()
           : targetDocument?.path;
         if (targetPath) {
+          const virtualText = readBrowserDevVirtualTextDocument(targetPath);
+          if (virtualText !== null) {
+            openKetcherWithFragment(title, virtualText);
+            return;
+          }
           openKetcherWithStructures([targetPath]);
         }
         return;
@@ -2771,6 +2823,22 @@ function pathExtension(path: string) {
   const index = fileName.lastIndexOf(".");
   if (index <= 0 || index === fileName.length - 1) return "";
   return fileName.slice(index + 1).toLowerCase();
+}
+
+function ketcherDraftMolfileFromImportText(text: string) {
+  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trimEnd();
+  if (!normalized.trim()) return null;
+  const records = normalized.split(/\n\$\$\$\$\s*(?:\n|$)/u).map((record) => record.trimEnd()).filter(Boolean);
+  if (records.length === 1 && normalized !== records[0]) {
+    const [record] = records;
+    return record && looksLikeMolfile(record) ? record + "\n" : null;
+  }
+  return looksLikeMolfile(normalized) ? normalized + "\n" : null;
+}
+
+function looksLikeMolfile(text: string) {
+  const lines = text.split("\n");
+  return lines.length >= 4 && /^\s*\d+\s+\d+\b/u.test(lines[3] ?? "");
 }
 
 function downloadTextFile(fileName: string, text: string) {
