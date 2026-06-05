@@ -38,8 +38,10 @@ type MoleculeState = {
   recentStructures: RecentStructure[];
   setDocuments: (documents: ViewerDocument[]) => void;
   addDocuments: (documents: ViewerDocument[]) => void;
+  addBackgroundDocuments: (documents: ViewerDocument[]) => void;
   openDocumentsInActiveTab: (documents: ViewerDocument[], options?: { backLocation?: Location }) => void;
   addTextDocuments: (documents: TextFileDocument[]) => void;
+  addBackgroundTextDocuments: (documents: TextFileDocument[]) => void;
   openTextDocumentsInActiveTab: (documents: TextFileDocument[], options?: { backLocation?: Location }) => void;
   rememberRecentStructures: (documents: ViewerDocument[]) => void;
   clearRecentStructures: () => void;
@@ -121,7 +123,7 @@ export function createTextFileTab(document: TextFileDocument, id = createTabId()
   };
 }
 
-function textFileLocation(document: TextFileDocument): Location {
+function textFileLocation(document: TextFileDocument): TextFileLocation {
   return { kind: "text-file", documentId: document.id, path: document.path };
 }
 
@@ -325,6 +327,14 @@ export const useMoleculeStore = create<MoleculeState>()(
           activeTabId = activeTabIdOrFirst(nextTabs, activeTabId);
           return { documents, tabs: nextTabs, activeTabId, activeDocumentId: activeDocumentIdFrom(nextTabs, activeTabId, documents) };
         }),
+      addBackgroundDocuments: (incoming) =>
+        set((state) => {
+          if (incoming.length === 0) return state;
+          const byPath = new Map(state.documents.map((document) => [document.path, document]));
+          for (const document of incoming) byPath.set(document.path, document);
+          const documents = Array.from(byPath.values());
+          return { documents, activeDocumentId: activeDocumentIdFrom(state.tabs, state.activeTabId, documents) };
+        }),
       openDocumentsInActiveTab: (incoming, options = {}) =>
         set((state) => {
           if (incoming.length === 0) return state;
@@ -406,6 +416,13 @@ export const useMoleculeStore = create<MoleculeState>()(
           let activeTabId = openedTabId ?? state.activeTabId;
           activeTabId = activeTabIdOrFirst(nextTabs, activeTabId);
           return { textDocuments, tabs: nextTabs, activeTabId, activeDocumentId: activeDocumentIdFrom(nextTabs, activeTabId, state.documents) };
+        }),
+      addBackgroundTextDocuments: (incoming) =>
+        set((state) => {
+          if (incoming.length === 0) return state;
+          const byPath = new Map(state.textDocuments.map((document) => [document.path, document]));
+          for (const document of incoming) byPath.set(document.path, document);
+          return { textDocuments: Array.from(byPath.values()) };
         }),
       openTextDocumentsInActiveTab: (incoming, options = {}) =>
         set((state) => {

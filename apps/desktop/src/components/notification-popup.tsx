@@ -1,6 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useThemePortalContainer } from "./radix-menu";
 import type { StatusNotice } from "./types";
+import { CloseIcon } from "./close-icon";
 
 export function NotificationPopup({
   notice,
@@ -36,7 +37,7 @@ export function NotificationPopup({
                   <Dialog.Title>{notice.kind === "error" ? "Issue details" : "Status details"}</Dialog.Title>
                     <Dialog.Close asChild>
                       <button type="button" className="radix-dialog-close" aria-label="Close details">
-                      ×
+                        <CloseIcon size={14} />
                       </button>
                     </Dialog.Close>
                 </div>
