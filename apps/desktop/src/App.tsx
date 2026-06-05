@@ -1644,6 +1644,43 @@ export default function App() {
           })();
           return;
         }
+        if (body?.type === "readStructureText") {
+          if (!body.requestId || !body.documentId) return;
+          const reply = (bodyPayload: Record<string, unknown>) => {
+            postMessageToViewerSource(event.source, {
+              source: "burrete-grid-host",
+              body: {
+                requestId: body.requestId,
+                documentId: body.documentId,
+                ...bodyPayload,
+              },
+            });
+          };
+          if (!isTauriRuntime()) {
+            reply({
+              type: "gridError",
+              error: "Desktop file reading is unavailable outside the Tauri runtime.",
+            });
+            return;
+          }
+          void (async () => {
+            try {
+              const text = await invoke<string>("read_structure_text", {
+                path: typeof body.path === "string" ? body.path : "",
+              });
+              reply({
+                type: "structureText",
+                text,
+              });
+            } catch (error) {
+              reply({
+                type: "gridError",
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          })();
+          return;
+        }
         if (body?.type === "renderXyzrenderCard") {
           if (!body.requestId || !body.documentId) return;
           const reply = (bodyPayload: Record<string, unknown>) => {

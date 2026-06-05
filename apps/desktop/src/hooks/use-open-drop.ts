@@ -247,10 +247,6 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       const classified = await invoke<ClassifiedOpenPaths>("classify_open_paths", { paths: payload.paths });
       if (classified.directories.length > 0) {
         addProjectRoots?.(classified.directories);
-        if (classified.errors.length > 0) {
-          pushStatus(classified.errors.join("; "), "error");
-        }
-        return;
       }
       if (classified.errors.length > 0) {
         pushStatus(classified.errors.join("; "), "error");
