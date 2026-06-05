@@ -89,11 +89,17 @@ pub(crate) fn create_runtime<R: Runtime>(
         .as_ref()
         .and_then(|payload| payload.frame_count)
         .unwrap_or(0);
-    let is_xyz_trajectory = xyz_frame_count > 1;
+    let pdb_model_count = if format.molstar_format == "pdb" && !format.is_binary {
+        count_pdb_models(data)
+    } else {
+        0
+    };
+    let trajectory_frame_count = xyz_frame_count.max(pdb_model_count);
+    let is_trajectory = trajectory_frame_count > 1;
     let xyzrender_available = xyzrender_available_for_document(format, data);
     let mut renderer = renderer.to_string();
     let requested_renderer = normalize_renderer_mode(&preferences.renderer_mode);
-    if is_xyz_trajectory && requested_renderer == "auto" && renderer != "molstar" {
+    if is_trajectory && requested_renderer == "auto" && renderer != "molstar" {
         renderer = "molstar".to_string();
     }
     if renderer == "xyzrender-external" && !xyzrender_available {
@@ -190,11 +196,12 @@ pub(crate) fn create_runtime<R: Runtime>(
         "transparentBackground": preferences.resolved_transparent_background(),
         "sdfGrid": true,
         "sdfPosePager": renderer == "molstar" && molstar_format == "sdf" && !format.is_binary,
-        "trajectoryControls": renderer == "molstar" && is_xyz_trajectory,
-        "trajectoryFrameCount": xyz_frame_count,
+        "trajectoryControls": renderer == "molstar" && is_trajectory,
+        "trajectoryFrameCount": trajectory_frame_count,
         "appViewer": true,
         "tauriViewer": true,
         "molstarStyle": preferences.resolved_molstar_style(),
+        "waterRepresentation": "line",
         "xyzrenderViewer": false,
         "xyzrenderAvailable": xyzrender_available,
         "molstarAvailable": !format.external_only || external_molstar_data.is_some(),
@@ -243,6 +250,21 @@ pub(crate) fn create_runtime<R: Runtime>(
     if let Some(status) = external_status {
         config["externalRendererStatus"] = status;
     }
+    if let Some(converted) = external_molstar_data.as_ref() {
+        if !converted.staged_entries.is_empty() {
+            config["stagedEntries"] = json!(converted
+                .staged_entries
+                .iter()
+                .map(|entry| json!({
+                    "label": entry.label,
+                    "format": entry.extension,
+                    "binary": false,
+                    "representation": entry.representation,
+                    "dataBase64": base64::engine::general_purpose::STANDARD.encode(&entry.data)
+                }))
+                .collect::<Vec<_>>());
+        }
+    }
 
     let config_text = serde_json::to_string(&config).map_err(|err| err.to_string())?;
     fs::write(
@@ -288,6 +310,13 @@ fn create_not_renderable_runtime(
         path: index_path,
         renderer: "not-renderable".to_string(),
     })
+}
+
+fn count_pdb_models(data: &[u8]) -> usize {
+    let text = String::from_utf8_lossy(data);
+    text.lines()
+        .filter(|line| line.trim_start().starts_with("MODEL"))
+        .count()
 }
 
 pub(crate) fn create_docking_runtime<R: Runtime>(
@@ -362,6 +391,7 @@ pub(crate) fn create_docking_runtime<R: Runtime>(
         "appViewer": true,
         "tauriViewer": true,
         "molstarStyle": preferences.resolved_molstar_style(),
+        "waterRepresentation": "line",
         "xyzrenderViewer": false,
         "xyzrenderAvailable": false,
         "molstarAvailable": true,
@@ -472,7 +502,7 @@ fn should_use_converted_molstar_data(
 ) -> bool {
     data.is_some()
         && !format.is_binary
-        && matches!(format.molstar_format.as_str(), "mmcif" | "cifCore")
+        && matches!(format.molstar_format.as_str(), "gro" | "mmcif" | "cifCore")
 }
 
 fn xyzrender_available_for_document(format: &FormatInfo, data: &[u8]) -> bool {
