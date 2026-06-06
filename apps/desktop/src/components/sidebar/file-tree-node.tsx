@@ -7,7 +7,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { isMoleculeCollectionPath } from "../../lib/collection-documents";
 import type { SidebarProject, SidebarProjectItem } from "../../lib/sidebar-projects";
-import { hasStructureDrag, readStructureDragPayload, writeStructureDrag } from "../../lib/structure-drag";
+import { hasStructureDrag, readStructureDragPayload, writeStructureDragPayload } from "../../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
 import { rendererLabel } from "../format";
 import { showNativeContextMenu } from "../native-context-menu";
@@ -185,7 +185,16 @@ export function ProjectItem({
   };
 
   const handleDragStart = (event: ReactDragEvent<HTMLDivElement>) => {
-    writeStructureDrag(event.dataTransfer, [item.path]);
+    writeStructureDragPayload(event.dataTransfer, {
+      paths: [item.path],
+      records: [],
+      items: [{
+        kind: "file",
+        title: item.title,
+        detail: item.relativePath,
+        path: item.path,
+      }],
+    });
     actions.setStructureDragActive(true);
   };
 

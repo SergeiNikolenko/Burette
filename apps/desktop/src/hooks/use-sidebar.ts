@@ -9,6 +9,7 @@ export function useSidebar() {
   const pinnedStructurePaths = useShellStore((state) => state.pinnedStructurePaths);
   const sidebarQuery = useShellStore((state) => state.sidebarQuery);
   const toggleSidebar = useShellStore((state) => state.toggleSidebar);
+  const closeSidebar = useShellStore((state) => state.closeSidebar);
   const setSidebarWidth = useShellStore((state) => state.setSidebarWidth);
   const toggleProjectsOpen = useShellStore((state) => state.toggleProjectsOpen);
   const setExpandedProjectIds = useShellStore((state) => state.setExpandedProjectIds);
@@ -35,5 +36,6 @@ export function useSidebar() {
     setSidebarQuery,
     toggleProjectExpanded,
     toggleSidebar,
+    closeSidebar,
   };
 }

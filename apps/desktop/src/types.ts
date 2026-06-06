@@ -38,6 +38,11 @@ export type OpenDocumentsResult = {
   errors: string[];
 };
 
+export type OpenTextFilesResult = {
+  documents: TextFileDocument[];
+  errors: string[];
+};
+
 export type ViewerReloadOptions = {
   xyzrenderOrientationRef?: string | null;
   xyzrenderPreset?: string | null;
@@ -78,6 +83,18 @@ export type ViewerDocument = {
   virtual?: boolean;
   dockingRequest?: DockingDocumentRequest;
   mergedCollection?: MergedCollectionDocument;
+};
+
+export type TextFileDocument = {
+  id: string;
+  path: string;
+  title: string;
+  extension: string;
+  language: string;
+  byteCount: number;
+  content: string;
+  truncated: boolean;
+  modifiedAt?: number | null;
 };
 
 export type RecentStructure = {

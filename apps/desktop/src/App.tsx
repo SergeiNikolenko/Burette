@@ -17,6 +17,7 @@ import {
 } from "./hooks/use-command-palette";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
 import { useMenuEvents } from "./hooks/use-menu-events";
+import { useDockLayout } from "./hooks/use-dock-layout";
 import { useOpenDrop } from "./hooks/use-open-drop";
 import { useOpenEvents } from "./hooks/use-open-events";
 import { useSidebar } from "./hooks/use-sidebar";
@@ -24,6 +25,9 @@ import {
   useActiveDocument,
   useActiveTab,
   useActiveTabId,
+  useAddBackgroundDocuments,
+  useAddBackgroundTextDocuments,
+  useAddTextTabs,
   useAddTabs,
   useClearRecentStructures,
   useCanNavigateBack,
@@ -40,6 +44,8 @@ import {
   useOpenNewTab,
   useOpenPoseReviewTab,
   useOpenSettingsTab,
+  useOpenTextDocuments,
+  useOpenTextDocumentsInActiveTab,
   useOpenTabs,
   useRecentStructures,
   useRememberRecentStructures,
@@ -50,7 +56,8 @@ import {
   useSetDocuments,
 } from "./hooks/use-tabs";
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
-import { browserDevRuntimeNeedsRefresh, openBrowserDevDockingDocument, openBrowserDevDocuments, openBrowserDevMergedCollection, openBrowserDevMolstarContextDocument, openBrowserDevTextDocument, readBrowserDevCollectionText } from "./lib/browser-dev-documents";
+import { browserDevRuntimeNeedsRefresh, openBrowserDevDockingDocument, openBrowserDevDocuments, openBrowserDevMergedCollection, openBrowserDevMolstarContextDocument, openBrowserDevTextDocument, readBrowserDevCollectionText, readBrowserDevVirtualTextDocument } from "./lib/browser-dev-documents";
+import { openBrowserDevTextFiles } from "./lib/browser-dev-text-files";
 import { defaultBuildInfo, loadBuildInfo } from "./lib/build-info";
 import { isMoleculeCollectionPath } from "./lib/collection-documents";
 import { dockingRequestForDrop, isProteinLikeDockingSource } from "./lib/docking-documents";
@@ -60,7 +67,7 @@ import { basename, buildSidebarProjects, parentDirectory } from "./lib/sidebar-p
 import type { StructureDragPayload, StructureDragRecord } from "./lib/structure-drag";
 import { isTauriRuntime } from "./lib/tauri";
 import { isTemporaryDocumentPath } from "./lib/temporary-documents";
-import type { DockingDocumentRequest, FepSetupRequest, OpenDocumentsResult, RecentStructure, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "./types";
+import type { DockingDocumentRequest, FepSetupRequest, OpenDocumentsResult, OpenTextFilesResult, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "./types";
 import { checkForUpdates as requestUpdateCheck, clearDismissedUpdate, dismissUpdate, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically, shouldPromptForUpdate } from "./update";
 import type { UpdatePreferences, UpdateRelease, UpdateState } from "./update";
 
@@ -70,12 +77,42 @@ const CommandPalette = lazy(() => import("./components/command-palette").then((m
 
 const filters = [
   {
-    name: "Molecular structures",
-    extensions: previewFormatRegistry.documentTypes.extensions,
+    name: "Files",
+    extensions: [...previewFormatRegistry.documentTypes.extensions, "md", "markdown", "mdx", "txt", "log", "err", "sh", "bash", "zsh", "py", "rs", "js", "jsx", "ts", "tsx", "json", "yaml", "yml", "toml", "xml", "html", "css"],
   },
 ];
 
+const structureExtensions = new Set(previewFormatRegistry.documentTypes.extensions.map((extension) => extension.toLowerCase()));
+const preferredTextExtensions = new Set([
+  "md",
+  "markdown",
+  "mdx",
+  "txt",
+  "log",
+  "err",
+  "sh",
+  "bash",
+  "zsh",
+  "py",
+  "rs",
+  "js",
+  "jsx",
+  "ts",
+  "tsx",
+  "json",
+  "yaml",
+  "yml",
+  "toml",
+  "xml",
+  "html",
+  "css",
+]);
+const structureFirstTextExtensions = new Set(["out"]);
+
 const GRID_PERF_REPORT_PATH = "/private/tmp/burrete-grid-real-app-perf.jsonl";
+const SIDEBAR_DRAG_CLOSE_WIDTH = 180;
+const RIGHT_DOCK_CLOSE_THRESHOLD = 180;
+const BOTTOM_DOCK_CLOSE_THRESHOLD = 120;
 
 type GridAppendResult = {
   recordsAppended: number;
@@ -103,12 +140,7 @@ async function browserDevFilesFromLocation() {
   if (params.has("devFiles")) {
     return splitDevFiles(params.get("devFiles") ?? "");
   }
-  const response = await fetch("/__burette/dev-files", { cache: "no-store" });
-  if (!response.ok) return [];
-  const payload = await response.json() as { files?: unknown };
-  return Array.isArray(payload.files)
-    ? payload.files.filter((path): path is string => typeof path === "string" && path.trim().length > 0)
-    : [];
+  return [];
 }
 
 function splitDevFiles(rawFiles: string) {
@@ -167,11 +199,16 @@ export default function App() {
   const setPreference = useSetViewerPreference();
   const tabs = useOpenTabs();
   const documents = useOpenDocuments();
+  const textDocuments = useOpenTextDocuments();
   const activeTabId = useActiveTabId();
   const activeTab = useActiveTab();
   const activeDocument = useActiveDocument();
+  const addBackgroundDocuments = useAddBackgroundDocuments();
+  const addBackgroundTextDocuments = useAddBackgroundTextDocuments();
   const addDocuments = useAddTabs();
+  const addTextDocuments = useAddTextTabs();
   const openDocumentsInActiveTab = useOpenDocumentsInActiveTab();
+  const openTextDocumentsInActiveTab = useOpenTextDocumentsInActiveTab();
   const setDocuments = useSetDocuments();
   const openNewTab = useOpenNewTab();
   const openKetcherTab = useOpenKetcherTab();
@@ -208,8 +245,35 @@ export default function App() {
     setSidebarQuery,
     toggleProjectExpanded,
     toggleSidebar,
+    closeSidebar,
   } = useSidebar();
+  const {
+    rightDockOpen,
+    rightDockWidth,
+    rightDockTabs,
+    rightDockActiveTab,
+    rightDockDocumentId,
+    rightDockTool,
+    bottomDockOpen,
+    bottomDockHeight,
+    bottomDockTabs,
+    bottomDockActiveTab,
+    bottomDockDocumentId,
+    bottomDockTool,
+    dockDroppedStructures,
+    toggleDock,
+    setDockOpen,
+    setDockSize,
+    openDockTab,
+    closeDockTab,
+    setDockActiveTab,
+    setDockDocument,
+    setDockTool,
+    addDockDrop,
+  } = useDockLayout();
   const [sidebarDragging, setSidebarDragging] = useState(false);
+  const [rightDockDragging, setRightDockDragging] = useState(false);
+  const [bottomDockDragging, setBottomDockDragging] = useState(false);
 
   const closeGridRuntime = useCallback((documentId: string | null | undefined) => {
     if (!documentId || !isTauriRuntime()) return;
@@ -231,6 +295,8 @@ export default function App() {
   }));
   const openedBrowserDevFilesRef = useRef<string | null>(null);
   const openedBrowserDevDockingRef = useRef<string | null>(null);
+  const refreshedPersistedSessionRef = useRef(false);
+  const openedPersistedTabsRef = useRef(false);
   const syncingBrowserDevFilesRef = useRef(false);
   const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions | null>(null);
   const pendingViewerReloadDocumentIdRef = useRef<string | null>(null);
@@ -318,6 +384,12 @@ export default function App() {
     pinnedStructurePaths,
   }), [activeDocument?.id, documents, pinnedStructurePaths, projectRoots, recentStructures]);
 
+  const activeTextDocument = useMemo(() => {
+    const location = activeTab?.location;
+    if (location?.kind !== "text-file") return null;
+    return textDocuments.find((document) => document.id === location.documentId || document.path === location.path) ?? null;
+  }, [activeTab?.location, textDocuments]);
+
   const activeProject = useMemo(
     () => allSidebarProjects.find((project) => project.isActive) ?? null,
     [allSidebarProjects],
@@ -396,21 +468,92 @@ export default function App() {
         } else {
           pushStatus(openedText);
         }
+        return result;
       } catch (error) {
         if (isTauriRuntime() && cleanPaths.length === 1 && isDelimitedColumnAmbiguity(error)) {
           void showDelimitedGridColumnOpenMenu(cleanPaths[0], effectivePreferences, options.replace === true)
             .catch((menuError) => pushErrorStatus(menuError, "Structure column menu failed"));
-          return;
+          return null;
         }
         pushErrorStatus(error);
+        return null;
       }
     },
     [addDocuments, openDocumentsInActiveTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setActiveDocument, setDocuments, showDelimitedGridColumnOpenMenu],
   );
   useOpenEvents(
-    (paths, options) => openDocuments(paths, undefined, undefined, options),
+    (paths, options) => {
+      void openDocuments(paths, undefined, undefined, options);
+    },
     pushErrorStatus,
   );
+
+  const openTextDocuments = useCallback(
+    async (
+      paths: string[],
+      options: { inActiveTab?: boolean; background?: boolean } = {},
+    ) => {
+      const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
+      if (!cleanPaths.length) return null;
+      pushStatus("Opening text files...");
+      try {
+        const result = isTauriRuntime()
+          ? await invoke<OpenTextFilesResult>("open_text_files", { paths: cleanPaths })
+          : await openBrowserDevTextFiles(cleanPaths);
+        if (options.background) addBackgroundTextDocuments(result.documents);
+        else if (options.inActiveTab) openTextDocumentsInActiveTab(result.documents);
+        else addTextDocuments(result.documents);
+        const openedText = "Opened " + result.documents.length + " text file" + (result.documents.length === 1 ? "" : "s");
+        if (result.errors.length > 0) {
+          pushStatus(`${openedText}. ${summarizeErrors(result.errors)}`, "error", result.errors);
+        } else {
+          pushStatus(openedText);
+        }
+        return result;
+      } catch (error) {
+        pushErrorStatus(error, "Open text file failed");
+        return null;
+      }
+    },
+    [addBackgroundTextDocuments, addTextDocuments, openTextDocumentsInActiveTab, pushErrorStatus, pushStatus],
+  );
+
+  const openPaths = useCallback(async (paths: string[]) => {
+    const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
+    if (!cleanPaths.length) return;
+
+    const structurePaths: string[] = [];
+    const textPaths: string[] = [];
+    const structureFirstTextPaths: string[] = [];
+
+    for (const path of cleanPaths) {
+      const extension = pathExtension(path);
+      if (structureFirstTextExtensions.has(extension)) {
+        structureFirstTextPaths.push(path);
+      } else if (structureExtensions.has(extension)) {
+        structurePaths.push(path);
+      } else if (preferredTextExtensions.has(extension) || extension.length > 0) {
+        textPaths.push(path);
+      } else {
+        textPaths.push(path);
+      }
+    }
+
+    if (structurePaths.length > 0) {
+      await openDocuments(structurePaths);
+    }
+
+    const fallbackTextPaths: string[] = [];
+    for (const path of structureFirstTextPaths) {
+      const result = await openDocuments([path]);
+      if (!result || result.documents.length === 0) fallbackTextPaths.push(path);
+    }
+
+    const textOpenPaths = [...textPaths, ...fallbackTextPaths];
+    if (textOpenPaths.length > 0) {
+      await openTextDocuments(textOpenPaths);
+    }
+  }, [openDocuments, openTextDocuments]);
 
   useEffect(() => {
     if (isTauriRuntime() || syncingBrowserDevFilesRef.current) return;
@@ -431,7 +574,7 @@ export default function App() {
         addProjectRoot(workspace);
       }
       closeAllDocuments();
-      await openDocuments(paths, undefined, undefined, { replace: true });
+      await openPaths(paths);
       syncingBrowserDevFilesRef.current = false;
     })().catch((error) => {
       if (!cancelled) pushErrorStatus(error, "Open dev files failed");
@@ -440,7 +583,34 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [addProjectRoot, closeAllDocuments, documents, openDocuments, pushErrorStatus, setWorkspacePath]);
+  }, [addProjectRoot, closeAllDocuments, documents, openPaths, pushErrorStatus, setWorkspacePath]);
+
+  useEffect(() => {
+    if (refreshedPersistedSessionRef.current) return;
+    if (!isTauriRuntime() || documents.length === 0) return;
+    refreshedPersistedSessionRef.current = true;
+    const activePath = activeDocument?.path;
+    const paths = documents
+      .map((document) => document.path)
+      .filter((path) => !isTemporaryDocumentPath(path))
+      .sort((a, b) => (a === activePath ? -1 : b === activePath ? 1 : 0));
+    if (paths.length === 0) return;
+    void openDocuments(paths);
+  }, [activeDocument, documents, openDocuments]);
+
+  useEffect(() => {
+    if (openedPersistedTabsRef.current) return;
+    if (!isTauriRuntime() || documents.length > 0) return;
+    const paths = Array.from(new Set(tabs
+      .map((tab) => tab.location.kind === "file" || tab.location.kind === "text-file" ? tab.location.path : null)
+      .filter((path): path is string => typeof path === "string" && !isTemporaryDocumentPath(path))));
+    if (paths.length === 0) return;
+    openedPersistedTabsRef.current = true;
+    const restoreTabId = activeTabId;
+    void openPaths(paths).then(() => {
+      if (restoreTabId) setActiveTab(restoreTabId);
+    });
+  }, [activeTabId, documents.length, openPaths, setActiveTab, tabs]);
 
   const openRecentStructure = useCallback(
     async (structure: RecentStructure) => {
@@ -491,6 +661,108 @@ export default function App() {
     pushStatus(openedText);
   }, [addDocuments, openStructureRecordDocuments, pushStatus, rememberRecentStructures]);
 
+  const openDockPayload = useCallback(async (input: Parameters<ShellActions["openDockPayload"]>[0]) => {
+    const ketcherItem = input.payload.items?.find((item) => item.kind === "ketcher") ?? null;
+    const itemPaths = (input.payload.items ?? [])
+      .map((item) => item.path)
+      .filter((path): path is string => Boolean(path));
+    const cleanPaths = Array.from(new Set([...input.payload.paths, ...itemPaths].map((path) => path.trim()).filter(Boolean)));
+    const cleanRecords = input.payload.records;
+    if (ketcherItem && cleanPaths.length === 0 && cleanRecords.length === 0) {
+      setDockTool(input.area, "ketcher");
+      addDockDrop(input);
+      pushStatus(`Opened Ketcher in ${input.area === "right" ? "right dock" : "bottom dock"}`);
+      return;
+    }
+    if (cleanPaths.length === 0 && cleanRecords.length === 0) {
+      addDockDrop(input);
+      return;
+    }
+
+    pushStatus(`Opening in ${input.area === "right" ? "right dock" : "bottom dock"}...`);
+    try {
+      const structurePaths: string[] = [];
+      const textPaths: string[] = [];
+      const structureFirstTextPaths: string[] = [];
+      for (const path of cleanPaths) {
+        const extension = pathExtension(path);
+        if (structureFirstTextExtensions.has(extension)) {
+          structureFirstTextPaths.push(path);
+        } else if (structureExtensions.has(extension)) {
+          structurePaths.push(path);
+        } else if (preferredTextExtensions.has(extension) || extension.length > 0) {
+          textPaths.push(path);
+        } else {
+          textPaths.push(path);
+        }
+      }
+
+      const structurePathResult = structurePaths.length > 0
+        ? isTauriRuntime()
+          ? await invoke<OpenDocumentsResult>("open_documents", { paths: structurePaths, preferences, reloadOptions: undefined })
+          : await openBrowserDevDocuments(structurePaths, preferences, undefined)
+        : { documents: [], errors: [] };
+      const fallbackTextPaths: string[] = [];
+      const structureFirstResults: OpenDocumentsResult[] = [];
+      for (const path of structureFirstTextPaths) {
+        try {
+          const result = isTauriRuntime()
+            ? await invoke<OpenDocumentsResult>("open_documents", { paths: [path], preferences, reloadOptions: undefined })
+            : await openBrowserDevDocuments([path], preferences, undefined);
+          if (result.documents.length > 0) {
+            structureFirstResults.push(result);
+          } else {
+            fallbackTextPaths.push(path);
+          }
+        } catch {
+          fallbackTextPaths.push(path);
+        }
+      }
+      const textOpenPaths = [...textPaths, ...fallbackTextPaths];
+      const textResult = textOpenPaths.length > 0
+        ? isTauriRuntime()
+          ? await invoke<OpenTextFilesResult>("open_text_files", { paths: textOpenPaths })
+          : await openBrowserDevTextFiles(textOpenPaths)
+        : { documents: [], errors: [] };
+      const recordResult = cleanRecords.length > 0
+        ? await openStructureRecordDocuments(cleanRecords)
+        : { opened: [], errors: [] };
+      const openedStructures = [
+        ...structurePathResult.documents,
+        ...structureFirstResults.flatMap((result) => result.documents),
+        ...recordResult.opened,
+      ];
+      const openedTextDocuments = textResult.documents;
+      const errors = [
+        ...structurePathResult.errors,
+        ...structureFirstResults.flatMap((result) => result.errors),
+        ...textResult.errors,
+        ...recordResult.errors,
+      ];
+      if (openedStructures.length > 0) {
+        addBackgroundDocuments(openedStructures);
+        rememberRecentStructures(openedStructures);
+      }
+      if (openedTextDocuments.length > 0) {
+        addBackgroundTextDocuments(openedTextDocuments);
+      }
+      const firstDockDocumentId = openedStructures[0]?.id ?? openedTextDocuments[0]?.id ?? null;
+      if (firstDockDocumentId) {
+        setDockDocument(input.area, firstDockDocumentId);
+        addDockDrop(input);
+      }
+      const openedCount = openedStructures.length + openedTextDocuments.length;
+      const openedText = `Opened ${openedCount} item${openedCount === 1 ? "" : "s"} in ${input.area === "right" ? "right dock" : "bottom dock"}`;
+      if (errors.length > 0) {
+        pushStatus(openedCount > 0 ? `${openedText}. ${summarizeErrors(errors)}` : summarizeErrors(errors), "error", errors);
+        return;
+      }
+      pushStatus(openedText);
+    } catch (error) {
+      pushErrorStatus(error, "Dock open failed");
+    }
+  }, [addBackgroundDocuments, addBackgroundTextDocuments, addDockDrop, openStructureRecordDocuments, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setDockDocument, setDockTool]);
+
   const openMostRecentStructure = useCallback(async () => {
     const structure = recentStructures[0];
     if (!structure) {
@@ -506,11 +778,11 @@ export default function App() {
         ? await invoke<string[]>("pick_open_targets")
         : await open({ multiple: true, filters });
       const paths = Array.isArray(selection) ? selection : selection ? [selection] : [];
-      await openDocuments(paths);
+      await openPaths(paths);
     } catch (error) {
       pushErrorStatus(error, "Open failed");
     }
-  }, [openDocuments, pushErrorStatus]);
+  }, [openPaths, pushErrorStatus]);
 
   const openDockingDocument = useCallback(async (
     targetPath: string,
@@ -635,43 +907,59 @@ export default function App() {
     }
   }, [documents, pushErrorStatus, pushStatus]);
 
-  const revealDocument = useCallback(async (document: ViewerDocument) => {
+  const revealPath = useCallback(async (path: string, label = "file") => {
     try {
       if (isTauriRuntime()) {
-        await invoke("reveal_path", { path: document.path });
+        await invoke("reveal_path", { path });
       } else {
-        await openPath(parentDirectory(document.path) ?? document.path);
+        await openPath(parentDirectory(path) ?? path);
       }
-      pushStatus("Revealed structure in Finder");
+      pushStatus(`Revealed ${label} in Finder`);
     } catch (error) {
       pushErrorStatus(error, "Reveal in Finder failed");
     }
   }, [pushErrorStatus, pushStatus]);
 
+  const revealDocument = useCallback(async (document: ViewerDocument) => {
+    await revealPath(document.path, "structure");
+  }, [revealPath]);
+
   const revealActiveDocument = useCallback(async () => {
+    if (activeTextDocument) {
+      await revealPath(activeTextDocument.path, "file");
+      return;
+    }
     if (!activeDocument) {
-      pushStatus("No active structure to reveal", "error");
+      pushStatus("No active file to reveal", "error");
       return;
     }
     await revealDocument(activeDocument);
-  }, [activeDocument, pushStatus, revealDocument]);
+  }, [activeDocument, activeTextDocument, pushStatus, revealDocument, revealPath]);
 
-  const copyDocumentPath = useCallback(async (document: ViewerDocument) => {
+  const copyPath = useCallback(async (path: string, label = "file") => {
     try {
-      await navigator.clipboard.writeText(document.path);
-      pushStatus("Copied structure path");
+      await navigator.clipboard.writeText(path);
+      pushStatus(`Copied ${label} path`);
     } catch (error) {
       pushErrorStatus(error, "Copy path failed");
     }
   }, [pushErrorStatus, pushStatus]);
 
+  const copyDocumentPath = useCallback(async (document: ViewerDocument) => {
+    await copyPath(document.path, "structure");
+  }, [copyPath]);
+
   const copyActiveDocumentPath = useCallback(async () => {
+    if (activeTextDocument) {
+      await copyPath(activeTextDocument.path, "file");
+      return;
+    }
     if (!activeDocument) {
-      pushStatus("No active structure path to copy", "error");
+      pushStatus("No active file path to copy", "error");
       return;
     }
     await copyDocumentPath(activeDocument);
-  }, [activeDocument, copyDocumentPath, pushStatus]);
+  }, [activeDocument, activeTextDocument, copyDocumentPath, copyPath, pushStatus]);
 
   const showDocumentMetadata = useCallback((document: ViewerDocument) => {
     pushStatus(document.title, "info", [
@@ -682,13 +970,28 @@ export default function App() {
     ]);
   }, [pushStatus]);
 
+  const showTextFileMetadata = useCallback((document: TextFileDocument) => {
+    const details = [
+      `Path: ${document.path}`,
+      `Format: ${document.extension ? document.extension.toUpperCase() : "TEXT"}`,
+      `Language: ${document.language}`,
+      `Size: ${formatBytes(document.byteCount)}`,
+    ];
+    if (document.truncated) details.push("Content preview was truncated");
+    pushStatus(document.title, "info", details);
+  }, [pushStatus]);
+
   const showActiveDocumentMetadata = useCallback(() => {
+    if (activeTextDocument) {
+      showTextFileMetadata(activeTextDocument);
+      return;
+    }
     if (!activeDocument) {
-      pushStatus("No active structure metadata to show", "error");
+      pushStatus("No active file metadata to show", "error");
       return;
     }
     showDocumentMetadata(activeDocument);
-  }, [activeDocument, pushStatus, showDocumentMetadata]);
+  }, [activeDocument, activeTextDocument, pushStatus, showDocumentMetadata, showTextFileMetadata]);
 
   const readActiveExternalPreviewSvg = useCallback(async () => {
     if (!activeDocument) throw new Error("No active structure preview to export");
@@ -806,27 +1109,54 @@ export default function App() {
 
   const openKetcher = useCallback(() => {
     openKetcherTab();
-    pushStatus("Opened Ketcher tab");
-  }, [openKetcherTab, pushStatus]);
+  }, [openKetcherTab]);
 
   const openKetcherWithStructures = useCallback((paths: string[], fragments: KetcherImportRequest["fragments"] = []) => {
     const cleanPaths = Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
-    const cleanFragments = fragments?.filter((fragment) => fragment.text.trim()) ?? [];
-    if (cleanPaths.length === 0 && cleanFragments.length === 0) return;
+    const virtualFragments: KetcherImportRequest["fragments"] = [];
+    const readablePaths = cleanPaths.filter((path) => {
+      const virtualText = readBrowserDevVirtualTextDocument(path);
+      if (virtualText === null) return true;
+      virtualFragments.push({ title: basename(path), text: virtualText });
+      return false;
+    });
+    const cleanFragments = [...(fragments?.filter((fragment) => fragment.text.trim()) ?? []), ...virtualFragments];
+    if (readablePaths.length === 0 && cleanFragments.length === 0) return;
+    if (readablePaths.length === 0 && cleanFragments.length === 1) {
+      const [fragment] = cleanFragments;
+      const draftMolfile = ketcherDraftMolfileFromImportText(fragment.text);
+      if (draftMolfile) {
+        openKetcherTab({ draftMolfile });
+        setStructureDragActive(false);
+        setKetcherDraftMolfile(draftMolfile);
+        setKetcherImportRequest(null);
+        pushStatus(`Opened ${fragment.title.trim() || "structure"} in Ketcher`);
+        return;
+      }
+    }
     openKetcherTab();
     setStructureDragActive(false);
     setKetcherImportRequest({
       id: ++ketcherImportSequenceRef.current,
-      paths: cleanPaths,
+      paths: readablePaths,
       fragments: cleanFragments,
     });
-    const count = cleanPaths.length + cleanFragments.length;
+    const count = readablePaths.length + cleanFragments.length;
     pushStatus(`Adding ${count} structure${count === 1 ? "" : "s"} to Ketcher`);
   }, [openKetcherTab, pushStatus]);
 
   const openKetcherWithFragment = useCallback((title: string, text: string) => {
     const cleanText = text.trim();
     if (!cleanText) return;
+    const draftMolfile = ketcherDraftMolfileFromImportText(cleanText);
+    if (draftMolfile) {
+      openKetcherTab({ draftMolfile });
+      setStructureDragActive(false);
+      setKetcherDraftMolfile(draftMolfile);
+      setKetcherImportRequest(null);
+      pushStatus(`Opened ${title.trim() || "structure"} in Ketcher`);
+      return;
+    }
     openKetcherTab();
     setStructureDragActive(false);
     setKetcherImportRequest({
@@ -933,11 +1263,7 @@ export default function App() {
             effectivePreferences,
             reloadOptions,
           );
-      openDocumentsInActiveTab([document], {
-        backLocation: request.draftKet?.trim() || request.draftMolfile?.trim()
-          ? { kind: "ketcher", draftKet: request.draftKet, draftMolfile: request.draftMolfile }
-          : undefined,
-      });
+      addDocuments([document]);
       rememberRecentStructures([document]);
       pushStatus(
         `Opened Ketcher sketch in ${request.target === "grid" ? "grid" : request.target === "molstar" ? "Molstar" : "xyzrender"}`,
@@ -945,7 +1271,7 @@ export default function App() {
     } catch (error) {
       pushErrorStatus(error, "Open Ketcher sketch failed");
     }
-  }, [mergeMoleculeCollections, openDocumentsInActiveTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
+  }, [addDocuments, mergeMoleculeCollections, openDocumentsInActiveTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
 
   const postXyzrenderSheetItems = useCallback((documentId: string, payload: StructureDragPayload) => {
     const iframe = Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).find(
@@ -1203,7 +1529,8 @@ export default function App() {
     };
   }, [activeTab?.location, documents, poseReviewSelections]);
 
-  const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop, handleBrowserPaste, openClipboardText } = useOpenDrop(openDocuments, pushStatus, {
+  useOpenEvents(openPaths, pushErrorStatus);
+  const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop, handleBrowserPaste, openClipboardText } = useOpenDrop(openPaths, pushStatus, {
     activeTabKind: activeTab?.location.kind ?? null,
     activeDocumentId: activeDocument?.id ?? null,
     activeDocumentPath: activeDocument?.path ?? null,
@@ -1442,6 +1769,7 @@ export default function App() {
           inputDataBase64?: string | null;
           inputExtension?: string | null;
           items?: Record<string, unknown>[] | null;
+          fragments?: Array<{ title?: string | null; textBase64?: string | null }> | null;
           name?: string | null;
           mimeType?: string | null;
         };
@@ -1471,6 +1799,29 @@ export default function App() {
         (body?.type === "ready" || (body?.type === "status" && body.message?.startsWith("[web] Rendered ")))
       ) {
         markPerformanceOnce("viewer:first-render");
+      }
+      if (data.source === "burrete-viewer" && body?.type === "exportText") {
+        const text = typeof body.text === "string" ? body.text : "";
+        const name = safeExportFileName(body.name ?? "molstar-export.cif");
+        void (async () => {
+          try {
+            if (!isTauriRuntime()) {
+              downloadTextFile(name, text);
+              pushStatus(`Exported ${name}`);
+              return;
+            }
+            const outputPath = await save({
+              defaultPath: name,
+              filters: exportDialogFilters(name, body.mimeType ?? ""),
+            });
+            if (!outputPath) return;
+            const savedPath = await invoke<string>("save_text_as", { text, outputPath });
+            pushStatus(`Exported ${basename(savedPath)}`);
+          } catch (error) {
+            pushErrorStatus(error, "Molstar export failed");
+          }
+        })();
+        return;
       }
       if ((data.source === "burrete-viewer" || data.source === "burrete-grid") && body?.type === "renderXyzrenderSheetItem") {
         if (!body.requestId) return;
@@ -1996,7 +2347,37 @@ export default function App() {
           ? body.path.trim()
           : targetDocument?.path;
         if (targetPath) {
+          const virtualText = readBrowserDevVirtualTextDocument(targetPath);
+          if (virtualText !== null) {
+            openKetcherWithFragment(title, virtualText);
+            return;
+          }
           openKetcherWithStructures([targetPath]);
+        }
+        return;
+      }
+      if (body?.type === "openSdfKetcherDocument") {
+        const rawFragments = Array.isArray(body.fragments) ? body.fragments : [];
+        const fragments = rawFragments.flatMap((fragment) => {
+          if (!fragment || typeof fragment !== "object") return [];
+          const textBase64 = typeof fragment.textBase64 === "string" ? fragment.textBase64.trim() : "";
+          if (!textBase64) return [];
+          try {
+            const bytes = Uint8Array.from(atob(textBase64), (char) => char.charCodeAt(0));
+            const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+            if (!text.trim()) return [];
+            const title = typeof fragment.title === "string" && fragment.title.trim()
+              ? fragment.title.trim()
+              : "ketcher-sketch.sdf";
+            return [{ title, text }];
+          } catch {
+            return [];
+          }
+        });
+        if (fragments.length > 0) {
+          openKetcherWithStructures([], fragments);
+        } else {
+          pushStatus("Open in Ketcher failed: selected molecules do not have structure data.", "error");
         }
         return;
       }
@@ -2079,17 +2460,99 @@ export default function App() {
       if (event.button !== 0) return;
       event.preventDefault();
       setSidebarDragging(true);
+      const resizeTarget = event.currentTarget;
+      const pointerId = event.pointerId;
       const startX = event.clientX;
       const startWidth = sidebarWidth;
       const previousCursor = document.documentElement.style.cursor;
       const previousUserSelect = document.body.style.userSelect;
       document.documentElement.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
+      let didCloseSidebar = false;
+      let didStop = false;
+      const stop = () => {
+        if (didStop) return;
+        didStop = true;
+        setSidebarDragging(false);
+        document.documentElement.style.cursor = previousCursor;
+        document.body.style.userSelect = previousUserSelect;
+        try {
+          if (resizeTarget.hasPointerCapture(pointerId)) {
+            resizeTarget.releasePointerCapture(pointerId);
+          }
+        } catch {
+          // The pointer may already be gone if the native window lost focus.
+        }
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", stop);
+        window.removeEventListener("pointercancel", stop);
+        window.removeEventListener("blur", stop);
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+        resizeTarget.removeEventListener("lostpointercapture", stop);
+      };
+      const onVisibilityChange = () => {
+        if (document.hidden) stop();
+      };
       const onMove = (move: PointerEvent) => {
-        setSidebarWidth(startWidth + move.clientX - startX);
+        if (move.buttons === 0) {
+          stop();
+          return;
+        }
+        const nextWidth = startWidth + move.clientX - startX;
+        if (nextWidth < SIDEBAR_DRAG_CLOSE_WIDTH) {
+          if (!didCloseSidebar) {
+            didCloseSidebar = true;
+            closeSidebar();
+          }
+          stop();
+          return;
+        }
+        setSidebarWidth(nextWidth);
+      };
+      try {
+        resizeTarget.setPointerCapture(pointerId);
+      } catch {
+        // Keep the window-level fallback listeners active if capture is unavailable.
+      }
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", stop);
+      window.addEventListener("pointercancel", stop);
+      window.addEventListener("blur", stop);
+      document.addEventListener("visibilitychange", onVisibilityChange);
+      resizeTarget.addEventListener("lostpointercapture", stop);
+    },
+    [closeSidebar, setSidebarWidth, sidebarWidth],
+  );
+
+  const startRightDockResize = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      setRightDockDragging(true);
+      const startX = event.clientX;
+      const startWidth = rightDockWidth;
+      let closedByDrag = false;
+      const previousCursor = document.documentElement.style.cursor;
+      const previousUserSelect = document.body.style.userSelect;
+      document.documentElement.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      const onMove = (move: PointerEvent) => {
+        const nextWidth = startWidth + startX - move.clientX;
+        if (nextWidth <= RIGHT_DOCK_CLOSE_THRESHOLD) {
+          if (!closedByDrag) {
+            closedByDrag = true;
+            setDockOpen("right", false);
+          }
+          return;
+        }
+        if (closedByDrag) {
+          closedByDrag = false;
+          setDockOpen("right", true);
+        }
+        setDockSize("right", nextWidth);
       };
       const stop = () => {
-        setSidebarDragging(false);
+        setRightDockDragging(false);
         document.documentElement.style.cursor = previousCursor;
         document.body.style.userSelect = previousUserSelect;
         window.removeEventListener("pointermove", onMove);
@@ -2100,12 +2563,57 @@ export default function App() {
       window.addEventListener("pointerup", stop);
       window.addEventListener("pointercancel", stop);
     },
-    [setSidebarWidth, sidebarWidth],
+    [rightDockWidth, setDockOpen, setDockSize],
+  );
+
+  const startBottomDockResize = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      setBottomDockDragging(true);
+      const startY = event.clientY;
+      const startHeight = bottomDockHeight;
+      let closedByDrag = false;
+      const previousCursor = document.documentElement.style.cursor;
+      const previousUserSelect = document.body.style.userSelect;
+      document.documentElement.style.cursor = "row-resize";
+      document.body.style.userSelect = "none";
+      const onMove = (move: PointerEvent) => {
+        const nextHeight = startHeight + startY - move.clientY;
+        if (nextHeight <= BOTTOM_DOCK_CLOSE_THRESHOLD) {
+          if (!closedByDrag) {
+            closedByDrag = true;
+            setDockOpen("bottom", false);
+          }
+          return;
+        }
+        if (closedByDrag) {
+          closedByDrag = false;
+          setDockOpen("bottom", true);
+        }
+        setDockSize("bottom", nextHeight);
+      };
+      const stop = () => {
+        setBottomDockDragging(false);
+        document.documentElement.style.cursor = previousCursor;
+        document.body.style.userSelect = previousUserSelect;
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", stop);
+        window.removeEventListener("pointercancel", stop);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", stop);
+      window.addEventListener("pointercancel", stop);
+    },
+    [bottomDockHeight, setDockOpen, setDockSize],
   );
 
   const actions = useMemo<ShellActions>(() => ({
     chooseFiles,
-    openStructurePaths: openDocuments,
+    openStructurePaths: async (paths: string[]) => {
+      await openDocuments(paths);
+    },
+    openPaths,
     openStructureRecords,
     openRecentStructure,
     openMostRecentStructure,
@@ -2131,6 +2639,21 @@ export default function App() {
     openWorkspaceFolder,
     openProjectFolder,
     toggleSidebar,
+    toggleDock,
+    setDockOpen,
+    setDockSize,
+    openDockTab,
+    closeDockTab,
+    setDockActiveTab,
+    setDockDocument,
+    setDockTool,
+    addDockDrop: (input) => {
+      addDockDrop(input);
+      const count = input.payload.paths.length + input.payload.records.length + (input.payload.items?.length ?? 0);
+      const target = input.area === "right" ? "right dock" : "bottom dock";
+      pushStatus(`Added ${count} item${count === 1 ? "" : "s"} to ${target}`);
+    },
+    openDockPayload,
     toggleProjectsOpen,
     setExpandedProjectIds,
     setSidebarQuery,
@@ -2155,12 +2678,12 @@ export default function App() {
     closeActiveDocument: () => {
       closeGridRuntime(activeDocument?.id);
       closeActiveDocument();
-      pushStatus("Closed active structure");
+      pushStatus("Closed active tab");
     },
     clearAllDocuments: () => {
       for (const document of documents) closeGridRuntime(document.id);
       closeAllDocuments();
-      pushStatus("Closed all structures");
+      pushStatus("Closed all tabs");
     },
     openDockingDocument,
     openDockingStructureRecords,
@@ -2170,10 +2693,13 @@ export default function App() {
     saveMoleculeCollectionAs,
     revealActiveDocument,
     revealDocument,
+    revealPath,
     copyActiveDocumentPath,
     copyDocumentPath,
+    copyPath,
     showActiveDocumentMetadata,
     showDocumentMetadata,
+    showTextFileMetadata,
     exportActivePreviewAsPng,
     exportActivePreviewAsSvg,
     setStructureDragActive,
@@ -2227,12 +2753,13 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [activeDocument?.id, addXyzrenderSheetItemsToDocument, appendGridRecords, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeGridRuntime, closeTab, copyActiveDocumentPath, copyDocumentPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, installUpdate, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDocuments, openFepSetupWorkspace, openKetcher, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openProjectFolder, openRecentStructure, openSettings, openStructureRecords, openWorkspaceFolder, pushErrorStatus, pushStatus, resetQuickLook, revealActiveDocument, revealDocument, saveMoleculeCollectionAs, selectDocument, setActiveTab, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, tabs, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
+  }), [activeDocument?.id, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, installUpdate, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepSetupWorkspace, openKetcher, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openPaths, openProjectFolder, openRecentStructure, openSettings, openStructureRecords, openWorkspaceFolder, pushErrorStatus, pushStatus, resetQuickLook, revealActiveDocument, revealDocument, revealPath, saveMoleculeCollectionAs, selectDocument, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
   const state: ShellViewState = {
     documents,
+    textDocuments,
     tabs,
     activeTab,
     activeTabId,
@@ -2249,6 +2776,21 @@ export default function App() {
     sidebarOpen,
     sidebarWidth,
     sidebarDragging,
+    rightDockOpen,
+    rightDockWidth,
+    rightDockTabs,
+    rightDockActiveTab,
+    rightDockDocumentId,
+    rightDockTool,
+    rightDockDragging,
+    bottomDockOpen,
+    bottomDockHeight,
+    bottomDockTabs,
+    bottomDockActiveTab,
+    bottomDockDocumentId,
+    bottomDockTool,
+    bottomDockDragging,
+    dockDroppedStructures,
     structureDragActive,
     poseReviewSelections,
     ketcherImportRequest,
@@ -2272,6 +2814,8 @@ export default function App() {
         onDismissStatus={clearStatus}
         onToggleSidebar={toggleSidebar}
         onResizeStart={startSidebarResize}
+        onRightDockResizeStart={startRightDockResize}
+        onBottomDockResizeStart={startBottomDockResize}
         onDragEnter={handleBrowserDrag}
         onDragOver={handleBrowserDrag}
         onDragLeave={handleBrowserDragLeave}
@@ -2328,6 +2872,29 @@ function summarizeErrors(errors: string[]) {
 
 function summarizeErrorText(message: string) {
   return (message || "Unknown error").trim().split(/\r?\n| Error:| at /)[0]?.trim() || "Unknown error";
+}
+
+function pathExtension(path: string) {
+  const fileName = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+  const index = fileName.lastIndexOf(".");
+  if (index <= 0 || index === fileName.length - 1) return "";
+  return fileName.slice(index + 1).toLowerCase();
+}
+
+function ketcherDraftMolfileFromImportText(text: string) {
+  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trimEnd();
+  if (!normalized.trim()) return null;
+  const records = normalized.split(/\n\$\$\$\$\s*(?:\n|$)/u).map((record) => record.trimEnd()).filter(Boolean);
+  if (records.length === 1 && normalized !== records[0]) {
+    const [record] = records;
+    return record && looksLikeMolfile(record) ? record + "\n" : null;
+  }
+  return looksLikeMolfile(normalized) ? normalized + "\n" : null;
+}
+
+function looksLikeMolfile(text: string) {
+  const lines = text.split("\n");
+  return lines.length >= 4 && /^\s*\d+\s+\d+\b/u.test(lines[3] ?? "");
 }
 
 function downloadTextFile(fileName: string, text: string) {

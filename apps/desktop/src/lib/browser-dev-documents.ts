@@ -287,9 +287,23 @@ export async function openBrowserDevMolstarContextDocument(
   if (entries.length === 0) throw new Error("No Mol* context structure was provided");
   const label = contextDocument.label?.trim() || entries.map((entry) => entry.title).join(" + ");
   const id = stableId(`molstar-context:${label}:${entries.map((entry) => `${entry.title}:${entry.bytes.length}`).join("|")}`);
+  const contextFocus = browserDevMolstarContextFocus(contextDocument.context);
   if (entries.length === 1) {
     const entry = entries[0];
-    const config = browserDevContextConfig(label, entry.format, entry.bytes.length, preferences, id);
+    if (entry.role === "ligand" && entry.extension === "sdf" && entry.format.molstarFormat === "sdf") {
+      const document = await openBrowserDevTextDocument(
+        `${label}.sdf`,
+        "sdf",
+        decodeUtf8(entry.bytes),
+        { ...preferences, rendererMode: "molstar" },
+        {},
+      );
+      return { ...document, title: label };
+    }
+    const config = {
+      ...browserDevContextConfig(label, entry.format, entry.bytes.length, preferences, id),
+      molstarContextFocus: contextFocus,
+    };
     const html = viewerHtml(
       label,
       entry.format,
@@ -354,6 +368,7 @@ export async function openBrowserDevMolstarContextDocument(
     showPanelControls: true,
     defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" },
     dockingContext: contextDocument.context ?? {},
+    molstarContextFocus: contextFocus,
     docking: {
       receptor: dockingConfigSource(receptor),
       ligands: ligands.map(dockingConfigSource),
@@ -440,6 +455,10 @@ export async function readBrowserDevCollectionText(path: string) {
   }
   if (!response.ok) throw new Error(`${path}: ${response.status} ${response.statusText}`);
   return await response.text();
+}
+
+export function readBrowserDevVirtualTextDocument(path: string) {
+  return browserDevVirtualTextDocuments.get(path) ?? null;
 }
 
 async function openBrowserDevDocument(
@@ -714,6 +733,11 @@ function browserDevContextConfig(
     showPanelControls: true,
     defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" },
   };
+}
+
+function browserDevMolstarContextFocus(context: Record<string, unknown> | undefined) {
+  const focus = context?.focus;
+  return focus && typeof focus === "object" ? focus : undefined;
 }
 
 function normalizeContextMolstarFormat(format: string | undefined) {
