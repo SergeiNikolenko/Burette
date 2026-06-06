@@ -256,6 +256,9 @@ export function ProjectItem({
       tabIndex={0}
       draggable
       className={className}
+      data-sidebar-structure-path={item.path}
+      data-sidebar-structure-renderer={item.renderer}
+      data-sidebar-structure-document-id={item.documentId ?? undefined}
       onClick={openItem}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}

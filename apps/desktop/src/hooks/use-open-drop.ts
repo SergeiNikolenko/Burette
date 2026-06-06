@@ -38,6 +38,7 @@ type OpenDropOptions = {
   activeDocumentPath?: string | null;
   activeDocumentRenderer?: string | null;
   activeDockingRequest?: DockingDocumentRequest | null;
+  documents?: ViewerDocument[];
   fepSetupRequest?: FepSetupRequest | null;
   openDockingDocument?: OpenDockingDocument;
   openDockingStructureRecords?: OpenDockingStructureRecords;
@@ -75,6 +76,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     activeDocumentPath = null,
     activeDocumentRenderer = null,
     activeDockingRequest = null,
+    documents = [],
     fepSetupRequest = null,
     openDockingDocument,
     openDockingStructureRecords,
@@ -103,6 +105,21 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     if (fepSetupRequest && element?.closest(".pose-review-workspace, .fep-setup-workspace")) {
       return { kind: "fep-setup", request: fepSetupRequest };
     }
+    const sidebarTarget = element?.closest<HTMLElement>("[data-sidebar-structure-path]");
+    if (sidebarTarget) {
+      const documentPath = sidebarTarget.dataset.sidebarStructurePath ?? "";
+      const documentId = sidebarTarget.dataset.sidebarStructureDocumentId ?? null;
+      const document = documents.find((candidate) => (
+        (documentId !== null && candidate.id === documentId) || candidate.path === documentPath
+      ));
+      return {
+        kind: "active-viewer",
+        documentId: document?.id ?? documentId,
+        documentPath: document?.path ?? documentPath,
+        renderer: sidebarTarget.dataset.sidebarStructureRenderer ?? document?.renderer ?? null,
+        dockingRequest: document?.dockingRequest ?? null,
+      };
+    }
     if (element?.closest(".ketcher-page")) return { kind: "ketcher" };
     if (element?.closest(".molecule-stage, .main-stage")) {
       if (activeTabKind === "ketcher") return { kind: "ketcher" };
@@ -110,7 +127,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     }
     if (activeTabKind === "ketcher") return { kind: "ketcher" };
     return { kind: "workspace" };
-  }, [activeTabKind, activeViewerTarget, fepSetupRequest]);
+  }, [activeTabKind, activeViewerTarget, documents, fepSetupRequest]);
 
   const dropTargetForPosition = useCallback((position: { x: number; y: number } | null = null): DropTargetContext => {
     if (typeof document === "undefined") return activeTabKind === "ketcher" ? { kind: "ketcher" } : { kind: "workspace" };
