@@ -500,6 +500,25 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.buret-molecule-context-mode {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  margin: 2px 2px 6px;
+  padding: 2px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--buret-toolbar-color) 8%, transparent);
+}
+.buret-molecule-context-menu .buret-molecule-context-mode-button {
+  min-height: 26px;
+  border-radius: 7px;
+  padding: 4px 8px;
+  font: 700 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  text-align: center;
+}
+.buret-molecule-context-menu .buret-molecule-context-mode-button[aria-pressed="true"] {
+  background: var(--buret-menu-input-background);
+}
 .buret-molecule-context-menu button {
   display: block;
   width: 100%;

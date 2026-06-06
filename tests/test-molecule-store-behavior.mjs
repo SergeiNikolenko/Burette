@@ -45,6 +45,7 @@ function resetStore() {
   storage.clear();
   useMoleculeStore.setState({
     documents: [],
+    textDocuments: [],
     tabs: [{ id: "tab-1", location: { kind: "launcher" }, back: [], forward: [] }],
     activeTabId: "tab-1",
     activeDocumentId: null,
@@ -166,9 +167,23 @@ storage.set("burrete.molecule.session", JSON.stringify({
 await useMoleculeStore.persist.rehydrate();
 
 const rehydrated = useMoleculeStore.getState();
-assert.equal(rehydrated.tabs.some((tab) => tab.location.kind === "file"), false);
+assert.equal(rehydrated.documents.length, 0);
+assert.equal(rehydrated.tabs.some((tab) => tab.location.kind === "file"), true);
 assert.equal(rehydrated.tabs.some((tab) => tab.location.kind === "ketcher"), true);
-assert.equal(rehydrated.tabs.find((tab) => tab.id === rehydrated.activeTabId)?.location.kind, "ketcher");
+assert.equal(rehydrated.tabs.find((tab) => tab.id === rehydrated.activeTabId)?.location.kind, "file");
 assert.equal(rehydrated.activeDocumentId, null);
+
+resetStore();
+const manyDocuments = Array.from({ length: 14 }, (_, index) => (
+  document(`recent-${index}`, `/tmp/project/file-${String(index).padStart(2, "0")}.pdb`)
+));
+useMoleculeStore.getState().rememberRecentStructures(manyDocuments);
+
+const recent = useMoleculeStore.getState().recentStructures;
+assert.equal(recent.length, manyDocuments.length);
+assert.deepEqual(
+  recent.map((structure) => structure.path).sort(),
+  manyDocuments.map((structure) => structure.path).sort(),
+);
 
 console.log("molecule store behavior tests passed");
