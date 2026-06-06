@@ -112,58 +112,63 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
         aria-label={`Resize ${area} dock`}
         onPointerDown={onResizeStart}
       />
-      <div className="dock-header">
-        <div className="dock-tab-strip" role="tablist" aria-label={`${area} dock tabs`}>
-          {tabs.map((tab) => {
-            const Icon = dockTabIcons[tab.kind];
-            const active = tab.kind === activeTab.kind;
-            const closeTab = () => {
-              if (tabs.length > 1) {
-                actions.closeDockTab(area, tab.id);
-                return;
-              }
-              actions.setDockOpen(area, false);
-            };
-            return (
-              <div className="dock-tab-shell" key={tab.id}>
-                <button
-                  type="button"
-                  className="dock-tab"
-                  data-active={active || undefined}
-                  onClick={() => actions.setDockActiveTab(area, tab.kind)}
-                  role="tab"
-                  aria-selected={active}
-                  title={DOCK_TAB_LABELS[tab.kind]}
-                >
-                  <HugeiconsIcon icon={Icon} size={16} color="currentColor" strokeWidth={2} />
-                  <span>{DOCK_TAB_LABELS[tab.kind]}</span>
-                </button>
-                <button
-                  type="button"
-                  className="dock-tab-close"
-                  aria-label={tabs.length > 1 ? `Close ${DOCK_TAB_LABELS[tab.kind]}` : `Close ${area} dock`}
-                  onClick={closeTab}
-                >
-                  <CloseIcon size={11} />
-                </button>
-              </div>
-            );
-          })}
+      <div
+        className="dock-panel-inner"
+        style={area === "right" ? { width: size } : { height: size }}
+      >
+        <div className="dock-header">
+          <div className="dock-tab-strip" role="tablist" aria-label={`${area} dock tabs`}>
+            {tabs.map((tab) => {
+              const Icon = dockTabIcons[tab.kind];
+              const active = tab.kind === activeTab.kind;
+              const closeTab = () => {
+                if (tabs.length > 1) {
+                  actions.closeDockTab(area, tab.id);
+                  return;
+                }
+                actions.setDockOpen(area, false);
+              };
+              return (
+                <div className="dock-tab-shell" key={tab.id}>
+                  <button
+                    type="button"
+                    className="dock-tab"
+                    data-active={active || undefined}
+                    onClick={() => actions.setDockActiveTab(area, tab.kind)}
+                    role="tab"
+                    aria-selected={active}
+                    title={DOCK_TAB_LABELS[tab.kind]}
+                  >
+                    <HugeiconsIcon icon={Icon} size={16} color="currentColor" strokeWidth={2} />
+                    <span>{DOCK_TAB_LABELS[tab.kind]}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="dock-tab-close"
+                    aria-label={tabs.length > 1 ? `Close ${DOCK_TAB_LABELS[tab.kind]}` : `Close ${area} dock`}
+                    onClick={closeTab}
+                  >
+                    <CloseIcon size={11} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          <button type="button" className="dock-icon-button" onClick={showAddMenu} aria-label={`Add ${area} dock tab`}>
+            +
+          </button>
+          <button type="button" className="dock-icon-button" onClick={() => actions.setDockOpen(area, false)} aria-label={`Close ${area} dock`}>
+            <CloseIcon size={15} />
+          </button>
         </div>
-        <button type="button" className="dock-icon-button" onClick={showAddMenu} aria-label={`Add ${area} dock tab`}>
-          +
-        </button>
-        <button type="button" className="dock-icon-button" onClick={() => actions.setDockOpen(area, false)} aria-label={`Close ${area} dock`}>
-          <CloseIcon size={15} />
-        </button>
+        <DockPanelContent
+          area={area}
+          activeTabKind={activeTab.kind}
+          state={state}
+          actions={actions}
+          dockDrops={dockDrops}
+        />
       </div>
-      <DockPanelContent
-        area={area}
-        activeTabKind={activeTab.kind}
-        state={state}
-        actions={actions}
-        dockDrops={dockDrops}
-      />
     </aside>
   );
 }
