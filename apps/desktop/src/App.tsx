@@ -1209,6 +1209,7 @@ export default function App() {
     activeDocumentPath: activeDocument?.path ?? null,
     activeDocumentRenderer: activeDocument?.renderer ?? null,
     activeDockingRequest: activeDocument?.dockingRequest ?? null,
+    documents,
     fepSetupRequest: currentFepSetupRequest,
     openDockingDocument,
     openDockingStructureRecords,
