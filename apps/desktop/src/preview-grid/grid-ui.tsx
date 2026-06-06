@@ -7,6 +7,11 @@ type SortOption = {
   label: string;
 };
 
+type XyzrenderPresetOption = {
+  value: string;
+  label: string;
+};
+
 type GridControlProps = {
   format: "sdf" | "smiles";
   label: string;
@@ -14,6 +19,10 @@ type GridControlProps = {
   selectionEnabled: boolean;
   substructureSearch: boolean;
   supportsXyzrenderCards: boolean;
+  cardRenderer: "rdkit" | "xyzrender";
+  xyzrenderPreset: string;
+  xyzrenderPresetOptions: XyzrenderPresetOption[];
+  ketcherOpen: boolean;
   rendererSwitch: boolean;
   sortOptions: SortOption[];
   onSearchInput: (value: string) => void;
@@ -27,6 +36,8 @@ type GridControlProps = {
   onExportSmiles: () => void;
   onExportCSV: () => void;
   onSetCardRenderer: (value: "rdkit" | "xyzrender") => void;
+  onXyzrenderPresetChange: (value: string) => void;
+  onOpenKetcher: () => void;
   onRendererSwitch: (value: "molstar") => void;
   onRdkitUseInputCoordsChange: (checked: boolean) => void;
 };
@@ -132,6 +143,26 @@ function GridControls(props: GridControlProps) {
               </button>
             ) : null}
           </div>
+          {props.supportsXyzrenderCards ? (
+            <label
+              id="xyzrender-preset-control"
+              className="buret-grid-xyzrender-preset-control"
+              hidden={props.cardRenderer !== "xyzrender"}
+            >
+              Style
+              <select
+                id="xyzrender-preset"
+                value={props.xyzrenderPreset}
+                disabled={props.cardRenderer !== "xyzrender"}
+                aria-label="xyzrender card style"
+                onChange={(event) => props.onXyzrenderPresetChange(event.currentTarget.value)}
+              >
+                {props.xyzrenderPresetOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <label id="rdkit-use-input-coords-control" className="buret-rdkit-coords-control" hidden>
             <input
               id="rdkit-use-input-coords"
@@ -140,18 +171,29 @@ function GridControls(props: GridControlProps) {
             />
             <span>Use file coords</span>
           </label>
-          {props.rendererSwitch ? (
+          {props.rendererSwitch || props.ketcherOpen ? (
             <div className="buret-grid-renderer-controls">
               <div className="buret-grid-renderer-switch" aria-label="3D renderer">
-                <button
-                  type="button"
-                  data-buret-grid-renderer="molstar"
-                  data-buret-grid-sdf-poses
-                  data-buret-grid-docking
-                  onClick={() => props.onRendererSwitch("molstar")}
-                >
-                  Molstar
-                </button>
+                {props.rendererSwitch ? (
+                  <button
+                    type="button"
+                    data-buret-grid-renderer="molstar"
+                    data-buret-grid-sdf-poses
+                    data-buret-grid-docking
+                    onClick={() => props.onRendererSwitch("molstar")}
+                  >
+                    Molstar
+                  </button>
+                ) : null}
+                {props.ketcherOpen ? (
+                  <button
+                    type="button"
+                    data-buret-grid-ketcher
+                    onClick={props.onOpenKetcher}
+                  >
+                    Ketcher
+                  </button>
+                ) : null}
               </div>
             </div>
           ) : null}
