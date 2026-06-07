@@ -76,6 +76,7 @@ const [
   windowTitle,
   componentFormat,
   instance,
+  tauriSource,
   settingsSections,
   browserDevDocuments,
   temporaryDocuments,
@@ -169,6 +170,7 @@ const [
   source('apps/desktop/src/components/window-title/index.tsx'),
   source('apps/desktop/src/components/format.ts'),
   source('apps/desktop/src/lib/instance.ts'),
+  source('apps/desktop/src/lib/tauri.ts'),
   source('apps/desktop/src/lib/settings-sections.ts'),
   source('apps/desktop/src/lib/browser-dev-documents.ts'),
   source('apps/desktop/src/lib/temporary-documents.ts'),
@@ -1959,6 +1961,24 @@ assert.match(styles, /\[cmdk-dialog\]::before \{[\s\S]*background: color-mix\(in
 assert.match(styles, /\[cmdk-item\]\[data-selected="true"\]/);
 assert.match(styles, /\[cmdk-item\]:hover,[\s\S]*\[cmdk-item\]\[data-selected="true"\] \{[\s\S]*background: var\(--surface-subtle\)/);
 assert.match(app, /useOpenDrop\(openPaths, pushStatus, \{/);
+assert.match(tauriSource, /export function trackTauriListener\(registration: Promise<TauriUnlisten>, label: string\)/);
+assert.match(tauriSource, /if \(disposed\) \{\s*disposeTauriListener\(next, label\);/s);
+assert.match(tauriSource, /listener setup failed/);
+assert.match(tauriSource, /listener cleanup failed/);
+assert.match(tauriSource, /typeof result\.catch === "function"/);
+assert.match(openEventsHook, /trackTauriListener\(/);
+assert.match(openEventsHook, /listen\("open-documents"/);
+assert.doesNotMatch(openEventsHook, /let unlisten/);
+assert.doesNotMatch(openEventsHook, /unlisten\?\.\(\)/);
+assert.match(openDropHook, /trackTauriListener\(/);
+assert.match(openDropHook, /onDragDropEvent/);
+assert.doesNotMatch(openDropHook, /let unlisten/);
+assert.doesNotMatch(openDropHook, /unlisten\?\.\(\)/);
+assert.match(menuEventsHook, /trackTauriListener\(listen\(MENU_OPEN_SETTINGS_EVENT, openSettings\), MENU_OPEN_SETTINGS_EVENT\)/);
+assert.match(menuEventsHook, /const cleanups = \[/);
+assert.match(menuEventsHook, /for \(const cleanup of cleanups\) cleanup\(\)/);
+assert.doesNotMatch(menuEventsHook, /let unlisten/);
+assert.doesNotMatch(menuEventsHook, /unlisten\?\.\(\)/);
 assert.match(app, /documents,/);
 assert.match(app, /openClipboardText/);
 assert.match(app, /navigator\.clipboard\?\.readText/);
