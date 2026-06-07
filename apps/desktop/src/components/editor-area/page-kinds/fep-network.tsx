@@ -32,12 +32,13 @@ type ViewMode = "graph" | "grid";
 type HighlightMode = "off" | "common" | "different";
 type EdgeMetricMode = "score" | "energy";
 type CanvasSize = { width: number; height: number };
+type NodeHighlightSet = { common: number[]; different: number[] };
+type HighlightMatch = { atoms: number[]; bonds: number[] };
 
 const rdkitScriptUrl = new URL("../../../../../../PreviewExtension/Web/rdkit/RDKit_minimal.js", import.meta.url).href;
 const rdkitWasmUrl = new URL("../../../../../../PreviewExtension/Web/rdkit/RDKit_minimal.wasm", import.meta.url).href;
 const sampleGraphmlUrl = new URL("../../../../../../prototypes/ligand_network.graphml", import.meta.url).href;
 const gridAssetsBaseUrl = `${new URL("../../../../../../PreviewExtension/Web/", import.meta.url).href.replace(/\/?$/u, "/")}`;
-const commonCoreSmarts = "c1ccccc1";
 const gridAssetVersion = "grid-ui-v94";
 const cardSize = { width: 14.4, height: 13.6 };
 const edgeLabelAvoidanceCardSize = { width: 15.2, height: 22.6 };
@@ -168,6 +169,7 @@ function FepNetworkPreview({ actions, location }: { actions: ShellActions; locat
   );
   const nodeById = useMemo(() => new Map(visibleNodes.map((node) => [node.id, node])), [visibleNodes]);
   const edgeStats = useMemo(() => edgeMetricStats(visibleEdges), [visibleEdges]);
+  const highlightSets = useMemo(() => data ? fepHighlightSets(data) : new Map<string, NodeHighlightSet>(), [data]);
   const hasEnergyEdges = edgeStats.energy !== null;
   const activeEdgeKey = selectedEdgeKey ?? hoveredEdgeKey;
   const activeEdge = useMemo(
@@ -395,6 +397,7 @@ function FepNetworkPreview({ actions, location }: { actions: ShellActions; locat
                 rdkit={rdkit}
                 rdkitError={rdkitError}
                 highlightMode={highlightMode}
+                highlightSet={highlightSets.get(node.id) ?? null}
                 onPointerDown={(event) => startCardDrag(node, event)}
                 onContextMenu={(event) => openContextMenu(node, event)}
                 style={{
@@ -579,6 +582,7 @@ function LigandCard({
   rdkit,
   rdkitError,
   highlightMode,
+  highlightSet,
   onPointerDown,
   onContextMenu,
   style,
@@ -587,13 +591,14 @@ function LigandCard({
   rdkit: RDKitModule | null;
   rdkitError: string | null;
   highlightMode: HighlightMode;
+  highlightSet: NodeHighlightSet | null;
   onPointerDown?: (event: ReactPointerEvent<HTMLElement>) => void;
   onContextMenu: (event: ReactMouseEvent<HTMLElement>) => void;
   style?: CSSProperties;
 }) {
   const svg = useMemo(
-    () => drawRDKitMol(rdkit, node, highlightMode),
-    [highlightMode, node, rdkit],
+    () => drawRDKitMol(rdkit, node, highlightMode, highlightSet),
+    [highlightMode, highlightSet, node, rdkit],
   );
   return (
     <article
@@ -883,14 +888,62 @@ function cssEscape(value: string) {
   return value.replace(/["\\]/gu, "\\$&");
 }
 
-function drawRDKitMol(rdkit: RDKitModule | null, node: FepNetworkNode, highlightMode: HighlightMode) {
+function fepHighlightSets(data: FepNetworkData) {
+  const nodeById = new Map(data.nodes.map((node) => [node.id, node]));
+  const incidentCommonAtoms = new Map<string, Set<number>[]>();
+  for (const edge of data.edges) {
+    const source = nodeById.get(edge.source);
+    const target = nodeById.get(edge.target);
+    if (!source || !target || edge.mapping.length === 0) continue;
+    const sourceAtoms = new Set<number>();
+    const targetAtoms = new Set<number>();
+    for (const [sourceAtom, targetAtom] of edge.mapping) {
+      const sourceMolAtom = source.sourceAtomToMolAtom[sourceAtom];
+      const targetMolAtom = target.sourceAtomToMolAtom[targetAtom];
+      if (!Number.isInteger(sourceMolAtom) || !Number.isInteger(targetMolAtom)) continue;
+      if (source.sourceAtomAtomicNumbers[sourceAtom] !== target.sourceAtomAtomicNumbers[targetAtom]) continue;
+      sourceAtoms.add(sourceMolAtom);
+      targetAtoms.add(targetMolAtom);
+    }
+    if (sourceAtoms.size > 0) pushIncidentAtoms(incidentCommonAtoms, source.id, sourceAtoms);
+    if (targetAtoms.size > 0) pushIncidentAtoms(incidentCommonAtoms, target.id, targetAtoms);
+  }
+
+  const result = new Map<string, NodeHighlightSet>();
+  for (const node of data.nodes) {
+    const common = intersectAtomSets(incidentCommonAtoms.get(node.id) ?? []);
+    const commonSet = new Set(common);
+    const different = Array.from({ length: node.heavyAtoms }, (_, index) => index).filter((atom) => !commonSet.has(atom));
+    result.set(node.id, { common, different });
+  }
+  return result;
+}
+
+function pushIncidentAtoms(target: Map<string, Set<number>[]>, id: string, atoms: Set<number>) {
+  const current = target.get(id);
+  if (current) {
+    current.push(atoms);
+    return;
+  }
+  target.set(id, [atoms]);
+}
+
+function intersectAtomSets(sets: Set<number>[]) {
+  if (sets.length === 0) return [];
+  const first = sets[0];
+  if (!first) return [];
+  const rest = sets.slice(1);
+  return [...first].filter((atom) => rest.every((set) => set.has(atom))).sort((left, right) => left - right);
+}
+
+function drawRDKitMol(rdkit: RDKitModule | null, node: FepNetworkNode, highlightMode: HighlightMode, highlightSet: NodeHighlightSet | null) {
   if (!rdkit) return "";
   let mol: RDKitMol | null = null;
   try {
     mol = rdkit.get_mol(node.molblock);
     if (!mol || (typeof mol.is_valid === "function" && !mol.is_valid())) throw new Error("invalid molecule");
     try { mol.set_new_coords?.(); } catch (_) {}
-    const match = highlightMode === "off" ? null : substructureMatch(rdkit, mol, node, highlightMode);
+    const match = highlightMode === "off" ? null : highlightMatch(node, highlightMode, highlightSet);
     const raw = match && typeof mol.get_svg_with_highlights === "function"
       ? mol.get_svg_with_highlights(JSON.stringify({
           atoms: match.atoms,
@@ -898,6 +951,8 @@ function drawRDKitMol(rdkit: RDKitModule | null, node: FepNetworkNode, highlight
           width: 300,
           height: 240,
           highlightAtomColors: Object.fromEntries(match.atoms.map((atom: number) => [atom, highlightMode === "common" ? [0.68, 0.42, 0.86] : [0.96, 0.58, 0.18]])),
+          highlightAtomRadii: Object.fromEntries(match.atoms.map((atom: number) => [atom, 0.18])),
+          highlightBondColors: Object.fromEntries(match.bonds.map((bond: number) => [bond, highlightMode === "common" ? [0.68, 0.42, 0.86] : [0.96, 0.58, 0.18]])),
         }))
       : mol.get_svg(300, 240);
     return sanitizeSvg(raw);
@@ -908,29 +963,29 @@ function drawRDKitMol(rdkit: RDKitModule | null, node: FepNetworkNode, highlight
   }
 }
 
-function substructureMatch(rdkit: RDKitModule, mol: RDKitMol, node: FepNetworkNode, highlightMode: HighlightMode) {
-  if (highlightMode === "common" && rdkit.get_qmol && mol.get_substruct_match) {
-    let qmol: RDKitMol | null = null;
-    try {
-      qmol = rdkit.get_qmol(commonCoreSmarts);
-      const raw = mol.get_substruct_match(qmol);
-      const parsed = typeof raw === "string" ? JSON.parse(raw || "{}") : raw;
-      const atoms = Array.isArray(parsed?.atoms) ? parsed.atoms.filter(Number.isInteger) : [];
-      const bonds = Array.isArray(parsed?.bonds) ? parsed.bonds.filter(Number.isInteger) : [];
-      if (atoms.length > 0) return { atoms, bonds };
-    } catch (_) {
-      return null;
-    } finally {
-      try { qmol?.delete?.(); } catch (_) {}
-    }
+function highlightMatch(node: FepNetworkNode, highlightMode: HighlightMode, highlightSet: NodeHighlightSet | null): HighlightMatch | null {
+  const atoms = highlightMode === "common" ? highlightSet?.common : highlightSet?.different;
+  if (!atoms || atoms.length === 0) return null;
+  return { atoms, bonds: molblockBondsForAtoms(node.molblock, new Set(atoms)) };
+}
+
+function molblockBondsForAtoms(molblock: string, atoms: Set<number>) {
+  const lines = molblock.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const countsIndex = lines.findIndex(isMolfileCountsLine);
+  if (countsIndex < 0) return [];
+  const counts = lines[countsIndex].trim().split(/\s+/u);
+  const atomCount = Number.parseInt(counts[0] ?? "", 10);
+  const bondCount = Number.parseInt(counts[1] ?? "", 10);
+  if (!Number.isFinite(atomCount) || !Number.isFinite(bondCount)) return [];
+  const bondStart = countsIndex + 1 + atomCount;
+  const bonds: number[] = [];
+  for (let index = 0; index < bondCount; index += 1) {
+    const parts = lines[bondStart + index]?.trim().split(/\s+/u) ?? [];
+    const left = Number.parseInt(parts[0] ?? "", 10) - 1;
+    const right = Number.parseInt(parts[1] ?? "", 10) - 1;
+    if (atoms.has(left) && atoms.has(right)) bonds.push(index);
   }
-  if (highlightMode === "different") {
-    const count = Math.max(0, node.heavyAtoms || node.atoms);
-    const highlightCount = Math.min(8, count);
-    const start = Math.max(0, count - highlightCount);
-    return { atoms: Array.from({ length: highlightCount }, (_, index) => start + index), bonds: [] };
-  }
-  return null;
+  return bonds;
 }
 
 function sanitizeSvg(svg: string) {
