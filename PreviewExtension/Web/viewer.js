@@ -73,6 +73,8 @@
   let molstarContextMenuPick = null;
   let molstarContextMenuMode = 'molecule';
   let activeDockingPrepared = null;
+  let burreteAgentActionPollTimer = 0;
+  let burreteAgentActionPollBusy = false;
   try { window.__mqlDebug && window.__mqlDebug('[viewer.js] top-level IIFE entered; readyState=' + document.readyState); } catch (_) {}
 
   function post(type, message) {
@@ -134,6 +136,305 @@
   function debug(message) {
     if (!window.BurreteDebug) return;
     post('debug', message);
+  }
+
+  async function reportBurreteAgentState() {
+    const control = window.BurreteAgentControl;
+    const reportUrl = typeof control?.reportUrl === 'string' ? control.reportUrl : '';
+    if (!reportUrl || !window.BurreteAgent?.run) return;
+    try {
+      const capabilities = await window.BurreteAgent.run({ command: 'capabilities' });
+      let summary = null;
+      const warnings = [];
+      if (capabilities?.ok && capabilities.result?.ready) {
+        summary = await window.BurreteAgent.run({ command: 'summary', args: { includeLigands: true } });
+      } else {
+        warnings.push('BurreteAgent was present but did not report ready=true.');
+      }
+      await fetch(reportUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiVersion: control.apiVersion || 'burette-agent-control/v1',
+          reportedAt: new Date().toISOString(),
+          capabilities,
+          summary,
+          warnings
+        })
+      });
+    } catch (error) {
+      debug('BurreteAgent live report failed: ' + (error && error.message || String(error)));
+    }
+  }
+
+  function startBurreteAgentActionPolling() {
+    const control = window.BurreteAgentControl;
+    const nextActionUrl = typeof control?.nextActionUrl === 'string' ? control.nextActionUrl : '';
+    const actionResultUrl = typeof control?.actionResultUrl === 'string' ? control.actionResultUrl : '';
+    if (!nextActionUrl || !actionResultUrl || !window.BurreteAgent?.run || burreteAgentActionPollTimer) return;
+    const intervalMs = Math.max(250, Math.min(5000, Number(control.actionPollIntervalMs) || 500));
+    burreteAgentActionPollTimer = window.setInterval(() => {
+      void pollBurreteAgentAction(nextActionUrl, actionResultUrl);
+    }, intervalMs);
+    void pollBurreteAgentAction(nextActionUrl, actionResultUrl);
+  }
+
+  async function pollBurreteAgentAction(nextActionUrl, actionResultUrl) {
+    if (burreteAgentActionPollBusy) return;
+    burreteAgentActionPollBusy = true;
+    try {
+      const response = await fetch(nextActionUrl, { credentials: 'same-origin' });
+      if (response.status === 204) return;
+      if (!response.ok) throw new Error(`next-action HTTP ${response.status}`);
+      const payload = await response.json();
+      if (!payload?.id || !payload.action) return;
+      let result;
+      try {
+        result = await executeBurreteAgentAction(payload.action);
+      } catch (error) {
+        const actionType = String(payload.action?.type || 'unknown');
+        result = agentActionFailure(actionType, 'ACTION_ERROR', error && error.message || String(error));
+      }
+      await fetch(actionResultUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: payload.id, result })
+      });
+      void reportBurreteAgentState();
+    } catch (error) {
+      debug('BurreteAgent action poll failed: ' + (error && error.message || String(error)));
+    } finally {
+      burreteAgentActionPollBusy = false;
+    }
+  }
+
+  async function executeBurreteAgentAction(action) {
+    const type = String(action?.type || '');
+    if (!window.BurreteAgent?.run) {
+      return agentActionFailure(type, 'NO_VIEWER', 'BurreteAgent is not available in this viewer runtime.');
+    }
+    if (type === 'focus_ligand') {
+      return window.BurreteAgent.run({
+        command: 'focusLigand',
+        args: {
+          selector: action.selector || action,
+          showNeighborhood: !!action.showNeighborhood,
+          radiusA: action.radiusA
+        }
+      });
+    }
+    if (type === 'show_ligands') {
+      return window.BurreteAgent.run({ command: 'showLigands', args: action.args || {} });
+    }
+    if (type === 'select_residues') {
+      return window.BurreteAgent.run({ command: 'selectResidues', args: { selector: action.selector || action } });
+    }
+    if (type === 'focus_selection') {
+      return window.BurreteAgent.run({ command: 'focusSelection', args: action.args || {} });
+    }
+    if (type === 'contacts') {
+      return window.BurreteAgent.run({ command: 'contacts', args: action.args || action });
+    }
+    if (type === 'reset_camera') {
+      return window.BurreteAgent.run({ command: 'resetCamera', args: action.args || {} });
+    }
+    if (type === 'hide_waters') {
+      return window.BurreteSceneActions?.hideWaters?.() || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BurreteSceneActions.hideWaters is unavailable.');
+    }
+    if (type === 'show_waters') {
+      return window.BurreteSceneActions?.showWaters?.() || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BurreteSceneActions.showWaters is unavailable.');
+    }
+    if (type === 'show_surface') {
+      return window.BurreteSceneActions?.showSurface?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BurreteSceneActions.showSurface is unavailable.');
+    }
+    if (type === 'color_by_chain') {
+      return window.BurreteSceneActions?.colorByChain?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BurreteSceneActions.colorByChain is unavailable.');
+    }
+    if (type === 'render_panel') {
+      return renderBurreteAgentPanel(action);
+    }
+    if (type === 'screenshot' || type === 'export_image') {
+      return window.BurreteAgent.run({ command: 'screenshot', args: action.args || {} });
+    }
+    if (type === 'raw_burrete_agent') {
+      if (!action.command) return agentActionFailure(type, 'INVALID_ARGS', 'raw_burrete_agent requires command.');
+      return window.BurreteAgent.run({ command: action.command, args: action.args || {} });
+    }
+    return agentActionFailure(type, 'NOT_IMPLEMENTED', `Unsupported BurreteAgent action: ${type}`);
+  }
+
+  window.addEventListener('message', event => {
+    const body = event.data && event.data.source === 'burrete-agent-host' ? event.data.body : null;
+    if (!body || body.type !== 'agent-action' || !body.id) return;
+    void (async () => {
+      let result;
+      try {
+        result = await executeBurreteAgentAction(body.action);
+      } catch (error) {
+        const actionType = String(body.action?.type || 'unknown');
+        result = agentActionFailure(actionType, 'ACTION_ERROR', error && error.message || String(error));
+      }
+      event.source?.postMessage({
+        source: 'burrete-agent-viewer',
+        body: {
+          type: 'agent-action-result',
+          id: body.id,
+          result
+        }
+      }, '*');
+    })();
+  });
+
+  function agentActionFailure(command, code, message) {
+    return {
+      ok: false,
+      command,
+      error: { code, message }
+    };
+  }
+
+  function renderBurreteAgentPanel(action) {
+    const panel = action?.panel || action;
+    const kind = String(panel.kind || action?.kind || '').trim();
+    const content = String(panel.content || '');
+    if (!['markdown', 'table', 'chart'].includes(kind)) {
+      return agentActionFailure('render_panel', 'INVALID_ARGS', 'render_panel kind must be markdown, table, or chart.');
+    }
+    if (!content) {
+      return agentActionFailure('render_panel', 'INVALID_ARGS', 'render_panel requires panel content.');
+    }
+    const root = ensureBurreteAgentPanelRoot();
+    const title = String(panel.title || action?.title || `${kind} panel`);
+    root.querySelector('[data-burrete-agent-panel-title]').textContent = title;
+    root.dataset.kind = kind;
+    const body = root.querySelector('[data-burrete-agent-panel-body]');
+    body.replaceChildren(renderPanelContent(kind, content));
+    root.classList.remove('hidden');
+    return {
+      ok: true,
+      command: 'render_panel',
+      result: {
+        kind,
+        title,
+        byteCount: Number(panel.byteCount) || content.length
+      }
+    };
+  }
+
+  function ensureBurreteAgentPanelRoot() {
+    let root = document.querySelector('[data-burrete-agent-panel]');
+    if (root) return root;
+    root = document.createElement('aside');
+    root.className = 'buret-agent-panel hidden';
+    root.setAttribute('data-burrete-agent-panel', '');
+    root.setAttribute('aria-label', 'Burrete agent panel');
+    root.innerHTML = `
+      <header class="buret-agent-panel-header">
+        <strong data-burrete-agent-panel-title>Panel</strong>
+        <button type="button" data-burrete-agent-panel-close aria-label="Close panel">Close</button>
+      </header>
+      <div class="buret-agent-panel-body" data-burrete-agent-panel-body></div>
+    `;
+    root.querySelector('[data-burrete-agent-panel-close]').addEventListener('click', () => root.classList.add('hidden'));
+    document.body.appendChild(root);
+    return root;
+  }
+
+  function renderPanelContent(kind, content) {
+    if (kind === 'table') return renderAgentTable(content);
+    if (kind === 'chart') return renderAgentChart(content);
+    const pre = document.createElement('pre');
+    pre.className = 'buret-agent-panel-markdown';
+    pre.textContent = content;
+    return pre;
+  }
+
+  function renderAgentTable(content) {
+    const rows = parsePanelRows(content);
+    if (!rows.length) return renderPanelTextFallback(content);
+    const table = document.createElement('table');
+    table.className = 'buret-agent-panel-table';
+    const headers = Array.from(new Set(rows.flatMap(row => Object.keys(row))));
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    for (const header of headers) {
+      const cell = document.createElement('th');
+      cell.textContent = header;
+      headerRow.appendChild(cell);
+    }
+    thead.appendChild(headerRow);
+    const tbody = document.createElement('tbody');
+    for (const row of rows.slice(0, 200)) {
+      const tableRow = document.createElement('tr');
+      for (const header of headers) {
+        const cell = document.createElement('td');
+        cell.textContent = row[header] == null ? '' : String(row[header]);
+        tableRow.appendChild(cell);
+      }
+      tbody.appendChild(tableRow);
+    }
+    table.append(thead, tbody);
+    return table;
+  }
+
+  function renderAgentChart(content) {
+    const rows = parsePanelRows(content);
+    const numericRows = rows.map(row => {
+      const entries = Object.entries(row);
+      const label = String(entries.find(([, value]) => Number.isNaN(Number(value)))?.[1] || row.label || row.name || '');
+      const numeric = entries.find(([, value]) => Number.isFinite(Number(value)));
+      return numeric ? { label: label || numeric[0], value: Number(numeric[1]) } : null;
+    }).filter(Boolean).slice(0, 24);
+    if (!numericRows.length) return renderPanelTextFallback(content);
+    const max = Math.max(...numericRows.map(row => Math.abs(row.value)), 1);
+    const chart = document.createElement('div');
+    chart.className = 'buret-agent-panel-chart';
+    for (const row of numericRows) {
+      const item = document.createElement('div');
+      item.className = 'buret-agent-panel-chart-row';
+      const label = document.createElement('span');
+      label.textContent = row.label;
+      const bar = document.createElement('i');
+      bar.style.width = `${Math.max(2, Math.round((Math.abs(row.value) / max) * 100))}%`;
+      const value = document.createElement('strong');
+      value.textContent = Number.isInteger(row.value) ? String(row.value) : row.value.toFixed(3);
+      item.append(label, bar, value);
+      chart.appendChild(item);
+    }
+    return chart;
+  }
+
+  function parsePanelRows(content) {
+    const trimmed = content.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed.filter(row => row && typeof row === 'object');
+      if (Array.isArray(parsed.rows)) return parsed.rows.filter(row => row && typeof row === 'object');
+    } catch (_) {}
+    const lines = trimmed.split(/\r?\n/u).filter(Boolean);
+    if (lines.length < 2) return [];
+    const delimiter = lines[0].includes('\t') ? '\t' : ',';
+    const headers = splitPanelDelimitedLine(lines[0], delimiter);
+    return lines.slice(1).map(line => {
+      const values = splitPanelDelimitedLine(line, delimiter);
+      const row = {};
+      headers.forEach((header, index) => { row[header] = values[index] || ''; });
+      return row;
+    });
+  }
+
+  function splitPanelDelimitedLine(line, delimiter) {
+    return line.split(delimiter).map(value => value.trim().replace(/^"|"$/g, ''));
+  }
+
+  function renderPanelTextFallback(content) {
+    const pre = document.createElement('pre');
+    pre.className = 'buret-agent-panel-markdown';
+    pre.textContent = content;
+    return pre;
   }
 
   const layoutState = {
@@ -3931,7 +4232,111 @@
         color: 'element-symbol'
       }, { tag: 'water' });
     }
+    return waterComponents.length;
   }
+
+  function activeMolstarViewer() {
+    return activeViewer || window.BurreteViewer || window.BuretteViewer || null;
+  }
+
+  function molstarComponentsByKind(viewer, kind) {
+    const structures = viewer?.plugin?.managers?.structure?.hierarchy?.current?.structures || [];
+    const out = [];
+    for (const structure of structures) {
+      for (const component of structure.components || []) {
+        if (kind === 'water' && isMolstarWaterComponent(component)) out.push(component);
+      }
+    }
+    return out;
+  }
+
+  async function hideMolstarWaters() {
+    const viewer = activeMolstarViewer();
+    const plugin = viewer?.plugin;
+    if (!plugin?.managers?.structure?.component?.removeRepresentations) {
+      return sceneActionFailure('hide_waters', 'NOT_IMPLEMENTED', 'Mol* component representation manager is unavailable.');
+    }
+    const waterComponents = molstarComponentsByKind(viewer, 'water');
+    if (!waterComponents.length) {
+      return { ok: true, command: 'hide_waters', result: { componentCount: 0, note: 'No water components were found.' } };
+    }
+    await plugin.managers.structure.component.removeRepresentations(waterComponents);
+    return { ok: true, command: 'hide_waters', result: { componentCount: waterComponents.length } };
+  }
+
+  async function showMolstarWaters() {
+    const count = await applyMolstarWaterLineRepresentation(activeMolstarViewer());
+    return { ok: true, command: 'show_waters', result: { componentCount: count || 0, representation: 'line' } };
+  }
+
+  async function showMolstarSurface(action = {}) {
+    const viewer = activeMolstarViewer();
+    const plugin = viewer?.plugin;
+    const builder = plugin?.builders?.structure;
+    const structures = plugin?.managers?.structure?.hierarchy?.current?.structures || [];
+    if (!builder?.tryCreateComponentStatic || !builder?.representation?.addRepresentation) {
+      return sceneActionFailure('show_surface', 'NOT_IMPLEMENTED', 'Mol* structure component builder is unavailable.');
+    }
+    const targetKind = normalizeSurfaceTargetKind(action.target?.kind || action.kind || 'polymer');
+    let created = 0;
+    for (const structure of structures) {
+      const component = await builder.tryCreateComponentStatic(structure, targetKind);
+      if (!component) continue;
+      await builder.representation.addRepresentation(component, {
+        type: action.surfaceType || 'molecular-surface',
+        typeParams: {
+          alpha: Number.isFinite(Number(action.alpha)) ? Number(action.alpha) : 0.35
+        },
+        color: action.color || 'chain-id'
+      }, { tag: `burette-agent-surface-${targetKind}` });
+      created += 1;
+    }
+    if (!created) {
+      return sceneActionFailure('show_surface', 'SELECTION_EMPTY', `No Mol* components could be created for target kind: ${targetKind}.`);
+    }
+    return { ok: true, command: 'show_surface', result: { targetKind, componentCount: created } };
+  }
+
+  async function colorMolstarByChain(action = {}) {
+    const viewer = activeMolstarViewer();
+    const plugin = viewer?.plugin;
+    const components = [];
+    for (const structure of plugin?.managers?.structure?.hierarchy?.current?.structures || []) {
+      components.push(...(structure.components || []));
+    }
+    if (!components.length) {
+      return sceneActionFailure('color_by_chain', 'NO_STRUCTURE', 'No Mol* components are available.');
+    }
+    const manager = plugin?.managers?.structure?.component;
+    const theme = { color: action.color || 'chain-id' };
+    if (typeof manager?.updateRepresentationsTheme === 'function') {
+      await manager.updateRepresentationsTheme(components, theme);
+      return { ok: true, command: 'color_by_chain', result: { componentCount: components.length, color: theme.color } };
+    }
+    if (typeof manager?.updateRepresentations === 'function') {
+      await manager.updateRepresentations(components, theme);
+      return { ok: true, command: 'color_by_chain', result: { componentCount: components.length, color: theme.color, method: 'updateRepresentations' } };
+    }
+    return sceneActionFailure('color_by_chain', 'NOT_IMPLEMENTED', 'Mol* representation theme update API is unavailable in this runtime.');
+  }
+
+  function normalizeSurfaceTargetKind(kind) {
+    const text = String(kind || '').toLowerCase();
+    if (text === 'protein') return 'polymer';
+    if (text === 'all' || text === 'polymer' || text === 'ligand') return text;
+    return 'polymer';
+  }
+
+  function sceneActionFailure(command, code, message) {
+    return { ok: false, command, error: { code, message } };
+  }
+
+  window.BurreteSceneActions = {
+    hideWaters: hideMolstarWaters,
+    showWaters: showMolstarWaters,
+    showSurface: showMolstarSurface,
+    colorByChain: colorMolstarByChain
+  };
 
   async function loadPreparedStructure(viewer, prepared) {
     if (prepared.kind === 'docking') {
@@ -6258,6 +6663,10 @@
       window.removeEventListener('resize', molstarWindowResizeHandler);
       molstarWindowResizeHandler = null;
     }
+    if (burreteAgentActionPollTimer) {
+      window.clearInterval(burreteAgentActionPollTimer);
+      burreteAgentActionPollTimer = 0;
+    }
     activeViewer = null;
     window.BurreteViewer = null;
     window.BuretteViewer = null;
@@ -6324,10 +6733,13 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
 
     try {
       window.BurreteAgent?.notifyStructureLoaded?.({ viewer, plugin: viewer.plugin, config, prepared });
+      postHostMessage({ type: 'agentReady', message: 'Burrete agent ready' });
     } catch (error) {
       debug('BurreteAgent notifyStructureLoaded failed: ' + (error && error.message || String(error)));
     }
     await applyMolstarContextFocus(config);
+    void reportBurreteAgentState();
+    startBurreteAgentActionPolling();
     trackMolstarOrientation(viewer, config);
 
     if (molstarWindowResizeHandler) window.removeEventListener('resize', molstarWindowResizeHandler);
