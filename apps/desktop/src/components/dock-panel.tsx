@@ -7,7 +7,8 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { DOCK_TAB_LABELS, dockTabCatalog, type DockArea, type DockTabKind } from "../lib/dock";
-import { hasStructureDrag, readStructureDragPayload } from "../lib/structure-drag";
+import { hasStructureDrag, readStructureDragPayload, writeStructureDragPayload } from "../lib/structure-drag";
+import type { StructureDragPayload } from "../lib/structure-drag";
 import type { ShellActions, ShellViewState } from "./types";
 import { showNativeContextMenu } from "./native-context-menu";
 import { formatBytes } from "./format";
@@ -42,6 +43,11 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
   const size = area === "right" ? state.rightDockWidth : state.bottomDockHeight;
   const dragging = area === "right" ? state.rightDockDragging : state.bottomDockDragging;
   const activeTab = tabs.find((tab) => tab.kind === activeTabKind) ?? tabs[0];
+  const dockDocumentId = area === "right" ? state.rightDockDocumentId : state.bottomDockDocumentId;
+  const dockTool = area === "right" ? state.rightDockTool : state.bottomDockTool;
+  const dockDocument = dockDocumentId ? state.documents.find((document) => document.id === dockDocumentId) ?? null : null;
+  const dockTextDocument = dockDocumentId ? state.textDocuments.find((document) => document.id === dockDocumentId) ?? null : null;
+  const filesTabDragPayload = dockFilesDragPayload(dockDocument, dockTextDocument, dockTool);
   const dockDrops = useMemo(
     () => state.dockDroppedStructures.filter((item) => item.area === area && item.tabKind === activeTab.kind),
     [activeTab.kind, area, state.dockDroppedStructures],
@@ -90,6 +96,7 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
     <aside
       className="dock-panel"
       data-area={area}
+      data-active-tab={activeTab.kind}
       data-open={open ? "true" : "false"}
       data-dragging={dragging || undefined}
       data-drop-active={dropActive || undefined}
@@ -112,58 +119,70 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
         aria-label={`Resize ${area} dock`}
         onPointerDown={onResizeStart}
       />
-      <div className="dock-header">
-        <div className="dock-tab-strip" role="tablist" aria-label={`${area} dock tabs`}>
-          {tabs.map((tab) => {
-            const Icon = dockTabIcons[tab.kind];
-            const active = tab.kind === activeTab.kind;
-            const closeTab = () => {
-              if (tabs.length > 1) {
-                actions.closeDockTab(area, tab.id);
-                return;
-              }
-              actions.setDockOpen(area, false);
-            };
-            return (
-              <div className="dock-tab-shell" key={tab.id}>
-                <button
-                  type="button"
-                  className="dock-tab"
-                  data-active={active || undefined}
-                  onClick={() => actions.setDockActiveTab(area, tab.kind)}
-                  role="tab"
-                  aria-selected={active}
-                  title={DOCK_TAB_LABELS[tab.kind]}
-                >
-                  <HugeiconsIcon icon={Icon} size={16} color="currentColor" strokeWidth={2} />
-                  <span>{DOCK_TAB_LABELS[tab.kind]}</span>
-                </button>
-                <button
-                  type="button"
-                  className="dock-tab-close"
-                  aria-label={tabs.length > 1 ? `Close ${DOCK_TAB_LABELS[tab.kind]}` : `Close ${area} dock`}
-                  onClick={closeTab}
-                >
-                  <CloseIcon size={11} />
-                </button>
-              </div>
-            );
-          })}
+      <div
+        className="dock-panel-inner"
+        style={area === "right" ? { width: size } : { height: size }}
+      >
+        <div className="dock-header">
+          <div className="dock-tab-strip" role="tablist" aria-label={`${area} dock tabs`}>
+            {tabs.map((tab) => {
+              const Icon = dockTabIcons[tab.kind];
+              const active = tab.kind === activeTab.kind;
+              const closeTab = () => {
+                if (tabs.length > 1) {
+                  actions.closeDockTab(area, tab.id);
+                  return;
+                }
+                actions.setDockOpen(area, false);
+              };
+              return (
+                <div className="dock-tab-shell" key={tab.id}>
+                  <button
+                    type="button"
+                    className="dock-tab"
+                    data-active={active || undefined}
+                    draggable={tab.kind === "files" && Boolean(filesTabDragPayload)}
+                    onDragStart={(event) => {
+                      if (tab.kind !== "files" || !filesTabDragPayload) return;
+                      writeStructureDragPayload(event.dataTransfer, filesTabDragPayload);
+                      actions.setStructureDragActive(true);
+                    }}
+                    onDragEnd={() => actions.setStructureDragActive(false)}
+                    onClick={() => actions.setDockActiveTab(area, tab.kind)}
+                    role="tab"
+                    aria-selected={active}
+                    title={DOCK_TAB_LABELS[tab.kind]}
+                  >
+                    <HugeiconsIcon icon={Icon} size={16} color="currentColor" strokeWidth={2} />
+                    <span>{DOCK_TAB_LABELS[tab.kind]}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="dock-tab-close"
+                    aria-label={tabs.length > 1 ? `Close ${DOCK_TAB_LABELS[tab.kind]}` : `Close ${area} dock`}
+                    onClick={closeTab}
+                  >
+                    <CloseIcon size={11} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          <button type="button" className="dock-icon-button" onClick={showAddMenu} aria-label={`Add ${area} dock tab`}>
+            +
+          </button>
+          <button type="button" className="dock-icon-button" onClick={() => actions.setDockOpen(area, false)} aria-label={`Close ${area} dock`}>
+            <CloseIcon size={15} />
+          </button>
         </div>
-        <button type="button" className="dock-icon-button" onClick={showAddMenu} aria-label={`Add ${area} dock tab`}>
-          +
-        </button>
-        <button type="button" className="dock-icon-button" onClick={() => actions.setDockOpen(area, false)} aria-label={`Close ${area} dock`}>
-          <CloseIcon size={15} />
-        </button>
+        <DockPanelContent
+          area={area}
+          activeTabKind={activeTab.kind}
+          state={state}
+          actions={actions}
+          dockDrops={dockDrops}
+        />
       </div>
-      <DockPanelContent
-        area={area}
-        activeTabKind={activeTab.kind}
-        state={state}
-        actions={actions}
-        dockDrops={dockDrops}
-      />
     </aside>
   );
 }
@@ -190,7 +209,7 @@ function DockPanelContent({
     if (dockTool === "ketcher") {
       return (
         <div className="dock-viewer">
-          <KetcherPage location={{ kind: "ketcher" }} state={state} actions={actions} isActive />
+          <KetcherPage location={{ kind: "ketcher" }} state={state} actions={actions} isActive acceptImportRequests={false} />
         </div>
       );
     }
@@ -225,7 +244,7 @@ function DockPanelContent({
             Show metadata
           </button>
         ) : null}
-        <DockDropList items={dockDrops} emptyLabel="No inspected drops" />
+        <DockDropList items={dockDrops} actions={actions} emptyLabel="No inspected drops" />
       </div>
     );
   }
@@ -233,7 +252,7 @@ function DockPanelContent({
     return (
       <div className="dock-content">
         <Metric label="Basket" value={`${dockDrops.length} structure${dockDrops.length === 1 ? "" : "s"}`} />
-        <DockDropList items={dockDrops} emptyLabel="No structures" />
+        <DockDropList items={dockDrops} actions={actions} emptyLabel="No structures" />
       </div>
     );
   }
@@ -242,7 +261,7 @@ function DockPanelContent({
       <div className="dock-content">
         <Metric label="Compare set" value={`${dockDrops.length} structure${dockDrops.length === 1 ? "" : "s"}`} />
         <Metric label="Active source" value={activeDocument?.title ?? "None"} />
-        <DockDropList items={dockDrops} emptyLabel="No compare inputs" />
+        <DockDropList items={dockDrops} actions={actions} emptyLabel="No compare inputs" />
       </div>
     );
   }
@@ -251,7 +270,7 @@ function DockPanelContent({
       <div className="dock-content">
         <Metric label="Renderer jobs" value="Idle" />
         <Metric label="Open runtimes" value={String(state.documents.length)} />
-        <DockDropList items={dockDrops} emptyLabel="No job inputs" />
+        <DockDropList items={dockDrops} actions={actions} emptyLabel="No job inputs" />
       </div>
     );
   }
@@ -262,7 +281,7 @@ function DockPanelContent({
         <button type="button" className="dock-action" onClick={() => void actions.openLogs()}>
           Open logs folder
         </button>
-        <DockDropList items={dockDrops} emptyLabel="No log inputs" />
+        <DockDropList items={dockDrops} actions={actions} emptyLabel="No log inputs" />
       </div>
     );
   }
@@ -275,7 +294,7 @@ function DockPanelContent({
         <button type="button" className="dock-action" onClick={() => void actions.exportDiagnostics()}>
           Export diagnostics
         </button>
-        <DockDropList items={dockDrops} emptyLabel="No diagnostic inputs" />
+        <DockDropList items={dockDrops} actions={actions} emptyLabel="No diagnostic inputs" />
       </div>
     );
   }
@@ -283,9 +302,48 @@ function DockPanelContent({
     <div className="dock-content">
       <Metric label={area === "right" ? "Review context" : "Review queue"} value={activeDocument?.title ?? "None"} />
       <Metric label="Dropped inputs" value={String(dockDrops.length)} />
-      <DockDropList items={dockDrops} emptyLabel="No review inputs" />
+      <DockDropList items={dockDrops} actions={actions} emptyLabel="No review inputs" />
     </div>
   );
+}
+
+function dockFilesDragPayload(
+  dockDocument: ShellViewState["documents"][number] | null,
+  dockTextDocument: ShellViewState["textDocuments"][number] | null,
+  dockTool: ShellViewState["rightDockTool"],
+): StructureDragPayload | null {
+  if (dockDocument) {
+    return {
+      paths: [dockDocument.path],
+      records: [],
+      items: [{
+        kind: "file",
+        title: dockDocument.title,
+        detail: dockDocument.renderer,
+        path: dockDocument.path,
+      }],
+    };
+  }
+  if (dockTextDocument) {
+    return {
+      paths: [dockTextDocument.path],
+      records: [],
+      items: [{
+        kind: "writer",
+        title: dockTextDocument.title,
+        detail: dockTextDocument.extension,
+        path: dockTextDocument.path,
+      }],
+    };
+  }
+  if (dockTool === "ketcher") {
+    return {
+      paths: [],
+      records: [],
+      items: [{ kind: "ketcher", title: "Ketcher", detail: "Sketcher" }],
+    };
+  }
+  return null;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -297,13 +355,30 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function DockDropList({ items, emptyLabel }: { items: ShellViewState["dockDroppedStructures"]; emptyLabel: string }) {
+function DockDropList({
+  items,
+  actions,
+  emptyLabel,
+}: {
+  items: ShellViewState["dockDroppedStructures"];
+  actions: ShellActions;
+  emptyLabel: string;
+}) {
   return (
     <div className="dock-drop-list">
       {items.length === 0 ? (
         <div className="dock-empty">{emptyLabel}</div>
       ) : items.map((item) => (
-        <div className="dock-drop-item" key={item.id}>
+        <div
+          className="dock-drop-item"
+          key={item.id}
+          draggable
+          onDragStart={(event) => {
+            writeStructureDragPayload(event.dataTransfer, item.payload);
+            actions.setStructureDragActive(true);
+          }}
+          onDragEnd={() => actions.setStructureDragActive(false)}
+        >
           <strong>{item.title}</strong>
           <span>{item.detail}</span>
         </div>

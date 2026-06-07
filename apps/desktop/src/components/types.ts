@@ -34,6 +34,13 @@ export type KetcherImportRequest = {
   fragments?: Array<{
     title: string;
     text: string;
+    source?: {
+      kind: "grid-row";
+      documentId: string;
+      rowIndex: number;
+      title: string;
+      extension: string;
+    };
   }>;
 };
 
@@ -70,6 +77,13 @@ export type ShellActions = {
   backToApp: () => void;
   openKetcher: () => void;
   openKetcherWithStructures: (paths: string[], fragments?: KetcherImportRequest["fragments"]) => void;
+  applyKetcherToGridRow: (request: {
+    documentId: string;
+    rowIndex: number;
+    title: string;
+    extension: string;
+    text: string;
+  }) => void;
   openFepSetupWorkspace: (request: FepSetupRequest) => void;
   openKetcherSketch: (request: KetcherSketchRequest) => void | Promise<void>;
   saveKetcherDraft: (molfile: string) => void;
@@ -78,6 +92,9 @@ export type ShellActions = {
   chooseWorkspace: () => void | Promise<void>;
   openWorkspaceFolder: () => void | Promise<void>;
   openProjectFolder: (path: string | null) => void | Promise<void>;
+  togglePinnedProjectRoot: (root: string) => void;
+  renameProjectRoot: (root: string, name: string) => void;
+  removeProjectRoot: (root: string) => void;
   toggleSidebar: () => void;
   toggleDock: (area: DockArea) => void;
   setDockOpen: (area: DockArea, open: boolean) => void;

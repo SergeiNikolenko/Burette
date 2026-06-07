@@ -3,6 +3,7 @@ import CryptoKit
 import QuickLookUI
 import SwiftUI
 import WebKit
+import zlib
 
 fileprivate struct RuntimeAuxiliaryFile {
     let path: String
@@ -133,6 +134,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     self.pendingPreviewSourceFingerprint = nil
                     self.webView.loadFileURL(result.indexURL, allowingReadAccessTo: result.readAccessURL)
                     self.scheduleRenderTimeout(for: requestID, timeoutSeconds: result.renderTimeoutSeconds)
+                    self.finishPreviewIfNeeded(nil, requestID: requestID, cancelRenderTimeout: false)
                     if Self.showDebugOverlay {
                         self.scheduleJavaScriptProbes()
                     }
@@ -379,6 +381,18 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         var externalArtifactSourceURL: URL?
         var externalStatus: [String: Any]?
         var temporaryExternalDirectory: URL?
+        if PreviewStructureTextConverter.shouldPreferConvertedMolstarData(fileExtension: pathExtension),
+           let convertedStructure = PreviewStructureTextConverter.convertedData(
+            from: structureData,
+            fileExtension: pathExtension,
+            label: url.lastPathComponent
+           ) {
+            format = convertedStructure.format
+            structureDataForWeb = convertedStructure.data
+            auxiliaryRuntimeFiles = convertedStructure.auxiliaryFiles
+            stagedEntries = convertedStructure.stagedEntries
+            diag("molstar.converted=\(pathExtension)-pdb")
+        }
         let xyzrenderPreset = BurreteXyzrenderPreset.normalize(xyzrenderPresetOverride ?? preferences.xyzrenderPreset)
         let xyzPayload = format.molstarFormat == "xyz" && !format.isBinary ? makeXYZPayload(from: structureDataForWeb) : nil
         let isXYZTrajectory = (xyzPayload?.frameCount ?? 0) > 1
@@ -407,6 +421,15 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         if usesBoundedMaestroPreview, format.isExternalXyzrenderOnly {
             throw PreviewError.couldNotExtractBoundedMaestroPreview(url.lastPathComponent, Self.maestroPreviewReadLimit)
         }
+        if shouldRequireExtractedStandaloneCoordinates(fileExtension: pathExtension),
+           format.isExternalXyzrenderOnly,
+           PreviewStructureTextConverter.convertedData(
+            from: structureData,
+            fileExtension: pathExtension,
+            label: url.lastPathComponent
+           ) == nil {
+            throw PreviewError.notRenderableStandaloneStructure(url.lastPathComponent)
+        }
         if renderer == BurreteRendererMode.xyzrenderExternal {
             let renderDirectory = fileManager.temporaryDirectory
                 .appendingPathComponent("BurreteXYZRender-\(UUID().uuidString)", isDirectory: true)
@@ -428,6 +451,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 externalArtifactSourceURL = renderDirectory.appendingPathComponent("xyzrender.svg")
             } catch {
                 if format.isExternalXyzrenderOnly,
+                   rendererOverride == nil,
                    let convertedStructure = PreviewStructureTextConverter.convertedData(
                     from: structureData,
                     fileExtension: pathExtension,
@@ -1137,6 +1161,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         ["xyz", "cub", "cube"].contains(fileExtension.lowercased())
     }
 
+    private static func shouldRequireExtractedStandaloneCoordinates(fileExtension: String) -> Bool {
+        fileExtension.lowercased() == "out"
+    }
+
     private static func shouldAllowSystemFallback(for error: Error, fileExtension: String) -> Bool {
         let lowercasedExtension = fileExtension.lowercased()
         guard ["csv", "tsv"].contains(lowercasedExtension) else { return false }
@@ -1161,13 +1189,15 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         DispatchQueue.main.asyncAfter(deadline: .now() + timeoutSeconds, execute: workItem)
     }
 
-    private func finishPreviewIfNeeded(_ error: Error?, requestID: UUID? = nil) {
+    private func finishPreviewIfNeeded(_ error: Error?, requestID: UUID? = nil, cancelRenderTimeout: Bool = true) {
         if let requestID, requestID != activePreviewRequestID {
             appendLog("skipping Quick Look completion for stale preview request")
             return
         }
-        renderTimeoutWorkItem?.cancel()
-        renderTimeoutWorkItem = nil
+        if cancelRenderTimeout {
+            renderTimeoutWorkItem?.cancel()
+            renderTimeoutWorkItem = nil
+        }
         guard let completion = pendingCompletion else { return }
         pendingCompletion = nil
         appendLog("calling Quick Look completion handler; error=\(error.map { Self.describe($0) } ?? "nil")")
@@ -1838,36 +1868,371 @@ private enum PreviewStructureTextConverter {
                 stagedEntries: stagedEntries
             )
         }
+        if isGROExtension(fileExtension),
+           let pdb = groPDBData(from: data, label: label) {
+            return ConvertedStructure(data: pdb, format: .convertedPDB, auxiliaryFiles: [], stagedEntries: [])
+        }
+        if isMOL2Extension(fileExtension),
+           let pdb = mol2PDBData(from: data, label: label) {
+            return ConvertedStructure(data: pdb, format: .convertedPDB, auxiliaryFiles: [], stagedEntries: [])
+        }
+        if usesPDBTextFallback(fileExtension),
+           let pdb = pdbData(from: data, fileExtension: fileExtension, label: label) {
+            return ConvertedStructure(data: pdb, format: .convertedPDB, auxiliaryFiles: [], stagedEntries: [])
+        }
         guard let xyz = xyzData(from: data, fileExtension: fileExtension, label: label) else { return nil }
         return ConvertedStructure(data: xyz, format: .convertedXYZ, auxiliaryFiles: [], stagedEntries: [])
     }
 
     static func xyzData(from data: Data, fileExtension: String, label: String) -> Data? {
-        let text = decodeText(data)
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: "\r", with: "\n")
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        let atoms: [Atom]?
-        switch fileExtension.lowercased() {
-        case "cub", "cube":
-            atoms = parseCube(lines)
-        case "vasp":
-            atoms = parseVasp(lines)
-        case "in":
-            atoms = parseQuantumEspressoInput(lines)
-        case "out":
-            atoms = parseOrcaOutput(lines)
-        case "cms", "mae", "maegz":
-            atoms = parseMaestroAtoms(lines, atomLimit: 20_000)
-        default:
-            atoms = nil
-        }
-        guard let atoms, !atoms.isEmpty else { return nil }
+        guard let atoms = atoms(from: data, fileExtension: fileExtension), !atoms.isEmpty else { return nil }
         var xyz = "\(atoms.count)\nConverted from \(label)\n"
         for atom in atoms {
             xyz += "\(atom.symbol) \(format(atom.x)) \(format(atom.y)) \(format(atom.z))\n"
         }
         return Data(xyz.utf8)
+    }
+
+    private static func atoms(from data: Data, fileExtension: String) -> [Atom]? {
+        let text = decodeText(data)
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        switch fileExtension.lowercased() {
+        case "abi":
+            return parseABINIT(lines)
+        case "cub", "cube":
+            return parseCube(lines)
+        case "fdf":
+            return parseFDF(lines)
+        case "vasp":
+            return parseVasp(lines)
+        case "in", "inp":
+            return parseQuantumEspressoInput(lines) ?? parseQSiteGeometry(lines) ?? parseBestCoordinateBlock(lines)
+        case "nw", "psi4", "qcin":
+            return parseBestCoordinateBlock(lines)
+        case "out":
+            return parseOrcaOutput(lines) ?? parseGaussianOutput(lines) ?? parseBestCoordinateBlock(lines)
+        case "cms", "mae", "maegz":
+            return parseMaestroAtoms(lines, atomLimit: 20_000)
+        default:
+            return nil
+        }
+    }
+
+    fileprivate static func shouldPreferConvertedMolstarData(fileExtension: String) -> Bool {
+        isGROExtension(fileExtension) || isMOL2Extension(fileExtension)
+    }
+
+    private static func pdbData(from data: Data, fileExtension: String, label: String) -> Data? {
+        guard let atoms = atoms(from: data, fileExtension: fileExtension), !atoms.isEmpty else { return nil }
+        return pdbData(from: atoms, label: label)
+    }
+
+    private static func pdbData(from atoms: [Atom], label: String) -> Data {
+        var pdb = "REMARK Converted from \(label)\n"
+        for (index, atom) in atoms.prefix(99_999).enumerated() {
+            pdb += genericPDBAtomLine(serial: index + 1, atom: atom)
+            pdb += "\n"
+        }
+        pushPDBConectLines(&pdb, atoms)
+        pdb += "END\n"
+        return Data(pdb.utf8)
+    }
+
+    private static func genericPDBAtomLine(serial: Int, atom: Atom) -> String {
+        let symbol = normalizeElementSymbol(atom.symbol)
+        let atomName = formatPDBAtomName(symbol, symbol: symbol)
+        let atomNameField = atomName.padding(toLength: 4, withPad: " ", startingAt: 0)
+        let elementField = String(repeating: " ", count: max(0, 2 - symbol.count)) + truncateASCII(symbol, maxLength: 2)
+        return String(
+            format: "HETATM%5d %@ MOL A%4d    %8.3f%8.3f%8.3f  1.00 10.00          %@",
+            min(serial, 99_999),
+            atomNameField,
+            1,
+            atom.x,
+            atom.y,
+            atom.z,
+            elementField
+        )
+    }
+
+    private static func pushPDBConectLines(_ pdb: inout String, _ atoms: [Atom]) {
+        let bonds = inferPDBBonds(atoms)
+        guard !bonds.isEmpty else { return }
+        var adjacency = Array(repeating: [Int](), count: min(atoms.count, 99_999))
+        for (left, right) in bonds {
+            adjacency[left].append(right + 1)
+            adjacency[right].append(left + 1)
+        }
+        for (index, neighbors) in adjacency.enumerated() {
+            var start = 0
+            while start < neighbors.count {
+                let chunk = neighbors[start..<min(start + 4, neighbors.count)]
+                pdb += String(format: "CONECT%5d", index + 1)
+                for serial in chunk {
+                    pdb += String(format: "%5d", serial)
+                }
+                pdb += "\n"
+                start += 4
+            }
+        }
+    }
+
+    private static func inferPDBBonds(_ atoms: [Atom]) -> [(Int, Int)] {
+        let limitedAtoms = Array(atoms.prefix(99_999))
+        guard limitedAtoms.count <= 2_000 else { return [] }
+        var bonds: [(Int, Int)] = []
+        for left in limitedAtoms.indices {
+            let leftRadius = covalentRadius(limitedAtoms[left].symbol)
+            guard leftRadius > 0 else { continue }
+            for right in limitedAtoms.index(after: left)..<limitedAtoms.count {
+                let rightRadius = covalentRadius(limitedAtoms[right].symbol)
+                guard rightRadius > 0 else { continue }
+                let dx = limitedAtoms[left].x - limitedAtoms[right].x
+                let dy = limitedAtoms[left].y - limitedAtoms[right].y
+                let dz = limitedAtoms[left].z - limitedAtoms[right].z
+                let distance = sqrt(dx * dx + dy * dy + dz * dz)
+                let maxDistance = min(leftRadius + rightRadius + 0.45, 2.25)
+                if distance >= 0.35, distance <= maxDistance {
+                    bonds.append((left, right))
+                }
+            }
+        }
+        return bonds
+    }
+
+    private static func covalentRadius(_ symbol: String) -> Double {
+        switch normalizeElementSymbol(symbol) {
+        case "H": return 0.31
+        case "He": return 0.28
+        case "Li": return 1.28
+        case "Be": return 0.96
+        case "B": return 0.84
+        case "C": return 0.76
+        case "N": return 0.71
+        case "O": return 0.66
+        case "F": return 0.57
+        case "Ne": return 0.58
+        case "Na": return 1.66
+        case "Mg": return 1.41
+        case "Al": return 1.21
+        case "Si": return 1.11
+        case "P": return 1.07
+        case "S": return 1.05
+        case "Cl": return 1.02
+        case "Ar": return 1.06
+        case "K": return 2.03
+        case "Ca": return 1.76
+        case "Fe": return 1.24
+        case "Co": return 1.18
+        case "Ni": return 1.17
+        case "Cu": return 1.22
+        case "Zn": return 1.22
+        case "Br": return 1.20
+        case "I": return 1.39
+        default: return 0.0
+        }
+    }
+
+    private static func usesPDBTextFallback(_ fileExtension: String) -> Bool {
+        ["abi", "cub", "cube", "fdf", "in", "inp", "nw", "out", "psi4", "qcin"].contains(fileExtension.lowercased())
+    }
+
+    private static func isGROExtension(_ fileExtension: String) -> Bool {
+        fileExtension.lowercased() == "gro"
+    }
+
+    private static func isMOL2Extension(_ fileExtension: String) -> Bool {
+        fileExtension.lowercased() == "mol2"
+    }
+
+    private static func mol2PDBData(from data: Data, label: String) -> Data? {
+        let text = decodeText(data)
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        var section = ""
+        var atoms: [(id: Int, atom: MaestroAtom)] = []
+        var bonds: [(Int, Int)] = []
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.hasPrefix("@<TRIPOS>") {
+                section = String(trimmed.dropFirst("@<TRIPOS>".count)).uppercased()
+                continue
+            }
+            guard !trimmed.isEmpty else { continue }
+            switch section {
+            case "ATOM":
+                let parts = fields(trimmed)
+                guard parts.count >= 6,
+                      let id = Int(parts[0]),
+                      let x = Double(parts[2]),
+                      let y = Double(parts[3]),
+                      let z = Double(parts[4]) else {
+                    continue
+                }
+                let atomName = normalizePDBAtomName(parts[1])
+                let residueNumber = parts.count >= 7 ? (Int(parts[6]) ?? 1) : 1
+                let residueName = parts.count >= 8 ? normalizePDBResidueName(parts[7]) : "MOL"
+                let symbol = mol2ElementSymbol(atomName: atomName, atomType: parts[5])
+                atoms.append((
+                    id: id,
+                    atom: MaestroAtom(
+                        symbol: symbol,
+                        atomName: atomName.isEmpty ? symbol : atomName,
+                        residueName: residueName.isEmpty ? "MOL" : residueName,
+                        residueNumber: residueNumber,
+                        chainName: "A",
+                        x: x,
+                        y: y,
+                        z: z
+                    )
+                ))
+            case "BOND":
+                let parts = fields(trimmed)
+                guard parts.count >= 4,
+                      let left = Int(parts[1]),
+                      let right = Int(parts[2]) else {
+                    continue
+                }
+                bonds.append((left, right))
+            default:
+                continue
+            }
+        }
+        guard !atoms.isEmpty else { return nil }
+        var pdb = "REMARK Converted from \(label)\n"
+        var serialByID: [Int: Int] = [:]
+        for (index, entry) in atoms.prefix(99_999).enumerated() {
+            let serial = index + 1
+            serialByID[entry.id] = serial
+            pdb += maestroPDBAtomLine(serial: serial, atom: entry.atom)
+            pdb += "\n"
+        }
+        pushPDBConectLines(&pdb, bonds: bonds, serialByID: serialByID)
+        pdb += "END\n"
+        return Data(pdb.utf8)
+    }
+
+    private static func pushPDBConectLines(_ pdb: inout String, bonds: [(Int, Int)], serialByID: [Int: Int]) {
+        var adjacency: [Int: Set<Int>] = [:]
+        for (leftID, rightID) in bonds {
+            guard let left = serialByID[leftID], let right = serialByID[rightID], left != right else { continue }
+            adjacency[left, default: []].insert(right)
+            adjacency[right, default: []].insert(left)
+        }
+        for serial in adjacency.keys.sorted() {
+            let neighbors = Array(adjacency[serial] ?? []).sorted()
+            var start = 0
+            while start < neighbors.count {
+                let chunk = neighbors[start..<min(start + 4, neighbors.count)]
+                pdb += String(format: "CONECT%5d", serial)
+                for neighbor in chunk {
+                    pdb += String(format: "%5d", neighbor)
+                }
+                pdb += "\n"
+                start += 4
+            }
+        }
+    }
+
+    private static func mol2ElementSymbol(atomName: String, atomType: String) -> String {
+        let typeSymbol = atomType.split(separator: ".").first.map(String.init) ?? ""
+        let normalizedType = normalizeElementSymbol(typeSymbol)
+        if isElementSymbol(normalizedType) { return normalizedType }
+        let letters = atomName.filter { $0.isASCII && $0.isLetter }
+        if letters.count >= 2 {
+            let two = normalizeElementSymbol(String(letters.prefix(2)))
+            if isElementSymbol(two) { return two }
+        }
+        if let first = letters.first {
+            let one = normalizeElementSymbol(String(first))
+            if isElementSymbol(one) { return one }
+        }
+        return "X"
+    }
+
+    private static func groPDBData(from data: Data, label: String) -> Data? {
+        let text = decodeText(data)
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        guard let atoms = parseGROAtoms(lines, atomLimit: 99_999), !atoms.isEmpty else { return nil }
+        var pdb = "REMARK Converted from \(label)\n"
+        for (index, atom) in atoms.enumerated() {
+            pdb += maestroPDBAtomLine(serial: index + 1, atom: atom)
+            pdb += "\n"
+        }
+        pdb += "END\n"
+        return Data(pdb.utf8)
+    }
+
+    private static func parseGROAtoms(_ lines: [String], atomLimit: Int) -> [MaestroAtom]? {
+        guard lines.count >= 3,
+              let declaredAtomCount = Int(lines[1].trimmingCharacters(in: .whitespacesAndNewlines)),
+              declaredAtomCount > 0 else { return nil }
+        let rows = min(declaredAtomCount, max(0, lines.count - 2), atomLimit)
+        var atoms: [MaestroAtom] = []
+        atoms.reserveCapacity(min(rows, atomLimit))
+        for index in 0..<rows {
+            guard let atom = parseGROAtomLine(lines[2 + index]) else { continue }
+            atoms.append(atom)
+        }
+        return atoms.isEmpty ? nil : atoms
+    }
+
+    private static func parseGROAtomLine(_ line: String) -> MaestroAtom? {
+        guard line.count >= 44 else { return nil }
+        let residueNumber = Int(fixedGROField(line, start: 0, length: 5).trimmingCharacters(in: .whitespacesAndNewlines)) ?? 1
+        let residueName = normalizeGROResidueName(fixedGROField(line, start: 5, length: 5))
+        let atomName = normalizePDBAtomName(fixedGROField(line, start: 10, length: 5))
+        guard let x = Double(fixedGROField(line, start: 20, length: 8).trimmingCharacters(in: .whitespacesAndNewlines)),
+              let y = Double(fixedGROField(line, start: 28, length: 8).trimmingCharacters(in: .whitespacesAndNewlines)),
+              let z = Double(fixedGROField(line, start: 36, length: 8).trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            return nil
+        }
+        let symbol = groElementSymbol(atomName: atomName, residueName: residueName)
+        return MaestroAtom(
+            symbol: symbol,
+            atomName: atomName.isEmpty ? symbol : atomName,
+            residueName: residueName.isEmpty ? "MOL" : residueName,
+            residueNumber: residueNumber,
+            chainName: "A",
+            x: x * 10.0,
+            y: y * 10.0,
+            z: z * 10.0
+        )
+    }
+
+    private static func fixedGROField(_ line: String, start: Int, length: Int) -> String {
+        let startIndex = line.index(line.startIndex, offsetBy: min(start, line.count))
+        let endIndex = line.index(startIndex, offsetBy: min(length, line.distance(from: startIndex, to: line.endIndex)))
+        return String(line[startIndex..<endIndex])
+    }
+
+    private static func normalizeGROResidueName(_ value: String) -> String {
+        let cleaned = truncateASCII(value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased(), maxLength: 4)
+        if cleaned.count > 3 {
+            let suffix = String(cleaned.suffix(3))
+            if isStandardPolymerResidue(suffix) { return suffix }
+        }
+        return String(cleaned.prefix(3))
+    }
+
+    private static func groElementSymbol(atomName: String, residueName: String) -> String {
+        let letters = atomName.filter { $0.isASCII && $0.isLetter }.uppercased()
+        guard let first = letters.first else { return "X" }
+        if letters.count >= 2 {
+            let two = String(letters.prefix(2))
+            if ["CL", "BR", "NA", "MG", "ZN", "FE", "CU", "MN", "CO"].contains(two) {
+                return normalizeElementSymbol(two)
+            }
+            if two == "CA", !isStandardPolymerResidue(residueName) {
+                return "Ca"
+            }
+        }
+        return normalizeElementSymbol(String(first))
     }
 
     private static func maestroPDBData(from atoms: [MaestroAtom], remark: String) -> Data {
@@ -2276,12 +2641,124 @@ private enum PreviewStructureTextConverter {
         guard let atomCountToken = countFields.first, let atomCount = Int(atomCountToken), atomCount != 0 else { return nil }
         let count = abs(atomCount)
         guard lines.count >= 6 + count else { return nil }
+        let axisCounts = (3...5).compactMap { index in
+            fields(lines[index]).first.flatMap(Int.init)
+        }
+        guard axisCounts.count == 3 else { return nil }
+        let coordinateScale = axisCounts.allSatisfy { $0 > 0 } ? 0.529177210903 : 1.0
         return (0..<count).compactMap { index in
             let parts = fields(lines[6 + index])
             guard parts.count >= 5, let number = Int(parts[0]),
                   let x = Double(parts[2]), let y = Double(parts[3]), let z = Double(parts[4]) else { return nil }
-            return Atom(symbol: symbol(for: number), x: x, y: y, z: z)
+            return Atom(symbol: symbol(for: number), x: x * coordinateScale, y: y * coordinateScale, z: z * coordinateScale)
         }
+    }
+
+    private static func parseABINIT(_ lines: [String]) -> [Atom]? {
+        var atomCount: Int?
+        var atomicNumbers: [Int] = []
+        var typeIndices: [Int] = []
+        var coordinateStart: Int?
+
+        for (index, line) in lines.enumerated() {
+            let parts = fields(stripInlineComment(line))
+            guard let key = parts.first?.lowercased() else { continue }
+            switch key {
+            case "natom":
+                if parts.count >= 2 { atomCount = Int(parts[1]) }
+            case "znucl":
+                atomicNumbers += parts.dropFirst().compactMap(Int.init)
+            case "typat":
+                typeIndices += parts.dropFirst().compactMap(Int.init)
+            case "xangst":
+                coordinateStart = index + 1
+            default:
+                continue
+            }
+        }
+
+        guard let atomCount, atomCount > 0,
+              !atomicNumbers.isEmpty,
+              typeIndices.count >= atomCount,
+              let coordinateStart,
+              coordinateStart + atomCount <= lines.count else {
+            return nil
+        }
+
+        var atoms: [Atom] = []
+        for index in 0..<atomCount {
+            let parts = fields(stripInlineComment(lines[coordinateStart + index]))
+            guard parts.count >= 3,
+                  let x = Double(parts[0]),
+                  let y = Double(parts[1]),
+                  let z = Double(parts[2]) else {
+                continue
+            }
+            let typeIndex = typeIndices[index] - 1
+            guard typeIndex >= 0, typeIndex < atomicNumbers.count else { continue }
+            atoms.append(Atom(symbol: symbol(for: atomicNumbers[typeIndex]), x: x, y: y, z: z))
+        }
+        return atoms.count == atomCount ? atoms : nil
+    }
+
+    private static func parseFDF(_ lines: [String]) -> [Atom]? {
+        let speciesRows = blockRows(named: "ChemicalSpeciesLabel", in: lines)
+        var speciesByID: [Int: String] = [:]
+        for row in speciesRows {
+            let parts = fields(row)
+            guard parts.count >= 2, let speciesID = Int(parts[0]), let atomicNumber = Int(parts[1]) else { continue }
+            let explicitSymbol = parts.count >= 3 ? normalizeElementSymbol(parts[2]) : ""
+            speciesByID[speciesID] = isElementSymbol(explicitSymbol) ? explicitSymbol : symbol(for: atomicNumber)
+        }
+        guard !speciesByID.isEmpty else { return nil }
+
+        let coordinateScale = fdfCoordinateScale(lines)
+        let coordinateRows = blockRows(named: "AtomicCoordinatesAndAtomicSpecies", in: lines)
+        let atoms = coordinateRows.compactMap { row -> Atom? in
+            let parts = fields(row)
+            guard parts.count >= 4,
+                  let x = Double(parts[0]),
+                  let y = Double(parts[1]),
+                  let z = Double(parts[2]),
+                  let speciesID = Int(parts[3]),
+                  let symbol = speciesByID[speciesID] else { return nil }
+            return Atom(symbol: symbol, x: x * coordinateScale, y: y * coordinateScale, z: z * coordinateScale)
+        }
+        return atoms.isEmpty ? nil : atoms
+    }
+
+    private static func blockRows(named blockName: String, in lines: [String]) -> [String] {
+        var rows: [String] = []
+        var inside = false
+        let normalizedBlockName = blockName.lowercased()
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            let parts = fields(trimmed)
+            let marker = parts.first?.lowercased()
+            let name = parts.count >= 2 ? parts[1].lowercased() : ""
+            if marker == "%block", name == normalizedBlockName {
+                inside = true
+                continue
+            }
+            if marker == "%endblock", name == normalizedBlockName {
+                break
+            }
+            if inside, !trimmed.isEmpty, !trimmed.hasPrefix("#") {
+                rows.append(trimmed)
+            }
+        }
+        return rows
+    }
+
+    private static func fdfCoordinateScale(_ lines: [String]) -> Double {
+        for line in lines {
+            let parts = fields(line)
+            guard parts.count >= 2, parts[0].caseInsensitiveCompare("AtomicCoordinatesFormat") == .orderedSame else {
+                continue
+            }
+            return parts[1].lowercased().contains("bohr") ? 0.529177210903 : 1.0
+        }
+        return 1.0
     }
 
     private static func parseVasp(_ lines: [String]) -> [Atom]? {
@@ -2346,6 +2823,27 @@ private enum PreviewStructureTextConverter {
                 position = (x, y, z)
             }
             atoms.append(Atom(symbol: parts[0], x: position.0, y: position.1, z: position.2))
+        }
+        return atoms.isEmpty ? nil : atoms
+    }
+
+    private static func parseQSiteGeometry(_ lines: [String]) -> [Atom]? {
+        guard let geometryStart = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare("geometry") == .orderedSame }) else {
+            return nil
+        }
+        var atoms: [Atom] = []
+        for line in lines[(geometryStart + 1)...] {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.caseInsensitiveCompare("end") == .orderedSame { break }
+            let parts = fields(trimmed)
+            guard parts.count >= 4,
+                  let atomicNumber = Int(parts[0]),
+                  let x = Double(parts[1]),
+                  let y = Double(parts[2]),
+                  let z = Double(parts[3]) else {
+                continue
+            }
+            atoms.append(Atom(symbol: symbol(for: atomicNumber), x: x, y: y, z: z))
         }
         return atoms.isEmpty ? nil : atoms
     }
@@ -2423,8 +2921,42 @@ private enum PreviewStructureTextConverter {
         return atoms.isEmpty ? nil : atoms
     }
 
+    private static func parseBestCoordinateBlock(_ lines: [String]) -> [Atom]? {
+        var best: [Atom] = []
+        var current: [Atom] = []
+        func finishCurrentBlock() {
+            if current.count > best.count { best = current }
+            current.removeAll(keepingCapacity: true)
+        }
+        for line in lines {
+            if let atom = parseElementCoordinateLine(line) {
+                current.append(atom)
+            } else {
+                finishCurrentBlock()
+            }
+        }
+        finishCurrentBlock()
+        return best.count >= 2 ? best : nil
+    }
+
+    private static func parseElementCoordinateLine(_ line: String) -> Atom? {
+        let parts = fields(line.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard parts.count >= 4,
+              isElementSymbol(parts[0]),
+              let x = Double(parts[1]),
+              let y = Double(parts[2]),
+              let z = Double(parts[3]) else {
+            return nil
+        }
+        return Atom(symbol: normalizeElementSymbol(parts[0]), x: x, y: y, z: z)
+    }
+
     private static func fields(_ line: String) -> [String] {
         line.split { $0 == " " || $0 == "\t" }.map(String.init)
+    }
+
+    private static func stripInlineComment(_ line: String) -> String {
+        String(line.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).first ?? "")
     }
 
     private static func parseVector(_ line: String, scale: Double) -> Vec3? {
@@ -2441,6 +2973,12 @@ private enum PreviewStructureTextConverter {
         symbolsByNumber.contains { $0 == value.capitalized }
     }
 
+    private static func normalizeElementSymbol(_ value: String) -> String {
+        let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let first = cleaned.first else { return "" }
+        return String(first).uppercased() + cleaned.dropFirst().lowercased()
+    }
+
     private static func symbol(for atomicNumber: Int) -> String {
         guard atomicNumber > 0, atomicNumber <= symbolsByNumber.count else { return "X" }
         return symbolsByNumber[atomicNumber - 1]
@@ -2451,9 +2989,40 @@ private enum PreviewStructureTextConverter {
     }
 
     private static func decodeText(_ data: Data) -> String {
-        if let value = String(data: data, encoding: .utf8) { return value }
-        if let value = String(data: data, encoding: .isoLatin1) { return value }
-        return String(decoding: data, as: UTF8.self)
+        let textData = gzipInflatedDataIfNeeded(data) ?? data
+        if let value = String(data: textData, encoding: .utf8) { return value }
+        if let value = String(data: textData, encoding: .isoLatin1) { return value }
+        return String(decoding: textData, as: UTF8.self)
+    }
+
+    private static func gzipInflatedDataIfNeeded(_ data: Data) -> Data? {
+        guard data.count >= 2, data[0] == 0x1f, data[1] == 0x8b else { return nil }
+        var stream = z_stream()
+        var status = inflateInit2_(&stream, 15 + 32, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size))
+        guard status == Z_OK else { return nil }
+        defer { inflateEnd(&stream) }
+        var output = Data()
+        let chunkSize = 64 * 1024
+        let maxInflatedBytes = 128 * 1024 * 1024
+        return data.withUnsafeBytes { sourceBuffer -> Data? in
+            guard let source = sourceBuffer.bindMemory(to: Bytef.self).baseAddress else { return nil }
+            stream.next_in = UnsafeMutablePointer<Bytef>(mutating: source)
+            stream.avail_in = uInt(data.count)
+            repeat {
+                var chunk = [UInt8](repeating: 0, count: chunkSize)
+                let produced = chunk.withUnsafeMutableBytes { chunkBuffer -> Int in
+                    stream.next_out = chunkBuffer.bindMemory(to: Bytef.self).baseAddress
+                    stream.avail_out = uInt(chunkSize)
+                    status = inflate(&stream, Z_NO_FLUSH)
+                    return chunkSize - Int(stream.avail_out)
+                }
+                if produced > 0 {
+                    output.append(contentsOf: chunk.prefix(produced))
+                }
+                if output.count > maxInflatedBytes { return nil }
+            } while status == Z_OK
+            return status == Z_STREAM_END ? output : nil
+        }
     }
 
     private static let symbolsByNumber = [
@@ -2617,6 +3186,7 @@ private enum PreviewExternalXyzrenderWorker {
 
         let configuredExecutable = executablePath.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedExecutablePath = try resolvedExecutable(configuredExecutable)
+        let launch = launchConfiguration(for: resolvedExecutablePath)
 
         let safePreset = BurreteXyzrenderPreset.normalize(preset)
         let normalizedControls = normalizedControls(controls ?? [:])
@@ -2632,7 +3202,7 @@ private enum PreviewExternalXyzrenderWorker {
             configArgument: configArgument,
             controls: normalizedControls,
             orientationRefText: orientationRefText,
-            executablePath: resolvedExecutablePath
+            executablePath: launch.executablePath
         )
         if let cacheEntry = cacheEntryURL(for: cacheKey) {
             pruneCache(cacheEntry.deletingLastPathComponent())
@@ -2650,8 +3220,8 @@ private enum PreviewExternalXyzrenderWorker {
         }
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: resolvedExecutablePath)
-        var arguments = [inputURL.path, "-o", outputURL.path]
+        process.executableURL = URL(fileURLWithPath: launch.executablePath)
+        var arguments = launch.argumentPrefix + [inputURL.path, "-o", outputURL.path]
         arguments += ["--config", configArgument]
         let orientationRefURL = try writeOrientationRef(orientationRefText, outputDirectory: outputDirectory)
         if let orientationRefURL {
@@ -2663,7 +3233,7 @@ private enum PreviewExternalXyzrenderWorker {
         arguments += cliArguments(from: normalizedControls)
         arguments += sanitizedExtraArguments((normalizedControls["extraArguments"] as? String) ?? extraArguments)
         process.arguments = arguments
-        process.environment = mergedEnvironment()
+        process.environment = mergedEnvironment(overrides: launch.environment)
 
         _ = fileManager.createFile(atPath: logURL.path, contents: nil)
         let logHandle = try FileHandle(forWritingTo: logURL)
@@ -2910,6 +3480,68 @@ private enum PreviewExternalXyzrenderWorker {
         return FileManager.default.fileExists(atPath: candidate) ? candidate : nil
     }
 
+    private struct PreviewXyzrenderLaunch {
+        let executablePath: String
+        let argumentPrefix: [String]
+        let environment: [String: String]
+    }
+
+    private static func launchConfiguration(for executablePath: String) -> PreviewXyzrenderLaunch {
+        if let bundledLaunch = bundledPythonLaunch(for: executablePath) {
+            return bundledLaunch
+        }
+        return PreviewXyzrenderLaunch(executablePath: executablePath, argumentPrefix: [], environment: [:])
+    }
+
+    private static func bundledPythonLaunch(for executablePath: String) -> PreviewXyzrenderLaunch? {
+        let executableURL = URL(fileURLWithPath: executablePath)
+        guard executableURL.lastPathComponent == "xyzrender" else { return nil }
+        let runtimeRoot = executableURL
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        guard runtimeRoot.lastPathComponent == "xyzrender-runtime" else { return nil }
+        let resources = runtimeRoot.deletingLastPathComponent()
+        let python = resources
+            .appendingPathComponent("xyzrender-python", isDirectory: true)
+            .appendingPathComponent("bin", isDirectory: true)
+            .appendingPathComponent("python3", isDirectory: false)
+        guard FileManager.default.isExecutableFile(atPath: python.path) else { return nil }
+        guard let sitePackages = findSitePackages(in: runtimeRoot.appendingPathComponent("lib", isDirectory: true), depth: 0) else {
+            return nil
+        }
+        return PreviewXyzrenderLaunch(
+            executablePath: python.path,
+            argumentPrefix: ["-m", "xyzrender.cli"],
+            environment: [
+                "PYTHONNOUSERSITE": "1",
+                "PYTHONPATH": sitePackages.path
+            ]
+        )
+    }
+
+    private static func findSitePackages(in directory: URL, depth: Int) -> URL? {
+        guard depth <= 2 else { return nil }
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return nil }
+        for entry in entries {
+            let isDirectory = (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+            guard isDirectory else { continue }
+            if entry.lastPathComponent == "site-packages" { return entry }
+        }
+        guard depth < 2 else { return nil }
+        for entry in entries {
+            let isDirectory = (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+            guard isDirectory else { continue }
+            if let found = findSitePackages(in: entry, depth: depth + 1) {
+                return found
+            }
+        }
+        return nil
+    }
+
     private static func executableSearchPaths() -> [String] {
         let containerHome = FileManager.default.homeDirectoryForCurrentUser.path
         let userHome = "/Users/\(NSUserName())"
@@ -3129,13 +3761,16 @@ private enum PreviewExternalXyzrenderWorker {
         return tokens
     }
 
-    private static func mergedEnvironment() -> [String: String] {
+    private static func mergedEnvironment(overrides: [String: String] = [:]) -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
         let defaultPath = executableSearchPaths().joined(separator: ":")
         if let path = environment["PATH"], !path.isEmpty {
             environment["PATH"] = defaultPath + ":" + path
         } else {
             environment["PATH"] = defaultPath
+        }
+        for (key, value) in overrides {
+            environment[key] = value
         }
         return environment
     }
@@ -3305,6 +3940,7 @@ private enum PreviewError: LocalizedError {
     case gridFileTypeDisabled(String)
     case fileTooLarge(String, Int64, Int64)
     case couldNotExtractBoundedMaestroPreview(String, Int)
+    case notRenderableStandaloneStructure(String)
     case ubiquitousFileNotDownloaded(String)
     case webRenderFailed(String)
     case webRenderTimedOut
@@ -3329,6 +3965,8 @@ private enum PreviewError: LocalizedError {
             return "\(name) is too large for Quick Look preview (\(size) bytes; limit \(limit) bytes). Open it in the Burrete app viewer or use a smaller file."
         case .couldNotExtractBoundedMaestroPreview(let name, let limit):
             return "\(name) is too large for full Quick Look loading, and Burrete could not extract a Maestro atom table from the first \(limit) bytes."
+        case .notRenderableStandaloneStructure(let name):
+            return "\(name) does not contain standalone molecular coordinates Burrete can preview. Open the referenced structure file directly if this output report points to one."
         case .ubiquitousFileNotDownloaded(let name):
             return "\(name) is in iCloud and is not downloaded locally. Download it in Finder, then open Quick Look again."
         case .webRenderFailed(let message):

@@ -6,6 +6,20 @@
   const CARD_MIN_STORAGE_KEY = 'buret.grid.cardMin';
   const CARD_RENDERER_STORAGE_KEY = 'buret.grid.cardRenderer';
   const RDKIT_USE_INPUT_COORDS_STORAGE_KEY = 'buret.grid.rdkitUseInputCoords';
+  const DEFAULT_XYZRENDER_PRESETS = [
+    { value: 'default', label: 'Default' },
+    { value: 'flat', label: 'Flat' },
+    { value: 'paton', label: 'Paton' },
+    { value: 'pmol', label: 'PMol' },
+    { value: 'skeletal', label: 'Skeletal' },
+    { value: 'bubble', label: 'Bubble' },
+    { value: 'tube', label: 'Tube' },
+    { value: 'btube', label: 'BTube' },
+    { value: 'mtube', label: 'MTube' },
+    { value: 'wire', label: 'Wire' },
+    { value: 'graph', label: 'Graph' },
+    { value: 'custom', label: 'Custom JSON' }
+  ];
   const MIN_CARD_MIN = 86;
   const MAX_CARD_MIN = 360;
   const DEFAULT_CARD_MIN = 174;
@@ -47,6 +61,7 @@
     sort: 'index',
     showProperties: false,
     cardRenderer: storedCardRenderer(),
+    xyzrenderPreset: null,
     rdkitUseInputCoords: storedBoolean(RDKIT_USE_INPUT_COORDS_STORAGE_KEY, false),
     cardMin: storedOptionalInteger(CARD_MIN_STORAGE_KEY, MIN_CARD_MIN, MAX_CARD_MIN),
     hiddenRows: new Set(),
@@ -75,7 +90,9 @@
     remoteLoading: false,
     dirty: false,
     dirtyReason: '',
+    undoStack: [],
     rowPatches: new Map(),
+    insertedRows: [],
     indexPollTimer: null,
     requestSeq: 0,
     token: 0,
@@ -200,14 +217,35 @@
         return;
       }
       if (body.type === 'gridSavedAs') {
-        state.dirty = false;
-        state.dirtyReason = '';
-        setStatus(`[grid] Saved as ${body.name || 'collection file'}. Source file is unchanged.`);
+        markGridClean();
+        setStatus(`[grid] Saved as ${body.name || 'collection file'}.`);
         updateChrome(config());
         return;
       }
       if (body.type === 'gridSaveAsError') {
         setStatus(body.error || '[grid] Save As failed.', 'error');
+        return;
+      }
+      if (body.type === 'gridSaved') {
+        markGridClean();
+        setStatus(`[grid] Saved ${body.name || 'collection file'}.`);
+        updateChrome(config());
+        return;
+      }
+      if (body.type === 'gridSaveError') {
+        setStatus(body.error || '[grid] Save failed.', 'error');
+        return;
+      }
+      if (body.type === 'gridApplyKetcherRow') {
+        applyKetcherGridRow(body, config());
+        return;
+      }
+      if (body.type === 'gridMoleculeExported') {
+        setStatus(`[grid] Exported ${body.name || 'molecule file'}.`);
+        return;
+      }
+      if (body.type === 'gridMoleculeExportError') {
+        setStatus(body.error || '[grid] Export molecule failed.', 'error');
         return;
       }
       const requestId = String(body.requestId || '');
@@ -216,6 +254,7 @@
       state.hostRequests.delete(requestId);
       try { clearTimeout(pending.timeoutId); } catch (_) {}
       if (body.type === 'gridPage' || body.type === 'xyzrenderCard') pending.resolve(body.result || {});
+      else if (body.type === 'structureText') pending.resolve({ text: String(body.text || '') });
       else if (body.type === 'xyzrenderSheetItemRendered') pending.resolve(body);
       else pending.reject(new Error(body.error || 'Grid host request failed.'));
     });
@@ -386,8 +425,10 @@
   }
 
   function supportsXyzrenderCards(cfg) {
-    return (cfg?.appViewer === true && cfg?.gridDataMode === 'bridge')
-      || (typeof cfg?.xyzrenderEndpoint === 'string' && cfg.xyzrenderEndpoint.trim().length > 0);
+    return cfg?.appViewer === true && (
+      cfg?.gridDataMode === 'bridge'
+      || (typeof cfg?.xyzrenderEndpoint === 'string' && cfg.xyzrenderEndpoint.trim().length > 0)
+    );
   }
 
   function normalizeCardRenderer(cfg) {
@@ -528,7 +569,7 @@
     }
     state.selectionKeydownHandler = event => handleGridSelectionKeydown(event, cfg);
     document.addEventListener('keydown', state.selectionKeydownHandler);
-    applyGridPreferences();
+    applyGridPreferences(cfg);
     initGridRail(cfg);
     initInfiniteLoading(cfg);
   }
@@ -545,6 +586,9 @@
       selectionEnabled: caps.selection,
       substructureSearch: caps.substructureSearch,
       supportsXyzrenderCards: supportsXyzrenderCards(cfg),
+      cardRenderer: state.cardRenderer,
+      xyzrenderPreset: currentXyzrenderPreset(cfg),
+      xyzrenderPresetOptions: xyzrenderPresetOptions(cfg),
       ketcherOpen: caps.ketcherOpen,
       rendererSwitch: caps.rendererSwitch,
       sortOptions: propertyOptionList(cfg),
@@ -558,7 +602,7 @@
       },
       onShowProperties() {
         state.showProperties = !state.showProperties;
-        applyGridPreferences();
+        applyGridPreferences(cfg);
       },
       onClearSmarts() {
         state.query = '';
@@ -571,10 +615,13 @@
       onSelectAll() { selectAllRows(cfg); },
       onClearSelection() { clearSelection(cfg); },
       onCopySelected() { copySelected(); },
+      onSaveGrid() { saveGrid(cfg); },
       onSaveGridAs() { saveGridAs(cfg); },
+      onUndoGridEdit() { undoLastGridEdit(cfg); },
       onExportSmiles() { exportSmiles(cfg); },
       onExportCSV() { exportCSV(cfg); },
       onSetCardRenderer(value) { setCardRenderer(value, cfg); },
+      onXyzrenderPresetChange(value) { setXyzrenderPreset(value, cfg); },
       onOpenKetcher() { requestSelectedKetcherDocument(cfg); },
       onRendererSwitch(value) { requestRendererSwitch(value, cfg); },
       onRdkitUseInputCoordsChange(checked) {
@@ -584,9 +631,28 @@
         render(cfg);
       }
     });
+    bindGridEditControlHandlers(cfg);
   }
 
-  function applyGridPreferences() {
+  function bindGridEditControlHandlers(cfg) {
+    const bindings = [
+      ['save-grid', () => saveGrid(cfg)],
+      ['undo-grid-edit', () => undoLastGridEdit(cfg)]
+    ];
+    bindings.forEach(([id, handler]) => {
+      const button = document.getElementById(id);
+      if (!button || button.dataset.buretGridEditBound === '1') return;
+      button.dataset.buretGridEditBound = '1';
+      button.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        handler();
+      }, true);
+    });
+  }
+
+  function applyGridPreferences(cfg) {
+    const currentCfg = cfg || config();
     document.body.classList.add('buret-grid-size-compact');
     document.body.classList.toggle('buret-hide-properties', !state.showProperties);
     if (state.cardMin == null) {
@@ -604,7 +670,60 @@
       propertiesToggle.setAttribute('aria-pressed', state.showProperties ? 'true' : 'false');
     }
     syncCardRendererSwitch();
+    syncXyzrenderPresetControl(currentCfg);
     syncRdkitCoordinatesControl();
+    syncGridEditControls();
+  }
+
+  function syncGridEditControls() {
+    const saveButton = document.getElementById('save-grid');
+    if (saveButton) {
+      saveButton.disabled = !state.dirty;
+      saveButton.title = state.dirty ? 'Overwrite the source collection file' : 'No unsaved changes';
+    }
+    const undoButton = document.getElementById('undo-grid-edit');
+    if (undoButton) {
+      undoButton.disabled = state.undoStack.length === 0;
+      undoButton.title = state.undoStack.length ? 'Undo the last collection edit' : 'Nothing to undo';
+    }
+  }
+
+  function xyzrenderPresetOptions(cfg) {
+    const seen = new Set();
+    const rows = Array.isArray(cfg?.xyzrenderPresetOptions) && cfg.xyzrenderPresetOptions.length
+      ? cfg.xyzrenderPresetOptions
+      : DEFAULT_XYZRENDER_PRESETS;
+    const options = [];
+    for (const row of rows) {
+      const value = normalizeXyzrenderPreset(row?.value);
+      if (seen.has(value)) continue;
+      seen.add(value);
+      options.push({ value, label: String(row?.label || value) });
+    }
+    return options.length ? options : DEFAULT_XYZRENDER_PRESETS;
+  }
+
+  function normalizeXyzrenderPreset(value) {
+    const raw = String(value || 'default').trim().toLowerCase();
+    return DEFAULT_XYZRENDER_PRESETS.some(row => row.value === raw) ? raw : 'default';
+  }
+
+  function currentXyzrenderPreset(cfg) {
+    if (state.xyzrenderPreset) return state.xyzrenderPreset;
+    const preset = normalizeXyzrenderPreset(cfg?.externalArtifact?.preset || cfg?.xyzrenderPreset || 'default');
+    state.xyzrenderPreset = preset;
+    return preset;
+  }
+
+  function setXyzrenderPreset(value, cfg) {
+    const next = normalizeXyzrenderPreset(value);
+    if (currentXyzrenderPreset(cfg) === next) return;
+    state.xyzrenderPreset = next;
+    resetXyzrenderCardObserver();
+    state.xyzrenderCardCache.clear();
+    resetCardRenderQueues();
+    syncXyzrenderPresetControl(cfg);
+    if (state.cardRenderer === 'xyzrender') render(cfg);
   }
 
   function propertyOptionList(cfg) {
@@ -631,6 +750,7 @@
     state.cardRenderer = next;
     store(CARD_RENDERER_STORAGE_KEY, next);
     syncCardRendererSwitch();
+    syncXyzrenderPresetControl(cfg);
     syncRdkitCoordinatesControl();
     render(cfg);
   }
@@ -642,6 +762,16 @@
       button.classList.toggle('active', active);
       button.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
+  }
+
+  function syncXyzrenderPresetControl(cfg) {
+    const control = document.getElementById('xyzrender-preset-control');
+    const select = document.getElementById('xyzrender-preset');
+    if (!control || !select) return;
+    const enabled = state.cardRenderer === 'xyzrender';
+    control.hidden = !enabled;
+    select.disabled = !enabled;
+    select.value = currentXyzrenderPreset(cfg);
   }
 
   function initRdkitCoordinatesControl(cfg) {
@@ -714,6 +844,25 @@
     setStatus(`[grid] Opening ${records.length.toLocaleString()} selected molecule${records.length === 1 ? '' : 's'} in Molstar.`);
   }
 
+  function requestSingleMolstarDocument(row, cfg) {
+    const record = sdfRecordTextForMolstar(row);
+    const label = row?.name || `Molecule ${Number(row?.index) + 1 || 1}`;
+    if (!record) {
+      setStatus(`[grid] ${label} does not have SDF structure data for Molstar.`, 'error');
+      return;
+    }
+    const receptorPath = String(cfg?.dockingReceptorPath || '').trim();
+    const title = `${safeStructureFileStem(label, Number(row?.index))}.sdf`;
+    post('openSdfMolstarDocument', `[grid] Open ${label} in Molstar.`, {
+      documentId: cfg?.documentId || null,
+      title,
+      extension: 'sdf',
+      textBase64: textToBase64(record),
+      receptorPath: receptorPath || null
+    });
+    setStatus(`[grid] Opening ${label} in Molstar.`);
+  }
+
   function requestSelectedKetcherDocument(cfg) {
     const rows = selectedMolstarRows();
     if (!rows.length) {
@@ -765,12 +914,16 @@
       setStatus(`[grid] ${label} has no structure data for Ketcher.`, 'error');
       return;
     }
-    post('openInKetcher', `[grid] Open ${label} in Ketcher.`, {
+    const payload = {
       title: record.path,
       extension: record.inputExtension,
       textBase64: textToBase64(ketcherFragmentText(record)),
-      documentId: cfg?.documentId || null
-    });
+      documentId: cfg?.documentId || null,
+      rowIndex: Number(row?.index),
+      gridEdit: true
+    };
+    const message = `[grid] Open ${label} in Ketcher.`;
+    post('openInKetcher', message, payload);
   }
 
   function ketcherFragmentText(record) {
@@ -1198,7 +1351,7 @@
   }
 
   function currentLocalCollectionRows() {
-    return applyVirtualGridEdits(state.all).sort((a, b) => Number(a.index) - Number(b.index));
+    return applyVirtualGridEdits(state.all);
   }
 
   function cancelVirtualWindowRender() {
@@ -1396,11 +1549,12 @@
     const clearSelectionButton = document.getElementById('clear-selection');
     if (clearSelectionButton) clearSelectionButton.disabled = state.selected.size === 0;
     syncRdkitCoordinatesControl();
+    syncGridEditControls();
     let footerText;
     if (state.smartsError) {
       footerText = `SMARTS error: ${state.smartsError}`;
     } else if (state.dirty) {
-      footerText = `Virtual grid has unsaved ${state.dirtyReason || 'edits'}. Export to keep changes; the source file is unchanged.`;
+      footerText = `Unsaved changes. Use Save to overwrite the source file, Save As to write a new file, or Undo to revert the last edit.`;
     } else if (state.indexing) {
       footerText = `Indexing continues in the background. Search and sort use ${included.toLocaleString()} indexed molecules so far.`;
     } else if (total > included && !state.remoteMode) {
@@ -1758,10 +1912,10 @@
     if (caps.selection) {
       el.tabIndex = 0;
       el.role = 'button';
-      el.addEventListener('click', event => handleCardSelection(event, row, cfg, el));
+      el.addEventListener('click', event => handleCardOpen(event, row, cfg, el));
       el.addEventListener('keydown', event => {
         if (event.key === ' ' || event.key === 'Enter') {
-          handleCardSelection(event, row, cfg, el);
+          handleCardOpen(event, row, cfg, el);
         }
       });
     }
@@ -1815,43 +1969,73 @@
       event.stopPropagation();
       el.classList.remove('buret-card-drop-target');
       const payload = readStructureDropPayload(event.dataTransfer);
-      if (!payload || payload.paths.length || payload.records.length !== 1) {
-        setStatus('[grid] Drop a single molecule record to replace a grid row.', 'error');
+      if (!payload || payload.records.length > 1 || payload.paths.length > 1 || (payload.records.length + payload.paths.length) !== 1) {
+        setStatus('[grid] Drop a single molecule record or file to replace a grid row.', 'error');
         return;
       }
-      const patch = recordToGridRowPatch(payload.records[0], row);
-      if (!patch) {
-        setStatus('[grid] Dropped molecule record is not supported for grid row replacement.', 'error');
-        return;
-      }
-      if (replaceGridRow(row, patch, cfg)) {
-        setStatus(`[grid] Replaced ${row.name || `Molecule ${Number(row.index) + 1}`} with ${patch.name}. Source file is unchanged.`);
-      }
+      void replaceGridRowFromDropPayload(row, payload, cfg);
     });
   }
 
   function dataTransferHasStructurePayload(dataTransfer) {
     const types = dataTransfer?.types;
     if (!types) return false;
-    if (typeof types.includes === 'function') return types.includes(STRUCTURE_DRAG_MIME);
-    if (typeof types.contains === 'function') return types.contains(STRUCTURE_DRAG_MIME);
-    try { return Array.from(types).includes(STRUCTURE_DRAG_MIME); } catch (_) { return false; }
+    if (typeof types.includes === 'function') return types.includes(STRUCTURE_DRAG_MIME) || types.includes('Files');
+    if (typeof types.contains === 'function') return types.contains(STRUCTURE_DRAG_MIME) || types.contains('Files');
+    try {
+      const values = Array.from(types);
+      return values.includes(STRUCTURE_DRAG_MIME) || values.includes('Files');
+    } catch (_) {
+      return false;
+    }
   }
 
   function readStructureDropPayload(dataTransfer) {
     try {
       const raw = dataTransfer?.getData(STRUCTURE_DRAG_MIME);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      const paths = Array.isArray(parsed?.paths)
-        ? parsed.paths.map(path => String(path || '').trim()).filter(Boolean)
-        : [];
-      const records = Array.isArray(parsed?.records)
-        ? parsed.records.map(normalizeStructureDropRecord).filter(Boolean)
-        : [];
-      return { paths, records };
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const paths = Array.isArray(parsed?.paths)
+          ? parsed.paths.map(path => String(path || '').trim()).filter(Boolean)
+          : [];
+        const records = Array.isArray(parsed?.records)
+          ? parsed.records.map(normalizeStructureDropRecord).filter(Boolean)
+          : [];
+        return { paths, records };
+      }
+      const paths = Array.from(dataTransfer?.files || [])
+        .map(file => String(file?.path || '').trim())
+        .filter(Boolean);
+      if (paths.length > 0) return { paths, records: [] };
     } catch (_) {
       return null;
+    }
+    return null;
+  }
+
+  async function replaceGridRowFromDropPayload(row, payload, cfg) {
+    let record = payload.records[0] || null;
+    if (!record && payload.paths.length === 1) {
+      const path = payload.paths[0];
+      try {
+        const response = await hostRequest('readStructureText', { path });
+        record = normalizeStructureDropRecord({
+          path,
+          inputExtension: structureRecordExtension(null, path),
+          text: response.text
+        });
+      } catch (error) {
+        setStatus(`[grid] Could not read dropped file: ${error instanceof Error ? error.message : String(error)}`, 'error');
+        return;
+      }
+    }
+    const patch = recordToGridRowPatch(record, row);
+    if (!patch) {
+      setStatus('[grid] Dropped molecule record is not supported for grid row replacement.', 'error');
+      return;
+    }
+    if (replaceGridRow(row, patch, cfg)) {
+      setStatus(`[grid] Replaced ${row.name || `Molecule ${Number(row.index) + 1}`} with ${patch.name}. Unsaved changes.`);
     }
   }
 
@@ -1876,13 +2060,15 @@
     if (!text) return null;
     const fallbackName = row?.name || `Molecule ${Number(row?.index) + 1 || 1}`;
     if (extension === 'sdf' || extension === 'sd' || extension === 'mol') {
-      const molblock = text.replace(/\n?\$\$\$\$\s*$/u, '').trimEnd();
+      const parsed = parseSdfRecordPatch(text);
+      const molblock = parsed.molblock;
       if (!molblock) return null;
       const title = molblock.split(/\r?\n/u).find(line => line.trim()) || '';
       return {
         name: structureRecordDisplayName(record, title, fallbackName),
         molblock,
-        smiles: ''
+        smiles: parsed.smiles,
+        props: { ...(row?.props || {}), ...parsed.props }
       };
     }
     if (extension === 'smi' || extension === 'smiles') {
@@ -1908,9 +2094,54 @@
     return base || String(fallback || '').trim() || 'Molecule';
   }
 
-  function replaceGridRow(row, patch, cfg) {
+  function parseSdfRecordPatch(text) {
+    const record = String(text || '')
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .split(/\n\$\$\$\$\s*/u)[0]
+      .trimEnd();
+    const lines = record.split('\n');
+    const propStart = lines.findIndex(line => /^>\s*</u.test(line));
+    const molblockLines = propStart >= 0 ? lines.slice(0, propStart) : lines;
+    const props = propStart >= 0 ? parseSdfRecordProps(lines.slice(propStart)) : {};
+    const smilesKey = Object.keys(props).find(key => key.toLowerCase() === 'smiles');
+    const smiles = smilesKey ? String(props[smilesKey] || '').trim() : '';
+    if (smilesKey) delete props[smilesKey];
+    return {
+      molblock: molblockLines.join('\n').trimEnd(),
+      smiles,
+      props
+    };
+  }
+
+  function parseSdfRecordProps(lines) {
+    const props = {};
+    for (let index = 0; index < lines.length; index++) {
+      const header = String(lines[index] || '').match(/^>\s*<([^>]+)>/u);
+      if (!header) continue;
+      const key = header[1].trim();
+      if (!key) continue;
+      const values = [];
+      index++;
+      while (index < lines.length) {
+        const line = String(lines[index] || '');
+        if (/^>\s*</u.test(line)) {
+          index--;
+          break;
+        }
+        if (!line.trim()) break;
+        values.push(line);
+        index++;
+      }
+      props[key] = values.join('\n').trimEnd();
+    }
+    return props;
+  }
+
+  function replaceGridRow(row, patch, cfg, options = {}) {
     const index = Number(row?.index);
     if (!Number.isFinite(index)) return false;
+    if (options.undo !== false) pushUndoSnapshot('replace molecule');
     let replaced = false;
     const replace = candidate => {
       if (Number(candidate?.index) !== index) return candidate;
@@ -1921,7 +2152,7 @@
         molblock: patch.molblock,
         smiles: patch.smiles,
         index: candidate.index,
-        props: candidate.props || {}
+        props: patch.props || candidate.props || {}
       };
     };
     state.rows = state.rows.map(replace);
@@ -1931,13 +2162,72 @@
       name: patch.name,
       molblock: patch.molblock,
       smiles: patch.smiles,
-      props: row.props || {}
+      props: patch.props || row.props || {}
     });
     state.svgCache.clear();
     state.xyzrenderCardCache.clear();
     markGridDirty('row edits');
     void render(cfg);
     return true;
+  }
+
+  function duplicateGridRow(row, cfg) {
+    const index = Number(row?.index);
+    if (!Number.isFinite(index)) return false;
+    pushUndoSnapshot('duplicate molecule');
+    const duplicate = {
+      ...row,
+      index: nextGridRowIndex(),
+      name: `${row.name || `Molecule ${index + 1}`} copy`,
+      props: { ...(row.props || {}) }
+    };
+    insertAfterRow(state.rows, index, duplicate);
+    if (state.remoteMode) state.insertedRows.push(duplicate);
+    else insertAfterRow(state.all, index, duplicate);
+    state.totalRows += 1;
+    markGridDirty('row edits');
+    void render(cfg);
+    return true;
+  }
+
+  function insertAfterRow(rows, index, row) {
+    const position = rows.findIndex(candidate => Number(candidate.index) === index);
+    if (position >= 0) rows.splice(position + 1, 0, row);
+    else rows.push(row);
+  }
+
+  function nextGridRowIndex() {
+    const indexes = [...state.rows, ...state.all, ...state.insertedRows]
+      .map(row => Number(row?.index))
+      .filter(Number.isFinite);
+    return indexes.length ? Math.max(...indexes) + 1 : 0;
+  }
+
+  function applyKetcherGridRow(body, cfg) {
+    const rowIndex = Number(body.rowIndex);
+    if (!Number.isFinite(rowIndex)) {
+      setStatus('[grid] Ketcher Apply did not identify a grid row.', 'error');
+      return;
+    }
+    const text = String(body.text || '').trim();
+    const extension = String(body.extension || 'sdf').trim().toLowerCase().replace(/^\./u, '') || 'sdf';
+    const row = [...state.rows, ...state.all].find(candidate => Number(candidate.index) === rowIndex);
+    if (!row) {
+      setStatus('[grid] Ketcher Apply target row is no longer visible.', 'error');
+      return;
+    }
+    const patch = recordToGridRowPatch({
+      path: body.title || row.name || `molecule-${rowIndex + 1}.${extension}`,
+      inputExtension: extension,
+      text
+    }, row);
+    if (!patch) {
+      setStatus('[grid] Ketcher Apply returned an unsupported molecule record.', 'error');
+      return;
+    }
+    if (replaceGridRow(row, patch, cfg)) {
+      setStatus(`[grid] Applied Ketcher edit to ${row.name || `Molecule ${rowIndex + 1}`}. Unsaved changes.`);
+    }
   }
 
   function gridDragRecordsForRow(row) {
@@ -2051,6 +2341,16 @@
     updateChrome(cfg);
   }
 
+  function handleCardOpen(event, row, cfg, cardElement) {
+    if (event.defaultPrevented || event.target?.closest?.('[data-buret-card-resize]')) return;
+    if (event.target?.closest?.('button, input, select, textarea, [contenteditable="true"]')) return;
+    if (event instanceof MouseEvent && event.button !== 0) return;
+    event.preventDefault();
+    hideMoleculeContextMenu();
+    showMoleculeDetail(row, cfg);
+    cardElement?.focus?.({ preventScroll: true });
+  }
+
   function handleCardSelection(event, row, cfg, cardElement) {
     if (event.defaultPrevented || event.target?.closest?.('[data-buret-card-resize]')) return;
     event.preventDefault();
@@ -2111,17 +2411,15 @@
     menu.style.top = `${Math.round(top)}px`;
   }
 
-  function isMoleculeGraphicContextTarget(target) {
+  function isMoleculeContextTarget(target) {
     if (!(target instanceof Element)) return false;
-    if (target.closest('[data-buret-card-resize], .buret-card-body, button, input, select, textarea, [contenteditable="true"]')) return false;
-    const picture = target.closest('[data-buret-molecule-picture]');
-    if (!picture) return false;
-    if (target.closest('.buret-molecule-error')) return true;
-    return !!target.closest('path, line, circle, ellipse, polygon, polyline, text, image, img');
+    if (target.closest('[data-buret-card-resize], button, input, select, textarea, [contenteditable="true"]')) return false;
+    return !!target.closest('[data-buret-molecule-picture], .buret-card');
   }
 
-  function removeGridRow(row) {
+  function removeGridRow(row, options = {}) {
     const index = Number(row.index);
+    if (options.undo !== false) pushUndoSnapshot('delete molecule');
     state.selected.delete(index);
     state.hiddenRows.add(index);
     if (!state.remoteMode) {
@@ -2134,8 +2432,79 @@
   }
 
   function markGridDirty(reason) {
+    const wasDirty = state.dirty;
     state.dirty = true;
     state.dirtyReason = reason || state.dirtyReason || 'edits';
+    if (!wasDirty) notifyGridDirty(true);
+    syncGridEditControls();
+  }
+
+  function markGridClean() {
+    const wasDirty = state.dirty;
+    state.dirty = false;
+    state.dirtyReason = '';
+    state.undoStack = [];
+    if (wasDirty) notifyGridDirty(false);
+    syncGridEditControls();
+  }
+
+  function notifyGridDirty(dirty) {
+    const cfg = window.BurreteConfig && typeof window.BurreteConfig === 'object' ? window.BurreteConfig : {};
+    post('gridDirtyChanged', dirty ? '[grid] Unsaved changes.' : '[grid] Saved changes.', {
+      documentId: cfg.documentId || null,
+      dirty,
+      dirtyReason: dirty ? state.dirtyReason : ''
+    });
+  }
+
+  function snapshotGridEditState() {
+    return {
+      rows: state.rows.slice(),
+      all: state.all.slice(),
+      totalRows: state.totalRows,
+      hiddenRows: new Set(state.hiddenRows),
+      selected: new Set(state.selected),
+      rowPatches: new Map(state.rowPatches),
+      insertedRows: state.insertedRows.slice(),
+      dirty: state.dirty,
+      dirtyReason: state.dirtyReason
+    };
+  }
+
+  function restoreGridEditState(snapshot) {
+    state.rows = snapshot.rows.slice();
+    state.all = snapshot.all.slice();
+    state.totalRows = snapshot.totalRows;
+    state.hiddenRows = new Set(snapshot.hiddenRows);
+    state.selected = new Set(snapshot.selected);
+    state.rowPatches = new Map(snapshot.rowPatches);
+    state.insertedRows = snapshot.insertedRows.slice();
+    state.dirty = snapshot.dirty;
+    state.dirtyReason = snapshot.dirtyReason;
+    state.svgCache.clear();
+    state.xyzrenderCardCache.clear();
+    notifyGridDirty(state.dirty);
+    syncGridEditControls();
+  }
+
+  function pushUndoSnapshot(label) {
+    state.undoStack.push({
+      label: String(label || 'edit'),
+      snapshot: snapshotGridEditState()
+    });
+    if (state.undoStack.length > 50) state.undoStack.shift();
+    syncGridEditControls();
+  }
+
+  function undoLastGridEdit(cfg) {
+    const entry = state.undoStack.pop();
+    if (!entry) {
+      syncGridEditControls();
+      return;
+    }
+    restoreGridEditState(entry.snapshot);
+    setStatus(`[grid] Undid ${entry.label}.`);
+    void render(cfg);
   }
 
   function describeGridRow(row) {
@@ -2148,34 +2517,133 @@
     return parts.join(' · ');
   }
 
+  function showMoleculeDetail(row, cfg) {
+    hideMoleculeDetail();
+    const index = Number(row.index);
+    const overlay = document.createElement('div');
+    overlay.className = 'buret-grid-molecule-detail-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', row.name || `Molecule ${index + 1}`);
+    const props = Object.entries(row.props || {})
+      .filter(([, value]) => String(value ?? '').trim().length > 0);
+    overlay.innerHTML = `
+      <div class="buret-grid-molecule-detail">
+        <div class="buret-grid-molecule-detail-image" data-buret-molecule-picture>${draw(row, cfg)}</div>
+        <div class="buret-grid-molecule-detail-body">
+          <div class="buret-grid-molecule-detail-title-row">
+            <div>
+              <div class="buret-eyebrow">Molecule ${Number.isFinite(index) ? index + 1 : ''}</div>
+              <h2>${escapeHTML(row.name || `Molecule ${index + 1}`)}</h2>
+            </div>
+            <button type="button" data-buret-detail-close aria-label="Close molecule detail">Close</button>
+          </div>
+          ${row.smiles ? `<div class="buret-grid-molecule-detail-smiles">${escapeHTML(row.smiles)}</div>` : ''}
+          ${props.length
+            ? `<dl class="buret-grid-molecule-detail-props">${props.map(([key, value]) => `<dt>${escapeHTML(key)}</dt><dd>${escapeHTML(value)}</dd>`).join('')}</dl>`
+            : '<div class="buret-no-metadata">No metadata</div>'}
+          <div class="buret-grid-molecule-detail-actions">
+            <button type="button" data-buret-detail-action="molstar">Open in Mol*</button>
+            <button type="button" data-buret-detail-action="ketcher">Edit in Ketcher</button>
+            <button type="button" data-buret-detail-action="copy">Copy structure</button>
+            <button type="button" data-buret-detail-action="export">Export molecule...</button>
+          </div>
+        </div>
+      </div>`;
+    root.appendChild(overlay);
+    overlay.querySelector('[data-buret-detail-close]')?.addEventListener('click', hideMoleculeDetail);
+    overlay.addEventListener('pointerdown', event => {
+      if (event.target === overlay) hideMoleculeDetail();
+    });
+    overlay.querySelectorAll('[data-buret-detail-action]').forEach(button => {
+      button.addEventListener('click', () => {
+        const action = button.getAttribute('data-buret-detail-action') || '';
+        if (action === 'molstar') requestSingleMolstarDocument(row, cfg);
+        else if (action === 'ketcher') requestOpenInKetcher(row, cfg);
+        else if (action === 'copy') void copyMoleculeStructure(row);
+        else if (action === 'export') exportMolecule(row);
+      });
+    });
+    const onKey = event => {
+      if (event.key === 'Escape') hideMoleculeDetail();
+    };
+    overlay._buretDetailKeyHandler = onKey;
+    document.addEventListener('keydown', onKey);
+    scheduleRdkitCard(overlay, row);
+    scheduleXyzrenderCard(overlay, row, cfg);
+    overlay.querySelector('[data-buret-detail-close]')?.focus?.();
+  }
+
+  function hideMoleculeDetail() {
+    const overlay = root.querySelector('.buret-grid-molecule-detail-overlay');
+    const handler = overlay?._buretDetailKeyHandler;
+    if (handler) document.removeEventListener('keydown', handler);
+    overlay?.remove();
+  }
+
+  async function copyMoleculeStructure(row) {
+    const record = gridDragRecord(row);
+    const label = row?.name || `Molecule ${Number(row?.index) + 1 || 1}`;
+    if (!record) {
+      setStatus(`[grid] ${label} has no structure data to copy.`, 'error');
+      return;
+    }
+    const text = record.inputExtension === 'sdf'
+      ? record.text.replace(/\n?\$\$\$\$\s*$/u, '').trimEnd() + '\n$$$$\n'
+      : record.text;
+    if (await writeClipboardText(text, `[grid] Copied ${label}.`)) return;
+    if (canUseNativeBridge()) {
+      post('copyText', `[grid] Copy ${label}.`, { text });
+      setStatus(`[grid] Copy requested for ${label}.`);
+      return;
+    }
+    setStatus('Clipboard is unavailable in this WebView.', 'error');
+  }
+
+  function exportMolecule(row) {
+    const record = gridDragRecord(row);
+    const label = row?.name || `Molecule ${Number(row?.index) + 1 || 1}`;
+    if (!record) {
+      setStatus(`[grid] ${label} has no structure data to export.`, 'error');
+      return;
+    }
+    const mimeType = record.inputExtension === 'sdf'
+      ? 'chemical/x-mdl-sdfile'
+      : 'chemical/x-daylight-smiles';
+    if (canUseNativeBridge()) {
+      post('exportGridMolecule', `[grid] Export ${label}.`, {
+        text: record.text,
+        name: record.path,
+        mimeType
+      });
+      setStatus(`[grid] Export requested: ${record.path}.`);
+      return;
+    }
+    download(record.text, record.path, mimeType);
+  }
+
   function moleculeContextMenuAction(action, row) {
     const cfg = config();
     const label = row.name || `Molecule ${Number(row.index) + 1}`;
-    if (action === 'inspect') {
-      setStatus(`[grid] ${describeGridRow(row)}`);
-    } else if (action === 'select') {
-      state.selected.add(Number(row.index));
-      state.selectionAnchorIndex = Number(row.index);
-      syncRenderedSelection();
-      updateChrome(cfg);
-      setStatus(`[grid] Selected ${label}.`);
-    } else if (action === 'hide') {
-      state.hiddenRows.add(Number(row.index));
-      state.selected.delete(Number(row.index));
-      refresh(cfg);
-      setStatus(`[grid] Hidden ${label}.`);
+    if (action === 'open') {
+      showMoleculeDetail(row, cfg);
+      setStatus(`[grid] Opened ${label}.`);
     } else if (action === 'remove') {
       removeGridRow(row);
       void render(cfg);
-      setStatus(`[grid] Deleted ${label} from this view.`);
+      setStatus(`[grid] Deleted ${label}. Unsaved changes.`);
     } else if (action === 'molstar') {
-      state.selected.clear();
-      state.selected.add(Number(row.index));
-      requestSdfPoseDocument(cfg);
-      setStatus(`[grid] Opening ${label} in Molstar pose view.`);
+      requestSingleMolstarDocument(row, cfg);
     } else if (action === 'ketcher') {
       requestOpenInKetcher(row, cfg);
       setStatus(`[grid] Opening ${label} in Ketcher.`);
+    } else if (action === 'duplicate') {
+      duplicateGridRow(row, cfg);
+      setStatus(`[grid] Duplicated ${label}. Unsaved changes.`);
+    } else if (action === 'copy') {
+      void copyMoleculeStructure(row);
+    } else if (action === 'export') {
+      exportMolecule(row);
     } else {
       setStatus(`[grid] Molecule action is unavailable for ${label}.`);
     }
@@ -2184,14 +2652,16 @@
 
   function showMoleculeContextMenu(event, row) {
     if (event.target?.closest?.('[data-buret-card-resize]')) return;
-    if (!isMoleculeGraphicContextTarget(event.target)) {
+    if (!isMoleculeContextTarget(event.target)) {
       event.preventDefault();
       event.stopPropagation();
+      event.stopImmediatePropagation?.();
       hideMoleculeContextMenu();
       return;
     }
     event.preventDefault();
     event.stopPropagation();
+    event.stopImmediatePropagation?.();
     hideMoleculeContextMenu();
     const index = Number(row.index);
     const menu = document.createElement('div');
@@ -2205,12 +2675,13 @@
     subtitle.className = 'buret-grid-molecule-context-menu-subtitle';
     subtitle.textContent = row.smiles || 'SDF molecule';
     const actions = [
-      ['select', 'Select molecule'],
-      ['remove', 'Delete molecule'],
-      ['ketcher', 'Open in Ketcher'],
-      ['molstar', 'Open in Molstar'],
-      ['hide', 'Hide molecule'],
-      ['inspect', 'Inspect properties']
+      ['open', 'Preview molecule'],
+      ['molstar', 'Open in Mol*'],
+      ['ketcher', 'Edit in Ketcher'],
+      ['duplicate', 'Duplicate'],
+      ['remove', 'Delete from collection'],
+      ['copy', 'Copy structure'],
+      ['export', 'Export molecule...']
     ];
     menu.append(title, subtitle);
     actions.forEach(([action, label]) => {
@@ -2551,7 +3022,7 @@
   }
 
   function xyzrenderCardKey(row, record) {
-    return `${row.index}|${record.inputExtension}|${hash(record.text || '')}|${state.smarts}`;
+    return `${row.index}|${record.inputExtension}|${currentXyzrenderPreset(config())}|${hash(record.text || '')}|${state.smarts}`;
   }
 
   function scheduleXyzrenderCard(card, row, cfg) {
@@ -2623,6 +3094,12 @@
     state.all = Array.isArray(window.BurreteGridRecords) ? window.BurreteGridRecords : [];
     state.selected = new Set();
     state.hiddenRows = new Set();
+    state.dirty = false;
+    state.dirtyReason = '';
+    state.undoStack = [];
+    state.rowPatches = new Map();
+    state.insertedRows = [];
+    state.xyzrenderPreset = null;
     state.selectionAnchorIndex = null;
     state.visibleCount = 0;
     state.renderedCount = 0;
@@ -2656,7 +3133,7 @@
     try {
       const request = {
         path: record.path,
-        preset: 'default',
+        preset: currentXyzrenderPreset(cfg),
         inputDataBase64: textToBase64(xyzrenderFragmentText(record)),
         inputExtension: record.inputExtension
       };
@@ -2709,7 +3186,7 @@
         items: jobs.map(job => ({
           id: job.key,
           path: job.record.path,
-          preset: 'default',
+          preset: currentXyzrenderPreset(job.cfg),
           inputDataBase64: textToBase64(xyzrenderFragmentText(job.record)),
           inputExtension: job.record.inputExtension
         }))
@@ -2996,16 +3473,23 @@
   async function copySelected() {
     const sourceRows = shouldCollectAllRemoteRows() ? await collectAllRemoteRows(config()) : selectedOrFiltered();
     const text = sourceRows.map(row => `${row.smiles || ''}\t${row.name || ''}`.trim()).join('\n');
+    if (await writeClipboardText(text, '[grid] Copied molecules.')) return;
     if (canUseNativeBridge()) {
       post('copyText', '[grid] Copy selected molecules.', { text });
       setStatus('[grid] Copy requested.');
       return;
     }
+    setStatus('Clipboard is unavailable in this WebView.', 'error');
+  }
+
+  async function writeClipboardText(text, successMessage) {
+    if (!navigator.clipboard?.writeText) return false;
     try {
       await navigator.clipboard.writeText(text);
-      setStatus('[grid] Copied molecules.');
+      setStatus(successMessage);
+      return true;
     } catch (_) {
-      setStatus('Clipboard is unavailable in this WebView.', 'error');
+      return false;
     }
   }
 
@@ -3037,18 +3521,38 @@
     const snapshot = gridSaveAsSnapshot(rows, cfg);
     if (canUseNativeBridge()) {
       post('saveGridAs', `[grid] Save As ${snapshot.name}.`, snapshot);
-      setStatus(`[grid] Save As requested: ${snapshot.name}. Source file is unchanged.`);
+      setStatus(`[grid] Save As requested: ${snapshot.name}.`);
       return;
     }
     download(snapshot.text, snapshot.name, snapshot.mimeType);
-    state.dirty = false;
-    state.dirtyReason = '';
-    setStatus(`[grid] Saved as ${snapshot.name}. Source file is unchanged.`);
+    markGridClean();
+    setStatus(`[grid] Saved as ${snapshot.name}.`);
+    updateChrome(cfg);
+  }
+
+  async function saveGrid(cfg) {
+    const rows = await collectCurrentCollectionRows(cfg);
+    if (!rows.length) {
+      setStatus('[grid] There are no molecules to save.', 'error');
+      return;
+    }
+    const snapshot = gridSaveAsSnapshot(rows, cfg);
+    if (canUseNativeBridge()) {
+      post('saveGrid', `[grid] Save ${snapshot.name}.`, snapshot);
+      setStatus(`[grid] Save requested: ${snapshot.name}.`);
+      return;
+    }
+    download(snapshot.text, snapshot.name, snapshot.mimeType);
+    markGridClean();
+    setStatus(`[grid] Saved ${snapshot.name}.`);
     updateChrome(cfg);
   }
 
   async function collectCurrentCollectionRows(cfg) {
-    if (state.remoteMode) return collectAllRemoteRows(cfg, '', 'index');
+    if (state.remoteMode) {
+      const rows = await collectAllRemoteRows(cfg, '', 'index');
+      return rows.concat(state.insertedRows);
+    }
     return currentLocalCollectionRows();
   }
 
@@ -3194,7 +3698,8 @@
   }
 
   function canUseNativeBridge() {
-    return !!window.webkit?.messageHandlers?.burrete;
+    const cfg = window.BurreteConfig && typeof window.BurreteConfig === 'object' ? window.BurreteConfig : {};
+    return cfg.appViewer === true || !!window.webkit?.messageHandlers?.burrete;
   }
 
   function sanitizeSVG(svg) {
@@ -3255,6 +3760,12 @@
       setStatus(message, 'error');
     }
   }
+
+  window.addEventListener('beforeunload', event => {
+    if (!state.dirty) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', main, { once: true });
   else main();

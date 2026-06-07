@@ -1,7 +1,29 @@
 import { Suspense, lazy } from "react";
 import { definePageKind, type SerializedLocation } from "./types";
 
-export type KetcherLocation = { kind: "ketcher"; draftKet?: string; draftMolfile?: string };
+export type KetcherLocationImportRequest = {
+  id: number;
+  paths: string[];
+  fragments?: Array<{
+    title: string;
+    text: string;
+    source?: {
+      kind: "grid-row";
+      documentId: string;
+      rowIndex: number;
+      title: string;
+      extension: string;
+    };
+  }>;
+};
+
+export type KetcherLocation = {
+  kind: "ketcher";
+  draftKet?: string;
+  draftMolfile?: string;
+  importRequestId?: number;
+  importRequest?: KetcherLocationImportRequest;
+};
 
 const KetcherPage = lazy(() => import("../../ketcher-page").then((module) => ({
   default: module.KetcherPage,

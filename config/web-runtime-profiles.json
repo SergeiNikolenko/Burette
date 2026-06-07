@@ -44,7 +44,7 @@
         "desktop-grid",
         "external-artifact"
       ],
-      "resourceRoot": "apps/desktop/src-tauri/tauri.conf.json#/bundle/resources/../../../PreviewExtension/Web"
+      "resourceRoot": "apps/desktop/src-tauri/tauri.conf.json#/bundle/resources/../../../PreviewExtension/Web=ViewerWeb"
     },
     "quicklook": {
       "profiles": [
