@@ -29,10 +29,18 @@ final class ThumbnailProvider: QLThumbnailProvider {
         switch fileExtension {
         case "pdb", "ent", "pdbqt", "pqr":
             return parsePDB(text)
+        case "cif", "mmcif", "mcif":
+            return parseCIF(text)
         case "sdf", "sd", "mol":
             return parseMolfile(text)
+        case "mol2":
+            return parseMol2(text)
         case "xyz":
             return parseXYZ(text)
+        case "gro":
+            return parseGRO(text)
+        case "cub", "cube":
+            return parseCube(text)
         default:
             return nil
         }
@@ -126,9 +134,11 @@ final class ThumbnailProvider: QLThumbnailProvider {
         context.strokePath()
 
         let label = fileExtension.uppercased()
+        let baseFontSize = min(rect.width, rect.height) * 0.16
+        let fittedFontSize = min(baseFontSize, page.width / max(CGFloat(label.count) * 0.62, 1))
         let attributes: [NSAttributedString.Key: Any] = [
             .foregroundColor: NSColor(calibratedRed: 0.22, green: 0.29, blue: 0.36, alpha: 1),
-            .font: NSFont.monospacedSystemFont(ofSize: max(9, min(rect.width, rect.height) * 0.16), weight: .semibold)
+            .font: NSFont.monospacedSystemFont(ofSize: max(7, fittedFontSize), weight: .semibold)
         ]
         let attributed = NSAttributedString(string: label, attributes: attributes)
         let labelSize = attributed.size()
@@ -155,8 +165,50 @@ final class ThumbnailProvider: QLThumbnailProvider {
         return atoms.count >= 2 ? atoms : nil
     }
 
-    private static func parseMolfile(_ text: String) -> [ThumbnailAtom]? {
+    private static func parseCIF(_ text: String) -> [ThumbnailAtom]? {
         let lines = text.split(whereSeparator: \.isNewline).map(String.init)
+        var index = 0
+        while index < lines.count {
+            guard lines[index].trimmingCharacters(in: .whitespaces) == "loop_" else {
+                index += 1
+                continue
+            }
+            index += 1
+            var headers: [String] = []
+            while index < lines.count {
+                let line = lines[index].trimmingCharacters(in: .whitespaces)
+                guard line.hasPrefix("_atom_site.") else { break }
+                headers.append(line)
+                index += 1
+            }
+            guard let xIndex = headers.firstIndex(of: "_atom_site.Cartn_x"),
+                  let yIndex = headers.firstIndex(of: "_atom_site.Cartn_y"),
+                  let zIndex = headers.firstIndex(of: "_atom_site.Cartn_z") else {
+                continue
+            }
+            let elementIndex = headers.firstIndex(of: "_atom_site.type_symbol")
+            var atoms: [ThumbnailAtom] = []
+            while index < lines.count {
+                let line = lines[index].trimmingCharacters(in: .whitespaces)
+                if line.isEmpty || line == "#" || line == "loop_" || line.hasPrefix("_") { break }
+                let parts = line.split(whereSeparator: \.isWhitespace).map(String.init)
+                if parts.count > max(xIndex, max(yIndex, zIndex)),
+                   let x = Double(parts[xIndex].strippingCIFQuotes),
+                   let y = Double(parts[yIndex].strippingCIFQuotes),
+                   let z = Double(parts[zIndex].strippingCIFQuotes) {
+                    let element = elementIndex.flatMap { parts.count > $0 ? parts[$0].strippingCIFQuotes : nil } ?? ""
+                    atoms.append(ThumbnailAtom(element: element, x: x, y: y, z: z))
+                    if atoms.count > 240 { return nil }
+                }
+                index += 1
+            }
+            if atoms.count >= 2 { return atoms }
+        }
+        return nil
+    }
+
+    private static func parseMolfile(_ text: String) -> [ThumbnailAtom]? {
+        let lines = text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).map(String.init)
         guard lines.count >= 4 else { return nil }
         let counts = lines[3].split(whereSeparator: \.isWhitespace)
         guard let atomCount = counts.first.flatMap({ Int($0) }),
@@ -179,8 +231,29 @@ final class ThumbnailProvider: QLThumbnailProvider {
         return atoms.count >= 2 ? atoms : nil
     }
 
-    private static func parseXYZ(_ text: String) -> [ThumbnailAtom]? {
+    private static func parseMol2(_ text: String) -> [ThumbnailAtom]? {
         let lines = text.split(whereSeparator: \.isNewline).map(String.init)
+        guard let atomStart = lines.firstIndex(where: { $0.uppercased().hasPrefix("@<TRIPOS>ATOM") }) else {
+            return nil
+        }
+        var atoms: [ThumbnailAtom] = []
+        for line in lines.dropFirst(atomStart + 1) {
+            if line.uppercased().hasPrefix("@<TRIPOS>") { break }
+            let parts = line.split(whereSeparator: \.isWhitespace).map(String.init)
+            guard parts.count >= 6,
+                  let x = Double(parts[2]),
+                  let y = Double(parts[3]),
+                  let z = Double(parts[4]) else {
+                continue
+            }
+            atoms.append(ThumbnailAtom(element: mol2Element(parts[5], fallback: parts[1]), x: x, y: y, z: z))
+            if atoms.count > 240 { return nil }
+        }
+        return atoms.count >= 2 ? atoms : nil
+    }
+
+    private static func parseXYZ(_ text: String) -> [ThumbnailAtom]? {
+        let lines = text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).map(String.init)
         guard let atomCount = lines.first.flatMap({ Int($0.trimmingCharacters(in: .whitespaces)) }),
               atomCount > 1,
               atomCount <= 240,
@@ -197,6 +270,54 @@ final class ThumbnailProvider: QLThumbnailProvider {
                 continue
             }
             atoms.append(ThumbnailAtom(element: String(parts[0]), x: x, y: y, z: z))
+        }
+        return atoms.count >= 2 ? atoms : nil
+    }
+
+    private static func parseGRO(_ text: String) -> [ThumbnailAtom]? {
+        let lines = text.split(whereSeparator: \.isNewline).map(String.init)
+        guard lines.count >= 3,
+              let atomCount = Int(lines[1].trimmingCharacters(in: .whitespaces)),
+              atomCount > 1,
+              atomCount <= 240,
+              lines.count >= atomCount + 2 else {
+            return nil
+        }
+        var atoms: [ThumbnailAtom] = []
+        for line in lines[2..<(2 + atomCount)] {
+            let parts = line.split(whereSeparator: \.isWhitespace).map(String.init)
+            guard parts.count >= 3,
+                  let x = Double(parts[parts.count - 3]),
+                  let y = Double(parts[parts.count - 2]),
+                  let z = Double(parts[parts.count - 1]) else {
+                continue
+            }
+            let elementSource = parts.count >= 5 ? parts[1] : ""
+            atoms.append(ThumbnailAtom(element: inferredElement(from: elementSource), x: x * 10, y: y * 10, z: z * 10))
+        }
+        return atoms.count >= 2 ? atoms : nil
+    }
+
+    private static func parseCube(_ text: String) -> [ThumbnailAtom]? {
+        let lines = text.split(whereSeparator: \.isNewline).map(String.init)
+        guard lines.count >= 6 else { return nil }
+        let atomHeader = lines[2].split(whereSeparator: \.isWhitespace)
+        guard let rawAtomCount = atomHeader.first.flatMap({ Int($0) }) else { return nil }
+        let atomCount = abs(rawAtomCount)
+        guard atomCount > 1, atomCount <= 240, lines.count >= 6 + atomCount else {
+            return nil
+        }
+        var atoms: [ThumbnailAtom] = []
+        for line in lines[6..<(6 + atomCount)] {
+            let parts = line.split(whereSeparator: \.isWhitespace).map(String.init)
+            guard parts.count >= 5,
+                  let atomicNumber = Int(parts[0]),
+                  let x = Double(parts[2]),
+                  let y = Double(parts[3]),
+                  let z = Double(parts[4]) else {
+                continue
+            }
+            atoms.append(ThumbnailAtom(element: elementSymbol(atomicNumber), x: x, y: y, z: z))
         }
         return atoms.count >= 2 ? atoms : nil
     }
@@ -225,6 +346,52 @@ final class ThumbnailProvider: QLThumbnailProvider {
         default: return NSColor(calibratedRed: 0.24, green: 0.56, blue: 0.54, alpha: 1)
         }
     }
+
+    private static func mol2Element(_ type: String, fallback: String) -> String {
+        let head = type.split(separator: ".").first.map(String.init) ?? type
+        if head.allSatisfy(\.isLetter) { return head }
+        return inferredElement(from: fallback)
+    }
+
+    private static func inferredElement(from value: String) -> String {
+        let letters = value.filter(\.isLetter)
+        guard let first = letters.first else { return "" }
+        let firstString = String(first).uppercased()
+        let second = letters.dropFirst().first.map { String($0).lowercased() } ?? ""
+        let twoLetter = firstString + second
+        return knownTwoLetterElements.contains(twoLetter) ? twoLetter : firstString
+    }
+
+    private static func elementSymbol(_ atomicNumber: Int) -> String {
+        switch atomicNumber {
+        case 1: return "H"
+        case 5: return "B"
+        case 6: return "C"
+        case 7: return "N"
+        case 8: return "O"
+        case 9: return "F"
+        case 11: return "Na"
+        case 12: return "Mg"
+        case 14: return "Si"
+        case 15: return "P"
+        case 16: return "S"
+        case 17: return "Cl"
+        case 19: return "K"
+        case 20: return "Ca"
+        case 26: return "Fe"
+        case 30: return "Zn"
+        case 35: return "Br"
+        case 53: return "I"
+        default: return ""
+        }
+    }
+
+    private static let knownTwoLetterElements: Set<String> = [
+        "He", "Li", "Be", "Ne", "Na", "Mg", "Al", "Si", "Cl", "Ar", "Ca", "Sc", "Ti", "Cr",
+        "Mn", "Fe", "Co", "Ni", "Cu", "Zn", "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr",
+        "Zr", "Mo", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn", "Sb", "Te", "Xe", "Cs", "Ba",
+        "Pt", "Au", "Hg", "Pb", "Bi"
+    ]
 }
 
 private struct ThumbnailAtom {
@@ -235,6 +402,10 @@ private struct ThumbnailAtom {
 }
 
 private extension String {
+    var strippingCIFQuotes: String {
+        trimmingCharacters(in: CharacterSet(charactersIn: "'\""))
+    }
+
     subscript(safe range: Range<Int>) -> String {
         let lower = index(startIndex, offsetBy: max(0, min(range.lowerBound, count)))
         let upper = index(startIndex, offsetBy: max(0, min(range.upperBound, count)))
