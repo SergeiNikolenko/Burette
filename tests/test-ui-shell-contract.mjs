@@ -44,6 +44,7 @@ const [
   editorScrollContainer,
   agentIntegrationPanel,
   settingsPanel,
+  keyboardShortcutsSection,
   themesSection,
   settingControl,
   dockPanel,
@@ -75,6 +76,7 @@ const [
   windowTitle,
   componentFormat,
   instance,
+  tauriSource,
   settingsSections,
   browserDevDocuments,
   temporaryDocuments,
@@ -136,6 +138,7 @@ const [
   source('apps/desktop/src/components/editor-area/editor-scroll-container.tsx'),
   source('apps/desktop/src/components/agent-integration-panel/index.tsx'),
   source('apps/desktop/src/components/settings-panel/index.tsx'),
+  source('apps/desktop/src/components/settings-panel/keyboard-shortcuts-section.tsx'),
   source('apps/desktop/src/components/settings-panel/themes-section.tsx'),
   source('apps/desktop/src/components/settings-panel/setting-control.tsx'),
   source('apps/desktop/src/components/dock-panel.tsx'),
@@ -167,6 +170,7 @@ const [
   source('apps/desktop/src/components/window-title/index.tsx'),
   source('apps/desktop/src/components/format.ts'),
   source('apps/desktop/src/lib/instance.ts'),
+  source('apps/desktop/src/lib/tauri.ts'),
   source('apps/desktop/src/lib/settings-sections.ts'),
   source('apps/desktop/src/lib/browser-dev-documents.ts'),
   source('apps/desktop/src/lib/temporary-documents.ts'),
@@ -261,6 +265,7 @@ assert.match(sidebarHook, /projectRoots/);
 assert.match(sidebarHook, /pinnedProjectRoots/);
 assert.match(sidebarHook, /projectNameOverrides/);
 assert.match(sidebarHook, /expandedProjectIds/);
+assert.match(sidebarHook, /hiddenProjectRoots/);
 assert.match(sidebarHook, /pinnedStructurePaths/);
 assert.match(app, /body\?\.type === "requestData" \|\| body\?\.type === "requestRuntimeFile"/);
 assert.match(app, /source: "burrete-native-host"/);
@@ -482,6 +487,7 @@ assert.match(shellStore, /projectRoots: \[\]/);
 assert.match(shellStore, /pinnedProjectRoots: \[\]/);
 assert.match(shellStore, /projectNameOverrides: \{\}/);
 assert.match(shellStore, /expandedProjectIds: \[\]/);
+assert.match(shellStore, /hiddenProjectRoots: \[\]/);
 assert.match(shellStore, /pinnedStructurePaths: \[\]/);
 assert.match(shellStore, /sidebarQuery: ""/);
 assert.match(shellStore, /toggleProjectsOpen:/);
@@ -503,8 +509,11 @@ assert.match(shellStore, /function persistentProjectNameOverrides\(overrides: Re
 assert.match(shellStore, /projectRoots: persistentRoots\(state\.projectRoots\)/);
 assert.match(shellStore, /pinnedProjectRoots: persistentRoots\(state\.pinnedProjectRoots\)/);
 assert.match(shellStore, /projectNameOverrides: persistentProjectNameOverrides\(state\.projectNameOverrides, persistentRoots\(state\.projectRoots\)\)/);
+assert.match(shellStore, /hiddenProjectRoots: persistentRoots\(state\.hiddenProjectRoots\)/);
 assert.match(shellStore, /const projectRoots = persistentRoots\(stored\?\.projectRoots \?\? current\.projectRoots\)/);
 assert.match(shellStore, /const pinnedProjectRoots = persistentRoots\(stored\?\.pinnedProjectRoots \?\? current\.pinnedProjectRoots\)/);
+assert.match(shellStore, /const hiddenProjectRoots = persistentRoots\(stored\?\.hiddenProjectRoots \?\? current\.hiddenProjectRoots\)/);
+assert.match(shellStore, /hiddenProjectRoots,/);
 assert.match(packageJson, /"@hugeicons\/core-free-icons"/);
 assert.match(packageJson, /"@hugeicons\/react"/);
 assert.match(packageJson, /bun tests\/test-fep-setup-store\.mjs/);
@@ -647,6 +656,7 @@ assert.match(app, /typeof path === "string" && !isTemporaryDocumentPath\(path\)/
 assert.match(app, /pinnedStructurePaths,/);
 assert.match(app, /pinnedProjectRoots,/);
 assert.match(app, /projectNameOverrides,/);
+assert.match(app, /hiddenProjectRoots,/);
 assert.match(app, /sidebarProjects/);
 assert.match(app, /!isTauriRuntime\(\) \|\| documents\.length === 0/);
 assert.match(app, /void openPaths\(paths\)\.then\(\(\) => \{/);
@@ -669,6 +679,10 @@ assert.match(notificationPopup, /compactNotificationMessage/);
 assert.match(appLayout, /const sidebarLayoutWidth = state\.sidebarOpen \? sidebarWidth : 0/);
 assert.doesNotMatch(appLayout, /Math\.max\(360, clampedSidebarWidth\)/);
 assert.match(appLayout, /const tabChromeLeft = state\.sidebarOpen \? sidebarLayoutWidth \+ 12 : 132/);
+assert.match(appLayout, /const rightDockOpen = !settingsMode && state\.rightDockOpen/);
+assert.match(appLayout, /const bottomDockOpen = !settingsMode && state\.bottomDockOpen/);
+assert.match(appLayout, /"--right-dock-width": `\$\{rightDockOpen \? state\.rightDockWidth : 0\}px`/);
+assert.match(appLayout, /"--bottom-dock-height": `\$\{bottomDockOpen \? state\.bottomDockHeight : 0\}px`/);
 assert.match(appLayout, /const activePageKind = state\.activeTab\?\.location\.kind \?\? null/);
 assert.match(appLayout, /data-active-page-kind=\{activePageKind \?\? undefined\}/);
 assert.match(appLayout, /className="sidebar-shell"/);
@@ -676,6 +690,8 @@ assert.match(appLayout, /className="sidebar-shell-inner" style=\{\{ width: sideb
 assert.match(appLayout, /<Sidebar state=\{layoutState\} actions=\{actions\} open=\{state\.sidebarOpen\} \/>/);
 assert.doesNotMatch(appLayout, /state\.sidebarOpen && <Sidebar/);
 assert.match(appLayout, /\{state\.sidebarOpen && !settingsMode && \(\s*<div\s+className="splitter"/s);
+assert.match(appLayout, /\{!settingsMode && \(\s*<DockPanel\s+area="bottom"/s);
+assert.match(appLayout, /\{!settingsMode && \(\s*<DockPanel\s+area="right"/s);
 assert.doesNotMatch(appLayout, /instance-badge/);
 assert.doesNotMatch(appLayout, /statusbar/);
 assert.doesNotMatch(appLayout, /chrome-text-button/);
@@ -726,7 +742,7 @@ assert.match(editorTabs, /import \{ CloseIcon \} from "\.\.\/close-icon"/);
 assert.match(editorTabs, /<CloseIcon size=\{13\} \/>/);
 assert.match(appLayout, /className="chrome-leading-controls"/);
 assert.match(appLayout, /from "\.\/shortcut-tooltip"/);
-assert.match(appLayout, /<ShortcutTooltip label=\{state\.sidebarOpen \? "Hide sidebar" : "Show sidebar"\} shortcut=\{"⌘\\\\"\} \/>/);
+assert.doesNotMatch(appLayout, /<ShortcutTooltip label=\{state\.sidebarOpen \? "Hide sidebar" : "Show sidebar"\} shortcut=\{"⌘\\\\"\} \/>/);
 assert.match(appLayout, /<ShortcutTooltip label=\{state\.bottomDockOpen \? "Hide bottom dock" : "Show bottom dock"\} shortcut="⌘J" \/>/);
 assert.match(appLayout, /<ShortcutTooltip label=\{state\.rightDockOpen \? "Hide right dock" : "Show right dock"\} shortcut="⌥⌘B" \/>/);
 assert.match(tauriConfig, /"trafficLightPosition":\s*\{\s*"x":\s*20,\s*"y":\s*29\s*\}/);
@@ -1062,8 +1078,8 @@ assert.match(styles, /button, select, input, textarea, \.tab-shell, \.tab, \.new
 assert.match(styles, /\.drag-region \{[^}]*height: var\(--chrome-drag-height\);[^}]*z-index: 2/s);
 assert.match(shortcutTooltip, /export function ShortcutTooltip/);
 assert.match(shortcutTooltip, /className="shortcut-tooltip"/);
-assert.match(styles, /\.shortcut-tooltip \{[^}]*position: absolute;[^}]*backdrop-filter: blur\(30px\) saturate\(1\.35\);[^}]*transform: translate\(-50%, -4px\) scale\(0\.98\);/s);
-assert.match(styles, /button:hover > \.shortcut-tooltip,\s*button:focus-visible > \.shortcut-tooltip \{[^}]*opacity: 1;[^}]*transform: translate\(-50%, 0\) scale\(1\);/s);
+assert.match(styles, /\.shortcut-tooltip \{[^}]*position: absolute;[^}]*min-height: 19px;[^}]*backdrop-filter: blur\(15px\) saturate\(1\.35\);[^}]*visibility: hidden;[^}]*transform: translate\(-50%, -4px\) scale\(0\.98\);/s);
+assert.match(styles, /button:hover > \.shortcut-tooltip,\s*button:focus-visible > \.shortcut-tooltip \{[^}]*opacity: 1;[^}]*visibility: visible;[^}]*transform: translate\(-50%, 0\) scale\(1\);[^}]*transition-delay: 180ms, 180ms, 0s;/s);
 assert.match(styles, /\.shortcut-tooltip-key \{[^}]*border-radius: 999px;[^}]*letter-spacing: 0;/s);
 assert.doesNotMatch(styles, /\.workspace \{[^}]*z-index:/s);
 assert.match(styles, /\.splitter \{[^}]*z-index: 3;/s);
@@ -1071,7 +1087,9 @@ assert.match(styles, /--sidebar-divider-right: transparent/);
 assert.match(styles, /--workspace-edge-border: color-mix\(in srgb, var\(--fg-base\) calc\(var\(--contrast\) \* 22%\), transparent\)/);
 assert.match(styles, /\.sidebar::after \{[^}]*background: var\(--sidebar-divider-right\);/s);
 assert.doesNotMatch(styles, /\.splitter::after \{ background: var\(--sidebar-divider-right\); \}/);
-assert.match(styles, /\.main-stage \{[^}]*background: var\(--bg-base\);[^}]*overflow: hidden;[^}]*border-left: 1px solid var\(--workspace-edge-border\);[^}]*border-radius: 20px 0 0 20px;[^}]*box-shadow: -12px 0 28px var\(--workspace-edge-shadow\);/s);
+assert.match(styles, /\.workbench \{[^}]*background: var\(--bg-base\);[^}]*overflow: hidden;[^}]*border-left: 1px solid var\(--workspace-edge-border\);[^}]*border-radius: 20px 0 0 20px;[^}]*box-shadow: -12px 0 28px var\(--workspace-edge-shadow\);/s);
+assert.match(styles, /\.app-shell\[data-settings-mode="true"\] \.workbench \{[^}]*border-radius: 0;[^}]*box-shadow: none;[^}]*\}/s);
+assert.doesNotMatch(styles, /\.main-stage \{[^}]*border-radius: 20px 0 0 20px;/s);
 assert.match(styles, /\.app-shell\[data-theme="auto"\] \{[^}]*color-scheme: light dark/s);
 assert.match(styles, /@media \(prefers-color-scheme: light\) \{[\s\S]*\.app-shell\[data-theme="auto"\]/);
 assert.match(styles, /@media \(prefers-color-scheme: dark\) \{[\s\S]*\.app-shell\[data-theme="auto"\]/);
@@ -1710,8 +1728,8 @@ assert.match(sidebarSurface, /actions\.openRecentStructure/);
 assert.match(sidebarSurface, /from "@hugeicons\/core-free-icons"/);
 assert.match(sidebarSurface, /from "@hugeicons\/react"/);
 assert.match(sidebarSurface, /actions\.openCommandPalette/);
-assert.match(sidebarSurface, /from "\.\.\/shortcut-tooltip"/);
-assert.match(sidebarSurface, /<ShortcutTooltip label="Search projects and structures" shortcut="⌘P" \/>/);
+assert.doesNotMatch(sidebarFileBrowser, /from "\.\.\/shortcut-tooltip"/);
+assert.doesNotMatch(sidebarFileBrowser, /<ShortcutTooltip label="Search projects and structures" shortcut="⌘P" \/>/);
 assert.match(sidebarSurface, /function PinIcon/);
 assert.match(sidebarSurface, /function MoreIcon/);
 assert.doesNotMatch(sidebarSurface, /Cancel01Icon/);
@@ -1726,6 +1744,9 @@ assert.match(sidebarSurface, /actions\.togglePinnedStructure\(item\.path\)/);
 assert.match(sidebarSurface, /actions\.togglePinnedProjectRoot\(project\.rootPath\)/);
 assert.match(sidebarSurface, /actions\.renameProjectRoot\(project\.rootPath, nextName\)/);
 assert.match(sidebarSurface, /actions\.removeProjectRoot\(project\.rootPath\)/);
+assert.match(sidebarSurface, /id: "remove-project"/);
+assert.match(sidebarSurface, /disabled: !project\.rootPath,\s*action: \(\) => \{\s*if \(!project\.rootPath\) return;\s*actions\.removeProjectRoot\(project\.rootPath\);/);
+assert.doesNotMatch(sidebarSurface, /!project\.rootPath \|\| !project\.isExplicit/);
 assert.match(sidebarSurface, /Pin structure/);
 assert.match(sidebarSurface, /Unpin structure/);
 assert.match(sidebarSurface, /Pin project/);
@@ -1735,6 +1756,9 @@ assert.doesNotMatch(sidebarSurface, /\|\| project\.isActive/);
 assert.match(sidebarProjects, /function compareProjectItems\(left: SidebarProjectItem, right: SidebarProjectItem\) \{\s*if \(left\.isPinned !== right\.isPinned\) return left\.isPinned \? -1 : 1;\s*return left\.relativePath\.localeCompare\(right\.relativePath\);\s*\}/);
 assert.match(sidebarProjects, /from "\.\/temporary-documents"/);
 assert.match(sidebarProjects, /const normalizedRoots = dedupeRoots\(projectRoots\.filter\(\(root\) => !isTemporaryDocumentPath\(root\)\)\)/);
+assert.match(sidebarProjects, /hiddenProjectRoots = \[\]/);
+assert.match(sidebarProjects, /const hiddenRoots = dedupeRoots\(hiddenProjectRoots\.filter\(\(root\) => !isTemporaryDocumentPath\(root\)\)\)/);
+assert.match(sidebarProjects, /if \(!explicitRootPath && resolveProjectRoot\(normalizedPath, hiddenProjectRoots\)\) return;/);
 assert.match(sidebarProjects, /const projectDocuments = documents\.filter\(isPersistentViewerDocument\)/);
 assert.match(sidebarProjects, /const openPaths = new Set\(projectDocuments\.map\(\(document\) => normalizePath\(document\.path\)\)\)/);
 assert.match(sidebarProjects, /for \(const document of projectDocuments\)/);
@@ -1835,12 +1859,19 @@ assert.match(settingsPanel, /title="Structure Rendering"/);
 assert.match(settingsPanel, /title="System"/);
 assert.match(settingsPanel, /<AgentIntegrationPanel embedded \/>/);
 assert.match(settingsSections, /id: "agent", label: "Burrete"/);
+assert.match(settingsSections, /id: "keyboard", label: "Keyboard shortcuts"/);
 assert.match(settingsPanel, /from "\.\/setting-control"/);
+assert.match(settingsPanel, /from "\.\/keyboard-shortcuts-section"/);
+assert.match(settingsPanel, /section === "keyboard" \? <KeyboardShortcutsSection \/> : null/);
 assert.match(settingsPanel, /SettingsSection/);
 assert.match(settingsPanel, /ToggleControl/);
 assert.match(settingsPanel, /from "\.\/themes-section"/);
 assert.match(settingsPanel, /<ThemesSection preferences=\{preferences\} actions=\{actions\} \/>/);
 assert.doesNotMatch(settingsPanel, /function ThemeCard/);
+assert.match(keyboardShortcutsSection, /export function KeyboardShortcutsSection/);
+assert.match(keyboardShortcutsSection, /placeholder="Search shortcuts"/);
+assert.match(keyboardShortcutsSection, /command: "Toggle bottom dock"[\s\S]*?keybindings: \["⌘J"\]/);
+assert.match(keyboardShortcutsSection, /command: "Toggle right dock"[\s\S]*?keybindings: \["⌥⌘B"\]/);
 assert.match(themesSection, /export function ThemesSection/);
 assert.match(themesSection, /<ThemeCard mode="light" preferences=\{preferences\} actions=\{actions\} \/>/);
 assert.match(themesSection, /<ThemeCard mode="dark" preferences=\{preferences\} actions=\{actions\} \/>/);
@@ -1930,6 +1961,24 @@ assert.match(styles, /\[cmdk-dialog\]::before \{[\s\S]*background: color-mix\(in
 assert.match(styles, /\[cmdk-item\]\[data-selected="true"\]/);
 assert.match(styles, /\[cmdk-item\]:hover,[\s\S]*\[cmdk-item\]\[data-selected="true"\] \{[\s\S]*background: var\(--surface-subtle\)/);
 assert.match(app, /useOpenDrop\(openPaths, pushStatus, \{/);
+assert.match(tauriSource, /export function trackTauriListener\(registration: Promise<TauriUnlisten>, label: string\)/);
+assert.match(tauriSource, /if \(disposed\) \{\s*disposeTauriListener\(next, label\);/s);
+assert.match(tauriSource, /listener setup failed/);
+assert.match(tauriSource, /listener cleanup failed/);
+assert.match(tauriSource, /typeof result\.catch === "function"/);
+assert.match(openEventsHook, /trackTauriListener\(/);
+assert.match(openEventsHook, /listen\("open-documents"/);
+assert.doesNotMatch(openEventsHook, /let unlisten/);
+assert.doesNotMatch(openEventsHook, /unlisten\?\.\(\)/);
+assert.match(openDropHook, /trackTauriListener\(/);
+assert.match(openDropHook, /onDragDropEvent/);
+assert.doesNotMatch(openDropHook, /let unlisten/);
+assert.doesNotMatch(openDropHook, /unlisten\?\.\(\)/);
+assert.match(menuEventsHook, /trackTauriListener\(listen\(MENU_OPEN_SETTINGS_EVENT, openSettings\), MENU_OPEN_SETTINGS_EVENT\)/);
+assert.match(menuEventsHook, /const cleanups = \[/);
+assert.match(menuEventsHook, /for \(const cleanup of cleanups\) cleanup\(\)/);
+assert.doesNotMatch(menuEventsHook, /let unlisten/);
+assert.doesNotMatch(menuEventsHook, /unlisten\?\.\(\)/);
 assert.match(app, /documents,/);
 assert.match(app, /openClipboardText/);
 assert.match(app, /navigator\.clipboard\?\.readText/);
@@ -2849,13 +2898,14 @@ assert.match(previewViewer, /if \(prepared\.nativeTrajectoryControls\) scheduleS
 assert.match(previewViewer, /slider\.addEventListener\('change', \(\) => \{/);
 assert.match(previewViewer, /function installNativeTrajectoryPoseSync\(poseCount, onPoseChange\)/);
 assert.match(previewViewer, /state\.events\.changed\.subscribe\(sync\)/);
-assert.match(previewViewer, /const DOCKING_POSE_POSITION_VERSION = '3'/);
+assert.match(previewViewer, /const DOCKING_POSE_POSITION_VERSION = '4'/);
 assert.match(previewViewer, /function initDockingPoseControlsDrag\(root\)/);
-assert.match(previewViewer, /window\.localStorage && window\.localStorage\.setItem\('buret\.dockingPoseControls\.position', JSON\.stringify\(\{ left: rect\.left, bottom: window\.innerHeight - rect\.bottom, mode: 'custom' \}\)\)/);
+assert.match(previewViewer, /window\.localStorage && window\.localStorage\.setItem\('buret\.dockingPoseControls\.position', JSON\.stringify\(\{ left: rect\.left, top: rect\.top, mode: 'custom' \}\)\)/);
 assert.match(previewViewer, /root\.classList\.add\('buret-docking-poses-dragging'\)/);
 assert.match(previewViewer, /root\.dataset\.defaultPosition = '0';\s*moveDockingPoseControls\(root, event\.clientX - drag\.dx, event\.clientY - drag\.dy\);/);
 assert.match(previewViewer, /window\.addEventListener\('pointermove', onPointerMove, true\)/);
 assert.match(previewViewer, /window\.addEventListener\('pointerup', finishDrag, true\)/);
+assert.match(previewViewer, /moveDockingPoseControls\(root, saved\.left, saved\.top\);/);
 assert.match(previewViewer, /function stableTextHash\(value\)/);
 assert.match(previewViewer, /sessionStorage\.setItem\(trajectoryControlStorageKey\(activeConfig, prepared\), String\(nextIndex\)\)/);
 assert.match(previewViewer, /sessionStorage\.setItem\(trajectoryControlStorageKey\(activeConfig, prepared\), String\(previousIndex\)\)/);
@@ -2869,8 +2919,10 @@ assert.match(previewRuntimeCss, /\.buret-docking-pose-speed \{[\s\S]*width: 44px
 assert.match(previewRuntimeCss, /\.buret-docking-pose-speed::-webkit-inner-spin-button,\s*\.buret-docking-pose-speed::-webkit-outer-spin-button \{[\s\S]*-webkit-appearance: none;/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-slider \{[\s\S]*flex: 0 0 110px;/);
 assert.match(previewViewer, /animationRow\.append\(speed, loop, slider\)/);
-assert.match(previewViewer, /root\.style\.bottom = Math\.max\(margin, Math\.round\(window\.innerHeight - clampedTop - height\)\) \+ 'px'/);
-assert.match(previewViewer, /if \(saved\.mode === 'custom' && Number\.isFinite\(saved\.left\) && Number\.isFinite\(saved\.bottom\)\) \{/);
+assert.match(previewViewer, /root\.style\.top = clampedTop \+ 'px'/);
+assert.match(previewViewer, /root\.style\.bottom = 'auto'/);
+assert.match(previewViewer, /if \(saved\.mode === 'custom' && Number\.isFinite\(saved\.left\) && Number\.isFinite\(saved\.top\)\) \{/);
+assert.match(previewRuntimeCss, /\.buret-docking-poses \{[\s\S]*left: 14px;[\s\S]*top: 14px;/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses \{[\s\S]*gap: 0;/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-animation \{[\s\S]*max-height: 0;[\s\S]*margin-top: 0;[\s\S]*opacity: 0;[\s\S]*transform: translateY\(6px\);[\s\S]*pointer-events: none;[\s\S]*transition:/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses\.buret-docking-poses-animation-open \.buret-docking-pose-animation \{[\s\S]*max-height: 34px;[\s\S]*margin-top: 6px;[\s\S]*opacity: 1;[\s\S]*transform: translateY\(0\);[\s\S]*pointer-events: auto;/);

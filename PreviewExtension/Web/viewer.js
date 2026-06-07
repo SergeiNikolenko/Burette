@@ -8,7 +8,7 @@
   const SDF_GRID_PADDING = 4.0;
   const TOOLBAR_POSITION_VERSION = '13';
   const TOOLBAR_COLLAPSED_VERSION = '5';
-  const DOCKING_POSE_POSITION_VERSION = '3';
+  const DOCKING_POSE_POSITION_VERSION = '4';
   const TOOLBAR_MARGIN = 12;
   const FLOATING_LAYOUT_GAP = 12;
   const PANEL_CLOSE_HIT_WIDTH = 38;
@@ -4501,15 +4501,15 @@
     const clampedLeft = Math.round(Math.min(Math.max(margin, left), maxLeft));
     const clampedTop = Math.round(Math.min(Math.max(margin, top), maxTop));
     root.style.left = clampedLeft + 'px';
-    root.style.top = 'auto';
+    root.style.top = clampedTop + 'px';
     root.style.right = 'auto';
-    root.style.bottom = Math.max(margin, Math.round(window.innerHeight - clampedTop - height)) + 'px';
+    root.style.bottom = 'auto';
   }
 
   function saveDockingPoseControlsPosition(root) {
     try {
       const rect = root.getBoundingClientRect();
-      window.localStorage && window.localStorage.setItem('buret.dockingPoseControls.position', JSON.stringify({ left: rect.left, bottom: window.innerHeight - rect.bottom, mode: 'custom' }));
+      window.localStorage && window.localStorage.setItem('buret.dockingPoseControls.position', JSON.stringify({ left: rect.left, top: rect.top, mode: 'custom' }));
       window.localStorage && window.localStorage.setItem('buret.dockingPoseControls.position.version', DOCKING_POSE_POSITION_VERSION);
     } catch (_) {}
   }
@@ -4521,13 +4521,10 @@
       const version = window.localStorage && window.localStorage.getItem('buret.dockingPoseControls.position.version');
       if (raw && version === DOCKING_POSE_POSITION_VERSION) {
         const saved = JSON.parse(raw);
-        if (saved.mode === 'custom' && Number.isFinite(saved.left) && Number.isFinite(saved.bottom)) {
+        if (saved.mode === 'custom' && Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
           root.dataset.defaultPosition = '0';
-          root.style.left = Math.round(saved.left) + 'px';
-          root.style.right = 'auto';
-          root.style.top = 'auto';
-          root.style.bottom = Math.max(TOOLBAR_MARGIN, Math.round(saved.bottom)) + 'px';
-          repositionDockingPoseControls(root);
+          moveDockingPoseControls(root, saved.left, saved.top);
+          window.requestAnimationFrame(() => repositionDockingPoseControls(root));
           restored = true;
         }
       } else if (raw) {
@@ -4538,8 +4535,8 @@
     root.dataset.defaultPosition = '1';
     root.style.left = '14px';
     root.style.right = 'auto';
-    root.style.top = 'auto';
-    root.style.bottom = '14px';
+    root.style.top = '14px';
+    root.style.bottom = 'auto';
   }
 
   function repositionDockingPoseControls(root) {

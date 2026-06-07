@@ -30,6 +30,7 @@ commands.allow = [
   "export_diagnostics_bundle",
   "open_logs_folder",
   "open_external_url",
+  "existing_paths",
   "read_external_preview_svg",
   "read_viewer_runtime_file_base64",
   "reveal_path",

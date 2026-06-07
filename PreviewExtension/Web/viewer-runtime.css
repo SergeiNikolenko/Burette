@@ -906,7 +906,7 @@ body.burette-quicklook-host .buret-corner-button {
 .buret-docking-poses {
   position: fixed;
   left: 14px;
-  bottom: 14px;
+  top: 14px;
   z-index: 40;
   display: inline-flex;
   flex-direction: column;

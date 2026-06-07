@@ -65,6 +65,14 @@ pub(crate) fn reveal_path(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub(crate) fn existing_paths(paths: Vec<String>) -> Vec<String> {
+    paths
+        .into_iter()
+        .filter(|path| PathBuf::from(path).exists())
+        .collect()
+}
+
+#[tauri::command]
 pub(crate) fn read_external_preview_svg(runtime_path: String) -> Result<String, String> {
     let index_path = PathBuf::from(&runtime_path)
         .canonicalize()

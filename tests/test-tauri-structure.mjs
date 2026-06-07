@@ -217,6 +217,7 @@ for (const commandPath of [
   'commands::shell::export_diagnostics_bundle',
   'commands::shell::open_logs_folder',
   'commands::shell::open_external_url',
+  'commands::shell::existing_paths',
   'commands::shell::read_external_preview_svg',
   'commands::shell::read_viewer_runtime_file_base64',
   'commands::shell::reveal_path',
@@ -249,6 +250,9 @@ assert.match(startupSource, /pub\(crate\) fn emit_agent_session/);
 assert.match(lib, /startup::emit_agent_session\(app, session_dir\)/);
 assert.match(agentSessionHook, /invoke<string \| null>\("startup_agent_session"\)/);
 assert.match(agentSessionHook, /listen<string>\("agent-session"/);
+assert.match(agentSessionHook, /trackTauriListener\(listen<string>\("agent-session"/);
+assert.doesNotMatch(agentSessionHook, /let unlisten/);
+assert.doesNotMatch(agentSessionHook, /unlisten\?\.\(\)/);
 assert.match(agentSessionHook, /joinSessionPath\(sessionDir, "observe\.json"\)/);
 assert.match(agentSessionHook, /joinSessionPath\(sessionDir, "actions\.json"\)/);
 assert.match(agentSessionHook, /workspacePanelsRef/);
@@ -325,6 +329,12 @@ assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn write_text_fil
 assert.match(quickLookCommand, /#\[tauri::command\]\s+pub\(crate\) fn reset_quick_look/);
 assert.match(updaterCommand, /#\[tauri::command\]\s+pub\(crate\) async fn install_update/);
 assert.match(quickLookCommand, /QuickLookResetReport/);
+assert.match(quickLookCommand, /launch_services_registered: CommandReport/);
+assert.match(quickLookCommand, /extension_registered: CommandReport/);
+assert.match(quickLookCommand, /extension_enabled: CommandReport/);
+assert.match(quickLookCommand, /LaunchServices\.framework\/Support\/lsregister/);
+assert.match(quickLookCommand, /"\/usr\/bin\/pluginkit"/);
+assert.match(quickLookCommand, /preview_extension_bundle_id\(&preview_extension\)/);
 assert.match(quickLookCommand, /\.output\(\)/);
 assert.doesNotMatch(quickLookCommand, /\.spawn\(\)/);
 assert.match(buildScript, /does not accept positional arguments/);
@@ -456,9 +466,14 @@ assert.match(previewEntitlements, /com\.apple\.security\.app-sandbox/);
 assert.match(previewEntitlements, /com\.apple\.security\.files\.user-selected\.read-only/);
 assert.match(appInfoPlist, /<key>LSUIElement<\/key>\s*<false\/>/);
 assert.match(releaseVersionCheck, /semver release or prerelease/);
-assert.match(appMetadata, /<key>LSHandlerRank<\/key>\s*<string>Alternate<\/string>/);
+assert.doesNotMatch(appMetadata, /<key>LSHandlerRank<\/key>\s*<string>Alternate<\/string>/);
 assert.match(appMetadata, /<key>CFBundleTypeName<\/key>\s*<string>Molecular grid tables<\/string>/);
 assert.match(appMetadata, /<key>LSHandlerRank<\/key>\s*<string>Owner<\/string>/);
+assert.match(appMetadata, /com\.local\.burrete10\.graphml/);
+assert.match(thumbnailInfoPlist, /com\.local\.burrete10\.graphml/);
+assert.match(thumbnailProviderSource, /parseCIF/);
+assert.match(thumbnailProviderSource, /parseMol2/);
+assert.match(thumbnailProviderSource, /parseCube/);
 assert.match(previewExtensionInfoPlist, /public\.comma-separated-values-text/);
 assert.match(previewExtensionInfoPlist, /public\.tab-separated-values-text/);
 assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.smiles/);
@@ -628,9 +643,9 @@ assert.match(quickLookPreviewController, /elapsed\.runtimeWriteMs/);
 assert.match(quickLookPreviewController, /elapsed\.wkLoadStartMs/);
 assert.match(quickLookPreviewController, /elapsed\.jsReadyMs/);
 assert.match(quickLookPreviewController, /elapsed\.renderCompleteMs/);
-assert.doesNotMatch(quickLookPreviewController, /<script src="preview-rdkit-wasm\.js"><\/script>/);
+assert.match(quickLookPreviewController, /<script src="preview-rdkit-wasm\.js"><\/script>/);
 assert.match(quickLookPreviewController, /burette-quicklook-host/);
-assert.doesNotMatch(quickLookPreviewController, /window\.BurreteRDKitWasmBase64 = \\"\\\(wasmData\.base64EncodedString\(\)\)\\";\\n/);
+assert.match(quickLookPreviewController, /window\.BurreteRDKitWasmBase64 = \\"\\\(wasmData\.base64EncodedString\(\)\)\\";\\n/);
 assert.match(quickLookPreviewController, /payload\["rdkitWasmPath"\] = "\.\.\/assets\/rdkit\/RDKit_minimal\.wasm"/);
 assert.doesNotMatch(quickLookPreviewController, /<script src="preview-data\.js"><\/script>/);
 assert.doesNotMatch(quickLookPreviewController, /window\.BurreteDataBase64 = null;\\nwindow\.BurreteDataURL = null;\\n/);
@@ -661,7 +676,7 @@ assert.match(viewerJS, /if \(isQuickLookHost\(\)\) \{\s+setTimeout\(finish, 35\)
 assert.doesNotMatch(quickLookPreviewController, /BurreteLauncher\.open\(fileURL: url\)/);
 assert.doesNotMatch(quickLookPreviewController, /launchViaExecutable\(fileURL: fileURL, appURL: appURL, fallbackError: error, completion: completion\)/);
 assert.doesNotMatch(quickLookPreviewController, /appendingPathComponent\("burrete", isDirectory: false\)/);
-assert.doesNotMatch(quickLookPreviewController, /BurreteRDKitWasmBase64/);
+assert.match(quickLookPreviewController, /BurreteRDKitWasmBase64/);
 assert.match(previewRuntimeViewer, /"documentId": stable_id\(file_path\)/);
 assert.match(previewRuntimeViewer, /runtime\.join\("preview-data\.bin"\)/);
 assert.match(previewRuntimeViewer, /window\.BurreteDataBase64 = \\"\{\}\\";\\nwindow\.BurreteDataURL = null;\\n/);
