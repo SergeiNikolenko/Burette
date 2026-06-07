@@ -20,6 +20,7 @@ export function useSidebar() {
   const renameProjectRoot = useShellStore((state) => state.renameProjectRoot);
   const removeProjectRoot = useShellStore((state) => state.removeProjectRoot);
   const togglePinnedStructure = useShellStore((state) => state.togglePinnedStructure);
+  const pruneSidebarPaths = useShellStore((state) => state.pruneSidebarPaths);
   const setSidebarQuery = useShellStore((state) => state.setSidebarQuery);
   const toggleProjectExpanded = useShellStore((state) => state.toggleProjectExpanded);
 
@@ -43,6 +44,7 @@ export function useSidebar() {
     renameProjectRoot,
     removeProjectRoot,
     togglePinnedStructure,
+    pruneSidebarPaths,
     setSidebarQuery,
     toggleProjectExpanded,
     toggleSidebar,

@@ -186,4 +186,17 @@ assert.deepEqual(
   manyDocuments.map((structure) => structure.path).sort(),
 );
 
+useMoleculeStore.getState().pruneRecentStructures([
+  "/tmp/project/file-00.pdb",
+  "/tmp/project/file-03.pdb",
+]);
+const prunedRecent = useMoleculeStore.getState().recentStructures;
+assert.deepEqual(
+  prunedRecent.map((structure) => structure.path).sort(),
+  [
+    "/tmp/project/file-00.pdb",
+    "/tmp/project/file-03.pdb",
+  ],
+);
+
 console.log("molecule store behavior tests passed");

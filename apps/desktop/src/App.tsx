@@ -46,6 +46,7 @@ import {
   useOpenKetcherTab,
   useOpenNewTab,
   useOpenPoseReviewTab,
+  usePruneRecentStructures,
   useOpenSettingsTab,
   useOpenSettingsSection,
   useOpenTextDocuments,
@@ -235,6 +236,7 @@ export default function App() {
   const navigateForward = useNavigateForward();
   const recentStructures = useRecentStructures();
   const rememberRecentStructures = useRememberRecentStructures();
+  const pruneRecentStructures = usePruneRecentStructures();
   const clearRecentStructures = useClearRecentStructures();
   const setActiveTab = useSetActiveTab();
   const setActiveDocument = useSetActiveDocument();
@@ -261,6 +263,7 @@ export default function App() {
     renameProjectRoot,
     removeProjectRoot,
     togglePinnedStructure,
+    pruneSidebarPaths,
     setSidebarQuery,
     toggleProjectExpanded,
     toggleSidebar,
@@ -315,6 +318,7 @@ export default function App() {
   }));
   const openedBrowserDevFilesRef = useRef<string | null>(null);
   const openedBrowserDevDockingRef = useRef<string | null>(null);
+  const prunedPersistedPathsRef = useRef(false);
   const refreshedPersistedSessionRef = useRef(false);
   const openedPersistedTabsRef = useRef(false);
   const syncingBrowserDevFilesRef = useRef(false);
@@ -405,6 +409,29 @@ export default function App() {
     activeDocumentId: activeDocument?.id ?? null,
     pinnedStructurePaths,
   }), [activeDocument?.id, documents, pinnedProjectRoots, pinnedStructurePaths, projectNameOverrides, projectRoots, recentStructures]);
+
+  useEffect(() => {
+    if (prunedPersistedPathsRef.current || !isTauriRuntime()) return;
+    const paths = Array.from(new Set([
+      ...projectRoots,
+      ...pinnedProjectRoots,
+      ...pinnedStructurePaths,
+      ...recentStructures.map((structure) => structure.path),
+    ].filter(Boolean)));
+    if (paths.length === 0) return;
+    prunedPersistedPathsRef.current = true;
+    let cancelled = false;
+    void invoke<string[]>("existing_paths", { paths })
+      .then((existingPaths) => {
+        if (cancelled) return;
+        pruneSidebarPaths(existingPaths);
+        pruneRecentStructures(existingPaths);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [pinnedProjectRoots, pinnedStructurePaths, projectRoots, pruneRecentStructures, pruneSidebarPaths, recentStructures]);
 
   const activeTextDocument = useMemo(() => {
     const location = activeTab?.location;

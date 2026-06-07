@@ -56,6 +56,7 @@ type ShellState = {
   renameProjectRoot: (root: string, name: string) => void;
   removeProjectRoot: (root: string) => void;
   togglePinnedStructure: (path: string) => void;
+  pruneSidebarPaths: (existingPaths: string[]) => void;
   setSidebarQuery: (query: string) => void;
   toggleProjectExpanded: (projectId: string) => void;
 };
@@ -295,6 +296,29 @@ export const useShellStore = create<ShellState>()(
             pinnedStructurePaths: state.pinnedStructurePaths.includes(normalized)
               ? state.pinnedStructurePaths.filter((candidate) => candidate !== normalized)
               : [...state.pinnedStructurePaths, normalized],
+          };
+        }),
+      pruneSidebarPaths: (existingPaths) =>
+        set((state) => {
+          const existing = new Set(existingPaths.map(normalizeRoot));
+          const projectRoots = state.projectRoots.filter((root) => existing.has(root));
+          const pinnedProjectRoots = state.pinnedProjectRoots.filter((root) => existing.has(root) && projectRoots.includes(root));
+          const projectNameOverrides = persistentProjectNameOverrides(state.projectNameOverrides, projectRoots);
+          const expandedProjectIds = persistentExpandedProjectIds(state.expandedProjectIds, projectRoots);
+          const pinnedStructurePaths = state.pinnedStructurePaths.filter((path) => existing.has(path));
+          if (
+            projectRoots.length === state.projectRoots.length &&
+            pinnedProjectRoots.length === state.pinnedProjectRoots.length &&
+            expandedProjectIds.length === state.expandedProjectIds.length &&
+            pinnedStructurePaths.length === state.pinnedStructurePaths.length &&
+            Object.keys(projectNameOverrides).length === Object.keys(state.projectNameOverrides).length
+          ) return state;
+          return {
+            projectRoots,
+            pinnedProjectRoots,
+            projectNameOverrides,
+            expandedProjectIds,
+            pinnedStructurePaths,
           };
         }),
       setSidebarQuery: (query) => set({ sidebarQuery: query }),
