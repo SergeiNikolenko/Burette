@@ -13,7 +13,7 @@ cd "$ROOT"
 APP="${BURRETE_APP_PATH:-${1:-$ROOT/build/Burrete.app}}"
 APPEX="$APP/Contents/PlugIns/BurretePreview.appex"
 WEB_SOURCE="$ROOT/PreviewExtension/Web"
-APP_WEB="$APP/Contents/Resources/Web"
+APP_WEB="$APP/Contents/Resources/ViewerWeb"
 APPEX_WEB="$APPEX/Contents/Resources/Web"
 ENTITLEMENTS="$ROOT/PreviewExtension/BurretePreview.entitlements"
 

@@ -998,7 +998,7 @@ kbd span { margin-left: 2px; }
   opacity: 0;
   pointer-events: none;
 }
-.dock-panel[data-open="false"] > :not(.dock-resizer) {
+.dock-panel[data-open="false"] .dock-panel-inner {
   visibility: hidden;
 }
 .dock-panel[data-area="right"][data-open="false"] {
@@ -1023,6 +1023,22 @@ kbd span { margin-left: 2px; }
   flex: 0 0 auto;
   min-height: 180px;
   max-height: min(720px, calc(100vh - var(--chrome-height) - 180px));
+}
+.dock-panel-inner {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.dock-panel[data-area="right"] .dock-panel-inner {
+  height: 100%;
+  min-width: 260px;
+}
+.dock-panel[data-area="bottom"] .dock-panel-inner {
+  width: 100%;
+  min-height: 180px;
 }
 .dock-panel[data-drop-active] {
   background: color-mix(in srgb, var(--accent) 8%, var(--bg-base));

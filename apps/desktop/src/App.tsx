@@ -293,10 +293,10 @@ export default function App() {
     statusText: "No update check has run yet.",
     availableRelease: null,
   }));
-  const refreshedPersistedSessionRef = useRef(false);
-  const openedPersistedTabsRef = useRef(false);
   const openedBrowserDevFilesRef = useRef<string | null>(null);
   const openedBrowserDevDockingRef = useRef<string | null>(null);
+  const refreshedPersistedSessionRef = useRef(false);
+  const openedPersistedTabsRef = useRef(false);
   const syncingBrowserDevFilesRef = useRef(false);
   const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions | null>(null);
   const pendingViewerReloadDocumentIdRef = useRef<string | null>(null);
@@ -457,6 +457,9 @@ export default function App() {
         if (options.replace) setDocuments(result.documents);
         else if (options.inActiveTab) openDocumentsInActiveTab(result.documents);
         else addDocuments(result.documents);
+        if (!options.replace && !options.inActiveTab && result.documents[0]) {
+          setActiveDocument(result.documents[0].id);
+        }
         if (result.documents.length > 0) markPerformanceOnce("app:first-document-opened");
         rememberRecentStructures(result.documents);
         const openedText = "Opened " + result.documents.length + " structure" + (result.documents.length === 1 ? "" : "s");
@@ -476,7 +479,13 @@ export default function App() {
         return null;
       }
     },
-    [addDocuments, openDocumentsInActiveTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setDocuments, showDelimitedGridColumnOpenMenu],
+    [addDocuments, openDocumentsInActiveTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setActiveDocument, setDocuments, showDelimitedGridColumnOpenMenu],
+  );
+  useOpenEvents(
+    (paths, options) => {
+      void openDocuments(paths, undefined, undefined, options);
+    },
+    pushErrorStatus,
   );
 
   const openTextDocuments = useCallback(
@@ -1485,6 +1494,14 @@ export default function App() {
     return true;
   }, [pushErrorStatus]);
 
+  const addDroppedProjectRoots = useCallback((paths: string[]) => {
+    const cleanPaths = Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
+    if (cleanPaths.length === 0) return;
+    for (const path of cleanPaths) addProjectRoot(path);
+    setWorkspacePath(cleanPaths[0]);
+    pushStatus("Project folder added");
+  }, [addProjectRoot, pushStatus]);
+
   const currentFepSetupRequest = useMemo<FepSetupRequest | null>(() => {
     const location = activeTab?.location;
     if (!location) return null;
@@ -1519,6 +1536,7 @@ export default function App() {
     activeDocumentPath: activeDocument?.path ?? null,
     activeDocumentRenderer: activeDocument?.renderer ?? null,
     activeDockingRequest: activeDocument?.dockingRequest ?? null,
+    documents,
     fepSetupRequest: currentFepSetupRequest,
     openDockingDocument,
     openDockingStructureRecords,
@@ -1527,6 +1545,7 @@ export default function App() {
     openFepSetupWorkspace,
     appendGridRecords,
     addXyzrenderSheetItems,
+    addProjectRoots: addDroppedProjectRoots,
     chooseDropAction,
     mergeMoleculeCollections: activeDocument?.renderer === "grid2d"
       ? (paths) => {
@@ -1977,6 +1996,43 @@ export default function App() {
           })();
           return;
         }
+        if (body?.type === "readStructureText") {
+          if (!body.requestId || !body.documentId) return;
+          const reply = (bodyPayload: Record<string, unknown>) => {
+            postMessageToViewerSource(event.source, {
+              source: "burrete-grid-host",
+              body: {
+                requestId: body.requestId,
+                documentId: body.documentId,
+                ...bodyPayload,
+              },
+            });
+          };
+          if (!isTauriRuntime()) {
+            reply({
+              type: "gridError",
+              error: "Desktop file reading is unavailable outside the Tauri runtime.",
+            });
+            return;
+          }
+          void (async () => {
+            try {
+              const text = await invoke<string>("read_structure_text", {
+                path: typeof body.path === "string" ? body.path : "",
+              });
+              reply({
+                type: "structureText",
+                text,
+              });
+            } catch (error) {
+              reply({
+                type: "gridError",
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          })();
+          return;
+        }
         if (body?.type === "renderXyzrenderCard") {
           if (!body.requestId || !body.documentId) return;
           const reply = (bodyPayload: Record<string, unknown>) => {
@@ -2387,15 +2443,15 @@ export default function App() {
       skipNextPreferenceRefreshRef.current = false;
       return;
     }
-    const paths = Array.from(new Set(tabs
-      .map((tab) => tab.location.kind === "file" ? tab.location.path : null)
-      .filter((path): path is string => typeof path === "string" && !isTemporaryDocumentPath(path))));
-    if (paths.length === 0) return;
+    const path = activeTab?.location.kind === "file" && !isTemporaryDocumentPath(activeTab.location.path)
+      ? activeTab.location.path
+      : null;
+    if (!path) return;
     const restoreTabId = activeTabId;
-    void openDocuments(paths).then(() => {
+    void openDocuments([path]).then(() => {
       if (restoreTabId) setActiveTab(restoreTabId);
     });
-    // Preferences refresh all open runtimes so inactive tabs do not keep stale renderer/theme output.
+    // Preferences refresh only the mounted file runtime. Inactive file tabs are unloaded.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preferences]);
 
