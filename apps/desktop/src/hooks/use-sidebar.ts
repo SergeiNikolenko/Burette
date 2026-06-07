@@ -5,6 +5,8 @@ export function useSidebar() {
   const sidebarWidth = useShellStore((state) => state.sidebarWidth);
   const projectsOpen = useShellStore((state) => state.projectsOpen);
   const projectRoots = useShellStore((state) => state.projectRoots);
+  const pinnedProjectRoots = useShellStore((state) => state.pinnedProjectRoots);
+  const projectNameOverrides = useShellStore((state) => state.projectNameOverrides);
   const expandedProjectIds = useShellStore((state) => state.expandedProjectIds);
   const pinnedStructurePaths = useShellStore((state) => state.pinnedStructurePaths);
   const sidebarQuery = useShellStore((state) => state.sidebarQuery);
@@ -14,6 +16,9 @@ export function useSidebar() {
   const toggleProjectsOpen = useShellStore((state) => state.toggleProjectsOpen);
   const setExpandedProjectIds = useShellStore((state) => state.setExpandedProjectIds);
   const addProjectRoot = useShellStore((state) => state.addProjectRoot);
+  const togglePinnedProjectRoot = useShellStore((state) => state.togglePinnedProjectRoot);
+  const renameProjectRoot = useShellStore((state) => state.renameProjectRoot);
+  const removeProjectRoot = useShellStore((state) => state.removeProjectRoot);
   const togglePinnedStructure = useShellStore((state) => state.togglePinnedStructure);
   const setSidebarQuery = useShellStore((state) => state.setSidebarQuery);
   const toggleProjectExpanded = useShellStore((state) => state.toggleProjectExpanded);
@@ -25,6 +30,8 @@ export function useSidebar() {
     sidebarWidth,
     projectsOpen,
     projectRoots,
+    pinnedProjectRoots,
+    projectNameOverrides,
     expandedProjectIds,
     pinnedStructurePaths,
     sidebarQuery,
@@ -32,6 +39,9 @@ export function useSidebar() {
     toggleProjectsOpen,
     setExpandedProjectIds,
     addProjectRoot,
+    togglePinnedProjectRoot,
+    renameProjectRoot,
+    removeProjectRoot,
     togglePinnedStructure,
     setSidebarQuery,
     toggleProjectExpanded,

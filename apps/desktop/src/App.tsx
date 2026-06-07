@@ -234,6 +234,8 @@ export default function App() {
     sidebarWidth,
     projectsOpen,
     projectRoots,
+    pinnedProjectRoots,
+    projectNameOverrides,
     expandedProjectIds,
     pinnedStructurePaths,
     sidebarQuery,
@@ -241,6 +243,9 @@ export default function App() {
     toggleProjectsOpen,
     setExpandedProjectIds,
     addProjectRoot,
+    togglePinnedProjectRoot,
+    renameProjectRoot,
+    removeProjectRoot,
     togglePinnedStructure,
     setSidebarQuery,
     toggleProjectExpanded,
@@ -380,9 +385,11 @@ export default function App() {
     documents,
     recentStructures,
     projectRoots,
+    pinnedProjectRoots,
+    projectNameOverrides,
     activeDocumentId: activeDocument?.id ?? null,
     pinnedStructurePaths,
-  }), [activeDocument?.id, documents, pinnedStructurePaths, projectRoots, recentStructures]);
+  }), [activeDocument?.id, documents, pinnedProjectRoots, pinnedStructurePaths, projectNameOverrides, projectRoots, recentStructures]);
 
   const activeTextDocument = useMemo(() => {
     const location = activeTab?.location;
@@ -2639,6 +2646,18 @@ export default function App() {
     chooseWorkspace,
     openWorkspaceFolder,
     openProjectFolder,
+    togglePinnedProjectRoot: (root: string) => {
+      togglePinnedProjectRoot(root);
+      pushStatus("Project pin updated");
+    },
+    renameProjectRoot: (root: string, name: string) => {
+      renameProjectRoot(root, name);
+      pushStatus(name.trim() ? "Project renamed" : "Project name reset");
+    },
+    removeProjectRoot: (root: string) => {
+      removeProjectRoot(root);
+      pushStatus("Project removed");
+    },
     toggleSidebar,
     toggleDock,
     setDockOpen,
@@ -2754,7 +2773,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [activeDocument?.id, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, installUpdate, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepSetupWorkspace, openKetcher, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openPaths, openProjectFolder, openRecentStructure, openSettings, openStructureRecords, openWorkspaceFolder, pushErrorStatus, pushStatus, resetQuickLook, revealActiveDocument, revealDocument, revealPath, saveMoleculeCollectionAs, selectDocument, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
+  }), [activeDocument?.id, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, installUpdate, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepSetupWorkspace, openKetcher, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openPaths, openProjectFolder, openRecentStructure, openSettings, openStructureRecords, openWorkspaceFolder, pushErrorStatus, pushStatus, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, saveMoleculeCollectionAs, selectDocument, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
