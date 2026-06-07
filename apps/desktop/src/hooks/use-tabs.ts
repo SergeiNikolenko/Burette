@@ -63,6 +63,10 @@ export function useOpenFepSetupTab() {
   return useMoleculeStore((state) => state.openFepSetupTab);
 }
 
+export function useOpenFepNetworkTab() {
+  return useMoleculeStore((state) => state.openFepNetworkTab);
+}
+
 export function useOpenPoseReviewTab() {
   return useMoleculeStore((state) => state.openPoseReviewTab);
 }

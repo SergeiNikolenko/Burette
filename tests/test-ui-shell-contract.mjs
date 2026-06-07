@@ -47,6 +47,8 @@ const [
   pageKindTypes,
   fileKind,
   fepSetupKind,
+  fepNetworkKind,
+  fepGraphmlLib,
   ketcherKind,
   poseReviewKind,
   ketcherPage,
@@ -88,6 +90,7 @@ const [
   remoteCheckScript,
   patchWebAssetsScript,
   desmondPreviewExtract,
+  fepGraphmlSample,
 ] = await Promise.all([
   source('apps/desktop/index.html'),
   source('apps/desktop/src/App.tsx'),
@@ -128,6 +131,8 @@ const [
   source('apps/desktop/src/components/editor-area/page-kinds/types.ts'),
   source('apps/desktop/src/components/editor-area/page-kinds/file.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/fep-setup.tsx'),
+  source('apps/desktop/src/components/editor-area/page-kinds/fep-network.tsx'),
+  source('apps/desktop/src/lib/fep-graphml.ts'),
   source('apps/desktop/src/components/editor-area/page-kinds/ketcher.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/pose-review.tsx'),
   source('apps/desktop/src/components/ketcher-page.tsx'),
@@ -169,6 +174,7 @@ const [
   source('scripts/check-remote.sh'),
   source('scripts/patch-web-assets.sh'),
   source('scripts/desmond_preview_extract.py'),
+  source('prototypes/ligand_network.graphml'),
 ]);
 const viewerShell = previewShell;
 const viewer = previewViewer;
@@ -537,7 +543,11 @@ assert.match(main, /import "\.\/performance-start"/);
 assert.match(main, /markPerformanceOnce\("app:react-mounted"\)/);
 assert.doesNotMatch(main, /window\.__BURRETE_BOOT_OVERLAY__\?\.markMounted\(\)/);
 assert.match(bootOverlayScript, /const overlayId = "burrete-boot-overlay"/);
+assert.match(bootOverlayScript, /let mounted = false/);
 assert.match(bootOverlayScript, /function whenBodyReady/);
+assert.match(bootOverlayScript, /function ensureOverlay\(\) \{\s*if \(mounted\) return null;/);
+assert.match(bootOverlayScript, /function removeOverlay\(\) \{\s*mounted = true;/);
+assert.match(bootOverlayScript, /whenBodyReady\(\(\) => \{\s*if \(mounted\) return;/);
 assert.match(bootOverlayScript, /window\.addEventListener\("error"/);
 assert.match(bootOverlayScript, /window\.addEventListener\("unhandledrejection"/);
 assert.match(bootOverlayScript, /The desktop UI did not mount within 3 seconds/);
@@ -546,7 +556,7 @@ assert.match(bootOverlayScript, /document\.getElementById\(styleId\)/);
 assert.doesNotMatch(bootOverlayScript, /\bimport\b/);
 assert.doesNotThrow(() => new Function(bootOverlayScript));
 assert.match(packageJson, /scripts\/bundle-report\.mjs/);
-assert.match(app, /markPerformanceOnce\("app:shell-visible"\);[\s\S]*?window\.__BURRETE_BOOT_OVERLAY__\?\.markMounted\(\)/);
+assert.match(app, /useEffect\(\(\) => \{\s*window\.__BURRETE_BOOT_OVERLAY__\?\.markMounted\(\);[\s\S]*?markPerformanceOnce\("app:shell-visible"\);/);
 assert.match(bundleReportScript, /source\.includes\("ketcher-core"\)/);
 assert.match(bundleReportScript, /source\.includes\("indigo-ketcher"\)/);
 assert.match(bundleReportScript, /relativePath\.toLowerCase\(\)\.includes\("ketcher"\)/);
@@ -647,7 +657,7 @@ assert.match(editorTabs, /className="tab-scroll-region"[\s\S]*role="tablist"[\s\
 assert.match(editorTabs, /className="tab-strip-spacer"[\s\S]*data-tauri-drag-region/);
 assert.match(defaultCapability, /"core:window:allow-internal-toggle-maximize"/);
 assert.match(defaultCapability, /"core:window:allow-start-dragging"/);
-assert.match(pageKinds, /const kinds = \[fileKind, fepSetupKind, ketcherKind, launcherKind, poseReviewKind, settingsKind\] as const/);
+assert.match(pageKinds, /const kinds = \[fileKind, fepNetworkKind, fepSetupKind, ketcherKind, launcherKind, poseReviewKind, settingsKind\] as const/);
 assert.match(pageKinds, /export function pageKind/);
 assert.match(pageKinds, /export function serializeLocation/);
 assert.match(pageKinds, /export function deserializeLocation/);
@@ -1094,7 +1104,9 @@ assert.match(ketcherEditor, /function createKetcherEditorApi\(\s*instance: Ketch
 assert.match(ketcherEditor, /getKet: instance\.getKet\.bind\(instance\)/);
 assert.match(ketcherEditor, /getMolfile: \(async \(\.\.\.args: Parameters<Ketcher\["getMolfile"\]>\) => \{/);
 assert.match(ketcherEditor, /const molfile = await instance\.getMolfile\(\.\.\.args\)/);
-assert.match(ketcherEditor, /return molfile\.trim\(\) \? molfile : serializeCurrentMolfile\(instance, MolSerializer\)/);
+assert.match(ketcherEditor, /return molfile\.trim\(\) && !isBlankMolfile\(molfile\) \? molfile : serializeCurrentMolfile\(instance, MolSerializer\)/);
+assert.match(ketcherEditor, /function isBlankMolfile\(molfile: string\)/);
+assert.match(ketcherEditor, /V30\\s\+COUNTS/);
 assert.doesNotMatch(ketcherEditor, /getMolfile: async \(\) => serializeCurrentMolfile\(instance, MolSerializer\)/);
 assert.match(ketcherEditor, /new MolSerializer\(\)\.serialize\(struct\)/);
 assert.match(ketcherEditor, /function suppressFilledKetcherSelectionPaths\(root: HTMLElement\)/);
@@ -1118,6 +1130,71 @@ assert.match(fepSetupKind, /function candidateLabels/);
 assert.match(fepSetupKind, /Source files remain unchanged/);
 assert.match(fepSetupKind, /<ViewerFrame document=\{docking\} \/>/);
 assert.match(fepSetupKind, /<ViewerFrame document=\{grid\} \/>/);
+assert.match(fepNetworkKind, /export const fepNetworkKind = definePageKind/);
+assert.match(fepNetworkKind, /kind: "fep-network"/);
+assert.match(fepNetworkKind, /parseFepGraphml/);
+assert.match(fepNetworkKind, /sampleGraphmlUrl = new URL\("[^"]*prototypes\/ligand_network\.graphml"/);
+assert.match(fepNetworkKind, /graphmlText\?: string/);
+assert.match(fepNetworkKind, /title: \(location\) => location\.title \? `FEP Network: \$\{location\.title\}` : "FEP Network Preview"/);
+assert.match(fepNetworkKind, /serialize: \(\) => null/);
+assert.match(fepNetworkKind, /className="fep-network-workspace"/);
+assert.match(fepNetworkKind, /useState<HighlightMode>\("off"\)/);
+assert.match(fepNetworkKind, /options=\{\[\["graph", "Graph"\], \["grid", "Grid"\]\]\}/);
+assert.match(fepNetworkKind, /options=\{\[\["common", "Common"\], \["different", "Different"\], \["off", "Off"\]\]\}/);
+assert.match(fepNetworkKind, /options=\{\[\["score", "Score"\], \["energy", "Energy"\]\]\}/);
+assert.match(fepNetworkKind, /disabledValues=\{hasEnergyEdges \? \[\] : \["energy"\]\}/);
+assert.match(fepNetworkKind, /<ViewerFrame document=\{gridDocument\} className="fep-network-grid-frame viewer-iframe" \/>/);
+assert.match(fepNetworkKind, /function EdgeLegend/);
+assert.match(fepNetworkKind, /function edgeVisual/);
+assert.match(fepNetworkKind, /className="fep-network-edge"/);
+assert.match(fepNetworkKind, /className="fep-network-edge-hit"/);
+assert.match(fepNetworkKind, /setHoveredEdgeKey\(key\)/);
+assert.match(fepNetworkKind, /setSelectedEdgeKey\(\(current\) => \(current === key \? null : key\)\)/);
+assert.match(fepNetworkKind, /width: 1\.8 \+ normalized \* 0\.4/);
+assert.match(fepNetworkKind, /setEdgeMetricMode\(hasEnergyEdges \? "energy" : "score"\)/);
+assert.doesNotMatch(fepNetworkKind, /function edgeValueSegment/);
+assert.doesNotMatch(fepNetworkKind, /lengthRatio/);
+assert.doesNotMatch(fepNetworkKind, /className="fep-network-edge-underlay"/);
+assert.doesNotMatch(fepNetworkKind, /XYZR/);
+assert.doesNotMatch(fepNetworkKind, /xyzrender/i);
+assert.match(fepNetworkKind, /vectorEffect="non-scaling-stroke"/);
+assert.match(fepNetworkKind, /className="fep-network-edge-label"/);
+assert.match(fepNetworkKind, /function readableEdgeAngle/);
+assert.match(fepNetworkKind, /function edgeLabelPlacement/);
+assert.match(fepNetworkKind, /function edgeLabelBox/);
+assert.doesNotMatch(fepNetworkKind, /function arrowBadgePath/);
+assert.match(fepNetworkKind, /function fepGridDocument/);
+assert.match(fepNetworkKind, /window\.BurreteGridRecords/);
+assert.match(fepNetworkKind, /grid-viewer\.js\?v=\$\{gridAssetVersion\}/);
+assert.match(fepNetworkKind, /scoreColor/);
+assert.match(fepNetworkKind, /energyColor/);
+assert.match(fepNetworkKind, /set_new_coords/);
+assert.match(fepNetworkKind, /molblockForKetcher\(node\)/);
+assert.match(fepNetworkKind, /normalizeMolblockForKetcher/);
+assert.match(fepNetworkKind, /showNativeContextMenu/);
+assert.match(fepNetworkKind, /Open in Ketcher/);
+assert.match(fepNetworkKind, /Open in Molstar/);
+assert.match(fepNetworkKind, /Delete from network/);
+assert.match(fepGraphmlLib, /export function parseFepGraphml/);
+assert.match(fepGraphmlLib, /"moldict"/);
+assert.match(fepGraphmlLib, /"annotations"/);
+assert.match(fepGraphmlLib, /"mapping"/);
+assert.match(fepGraphmlLib, /energy: firstNumberAnnotation/);
+assert.match(fepGraphmlLib, /uncertainty: firstNumberAnnotation/);
+assert.match(fepGraphmlLib, /function moldictToMolblock/);
+assert.match(fepGraphmlLib, /function molBondType/);
+assert.match(fepGraphmlLib, /if \(value === 12\) return 4/);
+assert.match(fepGraphmlLib, /function layoutFepNetwork/);
+assert.match(fepGraphmlLib, /function starLayout/);
+assert.match(fepGraphmlLib, /const compactSlots = \[/);
+assert.match(fepGraphmlLib, /function starEdgeLengthByNode/);
+assert.match(fepGraphmlLib, /function forceLayout/);
+assert.match(fepGraphmlLib, /function relaxCardCollisions/);
+assert.match(fepGraphmlSample, /attr\.name="moldict"/);
+assert.match(fepGraphmlSample, /attr\.name="mapping"/);
+assert.match(fepGraphmlSample, /attr\.name="annotations"/);
+assert.match(fepGraphmlSample, /Suze_Reference_5_B/);
+assert.match(fepGraphmlSample, /<edge source="mol1" target="mol2"/);
 assert.match(poseReviewKind, /export const poseReviewKind = definePageKind/);
 assert.match(poseReviewKind, /kind: "pose-review"/);
 assert.match(poseReviewKind, /serialize: \(\) => null/);
@@ -1138,6 +1215,20 @@ assert.match(styles, /grid-template-columns: minmax\(360px, 1\.05fr\) minmax\(22
 assert.match(styles, /\.fep-setup-panel \{/);
 assert.match(styles, /\.fep-setup-candidates \{/);
 assert.match(styles, /\.fep-setup-missing \{/);
+assert.match(styles, /\.fep-network-workspace \{/);
+assert.match(styles, /\.fep-network-toolbar \{/);
+assert.match(styles, /\.fep-network-card \{/);
+assert.match(styles, /\.fep-network-grid-frame \{/);
+assert.match(styles, /width: clamp\(150px, 10\.6vw, 170px\);/);
+assert.doesNotMatch(styles, /\.fep-network-edge-underlay \{/);
+assert.match(styles, /\.fep-network-edge-label \{/);
+assert.match(styles, /\.fep-network-edge-label span \{/);
+assert.doesNotMatch(styles, /\.fep-network-edge-label path \{/);
+assert.match(styles, /\.fep-network-edge-hit \{/);
+assert.match(styles, /\.fep-network-edge-legend\[data-active-edge="true"\] \{/);
+assert.match(styles, /\.fep-network-edge-legend \{/);
+assert.match(styles, /\.fep-network-edge-ramp-score \{/);
+assert.match(styles, /\.fep-network-edge-ramp-energy \{/);
 assert.match(ketcherPage, /function normalizeKetcherImportText\(text: string\)/);
 assert.match(ketcherPage, /function looksLikeSdfRecord\(text: string\)/);
 assert.match(ketcherPage, /const normalized = text\.replace\(\/\\r\\n\/g, "\\n"\)\.replace\(\/\\r\/g, "\\n"\)\.trimEnd\(\)/);
@@ -1459,9 +1550,17 @@ assert.match(app, /pushStatus\("Opening pose-review workspace\.\.\."\)/);
 assert.match(app, /const openPoseReviewWorkspace = useCallback/);
 assert.match(app, /openPoseReviewTab\(\{/);
 assert.match(app, /const openFepSetupWorkspace = useCallback/);
+assert.match(app, /const openFepNetworkPreview = useCallback/);
 assert.match(app, /openFepSetupTab\(\{/);
 assert.match(app, /kind: "fep-setup"/);
 assert.match(app, /pushStatus\("Opened FEP setup workspace"\)/);
+assert.match(app, /const graphmlPaths = cleanPaths\.filter\(isFepGraphmlPath\)/);
+assert.match(app, /const structurePaths = cleanPaths\.filter\(\(path\) => !isFepGraphmlPath\(path\)\)/);
+assert.match(app, /const graphmlText = await readStructureText\(path\)/);
+assert.match(app, /openFepNetworkTab\(\{ kind: "fep-network", title: basename\(path\), graphmlText \}\)/);
+assert.match(app, /openFepNetworkTab\(\{ kind: "fep-network", \.\.\.request \}\)/);
+assert.match(app, /function isFepGraphmlPath\(path: string\)/);
+assert.match(app, /pushStatus\("Opened FEP network preview"\)/);
 assert.match(app, /const currentFepSetupRequest = useMemo<FepSetupRequest \| null>/);
 assert.match(app, /fepSetupRequest: currentFepSetupRequest/);
 assert.match(app, /openFepSetupWorkspace,/);
@@ -2716,6 +2815,8 @@ assert.match(previewViewer, /prepared\.nativeTrajectoryControls && initialPose >
 assert.match(previewViewer, /event\.key === 'ArrowLeft'/);
 assert.match(previewViewer, /event\.key === 'ArrowRight'/);
 assert.match(moleculeStore, /function persistedDocuments\(documents: ViewerDocument\[\]\)/);
+assert.match(moleculeStore, /tab\.location\.kind !== "fep-network"/);
+assert.match(moleculeStore, /openFepNetworkTab:/);
 assert.match(moleculeStore, /if \(isPersistentViewerDocument\(document\)\) byPath\.set\(document\.path, toRecentStructure\(document\)\)/);
 
 console.log('ui shell contract tests passed');

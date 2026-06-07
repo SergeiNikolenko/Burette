@@ -3,6 +3,7 @@
   const styleId = "burrete-boot-overlay-style";
   const mountTimeoutMs = 3000;
   let pendingOverlay = null;
+  let mounted = false;
 
   function whenBodyReady(callback) {
     if (document.body) {
@@ -63,6 +64,7 @@
   }
 
   function ensureOverlay() {
+    if (mounted) return null;
     if (!document.body) return null;
     ensureStyle();
     const existing = document.getElementById(overlayId);
@@ -82,6 +84,7 @@
   }
 
   function setOverlay(message, details) {
+    mounted = false;
     const overlay = ensureOverlay();
     if (!overlay) {
       pendingOverlay = { message, details };
@@ -104,6 +107,7 @@
   }
 
   function removeOverlay() {
+    mounted = true;
     document.getElementById(overlayId)?.remove();
     document.getElementById(styleId)?.remove();
   }
@@ -126,6 +130,7 @@
   }
 
   whenBodyReady(() => {
+    if (mounted) return;
     if (pendingOverlay) {
       setOverlay(pendingOverlay.message, pendingOverlay.details);
     } else {
