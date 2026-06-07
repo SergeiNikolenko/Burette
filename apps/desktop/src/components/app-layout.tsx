@@ -6,6 +6,7 @@ import { ViewerArea } from "./editor-area";
 import { EditorTabs } from "./editor-area/editor-tabs";
 import { NotificationPopup } from "./notification-popup";
 import { Sidebar } from "./sidebar";
+import { ShortcutTooltip } from "./shortcut-tooltip";
 import type { ShellActions, ShellViewState } from "./types";
 import { isTauriRuntime } from "../lib/tauri";
 import { buildThemeStyle, resolveThemeMode, useSystemThemeMode } from "../lib/theme";
@@ -86,10 +87,10 @@ export function AppLayout({
               className="chrome-button sidebar-toggle-root"
               onMouseDown={(event) => event.preventDefault()}
               onClick={onToggleSidebar}
-              title={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"}
               aria-label={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"}
             >
               <HugeiconsIcon icon={SidebarLeftIcon} size={18} color="currentColor" strokeWidth={2} />
+              <ShortcutTooltip label={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"} shortcut={"⌘\\"} />
             </button>
           </div>
           <div className="chrome-trailing-controls" data-tauri-drag-region>
@@ -99,10 +100,10 @@ export function AppLayout({
               data-active={state.bottomDockOpen || undefined}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => actions.toggleDock("bottom")}
-              title={state.bottomDockOpen ? "Hide bottom dock" : "Show bottom dock"}
               aria-label={state.bottomDockOpen ? "Hide bottom dock" : "Show bottom dock"}
             >
               <HugeiconsIcon className="dock-toggle-icon-bottom" icon={SidebarLeftIcon} size={18} color="currentColor" strokeWidth={2} />
+              <ShortcutTooltip label={state.bottomDockOpen ? "Hide bottom dock" : "Show bottom dock"} shortcut="⌘J" />
             </button>
             <button
               type="button"
@@ -110,10 +111,10 @@ export function AppLayout({
               data-active={state.rightDockOpen || undefined}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => actions.toggleDock("right")}
-              title={state.rightDockOpen ? "Hide right dock" : "Show right dock"}
               aria-label={state.rightDockOpen ? "Hide right dock" : "Show right dock"}
             >
               <HugeiconsIcon className="dock-toggle-icon-right" icon={SidebarLeftIcon} size={18} color="currentColor" strokeWidth={2} />
+              <ShortcutTooltip label={state.rightDockOpen ? "Hide right dock" : "Show right dock"} shortcut="⌥⌘B" />
             </button>
           </div>
           <header

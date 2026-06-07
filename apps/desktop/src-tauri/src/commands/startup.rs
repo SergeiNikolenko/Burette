@@ -1,8 +1,8 @@
-use crate::startup::{agent_session_from_argv, file_args_from_argv};
+use crate::startup::{agent_session_from_argv, PendingOpenDocuments};
 
 #[tauri::command]
-pub(crate) fn startup_documents() -> Vec<String> {
-    file_args_from_argv(std::env::args().collect(), std::env::current_dir().ok())
+pub(crate) fn startup_documents(pending: tauri::State<'_, PendingOpenDocuments>) -> Vec<String> {
+    pending.drain()
 }
 
 #[tauri::command]

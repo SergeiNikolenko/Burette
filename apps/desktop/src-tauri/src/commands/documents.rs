@@ -111,6 +111,14 @@ pub(crate) struct TextStructureRequest {
     text: String,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ClassifiedOpenPaths {
+    files: Vec<String>,
+    directories: Vec<String>,
+    errors: Vec<String>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DelimitedGridOpenRequest {
@@ -140,6 +148,41 @@ pub(crate) fn pick_open_targets<R: Runtime>(
             .filter_map(|path| path.into_path())
             .map(|path| path.to_string_lossy().to_string())
             .collect())
+    }
+}
+
+#[tauri::command]
+pub(crate) fn classify_open_paths(paths: Vec<String>) -> ClassifiedOpenPaths {
+    let mut files = BTreeSet::new();
+    let mut directories = BTreeSet::new();
+    let mut errors = Vec::new();
+    for path in paths {
+        let trimmed = path.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let input_path = PathBuf::from(trimmed);
+        match input_path.canonicalize() {
+            Ok(canonical) => match fs::metadata(&canonical) {
+                Ok(metadata) if metadata.is_file() => {
+                    files.insert(canonical.to_string_lossy().to_string());
+                }
+                Ok(metadata) if metadata.is_dir() => {
+                    directories.insert(canonical.to_string_lossy().to_string());
+                }
+                Ok(_) => errors.push(format!(
+                    "{} is neither a file nor a directory",
+                    canonical.display()
+                )),
+                Err(error) => errors.push(format!("{}: {error}", canonical.display())),
+            },
+            Err(error) => errors.push(format!("{trimmed}: {error}")),
+        }
+    }
+    ClassifiedOpenPaths {
+        files: files.into_iter().collect(),
+        directories: directories.into_iter().collect(),
+        errors,
     }
 }
 
@@ -1179,7 +1222,7 @@ fn pick_open_targets_macos<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<Vec<
 #[cfg(test)]
 mod tests {
     use super::{
-        expand_open_targets, looks_like_supported_structure_file,
+        classify_open_paths, expand_open_targets, looks_like_supported_structure_file,
         normalize_inline_structure_extension, open_text_structure, smiles_from_sheet_data,
         TextStructureRequest,
     };
@@ -1261,6 +1304,39 @@ mod tests {
             std::path::Path::new("notes.txt"),
             &supported_extensions
         ));
+    }
+
+    #[test]
+    fn classifies_open_paths_without_expanding_directories() {
+        let root = std::env::temp_dir().join(format!(
+            "burrete-classify-open-paths-{}",
+            std::process::id()
+        ));
+        let nested = root.join("nested");
+        let pdb = root.join("mini.pdb");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(&pdb, "HEADER TEST\n").unwrap();
+
+        let classified = classify_open_paths(vec![
+            pdb.to_string_lossy().to_string(),
+            nested.to_string_lossy().to_string(),
+            root.join("missing.pdb").to_string_lossy().to_string(),
+        ]);
+
+        assert_eq!(
+            classified.files,
+            vec![pdb.canonicalize().unwrap().to_string_lossy().to_string()]
+        );
+        assert_eq!(
+            classified.directories,
+            vec![nested.canonicalize().unwrap().to_string_lossy().to_string()]
+        );
+        assert_eq!(classified.errors.len(), 1);
+        assert!(classified.errors[0].contains("missing.pdb"));
+
+        fs::remove_file(pdb).unwrap();
+        fs::remove_dir(nested).unwrap();
+        fs::remove_dir(root).unwrap();
     }
 
     #[test]

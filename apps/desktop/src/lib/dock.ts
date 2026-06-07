@@ -25,6 +25,7 @@ export type DockDroppedStructure = {
   title: string;
   detail: string;
   addedAt: number;
+  payload: StructureDragPayload;
 };
 
 export type DockDropInput = {
