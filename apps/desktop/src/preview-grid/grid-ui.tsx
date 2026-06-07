@@ -32,7 +32,9 @@ type GridControlProps = {
   onSelectAll: () => void;
   onClearSelection: () => void;
   onCopySelected: () => void;
+  onSaveGrid: () => void;
   onSaveGridAs: () => void;
+  onUndoGridEdit: () => void;
   onExportSmiles: () => void;
   onExportCSV: () => void;
   onSetCardRenderer: (value: "rdkit" | "xyzrender") => void;
@@ -70,7 +72,9 @@ function GridControls(props: GridControlProps) {
         </div>
         <div className="buret-actions" hidden={!props.exportEnabled}>
           <button id="copy-selected" type="button" onClick={props.onCopySelected}>Copy selected</button>
+          <button id="save-grid" type="button" disabled onClick={props.onSaveGrid}>Save</button>
           <button id="save-grid-as" type="button" onClick={props.onSaveGridAs}>Save As...</button>
+          <button id="undo-grid-edit" type="button" disabled onClick={props.onUndoGridEdit}>Undo</button>
           <button id="export-smi" type="button" onClick={props.onExportSmiles}>Export SMILES</button>
           <button id="export-csv" type="button" onClick={props.onExportCSV}>Export CSV</button>
         </div>
