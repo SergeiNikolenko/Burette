@@ -251,6 +251,7 @@ export default function App() {
     pinnedProjectRoots,
     projectNameOverrides,
     expandedProjectIds,
+    hiddenProjectRoots,
     pinnedStructurePaths,
     sidebarQuery,
     setSidebarWidth,
@@ -403,8 +404,9 @@ export default function App() {
     pinnedProjectRoots,
     projectNameOverrides,
     activeDocumentId: activeDocument?.id ?? null,
+    hiddenProjectRoots,
     pinnedStructurePaths,
-  }), [activeDocument?.id, documents, pinnedProjectRoots, pinnedStructurePaths, projectNameOverrides, projectRoots, recentStructures]);
+  }), [activeDocument?.id, documents, hiddenProjectRoots, pinnedProjectRoots, pinnedStructurePaths, projectNameOverrides, projectRoots, recentStructures]);
 
   const activeTextDocument = useMemo(() => {
     const location = activeTab?.location;

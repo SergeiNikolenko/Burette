@@ -8,6 +8,7 @@ export function useSidebar() {
   const pinnedProjectRoots = useShellStore((state) => state.pinnedProjectRoots);
   const projectNameOverrides = useShellStore((state) => state.projectNameOverrides);
   const expandedProjectIds = useShellStore((state) => state.expandedProjectIds);
+  const hiddenProjectRoots = useShellStore((state) => state.hiddenProjectRoots);
   const pinnedStructurePaths = useShellStore((state) => state.pinnedStructurePaths);
   const sidebarQuery = useShellStore((state) => state.sidebarQuery);
   const toggleSidebar = useShellStore((state) => state.toggleSidebar);
@@ -33,6 +34,7 @@ export function useSidebar() {
     pinnedProjectRoots,
     projectNameOverrides,
     expandedProjectIds,
+    hiddenProjectRoots,
     pinnedStructurePaths,
     sidebarQuery,
     setSidebarWidth,

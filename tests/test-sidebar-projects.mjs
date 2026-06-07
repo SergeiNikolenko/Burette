@@ -92,6 +92,26 @@ assert.deepEqual(
   ],
 );
 
+const projectsAfterRemove = buildSidebarProjects({
+  documents,
+  recentStructures,
+  projectRoots: ["/Users/test/Burette"],
+  hiddenProjectRoots: ["/Users/test/Matcha"],
+  activeDocumentId: "doc-1",
+});
+assert.deepEqual(projectsAfterRemove.map((project) => project.rootPath), ["/Users/test/Burette"]);
+assert.equal(projectsAfterRemove[0].items.length, 1);
+
+const explicitProjectOverridesHiddenRoot = buildSidebarProjects({
+  documents,
+  recentStructures,
+  projectRoots: ["/Users/test/Matcha/ligands"],
+  hiddenProjectRoots: ["/Users/test/Matcha", "/Users/test/Burette"],
+  activeDocumentId: "doc-1",
+});
+assert.equal(explicitProjectOverridesHiddenRoot.length, 1);
+assert.equal(explicitProjectOverridesHiddenRoot[0].rootPath, "/Users/test/Matcha/ligands");
+
 const pinnedProjects = buildSidebarProjects({
   documents,
   recentStructures,
