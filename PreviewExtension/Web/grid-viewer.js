@@ -1912,10 +1912,10 @@
     if (caps.selection) {
       el.tabIndex = 0;
       el.role = 'button';
-      el.addEventListener('click', event => handleCardOpen(event, row, cfg, el));
+      el.addEventListener('click', event => handleCardSelection(event, row, cfg, el));
       el.addEventListener('keydown', event => {
         if (event.key === ' ' || event.key === 'Enter') {
-          handleCardOpen(event, row, cfg, el);
+          handleCardSelection(event, row, cfg, el);
         }
       });
     }
@@ -2341,19 +2341,12 @@
     updateChrome(cfg);
   }
 
-  function handleCardOpen(event, row, cfg, cardElement) {
+  function handleCardSelection(event, row, cfg, cardElement) {
     if (event.defaultPrevented || event.target?.closest?.('[data-buret-card-resize]')) return;
     if (event.target?.closest?.('button, input, select, textarea, [contenteditable="true"]')) return;
     if (event instanceof MouseEvent && event.button !== 0) return;
     event.preventDefault();
     hideMoleculeContextMenu();
-    showMoleculeDetail(row, cfg);
-    cardElement?.focus?.({ preventScroll: true });
-  }
-
-  function handleCardSelection(event, row, cfg, cardElement) {
-    if (event.defaultPrevented || event.target?.closest?.('[data-buret-card-resize]')) return;
-    event.preventDefault();
     const index = Number(row.index);
     if (event.shiftKey) selectRangeTo(index, cfg);
     else toggleSelection(index, cfg);
