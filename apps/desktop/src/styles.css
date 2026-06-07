@@ -1707,6 +1707,9 @@ kbd span { margin-left: 2px; }
   --ketcher-toolbar-icon-size: clamp(2px, calc(22px * var(--ketcher-ui-scale, 1)), 28px);
   --ketcher-toolbar-margin: clamp(0px, calc(4px * var(--ketcher-ui-scale, 1)), 5px);
   --ketcher-toolbar-group-gap: clamp(1px, calc(6px * var(--ketcher-ui-scale, 1)), 8px);
+  --ketcher-top-toolbar-height: clamp(12px, calc(36px * var(--ketcher-ui-scale, 1)), 44px);
+  --ketcher-top-toolbar-button-size: clamp(8px, calc(28px * var(--ketcher-ui-scale, 1)), 36px);
+  --ketcher-top-toolbar-icon-size: clamp(6px, calc(24px * var(--ketcher-ui-scale, 1)), 30px);
   --ketcher-side-rail-width: calc(var(--ketcher-toolbar-button-size) + 13px);
   border: 1px solid var(--line-subtler);
   background: #f5f5f5;
@@ -1718,8 +1721,8 @@ kbd span { margin-left: 2px; }
 .ketcher-editor-root > [class*="Editor-module_editor"],
 .ketcher-editor-shell [class*="Editor-module_editorsWrapper"],
 .ketcher-editor-shell [class*="App-module_app"],
-.ketcher-editor-shell [class*="App-module_top"],
-.ketcher-editor-shell [class*="App-module_canvas"] {
+.ketcher-editor-shell [data-testid="top-toolbar"],
+.ketcher-editor-shell [data-testid="ketcher-canvas"] {
   min-width: 0;
   max-width: 100%;
 }
@@ -1741,40 +1744,67 @@ kbd span { margin-left: 2px; }
   position: relative;
 }
 .ketcher-editor-shell [class*="Editor-module_editor"],
-.ketcher-editor-shell [class*="App-module_canvas"],
 .ketcher-editor-shell [class*="StructEditor-module_canvas"],
 .ketcher-editor-shell [class*="StructEditor-module_intermediateCanvas"],
+.ketcher-editor-shell [data-testid="canvas"],
+.ketcher-editor-shell [data-testid="drawn-structures"],
+.ketcher-editor-shell [data-testid="ketcher-canvas"],
 .ketcher-editor-shell svg {
   background-color: #f5f5f5;
 }
-.ketcher-editor-shell [class*="App-module_canvas"] {
+.ketcher-editor-shell [data-testid="ketcher-canvas"] {
   position: relative;
   z-index: 1;
 }
 .ketcher-editor-shell [class*="App-module_app"] {
   grid-template-columns: minmax(var(--ketcher-side-rail-width), max-content) 1fr minmax(var(--ketcher-side-rail-width), max-content);
 }
-.ketcher-editor-shell [class*="App-module_top"],
-.ketcher-editor-shell [class*="App-module_left"],
-.ketcher-editor-shell [class*="App-module_right"],
-.ketcher-editor-shell [class*="App-module_bottom"] {
+.ketcher-editor-shell [data-testid="top-toolbar"],
+.ketcher-editor-shell [data-testid="left-toolbar"],
+.ketcher-editor-shell [data-testid="right-toolbar"],
+.ketcher-editor-shell [data-testid="bottom-toolbar"] {
   position: relative;
   z-index: 2;
 }
-.ketcher-editor-shell [class*="ActionButton-module_button"],
-.ketcher-editor-shell [class*="BottomToolbar-module_root"] button,
-.ketcher-editor-shell [class*="LeftToolbar-module_groupItem"] button,
-.ketcher-editor-shell [class*="RightToolbar-module_buttons"] button,
+.ketcher-editor-shell [data-testid="top-toolbar"] {
+  width: min(100%, calc(100% * var(--ketcher-ui-scale, 1))) !important;
+  height: var(--ketcher-top-toolbar-height) !important;
+  min-height: var(--ketcher-top-toolbar-height) !important;
+}
+.ketcher-editor-shell [data-testid="top-toolbar"] > div {
+  height: var(--ketcher-top-toolbar-height) !important;
+  min-height: var(--ketcher-top-toolbar-height) !important;
+  gap: var(--ketcher-toolbar-margin) !important;
+}
+.ketcher-editor-shell [data-testid="top-toolbar"] button {
+  height: var(--ketcher-top-toolbar-button-size) !important;
+  min-height: var(--ketcher-top-toolbar-button-size) !important;
+  margin: var(--ketcher-toolbar-margin) !important;
+}
+.ketcher-editor-shell [data-testid="top-toolbar"] button:has(svg) {
+  width: var(--ketcher-top-toolbar-button-size) !important;
+  min-width: var(--ketcher-top-toolbar-button-size) !important;
+}
+.ketcher-editor-shell [data-testid="top-toolbar"] button > svg {
+  width: var(--ketcher-top-toolbar-icon-size) !important;
+  height: var(--ketcher-top-toolbar-icon-size) !important;
+}
+.ketcher-editor-shell [data-testid="top-toolbar"] hr {
+  height: calc(16px * var(--ketcher-ui-scale, 1)) !important;
+  margin-inline: var(--ketcher-toolbar-margin) !important;
+}
+.ketcher-editor-shell [data-testid="bottom-toolbar"] button,
+.ketcher-editor-shell [data-testid="left-toolbar"] button,
+.ketcher-editor-shell [data-testid="right-toolbar"] button,
 .ketcher-editor-shell [class*="SpecialSymbolsButton-module_textButton"],
 .ketcher-editor-shell [class*="TextButton-module_textButton"] {
   width: var(--ketcher-toolbar-button-size) !important;
   height: var(--ketcher-toolbar-button-size) !important;
   margin: var(--ketcher-toolbar-margin) !important;
 }
-.ketcher-editor-shell [class*="ActionButton-module_button"] > svg,
-.ketcher-editor-shell [class*="BottomToolbar-module_root"] button > svg,
-.ketcher-editor-shell [class*="LeftToolbar-module_groupItem"] button > svg,
-.ketcher-editor-shell [class*="RightToolbar-module_buttons"] button svg,
+.ketcher-editor-shell [data-testid="bottom-toolbar"] button > svg,
+.ketcher-editor-shell [data-testid="left-toolbar"] button > svg,
+.ketcher-editor-shell [data-testid="right-toolbar"] button svg,
 .ketcher-editor-shell [class*="SpecialSymbolsButton-module_textButton"] > svg,
 .ketcher-editor-shell [class*="TextButton-module_textButton"] > svg {
   width: var(--ketcher-toolbar-icon-size) !important;
@@ -1783,13 +1813,13 @@ kbd span { margin-left: 2px; }
   top: 50% !important;
   transform: translate(-50%, -50%) !important;
 }
-.ketcher-editor-shell [class*="LeftToolbar-module_root"],
-.ketcher-editor-shell [class*="RightToolbar-module_root"] {
+.ketcher-editor-shell [data-testid="left-toolbar"],
+.ketcher-editor-shell [data-testid="right-toolbar"] {
   width: var(--ketcher-side-rail-width) !important;
 }
-.ketcher-editor-shell [class*="LeftToolbar-module_root"] > div > div,
-.ketcher-editor-shell [class*="RightToolbar-module_root"] > div > div,
-.ketcher-editor-shell [class*="BottomToolbar-module_root"] > div > div {
+.ketcher-editor-shell [data-testid="left-toolbar"] > div > div,
+.ketcher-editor-shell [data-testid="right-toolbar"] > div > div,
+.ketcher-editor-shell [data-testid="bottom-toolbar"] > div > div {
   margin-bottom: var(--ketcher-toolbar-group-gap) !important;
 }
 .ketcher-empty-watermark {
@@ -1871,7 +1901,6 @@ kbd span { margin-left: 2px; }
 }
 .ketcher-output {
   margin: 0;
-  max-height: 116px;
   overflow: auto;
   border: 1px solid var(--line-subtler);
   border-radius: 8px;
@@ -1883,10 +1912,50 @@ kbd span { margin-left: 2px; }
   line-height: 1.35;
   white-space: pre-wrap;
 }
+.ketcher-output-panel {
+  position: relative;
+  min-width: 0;
+  height: var(--ketcher-output-height, 58px);
+  min-height: 42px;
+}
+.ketcher-output-resizer {
+  position: absolute;
+  left: 0;
+  top: -9px;
+  z-index: 2;
+  width: 100%;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  cursor: ns-resize;
+  touch-action: none;
+  user-select: none;
+}
+.ketcher-output-resizer::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 7px;
+  width: 64px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--line-subtler);
+  opacity: 0.64;
+  transform: translateX(-50%);
+  transition: opacity 120ms ease;
+}
+.ketcher-output-resizer:hover::after,
+.ketcher-output-resizer:focus-visible::after,
+.ketcher-output-resizer:active::after {
+  opacity: 1;
+}
 .ketcher-output-input {
   width: 100%;
-  min-height: 42px;
-  resize: vertical;
+  height: 100%;
+  min-height: 0;
+  resize: none;
   outline: none;
 }
 .ketcher-output-input:focus {

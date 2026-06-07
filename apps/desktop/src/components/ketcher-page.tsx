@@ -9,6 +9,8 @@ import {
   type CSSProperties,
   type DragEvent,
   type ErrorInfo,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 
@@ -28,14 +30,130 @@ type KetcherEditorComponent = ComponentType<{
   onStatus: (status: string) => void;
   onLoadError?: (error: Error) => void;
 }>;
-type KetcherOutputMode = "smiles" | "molfile";
+type KetcherTextFormat =
+  | "smiles"
+  | "extended-smiles"
+  | "molfile-v2000"
+  | "molfile-v3000"
+  | "rxn-v2000"
+  | "rxn-v3000"
+  | "ket"
+  | "sdf-v2000"
+  | "sdf-v3000"
+  | "rdf-v2000"
+  | "rdf-v3000"
+  | "smarts"
+  | "cml"
+  | "cdxml"
+  | "cdx"
+  | "inchi"
+  | "inchi-aux"
+  | "inchi-key"
+  | "svg";
+type KetcherPanelMode = {
+  purpose: "export" | "import";
+  format: KetcherTextFormat;
+};
 
-const KETCHER_UI_SCALES = [0.1, 0.2, 0.3, 0.4, 0.5, 0.64, 0.7, 0.76, 0.82, 0.88, 0.94, 1, 1.08, 1.16, 1.24, 1.36] as const;
-const DEFAULT_KETCHER_UI_SCALE_INDEX = 3;
+const KETCHER_ZOOM_LEVELS = [0.2, 0.3, 0.4, 0.5, 0.6, 0.64, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.7, 2, 2.5, 3, 3.5, 4] as const;
+const DEFAULT_KETCHER_ZOOM = 0.64;
+const KETCHER_OUTPUT_DEFAULT_HEIGHT = 58;
+const KETCHER_OUTPUT_MIN_HEIGHT = 42;
+const KETCHER_OUTPUT_MAX_HEIGHT = 360;
 const KETCHER_EXPORT_TIMEOUT_MS = 15000;
 const KETCHER_IMPORT_INSTANCE_RETRY_DELAYS_MS = [0, 250, 750, 1500, 2500] as const;
 const KETCHER_IMPORT_REQUEST_RETRY_MS = 5000;
 type KetcherImportResult = "success" | "transient-failure" | "failure";
+const KETCHER_FORMAT_LABELS: Record<KetcherTextFormat, string> = {
+  smiles: "SMILES",
+  "extended-smiles": "Extended SMILES",
+  "molfile-v2000": "Molfile V2000",
+  "molfile-v3000": "Molfile V3000",
+  "rxn-v2000": "RXN V2000",
+  "rxn-v3000": "RXN V3000",
+  ket: "KET",
+  "sdf-v2000": "SDF V2000",
+  "sdf-v3000": "SDF V3000",
+  "rdf-v2000": "RDF V2000",
+  "rdf-v3000": "RDF V3000",
+  smarts: "SMARTS",
+  cml: "CML",
+  cdxml: "CDXML",
+  cdx: "CDX",
+  inchi: "InChI",
+  "inchi-aux": "InChI + AuxInfo",
+  "inchi-key": "InChIKey",
+  svg: "SVG",
+};
+const KETCHER_EXPORT_FORMATS: KetcherTextFormat[] = [
+  "smiles",
+  "extended-smiles",
+  "molfile-v2000",
+  "molfile-v3000",
+  "rxn-v2000",
+  "rxn-v3000",
+  "ket",
+  "sdf-v2000",
+  "sdf-v3000",
+  "rdf-v2000",
+  "rdf-v3000",
+  "smarts",
+  "cml",
+  "cdxml",
+  "cdx",
+  "inchi",
+  "inchi-aux",
+  "inchi-key",
+  "svg",
+];
+const KETCHER_IMPORT_FORMATS: KetcherTextFormat[] = [
+  "smiles",
+  "extended-smiles",
+  "molfile-v2000",
+  "molfile-v3000",
+  "rxn-v2000",
+  "rxn-v3000",
+  "ket",
+  "sdf-v2000",
+  "sdf-v3000",
+  "rdf-v2000",
+  "rdf-v3000",
+  "smarts",
+  "cml",
+  "cdxml",
+  "cdx",
+  "inchi",
+];
+
+function nearestKetcherZoomIndex(value: number) {
+  const normalized = normalizeKetcherZoom(value);
+  let nearestIndex = 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  KETCHER_ZOOM_LEVELS.forEach((zoom, index) => {
+    const distance = Math.abs(zoom - normalized);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = index;
+    }
+  });
+  return nearestIndex;
+}
+
+function normalizeKetcherZoom(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return DEFAULT_KETCHER_ZOOM;
+  return Math.max(KETCHER_ZOOM_LEVELS[0], Math.min(KETCHER_ZOOM_LEVELS[KETCHER_ZOOM_LEVELS.length - 1], value));
+}
+
+function outputPanelMaxHeight() {
+  return Math.max(
+    KETCHER_OUTPUT_MIN_HEIGHT,
+    Math.min(KETCHER_OUTPUT_MAX_HEIGHT, Math.floor(window.innerHeight * 0.42)),
+  );
+}
+
+function resizedOutputPanelHeight(startHeight: number, startY: number, clientY: number) {
+  return Math.max(KETCHER_OUTPUT_MIN_HEIGHT, Math.min(outputPanelMaxHeight(), startHeight + startY - clientY));
+}
 
 export function KetcherPage({
   location,
@@ -53,7 +171,7 @@ export function KetcherPage({
   const [ketcher, setKetcher] = useState<KetcherEditorApi | null>(null);
   const [status, setStatus] = useState("Loading editor");
   const [output, setOutput] = useState("");
-  const [outputMode, setOutputMode] = useState<KetcherOutputMode | null>(null);
+  const [panelMode, setPanelMode] = useState<KetcherPanelMode | null>(null);
   const [editorReloadKey, setEditorReloadKey] = useState(0);
   const [dropActive, setDropActive] = useState(false);
   const [editorHasActivated, setEditorHasActivated] = useState(false);
@@ -61,7 +179,8 @@ export function KetcherPage({
   const [hasSketch, setHasSketch] = useState(Boolean(
     location.draftKet?.trim() || location.draftMolfile?.trim() || state.ketcherDraftMolfile.trim(),
   ));
-  const [ketcherUIScaleIndex, setKetcherUIScaleIndex] = useState(DEFAULT_KETCHER_UI_SCALE_INDEX);
+  const [ketcherZoom, setKetcherZoom] = useState(DEFAULT_KETCHER_ZOOM);
+  const [outputPanelHeight, setOutputPanelHeight] = useState(KETCHER_OUTPUT_DEFAULT_HEIGHT);
   const [selectedCollectionPath, setSelectedCollectionPath] = useState("");
   const [gridEditSource, setGridEditSource] = useState<NonNullable<NonNullable<KetcherImportRequest["fragments"]>[number]["source"]> | null>(null);
   const handledImportRequestIdRef = useRef<number | null>(null);
@@ -72,11 +191,15 @@ export function KetcherPage({
   const sketchDragRecordRef = useRef<StructureDragRecord | null>(null);
   const restoredDraftRef = useRef("");
   const shouldMountEditor = isActive || editorHasActivated;
-  const ketcherUIScale = KETCHER_UI_SCALES[ketcherUIScaleIndex];
-  const ketcherUIScalePercent = Math.round(ketcherUIScale * 100);
+  const ketcherZoomIndex = nearestKetcherZoomIndex(ketcherZoom);
+  const ketcherZoomPercent = Math.round(ketcherZoom * 100);
+  const panelFormatLabel = panelMode ? KETCHER_FORMAT_LABELS[panelMode.format] : "";
   const ketcherUIScaleStyle = useMemo(() => ({
-    "--ketcher-ui-scale": String(ketcherUIScale),
-  }) as CSSProperties, [ketcherUIScale]);
+    "--ketcher-ui-scale": String(ketcherZoom),
+  }) as CSSProperties, [ketcherZoom]);
+  const outputPanelStyle = useMemo(() => ({
+    "--ketcher-output-height": `${outputPanelHeight}px`,
+  }) as CSSProperties, [outputPanelHeight]);
 
   useEffect(() => {
     if (!isActive || editorHasActivated) return;
@@ -93,33 +216,65 @@ export function KetcherPage({
     };
   }, [editorHasActivated, isActive]);
 
+  const applyDefaultKetcherZoom = useCallback((instance: KetcherEditorApi) => {
+    const applyZoom = () => {
+      instance.setZoom(DEFAULT_KETCHER_ZOOM);
+      setKetcherZoom(DEFAULT_KETCHER_ZOOM);
+    };
+    applyZoom();
+    window.setTimeout(applyZoom, 180);
+  }, []);
+
   const restoreDraft = useCallback((instance: KetcherEditorApi) => {
-    if (location.importRequest) return;
+    if (location.importRequest) return Promise.resolve(false);
     const draftKet = location.draftKet ?? "";
     const draftMolfile = location.draftMolfile ?? state.ketcherDraftMolfile;
-    if (!draftKet.trim() && !draftMolfile.trim()) return;
-    if (!draftKet.trim() && draftMolfile.trimEnd() === locallySavedDraftRef.current) return;
+    if (!draftKet.trim() && !draftMolfile.trim()) return Promise.resolve(false);
+    if (!draftKet.trim() && draftMolfile.trimEnd() === locallySavedDraftRef.current) return Promise.resolve(false);
     const draftKey = JSON.stringify({ draftKet: draftKet.trim(), draftMolfile: draftMolfile.trimEnd() });
-    if (restoredDraftRef.current === draftKey) return;
+    if (restoredDraftRef.current === draftKey) return Promise.resolve(false);
     restoredDraftRef.current = draftKey;
-    void restoreKetcherDraft(instance, { ket: draftKet, molfile: draftMolfile })
+    return restoreKetcherDraft(instance, { ket: draftKet, molfile: draftMolfile })
       .then(() => {
         setOutput("");
-        setOutputMode(null);
+        setPanelMode(null);
         setHasSketch(true);
         setStatus("Ready");
+        return true;
       })
       .catch((error) => {
         restoredDraftRef.current = "";
         setStatus("Ketcher restore failed: " + (error instanceof Error ? error.message : String(error)));
+        return false;
       });
   }, [location.draftKet, location.draftMolfile, location.importRequest, state.ketcherDraftMolfile]);
 
   const handleReady = useCallback((instance: KetcherEditorApi) => {
     instance.switchToMoleculesMode();
     setKetcher(instance);
-    restoreDraft(instance);
-  }, [restoreDraft]);
+    void restoreDraft(instance).finally(() => applyDefaultKetcherZoom(instance));
+  }, [applyDefaultKetcherZoom, restoreDraft]);
+
+  useEffect(() => {
+    if (!ketcher) return;
+    return ketcher.subscribeZoom((zoom) => setKetcherZoom(normalizeKetcherZoom(zoom)));
+  }, [ketcher]);
+
+  useEffect(() => {
+    if (!ketcher) return;
+    return ketcher.subscribeChange(() => {
+      void ketcher.getMolfile("v2000")
+        .then((molfile) => {
+          const hasCurrentSketch = !isBlankKetcherMolfile(molfile);
+          setHasSketch(hasCurrentSketch);
+          if (hasCurrentSketch) {
+            locallySavedDraftRef.current = molfile.trimEnd();
+            actions.saveKetcherDraft(molfile);
+          }
+        })
+        .catch(() => {});
+    });
+  }, [actions, ketcher]);
 
   useEffect(() => {
     if (!isActive || !ketcher) return;
@@ -155,52 +310,42 @@ export function KetcherPage({
     });
   }, [collectionTargets]);
 
-  const exportSmiles = useCallback(async () => {
+  const showExport = useCallback(async (format: KetcherTextFormat) => {
     if (!ketcher) return;
-    if (outputMode === "smiles") {
+    if (panelMode?.purpose === "export" && panelMode.format === format) {
       setOutput("");
-      setOutputMode(null);
+      setPanelMode(null);
       return;
     }
-    setStatus("Exporting SMILES");
+    const label = KETCHER_FORMAT_LABELS[format];
+    setStatus(`Exporting ${label}`);
     try {
-      const smiles = await withKetcherTimeout(ketcher.getSmiles(), "SMILES export");
-      setOutput(smiles || "");
-      setOutputMode("smiles");
+      const text = await withKetcherTimeout(exportKetcherText(ketcher, format), `${label} export`);
+      setOutput(text || "");
+      setPanelMode({ purpose: "export", format });
       setStatus("Ready");
     } catch (error) {
       setStatus(ketcherExportErrorMessage(error));
     }
-  }, [ketcher, outputMode]);
+  }, [ketcher, panelMode]);
 
-  const exportMolfile = useCallback(async () => {
-    if (!ketcher) return;
-    if (outputMode === "molfile") {
-      setOutput("");
-      setOutputMode(null);
-      return;
-    }
-    setStatus("Exporting Molfile");
-    try {
-      const molfile = await withKetcherTimeout(ketcher.getMolfile("v3000"), "Molfile export");
-      setOutput(molfile || "");
-      setOutputMode("molfile");
-      setStatus("Ready");
-    } catch (error) {
-      setStatus(ketcherExportErrorMessage(error));
-    }
-  }, [ketcher, outputMode]);
+  const startImport = useCallback((format: KetcherTextFormat) => {
+    setOutput("");
+    setPanelMode({ purpose: "import", format });
+    setStatus(`Paste ${KETCHER_FORMAT_LABELS[format]} to import`);
+  }, []);
 
   const applyOutput = useCallback(async () => {
-    if (!ketcher || !outputMode) return;
+    if (!ketcher || panelMode?.purpose !== "import") return;
     const sketch = output.trim();
+    const label = KETCHER_FORMAT_LABELS[panelMode.format];
     if (!sketch) {
-      setStatus(outputMode === "smiles" ? "Enter a SMILES string" : "Enter a Molfile");
+      setStatus(`Enter ${label}`);
       return;
     }
     try {
-      setStatus(outputMode === "smiles" ? "Loading SMILES" : "Loading Molfile");
-      const importText = outputMode === "molfile" ? normalizeKetcherImportText(output) : sketch;
+      setStatus(`Loading ${label}`);
+      const importText = normalizeKetcherImportText(output, panelMode.format);
       await withKetcherTimeout(ketcher.setMolecule(importText, { needZoom: true }), "Sketch import");
       const molfile = await withKetcherTimeout(ketcher.getMolfile("v2000"), "Sketch import verification");
       if (isBlankKetcherMolfile(molfile)) {
@@ -214,10 +359,10 @@ export function KetcherPage({
     } catch (error) {
       setStatus("Ketcher import failed: " + (error instanceof Error ? error.message : String(error)));
     }
-  }, [actions, ketcher, output, outputMode]);
+  }, [actions, ketcher, output, panelMode]);
 
   useEffect(() => {
-    if (!ketcher || outputMode !== "smiles") return;
+    if (!ketcher || panelMode?.purpose !== "import" || panelMode.format !== "smiles") return;
     const smiles = output.trim();
     const serial = liveSmilesImportSerialRef.current + 1;
     liveSmilesImportSerialRef.current = serial;
@@ -251,7 +396,7 @@ export function KetcherPage({
       })();
     }, 220);
     return () => window.clearTimeout(timer);
-  }, [actions, ketcher, output, outputMode]);
+  }, [actions, ketcher, output, panelMode]);
 
   const openSketch = useCallback(async (target: KetcherSketchTarget, collectionTargetPath?: string | null) => {
     if (!ketcher || exportingSketch) return;
@@ -277,7 +422,7 @@ export function KetcherPage({
       if (target === "collection") {
         await withKetcherTimeout(ketcher.setMolecule(""), "Canvas reset");
         setOutput("");
-        setOutputMode(null);
+        setPanelMode(null);
         setHasSketch(false);
       }
       setStatus(target === "collection" ? "Sent sketch to collection" : `Opened sketch in ${target === "molstar" ? "Molstar" : target}`);
@@ -370,7 +515,7 @@ export function KetcherPage({
           if (!isBlankKetcherMolfile(molfile)) actions.saveKetcherDraft(molfile);
           setHasSketch(true);
         }
-        setOutputMode(null);
+        setPanelMode(null);
         setGridEditSource(editSource);
         setOutput("");
         setStatus("Added " + label);
@@ -506,12 +651,66 @@ export function KetcherPage({
   }, [actions, importStructures, ketcher]);
 
   const decreaseKetcherScale = useCallback(() => {
-    setKetcherUIScaleIndex((index) => Math.max(0, index - 1));
-  }, []);
+    if (!ketcher) return;
+    const nextZoom = KETCHER_ZOOM_LEVELS[Math.max(0, nearestKetcherZoomIndex(ketcherZoom) - 1)];
+    ketcher.setZoom(nextZoom);
+    setKetcherZoom(nextZoom);
+  }, [ketcher, ketcherZoom]);
 
   const increaseKetcherScale = useCallback(() => {
-    setKetcherUIScaleIndex((index) => Math.min(KETCHER_UI_SCALES.length - 1, index + 1));
-  }, []);
+    if (!ketcher) return;
+    const nextZoom = KETCHER_ZOOM_LEVELS[Math.min(KETCHER_ZOOM_LEVELS.length - 1, nearestKetcherZoomIndex(ketcherZoom) + 1)];
+    ketcher.setZoom(nextZoom);
+    setKetcherZoom(nextZoom);
+  }, [ketcher, ketcherZoom]);
+
+  const resizeOutputPanel = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    const resizeTarget = event.currentTarget;
+    const pointerId = event.pointerId;
+    const startY = event.clientY;
+    const startHeight = outputPanelHeight;
+
+    const move = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== pointerId) return;
+      setOutputPanelHeight(resizedOutputPanelHeight(startHeight, startY, moveEvent.clientY));
+    };
+
+    const stop = (stopEvent: PointerEvent) => {
+      if (stopEvent.pointerId !== pointerId) return;
+      resizeTarget.removeEventListener("pointermove", move);
+      resizeTarget.removeEventListener("pointerup", stop);
+      resizeTarget.removeEventListener("pointercancel", stop);
+      resizeTarget.removeEventListener("lostpointercapture", stop);
+      if (resizeTarget.hasPointerCapture(pointerId)) {
+        resizeTarget.releasePointerCapture(pointerId);
+      }
+    };
+
+    resizeTarget.setPointerCapture(pointerId);
+    resizeTarget.addEventListener("pointermove", move);
+    resizeTarget.addEventListener("pointerup", stop);
+    resizeTarget.addEventListener("pointercancel", stop);
+    resizeTarget.addEventListener("lostpointercapture", stop);
+  }, [outputPanelHeight]);
+
+  const resizeOutputPanelWithMouse = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    const startY = event.clientY;
+    const startHeight = outputPanelHeight;
+
+    const move = (moveEvent: MouseEvent) => {
+      setOutputPanelHeight(resizedOutputPanelHeight(startHeight, startY, moveEvent.clientY));
+    };
+
+    const stop = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", stop);
+    };
+
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", stop);
+  }, [outputPanelHeight]);
 
   return (
     <section
@@ -539,7 +738,7 @@ export function KetcherPage({
           </span>
           <div>
             <h1>Ketcher</h1>
-            <p>{hasSketch ? "Molecule sketch" : "New molecule sketch"}</p>
+            <p>{hasSketch ? "Small molecule sketch" : "New small molecule sketch"}</p>
           </div>
         </div>
         <div className="ketcher-page-actions" aria-label="Sketch actions">
@@ -580,9 +779,9 @@ export function KetcherPage({
             )}
           />
           <div className="ketcher-scale-control" aria-label="Ketcher scale">
-            <button type="button" aria-label="Decrease Ketcher scale" disabled={ketcherUIScaleIndex === 0} onClick={decreaseKetcherScale}>-</button>
-            <span>{ketcherUIScalePercent}%</span>
-            <button type="button" aria-label="Increase Ketcher scale" disabled={ketcherUIScaleIndex === KETCHER_UI_SCALES.length - 1} onClick={increaseKetcherScale}>+</button>
+            <button type="button" aria-label="Decrease Ketcher scale" disabled={!ketcher || ketcherZoomIndex === 0} onClick={decreaseKetcherScale}>-</button>
+            <span>{ketcherZoomPercent}%</span>
+            <button type="button" aria-label="Increase Ketcher scale" disabled={!ketcher || ketcherZoomIndex === KETCHER_ZOOM_LEVELS.length - 1} onClick={increaseKetcherScale}>+</button>
           </div>
         </div>
       </header>
@@ -613,28 +812,65 @@ export function KetcherPage({
             </div>
           )}
         </div>
-        {outputMode ? (
-          <textarea
-            className="ketcher-output ketcher-output-input"
-            aria-label={outputMode === "smiles" ? "SMILES input" : "Molfile input"}
-            spellCheck={false}
-            value={output}
-            onChange={(event) => setOutput(event.target.value)}
-          />
+        {panelMode ? (
+          <div className="ketcher-output-panel" style={outputPanelStyle}>
+            <button
+              type="button"
+              className="ketcher-output-resizer"
+              aria-label="Resize Ketcher output panel"
+              onPointerDown={resizeOutputPanel}
+              onMouseDown={resizeOutputPanelWithMouse}
+            />
+            <textarea
+              className="ketcher-output ketcher-output-input"
+              aria-label={`${panelMode.purpose === "import" ? "Import" : "Export"} ${panelFormatLabel}`}
+              readOnly={panelMode.purpose === "export"}
+              spellCheck={false}
+              value={output}
+              onChange={(event) => setOutput(event.target.value)}
+            />
+          </div>
         ) : null}
       </div>
       <footer className="ketcher-page-footer">
         <span className="ketcher-page-status">{status}</span>
-        <button type="button" className={outputMode === "smiles" ? "is-active" : undefined} disabled={!ketcher} onClick={exportSmiles}>SMILES</button>
-        <button type="button" className={outputMode === "molfile" ? "is-active" : undefined} disabled={!ketcher} onClick={exportMolfile}>Molfile</button>
-        <button type="button" onClick={actions.openCommandPalette}>Command Palette</button>
+        <RadixDropdownMenu
+          align="end"
+          side="top"
+          items={KETCHER_EXPORT_FORMATS.map((format) => ({
+            kind: "item" as const,
+            id: `export-${format}`,
+            text: KETCHER_FORMAT_LABELS[format],
+            action: () => void showExport(format),
+          }))}
+          trigger={(
+            <button type="button" className={panelMode?.purpose === "export" ? "is-active" : undefined} disabled={!ketcher}>
+              Export
+            </button>
+          )}
+        />
+        <RadixDropdownMenu
+          align="end"
+          side="top"
+          items={KETCHER_IMPORT_FORMATS.map((format) => ({
+            kind: "item" as const,
+            id: `import-${format}`,
+            text: KETCHER_FORMAT_LABELS[format],
+            action: () => startImport(format),
+          }))}
+          trigger={(
+            <button type="button" className={panelMode?.purpose === "import" ? "is-active" : undefined} disabled={!ketcher}>
+              Import
+            </button>
+          )}
+        />
         <button
           type="button"
           className="ketcher-primary-action"
-          disabled={!ketcher || exportingSketch || (gridEditSource ? false : outputMode !== "molfile" || !output.trim())}
+          disabled={!ketcher || exportingSketch || (gridEditSource ? false : panelMode?.purpose !== "import" || !output.trim())}
           onClick={() => void (gridEditSource ? applyGridEdit() : applyOutput())}
         >
-          Apply
+          {gridEditSource ? "Apply" : "Load"}
         </button>
       </footer>
     </section>
@@ -652,6 +888,49 @@ function molfileToSdf(molfile: string, smiles?: string) {
     "$$$$",
     "",
   ].join("\n");
+}
+
+function exportKetcherText(ketcher: KetcherEditorApi, format: KetcherTextFormat) {
+  switch (format) {
+    case "smiles":
+      return ketcher.getSmiles();
+    case "extended-smiles":
+      return ketcher.getExtendedSmiles();
+    case "molfile-v2000":
+      return ketcher.getMolfile("v2000");
+    case "molfile-v3000":
+      return ketcher.getMolfile("v3000");
+    case "rxn-v2000":
+      return ketcher.getRxn("v2000");
+    case "rxn-v3000":
+      return ketcher.getRxn("v3000");
+    case "ket":
+      return ketcher.getKet();
+    case "sdf-v2000":
+      return ketcher.getSdf("v2000");
+    case "sdf-v3000":
+      return ketcher.getSdf("v3000");
+    case "rdf-v2000":
+      return ketcher.getRdf("v2000");
+    case "rdf-v3000":
+      return ketcher.getRdf("v3000");
+    case "smarts":
+      return ketcher.getSmarts();
+    case "cml":
+      return ketcher.getCml();
+    case "cdxml":
+      return ketcher.getCDXml();
+    case "cdx":
+      return ketcher.getCDX();
+    case "inchi":
+      return ketcher.getInchi();
+    case "inchi-aux":
+      return ketcher.getInchi(true);
+    case "inchi-key":
+      return ketcher.getInChIKey();
+    case "svg":
+      return Promise.resolve(ketcher.getSvg());
+  }
 }
 
 function normalizeKetcherMolfileTitle(molfile: string) {
@@ -825,12 +1104,20 @@ function waitForMs(ms: number) {
   return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 }
 
-function normalizeKetcherImportText(text: string) {
+function normalizeKetcherImportText(text: string, format?: KetcherTextFormat) {
   const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trimEnd();
-  if (looksLikeSdfRecord(normalized)) {
+  if ((format?.startsWith("sdf-") || !format) && looksLikeSdfRecord(normalized)) {
     return normalized.replace(/\n?\$\$\$\$\s*$/u, "").trimEnd() + "\n";
   }
-  if (looksLikeMolBlock(normalized)) {
+  if (
+    looksLikeMolBlock(normalized) ||
+    format === "ket" ||
+    format?.startsWith("rxn-") ||
+    format?.startsWith("rdf-") ||
+    format === "cml" ||
+    format === "cdxml" ||
+    format === "cdx"
+  ) {
     return normalized;
   }
   return normalized.trim();
