@@ -13,6 +13,7 @@ import {
   selectPreferenceRow,
   type SettingRow,
 } from "./setting-control";
+import { KeyboardShortcutsSection } from "./keyboard-shortcuts-section";
 import { ThemesSection } from "./themes-section";
 
 const defaultRendererModeOptions: Array<ViewerPreferences["rendererMode"]> = ["auto", "molstar", "xyzrender-external"];
@@ -113,6 +114,7 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
                   <ThemesSection preferences={preferences} actions={actions} />
                 </>
               ) : null}
+              {section === "keyboard" ? <KeyboardShortcutsSection /> : null}
               {section === "structure" ? (
                 <SettingsSection
                   title="Structure Rendering"
