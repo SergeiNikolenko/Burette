@@ -6,6 +6,8 @@ export type FepNetworkNode = {
   heavyAtoms: number;
   bonds: number;
   dockingScore: number | null;
+  sourceAtomToMolAtom: Record<number, number>;
+  sourceAtomAtomicNumbers: Record<number, number>;
   x: number;
   y: number;
   molblock: string;
@@ -17,6 +19,7 @@ export type FepNetworkEdge = {
   score: number;
   energy: number | null;
   uncertainty: number | null;
+  mapping: Array<[number, number]>;
   mappedAtoms: number;
 };
 
@@ -69,14 +72,15 @@ export function parseFepGraphml(text: string): FepNetworkData {
 
   const edges = Array.from(doc.getElementsByTagName("edge")).map((edge) => {
     const annotations = edgeAnnotationsKey ? parseJsonData<Record<string, unknown>>(edge, edgeAnnotationsKey, {}) : {};
-    const mapping = edgeMappingKey ? parseJsonData<unknown[]>(edge, edgeMappingKey, []) : [];
+    const mapping = edgeMappingKey ? parseAtomMapping(parseJsonData<unknown[]>(edge, edgeMappingKey, [])) : [];
     return {
       source: edge.getAttribute("source") || "",
       target: edge.getAttribute("target") || "",
       score: typeof annotations.score === "number" ? annotations.score : 0,
       energy: firstNumberAnnotation(annotations, ["ddG", "ΔΔG", "deltaDeltaG", "delta_delta_g", "freeEnergy", "energy"]),
       uncertainty: firstNumberAnnotation(annotations, ["uncertainty", "error", "stderr", "std_error", "ddGError", "energyError"]),
-      mappedAtoms: Array.isArray(mapping) ? mapping.length : 0,
+      mapping,
+      mappedAtoms: mapping.length,
     };
   }).filter((edge) => edge.source && edge.target);
 
@@ -121,6 +125,8 @@ function moldictToNode(id: string, moldict: Moldict): FepNetworkNode {
   const atoms = Array.isArray(moldict.atoms) ? moldict.atoms : [];
   const bonds = Array.isArray(moldict.bonds) ? moldict.bonds : [];
   const molblock = moldictToMolblock(label, atoms, bonds);
+  const sourceAtomToMolAtom = sourceAtomToMolAtomMap(atoms);
+  const sourceAtomAtomicNumbers = sourceAtomAtomicNumberMap(atoms);
   const heavyAtoms = atoms.filter((atom) => atomicNumber(atom) !== 1).length;
   const heavyBonds = bonds.filter((bond) => {
     const [left, right] = bondAtomIndexes(bond);
@@ -134,10 +140,48 @@ function moldictToNode(id: string, moldict: Moldict): FepNetworkNode {
     heavyAtoms,
     bonds: heavyBonds,
     dockingScore: numberProp(props, "docking score"),
+    sourceAtomToMolAtom,
+    sourceAtomAtomicNumbers,
     x: 50,
     y: 50,
     molblock,
   };
+}
+
+function sourceAtomToMolAtomMap(atoms: unknown[]) {
+  const result: Record<number, number> = {};
+  let molAtomIndex = 0;
+  atoms.forEach((atom, atomIndex) => {
+    if (atomicNumber(atom) === 1) return;
+    result[atomIndex] = molAtomIndex;
+    molAtomIndex += 1;
+  });
+  return result;
+}
+
+function sourceAtomAtomicNumberMap(atoms: unknown[]) {
+  const result: Record<number, number> = {};
+  atoms.forEach((atom, atomIndex) => {
+    const atomicNo = atomicNumber(atom);
+    if (atomicNo > 0) result[atomIndex] = atomicNo;
+  });
+  return result;
+}
+
+function parseAtomMapping(value: unknown[]) {
+  const mapping: Array<[number, number]> = [];
+  for (const entry of value) {
+    if (!Array.isArray(entry) || entry.length < 2) continue;
+    const source = integerValue(entry[0]);
+    const target = integerValue(entry[1]);
+    if (source === null || target === null) continue;
+    mapping.push([source, target]);
+  }
+  return mapping;
+}
+
+function integerValue(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) ? value : null;
 }
 
 function moldictToMolblock(label: string, atoms: unknown[], bonds: unknown[]) {
