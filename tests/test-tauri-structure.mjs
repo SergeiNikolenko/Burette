@@ -22,6 +22,8 @@ const [
   menu,
   startupSource,
   startupCommand,
+  agentIntegrationCommand,
+  agentSessionHook,
   documentsCommand,
   gridCommand,
   previewCacheCommand,
@@ -89,6 +91,8 @@ const [
   source('apps/desktop/src-tauri/src/menu.rs'),
   source('apps/desktop/src-tauri/src/startup.rs'),
   source('apps/desktop/src-tauri/src/commands/startup.rs'),
+  source('apps/desktop/src-tauri/src/commands/agent_integration.rs'),
+  source('apps/desktop/src/hooks/use-agent-session.ts'),
   source('apps/desktop/src-tauri/src/commands/documents.rs'),
   source('apps/desktop/src-tauri/src/commands/grid.rs'),
   source('apps/desktop/src-tauri/src/commands/preview_cache.rs'),
@@ -187,12 +191,14 @@ assert.match(performanceDocsSource, /molecules_fts/);
 assert.match(performanceDocsSource, /BURRETE_PERF_RUN_GRID_FTS=1 \.\/scripts\/perf-smoke\.sh/);
 assert.match(performanceDocsSource, /Do Not Regress/);
 
-for (const moduleName of ['documents', 'grid', 'preview_cache', 'quicklook', 'shell', 'startup', 'updater']) {
+for (const moduleName of ['agent_integration', 'documents', 'grid', 'preview_cache', 'quicklook', 'shell', 'startup', 'updater']) {
   assert.match(commandsIndex, new RegExp(`pub\\(crate\\) mod ${moduleName};`));
 }
 
 for (const commandPath of [
+  'commands::agent_integration::agent_integration_status',
   'commands::startup::startup_documents',
+  'commands::startup::startup_agent_session',
   'commands::documents::pick_open_targets',
   'commands::documents::open_documents',
   'commands::documents::open_delimited_grid_document',
@@ -211,6 +217,7 @@ for (const commandPath of [
   'commands::shell::open_logs_folder',
   'commands::shell::open_external_url',
   'commands::shell::read_external_preview_svg',
+  'commands::shell::read_viewer_runtime_file_base64',
   'commands::shell::reveal_path',
   'commands::shell::write_base64_file',
   'commands::shell::write_text_file',
@@ -225,9 +232,43 @@ assert.match(lib, /disable_macos_state_restoration\(\);/);
 assert.match(lib, /ApplePersistenceIgnoreState/);
 assert.match(lib, /NSQuitAlwaysKeepsWindows/);
 assert.match(startupCommand, /#\[tauri::command\]\s+pub\(crate\) fn startup_documents/);
+assert.match(startupCommand, /#\[tauri::command\]\s+pub\(crate\) fn startup_agent_session/);
+assert.match(agentIntegrationCommand, /#\[tauri::command\]\s+pub\(crate\) fn agent_integration_status/);
+assert.match(agentIntegrationCommand, /PLUGIN_RELATIVE_PATH: &str = "plugins\/burette-agent"/);
+assert.match(agentIntegrationCommand, /BURRETE_AGENT_PLUGIN_DIR/);
+assert.match(agentIntegrationCommand, /schema: "burette_agent_integration\.v1"/);
+assert.match(agentIntegrationCommand, /find_codex_plugin_manifest/);
+assert.doesNotMatch(agentIntegrationCommand, /Command::new|spawn|remove_file|write\(/);
 assert.match(startupSource, /pub\(crate\) enum LaunchMode/);
 assert.match(startupSource, /BURRETE_LAUNCH_MODE/);
 assert.match(startupSource, /--burrete-launch-mode=register/);
+assert.match(startupSource, /--burrete-agent-session/);
+assert.match(startupSource, /pub\(crate\) fn agent_session_from_argv/);
+assert.match(startupSource, /pub\(crate\) fn emit_agent_session/);
+assert.match(lib, /startup::emit_agent_session\(app, session_dir\)/);
+assert.match(agentSessionHook, /invoke<string \| null>\("startup_agent_session"\)/);
+assert.match(agentSessionHook, /listen<string>\("agent-session"/);
+assert.match(agentSessionHook, /joinSessionPath\(sessionDir, "observe\.json"\)/);
+assert.match(agentSessionHook, /joinSessionPath\(sessionDir, "actions\.json"\)/);
+assert.match(agentSessionHook, /workspacePanelsRef/);
+assert.match(agentSessionHook, /workspacePanels/);
+assert.match(agentSessionHook, /viewerAgentStatesRef/);
+assert.match(agentSessionHook, /viewerAgentStateFromMessage/);
+assert.match(agentSessionHook, /type === "agentReady"/);
+assert.match(agentSessionHook, /agent-panel:\$\{area\}:\$\{kind\}:\$\{document\.title\}/);
+assert.match(agentSessionHook, /type === "open_files"/);
+assert.match(agentSessionHook, /type === "render_panel"/);
+assert.match(agentSessionHook, /render_panel kind must be markdown, table, or chart/);
+assert.match(agentSessionHook, /openTextDocuments\(\[file\], \{ background: true \}\)/);
+assert.match(agentSessionHook, /setDockDocument\(area, document\.id\)/);
+assert.match(agentSessionHook, /source: "burrete-agent-host"/);
+assert.match(agentSessionHook, /querySelectorAll<HTMLIFrameElement>\("iframe\.viewer-iframe\[data-document-id\]"\)/);
+assert.match(agentSessionHook, /item\.dataset\.documentId === activeDocument\.id/);
+assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn read_viewer_runtime_file_base64/);
+assert.match(shellCommand, /Runtime file path is outside the preview runtime directory/);
+assert.match(previewRuntimeViewer, /burrete-native-host/);
+assert.match(previewRuntimeViewer, /window\.BurreteReceiveNativeData\(body\.payload \|\| \{\}\)/);
+assert.match(previewRuntimeViewer, /window\.BurreteReceiveNativeRuntimeFile\(body\.payload \|\| \{\}\)/);
 assert.match(startupSource, /arg == "--burrete-launch-mode"/);
 assert.match(startupSource, /file_args_from_argv/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn pick_open_targets/);

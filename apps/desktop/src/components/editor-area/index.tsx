@@ -27,7 +27,7 @@ export function ViewerArea({ state, actions }: { state: ShellViewState; actions:
 
 function activeLocation(state: ShellViewState): Location {
   if (state.page === "settings") {
-    return { kind: "settings" };
+    return { kind: "settings", section: "general" };
   }
   if (state.activeDocument) {
     return { kind: "file", documentId: state.activeDocument.id, path: state.activeDocument.path };

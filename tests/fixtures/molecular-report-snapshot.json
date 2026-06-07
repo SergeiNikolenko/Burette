@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "status": "fixture",
+  "datasets": {
+    "ligands": [
+      {
+        "id": "L1",
+        "smiles": "CCO",
+        "score": -7.2
+      }
+    ]
+  },
+  "artifacts": [
+    {
+      "kind": "sdf",
+      "path": "/tmp/ligands.sdf"
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "name": "burrete",
+  "version": "0.1.0",
+  "description": "Operate Burrete as an agent-accessible molecular workspace for structures, Mol* scenes, molecule collections, trajectories, and workflow result artifacts.",
+  "author": {
+    "name": "Burrete"
+  },
+  "homepage": "https://github.com/local/burrete",
+  "repository": "https://github.com/local/burrete",
+  "license": "Proprietary",
+  "keywords": [
+    "burette",
+    "molecular-visualization",
+    "molstar",
+    "cheminformatics",
+    "structural-biology",
+    "agent-interface",
+    "mcp",
+    "desktop-app"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Burrete",
+    "shortDescription": "Operate molecular workspaces",
+    "longDescription": "Burrete lets an assistant open molecular structures in Browser preview or the real desktop app, observe scene state as structured JSON, run allowlisted Mol* actions, render adjacent notes/tables/charts/reports, and hand off externally prepared molecular workflow artifacts for review. It keeps molecular commands typed and auditable while using Browser and Computer surfaces for visual verification.",
+    "developerName": "Burrete",
+    "category": "Science",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Open this structure in Burrete and describe the active molecular scene",
+      "Hide waters, focus the ligand, and render a right-side notes panel",
+      "Review this SDF/property table and show the selected molecule in Burrete"
+    ],
+    "brandColor": "#14A39A",
+    "composerIcon": "./assets/composer-icon.png",
+    "logo": "./assets/app-icon.png",
+    "screenshots": []
+  }
+}

@@ -16,6 +16,7 @@ import {
   useSetCommandPaletteSearch,
 } from "./hooks/use-command-palette";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
+import { useAgentSession } from "./hooks/use-agent-session";
 import { useMenuEvents } from "./hooks/use-menu-events";
 import { useDockLayout } from "./hooks/use-dock-layout";
 import { useOpenDrop } from "./hooks/use-open-drop";
@@ -25,6 +26,7 @@ import {
   useActiveDocument,
   useActiveTab,
   useActiveTabId,
+  useActivateLastNonSettingsTab,
   useAddBackgroundDocuments,
   useAddBackgroundTextDocuments,
   useAddTextTabs,
@@ -44,6 +46,7 @@ import {
   useOpenNewTab,
   useOpenPoseReviewTab,
   useOpenSettingsTab,
+  useOpenSettingsSection,
   useOpenTextDocuments,
   useOpenTextDocumentsInActiveTab,
   useOpenTabs,
@@ -148,10 +151,10 @@ function splitDevFiles(rawFiles: string) {
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer) {
-  let binary = "";
   const bytes = new Uint8Array(buffer);
-  for (let index = 0; index < bytes.length; index += 1) {
-    binary += String.fromCharCode(bytes[index]);
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
   }
   return btoa(binary);
 }
@@ -215,6 +218,8 @@ export default function App() {
   const openFepSetupTab = useOpenFepSetupTab();
   const openPoseReviewTab = useOpenPoseReviewTab();
   const openSettingsTab = useOpenSettingsTab();
+  const openSettingsSectionTab = useOpenSettingsSection();
+  const activateLastNonSettingsTab = useActivateLastNonSettingsTab();
   const canNavigateBack = useCanNavigateBack();
   const canNavigateForward = useCanNavigateForward();
   const navigateBack = useNavigateBack();
@@ -1095,8 +1100,18 @@ export default function App() {
   }, [pushErrorStatus, pushStatus]);
 
   const openSettings = useCallback(() => {
+    if (!sidebarOpen) toggleSidebar();
     openSettingsTab();
-  }, [openSettingsTab]);
+  }, [openSettingsTab, sidebarOpen, toggleSidebar]);
+
+  const openSettingsSection = useCallback((section: Parameters<typeof openSettingsSectionTab>[0]) => {
+    if (!sidebarOpen) toggleSidebar();
+    openSettingsSectionTab(section);
+  }, [openSettingsSectionTab, sidebarOpen, toggleSidebar]);
+
+  const backToApp = useCallback(() => {
+    activateLastNonSettingsTab();
+  }, [activateLastNonSettingsTab]);
 
   const openKetcher = useCallback(() => {
     openKetcherTab();
@@ -1489,6 +1504,7 @@ export default function App() {
   }, [activeTab?.location, documents, poseReviewSelections]);
 
   useOpenEvents(openPaths, pushErrorStatus);
+  useAgentSession({ activeDocument, documents, openTextDocuments, openPaths, pushErrorStatus, setDockDocument });
   const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop, handleBrowserPaste, openClipboardText } = useOpenDrop(openPaths, pushStatus, {
     activeTabKind: activeTab?.location.kind ?? null,
     activeDocumentId: activeDocument?.id ?? null,
@@ -1729,11 +1745,45 @@ export default function App() {
           fragments?: Array<{ title?: string | null; textBase64?: string | null }> | null;
           name?: string | null;
           mimeType?: string | null;
+          requestToken?: string | null;
         };
       } | undefined;
       if (data?.source !== "burrete-viewer" && data?.source !== "burrete-grid") return;
       const body = data.body;
       if (!isKnownViewerMessageSource(event.source, body?.documentId)) return;
+      if (data.source === "burrete-viewer" && (body?.type === "requestData" || body?.type === "requestRuntimeFile")) {
+        if (!body.requestToken) return;
+        const document = body.documentId
+          ? documents.find((item) => item.id === body.documentId)
+          : activeDocument;
+        const reply = (payload: Record<string, unknown>) => {
+          postMessageToViewerSource(event.source, {
+            source: "burrete-native-host",
+            body: {
+              type: body.type === "requestData" ? "nativeData" : "nativeRuntimeFile",
+              documentId: body.documentId,
+              payload,
+            },
+          });
+        };
+        void (async () => {
+          try {
+            if (!document) throw new Error("No matching viewer document.");
+            const fileName = body.type === "requestData"
+              ? "preview-data.bin"
+              : normalizeViewerRuntimeRelativePath(body.path || "");
+            if (!fileName) throw new Error("Invalid runtime file path.");
+            const base64 = await invoke<string>("read_viewer_runtime_file_base64", {
+              runtimePath: document.runtimePath,
+              relativePath: fileName,
+            });
+            reply({ requestToken: body.requestToken, base64 });
+          } catch (error) {
+            reply({ requestToken: body.requestToken, error: error instanceof Error ? error.message : String(error) });
+          }
+        })();
+        return;
+      }
       if (data.source === "burrete-viewer" && body?.type === "dockingPoseChanged") {
         const dockingDocument = body.documentId
           ? documents.find((document) => document.id === body.documentId)
@@ -2520,6 +2570,8 @@ export default function App() {
     openCommandPalette,
     openClipboard,
     openSettings,
+    openSettingsSection,
+    backToApp,
     openKetcher,
     openKetcherWithStructures,
     openFepSetupWorkspace,
@@ -2645,7 +2697,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [activeDocument?.id, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, installUpdate, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepSetupWorkspace, openKetcher, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openPaths, openProjectFolder, openRecentStructure, openSettings, openStructureRecords, openWorkspaceFolder, pushErrorStatus, pushStatus, resetQuickLook, revealActiveDocument, revealDocument, revealPath, saveMoleculeCollectionAs, selectDocument, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
+  }), [activeDocument?.id, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, backToApp, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, installUpdate, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepSetupWorkspace, openKetcher, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openWorkspaceFolder, pushErrorStatus, pushStatus, resetQuickLook, revealActiveDocument, revealDocument, revealPath, saveMoleculeCollectionAs, selectDocument, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
@@ -2753,6 +2805,13 @@ function postMessageToViewerSource(source: MessageEventSource | null, payload: u
   if (!documentId) return;
   const iframe = document.querySelector<HTMLIFrameElement>(`.viewer-iframe[data-document-id="${CSS.escape(documentId)}"]`);
   iframe?.contentWindow?.postMessage(payload, "*");
+}
+
+function normalizeViewerRuntimeRelativePath(path: string) {
+  const normalized = String(path || "").replaceAll("\\", "/");
+  const parts = normalized.split("/").filter(Boolean);
+  if (parts.length === 0 || parts.some((part) => part === "." || part === "..")) return null;
+  return parts.join("/");
 }
 
 function summarizeErrors(errors: string[]) {
