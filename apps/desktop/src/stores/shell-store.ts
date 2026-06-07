@@ -32,6 +32,8 @@ type ShellState = {
   dockDroppedStructures: DockDroppedStructure[];
   projectsOpen: boolean;
   projectRoots: string[];
+  pinnedProjectRoots: string[];
+  projectNameOverrides: Record<string, string>;
   expandedProjectIds: string[];
   pinnedStructurePaths: string[];
   sidebarQuery: string;
@@ -50,6 +52,9 @@ type ShellState = {
   toggleProjectsOpen: () => void;
   setExpandedProjectIds: (projectIds: string[]) => void;
   addProjectRoot: (root: string) => void;
+  togglePinnedProjectRoot: (root: string) => void;
+  renameProjectRoot: (root: string, name: string) => void;
+  removeProjectRoot: (root: string) => void;
   togglePinnedStructure: (path: string) => void;
   setSidebarQuery: (query: string) => void;
   toggleProjectExpanded: (projectId: string) => void;
@@ -69,6 +74,8 @@ type PersistedShellState = Pick<
   | "bottomDockActiveTab"
   | "projectsOpen"
   | "projectRoots"
+  | "pinnedProjectRoots"
+  | "projectNameOverrides"
   | "expandedProjectIds"
   | "pinnedStructurePaths"
 >;
@@ -83,6 +90,15 @@ function persistentRoots(roots: string[]) {
 
 function persistentPinnedPaths(paths: string[]) {
   return paths.map(normalizeRoot).filter((path) => path && !isTemporaryDocumentPath(path));
+}
+
+function persistentProjectNameOverrides(overrides: Record<string, string>, projectRoots: string[]) {
+  const allowed = new Set(projectRoots);
+  return Object.fromEntries(
+    Object.entries(overrides)
+      .map(([root, name]) => [normalizeRoot(root), name.trim()] as const)
+      .filter(([root, name]) => allowed.has(root) && name.length > 0),
+  );
 }
 
 function persistentExpandedProjectIds(projectIds: string[], projectRoots: string[]) {
@@ -160,6 +176,8 @@ export const useShellStore = create<ShellState>()(
       dockDroppedStructures: [],
       projectsOpen: true,
       projectRoots: [],
+      pinnedProjectRoots: [],
+      projectNameOverrides: {},
       expandedProjectIds: [],
       pinnedStructurePaths: [],
       sidebarQuery: "",
@@ -238,6 +256,37 @@ export const useShellStore = create<ShellState>()(
               : [...state.expandedProjectIds, projectId],
           };
         }),
+      togglePinnedProjectRoot: (root) =>
+        set((state) => {
+          const normalized = normalizeRoot(root);
+          if (!normalized || !state.projectRoots.includes(normalized)) return state;
+          return {
+            pinnedProjectRoots: state.pinnedProjectRoots.includes(normalized)
+              ? state.pinnedProjectRoots.filter((candidate) => candidate !== normalized)
+              : [...state.pinnedProjectRoots, normalized],
+          };
+        }),
+      renameProjectRoot: (root, name) =>
+        set((state) => {
+          const normalized = normalizeRoot(root);
+          if (!normalized || !state.projectRoots.includes(normalized)) return state;
+          const nextName = name.trim();
+          const { [normalized]: _removed, ...rest } = state.projectNameOverrides;
+          return { projectNameOverrides: nextName ? { ...rest, [normalized]: nextName } : rest };
+        }),
+      removeProjectRoot: (root) =>
+        set((state) => {
+          const normalized = normalizeRoot(root);
+          if (!normalized || !state.projectRoots.includes(normalized)) return state;
+          const { [normalized]: _removed, ...projectNameOverrides } = state.projectNameOverrides;
+          const projectId = `project:${normalized}`;
+          return {
+            projectRoots: state.projectRoots.filter((candidate) => candidate !== normalized),
+            pinnedProjectRoots: state.pinnedProjectRoots.filter((candidate) => candidate !== normalized),
+            expandedProjectIds: state.expandedProjectIds.filter((candidate) => candidate !== projectId),
+            projectNameOverrides,
+          };
+        }),
       togglePinnedStructure: (path) =>
         set((state) => {
           const normalized = normalizeRoot(path);
@@ -271,12 +320,16 @@ export const useShellStore = create<ShellState>()(
         bottomDockActiveTab: normalizeDockActiveTab("bottom", normalizeDockTabs("bottom", state.bottomDockTabs), state.bottomDockActiveTab),
         projectsOpen: state.projectsOpen,
         projectRoots: persistentRoots(state.projectRoots),
+        pinnedProjectRoots: persistentRoots(state.pinnedProjectRoots),
+        projectNameOverrides: persistentProjectNameOverrides(state.projectNameOverrides, persistentRoots(state.projectRoots)),
         expandedProjectIds: persistentExpandedProjectIds(state.expandedProjectIds, persistentRoots(state.projectRoots)),
         pinnedStructurePaths: persistentPinnedPaths(state.pinnedStructurePaths),
       }),
       merge: (persisted, current) => {
         const stored = persisted as Partial<PersistedShellState> | undefined;
         const projectRoots = persistentRoots(stored?.projectRoots ?? current.projectRoots);
+        const pinnedProjectRoots = persistentRoots(stored?.pinnedProjectRoots ?? current.pinnedProjectRoots)
+          .filter((root) => projectRoots.includes(root));
         return {
           ...current,
           sidebarOpen: stored?.sidebarOpen ?? current.sidebarOpen,
@@ -299,6 +352,8 @@ export const useShellStore = create<ShellState>()(
           ),
           projectsOpen: stored?.projectsOpen ?? current.projectsOpen,
           projectRoots,
+          pinnedProjectRoots,
+          projectNameOverrides: persistentProjectNameOverrides(stored?.projectNameOverrides ?? current.projectNameOverrides, projectRoots),
           expandedProjectIds: persistentExpandedProjectIds(stored?.expandedProjectIds ?? current.expandedProjectIds, projectRoots),
           pinnedStructurePaths: persistentPinnedPaths(stored?.pinnedStructurePaths ?? current.pinnedStructurePaths),
         };

@@ -92,6 +92,20 @@ assert.deepEqual(
   ],
 );
 
+const pinnedProjects = buildSidebarProjects({
+  documents,
+  recentStructures,
+  projectRoots: ["/Users/test/Burette", "/Users/test/Empty", "/Users/test/Matcha"],
+  pinnedProjectRoots: ["/Users/test/Matcha"],
+  projectNameOverrides: {
+    "/Users/test/Matcha": "Pinned Lab",
+  },
+  activeDocumentId: "doc-1",
+});
+assert.equal(pinnedProjects[0].title, "Pinned Lab");
+assert.equal(pinnedProjects[0].isPinned, true);
+assert.equal(pinnedProjects[0].rootPath, "/Users/test/Matcha");
+
 const filtered = filterSidebarProjects(projects, "archive");
 assert.equal(filtered.length, 1);
 assert.equal(filtered[0].title, "Matcha");
