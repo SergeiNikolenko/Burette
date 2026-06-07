@@ -18,6 +18,7 @@ const [
   settingsStore,
   settingsHook,
   shellStore,
+  dock,
   packageJson,
   themeSource,
   appLayout,
@@ -102,6 +103,7 @@ const [
   source('apps/desktop/src/stores/settings-store.ts'),
   source('apps/desktop/src/hooks/use-settings.ts'),
   source('apps/desktop/src/stores/shell-store.ts'),
+  source('apps/desktop/src/lib/dock.ts'),
   source('package.json'),
   source('apps/desktop/src/lib/theme.ts'),
   source('apps/desktop/src/components/app-layout.tsx'),
@@ -1027,8 +1029,15 @@ assert.match(app, /setDockOpen\("bottom", false\)/);
 assert.match(app, /\[rightDockWidth, setDockOpen, setDockSize\]/);
 assert.match(app, /\[bottomDockHeight, setDockOpen, setDockSize\]/);
 assert.match(dockPanel, /data-open=\{open \? "true" : "false"\}/);
+assert.match(dockPanel, /data-active-tab=\{activeTab\.kind\}/);
 assert.match(dockPanel, /data-dragging=\{dragging \|\| undefined\}/);
 assert.doesNotMatch(dockPanel, /if \(!open\) return null/);
+assert.match(dockPanel, /function dockFilesDragPayload/);
+assert.match(dockPanel, /writeStructureDragPayload\(event\.dataTransfer, filesTabDragPayload\)/);
+assert.match(dockPanel, /writeStructureDragPayload\(event\.dataTransfer, item\.payload\)/);
+assert.match(dock, /payload: StructureDragPayload/);
+assert.match(shellStore, /payload: \{ paths: \[path\], records: \[\] \}/);
+assert.match(shellStore, /payload: \{ paths: \[\], records: \[record\] \}/);
 assert.match(dockPanel, /className="dock-panel-inner"/);
 assert.match(dockPanel, /style=\{area === "right" \? \{ width: size \} : \{ height: size \}\}/);
 assert.match(styles, /--dock-divider-color: color-mix\(in srgb, var\(--text-primary\) 52%, var\(--bg-base\)\)/);
@@ -1682,7 +1691,12 @@ assert.match(openDropHook, /if \(!handled\) runChoice\(choices\[0\]\)/);
 assert.match(openDropHook, /documentPath: activeDocumentPath/);
 assert.match(openDropHook, /renderer: activeDocumentRenderer/);
 assert.match(openDropHook, /void openDockingDocument\(action\.request\.receptorPath, action\.request\.ligandPaths\)/);
-assert.match(openDropHook, /document\.elementFromPoint\(position\.x \/ window\.devicePixelRatio, position\.y \/ window\.devicePixelRatio\)/);
+assert.match(openDropHook, /function elementFromTauriDropPosition/);
+assert.match(openDropHook, /scaled \? document\.elementFromPoint\(scaled\.x, scaled\.y\) : null/);
+assert.match(openDropHook, /document\.elementFromPoint\(position\.x, position\.y\)/);
+assert.match(openDropHook, /candidates\.find\(\(element\) => element\.closest\("\.dock-panel"\)\) \?\? candidates\[0\]/);
+assert.match(openDropHook, /const dockTarget = element\?\.closest<HTMLElement>\("\.dock-panel\[data-area\]\[data-active-tab\]"\)/);
+assert.match(openDropHook, /void openDockPayload\?\.\(\{ area: target\.area, tabKind: target\.tabKind, payload \}\)/);
 assert.match(openDropHook, /element\?\.closest\("\.molecule-stage, \.main-stage"\)/);
 assert.match(openDropHook, /void runFinderDropAction\(payload, dropTargetForPosition\(event\.position\)\)/);
 assert.match(openDropHook, /const structureDrop = hasStructureDrag\(event\.dataTransfer\)/);
