@@ -31,6 +31,20 @@ external-renderer-only groups:
 
 SDF, SMILES, CSV, and TSV collection previews use the grid runtime.
 
+## Ketcher Editing
+
+The embedded Ketcher page is currently a small-molecule and reaction editor.
+It exposes import and export actions for SMILES, Extended SMILES, Molfile,
+RXN, KET, SDF, RDF, SMARTS, CML, CDXML, CDX, InChI, InChIKey, and SVG when the
+installed Ketcher packages support the format.
+
+Macromolecule editing is intentionally disabled in the current integration.
+Do not expose HELM, FASTA, sequence, IDT, or AxoLabs import/export controls
+until `ketcher-macromolecules` is installed and verified with the same Ketcher
+version as `ketcher-core`, `ketcher-react`, and `ketcher-standalone`. Validate
+that the small-molecule toolbar, the Ketcher zoom selector, and the Burette
+scale control stay synchronized before enabling that path.
+
 ## Runtime Artifacts
 
 The desktop app writes generated preview artifacts through the Tauri preview
