@@ -455,6 +455,9 @@ button:focus-visible > .shortcut-tooltip {
   display: flex;
   background: var(--bg-base);
   overflow: hidden;
+  border-left: 1px solid var(--workspace-edge-border);
+  border-radius: 20px 0 0 20px;
+  box-shadow: -12px 0 28px var(--workspace-edge-shadow);
 }
 .workbench-main {
   min-width: 0;
@@ -1184,9 +1187,6 @@ kbd span { margin-left: 2px; }
   display: grid;
   background: var(--bg-base);
   overflow: hidden;
-  border-left: 1px solid var(--workspace-edge-border);
-  border-radius: 20px 0 0 20px;
-  box-shadow: -12px 0 28px var(--workspace-edge-shadow);
 }
 .dock-panel {
   --dock-divider-color: color-mix(in srgb, var(--text-primary) 52%, var(--bg-base));
