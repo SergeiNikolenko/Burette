@@ -120,6 +120,16 @@ const SIDEBAR_DRAG_CLOSE_WIDTH = 180;
 const RIGHT_DOCK_CLOSE_THRESHOLD = 180;
 const BOTTOM_DOCK_CLOSE_THRESHOLD = 120;
 
+type MolstarContextDocument = Parameters<typeof openBrowserDevMolstarContextDocument>[0];
+type MolstarContextEntry = NonNullable<MolstarContextDocument["entries"]>[number];
+
+function molstarContextEntryExtension(format: string | undefined) {
+  const value = String(format || "pdb").toLowerCase();
+  if (value === "cif" || value === "mmcif" || value === "mcif") return "cif";
+  if (value === "sd") return "sdf";
+  return value || "pdb";
+}
+
 type GridAppendResult = {
   recordsAppended: number;
   totalRows: number;
@@ -2634,7 +2644,30 @@ export default function App() {
       if (body?.type === "openMolstarContextDocument") {
         if (body.contextDocument && typeof body.contextDocument === "object") {
           pushStatus("Opening selected Molstar context...");
-          void openBrowserDevMolstarContextDocument(body.contextDocument, preferences)
+          const contextDocument = body.contextDocument;
+          const molstarPreferences = { ...preferences, rendererMode: "molstar" as const };
+          const openContextDocument = async () => {
+            if (!isTauriRuntime()) return openBrowserDevMolstarContextDocument(contextDocument, molstarPreferences);
+            const entries = (contextDocument.entries ?? []).filter((entry): entry is MolstarContextEntry & { data: string } => (
+              typeof entry?.data === "string" && entry.data.length > 0
+            ));
+            if (entries.length !== 1) {
+              throw new Error("Native Molstar context view supports one inline structure at a time.");
+            }
+            const entry = entries[0];
+            const extension = molstarContextEntryExtension(entry.format);
+            const label = contextDocument.label?.trim() || entry.label?.trim() || "Molstar context";
+            return invoke<ViewerDocument>("open_text_structure", {
+              request: {
+                title: `${label}.${extension}`,
+                extension,
+                text: entry.data,
+              },
+              preferences: molstarPreferences,
+              reloadOptions: {},
+            });
+          };
+          void openContextDocument()
             .then((document) => {
               addDocuments([document]);
               rememberRecentStructures([document]);
