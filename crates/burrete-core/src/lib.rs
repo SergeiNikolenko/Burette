@@ -125,7 +125,7 @@ pub fn quick_look_size_limit_for_extension(extension: &str) -> i64 {
         "bcif" => 50 * mib,
         "abi" | "com" | "csv" | "fdf" | "sdf" | "sd" | "mol" | "mol2" | "xyz" | "gro" | "smi"
         | "smiles" | "tsv" | "cub" | "cube" | "in" | "inp" | "nw" | "out" | "psi4" | "qcin"
-        | "vasp" | "lammpstrj" | "top" | "psf" | "prmtop" => 25 * mib,
+        | "vasp" | "lammpstrj" | "top" | "psf" | "prmtop" | "graphml" => 25 * mib,
         "mae" | "maegz" | "cms" => 64 * mib,
         "xtc" | "trr" | "dcd" | "nctraj" => 75 * mib,
         _ => 20 * mib,

@@ -84,7 +84,7 @@ const CommandPalette = lazy(() => import("./components/command-palette").then((m
 const filters = [
   {
     name: "Files",
-    extensions: [...previewFormatRegistry.documentTypes.extensions, "graphml", "md", "markdown", "mdx", "txt", "log", "err", "sh", "bash", "zsh", "py", "rs", "js", "jsx", "ts", "tsx", "json", "yaml", "yml", "toml", "xml", "html", "css"],
+    extensions: [...previewFormatRegistry.documentTypes.extensions, "md", "markdown", "mdx", "txt", "log", "err", "sh", "bash", "zsh", "py", "rs", "js", "jsx", "ts", "tsx", "json", "yaml", "yml", "toml", "xml", "html", "css"],
   },
 ];
 
