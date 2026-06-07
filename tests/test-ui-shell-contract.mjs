@@ -1086,6 +1086,7 @@ assert.match(styles, /--workspace-edge-border: color-mix\(in srgb, var\(--fg-bas
 assert.match(styles, /\.sidebar::after \{[^}]*background: var\(--sidebar-divider-right\);/s);
 assert.doesNotMatch(styles, /\.splitter::after \{ background: var\(--sidebar-divider-right\); \}/);
 assert.match(styles, /\.workbench \{[^}]*background: var\(--bg-base\);[^}]*overflow: hidden;[^}]*border-left: 1px solid var\(--workspace-edge-border\);[^}]*border-radius: 20px 0 0 20px;[^}]*box-shadow: -12px 0 28px var\(--workspace-edge-shadow\);/s);
+assert.match(styles, /\.app-shell\[data-settings-mode="true"\] \.workbench \{[^}]*border-radius: 0;[^}]*box-shadow: none;[^}]*\}/s);
 assert.doesNotMatch(styles, /\.main-stage \{[^}]*border-radius: 20px 0 0 20px;/s);
 assert.match(styles, /\.app-shell\[data-theme="auto"\] \{[^}]*color-scheme: light dark/s);
 assert.match(styles, /@media \(prefers-color-scheme: light\) \{[\s\S]*\.app-shell\[data-theme="auto"\]/);
