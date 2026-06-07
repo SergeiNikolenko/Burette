@@ -21,7 +21,7 @@ export const fileKind = definePageKind<"file", FileLocation>({
     const document = findDocument(location, state.documents);
     return document ? <ViewerSurface document={document} actions={actions} /> : null;
   },
-  keepAlive: true,
+  keepAlive: false,
   fromPayload: (data) => (typeof data.path === "string" ? { kind: "file", documentId: typeof data.documentId === "string" ? data.documentId : undefined, path: data.path } : null),
   serialize: (location) => ({ documentId: location.documentId, path: location.path }),
 });

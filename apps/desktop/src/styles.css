@@ -242,6 +242,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 }
 .chrome-button,
 .new-tab {
+  position: relative;
   height: var(--chrome-control-height);
   border: 0;
   border-radius: 8px;
@@ -259,6 +260,75 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .chrome-button[data-active] { background: var(--tab-active-bg); color: var(--text-secondary); }
 .chrome-button:active,
 .new-tab:active { transform: scale(0.94); }
+.shortcut-tooltip {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 8px);
+  z-index: 1200;
+  min-height: 38px;
+  max-width: min(360px, calc(100vw - 24px));
+  padding: 8px 10px 8px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-base) 82%, transparent);
+  color: var(--text-primary);
+  box-shadow: 0 16px 44px rgb(0 0 0 / 0.28);
+  backdrop-filter: blur(30px) saturate(1.35);
+  -webkit-backdrop-filter: blur(30px) saturate(1.35);
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  opacity: 0;
+  pointer-events: none;
+  white-space: nowrap;
+  transform: translate(-50%, -4px) scale(0.98);
+  transform-origin: top center;
+  transition: opacity 110ms ease-out, transform 130ms ease-out;
+}
+.shortcut-tooltip[data-side="top"] {
+  top: auto;
+  bottom: calc(100% + 8px);
+  transform: translate(-50%, 4px) scale(0.98);
+  transform-origin: bottom center;
+}
+.chrome-trailing-controls .shortcut-tooltip {
+  left: auto;
+  right: 0;
+  transform: translateY(-4px) scale(0.98);
+  transform-origin: top right;
+}
+button:hover > .shortcut-tooltip,
+button:focus-visible > .shortcut-tooltip {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+.chrome-trailing-controls button:hover > .shortcut-tooltip,
+.chrome-trailing-controls button:focus-visible > .shortcut-tooltip {
+  transform: translateY(0) scale(1);
+}
+.shortcut-tooltip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  font-weight: 560;
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+.shortcut-tooltip-key {
+  flex: 0 0 auto;
+  min-height: 24px;
+  border-radius: 999px;
+  padding: 4px 9px;
+  background: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 32%), transparent);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0;
+  line-height: 1;
+}
 .dock-toggle-icon-right { transform: scaleX(-1); }
 .dock-toggle-icon-bottom { transform: rotate(-90deg); }
 .tab-strip {
@@ -1145,7 +1215,7 @@ kbd span { margin-left: 2px; }
   opacity: 0;
   pointer-events: none;
 }
-.dock-panel[data-open="false"] > :not(.dock-resizer) {
+.dock-panel[data-open="false"] .dock-panel-inner {
   visibility: hidden;
 }
 .dock-panel[data-area="right"][data-open="false"] {
@@ -1170,6 +1240,22 @@ kbd span { margin-left: 2px; }
   flex: 0 0 auto;
   min-height: 180px;
   max-height: min(720px, calc(100vh - var(--chrome-height) - 180px));
+}
+.dock-panel-inner {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.dock-panel[data-area="right"] .dock-panel-inner {
+  height: 100%;
+  min-width: 260px;
+}
+.dock-panel[data-area="bottom"] .dock-panel-inner {
+  width: 100%;
+  min-height: 180px;
 }
 .dock-panel[data-drop-active] {
   background: color-mix(in srgb, var(--accent) 8%, var(--bg-base));
@@ -1944,6 +2030,16 @@ kbd span { margin-left: 2px; }
   line-height: 1.35;
   white-space: pre-wrap;
 }
+.ketcher-output-input {
+  width: 100%;
+  min-height: 42px;
+  resize: vertical;
+  outline: none;
+}
+.ketcher-output-input:focus {
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 1px var(--focus-ring) inset;
+}
 .ketcher-page-footer {
   min-height: 52px;
   padding: 10px 18px;
@@ -1974,7 +2070,8 @@ kbd span { margin-left: 2px; }
   transition: background 120ms ease, color 120ms ease, transform 120ms ease;
 }
 .ketcher-page-footer button:hover:not(:disabled),
-.ketcher-page-footer button:focus-visible:not(:disabled) {
+.ketcher-page-footer button:focus-visible:not(:disabled),
+.ketcher-page-footer button.is-active:not(:disabled) {
   background: var(--surface-hover);
   color: var(--text-primary);
   outline: 2px solid var(--focus-ring);
@@ -2652,9 +2749,10 @@ kbd span { margin-left: 2px; }
 .new-tab-build-badge { min-height: 22px; max-width: 260px; border-radius: 6px; padding: 3px 8px; display: inline-flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: var(--surface-subtle); color: var(--text-secondary); font-size: 11px; font-weight: 650; letter-spacing: 0; text-transform: uppercase; }
 .new-tab-build-detail { max-width: 760px; margin: 10px 0 0; color: var(--text-muted); font-size: 13px; line-height: 1.35; }
 .new-tab-actions { display: flex; flex-direction: column; align-items: center; gap: 12px; }
-.new-tab-page button { border: 0; border-radius: 8px; background: transparent; color: var(--text-secondary); font-size: 13px; font-weight: 500; height: 28px; padding: 0 8px; display: inline-flex; align-items: center; gap: 6px; transition: color 120ms ease, background 120ms ease; }
+.new-tab-page button { position: relative; border: 0; border-radius: 8px; background: transparent; color: var(--text-secondary); font-size: 13px; font-weight: 500; height: 28px; padding: 0 8px; display: inline-flex; align-items: center; gap: 6px; transition: color 120ms ease, background 120ms ease; }
 .new-tab-page button:hover { color: var(--text-primary); background: transparent; }
 .new-tab-page kbd { font-size: 11px; letter-spacing: 0.16em; color: var(--text-icon-muted); }
+.new-tab-page .shortcut-tooltip-key { color: var(--text-secondary); font-size: 13px; letter-spacing: 0; }
 .error-boundary {
   width: 100vw;
   height: 100vh;

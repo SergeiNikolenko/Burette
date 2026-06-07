@@ -132,7 +132,10 @@
       ensureOverlay();
     }
     window.setTimeout(() => {
-      if (document.querySelector(".app-shell")) return;
+      if (document.querySelector(".app-shell")) {
+        removeOverlay();
+        return;
+      }
       setOverlay("The desktop UI did not mount within 3 seconds.");
     }, mountTimeoutMs);
   });

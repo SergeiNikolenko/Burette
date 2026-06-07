@@ -4,6 +4,7 @@ import {
   deserializeLocation,
   serializeLocation,
   type FepSetupLocation,
+  type KetcherLocation,
   type Location,
   type PoseReviewLocation,
   type SerializedLocation,
@@ -12,9 +13,9 @@ import {
 import { DEFAULT_SETTINGS_SECTION, type SettingsSectionId } from "../lib/settings-sections";
 import type { RecentStructure, TextFileDocument, ViewerDocument } from "../types";
 import {
+  isTemporaryDocumentPath,
   isPersistentRecentStructure,
   isPersistentViewerDocument,
-  isTemporaryDocumentPath,
 } from "../lib/temporary-documents";
 
 export type MoleculeTab = {
@@ -48,7 +49,7 @@ type MoleculeState = {
   clearRecentStructures: () => void;
   openNewTab: () => void;
   openFepSetupTab: (location: FepSetupLocation) => void;
-  openKetcherTab: () => void;
+  openKetcherTab: (location?: KetcherLocation) => void;
   openPoseReviewTab: (location: PoseReviewLocation) => void;
   openSettingsTab: (section?: SettingsSectionId) => void;
   openSettingsSection: (section: SettingsSectionId) => void;
@@ -134,8 +135,8 @@ export function createSettingsTab(id = createTabId()): MoleculeTab {
   return { id, location: { kind: "settings", section: DEFAULT_SETTINGS_SECTION }, back: [], forward: [] };
 }
 
-export function createKetcherTab(id = createTabId()): MoleculeTab {
-  return { id, location: { kind: "ketcher" }, back: [], forward: [] };
+export function createKetcherTab(id = createTabId(), location: KetcherLocation = { kind: "ketcher" }): MoleculeTab {
+  return { id, location, back: [], forward: [] };
 }
 
 export function createFepSetupTab(location: FepSetupLocation, id = createTabId()): MoleculeTab {
@@ -168,19 +169,11 @@ function toRecentStructure(document: ViewerDocument): RecentStructure {
   };
 }
 
-function persistedDocuments(documents: ViewerDocument[]) {
-  return documents.filter(isPersistentViewerDocument);
-}
-
-function persistedTabs(tabs: MoleculeTab[], documents: ViewerDocument[]) {
-  const paths = new Set(persistedDocuments(documents).map((document) => document.path));
+function persistedTabs(tabs: MoleculeTab[]) {
   return tabs.filter((tab) => (
+    tab.location.kind !== "file" &&
     tab.location.kind !== "fep-setup" &&
-    tab.location.kind !== "pose-review" &&
-    (
-      tab.location.kind !== "file" ||
-      (paths.has(tab.location.path) && !isTemporaryDocumentPath(tab.location.path))
-    )
+    tab.location.kind !== "pose-review"
   ));
 }
 
@@ -513,11 +506,22 @@ export const useMoleculeStore = create<MoleculeState>()(
           const tabs = [...state.tabs.filter((candidate) => candidate.location.kind !== "launcher"), tab];
           return { tabs, activeTabId: tab.id, activeDocumentId: activeDocumentIdFrom(tabs, tab.id, state.documents) };
         }),
-      openKetcherTab: () =>
+      openKetcherTab: (location: KetcherLocation = { kind: "ketcher" }) =>
         set((state) => {
           const existing = state.tabs.find((tab) => tab.location.kind === "ketcher");
-          if (existing) return { activeTabId: existing.id, activeDocumentId: null };
-          const tab = createKetcherTab();
+          if (existing) {
+            const existingLocation = existing.location as KetcherLocation;
+            const nextLocation: KetcherLocation = { ...existingLocation, ...location, kind: "ketcher" };
+            if (!("importRequest" in location)) {
+              delete nextLocation.importRequest;
+              delete nextLocation.importRequestId;
+            }
+            const tabs = state.tabs.map((tab) => (tab.id === existing.id
+              ? { ...tab, location: nextLocation }
+              : tab));
+            return { tabs, activeTabId: existing.id, activeDocumentId: null };
+          }
+          const tab = createKetcherTab(createTabId(), location);
           const tabs = [...state.tabs, tab];
           return { tabs, activeTabId: tab.id, activeDocumentId: null };
         }),
@@ -684,7 +688,7 @@ export const useMoleculeStore = create<MoleculeState>()(
         ? devFilesPersistedSession(state.recentStructures)
         : ({
             documents: [],
-            tabs: persistedTabs(collapseDuplicateKetcherTabs(state.tabs, state.activeTabId), state.documents),
+            tabs: persistedTabs(collapseDuplicateKetcherTabs(state.tabs, state.activeTabId)),
             activeTabId: state.activeTabId,
             recentStructures: state.recentStructures.filter(isPersistentRecentStructure),
           }),
