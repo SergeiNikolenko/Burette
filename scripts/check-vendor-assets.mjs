@@ -151,8 +151,8 @@ function validateRuntimeProfiles(snapshot) {
 function validateBundleCoverage(snapshot) {
   const tauriConfig = readJson(path.join(repoRoot, 'apps', 'desktop', 'src-tauri', 'tauri.conf.json'));
   const resources = tauriConfig?.bundle?.resources || {};
-  if (resources['../../../PreviewExtension/Web'] !== 'Web') {
-    throw new Error('Tauri resources must include PreviewExtension/Web for desktop runtime profiles.');
+  if (resources['../../../PreviewExtension/Web'] !== 'ViewerWeb') {
+    throw new Error('Tauri resources must include PreviewExtension/Web as ViewerWeb for desktop runtime profiles.');
   }
   const pbxproj = fs.readFileSync(path.join(repoRoot, 'Burrete.xcodeproj', 'project.pbxproj'), 'utf8');
   if (!pbxproj.includes('path = Web;') || !pbxproj.includes('Web in Resources')) {

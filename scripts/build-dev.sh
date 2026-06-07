@@ -176,7 +176,11 @@ actual_pkg_info="$(cat "$LOCAL_APP/Contents/PkgInfo" 2>/dev/null || true)"
 [[ "$actual_pkg_info" == "APPL????" ]] || { echo "error: built app PkgInfo missing or invalid." >&2; exit 1; }
 [[ -x "$LOCAL_APP/Contents/MacOS/burrete" ]] || { echo "error: built Tauri app executable missing: $LOCAL_APP/Contents/MacOS/burrete" >&2; exit 1; }
 [[ -d "$LOCAL_APP/Contents/PlugIns/BurretePreview.appex" ]] || { echo "error: embedded Quick Look extension missing in Tauri app." >&2; exit 1; }
-grep -q 'aria-label="Collapse controls"' "$LOCAL_APP/Contents/Resources/Web/index.html" || { echo "error: built web preview shell is missing toolbar grip affordance." >&2; exit 1; }
+if [[ -e "$LOCAL_APP/Contents/Resources/Web/index.html" ]] && grep -q 'Burrete Preview' "$LOCAL_APP/Contents/Resources/Web/index.html"; then
+  echo "error: built desktop app Resources/Web was overwritten by the preview shell." >&2
+  exit 1
+fi
+grep -q 'aria-label="Collapse controls"' "$LOCAL_APP/Contents/Resources/ViewerWeb/viewer-shell.js" || { echo "error: built shared viewer shell is missing toolbar grip affordance." >&2; exit 1; }
 
 cat <<MSG
 

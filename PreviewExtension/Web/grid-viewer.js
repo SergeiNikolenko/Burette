@@ -231,6 +231,7 @@
       state.hostRequests.delete(requestId);
       try { clearTimeout(pending.timeoutId); } catch (_) {}
       if (body.type === 'gridPage' || body.type === 'xyzrenderCard') pending.resolve(body.result || {});
+      else if (body.type === 'structureText') pending.resolve({ text: String(body.text || '') });
       else if (body.type === 'xyzrenderSheetItemRendered') pending.resolve(body);
       else pending.reject(new Error(body.error || 'Grid host request failed.'));
     });
@@ -401,8 +402,10 @@
   }
 
   function supportsXyzrenderCards(cfg) {
-    return (cfg?.appViewer === true && cfg?.gridDataMode === 'bridge')
-      || (typeof cfg?.xyzrenderEndpoint === 'string' && cfg.xyzrenderEndpoint.trim().length > 0);
+    return cfg?.appViewer === true && (
+      cfg?.gridDataMode === 'bridge'
+      || (typeof cfg?.xyzrenderEndpoint === 'string' && cfg.xyzrenderEndpoint.trim().length > 0)
+    );
   }
 
   function normalizeCardRenderer(cfg) {
@@ -1884,43 +1887,73 @@
       event.stopPropagation();
       el.classList.remove('buret-card-drop-target');
       const payload = readStructureDropPayload(event.dataTransfer);
-      if (!payload || payload.paths.length || payload.records.length !== 1) {
-        setStatus('[grid] Drop a single molecule record to replace a grid row.', 'error');
+      if (!payload || payload.records.length > 1 || payload.paths.length > 1 || (payload.records.length + payload.paths.length) !== 1) {
+        setStatus('[grid] Drop a single molecule record or file to replace a grid row.', 'error');
         return;
       }
-      const patch = recordToGridRowPatch(payload.records[0], row);
-      if (!patch) {
-        setStatus('[grid] Dropped molecule record is not supported for grid row replacement.', 'error');
-        return;
-      }
-      if (replaceGridRow(row, patch, cfg)) {
-        setStatus(`[grid] Replaced ${row.name || `Molecule ${Number(row.index) + 1}`} with ${patch.name}. Source file is unchanged.`);
-      }
+      void replaceGridRowFromDropPayload(row, payload, cfg);
     });
   }
 
   function dataTransferHasStructurePayload(dataTransfer) {
     const types = dataTransfer?.types;
     if (!types) return false;
-    if (typeof types.includes === 'function') return types.includes(STRUCTURE_DRAG_MIME);
-    if (typeof types.contains === 'function') return types.contains(STRUCTURE_DRAG_MIME);
-    try { return Array.from(types).includes(STRUCTURE_DRAG_MIME); } catch (_) { return false; }
+    if (typeof types.includes === 'function') return types.includes(STRUCTURE_DRAG_MIME) || types.includes('Files');
+    if (typeof types.contains === 'function') return types.contains(STRUCTURE_DRAG_MIME) || types.contains('Files');
+    try {
+      const values = Array.from(types);
+      return values.includes(STRUCTURE_DRAG_MIME) || values.includes('Files');
+    } catch (_) {
+      return false;
+    }
   }
 
   function readStructureDropPayload(dataTransfer) {
     try {
       const raw = dataTransfer?.getData(STRUCTURE_DRAG_MIME);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      const paths = Array.isArray(parsed?.paths)
-        ? parsed.paths.map(path => String(path || '').trim()).filter(Boolean)
-        : [];
-      const records = Array.isArray(parsed?.records)
-        ? parsed.records.map(normalizeStructureDropRecord).filter(Boolean)
-        : [];
-      return { paths, records };
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const paths = Array.isArray(parsed?.paths)
+          ? parsed.paths.map(path => String(path || '').trim()).filter(Boolean)
+          : [];
+        const records = Array.isArray(parsed?.records)
+          ? parsed.records.map(normalizeStructureDropRecord).filter(Boolean)
+          : [];
+        return { paths, records };
+      }
+      const paths = Array.from(dataTransfer?.files || [])
+        .map(file => String(file?.path || '').trim())
+        .filter(Boolean);
+      if (paths.length > 0) return { paths, records: [] };
     } catch (_) {
       return null;
+    }
+    return null;
+  }
+
+  async function replaceGridRowFromDropPayload(row, payload, cfg) {
+    let record = payload.records[0] || null;
+    if (!record && payload.paths.length === 1) {
+      const path = payload.paths[0];
+      try {
+        const response = await hostRequest('readStructureText', { path });
+        record = normalizeStructureDropRecord({
+          path,
+          inputExtension: structureRecordExtension(null, path),
+          text: response.text
+        });
+      } catch (error) {
+        setStatus(`[grid] Could not read dropped file: ${error instanceof Error ? error.message : String(error)}`, 'error');
+        return;
+      }
+    }
+    const patch = recordToGridRowPatch(record, row);
+    if (!patch) {
+      setStatus('[grid] Dropped molecule record is not supported for grid row replacement.', 'error');
+      return;
+    }
+    if (replaceGridRow(row, patch, cfg)) {
+      setStatus(`[grid] Replaced ${row.name || `Molecule ${Number(row.index) + 1}`} with ${patch.name}. Source file is unchanged.`);
     }
   }
 
