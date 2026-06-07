@@ -459,6 +459,10 @@ button:focus-visible > .shortcut-tooltip {
   border-radius: 20px 0 0 20px;
   box-shadow: -12px 0 28px var(--workspace-edge-shadow);
 }
+.app-shell[data-settings-mode="true"] .workbench {
+  border-radius: 0;
+  box-shadow: none;
+}
 .workbench-main {
   min-width: 0;
   min-height: 0;
