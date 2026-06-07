@@ -91,6 +91,9 @@ const appInfo = plist('apps/desktop/src-tauri/AppMetadata.plist');
 const appDocumentTypes = appInfo.CFBundleDocumentTypes ?? [];
 const appExtensions = appDocumentTypes.flatMap((type) => type.CFBundleTypeExtensions ?? []);
 const appContentTypes = appDocumentTypes.flatMap((type) => type.LSItemContentTypes ?? []);
+const appOnlyContentTypes = registry.formats
+  .filter((format) => format.contentType && !registry.quickLook.contentTypes.includes(format.contentType))
+  .map((format) => format.contentType);
 assertSameSet(
   appExtensions,
   registry.documentTypes.extensions,
@@ -98,7 +101,7 @@ assertSameSet(
 );
 assertSameSet(
   appContentTypes,
-  registry.quickLook.contentTypes,
+  [...registry.quickLook.contentTypes, ...appOnlyContentTypes],
   'AppMetadata LSItemContentTypes must match preview format registry',
 );
 const gridTableDocumentType = appDocumentTypes.find((type) => type.CFBundleTypeName === 'Molecular grid tables');
@@ -124,6 +127,18 @@ assertExportedTypeDeclarations(
   appInfo.UTExportedTypeDeclarations ?? [],
   appFormats,
   'AppMetadata exported UTIs',
+);
+const graphmlFormat = registry.formats.find((format) => format.id === 'graphml');
+assert.ok(graphmlFormat, 'Registry must declare GraphML for FEP network files');
+assert.equal(
+  registry.quickLook.contentTypes.includes(graphmlFormat.contentType),
+  false,
+  'GraphML must open in the app without opting into the molecular Quick Look preview runtime',
+);
+assert.equal(
+  appDocumentTypes.find((type) => type.CFBundleTypeName === registry.documentTypes.name)?.LSHandlerRank,
+  'Owner',
+  'Molecular document type must make Burrete the default opener',
 );
 
 const previewInfo = plist('PreviewExtension/Info.plist');
@@ -163,7 +178,7 @@ assert.match(forcePreview, /Normal Quick Look resolves XYZ/);
 const previewContentType = readFileSync('scripts/preview-content-type.mjs', 'utf8');
 assert.match(previewContentType, /config['"], ['"]preview-formats\.json/);
 assert.match(previewContentType, /mae\.gz/);
-assert.match(previewContentType, /format\?\.contentType/);
+assert.match(previewContentType, /registry\.quickLook\.contentTypes\.includes\(format\.contentType\)/);
 assert.doesNotMatch(previewContentType, /pdb\|PDB\|ent\|ENT/);
 
 console.log('preview format registry check passed');
