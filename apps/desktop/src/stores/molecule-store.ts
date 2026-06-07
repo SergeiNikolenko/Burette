@@ -4,6 +4,7 @@ import {
   deserializeLocation,
   serializeLocation,
   type FepSetupLocation,
+  type KetcherLocation,
   type Location,
   type PoseReviewLocation,
   type SerializedLocation,
@@ -47,7 +48,7 @@ type MoleculeState = {
   clearRecentStructures: () => void;
   openNewTab: () => void;
   openFepSetupTab: (location: FepSetupLocation) => void;
-  openKetcherTab: (location?: { draftKet?: string; draftMolfile?: string }) => void;
+  openKetcherTab: (location?: KetcherLocation) => void;
   openPoseReviewTab: (location: PoseReviewLocation) => void;
   openSettingsTab: () => void;
   navigateBack: () => void;
@@ -131,8 +132,8 @@ export function createSettingsTab(id = createTabId()): MoleculeTab {
   return { id, location: { kind: "settings" }, back: [], forward: [] };
 }
 
-export function createKetcherTab(id = createTabId(), location: { draftKet?: string; draftMolfile?: string } = {}): MoleculeTab {
-  return { id, location: { kind: "ketcher", ...location }, back: [], forward: [] };
+export function createKetcherTab(id = createTabId(), location: KetcherLocation = { kind: "ketcher" }): MoleculeTab {
+  return { id, location, back: [], forward: [] };
 }
 
 export function createFepSetupTab(location: FepSetupLocation, id = createTabId()): MoleculeTab {
@@ -502,17 +503,19 @@ export const useMoleculeStore = create<MoleculeState>()(
           const tabs = [...state.tabs.filter((candidate) => candidate.location.kind !== "launcher"), tab];
           return { tabs, activeTabId: tab.id, activeDocumentId: activeDocumentIdFrom(tabs, tab.id, state.documents) };
         }),
-      openKetcherTab: (location = {}) =>
+      openKetcherTab: (location: KetcherLocation = { kind: "ketcher" }) =>
         set((state) => {
           const existing = state.tabs.find((tab) => tab.location.kind === "ketcher");
           if (existing) {
-            const hasDraft = Boolean(location.draftKet?.trim() || location.draftMolfile?.trim());
-            const tabs = hasDraft
-              ? state.tabs.map((tab) => (tab.id === existing.id ? {
-                  ...tab,
-                  location: { kind: "ketcher" as const, ...location },
-                } : tab))
-              : state.tabs;
+            const existingLocation = existing.location as KetcherLocation;
+            const nextLocation: KetcherLocation = { ...existingLocation, ...location, kind: "ketcher" };
+            if (!("importRequest" in location)) {
+              delete nextLocation.importRequest;
+              delete nextLocation.importRequestId;
+            }
+            const tabs = state.tabs.map((tab) => (tab.id === existing.id
+              ? { ...tab, location: nextLocation }
+              : tab));
             return { tabs, activeTabId: existing.id, activeDocumentId: null };
           }
           const tab = createKetcherTab(createTabId(), location);
