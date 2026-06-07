@@ -1722,8 +1722,8 @@ kbd span { margin-left: 2px; }
 .fep-network-card {
   position: absolute;
   z-index: 8;
-  width: clamp(150px, 10.6vw, 170px);
-  height: clamp(148px, 10.6vw, 170px);
+  width: clamp(168px, 11.8vw, 196px);
+  height: clamp(164px, 11.8vw, 196px);
   display: grid;
   grid-template-rows: minmax(0, 1fr) 20px;
   overflow: hidden;
@@ -1745,16 +1745,16 @@ kbd span { margin-left: 2px; }
   min-height: 0;
   display: grid;
   place-items: center;
-  padding: 2px 3px 0;
+  padding: 0;
   overflow: hidden;
   background: color-mix(in srgb, var(--bg-base) 98%, var(--surface-subtle));
 }
 .fep-network-card-picture svg {
   display: block;
-  width: 108%;
-  height: 108%;
-  max-width: 108%;
-  max-height: 108%;
+  width: 118%;
+  height: 118%;
+  max-width: 118%;
+  max-height: 118%;
 }
 .fep-network-card footer {
   min-width: 0;
