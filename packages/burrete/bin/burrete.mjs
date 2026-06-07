@@ -13,6 +13,8 @@ const REPO = 'Burrete';
 const RELEASES_URL = `https://api.github.com/repos/${OWNER}/${REPO}/releases`;
 const APP_NAME = 'Burrete.app';
 const QUICK_LOOK_EXTENSION_NAME = 'BurretePreview.appex';
+const QUICK_LOOK_EXTENSION_ID = 'com.local.BurreteV10.Preview';
+const LSREGISTER = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister';
 const UPDATE_CHANNELS = new Set(['stable', 'beta']);
 
 async function main() {
@@ -84,10 +86,8 @@ async function install({ system, channel }) {
   } catch (error) {
     fail(`Failed to install Burrete.app. The previous app was preserved when possible. ${error?.message || String(error)}`);
   }
-  logStep('Refreshing Quick Look registration.');
-  run('/usr/bin/qlmanage', ['-r'], 'Installed Burrete, but Quick Look refresh failed.', { allowFailure: true });
-  run('/usr/bin/qlmanage', ['-r', 'cache'], 'Installed Burrete, but Quick Look cache refresh failed.', { allowFailure: true });
-  run('/usr/bin/killall', ['quicklookd'], 'Installed Burrete, but quicklookd restart failed.', { allowFailure: true });
+  logStep('Registering LaunchServices and Quick Look.');
+  registerInstalledApp(targetApp);
   await rm(workDir, { recursive: true, force: true });
 
   console.log(`Installed ${APP_NAME} ${release.tag_name} to ${targetApp}`);
@@ -95,6 +95,16 @@ async function install({ system, channel }) {
   console.log('  1. Open Burrete once so macOS registers the Quick Look extension.');
   console.log('  2. Select a supported molecule file in Finder and press Space.');
   console.log('  3. Run `burrete doctor` if Finder previews do not appear.');
+}
+
+function registerInstalledApp(targetApp) {
+  const quickLookExtension = path.join(targetApp, 'Contents', 'PlugIns', QUICK_LOOK_EXTENSION_NAME);
+  run(LSREGISTER, ['-f', '-R', targetApp], 'Installed Burrete, but LaunchServices registration failed.', { allowFailure: true });
+  run('/usr/bin/pluginkit', ['-a', quickLookExtension], 'Installed Burrete, but Quick Look extension registration failed.', { allowFailure: true });
+  run('/usr/bin/pluginkit', ['-e', 'use', '-i', QUICK_LOOK_EXTENSION_ID], 'Installed Burrete, but Quick Look extension enablement failed.', { allowFailure: true });
+  run('/usr/bin/qlmanage', ['-r'], 'Installed Burrete, but Quick Look refresh failed.', { allowFailure: true });
+  run('/usr/bin/qlmanage', ['-r', 'cache'], 'Installed Burrete, but Quick Look cache refresh failed.', { allowFailure: true });
+  run('/usr/bin/killall', ['quicklookd'], 'Installed Burrete, but quicklookd restart failed.', { allowFailure: true });
 }
 
 function parseOptions(args) {
