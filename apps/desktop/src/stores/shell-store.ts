@@ -117,6 +117,7 @@ function dockDropItems(input: DockDropInput): DockDroppedStructure[] {
     title: path.split(/[\\/]/u).pop() || path,
     detail: path,
     addedAt: now + index,
+    payload: { paths: [path], records: [] },
   }));
   const records = input.payload.records.map((record, index) => ({
     id: `${now}-${input.area}-${input.tabKind}-record-${index}-${record.path}`,
@@ -125,6 +126,7 @@ function dockDropItems(input: DockDropInput): DockDroppedStructure[] {
     title: record.path,
     detail: `${record.inputExtension.toUpperCase()} inline structure`,
     addedAt: now + paths.length + index,
+    payload: { paths: [], records: [record] },
   }));
   const items = (input.payload.items ?? []).map((item, index) => ({
     id: `${now}-${input.area}-${input.tabKind}-item-${index}-${item.kind}-${item.title}`,
@@ -133,6 +135,7 @@ function dockDropItems(input: DockDropInput): DockDroppedStructure[] {
     title: item.title,
     detail: item.detail ?? item.path ?? item.kind,
     addedAt: now + paths.length + records.length + index,
+    payload: { paths: item.path ? [item.path] : [], records: [], items: [item] },
   }));
   return [...paths, ...records, ...items];
 }
