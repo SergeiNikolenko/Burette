@@ -1,0 +1,30 @@
+{
+  "mcpServers": {
+    "burette_agent_mcp": {
+      "title": "Burrete Agent MCP",
+      "description": "Typed tools and review widgets for Burrete molecular workspaces.",
+      "icons": [
+        {
+          "src": "./assets/composerIcon.svg",
+          "mimeType": "image/svg+xml",
+          "sizes": [
+            "24x24"
+          ]
+        },
+        {
+          "src": "./assets/logo.svg",
+          "mimeType": "image/svg+xml",
+          "sizes": [
+            "256x256"
+          ]
+        }
+      ],
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "./mcp/server.mjs",
+        "--stdio"
+      ]
+    }
+  }
+}

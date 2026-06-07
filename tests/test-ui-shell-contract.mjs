@@ -28,6 +28,7 @@ const [
   sidebarFileBrowser,
   sidebarFileTreeNode,
   sidebarWorkspaceSwitcher,
+  settingsSidebar,
   nativeContextMenu,
   radixMenu,
   sidebarProjects,
@@ -40,6 +41,7 @@ const [
   editorArea,
   editorTabs,
   editorScrollContainer,
+  agentIntegrationPanel,
   settingsPanel,
   themesSection,
   settingControl,
@@ -68,6 +70,7 @@ const [
   menuEventsHook,
   windowTitle,
   instance,
+  settingsSections,
   browserDevDocuments,
   temporaryDocuments,
   viteConfig,
@@ -111,6 +114,7 @@ const [
   source('apps/desktop/src/components/sidebar/file-browser.tsx'),
   source('apps/desktop/src/components/sidebar/file-tree-node.tsx'),
   source('apps/desktop/src/components/sidebar/workspace-switcher.tsx'),
+  source('apps/desktop/src/components/sidebar/settings-sidebar.tsx'),
   source('apps/desktop/src/components/native-context-menu.ts'),
   source('apps/desktop/src/components/radix-menu.tsx'),
   source('apps/desktop/src/lib/sidebar-projects.ts'),
@@ -123,6 +127,7 @@ const [
   source('apps/desktop/src/components/editor-area/index.tsx'),
   source('apps/desktop/src/components/editor-area/editor-tabs.tsx'),
   source('apps/desktop/src/components/editor-area/editor-scroll-container.tsx'),
+  source('apps/desktop/src/components/agent-integration-panel/index.tsx'),
   source('apps/desktop/src/components/settings-panel/index.tsx'),
   source('apps/desktop/src/components/settings-panel/themes-section.tsx'),
   source('apps/desktop/src/components/settings-panel/setting-control.tsx'),
@@ -151,6 +156,7 @@ const [
   source('apps/desktop/src/hooks/use-menu-events.ts'),
   source('apps/desktop/src/components/window-title/index.tsx'),
   source('apps/desktop/src/lib/instance.ts'),
+  source('apps/desktop/src/lib/settings-sections.ts'),
   source('apps/desktop/src/lib/browser-dev-documents.ts'),
   source('apps/desktop/src/lib/temporary-documents.ts'),
   source('apps/desktop/vite.config.ts'),
@@ -183,7 +189,7 @@ const burretePermissions = await source('apps/desktop/src-tauri/permissions/burr
 const defaultCapability = await source('apps/desktop/src-tauri/capabilities/default.json');
 const fepSetupStoreTest = await source('tests/test-fep-setup-store.mjs');
 
-const sidebarSurface = [sidebar, sidebarFileBrowser, sidebarFileTreeNode, sidebarWorkspaceSwitcher].join('\n');
+const sidebarSurface = [sidebar, sidebarFileBrowser, sidebarFileTreeNode, sidebarWorkspaceSwitcher, settingsSidebar].join('\n');
 const editorTabDragStart = editorTabs.match(/onDragStart=\{\(event\) => \{[\s\S]*?\n                \}\}/)?.[0] ?? '';
 const packageConfig = JSON.parse(packageJson);
 
@@ -220,6 +226,8 @@ for (const exportName of [
   'useOpenFepSetupTab',
   'useOpenPoseReviewTab',
   'useOpenSettingsTab',
+  'useOpenSettingsSection',
+  'useActivateLastNonSettingsTab',
   'useOpenDocumentsInActiveTab',
   'useCanNavigateBack',
   'useCanNavigateForward',
@@ -238,6 +246,11 @@ assert.match(sidebarHook, /projectsOpen/);
 assert.match(sidebarHook, /projectRoots/);
 assert.match(sidebarHook, /expandedProjectIds/);
 assert.match(sidebarHook, /pinnedStructurePaths/);
+assert.match(app, /body\?\.type === "requestData" \|\| body\?\.type === "requestRuntimeFile"/);
+assert.match(app, /source: "burrete-native-host"/);
+assert.match(app, /invoke<string>\("read_viewer_runtime_file_base64"/);
+assert.match(app, /preview-data\.bin/);
+assert.match(app, /relativePath: fileName/);
 assert.match(sidebarHook, /sidebarQuery/);
 assert.match(sidebarHook, /toggleProjectsOpen/);
 assert.match(sidebarHook, /setExpandedProjectIds/);
@@ -535,6 +548,16 @@ assert.doesNotMatch(shellStore, /setPreference:/);
 assert.match(app, /from "\.\/hooks\/use-command-palette"/);
 assert.match(app, /from "\.\/hooks\/use-tabs"/);
 assert.match(app, /from "\.\/hooks\/use-settings"/);
+assert.match(app, /useOpenSettingsSection/);
+assert.match(app, /useActivateLastNonSettingsTab/);
+assert.match(app, /const openSettingsSection = useCallback/);
+assert.match(app, /openSettingsSection,/);
+assert.match(componentsTypes, /openSettingsSection: \(section: SettingsSectionId\) => void/);
+assert.match(componentsTypes, /backToApp: \(\) => void/);
+assert.match(moleculeStore, /openSettingsSection: \(section: SettingsSectionId\) => void/);
+assert.match(moleculeStore, /activateLastNonSettingsTab: \(\) => void/);
+assert.match(moleculeStore, /location: \{ kind: "settings" as const, section \}/);
+assert.doesNotMatch(editorArea, /state\.page === "agent"/);
 assert.match(app, /lazy\(\(\) => import\("\.\/components\/command-palette"\)/);
 assert.match(app, /markPerformanceOnce\("app:shell-visible"\)/);
 assert.match(app, /markPerformanceOnce\("app:first-document-opened"\)/);
@@ -597,6 +620,7 @@ assert.match(notificationPopup, /className="notification-popup"/);
 assert.match(notificationPopup, /aria-live=\{notice\.kind === "error" \? "assertive" : "polite"\}/);
 assert.match(notificationPopup, /compactNotificationMessage/);
 assert.match(appLayout, /const sidebarLayoutWidth = state\.sidebarOpen \? sidebarWidth : 0/);
+assert.doesNotMatch(appLayout, /Math\.max\(360, clampedSidebarWidth\)/);
 assert.match(appLayout, /const tabChromeLeft = state\.sidebarOpen \? sidebarLayoutWidth \+ 12 : 132/);
 assert.match(appLayout, /const activePageKind = state\.activeTab\?\.location\.kind \?\? null/);
 assert.match(appLayout, /data-active-page-kind=\{activePageKind \?\? undefined\}/);
@@ -604,7 +628,7 @@ assert.match(appLayout, /className="sidebar-shell"/);
 assert.match(appLayout, /className="sidebar-shell-inner" style=\{\{ width: sidebarWidth \}\}/);
 assert.match(appLayout, /<Sidebar state=\{layoutState\} actions=\{actions\} open=\{state\.sidebarOpen\} \/>/);
 assert.doesNotMatch(appLayout, /state\.sidebarOpen && <Sidebar/);
-assert.match(appLayout, /\{state\.sidebarOpen && \(\s*<div\s+className="splitter"/s);
+assert.match(appLayout, /\{state\.sidebarOpen && !settingsMode && \(\s*<div\s+className="splitter"/s);
 assert.doesNotMatch(appLayout, /instance-badge/);
 assert.doesNotMatch(appLayout, /statusbar/);
 assert.doesNotMatch(appLayout, /chrome-text-button/);
@@ -1227,7 +1251,29 @@ assert.match(structureDrag, /replace\(\/\\n\?\\\$\\\$\\\$\\\$\\s\*\$\/u, ""\)/);
 assert.match(settingsKind, /export const settingsKind = definePageKind/);
 assert.match(settingsKind, /lazy\(\(\) => import\("\.\.\/\.\.\/settings-panel"\)/);
 assert.match(settingsKind, /<Suspense fallback=\{null\}>/);
-assert.match(settingsKind, /<SettingsPanel state=\{state\} actions=\{actions\} \/>/);
+assert.match(settingsKind, /<SettingsPanel location=\{location\} state=\{state\} actions=\{actions\} \/>/);
+assert.match(settingsKind, /fromPayload: \(data\) => \(\{ kind: "settings", section: normalizeSettingsSection\(data\.section\) \}\)/);
+assert.match(settingsKind, /serialize: \(location\) => \(\{ section: location\.section \?\? DEFAULT_SETTINGS_SECTION \}\)/);
+assert.doesNotMatch(pageKinds, /agentIntegrationKind/);
+assert.doesNotMatch(pageKinds, /agent-integration/);
+assert.match(agentIntegrationPanel, /invoke<AgentIntegrationStatus>\("agent_integration_status"\)/);
+assert.match(agentIntegrationPanel, /openPath\(status\.bundledPlugin\.path\)/);
+assert.match(agentIntegrationPanel, /navigator\.clipboard\.writeText\(status\.bundledPlugin\.path\)/);
+assert.match(agentIntegrationPanel, /data-agent-integration-panel/);
+assert.match(agentIntegrationPanel, /embedded = false/);
+assert.match(agentIntegrationPanel, /browserPreviewStatus/);
+assert.match(agentIntegrationPanel, /Codex setup prompt/);
+assert.match(agentIntegrationPanel, /Copy Prompt/);
+assert.match(agentIntegrationPanel, /function codexSetupPrompt/);
+assert.match(agentIntegrationPanel, /Install or update the local Codex plugin @Burrete \(id \\`burrete\\`\) to version/);
+assert.match(agentIntegrationPanel, /bundled plugin directory `plugins\/burette-agent` from the current Burrete repository or app bundle/);
+assert.match(agentIntegrationPanel, /If Codex cannot resolve that relative path, ask for the explicit bundle path from Burrete/);
+assert.match(agentIntegrationPanel, /verify @Burrete is available in Codex/);
+assert.match(agentIntegrationPanel, /bundled with Burrete/);
+assert.doesNotMatch(agentIntegrationPanel, /v\$\{status\.bundledPlugin\.version\} at/);
+assert.doesNotMatch(agentIntegrationPanel, /If `burette-agent` is not installed in Codex, install it/);
+assert.doesNotMatch(agentIntegrationPanel, /compatibility\.json/);
+assert.match(agentIntegrationPanel, /function browserPreviewPluginPath/);
 assert.match(welcome, /export function WelcomeScreen/);
 assert.match(welcome, /new-tab-copy/);
 assert.match(welcome, /Burrete Desktop/);
@@ -1333,9 +1379,22 @@ assert.match(styles, /\.sidebar-shell-inner \{[^}]*height: 100%;[^}]*\}/s);
 assert.doesNotMatch(styles, /\.sidebar \{[^}]*transition: transform 140ms ease-out, opacity 140ms ease-out/s);
 assert.doesNotMatch(styles, /\.sidebar\[data-open="false"\]/);
 assert.doesNotMatch(styles, /\.splitter\[data-open=/);
+assert.doesNotMatch(styles, /\.sidebar\[data-mode="settings"\] \{[^}]*min-width/s);
 assert.match(sidebarSurface, /Add Project Folder\.\.\./);
 assert.match(sidebarSurface, /Open Active Project Folder/);
-assert.doesNotMatch(sidebarSurface, /actions\.openSettings/);
+assert.doesNotMatch(sidebarSurface, /actions\.openAgentIntegration/);
+assert.doesNotMatch(sidebarFileBrowser, /Open Burrete Agent/);
+assert.match(sidebarWorkspaceSwitcher, /className="sidebar-settings-button"/);
+assert.match(sidebarWorkspaceSwitcher, /actions\.openSettings/);
+assert.match(sidebarWorkspaceSwitcher, /<span className="sidebar-settings-label">Settings<\/span>/);
+assert.match(settingsSidebar, /Back to app/);
+assert.match(settingsSidebar, /Search settings/);
+assert.match(settingsSidebar, /settingsNavGroups/);
+assert.match(settingsSidebar, /const handleBackToApp = \(\) =>/);
+assert.match(settingsSidebar, /actions\.selectTab\(target\.id\)/);
+assert.match(settingsSidebar, /actions\.openNewTab\(\)/);
+assert.match(settingsSidebar, /actions\.openSettingsSection\(item\.id\)/);
+assert.match(settingsSidebar, /Burrete|SettingsItemIcon/);
 assert.doesNotMatch(sidebarSurface, /Open preferences/);
 assert.match(app, /openPath/);
 assert.match(app, /chooseWorkspace/);
@@ -1349,8 +1408,9 @@ assert.doesNotMatch(sidebarSurface, /actions\.resetQuickLook\(\)/);
 assert.doesNotMatch(sidebarSurface, /sidebar-title/);
 assert.doesNotMatch(sidebarSurface, /Open Structures/);
 assert.doesNotMatch(appLayout + sidebar + editorTabs, /◧|◨/);
-assert.match(settingsPanel, /<h1>Preferences<\/h1>/);
+assert.match(settingsPanel, /settingsSectionLabel\(section\)/);
 assert.match(settingsPanel, /className="settings-panel"/);
+assert.match(settingsPanel, /data-settings-section=\{section\}/);
 assert.match(settingsPanel, /EditorScrollContainer/);
 assert.doesNotMatch(settingsPanel, /className="settings-panel-scroll"/);
 assert.match(editorScrollContainer, /WebkitMaskComposite:\s*"source-over"/);
@@ -1360,6 +1420,8 @@ assert.doesNotMatch(styles, /\.settings-panel \{[^}]*padding-top: calc\(var\(--c
 assert.match(settingsPanel, /title="Display"/);
 assert.match(settingsPanel, /title="Structure Rendering"/);
 assert.match(settingsPanel, /title="System"/);
+assert.match(settingsPanel, /<AgentIntegrationPanel embedded \/>/);
+assert.match(settingsSections, /id: "agent", label: "Burrete"/);
 assert.match(settingsPanel, /from "\.\/setting-control"/);
 assert.match(settingsPanel, /SettingsSection/);
 assert.match(settingsPanel, /ToggleControl/);
@@ -1383,12 +1445,23 @@ assert.match(settingControl, /aria-label=\{label\}/);
 assert.match(settingControl, /export function SettingsActionButton/);
 assert.match(styles, /\.settings-toggle/);
 assert.match(styles, /\.settings-select/);
+assert.match(styles, /\.sidebar-settings-button/);
+assert.match(styles, /\.settings-sidebar/);
+assert.match(styles, /\.settings-back-button/);
+assert.match(styles, /\.settings-nav-item/);
 assert.match(styles, /\.settings-panel-content \{[^}]*margin: 0 auto[^}]*padding: 128px 32px 96px/s);
+assert.match(styles, /\.agent-integration-content \{[^}]*margin: 0 auto[^}]*padding: 128px 32px 96px/s);
 assert.match(styles, /\.page-surface\[data-page-kind="settings"\] \{[^}]*overflow: hidden/s);
+assert.doesNotMatch(styles, /\.page-surface\[data-page-kind="agent-integration"\]/);
+assert.match(styles, /\.agent-status-badge/);
+assert.match(styles, /\.agent-setup-prompt/);
 assert.match(styles, /\.page-surface:not\(\[data-active\]\) \{[^}]*display: none/s);
-assert.match(styles, /\.editor-progressive-blur/);
+assert.doesNotMatch(editorScrollContainer, /ProgressiveBlur|editor-progressive-blur/);
+assert.doesNotMatch(styles, /\.editor-progressive-blur/);
 assert.match(commandPalette, /group: "Projects"/);
 assert.match(commandPalette, /id: "open-clipboard"/);
+assert.match(commandPalette, /id: "open-agent-integration"/);
+assert.match(commandPalette, /run: \(\) => actions\.openSettingsSection\("agent"\)/);
 assert.match(commandPalette, /Open from Clipboard/);
 assert.match(commandPalette, /run: actions\.openClipboard/);
 assert.match(commandPalette, /Clear Recent Structures/);
@@ -1875,7 +1948,37 @@ assert.match(previewViewer, /type: 'line',\s*typeParams: \{\s*alpha: 0\.6,\s*vis
 assert.match(previewViewer, /await applyMolstarStyle\(viewer, configuredMolstarStyle\(activeConfig\)\);\s*await applyMolstarWaterLineRepresentation\(viewer\);/);
 assert.match(previewViewer, /plugin\.managers\.structure\.component\.setOptions\(\{\s*\.\.\.plugin\.managers\.structure\.component\.state\.options,\s*ignoreLight: true\s*\}\)/s);
 assert.match(previewViewer, /postprocessing:\s*\{\s*outline:/s);
+assert.match(previewViewer, /async function reportBurreteAgentState\(\)/);
+assert.match(previewViewer, /const control = window\.BurreteAgentControl;/);
+assert.match(previewViewer, /await window\.BurreteAgent\.run\(\{ command: 'summary', args: \{ includeLigands: true \} \}\)/);
+assert.match(previewViewer, /await fetch\(reportUrl, \{/);
+assert.match(previewViewer, /function startBurreteAgentActionPolling\(\)/);
+assert.match(previewViewer, /async function executeBurreteAgentAction\(action\)/);
+assert.match(previewViewer, /let burreteAgentActionPollBusy = false/);
+assert.match(previewViewer, /if \(burreteAgentActionPollBusy\) return;/);
+assert.match(previewViewer, /agentActionFailure\(actionType, 'ACTION_ERROR'/);
+assert.match(previewViewer, /type === 'focus_ligand'[\s\S]*?command: 'focusLigand'/);
+assert.match(previewViewer, /type === 'reset_camera'[\s\S]*?command: 'resetCamera'/);
+assert.match(previewViewer, /type === 'hide_waters'[\s\S]*?BurreteSceneActions\?\.hideWaters/);
+assert.match(previewViewer, /type === 'show_surface'[\s\S]*?BurreteSceneActions\?\.showSurface/);
+assert.match(previewViewer, /type === 'color_by_chain'[\s\S]*?BurreteSceneActions\?\.colorByChain/);
+assert.match(previewViewer, /type === 'render_panel'[\s\S]*?renderBurreteAgentPanel\(action\)/);
+assert.match(previewViewer, /function renderBurreteAgentPanel\(action\)/);
+assert.match(previewViewer, /data-burrete-agent-panel/);
+assert.match(previewViewer, /function renderAgentTable\(content\)/);
+assert.match(previewViewer, /function renderAgentChart\(content\)/);
+assert.match(previewViewer, /window\.addEventListener\('message', event => \{/);
+assert.match(previewViewer, /source === 'burrete-agent-host'/);
+assert.match(previewViewer, /source: 'burrete-agent-viewer'/);
+assert.match(previewViewer, /window\.BurreteSceneActions = \{/);
+assert.match(previewViewer, /hideWaters: hideMolstarWaters/);
+assert.match(previewViewer, /showSurface: showMolstarSurface/);
+assert.match(previewViewer, /colorByChain: colorMolstarByChain/);
+assert.match(previewViewer, /agentActionFailure\(type, 'NOT_IMPLEMENTED'/);
 assert.match(previewViewer, /loadPreparedStructure\(viewer, prepared\)[\s\S]*?applyLayoutState\(viewer\);[\s\S]*?notifyStructureLoaded/);
+assert.match(previewViewer, /notifyStructureLoaded[\s\S]*?postHostMessage\(\{ type: 'agentReady', message: 'Burrete agent ready' \}\)/);
+assert.match(previewViewer, /notifyStructureLoaded[\s\S]*?void reportBurreteAgentState\(\);[\s\S]*?trackMolstarOrientation/);
+assert.match(previewViewer, /reportBurreteAgentState\(\);[\s\S]*?startBurreteAgentActionPolling\(\);/);
 assert.match(previewViewer, /function scheduleLayoutStateReapply\(viewer\)/);
 assert.match(previewViewer, /\[250, 1000, 3000, 6000\]\.forEach/);
 assert.match(previewViewer, /function reapplyLayoutStateAfterMolstarPass\(viewer\)/);
@@ -1888,6 +1991,9 @@ assert.match(previewViewer, /function syncLeftPanelVisibility\(\)/);
 assert.match(previewViewer, /\.msp-layout-region\.msp-layout-left/);
 assert.match(previewViewer, /function installLeftPanelVisibilityGuard\(\)/);
 assert.match(previewViewer, /applyStaticRendererTheme\(\);/);
+assert.match(previewRuntimeCss, /\.buret-agent-panel \{/);
+assert.match(previewRuntimeCss, /\.buret-agent-panel-table/);
+assert.match(previewRuntimeCss, /\.buret-agent-panel-chart-row/);
 assert.match(previewViewer, /function applyStaticRendererTheme\(\)/);
 assert.match(previewViewer, /function resolveExternalArtifactBackgroundFill\(rect\)/);
 assert.match(previewViewer, /artifactRoot\.style\.background = background/);

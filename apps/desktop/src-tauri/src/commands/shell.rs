@@ -102,6 +102,42 @@ pub(crate) fn read_external_preview_svg(runtime_path: String) -> Result<String, 
 }
 
 #[tauri::command]
+pub(crate) fn read_viewer_runtime_file_base64(
+    runtime_path: String,
+    relative_path: String,
+) -> Result<String, String> {
+    let index_path = PathBuf::from(&runtime_path)
+        .canonicalize()
+        .map_err(|err| format!("{runtime_path}: {err}"))?;
+    let runtime_directory = index_path
+        .parent()
+        .ok_or_else(|| "Preview runtime directory is unavailable".to_string())?;
+    let normalized = normalize_runtime_relative_path(&relative_path)?;
+    let file_path = runtime_directory.join(normalized);
+    let file_path = file_path
+        .canonicalize()
+        .map_err(|err| format!("{}: {err}", file_path.display()))?;
+    if !file_path.starts_with(runtime_directory) {
+        return Err("Runtime file path is outside the preview runtime directory".into());
+    }
+    let bytes = fs::read(&file_path).map_err(|err| format!("{}: {err}", file_path.display()))?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+}
+
+fn normalize_runtime_relative_path(path: &str) -> Result<PathBuf, String> {
+    let normalized = PathBuf::from(path.replace('\\', "/"));
+    if normalized.as_os_str().is_empty()
+        || normalized.is_absolute()
+        || normalized
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return Err("Invalid runtime file path".into());
+    }
+    Ok(normalized)
+}
+
+#[tauri::command]
 pub(crate) fn write_text_file(request: WriteTextFileRequest) -> Result<String, String> {
     let output_path = PathBuf::from(request.output_path);
     if let Some(parent) = output_path
