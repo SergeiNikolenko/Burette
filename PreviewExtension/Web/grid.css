@@ -74,6 +74,10 @@ body {
   letter-spacing: 0;
 }
 
+strong {
+  font-weight: 400;
+}
+
 body.burette-transparent-background {
   background: transparent;
 }
@@ -94,7 +98,7 @@ button,
   color: var(--buret-text);
   background: var(--buret-control-surface);
   outline: none;
-  font: 500 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 400 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   transition: background 140ms ease-out, box-shadow 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
 }
 
@@ -142,13 +146,13 @@ button:disabled {
   margin: 2px 0 5px;
   font-size: 24px;
   line-height: 1.08;
-  font-weight: 760;
+  font-weight: 400;
 }
 
 .buret-eyebrow {
   color: var(--buret-accent);
   font-size: 11px;
-  font-weight: 720;
+  font-weight: 400;
   line-height: 1.3;
   text-transform: uppercase;
 }
@@ -239,7 +243,7 @@ button:disabled {
   padding: 0 7px;
   color: var(--buret-muted);
   font-size: 12px;
-  font-weight: 680;
+  font-weight: 400;
 }
 
 .buret-grid-card-renderer-switch button {
@@ -249,7 +253,7 @@ button:disabled {
   border-radius: 8px;
   background: var(--buret-control-surface);
   color: var(--buret-muted);
-  font: 500 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 400 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 
 .buret-grid-card-renderer-switch button:hover,
@@ -271,7 +275,7 @@ button:disabled {
   border-radius: 8px;
   background: var(--buret-control-surface);
   color: var(--buret-muted);
-  font: 600 12px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 400 12px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 
 .buret-grid-toolbar .buret-grid-xyzrender-preset-control[hidden] {
@@ -286,7 +290,7 @@ button:disabled {
   border-radius: 6px;
   background: var(--buret-control-active);
   color: var(--buret-text);
-  font: 500 12px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 400 12px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 
 .buret-grid-toolbar .buret-rdkit-coords-control {
@@ -302,7 +306,7 @@ button:disabled {
   border-radius: 8px;
   background: var(--buret-control-surface);
   color: var(--buret-muted);
-  font: 500 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 400 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   text-transform: none;
 }
 
@@ -335,7 +339,7 @@ button:disabled {
   min-width: 0;
   color: var(--buret-muted);
   font-size: 11px;
-  font-weight: 680;
+  font-weight: 400;
   line-height: 1.25;
   text-transform: uppercase;
 }
@@ -397,7 +401,7 @@ button:disabled {
   align-self: end;
   color: var(--buret-muted);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 400;
 }
 
 .buret-toggle-button.active {
@@ -432,7 +436,7 @@ button:disabled {
   border-radius: 8px;
   background: var(--buret-control-surface);
   color: var(--buret-muted);
-  font: 500 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 400 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 
 .buret-grid-renderer-switch button:hover,
@@ -568,7 +572,7 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
 }
 
 .buret-grid-rail-popover-index {
-  font: 700 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 400 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   white-space: nowrap;
 }
 
@@ -578,7 +582,7 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--buret-muted);
-  font: 600 12px/1.25 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 400 12px/1.25 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 
 .buret-card {
@@ -658,7 +662,7 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   padding: 6px 8px 1px;
   overflow: hidden;
   font-size: 12px;
-  font-weight: 720;
+  font-weight: 400;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -670,7 +674,7 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   overflow: hidden;
   color: var(--buret-muted);
   font-size: 11px;
-  font-weight: 560;
+  font-weight: 400;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -690,7 +694,7 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   padding: 5px 10px;
   color: inherit;
   background: transparent;
-  font: 500 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 400 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   text-align: left;
   white-space: nowrap;
   cursor: default;
@@ -789,7 +793,7 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
 
 .buret-grid-molecule-detail-props dt {
   color: var(--buret-muted);
-  font-weight: 650;
+  font-weight: 400;
 }
 
 .buret-grid-molecule-detail-props dd {
@@ -813,7 +817,7 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   padding: 7px 11px;
   color: var(--buret-text);
   background: var(--buret-control-surface);
-  font: 600 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 400 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 
 .buret-grid-molecule-detail-actions button:hover,
@@ -846,7 +850,7 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   -webkit-backdrop-filter: blur(16px) saturate(1.2);
   content: attr(data-buret-card-tooltip);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 400;
   line-height: 1.25;
   opacity: 0;
   pointer-events: none;
@@ -937,7 +941,7 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   min-height: var(--buret-picture-min-height);
   color: var(--buret-muted);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 400;
 }
 
 .buret-molecule-loading::before {
@@ -989,7 +993,7 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   color: #31210d;
   background: #ffd88e;
   font-size: 10px;
-  font-weight: 720;
+  font-weight: 400;
   line-height: 1.2;
   text-transform: uppercase;
 }

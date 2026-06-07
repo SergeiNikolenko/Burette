@@ -128,7 +128,7 @@ final class ThumbnailProvider: QLThumbnailProvider {
         let label = fileExtension.uppercased()
         let attributes: [NSAttributedString.Key: Any] = [
             .foregroundColor: NSColor(calibratedRed: 0.22, green: 0.29, blue: 0.36, alpha: 1),
-            .font: NSFont.monospacedSystemFont(ofSize: max(9, min(rect.width, rect.height) * 0.16), weight: .semibold)
+            .font: NSFont.monospacedSystemFont(ofSize: max(9, min(rect.width, rect.height) * 0.16), weight: .regular)
         ]
         let attributed = NSAttributedString(string: label, attributes: attributes)
         let labelSize = attributed.size()

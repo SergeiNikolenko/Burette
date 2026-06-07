@@ -43,6 +43,7 @@ html.buret-transparent-background .msp-viewport,
 html.buret-transparent-background .msp-layout-main,
 html.buret-transparent-background canvas { background: transparent !important; background-color: transparent !important; }
 body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: #f2f2f2; }
+strong { font-weight: 400; }
 body.buret-theme-light {
   --buret-shell-background: #ffffff;
   --buret-panel-background: rgba(248, 248, 248, var(--buret-overlay-opacity));
@@ -313,7 +314,7 @@ body .msp-plugin .msp-viewport-controls-panel .msp-control-group-header > button
 }
 body .msp-plugin .msp-viewport-controls-panel .msp-control-group-header > button {
   border-bottom: 1px solid var(--buret-molstar-border) !important;
-  font-weight: 700;
+  font-weight: 400;
 }
 body .msp-plugin .msp-viewport-controls-panel .msp-control-row {
   border-top: 1px solid var(--buret-molstar-border) !important;
@@ -469,7 +470,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   box-sizing: border-box; padding: 10px 12px; border-radius: 10px; color: rgba(255, 255, 255, 0.96);
   background: rgba(0, 0, 0, 0.76); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 11px; font-weight: 500; line-height: 1.35; white-space: pre-wrap; pointer-events: auto;
+  font-size: 11px; font-weight: 400; line-height: 1.35; white-space: pre-wrap; pointer-events: auto;
 }
 #status.error { color: #ffd4d4; background: rgba(70, 0, 0, 0.82); }
 #status.hidden { display: none; }
@@ -489,14 +490,14 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
 }
 .buret-molecule-context-menu-title {
   padding: 6px 8px 1px;
-  font: 700 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 .buret-molecule-context-menu-subtitle {
   max-width: 260px;
   overflow: hidden;
   padding: 0 8px 6px;
   color: var(--buret-molstar-muted-text);
-  font: 500 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 400 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -513,7 +514,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   min-height: 26px;
   border-radius: 7px;
   padding: 4px 8px;
-  font: 700 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 400 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   text-align: center;
 }
 .buret-molecule-context-menu .buret-molecule-context-mode-button[aria-pressed="true"] {
@@ -529,7 +530,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   padding: 6px 8px;
   color: inherit;
   background: transparent;
-  font: 600 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   text-align: left;
 }
 .buret-molecule-context-menu button:hover,
@@ -610,7 +611,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
 }
 .buret-button {
   min-width: 30px; height: 30px; border: 0; border-radius: 8px; padding: 0 7px;
-  color: inherit; background: transparent; font: 600 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  color: inherit; background: transparent; font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   display: grid; place-items: center;
 }
 .buret-button:hover, .buret-button.active { background: var(--buret-toolbar-hover); }
@@ -632,7 +633,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
 .buret-xyzrender-tune.hidden { display: none; }
 .buret-select {
   height: 30px; max-width: 96px; border: 0; border-radius: 8px; padding: 0 22px 0 8px;
-  color: inherit; background: transparent; font: 600 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  color: inherit; background: transparent; font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 .buret-select:hover, .buret-select:focus { background: var(--buret-toolbar-hover); outline: none; }
 .buret-xyzrender-popover {
@@ -663,7 +664,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   padding: 1px 4px 0;
 }
 .buret-xyzrender-popover-title {
-  font: 600 11px -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+  font: 400 11px -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
   color: var(--buret-toolbar-color);
 }
 .buret-xyzrender-header-action {
@@ -671,7 +672,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   height: 22px;
   padding: 0 8px;
   color: var(--buret-molstar-muted-text);
-  font: 600 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 400 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   border-radius: 999px;
 }
 .buret-xyzrender-header-action:hover {
@@ -692,10 +693,10 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   border: 0;
   background: transparent;
 }
-.buret-xyzrender-section-title { font: 600 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; letter-spacing: 0; color: var(--buret-molstar-muted-text); }
+.buret-xyzrender-section-title { font: 400 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; letter-spacing: 0; color: var(--buret-molstar-muted-text); }
 .buret-flag-list { display: grid; gap: 0; }
 .buret-field-grid { display: grid; gap: 7px; grid-template-columns: 1fr; }
-.buret-field { display: grid; gap: 4px; font: 500 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: var(--buret-toolbar-color); }
+.buret-field { display: grid; gap: 4px; font: 400 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: var(--buret-toolbar-color); }
 .buret-field-full { grid-column: 1 / -1; }
 .buret-flag-row {
   display: grid;
@@ -711,7 +712,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
 .buret-flag-row + .buret-flag-row { border-top: 1px solid var(--buret-menu-divider); }
 .buret-flag-row:hover { background: color-mix(in srgb, var(--buret-menu-input-background) 82%, var(--buret-menu-background)); }
 .buret-flag-copy { display: block; min-width: 0; }
-.buret-flag-label { font: 500 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: var(--buret-toolbar-color); }
+.buret-flag-label { font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: var(--buret-toolbar-color); }
 .buret-flag-row input[type="checkbox"] {
   appearance: none;
   -webkit-appearance: none;
@@ -748,7 +749,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   padding: 7px 9px;
   color: inherit;
   background: var(--buret-menu-input-background);
-  font: 500 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 .buret-flag-row select.buret-input {
   width: 78px;
@@ -796,7 +797,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   list-style: none;
   cursor: pointer;
   padding: 6px 10px;
-  font: 500 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   color: var(--buret-molstar-muted-text);
   display: flex;
   align-items: center;
@@ -918,7 +919,7 @@ body.burette-quicklook-host .buret-corner-button {
   background: var(--buret-menu-background);
   color: var(--buret-toolbar-color);
   box-shadow: var(--buret-menu-shadow);
-  font: 650 12px/1.1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font: 400 12px/1.1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   box-sizing: border-box;
   max-width: calc(100vw - 24px);
   cursor: grab;
@@ -1001,7 +1002,7 @@ body.buret-docking-pose-controls-active .msp-traj-controls {
   padding: 0 7px;
   color: inherit;
   background: var(--buret-menu-input-background);
-  font: 600 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   cursor: text;
   text-align: center;
 }
