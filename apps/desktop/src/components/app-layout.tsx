@@ -49,14 +49,16 @@ export function AppLayout({
   const sidebarLayoutWidth = state.sidebarOpen ? sidebarWidth : 0;
   const layoutState = sidebarWidth === state.sidebarWidth ? state : { ...state, sidebarWidth };
   const tabChromeLeft = state.sidebarOpen ? sidebarLayoutWidth + 12 : 132;
+  const rightDockOpen = !settingsMode && state.rightDockOpen;
+  const bottomDockOpen = !settingsMode && state.bottomDockOpen;
   const dockDragging = state.sidebarDragging || state.rightDockDragging || state.bottomDockDragging;
   const chromeTransition = dockDragging ? "none" : undefined;
   const systemThemeMode = useSystemThemeMode();
   const shellStyle = {
     ...buildThemeStyle(state.preferences, systemThemeMode),
     "--sidebar-layout-width": `${sidebarLayoutWidth}px`,
-    "--right-dock-width": `${state.rightDockOpen ? state.rightDockWidth : 0}px`,
-    "--bottom-dock-height": `${state.bottomDockOpen ? state.bottomDockHeight : 0}px`,
+    "--right-dock-width": `${rightDockOpen ? state.rightDockWidth : 0}px`,
+    "--bottom-dock-height": `${bottomDockOpen ? state.bottomDockHeight : 0}px`,
   } as CSSProperties;
   const effectiveTheme = resolveThemeMode(state.preferences.theme, systemThemeMode);
   const activePageKind = state.activeTab?.location.kind ?? null;
@@ -148,19 +150,23 @@ export function AppLayout({
             <section className="main-stage">
               <ViewerArea state={layoutState} actions={actions} />
             </section>
+            {!settingsMode && (
+              <DockPanel
+                area="bottom"
+                state={layoutState}
+                actions={actions}
+                onResizeStart={onBottomDockResizeStart}
+              />
+            )}
+          </section>
+          {!settingsMode && (
             <DockPanel
-              area="bottom"
+              area="right"
               state={layoutState}
               actions={actions}
-              onResizeStart={onBottomDockResizeStart}
+              onResizeStart={onRightDockResizeStart}
             />
-          </section>
-          <DockPanel
-            area="right"
-            state={layoutState}
-            actions={actions}
-            onResizeStart={onRightDockResizeStart}
-          />
+          )}
         </section>
       </section>
       {state.dropActive && (
