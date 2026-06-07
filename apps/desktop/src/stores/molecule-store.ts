@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 import {
   deserializeLocation,
   serializeLocation,
+  type FepNetworkLocation,
   type FepSetupLocation,
   type KetcherLocation,
   type Location,
@@ -48,6 +49,7 @@ type MoleculeState = {
   rememberRecentStructures: (documents: ViewerDocument[]) => void;
   clearRecentStructures: () => void;
   openNewTab: () => void;
+  openFepNetworkTab: (location: FepNetworkLocation) => void;
   openFepSetupTab: (location: FepSetupLocation) => void;
   openKetcherTab: (location?: KetcherLocation) => void;
   openPoseReviewTab: (location: PoseReviewLocation) => void;
@@ -143,6 +145,10 @@ export function createFepSetupTab(location: FepSetupLocation, id = createTabId()
   return { id, location, back: [], forward: [] };
 }
 
+export function createFepNetworkTab(location: FepNetworkLocation, id = createTabId()): MoleculeTab {
+  return { id, location, back: [], forward: [] };
+}
+
 export function createPoseReviewTab(location: PoseReviewLocation, id = createTabId()): MoleculeTab {
   return { id, location, back: [], forward: [] };
 }
@@ -172,12 +178,15 @@ function toRecentStructure(document: ViewerDocument): RecentStructure {
 function persistedTabs(tabs: MoleculeTab[]) {
   return tabs.filter((tab) => (
     tab.location.kind !== "file" &&
+    tab.location.kind !== "text-file" &&
     tab.location.kind !== "fep-setup" &&
+    tab.location.kind !== "fep-network" &&
     tab.location.kind !== "pose-review"
   ));
 }
 
 function documentForLocation(location: Location, documents: ViewerDocument[]) {
+  if (location.kind === "fep-network") return null;
   if (location.kind === "fep-setup" || location.kind === "pose-review") {
     return (
       documents.find((document) => document.id === location.dockingDocumentId) ??
@@ -485,6 +494,17 @@ export const useMoleculeStore = create<MoleculeState>()(
         set((state) => {
           const tab = createLauncherTab();
           const tabs = [...state.tabs, tab];
+          return { tabs, activeTabId: tab.id, activeDocumentId: null };
+        }),
+      openFepNetworkTab: (location) =>
+        set((state) => {
+          const existing = state.tabs.find((tab) => tab.location.kind === "fep-network");
+          if (existing) {
+            const tabs = state.tabs.map((tab) => (tab.id === existing.id ? { ...tab, location } : tab));
+            return { tabs, activeTabId: existing.id, activeDocumentId: null };
+          }
+          const tab = createFepNetworkTab(location);
+          const tabs = [...state.tabs.filter((candidate) => candidate.location.kind !== "launcher"), tab];
           return { tabs, activeTabId: tab.id, activeDocumentId: null };
         }),
       openFepSetupTab: (location) =>
