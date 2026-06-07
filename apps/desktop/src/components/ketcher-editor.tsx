@@ -6,12 +6,33 @@ import "ketcher-react/dist/index.css";
 export type KetcherEditorApi = {
   addFragment: Ketcher["addFragment"];
   addMolfileFragment: (molfile: string) => Promise<void>;
+  containsReaction: Ketcher["containsReaction"];
+  getAxoLabs: Ketcher["getAxoLabs"];
+  getCDX: Ketcher["getCDX"];
+  getCDXml: Ketcher["getCDXml"];
+  getCml: Ketcher["getCml"];
+  getExtendedSmiles: Ketcher["getExtendedSmiles"];
+  getFasta: Ketcher["getFasta"];
+  getIdt: Ketcher["getIdt"];
+  getInchi: Ketcher["getInchi"];
+  getInChIKey: Ketcher["getInChIKey"];
+  getZoom: () => number;
   getKet: Ketcher["getKet"];
   getMolfile: Ketcher["getMolfile"];
+  getRdf: Ketcher["getRdf"];
+  getRxn: Ketcher["getRxn"];
+  getSdf: Ketcher["getSdf"];
+  getSequence: Ketcher["getSequence"];
   getSmiles: Ketcher["getSmiles"];
   setMolfile: (molfile: string) => Promise<void>;
+  getSmarts: Ketcher["getSmarts"];
+  getSvg: () => string;
+  setHelm: Ketcher["setHelm"];
   setMolecule: Ketcher["setMolecule"];
+  setZoom: Ketcher["setZoom"];
   switchToMoleculesMode: Ketcher["switchToMoleculesMode"];
+  subscribeChange: (handler: () => void) => () => void;
+  subscribeZoom: (handler: (zoom: number) => void) => () => void;
 };
 
 type KetcherReactModule = typeof import("ketcher-react");
@@ -20,13 +41,37 @@ type RaphaelModule = typeof import("raphael");
 type KetcherCoreModule = typeof import("ketcher-core");
 type KetcherStandaloneModule = typeof import("ketcher-standalone");
 type KetcherStruct = Struct & { isBlank?: () => boolean };
+type KetcherSubscription = {
+  add: (handler: () => void) => void;
+  remove: (handler: () => void) => void;
+};
+type KetcherZoomTool = {
+  getZoomLevel?: () => number;
+  subscribeOnZoomEvent?: (handler: (transform?: { k?: number }) => void) => void;
+  unsubscribeOnZoomEvent?: (handler: (transform?: { k?: number }) => void) => void;
+  zoomTo?: (zoom: number) => void;
+};
+type KetcherZoomToolConstructor = {
+  instance?: KetcherZoomTool;
+};
 type KetcherDirectEditor = {
+  canvas?: SVGSVGElement;
+  event?: {
+    zoomChanged?: {
+      dispatch?: (zoom: number) => void;
+    };
+  };
   struct: (struct?: Struct, needToCenterStruct?: boolean, x?: number, y?: number) => KetcherStruct;
   structToAddFragment: (struct: Struct, x?: number, y?: number) => KetcherStruct;
+  zoom: (value?: number) => number;
   zoomAccordingContent: (struct: Struct) => void;
+  zoomTool?: KetcherZoomTool;
   centerStruct: () => void;
 };
-type KetcherWithEditorStruct = Ketcher & { editor: KetcherDirectEditor };
+type KetcherWithEditorStruct = Ketcher & {
+  editor: KetcherDirectEditor;
+  changeEvent?: KetcherSubscription;
+};
 const KETCHER_INSTANCE_RETRY_DELAYS_MS = [0, 250, 500, 1000, 1500, 2500, 4000, 6000] as const;
 
 installKetcherBrowserRequire();
@@ -60,14 +105,47 @@ function suppressFilledKetcherSelectionPaths(root: HTMLElement) {
 function createKetcherEditorApi(
   instance: Ketcher,
   MolSerializer: KetcherCoreModule["MolSerializer"],
+  getSvgFromDrawnStructures: KetcherCoreModule["getSvgFromDrawnStructures"],
+  ZoomTool: KetcherZoomToolConstructor,
 ): KetcherEditorApi {
-  const api = {
+  const editorInstance = instance as KetcherWithEditorStruct;
+  const currentZoomTool = () => editorInstance.editor.zoomTool ?? ZoomTool.instance;
+  const api: KetcherEditorApi = {
     addFragment: ((...args: Parameters<Ketcher["addFragment"]>) => (
       callKetcherWhenReady(() => instance.addFragment(...args))
     )) as Ketcher["addFragment"],
     addMolfileFragment: async (molfile: string) => {
       addMolfileFragmentDirectly(instance, MolSerializer, molfile);
     },
+    containsReaction: instance.containsReaction.bind(instance),
+    getAxoLabs: ((...args: Parameters<Ketcher["getAxoLabs"]>) => (
+      callKetcherWhenReady(() => instance.getAxoLabs(...args))
+    )) as Ketcher["getAxoLabs"],
+    getCDX: ((...args: Parameters<Ketcher["getCDX"]>) => (
+      callKetcherWhenReady(() => instance.getCDX(...args))
+    )) as Ketcher["getCDX"],
+    getCDXml: ((...args: Parameters<Ketcher["getCDXml"]>) => (
+      callKetcherWhenReady(() => instance.getCDXml(...args))
+    )) as Ketcher["getCDXml"],
+    getCml: ((...args: Parameters<Ketcher["getCml"]>) => (
+      callKetcherWhenReady(() => instance.getCml(...args))
+    )) as Ketcher["getCml"],
+    getExtendedSmiles: ((...args: Parameters<Ketcher["getExtendedSmiles"]>) => (
+      callKetcherWhenReady(() => instance.getExtendedSmiles(...args))
+    )) as Ketcher["getExtendedSmiles"],
+    getFasta: ((...args: Parameters<Ketcher["getFasta"]>) => (
+      callKetcherWhenReady(() => instance.getFasta(...args))
+    )) as Ketcher["getFasta"],
+    getIdt: ((...args: Parameters<Ketcher["getIdt"]>) => (
+      callKetcherWhenReady(() => instance.getIdt(...args))
+    )) as Ketcher["getIdt"],
+    getInchi: ((...args: Parameters<Ketcher["getInchi"]>) => (
+      callKetcherWhenReady(() => instance.getInchi(...args))
+    )) as Ketcher["getInchi"],
+    getInChIKey: ((...args: Parameters<Ketcher["getInChIKey"]>) => (
+      callKetcherWhenReady(() => instance.getInChIKey(...args))
+    )) as Ketcher["getInChIKey"],
+    getZoom: () => currentKetcherZoom(editorInstance, currentZoomTool()),
     getKet: ((...args: Parameters<Ketcher["getKet"]>) => (
       callKetcherWhenReady(() => instance.getKet(...args))
     )) as Ketcher["getKet"],
@@ -75,18 +153,59 @@ function createKetcherEditorApi(
       const molfile = await callKetcherWhenReady(() => instance.getMolfile(...args));
       return molfile.trim() ? molfile : serializeCurrentMolfile(instance, MolSerializer);
     }) as Ketcher["getMolfile"],
+    getRdf: ((...args: Parameters<Ketcher["getRdf"]>) => (
+      callKetcherWhenReady(() => instance.getRdf(...args))
+    )) as Ketcher["getRdf"],
+    getRxn: ((...args: Parameters<Ketcher["getRxn"]>) => (
+      callKetcherWhenReady(() => instance.getRxn(...args))
+    )) as Ketcher["getRxn"],
+    getSdf: ((...args: Parameters<Ketcher["getSdf"]>) => (
+      callKetcherWhenReady(() => instance.getSdf(...args))
+    )) as Ketcher["getSdf"],
+    getSequence: ((...args: Parameters<Ketcher["getSequence"]>) => (
+      callKetcherWhenReady(() => instance.getSequence(...args))
+    )) as Ketcher["getSequence"],
     getSmiles: ((...args: Parameters<Ketcher["getSmiles"]>) => (
       callKetcherWhenReady(() => instance.getSmiles(...args))
     )) as Ketcher["getSmiles"],
+    getSmarts: ((...args: Parameters<Ketcher["getSmarts"]>) => (
+      callKetcherWhenReady(() => instance.getSmarts(...args))
+    )) as Ketcher["getSmarts"],
+    getSvg: () => {
+      const svg = editorInstance.editor.canvas
+        ? getSvgFromDrawnStructures(editorInstance.editor.canvas, "file", 20)
+        : undefined;
+      if (!svg) throw new Error("Cannot export SVG");
+      return svg;
+    },
+    setHelm: ((...args: Parameters<Ketcher["setHelm"]>) => (
+      callKetcherWhenReady(() => instance.setHelm(...args))
+    )) as Ketcher["setHelm"],
     setMolfile: async (molfile: string) => {
       setMolfileDirectly(instance, MolSerializer, molfile);
     },
     setMolecule: ((...args: Parameters<Ketcher["setMolecule"]>) => (
       callKetcherWhenReady(() => instance.setMolecule(...args))
     )) as Ketcher["setMolecule"],
+    setZoom: ((value: number) => {
+      editorInstance.editor.zoomTool?.zoomTo?.(value);
+      editorInstance.editor.zoom(value);
+      editorInstance.editor.event?.zoomChanged?.dispatch?.(value);
+      instance.setZoom(value);
+    }) as Ketcher["setZoom"],
     switchToMoleculesMode: ((...args: Parameters<Ketcher["switchToMoleculesMode"]>) => (
       instance.switchToMoleculesMode(...args)
     )) as Ketcher["switchToMoleculesMode"],
+    subscribeChange: (handler: () => void) => {
+      editorInstance.changeEvent?.add(handler);
+      return () => editorInstance.changeEvent?.remove(handler);
+    },
+    subscribeZoom: (handler: (zoom: number) => void) => {
+      const zoomTool = currentZoomTool();
+      const zoomHandler = (transform?: { k?: number }) => handler(normalizeZoom(transform?.k ?? currentKetcherZoom(editorInstance, zoomTool)));
+      zoomTool?.subscribeOnZoomEvent?.(zoomHandler);
+      return () => zoomTool?.unsubscribeOnZoomEvent?.(zoomHandler);
+    },
   };
   return api;
 }
@@ -111,6 +230,14 @@ function isKetcherInstanceError(error: unknown) {
 
 function waitForMs(ms: number) {
   return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+}
+
+function currentKetcherZoom(instance: KetcherWithEditorStruct, zoomTool?: KetcherZoomTool) {
+  return normalizeZoom(zoomTool?.getZoomLevel?.() ?? instance.editor.zoomTool?.getZoomLevel?.() ?? instance.editor.zoom());
+}
+
+function normalizeZoom(value: unknown) {
+  return Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : 1;
 }
 
 function serializeCurrentMolfile(instance: Ketcher, MolSerializer: KetcherCoreModule["MolSerializer"]) {
@@ -160,8 +287,10 @@ export function KetcherEditor({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [runtime, setRuntime] = useState<{
     Editor: KetcherReactModule["Editor"];
+    getSvgFromDrawnStructures: KetcherCoreModule["getSvgFromDrawnStructures"];
     MolSerializer: KetcherCoreModule["MolSerializer"];
     StandaloneStructServiceProvider: KetcherStandaloneModule["StandaloneStructServiceProvider"];
+    ZoomTool: KetcherZoomToolConstructor;
   } | null>(null);
   const [loadError, setLoadError] = useState<Error | null>(null);
 
@@ -187,8 +316,10 @@ export function KetcherEditor({
         if (cancelled) return;
         setRuntime({
           Editor: reactModule.Editor,
+          getSvgFromDrawnStructures: coreModule.getSvgFromDrawnStructures,
           MolSerializer: coreModule.MolSerializer,
           StandaloneStructServiceProvider: standaloneModule.StandaloneStructServiceProvider,
+          ZoomTool: coreModule.ZoomTool,
         });
       })
       .catch((error: unknown) => {
@@ -211,8 +342,7 @@ export function KetcherEditor({
 
   const handleInit = useCallback((instance: Ketcher) => {
     if (!runtime) return;
-    const api = createKetcherEditorApi(instance, runtime.MolSerializer);
-    onReady(api);
+    onReady(createKetcherEditorApi(instance, runtime.MolSerializer, runtime.getSvgFromDrawnStructures, runtime.ZoomTool));
     onStatus("Ready");
   }, [onReady, onStatus, runtime]);
 
