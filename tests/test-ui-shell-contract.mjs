@@ -44,6 +44,7 @@ const [
   editorScrollContainer,
   agentIntegrationPanel,
   settingsPanel,
+  keyboardShortcutsSection,
   themesSection,
   settingControl,
   dockPanel,
@@ -136,6 +137,7 @@ const [
   source('apps/desktop/src/components/editor-area/editor-scroll-container.tsx'),
   source('apps/desktop/src/components/agent-integration-panel/index.tsx'),
   source('apps/desktop/src/components/settings-panel/index.tsx'),
+  source('apps/desktop/src/components/settings-panel/keyboard-shortcuts-section.tsx'),
   source('apps/desktop/src/components/settings-panel/themes-section.tsx'),
   source('apps/desktop/src/components/settings-panel/setting-control.tsx'),
   source('apps/desktop/src/components/dock-panel.tsx'),
@@ -1062,8 +1064,8 @@ assert.match(styles, /button, select, input, textarea, \.tab-shell, \.tab, \.new
 assert.match(styles, /\.drag-region \{[^}]*height: var\(--chrome-drag-height\);[^}]*z-index: 2/s);
 assert.match(shortcutTooltip, /export function ShortcutTooltip/);
 assert.match(shortcutTooltip, /className="shortcut-tooltip"/);
-assert.match(styles, /\.shortcut-tooltip \{[^}]*position: absolute;[^}]*backdrop-filter: blur\(30px\) saturate\(1\.35\);[^}]*transform: translate\(-50%, -4px\) scale\(0\.98\);/s);
-assert.match(styles, /button:hover > \.shortcut-tooltip,\s*button:focus-visible > \.shortcut-tooltip \{[^}]*opacity: 1;[^}]*transform: translate\(-50%, 0\) scale\(1\);/s);
+assert.match(styles, /\.shortcut-tooltip \{[^}]*position: absolute;[^}]*min-height: 19px;[^}]*backdrop-filter: blur\(15px\) saturate\(1\.35\);[^}]*visibility: hidden;[^}]*transform: translate\(-50%, -4px\) scale\(0\.98\);/s);
+assert.match(styles, /button:hover > \.shortcut-tooltip,\s*button:focus-visible > \.shortcut-tooltip \{[^}]*opacity: 1;[^}]*visibility: visible;[^}]*transform: translate\(-50%, 0\) scale\(1\);[^}]*transition-delay: 180ms, 180ms, 0s;/s);
 assert.match(styles, /\.shortcut-tooltip-key \{[^}]*border-radius: 999px;[^}]*letter-spacing: 0;/s);
 assert.doesNotMatch(styles, /\.workspace \{[^}]*z-index:/s);
 assert.match(styles, /\.splitter \{[^}]*z-index: 3;/s);
@@ -1710,8 +1712,8 @@ assert.match(sidebarSurface, /actions\.openRecentStructure/);
 assert.match(sidebarSurface, /from "@hugeicons\/core-free-icons"/);
 assert.match(sidebarSurface, /from "@hugeicons\/react"/);
 assert.match(sidebarSurface, /actions\.openCommandPalette/);
-assert.match(sidebarSurface, /from "\.\.\/shortcut-tooltip"/);
-assert.match(sidebarSurface, /<ShortcutTooltip label="Search projects and structures" shortcut="⌘P" \/>/);
+assert.doesNotMatch(sidebarFileBrowser, /from "\.\.\/shortcut-tooltip"/);
+assert.doesNotMatch(sidebarFileBrowser, /<ShortcutTooltip label="Search projects and structures" shortcut="⌘P" \/>/);
 assert.match(sidebarSurface, /function PinIcon/);
 assert.match(sidebarSurface, /function MoreIcon/);
 assert.doesNotMatch(sidebarSurface, /Cancel01Icon/);
@@ -1835,12 +1837,19 @@ assert.match(settingsPanel, /title="Structure Rendering"/);
 assert.match(settingsPanel, /title="System"/);
 assert.match(settingsPanel, /<AgentIntegrationPanel embedded \/>/);
 assert.match(settingsSections, /id: "agent", label: "Burrete"/);
+assert.match(settingsSections, /id: "keyboard", label: "Keyboard shortcuts"/);
 assert.match(settingsPanel, /from "\.\/setting-control"/);
+assert.match(settingsPanel, /from "\.\/keyboard-shortcuts-section"/);
+assert.match(settingsPanel, /section === "keyboard" \? <KeyboardShortcutsSection \/> : null/);
 assert.match(settingsPanel, /SettingsSection/);
 assert.match(settingsPanel, /ToggleControl/);
 assert.match(settingsPanel, /from "\.\/themes-section"/);
 assert.match(settingsPanel, /<ThemesSection preferences=\{preferences\} actions=\{actions\} \/>/);
 assert.doesNotMatch(settingsPanel, /function ThemeCard/);
+assert.match(keyboardShortcutsSection, /export function KeyboardShortcutsSection/);
+assert.match(keyboardShortcutsSection, /placeholder="Search shortcuts"/);
+assert.match(keyboardShortcutsSection, /command: "Toggle bottom dock"[\s\S]*?keybindings: \["⌘J"\]/);
+assert.match(keyboardShortcutsSection, /command: "Toggle right dock"[\s\S]*?keybindings: \["⌥⌘B"\]/);
 assert.match(themesSection, /export function ThemesSection/);
 assert.match(themesSection, /<ThemeCard mode="light" preferences=\{preferences\} actions=\{actions\} \/>/);
 assert.match(themesSection, /<ThemeCard mode="dark" preferences=\{preferences\} actions=\{actions\} \/>/);
