@@ -36,6 +36,7 @@ type GraphMlKey = {
 type Moldict = {
   atoms?: unknown[];
   bonds?: unknown[];
+  conformer?: unknown[];
   molprops?: Record<string, unknown>;
 };
 
@@ -124,7 +125,8 @@ function moldictToNode(id: string, moldict: Moldict): FepNetworkNode {
   const label = stringProp(props, "ofe-name") || id || "ligand";
   const atoms = Array.isArray(moldict.atoms) ? moldict.atoms : [];
   const bonds = Array.isArray(moldict.bonds) ? moldict.bonds : [];
-  const molblock = moldictToMolblock(label, atoms, bonds);
+  const coordinates = parseConformerCoordinates(moldict.conformer, atoms.length);
+  const molblock = moldictToMolblock(label, atoms, bonds, coordinates);
   const sourceAtomToMolAtom = sourceAtomToMolAtomMap(atoms);
   const sourceAtomAtomicNumbers = sourceAtomAtomicNumberMap(atoms);
   const heavyAtoms = atoms.filter((atom) => atomicNumber(atom) !== 1).length;
@@ -184,25 +186,28 @@ function integerValue(value: unknown) {
   return typeof value === "number" && Number.isInteger(value) ? value : null;
 }
 
-function moldictToMolblock(label: string, atoms: unknown[], bonds: unknown[]) {
+function moldictToMolblock(label: string, atoms: unknown[], bonds: unknown[], coordinates: number[][] | null = null) {
   const heavyIndexByAtom = new Map<number, number>();
   const atomLines: string[] = [];
   atoms.forEach((atom, atomIndex) => {
     const atomicNo = atomicNumber(atom);
     if (atomicNo === 1) return;
     heavyIndexByAtom.set(atomIndex, atomLines.length + 1);
-    atomLines.push(`${molCoord(0)}${molCoord(0)}${molCoord(0)} ${atomSymbol(atomicNo).padEnd(3, " ")} 0  0  0  0  0  0  0  0  0  0  0  0`);
+    const coord = coordinates?.[atomIndex] ?? [0, 0, 0];
+    atomLines.push(`${molCoord(coord[0] ?? 0)}${molCoord(coord[1] ?? 0)}${molCoord(0)} ${atomSymbol(atomicNo).padEnd(3, " ")} 0  0  0  0  0  0  0  0  0  0  0  0`);
   });
 
+  const aromaticBondTypes = kekuleAromaticBondTypes(atoms, bonds);
   const bondLines: string[] = [];
-  for (const bond of bonds) {
+  bonds.forEach((bond, bondIndex) => {
     const [left, right] = bondAtomIndexes(bond);
-    if (left === null || right === null) continue;
+    if (left === null || right === null) return;
     const from = heavyIndexByAtom.get(left);
     const to = heavyIndexByAtom.get(right);
-    if (!from || !to) continue;
-    bondLines.push(`${from.toString().padStart(3, " ")}${to.toString().padStart(3, " ")}${molBondType(bond).toString().padStart(3, " ")}  0  0  0  0`);
-  }
+    if (!from || !to) return;
+    const bondType = aromaticBondTypes.get(bondIndex) ?? molBondType(bond);
+    bondLines.push(`${from.toString().padStart(3, " ")}${to.toString().padStart(3, " ")}${bondType.toString().padStart(3, " ")}  0  0  0  0`);
+  });
 
   return [
     label.slice(0, 80),
@@ -428,6 +433,30 @@ function seededOffset(left: number, right: number) {
   return (((left + 3) * 17 + (right + 5) * 29) % 19 - 9) / 100;
 }
 
+function parseConformerCoordinates(conformer: unknown, atomCount: number) {
+  if (!Array.isArray(conformer) || typeof conformer[0] !== "string") return null;
+  const bytes = Uint8Array.from(conformer[0], (char) => char.charCodeAt(0) & 0xff);
+  if (bytes.length < 16 || bytes[0] !== 0x93 || String.fromCharCode(...bytes.slice(1, 6)) !== "NUMPY") return null;
+  const majorVersion = bytes[6];
+  const headerLength = majorVersion === 1
+    ? bytes[8] | (bytes[9] << 8)
+    : bytes[8] | (bytes[9] << 8) | (bytes[10] << 16) | (bytes[11] << 24);
+  const headerStart = majorVersion === 1 ? 10 : 12;
+  const dataStart = headerStart + headerLength;
+  if (dataStart >= bytes.length || (bytes.length - dataStart) < atomCount * 3 * 8) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset + dataStart);
+  const coordinates: number[][] = [];
+  for (let atomIndex = 0; atomIndex < atomCount; atomIndex += 1) {
+    const offset = atomIndex * 3 * 8;
+    coordinates.push([
+      view.getFloat64(offset, true),
+      view.getFloat64(offset + 8, true),
+      view.getFloat64(offset + 16, true),
+    ]);
+  }
+  return coordinates;
+}
+
 function atomicNumber(atom: unknown) {
   if (!Array.isArray(atom)) return 6;
   const value = atom[0];
@@ -438,11 +467,46 @@ function atomSymbol(atomicNo: number) {
   return atomSymbols[atomicNo] ?? "C";
 }
 
+function atomIsAromatic(atom: unknown) {
+  return Array.isArray(atom) && atom[3] === true;
+}
+
 function bondAtomIndexes(bond: unknown): [number | null, number | null] {
   if (!Array.isArray(bond)) return [null, null];
   const left = typeof bond[0] === "number" && Number.isInteger(bond[0]) ? bond[0] : null;
   const right = typeof bond[1] === "number" && Number.isInteger(bond[1]) ? bond[1] : null;
   return [left, right];
+}
+
+function kekuleAromaticBondTypes(atoms: unknown[], bonds: unknown[]) {
+  const aromaticEdges: Array<{ bondIndex: number; left: number; right: number }> = [];
+  bonds.forEach((bond, bondIndex) => {
+    if (!bondIsAromatic(bond)) return;
+    const [left, right] = bondAtomIndexes(bond);
+    if (left === null || right === null) return;
+    if (!atomIsAromatic(atoms[left]) || !atomIsAromatic(atoms[right])) return;
+    aromaticEdges.push({ bondIndex, left, right });
+  });
+
+  const result = new Map<number, number>();
+  const usedAtoms = new Set<number>();
+  aromaticEdges.forEach((edge) => {
+    if (usedAtoms.has(edge.left) || usedAtoms.has(edge.right)) {
+      result.set(edge.bondIndex, 1);
+      return;
+    }
+    result.set(edge.bondIndex, 2);
+    usedAtoms.add(edge.left);
+    usedAtoms.add(edge.right);
+  });
+  aromaticEdges.forEach((edge) => {
+    if (!result.has(edge.bondIndex)) result.set(edge.bondIndex, 1);
+  });
+  return result;
+}
+
+function bondIsAromatic(bond: unknown) {
+  return Array.isArray(bond) && bond[2] === 12;
 }
 
 function molBondType(bond: unknown) {

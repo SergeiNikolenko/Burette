@@ -519,17 +519,10 @@ function ketcherExportErrorMessage(error: unknown) {
 
 function normalizeKetcherImportText(text: string) {
   const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trimEnd();
-  if (looksLikeSdfRecord(normalized)) {
-    return normalized.replace(/\n?\$\$\$\$\s*$/u, "").trimEnd() + "\n";
-  }
   if (looksLikeMolBlock(normalized)) {
     return normalized;
   }
   return normalized.trim();
-}
-
-function looksLikeSdfRecord(text: string) {
-  return looksLikeMolBlock(text) && /\n?\$\$\$\$\s*$/u.test(text);
 }
 
 function looksLikeMolBlock(text: string) {
