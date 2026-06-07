@@ -211,12 +211,12 @@ assert_bundled_xyzrender_runner() {
   local python_root="$2"
   local stage="$3"
   assert_bundled_xyzrender_runtime "$runtime" "$python_root" "$stage"
-  for attempt in 1 2 3; do
+  for attempt in $(seq 1 60); do
     if "$runtime/bin/xyzrender" --help >/dev/null; then
       return 0
     fi
-    [[ "$attempt" == 3 ]] && break
-    sleep 1
+    [[ "$attempt" == 60 ]] && break
+    sleep 2
   done
   echo "error: bundled xyzrender wrapper is not runnable $stage" >&2
   exit 1
@@ -247,8 +247,8 @@ if [[ -e "$STAGING_DEST" || -e "$DEST" ]]; then
   exit 1
 fi
 ditto --norsrc --noextattr "$APP" "$STAGING_DEST"
-rm -rf "$STAGING_DEST/Contents/Resources/Web" "$STAGING_APPEX/Contents/Resources/Web"
-ditto --norsrc --noextattr "$ROOT/PreviewExtension/Web" "$STAGING_DEST/Contents/Resources/Web"
+rm -rf "$STAGING_DEST/Contents/Resources/ViewerWeb" "$STAGING_APPEX/Contents/Resources/Web"
+ditto --norsrc --noextattr "$ROOT/PreviewExtension/Web" "$STAGING_DEST/Contents/Resources/ViewerWeb"
 ditto --norsrc --noextattr "$ROOT/PreviewExtension/Web" "$STAGING_APPEX/Contents/Resources/Web"
 if [[ -d "$LOCAL_XYZRENDER_ENV" ]]; then
   [[ -n "$LOCAL_XYZRENDER_PYTHON_ROOT" && -x "$LOCAL_XYZRENDER_PYTHON_ROOT/bin/python3" ]] || {
@@ -312,7 +312,7 @@ if [[ ! -d "$DEST/Contents" ]]; then
   echo "error: installed app has invalid bundle layout: $DEST/Contents is missing" >&2
   exit 1
 fi
-if ! cmp -s "$ROOT/PreviewExtension/Web/grid-viewer.js" "$DEST/Contents/Resources/Web/grid-viewer.js"; then
+if ! cmp -s "$ROOT/PreviewExtension/Web/grid-viewer.js" "$DEST/Contents/Resources/ViewerWeb/grid-viewer.js"; then
   echo "error: installed app grid viewer does not match PreviewExtension/Web/grid-viewer.js" >&2
   exit 1
 fi
@@ -320,7 +320,7 @@ if ! cmp -s "$ROOT/PreviewExtension/Web/grid-viewer.js" "$DEST_APPEX/Contents/Re
   echo "error: installed Quick Look grid viewer does not match PreviewExtension/Web/grid-viewer.js" >&2
   exit 1
 fi
-if ! cmp -s "$ROOT/PreviewExtension/Web/grid-ui.js" "$DEST/Contents/Resources/Web/grid-ui.js"; then
+if ! cmp -s "$ROOT/PreviewExtension/Web/grid-ui.js" "$DEST/Contents/Resources/ViewerWeb/grid-ui.js"; then
   echo "error: installed app grid UI does not match PreviewExtension/Web/grid-ui.js" >&2
   exit 1
 fi
@@ -328,7 +328,7 @@ if ! cmp -s "$ROOT/PreviewExtension/Web/grid-ui.js" "$DEST_APPEX/Contents/Resour
   echo "error: installed Quick Look grid UI does not match PreviewExtension/Web/grid-ui.js" >&2
   exit 1
 fi
-if ! cmp -s "$ROOT/PreviewExtension/Web/grid.css" "$DEST/Contents/Resources/Web/grid.css"; then
+if ! cmp -s "$ROOT/PreviewExtension/Web/grid.css" "$DEST/Contents/Resources/ViewerWeb/grid.css"; then
   echo "error: installed app grid CSS does not match PreviewExtension/Web/grid.css" >&2
   exit 1
 fi

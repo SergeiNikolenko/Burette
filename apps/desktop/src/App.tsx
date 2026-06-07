@@ -16,7 +16,9 @@ import {
   useSetCommandPaletteSearch,
 } from "./hooks/use-command-palette";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
+import { useAgentSession } from "./hooks/use-agent-session";
 import { useMenuEvents } from "./hooks/use-menu-events";
+import { useDockLayout } from "./hooks/use-dock-layout";
 import { useOpenDrop } from "./hooks/use-open-drop";
 import { useOpenEvents } from "./hooks/use-open-events";
 import { useSidebar } from "./hooks/use-sidebar";
@@ -24,6 +26,10 @@ import {
   useActiveDocument,
   useActiveTab,
   useActiveTabId,
+  useActivateLastNonSettingsTab,
+  useAddBackgroundDocuments,
+  useAddBackgroundTextDocuments,
+  useAddTextTabs,
   useAddTabs,
   useClearRecentStructures,
   useCanNavigateBack,
@@ -41,6 +47,9 @@ import {
   useOpenNewTab,
   useOpenPoseReviewTab,
   useOpenSettingsTab,
+  useOpenSettingsSection,
+  useOpenTextDocuments,
+  useOpenTextDocumentsInActiveTab,
   useOpenTabs,
   useRecentStructures,
   useRememberRecentStructures,
@@ -51,7 +60,8 @@ import {
   useSetDocuments,
 } from "./hooks/use-tabs";
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
-import { browserDevRuntimeNeedsRefresh, openBrowserDevDockingDocument, openBrowserDevDocuments, openBrowserDevMergedCollection, openBrowserDevMolstarContextDocument, openBrowserDevTextDocument, readBrowserDevCollectionText } from "./lib/browser-dev-documents";
+import { browserDevRuntimeNeedsRefresh, openBrowserDevDockingDocument, openBrowserDevDocuments, openBrowserDevMergedCollection, openBrowserDevMolstarContextDocument, openBrowserDevTextDocument, readBrowserDevCollectionText, readBrowserDevVirtualTextDocument } from "./lib/browser-dev-documents";
+import { openBrowserDevTextFiles } from "./lib/browser-dev-text-files";
 import { defaultBuildInfo, loadBuildInfo } from "./lib/build-info";
 import { isMoleculeCollectionPath } from "./lib/collection-documents";
 import { dockingRequestForDrop, isProteinLikeDockingSource } from "./lib/docking-documents";
@@ -62,7 +72,7 @@ import type { StructureDragPayload, StructureDragRecord } from "./lib/structure-
 import { readStructureText } from "./lib/structure-text";
 import { isTauriRuntime } from "./lib/tauri";
 import { isTemporaryDocumentPath } from "./lib/temporary-documents";
-import type { DockingDocumentRequest, FepSetupRequest, OpenDocumentsResult, RecentStructure, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "./types";
+import type { DockingDocumentRequest, FepSetupRequest, OpenDocumentsResult, OpenTextFilesResult, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "./types";
 import { checkForUpdates as requestUpdateCheck, clearDismissedUpdate, dismissUpdate, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically, shouldPromptForUpdate } from "./update";
 import type { UpdatePreferences, UpdateRelease, UpdateState } from "./update";
 
@@ -72,13 +82,42 @@ const CommandPalette = lazy(() => import("./components/command-palette").then((m
 
 const filters = [
   {
-    name: "Molecular structures",
-    extensions: [...previewFormatRegistry.documentTypes.extensions, "graphml"],
+    name: "Files",
+    extensions: [...previewFormatRegistry.documentTypes.extensions, "graphml", "md", "markdown", "mdx", "txt", "log", "err", "sh", "bash", "zsh", "py", "rs", "js", "jsx", "ts", "tsx", "json", "yaml", "yml", "toml", "xml", "html", "css"],
   },
 ];
 
+const structureExtensions = new Set(previewFormatRegistry.documentTypes.extensions.map((extension) => extension.toLowerCase()));
+const preferredTextExtensions = new Set([
+  "md",
+  "markdown",
+  "mdx",
+  "txt",
+  "log",
+  "err",
+  "sh",
+  "bash",
+  "zsh",
+  "py",
+  "rs",
+  "js",
+  "jsx",
+  "ts",
+  "tsx",
+  "json",
+  "yaml",
+  "yml",
+  "toml",
+  "xml",
+  "html",
+  "css",
+]);
+const structureFirstTextExtensions = new Set(["out"]);
+
 const GRID_PERF_REPORT_PATH = "/private/tmp/burrete-grid-real-app-perf.jsonl";
 const SIDEBAR_DRAG_CLOSE_WIDTH = 180;
+const RIGHT_DOCK_CLOSE_THRESHOLD = 180;
+const BOTTOM_DOCK_CLOSE_THRESHOLD = 120;
 
 type GridAppendResult = {
   recordsAppended: number;
@@ -106,12 +145,7 @@ async function browserDevFilesFromLocation() {
   if (params.has("devFiles")) {
     return splitDevFiles(params.get("devFiles") ?? "");
   }
-  const response = await fetch("/__burette/dev-files", { cache: "no-store" });
-  if (!response.ok) return [];
-  const payload = await response.json() as { files?: unknown };
-  return Array.isArray(payload.files)
-    ? payload.files.filter((path): path is string => typeof path === "string" && path.trim().length > 0)
-    : [];
+  return [];
 }
 
 function splitDevFiles(rawFiles: string) {
@@ -119,10 +153,10 @@ function splitDevFiles(rawFiles: string) {
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer) {
-  let binary = "";
   const bytes = new Uint8Array(buffer);
-  for (let index = 0; index < bytes.length; index += 1) {
-    binary += String.fromCharCode(bytes[index]);
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
   }
   return btoa(binary);
 }
@@ -165,16 +199,27 @@ function browserDevDockingFromLocation(): DockingDocumentRequest | null {
   return dockingRequestForDrop(paths[0], paths.slice(1));
 }
 
+function queueKetcherImportRequest(request: KetcherImportRequest) {
+  const targetWindow = window as Window & { __buretteKetcherImportRequest?: KetcherImportRequest | null };
+  targetWindow.__buretteKetcherImportRequest = request;
+  window.dispatchEvent(new CustomEvent("burette:ketcher-import", { detail: request }));
+}
+
 export default function App() {
   const preferences = useViewerPreferences();
   const setPreference = useSetViewerPreference();
   const tabs = useOpenTabs();
   const documents = useOpenDocuments();
+  const textDocuments = useOpenTextDocuments();
   const activeTabId = useActiveTabId();
   const activeTab = useActiveTab();
   const activeDocument = useActiveDocument();
+  const addBackgroundDocuments = useAddBackgroundDocuments();
+  const addBackgroundTextDocuments = useAddBackgroundTextDocuments();
   const addDocuments = useAddTabs();
+  const addTextDocuments = useAddTextTabs();
   const openDocumentsInActiveTab = useOpenDocumentsInActiveTab();
+  const openTextDocumentsInActiveTab = useOpenTextDocumentsInActiveTab();
   const setDocuments = useSetDocuments();
   const openNewTab = useOpenNewTab();
   const openKetcherTab = useOpenKetcherTab();
@@ -182,6 +227,8 @@ export default function App() {
   const openFepSetupTab = useOpenFepSetupTab();
   const openPoseReviewTab = useOpenPoseReviewTab();
   const openSettingsTab = useOpenSettingsTab();
+  const openSettingsSectionTab = useOpenSettingsSection();
+  const activateLastNonSettingsTab = useActivateLastNonSettingsTab();
   const canNavigateBack = useCanNavigateBack();
   const canNavigateForward = useCanNavigateForward();
   const navigateBack = useNavigateBack();
@@ -201,6 +248,8 @@ export default function App() {
     sidebarWidth,
     projectsOpen,
     projectRoots,
+    pinnedProjectRoots,
+    projectNameOverrides,
     expandedProjectIds,
     pinnedStructurePaths,
     sidebarQuery,
@@ -208,13 +257,42 @@ export default function App() {
     toggleProjectsOpen,
     setExpandedProjectIds,
     addProjectRoot,
+    togglePinnedProjectRoot,
+    renameProjectRoot,
+    removeProjectRoot,
     togglePinnedStructure,
     setSidebarQuery,
     toggleProjectExpanded,
     toggleSidebar,
     closeSidebar,
   } = useSidebar();
+  const {
+    rightDockOpen,
+    rightDockWidth,
+    rightDockTabs,
+    rightDockActiveTab,
+    rightDockDocumentId,
+    rightDockTool,
+    bottomDockOpen,
+    bottomDockHeight,
+    bottomDockTabs,
+    bottomDockActiveTab,
+    bottomDockDocumentId,
+    bottomDockTool,
+    dockDroppedStructures,
+    toggleDock,
+    setDockOpen,
+    setDockSize,
+    openDockTab,
+    closeDockTab,
+    setDockActiveTab,
+    setDockDocument,
+    setDockTool,
+    addDockDrop,
+  } = useDockLayout();
   const [sidebarDragging, setSidebarDragging] = useState(false);
+  const [rightDockDragging, setRightDockDragging] = useState(false);
+  const [bottomDockDragging, setBottomDockDragging] = useState(false);
 
   const closeGridRuntime = useCallback((documentId: string | null | undefined) => {
     if (!documentId || !isTauriRuntime()) return;
@@ -223,6 +301,7 @@ export default function App() {
   const [structureDragActive, setStructureDragActive] = useState(false);
   const [ketcherImportRequest, setKetcherImportRequest] = useState<KetcherImportRequest | null>(null);
   const [ketcherDraftMolfile, setKetcherDraftMolfile] = useState("");
+  const [dirtyGridDocuments, setDirtyGridDocuments] = useState<Set<string>>(() => new Set());
   const [status, setStatus] = useState<StatusNotice | null>(null);
   const [buildInfo, setBuildInfo] = useState(defaultBuildInfo);
   const [poseReviewSelections, setPoseReviewSelections] = useState<Record<string, number>>({});
@@ -234,10 +313,10 @@ export default function App() {
     statusText: "No update check has run yet.",
     availableRelease: null,
   }));
-  const refreshedPersistedSessionRef = useRef(false);
-  const openedPersistedTabsRef = useRef(false);
   const openedBrowserDevFilesRef = useRef<string | null>(null);
   const openedBrowserDevDockingRef = useRef<string | null>(null);
+  const refreshedPersistedSessionRef = useRef(false);
+  const openedPersistedTabsRef = useRef(false);
   const syncingBrowserDevFilesRef = useRef(false);
   const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions | null>(null);
   const pendingViewerReloadDocumentIdRef = useRef<string | null>(null);
@@ -321,9 +400,17 @@ export default function App() {
     documents,
     recentStructures,
     projectRoots,
+    pinnedProjectRoots,
+    projectNameOverrides,
     activeDocumentId: activeDocument?.id ?? null,
     pinnedStructurePaths,
-  }), [activeDocument?.id, documents, pinnedStructurePaths, projectRoots, recentStructures]);
+  }), [activeDocument?.id, documents, pinnedProjectRoots, pinnedStructurePaths, projectNameOverrides, projectRoots, recentStructures]);
+
+  const activeTextDocument = useMemo(() => {
+    const location = activeTab?.location;
+    if (location?.kind !== "text-file") return null;
+    return textDocuments.find((document) => document.id === location.documentId || document.path === location.path) ?? null;
+  }, [activeTab?.location, textDocuments]);
 
   const activeProject = useMemo(
     () => allSidebarProjects.find((project) => project.isActive) ?? null,
@@ -410,6 +497,9 @@ export default function App() {
         if (options.replace) setDocuments(result.documents);
         else if (options.inActiveTab) openDocumentsInActiveTab(result.documents);
         else addDocuments(result.documents);
+        if (!options.replace && !options.inActiveTab && result.documents[0]) {
+          setActiveDocument(result.documents[0].id);
+        }
         if (result.documents.length > 0) markPerformanceOnce("app:first-document-opened");
         rememberRecentStructures(result.documents);
         const openedText = "Opened " + result.documents.length + " structure" + (result.documents.length === 1 ? "" : "s");
@@ -418,17 +508,92 @@ export default function App() {
         } else {
           pushStatus(openedText);
         }
+        return result;
       } catch (error) {
         if (isTauriRuntime() && cleanPaths.length === 1 && isDelimitedColumnAmbiguity(error)) {
           void showDelimitedGridColumnOpenMenu(cleanPaths[0], effectivePreferences, options.replace === true)
             .catch((menuError) => pushErrorStatus(menuError, "Structure column menu failed"));
-          return;
+          return null;
         }
         pushErrorStatus(error);
+        return null;
       }
     },
-    [addDocuments, openDocumentsInActiveTab, openFepNetworkTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setDocuments, showDelimitedGridColumnOpenMenu],
+    [addDocuments, openDocumentsInActiveTab, openFepNetworkTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setActiveDocument, setDocuments, showDelimitedGridColumnOpenMenu],
   );
+  useOpenEvents(
+    (paths, options) => {
+      void openDocuments(paths, undefined, undefined, options);
+    },
+    pushErrorStatus,
+  );
+
+  const openTextDocuments = useCallback(
+    async (
+      paths: string[],
+      options: { inActiveTab?: boolean; background?: boolean } = {},
+    ) => {
+      const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
+      if (!cleanPaths.length) return null;
+      pushStatus("Opening text files...");
+      try {
+        const result = isTauriRuntime()
+          ? await invoke<OpenTextFilesResult>("open_text_files", { paths: cleanPaths })
+          : await openBrowserDevTextFiles(cleanPaths);
+        if (options.background) addBackgroundTextDocuments(result.documents);
+        else if (options.inActiveTab) openTextDocumentsInActiveTab(result.documents);
+        else addTextDocuments(result.documents);
+        const openedText = "Opened " + result.documents.length + " text file" + (result.documents.length === 1 ? "" : "s");
+        if (result.errors.length > 0) {
+          pushStatus(`${openedText}. ${summarizeErrors(result.errors)}`, "error", result.errors);
+        } else {
+          pushStatus(openedText);
+        }
+        return result;
+      } catch (error) {
+        pushErrorStatus(error, "Open text file failed");
+        return null;
+      }
+    },
+    [addBackgroundTextDocuments, addTextDocuments, openTextDocumentsInActiveTab, pushErrorStatus, pushStatus],
+  );
+
+  const openPaths = useCallback(async (paths: string[]) => {
+    const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
+    if (!cleanPaths.length) return;
+
+    const structurePaths: string[] = [];
+    const textPaths: string[] = [];
+    const structureFirstTextPaths: string[] = [];
+
+    for (const path of cleanPaths) {
+      const extension = pathExtension(path);
+      if (structureFirstTextExtensions.has(extension)) {
+        structureFirstTextPaths.push(path);
+      } else if (structureExtensions.has(extension)) {
+        structurePaths.push(path);
+      } else if (preferredTextExtensions.has(extension) || extension.length > 0) {
+        textPaths.push(path);
+      } else {
+        textPaths.push(path);
+      }
+    }
+
+    if (structurePaths.length > 0) {
+      await openDocuments(structurePaths);
+    }
+
+    const fallbackTextPaths: string[] = [];
+    for (const path of structureFirstTextPaths) {
+      const result = await openDocuments([path]);
+      if (!result || result.documents.length === 0) fallbackTextPaths.push(path);
+    }
+
+    const textOpenPaths = [...textPaths, ...fallbackTextPaths];
+    if (textOpenPaths.length > 0) {
+      await openTextDocuments(textOpenPaths);
+    }
+  }, [openDocuments, openTextDocuments]);
 
   useEffect(() => {
     if (isTauriRuntime() || syncingBrowserDevFilesRef.current) return;
@@ -449,7 +614,7 @@ export default function App() {
         addProjectRoot(workspace);
       }
       closeAllDocuments();
-      await openDocuments(paths, undefined, undefined, { replace: true });
+      await openPaths(paths);
       syncingBrowserDevFilesRef.current = false;
     })().catch((error) => {
       if (!cancelled) pushErrorStatus(error, "Open dev files failed");
@@ -458,7 +623,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [addProjectRoot, closeAllDocuments, documents, openDocuments, pushErrorStatus, setWorkspacePath]);
+  }, [addProjectRoot, closeAllDocuments, documents, openPaths, pushErrorStatus, setWorkspacePath]);
 
   useEffect(() => {
     if (refreshedPersistedSessionRef.current) return;
@@ -477,15 +642,15 @@ export default function App() {
     if (openedPersistedTabsRef.current) return;
     if (!isTauriRuntime() || documents.length > 0) return;
     const paths = Array.from(new Set(tabs
-      .map((tab) => tab.location.kind === "file" ? tab.location.path : null)
+      .map((tab) => tab.location.kind === "file" || tab.location.kind === "text-file" ? tab.location.path : null)
       .filter((path): path is string => typeof path === "string" && !isTemporaryDocumentPath(path))));
     if (paths.length === 0) return;
     openedPersistedTabsRef.current = true;
     const restoreTabId = activeTabId;
-    void openDocuments(paths).then(() => {
+    void openPaths(paths).then(() => {
       if (restoreTabId) setActiveTab(restoreTabId);
     });
-  }, [activeTabId, documents.length, openDocuments, setActiveTab, tabs]);
+  }, [activeTabId, documents.length, openPaths, setActiveTab, tabs]);
 
   const openRecentStructure = useCallback(
     async (structure: RecentStructure) => {
@@ -536,6 +701,108 @@ export default function App() {
     pushStatus(openedText);
   }, [addDocuments, openStructureRecordDocuments, pushStatus, rememberRecentStructures]);
 
+  const openDockPayload = useCallback(async (input: Parameters<ShellActions["openDockPayload"]>[0]) => {
+    const ketcherItem = input.payload.items?.find((item) => item.kind === "ketcher") ?? null;
+    const itemPaths = (input.payload.items ?? [])
+      .map((item) => item.path)
+      .filter((path): path is string => Boolean(path));
+    const cleanPaths = Array.from(new Set([...input.payload.paths, ...itemPaths].map((path) => path.trim()).filter(Boolean)));
+    const cleanRecords = input.payload.records;
+    if (ketcherItem && cleanPaths.length === 0 && cleanRecords.length === 0) {
+      setDockTool(input.area, "ketcher");
+      addDockDrop(input);
+      pushStatus(`Opened Ketcher in ${input.area === "right" ? "right dock" : "bottom dock"}`);
+      return;
+    }
+    if (cleanPaths.length === 0 && cleanRecords.length === 0) {
+      addDockDrop(input);
+      return;
+    }
+
+    pushStatus(`Opening in ${input.area === "right" ? "right dock" : "bottom dock"}...`);
+    try {
+      const structurePaths: string[] = [];
+      const textPaths: string[] = [];
+      const structureFirstTextPaths: string[] = [];
+      for (const path of cleanPaths) {
+        const extension = pathExtension(path);
+        if (structureFirstTextExtensions.has(extension)) {
+          structureFirstTextPaths.push(path);
+        } else if (structureExtensions.has(extension)) {
+          structurePaths.push(path);
+        } else if (preferredTextExtensions.has(extension) || extension.length > 0) {
+          textPaths.push(path);
+        } else {
+          textPaths.push(path);
+        }
+      }
+
+      const structurePathResult = structurePaths.length > 0
+        ? isTauriRuntime()
+          ? await invoke<OpenDocumentsResult>("open_documents", { paths: structurePaths, preferences, reloadOptions: undefined })
+          : await openBrowserDevDocuments(structurePaths, preferences, undefined)
+        : { documents: [], errors: [] };
+      const fallbackTextPaths: string[] = [];
+      const structureFirstResults: OpenDocumentsResult[] = [];
+      for (const path of structureFirstTextPaths) {
+        try {
+          const result = isTauriRuntime()
+            ? await invoke<OpenDocumentsResult>("open_documents", { paths: [path], preferences, reloadOptions: undefined })
+            : await openBrowserDevDocuments([path], preferences, undefined);
+          if (result.documents.length > 0) {
+            structureFirstResults.push(result);
+          } else {
+            fallbackTextPaths.push(path);
+          }
+        } catch {
+          fallbackTextPaths.push(path);
+        }
+      }
+      const textOpenPaths = [...textPaths, ...fallbackTextPaths];
+      const textResult = textOpenPaths.length > 0
+        ? isTauriRuntime()
+          ? await invoke<OpenTextFilesResult>("open_text_files", { paths: textOpenPaths })
+          : await openBrowserDevTextFiles(textOpenPaths)
+        : { documents: [], errors: [] };
+      const recordResult = cleanRecords.length > 0
+        ? await openStructureRecordDocuments(cleanRecords)
+        : { opened: [], errors: [] };
+      const openedStructures = [
+        ...structurePathResult.documents,
+        ...structureFirstResults.flatMap((result) => result.documents),
+        ...recordResult.opened,
+      ];
+      const openedTextDocuments = textResult.documents;
+      const errors = [
+        ...structurePathResult.errors,
+        ...structureFirstResults.flatMap((result) => result.errors),
+        ...textResult.errors,
+        ...recordResult.errors,
+      ];
+      if (openedStructures.length > 0) {
+        addBackgroundDocuments(openedStructures);
+        rememberRecentStructures(openedStructures);
+      }
+      if (openedTextDocuments.length > 0) {
+        addBackgroundTextDocuments(openedTextDocuments);
+      }
+      const firstDockDocumentId = openedStructures[0]?.id ?? openedTextDocuments[0]?.id ?? null;
+      if (firstDockDocumentId) {
+        setDockDocument(input.area, firstDockDocumentId);
+        addDockDrop(input);
+      }
+      const openedCount = openedStructures.length + openedTextDocuments.length;
+      const openedText = `Opened ${openedCount} item${openedCount === 1 ? "" : "s"} in ${input.area === "right" ? "right dock" : "bottom dock"}`;
+      if (errors.length > 0) {
+        pushStatus(openedCount > 0 ? `${openedText}. ${summarizeErrors(errors)}` : summarizeErrors(errors), "error", errors);
+        return;
+      }
+      pushStatus(openedText);
+    } catch (error) {
+      pushErrorStatus(error, "Dock open failed");
+    }
+  }, [addBackgroundDocuments, addBackgroundTextDocuments, addDockDrop, openStructureRecordDocuments, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setDockDocument, setDockTool]);
+
   const openMostRecentStructure = useCallback(async () => {
     const structure = recentStructures[0];
     if (!structure) {
@@ -551,11 +818,11 @@ export default function App() {
         ? await invoke<string[]>("pick_open_targets")
         : await open({ multiple: true, filters });
       const paths = Array.isArray(selection) ? selection : selection ? [selection] : [];
-      await openDocuments(paths);
+      await openPaths(paths);
     } catch (error) {
       pushErrorStatus(error, "Open failed");
     }
-  }, [openDocuments, pushErrorStatus]);
+  }, [openPaths, pushErrorStatus]);
 
   const openDockingDocument = useCallback(async (
     targetPath: string,
@@ -680,43 +947,59 @@ export default function App() {
     }
   }, [documents, pushErrorStatus, pushStatus]);
 
-  const revealDocument = useCallback(async (document: ViewerDocument) => {
+  const revealPath = useCallback(async (path: string, label = "file") => {
     try {
       if (isTauriRuntime()) {
-        await invoke("reveal_path", { path: document.path });
+        await invoke("reveal_path", { path });
       } else {
-        await openPath(parentDirectory(document.path) ?? document.path);
+        await openPath(parentDirectory(path) ?? path);
       }
-      pushStatus("Revealed structure in Finder");
+      pushStatus(`Revealed ${label} in Finder`);
     } catch (error) {
       pushErrorStatus(error, "Reveal in Finder failed");
     }
   }, [pushErrorStatus, pushStatus]);
 
+  const revealDocument = useCallback(async (document: ViewerDocument) => {
+    await revealPath(document.path, "structure");
+  }, [revealPath]);
+
   const revealActiveDocument = useCallback(async () => {
+    if (activeTextDocument) {
+      await revealPath(activeTextDocument.path, "file");
+      return;
+    }
     if (!activeDocument) {
-      pushStatus("No active structure to reveal", "error");
+      pushStatus("No active file to reveal", "error");
       return;
     }
     await revealDocument(activeDocument);
-  }, [activeDocument, pushStatus, revealDocument]);
+  }, [activeDocument, activeTextDocument, pushStatus, revealDocument, revealPath]);
 
-  const copyDocumentPath = useCallback(async (document: ViewerDocument) => {
+  const copyPath = useCallback(async (path: string, label = "file") => {
     try {
-      await navigator.clipboard.writeText(document.path);
-      pushStatus("Copied structure path");
+      await navigator.clipboard.writeText(path);
+      pushStatus(`Copied ${label} path`);
     } catch (error) {
       pushErrorStatus(error, "Copy path failed");
     }
   }, [pushErrorStatus, pushStatus]);
 
+  const copyDocumentPath = useCallback(async (document: ViewerDocument) => {
+    await copyPath(document.path, "structure");
+  }, [copyPath]);
+
   const copyActiveDocumentPath = useCallback(async () => {
+    if (activeTextDocument) {
+      await copyPath(activeTextDocument.path, "file");
+      return;
+    }
     if (!activeDocument) {
-      pushStatus("No active structure path to copy", "error");
+      pushStatus("No active file path to copy", "error");
       return;
     }
     await copyDocumentPath(activeDocument);
-  }, [activeDocument, copyDocumentPath, pushStatus]);
+  }, [activeDocument, activeTextDocument, copyDocumentPath, copyPath, pushStatus]);
 
   const showDocumentMetadata = useCallback((document: ViewerDocument) => {
     pushStatus(document.title, "info", [
@@ -727,13 +1010,28 @@ export default function App() {
     ]);
   }, [pushStatus]);
 
+  const showTextFileMetadata = useCallback((document: TextFileDocument) => {
+    const details = [
+      `Path: ${document.path}`,
+      `Format: ${document.extension ? document.extension.toUpperCase() : "TEXT"}`,
+      `Language: ${document.language}`,
+      `Size: ${formatBytes(document.byteCount)}`,
+    ];
+    if (document.truncated) details.push("Content preview was truncated");
+    pushStatus(document.title, "info", details);
+  }, [pushStatus]);
+
   const showActiveDocumentMetadata = useCallback(() => {
+    if (activeTextDocument) {
+      showTextFileMetadata(activeTextDocument);
+      return;
+    }
     if (!activeDocument) {
-      pushStatus("No active structure metadata to show", "error");
+      pushStatus("No active file metadata to show", "error");
       return;
     }
     showDocumentMetadata(activeDocument);
-  }, [activeDocument, pushStatus, showDocumentMetadata]);
+  }, [activeDocument, activeTextDocument, pushStatus, showDocumentMetadata, showTextFileMetadata]);
 
   const readActiveExternalPreviewSvg = useCallback(async () => {
     if (!activeDocument) throw new Error("No active structure preview to export");
@@ -846,50 +1144,148 @@ export default function App() {
   }, [pushErrorStatus, pushStatus]);
 
   const openSettings = useCallback(() => {
+    if (!sidebarOpen) toggleSidebar();
     openSettingsTab();
-  }, [openSettingsTab]);
+  }, [openSettingsTab, sidebarOpen, toggleSidebar]);
+
+  const openSettingsSection = useCallback((section: Parameters<typeof openSettingsSectionTab>[0]) => {
+    if (!sidebarOpen) toggleSidebar();
+    openSettingsSectionTab(section);
+  }, [openSettingsSectionTab, sidebarOpen, toggleSidebar]);
+
+  const backToApp = useCallback(() => {
+    activateLastNonSettingsTab();
+  }, [activateLastNonSettingsTab]);
 
   const openKetcher = useCallback(() => {
     openKetcherTab();
   }, [openKetcherTab]);
 
+  const nextKetcherImportRequestId = useCallback(() => {
+    const nextId = Math.max(ketcherImportSequenceRef.current + 1, Date.now());
+    ketcherImportSequenceRef.current = nextId;
+    return nextId;
+  }, []);
+
   const openKetcherWithStructures = useCallback((paths: string[], fragments: KetcherImportRequest["fragments"] = []) => {
     const cleanPaths = Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
-    const cleanFragments = fragments?.filter((fragment) => fragment.text.trim()) ?? [];
-    if (cleanPaths.length === 0 && cleanFragments.length === 0) return;
-    if (cleanPaths.length === 0 && cleanFragments.length === 1) {
-      openKetcherTab({ kind: "ketcher", draftMolfile: cleanFragments[0].text });
-      setStructureDragActive(false);
-      pushStatus(`Adding ${cleanFragments[0].title.trim() || "structure"} to Ketcher`);
-      return;
-    }
-    openKetcherTab();
-    setStructureDragActive(false);
-    setKetcherImportRequest({
-      id: ++ketcherImportSequenceRef.current,
-      paths: cleanPaths,
-      fragments: cleanFragments,
+    const virtualFragments: KetcherImportRequest["fragments"] = [];
+    const readablePaths = cleanPaths.filter((path) => {
+      const virtualText = readBrowserDevVirtualTextDocument(path);
+      if (virtualText === null) return true;
+      virtualFragments.push({ title: basename(path), text: virtualText });
+      return false;
     });
-    const count = cleanPaths.length + cleanFragments.length;
+    const cleanFragments = [...(fragments?.filter((fragment) => fragment.text.trim()) ?? []), ...virtualFragments];
+    if (readablePaths.length === 0 && cleanFragments.length === 0) return;
+    const hasGridEditSource = cleanFragments.some((fragment) => fragment.source?.kind === "grid-row");
+    if (!hasGridEditSource && readablePaths.length === 0 && cleanFragments.length === 1) {
+      const [fragment] = cleanFragments;
+      const draftMolfile = ketcherDraftMolfileFromImportText(fragment.text);
+      if (draftMolfile) {
+        openKetcherTab({ kind: "ketcher", draftMolfile });
+        setStructureDragActive(false);
+        setKetcherDraftMolfile(draftMolfile);
+        setKetcherImportRequest(null);
+        pushStatus(`Opened ${fragment.title.trim() || "structure"} in Ketcher`);
+        return;
+      }
+    }
+    const request: KetcherImportRequest = {
+      id: nextKetcherImportRequestId(),
+      paths: readablePaths,
+      fragments: cleanFragments,
+    };
+    queueKetcherImportRequest(request);
+    setKetcherImportRequest(request);
+    openKetcherTab({ kind: "ketcher", importRequestId: request.id, importRequest: request });
+    setStructureDragActive(false);
+    const count = readablePaths.length + cleanFragments.length;
     pushStatus(`Adding ${count} structure${count === 1 ? "" : "s"} to Ketcher`);
-  }, [openKetcherTab, pushStatus]);
+  }, [nextKetcherImportRequestId, openKetcherTab, pushStatus]);
 
-  const openKetcherWithFragment = useCallback((title: string, text: string) => {
+  const openKetcherWithFragment = useCallback((title: string, text: string, source?: NonNullable<NonNullable<KetcherImportRequest["fragments"]>[number]["source"]>) => {
     const cleanText = text.trim();
     if (!cleanText) return;
-    openKetcherTab();
-    setStructureDragActive(false);
-    setKetcherImportRequest({
-      id: ++ketcherImportSequenceRef.current,
+    const cleanTitle = title.trim() || "structure";
+    const draftMolfile = source ? "" : ketcherDraftMolfileFromImportText(cleanText);
+    if (!source && draftMolfile) {
+      openKetcherTab({ kind: "ketcher", draftMolfile });
+      setStructureDragActive(false);
+      setKetcherDraftMolfile(draftMolfile);
+      setKetcherImportRequest(null);
+      pushStatus(`Opened ${cleanTitle} in Ketcher`);
+      return;
+    }
+    const request: KetcherImportRequest = {
+      id: nextKetcherImportRequestId(),
       paths: [],
-      fragments: [{ title: title.trim() || "structure", text }],
-    });
-    pushStatus(`Adding ${title.trim() || "structure"} to Ketcher`);
-  }, [openKetcherTab, pushStatus]);
+      fragments: [{
+        title: cleanTitle,
+        text,
+        source: source
+          ? {
+              ...source,
+              title: source.title.trim() || cleanTitle,
+              extension: source.extension.trim().replace(/^\./u, "") || "sdf",
+            }
+          : undefined,
+      }],
+    };
+    queueKetcherImportRequest(request);
+    setKetcherImportRequest(request);
+    openKetcherTab({ kind: "ketcher", importRequestId: request.id, importRequest: request });
+    setStructureDragActive(false);
+    pushStatus(`Adding ${cleanTitle} to Ketcher`);
+  }, [nextKetcherImportRequestId, openKetcherTab, pushStatus]);
+
+  const applyKetcherToGridRow = useCallback((request: {
+    documentId: string;
+    rowIndex: number;
+    title: string;
+    extension: string;
+    text: string;
+  }) => {
+    const ketcherTabId = tabs.find((tab) => tab.location.kind === "ketcher")?.id ?? null;
+    const iframe = document.querySelector<HTMLIFrameElement>(`.viewer-iframe[data-document-id="${CSS.escape(request.documentId)}"]`);
+    if (!iframe?.contentWindow) {
+      pushStatus("Grid edit target is not open.", "error");
+      return;
+    }
+    iframe.contentWindow.postMessage({
+      source: "burrete-grid-host",
+      body: {
+        type: "gridApplyKetcherRow",
+        documentId: request.documentId,
+        rowIndex: request.rowIndex,
+        title: request.title,
+        extension: request.extension,
+        text: request.text,
+      },
+    }, "*");
+    if (ketcherTabId) {
+      window.setTimeout(() => {
+        setActiveDocument(request.documentId);
+        closeTab(ketcherTabId);
+      }, 0);
+    }
+    pushStatus("Applied Ketcher edit to grid");
+  }, [closeTab, pushStatus, setActiveDocument, tabs]);
 
   const clearKetcherImportRequest = useCallback((id: number) => {
     setKetcherImportRequest((request) => (request?.id === id ? null : request));
   }, []);
+
+  const confirmDiscardDirtyGridDocument = useCallback((documentId: string | null | undefined) => {
+    if (!documentId || !dirtyGridDocuments.has(documentId)) return true;
+    return window.confirm("This grid has unsaved changes. Save or Save As before closing to keep edits. Close without saving?");
+  }, [dirtyGridDocuments]);
+
+  const confirmDiscardDirtyGridDocuments = useCallback((documentIds: string[]) => {
+    const dirtyCount = documentIds.filter((documentId) => dirtyGridDocuments.has(documentId)).length;
+    if (dirtyCount === 0) return true;
+    return window.confirm(`${dirtyCount} grid document${dirtyCount === 1 ? " has" : "s have"} unsaved changes. Save or Save As before closing to keep edits. Close without saving?`);
+  }, [dirtyGridDocuments]);
 
   const openKetcherSketch = useCallback(async (request: KetcherSketchRequest) => {
     const rendererMode: ViewerPreferences["rendererMode"] = request.target === "grid"
@@ -983,11 +1379,7 @@ export default function App() {
             effectivePreferences,
             reloadOptions,
           );
-      openDocumentsInActiveTab([document], {
-        backLocation: request.draftKet?.trim() || request.draftMolfile?.trim()
-          ? { kind: "ketcher", draftKet: request.draftKet, draftMolfile: request.draftMolfile }
-          : undefined,
-      });
+      addDocuments([document]);
       rememberRecentStructures([document]);
       pushStatus(
         `Opened Ketcher sketch in ${request.target === "grid" ? "grid" : request.target === "molstar" ? "Molstar" : "xyzrender"}`,
@@ -995,7 +1387,7 @@ export default function App() {
     } catch (error) {
       pushErrorStatus(error, "Open Ketcher sketch failed");
     }
-  }, [mergeMoleculeCollections, openDocumentsInActiveTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
+  }, [addDocuments, mergeMoleculeCollections, openDocumentsInActiveTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
 
   const postXyzrenderSheetItems = useCallback((documentId: string, payload: StructureDragPayload) => {
     const iframe = Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).find(
@@ -1223,6 +1615,14 @@ export default function App() {
     return true;
   }, [pushErrorStatus]);
 
+  const addDroppedProjectRoots = useCallback((paths: string[]) => {
+    const cleanPaths = Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
+    if (cleanPaths.length === 0) return;
+    for (const path of cleanPaths) addProjectRoot(path);
+    setWorkspacePath(cleanPaths[0]);
+    pushStatus("Project folder added");
+  }, [addProjectRoot, pushStatus]);
+
   const currentFepSetupRequest = useMemo<FepSetupRequest | null>(() => {
     const location = activeTab?.location;
     if (!location) return null;
@@ -1250,21 +1650,25 @@ export default function App() {
     };
   }, [activeTab?.location, documents, poseReviewSelections]);
 
-  useOpenEvents(openDocuments, pushErrorStatus);
-  const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop, handleBrowserPaste, openClipboardText } = useOpenDrop(openDocuments, pushStatus, {
+  useOpenEvents(openPaths, pushErrorStatus);
+  useAgentSession({ activeDocument, documents, openTextDocuments, openPaths, pushErrorStatus, setDockDocument });
+  const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop, handleBrowserPaste, openClipboardText } = useOpenDrop(openPaths, pushStatus, {
     activeTabKind: activeTab?.location.kind ?? null,
     activeDocumentId: activeDocument?.id ?? null,
     activeDocumentPath: activeDocument?.path ?? null,
     activeDocumentRenderer: activeDocument?.renderer ?? null,
     activeDockingRequest: activeDocument?.dockingRequest ?? null,
+    documents,
     fepSetupRequest: currentFepSetupRequest,
     openDockingDocument,
     openDockingStructureRecords,
     openStructureRecords,
     openKetcherWithStructures,
     openFepSetupWorkspace,
+    openDockPayload,
     appendGridRecords,
     addXyzrenderSheetItems,
+    addProjectRoots: addDroppedProjectRoots,
     chooseDropAction,
     mergeMoleculeCollections: activeDocument?.renderer === "grid2d"
       ? (paths) => {
@@ -1491,11 +1895,49 @@ export default function App() {
           items?: Record<string, unknown>[] | null;
           name?: string | null;
           mimeType?: string | null;
+          requestToken?: string | null;
+          dirty?: boolean | null;
+          dirtyReason?: string | null;
+          gridEdit?: boolean | null;
+          rowIndex?: number | null;
         };
       } | undefined;
       if (data?.source !== "burrete-viewer" && data?.source !== "burrete-grid") return;
       const body = data.body;
       if (!isKnownViewerMessageSource(event.source, body?.documentId)) return;
+      if (data.source === "burrete-viewer" && (body?.type === "requestData" || body?.type === "requestRuntimeFile")) {
+        if (!body.requestToken) return;
+        const document = body.documentId
+          ? documents.find((item) => item.id === body.documentId)
+          : activeDocument;
+        const reply = (payload: Record<string, unknown>) => {
+          postMessageToViewerSource(event.source, {
+            source: "burrete-native-host",
+            body: {
+              type: body.type === "requestData" ? "nativeData" : "nativeRuntimeFile",
+              documentId: body.documentId,
+              payload,
+            },
+          });
+        };
+        void (async () => {
+          try {
+            if (!document) throw new Error("No matching viewer document.");
+            const fileName = body.type === "requestData"
+              ? "preview-data.bin"
+              : normalizeViewerRuntimeRelativePath(body.path || "");
+            if (!fileName) throw new Error("Invalid runtime file path.");
+            const base64 = await invoke<string>("read_viewer_runtime_file_base64", {
+              runtimePath: document.runtimePath,
+              relativePath: fileName,
+            });
+            reply({ requestToken: body.requestToken, base64 });
+          } catch (error) {
+            reply({ requestToken: body.requestToken, error: error instanceof Error ? error.message : String(error) });
+          }
+        })();
+        return;
+      }
       if (data.source === "burrete-viewer" && body?.type === "dockingPoseChanged") {
         const dockingDocument = body.documentId
           ? documents.find((document) => document.id === body.documentId)
@@ -1518,6 +1960,29 @@ export default function App() {
         (body?.type === "ready" || (body?.type === "status" && body.message?.startsWith("[web] Rendered ")))
       ) {
         markPerformanceOnce("viewer:first-render");
+      }
+      if (data.source === "burrete-viewer" && body?.type === "exportText") {
+        const text = typeof body.text === "string" ? body.text : "";
+        const name = safeExportFileName(body.name ?? "molstar-export.cif");
+        void (async () => {
+          try {
+            if (!isTauriRuntime()) {
+              downloadTextFile(name, text);
+              pushStatus(`Exported ${name}`);
+              return;
+            }
+            const outputPath = await save({
+              defaultPath: name,
+              filters: exportDialogFilters(name, body.mimeType ?? ""),
+            });
+            if (!outputPath) return;
+            const savedPath = await invoke<string>("save_text_as", { text, outputPath });
+            pushStatus(`Exported ${basename(savedPath)}`);
+          } catch (error) {
+            pushErrorStatus(error, "Molstar export failed");
+          }
+        })();
+        return;
       }
       if ((data.source === "burrete-viewer" || data.source === "burrete-grid") && body?.type === "renderXyzrenderSheetItem") {
         if (!body.requestId) return;
@@ -1572,6 +2037,43 @@ export default function App() {
         return;
       }
       if (data.source === "burrete-grid") {
+        if (body?.type === "openInKetcher") {
+          const title = typeof body.title === "string" && body.title.trim()
+            ? body.title.trim()
+            : "structure";
+          const textBase64 = typeof body.textBase64 === "string" ? body.textBase64.trim() : "";
+          if (textBase64) {
+            try {
+              const bytes = Uint8Array.from(atob(textBase64), (char) => char.charCodeAt(0));
+              const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+              const rowIndex = Number(body.rowIndex);
+              openKetcherWithFragment(title, text, body.gridEdit === true && body.documentId && Number.isFinite(rowIndex)
+                ? {
+                    kind: "grid-row",
+                    documentId: body.documentId,
+                    rowIndex,
+                    title,
+                    extension: typeof body.extension === "string" && body.extension.trim()
+                      ? body.extension.trim().replace(/^\./u, "")
+                      : "sdf",
+                  }
+                : undefined);
+            } catch (error) {
+              pushStatus(`Open in Ketcher failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+            }
+            return;
+          }
+          const targetDocument = (body.documentId
+            ? documents.find((document) => document.id === body.documentId)
+            : null) ?? activeDocument;
+          const targetPath = typeof body.path === "string" && body.path.trim().length > 0
+            ? body.path.trim()
+            : targetDocument?.path;
+          if (targetPath) {
+            openKetcherWithStructures([targetPath]);
+          }
+          return;
+        }
         if (body?.type === "gridPerfMetric") {
           console.info("[Burrete grid perf]", JSON.stringify(body));
           writeGridPerfMetric(body);
@@ -1582,6 +2084,18 @@ export default function App() {
           void navigator.clipboard.writeText(text)
             .then(() => pushStatus("Copied grid text"))
             .catch((error) => pushErrorStatus(error, "Grid copy failed"));
+          return;
+        }
+        if (body?.type === "gridDirtyChanged") {
+          const documentId = typeof body.documentId === "string" ? body.documentId : "";
+          if (documentId) {
+            setDirtyGridDocuments((previous) => {
+              const next = new Set(previous);
+              if (body.dirty === true) next.add(documentId);
+              else next.delete(documentId);
+              return next;
+            });
+          }
           return;
         }
         if (body?.type === "exportText") {
@@ -1607,6 +2121,89 @@ export default function App() {
           })();
           return;
         }
+        if (body?.type === "exportGridMolecule") {
+          const text = typeof body.text === "string" ? body.text : "";
+          const name = safeExportFileName(body.name ?? "molecule.sdf");
+          const reply = (bodyPayload: Record<string, unknown>) => {
+            postMessageToViewerSource(event.source, {
+              source: "burrete-grid-host",
+              body: {
+                documentId: body.documentId,
+                ...bodyPayload,
+              },
+            });
+          };
+          void (async () => {
+            try {
+              if (!isTauriRuntime()) {
+                downloadTextFile(name, text);
+                pushStatus(`Exported ${name}`);
+                reply({ type: "gridMoleculeExported", name });
+                return;
+              }
+              const outputPath = await save({
+                defaultPath: name,
+                filters: exportDialogFilters(name, body.mimeType ?? ""),
+              });
+              if (!outputPath) return;
+              const savedPath = await invoke<string>("save_text_as", { text, outputPath });
+              const savedName = basename(savedPath);
+              pushStatus(`Exported ${savedName}`);
+              reply({ type: "gridMoleculeExported", name: savedName });
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              reply({ type: "gridMoleculeExportError", error: message });
+              pushErrorStatus(error, "Molecule export failed");
+            }
+          })();
+          return;
+        }
+        if (body?.type === "saveGrid") {
+          const text = typeof body.text === "string" ? body.text : "";
+          const targetDocument = body.documentId
+            ? documents.find((document) => document.id === body.documentId)
+            : null;
+          const reply = (bodyPayload: Record<string, unknown>) => {
+            postMessageToViewerSource(event.source, {
+              source: "burrete-grid-host",
+              body: {
+                documentId: body.documentId,
+                ...bodyPayload,
+              },
+            });
+          };
+          void (async () => {
+            try {
+              if (!targetDocument?.path || targetDocument.virtual) {
+                throw new Error("This grid document cannot be overwritten. Use Save As instead.");
+              }
+              if (!isTauriRuntime()) {
+                const name = safeExportFileName(body.name ?? basename(targetDocument.path));
+                downloadTextFile(name, text);
+                pushStatus(`Saved ${name}`);
+                reply({ type: "gridSaved", name });
+                return;
+              }
+              const savedPath = await invoke<string>("save_text_as", {
+                text,
+                outputPath: targetDocument.path,
+              });
+              const savedName = basename(savedPath);
+              setDirtyGridDocuments((previous) => {
+                const next = new Set(previous);
+                if (body.documentId) next.delete(body.documentId);
+                return next;
+              });
+              pushStatus(`Saved ${savedName}`);
+              reply({ type: "gridSaved", name: savedName });
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              reply({ type: "gridSaveError", error: message });
+              pushErrorStatus(error, "Grid Save failed");
+            }
+          })();
+          return;
+        }
         if (body?.type === "saveGridAs") {
           const text = typeof body.text === "string" ? body.text : "";
           const name = safeExportFileName(body.name ?? "grid-save-as.csv");
@@ -1624,6 +2221,11 @@ export default function App() {
               if (!isTauriRuntime()) {
                 downloadTextFile(name, text);
                 pushStatus(`Saved ${name}`);
+                setDirtyGridDocuments((previous) => {
+                  const next = new Set(previous);
+                  if (body.documentId) next.delete(body.documentId);
+                  return next;
+                });
                 reply({ type: "gridSavedAs", name });
                 return;
               }
@@ -1634,6 +2236,11 @@ export default function App() {
               if (!outputPath) return;
               const savedPath = await invoke<string>("save_text_as", { text, outputPath });
               const savedName = basename(savedPath);
+              setDirtyGridDocuments((previous) => {
+                const next = new Set(previous);
+                if (body.documentId) next.delete(body.documentId);
+                return next;
+              });
               pushStatus(`Saved ${savedName}`);
               reply({ type: "gridSavedAs", name: savedName });
             } catch (error) {
@@ -1687,6 +2294,43 @@ export default function App() {
                   documentId: body.documentId,
                   error: error instanceof Error ? error.message : String(error),
                 },
+              });
+            }
+          })();
+          return;
+        }
+        if (body?.type === "readStructureText") {
+          if (!body.requestId || !body.documentId) return;
+          const reply = (bodyPayload: Record<string, unknown>) => {
+            postMessageToViewerSource(event.source, {
+              source: "burrete-grid-host",
+              body: {
+                requestId: body.requestId,
+                documentId: body.documentId,
+                ...bodyPayload,
+              },
+            });
+          };
+          if (!isTauriRuntime()) {
+            reply({
+              type: "gridError",
+              error: "Desktop file reading is unavailable outside the Tauri runtime.",
+            });
+            return;
+          }
+          void (async () => {
+            try {
+              const text = await invoke<string>("read_structure_text", {
+                path: typeof body.path === "string" ? body.path : "",
+              });
+              reply({
+                type: "structureText",
+                text,
+              });
+            } catch (error) {
+              reply({
+                type: "gridError",
+                error: error instanceof Error ? error.message : String(error),
               });
             }
           })();
@@ -1993,7 +2637,18 @@ export default function App() {
           try {
             const bytes = Uint8Array.from(atob(textBase64), (char) => char.charCodeAt(0));
             const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
-            openKetcherWithFragment(title, text);
+            const rowIndex = Number(body.rowIndex);
+            openKetcherWithFragment(title, text, body.gridEdit === true && body.documentId && Number.isFinite(rowIndex)
+              ? {
+                  kind: "grid-row",
+                  documentId: body.documentId,
+                  rowIndex,
+                  title,
+                  extension: typeof body.extension === "string" && body.extension.trim()
+                    ? body.extension.trim().replace(/^\./u, "")
+                    : "sdf",
+                }
+              : undefined);
           } catch (error) {
             pushStatus(`Open in Ketcher failed: ${error instanceof Error ? error.message : String(error)}`, "error");
           }
@@ -2006,6 +2661,11 @@ export default function App() {
           ? body.path.trim()
           : targetDocument?.path;
         if (targetPath) {
+          const virtualText = readBrowserDevVirtualTextDocument(targetPath);
+          if (virtualText !== null) {
+            openKetcherWithFragment(title, virtualText);
+            return;
+          }
           openKetcherWithStructures([targetPath]);
         }
         return;
@@ -2097,15 +2757,15 @@ export default function App() {
       skipNextPreferenceRefreshRef.current = false;
       return;
     }
-    const paths = Array.from(new Set(tabs
-      .map((tab) => tab.location.kind === "file" ? tab.location.path : null)
-      .filter((path): path is string => typeof path === "string" && !isTemporaryDocumentPath(path))));
-    if (paths.length === 0) return;
+    const path = activeTab?.location.kind === "file" && !isTemporaryDocumentPath(activeTab.location.path)
+      ? activeTab.location.path
+      : null;
+    if (!path) return;
     const restoreTabId = activeTabId;
-    void openDocuments(paths).then(() => {
+    void openDocuments([path]).then(() => {
       if (restoreTabId) setActiveTab(restoreTabId);
     });
-    // Preferences refresh all open runtimes so inactive tabs do not keep stale renderer/theme output.
+    // Preferences refresh only the mounted file runtime. Inactive file tabs are unloaded.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preferences]);
 
@@ -2178,9 +2838,96 @@ export default function App() {
     [closeSidebar, setSidebarWidth, sidebarWidth],
   );
 
+  const startRightDockResize = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      setRightDockDragging(true);
+      const startX = event.clientX;
+      const startWidth = rightDockWidth;
+      let closedByDrag = false;
+      const previousCursor = document.documentElement.style.cursor;
+      const previousUserSelect = document.body.style.userSelect;
+      document.documentElement.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      const onMove = (move: PointerEvent) => {
+        const nextWidth = startWidth + startX - move.clientX;
+        if (nextWidth <= RIGHT_DOCK_CLOSE_THRESHOLD) {
+          if (!closedByDrag) {
+            closedByDrag = true;
+            setDockOpen("right", false);
+          }
+          return;
+        }
+        if (closedByDrag) {
+          closedByDrag = false;
+          setDockOpen("right", true);
+        }
+        setDockSize("right", nextWidth);
+      };
+      const stop = () => {
+        setRightDockDragging(false);
+        document.documentElement.style.cursor = previousCursor;
+        document.body.style.userSelect = previousUserSelect;
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", stop);
+        window.removeEventListener("pointercancel", stop);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", stop);
+      window.addEventListener("pointercancel", stop);
+    },
+    [rightDockWidth, setDockOpen, setDockSize],
+  );
+
+  const startBottomDockResize = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      setBottomDockDragging(true);
+      const startY = event.clientY;
+      const startHeight = bottomDockHeight;
+      let closedByDrag = false;
+      const previousCursor = document.documentElement.style.cursor;
+      const previousUserSelect = document.body.style.userSelect;
+      document.documentElement.style.cursor = "row-resize";
+      document.body.style.userSelect = "none";
+      const onMove = (move: PointerEvent) => {
+        const nextHeight = startHeight + startY - move.clientY;
+        if (nextHeight <= BOTTOM_DOCK_CLOSE_THRESHOLD) {
+          if (!closedByDrag) {
+            closedByDrag = true;
+            setDockOpen("bottom", false);
+          }
+          return;
+        }
+        if (closedByDrag) {
+          closedByDrag = false;
+          setDockOpen("bottom", true);
+        }
+        setDockSize("bottom", nextHeight);
+      };
+      const stop = () => {
+        setBottomDockDragging(false);
+        document.documentElement.style.cursor = previousCursor;
+        document.body.style.userSelect = previousUserSelect;
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", stop);
+        window.removeEventListener("pointercancel", stop);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", stop);
+      window.addEventListener("pointercancel", stop);
+    },
+    [bottomDockHeight, setDockOpen, setDockSize],
+  );
+
   const actions = useMemo<ShellActions>(() => ({
     chooseFiles,
-    openStructurePaths: openDocuments,
+    openStructurePaths: async (paths: string[]) => {
+      await openDocuments(paths);
+    },
+    openPaths,
     openStructureRecords,
     openRecentStructure,
     openMostRecentStructure,
@@ -2195,9 +2942,12 @@ export default function App() {
     openCommandPalette,
     openClipboard,
     openSettings,
+    openSettingsSection,
+    backToApp,
     openKetcher,
     openKetcherWithStructures,
     openFepNetworkPreview,
+    applyKetcherToGridRow,
     openFepSetupWorkspace,
     openKetcherSketch,
     saveKetcherDraft: setKetcherDraftMolfile,
@@ -2206,37 +2956,89 @@ export default function App() {
     chooseWorkspace,
     openWorkspaceFolder,
     openProjectFolder,
+    togglePinnedProjectRoot: (root: string) => {
+      togglePinnedProjectRoot(root);
+      pushStatus("Project pin updated");
+    },
+    renameProjectRoot: (root: string, name: string) => {
+      renameProjectRoot(root, name);
+      pushStatus(name.trim() ? "Project renamed" : "Project name reset");
+    },
+    removeProjectRoot: (root: string) => {
+      removeProjectRoot(root);
+      pushStatus("Project removed");
+    },
     toggleSidebar,
+    toggleDock,
+    setDockOpen,
+    setDockSize,
+    openDockTab,
+    closeDockTab,
+    setDockActiveTab,
+    setDockDocument,
+    setDockTool,
+    addDockDrop: (input) => {
+      addDockDrop(input);
+      const count = input.payload.paths.length + input.payload.records.length + (input.payload.items?.length ?? 0);
+      const target = input.area === "right" ? "right dock" : "bottom dock";
+      pushStatus(`Added ${count} item${count === 1 ? "" : "s"} to ${target}`);
+    },
+    openDockPayload,
     toggleProjectsOpen,
     setExpandedProjectIds,
     setSidebarQuery,
     toggleProjectExpanded,
     togglePinnedStructure,
     closeDocument: (id: string) => {
+      if (!confirmDiscardDirtyGridDocument(id)) return;
       closeGridRuntime(id);
+      setDirtyGridDocuments((previous) => {
+        const next = new Set(previous);
+        next.delete(id);
+        return next;
+      });
       closeDocument(id);
     },
     closeTab: (id: string) => {
       const tab = tabs.find((candidate) => candidate.id === id);
+      const documentIds: string[] = [];
       if (tab?.location.kind === "file") {
         const location = tab.location;
         const document = documents.find((candidate) => (
           candidate.id === location.documentId ||
           candidate.path === location.path
         ));
-        closeGridRuntime(document?.id ?? location.documentId);
+        const targetDocumentId = document?.id ?? location.documentId ?? null;
+        if (targetDocumentId) documentIds.push(targetDocumentId);
+        if (!confirmDiscardDirtyGridDocuments(documentIds)) return;
+        closeGridRuntime(targetDocumentId);
+      }
+      if (documentIds.length > 0) {
+        setDirtyGridDocuments((previous) => {
+          const next = new Set(previous);
+          for (const documentId of documentIds) next.delete(documentId);
+          return next;
+        });
       }
       closeTab(id);
     },
     closeActiveDocument: () => {
+      if (!confirmDiscardDirtyGridDocument(activeDocument?.id)) return;
       closeGridRuntime(activeDocument?.id);
+      setDirtyGridDocuments((previous) => {
+        const next = new Set(previous);
+        if (activeDocument?.id) next.delete(activeDocument.id);
+        return next;
+      });
       closeActiveDocument();
-      pushStatus("Closed active structure");
+      pushStatus("Closed active tab");
     },
     clearAllDocuments: () => {
+      if (!confirmDiscardDirtyGridDocuments(documents.map((document) => document.id))) return;
       for (const document of documents) closeGridRuntime(document.id);
+      setDirtyGridDocuments(new Set());
       closeAllDocuments();
-      pushStatus("Closed all structures");
+      pushStatus("Closed all tabs");
     },
     openDockingDocument,
     openDockingStructureRecords,
@@ -2246,10 +3048,13 @@ export default function App() {
     saveMoleculeCollectionAs,
     revealActiveDocument,
     revealDocument,
+    revealPath,
     copyActiveDocumentPath,
     copyDocumentPath,
+    copyPath,
     showActiveDocumentMetadata,
     showDocumentMetadata,
+    showTextFileMetadata,
     exportActivePreviewAsPng,
     exportActivePreviewAsSvg,
     setStructureDragActive,
@@ -2303,12 +3108,13 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [activeDocument?.id, addXyzrenderSheetItemsToDocument, appendGridRecords, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeGridRuntime, closeTab, copyActiveDocumentPath, copyDocumentPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, installUpdate, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openProjectFolder, openRecentStructure, openSettings, openStructureRecords, openWorkspaceFolder, pushErrorStatus, pushStatus, resetQuickLook, revealActiveDocument, revealDocument, saveMoleculeCollectionAs, selectDocument, setActiveTab, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, tabs, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
+  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyKetcherToGridRow, backToApp, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, installUpdate, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openWorkspaceFolder, pushErrorStatus, pushStatus, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, saveMoleculeCollectionAs, selectDocument, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
   const state: ShellViewState = {
     documents,
+    textDocuments,
     tabs,
     activeTab,
     activeTabId,
@@ -2325,6 +3131,21 @@ export default function App() {
     sidebarOpen,
     sidebarWidth,
     sidebarDragging,
+    rightDockOpen,
+    rightDockWidth,
+    rightDockTabs,
+    rightDockActiveTab,
+    rightDockDocumentId,
+    rightDockTool,
+    rightDockDragging,
+    bottomDockOpen,
+    bottomDockHeight,
+    bottomDockTabs,
+    bottomDockActiveTab,
+    bottomDockDocumentId,
+    bottomDockTool,
+    bottomDockDragging,
+    dockDroppedStructures,
     structureDragActive,
     poseReviewSelections,
     ketcherImportRequest,
@@ -2348,6 +3169,8 @@ export default function App() {
         onDismissStatus={clearStatus}
         onToggleSidebar={toggleSidebar}
         onResizeStart={startSidebarResize}
+        onRightDockResizeStart={startRightDockResize}
+        onBottomDockResizeStart={startBottomDockResize}
         onDragEnter={handleBrowserDrag}
         onDragOver={handleBrowserDrag}
         onDragLeave={handleBrowserDragLeave}
@@ -2395,6 +3218,13 @@ function postMessageToViewerSource(source: MessageEventSource | null, payload: u
   iframe?.contentWindow?.postMessage(payload, "*");
 }
 
+function normalizeViewerRuntimeRelativePath(path: string) {
+  const normalized = String(path || "").replaceAll("\\", "/");
+  const parts = normalized.split("/").filter(Boolean);
+  if (parts.length === 0 || parts.some((part) => part === "." || part === "..")) return null;
+  return parts.join("/");
+}
+
 function summarizeErrors(errors: string[]) {
   const [first = "Unknown error", ...rest] = errors.map(summarizeErrorText);
   return rest.length > 0
@@ -2408,6 +3238,29 @@ function summarizeErrorText(message: string) {
 
 function isFepGraphmlPath(path: string) {
   return /\.graphml$/iu.test(path);
+}
+
+function pathExtension(path: string) {
+  const fileName = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+  const index = fileName.lastIndexOf(".");
+  if (index <= 0 || index === fileName.length - 1) return "";
+  return fileName.slice(index + 1).toLowerCase();
+}
+
+function ketcherDraftMolfileFromImportText(text: string) {
+  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trimEnd();
+  if (!normalized.trim()) return null;
+  const records = normalized.split(/\n\$\$\$\$\s*(?:\n|$)/u).map((record) => record.trimEnd()).filter(Boolean);
+  if (records.length === 1 && normalized !== records[0]) {
+    const [record] = records;
+    return record && looksLikeMolfile(record) ? record + "\n" : null;
+  }
+  return looksLikeMolfile(normalized) ? normalized + "\n" : null;
+}
+
+function looksLikeMolfile(text: string) {
+  const lines = text.split("\n");
+  return lines.length >= 4 && /^\s*\d+\s+\d+\b/u.test(lines[3] ?? "");
 }
 
 function downloadTextFile(fileName: string, text: string) {

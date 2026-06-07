@@ -7,6 +7,11 @@ type SortOption = {
   label: string;
 };
 
+type XyzrenderPresetOption = {
+  value: string;
+  label: string;
+};
+
 type GridControlProps = {
   format: "sdf" | "smiles";
   label: string;
@@ -14,6 +19,9 @@ type GridControlProps = {
   selectionEnabled: boolean;
   substructureSearch: boolean;
   supportsXyzrenderCards: boolean;
+  cardRenderer: "rdkit" | "xyzrender";
+  xyzrenderPreset: string;
+  xyzrenderPresetOptions: XyzrenderPresetOption[];
   ketcherOpen: boolean;
   rendererSwitch: boolean;
   sortOptions: SortOption[];
@@ -24,10 +32,13 @@ type GridControlProps = {
   onSelectAll: () => void;
   onClearSelection: () => void;
   onCopySelected: () => void;
+  onSaveGrid: () => void;
   onSaveGridAs: () => void;
+  onUndoGridEdit: () => void;
   onExportSmiles: () => void;
   onExportCSV: () => void;
   onSetCardRenderer: (value: "rdkit" | "xyzrender") => void;
+  onXyzrenderPresetChange: (value: string) => void;
   onOpenKetcher: () => void;
   onRendererSwitch: (value: "molstar") => void;
   onRdkitUseInputCoordsChange: (checked: boolean) => void;
@@ -61,7 +72,9 @@ function GridControls(props: GridControlProps) {
         </div>
         <div className="buret-actions" hidden={!props.exportEnabled}>
           <button id="copy-selected" type="button" onClick={props.onCopySelected}>Copy selected</button>
+          <button id="save-grid" type="button" disabled onClick={props.onSaveGrid}>Save</button>
           <button id="save-grid-as" type="button" onClick={props.onSaveGridAs}>Save As...</button>
+          <button id="undo-grid-edit" type="button" disabled onClick={props.onUndoGridEdit}>Undo</button>
           <button id="export-smi" type="button" onClick={props.onExportSmiles}>Export SMILES</button>
           <button id="export-csv" type="button" onClick={props.onExportCSV}>Export CSV</button>
         </div>
@@ -134,6 +147,26 @@ function GridControls(props: GridControlProps) {
               </button>
             ) : null}
           </div>
+          {props.supportsXyzrenderCards ? (
+            <label
+              id="xyzrender-preset-control"
+              className="buret-grid-xyzrender-preset-control"
+              hidden={props.cardRenderer !== "xyzrender"}
+            >
+              Style
+              <select
+                id="xyzrender-preset"
+                value={props.xyzrenderPreset}
+                disabled={props.cardRenderer !== "xyzrender"}
+                aria-label="xyzrender card style"
+                onChange={(event) => props.onXyzrenderPresetChange(event.currentTarget.value)}
+              >
+                {props.xyzrenderPresetOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <label id="rdkit-use-input-coords-control" className="buret-rdkit-coords-control" hidden>
             <input
               id="rdkit-use-input-coords"

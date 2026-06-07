@@ -24,6 +24,7 @@ export type SidebarProject = {
   title: string;
   subtitle: string | null;
   isExplicit: boolean;
+  isPinned: boolean;
   isActive: boolean;
   items: SidebarProjectItem[];
   matchText: string;
@@ -35,16 +36,25 @@ export function buildSidebarProjects({
   documents,
   recentStructures,
   projectRoots,
+  pinnedProjectRoots = [],
+  projectNameOverrides = {},
   activeDocumentId,
   pinnedStructurePaths = [],
 }: {
   documents: ViewerDocument[];
   recentStructures: RecentStructure[];
   projectRoots: string[];
+  pinnedProjectRoots?: string[];
+  projectNameOverrides?: Record<string, string>;
   activeDocumentId: string | null;
   pinnedStructurePaths?: string[];
 }) {
   const normalizedRoots = dedupeRoots(projectRoots.filter((root) => !isTemporaryDocumentPath(root)));
+  const pinnedRoots = new Set(
+    pinnedProjectRoots
+      .filter((root) => !isTemporaryDocumentPath(root))
+      .map((root) => normalizePath(root)),
+  );
   const pinnedPaths = new Set(
     pinnedStructurePaths
       .filter((path) => !isTemporaryDocumentPath(path))
@@ -56,7 +66,7 @@ export function buildSidebarProjects({
 
   for (const rootPath of normalizedRoots) {
     const projectId = `project:${rootPath}`;
-    projects.set(projectId, createProject(projectId, rootPath, true));
+    projects.set(projectId, createProject(projectId, rootPath, true, pinnedRoots, projectNameOverrides));
   }
 
   for (const document of projectDocuments) {
@@ -139,7 +149,7 @@ function addStructureToProjects(
   const rootPath = resolveProjectRoot(normalizedPath, projectRoots) ?? parentDirectory(normalizedPath);
   const projectId = rootPath ? `project:${rootPath}` : "project:loose";
   const explicitRoot = rootPath ? projectRoots.includes(rootPath) : false;
-  const project = projects.get(projectId) ?? createProject(projectId, rootPath, explicitRoot);
+  const project = projects.get(projectId) ?? createProject(projectId, rootPath, explicitRoot, new Set(), {});
   const relativePath = rootPath ? relativeToRoot(rootPath, normalizedPath) : basename(normalizedPath);
   const itemTitle = basename(normalizedPath) || structure.title;
   const item = {
@@ -162,7 +172,13 @@ function addStructureToProjects(
   projects.set(projectId, project);
 }
 
-function createProject(id: string, rootPath: string | null, isExplicit: boolean): SidebarProject {
+function createProject(
+  id: string,
+  rootPath: string | null,
+  isExplicit: boolean,
+  pinnedRoots: Set<string>,
+  projectNameOverrides: Record<string, string>,
+): SidebarProject {
   if (!rootPath) {
     return {
       id,
@@ -170,18 +186,21 @@ function createProject(id: string, rootPath: string | null, isExplicit: boolean)
       title: "Loose Files",
       subtitle: null,
       isExplicit,
+      isPinned: false,
       isActive: false,
       items: [],
       matchText: "loose files",
     };
   }
 
+  const title = projectNameOverrides[rootPath]?.trim() || basename(rootPath) || rootPath;
   return {
     id,
     rootPath,
-    title: basename(rootPath) || rootPath,
+    title,
     subtitle: parentDirectory(rootPath),
     isExplicit,
+    isPinned: pinnedRoots.has(rootPath),
     isActive: false,
     items: [],
     matchText: "",
@@ -204,5 +223,6 @@ function compareProjectItems(left: SidebarProjectItem, right: SidebarProjectItem
 }
 
 function compareProjects(left: SidebarProject, right: SidebarProject) {
+  if (left.isPinned !== right.isPinned) return left.isPinned ? -1 : 1;
   return left.title.localeCompare(right.title);
 }

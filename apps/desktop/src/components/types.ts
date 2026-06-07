@@ -1,8 +1,10 @@
-import type { FepSetupRequest, RecentStructure, ViewerDocument, ViewerPreferences } from "../types";
+import type { FepSetupRequest, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences } from "../types";
 import type { MoleculeTab } from "../stores/molecule-store";
 import type { StructureDragPayload } from "../lib/structure-drag";
 import type { UpdatePreferences, UpdateState } from "../update";
 import type { SidebarProject } from "../lib/sidebar-projects";
+import type { SettingsSectionId } from "../lib/settings-sections";
+import type { DockArea, DockDropInput, DockDroppedStructure, DockTab, DockTabKind, DockToolKind } from "../lib/dock";
 
 export type AppPage = "viewer" | "settings";
 export type StatusKind = "info" | "error";
@@ -32,6 +34,13 @@ export type KetcherImportRequest = {
   fragments?: Array<{
     title: string;
     text: string;
+    source?: {
+      kind: "grid-row";
+      documentId: string;
+      rowIndex: number;
+      title: string;
+      extension: string;
+    };
   }>;
 };
 
@@ -49,6 +58,7 @@ export type BuildInfo = {
 export type ShellActions = {
   chooseFiles: () => void | Promise<void>;
   openStructurePaths: (paths: string[]) => void | Promise<void>;
+  openPaths: (paths: string[]) => void | Promise<void>;
   openStructureRecords: (records: StructureDragPayload["records"]) => void | Promise<void>;
   openRecentStructure: (structure: RecentStructure) => void | Promise<void>;
   openMostRecentStructure: () => void | Promise<void>;
@@ -63,9 +73,18 @@ export type ShellActions = {
   openCommandPalette: () => void;
   openClipboard: () => void | Promise<void>;
   openSettings: () => void;
+  openSettingsSection: (section: SettingsSectionId) => void;
+  backToApp: () => void;
   openKetcher: () => void;
   openKetcherWithStructures: (paths: string[], fragments?: KetcherImportRequest["fragments"]) => void;
   openFepNetworkPreview: (request?: { title?: string; graphmlText?: string }) => void;
+  applyKetcherToGridRow: (request: {
+    documentId: string;
+    rowIndex: number;
+    title: string;
+    extension: string;
+    text: string;
+  }) => void;
   openFepSetupWorkspace: (request: FepSetupRequest) => void;
   openKetcherSketch: (request: KetcherSketchRequest) => void | Promise<void>;
   saveKetcherDraft: (molfile: string) => void;
@@ -74,7 +93,20 @@ export type ShellActions = {
   chooseWorkspace: () => void | Promise<void>;
   openWorkspaceFolder: () => void | Promise<void>;
   openProjectFolder: (path: string | null) => void | Promise<void>;
+  togglePinnedProjectRoot: (root: string) => void;
+  renameProjectRoot: (root: string, name: string) => void;
+  removeProjectRoot: (root: string) => void;
   toggleSidebar: () => void;
+  toggleDock: (area: DockArea) => void;
+  setDockOpen: (area: DockArea, open: boolean) => void;
+  setDockSize: (area: DockArea, size: number) => void;
+  openDockTab: (area: DockArea, kind: DockTabKind) => void;
+  closeDockTab: (area: DockArea, tabId: string) => void;
+  setDockActiveTab: (area: DockArea, kind: DockTabKind) => void;
+  setDockDocument: (area: DockArea, documentId: string | null) => void;
+  setDockTool: (area: DockArea, tool: DockToolKind | null) => void;
+  addDockDrop: (input: DockDropInput) => void;
+  openDockPayload: (input: DockDropInput) => void | Promise<void>;
   toggleProjectsOpen: () => void;
   setExpandedProjectIds: (projectIds: string[]) => void;
   setSidebarQuery: (query: string) => void;
@@ -92,10 +124,13 @@ export type ShellActions = {
   saveMoleculeCollectionAs: (targetPath: string) => void | Promise<void>;
   revealActiveDocument: () => void | Promise<void>;
   revealDocument: (document: ViewerDocument) => void | Promise<void>;
+  revealPath: (path: string, label?: string) => void | Promise<void>;
   copyActiveDocumentPath: () => void | Promise<void>;
   copyDocumentPath: (document: ViewerDocument) => void | Promise<void>;
+  copyPath: (path: string, label?: string) => void | Promise<void>;
   showActiveDocumentMetadata: () => void | Promise<void>;
   showDocumentMetadata: (document: ViewerDocument) => void | Promise<void>;
+  showTextFileMetadata: (document: TextFileDocument) => void | Promise<void>;
   exportActivePreviewAsPng: () => void | Promise<void>;
   exportActivePreviewAsSvg: () => void | Promise<void>;
   setStructureDragActive: (active: boolean) => void;
@@ -113,6 +148,7 @@ export type ShellActions = {
 
 export type ShellViewState = {
   documents: ViewerDocument[];
+  textDocuments: TextFileDocument[];
   tabs: MoleculeTab[];
   activeTab: MoleculeTab | null;
   activeTabId: string | null;
@@ -129,6 +165,21 @@ export type ShellViewState = {
   sidebarOpen: boolean;
   sidebarWidth: number;
   sidebarDragging: boolean;
+  rightDockOpen: boolean;
+  rightDockWidth: number;
+  rightDockTabs: DockTab[];
+  rightDockActiveTab: DockTabKind;
+  rightDockDocumentId: string | null;
+  rightDockTool: DockToolKind | null;
+  rightDockDragging: boolean;
+  bottomDockOpen: boolean;
+  bottomDockHeight: number;
+  bottomDockTabs: DockTab[];
+  bottomDockActiveTab: DockTabKind;
+  bottomDockDocumentId: string | null;
+  bottomDockTool: DockToolKind | null;
+  bottomDockDragging: boolean;
+  dockDroppedStructures: DockDroppedStructure[];
   structureDragActive: boolean;
   poseReviewSelections: Record<string, number>;
   ketcherImportRequest: KetcherImportRequest | null;

@@ -500,6 +500,25 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.buret-molecule-context-mode {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  margin: 2px 2px 6px;
+  padding: 2px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--buret-toolbar-color) 8%, transparent);
+}
+.buret-molecule-context-menu .buret-molecule-context-mode-button {
+  min-height: 26px;
+  border-radius: 7px;
+  padding: 4px 8px;
+  font: 700 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  text-align: center;
+}
+.buret-molecule-context-menu .buret-molecule-context-mode-button[aria-pressed="true"] {
+  background: var(--buret-menu-input-background);
+}
 .buret-molecule-context-menu button {
   display: block;
   width: 100%;
@@ -1006,6 +1025,107 @@ body.buret-docking-pose-controls-active .msp-traj-controls {
   min-width: 60px;
   accent-color: var(--buret-molstar-accent);
   cursor: pointer;
+}
+.buret-agent-panel {
+  position: fixed;
+  top: 64px;
+  right: 14px;
+  bottom: 14px;
+  z-index: 55;
+  display: flex;
+  flex-direction: column;
+  width: min(420px, calc(100vw - 28px));
+  border: 1px solid var(--buret-menu-border);
+  border-radius: 8px;
+  background: var(--buret-menu-background);
+  color: var(--buret-toolbar-color);
+  box-shadow: var(--buret-menu-shadow);
+  overflow: hidden;
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+.buret-agent-panel.hidden {
+  display: none;
+}
+.buret-agent-panel-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 40px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--buret-menu-border);
+  background: var(--buret-menu-section-background);
+}
+.buret-agent-panel-header strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.buret-agent-panel-header button {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 8px;
+  color: inherit;
+  background: var(--buret-menu-input-background);
+  cursor: pointer;
+}
+.buret-agent-panel-body {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 12px;
+}
+.buret-agent-panel-markdown {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.buret-agent-panel-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.buret-agent-panel-table th,
+.buret-agent-panel-table td {
+  padding: 6px 7px;
+  border: 1px solid var(--buret-menu-border);
+  text-align: left;
+  vertical-align: top;
+}
+.buret-agent-panel-table th {
+  position: sticky;
+  top: 0;
+  background: var(--buret-menu-section-background);
+}
+.buret-agent-panel-chart {
+  display: grid;
+  gap: 8px;
+}
+.buret-agent-panel-chart-row {
+  display: grid;
+  grid-template-columns: minmax(70px, 0.9fr) minmax(80px, 2fr) minmax(44px, auto);
+  gap: 8px;
+  align-items: center;
+}
+.buret-agent-panel-chart-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.buret-agent-panel-chart-row i {
+  display: block;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--buret-molstar-accent);
+}
+.buret-agent-panel-chart-row strong {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 @media (prefers-reduced-motion: reduce) {
   .buret-docking-pose-animation {

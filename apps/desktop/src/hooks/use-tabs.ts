@@ -15,6 +15,10 @@ export function useOpenDocuments() {
   return useMoleculeStore((state) => state.documents);
 }
 
+export function useOpenTextDocuments() {
+  return useMoleculeStore((state) => state.textDocuments);
+}
+
 export function useTabOrder() {
   return useMoleculeStore((state) => state.tabs.map((tab) => tab.id));
 }
@@ -43,8 +47,24 @@ export function useAddTabs() {
   return useMoleculeStore((state) => state.addDocuments);
 }
 
+export function useAddBackgroundDocuments() {
+  return useMoleculeStore((state) => state.addBackgroundDocuments);
+}
+
+export function useAddTextTabs() {
+  return useMoleculeStore((state) => state.addTextDocuments);
+}
+
+export function useAddBackgroundTextDocuments() {
+  return useMoleculeStore((state) => state.addBackgroundTextDocuments);
+}
+
 export function useOpenDocumentsInActiveTab() {
   return useMoleculeStore((state) => state.openDocumentsInActiveTab);
+}
+
+export function useOpenTextDocumentsInActiveTab() {
+  return useMoleculeStore((state) => state.openTextDocumentsInActiveTab);
 }
 
 export function useSetDocuments() {
@@ -73,6 +93,14 @@ export function useOpenPoseReviewTab() {
 
 export function useOpenSettingsTab() {
   return useMoleculeStore((state) => state.openSettingsTab);
+}
+
+export function useOpenSettingsSection() {
+  return useMoleculeStore((state) => state.openSettingsSection);
+}
+
+export function useActivateLastNonSettingsTab() {
+  return useMoleculeStore((state) => state.activateLastNonSettingsTab);
 }
 
 export function useCanNavigateBack() {

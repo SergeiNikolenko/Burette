@@ -22,6 +22,8 @@ const [
   menu,
   startupSource,
   startupCommand,
+  agentIntegrationCommand,
+  agentSessionHook,
   documentsCommand,
   gridCommand,
   previewCacheCommand,
@@ -89,6 +91,8 @@ const [
   source('apps/desktop/src-tauri/src/menu.rs'),
   source('apps/desktop/src-tauri/src/startup.rs'),
   source('apps/desktop/src-tauri/src/commands/startup.rs'),
+  source('apps/desktop/src-tauri/src/commands/agent_integration.rs'),
+  source('apps/desktop/src/hooks/use-agent-session.ts'),
   source('apps/desktop/src-tauri/src/commands/documents.rs'),
   source('apps/desktop/src-tauri/src/commands/grid.rs'),
   source('apps/desktop/src-tauri/src/commands/preview_cache.rs'),
@@ -187,13 +191,16 @@ assert.match(performanceDocsSource, /molecules_fts/);
 assert.match(performanceDocsSource, /BURRETE_PERF_RUN_GRID_FTS=1 \.\/scripts\/perf-smoke\.sh/);
 assert.match(performanceDocsSource, /Do Not Regress/);
 
-for (const moduleName of ['documents', 'grid', 'preview_cache', 'quicklook', 'shell', 'startup', 'updater']) {
+for (const moduleName of ['agent_integration', 'documents', 'grid', 'preview_cache', 'quicklook', 'shell', 'startup', 'updater']) {
   assert.match(commandsIndex, new RegExp(`pub\\(crate\\) mod ${moduleName};`));
 }
 
 for (const commandPath of [
+  'commands::agent_integration::agent_integration_status',
   'commands::startup::startup_documents',
+  'commands::startup::startup_agent_session',
   'commands::documents::pick_open_targets',
+  'commands::documents::classify_open_paths',
   'commands::documents::open_documents',
   'commands::documents::open_delimited_grid_document',
   'commands::documents::read_structure_text',
@@ -211,6 +218,7 @@ for (const commandPath of [
   'commands::shell::open_logs_folder',
   'commands::shell::open_external_url',
   'commands::shell::read_external_preview_svg',
+  'commands::shell::read_viewer_runtime_file_base64',
   'commands::shell::reveal_path',
   'commands::shell::write_base64_file',
   'commands::shell::write_text_file',
@@ -225,12 +233,47 @@ assert.match(lib, /disable_macos_state_restoration\(\);/);
 assert.match(lib, /ApplePersistenceIgnoreState/);
 assert.match(lib, /NSQuitAlwaysKeepsWindows/);
 assert.match(startupCommand, /#\[tauri::command\]\s+pub\(crate\) fn startup_documents/);
+assert.match(startupCommand, /#\[tauri::command\]\s+pub\(crate\) fn startup_agent_session/);
+assert.match(agentIntegrationCommand, /#\[tauri::command\]\s+pub\(crate\) fn agent_integration_status/);
+assert.match(agentIntegrationCommand, /PLUGIN_RELATIVE_PATH: &str = "plugins\/burette-agent"/);
+assert.match(agentIntegrationCommand, /BURRETE_AGENT_PLUGIN_DIR/);
+assert.match(agentIntegrationCommand, /schema: "burette_agent_integration\.v1"/);
+assert.match(agentIntegrationCommand, /find_codex_plugin_manifest/);
+assert.doesNotMatch(agentIntegrationCommand, /Command::new|spawn|remove_file|write\(/);
 assert.match(startupSource, /pub\(crate\) enum LaunchMode/);
 assert.match(startupSource, /BURRETE_LAUNCH_MODE/);
 assert.match(startupSource, /--burrete-launch-mode=register/);
+assert.match(startupSource, /--burrete-agent-session/);
+assert.match(startupSource, /pub\(crate\) fn agent_session_from_argv/);
+assert.match(startupSource, /pub\(crate\) fn emit_agent_session/);
+assert.match(lib, /startup::emit_agent_session\(app, session_dir\)/);
+assert.match(agentSessionHook, /invoke<string \| null>\("startup_agent_session"\)/);
+assert.match(agentSessionHook, /listen<string>\("agent-session"/);
+assert.match(agentSessionHook, /joinSessionPath\(sessionDir, "observe\.json"\)/);
+assert.match(agentSessionHook, /joinSessionPath\(sessionDir, "actions\.json"\)/);
+assert.match(agentSessionHook, /workspacePanelsRef/);
+assert.match(agentSessionHook, /workspacePanels/);
+assert.match(agentSessionHook, /viewerAgentStatesRef/);
+assert.match(agentSessionHook, /viewerAgentStateFromMessage/);
+assert.match(agentSessionHook, /type === "agentReady"/);
+assert.match(agentSessionHook, /agent-panel:\$\{area\}:\$\{kind\}:\$\{document\.title\}/);
+assert.match(agentSessionHook, /type === "open_files"/);
+assert.match(agentSessionHook, /type === "render_panel"/);
+assert.match(agentSessionHook, /render_panel kind must be markdown, table, or chart/);
+assert.match(agentSessionHook, /openTextDocuments\(\[file\], \{ background: true \}\)/);
+assert.match(agentSessionHook, /setDockDocument\(area, document\.id\)/);
+assert.match(agentSessionHook, /source: "burrete-agent-host"/);
+assert.match(agentSessionHook, /querySelectorAll<HTMLIFrameElement>\("iframe\.viewer-iframe\[data-document-id\]"\)/);
+assert.match(agentSessionHook, /item\.dataset\.documentId === activeDocument\.id/);
+assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn read_viewer_runtime_file_base64/);
+assert.match(shellCommand, /Runtime file path is outside the preview runtime directory/);
+assert.match(previewRuntimeViewer, /burrete-native-host/);
+assert.match(previewRuntimeViewer, /window\.BurreteReceiveNativeData\(body\.payload \|\| \{\}\)/);
+assert.match(previewRuntimeViewer, /window\.BurreteReceiveNativeRuntimeFile\(body\.payload \|\| \{\}\)/);
 assert.match(startupSource, /arg == "--burrete-launch-mode"/);
 assert.match(startupSource, /file_args_from_argv/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn pick_open_targets/);
+assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn classify_open_paths/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_documents/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_delimited_grid_document/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn read_structure_text/);
@@ -422,6 +465,7 @@ assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.smiles/);
 assert.doesNotMatch(installLocalScript, /broadPublicTypes/);
 assert.match(installLocalScript, /let contentTypes = documentTypes\.flatMap/);
 assert.match(installLocalScript, /for contentType in Set\(contentTypes\)/);
+assert.match(installLocalScript, /Contents\/Resources\/ViewerWeb/);
 assert.match(installLocalScript, /assert_bundled_xyzrender_runtime\(\)\s*\{/);
 assert.match(installLocalScript, /assert_bundled_xyzrender_runner\(\)\s*\{/);
 assert.match(installLocalScript, /sign_bundled_xyzrender_runtime\(\)\s*\{/);
@@ -431,13 +475,17 @@ assert.match(installLocalScript, /codesign --force --sign - --entitlements "\$RO
 assert.match(installLocalScript, /codesign --force --sign - "\$STAGING_DEST"/);
 assert.doesNotMatch(installLocalScript, /codesign --force --deep --sign - "\$STAGING_DEST"/);
 assert.match(installLocalScript, /codesign --verify --deep --strict "\$STAGING_DEST"/);
-assert.match(installLocalScript, /for attempt in 1 2 3/);
+assert.match(installLocalScript, /for attempt in \$\(seq 1 60\)/);
 assert.match(installLocalScript, /assert_bundled_xyzrender_runtime "\$STAGING_XYZRENDER_ENV" "\$STAGING_XYZRENDER_PYTHON" "before signing"/);
 assert.match(installLocalScript, /assert_bundled_xyzrender_runner "\$STAGING_XYZRENDER_ENV" "\$STAGING_XYZRENDER_PYTHON" "after signing"/);
 assert.doesNotMatch(installLocalScript, /\$STAGING_XYZRENDER_ENV\/bin\/xyzrender" --help/);
 assert.match(previewXyzrender, /bundled_xyzrender_candidates_from_executable/);
 assert.match(previewXyzrender, /Contents"\)\s*\.join\("Resources"\)\s*\.join\("xyzrender-runtime"\)/);
 assert.match(previewXyzrender, /std::env::current_exe\(\)/);
+assert.match(previewXyzrender, /fn xyzrender_batch_helper_launch/);
+assert.match(previewXyzrender, /fn bundled_xyzrender_python_launch/);
+assert.match(previewXyzrender, /join\("xyzrender-python"\)\s*\.join\("bin"\)\s*\.join\("python3"\)/);
+assert.match(previewXyzrender, /\("PYTHONPATH", site_packages\.display\(\)\.to_string\(\)\)/);
 
 assert.match(tray, /fn status_image\(\) -> tauri::image::Image<'static>/);
 assert.match(tray, /\.icon\(status_image\(\)\)/);
@@ -550,7 +598,8 @@ assert.match(gridViewerJS, /resetDocumentRuntimeState\(\);\n\s+state\.remoteMode
 assert.match(gridViewerJS, /buildUI\(cfg\);\n\s+refresh\(cfg\);\n\s+try \{\n\s+await initRDKit\(\);/);
 assert.match(gridViewerJS, /if \(state\.cardRenderer === 'rdkit'\) \{\n\s+if \(state\.remoteMode\) \{\n\s+if \(state\.rows\.length\) void renderVirtualWindow\(cfg, state\.token, \{ force: true \}\);\n\s+\} else \{\n\s+render\(cfg\);\n\s+\}\n\s+\}/);
 assert.match(gridViewerJS, /function supportsXyzrenderCards\(cfg\)/);
-assert.match(gridViewerJS, /cfg\?\.appViewer === true && cfg\?\.gridDataMode === 'bridge'/);
+assert.match(gridViewerJS, /cfg\?\.appViewer === true && \(\s*cfg\?\.gridDataMode === 'bridge'/);
+assert.doesNotMatch(gridViewerJS, /return \(cfg\?\.appViewer === true && cfg\?\.gridDataMode === 'bridge'\)\s*\|\|\s*\(typeof cfg\?\.xyzrenderEndpoint === 'string'/);
 assert.match(previewRuntimeGrid, /"pageSize": 72/);
 assert.match(moleculeGridPreview, /"pageSize": 48/);
 assert.match(gridViewerJS, /hostRequest\('renderXyzrenderCard'/);
@@ -560,10 +609,13 @@ assert.match(gridViewerJS, /void refreshRemote\(config\(\)\)/);
 assert.match(gridViewerJS, /function xyzrenderFragmentText\(record\)/);
 assert.match(gridViewerJS, /const smiles = firstLine\.trim\(\)\.split\(\/\\s\+\/u\)\[0\]/);
 assert.match(gridViewerJS, /inputDataBase64: textToBase64\(xyzrenderFragmentText\(record\)\)/);
+assert.match(gridViewerJS, /preset: currentXyzrenderPreset\(cfg\)/);
+assert.match(gridViewerJS, /preset: currentXyzrenderPreset\(job\.cfg\)/);
 assert.match(gridViewerJS, /function prepareXyzrenderCardSVG\(svg\)/);
 assert.match(gridViewerJS, /markSVGForFitting\(html, 'data-buret-xyzrender-svg'\)/);
 assert.match(gridViewerJS, /state\.cardRenderer = 'rdkit';\n\s+store\(CARD_RENDERER_STORAGE_KEY, 'rdkit'\);/);
 assert.match(gridUiTSX, /data-buret-grid-card-renderer="xyzrender"/);
+assert.match(gridUiTSX, /id="xyzrender-preset"/);
 assert.match(quickLookPreviewController, /<script src="preview-config\.js"><\/script>/);
 assert.match(quickLookPreviewController, /gridRuntimeCSP/);
 assert.match(quickLookPreviewController, /molstarRuntimeCSP/);
@@ -585,6 +637,8 @@ assert.doesNotMatch(quickLookPreviewController, /window\.BurreteDataBase64 = nul
 assert.doesNotMatch(quickLookPreviewController, /window\.BurreteDataBase64 = \\"\\\(structureData\.base64EncodedString\(\)\)\\";\\nwindow\.BurreteDataURL = '\.\/preview-data\.bin';\\n/);
 assert.doesNotMatch(quickLookPreviewController, /preview-data\.js"\), options: \[\.atomic\]/);
 assert.match(quickLookPreviewController, /renderTimeoutWorkItem\?\.cancel\(\)/);
+assert.match(quickLookPreviewController, /finishPreviewIfNeeded\(nil, requestID: requestID, cancelRenderTimeout: false\)/);
+assert.match(quickLookPreviewController, /private func finishPreviewIfNeeded\(_ error: Error\?, requestID: UUID\? = nil, cancelRenderTimeout: Bool = true\)/);
 assert.match(quickLookPreviewController, /private var previewSourceMonitor: DispatchSourceTimer\?/);
 assert.match(quickLookPreviewController, /private var pendingPreviewSourceReloadWorkItem: DispatchWorkItem\?/);
 assert.match(quickLookPreviewController, /startPreviewSourceMonitoring\(for: url\)/);
@@ -610,13 +664,14 @@ assert.doesNotMatch(quickLookPreviewController, /appendingPathComponent\("burret
 assert.doesNotMatch(quickLookPreviewController, /BurreteRDKitWasmBase64/);
 assert.match(previewRuntimeViewer, /"documentId": stable_id\(file_path\)/);
 assert.match(previewRuntimeViewer, /runtime\.join\("preview-data\.bin"\)/);
-assert.doesNotMatch(previewRuntimeViewer, /window\.BurreteDataBase64 = \{:\?\};\\nwindow\.BurreteDataURL = null;\\n/);
+assert.match(previewRuntimeViewer, /window\.BurreteDataBase64 = \\"\{\}\\";\\nwindow\.BurreteDataURL = null;\\n/);
+assert.match(previewRuntimeViewer, /STANDARD\.encode\(&payload\.data\)/);
 assert.match(previewRuntimeViewer, /window\.BurreteDockingPayloads = \{payload_text\};/);
 assert.match(previewRuntimeViewer, /window\.BurretePreviewConfigURL = \{config_js:\?\};/);
 assert.match(previewRuntimeViewer, /window\.BurretePreviewDataScriptURL = \{data_js:\?\};/);
 assert.match(previewRuntimeViewer, /window\.BurreteDataURL = \{data_bin_js:\?\};/);
 assert.match(previewRuntimeViewer, /include_data_script: bool/);
-assert.match(previewRuntimeViewer, /viewer_html\(file_path, &runtime, &assets, &renderer, preferences, false\)/);
+assert.match(previewRuntimeViewer, /viewer_html\(file_path, &runtime, &assets, &renderer, preferences, true\)/);
 assert.match(previewRuntimeViewer, /viewer_html\(&title_path, &runtime, &assets, "molstar", preferences, true\)/);
 assert.match(previewRuntimeViewer, /VIEWER_MOLSTAR_CSP/);
 assert.match(previewRuntimeViewer, /VIEWER_EXTERNAL_ARTIFACT_CSP/);
