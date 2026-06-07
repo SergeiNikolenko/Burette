@@ -33,6 +33,13 @@ export type KetcherImportRequest = {
   fragments?: Array<{
     title: string;
     text: string;
+    source?: {
+      kind: "grid-row";
+      documentId: string;
+      rowIndex: number;
+      title: string;
+      extension: string;
+    };
   }>;
 };
 
@@ -67,6 +74,13 @@ export type ShellActions = {
   openSettings: () => void;
   openKetcher: () => void;
   openKetcherWithStructures: (paths: string[], fragments?: KetcherImportRequest["fragments"]) => void;
+  applyKetcherToGridRow: (request: {
+    documentId: string;
+    rowIndex: number;
+    title: string;
+    extension: string;
+    text: string;
+  }) => void;
   openFepSetupWorkspace: (request: FepSetupRequest) => void;
   openKetcherSketch: (request: KetcherSketchRequest) => void | Promise<void>;
   saveKetcherDraft: (molfile: string) => void;
