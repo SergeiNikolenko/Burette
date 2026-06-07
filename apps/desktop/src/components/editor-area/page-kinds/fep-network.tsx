@@ -40,8 +40,8 @@ const rdkitWasmUrl = new URL("../../../../../../PreviewExtension/Web/rdkit/RDKit
 const sampleGraphmlUrl = new URL("../../../../../../prototypes/ligand_network.graphml", import.meta.url).href;
 const gridAssetsBaseUrl = `${new URL("../../../../../../PreviewExtension/Web/", import.meta.url).href.replace(/\/?$/u, "/")}`;
 const gridAssetVersion = "grid-ui-v94";
-const cardSize = { width: 14.4, height: 13.6 };
-const edgeLabelAvoidanceCardSize = { width: 15.2, height: 22.6 };
+const cardSize = { width: 16.4, height: 25.8 };
+const edgeLabelAvoidanceCardSize = { width: 17.4, height: 29.2 };
 
 declare global {
   interface Window {
@@ -105,7 +105,7 @@ function FepNetworkPreview({ actions, location }: { actions: ShellActions; locat
       .then((module) => { if (!canceled) setRdkit(module); })
       .catch((error) => { if (!canceled) setRdkitError(error instanceof Error ? error.message : String(error)); });
     return () => { canceled = true; };
-  }, [location.graphmlText]);
+  }, [location]);
 
   useEffect(() => {
     const onMove = (event: PointerEvent) => {
@@ -951,8 +951,9 @@ function drawRDKitMol(rdkit: RDKitModule | null, node: FepNetworkNode, highlight
           width: 300,
           height: 240,
           highlightAtomColors: Object.fromEntries(match.atoms.map((atom: number) => [atom, highlightMode === "common" ? [0.68, 0.42, 0.86] : [0.96, 0.58, 0.18]])),
-          highlightAtomRadii: Object.fromEntries(match.atoms.map((atom: number) => [atom, 0.18])),
+          highlightAtomRadii: Object.fromEntries(match.atoms.map((atom: number) => [atom, 0.28])),
           highlightBondColors: Object.fromEntries(match.bonds.map((bond: number) => [bond, highlightMode === "common" ? [0.68, 0.42, 0.86] : [0.96, 0.58, 0.18]])),
+          highlightBondWidthMultiplier: 24,
         }))
       : mol.get_svg(300, 240);
     return sanitizeSvg(raw);

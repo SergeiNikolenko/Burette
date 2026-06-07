@@ -239,13 +239,13 @@ function starLayout(nodes: FepNetworkNode[], centerId: string, edges: FepNetwork
     .sort((left, right) => left.id.localeCompare(right.id));
   const edgeLengthByNode = starEdgeLengthByNode(centerId, edges);
   const compactSlots = [
-    { x: 29, y: 28 },
-    { x: 71, y: 28 },
-    { x: 72, y: 72 },
-    { x: 28, y: 72 },
+    { x: 25, y: 20 },
+    { x: 75, y: 20 },
+    { x: 75, y: 80 },
+    { x: 25, y: 80 },
   ];
-  const radiusX = leaves.length <= 4 ? 25 : 32;
-  const radiusY = leaves.length <= 4 ? 24 : 29;
+  const radiusX = leaves.length <= 4 ? 30 : 34;
+  const radiusY = leaves.length <= 4 ? 31 : 32;
   return nodes.map((node) => {
     if (node.id === centerId) return { ...node, x: 50, y: 50 };
     const index = leaves.findIndex((leaf) => leaf.id === node.id);
@@ -277,7 +277,7 @@ function starEdgeLengthByNode(centerId: string, edges: FepNetworkEdge[]) {
     const normalized = edge.energy !== null && energyRange
       ? Math.abs(signedRangeMetric(edge.energy, energyRange))
       : scoreRange ? normalizedRangeMetric(edge.score, scoreRange) : Math.max(0, Math.min(1, edge.score));
-    result.set(leafId, 0.78 + normalized * 0.3);
+    result.set(leafId, 0.96 + normalized * 0.12);
   }
   return result;
 }
