@@ -5,10 +5,13 @@ import "ketcher-react/dist/index.css";
 
 export type KetcherEditorApi = {
   addFragment: Ketcher["addFragment"];
+  addMolfileFragment: (molfile: string) => Promise<void>;
   getKet: Ketcher["getKet"];
   getMolfile: Ketcher["getMolfile"];
   getSmiles: Ketcher["getSmiles"];
+  setMolfile: (molfile: string) => Promise<void>;
   setMolecule: Ketcher["setMolecule"];
+  switchToMoleculesMode: Ketcher["switchToMoleculesMode"];
 };
 
 type KetcherReactModule = typeof import("ketcher-react");
@@ -17,7 +20,14 @@ type RaphaelModule = typeof import("raphael");
 type KetcherCoreModule = typeof import("ketcher-core");
 type KetcherStandaloneModule = typeof import("ketcher-standalone");
 type KetcherStruct = Struct & { isBlank?: () => boolean };
-type KetcherWithEditorStruct = Ketcher & { editor: { struct: () => KetcherStruct } };
+type KetcherDirectEditor = {
+  struct: (struct?: Struct, needToCenterStruct?: boolean, x?: number, y?: number) => KetcherStruct;
+  structToAddFragment: (struct: Struct, x?: number, y?: number) => KetcherStruct;
+  zoomAccordingContent: (struct: Struct) => void;
+  centerStruct: () => void;
+};
+type KetcherWithEditorStruct = Ketcher & { editor: KetcherDirectEditor };
+const KETCHER_INSTANCE_RETRY_DELAYS_MS = [0, 250, 500, 1000, 1500, 2500, 4000, 6000] as const;
 
 installKetcherBrowserRequire();
 
@@ -51,22 +61,91 @@ function createKetcherEditorApi(
   instance: Ketcher,
   MolSerializer: KetcherCoreModule["MolSerializer"],
 ): KetcherEditorApi {
-  return {
-    addFragment: instance.addFragment.bind(instance),
-    getKet: instance.getKet.bind(instance),
+  const api = {
+    addFragment: ((...args: Parameters<Ketcher["addFragment"]>) => (
+      callKetcherWhenReady(() => instance.addFragment(...args))
+    )) as Ketcher["addFragment"],
+    addMolfileFragment: async (molfile: string) => {
+      addMolfileFragmentDirectly(instance, MolSerializer, molfile);
+    },
+    getKet: ((...args: Parameters<Ketcher["getKet"]>) => (
+      callKetcherWhenReady(() => instance.getKet(...args))
+    )) as Ketcher["getKet"],
     getMolfile: (async (...args: Parameters<Ketcher["getMolfile"]>) => {
-      const molfile = await instance.getMolfile(...args);
+      const molfile = await callKetcherWhenReady(() => instance.getMolfile(...args));
       return molfile.trim() ? molfile : serializeCurrentMolfile(instance, MolSerializer);
     }) as Ketcher["getMolfile"],
-    getSmiles: instance.getSmiles.bind(instance),
-    setMolecule: instance.setMolecule.bind(instance),
+    getSmiles: ((...args: Parameters<Ketcher["getSmiles"]>) => (
+      callKetcherWhenReady(() => instance.getSmiles(...args))
+    )) as Ketcher["getSmiles"],
+    setMolfile: async (molfile: string) => {
+      setMolfileDirectly(instance, MolSerializer, molfile);
+    },
+    setMolecule: ((...args: Parameters<Ketcher["setMolecule"]>) => (
+      callKetcherWhenReady(() => instance.setMolecule(...args))
+    )) as Ketcher["setMolecule"],
+    switchToMoleculesMode: ((...args: Parameters<Ketcher["switchToMoleculesMode"]>) => (
+      instance.switchToMoleculesMode(...args)
+    )) as Ketcher["switchToMoleculesMode"],
   };
+  return api;
+}
+
+async function callKetcherWhenReady<T>(operation: () => Promise<T>) {
+  let lastError: unknown = null;
+  for (const delayMs of KETCHER_INSTANCE_RETRY_DELAYS_MS) {
+    if (delayMs > 0) await waitForMs(delayMs);
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (!isKetcherInstanceError(error)) break;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError || "Ketcher operation failed"));
+}
+
+function isKetcherInstanceError(error: unknown) {
+  return /(?:ketcher instance|find ketcher)/i.test(error instanceof Error ? error.message : String(error));
+}
+
+function waitForMs(ms: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 }
 
 function serializeCurrentMolfile(instance: Ketcher, MolSerializer: KetcherCoreModule["MolSerializer"]) {
   const struct = (instance as KetcherWithEditorStruct).editor.struct();
   if (struct.isBlank?.()) return "";
   return new MolSerializer().serialize(struct);
+}
+
+function deserializeMolfile(MolSerializer: KetcherCoreModule["MolSerializer"], molfile: string) {
+  const struct = new MolSerializer().deserialize(molfile);
+  struct.rescale();
+  return struct;
+}
+
+function setMolfileDirectly(
+  instance: Ketcher,
+  MolSerializer: KetcherCoreModule["MolSerializer"],
+  molfile: string,
+) {
+  const struct = deserializeMolfile(MolSerializer, molfile);
+  const editor = (instance as KetcherWithEditorStruct).editor;
+  editor.struct(struct);
+  editor.zoomAccordingContent(struct);
+  editor.centerStruct();
+}
+
+function addMolfileFragmentDirectly(
+  instance: Ketcher,
+  MolSerializer: KetcherCoreModule["MolSerializer"],
+  molfile: string,
+) {
+  const struct = deserializeMolfile(MolSerializer, molfile);
+  const editor = (instance as KetcherWithEditorStruct).editor;
+  editor.structToAddFragment(struct);
+  editor.zoomAccordingContent(editor.struct());
 }
 
 export function KetcherEditor({
@@ -132,7 +211,8 @@ export function KetcherEditor({
 
   const handleInit = useCallback((instance: Ketcher) => {
     if (!runtime) return;
-    onReady(createKetcherEditorApi(instance, runtime.MolSerializer));
+    const api = createKetcherEditorApi(instance, runtime.MolSerializer);
+    onReady(api);
     onStatus("Ready");
   }, [onReady, onStatus, runtime]);
 

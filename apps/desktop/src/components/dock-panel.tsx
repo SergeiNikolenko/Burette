@@ -209,7 +209,7 @@ function DockPanelContent({
     if (dockTool === "ketcher") {
       return (
         <div className="dock-viewer">
-          <KetcherPage location={{ kind: "ketcher" }} state={state} actions={actions} isActive />
+          <KetcherPage location={{ kind: "ketcher" }} state={state} actions={actions} isActive acceptImportRequests={false} />
         </div>
       );
     }
