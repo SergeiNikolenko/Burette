@@ -726,7 +726,7 @@ assert.match(editorTabs, /import \{ CloseIcon \} from "\.\.\/close-icon"/);
 assert.match(editorTabs, /<CloseIcon size=\{13\} \/>/);
 assert.match(appLayout, /className="chrome-leading-controls"/);
 assert.match(appLayout, /from "\.\/shortcut-tooltip"/);
-assert.match(appLayout, /<ShortcutTooltip label=\{state\.sidebarOpen \? "Hide sidebar" : "Show sidebar"\} shortcut=\{"⌘\\\\"\} \/>/);
+assert.doesNotMatch(appLayout, /<ShortcutTooltip label=\{state\.sidebarOpen \? "Hide sidebar" : "Show sidebar"\} shortcut=\{"⌘\\\\"\} \/>/);
 assert.match(appLayout, /<ShortcutTooltip label=\{state\.bottomDockOpen \? "Hide bottom dock" : "Show bottom dock"\} shortcut="⌘J" \/>/);
 assert.match(appLayout, /<ShortcutTooltip label=\{state\.rightDockOpen \? "Hide right dock" : "Show right dock"\} shortcut="⌥⌘B" \/>/);
 assert.match(tauriConfig, /"trafficLightPosition":\s*\{\s*"x":\s*20,\s*"y":\s*29\s*\}/);
