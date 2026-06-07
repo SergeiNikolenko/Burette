@@ -1,4 +1,5 @@
 import type { BuildInfo, ShellActions } from "../types";
+import { ShortcutTooltip } from "../shortcut-tooltip";
 
 function buildLabel(info: BuildInfo) {
   if (info.isBrowserDev) return `Browser dev · v${info.version}`;
@@ -33,9 +34,16 @@ export function WelcomeScreen({ actions, buildInfo }: { actions: ShellActions; b
       <div className="new-tab-actions">
         <button type="button" className="welcome-primary" onClick={() => void actions.chooseFiles()}>
           Open Structure <kbd>⌘O</kbd>
+          <ShortcutTooltip label="Open Structure" shortcut="⌘O" />
         </button>
-        <button type="button" onClick={actions.openCommandPalette}>Command Palette <kbd>⌘P</kbd> <kbd>/</kbd></button>
-        <button type="button" onClick={actions.openSettings}>Settings <kbd>⌘,</kbd></button>
+        <button type="button" onClick={actions.openCommandPalette}>
+          Command Palette <kbd>⌘P</kbd> <kbd>/</kbd>
+          <ShortcutTooltip label="Command Palette" shortcut="⌘P /" />
+        </button>
+        <button type="button" onClick={actions.openSettings}>
+          Settings <kbd>⌘,</kbd>
+          <ShortcutTooltip label="Settings" shortcut="⌘," />
+        </button>
       </div>
     </div>
   );
