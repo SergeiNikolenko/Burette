@@ -7,7 +7,7 @@ contains only documents that describe the active project.
 
 - [Architecture](architecture.md): repository boundaries and runtime shape.
 - [Renderer support](renderer-support.md): renderer modes, supported formats,
-  artifacts, and checks.
+  Ketcher editing scope, artifacts, and checks.
 - [Performance architecture](performance.md): runtime profiles, caches, binary
   payloads, grid search, and no-regression guardrails.
 - [Vite+ workflow](vite-plus.md): `vp` entrypoints for frontend development and
