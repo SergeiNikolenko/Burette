@@ -3,7 +3,9 @@ import { persist } from "zustand/middleware";
 import {
   deserializeLocation,
   serializeLocation,
+  type FepNetworkLocation,
   type FepSetupLocation,
+  type KetcherLocation,
   type Location,
   type PoseReviewLocation,
   type SerializedLocation,
@@ -40,8 +42,9 @@ type MoleculeState = {
   rememberRecentStructures: (documents: ViewerDocument[]) => void;
   clearRecentStructures: () => void;
   openNewTab: () => void;
+  openFepNetworkTab: (location: FepNetworkLocation) => void;
   openFepSetupTab: (location: FepSetupLocation) => void;
-  openKetcherTab: () => void;
+  openKetcherTab: (location?: KetcherLocation) => void;
   openPoseReviewTab: (location: PoseReviewLocation) => void;
   openSettingsTab: () => void;
   navigateBack: () => void;
@@ -112,11 +115,15 @@ export function createSettingsTab(id = createTabId()): MoleculeTab {
   return { id, location: { kind: "settings" }, back: [], forward: [] };
 }
 
-export function createKetcherTab(id = createTabId()): MoleculeTab {
-  return { id, location: { kind: "ketcher" }, back: [], forward: [] };
+export function createKetcherTab(location: KetcherLocation = { kind: "ketcher" }, id = createTabId()): MoleculeTab {
+  return { id, location, back: [], forward: [] };
 }
 
 export function createFepSetupTab(location: FepSetupLocation, id = createTabId()): MoleculeTab {
+  return { id, location, back: [], forward: [] };
+}
+
+export function createFepNetworkTab(location: FepNetworkLocation, id = createTabId()): MoleculeTab {
   return { id, location, back: [], forward: [] };
 }
 
@@ -153,6 +160,7 @@ function persistedTabs(tabs: MoleculeTab[], documents: ViewerDocument[]) {
   const paths = new Set(persistedDocuments(documents).map((document) => document.path));
   return tabs.filter((tab) => (
     tab.location.kind !== "fep-setup" &&
+    tab.location.kind !== "fep-network" &&
     tab.location.kind !== "pose-review" &&
     (
       tab.location.kind !== "file" ||
@@ -162,6 +170,7 @@ function persistedTabs(tabs: MoleculeTab[], documents: ViewerDocument[]) {
 }
 
 function documentForLocation(location: Location, documents: ViewerDocument[]) {
+  if (location.kind === "fep-network") return null;
   if (location.kind === "fep-setup" || location.kind === "pose-review") {
     return (
       documents.find((document) => document.id === location.dockingDocumentId) ??
@@ -373,6 +382,17 @@ export const useMoleculeStore = create<MoleculeState>()(
           const tabs = [...state.tabs, tab];
           return { tabs, activeTabId: tab.id, activeDocumentId: null };
         }),
+      openFepNetworkTab: (location) =>
+        set((state) => {
+          const existing = state.tabs.find((tab) => tab.location.kind === "fep-network");
+          if (existing) {
+            const tabs = state.tabs.map((tab) => (tab.id === existing.id ? { ...tab, location } : tab));
+            return { tabs, activeTabId: existing.id, activeDocumentId: null };
+          }
+          const tab = createFepNetworkTab(location);
+          const tabs = [...state.tabs.filter((candidate) => candidate.location.kind !== "launcher"), tab];
+          return { tabs, activeTabId: tab.id, activeDocumentId: null };
+        }),
       openFepSetupTab: (location) =>
         set((state) => {
           const existing = state.tabs.find((tab) => (
@@ -392,11 +412,14 @@ export const useMoleculeStore = create<MoleculeState>()(
           const tabs = [...state.tabs.filter((candidate) => candidate.location.kind !== "launcher"), tab];
           return { tabs, activeTabId: tab.id, activeDocumentId: activeDocumentIdFrom(tabs, tab.id, state.documents) };
         }),
-      openKetcherTab: () =>
+      openKetcherTab: (location = { kind: "ketcher" }) =>
         set((state) => {
           const existing = state.tabs.find((tab) => tab.location.kind === "ketcher");
-          if (existing) return { activeTabId: existing.id, activeDocumentId: null };
-          const tab = createKetcherTab();
+          if (existing) {
+            const tabs = state.tabs.map((tab) => (tab.id === existing.id ? { ...tab, location } : tab));
+            return { tabs, activeTabId: existing.id, activeDocumentId: null };
+          }
+          const tab = createKetcherTab(location);
           const tabs = [...state.tabs, tab];
           return { tabs, activeTabId: tab.id, activeDocumentId: null };
         }),
