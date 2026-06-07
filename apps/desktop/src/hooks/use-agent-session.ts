@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ViewerDocument } from "../types";
 import type { OpenTextFilesResult } from "../types";
-import { isTauriRuntime } from "../lib/tauri";
+import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 import type { DockArea } from "../lib/dock";
 
 const AGENT_API_VERSION = "burette-agent-control/v1";
@@ -109,16 +109,13 @@ export function useAgentSession({
       })
       .catch((error) => pushErrorStatusRef.current(error, "Agent session startup failed"));
 
-    let unlisten: (() => void) | undefined;
-    void listen<string>("agent-session", (event) => {
+    const cleanup = trackTauriListener(listen<string>("agent-session", (event) => {
       activateSession(event.payload);
-    }).then((next) => {
-      unlisten = next;
-    });
+    }), "agent-session");
 
     return () => {
       cancelled = true;
-      unlisten?.();
+      cleanup();
     };
   }, [activateSession]);
 
