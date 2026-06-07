@@ -79,6 +79,26 @@ export function WorkspaceSwitcher({ state, actions }: { state: ShellViewState; a
           <span className="sidebar-build-detail">{buildDetail(buildInfo)}</span>
         </div>
       ) : null}
+      <button
+        type="button"
+        className="sidebar-settings-button"
+        onClick={actions.openSettings}
+        aria-label="Open settings"
+      >
+        <span className="sidebar-settings-icon" aria-hidden="true">
+          <GearIcon />
+        </span>
+        <span className="sidebar-settings-label">Settings</span>
+      </button>
     </div>
+  );
+}
+
+function GearIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <path d="M7.6 2.25H10.4L10.82 4.06C11.15 4.18 11.47 4.32 11.77 4.5L13.36 3.52L15.34 5.5L14.36 7.09C14.54 7.39 14.68 7.71 14.8 8.04L16.61 8.46V11.26L14.8 11.68C14.68 12.01 14.54 12.33 14.36 12.63L15.34 14.22L13.36 16.2L11.77 15.22C11.47 15.4 11.15 15.54 10.82 15.66L10.4 17.47H7.6L7.18 15.66C6.85 15.54 6.53 15.4 6.23 15.22L4.64 16.2L2.66 14.22L3.64 12.63C3.46 12.33 3.32 12.01 3.2 11.68L1.39 11.26V8.46L3.2 8.04C3.32 7.71 3.46 7.39 3.64 7.09L2.66 5.5L4.64 3.52L6.23 4.5C6.53 4.32 6.85 4.18 7.18 4.06L7.6 2.25Z" stroke="currentColor" strokeWidth="1.35" strokeLinejoin="round" />
+      <circle cx="9" cy="9.86" r="2.65" stroke="currentColor" strokeWidth="1.35" />
+    </svg>
   );
 }

@@ -10,6 +10,7 @@ import {
   type SerializedLocation,
   type TextFileLocation,
 } from "../components/editor-area/page-kinds";
+import { DEFAULT_SETTINGS_SECTION, type SettingsSectionId } from "../lib/settings-sections";
 import type { RecentStructure, TextFileDocument, ViewerDocument } from "../types";
 import {
   isTemporaryDocumentPath,
@@ -50,7 +51,9 @@ type MoleculeState = {
   openFepSetupTab: (location: FepSetupLocation) => void;
   openKetcherTab: (location?: KetcherLocation) => void;
   openPoseReviewTab: (location: PoseReviewLocation) => void;
-  openSettingsTab: () => void;
+  openSettingsTab: (section?: SettingsSectionId) => void;
+  openSettingsSection: (section: SettingsSectionId) => void;
+  activateLastNonSettingsTab: () => void;
   navigateBack: () => void;
   navigateForward: () => void;
   setActiveTab: (id: string) => void;
@@ -129,7 +132,7 @@ function textFileLocation(document: TextFileDocument): TextFileLocation {
 }
 
 export function createSettingsTab(id = createTabId()): MoleculeTab {
-  return { id, location: { kind: "settings" }, back: [], forward: [] };
+  return { id, location: { kind: "settings", section: DEFAULT_SETTINGS_SECTION }, back: [], forward: [] };
 }
 
 export function createKetcherTab(id = createTabId(), location: KetcherLocation = { kind: "ketcher" }): MoleculeTab {
@@ -541,12 +544,41 @@ export const useMoleculeStore = create<MoleculeState>()(
           const tabs = [...state.tabs.filter((candidate) => candidate.location.kind !== "launcher"), tab];
           return { tabs, activeTabId: tab.id, activeDocumentId: activeDocumentIdFrom(tabs, tab.id, state.documents) };
         }),
-      openSettingsTab: () =>
+      openSettingsTab: (section = DEFAULT_SETTINGS_SECTION) =>
         set((state) => {
           const existing = state.tabs.find((tab) => tab.location.kind === "settings");
-          if (existing) return { activeTabId: existing.id, activeDocumentId: null };
+          if (existing) {
+            const tabs = state.tabs.map((tab) => (
+              tab.id === existing.id ? { ...tab, location: { kind: "settings" as const, section } } : tab
+            ));
+            return { tabs, activeTabId: existing.id, activeDocumentId: null };
+          }
           const tab = createSettingsTab();
+          tab.location = { kind: "settings", section };
           return { tabs: [...state.tabs, tab], activeTabId: tab.id, activeDocumentId: null };
+        }),
+      openSettingsSection: (section) =>
+        set((state) => {
+          const existing = state.tabs.find((tab) => tab.location.kind === "settings");
+          if (!existing) {
+            const tab = createSettingsTab();
+            tab.location = { kind: "settings", section };
+            return { tabs: [...state.tabs, tab], activeTabId: tab.id, activeDocumentId: null };
+          }
+          const tabs = state.tabs.map((tab) => (
+            tab.id === existing.id ? { ...tab, location: { kind: "settings" as const, section } } : tab
+          ));
+          return { tabs, activeTabId: existing.id, activeDocumentId: null };
+        }),
+      activateLastNonSettingsTab: () =>
+        set((state) => {
+          const target = [...state.tabs].reverse().find((tab) => tab.location.kind !== "settings");
+          if (target) {
+            return { activeTabId: target.id, activeDocumentId: activeDocumentIdFrom(state.tabs, target.id, state.documents) };
+          }
+          const tab = createLauncherTab();
+          const tabs = [...state.tabs, tab];
+          return { tabs, activeTabId: tab.id, activeDocumentId: null };
         }),
       navigateBack: () =>
         set((state) => {

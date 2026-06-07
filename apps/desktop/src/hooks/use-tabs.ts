@@ -91,6 +91,14 @@ export function useOpenSettingsTab() {
   return useMoleculeStore((state) => state.openSettingsTab);
 }
 
+export function useOpenSettingsSection() {
+  return useMoleculeStore((state) => state.openSettingsSection);
+}
+
+export function useActivateLastNonSettingsTab() {
+  return useMoleculeStore((state) => state.activateLastNonSettingsTab);
+}
+
 export function useCanNavigateBack() {
   return useMoleculeStore((state) => {
     const active = state.tabs.find((tab) => tab.id === state.activeTabId);

@@ -3,6 +3,7 @@ import type { MoleculeTab } from "../stores/molecule-store";
 import type { StructureDragPayload } from "../lib/structure-drag";
 import type { UpdatePreferences, UpdateState } from "../update";
 import type { SidebarProject } from "../lib/sidebar-projects";
+import type { SettingsSectionId } from "../lib/settings-sections";
 import type { DockArea, DockDropInput, DockDroppedStructure, DockTab, DockTabKind, DockToolKind } from "../lib/dock";
 
 export type AppPage = "viewer" | "settings";
@@ -72,6 +73,8 @@ export type ShellActions = {
   openCommandPalette: () => void;
   openClipboard: () => void | Promise<void>;
   openSettings: () => void;
+  openSettingsSection: (section: SettingsSectionId) => void;
+  backToApp: () => void;
   openKetcher: () => void;
   openKetcherWithStructures: (paths: string[], fragments?: KetcherImportRequest["fragments"]) => void;
   applyKetcherToGridRow: (request: {
