@@ -460,7 +460,7 @@ function normalizeKetcherMolfileHeader(lines: string[]) {
 }
 
 function isMolfileCountsLine(line: string) {
-  return /^\s*\d+\s+\d+\s+(?:\d+\s+){6,}\d+\s+V(?:2000|3000)\s*$/u.test(line);
+  return /^\s*\d+\s+\d+(?:\s+\d+){4,}\s+V(?:2000|3000)\s*$/u.test(line);
 }
 
 function isBlankKetcherMolfile(molfile: string) {

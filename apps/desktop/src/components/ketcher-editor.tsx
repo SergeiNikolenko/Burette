@@ -19,6 +19,12 @@ type KetcherStandaloneModule = typeof import("ketcher-standalone");
 type KetcherStruct = Struct & { isBlank?: () => boolean };
 type KetcherWithEditorStruct = Ketcher & { editor: { struct: () => KetcherStruct } };
 
+declare global {
+  interface Window {
+    isPolymerEditorTurnedOn?: boolean;
+  }
+}
+
 installKetcherBrowserRequire();
 
 function installRaphaelBrowserModules(eveModule: EveModule, raphaelModule: RaphaelModule) {
@@ -52,21 +58,41 @@ function createKetcherEditorApi(
   MolSerializer: KetcherCoreModule["MolSerializer"],
 ): KetcherEditorApi {
   return {
-    addFragment: instance.addFragment.bind(instance),
+    addFragment: ((...args: Parameters<Ketcher["addFragment"]>) => withMicromoleculeImportMode(() => instance.addFragment(...args))) as Ketcher["addFragment"],
     getKet: instance.getKet.bind(instance),
     getMolfile: (async (...args: Parameters<Ketcher["getMolfile"]>) => {
       const molfile = await instance.getMolfile(...args);
-      return molfile.trim() ? molfile : serializeCurrentMolfile(instance, MolSerializer);
+      return molfile.trim() && !isBlankMolfile(molfile) ? molfile : serializeCurrentMolfile(instance, MolSerializer);
     }) as Ketcher["getMolfile"],
     getSmiles: instance.getSmiles.bind(instance),
-    setMolecule: instance.setMolecule.bind(instance),
+    setMolecule: ((...args: Parameters<Ketcher["setMolecule"]>) => withMicromoleculeImportMode(() => instance.setMolecule(...args))) as Ketcher["setMolecule"],
   };
+}
+
+async function withMicromoleculeImportMode<T>(operation: () => Promise<T>) {
+  const previous = window.isPolymerEditorTurnedOn;
+  window.isPolymerEditorTurnedOn = false;
+  try {
+    return await operation();
+  } finally {
+    window.isPolymerEditorTurnedOn = previous;
+  }
 }
 
 function serializeCurrentMolfile(instance: Ketcher, MolSerializer: KetcherCoreModule["MolSerializer"]) {
   const struct = (instance as KetcherWithEditorStruct).editor.struct();
   if (struct.isBlank?.()) return "";
   return new MolSerializer().serialize(struct);
+}
+
+function isBlankMolfile(molfile: string) {
+  const countsLine = molfile.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n").find((line) => (
+    /^\s*\d+\s+\d+(?:\s+\d+){4,}\s+V(?:2000|3000)\s*$/u.test(line) ||
+    /^M\s+V30\s+COUNTS\s+\d+\s+\d+/u.test(line.trim())
+  ));
+  if (!countsLine) return false;
+  const counts = countsLine.trim().replace(/^M\s+V30\s+COUNTS\s+/u, "").split(/\s+/u);
+  return counts[0] === "0" && counts[1] === "0";
 }
 
 export function KetcherEditor({

@@ -119,6 +119,13 @@ export function CommandPalette({
         run: actions.openKetcher,
       },
       {
+        id: "open-fep-network",
+        group: "Suggested",
+        label: "FEP Network Preview",
+        description: "Open the ligand network graph workspace",
+        run: actions.openFepNetworkPreview,
+      },
+      {
         id: "toggle-sidebar",
         group: "Suggested",
         label: state.sidebarOpen ? "Hide Sidebar" : "Show Sidebar",

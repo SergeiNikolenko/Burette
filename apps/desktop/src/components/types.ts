@@ -65,6 +65,7 @@ export type ShellActions = {
   openSettings: () => void;
   openKetcher: () => void;
   openKetcherWithStructures: (paths: string[], fragments?: KetcherImportRequest["fragments"]) => void;
+  openFepNetworkPreview: (request?: { title?: string; graphmlText?: string }) => void;
   openFepSetupWorkspace: (request: FepSetupRequest) => void;
   openKetcherSketch: (request: KetcherSketchRequest) => void | Promise<void>;
   saveKetcherDraft: (molfile: string) => void;
