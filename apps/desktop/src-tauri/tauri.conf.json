@@ -78,6 +78,7 @@
           "csv",
           "tsv",
           "fdf",
+          "graphml",
           "mol",
           "mol2",
           "xyz",
