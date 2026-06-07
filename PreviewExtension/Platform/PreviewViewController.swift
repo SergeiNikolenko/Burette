@@ -247,6 +247,28 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let renderTimeoutSeconds: TimeInterval
     }
 
+    private struct FepGraphMLPreview {
+        let nodes: [FepGraphMLNode]
+        let edges: [FepGraphMLEdge]
+    }
+
+    private struct FepGraphMLNode {
+        let id: String
+        let label: String
+        let atoms: Int
+        let heavyAtoms: Int
+        let bonds: Int
+        let dockingScore: Double?
+        let x: Double
+        let y: Double
+    }
+
+    private struct FepGraphMLEdge {
+        let source: String
+        let target: String
+        let score: Double?
+    }
+
     private static let defaultRenderTimeoutSeconds: TimeInterval = 30
     private static let largeStructureRenderTimeoutSeconds: TimeInterval = 120
     private static let largeStructureRenderTimeoutThresholdBytes = 16 * 1024 * 1024
@@ -258,7 +280,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     private static let supportedStructureExtensions: Set<String> = [
-        "abi", "bcif", "cif", "cms", "com", "csv", "cub", "cube", "dcd", "ent", "fdf", "gro", "in", "inp", "lammpstrj", "mae", "maegz", "mcif", "mmcif", "mol", "mol2", "nctraj", "nw", "out", "pdb", "pdbqt", "pqr", "prmtop", "psf", "psi4", "qcin", "sd", "sdf", "smi", "smiles", "top", "trr", "tsv", "vasp", "xtc", "xyz"
+        "abi", "bcif", "cif", "cms", "com", "csv", "cub", "cube", "dcd", "ent", "fdf", "graphml", "gro", "in", "inp", "lammpstrj", "mae", "maegz", "mcif", "mmcif", "mol", "mol2", "nctraj", "nw", "out", "pdb", "pdbqt", "pqr", "prmtop", "psf", "psi4", "qcin", "sd", "sdf", "smi", "smiles", "top", "trr", "tsv", "vasp", "xtc", "xyz"
     ]
 
     private static func buildInlinePreviewHTML(
@@ -307,6 +329,36 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         diag("structureData.bytes=\(structureData.count)")
         if usesBoundedMaestroPreview {
             diag("structureData.boundedMaestroPreview=true originalBytes=\(structureSize) prefixBytes=\(structureData.count)")
+        }
+
+        if pathExtension == "graphml" {
+            let graph = try fepGraphMLPreview(from: structureData)
+            diag("detected.previewMode=fep-graphml nodes=\(graph.nodes.count) edges=\(graph.edges.count)")
+            let html = fepGraphMLInlineHTML(title: url.lastPathComponent, graph: graph, requestID: requestID)
+            let runtimeWriteStarted = Date()
+            let runtimePreview = try createRuntimePreview(
+                bundledWebDirectory: fileManager.temporaryDirectory,
+                html: html,
+                configJSON: try configJSONWithRequestID("{}", requestID: requestID),
+                structureData: nil,
+                auxiliaryFiles: [],
+                gridRecordsScript: nil,
+                requiredAssets: [],
+                requiresRDKit: false,
+                externalArtifactSourceURL: nil,
+                fileManager: fileManager,
+                diagnostics: &diagnostics
+            )
+            diag("elapsed.runtimeWriteMs=\(elapsedMs(since: runtimeWriteStarted))")
+            diag("runtimeDirectory=\(runtimePreview.runtimeDirectory.path)")
+            diag("runtime.index.exists=\(fileManager.fileExists(atPath: runtimePreview.indexURL.path))")
+            return BuildResult(
+                html: html,
+                indexURL: runtimePreview.indexURL,
+                readAccessURL: runtimePreview.readAccessURL,
+                diagnostics: diagnostics,
+                renderTimeoutSeconds: defaultRenderTimeoutSeconds
+            )
         }
 
         let preferences = PreviewPreferences.load()
@@ -904,6 +956,198 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         """
     }
 
+    private static func fepGraphMLPreview(from data: Data) throws -> FepGraphMLPreview {
+        let document = try XMLDocument(data: data, options: [])
+        let keys = try graphMLKeys(in: document)
+        guard let moldictKey = graphMLKeyID(keys, target: "node", name: "moldict") else {
+            throw PreviewError.unsupportedStructureFile("GraphML is missing node moldict data")
+        }
+        let annotationsKey = graphMLKeyID(keys, target: "edge", name: "annotations")
+        let nodeElements = try document.nodes(forXPath: "//*[local-name()='node']").compactMap { $0 as? XMLElement }
+        let edgeElements = try document.nodes(forXPath: "//*[local-name()='edge']").compactMap { $0 as? XMLElement }
+        guard !nodeElements.isEmpty else {
+            throw PreviewError.emptyStructureFile("GraphML network has no ligand nodes")
+        }
+
+        let nodeCount = max(nodeElements.count, 1)
+        let nodes = try nodeElements.enumerated().map { index, element in
+            let id = element.attribute(forName: "id")?.stringValue ?? "mol\(index)"
+            guard let text = graphMLDataText(in: element, key: moldictKey) else {
+                throw PreviewError.unsupportedStructureFile("GraphML node \(id) is missing moldict data")
+            }
+            let moldict = try graphMLJSONObject(text)
+            let props = moldict["molprops"] as? [String: Any] ?? [:]
+            let atoms = moldict["atoms"] as? [Any] ?? []
+            let bonds = moldict["bonds"] as? [Any] ?? []
+            let angle = nodeCount == 1 ? 0 : (Double(index) / Double(nodeCount)) * Double.pi * 2 - Double.pi / 2
+            let radius = nodeCount == 1 ? 0 : 34.0
+            let heavyAtoms = atoms.filter { graphMLAtomicNumber($0) != 1 }.count
+            return FepGraphMLNode(
+                id: id,
+                label: graphMLString(props["ofe-name"]) ?? id,
+                atoms: atoms.count,
+                heavyAtoms: heavyAtoms,
+                bonds: bonds.count,
+                dockingScore: graphMLDouble(props["docking score"]),
+                x: 50 + cos(angle) * radius,
+                y: 50 + sin(angle) * radius
+            )
+        }
+
+        let edges = try edgeElements.compactMap { element -> FepGraphMLEdge? in
+            guard let source = element.attribute(forName: "source")?.stringValue,
+                  let target = element.attribute(forName: "target")?.stringValue,
+                  !source.isEmpty,
+                  !target.isEmpty else {
+                return nil
+            }
+            let annotations = try annotationsKey.flatMap { key -> [String: Any]? in
+                guard let text = graphMLDataText(in: element, key: key) else { return nil }
+                return try graphMLJSONObject(text)
+            } ?? [:]
+            return FepGraphMLEdge(source: source, target: target, score: graphMLDouble(annotations["score"]))
+        }
+
+        return FepGraphMLPreview(nodes: nodes, edges: edges)
+    }
+
+    private static func graphMLKeys(in document: XMLDocument) throws -> [String: (target: String, name: String)] {
+        let elements = try document.nodes(forXPath: "//*[local-name()='key']").compactMap { $0 as? XMLElement }
+        var keys: [String: (target: String, name: String)] = [:]
+        for element in elements {
+            guard let id = element.attribute(forName: "id")?.stringValue,
+                  let name = element.attribute(forName: "attr.name")?.stringValue else {
+                continue
+            }
+            keys[id] = (element.attribute(forName: "for")?.stringValue ?? "all", name)
+        }
+        return keys
+    }
+
+    private static func graphMLKeyID(_ keys: [String: (target: String, name: String)], target: String, name: String) -> String? {
+        keys.first { _, value in
+            (value.target == target || value.target == "all") && value.name == name
+        }?.key
+    }
+
+    private static func graphMLDataText(in element: XMLElement, key: String) -> String? {
+        for child in element.children ?? [] {
+            guard let childElement = child as? XMLElement,
+                  childElement.localName == "data",
+                  childElement.attribute(forName: "key")?.stringValue == key else {
+                continue
+            }
+            let text = childElement.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return text?.isEmpty == false ? text : nil
+        }
+        return nil
+    }
+
+    private static func graphMLJSONObject(_ text: String) throws -> [String: Any] {
+        let data = Data(text.utf8)
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw PreviewError.unsupportedStructureFile("GraphML data payload is not a JSON object")
+        }
+        return object
+    }
+
+    private static func graphMLAtomicNumber(_ atom: Any) -> Int {
+        guard let values = atom as? [Any], let first = values.first else { return 0 }
+        return graphMLInt(first) ?? 0
+    }
+
+    private static func graphMLInt(_ value: Any) -> Int? {
+        if let value = value as? Int { return value }
+        if let value = value as? NSNumber { return value.intValue }
+        return nil
+    }
+
+    private static func graphMLDouble(_ value: Any?) -> Double? {
+        if let value = value as? Double { return value }
+        if let value = value as? NSNumber { return value.doubleValue }
+        if let value = value as? String { return Double(value) }
+        return nil
+    }
+
+    private static func graphMLString(_ value: Any?) -> String? {
+        if let value = value as? String, !value.isEmpty { return value }
+        return nil
+    }
+
+    private static func fepGraphMLInlineHTML(title: String, graph: FepGraphMLPreview, requestID: String) -> String {
+        let nodeByID = Dictionary(uniqueKeysWithValues: graph.nodes.map { ($0.id, $0) })
+        let edges = graph.edges.compactMap { edge -> String? in
+            guard let source = nodeByID[edge.source], let target = nodeByID[edge.target] else { return nil }
+            let score = edge.score.map { String(format: "%.2f", $0) } ?? ""
+            let labelX = (source.x + target.x) / 2
+            let labelY = (source.y + target.y) / 2
+            return """
+            <line x1="\(source.x)" y1="\(source.y)" x2="\(target.x)" y2="\(target.y)" />
+            <text x="\(labelX)" y="\(labelY)">\(escapeHTML(score))</text>
+            """
+        }.joined(separator: "\n")
+        let nodes = graph.nodes.map { node -> String in
+            let score = node.dockingScore.map { String(format: "%.2f", $0) } ?? "n/a"
+            return """
+            <article class="node" style="left:\(node.x)%;top:\(node.y)%">
+              <strong>\(escapeHTML(shortGraphMLLabel(node.label)))</strong>
+              <span>\(node.heavyAtoms)/\(node.atoms) atoms</span>
+              <span>\(node.bonds) bonds - score \(escapeHTML(score))</span>
+            </article>
+            """
+        }.joined(separator: "\n")
+        let safeTitle = escapeHTML(title)
+        return """
+        <!doctype html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <meta http-equiv="Content-Security-Policy" content="\(minimalRuntimeCSP)" />
+          <title>Burrete FEP Network - \(safeTitle)</title>
+          <style>
+            html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#101216;color:#f5f7fb}
+            body{font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+            .wrap{position:relative;width:100%;height:100%;box-sizing:border-box;padding:18px}
+            header{position:absolute;z-index:3;left:18px;right:18px;top:16px;display:flex;justify-content:space-between;gap:16px;align-items:flex-start}
+            h1{font-size:16px;line-height:1.2;margin:0;font-weight:700;max-width:64%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+            .meta{color:#aeb7c7;text-align:right;line-height:1.35}
+            .stage{position:absolute;inset:58px 18px 18px;border:1px solid rgba(255,255,255,.12);border-radius:8px;background:#151923}
+            svg{position:absolute;inset:0;width:100%;height:100%}
+            line{stroke:#66d9ef;stroke-width:.45;stroke-opacity:.58}
+            text{font-size:2.8px;fill:#d7f7ff;paint-order:stroke;stroke:#151923;stroke-width:.9px}
+            .node{position:absolute;z-index:2;width:124px;min-height:58px;transform:translate(-50%,-50%);box-sizing:border-box;padding:9px 10px;border:1px solid rgba(255,255,255,.18);border-radius:8px;background:#202635;box-shadow:0 10px 28px rgba(0,0,0,.28)}
+            .node strong{display:block;font-size:12px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+            .node span{display:block;margin-top:5px;color:#b9c2d1;font-size:11px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+          </style>
+        </head>
+        <body>
+          <main class="wrap">
+            <header>
+              <h1>\(safeTitle)</h1>
+              <div class="meta">FEP ligand network<br>\(graph.nodes.count) ligands - \(graph.edges.count) transformations</div>
+            </header>
+            <section class="stage" aria-label="FEP ligand network">
+              <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">\(edges)</svg>
+              \(nodes)
+            </section>
+          </main>
+          <script>
+            window.addEventListener('load', function () {
+              try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burrete.postMessage({ type: 'ready', message: 'ready', requestID: '\(requestID)' }); } catch (_) {}
+            });
+          </script>
+        </body>
+        </html>
+        """
+    }
+
+    private static func shortGraphMLLabel(_ label: String) -> String {
+        let parts = label.split(separator: "_").filter { !$0.isEmpty }
+        guard let last = parts.last else { return label }
+        return String(last).isEmpty ? label : String(last)
+    }
+
     private static func inlineHTML(title: String, preferences: PreviewPreferences, renderer: String) -> String {
         let safeTitle = escapeHTML(title)
         let backgroundClass = preferences.resolvedTransparentBackground ? "burette-transparent-background" : "burette-opaque-background"
@@ -1140,7 +1384,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             return 40 * mib
         case "bcif":
             return 50 * mib
-        case "abi", "com", "csv", "fdf", "sdf", "sd", "mol", "mol2", "xyz", "gro", "smi", "smiles", "tsv", "cub", "cube", "in", "inp", "nw", "out", "psi4", "qcin", "vasp", "lammpstrj", "top", "psf", "prmtop":
+        case "abi", "com", "csv", "fdf", "sdf", "sd", "mol", "mol2", "xyz", "gro", "smi", "smiles", "tsv", "cub", "cube", "in", "inp", "nw", "out", "psi4", "qcin", "vasp", "lammpstrj", "top", "psf", "prmtop", "graphml":
             return 25 * mib
         case "mae", "maegz", "cms":
             return 64 * mib
