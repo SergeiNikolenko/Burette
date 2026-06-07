@@ -768,7 +768,7 @@ assert.match(pageKinds, /export function deserializeLocation/);
 assert.match(pageKindTypes, /export interface PageKindInput/);
 assert.match(pageKindTypes, /export function definePageKind/);
 assert.match(fileKind, /export const fileKind = definePageKind/);
-assert.match(fileKind, /keepAlive: false/);
+assert.match(fileKind, /keepAlive: true/);
 assert.match(fileKind, /kind: "file"/);
 assert.match(fileKind, /path: location\.path/);
 assert.match(fileKind, /const document = findDocument\(location, state\.documents\);\s*return document \? <ViewerSurface document=\{document\} actions=\{actions\} \/> : null;/);
