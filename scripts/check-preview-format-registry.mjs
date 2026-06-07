@@ -130,10 +130,13 @@ assertExportedTypeDeclarations(
 );
 const graphmlFormat = registry.formats.find((format) => format.id === 'graphml');
 assert.ok(graphmlFormat, 'Registry must declare GraphML for FEP network files');
+const quickLookPreviewController = readFileSync('PreviewExtension/Platform/PreviewViewController.swift', 'utf8');
+assert.match(quickLookPreviewController, /pathExtension == "graphml"/);
+assert.match(quickLookPreviewController, /detected\.previewMode=fep-graphml/);
 assert.equal(
   registry.quickLook.contentTypes.includes(graphmlFormat.contentType),
-  false,
-  'GraphML must open in the app without opting into the molecular Quick Look preview runtime',
+  true,
+  'GraphML must opt into Quick Look only through the dedicated FEP network preview path',
 );
 assert.equal(
   appDocumentTypes.find((type) => type.CFBundleTypeName === registry.documentTypes.name)?.LSHandlerRank,

@@ -174,7 +174,8 @@
       "com.local.burrete10.gro",
       "com.local.burrete10.molecular-dynamics",
       "com.local.burrete10.schrodinger",
-      "com.local.burrete10.xyzrender-input"
+      "com.local.burrete10.xyzrender-input",
+      "com.local.burrete10.graphml"
     ],
     "contentTypes": [
       "com.local.burrete10.pdb",
@@ -203,7 +204,8 @@
       "com.local.burrete10.gro",
       "com.local.burrete10.molecular-dynamics",
       "com.schrodinger.mae",
-      "com.local.burrete10.schrodinger"
+      "com.local.burrete10.schrodinger",
+      "com.local.burrete10.graphml"
     ]
   }
 }
