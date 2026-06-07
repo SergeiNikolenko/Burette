@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ShellActions, ShellViewState } from "../types";
 import { ScrollFade } from "../scroll-fade";
-import { hasStructureDrag, readStructureDragPayload, writeStructureDragPayload } from "../../lib/structure-drag";
+import { hasStructureDrag, readStructureDragPayload, type StructureDragPayload, writeStructureDragPayload } from "../../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
 import { showNativeContextMenu } from "../native-context-menu";
 import { pageKind } from "./page-kinds";
 import { isMoleculeCollectionPath } from "../../lib/collection-documents";
 import { CloseIcon } from "../close-icon";
+import type { DropTargetContext } from "../../lib/drop-actions";
 
 const TAB_DRAG_MIME = "application/x-burrete-tab-id";
 const TAB_REORDER_ANIMATION_MS = 170;
@@ -63,6 +64,89 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
       );
     }
   }, [state.tabs]);
+
+  const tabPathForLocation = useCallback((tab: ShellViewState["tabs"][number]) => {
+    if (tab.location.kind === "file") return tab.location.path;
+    if (tab.location.kind === "text-file") return tab.location.path;
+    return null;
+  }, []);
+
+  const tabStructurePayload = useCallback((tabId: string): StructureDragPayload | null => {
+    const tab = latestTabsRef.current.find((candidate) => candidate.id === tabId);
+    if (!tab) return null;
+    const path = tabPathForLocation(tab);
+    if (!path) return null;
+    const kind = pageKind(tab.location);
+    return {
+      paths: [path],
+      records: [],
+      items: [
+        {
+          kind: tab.location.kind === "ketcher" ? "ketcher" : tab.location.kind === "text-file" ? "writer" : "tab",
+          title: kind.title(tab.location, state),
+          detail: kind.description,
+          path,
+        },
+      ],
+    };
+  }, [state, tabPathForLocation]);
+
+  const dropTargetForTabId = useCallback((tabId: string): DropTargetContext | null => {
+    const tab = latestTabsRef.current.find((candidate) => candidate.id === tabId);
+    const fileLocation = tab?.location.kind === "file" ? tab.location : null;
+    if (!fileLocation) return null;
+    const document = state.documents.find((candidate) => (
+      candidate.id === fileLocation.documentId || candidate.path === fileLocation.path
+    ));
+    return {
+      kind: "active-viewer",
+      documentId: document?.id ?? fileLocation.documentId,
+      documentPath: document?.path ?? fileLocation.path,
+      renderer: document?.renderer ?? null,
+      dockingRequest: document?.dockingRequest ?? null,
+    };
+  }, [state.documents]);
+
+  const tabIdFromPoint = useCallback((clientX: number, clientY: number, excludedTabId: string | null = null) => {
+    for (const tab of latestTabsRef.current) {
+      if (tab.id === excludedTabId) continue;
+      const element = tabShellRefs.current.get(tab.id);
+      if (!element) continue;
+      const rect = element.getBoundingClientRect();
+      if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) return tab.id;
+    }
+    return null;
+  }, []);
+
+  const activeViewerDropTargetAtPoint = useCallback((sourceTabId: string, clientX: number, clientY: number): DropTargetContext | null => {
+    const element = typeof document === "undefined" ? null : document.elementFromPoint(clientX, clientY);
+    if (!element?.closest(".molecule-stage, .main-stage")) return null;
+    if (state.activeTabId === sourceTabId) return null;
+    const activeDocument = state.activeDocument;
+    if (!activeDocument) return null;
+    return {
+      kind: "active-viewer",
+      documentId: activeDocument.id,
+      documentPath: activeDocument.path,
+      renderer: activeDocument.renderer,
+      dockingRequest: activeDocument.dockingRequest ?? null,
+    };
+  }, [state.activeDocument, state.activeTabId]);
+
+  const runTabDropAtPoint = useCallback((sourceTabId: string, clientX: number, clientY: number) => {
+    if (clientX <= 0 && clientY <= 0) return false;
+    const payload = tabStructurePayload(sourceTabId);
+    if (!payload || (payload.paths.length === 0 && payload.records.length === 0)) return false;
+    const targetTabId = tabIdFromPoint(clientX, clientY, sourceTabId);
+    const target = targetTabId
+      ? dropTargetForTabId(targetTabId)
+      : activeViewerDropTargetAtPoint(sourceTabId, clientX, clientY);
+    if (!target) return false;
+    const choices = shellDropActionChoices(payload, target, { kind: "tab" });
+    if (choices.length === 0) return false;
+    actions.setStructureDragActive(false);
+    return runShellDropActionChoices(actions, payload, choices, { x: clientX, y: clientY });
+  }, [actions, activeViewerDropTargetAtPoint, dropTargetForTabId, tabIdFromPoint, tabStructurePayload]);
 
   const moveDraggedTab = useCallback((tabId: string, pointerX: number) => {
     const orderedTabs = latestTabsRef.current;
@@ -143,14 +227,21 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
       }
       moveDraggedTab(tabId, moveEvent.clientX);
     };
+    const handleMouseUp = (upEvent: MouseEvent) => {
+      const drag = mouseDragRef.current;
+      if (drag?.tabId === tabId && drag.active && tabHasDockPayload) {
+        runTabDropAtPoint(tabId, upEvent.clientX, upEvent.clientY);
+      }
+      stopTabDrag();
+    };
 
     window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", stopTabDrag, { once: true });
+    window.addEventListener("mouseup", handleMouseUp, { once: true });
     removeMouseDragListenersRef.current = () => {
       window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", stopTabDrag);
+      window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [actions, moveDraggedTab, removeMouseDragListeners, stopTabDrag]);
+  }, [actions, moveDraggedTab, removeMouseDragListeners, runTabDropAtPoint, stopTabDrag]);
 
   useEffect(() => removeMouseDragListeners, [removeMouseDragListeners]);
 
@@ -193,7 +284,7 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
   }, [actions, stopTabDrag]);
 
   return (
-    <div className="tab-strip" data-tauri-drag-region>
+    <div className="tab-strip">
       <div className="tab-history-controls">
         <button
           type="button"
@@ -223,7 +314,6 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
         className="tab-scroll-region"
         role="tablist"
         aria-label="Open structures"
-        data-tauri-drag-region
         onDragOver={handleEmptyTabStripDragOver}
         onDrop={handleEmptyTabStripDrop}
       >
@@ -233,7 +323,7 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
           const active = index === activeTabIndex;
           const fileLocation = tab.location.kind === "file" ? tab.location : null;
           const textFileLocation = tab.location.kind === "text-file" ? tab.location : null;
-          const tabPath = fileLocation?.path ?? textFileLocation?.path ?? null;
+          const tabPath = tabPathForLocation(tab);
           const tabDragItem = {
             kind: tab.location.kind === "ketcher" ? "ketcher" as const : tab.location.kind === "text-file" ? "writer" as const : "tab" as const,
             title,
@@ -247,13 +337,13 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
             ? state.textDocuments.find((document) => document.id === textFileLocation.documentId || document.path === textFileLocation.path) ?? null
             : null;
           const isDragging = draggingTabId === tab.id;
-          const tabDropTarget = tabDocument
+          const tabDropTarget = fileLocation
             ? {
                 kind: "active-viewer" as const,
-                documentId: tabDocument.id,
-                documentPath: tabDocument.path,
-                renderer: tabDocument.renderer,
-                dockingRequest: tabDocument.dockingRequest ?? null,
+                documentId: tabDocument?.id ?? fileLocation.documentId,
+                documentPath: tabDocument?.path ?? fileLocation.path,
+                renderer: tabDocument?.renderer ?? null,
+                dockingRequest: tabDocument?.dockingRequest ?? null,
               }
             : null;
           const showTabMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -409,7 +499,10 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
                   });
                   actions.setStructureDragActive(true);
                 }}
-                onDragEnd={stopTabDrag}
+                onDragEnd={(event) => {
+                  runTabDropAtPoint(tab.id, event.clientX, event.clientY);
+                  stopTabDrag();
+                }}
                 onDragOver={(event) => {
                   if (!hasStructureDrag(event.dataTransfer)) return;
                   const payload = readStructureDragPayload(event.dataTransfer);
