@@ -126,6 +126,13 @@ export function CommandPalette({
         run: actions.openFepNetworkPreview,
       },
       {
+        id: "open-agent-integration",
+        group: "Suggested",
+        label: "Burrete",
+        description: "Open Codex integration status",
+        run: () => actions.openSettingsSection("agent"),
+      },
+      {
         id: "toggle-sidebar",
         group: "Suggested",
         label: state.sidebarOpen ? "Hide Sidebar" : "Show Sidebar",

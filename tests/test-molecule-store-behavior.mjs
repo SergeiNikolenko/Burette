@@ -45,6 +45,7 @@ function resetStore() {
   storage.clear();
   useMoleculeStore.setState({
     documents: [],
+    textDocuments: [],
     tabs: [{ id: "tab-1", location: { kind: "launcher" }, back: [], forward: [] }],
     activeTabId: "tab-1",
     activeDocumentId: null,
@@ -122,6 +123,55 @@ assert.equal(restored.tabs.filter((tab) => tab.location.kind === "ketcher").leng
 assert.equal(restored.tabs.length, 2);
 assert.equal(restored.tabs.find((tab) => tab.id === restored.activeTabId)?.location.kind, "ketcher");
 assert.equal(restored.activeDocumentId, null);
+
+resetStore();
+useMoleculeStore.setState({
+  documents: [document("stored-doc", "/tmp/stored.pdb")],
+  tabs: [
+    {
+      id: "tab-file",
+      location: { kind: "file", documentId: "stored-doc", path: "/tmp/stored.pdb" },
+      back: [],
+      forward: [],
+    },
+    { id: "tab-ketcher", location: { kind: "ketcher" }, back: [], forward: [] },
+  ],
+  activeTabId: "tab-file",
+  activeDocumentId: "stored-doc",
+  recentStructures: [],
+});
+
+const persisted = JSON.parse(storage.get("burrete.molecule.session"));
+assert.deepEqual(persisted.state.documents, []);
+assert.equal(persisted.state.tabs.some((tab) => tab.location.kind === "file"), false);
+assert.equal(persisted.state.tabs.some((tab) => tab.location.kind === "ketcher"), true);
+
+resetStore();
+storage.set("burrete.molecule.session", JSON.stringify({
+  state: {
+    documents: [],
+    tabs: [
+      {
+        id: "legacy-file",
+        location: { kind: "file", documentId: "legacy-doc", path: "/tmp/legacy.pdb" },
+        back: [],
+        forward: [],
+      },
+      { id: "legacy-ketcher", location: { kind: "ketcher" }, back: [], forward: [] },
+    ],
+    activeTabId: "legacy-file",
+    recentStructures: [],
+  },
+  version: 0,
+}));
+await useMoleculeStore.persist.rehydrate();
+
+const rehydrated = useMoleculeStore.getState();
+assert.equal(rehydrated.documents.length, 0);
+assert.equal(rehydrated.tabs.some((tab) => tab.location.kind === "file"), true);
+assert.equal(rehydrated.tabs.some((tab) => tab.location.kind === "ketcher"), true);
+assert.equal(rehydrated.tabs.find((tab) => tab.id === rehydrated.activeTabId)?.location.kind, "file");
+assert.equal(rehydrated.activeDocumentId, null);
 
 resetStore();
 const manyDocuments = Array.from({ length: 14 }, (_, index) => (

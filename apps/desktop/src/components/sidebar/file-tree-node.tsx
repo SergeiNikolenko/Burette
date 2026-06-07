@@ -7,7 +7,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { isMoleculeCollectionPath } from "../../lib/collection-documents";
 import type { SidebarProject, SidebarProjectItem } from "../../lib/sidebar-projects";
-import { hasStructureDrag, readStructureDragPayload, writeStructureDrag } from "../../lib/structure-drag";
+import { hasStructureDrag, readStructureDragPayload, writeStructureDragPayload } from "../../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
 import { rendererLabel } from "../format";
 import { showNativeContextMenu } from "../native-context-menu";
@@ -115,9 +115,13 @@ function projectMenuItems(project: SidebarProject, actions: ShellActions) {
   return [
     {
       kind: "item" as const,
-      id: "pin-project",
-      text: "Pin project",
-      disabled: true,
+      id: project.isPinned ? "unpin-project" : "pin-project",
+      text: project.isPinned ? "Unpin project" : "Pin project",
+      disabled: !project.rootPath,
+      action: () => {
+        if (!project.rootPath) return;
+        actions.togglePinnedProjectRoot(project.rootPath);
+      },
     },
     {
       kind: "item" as const,
@@ -133,20 +137,24 @@ function projectMenuItems(project: SidebarProject, actions: ShellActions) {
       kind: "item" as const,
       id: "rename-project",
       text: "Rename project",
-      disabled: true,
-    },
-    {
-      kind: "item" as const,
-      id: "archive-project-chats",
-      text: "Archive chats",
-      disabled: true,
+      disabled: !project.rootPath,
+      action: () => {
+        if (!project.rootPath) return;
+        const nextName = window.prompt("Rename project", project.title);
+        if (nextName === null) return;
+        actions.renameProjectRoot(project.rootPath, nextName);
+      },
     },
     { kind: "separator" as const },
     {
       kind: "item" as const,
       id: "remove-project",
       text: "Remove",
-      disabled: true,
+      disabled: !project.rootPath || !project.isExplicit,
+      action: () => {
+        if (!project.rootPath || !project.isExplicit) return;
+        actions.removeProjectRoot(project.rootPath);
+      },
     },
   ];
 }
@@ -185,7 +193,16 @@ export function ProjectItem({
   };
 
   const handleDragStart = (event: ReactDragEvent<HTMLDivElement>) => {
-    writeStructureDrag(event.dataTransfer, [item.path]);
+    writeStructureDragPayload(event.dataTransfer, {
+      paths: [item.path],
+      records: [],
+      items: [{
+        kind: "file",
+        title: item.title,
+        detail: item.relativePath,
+        path: item.path,
+      }],
+    });
     actions.setStructureDragActive(true);
   };
 
@@ -256,6 +273,9 @@ export function ProjectItem({
       tabIndex={0}
       draggable
       className={className}
+      data-sidebar-structure-path={item.path}
+      data-sidebar-structure-renderer={item.renderer}
+      data-sidebar-structure-document-id={item.documentId ?? undefined}
       onClick={openItem}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}

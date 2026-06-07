@@ -10,6 +10,7 @@
   --buret-control-active: rgba(255, 255, 255, 0.14);
   --buret-control-focus: rgba(255, 255, 255, 0.16);
   --buret-menu-surface: rgb(37 37 40 / 0.86);
+  --buret-detail-surface: #202020;
   --buret-border: rgba(255, 255, 255, 0.09);
   --buret-border-strong: rgba(255, 255, 255, 0.14);
   --buret-accent: #AF52DE;
@@ -44,6 +45,7 @@ html[data-buret-theme="light"] {
   --buret-control-active: rgba(0, 0, 0, 0.10);
   --buret-control-focus: rgba(0, 0, 0, 0.13);
   --buret-menu-surface: rgb(244 244 246 / 0.88);
+  --buret-detail-surface: #ffffff;
   --buret-border: rgba(0, 0, 0, 0.08);
   --buret-border-strong: rgba(0, 0, 0, 0.14);
   --buret-text: rgba(20, 20, 20, 0.92);
@@ -254,6 +256,37 @@ button:disabled {
 .buret-grid-card-renderer-switch button.active {
   color: var(--buret-text);
   background: var(--buret-control-active);
+}
+
+.buret-grid-toolbar .buret-grid-xyzrender-preset-control {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-self: end;
+  align-items: center;
+  gap: 7px;
+  height: var(--buret-control-height);
+  min-height: var(--buret-control-height);
+  padding: 0 9px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--buret-control-surface);
+  color: var(--buret-muted);
+  font: 600 12px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+
+.buret-grid-toolbar .buret-grid-xyzrender-preset-control[hidden] {
+  display: none;
+}
+
+.buret-grid-toolbar .buret-grid-xyzrender-preset-control select {
+  width: 104px;
+  min-width: 0;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--buret-control-active);
+  color: var(--buret-text);
+  font: 500 12px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 
 .buret-grid-toolbar .buret-rdkit-coords-control {
@@ -670,6 +703,124 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   background: color-mix(in srgb, var(--buret-text) 8%, transparent);
 }
 
+.buret-grid-molecule-detail-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 24px;
+  background: rgba(20, 22, 26, 0.72);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.buret-grid-molecule-detail {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) minmax(280px, 1fr);
+  width: min(720px, calc(100vw - 48px));
+  max-height: min(540px, calc(100vh - 48px));
+  overflow: hidden;
+  border: 1px solid var(--buret-border);
+  border-radius: 10px;
+  color: var(--buret-text);
+  background: var(--buret-detail-surface);
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.32);
+}
+
+.buret-grid-molecule-detail-image {
+  display: grid;
+  place-items: center;
+  min-height: 300px;
+  padding: 16px;
+  border-right: 1px solid var(--buret-border);
+  background: #fff;
+}
+
+.buret-grid-molecule-detail-image .buret-rdkit-card-image,
+.buret-grid-molecule-detail-image .buret-xyzrender-card-image,
+.buret-grid-molecule-detail-image svg {
+  width: 100%;
+  height: 100%;
+  min-height: 260px;
+  max-height: 360px;
+  object-fit: contain;
+}
+
+.buret-grid-molecule-detail-body {
+  min-width: 0;
+  overflow: auto;
+  padding: 20px 22px;
+}
+
+.buret-grid-molecule-detail-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.buret-grid-molecule-detail h2 {
+  margin: 2px 0 10px;
+  font-size: 22px;
+  line-height: 1.15;
+  letter-spacing: 0;
+}
+
+.buret-grid-molecule-detail-smiles {
+  overflow-wrap: anywhere;
+  margin-bottom: 16px;
+  padding: 9px 10px;
+  border: 1px solid var(--buret-border);
+  border-radius: 7px;
+  background: var(--buret-control-surface);
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.buret-grid-molecule-detail-props {
+  display: grid;
+  grid-template-columns: minmax(110px, 32%) minmax(0, 1fr);
+  gap: 8px 12px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.buret-grid-molecule-detail-props dt {
+  color: var(--buret-muted);
+  font-weight: 650;
+}
+
+.buret-grid-molecule-detail-props dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.buret-grid-molecule-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.buret-grid-molecule-detail-actions button,
+.buret-grid-molecule-detail-title-row button {
+  min-height: 34px;
+  border: 1px solid var(--buret-border);
+  border-radius: 7px;
+  padding: 7px 11px;
+  color: var(--buret-text);
+  background: var(--buret-control-surface);
+  font: 600 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+
+.buret-grid-molecule-detail-actions button:hover,
+.buret-grid-molecule-detail-title-row button:hover {
+  background: color-mix(in srgb, var(--buret-text) 7%, var(--buret-control-surface));
+}
+
 .buret-card.smarts-match {
   border-color: rgba(255, 190, 94, 0.72);
   box-shadow:
@@ -681,16 +832,18 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   position: absolute;
   top: 10px;
   left: 10px;
-  z-index: 5;
+  z-index: 20;
   max-width: calc(100% - 20px);
   box-sizing: border-box;
   padding: 6px 8px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.26);
   border-radius: 7px;
   color: #ffffff;
-  background: rgba(22, 24, 29, 0.92);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  background: rgba(18, 20, 24, 0.98);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
   content: attr(data-buret-card-tooltip);
   font-size: 11px;
   font-weight: 700;
@@ -762,11 +915,11 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   grid-template-rows: minmax(0, 1fr) auto;
   gap: 6px;
   box-sizing: border-box;
-  container-type: inline-size;
+  min-width: 0;
   width: 100%;
   height: 100%;
   min-height: var(--buret-picture-min-height);
-  padding: clamp(8px, 6cqi, 12px);
+  padding: 12px;
   overflow: hidden;
   color: #5b2b2b;
   line-height: 1.2;
@@ -804,19 +957,19 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   max-height: 9.6em;
   overflow: hidden;
   overflow-wrap: anywhere;
-  font-size: clamp(7px, 8cqi, 11px);
+  font-size: 12px;
   line-height: 1.08;
 }
 
 .buret-molecule-error-dense strong {
-  font-size: clamp(6px, 6cqi, 9px);
+  font-size: 10px;
   line-height: 1.05;
   letter-spacing: 0;
 }
 
 .buret-molecule-error span {
   color: #8b5f5f;
-  font-size: clamp(8px, 7cqi, 12px);
+  font-size: 12px;
   line-height: 1.1;
 }
 
@@ -1074,6 +1227,25 @@ body.buret-hide-properties .buret-card-body {
   .buret-actions {
     justify-content: flex-start;
     margin-top: 12px;
+  }
+
+  .buret-grid-molecule-detail {
+    grid-template-columns: 1fr;
+    width: min(520px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+  }
+
+  .buret-grid-molecule-detail-image {
+    min-height: 220px;
+    border-right: 0;
+    border-bottom: 1px solid var(--buret-border);
+  }
+
+  .buret-grid-molecule-detail-image .buret-rdkit-card-image,
+  .buret-grid-molecule-detail-image .buret-xyzrender-card-image,
+  .buret-grid-molecule-detail-image svg {
+    min-height: 200px;
+    max-height: 260px;
   }
 
   .buret-toolbar-row-main {

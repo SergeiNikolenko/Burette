@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "surface": "molecular-report",
+  "title": "Ligand Review",
+  "blocks": [
+    {
+      "type": "markdown",
+      "body": "# Ligand Review\n\nReviewed ligand candidates."
+    }
+  ],
+  "sources": [
+    {
+      "label": "Fixture SDF",
+      "path": "/tmp/ligands.sdf"
+    }
+  ]
+}

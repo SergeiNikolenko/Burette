@@ -70,6 +70,16 @@ pub(crate) fn create_runtime<R: Runtime>(
     } else {
         None
     };
+    if format.external_only
+        && external_molstar_data.is_none()
+        && source_xyz_data.is_none()
+        && should_require_extracted_standalone_coordinates(extension)
+    {
+        let message = format!(
+            "{label} does not contain standalone molecular coordinates Burrete can preview. Open the referenced structure file directly if this output report points to one."
+        );
+        return create_not_renderable_runtime(file_path, &runtime, &message);
+    }
     let xyz_payload = if format.molstar_format == "xyz" && !format.is_binary {
         xyz_first_frame(data)
     } else {
@@ -123,17 +133,7 @@ pub(crate) fn create_runtime<R: Runtime>(
             Ok(artifact) => {
                 external_artifact = Some(artifact);
             }
-            Err(error)
-                if !format.external_only && format.molstar_format == "xyz" && !format.is_binary =>
-            {
-                renderer = "molstar".to_string();
-                external_status = Some(json!({
-                    "status": "fallback",
-                    "requested": "xyzrender-external",
-                    "message": format!("Using Mol* because external xyzrender failed: {error}")
-                }));
-            }
-            Err(error) if external_molstar_data.is_some() => {
+            Err(error) if !format.external_only || external_molstar_data.is_some() => {
                 renderer = "molstar".to_string();
                 external_status = Some(json!({
                     "status": "fallback",
@@ -247,7 +247,7 @@ pub(crate) fn create_runtime<R: Runtime>(
     let config_text = serde_json::to_string(&config).map_err(|err| err.to_string())?;
     fs::write(
         runtime.join("index.html"),
-        viewer_html(file_path, &runtime, &assets, &renderer, preferences, false),
+        viewer_html(file_path, &runtime, &assets, &renderer, preferences, true),
     )
     .map_err(|err| err.to_string())?;
     fs::write(runtime.join("viewer-bridge.js"), viewer_bridge_js())
@@ -258,9 +258,35 @@ pub(crate) fn create_runtime<R: Runtime>(
     )
     .map_err(|err| err.to_string())?;
     fs::write(runtime.join("preview-data.bin"), &payload.data).map_err(|err| err.to_string())?;
+    fs::write(
+        runtime.join("preview-data.js"),
+        format!(
+            "window.BurreteDataBase64 = \"{}\";\nwindow.BurreteDataURL = null;\n",
+            base64::engine::general_purpose::STANDARD.encode(&payload.data)
+        ),
+    )
+    .map_err(|err| err.to_string())?;
     Ok(CreatedRuntime {
         path: runtime.join("index.html"),
         renderer,
+    })
+}
+
+fn should_require_extracted_standalone_coordinates(extension: &str) -> bool {
+    extension == "out"
+}
+
+fn create_not_renderable_runtime(
+    file_path: &Path,
+    runtime: &Path,
+    message: &str,
+) -> Result<CreatedRuntime, String> {
+    let index_path = runtime.join("index.html");
+    fs::write(&index_path, not_renderable_html(file_path, message))
+        .map_err(|err| err.to_string())?;
+    Ok(CreatedRuntime {
+        path: index_path,
+        renderer: "not-renderable".to_string(),
     })
 }
 
@@ -716,7 +742,7 @@ pub(crate) fn copy_web_assets<R: Runtime>(
 fn bundled_web_dir<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
     if let Ok(resource) = app
         .path()
-        .resolve("Web", tauri::path::BaseDirectory::Resource)
+        .resolve("ViewerWeb", tauri::path::BaseDirectory::Resource)
     {
         if resource.exists() {
             return Ok(resource);
@@ -861,6 +887,37 @@ fn viewer_html(
     )
 }
 
+fn not_renderable_html(file_path: &Path, message: &str) -> String {
+    let title = escape_html(
+        file_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("structure"),
+    );
+    let message = escape_html(message);
+    format!(
+        r#"<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="{VIEWER_MINIMAL_CSP}" />
+  <title>Burrete - {title}</title>
+  <style>
+    html, body {{ margin: 0; width: 100%; height: 100%; background: #111317; color: #f2f2f2; }}
+    body {{ box-sizing: border-box; padding: 28px; font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }}
+    h1 {{ margin: 0 0 14px; font-size: 22px; line-height: 1.2; }}
+    p {{ max-width: 760px; margin: 0; color: rgba(242,242,242,0.84); }}
+  </style>
+</head>
+<body>
+  <h1>Burrete could not preview {title}</h1>
+  <p>{message}</p>
+</body>
+</html>"#
+    )
+}
+
 fn viewer_csp(renderer: &str) -> &'static str {
     match renderer {
         "molstar" => VIEWER_MOLSTAR_CSP,
@@ -895,5 +952,16 @@ fn viewer_bridge_js() -> &'static str {
   window.BurreteDebug = false;
   window.BurretePanelControlsVisible = false;
   window.BurreteCacheBuster = String(Date.now());
+  window.addEventListener('message', (event) => {
+    const data = event.data || {};
+    if (data.source !== 'burrete-native-host' || !data.body) return;
+    const body = data.body;
+    if (body.type === 'nativeData' && window.BurreteReceiveNativeData) {
+      window.BurreteReceiveNativeData(body.payload || {});
+    }
+    if (body.type === 'nativeRuntimeFile' && window.BurreteReceiveNativeRuntimeFile) {
+      window.BurreteReceiveNativeRuntimeFile(body.payload || {});
+    }
+  });
 })();"#
 }

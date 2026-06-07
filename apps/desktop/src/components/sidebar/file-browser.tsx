@@ -2,10 +2,11 @@ import { useState, type DragEvent as ReactDragEvent } from "react";
 import { Atom01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { filterSidebarProjects } from "../../lib/sidebar-projects";
-import { hasStructureDrag, readStructureDragPayload } from "../../lib/structure-drag";
+import { hasStructureDrag, readStructureDragPayload, writeStructureDragItems } from "../../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
 import { RadixDropdownMenu } from "../radix-menu";
 import { ScrollFade } from "../scroll-fade";
+import { ShortcutTooltip } from "../shortcut-tooltip";
 import type { ShellActions, ShellViewState } from "../types";
 import { ProjectGroup, ProjectItem } from "./file-tree-node";
 
@@ -60,6 +61,15 @@ export function FileBrowser({
     runShellDropActionChoices(actions, payload, choices, { x: event.clientX, y: event.clientY });
   };
 
+  const handleKetcherDragStart = (event: ReactDragEvent<HTMLButtonElement>) => {
+    writeStructureDragItems(event.dataTransfer, [{
+      kind: "ketcher",
+      title: "Ketcher",
+      detail: "Molecule sketch editor",
+    }]);
+    actions.setStructureDragActive(true);
+  };
+
   return (
     <ScrollFade className="sidebar-scroll">
       <button
@@ -73,11 +83,15 @@ export function FileBrowser({
         </span>
         <span className="sidebar-search-label">Search</span>
         <kbd>⌘<span>P</span></kbd>
+        <ShortcutTooltip label="Search projects and structures" shortcut="⌘P" />
       </button>
       <button
         type="button"
         className="sidebar-tool-row"
+        draggable
         onClick={actions.openKetcher}
+        onDragStart={handleKetcherDragStart}
+        onDragEnd={() => actions.setStructureDragActive(false)}
         onDragOver={handleKetcherDragOver}
         onDragLeave={handleKetcherDragLeave}
         onDrop={handleKetcherDrop}

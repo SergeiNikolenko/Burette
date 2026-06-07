@@ -1,0 +1,166 @@
+#!/usr/bin/env node
+import assert from 'node:assert/strict';
+import { spawn, spawnSync } from 'node:child_process';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { resolve } from 'node:path';
+
+async function freePort() {
+  const server = createServer();
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+  await new Promise(resolve => server.close(resolve));
+  return port;
+}
+
+async function waitForReady(child) {
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', chunk => { stdout += chunk.toString('utf8'); });
+  child.stderr.on('data', chunk => { stderr += chunk.toString('utf8'); });
+
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    const start = stdout.indexOf('{');
+    const end = stdout.lastIndexOf('}');
+    if (start !== -1 && end > start) {
+      return JSON.parse(stdout.slice(start, end + 1));
+    }
+    if (child.exitCode != null) break;
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  throw new Error(`agent-preview did not become ready. stdout=${stdout} stderr=${stderr}`);
+}
+
+function runCli(args) {
+  return spawnSync(process.execPath, ['scripts/burrete-agent.mjs', ...args], {
+    encoding: 'utf8'
+  });
+}
+
+const port = await freePort();
+const child = spawn(process.execPath, ['scripts/agent-preview.mjs', 'samples/mini.pdb', '--port', String(port)], {
+  stdio: ['ignore', 'pipe', 'pipe']
+});
+
+try {
+  const cliSource = await readFile(resolve('scripts/burrete-agent.mjs'), 'utf8');
+  assert.match(cliSource, /function desktopOpenArgs\(app, sessionDir, file\)/);
+  assert.match(cliSource, /spawn\('open', desktopOpenArgs\(app, sessionDir, resolve\(file\)\)/);
+  assert.match(cliSource, /return \['-n', app, \.\.\.agentArgs\];/);
+  assert.match(cliSource, /return \['-n', '-a', app, \.\.\.agentArgs\];/);
+
+  const ready = await waitForReady(child);
+  const observed = runCli(['observe', '--url', ready.url]);
+  assert.equal(observed.status, 0, observed.stderr);
+  const payload = JSON.parse(observed.stdout);
+  assert.equal(payload.ok, true);
+  assert.equal(payload.apiVersion, 'burette-agent-cli/v1');
+  assert.equal(payload.result.apiVersion, 'burette-agent-control/v1');
+  assert.equal(payload.result.mode, 'browser-preview');
+  assert.equal(payload.result.activeDocument.title, 'mini.pdb');
+  assert.equal(payload.result.scene.known, false);
+
+  const action = runCli(['act', '--url', ready.url, '{"type":"reset_camera"}']);
+  assert.equal(action.status, 0, action.stderr);
+  const actionPayload = JSON.parse(action.stdout);
+  assert.equal(actionPayload.ok, true);
+  assert.equal(actionPayload.apiVersion, 'burette-agent-cli/v1');
+  assert.equal(actionPayload.result.ok, true);
+  assert.equal(actionPayload.result.action.status, 'queued');
+  assert.equal(actionPayload.result.action.type, 'reset_camera');
+
+  const sceneAction = runCli(['act', '--url', ready.url, '{"type":"hide_waters"}']);
+  assert.equal(sceneAction.status, 0, sceneAction.stderr);
+  const sceneActionPayload = JSON.parse(sceneAction.stdout);
+  assert.equal(sceneActionPayload.ok, true);
+  assert.equal(sceneActionPayload.result.action.status, 'queued');
+  assert.equal(sceneActionPayload.result.action.type, 'hide_waters');
+
+  const browserPanel = runCli(['render-panel', '--url', ready.url, '--kind', 'markdown', '--file', 'README.md']);
+  assert.equal(browserPanel.status, 0, browserPanel.stderr);
+  const browserPanelPayload = JSON.parse(browserPanel.stdout);
+  assert.equal(browserPanelPayload.ok, true);
+  assert.equal(browserPanelPayload.result.action.status, 'queued');
+  assert.equal(browserPanelPayload.result.action.type, 'render_panel');
+
+  const invalidAction = runCli(['act', '--url', ready.url, '{"type":"delete_everything"}']);
+  assert.equal(invalidAction.status, 1);
+  const invalidActionError = JSON.parse(invalidAction.stderr);
+  assert.equal(invalidActionError.ok, false);
+  assert.equal(invalidActionError.error.code, 'ACT_FAILED');
+
+  const missingUrl = runCli(['observe']);
+  assert.equal(missingUrl.status, 2);
+  const missingUrlError = JSON.parse(missingUrl.stderr);
+  assert.equal(missingUrlError.ok, false);
+  assert.equal(missingUrlError.error.code, 'INVALID_ARGS');
+
+  const sessionDir = await mkdtemp(resolve(tmpdir(), 'burrete-agent-cli-test-'));
+  try {
+    const desktop = runCli(['open', '--mode', 'desktop-app', '--session-dir', sessionDir, '--no-launch', 'samples/mini.pdb']);
+    assert.equal(desktop.status, 0, desktop.stderr);
+    const desktopPayload = JSON.parse(desktop.stdout);
+    assert.equal(desktopPayload.ok, true);
+    assert.equal(desktopPayload.result.mode, 'desktop-app');
+    assert.equal(desktopPayload.result.sessionDir, sessionDir);
+    assert.equal(desktopPayload.result.launched, false);
+
+    const session = JSON.parse(await readFile(resolve(sessionDir, 'session.json'), 'utf8'));
+    assert.equal(session.mode, 'desktop-app');
+    assert.deepEqual(session.initialPaths, [resolve('samples/mini.pdb')]);
+
+    await writeFile(resolve(sessionDir, 'observe.json'), JSON.stringify({
+      apiVersion: 'burette-agent-control/v1',
+      mode: 'desktop-app',
+      activeDocument: { ready: true, title: 'mini.pdb' }
+    }));
+    const desktopObserve = runCli(['observe', '--session-dir', sessionDir]);
+    assert.equal(desktopObserve.status, 0, desktopObserve.stderr);
+    const desktopObservePayload = JSON.parse(desktopObserve.stdout);
+    assert.equal(desktopObservePayload.ok, true);
+    assert.equal(desktopObservePayload.result.mode, 'desktop-app');
+    assert.equal(desktopObservePayload.result.activeDocument.title, 'mini.pdb');
+
+    const desktopAction = runCli(['act', '--session-dir', sessionDir, '{"type":"open_files","paths":["samples/mini.pdb"]}']);
+    assert.equal(desktopAction.status, 0, desktopAction.stderr);
+    const desktopActionPayload = JSON.parse(desktopAction.stdout);
+    assert.equal(desktopActionPayload.ok, true);
+    assert.equal(desktopActionPayload.result.action.status, 'queued');
+    assert.equal(desktopActionPayload.result.action.type, 'open_files');
+
+    const panel = runCli(['render-panel', '--session-dir', sessionDir, '--kind', 'markdown', '--file', 'README.md']);
+    assert.equal(panel.status, 0, panel.stderr);
+    const panelPayload = JSON.parse(panel.stdout);
+    assert.equal(panelPayload.ok, true);
+    assert.equal(panelPayload.result.action.status, 'queued');
+    assert.equal(panelPayload.result.action.type, 'render_panel');
+    const panelActionsFile = JSON.parse(await readFile(resolve(sessionDir, 'actions.json'), 'utf8'));
+    assert.equal(panelActionsFile.actions.at(-1).action.kind, 'markdown');
+    assert.equal(panelActionsFile.actions.at(-1).action.file, resolve('README.md'));
+
+    const invalidPanel = runCli(['render-panel', '--session-dir', sessionDir, '--kind', 'image', '--file', 'README.md']);
+    assert.equal(invalidPanel.status, 2);
+    const invalidPanelError = JSON.parse(invalidPanel.stderr);
+    assert.equal(invalidPanelError.error.code, 'INVALID_ARGS');
+
+    const actionsFile = JSON.parse(await readFile(resolve(sessionDir, 'actions.json'), 'utf8'));
+    const queued = actionsFile.actions[0];
+    queued.status = 'completed';
+    queued.completedAt = new Date().toISOString();
+    queued.result = { ok: true, command: 'open_files', result: { pathCount: 1 } };
+    await writeFile(resolve(sessionDir, 'actions.json'), JSON.stringify(actionsFile));
+
+    const waitedAction = runCli(['act', '--session-dir', sessionDir, '{"type":"reset_camera"}', '--wait-ms', '1000']);
+    assert.equal(waitedAction.status, 1);
+    const waitedActionError = JSON.parse(waitedAction.stderr);
+    assert.equal(waitedActionError.error.code, 'ACTION_TIMEOUT');
+  } finally {
+    await rm(sessionDir, { recursive: true, force: true });
+  }
+
+  console.log('burrete-agent CLI tests passed');
+} finally {
+  child.kill('SIGTERM');
+}

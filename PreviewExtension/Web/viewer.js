@@ -12,6 +12,7 @@
   const TOOLBAR_MARGIN = 12;
   const FLOATING_LAYOUT_GAP = 12;
   const PANEL_CLOSE_HIT_WIDTH = 38;
+  const MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX = 4;
   const VIEWER_THEME_STORAGE_KEY = 'buret.viewer.theme';
   const DEFAULT_MOLSTAR_STYLE = 'illustrative';
   const DEFAULT_XYZRENDER_PRESETS = [
@@ -70,7 +71,10 @@
   let molstarContainerResizeCleanup = null;
   let molstarContextMenuCleanup = null;
   let molstarContextMenuPick = null;
+  let molstarContextMenuMode = 'molecule';
   let activeDockingPrepared = null;
+  let burreteAgentActionPollTimer = 0;
+  let burreteAgentActionPollBusy = false;
   try { window.__mqlDebug && window.__mqlDebug('[viewer.js] top-level IIFE entered; readyState=' + document.readyState); } catch (_) {}
 
   function post(type, message) {
@@ -96,6 +100,15 @@
     } catch (_) {
       return false;
     }
+  }
+
+  function safeExportBaseName(value, fallback = 'structure') {
+    return String(value || fallback)
+      .replace(/\.[A-Za-z0-9]{1,8}$/u, '')
+      .replace(/[\\/:*?"<>|]+/g, '_')
+      .replace(/^\.+/g, '')
+      .trim()
+      .slice(0, 80) || fallback;
   }
 
   function setStatus(message, kind = 'info') {
@@ -125,6 +138,305 @@
     post('debug', message);
   }
 
+  async function reportBurreteAgentState() {
+    const control = window.BurreteAgentControl;
+    const reportUrl = typeof control?.reportUrl === 'string' ? control.reportUrl : '';
+    if (!reportUrl || !window.BurreteAgent?.run) return;
+    try {
+      const capabilities = await window.BurreteAgent.run({ command: 'capabilities' });
+      let summary = null;
+      const warnings = [];
+      if (capabilities?.ok && capabilities.result?.ready) {
+        summary = await window.BurreteAgent.run({ command: 'summary', args: { includeLigands: true } });
+      } else {
+        warnings.push('BurreteAgent was present but did not report ready=true.');
+      }
+      await fetch(reportUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiVersion: control.apiVersion || 'burette-agent-control/v1',
+          reportedAt: new Date().toISOString(),
+          capabilities,
+          summary,
+          warnings
+        })
+      });
+    } catch (error) {
+      debug('BurreteAgent live report failed: ' + (error && error.message || String(error)));
+    }
+  }
+
+  function startBurreteAgentActionPolling() {
+    const control = window.BurreteAgentControl;
+    const nextActionUrl = typeof control?.nextActionUrl === 'string' ? control.nextActionUrl : '';
+    const actionResultUrl = typeof control?.actionResultUrl === 'string' ? control.actionResultUrl : '';
+    if (!nextActionUrl || !actionResultUrl || !window.BurreteAgent?.run || burreteAgentActionPollTimer) return;
+    const intervalMs = Math.max(250, Math.min(5000, Number(control.actionPollIntervalMs) || 500));
+    burreteAgentActionPollTimer = window.setInterval(() => {
+      void pollBurreteAgentAction(nextActionUrl, actionResultUrl);
+    }, intervalMs);
+    void pollBurreteAgentAction(nextActionUrl, actionResultUrl);
+  }
+
+  async function pollBurreteAgentAction(nextActionUrl, actionResultUrl) {
+    if (burreteAgentActionPollBusy) return;
+    burreteAgentActionPollBusy = true;
+    try {
+      const response = await fetch(nextActionUrl, { credentials: 'same-origin' });
+      if (response.status === 204) return;
+      if (!response.ok) throw new Error(`next-action HTTP ${response.status}`);
+      const payload = await response.json();
+      if (!payload?.id || !payload.action) return;
+      let result;
+      try {
+        result = await executeBurreteAgentAction(payload.action);
+      } catch (error) {
+        const actionType = String(payload.action?.type || 'unknown');
+        result = agentActionFailure(actionType, 'ACTION_ERROR', error && error.message || String(error));
+      }
+      await fetch(actionResultUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: payload.id, result })
+      });
+      void reportBurreteAgentState();
+    } catch (error) {
+      debug('BurreteAgent action poll failed: ' + (error && error.message || String(error)));
+    } finally {
+      burreteAgentActionPollBusy = false;
+    }
+  }
+
+  async function executeBurreteAgentAction(action) {
+    const type = String(action?.type || '');
+    if (!window.BurreteAgent?.run) {
+      return agentActionFailure(type, 'NO_VIEWER', 'BurreteAgent is not available in this viewer runtime.');
+    }
+    if (type === 'focus_ligand') {
+      return window.BurreteAgent.run({
+        command: 'focusLigand',
+        args: {
+          selector: action.selector || action,
+          showNeighborhood: !!action.showNeighborhood,
+          radiusA: action.radiusA
+        }
+      });
+    }
+    if (type === 'show_ligands') {
+      return window.BurreteAgent.run({ command: 'showLigands', args: action.args || {} });
+    }
+    if (type === 'select_residues') {
+      return window.BurreteAgent.run({ command: 'selectResidues', args: { selector: action.selector || action } });
+    }
+    if (type === 'focus_selection') {
+      return window.BurreteAgent.run({ command: 'focusSelection', args: action.args || {} });
+    }
+    if (type === 'contacts') {
+      return window.BurreteAgent.run({ command: 'contacts', args: action.args || action });
+    }
+    if (type === 'reset_camera') {
+      return window.BurreteAgent.run({ command: 'resetCamera', args: action.args || {} });
+    }
+    if (type === 'hide_waters') {
+      return window.BurreteSceneActions?.hideWaters?.() || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BurreteSceneActions.hideWaters is unavailable.');
+    }
+    if (type === 'show_waters') {
+      return window.BurreteSceneActions?.showWaters?.() || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BurreteSceneActions.showWaters is unavailable.');
+    }
+    if (type === 'show_surface') {
+      return window.BurreteSceneActions?.showSurface?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BurreteSceneActions.showSurface is unavailable.');
+    }
+    if (type === 'color_by_chain') {
+      return window.BurreteSceneActions?.colorByChain?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BurreteSceneActions.colorByChain is unavailable.');
+    }
+    if (type === 'render_panel') {
+      return renderBurreteAgentPanel(action);
+    }
+    if (type === 'screenshot' || type === 'export_image') {
+      return window.BurreteAgent.run({ command: 'screenshot', args: action.args || {} });
+    }
+    if (type === 'raw_burrete_agent') {
+      if (!action.command) return agentActionFailure(type, 'INVALID_ARGS', 'raw_burrete_agent requires command.');
+      return window.BurreteAgent.run({ command: action.command, args: action.args || {} });
+    }
+    return agentActionFailure(type, 'NOT_IMPLEMENTED', `Unsupported BurreteAgent action: ${type}`);
+  }
+
+  window.addEventListener('message', event => {
+    const body = event.data && event.data.source === 'burrete-agent-host' ? event.data.body : null;
+    if (!body || body.type !== 'agent-action' || !body.id) return;
+    void (async () => {
+      let result;
+      try {
+        result = await executeBurreteAgentAction(body.action);
+      } catch (error) {
+        const actionType = String(body.action?.type || 'unknown');
+        result = agentActionFailure(actionType, 'ACTION_ERROR', error && error.message || String(error));
+      }
+      event.source?.postMessage({
+        source: 'burrete-agent-viewer',
+        body: {
+          type: 'agent-action-result',
+          id: body.id,
+          result
+        }
+      }, '*');
+    })();
+  });
+
+  function agentActionFailure(command, code, message) {
+    return {
+      ok: false,
+      command,
+      error: { code, message }
+    };
+  }
+
+  function renderBurreteAgentPanel(action) {
+    const panel = action?.panel || action;
+    const kind = String(panel.kind || action?.kind || '').trim();
+    const content = String(panel.content || '');
+    if (!['markdown', 'table', 'chart'].includes(kind)) {
+      return agentActionFailure('render_panel', 'INVALID_ARGS', 'render_panel kind must be markdown, table, or chart.');
+    }
+    if (!content) {
+      return agentActionFailure('render_panel', 'INVALID_ARGS', 'render_panel requires panel content.');
+    }
+    const root = ensureBurreteAgentPanelRoot();
+    const title = String(panel.title || action?.title || `${kind} panel`);
+    root.querySelector('[data-burrete-agent-panel-title]').textContent = title;
+    root.dataset.kind = kind;
+    const body = root.querySelector('[data-burrete-agent-panel-body]');
+    body.replaceChildren(renderPanelContent(kind, content));
+    root.classList.remove('hidden');
+    return {
+      ok: true,
+      command: 'render_panel',
+      result: {
+        kind,
+        title,
+        byteCount: Number(panel.byteCount) || content.length
+      }
+    };
+  }
+
+  function ensureBurreteAgentPanelRoot() {
+    let root = document.querySelector('[data-burrete-agent-panel]');
+    if (root) return root;
+    root = document.createElement('aside');
+    root.className = 'buret-agent-panel hidden';
+    root.setAttribute('data-burrete-agent-panel', '');
+    root.setAttribute('aria-label', 'Burrete agent panel');
+    root.innerHTML = `
+      <header class="buret-agent-panel-header">
+        <strong data-burrete-agent-panel-title>Panel</strong>
+        <button type="button" data-burrete-agent-panel-close aria-label="Close panel">Close</button>
+      </header>
+      <div class="buret-agent-panel-body" data-burrete-agent-panel-body></div>
+    `;
+    root.querySelector('[data-burrete-agent-panel-close]').addEventListener('click', () => root.classList.add('hidden'));
+    document.body.appendChild(root);
+    return root;
+  }
+
+  function renderPanelContent(kind, content) {
+    if (kind === 'table') return renderAgentTable(content);
+    if (kind === 'chart') return renderAgentChart(content);
+    const pre = document.createElement('pre');
+    pre.className = 'buret-agent-panel-markdown';
+    pre.textContent = content;
+    return pre;
+  }
+
+  function renderAgentTable(content) {
+    const rows = parsePanelRows(content);
+    if (!rows.length) return renderPanelTextFallback(content);
+    const table = document.createElement('table');
+    table.className = 'buret-agent-panel-table';
+    const headers = Array.from(new Set(rows.flatMap(row => Object.keys(row))));
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    for (const header of headers) {
+      const cell = document.createElement('th');
+      cell.textContent = header;
+      headerRow.appendChild(cell);
+    }
+    thead.appendChild(headerRow);
+    const tbody = document.createElement('tbody');
+    for (const row of rows.slice(0, 200)) {
+      const tableRow = document.createElement('tr');
+      for (const header of headers) {
+        const cell = document.createElement('td');
+        cell.textContent = row[header] == null ? '' : String(row[header]);
+        tableRow.appendChild(cell);
+      }
+      tbody.appendChild(tableRow);
+    }
+    table.append(thead, tbody);
+    return table;
+  }
+
+  function renderAgentChart(content) {
+    const rows = parsePanelRows(content);
+    const numericRows = rows.map(row => {
+      const entries = Object.entries(row);
+      const label = String(entries.find(([, value]) => Number.isNaN(Number(value)))?.[1] || row.label || row.name || '');
+      const numeric = entries.find(([, value]) => Number.isFinite(Number(value)));
+      return numeric ? { label: label || numeric[0], value: Number(numeric[1]) } : null;
+    }).filter(Boolean).slice(0, 24);
+    if (!numericRows.length) return renderPanelTextFallback(content);
+    const max = Math.max(...numericRows.map(row => Math.abs(row.value)), 1);
+    const chart = document.createElement('div');
+    chart.className = 'buret-agent-panel-chart';
+    for (const row of numericRows) {
+      const item = document.createElement('div');
+      item.className = 'buret-agent-panel-chart-row';
+      const label = document.createElement('span');
+      label.textContent = row.label;
+      const bar = document.createElement('i');
+      bar.style.width = `${Math.max(2, Math.round((Math.abs(row.value) / max) * 100))}%`;
+      const value = document.createElement('strong');
+      value.textContent = Number.isInteger(row.value) ? String(row.value) : row.value.toFixed(3);
+      item.append(label, bar, value);
+      chart.appendChild(item);
+    }
+    return chart;
+  }
+
+  function parsePanelRows(content) {
+    const trimmed = content.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed.filter(row => row && typeof row === 'object');
+      if (Array.isArray(parsed.rows)) return parsed.rows.filter(row => row && typeof row === 'object');
+    } catch (_) {}
+    const lines = trimmed.split(/\r?\n/u).filter(Boolean);
+    if (lines.length < 2) return [];
+    const delimiter = lines[0].includes('\t') ? '\t' : ',';
+    const headers = splitPanelDelimitedLine(lines[0], delimiter);
+    return lines.slice(1).map(line => {
+      const values = splitPanelDelimitedLine(line, delimiter);
+      const row = {};
+      headers.forEach((header, index) => { row[header] = values[index] || ''; });
+      return row;
+    });
+  }
+
+  function splitPanelDelimitedLine(line, delimiter) {
+    return line.split(delimiter).map(value => value.trim().replace(/^"|"$/g, ''));
+  }
+
+  function renderPanelTextFallback(content) {
+    const pre = document.createElement('pre');
+    pre.className = 'buret-agent-panel-markdown';
+    pre.textContent = content;
+    return pre;
+  }
+
   const layoutState = {
     left: 'hidden',
     right: 'hidden',
@@ -137,6 +449,7 @@
     timer: 0
   };
   let leftPanelVisibilityGuardInstalled = false;
+  let molstarStructureDirty = false;
 
   function scheduleViewerResize(viewer, delayMs = 80) {
     if (!viewer) return;
@@ -1445,6 +1758,7 @@
       toolbar.dataset.panelTogglesBound = '1';
     }
     bindThemeButton(toolbar, viewer);
+    bindSaveModifiedStructureButton(toolbar);
     bindXyzrenderControls(toolbar);
     initToolbarDrag(toolbar);
     restoreToolbarCollapsed(toolbar, viewer);
@@ -1453,6 +1767,37 @@
     updateToolbarVisibility();
     updateThemeButton();
     applyLayoutState(viewer);
+  }
+
+  function setMolstarStructureDirty(dirty) {
+    molstarStructureDirty = dirty === true;
+    updateSaveModifiedStructureButton();
+  }
+
+  function updateSaveModifiedStructureButton() {
+    const button = document.querySelector('#buret-toolbar [data-buret-action="save-modified-structure"]');
+    if (!button) return;
+    const visible = molstarStructureDirty && !!activeViewer;
+    button.classList.toggle('hidden', !visible);
+    button.classList.toggle('active', visible);
+    button.setAttribute('aria-hidden', visible ? 'false' : 'true');
+    button.disabled = !visible;
+  }
+
+  function bindSaveModifiedStructureButton(toolbar) {
+    const button = toolbar?.querySelector('[data-buret-action="save-modified-structure"]');
+    if (!button || button.dataset.bound === '1') return;
+    button.dataset.bound = '1';
+    button.addEventListener('click', () => {
+      try {
+        const saved = saveMolstarModifiedStructure();
+        setStatus(`[web] Saving ${saved.name} (${saved.count} structure${saved.count === 1 ? '' : 's'}).`);
+        setMolstarStructureDirty(false);
+      } catch (error) {
+        setStatus(`[web] Save modified structure failed.\n\n${error?.message || String(error)}`, 'error');
+      }
+    });
+    updateSaveModifiedStructureButton();
   }
 
   function installToolbarAutoLayoutTracking(toolbar) {
@@ -3887,7 +4232,111 @@
         color: 'element-symbol'
       }, { tag: 'water' });
     }
+    return waterComponents.length;
   }
+
+  function activeMolstarViewer() {
+    return activeViewer || window.BurreteViewer || window.BuretteViewer || null;
+  }
+
+  function molstarComponentsByKind(viewer, kind) {
+    const structures = viewer?.plugin?.managers?.structure?.hierarchy?.current?.structures || [];
+    const out = [];
+    for (const structure of structures) {
+      for (const component of structure.components || []) {
+        if (kind === 'water' && isMolstarWaterComponent(component)) out.push(component);
+      }
+    }
+    return out;
+  }
+
+  async function hideMolstarWaters() {
+    const viewer = activeMolstarViewer();
+    const plugin = viewer?.plugin;
+    if (!plugin?.managers?.structure?.component?.removeRepresentations) {
+      return sceneActionFailure('hide_waters', 'NOT_IMPLEMENTED', 'Mol* component representation manager is unavailable.');
+    }
+    const waterComponents = molstarComponentsByKind(viewer, 'water');
+    if (!waterComponents.length) {
+      return { ok: true, command: 'hide_waters', result: { componentCount: 0, note: 'No water components were found.' } };
+    }
+    await plugin.managers.structure.component.removeRepresentations(waterComponents);
+    return { ok: true, command: 'hide_waters', result: { componentCount: waterComponents.length } };
+  }
+
+  async function showMolstarWaters() {
+    const count = await applyMolstarWaterLineRepresentation(activeMolstarViewer());
+    return { ok: true, command: 'show_waters', result: { componentCount: count || 0, representation: 'line' } };
+  }
+
+  async function showMolstarSurface(action = {}) {
+    const viewer = activeMolstarViewer();
+    const plugin = viewer?.plugin;
+    const builder = plugin?.builders?.structure;
+    const structures = plugin?.managers?.structure?.hierarchy?.current?.structures || [];
+    if (!builder?.tryCreateComponentStatic || !builder?.representation?.addRepresentation) {
+      return sceneActionFailure('show_surface', 'NOT_IMPLEMENTED', 'Mol* structure component builder is unavailable.');
+    }
+    const targetKind = normalizeSurfaceTargetKind(action.target?.kind || action.kind || 'polymer');
+    let created = 0;
+    for (const structure of structures) {
+      const component = await builder.tryCreateComponentStatic(structure, targetKind);
+      if (!component) continue;
+      await builder.representation.addRepresentation(component, {
+        type: action.surfaceType || 'molecular-surface',
+        typeParams: {
+          alpha: Number.isFinite(Number(action.alpha)) ? Number(action.alpha) : 0.35
+        },
+        color: action.color || 'chain-id'
+      }, { tag: `burette-agent-surface-${targetKind}` });
+      created += 1;
+    }
+    if (!created) {
+      return sceneActionFailure('show_surface', 'SELECTION_EMPTY', `No Mol* components could be created for target kind: ${targetKind}.`);
+    }
+    return { ok: true, command: 'show_surface', result: { targetKind, componentCount: created } };
+  }
+
+  async function colorMolstarByChain(action = {}) {
+    const viewer = activeMolstarViewer();
+    const plugin = viewer?.plugin;
+    const components = [];
+    for (const structure of plugin?.managers?.structure?.hierarchy?.current?.structures || []) {
+      components.push(...(structure.components || []));
+    }
+    if (!components.length) {
+      return sceneActionFailure('color_by_chain', 'NO_STRUCTURE', 'No Mol* components are available.');
+    }
+    const manager = plugin?.managers?.structure?.component;
+    const theme = { color: action.color || 'chain-id' };
+    if (typeof manager?.updateRepresentationsTheme === 'function') {
+      await manager.updateRepresentationsTheme(components, theme);
+      return { ok: true, command: 'color_by_chain', result: { componentCount: components.length, color: theme.color } };
+    }
+    if (typeof manager?.updateRepresentations === 'function') {
+      await manager.updateRepresentations(components, theme);
+      return { ok: true, command: 'color_by_chain', result: { componentCount: components.length, color: theme.color, method: 'updateRepresentations' } };
+    }
+    return sceneActionFailure('color_by_chain', 'NOT_IMPLEMENTED', 'Mol* representation theme update API is unavailable in this runtime.');
+  }
+
+  function normalizeSurfaceTargetKind(kind) {
+    const text = String(kind || '').toLowerCase();
+    if (text === 'protein') return 'polymer';
+    if (text === 'all' || text === 'polymer' || text === 'ligand') return text;
+    return 'polymer';
+  }
+
+  function sceneActionFailure(command, code, message) {
+    return { ok: false, command, error: { code, message } };
+  }
+
+  window.BurreteSceneActions = {
+    hideWaters: hideMolstarWaters,
+    showWaters: showMolstarWaters,
+    showSurface: showMolstarSurface,
+    colorByChain: colorMolstarByChain
+  };
 
   async function loadPreparedStructure(viewer, prepared) {
     if (prepared.kind === 'docking') {
@@ -3992,6 +4441,31 @@
       setStatus(`[web] Loaded ${label}`);
     }
     setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
+  }
+
+  async function applyMolstarContextFocus(config) {
+    const focus = config?.molstarContextFocus;
+    if (!focus || typeof focus !== 'object') return;
+    const selector = focus.selector && typeof focus.selector === 'object' ? focus.selector : { kind: 'ligand' };
+    const radiusA = Number(focus.radiusA || focus.extraRadius || 5);
+    try {
+      const result = await window.BurreteAgent?.run?.({
+        command: 'focusLigand',
+        args: {
+          selector,
+          allowAmbiguous: focus.allowAmbiguous === true,
+          showNeighborhood: focus.showNeighborhood !== false,
+          radiusA: Number.isFinite(radiusA) && radiusA > 0 ? radiusA : 5,
+          extraRadius: Number.isFinite(radiusA) && radiusA > 0 ? radiusA : 5,
+          durationMs: Number(focus.durationMs) || 250
+        }
+      });
+      if (result?.ok === false) {
+        debug('Mol* context focus failed: ' + (result.error?.message || 'unknown error'));
+      }
+    } catch (error) {
+      debug('Mol* context focus failed: ' + (error?.message || String(error)));
+    }
   }
 
   async function loadDockingPreparedStructure(viewer, prepared) {
@@ -4703,7 +5177,7 @@
     const pickedStructure = molstarContextMenuPick?.loci?.structure || null;
     if (pickedStructure) {
       const index = structures.findIndex(structure => {
-        const data = structure?.cell?.obj?.data || structure?.obj?.data || null;
+        const data = molstarStructureFromRef(structure);
         return data === pickedStructure || data?.root === pickedStructure?.root;
       });
       if (index >= 0) return { index, structure: structures[index] };
@@ -4785,6 +5259,18 @@
 
   function firstMolstarOrderedSetIndex(indices) {
     if (indices == null) return undefined;
+    const orderedSet = molstarExportLib()?.OrderedSet || molstarRuntime()?.OrderedSet;
+    if (orderedSet) {
+      try {
+        const value = typeof orderedSet.start === 'function'
+          ? orderedSet.start(indices)
+          : typeof orderedSet.getAt === 'function'
+            ? orderedSet.getAt(indices, 0)
+            : undefined;
+        const index = molstarContextNumberOrUndefined(value);
+        if (index != null) return index;
+      } catch (_) {}
+    }
     if (Number.isInteger(indices)) return indices;
     if (typeof indices === 'number' && Number.isFinite(indices)) {
       try {
@@ -4812,16 +5298,29 @@
     return undefined;
   }
 
-  function molstarContextAtomFromLoci(loci) {
-    const element = Array.isArray(loci?.elements) ? loci.elements[0] : null;
-    const unit = element?.unit;
-    const model = unit?.model;
+  function molstarContextAtomFromBondLoci(loci) {
+    const bonds = Array.isArray(loci?.bonds) ? loci.bonds : [];
+    let firstAtom = null;
+    for (const bond of bonds) {
+      const candidates = [
+        [bond?.aUnit, bond?.aIndex],
+        [bond?.bUnit, bond?.bIndex]
+      ];
+      for (const [unit, unitIndex] of candidates) {
+        if (!unit?.model) continue;
+        const atomIndex = molstarContextNumberOrUndefined(unit.elements?.[unitIndex] ?? unitIndex);
+        const atom = molstarContextAtomFromModelIndex(unit.model, atomIndex);
+        if (!firstAtom) firstAtom = atom;
+        const scope = molstarContextScopeForAtom(atom);
+        if (scope === 'ligand' || scope === 'water' || scope === 'ion') return atom;
+      }
+    }
+    return firstAtom;
+  }
+
+  function molstarContextAtomFromModelIndex(model, atomIndex) {
     const ah = model?.atomicHierarchy;
-    if (!unit || !ah) return null;
-    const elementIndex = firstMolstarOrderedSetIndex(element.indices);
-    if (elementIndex == null) return null;
-    const atomIndex = molstarContextNumberOrUndefined(unit.elements?.[elementIndex] ?? elementIndex);
-    if (atomIndex == null) return null;
+    if (!ah || atomIndex == null) return null;
     const residueIndex = molstarContextSegmentIndex(ah.residueAtomSegments, atomIndex);
     const chainIndex = molstarContextSegmentIndex(ah.chainAtomSegments, atomIndex);
     const atoms = ah.atoms || {};
@@ -4832,6 +5331,7 @@
     const authCompId = molstarContextValueAt(residues.auth_comp_id, residueIndex) || labelCompId;
     const entityType = molstarContextEntityType(model, labelEntityId);
     return {
+      model,
       atomIndex,
       residueIndex,
       chainIndex,
@@ -4846,6 +5346,165 @@
       auth_atom_id: molstarContextValueAt(atoms.auth_atom_id, atomIndex),
       entityType
     };
+  }
+
+  function molstarContextAtomFromLoci(loci) {
+    if (loci?.kind === 'bond-loci') return molstarContextAtomFromBondLoci(loci);
+    if (loci?.kind === 'structure-loci') {
+      const structure = loci.structure;
+      let firstAtom = null;
+      for (const unit of Array.isArray(structure?.units) ? structure.units : []) {
+        if (!unit?.model || !unit.elements?.length) continue;
+        const atomIndex = molstarContextNumberOrUndefined(unit.elements[0]);
+        const atom = molstarContextAtomFromModelIndex(unit.model, atomIndex);
+        if (!firstAtom) firstAtom = atom;
+        const scope = molstarContextScopeForAtom(atom);
+        if (scope === 'ligand' || scope === 'water' || scope === 'ion') return atom;
+      }
+      return firstAtom;
+    }
+    const element = Array.isArray(loci?.elements) ? loci.elements[0] : null;
+    const unit = element?.unit;
+    const model = unit?.model;
+    if (!unit || !model) return null;
+    const elementIndex = firstMolstarOrderedSetIndex(element.indices);
+    if (elementIndex == null) return null;
+    const atomIndex = molstarContextNumberOrUndefined(unit.elements?.[elementIndex] ?? elementIndex);
+    if (atomIndex == null) return null;
+    return molstarContextAtomFromModelIndex(model, atomIndex);
+  }
+
+  function molstarContextSelectionLociForStructure(structureRef) {
+    const structure = molstarStructureFromRef(structureRef) || structureRef;
+    if (!structure) return null;
+    const selection = activeViewer?.plugin?.managers?.structure?.selection;
+    if (typeof selection?.getLoci !== 'function') return null;
+    try {
+      const loci = selection.getLoci(structure);
+      return loci && !molstarLociIsEmpty(loci) ? loci : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function molstarContextNormalizeLoci(loci, granularity = 'residue') {
+    if (!loci || molstarLociIsEmpty(loci)) return loci;
+    const lociApi = molstarExportLib()?.Loci || molstarRuntime()?.Loci;
+    if (typeof lociApi?.normalize !== 'function') return loci;
+    try {
+      return lociApi.normalize(loci, granularity, true);
+    } catch (_) {
+      return loci;
+    }
+  }
+
+  function molstarContextAtomLociForStructure(structure, atom) {
+    if (!structure || !atom?.model || atom.atomIndex == null) return null;
+    for (const unit of Array.isArray(structure.units) ? structure.units : []) {
+      if (unit?.model !== atom.model || !unit.elements?.length) continue;
+      for (let i = 0; i < unit.elements.length; i++) {
+        if (molstarContextNumberOrUndefined(unit.elements[i]) === atom.atomIndex) {
+          return { kind: 'element-loci', structure, elements: [{ unit, indices: [i] }] };
+        }
+      }
+    }
+    return null;
+  }
+
+  function molstarContextLociIndexMatchesAtom(unit, index, atom) {
+    if (!unit?.model || !atom?.model || unit.model !== atom.model || atom.atomIndex == null) return false;
+    const atomIndex = molstarContextNumberOrUndefined(unit.elements?.[index] ?? index);
+    return atomIndex === atom.atomIndex;
+  }
+
+  function molstarContextOrderedSetSome(indices, predicate) {
+    if (indices == null || typeof predicate !== 'function') return false;
+    const single = molstarContextNumberOrUndefined(indices);
+    if (single != null) return predicate(single);
+    if (Array.isArray(indices)) return indices.some(index => predicate(index));
+    const orderedSet = molstarExportLib()?.OrderedSet || molstarRuntime()?.OrderedSet;
+    if (typeof orderedSet?.forEach === 'function') {
+      let found = false;
+      try {
+        orderedSet.forEach(indices, index => {
+          if (!found && predicate(index)) found = true;
+        });
+        if (found) return true;
+      } catch (_) {}
+    }
+    if (typeof orderedSet?.size === 'function' && typeof orderedSet?.getAt === 'function') {
+      try {
+        const size = orderedSet.size(indices);
+        for (let i = 0; i < size; i++) {
+          if (predicate(orderedSet.getAt(indices, i))) return true;
+        }
+      } catch (_) {}
+    }
+    if (ArrayBuffer.isView(indices)) {
+      for (const index of indices) {
+        if (predicate(index)) return true;
+      }
+      return false;
+    }
+    if (typeof indices?.[Symbol.iterator] === 'function') {
+      for (const index of indices) {
+        if (predicate(index)) return true;
+      }
+      return false;
+    }
+    if (indices.array) {
+      const start = Number.isInteger(indices.start) ? indices.start : 0;
+      const end = Number.isInteger(indices.end) ? indices.end : indices.array.length;
+      for (let i = start; i < end; i++) {
+        if (predicate(indices.array[i])) return true;
+      }
+      return false;
+    }
+    return false;
+  }
+
+  function molstarContextLociContainsAtom(loci, atom) {
+    if (!loci || !atom) return false;
+    if (loci.kind === 'structure-loci') {
+      return Array.isArray(loci.structure?.units) && loci.structure.units.some(unit => (
+        unit?.model === atom.model
+        && Array.isArray(unit.elements)
+        && unit.elements.some(atomIndex => molstarContextNumberOrUndefined(atomIndex) === atom.atomIndex)
+      ));
+    }
+    if (loci.kind === 'bond-loci') {
+      return Array.isArray(loci.bonds) && loci.bonds.some(bond => (
+        molstarContextLociIndexMatchesAtom(bond?.aUnit, bond?.aIndex, atom)
+        || molstarContextLociIndexMatchesAtom(bond?.bUnit, bond?.bIndex, atom)
+      ));
+    }
+    if (loci.kind !== 'element-loci' || !Array.isArray(loci.elements)) return false;
+    return loci.elements.some(element => (
+      element?.unit?.model === atom.model
+      && molstarContextOrderedSetSome(element.indices, index => molstarContextLociIndexMatchesAtom(element.unit, index, atom))
+    ));
+  }
+
+  function molstarContextResolvedLoci(targetStructure) {
+    const structure = molstarStructureFromRef(targetStructure) || targetStructure;
+    const pickedLoci = molstarContextMenuPick?.loci || null;
+    const pickedAtom = molstarContextAtomFromLoci(pickedLoci);
+    const selectionLoci = molstarContextSelectionLociForStructure(targetStructure);
+    const selectedAtom = molstarContextAtomFromLoci(selectionLoci);
+    if (molstarContextMenuMode !== 'atom' && selectedAtom && (!pickedAtom || molstarContextLociContainsAtom(selectionLoci, pickedAtom))) return {
+      loci: selectionLoci,
+      atomLoci: pickedAtom
+        ? molstarContextAtomLociForStructure(structure || selectionLoci?.structure, pickedAtom)
+        : molstarContextAtomLociForStructure(structure || selectionLoci?.structure, selectedAtom),
+      atom: pickedAtom || selectedAtom,
+      selectionBased: true
+    };
+    if (pickedAtom) return {
+      loci: molstarContextNormalizeLoci(pickedLoci),
+      atomLoci: molstarContextAtomLociForStructure(structure || pickedLoci?.structure, pickedAtom),
+      atom: pickedAtom
+    };
+    return { loci: pickedLoci, atomLoci: null, atom: null };
   }
 
   function molstarContextAtomKind(atom) {
@@ -4867,6 +5526,68 @@
     return [comp, chain, seq].filter(value => String(value).trim()).join(' ') || 'Ligand';
   }
 
+  function molstarContextChainLabel(atom) {
+    const chain = String(atom?.auth_asym_id || atom?.label_asym_id || atom?.label_entity_id || '').trim();
+    return chain ? `chain ${chain}` : 'chain';
+  }
+
+  function molstarContextAtomBelongsToChain(model, atomIndex, sourceAtom) {
+    if (!model || !sourceAtom || atomIndex == null) return false;
+    if (sourceAtom.model && model !== sourceAtom.model) return false;
+    const ah = model.atomicHierarchy;
+    const chainIndex = molstarContextSegmentIndex(ah?.chainAtomSegments, atomIndex);
+    if (chainIndex == null) return false;
+    if (sourceAtom.model && sourceAtom.chainIndex != null) return chainIndex === sourceAtom.chainIndex;
+    const chains = ah?.chains || {};
+    for (const key of ['label_entity_id', 'label_asym_id', 'auth_asym_id']) {
+      const sourceValue = sourceAtom[key];
+      if (sourceValue == null) continue;
+      if (String(molstarContextValueAt(chains[key], chainIndex)) !== String(sourceValue)) return false;
+    }
+    return true;
+  }
+
+  function molstarContextScopeForAtom(atom) {
+    const kind = molstarContextAtomKind(atom);
+    if (kind === 'water') return 'water';
+    if (kind === 'ligand') return 'ligand';
+    if (kind === 'ion') return 'ion';
+    if (kind === 'polymer' || kind === 'biopolymer') return 'residue';
+    return 'selection';
+  }
+
+  function molstarContextSourceEntryForActiveConfig() {
+    if (!activeConfig || activeConfig.docking) return null;
+    const format = normalizeFormat(activeConfig.molstarFormat || activeConfig.format);
+    if (format !== 'pdb') return null;
+    try {
+      return {
+        data: rawStructureData({ ...activeConfig, format, binary: false }),
+        format,
+        label: activeConfig.label || 'structure'
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function molstarContextLigandSelector(atom) {
+    const selector = { kind: 'ligand' };
+    for (const key of ['label_entity_id', 'label_asym_id', 'auth_asym_id', 'label_seq_id', 'auth_seq_id', 'label_comp_id', 'auth_comp_id']) {
+      if (atom?.[key] != null) selector[key] = atom[key];
+    }
+    return selector;
+  }
+
+  function molstarContextFocusPayload(atom, radiusA = 5) {
+    return {
+      selector: atom ? molstarContextLigandSelector(atom) : { kind: 'ligand' },
+      showNeighborhood: true,
+      radiusA,
+      extraRadius: radiusA
+    };
+  }
+
   function molstarContextTarget() {
     const structures = molstarContextStructures();
     if (!structures.length) {
@@ -4878,23 +5599,50 @@
     }
     const targetStructure = picked.structure;
     const targetStructures = targetStructure ? [targetStructure] : [];
+    const resolved = molstarContextResolvedLoci(targetStructure);
+    const pickedAtom = resolved.atom;
+    const pickedScope = resolved.selectionBased ? 'selection' : (pickedAtom ? molstarContextScopeForAtom(pickedAtom) : 'selection');
+    const pickedLabel = resolved.selectionBased ? 'selection' : (pickedAtom ? molstarContextResidueLabel(pickedAtom) : molstarContextTargetLabel(targetStructures));
     if (activeConfig?.docking && activeDockingPrepared) {
-      const pickedAtom = molstarContextAtomFromLoci(molstarContextMenuPick?.loci);
-      if (pickedAtom && molstarContextAtomKind(pickedAtom) === 'ligand') {
-        const ligand = pdbLigandForResidue(activeDockingPrepared.receptorEntry, pickedAtom);
+      if (pickedAtom && pickedScope === 'ligand') {
+        const ligand = pdbEntryForResidue(activeDockingPrepared.receptorEntry, pickedAtom);
         return {
           structures: targetStructures,
-          label: ligand?.label || molstarContextResidueLabel(pickedAtom),
+          structure: targetStructure,
+          loci: resolved.loci,
+          atomLoci: resolved.atomLoci,
+          atom: pickedAtom,
+          selectionBased: resolved.selectionBased,
+          label: ligand?.label || pickedLabel,
           scope: 'ligand',
           receptor: activeDockingPrepared.receptorEntry || null,
-          ligand: ligand || currentDockingPoseSource(activeDockingPrepared)
+          ligand: ligand || currentDockingPoseSource(activeDockingPrepared),
+          focus: molstarContextFocusPayload(pickedAtom)
+        };
+      }
+      if (pickedAtom && pickedScope !== 'selection') {
+        return {
+          structures: targetStructures,
+          structure: targetStructure,
+          loci: resolved.loci,
+          atomLoci: resolved.atomLoci,
+          atom: pickedAtom,
+          selectionBased: resolved.selectionBased,
+          label: pickedLabel,
+          scope: pickedScope,
+          receptor: activeDockingPrepared.receptorEntry || null,
+          selectedEntry: pdbEntryForResidue(activeDockingPrepared.receptorEntry, pickedAtom)
         };
       }
       if (picked?.index === 0) {
         return {
           structures: targetStructures,
-          label: activeDockingPrepared.receptorEntry?.label || 'Receptor',
-          scope: 'receptor',
+          structure: targetStructure,
+          loci: resolved.loci,
+          atomLoci: resolved.atomLoci,
+          selectionBased: resolved.selectionBased,
+          label: pickedLabel,
+          scope: 'selection',
           receptor: activeDockingPrepared.receptorEntry || null
         };
       }
@@ -4902,22 +5650,30 @@
         const pose = currentDockingPoseSource(activeDockingPrepared);
         return {
           structures: targetStructures,
+          structure: targetStructure,
+          loci: resolved.loci,
+          atomLoci: resolved.atomLoci,
           label: pose?.label || 'Ligand',
           scope: 'ligand',
           receptor: activeDockingPrepared.receptorEntry || null,
-          ligand: pose
+          ligand: pose,
+          focus: molstarContextFocusPayload(null)
         };
       }
     }
+    const sourceEntry = molstarContextSourceEntryForActiveConfig();
     return {
       structures: targetStructures,
-      label: molstarContextTargetLabel(targetStructures),
-      scope: 'structure'
+      structure: targetStructure,
+      loci: resolved.loci,
+      atomLoci: resolved.atomLoci,
+      atom: pickedAtom,
+      selectionBased: resolved.selectionBased,
+      label: pickedLabel,
+      scope: pickedScope,
+      sourceEntry,
+      selectedEntry: pickedAtom ? pdbEntryForResidue(sourceEntry, pickedAtom) : null
     };
-  }
-
-  function molstarContextTargetStructures() {
-    return molstarContextTarget().structures;
   }
 
   function molstarContextTargetLabel(structures) {
@@ -4937,6 +5693,9 @@
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null;
     return {
       line,
+      serial: Number(line.slice(6, 11).trim()),
+      atomName: line.slice(12, 16).trim(),
+      element: pdbAtomElement(line),
       x,
       y,
       z,
@@ -4945,6 +5704,17 @@
       seqId: line.slice(22, 27).trim(),
       residueKey: `${line.slice(17, 20)}:${line.slice(21, 22)}:${line.slice(22, 27)}`
     };
+  }
+
+  function pdbAtomElement(line) {
+    const explicit = String(line || '').slice(76, 78).trim();
+    if (explicit) return explicit.charAt(0).toUpperCase() + explicit.slice(1).toLowerCase();
+    const atomName = String(line || '').slice(12, 16).trim().replace(/^[0-9]+/u, '');
+    const match = /^[A-Za-z]{1,2}/u.exec(atomName);
+    if (!match) return 'C';
+    const candidate = match[0].charAt(0).toUpperCase() + match[0].slice(1).toLowerCase();
+    if (['Cl', 'Br', 'Na', 'Mg', 'Al', 'Si', 'Ca', 'Fe', 'Zn', 'Cu', 'Mn', 'Co', 'Ni'].includes(candidate)) return candidate;
+    return candidate.charAt(0) || 'C';
   }
 
   function ligandAtomCoordinates(source) {
@@ -4962,7 +5732,7 @@
     return molecule?.atoms?.map(atom => ({ x: atom.x, y: atom.y, z: atom.z })) || [];
   }
 
-  function pdbLigandForResidue(receptor, atom) {
+  function pdbLinesForResidue(receptor, atom) {
     if (!receptor || normalizeFormat(receptor.format) !== 'pdb') return null;
     const compId = String(atom?.auth_comp_id || atom?.label_comp_id || '').trim();
     const chainId = String(atom?.auth_asym_id || atom?.label_asym_id || '').trim();
@@ -4973,13 +5743,73 @@
       if (!parsed) return false;
       return (!compId || parsed.compId === compId) && parsed.seqId === seqId && (!chainId || parsed.chainId === chainId);
     });
-    if (!lines.length) return null;
+    return lines.length ? { lines, compId, chainId, seqId } : null;
+  }
+
+  function pdbEntryForResidue(receptor, atom) {
+    const residue = pdbLinesForResidue(receptor, atom);
+    if (!residue) return null;
+    const { lines, compId, chainId, seqId } = residue;
     const firstAtom = parsePdbAtomLine(lines[0]);
     const resolvedCompId = compId || firstAtom?.compId || 'Ligand';
     return {
-      data: ['HEADER    BURRETE PICKED LIGAND', ...lines, 'END', ''].join('\n'),
+      data: ['HEADER    BURRETE PICKED SELECTION', ...lines, 'END', ''].join('\n'),
       format: 'pdb',
       label: [resolvedCompId, chainId, seqId].filter(Boolean).join(' ')
+    };
+  }
+
+  function pdbConectPairsForSerials(pdbData, includedSerials) {
+    const pairs = new Set();
+    for (const line of String(pdbData || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')) {
+      if (!line.startsWith('CONECT')) continue;
+      const source = Number(line.slice(6, 11).trim());
+      if (!Number.isFinite(source) || !includedSerials.has(source)) continue;
+      for (let offset = 11; offset + 5 <= line.length; offset += 5) {
+        const target = Number(line.slice(offset, offset + 5).trim());
+        if (!Number.isFinite(target) || !includedSerials.has(target) || target === source) continue;
+        const a = Math.min(source, target);
+        const b = Math.max(source, target);
+        pairs.add(`${a}:${b}`);
+      }
+    }
+    return Array.from(pairs).map(pair => {
+      const [a, b] = pair.split(':').map(Number);
+      return { a, b };
+    });
+  }
+
+  function pdbLigandSdfEntryForResidue(receptor, atom) {
+    const residue = pdbLinesForResidue(receptor, atom);
+    if (!residue) return null;
+    const parsedAtoms = residue.lines.map(parsePdbAtomLine).filter(current => current && Number.isFinite(current.serial));
+    if (!parsedAtoms.length || parsedAtoms.length > 999) return null;
+    const includedSerials = new Set(parsedAtoms.map(current => current.serial));
+    const serialToSdfIndex = new Map(parsedAtoms.map((current, index) => [current.serial, index + 1]));
+    const bonds = pdbConectPairsForSerials(receptor.data, includedSerials)
+      .filter(bond => serialToSdfIndex.has(bond.a) && serialToSdfIndex.has(bond.b));
+    if (bonds.length > 999) return null;
+    const firstAtom = parsedAtoms[0];
+    const label = [residue.compId || firstAtom.compId || 'Ligand', residue.chainId, residue.seqId].filter(Boolean).join(' ');
+    return {
+      data: [
+        label,
+        '  Burrete',
+        'PDB ligand selection',
+        formatSdfCountsLine(parsedAtoms.length, bonds.length),
+        ...parsedAtoms.map(current => formatSdfAtomLine({
+          x: current.x,
+          y: current.y,
+          z: current.z,
+          tail: ` ${String(current.element || 'C').padEnd(3, ' ')} 0  0  0  0  0  0  0  0  0  0  0  0`
+        }, current.x, current.y, current.z)),
+        ...bonds.map(bond => `${padSdfInt(serialToSdfIndex.get(bond.a))}${padSdfInt(serialToSdfIndex.get(bond.b))}  1  0  0  0  0`),
+        'M  END',
+        '$$$$',
+        ''
+      ].join('\n'),
+      format: 'sdf',
+      label
     };
   }
 
@@ -5023,16 +5853,9 @@
 
   function molstarContextDocumentPayload(target) {
     if (target?.scope === 'ligand' && target.receptor && target.ligand) {
-      const environment = pdbEnvironmentForLigand(target.receptor, target.ligand);
       return {
-        label: `${target.ligand.label || 'Ligand'} + protein environment`,
+        label: target.ligand.label || target.label || 'Ligand',
         entries: [
-          {
-            role: 'receptor',
-            label: environment.label,
-            format: normalizeFormat(target.receptor.format),
-            data: environment.data
-          },
           {
             role: 'ligand',
             label: target.ligand.label || 'Ligand',
@@ -5041,28 +5864,263 @@
           }
         ],
         context: {
-          scope: 'ligand',
-          radiusAngstrom: 6,
-          receptorEnvironmentFallback: environment.fallback === true,
-          residueCount: environment.residueCount || 0
+          scope: 'ligand'
         }
       };
     }
-    if (target?.scope === 'receptor' && target.receptor) {
+    if (target?.scope === 'ligand' && target.selectedEntry && target.sourceEntry) {
+      const ligandEntry = pdbLigandSdfEntryForResidue(target.sourceEntry, target.atom) || target.selectedEntry;
       return {
-        label: target.receptor.label || 'Receptor',
+        label: ligandEntry.label || target.label || 'Ligand',
         entries: [
           {
-            role: 'receptor',
-            label: target.receptor.label || 'Receptor',
-            format: normalizeFormat(target.receptor.format),
-            data: target.receptor.data
+            role: 'ligand',
+            label: ligandEntry.label || target.label || 'Ligand',
+            format: normalizeFormat(ligandEntry.format),
+            data: ligandEntry.data
           }
         ],
-        context: { scope: 'receptor' }
+        context: { scope: 'ligand' }
+      };
+    }
+    if (target?.selectedEntry) {
+      return {
+        label: target.selectedEntry.label || target.label || 'Mol* selection',
+        entries: [
+          {
+            role: target.scope === 'ligand' ? 'ligand' : 'structure',
+            label: target.selectedEntry.label || target.label || 'Mol* selection',
+            format: normalizeFormat(target.selectedEntry.format),
+            data: target.selectedEntry.data
+          }
+        ],
+        context: { scope: target.scope || 'selection' }
       };
     }
     return null;
+  }
+
+  function molstarRuntime() {
+    if (window.molstar) return window.molstar;
+    try {
+      if (typeof molstar !== 'undefined') return molstar;
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
+  function molstarExportLib() {
+    const runtime = molstarRuntime();
+    return runtime?.lib || runtime || {};
+  }
+
+  function molstarExportToMmCif() {
+    const runtime = molstarRuntime();
+    const lib = molstarExportLib();
+    if (typeof lib.to_mmCIF === 'function') return lib.to_mmCIF;
+    if (typeof runtime?.to_mmCIF === 'function') return runtime.to_mmCIF;
+    if (typeof lib.Structure?.to_mmCIF === 'function') return lib.Structure.to_mmCIF;
+    if (typeof runtime?.Structure?.to_mmCIF === 'function') return runtime.Structure.to_mmCIF;
+    return null;
+  }
+
+  function molstarExportStructureName(structureRef, index = 0) {
+    const label = structureRef?.cell?.obj?.label ||
+      structureRef?.transform?.cell?.obj?.label ||
+      activeConfig?.label ||
+      'structure';
+    const base = safeExportBaseName(label, `structure-${index + 1}`)
+      .replace(/[^A-Za-z0-9_]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    const name = base || `structure_${index + 1}`;
+    return /^[A-Za-z_]/u.test(name) ? name : `structure_${name}`;
+  }
+
+  function molstarExportFileName(extension = 'cif') {
+    const safeExtension = String(extension || 'cif').replace(/[^A-Za-z0-9]/g, '') || 'cif';
+    return `${safeExportBaseName(activeConfig?.label || 'modified-structure', 'modified-structure')}.modified.${safeExtension}`;
+  }
+
+  function molstarStructureFromRef(structureRef) {
+    return structureRef?.transform?.cell?.obj?.data ||
+      structureRef?.cell?.obj?.data ||
+      structureRef?.obj?.data ||
+      null;
+  }
+
+  function molstarComponentStructuresForExport(structureRef) {
+    const components = Array.isArray(structureRef?.components) ? structureRef.components : [];
+    return components
+      .filter(component => {
+        const label = String(component?.cell?.obj?.label || '').trim();
+        return label && !label.startsWith('[Focus]') && label !== 'Unit Cell';
+      })
+      .map(component => component?.cell?.obj?.data)
+      .filter(structure => structure && Array.isArray(structure.units) && structure.elementCount > 0);
+  }
+
+  function molstarUnionComponentStructures(source, componentStructures) {
+    if (!source || !Array.isArray(componentStructures) || componentStructures.length === 0) return source;
+    const unitElements = new Map();
+    for (const structure of componentStructures) {
+      for (const unit of structure.units || []) {
+        if (!source.unitMap?.has?.(unit.id)) continue;
+        let elements = unitElements.get(unit.id);
+        if (!elements) {
+          elements = [];
+          unitElements.set(unit.id, elements);
+        }
+        for (let i = 0; i < unit.elements.length; i++) elements.push(unit.elements[i]);
+      }
+    }
+    if (unitElements.size === 0) return source;
+    const builder = source.subsetBuilder(true);
+    unitElements.forEach((elements, unitId) => {
+      elements.sort((a, b) => a - b);
+      const deduplicated = [];
+      for (const element of elements) {
+        if (deduplicated[deduplicated.length - 1] !== element) deduplicated.push(element);
+      }
+      if (deduplicated.length) builder.setUnit(unitId, deduplicated);
+    });
+    const merged = builder.getStructure();
+    return merged && merged.elementCount > 0 ? merged : source;
+  }
+
+  function molstarCurrentStructuresForExport() {
+    const structures = activeViewer?.plugin?.managers?.structure?.hierarchy?.current?.structures;
+    if (!Array.isArray(structures)) return [];
+    const lib = molstarExportLib();
+    const unit = lib.Unit || {};
+    return structures.map((structureRef, index) => {
+      const source = molstarStructureFromRef(structureRef);
+      if (!source || !Array.isArray(source.units) || source.elementCount <= 0) return null;
+      const componentStructures = molstarComponentStructuresForExport(structureRef);
+      const structure = molstarUnionComponentStructures(source, componentStructures);
+      if (!structure || structure.elementCount <= 0) return null;
+      if (typeof unit.isAtomic === 'function' && structure.units.some(currentUnit => !unit.isAtomic(currentUnit))) {
+        return null;
+      }
+      return {
+        name: molstarExportStructureName(structureRef, index),
+        structure
+      };
+    }).filter(Boolean);
+  }
+
+  function molstarStructureAtomIndices(structure) {
+    const indices = new Set();
+    for (const unit of structure?.units || []) {
+      const elements = unit?.elements;
+      if (!elements) continue;
+      for (let i = 0; i < elements.length; i++) {
+        const atomIndex = molstarContextNumberOrUndefined(elements[i]);
+        if (atomIndex != null) indices.add(atomIndex);
+      }
+    }
+    return indices;
+  }
+
+  function molstarCurrentAtomIndicesForExport() {
+    const indices = new Set();
+    for (const entry of molstarCurrentStructuresForExport()) {
+      for (const atomIndex of molstarStructureAtomIndices(entry.structure)) indices.add(atomIndex);
+    }
+    return indices;
+  }
+
+  function pdbSerialFromLine(line) {
+    const serial = Number(String(line || '').slice(6, 11).trim());
+    return Number.isFinite(serial) ? serial : null;
+  }
+
+  function filteredPdbConectLine(line, includedSerials) {
+    const source = pdbSerialFromLine(line);
+    if (source == null || !includedSerials.has(source)) return null;
+    const targets = [];
+    for (let offset = 11; offset + 5 <= line.length; offset += 5) {
+      const target = Number(line.slice(offset, offset + 5).trim());
+      if (Number.isFinite(target) && includedSerials.has(target)) targets.push(target);
+    }
+    if (!targets.length) return null;
+    return `CONECT${String(source).padStart(5, ' ')}${targets.map(target => String(target).padStart(5, ' ')).join('')}`;
+  }
+
+  function molstarModifiedPdbExportPayload() {
+    const sourceEntry = molstarContextSourceEntryForActiveConfig();
+    if (!sourceEntry) throw new Error('PDB fallback export is unavailable for this structure.');
+    const includedAtomIndices = molstarCurrentAtomIndicesForExport();
+    if (!includedAtomIndices.size) throw new Error('No modified Mol* atoms are available to save.');
+    const lines = sourceEntry.data.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    const output = [];
+    const conectLines = [];
+    const includedSerials = new Set();
+    let atomIndex = 0;
+    let wroteAtomSinceTer = false;
+    for (const line of lines) {
+      if (/^(ATOM  |HETATM)/.test(line)) {
+        const include = includedAtomIndices.has(atomIndex);
+        atomIndex++;
+        if (!include) continue;
+        output.push(line);
+        const serial = pdbSerialFromLine(line);
+        if (serial != null) includedSerials.add(serial);
+        wroteAtomSinceTer = true;
+      } else if (/^ANISOU/.test(line)) {
+        const serial = pdbSerialFromLine(line);
+        if (serial != null && includedSerials.has(serial)) output.push(line);
+      } else if (/^TER/.test(line)) {
+        if (wroteAtomSinceTer) output.push(line);
+        wroteAtomSinceTer = false;
+      } else if (/^CONECT/.test(line)) {
+        conectLines.push(line);
+      } else if (/^END(MDL)?\s*$/.test(line)) {
+        continue;
+      } else if (line.trim()) {
+        output.push(line);
+      }
+    }
+    for (const line of conectLines) {
+      const filtered = filteredPdbConectLine(line, includedSerials);
+      if (filtered) output.push(filtered);
+    }
+    output.push('END');
+    return {
+      name: molstarExportFileName('pdb'),
+      mimeType: 'chemical/x-pdb',
+      text: `${output.join('\n')}\n`,
+      count: 1
+    };
+  }
+
+  function molstarModifiedStructureExportPayload() {
+    const toMmCif = molstarExportToMmCif();
+    if (!toMmCif) return molstarModifiedPdbExportPayload();
+    const exports = molstarCurrentStructuresForExport();
+    if (!exports.length) throw new Error('No modified Mol* structure is available to save.');
+    const label = exports.length === 1 ? exports[0].name : 'burrete_modified_structures';
+    const structures = exports.length === 1 ? exports[0].structure : exports.map(entry => entry.structure);
+    const text = toMmCif(label, structures, false, { copyAllCategories: true });
+    if (typeof text !== 'string' || !text.trim()) throw new Error('Mol* returned an empty mmCIF export.');
+    return {
+      name: molstarExportFileName(),
+      mimeType: 'chemical/x-cif',
+      text,
+      count: exports.length
+    };
+  }
+
+  function saveMolstarModifiedStructure() {
+    const payload = molstarModifiedStructureExportPayload();
+    const posted = postHostMessage({
+      type: 'exportText',
+      name: payload.name,
+      mimeType: payload.mimeType,
+      text: payload.text
+    });
+    if (!posted) throw new Error('Structure saving is unavailable in this host.');
+    return payload;
   }
 
   async function resetMolstarCameraForContext() {
@@ -5081,36 +6139,136 @@
     }
   }
 
-  async function inspectMolstarContextTarget(targetLabel) {
-    const result = await window.BurreteAgent?.run?.({
-      command: 'summary',
-      args: { includeLigands: true }
-    });
-    if (!result || result.ok === false) {
-      throw new Error(result?.error?.message || 'Mol* summary is unavailable.');
+  function selectMolstarContextPick(target, options = {}) {
+    const loci = target?.loci || molstarContextMenuPick?.loci;
+    if (!loci || molstarLociIsEmpty(loci)) return false;
+    const additive = options.additive === true;
+    const applyGranularity = options.applyGranularity ?? !target?.selectionBased;
+    const selects = activeViewer?.plugin?.managers?.interactivity?.lociSelects;
+    const selection = activeViewer?.plugin?.managers?.structure?.selection;
+    let handled = false;
+    if (typeof selects?.select === 'function') {
+      if (!additive && typeof selects.deselectAll === 'function') selects.deselectAll();
+      selects.select({ loci }, applyGranularity);
+      handled = true;
     }
-    const counts = result.result?.counts || {};
-    const parts = [
-      `${counts.structures ?? 0} structures`,
-      `${counts.atoms ?? 0} atoms`,
-      `${counts.residues ?? 0} residues`,
-      `${counts.ligands ?? 0} ligands`
-    ];
-    setStatus(`[web] ${targetLabel}: ${parts.join(' · ')}`);
+    if (typeof selection?.fromLoci === 'function') {
+      if (!additive) selection.clear?.();
+      selection.fromLoci(additive ? 'add' : 'set', loci, applyGranularity);
+      handled = true;
+    }
+    return handled;
   }
 
-  function selectMolstarContextPick() {
-    const pick = molstarContextMenuPick;
-    if (!pick?.loci || molstarLociIsEmpty(pick.loci)) return false;
-    const selects = activeViewer?.plugin?.managers?.interactivity?.lociSelects;
-    if (typeof selects?.select !== 'function') return false;
-    if (typeof selects.deselectAll === 'function') selects.deselectAll();
-    selects.select(pick, true);
+  function molstarContextTargetComponents(target) {
+    const components = Array.isArray(target?.structure?.components) ? target.structure.components : [];
+    const componentManager = activeViewer?.plugin?.managers?.structure?.component;
+    if (typeof componentManager?.canBeModified !== 'function') return components;
+    return components.filter(component => componentManager.canBeModified(component));
+  }
+
+  async function deleteMolstarContextLoci(target, loci, applyGranularity = true) {
+    if (!loci || molstarLociIsEmpty(loci)) return false;
+    const plugin = activeViewer?.plugin;
+    const selection = plugin?.managers?.structure?.selection;
+    const componentManager = plugin?.managers?.structure?.component;
+    const components = molstarContextTargetComponents(target);
+    if (!components.length || typeof selection?.fromLoci !== 'function' || typeof componentManager?.modifyByCurrentSelection !== 'function') {
+      return false;
+    }
+    selection.clear?.();
+    try {
+      selection.fromLoci('set', loci, applyGranularity);
+      await componentManager.modifyByCurrentSelection(components, 'subtract');
+    } finally {
+      selection.clear?.();
+    }
     return true;
   }
 
-  function focusMolstarContextPick() {
-    const loci = molstarContextMenuPick?.loci;
+  async function deleteMolstarContextPick(target) {
+    const loci = target?.loci || molstarContextMenuPick?.loci;
+    return deleteMolstarContextLoci(target, loci, !target?.selectionBased);
+  }
+
+  function molstarContextChainLociFromPick(target) {
+    const sourceAtom = target?.atom;
+    const structure = target?.loci?.structure || molstarContextMenuPick?.loci?.structure;
+    const units = Array.isArray(structure?.units) ? structure.units : [];
+    if (!sourceAtom || !units.length) return null;
+    const elements = [];
+    for (const unit of units) {
+      const unitElements = unit?.elements;
+      if (!unit?.model || !unitElements?.length) continue;
+      const indices = [];
+      for (let i = 0; i < unitElements.length; i++) {
+        const atomIndex = molstarContextNumberOrUndefined(unitElements[i]);
+        if (molstarContextAtomBelongsToChain(unit.model, atomIndex, sourceAtom)) indices.push(i);
+      }
+      if (indices.length) elements.push({ unit, indices });
+    }
+    if (!elements.length) return null;
+    return { kind: 'element-loci', structure, elements };
+  }
+
+  async function deleteMolstarContextChain(target) {
+    if (target?.scope !== 'residue') return false;
+    const chainLoci = molstarContextChainLociFromPick(target);
+    return deleteMolstarContextLoci(target, chainLoci, false);
+  }
+
+  function molstarContextComponentId(atom) {
+    return String(atom?.auth_comp_id || atom?.label_comp_id || '').trim().toUpperCase();
+  }
+
+  function molstarContextBulkDeleteLabel(target) {
+    const comp = molstarContextComponentId(target?.atom);
+    if (target?.scope === 'water') return 'all water';
+    if (target?.scope === 'ion') return comp ? `all ${comp} ions` : 'all ions';
+    if (target?.scope === 'ligand') return comp ? `all ${comp} ligands` : 'all ligands';
+    return 'all matching molecules';
+  }
+
+  function molstarContextCanBulkDelete(target) {
+    return !!target?.atom && (target.scope === 'water' || target.scope === 'ion' || target.scope === 'ligand');
+  }
+
+  function molstarContextAtomMatchesBulkDelete(atom, target) {
+    if (!atom || !target?.atom) return false;
+    const kind = molstarContextAtomKind(atom);
+    if (target.scope === 'water') return kind === 'water';
+    if (target.scope === 'ion') return kind === 'ion' && molstarContextComponentId(atom) === molstarContextComponentId(target.atom);
+    if (target.scope === 'ligand') return kind === 'ligand' && molstarContextComponentId(atom) === molstarContextComponentId(target.atom);
+    return false;
+  }
+
+  function molstarContextBulkDeleteLoci(target) {
+    if (!molstarContextCanBulkDelete(target)) return null;
+    const structure = target?.loci?.structure || molstarContextMenuPick?.loci?.structure;
+    const units = Array.isArray(structure?.units) ? structure.units : [];
+    const elements = [];
+    for (const unit of units) {
+      const unitElements = unit?.elements;
+      if (!unit?.model || !unitElements?.length) continue;
+      const indices = [];
+      for (let i = 0; i < unitElements.length; i++) {
+        const atomIndex = molstarContextNumberOrUndefined(unitElements[i]);
+        const atom = molstarContextAtomFromModelIndex(unit.model, atomIndex);
+        if (molstarContextAtomMatchesBulkDelete(atom, target)) indices.push(i);
+      }
+      if (indices.length) elements.push({ unit, indices });
+    }
+    if (!elements.length) return null;
+    return { kind: 'element-loci', structure, elements };
+  }
+
+  async function deleteMolstarContextBulkType(target) {
+    const loci = molstarContextBulkDeleteLoci(target);
+    return deleteMolstarContextLoci(target, loci, false);
+  }
+
+  function focusMolstarContextPick(target) {
+    const loci = target?.loci || molstarContextMenuPick?.loci;
     if (!loci || molstarLociIsEmpty(loci)) return false;
     const camera = activeViewer?.plugin?.managers?.camera;
     if (typeof camera?.focusLoci !== 'function') return false;
@@ -5118,29 +6276,70 @@
     return true;
   }
 
+  function molstarContextTargetNoun(target) {
+    if (target?.scope === 'water') return 'water';
+    if (target?.scope === 'ligand') return 'ligand';
+    if (target?.scope === 'ion') return 'ion';
+    if (target?.scope === 'residue') return 'residue';
+    return 'selection';
+  }
+
+  function molstarContextAtomLabel(target) {
+    const residue = molstarContextResidueLabel(target?.atom);
+    const atom = String(target?.atom?.auth_atom_id || target?.atom?.label_atom_id || '').trim();
+    return atom ? `${residue} atom ${atom}` : `${residue} atom`;
+  }
+
+  function molstarContextMenuActions(target, mode = 'molecule') {
+    if (mode === 'atom' && target?.scope === 'ligand') {
+      return [
+        ['select-atom', 'Select atom'],
+        ['remove-atom', 'Delete atom'],
+        ['save-modified', 'Save modified structure'],
+        ['focus-atom', 'Focus atom in current view']
+      ];
+    }
+    const noun = molstarContextTargetNoun(target);
+    const actions = [
+      ['select', `Select ${noun}`],
+      ['remove', molstarContextCanBulkDelete(target) ? `Delete selected ${noun}` : `Delete ${noun}`]
+    ];
+    if (molstarContextCanBulkDelete(target)) actions.push(['remove-type', `Delete ${molstarContextBulkDeleteLabel(target)}`]);
+    if (target?.scope === 'residue') actions.push(['remove-chain', 'Delete chain']);
+    if (molstarContextDocumentPayload(target)) actions.push(['molstar', 'Open in Mol*']);
+    actions.push(['save-modified', 'Save modified structure']);
+    actions.push(['focus', 'Focus in current view']);
+    return actions;
+  }
+
   async function moleculeContextMenuAction(action, label) {
-    const hierarchy = activeViewer?.plugin?.managers?.structure?.hierarchy;
     const target = molstarContextTarget();
-    const targets = target.structures;
     const targetLabel = target.label;
     try {
-      if (action === 'inspect') {
-        await inspectMolstarContextTarget(targetLabel);
-      } else if (action === 'select') {
-        if (!selectMolstarContextPick()) throw new Error('No Mol* molecule is available to select.');
+      if (action === 'select') {
+        if (!selectMolstarContextPick(target)) throw new Error('No Mol* residue or ligand is available to select.');
         setStatus(`[web] Selected ${targetLabel}.`);
-      } else if (action === 'hide') {
-        if (!targets.length || typeof hierarchy?.toggleVisibility !== 'function') throw new Error('No Mol* structure is available to hide.');
-        hierarchy.toggleVisibility(targets, 'hide');
-        setStatus(`[web] Hidden ${targetLabel}.`);
       } else if (action === 'remove') {
-        if (!targets.length || typeof hierarchy?.remove !== 'function') throw new Error('No Mol* structure is available to delete.');
-        await hierarchy.remove(targets, true);
+        if (!await deleteMolstarContextPick(target)) throw new Error('No editable Mol* residue or ligand is available to delete.');
+        setMolstarStructureDirty(true);
         setStatus(`[web] Deleted ${targetLabel}.`);
+      } else if (action === 'remove-type') {
+        const bulkLabel = molstarContextBulkDeleteLabel(target);
+        if (!await deleteMolstarContextBulkType(target)) throw new Error(`No editable Mol* ${bulkLabel} is available to delete.`);
+        setMolstarStructureDirty(true);
+        setStatus(`[web] Deleted ${bulkLabel}.`);
+      } else if (action === 'remove-chain') {
+        if (!await deleteMolstarContextChain(target)) throw new Error('No editable Mol* protein chain is available to delete.');
+        setMolstarStructureDirty(true);
+        setStatus(`[web] Deleted ${molstarContextChainLabel(target.atom)}.`);
+      } else if (action === 'select-atom') {
+        if (!target.atomLoci || !selectMolstarContextPick({ ...target, loci: target.atomLoci }, { additive: molstarContextMenuMode === 'atom', applyGranularity: false })) throw new Error('No Mol* atom is available to select.');
+        setStatus(`[web] Selected ${molstarContextAtomLabel(target)}.`);
+      } else if (action === 'remove-atom') {
+        if (!target.atomLoci || !await deleteMolstarContextLoci(target, target.atomLoci, false)) throw new Error('No editable Mol* atom is available to delete.');
+        setMolstarStructureDirty(true);
+        setStatus(`[web] Deleted ${molstarContextAtomLabel(target)}.`);
       } else if (action === 'molstar') {
-        const handled = focusMolstarContextPick() || await resetMolstarCameraForContext();
-        setStatus(handled ? `[web] Focused ${targetLabel} in Mol*.` : `[web] ${targetLabel} is already open in Mol*.`);
-      } else if (action === 'separate-window') {
         const contextDocument = molstarContextDocumentPayload(target);
         if (!contextDocument) throw new Error('No molecule-level Mol* context is available for this target.');
         const posted = postHostMessage({
@@ -5148,14 +6347,24 @@
           renderer: 'molstar',
           contextDocument
         });
-        setStatus(posted ? `[web] Opening ${targetLabel} in a separate Mol* view...` : '[web] Separate Mol* view is unavailable in this host.');
+        setStatus(posted ? `[web] Opening ${targetLabel} in Mol*...` : '[web] Separate Mol* view is unavailable in this host.');
+      } else if (action === 'save-modified') {
+        const saved = saveMolstarModifiedStructure();
+        setStatus(`[web] Saving ${saved.name} (${saved.count} structure${saved.count === 1 ? '' : 's'}).`);
+        setMolstarStructureDirty(false);
+      } else if (action === 'focus') {
+        const handled = focusMolstarContextPick(target) || await resetMolstarCameraForContext();
+        setStatus(handled ? `[web] Focused ${targetLabel} in the current Mol* view.` : `[web] ${targetLabel} is already visible in Mol*.`);
+      } else if (action === 'focus-atom') {
+        const handled = focusMolstarContextPick({ ...target, loci: target.atomLoci }) || await resetMolstarCameraForContext();
+        setStatus(handled ? `[web] Focused ${molstarContextAtomLabel(target)} in the current Mol* view.` : `[web] ${molstarContextAtomLabel(target)} is already visible in Mol*.`);
       } else {
         setStatus(`[web] ${label} is unavailable.`);
       }
     } catch (error) {
       setStatus(`[web] ${label} failed.\n\n${error?.message || String(error)}`, 'error');
     } finally {
-      hideMolstarContextMenu();
+      if (!(action === 'select-atom' && molstarContextMenuMode === 'atom')) hideMolstarContextMenu();
     }
   }
 
@@ -5182,24 +6391,47 @@
     const subtitle = document.createElement('div');
     subtitle.className = 'buret-molecule-context-menu-subtitle';
     subtitle.textContent = menuTarget.label;
-    const actions = [
-      ['select', 'Select molecule'],
-      ['remove', 'Delete molecule'],
-      ['separate-window', 'Open in separate window'],
-      ['molstar', 'Open in Mol*'],
-      ['hide', 'Hide molecule'],
-      ['inspect', 'Inspect properties']
-    ];
     menu.append(title, subtitle);
-    actions.forEach(([action, label]) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.setAttribute('role', 'menuitem');
-      button.dataset.buretMoleculeAction = action;
-      button.textContent = label;
-      button.addEventListener('click', () => { void moleculeContextMenuAction(action, label); });
-      menu.appendChild(button);
-    });
+    let mode = menuTarget.scope === 'ligand' && menuTarget.atomLoci && molstarContextMenuMode === 'atom' ? 'atom' : 'molecule';
+    const actionContainer = document.createElement('div');
+    actionContainer.className = 'buret-molecule-context-menu-actions';
+    const renderActions = () => {
+      actionContainer.replaceChildren();
+      molstarContextMenuActions(menuTarget, mode).forEach(([action, label]) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.setAttribute('role', 'menuitem');
+        button.dataset.buretMoleculeAction = action;
+        button.textContent = label;
+        button.addEventListener('click', () => { void moleculeContextMenuAction(action, label); });
+        actionContainer.appendChild(button);
+      });
+    };
+    if (menuTarget.scope === 'ligand' && menuTarget.atomLoci) {
+      const modeGroup = document.createElement('div');
+      modeGroup.className = 'buret-molecule-context-mode';
+      modeGroup.setAttribute('role', 'group');
+      modeGroup.setAttribute('aria-label', 'Ligand selection scope');
+      [['molecule', 'Molecule'], ['atom', 'Atom']].forEach(([value, label]) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'buret-molecule-context-mode-button';
+        button.dataset.buretContextMode = value;
+        button.textContent = label;
+        button.setAttribute('aria-pressed', value === mode ? 'true' : 'false');
+        button.addEventListener('click', () => {
+          mode = value;
+          molstarContextMenuMode = mode;
+          modeGroup.querySelectorAll('button').forEach(item => item.setAttribute('aria-pressed', item.dataset.buretContextMode === mode ? 'true' : 'false'));
+          renderActions();
+          actionContainer.querySelector('button')?.focus();
+        });
+        modeGroup.appendChild(button);
+      });
+      menu.appendChild(modeGroup);
+    }
+    renderActions();
+    menu.appendChild(actionContainer);
     document.body.appendChild(menu);
     positionMolstarContextMenu(menu, event.clientX, event.clientY);
     menu.querySelector('button')?.focus();
@@ -5210,31 +6442,101 @@
       molstarContextMenuCleanup();
       molstarContextMenuCleanup = null;
     }
-    const openFromEvent = (event) => {
-      if (!viewer || !isMolstarContextMenuTarget(event.target)) {
+    let contextPointer = null;
+    const menuIsOpen = () => !!document.querySelector('.buret-molecule-context-menu');
+    const menuIsInAtomMode = () => menuIsOpen() && molstarContextMenuMode === 'atom';
+    const selectAtomFromEvent = (event) => {
+      const contextPick = molstarContextPickFromEvent(event);
+      if (!contextPick) return false;
+      molstarContextMenuPick = contextPick;
+      const target = molstarContextTarget();
+      if (target.scope !== 'ligand' || !target.atomLoci) return false;
+      if (!selectMolstarContextPick({ ...target, loci: target.atomLoci }, { additive: true, applyGranularity: false })) return false;
+      setStatus(`[web] Selected ${molstarContextAtomLabel(target)}.`);
+      showMolstarContextMenu(event, contextPick);
+      return true;
+    };
+    const openFromEvent = (event, picked = null) => {
+      if (!viewer || (!picked && !isMolstarContextMenuTarget(event.target))) {
         hideMolstarContextMenu();
-        return;
+        return false;
+      }
+      const contextPick = picked || molstarContextPickFromEvent(event);
+      if (!contextPick) {
+        event.preventDefault();
+        event.stopPropagation();
+        hideMolstarContextMenu();
+        return false;
       }
       event.preventDefault();
       event.stopPropagation();
-      const contextPick = molstarContextPickFromEvent(event);
-      if (!contextPick) {
-        hideMolstarContextMenu();
-        return;
-      }
       showMolstarContextMenu(event, contextPick);
+      return true;
     };
     const onContextMenu = (event) => {
-      openFromEvent(event);
+      if (contextPointer?.moved) {
+        event.preventDefault();
+        event.stopPropagation();
+        hideMolstarContextMenu();
+        contextPointer = null;
+        return;
+      }
+      openFromEvent(event, contextPointer?.pick || null);
+      contextPointer = null;
     };
     const onPointerDown = (event) => {
       if (event.button === 2) {
-        openFromEvent(event);
+        if (!viewer || !isMolstarContextMenuTarget(event.target)) {
+          contextPointer = null;
+          hideMolstarContextMenu();
+          return;
+        }
+        const contextPick = molstarContextPickFromEvent(event);
+        if (!contextPick) {
+          contextPointer = null;
+          hideMolstarContextMenu();
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        contextPointer = {
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
+          moved: false,
+          pick: contextPick
+        };
+        hideMolstarContextMenu();
         return;
       }
       const target = event.target;
       if (target instanceof Element && target.closest('.buret-molecule-context-menu')) return;
+      if (event.button === 0 && menuIsInAtomMode() && isMolstarContextMenuTarget(target)) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (selectAtomFromEvent(event)) return;
+        return;
+      }
+      contextPointer = null;
       hideMolstarContextMenu();
+    };
+    const onPointerMove = (event) => {
+      if (!contextPointer || event.pointerId !== contextPointer.pointerId) return;
+      if (contextPointer.moved) return;
+      contextPointer.moved =
+        Math.abs(event.clientX - contextPointer.startX) > MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX ||
+        Math.abs(event.clientY - contextPointer.startY) > MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX;
+    };
+    const onPointerUp = (event) => {
+      if (!contextPointer || event.pointerId !== contextPointer.pointerId) return;
+      if (contextPointer.moved) return;
+      event.preventDefault();
+      event.stopPropagation();
+      openFromEvent(event, contextPointer.pick);
+      contextPointer = null;
+    };
+    const onPointerCancel = (event) => {
+      if (contextPointer && event.pointerId === contextPointer.pointerId) contextPointer = null;
     };
     const onKeyDown = (event) => {
       if (event.key === 'Escape') hideMolstarContextMenu();
@@ -5242,11 +6544,17 @@
     const onResize = () => hideMolstarContextMenu();
     document.addEventListener('contextmenu', onContextMenu, true);
     document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('pointermove', onPointerMove, true);
+    document.addEventListener('pointerup', onPointerUp, true);
+    document.addEventListener('pointercancel', onPointerCancel, true);
     document.addEventListener('keydown', onKeyDown);
     window.addEventListener('resize', onResize);
     molstarContextMenuCleanup = () => {
       document.removeEventListener('contextmenu', onContextMenu, true);
       document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('pointermove', onPointerMove, true);
+      document.removeEventListener('pointerup', onPointerUp, true);
+      document.removeEventListener('pointercancel', onPointerCancel, true);
       document.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('resize', onResize);
       hideMolstarContextMenu();
@@ -5340,6 +6648,7 @@
   }
 
   function disposeActiveMolstarViewer() {
+    setMolstarStructureDirty(false);
     const viewer = activeViewer || window.BurreteViewer || window.BuretteViewer;
     try { viewer?.plugin?.dispose?.(); } catch (_) {}
     if (molstarContainerResizeCleanup) {
@@ -5353,6 +6662,10 @@
     if (molstarWindowResizeHandler) {
       window.removeEventListener('resize', molstarWindowResizeHandler);
       molstarWindowResizeHandler = null;
+    }
+    if (burreteAgentActionPollTimer) {
+      window.clearInterval(burreteAgentActionPollTimer);
+      burreteAgentActionPollTimer = 0;
     }
     activeViewer = null;
     window.BurreteViewer = null;
@@ -5420,9 +6733,13 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
 
     try {
       window.BurreteAgent?.notifyStructureLoaded?.({ viewer, plugin: viewer.plugin, config, prepared });
+      postHostMessage({ type: 'agentReady', message: 'Burrete agent ready' });
     } catch (error) {
       debug('BurreteAgent notifyStructureLoaded failed: ' + (error && error.message || String(error)));
     }
+    await applyMolstarContextFocus(config);
+    void reportBurreteAgentState();
+    startBurreteAgentActionPolling();
     trackMolstarOrientation(viewer, config);
 
     if (molstarWindowResizeHandler) window.removeEventListener('resize', molstarWindowResizeHandler);
