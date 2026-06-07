@@ -895,5 +895,16 @@ fn viewer_bridge_js() -> &'static str {
   window.BurreteDebug = false;
   window.BurretePanelControlsVisible = false;
   window.BurreteCacheBuster = String(Date.now());
+  window.addEventListener('message', (event) => {
+    const data = event.data || {};
+    if (data.source !== 'burrete-native-host' || !data.body) return;
+    const body = data.body;
+    if (body.type === 'nativeData' && window.BurreteReceiveNativeData) {
+      window.BurreteReceiveNativeData(body.payload || {});
+    }
+    if (body.type === 'nativeRuntimeFile' && window.BurreteReceiveNativeRuntimeFile) {
+      window.BurreteReceiveNativeRuntimeFile(body.payload || {});
+    }
+  });
 })();"#
 }

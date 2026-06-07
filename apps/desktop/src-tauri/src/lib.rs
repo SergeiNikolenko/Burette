@@ -18,8 +18,11 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
-            let paths = startup::file_args_from_argv(argv, Some(PathBuf::from(cwd)));
+            let cwd = Some(PathBuf::from(cwd));
+            let session_dir = startup::agent_session_from_argv(argv.clone(), cwd.clone());
+            let paths = startup::file_args_from_argv(argv, cwd);
             show_and_emit_open_documents(app, paths);
+            startup::emit_agent_session(app, session_dir);
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -87,7 +90,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::agent_integration::agent_integration_status,
             commands::startup::startup_documents,
+            commands::startup::startup_agent_session,
             commands::documents::pick_open_targets,
             commands::documents::open_documents,
             commands::text_files::read_text_file,
@@ -114,6 +119,7 @@ pub fn run() {
             commands::shell::open_logs_folder,
             commands::shell::open_external_url,
             commands::shell::read_external_preview_svg,
+            commands::shell::read_viewer_runtime_file_base64,
             commands::shell::reveal_path,
             commands::shell::write_base64_file,
             commands::shell::write_text_file,
