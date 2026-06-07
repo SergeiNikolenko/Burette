@@ -115,9 +115,13 @@ function projectMenuItems(project: SidebarProject, actions: ShellActions) {
   return [
     {
       kind: "item" as const,
-      id: "pin-project",
-      text: "Pin project",
-      disabled: true,
+      id: project.isPinned ? "unpin-project" : "pin-project",
+      text: project.isPinned ? "Unpin project" : "Pin project",
+      disabled: !project.rootPath,
+      action: () => {
+        if (!project.rootPath) return;
+        actions.togglePinnedProjectRoot(project.rootPath);
+      },
     },
     {
       kind: "item" as const,
@@ -133,20 +137,24 @@ function projectMenuItems(project: SidebarProject, actions: ShellActions) {
       kind: "item" as const,
       id: "rename-project",
       text: "Rename project",
-      disabled: true,
-    },
-    {
-      kind: "item" as const,
-      id: "archive-project-chats",
-      text: "Archive chats",
-      disabled: true,
+      disabled: !project.rootPath,
+      action: () => {
+        if (!project.rootPath) return;
+        const nextName = window.prompt("Rename project", project.title);
+        if (nextName === null) return;
+        actions.renameProjectRoot(project.rootPath, nextName);
+      },
     },
     { kind: "separator" as const },
     {
       kind: "item" as const,
       id: "remove-project",
       text: "Remove",
-      disabled: true,
+      disabled: !project.rootPath || !project.isExplicit,
+      action: () => {
+        if (!project.rootPath || !project.isExplicit) return;
+        actions.removeProjectRoot(project.rootPath);
+      },
     },
   ];
 }
