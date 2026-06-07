@@ -1543,6 +1543,7 @@ export default function App() {
     openStructureRecords,
     openKetcherWithStructures,
     openFepSetupWorkspace,
+    openDockPayload,
     appendGridRecords,
     addXyzrenderSheetItems,
     addProjectRoots: addDroppedProjectRoots,
