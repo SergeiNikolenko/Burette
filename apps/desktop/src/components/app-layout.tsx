@@ -90,7 +90,6 @@ export function AppLayout({
               aria-label={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"}
             >
               <HugeiconsIcon icon={SidebarLeftIcon} size={18} color="currentColor" strokeWidth={2} />
-              <ShortcutTooltip label={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"} shortcut={"⌘\\"} />
             </button>
           </div>
           <div className="chrome-trailing-controls" data-tauri-drag-region>
