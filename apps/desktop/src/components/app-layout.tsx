@@ -44,6 +44,7 @@ export function AppLayout({
 }) {
   const viewportWidth = typeof window === "undefined" ? 1200 : window.innerWidth;
   const maxSidebarWidth = Math.max(280, Math.min(420, Math.floor(viewportWidth * 0.35)));
+  const settingsMode = state.page === "settings";
   const sidebarWidth = clampSidebarWidth(state.sidebarWidth, maxSidebarWidth);
   const sidebarLayoutWidth = state.sidebarOpen ? sidebarWidth : 0;
   const layoutState = sidebarWidth === state.sidebarWidth ? state : { ...state, sidebarWidth };
@@ -66,6 +67,7 @@ export function AppLayout({
       data-effective-theme={effectiveTheme}
       data-active-page-kind={activePageKind ?? undefined}
       data-runtime={isTauriRuntime() ? "tauri" : "browser"}
+      data-settings-mode={settingsMode ? "true" : undefined}
       data-drop-active={state.dropActive || undefined}
       data-structure-drag-active={state.structureDragActive ? "true" : undefined}
       data-sidebar-open={state.sidebarOpen ? "true" : "false"}
@@ -77,55 +79,59 @@ export function AppLayout({
       style={shellStyle}
     >
       <div className="drag-region" data-tauri-drag-region />
-      <div className="chrome-leading-controls" data-tauri-drag-region>
-        <button
-          type="button"
-          className="chrome-button sidebar-toggle-root"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={onToggleSidebar}
-          aria-label={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"}
-        >
-          <HugeiconsIcon icon={SidebarLeftIcon} size={18} color="currentColor" strokeWidth={2} />
-          <ShortcutTooltip label={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"} shortcut={"⌘\\"} />
-        </button>
-      </div>
-      <div className="chrome-trailing-controls" data-tauri-drag-region>
-        <button
-          type="button"
-          className="chrome-button dock-toggle-button"
-          data-active={state.bottomDockOpen || undefined}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => actions.toggleDock("bottom")}
-          aria-label={state.bottomDockOpen ? "Hide bottom dock" : "Show bottom dock"}
-        >
-          <HugeiconsIcon className="dock-toggle-icon-bottom" icon={SidebarLeftIcon} size={18} color="currentColor" strokeWidth={2} />
-          <ShortcutTooltip label={state.bottomDockOpen ? "Hide bottom dock" : "Show bottom dock"} shortcut="⌘J" />
-        </button>
-        <button
-          type="button"
-          className="chrome-button dock-toggle-button"
-          data-active={state.rightDockOpen || undefined}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => actions.toggleDock("right")}
-          aria-label={state.rightDockOpen ? "Hide right dock" : "Show right dock"}
-        >
-          <HugeiconsIcon className="dock-toggle-icon-right" icon={SidebarLeftIcon} size={18} color="currentColor" strokeWidth={2} />
-          <ShortcutTooltip label={state.rightDockOpen ? "Hide right dock" : "Show right dock"} shortcut="⌥⌘B" />
-        </button>
-      </div>
-      <header
-        className="topbar"
-        style={{ left: tabChromeLeft, transition: chromeTransition }}
-      >
-        <EditorTabs state={layoutState} actions={actions} />
-      </header>
+      {!settingsMode && (
+        <>
+          <div className="chrome-leading-controls" data-tauri-drag-region>
+            <button
+              type="button"
+              className="chrome-button sidebar-toggle-root"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={onToggleSidebar}
+              aria-label={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+            >
+              <HugeiconsIcon icon={SidebarLeftIcon} size={18} color="currentColor" strokeWidth={2} />
+              <ShortcutTooltip label={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"} shortcut={"⌘\\"} />
+            </button>
+          </div>
+          <div className="chrome-trailing-controls" data-tauri-drag-region>
+            <button
+              type="button"
+              className="chrome-button dock-toggle-button"
+              data-active={state.bottomDockOpen || undefined}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => actions.toggleDock("bottom")}
+              aria-label={state.bottomDockOpen ? "Hide bottom dock" : "Show bottom dock"}
+            >
+              <HugeiconsIcon className="dock-toggle-icon-bottom" icon={SidebarLeftIcon} size={18} color="currentColor" strokeWidth={2} />
+              <ShortcutTooltip label={state.bottomDockOpen ? "Hide bottom dock" : "Show bottom dock"} shortcut="⌘J" />
+            </button>
+            <button
+              type="button"
+              className="chrome-button dock-toggle-button"
+              data-active={state.rightDockOpen || undefined}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => actions.toggleDock("right")}
+              aria-label={state.rightDockOpen ? "Hide right dock" : "Show right dock"}
+            >
+              <HugeiconsIcon className="dock-toggle-icon-right" icon={SidebarLeftIcon} size={18} color="currentColor" strokeWidth={2} />
+              <ShortcutTooltip label={state.rightDockOpen ? "Hide right dock" : "Show right dock"} shortcut="⌥⌘B" />
+            </button>
+          </div>
+          <header
+            className="topbar"
+            style={{ left: tabChromeLeft, transition: chromeTransition }}
+          >
+            <EditorTabs state={layoutState} actions={actions} />
+          </header>
+        </>
+      )}
       <section className="workspace">
         <div className="sidebar-shell" style={{ transition: chromeTransition }}>
           <div className="sidebar-shell-inner" style={{ width: sidebarWidth }}>
             <Sidebar state={layoutState} actions={actions} open={state.sidebarOpen} />
           </div>
         </div>
-        {state.sidebarOpen && (
+        {state.sidebarOpen && !settingsMode && (
           <div
             className="splitter"
             onPointerDown={onResizeStart}
