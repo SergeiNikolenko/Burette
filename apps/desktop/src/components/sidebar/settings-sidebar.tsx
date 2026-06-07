@@ -138,6 +138,14 @@ function SettingsItemIcon({ id }: { id: SettingsSectionId }) {
       </svg>
     );
   }
+  if (id === "keyboard") {
+    return (
+      <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+        <rect x="2.4" y="4.2" width="12.2" height="9.2" rx="1.6" stroke="currentColor" strokeWidth="1.35" />
+        <path d="M4.6 6.8H4.61M6.9 6.8H6.91M9.2 6.8H9.21M11.5 6.8H11.51M4.6 9.1H4.61M6.9 9.1H6.91M9.2 9.1H9.21M11.5 9.1H11.51M5.4 11.3H11.6" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" />
+      </svg>
+    );
+  }
   if (id === "updates") {
     return (
       <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">

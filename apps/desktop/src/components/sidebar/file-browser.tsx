@@ -6,7 +6,6 @@ import { hasStructureDrag, readStructureDragPayload, writeStructureDragItems } f
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
 import { RadixDropdownMenu } from "../radix-menu";
 import { ScrollFade } from "../scroll-fade";
-import { ShortcutTooltip } from "../shortcut-tooltip";
 import type { ShellActions, ShellViewState } from "../types";
 import { ProjectGroup, ProjectItem } from "./file-tree-node";
 
@@ -83,7 +82,6 @@ export function FileBrowser({
         </span>
         <span className="sidebar-search-label">Search</span>
         <kbd>⌘<span>P</span></kbd>
-        <ShortcutTooltip label="Search projects and structures" shortcut="⌘P" />
       </button>
       <button
         type="button"

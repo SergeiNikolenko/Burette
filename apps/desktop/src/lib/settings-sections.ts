@@ -1,6 +1,7 @@
 export type SettingsSectionId =
   | "general"
   | "appearance"
+  | "keyboard"
   | "structure"
   | "updates"
   | "workspace"
@@ -26,6 +27,7 @@ export const settingsNavGroups: SettingsNavGroup[] = [
     items: [
       { id: "general", label: "General", description: "Workspace defaults and open documents" },
       { id: "appearance", label: "Appearance", description: "Theme, colors, and shell presentation" },
+      { id: "keyboard", label: "Keyboard shortcuts", description: "Global app shortcuts and navigation keys" },
       { id: "structure", label: "Structure rendering", description: "Mol* and renderer defaults" },
       { id: "updates", label: "Updates", description: "Release checks and install channel" },
     ],
