@@ -35,6 +35,7 @@ type ShellState = {
   pinnedProjectRoots: string[];
   projectNameOverrides: Record<string, string>;
   expandedProjectIds: string[];
+  hiddenProjectRoots: string[];
   pinnedStructurePaths: string[];
   sidebarQuery: string;
   toggleSidebar: () => void;
@@ -77,11 +78,16 @@ type PersistedShellState = Pick<
   | "pinnedProjectRoots"
   | "projectNameOverrides"
   | "expandedProjectIds"
+  | "hiddenProjectRoots"
   | "pinnedStructurePaths"
 >;
 
 function normalizeRoot(root: string) {
   return root.replace(/\\/g, "/").replace(/\/+$/g, "");
+}
+
+function isPathAtOrUnder(path: string, root: string) {
+  return path === root || path.startsWith(`${root}/`);
 }
 
 function persistentRoots(roots: string[]) {
@@ -179,6 +185,7 @@ export const useShellStore = create<ShellState>()(
       pinnedProjectRoots: [],
       projectNameOverrides: {},
       expandedProjectIds: [],
+      hiddenProjectRoots: [],
       pinnedStructurePaths: [],
       sidebarQuery: "",
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
@@ -251,6 +258,7 @@ export const useShellStore = create<ShellState>()(
           const projectId = `project:${normalized}`;
           return {
             projectRoots: [...state.projectRoots, normalized],
+            hiddenProjectRoots: state.hiddenProjectRoots.filter((candidate) => candidate !== normalized),
             expandedProjectIds: state.expandedProjectIds.includes(projectId)
               ? state.expandedProjectIds
               : [...state.expandedProjectIds, projectId],
@@ -277,13 +285,17 @@ export const useShellStore = create<ShellState>()(
       removeProjectRoot: (root) =>
         set((state) => {
           const normalized = normalizeRoot(root);
-          if (!normalized || !state.projectRoots.includes(normalized)) return state;
+          if (!normalized) return state;
           const { [normalized]: _removed, ...projectNameOverrides } = state.projectNameOverrides;
           const projectId = `project:${normalized}`;
           return {
             projectRoots: state.projectRoots.filter((candidate) => candidate !== normalized),
             pinnedProjectRoots: state.pinnedProjectRoots.filter((candidate) => candidate !== normalized),
+            pinnedStructurePaths: state.pinnedStructurePaths.filter((candidate) => !isPathAtOrUnder(candidate, normalized)),
             expandedProjectIds: state.expandedProjectIds.filter((candidate) => candidate !== projectId),
+            hiddenProjectRoots: state.hiddenProjectRoots.includes(normalized)
+              ? state.hiddenProjectRoots
+              : [...state.hiddenProjectRoots, normalized],
             projectNameOverrides,
           };
         }),
@@ -323,6 +335,7 @@ export const useShellStore = create<ShellState>()(
         pinnedProjectRoots: persistentRoots(state.pinnedProjectRoots),
         projectNameOverrides: persistentProjectNameOverrides(state.projectNameOverrides, persistentRoots(state.projectRoots)),
         expandedProjectIds: persistentExpandedProjectIds(state.expandedProjectIds, persistentRoots(state.projectRoots)),
+        hiddenProjectRoots: persistentRoots(state.hiddenProjectRoots),
         pinnedStructurePaths: persistentPinnedPaths(state.pinnedStructurePaths),
       }),
       merge: (persisted, current) => {
@@ -330,6 +343,8 @@ export const useShellStore = create<ShellState>()(
         const projectRoots = persistentRoots(stored?.projectRoots ?? current.projectRoots);
         const pinnedProjectRoots = persistentRoots(stored?.pinnedProjectRoots ?? current.pinnedProjectRoots)
           .filter((root) => projectRoots.includes(root));
+        const hiddenProjectRoots = persistentRoots(stored?.hiddenProjectRoots ?? current.hiddenProjectRoots)
+          .filter((root) => !projectRoots.includes(root));
         return {
           ...current,
           sidebarOpen: stored?.sidebarOpen ?? current.sidebarOpen,
@@ -355,6 +370,7 @@ export const useShellStore = create<ShellState>()(
           pinnedProjectRoots,
           projectNameOverrides: persistentProjectNameOverrides(stored?.projectNameOverrides ?? current.projectNameOverrides, projectRoots),
           expandedProjectIds: persistentExpandedProjectIds(stored?.expandedProjectIds ?? current.expandedProjectIds, projectRoots),
+          hiddenProjectRoots,
           pinnedStructurePaths: persistentPinnedPaths(stored?.pinnedStructurePaths ?? current.pinnedStructurePaths),
         };
       },
