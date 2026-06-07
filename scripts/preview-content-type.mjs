@@ -27,6 +27,6 @@ if (rejectTable && (format?.id === 'csv' || format?.id === 'tsv')) {
   process.exit(2);
 }
 
-if (format?.contentType) {
+if (format?.contentType && registry.quickLook.contentTypes.includes(format.contentType)) {
   process.stdout.write(transformContentType(format.contentType));
 }
