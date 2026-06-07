@@ -39,6 +39,7 @@ export function buildSidebarProjects({
   pinnedProjectRoots = [],
   projectNameOverrides = {},
   activeDocumentId,
+  hiddenProjectRoots = [],
   pinnedStructurePaths = [],
 }: {
   documents: ViewerDocument[];
@@ -47,9 +48,11 @@ export function buildSidebarProjects({
   pinnedProjectRoots?: string[];
   projectNameOverrides?: Record<string, string>;
   activeDocumentId: string | null;
+  hiddenProjectRoots?: string[];
   pinnedStructurePaths?: string[];
 }) {
   const normalizedRoots = dedupeRoots(projectRoots.filter((root) => !isTemporaryDocumentPath(root)));
+  const hiddenRoots = dedupeRoots(hiddenProjectRoots.filter((root) => !isTemporaryDocumentPath(root)));
   const pinnedRoots = new Set(
     pinnedProjectRoots
       .filter((root) => !isTemporaryDocumentPath(root))
@@ -70,7 +73,7 @@ export function buildSidebarProjects({
   }
 
   for (const document of projectDocuments) {
-    addStructureToProjects(projects, normalizedRoots, pinnedPaths, {
+    addStructureToProjects(projects, normalizedRoots, hiddenRoots, pinnedPaths, {
       structure: document,
       activeDocumentId,
       source: "open",
@@ -79,7 +82,7 @@ export function buildSidebarProjects({
 
   for (const structure of recentStructures.filter((structure) => !isTemporaryDocumentPath(structure.path))) {
     if (openPaths.has(normalizePath(structure.path))) continue;
-    addStructureToProjects(projects, normalizedRoots, pinnedPaths, {
+    addStructureToProjects(projects, normalizedRoots, hiddenRoots, pinnedPaths, {
       structure,
       activeDocumentId,
       source: "recent",
@@ -134,6 +137,7 @@ function dedupeRoots(projectRoots: string[]) {
 function addStructureToProjects(
   projects: Map<string, SidebarProject>,
   projectRoots: string[],
+  hiddenProjectRoots: string[],
   pinnedPaths: Set<string>,
   {
     structure,
@@ -146,7 +150,10 @@ function addStructureToProjects(
   },
 ) {
   const normalizedPath = normalizePath(structure.path);
-  const rootPath = resolveProjectRoot(normalizedPath, projectRoots) ?? parentDirectory(normalizedPath);
+  const explicitRootPath = resolveProjectRoot(normalizedPath, projectRoots);
+  if (!explicitRootPath && resolveProjectRoot(normalizedPath, hiddenProjectRoots)) return;
+  const implicitRootPath = explicitRootPath ? null : parentDirectory(normalizedPath);
+  const rootPath = explicitRootPath ?? implicitRootPath;
   const projectId = rootPath ? `project:${rootPath}` : "project:loose";
   const explicitRoot = rootPath ? projectRoots.includes(rootPath) : false;
   const project = projects.get(projectId) ?? createProject(projectId, rootPath, explicitRoot, new Set(), {});

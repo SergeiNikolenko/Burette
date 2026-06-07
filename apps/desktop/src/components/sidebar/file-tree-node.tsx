@@ -150,9 +150,9 @@ function projectMenuItems(project: SidebarProject, actions: ShellActions) {
       kind: "item" as const,
       id: "remove-project",
       text: "Remove",
-      disabled: !project.rootPath || !project.isExplicit,
+      disabled: !project.rootPath,
       action: () => {
-        if (!project.rootPath || !project.isExplicit) return;
+        if (!project.rootPath) return;
         actions.removeProjectRoot(project.rootPath);
       },
     },
