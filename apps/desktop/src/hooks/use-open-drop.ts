@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { DragDropEvent } from "@tauri-apps/api/window";
 import type { DockingDocumentRequest, FepSetupRequest, ViewerDocument } from "../types";
@@ -22,6 +23,7 @@ type OpenFepSetupWorkspace = (request: FepSetupRequest) => void;
 type AppendGridRecords = (targetDocumentId: string, payload: StructureDragPayload) => boolean;
 type AddXyzrenderSheetItems = (payload: StructureDragPayload) => boolean;
 type MergeMoleculeCollections = (paths: string[]) => boolean;
+type AddProjectRoots = (paths: string[]) => void;
 type ReportStatus = (status: string, kind?: "info" | "error") => void;
 type DropPoint = { x: number; y: number };
 type ChooseDropAction = (
@@ -36,6 +38,7 @@ type OpenDropOptions = {
   activeDocumentPath?: string | null;
   activeDocumentRenderer?: string | null;
   activeDockingRequest?: DockingDocumentRequest | null;
+  documents?: ViewerDocument[];
   fepSetupRequest?: FepSetupRequest | null;
   openDockingDocument?: OpenDockingDocument;
   openDockingStructureRecords?: OpenDockingStructureRecords;
@@ -45,7 +48,14 @@ type OpenDropOptions = {
   appendGridRecords?: AppendGridRecords;
   addXyzrenderSheetItems?: AddXyzrenderSheetItems;
   mergeMoleculeCollections?: MergeMoleculeCollections;
+  addProjectRoots?: AddProjectRoots;
   chooseDropAction?: ChooseDropAction;
+};
+
+type ClassifiedOpenPaths = {
+  files: string[];
+  directories: string[];
+  errors: string[];
 };
 
 function browserDropPoint(event: React.DragEvent<HTMLElement>) {
@@ -66,6 +76,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     activeDocumentPath = null,
     activeDocumentRenderer = null,
     activeDockingRequest = null,
+    documents = [],
     fepSetupRequest = null,
     openDockingDocument,
     openDockingStructureRecords,
@@ -75,6 +86,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     appendGridRecords,
     addXyzrenderSheetItems,
     mergeMoleculeCollections,
+    addProjectRoots,
     chooseDropAction,
   } = options;
 
@@ -93,6 +105,21 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     if (fepSetupRequest && element?.closest(".pose-review-workspace, .fep-setup-workspace")) {
       return { kind: "fep-setup", request: fepSetupRequest };
     }
+    const sidebarTarget = element?.closest<HTMLElement>("[data-sidebar-structure-path]");
+    if (sidebarTarget) {
+      const documentPath = sidebarTarget.dataset.sidebarStructurePath ?? "";
+      const documentId = sidebarTarget.dataset.sidebarStructureDocumentId ?? null;
+      const document = documents.find((candidate) => (
+        (documentId !== null && candidate.id === documentId) || candidate.path === documentPath
+      ));
+      return {
+        kind: "active-viewer",
+        documentId: document?.id ?? documentId,
+        documentPath: document?.path ?? documentPath,
+        renderer: sidebarTarget.dataset.sidebarStructureRenderer ?? document?.renderer ?? null,
+        dockingRequest: document?.dockingRequest ?? null,
+      };
+    }
     if (element?.closest(".ketcher-page")) return { kind: "ketcher" };
     if (element?.closest(".molecule-stage, .main-stage")) {
       if (activeTabKind === "ketcher") return { kind: "ketcher" };
@@ -100,7 +127,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     }
     if (activeTabKind === "ketcher") return { kind: "ketcher" };
     return { kind: "workspace" };
-  }, [activeTabKind, activeViewerTarget, fepSetupRequest]);
+  }, [activeTabKind, activeViewerTarget, documents, fepSetupRequest]);
 
   const dropTargetForPosition = useCallback((position: { x: number; y: number } | null = null): DropTargetContext => {
     if (typeof document === "undefined") return activeTabKind === "ketcher" ? { kind: "ketcher" } : { kind: "workspace" };
@@ -225,6 +252,34 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     executeDropAction,
   ]);
 
+  const runFinderDropAction = useCallback(async (
+    payload: StructureDragPayload,
+    target: DropTargetContext,
+  ) => {
+    if (payload.paths.length === 0 || !isTauriRuntime()) {
+      runDropAction(payload, target, { kind: "finder" });
+      return;
+    }
+    try {
+      const classified = await invoke<ClassifiedOpenPaths>("classify_open_paths", { paths: payload.paths });
+      if (classified.directories.length > 0) {
+        addProjectRoots?.(classified.directories);
+      }
+      if (classified.errors.length > 0) {
+        pushStatus(classified.errors.join("; "), "error");
+      }
+      const nextPayload: StructureDragPayload = {
+        ...payload,
+        paths: classified.files,
+      };
+      if (nextPayload.paths.length > 0 || nextPayload.records.length > 0) {
+        runDropAction(nextPayload, target, { kind: "finder" });
+      }
+    } catch (error) {
+      pushStatus("File drop setup failed: " + (error instanceof Error ? error.message : String(error)), "error");
+    }
+  }, [addProjectRoots, pushStatus, runDropAction]);
+
   const handleFileDrop = useCallback(
     (event: DragDropEvent) => {
       if (event.type === "enter" || event.type === "over") {
@@ -234,10 +289,10 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       setDropActive(false);
       if (event.type === "drop") {
         const payload: StructureDragPayload = { paths: event.paths, records: [], point: tauriDropPoint(event.position) };
-        runDropAction(payload, dropTargetForPosition(event.position), { kind: "finder" });
+        void runFinderDropAction(payload, dropTargetForPosition(event.position));
       }
     },
-    [dropTargetForPosition, runDropAction],
+    [dropTargetForPosition, runFinderDropAction],
   );
 
   useEffect(() => {
@@ -292,13 +347,16 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       payload.point = browserDropPoint(event);
       if (payload.paths.length > 0 || payload.records.length > 0) {
         const target = event.target instanceof Element ? event.target : null;
-        const source: DropSourceContext = fileDrop && !structureDrop ? { kind: "finder" } : { kind: "unknown" };
-        runDropAction(payload, dropTargetForElement(target), source);
+        if (fileDrop) {
+          void runFinderDropAction(payload, dropTargetForElement(target));
+        } else {
+          runDropAction(payload, dropTargetForElement(target), { kind: "unknown" });
+        }
       } else if (!isTauriRuntime()) {
         pushStatus("Drop files into the installed app window to open them.");
       }
     },
-    [dropTargetForElement, pushStatus, runDropAction],
+    [dropTargetForElement, pushStatus, runDropAction, runFinderDropAction],
   );
 
   const handleBrowserPaste = useCallback((event: React.ClipboardEvent<HTMLElement>) => {

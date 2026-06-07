@@ -11,9 +11,9 @@ import {
 } from "../components/editor-area/page-kinds";
 import type { RecentStructure, TextFileDocument, ViewerDocument } from "../types";
 import {
+  isTemporaryDocumentPath,
   isPersistentRecentStructure,
   isPersistentViewerDocument,
-  isTemporaryDocumentPath,
 } from "../lib/temporary-documents";
 
 export type MoleculeTab = {
@@ -165,19 +165,11 @@ function toRecentStructure(document: ViewerDocument): RecentStructure {
   };
 }
 
-function persistedDocuments(documents: ViewerDocument[]) {
-  return documents.filter(isPersistentViewerDocument);
-}
-
-function persistedTabs(tabs: MoleculeTab[], documents: ViewerDocument[]) {
-  const paths = new Set(persistedDocuments(documents).map((document) => document.path));
+function persistedTabs(tabs: MoleculeTab[]) {
   return tabs.filter((tab) => (
+    tab.location.kind !== "file" &&
     tab.location.kind !== "fep-setup" &&
-    tab.location.kind !== "pose-review" &&
-    (
-      tab.location.kind !== "file" ||
-      (paths.has(tab.location.path) && !isTemporaryDocumentPath(tab.location.path))
-    )
+    tab.location.kind !== "pose-review"
   ));
 }
 
@@ -661,7 +653,7 @@ export const useMoleculeStore = create<MoleculeState>()(
         ? devFilesPersistedSession(state.recentStructures)
         : ({
             documents: [],
-            tabs: persistedTabs(collapseDuplicateKetcherTabs(state.tabs, state.activeTabId), state.documents),
+            tabs: persistedTabs(collapseDuplicateKetcherTabs(state.tabs, state.activeTabId)),
             activeTabId: state.activeTabId,
             recentStructures: state.recentStructures.filter(isPersistentRecentStructure),
           }),

@@ -378,6 +378,7 @@
 			<array>
 				<string>com.local.burrete10.pdb</string>
 				<string>com.local.burrete10.cif</string>
+				<string>public.cif</string>
 				<string>com.local.burrete10.mmcif</string>
 				<string>com.local.burrete10.bcif</string>
 				<string>com.local.burrete10.sdf</string>
@@ -386,6 +387,7 @@
 				<string>com.local.burrete10.tsv</string>
 				<string>com.local.burrete10.mol</string>
 				<string>com.local.burrete10.mol2</string>
+				<string>com.schrodinger.mol</string>
 				<string>com.schrodinger.pdb</string>
 				<string>com.schrodinger.sdf</string>
 				<string>public.delimited-values-text</string>
@@ -399,6 +401,7 @@
 				<string>com.gaussian.cube</string>
 				<string>com.local.burrete10.gro</string>
 				<string>com.local.burrete10.molecular-dynamics</string>
+				<string>com.schrodinger.mae</string>
 				<string>com.local.burrete10.schrodinger</string>
 			</array>
 			<key>QLSupportsSearchableItems</key>

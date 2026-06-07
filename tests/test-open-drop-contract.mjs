@@ -8,8 +8,13 @@ assert.match(source, /const fileDrop = Array\.from\(event\.dataTransfer\.types\)
 assert.match(source, /const structureDrop = hasStructureDrag\(event\.dataTransfer\);/);
 assert.match(source, /if \(!fileDrop && !structureDrop\) return;/);
 assert.match(source, /const payload = structureDrop\s*\?\s*readStructureDragPayload\(event\.dataTransfer\)/);
-assert.match(source, /const source: DropSourceContext = fileDrop && !structureDrop \? \{ kind: "finder" \} : \{ kind: "unknown" \};/);
-assert.match(source, /runDropAction\(payload, dropTargetForElement\(target\), source\);/);
+assert.match(source, /invoke<ClassifiedOpenPaths>\("classify_open_paths", \{ paths: payload\.paths \}\)/);
+assert.match(source, /addProjectRoots\?\.\(classified\.directories\);/);
+assert.match(source, /if \(classified\.directories\.length > 0\) \{\s*addProjectRoots\?\.\(classified\.directories\);\s*\}/);
+assert.doesNotMatch(source, /if \(classified\.directories\.length > 0\) \{\s*addProjectRoots\?\.\(classified\.directories\);\s*return;\s*\}/);
+assert.match(source, /paths: classified\.files/);
+assert.match(source, /void runFinderDropAction\(payload, dropTargetForElement\(target\)\);/);
+assert.match(source, /runDropAction\(payload, dropTargetForElement\(target\), \{ kind: "unknown" \}\);/);
 
 assert.match(source, /const hasPlainText = Array\.from\(event\.clipboardData\.types\)\.includes\("text\/plain"\);/);
 assert.match(source, /pushStatus\("Clipboard text is not a supported molecular structure or path list\.", "error"\);/);
