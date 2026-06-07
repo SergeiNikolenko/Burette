@@ -343,6 +343,30 @@
 		<dict>
 			<key>UTTypeConformsTo</key>
 			<array>
+				<string>public.xml</string>
+				<string>public.text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>GraphML FEP network file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.graphml</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>graphml</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/graphml+xml</string>
+					<string>text/xml</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
 				<string>public.plain-text</string>
 				<string>public.data</string>
 			</array>
@@ -403,6 +427,7 @@
 				<string>com.local.burrete10.molecular-dynamics</string>
 				<string>com.schrodinger.mae</string>
 				<string>com.local.burrete10.schrodinger</string>
+				<string>com.local.burrete10.graphml</string>
 			</array>
 			<key>QLSupportsSearchableItems</key>
 			<false/>
