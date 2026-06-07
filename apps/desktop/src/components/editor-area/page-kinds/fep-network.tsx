@@ -13,6 +13,9 @@ type RDKitModule = {
 
 type RDKitMol = {
   delete?: () => void;
+  get_aromatic_form?: () => string;
+  get_kekule_form?: () => string;
+  get_new_coords?: (useCoordGen?: boolean) => string;
   get_molblock?: () => string;
   get_smiles?: () => string;
   get_svg: (width?: number, height?: number) => string;
@@ -194,18 +197,20 @@ function FepNetworkPreview({ actions, location }: { actions: ShellActions; locat
 
   const openContextMenu = useCallback((node: FepNetworkNode, event: ReactMouseEvent) => {
     event.preventDefault();
+    const ketcherFragment = ketcherFragmentForNode(rdkit, node);
+    const editorMolblock = molblockForKetcher(rdkit, node);
     void showNativeContextMenu([
       {
         kind: "item",
         id: "open-ketcher",
         text: "Open in Ketcher",
-        action: () => actions.openKetcherWithStructures([], [{ title: `${node.label}.mol`, text: molblockForKetcher(node) }]),
+        action: () => actions.openKetcherWithStructures([], [ketcherFragment]),
       },
       {
         kind: "item",
         id: "open-molstar",
         text: "Open in Molstar",
-        action: () => void actions.openStructureRecords([{ path: `${node.label}.mol`, inputExtension: "mol", text: molblockForKetcher(node) }]),
+        action: () => void actions.openStructureRecords([{ path: `${node.label}.mol`, inputExtension: "mol", text: editorMolblock }]),
       },
       { kind: "separator" },
       {
@@ -215,7 +220,7 @@ function FepNetworkPreview({ actions, location }: { actions: ShellActions; locat
         action: () => setHiddenNodes((current) => new Set([...current, node.id])),
       },
     ], { x: event.clientX, y: event.clientY });
-  }, [actions]);
+  }, [actions, rdkit]);
 
   const startCardDrag = useCallback((node: FepNetworkNode, event: ReactPointerEvent) => {
     if (viewMode !== "graph" || event.button !== 0) return;
@@ -625,28 +630,37 @@ function LigandCard({
   );
 }
 
-function molblockForKetcher(node: FepNetworkNode) {
-  return normalizeMolblockForKetcher(molblockWithFallbackCoordinates(node.molblock));
+function molblockForKetcher(rdkit: RDKitModule | null, node: FepNetworkNode) {
+  return normalizeMolblockForKetcher(rdkitMolblockForKetcher(rdkit, node.molblock) ?? node.molblock);
 }
 
-function molblockWithFallbackCoordinates(molblock: string) {
-  const lines = molblock.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-  const countsIndex = lines.findIndex(isMolfileCountsLine);
-  if (countsIndex < 0) return molblock;
-  const counts = lines[countsIndex].trim().split(/\s+/u);
-  const atomCount = Number.parseInt(counts[0] ?? "", 10);
-  if (!Number.isFinite(atomCount) || atomCount <= 0) return molblock;
-  const atomStart = countsIndex + 1;
-  const radius = Math.max(2.2, Math.min(4.6, atomCount * 0.12));
-  for (let index = 0; index < atomCount; index += 1) {
-    const lineIndex = atomStart + index;
-    const line = lines[lineIndex];
-    if (!line) continue;
-    const angle = (index / atomCount) * Math.PI * 2;
-    const suffix = line.length > 30 ? line.slice(30) : " C   0  0  0  0  0  0  0  0  0  0  0  0";
-    lines[lineIndex] = `${molCoord(Math.cos(angle) * radius)}${molCoord(Math.sin(angle) * radius)}    0.0000${suffix}`;
+function ketcherFragmentForNode(rdkit: RDKitModule | null, node: FepNetworkNode) {
+  return { title: `${node.label}.sdf`, text: molblockToSdf(molblockForKetcher(rdkit, node), node.label) };
+}
+
+function molblockToSdf(molblock: string, title: string) {
+  const lines = molblock.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trimEnd().split("\n");
+  if (lines.length > 0) lines[0] = title.slice(0, 80);
+  return `${lines.join("\n")}\n$$$$\n`;
+}
+
+function rdkitMolblockForKetcher(rdkit: RDKitModule | null, molblock: string) {
+  if (!rdkit) return null;
+  let mol: RDKitMol | null = null;
+  let prepared: RDKitMol | null = null;
+  try {
+    mol = rdkit.get_mol(molblock);
+    if (!mol || (typeof mol.is_valid === "function" && !mol.is_valid())) return null;
+    const structuralMolblock = mol.get_kekule_form?.() || mol.get_aromatic_form?.() || molblock;
+    prepared = rdkit.get_mol(structuralMolblock);
+    if (!prepared || (typeof prepared.is_valid === "function" && !prepared.is_valid())) return structuralMolblock;
+    return prepared.get_new_coords?.(true) || prepared.get_new_coords?.() || structuralMolblock;
+  } catch (_) {
+    return null;
+  } finally {
+    try { prepared?.delete?.(); } catch (_) {}
+    try { mol?.delete?.(); } catch (_) {}
   }
-  return lines.join("\n");
 }
 
 function normalizeMolblockForKetcher(molblock: string) {
@@ -816,7 +830,7 @@ function fepGridRecord(node: FepNetworkNode, index: number): FepGridRecord {
   return {
     index,
     name: node.label,
-    molblock: molblockForKetcher(node),
+    molblock: molblockForKetcher(null, node),
     props,
   };
 }
