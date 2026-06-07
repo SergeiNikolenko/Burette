@@ -14,6 +14,7 @@ const contractScripts = {
   "test-drop-actions.mjs": () => import("./test-drop-actions.mjs"),
   "test-open-drop-contract.mjs": () => import("./test-open-drop-contract.mjs"),
   "test-molecule-store-behavior.mjs": () => import("./test-molecule-store-behavior.mjs"),
+  "test-shell-store-behavior.mjs": () => import("./test-shell-store-behavior.mjs"),
   "test-fep-setup-store.mjs": () => import("./test-fep-setup-store.mjs"),
   "test-tauri-structure.mjs": () => import("./test-tauri-structure.mjs"),
 };

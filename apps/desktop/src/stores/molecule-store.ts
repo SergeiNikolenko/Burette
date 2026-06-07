@@ -47,6 +47,7 @@ type MoleculeState = {
   addBackgroundTextDocuments: (documents: TextFileDocument[]) => void;
   openTextDocumentsInActiveTab: (documents: TextFileDocument[], options?: { backLocation?: Location }) => void;
   rememberRecentStructures: (documents: ViewerDocument[]) => void;
+  pruneRecentStructures: (existingPaths: string[]) => void;
   clearRecentStructures: () => void;
   openNewTab: () => void;
   openFepNetworkTab: (location: FepNetworkLocation) => void;
@@ -488,6 +489,12 @@ export const useMoleculeStore = create<MoleculeState>()(
             recentStructures: Array.from(byPath.values())
               .sort((a, b) => b.openedAt - a.openedAt),
           };
+        }),
+      pruneRecentStructures: (existingPaths) =>
+        set((state) => {
+          const existing = new Set(existingPaths);
+          const recentStructures = state.recentStructures.filter((structure) => existing.has(structure.path));
+          return recentStructures.length === state.recentStructures.length ? state : { recentStructures };
         }),
       clearRecentStructures: () => set({ recentStructures: [] }),
       openNewTab: () =>
