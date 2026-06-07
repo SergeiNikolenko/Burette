@@ -5,11 +5,12 @@ import { ketcherKind, type KetcherLocation } from "./ketcher";
 import { launcherKind, type LauncherLocation } from "./launcher";
 import { poseReviewKind, type PoseReviewLocation } from "./pose-review";
 import { settingsKind, type SettingsLocation } from "./settings";
+import { textFileKind, type TextFileLocation } from "./text-file";
 import type { AnyPageKind, PageKind, SerializedLocation } from "./types";
 
-const kinds = [fileKind, fepNetworkKind, fepSetupKind, ketcherKind, launcherKind, poseReviewKind, settingsKind] as const;
+const kinds = [fileKind, textFileKind, fepNetworkKind, fepSetupKind, ketcherKind, launcherKind, poseReviewKind, settingsKind] as const;
 
-export type Location = FileLocation | FepNetworkLocation | FepSetupLocation | KetcherLocation | LauncherLocation | PoseReviewLocation | SettingsLocation;
+export type Location = FileLocation | TextFileLocation | FepNetworkLocation | FepSetupLocation | KetcherLocation | LauncherLocation | PoseReviewLocation | SettingsLocation;
 
 const byKind: Map<string, AnyPageKind> = new Map(
   kinds.map((kind) => [kind.kind, kind as unknown as AnyPageKind]),
@@ -44,3 +45,4 @@ export type { KetcherLocation } from "./ketcher";
 export type { LauncherLocation } from "./launcher";
 export type { PoseReviewLocation } from "./pose-review";
 export type { SettingsLocation } from "./settings";
+export type { TextFileLocation } from "./text-file";

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useThemePortalContainer } from "../radix-menu";
+import { CloseIcon } from "../close-icon";
 
 export type SettingRow = {
   label: string;
@@ -381,7 +382,7 @@ function ConfirmActionButton({
             <Dialog.Title>{dialogTitle}</Dialog.Title>
             <Dialog.Close asChild>
               <button type="button" className="radix-dialog-close" aria-label="Cancel">
-                ×
+                <CloseIcon size={14} />
               </button>
             </Dialog.Close>
           </div>

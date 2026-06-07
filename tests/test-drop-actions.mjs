@@ -88,6 +88,45 @@ assert.deepEqual(resolveDropActionChoices(payload(["/tmp/a.sdf"]), { kind: "ketc
   { kind: "tab" },
 ]);
 
+assert.deepEqual(resolveDropActionChoices(payload(["/tmp/receptor.pdb"]), { kind: "ketcher" }), [{
+  id: "open-documents",
+  label: "Open as document tabs",
+  confidence: "default",
+  action: {
+    kind: "open-documents",
+    paths: ["/tmp/receptor.pdb"],
+  },
+}]);
+assert.deepEqual(resolveDropActionChoices(payload(["/tmp/receptor.pdb", "/tmp/a.sdf"]), { kind: "ketcher" }), [
+  {
+    id: "import-ketcher-structures",
+    label: "Add to Ketcher",
+    confidence: "default",
+    action: {
+      kind: "import-ketcher-structures",
+      payload: payload(["/tmp/a.sdf"]),
+    },
+  },
+  {
+    id: "open-documents",
+    label: "Open separately",
+    confidence: "alternative",
+    action: {
+      kind: "open-documents",
+      paths: ["/tmp/receptor.pdb", "/tmp/a.sdf"],
+    },
+  },
+]);
+assert.deepEqual(resolveDropActionChoices(payload(["/tmp/receptor.pdb", "/tmp/protein.cif"]), { kind: "ketcher" }), [{
+  id: "open-documents",
+  label: "Open as document tabs",
+  confidence: "default",
+  action: {
+    kind: "open-documents",
+    paths: ["/tmp/receptor.pdb", "/tmp/protein.cif"],
+  },
+}]);
+
 const inlineOnKetcher = resolveDropAction(
   payload([], [{ path: "structure.smi", inputExtension: "smi", text: "CCO\n" }]),
   { kind: "ketcher" },
@@ -187,6 +226,31 @@ assert.deepEqual(resolveDropAction(payload(["/tmp/a.sdf"]), {
   targetPath: "/tmp/grid.sdf",
   paths: ["/tmp/a.sdf"],
 });
+assert.deepEqual(resolveDropActionChoices(payload(["/tmp/a.sdf"]), {
+  kind: "active-viewer",
+  documentPath: "/tmp/grid.sdf",
+  renderer: "grid2d",
+}), [
+  {
+    id: "merge-collection",
+    label: "Merge molecule collections",
+    confidence: "default",
+    action: {
+      kind: "merge-collection",
+      targetPath: "/tmp/grid.sdf",
+      paths: ["/tmp/a.sdf"],
+    },
+  },
+  {
+    id: "open-documents",
+    label: "Open separately",
+    confidence: "alternative",
+    action: {
+      kind: "open-documents",
+      paths: ["/tmp/a.sdf"],
+    },
+  },
+]);
 
 const structureOnXyzrender = resolveDropAction(payload(["/tmp/a.xyz"]), {
   kind: "active-viewer",
@@ -385,6 +449,14 @@ assert.deepEqual(resolveDropActionChoices(payload(["/tmp/receptor-b.cif", "/tmp/
     },
   },
 });
+assert.deepEqual(resolveDropAction(payload(["/tmp/receptor-b.cif"]), {
+  kind: "active-viewer",
+  documentPath: "/tmp/receptor-a.pdb",
+  renderer: "molstar",
+}), {
+  kind: "open-documents",
+  paths: ["/tmp/receptor-b.cif"],
+});
 
 assert.deepEqual(resolveDropActionChoices(
   payload([], [{ path: "grid-ligand.sdf", inputExtension: "sdf", text: "mol\nM  END\n$$$$\n" }]),
@@ -413,6 +485,122 @@ assert.deepEqual(ligandOnGenericLigand, {
   kind: "open-documents",
   paths: ["/tmp/ligand-b.sdf"],
 });
+
+const dragDropMatrix = [
+  {
+    name: "protein target plus ligand file opens docking view",
+    actual: resolveDropAction(payload(["/tmp/ligand.sdf"]), {
+      kind: "active-viewer",
+      documentPath: "/tmp/receptor.pdb",
+      renderer: "molstar",
+    }),
+    expected: {
+      kind: "open-docking",
+      request: {
+        receptorPath: "/tmp/receptor.pdb",
+        ligandPaths: ["/tmp/ligand.sdf"],
+      },
+    },
+  },
+  {
+    name: "protein target plus inline ligand record opens docking view",
+    actual: resolveDropAction(payload([], [{ path: "grid-ligand.sdf", inputExtension: "sdf", text: "mol\nM  END\n$$$$\n" }]), {
+      kind: "active-viewer",
+      documentPath: "/tmp/receptor.pdb",
+      renderer: "molstar",
+    }),
+    expected: {
+      kind: "open-docking-with-records",
+      receptorPath: "/tmp/receptor.pdb",
+      ligandPaths: [],
+      records: [{ path: "grid-ligand.sdf", inputExtension: "sdf", text: "mol\nM  END\n$$$$\n" }],
+    },
+  },
+  {
+    name: "protein target plus protein file opens separately",
+    actual: resolveDropAction(payload(["/tmp/receptor-b.cif"]), {
+      kind: "active-viewer",
+      documentPath: "/tmp/receptor-a.pdb",
+      renderer: "molstar",
+    }),
+    expected: {
+      kind: "open-documents",
+      paths: ["/tmp/receptor-b.cif"],
+    },
+  },
+  {
+    name: "ligand target plus ligand file opens separately",
+    actual: resolveDropAction(payload(["/tmp/ligand-b.sdf"]), {
+      kind: "active-viewer",
+      documentPath: "/tmp/ligand-a.sdf",
+      renderer: "molstar",
+    }),
+    expected: {
+      kind: "open-documents",
+      paths: ["/tmp/ligand-b.sdf"],
+    },
+  },
+  {
+    name: "grid collection target with document id appends records",
+    actual: resolveDropAction(payload(["/tmp/collection-b.sdf"]), {
+      kind: "active-viewer",
+      documentId: "grid-doc",
+      documentPath: "/tmp/collection-a.sdf",
+      renderer: "grid2d",
+    }),
+    expected: {
+      kind: "append-grid-records",
+      targetDocumentId: "grid-doc",
+      payload: payload(["/tmp/collection-b.sdf"]),
+    },
+  },
+  {
+    name: "grid collection target without document id merges collections",
+    actual: resolveDropAction(payload(["/tmp/collection-b.sdf"]), {
+      kind: "active-viewer",
+      documentPath: "/tmp/collection-a.sdf",
+      renderer: "grid2d",
+    }),
+    expected: {
+      kind: "merge-collection",
+      targetPath: "/tmp/collection-a.sdf",
+      paths: ["/tmp/collection-b.sdf"],
+    },
+  },
+  {
+    name: "xyzrender target adds sheet items",
+    actual: resolveDropAction(payload(["/tmp/ligand.xyz"]), {
+      kind: "active-viewer",
+      documentPath: "/tmp/sheet.xyz",
+      renderer: "xyzrender-external",
+    }),
+    expected: {
+      kind: "add-xyzrender-sheet-items",
+      targetDocumentId: undefined,
+      payload: payload(["/tmp/ligand.xyz"]),
+    },
+  },
+  {
+    name: "ketcher target imports only supported ligand formats from mixed drop",
+    actual: resolveDropAction(payload(["/tmp/receptor.pdb", "/tmp/ligand.sdf"]), { kind: "ketcher" }),
+    expected: {
+      kind: "import-ketcher-structures",
+      payload: payload(["/tmp/ligand.sdf"]),
+    },
+  },
+  {
+    name: "ketcher target opens protein-only drops separately",
+    actual: resolveDropAction(payload(["/tmp/receptor.pdb", "/tmp/protein.cif"]), { kind: "ketcher" }),
+    expected: {
+      kind: "open-documents",
+      paths: ["/tmp/receptor.pdb", "/tmp/protein.cif"],
+    },
+  },
+];
+
+for (const testCase of dragDropMatrix) {
+  assert.deepEqual(testCase.actual, testCase.expected, testCase.name);
+}
 
 assert.equal(resolveDropAction(payload([]), { kind: "workspace" }), null);
 assert.deepEqual(resolveDropActionChoices(payload([]), { kind: "workspace" }), []);

@@ -1,0 +1,402 @@
+#!/usr/bin/env node
+import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(__dirname, '..');
+const agentPreviewScript = resolve(__dirname, 'agent-preview.mjs');
+const apiVersion = 'burette-agent-cli/v1';
+const supportedModes = new Set(['browser-preview', 'desktop-app']);
+
+function usage() {
+  console.error(`Usage:
+  node scripts/burrete-agent.mjs open --mode browser-preview <file> [--port 5177] [--host 127.0.0.1]
+  node scripts/burrete-agent.mjs open --mode desktop-app <file> [--app Burrete] [--session-dir /tmp/session] [--no-launch]
+  node scripts/burrete-agent.mjs observe --url <tokenized-preview-url>
+  node scripts/burrete-agent.mjs observe --session-dir <desktop-agent-session>
+  node scripts/burrete-agent.mjs act --url <tokenized-preview-url> '<json-action>' [--wait-ms 5000]
+  node scripts/burrete-agent.mjs act --session-dir <desktop-agent-session> '<json-action>' [--wait-ms 5000]
+  node scripts/burrete-agent.mjs render-panel --session-dir <desktop-agent-session> --kind markdown --file /tmp/notes.md [--area right]
+
+The CLI is the readable Burrete agent contract. Browser-preview mode uses a
+tokenized localhost server. Desktop app mode uses an explicit file-backed local
+session directory passed to the app at launch.`);
+}
+
+function parseOptions(args) {
+  const out = { rest: [] };
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === '--mode') {
+      out.mode = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === '--port') {
+      out.port = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === '--host') {
+      out.host = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === '--url') {
+      out.url = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === '--session-dir') {
+      out.sessionDir = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === '--app') {
+      out.app = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === '--kind') {
+      out.kind = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === '--file') {
+      out.file = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === '--area') {
+      out.area = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === '--wait-ms') {
+      out.waitMs = Number(requireValue(args, index, arg));
+      index += 1;
+      continue;
+    }
+    if (arg === '--no-launch') {
+      out.noLaunch = true;
+      continue;
+    }
+    if (arg === '--help' || arg === '-h') {
+      out.help = true;
+      continue;
+    }
+    out.rest.push(arg);
+  }
+  return out;
+}
+
+function requireValue(args, index, flag) {
+  const value = args[index + 1];
+  if (!value) fail('INVALID_ARGS', `Missing value for ${flag}.`, 2);
+  return value;
+}
+
+function fail(code, message, exitCode = 1, details) {
+  console.error(JSON.stringify({
+    ok: false,
+    apiVersion,
+    error: { code, message, details }
+  }, null, 2));
+  process.exit(exitCode);
+}
+
+async function main() {
+  const [command = 'help', ...args] = process.argv.slice(2);
+  const options = parseOptions(args);
+  if (command === 'help' || options.help) {
+    usage();
+    return;
+  }
+  if (command === 'open') {
+    await open(options);
+    return;
+  }
+  if (command === 'observe') {
+    await observe(options);
+    return;
+  }
+  if (command === 'act') {
+    await act(options);
+    return;
+  }
+  if (command === 'render-panel') {
+    await renderPanel(options);
+    return;
+  }
+  fail('UNKNOWN_COMMAND', `Unknown command: ${command}.`, 2);
+}
+
+async function open(options) {
+  const mode = options.mode || 'browser-preview';
+  if (!supportedModes.has(mode)) fail('INVALID_ARGS', `Unsupported mode: ${mode}.`, 2);
+  const file = options.rest[0];
+  if (!file) fail('INVALID_ARGS', 'open requires a structure file path.', 2);
+  if (mode === 'desktop-app') {
+    await openDesktopApp(file, options);
+    return;
+  }
+
+  const childArgs = [agentPreviewScript, file];
+  if (options.port) childArgs.push('--port', options.port);
+  if (options.host) childArgs.push('--host', options.host);
+  const child = spawn(process.execPath, childArgs, {
+    cwd: repoRoot,
+    stdio: 'inherit'
+  });
+  child.on('exit', (code, signal) => {
+    if (signal) process.kill(process.pid, signal);
+    process.exit(code ?? 0);
+  });
+}
+
+async function observe(options) {
+  if (options.sessionDir) {
+    await observeDesktopSession(options);
+    return;
+  }
+  if (!options.url) fail('INVALID_ARGS', 'observe requires --url with the tokenized browser-preview URL.', 2);
+  const response = await fetch(buildAgentUrl(options.url, '/__agent/observe'));
+  const body = await response.text();
+  if (!response.ok) {
+    fail('OBSERVE_FAILED', `Observe request failed with HTTP ${response.status}.`, 1, body);
+  }
+  try {
+    const parsed = JSON.parse(body);
+    console.log(JSON.stringify({
+      ok: true,
+      apiVersion,
+      result: parsed
+    }, null, 2));
+  } catch (error) {
+    fail('INVALID_RESPONSE', 'Observe response was not JSON.', 1, { message: error?.message, body });
+  }
+}
+
+async function act(options) {
+  if (options.sessionDir) {
+    await actDesktopSession(options);
+    return;
+  }
+  if (!options.url) fail('INVALID_ARGS', 'act requires --url with the tokenized browser-preview URL.', 2);
+  const actionText = options.rest[0];
+  if (!actionText) fail('INVALID_ARGS', 'act requires a JSON action argument.', 2);
+  let action;
+  try {
+    action = JSON.parse(actionText);
+  } catch (error) {
+    fail('INVALID_ARGS', `Action is not valid JSON: ${error?.message || String(error)}.`, 2);
+  }
+  const response = await fetch(buildAgentUrl(options.url, '/__agent/act'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(action)
+  });
+  const body = await response.text();
+  if (!response.ok) {
+    fail('ACT_FAILED', `Action request failed with HTTP ${response.status}.`, 1, body);
+  }
+  const parsed = parseJsonBody(body, 'Action response was not JSON.');
+  const waitMs = Number.isFinite(options.waitMs) ? options.waitMs : 0;
+  if (!waitMs || !parsed.action?.id) {
+    console.log(JSON.stringify({ ok: true, apiVersion, result: parsed }, null, 2));
+    return;
+  }
+  const observed = await waitForAction(options.url, parsed.action.id, waitMs);
+  console.log(JSON.stringify({ ok: true, apiVersion, result: observed }, null, 2));
+}
+
+async function renderPanel(options) {
+  if (!options.kind) fail('INVALID_ARGS', 'render-panel requires --kind markdown, table, or chart.', 2);
+  if (!['markdown', 'table', 'chart'].includes(String(options.kind))) {
+    fail('INVALID_ARGS', 'render-panel --kind must be markdown, table, or chart.', 2);
+  }
+  if (!options.file) fail('INVALID_ARGS', 'render-panel requires --file.', 2);
+  if (options.area && !['right', 'bottom'].includes(String(options.area))) {
+    fail('INVALID_ARGS', 'render-panel --area must be right or bottom.', 2);
+  }
+  options.rest = [JSON.stringify({
+    type: 'render_panel',
+    kind: options.kind,
+    file: resolve(options.file),
+    area: options.area || 'right'
+  })];
+  await act(options);
+}
+
+async function openDesktopApp(file, options) {
+  const sessionDir = options.sessionDir ? resolve(options.sessionDir) : await mkdtemp(resolve(tmpdir(), 'burrete-agent-'));
+  await mkdir(sessionDir, { recursive: true });
+  const token = randomUUID();
+  await writeJsonFile(resolve(sessionDir, 'session.json'), {
+    apiVersion,
+    mode: 'desktop-app',
+    token,
+    createdAt: new Date().toISOString(),
+    initialPaths: [resolve(file)]
+  });
+  await writeJsonFile(resolve(sessionDir, 'actions.json'), {
+    apiVersion: 'burette-agent-control/v1',
+    actions: []
+  });
+  if (!options.noLaunch) {
+    const app = options.app || 'Burrete';
+    const child = spawn('open', desktopOpenArgs(app, sessionDir, resolve(file)), {
+      cwd: repoRoot,
+      detached: true,
+      stdio: 'ignore'
+    });
+    child.unref();
+  }
+  console.log(JSON.stringify({
+    ok: true,
+    apiVersion,
+    result: {
+      mode: 'desktop-app',
+      sessionDir,
+      launched: !options.noLaunch,
+      initialPaths: [resolve(file)],
+      observe: `node scripts/burrete-agent.mjs observe --session-dir ${JSON.stringify(sessionDir)}`,
+      act: `node scripts/burrete-agent.mjs act --session-dir ${JSON.stringify(sessionDir)} '<json-action>'`
+    }
+  }, null, 2));
+}
+
+function desktopOpenArgs(app, sessionDir, file) {
+  const agentArgs = ['--args', '--burrete-agent-session', sessionDir, file];
+  if (String(app).includes('/') || String(app).endsWith('.app')) {
+    return ['-n', app, ...agentArgs];
+  }
+  return ['-n', '-a', app, ...agentArgs];
+}
+
+async function observeDesktopSession(options) {
+  const observed = await readJsonFile(resolve(options.sessionDir, 'observe.json'), null);
+  if (!observed) {
+    fail('OBSERVE_UNAVAILABLE', 'Desktop app has not reported observe.json for this session yet.', 1);
+  }
+  console.log(JSON.stringify({
+    ok: true,
+    apiVersion,
+    result: observed
+  }, null, 2));
+}
+
+async function actDesktopSession(options) {
+  const actionText = options.rest[0];
+  if (!actionText) fail('INVALID_ARGS', 'act requires a JSON action argument.', 2);
+  let action;
+  try {
+    action = JSON.parse(actionText);
+  } catch (error) {
+    fail('INVALID_ARGS', `Action is not valid JSON: ${error?.message || String(error)}.`, 2);
+  }
+  const actionsPath = resolve(options.sessionDir, 'actions.json');
+  const actionsFile = await readJsonFile(actionsPath, { apiVersion: 'burette-agent-control/v1', actions: [] });
+  const item = {
+    id: `act-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+    action,
+    status: 'queued',
+    createdAt: new Date().toISOString()
+  };
+  const actions = Array.isArray(actionsFile.actions) ? actionsFile.actions : [];
+  actions.push(item);
+  await writeJsonFile(actionsPath, { apiVersion: 'burette-agent-control/v1', actions });
+  const waitMs = Number.isFinite(options.waitMs) ? options.waitMs : 0;
+  if (!waitMs) {
+    console.log(JSON.stringify({ ok: true, apiVersion, result: { ok: true, action: publicDesktopAction(item) } }, null, 2));
+    return;
+  }
+  const result = await waitForDesktopAction(actionsPath, item.id, waitMs);
+  console.log(JSON.stringify({ ok: true, apiVersion, result }, null, 2));
+}
+
+async function waitForDesktopAction(actionsPath, actionId, waitMs) {
+  const deadline = Date.now() + waitMs;
+  while (Date.now() <= deadline) {
+    const actionsFile = await readJsonFile(actionsPath, { actions: [] });
+    const action = (Array.isArray(actionsFile.actions) ? actionsFile.actions : []).find(item => item.id === actionId);
+    if (action && ['completed', 'failed'].includes(action.status)) {
+      return { ok: action.status === 'completed', action: publicDesktopAction(action) };
+    }
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  fail('ACTION_TIMEOUT', `Timed out waiting for action ${actionId}.`, 1);
+}
+
+function publicDesktopAction(action) {
+  return {
+    id: action.id,
+    type: action.action?.type || null,
+    status: action.status,
+    createdAt: action.createdAt || null,
+    dispatchedAt: action.dispatchedAt || null,
+    completedAt: action.completedAt || null,
+    result: action.result || null
+  };
+}
+
+async function waitForAction(url, actionId, waitMs) {
+  const deadline = Date.now() + waitMs;
+  while (Date.now() <= deadline) {
+    const response = await fetch(buildAgentUrl(url, '/__agent/observe'));
+    const body = await response.text();
+    if (!response.ok) {
+      fail('OBSERVE_FAILED', `Observe request failed with HTTP ${response.status}.`, 1, body);
+    }
+    const observed = parseJsonBody(body, 'Observe response was not JSON.');
+    const action = (observed.actions?.recent || []).find(item => item.id === actionId) || observed.actions?.last;
+    if (action?.id === actionId && ['completed', 'failed'].includes(action.status)) {
+      return observed;
+    }
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  fail('ACTION_TIMEOUT', `Timed out waiting for action ${actionId}.`, 1);
+}
+
+function parseJsonBody(body, message) {
+  try {
+    return JSON.parse(body);
+  } catch (error) {
+    fail('INVALID_RESPONSE', message, 1, { message: error?.message, body });
+  }
+}
+
+async function readJsonFile(path, fallback) {
+  try {
+    return JSON.parse(await readFile(path, 'utf8'));
+  } catch (error) {
+    if (fallback !== undefined) return fallback;
+    fail('READ_FAILED', `${path}: ${error?.message || String(error)}`, 1);
+  }
+}
+
+async function writeJsonFile(path, value) {
+  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function buildAgentUrl(input, pathname) {
+  let parsed;
+  try {
+    parsed = new URL(input);
+  } catch (error) {
+    fail('INVALID_ARGS', `Invalid --url value: ${error?.message || String(error)}.`, 2);
+  }
+  const token = parsed.searchParams.get('token');
+  parsed.pathname = pathname;
+  parsed.search = '';
+  if (token) parsed.searchParams.set('token', token);
+  return parsed;
+}
+
+main().catch(error => {
+  fail('UNHANDLED_ERROR', error?.message || String(error), 1, error?.stack);
+});

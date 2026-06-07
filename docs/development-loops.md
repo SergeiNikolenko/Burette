@@ -68,10 +68,10 @@ the grid viewer:
 bun run patch:web-assets
 ```
 
-This copies `PreviewExtension/Web` into both bundle locations and re-signs the
-app:
+This copies `PreviewExtension/Web` into the desktop viewer runtime and Quick
+Look bundle locations, then re-signs the app:
 
-- `build/Burrete.app/Contents/Resources/Web`
+- `build/Burrete.app/Contents/Resources/ViewerWeb`
 - `build/Burrete.app/Contents/PlugIns/BurretePreview.appex/Contents/Resources/Web`
 
 For agent-driven work in a flavored build, set `BURRETE_APP_PATH` to the

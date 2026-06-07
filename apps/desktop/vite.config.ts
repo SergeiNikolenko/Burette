@@ -33,6 +33,7 @@ const defaultFsAllow = defaultDevFileSources.map((path) => {
 const devFsAllowRoots = [repoRoot, ...defaultFsAllow, ...extraFsAllow].map((path) => resolve(path));
 const execFileAsync = promisify(execFile);
 const DEV_FILE_SIZE_LIMIT = 75 * 1024 * 1024;
+const TEXT_FILE_READ_LIMIT = 12 * 1024 * 1024;
 const RDKIT_WASM_PATH = join(repoRoot, "PreviewExtension", "Web", "rdkit", "RDKit_minimal.wasm");
 const DEV_FILE_EXTENSIONS = new Set([
   "abi", "bcif", "cif", "cms", "com", "csv", "cub", "cube", "dcd", "ent", "fdf", "gro",
@@ -366,6 +367,66 @@ export function browserDevXyzrenderPlugin() {
           res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
         }
       });
+      server.middlewares.use("/__burette/read-text-file", async (req, res) => {
+        if ((req.method || "GET").toUpperCase() !== "GET") {
+          res.statusCode = 405;
+          res.setHeader("Content-Type", "application/json; charset=utf-8");
+          res.end(JSON.stringify({ error: "Method not allowed" }));
+          return;
+        }
+        try {
+          const url = new URL(req.url || "", "http://127.0.0.1");
+          const path = url.searchParams.get("path");
+          if (!path) {
+            res.statusCode = 400;
+            res.setHeader("Content-Type", "application/json; charset=utf-8");
+            res.end(JSON.stringify({ error: "Missing path" }));
+            return;
+          }
+          const filePath = resolve(path);
+          if (!isDevFileReadAllowed(filePath)) {
+            res.statusCode = 403;
+            res.setHeader("Content-Type", "application/json; charset=utf-8");
+            res.end(JSON.stringify({ error: "Forbidden" }));
+            return;
+          }
+          const info = await stat(filePath);
+          if (!info.isFile() || info.size > DEV_FILE_SIZE_LIMIT) {
+            res.statusCode = 400;
+            res.setHeader("Content-Type", "application/json; charset=utf-8");
+            res.end(JSON.stringify({ error: "Unsupported file" }));
+            return;
+          }
+          const bytes = await readFile(filePath);
+          if (looksBinary(bytes)) {
+            res.statusCode = 400;
+            res.setHeader("Content-Type", "application/json; charset=utf-8");
+            res.end(JSON.stringify({ error: `${filePath} is not a text file` }));
+            return;
+          }
+          const truncated = bytes.length > TEXT_FILE_READ_LIMIT;
+          const readableBytes = truncated ? bytes.subarray(0, TEXT_FILE_READ_LIMIT) : bytes;
+          const extension = fileExtension(filePath);
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "application/json; charset=utf-8");
+          res.setHeader("Cache-Control", "no-cache");
+          res.end(JSON.stringify({
+            id: `browser-dev-${filePath}-${info.mtimeMs}`,
+            path: filePath,
+            title: fileTitle(filePath),
+            extension,
+            language: languageForTextExtension(extension),
+            byteCount: info.size,
+            content: readableBytes.toString("utf8"),
+            truncated,
+            modifiedAt: Math.max(0, Math.floor(info.mtimeMs)),
+          }));
+        } catch (error) {
+          res.statusCode = 500;
+          res.setHeader("Content-Type", "application/json; charset=utf-8");
+          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+        }
+      });
       server.middlewares.use("/__burette/desmond-preview", async (req, res) => {
         if ((req.method || "GET").toUpperCase() !== "GET") {
           res.statusCode = 405;
@@ -556,6 +617,34 @@ function fileExtension(path: string) {
   if (lower.endsWith(".mae.gz")) return "mae.gz";
   const index = lower.lastIndexOf(".");
   return index >= 0 ? lower.slice(index + 1) : "";
+}
+
+function fileTitle(path: string) {
+  return path.replace(/\\/g, "/").split("/").filter(Boolean).pop() || "Text file";
+}
+
+function looksBinary(bytes: Buffer) {
+  const limit = Math.min(bytes.length, TEXT_FILE_READ_LIMIT);
+  for (let index = 0; index < limit; index += 1) {
+    if (bytes[index] === 0) return true;
+  }
+  return false;
+}
+
+function languageForTextExtension(extension: string) {
+  if (extension === "md" || extension === "markdown" || extension === "mdx") return "markdown";
+  if (extension === "sh" || extension === "bash" || extension === "zsh") return "shell";
+  if (extension === "js" || extension === "jsx" || extension === "mjs" || extension === "cjs") return "javascript";
+  if (extension === "ts" || extension === "tsx") return "typescript";
+  if (extension === "json") return "json";
+  if (extension === "yaml" || extension === "yml") return "yaml";
+  if (extension === "toml") return "toml";
+  if (extension === "py") return "python";
+  if (extension === "rs") return "rust";
+  if (extension === "css") return "css";
+  if (extension === "html" || extension === "htm") return "html";
+  if (extension === "xml") return "xml";
+  return "text";
 }
 
 function candidateDesmondBases(path: string) {

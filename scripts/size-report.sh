@@ -88,9 +88,11 @@ print_directory_summary() {
 
 print_web_bundle_locations() {
   print_section "Web Bundle Locations"
-  local desktop_web="$APP/Contents/Resources/Web"
+  local desktop_app_web="$APP/Contents/Resources/Web"
+  local desktop_web="$APP/Contents/Resources/ViewerWeb"
   local appex_web="$APP/Contents/PlugIns/BurretePreview.appex/Contents/Resources/Web"
-  print_path_size "Desktop Web" "$desktop_web"
+  print_path_size "Desktop App Web" "$desktop_app_web"
+  print_path_size "Desktop Viewer Web" "$desktop_web"
   print_path_size "Quick Look Web" "$appex_web"
 }
 
@@ -171,7 +173,7 @@ print_web_asset_duplication() {
   echo "Profile membership above explains which desktop and Quick Look runtimes intentionally reference shared Web assets."
   echo "Rows here identify byte-identical files that are duplicated when both bundles package the shared Web folder."
   echo
-  local desktop_web="$APP/Contents/Resources/Web"
+  local desktop_web="$APP/Contents/Resources/ViewerWeb"
   local appex_web="$APP/Contents/PlugIns/BurretePreview.appex/Contents/Resources/Web"
   local names=(
     "molstar.js"
@@ -287,6 +289,7 @@ generate_report() {
     "$APP/Contents/PlugIns/BurretePreview.appex"
   print_directory_summary "Web Assets" \
     "$APP/Contents/Resources/Web" \
+    "$APP/Contents/Resources/ViewerWeb" \
     "$APP/Contents/PlugIns/BurretePreview.appex/Contents/Resources/Web"
   print_web_bundle_locations
   print_web_runtime_profiles
