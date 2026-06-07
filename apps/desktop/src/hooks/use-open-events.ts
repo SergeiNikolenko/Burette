@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { isTauriRuntime } from "../lib/tauri";
+import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 
 type OpenDocumentsOptions = { replace?: boolean };
 type OpenDocuments = (paths: string[], options?: OpenDocumentsOptions) => void | Promise<void>;
@@ -28,16 +28,18 @@ export function useOpenEvents(
         });
     };
 
-    let unlisten: (() => void) | undefined;
-    void listen("open-documents", () => {
-      openPendingDocuments();
-    }).then((next) => {
-      unlisten = next;
-      openPendingDocuments({ replace: true }, true);
-    });
+    const cleanup = trackTauriListener(
+      listen("open-documents", () => {
+        openPendingDocuments();
+      }).then((unlisten) => {
+        openPendingDocuments({ replace: true }, true);
+        return unlisten;
+      }),
+      "open-documents",
+    );
 
     return () => {
-      unlisten?.();
+      cleanup();
     };
   }, [openDocuments, pushErrorStatus]);
 

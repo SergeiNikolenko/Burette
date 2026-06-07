@@ -9,7 +9,7 @@ import type { DropAction, DropActionChoice } from "../lib/drop-actions";
 import type { DockArea, DockDropInput, DockTabKind } from "../lib/dock";
 import { hasStructureDrag, readStructureDragPayload, structureDragPayloadFromText, structureDragRecordsToFragments } from "../lib/structure-drag";
 import type { StructureDragPayload, StructureDragRecord } from "../lib/structure-drag";
-import { isTauriRuntime } from "../lib/tauri";
+import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 
 type OpenDocuments = (paths: string[]) => void | Promise<void>;
 type OpenDockingDocument = (
@@ -329,20 +329,20 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
   useEffect(() => {
     if (!isTauriRuntime()) return undefined;
 
-    let unlisten: (() => void) | undefined;
-    void getCurrentWindow()
-      .onDragDropEvent((event) => {
-        handleFileDrop(event.payload);
-      })
-      .then((next) => {
-        unlisten = next;
-      })
-      .catch((error) => {
-        pushStatus("File drop setup failed: " + (error instanceof Error ? error.message : String(error)), "error");
-      });
+    const cleanup = trackTauriListener(
+      getCurrentWindow()
+        .onDragDropEvent((event) => {
+          handleFileDrop(event.payload);
+        })
+        .catch((error) => {
+          pushStatus("File drop setup failed: " + (error instanceof Error ? error.message : String(error)), "error");
+          throw error;
+        }),
+      "window drag-drop",
+    );
 
     return () => {
-      unlisten?.();
+      cleanup();
     };
   }, [handleFileDrop, pushStatus]);
 
