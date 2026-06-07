@@ -50,6 +50,14 @@ folded into a Vite+ built-in. Direct Bun commands remain implementation details
 inside repository-owned build, release, and installer scripts until a separate
 toolchain migration replaces those paths.
 
+## Browser Opening
+
+When the user asks to open something in a browser, or simply asks to open a
+local web target, always use the built-in `@Browser` plugin
+(`plugin://browser@openai-bundled`). Do not use macOS `open`, Chrome, Safari,
+or another external browser unless the user explicitly asks for an external
+browser or the built-in Browser plugin is unavailable.
+
 When an agent builds or installs a packaged app for local testing, always use a
 dev flavor with a unique slug, preferably the worktree suffix:
 
