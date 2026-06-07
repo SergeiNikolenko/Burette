@@ -46,6 +46,7 @@ const [
   settingControl,
   dockPanel,
   closeIcon,
+  shortcutTooltip,
   pageKinds,
   pageKindTypes,
   fileKind,
@@ -131,6 +132,7 @@ const [
   source('apps/desktop/src/components/settings-panel/setting-control.tsx'),
   source('apps/desktop/src/components/dock-panel.tsx'),
   source('apps/desktop/src/components/close-icon.tsx'),
+  source('apps/desktop/src/components/shortcut-tooltip.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/index.ts'),
   source('apps/desktop/src/components/editor-area/page-kinds/types.ts'),
   source('apps/desktop/src/components/editor-area/page-kinds/file.tsx'),
@@ -684,6 +686,10 @@ assert.match(editorTabs, /→/);
 assert.match(editorTabs, /import \{ CloseIcon \} from "\.\.\/close-icon"/);
 assert.match(editorTabs, /<CloseIcon size=\{13\} \/>/);
 assert.match(appLayout, /className="chrome-leading-controls"/);
+assert.match(appLayout, /from "\.\/shortcut-tooltip"/);
+assert.match(appLayout, /<ShortcutTooltip label=\{state\.sidebarOpen \? "Hide sidebar" : "Show sidebar"\} shortcut=\{"⌘\\\\"\} \/>/);
+assert.match(appLayout, /<ShortcutTooltip label=\{state\.bottomDockOpen \? "Hide bottom dock" : "Show bottom dock"\} shortcut="⌘J" \/>/);
+assert.match(appLayout, /<ShortcutTooltip label=\{state\.rightDockOpen \? "Hide right dock" : "Show right dock"\} shortcut="⌥⌘B" \/>/);
 assert.match(tauriConfig, /"trafficLightPosition":\s*\{\s*"x":\s*20,\s*"y":\s*29\s*\}/);
 assert.match(appLayout, /className="chrome-leading-controls" data-tauri-drag-region/);
 assert.match(editorTabs, /actions\.navigateBack/);
@@ -1001,6 +1007,11 @@ assert.match(appLayout, /resolveThemeMode\(state\.preferences\.theme, systemThem
 assert.match(styles, /\*\[data-tauri-drag-region\] \{[^}]*app-region: drag;[^}]*-webkit-app-region: drag;[^}]*\}/s);
 assert.match(styles, /button, select, input, textarea, \.tab-shell, \.tab, \.new-tab, \.chrome-button, \.tab-history-button, \.sidebar-search-row, \.sidebar-tool-row, \.sidebar-section-title-button, \.sidebar-section-menu-button, \.project-group-row, \.project-group-menu-button, \.project, \.project-show-more, \.pin-hit, \.splitter \{[^}]*app-region: no-drag;[^}]*-webkit-app-region: no-drag;[^}]*\}/s);
 assert.match(styles, /\.drag-region \{[^}]*height: var\(--chrome-drag-height\);[^}]*z-index: 2/s);
+assert.match(shortcutTooltip, /export function ShortcutTooltip/);
+assert.match(shortcutTooltip, /className="shortcut-tooltip"/);
+assert.match(styles, /\.shortcut-tooltip \{[^}]*position: absolute;[^}]*backdrop-filter: blur\(30px\) saturate\(1\.35\);[^}]*transform: translate\(-50%, -4px\) scale\(0\.98\);/s);
+assert.match(styles, /button:hover > \.shortcut-tooltip,\s*button:focus-visible > \.shortcut-tooltip \{[^}]*opacity: 1;[^}]*transform: translate\(-50%, 0\) scale\(1\);/s);
+assert.match(styles, /\.shortcut-tooltip-key \{[^}]*border-radius: 999px;[^}]*letter-spacing: 0;/s);
 assert.doesNotMatch(styles, /\.workspace \{[^}]*z-index:/s);
 assert.match(styles, /\.splitter \{[^}]*z-index: 3;/s);
 assert.match(styles, /--sidebar-divider-right: transparent/);
@@ -1391,6 +1402,10 @@ assert.match(welcome, /buildInfo\.isDevBuild/);
 assert.match(welcome, /Open Structure/);
 assert.match(welcome, /Command Palette/);
 assert.match(welcome, /Settings/);
+assert.match(welcome, /from "\.\.\/shortcut-tooltip"/);
+assert.match(welcome, /<ShortcutTooltip label="Open Structure" shortcut="⌘O" \/>/);
+assert.match(welcome, /<ShortcutTooltip label="Command Palette" shortcut="⌘P \/" \/>/);
+assert.match(welcome, /<ShortcutTooltip label="Settings" shortcut="⌘," \/>/);
 assert.doesNotMatch(welcome, /Open molecular structures/);
 assert.match(errorBoundary, /export class ErrorBoundary/);
 assert.match(errorBoundary, /\[ErrorBoundary\]/);
@@ -1413,6 +1428,8 @@ assert.match(sidebarSurface, /actions\.openRecentStructure/);
 assert.match(sidebarSurface, /from "@hugeicons\/core-free-icons"/);
 assert.match(sidebarSurface, /from "@hugeicons\/react"/);
 assert.match(sidebarSurface, /actions\.openCommandPalette/);
+assert.match(sidebarSurface, /from "\.\.\/shortcut-tooltip"/);
+assert.match(sidebarSurface, /<ShortcutTooltip label="Search projects and structures" shortcut="⌘P" \/>/);
 assert.match(sidebarSurface, /function PinIcon/);
 assert.match(sidebarSurface, /function MoreIcon/);
 assert.doesNotMatch(sidebarSurface, /Cancel01Icon/);
