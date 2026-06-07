@@ -133,6 +133,10 @@ export function useRememberRecentStructures() {
   return useMoleculeStore((state) => state.rememberRecentStructures);
 }
 
+export function usePruneRecentStructures() {
+  return useMoleculeStore((state) => state.pruneRecentStructures);
+}
+
 export function useClearRecentStructures() {
   return useMoleculeStore((state) => state.clearRecentStructures);
 }

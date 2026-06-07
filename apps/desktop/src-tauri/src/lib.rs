@@ -120,6 +120,7 @@ pub fn run() {
             commands::shell::export_diagnostics_bundle,
             commands::shell::open_logs_folder,
             commands::shell::open_external_url,
+            commands::shell::existing_paths,
             commands::shell::read_external_preview_svg,
             commands::shell::read_viewer_runtime_file_base64,
             commands::shell::reveal_path,
