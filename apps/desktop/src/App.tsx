@@ -41,6 +41,7 @@ import {
   useMoveTab,
   useOpenDocuments,
   useOpenDocumentsInActiveTab,
+  useOpenFepNetworkTab,
   useOpenFepSetupTab,
   useOpenKetcherTab,
   useOpenNewTab,
@@ -68,6 +69,7 @@ import type { DropActionChoice } from "./lib/drop-actions";
 import { collectPerformanceMarks, markPerformanceOnce, measureAsync } from "./lib/performance";
 import { basename, buildSidebarProjects, parentDirectory } from "./lib/sidebar-projects";
 import type { StructureDragPayload, StructureDragRecord } from "./lib/structure-drag";
+import { readStructureText } from "./lib/structure-text";
 import { isTauriRuntime } from "./lib/tauri";
 import { isTemporaryDocumentPath } from "./lib/temporary-documents";
 import type { DockingDocumentRequest, FepSetupRequest, OpenDocumentsResult, OpenTextFilesResult, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "./types";
@@ -81,7 +83,7 @@ const CommandPalette = lazy(() => import("./components/command-palette").then((m
 const filters = [
   {
     name: "Files",
-    extensions: [...previewFormatRegistry.documentTypes.extensions, "md", "markdown", "mdx", "txt", "log", "err", "sh", "bash", "zsh", "py", "rs", "js", "jsx", "ts", "tsx", "json", "yaml", "yml", "toml", "xml", "html", "css"],
+    extensions: [...previewFormatRegistry.documentTypes.extensions, "graphml", "md", "markdown", "mdx", "txt", "log", "err", "sh", "bash", "zsh", "py", "rs", "js", "jsx", "ts", "tsx", "json", "yaml", "yml", "toml", "xml", "html", "css"],
   },
 ];
 
@@ -221,6 +223,7 @@ export default function App() {
   const setDocuments = useSetDocuments();
   const openNewTab = useOpenNewTab();
   const openKetcherTab = useOpenKetcherTab();
+  const openFepNetworkTab = useOpenFepNetworkTab();
   const openFepSetupTab = useOpenFepSetupTab();
   const openPoseReviewTab = useOpenPoseReviewTab();
   const openSettingsTab = useOpenSettingsTab();
@@ -331,9 +334,9 @@ export default function App() {
   const setCommandPaletteQuery = useSetCommandPaletteSearch();
 
   useEffect(() => {
+    window.__BURRETE_BOOT_OVERLAY__?.markMounted();
     const frame = window.requestAnimationFrame(() => {
       markPerformanceOnce("app:shell-visible");
-      window.__BURRETE_BOOT_OVERLAY__?.markMounted();
     });
     return () => window.cancelAnimationFrame(frame);
   }, []);
@@ -467,12 +470,30 @@ export default function App() {
     ) => {
       const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
       if (!cleanPaths.length) return;
+      const graphmlPaths = cleanPaths.filter(isFepGraphmlPath);
+      const structurePaths = cleanPaths.filter((path) => !isFepGraphmlPath(path));
+      if (graphmlPaths.length > 0) {
+        try {
+          for (const path of graphmlPaths) {
+            const graphmlText = await readStructureText(path);
+            openFepNetworkTab({ kind: "fep-network", title: basename(path), graphmlText });
+          }
+          pushStatus(`Opened ${graphmlPaths.length} FEP network${graphmlPaths.length === 1 ? "" : "s"}`);
+        } catch (error) {
+          if (structurePaths.length === 0) {
+            pushErrorStatus(error, "Open failed");
+            return;
+          }
+          pushErrorStatus(error, "FEP network open failed");
+        }
+      }
+      if (structurePaths.length === 0) return;
       const effectivePreferences = preferencesOverride ? { ...preferences, ...preferencesOverride } : preferences;
       pushStatus("Opening structures...");
       try {
         const result = isTauriRuntime()
-          ? await invoke<OpenDocumentsResult>("open_documents", { paths: cleanPaths, preferences: effectivePreferences, reloadOptions })
-          : await openBrowserDevDocuments(cleanPaths, effectivePreferences, reloadOptions);
+          ? await invoke<OpenDocumentsResult>("open_documents", { paths: structurePaths, preferences: effectivePreferences, reloadOptions })
+          : await openBrowserDevDocuments(structurePaths, effectivePreferences, reloadOptions);
         if (options.replace) setDocuments(result.documents);
         else if (options.inActiveTab) openDocumentsInActiveTab(result.documents);
         else addDocuments(result.documents);
@@ -498,7 +519,7 @@ export default function App() {
         return null;
       }
     },
-    [addDocuments, openDocumentsInActiveTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setActiveDocument, setDocuments, showDelimitedGridColumnOpenMenu],
+    [addDocuments, openDocumentsInActiveTab, openFepNetworkTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setActiveDocument, setDocuments, showDelimitedGridColumnOpenMenu],
   );
   useOpenEvents(
     (paths, options) => {
@@ -1475,6 +1496,11 @@ export default function App() {
     pushStatus("Opened FEP setup workspace");
   }, [openFepSetupTab, pushStatus]);
 
+  const openFepNetworkPreview = useCallback((request?: { title?: string; graphmlText?: string }) => {
+    openFepNetworkTab({ kind: "fep-network", ...request });
+    pushStatus("Opened FEP network preview");
+  }, [openFepNetworkTab, pushStatus]);
+
   const appendDelimitedGridRecords = useCallback(
     async (targetDocument: ViewerDocument, path: string, smilesColumn: string) => {
       const result = await invoke<GridAppendResult>("grid_append_delimited_records", {
@@ -1865,8 +1891,8 @@ export default function App() {
           contextDocument?: Parameters<typeof openBrowserDevMolstarContextDocument>[0];
           inputDataBase64?: string | null;
           inputExtension?: string | null;
-          items?: Record<string, unknown>[] | null;
           fragments?: Array<{ title?: string | null; textBase64?: string | null }> | null;
+          items?: Record<string, unknown>[] | null;
           name?: string | null;
           mimeType?: string | null;
           requestToken?: string | null;
@@ -2920,6 +2946,7 @@ export default function App() {
     backToApp,
     openKetcher,
     openKetcherWithStructures,
+    openFepNetworkPreview,
     applyKetcherToGridRow,
     openFepSetupWorkspace,
     openKetcherSketch,
@@ -3081,7 +3108,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyKetcherToGridRow, backToApp, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, installUpdate, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepSetupWorkspace, openKetcher, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openWorkspaceFolder, pushErrorStatus, pushStatus, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, saveMoleculeCollectionAs, selectDocument, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
+  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyKetcherToGridRow, backToApp, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, installUpdate, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openWorkspaceFolder, pushErrorStatus, pushStatus, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, saveMoleculeCollectionAs, selectDocument, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
@@ -3207,6 +3234,10 @@ function summarizeErrors(errors: string[]) {
 
 function summarizeErrorText(message: string) {
   return (message || "Unknown error").trim().split(/\r?\n| Error:| at /)[0]?.trim() || "Unknown error";
+}
+
+function isFepGraphmlPath(path: string) {
+  return /\.graphml$/iu.test(path);
 }
 
 function pathExtension(path: string) {

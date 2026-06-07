@@ -1,4 +1,5 @@
 import { fepSetupKind, type FepSetupLocation } from "./fep-setup";
+import { fepNetworkKind, type FepNetworkLocation } from "./fep-network";
 import { fileKind, type FileLocation } from "./file";
 import { ketcherKind, type KetcherLocation } from "./ketcher";
 import { launcherKind, type LauncherLocation } from "./launcher";
@@ -7,9 +8,9 @@ import { settingsKind, type SettingsLocation } from "./settings";
 import { textFileKind, type TextFileLocation } from "./text-file";
 import type { AnyPageKind, PageKind, SerializedLocation } from "./types";
 
-const kinds = [fileKind, textFileKind, fepSetupKind, ketcherKind, launcherKind, poseReviewKind, settingsKind] as const;
+const kinds = [fileKind, textFileKind, fepNetworkKind, fepSetupKind, ketcherKind, launcherKind, poseReviewKind, settingsKind] as const;
 
-export type Location = FileLocation | TextFileLocation | FepSetupLocation | KetcherLocation | LauncherLocation | PoseReviewLocation | SettingsLocation;
+export type Location = FileLocation | TextFileLocation | FepNetworkLocation | FepSetupLocation | KetcherLocation | LauncherLocation | PoseReviewLocation | SettingsLocation;
 
 const byKind: Map<string, AnyPageKind> = new Map(
   kinds.map((kind) => [kind.kind, kind as unknown as AnyPageKind]),
@@ -37,6 +38,7 @@ export function deserializeLocation(data: SerializedLocation | null | undefined)
 }
 
 export type { AnyPageKind, PageKind, SerializedLocation } from "./types";
+export type { FepNetworkLocation } from "./fep-network";
 export type { FepSetupLocation } from "./fep-setup";
 export type { FileLocation } from "./file";
 export type { KetcherLocation } from "./ketcher";

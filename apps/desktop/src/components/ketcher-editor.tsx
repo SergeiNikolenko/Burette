@@ -74,6 +74,12 @@ type KetcherWithEditorStruct = Ketcher & {
 };
 const KETCHER_INSTANCE_RETRY_DELAYS_MS = [0, 250, 500, 1000, 1500, 2500, 4000, 6000] as const;
 
+declare global {
+  interface Window {
+    isPolymerEditorTurnedOn?: boolean;
+  }
+}
+
 installKetcherBrowserRequire();
 
 function installRaphaelBrowserModules(eveModule: EveModule, raphaelModule: RaphaelModule) {

@@ -953,7 +953,7 @@ function normalizeKetcherMolfileHeader(lines: string[]) {
 }
 
 function isMolfileCountsLine(line: string) {
-  return /^\s*\d+\s+\d+\s+(?:\d+\s+){6,}\d+\s+V(?:2000|3000)\s*$/u.test(line);
+  return /^\s*\d+\s+\d+(?:\s+\d+){4,}\s+V(?:2000|3000)\s*$/u.test(line);
 }
 
 function isBlankKetcherMolfile(molfile: string) {
@@ -1106,11 +1106,9 @@ function waitForMs(ms: number) {
 
 function normalizeKetcherImportText(text: string, format?: KetcherTextFormat) {
   const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trimEnd();
-  if ((format?.startsWith("sdf-") || !format) && looksLikeSdfRecord(normalized)) {
-    return normalized.replace(/\n?\$\$\$\$\s*$/u, "").trimEnd() + "\n";
-  }
   if (
     looksLikeMolBlock(normalized) ||
+    looksLikeSdfRecord(normalized) ||
     format === "ket" ||
     format?.startsWith("rxn-") ||
     format?.startsWith("rdf-") ||
@@ -1123,12 +1121,12 @@ function normalizeKetcherImportText(text: string, format?: KetcherTextFormat) {
   return normalized.trim();
 }
 
-function looksLikeSdfRecord(text: string) {
-  return looksLikeMolBlock(text) && /\n?\$\$\$\$\s*$/u.test(text);
-}
-
 function looksLikeMolBlock(text: string) {
   return /\nM\s+END(?:\n|$)/u.test(text);
+}
+
+function looksLikeSdfRecord(text: string) {
+  return looksLikeMolBlock(text) && /\n?\$\$\$\$\s*$/u.test(text);
 }
 
 function fileName(path: string) {
