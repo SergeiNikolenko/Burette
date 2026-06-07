@@ -6,6 +6,7 @@ import type { DockingDocumentRequest, FepSetupRequest, ViewerDocument } from "..
 import { resolveDropActionChoices } from "../lib/drop-actions";
 import type { DropSourceContext, DropTargetContext } from "../lib/drop-actions";
 import type { DropAction, DropActionChoice } from "../lib/drop-actions";
+import type { DockArea, DockDropInput, DockTabKind } from "../lib/dock";
 import { hasStructureDrag, readStructureDragPayload, structureDragPayloadFromText, structureDragRecordsToFragments } from "../lib/structure-drag";
 import type { StructureDragPayload, StructureDragRecord } from "../lib/structure-drag";
 import { isTauriRuntime } from "../lib/tauri";
@@ -20,12 +21,19 @@ type OpenDockingStructureRecords = (receptorPath: string, ligandPaths: string[],
 type OpenStructureRecords = (records: StructureDragRecord[]) => void | Promise<void>;
 type OpenKetcherWithStructures = (paths: string[], fragments?: Array<{ title: string; text: string }>) => void;
 type OpenFepSetupWorkspace = (request: FepSetupRequest) => void;
+type OpenDockPayload = (input: DockDropInput) => void | Promise<void>;
 type AppendGridRecords = (targetDocumentId: string, payload: StructureDragPayload) => boolean;
 type AddXyzrenderSheetItems = (payload: StructureDragPayload) => boolean;
 type MergeMoleculeCollections = (paths: string[]) => boolean;
 type AddProjectRoots = (paths: string[]) => void;
 type ReportStatus = (status: string, kind?: "info" | "error") => void;
 type DropPoint = { x: number; y: number };
+type DockDropTargetContext = {
+  kind: "dock";
+  area: DockArea;
+  tabKind: DockTabKind;
+};
+type OpenDropTargetContext = DropTargetContext | DockDropTargetContext;
 type ChooseDropAction = (
   choices: DropActionChoice[],
   at: DropPoint | null | undefined,
@@ -45,6 +53,7 @@ type OpenDropOptions = {
   openStructureRecords?: OpenStructureRecords;
   openKetcherWithStructures?: OpenKetcherWithStructures;
   openFepSetupWorkspace?: OpenFepSetupWorkspace;
+  openDockPayload?: OpenDockPayload;
   appendGridRecords?: AppendGridRecords;
   addXyzrenderSheetItems?: AddXyzrenderSheetItems;
   mergeMoleculeCollections?: MergeMoleculeCollections;
@@ -68,6 +77,16 @@ function tauriDropPoint(position: { x: number; y: number } | null | undefined) {
   return { x: position.x / scale, y: position.y / scale };
 }
 
+function elementFromTauriDropPosition(position: { x: number; y: number } | null | undefined) {
+  if (!position || typeof document === "undefined") return null;
+  const scaled = tauriDropPoint(position);
+  const candidates = [
+    scaled ? document.elementFromPoint(scaled.x, scaled.y) : null,
+    document.elementFromPoint(position.x, position.y),
+  ].filter((element): element is Element => Boolean(element));
+  return candidates.find((element) => element.closest(".dock-panel")) ?? candidates[0] ?? null;
+}
+
 export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStatus, options: OpenDropOptions = {}) {
   const [dropActive, setDropActive] = useState(false);
   const {
@@ -83,6 +102,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     openStructureRecords,
     openKetcherWithStructures,
     openFepSetupWorkspace,
+    openDockPayload,
     appendGridRecords,
     addXyzrenderSheetItems,
     mergeMoleculeCollections,
@@ -101,7 +121,15 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     };
   }, [activeDockingRequest, activeDocumentId, activeDocumentPath, activeDocumentRenderer]);
 
-  const dropTargetForElement = useCallback((element: Element | null): DropTargetContext => {
+  const dropTargetForElement = useCallback((element: Element | null): OpenDropTargetContext => {
+    const dockTarget = element?.closest<HTMLElement>(".dock-panel[data-area][data-active-tab]");
+    if (dockTarget) {
+      const area = dockTarget.dataset.area;
+      const tabKind = dockTarget.dataset.activeTab;
+      if ((area === "right" || area === "bottom") && tabKind) {
+        return { kind: "dock", area, tabKind: tabKind as DockTabKind };
+      }
+    }
     if (fepSetupRequest && element?.closest(".pose-review-workspace, .fep-setup-workspace")) {
       return { kind: "fep-setup", request: fepSetupRequest };
     }
@@ -129,11 +157,9 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     return { kind: "workspace" };
   }, [activeTabKind, activeViewerTarget, documents, fepSetupRequest]);
 
-  const dropTargetForPosition = useCallback((position: { x: number; y: number } | null = null): DropTargetContext => {
+  const dropTargetForPosition = useCallback((position: { x: number; y: number } | null = null): OpenDropTargetContext => {
     if (typeof document === "undefined") return activeTabKind === "ketcher" ? { kind: "ketcher" } : { kind: "workspace" };
-    const element = position
-      ? document.elementFromPoint(position.x / window.devicePixelRatio, position.y / window.devicePixelRatio)
-      : document.activeElement;
+    const element = position ? elementFromTauriDropPosition(position) : document.activeElement;
     return dropTargetForElement(element);
   }, [activeTabKind, dropTargetForElement]);
 
@@ -228,9 +254,13 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
 
   const runDropAction = useCallback((
     payload: StructureDragPayload,
-    target: DropTargetContext,
+    target: OpenDropTargetContext,
     source: DropSourceContext = { kind: "unknown" },
   ) => {
+    if (target.kind === "dock") {
+      void openDockPayload?.({ area: target.area, tabKind: target.tabKind, payload });
+      return;
+    }
     const choices = resolveDropActionChoices(
       payload,
       target,
@@ -250,11 +280,12 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
   }, [
     chooseDropAction,
     executeDropAction,
+    openDockPayload,
   ]);
 
   const runFinderDropAction = useCallback(async (
     payload: StructureDragPayload,
-    target: DropTargetContext,
+    target: OpenDropTargetContext,
   ) => {
     if (payload.paths.length === 0 || !isTauriRuntime()) {
       runDropAction(payload, target, { kind: "finder" });
