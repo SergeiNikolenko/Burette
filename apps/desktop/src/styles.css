@@ -306,10 +306,10 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   left: 50%;
   top: calc(100% + 4px);
   z-index: 1200;
-  min-height: 19px;
-  max-width: min(180px, calc(100vw - 12px));
-  padding: 4px 5px 4px 7px;
-  border-radius: 6px;
+  min-height: 28px;
+  max-width: min(240px, calc(100vw - 16px));
+  padding: 7px 8px 7px 10px;
+  border-radius: 8px;
   background: color-mix(in srgb, var(--bg-base) 82%, transparent);
   color: var(--text-primary);
   box-shadow: 0 8px 22px rgb(0 0 0 / 0.28);
@@ -317,7 +317,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   -webkit-backdrop-filter: blur(15px) saturate(1.35);
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -354,22 +354,22 @@ button:focus-visible > .shortcut-tooltip {
   overflow: hidden;
   text-overflow: ellipsis;
   font-weight: 400;
-  font-size: 7px;
+  font-size: 11px;
   letter-spacing: 0;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 .shortcut-tooltip-key {
   flex: 0 0 auto;
-  min-height: 12px;
+  min-height: 18px;
   border-radius: 999px;
-  padding: 2px 5px;
+  padding: 3px 7px;
   background: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 32%), transparent);
   color: var(--text-secondary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-weight: 400;
-  font-size: 7px;
+  font-size: 11px;
   letter-spacing: 0;
   line-height: 1;
 }
@@ -3271,7 +3271,7 @@ img.radix-menu-item-icon {
 .new-tab-page button { position: relative; border: 0; border-radius: 8px; background: transparent; color: var(--text-secondary); font-size: 13px; font-weight: 400; height: 28px; padding: 0 8px; display: inline-flex; align-items: center; gap: 6px; transition: color 120ms ease, background 120ms ease; }
 .new-tab-page button:hover { color: var(--text-primary); background: transparent; }
 .new-tab-page kbd { font-size: 11px; letter-spacing: 0.16em; color: var(--text-icon-muted); }
-.new-tab-page .shortcut-tooltip-key { color: var(--text-secondary); font-size: 7px; letter-spacing: 0; }
+.new-tab-page .shortcut-tooltip-key { color: var(--text-secondary); font-size: 11px; letter-spacing: 0; }
 .error-boundary {
   width: 100vw;
   height: 100vh;
