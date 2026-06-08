@@ -1916,6 +1916,8 @@ assert.match(settingsPanel, /className="settings-panel"/);
 assert.match(settingsPanel, /data-settings-section=\{section\}/);
 assert.match(settingsPanel, /EditorScrollContainer/);
 assert.doesNotMatch(settingsPanel, /className="settings-panel-scroll"/);
+assert.match(editorScrollContainer, /SCROLL_FADE_EDGE = "28px"/);
+assert.doesNotMatch(editorScrollContainer, /transparent 5%|black 15%|black 85%/);
 assert.match(editorScrollContainer, /WebkitMaskComposite:\s*"source-over"/);
 assert.match(editorScrollContainer, /maskComposite:\s*"add"/);
 assert.doesNotMatch(styles, /\.settings-panel-scroll \{/);

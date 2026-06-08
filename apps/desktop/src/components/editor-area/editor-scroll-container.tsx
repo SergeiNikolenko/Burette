@@ -1,7 +1,8 @@
 import type { ReactNode, Ref } from "react";
 
 const SCROLLBAR_GUTTER = "18px";
-const FADE_MASK_VERTICAL = "linear-gradient(to bottom, transparent 5%, black 15%, black 85%, transparent)";
+const SCROLL_FADE_EDGE = "28px";
+const FADE_MASK_VERTICAL = `linear-gradient(to bottom, transparent 0, black ${SCROLL_FADE_EDGE}, black calc(100% - ${SCROLL_FADE_EDGE}), transparent 100%)`;
 const FADE_MASK_GUTTER = `linear-gradient(to right, black ${SCROLLBAR_GUTTER}, transparent ${SCROLLBAR_GUTTER}, transparent calc(100% - ${SCROLLBAR_GUTTER}), black calc(100% - ${SCROLLBAR_GUTTER}))`;
 const FADE_MASK = `${FADE_MASK_VERTICAL}, ${FADE_MASK_GUTTER}`;
 
