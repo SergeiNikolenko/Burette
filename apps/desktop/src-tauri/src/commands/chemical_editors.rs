@@ -3,6 +3,7 @@ use serde::Serialize;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use tauri::{Manager, Runtime};
 
 #[derive(Debug, Clone)]
 struct EditorProfile {
@@ -20,7 +21,6 @@ struct InstalledEditor {
     name: String,
     bundle_id: Option<String>,
     app_path: PathBuf,
-    icon_path: Option<PathBuf>,
     document_extensions: Vec<String>,
     profile: Option<&'static EditorProfile>,
 }
@@ -156,18 +156,26 @@ const GENERIC_CHEMICAL_EXTENSIONS: &[&str] = &[
 ];
 
 #[tauri::command]
-pub(crate) fn list_chemical_editor_targets(
+pub(crate) fn list_chemical_editor_targets<R: Runtime>(
+    app: tauri::AppHandle<R>,
     path: String,
 ) -> Result<Vec<ChemicalEditorTarget>, String> {
     let extensions = active_extensions(&path);
     if extensions.is_empty() {
         return Ok(Vec::new());
     }
-    Ok(discover_targets_for_extensions(&extensions))
+    Ok(discover_targets_for_extensions(
+        &extensions,
+        &app_icon_cache_dir(&app)?,
+    ))
 }
 
 #[tauri::command]
-pub(crate) fn open_in_chemical_editor(path: String, target_id: String) -> Result<(), String> {
+pub(crate) fn open_in_chemical_editor<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    path: String,
+    target_id: String,
+) -> Result<(), String> {
     let target_path = PathBuf::from(&path)
         .canonicalize()
         .map_err(|err| format!("{path}: {err}"))?;
@@ -175,7 +183,7 @@ pub(crate) fn open_in_chemical_editor(path: String, target_id: String) -> Result
     if extensions.is_empty() {
         return Err("The active file does not have a supported extension".into());
     }
-    let target = discover_targets_for_extensions(&extensions)
+    let target = discover_targets_for_extensions(&extensions, &app_icon_cache_dir(&app)?)
         .into_iter()
         .find(|target| target.id == target_id)
         .ok_or_else(|| "The requested editor is not available for this file".to_string())?;
@@ -187,10 +195,13 @@ pub(crate) fn open_in_chemical_editor(path: String, target_id: String) -> Result
         .map_err(|err| err.to_string())
 }
 
-fn discover_targets_for_extensions(active_extensions: &[String]) -> Vec<ChemicalEditorTarget> {
+fn discover_targets_for_extensions(
+    active_extensions: &[String],
+    icon_cache_dir: &Path,
+) -> Vec<ChemicalEditorTarget> {
     let mut targets: Vec<ChemicalEditorTarget> = discover_installed_editors()
         .into_iter()
-        .filter_map(|editor| target_for_editor(editor, active_extensions))
+        .filter_map(|editor| target_for_editor(editor, active_extensions, icon_cache_dir))
         .collect();
     targets.sort_by(|left, right| {
         left.rank
@@ -248,6 +259,9 @@ fn installed_editor_from_app(app_path: &Path) -> Option<InstalledEditor> {
         .map(ToOwned::to_owned);
     let app_file_name = app_path.file_name()?.to_string_lossy().to_string();
     let profile = profile_for_app(bundle_id.as_deref(), &app_file_name);
+    if is_burrete_app_candidate(bundle_id.as_deref(), &app_file_name) {
+        return None;
+    }
     let name = dictionary
         .get("CFBundleDisplayName")
         .and_then(Value::as_string)
@@ -271,7 +285,6 @@ fn installed_editor_from_app(app_path: &Path) -> Option<InstalledEditor> {
         &app_path.to_string_lossy(),
     );
     Some(InstalledEditor {
-        icon_path: app_icon_png_path(app_path, dictionary, &id),
         id,
         name,
         bundle_id,
@@ -322,6 +335,7 @@ fn document_type_extensions(types: &[Value]) -> Vec<String> {
 fn target_for_editor(
     editor: InstalledEditor,
     active_extensions: &[String],
+    icon_cache_dir: &Path,
 ) -> Option<ChemicalEditorTarget> {
     let profile_extensions: BTreeSet<String> = editor
         .profile
@@ -360,14 +374,14 @@ fn target_for_editor(
     } else {
         "Declared document type"
     };
+    let icon_path = app_icon_png_path(&editor.app_path, icon_cache_dir, &editor.id)
+        .map(|path| path.to_string_lossy().to_string());
     Some(ChemicalEditorTarget {
         id: editor.id,
         name: editor.name,
         bundle_id: editor.bundle_id,
         app_path: editor.app_path.to_string_lossy().to_string(),
-        icon_path: editor
-            .icon_path
-            .map(|path| path.to_string_lossy().to_string()),
+        icon_path,
         rank: editor.profile.map(|profile| profile.rank).unwrap_or(200),
         supported_extensions: matched,
         match_reason: reason.to_string(),
@@ -418,6 +432,16 @@ fn is_generic_chemical_extension(extension: &str) -> bool {
         .any(|candidate| candidate == &extension)
 }
 
+fn is_burrete_app_candidate(bundle_id: Option<&str>, app_file_name: &str) -> bool {
+    bundle_id
+        .map(|value| {
+            value.starts_with("com.local.Burrete") || value.starts_with("com.local.Burette")
+        })
+        .unwrap_or(false)
+        || app_file_name == "Burrete.app"
+        || app_file_name == "Burette.app"
+}
+
 fn stable_editor_id(profile_id: &str, app_path: &str) -> String {
     let mut hash: u64 = 1469598103934665603;
     for byte in app_path.as_bytes() {
@@ -427,11 +451,18 @@ fn stable_editor_id(profile_id: &str, app_path: &str) -> String {
     format!("{profile_id}-{hash:016x}")
 }
 
-fn app_icon_png_path(
-    app_path: &Path,
-    dictionary: &plist::Dictionary,
-    editor_id: &str,
-) -> Option<PathBuf> {
+fn app_icon_cache_dir<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
+    Ok(app
+        .path()
+        .app_cache_dir()
+        .map_err(|err| err.to_string())?
+        .join("app-icons"))
+}
+
+fn app_icon_png_path(app_path: &Path, cache_dir: &Path, editor_id: &str) -> Option<PathBuf> {
+    let info_path = app_path.join("Contents/Info.plist");
+    let info = Value::from_file(&info_path).ok()?;
+    let dictionary = info.as_dictionary()?;
     let icon_name = dictionary
         .get("CFBundleIconFile")
         .and_then(Value::as_string)?;
@@ -444,8 +475,7 @@ fn app_icon_png_path(
     if !icon_path.exists() {
         return None;
     }
-    let cache_dir = std::env::temp_dir().join("burrete-app-icons");
-    std::fs::create_dir_all(&cache_dir).ok()?;
+    std::fs::create_dir_all(cache_dir).ok()?;
     let output_path = cache_dir.join(format!("{editor_id}.png"));
     if output_path.exists() {
         return Some(output_path);
@@ -510,5 +540,25 @@ mod tests {
             "txt".into()
         ]));
         assert!(!has_generic_chemical_extension(&["*".into()]));
+    }
+
+    #[test]
+    fn burrete_app_is_not_an_external_editor_candidate() {
+        assert!(is_burrete_app_candidate(
+            Some("com.local.BurreteV10"),
+            "Burrete.app"
+        ));
+        assert!(is_burrete_app_candidate(
+            Some("com.local.BurreteV10.Dev.chat13ba"),
+            "Burrete.app"
+        ));
+        assert!(is_burrete_app_candidate(
+            Some("com.local.BuretteV10"),
+            "Burette.app"
+        ));
+        assert!(!is_burrete_app_candidate(
+            Some("com.schrodinger.Maestro"),
+            "Maestro.app"
+        ));
     }
 }
