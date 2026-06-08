@@ -2906,7 +2906,7 @@
     return Math.max(0, Math.min(poseCount - 1, Math.trunc(value)));
   }
 
-  const DEFAULT_TRAJECTORY_LOOP_FPS = 2;
+  const DEFAULT_TRAJECTORY_LOOP_FPS = 20;
 
   function trajectoryLoopFpsStorageKey(config, prepared) {
     return `${trajectoryControlStorageKey(config, prepared)}.fps.v1`;
