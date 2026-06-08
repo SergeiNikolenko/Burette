@@ -1260,8 +1260,8 @@ img.radix-menu-item-icon {
 .dock-tab-close:focus-visible,
 .dock-icon-button:focus-visible,
 .dock-action:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: -2px;
+  outline: 1px solid var(--focus-ring);
+  outline-offset: -1px;
 }
 .sidebar-search-row:focus-visible,
 .sidebar-tool-row:focus-visible,
@@ -1282,8 +1282,8 @@ img.radix-menu-item-icon {
 .ketcher-page-footer button:focus-visible:not(:disabled),
 .settings-reset-button:focus-visible:not(:disabled),
 .settings-action-button:focus-visible:not(:disabled) {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: -2px;
+  outline: 1px solid var(--focus-ring);
+  outline-offset: -1px;
 }
 .settings-select:focus-visible,
 .settings-text-control:focus-visible {
@@ -1908,8 +1908,8 @@ img.radix-menu-item-icon {
 .ketcher-page-actions button:focus-visible:not(:disabled) {
   background: var(--surface-hover);
   color: var(--text-primary);
-  outline: 2px solid var(--focus-ring);
-  outline-offset: -2px;
+  outline: 1px solid var(--focus-ring);
+  outline-offset: -1px;
 }
 .ketcher-page-actions button:disabled {
   opacity: 0.45;
@@ -2278,8 +2278,8 @@ img.radix-menu-item-icon {
 .ketcher-page-footer button.is-active:not(:disabled) {
   background: var(--surface-hover);
   color: var(--text-primary);
-  outline: 2px solid var(--focus-ring);
-  outline-offset: -2px;
+  outline: 1px solid var(--focus-ring);
+  outline-offset: -1px;
 }
 .ketcher-page-footer button:disabled {
   opacity: 0.45;
@@ -2882,7 +2882,7 @@ img.radix-menu-item-icon {
 }
 .fep-network-card:hover {
   border-color: color-mix(in srgb, var(--accent) 46%, var(--line-strong));
-  box-shadow: 0 8px 22px rgb(0 0 0 / 0.16), 0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow: 0 8px 22px rgb(0 0 0 / 0.16), 0 0 0 1px color-mix(in srgb, var(--accent) 14%, transparent);
 }
 .fep-network-card:active { cursor: grabbing; }
 .fep-network-card-picture {
@@ -2927,10 +2927,10 @@ img.radix-menu-item-icon {
   font-variant-numeric: tabular-nums;
 }
 .fep-network-card[data-highlight="common"] {
-  box-shadow: 0 10px 24px rgb(0 0 0 / 0.12), 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: 0 10px 24px rgb(0 0 0 / 0.12), 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 .fep-network-card[data-highlight="different"] {
-  box-shadow: 0 10px 24px rgb(0 0 0 / 0.12), 0 0 0 2px color-mix(in srgb, #ff9f0a 28%, transparent);
+  box-shadow: 0 10px 24px rgb(0 0 0 / 0.12), 0 0 0 1px color-mix(in srgb, #ff9f0a 28%, transparent);
 }
 .fep-network-card-error {
   padding: 12px;
