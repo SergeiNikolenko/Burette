@@ -1320,7 +1320,7 @@ img.radix-menu-item-icon {
   overflow: hidden;
 }
 .dock-panel {
-  --dock-divider-color: color-mix(in srgb, var(--text-primary) 52%, var(--bg-base));
+  --dock-divider-color: var(--line-subtler);
   --dock-divider-active-color: color-mix(in srgb, var(--accent) 62%, var(--text-primary));
   position: relative;
   z-index: 1;
@@ -1336,7 +1336,6 @@ img.radix-menu-item-icon {
   will-change: width, height;
 }
 .app-shell[data-effective-theme="dark"] .dock-panel {
-  --dock-divider-color: color-mix(in srgb, var(--text-primary) 60%, var(--bg-base));
   --dock-divider-active-color: color-mix(in srgb, var(--accent) 70%, var(--text-primary));
 }
 .dock-panel[data-dragging] {
@@ -1416,7 +1415,7 @@ img.radix-menu-item-icon {
   content: "";
   position: absolute;
   background: var(--dock-divider-color);
-  transition: background 180ms ease-out, box-shadow 180ms ease-out, transform 180ms ease-out;
+  transition: background 180ms ease-out, transform 180ms ease-out;
 }
 .dock-panel[data-area="right"] .dock-resizer::after {
   top: var(--chrome-height);
@@ -1435,7 +1434,6 @@ img.radix-menu-item-icon {
 .dock-panel[data-area="bottom"] .dock-resizer:hover::after,
 .dock-panel[data-area="bottom"] .dock-resizer:active::after {
   background: var(--dock-divider-active-color);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 34%, transparent);
 }
 .dock-header {
   height: 44px;
