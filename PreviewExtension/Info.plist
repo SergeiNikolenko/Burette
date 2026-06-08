@@ -415,9 +415,6 @@
 				<string>com.schrodinger.mol</string>
 				<string>com.schrodinger.pdb</string>
 				<string>com.schrodinger.sdf</string>
-				<string>public.delimited-values-text</string>
-				<string>public.comma-separated-values-text</string>
-				<string>public.tab-separated-values-text</string>
 				<string>com.local.burrete10.xyz</string>
 				<string>com.local.burrete10.xyzrender-input</string>
 				<string>net.sourceforge.openbabel.xyz</string>
