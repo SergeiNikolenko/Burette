@@ -1243,6 +1243,54 @@ export default function App() {
     pushStatus(`Adding ${count} structure${count === 1 ? "" : "s"} to Ketcher`);
   }, [nextKetcherImportRequestId, openKetcherTab, pushStatus]);
 
+  const openKetcherExportRaw = useCallback((request: {
+    title: string;
+    extension: string;
+    text: string;
+  }) => {
+    const title = safeExportFileName(request.title);
+    const extension = request.extension.trim().toLowerCase().replace(/^\./u, "") || pathExtension(title) || "txt";
+    const text = request.text;
+    const id = stableTextDocumentId(`ketcher-export:${title}:${text}`);
+    const document: TextFileDocument = {
+      id,
+      path: `burrete-ketcher-export://${id}/${title}`,
+      title,
+      extension,
+      language: extension,
+      byteCount: new TextEncoder().encode(text).byteLength,
+      content: text,
+      truncated: false,
+      modifiedAt: Date.now(),
+    };
+    addTextDocuments([document]);
+    pushStatus(`Opened ${title}`);
+  }, [addTextDocuments, pushStatus]);
+
+  const saveKetcherExportFile = useCallback(async (request: {
+    title: string;
+    extension: string;
+    text: string;
+  }) => {
+    const title = safeExportFileName(request.title);
+    if (!isTauriRuntime()) {
+      downloadTextFile(title, request.text);
+      pushStatus(`Saved ${title}`);
+      return;
+    }
+    try {
+      const outputPath = await save({
+        defaultPath: title,
+        filters: exportDialogFilters(title, "text/plain"),
+      });
+      if (!outputPath) return;
+      const savedPath = await invoke<string>("save_text_as", { text: request.text, outputPath });
+      pushStatus(`Saved ${basename(savedPath)}`);
+    } catch (error) {
+      pushErrorStatus(error, "Save Ketcher export failed");
+    }
+  }, [pushErrorStatus, pushStatus]);
+
   const openKetcherWithFragment = useCallback((title: string, text: string, source?: NonNullable<NonNullable<KetcherImportRequest["fragments"]>[number]["source"]>) => {
     const cleanText = text.trim();
     if (!cleanText) return;
@@ -3008,6 +3056,8 @@ export default function App() {
     backToApp,
     openKetcher,
     openKetcherWithStructures,
+    openKetcherExportRaw,
+    saveKetcherExportFile,
     openFepNetworkPreview,
     applyKetcherToGridRow,
     openFepSetupWorkspace,
@@ -3170,7 +3220,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyKetcherToGridRow, backToApp, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, installUpdate, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openWorkspaceFolder, pushErrorStatus, pushStatus, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, saveMoleculeCollectionAs, selectDocument, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
+  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyKetcherToGridRow, backToApp, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, installUpdate, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openWorkspaceFolder, pushErrorStatus, pushStatus, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
@@ -3344,6 +3394,15 @@ function safeExportFileName(name: string) {
     .replace(/^\.+/g, "")
     .trim()
     .slice(0, 120) || "export.txt";
+}
+
+function stableTextDocumentId(value: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `text-${(hash >>> 0).toString(36)}`;
 }
 
 function exportDialogFilters(fileName: string, mimeType: string) {
