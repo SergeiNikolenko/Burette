@@ -11,6 +11,11 @@ type RDKitModule = {
   get_qmol?: (input: string) => RDKitMol;
 };
 
+type RDKitModuleOptions = {
+  locateFile?: (file: string) => string;
+  wasmBinary?: Uint8Array;
+};
+
 type RDKitMol = {
   delete?: () => void;
   get_aromatic_form?: () => string;
@@ -48,7 +53,7 @@ const edgeLabelAvoidanceCardSize = { width: 17.4, height: 29.2 };
 
 declare global {
   interface Window {
-    initRDKitModule?: (options?: { locateFile?: (file: string) => string }) => Promise<RDKitModule>;
+    initRDKitModule?: (options?: RDKitModuleOptions) => Promise<RDKitModule>;
   }
 }
 
@@ -752,8 +757,8 @@ function edgeLabelPlacement(
 }
 
 function edgeLabelBox(text: string, source: { x: number; y: number }, target: { x: number; y: number }, canvasSize: CanvasSize) {
-  const width = Math.max(5.2, Math.min(14.8, text.length * 0.46 + 1.8));
-  const height = 2.5;
+  const width = Math.max(5.8, Math.min(17.2, text.length * 0.54 + 2.1));
+  const height = 3.1;
   const radians = Math.abs(readableEdgeAngle(source, target, canvasSize)) * Math.PI / 180;
   return {
     halfWidth: (Math.cos(radians) * width + Math.sin(radians) * height) / 2,
@@ -775,7 +780,23 @@ async function loadFepNetworkData(graphmlText?: string) {
 async function loadRDKit() {
   if (!window.initRDKitModule) await loadScript(rdkitScriptUrl);
   if (!window.initRDKitModule) throw new Error("RDKit loader is unavailable");
-  return window.initRDKitModule({ locateFile: () => rdkitWasmUrl });
+  const wasm = await loadRDKitWasmBinary();
+  return window.initRDKitModule({ locateFile: () => wasm.path, wasmBinary: wasm.bytes });
+}
+
+async function loadRDKitWasmBinary() {
+  const candidates = [rdkitWasmUrl, "/__burette/rdkit-wasm"];
+  let lastError: Error | null = null;
+  for (const path of candidates) {
+    try {
+      const response = await fetch(path, { cache: "force-cache" });
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`.trim());
+      return { path, bytes: new Uint8Array(await response.arrayBuffer()) };
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+    }
+  }
+  throw new Error(`Could not load RDKit wasm: ${lastError?.message ?? "unknown error"}`);
 }
 
 function loadScript(src: string) {
