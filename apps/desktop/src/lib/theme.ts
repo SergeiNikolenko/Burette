@@ -65,6 +65,7 @@ export function buildThemeStyle(preferences: ViewerPreferences, systemThemeMode?
   const mode = resolveThemeMode(preferences.theme, systemThemeMode);
   const tokens = readThemeTokens(preferences, mode);
   const bgOpacity = 1 - (clamp(tokens.translucent, 0, 100) / 100) * 0.95;
+  const shellBgOpacity = mode === "light" ? Math.min(bgOpacity, 0.715) : bgOpacity;
   const contrast = 0.2 + (clamp(tokens.contrast, 0, 100) / 100) * 0.8;
   const fgMix = "color-mix(in srgb, var(--fg-base)";
   const style = {
@@ -73,7 +74,7 @@ export function buildThemeStyle(preferences: ViewerPreferences, systemThemeMode?
     "--fg-base": tokens.foreground,
     "--ui-font": tokens.uiFont,
     "--editor-font": tokens.editorFont,
-    "--bg-opacity": String(bgOpacity),
+    "--bg-opacity": String(shellBgOpacity),
     "--contrast": String(contrast),
     "--bg": `color-mix(in srgb, var(--bg-base) calc(var(--bg-opacity) * 100%), transparent)`,
     "--text": "var(--fg-base)",
