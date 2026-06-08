@@ -250,8 +250,8 @@ const mermaidTheme = EditorView.baseTheme({
     outline: "none",
   },
   ".cm-mermaid-canvas:focus-visible": {
-    outline: "2px solid var(--accent)",
-    outlineOffset: "-2px",
+    outline: "1px solid var(--accent)",
+    outlineOffset: "-1px",
   },
   ".cm-mermaid-canvas-viewport": {
     position: "absolute",
