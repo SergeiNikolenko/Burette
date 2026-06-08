@@ -11,6 +11,10 @@
   --buret-control-focus: rgba(255, 255, 255, 0.16);
   --buret-menu-surface: rgb(37 37 40 / 0.86);
   --buret-detail-surface: #202020;
+  --buret-grid-rail-popover-surface: #303033;
+  --buret-grid-rail-popover-border: rgba(255, 255, 255, 0.20);
+  --buret-grid-rail-popover-muted: rgba(255, 255, 255, 0.78);
+  --buret-grid-rail-popover-shadow: rgba(0, 0, 0, 0.34);
   --buret-border: rgba(255, 255, 255, 0.09);
   --buret-border-strong: rgba(255, 255, 255, 0.14);
   --buret-accent: #AF52DE;
@@ -46,6 +50,10 @@ html[data-buret-theme="light"] {
   --buret-control-focus: rgba(0, 0, 0, 0.13);
   --buret-menu-surface: rgb(244 244 246 / 0.88);
   --buret-detail-surface: #ffffff;
+  --buret-grid-rail-popover-surface: #ffffff;
+  --buret-grid-rail-popover-border: rgba(0, 0, 0, 0.16);
+  --buret-grid-rail-popover-muted: rgba(20, 20, 20, 0.70);
+  --buret-grid-rail-popover-shadow: rgba(0, 0, 0, 0.16);
   --buret-border: rgba(0, 0, 0, 0.08);
   --buret-border-strong: rgba(0, 0, 0, 0.14);
   --buret-text: rgba(20, 20, 20, 0.92);
@@ -558,11 +566,11 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   min-width: 118px;
   max-width: 220px;
   padding: 8px 10px 9px;
-  border: 1px solid var(--buret-border);
+  border: 1px solid var(--buret-grid-rail-popover-border);
   border-radius: 8px;
-  background: var(--buret-surface-raised);
+  background: var(--buret-grid-rail-popover-surface);
   color: var(--buret-text);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.14);
+  box-shadow: 0 16px 36px var(--buret-grid-rail-popover-shadow);
   pointer-events: none;
   transform: translateY(calc(-50% + var(--buret-grid-rail-popover-offset, 0px)));
 }
@@ -581,7 +589,7 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--buret-muted);
+  color: var(--buret-grid-rail-popover-muted);
   font: 400 12px/1.25 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 
