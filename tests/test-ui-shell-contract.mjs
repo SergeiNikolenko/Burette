@@ -2777,10 +2777,11 @@ assert.match(previewViewer, /if \(!viewer \|\| \(!picked && !isMolstarContextMen
 assert.match(previewViewer, /const MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX = 4;/);
 assert.match(previewViewer, /let contextPointer = null;/);
 assert.match(previewViewer, /if \(event\.button === 2\) \{[\s\S]*?contextPointer = \{/);
-assert.match(previewViewer, /const contextPick = molstarContextPickFromEvent\(event\);[\s\S]*?event\.preventDefault\(\);[\s\S]*?event\.stopPropagation\(\);[\s\S]*?pick: contextPick/);
-assert.match(previewViewer, /const onPointerUp = \(event\) => \{[\s\S]*?if \(contextPointer\.moved\) return;[\s\S]*?openFromEvent\(event, contextPointer\.pick\);[\s\S]*?contextPointer = null;/);
+assert.match(previewViewer, /const contextPick = molstarContextPickFromEvent\(event\);[\s\S]*?contextPointer = \{[\s\S]*?pick: contextPick/);
+assert.doesNotMatch(previewViewer, /if \(event\.button === 2\) \{[\s\S]*?event\.preventDefault\(\);[\s\S]*?event\.stopPropagation\(\);[\s\S]*?contextPointer = \{/);
+assert.match(previewViewer, /const onPointerUp = \(event\) => \{[\s\S]*?if \(contextPointer\.moved\) \{[\s\S]*?hideMolstarContextMenu\(\);[\s\S]*?contextPointer = null;[\s\S]*?return;[\s\S]*?\}[\s\S]*?openFromEvent\(event, contextPointer\.pick\);[\s\S]*?contextPointer = null;/);
 assert.match(previewViewer, /document\.addEventListener\('pointerup', onPointerUp, true\)/);
-assert.match(previewViewer, /if \(contextPointer\?\.moved\) \{\s*event\.preventDefault\(\);\s*event\.stopPropagation\(\);\s*hideMolstarContextMenu\(\);\s*contextPointer = null;\s*return;/);
+assert.match(previewViewer, /if \(contextPointer\) \{\s*event\.preventDefault\(\);\s*event\.stopPropagation\(\);\s*if \(!contextPointer\.moved\) return;\s*hideMolstarContextMenu\(\);\s*contextPointer = null;\s*return;/);
 assert.doesNotMatch(previewViewer, /if \(event\.button === 2\) \{\s*openFromEvent\(event\);\s*return;/);
 assert.match(previewViewer, /function isMolstarContextMenuTarget\(target\)/);
 assert.match(previewViewer, /function molstarContextPickFromEvent\(event\)/);
@@ -2893,6 +2894,10 @@ assert.match(previewViewer, /let mode = menuTarget\.scope === 'ligand' && menuTa
 assert.match(previewViewer, /molstarContextMenuMode = mode;/);
 assert.match(previewViewer, /molstarContextMenuActions\(menuTarget, mode\)/);
 assert.match(previewViewer, /const menuIsInAtomMode = \(\) => menuIsOpen\(\) && molstarContextMenuMode === 'atom';/);
+assert.match(previewViewer, /const clearMolstarHoverHighlights = \(\) => \{[\s\S]*?lociHighlights\?\.clearHighlights\?\.\(\)/);
+assert.match(previewViewer, /const suppressAtomModeHover = \(event\) => \{[\s\S]*?if \(!menuIsInAtomMode\(\)\) return;[\s\S]*?if \(Number\(event\.buttons \|\| 0\) !== 0\) return;[\s\S]*?clearMolstarHoverHighlights\(\);/);
+assert.match(previewViewer, /document\.addEventListener\('pointermove', suppressAtomModeHover, true\)/);
+assert.match(previewViewer, /document\.addEventListener\('mousemove', suppressAtomModeHover, true\)/);
 assert.match(previewViewer, /const selectAtomFromEvent = \(event\) => \{/);
 assert.match(previewViewer, /selectMolstarContextPick\(\{ \.\.\.target, loci: target\.atomLoci \}, \{ additive: true, applyGranularity: false \}\)/);
 assert.match(previewViewer, /if \(event\.button === 0 && menuIsInAtomMode\(\) && isMolstarContextMenuTarget\(target\)\) \{/);

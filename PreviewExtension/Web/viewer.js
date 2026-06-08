@@ -6939,6 +6939,9 @@
     let contextPointer = null;
     const menuIsOpen = () => !!document.querySelector('.buret-molecule-context-menu');
     const menuIsInAtomMode = () => menuIsOpen() && molstarContextMenuMode === 'atom';
+    const clearMolstarHoverHighlights = () => {
+      try { activeViewer?.plugin?.managers?.interactivity?.lociHighlights?.clearHighlights?.(); } catch (_) {}
+    };
     const selectAtomFromEvent = (event) => {
       const contextPick = molstarContextPickFromEvent(event);
       if (!contextPick) return false;
@@ -6968,9 +6971,15 @@
       return true;
     };
     const onContextMenu = (event) => {
-      if (contextPointer?.moved) {
+      if (menuIsOpen() && !contextPointer) {
         event.preventDefault();
         event.stopPropagation();
+        return;
+      }
+      if (contextPointer) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!contextPointer.moved) return;
         hideMolstarContextMenu();
         contextPointer = null;
         return;
@@ -6991,8 +7000,6 @@
           hideMolstarContextMenu();
           return;
         }
-        event.preventDefault();
-        event.stopPropagation();
         contextPointer = {
           pointerId: event.pointerId,
           startX: event.clientX,
@@ -7023,7 +7030,11 @@
     };
     const onPointerUp = (event) => {
       if (!contextPointer || event.pointerId !== contextPointer.pointerId) return;
-      if (contextPointer.moved) return;
+      if (contextPointer.moved) {
+        hideMolstarContextMenu();
+        contextPointer = null;
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       openFromEvent(event, contextPointer.pick);
@@ -7031,6 +7042,13 @@
     };
     const onPointerCancel = (event) => {
       if (contextPointer && event.pointerId === contextPointer.pointerId) contextPointer = null;
+    };
+    const suppressAtomModeHover = (event) => {
+      if (!menuIsInAtomMode()) return;
+      if (Number(event.buttons || 0) !== 0) return;
+      if (!isMolstarContextMenuTarget(event.target)) return;
+      event.stopPropagation();
+      clearMolstarHoverHighlights();
     };
     const onKeyDown = (event) => {
       if (event.key === 'Escape') hideMolstarContextMenu();
@@ -7041,6 +7059,8 @@
     document.addEventListener('pointermove', onPointerMove, true);
     document.addEventListener('pointerup', onPointerUp, true);
     document.addEventListener('pointercancel', onPointerCancel, true);
+    document.addEventListener('pointermove', suppressAtomModeHover, true);
+    document.addEventListener('mousemove', suppressAtomModeHover, true);
     document.addEventListener('keydown', onKeyDown);
     window.addEventListener('resize', onResize);
     molstarContextMenuCleanup = () => {
@@ -7049,6 +7069,8 @@
       document.removeEventListener('pointermove', onPointerMove, true);
       document.removeEventListener('pointerup', onPointerUp, true);
       document.removeEventListener('pointercancel', onPointerCancel, true);
+      document.removeEventListener('pointermove', suppressAtomModeHover, true);
+      document.removeEventListener('mousemove', suppressAtomModeHover, true);
       document.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('resize', onResize);
       hideMolstarContextMenu();
