@@ -3457,6 +3457,7 @@ function isFepGraphmlPath(path: string) {
 
 function pathExtension(path: string) {
   const fileName = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+  if (fileName.toLowerCase().endsWith(".mae.gz")) return "maegz";
   const index = fileName.lastIndexOf(".");
   if (index <= 0 || index === fileName.length - 1) return "";
   return fileName.slice(index + 1).toLowerCase();

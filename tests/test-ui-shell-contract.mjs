@@ -493,6 +493,9 @@ assert.match(viteConfig, /casebookCmsCandidates\(trjDirectory, base\)/);
 assert.match(viteConfig, /"dtr"/);
 assert.match(tauriConfig, /"[^"]*scripts\/desmond_preview_extract\.py": "desmond_preview_extract\.py"/);
 assert.match(previewRuntimeSource, /fn create_desmond_trajectory_preview/);
+assert.match(previewRuntimeSource, /let desmond_preview_error\s*=\s*match create_desmond_trajectory_preview/);
+assert.match(previewRuntimeSource, /Ok\(None\) => None,\s*Err\(error\) => Some\(error\),/);
+assert.match(previewRuntimeSource, /Desmond trajectory preview also failed: \{error\}/);
 assert.match(previewRuntimeSource, /const DESMOND_PREVIEW_TARGET_MB: &str = "24"/);
 assert.match(previewRuntimeSource, /\.arg\("--frames"\)\s*\.arg\("0"\)\s*\.arg\("--atoms"\)\s*\.arg\("0"\)\s*\.arg\("--target-mb"\)\s*\.arg\(DESMOND_PREVIEW_TARGET_MB\)/s);
 assert.match(previewRuntimeSource, /fn is_desmond_preview_candidate/);
@@ -2377,6 +2380,7 @@ assert.match(browserDevDocuments, /function maestroPdbDataFromText\(text: string
 assert.match(browserDevDocuments, /const score = maestroCtScore\(currentCtType\)/);
 assert.match(browserDevDocuments, /if \(ctType === "solute"\) return 4/);
 assert.match(browserDevDocuments, /function parseOrcaAtoms\(lines: string\[\]\)/);
+assert.match(app, /if \(fileName\.toLowerCase\(\)\.endsWith\("\.mae\.gz"\)\) return "maegz";/);
 assert.match(browserDevDocuments, /if \(name\.toLowerCase\(\)\.endsWith\("\.mae\.gz"\)\) return "maegz";/);
 assert.match(browserDevDocuments, /isMaestroPreviewExtension\(extension\) && extension !== "maegz"/);
 assert.match(browserDevDocuments, /function browserDevReadUrl\(path: string, extension: string\)/);

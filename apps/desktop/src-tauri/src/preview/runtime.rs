@@ -351,30 +351,35 @@ pub(crate) fn open_document_with_grid_options<R: Runtime>(
         return Err(format!("{} is not a file", canonical.display()));
     }
     let extension = structure_path_extension(&canonical);
-    if let Some(desmond_preview) = create_desmond_trajectory_preview(app, &canonical, &extension)? {
-        let format = format_for_extension("pdb")?;
-        let runtime = create_runtime(
-            app,
-            &canonical,
-            "pdb",
-            &format,
-            "molstar",
-            &desmond_preview,
-            preferences,
-            reload_options,
-        )?;
-        return Ok(ViewerDocument {
-            id: stable_id(&canonical),
-            path: canonical.to_string_lossy().to_string(),
-            title: file_title(&canonical),
-            extension,
-            renderer: runtime.renderer,
-            runtime_path: runtime.path.to_string_lossy().to_string(),
-            byte_count: metadata.len(),
-            is_virtual: false,
-            docking_request: None,
-        });
-    }
+    let desmond_preview_error = match create_desmond_trajectory_preview(app, &canonical, &extension)
+    {
+        Ok(Some(desmond_preview)) => {
+            let format = format_for_extension("pdb")?;
+            let runtime = create_runtime(
+                app,
+                &canonical,
+                "pdb",
+                &format,
+                "molstar",
+                &desmond_preview,
+                preferences,
+                reload_options,
+            )?;
+            return Ok(ViewerDocument {
+                id: stable_id(&canonical),
+                path: canonical.to_string_lossy().to_string(),
+                title: file_title(&canonical),
+                extension,
+                renderer: runtime.renderer,
+                runtime_path: runtime.path.to_string_lossy().to_string(),
+                byte_count: metadata.len(),
+                is_virtual: false,
+                docking_request: None,
+            });
+        }
+        Ok(None) => None,
+        Err(error) => Some(error),
+    };
     let uses_bounded_maestro_preview =
         is_maestro_preview_extension(&extension) && metadata.len() > MAX_STRUCTURE_FILE_SIZE;
     if metadata.len() > MAX_STRUCTURE_FILE_SIZE && !uses_bounded_maestro_preview {
@@ -400,10 +405,16 @@ pub(crate) fn open_document_with_grid_options<R: Runtime>(
         None
     };
     if uses_bounded_maestro_preview && maestro_preview_data.is_none() {
-        return Err(format!(
+        let mut message = format!(
             "{} is larger than the normal preview limit and no Maestro atom table could be extracted from the first 64 MB",
             canonical.display()
-        ));
+        );
+        if let Some(error) = desmond_preview_error {
+            message.push_str(&format!(
+                "; Desmond trajectory preview also failed: {error}"
+            ));
+        }
+        return Err(message);
     }
     let requested_renderer = normalize_renderer_mode(&preferences.renderer_mode);
     let should_use_viewer_for_sdf = matches!(extension.as_str(), "sd" | "sdf")
