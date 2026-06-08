@@ -109,6 +109,7 @@ export type RecentStructure = {
 export type ViewerPreferences = {
   theme: "auto" | "dark" | "light";
   canvasBackground: "auto" | "black" | "graphite" | "white" | "transparent";
+  openInDefaultDestination: "default-app" | "finder" | `editor:${string}`;
   rendererMode: "auto" | "grid2d" | "molstar" | "xyzrender-external";
   molstarStyle: "default" | "illustrative";
   themeLightAccent: string;

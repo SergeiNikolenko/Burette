@@ -1,5 +1,5 @@
 import { existsSync, statSync } from "node:fs";
-import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,6 +32,15 @@ const defaultFsAllow = defaultDevFileSources.map((path) => {
 });
 const devFsAllowRoots = [repoRoot, ...defaultFsAllow, ...extraFsAllow].map((path) => resolve(path));
 const execFileAsync = promisify(execFile);
+const BROWSER_DEV_APP_ICONS: Record<string, string> = {
+  finder: "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/FinderIcon.icns",
+  maestro: "/Applications/SchrodingerSuites2026-1/Maestro.app/Contents/Resources/Maestro.icns",
+  chimerax: "/Applications/ChimeraX-1.10.app/Contents/Resources/chimerax-icon.icns",
+  pymol: "/Applications/PyMOL.app/Contents/Resources/pymol.icns",
+  avogadro2: "/Applications/Avogadro2.app/Contents/Resources/avogadro.icns",
+  datawarrior: "/Applications/DataWarrior.app/Contents/Resources/datawarrior.icns",
+  vesta: "/Applications/VESTA.app/Contents/Resources/VESTA.icns",
+};
 const DEV_FILE_SIZE_LIMIT = 75 * 1024 * 1024;
 const TEXT_FILE_READ_LIMIT = 12 * 1024 * 1024;
 const DESMOND_PREVIEW_TARGET_MB = 24;
@@ -327,6 +336,42 @@ export function browserDevXyzrenderPlugin() {
           res.setHeader("Content-Length", String(bytes.length));
           res.setHeader("Cache-Control", "no-cache");
           res.end(bytes);
+        } catch (error) {
+          res.statusCode = 500;
+          res.setHeader("Content-Type", "application/json; charset=utf-8");
+          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+        }
+      });
+      server.middlewares.use("/__burette/app-icon/", async (req, res) => {
+        const method = (req.method || "GET").toUpperCase();
+        if (method !== "GET" && method !== "HEAD") {
+          res.statusCode = 405;
+          res.setHeader("Content-Type", "application/json; charset=utf-8");
+          res.end(JSON.stringify({ error: "Method not allowed" }));
+          return;
+        }
+        try {
+          const url = new URL(req.url || "", "http://127.0.0.1");
+          const id = decodeURIComponent(url.pathname.replace(/^\/+/, "")).replace(/\.png$/u, "");
+          const iconPath = BROWSER_DEV_APP_ICONS[id];
+          if (!iconPath || !existsSync(iconPath)) {
+            res.statusCode = 404;
+            res.setHeader("Content-Type", "application/json; charset=utf-8");
+            res.end(JSON.stringify({ error: "Icon not found" }));
+            return;
+          }
+          const cacheDir = join(tmpdir(), "burrete-app-icons");
+          const outputPath = join(cacheDir, `${id}.png`);
+          if (!existsSync(outputPath)) {
+            await mkdir(cacheDir, { recursive: true });
+            await execFileAsync("/usr/bin/sips", ["-s", "format", "png", iconPath, "--out", outputPath]);
+          }
+          const bytes = await readFile(outputPath);
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "image/png");
+          res.setHeader("Content-Length", String(bytes.length));
+          res.setHeader("Cache-Control", "no-cache");
+          res.end(method === "HEAD" ? undefined : bytes);
         } catch (error) {
           res.statusCode = 500;
           res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -930,7 +975,7 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
-    fs: { allow: [repoRoot, ...defaultFsAllow, ...extraFsAllow] },
+    fs: { allow: devFsAllowRoots },
     watch: { ignored: ["src-tauri/target/**"] },
   },
   build: {

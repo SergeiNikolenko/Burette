@@ -6,7 +6,7 @@ import previewFormatRegistry from "../../../config/preview-formats.json";
 import { AppLayout } from "./components/app-layout";
 import { formatBytes } from "./components/format";
 import { showNativeContextMenu } from "./components/native-context-menu";
-import type { KetcherImportRequest, KetcherSketchRequest, ShellActions, ShellViewState, StatusKind, StatusNotice } from "./components/types";
+import type { ChemicalEditorTarget, KetcherImportRequest, KetcherSketchRequest, ShellActions, ShellViewState, StatusKind, StatusNotice } from "./components/types";
 import { WindowTitle } from "./components/window-title";
 import {
   useCloseCommandPalette,
@@ -129,6 +129,69 @@ function molstarContextEntryExtension(format: string | undefined) {
   if (value === "sd") return "sdf";
   return value || "pdb";
 }
+
+const browserDevChemicalEditorTargets: ChemicalEditorTarget[] = [
+  {
+    id: "browser-dev-maestro",
+    name: "Maestro",
+    bundleId: "com.schrodinger.maestro",
+    appPath: "/Applications/SchrodingerSuites2026-1/Maestro.app",
+    iconUrl: "/__burette/app-icon/maestro.png",
+    rank: 10,
+    supportedExtensions: ["pdb", "cif", "sdf", "mol2", "mae"],
+    matchReason: "Browser dev preview target",
+  },
+  {
+    id: "browser-dev-chimerax",
+    name: "ChimeraX",
+    bundleId: "edu.ucsf.rbvi.ChimeraX",
+    appPath: "/Applications/ChimeraX-1.10.app",
+    iconUrl: "/__burette/app-icon/chimerax.png",
+    rank: 20,
+    supportedExtensions: ["pdb", "cif", "mol2", "sdf"],
+    matchReason: "Browser dev preview target",
+  },
+  {
+    id: "browser-dev-pymol",
+    name: "PyMOL",
+    bundleId: "org.pymol.PyMOL",
+    appPath: "/Applications/PyMOL.app",
+    iconUrl: "/__burette/app-icon/pymol.png",
+    rank: 30,
+    supportedExtensions: ["pdb", "cif", "mol2"],
+    matchReason: "Browser dev preview target",
+  },
+  {
+    id: "browser-dev-avogadro",
+    name: "Avogadro2",
+    bundleId: "org.openchemistry.Avogadro2",
+    appPath: "/Applications/Avogadro2.app",
+    iconUrl: "/__burette/app-icon/avogadro2.png",
+    rank: 40,
+    supportedExtensions: ["pdb", "cif", "sdf", "mol", "mol2", "xyz"],
+    matchReason: "Browser dev preview target",
+  },
+  {
+    id: "browser-dev-datawarrior",
+    name: "DataWarrior",
+    bundleId: "com.actelion.research.datawarrior",
+    appPath: "/Applications/DataWarrior.app",
+    iconUrl: "/__burette/app-icon/datawarrior.png",
+    rank: 50,
+    supportedExtensions: ["sdf", "mol", "smi", "csv"],
+    matchReason: "Browser dev preview target",
+  },
+  {
+    id: "browser-dev-vesta",
+    name: "VESTA",
+    bundleId: "jp.riken.VESTA",
+    appPath: "/Applications/VESTA.app",
+    iconUrl: "/__burette/app-icon/vesta.png",
+    rank: 60,
+    supportedExtensions: ["cif", "pdb", "xyz"],
+    matchReason: "Browser dev preview target",
+  },
+];
 
 type GridAppendResult = {
   recordsAppended: number;
@@ -985,6 +1048,42 @@ export default function App() {
       pushErrorStatus(error, "Save collection failed");
     }
   }, [documents, pushErrorStatus, pushStatus]);
+
+  const listChemicalEditorTargets = useCallback(async (path: string): Promise<ChemicalEditorTarget[]> => {
+    if (!isTauriRuntime()) {
+      const extension = path.split(".").pop()?.toLowerCase() ?? "";
+      return browserDevChemicalEditorTargets.filter((target) => target.supportedExtensions.includes(extension));
+    }
+    try {
+      return await invoke<ChemicalEditorTarget[]>("list_chemical_editor_targets", { path });
+    } catch (error) {
+      pushErrorStatus(error, "Chemical editor discovery failed");
+      return [];
+    }
+  }, [pushErrorStatus]);
+
+  const openPathInChemicalEditor = useCallback(async (path: string, targetId: string, targetName: string) => {
+    try {
+      if (!isTauriRuntime()) {
+        await openPath(path);
+        pushStatus(`Opened ${basename(path)}`);
+        return;
+      }
+      await invoke("open_in_chemical_editor", { path, targetId });
+      pushStatus(`Opened ${basename(path)} in ${targetName}`);
+    } catch (error) {
+      pushErrorStatus(error, `Open in ${targetName} failed`);
+    }
+  }, [pushErrorStatus, pushStatus]);
+
+  const openPathWithDefaultApp = useCallback(async (path: string) => {
+    try {
+      await openPath(path);
+      pushStatus(`Opened ${basename(path)}`);
+    } catch (error) {
+      pushErrorStatus(error, "Open with default app failed");
+    }
+  }, [pushErrorStatus, pushStatus]);
 
   const revealPath = useCallback(async (path: string, label = "file") => {
     try {
@@ -3158,6 +3257,9 @@ export default function App() {
     addXyzrenderSheetItems: addXyzrenderSheetItemsToDocument,
     mergeMoleculeCollections,
     saveMoleculeCollectionAs,
+    listChemicalEditorTargets,
+    openPathInChemicalEditor,
+    openPathWithDefaultApp,
     revealActiveDocument,
     revealDocument,
     revealPath,
@@ -3220,7 +3322,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyKetcherToGridRow, backToApp, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, installUpdate, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openWorkspaceFolder, pushErrorStatus, pushStatus, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
+  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyKetcherToGridRow, backToApp, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openWorkspaceFolder, pushErrorStatus, pushStatus, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
