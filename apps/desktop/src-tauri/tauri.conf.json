@@ -89,6 +89,7 @@
           "dcd",
           "inp",
           "lammpstrj",
+          "log",
           "nctraj",
           "nw",
           "top",

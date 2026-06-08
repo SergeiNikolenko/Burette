@@ -113,7 +113,26 @@ const preferredTextExtensions = new Set([
   "html",
   "css",
 ]);
-const structureFirstTextExtensions = new Set(["out"]);
+const structureAndTextExtensions = new Set([
+  "abi",
+  "cms",
+  "com",
+  "csv",
+  "cub",
+  "cube",
+  "fdf",
+  "graphml",
+  "in",
+  "inp",
+  "log",
+  "mae",
+  "nw",
+  "out",
+  "psi4",
+  "qcin",
+  "tsv",
+  "vasp",
+]);
 
 const GRID_PERF_REPORT_PATH = "/private/tmp/burrete-grid-real-app-perf.jsonl";
 const SIDEBAR_DRAG_CLOSE_WIDTH = 180;
@@ -666,12 +685,12 @@ export default function App() {
 
     const structurePaths: string[] = [];
     const textPaths: string[] = [];
-    const structureFirstTextPaths: string[] = [];
+    const structureAndTextPaths: string[] = [];
 
     for (const path of cleanPaths) {
       const extension = pathExtension(path);
-      if (structureFirstTextExtensions.has(extension)) {
-        structureFirstTextPaths.push(path);
+      if (structureAndTextExtensions.has(extension)) {
+        structureAndTextPaths.push(path);
       } else if (structureExtensions.has(extension)) {
         structurePaths.push(path);
       } else if (preferredTextExtensions.has(extension) || extension.length > 0) {
@@ -685,13 +704,11 @@ export default function App() {
       await openDocuments(structurePaths);
     }
 
-    const fallbackTextPaths: string[] = [];
-    for (const path of structureFirstTextPaths) {
-      const result = await openDocuments([path]);
-      if (!result || result.documents.length === 0) fallbackTextPaths.push(path);
+    if (structureAndTextPaths.length > 0) {
+      await openDocuments(structureAndTextPaths);
     }
 
-    const textOpenPaths = [...textPaths, ...fallbackTextPaths];
+    const textOpenPaths = [...textPaths, ...structureAndTextPaths];
     if (textOpenPaths.length > 0) {
       await openTextDocuments(textOpenPaths);
     }
@@ -823,13 +840,31 @@ export default function App() {
 
     pushStatus(`Opening in ${input.area === "right" ? "right dock" : "bottom dock"}...`);
     try {
+      if (input.area === "right" && cleanPaths.length > 0) {
+        const textResult = isTauriRuntime()
+          ? await invoke<OpenTextFilesResult>("open_text_files", { paths: cleanPaths })
+          : await openBrowserDevTextFiles(cleanPaths);
+        if (textResult.documents.length > 0) {
+          addBackgroundTextDocuments(textResult.documents);
+          setDockDocument(input.area, textResult.documents[0].id);
+          addDockDrop(input);
+        }
+        const openedText = `Opened ${textResult.documents.length} text file${textResult.documents.length === 1 ? "" : "s"} in right dock`;
+        if (textResult.errors.length > 0) {
+          pushStatus(textResult.documents.length > 0 ? `${openedText}. ${summarizeErrors(textResult.errors)}` : summarizeErrors(textResult.errors), "error", textResult.errors);
+          return;
+        }
+        pushStatus(openedText);
+        return;
+      }
+
       const structurePaths: string[] = [];
       const textPaths: string[] = [];
-      const structureFirstTextPaths: string[] = [];
+      const structureAndTextPaths: string[] = [];
       for (const path of cleanPaths) {
         const extension = pathExtension(path);
-        if (structureFirstTextExtensions.has(extension)) {
-          structureFirstTextPaths.push(path);
+        if (structureAndTextExtensions.has(extension)) {
+          structureAndTextPaths.push(path);
         } else if (structureExtensions.has(extension)) {
           structurePaths.push(path);
         } else if (preferredTextExtensions.has(extension) || extension.length > 0) {
@@ -844,23 +879,18 @@ export default function App() {
           ? await invoke<OpenDocumentsResult>("open_documents", { paths: structurePaths, preferences, reloadOptions: undefined })
           : await openBrowserDevDocuments(structurePaths, preferences, undefined)
         : { documents: [], errors: [] };
-      const fallbackTextPaths: string[] = [];
-      const structureFirstResults: OpenDocumentsResult[] = [];
-      for (const path of structureFirstTextPaths) {
+      const structureAndTextResults: OpenDocumentsResult[] = [];
+      for (const path of structureAndTextPaths) {
         try {
           const result = isTauriRuntime()
             ? await invoke<OpenDocumentsResult>("open_documents", { paths: [path], preferences, reloadOptions: undefined })
             : await openBrowserDevDocuments([path], preferences, undefined);
           if (result.documents.length > 0) {
-            structureFirstResults.push(result);
-          } else {
-            fallbackTextPaths.push(path);
+            structureAndTextResults.push(result);
           }
-        } catch {
-          fallbackTextPaths.push(path);
-        }
+        } catch {}
       }
-      const textOpenPaths = [...textPaths, ...fallbackTextPaths];
+      const textOpenPaths = [...textPaths, ...structureAndTextPaths];
       const textResult = textOpenPaths.length > 0
         ? isTauriRuntime()
           ? await invoke<OpenTextFilesResult>("open_text_files", { paths: textOpenPaths })
@@ -871,13 +901,13 @@ export default function App() {
         : { opened: [], errors: [] };
       const openedStructures = [
         ...structurePathResult.documents,
-        ...structureFirstResults.flatMap((result) => result.documents),
+        ...structureAndTextResults.flatMap((result) => result.documents),
         ...recordResult.opened,
       ];
       const openedTextDocuments = textResult.documents;
       const errors = [
         ...structurePathResult.errors,
-        ...structureFirstResults.flatMap((result) => result.errors),
+        ...structureAndTextResults.flatMap((result) => result.errors),
         ...textResult.errors,
         ...recordResult.errors,
       ];
