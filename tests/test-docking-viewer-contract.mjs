@@ -66,8 +66,10 @@ assert.match(app, /void openDocuments\(\[targetPath\], \{\}, \{ rendererMode: "m
 assert.match(burretePermission, /"open_docking_document"/);
 
 assert.match(dockingDocuments, /export function dockingRequestForDrop/);
+assert.match(dockingDocuments, /export function isMolstarCombineSource/);
+assert.match(dockingDocuments, /export function isMolstarCoordinateTrajectorySource/);
 assert.match(dockingDocuments, /existingDockingRequest/);
-assert.match(dockingDocuments, /ligandLikeDockingPaths\(\[\.\.\.existingDockingRequest\.ligandPaths, \.\.\.addedLigands\]\)/);
+assert.match(dockingDocuments, /combineDockingPaths\(\[\.\.\.existingDockingRequest\.ligandPaths, \.\.\.addedLigands\]\)/);
 assert.match(dropActions, /export type DropAction/);
 assert.match(dropActions, /export type DropActionChoice/);
 assert.match(dropActions, /export type DropSourceContext/);
@@ -78,6 +80,11 @@ assert.match(dropActions, /kind: "add-xyzrender-sheet-items"/);
 assert.match(dropActions, /kind: "open-docking"/);
 
 assert.match(viewer, /function prepareDockingStructure\(config\)/);
+assert.match(viewer, /const DOCKING_COORDINATE_TRAJECTORY_FORMATS = new Set\(\['xtc', 'trr', 'dcd', 'nctraj', 'lammpstrj'\]\)/);
+assert.match(viewer, /const DOCKING_MODEL_TRAJECTORY_FORMATS = new Set\(\['pdb', 'pdbqt', 'mmcif', 'gro'\]\)/);
+assert.match(viewer, /const DOCKING_TOPOLOGY_TRAJECTORY_FORMATS = new Set\(\['top', 'psf', 'prmtop'\]\)/);
+assert.match(viewer, /function dockingTrajectoryPair\(entries\)/);
+assert.match(viewer, /trajectoryPair: dockingTrajectoryPair\(entries\)|const trajectoryPair = dockingTrajectoryPair\(entries\)/);
 assert.match(viewer, /ligandSources\.forEach\(\(source, ligandIndex\) =>/);
 assert.match(viewer, /records\.forEach\(\(record, poseIndex\) =>/);
 assert.match(viewer, /label: `\$\{source\.label \|\| `Ligand \$\{ligandIndex \+ 1\}`\} pose \$\{poseIndex \+ 1\}`/);
@@ -86,6 +93,13 @@ assert.match(viewer, /const activePose = readDockingPoseIndex\(config, poses\.le
 assert.match(viewer, /nativeTrajectoryControls: true/);
 assert.match(viewer, /activePose,\s*poseCount: nativeTrajectoryPoseCount/s);
 assert.match(viewer, /entries:\s*\[\s*entries\[0\],\s*poses\[activePose\]\s*\]/);
+assert.match(viewer, /async function loadDockingTrajectoryPair\(viewer, pair\)/);
+assert.match(viewer, /viewer\.loadTrajectory\(\{/);
+assert.match(viewer, /kind: pair\.modelKind/);
+assert.match(viewer, /kind: 'coordinates-data'/);
+assert.match(viewer, /async function applyDockingTrajectoryPairFrameCount\(prepared\)/);
+assert.match(viewer, /if \(prepared\.trajectoryPair\) \{/);
+assert.match(viewer, /if \(isDockingTrajectoryPairEntry\(entry, prepared\.trajectoryPair\)\) continue/);
 assert.match(viewer, /function notifyDockingPoseChanged\(activePose, prepared\)/);
 assert.match(viewer, /type: 'dockingPoseChanged'/);
 assert.match(viewer, /const initialPose = activePose/);
