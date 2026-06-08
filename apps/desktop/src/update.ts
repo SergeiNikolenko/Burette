@@ -29,6 +29,7 @@ export type UpdateRelease = {
   htmlUrl: string;
   prerelease: boolean;
   installAsset: UpdateAsset | null;
+  replacesCurrentBuild: boolean;
 };
 
 export type UpdateState = {
@@ -61,6 +62,8 @@ const AUTOMATIC_FAILURE_RETRY_MS = 60 * 60 * 1000;
 const STORAGE_PREFIX = "buret.update.";
 
 export const CURRENT_VERSION = packageInfo.version;
+const CURRENT_BUILD_CHANNEL = import.meta.env.VITE_BURRETE_BUILD_CHANNEL ?? (import.meta.env.DEV ? "dev" : "release");
+const IS_RELEASE_BUILD = CURRENT_BUILD_CHANNEL === "release";
 
 export const defaultUpdatePreferences: UpdatePreferences = {
   checkAutomatically: true,
@@ -147,7 +150,10 @@ function newestUpdate(releases: GitHubRelease[], channel: UpdateChannel): Update
     .filter((release) => channel === "beta" || !release.prerelease)
     .map(normalizeRelease)
     .filter((release): release is UpdateRelease => release !== null)
-    .filter((release) => compareVersions(release.tagName, CURRENT_VERSION) > 0)
+    .filter((release) => {
+      const comparison = compareVersions(release.tagName, CURRENT_VERSION);
+      return comparison > 0 || (!IS_RELEASE_BUILD && comparison === 0);
+    })
     .sort((a, b) => compareVersions(b.tagName, a.tagName));
   return candidates[0] ?? null;
 }
@@ -163,6 +169,7 @@ function normalizeRelease(release: GitHubRelease): UpdateRelease | null {
     htmlUrl: release.html_url,
     prerelease: release.prerelease === true,
     installAsset,
+    replacesCurrentBuild: !IS_RELEASE_BUILD && compareVersions(release.tag_name, CURRENT_VERSION) === 0,
   };
 }
 
@@ -177,28 +184,28 @@ function installAssetFor(assets: GitHubAsset[]): UpdateAsset | null {
       manifest: manifestAssetFor(assets, asset.name!),
       signature: manifestSignatureAssetFor(assets, asset.name!),
     }))
-    .filter((entry): entry is { asset: GitHubAsset; digest: GitHubAsset; manifest: GitHubAsset; signature: GitHubAsset } =>
-      entry.digest !== null && entry.manifest !== null && entry.signature !== null);
+    .filter((entry): entry is { asset: GitHubAsset; digest: GitHubAsset; manifest: GitHubAsset | null; signature: GitHubAsset | null } =>
+      entry.digest !== null);
   const selected = candidates.find((entry) => /burrete|burette/i.test(entry.asset.name!)) ?? candidates[0];
   if (!selected) return null;
-  const integrity = selected.digest && selected.manifest && selected.signature
+  const signedManifest = selected.manifest && selected.signature
     ? {
-      sha256AssetName: selected.digest.name!,
-      sha256BrowserDownloadUrl: selected.digest.browser_download_url!,
-      sha256Size: Number(selected.digest.size || 0),
-      manifestAssetName: selected.manifest.name!,
-      manifestBrowserDownloadUrl: selected.manifest.browser_download_url!,
-      manifestSize: Number(selected.manifest.size || 0),
-      manifestSignatureAssetName: selected.signature.name!,
-      manifestSignatureBrowserDownloadUrl: selected.signature.browser_download_url!,
-      manifestSignatureSize: Number(selected.signature.size || 0),
-    }
+        manifestAssetName: selected.manifest.name!,
+        manifestBrowserDownloadUrl: selected.manifest.browser_download_url!,
+        manifestSize: Number(selected.manifest.size || 0),
+        manifestSignatureAssetName: selected.signature.name!,
+        manifestSignatureBrowserDownloadUrl: selected.signature.browser_download_url!,
+        manifestSignatureSize: Number(selected.signature.size || 0),
+      }
     : {};
   return {
     name: selected.asset.name!,
     browserDownloadUrl: selected.asset.browser_download_url!,
     size: Number(selected.asset.size || 0),
-    ...integrity,
+    sha256AssetName: selected.digest.name!,
+    sha256BrowserDownloadUrl: selected.digest.browser_download_url!,
+    sha256Size: Number(selected.digest.size || 0),
+    ...signedManifest,
   };
 }
 
