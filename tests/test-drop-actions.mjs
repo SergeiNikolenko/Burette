@@ -374,7 +374,7 @@ assert.deepEqual(ligandOnDocking, {
   kind: "open-docking",
   request: {
     receptorPath: "/tmp/receptor.pdb",
-    ligandPaths: ["/tmp/old-ligand.sdf", "/tmp/new-ligand.sdf"],
+    ligandPaths: ["/tmp/old-ligand.sdf", "/tmp/new-ligand.sdf", "/tmp/receptor-2.pdb"],
   },
 });
 
@@ -406,7 +406,7 @@ assert.deepEqual(resolveDropActionChoices(payload(["/tmp/receptor-a.pdb", "/tmp/
       kind: "open-docking",
       request: {
         receptorPath: "/tmp/receptor-a.pdb",
-        ligandPaths: ["/tmp/current-ligand.sdf", "/tmp/ligand.sdf"],
+        ligandPaths: ["/tmp/current-ligand.sdf", "/tmp/receptor-b.cif", "/tmp/ligand.sdf"],
       },
     },
   },
@@ -418,7 +418,7 @@ assert.deepEqual(resolveDropActionChoices(payload(["/tmp/receptor-a.pdb", "/tmp/
       kind: "open-docking",
       request: {
         receptorPath: "/tmp/receptor-b.cif",
-        ligandPaths: ["/tmp/current-ligand.sdf", "/tmp/ligand.sdf"],
+        ligandPaths: ["/tmp/current-ligand.sdf", "/tmp/receptor-a.pdb", "/tmp/ligand.sdf"],
       },
     },
   },
@@ -445,7 +445,7 @@ assert.deepEqual(resolveDropActionChoices(payload(["/tmp/receptor-b.cif", "/tmp/
     kind: "open-docking",
     request: {
       receptorPath: "/tmp/receptor-a.pdb",
-      ligandPaths: ["/tmp/ligand.sdf"],
+      ligandPaths: ["/tmp/receptor-b.cif", "/tmp/ligand.sdf"],
     },
   },
 });
@@ -454,8 +454,11 @@ assert.deepEqual(resolveDropAction(payload(["/tmp/receptor-b.cif"]), {
   documentPath: "/tmp/receptor-a.pdb",
   renderer: "molstar",
 }), {
-  kind: "open-documents",
-  paths: ["/tmp/receptor-b.cif"],
+  kind: "open-docking",
+  request: {
+    receptorPath: "/tmp/receptor-a.pdb",
+    ligandPaths: ["/tmp/receptor-b.cif"],
+  },
 });
 
 assert.deepEqual(resolveDropActionChoices(
@@ -465,16 +468,29 @@ assert.deepEqual(resolveDropActionChoices(
     documentPath: "/tmp/current-ligand.sdf",
     renderer: "molstar",
   },
-), [{
-  id: "open-structure-records",
-  label: "Open as document tabs",
-  confidence: "default",
-  action: {
-    kind: "open-structure-records",
-    paths: [],
-    records: [{ path: "grid-ligand.sdf", inputExtension: "sdf", text: "mol\nM  END\n$$$$\n" }],
+), [
+  {
+    id: "open-docking-with-records",
+    label: "Open docking view",
+    confidence: "default",
+    action: {
+      kind: "open-docking-with-records",
+      receptorPath: "/tmp/current-ligand.sdf",
+      ligandPaths: [],
+      records: [{ path: "grid-ligand.sdf", inputExtension: "sdf", text: "mol\nM  END\n$$$$\n" }],
+    },
   },
-}]);
+  {
+    id: "open-structure-records",
+    label: "Open separately",
+    confidence: "alternative",
+    action: {
+      kind: "open-structure-records",
+      paths: [],
+      records: [{ path: "grid-ligand.sdf", inputExtension: "sdf", text: "mol\nM  END\n$$$$\n" }],
+    },
+  },
+]);
 
 const ligandOnGenericLigand = resolveDropAction(payload(["/tmp/ligand-b.sdf"]), {
   kind: "active-viewer",
@@ -482,8 +498,37 @@ const ligandOnGenericLigand = resolveDropAction(payload(["/tmp/ligand-b.sdf"]), 
   renderer: "molstar",
 });
 assert.deepEqual(ligandOnGenericLigand, {
-  kind: "open-documents",
-  paths: ["/tmp/ligand-b.sdf"],
+  kind: "open-docking",
+  request: {
+    receptorPath: "/tmp/ligand-a.sdf",
+    ligandPaths: ["/tmp/ligand-b.sdf"],
+  },
+});
+
+const trajectoryOnGro = resolveDropAction(payload(["/tmp/frame.xtc"]), {
+  kind: "active-viewer",
+  documentPath: "/tmp/frame.gro",
+  renderer: "molstar",
+});
+assert.deepEqual(trajectoryOnGro, {
+  kind: "open-docking",
+  request: {
+    receptorPath: "/tmp/frame.gro",
+    ligandPaths: ["/tmp/frame.xtc"],
+  },
+});
+
+const groOnTrajectory = resolveDropAction(payload(["/tmp/frame.gro"]), {
+  kind: "active-viewer",
+  documentPath: "/tmp/frame.xtc",
+  renderer: "molstar",
+});
+assert.deepEqual(groOnTrajectory, {
+  kind: "open-docking",
+  request: {
+    receptorPath: "/tmp/frame.gro",
+    ligandPaths: ["/tmp/frame.xtc"],
+  },
 });
 
 const dragDropMatrix = [
@@ -517,27 +562,63 @@ const dragDropMatrix = [
     },
   },
   {
-    name: "protein target plus protein file opens separately",
+    name: "protein target plus protein file opens combined view",
     actual: resolveDropAction(payload(["/tmp/receptor-b.cif"]), {
       kind: "active-viewer",
       documentPath: "/tmp/receptor-a.pdb",
       renderer: "molstar",
     }),
     expected: {
-      kind: "open-documents",
-      paths: ["/tmp/receptor-b.cif"],
+      kind: "open-docking",
+      request: {
+        receptorPath: "/tmp/receptor-a.pdb",
+        ligandPaths: ["/tmp/receptor-b.cif"],
+      },
     },
   },
   {
-    name: "ligand target plus ligand file opens separately",
+    name: "ligand target plus ligand file opens combined view",
     actual: resolveDropAction(payload(["/tmp/ligand-b.sdf"]), {
       kind: "active-viewer",
       documentPath: "/tmp/ligand-a.sdf",
       renderer: "molstar",
     }),
     expected: {
-      kind: "open-documents",
-      paths: ["/tmp/ligand-b.sdf"],
+      kind: "open-docking",
+      request: {
+        receptorPath: "/tmp/ligand-a.sdf",
+        ligandPaths: ["/tmp/ligand-b.sdf"],
+      },
+    },
+  },
+  {
+    name: "gro target plus trajectory file opens combined view",
+    actual: resolveDropAction(payload(["/tmp/frame.xtc"]), {
+      kind: "active-viewer",
+      documentPath: "/tmp/frame.gro",
+      renderer: "molstar",
+    }),
+    expected: {
+      kind: "open-docking",
+      request: {
+        receptorPath: "/tmp/frame.gro",
+        ligandPaths: ["/tmp/frame.xtc"],
+      },
+    },
+  },
+  {
+    name: "trajectory target plus gro file opens combined view with gro anchor",
+    actual: resolveDropAction(payload(["/tmp/frame.gro"]), {
+      kind: "active-viewer",
+      documentPath: "/tmp/frame.xtc",
+      renderer: "molstar",
+    }),
+    expected: {
+      kind: "open-docking",
+      request: {
+        receptorPath: "/tmp/frame.gro",
+        ligandPaths: ["/tmp/frame.xtc"],
+      },
     },
   },
   {

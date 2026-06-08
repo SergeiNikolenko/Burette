@@ -1,6 +1,6 @@
 import type { DockingDocumentRequest, FepSetupRequest } from "../types";
 import { isMoleculeCollectionPath } from "./collection-documents";
-import { dockingCandidatesForDrop, isProteinLikeDockingSource } from "./docking-documents";
+import { dockingCandidatesForDrop, isMolstarCombineSource, isMolstarCoordinateTrajectorySource, isProteinLikeDockingSource } from "./docking-documents";
 import type { StructureDragPayload, StructureDragRecord } from "./structure-drag";
 
 export type DropTargetContext =
@@ -282,8 +282,13 @@ function dockingRecordCandidates(
     }];
   }
   const allPaths = uniquePaths([targetPath, ...paths]);
-  return allPaths
-    .filter(isProteinLikeDockingSource)
+  const receptorPaths = allPaths.filter(isProteinLikeDockingSource);
+  const combinePaths = allPaths.filter(isMolstarCombineSource);
+  const modelOrTopologyPaths = combinePaths.filter((path) => !isMolstarCoordinateTrajectorySource(path));
+  const anchorPaths = receptorPaths.length > 0
+    ? receptorPaths
+    : (modelOrTopologyPaths.length > 0 ? modelOrTopologyPaths : combinePaths);
+  return anchorPaths
     .map((receptorPath) => ({
       receptorPath,
       ligandPaths: uniqueLigandPaths(allPaths, receptorPath),
@@ -292,7 +297,7 @@ function dockingRecordCandidates(
 }
 
 function uniqueLigandPaths(paths: string[], receptorPath: string) {
-  return uniquePaths(paths).filter((path) => path !== receptorPath && !isProteinLikeDockingSource(path));
+  return uniquePaths(paths).filter((path) => path !== receptorPath && isMolstarCombineSource(path));
 }
 
 function uniquePaths(paths: string[]) {
