@@ -130,3 +130,36 @@ const filtered = filterSidebarProjects(projects, "archive");
 assert.equal(filtered.length, 1);
 assert.equal(filtered[0].title, "Matcha");
 assert.deepEqual(filtered[0].items.map((item) => item.relativePath), ["archive/alt-mini.pdb"]);
+
+const projectsWithScannedFiles = buildSidebarProjects({
+  documents,
+  recentStructures: recentStructures.filter((structure) => structure.path.startsWith("/Users/test/Matcha/")),
+  projectRoots: ["/Users/test/Matcha"],
+  projectStructures: [
+    {
+      path: "/Users/test/Matcha/ligands/mini.pdb",
+      title: "mini.pdb",
+      extension: "pdb",
+      renderer: "molstar",
+      byteCount: 128,
+    },
+    {
+      path: "/Users/test/Matcha/nested/deep/folder-only-before.cif",
+      title: "folder-only-before.cif",
+      extension: "cif",
+      renderer: "molstar",
+      byteCount: 256,
+    },
+  ],
+  activeDocumentId: "doc-1",
+});
+assert.equal(projectsWithScannedFiles.length, 1);
+assert.deepEqual(
+  projectsWithScannedFiles[0].items.map((item) => ({ relativePath: item.relativePath, source: item.source })),
+  [
+    { relativePath: "archive/alt-mini.pdb", source: "recent" },
+    { relativePath: "ligands/mini.pdb", source: "open" },
+    { relativePath: "nested/deep/folder-only-before.cif", source: "project" },
+    { relativePath: "zrecent.pdb", source: "recent" },
+  ],
+);
