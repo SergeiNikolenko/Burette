@@ -2437,7 +2437,7 @@ assert.match(previewViewController, /if PreviewStructureTextConverter\.shouldPre
 assert.match(previewViewController, /if isGROExtension\(fileExtension\),\s*let pdb = groPDBData\(from: data, label: label\) \{\s*return ConvertedStructure\(data: pdb, format: \.convertedPDB,/);
 assert.match(previewViewController, /let residueName = normalizeGROResidueName\(fixedGROField\(line, start: 5, length: 5\)\)/);
 assert.match(previewViewController, /x: x \* 10\.0,\s*y: y \* 10\.0,\s*z: z \* 10\.0/s);
-assert.match(previewViewController, /\["abi", "cub", "cube", "fdf", "in", "inp", "nw", "out", "psi4", "qcin"\]\.contains\(fileExtension\.lowercased\(\)\)/);
+assert.match(previewViewController, /\["abi", "cub", "cube", "fdf", "in", "inp", "log", "nw", "out", "psi4", "qcin"\]\.contains\(fileExtension\.lowercased\(\)\)/);
 assert.match(previewViewController, /case "znucl":\s*atomicNumbers \+= parts\.dropFirst\(\)\.compactMap\(Int\.init\)/);
 assert.match(previewViewController, /case "typat":\s*typeIndices \+= parts\.dropFirst\(\)\.compactMap\(Int\.init\)/);
 assert.match(previewViewController, /case "xangst":\s*coordinateStart = index \+ 1/);
@@ -2449,7 +2449,7 @@ assert.match(previewViewController, /pdb \+= String\(format: "CONECT%5d"/);
 assert.match(previewViewController, /pushPDBConectLines\(&pdb, bonds: bonds, serialByID: serialByID\)/);
 assert.match(previewViewController, /case "in", "inp":\s*return parseQuantumEspressoInput\(lines\) \?\? parseQSiteGeometry\(lines\) \?\? parseBestCoordinateBlock\(lines\)/);
 assert.match(previewViewController, /case "nw", "psi4", "qcin":\s*return parseBestCoordinateBlock\(lines\)/);
-assert.match(previewViewController, /case "out":\s*return parseOrcaOutput\(lines\) \?\? parseGaussianOutput\(lines\) \?\? parseBestCoordinateBlock\(lines\)/);
+assert.match(previewViewController, /case "log", "out":\s*return parseOrcaOutput\(lines\) \?\? parseGaussianOutput\(lines\) \?\? parseBestCoordinateBlock\(lines\)/);
 assert.match(previewViewController, /let coordinateScale = axisCounts\.allSatisfy \{ \$0 > 0 \} \? 0\.529177210903 : 1\.0/);
 assert.match(previewViewController, /catch \{\s*if format\.isExternalXyzrenderOnly,\s*rendererOverride == nil,\s*let convertedStructure = PreviewStructureTextConverter\.convertedData/s);
 assert.match(previewViewController, /private struct PreviewXyzrenderLaunch/);
