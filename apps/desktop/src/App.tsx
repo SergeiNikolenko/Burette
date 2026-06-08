@@ -664,13 +664,6 @@ export default function App() {
     },
     [addDocuments, openDocumentsInActiveTab, openFepNetworkTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setActiveDocument, setDocuments, showDelimitedGridColumnOpenMenu],
   );
-  useOpenEvents(
-    (paths, options) => {
-      void openDocuments(paths, undefined, undefined, options);
-    },
-    pushErrorStatus,
-  );
-
   const openTextDocuments = useCallback(
     async (
       paths: string[],
