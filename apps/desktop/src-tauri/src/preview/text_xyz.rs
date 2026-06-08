@@ -297,12 +297,17 @@ fn maestro_pdb_data_from_text(data: &[u8], extension: &str) -> Option<ConvertedS
     let decoded = decode_structure_text(data, extension)?;
     let text = decoded.replace("\r\n", "\n").replace('\r', "\n");
     let lines: Vec<&str> = text.lines().collect();
-    let atoms = parse_maestro_pdb_atoms(&lines, MAESTRO_PDB_PREVIEW_ATOM_LIMIT)?;
-    if atoms.is_empty() {
+    let models = parse_maestro_pdb_models(&lines, MAESTRO_PDB_PREVIEW_ATOM_LIMIT)?;
+    if models.is_empty() {
         return None;
     }
+    let data = if models.len() == 1 {
+        maestro_atoms_to_pdb(&models[0])
+    } else {
+        maestro_models_to_pdb(&models)
+    };
     Some(ConvertedStructureData {
-        data: maestro_atoms_to_pdb(&atoms).into_bytes(),
+        data: data.into_bytes(),
         extension: "pdb",
         staged_entries: Vec::new(),
     })
@@ -526,10 +531,14 @@ fn gro_element_symbol(atom_name: &str, residue_name: &str) -> Option<String> {
 }
 
 fn parse_maestro_pdb_atoms(lines: &[&str], atom_limit: usize) -> Option<Vec<MaestroAtom>> {
+    parse_maestro_pdb_models(lines, atom_limit).and_then(|mut models| models.drain(..).next())
+}
+
+fn parse_maestro_pdb_models(lines: &[&str], atom_limit: usize) -> Option<Vec<Vec<MaestroAtom>>> {
     let mut index = 0;
     let mut current_ct_type = String::new();
     let mut best_score = -1;
-    let mut best_atoms = None;
+    let mut best_models: Vec<Vec<MaestroAtom>> = Vec::new();
     while index < lines.len() {
         let trimmed = lines[index].trim();
         if trimmed == "f_m_ct {" {
@@ -656,11 +665,14 @@ fn parse_maestro_pdb_atoms(lines: &[&str], atom_limit: usize) -> Option<Vec<Maes
             let score = maestro_ct_score(&current_ct_type);
             if score > best_score {
                 best_score = score;
-                best_atoms = Some(atoms);
+                best_models.clear();
+                best_models.push(atoms);
+            } else if score == best_score {
+                best_models.push(atoms);
             }
         }
     }
-    best_atoms
+    (!best_models.is_empty()).then_some(best_models)
 }
 
 fn parse_maestro_ct_type(lines: &[&str], index: &mut usize) -> Option<String> {
@@ -709,6 +721,21 @@ fn maestro_atoms_to_pdb(atoms: &[MaestroAtom]) -> String {
         pdb.push('\n');
     }
     push_pdb_conect_lines(&mut pdb, atoms);
+    pdb.push_str("END\n");
+    pdb
+}
+
+fn maestro_models_to_pdb(models: &[Vec<MaestroAtom>]) -> String {
+    let mut pdb = String::new();
+    for (model_index, atoms) in models.iter().enumerate() {
+        pdb.push_str(&format!("MODEL{:>9}\n", model_index + 1));
+        for (atom_index, atom) in atoms.iter().enumerate() {
+            pdb.push_str(&maestro_pdb_atom_line(atom_index + 1, atom));
+            pdb.push('\n');
+        }
+        push_pdb_conect_lines(&mut pdb, atoms);
+        pdb.push_str("ENDMDL\n");
+    }
     pdb.push_str("END\n");
     pdb
 }
@@ -1507,6 +1534,61 @@ f_m_ct {
         assert!(xyz.starts_with("2\nConverted from demo.cms\n"));
         assert!(xyz.contains("C 1.250000 2.500000 3.750000"));
         assert!(xyz.contains("O -1.000000 0.000000 2.000000"));
+    }
+
+    #[test]
+    fn converts_equal_rank_maestro_cts_to_pdb_models() {
+        let data = br#"
+f_m_ct {
+  s_ffio_ct_type
+  :::
+  full_system
+  m_atom[2] {
+    i_m_mmod_type
+    i_m_atomic_number
+    r_m_x_coord
+    r_m_y_coord
+    r_m_z_coord
+    s_m_pdb_residue_name
+    s_m_pdb_atom_name
+    i_m_residue_number
+    s_m_chain_name
+    :::
+    1 6 1.000000 2.000000 3.000000 "ALA " " CA " 10 "A"
+    1 8 2.000000 3.000000 4.000000 "MOL " " O1 " 1 "L"
+    :::
+  }
+}
+f_m_ct {
+  s_ffio_ct_type
+  :::
+  full_system
+  m_atom[2] {
+    i_m_mmod_type
+    i_m_atomic_number
+    r_m_x_coord
+    r_m_y_coord
+    r_m_z_coord
+    s_m_pdb_residue_name
+    s_m_pdb_atom_name
+    i_m_residue_number
+    s_m_chain_name
+    :::
+    1 6 5.000000 6.000000 7.000000 "ALA " " CA " 10 "A"
+    1 8 6.000000 7.000000 8.000000 "MOL " " O1 " 1 "L"
+    :::
+  }
+}
+"#;
+        let converted = converted_data_from_text(data, "mae", "poses.mae").unwrap();
+        let pdb = String::from_utf8(converted.data).unwrap();
+
+        assert!(pdb.contains("MODEL        1\n"));
+        assert!(pdb.contains("MODEL        2\n"));
+        assert_eq!(pdb.matches("ENDMDL\n").count(), 2);
+        assert!(pdb.contains("   1.000   2.000   3.000"));
+        assert!(pdb.contains("   5.000   6.000   7.000"));
+        assert!(pdb.ends_with("END\n"));
     }
 
     #[test]
