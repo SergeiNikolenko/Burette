@@ -798,6 +798,23 @@ rm -rf "$BACKUP_APP"
 APPEX="$DEST_APP/Contents/PlugIns/BurretePreview.appex"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 [ -x "$LSREGISTER" ] && "$LSREGISTER" -f -R "$DEST_APP" || true
+if [ -x /usr/bin/swift ]; then
+  BURRETE_APP_PATH="$DEST_APP" BURRETE_APP_ID="$APP_ID" /usr/bin/swift - <<'SWIFT' >/dev/null 2>&1 || true
+import CoreServices
+import Foundation
+
+let appPath = ProcessInfo.processInfo.environment["BURRETE_APP_PATH"] ?? ""
+let bundleID = (ProcessInfo.processInfo.environment["BURRETE_APP_ID"] ?? "com.local.BurreteV10") as CFString
+let appURL = URL(fileURLWithPath: appPath)
+LSRegisterURL(appURL as CFURL, true)
+let bundle = Bundle(url: appURL)
+let documentTypes = bundle?.object(forInfoDictionaryKey: "CFBundleDocumentTypes") as? [[String: Any]] ?? []
+let contentTypes = Set(documentTypes.flatMap {{ $0["LSItemContentTypes"] as? [String] ?? [] }})
+for contentType in contentTypes {{
+    LSSetDefaultRoleHandlerForContentType(contentType as CFString, .viewer, bundleID)
+}}
+SWIFT
+fi
 [ -d "$APPEX" ] && /usr/bin/pluginkit -a "$APPEX" 2>/dev/null || true
 /usr/bin/pluginkit -e use -i "$EXT_ID" 2>/dev/null || true
 /usr/bin/qlmanage -r >/dev/null 2>&1 || true

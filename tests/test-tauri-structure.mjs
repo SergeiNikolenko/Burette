@@ -332,12 +332,15 @@ assert.match(quickLookCommand, /#\[tauri::command\]\s+pub\(crate\) fn reset_quic
 assert.match(updaterCommand, /#\[tauri::command\]\s+pub\(crate\) async fn install_update/);
 assert.match(quickLookCommand, /QuickLookResetReport/);
 assert.match(quickLookCommand, /launch_services_registered: CommandReport/);
+assert.match(quickLookCommand, /default_handlers_registered: CommandReport/);
 assert.match(quickLookCommand, /extension_registered: CommandReport/);
 assert.match(quickLookCommand, /extension_enabled: CommandReport/);
 assert.match(quickLookCommand, /LaunchServices\.framework\/Support\/lsregister/);
+assert.match(quickLookCommand, /LSSetDefaultRoleHandlerForContentType/);
 assert.match(quickLookCommand, /"\/usr\/bin\/pluginkit"/);
-assert.match(quickLookCommand, /preview_extension_bundle_id\(&preview_extension\)/);
+assert.match(quickLookCommand, /bundle_id\(&preview_extension\)/);
 assert.match(quickLookCommand, /\.output\(\)/);
+assert.match(updaterCommand, /LSSetDefaultRoleHandlerForContentType/);
 assert.doesNotMatch(quickLookCommand, /\.spawn\(\)/);
 assert.match(buildScript, /does not accept positional arguments/);
 assert.match(buildScript, /BURRETE_BUILD_MODE/);
