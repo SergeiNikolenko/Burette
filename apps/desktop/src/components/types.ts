@@ -77,6 +77,16 @@ export type ShellActions = {
   backToApp: () => void;
   openKetcher: () => void;
   openKetcherWithStructures: (paths: string[], fragments?: KetcherImportRequest["fragments"]) => void;
+  openKetcherExportRaw: (request: {
+    title: string;
+    extension: string;
+    text: string;
+  }) => void;
+  saveKetcherExportFile: (request: {
+    title: string;
+    extension: string;
+    text: string;
+  }) => void | Promise<void>;
   openFepNetworkPreview: (request?: { title?: string; graphmlText?: string }) => void;
   applyKetcherToGridRow: (request: {
     documentId: string;
