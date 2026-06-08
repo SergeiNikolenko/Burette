@@ -1179,8 +1179,8 @@ assert.match(shellStore, /payload: \{ paths: \[path\], records: \[\] \}/);
 assert.match(shellStore, /payload: \{ paths: \[\], records: \[record\] \}/);
 assert.match(dockPanel, /className="dock-panel-inner"/);
 assert.match(dockPanel, /style=\{area === "right" \? \{ width: size \} : \{ height: size \}\}/);
-assert.match(styles, /--dock-divider-color: color-mix\(in srgb, var\(--text-primary\) 52%, var\(--bg-base\)\)/);
-assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.dock-panel \{[\s\S]*--dock-divider-color: color-mix\(in srgb, var\(--text-primary\) 60%, var\(--bg-base\)\)/);
+assert.match(styles, /--dock-divider-color: var\(--line-subtler\)/);
+assert.doesNotMatch(styles, /\.app-shell\[data-effective-theme="dark"\] \.dock-panel \{[\s\S]*--dock-divider-color:/);
 assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.dock-panel \{/);
 assert.match(styles, /\.dock-panel \{[\s\S]*transition: width 180ms cubic-bezier\(0\.2, 0, 0, 1\), height 180ms cubic-bezier\(0\.2, 0, 0, 1\), opacity 140ms ease-out;/);
 assert.match(styles, /\.dock-panel\[data-dragging\] \{[\s\S]*transition: width 90ms linear, height 90ms linear, opacity 90ms linear;/);
@@ -1196,6 +1196,7 @@ assert.doesNotMatch(styles, /\.dock-panel\[data-area="bottom"\] \{[^}]*box-shado
 assert.match(styles, /\.dock-panel\[data-area="right"\] \.dock-resizer::after \{[\s\S]*top: var\(--chrome-height\);/);
 assert.match(styles, /\.dock-panel\[data-area="right"\] \.dock-resizer::after \{[\s\S]*width: 1px;/);
 assert.match(styles, /\.dock-panel\[data-area="bottom"\] \.dock-resizer::after \{[\s\S]*height: 1px;/);
+assert.match(styles, /\.dock-panel\[data-area="right"\] \.dock-resizer:hover::after,[\s\S]*?\.dock-panel\[data-area="bottom"\] \.dock-resizer:active::after \{\s*background: var\(--dock-divider-active-color\);\s*\}/);
 assert.match(styles, /\.dock-viewer \.ketcher-page \{[\s\S]*position: relative;[\s\S]*inset: auto;[\s\S]*overflow: hidden;/);
 assert.match(styles, /\.dock-viewer \.ketcher-page-header \{[\s\S]*grid-template-columns: minmax\(0, 1fr\);/);
 assert.match(styles, /\.dock-viewer \.ketcher-page-actions \{[\s\S]*overflow-x: auto;/);
