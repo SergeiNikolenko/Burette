@@ -35,7 +35,7 @@ ALLOW_ADHOC_RELEASE="${BURRETE_RELEASE_ALLOW_ADHOC:-0}"
 APP_METADATA_PLIST="$ROOT/apps/desktop/src-tauri/AppMetadata.plist"
 VITE_BURRETE_BUILD_IDENTIFIER="$APP_ID"
 VITE_BURRETE_BUILD_FLAVOR=""
-VITE_BURRETE_BUILD_CHANNEL="release"
+VITE_BURRETE_BUILD_CHANNEL="dev"
 case "$BUILD_MODE" in
   local) DEFAULT_XCODE_CONFIGURATION="Debug" ;;
   release) DEFAULT_XCODE_CONFIGURATION="Release" ;;
@@ -50,6 +50,7 @@ if [[ "$BUILD_MODE" == "release" ]]; then
     [[ -n "$DEVELOPMENT_TEAM" ]] || { echo "error: release builds require BURRETE_DEVELOPMENT_TEAM." >&2; exit 1; }
   fi
   [[ "$XCODE_CONFIGURATION" == "Release" ]] || { echo "error: release builds require BURRETE_XCODE_CONFIGURATION=Release." >&2; exit 1; }
+  VITE_BURRETE_BUILD_CHANNEL="release"
 fi
 
 if [[ -n "${BURRETE_DEV_FLAVOR:-}" ]]; then

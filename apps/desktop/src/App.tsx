@@ -1940,6 +1940,7 @@ export default function App() {
           manifestSignatureAssetName: release.installAsset.manifestSignatureAssetName,
           manifestSignatureBrowserDownloadUrl: release.installAsset.manifestSignatureBrowserDownloadUrl,
           manifestSignatureSize: release.installAsset.manifestSignatureSize,
+          allowSameVersion: release.replacesCurrentBuild,
         },
       });
     } catch (error) {
