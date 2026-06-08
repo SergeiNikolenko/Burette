@@ -13,7 +13,7 @@ body {
   margin: 0 0 4px;
   color: #14a39a;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 400;
   text-transform: uppercase;
 }
 
@@ -37,5 +37,5 @@ h1, h2 {
 
 .value {
   font-size: 22px;
-  font-weight: 750;
+  font-weight: 400;
 }
