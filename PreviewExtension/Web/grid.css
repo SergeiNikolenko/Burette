@@ -1199,17 +1199,22 @@ body.buret-hide-properties .buret-card-body {
 
 #status {
   position: fixed;
-  left: 14px;
-  bottom: 14px;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
   z-index: 100;
   box-sizing: border-box;
-  max-width: min(760px, calc(100vw - 28px));
-  padding: 10px 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: max-content;
+  max-width: min(760px, calc(100vw - 32px));
+  max-height: min(34vh, 260px);
+  padding: 10px 10px 10px 12px;
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.96);
   background: rgba(0, 0, 0, 0.78);
   font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  white-space: pre-wrap;
   -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
 }
@@ -1221,6 +1226,27 @@ body.buret-hide-properties .buret-card-body {
 
 #status.hidden {
   display: none;
+}
+
+#status [data-buret-status-message] {
+  min-width: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+#status [data-buret-status-dismiss] {
+  flex: 0 0 auto;
+  min-height: 24px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0 8px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.12);
+  font: inherit;
+}
+
+#status [data-buret-status-dismiss]:hover {
+  background: rgba(255, 255, 255, 0.18);
 }
 
 @media (max-width: 820px) {
