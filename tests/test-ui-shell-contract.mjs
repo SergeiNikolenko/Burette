@@ -2980,7 +2980,7 @@ assert.match(previewViewer, /function minimumTrajectoryLoopDelay\(prepared\)/);
 assert.match(previewViewer, /return prepared\?\.nativeTrajectoryControls \? 40 : 300/);
 assert.match(previewViewer, /function minimumTrajectoryLoopTimerDelay\(prepared\)/);
 assert.match(previewViewer, /return prepared\?\.nativeTrajectoryControls \? 8 : 60/);
-assert.match(previewViewer, /const DEFAULT_TRAJECTORY_LOOP_FPS = 2/);
+assert.match(previewViewer, /const DEFAULT_TRAJECTORY_LOOP_FPS = 20/);
 assert.match(previewViewer, /\.fps\.v1`/);
 assert.match(previewViewer, /function maximumTrajectoryLoopFps\(prepared\)/);
 assert.match(previewViewer, /function trajectoryFpsToDelay\(value, prepared\)/);
