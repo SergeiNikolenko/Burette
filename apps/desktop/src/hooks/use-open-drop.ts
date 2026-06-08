@@ -12,6 +12,7 @@ import type { StructureDragPayload, StructureDragRecord } from "../lib/structure
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 
 type OpenDocuments = (paths: string[]) => void | Promise<void>;
+type OpenTextDocuments = (paths: string[]) => unknown;
 type OpenDockingDocument = (
   receptorPath: string,
   ligandPaths: string[],
@@ -51,6 +52,7 @@ type OpenDropOptions = {
   openDockingDocument?: OpenDockingDocument;
   openDockingStructureRecords?: OpenDockingStructureRecords;
   openStructureRecords?: OpenStructureRecords;
+  openTextDocuments?: OpenTextDocuments;
   openKetcherWithStructures?: OpenKetcherWithStructures;
   openFepSetupWorkspace?: OpenFepSetupWorkspace;
   openDockPayload?: OpenDockPayload;
@@ -100,6 +102,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     openDockingDocument,
     openDockingStructureRecords,
     openStructureRecords,
+    openTextDocuments = openDocuments,
     openKetcherWithStructures,
     openFepSetupWorkspace,
     openDockPayload,
@@ -229,6 +232,10 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       void openDocuments(action.paths);
       return;
     }
+    if (action.kind === "open-text-files") {
+      void openTextDocuments(action.paths);
+      return;
+    }
     if (action.kind === "open-structure-records") {
       if (action.paths.length > 0) void openDocuments(action.paths);
       if (action.records.length > 0 && openStructureRecords) {
@@ -246,6 +253,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     openDockingDocument,
     openDockingStructureRecords,
     openDocuments,
+    openTextDocuments,
     openFepSetupWorkspace,
     openKetcherWithStructures,
     openStructureRecords,
