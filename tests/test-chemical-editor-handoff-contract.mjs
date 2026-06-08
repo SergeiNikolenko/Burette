@@ -57,6 +57,8 @@ assert.match(tauriCommands, /VESTA\.app/);
 assert.match(tauriCommands, /is_wildcard_extension/);
 assert.match(tauriCommands, /extension == "\*" \|\| extension == "\*\*\*\*"/);
 assert.match(tauriCommands, /app_icon_png_path/);
+assert.match(tauriCommands, /app_cache_dir\(\)/);
+assert.match(tauriCommands, /is_burrete_app_candidate/);
 assert.match(tauriCommands, /CFBundleIconFile/);
 assert.match(tauriCommands, /Command::new\("\/usr\/bin\/sips"\)/);
 assert.match(tauriCommands, /tauri_plugin_opener::open_path\(target_path, Some\(target\.app_path\)\)/);
