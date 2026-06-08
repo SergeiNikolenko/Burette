@@ -3053,14 +3053,21 @@ export default function App() {
       if (event.button !== 0) return;
       event.preventDefault();
       setRightDockDragging(true);
+      const resizeTarget = event.currentTarget;
+      const pointerId = event.pointerId;
       const startX = event.clientX;
       const startWidth = rightDockWidth;
       let closedByDrag = false;
+      let didStop = false;
       const previousCursor = document.documentElement.style.cursor;
       const previousUserSelect = document.body.style.userSelect;
       document.documentElement.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
       const onMove = (move: PointerEvent) => {
+        if (move.buttons === 0) {
+          stop();
+          return;
+        }
         const nextWidth = startWidth + startX - move.clientX;
         if (nextWidth <= RIGHT_DOCK_CLOSE_THRESHOLD) {
           if (!closedByDrag) {
@@ -3076,16 +3083,39 @@ export default function App() {
         setDockSize("right", nextWidth);
       };
       const stop = () => {
+        if (didStop) return;
+        didStop = true;
         setRightDockDragging(false);
         document.documentElement.style.cursor = previousCursor;
         document.body.style.userSelect = previousUserSelect;
+        try {
+          if (resizeTarget.hasPointerCapture(pointerId)) {
+            resizeTarget.releasePointerCapture(pointerId);
+          }
+        } catch {
+          // The pointer may already be gone if the native window lost focus.
+        }
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", stop);
         window.removeEventListener("pointercancel", stop);
+        window.removeEventListener("blur", stop);
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+        resizeTarget.removeEventListener("lostpointercapture", stop);
       };
+      const onVisibilityChange = () => {
+        if (document.hidden) stop();
+      };
+      try {
+        resizeTarget.setPointerCapture(pointerId);
+      } catch {
+        // Keep the window-level fallback listeners active if capture is unavailable.
+      }
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", stop);
       window.addEventListener("pointercancel", stop);
+      window.addEventListener("blur", stop);
+      document.addEventListener("visibilitychange", onVisibilityChange);
+      resizeTarget.addEventListener("lostpointercapture", stop);
     },
     [rightDockWidth, setDockOpen, setDockSize],
   );
@@ -3095,14 +3125,21 @@ export default function App() {
       if (event.button !== 0) return;
       event.preventDefault();
       setBottomDockDragging(true);
+      const resizeTarget = event.currentTarget;
+      const pointerId = event.pointerId;
       const startY = event.clientY;
       const startHeight = bottomDockHeight;
       let closedByDrag = false;
+      let didStop = false;
       const previousCursor = document.documentElement.style.cursor;
       const previousUserSelect = document.body.style.userSelect;
       document.documentElement.style.cursor = "row-resize";
       document.body.style.userSelect = "none";
       const onMove = (move: PointerEvent) => {
+        if (move.buttons === 0) {
+          stop();
+          return;
+        }
         const nextHeight = startHeight + startY - move.clientY;
         if (nextHeight <= BOTTOM_DOCK_CLOSE_THRESHOLD) {
           if (!closedByDrag) {
@@ -3118,16 +3155,39 @@ export default function App() {
         setDockSize("bottom", nextHeight);
       };
       const stop = () => {
+        if (didStop) return;
+        didStop = true;
         setBottomDockDragging(false);
         document.documentElement.style.cursor = previousCursor;
         document.body.style.userSelect = previousUserSelect;
+        try {
+          if (resizeTarget.hasPointerCapture(pointerId)) {
+            resizeTarget.releasePointerCapture(pointerId);
+          }
+        } catch {
+          // The pointer may already be gone if the native window lost focus.
+        }
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", stop);
         window.removeEventListener("pointercancel", stop);
+        window.removeEventListener("blur", stop);
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+        resizeTarget.removeEventListener("lostpointercapture", stop);
       };
+      const onVisibilityChange = () => {
+        if (document.hidden) stop();
+      };
+      try {
+        resizeTarget.setPointerCapture(pointerId);
+      } catch {
+        // Keep the window-level fallback listeners active if capture is unavailable.
+      }
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", stop);
       window.addEventListener("pointercancel", stop);
+      window.addEventListener("blur", stop);
+      document.addEventListener("visibilitychange", onVisibilityChange);
+      resizeTarget.addEventListener("lostpointercapture", stop);
     },
     [bottomDockHeight, setDockOpen, setDockSize],
   );
