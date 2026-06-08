@@ -7,6 +7,7 @@ import type { MenuItemSpec } from "./menu-types";
 type RadixDropdownProps = {
   items: MenuItemSpec[];
   trigger: ReactElement;
+  contentClassName?: string;
   align?: "start" | "center" | "end";
   side?: "top" | "right" | "bottom" | "left";
   sideOffset?: number;
@@ -16,6 +17,7 @@ type RadixDropdownProps = {
 export function RadixDropdownMenu({
   items,
   trigger,
+  contentClassName,
   align = "end",
   side = "bottom",
   sideOffset = 6,
@@ -28,7 +30,7 @@ export function RadixDropdownMenu({
       <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
       <DropdownMenu.Portal container={container}>
         <DropdownMenu.Content
-          className="radix-menu"
+          className={contentClassName ? `radix-menu ${contentClassName}` : "radix-menu"}
           align={align}
           side={side}
           sideOffset={sideOffset}
@@ -119,7 +121,7 @@ function renderDropdownItem(item: MenuItemSpec, index: number) {
       disabled={item.disabled}
       onSelect={() => item.action?.()}
     >
-      <span>{item.text}</span>
+      {renderItemBody(item)}
       {item.accelerator ? <kbd>{item.accelerator}</kbd> : null}
     </DropdownMenu.Item>
   );
@@ -137,9 +139,25 @@ function renderContextItem(item: MenuItemSpec, index: number) {
       disabled={item.disabled}
       onSelect={() => item.action?.()}
     >
-      <span>{item.text}</span>
+      {renderItemBody(item)}
       {item.accelerator ? <kbd>{item.accelerator}</kbd> : null}
     </ContextMenu.Item>
+  );
+}
+
+function renderItemBody(item: Extract<MenuItemSpec, { kind: "item" }>) {
+  return (
+    <span className="radix-menu-item-body">
+      {item.iconUrl ? (
+        <img className="radix-menu-item-icon" src={item.iconUrl} alt="" aria-hidden="true" />
+      ) : item.iconText ? (
+        <span className="radix-menu-item-icon" aria-hidden="true">{item.iconText}</span>
+      ) : null}
+      <span className="radix-menu-item-copy">
+        <span className="radix-menu-item-label">{item.text}</span>
+        {item.detail ? <span className="radix-menu-item-detail">{item.detail}</span> : null}
+      </span>
+    </span>
   );
 }
 

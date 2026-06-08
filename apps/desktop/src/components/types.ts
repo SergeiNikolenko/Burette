@@ -55,6 +55,18 @@ export type BuildInfo = {
   limitations: string[];
 };
 
+export type ChemicalEditorTarget = {
+  id: string;
+  name: string;
+  bundleId: string | null;
+  appPath: string;
+  iconPath?: string | null;
+  iconUrl?: string | null;
+  rank: number;
+  supportedExtensions: string[];
+  matchReason: string;
+};
+
 export type ShellActions = {
   chooseFiles: () => void | Promise<void>;
   openStructurePaths: (paths: string[]) => void | Promise<void>;
@@ -132,6 +144,9 @@ export type ShellActions = {
   addXyzrenderSheetItems: (targetDocumentId: string, payload: StructureDragPayload) => boolean;
   mergeMoleculeCollections: (targetPath: string | null, paths: string[]) => void | Promise<void>;
   saveMoleculeCollectionAs: (targetPath: string) => void | Promise<void>;
+  listChemicalEditorTargets: (path: string) => Promise<ChemicalEditorTarget[]>;
+  openPathInChemicalEditor: (path: string, targetId: string, targetName: string) => void | Promise<void>;
+  openPathWithDefaultApp: (path: string) => void | Promise<void>;
   revealActiveDocument: () => void | Promise<void>;
   revealDocument: (document: ViewerDocument) => void | Promise<void>;
   revealPath: (path: string, label?: string) => void | Promise<void>;

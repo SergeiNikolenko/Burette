@@ -12,6 +12,7 @@ const systemFont = "-apple-system-body, ui-sans-serif, -apple-system, system-ui,
 export const defaultPreferences: ViewerPreferences = {
   theme: "auto",
   canvasBackground: "auto",
+  openInDefaultDestination: "finder",
   rendererMode: "auto",
   molstarStyle: "illustrative",
   themeLightAccent: "#AF52DE",

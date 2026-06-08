@@ -92,6 +92,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::agent_integration::agent_integration_status,
+            commands::chemical_editors::list_chemical_editor_targets,
+            commands::chemical_editors::open_in_chemical_editor,
             commands::startup::startup_documents,
             commands::startup::startup_agent_session,
             commands::documents::pick_open_targets,
