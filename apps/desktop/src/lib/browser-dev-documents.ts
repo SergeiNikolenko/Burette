@@ -552,8 +552,9 @@ async function openBrowserDevDocumentFromBytes(
   const molstarBytes: Uint8Array | null = convertedMolstarData?.bytes && (format.externalOnly || shouldUseConvertedMolstarData(format, convertedMolstarData.bytes))
     ? convertedMolstarData.bytes
     : null;
-  const xyzFrameCount = runtimeFormat.molstarFormat === "xyz" && !runtimeFormat.binary ? countXyzFrames(text) : 0;
-  const pdbModelCount = runtimeFormat.molstarFormat === "pdb" && !runtimeFormat.binary ? countPdbModels(text) : 0;
+  const runtimeFrameText = maestroPreview?.bytes ? decodeUtf8(maestroPreview.bytes) : text;
+  const xyzFrameCount = runtimeFormat.molstarFormat === "xyz" && !runtimeFormat.binary ? countXyzFrames(runtimeFrameText) : 0;
+  const pdbModelCount = runtimeFormat.molstarFormat === "pdb" && !runtimeFormat.binary ? countPdbModels(runtimeFrameText) : 0;
   const trajectoryFrameCount = Math.max(xyzFrameCount, pdbModelCount);
   const shouldOpenTrajectoryInMolstar = trajectoryFrameCount > 1 && requestedMode === "auto";
   const xyzrenderAvailable = maestroPreview ? false : xyzrenderAvailableForDocument(format, text);
@@ -1584,14 +1585,16 @@ function atomsFromText(text: string, extension: string) {
 
 function maestroPdbDataFromText(text: string) {
   const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-  const atoms = parseMaestroPdbAtoms(lines, MAESTRO_PDB_PREVIEW_ATOM_LIMIT);
-  if (!atoms?.length) return null;
-  const pdb = [
-    ...atoms.map((atom, index) => maestroPdbAtomLine(index + 1, atom)),
-    ...pdbConectLines(atoms),
-    "END",
-    "",
-  ].join("\n");
+  const models = parseMaestroPdbModels(lines, MAESTRO_PDB_PREVIEW_ATOM_LIMIT);
+  if (!models?.length) return null;
+  const pdb = models.length === 1
+    ? [
+        ...models[0].map((atom, index) => maestroPdbAtomLine(index + 1, atom)),
+        ...pdbConectLines(models[0]),
+        "END",
+        "",
+      ].join("\n")
+    : maestroModelsToPdb(models);
   return new TextEncoder().encode(pdb);
 }
 
@@ -1744,9 +1747,13 @@ function parseMaestroAtoms(lines: string[], atomLimit: number) {
 }
 
 function parseMaestroPdbAtoms(lines: string[], atomLimit: number) {
+  return parseMaestroPdbModels(lines, atomLimit)?.[0] ?? null;
+}
+
+function parseMaestroPdbModels(lines: string[], atomLimit: number) {
   let currentCtType = "";
   let bestScore = -1;
-  let bestAtoms: MaestroAtom[] | null = null;
+  const bestModels: MaestroAtom[][] = [];
   for (let index = 0; index < lines.length; index += 1) {
     const trimmed = lines[index].trim();
     if (trimmed === "f_m_ct {") {
@@ -1821,11 +1828,14 @@ function parseMaestroPdbAtoms(lines: string[], atomLimit: number) {
       const score = maestroCtScore(currentCtType);
       if (score > bestScore) {
         bestScore = score;
-        bestAtoms = atoms;
+        bestModels.length = 0;
+        bestModels.push(atoms);
+      } else if (score === bestScore) {
+        bestModels.push(atoms);
       }
     }
   }
-  return bestAtoms;
+  return bestModels.length ? bestModels : null;
 }
 
 function parseMaestroCtType(lines: string[], startIndex: number) {
@@ -1855,6 +1865,20 @@ function maestroCtScore(ctType: string) {
   if (ctType === "ion") return 1;
   if (ctType === "solvent") return 0;
   return 2;
+}
+
+function maestroModelsToPdb(models: MaestroAtom[][]) {
+  const lines: string[] = [];
+  models.forEach((atoms, modelIndex) => {
+    lines.push(`MODEL${String(modelIndex + 1).padStart(9, " ")}`);
+    atoms.forEach((atom, atomIndex) => {
+      lines.push(maestroPdbAtomLine(atomIndex + 1, atom));
+    });
+    lines.push(...pdbConectLines(atoms));
+    lines.push("ENDMDL");
+  });
+  lines.push("END", "");
+  return lines.join("\n");
 }
 
 function maestroPdbAtomLine(serial: number, atom: MaestroAtom) {

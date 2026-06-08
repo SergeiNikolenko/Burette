@@ -1259,6 +1259,73 @@ CARTESIAN COORDINATES (ANGSTROEM)
     }
 
     #[test]
+    fn opens_multi_ct_maestro_in_molstar_with_trajectory_controls_on_auto() {
+        let app = mock_app_with_grid_registry();
+        let preferences = viewer_preferences();
+        let path = create_temp_file(
+            "mae",
+            br#"
+f_m_ct {
+  s_ffio_ct_type
+  :::
+  full_system
+  m_atom[2] {
+    i_m_mmod_type
+    i_m_atomic_number
+    r_m_x_coord
+    r_m_y_coord
+    r_m_z_coord
+    s_m_pdb_residue_name
+    s_m_pdb_atom_name
+    i_m_residue_number
+    s_m_chain_name
+    :::
+    1 6 1.000000 2.000000 3.000000 "ALA " " CA " 10 "A"
+    1 8 2.000000 3.000000 4.000000 "MOL " " O1 " 1 "L"
+    :::
+  }
+}
+f_m_ct {
+  s_ffio_ct_type
+  :::
+  full_system
+  m_atom[2] {
+    i_m_mmod_type
+    i_m_atomic_number
+    r_m_x_coord
+    r_m_y_coord
+    r_m_z_coord
+    s_m_pdb_residue_name
+    s_m_pdb_atom_name
+    i_m_residue_number
+    s_m_chain_name
+    :::
+    1 6 5.000000 6.000000 7.000000 "ALA " " CA " 10 "A"
+    1 8 6.000000 7.000000 8.000000 "MOL " " O1 " 1 "L"
+    :::
+  }
+}
+"#,
+        );
+
+        let document = open_document(app.handle(), path.clone(), &preferences, None)
+            .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
+        assert_eq!(document.renderer, "molstar");
+        let runtime_dir = Path::new(&document.runtime_path)
+            .parent()
+            .expect("runtime html should have a parent");
+        let config = fs::read_to_string(runtime_dir.join("preview-config.js"))
+            .expect("preview config should be written");
+        assert!(config.contains("\"trajectoryControls\":true"));
+        assert!(config.contains("\"trajectoryFrameCount\":2"));
+
+        remove_runtime_artifacts(&document.runtime_path);
+        if let Some(parent) = path.parent() {
+            let _ = fs::remove_dir_all(parent);
+        }
+    }
+
+    #[test]
     fn treats_removed_fast_renderer_preference_as_auto_for_multiframe_xyz() {
         let app = mock_app_with_grid_registry();
         let mut preferences = viewer_preferences();
