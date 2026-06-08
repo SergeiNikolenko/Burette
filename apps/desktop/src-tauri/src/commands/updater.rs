@@ -28,6 +28,7 @@ pub(crate) struct UpdateInstallRequest {
     manifest_signature_asset_name: Option<String>,
     manifest_signature_browser_download_url: Option<String>,
     manifest_signature_size: Option<u64>,
+    allow_same_version: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -115,65 +116,27 @@ fn download_update(
             request.size, downloaded_size
         ));
     }
-    if use_manifest {
+    if request_has_digest_assets(request) {
         let digest_name = request
             .sha256_asset_name
             .as_deref()
-            .expect("manifest mode requires sha256 asset name");
+            .expect("digest mode requires sha256 asset name");
         let digest_url = request
             .sha256_browser_download_url
             .as_deref()
-            .expect("manifest mode requires sha256 download url");
+            .expect("digest mode requires sha256 download url");
         let digest_size = request
             .sha256_size
-            .expect("manifest mode requires sha256 size");
-        let manifest_name = request
-            .manifest_asset_name
-            .as_deref()
-            .expect("manifest mode requires manifest asset name");
-        let manifest_url = request
-            .manifest_browser_download_url
-            .as_deref()
-            .expect("manifest mode requires manifest download url");
-        let manifest_size = request
-            .manifest_size
-            .expect("manifest mode requires manifest size");
-        let signature_name = request
-            .manifest_signature_asset_name
-            .as_deref()
-            .expect("manifest mode requires signature asset name");
-        let signature_url = request
-            .manifest_signature_browser_download_url
-            .as_deref()
-            .expect("manifest mode requires signature download url");
-        let signature_size = request
-            .manifest_signature_size
-            .expect("manifest mode requires signature size");
+            .expect("digest mode requires sha256 size");
 
         let digest = updates_dir.join(safe_path_component(digest_name));
-        let manifest = updates_dir.join(safe_path_component(manifest_name));
-        let manifest_signature = updates_dir.join(safe_path_component(signature_name));
         let temporary_digest =
             updates_dir.join(format!("{}.download", safe_path_component(digest_name)));
-        let temporary_manifest =
-            updates_dir.join(format!("{}.download", safe_path_component(manifest_name)));
-        let temporary_manifest_signature =
-            updates_dir.join(format!("{}.download", safe_path_component(signature_name)));
         remove_path_if_exists(&temporary_digest)?;
-        remove_path_if_exists(&temporary_manifest)?;
-        remove_path_if_exists(&temporary_manifest_signature)?;
         remove_path_if_exists(&digest)?;
-        remove_path_if_exists(&manifest)?;
-        remove_path_if_exists(&manifest_signature)?;
 
         update_progress::show(app, "Downloading update metadata...", Some(0.40));
         download_asset(package_version, digest_url, &temporary_digest)?;
-        download_asset(package_version, manifest_url, &temporary_manifest)?;
-        download_asset(
-            package_version,
-            signature_url,
-            &temporary_manifest_signature,
-        )?;
 
         update_progress::show(app, "Verifying update metadata...", Some(0.50));
         let downloaded_digest_size = fs::metadata(&temporary_digest)
@@ -187,68 +150,105 @@ fn download_update(
                 digest_size, downloaded_digest_size
             ));
         }
-        let downloaded_manifest_size = fs::metadata(&temporary_manifest)
-            .map_err(|err| err.to_string())?
-            .len();
-        if downloaded_manifest_size != manifest_size {
-            cleanup_downloads(&[
-                &temporary,
-                &temporary_digest,
-                &temporary_manifest,
-                &temporary_manifest_signature,
-            ])?;
-            return Err(format!(
-                "Downloaded update manifest size mismatch: expected {} bytes, got {} bytes.",
-                manifest_size, downloaded_manifest_size
-            ));
-        }
-        let downloaded_signature_size = fs::metadata(&temporary_manifest_signature)
-            .map_err(|err| err.to_string())?
-            .len();
-        if downloaded_signature_size != signature_size {
-            cleanup_downloads(&[
-                &temporary,
-                &temporary_digest,
-                &temporary_manifest,
-                &temporary_manifest_signature,
-            ])?;
-            return Err(format!(
-                "Downloaded update manifest signature size mismatch: expected {} bytes, got {} bytes.",
-                signature_size, downloaded_signature_size
-            ));
-        }
-
-        let manifest_bytes = fs::read(&temporary_manifest).map_err(|err| err.to_string())?;
-        let manifest_signature_text =
-            fs::read_to_string(&temporary_manifest_signature).map_err(|err| err.to_string())?;
-        let manifest_payload = verify_update_manifest(&manifest_bytes, &manifest_signature_text)?;
-        validate_update_manifest(&manifest_payload, request)?;
-
         let expected_sha256 = read_expected_sha256(&temporary_digest)?;
-        if expected_sha256 != manifest_payload.asset_sha256 {
-            cleanup_downloads(&[
-                &temporary,
-                &temporary_digest,
-                &temporary_manifest,
+
+        if use_manifest {
+            let manifest_name = request
+                .manifest_asset_name
+                .as_deref()
+                .expect("manifest mode requires manifest asset name");
+            let manifest_url = request
+                .manifest_browser_download_url
+                .as_deref()
+                .expect("manifest mode requires manifest download url");
+            let manifest_size = request
+                .manifest_size
+                .expect("manifest mode requires manifest size");
+            let signature_name = request
+                .manifest_signature_asset_name
+                .as_deref()
+                .expect("manifest mode requires signature asset name");
+            let signature_url = request
+                .manifest_signature_browser_download_url
+                .as_deref()
+                .expect("manifest mode requires signature download url");
+            let signature_size = request
+                .manifest_signature_size
+                .expect("manifest mode requires signature size");
+            let manifest = updates_dir.join(safe_path_component(manifest_name));
+            let manifest_signature = updates_dir.join(safe_path_component(signature_name));
+            let temporary_manifest =
+                updates_dir.join(format!("{}.download", safe_path_component(manifest_name)));
+            let temporary_manifest_signature =
+                updates_dir.join(format!("{}.download", safe_path_component(signature_name)));
+            remove_path_if_exists(&temporary_manifest)?;
+            remove_path_if_exists(&temporary_manifest_signature)?;
+            remove_path_if_exists(&manifest)?;
+            remove_path_if_exists(&manifest_signature)?;
+            download_asset(package_version, manifest_url, &temporary_manifest)?;
+            download_asset(
+                package_version,
+                signature_url,
                 &temporary_manifest_signature,
-            ])?;
-            return Err("Release digest sidecar does not match the signed update manifest.".into());
+            )?;
+            let downloaded_manifest_size = fs::metadata(&temporary_manifest)
+                .map_err(|err| err.to_string())?
+                .len();
+            if downloaded_manifest_size != manifest_size {
+                cleanup_downloads(&[
+                    &temporary,
+                    &temporary_digest,
+                    &temporary_manifest,
+                    &temporary_manifest_signature,
+                ])?;
+                return Err(format!(
+                    "Downloaded update manifest size mismatch: expected {} bytes, got {} bytes.",
+                    manifest_size, downloaded_manifest_size
+                ));
+            }
+            let downloaded_signature_size = fs::metadata(&temporary_manifest_signature)
+                .map_err(|err| err.to_string())?
+                .len();
+            if downloaded_signature_size != signature_size {
+                cleanup_downloads(&[
+                    &temporary,
+                    &temporary_digest,
+                    &temporary_manifest,
+                    &temporary_manifest_signature,
+                ])?;
+                return Err(format!(
+                    "Downloaded update manifest signature size mismatch: expected {} bytes, got {} bytes.",
+                    signature_size, downloaded_signature_size
+                ));
+            }
+            let manifest_bytes = fs::read(&temporary_manifest).map_err(|err| err.to_string())?;
+            let manifest_signature_text =
+                fs::read_to_string(&temporary_manifest_signature).map_err(|err| err.to_string())?;
+            let manifest_payload =
+                verify_update_manifest(&manifest_bytes, &manifest_signature_text)?;
+            validate_update_manifest(&manifest_payload, request)?;
+            if expected_sha256 != manifest_payload.asset_sha256 {
+                cleanup_downloads(&[
+                    &temporary,
+                    &temporary_digest,
+                    &temporary_manifest,
+                    &temporary_manifest_signature,
+                ])?;
+                return Err(
+                    "Release digest sidecar does not match the signed update manifest.".into(),
+                );
+            }
+            fs::rename(&temporary_manifest, &manifest).map_err(|err| err.to_string())?;
+            fs::rename(&temporary_manifest_signature, &manifest_signature)
+                .map_err(|err| err.to_string())?;
         }
         let actual_sha256 = file_sha256(&temporary)?;
         if actual_sha256 != expected_sha256 {
-            cleanup_downloads(&[
-                &temporary,
-                &temporary_digest,
-                &temporary_manifest,
-                &temporary_manifest_signature,
-            ])?;
+            cleanup_downloads(&[&temporary, &temporary_digest])?;
             return Err("Downloaded update archive SHA256 does not match release digest.".into());
         }
 
         fs::rename(&temporary_digest, &digest).map_err(|err| err.to_string())?;
-        fs::rename(&temporary_manifest, &manifest).map_err(|err| err.to_string())?;
-        fs::rename(&temporary_manifest_signature, &manifest_signature)
-            .map_err(|err| err.to_string())?;
     }
 
     fs::rename(&temporary, &archive).map_err(|err| err.to_string())?;
@@ -294,13 +294,20 @@ fn unpack_and_validate_update(
 
     update_progress::show(app, "Validating update...", Some(0.78));
     let app = find_downloaded_app(&staging_dir)?;
-    validate_downloaded_app(&app, current_version, &request.tag_name)?;
+    validate_downloaded_app(
+        &app,
+        current_version,
+        &request.tag_name,
+        request.allow_same_version.unwrap_or(false),
+    )?;
     Ok(app)
 }
 
 fn validate_request(request: &UpdateInstallRequest) -> Result<(), String> {
-    let has_integrity = request_has_integrity_assets(request);
-    let has_partial_integrity = has_partial_integrity_assets(request);
+    let has_digest = request_has_digest_assets(request);
+    let has_partial_digest = has_partial_digest_assets(request);
+    let has_manifest = request_has_manifest_assets(request);
+    let has_partial_manifest = has_partial_manifest_assets(request);
     if !request
         .browser_download_url
         .starts_with(RELEASE_DOWNLOAD_PREFIX)
@@ -313,12 +320,15 @@ fn validate_request(request: &UpdateInstallRequest) -> Result<(), String> {
     if request.size == 0 {
         return Err("Release asset reports zero bytes.".into());
     }
-    if has_partial_integrity {
+    if has_partial_digest || has_partial_manifest {
         return Err(
-            "Release integrity sidecars must be provided together or omitted together.".into(),
+            "Release integrity sidecars must be provided as a complete digest set and optional complete manifest set.".into(),
         );
     }
-    if has_integrity {
+    if has_manifest && !has_digest {
+        return Err("Release manifest sidecars require a release digest sidecar.".into());
+    }
+    if has_digest {
         let sha256_url = request
             .sha256_browser_download_url
             .as_deref()
@@ -330,6 +340,19 @@ fn validate_request(request: &UpdateInstallRequest) -> Result<(), String> {
         let sha256_size = request
             .sha256_size
             .expect("integrity validation requires sha256 size");
+        if !sha256_url.starts_with(RELEASE_DOWNLOAD_PREFIX) {
+            return Err("Only Burette GitHub release digest assets can be installed.".into());
+        }
+        if sha256_name != format!("{}.sha256", request.asset_name) {
+            return Err(
+                "Release digest asset must be named after the zip asset with .sha256.".into(),
+            );
+        }
+        if sha256_size == 0 || sha256_size > 4096 {
+            return Err("Release digest asset size is invalid.".into());
+        }
+    }
+    if has_manifest {
         let manifest_url = request
             .manifest_browser_download_url
             .as_deref()
@@ -353,14 +376,6 @@ fn validate_request(request: &UpdateInstallRequest) -> Result<(), String> {
             .manifest_signature_size
             .expect("integrity validation requires signature size");
 
-        if !sha256_url.starts_with(RELEASE_DOWNLOAD_PREFIX) {
-            return Err("Only Burette GitHub release digest assets can be installed.".into());
-        }
-        if sha256_name != format!("{}.sha256", request.asset_name) {
-            return Err(
-                "Release digest asset must be named after the zip asset with .sha256.".into(),
-            );
-        }
         if !manifest_url.starts_with(RELEASE_DOWNLOAD_PREFIX) {
             return Err("Only Burette GitHub release manifest assets can be installed.".into());
         }
@@ -381,9 +396,6 @@ fn validate_request(request: &UpdateInstallRequest) -> Result<(), String> {
                     .into(),
             );
         }
-        if sha256_size == 0 || sha256_size > 4096 {
-            return Err("Release digest asset size is invalid.".into());
-        }
         if manifest_size == 0 || manifest_size > 16384 {
             return Err("Release manifest asset size is invalid.".into());
         }
@@ -394,11 +406,28 @@ fn validate_request(request: &UpdateInstallRequest) -> Result<(), String> {
     Ok(())
 }
 
-fn request_has_integrity_assets(request: &UpdateInstallRequest) -> bool {
+fn request_has_digest_assets(request: &UpdateInstallRequest) -> bool {
     [
         request.sha256_asset_name.is_some(),
         request.sha256_browser_download_url.is_some(),
         request.sha256_size.is_some(),
+    ]
+    .into_iter()
+    .all(std::convert::identity)
+}
+
+fn has_partial_digest_assets(request: &UpdateInstallRequest) -> bool {
+    let fields = [
+        request.sha256_asset_name.is_some(),
+        request.sha256_browser_download_url.is_some(),
+        request.sha256_size.is_some(),
+    ];
+    fields.into_iter().any(std::convert::identity)
+        && !fields.into_iter().all(std::convert::identity)
+}
+
+fn request_has_manifest_assets(request: &UpdateInstallRequest) -> bool {
+    [
         request.manifest_asset_name.is_some(),
         request.manifest_browser_download_url.is_some(),
         request.manifest_size.is_some(),
@@ -410,11 +439,8 @@ fn request_has_integrity_assets(request: &UpdateInstallRequest) -> bool {
     .all(std::convert::identity)
 }
 
-fn has_partial_integrity_assets(request: &UpdateInstallRequest) -> bool {
+fn has_partial_manifest_assets(request: &UpdateInstallRequest) -> bool {
     let fields = [
-        request.sha256_asset_name.is_some(),
-        request.sha256_browser_download_url.is_some(),
-        request.sha256_size.is_some(),
         request.manifest_asset_name.is_some(),
         request.manifest_browser_download_url.is_some(),
         request.manifest_size.is_some(),
@@ -427,7 +453,9 @@ fn has_partial_integrity_assets(request: &UpdateInstallRequest) -> bool {
 }
 
 fn should_verify_manifest(request: &UpdateInstallRequest) -> bool {
-    request_has_integrity_assets(request) && manifest_public_key().is_some()
+    request_has_digest_assets(request)
+        && request_has_manifest_assets(request)
+        && manifest_public_key().is_some()
 }
 
 fn manifest_public_key() -> Option<&'static str> {
@@ -537,6 +565,7 @@ fn validate_downloaded_app(
     app: &Path,
     current_version: &str,
     release_tag: &str,
+    allow_same_version: bool,
 ) -> Result<(), String> {
     let info_plist = app.join("Contents/Info.plist");
     let bundle_id = read_plist_value(&info_plist, "CFBundleIdentifier")?;
@@ -545,7 +574,8 @@ fn validate_downloaded_app(
     }
 
     let downloaded_version = read_plist_value(&info_plist, "CFBundleShortVersionString")?;
-    if compare_versions(&downloaded_version, current_version) <= 0 {
+    let current_comparison = compare_versions(&downloaded_version, current_version);
+    if current_comparison < 0 || (current_comparison == 0 && !allow_same_version) {
         return Err(format!(
             "Downloaded version {downloaded_version} is not newer than {current_version}."
         ));
@@ -1126,6 +1156,7 @@ mod tests {
             manifest_signature_asset_name: Some("Burrete-0.10.32.zip.manifest.json.sig".to_string()),
             manifest_signature_browser_download_url: Some("https://github.com/SergeiNikolenko/Burrete/releases/download/v0.10.32/Burrete-0.10.32.zip.manifest.json.sig".to_string()),
             manifest_signature_size: Some(TEST_SIGNATURE_HEX.len() as u64 + 1),
+            allow_same_version: None,
         }
     }
 
@@ -1144,6 +1175,21 @@ mod tests {
 
         validate_request(&request).expect("legacy zip-only request should remain supported");
         assert!(!should_verify_manifest(&request));
+    }
+
+    #[test]
+    fn accepts_digest_only_requests() {
+        let mut request = install_request();
+        request.manifest_asset_name = None;
+        request.manifest_browser_download_url = None;
+        request.manifest_size = None;
+        request.manifest_signature_asset_name = None;
+        request.manifest_signature_browser_download_url = None;
+        request.manifest_signature_size = None;
+
+        validate_request(&request).expect("sha256-only request should be supported");
+        assert!(!should_verify_manifest(&request));
+        assert!(request_has_digest_assets(&request));
     }
 
     #[test]
@@ -1175,7 +1221,7 @@ mod tests {
         request.manifest_signature_asset_name = None;
 
         let error = validate_request(&request).expect_err("partial sidecars must be rejected");
-        assert!(error.contains("provided together"));
+        assert!(error.contains("complete digest set"));
     }
 
     #[test]
