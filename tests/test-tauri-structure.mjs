@@ -423,6 +423,7 @@ assert.match(thumbnailInfoPlist, /ThumbnailProvider/);
 assert.match(thumbnailInfoPlist, /com\.local\.burrete10\.pdb/);
 assert.match(thumbnailInfoPlist, /com\.local\.burrete10\.sdf/);
 assert.match(thumbnailInfoPlist, /com\.local\.burrete10\.xyz/);
+assert.match(thumbnailInfoPlist, /gg\.flew\.unfold\.gromacs-structure/);
 assert.match(thumbnailProviderSource, /final class ThumbnailProvider: QLThumbnailProvider/);
 assert.match(thumbnailProviderSource, /QLThumbnailReply\(contextSize: size\)/);
 assert.match(thumbnailProviderSource, /parsePDB/);
