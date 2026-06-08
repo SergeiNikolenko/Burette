@@ -1121,7 +1121,7 @@ assert.match(styles, /button, select, input, textarea, \.tab-shell, \.tab, \.new
 assert.match(styles, /\.drag-region \{[^}]*height: var\(--chrome-drag-height\);[^}]*z-index: 2/s);
 assert.match(shortcutTooltip, /export function ShortcutTooltip/);
 assert.match(shortcutTooltip, /className="shortcut-tooltip"/);
-assert.match(styles, /\.shortcut-tooltip \{[^}]*position: absolute;[^}]*min-height: 19px;[^}]*backdrop-filter: blur\(15px\) saturate\(1\.35\);[^}]*visibility: hidden;[^}]*transform: translate\(-50%, -4px\) scale\(0\.98\);/s);
+assert.match(styles, /\.shortcut-tooltip \{[^}]*position: absolute;[^}]*min-height: 28px;[^}]*backdrop-filter: blur\(15px\) saturate\(1\.35\);[^}]*visibility: hidden;[^}]*transform: translate\(-50%, -4px\) scale\(0\.98\);/s);
 assert.match(styles, /button:hover > \.shortcut-tooltip,\s*button:focus-visible > \.shortcut-tooltip \{[^}]*opacity: 1;[^}]*visibility: visible;[^}]*transform: translate\(-50%, 0\) scale\(1\);[^}]*transition-delay: 180ms, 180ms, 0s;/s);
 assert.match(styles, /\.shortcut-tooltip-key \{[^}]*border-radius: 999px;[^}]*letter-spacing: 0;/s);
 assert.doesNotMatch(styles, /\.workspace \{[^}]*z-index:/s);
