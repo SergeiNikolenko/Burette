@@ -1,6 +1,16 @@
 import type { DockingDocumentRequest } from "../types";
+import previewFormatRegistry from "../../../../config/preview-formats.json";
 
 export type DockingDropCandidate = DockingDocumentRequest;
+
+const MOLSTAR_COORDINATE_TRAJECTORY_EXTENSIONS = new Set(["xtc", "trr", "dcd", "nctraj", "lammpstrj"]);
+const MOLSTAR_TRAJECTORY_EXTENSIONS = new Set([...MOLSTAR_COORDINATE_TRAJECTORY_EXTENSIONS, "top", "psf", "prmtop"]);
+const MOLSTAR_VIEWER_EXTENSIONS = new Set([
+  ...previewFormatRegistry.formats
+    .filter((format) => Boolean(format.viewer))
+    .flatMap((format) => format.extensions.map((extension) => extension === "mae.gz" ? "maegz" : extension)),
+  ...MOLSTAR_TRAJECTORY_EXTENSIONS,
+]);
 
 export function extensionForDocking(path: string) {
   const name = path.replace(/\\/g, "/").split("/").filter(Boolean).pop()?.toLowerCase() ?? "";
@@ -13,12 +23,20 @@ export function isProteinLikeDockingSource(path: string) {
   return ["bcif", "cif", "cms", "ent", "mae", "maegz", "mcif", "mmcif", "pdb", "pdbqt", "pqr"].includes(extensionForDocking(path));
 }
 
+export function isMolstarCombineSource(path: string) {
+  return MOLSTAR_VIEWER_EXTENSIONS.has(extensionForDocking(path));
+}
+
+export function isMolstarCoordinateTrajectorySource(path: string) {
+  return MOLSTAR_COORDINATE_TRAJECTORY_EXTENSIONS.has(extensionForDocking(path));
+}
+
 function uniqueDockingPaths(paths: string[]) {
   return Array.from(new Set(paths.filter((path) => path && path.trim().length > 0)));
 }
 
-function ligandLikeDockingPaths(paths: string[]) {
-  return uniqueDockingPaths(paths).filter((path) => !isProteinLikeDockingSource(path));
+function combineDockingPaths(paths: string[]) {
+  return uniqueDockingPaths(paths).filter(isMolstarCombineSource);
 }
 
 export function ligandDropPathsForTarget(targetPath: string, droppedPaths: string[]) {
@@ -40,21 +58,25 @@ export function dockingCandidatesForDrop(
 ): DockingDropCandidate[] {
   if (existingDockingRequest) {
     const existingLigands = new Set(existingDockingRequest.ligandPaths);
-    const addedLigands = ligandLikeDockingPaths(droppedPaths)
+    const addedLigands = combineDockingPaths(droppedPaths)
       .filter((path) => path !== existingDockingRequest.receptorPath && !existingLigands.has(path));
     if (addedLigands.length === 0) return [];
     return [{
       receptorPath: existingDockingRequest.receptorPath,
-      ligandPaths: ligandLikeDockingPaths([...existingDockingRequest.ligandPaths, ...addedLigands])
+      ligandPaths: combineDockingPaths([...existingDockingRequest.ligandPaths, ...addedLigands])
         .filter((path) => path !== existingDockingRequest.receptorPath),
     }];
   }
-  const paths = uniqueDockingPaths([targetPath, ...droppedPaths]);
+  const paths = combineDockingPaths([targetPath, ...droppedPaths]);
   const receptorPaths = paths.filter(isProteinLikeDockingSource);
-  return receptorPaths
+  const modelOrTopologyPaths = paths.filter((path) => !isMolstarCoordinateTrajectorySource(path));
+  const anchorPaths = receptorPaths.length > 0
+    ? receptorPaths
+    : (modelOrTopologyPaths.length > 0 ? modelOrTopologyPaths : paths);
+  return anchorPaths
     .map((receptorPath) => ({
       receptorPath,
-      ligandPaths: ligandLikeDockingPaths(paths.filter((path) => path !== receptorPath)),
+      ligandPaths: paths.filter((path) => path !== receptorPath),
     }))
     .filter((candidate) => candidate.ligandPaths.length > 0);
 }
