@@ -5,6 +5,7 @@ import { DockPanel } from "./dock-panel";
 import { ViewerArea } from "./editor-area";
 import { EditorTabs } from "./editor-area/editor-tabs";
 import { NotificationPopup } from "./notification-popup";
+import { OpenInEditorMenu } from "./open-in-editor-menu";
 import { Sidebar } from "./sidebar";
 import { ShortcutTooltip } from "./shortcut-tooltip";
 import type { ShellActions, ShellViewState } from "./types";
@@ -95,6 +96,7 @@ export function AppLayout({
             </button>
           </div>
           <div className="chrome-trailing-controls" data-tauri-drag-region>
+            <OpenInEditorMenu state={layoutState} actions={actions} />
             <button
               type="button"
               className="chrome-button dock-toggle-button"
