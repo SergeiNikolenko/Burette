@@ -127,13 +127,36 @@
   function setStatus(message, kind = 'info') {
     const text = String(message || '');
     if (status) {
-      status.textContent = text;
+      setStatusText(text);
       status.classList.toggle('error', kind === 'error');
       status.classList.toggle('hidden', kind !== 'error' && !window.BurreteDebug);
     }
     if (shouldReportStatus(text, kind)) {
       post(kind === 'error' ? 'error' : 'status', text);
     }
+  }
+
+  function setStatusText(text) {
+    if (!status) return;
+    let message = status.querySelector('[data-buret-status-message]');
+    let dismiss = status.querySelector('[data-buret-status-dismiss]');
+    if (!message) {
+      message = document.createElement('span');
+      message.setAttribute('data-buret-status-message', '');
+    }
+    if (!dismiss) {
+      dismiss = document.createElement('button');
+      dismiss.type = 'button';
+      dismiss.setAttribute('data-buret-status-dismiss', '');
+      dismiss.setAttribute('aria-label', 'Dismiss status message');
+      dismiss.textContent = 'Dismiss';
+      dismiss.addEventListener('click', event => {
+        event.preventDefault();
+        status.classList.add('hidden');
+      });
+    }
+    message.textContent = text;
+    status.replaceChildren(message, dismiss);
   }
 
   function shouldReportStatus(text, kind) {

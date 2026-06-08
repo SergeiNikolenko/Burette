@@ -167,12 +167,35 @@
   function setStatus(message, kind = 'info') {
     const cfg = window.BurreteConfig && typeof window.BurreteConfig === 'object' ? window.BurreteConfig : {};
     if (status) {
-      status.textContent = String(message || '');
+      setStatusText(String(message || ''));
       status.classList.toggle('error', kind === 'error');
       status.classList.toggle('hidden', kind !== 'error' && !window.BurreteDebug);
       if (kind === 'error' && status && !window.BurreteDebug && cfg.appViewer === true) status.classList.add('hidden');
     }
     if (kind === 'error' || window.BurreteDebug) post(kind === 'error' ? 'error' : 'status', message || '');
+  }
+
+  function setStatusText(text) {
+    if (!status) return;
+    let message = status.querySelector('[data-buret-status-message]');
+    let dismiss = status.querySelector('[data-buret-status-dismiss]');
+    if (!message) {
+      message = document.createElement('span');
+      message.setAttribute('data-buret-status-message', '');
+    }
+    if (!dismiss) {
+      dismiss = document.createElement('button');
+      dismiss.type = 'button';
+      dismiss.setAttribute('data-buret-status-dismiss', '');
+      dismiss.setAttribute('aria-label', 'Dismiss status message');
+      dismiss.textContent = 'Dismiss';
+      dismiss.addEventListener('click', event => {
+        event.preventDefault();
+        status.classList.add('hidden');
+      });
+    }
+    message.textContent = text;
+    status.replaceChildren(message, dismiss);
   }
 
   function config() {
