@@ -1065,6 +1065,8 @@ assert.match(styles, /\.ketcher-editor-shell \[class\*="App-module_app"\]\s*\{[^
 assert.match(styles, /\.ketcher-editor-shell \[data-testid="top-toolbar"\]\s*\{[^}]*width: min\(100%, calc\(100% \* var\(--ketcher-ui-scale, 1\)\)\) !important;[^}]*height: var\(--ketcher-top-toolbar-height\) !important;[^}]*min-height: var\(--ketcher-top-toolbar-height\) !important;/s);
 assert.match(styles, /\.ketcher-editor-shell \[data-testid="top-toolbar"\] button:has\(svg\)\s*\{[^}]*width: var\(--ketcher-top-toolbar-button-size\) !important;[^}]*min-width: var\(--ketcher-top-toolbar-button-size\) !important;/s);
 assert.match(styles, /\.ketcher-editor-shell \[data-testid="top-toolbar"\] button > svg\s*\{[^}]*width: var\(--ketcher-top-toolbar-icon-size\) !important;[^}]*height: var\(--ketcher-top-toolbar-icon-size\) !important;/s);
+assert.match(styles, /\.ketcher-editor-shell \[data-testid="ketcher-canvas"\] svg\s*\{[^}]*background-color: #f5f5f5;/s);
+assert.doesNotMatch(styles, /\.ketcher-editor-shell svg\s*\{[^}]*background-color: #f5f5f5;/s);
 assert.doesNotMatch(styles, /\.ketcher-editor-scale-frame\s*\{[^}]*transform: scale\(var\(--ketcher-ui-scale, 1\)\);/s);
 assert.doesNotMatch(styles, /\.ketcher-editor-scale-frame\s*\{[^}]*transform-origin: 0 0;/s);
 assert.doesNotMatch(styles, /\.ketcher-editor-scale-frame\s*\{[^}]*zoom: var\(--ketcher-ui-scale, 1\);/s);
