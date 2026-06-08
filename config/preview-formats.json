@@ -108,6 +108,7 @@
     {
       "id": "gro",
       "contentType": "com.local.burrete10.gro",
+      "contentTypeAliases": ["gg.flew.unfold.gromacs-structure"],
       "extensions": ["gro"],
       "conformsTo": ["public.plain-text", "public.data"],
       "description": "GROMACS structure file",
@@ -202,6 +203,7 @@
       "com.apple.videoapps.cube",
       "com.gaussian.cube",
       "com.local.burrete10.gro",
+      "gg.flew.unfold.gromacs-structure",
       "com.local.burrete10.molecular-dynamics",
       "com.schrodinger.mae",
       "com.local.burrete10.schrodinger",
