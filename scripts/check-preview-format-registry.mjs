@@ -77,9 +77,6 @@ const allowedSystemQuickLookContentTypes = new Set([
   'gg.flew.unfold.gromacs-structure',
   'net.sourceforge.openbabel.xyz',
   'public.cif',
-  'public.delimited-values-text',
-  'public.comma-separated-values-text',
-  'public.tab-separated-values-text',
 ]);
 for (const contentType of registry.quickLook.contentTypes) {
   assert.ok(
@@ -118,11 +115,8 @@ assertSameSet(
   [
     'com.local.burrete10.csv',
     'com.local.burrete10.tsv',
-    'public.delimited-values-text',
-    'public.comma-separated-values-text',
-    'public.tab-separated-values-text',
   ],
-  'Grid-table document type must prioritize CSV/TSV UTIs',
+  'Grid-table document type must use Burrete-owned CSV/TSV UTIs',
 );
 assertExportedTypeDeclarations(
   appInfo.UTExportedTypeDeclarations ?? [],
