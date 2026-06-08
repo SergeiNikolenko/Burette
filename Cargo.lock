@@ -356,6 +356,7 @@ dependencies = [
  "ed25519-dalek",
  "flate2",
  "objc",
+ "plist",
  "rusqlite",
  "serde",
  "serde_json",
