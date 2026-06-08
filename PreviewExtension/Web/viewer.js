@@ -4935,6 +4935,56 @@
     return tag === 'input' || tag === 'select' || tag === 'textarea' || element.isContentEditable;
   }
 
+  function isDockingPoseInteractiveTarget(target) {
+    return target instanceof Element && !!target.closest('button, input, select, textarea, [contenteditable="true"]');
+  }
+
+  function installDockingPoseInteractionIsolation(root) {
+    const quickLookNavigationKeys = new Set(['ArrowLeft', 'ArrowRight']);
+    const isolatePointer = (event) => {
+      if (!isDockingPoseInteractiveTarget(event.target)) return;
+      event.stopPropagation();
+    };
+    const isolateWheel = (event) => {
+      if (!root.contains(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const isolateKeys = (event) => {
+      if (!isDockingPoseInteractiveTarget(event.target)) return;
+      if (event.target instanceof HTMLInputElement && event.target.classList.contains('buret-docking-pose-speed') && quickLookNavigationKeys.has(event.key)) {
+        event.preventDefault();
+      }
+      event.stopPropagation();
+    };
+    const pointerEvents = ['pointerdown', 'pointerup', 'pointercancel', 'mousedown', 'mouseup', 'click', 'dblclick', 'touchstart', 'touchmove', 'touchend'];
+    pointerEvents.forEach(eventName => root.addEventListener(eventName, isolatePointer));
+    root.addEventListener('wheel', isolateWheel, { passive: false });
+    root.addEventListener('keydown', isolateKeys);
+    root.addEventListener('keyup', isolateKeys);
+    return () => {
+      pointerEvents.forEach(eventName => root.removeEventListener(eventName, isolatePointer));
+      root.removeEventListener('wheel', isolateWheel);
+      root.removeEventListener('keydown', isolateKeys);
+      root.removeEventListener('keyup', isolateKeys);
+    };
+  }
+
+  function installDockingPoseHoverSuppression() {
+    const suppressHover = (event) => {
+      if (Number(event.buttons || 0) !== 0) return;
+      if (!isMolstarContextMenuTarget(event.target)) return;
+      event.stopPropagation();
+      try { activeViewer?.plugin?.managers?.interactivity?.lociHighlights?.clearHighlights?.(); } catch (_) {}
+    };
+    document.addEventListener('pointermove', suppressHover, true);
+    document.addEventListener('mousemove', suppressHover, true);
+    return () => {
+      document.removeEventListener('pointermove', suppressHover, true);
+      document.removeEventListener('mousemove', suppressHover, true);
+    };
+  }
+
   function moveDockingPoseControls(root, left, top) {
     const margin = TOOLBAR_MARGIN;
     const width = root.offsetWidth || root.getBoundingClientRect().width || 180;
@@ -5530,6 +5580,8 @@
     root.append(mainRow, animationRow);
     document.body.appendChild(root);
     restoreDockingPoseControlsPosition(root);
+    const isolationDisposer = installDockingPoseInteractionIsolation(root);
+    const hoverDisposer = installDockingPoseHoverSuppression();
     const dragDisposer = initDockingPoseControlsDrag(root);
     const syncDisposer = prepared.nativeTrajectoryControls
       ? installNativeTrajectoryPoseSync(prepared.poseCount, index => {
@@ -5552,6 +5604,8 @@
       pendingSliderIndex = null;
       setLoopActive(false);
       syncDisposer?.();
+      isolationDisposer?.();
+      hoverDisposer?.();
       dragDisposer?.();
       document.body.classList.remove('buret-docking-pose-controls-active');
     };
