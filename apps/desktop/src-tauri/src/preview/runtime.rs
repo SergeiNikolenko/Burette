@@ -198,7 +198,7 @@ fn default_light_foreground() -> String {
 }
 
 fn default_light_translucent() -> f64 {
-    10.0
+    30.0
 }
 
 fn default_light_contrast() -> f64 {
