@@ -124,6 +124,27 @@ const KETCHER_IMPORT_FORMATS: KetcherTextFormat[] = [
   "cdx",
   "inchi",
 ];
+const KETCHER_EXPORT_FILE_EXTENSIONS: Record<KetcherTextFormat, string> = {
+  smiles: "smi",
+  "extended-smiles": "smi",
+  "molfile-v2000": "mol",
+  "molfile-v3000": "mol",
+  "rxn-v2000": "rxn",
+  "rxn-v3000": "rxn",
+  ket: "ket",
+  "sdf-v2000": "sdf",
+  "sdf-v3000": "sdf",
+  "rdf-v2000": "rdf",
+  "rdf-v3000": "rdf",
+  smarts: "smarts",
+  cml: "cml",
+  cdxml: "cdxml",
+  cdx: "cdx",
+  inchi: "inchi",
+  "inchi-aux": "txt",
+  "inchi-key": "txt",
+  svg: "svg",
+};
 
 function nearestKetcherZoomIndex(value: number) {
   const normalized = normalizeKetcherZoom(value);
@@ -323,7 +344,17 @@ export function KetcherPage({
       const text = await withKetcherTimeout(exportKetcherText(ketcher, format), `${label} export`);
       setOutput(text || "");
       setPanelMode({ purpose: "export", format });
-      setStatus("Ready");
+      if (!navigator.clipboard?.writeText) {
+        setStatus(`Exported ${label}`);
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(text || "");
+        setStatus(`Exported ${label} and copied`);
+      } catch (copyError) {
+        const message = copyError instanceof Error ? copyError.message : String(copyError);
+        setStatus(`Exported ${label}. Copy failed: ${message}`);
+      }
     } catch (error) {
       setStatus(ketcherExportErrorMessage(error));
     }
@@ -472,6 +503,36 @@ export function KetcherPage({
   const addSketchToCollection = useCallback((collectionPath: string | null) => {
     void openSketch("collection", collectionPath);
   }, [openSketch]);
+
+  const copyExportOutput = useCallback(async () => {
+    if (panelMode?.purpose !== "export") return;
+    try {
+      await navigator.clipboard.writeText(output);
+      setStatus(`Copied ${KETCHER_FORMAT_LABELS[panelMode.format]}`);
+    } catch (error) {
+      setStatus("Copy failed: " + (error instanceof Error ? error.message : String(error)));
+    }
+  }, [output, panelMode]);
+
+  const openRawExportOutput = useCallback(() => {
+    if (panelMode?.purpose !== "export") return;
+    const extension = KETCHER_EXPORT_FILE_EXTENSIONS[panelMode.format];
+    actions.openKetcherExportRaw({
+      title: `ketcher-export-${panelMode.format}.${extension}`,
+      extension,
+      text: output,
+    });
+  }, [actions, output, panelMode]);
+
+  const saveExportOutput = useCallback(() => {
+    if (panelMode?.purpose !== "export") return;
+    const extension = KETCHER_EXPORT_FILE_EXTENSIONS[panelMode.format];
+    void actions.saveKetcherExportFile({
+      title: `ketcher-export-${panelMode.format}.${extension}`,
+      extension,
+      text: output,
+    });
+  }, [actions, output, panelMode]);
 
   const importStructures = useCallback(async (paths: string[], fragments: NonNullable<KetcherImportRequest["fragments"]> = []): Promise<KetcherImportResult> => {
     if (!ketcher) {
@@ -864,14 +925,28 @@ export function KetcherPage({
             </button>
           )}
         />
-        <button
-          type="button"
-          className="ketcher-primary-action"
-          disabled={!ketcher || exportingSketch || (gridEditSource ? false : panelMode?.purpose !== "import" || !output.trim())}
-          onClick={() => void (gridEditSource ? applyGridEdit() : applyOutput())}
-        >
-          {gridEditSource ? "Apply" : "Load"}
-        </button>
+        {panelMode?.purpose === "export" ? (
+          <>
+            <button type="button" disabled={!output} onClick={() => void copyExportOutput()}>
+              Copy
+            </button>
+            <button type="button" disabled={!output} onClick={saveExportOutput}>
+              Save
+            </button>
+            <button type="button" className="ketcher-primary-action" disabled={!output} onClick={openRawExportOutput}>
+              Open raw
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="ketcher-primary-action"
+            disabled={!ketcher || exportingSketch || (gridEditSource ? false : panelMode?.purpose !== "import" || !output.trim())}
+            onClick={() => void (gridEditSource ? applyGridEdit() : applyOutput())}
+          >
+            {gridEditSource ? "Apply" : "Load"}
+          </button>
+        )}
       </footer>
     </section>
   );
