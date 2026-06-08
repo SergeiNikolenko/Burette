@@ -484,6 +484,8 @@ assert.match(appMetadata, /com\.local\.burrete10\.graphml/);
 assert.match(tauriConfigSource, /"graphml"/);
 assert.match(quickLookPreviewController, /pathExtension == "graphml"/);
 assert.match(quickLookPreviewController, /detected\.previewMode=fep-graphml/);
+assert.match(quickLookPreviewController, /layoutFepGraphMLPreview/);
+assert.match(quickLookPreviewController, /score: " \+ String\(format: "%\.3f", \$0\)/);
 assert.doesNotMatch(installLocalScript, /broadPublicTypes/);
 assert.match(installLocalScript, /let contentTypes = documentTypes\.flatMap/);
 assert.match(installLocalScript, /for contentType in Set\(contentTypes\)/);

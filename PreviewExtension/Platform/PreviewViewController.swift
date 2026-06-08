@@ -1009,7 +1009,55 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             return FepGraphMLEdge(source: source, target: target, score: graphMLDouble(annotations["score"]))
         }
 
-        return FepGraphMLPreview(nodes: nodes, edges: edges)
+        return layoutFepGraphMLPreview(FepGraphMLPreview(nodes: nodes, edges: edges))
+    }
+
+    private static func layoutFepGraphMLPreview(_ graph: FepGraphMLPreview) -> FepGraphMLPreview {
+        guard graph.nodes.count > 1 else { return graph }
+        var degree = Dictionary(uniqueKeysWithValues: graph.nodes.map { ($0.id, 0) })
+        for edge in graph.edges {
+            degree[edge.source] = (degree[edge.source] ?? 0) + 1
+            degree[edge.target] = (degree[edge.target] ?? 0) + 1
+        }
+        guard let center = graph.nodes.max(by: { (degree[$0.id] ?? 0) < (degree[$1.id] ?? 0) }),
+              (degree[center.id] ?? 0) >= max(2, graph.nodes.count - 1) else {
+            return graph
+        }
+        let leaves = graph.nodes
+            .filter { $0.id != center.id }
+            .sorted { $0.id.localizedStandardCompare($1.id) == .orderedAscending }
+        let compactSlots: [(x: Double, y: Double)] = [
+            (25, 20),
+            (75, 20),
+            (75, 80),
+            (25, 80)
+        ]
+        let positionedNodes = graph.nodes.map { node -> FepGraphMLNode in
+            if node.id == center.id {
+                return graphMLNode(node, x: 50, y: 50)
+            }
+            let index = leaves.firstIndex { $0.id == node.id } ?? 0
+            if leaves.count <= compactSlots.count {
+                let slot = compactSlots[index]
+                return graphMLNode(node, x: slot.x, y: slot.y)
+            }
+            let angle = (Double(index) / Double(max(leaves.count, 1))) * Double.pi * 2 - Double.pi / 2
+            return graphMLNode(node, x: 50 + cos(angle) * 34, y: 50 + sin(angle) * 32)
+        }
+        return FepGraphMLPreview(nodes: positionedNodes, edges: graph.edges)
+    }
+
+    private static func graphMLNode(_ node: FepGraphMLNode, x: Double, y: Double) -> FepGraphMLNode {
+        FepGraphMLNode(
+            id: node.id,
+            label: node.label,
+            atoms: node.atoms,
+            heavyAtoms: node.heavyAtoms,
+            bonds: node.bonds,
+            dockingScore: node.dockingScore,
+            x: x,
+            y: y
+        )
     }
 
     private static func graphMLKeys(in document: XMLDocument) throws -> [String: (target: String, name: String)] {
@@ -1079,7 +1127,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let nodeByID = Dictionary(uniqueKeysWithValues: graph.nodes.map { ($0.id, $0) })
         let edges = graph.edges.compactMap { edge -> String? in
             guard let source = nodeByID[edge.source], let target = nodeByID[edge.target] else { return nil }
-            let score = edge.score.map { String(format: "%.2f", $0) } ?? ""
+            let score = edge.score.map { "score: " + String(format: "%.3f", $0) } ?? ""
             let labelX = (source.x + target.x) / 2
             let labelY = (source.y + target.y) / 2
             return """
@@ -1107,25 +1155,26 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           <meta http-equiv="Content-Security-Policy" content="\(minimalRuntimeCSP)" />
           <title>Burrete FEP Network - \(safeTitle)</title>
           <style>
-            html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#101216;color:#f5f7fb}
+            html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#fbfbfc;color:#1c1c1e}
             body{font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-            .wrap{position:relative;width:100%;height:100%;box-sizing:border-box;padding:18px}
-            header{position:absolute;z-index:3;left:18px;right:18px;top:16px;display:flex;justify-content:space-between;gap:16px;align-items:flex-start}
-            h1{font-size:16px;line-height:1.2;margin:0;font-weight:700;max-width:64%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-            .meta{color:#aeb7c7;text-align:right;line-height:1.35}
-            .stage{position:absolute;inset:58px 18px 18px;border:1px solid rgba(255,255,255,.12);border-radius:8px;background:#151923}
+            .wrap{position:relative;width:100%;height:100%;box-sizing:border-box;background:#fbfbfc}
+            header{position:absolute;z-index:3;left:0;right:0;top:0;min-height:58px;box-sizing:border-box;padding:10px 14px;display:flex;justify-content:space-between;gap:16px;align-items:center;border-bottom:1px solid rgba(60,60,67,.14);background:rgba(251,251,252,.92)}
+            h1{font-size:13px;line-height:1.2;margin:0;font-weight:500;max-width:64%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+            h1 span{display:block;color:#8e8e93;font-size:11px;font-weight:400;letter-spacing:.04em;text-transform:uppercase}
+            .meta{color:#636366;text-align:right;line-height:1.35}
+            .stage{position:absolute;inset:58px 0 0;background:linear-gradient(rgba(60,60,67,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(60,60,67,.08) 1px,transparent 1px),#fbfbfc;background-size:32px 32px}
             svg{position:absolute;inset:0;width:100%;height:100%}
-            line{stroke:#66d9ef;stroke-width:.45;stroke-opacity:.58}
-            text{font-size:2.8px;fill:#d7f7ff;paint-order:stroke;stroke:#151923;stroke-width:.9px}
-            .node{position:absolute;z-index:2;width:124px;min-height:58px;transform:translate(-50%,-50%);box-sizing:border-box;padding:9px 10px;border:1px solid rgba(255,255,255,.18);border-radius:8px;background:#202635;box-shadow:0 10px 28px rgba(0,0,0,.28)}
-            .node strong{display:block;font-size:12px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-            .node span{display:block;margin-top:5px;color:#b9c2d1;font-size:11px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+            line{stroke:#9b5dcc;stroke-width:.55;stroke-linecap:round;stroke-opacity:.74}
+            text{font-size:3.2px;fill:#6e587f;paint-order:stroke;stroke:#fbfbfc;stroke-width:1.05px}
+            .node{position:absolute;z-index:2;width:176px;min-height:82px;transform:translate(-50%,-50%);box-sizing:border-box;padding:11px 12px;border:1px solid rgba(60,60,67,.18);border-radius:8px;background:rgba(255,255,255,.96);box-shadow:0 8px 22px rgba(0,0,0,.12)}
+            .node strong{display:block;font-size:13px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+            .node span{display:block;margin-top:7px;color:#636366;font-size:12px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
           </style>
         </head>
         <body>
           <main class="wrap">
             <header>
-              <h1>\(safeTitle)</h1>
+              <h1><span>FEP Network</span>\(safeTitle)</h1>
               <div class="meta">FEP ligand network<br>\(graph.nodes.count) ligands - \(graph.edges.count) transformations</div>
             </header>
             <section class="stage" aria-label="FEP ligand network">
