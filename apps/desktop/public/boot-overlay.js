@@ -46,7 +46,7 @@
         margin: 0 0 8px;
         font-size: 16px;
         line-height: 1.25;
-        font-weight: 700;
+        font-weight: 400;
       }
       #${overlayId} p {
         margin: 0;

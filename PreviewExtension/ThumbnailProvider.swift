@@ -138,7 +138,7 @@ final class ThumbnailProvider: QLThumbnailProvider {
         let fittedFontSize = min(baseFontSize, page.width / max(CGFloat(label.count) * 0.62, 1))
         let attributes: [NSAttributedString.Key: Any] = [
             .foregroundColor: NSColor(calibratedRed: 0.22, green: 0.29, blue: 0.36, alpha: 1),
-            .font: NSFont.monospacedSystemFont(ofSize: max(7, fittedFontSize), weight: .semibold)
+            .font: NSFont.monospacedSystemFont(ofSize: max(7, fittedFontSize), weight: .regular)
         ]
         let attributed = NSAttributedString(string: label, attributes: attributes)
         let labelSize = attributed.size()
