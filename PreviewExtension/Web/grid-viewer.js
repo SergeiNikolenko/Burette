@@ -1953,9 +1953,13 @@
   function installCardDrag(el, row) {
     const record = gridDragRecord(row);
     if (!record) return;
+    let cardDragSourceAllowed = true;
     el.draggable = true;
+    el.addEventListener('pointerdown', event => {
+      cardDragSourceAllowed = isCardDragSource(event.target);
+    }, true);
     el.addEventListener('dragstart', event => {
-      if (event.target?.closest?.('[data-buret-card-resize]')) {
+      if (!cardDragSourceAllowed || !isCardDragSource(event.target)) {
         event.preventDefault();
         return;
       }
@@ -1971,6 +1975,14 @@
         if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy';
       } catch (_) {}
     });
+    el.addEventListener('dragend', () => {
+      cardDragSourceAllowed = true;
+    });
+  }
+
+  function isCardDragSource(target) {
+    if (!(target instanceof Element)) return true;
+    return !target.closest('[data-buret-card-resize], [data-buret-molecule-picture], button, input, select, textarea, [contenteditable="true"]');
   }
 
   function installCardDrop(el, row, cfg) {
