@@ -31,6 +31,8 @@ type OpenDestinationOption = {
   iconUrl?: string;
 };
 
+const FINDER_ICON_PATH = "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/FinderIcon.icns";
+
 function preferenceRow<K extends Extract<keyof ViewerPreferences, string>>(
   label: string,
   description: string,
@@ -272,6 +274,7 @@ function editorIconUrl(target: ChemicalEditorTarget) {
 }
 
 function finderIconUrl() {
+  if (isTauriRuntime()) return convertFileSrc(FINDER_ICON_PATH);
   if (!isTauriRuntime() && import.meta.env.DEV) return "/__burette/app-icon/finder.png";
   return null;
 }

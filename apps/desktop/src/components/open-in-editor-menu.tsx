@@ -11,6 +11,8 @@ type ActiveFile = {
   label: string;
 };
 
+const FINDER_ICON_PATH = "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/FinderIcon.icns";
+
 export function OpenInEditorMenu({ state, actions }: { state: ShellViewState; actions: ShellActions }) {
   const activeFile = useMemo(() => activeFileFromState(state), [state]);
   const [targets, setTargets] = useState<ChemicalEditorTarget[]>([]);
@@ -179,6 +181,7 @@ function editorIconUrl(target: ChemicalEditorTarget) {
 }
 
 function finderIconUrl() {
+  if (isTauriRuntime()) return convertFileSrc(FINDER_ICON_PATH);
   if (!isTauriRuntime() && import.meta.env.DEV) return "/__burette/app-icon/finder.png";
   return null;
 }
