@@ -1107,8 +1107,8 @@ mod document_open_tests {
 
     fn expected_real_renderer(path: &Path) -> &'static str {
         match super::structure_path_extension(path).as_str() {
-            "abi" | "com" | "cub" | "cube" | "fdf" | "in" | "inp" | "nw" | "out" | "psi4"
-            | "qcin" | "vasp" => "xyzrender-external",
+            "abi" | "com" | "cub" | "cube" | "fdf" | "in" | "inp" | "log" | "nw" | "out"
+            | "psi4" | "qcin" | "vasp" => "xyzrender-external",
             "cms" | "mae" | "maegz" => "xyzrender-external",
             "cif" | "mol2" | "pdb" => "molstar",
             "sdf" => {
