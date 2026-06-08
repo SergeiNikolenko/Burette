@@ -113,7 +113,7 @@ unsafe fn create_progress_window() -> NativeUpdateProgressWindow {
         labelWithString: nsstring("Preparing update...")
     ];
     let _: () = msg_send![message_label, setFrame: rect(134.0, 130.0, 430.0, 30.0)];
-    let font: id = msg_send![class!(NSFont), boldSystemFontOfSize: 17.0f64];
+    let font: id = msg_send![class!(NSFont), systemFontOfSize: 17.0f64];
     let _: () = msg_send![message_label, setFont: font];
     let _: () = msg_send![message_label, setLineBreakMode: 4u64];
     let _: () = msg_send![content, addSubview: message_label];

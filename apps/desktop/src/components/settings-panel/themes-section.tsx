@@ -60,7 +60,7 @@ function ThemeCard({
     themeColorRow(prefix, "Background", "Base window and preview background.", "Background", preferences, actions),
     themeColorRow(prefix, "Foreground", "Base text and icon color.", "Foreground", preferences, actions),
     themeTextRow(prefix, "UI font", "Font stack used by chrome, sidebar, and controls.", "UiFont", preferences, actions),
-    themeTextRow(prefix, "Editor font", "Font stack reserved for document and preview surfaces.", "EditorFont", preferences, actions),
+    themeTextRow(prefix, "Editor font", "Font stack used by text and Markdown document surfaces.", "EditorFont", preferences, actions),
     themeRangeRow(prefix, "Translucent", "Window opacity mapping used by Writer-style glass.", "Translucent", preferences, actions),
     themeRangeRow(prefix, "Contrast", "Surface, border, hover, and selection strength.", "Contrast", preferences, actions),
   ];
