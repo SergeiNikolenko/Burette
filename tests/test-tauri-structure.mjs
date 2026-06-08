@@ -305,6 +305,9 @@ assert.match(previewGridStore, /fn rejects_ambiguous_delimited_structure_columns
 assert.match(previewGridStore, /fn uses_explicit_column_for_ambiguous_delimited_table/);
 assert.match(previewGridStore, /fn lists_delimited_structure_column_choices/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn sync_viewer_preferences/);
+assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn list_project_structure_files/);
+assert.match(lib, /commands::documents::list_project_structure_files/);
+assert.match(tauriPermissionSource, /"list_project_structure_files"/);
 assert.match(documentsCommand, /"molstarStyle"/);
 assert.match(documentsCommand, /fn expand_open_targets/);
 assert.match(documentsCommand, /fn collect_supported_files/);

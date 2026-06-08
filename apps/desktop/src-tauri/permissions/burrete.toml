@@ -10,6 +10,7 @@ commands.allow = [
   "pick_open_targets",
   "classify_open_paths",
   "open_documents",
+  "list_project_structure_files",
   "read_text_file",
   "open_text_files",
   "read_structure_text",
