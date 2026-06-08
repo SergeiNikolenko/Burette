@@ -61,6 +61,9 @@
     customConfigPath: null,
     extraArguments: null
   };
+  const DOCKING_COORDINATE_TRAJECTORY_FORMATS = new Set(['xtc', 'trr', 'dcd', 'nctraj', 'lammpstrj']);
+  const DOCKING_MODEL_TRAJECTORY_FORMATS = new Set(['pdb', 'pdbqt', 'mmcif', 'gro']);
+  const DOCKING_TOPOLOGY_TRAJECTORY_FORMATS = new Set(['top', 'psf', 'prmtop']);
   const STRUCTURE_DRAG_MIME = 'application/x-burrete-structure-paths';
   const XYZRENDER_POPOVER_OPEN_KEY_PREFIX = 'buret.xyzrender.popover.open.v2';
   let xyzrenderControlsApplyTimer = 0;
@@ -2838,6 +2841,29 @@
     };
   }
 
+  function isDockingCoordinateTrajectoryEntry(entry) {
+    return DOCKING_COORDINATE_TRAJECTORY_FORMATS.has(normalizeFormat(entry?.format));
+  }
+
+  function dockingTrajectoryModelKind(entry) {
+    const format = normalizeFormat(entry?.format);
+    if (DOCKING_TOPOLOGY_TRAJECTORY_FORMATS.has(format)) return 'topology-data';
+    if (DOCKING_MODEL_TRAJECTORY_FORMATS.has(format)) return 'model-data';
+    return null;
+  }
+
+  function dockingTrajectoryPair(entries) {
+    const coordinateEntry = entries.find(isDockingCoordinateTrajectoryEntry);
+    if (!coordinateEntry) return null;
+    const modelEntry = entries.find(entry => entry !== coordinateEntry && dockingTrajectoryModelKind(entry));
+    if (!modelEntry) return null;
+    return {
+      modelEntry,
+      modelKind: dockingTrajectoryModelKind(modelEntry),
+      coordinateEntry
+    };
+  }
+
   function prepareDockingStructure(config) {
     const docking = config.docking || {};
     const payloads = window.BurreteDockingPayloads || {};
@@ -2896,6 +2922,22 @@
       });
     });
     if (poses.length === 0) throw new Error('Docking view has no ligand poses.');
+    const trajectoryPair = dockingTrajectoryPair(entries);
+    if (trajectoryPair) {
+      return {
+        kind: 'docking',
+        label: config.label || 'Docking trajectory',
+        activePose: readDockingPoseIndex(config, Number.MAX_SAFE_INTEGER),
+        poseCount: 1,
+        nativeTrajectoryControls: true,
+        ligandLabel: trajectoryPair.coordinateEntry.label || 'Mol* trajectory',
+        controlLabel: 'Frame',
+        receptorEntry,
+        poses,
+        entries,
+        trajectoryPair
+      };
+    }
     const activePose = readDockingPoseIndex(config, poses.length);
     if (nativeTrajectoryPoseCount > 1) {
       return {
@@ -4407,6 +4449,44 @@
     });
   }
 
+  function isDockingTrajectoryPairEntry(entry, pair) {
+    return !!pair && (entry === pair.modelEntry || entry === pair.coordinateEntry);
+  }
+
+  async function loadDockingTrajectoryPair(viewer, pair) {
+    if (typeof viewer.loadTrajectory !== 'function') {
+      throw new Error('Mol* trajectory pairing is unavailable in this viewer runtime.');
+    }
+    await viewer.loadTrajectory({
+      model: {
+        kind: pair.modelKind,
+        data: pair.modelEntry.data,
+        format: normalizeFormat(pair.modelEntry.format)
+      },
+      modelLabel: pair.modelEntry.label,
+      coordinates: {
+        kind: 'coordinates-data',
+        data: pair.coordinateEntry.data,
+        format: normalizeFormat(pair.coordinateEntry.format)
+      },
+      coordinatesLabel: pair.coordinateEntry.label,
+      preset: 'default'
+    });
+  }
+
+  async function applyDockingTrajectoryPairFrameCount(prepared) {
+    if (!prepared?.trajectoryPair) return;
+    await afterNativeTrajectoryPaint();
+    const position = readNativeTrajectoryPosition(0);
+    const frameCount = Number(position?.total || nativeTrajectoryModelTransform(0)?.frameCount || 0);
+    if (!Number.isFinite(frameCount) || frameCount <= 1) return;
+    prepared.poseCount = frameCount;
+    prepared.activePose = readDockingPoseIndex(activeConfig, frameCount);
+    prepared.nativeTrajectoryControls = true;
+    prepared.controlLabel = 'Frame';
+    prepared.ligandLabel = prepared.trajectoryPair.coordinateEntry.label || prepared.ligandLabel || 'Mol* trajectory';
+  }
+
   async function loadStagedMolstarEntry(viewer, entry, cb) {
     const data = await loadStagedEntryData(entry, cb);
     const prepared = {
@@ -4474,7 +4554,12 @@
     if (typeof plugin.clear === 'function') {
       await plugin.clear();
     }
+    if (prepared.trajectoryPair) {
+      await loadDockingTrajectoryPair(viewer, prepared.trajectoryPair);
+      await applyDockingTrajectoryPairFrameCount(prepared);
+    }
     for (const entry of prepared.entries) {
+      if (isDockingTrajectoryPairEntry(entry, prepared.trajectoryPair)) continue;
       await loadMolstarEntry(viewer, entry);
     }
     await applyMolstarStyle(viewer, configuredMolstarStyle(activeConfig));
