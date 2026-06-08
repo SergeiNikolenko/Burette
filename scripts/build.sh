@@ -120,11 +120,6 @@ clean_detritus() {
     local bundle="$1"
     xattr -cr "$bundle" 2>/dev/null || true
     dot_clean -m "$bundle" 2>/dev/null || true
-    while IFS= read -r -d '' entry; do
-      for attr in "${attrs[@]}"; do
-        xattr -d "$attr" "$entry" 2>/dev/null || true
-      done
-    done < <(find "$bundle" -print0 2>/dev/null)
   }
   for attr in "${attrs[@]}"; do
     xattr -d "$attr" "$p" 2>/dev/null || true
