@@ -54,7 +54,7 @@ type StructureFileBundle = {
 };
 const DEV_FILE_EXTENSIONS = new Set([
   "abi", "bcif", "cif", "cms", "com", "csv", "cub", "cube", "dcd", "ent", "fdf", "gro",
-  "in", "inp", "lammpstrj", "mae", "mae.gz", "maegz", "mcif", "mmcif", "mol",
+  "in", "inp", "lammpstrj", "log", "mae", "mae.gz", "maegz", "mcif", "mmcif", "mol",
   "mol2", "nctraj", "nw", "out", "pdb", "pdbqt", "pqr", "prmtop", "psf", "psi4", "qcin",
   "sd", "sdf", "smi", "smiles", "top", "trr", "tsv", "vasp", "xtc", "xyz",
   "dtr",
