@@ -50,6 +50,13 @@ folded into a Vite+ built-in. Direct Bun commands remain implementation details
 inside repository-owned build, release, and installer scripts until a separate
 toolchain migration replaces those paths.
 
+When running `vp` from the Codex desktop shell on macOS, the app-bundled Node
+binary can fail to load Vite+/Rolldown native bindings. If a Vite+ command
+reports `Cannot find native binding` for `rolldown-binding.darwin-arm64.node`,
+first run `vp install`, then retry with the first non-Codex Node executable in
+`PATH` before changing application code. Do not hard-code a Codex runtime path;
+find a normal Node installation from the environment.
+
 ## Browser Opening
 
 When the user asks to open something in a browser, or simply asks to open a
