@@ -68,7 +68,7 @@ import { isMoleculeCollectionPath } from "./lib/collection-documents";
 import { dockingRequestForDrop, isProteinLikeDockingSource } from "./lib/docking-documents";
 import type { DropActionChoice } from "./lib/drop-actions";
 import { collectPerformanceMarks, markPerformanceOnce, measureAsync } from "./lib/performance";
-import { basename, buildSidebarProjects, parentDirectory } from "./lib/sidebar-projects";
+import { basename, buildSidebarProjects, parentDirectory, type SidebarProjectStructure } from "./lib/sidebar-projects";
 import type { StructureDragPayload, StructureDragRecord } from "./lib/structure-drag";
 import { readStructureText } from "./lib/structure-text";
 import { isTauriRuntime } from "./lib/tauri";
@@ -402,6 +402,7 @@ export default function App() {
   const [buildInfo, setBuildInfo] = useState(defaultBuildInfo);
   const [poseReviewSelections, setPoseReviewSelections] = useState<Record<string, number>>({});
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
+  const [projectStructures, setProjectStructures] = useState<SidebarProjectStructure[]>([]);
   const [update, setUpdate] = useState<UpdateState>(() => ({
     preferences: loadUpdatePreferences(),
     isChecking: false,
@@ -497,12 +498,33 @@ export default function App() {
     documents,
     recentStructures,
     projectRoots,
+    projectStructures,
     pinnedProjectRoots,
     projectNameOverrides,
     activeDocumentId: activeDocument?.id ?? null,
     hiddenProjectRoots,
     pinnedStructurePaths,
-  }), [activeDocument?.id, documents, hiddenProjectRoots, pinnedProjectRoots, pinnedStructurePaths, projectNameOverrides, projectRoots, recentStructures]);
+  }), [activeDocument?.id, documents, hiddenProjectRoots, pinnedProjectRoots, pinnedStructurePaths, projectNameOverrides, projectRoots, projectStructures, recentStructures]);
+
+  useEffect(() => {
+    if (!isTauriRuntime() || projectRoots.length === 0) {
+      setProjectStructures([]);
+      return undefined;
+    }
+    let cancelled = false;
+    void invoke<SidebarProjectStructure[]>("list_project_structure_files", { paths: projectRoots })
+      .then((files) => {
+        if (!cancelled) setProjectStructures(files);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setProjectStructures([]);
+        pushErrorStatus(error, "Project file scan failed");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectRoots, pushErrorStatus]);
 
   useEffect(() => {
     if (prunedPersistedPathsRef.current || !isTauriRuntime()) return;

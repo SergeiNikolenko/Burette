@@ -12,7 +12,8 @@ use tauri::{Manager, Runtime};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::preview::formats::{
-    format_for_extension, structure_path_extension, supported_structure_extensions,
+    format_for_extension, resolve_renderer, structure_path_extension,
+    supported_structure_extensions,
 };
 use crate::preview::grid_store::GridParseOptions;
 use crate::preview::runtime::{
@@ -119,6 +120,16 @@ pub(crate) struct ClassifiedOpenPaths {
     errors: Vec<String>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProjectStructureFile {
+    path: String,
+    title: String,
+    extension: String,
+    renderer: String,
+    byte_count: u64,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DelimitedGridOpenRequest {
@@ -216,6 +227,57 @@ pub(crate) fn open_documents<R: Runtime>(
         return Err(errors.join("; "));
     }
     Ok(OpenDocumentsResult { documents, errors })
+}
+
+#[tauri::command]
+pub(crate) fn list_project_structure_files(
+    paths: Vec<String>,
+) -> Result<Vec<ProjectStructureFile>, String> {
+    let mut files = BTreeSet::new();
+    let mut errors = Vec::new();
+    for path in paths {
+        match expand_open_targets(PathBuf::from(&path)) {
+            Ok(expanded) => {
+                files.extend(expanded);
+            }
+            Err(error) => errors.push(error),
+        }
+    }
+    if files.is_empty() && !errors.is_empty() {
+        return Err(errors.join("; "));
+    }
+
+    let mut entries = Vec::new();
+    for path in files {
+        let metadata = match fs::metadata(&path) {
+            Ok(metadata) if metadata.is_file() => metadata,
+            Ok(_) => continue,
+            Err(error) => {
+                errors.push(format!("{}: {error}", path.display()));
+                continue;
+            }
+        };
+        let extension = structure_path_extension(&path);
+        let format = match format_for_extension(&extension) {
+            Ok(format) => format,
+            Err(error) => {
+                errors.push(format!("{}: {error}", path.display()));
+                continue;
+            }
+        };
+        entries.push(ProjectStructureFile {
+            path: path.to_string_lossy().to_string(),
+            title: path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or("structure")
+                .to_string(),
+            extension,
+            renderer: resolve_renderer(&format, "auto"),
+            byte_count: metadata.len(),
+        });
+    }
+    Ok(entries)
 }
 
 #[tauri::command]
@@ -1222,9 +1284,9 @@ fn pick_open_targets_macos<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<Vec<
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_open_paths, expand_open_targets, looks_like_supported_structure_file,
-        normalize_inline_structure_extension, open_text_structure, smiles_from_sheet_data,
-        TextStructureRequest,
+        classify_open_paths, expand_open_targets, list_project_structure_files,
+        looks_like_supported_structure_file, normalize_inline_structure_extension,
+        open_text_structure, smiles_from_sheet_data, TextStructureRequest,
     };
     use crate::preview::formats::supported_structure_extensions;
     use crate::preview::grid_store::GridRuntimeRegistry;
@@ -1458,6 +1520,46 @@ mod tests {
         fs::remove_file(log).unwrap();
         fs::remove_file(cif).unwrap();
         fs::remove_file(input).unwrap();
+        fs::remove_file(pdb).unwrap();
+        fs::remove_dir(nested).unwrap();
+        fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
+    fn lists_project_structure_files_with_metadata() {
+        let root =
+            std::env::temp_dir().join(format!("burrete-project-files-{}", std::process::id()));
+        let nested = root.join("nested");
+        fs::create_dir_all(&nested).unwrap();
+        let pdb = root.join("mini.pdb");
+        let cif = nested.join("mini.cif");
+        let txt = nested.join("notes.txt");
+        fs::write(&pdb, "HEADER TEST\n").unwrap();
+        fs::write(&cif, "data_test\n").unwrap();
+        fs::write(&txt, "ignore\n").unwrap();
+
+        let canonical_root = root.canonicalize().unwrap();
+        let files = list_project_structure_files(vec![root.to_string_lossy().to_string()])
+            .expect("project files should be listed");
+        assert_eq!(files.len(), 2);
+        assert_eq!(
+            files[0].path,
+            canonical_root.join("mini.pdb").to_string_lossy()
+        );
+        assert_eq!(files[0].title, "mini.pdb");
+        assert_eq!(files[0].extension, "pdb");
+        assert_eq!(files[0].renderer, "molstar");
+        assert_eq!(files[0].byte_count, "HEADER TEST\n".len() as u64);
+        assert_eq!(
+            files[1].path,
+            canonical_root
+                .join("nested")
+                .join("mini.cif")
+                .to_string_lossy()
+        );
+
+        fs::remove_file(txt).unwrap();
+        fs::remove_file(cif).unwrap();
         fs::remove_file(pdb).unwrap();
         fs::remove_dir(nested).unwrap();
         fs::remove_dir(root).unwrap();
