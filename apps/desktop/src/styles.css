@@ -2028,8 +2028,9 @@ img.radix-menu-item-icon {
 .ketcher-editor-shell [class*="StructEditor-module_intermediateCanvas"],
 .ketcher-editor-shell [data-testid="canvas"],
 .ketcher-editor-shell [data-testid="drawn-structures"],
+.ketcher-editor-shell [data-testid="drawn-structures"] svg,
 .ketcher-editor-shell [data-testid="ketcher-canvas"],
-.ketcher-editor-shell svg {
+.ketcher-editor-shell [data-testid="ketcher-canvas"] svg {
   background-color: #f5f5f5;
 }
 .ketcher-editor-shell [data-testid="ketcher-canvas"] {
