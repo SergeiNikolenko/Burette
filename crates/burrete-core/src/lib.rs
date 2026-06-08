@@ -124,8 +124,8 @@ pub fn quick_look_size_limit_for_extension(extension: &str) -> i64 {
         "cif" | "mmcif" | "mcif" => 40 * mib,
         "bcif" => 50 * mib,
         "abi" | "com" | "csv" | "fdf" | "sdf" | "sd" | "mol" | "mol2" | "xyz" | "gro" | "smi"
-        | "smiles" | "tsv" | "cub" | "cube" | "in" | "inp" | "nw" | "out" | "psi4" | "qcin"
-        | "vasp" | "lammpstrj" | "top" | "psf" | "prmtop" | "graphml" => 25 * mib,
+        | "smiles" | "tsv" | "cub" | "cube" | "in" | "inp" | "log" | "nw" | "out" | "psi4"
+        | "qcin" | "vasp" | "lammpstrj" | "top" | "psf" | "prmtop" | "graphml" => 25 * mib,
         "mae" | "maegz" | "cms" => 64 * mib,
         "xtc" | "trr" | "dcd" | "nctraj" => 75 * mib,
         _ => 20 * mib,
@@ -254,7 +254,7 @@ mod tests {
 
     #[test]
     fn supports_quantum_chemistry_input_extensions_via_xyzrender() {
-        for extension in ["abi", "com", "fdf", "inp", "nw", "out", "psi4", "qcin"] {
+        for extension in ["abi", "com", "fdf", "inp", "log", "nw", "out", "psi4", "qcin"] {
             let format = format_for_extension(extension)
                 .unwrap_or_else(|_| panic!("{extension} should be supported"));
             assert_eq!(format.molstar_format, "xyz");
@@ -343,7 +343,7 @@ mod tests {
     fn rejects_unknown_extensions() {
         let error = format_for_extension("txt").expect_err("txt should not be supported");
         assert!(error.contains("Unsupported structure extension: txt"));
-        let error = format_for_extension("log").expect_err("log should not be supported");
-        assert!(error.contains("Unsupported structure extension: log"));
+        let error = format_for_extension("dat").expect_err("dat should not be supported");
+        assert!(error.contains("Unsupported structure extension: dat"));
     }
 }
