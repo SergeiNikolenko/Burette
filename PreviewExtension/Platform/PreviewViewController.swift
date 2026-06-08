@@ -280,7 +280,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     private static let supportedStructureExtensions: Set<String> = [
-        "abi", "bcif", "cif", "cms", "com", "csv", "cub", "cube", "dcd", "ent", "fdf", "graphml", "gro", "in", "inp", "lammpstrj", "mae", "maegz", "mcif", "mmcif", "mol", "mol2", "nctraj", "nw", "out", "pdb", "pdbqt", "pqr", "prmtop", "psf", "psi4", "qcin", "sd", "sdf", "smi", "smiles", "top", "trr", "tsv", "vasp", "xtc", "xyz"
+        "abi", "bcif", "cif", "cms", "com", "csv", "cub", "cube", "dcd", "ent", "fdf", "graphml", "gro", "in", "inp", "lammpstrj", "log", "mae", "maegz", "mcif", "mmcif", "mol", "mol2", "nctraj", "nw", "out", "pdb", "pdbqt", "pqr", "prmtop", "psf", "psi4", "qcin", "sd", "sdf", "smi", "smiles", "top", "trr", "tsv", "vasp", "xtc", "xyz"
     ]
 
     private static func buildInlinePreviewHTML(
@@ -1434,7 +1434,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             return 40 * mib
         case "bcif":
             return 50 * mib
-        case "abi", "com", "csv", "fdf", "sdf", "sd", "mol", "mol2", "xyz", "gro", "smi", "smiles", "tsv", "cub", "cube", "in", "inp", "nw", "out", "psi4", "qcin", "vasp", "lammpstrj", "top", "psf", "prmtop", "graphml":
+        case "abi", "com", "csv", "fdf", "sdf", "sd", "mol", "mol2", "xyz", "gro", "smi", "smiles", "tsv", "cub", "cube", "in", "inp", "log", "nw", "out", "psi4", "qcin", "vasp", "lammpstrj", "top", "psf", "prmtop", "graphml":
             return 25 * mib
         case "mae", "maegz", "cms":
             return 64 * mib
@@ -2216,7 +2216,7 @@ private enum PreviewStructureTextConverter {
             return parseQuantumEspressoInput(lines) ?? parseQSiteGeometry(lines) ?? parseBestCoordinateBlock(lines)
         case "nw", "psi4", "qcin":
             return parseBestCoordinateBlock(lines)
-        case "out":
+        case "log", "out":
             return parseOrcaOutput(lines) ?? parseGaussianOutput(lines) ?? parseBestCoordinateBlock(lines)
         case "cms", "mae", "maegz":
             return parseMaestroAtoms(lines, atomLimit: 20_000)
@@ -2341,7 +2341,7 @@ private enum PreviewStructureTextConverter {
     }
 
     private static func usesPDBTextFallback(_ fileExtension: String) -> Bool {
-        ["abi", "cub", "cube", "fdf", "in", "inp", "nw", "out", "psi4", "qcin"].contains(fileExtension.lowercased())
+        ["abi", "cub", "cube", "fdf", "in", "inp", "log", "nw", "out", "psi4", "qcin"].contains(fileExtension.lowercased())
     }
 
     private static func isGROExtension(_ fileExtension: String) -> Bool {
@@ -3402,7 +3402,7 @@ private struct StructureFormat {
             self = Self(molstarFormat: ext, isBinary: false)
         case "mae", "maegz", "cms":
             self = Self(molstarFormat: "xyzrender", isBinary: false, isExternalXyzrenderOnly: true)
-        case "abi", "com", "cub", "cube", "fdf", "in", "inp", "nw", "out", "psi4", "qcin", "vasp":
+        case "abi", "com", "cub", "cube", "fdf", "in", "inp", "log", "nw", "out", "psi4", "qcin", "vasp":
             self = Self(molstarFormat: "xyzrender", isBinary: false, isExternalXyzrenderOnly: true)
         default:
             self = Self(molstarFormat: "mmcif", isBinary: false)

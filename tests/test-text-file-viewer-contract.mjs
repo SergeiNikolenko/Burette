@@ -121,7 +121,17 @@ assert.match(app, /import \{ openBrowserDevTextFiles \} from "\.\/lib\/browser-d
 assert.match(app, /: await openBrowserDevTextFiles\(cleanPaths\)/);
 assert.doesNotMatch(app, /Text file viewer is available in the desktop app only/);
 assert.match(app, /const openPaths = useCallback/);
-assert.match(app, /structureFirstTextExtensions = new Set\(\["out"\]\)/);
+assert.match(app, /structureAndTextExtensions = new Set\(\[[\s\S]*"out"[\s\S]*"vasp"[\s\S]*\]\)/);
+for (const extension of ["abi", "cms", "com", "csv", "cub", "cube", "fdf", "graphml", "in", "inp", "log", "mae", "nw", "out", "psi4", "qcin", "tsv", "vasp"]) {
+  assert.match(app, new RegExp(`"${extension}"`), `${extension} should be a structure-and-text open extension`);
+}
+assert.match(app, /if \(structureAndTextExtensions\.has\(extension\)\) \{\s*structureAndTextPaths\.push\(path\);/);
+assert.match(app, /if \(structureAndTextPaths\.length > 0\) \{\s*await openDocuments\(structureAndTextPaths\);\s*\}/);
+assert.match(app, /const textOpenPaths = \[\.\.\.textPaths, \.\.\.structureAndTextPaths\];/);
+assert.match(app, /if \(input\.area === "right" && cleanPaths\.length > 0\) \{[\s\S]*open_text_files", \{ paths: cleanPaths \}[\s\S]*setDockDocument\(input\.area, textResult\.documents\[0\]\.id\);[\s\S]*return;/);
+const rightDockTextOpenBlock = app.match(/if \(input\.area === "right" && cleanPaths\.length > 0\) \{[\s\S]*?return;\s*\}/)?.[0] ?? "";
+assert.match(rightDockTextOpenBlock, /open_text_files", \{ paths: cleanPaths \}/);
+assert.doesNotMatch(rightDockTextOpenBlock, /pathExtension|structureExtensions|structureAndTextExtensions|preferredTextExtensions/);
 assert.match(app, /useOpenEvents\(openPaths, pushErrorStatus\)/);
 assert.match(app, /useOpenDrop\(openPaths, pushStatus/);
 assert.match(app, /showTextFileMetadata/);
