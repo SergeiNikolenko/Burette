@@ -89,6 +89,10 @@ function runShellDropAction(
     void actions.openStructurePaths(action.paths);
     return;
   }
+  if (action.kind === "open-text-files") {
+    void actions.openTextPaths(action.paths);
+    return;
+  }
   if (action.kind === "open-structure-records") {
     if (action.paths.length > 0) void actions.openStructurePaths(action.paths);
     if (action.records.length > 0) void actions.openStructureRecords(action.records);

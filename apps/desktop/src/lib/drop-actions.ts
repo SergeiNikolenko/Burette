@@ -69,6 +69,10 @@ export type DropAction =
       paths: string[];
     }
   | {
+      kind: "open-text-files";
+      paths: string[];
+    }
+  | {
       kind: "open-structure-records";
       paths: string[];
       records: StructureDragRecord[];
@@ -223,6 +227,13 @@ function withOpenSeparatelyChoices(
   const openSeparately = workspaceDropAction(payload);
   if (openSeparately.kind === "open-documents" || openSeparately.kind === "open-structure-records") {
     choices.push(choice(openSeparately.kind, "Open separately", "alternative", openSeparately, source));
+  }
+  const textPaths = uniquePaths(payload.paths);
+  if (textPaths.length > 0) {
+    choices.push(choice("open-text-files", "Open as text file", "alternative", {
+      kind: "open-text-files",
+      paths: textPaths,
+    }, source));
   }
   return choices;
 }

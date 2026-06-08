@@ -70,6 +70,7 @@ export type ChemicalEditorTarget = {
 export type ShellActions = {
   chooseFiles: () => void | Promise<void>;
   openStructurePaths: (paths: string[]) => void | Promise<void>;
+  openTextPaths: (paths: string[]) => void | Promise<void>;
   openPaths: (paths: string[]) => void | Promise<void>;
   openStructureRecords: (records: StructureDragPayload["records"]) => void | Promise<void>;
   openRecentStructure: (structure: RecentStructure) => void | Promise<void>;
