@@ -27,6 +27,12 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile --ignore-scripts
 
+      - name: Install xyzrender runtime
+        run: |
+          python3 -m pip install --user --break-system-packages uv
+          echo "$(python3 -m site --user-base)/bin" >> "$GITHUB_PATH"
+          "$(python3 -m site --user-base)/bin/uv" tool install xyzrender
+
       - name: Validate release version
         run: bun run check:release
 

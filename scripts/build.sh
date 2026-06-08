@@ -33,6 +33,12 @@ SIGN_IDENTITY="${BURRETE_CODESIGN_IDENTITY:--}"
 DEVELOPMENT_TEAM="${BURRETE_DEVELOPMENT_TEAM:-}"
 ALLOW_ADHOC_RELEASE="${BURRETE_RELEASE_ALLOW_ADHOC:-0}"
 APP_METADATA_PLIST="$ROOT/apps/desktop/src-tauri/AppMetadata.plist"
+LOCAL_XYZRENDER_ENV="$HOME/.local/share/uv/tools/xyzrender"
+LOCAL_XYZRENDER_PYTHON_HOME="$(sed -n 's/^home = //p' "$LOCAL_XYZRENDER_ENV/pyvenv.cfg" 2>/dev/null | head -n 1 || true)"
+LOCAL_XYZRENDER_PYTHON_ROOT=""
+if [[ -n "$LOCAL_XYZRENDER_PYTHON_HOME" ]]; then
+  LOCAL_XYZRENDER_PYTHON_ROOT="$(cd -P "$LOCAL_XYZRENDER_PYTHON_HOME/.." && pwd -P)"
+fi
 VITE_BURRETE_BUILD_IDENTIFIER="$APP_ID"
 VITE_BURRETE_BUILD_FLAVOR=""
 VITE_BURRETE_BUILD_CHANNEL="dev"
@@ -160,6 +166,86 @@ with open(target_path, "wb") as target_file:
     plistlib.dump(target, target_file, sort_keys=False)
 PY
 }
+require_xyzrender_runtime_for_release() {
+  [[ "$BUILD_MODE" != "release" ]] && return 0
+  [[ -d "$LOCAL_XYZRENDER_ENV" ]] || {
+    echo "error: release builds require bundled xyzrender runtime source: $LOCAL_XYZRENDER_ENV" >&2
+    echo "Install it before release builds with: uv tool install xyzrender" >&2
+    exit 1
+  }
+}
+bundle_xyzrender_runtime() {
+  local app="$1"
+  local runtime="$app/Contents/Resources/xyzrender-runtime"
+  local python_root="$app/Contents/Resources/xyzrender-python"
+  require_xyzrender_runtime_for_release
+  [[ -d "$LOCAL_XYZRENDER_ENV" ]] || return 0
+  [[ -n "$LOCAL_XYZRENDER_PYTHON_ROOT" && -x "$LOCAL_XYZRENDER_PYTHON_ROOT/bin/python3" ]] || {
+    echo "error: could not resolve relocatable xyzrender python runtime from $LOCAL_XYZRENDER_ENV/pyvenv.cfg" >&2
+    exit 1
+  }
+  rm -rf "$runtime" "$python_root"
+  mkdir -p "$runtime" "$python_root"
+  rsync -aL --delete "$LOCAL_XYZRENDER_ENV/" "$runtime/"
+  rsync -aL --delete "$LOCAL_XYZRENDER_PYTHON_ROOT/" "$python_root/"
+  clean_detritus "$python_root"
+  cat >"$runtime/bin/xyzrender" <<'EOF'
+#!/bin/sh
+set -eu
+
+SELF_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+RUNTIME_ROOT="$(CDPATH= cd -- "$SELF_DIR/.." && pwd)"
+PYTHON_ROOT="$(CDPATH= cd -- "$RUNTIME_ROOT/../xyzrender-python" && pwd)"
+SITE_PACKAGES="$(find "$RUNTIME_ROOT/lib" -maxdepth 2 -type d -name site-packages | head -n 1)"
+
+if [ ! -x "$PYTHON_ROOT/bin/python3" ]; then
+  echo "missing bundled python runtime: $PYTHON_ROOT/bin/python3" >&2
+  exit 1
+fi
+if [ -z "$SITE_PACKAGES" ] || [ ! -d "$SITE_PACKAGES" ]; then
+  echo "missing bundled site-packages under $RUNTIME_ROOT/lib" >&2
+  exit 1
+fi
+
+PYTHONNOUSERSITE=1 \
+PYTHONPATH="$SITE_PACKAGES" \
+exec "$PYTHON_ROOT/bin/python3" -m xyzrender.cli "$@"
+EOF
+  chmod +x "$runtime/bin/xyzrender"
+  clean_detritus "$runtime"
+}
+assert_bundled_xyzrender_runtime() {
+  local app="$1"
+  local stage="$2"
+  local runtime="$app/Contents/Resources/xyzrender-runtime"
+  local python_root="$app/Contents/Resources/xyzrender-python"
+  require_xyzrender_runtime_for_release
+  [[ -d "$LOCAL_XYZRENDER_ENV" ]] || return 0
+  [[ -x "$runtime/bin/xyzrender" ]] || {
+    echo "error: bundled xyzrender runtime missing $stage: $runtime/bin/xyzrender" >&2
+    exit 1
+  }
+  [[ -x "$python_root/bin/python3" ]] || {
+    echo "error: bundled xyzrender python runtime missing $stage: $python_root/bin/python3" >&2
+    exit 1
+  }
+}
+sign_bundled_xyzrender_runtime() {
+  local app="$1"
+  local runtime="$app/Contents/Resources/xyzrender-runtime"
+  local python_root="$app/Contents/Resources/xyzrender-python"
+  [[ -d "$runtime" && -d "$python_root" ]] || return 0
+  while IFS= read -r binary; do
+    codesign "${CODESIGN_ARGS[@]}" "$binary" >/dev/null
+  done < <(
+    find "$runtime" "$python_root" -type f \( \
+      -name python3 -o \
+      -name 'python3.*' -o \
+      -name '*.dylib' -o \
+      -name '*.so' \
+    \)
+  )
+}
 require_asset() { local p="$1"; [[ -s "$p" ]] || { echo "error: missing vendored web asset: $p" >&2; echo "Run: bun install --frozen-lockfile --ignore-scripts && bun run vendor:molstar && bun run vendor:rdkit" >&2; exit 1; }; }
 
 require_tool bun "Install it with: brew install oven-sh/bun/bun"
@@ -256,11 +342,13 @@ ditto --norsrc --noextattr "$QUICKLOOK_APPEX" "$TAURI_BUILT_APP/Contents/PlugIns
 ditto --norsrc --noextattr "$THUMBNAIL_APPEX" "$TAURI_BUILT_APP/Contents/PlugIns/BurreteThumbnail.appex"
 mark_regular_desktop_app "$TAURI_BUILT_APP"
 copy_app_plist_metadata "$TAURI_BUILT_APP"
+bundle_xyzrender_runtime "$TAURI_BUILT_APP"
 clean_detritus "$TAURI_BUILT_APP"
 CODESIGN_ARGS=(--force --sign "$SIGN_IDENTITY")
 if [[ "$SIGN_IDENTITY" != "-" ]]; then
   CODESIGN_ARGS+=(--options runtime --timestamp)
 fi
+sign_bundled_xyzrender_runtime "$TAURI_BUILT_APP"
 codesign "${CODESIGN_ARGS[@]}" "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex/Contents/Resources/burrete-core-bridge" >/dev/null
 codesign "${CODESIGN_ARGS[@]}" --entitlements "$ROOT/PreviewExtension/BurretePreview.entitlements" "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex" >/dev/null
 codesign "${CODESIGN_ARGS[@]}" --entitlements "$ROOT/PreviewExtension/BurretePreview.entitlements" "$TAURI_BUILT_APP/Contents/PlugIns/BurreteThumbnail.appex" >/dev/null
@@ -286,6 +374,7 @@ actual_pdb_type="$(/usr/libexec/PlistBuddy -c 'Print :UTExportedTypeDeclarations
 [[ -d "$LOCAL_APP/Contents/PlugIns/BurretePreview.appex" ]] || { echo "error: embedded Quick Look extension missing in Tauri app." >&2; exit 1; }
 [[ -x "$LOCAL_APP/Contents/PlugIns/BurretePreview.appex/Contents/Resources/burrete-core-bridge" ]] || { echo "error: embedded Quick Look extension is missing burrete-core bridge helper." >&2; exit 1; }
 [[ -d "$LOCAL_APP/Contents/PlugIns/BurreteThumbnail.appex" ]] || { echo "error: embedded Quick Look thumbnail extension missing in Tauri app." >&2; exit 1; }
+assert_bundled_xyzrender_runtime "$LOCAL_APP" "in build output"
 thumbnail_point="$(/usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$LOCAL_APP/Contents/PlugIns/BurreteThumbnail.appex/Contents/Info.plist" 2>/dev/null || true)"
 [[ "$thumbnail_point" == "com.apple.quicklook.thumbnail" ]] || { echo "error: embedded thumbnail extension has wrong extension point: ${thumbnail_point:-unknown}" >&2; exit 1; }
 BUILT_VIEWER_SHELL="$LOCAL_APP/Contents/Resources/ViewerWeb/viewer-shell.js"
@@ -306,6 +395,7 @@ rm -rf "$SAFE_ROOT/verify"
 mkdir -p "$SAFE_ROOT/verify"
 ditto --norsrc --noextattr "$SAFE_ROOT/$TAURI_BUILT_APP" "$VERIFY_APP"
 clean_detritus "$VERIFY_APP"
+assert_bundled_xyzrender_runtime "$VERIFY_APP" "before codesign verification"
 codesign --verify --deep --strict "$VERIFY_APP"
 
 cat <<MSG
