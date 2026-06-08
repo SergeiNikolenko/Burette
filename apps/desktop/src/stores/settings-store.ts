@@ -20,7 +20,7 @@ export const defaultPreferences: ViewerPreferences = {
   themeLightForeground: "#0D0D0D",
   themeLightUiFont: systemFont,
   themeLightEditorFont: systemFont,
-  themeLightTranslucent: 10,
+  themeLightTranslucent: 30,
   themeLightContrast: 20,
   themeDarkAccent: "#AF52DE",
   themeDarkBackground: "#111111",
