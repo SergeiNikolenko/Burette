@@ -57,6 +57,7 @@ const [
   buildScript,
   buildDevScript,
   ciScript,
+  ciWorkflow,
   releaseWorkflow,
   releaseVersionCheck,
   releaseScript,
@@ -126,6 +127,7 @@ const [
   source('scripts/build.sh'),
   source('scripts/build-dev.sh'),
   source('scripts/ci.sh'),
+  source('.github/workflows/ci.yml'),
   source('.github/workflows/release.yml'),
   source('scripts/check-release-version.mjs'),
   source('scripts/release.sh'),
@@ -355,9 +357,15 @@ assert.match(ciScript, /\.\/scripts\/build\.sh\n/);
 assert.doesNotMatch(ciScript, /\.\/scripts\/build\.sh\s+samples\/mini\.sdf/);
 assert.match(ciScript, /bun run check:vendor-assets/);
 assert.match(ciScript, /bun run test:update/);
+assert.match(ciWorkflow, /Install xyzrender runtime/);
+assert.match(ciWorkflow, /python3 -m pip install --user --break-system-packages uv/);
+assert.match(ciWorkflow, /"\$\(python3 -m site --user-base\)\/bin\/uv" tool install xyzrender/);
 assert.match(releaseWorkflow, /BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX/);
 assert.match(releaseWorkflow, /BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM/);
 assert.match(releaseWorkflow, /BURRETE_BUILD_MODE: release/);
+assert.match(releaseWorkflow, /Install xyzrender runtime/);
+assert.match(releaseWorkflow, /python3 -m pip install --user --break-system-packages uv/);
+assert.match(releaseWorkflow, /"\$\(python3 -m site --user-base\)\/bin\/uv" tool install xyzrender/);
 assert.match(releaseWorkflow, /allow_adhoc=true/);
 assert.match(releaseWorkflow, /BURRETE_RELEASE_ALLOW_ADHOC/);
 assert.match(releaseWorkflow, /hdiutil create -volname Burrete/);
@@ -487,6 +495,15 @@ assert.doesNotMatch(installLocalScript, /broadPublicTypes/);
 assert.match(installLocalScript, /let contentTypes = documentTypes\.flatMap/);
 assert.match(installLocalScript, /for contentType in Set\(contentTypes\)/);
 assert.match(installLocalScript, /Contents\/Resources\/ViewerWeb/);
+assert.match(buildScript, /LOCAL_XYZRENDER_ENV="\$HOME\/\.local\/share\/uv\/tools\/xyzrender"/);
+assert.match(buildScript, /require_xyzrender_runtime_for_release\(\)\s*\{/);
+assert.match(buildScript, /release builds require bundled xyzrender runtime source/);
+assert.match(buildScript, /bundle_xyzrender_runtime "\$TAURI_BUILT_APP"/);
+assert.match(buildScript, /rsync -aL --delete "\$LOCAL_XYZRENDER_ENV\/" "\$runtime\/"/);
+assert.match(buildScript, /exec "\$PYTHON_ROOT\/bin\/python3" -m xyzrender\.cli "\$@"/);
+assert.match(buildScript, /sign_bundled_xyzrender_runtime "\$TAURI_BUILT_APP"/);
+assert.match(buildScript, /assert_bundled_xyzrender_runtime "\$LOCAL_APP" "in build output"/);
+assert.match(buildScript, /assert_bundled_xyzrender_runtime "\$VERIFY_APP" "before codesign verification"/);
 assert.match(installLocalScript, /assert_bundled_xyzrender_runtime\(\)\s*\{/);
 assert.match(installLocalScript, /assert_bundled_xyzrender_runner\(\)\s*\{/);
 assert.match(installLocalScript, /sign_bundled_xyzrender_runtime\(\)\s*\{/);
