@@ -387,18 +387,28 @@ def write_pdb_box(output, box: BoxVectors, serial_start: int) -> None:
         output.write(f"CONECT{serial_start + first:5d}{serial_start + second:5d}\n")
 
 
+def frame_time_ps(frame) -> float | None:
+    try:
+        time = float(getattr(frame, "time"))
+    except (TypeError, ValueError):
+        return None
+    return time if math.isfinite(time) else None
+
+
 def write_pdb_frame(
     output,
     structure,
     selected_indices: list[int],
     frame_index: int,
     frame_count: int,
+    frame_time_ps: float | None,
     box: BoxVectors | None,
 ) -> None:
     atoms_by_index = {atom.index: atom for atom in structure.atom}
     selected = [atoms_by_index[index] for index in selected_indices if index in atoms_by_index]
     output.write(f"MODEL     {frame_index + 1:4d}\n")
-    output.write(f"REMARK   Desmond preview frame {frame_index + 1} / {frame_count}\n")
+    time_text = f" time_ps={frame_time_ps:.6f}" if frame_time_ps is not None else ""
+    output.write(f"REMARK   Desmond preview frame {frame_index + 1} / {frame_count}{time_text}\n")
     for serial, atom in enumerate(selected, start=1):
         output.write(pdb_atom_line(serial, atom))
     if box is not None:
@@ -431,8 +441,17 @@ def extract(
         if box is not None:
             output.write(pdb_cryst1_line(box))
         for index in indices:
-            structure = topo.update_ct(cms_model.fsys_ct, cms_model, trajectory[index]).copy()
-            write_pdb_frame(output, structure, selected_indices, index, len(trajectory), box)
+            frame = trajectory[index]
+            structure = topo.update_ct(cms_model.fsys_ct, cms_model, frame).copy()
+            write_pdb_frame(
+                output,
+                structure,
+                selected_indices,
+                index,
+                len(trajectory),
+                frame_time_ps(frame),
+                box,
+            )
     finally:
         if output_path:
             output.close()
