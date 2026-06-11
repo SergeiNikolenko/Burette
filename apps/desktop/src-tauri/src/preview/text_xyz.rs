@@ -340,9 +340,9 @@ fn gro_pdb_data_from_text(data: &[u8], label: &str) -> Option<ConvertedStructure
     if let Some(box_vectors) = box_vectors {
         staged_entries.push(ConvertedStagedEntry {
             label: "Box".to_string(),
-            data: box_pdb_from_vectors(&box_vectors, label).into_bytes(),
+            data: unit_cell_pdb_from_vectors(&box_vectors, label).into_bytes(),
             extension: "pdb",
-            representation: "box-lines",
+            representation: "unitcell",
         });
     }
     if !water_atoms.is_empty() {
@@ -954,68 +954,10 @@ fn pdb_cryst1_line(box_vectors: &BoxVectors) -> String {
     )
 }
 
-fn add_vectors(first: &[f64; 3], second: &[f64; 3]) -> [f64; 3] {
-    [
-        first[0] + second[0],
-        first[1] + second[1],
-        first[2] + second[2],
-    ]
-}
-
-fn box_vertices(box_vectors: &BoxVectors) -> [[f64; 3]; 8] {
-    let [a, b, c] = box_vectors;
-    let origin = [0.0, 0.0, 0.0];
-    let ab = add_vectors(a, b);
-    let ac = add_vectors(a, c);
-    let bc = add_vectors(b, c);
-    [origin, *a, ab, *b, *c, ac, add_vectors(&ab, c), bc]
-}
-
-fn pdb_box_atom_line(serial: usize, name: &str, vertex: &[f64; 3]) -> String {
-    format!(
-        "HETATM{serial:>5} {name:<4} BOX Z9999    {x:>8.3}{y:>8.3}{z:>8.3}  1.00  0.00           C  ",
-        x = vertex[0],
-        y = vertex[1],
-        z = vertex[2],
-    )
-}
-
-fn push_pdb_box_lines(pdb: &mut String, box_vectors: &BoxVectors, serial_start: usize) {
-    for (index, vertex) in box_vertices(box_vectors).iter().enumerate() {
-        pdb.push_str(&pdb_box_atom_line(
-            serial_start + index,
-            &format!("B{}", index + 1),
-            vertex,
-        ));
-        pdb.push('\n');
-    }
-    for (first, second) in [
-        (0, 1),
-        (1, 2),
-        (2, 3),
-        (3, 0),
-        (4, 5),
-        (5, 6),
-        (6, 7),
-        (7, 4),
-        (0, 4),
-        (1, 5),
-        (2, 6),
-        (3, 7),
-    ] {
-        pdb.push_str(&format!(
-            "CONECT{:>5}{:>5}\n",
-            serial_start + first,
-            serial_start + second
-        ));
-    }
-}
-
-fn box_pdb_from_vectors(box_vectors: &BoxVectors, label: &str) -> String {
+fn unit_cell_pdb_from_vectors(box_vectors: &BoxVectors, label: &str) -> String {
     let mut pdb = pdb_cryst1_line(box_vectors);
     pdb.push('\n');
-    pdb.push_str(&format!("REMARK Box split from {label}\n"));
-    push_pdb_box_lines(&mut pdb, box_vectors, 1);
+    pdb.push_str(&format!("REMARK Unit cell split from {label}\n"));
     pdb.push_str("END\n");
     pdb
 }
@@ -1433,7 +1375,7 @@ generated
     }
 
     #[test]
-    fn converts_gro_box_to_pdb_cryst1_and_frame_edges() {
+    fn converts_gro_box_to_pdb_cryst1_and_unit_cell_entry() {
         let data = br#"GRO box fixture
 2
     1MOL      C    1   1.000   2.000   3.000
@@ -1448,12 +1390,12 @@ generated
         assert!(pdb.contains("REMARK Converted from box.gro\nHETATM    1 C    MOL A   1"));
         assert!(!pdb.contains("BOX Z9999"));
         assert_eq!(converted.staged_entries.len(), 2);
-        assert_eq!(converted.staged_entries[0].representation, "box-lines");
+        assert_eq!(converted.staged_entries[0].representation, "unitcell");
         let box_pdb = String::from_utf8(converted.staged_entries[0].data.clone()).unwrap();
-        assert!(box_pdb.contains("HETATM    1 B1   BOX Z9999       0.000   0.000   0.000"));
-        assert!(box_pdb.contains("HETATM    2 B2   BOX Z9999      10.000   1.000   2.000"));
-        assert!(box_pdb.contains("HETATM    3 B3   BOX Z9999      13.000  21.000   6.000"));
-        assert!(box_pdb.contains("CONECT    1    2"));
+        assert!(box_pdb.starts_with("CRYST1   10.247   20.616   31.000"));
+        assert!(box_pdb.contains("REMARK Unit cell split from box.gro"));
+        assert!(!box_pdb.contains("BOX Z9999"));
+        assert!(!box_pdb.contains("CONECT"));
         assert_eq!(converted.staged_entries[1].representation, "solvent-lines");
     }
 

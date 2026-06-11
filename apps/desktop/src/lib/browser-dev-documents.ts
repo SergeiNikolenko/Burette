@@ -1621,8 +1621,8 @@ function groPdbDataFromText(text: string, label: string) {
       label: "Box",
       format: "pdb",
       binary: false,
-      representation: "box-lines",
-      dataBase64: bytesToBase64(new TextEncoder().encode(boxPdbFromVectors(box, label))),
+      representation: "unitcell",
+      dataBase64: bytesToBase64(new TextEncoder().encode(unitCellPdbFromVectors(box, label))),
     });
   }
   if (waterAtoms.length) {
@@ -2000,37 +2000,10 @@ function pdbCryst1Line(box: BoxVectors) {
   return `CRYST1${vectorLength(a).toFixed(3).padStart(9, " ")}${vectorLength(b).toFixed(3).padStart(9, " ")}${vectorLength(c).toFixed(3).padStart(9, " ")}${vectorAngle(b, c).toFixed(2).padStart(7, " ")}${vectorAngle(a, c).toFixed(2).padStart(7, " ")}${vectorAngle(a, b).toFixed(2).padStart(7, " ")} P 1           1`;
 }
 
-function boxVertices(box: BoxVectors) {
-  const [a, b, c] = box;
-  const add = (first: [number, number, number], second: [number, number, number]): [number, number, number] => [
-    first[0] + second[0],
-    first[1] + second[1],
-    first[2] + second[2],
-  ];
-  const origin: [number, number, number] = [0, 0, 0];
-  const ab = add(a, b);
-  const ac = add(a, c);
-  const bc = add(b, c);
-  return [origin, a, ab, b, c, ac, add(ab, c), bc];
-}
-
-function pdbBoxAtomLine(serial: number, name: string, [x, y, z]: [number, number, number]) {
-  return `HETATM${String(serial).padStart(5, " ")} ${name.padEnd(4, " ")} BOX Z9999    ${formatPdbCoordinate(x)}${formatPdbCoordinate(y)}${formatPdbCoordinate(z)}  1.00  0.00           C  `;
-}
-
-function pdbBoxLines(box: BoxVectors, serialStart: number) {
-  const lines = boxVertices(box).map((vertex, index) => pdbBoxAtomLine(serialStart + index, `B${index + 1}`, vertex));
-  for (const [first, second] of [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]]) {
-    lines.push(`CONECT${String(serialStart + first).padStart(5, " ")}${String(serialStart + second).padStart(5, " ")}`);
-  }
-  return lines;
-}
-
-function boxPdbFromVectors(box: BoxVectors, label: string) {
+function unitCellPdbFromVectors(box: BoxVectors, label: string) {
   return [
     pdbCryst1Line(box),
-    `REMARK Box split from ${label}`,
-    ...pdbBoxLines(box, 1),
+    `REMARK Unit cell split from ${label}`,
     "END",
     "",
   ].join("\n");
