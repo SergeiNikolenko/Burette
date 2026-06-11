@@ -747,39 +747,23 @@ function languageForTextExtension(extension: string) {
   return "text";
 }
 
+function candidateDesmondBaseNames(stem: string) {
+  const bases = [stem];
+  for (const suffix of ["-out", "_out", "-in", "_in"]) {
+    if (stem.endsWith(suffix)) bases.push(stem.slice(0, -suffix.length));
+  }
+  for (const base of [...bases]) {
+    bases.push(base.replace(/_replica_(\d+)$/u, "_replica$1"));
+    bases.push(base.replace(/replica_(\d+)$/u, "replica$1"));
+  }
+  return Array.from(new Set(bases.filter(Boolean)));
+}
+
 function candidateDesmondBases(path: string) {
   const name = path.replace(/\\/g, "/").split("/").pop() || "";
   const extension = fileExtension(name);
   const stem = extension ? name.slice(0, Math.max(0, name.length - extension.length - 1)) : name;
-  const bases = [stem];
-  if (stem.endsWith("-out")) bases.push(stem.slice(0, -4));
-  if (stem.endsWith("_out")) bases.push(stem.slice(0, -4));
-  return Array.from(new Set(bases.filter(Boolean)));
-}
-
-function casebookSourceFilesParts(path: string) {
-  const normalized = resolve(path).replace(/\\/g, "/");
-  const marker = "/source_files/";
-  const index = normalized.indexOf(marker);
-  if (index < 0) return null;
-  return {
-    root: normalized.slice(0, index + marker.length - 1),
-    rest: normalized.slice(index + marker.length).split("/").filter(Boolean),
-  };
-}
-
-function casebookTrjCandidates(path: string, base: string) {
-  const resolved = casebookSourceFilesParts(path);
-  if (!resolved || !resolved.rest[0]?.startsWith("mnt__")) return [];
-  const mapped = resolved.rest[0].split("__");
-  return [join(resolved.root, ...mapped, ...resolved.rest.slice(1, -1), `${base}_trj`)];
-}
-
-function casebookCmsCandidates(trjDirectory: string, base: string) {
-  const resolved = casebookSourceFilesParts(trjDirectory);
-  if (!resolved || resolved.rest.length < 4 || resolved.rest.slice(0, 3).join("/") !== "mnt/ligandpro/crim3s") return [];
-  const mappedDirectory = join(resolved.root, resolved.rest.slice(0, 4).join("__"));
-  return [join(mappedDirectory, `${base}-out.cms`), join(mappedDirectory, `${base}.cms`)];
+  return candidateDesmondBaseNames(stem);
 }
 
 function existingFileCandidate(candidates: string[]) {
@@ -804,11 +788,10 @@ function resolveDesmondFileBundle(path: string): StructureFileBundle | null {
   if (extension === "dtr") {
     const trjDirectory = dirname(path);
     const base = trjDirectory.replace(/\\/g, "/").split("/").pop()?.replace(/_trj$/u, "") || "";
-    const cmsPath = existingFileCandidate([
-      join(dirname(trjDirectory), `${base}-out.cms`),
-      join(dirname(trjDirectory), `${base}.cms`),
-      ...casebookCmsCandidates(trjDirectory, base),
-    ]);
+    const cmsPath = existingFileCandidate(candidateDesmondBaseNames(base).flatMap((candidate) => [
+      join(dirname(trjDirectory), `${candidate}-out.cms`),
+      join(dirname(trjDirectory), `${candidate}.cms`),
+    ]));
     if (!cmsPath || !existsSync(trjDirectory) || !statSync(trjDirectory).isDirectory()) return null;
     return {
       kind: "desmond",
@@ -823,7 +806,7 @@ function resolveDesmondFileBundle(path: string): StructureFileBundle | null {
   }
   if (extension !== "cms") return null;
   for (const base of candidateDesmondBases(path)) {
-    const trjDirectory = existingDirectoryCandidate([join(dirname(path), `${base}_trj`), ...casebookTrjCandidates(path, base)]);
+    const trjDirectory = existingDirectoryCandidate([join(dirname(path), `${base}_trj`)]);
     if (!trjDirectory) continue;
     const clickme = join(trjDirectory, "clickme.dtr");
     const attachments: StructureFileBundle["attachments"] = [
