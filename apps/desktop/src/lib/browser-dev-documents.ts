@@ -42,7 +42,7 @@ type BoxVectors = [[number, number, number], [number, number, number], [number, 
 const MAX_STRUCTURE_FILE_SIZE = 75 * 1024 * 1024;
 const MAESTRO_PREVIEW_READ_LIMIT = 64 * 1024 * 1024;
 const MAESTRO_PREVIEW_ATOM_LIMIT = 3000;
-const MAESTRO_PDB_PREVIEW_ATOM_LIMIT = 30000;
+const MAESTRO_PDB_PREVIEW_ATOM_LIMIT = 99999;
 const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT = 1500;
 const KETCHER_EDIT_MAX_BYTES = 1024 * 1024;
 const KETCHER_EDIT_MAX_ATOMS = 300;
@@ -1862,8 +1862,8 @@ function parseMaestroCtType(lines: string[], startIndex: number) {
 }
 
 function maestroCtScore(ctType: string) {
-  if (ctType === "solute") return 4;
-  if (ctType === "full_system") return 3;
+  if (ctType === "full_system") return 4;
+  if (ctType === "solute") return 3;
   if (ctType === "ion") return 1;
   if (ctType === "solvent") return 0;
   return 2;
