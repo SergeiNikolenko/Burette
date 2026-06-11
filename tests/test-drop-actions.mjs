@@ -82,8 +82,18 @@ assert.deepEqual(resolveDropActionChoices(payload(["/tmp/a.sdf"]), { kind: "ketc
       paths: ["/tmp/a.sdf"],
     },
   },
+  {
+    id: "open-text-files",
+    label: "Open as text file",
+    confidence: "alternative",
+    action: {
+      kind: "open-text-files",
+      paths: ["/tmp/a.sdf"],
+    },
+  },
 ]);
 assert.deepEqual(resolveDropActionChoices(payload(["/tmp/a.sdf"]), { kind: "ketcher" }, { kind: "tab" }).map((choice) => choice.source), [
+  { kind: "tab" },
   { kind: "tab" },
   { kind: "tab" },
 ]);
@@ -113,6 +123,15 @@ assert.deepEqual(resolveDropActionChoices(payload(["/tmp/receptor.pdb", "/tmp/a.
     confidence: "alternative",
     action: {
       kind: "open-documents",
+      paths: ["/tmp/receptor.pdb", "/tmp/a.sdf"],
+    },
+  },
+  {
+    id: "open-text-files",
+    label: "Open as text file",
+    confidence: "alternative",
+    action: {
+      kind: "open-text-files",
       paths: ["/tmp/receptor.pdb", "/tmp/a.sdf"],
     },
   },
@@ -169,6 +188,15 @@ assert.deepEqual(resolveDropActionChoices(payload(["/tmp/analogs.sdf"]), {
       paths: ["/tmp/analogs.sdf"],
     },
   },
+  {
+    id: "open-text-files",
+    label: "Open as text file",
+    confidence: "alternative",
+    action: {
+      kind: "open-text-files",
+      paths: ["/tmp/analogs.sdf"],
+    },
+  },
 ]);
 
 assert.deepEqual(resolveDropAction(payload(["/tmp/a.pdb"], [{ path: "structure.smi", inputExtension: "smi", text: "CCO\n" }]), {
@@ -215,6 +243,15 @@ assert.deepEqual(resolveDropActionChoices(payload(["/tmp/a.sdf"]), {
       paths: ["/tmp/a.sdf"],
     },
   },
+  {
+    id: "open-text-files",
+    label: "Open as text file",
+    confidence: "alternative",
+    action: {
+      kind: "open-text-files",
+      paths: ["/tmp/a.sdf"],
+    },
+  },
 ]);
 
 assert.deepEqual(resolveDropAction(payload(["/tmp/a.sdf"]), {
@@ -247,6 +284,15 @@ assert.deepEqual(resolveDropActionChoices(payload(["/tmp/a.sdf"]), {
     confidence: "alternative",
     action: {
       kind: "open-documents",
+      paths: ["/tmp/a.sdf"],
+    },
+  },
+  {
+    id: "open-text-files",
+    label: "Open as text file",
+    confidence: "alternative",
+    action: {
+      kind: "open-text-files",
       paths: ["/tmp/a.sdf"],
     },
   },
@@ -313,6 +359,15 @@ assert.deepEqual(resolveDropActionChoices(payload(["/tmp/ligand.sdf"]), {
     confidence: "alternative",
     action: {
       kind: "open-documents",
+      paths: ["/tmp/ligand.sdf"],
+    },
+  },
+  {
+    id: "open-text-files",
+    label: "Open as text file",
+    confidence: "alternative",
+    action: {
+      kind: "open-text-files",
       paths: ["/tmp/ligand.sdf"],
     },
   },
@@ -428,6 +483,15 @@ assert.deepEqual(resolveDropActionChoices(payload(["/tmp/receptor-a.pdb", "/tmp/
     confidence: "alternative",
     action: {
       kind: "open-documents",
+      paths: ["/tmp/receptor-a.pdb", "/tmp/receptor-b.cif", "/tmp/ligand.sdf"],
+    },
+  },
+  {
+    id: "open-text-files",
+    label: "Open as text file",
+    confidence: "alternative",
+    action: {
+      kind: "open-text-files",
       paths: ["/tmp/receptor-a.pdb", "/tmp/receptor-b.cif", "/tmp/ligand.sdf"],
     },
   },
