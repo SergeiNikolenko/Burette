@@ -227,7 +227,8 @@ assert.match(dropActionExecutor, /actions\.openDockingDocument\(action\.request\
 assert.match(dropActionExecutor, /action\.kind === "open-docking-with-records"/);
 assert.match(dropActionExecutor, /actions\.openDockingStructureRecords\(action\.receptorPath, action\.ligandPaths, action\.records\)/);
 
-assert.match(editorTabs, /writeStructureDragPayload\(event\.dataTransfer, \{/);
+assert.match(editorTabs, /const payload = tabStructurePayload\(tab\.id\) \?\? \{/);
+assert.match(editorTabs, /writeStructureDragPayload\(event\.dataTransfer, payload\)/);
 assert.match(editorTabs, /paths: tabPath \? \[tabPath\] : \[\]/);
 assert.match(editorTabs, /items: \[tabDragItem\]/);
 

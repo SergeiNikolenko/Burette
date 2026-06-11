@@ -453,6 +453,14 @@ button:focus-visible > .shortcut-tooltip {
 .tab > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 400; }
 .tab:hover { background: var(--tab-active-bg); color: var(--text-secondary); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }
 .tab.active { background: var(--tab-active-bg); color: var(--text-secondary); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }
+.tab-shell[data-selected="true"] .tab {
+  background: var(--surface-selected);
+  color: var(--text-secondary);
+  box-shadow: inset 0 0 0 1px var(--line-subtle);
+}
+.tab-shell[data-selected="true"] .tab.active {
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
 .tab:active { transform: scale(0.985); }
 .tab-shell[data-dragging="true"] .tab {
   background: var(--tab-active-bg);
