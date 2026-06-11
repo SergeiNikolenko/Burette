@@ -2962,6 +2962,39 @@
     return String(Math.round(fps * 100) / 100);
   }
 
+  function formatTrajectoryTimeNs(timePs) {
+    const ns = Number(timePs) / 1000;
+    if (!Number.isFinite(ns)) return null;
+    const abs = Math.abs(ns);
+    const decimals = abs >= 100 ? 1 : abs >= 1 ? 2 : abs >= 0.001 ? 3 : 6;
+    return String(Number(ns.toFixed(decimals)));
+  }
+
+  function pdbTrajectoryTimesPs(data) {
+    const text = typeof data === 'string' ? data : '';
+    if (!text.includes('time_ps=')) return [];
+    const times = [];
+    for (const line of text.split(/\r?\n/u)) {
+      if (!line.startsWith('REMARK') || !line.includes('time_ps=')) continue;
+      const match = line.match(/\btime_ps=([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)/u);
+      if (!match) continue;
+      const timePs = Number(match[1]);
+      if (Number.isFinite(timePs)) times.push(timePs);
+    }
+    return times;
+  }
+
+  function trajectoryTimesPsForPrepared(prepared) {
+    if (!prepared || normalizeFormat(prepared.format) !== 'pdb') return [];
+    return pdbTrajectoryTimesPs(prepared.data);
+  }
+
+  function trajectoryPoseLabel(prepared, controlLabel, activePose) {
+    const indexText = `${activePose + 1}/${prepared.poseCount}`;
+    const timeNs = formatTrajectoryTimeNs(prepared?.trajectoryTimesPs?.[activePose]);
+    return timeNs ? `Time ${timeNs} ns - ${indexText}` : `${controlLabel} ${activePose + 1} / ${prepared.poseCount}`;
+  }
+
   function readTrajectoryLoopFps(config, prepared) {
     try {
       const stored = Number(localStorage.getItem(trajectoryLoopFpsStorageKey(config, prepared)));
@@ -2982,6 +3015,7 @@
       activePose: readTrajectoryControlIndex(activeConfig, prepared, poseCount),
       poseCount,
       nativeTrajectoryControls: true,
+      trajectoryTimesPs: trajectoryTimesPsForPrepared(prepared),
       ligandLabel: prepared?.label || activeConfig?.label || 'Mol* trajectory',
       controlLabel: label
     };
@@ -5363,7 +5397,7 @@
     slider.step = '1';
     slider.setAttribute('aria-label', `${controlLabel} slider`);
     const updateControls = () => {
-      label.textContent = `${controlLabel} ${activePose + 1} / ${prepared.poseCount}`;
+      label.textContent = trajectoryPoseLabel(prepared, controlLabel, activePose);
       previous.disabled = activePose <= 0;
       next.disabled = activePose >= prepared.poseCount - 1;
       slider.value = String(activePose + 1);
@@ -5436,7 +5470,7 @@
       try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(nextIndex)); } catch (_) {}
       previous.disabled = true;
       next.disabled = true;
-      label.textContent = `${controlLabel} ${nextIndex + 1} / ${prepared.poseCount}`;
+      label.textContent = trajectoryPoseLabel(prepared, controlLabel, nextIndex);
       try {
         if (prepared.nativeTrajectoryControls) {
           const switched = await setNativeTrajectoryPose(nextIndex, prepared.poseCount);
