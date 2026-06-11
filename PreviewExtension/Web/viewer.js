@@ -2999,13 +2999,15 @@
   }
 
   const DEFAULT_TRAJECTORY_LOOP_FPS = 20;
+  const NATIVE_TRAJECTORY_LOOP_SKIP_FPS_THRESHOLD = 25;
+  const NATIVE_TRAJECTORY_LOOP_MAX_FPS = 100;
 
   function trajectoryLoopFpsStorageKey(config, prepared) {
     return `${trajectoryControlStorageKey(config, prepared)}.fps.v1`;
   }
 
   function minimumTrajectoryLoopDelay(prepared) {
-    return prepared?.nativeTrajectoryControls ? 40 : 300;
+    return prepared?.nativeTrajectoryControls ? Math.round(1000 / NATIVE_TRAJECTORY_LOOP_MAX_FPS) : 300;
   }
 
   function minimumTrajectoryLoopTimerDelay(prepared) {
@@ -5461,6 +5463,10 @@
     speed.inputMode = 'decimal';
     speed.value = formatTrajectoryFps(readTrajectoryLoopFps(activeConfig, prepared));
     speed.title = 'Frames per second (FPS)';
+    const updateSpeedMode = () => {
+      const fps = Number(speed.value);
+      speed.classList.toggle('buret-docking-pose-speed-skip', Number.isFinite(fps) && fps > NATIVE_TRAJECTORY_LOOP_SKIP_FPS_THRESHOLD);
+    };
     const slider = document.createElement('input');
     slider.className = 'buret-docking-pose-slider';
     slider.type = 'range';
@@ -5496,6 +5502,7 @@
       if (active) setAnimationOptionsOpen(true);
     };
     updateControls();
+    updateSpeedMode();
     const loopDelayMs = () => {
       const delay = trajectoryFpsToDelay(speed.value, prepared);
       return Number.isFinite(delay) && delay > 0 ? delay : 1200;
@@ -5665,11 +5672,13 @@
       const delay = loopDelayMs();
       const fps = trajectoryDelayToFps(delay, prepared);
       speed.value = formatTrajectoryFps(fps);
+      updateSpeedMode();
       try { localStorage.setItem(trajectoryLoopFpsStorageKey(activeConfig, prepared), String(fps)); } catch (_) {}
       if (!loopActive) return;
       setLoopActive(false);
       loop.click();
     });
+    speed.addEventListener('input', updateSpeedMode);
     slider.addEventListener('input', () => {
       const previewIndex = Math.max(0, Math.min(prepared.poseCount - 1, Number(slider.value) - 1));
       label.textContent = `${controlLabel} ${previewIndex + 1} / ${prepared.poseCount}`;
