@@ -204,6 +204,11 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
     };
   }, [actions, clearDragActivation, state.activeTabId]);
 
+  const selectAndFocusTab = useCallback((tabId: string) => {
+    actions.selectTab(tabId);
+    tabShellRefs.current.get(tabId)?.querySelector<HTMLButtonElement>('[role="tab"]')?.focus();
+  }, [actions]);
+
   const stopTabDrag = useCallback(() => {
     removeMouseDragListeners();
     clearDragActivation();
@@ -538,25 +543,25 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
                   if (event.key === "ArrowRight") {
                     event.preventDefault();
                     const next = visibleTabs[(index + 1) % visibleTabs.length];
-                    if (next) actions.selectTab(next.id);
+                    if (next) selectAndFocusTab(next.id);
                     return;
                   }
                   if (event.key === "ArrowLeft") {
                     event.preventDefault();
                     const next = visibleTabs[(index - 1 + visibleTabs.length) % visibleTabs.length];
-                    if (next) actions.selectTab(next.id);
+                    if (next) selectAndFocusTab(next.id);
                     return;
                   }
                   if (event.key === "Home") {
                     event.preventDefault();
                     const next = visibleTabs[0];
-                    if (next) actions.selectTab(next.id);
+                    if (next) selectAndFocusTab(next.id);
                     return;
                   }
                   if (event.key === "End") {
                     event.preventDefault();
                     const next = visibleTabs[visibleTabs.length - 1];
-                    if (next) actions.selectTab(next.id);
+                    if (next) selectAndFocusTab(next.id);
                   }
                 }}
                 title={tabPath ?? title}
