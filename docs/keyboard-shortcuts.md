@@ -12,7 +12,7 @@ open.
 | Cmd+P or / | Open command palette |
 | Cmd+O | Open molecular structure files |
 | Cmd+Shift+O | Open most recent structure |
-| Cmd+\ | Toggle sidebar |
+| Cmd+B | Toggle sidebar |
 | Cmd+, | Open Settings |
 | Cmd+W | Close active structure tab |
 | Cmd+Shift+R | Reveal active structure in Finder |

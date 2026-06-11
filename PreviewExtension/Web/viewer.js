@@ -115,6 +115,26 @@
     }
   }
 
+  function isEditableShortcutTarget(target) {
+    const tagName = target?.tagName?.toLowerCase();
+    return target?.isContentEditable || tagName === 'input' || tagName === 'textarea' || tagName === 'select';
+  }
+
+  function initShellShortcutBridge() {
+    document.addEventListener('keydown', event => {
+      if (event.defaultPrevented || isEditableShortcutTarget(event.target)) return;
+      const key = event.key?.toLowerCase();
+      const commandKey = event.metaKey || event.ctrlKey;
+      const togglesSidebar = commandKey && !event.altKey && !event.shiftKey && key === 'b';
+      const opensCommandPalette = (commandKey && key === 'p') || (!commandKey && !event.altKey && key === '/');
+      if (!opensCommandPalette && !togglesSidebar) return;
+      event.preventDefault();
+      postHostMessage({ type: togglesSidebar ? 'toggleSidebar' : 'openCommandPalette' });
+    }, true);
+  }
+
+  initShellShortcutBridge();
+
   function safeExportBaseName(value, fallback = 'structure') {
     return String(value || fallback)
       .replace(/\.[A-Za-z0-9]{1,8}$/u, '')
