@@ -62,6 +62,11 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
         actions.toggleDock("bottom");
         return;
       }
+      if (commandKey && !event.altKey && !event.shiftKey && key === "b") {
+        event.preventDefault();
+        toggleSidebar();
+        return;
+      }
       if (commandKey && event.altKey && key === "b") {
         event.preventDefault();
         actions.toggleDock("right");
