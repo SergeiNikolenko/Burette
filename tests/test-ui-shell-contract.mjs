@@ -1820,6 +1820,9 @@ assert.match(sidebarSurface, /disabled: !project\.rootPath,\s*action: \(\) => \{
 assert.doesNotMatch(sidebarSurface, /!project\.rootPath \|\| !project\.isExplicit/);
 assert.match(sidebarSurface, /Pin structure/);
 assert.match(sidebarSurface, /Unpin structure/);
+assert.match(sidebarSurface, /id: "copy-structure-path"/);
+assert.match(sidebarSurface, /text: "Copy Path"/);
+assert.match(sidebarSurface, /actions\.copyPath\(item\.path, "structure"\)/);
 assert.match(sidebarSurface, /Pin project/);
 assert.match(sidebarSurface, /Unpin project/);
 assert.doesNotMatch(sidebarSurface, /projectCount/);
