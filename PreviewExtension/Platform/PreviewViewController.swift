@@ -279,6 +279,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let modifiedAt: TimeInterval
     }
 
+    private struct DefaultCubeXyzrenderInput {
+        let data: Data
+        let sourceFilename: String
+        let controls: [String: Any]
+    }
+
     private static let supportedStructureExtensions: Set<String> = [
         "abi", "bcif", "cif", "cms", "com", "csv", "cub", "cube", "dcd", "ent", "fdf", "graphml", "gro", "in", "inp", "lammpstrj", "log", "mae", "maegz", "mcif", "mmcif", "mol", "mol2", "nctraj", "nw", "out", "pdb", "pdbqt", "pqr", "prmtop", "psf", "psi4", "qcin", "sd", "sdf", "smi", "smiles", "top", "trr", "tsv", "vasp", "xtc", "xyz"
     ]
@@ -433,7 +439,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         var externalArtifactSourceURL: URL?
         var externalStatus: [String: Any]?
         var temporaryExternalDirectory: URL?
-        if PreviewStructureTextConverter.shouldPreferConvertedMolstarData(fileExtension: pathExtension),
+        var resolvedXyzrenderControls = xyzrenderControlsOverride
+        if (renderer == BurreteRendererMode.molstar || PreviewStructureTextConverter.shouldPreferConvertedMolstarData(fileExtension: pathExtension)),
            let convertedStructure = PreviewStructureTextConverter.convertedData(
             from: structureData,
             fileExtension: pathExtension,
@@ -486,11 +493,15 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             let renderDirectory = fileManager.temporaryDirectory
                 .appendingPathComponent("BurreteXYZRender-\(UUID().uuidString)", isDirectory: true)
             temporaryExternalDirectory = renderDirectory
+            let defaultXyzrenderInput = xyzrenderControlsOverride == nil
+                ? defaultCubeXyzrenderInput(fileURL: url, data: structureData, fileExtension: pathExtension)
+                : nil
+            resolvedXyzrenderControls = xyzrenderControlsOverride ?? defaultXyzrenderInput?.controls
             do {
                 try fileManager.createDirectory(at: renderDirectory, withIntermediateDirectories: true)
                 externalArtifact = try PreviewExternalXyzrenderWorker.render(
-                    inputData: structureData,
-                    sourceFilename: url.lastPathComponent,
+                    inputData: defaultXyzrenderInput?.data ?? structureData,
+                    sourceFilename: defaultXyzrenderInput?.sourceFilename ?? url.lastPathComponent,
                     outputDirectory: renderDirectory,
                     preset: xyzrenderPreset,
                     customConfigPath: preferences.xyzrenderCustomConfigPath,
@@ -498,7 +509,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     executablePath: preferences.xyzrenderExecutablePath,
                     extraArguments: preferences.xyzrenderExtraArguments,
                     orientationRefText: xyzrenderOrientationRefText,
-                    controls: xyzrenderControlsOverride
+                    controls: resolvedXyzrenderControls
                 )
                 externalArtifactSourceURL = renderDirectory.appendingPathComponent("xyzrender.svg")
             } catch {
@@ -539,6 +550,11 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             }
         }
         diag("detected.format=\(format.molstarFormat) binary=\(format.isBinary) renderer=\(renderer)")
+        let molstarAvailable = rendererPolicy.molstarAvailable || PreviewStructureTextConverter.convertedData(
+            from: structureData,
+            fileExtension: pathExtension,
+            label: url.lastPathComponent
+        ) != nil
 
         let configJSON = try previewConfigJSON(
             format: format,
@@ -551,11 +567,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             externalArtifact: externalArtifact,
             externalStatus: externalStatus,
             xyzrenderPreset: xyzrenderPreset,
-            xyzrenderControls: xyzrenderControlsOverride,
+            xyzrenderControls: resolvedXyzrenderControls,
             stagedEntries: stagedEntries,
             trajectoryFrameCount: renderer == BurreteRendererMode.molstar ? xyzPayload?.frameCount : nil,
             originalFileExtension: pathExtension,
             rendererPolicy: rendererPolicy,
+            molstarAvailable: molstarAvailable,
             preferences: preferences
         )
         diag("structure.payload.bytes=\(structureDataForWeb.count)")
@@ -842,6 +859,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         trajectoryFrameCount: Int?,
         originalFileExtension: String,
         rendererPolicy: BurreteRendererPolicy,
+        molstarAvailable: Bool,
         preferences: PreviewPreferences
     ) throws -> String {
         let resolvedTrajectoryFrameCount = trajectoryFrameCount ?? 0
@@ -860,6 +878,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "byteCount": byteCount,
             "previewByteCount": previewByteCount,
             "dataPath": "./preview-data.bin",
+            "sourceExtension": normalizedOriginalExtension,
             "stagedEntries": stagedEntries,
             "quickLookBuild": "v10-product",
             "quickLookViewer": true,
@@ -882,7 +901,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         ]
         if renderer == BurreteRendererMode.xyzrenderExternal {
             payload["xyzrenderViewer"] = true
-            payload["molstarAvailable"] = rendererPolicy.molstarAvailable
+            payload["molstarAvailable"] = molstarAvailable
             payload["xyzrenderPreset"] = xyzrenderPreset
             payload["xyzrenderPresetOptions"] = BurreteXyzrenderPreset.pickerOptions.map { ["value": $0.0, "label": $0.1] }
             if let xyzrenderControls { payload["xyzrenderControls"] = xyzrenderControls }
@@ -955,6 +974,95 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         </body>
         </html>
         """
+    }
+
+    private static func defaultCubeXyzrenderInput(fileURL: URL, data: Data, fileExtension: String) -> DefaultCubeXyzrenderInput? {
+        guard ["cub", "cube"].contains(fileExtension.lowercased()) else { return nil }
+        let text = decodeText(data)
+        let descriptor = cubeDescriptor(text: text, fileURL: fileURL)
+        var inputData = data
+        var sourceFilename = fileURL.lastPathComponent
+        let controls: [String: Any]
+        if descriptor.contains("electrostatic potential") || descriptor.contains("_esp") {
+            controls = ["fieldMode": "esp", "fieldOpacity": 0.5, "fieldSurfaceStyle": "solid"]
+        } else if descriptor.contains("molecular orbital") || descriptor.contains("_homo") || descriptor.contains("_lumo") {
+            controls = ["fieldMode": "mo", "fieldOpacity": 0.62, "fieldSurfaceStyle": "solid"]
+        } else if isGradientCubeDescriptor(descriptor) {
+            if let densityURL = pairedDensityCubeURL(fileURL), let densityData = try? Data(contentsOf: densityURL), !densityData.isEmpty {
+                inputData = densityData
+                sourceFilename = densityURL.lastPathComponent
+                controls = [
+                    "extraArguments": [
+                        "--nci-surf",
+                        quoteCommandToken(fileURL.path),
+                        "--iso",
+                        "0.3",
+                        "--opacity",
+                        "0.45",
+                        "--surface-style",
+                        "solid"
+                    ].joined(separator: " ")
+                ]
+            } else {
+                controls = ["fieldMode": "density", "fieldIso": 0.3, "fieldOpacity": 0.45, "fieldSurfaceStyle": "solid"]
+            }
+        } else {
+            controls = ["fieldMode": "density", "fieldOpacity": 0.45, "fieldSurfaceStyle": "solid"]
+        }
+        return DefaultCubeXyzrenderInput(data: inputData, sourceFilename: sourceFilename, controls: controls)
+    }
+
+    private static func cubeDescriptor(text: String, fileURL: URL) -> String {
+        var descriptor = fileURL.lastPathComponent.lowercased()
+        for line in text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n").split(separator: "\n", omittingEmptySubsequences: false).prefix(2) {
+            descriptor += "\n\(line.lowercased())"
+        }
+        return descriptor
+    }
+
+    private static func isGradientCubeDescriptor(_ descriptor: String) -> Bool {
+        descriptor.contains("reduced density gradient") ||
+            descriptor.contains("rdg") ||
+            descriptor.contains("_grad") ||
+            descriptor.contains("-grad")
+    }
+
+    private static func pairedDensityCubeURL(_ fileURL: URL) -> URL? {
+        let name = fileURL.lastPathComponent
+        let lower = name.lowercased()
+        let replacements = [
+            ("_esp.cube", "_dens.cube"),
+            ("_esp.cube", "_density.cube"),
+            ("-esp.cube", "-dens.cube"),
+            ("-esp.cube", "-density.cube"),
+            ("_esp.cub", "_dens.cub"),
+            ("_esp.cub", "_density.cub"),
+            ("-esp.cub", "-dens.cub"),
+            ("-esp.cub", "-density.cub"),
+            ("_grad.cube", "_dens.cube"),
+            ("_grad.cube", "_density.cube"),
+            ("-grad.cube", "-dens.cube"),
+            ("-grad.cube", "-density.cube"),
+            ("_grad.cub", "_dens.cub"),
+            ("_grad.cub", "_density.cub"),
+            ("-grad.cub", "-dens.cub"),
+            ("-grad.cub", "-density.cub")
+        ]
+        for (from, to) in replacements where lower.hasSuffix(from) {
+            let prefix = String(name.prefix(name.count - from.count))
+            let candidate = fileURL.deletingLastPathComponent().appendingPathComponent(prefix + to)
+            if candidate != fileURL && FileManager.default.fileExists(atPath: candidate.path) {
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    private static func quoteCommandToken(_ value: String) -> String {
+        if value.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "/._-+=:".contains($0)) }) {
+            return value
+        }
+        return "\"\(value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\""
     }
 
     private static func fepGraphMLPreview(from data: Data) throws -> FepGraphMLPreview {
@@ -3564,8 +3672,11 @@ private enum PreviewExternalXyzrenderWorker {
         if (normalizedControls["transparentBackground"] as? Bool) == true || transparent {
             arguments.append("--transparent")
         }
-        arguments += cliArguments(from: normalizedControls)
-        arguments += sanitizedExtraArguments((normalizedControls["extraArguments"] as? String) ?? extraArguments)
+        arguments += cliArguments(from: normalizedControls, inputPath: inputURL.path)
+        arguments += sanitizedExtraArguments(
+            (normalizedControls["extraArguments"] as? String) ?? extraArguments,
+            stripFieldArguments: normalizedControls["fieldMode"] != nil
+        )
         process.arguments = arguments
         process.environment = mergedEnvironment(overrides: launch.environment)
 
@@ -3923,6 +4034,16 @@ private enum PreviewExternalXyzrenderWorker {
         copyBoolean(value, key: "showGhosts", into: &result)
         copyBoolean(value, key: "showAxes", into: &result)
         copyNumber(value, key: "cellWidth", into: &result)
+        copyFieldMode(value, into: &result)
+        copyNumber(value, key: "fieldIso", into: &result)
+        copyNonNegativeNumber(value, key: "fieldOpacity", into: &result)
+        copySurfaceStyle(value, into: &result)
+        copyText(value, key: "fieldMoPositiveColor", into: &result)
+        copyText(value, key: "fieldMoNegativeColor", into: &result)
+        copyText(value, key: "fieldDensityColor", into: &result)
+        copyText(value, key: "fieldCmapPalette", into: &result)
+        copyFiniteNumber(value, key: "fieldCmapMin", into: &result)
+        copyFiniteNumber(value, key: "fieldCmapMax", into: &result)
         copyText(value, key: "customConfigPath", into: &result)
         copyText(value, key: "extraArguments", into: &result)
         if let supercell = normalizeSupercell(value["supercell"]) {
@@ -3931,7 +4052,7 @@ private enum PreviewExternalXyzrenderWorker {
         return result
     }
 
-    private static func cliArguments(from controls: [String: Any]) -> [String] {
+    private static func cliArguments(from controls: [String: Any], inputPath: String) -> [String] {
         var arguments: [String] = []
         if let value = finitePositive(controls["canvasSize"]) {
             arguments += ["-S", formatCLI(value)]
@@ -3985,6 +4106,43 @@ private enum PreviewExternalXyzrenderWorker {
             arguments.append("--supercell")
             arguments += supercell.map(String.init)
         }
+        if let mode = controls["fieldMode"] as? String {
+            switch mode {
+            case "density":
+                arguments.append("--dens")
+            case "mo":
+                arguments.append("--mo")
+            case "esp":
+                arguments += ["--esp", inputPath]
+            case "nci":
+                arguments += ["--nci-surf", inputPath]
+            default:
+                break
+            }
+        }
+        if let value = finitePositive(controls["fieldIso"]) {
+            arguments += ["--iso", formatCLI(value)]
+        }
+        if let value = finiteNonNegative(controls["fieldOpacity"]) {
+            arguments += ["--opacity", formatCLI(value)]
+        }
+        if let value = controls["fieldSurfaceStyle"] as? String {
+            arguments += ["--surface-style", value]
+        }
+        if let positive = controls["fieldMoPositiveColor"] as? String,
+           let negative = controls["fieldMoNegativeColor"] as? String {
+            arguments += ["--mo-colors", positive, negative]
+        }
+        if let value = controls["fieldDensityColor"] as? String {
+            arguments += ["--dens-color", value]
+        }
+        if let value = controls["fieldCmapPalette"] as? String {
+            arguments += ["--cmap-palette", value]
+        }
+        if let min = finiteNumber(controls["fieldCmapMin"]),
+           let max = finiteNumber(controls["fieldCmapMax"]) {
+            arguments += ["--cmap-range", formatCLI(min), formatCLI(max)]
+        }
         return arguments
     }
 
@@ -4006,12 +4164,60 @@ private enum PreviewExternalXyzrenderWorker {
         }
     }
 
+    private static func copyFieldMode(_ source: [String: Any], into result: inout [String: Any]) {
+        let value = (source["fieldMode"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        if ["auto", "off", "density", "mo", "esp", "nci"].contains(value) {
+            result["fieldMode"] = value
+        }
+    }
+
+    private static func copySurfaceStyle(_ source: [String: Any], into result: inout [String: Any]) {
+        let value = (source["fieldSurfaceStyle"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        if ["solid", "mesh", "contour", "dot"].contains(value) {
+            result["fieldSurfaceStyle"] = value
+        }
+    }
+
+    private static func copyNonNegativeNumber(_ source: [String: Any], key: String, into result: inout [String: Any]) {
+        if let value = finiteNonNegative(source[key]) {
+            result[key] = value
+        }
+    }
+
+    private static func copyFiniteNumber(_ source: [String: Any], key: String, into result: inout [String: Any]) {
+        if let value = finiteNumber(source[key]) {
+            result[key] = value
+        }
+    }
+
     private static func finitePositive(_ value: Any?) -> Double? {
         if let number = value as? NSNumber {
             let resolved = number.doubleValue
             return resolved.isFinite && resolved > 0 ? resolved : nil
         }
         if let text = value as? String, let resolved = Double(text), resolved.isFinite, resolved > 0 {
+            return resolved
+        }
+        return nil
+    }
+
+    private static func finiteNonNegative(_ value: Any?) -> Double? {
+        if let number = value as? NSNumber {
+            let resolved = number.doubleValue
+            return resolved.isFinite && resolved >= 0 ? resolved : nil
+        }
+        if let text = value as? String, let resolved = Double(text), resolved.isFinite, resolved >= 0 {
+            return resolved
+        }
+        return nil
+    }
+
+    private static func finiteNumber(_ value: Any?) -> Double? {
+        if let number = value as? NSNumber {
+            let resolved = number.doubleValue
+            return resolved.isFinite ? resolved : nil
+        }
+        if let text = value as? String, let resolved = Double(text), resolved.isFinite {
             return resolved
         }
         return nil
@@ -4035,20 +4241,31 @@ private enum PreviewExternalXyzrenderWorker {
             .replacingOccurrences(of: #"\.0+$"#, with: "", options: .regularExpression)
     }
 
-    private static func sanitizedExtraArguments(_ value: String) -> [String] {
-        let outputFlags = Set(["-o", "--output", "-go", "--gif-output", "--config", "--ref"])
+    private static func sanitizedExtraArguments(_ value: String, stripFieldArguments: Bool = false) -> [String] {
+        var blockedValueFlags = Set(["-o", "--output", "-go", "--gif-output", "--config", "--ref"])
+        var blocked = blockedValueFlags
+        var blockedValueCounts: [String: Int] = [:]
+        if stripFieldArguments {
+            ["--esp", "--nci-surf", "--iso", "--opacity", "--surface-style", "--dens-color", "--cmap-palette"].forEach {
+                blocked.insert($0)
+                blockedValueFlags.insert($0)
+            }
+            blockedValueCounts["--mo-colors"] = 2
+            blockedValueCounts["--cmap-range"] = 2
+            ["--mo", "--dens", "--mo-colors", "--cmap-range"].forEach { blocked.insert($0) }
+        }
         var result: [String] = []
-        var skipNext = false
+        var skipNext = 0
         for token in splitCommandLine(value) {
-            if skipNext {
-                skipNext = false
+            if skipNext > 0 {
+                skipNext -= 1
                 continue
             }
-            if outputFlags.contains(token) {
-                skipNext = true
+            if blocked.contains(token) {
+                skipNext = blockedValueCounts[token] ?? (blockedValueFlags.contains(token) ? 1 : 0)
                 continue
             }
-            if outputFlags.contains(where: { token.hasPrefix($0 + "=") }) { continue }
+            if blocked.contains(where: { token.hasPrefix($0 + "=") }) { continue }
             result.append(token)
         }
         return result

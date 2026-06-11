@@ -692,37 +692,37 @@ pub(crate) fn default_xyzrender_document_defaults(
     let descriptor = cube_descriptor(&text, input_path);
     let paired_density = paired_density_cube_path(input_path, &descriptor);
     Some(XyzrenderDocumentDefaults {
-        controls: XyzrenderControls {
-            extra_arguments: Some(
-                default_cube_surface_arguments(&text, input_path, paired_density.is_some())
-                    .join(" "),
-            ),
-            ..XyzrenderControls::default()
-        },
+        controls: default_cube_controls(&text, input_path, paired_density.is_some()),
         input_path: paired_density,
     })
 }
 
-fn default_cube_surface_arguments(
+fn default_cube_controls(
     text: &str,
     input_path: &Path,
     has_paired_density_cube: bool,
-) -> Vec<String> {
+) -> XyzrenderControls {
     let descriptor = cube_descriptor(text, input_path);
     match descriptor.as_str() {
-        value if value.contains("electrostatic potential") || value.contains("_esp") => Vec::new(),
+        value if value.contains("electrostatic potential") || value.contains("_esp") => {
+            XyzrenderControls {
+                field_mode: Some("esp".to_string()),
+                field_opacity: Some(0.5),
+                field_surface_style: Some("solid".to_string()),
+                ..XyzrenderControls::default()
+            }
+        }
         value
             if value.contains("molecular orbital")
                 || value.contains("_homo")
                 || value.contains("_lumo") =>
         {
-            vec![
-                "--mo".to_string(),
-                "--opacity".to_string(),
-                "0.62".to_string(),
-                "--surface-style".to_string(),
-                "solid".to_string(),
-            ]
+            XyzrenderControls {
+                field_mode: Some("mo".to_string()),
+                field_opacity: Some(0.62),
+                field_surface_style: Some("solid".to_string()),
+                ..XyzrenderControls::default()
+            }
         }
         value
             if value.contains("reduced density gradient")
@@ -731,35 +731,38 @@ fn default_cube_surface_arguments(
                 || value.contains("-grad") =>
         {
             if has_paired_density_cube {
-                vec![
-                    "--nci-surf".to_string(),
-                    quote_command_token(&input_path.display().to_string()),
-                    "--iso".to_string(),
-                    "0.3".to_string(),
-                    "--opacity".to_string(),
-                    "0.45".to_string(),
-                    "--surface-style".to_string(),
-                    "solid".to_string(),
-                ]
+                XyzrenderControls {
+                    extra_arguments: Some(
+                        [
+                            "--nci-surf".to_string(),
+                            quote_command_token(&input_path.display().to_string()),
+                            "--iso".to_string(),
+                            "0.3".to_string(),
+                            "--opacity".to_string(),
+                            "0.45".to_string(),
+                            "--surface-style".to_string(),
+                            "solid".to_string(),
+                        ]
+                        .join(" "),
+                    ),
+                    ..XyzrenderControls::default()
+                }
             } else {
-                vec![
-                    "--dens".to_string(),
-                    "--iso".to_string(),
-                    "0.3".to_string(),
-                    "--opacity".to_string(),
-                    "0.45".to_string(),
-                    "--surface-style".to_string(),
-                    "solid".to_string(),
-                ]
+                XyzrenderControls {
+                    field_mode: Some("density".to_string()),
+                    field_iso: Some(0.3),
+                    field_opacity: Some(0.45),
+                    field_surface_style: Some("solid".to_string()),
+                    ..XyzrenderControls::default()
+                }
             }
         }
-        _ => vec![
-            "--dens".to_string(),
-            "--opacity".to_string(),
-            "0.45".to_string(),
-            "--surface-style".to_string(),
-            "solid".to_string(),
-        ],
+        _ => XyzrenderControls {
+            field_mode: Some("density".to_string()),
+            field_opacity: Some(0.45),
+            field_surface_style: Some("solid".to_string()),
+            ..XyzrenderControls::default()
+        },
     }
 }
 
@@ -1740,6 +1743,36 @@ mod tests {
     }
 
     #[test]
+    fn default_cube_controls_select_expected_field_surfaces() {
+        let density = default_cube_controls(
+            "density cube\n",
+            Path::new("/tmp/caffeine_dens.cube"),
+            false,
+        );
+        assert_eq!(density.field_mode.as_deref(), Some("density"));
+        assert_eq!(density.field_opacity, Some(0.45));
+        assert_eq!(density.field_surface_style.as_deref(), Some("solid"));
+
+        let esp = default_cube_controls(
+            "electrostatic potential\n",
+            Path::new("/tmp/caffeine_esp.cube"),
+            false,
+        );
+        assert_eq!(esp.field_mode.as_deref(), Some("esp"));
+        assert_eq!(esp.field_opacity, Some(0.5));
+        assert_eq!(esp.field_surface_style.as_deref(), Some("solid"));
+
+        let homo = default_cube_controls(
+            "molecular orbital\n",
+            Path::new("/tmp/caffeine_homo.cube"),
+            false,
+        );
+        assert_eq!(homo.field_mode.as_deref(), Some("mo"));
+        assert_eq!(homo.field_opacity, Some(0.62));
+        assert_eq!(homo.field_surface_style.as_deref(), Some("solid"));
+    }
+
+    #[test]
     fn builds_structured_xyzrender_args() {
         let input = PathBuf::from("/tmp/in.xyz");
         let output = PathBuf::from("/tmp/out.svg");
@@ -1851,12 +1884,12 @@ mod tests {
             b"Cube data generated by ORCA\nMolecular orbital 50 of operator 0\n",
         )
         .expect("cube should get default controls");
-        assert!(defaults
-            .controls
-            .extra_arguments
-            .as_deref()
-            .unwrap_or_default()
-            .contains("--mo --opacity 0.62"));
+        assert_eq!(defaults.controls.field_mode.as_deref(), Some("mo"));
+        assert_eq!(defaults.controls.field_opacity, Some(0.62));
+        assert_eq!(
+            defaults.controls.field_surface_style.as_deref(),
+            Some("solid")
+        );
 
         let defaults = default_xyzrender_document_defaults(
             "cube",
@@ -1864,12 +1897,12 @@ mod tests {
             b"Cube data generated by ORCA\nElectrostatic Potential\n",
         )
         .expect("cube should get default controls");
-        assert!(defaults
-            .controls
-            .extra_arguments
-            .as_deref()
-            .unwrap_or_default()
-            .is_empty());
+        assert_eq!(defaults.controls.field_mode.as_deref(), Some("esp"));
+        assert_eq!(defaults.controls.field_opacity, Some(0.5));
+        assert_eq!(
+            defaults.controls.field_surface_style.as_deref(),
+            Some("solid")
+        );
 
         let defaults = default_xyzrender_document_defaults(
             "cube",
@@ -1877,12 +1910,12 @@ mod tests {
             b"Cube data generated by ORCA\nTotal electron density\n",
         )
         .expect("cube should get default controls");
-        assert!(defaults
-            .controls
-            .extra_arguments
-            .as_deref()
-            .unwrap_or_default()
-            .contains("--dens --opacity 0.45"));
+        assert_eq!(defaults.controls.field_mode.as_deref(), Some("density"));
+        assert_eq!(defaults.controls.field_opacity, Some(0.45));
+        assert_eq!(
+            defaults.controls.field_surface_style.as_deref(),
+            Some("solid")
+        );
     }
 
     #[test]
@@ -1902,18 +1935,8 @@ mod tests {
         )
         .expect("esp cube should get defaults");
         assert_eq!(defaults.input_path.as_deref(), None);
-        assert!(defaults
-            .controls
-            .extra_arguments
-            .as_deref()
-            .unwrap_or_default()
-            .is_empty());
-        assert!(!defaults
-            .controls
-            .extra_arguments
-            .as_deref()
-            .unwrap_or_default()
-            .contains("--esp"));
+        assert_eq!(defaults.controls.field_mode.as_deref(), Some("esp"));
+        assert_eq!(defaults.controls.field_opacity, Some(0.5));
 
         let base_pair_dens = directory.join("base-pair-dens.cube");
         let base_pair_grad = directory.join("base-pair-grad.cube");

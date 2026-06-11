@@ -185,6 +185,7 @@ pub(crate) fn create_runtime<R: Runtime>(
         "label": label,
         "byteCount": data.len(),
         "previewByteCount": payload.data.len(),
+        "sourceExtension": extension,
         "quickLookBuild": "burrete-tauri",
         "debug": false,
         "theme": preferences.theme_for_runtime(),
