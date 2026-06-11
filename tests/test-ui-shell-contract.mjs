@@ -2242,6 +2242,12 @@ assert.match(openDropHook, /document\.elementFromPoint\(position\.x, position\.y
 assert.match(openDropHook, /candidates\.find\(\(element\) => element\.closest\("\.dock-panel"\)\) \?\? candidates\[0\]/);
 assert.match(openDropHook, /const dockTarget = element\?\.closest<HTMLElement>\("\.dock-panel\[data-area\]\[data-active-tab\]"\)/);
 assert.match(openDropHook, /void openDockPayload\?\.\(\{ area: target\.area, tabKind: target\.tabKind, payload \}\)/);
+assert.match(dock, /export type DockFileEntry/);
+assert.match(dock, /export function dockFileEntries/);
+assert.match(dockPanel, /dockFileEntries\(\{/);
+assert.match(dockPanel, /className="dock-file-tabs"/);
+assert.match(dockPanel, /actions\.setDockDocument\(area, entry\.documentId\)/);
+assert.match(dockPanel, /actions\.setDockTool\(area, "ketcher"\)/);
 assert.match(openDropHook, /element\?\.closest\("\.molecule-stage, \.main-stage"\)/);
 assert.match(openDropHook, /void runFinderDropAction\(payload, dropTargetForPosition\(event\.position\)\)/);
 assert.match(openDropHook, /const structureDrop = hasStructureDrag\(event\.dataTransfer\)/);

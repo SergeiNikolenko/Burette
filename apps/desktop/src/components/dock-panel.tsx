@@ -6,7 +6,7 @@ import {
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { DOCK_TAB_LABELS, dockTabCatalog, type DockArea, type DockTabKind } from "../lib/dock";
+import { DOCK_TAB_LABELS, dockFileEntries, dockTabCatalog, type DockArea, type DockFileEntry, type DockTabKind } from "../lib/dock";
 import { hasStructureDrag, readStructureDragPayload, writeStructureDragPayload } from "../lib/structure-drag";
 import type { StructureDragPayload } from "../lib/structure-drag";
 import type { ShellActions, ShellViewState } from "./types";
@@ -205,25 +205,52 @@ function DockPanelContent({
   const dockTool = area === "right" ? state.rightDockTool : state.bottomDockTool;
   const dockDocument = dockDocumentId ? state.documents.find((document) => document.id === dockDocumentId) ?? null : null;
   const dockTextDocument = dockDocumentId ? state.textDocuments.find((document) => document.id === dockDocumentId) ?? null : null;
+  const fileEntries = activeTabKind === "files"
+    ? dockFileEntries({
+        dockDrops,
+        documents: state.documents,
+        textDocuments: state.textDocuments,
+        activeDocumentId: dockDocumentId,
+        activeTool: dockTool,
+      })
+    : [];
+  const activeFileEntryKey = activeDockFileEntryKey(dockDocument, dockTextDocument, dockTool);
   if (activeTabKind === "files") {
+    const fileTabs = (
+      <DockFileTabs
+        area={area}
+        entries={fileEntries}
+        activeKey={activeFileEntryKey}
+        actions={actions}
+      />
+    );
     if (dockTool === "ketcher") {
       return (
-        <div className="dock-viewer">
-          <KetcherPage location={{ kind: "ketcher" }} state={state} actions={actions} isActive acceptImportRequests={false} />
+        <div className="dock-files-view">
+          {fileTabs}
+          <div className="dock-viewer">
+            <KetcherPage location={{ kind: "ketcher" }} state={state} actions={actions} isActive acceptImportRequests={false} />
+          </div>
         </div>
       );
     }
     if (dockDocument) {
       return (
-        <div className="dock-viewer">
-          <ViewerFrame document={dockDocument} />
+        <div className="dock-files-view">
+          {fileTabs}
+          <div className="dock-viewer">
+            <ViewerFrame document={dockDocument} />
+          </div>
         </div>
       );
     }
     if (dockTextDocument) {
       return (
-        <div className="dock-viewer">
-          <TextFileViewer document={dockTextDocument} openPaths={actions.openPaths} />
+        <div className="dock-files-view">
+          {fileTabs}
+          <div className="dock-viewer">
+            <TextFileViewer document={dockTextDocument} openPaths={actions.openPaths} />
+          </div>
         </div>
       );
     }
@@ -303,6 +330,55 @@ function DockPanelContent({
       <Metric label={area === "right" ? "Review context" : "Review queue"} value={activeDocument?.title ?? "None"} />
       <Metric label="Dropped inputs" value={String(dockDrops.length)} />
       <DockDropList items={dockDrops} actions={actions} emptyLabel="No review inputs" />
+    </div>
+  );
+}
+
+function activeDockFileEntryKey(
+  dockDocument: ShellViewState["documents"][number] | null,
+  dockTextDocument: ShellViewState["textDocuments"][number] | null,
+  dockTool: ShellViewState["rightDockTool"],
+) {
+  if (dockDocument) return `document:${dockDocument.id}`;
+  if (dockTextDocument) return `text-document:${dockTextDocument.id}`;
+  if (dockTool) return `tool:${dockTool}`;
+  return null;
+}
+
+function DockFileTabs({
+  area,
+  entries,
+  activeKey,
+  actions,
+}: {
+  area: DockArea;
+  entries: DockFileEntry[];
+  activeKey: string | null;
+  actions: ShellActions;
+}) {
+  if (entries.length <= 1) return null;
+  return (
+    <div className="dock-file-tabs" role="tablist" aria-label={`${area} dock files`}>
+      {entries.map((entry) => (
+        <button
+          type="button"
+          key={entry.key}
+          className="dock-file-tab"
+          data-active={entry.key === activeKey || undefined}
+          title={entry.kind === "tool" ? entry.title : entry.path}
+          onClick={() => {
+            if (entry.kind === "tool") {
+              actions.setDockTool(area, "ketcher");
+              return;
+            }
+            actions.setDockDocument(area, entry.documentId);
+          }}
+          role="tab"
+          aria-selected={entry.key === activeKey}
+        >
+          <span>{entry.title}</span>
+        </button>
+      ))}
     </div>
   );
 }
