@@ -145,7 +145,9 @@ struct BurreteRendererPolicy: Equatable {
         let renderer: String
 
         if format.isExternalXyzrenderOnly {
-            renderer = BurreteRendererMode.xyzrenderExternal
+            renderer = requestedMode == BurreteRendererMode.molstar
+                ? BurreteRendererMode.molstar
+                : BurreteRendererMode.xyzrenderExternal
         } else {
             let isXYZ = format.molstarFormat == "xyz" && !format.isBinary
             let canUseXyzrender = isXYZ || (!format.isBinary && ["sdf", "pdb", "pdbqt", "mmcif", "cifCore"].contains(format.molstarFormat))
