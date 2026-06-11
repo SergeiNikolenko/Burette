@@ -45,41 +45,13 @@ BoxVectors = tuple[tuple[float, float, float], tuple[float, float, float], tuple
 
 def candidate_bases(stem: str) -> list[str]:
     bases = [stem]
-    if stem.endswith("-out"):
-        bases.append(stem[:-4])
-    if stem.endswith("_out"):
-        bases.append(stem[:-4])
+    for suffix in ("-out", "_out", "-in", "_in"):
+        if stem.endswith(suffix):
+            bases.append(stem[: -len(suffix)])
+    for base in list(bases):
+        bases.append(re.sub(r"_replica_(\d+)$", r"_replica\1", base))
+        bases.append(re.sub(r"replica_(\d+)$", r"replica\1", base))
     return list(dict.fromkeys(base for base in bases if base))
-
-
-def source_files_root(path: Path) -> tuple[Path, list[str]] | None:
-    parts = list(path.parts)
-    if "source_files" not in parts:
-        return None
-    index = parts.index("source_files")
-    return Path(*parts[: index + 1]), parts[index + 1 :]
-
-
-def casebook_trj_candidates(cms_path: Path, base: str) -> list[Path]:
-    resolved = source_files_root(cms_path)
-    if not resolved:
-        return []
-    root, rest = resolved
-    if not rest or not rest[0].startswith("mnt__"):
-        return []
-    mapped = rest[0].split("__")
-    return [root.joinpath(*mapped, *rest[1:-1], f"{base}_trj")]
-
-
-def casebook_cms_candidates(trj_dir: Path, base: str) -> list[Path]:
-    resolved = source_files_root(trj_dir)
-    if not resolved:
-        return []
-    root, rest = resolved
-    if len(rest) < 5 or rest[:3] != ["mnt", "ligandpro", "crim3s"]:
-        return []
-    mapped_dir = root / "__".join(rest[:4])
-    return [mapped_dir / f"{base}-out.cms", mapped_dir / f"{base}.cms"]
 
 
 def find_trj_for_cms(cms_path: Path) -> Path:
@@ -93,7 +65,7 @@ def find_trj_for_cms(cms_path: Path) -> Path:
             return native_path
 
     for base in candidate_bases(cms_path.stem):
-        candidates = [cms_path.with_name(f"{base}_trj"), *casebook_trj_candidates(cms_path, base)]
+        candidates = [cms_path.with_name(f"{base}_trj")]
         for candidate in candidates:
             if candidate.is_dir():
                 return candidate
@@ -102,11 +74,14 @@ def find_trj_for_cms(cms_path: Path) -> Path:
 
 def find_cms_for_trj(trj_dir: Path) -> Path:
     base = trj_dir.name.removesuffix("_trj")
-    candidates = [
-        trj_dir.with_name(f"{base}-out.cms"),
-        trj_dir.with_name(f"{base}.cms"),
-        *casebook_cms_candidates(trj_dir, base),
-    ]
+    candidates = []
+    for candidate_base in candidate_bases(base):
+        candidates.extend(
+            [
+                trj_dir.with_name(f"{candidate_base}-out.cms"),
+                trj_dir.with_name(f"{candidate_base}.cms"),
+            ]
+        )
     for candidate in candidates:
         if candidate.is_file():
             return candidate
