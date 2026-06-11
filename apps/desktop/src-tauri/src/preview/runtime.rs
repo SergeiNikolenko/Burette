@@ -593,12 +593,10 @@ fn resolve_desmond_file_bundle(path: &Path, extension: &str) -> Option<Structure
         "cms" => {
             let parent = path.parent()?;
             for base in candidate_desmond_bases(path) {
-                let mut candidates = vec![parent.join(format!("{base}_trj"))];
-                candidates.extend(casebook_trj_candidates(path, &base));
-                let Some(trj_dir) = candidates.into_iter().find(|candidate| candidate.is_dir())
-                else {
+                let trj_dir = parent.join(format!("{base}_trj"));
+                if !trj_dir.is_dir() {
                     continue;
-                };
+                }
                 let clickme = trj_dir.join("clickme.dtr");
                 let mut attachments = vec![
                     StructureAttachment {
@@ -634,16 +632,13 @@ fn resolve_desmond_file_bundle(path: &Path, extension: &str) -> Option<Structure
             if !trj_dir.is_dir() {
                 return None;
             }
-            let mut candidates = trj_dir
-                .parent()
-                .map(|parent| {
-                    vec![
-                        parent.join(format!("{base}-out.cms")),
-                        parent.join(format!("{base}.cms")),
-                    ]
-                })
-                .unwrap_or_default();
-            candidates.extend(casebook_cms_candidates(trj_dir, &base));
+            let mut candidates = Vec::new();
+            for candidate_base in candidate_desmond_base_names(&base) {
+                if let Some(parent) = trj_dir.parent() {
+                    candidates.push(parent.join(format!("{candidate_base}-out.cms")));
+                    candidates.push(parent.join(format!("{candidate_base}.cms")));
+                }
+            }
             let cms_path = candidates
                 .into_iter()
                 .find(|candidate| candidate.is_file())?;
@@ -725,63 +720,29 @@ fn candidate_desmond_bases(path: &Path) -> Vec<String> {
     let Some(stem) = path.file_stem().and_then(|value| value.to_str()) else {
         return Vec::new();
     };
+    candidate_desmond_base_names(stem)
+}
+
+fn candidate_desmond_base_names(stem: &str) -> Vec<String> {
     let mut bases = vec![stem.to_string()];
-    for suffix in ["-out", "_out"] {
+    for suffix in ["-out", "_out", "-in", "_in"] {
         if let Some(base) = stem.strip_suffix(suffix) {
             if !base.is_empty() && !bases.iter().any(|value| value == base) {
                 bases.push(base.to_string());
             }
         }
     }
+    for base in bases.clone() {
+        let normalized = base.replace("_replica_", "_replica");
+        if !normalized.is_empty() && !bases.iter().any(|value| value == &normalized) {
+            bases.push(normalized);
+        }
+        let normalized = base.replace("replica_", "replica");
+        if !normalized.is_empty() && !bases.iter().any(|value| value == &normalized) {
+            bases.push(normalized);
+        }
+    }
     bases
-}
-
-fn casebook_source_files_parts(path: &Path) -> Option<(PathBuf, Vec<String>)> {
-    let normalized = path.to_string_lossy().replace('\\', "/");
-    let marker = "/source_files/";
-    let index = normalized.find(marker)?;
-    let root = PathBuf::from(&normalized[..index + marker.len() - 1]);
-    let rest = normalized[index + marker.len()..]
-        .split('/')
-        .filter(|part| !part.is_empty())
-        .map(str::to_string)
-        .collect::<Vec<_>>();
-    Some((root, rest))
-}
-
-fn casebook_trj_candidates(cms_path: &Path, base: &str) -> Vec<PathBuf> {
-    let Some((root, rest)) = casebook_source_files_parts(cms_path) else {
-        return Vec::new();
-    };
-    let Some(first) = rest.first() else {
-        return Vec::new();
-    };
-    if !first.starts_with("mnt__") {
-        return Vec::new();
-    }
-    let mut path = root;
-    for part in first.split("__") {
-        path.push(part);
-    }
-    for part in rest.iter().skip(1).take(rest.len().saturating_sub(2)) {
-        path.push(part);
-    }
-    path.push(format!("{base}_trj"));
-    vec![path]
-}
-
-fn casebook_cms_candidates(trj_dir: &Path, base: &str) -> Vec<PathBuf> {
-    let Some((root, rest)) = casebook_source_files_parts(trj_dir) else {
-        return Vec::new();
-    };
-    if rest.len() < 4 || rest[0] != "mnt" || rest[1] != "ligandpro" || rest[2] != "crim3s" {
-        return Vec::new();
-    }
-    let mapped_dir = root.join(rest[0..4].join("__"));
-    vec![
-        mapped_dir.join(format!("{base}-out.cms")),
-        mapped_dir.join(format!("{base}.cms")),
-    ]
 }
 
 fn read_file_prefix(path: &PathBuf, max_bytes: u64) -> Result<Vec<u8>, String> {
@@ -933,7 +894,8 @@ mod document_open_tests {
         default_dark_accent, default_dark_background, default_dark_contrast,
         default_dark_foreground, default_dark_translucent, default_light_accent,
         default_light_background, default_light_contrast, default_light_foreground,
-        default_light_translucent, default_system_font, open_document, ViewerPreferences,
+        default_light_translucent, default_system_font, open_document, resolve_desmond_file_bundle,
+        ViewerPreferences,
     };
     use crate::commands::documents::open_documents;
     use crate::preview::grid_store::GridRuntimeRegistry;
@@ -1088,6 +1050,13 @@ mod document_open_tests {
         path
     }
 
+    fn create_temp_directory() -> PathBuf {
+        let directory =
+            std::env::temp_dir().join(format!("burrete-runtime-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&directory).expect("temp test directory should be created");
+        directory
+    }
+
     fn remove_runtime_artifacts(runtime_path: &str) {
         if let Some(runtime_dir) = Path::new(runtime_path).parent() {
             let _ = fs::remove_dir_all(runtime_dir);
@@ -1121,6 +1090,28 @@ mod document_open_tests {
             "xyz" => "xyzrender-external",
             other => panic!("unexpected supported real example extension: {other}"),
         }
+    }
+
+    #[test]
+    fn resolves_replica_input_cms_to_normalized_trajectory_name() {
+        let root = create_temp_directory();
+        let cms_path = root.join("desmond_remd_job_1_replica_0-in.cms");
+        let trj_dir = root.join("desmond_remd_job_1_replica0_trj");
+        fs::create_dir_all(&trj_dir).expect("trajectory directory should be created");
+        fs::write(&cms_path, b"cms").expect("cms fixture should be written");
+
+        let bundle = resolve_desmond_file_bundle(&cms_path, "cms")
+            .expect("replica input cms should resolve to normalized trajectory directory");
+        assert_eq!(bundle.primary_path, cms_path);
+        assert!(
+            bundle
+                .attachments
+                .iter()
+                .any(|attachment| attachment.path == trj_dir),
+            "cms bundle should include the normalized replica trajectory directory"
+        );
+
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
