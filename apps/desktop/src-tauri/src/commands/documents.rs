@@ -205,21 +205,10 @@ pub(crate) fn open_documents<R: Runtime>(
     reload_options: Option<ViewerReloadOptions>,
 ) -> Result<OpenDocumentsResult, String> {
     let mut documents = Vec::new();
-    let mut errors = Vec::new();
-    for path in paths {
-        match expand_open_targets(PathBuf::from(&path)) {
-            Ok(expanded) if expanded.is_empty() => {
-                errors.push(format!("{path} does not contain supported structure files"));
-            }
-            Ok(expanded) => {
-                for expanded_path in expanded {
-                    match open_document(&app, expanded_path, &preferences, reload_options.as_ref())
-                    {
-                        Ok(document) => documents.push(document),
-                        Err(error) => errors.push(error),
-                    }
-                }
-            }
+    let (document_paths, mut errors) = expand_open_document_paths(paths);
+    for path in document_paths {
+        match open_document(&app, path, &preferences, reload_options.as_ref()) {
+            Ok(document) => documents.push(document),
             Err(error) => errors.push(error),
         }
     }
@@ -227,6 +216,30 @@ pub(crate) fn open_documents<R: Runtime>(
         return Err(errors.join("; "));
     }
     Ok(OpenDocumentsResult { documents, errors })
+}
+
+fn expand_open_document_paths(paths: Vec<String>) -> (Vec<PathBuf>, Vec<String>) {
+    let mut expanded_paths = Vec::new();
+    let mut seen_paths = HashSet::new();
+    let mut errors = Vec::new();
+
+    for path in paths {
+        match expand_open_targets(PathBuf::from(&path)) {
+            Ok(expanded) if expanded.is_empty() => {
+                errors.push(format!("{path} does not contain supported structure files"));
+            }
+            Ok(expanded) => {
+                for expanded_path in expanded {
+                    if seen_paths.insert(expanded_path.clone()) {
+                        expanded_paths.push(expanded_path);
+                    }
+                }
+            }
+            Err(error) => errors.push(error),
+        }
+    }
+
+    (expanded_paths, errors)
 }
 
 #[tauri::command]
@@ -1284,9 +1297,10 @@ fn pick_open_targets_macos<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<Vec<
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_open_paths, expand_open_targets, list_project_structure_files,
-        looks_like_supported_structure_file, normalize_inline_structure_extension,
-        open_text_structure, smiles_from_sheet_data, TextStructureRequest,
+        classify_open_paths, expand_open_document_paths, expand_open_targets,
+        list_project_structure_files, looks_like_supported_structure_file,
+        normalize_inline_structure_extension, open_text_structure, smiles_from_sheet_data,
+        TextStructureRequest,
     };
     use crate::preview::formats::supported_structure_extensions;
     use crate::preview::grid_store::GridRuntimeRegistry;
@@ -1358,7 +1372,7 @@ mod tests {
             std::path::Path::new("system.cms"),
             &supported_extensions
         ));
-        assert!(!looks_like_supported_structure_file(
+        assert!(looks_like_supported_structure_file(
             std::path::Path::new("mn-h2.log"),
             &supported_extensions
         ));
@@ -1511,6 +1525,7 @@ mod tests {
             expanded,
             vec![
                 canonical_root.join("mini.pdb"),
+                canonical_root.join("mn-h2.log"),
                 canonical_root.join("nested").join("caffeine.com"),
                 canonical_root.join("nested").join("mini.cif")
             ]
@@ -1520,6 +1535,31 @@ mod tests {
         fs::remove_file(log).unwrap();
         fs::remove_file(cif).unwrap();
         fs::remove_file(input).unwrap();
+        fs::remove_file(pdb).unwrap();
+        fs::remove_dir(nested).unwrap();
+        fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
+    fn deduplicates_overlapping_open_document_inputs() {
+        let root = std::env::temp_dir().join(format!(
+            "burrete-open-targets-overlap-{}",
+            std::process::id()
+        ));
+        let nested = root.join("nested");
+        fs::create_dir_all(&nested).unwrap();
+        let pdb = nested.join("mini.pdb");
+        fs::write(&pdb, "HEADER TEST\n").unwrap();
+
+        let canonical_pdb = pdb.canonicalize().unwrap();
+        let (expanded, errors) = expand_open_document_paths(vec![
+            root.to_string_lossy().to_string(),
+            nested.to_string_lossy().to_string(),
+            pdb.to_string_lossy().to_string(),
+        ]);
+        assert_eq!(expanded, vec![canonical_pdb]);
+        assert!(errors.is_empty());
+
         fs::remove_file(pdb).unwrap();
         fs::remove_dir(nested).unwrap();
         fs::remove_dir(root).unwrap();
