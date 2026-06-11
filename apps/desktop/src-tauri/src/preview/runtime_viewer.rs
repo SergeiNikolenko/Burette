@@ -241,6 +241,7 @@ pub(crate) fn create_runtime<R: Runtime>(
             "renderer": "xyzrender",
             "preset": artifact.preset,
             "configArgument": artifact.config_argument,
+            "surfaceMode": artifact.surface_mode,
             "cacheKey": artifact.cache_key,
             "cacheHit": artifact.cache_hit,
             "cacheMiss": !artifact.cache_hit,
