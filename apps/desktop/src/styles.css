@@ -3191,6 +3191,17 @@ img.radix-menu-item-icon {
   z-index: -1;
   background: color-mix(in srgb, var(--bg-base) 55%, transparent);
 }
+.command-palette-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 [cmdk-input] {
   width: 100%;
   min-width: 0;
