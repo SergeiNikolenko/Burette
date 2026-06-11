@@ -102,7 +102,7 @@ fn atoms_to_xyz(atoms: &[Atom], label: &str) -> String {
 }
 
 const MAESTRO_PREVIEW_ATOM_LIMIT: usize = 3_000;
-const MAESTRO_PDB_PREVIEW_ATOM_LIMIT: usize = 30_000;
+const MAESTRO_PDB_PREVIEW_ATOM_LIMIT: usize = 99_999;
 
 fn decode_structure_text(data: &[u8], extension: &str) -> Option<String> {
     if extension == "maegz" {
@@ -706,8 +706,8 @@ fn parse_maestro_ct_type(lines: &[&str], index: &mut usize) -> Option<String> {
 
 fn maestro_ct_score(ct_type: &str) -> i32 {
     match ct_type.trim().to_ascii_lowercase().as_str() {
-        "solute" => 4,
-        "full_system" => 3,
+        "full_system" => 4,
+        "solute" => 3,
         "ion" => 1,
         "solvent" => 0,
         _ => 2,
@@ -1589,6 +1589,101 @@ f_m_ct {
         assert!(pdb.contains("   1.000   2.000   3.000"));
         assert!(pdb.contains("   5.000   6.000   7.000"));
         assert!(pdb.ends_with("END\n"));
+    }
+
+    #[test]
+    fn prefers_full_system_maestro_ct_over_solute() {
+        let data = br#"
+f_m_ct {
+  s_ffio_ct_type
+  :::
+  full_system
+  m_atom[2] {
+    i_m_mmod_type
+    i_m_atomic_number
+    r_m_x_coord
+    r_m_y_coord
+    r_m_z_coord
+    s_m_pdb_residue_name
+    s_m_pdb_atom_name
+    i_m_residue_number
+    s_m_chain_name
+    :::
+    1 6 1.000000 2.000000 3.000000 "ALA " " CA " 10 "A"
+    1 8 2.000000 3.000000 4.000000 "POPC" " O1 " 1 "M"
+    :::
+  }
+}
+f_m_ct {
+  s_ffio_ct_type
+  :::
+  solute
+  m_atom[1] {
+    i_m_mmod_type
+    i_m_atomic_number
+    r_m_x_coord
+    r_m_y_coord
+    r_m_z_coord
+    s_m_pdb_residue_name
+    s_m_pdb_atom_name
+    i_m_residue_number
+    s_m_chain_name
+    :::
+    1 6 9.000000 9.000000 9.000000 "ALA " " CA " 10 "A"
+    :::
+  }
+}
+"#;
+        let converted = converted_data_from_text(data, "cms", "system.cms").unwrap();
+        let pdb = String::from_utf8(converted.data).unwrap();
+
+        assert!(pdb.contains("   1.000   2.000   3.000"));
+        assert!(pdb.contains(" POP M   1"));
+        assert!(!pdb.contains("   9.000   9.000   9.000"));
+    }
+
+    #[test]
+    fn keeps_large_maestro_full_system_beyond_legacy_preview_limit() {
+        let mut data = String::from(
+            r#"
+f_m_ct {
+  s_ffio_ct_type
+  :::
+  full_system
+  m_atom[30001] {
+    i_m_mmod_type
+    i_m_atomic_number
+    r_m_x_coord
+    r_m_y_coord
+    r_m_z_coord
+    s_m_pdb_residue_name
+    s_m_pdb_atom_name
+    i_m_residue_number
+    s_m_chain_name
+    :::
+"#,
+        );
+        for index in 0..30_001 {
+            data.push_str(&format!(
+                "    1 6 {x:.6} 0.000000 0.000000 \"POPC\" \" C1 \" {residue} \"M\"\n",
+                x = index as f64 * 0.01,
+                residue = index + 1
+            ));
+        }
+        data.push_str(
+            r#"    :::
+  }
+}
+"#,
+        );
+
+        let converted =
+            converted_data_from_text(data.as_bytes(), "cms", "large-system.cms").unwrap();
+        let pdb = String::from_utf8(converted.data).unwrap();
+
+        assert_eq!(pdb.matches("\nHETATM").count(), 30_000);
+        assert!(pdb.starts_with("HETATM    1"));
+        assert!(pdb.contains("HETATM30001"));
     }
 
     #[test]
