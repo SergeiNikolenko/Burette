@@ -335,57 +335,6 @@ def pdb_atom_line(serial: int, atom) -> str:
     )
 
 
-def pdb_box_atom_line(serial: int, name: str, x: float, y: float, z: float) -> str:
-    return (
-        f"HETATM{serial:5d} {name:<4} BOX Z9999    "
-        f"{x:8.3f}{y:8.3f}{z:8.3f}{1.0:6.2f}{0.0:6.2f}"
-        f"           C  \n"
-    )
-
-
-def centered_box_vertices(box: BoxVectors) -> list[tuple[float, float, float]]:
-    a, b, c = box
-    vertices: list[tuple[float, float, float]] = []
-    for sa, sb, sc in (
-        (-0.5, -0.5, -0.5),
-        (0.5, -0.5, -0.5),
-        (0.5, 0.5, -0.5),
-        (-0.5, 0.5, -0.5),
-        (-0.5, -0.5, 0.5),
-        (0.5, -0.5, 0.5),
-        (0.5, 0.5, 0.5),
-        (-0.5, 0.5, 0.5),
-    ):
-        vertices.append(
-            (
-                sa * a[0] + sb * b[0] + sc * c[0],
-                sa * a[1] + sb * b[1] + sc * c[1],
-                sa * a[2] + sb * b[2] + sc * c[2],
-            )
-        )
-    return vertices
-
-
-def write_pdb_box(output, box: BoxVectors, serial_start: int) -> None:
-    vertices = centered_box_vertices(box)
-    for offset, (x, y, z) in enumerate(vertices):
-        output.write(pdb_box_atom_line(serial_start + offset, f"B{offset + 1}", x, y, z))
-    for first, second in (
-        (0, 1),
-        (1, 2),
-        (2, 3),
-        (3, 0),
-        (4, 5),
-        (5, 6),
-        (6, 7),
-        (7, 4),
-        (0, 4),
-        (1, 5),
-        (2, 6),
-        (3, 7),
-    ):
-        output.write(f"CONECT{serial_start + first:5d}{serial_start + second:5d}\n")
-
 
 def frame_time_ps(frame) -> float | None:
     try:
@@ -402,7 +351,6 @@ def write_pdb_frame(
     frame_index: int,
     frame_count: int,
     frame_time_ps: float | None,
-    box: BoxVectors | None,
 ) -> None:
     atoms_by_index = {atom.index: atom for atom in structure.atom}
     selected = [atoms_by_index[index] for index in selected_indices if index in atoms_by_index]
@@ -411,8 +359,6 @@ def write_pdb_frame(
     output.write(f"REMARK   Desmond preview frame {frame_index + 1} / {frame_count}{time_text}\n")
     for serial, atom in enumerate(selected, start=1):
         output.write(pdb_atom_line(serial, atom))
-    if box is not None:
-        write_pdb_box(output, box, len(selected) + 1)
     output.write("ENDMDL\n")
 
 
@@ -450,7 +396,6 @@ def extract(
                 index,
                 len(trajectory),
                 frame_time_ps(frame),
-                box,
             )
     finally:
         if output_path:
