@@ -14,6 +14,7 @@
   const PANEL_CLOSE_HIT_WIDTH = 38;
   const MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX = 4;
   const VIEWER_THEME_STORAGE_KEY = 'buret.viewer.theme';
+  const SDF_POSE_MODE_STORAGE_KEY = 'buret.sdf.poseMode';
   const DEFAULT_MOLSTAR_STYLE = 'illustrative';
   const MOLSTAR_STYLE_OPTIONS = [
     { value: 'default', label: 'Default' },
@@ -617,6 +618,7 @@
   let activeViewer = null;
   let activeConfig = null;
   let activeMolstarPrepared = null;
+  let activeSdfPoseMode = 'single';
   let activeMolstarCacheBuster = null;
   let molstarStyleApplySerial = 0;
   let latestXyzrenderOrientationRef = null;
@@ -1271,6 +1273,67 @@
     if (gridPath) payload.path = gridPath;
     const sent = postHostMessage(payload);
     if (!sent) setStatus('SDF grid switching is available only in the app or Quick Look viewer.', 'error');
+  }
+
+  function readSdfPoseMode(config) {
+    const format = normalizeFormat(config?.molstarFormat || config?.format);
+    if (format !== 'sdf') return 'single';
+    try {
+      return window.localStorage?.getItem(SDF_POSE_MODE_STORAGE_KEY) === 'all' ? 'all' : 'single';
+    } catch (_) {
+      return 'single';
+    }
+  }
+
+  function setSdfPoseMode(mode) {
+    activeSdfPoseMode = mode === 'all' ? 'all' : 'single';
+    try {
+      window.localStorage?.setItem(SDF_POSE_MODE_STORAGE_KEY, activeSdfPoseMode);
+    } catch (_) {}
+  }
+
+  function updateSdfPoseButton(prepared = activeMolstarPrepared) {
+    const button = document.querySelector('#buret-toolbar [data-buret-action="sdf-poses"]');
+    if (!button) return;
+    const available = prepared?.sdfPoseOverlayAvailable === true;
+    button.classList.toggle('hidden', !available);
+    button.disabled = !available;
+    button.setAttribute('aria-hidden', available ? 'false' : 'true');
+    if (!available) return;
+    const allMode = activeSdfPoseMode === 'all';
+    const title = allMode ? 'Show SDF poses individually' : 'Show all SDF poses together';
+    button.classList.toggle('active', allMode);
+    button.setAttribute('aria-pressed', allMode ? 'true' : 'false');
+    button.setAttribute('aria-label', title);
+    button.setAttribute('title', title);
+  }
+
+  async function reloadSdfPoseMode() {
+    if (!activeViewer || !activeConfig) return;
+    const viewer = activeViewer;
+    const plugin = viewer?.plugin;
+    if (typeof plugin?.clear === 'function') {
+      await plugin.clear();
+    }
+    const prepared = structureDataForMolstar(activeConfig);
+    await loadPreparedStructure(viewer, prepared);
+    if (Array.isArray(activeConfig?.stagedEntries) && activeConfig.stagedEntries.length > 0) {
+      await loadStagedMolstarEntries(viewer, activeConfig, activeMolstarCacheBuster || String(Date.now()));
+    }
+    applyLayoutState(viewer);
+    scheduleLayoutStateReapply(viewer);
+    try { viewer.handleResize(); } catch (_) {}
+  }
+
+  function toggleSdfPoseMode() {
+    if (activeMolstarPrepared?.sdfPoseOverlayAvailable !== true) return;
+    const nextMode = activeSdfPoseMode === 'all' ? 'single' : 'all';
+    setSdfPoseMode(nextMode);
+    updateSdfPoseButton(activeMolstarPrepared);
+    setStatus(nextMode === 'all' ? '[web] Showing all SDF poses together…' : '[web] Showing SDF poses individually…');
+    void reloadSdfPoseMode().catch(error => {
+      setStatus(`SDF pose mode switch failed.\n\n${error?.message || String(error)}`, 'error');
+    });
   }
 
   function requestOpenInKetcher() {
@@ -1969,11 +2032,17 @@
     bindSaveModifiedStructureButton(toolbar);
     bindMolstarStyleControls(toolbar);
     bindXyzrenderControls(toolbar);
+    const sdfPoseButton = toolbar.querySelector('[data-buret-action="sdf-poses"]');
+    if (sdfPoseButton && sdfPoseButton.dataset.bound !== '1') {
+      sdfPoseButton.dataset.bound = '1';
+      sdfPoseButton.addEventListener('click', toggleSdfPoseMode);
+    }
     initToolbarDrag(toolbar);
     restoreToolbarCollapsed(toolbar, viewer);
     installToolbarAutoLayoutTracking(toolbar);
     installMolstarFloatingPanelTracking();
     updateToolbarVisibility();
+    updateSdfPoseButton();
     updateThemeButton();
     applyLayoutState(viewer);
   }
@@ -4258,13 +4327,25 @@
     const label = config.label || 'structure';
     const records = splitSdfRecords(text);
     if (records.length >= 1 && config.sdfPosePager === true) {
+      const overlay = records.length > 1 ? buildSdfPoseOverlay(records, label) : null;
+      if (overlay && activeSdfPoseMode === 'all') {
+        return {
+          ...overlay,
+          sdfPoseMode: 'all',
+          sdfPoseOverlayAvailable: true,
+          sdfPoseRecordCount: records.length
+        };
+      }
       return {
         data: text,
         format: 'sdf',
         label: `${label} (${records.length} SDF poses)`,
         loadPreset: 'default',
         nativeTrajectoryControls: true,
-        poseCount: records.length
+        poseCount: records.length,
+        sdfPoseMode: 'single',
+        sdfPoseOverlayAvailable: Boolean(overlay),
+        sdfPoseRecordCount: records.length
       };
     }
     if (records.length >= 1 && config.sdfGrid !== false) {
@@ -4359,6 +4440,61 @@
     };
   }
 
+  function buildSdfPoseOverlay(records, label) {
+    const molecules = [];
+    let totalAtoms = 0;
+    let totalBonds = 0;
+    for (const record of records) {
+      const molecule = parseV2000SdfRecord(record);
+      if (!molecule) return null;
+      molecules.push(molecule);
+      totalAtoms += molecule.atomCount;
+      totalBonds += molecule.bondCount;
+    }
+    if (molecules.length <= 1 || totalAtoms <= 0) return null;
+
+    const atoms = [];
+    const bonds = [];
+    let atomIndex = 1;
+    let bondIndex = 1;
+    let atomOffset = 0;
+    for (const molecule of molecules) {
+      for (const atom of molecule.atoms) {
+        atoms.push(`M  V30 ${atomIndex} ${atom.element} ${formatV3000Coord(atom.x)} ${formatV3000Coord(atom.y)} ${formatV3000Coord(atom.z)} 0`);
+        atomIndex += 1;
+      }
+      for (const bond of molecule.bonds) {
+        bonds.push(`M  V30 ${bondIndex} ${bond.order} ${bond.a + atomOffset} ${bond.b + atomOffset}`);
+        bondIndex += 1;
+      }
+      atomOffset += molecule.atomCount;
+    }
+
+    return {
+      data: [
+        'Burrete SDF Pose Overlay',
+        '  Burrete',
+        `${molecules.length} poses overlaid from ${label}`,
+        '  0  0  0     0  0            999 V3000',
+        'M  V30 BEGIN CTAB',
+        `M  V30 COUNTS ${totalAtoms} ${totalBonds} 0 0 0`,
+        'M  V30 BEGIN ATOM',
+        ...atoms,
+        'M  V30 END ATOM',
+        'M  V30 BEGIN BOND',
+        ...bonds,
+        'M  V30 END BOND',
+        'M  V30 END CTAB',
+        'M  END',
+        '$$$$',
+        ''
+      ].join('\n'),
+      format: 'sdf',
+      label: `${label} (all ${molecules.length} poses)`,
+      loadPreset: 'default'
+    };
+  }
+
   function parseV2000SdfRecord(record) {
     const lines = String(record || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     if (lines.length < 4 || !lines[3].includes('V2000')) return null;
@@ -4406,29 +4542,43 @@
     let y = Number(line.slice(10, 20));
     let z = Number(line.slice(20, 30));
     let tail = line.length >= 30 ? line.slice(30) : '';
+    let element = normalizeSdfElement(tail.trim().split(/\s+/)[0]);
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
       const parts = line.trim().split(/\s+/);
       x = Number(parts[0]);
       y = Number(parts[1]);
       z = Number(parts[2]);
-      tail = ` ${parts[3] || 'C'}   0  0  0  0  0  0  0  0  0  0  0  0`;
+      element = normalizeSdfElement(parts[3]);
+      tail = ` ${element}   0  0  0  0  0  0  0  0  0  0  0  0`;
     }
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null;
-    return { x, y, z, tail: tail || ' C   0  0  0  0  0  0  0  0  0  0  0  0' };
+    return { x, y, z, element, tail: tail || ' C   0  0  0  0  0  0  0  0  0  0  0  0' };
   }
 
   function parseSdfBondLine(line) {
     let a = parseInt(line.slice(0, 3), 10);
     let b = parseInt(line.slice(3, 6), 10);
     let tail = line.length >= 6 ? line.slice(6) : '';
+    let order = normalizeSdfBondOrder(tail.trim().split(/\s+/)[0]);
     if (!Number.isFinite(a) || !Number.isFinite(b)) {
       const parts = line.trim().split(/\s+/);
       a = parseInt(parts[0], 10);
       b = parseInt(parts[1], 10);
-      tail = ` ${parts[2] || '1'}  0  0  0  0`;
+      order = normalizeSdfBondOrder(parts[2]);
+      tail = ` ${order}  0  0  0  0`;
     }
     if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
-    return { a, b, tail: tail || '  1  0  0  0  0' };
+    return { a, b, order, tail: tail || '  1  0  0  0  0' };
+  }
+
+  function normalizeSdfElement(value) {
+    const text = String(value || '').trim();
+    return /^[A-Z][a-z]?$/u.test(text) ? text : 'C';
+  }
+
+  function normalizeSdfBondOrder(value) {
+    const order = parseInt(value, 10);
+    return Number.isFinite(order) && order > 0 ? order : 1;
   }
 
   function formatSdfCountsLine(atomCount, bondCount) {
@@ -4445,6 +4595,10 @@
 
   function formatSdfCoord(value) {
     return value.toFixed(4).padStart(10, ' ');
+  }
+
+  function formatV3000Coord(value) {
+    return Number(value).toFixed(6);
   }
 
   function padSdfInt(value) {
@@ -4872,6 +5026,7 @@
 
   async function loadPreparedStructure(viewer, prepared) {
     activeMolstarPrepared = prepared;
+    updateSdfPoseButton(prepared);
     if (prepared.kind === 'docking') {
       await loadDockingPreparedStructure(viewer, prepared);
       return;
@@ -7447,6 +7602,7 @@
     }
     activeViewer = null;
     activeMolstarPrepared = null;
+    updateSdfPoseButton(null);
     activeMolstarCacheBuster = null;
     window.BurreteViewer = null;
     window.BuretteViewer = null;
@@ -7454,6 +7610,7 @@
 
   async function startMolstar(config, cb) {
     disposeActiveMolstarViewer();
+    activeSdfPoseMode = readSdfPoseMode(config);
     ensureMolstarStylesheet();
     const container = document.getElementById('app');
     if (container) container.innerHTML = '';

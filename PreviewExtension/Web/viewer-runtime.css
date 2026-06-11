@@ -628,6 +628,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
 }
 .buret-button.hidden { display: none; }
 .buret-button svg { width: 17px; height: 17px; display: block; }
+.buret-pose-toggle { width: auto; min-width: 34px; }
 .buret-grip { width: 30px; padding: 0; cursor: grab; color: currentColor; opacity: 0.66; }
 .buret-renderer-control {
   display: none; align-items: center; gap: 4px; padding-left: 5px;
