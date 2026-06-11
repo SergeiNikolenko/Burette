@@ -1,4 +1,5 @@
 import type { StructureDragPayload } from "./structure-drag";
+import type { TextFileDocument, ViewerDocument } from "../types";
 
 export type DockArea = "right" | "bottom";
 export type DockToolKind = "ketcher";
@@ -32,6 +33,39 @@ export type DockDropInput = {
   area: DockArea;
   tabKind: DockTabKind;
   payload: StructureDragPayload;
+};
+
+export type DockFileEntry =
+  | {
+      key: string;
+      kind: "document";
+      documentId: string;
+      title: string;
+      detail: string;
+      path: string;
+    }
+  | {
+      key: string;
+      kind: "text-document";
+      documentId: string;
+      title: string;
+      detail: string;
+      path: string;
+    }
+  | {
+      key: string;
+      kind: "tool";
+      tool: DockToolKind;
+      title: string;
+      detail: string;
+    };
+
+export type DockFileEntriesInput = {
+  dockDrops: DockDroppedStructure[];
+  documents: ViewerDocument[];
+  textDocuments: TextFileDocument[];
+  activeDocumentId: string | null;
+  activeTool: DockToolKind | null;
 };
 
 export const DOCK_TAB_LABELS: Record<DockTabKind, string> = {
@@ -97,4 +131,95 @@ export function normalizeDockTabs(area: DockArea, tabs: DockTab[] | undefined) {
 
 export function normalizeDockActiveTab(area: DockArea, tabs: DockTab[], activeTab: DockTabKind) {
   return tabs.some((tab) => tab.kind === activeTab) ? activeTab : firstDockTabKind(area);
+}
+
+export function dockFileEntries({
+  dockDrops,
+  documents,
+  textDocuments,
+  activeDocumentId,
+  activeTool,
+}: DockFileEntriesInput) {
+  const documentsByPath = new Map(documents.map((document) => [document.path, document]));
+  const textDocumentsByPath = new Map(textDocuments.map((document) => [document.path, document]));
+  const documentsById = new Map(documents.map((document) => [document.id, document]));
+  const textDocumentsById = new Map(textDocuments.map((document) => [document.id, document]));
+  const entries: DockFileEntry[] = [];
+  const seen = new Set<string>();
+
+  const pushEntry = (entry: DockFileEntry, position: "start" | "end" = "end") => {
+    if (seen.has(entry.key)) return;
+    seen.add(entry.key);
+    if (position === "start") entries.unshift(entry);
+    else entries.push(entry);
+  };
+  const pushPath = (path: string | undefined | null) => {
+    if (!path) return;
+    const document = documentsByPath.get(path);
+    if (document) {
+      pushEntry({
+        key: `document:${document.id}`,
+        kind: "document",
+        documentId: document.id,
+        title: document.title,
+        detail: document.renderer,
+        path: document.path,
+      });
+      return;
+    }
+    const textDocument = textDocumentsByPath.get(path);
+    if (textDocument) {
+      pushEntry({
+        key: `text-document:${textDocument.id}`,
+        kind: "text-document",
+        documentId: textDocument.id,
+        title: textDocument.title,
+        detail: textDocument.extension,
+        path: textDocument.path,
+      });
+    }
+  };
+  const pushTool = (tool: DockToolKind) => {
+    pushEntry({
+      key: `tool:${tool}`,
+      kind: "tool",
+      tool,
+      title: tool === "ketcher" ? "Ketcher" : tool,
+      detail: "Tool",
+    });
+  };
+
+  for (const drop of dockDrops) {
+    for (const path of drop.payload.paths) pushPath(path);
+    for (const item of drop.payload.items ?? []) {
+      if (item.kind === "ketcher") pushTool("ketcher");
+      pushPath(item.path);
+    }
+  }
+
+  const activeDocument = activeDocumentId ? documentsById.get(activeDocumentId) : null;
+  if (activeDocument) {
+    pushEntry({
+      key: `document:${activeDocument.id}`,
+      kind: "document",
+      documentId: activeDocument.id,
+      title: activeDocument.title,
+      detail: activeDocument.renderer,
+      path: activeDocument.path,
+    }, "start");
+  }
+  const activeTextDocument = activeDocumentId ? textDocumentsById.get(activeDocumentId) : null;
+  if (activeTextDocument) {
+    pushEntry({
+      key: `text-document:${activeTextDocument.id}`,
+      kind: "text-document",
+      documentId: activeTextDocument.id,
+      title: activeTextDocument.title,
+      detail: activeTextDocument.extension,
+      path: activeTextDocument.path,
+    }, "start");
+  }
+  if (activeTool) pushTool(activeTool);
+
+  return entries;
 }
