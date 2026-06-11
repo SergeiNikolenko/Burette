@@ -108,8 +108,14 @@
       if (window.BurreteConfig && window.BurreteConfig.previewRequestID) {
         body.requestID = String(window.BurreteConfig.previewRequestID);
       }
+      const hasWebkitBridge = !!window.webkit?.messageHandlers?.burrete;
       window.webkit?.messageHandlers?.burrete?.postMessage(body);
-      return !!window.webkit?.messageHandlers?.burrete;
+      if (hasWebkitBridge) return true;
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ source: 'burrete-viewer', body }, '*');
+        return true;
+      }
+      return false;
     } catch (_) {
       return false;
     }
@@ -134,6 +140,72 @@
   }
 
   initShellShortcutBridge();
+
+  function installDownloadExportBridge() {
+    if (window.__buretteDownloadExportBridgeInstalled) return;
+    window.__buretteDownloadExportBridgeInstalled = true;
+    document.addEventListener('click', event => {
+      const anchor = event.target?.closest?.('a[download]');
+      if (!anchor) return;
+      const href = String(anchor.href || '');
+      if (!href.startsWith('blob:')) return;
+      const name = safeDownloadFileName(anchor.getAttribute('download') || 'molstar-export');
+      if (!canUseDownloadExportBridge()) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void exportDownloadBlob(href, name).catch(error => {
+        setStatus(`[web] Export failed.\n\n${error?.message || String(error)}`, 'error');
+      });
+    }, true);
+  }
+
+  function canUseDownloadExportBridge() {
+    return !!window.webkit?.messageHandlers?.burrete || (window.parent && window.parent !== window);
+  }
+
+  async function exportDownloadBlob(href, name) {
+    const response = await fetch(href);
+    if (!response.ok) throw new Error(`Could not read export blob: HTTP ${response.status}`);
+    const blob = await response.blob();
+    const mimeType = blob.type || response.headers.get('content-type') || 'application/octet-stream';
+    let posted = false;
+    if (shouldExportBlobAsText(name, mimeType)) {
+      posted = postHostMessage({
+        type: 'exportText',
+        name,
+        mimeType,
+        text: await blob.text()
+      });
+    } else {
+      posted = postHostMessage({
+        type: 'exportData',
+        name,
+        mimeType,
+        base64: bytesToBase64(new Uint8Array(await blob.arrayBuffer()))
+      });
+    }
+    if (!posted) throw new Error('The export host bridge is unavailable.');
+    setStatus(`[web] Export requested: ${name}`);
+  }
+
+  function shouldExportBlobAsText(name, mimeType) {
+    const filename = String(name || '').toLowerCase();
+    const type = String(mimeType || '').toLowerCase();
+    return type.startsWith('text/') ||
+      type.includes('json') ||
+      type.includes('xml') ||
+      type.includes('cif') ||
+      type.includes('chemical/') ||
+      /\.(cif|bcif|mcif|mmcif|pdb|pqr|sdf|sd|mol|mol2|xyz|gro|csv|tsv|txt|json|xml)$/u.test(filename);
+  }
+
+  function safeDownloadFileName(value) {
+    return String(value || 'molstar-export')
+      .replace(/[\\/:*?"<>|]+/g, '_')
+      .replace(/^\.+/g, '')
+      .trim()
+      .slice(0, 120) || 'molstar-export';
+  }
 
   function safeExportBaseName(value, fallback = 'structure') {
     return String(value || fallback)
@@ -6456,6 +6528,11 @@
     return `${safeExportBaseName(activeConfig?.label || 'modified-structure', 'modified-structure')}.modified.${safeExtension}`;
   }
 
+  function molstarSelectionExportFileName(label, extension) {
+    const safeExtension = String(extension || 'txt').replace(/[^A-Za-z0-9]/g, '') || 'txt';
+    return `${safeExportBaseName(label || activeConfig?.label || 'selection', 'selection')}.modified.${safeExtension}`;
+  }
+
   function molstarStructureFromRef(structureRef) {
     return structureRef?.transform?.cell?.obj?.data ||
       structureRef?.cell?.obj?.data ||
@@ -6608,9 +6685,13 @@
     };
   }
 
-  function molstarModifiedStructureExportPayload() {
+  function molstarModifiedPdbExportAvailable() {
+    return !!molstarContextSourceEntryForActiveConfig();
+  }
+
+  function molstarModifiedMmCifExportPayload() {
     const toMmCif = molstarExportToMmCif();
-    if (!toMmCif) return molstarModifiedPdbExportPayload();
+    if (!toMmCif) throw new Error('mmCIF export is unavailable in this Mol* runtime.');
     const exports = molstarCurrentStructuresForExport();
     if (!exports.length) throw new Error('No modified Mol* structure is available to save.');
     const label = exports.length === 1 ? exports[0].name : 'burrete_modified_structures';
@@ -6625,8 +6706,55 @@
     };
   }
 
-  function saveMolstarModifiedStructure() {
-    const payload = molstarModifiedStructureExportPayload();
+  function molstarContextSdfEntryForExport(target) {
+    if (target?.scope === 'ligand' && target.receptor && target.ligand) {
+      const ligandEntry = pdbLigandSdfEntryForResidue(target.receptor, target.atom);
+      if (ligandEntry) return ligandEntry;
+      const ligandFormat = normalizeFormat(target.ligand.format);
+      if (ligandFormat === 'sdf') return target.ligand;
+    }
+    if (target?.scope === 'ligand' && target.selectedEntry && target.sourceEntry) {
+      const ligandEntry = pdbLigandSdfEntryForResidue(target.sourceEntry, target.atom) || target.selectedEntry;
+      if (normalizeFormat(ligandEntry?.format) === 'sdf') return ligandEntry;
+    }
+    if (target?.scope === 'ligand' && normalizeFormat(target.selectedEntry?.format) === 'sdf') {
+      return target.selectedEntry;
+    }
+    return null;
+  }
+
+  function molstarContextSdfExportAvailable(target) {
+    return !!molstarContextSdfEntryForExport(target);
+  }
+
+  function molstarContextSdfExportPayload(target) {
+    const ligandEntry = molstarContextSdfEntryForExport(target);
+    if (!ligandEntry) throw new Error('SDF export is available only for ligand selections with SDF data or PDB residue data.');
+    const text = String(ligandEntry.data || '');
+    if (!text.trim()) throw new Error('The selected ligand has no SDF data to save.');
+    return {
+      name: molstarSelectionExportFileName(ligandEntry.label || target?.label || 'ligand', 'sdf'),
+      mimeType: 'chemical/x-mdl-sdfile',
+      text: text.endsWith('\n') ? text : `${text}\n`,
+      count: 1
+    };
+  }
+
+  function molstarModifiedStructureExportPayload() {
+    const toMmCif = molstarExportToMmCif();
+    if (!toMmCif) return molstarModifiedPdbExportPayload();
+    return molstarModifiedMmCifExportPayload();
+  }
+
+  function molstarModifiedStructureExportPayloadForFormat(format, target) {
+    const normalized = normalizeFormat(format);
+    if (normalized === 'mmcif' || normalized === 'cifCore') return molstarModifiedMmCifExportPayload();
+    if (normalized === 'pdb') return molstarModifiedPdbExportPayload();
+    if (normalized === 'sdf') return molstarContextSdfExportPayload(target);
+    throw new Error(`Unsupported structure export format: ${format || 'unknown'}.`);
+  }
+
+  function postMolstarModifiedStructureExport(payload) {
     const posted = postHostMessage({
       type: 'exportText',
       name: payload.name,
@@ -6635,6 +6763,14 @@
     });
     if (!posted) throw new Error('Structure saving is unavailable in this host.');
     return payload;
+  }
+
+  function saveMolstarModifiedStructure() {
+    return postMolstarModifiedStructureExport(molstarModifiedStructureExportPayload());
+  }
+
+  function saveMolstarModifiedStructureAs(format, target) {
+    return postMolstarModifiedStructureExport(molstarModifiedStructureExportPayloadForFormat(format, target));
   }
 
   async function resetMolstarCameraForContext() {
@@ -6806,12 +6942,16 @@
 
   function molstarContextMenuActions(target, mode = 'molecule') {
     if (mode === 'atom' && target?.scope === 'ligand') {
-      return [
+      const actions = [
         ['select-atom', 'Select atom'],
         ['remove-atom', 'Delete atom'],
         ['save-modified', 'Save modified structure'],
-        ['focus-atom', 'Focus atom in current view']
+        ['save-format:mmcif', 'Save as mmCIF']
       ];
+      if (molstarModifiedPdbExportAvailable()) actions.push(['save-format:pdb', 'Save as PDB']);
+      if (molstarContextSdfExportAvailable(target)) actions.push(['save-format:sdf', 'Save ligand as SDF']);
+      actions.push(['focus-atom', 'Focus atom in current view']);
+      return actions;
     }
     const noun = molstarContextTargetNoun(target);
     const actions = [
@@ -6822,6 +6962,9 @@
     if (target?.scope === 'residue') actions.push(['remove-chain', 'Delete chain']);
     if (molstarContextDocumentPayload(target)) actions.push(['molstar', 'Open in Mol*']);
     actions.push(['save-modified', 'Save modified structure']);
+    actions.push(['save-format:mmcif', 'Save as mmCIF']);
+    if (molstarModifiedPdbExportAvailable()) actions.push(['save-format:pdb', 'Save as PDB']);
+    if (molstarContextSdfExportAvailable(target)) actions.push(['save-format:sdf', 'Save ligand as SDF']);
     actions.push(['focus', 'Focus in current view']);
     return actions;
   }
@@ -6866,6 +7009,11 @@
         const saved = saveMolstarModifiedStructure();
         setStatus(`[web] Saving ${saved.name} (${saved.count} structure${saved.count === 1 ? '' : 's'}).`);
         setMolstarStructureDirty(false);
+      } else if (action.startsWith('save-format:')) {
+        const format = action.slice('save-format:'.length);
+        const saved = saveMolstarModifiedStructureAs(format, target);
+        setStatus(`[web] Saving ${saved.name} (${saved.count} structure${saved.count === 1 ? '' : 's'}).`);
+        if (normalizeFormat(format) !== 'sdf') setMolstarStructureDirty(false);
       } else if (action === 'focus') {
         const handled = focusMolstarContextPick(target) || await resetMolstarCameraForContext();
         setStatus(handled ? `[web] Focused ${targetLabel} in the current Mol* view.` : `[web] ${targetLabel} is already visible in Mol*.`);
@@ -7304,6 +7452,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
   async function start() {
     debug('viewer.js executed');
     setStatus('[web] Booting Burrete viewer JavaScript…');
+    installDownloadExportBridge();
 
     const cb = window.BurreteCacheBuster || String(Date.now());
     await loadRuntimeInputs(cb);

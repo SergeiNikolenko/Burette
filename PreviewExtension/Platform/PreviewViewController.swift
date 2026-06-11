@@ -1639,6 +1639,14 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 handleJavaScriptRuntimeFileRequest(body)
                 return
             }
+            if type == "exportText" {
+                handleJavaScriptTextExport(body)
+                return
+            }
+            if type == "exportData" {
+                handleJavaScriptDataExport(body)
+                return
+            }
             appendLog("JS message type=\(type): \(text.prefix(1600))")
             if type == "ready" {
                 appendLog("elapsed.jsReadyMs=0")
@@ -1662,6 +1670,68 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         } else {
             appendLog("JS message raw: \(String(describing: message.body))")
         }
+    }
+
+    private func handleJavaScriptTextExport(_ body: [String: Any]) {
+        guard let text = body["text"] as? String else {
+            appendLog("exportText.missingText")
+            return
+        }
+        let name = Self.safeExportFileName(body["name"] as? String ?? "molstar-export.txt")
+        presentJavaScriptExportSavePanel(data: Data(text.utf8), name: name)
+    }
+
+    private func handleJavaScriptDataExport(_ body: [String: Any]) {
+        guard let base64 = body["base64"] as? String, let data = Data(base64Encoded: base64) else {
+            appendLog("exportData.invalidBase64")
+            return
+        }
+        let name = Self.safeExportFileName(body["name"] as? String ?? "molstar-export.bin")
+        presentJavaScriptExportSavePanel(data: data, name: name)
+    }
+
+    private func presentJavaScriptExportSavePanel(data: Data, name: String) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = name
+        panel.canCreateDirectories = true
+        if let currentPreviewURL {
+            panel.directoryURL = currentPreviewURL.deletingLastPathComponent()
+        }
+        let completion: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            guard let self else { return }
+            guard response == .OK, let url = panel.url else {
+                self.appendLog("export.cancelled name=\(name)")
+                return
+            }
+            do {
+                try data.write(to: url, options: [.atomic])
+                self.appendLog("export.saved path=\(url.path) bytes=\(data.count)")
+                self.previewStatus = "[native] Exported \(url.lastPathComponent)"
+            } catch {
+                self.appendLog("export.failed path=\(url.path) error=\(Self.describe(error))")
+                self.previewStatus = "[native] Export failed\n\(Self.describe(error))"
+            }
+        }
+        if let window = view.window {
+            panel.beginSheetModal(for: window, completionHandler: completion)
+        } else {
+            panel.begin(completionHandler: completion)
+        }
+    }
+
+    private static func safeExportFileName(_ name: String) -> String {
+        let invalid = CharacterSet(charactersIn: "\\/:*?\"<>|")
+        var cleaned = name
+            .components(separatedBy: invalid)
+            .joined(separator: "_")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        while cleaned.first == "." {
+            cleaned.removeFirst()
+        }
+        if cleaned.count > 120 {
+            cleaned = String(cleaned.prefix(120))
+        }
+        return cleaned.isEmpty ? "molstar-export.bin" : cleaned
     }
 
     private func isTrustedScriptMessage(_ message: WKScriptMessage) -> Bool {
