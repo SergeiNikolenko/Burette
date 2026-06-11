@@ -945,8 +945,8 @@
   function sdfRecordTextForMolstar(row) {
     const record = gridDragRecord(row);
     if (!record || record.inputExtension !== 'sdf') return null;
-    const text = String(record.text || '').trim();
-    if (!text) return null;
+    const text = String(record.text || '').trimEnd();
+    if (!text.trim()) return null;
     return `${text.replace(/\n?\$\$\$\$\s*$/u, '').trimEnd()}\n$$$$\n`;
   }
 
@@ -970,8 +970,9 @@
   }
 
   function ketcherFragmentText(record) {
-    const text = String(record?.text || '').trim();
+    const text = String(record?.text || '').trimEnd();
     const extension = String(record?.inputExtension || '').toLowerCase();
+    if (!text.trim()) return '';
     if (extension === 'sdf' || extension === 'sd') {
       return text.replace(/\n?\$\$\$\$\s*$/u, '').trimEnd() + '\n';
     }
@@ -2299,8 +2300,8 @@
   function gridDragRecord(row) {
     const label = String(row?.name || `Molecule ${Number(row?.index) + 1 || 1}`).trim() || 'Molecule';
     const baseName = safeStructureFileStem(label, Number(row?.index));
-    const molblock = String(row?.molblock || '').trim();
-    if (molblock) {
+    const molblock = String(row?.molblock || '').trimEnd();
+    if (molblock.trim()) {
       const text = molblock.includes('$$$$') ? molblock : `${molblock}\n$$$$`;
       return {
         path: `${baseName}.sdf`,
