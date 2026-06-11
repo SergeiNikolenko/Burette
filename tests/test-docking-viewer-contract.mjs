@@ -42,6 +42,8 @@ assert.match(gridViewer, /body\.type === 'poseReviewSelection'/);
 assert.match(gridViewer, /function selectPoseReviewRow\(activePose, cfg\)/);
 assert.match(gridViewer, /function selectedMolstarRows\(\)/);
 assert.match(gridViewer, /function sdfRecordTextForMolstar\(row\)/);
+assert.match(gridViewer, /const text = String\(record\.text \|\| ''\)\.trimEnd\(\);[\s\S]*?if \(!text\.trim\(\)\) return null;/);
+assert.match(gridViewer, /const molblock = String\(row\?\.molblock \|\| ''\)\.trimEnd\(\);[\s\S]*?if \(molblock\.trim\(\)\) \{/);
 
 assert.match(app, /body\?\.type === "openSdfMolstarDocument"/);
 assert.match(app, /body\?\.type === "openSdfKetcherDocument"/);

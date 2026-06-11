@@ -3534,6 +3534,8 @@ assert.match(gridViewer, /textBase64: textToBase64\(records\.join\('\\n'\)\)/);
 assert.match(gridViewer, /receptorPath: receptorPath \|\| null/);
 assert.match(gridViewer, /function selectedMolstarRows\(\)/);
 assert.match(gridViewer, /function sdfRecordTextForMolstar\(row\)/);
+assert.match(gridViewer, /const text = String\(record\.text \|\| ''\)\.trimEnd\(\);[\s\S]*?if \(!text\.trim\(\)\) return null;/);
+assert.match(gridViewer, /const molblock = String\(row\?\.molblock \|\| ''\)\.trimEnd\(\);[\s\S]*?if \(molblock\.trim\(\)\) \{/);
 assert.match(gridViewer, /function requestSingleMolstarDocument\(row, cfg\)/);
 assert.match(gridViewer, /\['molstar', 'Open in Mol\*'\]/);
 assert.match(gridViewer, /\['ketcher', 'Edit in Ketcher'\]/);
