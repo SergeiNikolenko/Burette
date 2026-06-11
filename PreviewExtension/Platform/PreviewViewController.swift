@@ -283,6 +283,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let data: Data
         let sourceFilename: String
         let controls: [String: Any]
+        let surfaceMode: String?
     }
 
     private static let supportedStructureExtensions: Set<String> = [
@@ -509,7 +510,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     executablePath: preferences.xyzrenderExecutablePath,
                     extraArguments: preferences.xyzrenderExtraArguments,
                     orientationRefText: xyzrenderOrientationRefText,
-                    controls: resolvedXyzrenderControls
+                    controls: resolvedXyzrenderControls,
+                    surfaceMode: defaultXyzrenderInput?.surfaceMode
                 )
                 externalArtifactSourceURL = renderDirectory.appendingPathComponent("xyzrender.svg")
             } catch {
@@ -912,7 +914,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             if let xyzrenderControls { payload["xyzrenderControls"] = xyzrenderControls }
         }
         if let externalArtifact {
-            payload["externalArtifact"] = [
+            var artifactPayload: [String: Any] = [
                 "path": externalArtifact.relativePath,
                 "inlineSvg": externalArtifact.inlineSvg,
                 "type": externalArtifact.outputType,
@@ -926,6 +928,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 "elapsedMs": externalArtifact.elapsedMs,
                 "log": externalArtifact.log
             ]
+            if let surfaceMode = externalArtifact.surfaceMode { artifactPayload["surfaceMode"] = surfaceMode }
+            payload["externalArtifact"] = artifactPayload
             payload["xyzrenderPreset"] = externalArtifact.preset
         }
         if let externalStatus { payload["externalRendererStatus"] = externalStatus }
@@ -983,33 +987,84 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         var inputData = data
         var sourceFilename = fileURL.lastPathComponent
         let controls: [String: Any]
+        let surfaceMode: String?
         if descriptor.contains("electrostatic potential") || descriptor.contains("_esp") {
-            controls = ["fieldMode": "esp", "fieldOpacity": 0.5, "fieldSurfaceStyle": "solid"]
-        } else if descriptor.contains("molecular orbital") || descriptor.contains("_homo") || descriptor.contains("_lumo") {
-            controls = ["fieldMode": "mo", "fieldOpacity": 0.62, "fieldSurfaceStyle": "solid"]
-        } else if isGradientCubeDescriptor(descriptor) {
             if let densityURL = pairedDensityCubeURL(fileURL), let densityData = try? Data(contentsOf: densityURL), !densityData.isEmpty {
                 inputData = densityData
                 sourceFilename = densityURL.lastPathComponent
                 controls = [
                     "extraArguments": [
-                        "--nci-surf",
+                        "--esp",
                         quoteCommandToken(fileURL.path),
-                        "--iso",
-                        "0.3",
+                        "--cbar",
                         "--opacity",
-                        "0.45",
+                        "0.5",
                         "--surface-style",
                         "solid"
                     ].joined(separator: " ")
                 ]
             } else {
-                controls = ["fieldMode": "density", "fieldIso": 0.3, "fieldOpacity": 0.45, "fieldSurfaceStyle": "solid"]
+                controls = ["fieldMode": "esp", "fieldOpacity": 0.5, "fieldSurfaceStyle": "solid"]
             }
+            surfaceMode = "esp"
+        } else if descriptor.contains("molecular orbital") || descriptor.contains("_homo") || descriptor.contains("_lumo") {
+            controls = ["fieldMode": "mo", "fieldOpacity": 0.62, "fieldSurfaceStyle": "solid"]
+            surfaceMode = "mo"
+        } else if isNCISurfaceCubeDescriptor(descriptor) {
+            if let fieldURL = pairedNCIFieldCubeURL(fileURL), let fieldData = try? Data(contentsOf: fieldURL), !fieldData.isEmpty {
+                inputData = fieldData
+                sourceFilename = fieldURL.lastPathComponent
+                controls = [
+                    "extraArguments": cubeSurfaceArguments([
+                        "--nci-surf",
+                        quoteCommandToken(fileURL.path)
+                    ] + nciIsoArguments(for: fileURL) + [
+                        "--opacity",
+                        "0.45",
+                        "--surface-style",
+                        "solid"
+                    ])
+                ]
+                surfaceMode = "nci"
+            } else {
+                controls = ["fieldMode": "density", "fieldIso": 0.3, "fieldOpacity": 0.45, "fieldSurfaceStyle": "solid"]
+                surfaceMode = "density"
+            }
+        } else if descriptor.contains("sl2r"), let surfaceURL = pairedNCISurfaceCubeURL(fileURL) {
+            controls = [
+                "extraArguments": cubeSurfaceArguments([
+                    "--nci-surf",
+                    quoteCommandToken(surfaceURL.path)
+                ] + nciIsoArguments(for: surfaceURL) + [
+                    "--opacity",
+                    "0.45",
+                    "--surface-style",
+                    "solid"
+                ])
+            ]
+            surfaceMode = "nci"
+        } else if let surfaceURL = pairedNCISurfaceCubeURL(fileURL) {
+            controls = [
+                "extraArguments": cubeSurfaceArguments([
+                    "--nci-surf",
+                    quoteCommandToken(surfaceURL.path)
+                ] + nciIsoArguments(for: surfaceURL) + [
+                    "--opacity",
+                    "0.45",
+                    "--surface-style",
+                    "solid"
+                ])
+            ]
+            surfaceMode = "nci"
         } else {
             controls = ["fieldMode": "density", "fieldOpacity": 0.45, "fieldSurfaceStyle": "solid"]
+            surfaceMode = "density"
         }
-        return DefaultCubeXyzrenderInput(data: inputData, sourceFilename: sourceFilename, controls: controls)
+        return DefaultCubeXyzrenderInput(data: inputData, sourceFilename: sourceFilename, controls: controls, surfaceMode: surfaceMode)
+    }
+
+    private static func cubeSurfaceArguments(_ values: [String]) -> String {
+        values.joined(separator: " ")
     }
 
     private static func cubeDescriptor(text: String, fileURL: URL) -> String {
@@ -1020,17 +1075,19 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         return descriptor
     }
 
-    private static func isGradientCubeDescriptor(_ descriptor: String) -> Bool {
+    private static func isNCISurfaceCubeDescriptor(_ descriptor: String) -> Bool {
         descriptor.contains("reduced density gradient") ||
             descriptor.contains("rdg") ||
             descriptor.contains("_grad") ||
-            descriptor.contains("-grad")
+            descriptor.contains("-grad") ||
+            descriptor.contains("_dg_") ||
+            descriptor.contains("-dg_") ||
+            descriptor.contains("_dg-") ||
+            descriptor.contains("-dg-")
     }
 
     private static func pairedDensityCubeURL(_ fileURL: URL) -> URL? {
-        let name = fileURL.lastPathComponent
-        let lower = name.lowercased()
-        let replacements = [
+        pairedCubeURL(fileURL, replacements: [
             ("_esp.cube", "_dens.cube"),
             ("_esp.cube", "_density.cube"),
             ("-esp.cube", "-dens.cube"),
@@ -1038,7 +1095,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             ("_esp.cub", "_dens.cub"),
             ("_esp.cub", "_density.cub"),
             ("-esp.cub", "-dens.cub"),
-            ("-esp.cub", "-density.cub"),
+            ("-esp.cub", "-density.cub")
+        ])
+    }
+
+    private static func pairedNCIFieldCubeURL(_ fileURL: URL) -> URL? {
+        pairedCubeURL(fileURL, replacements: [
             ("_grad.cube", "_dens.cube"),
             ("_grad.cube", "_density.cube"),
             ("-grad.cube", "-dens.cube"),
@@ -1046,8 +1108,42 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             ("_grad.cub", "_dens.cub"),
             ("_grad.cub", "_density.cub"),
             ("-grad.cub", "-dens.cub"),
-            ("-grad.cub", "-density.cub")
-        ]
+            ("-grad.cub", "-density.cub"),
+            ("_dg_inter.cub", "_sl2r.cub"),
+            ("_dg_intra.cub", "_sl2r.cub"),
+            ("-dg_inter.cub", "-sl2r.cub"),
+            ("-dg_intra.cub", "-sl2r.cub"),
+            ("_dg_inter.cube", "_sl2r.cube"),
+            ("_dg_intra.cube", "_sl2r.cube"),
+            ("-dg_inter.cube", "-sl2r.cube"),
+            ("-dg_intra.cube", "-sl2r.cube")
+        ])
+    }
+
+    private static func pairedNCISurfaceCubeURL(_ fileURL: URL) -> URL? {
+        pairedCubeURL(fileURL, replacements: [
+            ("_dens.cube", "_grad.cube"),
+            ("_density.cube", "_grad.cube"),
+            ("-dens.cube", "-grad.cube"),
+            ("-density.cube", "-grad.cube"),
+            ("_dens.cub", "_grad.cub"),
+            ("_density.cub", "_grad.cub"),
+            ("-dens.cub", "-grad.cub"),
+            ("-density.cub", "-grad.cub"),
+            ("_sl2r.cub", "_dg_inter.cub"),
+            ("_sl2r.cub", "_dg_intra.cub"),
+            ("-sl2r.cub", "-dg_inter.cub"),
+            ("-sl2r.cub", "-dg_intra.cub"),
+            ("_sl2r.cube", "_dg_inter.cube"),
+            ("_sl2r.cube", "_dg_intra.cube"),
+            ("-sl2r.cube", "-dg_inter.cube"),
+            ("-sl2r.cube", "-dg_intra.cube")
+        ])
+    }
+
+    private static func pairedCubeURL(_ fileURL: URL, replacements: [(String, String)]) -> URL? {
+        let name = fileURL.lastPathComponent
+        let lower = name.lowercased()
         for (from, to) in replacements where lower.hasSuffix(from) {
             let prefix = String(name.prefix(name.count - from.count))
             let candidate = fileURL.deletingLastPathComponent().appendingPathComponent(prefix + to)
@@ -1056,6 +1152,13 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             }
         }
         return nil
+    }
+
+    private static func nciIsoArguments(for url: URL) -> [String] {
+        let name = url.deletingPathExtension().lastPathComponent.lowercased()
+        if name.contains("dg_intra") || name.contains("dg-intra") { return ["--iso", "0.2"] }
+        if name.contains("dg_inter") || name.contains("dg-inter") { return ["--iso", "0.005"] }
+        return ["--iso", "0.3"]
     }
 
     private static func quoteCommandToken(_ value: String) -> String {
@@ -3664,6 +3767,7 @@ private struct PreviewExternalXyzrenderArtifact {
     let outputType: String
     let preset: String
     let configArgument: String
+    let surfaceMode: String?
     let usedOrientationRef: Bool
     let elapsedMs: Int
     let log: String
@@ -3686,7 +3790,8 @@ private enum PreviewExternalXyzrenderWorker {
         executablePath: String,
         extraArguments: String,
         orientationRefText: String?,
-        controls: [String: Any]?
+        controls: [String: Any]?,
+        surfaceMode: String?
     ) throws -> PreviewExternalXyzrenderArtifact {
         let fileManager = FileManager.default
         let inputURL = outputDirectory.appendingPathComponent(safeInputFilename(sourceFilename))
@@ -3724,6 +3829,7 @@ private enum PreviewExternalXyzrenderWorker {
                 logURL: logURL,
                 preset: effectivePreset,
                 configArgument: configArgument,
+                surfaceMode: surfaceMode,
                 usedOrientationRef: normalizedOrientationRef(orientationRefText) != nil,
                 cacheKey: cacheKey
             ) {
@@ -3782,6 +3888,7 @@ private enum PreviewExternalXyzrenderWorker {
             outputType: "svg",
             preset: effectivePreset,
             configArgument: configArgument,
+            surfaceMode: surfaceMode,
             usedOrientationRef: orientationRefURL != nil,
             elapsedMs: elapsedMs,
             log: log,
@@ -3829,6 +3936,7 @@ private enum PreviewExternalXyzrenderWorker {
         logURL: URL,
         preset: String,
         configArgument: String,
+        surfaceMode: String?,
         usedOrientationRef: Bool,
         cacheKey: String
     ) throws -> PreviewExternalXyzrenderArtifact? {
@@ -3854,6 +3962,7 @@ private enum PreviewExternalXyzrenderWorker {
             outputType: "svg",
             preset: preset,
             configArgument: configArgument,
+            surfaceMode: surfaceMode,
             usedOrientationRef: usedOrientationRef,
             elapsedMs: 0,
             log: log,

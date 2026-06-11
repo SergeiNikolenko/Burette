@@ -75,6 +75,7 @@ pub(crate) struct XyzrenderArtifact {
     pub(crate) output_type: &'static str,
     pub(crate) preset: &'static str,
     pub(crate) config_argument: String,
+    pub(crate) surface_mode: Option<String>,
     pub(crate) elapsed_ms: u128,
     pub(crate) log: String,
     pub(crate) cache_key: String,
@@ -113,6 +114,7 @@ pub(crate) fn create_xyzrender_artifact(
     } else {
         resolved_preset
     };
+    let surface_mode = controls.and_then(surface_mode_from_controls);
     let cache_key = xyzrender_cache_key(
         input_path,
         converted_input,
@@ -133,6 +135,7 @@ pub(crate) fn create_xyzrender_artifact(
             &cache_key,
             effective_preset,
             &resolved_config_argument,
+            surface_mode.as_deref(),
         )? {
             return Ok(artifact);
         }
@@ -188,6 +191,7 @@ pub(crate) fn create_xyzrender_artifact(
         output_type: "svg",
         preset: effective_preset,
         config_argument: resolved_config_argument,
+        surface_mode,
         elapsed_ms: started.elapsed().as_millis(),
         log,
         cache_key,
@@ -272,6 +276,7 @@ pub(crate) fn create_xyzrender_smiles_batch_artifacts(
                 &cache_key,
                 effective_preset,
                 &resolved_config_argument,
+                None,
             ) {
                 Ok(Some(artifact)) => {
                     results.push(XyzrenderSmilesBatchResult {
@@ -617,6 +622,7 @@ fn read_cached_xyzrender_artifact(
     cache_key: &str,
     preset: &'static str,
     config_argument: &str,
+    surface_mode: Option<&str>,
 ) -> Result<Option<XyzrenderArtifact>, String> {
     let cached_svg = entry.join("xyzrender.svg");
     let cached_log = entry.join("log.txt");
@@ -644,6 +650,7 @@ fn read_cached_xyzrender_artifact(
         output_type: "svg",
         preset,
         config_argument: config_argument.to_string(),
+        surface_mode: surface_mode.map(ToOwned::to_owned),
         elapsed_ms: 0,
         log,
         cache_key: cache_key.to_string(),
@@ -690,26 +697,49 @@ pub(crate) fn default_xyzrender_document_defaults(
     }
     let text = String::from_utf8_lossy(data);
     let descriptor = cube_descriptor(&text, input_path);
-    let paired_density = paired_density_cube_path(input_path, &descriptor);
+    let defaults = default_cube_surface_defaults(input_path, &descriptor);
     Some(XyzrenderDocumentDefaults {
-        controls: default_cube_controls(&text, input_path, paired_density.is_some()),
-        input_path: paired_density,
+        controls: defaults.controls,
+        input_path: defaults.input_path,
     })
 }
 
-fn default_cube_controls(
-    text: &str,
-    input_path: &Path,
-    has_paired_density_cube: bool,
-) -> XyzrenderControls {
-    let descriptor = cube_descriptor(text, input_path);
-    match descriptor.as_str() {
+struct CubeSurfaceDefaults {
+    controls: XyzrenderControls,
+    input_path: Option<PathBuf>,
+}
+
+fn default_cube_surface_defaults(input_path: &Path, descriptor: &str) -> CubeSurfaceDefaults {
+    match descriptor {
         value if value.contains("electrostatic potential") || value.contains("_esp") => {
-            XyzrenderControls {
-                field_mode: Some("esp".to_string()),
-                field_opacity: Some(0.5),
-                field_surface_style: Some("solid".to_string()),
-                ..XyzrenderControls::default()
+            if let Some(density_path) = paired_density_cube_path(input_path) {
+                return CubeSurfaceDefaults {
+                    controls: XyzrenderControls {
+                        extra_arguments: Some(
+                            [
+                                "--esp".to_string(),
+                                quote_command_token(&input_path.display().to_string()),
+                                "--cbar".to_string(),
+                                "--opacity".to_string(),
+                                "0.5".to_string(),
+                                "--surface-style".to_string(),
+                                "solid".to_string(),
+                            ]
+                            .join(" "),
+                        ),
+                        ..XyzrenderControls::default()
+                    },
+                    input_path: Some(density_path),
+                };
+            }
+            CubeSurfaceDefaults {
+                controls: XyzrenderControls {
+                    field_mode: Some("esp".to_string()),
+                    field_opacity: Some(0.5),
+                    field_surface_style: Some("solid".to_string()),
+                    ..XyzrenderControls::default()
+                },
+                input_path: None,
             }
         }
         value
@@ -717,96 +747,219 @@ fn default_cube_controls(
                 || value.contains("_homo")
                 || value.contains("_lumo") =>
         {
-            XyzrenderControls {
-                field_mode: Some("mo".to_string()),
-                field_opacity: Some(0.62),
-                field_surface_style: Some("solid".to_string()),
-                ..XyzrenderControls::default()
-            }
-        }
-        value
-            if value.contains("reduced density gradient")
-                || value.contains("rdg")
-                || value.contains("_grad")
-                || value.contains("-grad") =>
-        {
-            if has_paired_density_cube {
-                XyzrenderControls {
-                    extra_arguments: Some(
-                        [
-                            "--nci-surf".to_string(),
-                            quote_command_token(&input_path.display().to_string()),
-                            "--iso".to_string(),
-                            "0.3".to_string(),
-                            "--opacity".to_string(),
-                            "0.45".to_string(),
-                            "--surface-style".to_string(),
-                            "solid".to_string(),
-                        ]
-                        .join(" "),
-                    ),
-                    ..XyzrenderControls::default()
-                }
-            } else {
-                XyzrenderControls {
-                    field_mode: Some("density".to_string()),
-                    field_iso: Some(0.3),
-                    field_opacity: Some(0.45),
+            CubeSurfaceDefaults {
+                controls: XyzrenderControls {
+                    field_mode: Some("mo".to_string()),
+                    field_opacity: Some(0.62),
                     field_surface_style: Some("solid".to_string()),
                     ..XyzrenderControls::default()
+                },
+                input_path: None,
+            }
+        }
+        value if is_nci_surface_descriptor(value) => {
+            if let Some(field_path) = paired_nci_field_cube_path(input_path) {
+                CubeSurfaceDefaults {
+                    controls: XyzrenderControls {
+                        extra_arguments: Some(
+                            [
+                                "--nci-surf".to_string(),
+                                quote_command_token(&input_path.display().to_string()),
+                            ]
+                            .into_iter()
+                            .chain(nci_iso_arguments(input_path))
+                            .chain([
+                                "--opacity".to_string(),
+                                "0.45".to_string(),
+                                "--surface-style".to_string(),
+                                "solid".to_string(),
+                            ])
+                            .collect::<Vec<_>>()
+                            .join(" "),
+                        ),
+                        ..XyzrenderControls::default()
+                    },
+                    input_path: Some(field_path),
+                }
+            } else {
+                CubeSurfaceDefaults {
+                    controls: XyzrenderControls {
+                        field_mode: Some("density".to_string()),
+                        field_iso: Some(0.3),
+                        field_opacity: Some(0.45),
+                        field_surface_style: Some("solid".to_string()),
+                        ..XyzrenderControls::default()
+                    },
+                    input_path: None,
                 }
             }
         }
-        _ => XyzrenderControls {
-            field_mode: Some("density".to_string()),
-            field_opacity: Some(0.45),
-            field_surface_style: Some("solid".to_string()),
-            ..XyzrenderControls::default()
-        },
+        value if value.contains("sl2r") => {
+            if let Some(surface_path) = paired_nci_surface_cube_path(input_path) {
+                CubeSurfaceDefaults {
+                    controls: XyzrenderControls {
+                        extra_arguments: Some(
+                            [
+                                "--nci-surf".to_string(),
+                                quote_command_token(&surface_path.display().to_string()),
+                            ]
+                            .into_iter()
+                            .chain(nci_iso_arguments(&surface_path))
+                            .chain([
+                                "--opacity".to_string(),
+                                "0.45".to_string(),
+                                "--surface-style".to_string(),
+                                "solid".to_string(),
+                            ])
+                            .collect::<Vec<_>>()
+                            .join(" "),
+                        ),
+                        ..XyzrenderControls::default()
+                    },
+                    input_path: None,
+                }
+            } else {
+                CubeSurfaceDefaults {
+                    controls: XyzrenderControls {
+                        field_mode: Some("density".to_string()),
+                        field_opacity: Some(0.45),
+                        field_surface_style: Some("solid".to_string()),
+                        ..XyzrenderControls::default()
+                    },
+                    input_path: None,
+                }
+            }
+        }
+        _ => {
+            if let Some(surface_path) = paired_nci_surface_cube_path(input_path) {
+                CubeSurfaceDefaults {
+                    controls: XyzrenderControls {
+                        extra_arguments: Some(
+                            [
+                                "--nci-surf".to_string(),
+                                quote_command_token(&surface_path.display().to_string()),
+                            ]
+                            .into_iter()
+                            .chain(nci_iso_arguments(&surface_path))
+                            .chain([
+                                "--opacity".to_string(),
+                                "0.45".to_string(),
+                                "--surface-style".to_string(),
+                                "solid".to_string(),
+                            ])
+                            .collect::<Vec<_>>()
+                            .join(" "),
+                        ),
+                        ..XyzrenderControls::default()
+                    },
+                    input_path: None,
+                }
+            } else {
+                CubeSurfaceDefaults {
+                    controls: XyzrenderControls {
+                        field_mode: Some("density".to_string()),
+                        field_opacity: Some(0.45),
+                        field_surface_style: Some("solid".to_string()),
+                        ..XyzrenderControls::default()
+                    },
+                    input_path: None,
+                }
+            }
+        }
     }
 }
 
-fn paired_density_cube_path(input_path: &Path, descriptor: &str) -> Option<PathBuf> {
-    let is_gradient = descriptor.contains("reduced density gradient")
+fn is_nci_surface_descriptor(descriptor: &str) -> bool {
+    descriptor.contains("reduced density gradient")
         || descriptor.contains("rdg")
         || descriptor.contains("_grad")
-        || descriptor.contains("-grad");
-    if !is_gradient {
-        return None;
-    }
-    paired_density_cube_candidates(input_path)
-        .into_iter()
-        .find(|candidate| candidate.is_file())
+        || descriptor.contains("-grad")
+        || descriptor.contains("_dg_")
+        || descriptor.contains("-dg_")
+        || descriptor.contains("_dg-")
+        || descriptor.contains("-dg-")
 }
 
-fn paired_density_cube_candidates(input_path: &Path) -> Vec<PathBuf> {
+fn paired_density_cube_path(input_path: &Path) -> Option<PathBuf> {
+    paired_cube_candidates(
+        input_path,
+        &[
+            ("_esp.cube", "_dens.cube"),
+            ("_esp.cube", "_density.cube"),
+            ("-esp.cube", "-dens.cube"),
+            ("-esp.cube", "-density.cube"),
+            ("_esp.cub", "_dens.cub"),
+            ("_esp.cub", "_density.cub"),
+            ("-esp.cub", "-dens.cub"),
+            ("-esp.cub", "-density.cub"),
+        ],
+    )
+    .into_iter()
+    .find(|candidate| candidate.is_file())
+}
+
+fn paired_nci_field_cube_path(input_path: &Path) -> Option<PathBuf> {
+    paired_cube_candidates(
+        input_path,
+        &[
+            ("_grad.cube", "_dens.cube"),
+            ("_grad.cube", "_density.cube"),
+            ("-grad.cube", "-dens.cube"),
+            ("-grad.cube", "-density.cube"),
+            ("_grad.cub", "_dens.cub"),
+            ("_grad.cub", "_density.cub"),
+            ("-grad.cub", "-dens.cub"),
+            ("-grad.cub", "-density.cub"),
+            ("_dg_inter.cub", "_sl2r.cub"),
+            ("_dg_intra.cub", "_sl2r.cub"),
+            ("-dg_inter.cub", "-sl2r.cub"),
+            ("-dg_intra.cub", "-sl2r.cub"),
+            ("_dg_inter.cube", "_sl2r.cube"),
+            ("_dg_intra.cube", "_sl2r.cube"),
+            ("-dg_inter.cube", "-sl2r.cube"),
+            ("-dg_intra.cube", "-sl2r.cube"),
+        ],
+    )
+    .into_iter()
+    .find(|candidate| candidate.is_file())
+}
+
+fn paired_nci_surface_cube_path(input_path: &Path) -> Option<PathBuf> {
+    paired_cube_candidates(
+        input_path,
+        &[
+            ("_dens.cube", "_grad.cube"),
+            ("_density.cube", "_grad.cube"),
+            ("-dens.cube", "-grad.cube"),
+            ("-density.cube", "-grad.cube"),
+            ("_dens.cub", "_grad.cub"),
+            ("_density.cub", "_grad.cub"),
+            ("-dens.cub", "-grad.cub"),
+            ("-density.cub", "-grad.cub"),
+            ("_sl2r.cub", "_dg_inter.cub"),
+            ("_sl2r.cub", "_dg_intra.cub"),
+            ("-sl2r.cub", "-dg_inter.cub"),
+            ("-sl2r.cub", "-dg_intra.cub"),
+            ("_sl2r.cube", "_dg_inter.cube"),
+            ("_sl2r.cube", "_dg_intra.cube"),
+            ("-sl2r.cube", "-dg_inter.cube"),
+            ("-sl2r.cube", "-dg_intra.cube"),
+        ],
+    )
+    .into_iter()
+    .find(|candidate| candidate.is_file())
+}
+
+fn paired_cube_candidates(input_path: &Path, replacements: &[(&str, &str)]) -> Vec<PathBuf> {
     let Some(name) = input_path.file_name().and_then(|value| value.to_str()) else {
         return Vec::new();
     };
     let Some(parent) = input_path.parent() else {
         return Vec::new();
     };
-    let replacements = [
-        ("_esp.cube", "_dens.cube"),
-        ("_esp.cube", "_density.cube"),
-        ("-esp.cube", "-dens.cube"),
-        ("-esp.cube", "-density.cube"),
-        ("_esp.cub", "_dens.cub"),
-        ("_esp.cub", "_density.cub"),
-        ("-esp.cub", "-dens.cub"),
-        ("-esp.cub", "-density.cub"),
-        ("_grad.cube", "_dens.cube"),
-        ("_grad.cube", "_density.cube"),
-        ("-grad.cube", "-dens.cube"),
-        ("-grad.cube", "-density.cube"),
-        ("_grad.cub", "_dens.cub"),
-        ("_grad.cub", "_density.cub"),
-        ("-grad.cub", "-dens.cub"),
-        ("-grad.cub", "-density.cub"),
-    ];
     let lower = name.to_ascii_lowercase();
     let mut candidates = Vec::new();
-    for (from, to) in replacements {
+    for (from, to) in replacements.iter().copied() {
         if !lower.ends_with(from) {
             continue;
         }
@@ -817,6 +970,20 @@ fn paired_density_cube_candidates(input_path: &Path) -> Vec<PathBuf> {
         }
     }
     candidates
+}
+
+fn nci_iso_arguments(path: &Path) -> Vec<String> {
+    let name = path
+        .file_stem()
+        .map(|value| value.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
+    if name.contains("dg_intra") || name.contains("dg-intra") {
+        vec!["--iso".to_string(), "0.2".to_string()]
+    } else if name.contains("dg_inter") || name.contains("dg-inter") {
+        vec!["--iso".to_string(), "0.005".to_string()]
+    } else {
+        vec!["--iso".to_string(), "0.3".to_string()]
+    }
 }
 
 fn cube_descriptor(text: &str, input_path: &Path) -> String {
@@ -1056,6 +1223,26 @@ fn normalized_field_mode(value: Option<&str>) -> Option<&'static str> {
         Some("auto") | Some("off") | None => None,
         _ => None,
     }
+}
+
+fn surface_mode_from_controls(controls: &XyzrenderControls) -> Option<String> {
+    if let Some(mode) = normalized_field_mode(controls.field_mode.as_deref()) {
+        return Some(mode.to_string());
+    }
+    let tokens = split_command_line(controls.extra_arguments.as_deref().unwrap_or_default());
+    if tokens.iter().any(|token| token == "--nci-surf") {
+        return Some("nci".to_string());
+    }
+    if tokens.iter().any(|token| token == "--esp") {
+        return Some("esp".to_string());
+    }
+    if tokens.iter().any(|token| token == "--mo") {
+        return Some("mo".to_string());
+    }
+    if tokens.iter().any(|token| token == "--dens") {
+        return Some("density".to_string());
+    }
+    None
 }
 
 fn normalized_surface_style(value: Option<&str>) -> Option<&'static str> {
@@ -1686,11 +1873,13 @@ mod tests {
             "cache-key",
             "default",
             "default",
+            Some("density"),
         )
         .expect("cache read should not fail")
         .expect("cache entry should be valid");
 
         assert!(artifact.cache_hit);
+        assert_eq!(artifact.surface_mode.as_deref(), Some("density"));
         assert_eq!(artifact.cache_key, "cache-key");
         assert!(artifact.inline_svg.contains("cached"));
         assert_eq!(
@@ -1744,32 +1933,30 @@ mod tests {
 
     #[test]
     fn default_cube_controls_select_expected_field_surfaces() {
-        let density = default_cube_controls(
-            "density cube\n",
-            Path::new("/tmp/caffeine_dens.cube"),
-            false,
+        let density =
+            default_cube_surface_defaults(Path::new("/tmp/caffeine_dens.cube"), "density cube\n");
+        assert_eq!(density.controls.field_mode.as_deref(), Some("density"));
+        assert_eq!(density.controls.field_opacity, Some(0.45));
+        assert_eq!(
+            density.controls.field_surface_style.as_deref(),
+            Some("solid")
         );
-        assert_eq!(density.field_mode.as_deref(), Some("density"));
-        assert_eq!(density.field_opacity, Some(0.45));
-        assert_eq!(density.field_surface_style.as_deref(), Some("solid"));
 
-        let esp = default_cube_controls(
-            "electrostatic potential\n",
+        let esp = default_cube_surface_defaults(
             Path::new("/tmp/caffeine_esp.cube"),
-            false,
+            "electrostatic potential\n",
         );
-        assert_eq!(esp.field_mode.as_deref(), Some("esp"));
-        assert_eq!(esp.field_opacity, Some(0.5));
-        assert_eq!(esp.field_surface_style.as_deref(), Some("solid"));
+        assert_eq!(esp.controls.field_mode.as_deref(), Some("esp"));
+        assert_eq!(esp.controls.field_opacity, Some(0.5));
+        assert_eq!(esp.controls.field_surface_style.as_deref(), Some("solid"));
 
-        let homo = default_cube_controls(
-            "molecular orbital\n",
+        let homo = default_cube_surface_defaults(
             Path::new("/tmp/caffeine_homo.cube"),
-            false,
+            "molecular orbital\n",
         );
-        assert_eq!(homo.field_mode.as_deref(), Some("mo"));
-        assert_eq!(homo.field_opacity, Some(0.62));
-        assert_eq!(homo.field_surface_style.as_deref(), Some("solid"));
+        assert_eq!(homo.controls.field_mode.as_deref(), Some("mo"));
+        assert_eq!(homo.controls.field_opacity, Some(0.62));
+        assert_eq!(homo.controls.field_surface_style.as_deref(), Some("solid"));
     }
 
     #[test]
@@ -1934,9 +2121,14 @@ mod tests {
             b"Cube data generated by ORCA\nElectrostatic Potential\n",
         )
         .expect("esp cube should get defaults");
-        assert_eq!(defaults.input_path.as_deref(), None);
-        assert_eq!(defaults.controls.field_mode.as_deref(), Some("esp"));
-        assert_eq!(defaults.controls.field_opacity, Some(0.5));
+        assert_eq!(defaults.input_path.as_deref(), Some(dens_path.as_path()));
+        assert_eq!(defaults.controls.field_mode.as_deref(), None);
+        assert!(defaults
+            .controls
+            .extra_arguments
+            .as_deref()
+            .unwrap_or_default()
+            .contains("--esp"));
 
         let base_pair_dens = directory.join("base-pair-dens.cube");
         let base_pair_grad = directory.join("base-pair-grad.cube");
@@ -1959,6 +2151,26 @@ mod tests {
             .as_deref()
             .unwrap_or_default()
             .contains("--nci-surf"));
+
+        let sl2r_path = directory.join("phenol_di-sl2r.cub");
+        let dg_inter_path = directory.join("phenol_di-dg_inter.cub");
+        fs::write(&sl2r_path, b"sl2r").expect("sl2r cube fixture should be written");
+        fs::write(&dg_inter_path, b"dg inter").expect("dg cube fixture should be written");
+
+        let defaults = default_xyzrender_document_defaults(
+            "cub",
+            &sl2r_path,
+            b"Cube data generated by Multiwfn\nsl2r field\n",
+        )
+        .expect("sl2r cube should get nci defaults");
+        assert_eq!(defaults.input_path.as_deref(), None);
+        let extra_arguments = defaults
+            .controls
+            .extra_arguments
+            .as_deref()
+            .unwrap_or_default();
+        assert!(extra_arguments.contains("--nci-surf"));
+        assert!(extra_arguments.contains("0.005"));
 
         let _ = fs::remove_dir_all(directory);
     }
