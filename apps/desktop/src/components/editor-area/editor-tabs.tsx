@@ -15,7 +15,8 @@ const TAB_DRAG_ACTIVATE_DELAY_MS = 520;
 const TAB_MOUSE_REORDER_THRESHOLD_PX = 8;
 
 export function EditorTabs({ state, actions }: { state: ShellViewState; actions: ShellActions }) {
-  const activeTabIndex = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
+  const visibleTabs = state.tabs.filter((tab) => tab.location.kind !== "settings");
+  const activeTabIndex = visibleTabs.findIndex((tab) => tab.id === state.activeTabId);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const draggingTabIdRef = useRef<string | null>(null);
   const mouseDragRef = useRef<{ tabId: string; startX: number; active: boolean } | null>(null);
@@ -23,8 +24,8 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
   const dragActivationRef = useRef<{ tabId: string; timeout: number } | null>(null);
   const tabShellRefs = useRef(new Map<string, HTMLDivElement>());
   const previousTabRectsRef = useRef<Map<string, DOMRect> | null>(null);
-  const latestTabsRef = useRef(state.tabs);
-  latestTabsRef.current = state.tabs;
+  const latestTabsRef = useRef(visibleTabs);
+  latestTabsRef.current = visibleTabs;
 
   const setTabShellRef = useCallback((tabId: string, node: HTMLDivElement | null) => {
     if (node) {
@@ -47,7 +48,7 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
     const previousRects = previousTabRectsRef.current;
     if (!previousRects) return;
     previousTabRectsRef.current = null;
-    for (const tab of state.tabs) {
+    for (const tab of visibleTabs) {
       if (tab.id === draggingTabId) continue;
       const element = tabShellRefs.current.get(tab.id);
       const previousRect = previousRects.get(tab.id);
@@ -164,9 +165,14 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
     }
     const currentIndex = orderedTabs.findIndex((tab) => tab.id === tabId);
     if (currentIndex === targetIndex) return;
+    const stateTabsWithoutDragged = state.tabs.filter((tab) => tab.id !== tabId);
+    const targetTabId = otherTabs[targetIndex]?.id ?? null;
+    const stateTargetIndex = targetTabId
+      ? stateTabsWithoutDragged.findIndex((tab) => tab.id === targetTabId)
+      : stateTabsWithoutDragged.length;
     previousTabRectsRef.current = measureTabRects();
-    actions.moveTab(tabId, targetIndex);
-  }, [actions, measureTabRects]);
+    actions.moveTab(tabId, stateTargetIndex);
+  }, [actions, measureTabRects, state.tabs]);
 
   const clearDragActivation = useCallback(() => {
     const activation = dragActivationRef.current;
@@ -317,7 +323,7 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
         onDragOver={handleEmptyTabStripDragOver}
         onDrop={handleEmptyTabStripDrop}
       >
-        {state.tabs.map((tab, index) => {
+        {visibleTabs.map((tab, index) => {
           const kind = pageKind(tab.location);
           const title = kind.title(tab.location, state);
           const active = index === activeTabIndex;
@@ -428,14 +434,14 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
                 text: "Close Tab",
                 action: () => actions.closeTab(tab.id),
               },
-              ...(state.tabs.length > 1
+              ...(visibleTabs.length > 1
                 ? [
                     {
                       kind: "item" as const,
                       id: "close-other-tabs",
                       text: "Close Other Tabs",
                       action: () => {
-                        for (const candidate of state.tabs) {
+                        for (const candidate of visibleTabs) {
                           if (candidate.id !== tab.id) actions.closeTab(candidate.id);
                         }
                       },
@@ -531,25 +537,25 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
                   }
                   if (event.key === "ArrowRight") {
                     event.preventDefault();
-                    const next = state.tabs[(index + 1) % state.tabs.length];
+                    const next = visibleTabs[(index + 1) % visibleTabs.length];
                     if (next) actions.selectTab(next.id);
                     return;
                   }
                   if (event.key === "ArrowLeft") {
                     event.preventDefault();
-                    const next = state.tabs[(index - 1 + state.tabs.length) % state.tabs.length];
+                    const next = visibleTabs[(index - 1 + visibleTabs.length) % visibleTabs.length];
                     if (next) actions.selectTab(next.id);
                     return;
                   }
                   if (event.key === "Home") {
                     event.preventDefault();
-                    const next = state.tabs[0];
+                    const next = visibleTabs[0];
                     if (next) actions.selectTab(next.id);
                     return;
                   }
                   if (event.key === "End") {
                     event.preventDefault();
-                    const next = state.tabs[state.tabs.length - 1];
+                    const next = visibleTabs[visibleTabs.length - 1];
                     if (next) actions.selectTab(next.id);
                   }
                 }}
