@@ -25,7 +25,7 @@ const keyboardShortcutRows: ShortcutRow[] = [
   {
     command: "Toggle sidebar",
     description: "Show or hide the project and structure browser.",
-    keybindings: ["⌘\\"],
+    keybindings: ["⌘B"],
   },
   {
     command: "Toggle bottom dock",
