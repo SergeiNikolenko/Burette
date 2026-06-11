@@ -4813,6 +4813,44 @@
     return sceneActionFailure('color_by_chain', 'NOT_IMPLEMENTED', 'Mol* representation theme update API is unavailable in this runtime.');
   }
 
+  function molstarStructureBoundingBoxTransform() {
+    return window.molstar?.lib?.plugin?.StateTransforms?.Representation?.StructureBoundingBox3D || null;
+  }
+
+  async function addMolstarStructureBoundingBoxGeometry(plugin, structure, options = {}) {
+    const transform = molstarStructureBoundingBoxTransform();
+    const target = structure?.cell || structure;
+    if (!transform || !target || !plugin?.build) return false;
+    await plugin.build().to(target).apply(transform, {
+      radius: Number.isFinite(Number(options.radius)) ? Number(options.radius) : 0.035,
+      color: Number.isFinite(Number(options.color)) ? Number(options.color) : 0x2f6f66
+    }, { tags: ['burrete-box-geometry'] }).commit({ revertOnError: true });
+    return true;
+  }
+
+  async function applyMolstarStructureBoundingBoxGeometry(viewer, options = {}) {
+    const plugin = viewer?.plugin;
+    const structures = plugin?.managers?.structure?.hierarchy?.current?.structures || [];
+    if (!structures.length) return 0;
+    let created = 0;
+    for (const structure of structures) {
+      try {
+        if (await addMolstarStructureBoundingBoxGeometry(plugin, structure, options)) created += 1;
+      } catch (error) {
+        debug('Mol* structure bounding-box geometry failed: ' + (error && error.message || String(error)));
+      }
+    }
+    return created;
+  }
+
+  async function showMolstarBoundingBox(action = {}) {
+    const count = await applyMolstarStructureBoundingBoxGeometry(activeMolstarViewer(), action);
+    if (!count) {
+      return sceneActionFailure('show_bounding_box', 'NO_STRUCTURE', 'No Mol* structures are available for bounding-box geometry.');
+    }
+    return { ok: true, command: 'show_bounding_box', result: { componentCount: count, representation: 'molstar-geometry' } };
+  }
+
   function normalizeSurfaceTargetKind(kind) {
     const text = String(kind || '').toLowerCase();
     if (text === 'protein') return 'polymer';
@@ -4828,6 +4866,7 @@
     hideWaters: hideMolstarWaters,
     showWaters: showMolstarWaters,
     showSurface: showMolstarSurface,
+    showBoundingBox: showMolstarBoundingBox,
     colorByChain: colorMolstarByChain
   };
 
@@ -4939,8 +4978,30 @@
     prepared.ligandLabel = prepared.trajectoryPair.coordinateEntry.label || prepared.ligandLabel || 'Mol* trajectory';
   }
 
-  async function loadMolstarEntryAsBoxLines(viewer, entry) {
+  async function loadMolstarEntryAsUnitCell(viewer, entry) {
     const plugin = viewer.plugin;
+    const params = {
+      cellColor: 0x2f6f66,
+      cellScale: 1,
+      ref: 'model',
+      attachment: 'corner'
+    };
+    let created = 0;
+    for (const structure of molstarCurrentStructures(viewer)) {
+      const modelCell = structure?.model?.cell || structure?.model;
+      if (!modelCell) continue;
+      try {
+        const unitcell = await plugin.builders.structure.tryCreateUnitcell(modelCell, params, { isHidden: false });
+        if (unitcell) created += 1;
+      } catch (error) {
+        debug('Mol* unit cell creation from active model failed: ' + (error && error.message || String(error)));
+      }
+    }
+    if (created > 0) return;
+
+    const boundingBoxes = await applyMolstarStructureBoundingBoxGeometry(viewer);
+    if (boundingBoxes > 0) return;
+
     const normalized = normalizeFormat(entry.format);
     const payload = normalized === 'cifCore'
       ? { data: coreCifToPdb(entry.data), format: 'pdb' }
@@ -4948,21 +5009,11 @@
     const data = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
     const trajectory = await plugin.builders.structure.parseTrajectory(data, payload.format);
     const model = await plugin.builders.structure.createModel(trajectory);
-    const structure = await plugin.builders.structure.createStructure(model, { name: 'model', params: {} });
-    const component = await plugin.builders.structure.tryCreateComponentStatic(structure, 'all');
-    if (!component) throw new Error('Mol* could not create staged box component.');
-    await plugin.builders.structure.representation.addRepresentation(component, {
-      type: 'line',
-      typeParams: {
-        alpha: 0.72,
-        sizeFactor: 0.02,
-        visuals: ['intra-bond']
-      },
-      color: 'uniform',
-      colorParams: { value: 0x2f6f66 },
-      size: 'uniform',
-      sizeParams: { value: 0.018 }
-    });
+    const unitcell = await plugin.builders.structure.tryCreateUnitcell(model, params, { isHidden: false });
+    if (unitcell) return;
+    const fallbackBoxes = await applyMolstarStructureBoundingBoxGeometry(viewer);
+    if (fallbackBoxes > 0) return;
+    throw new Error('Mol* could not create unit-cell or bounding-box geometry for this box.');
   }
 
   async function loadStagedMolstarEntry(viewer, entry, cb) {
@@ -4981,12 +5032,12 @@
         debug('staged solvent line representation failed, falling back to default preset: ' + (error && error.message || String(error)));
       }
     }
-    if (entry.representation === 'box-lines') {
+    if (entry.representation === 'unitcell' || entry.representation === 'box-lines') {
       try {
-        await loadMolstarEntryAsBoxLines(viewer, prepared);
+        await loadMolstarEntryAsUnitCell(viewer, prepared);
         return;
       } catch (error) {
-        debug('staged box line representation failed, falling back to default preset: ' + (error && error.message || String(error)));
+        debug('staged unit cell representation failed, falling back to default preset: ' + (error && error.message || String(error)));
       }
     }
     await loadMolstarEntry(viewer, prepared);
