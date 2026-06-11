@@ -2347,6 +2347,7 @@ assert.match(browserDevDocuments, /function defaultMolstarStyleForDocument\(/);
 assert.match(browserDevDocuments, /return trajectoryFrameCount > 1 \? "default" : preferences\.molstarStyle;/);
 assert.match(browserDevDocuments, /const molstarStyle = defaultMolstarStyleForDocument\(preferences, trajectoryFrameCount\);/);
 assert.match(browserDevDocuments, /waterRepresentation: "line"/);
+assert.match(browserDevDocuments, /const MAESTRO_PDB_PREVIEW_ATOM_LIMIT = 99999/);
 assert.match(browserDevDocuments, /function groPdbDataFromText\(text: string, label: string\)/);
 assert.match(browserDevDocuments, /representation: "solvent-lines"/);
 assert.match(browserDevDocuments, /"TP3", "TP4"/);
@@ -2402,7 +2403,8 @@ assert.match(browserDevDocuments, /function parseMaestroPdbModels\(lines: string
 assert.match(browserDevDocuments, /function maestroModelsToPdb\(models: MaestroAtom\[\]\[\]\)/);
 assert.match(browserDevDocuments, /bestModels\.push\(atoms\)/);
 assert.match(browserDevDocuments, /const score = maestroCtScore\(currentCtType\)/);
-assert.match(browserDevDocuments, /if \(ctType === "solute"\) return 4/);
+assert.match(browserDevDocuments, /if \(ctType === "full_system"\) return 4/);
+assert.match(browserDevDocuments, /if \(ctType === "solute"\) return 3/);
 assert.match(browserDevDocuments, /function parseOrcaAtoms\(lines: string\[\]\)/);
 assert.match(app, /if \(fileName\.toLowerCase\(\)\.endsWith\("\.mae\.gz"\)\) return "maegz";/);
 assert.match(browserDevDocuments, /if \(name\.toLowerCase\(\)\.endsWith\("\.mae\.gz"\)\) return "maegz";/);
