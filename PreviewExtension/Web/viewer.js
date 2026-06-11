@@ -2356,6 +2356,7 @@
       : defaultViewportTop;
     const viewportControlsTop = Math.max(TOOLBAR_MARGIN, Math.ceil(viewportControlsViewportTop - mainTop));
     root.style.setProperty('--buret-viewport-controls-top', viewportControlsTop + 'px');
+    repositionDockingPoseControlsForLayout(mainRect);
 
     const bottomLimit = visibleRectTop('.msp-plugin .msp-layout-bottom') || window.innerHeight;
     const panelMaxHeight = Math.max(160, Math.floor(bottomLimit - viewportControlsViewportTop - FLOATING_LAYOUT_GAP));
@@ -5164,14 +5165,27 @@
     };
   }
 
-  function moveDockingPoseControls(root, left, top) {
+  function dockingPoseControlsBounds(mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
     const margin = TOOLBAR_MARGIN;
+    const left = mainRect ? Math.max(margin, Math.ceil(mainRect.left + margin)) : margin;
+    const right = mainRect ? Math.min(window.innerWidth - margin, Math.floor(mainRect.right - margin)) : window.innerWidth - margin;
+    return {
+      left,
+      right: Math.max(left, right),
+      top: margin,
+      bottom: window.innerHeight - margin
+    };
+  }
+
+  function moveDockingPoseControls(root, left, top, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
+    const bounds = dockingPoseControlsBounds(mainRect);
+    root.style.maxWidth = Math.max(180, Math.floor(bounds.right - bounds.left)) + 'px';
     const width = root.offsetWidth || root.getBoundingClientRect().width || 180;
     const height = root.offsetHeight || root.getBoundingClientRect().height || 40;
-    const maxLeft = Math.max(margin, window.innerWidth - width - margin);
-    const maxTop = Math.max(margin, window.innerHeight - height - margin);
-    const clampedLeft = Math.round(Math.min(Math.max(margin, left), maxLeft));
-    const clampedTop = Math.round(Math.min(Math.max(margin, top), maxTop));
+    const maxLeft = Math.max(bounds.left, bounds.right - width);
+    const maxTop = Math.max(bounds.top, bounds.bottom - height);
+    const clampedLeft = Math.round(Math.min(Math.max(bounds.left, left), maxLeft));
+    const clampedTop = Math.round(Math.min(Math.max(bounds.top, top), maxTop));
     root.style.left = clampedLeft + 'px';
     root.style.top = clampedTop + 'px';
     root.style.right = 'auto';
@@ -5205,17 +5219,28 @@
     } catch (_) {}
     if (restored) return;
     root.dataset.defaultPosition = '1';
-    root.style.left = '14px';
-    root.style.right = 'auto';
-    root.style.top = '14px';
-    root.style.bottom = 'auto';
+    applyDefaultDockingPoseControlsPosition(root);
   }
 
-  function repositionDockingPoseControls(root) {
-    if (root.dataset.defaultPosition === '1') return;
+  function applyDefaultDockingPoseControlsPosition(root, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
+    root.dataset.defaultPosition = '1';
+    const bounds = dockingPoseControlsBounds(mainRect);
+    moveDockingPoseControls(root, bounds.left, 14, mainRect);
+  }
+
+  function repositionDockingPoseControls(root, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
+    if (root.dataset.defaultPosition === '1') {
+      applyDefaultDockingPoseControlsPosition(root, mainRect);
+      return;
+    }
     const rect = root.getBoundingClientRect();
-    moveDockingPoseControls(root, rect.left, rect.top);
+    moveDockingPoseControls(root, rect.left, rect.top, mainRect);
     saveDockingPoseControlsPosition(root);
+  }
+
+  function repositionDockingPoseControlsForLayout(mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
+    const root = document.querySelector('.buret-docking-poses');
+    if (root) repositionDockingPoseControls(root, mainRect);
   }
 
   function initDockingPoseControlsDrag(root) {
