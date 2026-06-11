@@ -2113,6 +2113,7 @@ export default function App() {
           orientationRef?: string | null;
           preset?: string | null;
           text?: string | null;
+          base64?: string | null;
           query?: string | null;
           sort?: string | null;
           offset?: number | null;
@@ -2217,6 +2218,32 @@ export default function App() {
             });
             if (!outputPath) return;
             const savedPath = await invoke<string>("save_text_as", { text, outputPath });
+            pushStatus(`Exported ${basename(savedPath)}`);
+          } catch (error) {
+            pushErrorStatus(error, "Molstar export failed");
+          }
+        })();
+        return;
+      }
+      if (data.source === "burrete-viewer" && body?.type === "exportData") {
+        const base64 = typeof body.base64 === "string" ? body.base64 : "";
+        const name = safeExportFileName(body.name ?? "molstar-export.bin");
+        const mimeType = typeof body.mimeType === "string" ? body.mimeType : "application/octet-stream";
+        void (async () => {
+          try {
+            if (!isTauriRuntime()) {
+              downloadBase64File(name, base64, mimeType);
+              pushStatus(`Exported ${name}`);
+              return;
+            }
+            const outputPath = await save({
+              defaultPath: name,
+              filters: exportDialogFilters(name, mimeType),
+            });
+            if (!outputPath) return;
+            const savedPath = await invoke<string>("write_base64_file", {
+              request: { outputPath, contentsBase64: base64 },
+            });
             pushStatus(`Exported ${basename(savedPath)}`);
           } catch (error) {
             pushErrorStatus(error, "Molstar export failed");
@@ -3596,6 +3623,24 @@ function looksLikeMolfile(text: string) {
 
 function downloadTextFile(fileName: string, text: string) {
   const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.style.display = "none";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function downloadBase64File(fileName: string, base64: string, mimeType: string) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  const blob = new Blob([bytes], { type: mimeType || "application/octet-stream" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
