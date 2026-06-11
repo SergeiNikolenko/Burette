@@ -781,6 +781,7 @@ function viewerHtml(
   stagedEntries?: Array<Record<string, unknown>>,
 ) {
   const label = fileTitle(path);
+  const extension = fileExtension(path);
   const visuals = resolvePreviewVisuals(preferences);
   const molstarStyle = defaultMolstarStyleForDocument(preferences, trajectoryFrameCount);
   const config = configOverride ?? {
@@ -793,8 +794,9 @@ function viewerHtml(
     label,
     byteCount: sourceByteCount,
     previewByteCount: bytes.length,
-    dataPath: renderer === "xyzrender-external" ? browserDevReadUrl(path, fileExtension(path)) : undefined,
+    dataPath: renderer === "xyzrender-external" ? browserDevReadUrl(path, extension) : undefined,
     sourcePath: path,
+    sourceExtension: extension,
     quickLookBuild: "burrete-browser-dev",
     debug: false,
     theme: visuals.theme,
@@ -827,7 +829,7 @@ function viewerHtml(
     ...(renderer === "xyzrender-external" && browserDevVirtualTextDocuments.has(path)
       ? {
           xyzrenderInputDataBase64: bytesToBase64(bytes),
-          xyzrenderInputExtension: fileExtension(path),
+          xyzrenderInputExtension: extension,
         }
       : {}),
     ...(externalRendererStatus ? { externalRendererStatus } : {}),
