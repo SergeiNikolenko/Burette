@@ -538,6 +538,11 @@ assert.match(previewXyzrender, /fn xyzrender_batch_helper_launch/);
 assert.match(previewXyzrender, /fn bundled_xyzrender_python_launch/);
 assert.match(previewXyzrender, /join\("xyzrender-python"\)\s*\.join\("bin"\)\s*\.join\("python3"\)/);
 assert.match(previewXyzrender, /\("PYTHONPATH", site_packages\.display\(\)\.to_string\(\)\)/);
+assert.match(previewXyzrender, /surface_mode/);
+assert.match(previewXyzrender, /paired_nci_surface_cube_path/);
+assert.match(previewXyzrender, /"--esp"/);
+assert.match(previewXyzrender, /"--nci-surf"/);
+assert.match(previewRuntimeViewer, /"surfaceMode"/);
 
 assert.match(tray, /fn status_image\(\) -> tauri::image::Image<'static>/);
 assert.match(tray, /\.icon\(status_image\(\)\)/);
@@ -672,6 +677,10 @@ assert.match(quickLookPreviewController, /<script src="preview-config\.js"><\/sc
 assert.match(quickLookPreviewController, /gridRuntimeCSP/);
 assert.match(quickLookPreviewController, /molstarRuntimeCSP/);
 assert.match(quickLookPreviewController, /externalArtifactRuntimeCSP/);
+assert.match(quickLookPreviewController, /surfaceMode/);
+assert.match(quickLookPreviewController, /pairedNCISurfaceCubeURL/);
+assert.match(quickLookPreviewController, /"--esp"/);
+assert.match(quickLookPreviewController, /"--nci-surf"/);
 assert.match(quickLookPreviewController, /runtimeCSP\(for: renderer\)/);
 assert.match(quickLookPreviewController, /Content-Security-Policy/);
 assert.match(quickLookPreviewController, /elapsed\.fileReadMs/);
