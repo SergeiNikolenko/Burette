@@ -3040,7 +3040,9 @@ assert.match(previewViewer, /function trajectoryControlsForPrepared\(prepared\)/
 assert.match(previewViewer, /const label = activeConfig\?\.sdfPosePager === true \? 'Pose' : 'Model'/);
 assert.match(previewViewer, /installDockingPoseControls\(viewer, trajectoryControlsForPrepared\(prepared\)\)/);
 assert.match(previewViewer, /function minimumTrajectoryLoopDelay\(prepared\)/);
-assert.match(previewViewer, /return prepared\?\.nativeTrajectoryControls \? 40 : 300/);
+assert.match(previewViewer, /const NATIVE_TRAJECTORY_LOOP_SKIP_FPS_THRESHOLD = 25/);
+assert.match(previewViewer, /const NATIVE_TRAJECTORY_LOOP_MAX_FPS = 100/);
+assert.match(previewViewer, /return prepared\?\.nativeTrajectoryControls \? Math\.round\(1000 \/ NATIVE_TRAJECTORY_LOOP_MAX_FPS\) : 300/);
 assert.match(previewViewer, /function minimumTrajectoryLoopTimerDelay\(prepared\)/);
 assert.match(previewViewer, /return prepared\?\.nativeTrajectoryControls \? 8 : 60/);
 assert.match(previewViewer, /const DEFAULT_TRAJECTORY_LOOP_FPS = 20/);
@@ -3125,6 +3127,7 @@ assert.match(previewRuntimeCss, /\.buret-docking-pose-slider \{/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-speed \{/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-speed \{[\s\S]*appearance: textfield;/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-speed \{[\s\S]*width: 44px;/);
+assert.match(previewRuntimeCss, /\.buret-docking-pose-speed\.buret-docking-pose-speed-skip \{[\s\S]*#f59e0b/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-speed::-webkit-inner-spin-button,\s*\.buret-docking-pose-speed::-webkit-outer-spin-button \{[\s\S]*-webkit-appearance: none;/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-slider \{[\s\S]*flex: 0 0 110px;/);
 assert.match(previewViewer, /animationRow\.append\(speed, loop, slider\)/);
