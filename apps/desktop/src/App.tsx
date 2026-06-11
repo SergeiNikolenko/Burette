@@ -2917,6 +2917,8 @@ export default function App() {
                 xyzrenderPreset: body.preset ?? pendingViewerReloadOptionsRef.current?.xyzrenderPreset ?? null,
                 xyzrenderControls: body.controls ?? pendingViewerReloadOptionsRef.current?.xyzrenderControls ?? null,
               }
+            : renderer === "molstar"
+              ? {}
             : undefined;
           if (renderer === "xyzrender-external" && body.orientationRef) {
             xyzrenderOrientationRefRef.current = body.orientationRef;
