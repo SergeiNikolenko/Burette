@@ -73,7 +73,7 @@ import type { StructureDragPayload, StructureDragRecord } from "./lib/structure-
 import { readStructureText } from "./lib/structure-text";
 import { isTauriRuntime } from "./lib/tauri";
 import { isTemporaryDocumentPath } from "./lib/temporary-documents";
-import type { DockingDocumentRequest, FepSetupRequest, OpenDocumentsResult, OpenTextFilesResult, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "./types";
+import type { DockingDocumentRequest, FepSetupRequest, OpenDocumentsMode, OpenDocumentsResult, OpenTextFilesResult, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "./types";
 import { checkForUpdates as requestUpdateCheck, clearDismissedUpdate, dismissUpdate, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically, shouldPromptForUpdate } from "./update";
 import type { UpdatePreferences, UpdateRelease, UpdateState } from "./update";
 
@@ -609,7 +609,7 @@ export default function App() {
       paths: string[],
       reloadOptions?: ViewerReloadOptions,
       preferencesOverride?: Partial<typeof preferences>,
-      options: { replace?: boolean; inActiveTab?: boolean } = {},
+      options: { replace?: boolean; inActiveTab?: boolean; mode?: OpenDocumentsMode } = {},
     ) => {
       const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
       if (!cleanPaths.length) return;
@@ -635,7 +635,7 @@ export default function App() {
       pushStatus("Opening structures...");
       try {
         const result = isTauriRuntime()
-          ? await invoke<OpenDocumentsResult>("open_documents", { paths: structurePaths, preferences: effectivePreferences, reloadOptions })
+          ? await invoke<OpenDocumentsResult>("open_documents", { paths: structurePaths, preferences: effectivePreferences, reloadOptions, mode: options.mode })
           : await openBrowserDevDocuments(structurePaths, effectivePreferences, reloadOptions);
         if (options.replace) setDocuments(result.documents);
         else if (options.inActiveTab) openDocumentsInActiveTab(result.documents);
@@ -3277,8 +3277,8 @@ export default function App() {
 
   const actions = useMemo<ShellActions>(() => ({
     chooseFiles,
-    openStructurePaths: async (paths: string[]) => {
-      await openDocuments(paths);
+    openStructurePaths: async (paths: string[], options?: { mode?: OpenDocumentsMode }) => {
+      await openDocuments(paths, undefined, undefined, options);
     },
     openTextPaths: async (paths: string[]) => {
       await openTextDocuments(paths);
