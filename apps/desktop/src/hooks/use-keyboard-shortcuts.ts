@@ -28,6 +28,11 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
         }
         return;
       }
+      if (commandKey && event.shiftKey && key === "n") {
+        event.preventDefault();
+        void actions.openNewWindow();
+        return;
+      }
       if (commandKey && event.shiftKey && key === "r") {
         event.preventDefault();
         void actions.revealActiveDocument();

@@ -92,6 +92,13 @@ export function CommandPalette({
         run: actions.openClipboard,
       },
       {
+        id: "new-window",
+        group: "Suggested",
+        label: "New Window",
+        description: "Open another Burrete workspace window",
+        run: actions.openNewWindow,
+      },
+      {
         id: "open-recent",
         group: "Suggested",
         label: "Open Recent",
