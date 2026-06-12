@@ -7,7 +7,17 @@
       "mimeTypes": ["chemical/x-pdb", "chemical/x-pdbqt"],
       "conformsTo": ["public.plain-text", "public.data"],
       "description": "Protein Data Bank coordinate file",
-      "viewer": { "molstarFormat": "pdb", "binary": false, "externalOnly": false }
+      "viewer": { "molstarFormat": "pdb", "binary": false, "externalOnly": false },
+      "preview": {
+        "strategy": "direct",
+        "renderer": "molstar",
+        "primary": { "role": "structure", "format": "pdb", "binary": false },
+        "fallbacks": [
+          { "renderer": "xyzrender-external" }
+        ],
+        "capabilities": { "canSwitchRenderer": true }
+      },
+      "quickLook": { "sizeLimitMiB": 35 }
     },
     {
       "id": "cif",
@@ -18,6 +28,16 @@
       "conformsTo": ["public.plain-text", "public.data"],
       "description": "Crystallographic information file",
       "viewer": { "molstarFormat": "mmcif", "binary": false, "externalOnly": false },
+      "preview": {
+        "strategy": "direct",
+        "renderer": "molstar",
+        "primary": { "role": "structure", "format": "mmcif", "binary": false },
+        "fallbacks": [
+          { "renderer": "xyzrender-external" }
+        ],
+        "capabilities": { "canSwitchRenderer": true }
+      },
+      "quickLook": { "sizeLimitMiB": 40 },
       "canOpenInVesta": true
     },
     {
@@ -28,6 +48,16 @@
       "conformsTo": ["com.local.burrete10.cif", "public.plain-text", "public.data"],
       "description": "Macromolecular crystallographic information file",
       "viewer": { "molstarFormat": "mmcif", "binary": false, "externalOnly": false },
+      "preview": {
+        "strategy": "direct",
+        "renderer": "molstar",
+        "primary": { "role": "structure", "format": "mmcif", "binary": false },
+        "fallbacks": [
+          { "renderer": "xyzrender-external" }
+        ],
+        "capabilities": { "canSwitchRenderer": true }
+      },
+      "quickLook": { "sizeLimitMiB": 40 },
       "canOpenInVesta": true
     },
     {
@@ -37,7 +67,13 @@
       "mimeTypes": ["application/octet-stream"],
       "conformsTo": ["public.data"],
       "description": "BinaryCIF molecular structure file",
-      "viewer": { "molstarFormat": "mmcif", "binary": true, "externalOnly": false }
+      "viewer": { "molstarFormat": "mmcif", "binary": true, "externalOnly": false },
+      "preview": {
+        "strategy": "direct",
+        "renderer": "molstar",
+        "primary": { "role": "structure", "format": "mmcif", "binary": true }
+      },
+      "quickLook": { "sizeLimitMiB": 50 }
     },
     {
       "id": "sdf",
@@ -47,7 +83,17 @@
       "conformsTo": ["public.plain-text", "public.data"],
       "description": "Structure-data molecular file",
       "viewer": { "molstarFormat": "sdf", "binary": false, "externalOnly": false },
-      "grid": { "enabled": true, "requiresPreview": false, "format": "sdf", "rendererSwitch": true }
+      "grid": { "enabled": true, "requiresPreview": false, "format": "sdf", "rendererSwitch": true },
+      "preview": {
+        "strategy": "direct",
+        "renderer": "molstar",
+        "primary": { "role": "structure", "format": "sdf", "binary": false },
+        "fallbacks": [
+          { "renderer": "xyzrender-external" }
+        ],
+        "capabilities": { "canSwitchRenderer": true, "hasGridSearch": true }
+      },
+      "quickLook": { "sizeLimitMiB": 25 }
     },
     {
       "id": "smiles",
@@ -56,7 +102,14 @@
       "mimeTypes": ["chemical/x-daylight-smiles", "chemical/x-smiles"],
       "conformsTo": ["public.plain-text", "public.data"],
       "description": "SMILES molecular structure list",
-      "grid": { "enabled": true, "requiresPreview": true, "format": "smiles", "rendererSwitch": false }
+      "grid": { "enabled": true, "requiresPreview": true, "format": "smiles", "rendererSwitch": false },
+      "preview": {
+        "strategy": "grid",
+        "renderer": "grid2d",
+        "primary": { "role": "grid-records", "format": "smiles", "binary": false },
+        "capabilities": { "hasGridSearch": true }
+      },
+      "quickLook": { "sizeLimitMiB": 25 }
     },
     {
       "id": "csv",
@@ -65,7 +118,14 @@
       "mimeTypes": ["text/csv"],
       "conformsTo": ["public.comma-separated-values-text", "public.delimited-values-text", "public.plain-text", "public.data"],
       "description": "Comma-separated molecular structure table",
-      "grid": { "enabled": true, "requiresPreview": true, "format": "csv", "rendererSwitch": false }
+      "grid": { "enabled": true, "requiresPreview": true, "format": "csv", "rendererSwitch": false },
+      "preview": {
+        "strategy": "grid",
+        "renderer": "grid2d",
+        "primary": { "role": "grid-records", "format": "csv", "binary": false },
+        "capabilities": { "hasGridSearch": true }
+      },
+      "quickLook": { "sizeLimitMiB": 25 }
     },
     {
       "id": "tsv",
@@ -74,7 +134,14 @@
       "mimeTypes": ["text/tab-separated-values"],
       "conformsTo": ["public.tab-separated-values-text", "public.delimited-values-text", "public.plain-text", "public.data"],
       "description": "Tab-separated molecular structure table",
-      "grid": { "enabled": true, "requiresPreview": true, "format": "tsv", "rendererSwitch": false }
+      "grid": { "enabled": true, "requiresPreview": true, "format": "tsv", "rendererSwitch": false },
+      "preview": {
+        "strategy": "grid",
+        "renderer": "grid2d",
+        "primary": { "role": "grid-records", "format": "tsv", "binary": false },
+        "capabilities": { "hasGridSearch": true }
+      },
+      "quickLook": { "sizeLimitMiB": 25 }
     },
     {
       "id": "mol",
@@ -83,7 +150,13 @@
       "mimeTypes": ["chemical/x-mdl-molfile"],
       "conformsTo": ["public.plain-text", "public.data"],
       "description": "MDL molfile",
-      "viewer": { "molstarFormat": "mol", "binary": false, "externalOnly": false }
+      "viewer": { "molstarFormat": "mol", "binary": false, "externalOnly": false },
+      "preview": {
+        "strategy": "direct",
+        "renderer": "molstar",
+        "primary": { "role": "structure", "format": "mol", "binary": false }
+      },
+      "quickLook": { "sizeLimitMiB": 25 }
     },
     {
       "id": "mol2",
@@ -93,7 +166,13 @@
       "mimeTypes": ["chemical/x-mol2"],
       "conformsTo": ["public.plain-text", "public.data"],
       "description": "Tripos MOL2 molecular structure file",
-      "viewer": { "molstarFormat": "mol2", "binary": false, "externalOnly": false }
+      "viewer": { "molstarFormat": "mol2", "binary": false, "externalOnly": false },
+      "preview": {
+        "strategy": "direct",
+        "renderer": "molstar",
+        "primary": { "role": "structure", "format": "mol2", "binary": false }
+      },
+      "quickLook": { "sizeLimitMiB": 25 }
     },
     {
       "id": "xyz",
@@ -103,6 +182,16 @@
       "conformsTo": ["public.plain-text", "public.data"],
       "description": "XYZ molecular structure file",
       "viewer": { "molstarFormat": "xyz", "binary": false, "externalOnly": false },
+      "preview": {
+        "strategy": "direct",
+        "renderer": "xyzrender-external",
+        "primary": { "role": "structure", "format": "xyz", "binary": false },
+        "fallbacks": [
+          { "renderer": "molstar" }
+        ],
+        "capabilities": { "canSwitchRenderer": true }
+      },
+      "quickLook": { "sizeLimitMiB": 25 },
       "canOpenInVesta": true
     },
     {
@@ -112,7 +201,13 @@
       "extensions": ["gro"],
       "conformsTo": ["public.plain-text", "public.data"],
       "description": "GROMACS structure file",
-      "viewer": { "molstarFormat": "gro", "binary": false, "externalOnly": false }
+      "viewer": { "molstarFormat": "gro", "binary": false, "externalOnly": false },
+      "preview": {
+        "strategy": "direct",
+        "renderer": "molstar",
+        "primary": { "role": "structure", "format": "gro", "binary": false }
+      },
+      "quickLook": { "sizeLimitMiB": 25 }
     },
     {
       "id": "xyzrender-input",
@@ -123,6 +218,16 @@
       "description": "xyzrender-compatible molecular structure file",
       "viewer": { "molstarFormat": "xyz", "binary": false, "externalOnly": true },
       "quickLookMolstarFormat": "xyzrender",
+      "preview": {
+        "strategy": "external",
+        "renderer": "xyzrender-external",
+        "primary": { "role": "external-artifact", "format": "xyz", "binary": false },
+        "fallbacks": [
+          { "renderer": "molstar", "converter": "text-coordinates-to-pdb" }
+        ],
+        "capabilities": { "canSwitchRenderer": true }
+      },
+      "quickLook": { "sizeLimitMiB": 25 },
       "canOpenInVesta": true
     },
     {
@@ -130,7 +235,26 @@
       "contentType": "com.local.burrete10.molecular-dynamics",
       "extensions": ["xtc", "trr", "dcd", "nctraj", "lammpstrj", "top", "psf", "prmtop"],
       "conformsTo": ["public.data"],
-      "description": "Molecular dynamics trajectory or topology file"
+      "description": "Molecular dynamics trajectory or topology file",
+      "preview": {
+        "strategy": "trajectory",
+        "renderer": "molstar",
+        "formats": {
+          "coordinatesBinary": ["xtc", "trr", "dcd", "nctraj"],
+          "coordinatesText": ["lammpstrj"],
+          "topologyText": ["top", "psf", "prmtop"]
+        },
+        "capabilities": { "hasTrajectoryControls": true }
+      },
+      "quickLook": {
+        "sizeLimitMiB": 25,
+        "extensionSizeLimitMiB": {
+          "xtc": 75,
+          "trr": 75,
+          "dcd": 75,
+          "nctraj": 75
+        }
+      }
     },
     {
       "id": "schrodinger",
@@ -139,7 +263,26 @@
       "extensions": ["mae", "mae.gz", "maegz", "cms"],
       "conformsTo": ["public.plain-text", "public.data"],
       "description": "Schrodinger molecular structure file",
-      "viewer": { "molstarFormat": "xyz", "binary": false, "externalOnly": true }
+      "viewer": { "molstarFormat": "xyz", "binary": false, "externalOnly": true },
+      "preview": {
+        "strategy": "convert",
+        "renderer": "molstar",
+        "primary": { "role": "structure", "format": "pdb", "binary": false },
+        "converter": { "id": "maestro-to-pdb", "required": true },
+        "staged": [
+          {
+            "role": "solvent",
+            "format": "pdb",
+            "representation": "solvent-lines",
+            "requiredForReady": true
+          }
+        ],
+        "fallbacks": [
+          { "renderer": "xyzrender-external" }
+        ],
+        "capabilities": { "canSwitchRenderer": true, "hasStagedEntries": true }
+      },
+      "quickLook": { "sizeLimitMiB": 64 }
     },
     {
       "id": "graphml",
@@ -147,7 +290,12 @@
       "extensions": ["graphml"],
       "mimeTypes": ["application/graphml+xml", "text/xml"],
       "conformsTo": ["public.xml", "public.text", "public.data"],
-      "description": "GraphML FEP network file"
+      "description": "GraphML FEP network file",
+      "preview": {
+        "strategy": "custom",
+        "renderer": "fep-graphml"
+      },
+      "quickLook": { "sizeLimitMiB": 25 }
     }
   ],
   "documentTypes": {
