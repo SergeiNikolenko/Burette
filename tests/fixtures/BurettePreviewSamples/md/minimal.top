@@ -1,0 +1,19 @@
+; Minimal GROMACS topology fixture
+[ defaults ]
+; nbfunc comb-rule gen-pairs fudgeLJ fudgeQQ
+1 2 yes 0.5 0.8333
+
+[ moleculetype ]
+; name nrexcl
+WAT 3
+
+[ atoms ]
+; nr type resnr residue atom cgnr charge mass
+1 OW 1 WAT O 1 -0.834 15.9994
+2 HW 1 WAT H1 1 0.417 1.008
+
+[ system ]
+Minimal water
+
+[ molecules ]
+WAT 1

@@ -80,6 +80,7 @@ enum MoleculeGridPreviewBuilder {
         theme: String,
         canvasBackground: String,
         transparentBackground: Bool,
+        themeTokens: [String: Any]? = nil,
         overlayOpacity: Double = 0.90,
         debug: Bool,
         allowSelection: Bool,
@@ -122,7 +123,7 @@ enum MoleculeGridPreviewBuilder {
             return payload
         }
 
-        let config: [String: Any] = [
+        var config: [String: Any] = [
             "mode": "grid2d",
             "format": collection.format,
             "label": fileURL.lastPathComponent,
@@ -131,6 +132,7 @@ enum MoleculeGridPreviewBuilder {
             "quickLookBuild": host == .quickLook ? "burrete-grid2d-quicklook" : "burrete-grid2d-app",
             "debug": debug,
             "appViewer": host == .app,
+            "quickLookViewer": host == .quickLook,
             "theme": theme,
             "canvasBackground": canvasBackground,
             "overlayOpacity": min(max(overlayOpacity, 0.72), 0.98),
@@ -138,14 +140,17 @@ enum MoleculeGridPreviewBuilder {
             "recordsTotal": collection.recordsTotal,
             "recordsIncluded": includedRecords.count,
             "recordsTruncated": collection.recordsTotal > includedRecords.count,
-            "pageSize": host == .quickLook ? 60 : 96,
+            "pageSize": 48,
             "capabilities": [
                 "selection": allowSelection,
                 "export": allowExport,
                 "substructureSearch": true,
-                "rendererSwitch": host == .app && collection.format == "sdf"
+                "rendererSwitch": collection.format == "sdf"
             ]
         ]
+        if let themeTokens {
+            config["themeTokens"] = themeTokens
+        }
 
         let configData = try JSONSerialization.data(withJSONObject: config, options: [.sortedKeys, .withoutEscapingSlashes])
         let recordsData = try JSONSerialization.data(withJSONObject: recordPayload, options: [.sortedKeys, .withoutEscapingSlashes])

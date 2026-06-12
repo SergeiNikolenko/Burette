@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "sourceRoot": "PreviewExtension/Web",
+  "profiles": {
+    "desktop-molstar": [
+      "molstar.js",
+      "molstar.css",
+      "viewer-runtime.css",
+      "viewer-shell.js",
+      "burette-agent.js",
+      "viewer.js"
+    ],
+    "desktop-grid": [
+      "grid-viewer.js",
+      "grid.css",
+      "rdkit/RDKit_minimal.js",
+      "rdkit/RDKit_minimal.wasm"
+    ],
+    "quicklook-molstar": [
+      "molstar.js",
+      "molstar.css",
+      "viewer-runtime.css",
+      "viewer-shell.js",
+      "burette-agent.js",
+      "viewer.js"
+    ],
+    "quicklook-grid": [
+      "grid-viewer.js",
+      "grid.css",
+      "rdkit/RDKit_minimal.js",
+      "rdkit/RDKit_minimal.wasm"
+    ],
+    "external-artifact": [
+      "viewer-runtime.css",
+      "viewer-shell.js",
+      "burette-agent.js",
+      "viewer.js"
+    ]
+  },
+  "bundleTargets": {
+    "tauri": {
+      "profiles": [
+        "desktop-molstar",
+        "desktop-grid",
+        "external-artifact"
+      ],
+      "resourceRoot": "apps/desktop/src-tauri/tauri.conf.json#/bundle/resources/../../../PreviewExtension/Web=ViewerWeb"
+    },
+    "quicklook": {
+      "profiles": [
+        "quicklook-molstar",
+        "quicklook-grid",
+        "external-artifact"
+      ],
+      "resourceRoot": "Burrete.xcodeproj/project.pbxproj#PreviewExtension/Web"
+    }
+  }
+}

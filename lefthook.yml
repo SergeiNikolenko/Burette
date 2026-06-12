@@ -1,14 +1,14 @@
 pre-commit:
   parallel: true
   commands:
-    release-version:
-      run: npm run check:release
     js-syntax:
-      run: npm run check:js
+      run: bun run check:js
+    rust-fmt:
+      run: bun run check:rust:fmt
     plist:
-      run: plutil -lint apps/desktop/src-tauri/AppMetadata.plist PreviewExtension/Info.plist PreviewExtension/BurretePreview.entitlements
+      run: plutil -lint apps/desktop/src-tauri/AppMetadata.plist apps/desktop/src-tauri/Info.plist PreviewExtension/Info.plist PreviewExtension/BurretePreview.entitlements
 
 pre-push:
   commands:
-    ci:
-      run: npm run ci
+    ci-fast:
+      run: bun run ci:fast

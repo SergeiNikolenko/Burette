@@ -1,0 +1,210 @@
+{
+  "formats": [
+    {
+      "id": "pdb",
+      "contentType": "com.local.burrete10.pdb",
+      "extensions": ["pdb", "ent", "pdbqt", "pqr"],
+      "mimeTypes": ["chemical/x-pdb", "chemical/x-pdbqt"],
+      "conformsTo": ["public.plain-text", "public.data"],
+      "description": "Protein Data Bank coordinate file",
+      "viewer": { "molstarFormat": "pdb", "binary": false, "externalOnly": false }
+    },
+    {
+      "id": "cif",
+      "contentType": "com.local.burrete10.cif",
+      "contentTypeAliases": ["public.cif"],
+      "extensions": ["cif"],
+      "mimeTypes": ["chemical/x-cif", "chemical/x-mmcif"],
+      "conformsTo": ["public.plain-text", "public.data"],
+      "description": "Crystallographic information file",
+      "viewer": { "molstarFormat": "mmcif", "binary": false, "externalOnly": false },
+      "canOpenInVesta": true
+    },
+    {
+      "id": "mmcif",
+      "contentType": "com.local.burrete10.mmcif",
+      "extensions": ["mmcif", "mcif"],
+      "mimeTypes": ["chemical/x-mmcif"],
+      "conformsTo": ["com.local.burrete10.cif", "public.plain-text", "public.data"],
+      "description": "Macromolecular crystallographic information file",
+      "viewer": { "molstarFormat": "mmcif", "binary": false, "externalOnly": false },
+      "canOpenInVesta": true
+    },
+    {
+      "id": "bcif",
+      "contentType": "com.local.burrete10.bcif",
+      "extensions": ["bcif"],
+      "mimeTypes": ["application/octet-stream"],
+      "conformsTo": ["public.data"],
+      "description": "BinaryCIF molecular structure file",
+      "viewer": { "molstarFormat": "mmcif", "binary": true, "externalOnly": false }
+    },
+    {
+      "id": "sdf",
+      "contentType": "com.local.burrete10.sdf",
+      "extensions": ["sdf", "sd"],
+      "mimeTypes": ["chemical/x-mdl-sdfile"],
+      "conformsTo": ["public.plain-text", "public.data"],
+      "description": "Structure-data molecular file",
+      "viewer": { "molstarFormat": "sdf", "binary": false, "externalOnly": false },
+      "grid": { "enabled": true, "requiresPreview": false, "format": "sdf", "rendererSwitch": true }
+    },
+    {
+      "id": "smiles",
+      "contentType": "com.local.burrete10.smiles",
+      "extensions": ["smi", "smiles"],
+      "mimeTypes": ["chemical/x-daylight-smiles", "chemical/x-smiles"],
+      "conformsTo": ["public.plain-text", "public.data"],
+      "description": "SMILES molecular structure list",
+      "grid": { "enabled": true, "requiresPreview": true, "format": "smiles", "rendererSwitch": false }
+    },
+    {
+      "id": "csv",
+      "contentType": "com.local.burrete10.csv",
+      "extensions": ["csv"],
+      "mimeTypes": ["text/csv"],
+      "conformsTo": ["public.comma-separated-values-text", "public.delimited-values-text", "public.plain-text", "public.data"],
+      "description": "Comma-separated molecular structure table",
+      "grid": { "enabled": true, "requiresPreview": true, "format": "csv", "rendererSwitch": false }
+    },
+    {
+      "id": "tsv",
+      "contentType": "com.local.burrete10.tsv",
+      "extensions": ["tsv"],
+      "mimeTypes": ["text/tab-separated-values"],
+      "conformsTo": ["public.tab-separated-values-text", "public.delimited-values-text", "public.plain-text", "public.data"],
+      "description": "Tab-separated molecular structure table",
+      "grid": { "enabled": true, "requiresPreview": true, "format": "tsv", "rendererSwitch": false }
+    },
+    {
+      "id": "mol",
+      "contentType": "com.local.burrete10.mol",
+      "extensions": ["mol"],
+      "mimeTypes": ["chemical/x-mdl-molfile"],
+      "conformsTo": ["public.plain-text", "public.data"],
+      "description": "MDL molfile",
+      "viewer": { "molstarFormat": "mol", "binary": false, "externalOnly": false }
+    },
+    {
+      "id": "mol2",
+      "contentType": "com.local.burrete10.mol2",
+      "contentTypeAliases": ["com.schrodinger.mol"],
+      "extensions": ["mol2"],
+      "mimeTypes": ["chemical/x-mol2"],
+      "conformsTo": ["public.plain-text", "public.data"],
+      "description": "Tripos MOL2 molecular structure file",
+      "viewer": { "molstarFormat": "mol2", "binary": false, "externalOnly": false }
+    },
+    {
+      "id": "xyz",
+      "contentType": "com.local.burrete10.xyz",
+      "extensions": ["xyz"],
+      "mimeTypes": ["chemical/x-xyz"],
+      "conformsTo": ["public.plain-text", "public.data"],
+      "description": "XYZ molecular structure file",
+      "viewer": { "molstarFormat": "xyz", "binary": false, "externalOnly": false },
+      "canOpenInVesta": true
+    },
+    {
+      "id": "gro",
+      "contentType": "com.local.burrete10.gro",
+      "contentTypeAliases": ["gg.flew.unfold.gromacs-structure"],
+      "extensions": ["gro"],
+      "conformsTo": ["public.plain-text", "public.data"],
+      "description": "GROMACS structure file",
+      "viewer": { "molstarFormat": "gro", "binary": false, "externalOnly": false }
+    },
+    {
+      "id": "xyzrender-input",
+      "contentType": "com.local.burrete10.xyzrender-input",
+      "contentTypeAliases": ["com.adobe.fdf", "com.apple.videoapps.cube", "com.gaussian.cube"],
+      "extensions": ["abi", "com", "cub", "cube", "fdf", "in", "inp", "log", "nw", "out", "psi4", "qcin", "vasp"],
+      "conformsTo": ["public.plain-text", "public.data"],
+      "description": "xyzrender-compatible molecular structure file",
+      "viewer": { "molstarFormat": "xyz", "binary": false, "externalOnly": true },
+      "quickLookMolstarFormat": "xyzrender",
+      "canOpenInVesta": true
+    },
+    {
+      "id": "molecular-dynamics",
+      "contentType": "com.local.burrete10.molecular-dynamics",
+      "extensions": ["xtc", "trr", "dcd", "nctraj", "lammpstrj", "top", "psf", "prmtop"],
+      "conformsTo": ["public.data"],
+      "description": "Molecular dynamics trajectory or topology file"
+    },
+    {
+      "id": "schrodinger",
+      "contentType": "com.local.burrete10.schrodinger",
+      "contentTypeAliases": ["com.schrodinger.mae"],
+      "extensions": ["mae", "mae.gz", "maegz", "cms"],
+      "conformsTo": ["public.plain-text", "public.data"],
+      "description": "Schrodinger molecular structure file",
+      "viewer": { "molstarFormat": "xyz", "binary": false, "externalOnly": true }
+    },
+    {
+      "id": "graphml",
+      "contentType": "com.local.burrete10.graphml",
+      "extensions": ["graphml"],
+      "mimeTypes": ["application/graphml+xml", "text/xml"],
+      "conformsTo": ["public.xml", "public.text", "public.data"],
+      "description": "GraphML FEP network file"
+    }
+  ],
+  "documentTypes": {
+    "name": "Molecular structure files",
+    "extensions": [
+      "abi", "bcif", "cif", "cms", "com", "csv", "cub", "cube", "dcd", "ent", "fdf", "graphml", "gro",
+      "in", "inp", "lammpstrj", "log", "mae", "mae.gz", "maegz", "mcif", "mmcif", "mol",
+      "mol2", "nctraj", "nw", "out", "pdb", "pdbqt", "pqr", "prmtop", "psf", "psi4", "qcin",
+      "sd", "sdf", "smi", "smiles", "top", "trr", "tsv", "vasp", "xtc", "xyz"
+    ]
+  },
+  "quickLook": {
+    "exportedTypeIds": [
+      "com.local.burrete10.pdb",
+      "com.local.burrete10.cif",
+      "com.local.burrete10.mmcif",
+      "com.local.burrete10.bcif",
+      "com.local.burrete10.sdf",
+      "com.local.burrete10.csv",
+      "com.local.burrete10.tsv",
+      "com.local.burrete10.mol",
+      "com.local.burrete10.mol2",
+      "com.local.burrete10.xyz",
+      "com.local.burrete10.smiles",
+      "com.local.burrete10.gro",
+      "com.local.burrete10.molecular-dynamics",
+      "com.local.burrete10.schrodinger",
+      "com.local.burrete10.xyzrender-input",
+      "com.local.burrete10.graphml"
+    ],
+    "contentTypes": [
+      "com.local.burrete10.pdb",
+      "com.local.burrete10.cif",
+      "public.cif",
+      "com.local.burrete10.mmcif",
+      "com.local.burrete10.bcif",
+      "com.local.burrete10.sdf",
+      "com.local.burrete10.smiles",
+      "com.local.burrete10.csv",
+      "com.local.burrete10.tsv",
+      "com.local.burrete10.mol",
+      "com.local.burrete10.mol2",
+      "com.schrodinger.mol",
+      "com.schrodinger.pdb",
+      "com.schrodinger.sdf",
+      "com.local.burrete10.xyz",
+      "com.local.burrete10.xyzrender-input",
+      "net.sourceforge.openbabel.xyz",
+      "com.adobe.fdf",
+      "com.apple.videoapps.cube",
+      "com.gaussian.cube",
+      "com.local.burrete10.gro",
+      "gg.flew.unfold.gromacs-structure",
+      "com.local.burrete10.molecular-dynamics",
+      "com.schrodinger.mae",
+      "com.local.burrete10.schrodinger",
+      "com.local.burrete10.graphml"
+    ]
+  }
+}

@@ -1,18 +1,24 @@
-use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use serde_json::json;
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{Manager, Runtime};
 
+use super::formats::normalize_renderer_mode;
+use super::grid_store::{build_grid_store_with_options, GridParseOptions};
 use super::runtime::ViewerPreferences;
-use super::runtime::MAX_STRUCTURE_FILE_SIZE;
-use super::runtime_utils::{
-    asset_url, clipped, decode_text, escape_html, normalized_lines, prune_runtime_dirs,
-};
-use super::runtime_viewer::copy_web_assets;
+use super::runtime_utils::{asset_url, escape_html, prune_runtime_dirs};
+use super::runtime_viewer::{copy_web_assets, AssetProfile};
 
+const GRID_RUNTIME_CSP: &str = "default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'self' blob:;";
+
+#[cfg(test)]
+use super::runtime_utils::{clipped, normalized_lines};
+#[cfg(test)]
+use std::collections::BTreeMap;
+
+#[cfg(test)]
+#[allow(dead_code)]
 #[derive(Debug)]
 struct GridCollection {
     format: &'static str,
@@ -20,6 +26,8 @@ struct GridCollection {
     records_total: usize,
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 #[derive(Debug)]
 struct GridRecord {
     index: usize,
@@ -29,141 +37,19 @@ struct GridRecord {
     props: BTreeMap<String, String>,
 }
 
-pub(crate) struct CombinedGridRuntime {
-    pub(crate) runtime_path: PathBuf,
-    pub(crate) byte_count: u64,
-}
-
-pub(crate) fn create_grid_runtime<R: Runtime>(
+pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
     app: &tauri::AppHandle<R>,
+    document_id: &str,
     file_path: &Path,
     extension: &str,
     data: &[u8],
     preferences: &ViewerPreferences,
+    options: &GridParseOptions,
 ) -> Result<Option<PathBuf>, String> {
     if !grid_can_preview(extension) {
         return Ok(None);
     }
 
-    let text = decode_text(data);
-    let collection = match extension {
-        "csv" => parse_delimited_table_with_fallback(&text, ',', "csv", 5000)?,
-        "tsv" => parse_delimited_table_with_fallback(&text, '\t', "tsv", 5000)?,
-        "smi" | "smiles" => parse_smiles_grid(&text, 5000),
-        "sdf" | "sd" => parse_sdf_grid(&text, 5000),
-        _ => return Ok(None),
-    };
-
-    if collection.records_total == 0
-        || ((extension == "sdf" || extension == "sd") && collection.records_total <= 1)
-    {
-        return Ok(None);
-    }
-
-    write_grid_runtime(
-        app,
-        file_path,
-        file_path
-            .file_name()
-            .and_then(|value| value.to_str())
-            .unwrap_or("molecule collection"),
-        &collection,
-        data.len() as u64,
-        matches!(extension, "sdf" | "sd"),
-        preferences,
-    )
-    .map(Some)
-}
-
-pub(crate) fn create_combined_sdf_grid_runtime<R: Runtime>(
-    app: &tauri::AppHandle<R>,
-    label_path: &Path,
-    sdf_paths: &[PathBuf],
-    preferences: &ViewerPreferences,
-) -> Result<CombinedGridRuntime, String> {
-    let mut records = Vec::new();
-    let mut records_total = 0;
-    let mut byte_count = 0_u64;
-    for path in sdf_paths {
-        let metadata = fs::metadata(path).map_err(|err| format!("{}: {err}", path.display()))?;
-        if !metadata.is_file() {
-            continue;
-        }
-        if metadata.len() > MAX_STRUCTURE_FILE_SIZE {
-            return Err(format!(
-                "{} is larger than the 75 MB preview limit",
-                path.display()
-            ));
-        }
-        let data = fs::read(path).map_err(|err| format!("{}: {err}", path.display()))?;
-        byte_count = byte_count.saturating_add(data.len() as u64);
-        let text = decode_text(&data);
-        let remaining = 5000_usize.saturating_sub(records.len());
-        let collection = parse_sdf_grid(&text, remaining);
-        let included_count = collection.records.len();
-        let total_count = collection.records_total;
-        let cfg_props = read_cfg_props(path);
-        for mut record in collection.records {
-            if records.len() >= 5000 {
-                break;
-            }
-            record.index = records_total;
-            record.props.insert(
-                "Source File".to_string(),
-                path.file_name()
-                    .and_then(|value| value.to_str())
-                    .unwrap_or("structure.sdf")
-                    .to_string(),
-            );
-            for (key, value) in cfg_props.iter() {
-                if record.props.len() >= 64 {
-                    break;
-                }
-                record
-                    .props
-                    .entry(key.clone())
-                    .or_insert_with(|| value.clone());
-            }
-            records.push(record);
-            records_total += 1;
-        }
-        records_total += total_count.saturating_sub(included_count);
-    }
-
-    if records_total == 0 {
-        return Err("No SDF records found to combine".to_string());
-    }
-
-    let collection = GridCollection {
-        format: "sdf",
-        records,
-        records_total,
-    };
-    let label = combined_label(label_path);
-    let runtime_path = write_grid_runtime(
-        app,
-        label_path,
-        &label,
-        &collection,
-        byte_count,
-        true,
-        preferences,
-    )?;
-    Ok(CombinedGridRuntime {
-        runtime_path,
-        byte_count,
-    })
-}
-
-fn write_grid_runtime<R: Runtime>(
-    app: &tauri::AppHandle<R>,
-    file_path: &Path,
-    label: &str,
-    collection: &GridCollection,
-    byte_count: u64,
-    renderer_switch: bool,
-    preferences: &ViewerPreferences,
-) -> Result<PathBuf, String> {
     let base = app
         .path()
         .app_cache_dir()
@@ -173,60 +59,71 @@ fn write_grid_runtime<R: Runtime>(
     let runtime = base.join(uuid::Uuid::new_v4().to_string());
     fs::create_dir_all(&assets).map_err(|err| err.to_string())?;
     fs::create_dir_all(&runtime).map_err(|err| err.to_string())?;
-    copy_web_assets(app, &assets)?;
+    copy_web_assets(app, &assets, AssetProfile::Grid)?;
     prune_runtime_dirs(&base);
-
-    let records_included = collection.records.len();
-    let records_payload: Vec<_> = collection
-        .records
-        .iter()
-        .map(|record| {
-            let mut payload = json!({
-                "index": record.index,
-                "name": record.name,
-                "props": record.props,
-            });
-            if let Some(smiles) = &record.smiles {
-                payload["smiles"] = json!(smiles);
-            }
-            if let Some(molblock) = &record.molblock {
-                payload["molblock"] = json!(molblock);
-            }
-            payload
-        })
-        .collect();
+    let grid_options = GridParseOptions {
+        smiles_column: options.smiles_column.clone(),
+        include_single_sdf: options.include_single_sdf
+            || normalize_renderer_mode(&preferences.renderer_mode) == "grid2d",
+    };
+    let Some(grid_store) = build_grid_store_with_options(&runtime, extension, data, &grid_options)?
+    else {
+        return Ok(None);
+    };
+    let collection = grid_store.summary;
+    app.state::<super::grid_store::GridRuntimeRegistry>()
+        .register(
+            document_id,
+            grid_store.database_path,
+            collection.format,
+            grid_store.cancel_token,
+        )?;
+    let rdkit_wasm = runtime.join("RDKit_minimal.wasm");
+    fs::copy(assets.join("rdkit").join("RDKit_minimal.wasm"), &rdkit_wasm)
+        .map_err(|err| err.to_string())?;
+    let rdkit_wasm_base64 = base64::engine::general_purpose::STANDARD
+        .encode(fs::read(&rdkit_wasm).map_err(|err| err.to_string())?);
+    fs::write(
+        runtime.join("preview-rdkit-wasm.js"),
+        format!("window.BurreteRDKitWasmBase64 = \"{rdkit_wasm_base64}\";\n"),
+    )
+    .map_err(|err| err.to_string())?;
+    let rdkit_wasm_path = asset_url(&rdkit_wasm);
     let config = json!({
         "mode": "grid2d",
         "format": collection.format,
         "renderer": "grid2d",
-        "label": label,
-        "byteCount": byte_count,
+        "documentId": document_id,
+        "sourcePath": file_path.to_string_lossy(),
+        "label": file_path.file_name().and_then(|value| value.to_str()).unwrap_or("molecule collection"),
+        "byteCount": data.len(),
         "host": "app",
         "quickLookBuild": "burrete-tauri-grid2d",
         "debug": false,
         "appViewer": true,
         "tauriViewer": true,
-        "theme": preferences.theme,
-        "canvasBackground": preferences.canvas_background,
+        "gridDataMode": "bridge",
+        "theme": preferences.theme_for_runtime(),
+        "themeTokens": preferences.theme_tokens(),
+        "canvasBackground": preferences.canvas_background_for_runtime(),
         "overlayOpacity": 0.90,
-        "transparentBackground": preferences.canvas_background == "transparent",
+        "transparentBackground": preferences.resolved_transparent_background(),
         "recordsTotal": collection.records_total,
-        "recordsIncluded": records_included,
-        "recordsTruncated": collection.records_total > records_included,
-        "pageSize": 96,
+        "recordsIndexed": collection.records_indexed,
+        "indexing": !collection.index_ready,
+        "indexReady": collection.index_ready,
+        "recordsIncluded": 0,
+        "recordsTruncated": false,
+        "pageSize": 720,
+        "rdkitWasmPath": rdkit_wasm_path,
         "capabilities": {
             "selection": true,
             "export": true,
             "substructureSearch": true,
-            "rendererSwitch": renderer_switch
+            "rendererSwitch": matches!(extension, "sdf" | "sd")
         }
     });
     let config_text = serde_json::to_string(&config).map_err(|err| err.to_string())?;
-    let records_text = serde_json::to_string(&records_payload).map_err(|err| err.to_string())?;
-    let wasm_path = assets.join("rdkit").join("RDKit_minimal.wasm");
-    let wasm_base64 =
-        BASE64.encode(fs::read(&wasm_path).map_err(|err| format!("read RDKit wasm: {err}"))?);
-
     fs::write(
         runtime.join("index.html"),
         grid_html(file_path, &runtime, &assets, preferences),
@@ -237,12 +134,7 @@ fn write_grid_runtime<R: Runtime>(
         format!("window.BurreteConfig = {config_text};\n"),
     )
     .map_err(|err| err.to_string())?;
-    fs::write(
-        runtime.join("preview-grid-records.js"),
-        format!("window.BurreteGridRecords = {records_text};\nwindow.BurreteRDKitWasmBase64 = \"{wasm_base64}\";\n"),
-    )
-    .map_err(|err| err.to_string())?;
-    Ok(runtime.join("index.html"))
+    Ok(Some(runtime.join("index.html")))
 }
 
 fn grid_html(
@@ -257,16 +149,17 @@ fn grid_html(
             .and_then(|value| value.to_str())
             .unwrap_or("molecule collection"),
     );
-    let background_class = if preferences.canvas_background == "transparent" {
+    let background_class = if preferences.resolved_transparent_background() {
         "burette-transparent-background"
     } else {
         "burette-opaque-background"
     };
-    let grid_css = asset_url(&assets.join("grid.css"));
+    let grid_css = versioned_asset_url(&assets.join("grid.css"));
     let config_js = asset_url(&runtime.join("preview-config.js"));
-    let records_js = asset_url(&runtime.join("preview-grid-records.js"));
-    let rdkit_js = asset_url(&assets.join("rdkit").join("RDKit_minimal.js"));
-    let grid_js = asset_url(&assets.join("grid-viewer.js"));
+    let rdkit_wasm_js = asset_url(&runtime.join("preview-rdkit-wasm.js"));
+    let rdkit_js = versioned_asset_url(&assets.join("rdkit").join("RDKit_minimal.js"));
+    let grid_ui_js = versioned_asset_url(&assets.join("grid-ui.js"));
+    let grid_js = versioned_asset_url(&assets.join("grid-viewer.js"));
     format!(
         r#"<!doctype html>
 <html lang="en">
@@ -274,6 +167,7 @@ fn grid_html(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Burrete Grid - {title}</title>
+  <meta http-equiv="Content-Security-Policy" content="{GRID_RUNTIME_CSP}" />
   <link rel="stylesheet" href="{grid_css}" />
   <script>
     window.__mqlPost = function (type, message, payload) {{
@@ -290,12 +184,17 @@ fn grid_html(
   <div id="app"></div>
   <div id="status">Loading molecule grid...</div>
   <script src="{config_js}"></script>
-  <script src="{records_js}"></script>
+  <script src="{rdkit_wasm_js}"></script>
   <script src="{rdkit_js}"></script>
+  <script src="{grid_ui_js}"></script>
   <script src="{grid_js}"></script>
 </body>
 </html>"#
     )
+}
+
+fn versioned_asset_url(path: &Path) -> String {
+    format!("{}?v=grid-ui-v10", asset_url(path))
 }
 
 fn grid_can_preview(extension: &str) -> bool {
@@ -306,54 +205,8 @@ pub(crate) fn grid_requires_preview(extension: &str) -> bool {
     matches!(extension, "csv" | "smi" | "smiles" | "tsv")
 }
 
-fn combined_label(path: &Path) -> String {
-    let base = path
-        .file_name()
-        .and_then(|value| value.to_str())
-        .filter(|value| !value.is_empty())
-        .unwrap_or("Combined SDF");
-    format!("{base} SDF collection")
-}
-
-fn read_cfg_props(sdf_path: &Path) -> BTreeMap<String, String> {
-    let cfg_path = sdf_path.with_extension("cfg");
-    let Ok(text) = fs::read_to_string(cfg_path) else {
-        return BTreeMap::new();
-    };
-    let mut raw = BTreeMap::new();
-    for line in normalized_lines(&text) {
-        let Some((key, value)) = line.split_once('=') else {
-            continue;
-        };
-        let key = key.trim();
-        let value = value.trim();
-        if key.is_empty() || value.is_empty() {
-            continue;
-        }
-        raw.insert(key.to_string(), value.to_string());
-    }
-
-    let mut props = BTreeMap::new();
-    for (cfg_key, prop_key) in [
-        ("receptor", "Docking Receptor"),
-        ("center_x", "Docking Center X"),
-        ("center_y", "Docking Center Y"),
-        ("center_z", "Docking Center Z"),
-        ("size_x", "Docking Size X"),
-        ("size_y", "Docking Size Y"),
-        ("size_z", "Docking Size Z"),
-        ("num_modes", "Docking Modes"),
-        ("exhaustiveness", "Docking Exhaustiveness"),
-        ("out", "Docking Output"),
-        ("log", "Docking Log"),
-    ] {
-        if let Some(value) = raw.get(cfg_key) {
-            props.insert(prop_key.to_string(), clipped(value, 500));
-        }
-    }
-    props
-}
-
+#[cfg(test)]
+#[allow(dead_code)]
 fn parse_smiles_grid(text: &str, max_records: usize) -> GridCollection {
     let mut records = Vec::new();
     let mut records_total = 0;
@@ -391,6 +244,8 @@ fn parse_smiles_grid(text: &str, max_records: usize) -> GridCollection {
     }
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn parse_sdf_grid(text: &str, max_records: usize) -> GridCollection {
     let mut records = Vec::new();
     let mut records_total = 0;
@@ -477,6 +332,8 @@ fn parse_sdf_grid(text: &str, max_records: usize) -> GridCollection {
     }
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn parse_delimited_table_with_fallback(
     text: &str,
     separator: char,
@@ -493,6 +350,8 @@ fn parse_delimited_table_with_fallback(
     })
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn parse_delimited_table(
     text: &str,
     separator: char,
@@ -590,6 +449,8 @@ fn parse_delimited_table(
     })
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn parse_delimited_rows_as_smiles(
     text: &str,
     separator: char,
@@ -644,6 +505,8 @@ fn parse_delimited_rows_as_smiles(
     }
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn parse_delimited_line(line: &str, separator: char) -> Vec<String> {
     let chars: Vec<_> = line.chars().collect();
     let mut fields = Vec::new();
@@ -671,6 +534,8 @@ fn parse_delimited_line(line: &str, separator: char) -> Vec<String> {
     fields
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn is_smiles_column(value: &str) -> bool {
     matches!(
         value,
@@ -678,6 +543,8 @@ fn is_smiles_column(value: &str) -> bool {
     )
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn is_likely_delimited_header(cells: &[String]) -> bool {
     cells
         .iter()
@@ -691,6 +558,8 @@ fn is_likely_delimited_header(cells: &[String]) -> bool {
         })
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn looks_like_smiles(value: &str) -> bool {
     let trimmed = value.trim();
     if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.contains(char::is_whitespace) {
@@ -733,6 +602,8 @@ fn looks_like_smiles(value: &str) -> bool {
     has_atom && (!has_aromatic_atom || has_structural_marker)
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn parse_sdf_properties(lines: &[String]) -> BTreeMap<String, String> {
     let mut props = BTreeMap::new();
     let mut index = 0;
@@ -767,15 +638,189 @@ fn parse_sdf_properties(lines: &[String]) -> BTreeMap<String, String> {
     props
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn property_name(line: &str) -> Option<String> {
     let open = line.find('<')?;
     let close = line[open + 1..].find('>')? + open + 1;
     (open < close).then(|| line[open + 1..close].trim().to_string())
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn extract_molblock(lines: &[String]) -> String {
-    if let Some(end) = lines.iter().position(|line| line.trim() == "M  END") {
-        return lines[..=end].join("\n");
+    let mut molblock_lines =
+        if let Some(end) = lines.iter().position(|line| line.trim() == "M  END") {
+            lines[..=end].to_vec()
+        } else {
+            lines.to_vec()
+        };
+    normalize_molblock_header(&mut molblock_lines);
+    molblock_lines.join("\n")
+}
+
+#[cfg(test)]
+fn normalize_molblock_header(lines: &mut Vec<String>) {
+    let Some(mut counts_index) = lines.iter().position(|line| is_molfile_counts_line(line)) else {
+        return;
+    };
+    while counts_index < 3 {
+        lines.insert(counts_index, String::new());
+        counts_index += 1;
     }
-    lines.join("\n")
+}
+
+#[cfg(test)]
+fn is_molfile_counts_line(line: &str) -> bool {
+    let fields: Vec<&str> = line.split_whitespace().collect();
+    fields.len() >= 10
+        && matches!(fields.last(), Some(&"V2000" | &"V3000"))
+        && fields[0].parse::<usize>().is_ok()
+        && fields[1].parse::<usize>().is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_standard_multi_record_sdf_separator() {
+        let collection = parse_sdf_grid(
+            r#"Mol A
+  Burrete
+
+  0  0  0  0  0  0            999 V2000
+M  END
+>  <ID>
+A1
+
+$$$$
+Mol B
+  Burrete
+
+  0  0  0  0  0  0            999 V2000
+M  END
+>  <SMILES>
+CCO
+
+$$$$
+"#,
+            5000,
+        );
+
+        assert_eq!(collection.records_total, 2);
+        assert_eq!(collection.records.len(), 2);
+        assert_eq!(collection.records[0].name, "A1");
+        assert_eq!(collection.records[1].name, "Mol B");
+        assert_eq!(collection.records[1].smiles.as_deref(), Some("CCO"));
+    }
+
+    #[test]
+    fn delimited_table_keeps_quoted_commas_and_extra_properties() {
+        let collection = parse_delimited_table(
+            r#"smiles,name,assay note,score
+"CC(=O)O","Acetic, acid","active, primary",7.5
+C1=CC=CC=C1,Benzene,,3.1
+"#,
+            ',',
+            "csv",
+            5000,
+        )
+        .expect("csv with smiles header should parse");
+
+        assert_eq!(collection.records_total, 2);
+        assert_eq!(collection.records[0].name, "Acetic, acid");
+        assert_eq!(collection.records[0].smiles.as_deref(), Some("CC(=O)O"));
+        assert_eq!(
+            collection.records[0]
+                .props
+                .get("assay note")
+                .map(String::as_str),
+            Some("active, primary")
+        );
+        assert_eq!(
+            collection.records[0].props.get("score").map(String::as_str),
+            Some("7.5")
+        );
+        assert!(!collection.records[1].props.contains_key("assay note"));
+    }
+
+    #[test]
+    fn delimited_rows_fallback_skips_header_and_non_smiles_rows() {
+        let collection = parse_delimited_rows_as_smiles(
+            r#"name	value
+not-a-smiles	ignored
+CCO	Ethanol	liquid
+c1ccccc1	Benzene	aromatic
+"#,
+            '\t',
+            "tsv",
+            5000,
+        );
+
+        assert_eq!(collection.records_total, 2);
+        assert_eq!(collection.records[0].index, 0);
+        assert_eq!(collection.records[0].name, "Ethanol");
+        assert_eq!(collection.records[0].smiles.as_deref(), Some("CCO"));
+        assert_eq!(
+            collection.records[0]
+                .props
+                .get("Column 3")
+                .map(String::as_str),
+            Some("liquid")
+        );
+        assert_eq!(collection.records[1].name, "Benzene");
+    }
+
+    #[test]
+    fn smiles_detection_rejects_headers_and_plain_words() {
+        for value in [
+            "smiles",
+            "name",
+            "compound",
+            "ethanol",
+            "water sample",
+            "#comment",
+        ] {
+            assert!(
+                !looks_like_smiles(value),
+                "{value} should not parse as SMILES"
+            );
+        }
+
+        for value in ["CCO", "C1=CC=CC=C1", "c1ccccc1", "ClCBr"] {
+            assert!(looks_like_smiles(value), "{value} should parse as SMILES");
+        }
+    }
+
+    #[test]
+    fn sdf_properties_and_molblock_stop_at_m_end() {
+        let lines = normalized_lines(
+            r#"Mol A
+  Burrete
+
+  0  0  0  0  0  0            999 V2000
+M  END
+>  <ID>
+A1
+
+>  <Long Note>
+line one
+line two
+
+$$$$
+"#,
+        );
+
+        let props = parse_sdf_properties(&lines);
+        assert_eq!(props.get("ID").map(String::as_str), Some("A1"));
+        assert_eq!(
+            props.get("Long Note").map(String::as_str),
+            Some("line one\nline two")
+        );
+
+        let molblock = extract_molblock(&lines);
+        assert!(molblock.contains("M  END"));
+        assert!(!molblock.contains("<ID>"));
+    }
 }

@@ -2,10 +2,24 @@
 set -euo pipefail
 
 ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-FILE="${1:-$ROOT/samples/mini.pdb}"
-APP="$HOME/Applications/Burrete.app"
-BUILT_APP="$ROOT/build/Burrete.app"
+APP_ID="com.local.BurreteV10"
 EXT_ID="com.local.BurreteV10.Preview"
+APP_BUNDLE_NAME="Burrete.app"
+if [[ -n "${BURRETE_DEV_FLAVOR:-}" ]]; then
+  command -v bun >/dev/null 2>&1 || { echo "error: BURRETE_DEV_FLAVOR requires bun to compute the dev namespace." >&2; exit 1; }
+  eval "$(bun "$ROOT/scripts/dev-namespace.mjs" shell-env)"
+  APP_ID="$BURRETE_APP_ID"
+  EXT_ID="$BURRETE_PREVIEW_ID"
+  APP_BUNDLE_NAME="$BURRETE_APP_BUNDLE_NAME"
+fi
+FILE="${1:-$ROOT/samples/mini.pdb}"
+if [[ -f "$FILE" ]]; then
+  FILE="$(cd -P "$(dirname "$FILE")" && pwd -P)/$(basename "$FILE")"
+fi
+APP="$HOME/Applications/$APP_BUNDLE_NAME"
+BUILT_APP="$ROOT/build/$APP_BUNDLE_NAME"
+CONTAINER_LOG="$HOME/Library/Containers/$EXT_ID/Data/Library/Caches/Burrete/Burrete.log"
+CUSTOM_TYPE="$("$ROOT/scripts/preview-content-type.mjs" "$FILE")"
 
 printf '\n== File ==\n%s\n' "$FILE"
 if [ -f "$FILE" ]; then
@@ -44,6 +58,38 @@ else
   echo "No embedded extension plist found."
 fi
 
+printf '\n== Installed app custom UTI declaration ==\n'
+if [[ -n "$CUSTOM_TYPE" && -d "$APP" ]]; then
+  /usr/libexec/PlistBuddy -c 'Print :UTExportedTypeDeclarations' "$APP/Contents/Info.plist" 2>/dev/null |
+    awk -v target="$CUSTOM_TYPE" '
+      BEGIN { capture = 0 }
+      /UTTypeIdentifier =/ && index($0, target) { capture = 1 }
+      capture { print }
+      capture && /^    }$/ { exit }
+    ' || true
+else
+  echo "No matching custom UTI in preview format registry for this file."
+fi
+
+printf '\n== System UTI declaration ==\n'
+if [[ -n "$CUSTOM_TYPE" ]] && command -v swift >/dev/null 2>&1; then
+  CUSTOM_TYPE_VALUE="$CUSTOM_TYPE" /usr/bin/swift -e '
+import CoreServices
+import Foundation
+
+let identifier = ProcessInfo.processInfo.environment["CUSTOM_TYPE_VALUE"] ?? ""
+if identifier.isEmpty {
+    print("No custom UTI selected.")
+} else {
+    let declaration = UTTypeCopyDeclaration(identifier as CFString)?.takeRetainedValue() as NSDictionary?
+    print(identifier)
+    print(declaration ?? [:])
+}
+' 2>/dev/null || true
+else
+  echo "swift unavailable or no custom UTI selected."
+fi
+
 printf '\n== pluginkit ==\n'
 pluginkit -m -p com.apple.quicklook.preview | grep -i Burrete || echo "Burrete not listed by pluginkit."
 pluginkit -m -p com.apple.quicklook.preview -i "$EXT_ID" || true
@@ -54,21 +100,25 @@ qlmanage -m plugins 2>/dev/null | grep -Ei 'Burrete|pdb|cif|sdf|palm|vesta' || t
 printf '\n== Suggested tests ==\n'
 if [ -f "$FILE" ]; then
   CONTENT_TYPE="$(mdls -raw -name kMDItemContentType "$FILE" 2>/dev/null || true)"
+  if [[ "$CONTENT_TYPE" == *"could not find"* ]]; then
+    CONTENT_TYPE=""
+  fi
   if [[ -n "$CONTENT_TYPE" && "$CONTENT_TYPE" != "(null)" ]]; then
     echo "qlmanage -p -c '$CONTENT_TYPE' '$FILE'"
   fi
   case "${FILE##*.}" in
     pdb|PDB|ent|ENT|pdbqt|PDBQT|pqr|PQR) echo "./scripts/force-preview.sh '$FILE'" ;;
+    csv|CSV|tsv|TSV) echo "qlmanage -p '$FILE'" ;;
     cif|CIF|mmcif|MMCIF|mcif|MCIF|bcif|BCIF|sdf|SDF|sd|SD|mol|MOL|mol2|MOL2|xyz|XYZ|gro|GRO) echo "./scripts/force-preview.sh '$FILE'" ;;
   esac
   echo "qlmanage -d 4 -p '$FILE'"
 fi
 
 printf '\n== Last Burrete log ==\n'
-for LOG in "/tmp/Burrete.log" "${TMPDIR:-/tmp}/Burrete.log"; do
+for LOG in "$CONTAINER_LOG" "/tmp/Burrete.log" "${TMPDIR:-/tmp}/Burrete.log"; do
   if [ -f "$LOG" ]; then
     echo "-- $LOG --"
-    tail -80 "$LOG"
+    tail -40 "$LOG"
   else
     echo "No log found at $LOG"
   fi

@@ -1,4 +1,5 @@
 import packageInfo from "../../../package.json";
+import { compareVersions } from "./lib/semver";
 
 export type UpdateChannel = "stable" | "beta";
 
@@ -11,6 +12,15 @@ export type UpdateAsset = {
   name: string;
   browserDownloadUrl: string;
   size: number;
+  sha256AssetName?: string;
+  sha256BrowserDownloadUrl?: string;
+  sha256Size?: number;
+  manifestAssetName?: string;
+  manifestBrowserDownloadUrl?: string;
+  manifestSize?: number;
+  manifestSignatureAssetName?: string;
+  manifestSignatureBrowserDownloadUrl?: string;
+  manifestSignatureSize?: number;
 };
 
 export type UpdateRelease = {
@@ -19,6 +29,7 @@ export type UpdateRelease = {
   htmlUrl: string;
   prerelease: boolean;
   installAsset: UpdateAsset | null;
+  replacesCurrentBuild: boolean;
 };
 
 export type UpdateState = {
@@ -51,6 +62,8 @@ const AUTOMATIC_FAILURE_RETRY_MS = 60 * 60 * 1000;
 const STORAGE_PREFIX = "buret.update.";
 
 export const CURRENT_VERSION = packageInfo.version;
+const CURRENT_BUILD_CHANNEL = import.meta.env.VITE_BURRETE_BUILD_CHANNEL ?? (import.meta.env.DEV ? "dev" : "release");
+const IS_RELEASE_BUILD = CURRENT_BUILD_CHANNEL === "release";
 
 export const defaultUpdatePreferences: UpdatePreferences = {
   checkAutomatically: true,
@@ -132,14 +145,16 @@ export function releasePageUrl(release: UpdateRelease | null) {
 }
 
 function newestUpdate(releases: GitHubRelease[], channel: UpdateChannel): UpdateRelease | null {
-  const current = parseVersion(CURRENT_VERSION);
   const candidates = releases
     .filter((release) => !release.draft)
     .filter((release) => channel === "beta" || !release.prerelease)
     .map(normalizeRelease)
     .filter((release): release is UpdateRelease => release !== null)
-    .filter((release) => compareVersions(parseVersion(release.tagName), current) > 0)
-    .sort((a, b) => compareVersions(parseVersion(b.tagName), parseVersion(a.tagName)));
+    .filter((release) => {
+      const comparison = compareVersions(release.tagName, CURRENT_VERSION);
+      return comparison > 0 || (!IS_RELEASE_BUILD && comparison === 0);
+    })
+    .sort((a, b) => compareVersions(b.tagName, a.tagName));
   return candidates[0] ?? null;
 }
 
@@ -154,35 +169,74 @@ function normalizeRelease(release: GitHubRelease): UpdateRelease | null {
     htmlUrl: release.html_url,
     prerelease: release.prerelease === true,
     installAsset,
+    replacesCurrentBuild: !IS_RELEASE_BUILD && compareVersions(release.tag_name, CURRENT_VERSION) === 0,
   };
 }
 
 function installAssetFor(assets: GitHubAsset[]): UpdateAsset | null {
-  const installExtensions = [".dmg", ".zip", ".pkg"];
+  const installExtensions = [".zip"];
   const candidates = assets
     .filter((asset) => asset.name && asset.browser_download_url && Number(asset.size || 0) > 0)
-    .filter((asset) => installExtensions.some((extension) => asset.name!.toLowerCase().endsWith(extension)));
-  const selected = candidates.find((asset) => /burrete|burette/i.test(asset.name!)) ?? candidates[0];
+    .filter((asset) => installExtensions.some((extension) => asset.name!.toLowerCase().endsWith(extension)))
+    .map((asset) => ({
+      asset,
+      digest: sha256AssetFor(assets, asset.name!),
+      manifest: manifestAssetFor(assets, asset.name!),
+      signature: manifestSignatureAssetFor(assets, asset.name!),
+    }))
+    .filter((entry): entry is { asset: GitHubAsset; digest: GitHubAsset; manifest: GitHubAsset | null; signature: GitHubAsset | null } =>
+      entry.digest !== null);
+  const selected = candidates.find((entry) => /burrete|burette/i.test(entry.asset.name!)) ?? candidates[0];
   if (!selected) return null;
+  const signedManifest = selected.manifest && selected.signature
+    ? {
+        manifestAssetName: selected.manifest.name!,
+        manifestBrowserDownloadUrl: selected.manifest.browser_download_url!,
+        manifestSize: Number(selected.manifest.size || 0),
+        manifestSignatureAssetName: selected.signature.name!,
+        manifestSignatureBrowserDownloadUrl: selected.signature.browser_download_url!,
+        manifestSignatureSize: Number(selected.signature.size || 0),
+      }
+    : {};
   return {
-    name: selected.name!,
-    browserDownloadUrl: selected.browser_download_url!,
-    size: Number(selected.size || 0),
+    name: selected.asset.name!,
+    browserDownloadUrl: selected.asset.browser_download_url!,
+    size: Number(selected.asset.size || 0),
+    sha256AssetName: selected.digest.name!,
+    sha256BrowserDownloadUrl: selected.digest.browser_download_url!,
+    sha256Size: Number(selected.digest.size || 0),
+    ...signedManifest,
   };
 }
 
-function parseVersion(raw: string) {
-  return raw.trim().replace(/^v/i, "").split(/[+-]/)[0].split(".").map((part) => Number.parseInt(part, 10) || 0);
+function sha256AssetFor(assets: GitHubAsset[], archiveName: string): GitHubAsset | null {
+  const expectedName = archiveName + ".sha256";
+  return assets.find((asset) =>
+    asset.name === expectedName &&
+    asset.browser_download_url &&
+    Number(asset.size || 0) > 0 &&
+    Number(asset.size || 0) <= 4096
+  ) ?? null;
 }
 
-function compareVersions(left: number[], right: number[]) {
-  const count = Math.max(left.length, right.length);
-  for (let index = 0; index < count; index += 1) {
-    const a = left[index] ?? 0;
-    const b = right[index] ?? 0;
-    if (a !== b) return a > b ? 1 : -1;
-  }
-  return 0;
+function manifestAssetFor(assets: GitHubAsset[], archiveName: string): GitHubAsset | null {
+  const expectedName = archiveName + ".manifest.json";
+  return assets.find((asset) =>
+    asset.name === expectedName &&
+    asset.browser_download_url &&
+    Number(asset.size || 0) > 0 &&
+    Number(asset.size || 0) <= 16384
+  ) ?? null;
+}
+
+function manifestSignatureAssetFor(assets: GitHubAsset[], archiveName: string): GitHubAsset | null {
+  const expectedName = archiveName + ".manifest.json.sig";
+  return assets.find((asset) =>
+    asset.name === expectedName &&
+    asset.browser_download_url &&
+    Number(asset.size || 0) > 0 &&
+    Number(asset.size || 0) <= 512
+  ) ?? null;
 }
 
 function storedBoolean(key: string, fallback: boolean) {
