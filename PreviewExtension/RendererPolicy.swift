@@ -13,6 +13,89 @@ private struct BurreteCoreBridgeRendererPolicy: Decodable {
     let molstarAvailable: Bool
 }
 
+struct BurretePreviewPrimary: Decodable, Equatable {
+    let role: String
+    let format: String
+    let binary: Bool
+}
+
+struct BurretePreviewConverter: Decodable, Equatable {
+    let id: String
+    let required: Bool
+}
+
+struct BurretePreviewStagedEntry: Decodable, Equatable {
+    let role: String
+    let format: String
+    let representation: String
+    let requiredForReady: Bool
+}
+
+struct BurretePreviewFallback: Decodable, Equatable {
+    let renderer: String
+    let converter: String?
+}
+
+struct BurretePreviewCapabilities: Decodable, Equatable {
+    let canOpenInVesta: Bool
+    let canSwitchRenderer: Bool
+    let hasTrajectoryControls: Bool
+    let hasGridSearch: Bool
+    let hasStagedEntries: Bool
+}
+
+struct BurretePreviewPlan: Decodable, Equatable {
+    let sourceExtension: String
+    let strategy: String
+    let renderer: String
+    let primary: BurretePreviewPrimary?
+    let converter: BurretePreviewConverter?
+    let staged: [BurretePreviewStagedEntry]
+    let fallbacks: [BurretePreviewFallback]
+    let capabilities: BurretePreviewCapabilities
+}
+
+private struct BundledFormatRegistryDocument: Decodable {
+    let formats: [BundledFormatRegistryFormat]
+}
+
+private struct BundledFormatRegistryFormat: Decodable {
+    let extensions: [String]
+}
+
+enum BundledFormatRegistry {
+    private static let registryName = "preview-formats"
+
+    static func supportedExtension(_ fileExtension: String) -> Bool? {
+        supportedExtensions.map { $0.contains(normalizeExtension(fileExtension)) }
+    }
+
+    private static let supportedExtensions: Set<String>? = {
+        guard let url = registryURL(),
+              let data = try? Data(contentsOf: url),
+              let registry = try? JSONDecoder().decode(BundledFormatRegistryDocument.self, from: data) else {
+            return nil
+        }
+        return Set(registry.formats.flatMap { format in
+            format.extensions.map(normalizeExtension)
+        })
+    }()
+
+    private static func registryURL() -> URL? {
+        Bundle(for: PreviewViewController.self).url(forResource: registryName, withExtension: "json")
+            ?? Bundle.main.url(forResource: registryName, withExtension: "json")
+    }
+
+    private static func normalizeExtension(_ value: String) -> String {
+        switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "mae.gz":
+            return "maegz"
+        case let normalized:
+            return normalized
+        }
+    }
+}
+
 enum BurreteCoreBridge {
     private static let executableName = "burrete-core-bridge"
     private static let processTimeout: TimeInterval = 1.0
@@ -51,6 +134,10 @@ enum BurreteCoreBridge {
             renderer: response.renderer,
             molstarAvailable: response.molstarAvailable
         )
+    }
+
+    static func previewPlan(fileExtension: String, requestedMode: String) -> BurretePreviewPlan? {
+        runJSON(arguments: ["preview-plan", fileExtension, requestedMode])
     }
 
     private static func runJSON<T: Decodable>(arguments: [String]) -> T? {
@@ -132,8 +219,20 @@ struct BurreteRendererPolicy: Equatable {
     static func resolve(
         format: BurreteRendererFormat,
         requestedMode rawRequestedMode: String,
-        fileExtension: String? = nil
+        fileExtension: String? = nil,
+        previewPlan providedPreviewPlan: BurretePreviewPlan? = nil
     ) -> BurreteRendererPolicy {
+        let requestedMode = BurreteRendererMode.normalize(rawRequestedMode)
+        let previewPlan = providedPreviewPlan ?? fileExtension.flatMap {
+            BurreteCoreBridge.previewPlan(
+                fileExtension: $0,
+                requestedMode: requestedMode
+            )
+        }
+        if let previewPlan,
+           let planPolicy = policyFromPreviewPlan(previewPlan, requestedMode: requestedMode) {
+            return planPolicy
+        }
         if let fileExtension,
            let bridgePolicy = BurreteCoreBridge.resolveRenderer(
             fileExtension: fileExtension,
@@ -141,7 +240,6 @@ struct BurreteRendererPolicy: Equatable {
            ) {
             return bridgePolicy
         }
-        let requestedMode = BurreteRendererMode.normalize(rawRequestedMode)
         let renderer: String
 
         if format.isExternalXyzrenderOnly {
@@ -170,6 +268,28 @@ struct BurreteRendererPolicy: Equatable {
 
     static func fallbackRenderer(for format: BurreteRendererFormat) -> String {
         BurreteRendererMode.molstar
+    }
+
+    private static func policyFromPreviewPlan(
+        _ previewPlan: BurretePreviewPlan,
+        requestedMode: String
+    ) -> BurreteRendererPolicy? {
+        switch previewPlan.strategy {
+        case "custom", "grid":
+            return nil
+        case "external":
+            return BurreteRendererPolicy(
+                requestedMode: requestedMode,
+                renderer: BurreteRendererMode.normalize(previewPlan.renderer),
+                molstarAvailable: false
+            )
+        default:
+            return BurreteRendererPolicy(
+                requestedMode: requestedMode,
+                renderer: BurreteRendererMode.normalize(previewPlan.renderer),
+                molstarAvailable: true
+            )
+        }
     }
 }
 

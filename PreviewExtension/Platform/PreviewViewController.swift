@@ -260,6 +260,44 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let renderTimeoutSeconds: TimeInterval
     }
 
+    private struct StructurePreviewPayload {
+        let format: StructureFormat
+        let rendererPolicy: BurreteRendererPolicy
+        let requestedRendererMode: String
+        let renderer: String
+        let structureData: Data
+        let auxiliaryFiles: [RuntimeAuxiliaryFile]
+        let stagedEntries: [[String: Any]]
+        let externalArtifact: PreviewExternalXyzrenderArtifact?
+        let externalArtifactSourceURL: URL?
+        let externalStatus: [String: Any]?
+        let temporaryExternalDirectory: URL?
+        let xyzrenderPreset: String
+        let xyzrenderControls: [String: Any]?
+        let trajectoryFrameCount: Int?
+        let molstarAvailable: Bool
+    }
+
+    private struct StructurePreviewBuildState {
+        var format: StructureFormat
+        var renderer: String
+        var structureData: Data
+        var auxiliaryFiles: [RuntimeAuxiliaryFile]
+        var stagedEntries: [[String: Any]]
+        var externalArtifact: PreviewExternalXyzrenderArtifact?
+        var externalArtifactSourceURL: URL?
+        var externalStatus: [String: Any]?
+        var temporaryExternalDirectory: URL?
+        var xyzrenderControls: [String: Any]?
+
+        mutating func applyConvertedStructure(_ convertedStructure: PreviewStructureTextConverter.ConvertedStructure) {
+            format = convertedStructure.format
+            structureData = convertedStructure.data
+            auxiliaryFiles = convertedStructure.auxiliaryFiles
+            stagedEntries = convertedStructure.stagedEntries
+        }
+    }
+
     private struct FepGraphMLPreview {
         let nodes: [FepGraphMLNode]
         let edges: [FepGraphMLEdge]
@@ -299,9 +337,85 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let surfaceMode: String?
     }
 
-    private static let supportedStructureExtensions: Set<String> = [
-        "abi", "bcif", "cif", "cms", "com", "csv", "cub", "cube", "dcd", "ent", "fdf", "graphml", "gro", "in", "inp", "lammpstrj", "log", "mae", "maegz", "mcif", "mmcif", "mol", "mol2", "nctraj", "nw", "out", "pdb", "pdbqt", "pqr", "prmtop", "psf", "psi4", "qcin", "sd", "sdf", "smi", "smiles", "top", "trr", "tsv", "vasp", "xtc", "xyz"
-    ]
+    private enum StructurePreviewStrategy: String {
+        case direct
+        case external
+        case trajectory
+        case convert
+        case legacy
+
+        init(previewPlan: BurretePreviewPlan?) {
+            switch previewPlan?.strategy {
+            case "direct":
+                self = .direct
+            case "external":
+                self = .external
+            case "trajectory":
+                self = .trajectory
+            case "convert":
+                self = .convert
+            default:
+                self = .legacy
+            }
+        }
+
+        func requiresPreparedConversion(previewPlan: BurretePreviewPlan?) -> Bool {
+            self == .convert && previewPlan?.converter?.required == true
+        }
+
+        func supportsFallbackRenderer(_ renderer: String, previewPlan: BurretePreviewPlan?) -> Bool {
+            previewPlan?.fallbacks.contains { fallback in
+                BurreteRendererMode.normalize(fallback.renderer) == renderer
+            } ?? false
+        }
+
+        func requiresExtractedStandaloneCoordinates(fileExtension: String) -> Bool {
+            guard self == .external || self == .legacy else { return false }
+            return fileExtension.lowercased() == "out"
+        }
+    }
+
+    private static func prepareConvertStructurePreviewIfNeeded(
+        state: inout StructurePreviewBuildState,
+        strategy: StructurePreviewStrategy,
+        previewPlan: BurretePreviewPlan?,
+        preparedConversion: PreviewStructureTextConverter.ConvertedStructure?,
+        pathExtension: String,
+        diagnostics: inout [String]
+    ) {
+        func diag(_ message: String) { diagnostics.append("[build] " + message) }
+        guard strategy == .convert else { return }
+        if state.renderer == BurreteRendererMode.molstar,
+           let convertedStructure = preparedConversion {
+            state.applyConvertedStructure(convertedStructure)
+            diag("previewPlan.convert.primary=\(pathExtension)-pdb staged=\(convertedStructure.stagedEntries.count)")
+        }
+        if state.renderer == BurreteRendererMode.molstar,
+           strategy.requiresPreparedConversion(previewPlan: previewPlan),
+           preparedConversion == nil,
+           strategy.supportsFallbackRenderer(BurreteRendererMode.xyzrenderExternal, previewPlan: previewPlan) {
+            state.renderer = BurreteRendererMode.xyzrenderExternal
+            diag("previewPlan.convert.fallback=xyzrender-external missing-conversion")
+        }
+    }
+
+    private static func preferBuiltInParserForDefaultExternalPreviewIfAvailable(
+        state: inout StructurePreviewBuildState,
+        rendererOverride: String?,
+        preparedConversion: PreviewStructureTextConverter.ConvertedStructure?,
+        diagnostics: inout [String]
+    ) {
+        func diag(_ message: String) { diagnostics.append("[build] " + message) }
+        guard state.renderer == BurreteRendererMode.xyzrenderExternal,
+              rendererOverride == nil,
+              state.format.isExternalXyzrenderOnly,
+              let convertedStructure = preparedConversion else {
+            return
+        }
+        state.renderer = BurreteRendererMode.molstar
+        state.applyConvertedStructure(convertedStructure)
+        diag("xyzrender.default=built-in-text-parser")
+    }
 
     private static func buildInlinePreviewHTML(
         for url: URL,
@@ -316,7 +430,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
         let pathExtension = structurePathExtension(for: url)
         let isSupportedStructure = BurreteCoreBridge.supportedExtension(pathExtension)
-            ?? supportedStructureExtensions.contains(pathExtension)
+            ?? BundledFormatRegistry.supportedExtension(pathExtension)
+            ?? false
         guard isSupportedStructure else {
             throw PreviewError.unsupportedStructureFile(url.lastPathComponent)
         }
@@ -351,271 +466,115 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             diag("structureData.boundedMaestroPreview=true originalBytes=\(structureSize) prefixBytes=\(structureData.count)")
         }
 
-        if pathExtension == "graphml" {
-            let graph = try fepGraphMLPreview(from: structureData)
-            diag("detected.previewMode=fep-graphml nodes=\(graph.nodes.count) edges=\(graph.edges.count)")
-            let html = fepGraphMLInlineHTML(title: url.lastPathComponent, graph: graph, requestID: requestID)
-            let runtimeWriteStarted = Date()
-            let runtimePreview = try createRuntimePreview(
-                bundledWebDirectory: fileManager.temporaryDirectory,
-                html: html,
-                configJSON: try configJSONWithRequestID("{}", requestID: requestID),
-                structureData: nil,
-                auxiliaryFiles: [],
-                gridRecordsScript: nil,
-                requiredAssets: [],
-                requiresRDKit: false,
-                externalArtifactSourceURL: nil,
+        let preferences = PreviewPreferences.load()
+        let previewPlan = BurreteCoreBridge.previewPlan(
+            fileExtension: pathExtension,
+            requestedMode: BurreteRendererMode.normalize(rendererOverride ?? preferences.rendererMode)
+        )
+        if let previewPlan {
+            diag("previewPlan.strategy=\(previewPlan.strategy) renderer=\(previewPlan.renderer) converter=\(previewPlan.converter?.id ?? "none") staged=\(previewPlan.staged.count) fallbacks=\(previewPlan.fallbacks.count)")
+        } else {
+            diag("previewPlan.unavailable=true")
+        }
+
+        if shouldUseFepGraphMLPreview(fileExtension: pathExtension, previewPlan: previewPlan) {
+            return try buildFepGraphMLPreviewResult(
+                for: url,
+                requestID: requestID,
+                structureData: structureData,
                 fileManager: fileManager,
                 diagnostics: &diagnostics
-            )
-            diag("elapsed.runtimeWriteMs=\(elapsedMs(since: runtimeWriteStarted))")
-            diag("runtimeDirectory=\(runtimePreview.runtimeDirectory.path)")
-            diag("runtime.index.exists=\(fileManager.fileExists(atPath: runtimePreview.indexURL.path))")
-            return BuildResult(
-                html: html,
-                indexURL: runtimePreview.indexURL,
-                readAccessURL: runtimePreview.readAccessURL,
-                diagnostics: diagnostics,
-                renderTimeoutSeconds: defaultRenderTimeoutSeconds
             )
         }
 
-        let preferences = PreviewPreferences.load()
         let gridFileSupport = preferences.gridFileSupport
         let shouldBuildGridPreview = rendererOverride == nil || rendererOverride == BurreteRendererMode.auto
-        if shouldBuildGridPreview, let gridPreview = try MoleculeGridPreviewBuilder.makePreview(
-            fileURL: url,
-            data: structureData,
-            host: .quickLook,
-            theme: preferences.runtimeViewerTheme,
-            canvasBackground: preferences.runtimeCanvasBackground,
-            transparentBackground: preferences.resolvedTransparentBackground,
-            themeTokens: preferences.themeTokens,
-            overlayOpacity: preferences.overlayOpacity,
-            debug: showDebugOverlay,
-            allowSelection: false,
-            allowExport: false,
-            maxRecords: 750,
-            fileSupport: gridFileSupport
+        if shouldBuildGridPreview, let gridPreviewResult = try buildMoleculeGridPreviewResult(
+            for: url,
+            requestID: requestID,
+            structureData: structureData,
+            webDirectory: webDirectory,
+            preferences: preferences,
+            gridFileSupport: gridFileSupport,
+            fileManager: fileManager,
+            diagnostics: &diagnostics
         ) {
-            diag("detected.previewMode=grid2d format=\(gridPreview.format) records=\(gridPreview.recordsIncluded)/\(gridPreview.recordsTotal)")
-            let gridAssetValidationStarted = Date()
-            try validateVendoredMoleculeGridAssets(in: webDirectory, fileManager: fileManager, diagnostics: &diagnostics)
-            diag("elapsed.gridAssetValidationMs=\(elapsedMs(since: gridAssetValidationStarted))")
-            let html = gridInlineHTML(title: url.lastPathComponent, preferences: preferences)
-            diag("gridInlineHTML.bytes=\(html.utf8.count)")
-            let runtimeWriteStarted = Date()
-            let runtimePreview = try createRuntimePreview(
-                bundledWebDirectory: webDirectory,
-                html: html,
-                configJSON: configJSONWithRequestID(gridPreview.configJSON, requestID: requestID),
-                structureData: nil,
-                auxiliaryFiles: [],
-                gridRecordsScript: gridPreview.recordsScript,
-                requiredAssets: ["grid-ui.js", "grid-viewer.js", "grid.css"],
-                requiresRDKit: true,
-                externalArtifactSourceURL: nil,
-                fileManager: fileManager,
-                diagnostics: &diagnostics
-            )
-            diag("elapsed.runtimeWriteMs=\(elapsedMs(since: runtimeWriteStarted))")
-            let indexURL = runtimePreview.indexURL
-            diag("runtimeDirectory=\(runtimePreview.runtimeDirectory.path)")
-            diag("runtime.index.exists=\(fileManager.fileExists(atPath: indexURL.path))")
-            return BuildResult(
-                html: html,
-                indexURL: indexURL,
-                readAccessURL: runtimePreview.readAccessURL,
-                diagnostics: diagnostics,
-                renderTimeoutSeconds: defaultRenderTimeoutSeconds
-            )
+            return gridPreviewResult
         }
-        if MoleculeGridFileSupport.requiresGridPreview(fileExtension: pathExtension) {
+        if requiresGridPreview(fileExtension: pathExtension, previewPlan: previewPlan) {
             if !gridFileSupport.supports(fileExtension: pathExtension) {
                 throw PreviewError.gridFileTypeDisabled(pathExtension)
             }
             throw PreviewError.unsupportedStructureFile(url.lastPathComponent)
         }
 
-        var format = StructureFormat(url: url, data: structureData)
-        let rendererPolicy = BurreteRendererPolicy.resolve(
-            format: BurreteRendererFormat(format),
-            requestedMode: rendererOverride ?? preferences.rendererMode,
-            fileExtension: pathExtension
+        let structurePreview = try buildStructurePreviewPayload(
+            for: url,
+            pathExtension: pathExtension,
+            structureData: structureData,
+            rendererOverride: rendererOverride,
+            xyzrenderPresetOverride: xyzrenderPresetOverride,
+            xyzrenderOrientationRefText: xyzrenderOrientationRefText,
+            xyzrenderControlsOverride: xyzrenderControlsOverride,
+            preferences: preferences,
+            previewPlan: previewPlan,
+            usesBoundedMaestroPreview: usesBoundedMaestroPreview,
+            fileManager: fileManager,
+            diagnostics: &diagnostics
         )
-        let requestedRendererMode = rendererPolicy.requestedMode
-        var renderer = rendererPolicy.renderer
-        var structureDataForWeb = structureData
-        var auxiliaryRuntimeFiles: [RuntimeAuxiliaryFile] = []
-        var stagedEntries: [[String: Any]] = []
-        var externalArtifact: PreviewExternalXyzrenderArtifact?
-        var externalArtifactSourceURL: URL?
-        var externalStatus: [String: Any]?
-        var temporaryExternalDirectory: URL?
-        var resolvedXyzrenderControls = xyzrenderControlsOverride
-        if (renderer == BurreteRendererMode.molstar || PreviewStructureTextConverter.shouldPreferConvertedMolstarData(fileExtension: pathExtension)),
-           let convertedStructure = PreviewStructureTextConverter.convertedData(
-            from: structureData,
-            fileExtension: pathExtension,
-            label: url.lastPathComponent
-           ) {
-            format = convertedStructure.format
-            structureDataForWeb = convertedStructure.data
-            auxiliaryRuntimeFiles = convertedStructure.auxiliaryFiles
-            stagedEntries = convertedStructure.stagedEntries
-            diag("molstar.converted=\(pathExtension)-pdb")
-        }
-        let xyzrenderPreset = BurreteXyzrenderPreset.normalize(xyzrenderPresetOverride ?? preferences.xyzrenderPreset)
-        let xyzPayload = format.molstarFormat == "xyz" && !format.isBinary ? makeXYZPayload(from: structureDataForWeb) : nil
-        let isXYZTrajectory = (xyzPayload?.frameCount ?? 0) > 1
-        if isXYZTrajectory,
-           rendererOverride == nil,
-           requestedRendererMode == BurreteRendererMode.auto,
-           renderer != BurreteRendererMode.molstar {
-            renderer = BurreteRendererMode.molstar
-            diag("xyz.trajectory.default=molstar frames=\(xyzPayload?.frameCount ?? -1)")
-        }
-        if renderer == BurreteRendererMode.xyzrenderExternal,
-           rendererOverride == nil,
-           format.isExternalXyzrenderOnly,
-           let convertedStructure = PreviewStructureTextConverter.convertedData(
-            from: structureData,
-            fileExtension: pathExtension,
-            label: url.lastPathComponent
-           ) {
-            renderer = BurreteRendererMode.molstar
-            format = convertedStructure.format
-            structureDataForWeb = convertedStructure.data
-            auxiliaryRuntimeFiles = convertedStructure.auxiliaryFiles
-            stagedEntries = convertedStructure.stagedEntries
-            diag("xyzrender.default=built-in-text-parser")
-        }
-        if usesBoundedMaestroPreview, format.isExternalXyzrenderOnly {
-            throw PreviewError.couldNotExtractBoundedMaestroPreview(url.lastPathComponent, Self.maestroPreviewReadLimit)
-        }
-        if shouldRequireExtractedStandaloneCoordinates(fileExtension: pathExtension),
-           format.isExternalXyzrenderOnly,
-           PreviewStructureTextConverter.convertedData(
-            from: structureData,
-            fileExtension: pathExtension,
-            label: url.lastPathComponent
-           ) == nil {
-            throw PreviewError.notRenderableStandaloneStructure(url.lastPathComponent)
-        }
-        if renderer == BurreteRendererMode.xyzrenderExternal {
-            let renderDirectory = fileManager.temporaryDirectory
-                .appendingPathComponent("BurreteXYZRender-\(UUID().uuidString)", isDirectory: true)
-            temporaryExternalDirectory = renderDirectory
-            let defaultXyzrenderInput = xyzrenderControlsOverride == nil
-                ? defaultCubeXyzrenderInput(fileURL: url, data: structureData, fileExtension: pathExtension)
-                : nil
-            resolvedXyzrenderControls = xyzrenderControlsOverride ?? defaultXyzrenderInput?.controls
-            do {
-                try fileManager.createDirectory(at: renderDirectory, withIntermediateDirectories: true)
-                externalArtifact = try PreviewExternalXyzrenderWorker.render(
-                    inputData: defaultXyzrenderInput?.data ?? structureData,
-                    sourceFilename: defaultXyzrenderInput?.sourceFilename ?? url.lastPathComponent,
-                    outputDirectory: renderDirectory,
-                    preset: xyzrenderPreset,
-                    customConfigPath: preferences.xyzrenderCustomConfigPath,
-                    transparent: preferences.canvasBackground == "transparent",
-                    executablePath: preferences.xyzrenderExecutablePath,
-                    extraArguments: preferences.xyzrenderExtraArguments,
-                    orientationRefText: xyzrenderOrientationRefText,
-                    controls: resolvedXyzrenderControls,
-                    surfaceMode: defaultXyzrenderInput?.surfaceMode
-                )
-                externalArtifactSourceURL = renderDirectory.appendingPathComponent("xyzrender.svg")
-            } catch {
-                if format.isExternalXyzrenderOnly,
-                   rendererOverride == nil,
-                   let convertedStructure = PreviewStructureTextConverter.convertedData(
-                    from: structureData,
-                    fileExtension: pathExtension,
-                    label: url.lastPathComponent
-                   ) {
-                    renderer = BurreteRendererMode.molstar
-                    format = convertedStructure.format
-                    structureDataForWeb = convertedStructure.data
-                    auxiliaryRuntimeFiles = convertedStructure.auxiliaryFiles
-                    stagedEntries = convertedStructure.stagedEntries
-                    externalStatus = [
-                        "status": "fallback",
-                        "requested": BurreteRendererMode.xyzrenderExternal,
-                        "message": "Using built-in text structure parser because external xyzrender is unavailable in Quick Look."
-                    ]
-                    diag("xyzrender.fallback=built-in-text-parser error=\(error.localizedDescription)")
-                } else if format.isExternalXyzrenderOnly {
-                    throw error
-                } else {
-                    renderer = BurreteRendererPolicy.fallbackRenderer(for: BurreteRendererFormat(format))
-                    externalStatus = [
-                        "status": "fallback",
-                        "requested": BurreteRendererMode.xyzrenderExternal,
-                        "message": error.localizedDescription
-                    ]
-                    diag("xyzrender.fallback=\(error.localizedDescription)")
-                }
-            }
-        }
         defer {
-            if let temporaryExternalDirectory {
+            if let temporaryExternalDirectory = structurePreview.temporaryExternalDirectory {
                 try? fileManager.removeItem(at: temporaryExternalDirectory)
             }
         }
-        diag("detected.format=\(format.molstarFormat) binary=\(format.isBinary) renderer=\(renderer)")
-        let molstarAvailable = rendererPolicy.molstarAvailable || PreviewStructureTextConverter.convertedData(
-            from: structureData,
-            fileExtension: pathExtension,
-            label: url.lastPathComponent
-        ) != nil
+        diag("detected.format=\(structurePreview.format.molstarFormat) binary=\(structurePreview.format.isBinary) renderer=\(structurePreview.renderer)")
 
         let configJSON = try previewConfigJSON(
-            format: format,
+            format: structurePreview.format,
             label: url.lastPathComponent,
             requestID: requestID,
-            requestedRendererMode: requestedRendererMode,
+            requestedRendererMode: structurePreview.requestedRendererMode,
             byteCount: Int(min(structureSize, Int64(Int.max))),
-            previewByteCount: structureDataForWeb.count,
-            renderer: renderer,
-            externalArtifact: externalArtifact,
-            externalStatus: externalStatus,
-            xyzrenderPreset: xyzrenderPreset,
-            xyzrenderControls: resolvedXyzrenderControls,
-            stagedEntries: stagedEntries,
-            trajectoryFrameCount: renderer == BurreteRendererMode.molstar ? xyzPayload?.frameCount : nil,
+            previewByteCount: structurePreview.structureData.count,
+            renderer: structurePreview.renderer,
+            externalArtifact: structurePreview.externalArtifact,
+            externalStatus: structurePreview.externalStatus,
+            xyzrenderPreset: structurePreview.xyzrenderPreset,
+            xyzrenderControls: structurePreview.xyzrenderControls,
+            stagedEntries: structurePreview.stagedEntries,
+            trajectoryFrameCount: structurePreview.trajectoryFrameCount,
             originalFileExtension: pathExtension,
-            rendererPolicy: rendererPolicy,
-            molstarAvailable: molstarAvailable,
+            rendererPolicy: structurePreview.rendererPolicy,
+            previewPlan: previewPlan,
+            molstarAvailable: structurePreview.molstarAvailable,
             preferences: preferences
         )
-        diag("structure.payload.bytes=\(structureDataForWeb.count)")
+        diag("structure.payload.bytes=\(structurePreview.structureData.count)")
         let renderTimeoutInputBytes = max(
-            structureDataForWeb.count,
+            structurePreview.structureData.count,
             Int(min(structureSize, Int64(Int.max))),
-            auxiliaryRuntimeFiles.reduce(0) { $0 + $1.data.count }
+            structurePreview.auxiliaryFiles.reduce(0) { $0 + $1.data.count }
         )
         let renderTimeoutSeconds = self.renderTimeoutSeconds(
             byteCount: renderTimeoutInputBytes,
-            renderer: renderer
+            renderer: structurePreview.renderer
         )
         diag("render.timeout.input.bytes=\(renderTimeoutInputBytes)")
         diag("render.timeout.seconds=\(Int(renderTimeoutSeconds))")
 
-        let html = inlineHTML(title: url.lastPathComponent, preferences: preferences, renderer: renderer)
+        let html = inlineHTML(title: url.lastPathComponent, preferences: preferences, renderer: structurePreview.renderer)
         diag("inlineHTML.bytes=\(html.utf8.count)")
         let runtimeWriteStarted = Date()
         let runtimePreview = try createRuntimePreview(
             bundledWebDirectory: webDirectory,
             html: html,
             configJSON: configJSON,
-            structureData: structureDataForWeb,
-            auxiliaryFiles: auxiliaryRuntimeFiles,
+            structureData: structurePreview.structureData,
+            auxiliaryFiles: structurePreview.auxiliaryFiles,
             gridRecordsScript: nil,
-            requiredAssets: runtimeAssets(for: renderer),
+            requiredAssets: runtimeAssets(for: structurePreview.renderer),
             requiresRDKit: false,
-            externalArtifactSourceURL: externalArtifactSourceURL,
+            externalArtifactSourceURL: structurePreview.externalArtifactSourceURL,
             fileManager: fileManager,
             diagnostics: &diagnostics
         )
@@ -630,6 +589,287 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             diagnostics: diagnostics,
             renderTimeoutSeconds: renderTimeoutSeconds
         )
+    }
+
+    private static func buildFepGraphMLPreviewResult(
+        for url: URL,
+        requestID: String,
+        structureData: Data,
+        fileManager: FileManager,
+        diagnostics: inout [String]
+    ) throws -> BuildResult {
+        func diag(_ message: String) { diagnostics.append("[build] " + message) }
+
+        let graph = try fepGraphMLPreview(from: structureData)
+        diag("detected.previewMode=fep-graphml nodes=\(graph.nodes.count) edges=\(graph.edges.count)")
+        let html = fepGraphMLInlineHTML(title: url.lastPathComponent, graph: graph, requestID: requestID)
+        let runtimeWriteStarted = Date()
+        let runtimePreview = try createRuntimePreview(
+            bundledWebDirectory: fileManager.temporaryDirectory,
+            html: html,
+            configJSON: try configJSONWithRequestID("{}", requestID: requestID),
+            structureData: nil,
+            auxiliaryFiles: [],
+            gridRecordsScript: nil,
+            requiredAssets: [],
+            requiresRDKit: false,
+            externalArtifactSourceURL: nil,
+            fileManager: fileManager,
+            diagnostics: &diagnostics
+        )
+        diag("elapsed.runtimeWriteMs=\(elapsedMs(since: runtimeWriteStarted))")
+        diag("runtimeDirectory=\(runtimePreview.runtimeDirectory.path)")
+        diag("runtime.index.exists=\(fileManager.fileExists(atPath: runtimePreview.indexURL.path))")
+        return BuildResult(
+            html: html,
+            indexURL: runtimePreview.indexURL,
+            readAccessURL: runtimePreview.readAccessURL,
+            diagnostics: diagnostics,
+            renderTimeoutSeconds: defaultRenderTimeoutSeconds
+        )
+    }
+
+    private static func buildMoleculeGridPreviewResult(
+        for url: URL,
+        requestID: String,
+        structureData: Data,
+        webDirectory: URL,
+        preferences: PreviewPreferences,
+        gridFileSupport: MoleculeGridFileSupport,
+        fileManager: FileManager,
+        diagnostics: inout [String]
+    ) throws -> BuildResult? {
+        func diag(_ message: String) { diagnostics.append("[build] " + message) }
+
+        guard let gridPreview = try MoleculeGridPreviewBuilder.makePreview(
+            fileURL: url,
+            data: structureData,
+            host: .quickLook,
+            theme: preferences.runtimeViewerTheme,
+            canvasBackground: preferences.runtimeCanvasBackground,
+            transparentBackground: preferences.resolvedTransparentBackground,
+            themeTokens: preferences.themeTokens,
+            overlayOpacity: preferences.overlayOpacity,
+            debug: showDebugOverlay,
+            allowSelection: false,
+            allowExport: false,
+            maxRecords: 750,
+            fileSupport: gridFileSupport
+        ) else {
+            return nil
+        }
+        diag("detected.previewMode=grid2d format=\(gridPreview.format) records=\(gridPreview.recordsIncluded)/\(gridPreview.recordsTotal)")
+        let gridAssetValidationStarted = Date()
+        try validateVendoredMoleculeGridAssets(in: webDirectory, fileManager: fileManager, diagnostics: &diagnostics)
+        diag("elapsed.gridAssetValidationMs=\(elapsedMs(since: gridAssetValidationStarted))")
+        let html = gridInlineHTML(title: url.lastPathComponent, preferences: preferences)
+        diag("gridInlineHTML.bytes=\(html.utf8.count)")
+        let runtimeWriteStarted = Date()
+        let runtimePreview = try createRuntimePreview(
+            bundledWebDirectory: webDirectory,
+            html: html,
+            configJSON: configJSONWithRequestID(gridPreview.configJSON, requestID: requestID),
+            structureData: nil,
+            auxiliaryFiles: [],
+            gridRecordsScript: gridPreview.recordsScript,
+            requiredAssets: ["grid-ui.js", "grid-viewer.js", "grid.css"],
+            requiresRDKit: true,
+            externalArtifactSourceURL: nil,
+            fileManager: fileManager,
+            diagnostics: &diagnostics
+        )
+        diag("elapsed.runtimeWriteMs=\(elapsedMs(since: runtimeWriteStarted))")
+        let indexURL = runtimePreview.indexURL
+        diag("runtimeDirectory=\(runtimePreview.runtimeDirectory.path)")
+        diag("runtime.index.exists=\(fileManager.fileExists(atPath: indexURL.path))")
+        return BuildResult(
+            html: html,
+            indexURL: indexURL,
+            readAccessURL: runtimePreview.readAccessURL,
+            diagnostics: diagnostics,
+            renderTimeoutSeconds: defaultRenderTimeoutSeconds
+        )
+    }
+
+    private static func buildStructurePreviewPayload(
+        for url: URL,
+        pathExtension: String,
+        structureData: Data,
+        rendererOverride: String?,
+        xyzrenderPresetOverride: String?,
+        xyzrenderOrientationRefText: String?,
+        xyzrenderControlsOverride: [String: Any]?,
+        preferences: PreviewPreferences,
+        previewPlan: BurretePreviewPlan?,
+        usesBoundedMaestroPreview: Bool,
+        fileManager: FileManager,
+        diagnostics: inout [String]
+    ) throws -> StructurePreviewPayload {
+        func diag(_ message: String) { diagnostics.append("[build] " + message) }
+
+        let structureStrategy = StructurePreviewStrategy(previewPlan: previewPlan)
+        diag("structure.strategy=\(structureStrategy.rawValue)")
+        let initialFormat = StructureFormat(url: url, data: structureData)
+        let rendererPolicy = BurreteRendererPolicy.resolve(
+            format: BurreteRendererFormat(initialFormat),
+            requestedMode: rendererOverride ?? preferences.rendererMode,
+            fileExtension: pathExtension,
+            previewPlan: previewPlan
+        )
+        let requestedRendererMode = rendererPolicy.requestedMode
+        var state = StructurePreviewBuildState(
+            format: initialFormat,
+            renderer: rendererPolicy.renderer,
+            structureData: structureData,
+            auxiliaryFiles: [],
+            stagedEntries: [],
+            externalArtifact: nil,
+            externalArtifactSourceURL: nil,
+            externalStatus: nil,
+            temporaryExternalDirectory: nil,
+            xyzrenderControls: xyzrenderControlsOverride
+        )
+        let preparedConversion = PreviewStructureTextConverter.convertedData(
+            from: structureData,
+            fileExtension: pathExtension,
+            label: url.lastPathComponent
+        )
+        prepareConvertStructurePreviewIfNeeded(
+            state: &state,
+            strategy: structureStrategy,
+            previewPlan: previewPlan,
+            preparedConversion: preparedConversion,
+            pathExtension: pathExtension,
+            diagnostics: &diagnostics
+        )
+        if structureStrategy != .convert,
+           (state.renderer == BurreteRendererMode.molstar || PreviewStructureTextConverter.shouldPreferConvertedMolstarData(fileExtension: pathExtension)),
+           let convertedStructure = preparedConversion {
+            state.applyConvertedStructure(convertedStructure)
+            diag("molstar.converted=\(pathExtension)-pdb")
+        }
+        let xyzrenderPreset = BurreteXyzrenderPreset.normalize(xyzrenderPresetOverride ?? preferences.xyzrenderPreset)
+        let xyzPayload = state.format.molstarFormat == "xyz" && !state.format.isBinary ? makeXYZPayload(from: state.structureData) : nil
+        let isXYZTrajectory = (xyzPayload?.frameCount ?? 0) > 1
+        if isXYZTrajectory,
+           rendererOverride == nil,
+           requestedRendererMode == BurreteRendererMode.auto,
+           state.renderer != BurreteRendererMode.molstar {
+            state.renderer = BurreteRendererMode.molstar
+            diag("xyz.trajectory.default=molstar frames=\(xyzPayload?.frameCount ?? -1)")
+        }
+        preferBuiltInParserForDefaultExternalPreviewIfAvailable(
+            state: &state,
+            rendererOverride: rendererOverride,
+            preparedConversion: preparedConversion,
+            diagnostics: &diagnostics
+        )
+        if usesBoundedMaestroPreview, state.format.isExternalXyzrenderOnly {
+            throw PreviewError.couldNotExtractBoundedMaestroPreview(url.lastPathComponent, Self.maestroPreviewReadLimit)
+        }
+        if structureStrategy.requiresExtractedStandaloneCoordinates(fileExtension: pathExtension),
+           state.format.isExternalXyzrenderOnly,
+           preparedConversion == nil {
+            throw PreviewError.notRenderableStandaloneStructure(url.lastPathComponent)
+        }
+        try renderExternalXyzrenderIfNeeded(
+            state: &state,
+            url: url,
+            pathExtension: pathExtension,
+            structureData: structureData,
+            rendererOverride: rendererOverride,
+            xyzrenderPreset: xyzrenderPreset,
+            xyzrenderOrientationRefText: xyzrenderOrientationRefText,
+            xyzrenderControlsOverride: xyzrenderControlsOverride,
+            preferences: preferences,
+            preparedConversion: preparedConversion,
+            fileManager: fileManager,
+            diagnostics: &diagnostics
+        )
+        let molstarAvailable = rendererPolicy.molstarAvailable || preparedConversion != nil
+        return StructurePreviewPayload(
+            format: state.format,
+            rendererPolicy: rendererPolicy,
+            requestedRendererMode: requestedRendererMode,
+            renderer: state.renderer,
+            structureData: state.structureData,
+            auxiliaryFiles: state.auxiliaryFiles,
+            stagedEntries: state.stagedEntries,
+            externalArtifact: state.externalArtifact,
+            externalArtifactSourceURL: state.externalArtifactSourceURL,
+            externalStatus: state.externalStatus,
+            temporaryExternalDirectory: state.temporaryExternalDirectory,
+            xyzrenderPreset: xyzrenderPreset,
+            xyzrenderControls: state.xyzrenderControls,
+            trajectoryFrameCount: state.renderer == BurreteRendererMode.molstar ? xyzPayload?.frameCount : nil,
+            molstarAvailable: molstarAvailable
+        )
+    }
+
+    private static func renderExternalXyzrenderIfNeeded(
+        state: inout StructurePreviewBuildState,
+        url: URL,
+        pathExtension: String,
+        structureData: Data,
+        rendererOverride: String?,
+        xyzrenderPreset: String,
+        xyzrenderOrientationRefText: String?,
+        xyzrenderControlsOverride: [String: Any]?,
+        preferences: PreviewPreferences,
+        preparedConversion: PreviewStructureTextConverter.ConvertedStructure?,
+        fileManager: FileManager,
+        diagnostics: inout [String]
+    ) throws {
+        guard state.renderer == BurreteRendererMode.xyzrenderExternal else { return }
+        func diag(_ message: String) { diagnostics.append("[build] " + message) }
+
+        let renderDirectory = fileManager.temporaryDirectory
+            .appendingPathComponent("BurreteXYZRender-\(UUID().uuidString)", isDirectory: true)
+        state.temporaryExternalDirectory = renderDirectory
+        let defaultXyzrenderInput = xyzrenderControlsOverride == nil
+            ? defaultCubeXyzrenderInput(fileURL: url, data: structureData, fileExtension: pathExtension)
+            : nil
+        state.xyzrenderControls = xyzrenderControlsOverride ?? defaultXyzrenderInput?.controls
+        do {
+            try fileManager.createDirectory(at: renderDirectory, withIntermediateDirectories: true)
+            state.externalArtifact = try PreviewExternalXyzrenderWorker.render(
+                inputData: defaultXyzrenderInput?.data ?? structureData,
+                sourceFilename: defaultXyzrenderInput?.sourceFilename ?? url.lastPathComponent,
+                outputDirectory: renderDirectory,
+                preset: xyzrenderPreset,
+                customConfigPath: preferences.xyzrenderCustomConfigPath,
+                transparent: preferences.canvasBackground == "transparent",
+                executablePath: preferences.xyzrenderExecutablePath,
+                extraArguments: preferences.xyzrenderExtraArguments,
+                orientationRefText: xyzrenderOrientationRefText,
+                controls: state.xyzrenderControls,
+                surfaceMode: defaultXyzrenderInput?.surfaceMode
+            )
+            state.externalArtifactSourceURL = renderDirectory.appendingPathComponent("xyzrender.svg")
+        } catch {
+            if state.format.isExternalXyzrenderOnly,
+               rendererOverride == nil,
+               let convertedStructure = preparedConversion {
+                state.renderer = BurreteRendererMode.molstar
+                state.applyConvertedStructure(convertedStructure)
+                state.externalStatus = [
+                    "status": "fallback",
+                    "requested": BurreteRendererMode.xyzrenderExternal,
+                    "message": "Using built-in text structure parser because external xyzrender is unavailable in Quick Look."
+                ]
+                diag("xyzrender.fallback=built-in-text-parser error=\(error.localizedDescription)")
+            } else if state.format.isExternalXyzrenderOnly {
+                throw error
+            } else {
+                state.renderer = BurreteRendererPolicy.fallbackRenderer(for: BurreteRendererFormat(state.format))
+                state.externalStatus = [
+                    "status": "fallback",
+                    "requested": BurreteRendererMode.xyzrenderExternal,
+                    "message": error.localizedDescription
+                ]
+                diag("xyzrender.fallback=\(error.localizedDescription)")
+            }
+        }
     }
 
     private static func renderTimeoutSeconds(byteCount: Int, renderer: String) -> TimeInterval {
@@ -910,6 +1150,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         trajectoryFrameCount: Int?,
         originalFileExtension: String,
         rendererPolicy: BurreteRendererPolicy,
+        previewPlan: BurretePreviewPlan?,
         molstarAvailable: Bool,
         preferences: PreviewPreferences
     ) throws -> String {
@@ -948,7 +1189,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "trajectoryFrameCount": resolvedTrajectoryFrameCount,
             "showPanelControls": preferences.showPanelControls,
             "defaultLayoutState": preferences.defaultLayoutState,
-            "canOpenInVesta": canOpenInVesta(fileExtension: originalFileExtension)
+            "canOpenInVesta": canOpenInVesta(fileExtension: originalFileExtension, previewPlan: previewPlan)
         ]
         if renderer == BurreteRendererMode.xyzrenderExternal {
             payload["xyzrenderViewer"] = true
@@ -1751,12 +1992,25 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         return url.pathExtension.lowercased()
     }
 
-    private static func canOpenInVesta(fileExtension: String) -> Bool {
-        ["xyz", "cub", "cube"].contains(fileExtension.lowercased())
+    private static func shouldUseFepGraphMLPreview(fileExtension: String, previewPlan: BurretePreviewPlan?) -> Bool {
+        if let previewPlan {
+            return previewPlan.strategy == "custom" && previewPlan.renderer == "fep-graphml"
+        }
+        return fileExtension.lowercased() == "graphml"
     }
 
-    private static func shouldRequireExtractedStandaloneCoordinates(fileExtension: String) -> Bool {
-        fileExtension.lowercased() == "out"
+    private static func requiresGridPreview(fileExtension: String, previewPlan: BurretePreviewPlan?) -> Bool {
+        if let previewPlan {
+            return previewPlan.strategy == "grid"
+        }
+        return MoleculeGridFileSupport.requiresGridPreview(fileExtension: fileExtension)
+    }
+
+    private static func canOpenInVesta(fileExtension: String, previewPlan: BurretePreviewPlan?) -> Bool {
+        if let previewPlan {
+            return previewPlan.capabilities.canOpenInVesta
+        }
+        return ["xyz", "cub", "cube"].contains(fileExtension.lowercased())
     }
 
     private static func shouldAllowSystemFallback(for error: Error, fileExtension: String) -> Bool {
@@ -2146,7 +2400,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             appendLog("openInVesta.missingCurrentURL")
             return
         }
-        guard Self.canOpenInVesta(fileExtension: Self.structurePathExtension(for: url)) else {
+        guard Self.canOpenInVesta(fileExtension: Self.structurePathExtension(for: url), previewPlan: nil) else {
             appendLog("openInVesta.unsupportedExtension=\(Self.structurePathExtension(for: url))")
             return
         }
@@ -2647,7 +2901,8 @@ private enum PreviewStructureTextConverter {
                 "format": "pdb",
                 "binary": false,
                 "label": "\(label) solvent",
-                "representation": "solvent-lines"
+                "representation": "solvent-lines",
+                "requiredForReady": true
             ]]
             return ConvertedStructure(
                 data: maestroPDBData(from: bundle.primaryAtoms, remark: "Burrete staged CMS protein and ligand preview"),
