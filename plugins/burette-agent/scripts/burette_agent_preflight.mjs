@@ -5,7 +5,8 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const pluginRoot = path.resolve(scriptDir, "..");
-const repoRoot = path.resolve(pluginRoot, "..", "..");
+const defaultRepoRoot = path.resolve(pluginRoot, "..", "..");
+const repoRoot = await resolveRepoRoot();
 
 async function exists(filePath) {
   try {
@@ -22,6 +23,17 @@ async function readJson(filePath, fallback = null) {
   } catch {
     return fallback;
   }
+}
+
+async function resolveRepoRoot() {
+  if (process.env.BURRETE_AGENT_REPO_ROOT) {
+    return path.resolve(process.env.BURRETE_AGENT_REPO_ROOT);
+  }
+  const metadata = await readJson(path.join(pluginRoot, ".burette-agent-install.json"), {});
+  if (typeof metadata.repoRoot === "string" && metadata.repoRoot.trim()) {
+    return path.resolve(metadata.repoRoot);
+  }
+  return defaultRepoRoot;
 }
 
 const pluginManifestPath = path.join(pluginRoot, ".codex-plugin", "plugin.json");
@@ -67,8 +79,13 @@ const payload = {
   },
   context: {
     scope: "burette_agent_capability_registry",
-    preferredMode: desktopApp ? "desktop-app" : "browser-preview",
+    preferredMode: "browser-dev-shell",
     transports: [
+      {
+        id: "browser-dev-shell",
+        status: hasCli ? "available" : "blocked",
+        note: "Agent-owned full Browser shell on a fresh local port with ?devFiles=...",
+      },
       {
         id: "browser-preview",
         status: hasCli && hasPreview ? "available" : "blocked",
@@ -93,8 +110,18 @@ const payload = {
       },
     ],
     workflowRoutes: {
-      openWorkspace: ["open local PDB/CIF/XYZ/SDF-like artifacts", "choose browser-preview or desktop-app"],
-      molstarScene: ["observe scene", "focus ligand", "hide waters", "surface", "color", "reset camera"],
+      openWorkspace: ["open local PDB/CIF/XYZ/SDF-like artifacts", "choose browser-dev-shell, browser-preview, or desktop-app"],
+      molstarScene: [
+        "observe scene",
+        "apply MolViewSpec-informed declarative scene schema",
+        "focus ligand",
+        "highlight/select/focus components",
+        "hide waters",
+        "surface",
+        "color",
+        "reset camera",
+        "load complete MolViewSpec scenes",
+      ],
       moleculeCollection: ["render SDF/property tables", "filter/sort externally", "link row selection to viewer"],
       trajectoryReview: ["load result bundles", "review frame metrics", "show trajectory controls when supported"],
       workflowResults: ["accept server-produced prep/docking/MD artifacts", "surface logs and run reports"],
@@ -110,6 +137,8 @@ const payload = {
       sdf: "partial",
     },
     molstarActions: {
+      apply_scene: "supported",
+      scene_language: "mvs_informed_active_viewer_dsl",
       reset_camera: "supported",
       focus_ligand: "supported_when_detectable",
       hide_waters: "supported",
@@ -117,6 +146,8 @@ const payload = {
       show_surface: "best_effort",
       color_by_chain: "best_effort",
       contacts: "supported_when_structure_available",
+      load_mvs: "supported_for_complete_mvs_payloads",
+      full_mvs_scene: "supported_via_load_mvs",
     },
     externalWorkflows: {
       proteinPreparation: "external_workflow",

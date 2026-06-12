@@ -12,6 +12,7 @@
 		3C65656FB6FE8E52854AC3F4 /* PreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA02CDF88EC813372195D216 /* PreviewViewController.swift */; };
 		A11111111111111111111105 /* QuickLookPreviewSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11111111111111111111104 /* QuickLookPreviewSurface.swift */; };
 		E31816093C5AEC762F9638CB /* Web in Resources */ = {isa = PBXBuildFile; fileRef = 4ADF66CA120EDD24C9E3F203 /* Web */; };
+		C0F025400000000000000002 /* preview-formats.json in Resources */ = {isa = PBXBuildFile; fileRef = C0F025400000000000000001 /* preview-formats.json */; };
 		B15000000000000000000002 /* ThumbnailProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B15000000000000000000001 /* ThumbnailProvider.swift */; };
 /* End PBXBuildFile section */
 
@@ -27,6 +28,7 @@
 		B15000000000000000000004 /* ThumbnailInfo.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = ThumbnailInfo.plist; sourceTree = "<group>"; };
 		F27769504D80BCF7B53A232F /* BurretePreview.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BurretePreview.entitlements; sourceTree = "<group>"; };
 		4ADF66CA120EDD24C9E3F203 /* Web */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Web; sourceTree = "<group>"; };
+		C0F025400000000000000001 /* preview-formats.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = "preview-formats.json"; path = "config/preview-formats.json"; sourceTree = SOURCE_ROOT; };
 		B262D4721622654301018823 /* package.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = package.json; sourceTree = "<group>"; };
 		7179C178DEEA22EE9D4E2FA3 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		0398CCD0F49298B10A3D76A4 /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE; sourceTree = "<group>"; };
@@ -47,6 +49,7 @@
 				AEC1F3248E3064F59FE6E9BC /* PreviewExtension */,
 				97E8C637FB2B333FCF3DA441 /* scripts */,
 				C2959D171E182DEA26D7FE92 /* samples */,
+				C0F025400000000000000001 /* preview-formats.json */,
 				B262D4721622654301018823 /* package.json */,
 				7179C178DEEA22EE9D4E2FA3 /* README.md */,
 				0398CCD0F49298B10A3D76A4 /* LICENSE */,
@@ -171,6 +174,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E31816093C5AEC762F9638CB /* Web in Resources */,
+				C0F025400000000000000002 /* preview-formats.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

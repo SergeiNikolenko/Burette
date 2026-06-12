@@ -3,6 +3,7 @@ import { RadixDropdownMenu } from "../radix-menu";
 import type { BuildInfo, ShellActions, ShellViewState } from "../types";
 
 function buildLabel(info: BuildInfo) {
+  if (info.isAgentShell) return `AGENT SHELL · v${info.version}`;
   if (info.isBrowserDev) return `BROWSER DEV · v${info.version}`;
   if (info.isDevBuild) return `DEV ${info.flavor ?? "local"} · v${info.version}`;
   return "";

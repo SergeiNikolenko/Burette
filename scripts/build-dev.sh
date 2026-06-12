@@ -132,6 +132,10 @@ if [[ ! -d node_modules || ! -d node_modules/@hugeicons/core-free-icons || ! -d 
   bun install --frozen-lockfile --ignore-scripts
 fi
 
+pushd apps/desktop >/dev/null
+../../node_modules/.bin/vite build --config vite.config.ts
+popd >/dev/null
+
 bun run build:tauri
 QUICKLOOK_APPEX_SOURCE="$QUICKLOOK_APPEX"
 if [[ "$REUSE_QUICKLOOK" == "1" ]]; then

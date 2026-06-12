@@ -3,7 +3,7 @@ use std::process;
 
 use burrete_core::{
     format_for_extension, is_supported_extension, normalize_renderer_mode,
-    quick_look_size_limit_for_extension, resolve_renderer,
+    preview_plan_for_extension, quick_look_size_limit_for_extension, resolve_renderer,
 };
 use serde::Serialize;
 
@@ -75,6 +75,12 @@ fn run() -> Result<(), String> {
                 requested_mode,
             })?;
         }
+        "preview-plan" => {
+            let extension = args.next().ok_or_else(usage)?;
+            let requested = args.next().unwrap_or_else(|| "auto".to_string());
+            ensure_no_extra_args(args)?;
+            write_json(&preview_plan_for_extension(&extension, &requested)?)?;
+        }
         _ => return Err(usage()),
     }
     Ok(())
@@ -94,5 +100,5 @@ fn ensure_no_extra_args(mut args: impl Iterator<Item = String>) -> Result<(), St
 }
 
 fn usage() -> String {
-    "usage: burrete-core-bridge <supported-extension|size-limit|format|resolve-renderer> <extension> [requested-renderer]".to_string()
+    "usage: burrete-core-bridge <supported-extension|size-limit|format|resolve-renderer|preview-plan> <extension> [requested-renderer]".to_string()
 }
