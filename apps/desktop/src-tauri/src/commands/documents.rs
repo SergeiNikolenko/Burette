@@ -17,7 +17,7 @@ use crate::preview::formats::{
 };
 use crate::preview::grid_store::GridParseOptions;
 use crate::preview::runtime::{
-    open_docking_document as open_docking_document_runtime, open_document,
+    open_docking_document as open_docking_document_runtime, open_document_for_window,
     open_document_with_grid_options, DockingDocumentRequest, OpenDocumentsResult, ViewerDocument,
     ViewerPreferences, ViewerReloadOptions, XyzrenderControls,
 };
@@ -210,6 +210,25 @@ pub(crate) fn classify_open_paths(paths: Vec<String>) -> ClassifiedOpenPaths {
 #[tauri::command]
 pub(crate) fn open_documents<R: Runtime>(
     app: tauri::AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
+    paths: Vec<String>,
+    preferences: ViewerPreferences,
+    reload_options: Option<ViewerReloadOptions>,
+    mode: Option<OpenDocumentsMode>,
+) -> Result<OpenDocumentsResult, String> {
+    open_documents_for_window_label(
+        &app,
+        window.label(),
+        paths,
+        preferences,
+        reload_options,
+        mode,
+    )
+}
+
+pub(crate) fn open_documents_for_window_label<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    window_label: &str,
     paths: Vec<String>,
     preferences: ViewerPreferences,
     reload_options: Option<ViewerReloadOptions>,
@@ -218,7 +237,7 @@ pub(crate) fn open_documents<R: Runtime>(
     let mut documents = Vec::new();
     let (document_paths, mut errors) = expand_open_document_paths(paths);
     if mode == Some(OpenDocumentsMode::CombinePoses) {
-        match open_combined_pose_document(&app, document_paths, &preferences, &mut errors) {
+        match open_combined_pose_document(app, document_paths, &preferences, &mut errors) {
             Ok(document) => documents.push(document),
             Err(error) => errors.push(error),
         }
@@ -228,7 +247,13 @@ pub(crate) fn open_documents<R: Runtime>(
         return Ok(OpenDocumentsResult { documents, errors });
     }
     if mode == Some(OpenDocumentsMode::CombineGrid) {
-        match open_combined_grid_document(&app, document_paths, &preferences, &mut errors) {
+        match open_combined_grid_document(
+            app,
+            window_label,
+            document_paths,
+            &preferences,
+            &mut errors,
+        ) {
             Ok(document) => documents.push(document),
             Err(error) => errors.push(error),
         }
@@ -238,7 +263,13 @@ pub(crate) fn open_documents<R: Runtime>(
         return Ok(OpenDocumentsResult { documents, errors });
     }
     for path in document_paths {
-        match open_document(&app, path, &preferences, reload_options.as_ref()) {
+        match open_document_for_window(
+            app,
+            window_label,
+            path,
+            &preferences,
+            reload_options.as_ref(),
+        ) {
             Ok(document) => documents.push(document),
             Err(error) => errors.push(error),
         }
@@ -284,6 +315,7 @@ fn open_combined_pose_document<R: Runtime>(
 
 fn open_combined_grid_document<R: Runtime>(
     app: &tauri::AppHandle<R>,
+    window_label: &str,
     document_paths: Vec<PathBuf>,
     preferences: &ViewerPreferences,
     errors: &mut Vec<String>,
@@ -303,9 +335,13 @@ fn open_combined_grid_document<R: Runtime>(
     let combined = combined_sdf_data(&sdf_paths)?;
     let path = format!("{}#combined-sdf-grid", label_path.to_string_lossy());
     let title = combined_sdf_title(&label_path, "SDF grid", "Combined SDF grid");
+    let document_id = crate::windows::runtime_document_id(
+        window_label,
+        &crate::preview::runtime_utils::stable_id(Path::new(&path)),
+    );
     let runtime_path = create_grid_runtime_with_options(
         app,
-        &crate::preview::runtime_utils::stable_id(Path::new(&path)),
+        &document_id,
         &label_path,
         "sdf",
         &combined.data,
@@ -502,11 +538,13 @@ pub(crate) fn list_project_structure_files(
 #[tauri::command]
 pub(crate) fn open_delimited_grid_document<R: Runtime>(
     app: tauri::AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
     request: DelimitedGridOpenRequest,
     preferences: ViewerPreferences,
 ) -> Result<ViewerDocument, String> {
     open_document_with_grid_options(
         &app,
+        window.label(),
         PathBuf::from(request.path),
         &preferences,
         None,
@@ -542,6 +580,17 @@ pub(crate) fn read_structure_text(path: String) -> Result<String, String> {
 #[tauri::command]
 pub(crate) fn open_text_structure<R: Runtime>(
     app: tauri::AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
+    request: TextStructureRequest,
+    preferences: ViewerPreferences,
+    reload_options: Option<ViewerReloadOptions>,
+) -> Result<ViewerDocument, String> {
+    open_text_structure_for_window_label(&app, window.label(), request, preferences, reload_options)
+}
+
+fn open_text_structure_for_window_label<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    window_label: &str,
     request: TextStructureRequest,
     preferences: ViewerPreferences,
     reload_options: Option<ViewerReloadOptions>,
@@ -578,8 +627,14 @@ pub(crate) fn open_text_structure<R: Runtime>(
         output_directory.join(safe_text_structure_file_name(&request.title, &extension));
     fs::write(&output_path, request.text)
         .map_err(|err| format!("{}: {err}", output_path.display()))?;
-    open_document(&app, output_path, &preferences, reload_options.as_ref())
-        .map(|document| document.into_virtual())
+    open_document_for_window(
+        app,
+        window_label,
+        output_path,
+        &preferences,
+        reload_options.as_ref(),
+    )
+    .map(|document| document.into_virtual())
 }
 
 #[tauri::command]
@@ -594,6 +649,7 @@ pub(crate) fn open_docking_document<R: Runtime>(
 #[tauri::command]
 pub(crate) fn open_merged_collection<R: Runtime>(
     app: tauri::AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
     request: MergedCollectionRequest,
     preferences: ViewerPreferences,
 ) -> Result<ViewerDocument, String> {
@@ -608,12 +664,14 @@ pub(crate) fn open_merged_collection<R: Runtime>(
     fs::create_dir_all(&output_directory).map_err(|err| err.to_string())?;
     let output_path = output_directory.join(format!("merged-collection.{extension}"));
     fs::write(&output_path, text).map_err(|err| format!("{}: {err}", output_path.display()))?;
-    open_document(&app, output_path, &preferences, None).map(|document| document.into_virtual())
+    open_document_for_window(&app, window.label(), output_path, &preferences, None)
+        .map(|document| document.into_virtual())
 }
 
 #[tauri::command]
 pub(crate) fn append_to_molecule_collection<R: Runtime>(
     app: tauri::AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
     request: AppendCollectionRequest,
     preferences: ViewerPreferences,
 ) -> Result<ViewerDocument, String> {
@@ -660,12 +718,13 @@ pub(crate) fn append_to_molecule_collection<R: Runtime>(
         return Err("Merged collection is empty".to_string());
     }
     write_text_atomically(&target_path, &merged)?;
-    open_document(&app, target_path, &preferences, None)
+    open_document_for_window(&app, window.label(), target_path, &preferences, None)
 }
 
 #[tauri::command]
 pub(crate) fn create_molecule_collection<R: Runtime>(
     app: tauri::AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
     request: CreateCollectionRequest,
     preferences: ViewerPreferences,
 ) -> Result<ViewerDocument, String> {
@@ -703,7 +762,7 @@ pub(crate) fn create_molecule_collection<R: Runtime>(
     }
     let merged = merge_collection_text(output_family, &[request.text.as_str()]);
     write_text_atomically(&output_path, &merged)?;
-    open_document(&app, output_path, &preferences, None)
+    open_document_for_window(&app, window.label(), output_path, &preferences, None)
 }
 
 #[tauri::command]
@@ -1505,8 +1564,8 @@ mod tests {
     use super::{
         classify_open_paths, expand_open_document_paths, expand_open_targets,
         list_project_structure_files, looks_like_supported_structure_file,
-        normalize_inline_structure_extension, open_text_structure, smiles_from_sheet_data,
-        TextStructureRequest,
+        normalize_inline_structure_extension, open_text_structure_for_window_label,
+        smiles_from_sheet_data, TextStructureRequest,
     };
     use crate::preview::formats::supported_structure_extensions;
     use crate::preview::grid_store::GridRuntimeRegistry;
@@ -1666,8 +1725,9 @@ mod tests {
         let mut preferences = viewer_preferences();
         preferences.renderer_mode = "grid2d".to_string();
 
-        let document = open_text_structure(
-            app.handle().clone(),
+        let document = open_text_structure_for_window_label(
+            app.handle(),
+            crate::windows::MAIN_WINDOW_LABEL,
             TextStructureRequest {
                 title: "ketcher-sketch.sdf".to_string(),
                 extension: "sdf".to_string(),

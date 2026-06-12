@@ -35,6 +35,7 @@ const [
   quickLookCommand,
   updaterCommand,
   tray,
+  windowsSource,
   rendererPolicySource,
   previewIndex,
   previewGridStore,
@@ -105,6 +106,7 @@ const [
   source('apps/desktop/src-tauri/src/commands/quicklook.rs'),
   source('apps/desktop/src-tauri/src/commands/updater.rs'),
   source('apps/desktop/src-tauri/src/tray.rs'),
+  source('apps/desktop/src-tauri/src/windows.rs'),
   source('PreviewExtension/RendererPolicy.swift'),
   source('apps/desktop/src-tauri/src/preview/mod.rs'),
   source('apps/desktop/src-tauri/src/preview/grid_store.rs'),
@@ -179,6 +181,7 @@ assert.ok(defaultCapability.permissions.includes('dialog:allow-save'));
 assert.ok(defaultCapability.permissions.includes('core:menu:allow-new'));
 assert.ok(defaultCapability.permissions.includes('core:menu:allow-popup'));
 assert.ok(defaultCapability.permissions.includes('core:window:allow-internal-toggle-maximize'));
+assert.deepEqual(defaultCapability.windows, ['main', 'workspace-*']);
 assert.match(tauriConfig.app.security.csp, /script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' asset: http:\/\/asset\.localhost/);
 assert.match(previewEntitlements, /com\.apple\.security\.network\.client/);
 assert.match(docsReadmeSource, /Performance architecture/);
@@ -220,6 +223,7 @@ for (const commandPath of [
   'commands::shell::open_logs_folder',
   'commands::shell::open_external_url',
   'commands::shell::existing_paths',
+  'commands::shell::open_new_workspace_window',
   'commands::shell::read_external_preview_svg',
   'commands::shell::read_viewer_runtime_file_base64',
   'commands::shell::reveal_path',
@@ -249,6 +253,10 @@ assert.match(startupSource, /--burrete-launch-mode=register/);
 assert.match(startupSource, /--burrete-agent-session/);
 assert.match(startupSource, /pub\(crate\) fn agent_session_from_argv/);
 assert.match(startupSource, /pub\(crate\) fn emit_agent_session/);
+assert.match(startupSource, /paths_by_window: Mutex<HashMap<String, Vec<String>>>/);
+assert.match(startupSource, /push_for_window/);
+assert.match(startupSource, /drain_for_window/);
+assert.match(startupCommand, /window: tauri::WebviewWindow<R>/);
 assert.match(lib, /startup::emit_agent_session\(app, session_dir\)/);
 assert.match(agentSessionHook, /invoke<string \| null>\("startup_agent_session"\)/);
 assert.match(agentSessionHook, /listen<string>\("agent-session"/);
@@ -294,11 +302,12 @@ assert.match(documentsCommand, /fn open_combined_pose_document/);
 assert.match(documentsCommand, /fn open_combined_grid_document/);
 assert.match(documentsCommand, /create_combined_sdf_pose_runtime/);
 assert.match(documentsCommand, /create_grid_runtime_with_options/);
+assert.match(documentsCommand, /runtime_document_id\(\n        window_label,/);
 assert.match(documentsCommand, /fn combined_sdf_data/);
 assert.match(documentsCommand, /data\.ends_with\(b"\$\$\$\$"\)/);
 assert.match(documentsCommand, /ViewerDocument::virtual_structure/);
-assert.match(documentsCommand, /open_document\(&app, output_path, &preferences, reload_options\.as_ref\(\)\)\s*\.map\(\|document\| document\.into_virtual\(\)\)/);
-assert.match(documentsCommand, /open_document\(&app, output_path, &preferences, None\)\s*\.map\(\|document\| document\.into_virtual\(\)\)/);
+assert.match(documentsCommand, /open_document_for_window\(\s*app,\s*window_label,\s*output_path,\s*&preferences,\s*reload_options\.as_ref\(\),\s*\)\s*\.map\(\|document\| document\.into_virtual\(\)\)/);
+assert.match(documentsCommand, /open_document_for_window\(&app, window\.label\(\), output_path, &preferences, None\)\s*\.map\(\|document\| document\.into_virtual\(\)\)/);
 assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_fetch_page/);
 assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_append_records/);
 assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_delimited_columns/);
@@ -560,6 +569,8 @@ assert.match(tray, /\.icon\(status_image\(\)\)/);
 assert.match(tray, /\.icon_as_template\(true\)/);
 assert.match(tray, /pub\(crate\) fn show_main_window/);
 assert.match(tray, /pub\(crate\) fn hide_main_window/);
+assert.match(tray, /tray\.new-window/);
+assert.match(tray, /windows::open_new_workspace_window\(app\)/);
 assert.match(tray, /const DEFAULT_MAIN_WINDOW_WIDTH: f64 = 1180\.0;/);
 assert.match(tray, /const DEFAULT_MAIN_WINDOW_HEIGHT: f64 = 760\.0;/);
 assert.match(tray, /fn normalize_main_window/);
@@ -568,7 +579,16 @@ assert.match(tray, /window\.set_size\(Size::Logical\(LogicalSize::new\(/);
 assert.match(tray, /window\.center\(\)/);
 assert.doesNotMatch(tray, /default_window_icon/);
 assert.doesNotMatch(tray, /\.title\("B"\)/);
-assert.match(lib, /if !paths\.is_empty\(\) \{\s*tray::show_main_window\(app\);/);
+assert.match(lib, /mod windows;/);
+assert.match(lib, /windows::focused_window_label\(app\)/);
+assert.match(lib, /windows::show_window\(app, &window_label\)/);
+assert.match(lib, /startup::signal_open_documents_for_window\(app, &window_label, paths\)/);
+assert.match(windowsSource, /pub\(crate\) const MAIN_WINDOW_LABEL: &str = "main"/);
+assert.match(windowsSource, /pub\(crate\) const WORKSPACE_WINDOW_PREFIX: &str = "workspace-"/);
+assert.match(windowsSource, /WebviewWindowBuilder::new\(app, &label, url\)/);
+assert.match(windowsSource, /index\.html\?burreteWindow=\{label\}/);
+assert.match(windowsSource, /pub\(crate\) fn runtime_document_id/);
+assert.match(windowsSource, /unregister_prefix/);
 assert.match(lib, /let launch_mode = startup::LaunchMode::current\(&argv\);/);
 assert.match(lib, /launch_mode\.is_register\(\) && startup_paths\.is_empty\(\)/);
 assert.match(lib, /tray::hide_main_window\(app\.handle\(\)\);/);
@@ -584,6 +604,7 @@ assert.match(menu, /PredefinedMenuItem::services/);
 assert.match(menu, /PredefinedMenuItem::show_all/);
 assert.match(menu, /SubmenuBuilder::new\(app, "Help"\)/);
 for (const menuId of [
+  'file.new-window',
   'file.open-recent',
   'file.reveal-active',
   'file.copy-active-path',
@@ -596,6 +617,8 @@ for (const menuId of [
 ]) {
   assert.match(menu, new RegExp(menuId.replaceAll('.', '\\.')));
 }
+assert.match(menu, /New Window/);
+assert.match(menu, /accelerator\("CmdOrCtrl\+Shift\+N"\)/);
 for (const eventName of [
   'MENU_OPEN_RECENT_EVENT',
   'MENU_REVEAL_ACTIVE_EVENT',
@@ -618,7 +641,10 @@ for (const moduleName of ['runtime_grid', 'runtime_utils', 'runtime_viewer']) {
 }
 assert.match(previewIndex, /pub\(crate\) mod grid_store;/);
 
-assert.match(previewRuntime, /pub\(crate\) fn open_document/);
+assert.match(previewRuntime, /pub\(crate\) fn open_document_for_window/);
+assert.match(previewRuntime, /runtime_document_id\(window_label, &document_id\)/);
+assert.match(documentsCommand, /window: tauri::WebviewWindow<R>/);
+assert.match(gridCommand, /runtime_document_id\(window\.label\(\), &request\.document_id\)/);
 assert.match(previewRuntime, /active_pose: Option<usize>/);
 assert.match(previewRuntime, /request\.active_pose/);
 assert.match(previewRuntime, /create_grid_runtime/);
