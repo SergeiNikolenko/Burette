@@ -14,6 +14,7 @@ const [
   pageKinds,
   textFileKind,
   textViewer,
+  maestroOutlineViewer,
   structureTextHighlighting,
   markdownRichViewer,
   markdownTableDecorations,
@@ -37,6 +38,7 @@ const [
   source("apps/desktop/src/components/editor-area/page-kinds/index.ts"),
   source("apps/desktop/src/components/editor-area/page-kinds/text-file.tsx"),
   source("apps/desktop/src/components/text-file-viewer.tsx"),
+  source("apps/desktop/src/components/text-file-viewer/maestro-outline-viewer.tsx"),
   source("apps/desktop/src/components/text-file-viewer/structure-text-highlighting.ts"),
   source("apps/desktop/src/components/text-file-viewer/markdown-rich-viewer.tsx"),
   source("apps/desktop/src/components/text-file-viewer/markdown-table-decorations.ts"),
@@ -93,7 +95,12 @@ assert.doesNotMatch(textViewer, /EditorView\.lineWrapping/);
 assert.match(textViewer, /markdown\(\{ codeLanguages: languages \}\)/);
 assert.match(textViewer, /LanguageDescription\.matchFilename\(languages, document\.title\)/);
 assert.match(textViewer, /structureTextHighlighting\(document\.extension\)/);
+assert.match(textViewer, /hasStructureTextHighlighting\(document\.extension\)/);
+assert.match(textViewer, /textNumberHighlighting\(\)/);
+assert.match(textViewer, /return \[await description\.load\(\), numberHighlighting\]/);
 assert.match(textViewer, /<MarkdownRichViewer document=\{document\} openPaths=\{openPaths\} \/>/);
+assert.match(textViewer, /<MaestroOutlineViewer document=\{document\} \/>/);
+assert.match(textViewer, /function isMaestroText\(document: TextFileDocument\)/);
 assert.match(textViewer, /fontVariantNumeric: "tabular-nums"/);
 assert.match(textViewer, /fontFeatureSettings: "\\"tnum\\" 1, \\"kern\\" 0, \\"liga\\" 0, \\"calt\\" 0"/);
 assert.match(textViewer, /overflowX: "auto"/);
@@ -101,11 +108,22 @@ assert.match(textViewer, /width: "max-content"/);
 assert.match(textViewer, /whiteSpace: "pre"/);
 assert.match(textViewer, /"\.cm-line span": \{\s*fontFamily: "inherit",\s*fontWeight: "400",\s*\}/);
 assert.doesNotMatch(textViewer, /\.cm-structure-record[\s\S]*?fontWeight/s);
+assert.match(maestroOutlineViewer, /function parseMaestroOutline\(content: string\)/);
+assert.match(maestroOutlineViewer, /MAX_VISIBLE_BLOCK_LINES = 240/);
+assert.match(maestroOutlineViewer, /blockHeader = line\.match/);
+assert.match(maestroOutlineViewer, /openBlocks\.has\(item\.id\)/);
+assert.match(maestroOutlineViewer, /document\.truncated \? <strong>Preview limited<\/strong>/);
 assert.match(structureTextHighlighting, /pdbqt/);
 assert.match(structureTextHighlighting, /cm-structure-residue/);
 assert.match(structureTextHighlighting, /function highlightPdbLine/);
 assert.match(structureTextHighlighting, /function highlightCifLine/);
 assert.match(structureTextHighlighting, /function highlightGroLine/);
+assert.match(structureTextHighlighting, /maegz/);
+assert.match(structureTextHighlighting, /function highlightMaestroLine/);
+assert.match(structureTextHighlighting, /export function textNumberHighlighting\(\): Extension/);
+assert.match(structureTextHighlighting, /export function hasStructureTextHighlighting/);
+assert.match(structureTextHighlighting, /function buildNumberDecorations/);
+assert.match(structureTextHighlighting, /highlightNumbers\(builder, line\.from, line\.text, 0\)/);
 
 assert.match(markdownRichViewer, /prosemarkBasicSetup\(\)/);
 assert.match(markdownRichViewer, /prosemarkBaseThemeSetup\(\)/);
@@ -138,8 +156,11 @@ assert.match(markdownLinkNavigation, /openUrl\(href\)/);
 
 assert.match(textFilesCommand, /const TEXT_FILE_READ_LIMIT: usize = 12 \* 1024 \* 1024;/);
 assert.match(textFilesCommand, /pub\(crate\) fn open_text_files/);
-assert.match(textFilesCommand, /pub\(crate\) fn read_text_file/);
+assert.match(textFilesCommand, /pub\(crate\) fn read_text_file\(\s*path: String,\s*max_bytes: Option<usize>,\s*\)/);
+assert.match(textFilesCommand, /fn read_limit\(max_bytes: Option<usize>\) -> usize/);
+assert.match(textFilesCommand, /\.take\(limit as u64\)/);
 assert.match(textFilesCommand, /looks_binary/);
+assert.match(textFilesCommand, /GzDecoder/);
 assert.match(textFilesCommand, /String::from_utf8_lossy/);
 assert.match(tauriLib, /commands::text_files::open_text_files/);
 assert.match(permissions, /"open_text_files"/);
@@ -152,7 +173,7 @@ assert.match(app, /: await openBrowserDevTextFiles\(cleanPaths\)/);
 assert.doesNotMatch(app, /Text file viewer is available in the desktop app only/);
 assert.match(app, /const openPaths = useCallback/);
 assert.match(app, /structureAndTextExtensions = new Set\(\[[\s\S]*"out"[\s\S]*"vasp"[\s\S]*\]\)/);
-for (const extension of ["abi", "cms", "com", "csv", "cub", "cube", "fdf", "graphml", "in", "inp", "log", "mae", "nw", "out", "psi4", "qcin", "tsv", "vasp"]) {
+for (const extension of ["abi", "cms", "com", "csv", "cub", "cube", "fdf", "graphml", "in", "inp", "log", "mae", "maegz", "nw", "out", "psi4", "qcin", "tsv", "vasp"]) {
   assert.match(app, new RegExp(`"${extension}"`), `${extension} should be a structure-and-text open extension`);
 }
 assert.match(app, /if \(structureAndTextExtensions\.has\(extension\)\) \{\s*structureAndTextPaths\.push\(path\);/);

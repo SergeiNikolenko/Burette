@@ -128,6 +128,7 @@ const structureAndTextExtensions = new Set([
   "inp",
   "log",
   "mae",
+  "maegz",
   "nw",
   "out",
   "psi4",

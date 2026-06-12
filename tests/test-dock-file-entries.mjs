@@ -65,6 +65,31 @@ const activeOnlyEntries = dockFileEntries({
 
 assert.deepEqual(activeOnlyEntries.map((entry) => entry.key), ["text-document:text-1"]);
 
+const activeTextWithDroppedStructureEntries = dockFileEntries({
+  dockDrops: [{
+    id: "drop-2",
+    area: "right",
+    tabKind: "files",
+    title: "drop",
+    detail: "drop",
+    addedAt: 2,
+    payload: {
+      paths: ["/tmp/pose.sdf", "/tmp/readme.md"],
+      records: [],
+    },
+  }],
+  documents: [document("pose-doc", "/tmp/pose.sdf", "pose.sdf")],
+  textDocuments: [textDocument("text-1", "/tmp/readme.md", "readme.md")],
+  activeDocumentId: "text-1",
+  activeTool: null,
+});
+
+assert.deepEqual(activeTextWithDroppedStructureEntries.map((entry) => entry.key), [
+  "document:pose-doc",
+  "text-document:text-1",
+]);
+assert.ok(activeTextWithDroppedStructureEntries.some((entry) => entry.key === "text-document:text-1"));
+
 assert.deepEqual(defaultDockTabs("right").map((tab) => tab.kind), ["inspector", "text", "files"]);
 assert.deepEqual(
   ensureDefaultDockTabs("right", [{ id: "dock-inspector", kind: "inspector" }, { id: "dock-files", kind: "files" }])

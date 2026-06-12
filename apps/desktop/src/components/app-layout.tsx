@@ -14,6 +14,12 @@ function clampSidebarWidth(width: number, maxSidebarWidth: number) {
   return Math.max(220, Math.min(maxSidebarWidth, Math.round(width)));
 }
 
+function clampRightDockWidth(width: number, viewportWidth: number, sidebarLayoutWidth: number) {
+  const maxWidth = Math.max(0, Math.min(960, viewportWidth - sidebarLayoutWidth - 280));
+  const minWidth = Math.min(180, maxWidth);
+  return Math.max(minWidth, Math.min(maxWidth, Math.round(width)));
+}
+
 export function AppLayout({
   state,
   actions,
@@ -46,7 +52,8 @@ export function AppLayout({
   const settingsMode = state.page === "settings";
   const sidebarWidth = clampSidebarWidth(state.sidebarWidth, maxSidebarWidth);
   const sidebarLayoutWidth = state.sidebarOpen ? sidebarWidth : 0;
-  const layoutState = sidebarWidth === state.sidebarWidth ? state : { ...state, sidebarWidth };
+  const rightDockWidth = clampRightDockWidth(state.rightDockWidth, viewportWidth, sidebarLayoutWidth);
+  const layoutState = sidebarWidth === state.sidebarWidth && rightDockWidth === state.rightDockWidth ? state : { ...state, sidebarWidth, rightDockWidth };
   const tabChromeLeft = state.sidebarOpen ? sidebarLayoutWidth + 12 : 132;
   const rightDockOpen = !settingsMode && state.rightDockOpen;
   const bottomDockOpen = !settingsMode && state.bottomDockOpen;
@@ -56,7 +63,7 @@ export function AppLayout({
   const shellStyle = {
     ...buildThemeStyle(state.preferences, systemThemeMode),
     "--sidebar-layout-width": `${sidebarLayoutWidth}px`,
-    "--right-dock-width": `${rightDockOpen ? state.rightDockWidth : 0}px`,
+    "--right-dock-width": `${rightDockOpen ? rightDockWidth : 0}px`,
     "--bottom-dock-height": `${bottomDockOpen ? state.bottomDockHeight : 0}px`,
   } as CSSProperties;
   const effectiveTheme = resolveThemeMode(state.preferences.theme, systemThemeMode);
