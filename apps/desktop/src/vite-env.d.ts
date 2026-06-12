@@ -29,3 +29,7 @@ declare module "eve-raphael" {
   const eve: unknown;
   export default eve;
 }
+
+declare module "ketcher-standalone/dist/binaryWasm" {
+  export * from "ketcher-standalone";
+}

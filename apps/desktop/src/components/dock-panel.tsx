@@ -1,4 +1,4 @@
-import { Suspense, lazy, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import {
   Atom01Icon,
   File02Icon,
@@ -11,10 +11,12 @@ import { hasStructureDrag, readStructureDragPayload, writeStructureDragPayload }
 import type { StructureDragPayload } from "../lib/structure-drag";
 import type { ShellActions, ShellViewState } from "./types";
 import { showNativeContextMenu } from "./native-context-menu";
-import { formatBytes } from "./format";
 import { ViewerFrame } from "./editor-area/viewer-frame";
 import { TextFileViewer } from "./text-file-viewer";
 import { CloseIcon } from "./close-icon";
+import { StructureInfoPanel } from "./structure-info-panel";
+import { readStructureText } from "../lib/structure-text";
+import type { TextFileDocument, ViewerDocument } from "../types";
 
 const KetcherPage = lazy(() => import("./ketcher-page").then((module) => ({
   default: module.KetcherPage,
@@ -29,6 +31,7 @@ type DockPanelProps = {
 
 const dockTabIcons: Record<DockTabKind, typeof File02Icon> = {
   files: Folder01Icon,
+  text: File02Icon,
   inspector: Search01Icon,
   "structure-basket": Atom01Icon,
   compare: Atom01Icon,
@@ -139,7 +142,7 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
                 actions.setDockOpen(area, false);
               };
               return (
-                <div className="dock-tab-shell" key={tab.id}>
+                <div className="dock-tab-shell" data-active={active || undefined} key={tab.id}>
                   <button
                     type="button"
                     className="dock-tab"
@@ -159,14 +162,16 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
                     <HugeiconsIcon icon={Icon} size={16} color="currentColor" strokeWidth={2} />
                     <span>{DOCK_TAB_LABELS[tab.kind]}</span>
                   </button>
-                  <button
-                    type="button"
-                    className="dock-tab-close"
-                    aria-label={tabs.length > 1 ? `Close ${DOCK_TAB_LABELS[tab.kind]}` : `Close ${area} dock`}
-                    onClick={closeTab}
-                  >
-                    <CloseIcon size={11} />
-                  </button>
+                  {active && (
+                    <button
+                      type="button"
+                      className="dock-tab-close"
+                      aria-label={tabs.length > 1 ? `Close ${DOCK_TAB_LABELS[tab.kind]}` : `Close ${area} dock`}
+                      onClick={closeTab}
+                    >
+                      <CloseIcon size={11} />
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -254,7 +259,7 @@ function DockPanelContent({
         <div className="dock-files-view">
           {fileTabs}
           <div className="dock-viewer">
-            <TextFileViewer document={dockTextDocument} openPaths={actions.openPaths} />
+            <TextFileViewer document={dockTextDocument} openPaths={actions.openPaths} onStructureSelection={actions.selectTextStructure} />
           </div>
         </div>
       );
@@ -265,20 +270,18 @@ function DockPanelContent({
       </div>
     );
   }
-  if (activeTabKind === "inspector") {
+  if (activeTabKind === "text") {
     return (
-      <div className="dock-content">
-        <Metric label="Active structure" value={activeDocument?.title ?? "None"} />
-        <Metric label="Renderer" value={activeDocument?.renderer ?? "None"} />
-        <Metric label="Size" value={activeDocument ? formatBytes(activeDocument.byteCount) : "None"} />
-        {activeDocument ? (
-          <button type="button" className="dock-action" onClick={() => void actions.showActiveDocumentMetadata()}>
-            Show metadata
-          </button>
-        ) : null}
-        <DockDropList items={dockDrops} actions={actions} emptyLabel="No inspected drops" />
-      </div>
+      <ActiveDocumentTextPanel
+        activeDocument={activeDocument}
+        textDocuments={state.textDocuments}
+        openPaths={actions.openPaths}
+        onStructureSelection={actions.selectTextStructure}
+      />
     );
+  }
+  if (activeTabKind === "inspector") {
+    return <StructureInfoPanel document={activeDocument} dockDrops={dockDrops} actions={actions} />;
   }
   if (activeTabKind === "structure-basket") {
     return (
@@ -335,6 +338,78 @@ function DockPanelContent({
       <Metric label={area === "right" ? "Review context" : "Review queue"} value={activeDocument?.title ?? "None"} />
       <Metric label="Dropped inputs" value={String(dockDrops.length)} />
       <DockDropList items={dockDrops} actions={actions} emptyLabel="No review inputs" />
+    </div>
+  );
+}
+
+function ActiveDocumentTextPanel({
+  activeDocument,
+  textDocuments,
+  openPaths,
+  onStructureSelection,
+}: {
+  activeDocument: ViewerDocument | null;
+  textDocuments: TextFileDocument[];
+  openPaths: ShellActions["openPaths"];
+  onStructureSelection: ShellActions["selectTextStructure"];
+}) {
+  const existingDocument = activeDocument
+    ? textDocuments.find((document) => document.path === activeDocument.path) ?? null
+    : null;
+  const [loadedDocument, setLoadedDocument] = useState<TextFileDocument | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoadedDocument(null);
+    setError(null);
+    if (!activeDocument || existingDocument) return undefined;
+    let cancelled = false;
+    void readStructureText(activeDocument.path)
+      .then((content) => {
+        if (cancelled) return;
+        setLoadedDocument({
+          id: `dock-text:${activeDocument.id}`,
+          path: activeDocument.path,
+          title: activeDocument.title,
+          extension: activeDocument.extension,
+          language: activeDocument.extension,
+          byteCount: activeDocument.byteCount,
+          content,
+          truncated: false,
+          modifiedAt: null,
+        });
+      })
+      .catch((loadError) => {
+        if (cancelled) return;
+        setError(loadError instanceof Error ? loadError.message : String(loadError));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeDocument, existingDocument]);
+
+  if (!activeDocument) {
+    return (
+      <div className="dock-content dock-content-empty">
+        <div className="dock-empty dock-empty-large">Open a structure to inspect its text</div>
+      </div>
+    );
+  }
+
+  const document = existingDocument ?? loadedDocument;
+  if (document) {
+    return (
+      <div className="dock-viewer">
+        <TextFileViewer document={document} openPaths={openPaths} onStructureSelection={onStructureSelection} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="dock-content dock-content-empty">
+      <div className="dock-empty dock-empty-large">
+        {error ? `Text preview failed: ${error}` : "Loading text..."}
+      </div>
     </div>
   );
 }

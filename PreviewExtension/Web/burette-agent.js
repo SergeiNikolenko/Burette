@@ -518,15 +518,20 @@
     const ligandSelector = ligandToSelector(ligand);
     const counts = countSelectorMatches(ligandSelector, Number(args.maxPreviewResidues) || 24);
     const selectionId = rememberSelection(ligandSelector, counts, args.label || `ligand:${ligand.label_comp_id}`);
+    const focusExtraRadius = Number(args.extraRadius ?? args.radiusA ?? DEFAULT_CONTACT_RADIUS_A);
     applyMolstarInteractivity(ligandSelector, 'select', { mode: 'replace', granularity: 'residue', warnings });
-    applyMolstarInteractivity(ligandSelector, 'focus', { durationMs: args.durationMs, extraRadius: args.extraRadius, warnings });
+    applyMolstarInteractivity(ligandSelector, 'focus', {
+      durationMs: args.durationMs,
+      extraRadius: Number.isFinite(focusExtraRadius) && focusExtraRadius > 0 ? focusExtraRadius : DEFAULT_CONTACT_RADIUS_A,
+      warnings
+    });
     state.sceneVersion++;
     const result = { selectionId, ligand, counts: counts.counts, residuesPreview: counts.residuesPreview };
     if (args.showNeighborhood || args.contacts) {
       try {
         result.neighborhood = computeContacts({
           source: ligandSelector,
-          target: args.target || { kind: 'protein' },
+          target: args.target || { kind: 'polymer' },
           radiusA: Number(args.radiusA) || DEFAULT_CONTACT_RADIUS_A,
           maxSourceAtoms: args.maxSourceAtoms,
           maxTargetAtoms: args.maxTargetAtoms
@@ -950,13 +955,13 @@
     if (selector.modelIndex != null && Number(selector.modelIndex) !== atom.modelIndex) return false;
     if (selector.kind && !matchesKind(atom, selector.kind)) return false;
     for (const key of ['label_entity_id', 'label_asym_id', 'auth_asym_id', 'pdbx_PDB_ins_code', 'label_comp_id', 'auth_comp_id', 'label_atom_id', 'auth_atom_id', 'type_symbol', 'atom_id', 'atom_index', 'instance_id']) {
-      if (selector[key] != null && !fieldMatches(atom[key], selector[key])) return false;
+      if (selector[key] != null && !selectorFieldMatches(atom, key, selector[key])) return false;
     }
     for (const key of ['label_seq_id', 'auth_seq_id']) {
-      if (selector[key] != null && !fieldMatches(atom[key], selector[key])) return false;
+      if (selector[key] != null && !selectorFieldMatches(atom, key, selector[key])) return false;
     }
-    if (!rangeMatches(atom.label_seq_id, selector.beg_label_seq_id, selector.end_label_seq_id)) return false;
-    if (!rangeMatches(atom.auth_seq_id, selector.beg_auth_seq_id, selector.end_auth_seq_id)) return false;
+    if (!rangeSelectorMatches(atom, 'label_seq_id', selector.beg_label_seq_id, selector.end_label_seq_id)) return false;
+    if (!rangeSelectorMatches(atom, 'auth_seq_id', selector.beg_auth_seq_id, selector.end_auth_seq_id)) return false;
     return true;
   }
 
@@ -977,6 +982,33 @@
     if (expected == null) return true;
     if (value == null) return false;
     return String(value) === String(expected);
+  }
+
+  function selectorFieldMatches(atom, key, expected) {
+    return selectorFieldValues(atom, key).some(value => fieldMatches(value, expected));
+  }
+
+  function selectorFieldValues(atom, key) {
+    const value = atom[key];
+    const values = value == null ? [] : [value];
+    const fallback = {
+      auth_asym_id: 'label_asym_id',
+      label_asym_id: 'auth_asym_id',
+      auth_seq_id: 'label_seq_id',
+      label_seq_id: 'auth_seq_id',
+      auth_comp_id: 'label_comp_id',
+      label_comp_id: 'auth_comp_id',
+      auth_atom_id: 'label_atom_id',
+      label_atom_id: 'auth_atom_id'
+    }[key];
+    const fallbackValue = fallback ? atom[fallback] : null;
+    if (fallbackValue != null && !values.some(item => String(item) === String(fallbackValue))) values.push(fallbackValue);
+    return values;
+  }
+
+  function rangeSelectorMatches(atom, key, beg, end) {
+    if (beg == null && end == null) return true;
+    return selectorFieldValues(atom, key).some(value => rangeMatches(value, beg, end));
   }
 
   function rangeMatches(value, beg, end) {
@@ -1134,8 +1166,18 @@
   function matchesLigand(ligand, selector) {
     const cleaned = { ...selector };
     delete cleaned.kind;
+    if ((cleaned.label_comp_id != null || cleaned.auth_comp_id != null) && ligand.label_comp_id == null && ligand.auth_comp_id == null && hasResidueAddress(cleaned)) {
+      delete cleaned.label_comp_id;
+      delete cleaned.auth_comp_id;
+    }
     if (!Object.keys(cleaned).length) return true;
     return matchesSelector({ ...ligand, kind: 'ligand' }, cleaned);
+  }
+
+  function hasResidueAddress(selector) {
+    const hasChain = selector.label_asym_id != null || selector.auth_asym_id != null;
+    const hasSeq = selector.label_seq_id != null || selector.auth_seq_id != null || selector.beg_label_seq_id != null || selector.beg_auth_seq_id != null;
+    return hasChain && hasSeq;
   }
 
   function ligandToSelector(ligand) {

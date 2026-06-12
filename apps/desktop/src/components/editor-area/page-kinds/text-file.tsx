@@ -13,7 +13,7 @@ export const textFileKind = definePageKind<"text-file", TextFileLocation>({
   description: "Open text file",
   Component: ({ location, state, actions }) => {
     const document = findTextDocument(location, state.textDocuments);
-    return document ? <TextFileViewer document={document} openPaths={actions.openPaths} /> : null;
+    return document ? <TextFileViewer document={document} openPaths={actions.openPaths} onStructureSelection={actions.selectTextStructure} /> : null;
   },
   keepAlive: true,
   fromPayload: (data) => (typeof data.path === "string" ? { kind: "text-file", documentId: typeof data.documentId === "string" ? data.documentId : undefined, path: data.path } : null),
