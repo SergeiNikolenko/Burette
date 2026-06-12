@@ -64,7 +64,8 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
     prune_runtime_dirs(&base);
     let grid_options = GridParseOptions {
         smiles_column: options.smiles_column.clone(),
-        include_single_sdf: normalize_renderer_mode(&preferences.renderer_mode) == "grid2d",
+        include_single_sdf: options.include_single_sdf
+            || normalize_renderer_mode(&preferences.renderer_mode) == "grid2d",
     };
     let Some(grid_store) = build_grid_store_with_options(&runtime, extension, data, &grid_options)?
     else {

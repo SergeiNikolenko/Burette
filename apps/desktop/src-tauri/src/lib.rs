@@ -6,6 +6,7 @@ mod menu;
 mod preview;
 mod startup;
 mod tray;
+mod windows;
 
 use preview::grid_store::GridRuntimeRegistry;
 use std::path::PathBuf;
@@ -40,6 +41,9 @@ pub fn run() {
             });
             menu::configure_menu(app)?;
             tray::configure_tray(app)?;
+            if let Some(window) = app.get_webview_window(windows::MAIN_WINDOW_LABEL) {
+                windows::attach_window_cleanup(app.handle(), &window);
+            }
             if !startup_paths.is_empty() {
                 show_and_emit_open_documents(app.handle(), startup_paths);
             } else if launch_mode.is_register() {
@@ -49,6 +53,9 @@ pub fn run() {
             app.on_menu_event(move |app, event| match event.id().0.as_str() {
                 "settings.open" => {
                     menu::emit_to_focused_window(app, menu::MENU_OPEN_SETTINGS_EVENT)
+                }
+                "file.new-window" => {
+                    let _ = windows::open_new_workspace_window(app);
                 }
                 "file.open" => menu::emit_to_focused_window(app, menu::MENU_OPEN_FILES_EVENT),
                 "file.open-recent" => {
@@ -84,7 +91,7 @@ pub fn run() {
                 _ => {}
             });
             #[cfg(target_os = "macos")]
-            if let Some(window) = app_handle.get_webview_window("main") {
+            if let Some(window) = app_handle.get_webview_window(windows::MAIN_WINDOW_LABEL) {
                 let _ = window.set_decorations(true);
                 let _ = window.set_shadow(true);
             }
@@ -124,6 +131,7 @@ pub fn run() {
             commands::shell::open_logs_folder,
             commands::shell::open_external_url,
             commands::shell::existing_paths,
+            commands::shell::open_new_workspace_window,
             commands::shell::read_external_preview_svg,
             commands::shell::read_viewer_runtime_file_base64,
             commands::shell::reveal_path,
@@ -148,10 +156,12 @@ pub fn run() {
 }
 
 fn show_and_emit_open_documents<R: tauri::Runtime>(app: &tauri::AppHandle<R>, paths: Vec<String>) {
+    let window_label = windows::focused_window_label(app)
+        .unwrap_or_else(|| windows::MAIN_WINDOW_LABEL.to_string());
     if !paths.is_empty() {
-        tray::show_main_window(app);
+        let _ = windows::show_window(app, &window_label);
     }
-    startup::signal_open_documents(app, paths);
+    startup::signal_open_documents_for_window(app, &window_label, paths);
 }
 
 #[cfg(target_os = "macos")]

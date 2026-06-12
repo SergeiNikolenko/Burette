@@ -21,6 +21,9 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
     let settings = MenuItemBuilder::with_id("settings.open", "Settings...")
         .accelerator("CmdOrCtrl+,")
         .build(app)?;
+    let new_window = MenuItemBuilder::with_id("file.new-window", "New Window")
+        .accelerator("CmdOrCtrl+Shift+N")
+        .build(app)?;
     let open = MenuItemBuilder::with_id("file.open", "Open...")
         .accelerator("CmdOrCtrl+O")
         .build(app)?;
@@ -81,6 +84,8 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         .build()?;
     let file_menu = SubmenuBuilder::new(app, "File")
         .items(&[
+            &new_window,
+            &PredefinedMenuItem::separator(app)?,
             &open,
             &open_recent,
             &PredefinedMenuItem::separator(app)?,

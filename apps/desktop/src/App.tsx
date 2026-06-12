@@ -73,7 +73,7 @@ import type { StructureDragPayload, StructureDragRecord } from "./lib/structure-
 import { readStructureText } from "./lib/structure-text";
 import { isTauriRuntime } from "./lib/tauri";
 import { isTemporaryDocumentPath } from "./lib/temporary-documents";
-import type { DockingDocumentRequest, FepSetupRequest, OpenDocumentsResult, OpenTextFilesResult, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "./types";
+import type { DockingDocumentRequest, FepSetupRequest, OpenDocumentsMode, OpenDocumentsResult, OpenTextFilesResult, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "./types";
 import { checkForUpdates as requestUpdateCheck, clearDismissedUpdate, dismissUpdate, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically, shouldPromptForUpdate } from "./update";
 import type { UpdatePreferences, UpdateRelease, UpdateState } from "./update";
 
@@ -400,6 +400,7 @@ export default function App() {
   const [dirtyGridDocuments, setDirtyGridDocuments] = useState<Set<string>>(() => new Set());
   const [status, setStatus] = useState<StatusNotice | null>(null);
   const [buildInfo, setBuildInfo] = useState(defaultBuildInfo);
+  const [buildInfoLoaded, setBuildInfoLoaded] = useState(false);
   const [poseReviewSelections, setPoseReviewSelections] = useState<Record<string, number>>({});
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [projectStructures, setProjectStructures] = useState<SidebarProjectStructure[]>([]);
@@ -442,7 +443,17 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     void loadBuildInfo().then((info) => {
-      if (!cancelled) setBuildInfo(info);
+      if (cancelled) return;
+      setBuildInfo(info);
+      setBuildInfoLoaded(true);
+      if (info.isDevBuild) {
+        setUpdate((previous) => ({
+          ...previous,
+          isChecking: false,
+          availableRelease: null,
+          statusText: "Updates are disabled for dev builds.",
+        }));
+      }
     });
     return () => {
       cancelled = true;
@@ -609,7 +620,7 @@ export default function App() {
       paths: string[],
       reloadOptions?: ViewerReloadOptions,
       preferencesOverride?: Partial<typeof preferences>,
-      options: { replace?: boolean; inActiveTab?: boolean } = {},
+      options: { replace?: boolean; inActiveTab?: boolean; mode?: OpenDocumentsMode } = {},
     ) => {
       const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
       if (!cleanPaths.length) return;
@@ -635,7 +646,7 @@ export default function App() {
       pushStatus("Opening structures...");
       try {
         const result = isTauriRuntime()
-          ? await invoke<OpenDocumentsResult>("open_documents", { paths: structurePaths, preferences: effectivePreferences, reloadOptions })
+          ? await invoke<OpenDocumentsResult>("open_documents", { paths: structurePaths, preferences: effectivePreferences, reloadOptions, mode: options.mode })
           : await openBrowserDevDocuments(structurePaths, effectivePreferences, reloadOptions);
         if (options.replace) setDocuments(result.documents);
         else if (options.inActiveTab) openDocumentsInActiveTab(result.documents);
@@ -719,11 +730,18 @@ export default function App() {
       await openDocuments(structurePaths);
     }
 
+    const openedStructureAndTextPaths = new Set<string>();
     if (structureAndTextPaths.length > 0) {
-      await openDocuments(structureAndTextPaths);
+      const result = await openDocuments(structureAndTextPaths);
+      for (const document of result?.documents ?? []) {
+        openedStructureAndTextPaths.add(document.path);
+      }
     }
 
-    const textOpenPaths = [...textPaths, ...structureAndTextPaths];
+    const textOpenPaths = [
+      ...textPaths,
+      ...structureAndTextPaths.filter((path) => !openedStructureAndTextPaths.has(path)),
+    ];
     if (textOpenPaths.length > 0) {
       await openTextDocuments(textOpenPaths);
     }
@@ -855,28 +873,36 @@ export default function App() {
 
     pushStatus(`Opening in ${input.area === "right" ? "right dock" : "bottom dock"}...`);
     try {
+      let dockOpenPaths = cleanPaths;
       if (input.area === "right" && cleanPaths.length > 0) {
-        const textResult = isTauriRuntime()
-          ? await invoke<OpenTextFilesResult>("open_text_files", { paths: cleanPaths })
-          : await openBrowserDevTextFiles(cleanPaths);
-        if (textResult.documents.length > 0) {
-          addBackgroundTextDocuments(textResult.documents);
-          setDockDocument(input.area, textResult.documents[0].id);
-          addDockDrop(input);
+        const rightDockTextPaths = cleanPaths.filter((path) => {
+          const extension = pathExtension(path);
+          return !structureExtensions.has(extension) && !structureAndTextExtensions.has(extension);
+        });
+        dockOpenPaths = cleanPaths.filter((path) => !rightDockTextPaths.includes(path));
+        if (rightDockTextPaths.length > 0) {
+          const textResult = isTauriRuntime()
+            ? await invoke<OpenTextFilesResult>("open_text_files", { paths: rightDockTextPaths })
+            : await openBrowserDevTextFiles(rightDockTextPaths);
+          if (textResult.documents.length > 0) {
+            addBackgroundTextDocuments(textResult.documents);
+            setDockDocument(input.area, textResult.documents[0].id);
+            addDockDrop(input);
+          }
+          const openedText = `Opened ${textResult.documents.length} text file${textResult.documents.length === 1 ? "" : "s"} in right dock`;
+          if (textResult.errors.length > 0) {
+            pushStatus(textResult.documents.length > 0 ? `${openedText}. ${summarizeErrors(textResult.errors)}` : summarizeErrors(textResult.errors), "error", textResult.errors);
+            return;
+          }
+          pushStatus(openedText);
+          if (dockOpenPaths.length === 0 && cleanRecords.length === 0) return;
         }
-        const openedText = `Opened ${textResult.documents.length} text file${textResult.documents.length === 1 ? "" : "s"} in right dock`;
-        if (textResult.errors.length > 0) {
-          pushStatus(textResult.documents.length > 0 ? `${openedText}. ${summarizeErrors(textResult.errors)}` : summarizeErrors(textResult.errors), "error", textResult.errors);
-          return;
-        }
-        pushStatus(openedText);
-        return;
       }
 
       const structurePaths: string[] = [];
       const textPaths: string[] = [];
       const structureAndTextPaths: string[] = [];
-      for (const path of cleanPaths) {
+      for (const path of dockOpenPaths) {
         const extension = pathExtension(path);
         if (structureAndTextExtensions.has(extension)) {
           structureAndTextPaths.push(path);
@@ -2021,6 +2047,20 @@ export default function App() {
   }, [installUpdate]);
 
   const checkForUpdates = useCallback(async (automatic = false, channelOverride?: UpdatePreferences["channel"]) => {
+    if (!buildInfoLoaded) {
+      if (!automatic) pushStatus("Update checks are not ready yet.");
+      return;
+    }
+    if (buildInfo.isDevBuild) {
+      setUpdate((previous) => ({
+        ...previous,
+        isChecking: false,
+        availableRelease: null,
+        statusText: "Updates are disabled for dev builds.",
+      }));
+      if (!automatic) pushStatus("Updates are disabled for dev builds.");
+      return;
+    }
     const channel = channelOverride ?? update.preferences.channel;
     setUpdate((previous) => ({
       ...previous,
@@ -2052,7 +2092,7 @@ export default function App() {
       if (automatic) markAutomaticCheck(false);
       if (!automatic) pushErrorStatus(error, "Update check failed");
     }
-  }, [promptForUpdate, pushErrorStatus, update.preferences.channel]);
+  }, [buildInfo.isDevBuild, buildInfoLoaded, promptForUpdate, pushErrorStatus, pushStatus, update.preferences.channel]);
 
   const clearCache = useCallback(async () => {
     try {
@@ -2078,6 +2118,19 @@ export default function App() {
       pushStatus("Opened logs folder");
     } catch (error) {
       pushErrorStatus(error, "Open logs folder failed");
+    }
+  }, [pushErrorStatus, pushStatus]);
+
+  const openNewWindow = useCallback(async () => {
+    if (!isTauriRuntime()) {
+      pushStatus("New windows are available in the desktop app only.", "error");
+      return;
+    }
+    try {
+      await invoke<string>("open_new_workspace_window");
+      pushStatus("Opened new window");
+    } catch (error) {
+      pushErrorStatus(error, "Open new window failed");
     }
   }, [pushErrorStatus, pushStatus]);
 
@@ -3030,13 +3083,14 @@ export default function App() {
   }, [activeDocument, addDocuments, documents, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar, writeGridPerfMetric]);
 
   useEffect(() => {
+    if (!buildInfoLoaded || buildInfo.isDevBuild) return undefined;
     const loadedPreferences = loadUpdatePreferences();
     if (!shouldCheckAutomatically(loadedPreferences)) return undefined;
     const timeout = window.setTimeout(() => {
       void checkForUpdates(true, loadedPreferences.channel);
     }, 1200);
     return () => window.clearTimeout(timeout);
-  }, [checkForUpdates]);
+  }, [buildInfo.isDevBuild, buildInfoLoaded, checkForUpdates]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -3277,8 +3331,8 @@ export default function App() {
 
   const actions = useMemo<ShellActions>(() => ({
     chooseFiles,
-    openStructurePaths: async (paths: string[]) => {
-      await openDocuments(paths);
+    openStructurePaths: async (paths: string[], options?: { mode?: OpenDocumentsMode }) => {
+      await openDocuments(paths, undefined, undefined, options);
     },
     openTextPaths: async (paths: string[]) => {
       await openTextDocuments(paths);
@@ -3297,6 +3351,7 @@ export default function App() {
     focusSidebarSearch,
     openCommandPalette,
     openClipboard,
+    openNewWindow,
     openSettings,
     openSettingsSection,
     backToApp,
@@ -3469,7 +3524,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyKetcherToGridRow, backToApp, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openWorkspaceFolder, pushErrorStatus, pushStatus, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
+  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyKetcherToGridRow, backToApp, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openWorkspaceFolder, pushErrorStatus, pushStatus, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 

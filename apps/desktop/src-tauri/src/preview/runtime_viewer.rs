@@ -309,6 +309,92 @@ pub(crate) fn create_runtime<R: Runtime>(
     })
 }
 
+pub(crate) fn create_combined_sdf_pose_runtime<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    label_path: &Path,
+    title: &str,
+    data: &[u8],
+    preferences: &ViewerPreferences,
+) -> Result<CreatedRuntime, String> {
+    let base = app
+        .path()
+        .app_cache_dir()
+        .map_err(|err| err.to_string())?
+        .join("viewer");
+    let assets = base.join("assets");
+    let runtime = base.join(uuid::Uuid::new_v4().to_string());
+    fs::create_dir_all(&assets).map_err(|err| err.to_string())?;
+    fs::create_dir_all(&runtime).map_err(|err| err.to_string())?;
+    copy_web_assets(app, &assets, AssetProfile::Molstar)?;
+    prune_runtime_dirs(&base);
+
+    let document_id = stable_id(label_path);
+    let config = json!({
+        "format": "sdf",
+        "molstarFormat": "sdf",
+        "binary": false,
+        "renderer": "molstar",
+        "requestedRenderer": "molstar",
+        "allowMolstarFallback": false,
+        "label": title,
+        "byteCount": data.len(),
+        "previewByteCount": data.len(),
+        "sourceExtension": "sdf",
+        "quickLookBuild": "burrete-tauri-combined-sdf-poses",
+        "debug": false,
+        "theme": preferences.theme_for_runtime(),
+        "themeTokens": preferences.theme_tokens(),
+        "canvasBackground": preferences.canvas_background_for_runtime(),
+        "documentId": document_id,
+        "uiScale": 0.9,
+        "overlayOpacity": 0.90,
+        "transparentBackground": preferences.resolved_transparent_background(),
+        "sdfGrid": false,
+        "sdfPosePager": true,
+        "defaultSdfPoseMode": "all",
+        "sdfPoseModeStorageKey": format!("buret.sdf.poseMode.{document_id}"),
+        "trajectoryControls": false,
+        "trajectoryFrameCount": 0,
+        "appViewer": true,
+        "tauriViewer": true,
+        "molstarStyle": preferences.resolved_molstar_style(),
+        "waterRepresentation": "line",
+        "xyzrenderViewer": false,
+        "xyzrenderAvailable": false,
+        "molstarAvailable": true,
+        "canOpenInVesta": false,
+        "ketcherEditable": false,
+        "showPanelControls": true,
+        "defaultLayoutState": { "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" }
+    });
+    let config_text = serde_json::to_string(&config).map_err(|err| err.to_string())?;
+    fs::write(
+        runtime.join("index.html"),
+        viewer_html(label_path, &runtime, &assets, "molstar", preferences, true),
+    )
+    .map_err(|err| err.to_string())?;
+    fs::write(runtime.join("viewer-bridge.js"), viewer_bridge_js())
+        .map_err(|err| err.to_string())?;
+    fs::write(
+        runtime.join("preview-config.js"),
+        format!("window.BurreteConfig = {config_text};\n"),
+    )
+    .map_err(|err| err.to_string())?;
+    fs::write(runtime.join("preview-data.bin"), data).map_err(|err| err.to_string())?;
+    fs::write(
+        runtime.join("preview-data.js"),
+        format!(
+            "window.BurreteDataBase64 = \"{}\";\nwindow.BurreteDataURL = null;\n",
+            base64::engine::general_purpose::STANDARD.encode(data)
+        ),
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(CreatedRuntime {
+        path: runtime.join("index.html"),
+        renderer: "molstar".to_string(),
+    })
+}
+
 fn should_require_extracted_standalone_coordinates(extension: &str) -> bool {
     extension == "out"
 }

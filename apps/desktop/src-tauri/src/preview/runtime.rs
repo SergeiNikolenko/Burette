@@ -18,7 +18,7 @@ use super::runtime_viewer::{create_docking_runtime, create_runtime, DockingRunti
 use super::text_xyz::converted_data_from_text;
 use super::trace::{append_preview_trace, elapsed_ms, preview_error_code, PreviewTraceEvent};
 
-const MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
+pub(crate) const MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
 const MAESTRO_PREVIEW_READ_LIMIT: u64 = 64 * 1024 * 1024;
 const DESMOND_PREVIEW_TARGET_MB: &str = "24";
 const SCHRODINGER_RUN: &str = "/opt/schrodinger/suites2026-1/run";
@@ -318,20 +318,43 @@ impl ViewerDocument {
         self.is_virtual = true;
         self
     }
+
+    pub(crate) fn virtual_structure(
+        path: String,
+        title: String,
+        extension: String,
+        renderer: String,
+        runtime_path: String,
+        byte_count: u64,
+    ) -> Self {
+        Self {
+            id: stable_id(Path::new(&path)),
+            path,
+            title,
+            extension,
+            renderer,
+            runtime_path,
+            byte_count,
+            is_virtual: true,
+            docking_request: None,
+        }
+    }
 }
 
 fn is_false(value: &bool) -> bool {
     !*value
 }
 
-pub(crate) fn open_document<R: Runtime>(
+pub(crate) fn open_document_for_window<R: Runtime>(
     app: &tauri::AppHandle<R>,
+    window_label: &str,
     path: PathBuf,
     preferences: &ViewerPreferences,
     reload_options: Option<&ViewerReloadOptions>,
 ) -> Result<ViewerDocument, String> {
     open_document_with_grid_options(
         app,
+        window_label,
         path,
         preferences,
         reload_options,
@@ -339,8 +362,25 @@ pub(crate) fn open_document<R: Runtime>(
     )
 }
 
+#[cfg(test)]
+pub(crate) fn open_document<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    path: PathBuf,
+    preferences: &ViewerPreferences,
+    reload_options: Option<&ViewerReloadOptions>,
+) -> Result<ViewerDocument, String> {
+    open_document_for_window(
+        app,
+        crate::windows::MAIN_WINDOW_LABEL,
+        path,
+        preferences,
+        reload_options,
+    )
+}
+
 pub(crate) fn open_document_with_grid_options<R: Runtime>(
     app: &tauri::AppHandle<R>,
+    window_label: &str,
     path: PathBuf,
     preferences: &ViewerPreferences,
     reload_options: Option<&ViewerReloadOptions>,
@@ -366,8 +406,14 @@ pub(crate) fn open_document_with_grid_options<R: Runtime>(
         },
     );
 
-    let result =
-        open_document_with_grid_options_inner(app, path, preferences, reload_options, grid_options);
+    let result = open_document_with_grid_options_inner(
+        app,
+        window_label,
+        path,
+        preferences,
+        reload_options,
+        grid_options,
+    );
     match &result {
         Ok(document) => {
             let _ = lifecycle.transition(PreviewLifecycleState::Completed);
@@ -410,6 +456,7 @@ pub(crate) fn open_document_with_grid_options<R: Runtime>(
 
 fn open_document_with_grid_options_inner<R: Runtime>(
     app: &tauri::AppHandle<R>,
+    window_label: &str,
     path: PathBuf,
     preferences: &ViewerPreferences,
     reload_options: Option<&ViewerReloadOptions>,
@@ -493,9 +540,10 @@ fn open_document_with_grid_options_inner<R: Runtime>(
         && reload_options.is_some()
         && (requested_renderer == "molstar" || requested_renderer == "xyzrender-external");
     if !should_use_viewer_for_sdf {
+        let runtime_document_id = crate::windows::runtime_document_id(window_label, &document_id);
         if let Some(runtime_path) = create_grid_runtime_with_options(
             app,
-            &document_id,
+            &runtime_document_id,
             &canonical,
             &extension,
             &data,
@@ -969,7 +1017,7 @@ mod document_open_tests {
         default_light_translucent, default_system_font, open_document, resolve_desmond_file_bundle,
         ViewerPreferences,
     };
-    use crate::commands::documents::open_documents;
+    use crate::commands::documents::open_documents_for_window_label;
     use crate::preview::grid_store::GridRuntimeRegistry;
     use std::collections::BTreeMap;
     use std::fs;
@@ -1577,13 +1625,15 @@ f_m_ct {
 
         with_fake_xyzrender(|| {
             let app = mock_app_with_grid_registry();
-            let result = open_documents(
-                app.handle().clone(),
+            let result = open_documents_for_window_label(
+                app.handle(),
+                crate::windows::MAIN_WINDOW_LABEL,
                 vec![
                     inputs.to_string_lossy().to_string(),
                     structures.to_string_lossy().to_string(),
                 ],
                 viewer_preferences(),
+                None,
                 None,
             )
             .expect("real example corpus should open");

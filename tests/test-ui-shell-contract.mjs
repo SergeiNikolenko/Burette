@@ -80,6 +80,7 @@ const [
   settingsSections,
   browserDevDocuments,
   temporaryDocuments,
+  windowScope,
   viteConfig,
   bundleReportScript,
   previewRuntimeViewer,
@@ -176,6 +177,7 @@ const [
   source('apps/desktop/src/lib/settings-sections.ts'),
   source('apps/desktop/src/lib/browser-dev-documents.ts'),
   source('apps/desktop/src/lib/temporary-documents.ts'),
+  source('apps/desktop/src/lib/window-scope.ts'),
   source('apps/desktop/vite.config.ts'),
   source('scripts/bundle-report.mjs'),
   source('apps/desktop/src-tauri/src/preview/runtime_viewer.rs'),
@@ -530,7 +532,11 @@ assert.match(viewer, /let collapsed = false;/);
 assert.match(viewer, /function defaultToolbarTop\(\)/);
 assert.match(sidebarHook, /toggleSidebar/);
 assert.match(shellStore, /export const useShellStore = create<ShellState>/);
-assert.match(shellStore, /name: "burrete\.shell\.ui"/);
+assert.match(shellStore, /name: workspaceStorageKey\("burrete\.shell\.ui"\)/);
+assert.match(moleculeStore, /name: workspaceStorageKey\("burrete\.molecule\.session"\)/);
+assert.match(windowScope, /burreteWindow/);
+assert.match(windowScope, /if \(!windowLabel \|\| windowLabel === "main"\) return ""/);
+assert.match(windowScope, /replace\(\/\[\^A-Za-z0-9_-\]\/g, "-"\)/);
 assert.match(shellStore, /projectsOpen: true/);
 assert.match(shellStore, /projectRoots: \[\]/);
 assert.match(shellStore, /pinnedProjectRoots: \[\]/);
@@ -593,7 +599,7 @@ assert.match(moleculeStore, /activeDocumentId: null/);
 assert.match(moleculeStore, /recentStructures: \[\]/);
 assert.match(moleculeStore, /rememberRecentStructures:/);
 assert.match(moleculeStore, /clearRecentStructures:/);
-assert.match(moleculeStore, /name: "burrete\.molecule\.session"/);
+assert.match(moleculeStore, /name: workspaceStorageKey\("burrete\.molecule\.session"\)/);
 assert.match(moleculeStore, /function shouldIgnorePersistedSession\(\)/);
 assert.match(moleculeStore, /window\.location\.hostname === "127\.0\.0\.1" \|\| window\.location\.hostname === "localhost"/);
 assert.match(moleculeStore, /function devFilesPersistedSession\(recentStructures: RecentStructure\[\]\): PersistedMoleculeState/);
@@ -716,9 +722,10 @@ assert.match(appLayout, /from "\.\/editor-area"/);
 assert.match(appLayout, /from "\.\/editor-area\/editor-tabs"/);
 assert.match(appLayout, /from "\.\/sidebar"/);
 assert.match(appLayout, /from "\.\/notification-popup"/);
-assert.match(appLayout, /from "@hugeicons\/core-free-icons"/);
-assert.match(appLayout, /from "@hugeicons\/react"/);
-assert.match(appLayout, /<HugeiconsIcon icon=\{SidebarLeftIcon\} size=\{18\} color="currentColor" strokeWidth=\{2\} \/>/);
+assert.doesNotMatch(appLayout, /SidebarLeftIcon/);
+assert.match(appLayout, /function DockToggleIcon\(\{ className \}: \{ className\?: string \}\)/);
+assert.match(appLayout, /<rect x="2\.25" y="2\.25" width="13\.5" height="13\.5" rx="3\.25" stroke="currentColor" strokeWidth="1\.8" \/>/);
+assert.match(appLayout, /<path d="M6\.75 4\.75V13\.25" stroke="currentColor" strokeWidth="1\.8" strokeLinecap="round" \/>/);
 assert.match(appLayout, /onDismissStatus: \(\) => void;/);
 assert.match(appLayout, /<NotificationPopup notice=\{state\.status\} onDismiss=\{onDismissStatus\} \/>/);
 assert.doesNotMatch(appLayout, /StatusSurface/);
@@ -2090,9 +2097,9 @@ assert.match(app, /navigator\.clipboard\?\.readText/);
 assert.match(app, /await navigator\.clipboard\.readText\(\)/);
 assert.match(app, /openClipboardText\(text\)/);
 assert.match(app, /openClipboard,/);
-assert.match(app, /openStructurePaths: async \(paths: string\[\]\) => \{\s*await openDocuments\(paths\);\s*\}/s);
+assert.match(app, /openStructurePaths: async \(paths: string\[\], options\?: \{ mode\?: OpenDocumentsMode \}\) => \{\s*await openDocuments\(paths, undefined, undefined, options\);\s*\}/s);
 assert.match(app, /openPaths,/);
-assert.match(app, /openStructurePaths: async \(paths: string\[\]\) => \{/);
+assert.match(app, /openStructurePaths: async \(paths: string\[\], options\?: \{ mode\?: OpenDocumentsMode \}\) => \{/);
 assert.match(app, /openStructureRecords,/);
 assert.match(app, /activeTabKind: activeTab\?\.location\.kind \?\? null/);
 assert.match(app, /activeDocumentPath: activeDocument\?\.path \?\? null/);
@@ -2423,7 +2430,7 @@ assert.match(browserDevDocuments, /inputExtension: inputBytes \? inputExtension 
 assert.match(browserDevDocuments, /function parseCifCoreAtoms\(lines: string\[\]\)/);
 assert.match(browserDevDocuments, /function xyzDataFromText\(text: string, extension: string, label: string\)/);
 assert.match(browserDevDocuments, /function convertedDataFromText\(text: string, extension: string, label: string\)/);
-assert.match(browserDevDocuments, /return bytes \? \{ bytes, molstarFormat: "pdb" \} : null/);
+assert.match(browserDevDocuments, /return converted \? \{ molstarFormat: "pdb", \.\.\.converted \} : null/);
 assert.match(browserDevDocuments, /function pdbDataFromText\(text: string, extension: string, label: string\)/);
 assert.match(browserDevDocuments, /function inferPdbBonds\(atoms: Atom\[\]\)/);
 assert.match(browserDevDocuments, /const BOHR_TO_ANGSTROM = 0\.529177210903/);
@@ -2431,9 +2438,11 @@ assert.match(browserDevDocuments, /CONECT/);
 assert.match(browserDevDocuments, /const xyzrenderInputBytes = extension === "cub" \|\| extension === "cube" \? null : sourceXyzBytes/);
 assert.match(browserDevDocuments, /function maestroPdbDataFromText\(text: string\)/);
 assert.match(browserDevDocuments, /function parseMaestroPdbModels\(lines: string\[\], atomLimit: number\)/);
+assert.match(browserDevDocuments, /function parseMaestroPdbBlocks\(lines: string\[\], atomLimit: number\)/);
 assert.match(browserDevDocuments, /function maestroModelsToPdb\(models: MaestroAtom\[\]\[\]\)/);
-assert.match(browserDevDocuments, /bestModels\.push\(atoms\)/);
-assert.match(browserDevDocuments, /const score = maestroCtScore\(currentCtType\)/);
+assert.match(browserDevDocuments, /function maestroStagedSolventAtoms\(blocks: MaestroPdbBlock\[\]\)/);
+assert.match(browserDevDocuments, /representation: "solvent-lines"/);
+assert.match(browserDevDocuments, /dataBase64: bytesToBase64\(new TextEncoder\(\)\.encode\(solventPdb\)\)/);
 assert.match(browserDevDocuments, /if \(ctType === "full_system"\) return 4/);
 assert.match(browserDevDocuments, /if \(ctType === "solute"\) return 3/);
 assert.match(browserDevDocuments, /function parseOrcaAtoms\(lines: string\[\]\)/);
@@ -2624,6 +2633,8 @@ assert.match(previewRuntimeViewer, /"molstarStyle": preferences\.resolved_molsta
 assert.match(previewRuntimeViewer, /"waterRepresentation": "line"/);
 assert.match(previewRuntimeViewer, /config\["stagedEntries"\]/);
 assert.match(previewTextXyz, /fn gro_pdb_data_from_text\(/);
+assert.match(previewTextXyz, /fn parse_maestro_pdb_blocks\(lines: &\[&str\], atom_limit: usize\) -> Option<Vec<MaestroPdbBlock>>/);
+assert.match(previewTextXyz, /fn maestro_staged_solvent_atoms\(blocks: &\[MaestroPdbBlock\]\) -> Vec<MaestroAtom>/);
 assert.match(previewTextXyz, /representation: "solvent-lines"/);
 assert.match(previewTextXyz, /"TP3"\s*\|\s*"TP4"/);
 assert.match(previewTextXyz, /fn parse_gro_box\(lines: &\[&str\]\) -> Option<BoxVectors>/);
@@ -3362,6 +3373,10 @@ assert.match(app, /sha256BrowserDownloadUrl: release\.installAsset\.sha256Browse
 assert.match(updateSource, /manifestAssetFor\(assets, asset\.name!\)/);
 assert.match(updateSource, /manifestSignatureAssetFor\(assets, asset\.name!\)/);
 assert.match(app, /manifestSignatureBrowserDownloadUrl: release\.installAsset\.manifestSignatureBrowserDownloadUrl/);
+assert.match(app, /const \[buildInfoLoaded, setBuildInfoLoaded\] = useState\(false\)/);
+assert.match(app, /if \(!buildInfoLoaded\) \{\s*if \(!automatic\) pushStatus\("Update checks are not ready yet\."\);\s*return;\s*\}\s*if \(buildInfo\.isDevBuild\) \{/s);
+assert.match(app, /statusText: "Updates are disabled for dev builds\."/);
+assert.match(app, /if \(!buildInfoLoaded \|\| buildInfo\.isDevBuild\) return undefined;\s*const loadedPreferences = loadUpdatePreferences\(\);/s);
 assert.match(browserDevDocuments, /documentId: stableId\(path\)/);
 assert.match(browserDevDocuments, /const html = await gridHtml\(path, id, grid\.records, grid\.format, preferences, bytes\.length\)/);
 assert.match(browserDevDocuments, /browserDevVirtualTextDocuments\.set\(path, merged\.text\)/);
@@ -3793,6 +3808,11 @@ assert.match(dropActions, /kind: "import-ketcher-structures"/);
 assert.match(dropActions, /"Add to Ketcher"/);
 assert.match(dropActions, /kind: "open-structure-records"/);
 assert.match(dropActions, /records: StructureDragRecord\[\]/);
+assert.match(dropActions, /kind: "open-documents-combined-poses"/);
+assert.match(dropActions, /kind: "open-documents-combined-grid"/);
+assert.match(dropActions, /function workspaceDropActionChoices/);
+assert.match(dropActions, /"Open in One Window"/);
+assert.match(dropActions, /"Open as Grid"/);
 assert.match(dropActions, /const openSeparately = workspaceDropAction\(payload\)/);
 assert.match(dropActions, /function tagChoicesWithSource/);
 assert.match(dropActions, /if \(source\.kind !== "unknown"\) result\.source = source/);
@@ -3818,6 +3838,15 @@ assert.match(dropActionExecutor, /handlers\.importKetcherStructures\?\.\(action\
 assert.match(dropActionExecutor, /structureDragRecordsToFragments\(action\.payload\.records\)/);
 assert.match(dropActionExecutor, /action\.kind === "prepare-fep-setup"/);
 assert.match(dropActionExecutor, /actions\.openFepSetupWorkspace\(action\.request\)/);
+assert.match(dropActionExecutor, /action\.kind === "open-documents-combined-poses"/);
+assert.match(dropActionExecutor, /actions\.openStructurePaths\(action\.paths, \{ mode: "combinePoses" \}\)/);
+assert.match(dropActionExecutor, /action\.kind === "open-documents-combined-grid"/);
+assert.match(dropActionExecutor, /actions\.openStructurePaths\(action\.paths, \{ mode: "combineGrid" \}\)/);
+assert.match(openDropHook, /action\.kind === "open-documents-combined-poses"/);
+assert.match(openDropHook, /openDocuments\(action\.paths, undefined, undefined, \{ mode: "combinePoses" \}\)/);
+assert.match(openDropHook, /action\.kind === "open-documents-combined-grid"/);
+assert.match(openDropHook, /openDocuments\(action\.paths, undefined, undefined, \{ mode: "combineGrid" \}\)/);
+assert.match(app, /mode: options\.mode/);
 assert.match(componentsTypes, /openDockingStructureRecords: \(receptorPath: string, ligandPaths: string\[\], records: StructureDragPayload\["records"\]\)/);
 assert.match(componentsTypes, /addXyzrenderSheetItems: \(targetDocumentId: string, payload: StructureDragPayload\) => boolean/);
 assert.match(editorTabs, /from "\.\.\/\.\.\/lib\/structure-drag"/);

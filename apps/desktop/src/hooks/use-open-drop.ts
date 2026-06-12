@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { DragDropEvent } from "@tauri-apps/api/window";
-import type { DockingDocumentRequest, FepSetupRequest, ViewerDocument } from "../types";
+import type { DockingDocumentRequest, FepSetupRequest, OpenDocumentsMode, ViewerDocument } from "../types";
 import { resolveDropActionChoices } from "../lib/drop-actions";
 import type { DropSourceContext, DropTargetContext } from "../lib/drop-actions";
 import type { DropAction, DropActionChoice } from "../lib/drop-actions";
@@ -11,7 +11,12 @@ import { hasStructureDrag, readStructureDragPayload, structureDragPayloadFromTex
 import type { StructureDragPayload, StructureDragRecord } from "../lib/structure-drag";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 
-type OpenDocuments = (paths: string[]) => void | Promise<void>;
+type OpenDocuments = (
+  paths: string[],
+  reloadOptions?: unknown,
+  preferencesOverride?: unknown,
+  options?: { mode?: OpenDocumentsMode },
+) => void | Promise<void>;
 type OpenTextDocuments = (paths: string[]) => unknown;
 type OpenDockingDocument = (
   receptorPath: string,
@@ -248,6 +253,14 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     }
     if (action.kind === "open-documents") {
       void openDocuments(action.paths);
+      return;
+    }
+    if (action.kind === "open-documents-combined-poses") {
+      void openDocuments(action.paths, undefined, undefined, { mode: "combinePoses" });
+      return;
+    }
+    if (action.kind === "open-documents-combined-grid") {
+      void openDocuments(action.paths, undefined, undefined, { mode: "combineGrid" });
       return;
     }
     if (action.kind === "open-text-files") {

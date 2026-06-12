@@ -18,6 +18,7 @@ import {
   isPersistentRecentStructure,
   isPersistentViewerDocument,
 } from "../lib/temporary-documents";
+import { workspaceStorageKey } from "../lib/window-scope";
 
 export type MoleculeTab = {
   id: string;
@@ -710,7 +711,7 @@ export const useMoleculeStore = create<MoleculeState>()(
         }),
     }),
     {
-      name: "burrete.molecule.session",
+      name: workspaceStorageKey("burrete.molecule.session"),
       partialize: (state) => shouldIgnorePersistedSession()
         ? devFilesPersistedSession(state.recentStructures)
         : ({
