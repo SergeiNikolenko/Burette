@@ -69,8 +69,10 @@ import { dockingRequestForDrop, isProteinLikeDockingSource } from "./lib/docking
 import type { DropActionChoice } from "./lib/drop-actions";
 import { collectPerformanceMarks, markPerformanceOnce, measureAsync } from "./lib/performance";
 import { basename, buildSidebarProjects, parentDirectory, type SidebarProjectStructure } from "./lib/sidebar-projects";
+import type { StructureViewerAction } from "./lib/structure-composition";
 import type { StructureDragPayload, StructureDragRecord } from "./lib/structure-drag";
 import { readStructureText } from "./lib/structure-text";
+import type { TextStructureSelection } from "./lib/text-structure-selection";
 import { isTauriRuntime } from "./lib/tauri";
 import { isTemporaryDocumentPath } from "./lib/temporary-documents";
 import type { DockingDocumentRequest, FepSetupRequest, OpenDocumentsResult, OpenTextFilesResult, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "./types";
@@ -1204,6 +1206,49 @@ export default function App() {
     pushStatus(document.title, "info", details);
   }, [pushStatus]);
 
+  const selectTextStructure = useCallback((textDocument: TextFileDocument, selection: TextStructureSelection) => {
+    const targetDocument = documents.find((document) => document.path === textDocument.path) ??
+      (activeDocument?.path === textDocument.path ? activeDocument : null);
+    if (!targetDocument || targetDocument.renderer !== "molstar") return;
+    const iframe = activeViewerIframeForDocument(targetDocument.id);
+    if (!iframe?.contentWindow) return;
+    iframe.contentWindow.postMessage({
+      source: "burrete-agent-host",
+      body: {
+        type: "agent-action",
+        id: `text-selection-${Date.now()}`,
+        action: {
+          type: "select_residues",
+          label: selection.label,
+          selector: selection.selector,
+          granularity: selection.granularity,
+          mode: "replace",
+        },
+      },
+    }, "*");
+  }, [activeDocument, documents]);
+
+  const runStructureViewerAction = useCallback((document: ViewerDocument, action: StructureViewerAction) => {
+    if (document.renderer !== "molstar") {
+      pushStatus(`${action.label} needs a Mol* viewer`, "error");
+      return;
+    }
+    const iframe = activeViewerIframeForDocument(document.id);
+    if (!iframe?.contentWindow) {
+      pushStatus(`Open ${document.title} in the main viewer first`, "error");
+      return;
+    }
+    iframe.contentWindow.postMessage({
+      source: "burrete-agent-host",
+      body: {
+        type: "agent-action",
+        id: `structure-action-${Date.now()}`,
+        action,
+      },
+    }, "*");
+    pushStatus(action.label);
+  }, [pushStatus]);
+
   const showActiveDocumentMetadata = useCallback(() => {
     if (activeTextDocument) {
       showTextFileMetadata(activeTextDocument);
@@ -2134,11 +2179,40 @@ export default function App() {
           dirtyReason?: string | null;
           gridEdit?: boolean | null;
           rowIndex?: number | null;
+          id?: string | null;
+          result?: {
+            ok?: boolean;
+            command?: string;
+            result?: {
+              counts?: {
+                atoms?: number;
+                residues?: number;
+              };
+            };
+            error?: {
+              message?: string;
+              details?: unknown;
+            };
+          } | null;
         };
       } | undefined;
-      if (data?.source !== "burrete-viewer" && data?.source !== "burrete-grid") return;
+      if (data?.source !== "burrete-viewer" && data?.source !== "burrete-grid" && data?.source !== "burrete-agent-viewer") return;
       const body = data.body;
       if (!isKnownViewerMessageSource(event.source, body?.documentId)) return;
+      if (data.source === "burrete-agent-viewer" && body?.type === "agent-action-result") {
+        if (typeof body.id === "string" && body.id.startsWith("text-selection-")) return;
+        const result = body.result;
+        if (result?.ok) {
+          return;
+        } else {
+          const actionDetails = result?.error?.details ? JSON.stringify(result.error.details).slice(0, 1600) : null;
+          pushStatus("Structure action did not match the structure", "error", [
+            result?.error?.message ?? "No matching atoms were reported by the viewer",
+            actionDetails,
+          ].filter((detail): detail is string => Boolean(detail)));
+        }
+        return;
+      }
       if ((data.source === "burrete-viewer" || data.source === "burrete-grid") && body?.type === "openCommandPalette") {
         openCommandPalette();
         return;
@@ -3416,6 +3490,8 @@ export default function App() {
     showActiveDocumentMetadata,
     showDocumentMetadata,
     showTextFileMetadata,
+    runStructureViewerAction,
+    selectTextStructure,
     exportActivePreviewAsPng,
     exportActivePreviewAsSvg,
     setStructureDragActive,
@@ -3469,7 +3545,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyKetcherToGridRow, backToApp, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openWorkspaceFolder, pushErrorStatus, pushStatus, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
+  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyKetcherToGridRow, backToApp, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openWorkspaceFolder, pushErrorStatus, pushStatus, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runStructureViewerAction, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
@@ -3577,6 +3653,15 @@ function postMessageToViewerSource(source: MessageEventSource | null, payload: u
   if (!documentId) return;
   const iframe = document.querySelector<HTMLIFrameElement>(`.viewer-iframe[data-document-id="${CSS.escape(documentId)}"]`);
   iframe?.contentWindow?.postMessage(payload, "*");
+}
+
+function activeViewerIframeForDocument(documentId: string) {
+  const escapedId = CSS.escape(documentId);
+  return document.querySelector<HTMLIFrameElement>(
+    `.page-surface[data-active="true"] .viewer-iframe[data-document-id="${escapedId}"]`,
+  ) ?? document.querySelector<HTMLIFrameElement>(
+    `.viewer-iframe[data-document-id="${escapedId}"]`,
+  );
 }
 
 function normalizeViewerRuntimeRelativePath(path: string) {
