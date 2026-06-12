@@ -1,9 +1,12 @@
 <h1 align="center">Burrete</h1>
 
-<p align="center">Finder-native molecular structure previews for macOS: Mol* 3D, fast XYZ, xyzrender SVG, and RDKit molecule grids.</p>
+<p align="center">
+  A macOS molecular file workspace with Finder Quick Look previews, Mol* 3D,
+  external xyzrender SVG rendering, RDKit molecule grids, and Ketcher sketching.
+</p>
 
 <p align="center">
-  <img alt="Version 0.10.22" src="https://img.shields.io/badge/version-0.10.22-0f8f72.svg?style=flat-square" />
+  <img alt="Version 0.10.48" src="https://img.shields.io/badge/version-0.10.48-0f8f72.svg?style=flat-square" />
   <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-yellow.svg?style=flat-square" /></a>
   <img alt="macOS 12+" src="https://img.shields.io/badge/macOS-12%2B-blue.svg?style=flat-square" />
   <img alt="Quick Look" src="https://img.shields.io/badge/Quick%20Look-extension-57606a.svg?style=flat-square" />
@@ -16,18 +19,52 @@
 
 ## What Is Burrete?
 
-Burrete is a macOS menu bar app with a Quick Look preview extension for
-molecular structure files. Select a structure file in Finder, press Space, and
-Burrete opens a native preview that can use Mol* for interactive 3D, a fast SVG
-path for XYZ files, external `xyzrender` for publication-style XYZ/CUBE output,
-or an RDKit-powered molecule grid for compound collections.
+Burrete is a macOS desktop app and Finder Quick Look extension for molecular
+structure files. It is built for the small daily loop of computational
+chemistry, structural biology, and cheminformatics work: open a structure,
+confirm what it is, switch renderer when needed, compare files in tabs, and
+recover quickly when Quick Look or renderer caches need maintenance.
 
-It is built for quick structure inspection without opening a full molecular
-modeling environment.
+Use it in two ways:
+
+- **Finder previews:** select a molecular file in Finder and press Space.
+- **Desktop workspace:** open Burrete directly to inspect files in tabs, browse
+  project folders, search commands and structures, sketch molecules, review
+  collections, and send files to external chemistry tools.
+
+Burrete is intentionally a compact utility, not a full molecular modeling
+environment.
 
 ## Download
 
-The easiest way to install Burrete is from the GitHub Releases page:
+You can install Burrete with the Homebrew tap:
+
+```bash
+brew tap SergeiNikolenko/burrete
+brew install --cask burrete
+```
+
+Check the cask version when you need to confirm a specific release:
+
+```bash
+brew info --cask SergeiNikolenko/burrete/burrete
+```
+
+For the latest stable GitHub release, use the Burrete Bun CLI:
+
+```bash
+bunx burrete latest
+bunx burrete install
+bunx burrete doctor
+```
+
+The Bun installer places Burrete in `~/Applications` by default. Use
+`bunx burrete install --system` only when you intentionally want the app in
+`/Applications` for all users. If Finder previews do not appear after install,
+run `bunx burrete doctor` to check the app bundle, Quick Look extension,
+`qlmanage`, and installed version.
+
+You can also download Burrete from the GitHub Releases page:
 
 [Download the latest Burrete release](https://github.com/SergeiNikolenko/Burrete/releases/latest)
 
@@ -37,64 +74,101 @@ The easiest way to install Burrete is from the GitHub Releases page:
 4. Move `Burrete.app` to your `Applications` folder.
 5. Open Burrete once from `Applications`.
 
-After that, use Finder as usual: select a supported molecular structure file and
-press Space to preview it.
+## Quick Start
+
+After installation:
+
+1. Open `Burrete.app` once so macOS registers the app and Quick Look extension.
+2. In Finder, select a supported molecular file and press Space.
+3. Open Burrete directly for the full workspace:
+   - `Cmd+O` opens molecular structure files.
+   - `Cmd+P` or `/` opens the command palette.
+   - `Cmd+,` opens settings.
+   - The sidebar browses project folders, nested structures, and recent files.
+4. If previews do not appear, run:
+
+```bash
+bunx burrete doctor
+```
 
 ## Supported Files
 
-Burrete supports common structure and small-molecule collection formats:
+Burrete supports several preview paths. Some formats open directly in Mol*,
+some use the RDKit grid runtime, and some require the external `xyzrender`
+renderer.
 
-- PDB and PDBQT
-- PDBx/mmCIF and BinaryCIF
-- SDF, MOL, and MOL2
-- SMILES files (`.smi`, `.smiles`)
-- CSV and TSV tables with SMILES-like columns
-- XYZ, extXYZ, CUBE, GRO, GROMACS-style trajectories/topologies, and related text outputs
+| Path | Formats | Notes |
+| --- | --- | --- |
+| Mol* interactive 3D | PDB, ENT, PDBQT, PQR, CIF, MMCIF, MCIF, BCIF, SDF, SD, MOL, MOL2, XYZ, GRO | Default path for most structure files. XYZ can also use `xyzrender`. |
+| RDKit molecule grids | SDF, SD, SMILES, SMI, CSV, TSV | Collection view with search, sorting, SMARTS filtering/highlighting, selection, append/merge, and export. |
+| External xyzrender | XYZ, CUB, CUBE, ABI, COM, FDF, IN, INP, LOG, NW, OUT, PSI4, QCIN, VASP, MAE, MAE.GZ, MAEGZ, CMS | Requires a local `xyzrender` executable. Used by default for single-frame XYZ and required for external-renderer-only formats. |
+| Molecular dynamics / topology | XTC, TRR, DCD, NCTRAJ, LAMMPSTRJ, TOP, PSF, PRMTOP | Registered as molecular files and routed to Mol* where supported by the runtime. |
+| FEP network workspace | GraphML | Opens a ligand network preview workspace rather than a standard molecule preview. |
 
-XYZ files use the lightweight Fast XYZ renderer by default in Quick Look for
-instant first-frame previews. You can switch to Mol* for interactive rotation or
-to external `xyzrender` for high-quality SVG output. If you rotate the molecule
-in Mol* and then switch to `xyzrender`, Burrete passes the current orientation to
-`xyzrender` through its reference-file workflow.
+Multi-frame XYZ files stay in Mol* when Burrete detects trajectory content so
+the native trajectory controls can show the available frames. When you rotate a
+molecule in Mol* and switch to `xyzrender`, Burrete can pass the current
+orientation through the renderer handoff. CUBE, CIF, MMCIF, MCIF, XYZ, and
+external-renderer input previews expose an optional VESTA handoff when VESTA is
+installed.
 
-CUBE and XYZ previews also expose an optional VESTA handoff when VESTA is
-installed. Double-clicking a supported file can open it in Burrete; pressing
-Space keeps using the Quick Look preview.
+## Desktop Workspace
 
-## Preview Features
+Opening Burrete directly gives you a compact molecular workspace:
 
-Burrete keeps the preview compact and Finder-friendly:
+- tabbed previews that keep renderer state alive while you switch files
+- a project sidebar for folders, nested structures, recent files, and search
+- a command palette for opening files, switching renderers, maintenance actions,
+  exports, project navigation, Ketcher, and FEP network previews
+- right and bottom docks for comparing structures, text files, Ketcher, grids,
+  and workflow panels
+- "Open In" actions for Finder, the default app, or discovered chemistry editors
+- text-file viewing for logs, scripts, configs, and related project files
 
-- interactive 3D molecular structures powered by Mol*
-- protein ribbons and ligands in the same scene
-- light, dark, automatic, and transparent preview backgrounds
-- a small floating toolbar for fullscreen and optional Mol* panels
-- optional sequence, log, left, and right Mol* panels when you need them
-- fast static SVG previews for `.xyz` files, including first-frame multi-frame XYZ and extXYZ lattice boxes
-- external `xyzrender` previews with built-in presets, custom JSON configs, and optional advanced CLI flags
-- RDKit grids for SDF, SMILES, CSV, and TSV collections
-- grid search, sorting, SMARTS filtering/highlighting, selection, and export to SMILES or CSV
-- infinite grid loading for larger collections
+## Molecule Collections and Ketcher
 
-## Settings
+Burrete includes an RDKit-powered collection grid for SDF, SMILES, CSV, and TSV
+files. The grid supports search, sorting, SMARTS filtering/highlighting,
+selection, infinite loading, append/merge workflows, and export.
 
-Burrete runs as a menu bar app. Its settings window includes:
+The desktop app also includes a Ketcher small-molecule editor. You can sketch a
+molecule, import/export common small-molecule formats, send a sketch to Mol*,
+`xyzrender`, or a collection grid, and edit grid rows through Ketcher.
 
-- launch and menu bar behavior
-- transparent or opaque preview background
-- default visibility for Mol* panels
-- renderer selection: Auto, Fast XYZ SVG, Mol* Interactive, or external `xyzrender`
-- `xyzrender` executable path, built-in preset/custom JSON config, and extra CLI flags
-- quick `.xyz` toolbar switching between Fast SVG, Mol*, and `xyzrender`
-- grid preview enablement for SDF, SMILES, CSV, and TSV files
-- Finder file association registration
-- preview cache cleanup
-- log access
-- update checks for stable and beta GitHub Releases
+Macromolecule editing is not enabled in the current Ketcher integration.
+
+## Workspace Workflows
+
+Beyond single-file previews, the desktop workspace includes focused workflows
+for structure triage:
+
+- `xyzrender` sheets for comparing SVG-rendered structures and exported artwork
+- docking and pose-review surfaces backed by the shared Mol* viewer runtime
+- FEP network GraphML previews with ligand cards and grid handoff
+- FEP setup panels for assembling ligand-network inputs
+
+These workflows live in the desktop app. Finder Quick Look remains optimized
+for quick file previews.
+
+## Settings and Maintenance
+
+Burrete settings cover:
+
+- General workspace defaults and open documents
+- Appearance, themes, and preview backgrounds
+- Keyboard shortcuts and command-palette navigation
+- Structure rendering, including Auto, Mol*, and external `xyzrender`
+- Stable and beta update checks
+- Files, recent structures, and project folders
+- Burrete/Codex integration status
+- Quick Look reset, preview cache cleanup, logs, diagnostics, and maintenance
+
+Optional integrations include a local `xyzrender` executable, VESTA, and
+external chemistry editors discovered by macOS.
 
 ## Build From Source
 
-Most users should download Burrete from
+Most users should install Burrete with Homebrew, the Bun CLI, or
 [GitHub Releases](https://github.com/SergeiNikolenko/Burrete/releases/latest).
 If you want to build it yourself, clone the repository and run:
 
@@ -110,15 +184,27 @@ The local installer places the app here:
 ~/Applications/Burrete.app
 ```
 
-## Development Checks
+Current project documentation starts at [docs/README.md](docs/README.md).
 
-Useful local checks:
+## Development
+
+Burrete follows the Writer Computer development convention of using Vite+
+through the `vp` CLI. Use `vp` as the entrypoint for frontend work and
+JavaScript validation:
 
 ```bash
-npm run check:js
-npm run check:release
-npm run test:agent
+vp install
+vp dev
+vp check
+vp test
+vp build
 ```
+
+Existing Burrete package scripts may still be run through `vp run <script>` for
+project-specific checks, but day-to-day development and JavaScript validation
+should use the Vite+ built-ins above. Rust validation runs from
+`apps/desktop/src-tauri`; native release scripts remain under `scripts/`. See
+[docs/vite-plus.md](docs/vite-plus.md) and [docs/releasing.md](docs/releasing.md).
 
 The Quick Look extension caches generated runtime files under the extension
 container. After replacing the app, refresh Quick Look with:

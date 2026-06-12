@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -24,7 +25,7 @@ for (const fileName of requiredFiles) {
   const source = findSourceFile(fileName);
   if (!source) {
     console.error(`error: cannot find ${fileName} in @rdkit/rdkit.`);
-    console.error('Run: npm install --ignore-scripts');
+    console.error('Run: bun install --frozen-lockfile --ignore-scripts');
     process.exit(1);
   }
   const destination = path.join(outputDir, fileName);
@@ -40,4 +41,11 @@ for (const licenseName of ['LICENSE', 'LICENSE.md', 'README.md']) {
     fs.copyFileSync(source, path.join(outputDir, licenseName));
     break;
   }
+}
+
+const lockResult = spawnSync(process.execPath, [path.join(repoRoot, 'scripts', 'check-vendor-assets.mjs'), '--write'], {
+  stdio: 'inherit',
+});
+if (lockResult.status !== 0) {
+  process.exit(lockResult.status ?? 1);
 }

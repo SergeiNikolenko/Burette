@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>XPC!</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionAttributes</key>
+		<dict>
+			<key>QLSupportedContentTypes</key>
+			<array>
+				<string>com.local.burrete10.pdb</string>
+				<string>com.schrodinger.pdb</string>
+				<string>com.local.burrete10.cif</string>
+				<string>public.cif</string>
+				<string>com.local.burrete10.mmcif</string>
+				<string>com.local.burrete10.bcif</string>
+				<string>com.local.burrete10.sdf</string>
+				<string>com.schrodinger.sdf</string>
+				<string>com.local.burrete10.mol</string>
+				<string>com.local.burrete10.mol2</string>
+				<string>com.local.burrete10.xyz</string>
+				<string>net.sourceforge.openbabel.xyz</string>
+				<string>com.local.burrete10.gro</string>
+				<string>gg.flew.unfold.gromacs-structure</string>
+				<string>com.local.burrete10.xyzrender-input</string>
+				<string>com.adobe.fdf</string>
+				<string>com.apple.videoapps.cube</string>
+				<string>com.gaussian.cube</string>
+				<string>com.schrodinger.mae</string>
+				<string>com.local.burrete10.schrodinger</string>
+				<string>com.local.burrete10.graphml</string>
+			</array>
+		</dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.quicklook.thumbnail</string>
+		<key>NSExtensionPrincipalClass</key>
+		<string>$(PRODUCT_MODULE_NAME).ThumbnailProvider</string>
+	</dict>
+</dict>
+</plist>

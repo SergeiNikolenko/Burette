@@ -1,15 +1,40 @@
-use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use serde_json::json;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 use tauri::{Manager, Runtime};
 
 use super::formats::{normalize_renderer_mode, FormatInfo};
-use super::runtime::ViewerPreferences;
-use super::runtime_utils::{asset_url, escape_html, prune_runtime_dirs};
+use super::runtime::{ViewerPreferences, ViewerReloadOptions};
+use super::runtime_utils::{asset_url, escape_html, prune_runtime_dirs, stable_id};
+use super::text_xyz::{converted_data_from_text, xyz_data_from_text};
 use super::xyz::{xyz_first_frame, XyzPayload};
-use super::xyzrender::{create_xyzrender_artifact, xyzrender_preset_options};
+use super::xyzrender::{
+    create_xyzrender_artifact, default_xyzrender_document_defaults, xyzrender_preset_options,
+};
+
+const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT: usize = 1500;
+const KETCHER_EDIT_MAX_BYTES: usize = 1024 * 1024;
+const KETCHER_EDIT_MAX_ATOMS: usize = 300;
+const VIEWER_MOLSTAR_CSP: &str = "default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset:; script-src 'self' 'unsafe-inline' 'unsafe-eval' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'self' blob:;";
+const VIEWER_EXTERNAL_ARTIFACT_CSP: &str = "default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset:; script-src 'self' 'unsafe-inline' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'none';";
+const VIEWER_MINIMAL_CSP: &str = "default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset:; script-src 'self' 'unsafe-inline' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'none';";
+
+pub(crate) struct CreatedRuntime {
+    pub(crate) path: PathBuf,
+    pub(crate) renderer: String,
+}
+
+pub(crate) struct DockingRuntimeSource {
+    pub(crate) path: String,
+    pub(crate) label: String,
+    pub(crate) extension: String,
+    pub(crate) format: String,
+    pub(crate) binary: bool,
+    pub(crate) data: Vec<u8>,
+    pub(crate) byte_count: usize,
+}
 
 pub(crate) fn create_runtime<R: Runtime>(
     app: &tauri::AppHandle<R>,
@@ -19,68 +44,8 @@ pub(crate) fn create_runtime<R: Runtime>(
     renderer: &str,
     data: &[u8],
     preferences: &ViewerPreferences,
-) -> Result<PathBuf, String> {
-    create_runtime_with_overrides(
-        app,
-        file_path,
-        extension,
-        format,
-        renderer,
-        data,
-        preferences,
-        ViewerRuntimeOverrides::default(),
-    )
-}
-
-pub(crate) fn create_combined_sdf_pose_runtime<R: Runtime>(
-    app: &tauri::AppHandle<R>,
-    label_path: &Path,
-    label: &str,
-    data: &[u8],
-    preferences: &ViewerPreferences,
-) -> Result<PathBuf, String> {
-    create_runtime_with_overrides(
-        app,
-        label_path,
-        "sdf",
-        &FormatInfo {
-            molstar_format: "sdf",
-            is_binary: false,
-            external_only: false,
-        },
-        "molstar",
-        data,
-        preferences,
-        ViewerRuntimeOverrides {
-            label: Some(label),
-            sdf_grid: Some(false),
-            default_sdf_pose_mode: Some("all"),
-            sdf_pose_mode_storage_key: Some(format!(
-                "buret.sdf.poseMode.combined.{}",
-                uuid::Uuid::new_v4()
-            )),
-        },
-    )
-}
-
-#[derive(Default)]
-struct ViewerRuntimeOverrides<'a> {
-    label: Option<&'a str>,
-    sdf_grid: Option<bool>,
-    default_sdf_pose_mode: Option<&'a str>,
-    sdf_pose_mode_storage_key: Option<String>,
-}
-
-fn create_runtime_with_overrides<R: Runtime>(
-    app: &tauri::AppHandle<R>,
-    file_path: &Path,
-    extension: &str,
-    format: &FormatInfo,
-    renderer: &str,
-    data: &[u8],
-    preferences: &ViewerPreferences,
-    overrides: ViewerRuntimeOverrides<'_>,
-) -> Result<PathBuf, String> {
+    reload_options: Option<&ViewerReloadOptions>,
+) -> Result<CreatedRuntime, String> {
     let base = app
         .path()
         .app_cache_dir()
@@ -90,35 +55,129 @@ fn create_runtime_with_overrides<R: Runtime>(
     let runtime = base.join(uuid::Uuid::new_v4().to_string());
     fs::create_dir_all(&assets).map_err(|err| err.to_string())?;
     fs::create_dir_all(&runtime).map_err(|err| err.to_string())?;
-    copy_web_assets(app, &assets)?;
     prune_runtime_dirs(&base);
 
-    let payload = if renderer == "xyz-fast" {
-        xyz_first_frame(data).unwrap_or_else(|| XyzPayload {
-            data: data.to_vec(),
-            atom_count: None,
+    let label = file_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("structure");
+    let source_xyz_data = xyz_data_from_text(data, extension, label);
+    let converted_molstar_data = converted_data_from_text(data, extension, label);
+    let external_molstar_data = if format.external_only
+        || should_use_converted_molstar_data(format, &converted_molstar_data)
+    {
+        converted_molstar_data.clone()
+    } else {
+        None
+    };
+    if format.external_only
+        && external_molstar_data.is_none()
+        && source_xyz_data.is_none()
+        && should_require_extracted_standalone_coordinates(extension)
+    {
+        let message = format!(
+            "{label} does not contain standalone molecular coordinates Burrete can preview. Open the referenced structure file directly if this output report points to one."
+        );
+        return create_not_renderable_runtime(file_path, &runtime, &message);
+    }
+    let xyz_payload = if format.molstar_format == "xyz" && !format.is_binary {
+        xyz_first_frame(data)
+    } else {
+        None
+    };
+    let xyz_frame_count = xyz_payload
+        .as_ref()
+        .and_then(|payload| payload.frame_count)
+        .unwrap_or(0);
+    let pdb_model_count = if format.molstar_format == "pdb" && !format.is_binary {
+        count_pdb_models(data)
+    } else {
+        0
+    };
+    let trajectory_frame_count = xyz_frame_count.max(pdb_model_count);
+    let is_trajectory = trajectory_frame_count > 1;
+    let xyzrender_available = xyzrender_available_for_document(format, data);
+    let mut renderer = renderer.to_string();
+    let requested_renderer = normalize_renderer_mode(&preferences.renderer_mode);
+    if is_trajectory && requested_renderer == "auto" && renderer != "molstar" {
+        renderer = "molstar".to_string();
+    }
+    if renderer == "xyzrender-external" && !xyzrender_available {
+        renderer = "molstar".to_string();
+    }
+    if renderer == "molstar" && format.external_only && external_molstar_data.is_none() {
+        renderer = "xyzrender-external".to_string();
+    }
+    let mut external_artifact = None;
+    let mut external_status = None;
+    let default_xyzrender = default_xyzrender_document_defaults(extension, file_path, data);
+    let xyzrender_controls = reload_options
+        .and_then(|options| options.xyzrender_controls.as_ref())
+        .or(default_xyzrender
+            .as_ref()
+            .map(|defaults| &defaults.controls));
+    let xyzrender_artifact_input = default_xyzrender
+        .as_ref()
+        .and_then(|defaults| defaults.input_path.as_deref())
+        .unwrap_or(file_path);
+    let xyzrender_input_data = if matches!(extension, "cub" | "cube") {
+        None
+    } else {
+        source_xyz_data.as_deref()
+    };
+    if renderer == "xyzrender-external" {
+        match create_xyzrender_artifact(
+            xyzrender_artifact_input,
+            &runtime,
+            Some(&base.join("xyzrender-cache")),
+            reload_options.and_then(|options| options.xyzrender_preset.as_deref()),
+            reload_options.and_then(|options| options.xyzrender_orientation_ref.as_deref()),
+            xyzrender_controls,
+            None,
+            xyzrender_input_data,
+        ) {
+            Ok(artifact) => {
+                external_artifact = Some(artifact);
+            }
+            Err(error) if !format.external_only || external_molstar_data.is_some() => {
+                renderer = "molstar".to_string();
+                external_status = Some(json!({
+                    "status": "fallback",
+                    "requested": "xyzrender-external",
+                    "message": format!("Using Mol* because external xyzrender failed: {error}")
+                }));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    copy_web_assets(app, &assets, AssetProfile::for_viewer_renderer(&renderer))?;
+
+    let payload = if renderer == "molstar" {
+        XyzPayload {
+            data: external_molstar_data
+                .as_ref()
+                .map(|converted| converted.data.clone())
+                .unwrap_or_else(|| data.to_vec()),
             frame_count: None,
-            comment: None,
-        })
+        }
     } else {
         XyzPayload {
             data: data.to_vec(),
-            atom_count: None,
             frame_count: None,
-            comment: None,
         }
     };
-    let label = overrides.label.map(str::to_string).unwrap_or_else(|| {
-        file_path
-            .file_name()
-            .and_then(|value| value.to_str())
-            .unwrap_or("structure")
-            .to_string()
-    });
 
+    let molstar_format = if renderer == "molstar" && external_molstar_data.is_some() {
+        external_molstar_data
+            .as_ref()
+            .map(|converted| converted.extension)
+            .unwrap_or(format.molstar_format.as_str())
+    } else {
+        format.molstar_format.as_str()
+    };
     let mut config = json!({
-        "format": format.molstar_format,
-        "molstarFormat": format.molstar_format,
+        "format": molstar_format,
+        "molstarFormat": molstar_format,
         "binary": format.is_binary,
         "renderer": renderer,
         "requestedRenderer": normalize_renderer_mode(&preferences.renderer_mode),
@@ -126,71 +185,95 @@ fn create_runtime_with_overrides<R: Runtime>(
         "label": label,
         "byteCount": data.len(),
         "previewByteCount": payload.data.len(),
+        "sourceExtension": extension,
         "quickLookBuild": "burrete-tauri",
         "debug": false,
-        "theme": preferences.theme,
-        "canvasBackground": preferences.canvas_background,
-        "uiScale": 1.0,
+        "theme": preferences.theme_for_runtime(),
+        "themeTokens": preferences.theme_tokens(),
+        "canvasBackground": preferences.canvas_background_for_runtime(),
+        "documentId": stable_id(file_path),
+        "uiScale": 0.9,
         "overlayOpacity": 0.90,
-        "transparentBackground": preferences.canvas_background == "transparent",
-        "sdfGrid": overrides.sdf_grid.unwrap_or(true),
+        "transparentBackground": preferences.resolved_transparent_background(),
+        "sdfGrid": true,
+        "sdfPosePager": renderer == "molstar" && molstar_format == "sdf" && !format.is_binary,
+        "trajectoryControls": renderer == "molstar" && is_trajectory,
+        "trajectoryFrameCount": trajectory_frame_count,
         "appViewer": true,
         "tauriViewer": true,
+        "molstarStyle": preferences.resolved_molstar_style(),
+        "waterRepresentation": "line",
         "xyzrenderViewer": false,
-        "molstarAvailable": !format.external_only,
-        "canOpenInVesta": matches!(extension, "cif" | "mcif" | "mmcif" | "xyz" | "cub" | "cube" | "vasp"),
+        "xyzrenderAvailable": xyzrender_available,
+        "molstarAvailable": !format.external_only || external_molstar_data.is_some(),
+        "canOpenInVesta": format.can_open_in_vesta,
+        "ketcherEditable": false,
         "showPanelControls": true,
-        "defaultLayoutState": { "left": "collapsed", "right": "hidden", "top": "hidden", "bottom": "hidden" }
+        "defaultLayoutState": { "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" }
     });
 
-    if let Some(mode) = overrides.default_sdf_pose_mode {
-        config["defaultSdfPoseMode"] = json!(mode);
-    }
-    if let Some(storage_key) = overrides.sdf_pose_mode_storage_key {
-        config["sdfPoseModeStorageKey"] = json!(storage_key);
-    }
-
-    if renderer == "xyz-fast" {
-        config["xyzFast"] = json!({
-            "style": preferences.xyz_fast_style,
-            "firstFrameOnly": true,
-            "showCell": true,
-            "sourceByteCount": data.len(),
-            "previewByteCount": payload.data.len(),
-            "atomCount": payload.atom_count,
-            "frameCount": payload.frame_count,
-            "comment": payload.comment
-        });
-    }
-
-    if renderer == "xyzrender-external" {
-        let artifact_meta = create_xyzrender_artifact(file_path, &runtime)?;
-        config["xyzrenderViewer"] = json!(true);
-        config["xyzrenderPreset"] = json!(artifact_meta.preset);
-        config["xyzrenderPresetOptions"] = xyzrender_preset_options();
-        let mut artifact = json!({
-            "path": artifact_meta.relative_path,
-            "type": artifact_meta.output_type,
-            "renderer": "xyzrender",
-            "preset": artifact_meta.preset,
-            "config": artifact_meta.config_argument,
-            "elapsedMs": artifact_meta.elapsed_ms,
-            "log": artifact_meta.log
-        });
-        if let Some(surface_mode) = artifact_meta.surface_mode {
-            artifact["surfaceMode"] = json!(surface_mode);
+    if let Some(ketcher_config) = ketcher_edit_config(
+        file_path,
+        extension,
+        data,
+        data.len(),
+        sdf_record_count(data),
+    ) {
+        if let Some(object) = ketcher_config.as_object() {
+            for (key, value) in object {
+                config[key.as_str()] = value.clone();
+            }
         }
-        config["externalArtifact"] = artifact;
+    }
+
+    if let Some(artifact) = external_artifact {
+        config["xyzrenderViewer"] = json!(true);
+        config["xyzrenderPreset"] = json!(artifact.preset);
+        config["xyzrenderPresetOptions"] = xyzrender_preset_options();
+        if let Some(controls) = xyzrender_controls {
+            config["xyzrenderControls"] =
+                serde_json::to_value(controls).map_err(|err| err.to_string())?;
+        }
+        config["externalArtifact"] = json!({
+            "path": artifact.relative_path,
+            "inlineSvg": artifact.inline_svg,
+            "type": artifact.output_type,
+            "renderer": "xyzrender",
+            "preset": artifact.preset,
+            "configArgument": artifact.config_argument,
+            "surfaceMode": artifact.surface_mode,
+            "cacheKey": artifact.cache_key,
+            "cacheHit": artifact.cache_hit,
+            "cacheMiss": !artifact.cache_hit,
+            "elapsedMs": artifact.elapsed_ms,
+            "log": artifact.log
+        });
+    }
+    if let Some(status) = external_status {
+        config["externalRendererStatus"] = status;
+    }
+    if let Some(converted) = external_molstar_data.as_ref() {
+        if !converted.staged_entries.is_empty() {
+            config["stagedEntries"] = json!(converted
+                .staged_entries
+                .iter()
+                .map(|entry| json!({
+                    "label": entry.label,
+                    "format": entry.extension,
+                    "binary": false,
+                    "representation": entry.representation,
+                    "dataBase64": base64::engine::general_purpose::STANDARD.encode(&entry.data)
+                }))
+                .collect::<Vec<_>>());
+        }
     }
 
     let config_text = serde_json::to_string(&config).map_err(|err| err.to_string())?;
     fs::write(
         runtime.join("index.html"),
-        viewer_html(file_path, &runtime, &assets, renderer, preferences),
+        viewer_html(file_path, &runtime, &assets, &renderer, preferences, true),
     )
     .map_err(|err| err.to_string())?;
-    fs::write(runtime.join("viewer-runtime.css"), viewer_runtime_css())
-        .map_err(|err| err.to_string())?;
     fs::write(runtime.join("viewer-bridge.js"), viewer_bridge_js())
         .map_err(|err| err.to_string())?;
     fs::write(
@@ -198,37 +281,578 @@ fn create_runtime_with_overrides<R: Runtime>(
         format!("window.BurreteConfig = {config_text};\n"),
     )
     .map_err(|err| err.to_string())?;
+    fs::write(runtime.join("preview-data.bin"), &payload.data).map_err(|err| err.to_string())?;
     fs::write(
         runtime.join("preview-data.js"),
         format!(
-            "window.BurreteDataBase64 = \"{}\";\n",
-            BASE64.encode(&payload.data)
+            "window.BurreteDataBase64 = \"{}\";\nwindow.BurreteDataURL = null;\n",
+            base64::engine::general_purpose::STANDARD.encode(&payload.data)
         ),
     )
     .map_err(|err| err.to_string())?;
-    Ok(runtime.join("index.html"))
+    Ok(CreatedRuntime {
+        path: runtime.join("index.html"),
+        renderer,
+    })
+}
+
+pub(crate) fn create_combined_sdf_pose_runtime<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    label_path: &Path,
+    title: &str,
+    data: &[u8],
+    preferences: &ViewerPreferences,
+) -> Result<CreatedRuntime, String> {
+    let base = app
+        .path()
+        .app_cache_dir()
+        .map_err(|err| err.to_string())?
+        .join("viewer");
+    let assets = base.join("assets");
+    let runtime = base.join(uuid::Uuid::new_v4().to_string());
+    fs::create_dir_all(&assets).map_err(|err| err.to_string())?;
+    fs::create_dir_all(&runtime).map_err(|err| err.to_string())?;
+    copy_web_assets(app, &assets, AssetProfile::Molstar)?;
+    prune_runtime_dirs(&base);
+
+    let document_id = stable_id(label_path);
+    let config = json!({
+        "format": "sdf",
+        "molstarFormat": "sdf",
+        "binary": false,
+        "renderer": "molstar",
+        "requestedRenderer": "molstar",
+        "allowMolstarFallback": false,
+        "label": title,
+        "byteCount": data.len(),
+        "previewByteCount": data.len(),
+        "sourceExtension": "sdf",
+        "quickLookBuild": "burrete-tauri-combined-sdf-poses",
+        "debug": false,
+        "theme": preferences.theme_for_runtime(),
+        "themeTokens": preferences.theme_tokens(),
+        "canvasBackground": preferences.canvas_background_for_runtime(),
+        "documentId": document_id,
+        "uiScale": 0.9,
+        "overlayOpacity": 0.90,
+        "transparentBackground": preferences.resolved_transparent_background(),
+        "sdfGrid": false,
+        "sdfPosePager": true,
+        "defaultSdfPoseMode": "all",
+        "sdfPoseModeStorageKey": format!("buret.sdf.poseMode.{document_id}"),
+        "trajectoryControls": false,
+        "trajectoryFrameCount": 0,
+        "appViewer": true,
+        "tauriViewer": true,
+        "molstarStyle": preferences.resolved_molstar_style(),
+        "waterRepresentation": "line",
+        "xyzrenderViewer": false,
+        "xyzrenderAvailable": false,
+        "molstarAvailable": true,
+        "canOpenInVesta": false,
+        "ketcherEditable": false,
+        "showPanelControls": true,
+        "defaultLayoutState": { "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" }
+    });
+    let config_text = serde_json::to_string(&config).map_err(|err| err.to_string())?;
+    fs::write(
+        runtime.join("index.html"),
+        viewer_html(label_path, &runtime, &assets, "molstar", preferences, true),
+    )
+    .map_err(|err| err.to_string())?;
+    fs::write(runtime.join("viewer-bridge.js"), viewer_bridge_js())
+        .map_err(|err| err.to_string())?;
+    fs::write(
+        runtime.join("preview-config.js"),
+        format!("window.BurreteConfig = {config_text};\n"),
+    )
+    .map_err(|err| err.to_string())?;
+    fs::write(runtime.join("preview-data.bin"), data).map_err(|err| err.to_string())?;
+    fs::write(
+        runtime.join("preview-data.js"),
+        format!(
+            "window.BurreteDataBase64 = \"{}\";\nwindow.BurreteDataURL = null;\n",
+            base64::engine::general_purpose::STANDARD.encode(data)
+        ),
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(CreatedRuntime {
+        path: runtime.join("index.html"),
+        renderer: "molstar".to_string(),
+    })
+}
+
+fn should_require_extracted_standalone_coordinates(extension: &str) -> bool {
+    extension == "out"
+}
+
+fn create_not_renderable_runtime(
+    file_path: &Path,
+    runtime: &Path,
+    message: &str,
+) -> Result<CreatedRuntime, String> {
+    let index_path = runtime.join("index.html");
+    fs::write(&index_path, not_renderable_html(file_path, message))
+        .map_err(|err| err.to_string())?;
+    Ok(CreatedRuntime {
+        path: index_path,
+        renderer: "not-renderable".to_string(),
+    })
+}
+
+fn count_pdb_models(data: &[u8]) -> usize {
+    let text = String::from_utf8_lossy(data);
+    text.lines()
+        .filter(|line| line.trim_start().starts_with("MODEL"))
+        .count()
+}
+
+pub(crate) fn create_docking_runtime<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    document_id: &str,
+    label: &str,
+    receptor: DockingRuntimeSource,
+    ligands: Vec<DockingRuntimeSource>,
+    active_pose: Option<usize>,
+    preferences: &ViewerPreferences,
+) -> Result<CreatedRuntime, String> {
+    if ligands.is_empty() {
+        return Err("Choose at least one ligand or pose file for docking view".to_string());
+    }
+    let base = app
+        .path()
+        .app_cache_dir()
+        .map_err(|err| err.to_string())?
+        .join("viewer");
+    let assets = base.join("assets");
+    let runtime = base.join(uuid::Uuid::new_v4().to_string());
+    fs::create_dir_all(&assets).map_err(|err| err.to_string())?;
+    fs::create_dir_all(&runtime).map_err(|err| err.to_string())?;
+    copy_web_assets(app, &assets, AssetProfile::Molstar)?;
+    prune_runtime_dirs(&base);
+
+    let preview_byte_count = receptor.data.len()
+        + ligands
+            .iter()
+            .map(|ligand| ligand.data.len())
+            .sum::<usize>();
+    let byte_count = receptor.byte_count
+        + ligands
+            .iter()
+            .map(|ligand| ligand.byte_count)
+            .sum::<usize>();
+    let source_config = |source: &DockingRuntimeSource| {
+        json!({
+            "path": source.path,
+            "label": source.label,
+            "extension": source.extension,
+            "format": source.format,
+            "binary": source.binary,
+            "byteCount": source.byte_count
+        })
+    };
+    let sdf_grid_path = ligands
+        .iter()
+        .find(|ligand| ligand.format == "sdf" && sdf_record_count(&ligand.data) > 1)
+        .map(|ligand| ligand.path.as_str());
+    let config = json!({
+        "format": receptor.format.as_str(),
+        "molstarFormat": receptor.format.as_str(),
+        "binary": receptor.binary,
+        "renderer": "molstar",
+        "requestedRenderer": "molstar",
+        "allowMolstarFallback": false,
+        "label": label,
+        "byteCount": byte_count,
+        "previewByteCount": preview_byte_count,
+        "quickLookBuild": "burrete-tauri-docking",
+        "debug": false,
+        "theme": preferences.theme_for_runtime(),
+        "themeTokens": preferences.theme_tokens(),
+        "canvasBackground": preferences.canvas_background_for_runtime(),
+        "documentId": document_id,
+        "uiScale": 0.9,
+        "overlayOpacity": 0.90,
+        "transparentBackground": preferences.resolved_transparent_background(),
+        "sdfGrid": false,
+        "sdfGridPath": sdf_grid_path,
+        "appViewer": true,
+        "tauriViewer": true,
+        "molstarStyle": preferences.resolved_molstar_style(),
+        "waterRepresentation": "line",
+        "xyzrenderViewer": false,
+        "xyzrenderAvailable": false,
+        "molstarAvailable": true,
+        "canOpenInVesta": false,
+        "showPanelControls": true,
+        "defaultLayoutState": { "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" },
+        "docking": {
+            "activePose": active_pose,
+            "receptor": source_config(&receptor),
+            "ligands": ligands.iter().map(source_config).collect::<Vec<_>>()
+        }
+    });
+    let payloads = json!({
+        "receptor": {
+            "dataBase64": base64::engine::general_purpose::STANDARD.encode(&receptor.data)
+        },
+        "ligands": ligands.iter().map(|ligand| json!({
+            "dataBase64": base64::engine::general_purpose::STANDARD.encode(&ligand.data)
+        })).collect::<Vec<_>>()
+    });
+    let config_text = serde_json::to_string(&config).map_err(|err| err.to_string())?;
+    let payload_text = serde_json::to_string(&payloads).map_err(|err| err.to_string())?;
+    let title_path = PathBuf::from(label);
+    fs::write(
+        runtime.join("index.html"),
+        viewer_html(&title_path, &runtime, &assets, "molstar", preferences, true),
+    )
+    .map_err(|err| err.to_string())?;
+    fs::write(runtime.join("viewer-bridge.js"), viewer_bridge_js())
+        .map_err(|err| err.to_string())?;
+    fs::write(
+        runtime.join("preview-config.js"),
+        format!("window.BurreteConfig = {config_text};\n"),
+    )
+    .map_err(|err| err.to_string())?;
+    fs::write(runtime.join("preview-data.bin"), b"\n").map_err(|err| err.to_string())?;
+    fs::write(
+        runtime.join("preview-data.js"),
+        format!(
+            "window.BurreteDataBase64 = \"Cg==\";\nwindow.BurreteDataURL = null;\nwindow.BurreteDockingPayloads = {payload_text};\n"
+        ),
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(CreatedRuntime {
+        path: runtime.join("index.html"),
+        renderer: "molstar".to_string(),
+    })
+}
+
+fn sdf_record_count(data: &[u8]) -> usize {
+    String::from_utf8_lossy(data)
+        .split("$$$$")
+        .filter(|record| !record.trim().is_empty())
+        .count()
+}
+
+fn ketcher_edit_config(
+    file_path: &Path,
+    extension: &str,
+    data: &[u8],
+    source_byte_count: usize,
+    sdf_record_count: usize,
+) -> Option<serde_json::Value> {
+    if source_byte_count > KETCHER_EDIT_MAX_BYTES {
+        return None;
+    }
+    let text = String::from_utf8_lossy(data);
+    let atom_count = match extension {
+        "mol" => molfile_atom_count(&text),
+        "sdf" | "sd" => {
+            if sdf_record_count != 1 {
+                return None;
+            }
+            let record = text.split("$$$$").next().unwrap_or(text.as_ref());
+            molfile_atom_count(record)
+        }
+        _ => return None,
+    };
+    if atom_count == 0 || atom_count > KETCHER_EDIT_MAX_ATOMS {
+        return None;
+    }
+    let title = file_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("structure");
+    Some(json!({
+        "ketcherEditable": true,
+        "ketcherSourcePath": file_path.to_string_lossy(),
+        "ketcherSourceExtension": extension,
+        "ketcherSourceTitle": title,
+        "ketcherAtomCount": atom_count,
+        "ketcherMaxAtoms": KETCHER_EDIT_MAX_ATOMS,
+        "ketcherMaxBytes": KETCHER_EDIT_MAX_BYTES
+    }))
+}
+
+fn molfile_atom_count(text: &str) -> usize {
+    text.lines()
+        .nth(3)
+        .and_then(|line| line.get(..3))
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .unwrap_or(0)
+}
+
+fn should_use_converted_molstar_data(
+    format: &FormatInfo,
+    data: &Option<super::text_xyz::ConvertedStructureData>,
+) -> bool {
+    data.is_some()
+        && !format.is_binary
+        && matches!(format.molstar_format.as_str(), "gro" | "mmcif" | "cifCore")
+}
+
+fn xyzrender_available_for_document(format: &FormatInfo, data: &[u8]) -> bool {
+    if format.external_only || !can_use_external_xyzrender(format) {
+        return true;
+    }
+    if !matches!(
+        format.molstar_format.as_str(),
+        "pdb" | "pdbqt" | "mmcif" | "cifCore"
+    ) {
+        return true;
+    }
+    let atom_count = protein_like_atom_record_count(data);
+    atom_count == 0 || atom_count <= XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT
+}
+
+fn can_use_external_xyzrender(format: &FormatInfo) -> bool {
+    !format.is_binary
+        && matches!(
+            format.molstar_format.as_str(),
+            "sdf" | "pdb" | "pdbqt" | "mmcif" | "cifCore"
+        )
+}
+
+fn protein_like_atom_record_count(data: &[u8]) -> usize {
+    let text = String::from_utf8_lossy(data);
+    let mut count = 0;
+    for line in text.lines() {
+        if line.starts_with("ATOM") || line.starts_with("HETATM") {
+            count += 1;
+            if count > XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT {
+                return count;
+            }
+        }
+    }
+    count
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        copy_web_assets, protein_like_atom_record_count, xyzrender_available_for_document,
+        AssetProfile,
+    };
+    use crate::preview::formats::FormatInfo;
+    use crate::preview::runtime::ViewerPreferences;
+    use std::fs;
+    use std::path::Path;
+
+    fn format(molstar_format: &str) -> FormatInfo {
+        FormatInfo {
+            molstar_format: molstar_format.to_string(),
+            is_binary: false,
+            external_only: false,
+            can_open_in_vesta: false,
+        }
+    }
+
+    fn preferences() -> ViewerPreferences {
+        ViewerPreferences {
+            theme: "auto".to_string(),
+            canvas_background: "opaque".to_string(),
+            renderer_mode: "auto".to_string(),
+            molstar_style: "default".to_string(),
+            theme_light_accent: "#0066cc".to_string(),
+            theme_light_background: "#ffffff".to_string(),
+            theme_light_foreground: "#111111".to_string(),
+            theme_light_ui_font: "system".to_string(),
+            theme_light_editor_font: "monospace".to_string(),
+            theme_light_translucent: 0.8,
+            theme_light_contrast: 1.0,
+            theme_dark_accent: "#66aaff".to_string(),
+            theme_dark_background: "#111111".to_string(),
+            theme_dark_foreground: "#ffffff".to_string(),
+            theme_dark_ui_font: "system".to_string(),
+            theme_dark_editor_font: "monospace".to_string(),
+            theme_dark_translucent: 0.8,
+            theme_dark_contrast: 1.0,
+        }
+    }
+
+    #[test]
+    fn disables_xyzrender_for_large_protein_like_pdb() {
+        let data = (0..1501)
+            .map(|index| {
+                format!(
+                    "ATOM  {:5}  CA  ALA A{:4}       0.000   0.000   0.000  1.00 20.00           C\n",
+                    index + 1,
+                    index + 1
+                )
+            })
+            .collect::<String>();
+        assert_eq!(protein_like_atom_record_count(data.as_bytes()), 1501);
+        assert!(!xyzrender_available_for_document(
+            &format("pdb"),
+            data.as_bytes()
+        ));
+    }
+
+    #[test]
+    fn keeps_xyzrender_for_small_pdb_ligand() {
+        let data =
+            b"ATOM      1  C   LIG A   1       0.000   0.000   0.000  1.00 20.00           C\n";
+        assert!(xyzrender_available_for_document(&format("pdb"), data));
+    }
+
+    #[test]
+    fn maps_asset_profiles_to_only_required_files() {
+        assert_eq!(
+            AssetProfile::for_viewer_renderer("molstar"),
+            AssetProfile::Molstar
+        );
+        assert_eq!(
+            AssetProfile::for_viewer_renderer("xyzrender-external"),
+            AssetProfile::ExternalXyzrender
+        );
+        assert!(AssetProfile::Grid.copies_rdkit());
+        assert!(!AssetProfile::Molstar.files().contains(&"grid-viewer.js"));
+        assert!(!AssetProfile::Molstar.files().contains(&"xyz-fast.js"));
+        assert!(!AssetProfile::Grid.files().contains(&"molstar.js"));
+        assert!(!AssetProfile::ExternalXyzrender
+            .files()
+            .contains(&"molstar.js"));
+    }
+
+    #[test]
+    fn molstar_profile_does_not_copy_grid_or_rdkit_assets() {
+        let app = tauri::test::mock_app();
+        let assets = std::env::temp_dir().join(format!("burrete-assets-{}", uuid::Uuid::new_v4()));
+
+        copy_web_assets(app.handle(), &assets, AssetProfile::Molstar)
+            .expect("molstar assets should copy");
+
+        assert!(assets.join("molstar.js").is_file());
+        assert!(assets.join("molstar.css").is_file());
+        assert!(assets.join("viewer.js").is_file());
+        assert!(!assets.join("grid-viewer.js").exists());
+        assert!(!assets.join("grid.css").exists());
+        assert!(!assets.join("rdkit").exists());
+
+        let _ = fs::remove_dir_all(assets);
+    }
+
+    #[test]
+    fn grid_profile_copies_rdkit_once_and_skips_matching_files() {
+        let app = tauri::test::mock_app();
+        let assets = std::env::temp_dir().join(format!("burrete-assets-{}", uuid::Uuid::new_v4()));
+
+        copy_web_assets(app.handle(), &assets, AssetProfile::Grid)
+            .expect("grid assets should copy");
+        let wasm = assets.join("rdkit").join("RDKit_minimal.wasm");
+        let first_modified = fs::metadata(&wasm)
+            .expect("RDKit wasm should exist")
+            .modified()
+            .expect("RDKit wasm mtime should be readable");
+
+        copy_web_assets(app.handle(), &assets, AssetProfile::Grid)
+            .expect("matching grid assets should be skipped");
+        let second_modified = fs::metadata(&wasm)
+            .expect("RDKit wasm should still exist")
+            .modified()
+            .expect("RDKit wasm mtime should still be readable");
+
+        assert_eq!(first_modified, second_modified);
+        assert!(assets.join("grid-viewer.js").is_file());
+        assert!(assets.join("grid.css").is_file());
+        assert!(!assets.join("molstar.js").exists());
+
+        let _ = fs::remove_dir_all(assets);
+    }
+
+    #[test]
+    fn external_artifact_csp_does_not_grant_eval_or_wasm() {
+        let html = super::viewer_html(
+            Path::new("example.pdb"),
+            Path::new("/tmp/runtime"),
+            Path::new("/tmp/assets"),
+            "xyzrender-external",
+            &preferences(),
+            false,
+        );
+
+        assert!(html.contains("Content-Security-Policy"));
+        assert!(!html.contains("unsafe-eval"));
+        assert!(!html.contains("wasm-unsafe-eval"));
+        assert!(html.contains("worker-src 'none'"));
+    }
+
+    #[test]
+    fn molstar_csp_keeps_eval_without_wasm_eval() {
+        let html = super::viewer_html(
+            Path::new("example.pdb"),
+            Path::new("/tmp/runtime"),
+            Path::new("/tmp/assets"),
+            "molstar",
+            &preferences(),
+            false,
+        );
+
+        assert!(html.contains("Content-Security-Policy"));
+        assert!(html.contains("unsafe-eval"));
+        assert!(!html.contains("wasm-unsafe-eval"));
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AssetProfile {
+    Molstar,
+    Grid,
+    ExternalXyzrender,
+}
+
+impl AssetProfile {
+    fn files(self) -> &'static [&'static str] {
+        match self {
+            Self::Molstar => &[
+                "molstar.js",
+                "molstar.css",
+                "viewer-runtime.css",
+                "viewer-shell.js",
+                "burette-agent.js",
+                "viewer.js",
+            ],
+            Self::Grid => &["grid-ui.js", "grid-viewer.js", "grid.css"],
+            Self::ExternalXyzrender => &[
+                "molstar.css",
+                "viewer-runtime.css",
+                "viewer-shell.js",
+                "burette-agent.js",
+                "viewer.js",
+            ],
+        }
+    }
+
+    fn copies_rdkit(self) -> bool {
+        self == Self::Grid
+    }
+
+    fn for_viewer_renderer(renderer: &str) -> Self {
+        match renderer {
+            "molstar" => Self::Molstar,
+            "xyzrender-external" => Self::ExternalXyzrender,
+            _ => Self::Molstar,
+        }
+    }
 }
 
 pub(crate) fn copy_web_assets<R: Runtime>(
     app: &tauri::AppHandle<R>,
     assets: &Path,
+    profile: AssetProfile,
 ) -> Result<(), String> {
     let source = bundled_web_dir(app)?;
-    for name in [
-        "molstar.js",
-        "molstar.css",
-        "burette-agent.js",
-        "viewer.js",
-        "xyz-fast.js",
-        "grid-viewer.js",
-        "grid.css",
-    ] {
-        fs::copy(source.join(name), assets.join(name))
-            .map_err(|err| format!("copy {name}: {err}"))?;
+    fs::create_dir_all(assets).map_err(|err| err.to_string())?;
+    for name in profile.files() {
+        copy_file_if_needed(&source.join(name), &assets.join(name), name)?;
     }
-    let rdkit_source = source.join("rdkit");
-    if rdkit_source.exists() {
-        copy_dir_all(&rdkit_source, &assets.join("rdkit"))?;
+    if profile.copies_rdkit() {
+        let rdkit_source = source.join("rdkit");
+        if rdkit_source.exists() {
+            copy_dir_if_needed(&rdkit_source, &assets.join("rdkit"))?;
+        }
     }
     Ok(())
 }
@@ -236,7 +860,7 @@ pub(crate) fn copy_web_assets<R: Runtime>(
 fn bundled_web_dir<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
     if let Ok(resource) = app
         .path()
-        .resolve("Web", tauri::path::BaseDirectory::Resource)
+        .resolve("ViewerWeb", tauri::path::BaseDirectory::Resource)
     {
         if resource.exists() {
             return Ok(resource);
@@ -255,22 +879,53 @@ fn bundled_web_dir<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, Str
     Err("Burrete Web runtime assets were not found".into())
 }
 
-fn copy_dir_all(source: &Path, destination: &Path) -> Result<(), String> {
-    if destination.exists() {
-        fs::remove_dir_all(destination).map_err(|err| err.to_string())?;
-    }
+fn copy_dir_if_needed(source: &Path, destination: &Path) -> Result<(), String> {
     fs::create_dir_all(destination).map_err(|err| err.to_string())?;
     for entry in fs::read_dir(source).map_err(|err| err.to_string())? {
         let entry = entry.map_err(|err| err.to_string())?;
         let ty = entry.file_type().map_err(|err| err.to_string())?;
         let next_dest = destination.join(entry.file_name());
         if ty.is_dir() {
-            copy_dir_all(&entry.path(), &next_dest)?;
+            copy_dir_if_needed(&entry.path(), &next_dest)?;
         } else {
-            fs::copy(entry.path(), next_dest).map_err(|err| err.to_string())?;
+            let entry_path = entry.path();
+            let label = entry_path.strip_prefix(source).unwrap_or(&entry_path);
+            copy_file_if_needed(
+                &entry_path,
+                &next_dest,
+                &format!("rdkit/{}", label.display()),
+            )?;
         }
     }
     Ok(())
+}
+
+fn copy_file_if_needed(source: &Path, destination: &Path, label: &str) -> Result<(), String> {
+    if destination_matches_source(source, destination)? {
+        eprintln!("Burrete asset skipped: {label}");
+        return Ok(());
+    }
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+    }
+    fs::copy(source, destination).map_err(|err| format!("copy {label}: {err}"))?;
+    eprintln!("Burrete asset copied: {label}");
+    Ok(())
+}
+
+fn destination_matches_source(source: &Path, destination: &Path) -> Result<bool, String> {
+    let source_metadata = fs::metadata(source).map_err(|err| err.to_string())?;
+    let Ok(destination_metadata) = fs::metadata(destination) else {
+        return Ok(false);
+    };
+    if source_metadata.len() != destination_metadata.len() {
+        return Ok(false);
+    }
+    let source_modified = source_metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+    let destination_modified = destination_metadata
+        .modified()
+        .unwrap_or(SystemTime::UNIX_EPOCH);
+    Ok(destination_modified >= source_modified)
 }
 
 fn viewer_html(
@@ -279,6 +934,7 @@ fn viewer_html(
     assets: &Path,
     renderer: &str,
     preferences: &ViewerPreferences,
+    include_data_script: bool,
 ) -> String {
     let title = escape_html(
         file_path
@@ -291,20 +947,30 @@ fn viewer_html(
     } else {
         "burette-opaque-background"
     };
-    let runtime_css = asset_url(&runtime.join("viewer-runtime.css"));
+    let runtime_css = asset_url(&assets.join("viewer-runtime.css"));
+    let shell_js = asset_url(&assets.join("viewer-shell.js"));
     let bridge_js = asset_url(&runtime.join("viewer-bridge.js"));
     let config_js = asset_url(&runtime.join("preview-config.js"));
     let data_js = asset_url(&runtime.join("preview-data.js"));
+    let data_bin_js = asset_url(&runtime.join("preview-data.bin"));
+    let data_script = if include_data_script {
+        format!(r#"<script src="{data_js}"></script>"#)
+    } else {
+        String::new()
+    };
+    let csp = viewer_csp(renderer);
     let agent_js = asset_url(&assets.join("burette-agent.js"));
     let viewer_js = asset_url(&assets.join("viewer.js"));
     let molstar_css = asset_url(&assets.join("molstar.css"));
     let molstar_js = asset_url(&assets.join("molstar.js"));
-    let xyz_fast_js = asset_url(&assets.join("xyz-fast.js"));
-    let renderer_assets = match renderer {
-        "xyz-fast" => format!(r#"<script src="{xyz_fast_js}"></script>"#),
-        "xyzrender-external" => format!(r#"<link rel="stylesheet" href="{molstar_css}" />"#),
-        _ => format!(
-            r#"<link rel="stylesheet" href="{molstar_css}" /><script src="{molstar_js}"></script>"#
+    let (renderer_styles, renderer_scripts) = match renderer {
+        "xyzrender-external" => (
+            format!(r#"<link rel="stylesheet" href="{molstar_css}" />"#),
+            "".to_string(),
+        ),
+        _ => (
+            format!(r#"<link rel="stylesheet" href="{molstar_css}" />"#),
+            format!(r#"<script src="{molstar_js}"></script>"#),
         ),
     };
     format!(
@@ -313,34 +979,25 @@ fn viewer_html(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="{csp}" />
   <title>Burrete - {title}</title>
+  {renderer_styles}
   <link rel="stylesheet" href="{runtime_css}" />
   <script src="{bridge_js}"></script>
+  <script>
+    window.BurretePreviewConfigURL = {config_js:?};
+    window.BurretePreviewDataScriptURL = {data_js:?};
+    window.BurreteDataURL = {data_bin_js:?};
+    window.BurreteMolstarURL = {molstar_js:?};
+  </script>
 </head>
 <body class="{background_class}">
   <div id="app"></div>
-  <div id="buret-toolbar" role="toolbar" aria-label="Burrete viewer controls">
-    <button class="buret-button buret-grip" type="button" data-drag-handle aria-label="Collapse controls" aria-expanded="true" title="Collapse controls">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h2v2H8V5Zm6 0h2v2h-2V5ZM8 11h2v2H8v-2Zm6 0h2v2h-2v-2ZM8 17h2v2H8v-2Zm6 0h2v2h-2v-2Z" fill="currentColor"/></svg>
-    </button>
-    <button class="buret-button buret-panel-toggle active" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel"><span aria-hidden="true">◧</span></button>
-    <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle right panel"><span aria-hidden="true">◨</span></button>
-    <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel"><span aria-hidden="true">≡</span></button>
-    <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel"><span aria-hidden="true">⌘</span></button>
-    <button class="buret-button" type="button" data-buret-action="theme" aria-label="Switch theme" title="Switch theme"><span aria-hidden="true">☀</span></button>
-    <button class="buret-button hidden" type="button" data-buret-action="open-vesta" aria-label="Open in VESTA" title="Open in VESTA"><span aria-hidden="true">↗</span></button>
-    <button class="buret-button buret-pose-toggle hidden" type="button" data-buret-action="sdf-poses" aria-label="Show all SDF poses together" aria-pressed="false" title="Show all SDF poses together">All</button>
-    <div class="buret-renderer-control" data-buret-renderer-control>
-      <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="xyz-fast">Fast</button>
-      <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="molstar">Mol*</button>
-      <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="xyzrender-external">xyzr</button>
-      <select class="buret-select" data-buret-xyzrender-preset aria-label="External xyzrender preset"></select>
-    </div>
-  </div>
+  <script src="{shell_js}"></script>
   <div id="status" class="hidden">Loading {title}...</div>
-  {renderer_assets}
+  {renderer_scripts}
   <script src="{config_js}"></script>
-  <script src="{data_js}"></script>
+  {data_script}
   <script src="{agent_js}"></script>
   <script src="{viewer_js}"></script>
 </body>
@@ -348,63 +1005,81 @@ fn viewer_html(
     )
 }
 
-fn viewer_runtime_css() -> &'static str {
-    r#"html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;color:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif}
-:root{--buret-toolbar-safe-top:12px;--buret-toolbar-background:rgba(18,18,18,.72);--buret-toolbar-border:rgba(255,255,255,.12);--buret-toolbar-hover:rgba(255,255,255,.14);--buret-toolbar-color:rgba(255,255,255,.94);--buret-panel-bg:rgba(18,18,18,.76);--buret-panel-bg-strong:rgba(28,28,29,.88);--buret-panel-line:rgba(255,255,255,.12);--buret-panel-text:rgba(255,255,255,.92);--buret-panel-muted:rgba(255,255,255,.58);--buret-panel-hover:rgba(255,255,255,.12);--buret-panel-scrollbar:rgba(255,255,255,.34);--buret-panel-accent:#ff6a00}
-body.buret-theme-light{--buret-toolbar-background:rgba(246,244,240,.78);--buret-toolbar-border:rgba(20,20,19,.12);--buret-toolbar-hover:rgba(20,20,19,.1);--buret-toolbar-color:rgba(20,20,19,.9);--buret-panel-bg:rgba(246,244,240,.78);--buret-panel-bg-strong:rgba(255,255,255,.9);--buret-panel-line:rgba(20,20,19,.12);--buret-panel-text:rgba(20,20,19,.88);--buret-panel-muted:rgba(20,20,19,.55);--buret-panel-hover:rgba(20,20,19,.1);--buret-panel-scrollbar:rgba(20,20,19,.26)}
-.burette-opaque-background{background:#0b0b0c}
-.burette-transparent-background{background:transparent}
-#status{position:absolute;left:14px;right:14px;bottom:14px;z-index:20;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.14);background:rgba(18,18,18,.84);font-size:12px;white-space:pre-wrap}
-#status.hidden{display:none}
-#status.error{display:block;color:#ffb4ab}
-#buret-toolbar{position:absolute;top:var(--buret-toolbar-safe-top);right:12px;left:auto;z-index:30;display:flex;gap:4px;align-items:center;padding:4px;border:1px solid var(--buret-toolbar-border);border-radius:10px;background:var(--buret-toolbar-background);color:var(--buret-toolbar-color);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);box-shadow:0 8px 22px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.06);user-select:none;touch-action:none}
-#buret-toolbar.collapsed{gap:0}
-#buret-toolbar.collapsed .buret-button:not(.buret-grip),#buret-toolbar.collapsed .buret-renderer-control{display:none}
-#buret-toolbar.collapsed .buret-grip{min-width:30px;padding:0;cursor:pointer}
-.buret-button{min-width:30px;height:30px;border:0;border-radius:8px;background:transparent;color:inherit;padding:0 8px;font:600 12px -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;display:grid;place-items:center}
-.buret-button:not(.buret-renderer-choice){width:30px;padding:0}
-.buret-button:hover,.buret-button.active{background:var(--buret-toolbar-hover)}
-.buret-button svg{width:15px;height:15px;display:block}
-.buret-button.active{color:#fff}
-.buret-button.hidden{display:none}
-.buret-grip{cursor:grab;color:currentColor;opacity:.66}
-.buret-pose-toggle{width:auto!important;min-width:34px}
-.buret-renderer-control{display:none;align-items:center;gap:4px;padding-left:5px;border-left:1px solid var(--buret-toolbar-border)}
-.buret-renderer-control.visible{display:flex}
-.buret-renderer-choice{min-width:42px}
-.buret-select{height:30px;max-width:118px;border:0;border-radius:8px;background:transparent;color:inherit;padding:0 22px 0 8px;font:600 12px -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif}
-.buret-select:hover,.buret-select:focus{background:var(--buret-toolbar-hover);outline:none}
-.msp-plugin,.msp-plugin *{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif!important}
-.msp-plugin .msp-layout-standard,.msp-plugin .msp-layout-expanded,.msp-plugin .msp-layout-region,.msp-plugin .msp-layout-static,.msp-plugin .msp-scrollable-container,.msp-plugin .msp-control-row,.msp-plugin .msp-control-row>div,.msp-plugin .msp-control-current,.msp-plugin .msp-control-group-header,.msp-plugin .msp-control-group-header>button,.msp-plugin .msp-control-group-header div,.msp-plugin .msp-control-group-footer,.msp-plugin .msp-row-text,.msp-plugin .msp-help-text,.msp-plugin .msp-help-row,.msp-plugin .msp-help-row>div{background:var(--buret-panel-bg)!important;border-color:var(--buret-panel-line)!important;color:var(--buret-panel-text)!important}
-.msp-plugin .msp-form-control,.msp-plugin .msp-control-row select,.msp-plugin .msp-control-row button,.msp-plugin .msp-control-row input[type=text],.msp-plugin .msp-btn{background:var(--buret-panel-bg-strong)!important;border:none!important;border-radius:8px!important;color:var(--buret-panel-text)!important;box-shadow:none!important}
-.msp-plugin .msp-form-control:hover,.msp-plugin .msp-control-row select:hover,.msp-plugin .msp-control-row button:hover,.msp-plugin .msp-control-row input[type=text]:hover,.msp-plugin .msp-btn:hover,.msp-plugin .msp-btn-icon:hover,.msp-plugin .msp-btn-icon-small:hover{background:var(--buret-panel-hover)!important;color:var(--buret-panel-text)!important;outline:none!important}
-.msp-plugin .msp-control-row>span.msp-control-row-label,.msp-plugin .msp-control-row>button.msp-control-button-label,.msp-plugin .msp-control-group-header>span,.msp-plugin .msp-row-text>div,.msp-plugin .msp-help-row>span,.msp-plugin .msp-help-text>div,.msp-plugin .msp-help-text>p{color:var(--buret-panel-muted)!important}
-.msp-plugin .msp-plugin-layout_controls,.msp-plugin .msp-viewport-controls,.msp-plugin .msp-viewport-top-left-controls{filter:drop-shadow(0 8px 22px rgba(0,0,0,.22))}
-.msp-plugin ::-webkit-scrollbar-track{background:transparent!important}
-.msp-plugin ::-webkit-scrollbar-thumb{background:var(--buret-panel-scrollbar)!important;border-color:transparent!important}
-.hidden{display:none!important}"#
+fn not_renderable_html(file_path: &Path, message: &str) -> String {
+    let title = escape_html(
+        file_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("structure"),
+    );
+    let message = escape_html(message);
+    format!(
+        r#"<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="{VIEWER_MINIMAL_CSP}" />
+  <title>Burrete - {title}</title>
+  <style>
+    html, body {{ margin: 0; width: 100%; height: 100%; background: #111317; color: #f2f2f2; }}
+    body {{ box-sizing: border-box; padding: 28px; font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }}
+    h1 {{ margin: 0 0 14px; font-size: 22px; line-height: 1.2; }}
+    p {{ max-width: 760px; margin: 0; color: rgba(242,242,242,0.84); }}
+  </style>
+</head>
+<body>
+  <h1>Burrete could not preview {title}</h1>
+  <p>{message}</p>
+</body>
+</html>"#
+    )
+}
+
+fn viewer_csp(renderer: &str) -> &'static str {
+    match renderer {
+        "molstar" => VIEWER_MOLSTAR_CSP,
+        "xyzrender-external" => VIEWER_EXTERNAL_ARTIFACT_CSP,
+        _ => VIEWER_MINIMAL_CSP,
+    }
 }
 
 fn viewer_bridge_js() -> &'static str {
     r#"(() => {
   const postToParent = (body) => {
+    if (window.BurreteConfig && window.BurreteConfig.documentId) {
+      body.documentId = String(window.BurreteConfig.documentId);
+    }
     if (window.parent && window.parent !== window) {
       try {
-        window.parent.postMessage({ source: 'burrete-viewer', body }, window.location.origin);
-      } catch (_) {
-        try {
-          window.parent.postMessage({ source: 'burrete-viewer', body }, '*');
-        } catch (_) {}
-      }
+        window.parent.postMessage({ source: 'burrete-viewer', body }, '*');
+      } catch (_) {}
     }
   };
-  window.webkit = window.webkit || { messageHandlers: { burrete: { postMessage: postToParent } } };
-  window.__mqlPost = (type, message) => postToParent({ type, message: message || '' });
-  window.__mqlAction = (name) => window.webkit.messageHandlers.burrete.postMessage({ type: 'action', message: name });
+  const webkit = window.webkit || {};
+  const messageHandlers = webkit.messageHandlers || {};
+  if (!messageHandlers.burrete) {
+    messageHandlers.burrete = { postMessage: postToParent };
+  }
+  webkit.messageHandlers = messageHandlers;
+  window.webkit = webkit;
+  window.__mqlPost = (type, message, payload) => postToParent({ type, message: message || '', ...(payload || {}) });
+  window.__mqlAction = (name) => messageHandlers.burrete.postMessage({ type: 'action', message: name });
   window.__mqlDebug = () => {};
   window.BurreteInlineMode = true;
   window.BurreteDebug = false;
   window.BurretePanelControlsVisible = false;
   window.BurreteCacheBuster = String(Date.now());
+  window.addEventListener('message', (event) => {
+    const data = event.data || {};
+    if (data.source !== 'burrete-native-host' || !data.body) return;
+    const body = data.body;
+    if (body.type === 'nativeData' && window.BurreteReceiveNativeData) {
+      window.BurreteReceiveNativeData(body.payload || {});
+    }
+    if (body.type === 'nativeRuntimeFile' && window.BurreteReceiveNativeRuntimeFile) {
+      window.BurreteReceiveNativeRuntimeFile(body.payload || {});
+    }
+  });
 })();"#
 }

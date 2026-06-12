@@ -1,30 +1,61 @@
 #!/usr/bin/env bash
 set -euo pipefail
+ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+PREVIEW_ID="com.local.BurreteV10.Preview"
+XYZ_CONTENT_TYPE="com.local.burrete10.xyz"
+DEV_FLAVOR_SLUG=""
+if [[ -n "${BURRETE_DEV_FLAVOR:-}" ]]; then
+  command -v bun >/dev/null 2>&1 || { echo "error: BURRETE_DEV_FLAVOR requires bun to compute the dev namespace." >&2; exit 1; }
+  eval "$(bun "$ROOT/scripts/dev-namespace.mjs" shell-env)"
+  PREVIEW_ID="$BURRETE_PREVIEW_ID"
+  XYZ_CONTENT_TYPE="$BURRETE_XYZ_CONTENT_TYPE"
+  DEV_FLAVOR_SLUG="$BURRETE_DEV_FLAVOR_SLUG"
+fi
 FILE="${1:-}"
 if [[ -z "$FILE" || ! -f "$FILE" ]]; then
-  echo "usage: $0 /path/to/structure.pdb|cif|mmcif|sdf|smi|csv|tsv|xyz|gro|xtc|trr|cube|vasp|mae" >&2
+  echo "usage: $0 /path/to/structure-file" >&2
   exit 1
 fi
-if [[ "${FILE,,}" == *.mae.gz ]]; then
-  TYPE="com.local.burrete10.schrodinger"
-else
-case "${FILE##*.}" in
-  pdb|PDB|ent|ENT|pdbqt|PDBQT|pqr|PQR) TYPE="com.local.burrete10.pdb" ;;
-  cif|CIF) TYPE="com.local.burrete10.cif" ;;
-  mmcif|MMCIF|mcif|MCIF) TYPE="com.local.burrete10.mmcif" ;;
-  bcif|BCIF) TYPE="com.local.burrete10.bcif" ;;
-  csv|CSV) TYPE="public.comma-separated-values-text" ;;
-  sdf|SDF|sd|SD) TYPE="com.local.burrete10.sdf" ;;
-  smi|SMI|smiles|SMILES) TYPE="com.local.burrete10.smiles" ;;
-  tsv|TSV) TYPE="public.tab-separated-values-text" ;;
-  mol|MOL) TYPE="com.local.burrete10.mol" ;;
-  mol2|MOL2) TYPE="com.local.burrete10.mol2" ;;
-  xyz|XYZ) TYPE="com.local.burrete10.xyz" ;;
-  cub|CUB|cube|CUBE|in|IN|log|LOG|out|OUT|vasp|VASP) TYPE="com.local.burrete10.xyzrender-input" ;;
-  gro|GRO) TYPE="com.local.burrete10.gro" ;;
-  xtc|XTC|trr|TRR|dcd|DCD|nctraj|NCTRAJ|lammpstrj|LAMMPSTRJ|top|TOP|psf|PSF|prmtop|PRMTOP) TYPE="com.local.burrete10.molecular-dynamics" ;;
-  mae|MAE|maegz|MAEGZ|cms|CMS) TYPE="com.local.burrete10.schrodinger" ;;
-  *) TYPE="$(mdls -raw -name kMDItemContentType "$FILE" 2>/dev/null || true)" ;;
-esac
+PREVIEW_FILE="$FILE"
+DEV_PREVIEW_DIR=""
+cleanup_dev_preview_dir() {
+  [[ -z "$DEV_PREVIEW_DIR" ]] || rm -rf "$DEV_PREVIEW_DIR" 2>/dev/null || true
+}
+trap cleanup_dev_preview_dir EXIT
+if [[ -n "$DEV_FLAVOR_SLUG" ]]; then
+  DEV_PREVIEW_DIR="$(mktemp -d "${TMPDIR:-/tmp}/BurretePreview-${DEV_FLAVOR_SLUG}.XXXXXX")"
+  PREVIEW_FILE="$DEV_PREVIEW_DIR/${DEV_FLAVOR_SLUG} $(basename "$FILE")"
+  ln "$FILE" "$PREVIEW_FILE" 2>/dev/null || cp -p "$FILE" "$PREVIEW_FILE"
 fi
-qlmanage -p -c "$TYPE" "$FILE"
+TYPE="$("$ROOT/scripts/preview-content-type.mjs" --reject-table "$FILE")"
+if [[ -z "$TYPE" ]]; then
+  TYPE="$(mdls -raw -name kMDItemContentType "$FILE" 2>/dev/null || true)"
+fi
+if [[ "$TYPE" == "$XYZ_CONTENT_TYPE" ]]; then
+  # qlmanage aborts when forcing XYZ UTIs after the preview extension starts.
+  # Normal Quick Look resolves XYZ to the registered Open Babel alias.
+  set +e
+  qlmanage -p "$PREVIEW_FILE"
+  STATUS=$?
+  set -e
+  if [[ "$STATUS" -eq 134 ]]; then
+    sleep 2
+    ABS_FILE="$(cd -P "$(dirname "$PREVIEW_FILE")" && pwd -P)/$(basename "$PREVIEW_FILE")"
+    LOG_ROOT="$HOME/Library/Containers/$PREVIEW_ID/Data/Library"
+    for LOG_FILE in \
+      "$LOG_ROOT/Caches/Burrete/BurreteV10.log" \
+      "$LOG_ROOT/Caches/Burrete/Burrete.log" \
+      "$LOG_ROOT/Application Support/Burrete/BurreteV10.log" \
+      "$LOG_ROOT/Application Support/Burrete/Burrete.log"
+    do
+      if [[ -f "$LOG_FILE" ]] && \
+        tail -n 80 "$LOG_FILE" | grep -F "file.path=$ABS_FILE" >/dev/null && \
+        tail -n 80 "$LOG_FILE" | grep -F "JS message type=ready: ready" >/dev/null; then
+        echo "warning: qlmanage aborted after launching XYZ preview, but BurretePreview reported ready." >&2
+        exit 0
+      fi
+    done
+  fi
+  exit "$STATUS"
+fi
+qlmanage -p -c "$TYPE" "$PREVIEW_FILE"

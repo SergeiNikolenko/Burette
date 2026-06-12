@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { readBunLock } from './bun-lock.mjs';
 
 function fail(message) {
   console.error(`error: ${message}`);
@@ -16,13 +17,14 @@ function git(args) {
 }
 
 const packageVersion = readJSON('package.json').version;
-if (!/^\d+\.\d+\.\d+$/.test(packageVersion)) {
-  fail(`package.json version must be a plain semver release, got ${packageVersion}`);
+if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(packageVersion)) {
+  fail(`package.json version must be a semver release or prerelease, got ${packageVersion}`);
 }
 
-const packageLockVersion = readJSON('package-lock.json').version;
-if (packageLockVersion !== packageVersion) {
-  fail(`package-lock.json version ${packageLockVersion} does not match package.json ${packageVersion}`);
+const bunLock = readBunLock();
+const workspacePackageVersion = bunLock.workspaces?.['packages/burrete']?.version;
+if (workspacePackageVersion !== packageVersion) {
+  fail(`bun.lock workspace version ${workspacePackageVersion || 'unknown'} does not match package.json ${packageVersion}`);
 }
 
 const tauriVersion = readJSON('apps/desktop/src-tauri/tauri.conf.json').version;
@@ -37,7 +39,7 @@ if (cargoVersion !== packageVersion) {
 }
 
 const project = readFileSync('Burrete.xcodeproj/project.pbxproj', 'utf8');
-const marketingVersions = [...project.matchAll(/MARKETING_VERSION = ([0-9]+\.[0-9]+\.[0-9]+);/g)].map(match => match[1]);
+const marketingVersions = [...project.matchAll(/MARKETING_VERSION = ([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?);/g)].map(match => match[1]);
 if (marketingVersions.length === 0) {
   fail('no MARKETING_VERSION entries found in Xcode project');
 }

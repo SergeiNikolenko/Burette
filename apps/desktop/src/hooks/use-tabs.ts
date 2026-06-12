@@ -15,6 +15,10 @@ export function useOpenDocuments() {
   return useMoleculeStore((state) => state.documents);
 }
 
+export function useOpenTextDocuments() {
+  return useMoleculeStore((state) => state.textDocuments);
+}
+
 export function useTabOrder() {
   return useMoleculeStore((state) => state.tabs.map((tab) => tab.id));
 }
@@ -43,12 +47,60 @@ export function useAddTabs() {
   return useMoleculeStore((state) => state.addDocuments);
 }
 
+export function useAddBackgroundDocuments() {
+  return useMoleculeStore((state) => state.addBackgroundDocuments);
+}
+
+export function useAddTextTabs() {
+  return useMoleculeStore((state) => state.addTextDocuments);
+}
+
+export function useAddBackgroundTextDocuments() {
+  return useMoleculeStore((state) => state.addBackgroundTextDocuments);
+}
+
+export function useOpenDocumentsInActiveTab() {
+  return useMoleculeStore((state) => state.openDocumentsInActiveTab);
+}
+
+export function useOpenTextDocumentsInActiveTab() {
+  return useMoleculeStore((state) => state.openTextDocumentsInActiveTab);
+}
+
+export function useSetDocuments() {
+  return useMoleculeStore((state) => state.setDocuments);
+}
+
 export function useOpenNewTab() {
   return useMoleculeStore((state) => state.openNewTab);
 }
 
+export function useOpenKetcherTab() {
+  return useMoleculeStore((state) => state.openKetcherTab);
+}
+
+export function useOpenFepSetupTab() {
+  return useMoleculeStore((state) => state.openFepSetupTab);
+}
+
+export function useOpenFepNetworkTab() {
+  return useMoleculeStore((state) => state.openFepNetworkTab);
+}
+
+export function useOpenPoseReviewTab() {
+  return useMoleculeStore((state) => state.openPoseReviewTab);
+}
+
 export function useOpenSettingsTab() {
   return useMoleculeStore((state) => state.openSettingsTab);
+}
+
+export function useOpenSettingsSection() {
+  return useMoleculeStore((state) => state.openSettingsSection);
+}
+
+export function useActivateLastNonSettingsTab() {
+  return useMoleculeStore((state) => state.activateLastNonSettingsTab);
 }
 
 export function useCanNavigateBack() {
@@ -81,6 +133,10 @@ export function useRememberRecentStructures() {
   return useMoleculeStore((state) => state.rememberRecentStructures);
 }
 
+export function usePruneRecentStructures() {
+  return useMoleculeStore((state) => state.pruneRecentStructures);
+}
+
 export function useClearRecentStructures() {
   return useMoleculeStore((state) => state.clearRecentStructures);
 }
@@ -91,6 +147,10 @@ export function useSetActiveTab() {
 
 export function useSetActiveDocument() {
   return useMoleculeStore((state) => state.setActiveDocument);
+}
+
+export function useMoveTab() {
+  return useMoleculeStore((state) => state.moveTab);
 }
 
 export function useCloseTab() {
