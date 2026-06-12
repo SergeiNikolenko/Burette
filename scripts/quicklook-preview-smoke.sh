@@ -3,16 +3,24 @@ set -euo pipefail
 
 ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 PREVIEW_ID="com.local.BurreteV10.Preview"
+XYZ_CONTENT_TYPE="com.local.burrete10.xyz"
+DEV_FLAVOR_SLUG=""
+APP_BUNDLE_NAME="Burrete.app"
 if [[ -n "${BURRETE_DEV_FLAVOR:-}" ]]; then
   command -v bun >/dev/null 2>&1 || { echo "error: BURRETE_DEV_FLAVOR requires bun to compute the dev namespace." >&2; exit 1; }
   eval "$(bun "$ROOT/scripts/dev-namespace.mjs" shell-env)"
   PREVIEW_ID="$BURRETE_PREVIEW_ID"
+  XYZ_CONTENT_TYPE="$BURRETE_XYZ_CONTENT_TYPE"
+  DEV_FLAVOR_SLUG="$BURRETE_DEV_FLAVOR_SLUG"
+  APP_BUNDLE_NAME="$BURRETE_APP_BUNDLE_NAME"
 fi
 
 LOG_PATH="${BURRETE_QUICKLOOK_SMOKE_LOG:-$HOME/Library/Containers/$PREVIEW_ID/Data/Library/Caches/Burrete/Burrete.log}"
+TRACE_PATH="${BURRETE_QUICKLOOK_SMOKE_TRACE:-$HOME/Library/Containers/$PREVIEW_ID/Data/Library/Caches/Burrete/preview-trace.jsonl}"
 RESULTS_PATH="${BURRETE_QUICKLOOK_SMOKE_RESULTS:-$ROOT/build/reports/quicklook-preview-smoke.tsv}"
 TIMEOUT_SECONDS="${BURRETE_QUICKLOOK_SMOKE_TIMEOUT_SECONDS:-45}"
 RESET_CACHE="${BURRETE_QUICKLOOK_SMOKE_RESET_CACHE:-1}"
+INSTALLED_PREVIEW_EXECUTABLE="$HOME/Applications/$APP_BUNDLE_NAME/Contents/PlugIns/BurretePreview.appex/Contents/MacOS/BurretePreview"
 
 if ! [[ "$TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || [[ "$TIMEOUT_SECONDS" -lt 1 ]]; then
   echo "error: BURRETE_QUICKLOOK_SMOKE_TIMEOUT_SECONDS must be a positive integer" >&2
@@ -36,6 +44,129 @@ lines_for_request_id() {
   local request_id="$1"
   [[ -n "$request_id" && -f "$LOG_PATH" ]] || return 0
   grep -F "[$request_id]" "$LOG_PATH" 2>/dev/null || true
+}
+
+trace_request_id_for_block() {
+  local block="$1"
+  printf '%s\n' "$block" |
+    grep -F 'trace.requestID=' |
+    sed -E 's/.*trace\.requestID=([^ ]+) state=.*/\1/' |
+    tail -n 1 || true
+}
+
+runtime_directory_for_block() {
+  local block="$1"
+  printf '%s\n' "$block" |
+    grep -F '[build] runtimeDirectory=' |
+    sed -E 's/.*\[build\] runtimeDirectory=//' |
+    tail -n 1 || true
+}
+
+extension_launch_failure_note() {
+  local lookback_seconds="$1"
+  local diagnostics
+
+  [[ -x /usr/bin/log ]] || return 0
+  diagnostics="$(
+    {
+      /usr/bin/log show --last "${lookback_seconds}s" --style compact \
+        --predicate "eventMessage CONTAINS \"$PREVIEW_ID\" OR eventMessage CONTAINS \"BurretePreview\"" 2>/dev/null |
+        grep -E 'AppleMobileFileIntegrityError|not valid:|Hub connection error|must have pid|Unable to acquire process assertion|PlugInKit error|DID FAIL LOADING|connection to service named' |
+        tail -n 6 |
+        tr '\n' ' ' |
+        sed 's/[[:space:]]\+/ /g; s/[[:space:]]$//'
+    } || true
+  )"
+  [[ -n "$diagnostics" ]] || return 0
+  printf 'Quick Look extension launch failure: %s\n' "$diagnostics"
+}
+
+adhoc_extension_note() {
+  local details
+
+  [[ -x "$INSTALLED_PREVIEW_EXECUTABLE" && -x /usr/bin/codesign ]] || return 0
+  details="$(/usr/bin/codesign -dv "$INSTALLED_PREVIEW_EXECUTABLE" 2>&1 || true)"
+  if printf '%s\n' "$details" | grep -F 'Signature=adhoc' >/dev/null; then
+    printf 'Quick Look extension did not launch; installed preview extension is ad-hoc signed: %s\n' "$INSTALLED_PREVIEW_EXECUTABLE"
+  fi
+}
+
+validate_stability_artifacts() {
+  local trace_request_id="$1"
+  local runtime_directory="$2"
+
+  if [[ -z "$trace_request_id" ]]; then
+    printf 'missing trace.requestID log entry\n'
+    return 1
+  fi
+  if [[ -z "$runtime_directory" ]]; then
+    printf 'missing runtimeDirectory log entry\n'
+    return 1
+  fi
+
+  python3 - "$TRACE_PATH" "$trace_request_id" "$runtime_directory" <<'PY'
+import json
+import pathlib
+import sys
+
+trace_path = pathlib.Path(sys.argv[1])
+request_id = sys.argv[2]
+runtime_directory = pathlib.Path(sys.argv[3])
+
+if not trace_path.exists():
+    print(f"missing preview trace: {trace_path}")
+    sys.exit(1)
+
+completed = None
+for raw in trace_path.read_text(encoding="utf-8").splitlines():
+    if not raw.strip():
+        continue
+    try:
+        event = json.loads(raw)
+    except json.JSONDecodeError:
+        continue
+    if (
+        event.get("state") == "completed"
+        and event.get("subsystem") == "quicklook"
+        and (event.get("requestID") == request_id or event.get("documentId") == request_id)
+    ):
+        completed = event
+
+if completed is None:
+    print(f"missing completed preview trace event for request {request_id}")
+    sys.exit(1)
+
+trace_runtime = completed.get("runtimePath")
+if trace_runtime and pathlib.Path(trace_runtime) != runtime_directory:
+    print(f"trace runtimePath mismatch: {trace_runtime} != {runtime_directory}")
+    sys.exit(1)
+
+manifest_path = runtime_directory / "manifest.json"
+if not manifest_path.exists():
+    print(f"missing runtime manifest: {manifest_path}")
+    sys.exit(1)
+
+try:
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+except json.JSONDecodeError as error:
+    print(f"invalid runtime manifest JSON: {error}")
+    sys.exit(1)
+
+if manifest.get("schemaVersion") != 1:
+    print(f"unexpected manifest schemaVersion: {manifest.get('schemaVersion')}")
+    sys.exit(1)
+if manifest.get("complete") is not True:
+    print("runtime manifest is not complete")
+    sys.exit(1)
+if manifest.get("documentId") in (None, "", "unknown"):
+    print("runtime manifest documentId is missing")
+    sys.exit(1)
+if not manifest.get("renderer"):
+    print("runtime manifest renderer is missing")
+    sys.exit(1)
+
+print("trace+manifest")
+PY
 }
 
 cleanup_file_preview() {
@@ -86,7 +217,25 @@ wait_for_preview_result() {
     fi
   fi
 
-  printf 'NO_REQUEST\t%s\tno new request-id in Burrete log\n' "${request_id:-}"
+  diagnostic_note="$(extension_launch_failure_note "$((TIMEOUT_SECONDS + 15))")"
+  if [[ -n "$diagnostic_note" ]]; then
+    printf 'FAIL\t%s\t%s\n' "${request_id:-}" "$diagnostic_note"
+  elif diagnostic_note="$(adhoc_extension_note)" && [[ -n "$diagnostic_note" ]]; then
+    printf 'FAIL\t%s\t%s\n' "${request_id:-}" "$diagnostic_note"
+  else
+    printf 'NO_REQUEST\t%s\tno new request-id in Burrete log\n' "${request_id:-}"
+  fi
+}
+
+run_preview() {
+  local type="$1"
+  local preview_file="$2"
+
+  if [[ "$type" == "$XYZ_CONTENT_TYPE" ]]; then
+    qlmanage -p "$preview_file"
+  else
+    qlmanage -p -c "$type" "$preview_file"
+  fi
 }
 
 total=0
@@ -109,32 +258,55 @@ for file in "$@"; do
     exit 1
   fi
 
-  cleanup_file_preview "$abs_file"
+  preview_file="$abs_file"
+  dev_preview_dir=""
+  if [[ -n "$DEV_FLAVOR_SLUG" ]]; then
+    dev_preview_dir="$(mktemp -d "${TMPDIR:-/tmp}/BurretePreview-${DEV_FLAVOR_SLUG}.XXXXXX")"
+    preview_file="$dev_preview_dir/${DEV_FLAVOR_SLUG} $(basename "$abs_file")"
+    ln "$abs_file" "$preview_file" 2>/dev/null || cp -p "$abs_file" "$preview_file"
+  fi
+  cleanup_preview_dir() {
+    [[ -z "$dev_preview_dir" ]] || rm -rf "$dev_preview_dir" 2>/dev/null || true
+  }
+
+  cleanup_file_preview "$preview_file"
   if [[ "$RESET_CACHE" == "1" ]]; then
     qlmanage -r cache >/dev/null 2>&1 || true
   fi
 
-  before_request_id="$(last_request_id_for_file "$abs_file")"
+  before_request_id="$(last_request_id_for_file "$preview_file")"
   started="$SECONDS"
   stdout_path="$(mktemp "${TMPDIR:-/tmp}/burrete-quicklook-smoke.XXXXXX")"
   (
     cd "$ROOT"
-    "$ROOT/scripts/force-preview.sh" "$abs_file"
+    run_preview "$type" "$preview_file"
   ) >"$stdout_path" 2>&1 &
   preview_pid=$!
 
-  result="$(wait_for_preview_result "$abs_file" "$before_request_id")"
-  cleanup_file_preview "$abs_file"
+  result="$(wait_for_preview_result "$preview_file" "$before_request_id")"
+  cleanup_file_preview "$preview_file"
   if kill -0 "$preview_pid" 2>/dev/null; then
     kill "$preview_pid" 2>/dev/null || true
   fi
   wait "$preview_pid" 2>/dev/null || true
+  cleanup_preview_dir
   rm -f "$stdout_path"
 
   seconds=$((SECONDS - started))
   status="$(printf '%s' "$result" | cut -f1)"
   request_id="$(printf '%s' "$result" | cut -f2)"
   note="$(printf '%s' "$result" | cut -f3-)"
+  if [[ "$status" == "OK" ]]; then
+    block="$(lines_for_request_id "$request_id")"
+    trace_request_id="$(trace_request_id_for_block "$block")"
+    runtime_directory="$(runtime_directory_for_block "$block")"
+    if stability_note="$(validate_stability_artifacts "$trace_request_id" "$runtime_directory")"; then
+      note="$note; $stability_note"
+    else
+      status="FAIL"
+      note="$stability_note"
+    fi
+  fi
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$status" "$type" "$seconds" "$request_id" "$abs_file" "$note" >>"$RESULTS_PATH"
 
   total=$((total + 1))

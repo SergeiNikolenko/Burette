@@ -9,6 +9,7 @@ use super::grid_store::{build_grid_store_with_options, GridParseOptions};
 use super::runtime::ViewerPreferences;
 use super::runtime_utils::{asset_url, escape_html, prune_runtime_dirs};
 use super::runtime_viewer::{copy_web_assets, AssetProfile};
+use super::trace::{runtime_manifest, write_bytes_atomic, write_json_atomic};
 
 const GRID_RUNTIME_CSP: &str = "default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'self' blob:;";
 
@@ -82,11 +83,10 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
         .map_err(|err| err.to_string())?;
     let rdkit_wasm_base64 = base64::engine::general_purpose::STANDARD
         .encode(fs::read(&rdkit_wasm).map_err(|err| err.to_string())?);
-    fs::write(
-        runtime.join("preview-rdkit-wasm.js"),
-        format!("window.BurreteRDKitWasmBase64 = \"{rdkit_wasm_base64}\";\n"),
-    )
-    .map_err(|err| err.to_string())?;
+    write_bytes_atomic(
+        &runtime.join("preview-rdkit-wasm.js"),
+        format!("window.BurreteRDKitWasmBase64 = \"{rdkit_wasm_base64}\";\n").as_bytes(),
+    )?;
     let rdkit_wasm_path = asset_url(&rdkit_wasm);
     let config = json!({
         "mode": "grid2d",
@@ -123,16 +123,25 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
         }
     });
     let config_text = serde_json::to_string(&config).map_err(|err| err.to_string())?;
-    fs::write(
-        runtime.join("index.html"),
-        grid_html(file_path, &runtime, &assets, preferences),
-    )
-    .map_err(|err| err.to_string())?;
-    fs::write(
-        runtime.join("preview-config.js"),
-        format!("window.BurreteConfig = {config_text};\n"),
-    )
-    .map_err(|err| err.to_string())?;
+    write_bytes_atomic(
+        &runtime.join("index.html"),
+        grid_html(file_path, &runtime, &assets, preferences).as_bytes(),
+    )?;
+    write_bytes_atomic(
+        &runtime.join("preview-config.js"),
+        format!("window.BurreteConfig = {config_text};\n").as_bytes(),
+    )?;
+    write_json_atomic(
+        &runtime.join("manifest.json"),
+        &runtime_manifest(
+            "grid2d",
+            extension,
+            document_id,
+            data.len(),
+            0,
+            AssetProfile::Grid.name(),
+        ),
+    )?;
     Ok(Some(runtime.join("index.html")))
 }
 
