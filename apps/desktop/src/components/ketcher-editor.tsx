@@ -315,7 +315,7 @@ export function KetcherEditor({
         return Promise.all([
           import("ketcher-react"),
           import("ketcher-core"),
-          import("ketcher-standalone"),
+          import("ketcher-standalone/dist/binaryWasm"),
         ]);
       })
       .then(([reactModule, coreModule, standaloneModule]) => {
@@ -393,7 +393,6 @@ export function KetcherEditor({
   return (
     <div ref={rootRef} className="ketcher-editor-root">
       <Editor
-        disableMacromoleculesEditor
         staticResourcesUrl={import.meta.env.BASE_URL}
         structServiceProvider={structServiceProvider}
         onInit={handleInit}
