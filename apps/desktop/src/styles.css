@@ -390,6 +390,49 @@ kbd { color: var(--text-faint); font-size: 12px; font-family: inherit; font-weig
   font-size: 13px;
   font-weight: 650;
 }
+.drop-overlay-choice {
+  pointer-events: auto;
+}
+.drop-overlay-choice div {
+  min-width: min(420px, calc(100vw - 64px));
+  height: auto;
+  min-height: 124px;
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  align-content: center;
+  justify-items: center;
+}
+.drop-overlay-title {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 650;
+}
+.drop-overlay-meta {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.drop-overlay-actions {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.drop-overlay-actions button {
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.drop-overlay-actions button:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
 .command-palette-overlay {
   position: fixed;
   inset: 0;

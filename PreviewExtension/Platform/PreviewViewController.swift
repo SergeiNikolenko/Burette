@@ -264,6 +264,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         if renderer == BurreteRendererMode.xyzrenderExternal,
            rendererOverride == nil,
            format.isExternalXyzrenderOnly,
+           !PreviewExternalXyzrenderWorker.prefersExternalRenderer(fileExtension: pathExtension),
            let convertedXYZ = PreviewStructureTextConverter.xyzData(
             from: structureData,
             fileExtension: pathExtension,
@@ -282,6 +283,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 try fileManager.createDirectory(at: renderDirectory, withIntermediateDirectories: true)
                 externalArtifact = try PreviewExternalXyzrenderWorker.render(
                     inputData: structureData,
+                    sourceURL: url,
                     sourceFilename: url.lastPathComponent,
                     outputDirectory: renderDirectory,
                     preset: xyzrenderPreset,
@@ -638,7 +640,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             payload["xyzFast"] = xyzFast
         }
         if let externalArtifact {
-            payload["externalArtifact"] = [
+            var artifactPayload: [String: Any] = [
                 "path": externalArtifact.relativePath,
                 "type": externalArtifact.outputType,
                 "renderer": "xyzrender",
@@ -648,6 +650,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 "elapsedMs": externalArtifact.elapsedMs,
                 "log": externalArtifact.log
             ]
+            if let surfaceMode = externalArtifact.surfaceMode { artifactPayload["surfaceMode"] = surfaceMode }
+            payload["externalArtifact"] = artifactPayload
             payload["xyzrenderPreset"] = externalArtifact.preset
         }
         if let externalStatus { payload["externalRendererStatus"] = externalStatus }
@@ -1145,6 +1149,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             .buret-button.hidden { display: none; }
             .buret-button svg { width: 15px; height: 15px; display: block; }
             .buret-grip { cursor: grab; color: currentColor; opacity: 0.66; }
+            .buret-pose-toggle { width: auto !important; min-width: 34px; }
             .buret-renderer-control {
               display: none; align-items: center; gap: 4px; padding-left: 5px;
               border-left: 1px solid var(--buret-toolbar-border);
@@ -1231,6 +1236,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel"><span aria-hidden="true">⌘</span></button>
             <button class="buret-button" type="button" data-buret-action="theme" aria-label="Switch to light theme" title="Switch to light theme"><span aria-hidden="true">☀</span></button>
             <button class="buret-button hidden" type="button" data-buret-action="open-vesta" aria-label="Open in VESTA" title="Open in VESTA"><span aria-hidden="true">↗</span></button>
+            <button class="buret-button buret-pose-toggle hidden" type="button" data-buret-action="sdf-poses" aria-label="Show all SDF poses together" aria-pressed="false" title="Show all SDF poses together">All</button>
             <div class="buret-renderer-control" data-buret-renderer-control>
               <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="xyz-fast" aria-label="Use Fast XYZ SVG" title="Use Fast XYZ SVG">Fast</button>
               <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="molstar" aria-label="Use Mol* Interactive" title="Use Mol* Interactive">Mol*</button>
@@ -2222,14 +2228,41 @@ private struct PreviewExternalXyzrenderArtifact {
     let outputType: String
     let preset: String
     let configArgument: String
+    let surfaceMode: String?
     let usedOrientationRef: Bool
     let elapsedMs: Int
     let log: String
 }
 
 private enum PreviewExternalXyzrenderWorker {
+    private struct SurfacePlan {
+        let inputURL: URL
+        let arguments: [String]
+        let mode: String?
+    }
+
+    private struct CubeInfo {
+        let url: URL
+        let key: String
+        let role: CubeRole
+    }
+
+    private enum CubeRole: Hashable {
+        case mo
+        case density
+        case esp
+        case nciSurface
+        case nciColor
+        case other
+    }
+
+    static func prefersExternalRenderer(fileExtension: String) -> Bool {
+        ["cub", "cube"].contains(fileExtension.lowercased())
+    }
+
     static func render(
         inputData: Data,
+        sourceURL: URL,
         sourceFilename: String,
         outputDirectory: URL,
         preset: String,
@@ -2246,11 +2279,18 @@ private enum PreviewExternalXyzrenderWorker {
         try? fileManager.removeItem(at: outputURL)
         try? fileManager.removeItem(at: logURL)
         try inputData.write(to: inputURL, options: [.atomic])
+        let surfacePlan = try surfacePlan(
+            sourceURL: sourceURL,
+            selectedInputURL: inputURL,
+            outputDirectory: outputDirectory,
+            extraArguments: extraArguments,
+            fileManager: fileManager
+        )
 
         let process = Process()
         let configuredExecutable = executablePath.trimmingCharacters(in: .whitespacesAndNewlines)
         process.executableURL = URL(fileURLWithPath: try resolvedExecutable(configuredExecutable))
-        var arguments = [inputURL.path, "-o", outputURL.path]
+        var arguments = [surfacePlan.inputURL.path, "-o", outputURL.path]
 
         let safePreset = BurreteXyzrenderPreset.normalize(preset)
         let configArgument = resolveConfigArgument(preset: safePreset, customConfigPath: customConfigPath)
@@ -2261,6 +2301,7 @@ private enum PreviewExternalXyzrenderWorker {
             arguments += ["--ref", orientationRefURL.path]
         }
         if transparent { arguments.append("--transparent") }
+        arguments += surfacePlan.arguments
         arguments += sanitizedExtraArguments(extraArguments)
         process.arguments = arguments
         process.environment = mergedEnvironment()
@@ -2295,6 +2336,7 @@ private enum PreviewExternalXyzrenderWorker {
             outputType: "svg",
             preset: effectivePreset,
             configArgument: configArgument,
+            surfaceMode: surfacePlan.mode,
             usedOrientationRef: orientationRefURL != nil,
             elapsedMs: elapsedMs,
             log: log
@@ -2311,6 +2353,218 @@ private enum PreviewExternalXyzrenderWorker {
         let url = outputDirectory.appendingPathComponent("xyzrender-orientation-ref.xyz")
         try Data(text.utf8).write(to: url, options: [.atomic])
         return url
+    }
+
+    private static func surfacePlan(
+        sourceURL: URL,
+        selectedInputURL: URL,
+        outputDirectory: URL,
+        extraArguments: String,
+        fileManager: FileManager
+    ) throws -> SurfacePlan {
+        let selected = cubeInfo(for: sourceURL, readHeader: true)
+        guard let selected, !containsSurfaceArguments(extraArguments) else {
+            return SurfacePlan(inputURL: selectedInputURL, arguments: [], mode: nil)
+        }
+        if selected.role == .mo {
+            return SurfacePlan(inputURL: selectedInputURL, arguments: ["--mo"], mode: "mo")
+        }
+        if let espPlan = try espSurfacePlan(
+            selected: selected,
+            selectedInputURL: selectedInputURL,
+            outputDirectory: outputDirectory,
+            fileManager: fileManager
+        ) {
+            return espPlan
+        }
+        if let nciPlan = try nciSurfacePlan(
+            selected: selected,
+            selectedInputURL: selectedInputURL,
+            outputDirectory: outputDirectory,
+            fileManager: fileManager
+        ) {
+            return nciPlan
+        }
+        if selected.role == .density {
+            return SurfacePlan(inputURL: selectedInputURL, arguments: ["--dens"], mode: "density")
+        }
+        return SurfacePlan(inputURL: selectedInputURL, arguments: [], mode: nil)
+    }
+
+    private static func espSurfacePlan(
+        selected: CubeInfo,
+        selectedInputURL: URL,
+        outputDirectory: URL,
+        fileManager: FileManager
+    ) throws -> SurfacePlan? {
+        if selected.role == .density,
+           let esp = matchingSibling(for: selected, roles: [.esp]) {
+            let espURL = try runtimeURL(
+                for: esp.url,
+                selectedSourceURL: selected.url,
+                selectedInputURL: selectedInputURL,
+                outputDirectory: outputDirectory,
+                fileManager: fileManager
+            )
+            return SurfacePlan(inputURL: selectedInputURL, arguments: ["--esp", espURL.path, "--cbar"], mode: "esp")
+        }
+        if selected.role == .esp,
+           let density = matchingSibling(for: selected, roles: [.density]) {
+            let densityURL = try runtimeURL(
+                for: density.url,
+                selectedSourceURL: selected.url,
+                selectedInputURL: selectedInputURL,
+                outputDirectory: outputDirectory,
+                fileManager: fileManager
+            )
+            return SurfacePlan(inputURL: densityURL, arguments: ["--esp", selectedInputURL.path, "--cbar"], mode: "esp")
+        }
+        return nil
+    }
+
+    private static func nciSurfacePlan(
+        selected: CubeInfo,
+        selectedInputURL: URL,
+        outputDirectory: URL,
+        fileManager: FileManager
+    ) throws -> SurfacePlan? {
+        if [.density, .nciColor].contains(selected.role),
+           let surface = matchingSibling(for: selected, roles: [.nciSurface]) {
+            let surfaceURL = try runtimeURL(
+                for: surface.url,
+                selectedSourceURL: selected.url,
+                selectedInputURL: selectedInputURL,
+                outputDirectory: outputDirectory,
+                fileManager: fileManager
+            )
+            return SurfacePlan(
+                inputURL: selectedInputURL,
+                arguments: ["--nci-surf", surfaceURL.path] + nciIsoArguments(for: surface.url),
+                mode: "nci"
+            )
+        }
+        if selected.role == .nciSurface,
+           let field = matchingSibling(for: selected, roles: [.density, .nciColor]) {
+            let fieldURL = try runtimeURL(
+                for: field.url,
+                selectedSourceURL: selected.url,
+                selectedInputURL: selectedInputURL,
+                outputDirectory: outputDirectory,
+                fileManager: fileManager
+            )
+            return SurfacePlan(
+                inputURL: fieldURL,
+                arguments: ["--nci-surf", selectedInputURL.path] + nciIsoArguments(for: selected.url),
+                mode: "nci"
+            )
+        }
+        return nil
+    }
+
+    private static func runtimeURL(
+        for url: URL,
+        selectedSourceURL: URL,
+        selectedInputURL: URL,
+        outputDirectory: URL,
+        fileManager: FileManager
+    ) throws -> URL {
+        if url.standardizedFileURL.path == selectedSourceURL.standardizedFileURL.path {
+            return selectedInputURL
+        }
+        let destination = outputDirectory.appendingPathComponent(safeRelatedFilename(url.lastPathComponent))
+        try? fileManager.removeItem(at: destination)
+        try fileManager.copyItem(at: url, to: destination)
+        return destination
+    }
+
+    private static func matchingSibling(for selected: CubeInfo, roles: Set<CubeRole>) -> CubeInfo? {
+        let directory = selected.url.deletingLastPathComponent()
+        guard let contents = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else { return nil }
+        return contents
+            .filter { $0.standardizedFileURL.path != selected.url.standardizedFileURL.path }
+            .compactMap { cubeInfo(for: $0, readHeader: false) }
+            .filter { $0.key == selected.key && roles.contains($0.role) }
+            .sorted { $0.url.lastPathComponent.localizedStandardCompare($1.url.lastPathComponent) == .orderedAscending }
+            .first
+    }
+
+    private static func cubeInfo(for url: URL, readHeader: Bool) -> CubeInfo? {
+        guard ["cub", "cube"].contains(url.pathExtension.lowercased()) else { return nil }
+        let name = url.deletingPathExtension().lastPathComponent.lowercased()
+        let tokens = nameTokens(name)
+        let header = readHeader ? cubeHeader(url) : ""
+        return CubeInfo(url: url, key: cubeKey(tokens), role: cubeRole(tokens: tokens, header: header))
+    }
+
+    private static func cubeRole(tokens: [String], header: String) -> CubeRole {
+        let tokenSet = Set(tokens)
+        if header.contains("molecular orbital") || tokenSet.contains("homo") || tokenSet.contains("lumo") {
+            return .mo
+        }
+        if header.contains("electrostatic") || tokenSet.contains("esp") || tokenSet.contains("potential") {
+            return .esp
+        }
+        if header.contains("reduced density gradient") ||
+            tokenSet.contains("grad") ||
+            tokenSet.contains("gradient") ||
+            tokenSet.contains("rdg") ||
+            tokenSet.contains("dg") ||
+            tokenSet.contains("inter") ||
+            tokenSet.contains("intra") {
+            return .nciSurface
+        }
+        if tokenSet.contains("sl2r") {
+            return .nciColor
+        }
+        if header.contains("density") || tokenSet.contains("dens") || tokenSet.contains("density") || tokenSet.contains("rho") {
+            return .density
+        }
+        return .other
+    }
+
+    private static func cubeKey(_ tokens: [String]) -> String {
+        let roleTokens: Set<String> = [
+            "cube", "cub", "homo", "lumo", "orbital", "mo", "dens", "density", "rho",
+            "esp", "potential", "grad", "gradient", "rdg", "sl2r", "dg", "inter", "intra"
+        ]
+        let kept = tokens.filter { !roleTokens.contains($0) }
+        return (kept.isEmpty ? tokens : kept).joined(separator: "|")
+    }
+
+    private static func nameTokens(_ value: String) -> [String] {
+        value
+            .split { !$0.isLetter && !$0.isNumber }
+            .map { String($0) }
+            .filter { !$0.isEmpty }
+    }
+
+    private static func cubeHeader(_ url: URL) -> String {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return "" }
+        defer { try? handle.close() }
+        let data = (try? handle.read(upToCount: 4096)) ?? Data()
+        return (String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)).lowercased()
+    }
+
+    private static func nciIsoArguments(for url: URL) -> [String] {
+        let name = url.deletingPathExtension().lastPathComponent.lowercased()
+        if name.contains("dg_intra") || name.contains("dg-intra") { return ["--iso", "0.2"] }
+        if name.contains("dg_inter") || name.contains("dg-inter") { return ["--iso", "0.005"] }
+        return []
+    }
+
+    private static func safeRelatedFilename(_ filename: String) -> String {
+        let sanitized = filename
+            .map { character -> Character in
+                if character.isLetter || character.isNumber || character == "." || character == "_" || character == "-" {
+                    return character
+                }
+                return "_"
+            }
+        return "related-\(String(sanitized))"
     }
 
     private static func resolvedExecutable(_ configuredExecutable: String) throws -> String {
@@ -2370,6 +2624,16 @@ private enum PreviewExternalXyzrenderWorker {
             result.append(token)
         }
         return result
+    }
+
+    private static func containsSurfaceArguments(_ value: String) -> Bool {
+        let surfaceFlags: Set<String> = [
+            "--mo", "--dens", "--esp", "--nci-surf", "--iso", "--surface-style",
+            "--mo-colors", "--dens-color", "--opacity", "--cmap-palette", "--cmap-range"
+        ]
+        return splitCommandLine(value).contains { token in
+            surfaceFlags.contains(token) || surfaceFlags.contains { token.hasPrefix($0 + "=") }
+        }
     }
 
     private static func splitCommandLine(_ value: String) -> [String] {

@@ -29,6 +29,10 @@ export type ShellActions = {
   checkForUpdates: () => void | Promise<void>;
   installUpdate: () => void | Promise<void>;
   openUpdateRelease: () => void | Promise<void>;
+  openPendingDropIndividually: () => void | Promise<void>;
+  openPendingDropTogether: () => void | Promise<void>;
+  openPendingDropAsGrid: () => void | Promise<void>;
+  cancelPendingDrop: () => void;
   setPreference: <K extends keyof ViewerPreferences>(key: K, value: ViewerPreferences[K]) => void;
   setUpdatePreferences: (preferences: UpdatePreferences) => void;
 };
@@ -49,6 +53,7 @@ export type ShellViewState = {
   sidebarQuery: string;
   status: string;
   dropActive: boolean;
+  pendingDrop: { paths: string[] } | null;
   preferences: ViewerPreferences;
   update: UpdateState;
 };
