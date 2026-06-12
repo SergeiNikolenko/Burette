@@ -60,6 +60,16 @@ jobs:
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "prerelease=${prerelease}" >> "$GITHUB_OUTPUT"
 
+      - name: Validate Homebrew tap token
+        if: steps.version.outputs.prerelease != 'true'
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [[ -z "${HOMEBREW_TAP_TOKEN:-}" ]]; then
+            echo "::error::Stable releases require HOMEBREW_TAP_TOKEN so the Homebrew cask can be updated automatically."
+            exit 1
+          fi
+
       - name: Resolve release capabilities
         id: capabilities
         env:
@@ -179,3 +189,42 @@ jobs:
             "${release_flags[@]}" \
             --title "Burrete ${{ steps.version.outputs.version }}" \
             --generate-notes
+
+      - name: Checkout Homebrew tap
+        if: steps.version.outputs.prerelease != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: SergeiNikolenko/homebrew-burrete
+          path: homebrew-burrete
+          ref: main
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Update Homebrew cask
+        if: steps.version.outputs.prerelease != 'true'
+        working-directory: homebrew-burrete
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          sha256="$(awk '{print $1}' "../Burrete-${version}.zip.sha256")"
+          if [[ ! "$sha256" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "::error::Invalid or missing SHA-256 for Burrete-${version}.zip."
+            exit 1
+          fi
+          cask="Casks/burrete.rb"
+          if [[ ! -f "$cask" ]]; then
+            cask="Casks/b/burrete.rb"
+          fi
+          if [[ ! -f "$cask" ]]; then
+            echo "::error::Could not find burrete.rb in the Homebrew tap checkout."
+            exit 1
+          fi
+          ruby -0pi -e "gsub(/version \"[^\"]+\"/, \"version \\\"${version}\\\"\"); gsub(/sha256 \"[a-f0-9]{64}\"/, \"sha256 \\\"${sha256}\\\"\"); gsub(/depends_on macos: \">= :monterey\"/, \"depends_on macos: :monterey\")" "$cask"
+          git diff -- "$cask"
+          git diff --quiet -- "$cask" && {
+            echo "Homebrew cask already points to ${version}."
+            exit 0
+          }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$cask"
+          git commit -m "Update Burrete cask to ${version}"
+          git push origin HEAD:main
