@@ -132,7 +132,7 @@ release artifact should keep web asset profile membership explainable through
 
 ## Package Managers
 
-Homebrew uses the cask in `Casks/b/burrete.rb` and the public tap at
+Homebrew uses the cask in `Casks/burrete.rb` and the public tap at
 `SergeiNikolenko/homebrew-burrete`. The working user command is:
 
 ```bash
@@ -145,9 +145,15 @@ the cask is accepted into `Homebrew/homebrew-cask`. The first upstream PR was
 blocked because the app is not Apple-signed/notarized and the project does not
 meet the default tap notability threshold yet.
 
-After each GitHub release, update the cask `version` and `sha256` to match the
-uploaded `Burrete-<version>.zip` asset. GitHub exposes the asset digest in the
-release metadata as `sha256:<digest>`.
+Stable GitHub releases update the Homebrew tap automatically. Configure the
+`HOMEBREW_TAP_TOKEN` repository secret with write access to
+`SergeiNikolenko/homebrew-burrete`; the release workflow fails early for stable
+releases when this token is missing. After the GitHub release is created, the
+workflow checks out the tap, updates the cask `version` and `sha256` from the
+uploaded `Burrete-<version>.zip` artifact, normalizes the macOS dependency
+syntax, commits the cask change, and pushes it back to the tap.
+
+Prereleases do not update the Homebrew cask.
 
 The registry package lives in `packages/burrete`. It is a thin CLI installer
 for the macOS app, not the app bundle itself. Publish it from that workspace
