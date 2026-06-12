@@ -20,6 +20,67 @@ pub(crate) fn create_runtime<R: Runtime>(
     data: &[u8],
     preferences: &ViewerPreferences,
 ) -> Result<PathBuf, String> {
+    create_runtime_with_overrides(
+        app,
+        file_path,
+        extension,
+        format,
+        renderer,
+        data,
+        preferences,
+        ViewerRuntimeOverrides::default(),
+    )
+}
+
+pub(crate) fn create_combined_sdf_pose_runtime<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    label_path: &Path,
+    label: &str,
+    data: &[u8],
+    preferences: &ViewerPreferences,
+) -> Result<PathBuf, String> {
+    create_runtime_with_overrides(
+        app,
+        label_path,
+        "sdf",
+        &FormatInfo {
+            molstar_format: "sdf",
+            is_binary: false,
+            external_only: false,
+        },
+        "molstar",
+        data,
+        preferences,
+        ViewerRuntimeOverrides {
+            label: Some(label),
+            sdf_grid: Some(false),
+            default_sdf_pose_mode: Some("all"),
+            sdf_pose_mode_storage_key: Some(format!(
+                "buret.sdf.poseMode.combined.{}",
+                uuid::Uuid::new_v4()
+            )),
+        },
+    )
+}
+
+#[derive(Default)]
+struct ViewerRuntimeOverrides<'a> {
+    label: Option<&'a str>,
+    sdf_grid: Option<bool>,
+    default_sdf_pose_mode: Option<&'a str>,
+    sdf_pose_mode_storage_key: Option<String>,
+}
+
+fn create_runtime_with_overrides<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    file_path: &Path,
+    extension: &str,
+    format: &FormatInfo,
+    renderer: &str,
+    data: &[u8],
+    preferences: &ViewerPreferences,
+    overrides: ViewerRuntimeOverrides<'_>,
+) -> Result<PathBuf, String> {
     let base = app
         .path()
         .app_cache_dir()
@@ -47,6 +108,13 @@ pub(crate) fn create_runtime<R: Runtime>(
             comment: None,
         }
     };
+    let label = overrides.label.map(str::to_string).unwrap_or_else(|| {
+        file_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("structure")
+            .to_string()
+    });
 
     let mut config = json!({
         "format": format.molstar_format,
@@ -55,7 +123,7 @@ pub(crate) fn create_runtime<R: Runtime>(
         "renderer": renderer,
         "requestedRenderer": normalize_renderer_mode(&preferences.renderer_mode),
         "allowMolstarFallback": true,
-        "label": file_path.file_name().and_then(|value| value.to_str()).unwrap_or("structure"),
+        "label": label,
         "byteCount": data.len(),
         "previewByteCount": payload.data.len(),
         "quickLookBuild": "burrete-tauri",
@@ -65,7 +133,7 @@ pub(crate) fn create_runtime<R: Runtime>(
         "uiScale": 1.0,
         "overlayOpacity": 0.90,
         "transparentBackground": preferences.canvas_background == "transparent",
-        "sdfGrid": true,
+        "sdfGrid": overrides.sdf_grid.unwrap_or(true),
         "appViewer": true,
         "tauriViewer": true,
         "xyzrenderViewer": false,
@@ -74,6 +142,13 @@ pub(crate) fn create_runtime<R: Runtime>(
         "showPanelControls": true,
         "defaultLayoutState": { "left": "collapsed", "right": "hidden", "top": "hidden", "bottom": "hidden" }
     });
+
+    if let Some(mode) = overrides.default_sdf_pose_mode {
+        config["defaultSdfPoseMode"] = json!(mode);
+    }
+    if let Some(storage_key) = overrides.sdf_pose_mode_storage_key {
+        config["sdfPoseModeStorageKey"] = json!(storage_key);
+    }
 
     if renderer == "xyz-fast" {
         config["xyzFast"] = json!({
@@ -89,19 +164,23 @@ pub(crate) fn create_runtime<R: Runtime>(
     }
 
     if renderer == "xyzrender-external" {
-        let artifact = create_xyzrender_artifact(file_path, &runtime)?;
+        let artifact_meta = create_xyzrender_artifact(file_path, &runtime)?;
         config["xyzrenderViewer"] = json!(true);
-        config["xyzrenderPreset"] = json!(artifact.preset);
+        config["xyzrenderPreset"] = json!(artifact_meta.preset);
         config["xyzrenderPresetOptions"] = xyzrender_preset_options();
-        config["externalArtifact"] = json!({
-            "path": artifact.relative_path,
-            "type": artifact.output_type,
+        let mut artifact = json!({
+            "path": artifact_meta.relative_path,
+            "type": artifact_meta.output_type,
             "renderer": "xyzrender",
-            "preset": artifact.preset,
-            "config": artifact.config_argument,
-            "elapsedMs": artifact.elapsed_ms,
-            "log": artifact.log
+            "preset": artifact_meta.preset,
+            "config": artifact_meta.config_argument,
+            "elapsedMs": artifact_meta.elapsed_ms,
+            "log": artifact_meta.log
         });
+        if let Some(surface_mode) = artifact_meta.surface_mode {
+            artifact["surfaceMode"] = json!(surface_mode);
+        }
+        config["externalArtifact"] = artifact;
     }
 
     let config_text = serde_json::to_string(&config).map_err(|err| err.to_string())?;
@@ -250,6 +329,7 @@ fn viewer_html(
     <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel"><span aria-hidden="true">⌘</span></button>
     <button class="buret-button" type="button" data-buret-action="theme" aria-label="Switch theme" title="Switch theme"><span aria-hidden="true">☀</span></button>
     <button class="buret-button hidden" type="button" data-buret-action="open-vesta" aria-label="Open in VESTA" title="Open in VESTA"><span aria-hidden="true">↗</span></button>
+    <button class="buret-button buret-pose-toggle hidden" type="button" data-buret-action="sdf-poses" aria-label="Show all SDF poses together" aria-pressed="false" title="Show all SDF poses together">All</button>
     <div class="buret-renderer-control" data-buret-renderer-control>
       <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="xyz-fast">Fast</button>
       <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="molstar">Mol*</button>
@@ -288,6 +368,7 @@ body.buret-theme-light{--buret-toolbar-background:rgba(246,244,240,.78);--buret-
 .buret-button.active{color:#fff}
 .buret-button.hidden{display:none}
 .buret-grip{cursor:grab;color:currentColor;opacity:.66}
+.buret-pose-toggle{width:auto!important;min-width:34px}
 .buret-renderer-control{display:none;align-items:center;gap:4px;padding-left:5px;border-left:1px solid var(--buret-toolbar-border)}
 .buret-renderer-control.visible{display:flex}
 .buret-renderer-choice{min-width:42px}

@@ -8,7 +8,7 @@ use super::runtime_grid::{create_grid_runtime, grid_requires_preview};
 use super::runtime_utils::{file_title, stable_id};
 use super::runtime_viewer::create_runtime;
 
-const MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
+pub(crate) const MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -29,13 +29,19 @@ pub(crate) struct OpenDocumentsResult {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ViewerDocument {
-    id: String,
-    path: String,
-    title: String,
-    extension: String,
-    renderer: String,
-    runtime_path: String,
-    byte_count: u64,
+    pub(crate) id: String,
+    pub(crate) path: String,
+    pub(crate) title: String,
+    pub(crate) extension: String,
+    pub(crate) renderer: String,
+    pub(crate) runtime_path: String,
+    pub(crate) byte_count: u64,
+    #[serde(skip_serializing_if = "is_false")]
+    pub(crate) ephemeral: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 pub(crate) fn open_document<R: Runtime>(
@@ -77,6 +83,7 @@ pub(crate) fn open_document<R: Runtime>(
             renderer: "grid2d".to_string(),
             runtime_path: runtime_path.to_string_lossy().to_string(),
             byte_count: metadata.len(),
+            ephemeral: false,
         });
     }
     if grid_requires_preview(&extension) {
@@ -105,5 +112,6 @@ pub(crate) fn open_document<R: Runtime>(
         renderer,
         runtime_path: runtime_path.to_string_lossy().to_string(),
         byte_count: metadata.len(),
+        ephemeral: false,
     })
 }

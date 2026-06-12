@@ -30,6 +30,8 @@ const [
   previewRuntimeGrid,
   previewRuntimeViewer,
   previewRuntimeUtils,
+  previewXyzrender,
+  previewViewerJs,
   quickLookPreviewController,
   tauriConfigSource,
 ] = await Promise.all([
@@ -46,6 +48,8 @@ const [
   source('apps/desktop/src-tauri/src/preview/runtime_grid.rs'),
   source('apps/desktop/src-tauri/src/preview/runtime_viewer.rs'),
   source('apps/desktop/src-tauri/src/preview/runtime_utils.rs'),
+  source('apps/desktop/src-tauri/src/preview/xyzrender.rs'),
+  source('PreviewExtension/Web/viewer.js'),
   source('PreviewExtension/Platform/PreviewViewController.swift'),
   source('apps/desktop/src-tauri/tauri.conf.json'),
 ]);
@@ -74,6 +78,13 @@ for (const commandPath of [
 
 assert.match(startupCommand, /#\[tauri::command\]\s+pub\(crate\) fn startup_documents/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_documents/);
+assert.match(documentsCommand, /enum OpenDocumentsMode/);
+assert.match(documentsCommand, /CombinePoses/);
+assert.match(documentsCommand, /CombineGrid/);
+assert.match(documentsCommand, /open_combined_pose_document/);
+assert.match(documentsCommand, /open_combined_grid_document/);
+assert.match(documentsCommand, /combined_sdf_data/);
+assert.match(documentsCommand, /is_sdf_path/);
 assert.match(previewCacheCommand, /#\[tauri::command\]\s+pub\(crate\) fn clear_preview_cache/);
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_logs_folder/);
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_external_url/);
@@ -85,19 +96,28 @@ assert.match(tray, /\.icon_as_template\(true\)/);
 assert.doesNotMatch(tray, /default_window_icon/);
 assert.doesNotMatch(tray, /\.title\("B"\)/);
 
-for (const moduleName of ['runtime_grid', 'runtime_utils', 'runtime_viewer']) {
+for (const moduleName of ['runtime_grid', 'runtime_utils', 'runtime_viewer', 'xyzrender']) {
   assert.match(previewIndex, new RegExp(`pub\\(crate\\) mod ${moduleName};`));
 }
 
 assert.match(previewRuntime, /pub\(crate\) fn open_document/);
+assert.match(previewRuntime, /pub\(crate\) const MAX_STRUCTURE_FILE_SIZE/);
+assert.match(previewRuntime, /pub\(crate\) ephemeral: bool/);
 assert.match(previewRuntime, /create_grid_runtime/);
 assert.match(previewRuntime, /create_runtime/);
 assert.doesNotMatch(previewRuntime, /fn parse_sdf_grid/);
 assert.doesNotMatch(previewRuntime, /fn viewer_html/);
 assert.match(previewRuntimeGrid, /pub\(crate\) fn create_grid_runtime/);
+assert.match(previewRuntimeGrid, /pub\(crate\) fn create_combined_sdf_grid_runtime/);
+assert.match(previewRuntimeGrid, /"Source File"/);
+assert.match(previewRuntimeGrid, /fn read_cfg_props/);
 assert.match(previewRuntimeGrid, /fn parse_sdf_grid/);
+assert.match(previewRuntimeGrid, /line\.trim\(\) == "\$\$\$\$"/);
 assert.match(previewRuntimeGrid, /fn parse_delimited_table/);
 assert.match(previewRuntimeViewer, /pub\(crate\) fn create_runtime/);
+assert.match(previewRuntimeViewer, /pub\(crate\) fn create_combined_sdf_pose_runtime/);
+assert.match(previewRuntimeViewer, /"defaultSdfPoseMode"/);
+assert.match(previewRuntimeViewer, /"sdfPoseModeStorageKey"/);
 assert.match(previewRuntimeViewer, /pub\(crate\) fn copy_web_assets/);
 assert.match(previewRuntimeViewer, /fn viewer_html/);
 assert.match(previewRuntimeViewer, /--buret-toolbar-safe-top:12px/);
@@ -105,12 +125,31 @@ assert.match(previewRuntimeViewer, /#buret-toolbar\.collapsed/);
 assert.doesNotMatch(previewRuntimeViewer, /#buret-toolbar\.collapsed:hover/);
 assert.match(previewRuntimeViewer, /\.buret-renderer-control\.visible/);
 assert.match(previewRuntimeViewer, /buret-renderer-choice/);
+assert.match(previewRuntimeViewer, /data-buret-action="sdf-poses"/);
 assert.match(previewRuntimeViewer, /aria-label="Collapse controls"/);
 assert.match(previewRuntimeViewer, /aria-expanded="true"/);
 assert.match(previewRuntimeViewer, /--buret-panel-bg/);
 assert.match(previewRuntimeUtils, /pub\(crate\) fn stable_id/);
 assert.match(previewRuntimeUtils, /pub\(crate\) fn prune_runtime_dirs/);
+assert.match(previewXyzrender, /fn surface_plan/);
+assert.match(previewXyzrender, /CubeRole::Mo/);
+assert.match(previewXyzrender, /"--mo"/);
+assert.match(previewXyzrender, /"--dens"/);
+assert.match(previewXyzrender, /"--esp"/);
+assert.match(previewXyzrender, /"--nci-surf"/);
+assert.match(previewRuntimeViewer, /"surfaceMode"/);
+assert.match(previewViewerJs, /function buildSdfPoseOverlay/);
+assert.match(previewViewerJs, /M  V30 BEGIN CTAB/);
+assert.match(previewViewerJs, /SDF_POSE_MODE_STORAGE_KEY/);
 assert.doesNotMatch(quickLookPreviewController, /#buret-toolbar\.collapsed:hover/);
 assert.match(quickLookPreviewController, /buret-renderer-choice/);
+assert.match(quickLookPreviewController, /data-buret-action="sdf-poses"/);
 assert.match(quickLookPreviewController, /aria-label="Collapse controls"/);
 assert.match(quickLookPreviewController, /aria-expanded="true"/);
+assert.match(quickLookPreviewController, /prefersExternalRenderer\(fileExtension: pathExtension\)/);
+assert.match(quickLookPreviewController, /private struct SurfacePlan/);
+assert.match(quickLookPreviewController, /surfaceMode/);
+assert.match(quickLookPreviewController, /"--mo"/);
+assert.match(quickLookPreviewController, /"--dens"/);
+assert.match(quickLookPreviewController, /"--esp"/);
+assert.match(quickLookPreviewController, /"--nci-surf"/);

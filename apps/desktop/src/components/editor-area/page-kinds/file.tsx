@@ -29,7 +29,9 @@ function findDocument(location: FileLocation, documents: ViewerDocument[]) {
 }
 
 function ViewerSurface({ document }: { document: ViewerDocument }) {
-  const url = convertFileSrc(document.runtimePath);
+  const url = document.runtimePath.startsWith("http://") || document.runtimePath.startsWith("https://")
+    ? document.runtimePath
+    : convertFileSrc(document.runtimePath);
   return (
     <div className="molecule-stage">
       <iframe title={document.title} src={url} className="viewer-iframe" sandbox="allow-scripts allow-downloads" referrerPolicy="no-referrer" />

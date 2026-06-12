@@ -37,6 +37,7 @@ const [
   scrollFadeHook,
   shortcuts,
   openDropHook,
+  previewViewer,
   openEventsHook,
   menuEventsHook,
   windowTitle,
@@ -74,6 +75,7 @@ const [
   source('apps/desktop/src/hooks/use-scroll-fade.ts'),
   source('apps/desktop/src/hooks/use-keyboard-shortcuts.ts'),
   source('apps/desktop/src/hooks/use-open-drop.ts'),
+  source('PreviewExtension/Web/viewer.js'),
   source('apps/desktop/src/hooks/use-open-events.ts'),
   source('apps/desktop/src/hooks/use-menu-events.ts'),
   source('apps/desktop/src/components/window-title/index.tsx'),
@@ -196,6 +198,9 @@ assert.match(editorTabs, /New tab/);
 assert.match(editorTabs, /state\.tabs\.map/);
 assert.match(editorTabs, /pageKind\(tab\.location\)/);
 assert.match(editorTabs, /actions\.selectTab\(tab\.id\)/);
+assert.match(editorTabs, /ArrowLeft/);
+assert.match(editorTabs, /ArrowRight/);
+assert.match(editorTabs, /tabRefs\.current\[nextIndex\]\?\.focus\(\)/);
 assert.match(editorTabs, /actions\.closeTab\(tab\.id\)/);
 assert.match(editorTabs, /actions\.openNewTab/);
 assert.match(editorTabs, /←/);
@@ -281,11 +286,39 @@ assert.match(commandPalette, /command-palette-group-heading/);
 assert.match(commandPalette, /ArrowDown/);
 assert.match(commandPalette, /ArrowUp/);
 assert.match(commandPalette, /aria-selected=\{index === selectedIndex\}/);
-assert.match(app, /useOpenDrop\(openDocuments, setStatus\)/);
+assert.match(app, /type OpenDocumentsMode = "individual" \| "combinePoses" \| "combineGrid"/);
+assert.match(app, /useOpenDrop\(handleDroppedPaths, setStatus\)/);
+assert.match(app, /shouldOfferBatchDropActions/);
+assert.match(app, /browserPreviewDocumentFromUrl/);
+assert.match(app, /previewRuntime/);
+assert.match(app, /previewRenderer/);
+assert.match(app, /openDocuments\(paths, "combinePoses"\)/);
+assert.match(app, /openDocuments\(paths, "combineGrid"\)/);
 assert.match(app, /useOpenEvents\(openDocuments, setStatus\)/);
 assert.match(app, /useMenuEvents\(\{ chooseFiles, openSettings, checkForUpdates \}\)/);
 assert.match(app, /<WindowTitle activeDocument=\{activeDocument\} \/>/);
+assert.match(appLayout, /Open in One Window/);
+assert.match(appLayout, /Open as Grid/);
+assert.match(appLayout, /Open Individually/);
+assert.match(appLayout, /actions\.openPendingDropTogether/);
+assert.match(appLayout, /actions\.openPendingDropAsGrid/);
+assert.match(appLayout, /actions\.openPendingDropIndividually/);
+assert.match(moleculeStore, /persistentDocuments/);
+assert.match(moleculeStore, /!document\.ephemeral/);
+assert.match(styles, /\.drop-overlay-choice/);
+assert.match(fileKind, /document\.runtimePath\.startsWith\("http:\/\/"\)/);
+assert.match(fileKind, /convertFileSrc\(document\.runtimePath\)/);
 assert.match(openDropHook, /export function useOpenDrop/);
+assert.match(openDropHook, /dropResetTimerRef/);
+assert.match(openDropHook, /window\.addEventListener\("blur", resetDropState\)/);
+assert.match(openDropHook, /document\.addEventListener\("visibilitychange", resetWhenHidden\)/);
+assert.match(openDropHook, /window\.setTimeout\(\(\) => \{/);
+assert.match(previewViewer, /function updateViewportOverlayPositions\(\)/);
+assert.match(previewViewer, /msp-viewport-top-left-controls/);
+assert.match(previewViewer, /msp-viewport-controls/);
+assert.match(previewViewer, /msp-layout-main/);
+assert.match(previewViewer, /scheduleViewportOverlayReposition\(\)/);
+assert.match(previewViewer, /window\.addEventListener\('resize', \(\) => \{\s+scheduleViewerResize\(viewer, 100\);\s+scheduleViewportOverlayReposition\(\);/s);
 assert.match(openEventsHook, /export function useOpenEvents/);
 assert.match(menuEventsHook, /export function useMenuEvents/);
 assert.match(windowTitle, /useWindowTitle/);

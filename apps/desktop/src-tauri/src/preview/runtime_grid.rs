@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use tauri::{Manager, Runtime};
 
 use super::runtime::ViewerPreferences;
+use super::runtime::MAX_STRUCTURE_FILE_SIZE;
 use super::runtime_utils::{
     asset_url, clipped, decode_text, escape_html, normalized_lines, prune_runtime_dirs,
 };
@@ -26,6 +27,11 @@ struct GridRecord {
     smiles: Option<String>,
     molblock: Option<String>,
     props: BTreeMap<String, String>,
+}
+
+pub(crate) struct CombinedGridRuntime {
+    pub(crate) runtime_path: PathBuf,
+    pub(crate) byte_count: u64,
 }
 
 pub(crate) fn create_grid_runtime<R: Runtime>(
@@ -54,6 +60,110 @@ pub(crate) fn create_grid_runtime<R: Runtime>(
         return Ok(None);
     }
 
+    write_grid_runtime(
+        app,
+        file_path,
+        file_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("molecule collection"),
+        &collection,
+        data.len() as u64,
+        matches!(extension, "sdf" | "sd"),
+        preferences,
+    )
+    .map(Some)
+}
+
+pub(crate) fn create_combined_sdf_grid_runtime<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    label_path: &Path,
+    sdf_paths: &[PathBuf],
+    preferences: &ViewerPreferences,
+) -> Result<CombinedGridRuntime, String> {
+    let mut records = Vec::new();
+    let mut records_total = 0;
+    let mut byte_count = 0_u64;
+    for path in sdf_paths {
+        let metadata = fs::metadata(path).map_err(|err| format!("{}: {err}", path.display()))?;
+        if !metadata.is_file() {
+            continue;
+        }
+        if metadata.len() > MAX_STRUCTURE_FILE_SIZE {
+            return Err(format!(
+                "{} is larger than the 75 MB preview limit",
+                path.display()
+            ));
+        }
+        let data = fs::read(path).map_err(|err| format!("{}: {err}", path.display()))?;
+        byte_count = byte_count.saturating_add(data.len() as u64);
+        let text = decode_text(&data);
+        let remaining = 5000_usize.saturating_sub(records.len());
+        let collection = parse_sdf_grid(&text, remaining);
+        let included_count = collection.records.len();
+        let total_count = collection.records_total;
+        let cfg_props = read_cfg_props(path);
+        for mut record in collection.records {
+            if records.len() >= 5000 {
+                break;
+            }
+            record.index = records_total;
+            record.props.insert(
+                "Source File".to_string(),
+                path.file_name()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or("structure.sdf")
+                    .to_string(),
+            );
+            for (key, value) in cfg_props.iter() {
+                if record.props.len() >= 64 {
+                    break;
+                }
+                record
+                    .props
+                    .entry(key.clone())
+                    .or_insert_with(|| value.clone());
+            }
+            records.push(record);
+            records_total += 1;
+        }
+        records_total += total_count.saturating_sub(included_count);
+    }
+
+    if records_total == 0 {
+        return Err("No SDF records found to combine".to_string());
+    }
+
+    let collection = GridCollection {
+        format: "sdf",
+        records,
+        records_total,
+    };
+    let label = combined_label(label_path);
+    let runtime_path = write_grid_runtime(
+        app,
+        label_path,
+        &label,
+        &collection,
+        byte_count,
+        true,
+        preferences,
+    )?;
+    Ok(CombinedGridRuntime {
+        runtime_path,
+        byte_count,
+    })
+}
+
+fn write_grid_runtime<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    file_path: &Path,
+    label: &str,
+    collection: &GridCollection,
+    byte_count: u64,
+    renderer_switch: bool,
+    preferences: &ViewerPreferences,
+) -> Result<PathBuf, String> {
     let base = app
         .path()
         .app_cache_dir()
@@ -89,8 +199,8 @@ pub(crate) fn create_grid_runtime<R: Runtime>(
         "mode": "grid2d",
         "format": collection.format,
         "renderer": "grid2d",
-        "label": file_path.file_name().and_then(|value| value.to_str()).unwrap_or("molecule collection"),
-        "byteCount": data.len(),
+        "label": label,
+        "byteCount": byte_count,
         "host": "app",
         "quickLookBuild": "burrete-tauri-grid2d",
         "debug": false,
@@ -108,7 +218,7 @@ pub(crate) fn create_grid_runtime<R: Runtime>(
             "selection": true,
             "export": true,
             "substructureSearch": true,
-            "rendererSwitch": matches!(extension, "sdf" | "sd")
+            "rendererSwitch": renderer_switch
         }
     });
     let config_text = serde_json::to_string(&config).map_err(|err| err.to_string())?;
@@ -132,7 +242,7 @@ pub(crate) fn create_grid_runtime<R: Runtime>(
         format!("window.BurreteGridRecords = {records_text};\nwindow.BurreteRDKitWasmBase64 = \"{wasm_base64}\";\n"),
     )
     .map_err(|err| err.to_string())?;
-    Ok(Some(runtime.join("index.html")))
+    Ok(runtime.join("index.html"))
 }
 
 fn grid_html(
@@ -194,6 +304,54 @@ fn grid_can_preview(extension: &str) -> bool {
 
 pub(crate) fn grid_requires_preview(extension: &str) -> bool {
     matches!(extension, "csv" | "smi" | "smiles" | "tsv")
+}
+
+fn combined_label(path: &Path) -> String {
+    let base = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("Combined SDF");
+    format!("{base} SDF collection")
+}
+
+fn read_cfg_props(sdf_path: &Path) -> BTreeMap<String, String> {
+    let cfg_path = sdf_path.with_extension("cfg");
+    let Ok(text) = fs::read_to_string(cfg_path) else {
+        return BTreeMap::new();
+    };
+    let mut raw = BTreeMap::new();
+    for line in normalized_lines(&text) {
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        let value = value.trim();
+        if key.is_empty() || value.is_empty() {
+            continue;
+        }
+        raw.insert(key.to_string(), value.to_string());
+    }
+
+    let mut props = BTreeMap::new();
+    for (cfg_key, prop_key) in [
+        ("receptor", "Docking Receptor"),
+        ("center_x", "Docking Center X"),
+        ("center_y", "Docking Center Y"),
+        ("center_z", "Docking Center Z"),
+        ("size_x", "Docking Size X"),
+        ("size_y", "Docking Size Y"),
+        ("size_z", "Docking Size Z"),
+        ("num_modes", "Docking Modes"),
+        ("exhaustiveness", "Docking Exhaustiveness"),
+        ("out", "Docking Output"),
+        ("log", "Docking Log"),
+    ] {
+        if let Some(value) = raw.get(cfg_key) {
+            props.insert(prop_key.to_string(), clipped(value, 500));
+        }
+    }
+    props
 }
 
 fn parse_smiles_grid(text: &str, max_records: usize) -> GridCollection {
@@ -288,7 +446,7 @@ fn parse_sdf_grid(text: &str, max_records: usize) -> GridCollection {
     }
 
     for line in normalized_lines(text) {
-        if line.trim() == "$$" {
+        if line.trim() == "$$$$" {
             finish_record(
                 &mut current,
                 &mut current_has_content,
