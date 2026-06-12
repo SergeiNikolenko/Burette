@@ -1,22 +1,24 @@
 # Agent Notes
 
-This file is for coding agents working on Burrete. Keep user-facing installation
-and usage instructions in `README.md`.
+Burrete is a macOS menu bar app plus a Quick Look Preview Extension for
+molecular structure files.
 
-## Project Shape
+## Documentation Graph
 
-Burrete is a macOS menu bar app plus a Quick Look Preview Extension for molecular
-structure files. It renders structures directly in Finder previews and keeps the
-main app out of the Dock.
+- User-facing overview: [README.md](README.md)
+- Documentation map: [docs/README.md](docs/README.md)
+- Architecture: [docs/architecture.md](docs/architecture.md)
+- Renderer support: [docs/renderer-support.md](docs/renderer-support.md)
+- Quick Look debugging: [docs/quicklook-debugging.md](docs/quicklook-debugging.md)
+- Release process: [docs/releasing.md](docs/releasing.md)
 
-The Quick Look extension bundle identifier is:
+## Stable Runtime Identifiers
+
+Quick Look extension bundle identifier:
 
 ```text
 com.local.BurreteV10.Preview
 ```
-
-Keep the extension identifier stable to avoid stale Quick Look registration
-conflicts while the product name remains Burrete.
 
 Forced preview content types:
 
@@ -28,26 +30,68 @@ com.local.burrete10.cif
 ## Common Commands
 
 ```bash
-# Build and install locally
-./scripts/build.sh
-./scripts/install.sh
-
-# Force Quick Look to preview a sample
-./scripts/force-preview.sh samples/mini.pdb
-./scripts/force-preview.sh samples/mini.cif
-
-# Preview a real desktop file
-./scripts/force-preview.sh ~/Desktop/1HTB.pdb
-
-# Inspect runtime logs
-./scripts/tail-log.sh
-
-# Refresh vendored Mol* assets
-npm ci --ignore-scripts
-npm run vendor:molstar
+vp install
+vp dev
+vp check
+vp test
+vp build
+BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/build.sh
+BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/install.sh
+BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/force-preview.sh samples/mini.pdb
+BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/force-preview.sh samples/mini.cif
+BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/force-preview.sh samples/mini.xyz
 ```
 
-After installing or replacing the app, refresh Quick Look:
+Use Vite+ through the `vp` CLI for frontend development and JavaScript
+validation. Prefer `vp dev`, `vp check`, `vp test`, and `vp build` over direct
+package-manager or Vite commands. Existing package scripts may still be run
+through `vp run <script>` when they cover project-specific validation not yet
+folded into a Vite+ built-in. Direct Bun commands remain implementation details
+inside repository-owned build, release, and installer scripts until a separate
+toolchain migration replaces those paths.
+
+When running `vp` from the Codex desktop shell on macOS, the app-bundled Node
+binary can fail to load Vite+/Rolldown native bindings. If a Vite+ command
+reports `Cannot find native binding` for `rolldown-binding.darwin-arm64.node`,
+first run `vp install`, then retry with the first non-Codex Node executable in
+`PATH` before changing application code. Do not hard-code a Codex runtime path;
+find a normal Node installation from the environment.
+
+## Browser Opening
+
+When the user asks to open something in a browser, or simply asks to open a
+local web target, always use the built-in `@Browser` plugin
+(`plugin://browser@openai-bundled`). Do not use macOS `open`, Chrome, Safari,
+or another external browser unless the user explicitly asks for an external
+browser or the built-in Browser plugin is unavailable.
+
+When an agent builds or installs a packaged app for local testing, always use a
+dev flavor with a unique slug, preferably the worktree suffix:
+
+```bash
+BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/build.sh
+BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/install.sh
+BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/force-preview.sh samples/mini.pdb
+```
+
+This keeps the app, Quick Look extension, thumbnail extension, content types,
+and Launch Services registrations isolated from other worktrees and from the
+release bundle. Do not run unflavored `./scripts/build.sh`,
+`./scripts/install.sh`, or packaged preview smoke commands unless the user
+explicitly asks for a release or final non-dev bundle. `scripts/build-dev.sh`
+does not support dev flavors; agents should prefer the flavored
+`./scripts/build.sh` path for packaged local builds.
+
+Rust validation runs from the Tauri crate:
+
+```bash
+cd apps/desktop/src-tauri
+cargo test
+cargo clippy
+cargo fmt --check
+```
+
+After replacing the app, refresh Quick Look:
 
 ```bash
 qlmanage -r
@@ -55,38 +99,10 @@ qlmanage -r cache
 killall quicklookd 2>/dev/null || true
 ```
 
-## CI And Releases
+## Maintenance Rules
 
-Pull requests run the full CI workflow on macOS: npm dependency restore, release
-version checks, JavaScript syntax checks, plist linting, and a local Xcode build.
-Every PR intended for merge must bump `package.json`, `package-lock.json`,
-`MARKETING_VERSION`, and the visible About version together.
-
-Merging to `main` builds the app and publishes a GitHub Release tagged with the
-same package version. If the tag already exists, the release workflow fails so
-the next PR cannot overwrite an existing release.
-
-Local hooks use lefthook:
-
-```bash
-npm ci --ignore-scripts
-npm run prepare
-```
-
-## Runtime Files
-
-Quick Look previews are generated under the extension container cache. Burrete
-keeps Mol* assets shared and writes per-preview runtime HTML/data files for
-repeatable WebKit loading.
-
-Primary log path:
-
-```text
-~/Library/Containers/com.local.BurreteV10.Preview/Data/Library/Caches/Burrete/Burrete.log
-```
-
-Preview cache:
-
-```text
-~/Library/Containers/com.local.BurreteV10.Preview/Data/Library/Caches/Burrete/previews
-```
+- Keep current docs under `docs/`.
+- Do not reintroduce imported reference snapshots or migration handoff logs into
+  the active docs graph.
+- Verify doc claims against source, scripts, or runtime output before updating
+  docs.

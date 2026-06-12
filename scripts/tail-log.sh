@@ -1,11 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+PREVIEW_ID="com.local.BurreteV10.Preview"
+if [[ -n "${BURRETE_DEV_FLAVOR:-}" ]]; then
+  command -v bun >/dev/null 2>&1 || { echo "error: BURRETE_DEV_FLAVOR requires bun to compute the dev namespace." >&2; exit 1; }
+  eval "$(bun "$ROOT/scripts/dev-namespace.mjs" shell-env)"
+  PREVIEW_ID="$BURRETE_PREVIEW_ID"
+fi
+
 LOGS=(
-  "$HOME/Library/Containers/com.local.BurreteV10.Preview/Data/Library/Caches/Burrete/BurreteV10.log"
-  "$HOME/Library/Containers/com.local.BurreteV10.Preview/Data/Library/Caches/Burrete/Burrete.log"
-  "$HOME/Library/Containers/com.local.BurreteV10.Preview/Data/Library/Application Support/Burrete/BurreteV10.log"
-  "$HOME/Library/Containers/com.local.BurreteV10.Preview/Data/Library/Application Support/Burrete/Burrete.log"
+  "$HOME/Library/Containers/$PREVIEW_ID/Data/Library/Caches/Burrete/BurreteV10.log"
+  "$HOME/Library/Containers/$PREVIEW_ID/Data/Library/Caches/Burrete/Burrete.log"
+  "$HOME/Library/Containers/$PREVIEW_ID/Data/Library/Application Support/Burrete/BurreteV10.log"
+  "$HOME/Library/Containers/$PREVIEW_ID/Data/Library/Application Support/Burrete/Burrete.log"
   "$HOME/Library/Caches/Burrete/BurreteV10.log"
   "$HOME/Library/Caches/Burrete/Burrete.log"
 )

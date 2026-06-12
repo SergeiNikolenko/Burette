@@ -1,9 +1,9 @@
 import type { ViewerDocument } from "../types";
 
 export function rendererLabel(renderer: string) {
-  if (renderer === "xyz-fast") return "Fast XYZ";
   if (renderer === "xyzrender-external") return "xyzrender";
   if (renderer === "grid2d") return "Grid";
+  if (renderer === "not-renderable") return "Preview";
   return "Mol*";
 }
 

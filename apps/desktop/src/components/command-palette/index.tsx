@@ -1,4 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "cmdk";
+import { Description as DialogDescription, Title as DialogTitle } from "@radix-ui/react-dialog";
 import { formatBytes, rendererLabel } from "../format";
 import type { ShellActions, ShellViewState } from "../types";
 import type { ViewerPreferences } from "../../types";
@@ -27,7 +36,6 @@ const rendererCommands: Array<{
 }> = [
   { id: "renderer-auto", label: "Renderer: Auto", value: "auto" },
   { id: "renderer-molstar", label: "Renderer: Mol*", value: "molstar" },
-  { id: "renderer-xyz-fast", label: "Renderer: Fast XYZ", value: "xyz-fast" },
   { id: "renderer-xyzrender", label: "Renderer: xyzrender external", value: "xyzrender-external" },
 ];
 
@@ -39,10 +47,35 @@ export function CommandPalette({
   onQueryChange,
   onClose,
 }: CommandPaletteProps) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const [portalContainer, setPortalContainer] = useState<HTMLElement>();
+
+  useLayoutEffect(() => {
+    setPortalContainer(document.querySelector<HTMLElement>(".app-shell") ?? document.body);
+  }, [isOpen]);
 
   const items = useMemo<PaletteItem[]>(() => {
+    const projectItems = state.sidebarProjects.flatMap((project) => project.items.map((item) => ({
+      id: `${item.source}-${item.path}`,
+      group: "Projects",
+      label: `${project.title}: ${item.title}`,
+      description: `${item.relativePath} · ${rendererLabel(item.renderer)} · ${formatBytes(item.byteCount)}${item.isOpen ? "" : " · Recent"}`,
+      run: () => {
+        if (item.documentId) {
+          actions.selectDocument(item.documentId);
+          return;
+        }
+        return actions.openRecentStructure({
+          path: item.path,
+          title: item.title,
+          extension: item.extension,
+          renderer: item.renderer,
+          byteCount: item.byteCount,
+          openedAt: item.openedAt ?? Date.now(),
+        });
+      },
+    })));
+
     const commands: PaletteItem[] = [
       {
         id: "open-structure",
@@ -52,10 +85,24 @@ export function CommandPalette({
         run: actions.chooseFiles,
       },
       {
-        id: "search-structures",
+        id: "open-clipboard",
         group: "Suggested",
-        label: "Search Open Structures",
-        description: "Focus the sidebar structure filter",
+        label: "Open from Clipboard",
+        description: "Open molecular text or copied structure paths",
+        run: actions.openClipboard,
+      },
+      {
+        id: "open-recent",
+        group: "Suggested",
+        label: "Open Recent",
+        description: "Open the most recent structure",
+        run: actions.openMostRecentStructure,
+      },
+      {
+        id: "search-projects",
+        group: "Suggested",
+        label: "Search Projects and Structures",
+        description: "Focus project and structure search",
         run: actions.focusSidebarSearch,
       },
       {
@@ -64,6 +111,27 @@ export function CommandPalette({
         label: "Settings",
         description: "Open Burette settings",
         run: actions.openSettings,
+      },
+      {
+        id: "open-ketcher",
+        group: "Suggested",
+        label: "Ketcher",
+        description: "Open molecule sketch tab",
+        run: actions.openKetcher,
+      },
+      {
+        id: "open-fep-network",
+        group: "Suggested",
+        label: "FEP Network Preview",
+        description: "Open the ligand network graph workspace",
+        run: actions.openFepNetworkPreview,
+      },
+      {
+        id: "open-agent-integration",
+        group: "Suggested",
+        label: "Burrete",
+        description: "Open Codex integration status",
+        run: () => actions.openSettingsSection("agent"),
       },
       {
         id: "toggle-sidebar",
@@ -101,6 +169,41 @@ export function CommandPalette({
         run: actions.clearCache,
       },
       {
+        id: "reveal-active",
+        group: "Active Structure",
+        label: "Reveal in Finder",
+        description: "Show the active structure in Finder",
+        run: actions.revealActiveDocument,
+      },
+      {
+        id: "copy-active-path",
+        group: "Active Structure",
+        label: "Copy Path",
+        description: "Copy the active structure path",
+        run: actions.copyActiveDocumentPath,
+      },
+      {
+        id: "show-active-metadata",
+        group: "Active Structure",
+        label: "Show Metadata",
+        description: "Show active structure path, renderer, format, and size",
+        run: actions.showActiveDocumentMetadata,
+      },
+      {
+        id: "export-preview-png",
+        group: "Active Structure",
+        label: "Export Preview as PNG",
+        description: "Save the active external SVG preview as PNG",
+        run: actions.exportActivePreviewAsPng,
+      },
+      {
+        id: "export-preview-svg",
+        group: "Active Structure",
+        label: "Export Preview as SVG",
+        description: "Save the active external SVG preview",
+        run: actions.exportActivePreviewAsSvg,
+      },
+      {
         id: "reset-quicklook",
         group: "Suggested",
         label: "Reset Quick Look",
@@ -113,6 +216,13 @@ export function CommandPalette({
         label: "Open Logs Folder",
         description: "Show Burette runtime logs",
         run: actions.openLogs,
+      },
+      {
+        id: "export-diagnostics",
+        group: "Suggested",
+        label: "Export Diagnostics",
+        description: "Save logs, environment, size report, and performance marks",
+        run: actions.exportDiagnostics,
       },
       {
         id: "check-updates",
@@ -128,23 +238,10 @@ export function CommandPalette({
         description: state.preferences.rendererMode === command.value ? "Current renderer mode" : "Switch renderer mode",
         run: () => actions.setPreference("rendererMode", command.value),
       })),
-      ...state.recentStructures.map((structure) => ({
-        id: "recent-" + structure.path,
-        group: "Recent",
-        label: "Open Recent: " + structure.title,
-        description: `${rendererLabel(structure.renderer)} · ${formatBytes(structure.byteCount)}`,
-        run: () => actions.openRecentStructure(structure),
-      })),
-      ...state.documents.map((document) => ({
-        id: "structure-" + document.id,
-        group: "Open",
-        label: "Open Structure: " + document.title,
-        description: `${rendererLabel(document.renderer)} · ${formatBytes(document.byteCount)}`,
-        run: () => actions.selectDocument(document.id),
-      })),
+      ...projectItems,
     ];
     return commands;
-  }, [actions, state.documents, state.preferences.rendererMode, state.recentStructures, state.sidebarOpen]);
+  }, [actions, state.preferences.rendererMode, state.sidebarOpen, state.sidebarProjects]);
 
   const visibleItems = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -156,8 +253,7 @@ export function CommandPalette({
   }, [items, query]);
 
   const visibleGroups = useMemo(() => {
-    let itemIndex = 0;
-    const groups: Array<{ heading: string; items: Array<{ item: PaletteItem; index: number }> }> = [];
+    const groups: Array<{ heading: string; items: PaletteItem[] }> = [];
     for (const item of visibleItems) {
       const heading = query.trim() ? "Results" : item.group;
       let group = groups.find((candidate) => candidate.heading === heading);
@@ -165,102 +261,64 @@ export function CommandPalette({
         group = { heading, items: [] };
         groups.push(group);
       }
-      group.items.push({ item, index: itemIndex });
-      itemIndex += 1;
+      group.items.push(item);
     }
     return groups;
   }, [query, visibleItems]);
 
-  useEffect(() => {
-    setSelectedIndex(0);
-  }, [query, isOpen]);
+  const firstValue = visibleItems[0]?.id ?? "";
+  const [selectedValue, setSelectedValue] = useState(firstValue);
 
   useEffect(() => {
-    if (selectedIndex >= visibleItems.length) {
-      setSelectedIndex(Math.max(0, visibleItems.length - 1));
-    }
-  }, [selectedIndex, visibleItems.length]);
-
-  if (!isOpen) return null;
+    setSelectedValue(firstValue);
+    listRef.current?.scrollTo({ top: 0 });
+  }, [firstValue, isOpen, query]);
 
   const runItem = (item: PaletteItem) => {
     onClose();
     void item.run();
   };
 
-  const runSelectedItem = () => {
-    const item = visibleItems[selectedIndex];
-    if (item) runItem(item);
-  };
-
-  const moveSelection = (direction: 1 | -1) => {
-    if (!visibleItems.length) return;
-    setSelectedIndex((index) => (index + direction + visibleItems.length) % visibleItems.length);
-  };
+  if (!portalContainer) return null;
 
   return (
-    <div className="command-palette-overlay" role="presentation" onMouseDown={onClose}>
-      <section
-        className="command-palette"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Command Palette"
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            event.preventDefault();
-            event.stopPropagation();
-            onClose();
-          }
-        }}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <input
-          ref={inputRef}
-          className="command-palette-input"
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowDown") {
-              event.preventDefault();
-              moveSelection(1);
-            } else if (event.key === "ArrowUp") {
-              event.preventDefault();
-              moveSelection(-1);
-            } else if (event.key === "Enter") {
-              event.preventDefault();
-              runSelectedItem();
-            }
-          }}
-          autoFocus
-          placeholder="Search commands and structures..."
-          aria-label="Search commands and open structures"
-        />
-        <div className="command-palette-list" role="listbox">
-          {visibleItems.length === 0 ? (
-            <div className="command-palette-empty">No results found.</div>
-          ) : (
-            visibleGroups.map((group) => (
-              <div className="command-palette-group" key={group.heading} role="group" aria-label={group.heading}>
-                <div className="command-palette-group-heading">{group.heading}</div>
-                {group.items.map(({ item, index }) => (
-                  <button
-                    key={item.id}
-                    className="command-palette-item"
-                    data-selected={index === selectedIndex || undefined}
-                    onClick={() => runItem(item)}
-                    onMouseMove={() => setSelectedIndex(index)}
-                    role="option"
-                    aria-selected={index === selectedIndex}
-                  >
-                    <span>{item.label}</span>
-                    <small>{item.description}</small>
-                  </button>
-                ))}
-              </div>
-            ))
-          )}
-        </div>
-      </section>
-    </div>
+    <CommandDialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      label="Command Palette"
+      shouldFilter={false}
+      value={selectedValue}
+      onValueChange={setSelectedValue}
+      container={portalContainer}
+    >
+      <DialogTitle className="command-palette-sr-only">Command Palette</DialogTitle>
+      <DialogDescription className="command-palette-sr-only">
+        Search commands and structures.
+      </DialogDescription>
+      <CommandInput
+        value={query}
+        onValueChange={onQueryChange}
+        placeholder="Search commands and structures..."
+        aria-label="Search commands and open structures"
+      />
+      <CommandList ref={listRef}>
+        {visibleItems.length === 0 ? (
+          <CommandEmpty>No results found.</CommandEmpty>
+        ) : (
+          visibleGroups.map((group) => (
+            <CommandGroup key={group.heading} heading={group.heading}>
+              {group.items.map((item) => (
+                <CommandItem key={item.id} value={item.id} onSelect={() => runItem(item)}>
+                  <span>{item.label}</span>
+                  <small>{item.description}</small>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          ))
+        )}
+      </CommandList>
+    </CommandDialog>
   );
 }

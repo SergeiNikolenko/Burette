@@ -1,12 +1,80 @@
-import type { RecentStructure, ViewerDocument, ViewerPreferences } from "../types";
+import type { FepSetupRequest, OpenDocumentsMode, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences } from "../types";
 import type { MoleculeTab } from "../stores/molecule-store";
+import type { StructureDragPayload } from "../lib/structure-drag";
 import type { UpdatePreferences, UpdateState } from "../update";
+import type { SidebarProject } from "../lib/sidebar-projects";
+import type { SettingsSectionId } from "../lib/settings-sections";
+import type { DockArea, DockDropInput, DockDroppedStructure, DockTab, DockTabKind, DockToolKind } from "../lib/dock";
 
 export type AppPage = "viewer" | "settings";
+export type StatusKind = "info" | "error";
+
+export type StatusNotice = {
+  id: number;
+  kind: StatusKind;
+  message: string;
+  details: string[];
+};
+
+export type KetcherSketchTarget = "grid" | "molstar" | "xyzrender" | "collection";
+
+export type KetcherSketchRequest = {
+  title: string;
+  extension: "sdf";
+  text: string;
+  draftKet?: string;
+  draftMolfile?: string;
+  target: KetcherSketchTarget;
+  collectionTargetPath?: string | null;
+};
+
+export type KetcherImportRequest = {
+  id: number;
+  paths: string[];
+  fragments?: Array<{
+    title: string;
+    text: string;
+    source?: {
+      kind: "grid-row";
+      documentId: string;
+      rowIndex: number;
+      title: string;
+      extension: string;
+    };
+  }>;
+};
+
+export type BuildInfo = {
+  name: string;
+  version: string;
+  identifier: string;
+  flavor: string | null;
+  isDevBuild: boolean;
+  isBrowserDev: boolean;
+  notes: string[];
+  limitations: string[];
+};
+
+export type ChemicalEditorTarget = {
+  id: string;
+  name: string;
+  bundleId: string | null;
+  appPath: string;
+  iconPath?: string | null;
+  iconUrl?: string | null;
+  rank: number;
+  supportedExtensions: string[];
+  matchReason: string;
+};
 
 export type ShellActions = {
   chooseFiles: () => void | Promise<void>;
+  openStructurePaths: (paths: string[], options?: { mode?: OpenDocumentsMode }) => void | Promise<void>;
+  openTextPaths: (paths: string[]) => void | Promise<void>;
+  openPaths: (paths: string[]) => void | Promise<void>;
+  openStructureRecords: (records: StructureDragPayload["records"]) => void | Promise<void>;
   openRecentStructure: (structure: RecentStructure) => void | Promise<void>;
+  openMostRecentStructure: () => void | Promise<void>;
   selectDocument: (id: string) => void;
   selectTab: (id: string) => void;
   openNewTab: () => void;
@@ -16,29 +84,97 @@ export type ShellActions = {
   navigateForward: () => void;
   focusSidebarSearch: () => void;
   openCommandPalette: () => void;
+  openClipboard: () => void | Promise<void>;
   openSettings: () => void;
+  openSettingsSection: (section: SettingsSectionId) => void;
+  backToApp: () => void;
+  openKetcher: () => void;
+  openKetcherWithStructures: (paths: string[], fragments?: KetcherImportRequest["fragments"]) => void;
+  openKetcherExportRaw: (request: {
+    title: string;
+    extension: string;
+    text: string;
+  }) => void;
+  saveKetcherExportFile: (request: {
+    title: string;
+    extension: string;
+    text: string;
+  }) => void | Promise<void>;
+  openFepNetworkPreview: (request?: { title?: string; graphmlText?: string }) => void;
+  applyKetcherToGridRow: (request: {
+    documentId: string;
+    rowIndex: number;
+    title: string;
+    extension: string;
+    text: string;
+  }) => void;
+  openFepSetupWorkspace: (request: FepSetupRequest) => void;
+  openKetcherSketch: (request: KetcherSketchRequest) => void | Promise<void>;
+  saveKetcherDraft: (molfile: string) => void;
+  clearKetcherImportRequest: (id: number) => void;
+  moveTab: (id: string, toIndex: number) => void;
+  chooseWorkspace: () => void | Promise<void>;
+  openWorkspaceFolder: () => void | Promise<void>;
+  openProjectFolder: (path: string | null) => void | Promise<void>;
+  togglePinnedProjectRoot: (root: string) => void;
+  renameProjectRoot: (root: string, name: string) => void;
+  removeProjectRoot: (root: string) => void;
   toggleSidebar: () => void;
+  toggleDock: (area: DockArea) => void;
+  setDockOpen: (area: DockArea, open: boolean) => void;
+  setDockSize: (area: DockArea, size: number) => void;
+  openDockTab: (area: DockArea, kind: DockTabKind) => void;
+  closeDockTab: (area: DockArea, tabId: string) => void;
+  setDockActiveTab: (area: DockArea, kind: DockTabKind) => void;
+  setDockDocument: (area: DockArea, documentId: string | null) => void;
+  setDockTool: (area: DockArea, tool: DockToolKind | null) => void;
+  addDockDrop: (input: DockDropInput) => void;
+  openDockPayload: (input: DockDropInput) => void | Promise<void>;
+  toggleProjectsOpen: () => void;
+  setExpandedProjectIds: (projectIds: string[]) => void;
+  setSidebarQuery: (query: string) => void;
+  toggleProjectExpanded: (projectId: string) => void;
+  togglePinnedStructure: (path: string) => void;
   closeDocument: (id: string) => void;
   closeTab: (id: string) => void;
   closeActiveDocument: () => void;
   clearAllDocuments: () => void;
+  openDockingDocument: (receptorPath: string, ligandPaths: string[], options?: { activePose?: number | null }) => void | Promise<ViewerDocument | null>;
+  openDockingStructureRecords: (receptorPath: string, ligandPaths: string[], records: StructureDragPayload["records"]) => void | Promise<void>;
+  appendGridRecords: (targetDocumentId: string, payload: StructureDragPayload) => boolean;
+  addXyzrenderSheetItems: (targetDocumentId: string, payload: StructureDragPayload) => boolean;
+  mergeMoleculeCollections: (targetPath: string | null, paths: string[]) => void | Promise<void>;
+  saveMoleculeCollectionAs: (targetPath: string) => void | Promise<void>;
+  listChemicalEditorTargets: (path: string) => Promise<ChemicalEditorTarget[]>;
+  openPathInChemicalEditor: (path: string, targetId: string, targetName: string) => void | Promise<void>;
+  openPathWithDefaultApp: (path: string) => void | Promise<void>;
+  revealActiveDocument: () => void | Promise<void>;
+  revealDocument: (document: ViewerDocument) => void | Promise<void>;
+  revealPath: (path: string, label?: string) => void | Promise<void>;
+  copyActiveDocumentPath: () => void | Promise<void>;
+  copyDocumentPath: (document: ViewerDocument) => void | Promise<void>;
+  copyPath: (path: string, label?: string) => void | Promise<void>;
+  showActiveDocumentMetadata: () => void | Promise<void>;
+  showDocumentMetadata: (document: ViewerDocument) => void | Promise<void>;
+  showTextFileMetadata: (document: TextFileDocument) => void | Promise<void>;
+  exportActivePreviewAsPng: () => void | Promise<void>;
+  exportActivePreviewAsSvg: () => void | Promise<void>;
+  setStructureDragActive: (active: boolean) => void;
   clearRecentStructures: () => void;
   clearCache: () => void | Promise<void>;
   resetQuickLook: () => void | Promise<void>;
   openLogs: () => void | Promise<void>;
+  exportDiagnostics: () => void | Promise<void>;
   checkForUpdates: () => void | Promise<void>;
   installUpdate: () => void | Promise<void>;
   openUpdateRelease: () => void | Promise<void>;
-  openPendingDropIndividually: () => void | Promise<void>;
-  openPendingDropTogether: () => void | Promise<void>;
-  openPendingDropAsGrid: () => void | Promise<void>;
-  cancelPendingDrop: () => void;
   setPreference: <K extends keyof ViewerPreferences>(key: K, value: ViewerPreferences[K]) => void;
   setUpdatePreferences: (preferences: UpdatePreferences) => void;
 };
 
 export type ShellViewState = {
   documents: ViewerDocument[];
+  textDocuments: TextFileDocument[];
   tabs: MoleculeTab[];
   activeTab: MoleculeTab | null;
   activeTabId: string | null;
@@ -46,14 +182,38 @@ export type ShellViewState = {
   activeDocumentId: string | null;
   visibleDocuments: ViewerDocument[];
   recentStructures: RecentStructure[];
+  sidebarProjects: SidebarProject[];
+  projectsOpen: boolean;
+  expandedProjectIds: string[];
+  pinnedStructurePaths: string[];
+  workspacePath: string | null;
   page: AppPage;
   sidebarOpen: boolean;
   sidebarWidth: number;
   sidebarDragging: boolean;
+  rightDockOpen: boolean;
+  rightDockWidth: number;
+  rightDockTabs: DockTab[];
+  rightDockActiveTab: DockTabKind;
+  rightDockDocumentId: string | null;
+  rightDockTool: DockToolKind | null;
+  rightDockDragging: boolean;
+  bottomDockOpen: boolean;
+  bottomDockHeight: number;
+  bottomDockTabs: DockTab[];
+  bottomDockActiveTab: DockTabKind;
+  bottomDockDocumentId: string | null;
+  bottomDockTool: DockToolKind | null;
+  bottomDockDragging: boolean;
+  dockDroppedStructures: DockDroppedStructure[];
+  structureDragActive: boolean;
+  poseReviewSelections: Record<string, number>;
+  ketcherImportRequest: KetcherImportRequest | null;
+  ketcherDraftMolfile: string;
   sidebarQuery: string;
-  status: string;
+  status: StatusNotice | null;
   dropActive: boolean;
-  pendingDrop: { paths: string[] } | null;
   preferences: ViewerPreferences;
   update: UpdateState;
+  buildInfo: BuildInfo;
 };

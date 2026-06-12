@@ -1,0 +1,68 @@
+{
+ s_m_m2io_version
+ :::
+ 2.0.0
+}
+
+f_m_ct {
+ s_m_title
+ :::
+ "Real SystemBuilder_01-out.cms mini fixture"
+ m_atom[12] {
+  # First column is atom index #
+  i_m_mmod_type
+  r_m_x_coord
+  r_m_y_coord
+  r_m_z_coord
+  i_m_residue_number
+  s_m_mmod_res
+  s_m_chain_name
+  i_m_color
+  r_m_charge1
+  r_m_charge2
+  s_m_pdb_residue_name
+  s_m_pdb_atom_name
+  i_m_atomic_number
+  i_m_formal_charge
+  i_m_visibility
+  s_m_color_rgb
+  s_m_atom_name
+  i_m_secondary_structure
+  s_m_label_format
+  i_m_label_color
+  s_m_label_user_text
+  b_psp_metadynamics_lig_atom
+  b_psp_metadynamics_orig_atom
+  i_gcmc_ligand
+  i_m_Hcount
+  i_m_pdb_convert_problem
+  i_pa_atomindex
+  i_pdb_PDB_serial
+  i_ppw_anum
+  i_ppw_het
+  i_psp_MetadynamicsBinding_Index
+  i_psp_original_index
+  i_psp_temp_orig_atom_number
+  r_m_pdb_occupancy
+  r_m_pdb_tfactor
+  r_mtd_rmsd_weight
+  r_mtd_superpos_weight
+  r_pa_state_gap
+  s_pa_state
+  s_psp_ska_residue_name
+  :::
+  1 32 -33.401553 -38.016742 -11.492666 129 H "A" 38 -0.30000 -0.30000 "HIP " " N  " 7 1 1 2E2EFF "" 0 "" 1 ""  <> 1 <> 3 <> 1 1 1 <> 1 0 1 1 67.73 <> <> <> <>  <>
+  2 3 -34.623008 -37.196475 -11.677406 129 H "A" 24 0.25000 0.25000 "HIP " " CA " 6 0 1 808080 "" 0 "" 1 ""  <> 1 <> 1 <> 2 2 2 <> 2 1 2 1 67.73 <> <> <> <>  <>
+  3 2 -34.393638 -35.853948 -10.980433 129 H "A" 24 0.50000 0.50000 "HIP " " C  " 6 0 1 808080 "" 0 "" 1 ""  <> 1 <> 0 <> 3 3 3 <> 3 2 3 1 67.73 <> <> <> <>  <>
+  4 15 -33.502190 -35.787300 -10.140773 129 H "A" 70 -0.50000 -0.50000 "HIP " " O  " 8 0 1 FF2E2E "" 0 "" 1 ""  <> 1 <> 0 <> 4 4 4 <> 4 3 4 1 67.73 <> <> <> <>  <>
+  5 3 -35.920364 -37.865253 -11.130796 129 H "A" 24 -0.12000 -0.12000 "HIP " " CB " 6 0 1 808080 "" 0 "" 1 ""  <> 1 <> 2 <> 5 5 5 <> 5 4 5 1 67.73 <> <> <> <>  <>
+  6 2 -36.752317 -38.667809 -12.115572 129 H "A" 24 0.06940 0.06940 "HIP " " CG " 6 0 1 808080 "" 0 %UT 13 HIP  <> 1 <> 0 <> 6 6 6 <> 6 5 6 1 67.73 <> <> 3.68711361167161 HIP  <>
+  7 31 -37.505245 -38.070631 -13.128129 129 H "A" 38 -0.03810 -0.03810 "HIP " " ND1" 7 1 1 2E2EFF "" 0 "" 1 ""  <> 1 <> 1 <> 7 7 7 <> 7 6 7 1 67.73 <> <> <> <>  <>
+  8 2 -36.998939 -40.031127 -12.190691 129 H "A" 24 -0.21580 -0.21580 "HIP " " CD2" 6 0 1 808080 "" 0 "" 1 ""  <> 1 <> 1 <> 8 8 8 <> 8 7 8 1 67.73 <> <> <> <>  <>
+  9 2 -38.156187 -39.045573 -13.768178 129 H "A" 24 -0.04790 -0.04790 "HIP " " CE1" 6 0 1 808080 "" 0 "" 1 ""  <> 1 <> 1 <> 9 9 9 <> 9 8 9 1 67.73 <> <> <> <>  <>
+  10 25 -37.863684 -40.238038 -13.256434 129 H "A" 38 -0.03810 -0.03810 "HIP " " NE2" 7 0 1 2E2EFF "" 0 "" 1 ""  <> 1 <> 1 <> 10 10 10 <> 10 9 10 1 67.73 <> <> <> <>  <>
+  11 25 -35.184886 -34.821971 -11.315030 130 S "A" 38 -0.50000 -0.50000 "SER " " N  " 7 0 1 2E2EFF "" 1 "" 1 ""  <> 1 <> 1 <> 11 11 11 <> 11 10 11 1 71.65 <> <> <> <>  <>
+  12 3 -35.117580 -33.468288 -10.748961 130 S "A" 24 0.14000 0.14000 "SER " " CA " 6 0 1 808080 "" 1 "" 1 ""  <> 1 <> 1 <> 12 12 12 <> 12 11 12 1 71.65 <> <> <> <>  <>
+  :::
+ }
+}

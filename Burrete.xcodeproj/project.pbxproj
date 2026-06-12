@@ -12,15 +12,19 @@
 		3C65656FB6FE8E52854AC3F4 /* PreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA02CDF88EC813372195D216 /* PreviewViewController.swift */; };
 		A11111111111111111111105 /* QuickLookPreviewSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11111111111111111111104 /* QuickLookPreviewSurface.swift */; };
 		E31816093C5AEC762F9638CB /* Web in Resources */ = {isa = PBXBuildFile; fileRef = 4ADF66CA120EDD24C9E3F203 /* Web */; };
+		B15000000000000000000002 /* ThumbnailProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B15000000000000000000001 /* ThumbnailProvider.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		664D234BD361BA8FA6C574ED /* BurretePreview.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BurretePreview.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B15000000000000000000005 /* BurreteThumbnail.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BurreteThumbnail.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA02CDF88EC813372195D216 /* PreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Platform/PreviewViewController.swift; sourceTree = "<group>"; };
 		A11111111111111111111104 /* QuickLookPreviewSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickLookPreviewSurface.swift; sourceTree = "<group>"; };
 		3F8B96A03E7544E6A395D200 /* MoleculeGridPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoleculeGridPreview.swift; sourceTree = "<group>"; };
 		71B2D3E4F5A60718293A4B5B /* RendererPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RendererPolicy.swift; sourceTree = "<group>"; };
+		B15000000000000000000001 /* ThumbnailProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbnailProvider.swift; sourceTree = "<group>"; };
 		D112F5444BEBEFD99D68B6DD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B15000000000000000000004 /* ThumbnailInfo.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = ThumbnailInfo.plist; sourceTree = "<group>"; };
 		F27769504D80BCF7B53A232F /* BurretePreview.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BurretePreview.entitlements; sourceTree = "<group>"; };
 		4ADF66CA120EDD24C9E3F203 /* Web */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Web; sourceTree = "<group>"; };
 		B262D4721622654301018823 /* package.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = package.json; sourceTree = "<group>"; };
@@ -33,6 +37,7 @@
 
 /* Begin PBXFrameworksBuildPhase section */
 		EDE31F8E8E26065E582B8440 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		B15000000000000000000008 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -56,7 +61,9 @@
 				A11111111111111111111104 /* QuickLookPreviewSurface.swift */,
 				3F8B96A03E7544E6A395D200 /* MoleculeGridPreview.swift */,
 				71B2D3E4F5A60718293A4B5B /* RendererPolicy.swift */,
+				B15000000000000000000001 /* ThumbnailProvider.swift */,
 				D112F5444BEBEFD99D68B6DD /* Info.plist */,
+				B15000000000000000000004 /* ThumbnailInfo.plist */,
 				F27769504D80BCF7B53A232F /* BurretePreview.entitlements */,
 				4ADF66CA120EDD24C9E3F203 /* Web */,
 			);
@@ -84,6 +91,7 @@
 			isa = PBXGroup;
 			children = (
 				664D234BD361BA8FA6C574ED /* BurretePreview.appex */,
+				B15000000000000000000005 /* BurreteThumbnail.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -108,6 +116,21 @@
 			productReference = 664D234BD361BA8FA6C574ED /* BurretePreview.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		B15000000000000000000006 /* BurreteThumbnail */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B1500000000000000000000B /* Build configuration list for PBXNativeTarget "BurreteThumbnail" */;
+			buildPhases = (
+				B15000000000000000000009 /* Sources */,
+				B15000000000000000000008 /* Frameworks */,
+				B1500000000000000000000A /* Resources */,
+			);
+			buildRules = ();
+			dependencies = ();
+			name = BurreteThumbnail;
+			productName = BurreteThumbnail;
+			productReference = B15000000000000000000005 /* BurreteThumbnail.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -119,6 +142,9 @@
 				LastUpgradeCheck = 1610;
 				TargetAttributes = {
 					61BF5421FB639DEF491CFBE0 = {
+						CreatedOnToolsVersion = 16.1;
+					};
+					B15000000000000000000006 = {
 						CreatedOnToolsVersion = 16.1;
 					};
 				};
@@ -134,6 +160,7 @@
 			projectRoot = "";
 			targets = (
 				61BF5421FB639DEF491CFBE0 /* BurretePreview */,
+				B15000000000000000000006 /* BurreteThumbnail */,
 			);
 		};
 /* End PBXProject section */
@@ -147,6 +174,12 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B1500000000000000000000A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
@@ -158,6 +191,8 @@
 				inputPaths = (
 					"$(SRCROOT)/PreviewExtension/Web/molstar.js",
 					"$(SRCROOT)/PreviewExtension/Web/molstar.css",
+					"$(SRCROOT)/PreviewExtension/Web/viewer-runtime.css",
+					"$(SRCROOT)/PreviewExtension/Web/viewer-shell.js",
 					"$(SRCROOT)/PreviewExtension/Web/burette-agent.js",
 					"$(SRCROOT)/PreviewExtension/Web/viewer.js",
 					"$(SRCROOT)/PreviewExtension/Web/grid-viewer.js",
@@ -172,7 +207,7 @@
 				);
 				runOnlyForDeploymentPostprocessing = 0;
 				shellPath = /bin/sh;
-				shellScript = "set -euo pipefail\nexport PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"\ncd \"${SRCROOT}\"\n\nif ! command -v node >/dev/null 2>&1; then\n  echo \"error: Node.js is required to validate Burrete web assets. Install it with: brew install node\"\n  exit 1\nfi\nfor asset in PreviewExtension/Web/molstar.js PreviewExtension/Web/molstar.css PreviewExtension/Web/burette-agent.js PreviewExtension/Web/viewer.js PreviewExtension/Web/grid-viewer.js PreviewExtension/Web/grid.css PreviewExtension/Web/rdkit/RDKit_minimal.js PreviewExtension/Web/rdkit/RDKit_minimal.wasm; do\n  if [ ! -s \"$asset\" ]; then\n    echo \"error: missing vendored web asset: $asset\"\n    echo \"Run: npm ci --ignore-scripts && npm run vendor:molstar && npm run vendor:rdkit\"\n    exit 1\n  fi\ndone\nnode --check PreviewExtension/Web/viewer.js\nnode --check PreviewExtension/Web/burette-agent.js\nnode --check PreviewExtension/Web/grid-viewer.js\n\n# Downloaded archives and unzipped bundles can carry com.apple.quarantine, FinderInfo,\n# or AppleDouble files. If Xcode copies those into the .appex, codesign fails with:\n# \"resource fork, Finder information, or similar detritus not allowed\".\nif command -v xattr >/dev/null 2>&1; then\n  xattr -cr \"${SRCROOT}/PreviewExtension/Web\" || true\nfi\nif command -v dot_clean >/dev/null 2>&1; then\n  dot_clean -m \"${SRCROOT}/PreviewExtension/Web\" || true\nfi\nfind \"${SRCROOT}/PreviewExtension/Web\" \\( -name \"._*\" -o -name \".DS_Store\" \\) -delete || true\nmkdir -p \"${DERIVED_FILE_DIR}\"\ntouch \"${DERIVED_FILE_DIR}/BurreteWebAssetsValidated.stamp\"\n";
+				shellScript = "set -euo pipefail\nexport PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"\ncd \"${SRCROOT}\"\n\nif ! command -v bun >/dev/null 2>&1; then\n  echo \"error: Bun is required to validate Burrete web assets. Install it with: brew install oven-sh/bun/bun\"\n  exit 1\nfi\nfor asset in PreviewExtension/Web/molstar.js PreviewExtension/Web/molstar.css PreviewExtension/Web/viewer-runtime.css PreviewExtension/Web/viewer-shell.js PreviewExtension/Web/burette-agent.js PreviewExtension/Web/viewer.js PreviewExtension/Web/grid-viewer.js PreviewExtension/Web/grid.css PreviewExtension/Web/rdkit/RDKit_minimal.js PreviewExtension/Web/rdkit/RDKit_minimal.wasm; do\n  if [ ! -s \"$asset\" ]; then\n    echo \"error: missing vendored web asset: $asset\"\n    echo \"Run: bun install --frozen-lockfile --ignore-scripts && bun run vendor:molstar && bun run vendor:rdkit\"\n    exit 1\n  fi\ndone\nbun scripts/check-vendor-assets.mjs --profile quicklook-molstar --profile quicklook-grid --profile external-artifact\nbun scripts/check-js-syntax.mjs PreviewExtension/Web/viewer.js PreviewExtension/Web/viewer-shell.js PreviewExtension/Web/burette-agent.js PreviewExtension/Web/grid-viewer.js\n\n# Downloaded archives and unzipped bundles can carry com.apple.quarantine, FinderInfo,\n# or AppleDouble files. If Xcode copies those into the .appex, codesign fails with:\n# \"resource fork, Finder information, or similar detritus not allowed\".\nif command -v xattr >/dev/null 2>&1; then\n  xattr -cr \"${SRCROOT}/PreviewExtension/Web\" || true\nfi\nif command -v dot_clean >/dev/null 2>&1; then\n  dot_clean -m \"${SRCROOT}/PreviewExtension/Web\" || true\nfi\nfind \"${SRCROOT}/PreviewExtension/Web\" \\( -name \"._*\" -o -name \".DS_Store\" \\) -delete || true\nmkdir -p \"${DERIVED_FILE_DIR}\"\ntouch \"${DERIVED_FILE_DIR}/BurreteWebAssetsValidated.stamp\"\n";
 			};
 
 		7E7F01C829F8540000010001 /* Clean bundle detritus before codesign */ = {
@@ -201,6 +236,14 @@
 				A11111111111111111111105 /* QuickLookPreviewSurface.swift in Sources */,
 				3F8B96A03E7544E6A395D202 /* MoleculeGridPreview.swift in Sources */,
 				71B2D3E4F5A60718293A4B5D /* RendererPolicy.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B15000000000000000000009 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B15000000000000000000002 /* ThumbnailProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -290,7 +333,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PreviewExtension/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks", );
-				MARKETING_VERSION = 0.10.30;
+				MARKETING_VERSION = 0.10.48;
 				PRODUCT_BUNDLE_IDENTIFIER = com.local.BurreteV10.Preview;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -315,8 +358,58 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PreviewExtension/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks", );
-				MARKETING_VERSION = 0.10.30;
+				MARKETING_VERSION = 0.10.48;
 				PRODUCT_BUNDLE_IDENTIFIER = com.local.BurreteV10.Preview;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+			};
+			name = Release;
+		};
+		B1500000000000000000000C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = PreviewExtension/BurretePreview.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PreviewExtension/ThumbnailInfo.plist;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks", );
+				MARKETING_VERSION = 0.10.48;
+				PRODUCT_BUNDLE_IDENTIFIER = com.local.BurreteV10.Thumbnail;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+			};
+			name = Debug;
+		};
+		B1500000000000000000000D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = PreviewExtension/BurretePreview.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PreviewExtension/ThumbnailInfo.plist;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks", );
+				MARKETING_VERSION = 0.10.48;
+				PRODUCT_BUNDLE_IDENTIFIER = com.local.BurreteV10.Thumbnail;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.0;
@@ -342,6 +435,15 @@
 			buildConfigurations = (
 				7C41880A1B0B737541AB8894 /* Debug */,
 				C18A20E5414275739C52F408 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B1500000000000000000000B /* Build configuration list for PBXNativeTarget "BurreteThumbnail" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B1500000000000000000000C /* Debug */,
+				B1500000000000000000000D /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
