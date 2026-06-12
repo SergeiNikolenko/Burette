@@ -63,7 +63,15 @@ When the user asks to open something in a browser, or simply asks to open a
 local web target, always use the built-in `@Browser` plugin
 (`plugin://browser@openai-bundled`). Do not use macOS `open`, Chrome, Safari,
 or another external browser unless the user explicitly asks for an external
-browser or the built-in Browser plugin is unavailable.
+browser. If the built-in Browser plugin is unavailable, crashed, or cannot
+attach to a tab, report that blocker and provide the local URL instead of
+falling back to an external browser.
+
+Do not open the Burrete desktop app as a substitute for a browser preview.
+Use `desktop-app` only when the user explicitly asks for the real packaged app,
+native app, Quick Look behavior, or another desktop-specific verification path.
+When the requested surface is ambiguous, keep the work in the built-in Browser
+or report the blocker; do not silently switch surfaces.
 
 When an agent builds or installs a packaged app for local testing, always use a
 dev flavor with a unique slug, preferably the worktree suffix:

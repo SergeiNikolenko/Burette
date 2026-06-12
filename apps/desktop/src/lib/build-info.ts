@@ -6,6 +6,7 @@ const RELEASE_IDENTIFIER = "com.local.BurreteV10";
 const buildIdentifier = import.meta.env.VITE_BURRETE_BUILD_IDENTIFIER;
 const buildFlavor = import.meta.env.VITE_BURRETE_BUILD_FLAVOR;
 const buildChannel = import.meta.env.VITE_BURRETE_BUILD_CHANNEL;
+const isAgentShell = import.meta.env.VITE_BURRETE_AGENT_SHELL === "1";
 
 function devFlavorFromIdentifier(identifier: string) {
   return identifier.match(/\.Dev\.([A-Za-z][A-Za-z0-9-]*)$/u)?.[1] ?? null;
@@ -27,11 +28,14 @@ function buildInfoFromValues(
     flavor: isBrowserDev ? "browser" : flavor,
     isDevBuild,
     isBrowserDev,
+    isAgentShell: isBrowserDev && isAgentShell,
     notes: isDevBuild
-      ? ["Full desktop features", isBrowserDev ? "Vite browser runtime" : "Isolated app and Quick Look identifiers"]
+      ? ["Full desktop features", isAgentShell ? "Agent browser shell" : isBrowserDev ? "Vite browser runtime" : "Isolated app and Quick Look identifiers"]
       : [],
     limitations: isBrowserDev
-      ? ["Native app bundle, installer, and Quick Look registration are not active in browser dev."]
+      ? [isAgentShell
+        ? "Native app bundle, installer, and Quick Look registration are not active in the agent browser shell."
+        : "Native app bundle, installer, and Quick Look registration are not active in browser dev."]
       : [],
   };
 }
