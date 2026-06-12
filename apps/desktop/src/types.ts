@@ -38,6 +38,8 @@ export type OpenDocumentsResult = {
   errors: string[];
 };
 
+export type OpenDocumentsMode = "individual" | "combinePoses" | "combineGrid";
+
 export type OpenTextFilesResult = {
   documents: TextFileDocument[];
   errors: string[];

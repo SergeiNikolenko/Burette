@@ -33,7 +33,7 @@ live state, run `burrete-agent observe`.
 Persisted context should stay narrow:
 
 - preferred installed Burrete app path;
-- preferred mode (`browser-preview` or `desktop-app`);
+- preferred mode (`browser-dev-shell`, `browser-preview`, or `desktop-app`);
 - known server workflow routes;
 - capability registry overrides only when explicitly configured.
 

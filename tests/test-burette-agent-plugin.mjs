@@ -59,6 +59,7 @@ assert.match(workspaceRegistration, /registerAppTool/);
 assert.match(workspaceRegistration, /open_burrete_workspace/);
 assert.match(workspaceRegistration, /observe_burrete_workspace/);
 assert.match(workspaceRegistration, /act_molstar_scene/);
+assert.match(workspaceRegistration, /declarative Mol\* scene action/);
 assert.match(workspaceRegistration, /runBurreteAgent/);
 assert.match(workspaceRegistration, /visibility: \["model"\]/);
 assert.match(workspaceRegistration, /openai\/outputTemplate/);
@@ -181,9 +182,33 @@ const preflightPayload = JSON.parse(preflight.stdout);
 assert.equal(preflightPayload.schema, "burette_agent_preflight.v1");
 assert.equal(preflightPayload.files.cli.status, "available");
 assert.equal(preflightPayload.files.browserPreviewServer.status, "available");
-assert.equal(preflightPayload.context.transports[0].id, "browser-preview");
-assert.equal(preflightPayload.context.transports[1].id, "desktop-app");
+assert.equal(preflightPayload.context.transports[0].id, "browser-dev-shell");
+assert.equal(preflightPayload.context.transports[1].id, "browser-preview");
+assert.equal(preflightPayload.context.transports[2].id, "desktop-app");
 assert.equal(preflightPayload.context.workflowRoutes.molstarScene.includes("observe scene"), true);
+assert.equal(preflightPayload.context.workflowRoutes.molstarScene.includes("apply MolViewSpec-informed declarative scene schema"), true);
+assert.equal(preflightPayload.context.workflowRoutes.molstarScene.includes("load complete MolViewSpec scenes"), true);
+assert.equal(preflightPayload.capabilities.molstarActions.apply_scene, "supported");
+assert.equal(preflightPayload.capabilities.molstarActions.scene_language, "mvs_informed_active_viewer_dsl");
+assert.equal(preflightPayload.capabilities.molstarActions.load_mvs, "supported_for_complete_mvs_payloads");
+assert.equal(preflightPayload.capabilities.molstarActions.full_mvs_scene, "supported_via_load_mvs");
+
+const molstarSceneSkill = await read("skills/molstar-scene/SKILL.md");
+assert.match(molstarSceneSkill, /apply_scene/);
+assert.match(molstarSceneSkill, /MolViewSpec-informed scene language/);
+assert.match(molstarSceneSkill, /https:\/\/molstar\.org\/mol-view-spec-docs\/tree-schema\//);
+assert.match(molstarSceneSkill, /https:\/\/molstar\.org\/mol-view-spec-docs\/selectors\//);
+assert.match(molstarSceneSkill, /camera movement\/orientation/);
+assert.match(molstarSceneSkill, /structure movement\/rotation\/instances/);
+assert.match(molstarSceneSkill, /"selector": "protein"/);
+assert.match(molstarSceneSkill, /"label": "Active loop"/);
+assert.match(molstarSceneSkill, /"type": "label_selection"/);
+
+const readme = await read("README.md");
+assert.match(readme, /MolViewSpec Scene Language/);
+assert.match(readme, /"type":"apply_scene"/);
+assert.match(readme, /"selector":"protein"/);
+assert.match(readme, /load_mvs/);
 
 const syntaxTargets = [
   "plugins/burette-agent/mcp/server.mjs",

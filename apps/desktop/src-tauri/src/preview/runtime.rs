@@ -1,21 +1,25 @@
+use burrete_core::{PreviewLifecycle, PreviewLifecycleState, PreviewSubsystem};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::SystemTime;
 use tauri::{Manager, Runtime};
 
 use super::formats::{
-    format_for_extension, normalize_renderer_mode, resolve_renderer, structure_path_extension,
+    format_for_extension, normalize_renderer_mode, preview_plan_for_extension, resolve_renderer,
+    structure_path_extension,
 };
 use super::grid_store::GridParseOptions;
 use super::runtime_grid::{create_grid_runtime_with_options, grid_requires_preview};
 use super::runtime_utils::{file_title, stable_id};
 use super::runtime_viewer::{create_docking_runtime, create_runtime, DockingRuntimeSource};
 use super::text_xyz::converted_data_from_text;
+use super::trace::{append_preview_trace, elapsed_ms, preview_error_code, PreviewTraceEvent};
 
-const MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
+pub(crate) const MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
 const MAESTRO_PREVIEW_READ_LIMIT: u64 = 64 * 1024 * 1024;
 const DESMOND_PREVIEW_TARGET_MB: &str = "24";
 const SCHRODINGER_RUN: &str = "/opt/schrodinger/suites2026-1/run";
@@ -315,20 +319,43 @@ impl ViewerDocument {
         self.is_virtual = true;
         self
     }
+
+    pub(crate) fn virtual_structure(
+        path: String,
+        title: String,
+        extension: String,
+        renderer: String,
+        runtime_path: String,
+        byte_count: u64,
+    ) -> Self {
+        Self {
+            id: stable_id(Path::new(&path)),
+            path,
+            title,
+            extension,
+            renderer,
+            runtime_path,
+            byte_count,
+            is_virtual: true,
+            docking_request: None,
+        }
+    }
 }
 
 fn is_false(value: &bool) -> bool {
     !*value
 }
 
-pub(crate) fn open_document<R: Runtime>(
+pub(crate) fn open_document_for_window<R: Runtime>(
     app: &tauri::AppHandle<R>,
+    window_label: &str,
     path: PathBuf,
     preferences: &ViewerPreferences,
     reload_options: Option<&ViewerReloadOptions>,
 ) -> Result<ViewerDocument, String> {
     open_document_with_grid_options(
         app,
+        window_label,
         path,
         preferences,
         reload_options,
@@ -336,8 +363,101 @@ pub(crate) fn open_document<R: Runtime>(
     )
 }
 
+#[cfg(test)]
+pub(crate) fn open_document<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    path: PathBuf,
+    preferences: &ViewerPreferences,
+    reload_options: Option<&ViewerReloadOptions>,
+) -> Result<ViewerDocument, String> {
+    open_document_for_window(
+        app,
+        crate::windows::MAIN_WINDOW_LABEL,
+        path,
+        preferences,
+        reload_options,
+    )
+}
+
 pub(crate) fn open_document_with_grid_options<R: Runtime>(
     app: &tauri::AppHandle<R>,
+    window_label: &str,
+    path: PathBuf,
+    preferences: &ViewerPreferences,
+    reload_options: Option<&ViewerReloadOptions>,
+    grid_options: &GridParseOptions,
+) -> Result<ViewerDocument, String> {
+    let started = SystemTime::now();
+    let trace_document_id = stable_id(&path);
+    let trace_extension = structure_path_extension(&path);
+    let mut lifecycle = PreviewLifecycle::default();
+    let _ = lifecycle.transition(PreviewLifecycleState::Created);
+    let _ = append_preview_trace(
+        app,
+        PreviewTraceEvent {
+            document_id: &trace_document_id,
+            state: PreviewLifecycleState::Created,
+            subsystem: PreviewSubsystem::Desktop,
+            source_extension: Some(&trace_extension),
+            renderer: None,
+            runtime_path: None,
+            elapsed_ms: Some(0),
+            error_code: None,
+            message: Some("open_document"),
+        },
+    );
+
+    let result = open_document_with_grid_options_inner(
+        app,
+        window_label,
+        path,
+        preferences,
+        reload_options,
+        grid_options,
+    );
+    match &result {
+        Ok(document) => {
+            let _ = lifecycle.transition(PreviewLifecycleState::Completed);
+            let runtime_path = Path::new(&document.runtime_path);
+            let _ = append_preview_trace(
+                app,
+                PreviewTraceEvent {
+                    document_id: &document.id,
+                    state: PreviewLifecycleState::Completed,
+                    subsystem: PreviewSubsystem::Desktop,
+                    source_extension: Some(&document.extension),
+                    renderer: Some(&document.renderer),
+                    runtime_path: Some(runtime_path),
+                    elapsed_ms: Some(elapsed_ms(started)),
+                    error_code: None,
+                    message: Some("preview runtime created"),
+                },
+            );
+        }
+        Err(error) => {
+            let _ = lifecycle.transition(PreviewLifecycleState::Failed);
+            let _ = append_preview_trace(
+                app,
+                PreviewTraceEvent {
+                    document_id: &trace_document_id,
+                    state: PreviewLifecycleState::Failed,
+                    subsystem: PreviewSubsystem::Desktop,
+                    source_extension: Some(&trace_extension),
+                    renderer: None,
+                    runtime_path: None,
+                    elapsed_ms: Some(elapsed_ms(started)),
+                    error_code: Some(preview_error_code(error)),
+                    message: Some(error),
+                },
+            );
+        }
+    }
+    result
+}
+
+fn open_document_with_grid_options_inner<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    window_label: &str,
     path: PathBuf,
     preferences: &ViewerPreferences,
     reload_options: Option<&ViewerReloadOptions>,
@@ -399,7 +519,13 @@ pub(crate) fn open_document_with_grid_options<R: Runtime>(
 
     let document_id = stable_id(&canonical);
     let title = file_title(&canonical);
-    let maestro_preview_data = if is_maestro_preview_extension(&extension) {
+    let requested_renderer = normalize_renderer_mode(&preferences.renderer_mode);
+    let preview_plan = preview_plan_for_extension(&extension, requested_renderer).ok();
+    let should_prepare_maestro_preview = is_maestro_preview_extension(&extension)
+        && (uses_bounded_maestro_preview
+            || preview_plan.as_ref().map(|plan| plan.renderer.as_str())
+                != Some("xyzrender-external"));
+    let maestro_preview_data = if should_prepare_maestro_preview {
         converted_data_from_text(&data, &extension, &title)
     } else {
         None
@@ -416,14 +542,14 @@ pub(crate) fn open_document_with_grid_options<R: Runtime>(
         }
         return Err(message);
     }
-    let requested_renderer = normalize_renderer_mode(&preferences.renderer_mode);
     let should_use_viewer_for_sdf = matches!(extension.as_str(), "sd" | "sdf")
         && reload_options.is_some()
         && (requested_renderer == "molstar" || requested_renderer == "xyzrender-external");
     if !should_use_viewer_for_sdf {
+        let runtime_document_id = crate::windows::runtime_document_id(window_label, &document_id);
         if let Some(runtime_path) = create_grid_runtime_with_options(
             app,
-            &document_id,
+            &runtime_document_id,
             &canonical,
             &extension,
             &data,
@@ -461,6 +587,10 @@ pub(crate) fn open_document_with_grid_options<R: Runtime>(
     let format = format_for_extension(runtime_extension)?;
     let requested_renderer_for_document = if maestro_preview_data.is_some() {
         "molstar"
+    } else if matches!(extension.as_str(), "sd" | "sdf") && reload_options.is_none() {
+        default_renderer_mode_for_document(&extension, requested_renderer, reload_options)
+    } else if let Some(preview_plan) = preview_plan.as_ref() {
+        preview_plan.renderer.as_str()
     } else {
         default_renderer_mode_for_document(&extension, requested_renderer, reload_options)
     };
@@ -897,7 +1027,7 @@ mod document_open_tests {
         default_light_translucent, default_system_font, open_document, resolve_desmond_file_bundle,
         ViewerPreferences,
     };
-    use crate::commands::documents::open_documents;
+    use crate::commands::documents::open_documents_for_window_label;
     use crate::preview::grid_store::GridRuntimeRegistry;
     use std::collections::BTreeMap;
     use std::fs;
@@ -1352,6 +1482,56 @@ f_m_ct {
     }
 
     #[test]
+    fn keeps_maestro_in_xyzrender_when_external_renderer_is_requested() {
+        with_fake_xyzrender(|| {
+            let app = mock_app_with_grid_registry();
+            let mut preferences = viewer_preferences();
+            preferences.renderer_mode = "xyzrender-external".to_string();
+            let path = create_temp_file(
+                "mae",
+                br#"
+f_m_ct {
+  s_ffio_ct_type
+  :::
+  full_system
+  m_atom[2] {
+    i_m_mmod_type
+    i_m_atomic_number
+    r_m_x_coord
+    r_m_y_coord
+    r_m_z_coord
+    s_m_pdb_residue_name
+    s_m_pdb_atom_name
+    i_m_residue_number
+    s_m_chain_name
+    :::
+    1 6 1.000000 2.000000 3.000000 "ALA " " CA " 10 "A"
+    1 8 2.000000 3.000000 4.000000 "MOL " " O1 " 1 "L"
+    :::
+  }
+}
+"#,
+            );
+
+            let document = open_document(app.handle(), path.clone(), &preferences, None)
+                .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
+            assert_eq!(document.renderer, "xyzrender-external");
+            let runtime_dir = Path::new(&document.runtime_path)
+                .parent()
+                .expect("runtime html should have a parent");
+            let config = fs::read_to_string(runtime_dir.join("preview-config.js"))
+                .expect("preview config should be written");
+            assert!(config.contains("\"sourceExtension\":\"mae\""));
+            assert!(config.contains("\"xyzrenderViewer\":true"));
+
+            remove_runtime_artifacts(&document.runtime_path);
+            if let Some(parent) = path.parent() {
+                let _ = fs::remove_dir_all(parent);
+            }
+        });
+    }
+
+    #[test]
     fn treats_removed_fast_renderer_preference_as_auto_for_multiframe_xyz() {
         let app = mock_app_with_grid_registry();
         let mut preferences = viewer_preferences();
@@ -1540,13 +1720,15 @@ f_m_ct {
 
         with_fake_xyzrender(|| {
             let app = mock_app_with_grid_registry();
-            let result = open_documents(
-                app.handle().clone(),
+            let result = open_documents_for_window_label(
+                app.handle(),
+                crate::windows::MAIN_WINDOW_LABEL,
                 vec![
                     inputs.to_string_lossy().to_string(),
                     structures.to_string_lossy().to_string(),
                 ],
                 viewer_preferences(),
+                None,
                 None,
             )
             .expect("real example corpus should open");

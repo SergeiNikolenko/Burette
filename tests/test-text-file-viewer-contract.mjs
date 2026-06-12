@@ -156,12 +156,19 @@ for (const extension of ["abi", "cms", "com", "csv", "cub", "cube", "fdf", "grap
   assert.match(app, new RegExp(`"${extension}"`), `${extension} should be a structure-and-text open extension`);
 }
 assert.match(app, /if \(structureAndTextExtensions\.has\(extension\)\) \{\s*structureAndTextPaths\.push\(path\);/);
-assert.match(app, /if \(structureAndTextPaths\.length > 0\) \{\s*await openDocuments\(structureAndTextPaths\);\s*\}/);
-assert.match(app, /const textOpenPaths = \[\.\.\.textPaths, \.\.\.structureAndTextPaths\];/);
-assert.match(app, /if \(input\.area === "right" && cleanPaths\.length > 0\) \{[\s\S]*open_text_files", \{ paths: cleanPaths \}[\s\S]*setDockDocument\(input\.area, textResult\.documents\[0\]\.id\);[\s\S]*return;/);
+assert.match(app, /const openedStructureAndTextPaths = new Set<string>\(\);/);
+assert.match(app, /const result = await openDocuments\(structureAndTextPaths\);/);
+assert.match(app, /openedStructureAndTextPaths\.add\(document\.path\);/);
+assert.match(app, /structureAndTextPaths\.filter\(\(path\) => !openedStructureAndTextPaths\.has\(path\)\)/);
+assert.match(app, /let dockOpenPaths = cleanPaths;/);
+assert.match(app, /const rightDockTextPaths = cleanPaths\.filter\(\(path\) => \{/);
+assert.match(app, /return !structureExtensions\.has\(extension\) && !structureAndTextExtensions\.has\(extension\);/);
+assert.match(app, /dockOpenPaths = cleanPaths\.filter\(\(path\) => !rightDockTextPaths\.includes\(path\)\);/);
+assert.match(app, /open_text_files", \{ paths: rightDockTextPaths \}/);
+assert.match(app, /for \(const path of dockOpenPaths\) \{/);
 const rightDockTextOpenBlock = app.match(/if \(input\.area === "right" && cleanPaths\.length > 0\) \{[\s\S]*?return;\s*\}/)?.[0] ?? "";
-assert.match(rightDockTextOpenBlock, /open_text_files", \{ paths: cleanPaths \}/);
-assert.doesNotMatch(rightDockTextOpenBlock, /pathExtension|structureExtensions|structureAndTextExtensions|preferredTextExtensions/);
+assert.match(rightDockTextOpenBlock, /pathExtension|structureExtensions|structureAndTextExtensions/);
+assert.doesNotMatch(rightDockTextOpenBlock, /preferredTextExtensions/);
 assert.match(app, /useOpenEvents\(openPaths, pushErrorStatus\)/);
 assert.match(app, /useOpenDrop\(openPaths, pushStatus/);
 assert.match(app, /showTextFileMetadata/);

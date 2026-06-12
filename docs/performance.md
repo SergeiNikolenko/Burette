@@ -48,6 +48,7 @@ Desktop generated preview runtimes use the app cache directory:
   assets/
   <runtime-id>/
     index.html
+    manifest.json
     preview-config.js
     preview-data.bin
     xyzrender.svg
@@ -59,6 +60,11 @@ The `assets/` directory is shared across generated desktop runtimes. Runtime
 directories are pruned by the preview service. The external `xyzrender` cache is
 keyed by document identity or content, file metadata, renderer preset, controls,
 the executable path, and available renderer version information.
+
+Each generated runtime writes a `manifest.json` with schema version, completion
+flag, document id, source extension, renderer, byte counts, and asset profile.
+The manifest is written atomically after runtime files are staged so diagnostic
+tools can distinguish complete runtimes from partial writes.
 
 Quick Look keeps analogous generated files and `xyzrender-cache/` under the
 extension cache container. Finder previews must not require the desktop app to
@@ -130,6 +136,8 @@ Use these budgets as guardrails for future changes:
 - Large grid files should show the first page before complete indexing when the
   streaming store can parse the format.
 - Quick Look smoke remains separate from desktop launch smoke.
+- Preview runtime changes should preserve `manifest.json` and
+  `preview-trace.jsonl` diagnostics.
 
 ## Do Not Regress
 
@@ -163,3 +171,8 @@ Measurement scripts:
 Full macOS runtime verification still requires building and installing the app,
 then running forced Quick Look previews as described in
 `docs/quicklook-debugging.md`.
+
+The scheduled GitHub workflow `.github/workflows/nightly-smoke.yml` keeps the
+full packaged-app and Quick Look smoke path out of fast PR validation while
+still exercising the build, install, forced preview, and perf report scripts on
+`main`.

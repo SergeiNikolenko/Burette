@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use std::fs;
 use std::path::PathBuf;
-use tauri::State;
+use tauri::{Runtime, State};
 
 use crate::preview::formats::{structure_path_extension, supported_structure_extensions};
 use crate::preview::grid_store::{
@@ -59,12 +59,14 @@ pub(crate) struct GridAppendResult {
 }
 
 #[tauri::command]
-pub(crate) fn grid_fetch_page(
+pub(crate) fn grid_fetch_page<R: Runtime>(
+    window: tauri::WebviewWindow<R>,
     registry: State<'_, GridRuntimeRegistry>,
     request: GridPageRequest,
 ) -> Result<GridPageResult, String> {
+    let document_id = crate::windows::runtime_document_id(window.label(), &request.document_id);
     registry.fetch_page(
-        &request.document_id,
+        &document_id,
         &GridQuery {
             query: request.query.unwrap_or_default(),
             sort: request.sort.unwrap_or_else(|| "index".to_string()),
@@ -75,19 +77,21 @@ pub(crate) fn grid_fetch_page(
 }
 
 #[tauri::command]
-pub(crate) fn grid_append_records(
+pub(crate) fn grid_append_records<R: Runtime>(
+    window: tauri::WebviewWindow<R>,
     registry: State<'_, GridRuntimeRegistry>,
     request: GridAppendRequest,
 ) -> Result<GridAppendResult, String> {
+    let document_id = crate::windows::runtime_document_id(window.label(), &request.document_id);
     let supported = supported_structure_extensions()?;
     let mut records_appended = 0usize;
     let mut total_rows = 0usize;
     let mut errors = Vec::new();
 
     for path in request.paths {
-        match read_grid_append_path(&path, &supported).and_then(|(extension, text)| {
-            registry.append_text(&request.document_id, &extension, &text)
-        }) {
+        match read_grid_append_path(&path, &supported)
+            .and_then(|(extension, text)| registry.append_text(&document_id, &extension, &text))
+        {
             Ok(summary) => {
                 records_appended += summary.records_appended;
                 total_rows = summary.total_rows;
@@ -106,7 +110,7 @@ pub(crate) fn grid_append_records(
             errors.push(format!("Unsupported structure extension: {extension}"));
             continue;
         }
-        match registry.append_text(&request.document_id, &extension, &record.text) {
+        match registry.append_text(&document_id, &extension, &record.text) {
             Ok(summary) => {
                 records_appended += summary.records_appended;
                 total_rows = summary.total_rows;
@@ -135,14 +139,16 @@ pub(crate) fn grid_delimited_columns(
 }
 
 #[tauri::command]
-pub(crate) fn grid_append_delimited_records(
+pub(crate) fn grid_append_delimited_records<R: Runtime>(
+    window: tauri::WebviewWindow<R>,
     registry: State<'_, GridRuntimeRegistry>,
     request: GridAppendDelimitedRequest,
 ) -> Result<GridAppendResult, String> {
+    let document_id = crate::windows::runtime_document_id(window.label(), &request.document_id);
     let supported = supported_structure_extensions()?;
     let (extension, text) = read_grid_append_path(&request.path, &supported)?;
     let summary = registry.append_text_with_options(
-        &request.document_id,
+        &document_id,
         &extension,
         &text,
         &GridParseOptions {
@@ -183,11 +189,15 @@ fn read_grid_append_path(
 }
 
 #[tauri::command]
-pub(crate) fn grid_close_runtime(
+pub(crate) fn grid_close_runtime<R: Runtime>(
+    window: tauri::WebviewWindow<R>,
     registry: State<'_, GridRuntimeRegistry>,
     document_id: String,
 ) -> Result<(), String> {
-    registry.unregister(&document_id)
+    registry.unregister(&crate::windows::runtime_document_id(
+        window.label(),
+        &document_id,
+    ))
 }
 
 #[cfg(test)]
