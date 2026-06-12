@@ -51,6 +51,7 @@ export function documentKind(document: ViewerDocument) {
   if (["csv", "tsv"].includes(extension)) return "Molecule collection";
   if (["xyz", "extxyz", "dtr", "xtc", "trr"].includes(extension)) return "Structure frames";
   if (["cube", "cub"].includes(extension)) return "Volume data";
+  if (isMaestroExtension(extension)) return "Maestro structure";
   if (["pdb", "pdbqt", "cif", "mmcif", "bcif", "gro", "mae", "maegz", "cms"].includes(extension)) return "Macromolecule";
   return "Molecular file";
 }
@@ -109,6 +110,17 @@ export function usefulElements(document: ViewerDocument): StructureBriefRow[] {
       { label: "Iso surface", value: "Renderer controlled" },
     ];
   }
+  if (isMaestroExtension(extension)) {
+    return [
+      { label: "Maestro source", value: "CT blocks with atom-table coordinates" },
+      { label: "Preview model", value: "Coordinates extracted for Mol* rendering" },
+      { label: "System parts", value: "Solute, solvent, ions, and full-system CTs when present" },
+      {
+        label: "Text",
+        value: extension === "maegz" ? "Decompressed Maestro text opens in Text tab" : "Maestro source opens in Text tab",
+      },
+    ];
+  }
   if (["pdb", "pdbqt", "cif", "mmcif", "bcif", "gro", "mae", "maegz", "cms"].includes(extension)) {
     return [
       { label: "Structure", value: "Shown in preview runtime" },
@@ -128,11 +140,16 @@ function structureNotes(document: ViewerDocument) {
   if (document.virtual) notes.push("This document is generated in the app");
   if (document.dockingRequest) notes.push("Docking metadata is available from runtime config");
   if (document.mergedCollection) notes.push("Merged collection keeps source path references");
+  if (isMaestroExtension(normalizedExtension(document))) notes.push("Maestro CT sections are available from the source text");
   return notes;
 }
 
 function normalizedExtension(document: ViewerDocument) {
   return document.extension.toLowerCase();
+}
+
+function isMaestroExtension(extension: string) {
+  return extension === "mae" || extension === "maegz" || extension === "cms";
 }
 
 function fileName(path: string) {

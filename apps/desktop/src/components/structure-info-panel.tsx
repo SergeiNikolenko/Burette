@@ -96,7 +96,7 @@ export function StructureInfoPanel({ document, dockDrops, actions }: StructureIn
           <StructureSectionHeader title="Components" detail="Primary groups" />
           {compositionSummary ? (
             <StructureActionList
-              rows={compositionSummary.componentRows}
+              rows={visibleComponentRows(compositionSummary.componentRows)}
               document={document}
               actions={actions}
               activeActionKey={activeActionKey}
@@ -110,12 +110,23 @@ export function StructureInfoPanel({ document, dockDrops, actions }: StructureIn
 
       {selectedEntity ? (
         <SelectedEntityCard
-          document={document}
           selectedEntity={selectedEntity}
-          actions={actions}
-          setActiveActionKey={setActiveActionKey}
           clearSelection={clearSelection}
         />
+      ) : null}
+
+      {compositionSummary?.maestroRows?.length ? (
+        <section className="structure-brief-card">
+          <StructureSectionHeader title="Maestro entries" detail={`${compositionSummary.maestroRows.length} CT ${plural(compositionSummary.maestroRows.length, "block")}`} />
+          <StructureActionList
+            rows={compositionSummary.maestroRows}
+            document={document}
+            actions={actions}
+            activeActionKey={activeActionKey}
+            setActiveActionKey={setActiveActionKey}
+            compact
+          />
+        </section>
       ) : null}
 
       {compositionSummary?.ligandRows.length ? (
@@ -188,7 +199,7 @@ function useStructureComposition(document: ViewerDocument | null) {
     }
     let cancelled = false;
     setState({ documentId: document.id, loading: true, summary: null, error: null });
-    void readStructureText(document.path)
+    void readStructureText(document.path, { maxBytes: compositionReadLimit(document) })
       .then((text) => {
         if (cancelled) return;
         setState({
@@ -213,6 +224,12 @@ function useStructureComposition(document: ViewerDocument | null) {
   }, [document]);
 
   return state;
+}
+
+function compositionReadLimit(document: ViewerDocument) {
+  const extension = document.extension.toLowerCase();
+  if (["mae", "maegz", "cms"].includes(extension)) return 12 * 1024 * 1024;
+  return undefined;
 }
 
 function compositionNotes(
@@ -244,7 +261,7 @@ function inspectorSummaryLine(
   if (summary) {
     const chains = valueForLabel(summary.rows, "Chains");
     const residues = valueForLabel(summary.rows, "Residues");
-    const atoms = valueForLabel(summary.rows, "Atoms") ?? valueForLabel(summary.rows, "Atom sites");
+    const atoms = valueForLabel(summary.rows, "Preview atoms") ?? valueForLabel(summary.rows, "Atoms") ?? valueForLabel(summary.rows, "Atom sites");
     const ligands = countFromSummaryValue(valueForLabel(summary.componentRows, "Ligands"), "instances");
     const water = countFromSummaryValue(valueForLabel(summary.componentRows, "Water"), "molecules");
     return [chains && `${chains} chains`, residues && `${residues} residues`, ligands && `${ligands} ligands`, water && `${water} water`, atoms && `${atoms} atoms`]
@@ -266,6 +283,11 @@ function valueForLabel(rows: StructureSummaryRow[], label: string) {
   return rows.find((row) => row.label === label)?.value ?? null;
 }
 
+function visibleComponentRows(rows: StructureSummaryRow[]) {
+  const visibleRows = rows.filter((row) => row.value !== "None detected" || row.action);
+  return visibleRows.length > 0 ? visibleRows : rows;
+}
+
 type SelectedStructureRow = {
   row: StructureSummaryRow;
   action: StructureViewerAction;
@@ -281,6 +303,7 @@ function selectedStructureRow(
   if (!summary || !activeActionKey) return null;
   const groups: Array<[string, StructureSummaryRow[]]> = [
     ["Component", summary.componentRows],
+    ["Maestro entry", summary.maestroRows ?? []],
     ["Chain", summary.polymerRows],
     ["Ligand", summary.ligandRows],
     ["Water / ion", summary.solventRows],
@@ -296,23 +319,13 @@ function selectedStructureRow(
 }
 
 function SelectedEntityCard({
-  document,
   selectedEntity,
-  actions,
-  setActiveActionKey,
   clearSelection,
 }: {
-  document: ViewerDocument;
   selectedEntity: SelectedStructureRow;
-  actions: ShellActions;
-  setActiveActionKey: (key: string | null) => void;
   clearSelection: () => void;
 }) {
   const copyIdentity = () => void navigator.clipboard?.writeText(`${selectedEntity.row.label}: ${selectedEntity.row.value}`);
-  const rerunAction = () => {
-    actions.runStructureViewerAction(document, selectedEntity.action);
-    setActiveActionKey(selectedEntity.key);
-  };
   return (
     <section className="structure-brief-card structure-inspector-selected-card">
       <StructureSectionHeader title="Selected entity" detail={selectedEntity.group} />
@@ -329,9 +342,6 @@ function SelectedEntityCard({
         <span>{selectorLabel(selectedEntity.action)}</span>
       </div>
       <div className="structure-brief-actions structure-brief-actions-secondary">
-        <button type="button" className="dock-action" onClick={rerunAction}>
-          {selectedEntity.action.type === "focus_ligand" ? "Focus" : "Select"}
-        </button>
         <button type="button" className="dock-action" onClick={copyIdentity}>
           Copy id
         </button>
@@ -342,7 +352,7 @@ function SelectedEntityCard({
 
 function actionTypeLabel(action: StructureViewerAction) {
   if (action.type === "focus_ligand") return "Focus in 3D";
-  if (action.type === "select_residues") return "Select residues";
+  if (action.type === "select_residues") return "Residues";
   if (action.type === "hide_waters") return "Hide water";
   if (action.type === "show_waters") return "Show water";
   if (action.type === "hide_components") return `Hide ${action.kind}`;
@@ -426,11 +436,10 @@ function StructureActionRow({
   setActiveActionKey: (key: string | null) => void;
   compact: boolean;
 }) {
-  const content = (actionLabel?: string) => (
+  const content = () => (
     <span className="structure-inspector-row-content">
       <span className="structure-inspector-row-label">{row.label}</span>
       <strong title={row.value}>{row.value}</strong>
-      {actionLabel ? <span className="structure-inspector-row-action">{actionLabel}</span> : null}
     </span>
   );
   if (!row.action) {
@@ -448,7 +457,6 @@ function StructureActionRow({
   const secondaryAction = row.secondaryAction;
   const primaryActionKey = selectionActionKey(document, primaryAction);
   const selected = primaryActionKey !== null && primaryActionKey === activeActionKey;
-  const primaryLabel = selected ? "Clear" : rowActionLabel(primaryAction);
   const runAction = (action: StructureViewerAction) => {
     const key = selectionActionKey(document, action);
     if (key && key === activeActionKey) {
@@ -514,19 +522,10 @@ function StructureActionRow({
         title={primaryAction.label}
         aria-pressed={selected}
       >
-        {content(primaryLabel)}
+        {content()}
       </button>
     </div>
   );
-}
-
-function rowActionLabel(action: StructureViewerAction) {
-  if (action.type === "focus_ligand") return "Focus";
-  if (action.type === "select_residues") return "Select";
-  if (action.type === "hide_waters" || action.type === "hide_components") return "Hide";
-  if (action.type === "show_waters" || action.type === "show_components") return "Show";
-  if (action.type === "clear_selection") return "Clear";
-  return "Run";
 }
 
 function StructureDetailsSection({

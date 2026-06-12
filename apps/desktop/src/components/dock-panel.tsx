@@ -14,8 +14,9 @@ import { showNativeContextMenu } from "./native-context-menu";
 import { ViewerFrame } from "./editor-area/viewer-frame";
 import { TextFileViewer } from "./text-file-viewer";
 import { CloseIcon } from "./close-icon";
+import { formatBytes } from "./format";
 import { StructureInfoPanel } from "./structure-info-panel";
-import { readStructureText } from "../lib/structure-text";
+import { readStructureText, readStructureTextDocument } from "../lib/structure-text";
 import type { TextFileDocument, ViewerDocument } from "../types";
 
 const KetcherPage = lazy(() => import("./ketcher-page").then((module) => ({
@@ -213,6 +214,7 @@ function DockPanelContent({
   const dockTool = area === "right" ? state.rightDockTool : state.bottomDockTool;
   const dockDocument = dockDocumentId ? state.documents.find((document) => document.id === dockDocumentId) ?? null : null;
   const dockTextDocument = dockDocumentId ? state.textDocuments.find((document) => document.id === dockDocumentId) ?? null : null;
+  const dockStructureDocument = dockDocument ?? activeDocument;
   const fileEntries = activeTabKind === "files"
     ? dockFileEntries({
         dockDrops,
@@ -271,9 +273,16 @@ function DockPanelContent({
     );
   }
   if (activeTabKind === "text") {
+    if (dockTextDocument) {
+      return (
+        <div className="dock-viewer">
+          <TextFileViewer document={dockTextDocument} openPaths={actions.openPaths} onStructureSelection={actions.selectTextStructure} />
+        </div>
+      );
+    }
     return (
       <ActiveDocumentTextPanel
-        activeDocument={activeDocument}
+        activeDocument={dockStructureDocument}
         textDocuments={state.textDocuments}
         openPaths={actions.openPaths}
         onStructureSelection={actions.selectTextStructure}
@@ -281,7 +290,8 @@ function DockPanelContent({
     );
   }
   if (activeTabKind === "inspector") {
-    return <StructureInfoPanel document={activeDocument} dockDrops={dockDrops} actions={actions} />;
+    if (dockTextDocument) return <TextDocumentInfoPanel document={dockTextDocument} actions={actions} />;
+    return <StructureInfoPanel document={dockStructureDocument} dockDrops={dockDrops} actions={actions} />;
   }
   if (activeTabKind === "structure-basket") {
     return (
@@ -342,6 +352,48 @@ function DockPanelContent({
   );
 }
 
+function TextDocumentInfoPanel({ document, actions }: { document: TextFileDocument; actions: ShellActions }) {
+  return (
+    <div className="dock-content structure-brief">
+      <section className="structure-brief-card">
+        <div className="structure-brief-card-header">
+          <div>
+            <small>TEXT FILE</small>
+            <h3>{document.title}</h3>
+          </div>
+          <span className="structure-brief-pill">{document.extension ? document.extension.toUpperCase() : "TEXT"}</span>
+        </div>
+        <div className="structure-brief-rows">
+          <StructureBriefTextRow label="Language" value={document.language} />
+          <StructureBriefTextRow label="Size" value={formatBytes(document.byteCount)} />
+          <StructureBriefTextRow label="Path" value={document.path} />
+          {document.truncated && <StructureBriefTextRow label="Preview" value="Truncated" />}
+        </div>
+        <div className="structure-brief-actions">
+          <button type="button" className="dock-action" onClick={() => void actions.showTextFileMetadata(document)}>
+            Show metadata
+          </button>
+          <button type="button" className="dock-action" onClick={() => void actions.revealPath(document.path, "file")}>
+            Reveal file
+          </button>
+          <button type="button" className="dock-action" onClick={() => void actions.copyPath(document.path, "file")}>
+            Copy path
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function StructureBriefTextRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="structure-brief-row">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
 function ActiveDocumentTextPanel({
   activeDocument,
   textDocuments,
@@ -353,6 +405,7 @@ function ActiveDocumentTextPanel({
   openPaths: ShellActions["openPaths"];
   onStructureSelection: ShellActions["selectTextStructure"];
 }) {
+  const textPreviewLimit = isMaestroStructure(activeDocument) ? 1_500_000 : 3_000_000;
   const existingDocument = activeDocument
     ? textDocuments.find((document) => document.path === activeDocument.path) ?? null
     : null;
@@ -364,20 +417,16 @@ function ActiveDocumentTextPanel({
     setError(null);
     if (!activeDocument || existingDocument) return undefined;
     let cancelled = false;
-    void readStructureText(activeDocument.path)
-      .then((content) => {
+    void readStructureTextDocument(activeDocument.path, {
+      id: activeDocument.id,
+      path: activeDocument.path,
+      title: activeDocument.title,
+      extension: activeDocument.extension,
+      byteCount: activeDocument.byteCount,
+    }, { maxBytes: textPreviewLimit })
+      .then((document) => {
         if (cancelled) return;
-        setLoadedDocument({
-          id: `dock-text:${activeDocument.id}`,
-          path: activeDocument.path,
-          title: activeDocument.title,
-          extension: activeDocument.extension,
-          language: activeDocument.extension,
-          byteCount: activeDocument.byteCount,
-          content,
-          truncated: false,
-          modifiedAt: null,
-        });
+        setLoadedDocument(document);
       })
       .catch((loadError) => {
         if (cancelled) return;
@@ -386,7 +435,7 @@ function ActiveDocumentTextPanel({
     return () => {
       cancelled = true;
     };
-  }, [activeDocument, existingDocument]);
+  }, [activeDocument, existingDocument, textPreviewLimit]);
 
   if (!activeDocument) {
     return (
@@ -412,6 +461,10 @@ function ActiveDocumentTextPanel({
       </div>
     </div>
   );
+}
+
+function isMaestroStructure(document: ViewerDocument | null) {
+  return document ? ["mae", "maegz", "cms"].includes(document.extension.toLowerCase()) : false;
 }
 
 function activeDockFileEntryKey(
