@@ -6,6 +6,7 @@ export type DockToolKind = "ketcher";
 
 export type DockTabKind =
   | "files"
+  | "text"
   | "inspector"
   | "structure-basket"
   | "jobs"
@@ -70,7 +71,8 @@ export type DockFileEntriesInput = {
 
 export const DOCK_TAB_LABELS: Record<DockTabKind, string> = {
   files: "Files",
-  inspector: "Inspector",
+  text: "Text",
+  inspector: "Info",
   "structure-basket": "Structure Basket",
   jobs: "Jobs",
   logs: "Logs",
@@ -80,6 +82,8 @@ export const DOCK_TAB_LABELS: Record<DockTabKind, string> = {
 };
 
 export const RIGHT_DOCK_DEFAULT_TABS: DockTabKind[] = [
+  "inspector",
+  "text",
   "files",
 ];
 
@@ -88,8 +92,9 @@ export const BOTTOM_DOCK_DEFAULT_TABS: DockTabKind[] = [
 ];
 
 const RIGHT_DOCK_TAB_CATALOG: DockTabKind[] = [
-  "files",
   "inspector",
+  "text",
+  "files",
 ];
 
 const BOTTOM_DOCK_TAB_CATALOG: DockTabKind[] = [
@@ -104,6 +109,14 @@ export function createDockTab(kind: DockTabKind): DockTab {
 export function defaultDockTabs(area: DockArea) {
   const kinds = area === "right" ? RIGHT_DOCK_DEFAULT_TABS : BOTTOM_DOCK_DEFAULT_TABS;
   return kinds.map(createDockTab);
+}
+
+export function ensureDefaultDockTabs(area: DockArea, tabs: DockTab[]) {
+  const normalized = normalizeDockTabs(area, tabs);
+  const existingByKind = new Map(normalized.map((tab) => [tab.kind, tab]));
+  const defaults = defaultDockTabs(area).map((defaultTab) => existingByKind.get(defaultTab.kind) ?? defaultTab);
+  const extras = normalized.filter((tab) => !defaults.some((defaultTab) => defaultTab.kind === tab.kind));
+  return [...defaults, ...extras];
 }
 
 export function dockTabCatalog(area: DockArea) {
