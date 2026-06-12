@@ -7717,16 +7717,20 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     applyLayoutState(viewer);
     try { viewer.handleResize(); } catch (_) {}
 
-    setStatus(`[web] Rendered ${config.label || 'structure'}`);
-    if (Array.isArray(config.stagedEntries) && config.stagedEntries.length > 0) {
-      window.setTimeout(() => {
-        void loadStagedMolstarEntries(viewer, config, cb).catch(error => {
-          setStatus(`[web] Could not load staged solvent.\n\n${error?.message || String(error)}`, 'error');
-          // eslint-disable-next-line no-console
-          console.error(error);
-        });
-      }, 0);
+    const stagedEntries = Array.isArray(config.stagedEntries) ? config.stagedEntries : [];
+    if (stagedEntries.length > 0) {
+      try {
+        await loadStagedMolstarEntries(viewer, config, cb);
+      } catch (error) {
+        setStatus(`[web] Could not load staged solvent.\n\n${error?.message || String(error)}`, 'error');
+        // eslint-disable-next-line no-console
+        console.error(error);
+        if (stagedEntries.some(entry => entry?.requiredForReady === true)) {
+          throw error;
+        }
+      }
     }
+    setStatus(`[web] Rendered ${config.label || 'structure'}`);
     setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
   }
 
