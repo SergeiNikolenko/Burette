@@ -11,13 +11,31 @@ Use Browser and Computer as verification surfaces.
 
 Use Browser for:
 
+- full Browser shell URLs started by
+  `scripts/burrete-agent.mjs open --mode browser-dev-shell ...`, such as
+  `http://127.0.0.1:<fresh-port>/?devFiles=<encoded absolute path>`, when the user
+  wants ordinary Burrete UI chrome, sidebars, right dock, bottom dock, tabs, or
+  app-like behavior;
 - tokenized localhost browser-preview URLs;
 - screenshot and canvas nonblank checks;
 - DOM or Playwright checks for preview panels;
 - visual QA when the user asks to watch inside Codex.
 
-Do not reload an already useful browser tab unless a code or asset change
-requires it.
+Browser means the Codex in-app Browser plugin. Do not use macOS `open`, Arc,
+Chrome, Safari, or another external browser for Browser visual QA unless the
+user explicitly asks for an external browser. If the in-app Browser cannot open
+the local URL, report that blocker and keep the URL available for the user
+instead of silently switching browsers.
+
+Prefer browser-dev shell over tokenized browser-preview when the user is
+checking menus, docks, sidebars, tabs, or other shell-level UI. Prefer
+tokenized browser-preview when the QA depends on MCP agent transport,
+`observe`, `act`, or action logs.
+
+Do not reuse another browser-dev port for a new agent-owned shell. Reuse an
+already useful Browser tab only when the user explicitly asks to keep working
+on that exact surface or when a reload is required after a code or asset
+change.
 
 ## Computer
 

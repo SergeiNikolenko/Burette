@@ -909,7 +909,7 @@ mod tests {
     #[test]
     fn lists_supported_structure_extensions_from_registry() {
         let supported = supported_structure_extensions().expect("supported extensions should load");
-        for extension in ["pdb", "cif", "sdf", "xyz", "maegz"] {
+        for extension in ["pdb", "cif", "sdf", "xyz", "maegz", "mvsj", "mvsx"] {
             assert!(
                 supported.contains(extension),
                 "{extension} should be supported"
@@ -931,6 +931,8 @@ mod tests {
         assert_eq!(quick_look_size_limit_for_extension("mmcif"), 40 * mib);
         assert_eq!(quick_look_size_limit_for_extension("bcif"), 50 * mib);
         assert_eq!(quick_look_size_limit_for_extension("sdf"), 25 * mib);
+        assert_eq!(quick_look_size_limit_for_extension("mvsj"), 25 * mib);
+        assert_eq!(quick_look_size_limit_for_extension("mvsx"), 25 * mib);
         assert_eq!(quick_look_size_limit_for_extension("mae.gz"), 64 * mib);
         assert_eq!(quick_look_size_limit_for_extension("xtc"), 75 * mib);
         assert_eq!(quick_look_size_limit_for_extension("trr"), 75 * mib);

@@ -47,6 +47,26 @@ The CLI is the execution contract. MCP tools wrap it. Browser and Computer
 verify visual reality. Do not replace typed `observe` and `act` with screenshot
 interpretation.
 
+For Browser work, distinguish two local surfaces:
+
+- `browser-dev-shell`: the full Burrete Browser shell, started by
+  `scripts/burrete-agent.mjs open --mode browser-dev-shell ...` on a fresh
+  local port and opened as
+  `http://127.0.0.1:<fresh-port>/?devFiles=<encoded absolute path>`. Use it
+  when the user wants the normal app UI: sidebar, files/projects, tabs, right
+  dock, bottom dock, command palette, or behavior matching the browser shell.
+  Do not reuse another browser-dev port unless the user explicitly asks to
+  attach to that exact surface.
+- `browser-preview`: the tokenized agent preview opened through
+  `scripts/burrete-agent.mjs open --mode browser-preview ... --no-launch`.
+  Use it when typed MCP/CLI `observe` and `act` over a tokenized localhost
+  transport are required.
+
+Browser means the Codex in-app Browser plugin for both surfaces. Create or use
+local URLs without launching an external browser and navigate them in the
+in-app Browser. Do not use macOS `open`, Arc, Chrome, Safari, or another
+external browser unless the user explicitly asks for an external browser.
+
 ## Completion Gate
 
 A Burrete workflow is complete only when:

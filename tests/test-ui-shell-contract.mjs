@@ -79,6 +79,7 @@ const [
   tauriSource,
   settingsSections,
   browserDevDocuments,
+  agentSessionHook,
   temporaryDocuments,
   windowScope,
   viteConfig,
@@ -176,6 +177,7 @@ const [
   source('apps/desktop/src/lib/tauri.ts'),
   source('apps/desktop/src/lib/settings-sections.ts'),
   source('apps/desktop/src/lib/browser-dev-documents.ts'),
+  source('apps/desktop/src/hooks/use-agent-session.ts'),
   source('apps/desktop/src/lib/temporary-documents.ts'),
   source('apps/desktop/src/lib/window-scope.ts'),
   source('apps/desktop/vite.config.ts'),
@@ -1319,7 +1321,11 @@ assert.match(sidebarWorkspaceSwitcher, /sidebar-build-badge/);
 assert.match(sidebarWorkspaceSwitcher, /const showBuildBadge = buildInfo\.isDevBuild \|\| buildInfo\.isBrowserDev;/);
 assert.match(sidebarWorkspaceSwitcher, /\{showBuildBadge \? \(/);
 assert.doesNotMatch(sidebarWorkspaceSwitcher, /return `v\$\{info\.version\}`;/);
+assert.match(sidebarWorkspaceSwitcher, /AGENT SHELL · v\$\{info\.version\}/);
 assert.match(sidebarWorkspaceSwitcher, /DEV \$\{info\.flavor \?\? "local"\} · v\$\{info\.version\}/);
+assert.match(sidebarFileBrowser, /const hideProjectPreviews = state\.buildInfo\.isAgentShell/);
+assert.match(sidebarFileBrowser, /const visibleProjects = hideProjectPreviews \? \[\] : filterSidebarProjects/);
+assert.match(sidebarFileBrowser, /\{!hideProjectPreviews && \(/);
 assert.match(ketcherKind, /export const ketcherKind = definePageKind/);
 assert.match(ketcherKind, /lazy\(\(\) => import\("\.\.\/\.\.\/ketcher-page"\)/);
 assert.match(ketcherKind, /<Suspense fallback=\{null\}>/);
@@ -2413,6 +2419,8 @@ assert.match(menuEventsHook, /export function useMenuEvents/);
 assert.match(windowTitle, /useWindowTitle/);
 assert.match(windowTitle, /appInstanceLabel/);
 assert.match(instance, /VITE_BURETTE_DEV_INSTANCE/);
+assert.match(instance, /VITE_BURRETE_AGENT_SHELL/);
+assert.match(instance, /"Burette Agent"/);
 assert.match(instance, /Burette Dev \$\{devInstanceSuffix\}/);
 assert.match(instance, /"8a18"/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
@@ -2420,6 +2428,18 @@ assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh
 assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v99"/);
 assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v34"/);
 assert.match(browserDevDocuments, /const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT = 1500/);
+assert.match(viteConfig, /__burette\/agent-session\//);
+assert.match(viteConfig, /BURRETE_AGENT_SHELL_SESSION_DIR/);
+assert.match(viteConfig, /"actions\.json", "observe\.json", "session\.json", "events"/);
+assert.match(viteConfig, /text\/event-stream/);
+assert.match(viteConfig, /watch\(sessionDir/);
+assert.match(viteConfig, /changedFileName === "actions\.json"/);
+assert.match(agentSessionHook, /type AgentSceneAction = \{/);
+assert.match(agentSessionHook, /type AgentSceneSelection = \{/);
+assert.match(agentSessionHook, /viewerAgentStateWithActionResult/);
+assert.match(agentSessionHook, /sceneSelectionFromActionResult/);
+assert.match(agentSessionHook, /selection: activeAgentState\?\.selection \?\? null/);
+assert.match(agentSessionHook, /lastAction: activeAgentState\?\.lastAction \?\? null/);
 assert.match(browserDevDocuments, /if \(document\.renderer === "grid2d"\) return !document\.runtimePath\.includes\(GRID_ASSET_VERSION\);/);
 assert.match(browserDevDocuments, /if \(!document\.runtimePath\.includes\(VIEWER_ASSET_VERSION\)\) return true;/);
 assert.match(browserDevDocuments, /function resolvePreviewVisuals/);
@@ -2718,6 +2738,12 @@ assert.match(gridCss, /#status \[data-buret-status-dismiss\] \{/);
 assert.match(gridViewer, /function setStatusText\(text\)/);
 assert.match(gridViewer, /data-buret-status-dismiss/);
 assert.match(previewShell, /data-buret-toolbar-content/);
+assert.match(previewShell, /data-buret-dock-toggle="bottom"/);
+assert.match(previewShell, /aria-label="Show bottom dock"/);
+assert.match(previewShell, /data-buret-dock-toggle="right"/);
+assert.match(previewShell, /aria-label="Show right dock"/);
+assert.match(previewShell, /data-buret-preview-dock="right"/);
+assert.match(previewShell, /data-buret-preview-dock="bottom"/);
 assert.match(previewShell, /data-buret-action="ketcher"/);
 assert.match(previewShell, /data-buret-action="save-modified-structure"/);
 assert.match(previewShell, /class="buret-button buret-save-modified hidden"/);
@@ -2732,6 +2758,12 @@ assert.match(previewRuntimeCss, /\.buret-xyzrender-preset-slot \{ display: none;
 assert.match(previewRuntimeCss, /\.buret-xyzrender-preset-slot\.visible \{ display: flex; \}/);
 assert.match(previewRuntimeCss, /\.buret-molstar-style-slot \{ display: none; align-items: center; \}/);
 assert.match(previewRuntimeCss, /\.buret-molstar-style-slot\.visible \{ display: flex; \}/);
+assert.match(previewRuntimeCss, /body:not\(\.buret-preview-docks-enabled\) \.buret-preview-dock-toggle/);
+assert.match(previewRuntimeCss, /\.buret-preview-dock-right \{/);
+assert.match(previewRuntimeCss, /\.buret-preview-dock-bottom \{/);
+assert.match(previewRuntimeCss, /\.buret-preview-dock-section-title/);
+assert.match(previewRuntimeCss, /\.buret-preview-dock-status-pill/);
+assert.match(previewRuntimeCss, /body\.buret-preview-dock-right-open \.buret-preview-dock-bottom/);
 assert.match(previewRuntimeCss, /\.buret-corner-button \{/);
 assert.match(previewRuntimeCss, /body\.burette-quicklook-host \{\s*--buret-toolbar-safe-top: 56px;/s);
 assert.match(previewRuntimeCss, /body\.burette-quicklook-host \.buret-corner-button \{/);
@@ -2861,15 +2893,40 @@ assert.match(previewViewer, /await window\.BurreteAgent\.run\(\{ command: 'summa
 assert.match(previewViewer, /await fetch\(reportUrl, \{/);
 assert.match(previewViewer, /function startBurreteAgentActionPolling\(\)/);
 assert.match(previewViewer, /async function executeBurreteAgentAction\(action\)/);
+assert.match(previewViewer, /const previewDockState = \{ right: false, bottom: false \}/);
+assert.match(previewViewer, /function bindPreviewDockControls\(toolbar\)/);
+assert.match(previewViewer, /data-buret-dock-toggle/);
+assert.match(previewViewer, /function setPreviewDockOpen\(area, open\)/);
+assert.match(previewViewer, /function previewDocksEnabled\(\)/);
+assert.match(previewViewer, /config\.enablePreviewDocks === true/);
+assert.match(previewViewer, /buret-preview-docks-enabled/);
+assert.match(previewViewer, /function previewDockSceneDescription\(observe\)/);
+assert.match(previewViewer, /function previewDockActionList\(observe\)/);
+assert.match(previewViewer, /function refreshPreviewDockObserve\(\)/);
+assert.match(previewViewer, /fetch\(previewDockObserveUrl\(\), \{ cache: 'no-store', credentials: 'same-origin' \}\)/);
+assert.match(previewViewer, /function applyDefaultPreviewDocks\(toolbar\)/);
+assert.match(previewViewer, /config\.defaultPreviewDocks/);
+assert.match(previewViewer, /buret-preview-dock-\$\{area\}-open/);
 assert.match(previewViewer, /let burreteAgentActionPollBusy = false/);
 assert.match(previewViewer, /if \(burreteAgentActionPollBusy\) return;/);
 assert.match(previewViewer, /agentActionFailure\(actionType, 'ACTION_ERROR'/);
 assert.match(previewViewer, /type === 'focus_ligand'[\s\S]*?command: 'focusLigand'/);
+assert.match(previewViewer, /type === 'focus_ligand'[\s\S]*?allowAmbiguous: action\.allowAmbiguous === true/);
+assert.match(previewViewer, /type === 'focus_ligand'[\s\S]*?index: Number\.isInteger\(action\.index\) \? action\.index : undefined/);
+assert.match(previewViewer, /type === 'focus_ligand'[\s\S]*?durationMs: action\.durationMs/);
+assert.match(previewViewer, /type === 'focus_ligand'[\s\S]*?extraRadius: action\.extraRadius/);
+assert.match(previewViewer, /type === 'label_selection'[\s\S]*?command: 'labelSelection'/);
+assert.match(previewViewer, /type === 'label_selection'[\s\S]*?text: action\.text \|\| action\.label/);
 assert.match(previewViewer, /type === 'reset_camera'[\s\S]*?command: 'resetCamera'/);
 assert.match(previewViewer, /type === 'hide_waters'[\s\S]*?BurreteSceneActions\?\.hideWaters/);
 assert.match(previewViewer, /type === 'show_surface'[\s\S]*?BurreteSceneActions\?\.showSurface/);
 assert.match(previewViewer, /type === 'color_by_chain'[\s\S]*?BurreteSceneActions\?\.colorByChain/);
 assert.match(previewViewer, /type === 'render_panel'[\s\S]*?renderBurreteAgentPanel\(action\)/);
+assert.match(previewViewer, /type === 'apply_scene'[\s\S]*?executeBurreteSceneSpec\(action\)/);
+assert.match(previewViewer, /async function executeBurreteSceneSpec\(action\)/);
+assert.match(previewViewer, /command: 'colorSelection'[\s\S]*?selector: target/);
+assert.match(previewViewer, /command: 'selectResidues'[\s\S]*?selector: target/);
+assert.match(previewViewer, /command: 'focusSelection'[\s\S]*?selector: target/);
 assert.match(previewViewer, /function renderBurreteAgentPanel\(action\)/);
 assert.match(previewViewer, /data-burrete-agent-panel/);
 assert.match(previewViewer, /function renderAgentTable\(content\)/);
@@ -2882,6 +2939,10 @@ assert.match(previewViewer, /hideWaters: hideMolstarWaters/);
 assert.match(previewViewer, /showSurface: showMolstarSurface/);
 assert.match(previewViewer, /colorByChain: colorMolstarByChain/);
 assert.match(previewViewer, /agentActionFailure\(type, 'NOT_IMPLEMENTED'/);
+assert.match(previewViewer, /function isMolViewSpecFormat\(format\)/);
+assert.match(previewViewer, /if \(isMolViewSpecFormat\(normalized\)\) \{/);
+assert.match(previewViewer, /kind: 'mvs'/);
+assert.match(previewViewer, /viewer\.loadMvsData\(prepared\.data, prepared\.format, \{ replaceExisting: true \}\)/);
 assert.match(previewViewer, /loadPreparedStructure\(viewer, prepared\)[\s\S]*?applyLayoutState\(viewer\);[\s\S]*?notifyStructureLoaded/);
 assert.match(previewViewer, /notifyStructureLoaded[\s\S]*?postHostMessage\(\{ type: 'agentReady', message: 'Burrete agent ready' \}\)/);
 assert.match(previewViewer, /notifyStructureLoaded[\s\S]*?void reportBurreteAgentState\(\);[\s\S]*?trackMolstarOrientation/);
@@ -3024,8 +3085,10 @@ assert.match(previewViewer, /if \(!viewer \|\| \(!picked && !isMolstarContextMen
 assert.match(previewViewer, /const MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX = 4;/);
 assert.match(previewViewer, /let contextPointer = null;/);
 assert.match(previewViewer, /if \(event\.button === 2\) \{[\s\S]*?contextPointer = \{/);
-assert.match(previewViewer, /const contextPick = molstarContextPickFromEvent\(event\);[\s\S]*?contextPointer = \{[\s\S]*?pick: contextPick/);
-assert.doesNotMatch(previewViewer, /if \(event\.button === 2\) \{[\s\S]*?event\.preventDefault\(\);[\s\S]*?event\.stopPropagation\(\);[\s\S]*?contextPointer = \{/);
+assert.match(previewViewer, /const contextPick = molstarContextPickFromEvent\(event\);[\s\S]*?event\.preventDefault\(\);\s*event\.stopPropagation\(\);[\s\S]*?contextPointer = \{[\s\S]*?pick: contextPick/);
+assert.doesNotMatch(previewViewer, /if \(event\.button === 2\) \{\s*event\.preventDefault\(\);\s*event\.stopPropagation\(\);[\s\S]*?contextPointer = \{/);
+assert.doesNotMatch(previewViewer, /actionContainer\.querySelector\('button'\)\?\.focus\(\)/);
+assert.doesNotMatch(previewViewer, /menu\.querySelector\('button'\)\?\.focus\(\)/);
 assert.match(previewViewer, /const onPointerUp = \(event\) => \{[\s\S]*?if \(contextPointer\.moved\) \{[\s\S]*?hideMolstarContextMenu\(\);[\s\S]*?contextPointer = null;[\s\S]*?return;[\s\S]*?\}[\s\S]*?openFromEvent\(event, contextPointer\.pick\);[\s\S]*?contextPointer = null;/);
 assert.match(previewViewer, /document\.addEventListener\('pointerup', onPointerUp, true\)/);
 assert.match(previewViewer, /if \(contextPointer\) \{\s*event\.preventDefault\(\);\s*event\.stopPropagation\(\);\s*if \(!contextPointer\.moved\) return;\s*hideMolstarContextMenu\(\);\s*contextPointer = null;\s*return;/);

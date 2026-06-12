@@ -51,6 +51,7 @@ export type BuildInfo = {
   flavor: string | null;
   isDevBuild: boolean;
   isBrowserDev: boolean;
+  isAgentShell: boolean;
   notes: string[];
   limitations: string[];
 };

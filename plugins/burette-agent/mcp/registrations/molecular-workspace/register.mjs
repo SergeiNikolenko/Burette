@@ -24,10 +24,10 @@ export function registerMolecularWorkspace(server) {
     "open_burrete_workspace",
     {
       title: "Open Burrete Workspace",
-      description: "Open a local molecular artifact in Browser preview or the real Burrete desktop app through the repository CLI.",
+      description: "Open a local molecular artifact in the full Browser shell, Browser preview, or the real Burrete desktop app through the repository CLI.",
       inputSchema: {
         file: z.string().trim(),
-        mode: z.enum(["browser-preview", "desktop-app"]).default("browser-preview"),
+        mode: z.enum(["browser-dev-shell", "browser-preview", "desktop-app"]).default("browser-dev-shell"),
         app: z.string().trim().optional(),
         sessionDir: z.string().trim().optional(),
         host: z.string().trim().optional(),
@@ -114,7 +114,7 @@ export function registerMolecularWorkspace(server) {
     "act_molstar_scene",
     {
       title: "Act On Molstar Scene",
-      description: "Queue an allowlisted high-level Mol* scene action through the Burrete agent contract.",
+      description: "Queue an allowlisted high-level or declarative Mol* scene action through the Burrete agent contract.",
       inputSchema: {
         action: actionSchema,
         url: z.string().trim().optional(),
