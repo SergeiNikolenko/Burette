@@ -14,6 +14,7 @@ const [
   pageKinds,
   textFileKind,
   textViewer,
+  structureTextHighlighting,
   markdownRichViewer,
   markdownTableDecorations,
   markdownHtmlDecorations,
@@ -36,6 +37,7 @@ const [
   source("apps/desktop/src/components/editor-area/page-kinds/index.ts"),
   source("apps/desktop/src/components/editor-area/page-kinds/text-file.tsx"),
   source("apps/desktop/src/components/text-file-viewer.tsx"),
+  source("apps/desktop/src/components/text-file-viewer/structure-text-highlighting.ts"),
   source("apps/desktop/src/components/text-file-viewer/markdown-rich-viewer.tsx"),
   source("apps/desktop/src/components/text-file-viewer/markdown-table-decorations.ts"),
   source("apps/desktop/src/components/text-file-viewer/markdown-html-block-decorations.ts"),
@@ -60,7 +62,7 @@ assert.match(pageKinds, /const kinds = \[fileKind, textFileKind,/);
 assert.match(pageKinds, /export type Location = FileLocation \| TextFileLocation/);
 assert.match(textFileKind, /kind: "text-file"/);
 assert.match(textFileKind, /serialize: \(location\) => \(\{ documentId: location\.documentId, path: location\.path \}\)/);
-assert.match(textFileKind, /<TextFileViewer document=\{document\} openPaths=\{actions\.openPaths\} \/>/);
+assert.match(textFileKind, /<TextFileViewer document=\{document\} openPaths=\{actions\.openPaths\} onStructureSelection=\{actions\.selectTextStructure\} \/>/);
 assert.doesNotMatch(textFileKind, /kind: "file"/);
 
 assert.match(moleculeStore, /textDocuments: TextFileDocument\[\]/);
@@ -71,11 +73,39 @@ assert.match(tabsHook, /export function useOpenTextDocuments\(/);
 assert.match(tabsHook, /export function useAddTextTabs\(/);
 
 assert.match(textViewer, /new EditorView\(/);
+assert.match(textViewer, /textStructureSelectionFromRange\(document, range\.from, range\.to\)/);
+assert.match(textViewer, /textStructureSelectionFromSelectedText\(document, selection\.toString\(\)\)/);
+assert.match(textViewer, /onStructureSelectionRef\.current\?\.\(document, selection\)/);
+assert.match(textViewer, /window\.document\.addEventListener\("selectionchange", emitNativeStructureSelection\)/);
+assert.match(textViewer, /view\.posAtDOM\(lineElement, 0\)/);
+assert.match(textViewer, /range\.intersectsNode\(lineElement\)/);
+assert.match(textViewer, /textStructureSelectionFromRange\(document, from, to\)/);
+assert.doesNotMatch(textViewer, /textStructureSelectionFromRange\(document, line\.from, line\.to, \{ preferAtom: true \}\)/);
+assert.match(textViewer, /lineDragStartRef/);
+assert.match(textViewer, /parent\.addEventListener\("pointerdown", onPointerDown\)/);
+assert.match(textViewer, /parent\.addEventListener\("pointermove", onPointerMove\)/);
+assert.match(textViewer, /parent\.addEventListener\("pointerup", onPointerUp\)/);
+assert.match(textViewer, /parent\.addEventListener\("pointercancel", onPointerCancel\)/);
+assert.match(textViewer, /parent\.addEventListener\("pointerleave", onPointerLeave\)/);
 assert.match(textViewer, /EditorState\.readOnly\.of\(true\)/);
 assert.match(textViewer, /EditorView\.editable\.of\(false\)/);
+assert.doesNotMatch(textViewer, /EditorView\.lineWrapping/);
 assert.match(textViewer, /markdown\(\{ codeLanguages: languages \}\)/);
 assert.match(textViewer, /LanguageDescription\.matchFilename\(languages, document\.title\)/);
+assert.match(textViewer, /structureTextHighlighting\(document\.extension\)/);
 assert.match(textViewer, /<MarkdownRichViewer document=\{document\} openPaths=\{openPaths\} \/>/);
+assert.match(textViewer, /fontVariantNumeric: "tabular-nums"/);
+assert.match(textViewer, /fontFeatureSettings: "\\"tnum\\" 1, \\"kern\\" 0, \\"liga\\" 0, \\"calt\\" 0"/);
+assert.match(textViewer, /overflowX: "auto"/);
+assert.match(textViewer, /width: "max-content"/);
+assert.match(textViewer, /whiteSpace: "pre"/);
+assert.match(textViewer, /"\.cm-line span": \{\s*fontFamily: "inherit",\s*fontWeight: "400",\s*\}/);
+assert.doesNotMatch(textViewer, /\.cm-structure-record[\s\S]*?fontWeight/s);
+assert.match(structureTextHighlighting, /pdbqt/);
+assert.match(structureTextHighlighting, /cm-structure-residue/);
+assert.match(structureTextHighlighting, /function highlightPdbLine/);
+assert.match(structureTextHighlighting, /function highlightCifLine/);
+assert.match(structureTextHighlighting, /function highlightGroLine/);
 
 assert.match(markdownRichViewer, /prosemarkBasicSetup\(\)/);
 assert.match(markdownRichViewer, /prosemarkBaseThemeSetup\(\)/);

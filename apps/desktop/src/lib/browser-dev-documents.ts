@@ -1256,11 +1256,10 @@ function resolveRenderer(format: FormatInfo, requested: string, externalMolstarA
   if (format.externalOnly) {
     return normalized === "molstar" && externalMolstarAvailable ? "molstar" : "xyzrender-external";
   }
-  const isXyz = format.molstarFormat === "xyz" && !format.binary;
-  const canUseXyzrender = isXyz || canUseExternalXyzrender(format);
+  const canUseXyzrender = (format.molstarFormat === "xyz" && !format.binary) || canUseExternalXyzrender(format);
   if (normalized === "molstar") return "molstar";
   if (normalized === "xyzrender-external") return canUseXyzrender ? "xyzrender-external" : "molstar";
-  return isXyz ? "xyzrender-external" : "molstar";
+  return "molstar";
 }
 
 function canUseExternalXyzrender(format: FormatInfo) {

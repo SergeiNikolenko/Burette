@@ -8,6 +8,7 @@ import {
   type DockTabKind,
   type DockToolKind,
   createDockTab,
+  ensureDefaultDockTabs,
   firstDockTabKind,
   normalizeDockActiveTab,
   normalizeDockTabs,
@@ -194,10 +195,20 @@ export const useShellStore = create<ShellState>()(
       setSidebarWidth: (width) => set({ sidebarWidth: normalizeSidebarWidth(width) }),
       toggleDock: (area) => set((state) => (
         area === "right"
-          ? { rightDockOpen: !state.rightDockOpen }
+          ? {
+              rightDockOpen: !state.rightDockOpen,
+              ...(state.rightDockOpen ? {} : {
+                rightDockTabs: ensureDefaultDockTabs("right", state.rightDockTabs),
+              }),
+            }
           : { bottomDockOpen: !state.bottomDockOpen }
       )),
-      setDockOpen: (area, open) => set(area === "right" ? { rightDockOpen: open } : { bottomDockOpen: open }),
+      setDockOpen: (area, open) => set((state) => area === "right"
+        ? {
+            rightDockOpen: open,
+            ...(open ? { rightDockTabs: ensureDefaultDockTabs("right", state.rightDockTabs) } : {}),
+          }
+        : { bottomDockOpen: open }),
       setDockSize: (area, size) => set(area === "right"
         ? { rightDockWidth: normalizeRightDockWidth(size) }
         : { bottomDockHeight: normalizeBottomDockHeight(size) }),
@@ -375,6 +386,9 @@ export const useShellStore = create<ShellState>()(
       }),
       merge: (persisted, current) => {
         const stored = persisted as Partial<PersistedShellState> | undefined;
+        const rightDockOpen = stored?.rightDockOpen ?? current.rightDockOpen;
+        const normalizedRightDockTabs = normalizeDockTabs("right", stored?.rightDockTabs ?? current.rightDockTabs);
+        const rightDockTabs = rightDockOpen ? ensureDefaultDockTabs("right", normalizedRightDockTabs) : normalizedRightDockTabs;
         const projectRoots = persistentRoots(stored?.projectRoots ?? current.projectRoots);
         const pinnedProjectRoots = persistentRoots(stored?.pinnedProjectRoots ?? current.pinnedProjectRoots)
           .filter((root) => projectRoots.includes(root));
@@ -384,12 +398,12 @@ export const useShellStore = create<ShellState>()(
           ...current,
           sidebarOpen: stored?.sidebarOpen ?? current.sidebarOpen,
           sidebarWidth: normalizeSidebarWidth(stored?.sidebarWidth ?? current.sidebarWidth),
-          rightDockOpen: stored?.rightDockOpen ?? current.rightDockOpen,
+          rightDockOpen,
           rightDockWidth: normalizeRightDockWidth(stored?.rightDockWidth ?? current.rightDockWidth),
-          rightDockTabs: normalizeDockTabs("right", stored?.rightDockTabs ?? current.rightDockTabs),
+          rightDockTabs,
           rightDockActiveTab: normalizeDockActiveTab(
             "right",
-            normalizeDockTabs("right", stored?.rightDockTabs ?? current.rightDockTabs),
+            rightDockTabs,
             stored?.rightDockActiveTab ?? current.rightDockActiveTab,
           ),
           bottomDockOpen: stored?.bottomDockOpen ?? current.bottomDockOpen,

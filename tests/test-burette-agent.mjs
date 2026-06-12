@@ -8,7 +8,10 @@ function col(values) {
   return { value: i => values[i], array: values, rowCount: values.length };
 }
 
-function fakeStructure() {
+function fakeStructure(options = {}) {
+  const omitAuthIds = options.omitAuthIds === true;
+  const remapAuthIds = options.remapAuthIds === true;
+  const omitCompIds = options.omitCompIds === true;
   const elements = [0, 1, 2, 3, 4, 5];
   const residueIndex = [0, 0, 1, 1, 2, 2];
   const chainIndex = [0, 0, 0, 0, 1, 1];
@@ -25,16 +28,16 @@ function fakeStructure() {
         type_symbol: col(['N', 'C', 'N', 'C', 'C', 'N'])
       },
       residues: {
-        label_comp_id: col(['GLY', 'ALA', 'HEM']),
-        auth_comp_id: col(['GLY', 'ALA', 'HEM']),
+        label_comp_id: col(omitCompIds ? [undefined, undefined, undefined] : ['GLY', 'ALA', 'HEM']),
+        auth_comp_id: col(omitCompIds ? [undefined, undefined, undefined] : ['GLY', 'ALA', 'HEM']),
         label_seq_id: col([1, 2, 100]),
-        auth_seq_id: col([1, 2, 100]),
+        auth_seq_id: col(omitAuthIds ? [undefined, undefined, undefined] : remapAuthIds ? [10, 20, 300] : [1, 2, 100]),
         pdbx_PDB_ins_code: col([undefined, undefined, undefined])
       },
       chains: {
         label_entity_id: col(['1', '2']),
         label_asym_id: col(['A', 'B']),
-        auth_asym_id: col(['A', 'B'])
+        auth_asym_id: col(omitAuthIds ? [undefined, undefined] : remapAuthIds ? ['X', 'Y'] : ['A', 'B'])
       },
       residueAtomSegments: { index: col(residueIndex) },
       chainAtomSegments: { index: col(chainIndex) }
@@ -113,6 +116,30 @@ const lig = await context.window.BurreteAgent.run({ command: 'focusLigand', args
 assert.equal(lig.ok, true);
 assert.equal(lig.result.ligand.label_comp_id, 'HEM');
 assert.ok(lig.result.neighborhood.residues.some(r => r.auth_asym_id === 'A'));
+assert.equal(interactions.findLast(x => x.action === 'focus')?.focusOptions?.extraRadius, 4);
+
+viewer.plugin.managers.structure.hierarchy.current.structures[0].cell.obj.data = fakeStructure({ omitAuthIds: true });
+context.window.BurreteAgent.attach({ viewer, plugin: viewer.plugin, config: { label: 'fake-label-only.pdb', format: 'pdb' } });
+context.window.BurreteAgent.notifyStructureLoaded({ prepared: { label: 'fake-label-only.pdb', format: 'pdb' } });
+const selectedViaAuthFallback = await context.window.BurreteAgent.run({ command: 'selectResidues', args: { selector: { auth_asym_id: 'A', beg_auth_seq_id: 1, end_auth_seq_id: 2 } } });
+assert.equal(selectedViaAuthFallback.ok, true);
+assert.equal(selectedViaAuthFallback.result.counts.residues, 2);
+const ligandViaAuthFallback = await context.window.BurreteAgent.run({ command: 'focusLigand', args: { selector: { label_comp_id: 'HEM', auth_asym_id: 'B', auth_seq_id: 100 } } });
+assert.equal(ligandViaAuthFallback.ok, true);
+assert.equal(ligandViaAuthFallback.result.ligand.label_asym_id, 'B');
+viewer.plugin.managers.structure.hierarchy.current.structures[0].cell.obj.data = fakeStructure({ remapAuthIds: true });
+context.window.BurreteAgent.attach({ viewer, plugin: viewer.plugin, config: { label: 'fake-remapped-auth.pdb', format: 'pdb' } });
+context.window.BurreteAgent.notifyStructureLoaded({ prepared: { label: 'fake-remapped-auth.pdb', format: 'pdb' } });
+const ligandViaLabelAlias = await context.window.BurreteAgent.run({ command: 'focusLigand', args: { selector: { label_comp_id: 'HEM', auth_asym_id: 'B', auth_seq_id: 100 } } });
+assert.equal(ligandViaLabelAlias.ok, true);
+assert.equal(ligandViaLabelAlias.result.ligand.label_asym_id, 'B');
+viewer.plugin.managers.structure.hierarchy.current.structures[0].cell.obj.data = fakeStructure({ omitCompIds: true });
+context.window.BurreteAgent.attach({ viewer, plugin: viewer.plugin, config: { label: 'fake-no-comp-id.pdb', format: 'pdb' } });
+context.window.BurreteAgent.notifyStructureLoaded({ prepared: { label: 'fake-no-comp-id.pdb', format: 'pdb' } });
+const ligandViaResidueAddress = await context.window.BurreteAgent.run({ command: 'focusLigand', args: { selector: { label_comp_id: 'HEM', auth_asym_id: 'B', auth_seq_id: 100 }, showNeighborhood: true, radiusA: 4 } });
+assert.equal(ligandViaResidueAddress.ok, true);
+assert.equal(ligandViaResidueAddress.result.ligand.auth_asym_id, 'B');
+assert.ok(ligandViaResidueAddress.result.neighborhood.residues.length > 0);
 
 const shot = await context.window.BurreteAgent.run({ command: 'screenshot' });
 assert.equal(shot.ok, true);

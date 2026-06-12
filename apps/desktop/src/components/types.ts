@@ -1,13 +1,15 @@
 import type { FepSetupRequest, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences } from "../types";
 import type { MoleculeTab } from "../stores/molecule-store";
 import type { StructureDragPayload } from "../lib/structure-drag";
+import type { StructureViewerAction } from "../lib/structure-composition";
+import type { TextStructureSelection } from "../lib/text-structure-selection";
 import type { UpdatePreferences, UpdateState } from "../update";
 import type { SidebarProject } from "../lib/sidebar-projects";
 import type { SettingsSectionId } from "../lib/settings-sections";
 import type { DockArea, DockDropInput, DockDroppedStructure, DockTab, DockTabKind, DockToolKind } from "../lib/dock";
 
 export type AppPage = "viewer" | "settings";
-export type StatusKind = "info" | "error";
+export type StatusKind = "info" | "success" | "error";
 
 export type StatusNotice = {
   id: number;
@@ -157,6 +159,8 @@ export type ShellActions = {
   showActiveDocumentMetadata: () => void | Promise<void>;
   showDocumentMetadata: (document: ViewerDocument) => void | Promise<void>;
   showTextFileMetadata: (document: TextFileDocument) => void | Promise<void>;
+  runStructureViewerAction: (document: ViewerDocument, action: StructureViewerAction) => void;
+  selectTextStructure: (document: TextFileDocument, selection: TextStructureSelection) => void;
   exportActivePreviewAsPng: () => void | Promise<void>;
   exportActivePreviewAsSvg: () => void | Promise<void>;
   setStructureDragActive: (active: boolean) => void;
