@@ -354,15 +354,33 @@
           showNeighborhood: !!action.showNeighborhood,
           radiusA: action.radiusA,
           durationMs: action.durationMs,
-          extraRadius: action.extraRadius
+          extraRadius: action.extraRadius ?? action.radiusA
         }
       });
     }
     if (type === 'show_ligands') {
       return window.BurreteAgent.run({ command: 'showLigands', args: action.args || {} });
     }
+    if (type === 'hide_components') {
+      return window.BurreteSceneActions?.hideComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BurreteSceneActions.hideComponents is unavailable.');
+    }
+    if (type === 'show_components') {
+      return window.BurreteSceneActions?.showComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BurreteSceneActions.showComponents is unavailable.');
+    }
     if (type === 'select_residues') {
-      return window.BurreteAgent.run({ command: 'selectResidues', args: { selector: action.selector || action } });
+      return window.BurreteAgent.run({
+        command: 'selectResidues',
+        args: {
+          ...(action.args || {}),
+          selector: action.selector || action.args?.selector || action,
+          mode: action.mode || action.args?.mode,
+          granularity: action.granularity || action.args?.granularity,
+          label: action.label || action.args?.label
+        }
+      });
+    }
+    if (type === 'clear_selection') {
+      return clearMolstarSelection();
     }
     if (type === 'focus_selection') {
       return window.BurreteAgent.run({ command: 'focusSelection', args: action.args || {} });
@@ -5283,14 +5301,32 @@
   }
 
   function molstarComponentsByKind(viewer, kind) {
+    const normalizedKind = normalizeSceneComponentKind(kind);
     const structures = viewer?.plugin?.managers?.structure?.hierarchy?.current?.structures || [];
     const out = [];
     for (const structure of structures) {
       for (const component of structure.components || []) {
-        if (kind === 'water' && isMolstarWaterComponent(component)) out.push(component);
+        if (normalizedKind === 'water' && isMolstarWaterComponent(component)) out.push(component);
+        else if (normalizedKind !== 'water' && isMolstarComponentKind(component, normalizedKind)) out.push(component);
       }
     }
     return out;
+  }
+
+  function normalizeSceneComponentKind(kind) {
+    const text = String(kind || '').trim().toLowerCase();
+    if (text === 'protein') return 'polymer';
+    if (text === 'ligands') return 'ligand';
+    if (text === 'ions') return 'ion';
+    if (text === 'polymers') return 'polymer';
+    if (text === 'water' || text === 'polymer' || text === 'ligand' || text === 'ion') return text;
+    return 'ligand';
+  }
+
+  function isMolstarComponentKind(component, kind) {
+    const key = String(component?.key || '').toLowerCase();
+    const label = String(component?.cell?.obj?.label || component?.label || '').toLowerCase();
+    return key.includes(kind) || label.includes(kind);
   }
 
   async function hideMolstarWaters() {
@@ -5310,6 +5346,102 @@
   async function showMolstarWaters() {
     const count = await applyMolstarWaterLineRepresentation(activeMolstarViewer());
     return { ok: true, command: 'show_waters', result: { componentCount: count || 0, representation: 'line' } };
+  }
+
+  function clearMolstarSelection() {
+    const viewer = activeMolstarViewer();
+    const plugin = viewer?.plugin;
+    let cleared = false;
+    try {
+      viewer?.structureInteractivity?.({ action: 'select' });
+      viewer?.structureInteractivity?.({ action: 'highlight' });
+      viewer?.structureInteractivity?.({ action: 'focus' });
+      cleared = true;
+    } catch (error) {
+      debug('Mol* structureInteractivity clear failed: ' + (error && error.message || String(error)));
+    }
+    try {
+      plugin?.managers?.interactivity?.lociSelects?.deselectAll?.();
+      plugin?.managers?.structure?.selection?.clear?.();
+      plugin?.managers?.structure?.focus?.clear?.();
+      cleared = true;
+    } catch (error) {
+      debug('Mol* manager selection clear failed: ' + (error && error.message || String(error)));
+    }
+    if (!cleared) {
+      return sceneActionFailure('clear_selection', 'NOT_IMPLEMENTED', 'Mol* selection managers are unavailable.');
+    }
+    return { ok: true, command: 'clear_selection', result: { cleared: true } };
+  }
+
+  async function hideMolstarComponents(action = {}) {
+    const kind = normalizeSceneComponentKind(action.kind);
+    if (kind === 'water') return hideMolstarWaters();
+    const viewer = activeMolstarViewer();
+    const plugin = viewer?.plugin;
+    if (!plugin?.managers?.structure?.component?.removeRepresentations) {
+      return sceneActionFailure('hide_components', 'NOT_IMPLEMENTED', 'Mol* component representation manager is unavailable.');
+    }
+    const components = await ensureMolstarComponentsByKind(viewer, kind);
+    if (!components.length) {
+      return { ok: true, command: 'hide_components', result: { kind, componentCount: 0, note: `No ${kind} components were found.` } };
+    }
+    await plugin.managers.structure.component.removeRepresentations(components);
+    return { ok: true, command: 'hide_components', result: { kind, componentCount: components.length } };
+  }
+
+  async function showMolstarComponents(action = {}) {
+    const kind = normalizeSceneComponentKind(action.kind);
+    if (kind === 'water') return showMolstarWaters();
+    const viewer = activeMolstarViewer();
+    const plugin = viewer?.plugin;
+    if (!plugin?.builders?.structure?.representation?.addRepresentation) {
+      return sceneActionFailure('show_components', 'NOT_IMPLEMENTED', 'Mol* representation builder is unavailable.');
+    }
+    const components = await ensureMolstarComponentsByKind(viewer, kind);
+    if (!components.length) {
+      return sceneActionFailure('show_components', 'SELECTION_EMPTY', `No ${kind} components could be created.`);
+    }
+    const representation = representationForSceneComponentKind(kind);
+    let created = 0;
+    for (const component of components) {
+      try {
+        await plugin.builders.structure.representation.addRepresentation(component.cell || component, representation, { tag: `burette-${kind}` });
+        created += 1;
+      } catch (error) {
+        debug(`Mol* ${kind} representation restore failed: ` + (error && error.message || String(error)));
+      }
+    }
+    return { ok: true, command: 'show_components', result: { kind, componentCount: created, representation: representation.type } };
+  }
+
+  async function ensureMolstarComponentsByKind(viewer, kind) {
+    const plugin = viewer?.plugin;
+    const components = molstarComponentsByKind(viewer, kind);
+    if (components.length || !plugin?.builders?.structure?.tryCreateComponentStatic) return components;
+    for (const structure of molstarCurrentStructures(viewer)) {
+      const component = await tryCreateMolstarComponent(plugin, structure, kind);
+      if (component) components.push(component);
+    }
+    return components;
+  }
+
+  function representationForSceneComponentKind(kind) {
+    if (kind === 'polymer') {
+      return {
+        type: 'cartoon',
+        color: 'chain-id',
+        size: 'uniform',
+        sizeParams: { value: 0.65 }
+      };
+    }
+    return {
+      type: 'ball-and-stick',
+      typeParams: { sizeFactor: kind === 'ion' ? 0.32 : 0.24 },
+      color: 'element-symbol',
+      size: 'uniform',
+      sizeParams: { value: kind === 'ion' ? 0.3 : 0.22 }
+    };
   }
 
   async function showMolstarSurface(action = {}) {
@@ -5413,6 +5545,8 @@
   }
 
   window.BurreteSceneActions = {
+    hideComponents: hideMolstarComponents,
+    showComponents: showMolstarComponents,
     hideWaters: hideMolstarWaters,
     showWaters: showMolstarWaters,
     showSurface: showMolstarSurface,

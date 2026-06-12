@@ -184,10 +184,10 @@
       "viewer": { "molstarFormat": "xyz", "binary": false, "externalOnly": false },
       "preview": {
         "strategy": "direct",
-        "renderer": "xyzrender-external",
+        "renderer": "molstar",
         "primary": { "role": "structure", "format": "xyz", "binary": false },
         "fallbacks": [
-          { "renderer": "molstar" }
+          { "renderer": "xyzrender-external" }
         ],
         "capabilities": { "canSwitchRenderer": true }
       },
@@ -240,10 +240,11 @@
       "quickLookMolstarFormat": "xyzrender",
       "preview": {
         "strategy": "external",
-        "renderer": "xyzrender-external",
+        "renderer": "molstar",
+        "converter": { "id": "text-coordinates-to-pdb", "required": true },
         "primary": { "role": "external-artifact", "format": "xyz", "binary": false },
         "fallbacks": [
-          { "renderer": "molstar", "converter": "text-coordinates-to-pdb" }
+          { "renderer": "xyzrender-external" }
         ],
         "capabilities": { "canSwitchRenderer": true }
       },

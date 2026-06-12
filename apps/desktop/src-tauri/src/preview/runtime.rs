@@ -1217,7 +1217,7 @@ mod document_open_tests {
                     "molstar"
                 }
             }
-            "xyz" => "xyzrender-external",
+            "xyz" => "molstar",
             other => panic!("unexpected supported real example extension: {other}"),
         }
     }
@@ -1260,7 +1260,7 @@ mod document_open_tests {
             created_files.push(mae_gz.clone());
 
             let cases = vec![
-                (fixture_path("xyz/single.xyz"), "xyzrender-external"),
+                (fixture_path("xyz/single.xyz"), "molstar"),
                 (fixture_path("1HTB.pdb"), "molstar"),
                 (fixture_path("sdf/single.sdf"), "molstar"),
                 (fixture_path("sdf/multi.sdf"), "grid2d"),
@@ -1326,6 +1326,41 @@ CARTESIAN COORDINATES (ANGSTROEM)
         )
         .expect("converted preview data should be written");
         assert!(preview_data.starts_with("REMARK Converted from probe.out\nHETATM"));
+        remove_runtime_artifacts(&document.runtime_path);
+        if let Some(parent) = path.parent() {
+            let _ = fs::remove_dir_all(parent);
+        }
+    }
+
+    #[test]
+    fn opens_convertible_external_text_as_molstar_on_auto() {
+        let app = mock_app_with_grid_registry();
+        let preferences = viewer_preferences();
+        let path = create_temp_file(
+            "abi",
+            br#"
+# ABINIT coordinates
+natom 3
+znucl 6 7 8
+typat 1 2 3
+xangst
+  0.000000 0.000000 0.000000
+  1.100000 0.000000 0.000000
+  0.000000 1.200000 0.000000
+"#,
+        );
+
+        let document = open_document(app.handle(), path.clone(), &preferences, None)
+            .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
+        assert_eq!(document.renderer, "molstar");
+        let preview_data = fs::read_to_string(
+            Path::new(&document.runtime_path)
+                .parent()
+                .expect("runtime html should have a parent")
+                .join("preview-data.bin"),
+        )
+        .expect("converted preview data should be written");
+        assert!(preview_data.starts_with("REMARK Converted from probe.abi\nHETATM"));
         remove_runtime_artifacts(&document.runtime_path);
         if let Some(parent) = path.parent() {
             let _ = fs::remove_dir_all(parent);
