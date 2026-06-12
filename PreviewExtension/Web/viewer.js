@@ -1278,17 +1278,22 @@
   function readSdfPoseMode(config) {
     const format = normalizeFormat(config?.molstarFormat || config?.format);
     if (format !== 'sdf') return 'single';
+    const storageKey = String(config?.sdfPoseModeStorageKey || SDF_POSE_MODE_STORAGE_KEY);
+    const defaultMode = config?.defaultSdfPoseMode === 'all' ? 'all' : 'single';
     try {
-      return window.localStorage?.getItem(SDF_POSE_MODE_STORAGE_KEY) === 'all' ? 'all' : 'single';
+      const stored = window.localStorage?.getItem(storageKey);
+      if (stored === 'all' || stored === 'single') return stored;
+      return defaultMode;
     } catch (_) {
-      return 'single';
+      return defaultMode;
     }
   }
 
   function setSdfPoseMode(mode) {
     activeSdfPoseMode = mode === 'all' ? 'all' : 'single';
     try {
-      window.localStorage?.setItem(SDF_POSE_MODE_STORAGE_KEY, activeSdfPoseMode);
+      const storageKey = String(activeConfig?.sdfPoseModeStorageKey || SDF_POSE_MODE_STORAGE_KEY);
+      window.localStorage?.setItem(storageKey, activeSdfPoseMode);
     } catch (_) {}
   }
 
