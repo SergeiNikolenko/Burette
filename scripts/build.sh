@@ -302,6 +302,9 @@ fi
 pushd "$SAFE_ROOT" >/dev/null
 rm -rf build
 bun install --frozen-lockfile --ignore-scripts
+pushd apps/desktop >/dev/null
+../../node_modules/.bin/vite build --config vite.config.ts
+popd >/dev/null
 bun run build:tauri
 cargo build --release --bin burrete-core-bridge
 XCODE_SIGN_ARGS=(CODE_SIGN_IDENTITY="$SIGN_IDENTITY" CODE_SIGNING_ALLOWED=YES)

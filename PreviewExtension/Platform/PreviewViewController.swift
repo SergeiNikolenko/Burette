@@ -108,6 +108,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         appendLog("previewID=\(previewID)")
         appendLog("file.path=\(url.path)")
         appendLog("file.absoluteString=\(url.absoluteString)")
+        appendPreviewTrace(
+            state: "created",
+            requestID: requestID.uuidString,
+            fileURL: url,
+            message: "preparePreviewOfFile"
+        )
         appendFileDiagnostics(url)
         webView.stopLoading()
         startPreviewSourceMonitoring(for: url)
@@ -151,6 +157,13 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                         return
                     }
                     self.appendLog("native build error: \(Self.describe(error))")
+                    self.appendPreviewTrace(
+                        state: "failed",
+                        requestID: requestID.uuidString,
+                        fileURL: url,
+                        error: error,
+                        message: "native build error"
+                    )
                     if Self.shouldAllowSystemFallback(for: error, fileExtension: Self.structurePathExtension(for: url)) {
                         self.finishPreviewIfNeeded(error, requestID: requestID)
                     } else {
@@ -696,7 +709,43 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             _ = try copyAssetIfNeeded(from: externalArtifactSourceURL, to: destination, fileManager: fileManager)
             diagnostics.append("[build] runtime.externalArtifact=\(destination.lastPathComponent)")
         }
+        let manifestJSON = try runtimeManifestJSON(
+            configJSON: configJSON,
+            structureDataBytes: structureData?.count ?? 0,
+            requiredAssets: requiredAssets,
+            requiresRDKit: requiresRDKit
+        )
+        try Data(manifestJSON.utf8)
+            .write(to: runtimeDirectory.appendingPathComponent("manifest.json"), options: [.atomic])
         return RuntimePreview(runtimeDirectory: runtimeDirectory, indexURL: indexURL, readAccessURL: previewsDirectory)
+    }
+
+    private static func runtimeManifestJSON(
+        configJSON: String,
+        structureDataBytes: Int,
+        requiredAssets: [String],
+        requiresRDKit: Bool
+    ) throws -> String {
+        let config = (try? JSONSerialization.jsonObject(with: Data(configJSON.utf8))) as? [String: Any] ?? [:]
+        var manifest: [String: Any] = [
+            "schemaVersion": 1,
+            "createdAtMs": Int(Date().timeIntervalSince1970 * 1000),
+            "complete": true,
+            "host": "quicklook",
+            "renderer": config["renderer"] as? String ?? config["mode"] as? String ?? "unknown",
+            "sourceExtension": config["sourceExtension"] as? String ?? config["format"] as? String ?? "unknown",
+            "documentId": config["documentId"] as? String ?? config["previewRequestID"] as? String ?? config["requestID"] as? String ?? "unknown",
+            "byteCount": config["byteCount"] as? Int ?? structureDataBytes,
+            "previewByteCount": config["previewByteCount"] as? Int ?? structureDataBytes,
+            "requiredAssets": requiredAssets,
+            "requiresRDKit": requiresRDKit
+        ]
+        if let externalArtifact = config["externalArtifact"] as? [String: Any] {
+            manifest["externalArtifactType"] = externalArtifact["type"] as? String ?? "unknown"
+        }
+        let data = try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys])
+        guard let json = String(data: data, encoding: .utf8) else { throw PreviewError.couldNotCreatePreviewConfig }
+        return json + "\n"
     }
 
     private static func configJSONWithRequestID(_ configJSON: String, requestID: String) throws -> String {
@@ -1722,17 +1771,19 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
     }
 
-    private func scheduleRenderTimeout(for requestID: UUID, timeoutSeconds: TimeInterval) {
-        renderTimeoutWorkItem?.cancel()
-        let workItem = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            self.appendLog("render timeout waiting for JS ready after \(Int(timeoutSeconds)) seconds")
-            self.renderNativeError(PreviewError.webRenderTimedOut, fileURL: nil)
-            self.finishPreviewIfNeeded(nil, requestID: requestID)
-        }
-        renderTimeoutWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + timeoutSeconds, execute: workItem)
-    }
+	    private func scheduleRenderTimeout(for requestID: UUID, timeoutSeconds: TimeInterval) {
+	        renderTimeoutWorkItem?.cancel()
+	        let workItem = DispatchWorkItem { [weak self] in
+	            guard let self else { return }
+	            let error = PreviewError.webRenderTimedOut
+	            self.appendLog("render timeout waiting for JS ready after \(Int(timeoutSeconds)) seconds")
+	            self.appendFailedPreviewTrace(requestID: requestID, error: error, message: "render timeout waiting for JS ready")
+	            self.renderNativeError(error, fileURL: nil)
+	            self.finishPreviewIfNeeded(nil, requestID: requestID)
+	        }
+	        renderTimeoutWorkItem = workItem
+	        DispatchQueue.main.asyncAfter(deadline: .now() + timeoutSeconds, execute: workItem)
+	    }
 
     private func finishPreviewIfNeeded(_ error: Error?, requestID: UUID? = nil, cancelRenderTimeout: Bool = true) {
         if let requestID, requestID != activePreviewRequestID {
@@ -1781,28 +1832,31 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
     }
 
-    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        appendLog("WK didFail error=\(Self.describe(error))")
-        renderNativeError(error, fileURL: nil)
-        finishPreviewIfNeeded(nil)
-    }
+	    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+	        appendLog("WK didFail error=\(Self.describe(error))")
+	        appendFailedPreviewTrace(requestID: activePreviewRequestID, error: error, message: "WK didFail")
+	        renderNativeError(error, fileURL: nil)
+	        finishPreviewIfNeeded(nil)
+	    }
 
-    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        appendLog("WK didFailProvisionalNavigation error=\(Self.describe(error))")
-        renderNativeError(error, fileURL: nil)
-        finishPreviewIfNeeded(nil)
-    }
+	    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+	        appendLog("WK didFailProvisionalNavigation error=\(Self.describe(error))")
+	        appendFailedPreviewTrace(requestID: activePreviewRequestID, error: error, message: "WK didFailProvisionalNavigation")
+	        renderNativeError(error, fileURL: nil)
+	        finishPreviewIfNeeded(nil)
+	    }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         appendLog("WK webContentProcessDidTerminate")
         guard !hasRenderedTerminationError else { return }
         hasRenderedTerminationError = true
-        renderTimeoutWorkItem?.cancel()
-        renderTimeoutWorkItem = nil
-        let error = PreviewError.webRenderFailed("The embedded WebKit process terminated while loading the Quick Look preview.")
-        renderNativeError(error, fileURL: currentPreviewURL)
-        finishPreviewIfNeeded(nil, requestID: activePreviewRequestID)
-    }
+	        renderTimeoutWorkItem?.cancel()
+	        renderTimeoutWorkItem = nil
+	        let error = PreviewError.webRenderFailed("The embedded WebKit process terminated while loading the Quick Look preview.")
+	        appendFailedPreviewTrace(requestID: activePreviewRequestID, error: error, message: "WK webContentProcessDidTerminate")
+	        renderNativeError(error, fileURL: currentPreviewURL)
+	        finishPreviewIfNeeded(nil, requestID: activePreviewRequestID)
+	    }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard isTrustedScriptMessage(message) else { return }
@@ -1865,6 +1919,13 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     appendLog("ignoring ready without requestID")
                     return
                 }
+                appendPreviewTrace(
+                    state: "completed",
+                    requestID: messageRequestID.uuidString,
+                    fileURL: currentPreviewURL,
+                    runtimeDirectory: currentRuntimeDirectory,
+                    message: "ready"
+                )
                 finishPreviewIfNeeded(nil, requestID: messageRequestID)
             } else if type == "status" && text.hasPrefix("[web] Rendered") {
                 appendLog("elapsed.renderCompleteMs=0")
@@ -1873,6 +1934,14 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     appendLog("ignoring error without requestID")
                     return
                 }
+                appendPreviewTrace(
+                    state: "failed",
+                    requestID: messageRequestID.uuidString,
+                    fileURL: currentPreviewURL,
+                    runtimeDirectory: currentRuntimeDirectory,
+                    errorCode: "BRT-QL-WEB-ERROR",
+                    message: String(text.prefix(400))
+                )
                 finishPreviewIfNeeded(nil, requestID: messageRequestID)
             }
             if Self.showDebugOverlay || type == "error" {
@@ -2191,13 +2260,14 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             } catch {
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.activePreviewRequestID == requestID else { return }
-                    self.pendingPreviewSourceFingerprint = nil
-                    self.appendLog("native renderer switch error: \(Self.describe(error))")
-                    self.renderNativeError(error, fileURL: url)
-                    self.finishPreviewIfNeeded(nil, requestID: requestID)
-                }
-            }
-        }
+	                    self.pendingPreviewSourceFingerprint = nil
+	                    self.appendLog("native renderer switch error: \(Self.describe(error))")
+	                    self.appendFailedPreviewTrace(requestID: requestID, error: error, message: "native renderer switch error")
+	                    self.renderNativeError(error, fileURL: url)
+	                    self.finishPreviewIfNeeded(nil, requestID: requestID)
+	                }
+	            }
+	        }
     }
 
     private func setViewerPageZoom(_ scale: CGFloat) {
@@ -2286,6 +2356,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         if message.hasPrefix("elapsed.") { return true }
         if message.hasPrefix("[build] detected.format=") { return true }
         if message.hasPrefix("[build] elapsed.") { return true }
+        if message.hasPrefix("[build] runtimeDirectory=") { return true }
+        if message.hasPrefix("[build] runtime.index.exists=") { return true }
+        if message.hasPrefix("trace.requestID=") { return true }
         if message.hasPrefix("calling WKWebView.loadFileURL") { return true }
         if message.hasPrefix("WK didCommit") { return true }
         if message.hasPrefix("WK didFinish") { return true }
@@ -2354,6 +2427,106 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             } catch {
                 NSLog("[BurreteV10] could not write log to \(url.path): \(String(describing: error))")
             }
+        }
+    }
+
+    private static var previewTraceURL: URL? {
+        let fileManager = FileManager.default
+        guard let base = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        return base
+            .appendingPathComponent("Burrete", isDirectory: true)
+            .appendingPathComponent("preview-trace.jsonl")
+    }
+
+	    private func appendPreviewTrace(
+	        state: String,
+	        requestID: String,
+        fileURL: URL?,
+        runtimeDirectory: URL? = nil,
+        error: Error? = nil,
+        errorCode: String? = nil,
+        message: String? = nil
+    ) {
+        var payload: [String: Any] = [
+            "schemaVersion": 1,
+            "timestampMs": Int(Date().timeIntervalSince1970 * 1000),
+            "documentId": requestID,
+            "state": state,
+            "subsystem": "quicklook",
+            "requestID": requestID
+        ]
+        if let fileURL {
+            payload["sourceExtension"] = Self.structurePathExtension(for: fileURL)
+        }
+        if let runtimeDirectory {
+            payload["runtimePath"] = runtimeDirectory.path
+        }
+        if let error {
+            payload["errorCode"] = errorCode ?? Self.previewErrorCode(error)
+        } else if let errorCode {
+            payload["errorCode"] = errorCode
+        }
+        if let message {
+            payload["message"] = message.replacingOccurrences(of: "\n", with: " ")
+        }
+        appendLog("trace.requestID=\(requestID) state=\(state)")
+	        Self.writePreviewTracePayload(payload)
+	    }
+
+	    private func appendFailedPreviewTrace(requestID: UUID, error: Error, message: String) {
+	        appendPreviewTrace(
+	            state: "failed",
+	            requestID: requestID.uuidString,
+	            fileURL: currentPreviewURL,
+	            runtimeDirectory: currentRuntimeDirectory,
+	            error: error,
+	            message: message
+	        )
+	    }
+
+	    private static func writePreviewTracePayload(_ payload: [String: Any]) {
+        guard let url = previewTraceURL else { return }
+        do {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+            var line = data
+            line.append(Data("\n".utf8))
+            if FileManager.default.fileExists(atPath: url.path) {
+                let handle = try FileHandle(forWritingTo: url)
+                handle.seekToEndOfFile()
+                handle.write(line)
+                handle.closeFile()
+            } else {
+                try line.write(to: url, options: [.atomic])
+            }
+        } catch {
+            NSLog("[BurreteV10] could not write preview trace to \(url.path): \(String(describing: error))")
+        }
+    }
+
+    private static func previewErrorCode(_ error: Error) -> String {
+        guard let previewError = error as? PreviewError else { return "BRT-QL-RUNTIME-ERROR" }
+        switch previewError {
+        case .missingWebDirectory, .missingWebAsset, .molstarAssetsNotVendored:
+            return "BRT-QL-MISSING-ASSETS"
+        case .emptyStructureFile:
+            return "BRT-QL-EMPTY-FILE"
+        case .unsupportedStructureFile, .gridFileTypeDisabled:
+            return "BRT-QL-UNSUPPORTED"
+        case .fileTooLarge, .couldNotExtractBoundedMaestroPreview:
+            return "BRT-QL-FILE-TOO-LARGE"
+        case .notRenderableStandaloneStructure:
+            return "BRT-QL-NOT-RENDERABLE"
+        case .ubiquitousFileNotDownloaded:
+            return "BRT-QL-ICLOUD-NOT-DOWNLOADED"
+        case .webRenderFailed:
+            return "BRT-QL-WEB-ERROR"
+        case .webRenderTimedOut:
+            return "BRT-QL-WEB-TIMEOUT"
+        case .couldNotCreatePreviewConfig, .couldNotCreateRuntimePreview:
+            return "BRT-QL-RUNTIME-WRITE"
         }
     }
 
