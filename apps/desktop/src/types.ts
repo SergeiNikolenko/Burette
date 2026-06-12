@@ -11,6 +11,7 @@ export type ViewerDocument = {
   renderer: string;
   runtimePath: string;
   byteCount: number;
+  ephemeral?: boolean;
 };
 
 export type RecentStructure = {

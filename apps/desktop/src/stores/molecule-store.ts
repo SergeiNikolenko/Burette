@@ -90,6 +90,15 @@ function toRecentStructure(document: ViewerDocument): RecentStructure {
   };
 }
 
+function persistentDocuments(documents: ViewerDocument[]) {
+  return documents.filter((document) => !document.ephemeral);
+}
+
+function tabsForDocuments(tabs: MoleculeTab[], documents: ViewerDocument[]) {
+  const paths = new Set(documents.map((document) => document.path));
+  return tabs.filter((tab) => tab.location.kind !== "file" || paths.has(tab.location.path));
+}
+
 function documentForLocation(location: Location, documents: ViewerDocument[]) {
   if (location.kind !== "file") return null;
   return (
@@ -190,7 +199,9 @@ export const useMoleculeStore = create<MoleculeState>()(
       rememberRecentStructures: (incoming) =>
         set((state) => {
           const byPath = new Map(state.recentStructures.map((structure) => [structure.path, structure]));
-          for (const document of incoming) byPath.set(document.path, toRecentStructure(document));
+          for (const document of incoming) {
+            if (!document.ephemeral) byPath.set(document.path, toRecentStructure(document));
+          }
           return {
             recentStructures: Array.from(byPath.values())
               .sort((a, b) => b.openedAt - a.openedAt)
@@ -300,12 +311,19 @@ export const useMoleculeStore = create<MoleculeState>()(
     }),
     {
       name: "burrete.molecule.session",
-      partialize: (state) => ({
-        documents: state.documents,
-        tabs: state.tabs,
-        activeTabId: state.activeTabId,
-        recentStructures: state.recentStructures,
-      }),
+      partialize: (state) => {
+        const documents = persistentDocuments(state.documents);
+        const tabs = tabsForDocuments(state.tabs, documents);
+        const activeTabId = tabs.some((tab) => tab.id === state.activeTabId)
+          ? state.activeTabId
+          : tabs[0]?.id ?? null;
+        return {
+          documents,
+          tabs,
+          activeTabId,
+          recentStructures: state.recentStructures,
+        };
+      },
       merge: (persisted, current) => {
         const stored = persisted as Partial<PersistedMoleculeState> | undefined;
         const documents = stored?.documents ?? current.documents;

@@ -42,9 +42,11 @@ import {
 } from "./hooks/use-tabs";
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
 import { isTauriRuntime } from "./lib/tauri";
-import type { OpenDocumentsResult, RecentStructure } from "./types";
+import type { OpenDocumentsResult, RecentStructure, ViewerDocument } from "./types";
 import { checkForUpdates as requestUpdateCheck, clearDismissedUpdate, dismissUpdate, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically, shouldPromptForUpdate } from "./update";
 import type { UpdatePreferences, UpdateRelease, UpdateState } from "./update";
+
+type OpenDocumentsMode = "individual" | "combinePoses" | "combineGrid";
 
 const filters = [
   {
@@ -80,6 +82,7 @@ export default function App() {
   const { sidebarOpen, sidebarWidth, setSidebarWidth, toggleSidebar } = useSidebar();
   const [sidebarDragging, setSidebarDragging] = useState(false);
   const [status, setStatus] = useState("Ready");
+  const [pendingDrop, setPendingDrop] = useState<{ paths: string[] } | null>(null);
   const [update, setUpdate] = useState<UpdateState>(() => ({
     preferences: loadUpdatePreferences(),
     isChecking: false,
@@ -89,6 +92,7 @@ export default function App() {
   }));
   const sidebarSearchRef = useRef<HTMLButtonElement | null>(null);
   const refreshedPersistedSessionRef = useRef(false);
+  const loadedBrowserPreviewRef = useRef(false);
   const commandPaletteOpen = useIsCommandPaletteOpen();
   const commandPaletteQuery = useCommandPaletteSearch();
   const openCommandPalette = useOpenCommandPalette();
@@ -105,12 +109,12 @@ export default function App() {
   }, [sidebarOpen, toggleSidebar]);
 
   const openDocuments = useCallback(
-    async (paths: string[]) => {
+    async (paths: string[], mode: OpenDocumentsMode = "individual") => {
       const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
       if (!cleanPaths.length) return;
-      setStatus("Opening structures...");
+      setStatus(mode === "combinePoses" ? "Combining docking poses..." : mode === "combineGrid" ? "Building docking grid..." : "Opening structures...");
       try {
-        const result = await invoke<OpenDocumentsResult>("open_documents", { paths: cleanPaths, preferences });
+        const result = await invoke<OpenDocumentsResult>("open_documents", { paths: cleanPaths, preferences, mode });
         addDocuments(result.documents);
         rememberRecentStructures(result.documents);
         const openedText = "Opened " + result.documents.length + " structure" + (result.documents.length === 1 ? "" : "s");
@@ -122,6 +126,43 @@ export default function App() {
     [addDocuments, preferences, rememberRecentStructures],
   );
 
+  const handleDroppedPaths = useCallback(
+    async (paths: string[]) => {
+      const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
+      if (!cleanPaths.length) return;
+      if (shouldOfferBatchDropActions(cleanPaths)) {
+        setPendingDrop({ paths: cleanPaths });
+        setStatus("Choose how to open dropped structures");
+        return;
+      }
+      await openDocuments(cleanPaths);
+    },
+    [openDocuments],
+  );
+
+  const openPendingDropIndividually = useCallback(async () => {
+    const paths = pendingDrop?.paths ?? [];
+    setPendingDrop(null);
+    await openDocuments(paths);
+  }, [openDocuments, pendingDrop]);
+
+  const openPendingDropTogether = useCallback(async () => {
+    const paths = pendingDrop?.paths ?? [];
+    setPendingDrop(null);
+    await openDocuments(paths, "combinePoses");
+  }, [openDocuments, pendingDrop]);
+
+  const openPendingDropAsGrid = useCallback(async () => {
+    const paths = pendingDrop?.paths ?? [];
+    setPendingDrop(null);
+    await openDocuments(paths, "combineGrid");
+  }, [openDocuments, pendingDrop]);
+
+  const cancelPendingDrop = useCallback(() => {
+    setPendingDrop(null);
+    setStatus("Ready");
+  }, []);
+
   useEffect(() => {
     if (refreshedPersistedSessionRef.current) return;
     if (!isTauriRuntime() || documents.length === 0) return;
@@ -132,6 +173,15 @@ export default function App() {
       .sort((a, b) => (a === activePath ? -1 : b === activePath ? 1 : 0));
     void openDocuments(paths);
   }, [activeDocument, documents, openDocuments]);
+
+  useEffect(() => {
+    if (loadedBrowserPreviewRef.current || isTauriRuntime()) return;
+    const previewDocument = browserPreviewDocumentFromUrl();
+    if (!previewDocument) return;
+    loadedBrowserPreviewRef.current = true;
+    addDocuments([previewDocument]);
+    setStatus("Loaded browser preview runtime");
+  }, [addDocuments]);
 
   const openRecentStructure = useCallback(
     async (structure: RecentStructure) => {
@@ -151,7 +201,7 @@ export default function App() {
   }, [openSettingsTab]);
 
   useOpenEvents(openDocuments, setStatus);
-  const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop } = useOpenDrop(openDocuments, setStatus);
+  const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop } = useOpenDrop(handleDroppedPaths, setStatus);
 
   const reloadActive = useCallback(async () => {
     if (!activeDocument) return;
@@ -382,9 +432,13 @@ export default function App() {
       }
       setStatus("Opened release page");
     },
+    openPendingDropIndividually,
+    openPendingDropTogether,
+    openPendingDropAsGrid,
+    cancelPendingDrop,
     setPreference,
     setUpdatePreferences,
-  }), [canNavigateBack, canNavigateForward, chooseFiles, checkForUpdates, clearRecentStructures, closeActiveDocument, closeDocument, closeTab, closeAllDocuments, focusSidebarSearch, installUpdate, navigateBack, navigateForward, openCommandPalette, openNewTab, openRecentStructure, openSettings, selectDocument, setActiveTab, setPreference, setUpdatePreferences, toggleSidebar, update.availableRelease]);
+  }), [canNavigateBack, canNavigateForward, chooseFiles, checkForUpdates, clearRecentStructures, closeActiveDocument, closeDocument, closeTab, closeAllDocuments, cancelPendingDrop, focusSidebarSearch, installUpdate, navigateBack, navigateForward, openCommandPalette, openNewTab, openPendingDropAsGrid, openPendingDropIndividually, openPendingDropTogether, openRecentStructure, openSettings, selectDocument, setActiveTab, setPreference, setUpdatePreferences, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
@@ -404,6 +458,7 @@ export default function App() {
     sidebarQuery: "",
     status,
     dropActive,
+    pendingDrop,
     preferences,
     update,
   };
@@ -434,4 +489,39 @@ export default function App() {
       />
     </>
   );
+}
+
+function shouldOfferBatchDropActions(paths: string[]) {
+  if (paths.length > 1) return true;
+  const path = paths[0] ?? "";
+  const fileName = path.split(/[\\/]/).pop() ?? path;
+  return !fileName.includes(".");
+}
+
+function browserPreviewDocumentFromUrl(): ViewerDocument | null {
+  const params = new URLSearchParams(window.location.search);
+  const runtimePath = params.get("previewRuntime");
+  if (!runtimePath) return null;
+  if (!runtimePath.startsWith("http://") && !runtimePath.startsWith("https://")) return null;
+  const path = params.get("previewPath") ?? runtimePath;
+  const title = params.get("previewTitle") ?? "Browser preview";
+  const renderer = params.get("previewRenderer") ?? "grid2d";
+  return {
+    id: "browser-preview-" + stableBrowserPreviewId(runtimePath),
+    path,
+    title,
+    extension: params.get("previewExtension") ?? "sdf",
+    renderer,
+    runtimePath,
+    byteCount: 0,
+    ephemeral: true,
+  };
+}
+
+function stableBrowserPreviewId(value: string) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash.toString(16);
 }

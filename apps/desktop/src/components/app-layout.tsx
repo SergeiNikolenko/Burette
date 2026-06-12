@@ -61,9 +61,24 @@ export function AppLayout({
           <ViewerArea state={layoutState} actions={actions} />
         </section>
       </section>
-      {state.dropActive && (
-        <div className="drop-overlay">
-          <div>Drop structures to open</div>
+      {(state.dropActive || state.pendingDrop) && (
+        <div className={state.pendingDrop ? "drop-overlay drop-overlay-choice" : "drop-overlay"}>
+          <div>
+            {state.pendingDrop ? (
+              <>
+                <span className="drop-overlay-title">Open dropped structures</span>
+                <span className="drop-overlay-meta">{state.pendingDrop.paths.length} item{state.pendingDrop.paths.length === 1 ? "" : "s"}</span>
+                <span className="drop-overlay-actions">
+                  <button type="button" onClick={actions.openPendingDropTogether}>Open in One Window</button>
+                  <button type="button" onClick={actions.openPendingDropAsGrid}>Open as Grid</button>
+                  <button type="button" onClick={actions.openPendingDropIndividually}>Open Individually</button>
+                  <button type="button" onClick={actions.cancelPendingDrop}>Cancel</button>
+                </span>
+              </>
+            ) : (
+              "Drop structures to open"
+            )}
+          </div>
         </div>
       )}
     </main>

@@ -439,6 +439,7 @@
     .buret-button.hidden { display: none; }
     .buret-button svg { width: 17px; height: 17px; display: block; }
     .buret-grip { cursor: grab; color: currentColor; opacity: 0.66; }
+    .buret-pose-toggle { width: auto !important; min-width: 34px; }
     .buret-renderer-control {
       display: none; align-items: center; gap: 4px; padding-left: 5px;
       border-left: 1px solid var(--buret-toolbar-border);
@@ -493,6 +494,7 @@
     <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel"><span aria-hidden="true">⌘</span></button>
     <button class="buret-button" type="button" data-buret-action="theme" aria-label="Switch to light theme" title="Switch to light theme"><span aria-hidden="true">☀</span></button>
     <button class="buret-button hidden" type="button" data-buret-action="open-vesta" aria-label="Open in VESTA" title="Open in VESTA"><span aria-hidden="true">↗</span></button>
+    <button class="buret-button buret-pose-toggle hidden" type="button" data-buret-action="sdf-poses" aria-label="Show all SDF poses together" aria-pressed="false" title="Show all SDF poses together">All</button>
     <div class="buret-renderer-control" data-buret-renderer-control>
       <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="xyz-fast" aria-label="Use Fast XYZ SVG" title="Use Fast XYZ SVG">Fast</button>
       <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="molstar" aria-label="Use Mol* Interactive" title="Use Mol* Interactive">Mol*</button>

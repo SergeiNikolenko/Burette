@@ -8,7 +8,9 @@
   const SDF_GRID_PADDING = 4.0;
   const TOOLBAR_POSITION_VERSION = '8';
   const TOOLBAR_MARGIN = 12;
+  const VIEWPORT_OVERLAY_MARGIN = 12;
   const VIEWER_THEME_STORAGE_KEY = 'buret.viewer.theme';
+  const SDF_POSE_MODE_STORAGE_KEY = 'buret.sdf.poseMode';
   const DEFAULT_XYZRENDER_PRESETS = [
     { value: 'default', label: 'Default' },
     { value: 'flat', label: 'Flat' },
@@ -125,6 +127,8 @@
   let viewerUIScale = DEFAULT_VIEWER_UI_SCALE;
   let activeViewer = null;
   let activeConfig = null;
+  let activePrepared = null;
+  let activeSdfPoseMode = 'single';
   let latestXyzrenderOrientationRef = null;
   let orientationTrackingCleanup = null;
   let keyboardShortcutsInstalled = false;
@@ -442,6 +446,47 @@
     if (!sent) setStatus('Opening in VESTA is available only in the app or Quick Look viewer.', 'error');
   }
 
+  function readSdfPoseMode(config) {
+    if (normalizeFormat(config.molstarFormat || config.format) !== 'sdf') return 'single';
+    try {
+      const stored = window.localStorage?.getItem(sdfPoseModeStorageKey(config));
+      if (stored === 'all' || stored === 'single') return stored;
+    } catch (_) {
+    }
+    return config.defaultSdfPoseMode === 'all' ? 'all' : 'single';
+  }
+
+  function setSdfPoseMode(mode) {
+    const value = mode === 'all' ? 'all' : 'single';
+    try {
+      window.localStorage?.setItem(sdfPoseModeStorageKey(activeConfig || {}), value);
+    } catch (_) {}
+    activeSdfPoseMode = value;
+  }
+
+  function sdfPoseModeStorageKey(config) {
+    return String(config?.sdfPoseModeStorageKey || SDF_POSE_MODE_STORAGE_KEY);
+  }
+
+  function toggleSdfPoseMode() {
+    if (!activePrepared?.sdfPoseOverlayAvailable) return;
+    setSdfPoseMode(activeSdfPoseMode === 'all' ? 'single' : 'all');
+    window.location.reload();
+  }
+
+  function updateSdfPoseButton(prepared = activePrepared) {
+    const button = document.querySelector('#buret-toolbar [data-buret-action="sdf-poses"]');
+    if (!button) return;
+    const available = prepared?.sdfPoseOverlayAvailable === true;
+    button.classList.toggle('hidden', !available);
+    if (!available) return;
+    const isAll = activeSdfPoseMode === 'all';
+    button.classList.toggle('active', isAll);
+    button.setAttribute('aria-pressed', isAll ? 'true' : 'false');
+    button.setAttribute('aria-label', isAll ? 'Show SDF poses individually' : 'Show all SDF poses together');
+    button.setAttribute('title', isAll ? 'Show SDF poses individually' : 'Show all SDF poses together');
+  }
+
   function captureCurrentXyzrenderOrientationRef() {
     const config = activeConfig || {};
     const format = normalizeFormat(config.molstarFormat || config.format);
@@ -640,11 +685,15 @@
       vestaButton.classList.toggle('hidden', activeConfig?.canOpenInVesta !== true);
       vestaButton.addEventListener('click', () => requestOpenInVesta());
     }
+    toolbar.querySelector('[data-buret-action="sdf-poses"]')?.addEventListener('click', () => {
+      toggleSdfPoseMode();
+    });
 
     initToolbarDrag(toolbar);
     restoreToolbarCollapsed(toolbar, viewer);
     updateToolbarVisibility();
     updateThemeButton();
+    updateSdfPoseButton();
     applyLayoutState(viewer);
   }
 
@@ -816,6 +865,7 @@
     }
 
     updateToolbarButtons();
+    scheduleViewportOverlayReposition();
     scheduleViewerResize(viewer, 40);
     const toolbar = document.getElementById('buret-toolbar');
     if (toolbar?.dataset.defaultPosition === '1') {
@@ -831,6 +881,42 @@
     toolbar.querySelector('[data-buret-toggle="right"]')?.classList.toggle('active', layoutState.right === 'full');
     toolbar.querySelector('[data-buret-toggle="sequence"]')?.classList.toggle('active', layoutState.top === 'full');
     toolbar.querySelector('[data-buret-toggle="log"]')?.classList.toggle('active', layoutState.bottom === 'full');
+  }
+
+  function scheduleViewportOverlayReposition() {
+    requestAnimationFrame(updateViewportOverlayPositions);
+    setTimeout(updateViewportOverlayPositions, 120);
+  }
+
+  function updateViewportOverlayPositions() {
+    const main = document.querySelector('.msp-plugin .msp-layout-main');
+    if (!main) return;
+    const mainRect = main.getBoundingClientRect();
+    if (mainRect.width <= 0 || mainRect.height <= 0) return;
+
+    const topLeftControls = document.querySelector('.msp-plugin .msp-viewport-top-left-controls');
+    if (topLeftControls) {
+      const parentRect = viewportOverlayParentRect(topLeftControls);
+      const left = Math.max(VIEWPORT_OVERLAY_MARGIN, mainRect.left - parentRect.left + VIEWPORT_OVERLAY_MARGIN);
+      const top = Math.max(VIEWPORT_OVERLAY_MARGIN, mainRect.top - parentRect.top + VIEWPORT_OVERLAY_MARGIN);
+      topLeftControls.style.left = `${left}px`;
+      topLeftControls.style.top = `${top}px`;
+      topLeftControls.style.right = 'auto';
+      topLeftControls.style.maxWidth = `${Math.max(0, mainRect.right - parentRect.left - left - VIEWPORT_OVERLAY_MARGIN)}px`;
+      topLeftControls.style.boxSizing = 'border-box';
+    }
+
+    const rightControls = document.querySelector('.msp-plugin .msp-viewport-controls');
+    if (rightControls) {
+      const parentRect = viewportOverlayParentRect(rightControls);
+      rightControls.style.right = `${Math.max(VIEWPORT_OVERLAY_MARGIN, parentRect.right - mainRect.right + VIEWPORT_OVERLAY_MARGIN)}px`;
+      rightControls.style.top = `${Math.max(VIEWPORT_OVERLAY_MARGIN, mainRect.top - parentRect.top + VIEWPORT_OVERLAY_MARGIN)}px`;
+    }
+  }
+
+  function viewportOverlayParentRect(element) {
+    const parent = element.offsetParent || document.querySelector('.msp-plugin') || document.documentElement;
+    return parent.getBoundingClientRect();
   }
 
   function updateThemeButton() {
@@ -938,7 +1024,7 @@
     return 'molstar';
   }
 
-  function structureDataForMolstar(config) {
+  function structureDataForMolstar(config, options = {}) {
     const normalized = normalizeFormat(config.format);
     if (normalized === 'cifCore') {
       const pdb = coreCifToPdb(rawStructureData({ ...config, binary: false }));
@@ -949,7 +1035,7 @@
       };
     }
     if (normalized === 'sdf') {
-      return prepareSdfStructure(rawStructureData(config), config);
+      return prepareSdfStructure(rawStructureData(config), config, options);
     }
 
     return {
@@ -1044,18 +1130,37 @@
     document.head.appendChild(style);
   }
 
-  function prepareSdfStructure(text, config) {
+  function prepareSdfStructure(text, config, options = {}) {
     const label = config.label || 'structure';
     const records = splitSdfRecords(text);
+    const poseOverlay = records.length > 1 ? buildSdfPoseOverlay(records, label) : null;
+    if (options.sdfPoseMode === 'all' && poseOverlay) {
+      return {
+        ...poseOverlay,
+        sdfPoseOverlayAvailable: true,
+        sdfPoseRecordCount: records.length,
+        sdfPoseMode: 'all'
+      };
+    }
     if (records.length > 1 && config.sdfGrid !== false) {
       const grid = buildSdfGrid(records, label);
-      if (grid) return grid;
+      if (grid) {
+        return {
+          ...grid,
+          sdfPoseOverlayAvailable: !!poseOverlay,
+          sdfPoseRecordCount: records.length,
+          sdfPoseMode: 'single'
+        };
+      }
     }
     return {
       data: text,
       format: 'sdf',
       label: records.length > 1 ? `${label} (${records.length} SDF records)` : label,
-      loadPreset: records.length > 1 ? 'all-models' : 'default'
+      loadPreset: records.length > 1 ? 'all-models' : 'default',
+      sdfPoseOverlayAvailable: !!poseOverlay,
+      sdfPoseRecordCount: records.length,
+      sdfPoseMode: 'single'
     };
   }
 
@@ -1139,6 +1244,61 @@
     };
   }
 
+  function buildSdfPoseOverlay(records, label) {
+    const molecules = [];
+    let totalAtoms = 0;
+    let totalBonds = 0;
+    for (const record of records) {
+      const molecule = parseV2000SdfRecord(record);
+      if (!molecule) return null;
+      molecules.push(molecule);
+      totalAtoms += molecule.atomCount;
+      totalBonds += molecule.bondCount;
+    }
+    if (molecules.length <= 1 || totalAtoms <= 0) return null;
+
+    const lines = [
+      'Burrete SDF Pose Overlay',
+      '  Burrete',
+      `${molecules.length} poses overlaid from ${label}`,
+      '  0  0  0     0  0            999 V3000',
+      'M  V30 BEGIN CTAB',
+      `M  V30 COUNTS ${totalAtoms} ${totalBonds} 0 0 0`,
+      'M  V30 BEGIN ATOM'
+    ];
+
+    let atomIndex = 1;
+    for (const molecule of molecules) {
+      for (const atom of molecule.atoms) {
+        lines.push(`M  V30 ${atomIndex} ${atom.element} ${formatV3000Coord(atom.x)} ${formatV3000Coord(atom.y)} ${formatV3000Coord(atom.z)} 0`);
+        atomIndex += 1;
+      }
+    }
+
+    lines.push('M  V30 END ATOM');
+    if (totalBonds > 0) {
+      lines.push('M  V30 BEGIN BOND');
+      let bondIndex = 1;
+      let atomOffset = 0;
+      for (const molecule of molecules) {
+        for (const bond of molecule.bonds) {
+          lines.push(`M  V30 ${bondIndex} ${bond.order} ${bond.a + atomOffset} ${bond.b + atomOffset}`);
+          bondIndex += 1;
+        }
+        atomOffset += molecule.atomCount;
+      }
+      lines.push('M  V30 END BOND');
+    }
+    lines.push('M  V30 END CTAB', 'M  END', '$$$$', '');
+
+    return {
+      data: lines.join('\n'),
+      format: 'sdf',
+      label: `${label} (all ${molecules.length} poses)`,
+      loadPreset: 'default'
+    };
+  }
+
   function parseV2000SdfRecord(record) {
     const lines = String(record || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     if (lines.length < 4 || !lines[3].includes('V2000')) return null;
@@ -1186,29 +1346,33 @@
     let y = Number(line.slice(10, 20));
     let z = Number(line.slice(20, 30));
     let tail = line.length >= 30 ? line.slice(30) : '';
+    let element = normalizeElementSymbol(tail.trim().split(/\s+/u)[0] || 'C');
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
       const parts = line.trim().split(/\s+/);
       x = Number(parts[0]);
       y = Number(parts[1]);
       z = Number(parts[2]);
+      element = normalizeElementSymbol(parts[3] || 'C');
       tail = ` ${parts[3] || 'C'}   0  0  0  0  0  0  0  0  0  0  0  0`;
     }
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null;
-    return { x, y, z, tail: tail || ' C   0  0  0  0  0  0  0  0  0  0  0  0' };
+    return { x, y, z, element, tail: tail || ' C   0  0  0  0  0  0  0  0  0  0  0  0' };
   }
 
   function parseSdfBondLine(line) {
     let a = parseInt(line.slice(0, 3), 10);
     let b = parseInt(line.slice(3, 6), 10);
     let tail = line.length >= 6 ? line.slice(6) : '';
+    let order = parseInt(tail.trim().split(/\s+/u)[0] || '1', 10);
     if (!Number.isFinite(a) || !Number.isFinite(b)) {
       const parts = line.trim().split(/\s+/);
       a = parseInt(parts[0], 10);
       b = parseInt(parts[1], 10);
+      order = parseInt(parts[2] || '1', 10);
       tail = ` ${parts[2] || '1'}  0  0  0  0`;
     }
     if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
-    return { a, b, tail: tail || '  1  0  0  0  0' };
+    return { a, b, order: Number.isFinite(order) && order > 0 ? order : 1, tail: tail || '  1  0  0  0  0' };
   }
 
   function formatSdfCountsLine(atomCount, bondCount) {
@@ -1225,6 +1389,10 @@
 
   function formatSdfCoord(value) {
     return value.toFixed(4).padStart(10, ' ');
+  }
+
+  function formatV3000Coord(value) {
+    return Number(value).toFixed(4);
   }
 
   function padSdfInt(value) {
@@ -1310,6 +1478,7 @@
 
     const config = requireConfig();
     activeConfig = config;
+    activeSdfPoseMode = readSdfPoseMode(config);
     applyConfigOptions(config);
     debug('config=' + JSON.stringify(config));
     const renderer = normalizeRenderer(config.renderer);
@@ -1360,7 +1529,9 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     try { viewer.handleResize(); } catch (_) {}
 
     debug('before structureDataForMolstar: base64 chars=' + (window.BurreteDataBase64 ? window.BurreteDataBase64.length : -1));
-    const prepared = structureDataForMolstar(config);
+    const prepared = structureDataForMolstar(config, { sdfPoseMode: activeSdfPoseMode });
+    activePrepared = prepared;
+    updateSdfPoseButton(prepared);
     debug('prepared format=' + prepared.format + '; data type=' + (prepared.data && prepared.data.constructor ? prepared.data.constructor.name : typeof prepared.data) + '; data length=' + (prepared.data ? prepared.data.length : -1));
     setStatus(`[web] Parsing structure…\n${prepared.label} (${describeFormat(prepared.format, config.binary)})`);
 
@@ -1377,7 +1548,10 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     }
     trackMolstarOrientation(viewer, config);
 
-    window.addEventListener('resize', () => scheduleViewerResize(viewer, 100));
+    window.addEventListener('resize', () => {
+      scheduleViewerResize(viewer, 100);
+      scheduleViewportOverlayReposition();
+    });
     await waitForAnimationFrame();
     try { viewer.handleResize(); } catch (_) {}
 
