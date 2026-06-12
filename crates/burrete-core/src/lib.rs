@@ -144,10 +144,10 @@ pub fn normalize_renderer_mode(raw: &str) -> &'static str {
 pub fn resolve_renderer(format: &FormatInfo, requested: &str) -> String {
     let normalized = normalize_renderer_mode(requested);
     if format.external_only {
-        return if normalized == "molstar" {
-            "molstar"
-        } else {
+        return if normalized == "xyzrender-external" {
             "xyzrender-external"
+        } else {
+            "molstar"
         }
         .to_string();
     }
@@ -236,36 +236,48 @@ mod tests {
     }
 
     #[test]
-    fn forces_external_renderer_for_external_only_formats() {
+    fn defaults_external_only_formats_to_molstar_with_explicit_xyzrender() {
         let cube = format_for_extension("cube").expect("cube should be supported");
         assert!(cube.external_only);
-        assert_eq!(resolve_renderer(&cube, "auto"), "xyzrender-external");
+        assert_eq!(resolve_renderer(&cube, "auto"), "molstar");
         assert_eq!(resolve_renderer(&cube, "molstar"), "molstar");
+        assert_eq!(
+            resolve_renderer(&cube, "external-xyzrender"),
+            "xyzrender-external"
+        );
 
         let cub = format_for_extension("cub").expect("cub should be supported");
         assert!(cub.external_only);
-        assert_eq!(resolve_renderer(&cub, "auto"), "xyzrender-external");
+        assert_eq!(resolve_renderer(&cub, "auto"), "molstar");
     }
 
     #[test]
-    fn supports_quantum_chemistry_input_extensions_via_xyzrender() {
+    fn supports_quantum_chemistry_input_extensions_with_molstar_default() {
         for extension in ["abi", "com", "fdf", "inp", "log", "nw", "out", "psi4", "qcin"] {
             let format = format_for_extension(extension)
                 .unwrap_or_else(|_| panic!("{extension} should be supported"));
             assert_eq!(format.molstar_format, "xyz");
-            assert!(format.external_only, "{extension} should require xyzrender");
-            assert_eq!(resolve_renderer(&format, "auto"), "xyzrender-external");
+            assert!(format.external_only, "{extension} should use external conversion");
+            assert_eq!(resolve_renderer(&format, "auto"), "molstar");
+            assert_eq!(
+                resolve_renderer(&format, "external-xyzrender"),
+                "xyzrender-external"
+            );
         }
     }
 
     #[test]
-    fn supports_schrodinger_formats_via_xyzrender() {
+    fn supports_schrodinger_formats_with_molstar_default() {
         for extension in ["mae", "maegz", "cms"] {
             let format = format_for_extension(extension)
                 .unwrap_or_else(|_| panic!("{extension} should be supported"));
             assert_eq!(format.molstar_format, "xyz");
-            assert!(format.external_only, "{extension} should require xyzrender");
-            assert_eq!(resolve_renderer(&format, "auto"), "xyzrender-external");
+            assert!(format.external_only, "{extension} should use external conversion");
+            assert_eq!(resolve_renderer(&format, "auto"), "molstar");
+            assert_eq!(
+                resolve_renderer(&format, "external-xyzrender"),
+                "xyzrender-external"
+            );
         }
         assert_eq!(
             structure_path_extension(Path::new("ligand.mae.gz")),
