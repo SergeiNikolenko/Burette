@@ -38,7 +38,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' asset: http://asset.localhost; connect-src ipc: http://ipc.localhost https://api.github.com; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' asset: http://asset.localhost; style-src 'self' 'unsafe-inline' asset: http://asset.localhost; img-src 'self' data: asset: http://asset.localhost; frame-src 'self' asset: http://asset.localhost",
+      "csp": "default-src 'self' asset: http://asset.localhost; connect-src ipc: http://ipc.localhost https://api.github.com asset: http://asset.localhost; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' asset: http://asset.localhost; style-src 'self' 'unsafe-inline' asset: http://asset.localhost; img-src 'self' data: asset: http://asset.localhost; frame-src 'self' asset: http://asset.localhost; worker-src 'self' asset: http://asset.localhost",
       "assetProtocol": {
         "enable": true,
         "scope": [

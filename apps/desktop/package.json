@@ -7,7 +7,7 @@
     "build": "../../node_modules/.bin/vite build --config vite.config.ts",
     "typecheck": "tsc --noEmit -p ../../tsconfig.json",
     "dev:tauri": "bunx --bun tauri dev",
-    "build:tauri": "bunx --bun tauri build",
+    "build:tauri": "bun run build && node ../../node_modules/@tauri-apps/cli/tauri.js build",
     "tauri": "bunx --bun tauri"
   },
   "dependencies": {
