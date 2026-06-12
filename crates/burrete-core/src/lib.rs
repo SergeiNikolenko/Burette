@@ -3,9 +3,171 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use serde::Deserialize;
+use serde_json::{json, Value};
 
 const FORMAT_REGISTRY_JSON: &str = include_str!("../../../config/preview-formats.json");
 static FORMAT_REGISTRY: OnceLock<Result<FormatRegistry, String>> = OnceLock::new();
+
+pub const PREVIEW_CONTRACT_SCHEMA_VERSION: u32 = 1;
+pub const PREVIEW_TRACE_FILE: &str = "preview-trace.jsonl";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PreviewLifecycleState {
+    Created,
+    Completed,
+    Failed,
+}
+
+impl PreviewLifecycleState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Created => "created",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+        }
+    }
+
+    pub fn can_transition_from(self, previous: Option<Self>) -> bool {
+        matches!(
+            (previous, self),
+            (None, Self::Created) | (Some(Self::Created), Self::Completed | Self::Failed)
+        )
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct PreviewLifecycle {
+    state: Option<PreviewLifecycleState>,
+}
+
+impl PreviewLifecycle {
+    pub fn state(&self) -> Option<PreviewLifecycleState> {
+        self.state
+    }
+
+    pub fn transition(&mut self, next: PreviewLifecycleState) -> Result<(), &'static str> {
+        if next.can_transition_from(self.state) {
+            self.state = Some(next);
+            Ok(())
+        } else {
+            Err("invalid preview lifecycle transition")
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PreviewSubsystem {
+    Desktop,
+    QuickLook,
+}
+
+impl PreviewSubsystem {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Desktop => "desktop",
+            Self::QuickLook => "quicklook",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct PreviewTracePayload<'a> {
+    pub timestamp_ms: u128,
+    pub document_id: &'a str,
+    pub state: PreviewLifecycleState,
+    pub subsystem: PreviewSubsystem,
+    pub source_extension: Option<&'a str>,
+    pub renderer: Option<&'a str>,
+    pub runtime_path: Option<&'a str>,
+    pub elapsed_ms: Option<u128>,
+    pub error_code: Option<&'a str>,
+    pub message: Option<&'a str>,
+}
+
+pub fn preview_trace_payload(event: PreviewTracePayload<'_>) -> Value {
+    let mut payload = json!({
+        "schemaVersion": PREVIEW_CONTRACT_SCHEMA_VERSION,
+        "timestampMs": event.timestamp_ms,
+        "documentId": event.document_id,
+        "state": event.state.as_str(),
+        "subsystem": event.subsystem.as_str()
+    });
+    let Some(object) = payload.as_object_mut() else {
+        return payload;
+    };
+    if let Some(source_extension) = event.source_extension {
+        object.insert("sourceExtension".into(), json!(source_extension));
+    }
+    if let Some(renderer) = event.renderer {
+        object.insert("renderer".into(), json!(renderer));
+    }
+    if let Some(runtime_path) = event.runtime_path {
+        object.insert("runtimePath".into(), json!(runtime_path));
+    }
+    if let Some(elapsed_ms) = event.elapsed_ms {
+        object.insert("elapsedMs".into(), json!(elapsed_ms));
+    }
+    if let Some(error_code) = event.error_code {
+        object.insert("errorCode".into(), json!(error_code));
+    }
+    if let Some(message) = event.message {
+        object.insert("message".into(), json!(message.replace(['\n', '\r'], " ")));
+    }
+    payload
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct PreviewRuntimeManifest<'a> {
+    pub created_at_ms: u128,
+    pub complete: bool,
+    pub document_id: &'a str,
+    pub source_extension: &'a str,
+    pub renderer: &'a str,
+    pub byte_count: usize,
+    pub preview_byte_count: usize,
+    pub asset_profile: Option<&'a str>,
+    pub host: Option<&'a str>,
+}
+
+pub fn preview_runtime_manifest(input: PreviewRuntimeManifest<'_>) -> Value {
+    let mut payload = json!({
+        "schemaVersion": PREVIEW_CONTRACT_SCHEMA_VERSION,
+        "createdAtMs": input.created_at_ms,
+        "complete": input.complete,
+        "documentId": input.document_id,
+        "sourceExtension": input.source_extension,
+        "renderer": input.renderer,
+        "byteCount": input.byte_count,
+        "previewByteCount": input.preview_byte_count
+    });
+    let Some(object) = payload.as_object_mut() else {
+        return payload;
+    };
+    if let Some(asset_profile) = input.asset_profile {
+        object.insert("assetProfile".into(), json!(asset_profile));
+    }
+    if let Some(host) = input.host {
+        object.insert("host".into(), json!(host));
+    }
+    payload
+}
+
+pub fn preview_error_code_for_message(message: &str) -> &'static str {
+    let lower = message.to_ascii_lowercase();
+    if lower.contains("unsupported structure") {
+        "BRT-PREVIEW-UNSUPPORTED"
+    } else if lower.contains("larger than") || lower.contains("too large") {
+        "BRT-PREVIEW-FILE-TOO-LARGE"
+    } else if lower.contains(" empty") || lower.ends_with(" is empty") {
+        "BRT-PREVIEW-EMPTY-FILE"
+    } else if lower.contains("grid records") {
+        "BRT-PREVIEW-GRID-NO-RECORDS"
+    } else if lower.contains("xyzrender") {
+        "BRT-PREVIEW-XYZRENDER"
+    } else {
+        "BRT-PREVIEW-RUNTIME-ERROR"
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FormatInfo {
@@ -254,7 +416,9 @@ mod tests {
 
     #[test]
     fn supports_quantum_chemistry_input_extensions_via_xyzrender() {
-        for extension in ["abi", "com", "fdf", "inp", "log", "nw", "out", "psi4", "qcin"] {
+        for extension in [
+            "abi", "com", "fdf", "inp", "log", "nw", "out", "psi4", "qcin",
+        ] {
             let format = format_for_extension(extension)
                 .unwrap_or_else(|_| panic!("{extension} should be supported"));
             assert_eq!(format.molstar_format, "xyz");
@@ -337,6 +501,99 @@ mod tests {
         assert_eq!(quick_look_size_limit_for_extension("mae.gz"), 64 * mib);
         assert_eq!(quick_look_size_limit_for_extension("xtc"), 75 * mib);
         assert_eq!(quick_look_size_limit_for_extension("txt"), 20 * mib);
+    }
+
+    #[test]
+    fn preview_lifecycle_allows_only_terminal_transitions_after_created() {
+        assert!(PreviewLifecycleState::Created.can_transition_from(None));
+        assert!(PreviewLifecycleState::Completed
+            .can_transition_from(Some(PreviewLifecycleState::Created)));
+        assert!(
+            PreviewLifecycleState::Failed.can_transition_from(Some(PreviewLifecycleState::Created))
+        );
+        assert!(!PreviewLifecycleState::Completed.can_transition_from(None));
+        assert!(!PreviewLifecycleState::Failed.can_transition_from(None));
+        assert!(!PreviewLifecycleState::Created
+            .can_transition_from(Some(PreviewLifecycleState::Created)));
+        assert!(!PreviewLifecycleState::Failed
+            .can_transition_from(Some(PreviewLifecycleState::Completed)));
+    }
+
+    #[test]
+    fn preview_lifecycle_tracks_current_state() {
+        let mut lifecycle = PreviewLifecycle::default();
+        assert_eq!(lifecycle.state(), None);
+        lifecycle
+            .transition(PreviewLifecycleState::Created)
+            .expect("created should start lifecycle");
+        assert_eq!(lifecycle.state(), Some(PreviewLifecycleState::Created));
+        lifecycle
+            .transition(PreviewLifecycleState::Completed)
+            .expect("completed should be terminal after created");
+        assert_eq!(lifecycle.state(), Some(PreviewLifecycleState::Completed));
+        assert!(lifecycle.transition(PreviewLifecycleState::Failed).is_err());
+    }
+
+    #[test]
+    fn preview_trace_payload_uses_stable_contract_shape() {
+        let payload = preview_trace_payload(PreviewTracePayload {
+            timestamp_ms: 123,
+            document_id: "doc-1",
+            state: PreviewLifecycleState::Completed,
+            subsystem: PreviewSubsystem::Desktop,
+            source_extension: Some("pdb"),
+            renderer: Some("molstar"),
+            runtime_path: Some("/tmp/runtime/index.html"),
+            elapsed_ms: Some(42),
+            error_code: None,
+            message: Some("ready\nnow"),
+        });
+
+        assert_eq!(payload["schemaVersion"], PREVIEW_CONTRACT_SCHEMA_VERSION);
+        assert_eq!(payload["state"], "completed");
+        assert_eq!(payload["subsystem"], "desktop");
+        assert_eq!(payload["sourceExtension"], "pdb");
+        assert_eq!(payload["renderer"], "molstar");
+        assert_eq!(payload["message"], "ready now");
+    }
+
+    #[test]
+    fn preview_runtime_manifest_uses_stable_contract_shape() {
+        let manifest = preview_runtime_manifest(PreviewRuntimeManifest {
+            created_at_ms: 456,
+            complete: true,
+            document_id: "doc-1",
+            source_extension: "sdf",
+            renderer: "grid2d",
+            byte_count: 1024,
+            preview_byte_count: 0,
+            asset_profile: Some("desktop-grid"),
+            host: None,
+        });
+
+        assert_eq!(manifest["schemaVersion"], PREVIEW_CONTRACT_SCHEMA_VERSION);
+        assert_eq!(manifest["complete"], true);
+        assert_eq!(manifest["renderer"], "grid2d");
+        assert_eq!(manifest["assetProfile"], "desktop-grid");
+        assert!(manifest.get("host").is_none());
+    }
+
+    #[test]
+    fn preview_error_codes_are_stable() {
+        assert_eq!(
+            preview_error_code_for_message("sample.pdb is larger than the preview limit"),
+            "BRT-PREVIEW-FILE-TOO-LARGE"
+        );
+        assert_eq!(
+            preview_error_code_for_message(
+                "sample.sdf does not contain supported molecule grid records"
+            ),
+            "BRT-PREVIEW-GRID-NO-RECORDS"
+        );
+        assert_eq!(
+            preview_error_code_for_message("xyzrender executable failed"),
+            "BRT-PREVIEW-XYZRENDER"
+        );
     }
 
     #[test]

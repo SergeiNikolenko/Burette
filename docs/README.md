@@ -10,6 +10,8 @@ contains only documents that describe the active project.
   Ketcher editing scope, artifacts, and checks.
 - [Performance architecture](performance.md): runtime profiles, caches, binary
   payloads, grid search, and no-regression guardrails.
+- [Stability program](stability.md): preview trace, runtime manifest, nightly
+  smoke, and staged stability guardrails.
 - [Vite+ workflow](vite-plus.md): `vp` entrypoints for frontend development and
   JavaScript validation.
 - [Development loops](development-loops.md): fast edit, debug, patch, and remote

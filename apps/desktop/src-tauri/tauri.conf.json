@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "bun run dev -- --host 127.0.0.1",
     "devUrl": "http://127.0.0.1:1420",
-    "beforeBuildCommand": "bun run build",
+    "beforeBuildCommand": "true",
     "frontendDist": "../dist"
   },
   "app": {
