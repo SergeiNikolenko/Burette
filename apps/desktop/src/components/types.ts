@@ -1,4 +1,4 @@
-import type { FepSetupRequest, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences } from "../types";
+import type { FepSetupRequest, OpenDocumentsMode, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences } from "../types";
 import type { MoleculeTab } from "../stores/molecule-store";
 import type { StructureDragPayload } from "../lib/structure-drag";
 import type { UpdatePreferences, UpdateState } from "../update";
@@ -69,7 +69,7 @@ export type ChemicalEditorTarget = {
 
 export type ShellActions = {
   chooseFiles: () => void | Promise<void>;
-  openStructurePaths: (paths: string[]) => void | Promise<void>;
+  openStructurePaths: (paths: string[], options?: { mode?: OpenDocumentsMode }) => void | Promise<void>;
   openTextPaths: (paths: string[]) => void | Promise<void>;
   openPaths: (paths: string[]) => void | Promise<void>;
   openStructureRecords: (records: StructureDragPayload["records"]) => void | Promise<void>;

@@ -15,7 +15,7 @@ use super::runtime_utils::{file_title, stable_id};
 use super::runtime_viewer::{create_docking_runtime, create_runtime, DockingRuntimeSource};
 use super::text_xyz::converted_data_from_text;
 
-const MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
+pub(crate) const MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
 const MAESTRO_PREVIEW_READ_LIMIT: u64 = 64 * 1024 * 1024;
 const DESMOND_PREVIEW_TARGET_MB: &str = "24";
 const SCHRODINGER_RUN: &str = "/opt/schrodinger/suites2026-1/run";
@@ -314,6 +314,27 @@ impl ViewerDocument {
     pub(crate) fn into_virtual(mut self) -> Self {
         self.is_virtual = true;
         self
+    }
+
+    pub(crate) fn virtual_structure(
+        path: String,
+        title: String,
+        extension: String,
+        renderer: String,
+        runtime_path: String,
+        byte_count: u64,
+    ) -> Self {
+        Self {
+            id: stable_id(Path::new(&path)),
+            path,
+            title,
+            extension,
+            renderer,
+            runtime_path,
+            byte_count,
+            is_virtual: true,
+            docking_request: None,
+        }
     }
 }
 
@@ -1512,6 +1533,7 @@ f_m_ct {
                     structures.to_string_lossy().to_string(),
                 ],
                 viewer_preferences(),
+                None,
                 None,
             )
             .expect("real example corpus should open");
