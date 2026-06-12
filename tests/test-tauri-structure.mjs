@@ -66,6 +66,7 @@ const [
   vendorMolstarScript,
   vendorRdkitScript,
   packageSource,
+  desktopPackageSource,
   vendorAssetsLockSource,
   webRuntimeProfilesSource,
   xcodeProjectSource,
@@ -136,6 +137,7 @@ const [
   source('scripts/vendor-molstar.mjs'),
   source('scripts/vendor-rdkit.mjs'),
   source('package.json'),
+  source('apps/desktop/package.json'),
   source('vendor-assets.lock.json'),
   source('config/web-runtime-profiles.json'),
   source('Burrete.xcodeproj/project.pbxproj'),
@@ -158,9 +160,12 @@ const [
   source('docs/performance.md'),
 ]);
 const previewFormatsSource = previewFormats;
+const previewTrace = await source('apps/desktop/src-tauri/src/preview/trace.rs');
+const nightlySmokeWorkflow = await source('.github/workflows/nightly-smoke.yml');
 
 const tauriConfig = JSON.parse(tauriConfigSource);
 const packageConfig = JSON.parse(packageSource);
+const desktopPackageConfig = JSON.parse(desktopPackageSource);
 const vendorAssetsLock = JSON.parse(vendorAssetsLockSource);
 const webRuntimeProfiles = JSON.parse(webRuntimeProfilesSource);
 const defaultCapability = JSON.parse(defaultCapabilitySource);
@@ -173,6 +178,8 @@ assert.equal(mainWindowConfig.windowEffects?.state, 'active');
 assert.match(tauriConfig.app.security.csp, /'unsafe-eval'/);
 assert.match(tauriConfig.app.security.csp, /'wasm-unsafe-eval'/);
 assert.match(tauriConfig.app.security.csp, /style-src[^;]*'unsafe-inline'/);
+assert.equal(tauriConfig.build.beforeBuildCommand, 'true');
+assert.doesNotMatch(tauriConfig.build.beforeBuildCommand, /bun run build/);
 assert.ok(defaultCapability.permissions.includes('dialog:allow-open'));
 assert.ok(defaultCapability.permissions.includes('dialog:allow-message'));
 assert.ok(defaultCapability.permissions.includes('dialog:allow-save'));
@@ -182,6 +189,7 @@ assert.ok(defaultCapability.permissions.includes('core:window:allow-internal-tog
 assert.match(tauriConfig.app.security.csp, /script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' asset: http:\/\/asset\.localhost/);
 assert.match(previewEntitlements, /com\.apple\.security\.network\.client/);
 assert.match(docsReadmeSource, /Performance architecture/);
+assert.match(docsReadmeSource, /Stability program/);
 assert.match(architectureDocsSource, /\[Performance architecture\]\(performance\.md\)/);
 assert.match(rendererSupportDocsSource, /\[Performance architecture\]\(performance\.md\)/);
 assert.doesNotMatch(rendererSupportDocsSource, /xyz-fast|fast-xyz/);
@@ -192,6 +200,27 @@ assert.match(performanceDocsSource, /RDKit_minimal\.wasm/);
 assert.match(performanceDocsSource, /molecules_fts/);
 assert.match(performanceDocsSource, /BURRETE_PERF_RUN_GRID_FTS=1 \.\/scripts\/perf-smoke\.sh/);
 assert.match(performanceDocsSource, /Do Not Regress/);
+assert.match(burreteCoreSource, /pub const PREVIEW_CONTRACT_SCHEMA_VERSION: u32 = 1/);
+assert.match(burreteCoreSource, /pub const PREVIEW_TRACE_FILE: &str = "preview-trace\.jsonl"/);
+assert.match(burreteCoreSource, /pub enum PreviewLifecycleState/);
+assert.match(burreteCoreSource, /pub struct PreviewLifecycle/);
+assert.match(burreteCoreSource, /pub fn transition\(&mut self, next: PreviewLifecycleState\)/);
+assert.match(burreteCoreSource, /can_transition_from/);
+assert.match(burreteCoreSource, /preview_trace_payload/);
+assert.match(burreteCoreSource, /preview_runtime_manifest/);
+assert.match(burreteCoreSource, /preview_error_code_for_message/);
+assert.match(nightlySmokeWorkflow, /on:\s*\n\s*schedule:/);
+assert.match(nightlySmokeWorkflow, /BURRETE_DEV_FLAVOR:\s*ci/);
+assert.match(nightlySmokeWorkflow, /scripts\/quicklook-preview-smoke\.sh/);
+for (const fixture of [
+  'tests/fixtures/BurettePreviewSamples/mini.pdb',
+  'tests/fixtures/BurettePreviewSamples/mini.cif',
+  'tests/fixtures/BurettePreviewSamples/sdf/single.sdf',
+  'tests/fixtures/BurettePreviewSamples/xyz/single.xyz',
+]) {
+  assert.match(nightlySmokeWorkflow, new RegExp(fixture.replaceAll('/', '\\/')));
+}
+assert.match(nightlySmokeWorkflow, /scripts\/perf-smoke\.sh/);
 
 for (const moduleName of ['agent_integration', 'documents', 'grid', 'preview_cache', 'quicklook', 'shell', 'startup', 'updater']) {
   assert.match(commandsIndex, new RegExp(`pub\\(crate\\) mod ${moduleName};`));
@@ -316,8 +345,33 @@ assert.match(previewCacheCommand, /#\[tauri::command\]\s+pub\(crate\) fn clear_p
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn export_diagnostics_bundle/);
 assert.match(shellCommand, /timestamp level subsystem documentId event elapsedMs message/);
 assert.match(shellCommand, /BurreteApp\.log/);
+assert.match(shellCommand, /PREVIEW_TRACE_FILE/);
+assert.match(shellCommand, /previewTraceCopied/);
 assert.match(shellCommand, /quicklook-logs/);
 assert.match(shellCommand, /rawMoleculeContentIncluded/);
+assert.match(previewIndex, /pub\(crate\) mod trace;/);
+assert.match(previewTrace, /pub\(crate\) use burrete_core::PREVIEW_TRACE_FILE/);
+assert.match(previewTrace, /PreviewTraceEvent/);
+assert.match(previewTrace, /preview_error_code_for_message/);
+assert.match(previewTrace, /preview_trace_payload/);
+assert.match(previewTrace, /preview_runtime_manifest/);
+assert.match(previewRuntime, /append_preview_trace/);
+assert.match(previewRuntime, /PreviewLifecycle::default\(\)/);
+assert.match(previewRuntime, /PreviewLifecycleState::Completed/);
+assert.match(previewRuntime, /PreviewLifecycleState::Failed/);
+assert.match(quickLookPreviewController, /runtimeManifestJSON/);
+assert.match(quickLookPreviewController, /manifest\.json/);
+assert.match(quickLookPreviewController, /previewRequestID/);
+assert.match(quickLookPreviewController, /preview-trace\.jsonl/);
+assert.match(quickLookPreviewController, /trace\.requestID=/);
+assert.match(quickLookPreviewController, /\[build\] runtimeDirectory=/);
+assert.match(quickLookPreviewController, /BRT-QL-WEB-TIMEOUT/);
+assert.match(quickLookPreviewController, /private func appendFailedPreviewTrace\(requestID: UUID, error: Error, message: String\)/);
+assert.match(quickLookPreviewController, /appendFailedPreviewTrace\(requestID: requestID, error: error, message: "render timeout waiting for JS ready"\)/);
+assert.match(quickLookPreviewController, /appendFailedPreviewTrace\(requestID: activePreviewRequestID, error: error, message: "WK didFail"\)/);
+assert.match(quickLookPreviewController, /appendFailedPreviewTrace\(requestID: activePreviewRequestID, error: error, message: "WK didFailProvisionalNavigation"\)/);
+assert.match(quickLookPreviewController, /appendFailedPreviewTrace\(requestID: activePreviewRequestID, error: error, message: "WK webContentProcessDidTerminate"\)/);
+assert.match(quickLookPreviewController, /appendFailedPreviewTrace\(requestID: requestID, error: error, message: "native renderer switch error"\)/);
 assert.match(performanceSource, /export function collectPerformanceMarks/);
 assert.match(performanceSource, /export async function measureAsync/);
 assert.match(shellActionsSource, /exportDiagnostics: \(\) => void \| Promise<void>;/);
@@ -401,12 +455,17 @@ assert.deepEqual(packageConfig.workspaces, ['apps/*', 'packages/*']);
 assert.equal(packageConfig.scripts['check:formats'], 'bun scripts/check-preview-format-registry.mjs');
 assert.equal(packageConfig.scripts['check:vendor-assets'], 'bun scripts/check-vendor-assets.mjs');
 assert.equal(packageConfig.scripts['test:update'], 'bun tests/test-update-versioning.mjs && bun tests/test-bun-installer-structure.mjs && bun tests/test-bun-installer-behavior.mjs && bun tests/test-runner-contract.mjs && bun tests/test-dev-namespace.mjs && bun tests/test-quicklook-preview-smoke-contract.mjs');
+assert.equal(desktopPackageConfig.scripts.build, '../../node_modules/.bin/vite build --config vite.config.ts');
+assert.doesNotMatch(desktopPackageConfig.scripts.build, /bun --bun vite build/);
 assert.match(packageConfig.scripts['check:js'], /scripts\/dev-namespace\.mjs/);
 assert.match(buildScript, /BURRETE_DEV_FLAVOR/);
 assert.match(buildScript, /bun "\$ROOT\/scripts\/dev-namespace\.mjs" shell-env/);
 assert.match(buildScript, /LOCAL_APP="\$ROOT\/build\/\$BURRETE_APP_BUNDLE_NAME"/);
+assert.match(buildScript, /\.\.\/\.\.\/node_modules\/\.bin\/vite build --config vite\.config\.ts/);
 assert.match(buildScript, /bun "\$ROOT\/scripts\/dev-namespace\.mjs" patch-tree "\$SAFE_ROOT"/);
 assert.match(buildDevScript, /BURRETE_DEV_FLAVOR is supported by scripts\/build\.sh, not scripts\/build-dev\.sh/);
+assert.match(buildDevScript, /\.\.\/\.\.\/node_modules\/\.bin\/vite build --config vite\.config\.ts/);
+assert.match(buildDevScript, /bun run build:tauri/);
 assert.match(installLocalScript, /BURRETE_DEV_FLAVOR/);
 assert.match(installLocalScript, /DEST="\$DEST_DIR\/\$APP_BUNDLE_NAME"/);
 assert.match(installLocalScript, /pluginkit -r "\$EXT_ID"/);
@@ -523,11 +582,17 @@ assert.match(installLocalScript, /assert_bundled_xyzrender_runner\(\)\s*\{/);
 assert.match(installLocalScript, /sign_bundled_xyzrender_runtime\(\)\s*\{/);
 assert.match(installLocalScript, /find "\$runtime" "\$python_root" -type f/);
 assert.match(installLocalScript, /sign_bundled_xyzrender_runtime "\$STAGING_XYZRENDER_ENV" "\$STAGING_XYZRENDER_PYTHON"/);
-assert.match(installLocalScript, /codesign --force --sign - --entitlements "\$ROOT\/PreviewExtension\/BurretePreview\.entitlements" "\$STAGING_APPEX"/);
-assert.match(installLocalScript, /codesign --force --sign - "\$STAGING_DEST"/);
+assert.match(installLocalScript, /SIGN_IDENTITY="\$\{BURRETE_CODESIGN_IDENTITY:--\}"/);
+assert.match(installLocalScript, /CODESIGN_ARGS=\(--force --sign "\$SIGN_IDENTITY"\)/);
+assert.match(installLocalScript, /codesign "\$\{CODESIGN_ARGS\[@\]\}" --entitlements "\$ROOT\/PreviewExtension\/BurretePreview\.entitlements" "\$STAGING_APPEX"/);
+assert.match(installLocalScript, /codesign "\$\{CODESIGN_ARGS\[@\]\}" "\$STAGING_DEST"/);
 assert.doesNotMatch(installLocalScript, /codesign --force --deep --sign - "\$STAGING_DEST"/);
 assert.match(installLocalScript, /codesign --verify --deep --strict "\$STAGING_DEST"/);
-assert.match(installLocalScript, /for attempt in \$\(seq 1 60\)/);
+assert.match(installLocalScript, /run_bundled_xyzrender_help\(\)\s*\{/);
+assert.match(installLocalScript, /local timeout_seconds=10/);
+assert.match(installLocalScript, /return 124/);
+assert.match(installLocalScript, /\[\[ "\$IS_DEV_FLAVOR" == "1" && "\$\{BURRETE_SKIP_XYZRENDER_RUNNER_CHECK:-0\}" == "1" \]\]/);
+assert.match(installLocalScript, /for attempt in \$\(seq 1 6\)/);
 assert.match(installLocalScript, /assert_bundled_xyzrender_runtime "\$STAGING_XYZRENDER_ENV" "\$STAGING_XYZRENDER_PYTHON" "before signing"/);
 assert.match(installLocalScript, /assert_bundled_xyzrender_runner "\$STAGING_XYZRENDER_ENV" "\$STAGING_XYZRENDER_PYTHON" "after signing"/);
 assert.doesNotMatch(installLocalScript, /\$STAGING_XYZRENDER_ENV\/bin\/xyzrender" --help/);
@@ -602,7 +667,7 @@ for (const eventName of [
 assert.match(menu, /Check for Updates/);
 assert.match(menu, /short_version: Some\(pkg\.version\.to_string\(\)\)/);
 
-for (const moduleName of ['runtime_grid', 'runtime_utils', 'runtime_viewer']) {
+for (const moduleName of ['runtime_grid', 'runtime_utils', 'runtime_viewer', 'trace']) {
   assert.match(previewIndex, new RegExp(`pub\\(crate\\) mod ${moduleName};`));
 }
 assert.match(previewIndex, /pub\(crate\) mod grid_store;/);
@@ -626,10 +691,14 @@ assert.match(previewRuntimeGrid, /"gridDataMode": "bridge"/);
 assert.match(previewRuntimeGrid, /"recordsIndexed": collection\.records_indexed/);
 assert.match(previewRuntimeGrid, /"indexReady": collection\.index_ready/);
 assert.match(previewRuntimeGrid, /"recordsIncluded": 0/);
+assert.match(previewRuntimeGrid, /runtime_manifest\(\s*"grid2d"/);
+assert.match(previewRuntimeGrid, /write_json_atomic\(\s*&runtime\.join\("manifest\.json"\)/);
 assert.doesNotMatch(previewRuntimeGrid, /preview-grid-records\.js/);
 assert.match(previewRuntimeGrid, /fn parse_sdf_grid/);
 assert.match(previewRuntimeGrid, /fn parse_delimited_table/);
 assert.match(previewRuntimeViewer, /pub\(crate\) fn create_runtime/);
+assert.match(previewRuntimeViewer, /runtime_manifest\(/);
+assert.match(previewRuntimeViewer, /write_json_atomic\(\s*&runtime\.join\("manifest\.json"\)/);
 assert.match(previewRuntimeViewer, /active_pose: Option<usize>/);
 assert.match(previewRuntimeViewer, /"activePose": active_pose/);
 assert.match(previewRuntimeViewer, /pub\(crate\) fn copy_web_assets/);

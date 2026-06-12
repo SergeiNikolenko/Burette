@@ -11,3 +11,4 @@ xcuserdata/
 dist/
 apps/desktop/dist/
 apps/desktop/src-tauri/target/
+/target/
