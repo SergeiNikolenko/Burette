@@ -41,6 +41,8 @@
 				<string>mmcif</string>
 				<string>mol</string>
 				<string>mol2</string>
+				<string>mvsj</string>
+				<string>mvsx</string>
 				<string>in</string>
 				<string>inp</string>
 				<string>lammpstrj</string>
@@ -96,6 +98,8 @@
 				<string>com.gaussian.cube</string>
 				<string>com.local.burrete10.gro</string>
 				<string>gg.flew.unfold.gromacs-structure</string>
+				<string>com.local.burrete10.mvsj</string>
+				<string>com.local.burrete10.mvsx</string>
 				<string>com.local.burrete10.molecular-dynamics</string>
 				<string>com.schrodinger.mae</string>
 				<string>com.local.burrete10.schrodinger</string>
@@ -205,6 +209,53 @@
 				<key>public.mime-type</key>
 				<array>
 					<string>chemical/x-mmcif</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+				<string>public.text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>MolViewSpec JSON scene file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.mvsj</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mvsj</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/vnd.molstar.mvsj+json</string>
+					<string>application/json</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+				<string>public.archive</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>MolViewSpec archive scene file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.mvsx</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mvsx</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/vnd.molstar.mvsx</string>
+					<string>application/zip</string>
 				</array>
 			</dict>
 		</dict>

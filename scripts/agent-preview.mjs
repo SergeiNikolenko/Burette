@@ -10,6 +10,7 @@ const repoRoot = resolve(__dirname, '..');
 const webRoot = resolve(repoRoot, 'PreviewExtension', 'Web');
 const agentControlApiVersion = 'burette-agent-control/v1';
 const renderPanelReadLimit = 512 * 1024;
+const mvsReadLimit = 25 * 1024 * 1024;
 
 function usage() {
   console.error(`Usage: node scripts/agent-preview.mjs <structure-file> [--port 5177] [--host 127.0.0.1]
@@ -385,6 +386,7 @@ function js(name, value) {
 function controlConfig() {
   return {
     apiVersion: agentControlApiVersion,
+    observeUrl: '/__agent/observe',
     reportUrl: '/__agent/report',
     nextActionUrl: '/__agent/next-action',
     actionResultUrl: '/__agent/action-result',
@@ -512,6 +514,8 @@ function validateAction(action) {
     'show_surface',
     'color_by_chain',
     'render_panel',
+    'apply_scene',
+    'load_mvs',
     'screenshot',
     'export_image',
     'raw_burrete_agent'
@@ -522,10 +526,28 @@ function validateAction(action) {
     if (!['markdown', 'table', 'chart'].includes(kind)) return 'render_panel kind must be markdown, table, or chart.';
     if (typeof action.content !== 'string' && typeof action.file !== 'string') return 'render_panel requires file or content.';
   }
+  if (type === 'load_mvs') {
+    if (
+      typeof action.file !== 'string' &&
+      typeof action.data !== 'string' &&
+      typeof action.dataBase64 !== 'string' &&
+      action.json === undefined
+    ) {
+      return 'load_mvs requires file, data, dataBase64, or json.';
+    }
+  }
+  if (type === 'apply_scene') {
+    const components = Array.isArray(action.components) ? action.components : null;
+    const operations = Array.isArray(action.operations) ? action.operations : null;
+    if (!components && !operations) return 'apply_scene requires components or operations.';
+    if (components && components.length === 0) return 'apply_scene components must not be empty.';
+    if (operations && operations.length === 0) return 'apply_scene operations must not be empty.';
+  }
   return null;
 }
 
 async function prepareAction(action) {
+  if (action?.type === 'load_mvs') return prepareMvsAction(action);
   if (action?.type !== 'render_panel') return action;
   if (typeof action.content === 'string') {
     return {
@@ -555,6 +577,26 @@ async function prepareAction(action) {
       content,
       byteCount: info.size
     }
+  };
+}
+
+async function prepareMvsAction(action) {
+  if (typeof action.file !== 'string') return action;
+  const file = resolve(String(action.file));
+  const info = await stat(file);
+  if (!info.isFile()) throw new Error(`${file} is not a file.`);
+  if (info.size > mvsReadLimit) {
+    throw new Error(`load_mvs file exceeds ${mvsReadLimit} bytes.`);
+  }
+  const extension = extname(file).toLowerCase().replace(/^\./, '');
+  const format = String(action.format || extension || 'mvsj').toLowerCase();
+  const bytes = await readFile(file);
+  return {
+    ...action,
+    file,
+    format,
+    dataBase64: bytes.toString('base64'),
+    byteCount: info.size
   };
 }
 
@@ -601,6 +643,8 @@ async function main() {
     binary: preview.binary,
     byteCount: st.size,
     showPanelControls: true,
+    enablePreviewDocks: true,
+    defaultPreviewDocks: [],
     defaultLayoutState: { left: 'hidden', right: 'hidden', top: 'hidden', bottom: 'hidden' },
     theme: 'auto',
     canvasBackground: 'auto'
@@ -739,6 +783,15 @@ async function main() {
       const headers = { 'Content-Type': contentType(file) };
       if (url.pathname === '/' || url.pathname.endsWith('.html')) {
         headers['Set-Cookie'] = `${tokenCookieName}=${encodeURIComponent(token)}; Path=/; SameSite=Strict`;
+        const html = await readFile(file, 'utf8');
+        const assetVersion = String(Date.now());
+        res.writeHead(200, headers);
+        res.end(html
+          .replaceAll('./viewer-runtime.css"', `./viewer-runtime.css?v=${assetVersion}"`)
+          .replaceAll('./viewer-shell.js"', `./viewer-shell.js?v=${assetVersion}"`)
+          .replaceAll('./burette-agent.js"', `./burette-agent.js?v=${assetVersion}"`)
+          .replaceAll('./viewer.js"', `./viewer.js?v=${assetVersion}"`));
+        return;
       }
       res.writeHead(200, headers);
       createReadStream(file).pipe(res);

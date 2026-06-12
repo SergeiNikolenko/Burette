@@ -46,6 +46,23 @@ const child = spawn(process.execPath, ['scripts/agent-preview.mjs', 'samples/min
 
 try {
   const cliSource = await readFile(resolve('scripts/burrete-agent.mjs'), 'utf8');
+  assert.match(cliSource, /'browser-dev-shell'/);
+  assert.match(cliSource, /function openBrowserDevShell\(file, options\)/);
+  assert.match(cliSource, /spawn\('vp', \['dev', 'apps\/desktop'/);
+  assert.match(cliSource, /await allocatePort\(host\)/);
+  assert.match(cliSource, /mkdtemp\(resolve\(tmpdir\(\), 'burrete-agent-shell-'\)\)/);
+  assert.match(cliSource, /BURRETE_AGENT_SHELL_SESSION_DIR: sessionDir/);
+  assert.match(cliSource, /const logPath = resolve\(sessionDir, 'server\.log'\)/);
+  assert.match(cliSource, /VITE_BURRETE_AGENT_SHELL: '1'/);
+  assert.match(cliSource, /VITE_BURETTE_DEV_INSTANCE: 'agent'/);
+  assert.match(cliSource, /url\.searchParams\.set\('devFiles', initialFile\)/);
+  assert.match(cliSource, /sessionDir,/);
+  assert.match(cliSource, /async function browserShellSessionDir\(urlText\)/);
+  assert.match(cliSource, /async function assertSessionResponsive\(sessionDir\)/);
+  assert.match(cliSource, /BROWSER_DEV_SHELL_UNAVAILABLE/);
+  assert.match(cliSource, /logPath,/);
+  assert.match(cliSource, /observe: `node scripts\/burrete-agent\.mjs observe --session-dir/);
+  assert.match(cliSource, /act: `node scripts\/burrete-agent\.mjs act --session-dir/);
   assert.match(cliSource, /function desktopOpenArgs\(app, sessionDir, file\)/);
   assert.match(cliSource, /spawn\('open', desktopOpenArgs\(app, sessionDir, resolve\(file\)\)/);
   assert.match(cliSource, /return \['-n', app, \.\.\.agentArgs\];/);
@@ -77,6 +94,13 @@ try {
   assert.equal(sceneActionPayload.ok, true);
   assert.equal(sceneActionPayload.result.action.status, 'queued');
   assert.equal(sceneActionPayload.result.action.type, 'hide_waters');
+
+  const sceneSpec = runCli(['act', '--url', ready.url, '{"type":"apply_scene","components":[{"selector":"protein","label":"Protein","highlight":true},{"selector":{"chain":"A","range":[1,3]},"label":"Active loop","select":true,"focus":true}]}']);
+  assert.equal(sceneSpec.status, 0, sceneSpec.stderr);
+  const sceneSpecPayload = JSON.parse(sceneSpec.stdout);
+  assert.equal(sceneSpecPayload.ok, true);
+  assert.equal(sceneSpecPayload.result.action.status, 'queued');
+  assert.equal(sceneSpecPayload.result.action.type, 'apply_scene');
 
   const browserPanel = runCli(['render-panel', '--url', ready.url, '--kind', 'markdown', '--file', 'README.md']);
   assert.equal(browserPanel.status, 0, browserPanel.stderr);

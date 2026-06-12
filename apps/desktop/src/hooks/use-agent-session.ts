@@ -8,6 +8,8 @@ import type { DockArea } from "../lib/dock";
 
 const AGENT_API_VERSION = "burette-agent-control/v1";
 const ACTION_POLL_INTERVAL_MS = 500;
+const BROWSER_AGENT_SESSION_DIR = "__browser_agent_shell__";
+const isBrowserAgentShell = import.meta.env.VITE_BURRETE_AGENT_SHELL === "1";
 
 type OpenPaths = (paths: string[]) => void | Promise<void>;
 type OpenTextDocuments = (
@@ -49,7 +51,23 @@ type ViewerAgentState = {
   viewerReady: boolean;
   lastMessage: string | null;
   lastError: string | null;
+  lastAction: AgentSceneAction | null;
+  selection: AgentSceneSelection | null;
   updatedAt: string;
+};
+
+type AgentSceneAction = {
+  ok: boolean | null;
+  command: string | null;
+  errorCode: string | null;
+  completedAt: string;
+};
+
+type AgentSceneSelection = {
+  selectionId: string | null;
+  selector: unknown;
+  ligand: unknown;
+  counts: unknown;
 };
 
 type UseAgentSessionArgs = {
@@ -120,11 +138,32 @@ export function useAgentSession({
   }, [activateSession]);
 
   useEffect(() => {
-    if (!isTauriRuntime()) return undefined;
+    if (!isBrowserAgentShell) return undefined;
+    activateSession(BROWSER_AGENT_SESSION_DIR);
+    return undefined;
+  }, [activateSession]);
+
+  useEffect(() => {
+    if (!isTauriRuntime() && !isBrowserAgentShell) return undefined;
     const handler = (event: MessageEvent) => {
       if (event.data?.source === "burrete-agent-viewer") {
         const body = event.data.body;
         if (!body || body.type !== "agent-action-result" || typeof body.id !== "string") return;
+        const activeDocumentId = activeDocumentRef.current?.id;
+        if (activeDocumentId) {
+          viewerAgentStatesRef.current[activeDocumentId] = viewerAgentStateWithActionResult(
+            activeDocumentId,
+            viewerAgentStatesRef.current[activeDocumentId],
+            body.result,
+          );
+          void writeObserve(
+            sessionDirRef.current,
+            activeDocumentRef.current,
+            documentsRef.current,
+            workspacePanelsRef.current,
+            viewerAgentStatesRef.current,
+          );
+        }
         const resolve = pendingViewerActionsRef.current.get(body.id);
         if (!resolve) return;
         pendingViewerActionsRef.current.delete(body.id);
@@ -150,9 +189,9 @@ export function useAgentSession({
   }, []);
 
   useEffect(() => {
-    if (!isTauriRuntime()) return undefined;
+    if (!isTauriRuntime() && !isBrowserAgentShell) return undefined;
     let busy = false;
-    const timer = window.setInterval(() => {
+    const pollNow = () => {
       const sessionDir = sessionDirRef.current;
       if (!sessionDir || busy) return;
       busy = true;
@@ -171,8 +210,17 @@ export function useAgentSession({
         .finally(() => {
           busy = false;
         });
-    }, ACTION_POLL_INTERVAL_MS);
-    return () => window.clearInterval(timer);
+    };
+    const timer = window.setInterval(pollNow, ACTION_POLL_INTERVAL_MS);
+    const browserActionEvents = isBrowserAgentShell
+      ? new EventSource("/__burette/agent-session/events")
+      : null;
+    browserActionEvents?.addEventListener("actions", pollNow);
+    pollNow();
+    return () => {
+      window.clearInterval(timer);
+      browserActionEvents?.close();
+    };
   }, []);
 }
 
@@ -183,7 +231,7 @@ async function writeObserve(
   workspacePanels: AgentWorkspacePanel[],
   viewerAgentStates: Record<string, ViewerAgentState>,
 ) {
-  if (!sessionDir || !isTauriRuntime()) return;
+  if (!sessionDir || (!isTauriRuntime() && !isBrowserAgentSessionDir(sessionDir))) return;
   const activeAgentState = activeDocument ? viewerAgentStates[activeDocument.id] : undefined;
   const activeMolstar = !!activeDocument && activeDocument.renderer === "molstar";
   const activeReady = activeDocument
@@ -193,8 +241,8 @@ async function writeObserve(
     : false;
   const observe = {
     apiVersion: AGENT_API_VERSION,
-    mode: "desktop-app",
-    transport: "file-session-token",
+    mode: isBrowserAgentSessionDir(sessionDir) ? "browser-dev-shell" : "desktop-app",
+    transport: isBrowserAgentSessionDir(sessionDir) ? "browser-agent-http-session" : "file-session-token",
     reportedAt: new Date().toISOString(),
     activeDocument: activeDocument
       ? {
@@ -225,8 +273,13 @@ async function writeObserve(
       lastError: activeAgentState?.lastError ?? null,
       updatedAt: activeAgentState?.updatedAt ?? null,
       note: activeMolstar
-        ? "Desktop app actions are relayed to the active Mol* viewer iframe after the viewer reports BurreteAgent readiness."
-        : "Desktop app actions require an active Mol* viewer document.",
+        ? "Actions are relayed to the active Mol* viewer iframe after the viewer reports BurreteAgent readiness."
+        : "Agent actions require an active Mol* viewer document.",
+    },
+    scene: {
+      known: activeMolstar && !!activeAgentState?.agentReady,
+      selection: activeAgentState?.selection ?? null,
+      lastAction: activeAgentState?.lastAction ?? null,
     },
     panels: ["viewer", ...workspacePanels.map((panel) => panel.id)],
     workspacePanels,
@@ -394,6 +447,8 @@ function viewerAgentStateFromMessage(body: { type?: unknown; message?: unknown; 
     viewerReady: previous?.viewerReady ?? false,
     lastMessage: previous?.lastMessage ?? null,
     lastError: previous?.lastError ?? null,
+    lastAction: previous?.lastAction ?? null,
+    selection: previous?.selection ?? null,
     updatedAt: new Date().toISOString(),
   };
   if (type === "agentReady") {
@@ -416,6 +471,46 @@ function viewerAgentStateFromMessage(body: { type?: unknown; message?: unknown; 
   return null;
 }
 
+function viewerAgentStateWithActionResult(
+  documentId: string,
+  previous: ViewerAgentState | undefined,
+  result: unknown,
+): ViewerAgentState {
+  const object = typeof result === "object" && result !== null ? result as Record<string, unknown> : {};
+  const ok = typeof object.ok === "boolean" ? object.ok : null;
+  const command = typeof object.command === "string" ? object.command : null;
+  const error = typeof object.error === "object" && object.error !== null ? object.error as Record<string, unknown> : null;
+  const next: ViewerAgentState = {
+    documentId,
+    agentReady: previous?.agentReady ?? true,
+    viewerReady: previous?.viewerReady ?? true,
+    lastMessage: command ? `Action ${command} ${ok === false ? "failed" : "completed"}` : (previous?.lastMessage ?? null),
+    lastError: ok === false && typeof error?.message === "string" ? error.message : null,
+    lastAction: {
+      ok,
+      command,
+      errorCode: typeof error?.code === "string" ? error.code : null,
+      completedAt: new Date().toISOString(),
+    },
+    selection: sceneSelectionFromActionResult(result) ?? previous?.selection ?? null,
+    updatedAt: new Date().toISOString(),
+  };
+  return next;
+}
+
+function sceneSelectionFromActionResult(result: unknown): AgentSceneSelection | null {
+  if (typeof result !== "object" || result === null) return null;
+  const outer = result as Record<string, unknown>;
+  const payload = typeof outer.result === "object" && outer.result !== null ? outer.result as Record<string, unknown> : null;
+  if (!payload) return null;
+  const selectionId = typeof payload.selectionId === "string" ? payload.selectionId : null;
+  const selector = payload.selectorEcho ?? null;
+  const ligand = payload.ligand ?? null;
+  const counts = payload.counts ?? null;
+  if (!selectionId && !selector && !ligand && !counts) return null;
+  return { selectionId, selector, ligand, counts };
+}
+
 function isFailedResult(result: unknown) {
   return typeof result === "object" && result !== null && "ok" in result && (result as { ok?: unknown }).ok === false;
 }
@@ -429,6 +524,16 @@ function agentFailure(command: string, code: string, message: string) {
 }
 
 async function readJson<T>(path: string, fallback: T): Promise<T> {
+  const browserFile = browserAgentSessionFile(path);
+  if (browserFile) {
+    try {
+      const response = await fetch(`/__burette/agent-session/${browserFile}`, { cache: "no-store" });
+      if (!response.ok) return fallback;
+      return await response.json() as T;
+    } catch {
+      return fallback;
+    }
+  }
   try {
     const file = await invoke<ReadTextFileResult>("read_text_file", { path });
     return JSON.parse(file.content) as T;
@@ -438,6 +543,18 @@ async function readJson<T>(path: string, fallback: T): Promise<T> {
 }
 
 async function writeJson(path: string, value: unknown) {
+  const browserFile = browserAgentSessionFile(path);
+  if (browserFile) {
+    const response = await fetch(`/__burette/agent-session/${browserFile}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(value),
+    });
+    if (!response.ok) {
+      throw new Error(`Agent shell session write failed for ${browserFile}: HTTP ${response.status}`);
+    }
+    return;
+  }
   await invoke<string>("write_text_file", {
     request: {
       outputPath: path,
@@ -448,4 +565,15 @@ async function writeJson(path: string, value: unknown) {
 
 function joinSessionPath(sessionDir: string, fileName: string) {
   return `${sessionDir.replace(/\/+$/u, "")}/${fileName}`;
+}
+
+function isBrowserAgentSessionDir(sessionDir: string) {
+  return sessionDir === BROWSER_AGENT_SESSION_DIR;
+}
+
+function browserAgentSessionFile(path: string) {
+  const prefix = `${BROWSER_AGENT_SESSION_DIR}/`;
+  if (!path.startsWith(prefix)) return null;
+  const fileName = path.slice(prefix.length);
+  return ["actions.json", "observe.json"].includes(fileName) ? fileName : null;
 }
