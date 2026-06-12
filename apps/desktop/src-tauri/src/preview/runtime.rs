@@ -342,14 +342,16 @@ fn is_false(value: &bool) -> bool {
     !*value
 }
 
-pub(crate) fn open_document<R: Runtime>(
+pub(crate) fn open_document_for_window<R: Runtime>(
     app: &tauri::AppHandle<R>,
+    window_label: &str,
     path: PathBuf,
     preferences: &ViewerPreferences,
     reload_options: Option<&ViewerReloadOptions>,
 ) -> Result<ViewerDocument, String> {
     open_document_with_grid_options(
         app,
+        window_label,
         path,
         preferences,
         reload_options,
@@ -357,8 +359,25 @@ pub(crate) fn open_document<R: Runtime>(
     )
 }
 
+#[cfg(test)]
+pub(crate) fn open_document<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    path: PathBuf,
+    preferences: &ViewerPreferences,
+    reload_options: Option<&ViewerReloadOptions>,
+) -> Result<ViewerDocument, String> {
+    open_document_for_window(
+        app,
+        crate::windows::MAIN_WINDOW_LABEL,
+        path,
+        preferences,
+        reload_options,
+    )
+}
+
 pub(crate) fn open_document_with_grid_options<R: Runtime>(
     app: &tauri::AppHandle<R>,
+    window_label: &str,
     path: PathBuf,
     preferences: &ViewerPreferences,
     reload_options: Option<&ViewerReloadOptions>,
@@ -442,9 +461,10 @@ pub(crate) fn open_document_with_grid_options<R: Runtime>(
         && reload_options.is_some()
         && (requested_renderer == "molstar" || requested_renderer == "xyzrender-external");
     if !should_use_viewer_for_sdf {
+        let runtime_document_id = crate::windows::runtime_document_id(window_label, &document_id);
         if let Some(runtime_path) = create_grid_runtime_with_options(
             app,
-            &document_id,
+            &runtime_document_id,
             &canonical,
             &extension,
             &data,
@@ -918,7 +938,7 @@ mod document_open_tests {
         default_light_translucent, default_system_font, open_document, resolve_desmond_file_bundle,
         ViewerPreferences,
     };
-    use crate::commands::documents::open_documents;
+    use crate::commands::documents::open_documents_for_window_label;
     use crate::preview::grid_store::GridRuntimeRegistry;
     use std::collections::BTreeMap;
     use std::fs;
@@ -1526,8 +1546,9 @@ f_m_ct {
 
         with_fake_xyzrender(|| {
             let app = mock_app_with_grid_registry();
-            let result = open_documents(
-                app.handle().clone(),
+            let result = open_documents_for_window_label(
+                app.handle(),
+                crate::windows::MAIN_WINDOW_LABEL,
                 vec![
                     inputs.to_string_lossy().to_string(),
                     structures.to_string_lossy().to_string(),

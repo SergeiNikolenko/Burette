@@ -85,6 +85,7 @@ export type ShellActions = {
   focusSidebarSearch: () => void;
   openCommandPalette: () => void;
   openClipboard: () => void | Promise<void>;
+  openNewWindow: () => void | Promise<void>;
   openSettings: () => void;
   openSettingsSection: (section: SettingsSectionId) => void;
   backToApp: () => void;
