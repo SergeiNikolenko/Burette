@@ -82,6 +82,8 @@
           "graphml",
           "mol",
           "mol2",
+          "mvsj",
+          "mvsx",
           "xyz",
           "gro",
           "cub",

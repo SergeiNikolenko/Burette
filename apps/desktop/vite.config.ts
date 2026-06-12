@@ -1,4 +1,4 @@
-import { existsSync, statSync } from "node:fs";
+import { existsSync, statSync, watch } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, join, relative, resolve } from "node:path";
@@ -55,7 +55,7 @@ type StructureFileBundle = {
 const DEV_FILE_EXTENSIONS = new Set([
   "abi", "bcif", "cif", "cms", "com", "csv", "cub", "cube", "dcd", "ent", "fdf", "gro",
   "in", "inp", "lammpstrj", "log", "mae", "mae.gz", "maegz", "mcif", "mmcif", "mol",
-  "mol2", "nctraj", "nw", "out", "pdb", "pdbqt", "pqr", "prmtop", "psf", "psi4", "qcin",
+  "mol2", "mvsj", "mvsx", "nctraj", "nw", "out", "pdb", "pdbqt", "pqr", "prmtop", "psf", "psi4", "qcin",
   "sd", "sdf", "smi", "smiles", "top", "trr", "tsv", "vasp", "xtc", "xyz",
   "dtr",
 ]);
@@ -336,6 +336,84 @@ export function browserDevXyzrenderPlugin() {
           res.setHeader("Content-Length", String(bytes.length));
           res.setHeader("Cache-Control", "no-cache");
           res.end(bytes);
+        } catch (error) {
+          res.statusCode = 500;
+          res.setHeader("Content-Type", "application/json; charset=utf-8");
+          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+        }
+      });
+      server.middlewares.use("/__burette/agent-session/", async (req, res) => {
+        const sessionDir = process.env.BURRETE_AGENT_SHELL_SESSION_DIR
+          ? resolve(process.env.BURRETE_AGENT_SHELL_SESSION_DIR)
+          : null;
+        const method = (req.method || "GET").toUpperCase();
+        const url = new URL(req.url || "", "http://127.0.0.1");
+        const fileName = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
+        if (!sessionDir || !["actions.json", "observe.json", "session.json", "events"].includes(fileName)) {
+          res.statusCode = sessionDir ? 404 : 403;
+          res.setHeader("Content-Type", "application/json; charset=utf-8");
+          res.end(JSON.stringify({ error: sessionDir ? "Not found" : "Agent shell session is not enabled" }));
+          return;
+        }
+        if (fileName === "events") {
+          if (method !== "GET") {
+            res.statusCode = 405;
+            res.setHeader("Content-Type", "application/json; charset=utf-8");
+            res.end(JSON.stringify({ error: "Method not allowed" }));
+            return;
+          }
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+          res.setHeader("Cache-Control", "no-cache, no-transform");
+          res.setHeader("Connection", "keep-alive");
+          const sendActionsEvent = () => {
+            res.write(`event: actions\ndata: ${JSON.stringify({ file: "actions.json", at: new Date().toISOString() })}\n\n`);
+          };
+          sendActionsEvent();
+          const watcher = watch(sessionDir, (_eventType, changedFileName) => {
+            if (changedFileName === "actions.json") sendActionsEvent();
+          });
+          req.on("close", () => watcher.close());
+          return;
+        }
+        const filePath = resolve(sessionDir, fileName);
+        if (!filePath.startsWith(`${sessionDir}/`)) {
+          res.statusCode = 403;
+          res.setHeader("Content-Type", "application/json; charset=utf-8");
+          res.end(JSON.stringify({ error: "Forbidden" }));
+          return;
+        }
+        try {
+          if (method === "GET") {
+            const fallback = fileName === "actions.json"
+              ? { apiVersion: "burette-agent-control/v1", actions: [] }
+              : {};
+            let value = fallback;
+            if (existsSync(filePath)) value = JSON.parse(await readFile(filePath, "utf8"));
+            res.statusCode = 200;
+            res.setHeader("Content-Type", "application/json; charset=utf-8");
+            res.setHeader("Cache-Control", "no-cache");
+            res.end(JSON.stringify(value));
+            return;
+          }
+          if (method === "PUT") {
+            if (fileName === "session.json") {
+              res.statusCode = 405;
+              res.setHeader("Content-Type", "application/json; charset=utf-8");
+              res.end(JSON.stringify({ error: "session.json is read-only" }));
+              return;
+            }
+            const body = await readJsonBody(req);
+            await mkdir(sessionDir, { recursive: true });
+            await writeFile(filePath, `${JSON.stringify(body, null, 2)}\n`);
+            res.statusCode = 200;
+            res.setHeader("Content-Type", "application/json; charset=utf-8");
+            res.end(JSON.stringify({ ok: true }));
+            return;
+          }
+          res.statusCode = 405;
+          res.setHeader("Content-Type", "application/json; charset=utf-8");
+          res.end(JSON.stringify({ error: "Method not allowed" }));
         } catch (error) {
           res.statusCode = 500;
           res.setHeader("Content-Type", "application/json; charset=utf-8");

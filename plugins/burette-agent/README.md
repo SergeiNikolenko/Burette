@@ -53,13 +53,36 @@ The source of truth is the repository CLI:
 
 ```bash
 bun scripts/burrete-agent.mjs open --mode browser-preview samples/mini.pdb
+bun scripts/burrete-agent.mjs open --mode browser-dev-shell samples/mini.pdb
 bun scripts/burrete-agent.mjs open --mode desktop-app samples/mini.pdb
 bun scripts/burrete-agent.mjs observe --session-dir /tmp/burrete-agent-session
 bun scripts/burrete-agent.mjs act --session-dir /tmp/burrete-agent-session '{"type":"reset_camera"}'
+bun scripts/burrete-agent.mjs act --session-dir /tmp/burrete-agent-session '{"type":"apply_scene","components":[{"selector":"protein","label":"Protein","highlight":true},{"selector":{"chain":"A","range":[45,58]},"label":"Active loop","select":true,"focus":true}]}'
 bun scripts/burrete-agent.mjs render-panel --session-dir /tmp/burrete-agent-session --kind markdown --file notes.md
 ```
 
 MCP tools wrap this CLI instead of reimplementing the app control layer.
+
+## MolViewSpec Scene Language
+
+The Mol* scene skill uses MolViewSpec as the vocabulary for agent requests:
+component selectors, representation, color, opacity, labels, tooltips, focus,
+camera, canvas, transforms, primitives, volumes, and animations.
+
+There are two execution paths:
+
+- `apply_scene` is the fast active-viewer action DSL. It maps MVS-like
+  component operations to allowlisted Burrete commands such as
+  `colorSelection`, `selectResidues`, `focusSelection`, `focus_ligand`,
+  `contacts`, and `reset_camera`.
+- `load_mvs` is for complete MolViewSpec scenes (`mvsj`/`mvsx`) that should be
+  loaded through Mol* `loadMvsData`. Use this for full representation graphs,
+  durable opacity/labels/tooltips/primitives, explicit camera/canvas settings,
+  transforms/instances, volumes, and animations.
+
+Use `apply_scene` for commands like "highlight the protein", "select and focus
+the active loop", or "show the ligand pocket". Use `load_mvs` when the user
+asks for a reproducible scene file or geometry-level scene changes.
 
 ## Artifact Contract
 
