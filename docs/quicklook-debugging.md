@@ -101,7 +101,10 @@ Tail logs through the project helper:
 The desktop app can export a local diagnostics bundle from Settings > System >
 Diagnostics or from the command palette. The exported `.diagnostics` directory
 contains app logs, Quick Look logs, environment information, an app size report,
-web performance marks, and recent UI or render errors. The app log format is:
+web performance marks, recent UI or render errors, and the desktop
+`preview-trace.jsonl`. Quick Look also writes `preview-trace.jsonl` next to its
+extension logs when a preview request is created, completed, or fails. The app
+log format is:
 
 ```text
 timestamp level subsystem documentId event elapsedMs message
@@ -109,6 +112,28 @@ timestamp level subsystem documentId event elapsedMs message
 
 Diagnostics bundles are local files only. They do not upload telemetry and do
 not include raw molecule file contents or structure payloads.
+
+Generated desktop and Quick Look runtime directories contain a `manifest.json`
+with `schemaVersion`, `complete`, selected renderer, source extension, byte
+counts, and asset profile or host details. Treat a missing or incomplete
+manifest as a runtime-generation failure before debugging Mol*, RDKit, or
+`xyzrender` behavior.
+
+`scripts/quicklook-preview-smoke.sh` validates this stability contract for each
+successful preview: the Quick Look log must expose the trace request id and
+runtime directory, `preview-trace.jsonl` must contain a completed Quick Look
+event for that request, and the runtime directory must contain a complete
+`manifest.json`.
+
+On hosts where macOS refuses to launch an ad-hoc signed Quick Look extension,
+the same smoke script reports `Quick Look extension launch failure` using
+recent unified-log entries instead of returning a generic `NO_REQUEST`. This is
+a host trust/signing failure, not a renderer or runtime-manifest failure. The
+script does not create certificates; signed environments can pass an existing
+identity through `BURRETE_CODESIGN_IDENTITY` during local install. If the
+unified-log window does not contain the AMFI rejection, the script falls back to
+the installed `BurretePreview` signature and reports that the extension is
+ad-hoc signed.
 
 Runtime cache layout, asset profiles, binary payload loading, and the boundary
 between desktop previews and Finder previews are documented in
@@ -135,7 +160,5 @@ BURRETE_DEV_FLAVOR=chat85b0 ./scripts/build.sh
 codesign --verify --deep --strict build/Burrete-chat85b0.app
 test -d build/Burrete-chat85b0.app/Contents/PlugIns/BurretePreview.appex
 test -d build/Burrete-chat85b0.app/Contents/PlugIns/BurreteThumbnail.appex
-BURRETE_DEV_FLAVOR=chat85b0 ./scripts/force-preview.sh samples/mini.pdb
-BURRETE_DEV_FLAVOR=chat85b0 ./scripts/force-preview.sh samples/mini.cif
-BURRETE_DEV_FLAVOR=chat85b0 ./scripts/force-preview.sh samples/mini.xyz
+BURRETE_DEV_FLAVOR=chat85b0 ./scripts/quicklook-preview-smoke.sh samples/mini.pdb samples/mini.cif samples/mini.xyz
 ```

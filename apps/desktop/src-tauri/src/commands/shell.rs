@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Manager, Runtime};
 
+use crate::preview::trace::PREVIEW_TRACE_FILE;
 use crate::windows;
 
 const APP_LOG_NAME: &str = "BurreteApp.log";
@@ -202,11 +203,11 @@ pub(crate) fn export_diagnostics_bundle<R: Runtime>(
     fs::create_dir_all(&output_dir).map_err(|err| err.to_string())?;
 
     let app_log_path = cache_dir.join(APP_LOG_NAME);
-    if app_log_path.exists() {
-        fs::copy(&app_log_path, output_dir.join("app-log.txt")).map_err(|err| err.to_string())?;
-    } else {
-        fs::write(output_dir.join("app-log.txt"), "").map_err(|err| err.to_string())?;
-    }
+    copy_or_create_empty(&app_log_path, &output_dir.join("app-log.txt"))?;
+    let preview_trace_copied = copy_or_create_empty(
+        &cache_dir.join(PREVIEW_TRACE_FILE),
+        &output_dir.join(PREVIEW_TRACE_FILE),
+    )?;
 
     let copied_quicklook_logs = copy_quicklook_logs(&output_dir)?;
     write_environment_info(&app, &output_dir)?;
@@ -217,6 +218,7 @@ pub(crate) fn export_diagnostics_bundle<R: Runtime>(
         performance_marks,
         recent_errors,
         copied_quicklook_logs,
+        preview_trace_copied,
     )?;
 
     append_app_log(
@@ -276,6 +278,7 @@ fn write_manifest<R: Runtime>(
     performance_marks: Vec<DiagnosticPerformanceMark>,
     recent_errors: Vec<DiagnosticRecentError>,
     quicklook_logs: Vec<String>,
+    preview_trace_copied: bool,
 ) -> Result<(), String> {
     let performance_marks: Vec<_> = performance_marks
         .into_iter()
@@ -303,6 +306,8 @@ fn write_manifest<R: Runtime>(
         "logFormat": "timestamp level subsystem documentId event elapsedMs message",
         "files": {
             "appLog": "app-log.txt",
+            "previewTrace": PREVIEW_TRACE_FILE,
+            "previewTraceCopied": preview_trace_copied,
             "quickLookLogs": quicklook_logs,
             "environment": "environment.txt",
             "sizeReport": "size-report.txt"
@@ -400,12 +405,22 @@ fn quicklook_log_candidates() -> Vec<PathBuf> {
             .join("Data")
             .join("Library");
         for directory in ["Caches/Burrete", "Application Support/Burrete"] {
-            for file_name in ["BurreteV10.log", "Burrete.log"] {
+            for file_name in ["BurreteV10.log", "Burrete.log", PREVIEW_TRACE_FILE] {
                 candidates.push(root.join(directory).join(file_name));
             }
         }
     }
     candidates
+}
+
+fn copy_or_create_empty(source: &Path, destination: &Path) -> Result<bool, String> {
+    if source.exists() {
+        fs::copy(source, destination).map_err(|err| err.to_string())?;
+        Ok(true)
+    } else {
+        fs::write(destination, "").map_err(|err| err.to_string())?;
+        Ok(false)
+    }
 }
 
 fn copy_if_exists(source: &Path, destination: &Path) -> Result<bool, String> {
