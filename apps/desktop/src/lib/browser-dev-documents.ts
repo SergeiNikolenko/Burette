@@ -37,6 +37,11 @@ type MaestroAtom = Atom & {
   chainName: string;
 };
 
+type MaestroPdbBlock = {
+  ctType: string;
+  atoms: MaestroAtom[];
+};
+
 type BoxVectors = [[number, number, number], [number, number, number], [number, number, number]];
 
 const MAX_STRUCTURE_FILE_SIZE = 75 * 1024 * 1024;
@@ -1529,8 +1534,8 @@ function browserDevSourceByteCount(response: Response, fallback: number) {
 
 function convertedDataFromText(text: string, extension: string, label: string): ConvertedStructureData | null {
   if (isMaestroPreviewExtension(extension)) {
-    const bytes = maestroPdbDataFromText(text);
-    return bytes ? { bytes, molstarFormat: "pdb" } : null;
+    const converted = maestroPdbDataFromText(text);
+    return converted ? { molstarFormat: "pdb", ...converted } : null;
   }
   if (extension === "gro") {
     const converted = groPdbDataFromText(text, label);
@@ -1587,8 +1592,22 @@ function atomsFromText(text: string, extension: string) {
 
 function maestroPdbDataFromText(text: string) {
   const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-  const models = parseMaestroPdbModels(lines, MAESTRO_PDB_PREVIEW_ATOM_LIMIT);
-  if (!models?.length) return null;
+  const blocks = parseMaestroPdbBlocks(lines, MAESTRO_PDB_PREVIEW_ATOM_LIMIT);
+  if (!blocks?.length) return null;
+  const bestScore = Math.max(...blocks.map((block) => maestroCtScore(block.ctType)));
+  let models = blocks
+    .filter((block) => maestroCtScore(block.ctType) === bestScore)
+    .map((block) => block.atoms.filter((atom) => !isMaestroWaterAtom(atom)))
+    .filter((atoms) => atoms.length);
+  const hasNonSolventPrimary = models.length > 0;
+  if (!models.length) {
+    models = blocks
+      .filter((block) => maestroCtScore(block.ctType) === bestScore)
+      .map((block) => block.atoms)
+      .filter((atoms) => atoms.length);
+  }
+  if (!models.length) return null;
+
   const pdb = models.length === 1
     ? [
         ...models[0].map((atom, index) => maestroPdbAtomLine(index + 1, atom)),
@@ -1597,7 +1616,28 @@ function maestroPdbDataFromText(text: string) {
         "",
       ].join("\n")
     : maestroModelsToPdb(models);
-  return new TextEncoder().encode(pdb);
+  const bytes = new TextEncoder().encode(pdb);
+  const stagedEntries: Array<Record<string, unknown>> = [];
+  if (hasNonSolventPrimary) {
+    const solventAtoms = maestroStagedSolventAtoms(blocks);
+    if (solventAtoms.length) {
+      const solventPdb = [
+        ...solventAtoms.map((atom, index) => maestroPdbAtomLine(index + 1, atom)),
+        ...pdbConectLines(solventAtoms),
+        "END",
+        "",
+      ].join("\n");
+      stagedEntries.push({
+        label: "Solvent",
+        format: "pdb",
+        binary: false,
+        representation: "solvent-lines",
+        dataBase64: bytesToBase64(new TextEncoder().encode(solventPdb)),
+      });
+    }
+  }
+  if (!stagedEntries.length) return { bytes };
+  return { bytes, stagedEntries };
 }
 
 function groPdbDataFromText(text: string, label: string) {
@@ -1730,6 +1770,38 @@ function isGroWaterResidue(residueName: string) {
   return ["SOL", "WAT", "HOH", "H2O", "TIP", "TIP3", "TIP3P", "TIP4", "TIP4P", "TP3", "TP4", "SPC", "SPCE"].includes(residueName.trim().toUpperCase());
 }
 
+function maestroStagedSolventAtoms(blocks: MaestroPdbBlock[]) {
+  const explicitSolventAtoms = blocks
+    .filter((block) => ["solvent", "ion"].includes(block.ctType.trim().toLowerCase()))
+    .flatMap((block) => block.atoms)
+    .map(normalizeMaestroStagedSolventAtom);
+  if (explicitSolventAtoms.length) return explicitSolventAtoms;
+
+  const fullSystemWaterAtoms = blocks
+    .filter((block) => block.ctType.trim().toLowerCase() === "full_system")
+    .flatMap((block) => block.atoms)
+    .filter(isMaestroWaterAtom)
+    .map(normalizeMaestroStagedSolventAtom);
+  if (fullSystemWaterAtoms.length) return fullSystemWaterAtoms;
+
+  return blocks
+    .flatMap((block) => block.atoms)
+    .filter(isMaestroWaterAtom)
+    .map(normalizeMaestroStagedSolventAtom);
+}
+
+function normalizeMaestroStagedSolventAtom(atom: MaestroAtom): MaestroAtom {
+  return isMaestroWaterAtom(atom) ? { ...atom, residueName: "HOH" } : atom;
+}
+
+function isMaestroWaterAtom(atom: MaestroAtom) {
+  return isMaestroWaterResidue(atom.residueName);
+}
+
+function isMaestroWaterResidue(residueName: string) {
+  return ["SOL", "WAT", "HOH", "H2O", "TIP", "TP3", "TP4", "SPC", "DOD"].includes(residueName.trim().toUpperCase());
+}
+
 function groElementSymbol(atomName: string, residueName: string) {
   const cleaned = atomName.replace(/^[0-9]+/u, "").replace(/[^A-Za-z]/gu, "").toUpperCase();
   if (!cleaned) return null;
@@ -1753,9 +1825,19 @@ function parseMaestroPdbAtoms(lines: string[], atomLimit: number) {
 }
 
 function parseMaestroPdbModels(lines: string[], atomLimit: number) {
+  const blocks = parseMaestroPdbBlocks(lines, atomLimit);
+  if (!blocks?.length) return null;
+  const bestScore = Math.max(...blocks.map((block) => maestroCtScore(block.ctType)));
+  const models = blocks
+    .filter((block) => maestroCtScore(block.ctType) === bestScore)
+    .map((block) => block.atoms)
+    .filter((atoms) => atoms.length);
+  return models.length ? models : null;
+}
+
+function parseMaestroPdbBlocks(lines: string[], atomLimit: number) {
   let currentCtType = "";
-  let bestScore = -1;
-  const bestModels: MaestroAtom[][] = [];
+  const blocks: MaestroPdbBlock[] = [];
   for (let index = 0; index < lines.length; index += 1) {
     const trimmed = lines[index].trim();
     if (trimmed === "f_m_ct {") {
@@ -1827,17 +1909,10 @@ function parseMaestroPdbModels(lines: string[], atomLimit: number) {
       if (atoms.length >= atomLimit) break;
     }
     if (atoms.length) {
-      const score = maestroCtScore(currentCtType);
-      if (score > bestScore) {
-        bestScore = score;
-        bestModels.length = 0;
-        bestModels.push(atoms);
-      } else if (score === bestScore) {
-        bestModels.push(atoms);
-      }
+      blocks.push({ ctType: currentCtType, atoms });
     }
   }
-  return bestModels.length ? bestModels : null;
+  return blocks.length ? blocks : null;
 }
 
 function parseMaestroCtType(lines: string[], startIndex: number) {
