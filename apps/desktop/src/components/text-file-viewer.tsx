@@ -10,8 +10,9 @@ import { formatBytes } from "./format";
 import type { TextFileDocument } from "../types";
 import { textStructureSelectionFromRange, textStructureSelectionFromSelectedText, type TextStructureSelection } from "../lib/text-structure-selection";
 import { MarkdownRichViewer } from "./text-file-viewer/markdown-rich-viewer";
+import { MaestroOutlineViewer } from "./text-file-viewer/maestro-outline-viewer";
 import type { MarkdownOpenPaths } from "./text-file-viewer/markdown-link-navigation";
-import { structureTextHighlighting } from "./text-file-viewer/structure-text-highlighting";
+import { hasStructureTextHighlighting, structureTextHighlighting, textNumberHighlighting } from "./text-file-viewer/structure-text-highlighting";
 
 export function TextFileViewer({
   document,
@@ -31,13 +32,14 @@ export function TextFileViewer({
   const lineDragStartRef = useRef<{ from: number; to: number } | null>(null);
   const languageCompartment = useMemo(() => new Compartment(), [document.id]);
   const markdownDocument = isMarkdown(document);
+  const maestroDocument = isMaestroText(document);
 
   useEffect(() => {
     onStructureSelectionRef.current = onStructureSelection;
   }, [onStructureSelection]);
 
   useEffect(() => {
-    if (markdownDocument) return undefined;
+    if (markdownDocument || maestroDocument) return undefined;
     const parent = parentRef.current;
     if (!parent) return undefined;
 
@@ -216,10 +218,10 @@ export function TextFileViewer({
       view.destroy();
       viewRef.current = null;
     };
-  }, [document, languageCompartment, markdownDocument]);
+  }, [document, languageCompartment, markdownDocument, maestroDocument]);
 
   useEffect(() => {
-    if (markdownDocument) return undefined;
+    if (markdownDocument || maestroDocument) return undefined;
     let cancelled = false;
     const view = viewRef.current;
     if (!view) return undefined;
@@ -232,7 +234,7 @@ export function TextFileViewer({
     return () => {
       cancelled = true;
     };
-  }, [document, languageCompartment, markdownDocument]);
+  }, [document, languageCompartment, markdownDocument, maestroDocument]);
 
   return (
     <div className="text-file-stage">
@@ -248,6 +250,8 @@ export function TextFileViewer({
       </div>
       {markdownDocument ? (
         <MarkdownRichViewer document={document} openPaths={openPaths} />
+      ) : maestroDocument ? (
+        <MaestroOutlineViewer document={document} />
       ) : (
         <div ref={parentRef} className="text-file-editor" />
       )}
@@ -259,16 +263,17 @@ function baseLanguageSupport(document: TextFileDocument): Extension {
   if (isMarkdown(document)) {
     return markdown({ codeLanguages: languages });
   }
+  if (!hasStructureTextHighlighting(document.extension)) return textNumberHighlighting();
   return structureTextHighlighting(document.extension);
 }
 
 async function resolveLanguageSupport(document: TextFileDocument): Promise<Extension> {
   if (isMarkdown(document)) return markdown({ codeLanguages: languages });
-  const structureSupport = structureTextHighlighting(document.extension);
-  if (Array.isArray(structureSupport) ? structureSupport.length > 0 : structureSupport) return structureSupport;
+  if (hasStructureTextHighlighting(document.extension)) return structureTextHighlighting(document.extension);
   const description = LanguageDescription.matchFilename(languages, document.title) ?? matchLanguageName(document.language);
-  if (!description) return [];
-  return description.load();
+  const numberHighlighting = textNumberHighlighting();
+  if (!description) return numberHighlighting;
+  return [await description.load(), numberHighlighting];
 }
 
 function matchLanguageName(language: string) {
@@ -281,6 +286,10 @@ function matchLanguageName(language: string) {
 
 function isMarkdown(document: TextFileDocument) {
   return document.language === "markdown" || ["md", "markdown", "mdx"].includes(document.extension);
+}
+
+function isMaestroText(document: TextFileDocument) {
+  return document.language === "maestro" || ["mae", "maegz", "cms"].includes(document.extension.toLowerCase());
 }
 
 const textViewerTheme = EditorView.theme({
@@ -345,7 +354,7 @@ const textViewerTheme = EditorView.theme({
   ".cm-structure-chain": {
     color: "#2563EB",
   },
-  ".cm-structure-number": {
+  ".cm-structure-number, .cm-structure-number *": {
     color: "#6F5CC2",
   },
   ".cm-structure-property": {

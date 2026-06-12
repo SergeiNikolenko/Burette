@@ -5,6 +5,7 @@ import { delimiter, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { gunzipSync } from "node:zlib";
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -508,6 +509,7 @@ export function browserDevXyzrenderPlugin() {
         try {
           const url = new URL(req.url || "", "http://127.0.0.1");
           const path = url.searchParams.get("path");
+          const maxBytes = textFileReadLimit(url.searchParams.get("maxBytes"));
           if (!path) {
             res.statusCode = 400;
             res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -529,15 +531,16 @@ export function browserDevXyzrenderPlugin() {
             return;
           }
           const bytes = await readFile(filePath);
-          if (looksBinary(bytes)) {
+          const extension = fileExtension(filePath);
+          const textBytes = readableTextBytes(bytes, extension);
+          if (looksBinary(textBytes)) {
             res.statusCode = 400;
             res.setHeader("Content-Type", "application/json; charset=utf-8");
             res.end(JSON.stringify({ error: `${filePath} is not a text file` }));
             return;
           }
-          const truncated = bytes.length > TEXT_FILE_READ_LIMIT;
-          const readableBytes = truncated ? bytes.subarray(0, TEXT_FILE_READ_LIMIT) : bytes;
-          const extension = fileExtension(filePath);
+          const truncated = textBytes.length > maxBytes;
+          const readableBytes = truncated ? textBytes.subarray(0, maxBytes) : textBytes;
           res.statusCode = 200;
           res.setHeader("Content-Type", "application/json; charset=utf-8");
           res.setHeader("Cache-Control", "no-cache");
@@ -792,7 +795,7 @@ function isDevFileReadAllowed(path: string) {
 
 function fileExtension(path: string) {
   const lower = path.toLowerCase();
-  if (lower.endsWith(".mae.gz")) return "mae.gz";
+  if (lower.endsWith(".mae.gz")) return "maegz";
   const index = lower.lastIndexOf(".");
   return index >= 0 ? lower.slice(index + 1) : "";
 }
@@ -809,6 +812,17 @@ function looksBinary(bytes: Buffer) {
   return false;
 }
 
+function textFileReadLimit(value: string | null) {
+  const parsed = Number.parseInt(value ?? "", 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return TEXT_FILE_READ_LIMIT;
+  return Math.min(parsed, TEXT_FILE_READ_LIMIT);
+}
+
+function readableTextBytes(bytes: Buffer, extension: string) {
+  if (extension === "maegz") return gunzipSync(bytes);
+  return bytes;
+}
+
 function languageForTextExtension(extension: string) {
   if (extension === "md" || extension === "markdown" || extension === "mdx") return "markdown";
   if (extension === "sh" || extension === "bash" || extension === "zsh") return "shell";
@@ -822,6 +836,7 @@ function languageForTextExtension(extension: string) {
   if (extension === "css") return "css";
   if (extension === "html" || extension === "htm") return "html";
   if (extension === "xml") return "xml";
+  if (extension === "mae" || extension === "maegz" || extension === "cms") return "maestro";
   return "text";
 }
 
