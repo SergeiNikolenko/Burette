@@ -725,9 +725,12 @@ export default function App() {
       await openDocuments(structureAndTextPaths);
     }
 
-    const textOpenPaths = [...textPaths, ...structureAndTextPaths];
-    if (textOpenPaths.length > 0) {
-      await openTextDocuments(textOpenPaths);
+    if (textPaths.length > 0) {
+      await openTextDocuments(textPaths);
+    }
+
+    if (structureAndTextPaths.length > 0) {
+      await openTextDocuments(structureAndTextPaths, { background: true });
     }
   }, [openDocuments, openTextDocuments]);
 

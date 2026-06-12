@@ -83,6 +83,7 @@ fn atoms_from_text(data: &[u8], extension: &str) -> Option<Vec<Atom>> {
         "vasp" => parse_vasp_atoms(&lines),
         "in" => parse_quantum_espresso_atoms(&lines),
         "out" => parse_orca_atoms(&lines),
+        "abi" => parse_abinit_atoms(&lines),
         "cif" | "mmcif" | "mcif" => parse_cif_core_atoms(&lines),
         "cms" | "mae" | "maegz" => parse_maestro_atoms(&lines, MAESTRO_PREVIEW_ATOM_LIMIT),
         _ => None,
@@ -277,6 +278,74 @@ fn parse_best_coordinate_block(lines: &[&str]) -> Option<Vec<Atom>> {
         best = current;
     }
     (best.len() >= 2).then_some(best)
+}
+
+fn parse_abinit_atoms(lines: &[&str]) -> Option<Vec<Atom>> {
+    let mut atom_count = None;
+    let mut atomic_numbers: Vec<usize> = Vec::new();
+    let mut type_indices: Vec<usize> = Vec::new();
+    let mut coordinate_start = None;
+
+    for (index, line) in lines.iter().enumerate() {
+        let clean_line = strip_inline_comment(line);
+        let parts = fields(&clean_line);
+        let Some(key) = parts.first().map(|value| value.to_ascii_lowercase()) else {
+            continue;
+        };
+        match key.as_str() {
+            "natom" => {
+                atom_count = parts.get(1).and_then(|value| value.parse::<usize>().ok());
+            }
+            "znucl" => {
+                atomic_numbers.extend(
+                    parts
+                        .iter()
+                        .skip(1)
+                        .filter_map(|value| value.parse::<usize>().ok()),
+                );
+            }
+            "typat" => {
+                type_indices.extend(
+                    parts
+                        .iter()
+                        .skip(1)
+                        .filter_map(|value| value.parse::<usize>().ok()),
+                );
+            }
+            "xangst" => {
+                coordinate_start = Some(index + 1);
+            }
+            _ => {}
+        }
+    }
+
+    let atom_count = atom_count?;
+    let coordinate_start = coordinate_start?;
+    if atom_count == 0
+        || atomic_numbers.is_empty()
+        || type_indices.len() < atom_count
+        || coordinate_start + atom_count > lines.len()
+    {
+        return None;
+    }
+
+    let mut atoms = Vec::with_capacity(atom_count);
+    for index in 0..atom_count {
+        let clean_line = strip_inline_comment(lines[coordinate_start + index]);
+        let parts = fields(&clean_line);
+        let x = parts.first()?.parse::<f64>().ok()?;
+        let y = parts.get(1)?.parse::<f64>().ok()?;
+        let z = parts.get(2)?.parse::<f64>().ok()?;
+        let type_index = type_indices[index].checked_sub(1)?;
+        let atomic_number = *atomic_numbers.get(type_index)?;
+        atoms.push(Atom {
+            symbol: symbol_for_atomic_number(atomic_number).to_string(),
+            x,
+            y,
+            z,
+        });
+    }
+    (atoms.len() == atom_count).then_some(atoms)
 }
 
 fn parse_maestro_atoms(lines: &[&str], atom_limit: usize) -> Option<Vec<Atom>> {
@@ -1255,6 +1324,14 @@ fn fields(line: &str) -> Vec<&str> {
     line.split_whitespace().collect()
 }
 
+fn strip_inline_comment(line: &str) -> String {
+    line.split('#')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_string()
+}
+
 fn parse_vector(line: &str, scale: f64) -> Option<(f64, f64, f64)> {
     let parts = fields(line);
     Some((
@@ -1326,6 +1403,26 @@ footer
         let xyz = String::from_utf8(xyz_data_from_text(data, "out", "bimp.out").unwrap()).unwrap();
         assert!(xyz.starts_with("2\nConverted from bimp.out\n"));
         assert!(xyz.contains("O -2.304659 -0.473599 0.509723"));
+    }
+
+    #[test]
+    fn converts_abinit_xangst_section_to_pdb_for_molstar() {
+        let data = br#"
+# Caffeine fragment
+natom 3
+znucl 6 7 8
+typat 1 2 3
+xangst
+  8.883879  8.903825  7.568465
+  9.329931 10.773719  5.875216
+  9.702509  7.924807  8.144454
+"#;
+        let converted = converted_data_from_text(data, "abi", "caffeine.abi").unwrap();
+        let pdb = String::from_utf8(converted.data).unwrap();
+        assert!(pdb.starts_with("REMARK Converted from caffeine.abi\nHETATM"));
+        assert!(pdb.contains("HETATM    1 C    MOL A   1       8.884   8.904   7.568"));
+        assert!(pdb.contains("HETATM    2 N    MOL A   1       9.330  10.774   5.875"));
+        assert!(pdb.contains("HETATM    3 O    MOL A   1       9.703   7.925   8.144"));
     }
 
     #[test]
