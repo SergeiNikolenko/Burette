@@ -1,6 +1,4 @@
 import type { CSSProperties } from "react";
-import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
 import { DockPanel } from "./dock-panel";
 import { ViewerArea } from "./editor-area";
 import { EditorTabs } from "./editor-area/editor-tabs";
@@ -92,7 +90,7 @@ export function AppLayout({
               onClick={onToggleSidebar}
               aria-label={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"}
             >
-              <HugeiconsIcon icon={SidebarLeftIcon} size={18} color="currentColor" strokeWidth={2} />
+              <DockToggleIcon />
             </button>
           </div>
           <div className="chrome-trailing-controls" data-tauri-drag-region>
@@ -105,7 +103,7 @@ export function AppLayout({
               onClick={() => actions.toggleDock("bottom")}
               aria-label={state.bottomDockOpen ? "Hide bottom dock" : "Show bottom dock"}
             >
-              <HugeiconsIcon className="dock-toggle-icon-bottom" icon={SidebarLeftIcon} size={18} color="currentColor" strokeWidth={2} />
+              <DockToggleIcon className="dock-toggle-icon-bottom" />
               <ShortcutTooltip label={state.bottomDockOpen ? "Hide bottom dock" : "Show bottom dock"} shortcut="⌘J" />
             </button>
             <button
@@ -116,7 +114,7 @@ export function AppLayout({
               onClick={() => actions.toggleDock("right")}
               aria-label={state.rightDockOpen ? "Hide right dock" : "Show right dock"}
             >
-              <HugeiconsIcon className="dock-toggle-icon-right" icon={SidebarLeftIcon} size={18} color="currentColor" strokeWidth={2} />
+              <DockToggleIcon className="dock-toggle-icon-right" />
               <ShortcutTooltip label={state.rightDockOpen ? "Hide right dock" : "Show right dock"} shortcut="⌥⌘B" />
             </button>
           </div>
@@ -180,5 +178,21 @@ export function AppLayout({
         <NotificationPopup notice={state.status} onDismiss={onDismissStatus} />
       )}
     </main>
+  );
+}
+
+function DockToggleIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="18"
+      height="18"
+      viewBox="0 0 18 18"
+      fill="none"
+      aria-hidden="true"
+    >
+      <rect x="2.25" y="2.25" width="13.5" height="13.5" rx="3.25" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M6.75 4.75V13.25" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
   );
 }
