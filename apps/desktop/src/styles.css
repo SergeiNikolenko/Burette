@@ -1841,9 +1841,10 @@ img.radix-menu-item-icon {
   min-height: 0;
 }
 .ketcher-page-header {
-  min-height: 58px;
-  padding: 10px 18px;
-  border-bottom: 1px solid var(--line-subtler);
+  width: fit-content;
+  max-width: calc(100% - 36px);
+  min-height: 48px;
+  padding: 8px 18px;
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -1972,12 +1973,15 @@ img.radix-menu-item-icon {
   font-weight: 400;
   font-variant-numeric: tabular-nums;
 }
+.ketcher-page-actions .ketcher-theme-control {
+  min-width: 64px;
+}
 .ketcher-page-body {
   min-height: 0;
-  padding: 18px;
+  padding: 0 18px 12px;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
-  gap: 10px;
+  gap: 8px;
 }
 .ketcher-editor-shell {
   position: relative;
@@ -1992,19 +1996,9 @@ img.radix-menu-item-icon {
   --ketcher-top-toolbar-icon-size: clamp(6px, calc(24px * var(--ketcher-ui-scale, 1)), 30px);
   --ketcher-side-rail-width: calc(var(--ketcher-toolbar-button-size) + 13px);
   border: 1px solid var(--line-subtler);
-  background: #f5f5f5;
+  background: #fcfcfc;
   overflow: hidden;
   isolation: isolate;
-}
-.ketcher-editor-scale-frame,
-.ketcher-editor-root,
-.ketcher-editor-root > [class*="Editor-module_editor"],
-.ketcher-editor-shell [class*="Editor-module_editorsWrapper"],
-.ketcher-editor-shell [class*="App-module_app"],
-.ketcher-editor-shell [data-testid="top-toolbar"],
-.ketcher-editor-shell [data-testid="ketcher-canvas"] {
-  min-width: 0;
-  max-width: 100%;
 }
 .ketcher-editor-scale-frame {
   position: absolute;
@@ -2023,32 +2017,10 @@ img.radix-menu-item-icon {
 .ketcher-editor-root {
   position: relative;
 }
-.ketcher-editor-shell [class*="Editor-module_editor"],
-.ketcher-editor-shell [class*="StructEditor-module_canvas"],
-.ketcher-editor-shell [class*="StructEditor-module_intermediateCanvas"],
-.ketcher-editor-shell [data-testid="canvas"],
-.ketcher-editor-shell [data-testid="drawn-structures"],
-.ketcher-editor-shell [data-testid="drawn-structures"] svg,
-.ketcher-editor-shell [data-testid="ketcher-canvas"],
-.ketcher-editor-shell [data-testid="ketcher-canvas"] svg {
-  background-color: #f5f5f5;
-}
-.ketcher-editor-shell [data-testid="ketcher-canvas"] {
-  position: relative;
-  z-index: 1;
-}
 .ketcher-editor-shell [class*="App-module_app"] {
   grid-template-columns: minmax(var(--ketcher-side-rail-width), max-content) 1fr minmax(var(--ketcher-side-rail-width), max-content);
 }
-.ketcher-editor-shell [data-testid="top-toolbar"],
-.ketcher-editor-shell [data-testid="left-toolbar"],
-.ketcher-editor-shell [data-testid="right-toolbar"],
-.ketcher-editor-shell [data-testid="bottom-toolbar"] {
-  position: relative;
-  z-index: 2;
-}
 .ketcher-editor-shell [data-testid="top-toolbar"] {
-  width: min(100%, calc(100% * var(--ketcher-ui-scale, 1))) !important;
   height: var(--ketcher-top-toolbar-height) !important;
   min-height: var(--ketcher-top-toolbar-height) !important;
 }
@@ -2103,17 +2075,536 @@ img.radix-menu-item-icon {
 .ketcher-editor-shell [data-testid="bottom-toolbar"] > div > div {
   margin-bottom: var(--ketcher-toolbar-group-gap) !important;
 }
-.ketcher-empty-watermark {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  z-index: 3;
-  width: min(164px, 26vw, 28vh);
-  height: auto;
-  opacity: 0.12;
-  pointer-events: none;
-  transform: translate(-50%, -50%);
-  filter: grayscale(0.12);
+.app-shell[data-effective-theme="light"] .ketcher-editor-shell {
+  --ketcher-light-canvas: #ffffff;
+  --ketcher-light-panel: #ffffff;
+  --color-background-canvas: var(--ketcher-light-canvas);
+  --color-background-primary: var(--ketcher-light-panel);
+  --color-background-secondary: var(--ketcher-light-panel);
+  background: var(--ketcher-light-canvas);
+  color-scheme: light;
+}
+.app-shell[data-effective-theme="light"] .ketcher-editor-shell [data-testid="top-toolbar"],
+.app-shell[data-effective-theme="light"] .ketcher-editor-shell [data-testid="top-toolbar"] > div,
+.app-shell[data-effective-theme="light"] .ketcher-editor-shell [class*="EditorWrapper"],
+.app-shell[data-effective-theme="light"] .ketcher-editor-shell [class*="MenuLayout"],
+.app-shell[data-effective-theme="light"] .ketcher-editor-shell [class*="StyledGroup"] {
+  background-color: var(--ketcher-light-panel);
+}
+.ketcher-editor-shell [class*="Settings-module_settings"] {
+  width: min(420px, calc(100% - 32px)) !important;
+  max-width: calc(100% - 32px);
+}
+.ketcher-editor-shell [class*="Settings-module_settings"] [class*="Accordion-module_accordionSummary"],
+.ketcher-editor-shell [class*="Settings-module_settings"] [class*="Accordion-module_accordionDetailsWrapper"] {
+  width: 100% !important;
+  box-sizing: border-box;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell {
+  --ketcher-dark-canvas: #101316;
+  --ketcher-dark-panel: #171b20;
+  --ketcher-dark-panel-raised: #1e242b;
+  --ketcher-dark-panel-soft: #242b33;
+  --ketcher-dark-panel-hover: #2d3540;
+  --ketcher-dark-border: #35404a;
+  --ketcher-dark-border-soft: #2a323b;
+  --ketcher-dark-text: #edf2f6;
+  --ketcher-dark-muted: #9ba8b3;
+  --ketcher-dark-faint: #66727d;
+  --ketcher-dark-accent: #5bc6d0;
+  --ketcher-dark-structure: #dce5ed;
+  --color-background-canvas: var(--ketcher-dark-canvas);
+  --color-background-primary: var(--ketcher-dark-panel);
+  --color-background-secondary: var(--ketcher-dark-panel-soft);
+  --color-border-primary: var(--ketcher-dark-border);
+  --color-border-secondary: #4f5c67;
+  --color-text-primary: var(--ketcher-dark-text);
+  --color-text-light: var(--ketcher-dark-muted);
+  --color-text-dark: var(--ketcher-dark-text);
+  --color-tab-regular: var(--ketcher-dark-panel);
+  --color-tab-active: var(--ketcher-dark-panel-raised);
+  --color-tab-content: var(--ketcher-dark-panel);
+  --color-input-text-default: var(--ketcher-dark-muted);
+  --color-input-text-active: var(--ketcher-dark-text);
+  --color-input-background-primary: var(--ketcher-dark-panel);
+  --color-input-background-default: var(--ketcher-dark-panel-soft);
+  --color-input-background-hover: var(--ketcher-dark-panel-hover);
+  --color-input-background-disabled: var(--ketcher-dark-panel-raised);
+  --color-input-border-regular: var(--ketcher-dark-border);
+  --color-dropdown-primary: var(--ketcher-dark-text);
+  --color-dropdown-secondary: var(--ketcher-dark-panel);
+  --color-dropdown-hover: var(--ketcher-dark-panel-hover);
+  --color-tooltip-background: var(--ketcher-dark-panel);
+  --color-tooltip-text: var(--ketcher-dark-text);
+  --color-divider: var(--ketcher-dark-border);
+  --color-icon-grey: var(--ketcher-dark-muted);
+  --border-regular: 1px solid var(--ketcher-dark-border);
+  --border-small: 1px solid var(--ketcher-dark-border-soft);
+  --outline-color: var(--ketcher-dark-border);
+  --outline-selected-color: var(--ketcher-dark-accent);
+  --outline-selected-small: 1px solid var(--ketcher-dark-accent);
+  --shadow-regular: 0 1px 1px rgb(0 0 0 / 0.36);
+  --shadow-mainLayoutBlocks: 0 2px 10px rgb(0 0 0 / 0.28);
+  background: var(--ketcher-dark-canvas);
+  color-scheme: dark;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Editor-module_editor"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="EditorWrapper"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="RowMain"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Row"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="MenuLayout"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StyledGroup"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="BottomToolbar-module_group"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="LeftToolbar-module_groupItem"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="RightToolbar-module_buttons"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="ToolbarMultiToolItem-module_portal"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Dialog-module_dialog"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="InfoModal-module_infoModalWindow"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] {
+  background-color: var(--ketcher-dark-panel);
+  color: var(--ketcher-dark-text);
+  border-color: var(--ketcher-dark-border-soft);
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StructEditor-module_canvas"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StructEditor-module_intermediateCanvas"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="ketcher-canvas"] {
+  background-color: var(--ketcher-dark-canvas);
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures {
+  color: var(--ketcher-dark-structure);
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"] :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#000"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"] :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#000000"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"] :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#333"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"] :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#333333"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"] :is(path, line, polyline, polygon, circle, ellipse, rect)[style*="stroke: rgb(0, 0, 0)"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"] :is(path, line, polyline, polygon, circle, ellipse, rect)[style*="stroke: rgb(51, 51, 51)"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#000"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#000000"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#333"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#333333"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures :is(path, line, polyline, polygon, circle, ellipse, rect)[style*="stroke: rgb(0, 0, 0)"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures :is(path, line, polyline, polygon, circle, ellipse, rect)[style*="stroke: rgb(51, 51, 51)"] {
+  stroke: var(--ketcher-dark-structure) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"] :is(path, text, tspan)[fill="#000"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"] :is(path, text, tspan)[fill="#000000"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"] :is(path, text, tspan)[fill="#333"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"] :is(path, text, tspan)[fill="#333333"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"] :is(path, text, tspan)[style*="fill: rgb(0, 0, 0)"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="drawn-structures"] :is(path, text, tspan)[style*="fill: rgb(51, 51, 51)"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures :is(path, text, tspan)[fill="#000"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures :is(path, text, tspan)[fill="#000000"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures :is(path, text, tspan)[fill="#333"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures :is(path, text, tspan)[fill="#333333"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures :is(path, text, tspan)[style*="fill: rgb(0, 0, 0)"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .drawn-structures :is(path, text, tspan)[style*="fill: rgb(51, 51, 51)"] {
+  fill: var(--ketcher-dark-structure) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] [data-testid="bond"][stroke="#000"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] [data-testid="bond"][stroke="#000000"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] [data-testid="bond"][stroke="#333"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] [data-testid="bond"][stroke="#333333"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] [data-testid="bond"][style*="stroke: rgb(0, 0, 0)"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] [data-testid="bond"][style*="stroke: rgb(51, 51, 51)"] {
+  stroke: var(--ketcher-dark-structure) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] [data-testid="bond"][fill="#000"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] [data-testid="bond"][fill="#000000"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] [data-testid="bond"][fill="#333"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] [data-testid="bond"][fill="#333333"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] [data-testid="bond"][style*="fill: rgb(0, 0, 0)"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] [data-testid="bond"][style*="fill: rgb(51, 51, 51)"] {
+  fill: var(--ketcher-dark-structure) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="ActionButton-module_button"]:not([class*="selected"]),
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TextButton-module_textButton"]:not([class*="isActive"]),
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="SpecialSymbolsButton-module_textButton"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Atom-module_atom"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StyledButton"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="ArrowScroll-module_scroll"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="RNABtn"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="DNABtn"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="PEPTIDEBtn"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="NewSequencePlusButtonIcon"] {
+  background-color: transparent;
+  color: var(--ketcher-dark-text);
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StyledIconButton"]:not(:disabled) {
+  color: var(--ketcher-dark-muted);
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StyledIconButton"]:not(:disabled):hover {
+  background-color: var(--ketcher-dark-panel-hover);
+  color: var(--ketcher-dark-text);
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StyledIconButton"]:disabled {
+  color: var(--ketcher-dark-faint);
+  opacity: 0.42;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StyledIconButton"] svg {
+  color: currentColor;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StyledIconButton"] path:not([fill="none"]) {
+  fill: currentColor;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StyledIconButton"] [stroke]:not([stroke="none"]) {
+  stroke: currentColor;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:disabled),
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] .MuiButtonBase-root:not(:disabled) {
+  color: var(--ketcher-dark-muted);
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:disabled):hover,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] .MuiButtonBase-root:not(:disabled):hover {
+  background-color: var(--ketcher-dark-panel-hover);
+  color: var(--ketcher-dark-text);
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:disabled,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] .Mui-disabled {
+  color: var(--ketcher-dark-faint);
+  opacity: 0.45;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button svg {
+  color: currentColor;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg * {
+  color: var(--ketcher-dark-muted) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button :is(path, circle, rect, polygon, polyline, ellipse, use):not([fill="none"]) {
+  fill: currentColor;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button :is(path, circle, rect, polygon, polyline, line, ellipse, use)[stroke]:not([stroke="none"]),
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button line {
+  stroke: currentColor;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse)[fill="#fff"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse)[fill="#FFF"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse)[fill="#ffffff"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse)[fill="#FFFFFF"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse)[fill="white"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse)[style*="fill: white"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, ellipse)[style*="fill: rgb(255, 255, 255)"] {
+  fill: var(--ketcher-dark-muted) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, line, ellipse)[stroke="#fff"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, line, ellipse)[stroke="#FFF"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, line, ellipse)[stroke="#ffffff"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, line, ellipse)[stroke="#FFFFFF"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, line, ellipse)[stroke="white"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, line, ellipse)[style*="stroke: white"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="top-toolbar"] button:not(:hover):not(:disabled) svg :is(path, circle, rect, polygon, polyline, line, ellipse)[style*="stroke: rgb(255, 255, 255)"] {
+  stroke: var(--ketcher-dark-muted) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="polymer-toggler"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="zoom-selector"] {
+  color: var(--ketcher-dark-text);
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="right-toolbar"] [data-testid="H-button"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="right-toolbar"] [data-testid="H-button"] span,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="right-toolbar"] [data-testid="C-button"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="right-toolbar"] [data-testid="C-button"] span {
+  color: var(--ketcher-dark-text);
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="ActionButton-module_button"]:not([class*="selected"]):hover,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TextButton-module_textButton"]:not([class*="isActive"]):hover,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="SpecialSymbolsButton-module_textButton"]:hover,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Atom-module_atom"]:hover,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StyledButton"]:hover,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="RNABtn"]:hover,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="DNABtn"]:hover,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="PEPTIDEBtn"]:hover {
+  background-color: var(--ketcher-dark-panel-hover);
+  color: var(--ketcher-dark-accent);
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TextButton-module_textButton"]:not([class*="isActive"]) > svg,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="SpecialSymbolsButton-module_textButton"] > svg,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="ToolbarMultiToolItem-module_icon"]:not([class*="iconSelected"]) {
+  fill: var(--ketcher-dark-text);
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TextButton-module_textButton"]:not([class*="isActive"]):hover > svg,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="SpecialSymbolsButton-module_textButton"]:hover > svg {
+  fill: var(--ketcher-dark-accent);
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell input[type="search"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell input[type="text"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell input[type="number"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell textarea,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell select {
+  background-color: var(--ketcher-dark-panel-soft);
+  color: var(--ketcher-dark-text);
+  border-color: var(--ketcher-dark-border);
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Select-module_selectContainer"] .MuiSelect-select,
+.app-shell[data-effective-theme="dark"] [class*="Select-module_dropdownList"] .MuiPaper-root,
+.app-shell[data-effective-theme="dark"] [class*="Select-module_dropdownList"] .MuiList-root.MuiMenu-list,
+.app-shell[data-effective-theme="dark"] [class*="Select-module_dropdownList"] .MuiMenuItem-root {
+  background-color: var(--ketcher-dark-panel);
+  color: var(--ketcher-dark-text);
+}
+.app-shell[data-effective-theme="dark"] [class*="Select-module_dropdownList"] .MuiMenuItem-root:hover {
+  background-color: var(--ketcher-dark-panel-hover);
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="MonomerLibraryHeader"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="MonomerLibraryInputContainer"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="MonomerLibraryToggle"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="StyledHeader"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="RnaTabsContainer"] {
+  background-color: var(--ketcher-dark-panel-raised);
+  color: var(--ketcher-dark-text);
+  border-color: var(--ketcher-dark-border-soft);
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] input,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [role="tab"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="Mui"] {
+  background-color: transparent;
+  color: var(--ketcher-dark-text);
+  border-color: var(--ketcher-dark-border-soft);
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="TabPanelContent"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="TabPanelBox"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="RnaBuilderContainer"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="RnaAccordionContainer"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="RnaEditorContainer"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="RnaTabContent"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="CompactDetailsContainer"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="DetailsContainer"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="GroupContainerRow"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="ItemsContainer"] {
+  background-color: var(--ketcher-dark-panel) !important;
+  color: var(--ketcher-dark-text);
+  border-color: var(--ketcher-dark-border-soft);
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="Card-Card"] {
+  background-color: var(--ketcher-dark-panel-soft);
+  color: var(--ketcher-dark-text);
+  border-color: var(--ketcher-dark-border-soft);
+  box-shadow: none;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="Card-Card"]::after {
+  filter: saturate(0.72) brightness(0.82);
+  opacity: 0.58;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="Card-Card"]:hover {
+  background-color: var(--ketcher-dark-panel-hover);
+  border-color: #46535f;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="Accordion"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="accordion"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-library"] [class*="summary"] {
+  background-color: var(--ketcher-dark-panel);
+  color: var(--ketcher-dark-muted);
+  border-color: var(--ketcher-dark-border-soft);
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_tabsContent"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_resultsContainer"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_tableContent"] {
+  background-color: var(--ketcher-dark-panel) !important;
+  color: var(--ketcher-dark-text) !important;
+  border-color: var(--ketcher-dark-border-soft) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialogHeader"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_inputContainer"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_tabs"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_tabs"] .MuiTabs-flexContainer {
+  background-color: var(--ketcher-dark-panel-raised) !important;
+  color: var(--ketcher-dark-text) !important;
+  border-color: var(--ketcher-dark-border-soft) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_tabs"] .MuiTab-root {
+  background-color: transparent !important;
+  color: var(--ketcher-dark-muted) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_tabs"] .MuiTab-root:hover,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_tabs"] .MuiTab-root.Mui-selected {
+  color: var(--ketcher-dark-text) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_tabs"] .MuiTabs-indicator {
+  background-color: var(--ketcher-dark-accent) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] [data-testid="close-window-button"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] [class*="Dialog-module_buttonTop"] {
+  background-color: transparent !important;
+  color: var(--ketcher-dark-text) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] [data-testid="close-window-button"]:hover,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] [class*="Dialog-module_buttonTop"]:hover {
+  background-color: var(--ketcher-dark-panel-hover) !important;
+  color: var(--ketcher-dark-text) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] [class*="Dialog-module_closeButton"] {
+  color: currentColor !important;
+  fill: currentColor !important;
+  stroke: currentColor !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] [class*="Dialog-module_closeButton"] :is(path, line, polyline, polygon, circle, ellipse, rect) {
+  fill: currentColor !important;
+  stroke: currentColor !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Dialog-module_header"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Dialog-module_body"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Dialog-module_footer"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_headerContent"] {
+  background-color: var(--ketcher-dark-panel) !important;
+  color: var(--ketcher-dark-text) !important;
+  border-color: var(--ketcher-dark-border-soft) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_title"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] label,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] fieldset {
+  color: var(--ketcher-dark-text) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_accordion"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Accordion-module_accordionWrapper"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Accordion-module_accordionDetailsWrapper"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Accordion-module_accordionDetails"] {
+  background-color: var(--ketcher-dark-panel) !important;
+  color: var(--ketcher-dark-text) !important;
+  border-color: var(--ketcher-dark-border-soft) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Accordion-module_accordionSummaryWrapper"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Accordion-module_accordionSummary"] {
+  background-color: var(--ketcher-dark-panel-raised) !important;
+  color: var(--ketcher-dark-text) !important;
+  border-color: var(--ketcher-dark-border-soft) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Accordion-module_accordionSummaryWrapper"]:hover {
+  background-color: var(--ketcher-dark-panel-hover) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Accordion-module_groupLabel"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Accordion-module_groupIcon"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Accordion-module_expandIcon"] {
+  color: var(--ketcher-dark-text) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [data-testid="close-window-button"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Dialog-module_buttonTop"] {
+  background-color: transparent !important;
+  color: var(--ketcher-dark-text) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [data-testid="close-window-button"]:hover,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Dialog-module_buttonTop"]:hover {
+  background-color: var(--ketcher-dark-panel-hover) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Dialog-module_closeButton"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] svg {
+  color: currentColor !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] svg :is(path, circle, rect, polygon, polyline, ellipse, use):not([fill="none"]) {
+  fill: currentColor !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] svg :is(path, circle, rect, polygon, polyline, line, ellipse, use)[stroke]:not([stroke="none"]) {
+  stroke: currentColor !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Dialog-module_cancel"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Settings-module_button"] {
+  background-color: var(--ketcher-dark-panel-soft) !important;
+  color: var(--ketcher-dark-text) !important;
+  border-color: var(--ketcher-dark-border) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Dialog-module_cancel"]:hover,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="Settings-module_settings"] [class*="Settings-module_button"]:hover {
+  background-color: var(--ketcher-dark-panel-hover) !important;
+  border-color: var(--ketcher-dark-accent) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] .MuiAccordion-root,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] .MuiAccordionSummary-root,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] .MuiAccordionDetails-root,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_accordionSummary"] {
+  background-color: var(--ketcher-dark-panel) !important;
+  color: var(--ketcher-dark-text) !important;
+  border-color: var(--ketcher-dark-border-soft) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] .MuiAccordion-root::before {
+  background-color: var(--ketcher-dark-border-soft) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] .MuiAccordion-root:hover,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_accordionSummary"]:hover {
+  background-color: var(--ketcher-dark-panel-hover) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_td"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_structTitle"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_button"] {
+  background-color: var(--ketcher-dark-panel) !important;
+  color: var(--ketcher-dark-text) !important;
+  border-color: var(--ketcher-dark-border-soft) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_td"]:hover {
+  background-color: var(--ketcher-dark-panel-hover) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_selected"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_selectedTitle"] {
+  background-color: var(--ketcher-dark-panel-hover) !important;
+  color: var(--ketcher-dark-accent) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_saveButton"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="save-to-sdf-button"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="add-to-canvas-button"] {
+  color: var(--ketcher-dark-text) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_saveButton"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="save-to-sdf-button"] {
+  background-color: var(--ketcher-dark-panel-soft) !important;
+  border-color: var(--ketcher-dark-border) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_saveButton"]:hover,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="save-to-sdf-button"]:hover {
+  background-color: var(--ketcher-dark-panel-hover) !important;
+  border-color: var(--ketcher-dark-accent) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] input[type="search"] {
+  background-color: var(--ketcher-dark-panel-soft) !important;
+  color: var(--ketcher-dark-text) !important;
+  border-color: var(--ketcher-dark-border) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] input[type="search"]::placeholder {
+  color: var(--ketcher-dark-muted) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] svg,
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialogHeader"] svg {
+  color: currentColor;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] svg :is(path, circle, rect, polygon, polyline, ellipse, use):not([fill="none"]),
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialogHeader"] svg :is(path, circle, rect, polygon, polyline, ellipse, use):not([fill="none"]) {
+  fill: currentColor;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialog_body"] svg :is(path, circle, rect, polygon, polyline, line, ellipse, use)[stroke]:not([stroke="none"]),
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="template-lib-module_dialogHeader"] svg :is(path, circle, rect, polygon, polyline, line, ellipse, use)[stroke]:not([stroke="none"]) {
+  stroke: currentColor;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"] :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#000"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"] :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#000000"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"] :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#333"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"] :is(path, line, polyline, polygon, circle, ellipse, rect)[stroke="#333333"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"] :is(path, line, polyline, polygon, circle, ellipse, rect)[style*="stroke: rgb(0, 0, 0)"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"] :is(path, line, polyline, polygon, circle, ellipse, rect)[style*="stroke: rgb(51, 51, 51)"] {
+  stroke: var(--ketcher-dark-structure) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"] :is(path, text, tspan)[fill="#000"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"] :is(path, text, tspan)[fill="#000000"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"] :is(path, text, tspan)[fill="#333"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"] :is(path, text, tspan)[fill="#333333"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"] :is(path, text, tspan)[style*="fill: rgb(0, 0, 0)"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TemplateTable-module_struct"] :is(path, text, tspan)[style*="fill: rgb(51, 51, 51)"] {
+  fill: var(--ketcher-dark-structure) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StyledArrowScrollWrapper"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="NewSequencePlusButtonIcon"] {
+  background-color: var(--ketcher-dark-panel-raised) !important;
+  color: var(--ketcher-dark-text) !important;
+  border-color: var(--ketcher-dark-border-soft) !important;
+}
+.app-shell[data-effective-theme="dark"] .ketcher-drop-overlay {
+  background: rgb(10 12 14 / 0.72);
+}
+.app-shell[data-effective-theme="dark"] .ketcher-drop-overlay > div {
+  background: var(--ketcher-dark-panel);
+  border-color: var(--ketcher-dark-border);
+  color: var(--ketcher-dark-text);
 }
 .ketcher-drop-overlay {
   position: absolute;

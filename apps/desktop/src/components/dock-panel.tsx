@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Suspense, lazy, useMemo, useState } from "react";
 import {
   Atom01Icon,
   File02Icon,
@@ -13,9 +13,12 @@ import type { ShellActions, ShellViewState } from "./types";
 import { showNativeContextMenu } from "./native-context-menu";
 import { formatBytes } from "./format";
 import { ViewerFrame } from "./editor-area/viewer-frame";
-import { KetcherPage } from "./ketcher-page";
 import { TextFileViewer } from "./text-file-viewer";
 import { CloseIcon } from "./close-icon";
+
+const KetcherPage = lazy(() => import("./ketcher-page").then((module) => ({
+  default: module.KetcherPage,
+})));
 
 type DockPanelProps = {
   area: DockArea;
@@ -209,7 +212,9 @@ function DockPanelContent({
     if (dockTool === "ketcher") {
       return (
         <div className="dock-viewer">
-          <KetcherPage location={{ kind: "ketcher" }} state={state} actions={actions} isActive acceptImportRequests={false} />
+          <Suspense fallback={<div className="ketcher-loading">Loading editor</div>}>
+            <KetcherPage location={{ kind: "ketcher" }} state={state} actions={actions} isActive acceptImportRequests={false} />
+          </Suspense>
         </div>
       );
     }
