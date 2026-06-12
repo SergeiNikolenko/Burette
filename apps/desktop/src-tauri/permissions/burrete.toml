@@ -34,6 +34,7 @@ commands.allow = [
   "open_logs_folder",
   "open_external_url",
   "existing_paths",
+  "open_new_workspace_window",
   "read_external_preview_svg",
   "read_viewer_runtime_file_base64",
   "reveal_path",

@@ -2,7 +2,8 @@
   "identifier": "default",
   "description": "Minimal permissions for the Burrete desktop shell",
   "windows": [
-    "main"
+    "main",
+    "workspace-*"
   ],
   "permissions": [
     "core:event:allow-listen",

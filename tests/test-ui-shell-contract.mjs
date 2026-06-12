@@ -80,6 +80,7 @@ const [
   settingsSections,
   browserDevDocuments,
   temporaryDocuments,
+  windowScope,
   viteConfig,
   bundleReportScript,
   previewRuntimeViewer,
@@ -176,6 +177,7 @@ const [
   source('apps/desktop/src/lib/settings-sections.ts'),
   source('apps/desktop/src/lib/browser-dev-documents.ts'),
   source('apps/desktop/src/lib/temporary-documents.ts'),
+  source('apps/desktop/src/lib/window-scope.ts'),
   source('apps/desktop/vite.config.ts'),
   source('scripts/bundle-report.mjs'),
   source('apps/desktop/src-tauri/src/preview/runtime_viewer.rs'),
@@ -530,7 +532,11 @@ assert.match(viewer, /let collapsed = false;/);
 assert.match(viewer, /function defaultToolbarTop\(\)/);
 assert.match(sidebarHook, /toggleSidebar/);
 assert.match(shellStore, /export const useShellStore = create<ShellState>/);
-assert.match(shellStore, /name: "burrete\.shell\.ui"/);
+assert.match(shellStore, /name: workspaceStorageKey\("burrete\.shell\.ui"\)/);
+assert.match(moleculeStore, /name: workspaceStorageKey\("burrete\.molecule\.session"\)/);
+assert.match(windowScope, /burreteWindow/);
+assert.match(windowScope, /if \(!windowLabel \|\| windowLabel === "main"\) return ""/);
+assert.match(windowScope, /replace\(\/\[\^A-Za-z0-9_-\]\/g, "-"\)/);
 assert.match(shellStore, /projectsOpen: true/);
 assert.match(shellStore, /projectRoots: \[\]/);
 assert.match(shellStore, /pinnedProjectRoots: \[\]/);
@@ -593,7 +599,7 @@ assert.match(moleculeStore, /activeDocumentId: null/);
 assert.match(moleculeStore, /recentStructures: \[\]/);
 assert.match(moleculeStore, /rememberRecentStructures:/);
 assert.match(moleculeStore, /clearRecentStructures:/);
-assert.match(moleculeStore, /name: "burrete\.molecule\.session"/);
+assert.match(moleculeStore, /name: workspaceStorageKey\("burrete\.molecule\.session"\)/);
 assert.match(moleculeStore, /function shouldIgnorePersistedSession\(\)/);
 assert.match(moleculeStore, /window\.location\.hostname === "127\.0\.0\.1" \|\| window\.location\.hostname === "localhost"/);
 assert.match(moleculeStore, /function devFilesPersistedSession\(recentStructures: RecentStructure\[\]\): PersistedMoleculeState/);
@@ -3366,6 +3372,10 @@ assert.match(app, /sha256BrowserDownloadUrl: release\.installAsset\.sha256Browse
 assert.match(updateSource, /manifestAssetFor\(assets, asset\.name!\)/);
 assert.match(updateSource, /manifestSignatureAssetFor\(assets, asset\.name!\)/);
 assert.match(app, /manifestSignatureBrowserDownloadUrl: release\.installAsset\.manifestSignatureBrowserDownloadUrl/);
+assert.match(app, /const \[buildInfoLoaded, setBuildInfoLoaded\] = useState\(false\)/);
+assert.match(app, /if \(!buildInfoLoaded\) \{\s*if \(!automatic\) pushStatus\("Update checks are not ready yet\."\);\s*return;\s*\}\s*if \(buildInfo\.isDevBuild\) \{/s);
+assert.match(app, /statusText: "Updates are disabled for dev builds\."/);
+assert.match(app, /if \(!buildInfoLoaded \|\| buildInfo\.isDevBuild\) return undefined;\s*const loadedPreferences = loadUpdatePreferences\(\);/s);
 assert.match(browserDevDocuments, /documentId: stableId\(path\)/);
 assert.match(browserDevDocuments, /const html = await gridHtml\(path, id, grid\.records, grid\.format, preferences, bytes\.length\)/);
 assert.match(browserDevDocuments, /browserDevVirtualTextDocuments\.set\(path, merged\.text\)/);
