@@ -151,8 +151,8 @@ pub fn resolve_renderer(format: &FormatInfo, requested: &str) -> String {
         }
         .to_string();
     }
-    let is_xyz = format.molstar_format == "xyz" && !format.is_binary;
-    let can_use_xyzrender = is_xyz || can_use_external_xyzrender(format);
+    let can_use_xyzrender = (format.molstar_format == "xyz" && !format.is_binary)
+        || can_use_external_xyzrender(format);
     match normalized {
         "molstar" => "molstar".to_string(),
         "xyzrender-external" => if can_use_xyzrender {
@@ -161,12 +161,7 @@ pub fn resolve_renderer(format: &FormatInfo, requested: &str) -> String {
             "molstar"
         }
         .to_string(),
-        _ => if is_xyz {
-            "xyzrender-external"
-        } else {
-            "molstar"
-        }
-        .to_string(),
+        _ => "molstar".to_string(),
     }
 }
 
@@ -202,9 +197,9 @@ mod tests {
     }
 
     #[test]
-    fn keeps_xyzrender_as_default_for_xyz_files() {
+    fn defaults_xyz_files_to_molstar() {
         let xyz = format_for_extension("xyz").expect("xyz should be supported");
-        assert_eq!(resolve_renderer(&xyz, "auto"), "xyzrender-external");
+        assert_eq!(resolve_renderer(&xyz, "auto"), "molstar");
         assert_eq!(resolve_renderer(&xyz, "mol*"), "molstar");
         assert_eq!(
             resolve_renderer(&xyz, "external-xyzrender"),

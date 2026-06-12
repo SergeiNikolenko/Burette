@@ -18,6 +18,8 @@ const [
   settingsStore,
   settingsHook,
   shellStore,
+  structureBrief,
+  structureComposition,
   dock,
   packageJson,
   themeSource,
@@ -48,6 +50,7 @@ const [
   themesSection,
   settingControl,
   dockPanel,
+  structureInfoPanel,
   closeIcon,
   shortcutTooltip,
   pageKinds,
@@ -114,6 +117,8 @@ const [
   source('apps/desktop/src/stores/settings-store.ts'),
   source('apps/desktop/src/hooks/use-settings.ts'),
   source('apps/desktop/src/stores/shell-store.ts'),
+  source('apps/desktop/src/lib/structure-brief.ts'),
+  source('apps/desktop/src/lib/structure-composition.ts'),
   source('apps/desktop/src/lib/dock.ts'),
   source('package.json'),
   source('apps/desktop/src/lib/theme.ts'),
@@ -144,6 +149,7 @@ const [
   source('apps/desktop/src/components/settings-panel/themes-section.tsx'),
   source('apps/desktop/src/components/settings-panel/setting-control.tsx'),
   source('apps/desktop/src/components/dock-panel.tsx'),
+  source('apps/desktop/src/components/structure-info-panel.tsx'),
   source('apps/desktop/src/components/close-icon.tsx'),
   source('apps/desktop/src/components/shortcut-tooltip.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/index.ts'),
@@ -365,6 +371,7 @@ assert.match(previewShell, /data-buret-xctrl="fieldCmapPalette"/);
 assert.match(previewShell, /data-buret-xctrl="fieldCmapMin"/);
 assert.match(previewShell, /data-buret-xctrl="fieldCmapMax"/);
 assert.match(browserDevDocuments, /return normalized === "molstar" && externalMolstarAvailable \? "molstar" : "xyzrender-external";/);
+assert.match(browserDevDocuments, /if \(normalized === "xyzrender-external"\) return canUseXyzrender \? "xyzrender-external" : "molstar";\s*return "molstar";/);
 assert.match(browserDevDocuments, /requestedRenderer: normalizeRendererMode\(preferences\.rendererMode\)/);
 assert.match(browserDevDocuments, /sourcePath: path/);
 assert.match(browserDevDocuments, /xyzrenderEndpoint: "\/__burette\/xyzrender"/);
@@ -1196,7 +1203,8 @@ assert.doesNotMatch(dockPanel, /aria-label=\{`Close \$\{area\} dock`\}[\s\S]*?>\
 assert.match(styles, /\.close-glyph \{/);
 assert.match(styles, /\.dock-tab-shell:hover \.dock-tab-close,\s*\.dock-tab-shell:focus-within \.dock-tab-close \{/);
 assert.doesNotMatch(styles, /\.dock-tab\[data-active\] \+ \.dock-tab-close/);
-assert.match(styles, /\.dock-tab-shell:hover \.dock-tab svg,\s*\.dock-tab-shell:focus-within \.dock-tab svg \{/);
+assert.match(styles, /\.dock-tab-shell\[data-active\] \.dock-tab \{\s*padding-right: 27px;/);
+assert.doesNotMatch(styles, /\.dock-tab-shell:hover \.dock-tab svg,\s*\.dock-tab-shell:focus-within \.dock-tab svg \{\s*opacity: 0/s);
 assert.doesNotMatch(styles, /\.dock-tab\[data-active\] svg \{\s*opacity: 0/s);
 assert.match(app, /const RIGHT_DOCK_CLOSE_THRESHOLD = 180/);
 assert.match(app, /const BOTTOM_DOCK_CLOSE_THRESHOLD = 120/);
@@ -1213,6 +1221,58 @@ assert.doesNotMatch(dockPanel, /if \(!open\) return null/);
 assert.match(dockPanel, /function dockFilesDragPayload/);
 assert.match(dockPanel, /writeStructureDragPayload\(event\.dataTransfer, filesTabDragPayload\)/);
 assert.match(dockPanel, /writeStructureDragPayload\(event\.dataTransfer, item\.payload\)/);
+assert.match(dockPanel, /<StructureInfoPanel document=\{activeDocument\} dockDrops=\{dockDrops\} actions=\{actions\} \/>/);
+assert.match(dockPanel, /onStructureSelection=\{actions\.selectTextStructure\}/);
+assert.match(app, /const selectTextStructure = useCallback/);
+assert.match(app, /source: "burrete-agent-host"/);
+assert.match(app, /type: "agent-action"/);
+assert.match(app, /type: "select_residues"/);
+assert.match(app, /granularity: selection\.granularity/);
+assert.match(app, /const runStructureViewerAction = useCallback/);
+assert.match(app, /id: `structure-action-\$\{Date\.now\(\)\}`/);
+assert.match(app, /data\?\.source !== "burrete-viewer" && data\?\.source !== "burrete-grid" && data\?\.source !== "burrete-agent-viewer"/);
+assert.match(app, /data\.source === "burrete-agent-viewer" && body\?\.type === "agent-action-result"/);
+assert.match(app, /body\.id === "string" && body\.id\.startsWith\("text-selection-"\)/);
+assert.doesNotMatch(app, /pushStatus\("Text selection applied"/);
+assert.match(app, /pushStatus\(action\.label\)/);
+assert.match(dock, /inspector: "Info"/);
+assert.match(structureInfoPanel, /Molecular Inspector/);
+assert.match(structureInfoPanel, /No active structure/);
+assert.match(structureInfoPanel, /actions\.showDocumentMetadata\(document\)/);
+assert.match(structureInfoPanel, /actions\.revealDocument\(document\)/);
+assert.match(structureInfoPanel, /actions\.copyDocumentPath\(document\)/);
+assert.match(structureInfoPanel, /structureBriefForDocument\(document, formatBytes\(document\.byteCount\)\)/);
+assert.match(structureInfoPanel, /StructureSectionHeader title="Chains"/);
+assert.match(structureInfoPanel, /StructureSectionHeader title="Selected entity"/);
+assert.match(structureInfoPanel, /structure-inspector-selection-pill/);
+assert.match(structureInfoPanel, /inspectorSummaryLine\(brief\.kind, compositionSummary, compositionPending, compositionError\)/);
+assert.match(structureInfoPanel, /const primaryAction = row\.action/);
+assert.match(structureInfoPanel, /const primaryActionKey = selectionActionKey\(document, primaryAction\)/);
+assert.match(structureInfoPanel, /primaryActionKey !== null && primaryActionKey === activeActionKey/);
+assert.match(structureInfoPanel, /data-selected=\{selected \|\| undefined\}/);
+assert.match(structureInfoPanel, /aria-pressed=\{selected\}/);
+assert.match(structureInfoPanel, /onContextMenu=\{showContextMenu\}/);
+assert.match(structureInfoPanel, /showNativeContextMenu\(contextMenuItems/);
+assert.match(structureInfoPanel, /type: "clear_selection", label: "Clear selection"/);
+assert.match(structureInfoPanel, /actions\.runStructureViewerAction\(document, action\)/);
+assert.match(structureInfoPanel, /selectionActionKey\(document: ViewerDocument, action: StructureViewerAction\)/);
+assert.match(structureInfoPanel, /action\.type !== "select_residues" && action\.type !== "focus_ligand"/);
+assert.match(structureInfoPanel, /navigator\.clipboard\?\.writeText/);
+assert.match(structureInfoPanel, /Water \/ ions/);
+assert.match(structureInfoPanel, /structure-brief-mini-action/);
+assert.match(structureComposition, /type: "clear_selection";/);
+assert.match(structureBrief, /export function structureBriefForDocument\(document: ViewerDocument, sizeLabel: string\): StructureBriefModel/);
+assert.match(structureBrief, /\["pdb", "pdbqt", "cif", "mmcif", "bcif", "gro", "mae", "maegz", "cms"\]/);
+assert.match(structureBrief, /\["sdf", "mol", "mol2", "smiles", "smi"\]/);
+assert.match(structureBrief, /\["csv", "tsv"\]/);
+assert.match(structureBrief, /\["xyz", "extxyz", "dtr", "xtc", "trr"\]/);
+assert.match(structureBrief, /\["cube", "cub"\]/);
+assert.match(styles, /\.structure-brief-card \{/);
+assert.match(styles, /\.structure-brief-actions \{/);
+assert.match(styles, /\.structure-inspector-header \{/);
+assert.match(styles, /\.structure-inspector-selection-pill \{/);
+assert.match(styles, /\.structure-inspector-row-action \{/);
+assert.match(styles, /\.structure-brief-action-entry\[data-selected="true"\] \.structure-brief-action-row,/);
 assert.match(dock, /payload: StructureDragPayload/);
 assert.match(shellStore, /payload: \{ paths: \[path\], records: \[\] \}/);
 assert.match(shellStore, /payload: \{ paths: \[\], records: \[record\] \}/);

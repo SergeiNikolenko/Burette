@@ -1087,7 +1087,7 @@ mod document_open_tests {
                     "molstar"
                 }
             }
-            "xyz" => "xyzrender-external",
+            "xyz" => "molstar",
             other => panic!("unexpected supported real example extension: {other}"),
         }
     }
@@ -1130,7 +1130,7 @@ mod document_open_tests {
             created_files.push(mae_gz.clone());
 
             let cases = vec![
-                (fixture_path("xyz/single.xyz"), "xyzrender-external"),
+                (fixture_path("xyz/single.xyz"), "molstar"),
                 (fixture_path("1HTB.pdb"), "molstar"),
                 (fixture_path("sdf/single.sdf"), "molstar"),
                 (fixture_path("sdf/multi.sdf"), "grid2d"),
