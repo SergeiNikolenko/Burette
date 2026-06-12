@@ -1,9 +1,11 @@
+use burrete_core::{PreviewLifecycle, PreviewLifecycleState, PreviewSubsystem};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::SystemTime;
 use tauri::{Manager, Runtime};
 
 use super::formats::{
@@ -14,6 +16,7 @@ use super::runtime_grid::{create_grid_runtime_with_options, grid_requires_previe
 use super::runtime_utils::{file_title, stable_id};
 use super::runtime_viewer::{create_docking_runtime, create_runtime, DockingRuntimeSource};
 use super::text_xyz::converted_data_from_text;
+use super::trace::{append_preview_trace, elapsed_ms, preview_error_code, PreviewTraceEvent};
 
 pub(crate) const MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
 const MAESTRO_PREVIEW_READ_LIMIT: u64 = 64 * 1024 * 1024;
@@ -376,6 +379,82 @@ pub(crate) fn open_document<R: Runtime>(
 }
 
 pub(crate) fn open_document_with_grid_options<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    window_label: &str,
+    path: PathBuf,
+    preferences: &ViewerPreferences,
+    reload_options: Option<&ViewerReloadOptions>,
+    grid_options: &GridParseOptions,
+) -> Result<ViewerDocument, String> {
+    let started = SystemTime::now();
+    let trace_document_id = stable_id(&path);
+    let trace_extension = structure_path_extension(&path);
+    let mut lifecycle = PreviewLifecycle::default();
+    let _ = lifecycle.transition(PreviewLifecycleState::Created);
+    let _ = append_preview_trace(
+        app,
+        PreviewTraceEvent {
+            document_id: &trace_document_id,
+            state: PreviewLifecycleState::Created,
+            subsystem: PreviewSubsystem::Desktop,
+            source_extension: Some(&trace_extension),
+            renderer: None,
+            runtime_path: None,
+            elapsed_ms: Some(0),
+            error_code: None,
+            message: Some("open_document"),
+        },
+    );
+
+    let result = open_document_with_grid_options_inner(
+        app,
+        window_label,
+        path,
+        preferences,
+        reload_options,
+        grid_options,
+    );
+    match &result {
+        Ok(document) => {
+            let _ = lifecycle.transition(PreviewLifecycleState::Completed);
+            let runtime_path = Path::new(&document.runtime_path);
+            let _ = append_preview_trace(
+                app,
+                PreviewTraceEvent {
+                    document_id: &document.id,
+                    state: PreviewLifecycleState::Completed,
+                    subsystem: PreviewSubsystem::Desktop,
+                    source_extension: Some(&document.extension),
+                    renderer: Some(&document.renderer),
+                    runtime_path: Some(runtime_path),
+                    elapsed_ms: Some(elapsed_ms(started)),
+                    error_code: None,
+                    message: Some("preview runtime created"),
+                },
+            );
+        }
+        Err(error) => {
+            let _ = lifecycle.transition(PreviewLifecycleState::Failed);
+            let _ = append_preview_trace(
+                app,
+                PreviewTraceEvent {
+                    document_id: &trace_document_id,
+                    state: PreviewLifecycleState::Failed,
+                    subsystem: PreviewSubsystem::Desktop,
+                    source_extension: Some(&trace_extension),
+                    renderer: None,
+                    runtime_path: None,
+                    elapsed_ms: Some(elapsed_ms(started)),
+                    error_code: Some(preview_error_code(error)),
+                    message: Some(error),
+                },
+            );
+        }
+    }
+    result
+}
+
+fn open_document_with_grid_options_inner<R: Runtime>(
     app: &tauri::AppHandle<R>,
     window_label: &str,
     path: PathBuf,
