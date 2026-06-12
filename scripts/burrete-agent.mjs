@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open as openFile, readFile, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -10,11 +11,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
 const agentPreviewScript = resolve(__dirname, 'agent-preview.mjs');
 const apiVersion = 'burette-agent-cli/v1';
-const supportedModes = new Set(['browser-preview', 'desktop-app']);
+const supportedModes = new Set(['browser-preview', 'browser-dev-shell', 'desktop-app']);
 
 function usage() {
   console.error(`Usage:
   node scripts/burrete-agent.mjs open --mode browser-preview <file> [--port 5177] [--host 127.0.0.1]
+  node scripts/burrete-agent.mjs open --mode browser-dev-shell <file> [--host 127.0.0.1]
   node scripts/burrete-agent.mjs open --mode desktop-app <file> [--app Burrete] [--session-dir /tmp/session] [--no-launch]
   node scripts/burrete-agent.mjs observe --url <tokenized-preview-url>
   node scripts/burrete-agent.mjs observe --session-dir <desktop-agent-session>
@@ -144,6 +146,10 @@ async function open(options) {
     await openDesktopApp(file, options);
     return;
   }
+  if (mode === 'browser-dev-shell') {
+    await openBrowserDevShell(file, options);
+    return;
+  }
 
   const childArgs = [agentPreviewScript, file];
   if (options.port) childArgs.push('--port', options.port);
@@ -158,12 +164,119 @@ async function open(options) {
   });
 }
 
+async function openBrowserDevShell(file, options) {
+  const initialFile = resolve(file);
+  const sessionDir = options.sessionDir ? resolve(options.sessionDir) : await mkdtemp(resolve(tmpdir(), 'burrete-agent-shell-'));
+  const token = randomUUID();
+  await mkdir(sessionDir, { recursive: true });
+  await writeJsonFile(resolve(sessionDir, 'session.json'), {
+    apiVersion,
+    mode: 'browser-dev-shell',
+    token,
+    createdAt: new Date().toISOString(),
+    initialPaths: [initialFile],
+  });
+  await writeJsonFile(resolve(sessionDir, 'actions.json'), {
+    apiVersion: 'burette-agent-control/v1',
+    actions: [],
+  });
+  const host = options.host || '127.0.0.1';
+  const port = options.port ? Number(options.port) : await allocatePort(host);
+  if (!Number.isInteger(port) || port <= 0) fail('INVALID_ARGS', '--port must be a positive integer.', 2);
+  const url = new URL(`http://${host}:${port}/`);
+  url.searchParams.set('devFiles', initialFile);
+  await writeJsonFile(resolve(sessionDir, 'session.json'), {
+    apiVersion,
+    mode: 'browser-dev-shell',
+    token,
+    createdAt: new Date().toISOString(),
+    initialPaths: [initialFile],
+    sessionDir,
+    host,
+    port,
+    url: url.toString(),
+  });
+  const env = {
+    ...process.env,
+    BURRETE_DEV_DEFAULT_FILES: initialFile,
+    BURRETE_DEV_FS_ALLOW: dirname(initialFile),
+    BURRETE_AGENT_SHELL_SESSION_DIR: sessionDir,
+    VITE_BURRETE_AGENT_SHELL: '1',
+    VITE_BURRETE_BUILD_IDENTIFIER: 'browser-agent-shell',
+    VITE_BURETTE_DEV_INSTANCE: 'agent',
+  };
+  const logPath = resolve(sessionDir, 'server.log');
+  const logHandle = await openFile(logPath, 'a');
+  const child = spawn('vp', ['dev', 'apps/desktop', '--host', host, '--port', String(port), '--strictPort', '--config', 'apps/desktop/vite.config.ts'], {
+    cwd: repoRoot,
+    env,
+    detached: true,
+    stdio: ['ignore', logHandle.fd, logHandle.fd],
+  });
+  child.unref();
+  await logHandle.close();
+  child.on('error', (error) => {
+    fail('BROWSER_DEV_SHELL_FAILED', `Failed to start browser-dev shell: ${error?.message || String(error)}.`, 1);
+  });
+  await waitForHttpReady(url, 30000);
+  console.log(JSON.stringify({
+    ok: true,
+    apiVersion,
+    result: {
+      mode: 'browser-dev-shell',
+      url: url.toString(),
+      host,
+      port,
+      launched: false,
+      sessionDir,
+      logPath,
+      initialPaths: [initialFile],
+      processId: child.pid,
+      browser: 'Codex in-app Browser',
+      observe: `node scripts/burrete-agent.mjs observe --session-dir ${JSON.stringify(sessionDir)}`,
+      act: `node scripts/burrete-agent.mjs act --session-dir ${JSON.stringify(sessionDir)} '<json-action>'`,
+    },
+  }, null, 2));
+}
+
+async function allocatePort(host) {
+  const server = createServer();
+  await new Promise((resolveReady, rejectReady) => {
+    server.once('error', rejectReady);
+    server.listen(0, host, resolveReady);
+  });
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : null;
+  await new Promise(resolveClose => server.close(resolveClose));
+  if (!port) fail('PORT_UNAVAILABLE', 'Could not allocate a browser-dev shell port.', 1);
+  return port;
+}
+
+async function waitForHttpReady(url, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() <= deadline) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) return;
+    } catch (_) {
+      // Vite is still booting.
+    }
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  fail('BROWSER_DEV_SHELL_TIMEOUT', `Timed out waiting for browser-dev shell at ${url}.`, 1);
+}
+
 async function observe(options) {
   if (options.sessionDir) {
     await observeDesktopSession(options);
     return;
   }
   if (!options.url) fail('INVALID_ARGS', 'observe requires --url with the tokenized browser-preview URL.', 2);
+  const shellSessionDir = await browserShellSessionDir(options.url);
+  if (shellSessionDir) {
+    await observeDesktopSession({ ...options, sessionDir: shellSessionDir });
+    return;
+  }
   const response = await fetch(buildAgentUrl(options.url, '/__agent/observe'));
   const body = await response.text();
   if (!response.ok) {
@@ -187,6 +300,11 @@ async function act(options) {
     return;
   }
   if (!options.url) fail('INVALID_ARGS', 'act requires --url with the tokenized browser-preview URL.', 2);
+  const shellSessionDir = await browserShellSessionDir(options.url);
+  if (shellSessionDir) {
+    await actDesktopSession({ ...options, sessionDir: shellSessionDir });
+    return;
+  }
   const actionText = options.rest[0];
   if (!actionText) fail('INVALID_ARGS', 'act requires a JSON action argument.', 2);
   let action;
@@ -291,6 +409,7 @@ async function observeDesktopSession(options) {
 }
 
 async function actDesktopSession(options) {
+  await assertSessionResponsive(options.sessionDir);
   const actionText = options.rest[0];
   if (!actionText) fail('INVALID_ARGS', 'act requires a JSON action argument.', 2);
   let action;
@@ -317,6 +436,46 @@ async function actDesktopSession(options) {
   }
   const result = await waitForDesktopAction(actionsPath, item.id, waitMs);
   console.log(JSON.stringify({ ok: true, apiVersion, result }, null, 2));
+}
+
+async function assertSessionResponsive(sessionDir) {
+  const session = await readJsonFile(resolve(sessionDir, 'session.json'), null);
+  if (!session || session.mode !== 'browser-dev-shell' || typeof session.url !== 'string') return;
+  try {
+    await fetchWithTimeout(session.url, 1500);
+  } catch (error) {
+    fail('BROWSER_DEV_SHELL_UNAVAILABLE', `Browser-dev shell is not reachable at ${session.url}. Reopen the workspace instead of waiting for an action timeout.`, 1, { sessionDir, cause: error?.message || String(error) });
+  }
+}
+
+async function browserShellSessionDir(urlText) {
+  if (!urlText) return null;
+  let url;
+  try {
+    url = new URL(urlText);
+  } catch (_) {
+    return null;
+  }
+  if (url.searchParams.has('token')) return null;
+  try {
+    const sessionUrl = new URL('/__burette/agent-session/session.json', url);
+    const response = await fetchWithTimeout(sessionUrl.toString(), 1500);
+    if (!response.ok) return null;
+    const session = await response.json();
+    return typeof session?.sessionDir === 'string' && session.sessionDir.trim() ? session.sessionDir : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function fetchWithTimeout(url, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function waitForDesktopAction(actionsPath, actionId, waitMs) {

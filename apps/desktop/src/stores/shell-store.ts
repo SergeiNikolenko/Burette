@@ -14,6 +14,7 @@ import {
   normalizeDockTabs,
 } from "../lib/dock";
 import { isTemporaryDocumentPath } from "../lib/temporary-documents";
+import { workspaceStorageKey } from "../lib/window-scope";
 
 type ShellState = {
   sidebarOpen: boolean;
@@ -364,7 +365,7 @@ export const useShellStore = create<ShellState>()(
         })),
     }),
     {
-      name: "burrete.shell.ui",
+      name: workspaceStorageKey("burrete.shell.ui"),
       partialize: (state) => ({
         sidebarOpen: state.sidebarOpen,
         sidebarWidth: state.sidebarWidth,

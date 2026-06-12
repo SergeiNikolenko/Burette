@@ -54,12 +54,17 @@ function fakeStructure(options = {}) {
 
 const agentSource = await readFile(resolve('PreviewExtension/Web/burette-agent.js'), 'utf8');
 const interactions = [];
+const selectionEntries = new Map();
+const measurementLabels = [];
 const context = {
   console,
   setTimeout,
   clearTimeout,
   Date,
   performance: { now: () => Date.now() },
+  TextDecoder,
+  Uint8Array,
+  atob: value => Buffer.from(value, 'base64').toString('binary'),
   window: {
     molstar: { version: '5.7.0-test' },
     dispatchEvent() {},
@@ -79,13 +84,29 @@ vm.runInContext(agentSource, context, { filename: 'burette-agent.js' });
 const viewer = {
   plugin: {
     managers: {
-      structure: { hierarchy: { current: { structures: [{ cell: { transform: { ref: 's0' }, obj: { data: fakeStructure(), label: 'fake.pdb' } } }] } } },
+      structure: {
+        hierarchy: { current: { structures: [{ cell: { transform: { ref: 's0' }, obj: { data: fakeStructure(), label: 'fake.pdb' } } }] } },
+        selection: { entries: selectionEntries },
+        measurement: {
+          addLabel: async (loci, options) => {
+            measurementLabels.push({ loci, options });
+            return { selection: { ref: 'label-selection-ref' }, representation: { ref: 'label-representation-ref' } };
+          }
+        }
+      },
       camera: { reset: () => { interactions.push({ action: 'reset' }); } }
     },
     helpers: { viewportScreenshot: { getImageDataUri: async () => 'data:image/png;base64,from-helper' } }
   },
-  structureInteractivity(payload) { interactions.push(payload); },
-  loadMvsData: async () => {}
+  structureInteractivity(payload) {
+    interactions.push(payload);
+    if (payload.action === 'select' && payload.elements) {
+      selectionEntries.set('s0', { selection: { elements: [{ indices: { size: 2 } }] } });
+    }
+  },
+  loadMvsData: async (data, format, options) => {
+    interactions.push({ action: 'loadMvsData', data, format, options });
+  }
 };
 
 context.window.BurreteAgent.attach({ viewer, plugin: viewer.plugin, config: { label: 'fake.pdb', format: 'pdb' } });
@@ -101,6 +122,8 @@ assert.equal(summary.ok, true);
 assert.equal(summary.result.counts.atoms, 6);
 assert.equal(summary.result.counts.ligands, 1);
 assert.equal(summary.result.structures[0].chains.length, 2);
+assert.equal(summary.result.structures[0].ligands[0].label_comp_id, 'HEM');
+assert.equal(summary.result.structures[0].ligands[0].category, 'small_molecule');
 
 const selected = await context.window.BurreteAgent.run({ command: 'selectResidues', args: { selector: { auth_asym_id: 'A', beg_auth_seq_id: 1, end_auth_seq_id: 2 } } });
 assert.equal(selected.ok, true);
@@ -141,9 +164,57 @@ assert.equal(ligandViaResidueAddress.ok, true);
 assert.equal(ligandViaResidueAddress.result.ligand.auth_asym_id, 'B');
 assert.ok(ligandViaResidueAddress.result.neighborhood.residues.length > 0);
 
+viewer.plugin.managers.structure.hierarchy.current.structures[0].cell.obj.data = fakeStructure();
+context.window.BurreteAgent.attach({ viewer, plugin: viewer.plugin, config: { label: 'fake.pdb', format: 'pdb' } });
+context.window.BurreteAgent.notifyStructureLoaded({ prepared: { label: 'fake.pdb', format: 'pdb' } });
+const ligByCompAlias = await context.window.BurreteAgent.run({ command: 'focusLigand', args: { selector: { comp_id: 'HEM' } } });
+assert.equal(ligByCompAlias.ok, true);
+assert.equal(ligByCompAlias.result.ligand.auth_seq_id, 100);
+
+const ligWithMissingNeighborhood = await context.window.BurreteAgent.run({
+  command: 'focusLigand',
+  args: { selector: { comp_id: 'HEM' }, showNeighborhood: true, target: { auth_asym_id: 'Z' } }
+});
+assert.equal(ligWithMissingNeighborhood.ok, true);
+assert.equal(ligWithMissingNeighborhood.result.ligand.label_comp_id, 'HEM');
+assert.equal(ligWithMissingNeighborhood.result.neighborhood.ok, false);
+assert.equal(ligWithMissingNeighborhood.result.neighborhood.error.code, 'SELECTION_EMPTY');
+
+const label = await context.window.BurreteAgent.run({
+  command: 'labelSelection',
+  args: { selection: 'last', text: 'HEM A:100', textSize: 0.42 }
+});
+assert.equal(label.ok, true);
+assert.equal(label.result.label, 'HEM A:100');
+assert.equal(label.result.labels[0].selectionRef, 'label-selection-ref');
+assert.equal(measurementLabels.length, 1);
+assert.equal(measurementLabels[0].options.labelParams.customText, 'HEM A:100');
+assert.equal(measurementLabels[0].options.labelParams.textSize, 0.42);
+assert.equal(measurementLabels[0].options.reprTags[0], 'burrete-agent-label');
+
 const shot = await context.window.BurreteAgent.run({ command: 'screenshot' });
 assert.equal(shot.ok, true);
 assert.equal(shot.result.dataUri, 'data:image/png;base64,from-helper');
+
+const mvs = await context.window.BurreteAgent.run({
+  command: 'loadMVS',
+  args: {
+    json: {
+      root: {
+        kind: 'root',
+        children: []
+      }
+    },
+    options: { replaceExisting: true }
+  }
+});
+assert.equal(mvs.ok, true);
+assert.equal(mvs.result.format, 'mvsj');
+const loadedMvs = interactions.find(x => x.action === 'loadMvsData');
+assert.ok(loadedMvs);
+assert.equal(loadedMvs.format, 'mvsj');
+assert.equal(JSON.parse(loadedMvs.data).root.kind, 'root');
+assert.equal(loadedMvs.options.replaceExisting, true);
 
 const bad = await context.window.BurreteAgent.run({ command: 'selectResidues', args: { selector: { auth_asym_id: 'Z' } } });
 assert.equal(bad.ok, false);

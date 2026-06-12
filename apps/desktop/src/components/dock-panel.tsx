@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import {
   Atom01Icon,
   File02Icon,
@@ -12,12 +12,15 @@ import type { StructureDragPayload } from "../lib/structure-drag";
 import type { ShellActions, ShellViewState } from "./types";
 import { showNativeContextMenu } from "./native-context-menu";
 import { ViewerFrame } from "./editor-area/viewer-frame";
-import { KetcherPage } from "./ketcher-page";
 import { TextFileViewer } from "./text-file-viewer";
 import { CloseIcon } from "./close-icon";
 import { StructureInfoPanel } from "./structure-info-panel";
 import { readStructureText } from "../lib/structure-text";
 import type { TextFileDocument, ViewerDocument } from "../types";
+
+const KetcherPage = lazy(() => import("./ketcher-page").then((module) => ({
+  default: module.KetcherPage,
+})));
 
 type DockPanelProps = {
   area: DockArea;
@@ -234,7 +237,9 @@ function DockPanelContent({
         <div className="dock-files-view">
           {fileTabs}
           <div className="dock-viewer">
-            <KetcherPage location={{ kind: "ketcher" }} state={state} actions={actions} isActive acceptImportRequests={false} />
+            <Suspense fallback={<div className="ketcher-loading">Loading editor</div>}>
+              <KetcherPage location={{ kind: "ketcher" }} state={state} actions={actions} isActive acceptImportRequests={false} />
+            </Suspense>
           </div>
         </div>
       );
@@ -318,7 +323,7 @@ function DockPanelContent({
   if (activeTabKind === "diagnostics") {
     return (
       <div className="dock-content dock-content-grid">
-        <Metric label="Runtime" value={state.buildInfo.isBrowserDev ? "Browser dev" : "Desktop"} />
+        <Metric label="Runtime" value={state.buildInfo.isAgentShell ? "Agent shell" : state.buildInfo.isBrowserDev ? "Browser dev" : "Desktop"} />
         <Metric label="Build" value={state.buildInfo.version} />
         <Metric label="Flavor" value={state.buildInfo.flavor ?? "Release"} />
         <button type="button" className="dock-action" onClick={() => void actions.exportDiagnostics()}>

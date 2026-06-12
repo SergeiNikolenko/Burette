@@ -18,9 +18,10 @@ export function FileBrowser({
 }) {
   const [pinnedOpen, setPinnedOpen] = useState(true);
   const [ketcherDropActive, setKetcherDropActive] = useState(false);
+  const hideProjectPreviews = state.buildInfo.isAgentShell;
   const sidebarQuery = state.sidebarQuery.trim();
   const hasSidebarQuery = sidebarQuery.length > 0;
-  const visibleProjects = filterSidebarProjects(state.sidebarProjects, state.sidebarQuery);
+  const visibleProjects = hideProjectPreviews ? [] : filterSidebarProjects(state.sidebarProjects, state.sidebarQuery);
   const pinnedItems = visibleProjects.flatMap((project) => project.items.filter((item) => item.isPinned));
   const pinnedExpanded = pinnedOpen || hasSidebarQuery;
   const projectsExpanded = state.projectsOpen || hasSidebarQuery;
@@ -126,6 +127,7 @@ export function FileBrowser({
           )}
         </section>
       )}
+      {!hideProjectPreviews && (
       <section className="sidebar-section" aria-label="Projects">
         <div className="sidebar-section-header">
           <button
@@ -197,6 +199,7 @@ export function FileBrowser({
           )
         )}
       </section>
+      )}
     </ScrollFade>
   );
 }

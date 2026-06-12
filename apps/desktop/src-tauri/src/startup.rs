@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{Emitter, Manager, Runtime};
@@ -5,21 +6,24 @@ use url::Url;
 
 #[derive(Default)]
 pub(crate) struct PendingOpenDocuments {
-    paths: Mutex<Vec<String>>,
+    paths_by_window: Mutex<HashMap<String, Vec<String>>>,
 }
 
 impl PendingOpenDocuments {
-    pub(crate) fn push(&self, paths: Vec<String>) {
+    pub(crate) fn push_for_window(&self, window_label: &str, paths: Vec<String>) {
         if paths.is_empty() {
             return;
         }
-        let mut pending = self.paths.lock().unwrap();
-        pending.extend(paths);
+        let mut pending = self.paths_by_window.lock().unwrap();
+        pending
+            .entry(window_label.to_string())
+            .or_default()
+            .extend(paths);
     }
 
-    pub(crate) fn drain(&self) -> Vec<String> {
-        let mut pending = self.paths.lock().unwrap();
-        std::mem::take(&mut *pending)
+    pub(crate) fn drain_for_window(&self, window_label: &str) -> Vec<String> {
+        let mut pending = self.paths_by_window.lock().unwrap();
+        pending.remove(window_label).unwrap_or_default()
     }
 }
 
@@ -133,10 +137,17 @@ fn launch_mode_from_value(value: Option<&str>) -> Option<LaunchMode> {
     }
 }
 
-pub(crate) fn signal_open_documents<R: Runtime>(app: &tauri::AppHandle<R>, paths: Vec<String>) {
+pub(crate) fn signal_open_documents_for_window<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    window_label: &str,
+    paths: Vec<String>,
+) {
     if !paths.is_empty() {
-        app.state::<PendingOpenDocuments>().push(paths);
-        let _ = app.emit("open-documents", ());
+        app.state::<PendingOpenDocuments>()
+            .push_for_window(window_label, paths);
+        if let Some(window) = app.get_webview_window(window_label) {
+            let _ = window.emit("open-documents", ());
+        }
     }
 }
 
