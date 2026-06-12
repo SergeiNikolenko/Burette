@@ -14,6 +14,7 @@
   const PANEL_CLOSE_HIT_WIDTH = 38;
   const MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX = 4;
   const VIEWER_THEME_STORAGE_KEY = 'buret.viewer.theme';
+  const SDF_POSE_MODE_STORAGE_KEY = 'buret.sdf.poseMode';
   const DEFAULT_MOLSTAR_STYLE = 'illustrative';
   const MOLSTAR_STYLE_OPTIONS = [
     { value: 'default', label: 'Default' },
@@ -108,11 +109,103 @@
       if (window.BurreteConfig && window.BurreteConfig.previewRequestID) {
         body.requestID = String(window.BurreteConfig.previewRequestID);
       }
+      const hasWebkitBridge = !!window.webkit?.messageHandlers?.burrete;
       window.webkit?.messageHandlers?.burrete?.postMessage(body);
-      return !!window.webkit?.messageHandlers?.burrete;
+      if (hasWebkitBridge) return true;
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ source: 'burrete-viewer', body }, '*');
+        return true;
+      }
+      return false;
     } catch (_) {
       return false;
     }
+  }
+
+  function isEditableShortcutTarget(target) {
+    const tagName = target?.tagName?.toLowerCase();
+    return target?.isContentEditable || tagName === 'input' || tagName === 'textarea' || tagName === 'select';
+  }
+
+  function initShellShortcutBridge() {
+    document.addEventListener('keydown', event => {
+      if (event.defaultPrevented || isEditableShortcutTarget(event.target)) return;
+      const key = event.key?.toLowerCase();
+      const commandKey = event.metaKey || event.ctrlKey;
+      const togglesSidebar = commandKey && !event.altKey && !event.shiftKey && key === 'b';
+      const opensCommandPalette = (commandKey && key === 'p') || (!commandKey && !event.altKey && key === '/');
+      if (!opensCommandPalette && !togglesSidebar) return;
+      event.preventDefault();
+      postHostMessage({ type: togglesSidebar ? 'toggleSidebar' : 'openCommandPalette' });
+    }, true);
+  }
+
+  initShellShortcutBridge();
+
+  function installDownloadExportBridge() {
+    if (window.__buretteDownloadExportBridgeInstalled) return;
+    window.__buretteDownloadExportBridgeInstalled = true;
+    document.addEventListener('click', event => {
+      const anchor = event.target?.closest?.('a[download]');
+      if (!anchor) return;
+      const href = String(anchor.href || '');
+      if (!href.startsWith('blob:')) return;
+      const name = safeDownloadFileName(anchor.getAttribute('download') || 'molstar-export');
+      if (!canUseDownloadExportBridge()) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void exportDownloadBlob(href, name).catch(error => {
+        setStatus(`[web] Export failed.\n\n${error?.message || String(error)}`, 'error');
+      });
+    }, true);
+  }
+
+  function canUseDownloadExportBridge() {
+    return !!window.webkit?.messageHandlers?.burrete || (window.parent && window.parent !== window);
+  }
+
+  async function exportDownloadBlob(href, name) {
+    const response = await fetch(href);
+    if (!response.ok) throw new Error(`Could not read export blob: HTTP ${response.status}`);
+    const blob = await response.blob();
+    const mimeType = blob.type || response.headers.get('content-type') || 'application/octet-stream';
+    let posted = false;
+    if (shouldExportBlobAsText(name, mimeType)) {
+      posted = postHostMessage({
+        type: 'exportText',
+        name,
+        mimeType,
+        text: await blob.text()
+      });
+    } else {
+      posted = postHostMessage({
+        type: 'exportData',
+        name,
+        mimeType,
+        base64: bytesToBase64(new Uint8Array(await blob.arrayBuffer()))
+      });
+    }
+    if (!posted) throw new Error('The export host bridge is unavailable.');
+    setStatus(`[web] Export requested: ${name}`);
+  }
+
+  function shouldExportBlobAsText(name, mimeType) {
+    const filename = String(name || '').toLowerCase();
+    const type = String(mimeType || '').toLowerCase();
+    return type.startsWith('text/') ||
+      type.includes('json') ||
+      type.includes('xml') ||
+      type.includes('cif') ||
+      type.includes('chemical/') ||
+      /\.(cif|bcif|mcif|mmcif|pdb|pqr|sdf|sd|mol|mol2|xyz|gro|csv|tsv|txt|json|xml)$/u.test(filename);
+  }
+
+  function safeDownloadFileName(value) {
+    return String(value || 'molstar-export')
+      .replace(/[\\/:*?"<>|]+/g, '_')
+      .replace(/^\.+/g, '')
+      .trim()
+      .slice(0, 120) || 'molstar-export';
   }
 
   function safeExportBaseName(value, fallback = 'structure') {
@@ -525,6 +618,7 @@
   let activeViewer = null;
   let activeConfig = null;
   let activeMolstarPrepared = null;
+  let activeSdfPoseMode = 'single';
   let activeMolstarCacheBuster = null;
   let molstarStyleApplySerial = 0;
   let latestXyzrenderOrientationRef = null;
@@ -1179,6 +1273,72 @@
     if (gridPath) payload.path = gridPath;
     const sent = postHostMessage(payload);
     if (!sent) setStatus('SDF grid switching is available only in the app or Quick Look viewer.', 'error');
+  }
+
+  function readSdfPoseMode(config) {
+    const format = normalizeFormat(config?.molstarFormat || config?.format);
+    if (format !== 'sdf') return 'single';
+    const storageKey = String(config?.sdfPoseModeStorageKey || SDF_POSE_MODE_STORAGE_KEY);
+    const defaultMode = config?.defaultSdfPoseMode === 'all' ? 'all' : 'single';
+    try {
+      const stored = window.localStorage?.getItem(storageKey);
+      if (stored === 'all' || stored === 'single') return stored;
+      return defaultMode;
+    } catch (_) {
+      return defaultMode;
+    }
+  }
+
+  function setSdfPoseMode(mode) {
+    activeSdfPoseMode = mode === 'all' ? 'all' : 'single';
+    try {
+      const storageKey = String(activeConfig?.sdfPoseModeStorageKey || SDF_POSE_MODE_STORAGE_KEY);
+      window.localStorage?.setItem(storageKey, activeSdfPoseMode);
+    } catch (_) {}
+  }
+
+  function updateSdfPoseButton(prepared = activeMolstarPrepared) {
+    const button = document.querySelector('#buret-toolbar [data-buret-action="sdf-poses"]');
+    if (!button) return;
+    const available = prepared?.sdfPoseOverlayAvailable === true;
+    button.classList.toggle('hidden', !available);
+    button.disabled = !available;
+    button.setAttribute('aria-hidden', available ? 'false' : 'true');
+    if (!available) return;
+    const allMode = activeSdfPoseMode === 'all';
+    const title = allMode ? 'Show SDF poses individually' : 'Show all SDF poses together';
+    button.classList.toggle('active', allMode);
+    button.setAttribute('aria-pressed', allMode ? 'true' : 'false');
+    button.setAttribute('aria-label', title);
+    button.setAttribute('title', title);
+  }
+
+  async function reloadSdfPoseMode() {
+    if (!activeViewer || !activeConfig) return;
+    const viewer = activeViewer;
+    const plugin = viewer?.plugin;
+    if (typeof plugin?.clear === 'function') {
+      await plugin.clear();
+    }
+    const prepared = structureDataForMolstar(activeConfig);
+    await loadPreparedStructure(viewer, prepared);
+    if (Array.isArray(activeConfig?.stagedEntries) && activeConfig.stagedEntries.length > 0) {
+      await loadStagedMolstarEntries(viewer, activeConfig, activeMolstarCacheBuster || String(Date.now()));
+    }
+    applyLayoutState(viewer);
+    scheduleLayoutStateReapply(viewer);
+    try { viewer.handleResize(); } catch (_) {}
+  }
+
+  function toggleSdfPoseMode() {
+    if (activeMolstarPrepared?.sdfPoseOverlayAvailable !== true) return;
+    const nextMode = activeSdfPoseMode === 'all' ? 'single' : 'all';
+    setSdfPoseMode(nextMode);
+    updateSdfPoseButton(activeMolstarPrepared);
+    setStatus(nextMode === 'all' ? '[web] Showing all SDF poses together…' : '[web] Showing SDF poses individually…');
+    void reloadSdfPoseMode().catch(error => {
+      setStatus(`SDF pose mode switch failed.\n\n${error?.message || String(error)}`, 'error');
+    });
   }
 
   function requestOpenInKetcher() {
@@ -1877,11 +2037,17 @@
     bindSaveModifiedStructureButton(toolbar);
     bindMolstarStyleControls(toolbar);
     bindXyzrenderControls(toolbar);
+    const sdfPoseButton = toolbar.querySelector('[data-buret-action="sdf-poses"]');
+    if (sdfPoseButton && sdfPoseButton.dataset.bound !== '1') {
+      sdfPoseButton.dataset.bound = '1';
+      sdfPoseButton.addEventListener('click', toggleSdfPoseMode);
+    }
     initToolbarDrag(toolbar);
     restoreToolbarCollapsed(toolbar, viewer);
     installToolbarAutoLayoutTracking(toolbar);
     installMolstarFloatingPanelTracking();
     updateToolbarVisibility();
+    updateSdfPoseButton();
     updateThemeButton();
     applyLayoutState(viewer);
   }
@@ -2264,6 +2430,7 @@
       : defaultViewportTop;
     const viewportControlsTop = Math.max(TOOLBAR_MARGIN, Math.ceil(viewportControlsViewportTop - mainTop));
     root.style.setProperty('--buret-viewport-controls-top', viewportControlsTop + 'px');
+    repositionDockingPoseControlsForLayout(mainRect);
 
     const bottomLimit = visibleRectTop('.msp-plugin .msp-layout-bottom') || window.innerHeight;
     const panelMaxHeight = Math.max(160, Math.floor(bottomLimit - viewportControlsViewportTop - FLOATING_LAYOUT_GAP));
@@ -2906,14 +3073,16 @@
     return Math.max(0, Math.min(poseCount - 1, Math.trunc(value)));
   }
 
-  const DEFAULT_TRAJECTORY_LOOP_FPS = 2;
+  const DEFAULT_TRAJECTORY_LOOP_FPS = 20;
+  const NATIVE_TRAJECTORY_LOOP_SKIP_FPS_THRESHOLD = 25;
+  const NATIVE_TRAJECTORY_LOOP_MAX_FPS = 100;
 
   function trajectoryLoopFpsStorageKey(config, prepared) {
     return `${trajectoryControlStorageKey(config, prepared)}.fps.v1`;
   }
 
   function minimumTrajectoryLoopDelay(prepared) {
-    return prepared?.nativeTrajectoryControls ? 40 : 300;
+    return prepared?.nativeTrajectoryControls ? Math.round(1000 / NATIVE_TRAJECTORY_LOOP_MAX_FPS) : 300;
   }
 
   function minimumTrajectoryLoopTimerDelay(prepared) {
@@ -2942,6 +3111,39 @@
     return String(Math.round(fps * 100) / 100);
   }
 
+  function formatTrajectoryTimeNs(timePs) {
+    const ns = Number(timePs) / 1000;
+    if (!Number.isFinite(ns)) return null;
+    const abs = Math.abs(ns);
+    const decimals = abs >= 100 ? 1 : abs >= 1 ? 2 : abs >= 0.001 ? 3 : 6;
+    return String(Number(ns.toFixed(decimals)));
+  }
+
+  function pdbTrajectoryTimesPs(data) {
+    const text = typeof data === 'string' ? data : '';
+    if (!text.includes('time_ps=')) return [];
+    const times = [];
+    for (const line of text.split(/\r?\n/u)) {
+      if (!line.startsWith('REMARK') || !line.includes('time_ps=')) continue;
+      const match = line.match(/\btime_ps=([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)/u);
+      if (!match) continue;
+      const timePs = Number(match[1]);
+      if (Number.isFinite(timePs)) times.push(timePs);
+    }
+    return times;
+  }
+
+  function trajectoryTimesPsForPrepared(prepared) {
+    if (!prepared || normalizeFormat(prepared.format) !== 'pdb') return [];
+    return pdbTrajectoryTimesPs(prepared.data);
+  }
+
+  function trajectoryPoseLabel(prepared, controlLabel, activePose) {
+    const indexText = `${activePose + 1}/${prepared.poseCount}`;
+    const timeNs = formatTrajectoryTimeNs(prepared?.trajectoryTimesPs?.[activePose]);
+    return timeNs ? `Time ${timeNs} ns - ${indexText}` : `${controlLabel} ${activePose + 1} / ${prepared.poseCount}`;
+  }
+
   function readTrajectoryLoopFps(config, prepared) {
     try {
       const stored = Number(localStorage.getItem(trajectoryLoopFpsStorageKey(config, prepared)));
@@ -2962,6 +3164,7 @@
       activePose: readTrajectoryControlIndex(activeConfig, prepared, poseCount),
       poseCount,
       nativeTrajectoryControls: true,
+      trajectoryTimesPs: trajectoryTimesPsForPrepared(prepared),
       ligandLabel: prepared?.label || activeConfig?.label || 'Mol* trajectory',
       controlLabel: label
     };
@@ -4130,13 +4333,25 @@
     const label = config.label || 'structure';
     const records = splitSdfRecords(text);
     if (records.length >= 1 && config.sdfPosePager === true) {
+      const overlay = records.length > 1 ? buildSdfPoseOverlay(records, label) : null;
+      if (overlay && activeSdfPoseMode === 'all') {
+        return {
+          ...overlay,
+          sdfPoseMode: 'all',
+          sdfPoseOverlayAvailable: true,
+          sdfPoseRecordCount: records.length
+        };
+      }
       return {
         data: text,
         format: 'sdf',
         label: `${label} (${records.length} SDF poses)`,
         loadPreset: 'default',
         nativeTrajectoryControls: true,
-        poseCount: records.length
+        poseCount: records.length,
+        sdfPoseMode: 'single',
+        sdfPoseOverlayAvailable: Boolean(overlay),
+        sdfPoseRecordCount: records.length
       };
     }
     if (records.length >= 1 && config.sdfGrid !== false) {
@@ -4231,6 +4446,61 @@
     };
   }
 
+  function buildSdfPoseOverlay(records, label) {
+    const molecules = [];
+    let totalAtoms = 0;
+    let totalBonds = 0;
+    for (const record of records) {
+      const molecule = parseV2000SdfRecord(record);
+      if (!molecule) return null;
+      molecules.push(molecule);
+      totalAtoms += molecule.atomCount;
+      totalBonds += molecule.bondCount;
+    }
+    if (molecules.length <= 1 || totalAtoms <= 0) return null;
+
+    const atoms = [];
+    const bonds = [];
+    let atomIndex = 1;
+    let bondIndex = 1;
+    let atomOffset = 0;
+    for (const molecule of molecules) {
+      for (const atom of molecule.atoms) {
+        atoms.push(`M  V30 ${atomIndex} ${atom.element} ${formatV3000Coord(atom.x)} ${formatV3000Coord(atom.y)} ${formatV3000Coord(atom.z)} 0`);
+        atomIndex += 1;
+      }
+      for (const bond of molecule.bonds) {
+        bonds.push(`M  V30 ${bondIndex} ${bond.order} ${bond.a + atomOffset} ${bond.b + atomOffset}`);
+        bondIndex += 1;
+      }
+      atomOffset += molecule.atomCount;
+    }
+
+    return {
+      data: [
+        'Burrete SDF Pose Overlay',
+        '  Burrete',
+        `${molecules.length} poses overlaid from ${label}`,
+        '  0  0  0     0  0            999 V3000',
+        'M  V30 BEGIN CTAB',
+        `M  V30 COUNTS ${totalAtoms} ${totalBonds} 0 0 0`,
+        'M  V30 BEGIN ATOM',
+        ...atoms,
+        'M  V30 END ATOM',
+        'M  V30 BEGIN BOND',
+        ...bonds,
+        'M  V30 END BOND',
+        'M  V30 END CTAB',
+        'M  END',
+        '$$$$',
+        ''
+      ].join('\n'),
+      format: 'sdf',
+      label: `${label} (all ${molecules.length} poses)`,
+      loadPreset: 'default'
+    };
+  }
+
   function parseV2000SdfRecord(record) {
     const lines = String(record || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     if (lines.length < 4 || !lines[3].includes('V2000')) return null;
@@ -4278,29 +4548,43 @@
     let y = Number(line.slice(10, 20));
     let z = Number(line.slice(20, 30));
     let tail = line.length >= 30 ? line.slice(30) : '';
+    let element = normalizeSdfElement(tail.trim().split(/\s+/)[0]);
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
       const parts = line.trim().split(/\s+/);
       x = Number(parts[0]);
       y = Number(parts[1]);
       z = Number(parts[2]);
-      tail = ` ${parts[3] || 'C'}   0  0  0  0  0  0  0  0  0  0  0  0`;
+      element = normalizeSdfElement(parts[3]);
+      tail = ` ${element}   0  0  0  0  0  0  0  0  0  0  0  0`;
     }
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null;
-    return { x, y, z, tail: tail || ' C   0  0  0  0  0  0  0  0  0  0  0  0' };
+    return { x, y, z, element, tail: tail || ' C   0  0  0  0  0  0  0  0  0  0  0  0' };
   }
 
   function parseSdfBondLine(line) {
     let a = parseInt(line.slice(0, 3), 10);
     let b = parseInt(line.slice(3, 6), 10);
     let tail = line.length >= 6 ? line.slice(6) : '';
+    let order = normalizeSdfBondOrder(tail.trim().split(/\s+/)[0]);
     if (!Number.isFinite(a) || !Number.isFinite(b)) {
       const parts = line.trim().split(/\s+/);
       a = parseInt(parts[0], 10);
       b = parseInt(parts[1], 10);
-      tail = ` ${parts[2] || '1'}  0  0  0  0`;
+      order = normalizeSdfBondOrder(parts[2]);
+      tail = ` ${order}  0  0  0  0`;
     }
     if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
-    return { a, b, tail: tail || '  1  0  0  0  0' };
+    return { a, b, order, tail: tail || '  1  0  0  0  0' };
+  }
+
+  function normalizeSdfElement(value) {
+    const text = String(value || '').trim();
+    return /^[A-Z][a-z]?$/u.test(text) ? text : 'C';
+  }
+
+  function normalizeSdfBondOrder(value) {
+    const order = parseInt(value, 10);
+    return Number.isFinite(order) && order > 0 ? order : 1;
   }
 
   function formatSdfCountsLine(atomCount, bondCount) {
@@ -4317,6 +4601,10 @@
 
   function formatSdfCoord(value) {
     return value.toFixed(4).padStart(10, ' ');
+  }
+
+  function formatV3000Coord(value) {
+    return Number(value).toFixed(6);
   }
 
   function padSdfInt(value) {
@@ -4685,6 +4973,44 @@
     return sceneActionFailure('color_by_chain', 'NOT_IMPLEMENTED', 'Mol* representation theme update API is unavailable in this runtime.');
   }
 
+  function molstarStructureBoundingBoxTransform() {
+    return window.molstar?.lib?.plugin?.StateTransforms?.Representation?.StructureBoundingBox3D || null;
+  }
+
+  async function addMolstarStructureBoundingBoxGeometry(plugin, structure, options = {}) {
+    const transform = molstarStructureBoundingBoxTransform();
+    const target = structure?.cell || structure;
+    if (!transform || !target || !plugin?.build) return false;
+    await plugin.build().to(target).apply(transform, {
+      radius: Number.isFinite(Number(options.radius)) ? Number(options.radius) : 0.035,
+      color: Number.isFinite(Number(options.color)) ? Number(options.color) : 0x2f6f66
+    }, { tags: ['burrete-box-geometry'] }).commit({ revertOnError: true });
+    return true;
+  }
+
+  async function applyMolstarStructureBoundingBoxGeometry(viewer, options = {}) {
+    const plugin = viewer?.plugin;
+    const structures = plugin?.managers?.structure?.hierarchy?.current?.structures || [];
+    if (!structures.length) return 0;
+    let created = 0;
+    for (const structure of structures) {
+      try {
+        if (await addMolstarStructureBoundingBoxGeometry(plugin, structure, options)) created += 1;
+      } catch (error) {
+        debug('Mol* structure bounding-box geometry failed: ' + (error && error.message || String(error)));
+      }
+    }
+    return created;
+  }
+
+  async function showMolstarBoundingBox(action = {}) {
+    const count = await applyMolstarStructureBoundingBoxGeometry(activeMolstarViewer(), action);
+    if (!count) {
+      return sceneActionFailure('show_bounding_box', 'NO_STRUCTURE', 'No Mol* structures are available for bounding-box geometry.');
+    }
+    return { ok: true, command: 'show_bounding_box', result: { componentCount: count, representation: 'molstar-geometry' } };
+  }
+
   function normalizeSurfaceTargetKind(kind) {
     const text = String(kind || '').toLowerCase();
     if (text === 'protein') return 'polymer';
@@ -4700,11 +5026,13 @@
     hideWaters: hideMolstarWaters,
     showWaters: showMolstarWaters,
     showSurface: showMolstarSurface,
+    showBoundingBox: showMolstarBoundingBox,
     colorByChain: colorMolstarByChain
   };
 
   async function loadPreparedStructure(viewer, prepared) {
     activeMolstarPrepared = prepared;
+    updateSdfPoseButton(prepared);
     if (prepared.kind === 'docking') {
       await loadDockingPreparedStructure(viewer, prepared);
       return;
@@ -4811,8 +5139,30 @@
     prepared.ligandLabel = prepared.trajectoryPair.coordinateEntry.label || prepared.ligandLabel || 'Mol* trajectory';
   }
 
-  async function loadMolstarEntryAsBoxLines(viewer, entry) {
+  async function loadMolstarEntryAsUnitCell(viewer, entry) {
     const plugin = viewer.plugin;
+    const params = {
+      cellColor: 0x2f6f66,
+      cellScale: 1,
+      ref: 'model',
+      attachment: 'corner'
+    };
+    let created = 0;
+    for (const structure of molstarCurrentStructures(viewer)) {
+      const modelCell = structure?.model?.cell || structure?.model;
+      if (!modelCell) continue;
+      try {
+        const unitcell = await plugin.builders.structure.tryCreateUnitcell(modelCell, params, { isHidden: false });
+        if (unitcell) created += 1;
+      } catch (error) {
+        debug('Mol* unit cell creation from active model failed: ' + (error && error.message || String(error)));
+      }
+    }
+    if (created > 0) return;
+
+    const boundingBoxes = await applyMolstarStructureBoundingBoxGeometry(viewer);
+    if (boundingBoxes > 0) return;
+
     const normalized = normalizeFormat(entry.format);
     const payload = normalized === 'cifCore'
       ? { data: coreCifToPdb(entry.data), format: 'pdb' }
@@ -4820,21 +5170,11 @@
     const data = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
     const trajectory = await plugin.builders.structure.parseTrajectory(data, payload.format);
     const model = await plugin.builders.structure.createModel(trajectory);
-    const structure = await plugin.builders.structure.createStructure(model, { name: 'model', params: {} });
-    const component = await plugin.builders.structure.tryCreateComponentStatic(structure, 'all');
-    if (!component) throw new Error('Mol* could not create staged box component.');
-    await plugin.builders.structure.representation.addRepresentation(component, {
-      type: 'line',
-      typeParams: {
-        alpha: 0.72,
-        sizeFactor: 0.02,
-        visuals: ['intra-bond']
-      },
-      color: 'uniform',
-      colorParams: { value: 0x2f6f66 },
-      size: 'uniform',
-      sizeParams: { value: 0.018 }
-    });
+    const unitcell = await plugin.builders.structure.tryCreateUnitcell(model, params, { isHidden: false });
+    if (unitcell) return;
+    const fallbackBoxes = await applyMolstarStructureBoundingBoxGeometry(viewer);
+    if (fallbackBoxes > 0) return;
+    throw new Error('Mol* could not create unit-cell or bounding-box geometry for this box.');
   }
 
   async function loadStagedMolstarEntry(viewer, entry, cb) {
@@ -4853,12 +5193,12 @@
         debug('staged solvent line representation failed, falling back to default preset: ' + (error && error.message || String(error)));
       }
     }
-    if (entry.representation === 'box-lines') {
+    if (entry.representation === 'unitcell' || entry.representation === 'box-lines') {
       try {
-        await loadMolstarEntryAsBoxLines(viewer, prepared);
+        await loadMolstarEntryAsUnitCell(viewer, prepared);
         return;
       } catch (error) {
-        debug('staged box line representation failed, falling back to default preset: ' + (error && error.message || String(error)));
+        debug('staged unit cell representation failed, falling back to default preset: ' + (error && error.message || String(error)));
       }
     }
     await loadMolstarEntry(viewer, prepared);
@@ -4985,14 +5325,27 @@
     };
   }
 
-  function moveDockingPoseControls(root, left, top) {
+  function dockingPoseControlsBounds(mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
     const margin = TOOLBAR_MARGIN;
+    const left = mainRect ? Math.max(margin, Math.ceil(mainRect.left + margin)) : margin;
+    const right = mainRect ? Math.min(window.innerWidth - margin, Math.floor(mainRect.right - margin)) : window.innerWidth - margin;
+    return {
+      left,
+      right: Math.max(left, right),
+      top: margin,
+      bottom: window.innerHeight - margin
+    };
+  }
+
+  function moveDockingPoseControls(root, left, top, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
+    const bounds = dockingPoseControlsBounds(mainRect);
+    root.style.maxWidth = Math.max(180, Math.floor(bounds.right - bounds.left)) + 'px';
     const width = root.offsetWidth || root.getBoundingClientRect().width || 180;
     const height = root.offsetHeight || root.getBoundingClientRect().height || 40;
-    const maxLeft = Math.max(margin, window.innerWidth - width - margin);
-    const maxTop = Math.max(margin, window.innerHeight - height - margin);
-    const clampedLeft = Math.round(Math.min(Math.max(margin, left), maxLeft));
-    const clampedTop = Math.round(Math.min(Math.max(margin, top), maxTop));
+    const maxLeft = Math.max(bounds.left, bounds.right - width);
+    const maxTop = Math.max(bounds.top, bounds.bottom - height);
+    const clampedLeft = Math.round(Math.min(Math.max(bounds.left, left), maxLeft));
+    const clampedTop = Math.round(Math.min(Math.max(bounds.top, top), maxTop));
     root.style.left = clampedLeft + 'px';
     root.style.top = clampedTop + 'px';
     root.style.right = 'auto';
@@ -5026,17 +5379,28 @@
     } catch (_) {}
     if (restored) return;
     root.dataset.defaultPosition = '1';
-    root.style.left = '14px';
-    root.style.right = 'auto';
-    root.style.top = '14px';
-    root.style.bottom = 'auto';
+    applyDefaultDockingPoseControlsPosition(root);
   }
 
-  function repositionDockingPoseControls(root) {
-    if (root.dataset.defaultPosition === '1') return;
+  function applyDefaultDockingPoseControlsPosition(root, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
+    root.dataset.defaultPosition = '1';
+    const bounds = dockingPoseControlsBounds(mainRect);
+    moveDockingPoseControls(root, bounds.left, 14, mainRect);
+  }
+
+  function repositionDockingPoseControls(root, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
+    if (root.dataset.defaultPosition === '1') {
+      applyDefaultDockingPoseControlsPosition(root, mainRect);
+      return;
+    }
     const rect = root.getBoundingClientRect();
-    moveDockingPoseControls(root, rect.left, rect.top);
+    moveDockingPoseControls(root, rect.left, rect.top, mainRect);
     saveDockingPoseControlsPosition(root);
+  }
+
+  function repositionDockingPoseControlsForLayout(mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
+    const root = document.querySelector('.buret-docking-poses');
+    if (root) repositionDockingPoseControls(root, mainRect);
   }
 
   function initDockingPoseControlsDrag(root) {
@@ -5335,6 +5699,10 @@
     speed.inputMode = 'decimal';
     speed.value = formatTrajectoryFps(readTrajectoryLoopFps(activeConfig, prepared));
     speed.title = 'Frames per second (FPS)';
+    const updateSpeedMode = () => {
+      const fps = Number(speed.value);
+      speed.classList.toggle('buret-docking-pose-speed-skip', Number.isFinite(fps) && fps > NATIVE_TRAJECTORY_LOOP_SKIP_FPS_THRESHOLD);
+    };
     const slider = document.createElement('input');
     slider.className = 'buret-docking-pose-slider';
     slider.type = 'range';
@@ -5343,7 +5711,7 @@
     slider.step = '1';
     slider.setAttribute('aria-label', `${controlLabel} slider`);
     const updateControls = () => {
-      label.textContent = `${controlLabel} ${activePose + 1} / ${prepared.poseCount}`;
+      label.textContent = trajectoryPoseLabel(prepared, controlLabel, activePose);
       previous.disabled = activePose <= 0;
       next.disabled = activePose >= prepared.poseCount - 1;
       slider.value = String(activePose + 1);
@@ -5370,6 +5738,7 @@
       if (active) setAnimationOptionsOpen(true);
     };
     updateControls();
+    updateSpeedMode();
     const loopDelayMs = () => {
       const delay = trajectoryFpsToDelay(speed.value, prepared);
       return Number.isFinite(delay) && delay > 0 ? delay : 1200;
@@ -5416,7 +5785,7 @@
       try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(nextIndex)); } catch (_) {}
       previous.disabled = true;
       next.disabled = true;
-      label.textContent = `${controlLabel} ${nextIndex + 1} / ${prepared.poseCount}`;
+      label.textContent = trajectoryPoseLabel(prepared, controlLabel, nextIndex);
       try {
         if (prepared.nativeTrajectoryControls) {
           const switched = await setNativeTrajectoryPose(nextIndex, prepared.poseCount);
@@ -5539,11 +5908,13 @@
       const delay = loopDelayMs();
       const fps = trajectoryDelayToFps(delay, prepared);
       speed.value = formatTrajectoryFps(fps);
+      updateSpeedMode();
       try { localStorage.setItem(trajectoryLoopFpsStorageKey(activeConfig, prepared), String(fps)); } catch (_) {}
       if (!loopActive) return;
       setLoopActive(false);
       loop.click();
     });
+    speed.addEventListener('input', updateSpeedMode);
     slider.addEventListener('input', () => {
       const previewIndex = Math.max(0, Math.min(prepared.poseCount - 1, Number(slider.value) - 1));
       label.textContent = `${controlLabel} ${previewIndex + 1} / ${prepared.poseCount}`;
@@ -6436,6 +6807,11 @@
     return `${safeExportBaseName(activeConfig?.label || 'modified-structure', 'modified-structure')}.modified.${safeExtension}`;
   }
 
+  function molstarSelectionExportFileName(label, extension) {
+    const safeExtension = String(extension || 'txt').replace(/[^A-Za-z0-9]/g, '') || 'txt';
+    return `${safeExportBaseName(label || activeConfig?.label || 'selection', 'selection')}.modified.${safeExtension}`;
+  }
+
   function molstarStructureFromRef(structureRef) {
     return structureRef?.transform?.cell?.obj?.data ||
       structureRef?.cell?.obj?.data ||
@@ -6588,9 +6964,13 @@
     };
   }
 
-  function molstarModifiedStructureExportPayload() {
+  function molstarModifiedPdbExportAvailable() {
+    return !!molstarContextSourceEntryForActiveConfig();
+  }
+
+  function molstarModifiedMmCifExportPayload() {
     const toMmCif = molstarExportToMmCif();
-    if (!toMmCif) return molstarModifiedPdbExportPayload();
+    if (!toMmCif) throw new Error('mmCIF export is unavailable in this Mol* runtime.');
     const exports = molstarCurrentStructuresForExport();
     if (!exports.length) throw new Error('No modified Mol* structure is available to save.');
     const label = exports.length === 1 ? exports[0].name : 'burrete_modified_structures';
@@ -6605,8 +6985,55 @@
     };
   }
 
-  function saveMolstarModifiedStructure() {
-    const payload = molstarModifiedStructureExportPayload();
+  function molstarContextSdfEntryForExport(target) {
+    if (target?.scope === 'ligand' && target.receptor && target.ligand) {
+      const ligandEntry = pdbLigandSdfEntryForResidue(target.receptor, target.atom);
+      if (ligandEntry) return ligandEntry;
+      const ligandFormat = normalizeFormat(target.ligand.format);
+      if (ligandFormat === 'sdf') return target.ligand;
+    }
+    if (target?.scope === 'ligand' && target.selectedEntry && target.sourceEntry) {
+      const ligandEntry = pdbLigandSdfEntryForResidue(target.sourceEntry, target.atom) || target.selectedEntry;
+      if (normalizeFormat(ligandEntry?.format) === 'sdf') return ligandEntry;
+    }
+    if (target?.scope === 'ligand' && normalizeFormat(target.selectedEntry?.format) === 'sdf') {
+      return target.selectedEntry;
+    }
+    return null;
+  }
+
+  function molstarContextSdfExportAvailable(target) {
+    return !!molstarContextSdfEntryForExport(target);
+  }
+
+  function molstarContextSdfExportPayload(target) {
+    const ligandEntry = molstarContextSdfEntryForExport(target);
+    if (!ligandEntry) throw new Error('SDF export is available only for ligand selections with SDF data or PDB residue data.');
+    const text = String(ligandEntry.data || '');
+    if (!text.trim()) throw new Error('The selected ligand has no SDF data to save.');
+    return {
+      name: molstarSelectionExportFileName(ligandEntry.label || target?.label || 'ligand', 'sdf'),
+      mimeType: 'chemical/x-mdl-sdfile',
+      text: text.endsWith('\n') ? text : `${text}\n`,
+      count: 1
+    };
+  }
+
+  function molstarModifiedStructureExportPayload() {
+    const toMmCif = molstarExportToMmCif();
+    if (!toMmCif) return molstarModifiedPdbExportPayload();
+    return molstarModifiedMmCifExportPayload();
+  }
+
+  function molstarModifiedStructureExportPayloadForFormat(format, target) {
+    const normalized = normalizeFormat(format);
+    if (normalized === 'mmcif' || normalized === 'cifCore') return molstarModifiedMmCifExportPayload();
+    if (normalized === 'pdb') return molstarModifiedPdbExportPayload();
+    if (normalized === 'sdf') return molstarContextSdfExportPayload(target);
+    throw new Error(`Unsupported structure export format: ${format || 'unknown'}.`);
+  }
+
+  function postMolstarModifiedStructureExport(payload) {
     const posted = postHostMessage({
       type: 'exportText',
       name: payload.name,
@@ -6615,6 +7042,14 @@
     });
     if (!posted) throw new Error('Structure saving is unavailable in this host.');
     return payload;
+  }
+
+  function saveMolstarModifiedStructure() {
+    return postMolstarModifiedStructureExport(molstarModifiedStructureExportPayload());
+  }
+
+  function saveMolstarModifiedStructureAs(format, target) {
+    return postMolstarModifiedStructureExport(molstarModifiedStructureExportPayloadForFormat(format, target));
   }
 
   async function resetMolstarCameraForContext() {
@@ -6786,12 +7221,16 @@
 
   function molstarContextMenuActions(target, mode = 'molecule') {
     if (mode === 'atom' && target?.scope === 'ligand') {
-      return [
+      const actions = [
         ['select-atom', 'Select atom'],
         ['remove-atom', 'Delete atom'],
         ['save-modified', 'Save modified structure'],
-        ['focus-atom', 'Focus atom in current view']
+        ['save-format:mmcif', 'Save as mmCIF']
       ];
+      if (molstarModifiedPdbExportAvailable()) actions.push(['save-format:pdb', 'Save as PDB']);
+      if (molstarContextSdfExportAvailable(target)) actions.push(['save-format:sdf', 'Save ligand as SDF']);
+      actions.push(['focus-atom', 'Focus atom in current view']);
+      return actions;
     }
     const noun = molstarContextTargetNoun(target);
     const actions = [
@@ -6802,6 +7241,9 @@
     if (target?.scope === 'residue') actions.push(['remove-chain', 'Delete chain']);
     if (molstarContextDocumentPayload(target)) actions.push(['molstar', 'Open in Mol*']);
     actions.push(['save-modified', 'Save modified structure']);
+    actions.push(['save-format:mmcif', 'Save as mmCIF']);
+    if (molstarModifiedPdbExportAvailable()) actions.push(['save-format:pdb', 'Save as PDB']);
+    if (molstarContextSdfExportAvailable(target)) actions.push(['save-format:sdf', 'Save ligand as SDF']);
     actions.push(['focus', 'Focus in current view']);
     return actions;
   }
@@ -6846,6 +7288,11 @@
         const saved = saveMolstarModifiedStructure();
         setStatus(`[web] Saving ${saved.name} (${saved.count} structure${saved.count === 1 ? '' : 's'}).`);
         setMolstarStructureDirty(false);
+      } else if (action.startsWith('save-format:')) {
+        const format = action.slice('save-format:'.length);
+        const saved = saveMolstarModifiedStructureAs(format, target);
+        setStatus(`[web] Saving ${saved.name} (${saved.count} structure${saved.count === 1 ? '' : 's'}).`);
+        if (normalizeFormat(format) !== 'sdf') setMolstarStructureDirty(false);
       } else if (action === 'focus') {
         const handled = focusMolstarContextPick(target) || await resetMolstarCameraForContext();
         setStatus(handled ? `[web] Focused ${targetLabel} in the current Mol* view.` : `[web] ${targetLabel} is already visible in Mol*.`);
@@ -6939,6 +7386,9 @@
     let contextPointer = null;
     const menuIsOpen = () => !!document.querySelector('.buret-molecule-context-menu');
     const menuIsInAtomMode = () => menuIsOpen() && molstarContextMenuMode === 'atom';
+    const clearMolstarHoverHighlights = () => {
+      try { activeViewer?.plugin?.managers?.interactivity?.lociHighlights?.clearHighlights?.(); } catch (_) {}
+    };
     const selectAtomFromEvent = (event) => {
       const contextPick = molstarContextPickFromEvent(event);
       if (!contextPick) return false;
@@ -6968,9 +7418,15 @@
       return true;
     };
     const onContextMenu = (event) => {
-      if (contextPointer?.moved) {
+      if (menuIsOpen() && !contextPointer) {
         event.preventDefault();
         event.stopPropagation();
+        return;
+      }
+      if (contextPointer) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!contextPointer.moved) return;
         hideMolstarContextMenu();
         contextPointer = null;
         return;
@@ -6991,8 +7447,6 @@
           hideMolstarContextMenu();
           return;
         }
-        event.preventDefault();
-        event.stopPropagation();
         contextPointer = {
           pointerId: event.pointerId,
           startX: event.clientX,
@@ -7023,7 +7477,11 @@
     };
     const onPointerUp = (event) => {
       if (!contextPointer || event.pointerId !== contextPointer.pointerId) return;
-      if (contextPointer.moved) return;
+      if (contextPointer.moved) {
+        hideMolstarContextMenu();
+        contextPointer = null;
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       openFromEvent(event, contextPointer.pick);
@@ -7031,6 +7489,13 @@
     };
     const onPointerCancel = (event) => {
       if (contextPointer && event.pointerId === contextPointer.pointerId) contextPointer = null;
+    };
+    const suppressAtomModeHover = (event) => {
+      if (!menuIsInAtomMode()) return;
+      if (Number(event.buttons || 0) !== 0) return;
+      if (!isMolstarContextMenuTarget(event.target)) return;
+      event.stopPropagation();
+      clearMolstarHoverHighlights();
     };
     const onKeyDown = (event) => {
       if (event.key === 'Escape') hideMolstarContextMenu();
@@ -7041,6 +7506,8 @@
     document.addEventListener('pointermove', onPointerMove, true);
     document.addEventListener('pointerup', onPointerUp, true);
     document.addEventListener('pointercancel', onPointerCancel, true);
+    document.addEventListener('pointermove', suppressAtomModeHover, true);
+    document.addEventListener('mousemove', suppressAtomModeHover, true);
     document.addEventListener('keydown', onKeyDown);
     window.addEventListener('resize', onResize);
     molstarContextMenuCleanup = () => {
@@ -7049,6 +7516,8 @@
       document.removeEventListener('pointermove', onPointerMove, true);
       document.removeEventListener('pointerup', onPointerUp, true);
       document.removeEventListener('pointercancel', onPointerCancel, true);
+      document.removeEventListener('pointermove', suppressAtomModeHover, true);
+      document.removeEventListener('mousemove', suppressAtomModeHover, true);
       document.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('resize', onResize);
       hideMolstarContextMenu();
@@ -7163,6 +7632,7 @@
     }
     activeViewer = null;
     activeMolstarPrepared = null;
+    updateSdfPoseButton(null);
     activeMolstarCacheBuster = null;
     window.BurreteViewer = null;
     window.BuretteViewer = null;
@@ -7170,6 +7640,7 @@
 
   async function startMolstar(config, cb) {
     disposeActiveMolstarViewer();
+    activeSdfPoseMode = readSdfPoseMode(config);
     ensureMolstarStylesheet();
     const container = document.getElementById('app');
     if (container) container.innerHTML = '';
@@ -7262,6 +7733,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
   async function start() {
     debug('viewer.js executed');
     setStatus('[web] Booting Burrete viewer JavaScript…');
+    installDownloadExportBridge();
 
     const cb = window.BurreteCacheBuster || String(Date.now());
     await loadRuntimeInputs(cb);

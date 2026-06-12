@@ -13,6 +13,7 @@ import {
   normalizeDockTabs,
 } from "../lib/dock";
 import { isTemporaryDocumentPath } from "../lib/temporary-documents";
+import { workspaceStorageKey } from "../lib/window-scope";
 
 type ShellState = {
   sidebarOpen: boolean;
@@ -278,10 +279,21 @@ export const useShellStore = create<ShellState>()(
       renameProjectRoot: (root, name) =>
         set((state) => {
           const normalized = normalizeRoot(root);
-          if (!normalized || !state.projectRoots.includes(normalized)) return state;
+          if (!normalized) return state;
           const nextName = name.trim();
+          const projectExists = state.projectRoots.includes(normalized);
+          if (!projectExists && !nextName) return state;
           const { [normalized]: _removed, ...rest } = state.projectNameOverrides;
-          return { projectNameOverrides: nextName ? { ...rest, [normalized]: nextName } : rest };
+          if (projectExists) return { projectNameOverrides: nextName ? { ...rest, [normalized]: nextName } : rest };
+          const projectId = `project:${normalized}`;
+          return {
+            projectRoots: [...state.projectRoots, normalized],
+            hiddenProjectRoots: state.hiddenProjectRoots.filter((candidate) => candidate !== normalized),
+            expandedProjectIds: state.expandedProjectIds.includes(projectId)
+              ? state.expandedProjectIds
+              : [...state.expandedProjectIds, projectId],
+            projectNameOverrides: { ...rest, [normalized]: nextName },
+          };
         }),
       removeProjectRoot: (root) =>
         set((state) => {
@@ -342,7 +354,7 @@ export const useShellStore = create<ShellState>()(
         })),
     }),
     {
-      name: "burrete.shell.ui",
+      name: workspaceStorageKey("burrete.shell.ui"),
       partialize: (state) => ({
         sidebarOpen: state.sidebarOpen,
         sidebarWidth: state.sidebarWidth,

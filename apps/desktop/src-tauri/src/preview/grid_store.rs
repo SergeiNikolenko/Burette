@@ -156,6 +156,31 @@ impl GridRuntimeRegistry {
         Ok(())
     }
 
+    pub(crate) fn unregister_prefix(&self, document_id_prefix: &str) -> Result<(), String> {
+        let entries = {
+            let mut entries = self
+                .entries
+                .lock()
+                .map_err(|_| "grid runtime registry is poisoned")?;
+            let document_ids: Vec<String> = entries
+                .keys()
+                .filter(|document_id| document_id.starts_with(document_id_prefix))
+                .cloned()
+                .collect();
+            document_ids
+                .into_iter()
+                .filter_map(|document_id| entries.remove(&document_id))
+                .collect::<Vec<_>>()
+        };
+        for entry in entries {
+            entry.cancel_token.store(true, Ordering::Relaxed);
+            if let Some(runtime_dir) = entry.database_path.parent() {
+                let _ = std::fs::remove_dir_all(runtime_dir);
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn fetch_page(
         &self,
         document_id: &str,

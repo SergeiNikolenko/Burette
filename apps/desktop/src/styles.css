@@ -306,10 +306,10 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   left: 50%;
   top: calc(100% + 4px);
   z-index: 1200;
-  min-height: 19px;
-  max-width: min(180px, calc(100vw - 12px));
-  padding: 4px 5px 4px 7px;
-  border-radius: 6px;
+  min-height: 28px;
+  max-width: min(240px, calc(100vw - 16px));
+  padding: 7px 8px 7px 10px;
+  border-radius: 8px;
   background: color-mix(in srgb, var(--bg-base) 82%, transparent);
   color: var(--text-primary);
   box-shadow: 0 8px 22px rgb(0 0 0 / 0.28);
@@ -317,7 +317,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   -webkit-backdrop-filter: blur(15px) saturate(1.35);
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -354,22 +354,22 @@ button:focus-visible > .shortcut-tooltip {
   overflow: hidden;
   text-overflow: ellipsis;
   font-weight: 400;
-  font-size: 7px;
+  font-size: 11px;
   letter-spacing: 0;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 .shortcut-tooltip-key {
   flex: 0 0 auto;
-  min-height: 12px;
+  min-height: 18px;
   border-radius: 999px;
-  padding: 2px 5px;
+  padding: 3px 7px;
   background: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 32%), transparent);
   color: var(--text-secondary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-weight: 400;
-  font-size: 7px;
+  font-size: 11px;
   letter-spacing: 0;
   line-height: 1;
 }
@@ -453,6 +453,14 @@ button:focus-visible > .shortcut-tooltip {
 .tab > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 400; }
 .tab:hover { background: var(--tab-active-bg); color: var(--text-secondary); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }
 .tab.active { background: var(--tab-active-bg); color: var(--text-secondary); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }
+.tab-shell[data-selected="true"] .tab {
+  background: var(--surface-selected);
+  color: var(--text-secondary);
+  box-shadow: inset 0 0 0 1px var(--line-subtle);
+}
+.tab-shell[data-selected="true"] .tab.active {
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
 .tab:active { transform: scale(0.985); }
 .tab-shell[data-dragging="true"] .tab {
   background: var(--tab-active-bg);
@@ -1668,6 +1676,61 @@ img.radix-menu-item-icon {
   text-align: center;
   border-radius: 0;
   background: transparent;
+}
+.dock-files-view {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.dock-file-tabs {
+  min-width: 0;
+  flex: 0 0 37px;
+  height: 37px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px 5px;
+  border-bottom: 1px solid var(--line-subtler);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.dock-file-tabs::-webkit-scrollbar {
+  display: none;
+}
+.dock-file-tab {
+  min-width: 0;
+  max-width: 160px;
+  height: 26px;
+  flex: 0 1 auto;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-muted);
+  padding: 0 9px;
+  font: inherit;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  cursor: default;
+  transition: background 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
+}
+.dock-file-tab span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dock-file-tab:hover,
+.dock-file-tab[data-active] {
+  background: var(--tab-active-bg);
+  color: var(--text-secondary);
+}
+.dock-file-tab:active {
+  transform: scale(0.985);
 }
 .dock-viewer {
   position: relative;
@@ -3682,6 +3745,17 @@ img.radix-menu-item-icon {
   z-index: -1;
   background: color-mix(in srgb, var(--bg-base) 55%, transparent);
 }
+.command-palette-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 [cmdk-input] {
   width: 100%;
   min-width: 0;
@@ -3762,7 +3836,7 @@ img.radix-menu-item-icon {
 .new-tab-page button { position: relative; border: 0; border-radius: 8px; background: transparent; color: var(--text-secondary); font-size: 13px; font-weight: 400; height: 28px; padding: 0 8px; display: inline-flex; align-items: center; gap: 6px; transition: color 120ms ease, background 120ms ease; }
 .new-tab-page button:hover { color: var(--text-primary); background: transparent; }
 .new-tab-page kbd { font-size: 11px; letter-spacing: 0.16em; color: var(--text-icon-muted); }
-.new-tab-page .shortcut-tooltip-key { color: var(--text-secondary); font-size: 7px; letter-spacing: 0; }
+.new-tab-page .shortcut-tooltip-key { color: var(--text-secondary); font-size: 11px; letter-spacing: 0; }
 .error-boundary {
   width: 100vw;
   height: 100vh;

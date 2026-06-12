@@ -3,6 +3,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{LogicalSize, Manager, Runtime, Size, WebviewWindow};
 
 use crate::menu;
+use crate::windows;
 
 const DEFAULT_MAIN_WINDOW_WIDTH: f64 = 1180.0;
 const DEFAULT_MAIN_WINDOW_HEIGHT: f64 = 760.0;
@@ -11,12 +12,15 @@ const MIN_REASONABLE_WINDOW_HEIGHT: u32 = 420;
 
 pub(crate) fn configure_tray<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
     let show = MenuItemBuilder::with_id("tray.show", "Show Burrete").build(app)?;
+    let new_window = MenuItemBuilder::with_id("tray.new-window", "New Window").build(app)?;
     let open = MenuItemBuilder::with_id("tray.open", "Open...").build(app)?;
     let settings = MenuItemBuilder::with_id("tray.settings", "Settings...").build(app)?;
     let quit = MenuItemBuilder::with_id("tray.quit", "Quit Burrete").build(app)?;
     let tray_menu = MenuBuilder::new(app)
         .items(&[
             &show,
+            &new_window,
+            &PredefinedMenuItem::separator(app)?,
             &open,
             &settings,
             &PredefinedMenuItem::separator(app)?,
@@ -32,6 +36,9 @@ pub(crate) fn configure_tray<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         .tooltip("Burrete")
         .on_menu_event(|app, event| match event.id().0.as_str() {
             "tray.show" => show_main_window(app),
+            "tray.new-window" => {
+                let _ = windows::open_new_workspace_window(app);
+            }
             "tray.open" => {
                 show_main_window(app);
                 menu::emit_to_focused_window(app, menu::MENU_OPEN_FILES_EVENT);
@@ -132,9 +139,7 @@ fn put_pixel(rgba: &mut [u8], x: u32, y: u32, alpha: u8) {
 }
 
 pub(crate) fn show_main_window<R: Runtime>(app: &tauri::AppHandle<R>) {
-    #[cfg(target_os = "macos")]
-    let _ = app.show();
-    if let Some(window) = app.get_webview_window("main") {
+    if let Ok(Some(window)) = windows::show_window(app, windows::MAIN_WINDOW_LABEL) {
         let _ = window.show();
         let _ = window.unminimize();
         normalize_main_window(&window);
@@ -143,7 +148,7 @@ pub(crate) fn show_main_window<R: Runtime>(app: &tauri::AppHandle<R>) {
 }
 
 pub(crate) fn hide_main_window<R: Runtime>(app: &tauri::AppHandle<R>) {
-    if let Some(window) = app.get_webview_window("main") {
+    if let Some(window) = app.get_webview_window(windows::MAIN_WINDOW_LABEL) {
         let _ = window.hide();
     }
     #[cfg(target_os = "macos")]

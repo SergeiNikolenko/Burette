@@ -121,7 +121,24 @@ assert.match(app, /import \{ openBrowserDevTextFiles \} from "\.\/lib\/browser-d
 assert.match(app, /: await openBrowserDevTextFiles\(cleanPaths\)/);
 assert.doesNotMatch(app, /Text file viewer is available in the desktop app only/);
 assert.match(app, /const openPaths = useCallback/);
-assert.match(app, /structureFirstTextExtensions = new Set\(\["out"\]\)/);
+assert.match(app, /structureAndTextExtensions = new Set\(\[[\s\S]*"out"[\s\S]*"vasp"[\s\S]*\]\)/);
+for (const extension of ["abi", "cms", "com", "csv", "cub", "cube", "fdf", "graphml", "in", "inp", "log", "mae", "nw", "out", "psi4", "qcin", "tsv", "vasp"]) {
+  assert.match(app, new RegExp(`"${extension}"`), `${extension} should be a structure-and-text open extension`);
+}
+assert.match(app, /if \(structureAndTextExtensions\.has\(extension\)\) \{\s*structureAndTextPaths\.push\(path\);/);
+assert.match(app, /const openedStructureAndTextPaths = new Set<string>\(\);/);
+assert.match(app, /const result = await openDocuments\(structureAndTextPaths\);/);
+assert.match(app, /openedStructureAndTextPaths\.add\(document\.path\);/);
+assert.match(app, /structureAndTextPaths\.filter\(\(path\) => !openedStructureAndTextPaths\.has\(path\)\)/);
+assert.match(app, /let dockOpenPaths = cleanPaths;/);
+assert.match(app, /const rightDockTextPaths = cleanPaths\.filter\(\(path\) => \{/);
+assert.match(app, /return !structureExtensions\.has\(extension\) && !structureAndTextExtensions\.has\(extension\);/);
+assert.match(app, /dockOpenPaths = cleanPaths\.filter\(\(path\) => !rightDockTextPaths\.includes\(path\)\);/);
+assert.match(app, /open_text_files", \{ paths: rightDockTextPaths \}/);
+assert.match(app, /for \(const path of dockOpenPaths\) \{/);
+const rightDockTextOpenBlock = app.match(/if \(input\.area === "right" && cleanPaths\.length > 0\) \{[\s\S]*?return;\s*\}/)?.[0] ?? "";
+assert.match(rightDockTextOpenBlock, /pathExtension|structureExtensions|structureAndTextExtensions/);
+assert.doesNotMatch(rightDockTextOpenBlock, /preferredTextExtensions/);
 assert.match(app, /useOpenEvents\(openPaths, pushErrorStatus\)/);
 assert.match(app, /useOpenDrop\(openPaths, pushStatus/);
 assert.match(app, /showTextFileMetadata/);

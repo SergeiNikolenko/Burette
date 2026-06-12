@@ -15,16 +15,26 @@ const TAB_DRAG_ACTIVATE_DELAY_MS = 520;
 const TAB_MOUSE_REORDER_THRESHOLD_PX = 8;
 
 export function EditorTabs({ state, actions }: { state: ShellViewState; actions: ShellActions }) {
-  const activeTabIndex = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
+  const visibleTabs = state.tabs.filter((tab) => tab.location.kind !== "settings");
+  const activeTabIndex = visibleTabs.findIndex((tab) => tab.id === state.activeTabId);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
+  const [selectedTabIds, setSelectedTabIds] = useState<Set<string>>(() => new Set());
+  const [selectionAnchorTabId, setSelectionAnchorTabId] = useState<string | null>(null);
   const draggingTabIdRef = useRef<string | null>(null);
+  const selectedTabIdsRef = useRef<Set<string>>(new Set());
   const mouseDragRef = useRef<{ tabId: string; startX: number; active: boolean } | null>(null);
   const removeMouseDragListenersRef = useRef<(() => void) | null>(null);
   const dragActivationRef = useRef<{ tabId: string; timeout: number } | null>(null);
   const tabShellRefs = useRef(new Map<string, HTMLDivElement>());
   const previousTabRectsRef = useRef<Map<string, DOMRect> | null>(null);
-  const latestTabsRef = useRef(state.tabs);
-  latestTabsRef.current = state.tabs;
+  const latestTabsRef = useRef(visibleTabs);
+  latestTabsRef.current = visibleTabs;
+
+  const updateSelectedTabIds = useCallback((next: Set<string>, anchorId: string | null = selectionAnchorTabId) => {
+    selectedTabIdsRef.current = next;
+    setSelectedTabIds(next);
+    setSelectionAnchorTabId(anchorId);
+  }, [selectionAnchorTabId]);
 
   const setTabShellRef = useCallback((tabId: string, node: HTMLDivElement | null) => {
     if (node) {
@@ -47,7 +57,7 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
     const previousRects = previousTabRectsRef.current;
     if (!previousRects) return;
     previousTabRectsRef.current = null;
-    for (const tab of state.tabs) {
+    for (const tab of visibleTabs) {
       if (tab.id === draggingTabId) continue;
       const element = tabShellRefs.current.get(tab.id);
       const previousRect = previousRects.get(tab.id);
@@ -71,25 +81,109 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
     return null;
   }, []);
 
-  const tabStructurePayload = useCallback((tabId: string): StructureDragPayload | null => {
-    const tab = latestTabsRef.current.find((candidate) => candidate.id === tabId);
-    if (!tab) return null;
-    const path = tabPathForLocation(tab);
-    if (!path) return null;
+  const tabPayloadItem = useCallback((tab: ShellViewState["tabs"][number], path: string) => {
     const kind = pageKind(tab.location);
     return {
-      paths: [path],
-      records: [],
-      items: [
-        {
-          kind: tab.location.kind === "ketcher" ? "ketcher" : tab.location.kind === "text-file" ? "writer" : "tab",
-          title: kind.title(tab.location, state),
-          detail: kind.description,
-          path,
-        },
-      ],
+      kind: tab.location.kind === "ketcher" ? "ketcher" as const : tab.location.kind === "text-file" ? "writer" as const : "tab" as const,
+      title: kind.title(tab.location, state),
+      detail: kind.description,
+      path,
     };
-  }, [state, tabPathForLocation]);
+  }, [state]);
+
+  const tabStructurePayloadForIds = useCallback((tabIds: string[]): StructureDragPayload | null => {
+    const wanted = new Set(tabIds);
+    const paths: string[] = [];
+    const items: StructureDragPayload["items"] = [];
+    for (const tab of latestTabsRef.current) {
+      if (!wanted.has(tab.id)) continue;
+      const path = tabPathForLocation(tab);
+      if (!path) continue;
+      paths.push(path);
+      items.push(tabPayloadItem(tab, path));
+    }
+    return paths.length > 0 ? { paths, records: [], items } : null;
+  }, [tabPathForLocation, tabPayloadItem]);
+
+  const tabStructurePayload = useCallback((tabId: string): StructureDragPayload | null => {
+    const selected = selectedTabIdsRef.current;
+    const sourceIds = selected.has(tabId) && selected.size > 1
+      ? latestTabsRef.current.filter((tab) => selected.has(tab.id)).map((tab) => tab.id)
+      : [tabId];
+    return tabStructurePayloadForIds(sourceIds);
+  }, [tabStructurePayloadForIds]);
+
+  const selectableTabIds = useCallback(() => (
+    latestTabsRef.current
+      .filter((tab) => Boolean(tabPathForLocation(tab)))
+      .map((tab) => tab.id)
+  ), [tabPathForLocation]);
+
+  const selectAllTabs = useCallback(() => {
+    const ids = selectableTabIds();
+    updateSelectedTabIds(new Set(ids), ids[ids.length - 1] ?? null);
+  }, [selectableTabIds, updateSelectedTabIds]);
+
+  const clearSelectedTabs = useCallback(() => {
+    updateSelectedTabIds(new Set(), null);
+  }, [updateSelectedTabIds]);
+
+  const toggleSelectedTab = useCallback((tabId: string) => {
+    const tab = latestTabsRef.current.find((candidate) => candidate.id === tabId);
+    if (!tab || !tabPathForLocation(tab)) return;
+    const next = new Set(selectedTabIdsRef.current);
+    if (next.has(tabId)) next.delete(tabId);
+    else next.add(tabId);
+    updateSelectedTabIds(next, tabId);
+  }, [tabPathForLocation, updateSelectedTabIds]);
+
+  const selectTabRange = useCallback((tabId: string) => {
+    const ids = selectableTabIds();
+    const targetIndex = ids.indexOf(tabId);
+    const anchorIndex = ids.indexOf(selectionAnchorTabId ?? "");
+    if (targetIndex < 0 || anchorIndex < 0) {
+      updateSelectedTabIds(new Set([tabId]), tabId);
+      return;
+    }
+    const start = Math.min(anchorIndex, targetIndex);
+    const end = Math.max(anchorIndex, targetIndex);
+    updateSelectedTabIds(new Set(ids.slice(start, end + 1)), selectionAnchorTabId);
+  }, [selectableTabIds, selectionAnchorTabId, updateSelectedTabIds]);
+
+  const handleTabClick = useCallback((tabId: string, event: React.MouseEvent<HTMLButtonElement>) => {
+    if (event.metaKey || event.ctrlKey) {
+      toggleSelectedTab(tabId);
+      actions.selectTab(tabId);
+      return;
+    }
+    if (event.shiftKey) {
+      selectTabRange(tabId);
+      actions.selectTab(tabId);
+      return;
+    }
+    clearSelectedTabs();
+    actions.selectTab(tabId);
+  }, [actions, clearSelectedTabs, selectTabRange, toggleSelectedTab]);
+
+  const handleTabListKeyDown = useCallback((event: React.KeyboardEvent<HTMLElement>) => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
+      event.preventDefault();
+      selectAllTabs();
+      return;
+    }
+    if (event.key === "Escape" && selectedTabIdsRef.current.size > 0) {
+      event.preventDefault();
+      clearSelectedTabs();
+    }
+  }, [clearSelectedTabs, selectAllTabs]);
+
+  useEffect(() => {
+    const currentIds = new Set(visibleTabs.map((tab) => tab.id));
+    const next = new Set([...selectedTabIdsRef.current].filter((id) => currentIds.has(id)));
+    if (next.size !== selectedTabIdsRef.current.size) {
+      updateSelectedTabIds(next, next.has(selectionAnchorTabId ?? "") ? selectionAnchorTabId : null);
+    }
+  }, [selectionAnchorTabId, updateSelectedTabIds, visibleTabs]);
 
   const dropTargetForTabId = useCallback((tabId: string): DropTargetContext | null => {
     const tab = latestTabsRef.current.find((candidate) => candidate.id === tabId);
@@ -164,9 +258,14 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
     }
     const currentIndex = orderedTabs.findIndex((tab) => tab.id === tabId);
     if (currentIndex === targetIndex) return;
+    const stateTabsWithoutDragged = state.tabs.filter((tab) => tab.id !== tabId);
+    const targetTabId = otherTabs[targetIndex]?.id ?? null;
+    const stateTargetIndex = targetTabId
+      ? stateTabsWithoutDragged.findIndex((tab) => tab.id === targetTabId)
+      : stateTabsWithoutDragged.length;
     previousTabRectsRef.current = measureTabRects();
-    actions.moveTab(tabId, targetIndex);
-  }, [actions, measureTabRects]);
+    actions.moveTab(tabId, stateTargetIndex);
+  }, [actions, measureTabRects, state.tabs]);
 
   const clearDragActivation = useCallback(() => {
     const activation = dragActivationRef.current;
@@ -197,6 +296,11 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
       }, TAB_DRAG_ACTIVATE_DELAY_MS),
     };
   }, [actions, clearDragActivation, state.activeTabId]);
+
+  const selectAndFocusTab = useCallback((tabId: string) => {
+    actions.selectTab(tabId);
+    tabShellRefs.current.get(tabId)?.querySelector<HTMLButtonElement>('[role="tab"]')?.focus();
+  }, [actions]);
 
   const stopTabDrag = useCallback(() => {
     removeMouseDragListeners();
@@ -316,8 +420,9 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
         aria-label="Open structures"
         onDragOver={handleEmptyTabStripDragOver}
         onDrop={handleEmptyTabStripDrop}
+        onKeyDown={handleTabListKeyDown}
       >
-        {state.tabs.map((tab, index) => {
+        {visibleTabs.map((tab, index) => {
           const kind = pageKind(tab.location);
           const title = kind.title(tab.location, state);
           const active = index === activeTabIndex;
@@ -337,6 +442,7 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
             ? state.textDocuments.find((document) => document.id === textFileLocation.documentId || document.path === textFileLocation.path) ?? null
             : null;
           const isDragging = draggingTabId === tab.id;
+          const selected = selectedTabIds.has(tab.id);
           const tabDropTarget = fileLocation
             ? {
                 kind: "active-viewer" as const,
@@ -350,6 +456,7 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
             event.preventDefault();
             event.stopPropagation();
             const canSaveAs = tabDocument && isMoleculeCollectionPath(tabDocument.path);
+            const canSelectAll = selectableTabIds().length > 1;
             const items = [
               ...(canSaveAs
                 ? [
@@ -422,20 +529,41 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
                     { kind: "separator" as const },
                   ]
                 : []),
+              ...(canSelectAll
+                ? [
+                    {
+                      kind: "item" as const,
+                      id: "select-all-tabs",
+                      text: "Select All Tabs",
+                      action: selectAllTabs,
+                    },
+                    ...(selectedTabIds.size > 0
+                      ? [
+                          {
+                            kind: "item" as const,
+                            id: "clear-tab-selection",
+                            text: "Clear Tab Selection",
+                            action: clearSelectedTabs,
+                          },
+                        ]
+                      : []),
+                    { kind: "separator" as const },
+                  ]
+                : []),
               {
                 kind: "item" as const,
                 id: "close-tab",
                 text: "Close Tab",
                 action: () => actions.closeTab(tab.id),
               },
-              ...(state.tabs.length > 1
+              ...(visibleTabs.length > 1
                 ? [
                     {
                       kind: "item" as const,
                       id: "close-other-tabs",
                       text: "Close Other Tabs",
                       action: () => {
-                        for (const candidate of state.tabs) {
+                        for (const candidate of visibleTabs) {
                           if (candidate.id !== tab.id) actions.closeTab(candidate.id);
                         }
                       },
@@ -458,6 +586,7 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
               ref={(node) => setTabShellRef(tab.id, node)}
               className="tab-shell"
               data-active={active || undefined}
+              data-selected={selected || undefined}
               data-dragging={isDragging || undefined}
               onDragOver={(event) => {
                 updateNativeTabDrag(event);
@@ -485,18 +614,19 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
                   }
                   startMouseTabReorder(tab.id, true, event);
                 }}
-                onClick={() => actions.selectTab(tab.id)}
+                onClick={(event) => handleTabClick(tab.id, event)}
                 onContextMenu={showTabMenu}
                 onDragStart={(event) => {
                   draggingTabIdRef.current = tab.id;
                   setDraggingTabId(tab.id);
                   event.dataTransfer.effectAllowed = "copyMove";
                   event.dataTransfer.setData(TAB_DRAG_MIME, tab.id);
-                  writeStructureDragPayload(event.dataTransfer, {
+                  const payload = tabStructurePayload(tab.id) ?? {
                     paths: tabPath ? [tabPath] : [],
                     records: [],
                     items: [tabDragItem],
-                  });
+                  };
+                  writeStructureDragPayload(event.dataTransfer, payload);
                   actions.setStructureDragActive(true);
                 }}
                 onDragEnd={(event) => {
@@ -531,26 +661,26 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
                   }
                   if (event.key === "ArrowRight") {
                     event.preventDefault();
-                    const next = state.tabs[(index + 1) % state.tabs.length];
-                    if (next) actions.selectTab(next.id);
+                    const next = visibleTabs[(index + 1) % visibleTabs.length];
+                    if (next) selectAndFocusTab(next.id);
                     return;
                   }
                   if (event.key === "ArrowLeft") {
                     event.preventDefault();
-                    const next = state.tabs[(index - 1 + state.tabs.length) % state.tabs.length];
-                    if (next) actions.selectTab(next.id);
+                    const next = visibleTabs[(index - 1 + visibleTabs.length) % visibleTabs.length];
+                    if (next) selectAndFocusTab(next.id);
                     return;
                   }
                   if (event.key === "Home") {
                     event.preventDefault();
-                    const next = state.tabs[0];
-                    if (next) actions.selectTab(next.id);
+                    const next = visibleTabs[0];
+                    if (next) selectAndFocusTab(next.id);
                     return;
                   }
                   if (event.key === "End") {
                     event.preventDefault();
-                    const next = state.tabs[state.tabs.length - 1];
-                    if (next) actions.selectTab(next.id);
+                    const next = visibleTabs[visibleTabs.length - 1];
+                    if (next) selectAndFocusTab(next.id);
                   }
                 }}
                 title={tabPath ?? title}

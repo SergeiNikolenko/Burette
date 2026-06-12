@@ -28,6 +28,11 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
         }
         return;
       }
+      if (commandKey && event.shiftKey && key === "n") {
+        event.preventDefault();
+        void actions.openNewWindow();
+        return;
+      }
       if (commandKey && event.shiftKey && key === "r") {
         event.preventDefault();
         void actions.revealActiveDocument();
@@ -60,6 +65,11 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
       if (commandKey && key === "j") {
         event.preventDefault();
         actions.toggleDock("bottom");
+        return;
+      }
+      if (commandKey && !event.altKey && !event.shiftKey && key === "b") {
+        event.preventDefault();
+        toggleSidebar();
         return;
       }
       if (commandKey && event.altKey && key === "b") {

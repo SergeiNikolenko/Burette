@@ -7,6 +7,7 @@ import {
   CommandItem,
   CommandList,
 } from "cmdk";
+import { Description as DialogDescription, Title as DialogTitle } from "@radix-ui/react-dialog";
 import { formatBytes, rendererLabel } from "../format";
 import type { ShellActions, ShellViewState } from "../types";
 import type { ViewerPreferences } from "../../types";
@@ -89,6 +90,13 @@ export function CommandPalette({
         label: "Open from Clipboard",
         description: "Open molecular text or copied structure paths",
         run: actions.openClipboard,
+      },
+      {
+        id: "new-window",
+        group: "Suggested",
+        label: "New Window",
+        description: "Open another Burrete workspace window",
+        run: actions.openNewWindow,
       },
       {
         id: "open-recent",
@@ -292,6 +300,10 @@ export function CommandPalette({
       onValueChange={setSelectedValue}
       container={portalContainer}
     >
+      <DialogTitle className="command-palette-sr-only">Command Palette</DialogTitle>
+      <DialogDescription className="command-palette-sr-only">
+        Search commands and structures.
+      </DialogDescription>
       <CommandInput
         value={query}
         onValueChange={onQueryChange}
