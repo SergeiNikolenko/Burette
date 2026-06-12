@@ -67,6 +67,26 @@
     try { return JSON.parse(JSON.stringify(value)); } catch (_) { return value; }
   }
 
+  function base64ToBytes(base64) {
+    const raw = atob(String(base64 || ''));
+    const bytes = new Uint8Array(raw.length);
+    for (let index = 0; index < raw.length; index += 1) bytes[index] = raw.charCodeAt(index);
+    return bytes;
+  }
+
+  function mvsCommandPayload(args = {}) {
+    const format = args.format || (args.dataBase64 ? 'mvsx' : 'mvsj');
+    if (args.dataBase64) {
+      return { format, data: format === 'mvsx' ? base64ToBytes(args.dataBase64) : new TextDecoder('utf-8', { fatal: false }).decode(base64ToBytes(args.dataBase64)) };
+    }
+    if (args.json !== undefined) return { format: 'mvsj', data: JSON.stringify(args.json) };
+    if (args.data !== undefined) {
+      const data = typeof args.data === 'string' || args.data instanceof Uint8Array ? args.data : JSON.stringify(args.data);
+      return { format: args.format || (typeof data === 'string' && data.trim().startsWith('{') ? 'mvsj' : 'mvsx'), data };
+    }
+    throw coded('INVALID_ARGS', 'loadMVS requires args.data, args.json, or args.dataBase64.');
+  }
+
   function durationSince(start) {
     return Math.max(0, Math.round(now() - start));
   }
@@ -144,7 +164,7 @@
   function commands() {
     return [
       'capabilities', 'summary', 'select', 'selectResidues', 'focusSelection', 'colorSelection',
-      'showLigands', 'focusLigand', 'contacts', 'resetCamera', 'screenshot', 'loadMVS', 'exportMVS'
+      'labelSelection', 'showLigands', 'focusLigand', 'contacts', 'resetCamera', 'screenshot', 'loadMVS', 'exportMVS'
     ];
   }
 
@@ -258,6 +278,7 @@
     if (command === 'select' || command === 'selectResidues') return commandSelect(args, command, warnings);
     if (command === 'focusSelection') return commandFocus(args, warnings);
     if (command === 'colorSelection') return commandColor(args, warnings);
+    if (command === 'labelSelection') return commandLabelSelection(args, warnings);
     if (command === 'showLigands') return commandShowLigands(args, warnings);
     if (command === 'focusLigand') return commandFocusLigand(args, warnings);
     if (command === 'contacts') return commandContacts(args, warnings);
@@ -374,6 +395,98 @@
     };
   }
 
+  async function commandLabelSelection(args = {}, warnings) {
+    const selection = resolveSelection(args.selection || args.selector || 'last');
+    const counts = countSelectorMatches(selection.selector, Number(args.maxPreviewResidues) || 24);
+    if (!counts.atoms) throw coded('SELECTION_EMPTY', 'Label selector matched no atoms.', { selector: selection.selector });
+    applyMolstarInteractivity(selection.selector, 'select', {
+      mode: args.mode || 'replace',
+      granularity: args.granularity || 'residue',
+      warnings
+    });
+    const labels = await addMeasurementLabels(args, warnings);
+    if (!labels.length) throw coded('NOT_IMPLEMENTED', 'Mol* measurement label API did not create a label for the current selection.');
+    state.sceneVersion++;
+    return {
+      selectionId: selection.id,
+      label: labelSelectionText(args, selection, counts),
+      labels,
+      selectorEcho: selection.selector,
+      counts: counts.counts,
+      residuesPreview: counts.residuesPreview
+    };
+  }
+
+  async function addMeasurementLabels(args = {}, warnings = []) {
+    const manager = state.plugin?.managers?.structure?.measurement;
+    const selectionManager = state.plugin?.managers?.structure?.selection;
+    if (typeof manager?.addLabel !== 'function' || !selectionManager?.entries) {
+      throw coded('NOT_IMPLEMENTED', 'Mol* structure measurement labels are unavailable in this runtime.');
+    }
+    const text = String(args.text || args.label || '').trim();
+    const labelParams = {
+      customText: text,
+      textSize: Number(args.textSize) || 0.32,
+      background: args.background !== false,
+      backgroundOpacity: Number.isFinite(Number(args.backgroundOpacity)) ? Number(args.backgroundOpacity) : 0.72,
+      backgroundMargin: Number.isFinite(Number(args.backgroundMargin)) ? Number(args.backgroundMargin) : 0.22,
+      tether: args.tether !== false,
+      tetherLength: Number.isFinite(Number(args.tetherLength)) ? Number(args.tetherLength) : 1.6,
+      borderWidth: Number.isFinite(Number(args.borderWidth)) ? Number(args.borderWidth) : 0.08,
+      offsetY: Number.isFinite(Number(args.offsetY)) ? Number(args.offsetY) : 0.4,
+      ...(args.labelParams && typeof args.labelParams === 'object' ? args.labelParams : {})
+    };
+    const result = [];
+    for (const [ref, entry] of selectionManager.entries) {
+      const loci = entry?.selection;
+      if (!loci || isEmptySelectionLoci(loci)) continue;
+      const created = await manager.addLabel(loci, {
+        labelParams,
+        selectionTags: ['burrete-agent-label-selection'],
+        reprTags: ['burrete-agent-label']
+      });
+      if (created) {
+        result.push({
+          structureRef: String(ref),
+          selectionRef: created.selection?.ref,
+          representationRef: created.representation?.ref
+        });
+      }
+    }
+    if (!text) warnings.push('labelSelection used the Mol* default selection label because no custom text was provided.');
+    return result;
+  }
+
+  function isEmptySelectionLoci(loci) {
+    if (!loci) return true;
+    if (Array.isArray(loci.elements)) {
+      return loci.elements.every(entry => {
+        const indices = entry?.indices;
+        if (!indices) return true;
+        if (Number.isInteger(indices.size)) return indices.size <= 0;
+        if (typeof indices.length === 'number') return indices.length <= 0;
+        if (typeof indices.end === 'number' && typeof indices.start === 'number') return indices.end <= indices.start;
+        return false;
+      });
+    }
+    return false;
+  }
+
+  function labelSelectionText(args, selection, counts) {
+    const explicit = String(args.text || args.label || '').trim();
+    if (explicit) return explicit;
+    const saved = String(selection?.label || '').trim();
+    if (saved && saved !== 'ligand:undefined') return saved;
+    const residue = counts.residuesPreview?.[0];
+    if (residue) {
+      const comp = residue.auth_comp_id || residue.label_comp_id || residue.kind || 'Selection';
+      const chain = residue.auth_asym_id || residue.label_asym_id;
+      const seq = residue.auth_seq_id ?? residue.label_seq_id;
+      return [comp, chain, seq].filter(value => value != null && value !== '').join(' ');
+    }
+    return 'Selection';
+  }
+
   function commandShowLigands(args = {}, warnings) {
     const ligands = listLigands();
     if (!ligands.length) throw coded('SELECTION_EMPTY', 'No ligands were detected by the MVP ligand policy.');
@@ -410,13 +523,26 @@
     state.sceneVersion++;
     const result = { selectionId, ligand, counts: counts.counts, residuesPreview: counts.residuesPreview };
     if (args.showNeighborhood || args.contacts) {
-      result.neighborhood = computeContacts({
-        source: ligandSelector,
-        target: args.target || { kind: 'protein' },
-        radiusA: Number(args.radiusA) || DEFAULT_CONTACT_RADIUS_A,
-        maxSourceAtoms: args.maxSourceAtoms,
-        maxTargetAtoms: args.maxTargetAtoms
-      }, warnings);
+      try {
+        result.neighborhood = computeContacts({
+          source: ligandSelector,
+          target: args.target || { kind: 'protein' },
+          radiusA: Number(args.radiusA) || DEFAULT_CONTACT_RADIUS_A,
+          maxSourceAtoms: args.maxSourceAtoms,
+          maxTargetAtoms: args.maxTargetAtoms
+        }, warnings);
+      } catch (error) {
+        const partial = {
+          ok: false,
+          error: {
+            code: error?.code || inferErrorCode(error),
+            message: error?.message || String(error),
+            details: error?.details
+          }
+        };
+        result.neighborhood = partial;
+        warnings.push(`Ligand focus completed, but neighborhood failed: ${partial.error.code}.`);
+      }
     }
     return result;
   }
@@ -477,11 +603,10 @@
     if (typeof state.viewer?.loadMvsData !== 'function') {
       throw coded('NOT_IMPLEMENTED', 'viewer.loadMvsData is not available in this Mol* viewer build.');
     }
-    const format = args.format || (String(args.data || '').trim().startsWith('{') ? 'mvsj' : 'mvsx');
-    if (!args.data) throw coded('INVALID_ARGS', 'loadMVS requires args.data.');
-    await state.viewer.loadMvsData(args.data, format, args.options || {});
+    const { data, format } = mvsCommandPayload(args);
+    await state.viewer.loadMvsData(data, format, args.options || {});
     state.sceneVersion++;
-    warnings.push('MVS loading is delegated directly to Mol* viewer.loadMvsData; validate with a real mvsj/mvsx fixture.');
+    warnings.push('MVS loading is delegated directly to Mol* viewer.loadMvsData.');
     return { format, loaded: true };
   }
 
@@ -591,7 +716,9 @@
       return clean;
     }).sort(sortChain);
 
-    const ligands = Array.from(ligandMap.values()).sort(sortResidueLike);
+    const ligands = Array.from(ligandMap.values())
+      .map(ligand => ({ ...ligand, category: ligandCategory(ligand) }))
+      .sort(sortResidueLike);
     const summary = {
       id: String(entry.ref || `structure-${index}`),
       label: entry.entry?.cell?.obj?.label || state.prepared?.label || state.config?.label || undefined,
@@ -789,6 +916,10 @@
     delete selector.granularity;
     delete selector.maxPreviewResidues;
     delete selector.label;
+    if (selector.comp_id && !selector.label_comp_id && !selector.auth_comp_id) {
+      selector.label_comp_id = selector.comp_id;
+      delete selector.comp_id;
+    }
     if (selector.chain && !selector.auth_asym_id && !selector.label_asym_id) {
       selector.auth_asym_id = selector.chain;
       delete selector.chain;
@@ -988,7 +1119,16 @@
       }
       ligand.atomCount++;
     }
-    return Array.from(ligands.values()).sort(sortResidueLike);
+    return Array.from(ligands.values())
+      .map(ligand => ({ ...ligand, category: ligandCategory(ligand) }))
+      .sort(sortResidueLike);
+  }
+
+  function ligandCategory(ligand) {
+    const comp = String(ligand.label_comp_id || ligand.auth_comp_id || '').toUpperCase();
+    if (COMMON_IONS.has(comp) || ligand.kind === 'ion') return 'ion';
+    if (Number(ligand.atomCount) === 1) return 'single_atom';
+    return 'small_molecule';
   }
 
   function matchesLigand(ligand, selector) {

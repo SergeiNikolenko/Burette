@@ -112,8 +112,10 @@ try {
 
   const htmlWithToken = await get(ready.url);
   assert.equal(htmlWithToken.statusCode, 200);
-  assert.match(htmlWithToken.body, /viewer-runtime\.css/);
-  assert.match(htmlWithToken.body, /viewer-shell\.js/);
+  assert.match(htmlWithToken.body, /viewer-runtime\.css\?v=\d+/);
+  assert.match(htmlWithToken.body, /viewer-shell\.js\?v=\d+/);
+  assert.match(htmlWithToken.body, /burette-agent\.js\?v=\d+/);
+  assert.match(htmlWithToken.body, /viewer\.js\?v=\d+/);
   const cookie = htmlWithToken.headers['set-cookie']?.find(value => value.startsWith('BurreteAgentPreviewToken='));
   assert.ok(cookie, 'authorized HTML response should set the preview token cookie');
 
@@ -125,7 +127,10 @@ try {
   const configWithCookie = await get(`${base}/preview-config.js`, { Cookie: cookieHeader });
   assert.equal(configWithCookie.statusCode, 200);
   assert.match(configWithCookie.body, /^window\.BurreteConfig = /);
+  assert.match(configWithCookie.body, /"enablePreviewDocks":true/);
+  assert.match(configWithCookie.body, /"defaultPreviewDocks":\[\]/);
   assert.match(configWithCookie.body, /window\.BurreteAgentControl = /);
+  assert.match(configWithCookie.body, /"observeUrl":"\/__agent\/observe"/);
 
   const tempDir = await mkdtemp(join(tmpdir(), 'burrete-agent-preview-'));
   const maePath = join(tempDir, 'ligand.mae');
@@ -236,6 +241,19 @@ f_m_ct {
   assert.equal(queuedScene.action.status, 'queued');
   assert.equal(queuedScene.action.type, 'hide_waters');
 
+  const sceneSpecAction = await postJson(`${base}/__agent/act`, {
+    type: 'apply_scene',
+    components: [
+      { selector: 'protein', label: 'Protein', highlight: true, color: '#4f8cff' },
+      { selector: { chain: 'A', range: [1, 3] }, label: 'Active loop', select: true, focus: true }
+    ]
+  }, { Cookie: cookieHeader });
+  assert.equal(sceneSpecAction.statusCode, 200);
+  const queuedSceneSpec = JSON.parse(sceneSpecAction.body);
+  assert.equal(queuedSceneSpec.ok, true);
+  assert.equal(queuedSceneSpec.action.status, 'queued');
+  assert.equal(queuedSceneSpec.action.type, 'apply_scene');
+
   const queuedAction = await postJson(`${base}/__agent/act`, {
     type: 'focus_ligand',
     selector: { label_comp_id: 'HEM' }
@@ -271,6 +289,14 @@ f_m_ct {
   assert.equal(completed.action.status, 'completed');
   assert.equal(completed.action.result.command, 'hide_waters');
 
+  const nextSceneSpecAction = await get(`${base}/__agent/next-action`, { Cookie: cookieHeader });
+  assert.equal(nextSceneSpecAction.statusCode, 200);
+  const nextSceneSpec = JSON.parse(nextSceneSpecAction.body);
+  assert.equal(nextSceneSpec.id, queuedSceneSpec.action.id);
+  assert.equal(nextSceneSpec.action.type, 'apply_scene');
+  assert.equal(nextSceneSpec.action.components[0].selector, 'protein');
+  assert.equal(nextSceneSpec.action.components[1].label, 'Active loop');
+
   const nextLigandAction = await get(`${base}/__agent/next-action`, { Cookie: cookieHeader });
   assert.equal(nextLigandAction.statusCode, 200);
   const nextLigand = JSON.parse(nextLigandAction.body);
@@ -288,11 +314,11 @@ f_m_ct {
   const actionObserve = await get(`${base}/__agent/observe`, { Cookie: cookieHeader });
   assert.equal(actionObserve.statusCode, 200);
   const observedAction = JSON.parse(actionObserve.body);
-  assert.equal(observedAction.actions.dispatched, 2);
+  assert.equal(observedAction.actions.dispatched, 3);
   assert.equal(observedAction.actions.completed, 1);
   assert.equal(observedAction.actions.last.id, queuedPanel.action.id);
   assert.equal(observedAction.actions.last.status, 'dispatched');
-  assert.equal(observedAction.actions.recent.length, 3);
+  assert.equal(observedAction.actions.recent.length, 4);
   assert.equal(observedAction.actions.recent[0].id, queuedScene.action.id);
   assert.equal(observedAction.actions.recent[0].status, 'completed');
   assert.equal(observedAction.panels.includes('agent-panel:right:markdown:README.md'), true);

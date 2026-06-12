@@ -349,8 +349,12 @@
         command: 'focusLigand',
         args: {
           selector: action.selector || action,
+          allowAmbiguous: action.allowAmbiguous === true,
+          index: Number.isInteger(action.index) ? action.index : undefined,
           showNeighborhood: !!action.showNeighborhood,
-          radiusA: action.radiusA
+          radiusA: action.radiusA,
+          durationMs: action.durationMs,
+          extraRadius: action.extraRadius
         }
       });
     }
@@ -362,6 +366,28 @@
     }
     if (type === 'focus_selection') {
       return window.BurreteAgent.run({ command: 'focusSelection', args: action.args || {} });
+    }
+    if (type === 'label_selection') {
+      return window.BurreteAgent.run({
+        command: 'labelSelection',
+        args: {
+          selection: action.selection,
+          selector: action.selector,
+          text: action.text || action.label,
+          label: action.label,
+          mode: action.mode,
+          granularity: action.granularity,
+          textSize: action.textSize,
+          background: action.background,
+          backgroundOpacity: action.backgroundOpacity,
+          backgroundMargin: action.backgroundMargin,
+          tether: action.tether,
+          tetherLength: action.tetherLength,
+          borderWidth: action.borderWidth,
+          offsetY: action.offsetY,
+          labelParams: action.labelParams
+        }
+      });
     }
     if (type === 'contacts') {
       return window.BurreteAgent.run({ command: 'contacts', args: action.args || action });
@@ -384,6 +410,21 @@
     if (type === 'render_panel') {
       return renderBurreteAgentPanel(action);
     }
+    if (type === 'apply_scene') {
+      return executeBurreteSceneSpec(action);
+    }
+    if (type === 'load_mvs') {
+      return window.BurreteAgent.run({
+        command: 'loadMVS',
+        args: {
+          data: action.data,
+          json: action.json,
+          dataBase64: action.dataBase64,
+          format: action.format,
+          options: action.options || {}
+        }
+      });
+    }
     if (type === 'screenshot' || type === 'export_image') {
       return window.BurreteAgent.run({ command: 'screenshot', args: action.args || {} });
     }
@@ -392,6 +433,84 @@
       return window.BurreteAgent.run({ command: action.command, args: action.args || {} });
     }
     return agentActionFailure(type, 'NOT_IMPLEMENTED', `Unsupported BurreteAgent action: ${type}`);
+  }
+
+  function burreteSceneSpecOperations(action) {
+    const raw = Array.isArray(action?.operations) ? action.operations : action?.components;
+    return Array.isArray(raw) ? raw : [];
+  }
+
+  function burreteSceneSpecTarget(operation) {
+    if (operation?.selector != null) return operation.selector;
+    if (operation?.target != null) return operation.target;
+    if (operation?.component != null) return operation.component;
+    return null;
+  }
+
+  function burreteSceneSpecLabel(operation, index) {
+    return operation?.label || operation?.name || operation?.id || `scene-component-${index + 1}`;
+  }
+
+  async function executeBurreteSceneSpec(action) {
+    const operations = burreteSceneSpecOperations(action);
+    if (!operations.length) return agentActionFailure('apply_scene', 'INVALID_ARGS', 'apply_scene requires components or operations.');
+
+    const results = [];
+    for (let index = 0; index < operations.length; index++) {
+      const operation = operations[index] || {};
+      const target = burreteSceneSpecTarget(operation);
+      if (target == null) {
+        results.push(agentActionFailure('apply_scene', 'INVALID_ARGS', `Scene operation ${index + 1} requires selector or target.`));
+        continue;
+      }
+      const label = burreteSceneSpecLabel(operation, index);
+      const kind = String(operation.kind || operation.action || '').toLowerCase();
+      const wantsSelect = operation.select === true || kind === 'select' || kind === 'selection';
+      const wantsFocus = operation.focus === true || kind === 'focus';
+      const wantsHighlight = operation.highlight === true || operation.color != null || operation.representation != null || kind === 'highlight' || kind === 'color';
+
+      if (wantsHighlight || (!wantsSelect && !wantsFocus)) {
+        results.push(await window.BurreteAgent.run({
+          command: 'colorSelection',
+          args: {
+            selector: target,
+            label,
+            color: operation.color || operation.hex,
+            highlight: operation.highlight !== false,
+            mode: operation.mode || 'add',
+            granularity: operation.granularity || 'residue'
+          }
+        }));
+      }
+      if (wantsSelect) {
+        results.push(await window.BurreteAgent.run({
+          command: 'selectResidues',
+          args: {
+            selector: target,
+            label,
+            mode: operation.mode || 'add',
+            granularity: operation.granularity || 'residue'
+          }
+        }));
+      }
+      if (wantsFocus) {
+        results.push(await window.BurreteAgent.run({
+          command: 'focusSelection',
+          args: {
+            selector: target,
+            durationMs: operation.durationMs,
+            extraRadius: operation.extraRadius
+          }
+        }));
+      }
+    }
+
+    return {
+      ok: results.every(result => result?.ok !== false),
+      action: 'apply_scene',
+      operationCount: operations.length,
+      results
+    };
   }
 
   window.addEventListener('message', event => {
@@ -630,6 +749,11 @@
   let floatingLayoutFrame = 0;
   let molstarViewportPanelOpen = false;
   let molstarSelectionControlsOpen = false;
+  const previewDockState = { right: false, bottom: false };
+  let previewDockObserve = null;
+  let previewDockObserveError = '';
+  let previewDockObserveLoading = false;
+  let previewDockObserveTimer = 0;
   const draggableViewportPanels = new WeakSet();
 
   function isQuickLookHost() {
@@ -1420,6 +1544,255 @@
       .replace(/"/g, '&quot;');
   }
 
+  function previewDockDocumentRows() {
+    const config = activeConfig || window.BurreteConfig || {};
+    const rows = [
+      ['Document', config.label || config.title || 'Burrete preview'],
+      ['Format', config.format || config.molstarFormat || 'unknown']
+    ];
+    if (config.byteCount !== undefined) rows.push(['Size', `${Number(config.byteCount || 0).toLocaleString()} bytes`]);
+    if (config.documentId) rows.push(['Document ID', config.documentId]);
+    if (config.path) rows.push(['Path', config.path]);
+    return rows.map(([label, value]) => `
+      <div class="buret-preview-dock-card">
+        <div class="buret-preview-dock-label">${escapeHtml(label)}</div>
+        <div class="buret-preview-dock-value">${escapeHtml(value)}</div>
+      </div>
+    `).join('');
+  }
+
+  function previewDockCard(label, value) {
+    return `
+      <div class="buret-preview-dock-card">
+        <div class="buret-preview-dock-label">${escapeHtml(label)}</div>
+        <div class="buret-preview-dock-value">${escapeHtml(value)}</div>
+      </div>
+    `;
+  }
+
+  function previewDockSection(title, body) {
+    return `
+      <div class="buret-preview-dock-section">
+        <div class="buret-preview-dock-section-title">${escapeHtml(title)}</div>
+        ${body}
+      </div>
+    `;
+  }
+
+  function previewDockSceneDescription(observe) {
+    const scene = observe?.scene || {};
+    if (!scene.known) return scene.note || 'Scene summary is waiting for the Mol* viewer agent.';
+    const counts = scene.counts || {};
+    const parts = [
+      `${counts.structures || scene.structures || 0} structure`,
+      `${counts.models || scene.models || 0} model`,
+      `${counts.chains || 0} chains`,
+      `${counts.residues || 0} residues`,
+      `${counts.atoms || 0} atoms`,
+      `${counts.ligands || 0} ligands`
+    ];
+    return `${scene.label || 'Active scene'} (${scene.format || 'unknown'}): ${parts.join(', ')}.`;
+  }
+
+  function previewDockLigandList(observe) {
+    const ligands = observe?.scene?.ligands || [];
+    if (!ligands.length) return previewDockCard('Ligands', 'No ligands reported yet.');
+    const items = ligands.slice(0, 8).map(ligand => {
+      const chain = ligand.auth_asym_id || ligand.label_asym_id || '?';
+      const seq = ligand.auth_seq_id || ligand.label_seq_id || '?';
+      const atoms = Number.isFinite(ligand.atomCount) ? `${ligand.atomCount} atoms` : 'atom count unknown';
+      return `<li class="buret-preview-dock-list-item">
+        <div class="buret-preview-dock-line">
+          <span>${escapeHtml(`${chain}:${seq}`)}</span>
+          <span class="buret-preview-dock-muted">${escapeHtml(atoms)}</span>
+        </div>
+      </li>`;
+    }).join('');
+    const suffix = ligands.length > 8 ? previewDockCard('More ligands', `${ligands.length - 8} additional ligands are hidden in this compact view.`) : '';
+    return `<ul class="buret-preview-dock-list">${items}</ul>${suffix}`;
+  }
+
+  function previewDockAgentRows(observe) {
+    if (!observe) {
+      return previewDockCard('Bridge', previewDockObserveLoading ? 'Loading agent observe state...' : 'No observe state loaded yet.');
+    }
+    const agent = observe.viewerAgent || {};
+    const commands = Array.isArray(agent.commands) ? agent.commands : [];
+    return [
+      previewDockCard('Workspace mode', `${observe.mode || 'unknown'} / ${observe.transport || 'unknown'}`),
+      previewDockCard('Viewer agent', agent.available ? 'available' : 'not ready'),
+      previewDockCard('Commands', commands.length ? commands.join(', ') : 'No commands reported yet.'),
+      agent.lastReportAt ? previewDockCard('Last report', agent.lastReportAt) : ''
+    ].join('');
+  }
+
+  function previewDockActionList(observe) {
+    const recent = observe?.actions?.recent || [];
+    if (!recent.length) return previewDockCard('Actions', 'No MCP/agent actions have been recorded yet.');
+    const items = recent.slice(-8).reverse().map(action => {
+      const result = action.result || {};
+      const statusClass = action.status === 'completed' ? 'ok' : action.status === 'failed' ? 'failed' : '';
+      const command = result.command || action.type || 'action';
+      const detail = result.error?.message || result.result?.selectionId || result.result?.counts
+        ? JSON.stringify(result.result?.counts || result.result?.selectionId || result.error?.message)
+        : '';
+      return `<li class="buret-preview-dock-list-item">
+        <div class="buret-preview-dock-line">
+          <span>${escapeHtml(`${action.id}: ${command}`)}</span>
+          <span class="buret-preview-dock-status-pill ${statusClass}">${escapeHtml(action.status || 'unknown')}</span>
+        </div>
+        ${detail ? `<div class="buret-preview-dock-muted">${escapeHtml(detail)}</div>` : ''}
+      </li>`;
+    }).join('');
+    return `<ul class="buret-preview-dock-list">${items}</ul>`;
+  }
+
+  function previewDockRightBody() {
+    const observe = previewDockObserve;
+    const error = previewDockObserveError ? previewDockCard('Observe error', previewDockObserveError) : '';
+    return [
+      previewDockSection('Document', previewDockDocumentRows()),
+      previewDockSection('Scene text', previewDockCard('Summary', previewDockSceneDescription(observe)) + previewDockLigandList(observe)),
+      previewDockSection('Agent bridge', previewDockAgentRows(observe)),
+      previewDockSection('MCP action log', previewDockActionList(observe)),
+      error
+    ].join('');
+  }
+
+  function renderPreviewDock(area) {
+    const panel = document.querySelector(`[data-buret-preview-dock="${area}"]`);
+    if (!panel) return;
+    const title = area === 'right' ? 'Agent scene log' : 'Preview dock';
+    const body = area === 'right'
+      ? previewDockRightBody()
+      : `<div class="buret-preview-dock-section">
+          <div class="buret-preview-dock-card">
+            <div class="buret-preview-dock-label">Active preview</div>
+            <div class="buret-preview-dock-value">${escapeHtml((activeConfig || window.BurreteConfig || {}).label || 'Burrete preview')}</div>
+          </div>
+          <div class="buret-preview-dock-card">
+            <div class="buret-preview-dock-label">Status</div>
+            <div class="buret-preview-dock-value">Standalone browser preview controls are available here.</div>
+          </div>
+        </div>`;
+    panel.innerHTML = `
+      <div class="buret-preview-dock-header">
+        <div class="buret-preview-dock-title">${escapeHtml(title)}</div>
+        <button class="buret-button buret-preview-dock-close" type="button" data-buret-dock-close="${area}" aria-label="Hide ${area} dock" title="Hide ${area} dock">×</button>
+      </div>
+      <div class="buret-preview-dock-body">${body}</div>
+    `;
+  }
+
+  function previewDockObserveUrl() {
+    return window.BurreteAgentControl?.observeUrl || '/__agent/observe';
+  }
+
+  async function refreshPreviewDockObserve() {
+    if (!previewDocksEnabled() || !previewDockState.right || previewDockObserveLoading) return;
+    previewDockObserveLoading = true;
+    try {
+      const response = await fetch(previewDockObserveUrl(), { cache: 'no-store', credentials: 'same-origin' });
+      if (!response.ok) throw new Error(`observe returned HTTP ${response.status}`);
+      previewDockObserve = await response.json();
+      previewDockObserveError = '';
+    } catch (error) {
+      previewDockObserveError = error?.message || String(error);
+    } finally {
+      previewDockObserveLoading = false;
+      if (previewDockState.right) renderPreviewDock('right');
+      schedulePreviewDockObserveRefresh();
+    }
+  }
+
+  function schedulePreviewDockObserveRefresh() {
+    window.clearTimeout(previewDockObserveTimer);
+    previewDockObserveTimer = 0;
+    if (!previewDocksEnabled() || !previewDockState.right) return;
+    previewDockObserveTimer = window.setTimeout(() => {
+      void refreshPreviewDockObserve();
+    }, previewDockObserve ? 2000 : 250);
+  }
+
+  function setPreviewDockOpen(area, open) {
+    if (area !== 'right' && area !== 'bottom') return;
+    previewDockState[area] = open === true;
+    const panel = document.querySelector(`[data-buret-preview-dock="${area}"]`);
+    if (panel) {
+      renderPreviewDock(area);
+      panel.classList.toggle('open', previewDockState[area]);
+      panel.setAttribute('aria-hidden', previewDockState[area] ? 'false' : 'true');
+    }
+    document.body?.classList.toggle(`buret-preview-dock-${area}-open`, previewDockState[area]);
+    if (area === 'right') {
+      if (previewDockState.right) void refreshPreviewDockObserve();
+      else window.clearTimeout(previewDockObserveTimer);
+    }
+    updatePreviewDockButtons();
+  }
+
+  function togglePreviewDock(area) {
+    setPreviewDockOpen(area, !previewDockState[area]);
+  }
+
+  function previewDocksEnabled() {
+    const config = activeConfig || window.BurreteConfig || {};
+    return config.enablePreviewDocks === true;
+  }
+
+  function updatePreviewDockAvailability() {
+    const enabled = previewDocksEnabled();
+    document.body?.classList.toggle('buret-preview-docks-enabled', enabled);
+    if (!enabled) {
+      setPreviewDockOpen('bottom', false);
+      setPreviewDockOpen('right', false);
+    }
+    return enabled;
+  }
+
+  function updatePreviewDockButtons() {
+    const toolbar = document.getElementById('buret-toolbar');
+    if (!toolbar) return;
+    for (const area of ['bottom', 'right']) {
+      const button = toolbar.querySelector(`[data-buret-dock-toggle="${area}"]`);
+      if (!button) continue;
+      const open = previewDockState[area] === true;
+      button.classList.toggle('active', open);
+      button.setAttribute('aria-label', `${open ? 'Hide' : 'Show'} ${area} dock`);
+      button.setAttribute('title', `${open ? 'Hide' : 'Show'} ${area} dock`);
+    }
+  }
+
+  function bindPreviewDockControls(toolbar) {
+    if (!toolbar || !previewDocksEnabled() || toolbar.dataset.previewDockTogglesBound === '1') return;
+    toolbar.addEventListener('click', event => {
+      const button = event.target?.closest?.('[data-buret-dock-toggle]');
+      if (!button || !toolbar.contains(button)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      togglePreviewDock(button.getAttribute('data-buret-dock-toggle'));
+    });
+    document.addEventListener('click', event => {
+      const close = event.target?.closest?.('[data-buret-dock-close]');
+      if (!close) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setPreviewDockOpen(close.getAttribute('data-buret-dock-close'), false);
+    });
+    toolbar.dataset.previewDockTogglesBound = '1';
+    updatePreviewDockButtons();
+  }
+
+  function applyDefaultPreviewDocks(toolbar) {
+    if (!toolbar || !previewDocksEnabled() || toolbar.dataset.previewDocksDefaulted === '1') return;
+    const config = activeConfig || window.BurreteConfig || {};
+    const defaultDocks = Array.isArray(config.defaultPreviewDocks) ? config.defaultPreviewDocks : [];
+    toolbar.dataset.previewDocksDefaulted = '1';
+    for (const area of defaultDocks) {
+      if (area === 'bottom' || area === 'right') setPreviewDockOpen(area, true);
+    }
+  }
+
   function requestMolstarStyle(style) {
     const value = normalizeMolstarStyle(style);
     activeConfig = {
@@ -2042,12 +2415,16 @@
       sdfPoseButton.dataset.bound = '1';
       sdfPoseButton.addEventListener('click', toggleSdfPoseMode);
     }
+    updatePreviewDockAvailability();
+    bindPreviewDockControls(toolbar);
+    applyDefaultPreviewDocks(toolbar);
     initToolbarDrag(toolbar);
     restoreToolbarCollapsed(toolbar, viewer);
     installToolbarAutoLayoutTracking(toolbar);
     installMolstarFloatingPanelTracking();
     updateToolbarVisibility();
     updateSdfPoseButton();
+    updatePreviewDockButtons();
     updateThemeButton();
     applyLayoutState(viewer);
   }
@@ -2952,7 +3329,12 @@
     if (value === 'cif' || value === 'mmcif' || value === 'mcif') return 'mmcif';
     if (value === 'bcif' || value === 'binarycif') return 'mmcif';
     if (value === 'sd') return 'sdf';
+    if (value === 'molviewspec' || value === 'mol-view-spec') return 'mvsj';
     return value;
+  }
+
+  function isMolViewSpecFormat(format) {
+    return format === 'mvsj' || format === 'mvsx';
   }
 
   function requireConfig() {
@@ -3307,6 +3689,14 @@
       return prepareDockingStructure(config);
     }
     const normalized = normalizeFormat(config.format);
+    if (isMolViewSpecFormat(normalized)) {
+      return {
+        kind: 'mvs',
+        data: rawStructureData(config),
+        format: normalized,
+        label: config.label || 'MolViewSpec scene'
+      };
+    }
     if (normalized === 'cifCore') {
       const pdb = coreCifToPdb(rawStructureData({ ...config, binary: false }));
       return {
@@ -5035,6 +5425,15 @@
     updateSdfPoseButton(prepared);
     if (prepared.kind === 'docking') {
       await loadDockingPreparedStructure(viewer, prepared);
+      return;
+    }
+    if (prepared.kind === 'mvs') {
+      activeDockingPrepared = null;
+      if (typeof viewer.loadMvsData !== 'function') {
+        throw new Error('Mol* viewer.loadMvsData is not available in this runtime.');
+      }
+      await viewer.loadMvsData(prepared.data, prepared.format, { replaceExisting: true });
+      installDockingPoseControls(viewer, null);
       return;
     }
     activeDockingPrepared = null;
@@ -7365,7 +7764,6 @@
           molstarContextMenuMode = mode;
           modeGroup.querySelectorAll('button').forEach(item => item.setAttribute('aria-pressed', item.dataset.buretContextMode === mode ? 'true' : 'false'));
           renderActions();
-          actionContainer.querySelector('button')?.focus();
         });
         modeGroup.appendChild(button);
       });
@@ -7375,7 +7773,6 @@
     menu.appendChild(actionContainer);
     document.body.appendChild(menu);
     positionMolstarContextMenu(menu, event.clientX, event.clientY);
-    menu.querySelector('button')?.focus();
   }
 
   function installMolstarContextMenu(viewer) {
@@ -7447,6 +7844,8 @@
           hideMolstarContextMenu();
           return;
         }
+        event.preventDefault();
+        event.stopPropagation();
         contextPointer = {
           pointerId: event.pointerId,
           startX: event.clientX,

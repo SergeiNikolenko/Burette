@@ -44,6 +44,7 @@ const [
   previewRuntimeViewer,
   previewRuntimeUtils,
   previewFormats,
+  previewFormatRegistrySource,
   previewXyzrender,
   quickLookPreviewController,
   moleculeGridPreview,
@@ -116,6 +117,7 @@ const [
   source('apps/desktop/src-tauri/src/preview/runtime_viewer.rs'),
   source('apps/desktop/src-tauri/src/preview/runtime_utils.rs'),
   source('apps/desktop/src-tauri/src/preview/formats.rs'),
+  source('config/preview-formats.json'),
   source('apps/desktop/src-tauri/src/preview/xyzrender.rs'),
   source('PreviewExtension/Platform/PreviewViewController.swift'),
   source('PreviewExtension/MoleculeGridPreview.swift'),
@@ -294,10 +296,17 @@ assert.match(lib, /startup::emit_agent_session\(app, session_dir\)/);
 assert.match(agentSessionHook, /invoke<string \| null>\("startup_agent_session"\)/);
 assert.match(agentSessionHook, /listen<string>\("agent-session"/);
 assert.match(agentSessionHook, /trackTauriListener\(listen<string>\("agent-session"/);
+assert.match(agentSessionHook, /VITE_BURRETE_AGENT_SHELL/);
+assert.match(agentSessionHook, /BROWSER_AGENT_SESSION_DIR/);
+assert.match(agentSessionHook, /activateSession\(BROWSER_AGENT_SESSION_DIR\)/);
 assert.doesNotMatch(agentSessionHook, /let unlisten/);
 assert.doesNotMatch(agentSessionHook, /unlisten\?\.\(\)/);
 assert.match(agentSessionHook, /joinSessionPath\(sessionDir, "observe\.json"\)/);
 assert.match(agentSessionHook, /joinSessionPath\(sessionDir, "actions\.json"\)/);
+assert.match(agentSessionHook, /__burette\/agent-session\/\$\{browserFile\}/);
+assert.match(agentSessionHook, /browser-agent-http-session/);
+assert.match(agentSessionHook, /new EventSource\("\/__burette\/agent-session\/events"\)/);
+assert.match(agentSessionHook, /browserActionEvents\?\.addEventListener\("actions", pollNow\)/);
 assert.match(agentSessionHook, /workspacePanelsRef/);
 assert.match(agentSessionHook, /workspacePanels/);
 assert.match(agentSessionHook, /viewerAgentStatesRef/);
@@ -503,6 +512,12 @@ assert.match(coreCargoSource, /name = "burrete-core"/);
 assert.match(previewFormatsSource, /pub\(crate\) use burrete_core::\{/);
 assert.match(previewFormatsSource, /format_for_extension/);
 assert.match(previewFormatsSource, /resolve_renderer/);
+assert.match(previewFormatRegistrySource, /"id": "mol-view-spec-json"/);
+assert.match(previewFormatRegistrySource, /"extensions": \["mvsj"\]/);
+assert.match(previewFormatRegistrySource, /"id": "mol-view-spec-archive"/);
+assert.match(previewFormatRegistrySource, /"extensions": \["mvsx"\]/);
+assert.ok(tauriConfig.bundle.fileAssociations?.[0]?.ext?.includes('mvsj'));
+assert.ok(tauriConfig.bundle.fileAssociations?.[0]?.ext?.includes('mvsx'));
 assert.match(rendererPolicySource, /enum BurreteCoreBridge/);
 assert.match(rendererPolicySource, /supported-extension/);
 assert.match(rendererPolicySource, /resolve-renderer/);

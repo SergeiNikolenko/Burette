@@ -20,6 +20,7 @@ Mol* interactive preview is used for:
 - SDF, SD
 - MOL, MOL2
 - XYZ and GRO when selected or resolved by policy
+- MolViewSpec scene files: MVSJ and MVSX
 
 External `xyzrender` is used for text XYZ input when selected or when `auto`
 resolves to the default preview path. It is also the required path for
@@ -30,6 +31,11 @@ external-renderer-only groups:
 - VASP
 
 SDF, SMILES, CSV, and TSV collection previews use the grid runtime.
+
+MolViewSpec files are loaded through the Mol* `loadMvsData` path instead of the
+coordinate trajectory parser. This keeps MVS usable as a declarative scene and
+agent-control format for camera, components, selections, annotations, and
+representation state.
 
 ## Ketcher Editing
 

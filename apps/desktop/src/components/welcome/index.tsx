@@ -2,6 +2,7 @@ import type { BuildInfo, ShellActions } from "../types";
 import { ShortcutTooltip } from "../shortcut-tooltip";
 
 function buildLabel(info: BuildInfo) {
+  if (info.isAgentShell) return `Agent shell · v${info.version}`;
   if (info.isBrowserDev) return `Browser dev · v${info.version}`;
   if (info.isDevBuild) return `Dev ${info.flavor ?? "local"} · v${info.version}`;
   return `Release · v${info.version}`;

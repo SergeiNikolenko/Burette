@@ -320,7 +320,7 @@ function DockPanelContent({
   if (activeTabKind === "diagnostics") {
     return (
       <div className="dock-content dock-content-grid">
-        <Metric label="Runtime" value={state.buildInfo.isBrowserDev ? "Browser dev" : "Desktop"} />
+        <Metric label="Runtime" value={state.buildInfo.isAgentShell ? "Agent shell" : state.buildInfo.isBrowserDev ? "Browser dev" : "Desktop"} />
         <Metric label="Build" value={state.buildInfo.version} />
         <Metric label="Flavor" value={state.buildInfo.flavor ?? "Release"} />
         <button type="button" className="dock-action" onClick={() => void actions.exportDiagnostics()}>
