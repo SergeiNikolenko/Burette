@@ -634,6 +634,145 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   display: none; align-items: center; gap: 4px; padding-left: 5px;
   border-left: 1px solid var(--buret-toolbar-border);
 }
+.buret-preview-dock-toggle {
+  width: 30px;
+  padding: 0;
+}
+body:not(.buret-preview-docks-enabled) .buret-preview-dock-toggle {
+  display: none;
+}
+.buret-preview-dock {
+  position: fixed;
+  z-index: 2147483644;
+  display: none;
+  box-sizing: border-box;
+  border: 1px solid var(--buret-toolbar-border);
+  color: var(--buret-toolbar-color);
+  background: var(--buret-menu-background);
+  -webkit-backdrop-filter: blur(22px) saturate(1.25);
+  backdrop-filter: blur(22px) saturate(1.25);
+  box-shadow: var(--buret-menu-shadow);
+  font: 400 12px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  overflow: hidden;
+}
+.buret-preview-dock.open {
+  display: flex;
+}
+.buret-preview-dock-right {
+  top: calc(var(--buret-toolbar-safe-top) + 48px);
+  right: 12px;
+  bottom: 12px;
+  width: min(332px, calc(100vw - 24px));
+  border-radius: 12px;
+  flex-direction: column;
+}
+.buret-preview-dock-bottom {
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  height: min(260px, calc(100vh - 96px));
+  border-radius: 12px;
+  flex-direction: column;
+}
+body.buret-preview-dock-right-open .buret-preview-dock-bottom {
+  right: min(356px, calc(100vw - 12px));
+}
+.buret-preview-dock-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 34px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--buret-toolbar-border);
+}
+.buret-preview-dock-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.buret-preview-dock-close {
+  min-width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 7px;
+}
+.buret-preview-dock-body {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 10px;
+}
+.buret-preview-dock-section {
+  display: grid;
+  gap: 8px;
+}
+.buret-preview-dock-section + .buret-preview-dock-section {
+  margin-top: 12px;
+}
+.buret-preview-dock-section-title {
+  color: var(--buret-toolbar-color);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+.buret-preview-dock-card {
+  display: grid;
+  gap: 5px;
+  padding: 9px;
+  border: 1px solid var(--buret-toolbar-border);
+  border-radius: 8px;
+  background: var(--buret-menu-section-background);
+}
+.buret-preview-dock-label {
+  color: var(--buret-molstar-muted-text);
+  font-size: 11px;
+}
+.buret-preview-dock-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.buret-preview-dock-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.buret-preview-dock-list-item {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border: 1px solid var(--buret-toolbar-border);
+  border-radius: 8px;
+  background: var(--buret-menu-section-background);
+}
+.buret-preview-dock-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.buret-preview-dock-muted {
+  color: var(--buret-molstar-muted-text);
+}
+.buret-preview-dock-status-pill {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: var(--buret-molstar-muted-text);
+  background: var(--buret-menu-input-background);
+  font-size: 10px;
+}
+.buret-preview-dock-status-pill.ok {
+  color: #b8f7cf;
+}
+.buret-preview-dock-status-pill.failed {
+  color: #ffb8b8;
+}
 .buret-renderer-control.visible { display: flex; }
 .buret-renderer-choice { min-width: 38px; }
 .buret-molstar-style-slot { display: none; align-items: center; }
