@@ -264,6 +264,7 @@ pub(crate) fn create_runtime<R: Runtime>(
                     "format": entry.extension,
                     "binary": false,
                     "representation": entry.representation,
+                    "requiredForReady": true,
                     "dataBase64": base64::engine::general_purpose::STANDARD.encode(&entry.data)
                 }))
                 .collect::<Vec<_>>());
