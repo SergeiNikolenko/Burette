@@ -18,6 +18,7 @@ import ligandProLogo from "../assets/short-logo-ligandpro.svg";
 import { collectionExtension, collectionFamily } from "../lib/collection-documents";
 import { readStructureText } from "../lib/structure-text";
 import { hasStructureDrag, readStructureDragPayload, structureDragRecordsToFragments, writeStructureDragRecords } from "../lib/structure-drag";
+import { resolveThemeMode, useSystemThemeMode } from "../lib/theme";
 import type { StructureDragRecord } from "../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "./drop-action-executor";
 import type { KetcherLocation } from "./editor-area/page-kinds";
@@ -55,8 +56,8 @@ type KetcherPanelMode = {
   format: KetcherTextFormat;
 };
 
-const KETCHER_ZOOM_LEVELS = [0.2, 0.3, 0.4, 0.5, 0.6, 0.64, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.7, 2, 2.5, 3, 3.5, 4] as const;
-const DEFAULT_KETCHER_ZOOM = 0.64;
+const KETCHER_ZOOM_LEVELS = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.7, 2, 2.5, 3, 3.5, 4] as const;
+const DEFAULT_KETCHER_ZOOM = 1;
 const KETCHER_OUTPUT_DEFAULT_HEIGHT = 58;
 const KETCHER_OUTPUT_MIN_HEIGHT = 42;
 const KETCHER_OUTPUT_MAX_HEIGHT = 360;
@@ -64,6 +65,98 @@ const KETCHER_EXPORT_TIMEOUT_MS = 15000;
 const KETCHER_IMPORT_INSTANCE_RETRY_DELAYS_MS = [0, 250, 750, 1500, 2500] as const;
 const KETCHER_IMPORT_REQUEST_RETRY_MS = 5000;
 type KetcherImportResult = "success" | "transient-failure" | "failure";
+const KETCHER_TOOLTIP_ATTRIBUTE = "data-burette-ketcher-tooltip";
+const KETCHER_TOOLTIP_SELECTOR = [
+  '[data-testid="top-toolbar"] button',
+  '[data-testid="top-toolbar"] [role="button"]',
+  '[data-testid="bottom-toolbar"] button',
+  '[data-testid="bottom-toolbar"] [role="button"]',
+  '[data-testid="left-toolbar"] button',
+  '[data-testid="left-toolbar"] [role="button"]',
+  '[data-testid="right-toolbar"] button',
+  '[data-testid="right-toolbar"] [role="button"]',
+  '[data-testid="polymer-toggler"]',
+  '[data-testid="molecules_mode"]',
+  '[data-testid="macromolecules_mode"]',
+  '[data-testid="zoom-selector"]',
+  '[data-testid="zoom-out"]',
+  '[data-testid="zoom-in"]',
+  '[data-testid="zoom-default"]',
+  '[data-testid="monomer-library"] button',
+  '[data-testid="monomer-library"] [role="button"]',
+].join(", ");
+const KETCHER_TOOLTIP_LABELS: Record<string, string> = {
+  "clear-canvas": "Clear the drawing canvas",
+  "open-file-button": "Open a molecule file",
+  "save-file-button": "Save the current structure",
+  "copy-button": "Copy the selection",
+  "copy-mol-button": "Copy as MOL",
+  "copy-ket-button": "Copy as KET",
+  "copy-image-button": "Copy as image",
+  "copy-button-dropdown-triangle": "Choose copy format",
+  "paste-button": "Paste a structure",
+  "cut-button": "Cut the selection",
+  undo: "Undo the last action",
+  redo: "Redo the last action",
+  "Aromatize button": "Aromatize the structure",
+  "Dearomatize button": "Dearomatize the structure",
+  "Layout button": "Arrange the structure layout",
+  "Clean Up button": "Clean up the structure drawing",
+  "Calculate CIP button": "Calculate CIP stereochemistry",
+  "Check Structure button": "Check the structure",
+  "Calculated Values button": "Calculate molecular values",
+  "Add/Remove explicit hydrogens button": "Add or remove explicit hydrogens",
+  "3D Viewer button": "Open the 3D viewer",
+  "polymer-toggler": "Switch between molecule and macromolecule modes",
+  "molecules_mode": "Use molecule drawing mode",
+  "macromolecules_mode": "Use macromolecule editor mode",
+  "settings-button": "Open Ketcher settings",
+  "help-button": "Open Ketcher help",
+  "about-button": "Show Ketcher information",
+  "fullscreen-mode-button": "Toggle fullscreen mode",
+  "zoom-selector": "Open Ketcher zoom controls",
+  "zoom-out": "Zoom out",
+  "zoom-in": "Zoom in",
+  "zoom-default": "Reset zoom to 100%",
+  "H-button": "Hydrogen atom tool",
+  "C-button": "Carbon atom tool",
+  "N-button": "Nitrogen atom tool",
+  "O-button": "Oxygen atom tool",
+  "S-button": "Sulfur atom tool",
+  "P-button": "Phosphorus atom tool",
+  "F-button": "Fluorine atom tool",
+  "Cl-button": "Chlorine atom tool",
+  "Br-button": "Bromine atom tool",
+  "I-button": "Iodine atom tool",
+  "PT-button": "Open periodic table",
+  "ET-button": "Open extended atom table",
+  hand: "Pan the canvas",
+  "select-rectangle": "Select with a rectangle",
+  "select-lasso": "Select with lasso",
+  "select-fragment": "Select a fragment",
+  erase: "Erase atoms or bonds",
+  bonds: "Choose a bond tool",
+  "bond-single": "Single bond tool",
+  "bond-double": "Double bond tool",
+  "bond-triple": "Triple bond tool",
+  "bond-up": "Stereo up bond tool",
+  "bond-down": "Stereo down bond tool",
+  "bond-updown": "Wavy stereo bond tool",
+  "bond-crossed": "Crossed double bond tool",
+  chain: "Draw a carbon chain",
+  "enhanced-stereo": "Enhanced stereochemistry tool",
+  "charge-plus": "Add positive charge",
+  "charge-minus": "Add negative charge",
+  sgroup: "S-group tool",
+  rgroup: "R-group tools",
+  "reaction-plus": "Add reaction plus sign",
+  arrows: "Choose a reaction arrow",
+  "reaction-mapping-tools": "Reaction mapping tools",
+  shapes: "Choose a shape tool",
+  text: "Add text annotation",
+  image: "Add image",
+  "template-lib": "Open template library",
+};
 const KETCHER_FORMAT_LABELS: Record<KetcherTextFormat, string> = {
   smiles: "SMILES",
   "extended-smiles": "Extended SMILES",
@@ -176,6 +269,59 @@ function resizedOutputPanelHeight(startHeight: number, startY: number, clientY: 
   return Math.max(KETCHER_OUTPUT_MIN_HEIGHT, Math.min(outputPanelMaxHeight(), startHeight + startY - clientY));
 }
 
+function readableKetcherTooltip(value: string) {
+  const normalized = value
+    .replace(/\b(button|dropdown|selector)\b/gi, " ")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return "";
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function ketcherTooltipLabel(target: HTMLElement) {
+  const existingLabel = target.getAttribute("aria-label")?.trim();
+  if (existingLabel) return existingLabel;
+
+  const testId = target.getAttribute("data-testid") || target.querySelector<HTMLElement>("[data-testid]")?.getAttribute("data-testid") || "";
+  if (testId && KETCHER_TOOLTIP_LABELS[testId]) return KETCHER_TOOLTIP_LABELS[testId];
+
+  const title = target.getAttribute("title")?.trim();
+  if (title) return title;
+
+  const text = target.textContent?.replace(/\s+/g, " ").trim() ?? "";
+  if (text === "Molecules") return KETCHER_TOOLTIP_LABELS["molecules_mode"];
+  if (text === "Macromolecules") return KETCHER_TOOLTIP_LABELS["macromolecules_mode"];
+  if (/^\d+%$/.test(text)) return KETCHER_TOOLTIP_LABELS["zoom-selector"];
+  if (text.length > 0 && text.length <= 32) return text;
+
+  return testId ? readableKetcherTooltip(testId) : "";
+}
+
+function applyKetcherTooltips(root: HTMLElement) {
+  root.querySelectorAll<HTMLElement>(KETCHER_TOOLTIP_SELECTOR).forEach((target) => {
+    const label = ketcherTooltipLabel(target);
+    if (!label) return;
+    if (!target.getAttribute("title")) {
+      target.setAttribute("title", label);
+    }
+    if (!target.getAttribute("aria-label")) {
+      target.setAttribute("aria-label", label);
+    }
+    target.setAttribute(KETCHER_TOOLTIP_ATTRIBUTE, "true");
+  });
+}
+
+function installKetcherTooltips(root: HTMLElement) {
+  applyKetcherTooltips(root);
+  const observer = new MutationObserver(() => applyKetcherTooltips(root));
+  observer.observe(root, {
+    childList: true,
+    subtree: true,
+  });
+  return () => observer.disconnect();
+}
+
 export function KetcherPage({
   location,
   state,
@@ -211,7 +357,13 @@ export function KetcherPage({
   const nextImportRetryAtRef = useRef(0);
   const sketchDragRecordRef = useRef<StructureDragRecord | null>(null);
   const restoredDraftRef = useRef("");
+  const editorShellRef = useRef<HTMLDivElement | null>(null);
   const shouldMountEditor = isActive || editorHasActivated;
+  const systemThemeMode = useSystemThemeMode();
+  const ketcherThemeMode = resolveThemeMode(state.preferences.theme, systemThemeMode);
+  const nextKetcherTheme = ketcherThemeMode === "dark" ? "light" : "dark";
+  const ketcherThemeLabel = nextKetcherTheme === "light" ? "Light" : "Dark";
+  const ketcherThemeTitle = `Switch to ${nextKetcherTheme} theme`;
   const ketcherZoomIndex = nearestKetcherZoomIndex(ketcherZoom);
   const ketcherZoomPercent = Math.round(ketcherZoom * 100);
   const panelFormatLabel = panelMode ? KETCHER_FORMAT_LABELS[panelMode.format] : "";
@@ -280,6 +432,11 @@ export function KetcherPage({
     if (!ketcher) return;
     return ketcher.subscribeZoom((zoom) => setKetcherZoom(normalizeKetcherZoom(zoom)));
   }, [ketcher]);
+
+  useEffect(() => {
+    if (!shouldMountEditor || !editorShellRef.current) return undefined;
+    return installKetcherTooltips(editorShellRef.current);
+  }, [editorReloadKey, shouldMountEditor]);
 
   useEffect(() => {
     if (!ketcher) return;
@@ -799,7 +956,7 @@ export function KetcherPage({
           </span>
           <div>
             <h1>Ketcher</h1>
-            <p>{hasSketch ? "Small molecule sketch" : "New small molecule sketch"}</p>
+            <p>{hasSketch ? "Ketcher sketch" : "New Ketcher sketch"}</p>
           </div>
         </div>
         <div className="ketcher-page-actions" aria-label="Sketch actions">
@@ -844,10 +1001,20 @@ export function KetcherPage({
             <span>{ketcherZoomPercent}%</span>
             <button type="button" aria-label="Increase Ketcher scale" disabled={!ketcher || ketcherZoomIndex === KETCHER_ZOOM_LEVELS.length - 1} onClick={increaseKetcherScale}>+</button>
           </div>
+          <button
+            type="button"
+            className="ketcher-theme-control"
+            aria-label={ketcherThemeTitle}
+            title={ketcherThemeTitle}
+            onClick={() => actions.setPreference("theme", nextKetcherTheme)}
+          >
+            {ketcherThemeLabel}
+          </button>
         </div>
       </header>
       <div className="ketcher-page-body">
         <div
+          ref={editorShellRef}
           className="ketcher-editor-shell"
           data-drop-active={dropActive || undefined}
           style={ketcherUIScaleStyle}
@@ -866,7 +1033,6 @@ export function KetcherPage({
               <div className="ketcher-loading">Loading editor</div>
             )}
           </div>
-          {!hasSketch ? <img className="ketcher-empty-watermark" src={ligandProLogo} alt="" aria-hidden="true" /> : null}
           {dropActive && (
             <div className="ketcher-drop-overlay">
               <div>Add to Ketcher</div>

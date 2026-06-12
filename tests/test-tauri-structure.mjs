@@ -66,6 +66,7 @@ const [
   vendorMolstarScript,
   vendorRdkitScript,
   packageSource,
+  desktopPackageSource,
   vendorAssetsLockSource,
   webRuntimeProfilesSource,
   xcodeProjectSource,
@@ -136,6 +137,7 @@ const [
   source('scripts/vendor-molstar.mjs'),
   source('scripts/vendor-rdkit.mjs'),
   source('package.json'),
+  source('apps/desktop/package.json'),
   source('vendor-assets.lock.json'),
   source('config/web-runtime-profiles.json'),
   source('Burrete.xcodeproj/project.pbxproj'),
@@ -161,6 +163,7 @@ const previewFormatsSource = previewFormats;
 
 const tauriConfig = JSON.parse(tauriConfigSource);
 const packageConfig = JSON.parse(packageSource);
+const desktopPackageConfig = JSON.parse(desktopPackageSource);
 const vendorAssetsLock = JSON.parse(vendorAssetsLockSource);
 const webRuntimeProfiles = JSON.parse(webRuntimeProfilesSource);
 const defaultCapability = JSON.parse(defaultCapabilitySource);
@@ -168,6 +171,9 @@ const mainWindowConfig = tauriConfig.app.windows.find((window) => window.label =
 
 assert.equal(await exists('apps/desktop/src-tauri/src/commands.rs'), false);
 assert.ok(mainWindowConfig);
+assert.equal(tauriConfig.build.beforeBuildCommand, undefined);
+assert.equal(desktopPackageConfig.scripts.build, 'vite build --config vite.config.ts');
+assert.equal(desktopPackageConfig.scripts['build:tauri'], 'bun run build && node ../../node_modules/@tauri-apps/cli/tauri.js build');
 assert.equal(mainWindowConfig.visible, true);
 assert.equal(mainWindowConfig.windowEffects?.state, 'active');
 assert.match(tauriConfig.app.security.csp, /'unsafe-eval'/);
@@ -180,6 +186,8 @@ assert.ok(defaultCapability.permissions.includes('core:menu:allow-new'));
 assert.ok(defaultCapability.permissions.includes('core:menu:allow-popup'));
 assert.ok(defaultCapability.permissions.includes('core:window:allow-internal-toggle-maximize'));
 assert.match(tauriConfig.app.security.csp, /script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' asset: http:\/\/asset\.localhost/);
+assert.match(tauriConfig.app.security.csp, /connect-src[^;]*asset: http:\/\/asset\.localhost/);
+assert.match(tauriConfig.app.security.csp, /worker-src 'self' asset: http:\/\/asset\.localhost/);
 assert.match(previewEntitlements, /com\.apple\.security\.network\.client/);
 assert.match(docsReadmeSource, /Performance architecture/);
 assert.match(architectureDocsSource, /\[Performance architecture\]\(performance\.md\)/);
