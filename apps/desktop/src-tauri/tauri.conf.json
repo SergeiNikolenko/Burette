@@ -1,11 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Burrete",
-  "version": "0.10.47",
+  "version": "0.10.48",
   "identifier": "com.local.BurreteV10",
   "build": {
     "beforeDevCommand": "bun run dev -- --host 127.0.0.1",
     "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "true",
     "frontendDist": "../dist"
   },
   "app": {
@@ -88,6 +89,7 @@
           "dcd",
           "inp",
           "lammpstrj",
+          "log",
           "nctraj",
           "nw",
           "top",

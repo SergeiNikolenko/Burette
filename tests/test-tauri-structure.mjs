@@ -35,6 +35,7 @@ const [
   quickLookCommand,
   updaterCommand,
   tray,
+  windowsSource,
   rendererPolicySource,
   previewIndex,
   previewGridStore,
@@ -106,6 +107,7 @@ const [
   source('apps/desktop/src-tauri/src/commands/quicklook.rs'),
   source('apps/desktop/src-tauri/src/commands/updater.rs'),
   source('apps/desktop/src-tauri/src/tray.rs'),
+  source('apps/desktop/src-tauri/src/windows.rs'),
   source('PreviewExtension/RendererPolicy.swift'),
   source('apps/desktop/src-tauri/src/preview/mod.rs'),
   source('apps/desktop/src-tauri/src/preview/grid_store.rs'),
@@ -160,6 +162,8 @@ const [
   source('docs/performance.md'),
 ]);
 const previewFormatsSource = previewFormats;
+const previewTrace = await source('apps/desktop/src-tauri/src/preview/trace.rs');
+const nightlySmokeWorkflow = await source('.github/workflows/nightly-smoke.yml');
 
 const tauriConfig = JSON.parse(tauriConfigSource);
 const packageConfig = JSON.parse(packageSource);
@@ -171,25 +175,28 @@ const mainWindowConfig = tauriConfig.app.windows.find((window) => window.label =
 
 assert.equal(await exists('apps/desktop/src-tauri/src/commands.rs'), false);
 assert.ok(mainWindowConfig);
-assert.equal(tauriConfig.build.beforeBuildCommand, undefined);
-assert.equal(desktopPackageConfig.scripts.build, 'vite build --config vite.config.ts');
+assert.equal(tauriConfig.build.beforeBuildCommand, 'true');
+assert.equal(desktopPackageConfig.scripts.build, '../../node_modules/.bin/vite build --config vite.config.ts');
 assert.equal(desktopPackageConfig.scripts['build:tauri'], 'bun run build && node ../../node_modules/@tauri-apps/cli/tauri.js build');
 assert.equal(mainWindowConfig.visible, true);
 assert.equal(mainWindowConfig.windowEffects?.state, 'active');
 assert.match(tauriConfig.app.security.csp, /'unsafe-eval'/);
 assert.match(tauriConfig.app.security.csp, /'wasm-unsafe-eval'/);
 assert.match(tauriConfig.app.security.csp, /style-src[^;]*'unsafe-inline'/);
+assert.doesNotMatch(tauriConfig.build.beforeBuildCommand, /bun run build/);
 assert.ok(defaultCapability.permissions.includes('dialog:allow-open'));
 assert.ok(defaultCapability.permissions.includes('dialog:allow-message'));
 assert.ok(defaultCapability.permissions.includes('dialog:allow-save'));
 assert.ok(defaultCapability.permissions.includes('core:menu:allow-new'));
 assert.ok(defaultCapability.permissions.includes('core:menu:allow-popup'));
 assert.ok(defaultCapability.permissions.includes('core:window:allow-internal-toggle-maximize'));
+assert.deepEqual(defaultCapability.windows, ['main', 'workspace-*']);
 assert.match(tauriConfig.app.security.csp, /script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' asset: http:\/\/asset\.localhost/);
 assert.match(tauriConfig.app.security.csp, /connect-src[^;]*asset: http:\/\/asset\.localhost/);
 assert.match(tauriConfig.app.security.csp, /worker-src 'self' asset: http:\/\/asset\.localhost/);
 assert.match(previewEntitlements, /com\.apple\.security\.network\.client/);
 assert.match(docsReadmeSource, /Performance architecture/);
+assert.match(docsReadmeSource, /Stability program/);
 assert.match(architectureDocsSource, /\[Performance architecture\]\(performance\.md\)/);
 assert.match(rendererSupportDocsSource, /\[Performance architecture\]\(performance\.md\)/);
 assert.doesNotMatch(rendererSupportDocsSource, /xyz-fast|fast-xyz/);
@@ -200,6 +207,27 @@ assert.match(performanceDocsSource, /RDKit_minimal\.wasm/);
 assert.match(performanceDocsSource, /molecules_fts/);
 assert.match(performanceDocsSource, /BURRETE_PERF_RUN_GRID_FTS=1 \.\/scripts\/perf-smoke\.sh/);
 assert.match(performanceDocsSource, /Do Not Regress/);
+assert.match(burreteCoreSource, /pub const PREVIEW_CONTRACT_SCHEMA_VERSION: u32 = 1/);
+assert.match(burreteCoreSource, /pub const PREVIEW_TRACE_FILE: &str = "preview-trace\.jsonl"/);
+assert.match(burreteCoreSource, /pub enum PreviewLifecycleState/);
+assert.match(burreteCoreSource, /pub struct PreviewLifecycle/);
+assert.match(burreteCoreSource, /pub fn transition\(&mut self, next: PreviewLifecycleState\)/);
+assert.match(burreteCoreSource, /can_transition_from/);
+assert.match(burreteCoreSource, /preview_trace_payload/);
+assert.match(burreteCoreSource, /preview_runtime_manifest/);
+assert.match(burreteCoreSource, /preview_error_code_for_message/);
+assert.match(nightlySmokeWorkflow, /on:\s*\n\s*schedule:/);
+assert.match(nightlySmokeWorkflow, /BURRETE_DEV_FLAVOR:\s*ci/);
+assert.match(nightlySmokeWorkflow, /scripts\/quicklook-preview-smoke\.sh/);
+for (const fixture of [
+  'tests/fixtures/BurettePreviewSamples/mini.pdb',
+  'tests/fixtures/BurettePreviewSamples/mini.cif',
+  'tests/fixtures/BurettePreviewSamples/sdf/single.sdf',
+  'tests/fixtures/BurettePreviewSamples/xyz/single.xyz',
+]) {
+  assert.match(nightlySmokeWorkflow, new RegExp(fixture.replaceAll('/', '\\/')));
+}
+assert.match(nightlySmokeWorkflow, /scripts\/perf-smoke\.sh/);
 
 for (const moduleName of ['agent_integration', 'documents', 'grid', 'preview_cache', 'quicklook', 'shell', 'startup', 'updater']) {
   assert.match(commandsIndex, new RegExp(`pub\\(crate\\) mod ${moduleName};`));
@@ -228,6 +256,7 @@ for (const commandPath of [
   'commands::shell::open_logs_folder',
   'commands::shell::open_external_url',
   'commands::shell::existing_paths',
+  'commands::shell::open_new_workspace_window',
   'commands::shell::read_external_preview_svg',
   'commands::shell::read_viewer_runtime_file_base64',
   'commands::shell::reveal_path',
@@ -257,6 +286,10 @@ assert.match(startupSource, /--burrete-launch-mode=register/);
 assert.match(startupSource, /--burrete-agent-session/);
 assert.match(startupSource, /pub\(crate\) fn agent_session_from_argv/);
 assert.match(startupSource, /pub\(crate\) fn emit_agent_session/);
+assert.match(startupSource, /paths_by_window: Mutex<HashMap<String, Vec<String>>>/);
+assert.match(startupSource, /push_for_window/);
+assert.match(startupSource, /drain_for_window/);
+assert.match(startupCommand, /window: tauri::WebviewWindow<R>/);
 assert.match(lib, /startup::emit_agent_session\(app, session_dir\)/);
 assert.match(agentSessionHook, /invoke<string \| null>\("startup_agent_session"\)/);
 assert.match(agentSessionHook, /listen<string>\("agent-session"/);
@@ -293,9 +326,21 @@ assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_delim
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn read_structure_text/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_text_structure/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn save_text_as/);
-assert.match(previewRuntime, /impl ViewerDocument \{\s*pub\(crate\) fn into_virtual\(mut self\) -> Self \{\s*self\.is_virtual = true;\s*self\s*\}\s*\}/);
-assert.match(documentsCommand, /open_document\(&app, output_path, &preferences, reload_options\.as_ref\(\)\)\s*\.map\(\|document\| document\.into_virtual\(\)\)/);
-assert.match(documentsCommand, /open_document\(&app, output_path, &preferences, None\)\s*\.map\(\|document\| document\.into_virtual\(\)\)/);
+assert.match(previewRuntime, /pub\(crate\) fn into_virtual\(mut self\) -> Self/);
+assert.match(previewRuntime, /pub\(crate\) fn virtual_structure/);
+assert.match(documentsCommand, /enum OpenDocumentsMode/);
+assert.match(documentsCommand, /CombinePoses/);
+assert.match(documentsCommand, /CombineGrid/);
+assert.match(documentsCommand, /fn open_combined_pose_document/);
+assert.match(documentsCommand, /fn open_combined_grid_document/);
+assert.match(documentsCommand, /create_combined_sdf_pose_runtime/);
+assert.match(documentsCommand, /create_grid_runtime_with_options/);
+assert.match(documentsCommand, /runtime_document_id\(\n        window_label,/);
+assert.match(documentsCommand, /fn combined_sdf_data/);
+assert.match(documentsCommand, /data\.ends_with\(b"\$\$\$\$"\)/);
+assert.match(documentsCommand, /ViewerDocument::virtual_structure/);
+assert.match(documentsCommand, /open_document_for_window\(\s*app,\s*window_label,\s*output_path,\s*&preferences,\s*reload_options\.as_ref\(\),\s*\)\s*\.map\(\|document\| document\.into_virtual\(\)\)/);
+assert.match(documentsCommand, /open_document_for_window\(&app, window\.label\(\), output_path, &preferences, None\)\s*\.map\(\|document\| document\.into_virtual\(\)\)/);
 assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_fetch_page/);
 assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_append_records/);
 assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_delimited_columns/);
@@ -313,6 +358,9 @@ assert.match(previewGridStore, /fn rejects_ambiguous_delimited_structure_columns
 assert.match(previewGridStore, /fn uses_explicit_column_for_ambiguous_delimited_table/);
 assert.match(previewGridStore, /fn lists_delimited_structure_column_choices/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn sync_viewer_preferences/);
+assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn list_project_structure_files/);
+assert.match(lib, /commands::documents::list_project_structure_files/);
+assert.match(tauriPermissionSource, /"list_project_structure_files"/);
 assert.match(documentsCommand, /"molstarStyle"/);
 assert.match(documentsCommand, /fn expand_open_targets/);
 assert.match(documentsCommand, /fn collect_supported_files/);
@@ -321,8 +369,33 @@ assert.match(previewCacheCommand, /#\[tauri::command\]\s+pub\(crate\) fn clear_p
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn export_diagnostics_bundle/);
 assert.match(shellCommand, /timestamp level subsystem documentId event elapsedMs message/);
 assert.match(shellCommand, /BurreteApp\.log/);
+assert.match(shellCommand, /PREVIEW_TRACE_FILE/);
+assert.match(shellCommand, /previewTraceCopied/);
 assert.match(shellCommand, /quicklook-logs/);
 assert.match(shellCommand, /rawMoleculeContentIncluded/);
+assert.match(previewIndex, /pub\(crate\) mod trace;/);
+assert.match(previewTrace, /pub\(crate\) use burrete_core::PREVIEW_TRACE_FILE/);
+assert.match(previewTrace, /PreviewTraceEvent/);
+assert.match(previewTrace, /preview_error_code_for_message/);
+assert.match(previewTrace, /preview_trace_payload/);
+assert.match(previewTrace, /preview_runtime_manifest/);
+assert.match(previewRuntime, /append_preview_trace/);
+assert.match(previewRuntime, /PreviewLifecycle::default\(\)/);
+assert.match(previewRuntime, /PreviewLifecycleState::Completed/);
+assert.match(previewRuntime, /PreviewLifecycleState::Failed/);
+assert.match(quickLookPreviewController, /runtimeManifestJSON/);
+assert.match(quickLookPreviewController, /manifest\.json/);
+assert.match(quickLookPreviewController, /previewRequestID/);
+assert.match(quickLookPreviewController, /preview-trace\.jsonl/);
+assert.match(quickLookPreviewController, /trace\.requestID=/);
+assert.match(quickLookPreviewController, /\[build\] runtimeDirectory=/);
+assert.match(quickLookPreviewController, /BRT-QL-WEB-TIMEOUT/);
+assert.match(quickLookPreviewController, /private func appendFailedPreviewTrace\(requestID: UUID, error: Error, message: String\)/);
+assert.match(quickLookPreviewController, /appendFailedPreviewTrace\(requestID: requestID, error: error, message: "render timeout waiting for JS ready"\)/);
+assert.match(quickLookPreviewController, /appendFailedPreviewTrace\(requestID: activePreviewRequestID, error: error, message: "WK didFail"\)/);
+assert.match(quickLookPreviewController, /appendFailedPreviewTrace\(requestID: activePreviewRequestID, error: error, message: "WK didFailProvisionalNavigation"\)/);
+assert.match(quickLookPreviewController, /appendFailedPreviewTrace\(requestID: activePreviewRequestID, error: error, message: "WK webContentProcessDidTerminate"\)/);
+assert.match(quickLookPreviewController, /appendFailedPreviewTrace\(requestID: requestID, error: error, message: "native renderer switch error"\)/);
 assert.match(performanceSource, /export function collectPerformanceMarks/);
 assert.match(performanceSource, /export async function measureAsync/);
 assert.match(shellActionsSource, /exportDiagnostics: \(\) => void \| Promise<void>;/);
@@ -406,12 +479,17 @@ assert.deepEqual(packageConfig.workspaces, ['apps/*', 'packages/*']);
 assert.equal(packageConfig.scripts['check:formats'], 'bun scripts/check-preview-format-registry.mjs');
 assert.equal(packageConfig.scripts['check:vendor-assets'], 'bun scripts/check-vendor-assets.mjs');
 assert.equal(packageConfig.scripts['test:update'], 'bun tests/test-update-versioning.mjs && bun tests/test-bun-installer-structure.mjs && bun tests/test-bun-installer-behavior.mjs && bun tests/test-runner-contract.mjs && bun tests/test-dev-namespace.mjs && bun tests/test-quicklook-preview-smoke-contract.mjs');
+assert.equal(desktopPackageConfig.scripts.build, '../../node_modules/.bin/vite build --config vite.config.ts');
+assert.doesNotMatch(desktopPackageConfig.scripts.build, /bun --bun vite build/);
 assert.match(packageConfig.scripts['check:js'], /scripts\/dev-namespace\.mjs/);
 assert.match(buildScript, /BURRETE_DEV_FLAVOR/);
 assert.match(buildScript, /bun "\$ROOT\/scripts\/dev-namespace\.mjs" shell-env/);
 assert.match(buildScript, /LOCAL_APP="\$ROOT\/build\/\$BURRETE_APP_BUNDLE_NAME"/);
+assert.match(buildScript, /\.\.\/\.\.\/node_modules\/\.bin\/vite build --config vite\.config\.ts/);
 assert.match(buildScript, /bun "\$ROOT\/scripts\/dev-namespace\.mjs" patch-tree "\$SAFE_ROOT"/);
 assert.match(buildDevScript, /BURRETE_DEV_FLAVOR is supported by scripts\/build\.sh, not scripts\/build-dev\.sh/);
+assert.match(buildDevScript, /\.\.\/\.\.\/node_modules\/\.bin\/vite build --config vite\.config\.ts/);
+assert.match(buildDevScript, /bun run build:tauri/);
 assert.match(installLocalScript, /BURRETE_DEV_FLAVOR/);
 assert.match(installLocalScript, /DEST="\$DEST_DIR\/\$APP_BUNDLE_NAME"/);
 assert.match(installLocalScript, /pluginkit -r "\$EXT_ID"/);
@@ -494,8 +572,10 @@ assert.match(thumbnailInfoPlist, /com\.local\.burrete10\.graphml/);
 assert.match(thumbnailProviderSource, /parseCIF/);
 assert.match(thumbnailProviderSource, /parseMol2/);
 assert.match(thumbnailProviderSource, /parseCube/);
-assert.match(previewExtensionInfoPlist, /public\.comma-separated-values-text/);
-assert.match(previewExtensionInfoPlist, /public\.tab-separated-values-text/);
+assert.doesNotMatch(previewExtensionInfoPlist, /<key>QLSupportedContentTypes<\/key>[\s\S]*?public\.comma-separated-values-text/);
+assert.doesNotMatch(previewExtensionInfoPlist, /<key>QLSupportedContentTypes<\/key>[\s\S]*?public\.tab-separated-values-text/);
+assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.csv/);
+assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.tsv/);
 assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.smiles/);
 assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.graphml/);
 assert.match(appMetadata, /<string>graphml<\/string>/);
@@ -504,6 +584,9 @@ assert.match(tauriConfigSource, /"graphml"/);
 assert.match(quickLookPreviewController, /pathExtension == "graphml"/);
 assert.match(quickLookPreviewController, /detected\.previewMode=fep-graphml/);
 assert.match(quickLookPreviewController, /layoutFepGraphMLPreview/);
+assert.match(quickLookPreviewController, /let denseMode = graph\.nodes\.count > 12/);
+assert.match(quickLookPreviewController, /class="node-dot"/);
+assert.match(quickLookPreviewController, /class="node-card"/);
 assert.match(quickLookPreviewController, /score: " \+ String\(format: "%\.3f", \$0\)/);
 assert.doesNotMatch(installLocalScript, /broadPublicTypes/);
 assert.match(installLocalScript, /let contentTypes = documentTypes\.flatMap/);
@@ -523,11 +606,17 @@ assert.match(installLocalScript, /assert_bundled_xyzrender_runner\(\)\s*\{/);
 assert.match(installLocalScript, /sign_bundled_xyzrender_runtime\(\)\s*\{/);
 assert.match(installLocalScript, /find "\$runtime" "\$python_root" -type f/);
 assert.match(installLocalScript, /sign_bundled_xyzrender_runtime "\$STAGING_XYZRENDER_ENV" "\$STAGING_XYZRENDER_PYTHON"/);
-assert.match(installLocalScript, /codesign --force --sign - --entitlements "\$ROOT\/PreviewExtension\/BurretePreview\.entitlements" "\$STAGING_APPEX"/);
-assert.match(installLocalScript, /codesign --force --sign - "\$STAGING_DEST"/);
+assert.match(installLocalScript, /SIGN_IDENTITY="\$\{BURRETE_CODESIGN_IDENTITY:--\}"/);
+assert.match(installLocalScript, /CODESIGN_ARGS=\(--force --sign "\$SIGN_IDENTITY"\)/);
+assert.match(installLocalScript, /codesign "\$\{CODESIGN_ARGS\[@\]\}" --entitlements "\$ROOT\/PreviewExtension\/BurretePreview\.entitlements" "\$STAGING_APPEX"/);
+assert.match(installLocalScript, /codesign "\$\{CODESIGN_ARGS\[@\]\}" "\$STAGING_DEST"/);
 assert.doesNotMatch(installLocalScript, /codesign --force --deep --sign - "\$STAGING_DEST"/);
 assert.match(installLocalScript, /codesign --verify --deep --strict "\$STAGING_DEST"/);
-assert.match(installLocalScript, /for attempt in \$\(seq 1 60\)/);
+assert.match(installLocalScript, /run_bundled_xyzrender_help\(\)\s*\{/);
+assert.match(installLocalScript, /local timeout_seconds=10/);
+assert.match(installLocalScript, /return 124/);
+assert.match(installLocalScript, /\[\[ "\$IS_DEV_FLAVOR" == "1" && "\$\{BURRETE_SKIP_XYZRENDER_RUNNER_CHECK:-0\}" == "1" \]\]/);
+assert.match(installLocalScript, /for attempt in \$\(seq 1 6\)/);
 assert.match(installLocalScript, /assert_bundled_xyzrender_runtime "\$STAGING_XYZRENDER_ENV" "\$STAGING_XYZRENDER_PYTHON" "before signing"/);
 assert.match(installLocalScript, /assert_bundled_xyzrender_runner "\$STAGING_XYZRENDER_ENV" "\$STAGING_XYZRENDER_PYTHON" "after signing"/);
 assert.doesNotMatch(installLocalScript, /\$STAGING_XYZRENDER_ENV\/bin\/xyzrender" --help/);
@@ -538,12 +627,19 @@ assert.match(previewXyzrender, /fn xyzrender_batch_helper_launch/);
 assert.match(previewXyzrender, /fn bundled_xyzrender_python_launch/);
 assert.match(previewXyzrender, /join\("xyzrender-python"\)\s*\.join\("bin"\)\s*\.join\("python3"\)/);
 assert.match(previewXyzrender, /\("PYTHONPATH", site_packages\.display\(\)\.to_string\(\)\)/);
+assert.match(previewXyzrender, /surface_mode/);
+assert.match(previewXyzrender, /paired_nci_surface_cube_path/);
+assert.match(previewXyzrender, /"--esp"/);
+assert.match(previewXyzrender, /"--nci-surf"/);
+assert.match(previewRuntimeViewer, /"surfaceMode"/);
 
 assert.match(tray, /fn status_image\(\) -> tauri::image::Image<'static>/);
 assert.match(tray, /\.icon\(status_image\(\)\)/);
 assert.match(tray, /\.icon_as_template\(true\)/);
 assert.match(tray, /pub\(crate\) fn show_main_window/);
 assert.match(tray, /pub\(crate\) fn hide_main_window/);
+assert.match(tray, /tray\.new-window/);
+assert.match(tray, /windows::open_new_workspace_window\(app\)/);
 assert.match(tray, /const DEFAULT_MAIN_WINDOW_WIDTH: f64 = 1180\.0;/);
 assert.match(tray, /const DEFAULT_MAIN_WINDOW_HEIGHT: f64 = 760\.0;/);
 assert.match(tray, /fn normalize_main_window/);
@@ -552,7 +648,16 @@ assert.match(tray, /window\.set_size\(Size::Logical\(LogicalSize::new\(/);
 assert.match(tray, /window\.center\(\)/);
 assert.doesNotMatch(tray, /default_window_icon/);
 assert.doesNotMatch(tray, /\.title\("B"\)/);
-assert.match(lib, /if !paths\.is_empty\(\) \{\s*tray::show_main_window\(app\);/);
+assert.match(lib, /mod windows;/);
+assert.match(lib, /windows::focused_window_label\(app\)/);
+assert.match(lib, /windows::show_window\(app, &window_label\)/);
+assert.match(lib, /startup::signal_open_documents_for_window\(app, &window_label, paths\)/);
+assert.match(windowsSource, /pub\(crate\) const MAIN_WINDOW_LABEL: &str = "main"/);
+assert.match(windowsSource, /pub\(crate\) const WORKSPACE_WINDOW_PREFIX: &str = "workspace-"/);
+assert.match(windowsSource, /WebviewWindowBuilder::new\(app, &label, url\)/);
+assert.match(windowsSource, /index\.html\?burreteWindow=\{label\}/);
+assert.match(windowsSource, /pub\(crate\) fn runtime_document_id/);
+assert.match(windowsSource, /unregister_prefix/);
 assert.match(lib, /let launch_mode = startup::LaunchMode::current\(&argv\);/);
 assert.match(lib, /launch_mode\.is_register\(\) && startup_paths\.is_empty\(\)/);
 assert.match(lib, /tray::hide_main_window\(app\.handle\(\)\);/);
@@ -568,6 +673,7 @@ assert.match(menu, /PredefinedMenuItem::services/);
 assert.match(menu, /PredefinedMenuItem::show_all/);
 assert.match(menu, /SubmenuBuilder::new\(app, "Help"\)/);
 for (const menuId of [
+  'file.new-window',
   'file.open-recent',
   'file.reveal-active',
   'file.copy-active-path',
@@ -580,6 +686,8 @@ for (const menuId of [
 ]) {
   assert.match(menu, new RegExp(menuId.replaceAll('.', '\\.')));
 }
+assert.match(menu, /New Window/);
+assert.match(menu, /accelerator\("CmdOrCtrl\+Shift\+N"\)/);
 for (const eventName of [
   'MENU_OPEN_RECENT_EVENT',
   'MENU_REVEAL_ACTIVE_EVENT',
@@ -597,12 +705,15 @@ for (const eventName of [
 assert.match(menu, /Check for Updates/);
 assert.match(menu, /short_version: Some\(pkg\.version\.to_string\(\)\)/);
 
-for (const moduleName of ['runtime_grid', 'runtime_utils', 'runtime_viewer']) {
+for (const moduleName of ['runtime_grid', 'runtime_utils', 'runtime_viewer', 'trace']) {
   assert.match(previewIndex, new RegExp(`pub\\(crate\\) mod ${moduleName};`));
 }
 assert.match(previewIndex, /pub\(crate\) mod grid_store;/);
 
-assert.match(previewRuntime, /pub\(crate\) fn open_document/);
+assert.match(previewRuntime, /pub\(crate\) fn open_document_for_window/);
+assert.match(previewRuntime, /runtime_document_id\(window_label, &document_id\)/);
+assert.match(documentsCommand, /window: tauri::WebviewWindow<R>/);
+assert.match(gridCommand, /runtime_document_id\(window\.label\(\), &request\.document_id\)/);
 assert.match(previewRuntime, /active_pose: Option<usize>/);
 assert.match(previewRuntime, /request\.active_pose/);
 assert.match(previewRuntime, /create_grid_runtime/);
@@ -613,7 +724,7 @@ assert.doesNotMatch(previewRuntime, /fn parse_sdf_grid/);
 assert.doesNotMatch(previewRuntime, /fn viewer_html/);
 assert.match(previewRuntimeGrid, /pub\(crate\) fn create_grid_runtime/);
 assert.match(previewRuntimeGrid, /build_grid_store/);
-assert.match(previewRuntimeGrid, /include_single_sdf: normalize_renderer_mode\(&preferences\.renderer_mode\) == "grid2d"/);
+assert.match(previewRuntimeGrid, /include_single_sdf: options\.include_single_sdf\s*\|\|\s*normalize_renderer_mode\(&preferences\.renderer_mode\) == "grid2d"/);
 assert.match(previewGridStore, /!options\.include_single_sdf\s*&& \(\(extension == "sdf" \|\| extension == "sd"\) && records_indexed <= 1\)/);
 assert.match(previewRuntimeGrid, /"sourcePath": file_path\.to_string_lossy\(\)/);
 assert.match(previewRuntimeGrid, /register\(\s*document_id,\s*grid_store\.database_path,\s*collection\.format,\s*grid_store\.cancel_token,\s*\)/);
@@ -621,10 +732,17 @@ assert.match(previewRuntimeGrid, /"gridDataMode": "bridge"/);
 assert.match(previewRuntimeGrid, /"recordsIndexed": collection\.records_indexed/);
 assert.match(previewRuntimeGrid, /"indexReady": collection\.index_ready/);
 assert.match(previewRuntimeGrid, /"recordsIncluded": 0/);
+assert.match(previewRuntimeGrid, /runtime_manifest\(\s*"grid2d"/);
+assert.match(previewRuntimeGrid, /write_json_atomic\(\s*&runtime\.join\("manifest\.json"\)/);
 assert.doesNotMatch(previewRuntimeGrid, /preview-grid-records\.js/);
 assert.match(previewRuntimeGrid, /fn parse_sdf_grid/);
 assert.match(previewRuntimeGrid, /fn parse_delimited_table/);
 assert.match(previewRuntimeViewer, /pub\(crate\) fn create_runtime/);
+assert.match(previewRuntimeViewer, /runtime_manifest\(/);
+assert.match(previewRuntimeViewer, /write_json_atomic\(\s*&runtime\.join\("manifest\.json"\)/);
+assert.match(previewRuntimeViewer, /pub\(crate\) fn create_combined_sdf_pose_runtime/);
+assert.match(previewRuntimeViewer, /"defaultSdfPoseMode": "all"/);
+assert.match(previewRuntimeViewer, /"sdfPoseModeStorageKey": format!\("buret\.sdf\.poseMode\.\{document_id\}"\)/);
 assert.match(previewRuntimeViewer, /active_pose: Option<usize>/);
 assert.match(previewRuntimeViewer, /"activePose": active_pose/);
 assert.match(previewRuntimeViewer, /pub\(crate\) fn copy_web_assets/);
@@ -672,6 +790,10 @@ assert.match(quickLookPreviewController, /<script src="preview-config\.js"><\/sc
 assert.match(quickLookPreviewController, /gridRuntimeCSP/);
 assert.match(quickLookPreviewController, /molstarRuntimeCSP/);
 assert.match(quickLookPreviewController, /externalArtifactRuntimeCSP/);
+assert.match(quickLookPreviewController, /surfaceMode/);
+assert.match(quickLookPreviewController, /pairedNCISurfaceCubeURL/);
+assert.match(quickLookPreviewController, /"--esp"/);
+assert.match(quickLookPreviewController, /"--nci-surf"/);
 assert.match(quickLookPreviewController, /runtimeCSP\(for: renderer\)/);
 assert.match(quickLookPreviewController, /Content-Security-Policy/);
 assert.match(quickLookPreviewController, /elapsed\.fileReadMs/);
@@ -703,6 +825,8 @@ assert.match(quickLookPreviewController, /PreviewError\.webRenderFailed\("The em
 assert.match(quickLookPreviewController, /finishPreviewIfNeeded\(nil, requestID: activePreviewRequestID\)/);
 assert.match(quickLookPreviewController, /guard let url = currentPreviewURL else \{/);
 assert.match(viewerJS, /function requestStructureDataFromNative\(\)/);
+assert.match(viewerJS, /const storageKey = String\(config\?\.sdfPoseModeStorageKey \|\| SDF_POSE_MODE_STORAGE_KEY\)/);
+assert.match(viewerJS, /const defaultMode = config\?\.defaultSdfPoseMode === 'all' \? 'all' : 'single'/);
 assert.match(viewerJS, /window\.__mqlPost\('requestData', 'requestData', \{ requestToken \}\);/);
 assert.match(viewerJS, /function loadArrayBufferViaXHR\(url\)/);
 assert.match(viewerJS, /fetch preview-data\.bin failed, falling back to XMLHttpRequest/);
@@ -764,10 +888,12 @@ assert.match(viewerShell, /buret-renderer-choice/);
 assert.match(viewerShell, /aria-label="Collapse controls"/);
 assert.match(viewerShell, /aria-expanded="true"/);
 assert.match(viewerShell, />Seq</);
+assert.match(viewerShell, /data-buret-action="sdf-poses"/);
 assert.doesNotMatch(viewerShell, /id="buret-open-in-app"/);
 assert.doesNotMatch(viewerShell, /data-buret-action="open-burrete"/);
 assert.doesNotMatch(viewerShell, /VESTA/);
 assert.match(viewerRuntimeCSS, /--buret-panel-background/);
+assert.match(viewerRuntimeCSS, /\.buret-pose-toggle/);
 assert.match(previewRuntimeUtils, /pub\(crate\) fn stable_id/);
 assert.match(previewRuntimeUtils, /pub\(crate\) fn prune_runtime_dirs/);
 assert.match(quickLookPreviewController, /viewer-runtime\.css/);
@@ -778,6 +904,9 @@ assert.match(viewerJS, /function runtimeURL\(globalName, fallback\)/);
 assert.match(viewerJS, /runtimeURL\('BurretePreviewConfigURL', '\.\/preview-config\.js'\)/);
 assert.match(viewerJS, /runtimeURL\('BurretePreviewDataScriptURL', '\.\/preview-data\.js'\)/);
 assert.match(viewerJS, /runtimeURL\('BurreteMolstarURL', '\.\/molstar\.js'\)/);
+assert.match(viewerJS, /SDF_POSE_MODE_STORAGE_KEY/);
+assert.match(viewerJS, /function buildSdfPoseOverlay/);
+assert.match(viewerJS, /M  V30 BEGIN CTAB/);
 assert.doesNotMatch(viewerJS, /BurreteXyzFastURL|xyz-fast\.js/);
 assert.match(previewRuntimeViewer, /window\.__mqlPost = \(type, message, payload\) => postToParent\(\{ type, message: message \|\| '', \.\.\.\(payload \|\| \{\}\) \}\);/);
 assert.match(viewerJS, /function isQuickLookHost\(\)/);

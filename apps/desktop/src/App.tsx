@@ -68,12 +68,12 @@ import { isMoleculeCollectionPath } from "./lib/collection-documents";
 import { dockingRequestForDrop, isProteinLikeDockingSource } from "./lib/docking-documents";
 import type { DropActionChoice } from "./lib/drop-actions";
 import { collectPerformanceMarks, markPerformanceOnce, measureAsync } from "./lib/performance";
-import { basename, buildSidebarProjects, parentDirectory } from "./lib/sidebar-projects";
+import { basename, buildSidebarProjects, parentDirectory, type SidebarProjectStructure } from "./lib/sidebar-projects";
 import type { StructureDragPayload, StructureDragRecord } from "./lib/structure-drag";
 import { readStructureText } from "./lib/structure-text";
 import { isTauriRuntime } from "./lib/tauri";
 import { isTemporaryDocumentPath } from "./lib/temporary-documents";
-import type { DockingDocumentRequest, FepSetupRequest, OpenDocumentsResult, OpenTextFilesResult, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "./types";
+import type { DockingDocumentRequest, FepSetupRequest, OpenDocumentsMode, OpenDocumentsResult, OpenTextFilesResult, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "./types";
 import { checkForUpdates as requestUpdateCheck, clearDismissedUpdate, dismissUpdate, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically, shouldPromptForUpdate } from "./update";
 import type { UpdatePreferences, UpdateRelease, UpdateState } from "./update";
 
@@ -113,7 +113,26 @@ const preferredTextExtensions = new Set([
   "html",
   "css",
 ]);
-const structureFirstTextExtensions = new Set(["out"]);
+const structureAndTextExtensions = new Set([
+  "abi",
+  "cms",
+  "com",
+  "csv",
+  "cub",
+  "cube",
+  "fdf",
+  "graphml",
+  "in",
+  "inp",
+  "log",
+  "mae",
+  "nw",
+  "out",
+  "psi4",
+  "qcin",
+  "tsv",
+  "vasp",
+]);
 
 const GRID_PERF_REPORT_PATH = "/private/tmp/burrete-grid-real-app-perf.jsonl";
 const SIDEBAR_DRAG_CLOSE_WIDTH = 180;
@@ -381,8 +400,10 @@ export default function App() {
   const [dirtyGridDocuments, setDirtyGridDocuments] = useState<Set<string>>(() => new Set());
   const [status, setStatus] = useState<StatusNotice | null>(null);
   const [buildInfo, setBuildInfo] = useState(defaultBuildInfo);
+  const [buildInfoLoaded, setBuildInfoLoaded] = useState(false);
   const [poseReviewSelections, setPoseReviewSelections] = useState<Record<string, number>>({});
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
+  const [projectStructures, setProjectStructures] = useState<SidebarProjectStructure[]>([]);
   const [update, setUpdate] = useState<UpdateState>(() => ({
     preferences: loadUpdatePreferences(),
     isChecking: false,
@@ -422,7 +443,17 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     void loadBuildInfo().then((info) => {
-      if (!cancelled) setBuildInfo(info);
+      if (cancelled) return;
+      setBuildInfo(info);
+      setBuildInfoLoaded(true);
+      if (info.isDevBuild) {
+        setUpdate((previous) => ({
+          ...previous,
+          isChecking: false,
+          availableRelease: null,
+          statusText: "Updates are disabled for dev builds.",
+        }));
+      }
     });
     return () => {
       cancelled = true;
@@ -478,12 +509,33 @@ export default function App() {
     documents,
     recentStructures,
     projectRoots,
+    projectStructures,
     pinnedProjectRoots,
     projectNameOverrides,
     activeDocumentId: activeDocument?.id ?? null,
     hiddenProjectRoots,
     pinnedStructurePaths,
-  }), [activeDocument?.id, documents, hiddenProjectRoots, pinnedProjectRoots, pinnedStructurePaths, projectNameOverrides, projectRoots, recentStructures]);
+  }), [activeDocument?.id, documents, hiddenProjectRoots, pinnedProjectRoots, pinnedStructurePaths, projectNameOverrides, projectRoots, projectStructures, recentStructures]);
+
+  useEffect(() => {
+    if (!isTauriRuntime() || projectRoots.length === 0) {
+      setProjectStructures([]);
+      return undefined;
+    }
+    let cancelled = false;
+    void invoke<SidebarProjectStructure[]>("list_project_structure_files", { paths: projectRoots })
+      .then((files) => {
+        if (!cancelled) setProjectStructures(files);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setProjectStructures([]);
+        pushErrorStatus(error, "Project file scan failed");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectRoots, pushErrorStatus]);
 
   useEffect(() => {
     if (prunedPersistedPathsRef.current || !isTauriRuntime()) return;
@@ -568,7 +620,7 @@ export default function App() {
       paths: string[],
       reloadOptions?: ViewerReloadOptions,
       preferencesOverride?: Partial<typeof preferences>,
-      options: { replace?: boolean; inActiveTab?: boolean } = {},
+      options: { replace?: boolean; inActiveTab?: boolean; mode?: OpenDocumentsMode } = {},
     ) => {
       const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
       if (!cleanPaths.length) return;
@@ -594,7 +646,7 @@ export default function App() {
       pushStatus("Opening structures...");
       try {
         const result = isTauriRuntime()
-          ? await invoke<OpenDocumentsResult>("open_documents", { paths: structurePaths, preferences: effectivePreferences, reloadOptions })
+          ? await invoke<OpenDocumentsResult>("open_documents", { paths: structurePaths, preferences: effectivePreferences, reloadOptions, mode: options.mode })
           : await openBrowserDevDocuments(structurePaths, effectivePreferences, reloadOptions);
         if (options.replace) setDocuments(result.documents);
         else if (options.inActiveTab) openDocumentsInActiveTab(result.documents);
@@ -623,13 +675,6 @@ export default function App() {
     },
     [addDocuments, openDocumentsInActiveTab, openFepNetworkTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setActiveDocument, setDocuments, showDelimitedGridColumnOpenMenu],
   );
-  useOpenEvents(
-    (paths, options) => {
-      void openDocuments(paths, undefined, undefined, options);
-    },
-    pushErrorStatus,
-  );
-
   const openTextDocuments = useCallback(
     async (
       paths: string[],
@@ -666,12 +711,12 @@ export default function App() {
 
     const structurePaths: string[] = [];
     const textPaths: string[] = [];
-    const structureFirstTextPaths: string[] = [];
+    const structureAndTextPaths: string[] = [];
 
     for (const path of cleanPaths) {
       const extension = pathExtension(path);
-      if (structureFirstTextExtensions.has(extension)) {
-        structureFirstTextPaths.push(path);
+      if (structureAndTextExtensions.has(extension)) {
+        structureAndTextPaths.push(path);
       } else if (structureExtensions.has(extension)) {
         structurePaths.push(path);
       } else if (preferredTextExtensions.has(extension) || extension.length > 0) {
@@ -685,13 +730,18 @@ export default function App() {
       await openDocuments(structurePaths);
     }
 
-    const fallbackTextPaths: string[] = [];
-    for (const path of structureFirstTextPaths) {
-      const result = await openDocuments([path]);
-      if (!result || result.documents.length === 0) fallbackTextPaths.push(path);
+    const openedStructureAndTextPaths = new Set<string>();
+    if (structureAndTextPaths.length > 0) {
+      const result = await openDocuments(structureAndTextPaths);
+      for (const document of result?.documents ?? []) {
+        openedStructureAndTextPaths.add(document.path);
+      }
     }
 
-    const textOpenPaths = [...textPaths, ...fallbackTextPaths];
+    const textOpenPaths = [
+      ...textPaths,
+      ...structureAndTextPaths.filter((path) => !openedStructureAndTextPaths.has(path)),
+    ];
     if (textOpenPaths.length > 0) {
       await openTextDocuments(textOpenPaths);
     }
@@ -823,13 +873,39 @@ export default function App() {
 
     pushStatus(`Opening in ${input.area === "right" ? "right dock" : "bottom dock"}...`);
     try {
+      let dockOpenPaths = cleanPaths;
+      if (input.area === "right" && cleanPaths.length > 0) {
+        const rightDockTextPaths = cleanPaths.filter((path) => {
+          const extension = pathExtension(path);
+          return !structureExtensions.has(extension) && !structureAndTextExtensions.has(extension);
+        });
+        dockOpenPaths = cleanPaths.filter((path) => !rightDockTextPaths.includes(path));
+        if (rightDockTextPaths.length > 0) {
+          const textResult = isTauriRuntime()
+            ? await invoke<OpenTextFilesResult>("open_text_files", { paths: rightDockTextPaths })
+            : await openBrowserDevTextFiles(rightDockTextPaths);
+          if (textResult.documents.length > 0) {
+            addBackgroundTextDocuments(textResult.documents);
+            setDockDocument(input.area, textResult.documents[0].id);
+            addDockDrop(input);
+          }
+          const openedText = `Opened ${textResult.documents.length} text file${textResult.documents.length === 1 ? "" : "s"} in right dock`;
+          if (textResult.errors.length > 0) {
+            pushStatus(textResult.documents.length > 0 ? `${openedText}. ${summarizeErrors(textResult.errors)}` : summarizeErrors(textResult.errors), "error", textResult.errors);
+            return;
+          }
+          pushStatus(openedText);
+          if (dockOpenPaths.length === 0 && cleanRecords.length === 0) return;
+        }
+      }
+
       const structurePaths: string[] = [];
       const textPaths: string[] = [];
-      const structureFirstTextPaths: string[] = [];
-      for (const path of cleanPaths) {
+      const structureAndTextPaths: string[] = [];
+      for (const path of dockOpenPaths) {
         const extension = pathExtension(path);
-        if (structureFirstTextExtensions.has(extension)) {
-          structureFirstTextPaths.push(path);
+        if (structureAndTextExtensions.has(extension)) {
+          structureAndTextPaths.push(path);
         } else if (structureExtensions.has(extension)) {
           structurePaths.push(path);
         } else if (preferredTextExtensions.has(extension) || extension.length > 0) {
@@ -844,23 +920,18 @@ export default function App() {
           ? await invoke<OpenDocumentsResult>("open_documents", { paths: structurePaths, preferences, reloadOptions: undefined })
           : await openBrowserDevDocuments(structurePaths, preferences, undefined)
         : { documents: [], errors: [] };
-      const fallbackTextPaths: string[] = [];
-      const structureFirstResults: OpenDocumentsResult[] = [];
-      for (const path of structureFirstTextPaths) {
+      const structureAndTextResults: OpenDocumentsResult[] = [];
+      for (const path of structureAndTextPaths) {
         try {
           const result = isTauriRuntime()
             ? await invoke<OpenDocumentsResult>("open_documents", { paths: [path], preferences, reloadOptions: undefined })
             : await openBrowserDevDocuments([path], preferences, undefined);
           if (result.documents.length > 0) {
-            structureFirstResults.push(result);
-          } else {
-            fallbackTextPaths.push(path);
+            structureAndTextResults.push(result);
           }
-        } catch {
-          fallbackTextPaths.push(path);
-        }
+        } catch {}
       }
-      const textOpenPaths = [...textPaths, ...fallbackTextPaths];
+      const textOpenPaths = [...textPaths, ...structureAndTextPaths];
       const textResult = textOpenPaths.length > 0
         ? isTauriRuntime()
           ? await invoke<OpenTextFilesResult>("open_text_files", { paths: textOpenPaths })
@@ -871,13 +942,13 @@ export default function App() {
         : { opened: [], errors: [] };
       const openedStructures = [
         ...structurePathResult.documents,
-        ...structureFirstResults.flatMap((result) => result.documents),
+        ...structureAndTextResults.flatMap((result) => result.documents),
         ...recordResult.opened,
       ];
       const openedTextDocuments = textResult.documents;
       const errors = [
         ...structurePathResult.errors,
-        ...structureFirstResults.flatMap((result) => result.errors),
+        ...structureAndTextResults.flatMap((result) => result.errors),
         ...textResult.errors,
         ...recordResult.errors,
       ];
@@ -1849,6 +1920,7 @@ export default function App() {
     openDockingDocument,
     openDockingStructureRecords,
     openStructureRecords,
+    openTextDocuments,
     openKetcherWithStructures,
     openFepSetupWorkspace,
     openDockPayload,
@@ -1975,6 +2047,20 @@ export default function App() {
   }, [installUpdate]);
 
   const checkForUpdates = useCallback(async (automatic = false, channelOverride?: UpdatePreferences["channel"]) => {
+    if (!buildInfoLoaded) {
+      if (!automatic) pushStatus("Update checks are not ready yet.");
+      return;
+    }
+    if (buildInfo.isDevBuild) {
+      setUpdate((previous) => ({
+        ...previous,
+        isChecking: false,
+        availableRelease: null,
+        statusText: "Updates are disabled for dev builds.",
+      }));
+      if (!automatic) pushStatus("Updates are disabled for dev builds.");
+      return;
+    }
     const channel = channelOverride ?? update.preferences.channel;
     setUpdate((previous) => ({
       ...previous,
@@ -2006,7 +2092,7 @@ export default function App() {
       if (automatic) markAutomaticCheck(false);
       if (!automatic) pushErrorStatus(error, "Update check failed");
     }
-  }, [promptForUpdate, pushErrorStatus, update.preferences.channel]);
+  }, [buildInfo.isDevBuild, buildInfoLoaded, promptForUpdate, pushErrorStatus, pushStatus, update.preferences.channel]);
 
   const clearCache = useCallback(async () => {
     try {
@@ -2032,6 +2118,19 @@ export default function App() {
       pushStatus("Opened logs folder");
     } catch (error) {
       pushErrorStatus(error, "Open logs folder failed");
+    }
+  }, [pushErrorStatus, pushStatus]);
+
+  const openNewWindow = useCallback(async () => {
+    if (!isTauriRuntime()) {
+      pushStatus("New windows are available in the desktop app only.", "error");
+      return;
+    }
+    try {
+      await invoke<string>("open_new_workspace_window");
+      pushStatus("Opened new window");
+    } catch (error) {
+      pushErrorStatus(error, "Open new window failed");
     }
   }, [pushErrorStatus, pushStatus]);
 
@@ -2068,6 +2167,7 @@ export default function App() {
           orientationRef?: string | null;
           preset?: string | null;
           text?: string | null;
+          base64?: string | null;
           query?: string | null;
           sort?: string | null;
           offset?: number | null;
@@ -2092,6 +2192,14 @@ export default function App() {
       if (data?.source !== "burrete-viewer" && data?.source !== "burrete-grid") return;
       const body = data.body;
       if (!isKnownViewerMessageSource(event.source, body?.documentId)) return;
+      if ((data.source === "burrete-viewer" || data.source === "burrete-grid") && body?.type === "openCommandPalette") {
+        openCommandPalette();
+        return;
+      }
+      if ((data.source === "burrete-viewer" || data.source === "burrete-grid") && body?.type === "toggleSidebar") {
+        toggleSidebar();
+        return;
+      }
       if (data.source === "burrete-viewer" && (body?.type === "requestData" || body?.type === "requestRuntimeFile")) {
         if (!body.requestToken) return;
         const document = body.documentId
@@ -2164,6 +2272,32 @@ export default function App() {
             });
             if (!outputPath) return;
             const savedPath = await invoke<string>("save_text_as", { text, outputPath });
+            pushStatus(`Exported ${basename(savedPath)}`);
+          } catch (error) {
+            pushErrorStatus(error, "Molstar export failed");
+          }
+        })();
+        return;
+      }
+      if (data.source === "burrete-viewer" && body?.type === "exportData") {
+        const base64 = typeof body.base64 === "string" ? body.base64 : "";
+        const name = safeExportFileName(body.name ?? "molstar-export.bin");
+        const mimeType = typeof body.mimeType === "string" ? body.mimeType : "application/octet-stream";
+        void (async () => {
+          try {
+            if (!isTauriRuntime()) {
+              downloadBase64File(name, base64, mimeType);
+              pushStatus(`Exported ${name}`);
+              return;
+            }
+            const outputPath = await save({
+              defaultPath: name,
+              filters: exportDialogFilters(name, mimeType),
+            });
+            if (!outputPath) return;
+            const savedPath = await invoke<string>("write_base64_file", {
+              request: { outputPath, contentsBase64: base64 },
+            });
             pushStatus(`Exported ${basename(savedPath)}`);
           } catch (error) {
             pushErrorStatus(error, "Molstar export failed");
@@ -2917,6 +3051,8 @@ export default function App() {
                 xyzrenderPreset: body.preset ?? pendingViewerReloadOptionsRef.current?.xyzrenderPreset ?? null,
                 xyzrenderControls: body.controls ?? pendingViewerReloadOptionsRef.current?.xyzrenderControls ?? null,
               }
+            : renderer === "molstar"
+              ? {}
             : undefined;
           if (renderer === "xyzrender-external" && body.orientationRef) {
             xyzrenderOrientationRefRef.current = body.orientationRef;
@@ -2944,16 +3080,17 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, addDocuments, documents, notifyGridPoseReviewSelection, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, writeGridPerfMetric]);
+  }, [activeDocument, addDocuments, documents, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar, writeGridPerfMetric]);
 
   useEffect(() => {
+    if (!buildInfoLoaded || buildInfo.isDevBuild) return undefined;
     const loadedPreferences = loadUpdatePreferences();
     if (!shouldCheckAutomatically(loadedPreferences)) return undefined;
     const timeout = window.setTimeout(() => {
       void checkForUpdates(true, loadedPreferences.channel);
     }, 1200);
     return () => window.clearTimeout(timeout);
-  }, [checkForUpdates]);
+  }, [buildInfo.isDevBuild, buildInfoLoaded, checkForUpdates]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -3194,8 +3331,11 @@ export default function App() {
 
   const actions = useMemo<ShellActions>(() => ({
     chooseFiles,
-    openStructurePaths: async (paths: string[]) => {
-      await openDocuments(paths);
+    openStructurePaths: async (paths: string[], options?: { mode?: OpenDocumentsMode }) => {
+      await openDocuments(paths, undefined, undefined, options);
+    },
+    openTextPaths: async (paths: string[]) => {
+      await openTextDocuments(paths);
     },
     openPaths,
     openStructureRecords,
@@ -3211,6 +3351,7 @@ export default function App() {
     focusSidebarSearch,
     openCommandPalette,
     openClipboard,
+    openNewWindow,
     openSettings,
     openSettingsSection,
     backToApp,
@@ -3383,7 +3524,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyKetcherToGridRow, backToApp, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openWorkspaceFolder, pushErrorStatus, pushStatus, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
+  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyKetcherToGridRow, backToApp, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openWorkspaceFolder, pushErrorStatus, pushStatus, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
@@ -3541,6 +3682,24 @@ function looksLikeMolfile(text: string) {
 
 function downloadTextFile(fileName: string, text: string) {
   const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.style.display = "none";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function downloadBase64File(fileName: string, base64: string, mimeType: string) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  const blob = new Blob([bytes], { type: mimeType || "application/octet-stream" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

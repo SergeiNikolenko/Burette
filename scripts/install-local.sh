@@ -38,6 +38,11 @@ LEGACY_XYZ_DEST="$DEST_DIR/Burette XYZRender.app"
 STAGING_APPEX="$STAGING_DEST/Contents/PlugIns/BurretePreview.appex"
 DEST_APPEX="$DEST/Contents/PlugIns/BurretePreview.appex"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+SIGN_IDENTITY="${BURRETE_CODESIGN_IDENTITY:--}"
+CODESIGN_ARGS=(--force --sign "$SIGN_IDENTITY")
+if [[ "$SIGN_IDENTITY" != "-" ]]; then
+  CODESIGN_ARGS+=(--options runtime --timestamp)
+fi
 
 if [[ ! -d "$APP" ]]; then
   echo "error: built app not found: $APP" >&2
@@ -206,16 +211,39 @@ assert_bundled_xyzrender_runtime() {
     exit 1
   }
 }
+run_bundled_xyzrender_help() {
+  local runtime="$1"
+  local timeout_seconds=10
+  local elapsed=0
+  local pid
+
+  "$runtime/bin/xyzrender" --help >/dev/null &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    if (( elapsed >= timeout_seconds )); then
+      kill "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+      return 124
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+  wait "$pid"
+}
 assert_bundled_xyzrender_runner() {
   local runtime="$1"
   local python_root="$2"
   local stage="$3"
   assert_bundled_xyzrender_runtime "$runtime" "$python_root" "$stage"
-  for attempt in $(seq 1 60); do
-    if "$runtime/bin/xyzrender" --help >/dev/null; then
+  if [[ "$IS_DEV_FLAVOR" == "1" && "${BURRETE_SKIP_XYZRENDER_RUNNER_CHECK:-0}" == "1" ]]; then
+    echo "warning: skipped bundled xyzrender runner check $stage" >&2
+    return 0
+  fi
+  for attempt in $(seq 1 6); do
+    if run_bundled_xyzrender_help "$runtime"; then
       return 0
     fi
-    [[ "$attempt" == 60 ]] && break
+    [[ "$attempt" == 6 ]] && break
     sleep 2
   done
   echo "error: bundled xyzrender wrapper is not runnable $stage" >&2
@@ -227,7 +255,7 @@ sign_bundled_xyzrender_runtime() {
   local python_root="$2"
   [[ -d "$runtime" && -d "$python_root" ]] || return 0
   while IFS= read -r binary; do
-    codesign --force --sign - "$binary" >/dev/null
+    codesign "${CODESIGN_ARGS[@]}" "$binary" >/dev/null
   done < <(
     find "$runtime" "$python_root" -type f \( \
       -name python3 -o \
@@ -286,18 +314,18 @@ exec "$PYTHON_ROOT/bin/python3" -m xyzrender.cli "$@"
 EOF
   chmod +x "$STAGING_XYZRENDER_ENV/bin/xyzrender"
   clean_detritus "$STAGING_XYZRENDER_ENV"
-  codesign --force --sign - "$STAGING_XYZRENDER_PYTHON/bin/python3" >/dev/null
+  codesign "${CODESIGN_ARGS[@]}" "$STAGING_XYZRENDER_PYTHON/bin/python3" >/dev/null
   [[ -f "$STAGING_XYZRENDER_ENV/bin/xyzrender" ]] || {
     echo "error: bundled xyzrender runtime is missing after staging: $STAGING_XYZRENDER_ENV/bin/xyzrender" >&2
     exit 1
   }
   assert_bundled_xyzrender_runtime "$STAGING_XYZRENDER_ENV" "$STAGING_XYZRENDER_PYTHON" "before signing"
 fi
-codesign --force --sign - --entitlements "$ROOT/PreviewExtension/BurretePreview.entitlements" "$STAGING_APPEX" >/dev/null
+codesign "${CODESIGN_ARGS[@]}" --entitlements "$ROOT/PreviewExtension/BurretePreview.entitlements" "$STAGING_APPEX" >/dev/null
 if [[ -d "$LOCAL_XYZRENDER_ENV" ]]; then
   sign_bundled_xyzrender_runtime "$STAGING_XYZRENDER_ENV" "$STAGING_XYZRENDER_PYTHON"
 fi
-codesign --force --sign - "$STAGING_DEST" >/dev/null
+codesign "${CODESIGN_ARGS[@]}" "$STAGING_DEST" >/dev/null
 if [[ -d "$LOCAL_XYZRENDER_ENV" ]]; then
   assert_bundled_xyzrender_runner "$STAGING_XYZRENDER_ENV" "$STAGING_XYZRENDER_PYTHON" "after signing"
 fi

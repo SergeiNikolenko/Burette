@@ -243,5 +243,5 @@ function structureDragPathsFromPlainText(text: string) {
 function looksLikeStructurePathLine(line: string) {
   if (!line || /\s/u.test(line)) return false;
   if (/^(?:file:\/\/|\/|~\/|\.{1,2}\/|[A-Za-z]:[\\/])/u.test(line)) return true;
-  return /\.(?:abi|bcif|cif|cms|com|cub|cube|csv|ent|fdf|in|inp|mae|maegz|mmcif|mol|mol2|nw|out|pdb|psi4|qcin|sd|sdf|smi|smiles|tsv|vasp|xyz)$/iu.test(line);
+  return /\.(?:abi|bcif|cif|cms|com|cub|cube|csv|ent|fdf|in|inp|log|mae|maegz|mmcif|mol|mol2|nw|out|pdb|psi4|qcin|sd|sdf|smi|smiles|tsv|vasp|xyz)$/iu.test(line);
 }

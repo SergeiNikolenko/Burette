@@ -93,12 +93,15 @@ assert.match(openInEditorMenu, /preferredTargetForDestination\(state\.preference
 assert.match(openInEditorMenu, /destination === "default-app"/);
 assert.match(openInEditorMenu, /destination === "finder"/);
 assert.match(openInEditorMenu, /function finderIconUrl/);
+assert.match(openInEditorMenu, /const FINDER_ICON_PATH = "\/System\/Library\/CoreServices\/CoreTypes\.bundle\/Contents\/Resources\/FinderIcon\.icns"/);
+assert.match(openInEditorMenu, /if \(isTauriRuntime\(\)\) return convertFileSrc\(FINDER_ICON_PATH\)/);
 assert.match(settingsPanel, /Default open destination/);
 assert.match(settingsPanel, /OpenDestinationControl/);
 assert.match(settingsPanel, /actions\.setPreference\("openInDefaultDestination"/);
 assert.match(settingsPanel, /actions\.listChemicalEditorTargets\(openDestinationProbePath\)/);
 assert.doesNotMatch(settingsPanel, /label: "Auto"/);
 assert.match(settingsPanel, /\/__burette\/app-icon\/finder\.png/);
+assert.match(settingsPanel, /if \(isTauriRuntime\(\)\) return convertFileSrc\(FINDER_ICON_PATH\)/);
 
 assert.match(menuTypes, /iconText\?: string/);
 assert.match(menuTypes, /iconUrl\?: string/);

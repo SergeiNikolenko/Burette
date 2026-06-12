@@ -12,14 +12,17 @@ use tauri::{Manager, Runtime};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::preview::formats::{
-    format_for_extension, structure_path_extension, supported_structure_extensions,
+    format_for_extension, resolve_renderer, structure_path_extension,
+    supported_structure_extensions,
 };
 use crate::preview::grid_store::GridParseOptions;
 use crate::preview::runtime::{
-    open_docking_document as open_docking_document_runtime, open_document,
+    open_docking_document as open_docking_document_runtime, open_document_for_window,
     open_document_with_grid_options, DockingDocumentRequest, OpenDocumentsResult, ViewerDocument,
     ViewerPreferences, ViewerReloadOptions, XyzrenderControls,
 };
+use crate::preview::runtime_grid::create_grid_runtime_with_options;
+use crate::preview::runtime_viewer::create_combined_sdf_pose_runtime;
 use crate::preview::text_xyz::xyz_data_from_text;
 use crate::preview::xyzrender::{
     create_xyzrender_artifact, create_xyzrender_smiles_batch_artifacts, XyzrenderSmilesBatchRequest,
@@ -119,11 +122,29 @@ pub(crate) struct ClassifiedOpenPaths {
     errors: Vec<String>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProjectStructureFile {
+    path: String,
+    title: String,
+    extension: String,
+    renderer: String,
+    byte_count: u64,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DelimitedGridOpenRequest {
     path: String,
     smiles_column: String,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum OpenDocumentsMode {
+    Individual,
+    CombinePoses,
+    CombineGrid,
 }
 
 #[tauri::command]
@@ -189,26 +210,67 @@ pub(crate) fn classify_open_paths(paths: Vec<String>) -> ClassifiedOpenPaths {
 #[tauri::command]
 pub(crate) fn open_documents<R: Runtime>(
     app: tauri::AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
     paths: Vec<String>,
     preferences: ViewerPreferences,
     reload_options: Option<ViewerReloadOptions>,
+    mode: Option<OpenDocumentsMode>,
+) -> Result<OpenDocumentsResult, String> {
+    open_documents_for_window_label(
+        &app,
+        window.label(),
+        paths,
+        preferences,
+        reload_options,
+        mode,
+    )
+}
+
+pub(crate) fn open_documents_for_window_label<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    window_label: &str,
+    paths: Vec<String>,
+    preferences: ViewerPreferences,
+    reload_options: Option<ViewerReloadOptions>,
+    mode: Option<OpenDocumentsMode>,
 ) -> Result<OpenDocumentsResult, String> {
     let mut documents = Vec::new();
-    let mut errors = Vec::new();
-    for path in paths {
-        match expand_open_targets(PathBuf::from(&path)) {
-            Ok(expanded) if expanded.is_empty() => {
-                errors.push(format!("{path} does not contain supported structure files"));
-            }
-            Ok(expanded) => {
-                for expanded_path in expanded {
-                    match open_document(&app, expanded_path, &preferences, reload_options.as_ref())
-                    {
-                        Ok(document) => documents.push(document),
-                        Err(error) => errors.push(error),
-                    }
-                }
-            }
+    let (document_paths, mut errors) = expand_open_document_paths(paths);
+    if mode == Some(OpenDocumentsMode::CombinePoses) {
+        match open_combined_pose_document(app, document_paths, &preferences, &mut errors) {
+            Ok(document) => documents.push(document),
+            Err(error) => errors.push(error),
+        }
+        if documents.is_empty() && !errors.is_empty() {
+            return Err(errors.join("; "));
+        }
+        return Ok(OpenDocumentsResult { documents, errors });
+    }
+    if mode == Some(OpenDocumentsMode::CombineGrid) {
+        match open_combined_grid_document(
+            app,
+            window_label,
+            document_paths,
+            &preferences,
+            &mut errors,
+        ) {
+            Ok(document) => documents.push(document),
+            Err(error) => errors.push(error),
+        }
+        if documents.is_empty() && !errors.is_empty() {
+            return Err(errors.join("; "));
+        }
+        return Ok(OpenDocumentsResult { documents, errors });
+    }
+    for path in document_paths {
+        match open_document_for_window(
+            app,
+            window_label,
+            path,
+            &preferences,
+            reload_options.as_ref(),
+        ) {
+            Ok(document) => documents.push(document),
             Err(error) => errors.push(error),
         }
     }
@@ -218,14 +280,271 @@ pub(crate) fn open_documents<R: Runtime>(
     Ok(OpenDocumentsResult { documents, errors })
 }
 
+fn open_combined_pose_document<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    document_paths: Vec<PathBuf>,
+    preferences: &ViewerPreferences,
+    errors: &mut Vec<String>,
+) -> Result<ViewerDocument, String> {
+    let sdf_paths = sdf_paths_from_documents(&document_paths);
+    if sdf_paths.is_empty() {
+        return Err("No SDF docking poses found to combine".to_string());
+    }
+    push_skipped_sdf_warning(
+        document_paths.len(),
+        sdf_paths.len(),
+        "combining poses",
+        errors,
+    );
+
+    let label_path = common_sdf_label_path(&sdf_paths);
+    let combined = combined_sdf_data(&sdf_paths)?;
+    let title = combined_sdf_title(&label_path, "docking poses", "Combined docking poses");
+    let runtime =
+        create_combined_sdf_pose_runtime(app, &label_path, &title, &combined.data, preferences)?;
+    let path = format!("{}#combined-sdf-poses", label_path.to_string_lossy());
+    Ok(ViewerDocument::virtual_structure(
+        path,
+        title,
+        "sdf".to_string(),
+        runtime.renderer,
+        runtime.path.to_string_lossy().to_string(),
+        combined.byte_count,
+    ))
+}
+
+fn open_combined_grid_document<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    window_label: &str,
+    document_paths: Vec<PathBuf>,
+    preferences: &ViewerPreferences,
+    errors: &mut Vec<String>,
+) -> Result<ViewerDocument, String> {
+    let sdf_paths = sdf_paths_from_documents(&document_paths);
+    if sdf_paths.is_empty() {
+        return Err("No SDF files found to combine as a grid".to_string());
+    }
+    push_skipped_sdf_warning(
+        document_paths.len(),
+        sdf_paths.len(),
+        "building grid",
+        errors,
+    );
+
+    let label_path = common_sdf_label_path(&sdf_paths);
+    let combined = combined_sdf_data(&sdf_paths)?;
+    let path = format!("{}#combined-sdf-grid", label_path.to_string_lossy());
+    let title = combined_sdf_title(&label_path, "SDF grid", "Combined SDF grid");
+    let document_id = crate::windows::runtime_document_id(
+        window_label,
+        &crate::preview::runtime_utils::stable_id(Path::new(&path)),
+    );
+    let runtime_path = create_grid_runtime_with_options(
+        app,
+        &document_id,
+        &label_path,
+        "sdf",
+        &combined.data,
+        preferences,
+        &GridParseOptions {
+            include_single_sdf: true,
+            ..GridParseOptions::default()
+        },
+    )?
+    .ok_or_else(|| "No SDF records found to combine as a grid".to_string())?;
+    Ok(ViewerDocument::virtual_structure(
+        path,
+        title,
+        "sdf".to_string(),
+        "grid2d".to_string(),
+        runtime_path.to_string_lossy().to_string(),
+        combined.byte_count,
+    ))
+}
+
+fn push_skipped_sdf_warning(
+    total: usize,
+    sdf_count: usize,
+    action: &str,
+    errors: &mut Vec<String>,
+) {
+    let skipped = total.saturating_sub(sdf_count);
+    if skipped > 0 {
+        errors.push(format!(
+            "Skipped {skipped} non-SDF structure file(s) while {action}"
+        ));
+    }
+}
+
+fn sdf_paths_from_documents(document_paths: &[PathBuf]) -> Vec<PathBuf> {
+    document_paths
+        .iter()
+        .filter(|path| is_sdf_path(path))
+        .cloned()
+        .collect()
+}
+
+fn is_sdf_path(path: &Path) -> bool {
+    matches!(structure_path_extension(path).as_str(), "sd" | "sdf")
+}
+
+struct CombinedSdfData {
+    data: Vec<u8>,
+    byte_count: u64,
+}
+
+fn combined_sdf_data(sdf_paths: &[PathBuf]) -> Result<CombinedSdfData, String> {
+    let mut data = Vec::new();
+    let mut byte_count = 0_u64;
+    for path in sdf_paths {
+        let metadata = fs::metadata(path).map_err(|err| format!("{}: {err}", path.display()))?;
+        if metadata.len() > crate::preview::runtime::MAX_STRUCTURE_FILE_SIZE {
+            return Err(format!(
+                "{} is larger than the 75 MB preview limit",
+                path.display()
+            ));
+        }
+        let bytes = fs::read(path).map_err(|err| format!("{}: {err}", path.display()))?;
+        if bytes.iter().all(|byte| byte.is_ascii_whitespace()) {
+            continue;
+        }
+        byte_count = byte_count.saturating_add(bytes.len() as u64);
+        if !data.is_empty() && !data.ends_with(b"\n") {
+            data.push(b'\n');
+        }
+        data.extend_from_slice(bytes.trim_ascii_end());
+        if !data.ends_with(b"$$$$") {
+            data.extend_from_slice(b"\n$$$$");
+        }
+        data.push(b'\n');
+    }
+    if data.is_empty() {
+        return Err("No SDF docking poses found to combine".to_string());
+    }
+    Ok(CombinedSdfData { data, byte_count })
+}
+
+fn common_sdf_label_path(sdf_paths: &[PathBuf]) -> PathBuf {
+    common_parent(sdf_paths).unwrap_or_else(|| {
+        sdf_paths
+            .first()
+            .and_then(|path| path.parent())
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("Combined SDF"))
+    })
+}
+
+fn common_parent(paths: &[PathBuf]) -> Option<PathBuf> {
+    let mut components = paths.first()?.parent()?.components().collect::<Vec<_>>();
+    for path in paths.iter().skip(1) {
+        let parent_components = path.parent()?.components().collect::<Vec<_>>();
+        let shared = components
+            .iter()
+            .zip(parent_components.iter())
+            .take_while(|(left, right)| left == right)
+            .count();
+        components.truncate(shared);
+    }
+    if components.is_empty() {
+        return None;
+    }
+    Some(components.iter().collect())
+}
+
+fn combined_sdf_title(label_path: &Path, suffix: &str, fallback: &str) -> String {
+    label_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .map(|value| format!("{value} {suffix}"))
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+fn expand_open_document_paths(paths: Vec<String>) -> (Vec<PathBuf>, Vec<String>) {
+    let mut expanded_paths = Vec::new();
+    let mut seen_paths = HashSet::new();
+    let mut errors = Vec::new();
+
+    for path in paths {
+        match expand_open_targets(PathBuf::from(&path)) {
+            Ok(expanded) if expanded.is_empty() => {
+                errors.push(format!("{path} does not contain supported structure files"));
+            }
+            Ok(expanded) => {
+                for expanded_path in expanded {
+                    if seen_paths.insert(expanded_path.clone()) {
+                        expanded_paths.push(expanded_path);
+                    }
+                }
+            }
+            Err(error) => errors.push(error),
+        }
+    }
+
+    (expanded_paths, errors)
+}
+
+#[tauri::command]
+pub(crate) fn list_project_structure_files(
+    paths: Vec<String>,
+) -> Result<Vec<ProjectStructureFile>, String> {
+    let mut files = BTreeSet::new();
+    let mut errors = Vec::new();
+    for path in paths {
+        match expand_open_targets(PathBuf::from(&path)) {
+            Ok(expanded) => {
+                files.extend(expanded);
+            }
+            Err(error) => errors.push(error),
+        }
+    }
+    if files.is_empty() && !errors.is_empty() {
+        return Err(errors.join("; "));
+    }
+
+    let mut entries = Vec::new();
+    for path in files {
+        let metadata = match fs::metadata(&path) {
+            Ok(metadata) if metadata.is_file() => metadata,
+            Ok(_) => continue,
+            Err(error) => {
+                errors.push(format!("{}: {error}", path.display()));
+                continue;
+            }
+        };
+        let extension = structure_path_extension(&path);
+        let format = match format_for_extension(&extension) {
+            Ok(format) => format,
+            Err(error) => {
+                errors.push(format!("{}: {error}", path.display()));
+                continue;
+            }
+        };
+        entries.push(ProjectStructureFile {
+            path: path.to_string_lossy().to_string(),
+            title: path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or("structure")
+                .to_string(),
+            extension,
+            renderer: resolve_renderer(&format, "auto"),
+            byte_count: metadata.len(),
+        });
+    }
+    Ok(entries)
+}
+
 #[tauri::command]
 pub(crate) fn open_delimited_grid_document<R: Runtime>(
     app: tauri::AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
     request: DelimitedGridOpenRequest,
     preferences: ViewerPreferences,
 ) -> Result<ViewerDocument, String> {
     open_document_with_grid_options(
         &app,
+        window.label(),
         PathBuf::from(request.path),
         &preferences,
         None,
@@ -261,6 +580,17 @@ pub(crate) fn read_structure_text(path: String) -> Result<String, String> {
 #[tauri::command]
 pub(crate) fn open_text_structure<R: Runtime>(
     app: tauri::AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
+    request: TextStructureRequest,
+    preferences: ViewerPreferences,
+    reload_options: Option<ViewerReloadOptions>,
+) -> Result<ViewerDocument, String> {
+    open_text_structure_for_window_label(&app, window.label(), request, preferences, reload_options)
+}
+
+fn open_text_structure_for_window_label<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    window_label: &str,
     request: TextStructureRequest,
     preferences: ViewerPreferences,
     reload_options: Option<ViewerReloadOptions>,
@@ -297,8 +627,14 @@ pub(crate) fn open_text_structure<R: Runtime>(
         output_directory.join(safe_text_structure_file_name(&request.title, &extension));
     fs::write(&output_path, request.text)
         .map_err(|err| format!("{}: {err}", output_path.display()))?;
-    open_document(&app, output_path, &preferences, reload_options.as_ref())
-        .map(|document| document.into_virtual())
+    open_document_for_window(
+        app,
+        window_label,
+        output_path,
+        &preferences,
+        reload_options.as_ref(),
+    )
+    .map(|document| document.into_virtual())
 }
 
 #[tauri::command]
@@ -313,6 +649,7 @@ pub(crate) fn open_docking_document<R: Runtime>(
 #[tauri::command]
 pub(crate) fn open_merged_collection<R: Runtime>(
     app: tauri::AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
     request: MergedCollectionRequest,
     preferences: ViewerPreferences,
 ) -> Result<ViewerDocument, String> {
@@ -327,12 +664,14 @@ pub(crate) fn open_merged_collection<R: Runtime>(
     fs::create_dir_all(&output_directory).map_err(|err| err.to_string())?;
     let output_path = output_directory.join(format!("merged-collection.{extension}"));
     fs::write(&output_path, text).map_err(|err| format!("{}: {err}", output_path.display()))?;
-    open_document(&app, output_path, &preferences, None).map(|document| document.into_virtual())
+    open_document_for_window(&app, window.label(), output_path, &preferences, None)
+        .map(|document| document.into_virtual())
 }
 
 #[tauri::command]
 pub(crate) fn append_to_molecule_collection<R: Runtime>(
     app: tauri::AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
     request: AppendCollectionRequest,
     preferences: ViewerPreferences,
 ) -> Result<ViewerDocument, String> {
@@ -379,12 +718,13 @@ pub(crate) fn append_to_molecule_collection<R: Runtime>(
         return Err("Merged collection is empty".to_string());
     }
     write_text_atomically(&target_path, &merged)?;
-    open_document(&app, target_path, &preferences, None)
+    open_document_for_window(&app, window.label(), target_path, &preferences, None)
 }
 
 #[tauri::command]
 pub(crate) fn create_molecule_collection<R: Runtime>(
     app: tauri::AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
     request: CreateCollectionRequest,
     preferences: ViewerPreferences,
 ) -> Result<ViewerDocument, String> {
@@ -422,7 +762,7 @@ pub(crate) fn create_molecule_collection<R: Runtime>(
     }
     let merged = merge_collection_text(output_family, &[request.text.as_str()]);
     write_text_atomically(&output_path, &merged)?;
-    open_document(&app, output_path, &preferences, None)
+    open_document_for_window(&app, window.label(), output_path, &preferences, None)
 }
 
 #[tauri::command]
@@ -1222,9 +1562,10 @@ fn pick_open_targets_macos<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<Vec<
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_open_paths, expand_open_targets, looks_like_supported_structure_file,
-        normalize_inline_structure_extension, open_text_structure, smiles_from_sheet_data,
-        TextStructureRequest,
+        classify_open_paths, expand_open_document_paths, expand_open_targets,
+        list_project_structure_files, looks_like_supported_structure_file,
+        normalize_inline_structure_extension, open_text_structure_for_window_label,
+        smiles_from_sheet_data, TextStructureRequest,
     };
     use crate::preview::formats::supported_structure_extensions;
     use crate::preview::grid_store::GridRuntimeRegistry;
@@ -1296,7 +1637,7 @@ mod tests {
             std::path::Path::new("system.cms"),
             &supported_extensions
         ));
-        assert!(!looks_like_supported_structure_file(
+        assert!(looks_like_supported_structure_file(
             std::path::Path::new("mn-h2.log"),
             &supported_extensions
         ));
@@ -1384,8 +1725,9 @@ mod tests {
         let mut preferences = viewer_preferences();
         preferences.renderer_mode = "grid2d".to_string();
 
-        let document = open_text_structure(
-            app.handle().clone(),
+        let document = open_text_structure_for_window_label(
+            app.handle(),
+            crate::windows::MAIN_WINDOW_LABEL,
             TextStructureRequest {
                 title: "ketcher-sketch.sdf".to_string(),
                 extension: "sdf".to_string(),
@@ -1449,6 +1791,7 @@ mod tests {
             expanded,
             vec![
                 canonical_root.join("mini.pdb"),
+                canonical_root.join("mn-h2.log"),
                 canonical_root.join("nested").join("caffeine.com"),
                 canonical_root.join("nested").join("mini.cif")
             ]
@@ -1458,6 +1801,71 @@ mod tests {
         fs::remove_file(log).unwrap();
         fs::remove_file(cif).unwrap();
         fs::remove_file(input).unwrap();
+        fs::remove_file(pdb).unwrap();
+        fs::remove_dir(nested).unwrap();
+        fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
+    fn deduplicates_overlapping_open_document_inputs() {
+        let root = std::env::temp_dir().join(format!(
+            "burrete-open-targets-overlap-{}",
+            std::process::id()
+        ));
+        let nested = root.join("nested");
+        fs::create_dir_all(&nested).unwrap();
+        let pdb = nested.join("mini.pdb");
+        fs::write(&pdb, "HEADER TEST\n").unwrap();
+
+        let canonical_pdb = pdb.canonicalize().unwrap();
+        let (expanded, errors) = expand_open_document_paths(vec![
+            root.to_string_lossy().to_string(),
+            nested.to_string_lossy().to_string(),
+            pdb.to_string_lossy().to_string(),
+        ]);
+        assert_eq!(expanded, vec![canonical_pdb]);
+        assert!(errors.is_empty());
+
+        fs::remove_file(pdb).unwrap();
+        fs::remove_dir(nested).unwrap();
+        fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
+    fn lists_project_structure_files_with_metadata() {
+        let root =
+            std::env::temp_dir().join(format!("burrete-project-files-{}", std::process::id()));
+        let nested = root.join("nested");
+        fs::create_dir_all(&nested).unwrap();
+        let pdb = root.join("mini.pdb");
+        let cif = nested.join("mini.cif");
+        let txt = nested.join("notes.txt");
+        fs::write(&pdb, "HEADER TEST\n").unwrap();
+        fs::write(&cif, "data_test\n").unwrap();
+        fs::write(&txt, "ignore\n").unwrap();
+
+        let canonical_root = root.canonicalize().unwrap();
+        let files = list_project_structure_files(vec![root.to_string_lossy().to_string()])
+            .expect("project files should be listed");
+        assert_eq!(files.len(), 2);
+        assert_eq!(
+            files[0].path,
+            canonical_root.join("mini.pdb").to_string_lossy()
+        );
+        assert_eq!(files[0].title, "mini.pdb");
+        assert_eq!(files[0].extension, "pdb");
+        assert_eq!(files[0].renderer, "molstar");
+        assert_eq!(files[0].byte_count, "HEADER TEST\n".len() as u64);
+        assert_eq!(
+            files[1].path,
+            canonical_root
+                .join("nested")
+                .join("mini.cif")
+                .to_string_lossy()
+        );
+
+        fs::remove_file(txt).unwrap();
+        fs::remove_file(cif).unwrap();
         fs::remove_file(pdb).unwrap();
         fs::remove_dir(nested).unwrap();
         fs::remove_dir(root).unwrap();

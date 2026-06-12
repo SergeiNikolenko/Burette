@@ -1,9 +1,11 @@
+use burrete_core::{PreviewLifecycle, PreviewLifecycleState, PreviewSubsystem};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::SystemTime;
 use tauri::{Manager, Runtime};
 
 use super::formats::{
@@ -14,8 +16,9 @@ use super::runtime_grid::{create_grid_runtime_with_options, grid_requires_previe
 use super::runtime_utils::{file_title, stable_id};
 use super::runtime_viewer::{create_docking_runtime, create_runtime, DockingRuntimeSource};
 use super::text_xyz::converted_data_from_text;
+use super::trace::{append_preview_trace, elapsed_ms, preview_error_code, PreviewTraceEvent};
 
-const MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
+pub(crate) const MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
 const MAESTRO_PREVIEW_READ_LIMIT: u64 = 64 * 1024 * 1024;
 const DESMOND_PREVIEW_TARGET_MB: &str = "24";
 const SCHRODINGER_RUN: &str = "/opt/schrodinger/suites2026-1/run";
@@ -315,20 +318,43 @@ impl ViewerDocument {
         self.is_virtual = true;
         self
     }
+
+    pub(crate) fn virtual_structure(
+        path: String,
+        title: String,
+        extension: String,
+        renderer: String,
+        runtime_path: String,
+        byte_count: u64,
+    ) -> Self {
+        Self {
+            id: stable_id(Path::new(&path)),
+            path,
+            title,
+            extension,
+            renderer,
+            runtime_path,
+            byte_count,
+            is_virtual: true,
+            docking_request: None,
+        }
+    }
 }
 
 fn is_false(value: &bool) -> bool {
     !*value
 }
 
-pub(crate) fn open_document<R: Runtime>(
+pub(crate) fn open_document_for_window<R: Runtime>(
     app: &tauri::AppHandle<R>,
+    window_label: &str,
     path: PathBuf,
     preferences: &ViewerPreferences,
     reload_options: Option<&ViewerReloadOptions>,
 ) -> Result<ViewerDocument, String> {
     open_document_with_grid_options(
         app,
+        window_label,
         path,
         preferences,
         reload_options,
@@ -336,8 +362,101 @@ pub(crate) fn open_document<R: Runtime>(
     )
 }
 
+#[cfg(test)]
+pub(crate) fn open_document<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    path: PathBuf,
+    preferences: &ViewerPreferences,
+    reload_options: Option<&ViewerReloadOptions>,
+) -> Result<ViewerDocument, String> {
+    open_document_for_window(
+        app,
+        crate::windows::MAIN_WINDOW_LABEL,
+        path,
+        preferences,
+        reload_options,
+    )
+}
+
 pub(crate) fn open_document_with_grid_options<R: Runtime>(
     app: &tauri::AppHandle<R>,
+    window_label: &str,
+    path: PathBuf,
+    preferences: &ViewerPreferences,
+    reload_options: Option<&ViewerReloadOptions>,
+    grid_options: &GridParseOptions,
+) -> Result<ViewerDocument, String> {
+    let started = SystemTime::now();
+    let trace_document_id = stable_id(&path);
+    let trace_extension = structure_path_extension(&path);
+    let mut lifecycle = PreviewLifecycle::default();
+    let _ = lifecycle.transition(PreviewLifecycleState::Created);
+    let _ = append_preview_trace(
+        app,
+        PreviewTraceEvent {
+            document_id: &trace_document_id,
+            state: PreviewLifecycleState::Created,
+            subsystem: PreviewSubsystem::Desktop,
+            source_extension: Some(&trace_extension),
+            renderer: None,
+            runtime_path: None,
+            elapsed_ms: Some(0),
+            error_code: None,
+            message: Some("open_document"),
+        },
+    );
+
+    let result = open_document_with_grid_options_inner(
+        app,
+        window_label,
+        path,
+        preferences,
+        reload_options,
+        grid_options,
+    );
+    match &result {
+        Ok(document) => {
+            let _ = lifecycle.transition(PreviewLifecycleState::Completed);
+            let runtime_path = Path::new(&document.runtime_path);
+            let _ = append_preview_trace(
+                app,
+                PreviewTraceEvent {
+                    document_id: &document.id,
+                    state: PreviewLifecycleState::Completed,
+                    subsystem: PreviewSubsystem::Desktop,
+                    source_extension: Some(&document.extension),
+                    renderer: Some(&document.renderer),
+                    runtime_path: Some(runtime_path),
+                    elapsed_ms: Some(elapsed_ms(started)),
+                    error_code: None,
+                    message: Some("preview runtime created"),
+                },
+            );
+        }
+        Err(error) => {
+            let _ = lifecycle.transition(PreviewLifecycleState::Failed);
+            let _ = append_preview_trace(
+                app,
+                PreviewTraceEvent {
+                    document_id: &trace_document_id,
+                    state: PreviewLifecycleState::Failed,
+                    subsystem: PreviewSubsystem::Desktop,
+                    source_extension: Some(&trace_extension),
+                    renderer: None,
+                    runtime_path: None,
+                    elapsed_ms: Some(elapsed_ms(started)),
+                    error_code: Some(preview_error_code(error)),
+                    message: Some(error),
+                },
+            );
+        }
+    }
+    result
+}
+
+fn open_document_with_grid_options_inner<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    window_label: &str,
     path: PathBuf,
     preferences: &ViewerPreferences,
     reload_options: Option<&ViewerReloadOptions>,
@@ -421,9 +540,10 @@ pub(crate) fn open_document_with_grid_options<R: Runtime>(
         && reload_options.is_some()
         && (requested_renderer == "molstar" || requested_renderer == "xyzrender-external");
     if !should_use_viewer_for_sdf {
+        let runtime_document_id = crate::windows::runtime_document_id(window_label, &document_id);
         if let Some(runtime_path) = create_grid_runtime_with_options(
             app,
-            &document_id,
+            &runtime_document_id,
             &canonical,
             &extension,
             &data,
@@ -593,12 +713,10 @@ fn resolve_desmond_file_bundle(path: &Path, extension: &str) -> Option<Structure
         "cms" => {
             let parent = path.parent()?;
             for base in candidate_desmond_bases(path) {
-                let mut candidates = vec![parent.join(format!("{base}_trj"))];
-                candidates.extend(casebook_trj_candidates(path, &base));
-                let Some(trj_dir) = candidates.into_iter().find(|candidate| candidate.is_dir())
-                else {
+                let trj_dir = parent.join(format!("{base}_trj"));
+                if !trj_dir.is_dir() {
                     continue;
-                };
+                }
                 let clickme = trj_dir.join("clickme.dtr");
                 let mut attachments = vec![
                     StructureAttachment {
@@ -634,16 +752,13 @@ fn resolve_desmond_file_bundle(path: &Path, extension: &str) -> Option<Structure
             if !trj_dir.is_dir() {
                 return None;
             }
-            let mut candidates = trj_dir
-                .parent()
-                .map(|parent| {
-                    vec![
-                        parent.join(format!("{base}-out.cms")),
-                        parent.join(format!("{base}.cms")),
-                    ]
-                })
-                .unwrap_or_default();
-            candidates.extend(casebook_cms_candidates(trj_dir, &base));
+            let mut candidates = Vec::new();
+            for candidate_base in candidate_desmond_base_names(&base) {
+                if let Some(parent) = trj_dir.parent() {
+                    candidates.push(parent.join(format!("{candidate_base}-out.cms")));
+                    candidates.push(parent.join(format!("{candidate_base}.cms")));
+                }
+            }
             let cms_path = candidates
                 .into_iter()
                 .find(|candidate| candidate.is_file())?;
@@ -725,63 +840,29 @@ fn candidate_desmond_bases(path: &Path) -> Vec<String> {
     let Some(stem) = path.file_stem().and_then(|value| value.to_str()) else {
         return Vec::new();
     };
+    candidate_desmond_base_names(stem)
+}
+
+fn candidate_desmond_base_names(stem: &str) -> Vec<String> {
     let mut bases = vec![stem.to_string()];
-    for suffix in ["-out", "_out"] {
+    for suffix in ["-out", "_out", "-in", "_in"] {
         if let Some(base) = stem.strip_suffix(suffix) {
             if !base.is_empty() && !bases.iter().any(|value| value == base) {
                 bases.push(base.to_string());
             }
         }
     }
+    for base in bases.clone() {
+        let normalized = base.replace("_replica_", "_replica");
+        if !normalized.is_empty() && !bases.iter().any(|value| value == &normalized) {
+            bases.push(normalized);
+        }
+        let normalized = base.replace("replica_", "replica");
+        if !normalized.is_empty() && !bases.iter().any(|value| value == &normalized) {
+            bases.push(normalized);
+        }
+    }
     bases
-}
-
-fn casebook_source_files_parts(path: &Path) -> Option<(PathBuf, Vec<String>)> {
-    let normalized = path.to_string_lossy().replace('\\', "/");
-    let marker = "/source_files/";
-    let index = normalized.find(marker)?;
-    let root = PathBuf::from(&normalized[..index + marker.len() - 1]);
-    let rest = normalized[index + marker.len()..]
-        .split('/')
-        .filter(|part| !part.is_empty())
-        .map(str::to_string)
-        .collect::<Vec<_>>();
-    Some((root, rest))
-}
-
-fn casebook_trj_candidates(cms_path: &Path, base: &str) -> Vec<PathBuf> {
-    let Some((root, rest)) = casebook_source_files_parts(cms_path) else {
-        return Vec::new();
-    };
-    let Some(first) = rest.first() else {
-        return Vec::new();
-    };
-    if !first.starts_with("mnt__") {
-        return Vec::new();
-    }
-    let mut path = root;
-    for part in first.split("__") {
-        path.push(part);
-    }
-    for part in rest.iter().skip(1).take(rest.len().saturating_sub(2)) {
-        path.push(part);
-    }
-    path.push(format!("{base}_trj"));
-    vec![path]
-}
-
-fn casebook_cms_candidates(trj_dir: &Path, base: &str) -> Vec<PathBuf> {
-    let Some((root, rest)) = casebook_source_files_parts(trj_dir) else {
-        return Vec::new();
-    };
-    if rest.len() < 4 || rest[0] != "mnt" || rest[1] != "ligandpro" || rest[2] != "crim3s" {
-        return Vec::new();
-    }
-    let mapped_dir = root.join(rest[0..4].join("__"));
-    vec![
-        mapped_dir.join(format!("{base}-out.cms")),
-        mapped_dir.join(format!("{base}.cms")),
-    ]
 }
 
 fn read_file_prefix(path: &PathBuf, max_bytes: u64) -> Result<Vec<u8>, String> {
@@ -933,9 +1014,10 @@ mod document_open_tests {
         default_dark_accent, default_dark_background, default_dark_contrast,
         default_dark_foreground, default_dark_translucent, default_light_accent,
         default_light_background, default_light_contrast, default_light_foreground,
-        default_light_translucent, default_system_font, open_document, ViewerPreferences,
+        default_light_translucent, default_system_font, open_document, resolve_desmond_file_bundle,
+        ViewerPreferences,
     };
-    use crate::commands::documents::open_documents;
+    use crate::commands::documents::open_documents_for_window_label;
     use crate::preview::grid_store::GridRuntimeRegistry;
     use std::collections::BTreeMap;
     use std::fs;
@@ -1088,6 +1170,13 @@ mod document_open_tests {
         path
     }
 
+    fn create_temp_directory() -> PathBuf {
+        let directory =
+            std::env::temp_dir().join(format!("burrete-runtime-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&directory).expect("temp test directory should be created");
+        directory
+    }
+
     fn remove_runtime_artifacts(runtime_path: &str) {
         if let Some(runtime_dir) = Path::new(runtime_path).parent() {
             let _ = fs::remove_dir_all(runtime_dir);
@@ -1107,8 +1196,8 @@ mod document_open_tests {
 
     fn expected_real_renderer(path: &Path) -> &'static str {
         match super::structure_path_extension(path).as_str() {
-            "abi" | "com" | "cub" | "cube" | "fdf" | "in" | "inp" | "nw" | "out" | "psi4"
-            | "qcin" | "vasp" => "xyzrender-external",
+            "abi" | "com" | "cub" | "cube" | "fdf" | "in" | "inp" | "log" | "nw" | "out"
+            | "psi4" | "qcin" | "vasp" => "xyzrender-external",
             "cms" | "mae" | "maegz" => "xyzrender-external",
             "cif" | "mol2" | "pdb" => "molstar",
             "sdf" => {
@@ -1121,6 +1210,28 @@ mod document_open_tests {
             "xyz" => "xyzrender-external",
             other => panic!("unexpected supported real example extension: {other}"),
         }
+    }
+
+    #[test]
+    fn resolves_replica_input_cms_to_normalized_trajectory_name() {
+        let root = create_temp_directory();
+        let cms_path = root.join("desmond_remd_job_1_replica_0-in.cms");
+        let trj_dir = root.join("desmond_remd_job_1_replica0_trj");
+        fs::create_dir_all(&trj_dir).expect("trajectory directory should be created");
+        fs::write(&cms_path, b"cms").expect("cms fixture should be written");
+
+        let bundle = resolve_desmond_file_bundle(&cms_path, "cms")
+            .expect("replica input cms should resolve to normalized trajectory directory");
+        assert_eq!(bundle.primary_path, cms_path);
+        assert!(
+            bundle
+                .attachments
+                .iter()
+                .any(|attachment| attachment.path == trj_dir),
+            "cms bundle should include the normalized replica trajectory directory"
+        );
+
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
@@ -1408,10 +1519,11 @@ f_m_ct {
     fn applies_cube_surface_defaults_to_xyzrender_config() {
         with_fake_xyzrender(|| {
             let app = mock_app_with_grid_registry();
-            let preferences = viewer_preferences();
+            let mut preferences = viewer_preferences();
+            preferences.renderer_mode = "xyzrender-external".to_string();
             let path = create_temp_file(
                 "cube",
-                b"Cube data generated by ORCA\nMolecular orbital 50 of operator 0\n   -1 0 0 0\n",
+                b"Cube data generated by ORCA\nMolecular orbital 50 of operator 0\n   -1 0 0 0\n    1 1.0 0.0 0.0\n    1 0.0 1.0 0.0\n    1 0.0 0.0 1.0\n    6 0.0 0.0 0.0 0.0\n",
             );
 
             let document = open_document(app.handle(), path.clone(), &preferences, None)
@@ -1422,8 +1534,41 @@ f_m_ct {
                 .expect("runtime html should have a parent");
             let config = fs::read_to_string(runtime_dir.join("preview-config.js"))
                 .expect("preview config should be written");
-            assert!(config.contains("\"extraArguments\":\"--mo --opacity 0.62"));
+            assert!(config.contains("\"fieldMode\":\"mo\""));
+            assert!(config.contains("\"fieldOpacity\":0.62"));
+            assert!(config.contains("\"fieldSurfaceStyle\":\"solid\""));
+            assert!(config.contains("\"molstarAvailable\":true"));
+            assert!(config.contains("\"sourceExtension\":\"cube\""));
             assert!(!config.contains("--vdw"));
+
+            remove_runtime_artifacts(&document.runtime_path);
+            if let Some(parent) = path.parent() {
+                let _ = fs::remove_dir_all(parent);
+            }
+        });
+    }
+
+    #[test]
+    fn keeps_cube_in_molstar_when_molstar_is_requested() {
+        with_fake_xyzrender(|| {
+            let app = mock_app_with_grid_registry();
+            let mut preferences = viewer_preferences();
+            preferences.renderer_mode = "molstar".to_string();
+            let path = create_temp_file(
+                "cube",
+                b"Cube data generated by ORCA\nMolecular orbital 50 of operator 0\n   -1 0 0 0\n    1 1.0 0.0 0.0\n    1 0.0 1.0 0.0\n    1 0.0 0.0 1.0\n    6 0.0 0.0 0.0 0.0\n",
+            );
+
+            let document = open_document(app.handle(), path.clone(), &preferences, None)
+                .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
+            assert_eq!(document.renderer, "molstar");
+            let runtime_dir = Path::new(&document.runtime_path)
+                .parent()
+                .expect("runtime html should have a parent");
+            let config = fs::read_to_string(runtime_dir.join("preview-config.js"))
+                .expect("preview config should be written");
+            assert!(config.contains("\"molstarAvailable\":true"));
+            assert!(!config.contains("\"fieldMode\":\"mo\""));
 
             remove_runtime_artifacts(&document.runtime_path);
             if let Some(parent) = path.parent() {
@@ -1480,13 +1625,15 @@ f_m_ct {
 
         with_fake_xyzrender(|| {
             let app = mock_app_with_grid_registry();
-            let result = open_documents(
-                app.handle().clone(),
+            let result = open_documents_for_window_label(
+                app.handle(),
+                crate::windows::MAIN_WINDOW_LABEL,
                 vec![
                     inputs.to_string_lossy().to_string(),
                     structures.to_string_lossy().to_string(),
                 ],
                 viewer_preferences(),
+                None,
                 None,
             )
             .expect("real example corpus should open");

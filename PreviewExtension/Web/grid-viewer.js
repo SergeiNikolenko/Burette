@@ -133,6 +133,26 @@
     } catch (_) {}
   }
 
+  function isEditableShortcutTarget(target) {
+    const tagName = target?.tagName?.toLowerCase();
+    return target?.isContentEditable || tagName === 'input' || tagName === 'textarea' || tagName === 'select';
+  }
+
+  function initShellShortcutBridge() {
+    document.addEventListener('keydown', event => {
+      if (event.defaultPrevented || isEditableShortcutTarget(event.target)) return;
+      const key = event.key?.toLowerCase();
+      const commandKey = event.metaKey || event.ctrlKey;
+      const togglesSidebar = commandKey && !event.altKey && !event.shiftKey && key === 'b';
+      const opensCommandPalette = (commandKey && key === 'p') || (!commandKey && !event.altKey && key === '/');
+      if (!opensCommandPalette && !togglesSidebar) return;
+      event.preventDefault();
+      post(togglesSidebar ? 'toggleSidebar' : 'openCommandPalette');
+    }, true);
+  }
+
+  initShellShortcutBridge();
+
   function nowMs() {
     return typeof performance !== 'undefined' && typeof performance.now === 'function'
       ? performance.now()
@@ -925,8 +945,8 @@
   function sdfRecordTextForMolstar(row) {
     const record = gridDragRecord(row);
     if (!record || record.inputExtension !== 'sdf') return null;
-    const text = String(record.text || '').trim();
-    if (!text) return null;
+    const text = String(record.text || '').trimEnd();
+    if (!text.trim()) return null;
     return `${text.replace(/\n?\$\$\$\$\s*$/u, '').trimEnd()}\n$$$$\n`;
   }
 
@@ -950,8 +970,9 @@
   }
 
   function ketcherFragmentText(record) {
-    const text = String(record?.text || '').trim();
+    const text = String(record?.text || '').trimEnd();
     const extension = String(record?.inputExtension || '').toLowerCase();
+    if (!text.trim()) return '';
     if (extension === 'sdf' || extension === 'sd') {
       return text.replace(/\n?\$\$\$\$\s*$/u, '').trimEnd() + '\n';
     }
@@ -1953,9 +1974,13 @@
   function installCardDrag(el, row) {
     const record = gridDragRecord(row);
     if (!record) return;
+    let cardDragSourceAllowed = true;
     el.draggable = true;
+    el.addEventListener('pointerdown', event => {
+      cardDragSourceAllowed = isCardDragSource(event.target);
+    }, true);
     el.addEventListener('dragstart', event => {
-      if (event.target?.closest?.('[data-buret-card-resize]')) {
+      if (!cardDragSourceAllowed || !isCardDragSource(event.target)) {
         event.preventDefault();
         return;
       }
@@ -1971,6 +1996,14 @@
         if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy';
       } catch (_) {}
     });
+    el.addEventListener('dragend', () => {
+      cardDragSourceAllowed = true;
+    });
+  }
+
+  function isCardDragSource(target) {
+    if (!(target instanceof Element)) return true;
+    return !target.closest('[data-buret-card-resize], [data-buret-molecule-picture], button, input, select, textarea, [contenteditable="true"]');
   }
 
   function installCardDrop(el, row, cfg) {
@@ -2267,8 +2300,8 @@
   function gridDragRecord(row) {
     const label = String(row?.name || `Molecule ${Number(row?.index) + 1 || 1}`).trim() || 'Molecule';
     const baseName = safeStructureFileStem(label, Number(row?.index));
-    const molblock = String(row?.molblock || '').trim();
-    if (molblock) {
+    const molblock = String(row?.molblock || '').trimEnd();
+    if (molblock.trim()) {
       const text = molblock.includes('$$$$') ? molblock : `${molblock}\n$$$$`;
       return {
         path: `${baseName}.sdf`,

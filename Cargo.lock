@@ -348,7 +348,7 @@ checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
 name = "burrete"
-version = "0.10.47"
+version = "0.10.48"
 dependencies = [
  "base64 0.22.1",
  "burrete-core",

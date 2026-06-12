@@ -10,7 +10,7 @@ export type SidebarProjectItem = {
   renderer: string;
   byteCount: number;
   openedAt: number | null;
-  source: "open" | "recent";
+  source: "open" | "recent" | "project";
   documentId: string | null;
   isActive: boolean;
   isOpen: boolean;
@@ -30,12 +30,17 @@ export type SidebarProject = {
   matchText: string;
 };
 
-type SidebarStructure = Pick<RecentStructure, "path" | "title" | "extension" | "renderer" | "byteCount" | "openedAt">;
+export type SidebarProjectStructure = Pick<RecentStructure, "path" | "title" | "extension" | "renderer" | "byteCount"> & {
+  openedAt?: number | null;
+};
+
+type SidebarStructure = SidebarProjectStructure;
 
 export function buildSidebarProjects({
   documents,
   recentStructures,
   projectRoots,
+  projectStructures = [],
   pinnedProjectRoots = [],
   projectNameOverrides = {},
   activeDocumentId,
@@ -45,6 +50,7 @@ export function buildSidebarProjects({
   documents: ViewerDocument[];
   recentStructures: RecentStructure[];
   projectRoots: string[];
+  projectStructures?: SidebarProjectStructure[];
   pinnedProjectRoots?: string[];
   projectNameOverrides?: Record<string, string>;
   activeDocumentId: string | null;
@@ -65,6 +71,7 @@ export function buildSidebarProjects({
   );
   const projectDocuments = documents.filter(isPersistentViewerDocument);
   const openPaths = new Set(projectDocuments.map((document) => normalizePath(document.path)));
+  const knownPaths = new Set(openPaths);
   const projects = new Map<string, SidebarProject>();
 
   for (const rootPath of normalizedRoots) {
@@ -82,10 +89,22 @@ export function buildSidebarProjects({
 
   for (const structure of recentStructures.filter((structure) => !isTemporaryDocumentPath(structure.path))) {
     if (openPaths.has(normalizePath(structure.path))) continue;
+    knownPaths.add(normalizePath(structure.path));
     addStructureToProjects(projects, normalizedRoots, hiddenRoots, pinnedPaths, {
       structure,
       activeDocumentId,
       source: "recent",
+    });
+  }
+
+  for (const structure of projectStructures.filter((structure) => !isTemporaryDocumentPath(structure.path))) {
+    const normalizedPath = normalizePath(structure.path);
+    if (knownPaths.has(normalizedPath)) continue;
+    knownPaths.add(normalizedPath);
+    addStructureToProjects(projects, normalizedRoots, hiddenRoots, pinnedPaths, {
+      structure,
+      activeDocumentId,
+      source: "project",
     });
   }
 
@@ -146,7 +165,7 @@ function addStructureToProjects(
   }: {
     structure: ViewerDocument | SidebarStructure;
     activeDocumentId: string | null;
-    source: "open" | "recent";
+    source: "open" | "recent" | "project";
   },
 ) {
   const normalizedPath = normalizePath(structure.path);
@@ -167,7 +186,7 @@ function addStructureToProjects(
     extension: "extension" in structure ? structure.extension : "",
     renderer: structure.renderer,
     byteCount: structure.byteCount,
-    openedAt: source === "recent" && "openedAt" in structure ? structure.openedAt : null,
+    openedAt: source === "recent" && "openedAt" in structure ? structure.openedAt ?? null : null,
     source,
     documentId: "id" in structure ? structure.id : null,
     isActive: "id" in structure && structure.id === activeDocumentId,
