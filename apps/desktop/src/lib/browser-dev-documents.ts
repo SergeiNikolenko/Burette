@@ -1254,7 +1254,8 @@ function molstarFormatForExtension(extension: string): FormatInfo | null {
 function resolveRenderer(format: FormatInfo, requested: string, externalMolstarAvailable = false) {
   const normalized = normalizeRendererMode(requested);
   if (format.externalOnly) {
-    return normalized === "molstar" && externalMolstarAvailable ? "molstar" : "xyzrender-external";
+    if (normalized === "xyzrender-external") return "xyzrender-external";
+    return externalMolstarAvailable ? "molstar" : "xyzrender-external";
   }
   const canUseXyzrender = (format.molstarFormat === "xyz" && !format.binary) || canUseExternalXyzrender(format);
   if (normalized === "molstar") return "molstar";
@@ -1575,6 +1576,8 @@ function atomsFromText(text: string, extension: string) {
     atoms = parseQuantumEspressoAtoms(lines);
   } else if (extension === "out") {
     atoms = parseOrcaAtoms(lines);
+  } else if (extension === "abi") {
+    atoms = parseAbinitAtoms(lines);
   } else if (extension === "cif" || extension === "mmcif" || extension === "mcif") {
     atoms = parseCifCoreAtoms(lines);
   } else if (isMaestroPreviewExtension(extension)) {
@@ -2188,6 +2191,47 @@ function degreesToRadians(value: number) {
   return value * Math.PI / 180;
 }
 
+function parseAbinitAtoms(lines: string[]) {
+  let atomCount: number | null = null;
+  const atomicNumbers: number[] = [];
+  const typeIndices: number[] = [];
+  let coordinateStart: number | null = null;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const parts = fields(stripInlineComment(lines[index] || ""));
+    const key = parts[0]?.toLowerCase();
+    if (key === "natom") {
+      const value = Number.parseInt(parts[1] || "", 10);
+      if (Number.isFinite(value)) atomCount = value;
+    } else if (key === "znucl") {
+      atomicNumbers.push(...parts.slice(1).map((part) => Number.parseInt(part, 10)).filter(Number.isFinite));
+    } else if (key === "typat") {
+      typeIndices.push(...parts.slice(1).map((part) => Number.parseInt(part, 10)).filter(Number.isFinite));
+    } else if (key === "xangst") {
+      coordinateStart = index + 1;
+    }
+  }
+
+  if (!atomCount || atomCount <= 0 || atomicNumbers.length === 0 || typeIndices.length < atomCount || coordinateStart === null) {
+    return null;
+  }
+  if (coordinateStart + atomCount > lines.length) return null;
+
+  const atoms: Atom[] = [];
+  for (let index = 0; index < atomCount; index += 1) {
+    const parts = fields(stripInlineComment(lines[coordinateStart + index] || ""));
+    const x = Number(parts[0]);
+    const y = Number(parts[1]);
+    const z = Number(parts[2]);
+    const typeIndex = (typeIndices[index] ?? 0) - 1;
+    const atomicNumber = atomicNumbers[typeIndex];
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z) || !atomicNumber) continue;
+    atoms.push({ symbol: symbolForAtomicNumber(atomicNumber), x, y, z });
+  }
+
+  return atoms.length === atomCount ? atoms : null;
+}
+
 function parseCubeAtoms(lines: string[]) {
   if (lines.length < 6) return null;
   const count = Math.abs(Number.parseInt(fields(lines[2])[0] || "", 10));
@@ -2309,6 +2353,10 @@ function parseElementCoordinateLine(line: string): Atom | null {
 
 function fields(line: string) {
   return line.trim().split(/\s+/).filter(Boolean);
+}
+
+function stripInlineComment(line: string) {
+  return line.replace(/#.*/u, "").trim();
 }
 
 function parseVector(line: string, scale: number): [number, number, number] | null {
