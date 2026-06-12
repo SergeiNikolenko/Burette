@@ -802,7 +802,45 @@ kbd span { margin-left: 2px; }
 .project-children {
   display: grid;
   gap: 1px;
-  padding-left: 8px;
+  padding-left: 2px;
+}
+.project-folder-node {
+  display: grid;
+  gap: 1px;
+}
+.project-folder-row {
+  width: 100%;
+  min-height: 28px;
+  border-radius: 8px;
+  color: var(--text-faint);
+  padding: 5px 10px 5px calc(6px + (var(--project-depth, 0) * 6px));
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: default;
+  line-height: 1.15;
+  transition: background 140ms ease-out, color 140ms ease-out;
+}
+.project-folder-row:hover,
+.project-folder-row:focus-visible {
+  background: transparent;
+  outline: none;
+}
+.project-folder-row:hover .project-folder-name,
+.project-folder-row:focus-visible .project-folder-name {
+  color: var(--text-secondary);
+}
+.project-folder-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 400;
+}
+.project-folder-children {
+  display: grid;
+  gap: 1px;
 }
 .project {
   position: relative;
@@ -849,7 +887,10 @@ kbd span { margin-left: 2px; }
 .project-show-more:active { transform: scale(0.99); }
 .project.pinned { color: var(--text-muted); }
 .project:active { transform: scale(0.99); }
-.nested-project { padding-left: 10px; }
+.project-group-row:active,
+.project-show-more:active,
+.project:active { transform: none; }
+.nested-project { padding-left: calc(6px + (var(--project-depth, 0) * 6px)); }
 .project-icon {
   width: 20px;
   height: 16px;
@@ -1369,8 +1410,8 @@ img.radix-menu-item-icon {
 }
 .dock-panel[data-area="right"] {
   flex: 0 0 auto;
-  min-width: 260px;
-  max-width: min(960px, calc(100vw - var(--sidebar-layout-width, 0px) - 280px));
+  min-width: 0;
+  max-width: min(960px, max(0px, calc(100vw - var(--sidebar-layout-width, 0px) - 280px)));
   padding-top: var(--chrome-height);
   box-sizing: border-box;
 }
@@ -1389,7 +1430,8 @@ img.radix-menu-item-icon {
 }
 .dock-panel[data-area="right"] .dock-panel-inner {
   height: 100%;
-  min-width: 260px;
+  min-width: 0;
+  max-width: 100%;
 }
 .dock-panel[data-area="bottom"] .dock-panel-inner {
   width: 100%;
@@ -1913,7 +1955,7 @@ img.radix-menu-item-icon {
   min-width: 0;
   width: 100%;
   display: grid;
-  grid-template-columns: minmax(68px, 0.42fr) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(68px, 0.42fr) minmax(0, 1fr);
   gap: 8px;
   align-items: baseline;
 }
@@ -1941,15 +1983,6 @@ img.radix-menu-item-icon {
   font-weight: 400;
   text-align: left;
 }
-.structure-inspector-row-action {
-  border: 1px solid var(--line-subtler);
-  border-radius: 6px;
-  background: var(--surface-card);
-  color: var(--text-secondary);
-  padding: 2px 6px;
-  font-size: 10px;
-  line-height: 1.1;
-}
 .structure-brief-action-row:hover,
 .structure-brief-action-summary:hover,
 .structure-brief-chip-button:hover,
@@ -1964,11 +1997,6 @@ img.radix-menu-item-icon {
   border-color: color-mix(in srgb, var(--accent) 42%, var(--line-subtler));
   background: color-mix(in srgb, var(--accent) 8%, var(--surface-subtle));
   box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 54%, transparent);
-}
-.structure-brief-action-entry[data-selected="true"] .structure-inspector-row-action {
-  border-color: color-mix(in srgb, var(--accent) 42%, var(--line-subtler));
-  background: color-mix(in srgb, var(--accent) 20%, var(--surface-input));
-  color: var(--text-primary);
 }
 .structure-brief-action-row:active,
 .structure-brief-chip-button:active,
@@ -2303,10 +2331,118 @@ img.radix-menu-item-icon {
   font-size: 12px;
 }
 .text-file-editor,
-.text-file-rich-editor {
+.text-file-rich-editor,
+.maestro-outline-viewer {
   min-width: 0;
   min-height: 0;
   overflow: auto;
+}
+.maestro-outline-viewer {
+  padding: 12px 12px 32px;
+  font-family: var(--editor-font);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.maestro-outline-note {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line-subtler);
+  border-radius: 8px;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--bg-base) 92%, var(--surface-subtle));
+}
+.maestro-outline-note strong {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.maestro-outline-tree {
+  min-width: 0;
+  padding-top: 10px;
+}
+.maestro-outline-block,
+.maestro-outline-line {
+  --maestro-indent: min(48px, calc(var(--maestro-depth) * 12px));
+  min-width: 0;
+  margin-left: var(--maestro-indent);
+}
+.maestro-outline-block + .maestro-outline-block,
+.maestro-outline-line + .maestro-outline-block {
+  margin-top: 2px;
+}
+.maestro-outline-block-header {
+  width: 100%;
+  min-width: 0;
+  min-height: 30px;
+  padding: 4px 8px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, max-content) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.maestro-outline-block-header:hover {
+  background: color-mix(in srgb, var(--surface-hover) 66%, transparent);
+}
+.maestro-outline-toggle {
+  width: 18px;
+  color: var(--text-muted);
+  text-align: center;
+  font-weight: 600;
+}
+.maestro-outline-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.maestro-outline-block-header strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-weight: 400;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.maestro-outline-line {
+  min-height: 22px;
+  padding: 2px 8px;
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 8px;
+  color: var(--text-secondary);
+}
+.maestro-outline-line span {
+  color: var(--text-muted);
+  text-align: right;
+  user-select: none;
+}
+.maestro-outline-line code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: inherit;
+  font: inherit;
+  white-space: pre-wrap;
+}
+.maestro-outline-muted {
+  margin: 4px 0 8px;
+  padding: 6px 8px 6px 62px;
+  color: var(--text-muted);
 }
 .text-file-editor .cm-editor,
 .text-file-rich-editor .cm-editor {
