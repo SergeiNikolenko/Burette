@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Manager, Runtime};
 
+use crate::windows;
+
 const APP_LOG_NAME: &str = "BurreteApp.log";
 
 #[derive(Debug, Deserialize)]
@@ -70,6 +72,13 @@ pub(crate) fn existing_paths(paths: Vec<String>) -> Vec<String> {
         .into_iter()
         .filter(|path| PathBuf::from(path).exists())
         .collect()
+}
+
+#[tauri::command]
+pub(crate) fn open_new_workspace_window<R: Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<String, String> {
+    windows::open_new_workspace_window(&app).map_err(|err| err.to_string())
 }
 
 #[tauri::command]
