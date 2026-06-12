@@ -89,6 +89,18 @@ function runShellDropAction(
     void actions.openStructurePaths(action.paths);
     return;
   }
+  if (action.kind === "open-documents-combined-poses") {
+    void actions.openStructurePaths(action.paths, { mode: "combinePoses" });
+    return;
+  }
+  if (action.kind === "open-documents-combined-grid") {
+    void actions.openStructurePaths(action.paths, { mode: "combineGrid" });
+    return;
+  }
+  if (action.kind === "open-text-files") {
+    void actions.openTextPaths(action.paths);
+    return;
+  }
   if (action.kind === "open-structure-records") {
     if (action.paths.length > 0) void actions.openStructurePaths(action.paths);
     if (action.records.length > 0) void actions.openStructureRecords(action.records);

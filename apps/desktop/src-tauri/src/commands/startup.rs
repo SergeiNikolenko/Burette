@@ -1,8 +1,11 @@
 use crate::startup::{agent_session_from_argv, PendingOpenDocuments};
 
 #[tauri::command]
-pub(crate) fn startup_documents(pending: tauri::State<'_, PendingOpenDocuments>) -> Vec<String> {
-    pending.drain()
+pub(crate) fn startup_documents<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    pending: tauri::State<'_, PendingOpenDocuments>,
+) -> Vec<String> {
+    pending.drain_for_window(window.label())
 }
 
 #[tauri::command]

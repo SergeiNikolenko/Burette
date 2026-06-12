@@ -9,6 +9,7 @@ use super::formats::{normalize_renderer_mode, FormatInfo};
 use super::runtime::{ViewerPreferences, ViewerReloadOptions};
 use super::runtime_utils::{asset_url, escape_html, prune_runtime_dirs, stable_id};
 use super::text_xyz::{converted_data_from_text, xyz_data_from_text};
+use super::trace::{runtime_manifest, write_bytes_atomic, write_json_atomic};
 use super::xyz::{xyz_first_frame, XyzPayload};
 use super::xyzrender::{
     create_xyzrender_artifact, default_xyzrender_document_defaults, xyzrender_preset_options,
@@ -150,7 +151,8 @@ pub(crate) fn create_runtime<R: Runtime>(
             Err(error) => return Err(error),
         }
     }
-    copy_web_assets(app, &assets, AssetProfile::for_viewer_renderer(&renderer))?;
+    let asset_profile = AssetProfile::for_viewer_renderer(&renderer);
+    copy_web_assets(app, &assets, asset_profile)?;
 
     let payload = if renderer == "molstar" {
         XyzPayload {
@@ -185,6 +187,7 @@ pub(crate) fn create_runtime<R: Runtime>(
         "label": label,
         "byteCount": data.len(),
         "previewByteCount": payload.data.len(),
+        "sourceExtension": extension,
         "quickLookBuild": "burrete-tauri",
         "debug": false,
         "theme": preferences.theme_for_runtime(),
@@ -240,6 +243,7 @@ pub(crate) fn create_runtime<R: Runtime>(
             "renderer": "xyzrender",
             "preset": artifact.preset,
             "configArgument": artifact.config_argument,
+            "surfaceMode": artifact.surface_mode,
             "cacheKey": artifact.cache_key,
             "cacheHit": artifact.cache_hit,
             "cacheMiss": !artifact.cache_hit,
@@ -267,9 +271,106 @@ pub(crate) fn create_runtime<R: Runtime>(
     }
 
     let config_text = serde_json::to_string(&config).map_err(|err| err.to_string())?;
+    write_bytes_atomic(
+        &runtime.join("index.html"),
+        viewer_html(file_path, &runtime, &assets, &renderer, preferences, true).as_bytes(),
+    )?;
+    write_bytes_atomic(
+        &runtime.join("viewer-bridge.js"),
+        viewer_bridge_js().as_bytes(),
+    )?;
+    write_bytes_atomic(
+        &runtime.join("preview-config.js"),
+        format!("window.BurreteConfig = {config_text};\n").as_bytes(),
+    )?;
+    write_bytes_atomic(&runtime.join("preview-data.bin"), &payload.data)?;
+    write_bytes_atomic(
+        &runtime.join("preview-data.js"),
+        format!(
+            "window.BurreteDataBase64 = \"{}\";\nwindow.BurreteDataURL = null;\n",
+            base64::engine::general_purpose::STANDARD.encode(&payload.data)
+        )
+        .as_bytes(),
+    )?;
+    write_json_atomic(
+        &runtime.join("manifest.json"),
+        &runtime_manifest(
+            &renderer,
+            extension,
+            &stable_id(file_path),
+            data.len(),
+            payload.data.len(),
+            asset_profile.name(),
+        ),
+    )?;
+    Ok(CreatedRuntime {
+        path: runtime.join("index.html"),
+        renderer,
+    })
+}
+
+pub(crate) fn create_combined_sdf_pose_runtime<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    label_path: &Path,
+    title: &str,
+    data: &[u8],
+    preferences: &ViewerPreferences,
+) -> Result<CreatedRuntime, String> {
+    let base = app
+        .path()
+        .app_cache_dir()
+        .map_err(|err| err.to_string())?
+        .join("viewer");
+    let assets = base.join("assets");
+    let runtime = base.join(uuid::Uuid::new_v4().to_string());
+    fs::create_dir_all(&assets).map_err(|err| err.to_string())?;
+    fs::create_dir_all(&runtime).map_err(|err| err.to_string())?;
+    copy_web_assets(app, &assets, AssetProfile::Molstar)?;
+    prune_runtime_dirs(&base);
+
+    let document_id = stable_id(label_path);
+    let config = json!({
+        "format": "sdf",
+        "molstarFormat": "sdf",
+        "binary": false,
+        "renderer": "molstar",
+        "requestedRenderer": "molstar",
+        "allowMolstarFallback": false,
+        "label": title,
+        "byteCount": data.len(),
+        "previewByteCount": data.len(),
+        "sourceExtension": "sdf",
+        "quickLookBuild": "burrete-tauri-combined-sdf-poses",
+        "debug": false,
+        "theme": preferences.theme_for_runtime(),
+        "themeTokens": preferences.theme_tokens(),
+        "canvasBackground": preferences.canvas_background_for_runtime(),
+        "documentId": document_id,
+        "uiScale": 0.9,
+        "overlayOpacity": 0.90,
+        "transparentBackground": preferences.resolved_transparent_background(),
+        "sdfGrid": false,
+        "sdfPosePager": true,
+        "defaultSdfPoseMode": "all",
+        "sdfPoseModeStorageKey": format!("buret.sdf.poseMode.{document_id}"),
+        "trajectoryControls": false,
+        "trajectoryFrameCount": 0,
+        "appViewer": true,
+        "tauriViewer": true,
+        "molstarStyle": preferences.resolved_molstar_style(),
+        "waterRepresentation": "line",
+        "xyzrenderViewer": false,
+        "xyzrenderAvailable": false,
+        "molstarAvailable": true,
+        "canOpenInVesta": false,
+        "ketcherEditable": false,
+        "showPanelControls": true,
+        "defaultLayoutState": { "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" }
+    });
+    let config_text = serde_json::to_string(&config).map_err(|err| err.to_string())?;
     fs::write(
         runtime.join("index.html"),
-        viewer_html(file_path, &runtime, &assets, &renderer, preferences, true),
+        viewer_html(label_path, &runtime, &assets, "molstar", preferences, true),
     )
     .map_err(|err| err.to_string())?;
     fs::write(runtime.join("viewer-bridge.js"), viewer_bridge_js())
@@ -279,18 +380,18 @@ pub(crate) fn create_runtime<R: Runtime>(
         format!("window.BurreteConfig = {config_text};\n"),
     )
     .map_err(|err| err.to_string())?;
-    fs::write(runtime.join("preview-data.bin"), &payload.data).map_err(|err| err.to_string())?;
+    fs::write(runtime.join("preview-data.bin"), data).map_err(|err| err.to_string())?;
     fs::write(
         runtime.join("preview-data.js"),
         format!(
             "window.BurreteDataBase64 = \"{}\";\nwindow.BurreteDataURL = null;\n",
-            base64::engine::general_purpose::STANDARD.encode(&payload.data)
+            base64::engine::general_purpose::STANDARD.encode(data)
         ),
     )
     .map_err(|err| err.to_string())?;
     Ok(CreatedRuntime {
         path: runtime.join("index.html"),
-        renderer,
+        renderer: "molstar".to_string(),
     })
 }
 
@@ -304,8 +405,24 @@ fn create_not_renderable_runtime(
     message: &str,
 ) -> Result<CreatedRuntime, String> {
     let index_path = runtime.join("index.html");
-    fs::write(&index_path, not_renderable_html(file_path, message))
-        .map_err(|err| err.to_string())?;
+    write_bytes_atomic(
+        &index_path,
+        not_renderable_html(file_path, message).as_bytes(),
+    )?;
+    write_json_atomic(
+        &runtime.join("manifest.json"),
+        &runtime_manifest(
+            "not-renderable",
+            file_path
+                .extension()
+                .and_then(|value| value.to_str())
+                .unwrap_or(""),
+            &stable_id(file_path),
+            0,
+            0,
+            "not-renderable",
+        ),
+    )?;
     Ok(CreatedRuntime {
         path: index_path,
         renderer: "not-renderable".to_string(),
@@ -415,26 +532,37 @@ pub(crate) fn create_docking_runtime<R: Runtime>(
     let config_text = serde_json::to_string(&config).map_err(|err| err.to_string())?;
     let payload_text = serde_json::to_string(&payloads).map_err(|err| err.to_string())?;
     let title_path = PathBuf::from(label);
-    fs::write(
-        runtime.join("index.html"),
-        viewer_html(&title_path, &runtime, &assets, "molstar", preferences, true),
-    )
-    .map_err(|err| err.to_string())?;
-    fs::write(runtime.join("viewer-bridge.js"), viewer_bridge_js())
-        .map_err(|err| err.to_string())?;
-    fs::write(
-        runtime.join("preview-config.js"),
-        format!("window.BurreteConfig = {config_text};\n"),
-    )
-    .map_err(|err| err.to_string())?;
-    fs::write(runtime.join("preview-data.bin"), b"\n").map_err(|err| err.to_string())?;
-    fs::write(
-        runtime.join("preview-data.js"),
+    write_bytes_atomic(
+        &runtime.join("index.html"),
+        viewer_html(&title_path, &runtime, &assets, "molstar", preferences, true).as_bytes(),
+    )?;
+    write_bytes_atomic(
+        &runtime.join("viewer-bridge.js"),
+        viewer_bridge_js().as_bytes(),
+    )?;
+    write_bytes_atomic(
+        &runtime.join("preview-config.js"),
+        format!("window.BurreteConfig = {config_text};\n").as_bytes(),
+    )?;
+    write_bytes_atomic(&runtime.join("preview-data.bin"), b"\n")?;
+    write_bytes_atomic(
+        &runtime.join("preview-data.js"),
         format!(
             "window.BurreteDataBase64 = \"Cg==\";\nwindow.BurreteDataURL = null;\nwindow.BurreteDockingPayloads = {payload_text};\n"
+        )
+        .as_bytes(),
+    )?;
+    write_json_atomic(
+        &runtime.join("manifest.json"),
+        &runtime_manifest(
+            "molstar",
+            "docking",
+            document_id,
+            byte_count,
+            preview_byte_count,
+            AssetProfile::Molstar.name(),
         ),
-    )
-    .map_err(|err| err.to_string())?;
+    )?;
     Ok(CreatedRuntime {
         path: runtime.join("index.html"),
         renderer: "molstar".to_string(),
@@ -716,6 +844,14 @@ pub(crate) enum AssetProfile {
 }
 
 impl AssetProfile {
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Molstar => "desktop-molstar",
+            Self::Grid => "desktop-grid",
+            Self::ExternalXyzrender => "external-artifact",
+        }
+    }
+
     fn files(self) -> &'static [&'static str] {
         match self {
             Self::Molstar => &[

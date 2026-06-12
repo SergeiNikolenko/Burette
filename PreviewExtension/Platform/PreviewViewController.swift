@@ -108,6 +108,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         appendLog("previewID=\(previewID)")
         appendLog("file.path=\(url.path)")
         appendLog("file.absoluteString=\(url.absoluteString)")
+        appendPreviewTrace(
+            state: "created",
+            requestID: requestID.uuidString,
+            fileURL: url,
+            message: "preparePreviewOfFile"
+        )
         appendFileDiagnostics(url)
         webView.stopLoading()
         startPreviewSourceMonitoring(for: url)
@@ -151,6 +157,13 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                         return
                     }
                     self.appendLog("native build error: \(Self.describe(error))")
+                    self.appendPreviewTrace(
+                        state: "failed",
+                        requestID: requestID.uuidString,
+                        fileURL: url,
+                        error: error,
+                        message: "native build error"
+                    )
                     if Self.shouldAllowSystemFallback(for: error, fileExtension: Self.structurePathExtension(for: url)) {
                         self.finishPreviewIfNeeded(error, requestID: requestID)
                     } else {
@@ -279,8 +292,15 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let modifiedAt: TimeInterval
     }
 
+    private struct DefaultCubeXyzrenderInput {
+        let data: Data
+        let sourceFilename: String
+        let controls: [String: Any]
+        let surfaceMode: String?
+    }
+
     private static let supportedStructureExtensions: Set<String> = [
-        "abi", "bcif", "cif", "cms", "com", "csv", "cub", "cube", "dcd", "ent", "fdf", "graphml", "gro", "in", "inp", "lammpstrj", "mae", "maegz", "mcif", "mmcif", "mol", "mol2", "nctraj", "nw", "out", "pdb", "pdbqt", "pqr", "prmtop", "psf", "psi4", "qcin", "sd", "sdf", "smi", "smiles", "top", "trr", "tsv", "vasp", "xtc", "xyz"
+        "abi", "bcif", "cif", "cms", "com", "csv", "cub", "cube", "dcd", "ent", "fdf", "graphml", "gro", "in", "inp", "lammpstrj", "log", "mae", "maegz", "mcif", "mmcif", "mol", "mol2", "nctraj", "nw", "out", "pdb", "pdbqt", "pqr", "prmtop", "psf", "psi4", "qcin", "sd", "sdf", "smi", "smiles", "top", "trr", "tsv", "vasp", "xtc", "xyz"
     ]
 
     private static func buildInlinePreviewHTML(
@@ -433,7 +453,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         var externalArtifactSourceURL: URL?
         var externalStatus: [String: Any]?
         var temporaryExternalDirectory: URL?
-        if PreviewStructureTextConverter.shouldPreferConvertedMolstarData(fileExtension: pathExtension),
+        var resolvedXyzrenderControls = xyzrenderControlsOverride
+        if (renderer == BurreteRendererMode.molstar || PreviewStructureTextConverter.shouldPreferConvertedMolstarData(fileExtension: pathExtension)),
            let convertedStructure = PreviewStructureTextConverter.convertedData(
             from: structureData,
             fileExtension: pathExtension,
@@ -486,11 +507,15 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             let renderDirectory = fileManager.temporaryDirectory
                 .appendingPathComponent("BurreteXYZRender-\(UUID().uuidString)", isDirectory: true)
             temporaryExternalDirectory = renderDirectory
+            let defaultXyzrenderInput = xyzrenderControlsOverride == nil
+                ? defaultCubeXyzrenderInput(fileURL: url, data: structureData, fileExtension: pathExtension)
+                : nil
+            resolvedXyzrenderControls = xyzrenderControlsOverride ?? defaultXyzrenderInput?.controls
             do {
                 try fileManager.createDirectory(at: renderDirectory, withIntermediateDirectories: true)
                 externalArtifact = try PreviewExternalXyzrenderWorker.render(
-                    inputData: structureData,
-                    sourceFilename: url.lastPathComponent,
+                    inputData: defaultXyzrenderInput?.data ?? structureData,
+                    sourceFilename: defaultXyzrenderInput?.sourceFilename ?? url.lastPathComponent,
                     outputDirectory: renderDirectory,
                     preset: xyzrenderPreset,
                     customConfigPath: preferences.xyzrenderCustomConfigPath,
@@ -498,7 +523,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     executablePath: preferences.xyzrenderExecutablePath,
                     extraArguments: preferences.xyzrenderExtraArguments,
                     orientationRefText: xyzrenderOrientationRefText,
-                    controls: xyzrenderControlsOverride
+                    controls: resolvedXyzrenderControls,
+                    surfaceMode: defaultXyzrenderInput?.surfaceMode
                 )
                 externalArtifactSourceURL = renderDirectory.appendingPathComponent("xyzrender.svg")
             } catch {
@@ -539,6 +565,11 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             }
         }
         diag("detected.format=\(format.molstarFormat) binary=\(format.isBinary) renderer=\(renderer)")
+        let molstarAvailable = rendererPolicy.molstarAvailable || PreviewStructureTextConverter.convertedData(
+            from: structureData,
+            fileExtension: pathExtension,
+            label: url.lastPathComponent
+        ) != nil
 
         let configJSON = try previewConfigJSON(
             format: format,
@@ -551,11 +582,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             externalArtifact: externalArtifact,
             externalStatus: externalStatus,
             xyzrenderPreset: xyzrenderPreset,
-            xyzrenderControls: xyzrenderControlsOverride,
+            xyzrenderControls: resolvedXyzrenderControls,
             stagedEntries: stagedEntries,
             trajectoryFrameCount: renderer == BurreteRendererMode.molstar ? xyzPayload?.frameCount : nil,
             originalFileExtension: pathExtension,
             rendererPolicy: rendererPolicy,
+            molstarAvailable: molstarAvailable,
             preferences: preferences
         )
         diag("structure.payload.bytes=\(structureDataForWeb.count)")
@@ -677,7 +709,43 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             _ = try copyAssetIfNeeded(from: externalArtifactSourceURL, to: destination, fileManager: fileManager)
             diagnostics.append("[build] runtime.externalArtifact=\(destination.lastPathComponent)")
         }
+        let manifestJSON = try runtimeManifestJSON(
+            configJSON: configJSON,
+            structureDataBytes: structureData?.count ?? 0,
+            requiredAssets: requiredAssets,
+            requiresRDKit: requiresRDKit
+        )
+        try Data(manifestJSON.utf8)
+            .write(to: runtimeDirectory.appendingPathComponent("manifest.json"), options: [.atomic])
         return RuntimePreview(runtimeDirectory: runtimeDirectory, indexURL: indexURL, readAccessURL: previewsDirectory)
+    }
+
+    private static func runtimeManifestJSON(
+        configJSON: String,
+        structureDataBytes: Int,
+        requiredAssets: [String],
+        requiresRDKit: Bool
+    ) throws -> String {
+        let config = (try? JSONSerialization.jsonObject(with: Data(configJSON.utf8))) as? [String: Any] ?? [:]
+        var manifest: [String: Any] = [
+            "schemaVersion": 1,
+            "createdAtMs": Int(Date().timeIntervalSince1970 * 1000),
+            "complete": true,
+            "host": "quicklook",
+            "renderer": config["renderer"] as? String ?? config["mode"] as? String ?? "unknown",
+            "sourceExtension": config["sourceExtension"] as? String ?? config["format"] as? String ?? "unknown",
+            "documentId": config["documentId"] as? String ?? config["previewRequestID"] as? String ?? config["requestID"] as? String ?? "unknown",
+            "byteCount": config["byteCount"] as? Int ?? structureDataBytes,
+            "previewByteCount": config["previewByteCount"] as? Int ?? structureDataBytes,
+            "requiredAssets": requiredAssets,
+            "requiresRDKit": requiresRDKit
+        ]
+        if let externalArtifact = config["externalArtifact"] as? [String: Any] {
+            manifest["externalArtifactType"] = externalArtifact["type"] as? String ?? "unknown"
+        }
+        let data = try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys])
+        guard let json = String(data: data, encoding: .utf8) else { throw PreviewError.couldNotCreatePreviewConfig }
+        return json + "\n"
     }
 
     private static func configJSONWithRequestID(_ configJSON: String, requestID: String) throws -> String {
@@ -842,6 +910,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         trajectoryFrameCount: Int?,
         originalFileExtension: String,
         rendererPolicy: BurreteRendererPolicy,
+        molstarAvailable: Bool,
         preferences: PreviewPreferences
     ) throws -> String {
         let resolvedTrajectoryFrameCount = trajectoryFrameCount ?? 0
@@ -860,6 +929,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "byteCount": byteCount,
             "previewByteCount": previewByteCount,
             "dataPath": "./preview-data.bin",
+            "sourceExtension": normalizedOriginalExtension,
             "stagedEntries": stagedEntries,
             "quickLookBuild": "v10-product",
             "quickLookViewer": true,
@@ -882,7 +952,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         ]
         if renderer == BurreteRendererMode.xyzrenderExternal {
             payload["xyzrenderViewer"] = true
-            payload["molstarAvailable"] = rendererPolicy.molstarAvailable
+            payload["molstarAvailable"] = molstarAvailable
             payload["xyzrenderPreset"] = xyzrenderPreset
             payload["xyzrenderPresetOptions"] = BurreteXyzrenderPreset.pickerOptions.map { ["value": $0.0, "label": $0.1] }
             if let xyzrenderControls { payload["xyzrenderControls"] = xyzrenderControls }
@@ -893,7 +963,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             if let xyzrenderControls { payload["xyzrenderControls"] = xyzrenderControls }
         }
         if let externalArtifact {
-            payload["externalArtifact"] = [
+            var artifactPayload: [String: Any] = [
                 "path": externalArtifact.relativePath,
                 "inlineSvg": externalArtifact.inlineSvg,
                 "type": externalArtifact.outputType,
@@ -907,6 +977,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 "elapsedMs": externalArtifact.elapsedMs,
                 "log": externalArtifact.log
             ]
+            if let surfaceMode = externalArtifact.surfaceMode { artifactPayload["surfaceMode"] = surfaceMode }
+            payload["externalArtifact"] = artifactPayload
             payload["xyzrenderPreset"] = externalArtifact.preset
         }
         if let externalStatus { payload["externalRendererStatus"] = externalStatus }
@@ -955,6 +1027,194 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         </body>
         </html>
         """
+    }
+
+    private static func defaultCubeXyzrenderInput(fileURL: URL, data: Data, fileExtension: String) -> DefaultCubeXyzrenderInput? {
+        guard ["cub", "cube"].contains(fileExtension.lowercased()) else { return nil }
+        let text = decodeText(data)
+        let descriptor = cubeDescriptor(text: text, fileURL: fileURL)
+        var inputData = data
+        var sourceFilename = fileURL.lastPathComponent
+        let controls: [String: Any]
+        let surfaceMode: String?
+        if descriptor.contains("electrostatic potential") || descriptor.contains("_esp") {
+            if let densityURL = pairedDensityCubeURL(fileURL), let densityData = try? Data(contentsOf: densityURL), !densityData.isEmpty {
+                inputData = densityData
+                sourceFilename = densityURL.lastPathComponent
+                controls = [
+                    "extraArguments": [
+                        "--esp",
+                        quoteCommandToken(fileURL.path),
+                        "--cbar",
+                        "--opacity",
+                        "0.5",
+                        "--surface-style",
+                        "solid"
+                    ].joined(separator: " ")
+                ]
+            } else {
+                controls = ["fieldMode": "esp", "fieldOpacity": 0.5, "fieldSurfaceStyle": "solid"]
+            }
+            surfaceMode = "esp"
+        } else if descriptor.contains("molecular orbital") || descriptor.contains("_homo") || descriptor.contains("_lumo") {
+            controls = ["fieldMode": "mo", "fieldOpacity": 0.62, "fieldSurfaceStyle": "solid"]
+            surfaceMode = "mo"
+        } else if isNCISurfaceCubeDescriptor(descriptor) {
+            if let fieldURL = pairedNCIFieldCubeURL(fileURL), let fieldData = try? Data(contentsOf: fieldURL), !fieldData.isEmpty {
+                inputData = fieldData
+                sourceFilename = fieldURL.lastPathComponent
+                controls = [
+                    "extraArguments": cubeSurfaceArguments([
+                        "--nci-surf",
+                        quoteCommandToken(fileURL.path)
+                    ] + nciIsoArguments(for: fileURL) + [
+                        "--opacity",
+                        "0.45",
+                        "--surface-style",
+                        "solid"
+                    ])
+                ]
+                surfaceMode = "nci"
+            } else {
+                controls = ["fieldMode": "density", "fieldIso": 0.3, "fieldOpacity": 0.45, "fieldSurfaceStyle": "solid"]
+                surfaceMode = "density"
+            }
+        } else if descriptor.contains("sl2r"), let surfaceURL = pairedNCISurfaceCubeURL(fileURL) {
+            controls = [
+                "extraArguments": cubeSurfaceArguments([
+                    "--nci-surf",
+                    quoteCommandToken(surfaceURL.path)
+                ] + nciIsoArguments(for: surfaceURL) + [
+                    "--opacity",
+                    "0.45",
+                    "--surface-style",
+                    "solid"
+                ])
+            ]
+            surfaceMode = "nci"
+        } else if let surfaceURL = pairedNCISurfaceCubeURL(fileURL) {
+            controls = [
+                "extraArguments": cubeSurfaceArguments([
+                    "--nci-surf",
+                    quoteCommandToken(surfaceURL.path)
+                ] + nciIsoArguments(for: surfaceURL) + [
+                    "--opacity",
+                    "0.45",
+                    "--surface-style",
+                    "solid"
+                ])
+            ]
+            surfaceMode = "nci"
+        } else {
+            controls = ["fieldMode": "density", "fieldOpacity": 0.45, "fieldSurfaceStyle": "solid"]
+            surfaceMode = "density"
+        }
+        return DefaultCubeXyzrenderInput(data: inputData, sourceFilename: sourceFilename, controls: controls, surfaceMode: surfaceMode)
+    }
+
+    private static func cubeSurfaceArguments(_ values: [String]) -> String {
+        values.joined(separator: " ")
+    }
+
+    private static func cubeDescriptor(text: String, fileURL: URL) -> String {
+        var descriptor = fileURL.lastPathComponent.lowercased()
+        for line in text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n").split(separator: "\n", omittingEmptySubsequences: false).prefix(2) {
+            descriptor += "\n\(line.lowercased())"
+        }
+        return descriptor
+    }
+
+    private static func isNCISurfaceCubeDescriptor(_ descriptor: String) -> Bool {
+        descriptor.contains("reduced density gradient") ||
+            descriptor.contains("rdg") ||
+            descriptor.contains("_grad") ||
+            descriptor.contains("-grad") ||
+            descriptor.contains("_dg_") ||
+            descriptor.contains("-dg_") ||
+            descriptor.contains("_dg-") ||
+            descriptor.contains("-dg-")
+    }
+
+    private static func pairedDensityCubeURL(_ fileURL: URL) -> URL? {
+        pairedCubeURL(fileURL, replacements: [
+            ("_esp.cube", "_dens.cube"),
+            ("_esp.cube", "_density.cube"),
+            ("-esp.cube", "-dens.cube"),
+            ("-esp.cube", "-density.cube"),
+            ("_esp.cub", "_dens.cub"),
+            ("_esp.cub", "_density.cub"),
+            ("-esp.cub", "-dens.cub"),
+            ("-esp.cub", "-density.cub")
+        ])
+    }
+
+    private static func pairedNCIFieldCubeURL(_ fileURL: URL) -> URL? {
+        pairedCubeURL(fileURL, replacements: [
+            ("_grad.cube", "_dens.cube"),
+            ("_grad.cube", "_density.cube"),
+            ("-grad.cube", "-dens.cube"),
+            ("-grad.cube", "-density.cube"),
+            ("_grad.cub", "_dens.cub"),
+            ("_grad.cub", "_density.cub"),
+            ("-grad.cub", "-dens.cub"),
+            ("-grad.cub", "-density.cub"),
+            ("_dg_inter.cub", "_sl2r.cub"),
+            ("_dg_intra.cub", "_sl2r.cub"),
+            ("-dg_inter.cub", "-sl2r.cub"),
+            ("-dg_intra.cub", "-sl2r.cub"),
+            ("_dg_inter.cube", "_sl2r.cube"),
+            ("_dg_intra.cube", "_sl2r.cube"),
+            ("-dg_inter.cube", "-sl2r.cube"),
+            ("-dg_intra.cube", "-sl2r.cube")
+        ])
+    }
+
+    private static func pairedNCISurfaceCubeURL(_ fileURL: URL) -> URL? {
+        pairedCubeURL(fileURL, replacements: [
+            ("_dens.cube", "_grad.cube"),
+            ("_density.cube", "_grad.cube"),
+            ("-dens.cube", "-grad.cube"),
+            ("-density.cube", "-grad.cube"),
+            ("_dens.cub", "_grad.cub"),
+            ("_density.cub", "_grad.cub"),
+            ("-dens.cub", "-grad.cub"),
+            ("-density.cub", "-grad.cub"),
+            ("_sl2r.cub", "_dg_inter.cub"),
+            ("_sl2r.cub", "_dg_intra.cub"),
+            ("-sl2r.cub", "-dg_inter.cub"),
+            ("-sl2r.cub", "-dg_intra.cub"),
+            ("_sl2r.cube", "_dg_inter.cube"),
+            ("_sl2r.cube", "_dg_intra.cube"),
+            ("-sl2r.cube", "-dg_inter.cube"),
+            ("-sl2r.cube", "-dg_intra.cube")
+        ])
+    }
+
+    private static func pairedCubeURL(_ fileURL: URL, replacements: [(String, String)]) -> URL? {
+        let name = fileURL.lastPathComponent
+        let lower = name.lowercased()
+        for (from, to) in replacements where lower.hasSuffix(from) {
+            let prefix = String(name.prefix(name.count - from.count))
+            let candidate = fileURL.deletingLastPathComponent().appendingPathComponent(prefix + to)
+            if candidate != fileURL && FileManager.default.fileExists(atPath: candidate.path) {
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    private static func nciIsoArguments(for url: URL) -> [String] {
+        let name = url.deletingPathExtension().lastPathComponent.lowercased()
+        if name.contains("dg_intra") || name.contains("dg-intra") { return ["--iso", "0.2"] }
+        if name.contains("dg_inter") || name.contains("dg-inter") { return ["--iso", "0.005"] }
+        return ["--iso", "0.3"]
+    }
+
+    private static func quoteCommandToken(_ value: String) -> String {
+        if value.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "/._-+=:".contains($0)) }) {
+            return value
+        }
+        return "\"\(value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\""
     }
 
     private static func fepGraphMLPreview(from data: Data) throws -> FepGraphMLPreview {
@@ -1125,26 +1385,48 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
     private static func fepGraphMLInlineHTML(title: String, graph: FepGraphMLPreview, requestID: String) -> String {
         let nodeByID = Dictionary(uniqueKeysWithValues: graph.nodes.map { ($0.id, $0) })
+        let denseMode = graph.nodes.count > 12
         let edges = graph.edges.compactMap { edge -> String? in
             guard let source = nodeByID[edge.source], let target = nodeByID[edge.target] else { return nil }
             let score = edge.score.map { "score: " + String(format: "%.3f", $0) } ?? ""
             let labelX = (source.x + target.x) / 2
             let labelY = (source.y + target.y) / 2
+            if denseMode || score.isEmpty {
+                return """
+                <line x1="\(source.x)" y1="\(source.y)" x2="\(target.x)" y2="\(target.y)" />
+                """
+            }
             return """
             <line x1="\(source.x)" y1="\(source.y)" x2="\(target.x)" y2="\(target.y)" />
-            <text x="\(labelX)" y="\(labelY)">\(escapeHTML(score))</text>
+            <text class="edge-score" x="\(labelX)" y="\(labelY)">\(escapeHTML(score))</text>
             """
         }.joined(separator: "\n")
-        let nodes = graph.nodes.map { node -> String in
+        let nodes = graph.nodes.enumerated().map { index, node -> String in
+            if denseMode {
+                let label = graph.nodes.count <= 24 || index < 8 ? escapeHTML(shortGraphMLLabel(node.label)) : ""
+                let score = node.dockingScore.map { String(format: "%.2f", $0) } ?? "n/a"
+                return """
+                <article class="node-dot" style="left:\(node.x)%;top:\(node.y)%" title="\(escapeHTML(node.label))">
+                  <i></i>
+                  <span>\(label)</span>
+                  <em>\(escapeHTML(score))</em>
+                </article>
+                """
+            }
             let score = node.dockingScore.map { String(format: "%.2f", $0) } ?? "n/a"
             return """
-            <article class="node" style="left:\(node.x)%;top:\(node.y)%">
+            <article class="node-card" style="left:\(node.x)%;top:\(node.y)%">
               <strong>\(escapeHTML(shortGraphMLLabel(node.label)))</strong>
               <span>\(node.heavyAtoms)/\(node.atoms) atoms</span>
               <span>\(node.bonds) bonds - score \(escapeHTML(score))</span>
             </article>
             """
         }.joined(separator: "\n")
+        let scoreValues = graph.edges.compactMap { $0.score }
+        let scoreSummary = scoreValues.isEmpty
+            ? "scores unavailable"
+            : "\(scoreValues.count) scored edges, min \(String(format: "%.2f", scoreValues.min() ?? 0)), max \(String(format: "%.2f", scoreValues.max() ?? 0))"
+        let bodyClass = denseMode ? "dense-network" : "card-network"
         let safeTitle = escapeHTML(title)
         return """
         <!doctype html>
@@ -1155,27 +1437,34 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           <meta http-equiv="Content-Security-Policy" content="\(minimalRuntimeCSP)" />
           <title>Burrete FEP Network - \(safeTitle)</title>
           <style>
-            html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#fbfbfc;color:#1c1c1e}
+            html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f8fafc;color:#172033}
             body{font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-            .wrap{position:relative;width:100%;height:100%;box-sizing:border-box;background:#fbfbfc}
-            header{position:absolute;z-index:3;left:0;right:0;top:0;min-height:58px;box-sizing:border-box;padding:10px 14px;display:flex;justify-content:space-between;gap:16px;align-items:center;border-bottom:1px solid rgba(60,60,67,.14);background:rgba(251,251,252,.92)}
-            h1{font-size:13px;line-height:1.2;margin:0;font-weight:500;max-width:64%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-            h1 span{display:block;color:#8e8e93;font-size:11px;font-weight:400;letter-spacing:.04em;text-transform:uppercase}
-            .meta{color:#636366;text-align:right;line-height:1.35}
-            .stage{position:absolute;inset:58px 0 0;background:linear-gradient(rgba(60,60,67,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(60,60,67,.08) 1px,transparent 1px),#fbfbfc;background-size:32px 32px}
+            .wrap{position:relative;width:100%;height:100%;box-sizing:border-box;background:#f8fafc}
+            header{position:absolute;z-index:3;left:0;right:0;top:0;min-height:58px;box-sizing:border-box;padding:10px 14px;display:flex;justify-content:space-between;gap:16px;align-items:center;border-bottom:1px solid rgba(23,32,51,.12);background:rgba(248,250,252,.94)}
+            h1{font-size:13px;line-height:1.2;margin:0;font-weight:600;max-width:62%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+            h1 span{display:block;color:#64748b;font-size:11px;font-weight:500;text-transform:uppercase}
+            .meta{color:#475569;text-align:right;line-height:1.35}
+            .meta small{display:block;color:#64748b}
+            .stage{position:absolute;inset:58px 0 0;background:linear-gradient(rgba(100,116,139,.10) 1px,transparent 1px),linear-gradient(90deg,rgba(100,116,139,.10) 1px,transparent 1px),#f8fafc;background-size:32px 32px}
             svg{position:absolute;inset:0;width:100%;height:100%}
-            line{stroke:#9b5dcc;stroke-width:.55;stroke-linecap:round;stroke-opacity:.74}
-            text{font-size:3.2px;fill:#6e587f;paint-order:stroke;stroke:#fbfbfc;stroke-width:1.05px}
-            .node{position:absolute;z-index:2;width:176px;min-height:82px;transform:translate(-50%,-50%);box-sizing:border-box;padding:11px 12px;border:1px solid rgba(60,60,67,.18);border-radius:8px;background:rgba(255,255,255,.96);box-shadow:0 8px 22px rgba(0,0,0,.12)}
-            .node strong{display:block;font-size:13px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-            .node span{display:block;margin-top:7px;color:#636366;font-size:12px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+            line{stroke:#af52de;stroke-width:.42;stroke-linecap:round;stroke-opacity:.62}
+            .edge-score{font-size:3px;fill:#334155;paint-order:stroke;stroke:#f8fafc;stroke-width:1.1px}
+            .node-card{position:absolute;z-index:2;width:clamp(112px,22vw,164px);min-height:72px;transform:translate(-50%,-50%);box-sizing:border-box;padding:9px 10px;border:1px solid rgba(175,82,222,.22);border-radius:8px;background:rgba(255,255,255,.96);box-shadow:0 8px 22px rgba(15,23,42,.12)}
+            .node-card strong{display:block;font-size:12px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+            .node-card span{display:block;margin-top:6px;color:#475569;font-size:11px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+            .node-dot{position:absolute;z-index:2;transform:translate(-50%,-50%);display:grid;justify-items:center;gap:3px;color:#172033}
+            .node-dot i{display:block;width:12px;height:12px;border-radius:50%;box-sizing:border-box;border:2px solid #f8fafc;background:#af52de;box-shadow:0 0 0 1px rgba(175,82,222,.26),0 5px 12px rgba(15,23,42,.18)}
+            .node-dot span{display:block;max-width:84px;padding:2px 5px;border-radius:6px;background:rgba(255,255,255,.86);font-size:10px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+            .node-dot em{display:none}
+            .dense-network line{stroke-width:.34;stroke-opacity:.5}
+            .dense-network .stage{background-size:28px 28px}
           </style>
         </head>
         <body>
-          <main class="wrap">
+          <main class="wrap \(bodyClass)">
             <header>
               <h1><span>FEP Network</span>\(safeTitle)</h1>
-              <div class="meta">FEP ligand network<br>\(graph.nodes.count) ligands - \(graph.edges.count) transformations</div>
+              <div class="meta">\(graph.nodes.count) ligands - \(graph.edges.count) transformations<small>\(escapeHTML(scoreSummary))</small></div>
             </header>
             <section class="stage" aria-label="FEP ligand network">
               <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">\(edges)</svg>
@@ -1434,7 +1723,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             return 40 * mib
         case "bcif":
             return 50 * mib
-        case "abi", "com", "csv", "fdf", "sdf", "sd", "mol", "mol2", "xyz", "gro", "smi", "smiles", "tsv", "cub", "cube", "in", "inp", "nw", "out", "psi4", "qcin", "vasp", "lammpstrj", "top", "psf", "prmtop", "graphml":
+        case "abi", "com", "csv", "fdf", "sdf", "sd", "mol", "mol2", "xyz", "gro", "smi", "smiles", "tsv", "cub", "cube", "in", "inp", "log", "nw", "out", "psi4", "qcin", "vasp", "lammpstrj", "top", "psf", "prmtop", "graphml":
             return 25 * mib
         case "mae", "maegz", "cms":
             return 64 * mib
@@ -1482,17 +1771,19 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
     }
 
-    private func scheduleRenderTimeout(for requestID: UUID, timeoutSeconds: TimeInterval) {
-        renderTimeoutWorkItem?.cancel()
-        let workItem = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            self.appendLog("render timeout waiting for JS ready after \(Int(timeoutSeconds)) seconds")
-            self.renderNativeError(PreviewError.webRenderTimedOut, fileURL: nil)
-            self.finishPreviewIfNeeded(nil, requestID: requestID)
-        }
-        renderTimeoutWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + timeoutSeconds, execute: workItem)
-    }
+	    private func scheduleRenderTimeout(for requestID: UUID, timeoutSeconds: TimeInterval) {
+	        renderTimeoutWorkItem?.cancel()
+	        let workItem = DispatchWorkItem { [weak self] in
+	            guard let self else { return }
+	            let error = PreviewError.webRenderTimedOut
+	            self.appendLog("render timeout waiting for JS ready after \(Int(timeoutSeconds)) seconds")
+	            self.appendFailedPreviewTrace(requestID: requestID, error: error, message: "render timeout waiting for JS ready")
+	            self.renderNativeError(error, fileURL: nil)
+	            self.finishPreviewIfNeeded(nil, requestID: requestID)
+	        }
+	        renderTimeoutWorkItem = workItem
+	        DispatchQueue.main.asyncAfter(deadline: .now() + timeoutSeconds, execute: workItem)
+	    }
 
     private func finishPreviewIfNeeded(_ error: Error?, requestID: UUID? = nil, cancelRenderTimeout: Bool = true) {
         if let requestID, requestID != activePreviewRequestID {
@@ -1541,28 +1832,31 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
     }
 
-    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        appendLog("WK didFail error=\(Self.describe(error))")
-        renderNativeError(error, fileURL: nil)
-        finishPreviewIfNeeded(nil)
-    }
+	    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+	        appendLog("WK didFail error=\(Self.describe(error))")
+	        appendFailedPreviewTrace(requestID: activePreviewRequestID, error: error, message: "WK didFail")
+	        renderNativeError(error, fileURL: nil)
+	        finishPreviewIfNeeded(nil)
+	    }
 
-    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        appendLog("WK didFailProvisionalNavigation error=\(Self.describe(error))")
-        renderNativeError(error, fileURL: nil)
-        finishPreviewIfNeeded(nil)
-    }
+	    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+	        appendLog("WK didFailProvisionalNavigation error=\(Self.describe(error))")
+	        appendFailedPreviewTrace(requestID: activePreviewRequestID, error: error, message: "WK didFailProvisionalNavigation")
+	        renderNativeError(error, fileURL: nil)
+	        finishPreviewIfNeeded(nil)
+	    }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         appendLog("WK webContentProcessDidTerminate")
         guard !hasRenderedTerminationError else { return }
         hasRenderedTerminationError = true
-        renderTimeoutWorkItem?.cancel()
-        renderTimeoutWorkItem = nil
-        let error = PreviewError.webRenderFailed("The embedded WebKit process terminated while loading the Quick Look preview.")
-        renderNativeError(error, fileURL: currentPreviewURL)
-        finishPreviewIfNeeded(nil, requestID: activePreviewRequestID)
-    }
+	        renderTimeoutWorkItem?.cancel()
+	        renderTimeoutWorkItem = nil
+	        let error = PreviewError.webRenderFailed("The embedded WebKit process terminated while loading the Quick Look preview.")
+	        appendFailedPreviewTrace(requestID: activePreviewRequestID, error: error, message: "WK webContentProcessDidTerminate")
+	        renderNativeError(error, fileURL: currentPreviewURL)
+	        finishPreviewIfNeeded(nil, requestID: activePreviewRequestID)
+	    }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard isTrustedScriptMessage(message) else { return }
@@ -1610,6 +1904,14 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 handleJavaScriptRuntimeFileRequest(body)
                 return
             }
+            if type == "exportText" {
+                handleJavaScriptTextExport(body)
+                return
+            }
+            if type == "exportData" {
+                handleJavaScriptDataExport(body)
+                return
+            }
             appendLog("JS message type=\(type): \(text.prefix(1600))")
             if type == "ready" {
                 appendLog("elapsed.jsReadyMs=0")
@@ -1617,6 +1919,13 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     appendLog("ignoring ready without requestID")
                     return
                 }
+                appendPreviewTrace(
+                    state: "completed",
+                    requestID: messageRequestID.uuidString,
+                    fileURL: currentPreviewURL,
+                    runtimeDirectory: currentRuntimeDirectory,
+                    message: "ready"
+                )
                 finishPreviewIfNeeded(nil, requestID: messageRequestID)
             } else if type == "status" && text.hasPrefix("[web] Rendered") {
                 appendLog("elapsed.renderCompleteMs=0")
@@ -1625,6 +1934,14 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     appendLog("ignoring error without requestID")
                     return
                 }
+                appendPreviewTrace(
+                    state: "failed",
+                    requestID: messageRequestID.uuidString,
+                    fileURL: currentPreviewURL,
+                    runtimeDirectory: currentRuntimeDirectory,
+                    errorCode: "BRT-QL-WEB-ERROR",
+                    message: String(text.prefix(400))
+                )
                 finishPreviewIfNeeded(nil, requestID: messageRequestID)
             }
             if Self.showDebugOverlay || type == "error" {
@@ -1633,6 +1950,68 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         } else {
             appendLog("JS message raw: \(String(describing: message.body))")
         }
+    }
+
+    private func handleJavaScriptTextExport(_ body: [String: Any]) {
+        guard let text = body["text"] as? String else {
+            appendLog("exportText.missingText")
+            return
+        }
+        let name = Self.safeExportFileName(body["name"] as? String ?? "molstar-export.txt")
+        presentJavaScriptExportSavePanel(data: Data(text.utf8), name: name)
+    }
+
+    private func handleJavaScriptDataExport(_ body: [String: Any]) {
+        guard let base64 = body["base64"] as? String, let data = Data(base64Encoded: base64) else {
+            appendLog("exportData.invalidBase64")
+            return
+        }
+        let name = Self.safeExportFileName(body["name"] as? String ?? "molstar-export.bin")
+        presentJavaScriptExportSavePanel(data: data, name: name)
+    }
+
+    private func presentJavaScriptExportSavePanel(data: Data, name: String) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = name
+        panel.canCreateDirectories = true
+        if let currentPreviewURL {
+            panel.directoryURL = currentPreviewURL.deletingLastPathComponent()
+        }
+        let completion: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            guard let self else { return }
+            guard response == .OK, let url = panel.url else {
+                self.appendLog("export.cancelled name=\(name)")
+                return
+            }
+            do {
+                try data.write(to: url, options: [.atomic])
+                self.appendLog("export.saved path=\(url.path) bytes=\(data.count)")
+                self.previewStatus = "[native] Exported \(url.lastPathComponent)"
+            } catch {
+                self.appendLog("export.failed path=\(url.path) error=\(Self.describe(error))")
+                self.previewStatus = "[native] Export failed\n\(Self.describe(error))"
+            }
+        }
+        if let window = view.window {
+            panel.beginSheetModal(for: window, completionHandler: completion)
+        } else {
+            panel.begin(completionHandler: completion)
+        }
+    }
+
+    private static func safeExportFileName(_ name: String) -> String {
+        let invalid = CharacterSet(charactersIn: "\\/:*?\"<>|")
+        var cleaned = name
+            .components(separatedBy: invalid)
+            .joined(separator: "_")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        while cleaned.first == "." {
+            cleaned.removeFirst()
+        }
+        if cleaned.count > 120 {
+            cleaned = String(cleaned.prefix(120))
+        }
+        return cleaned.isEmpty ? "molstar-export.bin" : cleaned
     }
 
     private func isTrustedScriptMessage(_ message: WKScriptMessage) -> Bool {
@@ -1881,13 +2260,14 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             } catch {
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.activePreviewRequestID == requestID else { return }
-                    self.pendingPreviewSourceFingerprint = nil
-                    self.appendLog("native renderer switch error: \(Self.describe(error))")
-                    self.renderNativeError(error, fileURL: url)
-                    self.finishPreviewIfNeeded(nil, requestID: requestID)
-                }
-            }
-        }
+	                    self.pendingPreviewSourceFingerprint = nil
+	                    self.appendLog("native renderer switch error: \(Self.describe(error))")
+	                    self.appendFailedPreviewTrace(requestID: requestID, error: error, message: "native renderer switch error")
+	                    self.renderNativeError(error, fileURL: url)
+	                    self.finishPreviewIfNeeded(nil, requestID: requestID)
+	                }
+	            }
+	        }
     }
 
     private func setViewerPageZoom(_ scale: CGFloat) {
@@ -1976,6 +2356,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         if message.hasPrefix("elapsed.") { return true }
         if message.hasPrefix("[build] detected.format=") { return true }
         if message.hasPrefix("[build] elapsed.") { return true }
+        if message.hasPrefix("[build] runtimeDirectory=") { return true }
+        if message.hasPrefix("[build] runtime.index.exists=") { return true }
+        if message.hasPrefix("trace.requestID=") { return true }
         if message.hasPrefix("calling WKWebView.loadFileURL") { return true }
         if message.hasPrefix("WK didCommit") { return true }
         if message.hasPrefix("WK didFinish") { return true }
@@ -2044,6 +2427,106 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             } catch {
                 NSLog("[BurreteV10] could not write log to \(url.path): \(String(describing: error))")
             }
+        }
+    }
+
+    private static var previewTraceURL: URL? {
+        let fileManager = FileManager.default
+        guard let base = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        return base
+            .appendingPathComponent("Burrete", isDirectory: true)
+            .appendingPathComponent("preview-trace.jsonl")
+    }
+
+	    private func appendPreviewTrace(
+	        state: String,
+	        requestID: String,
+        fileURL: URL?,
+        runtimeDirectory: URL? = nil,
+        error: Error? = nil,
+        errorCode: String? = nil,
+        message: String? = nil
+    ) {
+        var payload: [String: Any] = [
+            "schemaVersion": 1,
+            "timestampMs": Int(Date().timeIntervalSince1970 * 1000),
+            "documentId": requestID,
+            "state": state,
+            "subsystem": "quicklook",
+            "requestID": requestID
+        ]
+        if let fileURL {
+            payload["sourceExtension"] = Self.structurePathExtension(for: fileURL)
+        }
+        if let runtimeDirectory {
+            payload["runtimePath"] = runtimeDirectory.path
+        }
+        if let error {
+            payload["errorCode"] = errorCode ?? Self.previewErrorCode(error)
+        } else if let errorCode {
+            payload["errorCode"] = errorCode
+        }
+        if let message {
+            payload["message"] = message.replacingOccurrences(of: "\n", with: " ")
+        }
+        appendLog("trace.requestID=\(requestID) state=\(state)")
+	        Self.writePreviewTracePayload(payload)
+	    }
+
+	    private func appendFailedPreviewTrace(requestID: UUID, error: Error, message: String) {
+	        appendPreviewTrace(
+	            state: "failed",
+	            requestID: requestID.uuidString,
+	            fileURL: currentPreviewURL,
+	            runtimeDirectory: currentRuntimeDirectory,
+	            error: error,
+	            message: message
+	        )
+	    }
+
+	    private static func writePreviewTracePayload(_ payload: [String: Any]) {
+        guard let url = previewTraceURL else { return }
+        do {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+            var line = data
+            line.append(Data("\n".utf8))
+            if FileManager.default.fileExists(atPath: url.path) {
+                let handle = try FileHandle(forWritingTo: url)
+                handle.seekToEndOfFile()
+                handle.write(line)
+                handle.closeFile()
+            } else {
+                try line.write(to: url, options: [.atomic])
+            }
+        } catch {
+            NSLog("[BurreteV10] could not write preview trace to \(url.path): \(String(describing: error))")
+        }
+    }
+
+    private static func previewErrorCode(_ error: Error) -> String {
+        guard let previewError = error as? PreviewError else { return "BRT-QL-RUNTIME-ERROR" }
+        switch previewError {
+        case .missingWebDirectory, .missingWebAsset, .molstarAssetsNotVendored:
+            return "BRT-QL-MISSING-ASSETS"
+        case .emptyStructureFile:
+            return "BRT-QL-EMPTY-FILE"
+        case .unsupportedStructureFile, .gridFileTypeDisabled:
+            return "BRT-QL-UNSUPPORTED"
+        case .fileTooLarge, .couldNotExtractBoundedMaestroPreview:
+            return "BRT-QL-FILE-TOO-LARGE"
+        case .notRenderableStandaloneStructure:
+            return "BRT-QL-NOT-RENDERABLE"
+        case .ubiquitousFileNotDownloaded:
+            return "BRT-QL-ICLOUD-NOT-DOWNLOADED"
+        case .webRenderFailed:
+            return "BRT-QL-WEB-ERROR"
+        case .webRenderTimedOut:
+            return "BRT-QL-WEB-TIMEOUT"
+        case .couldNotCreatePreviewConfig, .couldNotCreateRuntimePreview:
+            return "BRT-QL-RUNTIME-WRITE"
         }
     }
 
@@ -2216,7 +2699,7 @@ private enum PreviewStructureTextConverter {
             return parseQuantumEspressoInput(lines) ?? parseQSiteGeometry(lines) ?? parseBestCoordinateBlock(lines)
         case "nw", "psi4", "qcin":
             return parseBestCoordinateBlock(lines)
-        case "out":
+        case "log", "out":
             return parseOrcaOutput(lines) ?? parseGaussianOutput(lines) ?? parseBestCoordinateBlock(lines)
         case "cms", "mae", "maegz":
             return parseMaestroAtoms(lines, atomLimit: 20_000)
@@ -2341,7 +2824,7 @@ private enum PreviewStructureTextConverter {
     }
 
     private static func usesPDBTextFallback(_ fileExtension: String) -> Bool {
-        ["abi", "cub", "cube", "fdf", "in", "inp", "nw", "out", "psi4", "qcin"].contains(fileExtension.lowercased())
+        ["abi", "cub", "cube", "fdf", "in", "inp", "log", "nw", "out", "psi4", "qcin"].contains(fileExtension.lowercased())
     }
 
     private static func isGROExtension(_ fileExtension: String) -> Bool {
@@ -3402,7 +3885,7 @@ private struct StructureFormat {
             self = Self(molstarFormat: ext, isBinary: false)
         case "mae", "maegz", "cms":
             self = Self(molstarFormat: "xyzrender", isBinary: false, isExternalXyzrenderOnly: true)
-        case "abi", "com", "cub", "cube", "fdf", "in", "inp", "nw", "out", "psi4", "qcin", "vasp":
+        case "abi", "com", "cub", "cube", "fdf", "in", "inp", "log", "nw", "out", "psi4", "qcin", "vasp":
             self = Self(molstarFormat: "xyzrender", isBinary: false, isExternalXyzrenderOnly: true)
         default:
             self = Self(molstarFormat: "mmcif", isBinary: false)
@@ -3457,6 +3940,7 @@ private struct PreviewExternalXyzrenderArtifact {
     let outputType: String
     let preset: String
     let configArgument: String
+    let surfaceMode: String?
     let usedOrientationRef: Bool
     let elapsedMs: Int
     let log: String
@@ -3479,7 +3963,8 @@ private enum PreviewExternalXyzrenderWorker {
         executablePath: String,
         extraArguments: String,
         orientationRefText: String?,
-        controls: [String: Any]?
+        controls: [String: Any]?,
+        surfaceMode: String?
     ) throws -> PreviewExternalXyzrenderArtifact {
         let fileManager = FileManager.default
         let inputURL = outputDirectory.appendingPathComponent(safeInputFilename(sourceFilename))
@@ -3517,6 +4002,7 @@ private enum PreviewExternalXyzrenderWorker {
                 logURL: logURL,
                 preset: effectivePreset,
                 configArgument: configArgument,
+                surfaceMode: surfaceMode,
                 usedOrientationRef: normalizedOrientationRef(orientationRefText) != nil,
                 cacheKey: cacheKey
             ) {
@@ -3535,8 +4021,11 @@ private enum PreviewExternalXyzrenderWorker {
         if (normalizedControls["transparentBackground"] as? Bool) == true || transparent {
             arguments.append("--transparent")
         }
-        arguments += cliArguments(from: normalizedControls)
-        arguments += sanitizedExtraArguments((normalizedControls["extraArguments"] as? String) ?? extraArguments)
+        arguments += cliArguments(from: normalizedControls, inputPath: inputURL.path)
+        arguments += sanitizedExtraArguments(
+            (normalizedControls["extraArguments"] as? String) ?? extraArguments,
+            stripFieldArguments: normalizedControls["fieldMode"] != nil
+        )
         process.arguments = arguments
         process.environment = mergedEnvironment(overrides: launch.environment)
 
@@ -3572,6 +4061,7 @@ private enum PreviewExternalXyzrenderWorker {
             outputType: "svg",
             preset: effectivePreset,
             configArgument: configArgument,
+            surfaceMode: surfaceMode,
             usedOrientationRef: orientationRefURL != nil,
             elapsedMs: elapsedMs,
             log: log,
@@ -3619,6 +4109,7 @@ private enum PreviewExternalXyzrenderWorker {
         logURL: URL,
         preset: String,
         configArgument: String,
+        surfaceMode: String?,
         usedOrientationRef: Bool,
         cacheKey: String
     ) throws -> PreviewExternalXyzrenderArtifact? {
@@ -3644,6 +4135,7 @@ private enum PreviewExternalXyzrenderWorker {
             outputType: "svg",
             preset: preset,
             configArgument: configArgument,
+            surfaceMode: surfaceMode,
             usedOrientationRef: usedOrientationRef,
             elapsedMs: 0,
             log: log,
@@ -3894,6 +4386,16 @@ private enum PreviewExternalXyzrenderWorker {
         copyBoolean(value, key: "showGhosts", into: &result)
         copyBoolean(value, key: "showAxes", into: &result)
         copyNumber(value, key: "cellWidth", into: &result)
+        copyFieldMode(value, into: &result)
+        copyNumber(value, key: "fieldIso", into: &result)
+        copyNonNegativeNumber(value, key: "fieldOpacity", into: &result)
+        copySurfaceStyle(value, into: &result)
+        copyText(value, key: "fieldMoPositiveColor", into: &result)
+        copyText(value, key: "fieldMoNegativeColor", into: &result)
+        copyText(value, key: "fieldDensityColor", into: &result)
+        copyText(value, key: "fieldCmapPalette", into: &result)
+        copyFiniteNumber(value, key: "fieldCmapMin", into: &result)
+        copyFiniteNumber(value, key: "fieldCmapMax", into: &result)
         copyText(value, key: "customConfigPath", into: &result)
         copyText(value, key: "extraArguments", into: &result)
         if let supercell = normalizeSupercell(value["supercell"]) {
@@ -3902,7 +4404,7 @@ private enum PreviewExternalXyzrenderWorker {
         return result
     }
 
-    private static func cliArguments(from controls: [String: Any]) -> [String] {
+    private static func cliArguments(from controls: [String: Any], inputPath: String) -> [String] {
         var arguments: [String] = []
         if let value = finitePositive(controls["canvasSize"]) {
             arguments += ["-S", formatCLI(value)]
@@ -3956,6 +4458,43 @@ private enum PreviewExternalXyzrenderWorker {
             arguments.append("--supercell")
             arguments += supercell.map(String.init)
         }
+        if let mode = controls["fieldMode"] as? String {
+            switch mode {
+            case "density":
+                arguments.append("--dens")
+            case "mo":
+                arguments.append("--mo")
+            case "esp":
+                arguments += ["--esp", inputPath]
+            case "nci":
+                arguments += ["--nci-surf", inputPath]
+            default:
+                break
+            }
+        }
+        if let value = finitePositive(controls["fieldIso"]) {
+            arguments += ["--iso", formatCLI(value)]
+        }
+        if let value = finiteNonNegative(controls["fieldOpacity"]) {
+            arguments += ["--opacity", formatCLI(value)]
+        }
+        if let value = controls["fieldSurfaceStyle"] as? String {
+            arguments += ["--surface-style", value]
+        }
+        if let positive = controls["fieldMoPositiveColor"] as? String,
+           let negative = controls["fieldMoNegativeColor"] as? String {
+            arguments += ["--mo-colors", positive, negative]
+        }
+        if let value = controls["fieldDensityColor"] as? String {
+            arguments += ["--dens-color", value]
+        }
+        if let value = controls["fieldCmapPalette"] as? String {
+            arguments += ["--cmap-palette", value]
+        }
+        if let min = finiteNumber(controls["fieldCmapMin"]),
+           let max = finiteNumber(controls["fieldCmapMax"]) {
+            arguments += ["--cmap-range", formatCLI(min), formatCLI(max)]
+        }
         return arguments
     }
 
@@ -3977,12 +4516,60 @@ private enum PreviewExternalXyzrenderWorker {
         }
     }
 
+    private static func copyFieldMode(_ source: [String: Any], into result: inout [String: Any]) {
+        let value = (source["fieldMode"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        if ["auto", "off", "density", "mo", "esp", "nci"].contains(value) {
+            result["fieldMode"] = value
+        }
+    }
+
+    private static func copySurfaceStyle(_ source: [String: Any], into result: inout [String: Any]) {
+        let value = (source["fieldSurfaceStyle"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        if ["solid", "mesh", "contour", "dot"].contains(value) {
+            result["fieldSurfaceStyle"] = value
+        }
+    }
+
+    private static func copyNonNegativeNumber(_ source: [String: Any], key: String, into result: inout [String: Any]) {
+        if let value = finiteNonNegative(source[key]) {
+            result[key] = value
+        }
+    }
+
+    private static func copyFiniteNumber(_ source: [String: Any], key: String, into result: inout [String: Any]) {
+        if let value = finiteNumber(source[key]) {
+            result[key] = value
+        }
+    }
+
     private static func finitePositive(_ value: Any?) -> Double? {
         if let number = value as? NSNumber {
             let resolved = number.doubleValue
             return resolved.isFinite && resolved > 0 ? resolved : nil
         }
         if let text = value as? String, let resolved = Double(text), resolved.isFinite, resolved > 0 {
+            return resolved
+        }
+        return nil
+    }
+
+    private static func finiteNonNegative(_ value: Any?) -> Double? {
+        if let number = value as? NSNumber {
+            let resolved = number.doubleValue
+            return resolved.isFinite && resolved >= 0 ? resolved : nil
+        }
+        if let text = value as? String, let resolved = Double(text), resolved.isFinite, resolved >= 0 {
+            return resolved
+        }
+        return nil
+    }
+
+    private static func finiteNumber(_ value: Any?) -> Double? {
+        if let number = value as? NSNumber {
+            let resolved = number.doubleValue
+            return resolved.isFinite ? resolved : nil
+        }
+        if let text = value as? String, let resolved = Double(text), resolved.isFinite {
             return resolved
         }
         return nil
@@ -4006,20 +4593,31 @@ private enum PreviewExternalXyzrenderWorker {
             .replacingOccurrences(of: #"\.0+$"#, with: "", options: .regularExpression)
     }
 
-    private static func sanitizedExtraArguments(_ value: String) -> [String] {
-        let outputFlags = Set(["-o", "--output", "-go", "--gif-output", "--config", "--ref"])
+    private static func sanitizedExtraArguments(_ value: String, stripFieldArguments: Bool = false) -> [String] {
+        var blockedValueFlags = Set(["-o", "--output", "-go", "--gif-output", "--config", "--ref"])
+        var blocked = blockedValueFlags
+        var blockedValueCounts: [String: Int] = [:]
+        if stripFieldArguments {
+            ["--esp", "--nci-surf", "--iso", "--opacity", "--surface-style", "--dens-color", "--cmap-palette"].forEach {
+                blocked.insert($0)
+                blockedValueFlags.insert($0)
+            }
+            blockedValueCounts["--mo-colors"] = 2
+            blockedValueCounts["--cmap-range"] = 2
+            ["--mo", "--dens", "--mo-colors", "--cmap-range"].forEach { blocked.insert($0) }
+        }
         var result: [String] = []
-        var skipNext = false
+        var skipNext = 0
         for token in splitCommandLine(value) {
-            if skipNext {
-                skipNext = false
+            if skipNext > 0 {
+                skipNext -= 1
                 continue
             }
-            if outputFlags.contains(token) {
-                skipNext = true
+            if blocked.contains(token) {
+                skipNext = blockedValueCounts[token] ?? (blockedValueFlags.contains(token) ? 1 : 0)
                 continue
             }
-            if outputFlags.contains(where: { token.hasPrefix($0 + "=") }) { continue }
+            if blocked.contains(where: { token.hasPrefix($0 + "=") }) { continue }
             result.append(token)
         }
         return result

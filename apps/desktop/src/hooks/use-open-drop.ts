@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { DragDropEvent } from "@tauri-apps/api/window";
-import type { DockingDocumentRequest, FepSetupRequest, ViewerDocument } from "../types";
+import type { DockingDocumentRequest, FepSetupRequest, OpenDocumentsMode, ViewerDocument } from "../types";
 import { resolveDropActionChoices } from "../lib/drop-actions";
 import type { DropSourceContext, DropTargetContext } from "../lib/drop-actions";
 import type { DropAction, DropActionChoice } from "../lib/drop-actions";
@@ -11,7 +11,13 @@ import { hasStructureDrag, readStructureDragPayload, structureDragPayloadFromTex
 import type { StructureDragPayload, StructureDragRecord } from "../lib/structure-drag";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 
-type OpenDocuments = (paths: string[]) => void | Promise<void>;
+type OpenDocuments = (
+  paths: string[],
+  reloadOptions?: unknown,
+  preferencesOverride?: unknown,
+  options?: { mode?: OpenDocumentsMode },
+) => void | Promise<void>;
+type OpenTextDocuments = (paths: string[]) => unknown;
 type OpenDockingDocument = (
   receptorPath: string,
   ligandPaths: string[],
@@ -51,6 +57,7 @@ type OpenDropOptions = {
   openDockingDocument?: OpenDockingDocument;
   openDockingStructureRecords?: OpenDockingStructureRecords;
   openStructureRecords?: OpenStructureRecords;
+  openTextDocuments?: OpenTextDocuments;
   openKetcherWithStructures?: OpenKetcherWithStructures;
   openFepSetupWorkspace?: OpenFepSetupWorkspace;
   openDockPayload?: OpenDockPayload;
@@ -89,6 +96,24 @@ function elementFromTauriDropPosition(position: { x: number; y: number } | null 
 
 export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStatus, options: OpenDropOptions = {}) {
   const [dropActive, setDropActive] = useState(false);
+  const dropResetTimerRef = useRef<number | undefined>(undefined);
+  const clearDropResetTimer = useCallback(() => {
+    if (dropResetTimerRef.current === undefined) return;
+    window.clearTimeout(dropResetTimerRef.current);
+    dropResetTimerRef.current = undefined;
+  }, []);
+  const hideDropOverlay = useCallback(() => {
+    clearDropResetTimer();
+    setDropActive(false);
+  }, [clearDropResetTimer]);
+  const showDropOverlay = useCallback(() => {
+    setDropActive(true);
+    clearDropResetTimer();
+    dropResetTimerRef.current = window.setTimeout(() => {
+      dropResetTimerRef.current = undefined;
+      setDropActive(false);
+    }, 1200);
+  }, [clearDropResetTimer]);
   const {
     activeTabKind = null,
     activeDocumentId = null,
@@ -100,6 +125,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     openDockingDocument,
     openDockingStructureRecords,
     openStructureRecords,
+    openTextDocuments = openDocuments,
     openKetcherWithStructures,
     openFepSetupWorkspace,
     openDockPayload,
@@ -229,6 +255,18 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       void openDocuments(action.paths);
       return;
     }
+    if (action.kind === "open-documents-combined-poses") {
+      void openDocuments(action.paths, undefined, undefined, { mode: "combinePoses" });
+      return;
+    }
+    if (action.kind === "open-documents-combined-grid") {
+      void openDocuments(action.paths, undefined, undefined, { mode: "combineGrid" });
+      return;
+    }
+    if (action.kind === "open-text-files") {
+      void openTextDocuments(action.paths);
+      return;
+    }
     if (action.kind === "open-structure-records") {
       if (action.paths.length > 0) void openDocuments(action.paths);
       if (action.records.length > 0 && openStructureRecords) {
@@ -246,6 +284,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     openDockingDocument,
     openDockingStructureRecords,
     openDocuments,
+    openTextDocuments,
     openFepSetupWorkspace,
     openKetcherWithStructures,
     openStructureRecords,
@@ -314,16 +353,16 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
   const handleFileDrop = useCallback(
     (event: DragDropEvent) => {
       if (event.type === "enter" || event.type === "over") {
-        setDropActive(true);
+        showDropOverlay();
         return;
       }
-      setDropActive(false);
+      hideDropOverlay();
       if (event.type === "drop") {
         const payload: StructureDragPayload = { paths: event.paths, records: [], point: tauriDropPoint(event.position) };
         void runFinderDropAction(payload, dropTargetForPosition(event.position));
       }
     },
-    [dropTargetForPosition, runFinderDropAction],
+    [dropTargetForPosition, hideDropOverlay, runFinderDropAction, showDropOverlay],
   );
 
   useEffect(() => {
@@ -346,19 +385,36 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     };
   }, [handleFileDrop, pushStatus]);
 
+  useEffect(() => {
+    const resetDropState = () => hideDropOverlay();
+    const resetWhenHidden = () => {
+      if (document.visibilityState === "hidden") hideDropOverlay();
+    };
+
+    window.addEventListener("blur", resetDropState);
+    window.addEventListener("dragend", resetDropState);
+    document.addEventListener("visibilitychange", resetWhenHidden);
+    return () => {
+      clearDropResetTimer();
+      window.removeEventListener("blur", resetDropState);
+      window.removeEventListener("dragend", resetDropState);
+      document.removeEventListener("visibilitychange", resetWhenHidden);
+    };
+  }, [clearDropResetTimer, hideDropOverlay]);
+
   const handleBrowserDrag = useCallback((event: React.DragEvent<HTMLElement>) => {
     const fileDrop = Array.from(event.dataTransfer.types).includes("Files");
     const structureDrop = hasStructureDrag(event.dataTransfer);
     if (!fileDrop && !structureDrop) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
-    if (!structureDrop) setDropActive(true);
-  }, []);
+    if (!structureDrop) showDropOverlay();
+  }, [showDropOverlay]);
 
   const handleBrowserDragLeave = useCallback((event: React.DragEvent<HTMLElement>) => {
     if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
-    setDropActive(false);
-  }, []);
+    hideDropOverlay();
+  }, [hideDropOverlay]);
 
   const handleBrowserDrop = useCallback(
     (event: React.DragEvent<HTMLElement>) => {
@@ -366,7 +422,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       const fileDrop = Array.from(event.dataTransfer.types).includes("Files");
       if (!fileDrop && !structureDrop) return;
       event.preventDefault();
-      setDropActive(false);
+      hideDropOverlay();
       const payload = structureDrop
         ? readStructureDragPayload(event.dataTransfer)
         : {
@@ -387,7 +443,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
         pushStatus("Drop files into the installed app window to open them.");
       }
     },
-    [dropTargetForElement, pushStatus, runDropAction, runFinderDropAction],
+    [dropTargetForElement, hideDropOverlay, pushStatus, runDropAction, runFinderDropAction],
   );
 
   const handleBrowserPaste = useCallback((event: React.ClipboardEvent<HTMLElement>) => {

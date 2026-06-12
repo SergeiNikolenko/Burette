@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createServer, request } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 async function freePort() {
   const server = createServer();
@@ -38,6 +41,12 @@ function postJson(url, value, headers = {}) {
     headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(value)
   });
+}
+
+function previewDataText(body) {
+  const match = body.match(/^window\.BurreteDataBase64 = "([^"]+)";/);
+  assert.ok(match, 'preview-data.js should contain a base64 payload');
+  return Buffer.from(match[1], 'base64').toString('utf8');
 }
 
 async function waitForReady(child) {
@@ -117,6 +126,55 @@ try {
   assert.equal(configWithCookie.statusCode, 200);
   assert.match(configWithCookie.body, /^window\.BurreteConfig = /);
   assert.match(configWithCookie.body, /window\.BurreteAgentControl = /);
+
+  const tempDir = await mkdtemp(join(tmpdir(), 'burrete-agent-preview-'));
+  const maePath = join(tempDir, 'ligand.mae');
+  await writeFile(maePath, `
+f_m_ct {
+  s_ffio_ct_type
+  :::
+  solute
+  m_atom[2] {
+    i_m_mmod_type
+    i_m_atomic_number
+    r_m_x_coord
+    r_m_y_coord
+    r_m_z_coord
+    s_m_pdb_residue_name
+    s_m_pdb_atom_name
+    i_m_residue_number
+    s_m_chain_name
+    :::
+    1 6 1.000000 2.000000 3.000000 "LIG " " C1 " 402 "B"
+    1 8 2.000000 2.000000 3.000000 "LIG " " O2 " 402 "B"
+    :::
+  }
+}
+`);
+  const maePort = await freePort();
+  const maeChild = spawn(process.execPath, ['scripts/agent-preview.mjs', maePath, '--port', String(maePort)], {
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  try {
+    const maeReady = await waitForReady(maeChild);
+    const maeHtml = await get(maeReady.url);
+    assert.equal(maeHtml.statusCode, 200);
+    const maeCookie = maeHtml.headers['set-cookie']?.find(value => value.startsWith('BurreteAgentPreviewToken='));
+    assert.ok(maeCookie, 'authorized Maestro HTML response should set the preview token cookie');
+    const maeCookieHeader = maeCookie.split(';')[0];
+    const maeConfig = await get(`http://127.0.0.1:${maePort}/preview-config.js`, { Cookie: maeCookieHeader });
+    assert.equal(maeConfig.statusCode, 200);
+    assert.match(maeConfig.body, /"format":"pdb"/);
+    assert.match(maeConfig.body, /"binary":false/);
+    const maeData = await get(`http://127.0.0.1:${maePort}/preview-data.js`, { Cookie: maeCookieHeader });
+    assert.equal(maeData.statusCode, 200);
+    const maePdb = previewDataText(maeData.body);
+    assert.match(maePdb, /^HETATM\s+1 C1\s+LIG B 402/m);
+    assert.match(maePdb, /^CONECT/m);
+  } finally {
+    maeChild.kill('SIGTERM');
+    await rm(tempDir, { recursive: true, force: true });
+  }
 
   const observeWithCookie = await get(`${base}/__agent/observe`, { Cookie: cookieHeader });
   assert.equal(observeWithCookie.statusCode, 200);

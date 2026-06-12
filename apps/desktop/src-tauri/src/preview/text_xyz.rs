@@ -38,6 +38,12 @@ struct MaestroAtom {
     z: f64,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+struct MaestroPdbBlock {
+    ct_type: String,
+    atoms: Vec<MaestroAtom>,
+}
+
 type BoxVectors = [[f64; 3]; 3];
 
 pub(crate) fn converted_data_from_text(
@@ -102,7 +108,7 @@ fn atoms_to_xyz(atoms: &[Atom], label: &str) -> String {
 }
 
 const MAESTRO_PREVIEW_ATOM_LIMIT: usize = 3_000;
-const MAESTRO_PDB_PREVIEW_ATOM_LIMIT: usize = 30_000;
+const MAESTRO_PDB_PREVIEW_ATOM_LIMIT: usize = 99_999;
 
 fn decode_structure_text(data: &[u8], extension: &str) -> Option<String> {
     if extension == "maegz" {
@@ -297,19 +303,62 @@ fn maestro_pdb_data_from_text(data: &[u8], extension: &str) -> Option<ConvertedS
     let decoded = decode_structure_text(data, extension)?;
     let text = decoded.replace("\r\n", "\n").replace('\r', "\n");
     let lines: Vec<&str> = text.lines().collect();
-    let models = parse_maestro_pdb_models(&lines, MAESTRO_PDB_PREVIEW_ATOM_LIMIT)?;
+    let blocks = parse_maestro_pdb_blocks(&lines, MAESTRO_PDB_PREVIEW_ATOM_LIMIT)?;
+    let best_score = blocks
+        .iter()
+        .map(|block| maestro_ct_score(&block.ct_type))
+        .max()?;
+
+    let mut models = blocks
+        .iter()
+        .filter(|block| maestro_ct_score(&block.ct_type) == best_score)
+        .map(|block| {
+            block
+                .atoms
+                .iter()
+                .filter(|atom| !is_maestro_water_atom(atom))
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .filter(|atoms| !atoms.is_empty())
+        .collect::<Vec<_>>();
+    let has_non_solvent_primary = !models.is_empty();
+
+    if models.is_empty() {
+        models = blocks
+            .iter()
+            .filter(|block| maestro_ct_score(&block.ct_type) == best_score)
+            .map(|block| block.atoms.clone())
+            .filter(|atoms| !atoms.is_empty())
+            .collect();
+    }
+
     if models.is_empty() {
         return None;
     }
+
     let data = if models.len() == 1 {
         maestro_atoms_to_pdb(&models[0])
     } else {
         maestro_models_to_pdb(&models)
     };
+    let mut staged_entries = Vec::new();
+    if has_non_solvent_primary {
+        let solvent_atoms = maestro_staged_solvent_atoms(&blocks);
+        if !solvent_atoms.is_empty() {
+            staged_entries.push(ConvertedStagedEntry {
+                label: "Solvent".to_string(),
+                data: maestro_atoms_to_pdb(&solvent_atoms).into_bytes(),
+                extension: "pdb",
+                representation: "solvent-lines",
+            });
+        }
+    }
+
     Some(ConvertedStructureData {
         data: data.into_bytes(),
         extension: "pdb",
-        staged_entries: Vec::new(),
+        staged_entries,
     })
 }
 
@@ -340,9 +389,9 @@ fn gro_pdb_data_from_text(data: &[u8], label: &str) -> Option<ConvertedStructure
     if let Some(box_vectors) = box_vectors {
         staged_entries.push(ConvertedStagedEntry {
             label: "Box".to_string(),
-            data: box_pdb_from_vectors(&box_vectors, label).into_bytes(),
+            data: unit_cell_pdb_from_vectors(&box_vectors, label).into_bytes(),
             extension: "pdb",
-            representation: "box-lines",
+            representation: "unitcell",
         });
     }
     if !water_atoms.is_empty() {
@@ -499,6 +548,62 @@ fn is_gro_water_residue(residue_name: &str) -> bool {
     )
 }
 
+fn maestro_staged_solvent_atoms(blocks: &[MaestroPdbBlock]) -> Vec<MaestroAtom> {
+    let explicit_solvent_atoms = blocks
+        .iter()
+        .filter(|block| {
+            matches!(
+                block.ct_type.trim().to_ascii_lowercase().as_str(),
+                "solvent" | "ion"
+            )
+        })
+        .flat_map(|block| block.atoms.iter().cloned())
+        .map(normalize_maestro_staged_solvent_atom)
+        .collect::<Vec<_>>();
+    if !explicit_solvent_atoms.is_empty() {
+        return explicit_solvent_atoms;
+    }
+
+    let full_system_atoms = blocks
+        .iter()
+        .filter(|block| block.ct_type.trim().eq_ignore_ascii_case("full_system"))
+        .flat_map(|block| block.atoms.iter());
+    let water_atoms = full_system_atoms
+        .filter(|atom| is_maestro_water_atom(atom))
+        .cloned()
+        .map(normalize_maestro_staged_solvent_atom)
+        .collect::<Vec<_>>();
+    if !water_atoms.is_empty() {
+        return water_atoms;
+    }
+
+    blocks
+        .iter()
+        .flat_map(|block| block.atoms.iter())
+        .filter(|atom| is_maestro_water_atom(atom))
+        .cloned()
+        .map(normalize_maestro_staged_solvent_atom)
+        .collect()
+}
+
+fn normalize_maestro_staged_solvent_atom(mut atom: MaestroAtom) -> MaestroAtom {
+    if is_maestro_water_atom(&atom) {
+        atom.residue_name = "HOH".to_string();
+    }
+    atom
+}
+
+fn is_maestro_water_atom(atom: &MaestroAtom) -> bool {
+    is_maestro_water_residue(&atom.residue_name)
+}
+
+fn is_maestro_water_residue(residue_name: &str) -> bool {
+    matches!(
+        residue_name.trim().to_ascii_uppercase().as_str(),
+        "SOL" | "WAT" | "HOH" | "H2O" | "TIP" | "TP3" | "TP4" | "SPC" | "DOD"
+    )
+}
+
 fn gro_element_symbol(atom_name: &str, residue_name: &str) -> Option<String> {
     let cleaned = atom_name
         .trim_start_matches(|ch: char| ch.is_ascii_digit())
@@ -535,10 +640,24 @@ fn parse_maestro_pdb_atoms(lines: &[&str], atom_limit: usize) -> Option<Vec<Maes
 }
 
 fn parse_maestro_pdb_models(lines: &[&str], atom_limit: usize) -> Option<Vec<Vec<MaestroAtom>>> {
+    let blocks = parse_maestro_pdb_blocks(lines, atom_limit)?;
+    let best_score = blocks
+        .iter()
+        .map(|block| maestro_ct_score(&block.ct_type))
+        .max()?;
+    let models = blocks
+        .into_iter()
+        .filter(|block| maestro_ct_score(&block.ct_type) == best_score)
+        .map(|block| block.atoms)
+        .filter(|atoms| !atoms.is_empty())
+        .collect::<Vec<_>>();
+    (!models.is_empty()).then_some(models)
+}
+
+fn parse_maestro_pdb_blocks(lines: &[&str], atom_limit: usize) -> Option<Vec<MaestroPdbBlock>> {
     let mut index = 0;
     let mut current_ct_type = String::new();
-    let mut best_score = -1;
-    let mut best_models: Vec<Vec<MaestroAtom>> = Vec::new();
+    let mut blocks: Vec<MaestroPdbBlock> = Vec::new();
     while index < lines.len() {
         let trimmed = lines[index].trim();
         if trimmed == "f_m_ct {" {
@@ -662,17 +781,13 @@ fn parse_maestro_pdb_models(lines: &[&str], atom_limit: usize) -> Option<Vec<Vec
             }
         }
         if !atoms.is_empty() {
-            let score = maestro_ct_score(&current_ct_type);
-            if score > best_score {
-                best_score = score;
-                best_models.clear();
-                best_models.push(atoms);
-            } else if score == best_score {
-                best_models.push(atoms);
-            }
+            blocks.push(MaestroPdbBlock {
+                ct_type: current_ct_type.clone(),
+                atoms,
+            });
         }
     }
-    (!best_models.is_empty()).then_some(best_models)
+    (!blocks.is_empty()).then_some(blocks)
 }
 
 fn parse_maestro_ct_type(lines: &[&str], index: &mut usize) -> Option<String> {
@@ -706,8 +821,8 @@ fn parse_maestro_ct_type(lines: &[&str], index: &mut usize) -> Option<String> {
 
 fn maestro_ct_score(ct_type: &str) -> i32 {
     match ct_type.trim().to_ascii_lowercase().as_str() {
-        "solute" => 4,
-        "full_system" => 3,
+        "full_system" => 4,
+        "solute" => 3,
         "ion" => 1,
         "solvent" => 0,
         _ => 2,
@@ -954,68 +1069,10 @@ fn pdb_cryst1_line(box_vectors: &BoxVectors) -> String {
     )
 }
 
-fn add_vectors(first: &[f64; 3], second: &[f64; 3]) -> [f64; 3] {
-    [
-        first[0] + second[0],
-        first[1] + second[1],
-        first[2] + second[2],
-    ]
-}
-
-fn box_vertices(box_vectors: &BoxVectors) -> [[f64; 3]; 8] {
-    let [a, b, c] = box_vectors;
-    let origin = [0.0, 0.0, 0.0];
-    let ab = add_vectors(a, b);
-    let ac = add_vectors(a, c);
-    let bc = add_vectors(b, c);
-    [origin, *a, ab, *b, *c, ac, add_vectors(&ab, c), bc]
-}
-
-fn pdb_box_atom_line(serial: usize, name: &str, vertex: &[f64; 3]) -> String {
-    format!(
-        "HETATM{serial:>5} {name:<4} BOX Z9999    {x:>8.3}{y:>8.3}{z:>8.3}  1.00  0.00           C  ",
-        x = vertex[0],
-        y = vertex[1],
-        z = vertex[2],
-    )
-}
-
-fn push_pdb_box_lines(pdb: &mut String, box_vectors: &BoxVectors, serial_start: usize) {
-    for (index, vertex) in box_vertices(box_vectors).iter().enumerate() {
-        pdb.push_str(&pdb_box_atom_line(
-            serial_start + index,
-            &format!("B{}", index + 1),
-            vertex,
-        ));
-        pdb.push('\n');
-    }
-    for (first, second) in [
-        (0, 1),
-        (1, 2),
-        (2, 3),
-        (3, 0),
-        (4, 5),
-        (5, 6),
-        (6, 7),
-        (7, 4),
-        (0, 4),
-        (1, 5),
-        (2, 6),
-        (3, 7),
-    ] {
-        pdb.push_str(&format!(
-            "CONECT{:>5}{:>5}\n",
-            serial_start + first,
-            serial_start + second
-        ));
-    }
-}
-
-fn box_pdb_from_vectors(box_vectors: &BoxVectors, label: &str) -> String {
+fn unit_cell_pdb_from_vectors(box_vectors: &BoxVectors, label: &str) -> String {
     let mut pdb = pdb_cryst1_line(box_vectors);
     pdb.push('\n');
-    pdb.push_str(&format!("REMARK Box split from {label}\n"));
-    push_pdb_box_lines(&mut pdb, box_vectors, 1);
+    pdb.push_str(&format!("REMARK Unit cell split from {label}\n"));
     pdb.push_str("END\n");
     pdb
 }
@@ -1433,7 +1490,7 @@ generated
     }
 
     #[test]
-    fn converts_gro_box_to_pdb_cryst1_and_frame_edges() {
+    fn converts_gro_box_to_pdb_cryst1_and_unit_cell_entry() {
         let data = br#"GRO box fixture
 2
     1MOL      C    1   1.000   2.000   3.000
@@ -1448,12 +1505,12 @@ generated
         assert!(pdb.contains("REMARK Converted from box.gro\nHETATM    1 C    MOL A   1"));
         assert!(!pdb.contains("BOX Z9999"));
         assert_eq!(converted.staged_entries.len(), 2);
-        assert_eq!(converted.staged_entries[0].representation, "box-lines");
+        assert_eq!(converted.staged_entries[0].representation, "unitcell");
         let box_pdb = String::from_utf8(converted.staged_entries[0].data.clone()).unwrap();
-        assert!(box_pdb.contains("HETATM    1 B1   BOX Z9999       0.000   0.000   0.000"));
-        assert!(box_pdb.contains("HETATM    2 B2   BOX Z9999      10.000   1.000   2.000"));
-        assert!(box_pdb.contains("HETATM    3 B3   BOX Z9999      13.000  21.000   6.000"));
-        assert!(box_pdb.contains("CONECT    1    2"));
+        assert!(box_pdb.starts_with("CRYST1   10.247   20.616   31.000"));
+        assert!(box_pdb.contains("REMARK Unit cell split from box.gro"));
+        assert!(!box_pdb.contains("BOX Z9999"));
+        assert!(!box_pdb.contains("CONECT"));
         assert_eq!(converted.staged_entries[1].representation, "solvent-lines");
     }
 
@@ -1589,6 +1646,158 @@ f_m_ct {
         assert!(pdb.contains("   1.000   2.000   3.000"));
         assert!(pdb.contains("   5.000   6.000   7.000"));
         assert!(pdb.ends_with("END\n"));
+    }
+
+    #[test]
+    fn prefers_full_system_maestro_ct_over_solute() {
+        let data = br#"
+f_m_ct {
+  s_ffio_ct_type
+  :::
+  full_system
+  m_atom[2] {
+    i_m_mmod_type
+    i_m_atomic_number
+    r_m_x_coord
+    r_m_y_coord
+    r_m_z_coord
+    s_m_pdb_residue_name
+    s_m_pdb_atom_name
+    i_m_residue_number
+    s_m_chain_name
+    :::
+    1 6 1.000000 2.000000 3.000000 "ALA " " CA " 10 "A"
+    1 8 2.000000 3.000000 4.000000 "POPC" " O1 " 1 "M"
+    :::
+  }
+}
+f_m_ct {
+  s_ffio_ct_type
+  :::
+  solute
+  m_atom[1] {
+    i_m_mmod_type
+    i_m_atomic_number
+    r_m_x_coord
+    r_m_y_coord
+    r_m_z_coord
+    s_m_pdb_residue_name
+    s_m_pdb_atom_name
+    i_m_residue_number
+    s_m_chain_name
+    :::
+    1 6 9.000000 9.000000 9.000000 "ALA " " CA " 10 "A"
+    :::
+  }
+}
+"#;
+        let converted = converted_data_from_text(data, "cms", "system.cms").unwrap();
+        let pdb = String::from_utf8(converted.data).unwrap();
+
+        assert!(pdb.contains("   1.000   2.000   3.000"));
+        assert!(pdb.contains(" POP M   1"));
+        assert!(!pdb.contains("   9.000   9.000   9.000"));
+    }
+
+    #[test]
+    fn splits_maestro_solvent_ct_into_staged_lines() {
+        let data = br#"
+f_m_ct {
+  s_ffio_ct_type
+  :::
+  solute
+  m_atom[1] {
+    i_m_mmod_type
+    i_m_atomic_number
+    r_m_x_coord
+    r_m_y_coord
+    r_m_z_coord
+    s_m_pdb_residue_name
+    s_m_pdb_atom_name
+    i_m_residue_number
+    s_m_chain_name
+    :::
+    1 6 1.000000 2.000000 3.000000 "ALA " " CA " 10 "A"
+    :::
+  }
+}
+f_m_ct {
+  s_ffio_ct_type
+  :::
+  solvent
+  m_atom[2] {
+    i_m_mmod_type
+    i_m_atomic_number
+    r_m_x_coord
+    r_m_y_coord
+    r_m_z_coord
+    s_m_pdb_residue_name
+    s_m_pdb_atom_name
+    i_m_residue_number
+    s_m_chain_name
+    :::
+    1 8 4.000000 5.000000 6.000000 "WAT " " O  " 20 "W"
+    1 1 4.700000 5.000000 6.000000 "WAT " " H1 " 20 "W"
+    :::
+  }
+}
+"#;
+        let converted = converted_data_from_text(data, "cms", "system.cms").unwrap();
+        let pdb = String::from_utf8(converted.data).unwrap();
+
+        assert!(pdb.contains(" ALA A  10"));
+        assert!(!pdb.contains("   4.000   5.000   6.000"));
+        assert_eq!(converted.staged_entries.len(), 1);
+        assert_eq!(converted.staged_entries[0].label, "Solvent");
+        assert_eq!(converted.staged_entries[0].representation, "solvent-lines");
+        let solvent_pdb = String::from_utf8(converted.staged_entries[0].data.clone()).unwrap();
+        assert!(solvent_pdb.contains(" HOH W  20"));
+        assert!(solvent_pdb.contains("   4.000   5.000   6.000"));
+        assert!(solvent_pdb.ends_with("END\n"));
+    }
+
+    #[test]
+    fn keeps_large_maestro_full_system_beyond_legacy_preview_limit() {
+        let mut data = String::from(
+            r#"
+f_m_ct {
+  s_ffio_ct_type
+  :::
+  full_system
+  m_atom[30001] {
+    i_m_mmod_type
+    i_m_atomic_number
+    r_m_x_coord
+    r_m_y_coord
+    r_m_z_coord
+    s_m_pdb_residue_name
+    s_m_pdb_atom_name
+    i_m_residue_number
+    s_m_chain_name
+    :::
+"#,
+        );
+        for index in 0..30_001 {
+            data.push_str(&format!(
+                "    1 6 {x:.6} 0.000000 0.000000 \"POPC\" \" C1 \" {residue} \"M\"\n",
+                x = index as f64 * 0.01,
+                residue = index + 1
+            ));
+        }
+        data.push_str(
+            r#"    :::
+  }
+}
+"#,
+        );
+
+        let converted =
+            converted_data_from_text(data.as_bytes(), "cms", "large-system.cms").unwrap();
+        let pdb = String::from_utf8(converted.data).unwrap();
+
+        assert_eq!(pdb.matches("\nHETATM").count(), 30_000);
+        assert!(pdb.starts_with("HETATM    1"));
+        assert!(pdb.contains("HETATM30001"));
     }
 
     #[test]

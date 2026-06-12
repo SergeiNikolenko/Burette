@@ -69,6 +69,18 @@ export type DropAction =
       paths: string[];
     }
   | {
+      kind: "open-documents-combined-poses";
+      paths: string[];
+    }
+  | {
+      kind: "open-documents-combined-grid";
+      paths: string[];
+    }
+  | {
+      kind: "open-text-files";
+      paths: string[];
+    }
+  | {
       kind: "open-structure-records";
       paths: string[];
       records: StructureDragRecord[];
@@ -101,11 +113,11 @@ export function resolveDropActionChoices(
   source: DropSourceContext = UNKNOWN_DROP_SOURCE,
 ): DropActionChoice[] {
   if (payload.paths.length === 0 && payload.records.length === 0) return [];
-  if (target.kind === "workspace") return [choiceForWorkspaceDrop(payload, source)];
+  if (target.kind === "workspace") return workspaceDropActionChoices(payload, source);
   if (target.kind === "ketcher") {
     const importPayload = ketcherImportPayload(payload);
     if (importPayload.paths.length === 0 && importPayload.records.length === 0) {
-      return [choiceForWorkspaceDrop(payload, source)];
+      return [defaultWorkspaceDropChoice(payload, source)];
     }
     return withOpenSeparatelyChoices(payload, [
       choice("import-ketcher-structures", "Add to Ketcher", "default", {
@@ -153,7 +165,7 @@ export function resolveDropActionChoices(
     return withOpenSeparatelyChoices(payload, tagChoicesWithSource(dockingChoices, source), source);
   }
 
-  return [choiceForWorkspaceDrop(payload, source)];
+  return [defaultWorkspaceDropChoice(payload, source)];
 }
 
 function gridAppendPayload(payload: StructureDragPayload) {
@@ -223,6 +235,13 @@ function withOpenSeparatelyChoices(
   const openSeparately = workspaceDropAction(payload);
   if (openSeparately.kind === "open-documents" || openSeparately.kind === "open-structure-records") {
     choices.push(choice(openSeparately.kind, "Open separately", "alternative", openSeparately, source));
+  }
+  const textPaths = uniquePaths(payload.paths);
+  if (textPaths.length > 0) {
+    choices.push(choice("open-text-files", "Open as text file", "alternative", {
+      kind: "open-text-files",
+      paths: textPaths,
+    }, source));
   }
   return choices;
 }
@@ -304,7 +323,25 @@ function uniquePaths(paths: string[]) {
   return Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
 }
 
-function choiceForWorkspaceDrop(payload: StructureDragPayload, source: DropSourceContext): DropActionChoice {
+function workspaceDropActionChoices(payload: StructureDragPayload, source: DropSourceContext): DropActionChoice[] {
+  const defaultChoice = defaultWorkspaceDropChoice(payload, source);
+  if (defaultChoice.action.kind !== "open-documents" || defaultChoice.action.paths.length < 2) {
+    return [defaultChoice];
+  }
+  return [
+    choice("open-documents-combined-poses", "Open in One Window", "default", {
+      kind: "open-documents-combined-poses",
+      paths: defaultChoice.action.paths,
+    }, source),
+    choice("open-documents-combined-grid", "Open as Grid", "alternative", {
+      kind: "open-documents-combined-grid",
+      paths: defaultChoice.action.paths,
+    }, source),
+    choice(defaultChoice.action.kind, "Open as document tabs", "alternative", defaultChoice.action, source),
+  ];
+}
+
+function defaultWorkspaceDropChoice(payload: StructureDragPayload, source: DropSourceContext): DropActionChoice {
   const action = workspaceDropAction(payload);
   return choice(
     action.kind,

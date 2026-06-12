@@ -20,9 +20,6 @@
 			<array>
 				<string>com.local.burrete10.csv</string>
 				<string>com.local.burrete10.tsv</string>
-				<string>public.delimited-values-text</string>
-				<string>public.comma-separated-values-text</string>
-				<string>public.tab-separated-values-text</string>
 			</array>
 		</dict>
 		<dict>
@@ -47,6 +44,7 @@
 				<string>in</string>
 				<string>inp</string>
 				<string>lammpstrj</string>
+				<string>log</string>
 				<string>mae</string>
 				<string>mae.gz</string>
 				<string>maegz</string>
@@ -154,6 +152,7 @@
 					<string>fdf</string>
 					<string>in</string>
 					<string>inp</string>
+					<string>log</string>
 					<string>nw</string>
 					<string>out</string>
 					<string>psi4</string>

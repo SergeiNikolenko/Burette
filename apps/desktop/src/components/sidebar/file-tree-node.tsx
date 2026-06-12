@@ -237,6 +237,14 @@ export function ProjectItem({
         text: "Open",
         action: openItem,
       },
+      {
+        kind: "item" as const,
+        id: "copy-structure-path",
+        text: "Copy Path",
+        action: () => {
+          void actions.copyPath(item.path, "structure");
+        },
+      },
       ...(isMoleculeCollectionPath(item.path)
         ? [
             { kind: "separator" as const },

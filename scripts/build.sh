@@ -120,11 +120,6 @@ clean_detritus() {
     local bundle="$1"
     xattr -cr "$bundle" 2>/dev/null || true
     dot_clean -m "$bundle" 2>/dev/null || true
-    while IFS= read -r -d '' entry; do
-      for attr in "${attrs[@]}"; do
-        xattr -d "$attr" "$entry" 2>/dev/null || true
-      done
-    done < <(find "$bundle" -print0 2>/dev/null)
   }
   for attr in "${attrs[@]}"; do
     xattr -d "$attr" "$p" 2>/dev/null || true
@@ -307,6 +302,9 @@ fi
 pushd "$SAFE_ROOT" >/dev/null
 rm -rf build
 bun install --frozen-lockfile --ignore-scripts
+pushd apps/desktop >/dev/null
+../../node_modules/.bin/vite build --config vite.config.ts
+popd >/dev/null
 bun run build:tauri
 cargo build --release --bin burrete-core-bridge
 XCODE_SIGN_ARGS=(CODE_SIGN_IDENTITY="$SIGN_IDENTITY" CODE_SIGNING_ALLOWED=YES)
