@@ -91,6 +91,13 @@ fn atoms_from_text(data: &[u8], extension: &str) -> Option<Vec<Atom>> {
         "out" => parse_orca_atoms(&lines),
         "abi" => parse_abinit_atoms(&lines),
         "cif" | "mmcif" | "mcif" => parse_cif_core_atoms(&lines),
+        "inpcrd" | "rst7" | "restrt" => parse_amber_restart_atoms(&lines),
+        "lammpstrj" | "dump" => parse_lammps_dump_atoms(&lines),
+        "crd" => parse_charmm_coordinate_atoms(&lines),
+        "rst" => {
+            parse_charmm_coordinate_atoms(&lines).or_else(|| parse_amber_restart_atoms(&lines))
+        }
+        "state" | "xml" => parse_xml_position_atoms(&text).or_else(|| parse_hoomd_xml_atoms(&text)),
         "cms" | "mae" | "maegz" => parse_maestro_atoms(&lines, MAESTRO_PREVIEW_ATOM_LIMIT),
         _ => None,
     }
@@ -284,6 +291,232 @@ fn parse_best_coordinate_block(lines: &[&str]) -> Option<Vec<Atom>> {
         best = current;
     }
     (best.len() >= 2).then_some(best)
+}
+
+fn parse_amber_restart_atoms(lines: &[&str]) -> Option<Vec<Atom>> {
+    if lines.len() < 2 {
+        return None;
+    }
+    let atom_count = fields(lines[1]).first()?.parse::<usize>().ok()?;
+    if atom_count == 0 {
+        return None;
+    }
+    let mut values = Vec::with_capacity(atom_count * 3);
+    for line in &lines[2..] {
+        for token in fields(line) {
+            if let Ok(value) = token.parse::<f64>() {
+                values.push(value);
+                if values.len() >= atom_count * 3 {
+                    break;
+                }
+            }
+        }
+        if values.len() >= atom_count * 3 {
+            break;
+        }
+    }
+    if values.len() < atom_count * 3 {
+        return None;
+    }
+    let mut atoms = Vec::with_capacity(atom_count);
+    for index in 0..atom_count {
+        atoms.push(Atom {
+            symbol: "C".to_string(),
+            x: values[index * 3],
+            y: values[index * 3 + 1],
+            z: values[index * 3 + 2],
+        });
+    }
+    Some(atoms)
+}
+
+fn parse_charmm_coordinate_atoms(lines: &[&str]) -> Option<Vec<Atom>> {
+    let mut atoms = Vec::new();
+    for line in lines {
+        let parts = fields(line);
+        if parts.len() < 7 {
+            continue;
+        }
+        let x = parts[4].parse::<f64>().ok();
+        let y = parts[5].parse::<f64>().ok();
+        let z = parts[6].parse::<f64>().ok();
+        let (Some(x), Some(y), Some(z)) = (x, y, z) else {
+            continue;
+        };
+        let symbol = element_symbol_from_atom_name(parts[3])
+            .or_else(|| element_symbol_from_atom_name(parts[2]))
+            .unwrap_or_else(|| "C".to_string());
+        atoms.push(Atom { symbol, x, y, z });
+    }
+    (!atoms.is_empty()).then_some(atoms)
+}
+
+fn parse_lammps_dump_atoms(lines: &[&str]) -> Option<Vec<Atom>> {
+    let mut atoms = Vec::new();
+    let mut in_atoms = false;
+    let mut x_index = None;
+    let mut y_index = None;
+    let mut z_index = None;
+    let mut symbol_index = None;
+    let mut type_index = None;
+    for line in lines {
+        if line.starts_with("ITEM: ") {
+            if in_atoms && !atoms.is_empty() {
+                break;
+            }
+            in_atoms = false;
+            if let Some(rest) = line.strip_prefix("ITEM: ATOMS") {
+                let columns: Vec<&str> = rest.split_whitespace().collect();
+                x_index = coordinate_column_index(&columns, &["x", "xu", "xs", "xsu"]);
+                y_index = coordinate_column_index(&columns, &["y", "yu", "ys", "ysu"]);
+                z_index = coordinate_column_index(&columns, &["z", "zu", "zs", "zsu"]);
+                symbol_index = coordinate_column_index(&columns, &["element", "symbol", "name"]);
+                type_index = coordinate_column_index(&columns, &["type"]);
+                in_atoms = x_index.is_some() && y_index.is_some() && z_index.is_some();
+            }
+            continue;
+        }
+        if !in_atoms {
+            continue;
+        }
+        let parts = fields(line);
+        let x = x_index
+            .and_then(|index| parts.get(index))
+            .and_then(|value| value.parse::<f64>().ok());
+        let y = y_index
+            .and_then(|index| parts.get(index))
+            .and_then(|value| value.parse::<f64>().ok());
+        let z = z_index
+            .and_then(|index| parts.get(index))
+            .and_then(|value| value.parse::<f64>().ok());
+        let (Some(x), Some(y), Some(z)) = (x, y, z) else {
+            continue;
+        };
+        let symbol = symbol_index
+            .and_then(|index| parts.get(index))
+            .and_then(|value| element_symbol_from_atom_name(value))
+            .or_else(|| {
+                type_index
+                    .and_then(|index| parts.get(index))
+                    .and_then(|value| element_symbol_from_atom_name(value))
+            })
+            .unwrap_or_else(|| "C".to_string());
+        atoms.push(Atom { symbol, x, y, z });
+    }
+    if atoms.is_empty() {
+        None
+    } else {
+        Some(atoms)
+    }
+}
+
+fn coordinate_column_index(columns: &[&str], names: &[&str]) -> Option<usize> {
+    columns.iter().position(|column| {
+        let lower = column.to_ascii_lowercase();
+        names.iter().any(|name| lower == *name)
+    })
+}
+
+fn parse_xml_position_atoms(text: &str) -> Option<Vec<Atom>> {
+    let mut atoms = Vec::new();
+    for segment in text.split("<Position").skip(1) {
+        let attributes = segment.split('>').next().unwrap_or_default();
+        let x = xml_number_attribute(attributes, "x");
+        let y = xml_number_attribute(attributes, "y");
+        let z = xml_number_attribute(attributes, "z");
+        let (Some(x), Some(y), Some(z)) = (x, y, z) else {
+            continue;
+        };
+        atoms.push(Atom {
+            symbol: "C".to_string(),
+            x,
+            y,
+            z,
+        });
+    }
+    (!atoms.is_empty()).then_some(atoms)
+}
+
+fn parse_hoomd_xml_atoms(text: &str) -> Option<Vec<Atom>> {
+    let lower = text.to_ascii_lowercase();
+    if !lower.contains("<hoomd_xml") && !lower.contains("<configuration") {
+        return None;
+    }
+    let position_block = xml_text_block(text, "position")?;
+    let values = numeric_tokens(position_block);
+    if values.len() < 3 {
+        return None;
+    }
+    let symbols: Vec<String> = xml_text_block(text, "type")
+        .map(|block| {
+            fields(block)
+                .iter()
+                .map(|value| {
+                    element_symbol_from_atom_name(value).unwrap_or_else(|| "C".to_string())
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut atoms = Vec::new();
+    for index in (0..values.len().saturating_sub(2)).step_by(3) {
+        let atom_index = index / 3;
+        atoms.push(Atom {
+            symbol: symbols
+                .get(atom_index)
+                .cloned()
+                .unwrap_or_else(|| "C".to_string()),
+            x: values[index],
+            y: values[index + 1],
+            z: values[index + 2],
+        });
+    }
+    (!atoms.is_empty()).then_some(atoms)
+}
+
+fn xml_text_block<'a>(text: &'a str, tag: &str) -> Option<&'a str> {
+    let lower = text.to_ascii_lowercase();
+    let open = format!("<{tag}");
+    let close = format!("</{tag}>");
+    let start = lower.find(&open)?;
+    let content_start = text[start..].find('>')? + start + 1;
+    let end = lower[content_start..].find(&close)? + content_start;
+    Some(&text[content_start..end])
+}
+
+fn numeric_tokens(text: &str) -> Vec<f64> {
+    fields(text)
+        .iter()
+        .filter_map(|value| value.parse::<f64>().ok())
+        .collect()
+}
+
+fn xml_number_attribute(attributes: &str, name: &str) -> Option<f64> {
+    for quote in ['"', '\''] {
+        let prefix = format!("{name}={quote}");
+        if let Some(start) = attributes.find(&prefix) {
+            let rest = &attributes[start + prefix.len()..];
+            let end = rest.find(quote)?;
+            return rest[..end].parse::<f64>().ok();
+        }
+    }
+    None
+}
+
+fn element_symbol_from_atom_name(value: &str) -> Option<String> {
+    let clean: String = value
+        .trim_start_matches(|character: char| character.is_ascii_digit())
+        .chars()
+        .filter(|character| character.is_ascii_alphabetic())
+        .collect();
+    if clean.is_empty() {
+        return None;
+    }
+    let two = normalize_element_symbol(&clean.chars().take(2).collect::<String>());
+    if is_element_symbol(&two) {
+        return Some(two);
+    }
+    let one = normalize_element_symbol(&clean.chars().take(1).collect::<String>());
+    is_element_symbol(&one).then_some(one)
 }
 
 fn parse_abinit_atoms(lines: &[&str]) -> Option<Vec<Atom>> {
@@ -1538,6 +1771,110 @@ xangst
         assert!(pdb.contains("HETATM    1 C    MOL A   1       8.884   8.904   7.568"));
         assert!(pdb.contains("HETATM    2 N    MOL A   1       9.330  10.774   5.875"));
         assert!(pdb.contains("HETATM    3 O    MOL A   1       9.703   7.925   8.144"));
+    }
+
+    #[test]
+    fn converts_amber_restart_coordinates_to_pdb_for_molstar() {
+        let data = br#"Amber restart
+3
+  0.0000000  0.0000000  0.0000000  1.5200000  0.0000000  0.0000000
+  2.1200000  1.0000000  0.0000000
+"#;
+
+        let converted = converted_data_from_text(data, "inpcrd", "amber.inpcrd").unwrap();
+        let pdb = String::from_utf8(converted.data).unwrap();
+
+        assert_eq!(converted.extension, "pdb");
+        assert!(pdb.starts_with("REMARK Converted from amber.inpcrd\nHETATM"));
+        assert!(pdb.contains("HETATM    1 C    MOL A   1       0.000   0.000   0.000"));
+        assert!(pdb.contains("HETATM    3 C    MOL A   1       2.120   1.000   0.000"));
+    }
+
+    #[test]
+    fn converts_charmm_coordinates_to_pdb_for_molstar() {
+        let data = br#"* CHARMM coordinates
+*
+    2 EXT
+    1    1 MOL  C1     0.000000    0.000000    0.000000 MOL  1  0.00000
+    2    1 MOL  O1     1.240000    0.000000    0.000000 MOL  1  0.00000
+"#;
+
+        let converted = converted_data_from_text(data, "crd", "charmm.crd").unwrap();
+        let pdb = String::from_utf8(converted.data).unwrap();
+
+        assert_eq!(converted.extension, "pdb");
+        assert!(pdb.starts_with("REMARK Converted from charmm.crd\nHETATM"));
+        assert!(pdb.contains("HETATM    1 C    MOL A   1       0.000   0.000   0.000"));
+        assert!(pdb.contains("HETATM    2 O    MOL A   1       1.240   0.000   0.000"));
+    }
+
+    #[test]
+    fn converts_openmm_state_positions_to_pdb_for_molstar() {
+        let data = br#"<State>
+  <Positions>
+    <Position x="0.0" y="0.0" z="0.0"/>
+    <Position x="0.8" y="0.0" z="0.0"/>
+  </Positions>
+</State>
+"#;
+
+        let converted = converted_data_from_text(data, "state", "openmm.state").unwrap();
+        let pdb = String::from_utf8(converted.data).unwrap();
+
+        assert_eq!(converted.extension, "pdb");
+        assert!(pdb.starts_with("REMARK Converted from openmm.state\nHETATM"));
+        assert!(pdb.contains("HETATM    2 C    MOL A   1       0.800   0.000   0.000"));
+    }
+
+    #[test]
+    fn converts_hoomd_xml_positions_to_pdb_for_molstar() {
+        let data = br#"<hoomd_xml version="1.6">
+  <configuration time_step="0" dimensions="3" natoms="2">
+    <position>
+      0.0 0.0 0.0
+      1.2 0.0 0.0
+    </position>
+    <type>
+      C O
+    </type>
+  </configuration>
+</hoomd_xml>
+"#;
+        let converted = converted_data_from_text(data, "xml", "hoomd.xml").unwrap();
+        let pdb = String::from_utf8(converted.data).unwrap();
+
+        assert_eq!(converted.extension, "pdb");
+        assert!(pdb.starts_with("REMARK Converted from hoomd.xml\nHETATM"));
+        assert!(pdb.contains("HETATM    1 C    MOL A   1       0.000   0.000   0.000"));
+        assert!(pdb.contains("HETATM    2 O    MOL A   1       1.200   0.000   0.000"));
+    }
+
+    #[test]
+    fn leaves_non_coordinate_xml_unconverted() {
+        let data = br#"<System><Forces/></System>"#;
+        assert!(converted_data_from_text(data, "xml", "openmm-system.xml").is_none());
+    }
+
+    #[test]
+    fn converts_lammps_dump_first_frame_to_pdb_for_molstar() {
+        let data = br#"ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS pp pp pp
+0 10
+0 10
+0 10
+ITEM: ATOMS id element x y z
+1 C 0.0 0.0 0.0
+2 O 1.2 0.0 0.0
+"#;
+        let converted = converted_data_from_text(data, "lammpstrj", "dump.lammpstrj").unwrap();
+        let pdb = String::from_utf8(converted.data).unwrap();
+
+        assert_eq!(converted.extension, "pdb");
+        assert!(pdb.starts_with("REMARK Converted from dump.lammpstrj\nHETATM"));
+        assert!(pdb.contains("HETATM    2 O    MOL A   1       1.200   0.000   0.000"));
     }
 
     #[test]

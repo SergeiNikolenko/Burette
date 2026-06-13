@@ -215,6 +215,7 @@ function DockPanelContent({
   const dockDocument = dockDocumentId ? state.documents.find((document) => document.id === dockDocumentId) ?? null : null;
   const dockTextDocument = dockDocumentId ? state.textDocuments.find((document) => document.id === dockDocumentId) ?? null : null;
   const dockStructureDocument = dockDocument ?? activeDocument;
+  const activeTextDocument = activeTextDocumentFromState(state);
   const fileEntries = activeTabKind === "files"
     ? dockFileEntries({
         dockDrops,
@@ -283,6 +284,7 @@ function DockPanelContent({
     return (
       <ActiveDocumentTextPanel
         activeDocument={dockStructureDocument}
+        activeTextDocument={activeTextDocument}
         textDocuments={state.textDocuments}
         openPaths={actions.openPaths}
         onStructureSelection={actions.selectTextStructure}
@@ -396,26 +398,28 @@ function StructureBriefTextRow({ label, value }: { label: string; value: string 
 
 function ActiveDocumentTextPanel({
   activeDocument,
+  activeTextDocument,
   textDocuments,
   openPaths,
   onStructureSelection,
 }: {
   activeDocument: ViewerDocument | null;
+  activeTextDocument: TextFileDocument | null;
   textDocuments: TextFileDocument[];
   openPaths: ShellActions["openPaths"];
   onStructureSelection: ShellActions["selectTextStructure"];
 }) {
   const textPreviewLimit = isMaestroStructure(activeDocument) ? 1_500_000 : 3_000_000;
-  const existingDocument = activeDocument
+  const existingDocument = activeTextDocument ?? (activeDocument
     ? textDocuments.find((document) => document.path === activeDocument.path) ?? null
-    : null;
+    : null);
   const [loadedDocument, setLoadedDocument] = useState<TextFileDocument | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoadedDocument(null);
     setError(null);
-    if (!activeDocument || existingDocument) return undefined;
+    if (!activeDocument || activeTextDocument || existingDocument) return undefined;
     let cancelled = false;
     void readStructureTextDocument(activeDocument.path, {
       id: activeDocument.id,
@@ -435,12 +439,12 @@ function ActiveDocumentTextPanel({
     return () => {
       cancelled = true;
     };
-  }, [activeDocument, existingDocument, textPreviewLimit]);
+  }, [activeDocument, activeTextDocument, existingDocument, textPreviewLimit]);
 
-  if (!activeDocument) {
+  if (!activeDocument && !activeTextDocument) {
     return (
       <div className="dock-content dock-content-empty">
-        <div className="dock-empty dock-empty-large">Open a structure to inspect its text</div>
+        <div className="dock-empty dock-empty-large">Open a structure or text file to inspect its text</div>
       </div>
     );
   }
@@ -465,6 +469,16 @@ function ActiveDocumentTextPanel({
 
 function isMaestroStructure(document: ViewerDocument | null) {
   return document ? ["mae", "maegz", "cms"].includes(document.extension.toLowerCase()) : false;
+}
+
+function activeTextDocumentFromState(state: ShellViewState) {
+  const location = state.activeTab?.location;
+  if (location?.kind !== "text-file") return null;
+  return (
+    state.textDocuments.find((document) => document.id === location.documentId) ??
+    state.textDocuments.find((document) => document.path === location.path) ??
+    null
+  );
 }
 
 function activeDockFileEntryKey(
