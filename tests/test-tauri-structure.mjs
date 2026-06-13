@@ -708,6 +708,9 @@ assert.match(windowsSource, /pub\(crate\) const MAIN_WINDOW_LABEL: &str = "main"
 assert.match(windowsSource, /pub\(crate\) const WORKSPACE_WINDOW_PREFIX: &str = "workspace-"/);
 assert.match(windowsSource, /WebviewWindowBuilder::new\(app, &label, url\)/);
 assert.match(windowsSource, /index\.html\?burreteWindow=\{label\}/);
+assert.match(windowsSource, /\.transparent\(true\)\s*\.background_color\(Color\(0, 0, 0, 0\)\)/);
+assert.match(windowsSource, /Effect::HudWindow/);
+assert.match(windowsSource, /EffectState::Active/);
 assert.match(windowsSource, /pub\(crate\) fn runtime_document_id/);
 assert.match(windowsSource, /unregister_prefix/);
 assert.match(lib, /let launch_mode = startup::LaunchMode::current\(&argv\);/);

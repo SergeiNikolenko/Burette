@@ -1,3 +1,6 @@
+use tauri::window::Color;
+#[cfg(target_os = "macos")]
+use tauri::window::{Effect, EffectState, EffectsBuilder};
 use tauri::{
     LogicalPosition, LogicalSize, Manager, Runtime, Size, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder,
@@ -83,13 +86,20 @@ fn create_workspace_window<R: Runtime>(
         .visible(true)
         .focused(true)
         .prevent_overflow();
-    #[cfg(any(not(target_os = "macos"), feature = "macos-private-api"))]
-    let builder = builder.transparent(true);
+    let builder = builder
+        .transparent(true)
+        .background_color(Color(0, 0, 0, 0));
     #[cfg(target_os = "macos")]
     let builder = builder
         .title_bar_style(tauri::TitleBarStyle::Overlay)
         .hidden_title(true)
         .traffic_light_position(LogicalPosition::new(20.0, 29.0))
+        .effects(
+            EffectsBuilder::new()
+                .effect(Effect::HudWindow)
+                .state(EffectState::Active)
+                .build(),
+        )
         .shadow(true);
     let window = builder.build()?;
     attach_window_cleanup(app, &window);

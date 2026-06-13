@@ -175,11 +175,6 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   -webkit-backdrop-filter: none;
 }
 
-.app-shell[data-runtime="tauri"][data-active-page-kind="ketcher"] {
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
 .drag-region {
   position: absolute;
   inset: 0 0 auto 0;
