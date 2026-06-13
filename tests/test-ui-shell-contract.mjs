@@ -20,6 +20,7 @@ const [
   shellStore,
   structureBrief,
   structureComposition,
+  structureText,
   dock,
   packageJson,
   themeSource,
@@ -121,6 +122,7 @@ const [
   source('apps/desktop/src/stores/shell-store.ts'),
   source('apps/desktop/src/lib/structure-brief.ts'),
   source('apps/desktop/src/lib/structure-composition.ts'),
+  source('apps/desktop/src/lib/structure-text.ts'),
   source('apps/desktop/src/lib/dock.ts'),
   source('package.json'),
   source('apps/desktop/src/lib/theme.ts'),
@@ -219,6 +221,7 @@ const burretePermissions = await source('apps/desktop/src-tauri/permissions/burr
 const rendererPolicy = await source('PreviewExtension/RendererPolicy.swift');
 const defaultCapability = await source('apps/desktop/src-tauri/capabilities/default.json');
 const fepSetupStoreTest = await source('tests/test-fep-setup-store.mjs');
+const buretteAgent = await source('PreviewExtension/Web/burette-agent.js');
 
 const sidebarSurface = [sidebar, sidebarFileBrowser, sidebarFileTreeNode, sidebarWorkspaceSwitcher, settingsSidebar].join('\n');
 const editorTabDragStart = editorTabs.match(/onDragStart=\{\(event\) => \{[\s\S]*?\n                \}\}/)?.[0] ?? '';
@@ -496,6 +499,8 @@ assert.match(viteConfig, /res\.setHeader\("Content-Type", "application\/wasm"\)/
 assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/read-file"/);
 assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/read-text-file"/);
 assert.match(viteConfig, /const TEXT_FILE_READ_LIMIT = 12 \* 1024 \* 1024/);
+assert.match(viteConfig, /const maxBytes = textFileReadLimit\(url\.searchParams\.get\("maxBytes"\)\)/);
+assert.match(viteConfig, /function textFileReadLimit\(value: string \| null\)/);
 assert.match(viteConfig, /function languageForTextExtension/);
 assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/file-bundle"/);
 assert.match(viteConfig, /const SCHRODINGER_RUN = "\/opt\/schrodinger\/suites2026-1\/run"/);
@@ -737,6 +742,7 @@ assert.match(appLayout, /from "\.\/sidebar"/);
 assert.match(appLayout, /from "\.\/notification-popup"/);
 assert.doesNotMatch(appLayout, /SidebarLeftIcon/);
 assert.match(appLayout, /function DockToggleIcon\(\{ className \}: \{ className\?: string \}\)/);
+assert.match(appLayout, /function clampRightDockWidth\(width: number, viewportWidth: number, sidebarLayoutWidth: number\)/);
 assert.match(appLayout, /<rect x="2\.25" y="2\.25" width="13\.5" height="13\.5" rx="3\.25" stroke="currentColor" strokeWidth="1\.8" \/>/);
 assert.match(appLayout, /<path d="M6\.75 4\.75V13\.25" stroke="currentColor" strokeWidth="1\.8" strokeLinecap="round" \/>/);
 assert.match(appLayout, /onDismissStatus: \(\) => void;/);
@@ -747,11 +753,12 @@ assert.match(notificationPopup, /className="notification-popup"/);
 assert.match(notificationPopup, /aria-live=\{notice\.kind === "error" \? "assertive" : "polite"\}/);
 assert.match(notificationPopup, /compactNotificationMessage/);
 assert.match(appLayout, /const sidebarLayoutWidth = state\.sidebarOpen \? sidebarWidth : 0/);
+assert.match(appLayout, /const rightDockWidth = clampRightDockWidth\(state\.rightDockWidth, viewportWidth, sidebarLayoutWidth\)/);
 assert.doesNotMatch(appLayout, /Math\.max\(360, clampedSidebarWidth\)/);
 assert.match(appLayout, /const tabChromeLeft = state\.sidebarOpen \? sidebarLayoutWidth \+ 12 : 132/);
 assert.match(appLayout, /const rightDockOpen = !settingsMode && state\.rightDockOpen/);
 assert.match(appLayout, /const bottomDockOpen = !settingsMode && state\.bottomDockOpen/);
-assert.match(appLayout, /"--right-dock-width": `\$\{rightDockOpen \? state\.rightDockWidth : 0\}px`/);
+assert.match(appLayout, /"--right-dock-width": `\$\{rightDockOpen \? rightDockWidth : 0\}px`/);
 assert.match(appLayout, /"--bottom-dock-height": `\$\{bottomDockOpen \? state\.bottomDockHeight : 0\}px`/);
 assert.match(appLayout, /const activePageKind = state\.activeTab\?\.location\.kind \?\? null/);
 assert.match(appLayout, /data-active-page-kind=\{activePageKind \?\? undefined\}/);
@@ -980,6 +987,12 @@ assert.match(gridViewer, /const XYZRENDER_CARD_BATCH_DELAY_MS = 16;/);
 assert.match(gridViewer, /return cfg\?\.appViewer === true && \(\s*cfg\?\.gridDataMode === 'bridge'\s*\|\|\s*\(typeof cfg\?\.xyzrenderEndpoint === 'string' && cfg\.xyzrenderEndpoint\.trim\(\)\.length > 0\)\s*\);/);
 assert.match(app, /body\?\.type === "readStructureText"/);
 assert.match(app, /invoke<string>\("read_structure_text"/);
+assert.match(structureText, /function isCompressedMaestroPath\(path: string\)/);
+assert.match(structureText, /export async function readStructureTextDocument/);
+assert.match(structureText, /invoke<TextFileReadResult>\("read_text_file", \{ path, maxBytes \}\)/);
+assert.match(structureText, /maxBytes !== undefined \? `&maxBytes=\$\{encodeURIComponent\(String\(maxBytes\)\)\}` : ""/);
+assert.match(structureText, /\/__burette\/read-text-file\?path=\$\{encodeURIComponent\(path\)\}\$\{query\}/);
+assert.match(structureText, /lowerPath\.endsWith\("\.maegz"\) \|\| lowerPath\.endsWith\("\.mae\.gz"\)/);
 assert.doesNotMatch(gridViewer, /return \(cfg\?\.appViewer === true && cfg\?\.gridDataMode === 'bridge'\)\s*\|\|\s*\(typeof cfg\?\.xyzrenderEndpoint === 'string'/);
 assert.doesNotMatch(gridViewer, /const BACKGROUND_ROW_BATCH = /);
 assert.doesNotMatch(gridViewer, /const BACKGROUND_CARD_RENDER_BATCH = /);
@@ -1295,8 +1308,16 @@ assert.doesNotMatch(dockPanel, /if \(!open\) return null/);
 assert.match(dockPanel, /function dockFilesDragPayload/);
 assert.match(dockPanel, /writeStructureDragPayload\(event\.dataTransfer, filesTabDragPayload\)/);
 assert.match(dockPanel, /writeStructureDragPayload\(event\.dataTransfer, item\.payload\)/);
-assert.match(dockPanel, /<StructureInfoPanel document=\{activeDocument\} dockDrops=\{dockDrops\} actions=\{actions\} \/>/);
+assert.match(dockPanel, /const dockStructureDocument = dockDocument \?\? activeDocument/);
+assert.match(dockPanel, /<StructureInfoPanel document=\{dockStructureDocument\} dockDrops=\{dockDrops\} actions=\{actions\} \/>/);
+assert.match(dockPanel, /if \(dockTextDocument\) return <TextDocumentInfoPanel document=\{dockTextDocument\} actions=\{actions\} \/>/);
+assert.match(dockPanel, /function TextDocumentInfoPanel/);
+assert.match(dockPanel, /actions\.showTextFileMetadata\(document\)/);
+assert.match(dockPanel, /actions\.revealPath\(document\.path, "file"\)/);
+assert.match(dockPanel, /actions\.copyPath\(document\.path, "file"\)/);
 assert.match(dockPanel, /onStructureSelection=\{actions\.selectTextStructure\}/);
+assert.match(dockPanel, /readStructureTextDocument\(activeDocument\.path/);
+assert.match(dockPanel, /isMaestroStructure\(activeDocument\) \? 1_500_000 : 3_000_000/);
 assert.match(app, /const selectTextStructure = useCallback/);
 assert.match(app, /source: "burrete-agent-host"/);
 assert.match(app, /type: "agent-action"/);
@@ -1316,10 +1337,16 @@ assert.match(structureInfoPanel, /actions\.showDocumentMetadata\(document\)/);
 assert.match(structureInfoPanel, /actions\.revealDocument\(document\)/);
 assert.match(structureInfoPanel, /actions\.copyDocumentPath\(document\)/);
 assert.match(structureInfoPanel, /structureBriefForDocument\(document, formatBytes\(document\.byteCount\)\)/);
+assert.match(structureInfoPanel, /compositionSummary\?\.maestroRows\?\.length/);
+assert.match(structureInfoPanel, /StructureSectionHeader title="Maestro entries"/);
+assert.match(structureInfoPanel, /\["Maestro entry", summary\.maestroRows \?\? \[\]\]/);
+assert.match(structureInfoPanel, /valueForLabel\(summary\.rows, "Preview atoms"\)/);
 assert.match(structureInfoPanel, /StructureSectionHeader title="Chains"/);
 assert.match(structureInfoPanel, /StructureSectionHeader title="Selected entity"/);
 assert.match(structureInfoPanel, /structure-inspector-selection-pill/);
 assert.match(structureInfoPanel, /inspectorSummaryLine\(brief\.kind, compositionSummary, compositionPending, compositionError\)/);
+assert.match(structureInfoPanel, /readStructureText\(document\.path, \{ maxBytes: compositionReadLimit\(document\) \}\)/);
+assert.match(structureInfoPanel, /return 12 \* 1024 \* 1024/);
 assert.match(structureInfoPanel, /const primaryAction = row\.action/);
 assert.match(structureInfoPanel, /const primaryActionKey = selectionActionKey\(document, primaryAction\)/);
 assert.match(structureInfoPanel, /primaryActionKey !== null && primaryActionKey === activeActionKey/);
@@ -1334,7 +1361,16 @@ assert.match(structureInfoPanel, /action\.type !== "select_residues" && action\.
 assert.match(structureInfoPanel, /navigator\.clipboard\?\.writeText/);
 assert.match(structureInfoPanel, /Water \/ ions/);
 assert.match(structureInfoPanel, /structure-brief-mini-action/);
+assert.match(structureInfoPanel, /function visibleComponentRows\(rows: StructureSummaryRow\[\]\)/);
+assert.match(structureInfoPanel, /row\.value !== "None detected" \|\| row\.action/);
 assert.match(structureComposition, /type: "clear_selection";/);
+assert.match(structureComposition, /"SPC"/);
+assert.match(structureComposition, /function maestroPreviewCts/);
+assert.match(structureComposition, /function previewRecordsForIndependentCts/);
+assert.match(browserDevDocuments, /function maestroIndependentEntriesToPdb/);
+assert.match(browserDevDocuments, /function maestroEntryChainName/);
+assert.match(structureComposition, /normalizedType === "full_system"/);
+assert.doesNotMatch(structureComposition, /componentRows\.push\(\{ label: "Energy"/);
 assert.match(structureBrief, /export function structureBriefForDocument\(document: ViewerDocument, sizeLabel: string\): StructureBriefModel/);
 assert.match(structureBrief, /\["pdb", "pdbqt", "cif", "mmcif", "bcif", "gro", "mae", "maegz", "cms"\]/);
 assert.match(structureBrief, /\["sdf", "mol", "mol2", "smiles", "smi"\]/);
@@ -1345,13 +1381,17 @@ assert.match(styles, /\.structure-brief-card \{/);
 assert.match(styles, /\.structure-brief-actions \{/);
 assert.match(styles, /\.structure-inspector-header \{/);
 assert.match(styles, /\.structure-inspector-selection-pill \{/);
-assert.match(styles, /\.structure-inspector-row-action \{/);
+assert.doesNotMatch(structureInfoPanel, /structure-inspector-row-action/);
+assert.doesNotMatch(structureInfoPanel, /rowActionLabel/);
+assert.doesNotMatch(structureInfoPanel, /selectedEntity\.action\.type === "focus_ligand" \? "Focus" : "Select"/);
+assert.doesNotMatch(structureInfoPanel, /Select residues/);
 assert.match(styles, /\.structure-brief-action-entry\[data-selected="true"\] \.structure-brief-action-row,/);
 assert.match(dock, /payload: StructureDragPayload/);
 assert.match(shellStore, /payload: \{ paths: \[path\], records: \[\] \}/);
 assert.match(shellStore, /payload: \{ paths: \[\], records: \[record\] \}/);
 assert.match(dockPanel, /className="dock-panel-inner"/);
 assert.match(dockPanel, /style=\{area === "right" \? \{ width: size \} : \{ height: size \}\}/);
+assert.match(dockPanel, /style=\{area === "right" \? \{ width: open \? size : 0 \} : \{ height: open \? size : 0 \}\}/);
 assert.match(styles, /--dock-divider-color: var\(--line-subtler\)/);
 assert.doesNotMatch(styles, /\.app-shell\[data-effective-theme="dark"\] \.dock-panel \{[\s\S]*--dock-divider-color:/);
 assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.dock-panel \{/);
@@ -1362,7 +1402,8 @@ assert.match(styles, /\.dock-panel\[data-open="false"\] \.dock-panel-inner \{[\s
 assert.match(styles, /\.dock-panel\[data-area="right"\]\[data-open="false"\] \{[\s\S]*min-width: 0;/);
 assert.match(styles, /\.dock-panel\[data-area="bottom"\]\[data-open="false"\] \{[\s\S]*min-height: 0;/);
 assert.match(styles, /\.dock-panel-inner \{[\s\S]*display: flex;[\s\S]*flex-direction: column;[\s\S]*overflow: hidden;/);
-assert.match(styles, /\.dock-panel\[data-area="right"\] \.dock-panel-inner \{[\s\S]*height: 100%;[\s\S]*min-width: 260px;/);
+assert.match(styles, /\.dock-panel\[data-area="right"\] \{[\s\S]*min-width: 0;[\s\S]*max-width: min\(960px, max\(0px, calc\(100vw - var\(--sidebar-layout-width, 0px\) - 280px\)\)\);/);
+assert.match(styles, /\.dock-panel\[data-area="right"\] \.dock-panel-inner \{[\s\S]*height: 100%;[\s\S]*min-width: 0;[\s\S]*max-width: 100%;/);
 assert.match(styles, /\.dock-panel\[data-area="bottom"\] \.dock-panel-inner \{[\s\S]*width: 100%;[\s\S]*min-height: 180px;/);
 assert.doesNotMatch(styles, /\.dock-panel\[data-area="right"\] \{[^}]*box-shadow: inset 1px 0 0 var\(--dock-divider-color\);/);
 assert.doesNotMatch(styles, /\.dock-panel\[data-area="bottom"\] \{[^}]*box-shadow: inset 0 1px 0 var\(--dock-divider-color\);/);
@@ -2038,6 +2079,16 @@ assert.doesNotMatch(sidebarSurface, /sidebar-search-input/);
 assert.doesNotMatch(sidebarSurface, /type="text"/);
 assert.match(sidebarSurface, /ProjectGroup/);
 assert.match(sidebarSurface, /ProjectItem/);
+assert.match(sidebarSurface, /const \[collapsedFolderPaths, setCollapsedFolderPaths\]/);
+assert.match(sidebarSurface, /const toggleFolderPath = \(path: string\) => \{/);
+assert.match(sidebarSurface, /className="project-folder-row"/);
+assert.match(sidebarSurface, /onClick=\{handleToggle\}/);
+assert.match(sidebarSurface, /aria-expanded=\{expanded\}/);
+assert.match(sidebarSurface, /className="project-folder-children"/);
+assert.doesNotMatch(sidebarSurface, /project-folder-disclosure/);
+assert.match(styles, /\.project-folder-row:hover,\s*\.project-folder-row:focus-visible\s*\{\s*background: transparent;\s*outline: none;\s*\}/);
+assert.match(styles, /\.project-folder-row:hover \.project-folder-name,\s*\.project-folder-row:focus-visible \.project-folder-name\s*\{\s*color: var\(--text-secondary\);\s*\}/);
+assert.doesNotMatch(styles, /\.project-folder-row:hover,\s*\.project-folder-row:focus-visible\s*\{[^}]*background: var\(--surface-subtle\)/);
 assert.match(sidebarSurface, /project-group-row/);
 assert.match(sidebarSurface, /state\.expandedProjectIds\.includes\(project\.id\)/);
 assert.match(sidebarSurface, /actions\.togglePinnedStructure\(item\.path\)/);
@@ -2596,9 +2647,9 @@ assert.match(previewRuntimeViewer, /const KETCHER_EDIT_MAX_ATOMS: usize = 300;/)
 assert.match(previewRuntimeViewer, /fn ketcher_edit_config\(/);
 assert.match(previewRuntimeViewer, /"ketcherEditable": true/);
 assert.match(browserDevDocuments, /shouldOpenTrajectoryInMolstar[\s\S]*\? "molstar"[\s\S]*xyzrenderAvailable \? defaultRendererModeForDocument\(extension, requestedMode, reloadOptions\) : "molstar"/);
-assert.match(browserDevDocuments, /function defaultMolstarStyleForDocument\(/);
-assert.match(browserDevDocuments, /return trajectoryFrameCount > 1 \? "default" : preferences\.molstarStyle;/);
-assert.match(browserDevDocuments, /const molstarStyle = defaultMolstarStyleForDocument\(preferences, trajectoryFrameCount\);/);
+assert.doesNotMatch(browserDevDocuments, /trajectoryFrameCount > 1 \? "default" : preferences\.molstarStyle/);
+assert.doesNotMatch(browserDevDocuments, /defaultMolstarStyleForDocument/);
+assert.match(browserDevDocuments, /molstarStyle: preferences\.molstarStyle/);
 assert.match(browserDevDocuments, /waterRepresentation: "line"/);
 assert.match(browserDevDocuments, /const MAESTRO_PDB_PREVIEW_ATOM_LIMIT = 99999/);
 assert.match(browserDevDocuments, /function groPdbDataFromText\(text: string, label: string\)/);
@@ -2964,8 +3015,11 @@ assert.match(previewViewer, /tryCreateComponentStatic\(target, 'water'\)/);
 assert.match(previewViewer, /function shouldUseMolstarWaterLines\(config\)/);
 assert.match(previewViewer, /waterRepresentation \|\| 'line'/);
 assert.match(previewViewer, /async function applyMolstarWaterLineRepresentation\(viewer\)/);
+assert.match(previewViewer, /includeTransparent: false/);
+assert.match(previewViewer, /function molstarWaterLineRepresentation\(\)/);
+assert.match(buretteAgent, /'SPC', 'SPCE', 'SOL'/);
 assert.match(previewViewer, /await plugin\.managers\.structure\.component\.removeRepresentations\(waterComponents\)/);
-assert.match(previewViewer, /type: 'line',\s*typeParams: \{\s*alpha: 0\.32,\s*sizeFactor: 0\.035,\s*visuals: \['intra-bond'\]\s*\},\s*color: 'uniform',\s*colorParams: \{ value: 0x8aa4b8 \},\s*size: 'uniform',\s*sizeParams: \{ value: 0\.03 \}/s);
+assert.match(previewViewer, /type: 'line',\s*typeParams: \{\s*alpha: 0\.32,\s*sizeFactor: 0\.035,\s*visuals: \['intra-bond'\]\s*\},\s*color: 'uniform',\s*colorParams: \{ value: 0x4db6ff \},\s*size: 'uniform',\s*sizeParams: \{ value: 0\.03 \}/s);
 assert.match(previewViewer, /async function loadMolstarEntryAsUnitCell\(viewer, entry\)/);
 assert.match(previewViewer, /StateTransforms\?\.Representation\?\.StructureBoundingBox3D/);
 assert.match(previewViewer, /async function applyMolstarStructureBoundingBoxGeometry\(viewer, options = \{\}\)/);

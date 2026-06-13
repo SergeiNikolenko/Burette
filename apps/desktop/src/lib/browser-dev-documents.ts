@@ -788,7 +788,6 @@ function viewerHtml(
   const label = fileTitle(path);
   const extension = fileExtension(path);
   const visuals = resolvePreviewVisuals(preferences);
-  const molstarStyle = defaultMolstarStyleForDocument(preferences, trajectoryFrameCount);
   const config = configOverride ?? {
     format: format.molstarFormat,
     molstarFormat: format.molstarFormat,
@@ -817,7 +816,7 @@ function viewerHtml(
     trajectoryFrameCount,
     appViewer: true,
     tauriViewer: false,
-    molstarStyle,
+    molstarStyle: preferences.molstarStyle,
     waterRepresentation: "line",
     ...(stagedEntries?.length ? { stagedEntries } : {}),
     xyzrenderViewer: renderer === "xyzrender-external",
@@ -867,13 +866,6 @@ function viewerHtml(
   <script src="viewer.js?v=${runtimeAssetVersion}"></script>
 </body>
 </html>`;
-}
-
-function defaultMolstarStyleForDocument(
-  preferences: ViewerPreferences,
-  trajectoryFrameCount: number,
-): ViewerPreferences["molstarStyle"] {
-  return trajectoryFrameCount > 1 ? "default" : preferences.molstarStyle;
 }
 
 async function browserRendererPlan(
@@ -1592,7 +1584,7 @@ function atomsFromText(text: string, extension: string) {
   return atoms;
 }
 
-function maestroPdbDataFromText(text: string) {
+export function maestroPdbDataFromText(text: string) {
   const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
   const blocks = parseMaestroPdbBlocks(lines, MAESTRO_PDB_PREVIEW_ATOM_LIMIT);
   if (!blocks?.length) return null;
@@ -1610,7 +1602,9 @@ function maestroPdbDataFromText(text: string) {
   }
   if (!models.length) return null;
 
-  const pdb = models.length === 1
+  const pdb = models.length > 1 && !maestroModelsShareTopology(models)
+    ? maestroIndependentEntriesToPdb(models)
+    : models.length === 1
     ? [
         ...models[0].map((atom, index) => maestroPdbAtomLine(index + 1, atom)),
         ...pdbConectLines(models[0]),
@@ -1640,6 +1634,24 @@ function maestroPdbDataFromText(text: string) {
   }
   if (!stagedEntries.length) return { bytes };
   return { bytes, stagedEntries };
+}
+
+function maestroIndependentEntriesToPdb(models: MaestroAtom[][]) {
+  const lines = ["REMARK Combined independent Maestro CT entries"];
+  let serial = 1;
+  models.forEach((atoms, modelIndex) => {
+    if (serial > 99999) return;
+    const cappedAtoms = atoms.slice(0, 100000 - serial).map((atom) => ({
+      ...atom,
+      chainName: maestroEntryChainName(modelIndex),
+    }));
+    lines.push(...cappedAtoms.map((atom, atomIndex) => maestroPdbAtomLine(serial + atomIndex, atom)));
+    lines.push(...pdbConectLines(cappedAtoms, serial - 1));
+    lines.push("TER");
+    serial += cappedAtoms.length;
+  });
+  lines.push("END", "");
+  return lines.join("\n");
 }
 
 function groPdbDataFromText(text: string, label: string) {
@@ -1946,6 +1958,26 @@ function maestroCtScore(ctType: string) {
   return 2;
 }
 
+function maestroModelsShareTopology(models: MaestroAtom[][]) {
+  const [firstModel, ...otherModels] = models;
+  if (!firstModel || !otherModels.length) return true;
+  const firstKeys = firstModel.map(maestroAtomTopologyKey);
+  return otherModels.every((model) => (
+    model.length === firstKeys.length
+    && model.every((atom, index) => maestroAtomTopologyKey(atom) === firstKeys[index])
+  ));
+}
+
+function maestroAtomTopologyKey(atom: MaestroAtom) {
+  return [
+    atom.symbol,
+    atom.atomName,
+    atom.residueName,
+    String(atom.residueNumber),
+    atom.chainName,
+  ].join("|");
+}
+
 function maestroModelsToPdb(models: MaestroAtom[][]) {
   const lines: string[] = [];
   models.forEach((atoms, modelIndex) => {
@@ -2006,21 +2038,26 @@ function genericPdbAtomLine(serial: number, atom: Atom) {
   ].join("");
 }
 
-function pdbConectLines(atoms: Atom[]) {
+function pdbConectLines(atoms: Atom[], serialOffset = 0) {
   const bonds = inferPdbBonds(atoms);
   if (!bonds.length) return [];
   const adjacency = Array.from({ length: Math.min(atoms.length, 99999) }, () => [] as number[]);
   for (const [left, right] of bonds) {
-    adjacency[left].push(right + 1);
-    adjacency[right].push(left + 1);
+    adjacency[left].push(serialOffset + right + 1);
+    adjacency[right].push(serialOffset + left + 1);
   }
   const lines: string[] = [];
   adjacency.forEach((neighbors, index) => {
     for (let offset = 0; offset < neighbors.length; offset += 4) {
-      lines.push(`CONECT${String(index + 1).padStart(5, " ")}${neighbors.slice(offset, offset + 4).map((serial) => String(serial).padStart(5, " ")).join("")}`);
+      lines.push(`CONECT${String(serialOffset + index + 1).padStart(5, " ")}${neighbors.slice(offset, offset + 4).map((serial) => String(serial).padStart(5, " ")).join("")}`);
     }
   });
   return lines;
+}
+
+function maestroEntryChainName(index: number) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  return alphabet[index % alphabet.length] || "A";
 }
 
 function inferPdbBonds(atoms: Atom[]) {
