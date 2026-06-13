@@ -18,7 +18,7 @@
     'A', 'C', 'G', 'T', 'U', 'DA', 'DC', 'DG', 'DT', 'DU', 'I', 'DI',
     'PSU', '5MC', 'OMC', 'OMG', '1MA', '2MG', 'M2G', '7MG'
   ]);
-  const WATER = new Set(['HOH', 'WAT', 'H2O', 'DOD']);
+  const WATER = new Set(['HOH', 'WAT', 'H2O', 'DOD', 'TIP', 'TIP3', 'TIP3P', 'TIP4', 'TIP4P', 'TP3', 'TP4', 'SPC', 'SPCE', 'SOL']);
   const COMMON_IONS = new Set([
     'NA', 'K', 'CL', 'CA', 'MG', 'ZN', 'FE', 'MN', 'CU', 'CO', 'NI', 'CD',
     'HG', 'BR', 'IOD', 'I', 'F', 'LI', 'CS', 'RB', 'SR', 'BA', 'AL', 'AG',

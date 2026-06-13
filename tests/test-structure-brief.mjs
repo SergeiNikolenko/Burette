@@ -32,10 +32,161 @@ function rowValue(rows, label) {
   return row.value;
 }
 
-for (const extension of ["pdb", "pdbqt", "cif", "mmcif", "bcif", "gro", "mae", "maegz", "cms"]) {
+for (const extension of ["pdb", "pdbqt", "cif", "mmcif", "bcif", "gro"]) {
   assert.equal(documentKind(document(extension)), "Macromolecule", extension);
   assert.equal(rowValue(usefulElements(document(extension)), "Components"), "Polymers, ligands, water, and ions when parsed", extension);
 }
+
+for (const extension of ["mae", "maegz", "cms"]) {
+  const brief = structureBriefForDocument(document(extension), "1 KB");
+  assert.equal(documentKind(document(extension)), "Maestro structure", extension);
+  assert.equal(rowValue(usefulElements(document(extension)), "Maestro source"), "CT blocks with atom-table coordinates", extension);
+  assert.equal(rowValue(usefulElements(document(extension)), "System parts"), "Solute, solvent, ions, and full-system CTs when present", extension);
+  assert.ok(brief.notes.includes("Maestro CT sections are available from the source text"), extension);
+}
+assert.equal(rowValue(usefulElements(document("maegz")), "Text"), "Decompressed Maestro text opens in Text tab");
+
+const maestroText = [
+  "f_m_ct {",
+  " s_m_title",
+  " s_lp_Force_Field",
+  " s_lp_Variant",
+  " i_epik_Tot_Q",
+  " :::",
+  " Ligand A",
+  " OPLS4",
+  " Variant A",
+  " 0",
+  " m_atom[2] {",
+  "  # First column is atom index #",
+  "  i_m_residue_number",
+  "  s_m_pdb_residue_name",
+  "  s_m_pdb_atom_name",
+  "  i_m_atomic_number",
+  "  :::",
+  '  1 1 "LIG " " C1 " 6',
+  '  2 1 "LIG " " N1 " 7',
+  "  :::",
+  " }",
+  " m_bond[1] {",
+  "  i_m_from",
+  "  i_m_to",
+  "  i_m_order",
+  "  :::",
+  "  1 1 2 1",
+  "  :::",
+  " }",
+  "}",
+  "f_m_ct {",
+  " s_m_title",
+  " s_lp_Force_Field",
+  " s_lp_Variant",
+  " i_epik_Tot_Q",
+  " :::",
+  " Ligand B",
+  " OPLS4",
+  " Variant B",
+  " 1",
+  " m_atom[1] {",
+  "  # First column is atom index #",
+  "  i_m_residue_number",
+  "  s_m_pdb_residue_name",
+  "  s_m_pdb_atom_name",
+  "  i_m_atomic_number",
+  "  :::",
+  '  1 1 "UNL " " O1 " 8',
+  "  :::",
+  " }",
+  " m_bond[0] {",
+  "  i_m_from",
+  "  i_m_to",
+  "  i_m_order",
+  "  :::",
+  "  :::",
+  " }",
+  "}",
+].join("\n");
+const maestroComposition = parseStructureComposition(maestroText, "maegz");
+assert.ok(maestroComposition);
+assert.equal(rowValue(maestroComposition.rows, "CT blocks"), "2");
+assert.equal(rowValue(maestroComposition.rows, "Preview entries"), "2");
+assert.equal(rowValue(maestroComposition.rows, "Preview atoms"), "3");
+assert.equal(rowValue(maestroComposition.rows, "Source atoms"), "3");
+assert.equal(rowValue(maestroComposition.rows, "Source bonds"), "1");
+assert.equal(rowValue(maestroComposition.rows, "Elements"), "C 1, N 1, O 1");
+assert.equal(rowValue(maestroComposition.componentRows, "Ligands"), "2 types / 2 instances / 3 atoms");
+assert.equal(maestroComposition.componentRows.some((row) => row.label === "Energy"), false);
+assert.equal(maestroComposition.componentRows.some((row) => row.label === "Maestro entries"), false);
+assert.equal(rowValue(maestroComposition.maestroRows, "Ligand A"), "2 atoms / 1 bond / OPLS4 / Variant A");
+assert.equal(rowValue(maestroComposition.maestroRows, "Ligand B"), "1 atom / 0 bonds / OPLS4 / Variant B");
+assert.deepEqual(maestroComposition.maestroRows.find((row) => row.label === "Ligand A")?.action?.selector, { kind: "ligand", label_comp_id: "LIG" });
+assert.deepEqual(maestroComposition.maestroRows.find((row) => row.label === "Ligand B")?.action?.selector, { kind: "ligand", label_comp_id: "UNL" });
+assert.equal(maestroComposition.ligandRows.length, 2);
+assert.ok(maestroComposition.notes.some((note) => note.includes("Maestro CT atom and bond tables")));
+assert.ok(maestroComposition.notes.some((note) => note.includes("combined into one Mol* preview")));
+
+function maestroCt(title, ctType, rows) {
+  return [
+    "f_m_ct {",
+    " s_m_title",
+    " s_ffio_ct_type",
+    " :::",
+    ` ${title}`,
+    ` ${ctType}`,
+    ` m_atom[${rows.length}] {`,
+    "  # First column is atom index #",
+    "  i_m_residue_number",
+    "  s_m_pdb_residue_name",
+    "  s_m_pdb_atom_name",
+    "  i_m_atomic_number",
+    "  :::",
+    ...rows.map((row, index) => `  ${index + 1} ${row.seq} "${row.res} " "${row.atom} " ${row.atomicNumber}`),
+    "  :::",
+    " }",
+    "}",
+  ].join("\n");
+}
+
+const cmsText = [
+  maestroCt("System", "full_system", [
+    { seq: 1, res: "ALA", atom: "N", atomicNumber: 7 },
+    { seq: 1, res: "ALA", atom: "CA", atomicNumber: 6 },
+    { seq: 2, res: "SPC", atom: "OW", atomicNumber: 8 },
+    { seq: 2, res: "SPC", atom: "HW1", atomicNumber: 1 },
+    { seq: 2, res: "SPC", atom: "HW2", atomicNumber: 1 },
+    { seq: 3, res: "CL", atom: "CL", atomicNumber: 17 },
+  ]),
+  maestroCt("Solute", "solute", [
+    { seq: 1, res: "ALA", atom: "N", atomicNumber: 7 },
+    { seq: 1, res: "ALA", atom: "CA", atomicNumber: 6 },
+  ]),
+  maestroCt("Chloride", "ion", [
+    { seq: 3, res: "CL", atom: "CL", atomicNumber: 17 },
+  ]),
+  maestroCt("SPC water box", "solvent", [
+    { seq: 2, res: "SPC", atom: "OW", atomicNumber: 8 },
+    { seq: 2, res: "SPC", atom: "HW1", atomicNumber: 1 },
+    { seq: 2, res: "SPC", atom: "HW2", atomicNumber: 1 },
+  ]),
+].join("\n");
+const cmsComposition = parseStructureComposition(cmsText, "cms");
+assert.ok(cmsComposition);
+assert.equal(rowValue(cmsComposition.rows, "CT blocks"), "4");
+assert.equal(rowValue(cmsComposition.rows, "Preview CT"), "System");
+assert.equal(rowValue(cmsComposition.rows, "Preview atoms"), "6");
+assert.equal(rowValue(cmsComposition.rows, "Source atoms"), "12");
+assert.equal(rowValue(cmsComposition.componentRows, "Polymers"), "1 chain / 1 residue / 2 atoms");
+assert.equal(rowValue(cmsComposition.componentRows, "Ligands"), "None detected");
+assert.equal(rowValue(cmsComposition.componentRows, "Water"), "1 molecule / 3 atoms");
+assert.equal(rowValue(cmsComposition.componentRows, "Ions"), "CL 1 / 1 atoms");
+assert.equal(rowValue(cmsComposition.solventRows, "Water"), "1 molecule / 3 atoms");
+assert.equal(rowValue(cmsComposition.solventRows, "CL"), "1 ion");
+assert.deepEqual(cmsComposition.maestroRows.find((row) => row.label === "System")?.action?.selector, { kind: "all" });
+assert.deepEqual(cmsComposition.maestroRows.find((row) => row.label === "Solute")?.action?.selector, { structure: "primary" });
+assert.deepEqual(cmsComposition.maestroRows.find((row) => row.label === "Chloride")?.action?.selector, { kind: "ion" });
+assert.deepEqual(cmsComposition.maestroRows.find((row) => row.label === "SPC water box")?.action?.selector, { kind: "water" });
+assert.equal(cmsComposition.ligandRows.length, 0);
+assert.ok(cmsComposition.notes.some((note) => note.includes("Component counts use the Mol* preview entries")));
 
 for (const extension of ["sdf", "mol", "mol2", "smiles", "smi"]) {
   assert.equal(documentKind(document(extension)), "Small molecule", extension);
@@ -164,6 +315,16 @@ assert.equal(rowValue(miniGro.solventRows, "Water"), "1 molecule / 2 atoms");
 assert.equal(miniGro.solventRows.find((row) => row.label === "Water")?.action?.type, "hide_waters");
 assert.equal(miniGro.solventRows.find((row) => row.label === "Water")?.secondaryAction?.type, "show_waters");
 assert.equal(miniGro.solventRows.find((row) => row.label === "NA")?.action?.selector.kind, "ion");
+
+const histidineAliasGro = parseStructureComposition([
+  "histidine alias gro",
+  "1",
+  "    1HIE    NE2    1   0.000   0.000   0.000",
+  "1.0 1.0 1.0",
+].join("\n"), "gro");
+assert.ok(histidineAliasGro);
+assert.equal(rowValue(histidineAliasGro.componentRows, "Polymers"), "1 chain / 1 residue / 1 atoms");
+assert.equal(rowValue(histidineAliasGro.componentRows, "Ligands"), "None detected");
 
 const miniSdf = parseStructureComposition(await readFile(join(fixturesRoot, "mini.sdf"), "utf8"), "sdf");
 assert.ok(miniSdf);
