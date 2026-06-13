@@ -11,6 +11,8 @@ const webRoot = resolve(repoRoot, 'PreviewExtension', 'Web');
 const agentControlApiVersion = 'burette-agent-control/v1';
 const renderPanelReadLimit = 512 * 1024;
 const mvsReadLimit = 25 * 1024 * 1024;
+const coordinateArtifactExtensions = new Set(['xml', 'inpcrd', 'rst7', 'restrt', 'crd', 'rst', 'state', 'lammpstrj', 'dump']);
+const textArtifactExtensions = new Set(['par', 'prm', 'rtf', 'str', 'key', 'chk', 'checkpoint']);
 
 function usage() {
   console.error(`Usage: node scripts/agent-preview.mjs <structure-file> [--port 5177] [--host 127.0.0.1]
@@ -50,10 +52,204 @@ function isMaestroPreviewFile(file) {
 }
 
 function preparePreviewPayload(file, bytes) {
+  const extension = extname(file).toLowerCase().replace(/^\./, '');
+  if (coordinateArtifactExtensions.has(extension)) {
+    const converted = genericPdbDataFromText(bytes.toString('utf8'), extension, basename(file));
+    if (converted) return { bytes: Buffer.from(converted, 'utf8'), format: 'pdb', binary: false };
+  }
+  if (textArtifactExtensions.has(extension)) {
+    return { bytes, format: 'text', binary: looksBinary(bytes), textPreview: true };
+  }
   if (!isMaestroPreviewFile(file)) return { bytes, format: inferFormat(file), binary: isBinaryFormat(file) };
   const converted = maestroPdbDataFromText(bytes.toString('utf8'));
   if (!converted) return { bytes, format: inferFormat(file), binary: isBinaryFormat(file) };
   return { bytes: Buffer.from(converted, 'utf8'), format: 'pdb', binary: false };
+}
+
+function genericPdbDataFromText(text, extension, label) {
+  const atoms = atomsFromCoordinateText(text, extension);
+  if (!atoms?.length) return null;
+  return [
+    `REMARK Converted from ${label}`,
+    ...atoms.slice(0, 99999).map((atom, index) => genericPdbAtomLine(index + 1, atom)),
+    ...pdbConectLines(atoms),
+    'END',
+    ''
+  ].join('\n');
+}
+
+function atomsFromCoordinateText(text, extension) {
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  if (extension === 'inpcrd' || extension === 'rst7' || extension === 'restrt') return parseAmberRestartAtoms(lines);
+  if (extension === 'lammpstrj' || extension === 'dump') return parseLammpsDumpAtoms(lines);
+  if (extension === 'crd') return parseCharmmCoordinateAtoms(lines);
+  if (extension === 'rst') return parseCharmmCoordinateAtoms(lines) ?? parseAmberRestartAtoms(lines);
+  if (extension === 'state' || extension === 'xml') return parseXmlPositionAtoms(text) ?? parseHoomdXmlAtoms(text);
+  return null;
+}
+
+function parseAmberRestartAtoms(lines) {
+  if (lines.length < 2) return null;
+  const atomCount = Number.parseInt(fields(lines[1])[0] || '', 10);
+  if (!Number.isFinite(atomCount) || atomCount <= 0) return null;
+  const values = [];
+  for (const line of lines.slice(2)) {
+    for (const token of fields(line)) {
+      const value = Number(token);
+      if (Number.isFinite(value)) values.push(value);
+      if (values.length >= atomCount * 3) break;
+    }
+    if (values.length >= atomCount * 3) break;
+  }
+  if (values.length < atomCount * 3) return null;
+  return Array.from({ length: atomCount }, (_, index) => ({
+    symbol: 'C',
+    x: values[index * 3],
+    y: values[index * 3 + 1],
+    z: values[index * 3 + 2]
+  }));
+}
+
+function parseCharmmCoordinateAtoms(lines) {
+  const atoms = [];
+  for (const line of lines) {
+    const parts = fields(line);
+    if (parts.length < 7) continue;
+    const x = Number(parts[4]);
+    const y = Number(parts[5]);
+    const z = Number(parts[6]);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+    atoms.push({
+      symbol: elementSymbolFromAtomName(parts[3]) ?? elementSymbolFromAtomName(parts[2]) ?? 'C',
+      x,
+      y,
+      z
+    });
+  }
+  return atoms.length ? atoms : null;
+}
+
+function parseLammpsDumpAtoms(lines) {
+  const atoms = [];
+  let inAtoms = false;
+  let columns = [];
+  let xIndex = -1;
+  let yIndex = -1;
+  let zIndex = -1;
+  let symbolIndex = -1;
+  let typeIndex = -1;
+  for (const line of lines) {
+    if (line.startsWith('ITEM: ')) {
+      if (inAtoms && atoms.length > 0) break;
+      inAtoms = false;
+      if (line.startsWith('ITEM: ATOMS')) {
+        columns = line.slice('ITEM: ATOMS'.length).trim().split(/\s+/u).filter(Boolean);
+        xIndex = coordinateColumnIndex(columns, ['x', 'xu', 'xs', 'xsu']);
+        yIndex = coordinateColumnIndex(columns, ['y', 'yu', 'ys', 'ysu']);
+        zIndex = coordinateColumnIndex(columns, ['z', 'zu', 'zs', 'zsu']);
+        symbolIndex = coordinateColumnIndex(columns, ['element', 'symbol', 'name']);
+        typeIndex = coordinateColumnIndex(columns, ['type']);
+        inAtoms = xIndex >= 0 && yIndex >= 0 && zIndex >= 0;
+      }
+      continue;
+    }
+    if (!inAtoms) continue;
+    const parts = fields(line);
+    const x = Number.parseFloat(parts[xIndex] ?? '');
+    const y = Number.parseFloat(parts[yIndex] ?? '');
+    const z = Number.parseFloat(parts[zIndex] ?? '');
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+    const symbol = elementSymbolFromAtomName(parts[symbolIndex] ?? '')
+      ?? elementSymbolFromAtomName(parts[typeIndex] ?? '')
+      ?? 'C';
+    atoms.push({ symbol, x, y, z });
+  }
+  return atoms.length > 0 ? atoms : null;
+}
+
+function coordinateColumnIndex(columns, names) {
+  return columns.findIndex((column) => names.includes(column.toLowerCase()));
+}
+
+function parseXmlPositionAtoms(text) {
+  const atoms = [];
+  const matcher = /<Position\b([^>]*)\/?>/giu;
+  let match;
+  while ((match = matcher.exec(text))) {
+    const attributes = match[1] ?? '';
+    const x = xmlNumberAttribute(attributes, 'x');
+    const y = xmlNumberAttribute(attributes, 'y');
+    const z = xmlNumberAttribute(attributes, 'z');
+    if (x === null || y === null || z === null) continue;
+    atoms.push({ symbol: 'C', x, y, z });
+  }
+  return atoms.length ? atoms : null;
+}
+
+function parseHoomdXmlAtoms(text) {
+  if (!/<hoomd_xml\b/iu.test(text) && !/<configuration\b/iu.test(text)) return null;
+  const positionMatch = /<position\b[^>]*>([\s\S]*?)<\/position>/iu.exec(text);
+  if (!positionMatch) return null;
+  const values = numericTokens(positionMatch[1] ?? '');
+  if (values.length < 3) return null;
+  const typeMatch = /<type\b[^>]*>([\s\S]*?)<\/type>/iu.exec(text);
+  const symbols = typeMatch
+    ? fields(typeMatch[1] ?? '').map((value) => elementSymbolFromAtomName(value) ?? 'C')
+    : [];
+  const atoms = [];
+  for (let index = 0; index + 2 < values.length; index += 3) {
+    const atomIndex = index / 3;
+    atoms.push({
+      symbol: symbols[atomIndex] || 'C',
+      x: values[index],
+      y: values[index + 1],
+      z: values[index + 2]
+    });
+  }
+  return atoms.length ? atoms : null;
+}
+
+function numericTokens(text) {
+  return Array.from(text.matchAll(/[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?/gu), (match) => Number(match[0]))
+    .filter((value) => Number.isFinite(value));
+}
+
+function xmlNumberAttribute(attributes, name) {
+  const match = new RegExp(`\\b${name}=["']([^"']+)["']`, 'iu').exec(attributes);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function genericPdbAtomLine(serial, atom) {
+  const symbol = normalizeElementSymbol(atom.symbol);
+  const atomName = formatPdbAtomName(symbol, symbol);
+  return [
+    'HETATM',
+    String(Math.min(serial, 99999)).padStart(5, ' '),
+    ' ',
+    atomName.padEnd(4, ' ').slice(0, 4),
+    ' ',
+    'MOL',
+    ' ',
+    'A',
+    String(1).padStart(4, ' '),
+    '    ',
+    atom.x.toFixed(3).padStart(8, ' '),
+    atom.y.toFixed(3).padStart(8, ' '),
+    atom.z.toFixed(3).padStart(8, ' '),
+    '  1.00 10.00          ',
+    truncateAscii(symbol, 2).padStart(2, ' ')
+  ].join('');
+}
+
+function elementSymbolFromAtomName(value) {
+  const clean = String(value || '').replace(/^[0-9]+/u, '').replace(/[^A-Za-z]/gu, '');
+  if (!clean) return null;
+  const two = normalizeElementSymbol(clean.slice(0, 2));
+  if (isElementSymbol(two)) return two;
+  const one = normalizeElementSymbol(clean.slice(0, 1));
+  return isElementSymbol(one) ? one : null;
 }
 
 function maestroPdbDataFromText(text) {
@@ -410,8 +606,8 @@ function observeState({ host, port, structurePath, config, liveReport, actions }
       format: config.format,
       binary: config.binary,
       byteCount: config.byteCount,
-      viewer: config.format === 'sdf' ? 'grid-or-molstar' : 'molstar',
-      ready: !!liveSummary
+      viewer: config.textPreview ? 'text' : config.format === 'sdf' ? 'grid-or-molstar' : 'molstar',
+      ready: config.textPreview ? true : !!liveSummary
     },
     viewerAgent: {
       apiVersion: 'burette-agent/v1',
@@ -455,6 +651,69 @@ function observeState({ host, port, structurePath, config, liveReport, actions }
     },
     errors: []
   };
+}
+
+function textPreviewHtml({ title, extension, byteCount, text }) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Burrete - ${escapeHtml(title)}</title>
+  <style>
+    :root { color-scheme: light dark; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
+    body { margin: 0; background: Canvas; color: CanvasText; }
+    main { min-height: 100vh; display: grid; grid-template-rows: auto 1fr; }
+    header { padding: 14px 18px 10px; border-bottom: 1px solid rgba(127, 127, 127, 0.24); }
+    h1 { margin: 0 0 6px; font-size: 15px; font-weight: 600; letter-spacing: 0; }
+    .meta { display: flex; gap: 10px; color: #6b7280; font-size: 12px; }
+    @media (prefers-color-scheme: dark) { .meta { color: #9ca3af; } }
+    pre { margin: 0; padding: 16px 18px 28px; overflow: auto; white-space: pre; font: 12px/1.45 "SF Mono", Menlo, Consolas, monospace; tab-size: 2; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>${escapeHtml(title)}</h1>
+      <div class="meta"><span>.${escapeHtml(extension)}</span><span>${byteCount} bytes</span></div>
+    </header>
+    <pre>${escapeHtml(text)}</pre>
+  </main>
+</body>
+</html>`;
+}
+
+function textPreviewContent(file, bytes, preview) {
+  if (preview.binary) {
+    return [
+      `${basename(file)} is a binary OpenMM checkpoint artifact.`,
+      '',
+      `Path: ${file}`,
+      `Bytes: ${bytes.length}`,
+      '',
+      'Burrete shows metadata for binary checkpoints instead of rendering opaque bytes as text.'
+    ].join('\n');
+  }
+  return bytes.toString('utf8');
+}
+
+function looksBinary(bytes) {
+  const limit = Math.min(bytes.length, 8192);
+  for (let index = 0; index < limit; index += 1) {
+    const byte = bytes[index];
+    if (byte === 0) return true;
+    if (byte < 7 || (byte > 13 && byte < 32)) return true;
+  }
+  return false;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 function observedWorkspacePanels(actionItems) {
@@ -637,11 +896,14 @@ async function main() {
   const sourceBytes = await readFile(structurePath);
   const st = await stat(structurePath);
   const preview = preparePreviewPayload(structurePath, sourceBytes);
+  const extension = extname(structurePath).toLowerCase().replace(/^\./, '');
   const config = {
     label: basename(structurePath),
     format: preview.format,
     binary: preview.binary,
     byteCount: st.size,
+    sourceExtension: extension,
+    textPreview: Boolean(preview.textPreview),
     showPanelControls: true,
     enablePreviewDocks: true,
     defaultPreviewDocks: [],
@@ -783,6 +1045,16 @@ async function main() {
       const headers = { 'Content-Type': contentType(file) };
       if (url.pathname === '/' || url.pathname.endsWith('.html')) {
         headers['Set-Cookie'] = `${tokenCookieName}=${encodeURIComponent(token)}; Path=/; SameSite=Strict`;
+        if (config.textPreview) {
+          res.writeHead(200, { ...headers, 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(textPreviewHtml({
+            title: config.label,
+            extension: config.sourceExtension,
+            byteCount: config.byteCount,
+            text: textPreviewContent(structurePath, sourceBytes, preview)
+          }));
+          return;
+        }
         const html = await readFile(file, 'utf8');
         const assetVersion = String(Date.now());
         res.writeHead(200, headers);

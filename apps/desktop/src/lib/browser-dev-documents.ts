@@ -554,7 +554,7 @@ async function openBrowserDevDocumentFromBytes(
     : format;
   const sourceXyzBytes = xyzDataFromText(text, extension, fileTitle(path));
   const convertedMolstarData = maestroPreview ?? convertedDataFromText(text, extension, fileTitle(path));
-  const molstarBytes: Uint8Array | null = convertedMolstarData?.bytes && (format.externalOnly || shouldUseConvertedMolstarData(format, convertedMolstarData.bytes))
+  const molstarBytes: Uint8Array | null = convertedMolstarData?.bytes && shouldUseConvertedMolstarData(format, convertedMolstarData, extension)
     ? convertedMolstarData.bytes
     : null;
   const runtimeFrameText = maestroPreview?.bytes ? decodeUtf8(maestroPreview.bytes) : text;
@@ -657,7 +657,7 @@ async function readBrowserDevDockingPayload(path: string): Promise<BrowserDevDoc
   const title = fileTitle(path);
   const text = await decodeStructureText(originalBytes, extension);
   const converted = convertedDataFromText(text, extension, title);
-  if (converted && (format.externalOnly || shouldUseConvertedMolstarData(format, converted.bytes))) {
+  if (converted && shouldUseConvertedMolstarData(format, converted, extension)) {
     return {
       path,
       title,
@@ -1239,11 +1239,22 @@ function formatForExtension(extension: string): FormatInfo {
 }
 
 function molstarFormatForExtension(extension: string): FormatInfo | null {
-  if (["xtc", "trr", "dcd", "nctraj"].includes(extension)) {
-    return { molstarFormat: extension, binary: true, externalOnly: false, canOpenInVesta: false };
-  }
-  if (["lammpstrj", "top", "psf", "prmtop"].includes(extension)) {
-    return { molstarFormat: extension, binary: false, externalOnly: false, canOpenInVesta: false };
+  const trajectory = previewFormatRegistry.formats.find((candidate) =>
+    candidate.preview?.strategy === "trajectory" && candidate.extensions.includes(extension),
+  );
+  const formats = trajectory?.preview?.formats;
+  if (formats) {
+    const isBinary = formats.coordinatesBinary?.includes(extension) ?? false;
+    const isText = (formats.coordinatesText?.includes(extension) ?? false)
+      || (formats.topologyText?.includes(extension) ?? false);
+    if (isBinary || isText) {
+      return {
+        molstarFormat: extension,
+        binary: isBinary,
+        externalOnly: false,
+        canOpenInVesta: Boolean(trajectory.canOpenInVesta),
+      };
+    }
   }
   return null;
 }
@@ -1282,8 +1293,13 @@ function proteinLikeAtomRecordCount(text: string) {
   return count;
 }
 
-function shouldUseConvertedMolstarData(format: FormatInfo, xyzBytes: Uint8Array | null) {
-  return Boolean(xyzBytes) && !format.binary && ["gro", "mmcif", "cifCore"].includes(format.molstarFormat);
+function shouldUseConvertedMolstarData(format: FormatInfo, converted: ConvertedStructureData | null, extension: string) {
+  if (!converted?.bytes) return false;
+  if (format.externalOnly) return true;
+  if (format.binary) return false;
+  if (["gro", "mmcif", "cifCore"].includes(format.molstarFormat)) return true;
+  const plan = previewFormatRegistry.formats.find((candidate) => candidate.extensions.includes(extension))?.preview;
+  return plan?.strategy === "convert" || plan?.converter?.id === "text-coordinates-to-pdb";
 }
 
 function defaultRendererModeForDocument(extension: string, requestedMode: string, reloadOptions?: ViewerReloadOptions) {
@@ -1577,6 +1593,16 @@ function atomsFromText(text: string, extension: string) {
     atoms = parseAbinitAtoms(lines);
   } else if (extension === "cif" || extension === "mmcif" || extension === "mcif") {
     atoms = parseCifCoreAtoms(lines);
+  } else if (extension === "inpcrd" || extension === "rst7" || extension === "restrt") {
+    atoms = parseAmberRestartAtoms(lines);
+  } else if (extension === "lammpstrj" || extension === "dump") {
+    atoms = parseLammpsDumpAtoms(lines);
+  } else if (extension === "crd") {
+    atoms = parseCharmmCoordinateAtoms(lines);
+  } else if (extension === "rst") {
+    atoms = parseCharmmCoordinateAtoms(lines) ?? parseAmberRestartAtoms(lines);
+  } else if (extension === "state" || extension === "xml") {
+    atoms = parseXmlPositionAtoms(text) ?? parseHoomdXmlAtoms(text);
   } else if (isMaestroPreviewExtension(extension)) {
     atoms = parseMaestroAtoms(lines, MAESTRO_PREVIEW_ATOM_LIMIT);
   }
@@ -2451,6 +2477,155 @@ function parseBestCoordinateBlock(lines: string[]) {
   }
   finishBlock();
   return best.length >= 2 ? best : null;
+}
+
+function parseAmberRestartAtoms(lines: string[]) {
+  if (lines.length < 2) return null;
+  const header = fields(lines[1]);
+  const atomCount = Number.parseInt(header[0] ?? "", 10);
+  if (!Number.isFinite(atomCount) || atomCount <= 0) return null;
+  const values: number[] = [];
+  for (const line of lines.slice(2)) {
+    for (const token of fields(line)) {
+      const value = Number(token);
+      if (Number.isFinite(value)) values.push(value);
+      if (values.length >= atomCount * 3) break;
+    }
+    if (values.length >= atomCount * 3) break;
+  }
+  if (values.length < atomCount * 3) return null;
+  const atoms: Atom[] = [];
+  for (let index = 0; index < atomCount; index += 1) {
+    atoms.push({
+      symbol: "C",
+      x: values[index * 3],
+      y: values[index * 3 + 1],
+      z: values[index * 3 + 2],
+    });
+  }
+  return atoms;
+}
+
+function parseCharmmCoordinateAtoms(lines: string[]) {
+  const atoms: Atom[] = [];
+  for (const line of lines) {
+    const parts = fields(line);
+    if (parts.length < 7) continue;
+    const residueName = parts[2] ?? "";
+    const atomName = parts[3] ?? "";
+    const x = Number(parts[4]);
+    const y = Number(parts[5]);
+    const z = Number(parts[6]);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+    atoms.push({
+      symbol: elementSymbolFromAtomName(atomName) ?? elementSymbolFromAtomName(residueName) ?? "C",
+      x,
+      y,
+      z,
+    });
+  }
+  return atoms.length ? atoms : null;
+}
+
+function parseLammpsDumpAtoms(lines: string[]) {
+  const atoms: Atom[] = [];
+  let inAtoms = false;
+  let columns: string[] = [];
+  let xIndex = -1;
+  let yIndex = -1;
+  let zIndex = -1;
+  let symbolIndex = -1;
+  let typeIndex = -1;
+  for (const line of lines) {
+    if (line.startsWith("ITEM: ")) {
+      if (inAtoms && atoms.length > 0) break;
+      inAtoms = false;
+      if (line.startsWith("ITEM: ATOMS")) {
+        columns = line.slice("ITEM: ATOMS".length).trim().split(/\s+/u).filter(Boolean);
+        xIndex = coordinateColumnIndex(columns, ["x", "xu", "xs", "xsu"]);
+        yIndex = coordinateColumnIndex(columns, ["y", "yu", "ys", "ysu"]);
+        zIndex = coordinateColumnIndex(columns, ["z", "zu", "zs", "zsu"]);
+        symbolIndex = coordinateColumnIndex(columns, ["element", "symbol", "name"]);
+        typeIndex = coordinateColumnIndex(columns, ["type"]);
+        inAtoms = xIndex >= 0 && yIndex >= 0 && zIndex >= 0;
+      }
+      continue;
+    }
+    if (!inAtoms) continue;
+    const parts = fields(line);
+    const x = Number.parseFloat(parts[xIndex] ?? "");
+    const y = Number.parseFloat(parts[yIndex] ?? "");
+    const z = Number.parseFloat(parts[zIndex] ?? "");
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+    const symbol = elementSymbolFromAtomName(parts[symbolIndex] ?? "")
+      ?? elementSymbolFromAtomName(parts[typeIndex] ?? "")
+      ?? "C";
+    atoms.push({ symbol, x, y, z });
+  }
+  return atoms.length > 0 ? atoms : null;
+}
+
+function coordinateColumnIndex(columns: string[], names: string[]) {
+  return columns.findIndex((column) => names.includes(column.toLowerCase()));
+}
+
+function parseXmlPositionAtoms(text: string) {
+  const atoms: Atom[] = [];
+  const matcher = /<Position\b([^>]*)\/?>/giu;
+  let match: RegExpExecArray | null;
+  while ((match = matcher.exec(text))) {
+    const attributes = match[1] ?? "";
+    const x = xmlNumberAttribute(attributes, "x");
+    const y = xmlNumberAttribute(attributes, "y");
+    const z = xmlNumberAttribute(attributes, "z");
+    if (x === null || y === null || z === null) continue;
+    atoms.push({ symbol: "C", x, y, z });
+  }
+  return atoms.length ? atoms : null;
+}
+
+function parseHoomdXmlAtoms(text: string) {
+  if (!/<hoomd_xml\b/iu.test(text) && !/<configuration\b/iu.test(text)) return null;
+  const positionMatch = /<position\b[^>]*>([\s\S]*?)<\/position>/iu.exec(text);
+  if (!positionMatch) return null;
+  const values = numericTokens(positionMatch[1] ?? "");
+  if (values.length < 3) return null;
+  const typeMatch = /<type\b[^>]*>([\s\S]*?)<\/type>/iu.exec(text);
+  const symbols = typeMatch
+    ? fields(typeMatch[1] ?? "").map((value) => elementSymbolFromAtomName(value) ?? "C")
+    : [];
+  const atoms: Atom[] = [];
+  for (let index = 0; index + 2 < values.length; index += 3) {
+    const atomIndex = index / 3;
+    atoms.push({
+      symbol: symbols[atomIndex] || "C",
+      x: values[index],
+      y: values[index + 1],
+      z: values[index + 2],
+    });
+  }
+  return atoms.length ? atoms : null;
+}
+
+function numericTokens(text: string) {
+  return Array.from(text.matchAll(/[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?/gu), (match) => Number(match[0]))
+    .filter((value) => Number.isFinite(value));
+}
+
+function xmlNumberAttribute(attributes: string, name: string) {
+  const match = new RegExp(`\\b${name}=["']([^"']+)["']`, "iu").exec(attributes);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function elementSymbolFromAtomName(value: string) {
+  const clean = value.replace(/^[0-9]+/u, "").replace(/[^A-Za-z]/gu, "");
+  if (!clean) return null;
+  const two = normalizeElementSymbol(clean.slice(0, 2));
+  if (isElementSymbol(two)) return two;
+  const one = normalizeElementSymbol(clean.slice(0, 1));
+  return isElementSymbol(one) ? one : null;
 }
 
 function parseElementCoordinateLine(line: string): Atom | null {

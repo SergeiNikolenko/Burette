@@ -103,6 +103,8 @@ renderer.
 | RDKit molecule grids | SDF, SD, SMILES, SMI, CSV, TSV | Collection view with search, sorting, SMARTS filtering/highlighting, selection, append/merge, and export. |
 | External xyzrender | XYZ, CUB, CUBE, ABI, COM, FDF, IN, INP, LOG, NW, OUT, PSI4, QCIN, VASP, MAE, MAE.GZ, MAEGZ, CMS | Requires a local `xyzrender` executable. Used by default for single-frame XYZ and required for external-renderer-only formats. |
 | Molecular dynamics / topology | XTC, TRR, DCD, NCTRAJ, LAMMPSTRJ, TOP, PSF, PRMTOP | Registered as molecular files and routed to Mol* where supported by the runtime. |
+| OpenMM coordinate artifacts | XML, INPCRD, RST7, CRD, RST, STATE | Render as structures when standalone coordinates are present, with the raw text available in the document surfaces. System XML without positions falls back to text. |
+| OpenMM workflow artifacts | PAR, PRM, RTF, STR, KEY, CHK, CHECKPOINT | Open as text/workflow artifacts. Binary checkpoints show metadata because OpenMM checkpoint payloads are tied to the matching system, platform, version, and hardware context. |
 | FEP network workspace | GraphML | Opens a ligand network preview workspace rather than a standard molecule preview. |
 
 Multi-frame XYZ files stay in Mol* when Burrete detects trajectory content so
