@@ -365,7 +365,7 @@ export const useShellStore = create<ShellState>()(
         })),
     }),
     {
-      name: workspaceStorageKey("burrete.shell.ui"),
+      name: workspaceStorageKey("burrete.shell.ui", { windowScoped: false }),
       partialize: (state) => ({
         sidebarOpen: state.sidebarOpen,
         sidebarWidth: state.sidebarWidth,
