@@ -86,11 +86,14 @@ const CommandPalette = lazy(() => import("./components/command-palette").then((m
 const filters = [
   {
     name: "Files",
-    extensions: [...previewFormatRegistry.documentTypes.extensions, "md", "markdown", "mdx", "txt", "log", "err", "sh", "bash", "zsh", "py", "rs", "js", "jsx", "ts", "tsx", "json", "yaml", "yml", "toml", "xml", "html", "css"],
+    extensions: [...previewFormatRegistry.documentTypes.extensions, "md", "markdown", "mdx", "txt", "log", "err", "sh", "bash", "zsh", "py", "rs", "js", "jsx", "ts", "tsx", "json", "yaml", "yml", "toml", "xml", "html", "css", "inpcrd", "rst7", "crd", "rst", "par", "prm", "rtf", "str", "key", "chk", "checkpoint", "state"],
   },
 ];
 
-const structureExtensions = new Set(previewFormatRegistry.documentTypes.extensions.map((extension) => extension.toLowerCase()));
+const structureExtensions = new Set(previewFormatRegistry.formats
+  .filter((format) => format.preview?.strategy !== "text")
+  .flatMap((format) => format.extensions)
+  .map((extension) => extension.toLowerCase()));
 const preferredTextExtensions = new Set([
   "md",
   "markdown",
@@ -111,30 +114,82 @@ const preferredTextExtensions = new Set([
   "yaml",
   "yml",
   "toml",
-  "xml",
   "html",
   "css",
+  "dms",
+  "edr",
+  "fasta",
+  "par",
+  "prm",
+  "rtf",
+  "str",
+  "xvg",
+  "key",
+  "chk",
+  "checkpoint",
 ]);
 const structureAndTextExtensions = new Set([
   "abi",
+  "arc",
   "cms",
   "com",
+  "config",
+  "coor",
   "csv",
+  "crdbox",
   "cub",
   "cube",
+  "data",
+  "dcd",
+  "dump",
   "fdf",
+  "fhiaims",
+  "gms",
   "graphml",
+  "gsd",
+  "h5md",
   "in",
   "inp",
+  "inpcrd",
+  "itp",
+  "lammpstrj",
+  "lammps",
+  "lmp",
   "log",
   "mae",
   "maegz",
+  "mdcrd",
+  "namdbin",
+  "nc",
+  "ncdf",
+  "ncrst",
+  "nctraj",
+  "netcdf",
   "nw",
   "out",
+  "parm",
+  "parm7",
+  "prmtop",
+  "psf",
   "psi4",
   "qcin",
+  "crd",
+  "restrt",
+  "rst",
+  "rst7",
+  "state",
+  "top",
+  "tpr",
+  "tng",
+  "trc",
+  "trj",
+  "trr",
+  "trz",
   "tsv",
+  "txyz",
+  "xtc",
   "vasp",
+  "xml",
 ]);
 
 const GRID_PERF_REPORT_PATH = "/private/tmp/burrete-grid-real-app-perf.jsonl";
@@ -241,11 +296,59 @@ async function browserDevFilesFromLocation() {
   if (params.has("devFiles")) {
     return splitDevFiles(params.get("devFiles") ?? "");
   }
+  if (params.has("devFolder")) {
+    const folder = params.get("devFolder") ?? "";
+    const response = await fetch(`/__burette/dev-files?root=${encodeURIComponent(folder)}`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`Could not load dev folder: ${response.status}`);
+    const payload = await response.json() as { files?: string[] };
+    return Array.isArray(payload.files) ? payload.files : [];
+  }
   return [];
 }
 
 function splitDevFiles(rawFiles: string) {
   return rawFiles.split("\n").map((path) => path.trim()).filter(Boolean);
+}
+
+async function expandBrowserDevStructureBundles(paths: string[]) {
+  if (isTauriRuntime()) return paths;
+  const expanded: string[] = [];
+  const seen = new Set<string>();
+  const addPath = (path: string) => {
+    const extension = pathExtension(path);
+    if (
+      !extension ||
+      (!structureExtensions.has(extension) &&
+        !structureAndTextExtensions.has(extension) &&
+        !preferredTextExtensions.has(extension))
+    ) {
+      return;
+    }
+    if (!seen.has(path)) {
+      seen.add(path);
+      expanded.push(path);
+    }
+  };
+  for (const path of paths) {
+    addPath(path);
+    try {
+      const response = await fetch(`/__burette/file-bundle?path=${encodeURIComponent(path)}`, { cache: "no-store" });
+      if (!response.ok) continue;
+      const bundle = await response.json() as {
+        kind?: string;
+        primaryPath?: string;
+        attachments?: Array<{ path?: string }>;
+      };
+      if (bundle.kind === "single") continue;
+      if (bundle.primaryPath) addPath(bundle.primaryPath);
+      for (const attachment of bundle.attachments ?? []) {
+        if (attachment.path) addPath(attachment.path);
+      }
+    } catch (_) {
+      // Browser-dev companion discovery is opportunistic; opening the requested file still works.
+    }
+  }
+  return expanded;
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer) {
@@ -709,12 +812,13 @@ export default function App() {
   );
 
   const openPaths = useCallback(async (paths: string[]) => {
-    const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
+    const cleanPaths = await expandBrowserDevStructureBundles(Array.from(new Set(paths.filter(Boolean))));
     if (!cleanPaths.length) return;
 
     const structurePaths: string[] = [];
     const textPaths: string[] = [];
     const structureAndTextPaths: string[] = [];
+    let preferredStructureDocumentId: string | null = null;
 
     for (const path of cleanPaths) {
       const extension = pathExtension(path);
@@ -730,12 +834,14 @@ export default function App() {
     }
 
     if (structurePaths.length > 0) {
-      await openDocuments(structurePaths);
+      const result = await openDocuments(structurePaths);
+      preferredStructureDocumentId = result?.documents[0]?.id ?? preferredStructureDocumentId;
     }
 
     const openedStructureAndTextPaths = new Set<string>();
     if (structureAndTextPaths.length > 0) {
       const result = await openDocuments(structureAndTextPaths);
+      preferredStructureDocumentId = preferredStructureDocumentId ?? result?.documents[0]?.id ?? null;
       for (const document of result?.documents ?? []) {
         openedStructureAndTextPaths.add(document.path);
       }
@@ -754,7 +860,10 @@ export default function App() {
     if (fallbackTextPaths.length > 0) {
       await openTextDocuments(fallbackTextPaths);
     }
-  }, [openDocuments, openTextDocuments]);
+    if (preferredStructureDocumentId) {
+      setActiveDocument(preferredStructureDocumentId);
+    }
+  }, [openDocuments, openTextDocuments, setActiveDocument]);
 
   useEffect(() => {
     if (isTauriRuntime() || syncingBrowserDevFilesRef.current) return;
