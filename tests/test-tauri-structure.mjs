@@ -623,14 +623,21 @@ assert.match(thumbnailInfoPlist, /com\.local\.burrete10\.graphml/);
 assert.match(thumbnailProviderSource, /parseCIF/);
 assert.match(thumbnailProviderSource, /parseMol2/);
 assert.match(thumbnailProviderSource, /parseCube/);
-assert.doesNotMatch(previewExtensionInfoPlist, /<key>QLSupportedContentTypes<\/key>[\s\S]*?public\.comma-separated-values-text/);
-assert.doesNotMatch(previewExtensionInfoPlist, /<key>QLSupportedContentTypes<\/key>[\s\S]*?public\.tab-separated-values-text/);
+const quickLookSupportedContentTypesBlock = previewExtensionInfoPlist.match(
+  /<key>QLSupportedContentTypes<\/key>\s*<array>([\s\S]*?)<\/array>/,
+)?.[1] ?? '';
+assert.doesNotMatch(quickLookSupportedContentTypesBlock, /public\.comma-separated-values-text/);
+assert.doesNotMatch(quickLookSupportedContentTypesBlock, /public\.tab-separated-values-text/);
 assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.csv/);
 assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.tsv/);
 assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.smiles/);
 assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.graphml/);
+assert.match(quickLookSupportedContentTypesBlock, /com\.local\.burrete10\.openmm-coordinate-artifact/);
+assert.match(quickLookSupportedContentTypesBlock, /com\.local\.burrete10\.openmm-workflow-text-artifact/);
 assert.match(appMetadata, /<string>graphml<\/string>/);
 assert.match(appMetadata, /com\.local\.burrete10\.graphml/);
+assert.match(appMetadata, /com\.local\.burrete10\.openmm-coordinate-artifact/);
+assert.match(appMetadata, /com\.local\.burrete10\.openmm-workflow-text-artifact/);
 assert.match(tauriConfigSource, /"graphml"/);
 assert.match(quickLookPreviewController, /shouldUseFepGraphMLPreview\(fileExtension: String, previewPlan: BurretePreviewPlan\?\)/);
 assert.match(quickLookPreviewController, /return fileExtension\.lowercased\(\) == "graphml"/);
@@ -640,6 +647,8 @@ assert.match(quickLookPreviewController, /let denseMode = graph\.nodes\.count > 
 assert.match(quickLookPreviewController, /class="node-dot"/);
 assert.match(quickLookPreviewController, /class="node-card"/);
 assert.match(quickLookPreviewController, /score: " \+ String\(format: "%\.3f", \$0\)/);
+assert.match(quickLookPreviewController, /shouldUseTextArtifactPreview\(fileExtension: String, previewPlan: BurretePreviewPlan\?\)/);
+assert.match(quickLookPreviewController, /detected\.previewMode=text-artifact/);
 assert.doesNotMatch(installLocalScript, /broadPublicTypes/);
 assert.match(installLocalScript, /let contentTypes = documentTypes\.flatMap/);
 assert.match(installLocalScript, /for contentType in Set\(contentTypes\)/);

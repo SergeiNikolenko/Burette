@@ -5,6 +5,28 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 const TEXT_FILE_READ_LIMIT: usize = 12 * 1024 * 1024;
+const OPENMM_BINARY_ARTIFACT_EXTENSIONS: &[&str] = &["chk", "checkpoint"];
+const MOLECULAR_BINARY_METADATA_EXTENSIONS: &[&str] = &[
+    "chk",
+    "checkpoint",
+    "coor",
+    "dcd",
+    "dms",
+    "edr",
+    "gsd",
+    "h5md",
+    "namdbin",
+    "nc",
+    "ncdf",
+    "ncrst",
+    "netcdf",
+    "nctraj",
+    "tng",
+    "tpr",
+    "trr",
+    "trz",
+    "xtc",
+];
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -64,6 +86,24 @@ fn read_text_file_impl(
     let read_limit = read_limit(max_bytes);
     let text_bytes = readable_text_bytes(&path, &extension, read_limit + 1)?;
     if looks_binary(&text_bytes) {
+        if is_molecular_binary_metadata_artifact(&extension) {
+            let modified_at = metadata
+                .modified()
+                .ok()
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|duration| duration.as_millis() as u64);
+            return Ok(TextFileDocument {
+                id: uuid::Uuid::new_v4().to_string(),
+                path: path.to_string_lossy().to_string(),
+                title: file_title(&path),
+                extension,
+                language: "text".to_string(),
+                byte_count: metadata.len(),
+                content: molecular_binary_artifact_summary(&path, metadata.len()),
+                truncated: false,
+                modified_at,
+            });
+        }
         return Err(format!("{} is not a text file", path.display()));
     }
 
@@ -91,6 +131,31 @@ fn read_text_file_impl(
         truncated,
         modified_at,
     })
+}
+
+fn is_openmm_binary_artifact(extension: &str) -> bool {
+    OPENMM_BINARY_ARTIFACT_EXTENSIONS.contains(&extension)
+}
+
+fn is_molecular_binary_metadata_artifact(extension: &str) -> bool {
+    MOLECULAR_BINARY_METADATA_EXTENSIONS.contains(&extension)
+}
+
+fn molecular_binary_artifact_summary(path: &Path, byte_count: u64) -> String {
+    let extension = file_extension(path);
+    if is_openmm_binary_artifact(&extension) {
+        return format!(
+            "Binary OpenMM checkpoint artifact\n\nFile: {}\nSize: {} bytes\n\nBurrete registers this file as an OpenMM workflow artifact, but does not deserialize checkpoint payloads. OpenMM checkpoints are tied to the matching System, Platform, OpenMM version, and hardware context, so this viewer shows metadata instead of raw binary bytes.\n",
+            path.display(),
+            byte_count
+        );
+    }
+    format!(
+        "Binary molecular workflow artifact\n\nFile: {}\nSize: {} bytes\nFormat: .{}\n\nBurrete registers this file as an MDAnalysis-compatible molecular artifact. This text viewer shows metadata because the file is a binary payload; structure preview can still use it when a compatible topology/trajectory pair is available.\n",
+        path.display(),
+        byte_count,
+        extension
+    )
 }
 
 fn looks_binary(bytes: &[u8]) -> bool {
@@ -198,6 +263,40 @@ mod tests {
         fs::write(&path, [b'a', 0, b'b']).expect("fixture should write");
         let error = read_text_file_impl(path.clone(), None).expect_err("binary file should fail");
         assert!(error.contains("is not a text file"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn shows_metadata_for_openmm_binary_checkpoint_artifacts() {
+        let path = temp_path("state.chk");
+        fs::write(&path, [b'O', b'M', b'M', 0, b'C']).expect("fixture should write");
+        let document =
+            read_text_file_impl(path.clone(), None).expect("checkpoint metadata should read");
+        assert_eq!(document.extension, "chk");
+        assert_eq!(document.language, "text");
+        assert!(document
+            .content
+            .contains("Binary OpenMM checkpoint artifact"));
+        assert!(document
+            .content
+            .contains("does not deserialize checkpoint payloads"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn shows_metadata_for_binary_molecular_artifacts() {
+        let path = temp_path("energy.edr");
+        fs::write(&path, [b'E', b'D', b'R', 0, b'D']).expect("fixture should write");
+        let document =
+            read_text_file_impl(path.clone(), None).expect("binary metadata should read");
+        assert_eq!(document.extension, "edr");
+        assert_eq!(document.language, "text");
+        assert!(document
+            .content
+            .contains("Binary molecular workflow artifact"));
+        assert!(document
+            .content
+            .contains("MDAnalysis-compatible molecular artifact"));
         let _ = fs::remove_file(path);
     }
 
