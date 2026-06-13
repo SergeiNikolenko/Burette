@@ -23,6 +23,36 @@ pub(crate) const MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
 const MAESTRO_PREVIEW_READ_LIMIT: u64 = 64 * 1024 * 1024;
 const DESMOND_PREVIEW_TARGET_MB: &str = "24";
 const SCHRODINGER_RUN: &str = "/opt/schrodinger/suites2026-1/run";
+const MD_COORDINATE_EXTENSIONS: &[&str] = &[
+    "xtc",
+    "trr",
+    "dcd",
+    "nctraj",
+    "tng",
+    "h5md",
+    "gsd",
+    "trz",
+    "coor",
+    "namdbin",
+    "nc",
+    "ncdf",
+    "netcdf",
+    "ncrst",
+    "lammpstrj",
+    "dump",
+    "trj",
+    "mdcrd",
+    "crdbox",
+    "trc",
+    "arc",
+    "config",
+    "history",
+];
+const MD_TOPOLOGY_EXTENSIONS: &[&str] = &[
+    "pdb", "ent", "pdbqt", "pqr", "xpdb", "gro", "cif", "mmcif", "mcif", "bcif", "mmtf", "mol2",
+    "psf", "prmtop", "top", "tpr", "parm7", "parm", "itp", "data", "lammps", "lmp", "txyz", "xml",
+    "inpcrd", "rst7", "crd", "rst", "state",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum StructureAttachmentRole {
@@ -718,6 +748,26 @@ fn resolve_structure_file_bundle(path: &Path, extension: &str) -> StructureFileB
         })
 }
 
+pub(crate) fn companion_paths_for_open_path(path: &Path, extension: &str) -> Vec<PathBuf> {
+    let bundle = resolve_structure_file_bundle(path, extension);
+    if bundle.kind == StructureBundleKind::Single {
+        return Vec::new();
+    }
+    let mut paths = Vec::new();
+    for candidate in std::iter::once(bundle.primary_path).chain(
+        bundle
+            .attachments
+            .into_iter()
+            .map(|attachment| attachment.path),
+    ) {
+        if candidate != path && candidate.is_file() && !paths.iter().any(|seen| seen == &candidate)
+        {
+            paths.push(candidate);
+        }
+    }
+    paths
+}
+
 fn resolve_desmond_file_bundle(path: &Path, extension: &str) -> Option<StructureFileBundle> {
     match extension {
         "cms" => {
@@ -798,9 +848,9 @@ fn resolve_desmond_file_bundle(path: &Path, extension: &str) -> Option<Structure
 
 fn resolve_md_file_bundle(path: &Path, extension: &str) -> Option<StructureFileBundle> {
     let base = path.with_extension("");
-    if matches!(extension, "xtc" | "trr" | "dcd" | "nctraj") {
-        let topology = ["pdb", "gro", "cif", "mmcif", "bcif", "psf", "prmtop", "top"]
-            .into_iter()
+    if MD_COORDINATE_EXTENSIONS.contains(&extension) {
+        let topology = MD_TOPOLOGY_EXTENSIONS
+            .iter()
             .map(|candidate| base.with_extension(candidate))
             .find(|candidate| candidate.is_file())?;
         return Some(StructureFileBundle {
@@ -819,12 +869,9 @@ fn resolve_md_file_bundle(path: &Path, extension: &str) -> Option<StructureFileB
             ],
         });
     }
-    if matches!(
-        extension,
-        "pdb" | "gro" | "cif" | "mmcif" | "bcif" | "psf" | "prmtop" | "top"
-    ) {
-        let trajectory = ["xtc", "trr", "dcd", "nctraj"]
-            .into_iter()
+    if MD_TOPOLOGY_EXTENSIONS.contains(&extension) {
+        let trajectory = MD_COORDINATE_EXTENSIONS
+            .iter()
             .map(|candidate| base.with_extension(candidate))
             .find(|candidate| candidate.is_file())?;
         return Some(StructureFileBundle {
