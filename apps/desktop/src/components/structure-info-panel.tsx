@@ -1,4 +1,4 @@
-import { useEffect, useState, type MouseEvent } from "react";
+import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { showNativeContextMenu } from "./native-context-menu";
 import { formatBytes } from "./format";
 import type { MenuItemSpec } from "./menu-types";
@@ -6,6 +6,7 @@ import type { ShellActions, ShellViewState } from "./types";
 import { structureBriefForDocument, type StructureBriefRow as BriefRow } from "../lib/structure-brief";
 import { parseStructureComposition, type StructureCompositionSummary, type StructureSummaryRow, type StructureViewerAction } from "../lib/structure-composition";
 import { readStructureText } from "../lib/structure-text";
+import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import type { ViewerDocument } from "../types";
 
 type StructureInfoPanelProps = {
@@ -14,13 +15,34 @@ type StructureInfoPanelProps = {
   actions: ShellActions;
 };
 
+const SDF_CONTEXT_STYLE_OPTIONS = [
+  { value: "line", label: "Line" },
+  { value: "ball-and-stick", label: "Ball+Stick" },
+  { value: "spacefill", label: "Spacefill" },
+  { value: "molecular-surface", label: "Surface" },
+  { value: "match", label: "Match" },
+] as const;
+
+type SdfContextStyle = typeof SDF_CONTEXT_STYLE_OPTIONS[number]["value"];
+const SDF_CONTEXT_OPACITY_DEFAULT = 0.12;
+const SDF_CONTEXT_OPACITY_MIN = 0.04;
+const SDF_CONTEXT_OPACITY_MAX = 0.6;
+
 export function StructureInfoPanel({ document, dockDrops, actions }: StructureInfoPanelProps) {
   const composition = useStructureComposition(document);
   const [activeActionKey, setActiveActionKey] = useState<string | null>(null);
+  const [sdfContextStyle, setSdfContextStyle] = useState<SdfContextStyle>("line");
+  const [sdfContextOpacity, setSdfContextOpacity] = useState(SDF_CONTEXT_OPACITY_DEFAULT);
 
   useEffect(() => {
     setActiveActionKey(null);
   }, [document?.id]);
+
+  useEffect(() => {
+    if (!document) return;
+    setSdfContextStyle(readSdfContextStylePreference(document));
+    setSdfContextOpacity(readSdfContextOpacityPreference(document));
+  }, [document]);
 
   if (!document) {
     return (
@@ -90,6 +112,17 @@ export function StructureInfoPanel({ document, dockDrops, actions }: StructureIn
         </div>
         <p>{inspectorSummaryLine(brief.kind, compositionSummary, compositionPending, compositionError)}</p>
       </section>
+
+      {compositionSummary && hasSdfMoleculeCollection(compositionSummary) ? (
+        <SdfContextStyleCard
+          document={document}
+          actions={actions}
+          value={sdfContextStyle}
+          setValue={setSdfContextStyle}
+          opacity={sdfContextOpacity}
+          setOpacity={setSdfContextOpacity}
+        />
+      ) : null}
 
       {(compositionSummary || compositionPending || compositionError) ? (
         <section className="structure-brief-card">
@@ -184,6 +217,126 @@ export function StructureInfoPanel({ document, dockDrops, actions }: StructureIn
   );
 }
 
+function hasSdfMoleculeCollection(summary: StructureCompositionSummary) {
+  return summary.componentRows.filter((row) => row.action?.type === "set_sdf_molecule").length > 1;
+}
+
+function sdfContextStyleStorageKey(document: ViewerDocument) {
+  return `buret.sdf.contextStyle.${document.id}`;
+}
+
+function sdfContextOpacityStorageKey(document: ViewerDocument) {
+  return `buret.sdf.contextOpacity.${document.id}`;
+}
+
+function normalizeSdfContextStyle(value: string | null | undefined): SdfContextStyle {
+  return SDF_CONTEXT_STYLE_OPTIONS.some((option) => option.value === value) ? value as SdfContextStyle : "line";
+}
+
+function normalizeSdfContextOpacity(value: string | number | null | undefined) {
+  const opacity = Number(value);
+  if (!Number.isFinite(opacity)) return SDF_CONTEXT_OPACITY_DEFAULT;
+  return Math.max(SDF_CONTEXT_OPACITY_MIN, Math.min(SDF_CONTEXT_OPACITY_MAX, opacity));
+}
+
+function readSdfContextStylePreference(document: ViewerDocument): SdfContextStyle {
+  try {
+    return normalizeSdfContextStyle(window.localStorage?.getItem(sdfContextStyleStorageKey(document)));
+  } catch (_) {
+    return "line";
+  }
+}
+
+function writeSdfContextStylePreference(document: ViewerDocument, value: SdfContextStyle) {
+  try {
+    window.localStorage?.setItem(sdfContextStyleStorageKey(document), value);
+  } catch (_) {}
+}
+
+function readSdfContextOpacityPreference(document: ViewerDocument) {
+  try {
+    return normalizeSdfContextOpacity(window.localStorage?.getItem(sdfContextOpacityStorageKey(document)));
+  } catch (_) {
+    return SDF_CONTEXT_OPACITY_DEFAULT;
+  }
+}
+
+function writeSdfContextOpacityPreference(document: ViewerDocument, value: number) {
+  try {
+    window.localStorage?.setItem(sdfContextOpacityStorageKey(document), normalizeSdfContextOpacity(value).toFixed(2));
+  } catch (_) {}
+}
+
+function SdfContextStyleCard({
+  document,
+  actions,
+  value,
+  setValue,
+  opacity,
+  setOpacity,
+}: {
+  document: ViewerDocument;
+  actions: ShellActions;
+  value: SdfContextStyle;
+  setValue: (value: SdfContextStyle) => void;
+  opacity: number;
+  setOpacity: (value: number) => void;
+}) {
+  const applyStyle = (style: SdfContextStyle) => {
+    setValue(style);
+    writeSdfContextStylePreference(document, style);
+    actions.runStructureViewerAction(document, {
+      type: "set_sdf_context_style",
+      label: `All background: ${SDF_CONTEXT_STYLE_OPTIONS.find((option) => option.value === style)?.label ?? style}`,
+      notify: false,
+      style,
+    });
+  };
+  const applyOpacity = (nextOpacity: number) => {
+    const normalized = normalizeSdfContextOpacity(nextOpacity);
+    setOpacity(normalized);
+    writeSdfContextOpacityPreference(document, normalized);
+    actions.runStructureViewerAction(document, {
+      type: "set_sdf_context_opacity",
+      label: `All background opacity: ${Math.round(normalized * 100)}%`,
+      notify: false,
+      opacity: normalized,
+    });
+  };
+  return (
+    <section className="structure-brief-card structure-inspector-context-style">
+      <StructureSectionHeader title="All background" detail="Context molecules" />
+      <div className="structure-inspector-style-options" role="group" aria-label="All background style">
+        {SDF_CONTEXT_STYLE_OPTIONS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className="structure-inspector-style-option"
+            data-selected={option.value === value || undefined}
+            aria-pressed={option.value === value}
+            onClick={() => applyStyle(option.value)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      <label className="structure-inspector-opacity-control">
+        <span>Opacity</span>
+        <input
+          type="range"
+          min={SDF_CONTEXT_OPACITY_MIN}
+          max={SDF_CONTEXT_OPACITY_MAX}
+          step="0.01"
+          value={opacity}
+          aria-label="All background opacity"
+          onInput={(event) => applyOpacity(Number(event.currentTarget.value))}
+        />
+        <strong>{Math.round(opacity * 100)}%</strong>
+      </label>
+    </section>
+  );
+}
+
 function useStructureComposition(document: ViewerDocument | null) {
   const [state, setState] = useState<{
     documentId: string | null;
@@ -199,7 +352,7 @@ function useStructureComposition(document: ViewerDocument | null) {
     }
     let cancelled = false;
     setState({ documentId: document.id, loading: true, summary: null, error: null });
-    void readStructureText(document.path, { maxBytes: compositionReadLimit(document) })
+    void readInspectorStructureText(document)
       .then((text) => {
         if (cancelled) return;
         setState({
@@ -224,6 +377,15 @@ function useStructureComposition(document: ViewerDocument | null) {
   }, [document]);
 
   return state;
+}
+
+function readInspectorStructureText(document: ViewerDocument) {
+  const maxBytes = compositionReadLimit(document);
+  const virtualText = document.virtual ? readBrowserDevVirtualTextDocument(document.path) : null;
+  if (virtualText !== null) {
+    return Promise.resolve(maxBytes === undefined ? virtualText : virtualText.slice(0, maxBytes));
+  }
+  return readStructureText(document.path, { maxBytes });
 }
 
 function compositionReadLimit(document: ViewerDocument) {
@@ -352,6 +514,7 @@ function SelectedEntityCard({
 
 function actionTypeLabel(action: StructureViewerAction) {
   if (action.type === "focus_ligand") return "Focus in 3D";
+  if (action.type === "set_sdf_molecule") return "Show molecule";
   if (action.type === "select_residues") return "Residues";
   if (action.type === "hide_waters") return "Hide water";
   if (action.type === "show_waters") return "Show water";
@@ -361,6 +524,7 @@ function actionTypeLabel(action: StructureViewerAction) {
 }
 
 function selectorLabel(action: StructureViewerAction) {
+  if (action.type === "set_sdf_molecule") return `Molecule ${action.index + 1}`;
   if (!("selector" in action)) return "Scene action";
   const chain = valueFromSelector(action.selector, "auth_asym_id") ?? valueFromSelector(action.selector, "label_asym_id");
   const seq = valueFromSelector(action.selector, "auth_seq_id") ?? valueFromSelector(action.selector, "label_seq_id");
@@ -404,11 +568,30 @@ function StructureActionList({
   setActiveActionKey: (key: string | null) => void;
   compact?: boolean;
 }) {
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    const button = target?.closest<HTMLButtonElement>("button.structure-brief-action-row, button.structure-brief-chip-button");
+    if (!button || !event.currentTarget.contains(button)) return;
+    const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button.structure-brief-action-row, button.structure-brief-chip-button"))
+      .filter((candidate) => !candidate.disabled);
+    const index = buttons.indexOf(button);
+    if (index < 0) return;
+    const nextIndex = event.key === "ArrowDown"
+      ? Math.min(buttons.length - 1, index + 1)
+      : Math.max(0, index - 1);
+    if (nextIndex === index) return;
+    event.preventDefault();
+    event.stopPropagation();
+    buttons[nextIndex].focus();
+    buttons[nextIndex].click();
+  };
+
   return (
-    <div className={compact ? "structure-brief-chip-list" : "structure-brief-rows"}>
-      {rows.map((row) => (
+    <div className={compact ? "structure-brief-chip-list" : "structure-brief-rows"} onKeyDown={handleKeyDown}>
+      {rows.map((row, index) => (
         <StructureActionRow
-          key={row.label}
+          key={structureActionRowKey(row, index)}
           row={row}
           document={document}
           actions={actions}
@@ -419,6 +602,11 @@ function StructureActionList({
       ))}
     </div>
   );
+}
+
+function structureActionRowKey(row: StructureSummaryRow, index: number) {
+  const actionKey = row.action ? `${row.action.type}:${"index" in row.action ? row.action.index : ""}` : "";
+  return `${row.label}:${actionKey}:${index}`;
 }
 
 function StructureActionRow({
@@ -599,6 +787,7 @@ function StructureDetailsSection({
 }
 
 function selectionActionKey(document: ViewerDocument, action: StructureViewerAction) {
+  if (action.type === "set_sdf_molecule") return JSON.stringify([document.id, action.type, action.index]);
   if (action.type !== "select_residues" && action.type !== "focus_ligand") return null;
   return JSON.stringify([document.id, action.type, action.selector]);
 }

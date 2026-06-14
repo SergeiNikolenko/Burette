@@ -704,9 +704,6 @@ pub(crate) fn append_to_molecule_collection<R: Runtime>(
                 .to_string(),
         );
     }
-    if target_family != CollectionFamily::Sdf {
-        return Err("Ketcher sketches can only be added to SDF collections".to_string());
-    }
     if request.text.trim().is_empty() {
         return Err("Structure text is empty".to_string());
     }

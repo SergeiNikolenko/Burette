@@ -49,6 +49,7 @@ export type ViewerReloadOptions = {
   xyzrenderOrientationRef?: string | null;
   xyzrenderPreset?: string | null;
   xyzrenderControls?: XyzrenderControls | null;
+  sdfPoseControlLabel?: string | null;
 };
 
 export type DockingDocumentRequest = {
