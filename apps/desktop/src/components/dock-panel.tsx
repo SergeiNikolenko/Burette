@@ -15,6 +15,7 @@ import { ViewerFrame } from "./editor-area/viewer-frame";
 import { TextFileViewer } from "./text-file-viewer";
 import { CloseIcon } from "./close-icon";
 import { StructureInfoPanel } from "./structure-info-panel";
+import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureText } from "../lib/structure-text";
 import type { TextFileDocument, ViewerDocument } from "../types";
 
@@ -364,7 +365,9 @@ function ActiveDocumentTextPanel({
     setError(null);
     if (!activeDocument || existingDocument) return undefined;
     let cancelled = false;
-    void readStructureText(activeDocument.path)
+    const virtualText = readBrowserDevVirtualTextDocument(activeDocument.path);
+    const textPromise = virtualText === null ? readStructureText(activeDocument.path) : Promise.resolve(virtualText);
+    void textPromise
       .then((content) => {
         if (cancelled) return;
         setLoadedDocument({

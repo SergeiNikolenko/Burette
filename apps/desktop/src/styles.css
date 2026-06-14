@@ -2400,6 +2400,7 @@ img.radix-menu-item-icon {
   gap: 8px;
 }
 .ketcher-page-actions button {
+  position: relative;
   min-width: 0;
   height: 30px;
   border: 0;
@@ -2461,7 +2462,7 @@ img.radix-menu-item-icon {
   display: inline-grid;
   grid-template-columns: 28px minmax(34px, 1fr) 28px;
   align-items: center;
-  overflow: hidden;
+  overflow: visible;
   border-radius: 8px;
   background: var(--surface-subtle);
   color: var(--text-secondary);
@@ -3261,6 +3262,7 @@ img.radix-menu-item-icon {
   white-space: nowrap;
 }
 .ketcher-page-footer button {
+  position: relative;
   min-width: 82px;
   height: 30px;
   border: 0;

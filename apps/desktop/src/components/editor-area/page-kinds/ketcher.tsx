@@ -7,6 +7,11 @@ export type KetcherLocationImportRequest = {
   fragments?: Array<{
     title: string;
     text: string;
+    source3d?: {
+      title: string;
+      extension: string;
+      text: string;
+    };
     source?: {
       kind: "grid-row";
       documentId: string;

@@ -111,6 +111,7 @@
     estimatedGridGap: 10,
     contextMenuOutsideHandler: null,
     contextMenuKeyHandler: null,
+    generating3d: false,
     railDragging: false,
     pendingGridScrollIndex: null,
     pendingGridRailPosition: null
@@ -289,6 +290,20 @@
       }
       if (body.type === 'gridMoleculeExportError') {
         setStatus(body.error || '[grid] Export molecule failed.', 'error');
+        return;
+      }
+      if (body.type === 'gridGenerate3DStarted') {
+        setGridGenerate3DPending(true);
+        setStatus('[grid] Generating 3D conformers.');
+        return;
+      }
+      if (body.type === 'gridGenerate3DFinished') {
+        setGridGenerate3DPending(false);
+        return;
+      }
+      if (body.type === 'gridGenerate3DError') {
+        setGridGenerate3DPending(false);
+        setStatus(body.error || '[grid] 3D generation failed.', 'error');
         return;
       }
       const requestId = String(body.requestId || '');
@@ -634,6 +649,7 @@
       xyzrenderPresetOptions: xyzrenderPresetOptions(cfg),
       ketcherOpen: caps.ketcherOpen,
       rendererSwitch: caps.rendererSwitch,
+      generating3d: state.generating3d,
       sortOptions: propertyOptionList(cfg),
       onSearchInput(value) {
         setUnifiedSearchQuery(value || '', cfg);
@@ -666,6 +682,7 @@
       onSetCardRenderer(value) { setCardRenderer(value, cfg); },
       onXyzrenderPresetChange(value) { setXyzrenderPreset(value, cfg); },
       onOpenKetcher() { requestSelectedKetcherDocument(cfg); },
+      onGenerate3D() { requestSelected3DGeneration(cfg); },
       onRendererSwitch(value) { requestRendererSwitch(value, cfg); },
       onRdkitUseInputCoordsChange(checked) {
         state.rdkitUseInputCoords = checked === true;
@@ -716,6 +733,7 @@
     syncXyzrenderPresetControl(currentCfg);
     syncRdkitCoordinatesControl();
     syncGridEditControls();
+    syncGridGenerate3DControls();
   }
 
   function syncGridEditControls() {
@@ -932,6 +950,75 @@
       fragments
     });
     setStatus(`[grid] Opening ${fragments.length.toLocaleString()} selected molecule${fragments.length === 1 ? '' : 's'} in Ketcher.`);
+  }
+
+  function requestSelected3DGeneration(cfg) {
+    const rows = selectedMolstarRows();
+    if (!rows.length) {
+      setStatus('[grid] Select one or more molecules before generating 3D.', 'error');
+      return;
+    }
+    request3DGenerationForRows(rows, cfg);
+  }
+
+  function requestSingle3DGeneration(row, cfg) {
+    if (!row) {
+      setStatus('[grid] Select a molecule before generating 3D.', 'error');
+      return;
+    }
+    request3DGenerationForRows([row], cfg);
+  }
+
+  function request3DGenerationForRows(rows, cfg) {
+    const molecules = rows
+      .map(row => gridConformerGenerationInput(row))
+      .filter(Boolean);
+    if (!molecules.length) {
+      setStatus('[grid] Selected molecules do not have SDF or SMILES structure data for 3D generation.', 'error');
+      return;
+    }
+    const title = molecules.length === 1
+      ? `${safeStructureFileStem(rows[0]?.name || `molecule-${Number(rows[0]?.index) + 1 || 1}`, Number(rows[0]?.index))}-3d.sdf`
+      : `${baseName(cfg?.label || 'selected-molecules')}-3d.sdf`;
+    setGridGenerate3DPending(true);
+    post('generate3dGridSelection', '[grid] Generate 3D for selected molecules.', {
+      documentId: cfg?.documentId || null,
+      title,
+      molecules
+    });
+    setStatus(`[grid] Generating 3D for ${molecules.length.toLocaleString()} molecule${molecules.length === 1 ? '' : 's'}.`);
+  }
+
+  function gridConformerGenerationInput(row) {
+    const record = gridDragRecord(row);
+    if (!record || !['sdf', 'sd', 'mol', 'smi', 'smiles'].includes(String(record.inputExtension || '').toLowerCase())) return null;
+    const text = String(record.text || '').trim();
+    if (!text) return null;
+    return {
+      title: record.path,
+      extension: record.inputExtension,
+      textBase64: textToBase64(text)
+    };
+  }
+
+  function setGridGenerate3DPending(pending) {
+    state.generating3d = pending === true;
+    syncGridGenerate3DControls();
+  }
+
+  function syncGridGenerate3DControls() {
+    const button = document.getElementById('generate-3d-selected');
+    if (button) {
+      button.disabled = state.generating3d || state.selected.size === 0;
+      button.classList.toggle('generating', state.generating3d);
+      button.title = state.generating3d
+        ? '3D generation is running'
+        : state.selected.size
+        ? 'Generate 3D conformers for selected molecules'
+        : 'Select one or more molecules first';
+    }
+    const label = button?.querySelector?.('[data-buret-grid-generate-3d-label]');
+    if (label) label.textContent = state.generating3d ? 'Generating...' : 'Generate 3D';
   }
 
   function selectedMolstarRows() {
@@ -2594,6 +2681,7 @@
           <div class="buret-grid-molecule-detail-actions">
             <button type="button" data-buret-detail-action="molstar">Open in Mol*</button>
             <button type="button" data-buret-detail-action="ketcher">Edit in Ketcher</button>
+            <button type="button" data-buret-detail-action="generate3d">Generate 3D</button>
             <button type="button" data-buret-detail-action="copy">Copy structure</button>
             <button type="button" data-buret-detail-action="export">Export molecule...</button>
           </div>
@@ -2609,6 +2697,7 @@
         const action = button.getAttribute('data-buret-detail-action') || '';
         if (action === 'molstar') requestSingleMolstarDocument(row, cfg);
         else if (action === 'ketcher') requestOpenInKetcher(row, cfg);
+        else if (action === 'generate3d') requestSingle3DGeneration(row, cfg);
         else if (action === 'copy') void copyMoleculeStructure(row);
         else if (action === 'export') exportMolecule(row);
       });
@@ -2686,6 +2775,8 @@
     } else if (action === 'ketcher') {
       requestOpenInKetcher(row, cfg);
       setStatus(`[grid] Opening ${label} in Ketcher.`);
+    } else if (action === 'generate3d') {
+      requestSingle3DGeneration(row, cfg);
     } else if (action === 'duplicate') {
       duplicateGridRow(row, cfg);
       setStatus(`[grid] Duplicated ${label}. Unsaved changes.`);
@@ -2727,6 +2818,7 @@
       ['open', 'Preview molecule'],
       ['molstar', 'Open in Mol*'],
       ['ketcher', 'Edit in Ketcher'],
+      ['generate3d', 'Generate 3D'],
       ['duplicate', 'Duplicate'],
       ['remove', 'Delete from collection'],
       ['copy', 'Copy structure'],

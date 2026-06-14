@@ -6,7 +6,7 @@ import previewFormatRegistry from "../../../config/preview-formats.json";
 import { AppLayout } from "./components/app-layout";
 import { formatBytes } from "./components/format";
 import { showNativeContextMenu } from "./components/native-context-menu";
-import type { ChemicalEditorTarget, KetcherImportRequest, KetcherSketchRequest, ShellActions, ShellViewState, StatusKind, StatusNotice } from "./components/types";
+import type { ChemicalEditorTarget, KetcherImportRequest, KetcherSketchRequest, KetcherSource3D, ShellActions, ShellViewState, StatusKind, StatusNotice } from "./components/types";
 import { WindowTitle } from "./components/window-title";
 import {
   useCloseCommandPalette,
@@ -61,7 +61,7 @@ import {
   useSetDocuments,
 } from "./hooks/use-tabs";
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
-import { browserDevRuntimeNeedsRefresh, openBrowserDevDockingDocument, openBrowserDevDocuments, openBrowserDevMergedCollection, openBrowserDevMolstarContextDocument, openBrowserDevTextDocument, readBrowserDevCollectionText, readBrowserDevVirtualTextDocument } from "./lib/browser-dev-documents";
+import { browserDevRuntimeNeedsRefresh, generateBrowserDev3DConformer, openBrowserDevDockingDocument, openBrowserDevDocuments, openBrowserDevMergedCollection, openBrowserDevMolstarContextDocument, openBrowserDevTextDocument, readBrowserDevCollectionText, readBrowserDevVirtualTextDocument, writeBrowserDevVirtualTextDocument } from "./lib/browser-dev-documents";
 import { openBrowserDevTextFiles } from "./lib/browser-dev-text-files";
 import { defaultBuildInfo, loadBuildInfo } from "./lib/build-info";
 import { isMoleculeCollectionPath } from "./lib/collection-documents";
@@ -91,6 +91,11 @@ const filters = [
 ];
 
 const structureExtensions = new Set(previewFormatRegistry.documentTypes.extensions.map((extension) => extension.toLowerCase()));
+const browserDevSampleFiles = [
+  { title: "ketcher-2d-benzene.sdf", extension: "sdf", byteCount: 579 },
+  { title: "ketcher-3d-core.sdf", extension: "sdf", byteCount: 409 },
+  { title: "nad-2d.sdf", extension: "sdf", byteCount: 3813 },
+] as const;
 const preferredTextExtensions = new Set([
   "md",
   "markdown",
@@ -143,6 +148,16 @@ const BOTTOM_DOCK_CLOSE_THRESHOLD = 120;
 
 type MolstarContextDocument = Parameters<typeof openBrowserDevMolstarContextDocument>[0];
 type MolstarContextEntry = NonNullable<MolstarContextDocument["entries"]>[number];
+type ConformerGenerationResult = {
+  title: string;
+  extension: "sdf";
+  text: string;
+  method: string;
+  conformerCount?: number;
+};
+type ConformerGenerationMode = "single" | "ensemble";
+type MolstarStylePreference = ViewerPreferences["molstarStyle"];
+type PendingMolstarReplaceResolver = (ok: boolean) => void;
 
 function molstarContextEntryExtension(format: string | undefined) {
   const value = String(format || "pdb").toLowerCase();
@@ -421,6 +436,7 @@ export default function App() {
   const syncingBrowserDevFilesRef = useRef(false);
   const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions | null>(null);
   const pendingViewerReloadDocumentIdRef = useRef<string | null>(null);
+  const pendingMolstarReplaceRef = useRef<Map<string, PendingMolstarReplaceResolver>>(new Map());
   const pendingXyzrenderSheetDropRef = useRef<{ documentId: string; payload: StructureDragPayload } | null>(null);
   const xyzrenderOrientationRefRef = useRef<string | null>(null);
   const skipNextPreferenceRefreshRef = useRef(false);
@@ -507,17 +523,28 @@ export default function App() {
     openCommandPalette("search");
   }, [openCommandPalette]);
 
+  const browserDevSampleRoot = useMemo(() => browserDevSampleProjectRoot(), []);
+  const sidebarProjectRoots = useMemo(() => (
+    browserDevSampleRoot && !projectRoots.includes(browserDevSampleRoot)
+      ? [...projectRoots, browserDevSampleRoot]
+      : projectRoots
+  ), [browserDevSampleRoot, projectRoots]);
+  const sidebarProjectStructures = useMemo(() => {
+    const samples = browserDevSampleProjectStructures();
+    return samples.length > 0 ? [...projectStructures, ...samples] : projectStructures;
+  }, [projectStructures]);
+
   const allSidebarProjects = useMemo(() => buildSidebarProjects({
     documents,
     recentStructures,
-    projectRoots,
-    projectStructures,
+    projectRoots: sidebarProjectRoots,
+    projectStructures: sidebarProjectStructures,
     pinnedProjectRoots,
     projectNameOverrides,
     activeDocumentId: activeDocument?.id ?? null,
     hiddenProjectRoots,
     pinnedStructurePaths,
-  }), [activeDocument?.id, documents, hiddenProjectRoots, pinnedProjectRoots, pinnedStructurePaths, projectNameOverrides, projectRoots, projectStructures, recentStructures]);
+  }), [activeDocument?.id, documents, hiddenProjectRoots, pinnedProjectRoots, pinnedStructurePaths, projectNameOverrides, recentStructures, sidebarProjectRoots, sidebarProjectStructures]);
 
   useEffect(() => {
     if (!isTauriRuntime() || projectRoots.length === 0) {
@@ -1281,6 +1308,73 @@ export default function App() {
     pushStatus(action.label);
   }, [pushStatus]);
 
+  const generate3DConformer = useCallback(async (document: ViewerDocument, mode: ConformerGenerationMode = "single", molstarStyle?: MolstarStylePreference | null) => {
+    if (!["sdf", "sd", "mol", "smi", "smiles"].includes(document.extension.trim().toLowerCase())) {
+      pushStatus("3D conformer generation supports SDF, MOL, and SMILES structures.", "error");
+      return;
+    }
+    pushStatus(`Generating ${conformerGenerationTaskLabel(mode)} with ${preferences.conformerEngine.toUpperCase()}...`);
+    try {
+      const text = readBrowserDevVirtualTextDocument(document.path) ?? await readStructureText(document.path);
+      const request = {
+        title: document.title,
+        extension: document.extension,
+        text,
+        ...conformerGenerationPreferences(preferences),
+        mode,
+        source3d: null,
+      };
+      const conformer = isTauriRuntime()
+        ? await invoke<ConformerGenerationResult>("generate_3d_conformer", { request })
+        : await generateBrowserDev3DConformer(request);
+      const poseSetText = generated3DPoseSetText(text, document.extension, conformer.text, mode);
+      const poseSetTitle = generated3DPoseSetTitle(document.title, poseSetText);
+      const effectiveMolstarStyle = molstarStyle ?? preferences.molstarStyle;
+      const molstarPreferences = { ...preferences, rendererMode: "molstar" as const, molstarStyle: effectiveMolstarStyle };
+      const generatedDocument = isTauriRuntime()
+        ? await invoke<ViewerDocument>("open_text_structure", {
+            request: { title: poseSetTitle, extension: conformer.extension, text: poseSetText },
+            preferences: molstarPreferences,
+            reloadOptions: {},
+          })
+        : await openBrowserDevTextDocument(
+            poseSetTitle,
+            conformer.extension,
+            poseSetText,
+            molstarPreferences,
+            {},
+          );
+      const replacedInPlace = await replaceMolstarStructureInPlace(
+        document,
+        generatedDocument,
+        { ...conformer, title: poseSetTitle, text: poseSetText },
+        pendingMolstarReplaceRef.current,
+        effectiveMolstarStyle,
+      );
+      if (replacedInPlace) {
+        if (!isTauriRuntime()) writeBrowserDevVirtualTextDocument(generatedDocument.path, poseSetText);
+        openDocumentsInActiveTab([generatedDocument], {
+          backLocation: { kind: "file", documentId: document.id, path: document.path },
+        });
+        rememberRecentStructures([generatedDocument]);
+        pushStatus(generated3DStatus(conformer, "added it as a new Molstar pose"));
+        return;
+      }
+      if (document.renderer === "molstar") {
+        pushStatus(
+          "3D conformer was generated, but the current Molstar viewer did not apply it in place. Reload the viewer tab once and try again.",
+          "error",
+        );
+        return;
+      }
+      openDocumentsInActiveTab([generatedDocument]);
+      rememberRecentStructures([generatedDocument]);
+      pushStatus(generated3DStatus(conformer, "opened it in Molstar"));
+    } catch (error) {
+      pushErrorStatus(error, "3D conformer generation failed");
+    }
+  }, [documents, openDocumentsInActiveTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setActiveDocument, setDocuments]);
+
   const showActiveDocumentMetadata = useCallback(() => {
     if (activeTextDocument) {
       showTextFileMetadata(activeTextDocument);
@@ -1433,13 +1527,17 @@ export default function App() {
     const readablePaths = cleanPaths.filter((path) => {
       const virtualText = readBrowserDevVirtualTextDocument(path);
       if (virtualText === null) return true;
-      virtualFragments.push({ title: basename(path), text: virtualText });
+      virtualFragments.push({
+        title: basename(path),
+        text: virtualText,
+        source3d: ketcherSource3DFromText(basename(path), virtualText, pathExtension(path)),
+      });
       return false;
     });
     const cleanFragments = [...(fragments?.filter((fragment) => fragment.text.trim()) ?? []), ...virtualFragments];
     if (readablePaths.length === 0 && cleanFragments.length === 0) return;
     const hasGridEditSource = cleanFragments.some((fragment) => fragment.source?.kind === "grid-row");
-    if (!hasGridEditSource && readablePaths.length === 0 && cleanFragments.length === 1) {
+    if (!hasGridEditSource && readablePaths.length === 0 && cleanFragments.length === 1 && !cleanFragments[0]?.source3d) {
       const [fragment] = cleanFragments;
       const draftMolfile = ketcherDraftMolfileFromImportText(fragment.text);
       if (draftMolfile) {
@@ -1512,12 +1610,13 @@ export default function App() {
     }
   }, [pushErrorStatus, pushStatus]);
 
-  const openKetcherWithFragment = useCallback((title: string, text: string, source?: NonNullable<NonNullable<KetcherImportRequest["fragments"]>[number]["source"]>) => {
+  const openKetcherWithFragment = useCallback((title: string, text: string, source?: NonNullable<NonNullable<KetcherImportRequest["fragments"]>[number]["source"]>, extensionOverride?: string) => {
     const cleanText = text.trim();
     if (!cleanText) return;
     const cleanTitle = title.trim() || "structure";
+    const source3d = ketcherSource3DFromText(cleanTitle, cleanText, source?.extension ?? extensionOverride ?? pathExtension(cleanTitle));
     const draftMolfile = source ? "" : ketcherDraftMolfileFromImportText(cleanText);
-    if (!source && draftMolfile) {
+    if (!source && draftMolfile && !source3d) {
       openKetcherTab({ kind: "ketcher", draftMolfile });
       setStructureDragActive(false);
       setKetcherDraftMolfile(draftMolfile);
@@ -1531,6 +1630,7 @@ export default function App() {
       fragments: [{
         title: cleanTitle,
         text,
+        source3d,
         source: source
           ? {
               ...source,
@@ -1598,7 +1698,7 @@ export default function App() {
   const openKetcherSketch = useCallback(async (request: KetcherSketchRequest) => {
     const rendererMode: ViewerPreferences["rendererMode"] = request.target === "grid"
       ? "grid2d"
-      : request.target === "molstar"
+      : request.target === "molstar" || request.target === "generate3d"
       ? "molstar"
       : request.target === "xyzrender"
         ? "xyzrender-external"
@@ -1670,6 +1770,41 @@ export default function App() {
         return;
       }
 
+      if (request.target === "generate3d") {
+        pushStatus("Generating 3D conformer...");
+        const conformerRequest = {
+          title: request.title,
+          extension: request.extension,
+          text: request.text,
+          ...conformerGenerationPreferences(preferences),
+          source3d: request.source3d ?? null,
+        };
+        const conformer = isTauriRuntime()
+          ? await invoke<ConformerGenerationResult>("generate_3d_conformer", { request: conformerRequest })
+          : await generateBrowserDev3DConformer(conformerRequest);
+        const document = isTauriRuntime()
+          ? await invoke<ViewerDocument>("open_text_structure", {
+              request: {
+                title: conformer.title,
+                extension: conformer.extension,
+                text: conformer.text,
+              },
+              preferences: effectivePreferences,
+              reloadOptions,
+            })
+          : await openBrowserDevTextDocument(
+              conformer.title,
+              conformer.extension,
+              conformer.text,
+              effectivePreferences,
+              reloadOptions,
+        );
+        openDocumentsInActiveTab([document]);
+        rememberRecentStructures([document]);
+        pushStatus(generated3DStatus(conformer, "opened it in Molstar"));
+        return;
+      }
+
       const document = isTauriRuntime()
         ? await invoke<ViewerDocument>("open_text_structure", {
             request: {
@@ -1694,6 +1829,7 @@ export default function App() {
       );
     } catch (error) {
       pushErrorStatus(error, "Open Ketcher sketch failed");
+      throw error;
     }
   }, [addDocuments, mergeMoleculeCollections, openDocumentsInActiveTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
 
@@ -2209,6 +2345,8 @@ export default function App() {
           requestId?: string;
           message?: string;
           value?: string;
+          mode?: string;
+          molstarStyle?: string | null;
           documentId?: string;
           path?: string | null;
           receptorPath?: string | null;
@@ -2230,6 +2368,7 @@ export default function App() {
           inputDataBase64?: string | null;
           inputExtension?: string | null;
           fragments?: Array<{ title?: string | null; textBase64?: string | null }> | null;
+          molecules?: Array<{ title?: string | null; extension?: string | null; textBase64?: string | null }> | null;
           items?: Record<string, unknown>[] | null;
           name?: string | null;
           mimeType?: string | null;
@@ -2258,6 +2397,15 @@ export default function App() {
       if (data?.source !== "burrete-viewer" && data?.source !== "burrete-grid" && data?.source !== "burrete-agent-viewer") return;
       const body = data.body;
       if (!isKnownViewerMessageSource(event.source, body?.documentId)) return;
+      if (body?.type === "molstarStructureReplaced") {
+        const requestId = typeof body.requestId === "string" ? body.requestId : "";
+        const resolve = pendingMolstarReplaceRef.current.get(requestId);
+        if (resolve) {
+          pendingMolstarReplaceRef.current.delete(requestId);
+          resolve(true);
+        }
+        return;
+      }
       if (data.source === "burrete-agent-viewer" && body?.type === "agent-action-result") {
         if (typeof body.id === "string" && body.id.startsWith("text-selection-")) return;
         const result = body.result;
@@ -2448,17 +2596,18 @@ export default function App() {
               const bytes = Uint8Array.from(atob(textBase64), (char) => char.charCodeAt(0));
               const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
               const rowIndex = Number(body.rowIndex);
+              const extension = typeof body.extension === "string" && body.extension.trim()
+                ? body.extension.trim().replace(/^\./u, "")
+                : "sdf";
               openKetcherWithFragment(title, text, body.gridEdit === true && body.documentId && Number.isFinite(rowIndex)
                 ? {
                     kind: "grid-row",
                     documentId: body.documentId,
                     rowIndex,
                     title,
-                    extension: typeof body.extension === "string" && body.extension.trim()
-                      ? body.extension.trim().replace(/^\./u, "")
-                      : "sdf",
+                    extension,
                   }
-                : undefined);
+                : undefined, extension);
             } catch (error) {
               pushStatus(`Open in Ketcher failed: ${error instanceof Error ? error.message : String(error)}`, "error");
             }
@@ -2999,7 +3148,118 @@ export default function App() {
           : targetDocument?.path;
         if (targetPath) {
           pushStatus("Opening SDF grid...");
-          void openDocuments([targetPath], undefined, { rendererMode: "auto" }, { inActiveTab: true });
+          void openDocuments([targetPath], undefined, { rendererMode: "grid2d" }, { inActiveTab: true });
+        }
+        return;
+      }
+      if (body?.type === "generate3dGridSelection") {
+        const molecules = Array.isArray(body.molecules) ? body.molecules : [];
+        const title = typeof body.title === "string" && body.title.trim()
+          ? body.title.trim()
+          : "selected-3d-molecules.sdf";
+        const reply = (type: "gridGenerate3DStarted" | "gridGenerate3DFinished" | "gridGenerate3DError", payload: Record<string, unknown> = {}) => {
+          postMessageToViewerSource(event.source, {
+            source: "burrete-grid-host",
+            body: { type, ...payload },
+          });
+        };
+        if (!molecules.length) {
+          reply("gridGenerate3DError", { error: "Select one or more molecules before generating 3D." });
+          pushStatus("Select one or more molecules before generating 3D.", "error");
+          return;
+        }
+        reply("gridGenerate3DStarted");
+        void (async () => {
+          const generatedTexts: string[] = [];
+          const errors: string[] = [];
+          for (const molecule of molecules) {
+            const item = molecule && typeof molecule === "object" ? molecule as Record<string, unknown> : {};
+            const itemTitle = typeof item.title === "string" && item.title.trim() ? item.title.trim() : "molecule.smi";
+            const extension = typeof item.extension === "string" && item.extension.trim() ? item.extension.trim() : pathExtension(itemTitle);
+            const textBase64 = typeof item.textBase64 === "string" ? item.textBase64.trim() : "";
+            if (!textBase64) {
+              errors.push(`${itemTitle}: empty structure text`);
+              continue;
+            }
+            try {
+              const bytes = Uint8Array.from(atob(textBase64), (char) => char.charCodeAt(0));
+              const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+              const request = {
+                title: itemTitle,
+                extension,
+                text,
+                ...conformerGenerationPreferences(preferences),
+                mode: "single" as const,
+                source3d: null,
+              };
+              const conformer = isTauriRuntime()
+                ? await invoke<ConformerGenerationResult>("generate_3d_conformer", { request })
+                : await generateBrowserDev3DConformer(request);
+              generatedTexts.push(generated3DPoseSetText(text, extension, conformer.text, "single").trimEnd());
+            } catch (error) {
+              errors.push(`${itemTitle}: ${error instanceof Error ? error.message : String(error)}`);
+            }
+          }
+          if (!generatedTexts.length) {
+            throw new Error(errors.length ? errors.join("; ") : "3D generation did not return any structures.");
+          }
+          const text = `${generatedTexts.join("\n")}\n`;
+          const molstarPreferences = { ...preferences, rendererMode: "molstar" as const };
+          const generatedDocument = isTauriRuntime()
+            ? await invoke<ViewerDocument>("open_text_structure", {
+                request: { title, extension: "sdf", text },
+                preferences: molstarPreferences,
+                reloadOptions: {},
+              })
+            : await openBrowserDevTextDocument(
+                title,
+                "sdf",
+                text,
+                molstarPreferences,
+                {},
+              );
+          openDocumentsInActiveTab([generatedDocument]);
+          rememberRecentStructures([generatedDocument]);
+          const suffix = errors.length ? ` ${errors.length} failed.` : "";
+          pushStatus(`Generated 3D for ${generatedTexts.length} molecule${generatedTexts.length === 1 ? "" : "s"} and opened it in Molstar.${suffix}`);
+        })()
+          .catch((error) => {
+            reply("gridGenerate3DError", { error: error instanceof Error ? error.message : String(error) });
+            pushErrorStatus(error, "Grid 3D generation failed");
+          })
+          .finally(() => reply("gridGenerate3DFinished"));
+        return;
+      }
+      if (body?.type === "generate3dConformer") {
+        const requestDocumentId = typeof body.documentId === "string" && body.documentId.trim().length > 0
+          ? body.documentId.trim()
+          : null;
+        const requestPath = typeof body.path === "string" && body.path.trim().length > 0
+          ? body.path.trim()
+          : null;
+        const mode: ConformerGenerationMode = body.mode === "ensemble" ? "ensemble" : "single";
+        const molstarStyle = normalizeMolstarStylePreference(body.molstarStyle);
+        const targetDocument = requestDocumentId
+          ? documents.find((document) => document.id === requestDocumentId)
+            ?? (requestPath ? documents.find((document) => document.path === requestPath) : undefined)
+          : (requestPath ? documents.find((document) => document.path === requestPath) : undefined) ?? activeDocument;
+        const notifyGeneratorState = (type: "generate3dConformerStarted" | "generate3dConformerFinished") => {
+          postMessageToViewerSource(event.source, {
+            source: "burrete-host",
+            body: {
+              type,
+              documentId: targetDocument?.id ?? requestDocumentId ?? "",
+              mode,
+            },
+          });
+        };
+        if (targetDocument) {
+          notifyGeneratorState("generate3dConformerStarted");
+          void generate3DConformer(targetDocument, mode, molstarStyle)
+            .finally(() => notifyGeneratorState("generate3dConformerFinished"));
+        } else {
+          notifyGeneratorState("generate3dConformerFinished");
+          pushStatus("The Generate 3D request came from a tab that is no longer open.", "error");
         }
         return;
       }
@@ -3062,17 +3322,18 @@ export default function App() {
             const bytes = Uint8Array.from(atob(textBase64), (char) => char.charCodeAt(0));
             const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
             const rowIndex = Number(body.rowIndex);
+            const extension = typeof body.extension === "string" && body.extension.trim()
+              ? body.extension.trim().replace(/^\./u, "")
+              : "sdf";
             openKetcherWithFragment(title, text, body.gridEdit === true && body.documentId && Number.isFinite(rowIndex)
               ? {
                   kind: "grid-row",
                   documentId: body.documentId,
                   rowIndex,
                   title,
-                  extension: typeof body.extension === "string" && body.extension.trim()
-                    ? body.extension.trim().replace(/^\./u, "")
-                    : "sdf",
+                  extension,
                 }
-              : undefined);
+              : undefined, extension);
           } catch (error) {
             pushStatus(`Open in Ketcher failed: ${error instanceof Error ? error.message : String(error)}`, "error");
           }
@@ -3107,7 +3368,11 @@ export default function App() {
             const title = typeof fragment.title === "string" && fragment.title.trim()
               ? fragment.title.trim()
               : "ketcher-sketch.sdf";
-            return [{ title, text }];
+            return [{
+              title,
+              text,
+              source3d: ketcherSource3DFromText(title, text, pathExtension(title)),
+            }];
           } catch {
             return [];
           }
@@ -3160,7 +3425,7 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, addDocuments, documents, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar, writeGridPerfMetric]);
+  }, [activeDocument, addDocuments, documents, generate3DConformer, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar, writeGridPerfMetric]);
 
   useEffect(() => {
     if (!buildInfoLoaded || buildInfo.isDevBuild) return undefined;
@@ -3551,6 +3816,7 @@ export default function App() {
     showActiveDocumentMetadata,
     showDocumentMetadata,
     showTextFileMetadata,
+    generate3DConformer,
     runStructureViewerAction,
     selectTextStructure,
     exportActivePreviewAsPng,
@@ -3606,7 +3872,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyKetcherToGridRow, backToApp, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openWorkspaceFolder, pushErrorStatus, pushStatus, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runStructureViewerAction, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
+  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyKetcherToGridRow, backToApp, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openWorkspaceFolder, pushErrorStatus, pushStatus, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runStructureViewerAction, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
@@ -3725,6 +3991,196 @@ function activeViewerIframeForDocument(documentId: string) {
   );
 }
 
+function replaceMolstarStructureInPlace(
+  sourceDocument: ViewerDocument,
+  generatedDocument: ViewerDocument,
+  conformer: ConformerGenerationResult,
+  pendingReplacements: Map<string, PendingMolstarReplaceResolver>,
+  molstarStyle: MolstarStylePreference,
+) {
+  if (sourceDocument.renderer !== "molstar") return Promise.resolve(false);
+  const iframe = activeViewerIframeForDocument(sourceDocument.id);
+  if (!iframe?.contentWindow) return Promise.resolve(false);
+  const requestId = `molstar-replace-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return new Promise<boolean>((resolve) => {
+    const timeout = window.setTimeout(() => {
+      pendingReplacements.delete(requestId);
+      resolve(false);
+    }, 8000);
+    pendingReplacements.set(requestId, (ok) => {
+      window.clearTimeout(timeout);
+      resolve(ok);
+    });
+    try {
+      iframe.contentWindow?.postMessage({
+        source: "burrete-host",
+        body: {
+          type: "replaceMolstarStructure",
+          requestId,
+          documentId: sourceDocument.id,
+          title: conformer.title,
+          extension: conformer.extension,
+          path: generatedDocument.path,
+          byteCount: new TextEncoder().encode(conformer.text).byteLength,
+          textBase64: textToBase64(conformer.text),
+          method: conformer.method,
+          molstarStyle,
+        },
+      }, "*");
+    } catch {
+      window.clearTimeout(timeout);
+      pendingReplacements.delete(requestId);
+      resolve(false);
+    }
+  });
+}
+
+function generated3DPoseSetTitle(title: string, text: string) {
+  const poseCount = sdfRecordBlocks(text).length;
+  if (poseCount <= 1) return title;
+  return title;
+}
+
+function generated3DPoseSetText(sourceText: string, sourceExtension: string, generatedText: string, mode: ConformerGenerationMode = "single") {
+  const generatedRecords = sdfRecordBlocks(generatedText);
+  const sourceRecords = sourcePoseRecordBlocks(sourceText, sourceExtension);
+  const alignedGeneratedRecords = alignGeneratedPoseRecordsToSource(generatedRecords, sourceRecords[0]);
+  const records = mode === "ensemble" ? alignedGeneratedRecords : [...alignedGeneratedRecords, ...sourceRecords];
+  return records.length > 0 ? `${records.join("\n")}\n` : generatedText;
+}
+
+function normalizeMolstarStylePreference(value: unknown): MolstarStylePreference | null {
+  return value === "illustrative" || value === "default" ? value : null;
+}
+
+function sourcePoseRecordBlocks(text: string, extension: string) {
+  const normalizedExtension = extension.trim().toLowerCase().replace(/^\./u, "");
+  if (normalizedExtension === "sdf" || normalizedExtension === "sd") return sdfRecordBlocks(text);
+  if (normalizedExtension === "mol") {
+    const value = text.trimEnd();
+    return value ? [`${value}\n$$$$`] : [];
+  }
+  return [];
+}
+
+function sdfRecordBlocks(text: string) {
+  return text
+    .split("$$$$")
+    .map((record) => record.trimEnd())
+    .filter((record) => record.trim().length > 0)
+    .map((record) => `${record}\n$$$$`);
+}
+
+type MolBlockAtomCoordinates = {
+  atomCount: number;
+  atomStart: number;
+  centroid: [number, number, number];
+  coordinates: Array<[number, number, number]>;
+  lines: string[];
+};
+
+function alignGeneratedPoseRecordsToSource(records: string[], sourceRecord: string | undefined) {
+  const source = sourceRecord ? readMolBlockAtomCoordinates(sourceRecord) : null;
+  if (!source) return records;
+  return records.map((record) => alignMolBlockCentroid(record, source));
+}
+
+function alignMolBlockCentroid(record: string, source: MolBlockAtomCoordinates) {
+  const target = readMolBlockAtomCoordinates(record);
+  if (!target || target.atomCount !== source.atomCount) return record;
+  const delta: [number, number, number] = [
+    source.centroid[0] - target.centroid[0],
+    source.centroid[1] - target.centroid[1],
+    source.centroid[2] - target.centroid[2],
+  ];
+  const lines = [...target.lines];
+  for (let offset = 0; offset < target.atomCount; offset += 1) {
+    const lineIndex = target.atomStart + offset;
+    const line = lines[lineIndex] ?? "";
+    const [x, y, z] = target.coordinates[offset] ?? [0, 0, 0];
+    lines[lineIndex] = `${formatMolCoordinate(x + delta[0])}${formatMolCoordinate(y + delta[1])}${formatMolCoordinate(z + delta[2])}${line.slice(30)}`;
+  }
+  return lines.join("\n");
+}
+
+function readMolBlockAtomCoordinates(record: string): MolBlockAtomCoordinates | null {
+  const lines = record.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const countsIndex = lines.findIndex((line) => /^\s*\d+\s+\d+\s/u.test(line));
+  if (countsIndex < 0) return null;
+  const atomCount = Number(lines[countsIndex]?.slice(0, 3));
+  if (!Number.isFinite(atomCount) || atomCount <= 0) return null;
+  const atomStart = countsIndex + 1;
+  const coordinates: Array<[number, number, number]> = [];
+  for (let index = atomStart; index < atomStart + atomCount; index += 1) {
+    const line = lines[index] ?? "";
+    const x = Number(line.slice(0, 10));
+    const y = Number(line.slice(10, 20));
+    const z = Number(line.slice(20, 30));
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null;
+    coordinates.push([x, y, z]);
+  }
+  if (coordinates.length !== atomCount) return null;
+  const centroid = coordinates.reduce<[number, number, number]>(
+    (sum, [x, y, z]) => [sum[0] + x, sum[1] + y, sum[2] + z],
+    [0, 0, 0],
+  ).map((value) => value / atomCount) as [number, number, number];
+  return { atomCount, atomStart, centroid, coordinates, lines };
+}
+
+function formatMolCoordinate(value: number) {
+  const text = value.toFixed(4);
+  return text.length <= 10 ? text.padStart(10) : text.slice(0, 10);
+}
+
+function textToBase64(text: string) {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.slice(offset, offset + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function generated3DStatus(conformer: ConformerGenerationResult, action: string) {
+  const depth = conformerZDepth(conformer.text);
+  const count = Number(conformer.conformerCount || 0);
+  const subject = count > 1 ? `${count} 3D conformers` : "3D conformer";
+  const depthLabel = depth === null
+    ? ""
+      : depth <= 0.05
+        ? ` (z-depth ${depth.toFixed(2)} A, planar)`
+        : ` (z-depth ${depth.toFixed(2)} A)`;
+  return `Generated ${subject} with ${conformer.method}${depthLabel} and ${action}`;
+}
+
+function conformerGenerationPreferences(preferences: ViewerPreferences) {
+  return {
+    engine: preferences.conformerEngine,
+    candidateCount: preferences.conformerCandidateCount,
+    rmsdCutoff: preferences.conformerRmsdCutoff,
+  };
+}
+
+function conformerGenerationTaskLabel(mode: ConformerGenerationMode) {
+  return mode === "ensemble" ? "3D conformer set" : "3D conformer";
+}
+
+function conformerZDepth(text: string) {
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const countsIndex = lines.findIndex((line) => /^\s*\d+\s+\d+\s/u.test(line));
+  if (countsIndex < 0) return null;
+  const atomCount = Number(lines[countsIndex]?.slice(0, 3));
+  if (!Number.isFinite(atomCount) || atomCount <= 0) return null;
+  const zValues: number[] = [];
+  for (let index = countsIndex + 1; index < countsIndex + 1 + atomCount; index += 1) {
+    const z = Number(lines[index]?.slice(20, 30));
+    if (Number.isFinite(z)) zValues.push(z);
+  }
+  if (zValues.length === 0) return null;
+  return Math.max(...zValues) - Math.min(...zValues);
+}
+
 function normalizeViewerRuntimeRelativePath(path: string) {
   const normalized = String(path || "").replaceAll("\\", "/");
   const parts = normalized.split("/").filter(Boolean);
@@ -3753,6 +4209,37 @@ function pathExtension(path: string) {
   const index = fileName.lastIndexOf(".");
   if (index <= 0 || index === fileName.length - 1) return "";
   return fileName.slice(index + 1).toLowerCase();
+}
+
+function ketcherSource3DFromText(title: string, text: string, extension: string): KetcherSource3D | undefined {
+  const cleanText = text.trim();
+  if (!cleanText) return undefined;
+  const cleanExtension = extension.trim().replace(/^\./u, "").toLowerCase();
+  if (!["sdf", "sd", "mol"].includes(cleanExtension)) return undefined;
+  return {
+    title: title.trim() || "structure",
+    extension: cleanExtension,
+    text: cleanText,
+  };
+}
+
+function browserDevSampleProjectRoot() {
+  if (!import.meta.env.DEV || isTauriRuntime()) return null;
+  const repoRoot = String(import.meta.env.BURRETE_REPO_ROOT || "").trim().replace(/\/+$/u, "");
+  return repoRoot ? `${repoRoot}/samples` : null;
+}
+
+function browserDevSampleProjectStructures(): SidebarProjectStructure[] {
+  const sampleRoot = browserDevSampleProjectRoot();
+  if (!sampleRoot) return [];
+  return browserDevSampleFiles.map((file) => ({
+    path: `${sampleRoot}/${file.title}`,
+    title: file.title,
+    extension: file.extension,
+    renderer: "molstar",
+    byteCount: file.byteCount,
+    openedAt: null,
+  }));
 }
 
 function ketcherDraftMolfileFromImportText(text: string) {

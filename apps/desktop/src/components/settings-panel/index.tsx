@@ -13,6 +13,7 @@ import type { ChemicalEditorTarget, ShellActions, ShellViewState } from "../type
 import type { MenuItemSpec } from "../menu-types";
 import {
   SettingsSection,
+  RangeControl,
   ToggleControl,
   actionRow,
   selectPreferenceRow,
@@ -22,6 +23,7 @@ import { KeyboardShortcutsSection } from "./keyboard-shortcuts-section";
 import { ThemesSection } from "./themes-section";
 
 const defaultRendererModeOptions: Array<ViewerPreferences["rendererMode"]> = ["auto", "molstar", "xyzrender-external"];
+const conformerEngineOptions: Array<ViewerPreferences["conformerEngine"]> = ["datamol", "rdkit"];
 type SettingsPanelLocation = { kind: "settings"; section: SettingsSectionId };
 type OpenInDefaultDestination = ViewerPreferences["openInDefaultDestination"];
 type OpenDestinationOption = {
@@ -158,6 +160,21 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
                   rows={[
                     preferenceRow<"rendererMode">("Mode", "Choose the renderer used for newly opened structures.", preferences.rendererMode, defaultRendererModeOptions, defaultPreferences.rendererMode, (rendererMode) => actions.setPreference("rendererMode", rendererMode)),
                     preferenceRow<"molstarStyle">("Mol* style", "Default appearance preset for the Mol* renderer.", preferences.molstarStyle, ["default", "illustrative"], defaultPreferences.molstarStyle, (molstarStyle) => actions.setPreference("molstarStyle", molstarStyle)),
+                    preferenceRow<"conformerEngine">("3D engine", "Choose the engine used to generate 3D conformers.", preferences.conformerEngine, conformerEngineOptions, defaultPreferences.conformerEngine, (conformerEngine) => actions.setPreference("conformerEngine", conformerEngine)),
+                    {
+                      label: "Conformer set candidates",
+                      description: "How many conformers to ask the engine for before RMSD pruning.",
+                      control: <RangeControl value={preferences.conformerCandidateCount} min={8} max={256} step={8} onChange={(conformerCandidateCount) => actions.setPreference("conformerCandidateCount", conformerCandidateCount)} />,
+                      reset: () => actions.setPreference("conformerCandidateCount", defaultPreferences.conformerCandidateCount),
+                      isModified: preferences.conformerCandidateCount !== defaultPreferences.conformerCandidateCount,
+                    },
+                    {
+                      label: "Conformer set RMSD pruning",
+                      description: "Minimum RMSD used while pruning generated conformer sets. Lower values keep more poses.",
+                      control: <RangeControl value={preferences.conformerRmsdCutoff} min={0} max={3} step={0.25} onChange={(conformerRmsdCutoff) => actions.setPreference("conformerRmsdCutoff", conformerRmsdCutoff)} />,
+                      reset: () => actions.setPreference("conformerRmsdCutoff", defaultPreferences.conformerRmsdCutoff),
+                      isModified: preferences.conformerRmsdCutoff !== defaultPreferences.conformerRmsdCutoff,
+                    },
                   ]}
                 />
               ) : null}
