@@ -13,6 +13,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 
 import ligandProLogo from "../assets/short-logo-ligandpro.svg";
 import { collectionExtension, collectionFamily as collectionFamilyForExtension, type CollectionFamily } from "../lib/collection-documents";
@@ -24,7 +25,8 @@ import { runShellDropActionChoices, shellDropActionChoices } from "./drop-action
 import type { KetcherLocation } from "./editor-area/page-kinds";
 import type { KetcherEditorApi } from "./ketcher-editor";
 import { RadixDropdownMenu } from "./radix-menu";
-import type { KetcherImportRequest, KetcherSketchTarget, ShellActions, ShellViewState } from "./types";
+import { ShortcutTooltip } from "./shortcut-tooltip";
+import type { KetcherImportRequest, KetcherSketchTarget, KetcherSource3D, ShellActions, ShellViewState } from "./types";
 
 type KetcherEditorComponent = ComponentType<{
   onReady: (api: KetcherEditorApi) => void;
@@ -177,6 +179,27 @@ const KETCHER_FORMAT_LABELS: Record<KetcherTextFormat, string> = {
   "inchi-aux": "InChI + AuxInfo",
   "inchi-key": "InChIKey",
   svg: "SVG",
+};
+const KETCHER_FORMAT_DETAILS: Record<KetcherTextFormat, string> = {
+  smiles: "Compact one-line molecule notation.",
+  "extended-smiles": "SMILES with Ketcher extended annotations.",
+  "molfile-v2000": "Legacy MDL MOL structure format.",
+  "molfile-v3000": "MDL MOL format for larger or richer structures.",
+  "rxn-v2000": "Legacy MDL reaction format.",
+  "rxn-v3000": "Reaction format for larger or richer reactions.",
+  ket: "Native Ketcher JSON format.",
+  "sdf-v2000": "SDF collection record using V2000 molfile blocks.",
+  "sdf-v3000": "SDF collection record using V3000 molfile blocks.",
+  "rdf-v2000": "Reaction data file using V2000 blocks.",
+  "rdf-v3000": "Reaction data file using V3000 blocks.",
+  smarts: "Substructure query pattern.",
+  cml: "Chemical Markup Language XML.",
+  cdxml: "ChemDraw XML document.",
+  cdx: "ChemDraw binary document.",
+  inchi: "IUPAC identifier string.",
+  "inchi-aux": "InChI plus auxiliary atom mapping data.",
+  "inchi-key": "Hashed InChIKey identifier.",
+  svg: "Vector image of the current sketch.",
 };
 const KETCHER_EXPORT_FORMATS: KetcherTextFormat[] = [
   "smiles",
@@ -348,8 +371,11 @@ export function KetcherPage({
   ));
   const [ketcherZoom, setKetcherZoom] = useState(DEFAULT_KETCHER_ZOOM);
   const [outputPanelHeight, setOutputPanelHeight] = useState(KETCHER_OUTPUT_DEFAULT_HEIGHT);
+  const [dockPortalElement, setDockPortalElement] = useState<HTMLElement | null>(null);
+  const [liveSmilesImportDirty, setLiveSmilesImportDirty] = useState(false);
   const [selectedCollectionPath, setSelectedCollectionPath] = useState("");
   const [gridEditSource, setGridEditSource] = useState<NonNullable<NonNullable<KetcherImportRequest["fragments"]>[number]["source"]> | null>(null);
+  const [preserved3dSource, setPreserved3dSource] = useState<KetcherSource3D | null>(null);
   const handledImportRequestIdRef = useRef<number | null>(null);
   const liveSmilesImportSerialRef = useRef(0);
   const locallySavedDraftRef = useRef("");
@@ -373,6 +399,19 @@ export function KetcherPage({
   const outputPanelStyle = useMemo(() => ({
     "--ketcher-output-height": `${outputPanelHeight}px`,
   }) as CSSProperties, [outputPanelHeight]);
+
+  useEffect(() => {
+    if (!panelMode) {
+      setDockPortalElement(null);
+      return undefined;
+    }
+    const syncPortalElement = () => {
+      setDockPortalElement(document.querySelector<HTMLElement>('[data-ketcher-dock-portal="bottom"]'));
+    };
+    syncPortalElement();
+    const frameId = window.requestAnimationFrame(syncPortalElement);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [panelMode, state.bottomDockOpen, state.bottomDockTool]);
 
   useEffect(() => {
     if (!isActive || editorHasActivated) return;
@@ -412,6 +451,7 @@ export function KetcherPage({
         setOutput("");
         setPanelMode(null);
         setHasSketch(true);
+        setPreserved3dSource(null);
         setStatus("Ready");
         return true;
       })
@@ -445,9 +485,13 @@ export function KetcherPage({
         .then((molfile) => {
           const hasCurrentSketch = !isBlankKetcherMolfile(molfile);
           setHasSketch(hasCurrentSketch);
+          if (!hasCurrentSketch) setPreserved3dSource(null);
           if (hasCurrentSketch) {
             locallySavedDraftRef.current = molfile.trimEnd();
             actions.saveKetcherDraft(molfile);
+          } else {
+            locallySavedDraftRef.current = "";
+            actions.saveKetcherDraft("");
           }
         })
         .catch(() => {});
@@ -490,38 +534,68 @@ export function KetcherPage({
 
   const showExport = useCallback(async (format: KetcherTextFormat) => {
     if (!ketcher) return;
-    if (panelMode?.purpose === "export" && panelMode.format === format) {
-      setOutput("");
-      setPanelMode(null);
-      return;
-    }
     const label = KETCHER_FORMAT_LABELS[format];
     setStatus(`Exporting ${label}`);
     try {
       const text = await withKetcherTimeout(exportKetcherText(ketcher, format), `${label} export`);
       setOutput(text || "");
       setPanelMode({ purpose: "export", format });
-      if (!navigator.clipboard?.writeText) {
-        setStatus(`Exported ${label}`);
-        return;
-      }
-      try {
-        await navigator.clipboard.writeText(text || "");
-        setStatus(`Exported ${label} and copied`);
-      } catch (copyError) {
-        const message = copyError instanceof Error ? copyError.message : String(copyError);
-        setStatus(`Exported ${label}. Copy failed: ${message}`);
-      }
+      setStatus(`Exported ${label}`);
     } catch (error) {
       setStatus(ketcherExportErrorMessage(error));
     }
+  }, [ketcher]);
+
+  useEffect(() => {
+    if (!ketcher || panelMode?.purpose !== "export") return undefined;
+    let cancelled = false;
+    let exportSerial = 0;
+    let timerId: number | null = null;
+    const format = panelMode.format;
+    const label = KETCHER_FORMAT_LABELS[format];
+    const refreshExport = () => {
+      const serial = exportSerial + 1;
+      exportSerial = serial;
+      void withKetcherTimeout(exportKetcherText(ketcher, format), `${label} export`)
+        .then((text) => {
+          if (cancelled || serial !== exportSerial) return;
+          setOutput(text || "");
+          setStatus(`Exported ${label}`);
+        })
+        .catch((error) => {
+          if (cancelled || serial !== exportSerial) return;
+          setStatus(ketcherExportErrorMessage(error));
+        });
+    };
+    const scheduleRefresh = () => {
+      if (timerId !== null) window.clearTimeout(timerId);
+      timerId = window.setTimeout(refreshExport, 180);
+    };
+    refreshExport();
+    const unsubscribe = ketcher.subscribeChange(scheduleRefresh);
+    return () => {
+      cancelled = true;
+      if (timerId !== null) window.clearTimeout(timerId);
+      unsubscribe();
+    };
   }, [ketcher, panelMode]);
 
   const startImport = useCallback((format: KetcherTextFormat) => {
-    setOutput("");
+    setLiveSmilesImportDirty(false);
+    setOutput((current) => (panelMode?.purpose === "import" && panelMode.format === format ? current : ""));
     setPanelMode({ purpose: "import", format });
     setStatus(`Paste ${KETCHER_FORMAT_LABELS[format]} to import`);
-  }, []);
+  }, [panelMode]);
+
+  const selectExportFormat = useCallback((format: KetcherTextFormat) => {
+    actions.setDockTool("bottom", "ketcher");
+    void showExport(format);
+  }, [actions, showExport]);
+
+  const selectImportFormat = useCallback((format: KetcherTextFormat) => {
+    actions.setDockTool("bottom", "ketcher");
+    startImport(format);
+  }, [actions, startImport]);
 
   const applyOutput = useCallback(async () => {
     if (!ketcher || panelMode?.purpose !== "import") return;
@@ -542,6 +616,7 @@ export function KetcherPage({
         return;
       }
       actions.saveKetcherDraft(molfile);
+      setPreserved3dSource(null);
       setHasSketch(true);
       setStatus("Ready");
     } catch (error) {
@@ -551,6 +626,7 @@ export function KetcherPage({
 
   useEffect(() => {
     if (!ketcher || panelMode?.purpose !== "import" || panelMode.format !== "smiles") return;
+    if (!liveSmilesImportDirty) return;
     const smiles = output.trim();
     const serial = liveSmilesImportSerialRef.current + 1;
     liveSmilesImportSerialRef.current = serial;
@@ -562,6 +638,7 @@ export function KetcherPage({
           if (liveSmilesImportSerialRef.current !== serial) return;
           if (!smiles) {
             actions.saveKetcherDraft("");
+            setPreserved3dSource(null);
             setHasSketch(false);
             setStatus("Ready");
             return;
@@ -575,6 +652,7 @@ export function KetcherPage({
           }
           locallySavedDraftRef.current = molfile.trimEnd();
           actions.saveKetcherDraft(molfile);
+          setPreserved3dSource(null);
           setHasSketch(true);
           setStatus("Ready");
         } catch (error) {
@@ -584,7 +662,7 @@ export function KetcherPage({
       })();
     }, 220);
     return () => window.clearTimeout(timer);
-  }, [actions, ketcher, output, panelMode]);
+  }, [actions, ketcher, liveSmilesImportDirty, output, panelMode]);
 
   const openSketch = useCallback(async (target: KetcherSketchTarget, collectionTargetPath?: string | null) => {
     if (!ketcher || exportingSketch) return;
@@ -610,6 +688,7 @@ export function KetcherPage({
         text: collectionRecord?.text ?? molfileToSdf(molfile),
         draftKet,
         draftMolfile: molfile,
+        source3d: target === "generate3d" ? preserved3dSource ?? undefined : undefined,
         target,
         collectionTargetPath,
       });
@@ -618,10 +697,17 @@ export function KetcherPage({
         setOutput("");
         setPanelMode(null);
         setHasSketch(false);
+        setPreserved3dSource(null);
       }
-      setStatus(target === "collection" ? "Sent sketch to collection" : `Opened sketch in ${target === "molstar" ? "Molstar" : target}`);
+      setStatus(target === "collection"
+        ? "Sent sketch to collection"
+        : target === "generate3d"
+          ? "Generated 3D conformer"
+          : `Opened sketch in ${target === "molstar" ? "Molstar" : target}`);
     } catch (error) {
-      setStatus(ketcherExportErrorMessage(error));
+      setStatus(target === "generate3d"
+        ? "3D generation failed: " + (error instanceof Error ? error.message : String(error))
+        : ketcherExportErrorMessage(error));
     } finally {
       setExportingSketch(false);
     }
@@ -716,6 +802,7 @@ export function KetcherPage({
         const editSource = cleanPaths.length === 0 && cleanFragments.length === 1
           ? cleanFragments[0]?.source ?? null
           : null;
+        let source3d: KetcherSource3D | null = null;
         let hasImportedStructure = false;
         const addStructure = async (text: string) => {
           const candidates = ketcherImportCandidates(text);
@@ -729,15 +816,26 @@ export function KetcherPage({
         };
         for (const path of cleanPaths) {
           const text = await readStructureText(path);
+          if (itemCount === 1) {
+            source3d = { title: fileName(path), extension: fileExtension(path) || "sdf", text };
+          }
           await addStructure(text);
         }
         for (const fragment of cleanFragments) {
+          if (itemCount === 1) {
+            source3d = fragment.source3d ?? {
+              title: fragment.title || "structure",
+              extension: fileExtension(fragment.title) || "sdf",
+              text: fragment.text,
+            };
+          }
           await addStructure(fragment.text);
         }
         if (hasImportedStructure) {
           const molfile = await withKetcherTimeout(ketcher.getMolfile("v2000"), "Imported sketch export");
           if (!isBlankKetcherMolfile(molfile)) actions.saveKetcherDraft(molfile);
           setHasSketch(true);
+          setPreserved3dSource(source3d);
         }
         setPanelMode(null);
         setGridEditSource(editSource);
@@ -966,9 +1064,22 @@ export function KetcherPage({
           </div>
         </div>
         <div className="ketcher-page-actions" aria-label="Sketch actions">
-          <button type="button" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("grid")}>Grid</button>
-          <button type="button" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("molstar")}>Molstar</button>
-          <button type="button" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("xyzrender")}>xyzrender</button>
+          <button type="button" aria-label="Open sketch as 2D grid" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("grid")}>
+            Grid
+            <ShortcutTooltip label="Open sketch as 2D grid" />
+          </button>
+          <button type="button" aria-label="Open sketch in Molstar" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("molstar")}>
+            Molstar
+            <ShortcutTooltip label="Open sketch in Molstar" />
+          </button>
+          <button type="button" aria-label="Open sketch in xyzrender" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("xyzrender")}>
+            xyzrender
+            <ShortcutTooltip label="Open sketch in xyzrender" />
+          </button>
+          <button type="button" disabled={!ketcher || exportingSketch} aria-label="Generate 3D conformer" onClick={() => void openSketch("generate3d")}>
+            3D
+            <ShortcutTooltip label="Generate 3D conformer" />
+          </button>
           <RadixDropdownMenu
             align="end"
             items={[
@@ -997,24 +1108,31 @@ export function KetcherPage({
               },
             ]}
             trigger={(
-              <button type="button" disabled={!ketcher || exportingSketch}>
+              <button type="button" aria-label="Add sketch to SDF collection" disabled={!ketcher || exportingSketch}>
                 Add to collection
+                <ShortcutTooltip label="Add sketch to SDF collection" />
               </button>
             )}
           />
           <div className="ketcher-scale-control" aria-label="Ketcher scale">
-            <button type="button" aria-label="Decrease Ketcher scale" disabled={!ketcher || ketcherZoomIndex === 0} onClick={decreaseKetcherScale}>-</button>
+            <button type="button" aria-label="Decrease Ketcher scale" disabled={!ketcher || ketcherZoomIndex === 0} onClick={decreaseKetcherScale}>
+              -
+              <ShortcutTooltip label="Decrease Ketcher scale" />
+            </button>
             <span>{ketcherZoomPercent}%</span>
-            <button type="button" aria-label="Increase Ketcher scale" disabled={!ketcher || ketcherZoomIndex === KETCHER_ZOOM_LEVELS.length - 1} onClick={increaseKetcherScale}>+</button>
+            <button type="button" aria-label="Increase Ketcher scale" disabled={!ketcher || ketcherZoomIndex === KETCHER_ZOOM_LEVELS.length - 1} onClick={increaseKetcherScale}>
+              +
+              <ShortcutTooltip label="Increase Ketcher scale" />
+            </button>
           </div>
           <button
             type="button"
             className="ketcher-theme-control"
             aria-label={ketcherThemeTitle}
-            title={ketcherThemeTitle}
             onClick={() => actions.setPreference("theme", nextKetcherTheme)}
           >
             {ketcherThemeLabel}
+            <ShortcutTooltip label={ketcherThemeTitle} />
           </button>
         </div>
       </header>
@@ -1045,7 +1163,53 @@ export function KetcherPage({
             </div>
           )}
         </div>
-        {panelMode ? (
+      </div>
+      <footer className="ketcher-page-footer">
+        <span className="ketcher-page-status">{status}</span>
+        <RadixDropdownMenu
+          align="end"
+          side="top"
+          items={KETCHER_EXPORT_FORMATS.map((format) => ({
+            kind: "item" as const,
+            id: `export-${format}`,
+            text: KETCHER_FORMAT_LABELS[format],
+            detail: `Export ${KETCHER_FORMAT_DETAILS[format]}`,
+            action: () => selectExportFormat(format),
+          }))}
+          trigger={(
+            <button type="button" className={panelMode?.purpose === "export" ? "is-active" : undefined} disabled={!ketcher}>
+              Export
+              <ShortcutTooltip label="Export sketch to a text or image format" side="top" />
+            </button>
+          )}
+        />
+        <RadixDropdownMenu
+          align="end"
+          side="top"
+          items={KETCHER_IMPORT_FORMATS.map((format) => ({
+            kind: "item" as const,
+            id: `import-${format}`,
+            text: KETCHER_FORMAT_LABELS[format],
+            detail: `Import ${KETCHER_FORMAT_DETAILS[format]}`,
+            action: () => selectImportFormat(format),
+          }))}
+          trigger={(
+            <button type="button" className={panelMode?.purpose === "import" ? "is-active" : undefined} disabled={!ketcher}>
+              Import
+              <ShortcutTooltip label="Import structure text into Ketcher" side="top" />
+            </button>
+          )}
+        />
+      </footer>
+      {panelMode && dockPortalElement ? createPortal((
+        <section className="ketcher-dock-workflow" data-mode={panelMode.purpose} aria-label={`${panelMode.purpose === "import" ? "Import" : "Export"} panel`}>
+          <div className="ketcher-dock-toolbar">
+            <div className="ketcher-dock-title">
+              <strong>{panelMode.purpose === "import" ? "Import" : "Export"}</strong>
+              <span>{status}</span>
+            </div>
+            <span className="ketcher-dock-format">{panelFormatLabel}</span>
+          </div>
           <div className="ketcher-output-panel" style={outputPanelStyle}>
             <button
               type="button"
@@ -1060,66 +1224,42 @@ export function KetcherPage({
               readOnly={panelMode.purpose === "export"}
               spellCheck={false}
               value={output}
-              onChange={(event) => setOutput(event.target.value)}
+              onChange={(event) => {
+                setOutput(event.target.value);
+                if (panelMode.purpose === "import") setLiveSmilesImportDirty(true);
+              }}
             />
           </div>
-        ) : null}
-      </div>
-      <footer className="ketcher-page-footer">
-        <span className="ketcher-page-status">{status}</span>
-        <RadixDropdownMenu
-          align="end"
-          side="top"
-          items={KETCHER_EXPORT_FORMATS.map((format) => ({
-            kind: "item" as const,
-            id: `export-${format}`,
-            text: KETCHER_FORMAT_LABELS[format],
-            action: () => void showExport(format),
-          }))}
-          trigger={(
-            <button type="button" className={panelMode?.purpose === "export" ? "is-active" : undefined} disabled={!ketcher}>
-              Export
-            </button>
-          )}
-        />
-        <RadixDropdownMenu
-          align="end"
-          side="top"
-          items={KETCHER_IMPORT_FORMATS.map((format) => ({
-            kind: "item" as const,
-            id: `import-${format}`,
-            text: KETCHER_FORMAT_LABELS[format],
-            action: () => startImport(format),
-          }))}
-          trigger={(
-            <button type="button" className={panelMode?.purpose === "import" ? "is-active" : undefined} disabled={!ketcher}>
-              Import
-            </button>
-          )}
-        />
-        {panelMode?.purpose === "export" ? (
-          <>
-            <button type="button" disabled={!output} onClick={() => void copyExportOutput()}>
-              Copy
-            </button>
-            <button type="button" disabled={!output} onClick={saveExportOutput}>
-              Save
-            </button>
-            <button type="button" className="ketcher-primary-action" disabled={!output} onClick={openRawExportOutput}>
-              Open raw
-            </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            className="ketcher-primary-action"
-            disabled={!ketcher || exportingSketch || (gridEditSource ? false : panelMode?.purpose !== "import" || !output.trim())}
-            onClick={() => void (gridEditSource ? applyGridEdit() : applyOutput())}
-          >
-            {gridEditSource ? "Apply" : "Load"}
-          </button>
-        )}
-      </footer>
+          <div className="ketcher-dock-actions">
+            {panelMode.purpose === "export" ? (
+              <>
+                <button type="button" disabled={!output} onClick={() => void copyExportOutput()}>
+                  Copy
+                  <ShortcutTooltip label="Copy exported text" side="top" />
+                </button>
+                <button type="button" disabled={!output} onClick={saveExportOutput}>
+                  Save
+                  <ShortcutTooltip label="Save exported output to a file" side="top" />
+                </button>
+                <button type="button" className="ketcher-primary-action" disabled={!output} onClick={openRawExportOutput}>
+                  Open raw
+                  <ShortcutTooltip label="Open exported text in a raw document tab" side="top" />
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="ketcher-primary-action"
+                disabled={!ketcher || exportingSketch || (gridEditSource ? false : !output.trim())}
+                onClick={() => void (gridEditSource ? applyGridEdit() : applyOutput())}
+              >
+                {gridEditSource ? "Apply" : "Load"}
+                <ShortcutTooltip label={gridEditSource ? "Apply Ketcher edits to the grid row" : "Load imported text into Ketcher"} side="top" />
+              </button>
+            )}
+          </div>
+        </section>
+      ), dockPortalElement) : null}
     </section>
   );
 }
@@ -1412,6 +1552,12 @@ function looksLikeSdfRecord(text: string) {
 
 function fileName(path: string) {
   return path.split(/[\\/]/u).filter(Boolean).pop() ?? path;
+}
+
+function fileExtension(path: string) {
+  const name = fileName(path);
+  const index = name.lastIndexOf(".");
+  return index >= 0 ? name.slice(index + 1).toLowerCase() : "";
 }
 
 function KetcherLogo() {

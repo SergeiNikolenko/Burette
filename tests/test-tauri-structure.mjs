@@ -89,6 +89,7 @@ const [
   architectureDocsSource,
   rendererSupportDocsSource,
   performanceDocsSource,
+  rdkitConformerScript,
 ] = await Promise.all([
   source('apps/desktop/src-tauri/src/commands/mod.rs'),
   source('apps/desktop/src-tauri/src/lib.rs'),
@@ -162,6 +163,7 @@ const [
   source('docs/architecture.md'),
   source('docs/renderer-support.md'),
   source('docs/performance.md'),
+  source('scripts/rdkit_conformer.py'),
 ]);
 const previewFormatsSource = previewFormats;
 const previewTrace = await source('apps/desktop/src-tauri/src/preview/trace.rs');
@@ -244,6 +246,7 @@ for (const commandPath of [
   'commands::documents::open_documents',
   'commands::documents::open_delimited_grid_document',
   'commands::documents::read_structure_text',
+  'commands::documents::generate_3d_conformer',
   'commands::documents::open_text_structure',
   'commands::documents::save_text_as',
   'commands::grid::grid_fetch_page',
@@ -333,6 +336,30 @@ assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn classify_o
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_documents/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_delimited_grid_document/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn read_structure_text/);
+assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn generate_3d_conformer/);
+assert.match(documentsCommand, /engine: Option<String>/);
+assert.match(documentsCommand, /mode: Option<String>/);
+assert.match(documentsCommand, /candidate_count: Option<usize>/);
+assert.match(documentsCommand, /rmsd_cutoff: Option<f64>/);
+assert.match(documentsCommand, /conformer_count: Option<usize>/);
+assert.match(documentsCommand, /3D conformer generation supports Datamol and RDKit engines/);
+assert.match(documentsCommand, /source_3d: Option<ConformerGenerationSource>/);
+assert.match(documentsCommand, /fn generated_conformer_set_title/);
+assert.match(documentsCommand, /"mode": mode/);
+assert.match(documentsCommand, /"candidateCount": candidate_count/);
+assert.match(documentsCommand, /"rmsdCutoff": rmsd_cutoff/);
+assert.match(documentsCommand, /include_str!\(concat!\([\s\S]*env!\("CARGO_MANIFEST_DIR"\),[\s\S]*"\/\.\.\/\.\.\/\.\.\/scripts\/rdkit_conformer\.py"/);
+assert.match(rdkitConformerScript, /Cannot preserve the original 3D pose because the original core no longer matches the current Ketcher sketch/);
+assert.match(rdkitConformerScript, /3D conformer generation supports Datamol and RDKit engines/);
+assert.match(rdkitConformerScript, /ff\.AddFixedPoint\(int\(atom_idx\)\)/);
+assert.match(rdkitConformerScript, /method = "ETKDG\+" \+ family \+ \("\+fixed-core" if core is not None else "\+ensemble"\)/);
+assert.match(rdkitConformerScript, /mode = str\(payload\.get\("mode"\) or "single"\)/);
+assert.match(rdkitConformerScript, /DEFAULT_ENSEMBLE_CANDIDATE_COUNT = 128/);
+assert.match(rdkitConformerScript, /DEFAULT_ENSEMBLE_RMSD_CUTOFF = 0\.75/);
+assert.doesNotMatch(rdkitConformerScript, /ENSEMBLE_OUTPUT_COUNT/);
+assert.match(rdkitConformerScript, /def select_ensemble_conformer_ids\(scored\):/);
+assert.match(rdkitConformerScript, /selected_conf_ids = select_ensemble_conformer_ids\(scored\)/);
+assert.match(rdkitConformerScript, /"conformerCount": len\(records\)/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_text_structure/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn save_text_as/);
 assert.match(previewRuntime, /pub\(crate\) fn into_virtual\(mut self\) -> Self/);
@@ -623,14 +650,21 @@ assert.match(thumbnailInfoPlist, /com\.local\.burrete10\.graphml/);
 assert.match(thumbnailProviderSource, /parseCIF/);
 assert.match(thumbnailProviderSource, /parseMol2/);
 assert.match(thumbnailProviderSource, /parseCube/);
-assert.doesNotMatch(previewExtensionInfoPlist, /<key>QLSupportedContentTypes<\/key>[\s\S]*?public\.comma-separated-values-text/);
-assert.doesNotMatch(previewExtensionInfoPlist, /<key>QLSupportedContentTypes<\/key>[\s\S]*?public\.tab-separated-values-text/);
+const quickLookSupportedContentTypesBlock = previewExtensionInfoPlist.match(
+  /<key>QLSupportedContentTypes<\/key>\s*<array>([\s\S]*?)<\/array>/,
+)?.[1] ?? '';
+assert.doesNotMatch(quickLookSupportedContentTypesBlock, /public\.comma-separated-values-text/);
+assert.doesNotMatch(quickLookSupportedContentTypesBlock, /public\.tab-separated-values-text/);
 assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.csv/);
 assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.tsv/);
 assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.smiles/);
 assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.graphml/);
+assert.match(quickLookSupportedContentTypesBlock, /com\.local\.burrete10\.openmm-coordinate-artifact/);
+assert.match(quickLookSupportedContentTypesBlock, /com\.local\.burrete10\.openmm-workflow-text-artifact/);
 assert.match(appMetadata, /<string>graphml<\/string>/);
 assert.match(appMetadata, /com\.local\.burrete10\.graphml/);
+assert.match(appMetadata, /com\.local\.burrete10\.openmm-coordinate-artifact/);
+assert.match(appMetadata, /com\.local\.burrete10\.openmm-workflow-text-artifact/);
 assert.match(tauriConfigSource, /"graphml"/);
 assert.match(quickLookPreviewController, /shouldUseFepGraphMLPreview\(fileExtension: String, previewPlan: BurretePreviewPlan\?\)/);
 assert.match(quickLookPreviewController, /return fileExtension\.lowercased\(\) == "graphml"/);
@@ -640,6 +674,8 @@ assert.match(quickLookPreviewController, /let denseMode = graph\.nodes\.count > 
 assert.match(quickLookPreviewController, /class="node-dot"/);
 assert.match(quickLookPreviewController, /class="node-card"/);
 assert.match(quickLookPreviewController, /score: " \+ String\(format: "%\.3f", \$0\)/);
+assert.match(quickLookPreviewController, /shouldUseTextArtifactPreview\(fileExtension: String, previewPlan: BurretePreviewPlan\?\)/);
+assert.match(quickLookPreviewController, /detected\.previewMode=text-artifact/);
 assert.doesNotMatch(installLocalScript, /broadPublicTypes/);
 assert.match(installLocalScript, /let contentTypes = documentTypes\.flatMap/);
 assert.match(installLocalScript, /for contentType in Set\(contentTypes\)/);
@@ -708,6 +744,9 @@ assert.match(windowsSource, /pub\(crate\) const MAIN_WINDOW_LABEL: &str = "main"
 assert.match(windowsSource, /pub\(crate\) const WORKSPACE_WINDOW_PREFIX: &str = "workspace-"/);
 assert.match(windowsSource, /WebviewWindowBuilder::new\(app, &label, url\)/);
 assert.match(windowsSource, /index\.html\?burreteWindow=\{label\}/);
+assert.match(windowsSource, /\.transparent\(true\)\s*\.background_color\(Color\(0, 0, 0, 0\)\)/);
+assert.match(windowsSource, /Effect::HudWindow/);
+assert.match(windowsSource, /EffectState::Active/);
 assert.match(windowsSource, /pub\(crate\) fn runtime_document_id/);
 assert.match(windowsSource, /unregister_prefix/);
 assert.match(lib, /let launch_mode = startup::LaunchMode::current\(&argv\);/);

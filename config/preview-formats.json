@@ -3,7 +3,7 @@
     {
       "id": "pdb",
       "contentType": "com.local.burrete10.pdb",
-      "extensions": ["pdb", "ent", "pdbqt", "pqr"],
+      "extensions": ["pdb", "ent", "pdbqt", "pqr", "xpdb"],
       "mimeTypes": ["chemical/x-pdb", "chemical/x-pdbqt"],
       "conformsTo": ["public.plain-text", "public.data"],
       "description": "Protein Data Bank coordinate file",
@@ -74,6 +74,21 @@
         "primary": { "role": "structure", "format": "mmcif", "binary": true }
       },
       "quickLook": { "sizeLimitMiB": 50 }
+    },
+    {
+      "id": "mmtf",
+      "contentType": "com.local.burrete10.mmtf",
+      "extensions": ["mmtf"],
+      "mimeTypes": ["application/octet-stream"],
+      "conformsTo": ["public.data"],
+      "description": "Macromolecular Transmission Format structure file",
+      "viewer": { "molstarFormat": "mmtf", "binary": true, "externalOnly": false },
+      "preview": {
+        "strategy": "direct",
+        "renderer": "molstar",
+        "primary": { "role": "structure", "format": "mmtf", "binary": true }
+      },
+      "quickLook": { "sizeLimitMiB": 40 }
     },
     {
       "id": "sdf",
@@ -233,7 +248,7 @@
       "id": "xyzrender-input",
       "contentType": "com.local.burrete10.xyzrender-input",
       "contentTypeAliases": ["com.adobe.fdf", "com.apple.videoapps.cube", "com.gaussian.cube"],
-      "extensions": ["abi", "com", "cub", "cube", "fdf", "in", "inp", "log", "nw", "out", "psi4", "qcin", "vasp"],
+      "extensions": ["abi", "com", "cub", "cube", "fdf", "fhiaims", "gms", "in", "inp", "log", "nw", "out", "psi4", "qcin", "vasp"],
       "conformsTo": ["public.plain-text", "public.data"],
       "description": "xyzrender-compatible molecular structure file",
       "viewer": { "molstarFormat": "xyz", "binary": false, "externalOnly": true },
@@ -254,16 +269,21 @@
     {
       "id": "molecular-dynamics",
       "contentType": "com.local.burrete10.molecular-dynamics",
-      "extensions": ["xtc", "trr", "dcd", "nctraj", "lammpstrj", "top", "psf", "prmtop"],
+      "extensions": [
+        "xtc", "trr", "dcd", "nctraj", "tng", "h5md", "gsd", "trz", "coor", "namdbin",
+        "lammpstrj", "dump", "trj", "mdcrd", "crdbox", "trc", "arc", "config", "history",
+        "nc", "ncdf", "netcdf", "ncrst",
+        "top", "psf", "prmtop", "tpr", "parm7", "parm", "itp", "data", "lammps", "lmp", "txyz"
+      ],
       "conformsTo": ["public.data"],
       "description": "Molecular dynamics trajectory or topology file",
       "preview": {
         "strategy": "trajectory",
         "renderer": "molstar",
         "formats": {
-          "coordinatesBinary": ["xtc", "trr", "dcd", "nctraj"],
-          "coordinatesText": ["lammpstrj"],
-          "topologyText": ["top", "psf", "prmtop"]
+          "coordinatesBinary": ["xtc", "trr", "dcd", "nctraj", "tng", "h5md", "gsd", "trz", "coor", "namdbin", "nc", "ncdf", "netcdf", "ncrst"],
+          "coordinatesText": ["lammpstrj", "dump", "trj", "mdcrd", "crdbox", "trc", "arc", "config", "history"],
+          "topologyText": ["top", "psf", "prmtop", "tpr", "parm7", "parm", "itp", "data", "lammps", "lmp", "txyz"]
         },
         "capabilities": { "hasTrajectoryControls": true }
       },
@@ -273,7 +293,14 @@
           "xtc": 75,
           "trr": 75,
           "dcd": 75,
-          "nctraj": 75
+          "nctraj": 75,
+          "tng": 75,
+          "h5md": 75,
+          "gsd": 75,
+          "trz": 75,
+          "nc": 75,
+          "ncdf": 75,
+          "netcdf": 75
         }
       }
     },
@@ -317,15 +344,50 @@
         "renderer": "fep-graphml"
       },
       "quickLook": { "sizeLimitMiB": 25 }
+    },
+    {
+      "id": "openmm-coordinate-artifact",
+      "contentType": "com.local.burrete10.openmm-coordinate-artifact",
+      "extensions": ["xml", "inpcrd", "rst7", "restrt", "crd", "rst", "state"],
+      "mimeTypes": ["text/plain", "application/xml"],
+      "conformsTo": ["public.text", "public.data"],
+      "description": "OpenMM workflow coordinate artifact",
+      "viewer": { "molstarFormat": "xyz", "binary": false, "externalOnly": true },
+      "preview": {
+        "strategy": "convert",
+        "renderer": "molstar",
+        "primary": { "role": "structure", "format": "pdb", "binary": false },
+        "converter": { "id": "text-coordinates-to-pdb", "required": false },
+        "fallbacks": [
+          { "renderer": "xyzrender-external" }
+        ],
+        "capabilities": { "canSwitchRenderer": true }
+      },
+      "quickLook": { "sizeLimitMiB": 25 }
+    },
+    {
+      "id": "openmm-workflow-text-artifact",
+      "contentType": "com.local.burrete10.openmm-workflow-text-artifact",
+      "extensions": ["par", "prm", "rtf", "str", "key", "chk", "checkpoint", "dms", "xvg", "edr", "fasta"],
+      "mimeTypes": ["text/plain"],
+      "conformsTo": ["public.text", "public.data"],
+      "description": "Molecular workflow text or metadata artifact",
+      "preview": {
+        "strategy": "text",
+        "renderer": "text",
+        "primary": { "role": "text-artifact", "format": "text", "binary": false }
+      },
+      "quickLook": { "sizeLimitMiB": 25 }
     }
   ],
   "documentTypes": {
     "name": "Molecular structure files",
     "extensions": [
-      "abi", "bcif", "cif", "cms", "com", "csv", "cub", "cube", "dcd", "ent", "fdf", "graphml", "gro",
-      "in", "inp", "lammpstrj", "log", "mae", "mae.gz", "maegz", "mcif", "mmcif", "mol",
-      "mol2", "mvsj", "mvsx", "nctraj", "nw", "out", "pdb", "pdbqt", "pqr", "prmtop", "psf", "psi4", "qcin",
-      "sd", "sdf", "smi", "smiles", "top", "trr", "tsv", "vasp", "xtc", "xyz"
+      "abi", "arc", "bcif", "cif", "cms", "com", "config", "coor", "crdbox", "csv", "cub", "cube", "data", "dcd", "dms", "dump", "edr", "ent", "fasta", "fdf", "fhiaims", "gms", "graphml", "gro", "gsd", "h5md", "history",
+      "in", "inp", "inpcrd", "itp", "lammpstrj", "lammps", "lmp", "log", "mae", "mae.gz", "maegz", "mcif", "mdcrd", "mmcif", "mmtf", "mol",
+      "mol2", "mvsj", "mvsx", "namdbin", "nc", "ncdf", "ncrst", "nctraj", "netcdf", "nw", "out", "par", "parm", "parm7", "pdb", "pdbqt", "pqr", "prm", "prmtop", "psf", "psi4", "qcin",
+      "restrt", "rst", "rst7", "rtf", "sd", "sdf", "smi", "smiles", "state", "str", "top", "tpr", "tng", "trc", "trj", "trr", "trz", "tsv", "txyz", "vasp", "xtc", "xml", "xpdb", "xvg", "xyz",
+      "key", "chk", "checkpoint", "crd"
     ]
   },
   "quickLook": {
@@ -334,6 +396,7 @@
       "com.local.burrete10.cif",
       "com.local.burrete10.mmcif",
       "com.local.burrete10.bcif",
+      "com.local.burrete10.mmtf",
       "com.local.burrete10.sdf",
       "com.local.burrete10.csv",
       "com.local.burrete10.tsv",
@@ -347,7 +410,9 @@
       "com.local.burrete10.molecular-dynamics",
       "com.local.burrete10.schrodinger",
       "com.local.burrete10.xyzrender-input",
-      "com.local.burrete10.graphml"
+      "com.local.burrete10.graphml",
+      "com.local.burrete10.openmm-coordinate-artifact",
+      "com.local.burrete10.openmm-workflow-text-artifact"
     ],
     "contentTypes": [
       "com.local.burrete10.pdb",
@@ -355,6 +420,7 @@
       "public.cif",
       "com.local.burrete10.mmcif",
       "com.local.burrete10.bcif",
+      "com.local.burrete10.mmtf",
       "com.local.burrete10.sdf",
       "com.local.burrete10.smiles",
       "com.local.burrete10.csv",
@@ -377,7 +443,9 @@
       "com.local.burrete10.molecular-dynamics",
       "com.schrodinger.mae",
       "com.local.burrete10.schrodinger",
-      "com.local.burrete10.graphml"
+      "com.local.burrete10.graphml",
+      "com.local.burrete10.openmm-coordinate-artifact",
+      "com.local.burrete10.openmm-workflow-text-artifact"
     ]
   }
 }
