@@ -181,6 +181,80 @@ f_m_ct {
     await rm(tempDir, { recursive: true, force: true });
   }
 
+  const coordinateTempDir = await mkdtemp(join(tmpdir(), 'burrete-coordinate-preview-'));
+  const amberPath = join(coordinateTempDir, 'amber.inpcrd');
+  const charmmPath = join(coordinateTempDir, 'charmm.crd');
+  const statePath = join(coordinateTempDir, 'openmm.state');
+  const hoomdPath = join(coordinateTempDir, 'hoomd.xml');
+  const lammpsPath = join(coordinateTempDir, 'dump.lammpstrj');
+  await writeFile(amberPath, `Amber restart
+3
+  0.0000000  0.0000000  0.0000000  1.5200000  0.0000000  0.0000000
+  2.1200000  1.0000000  0.0000000
+`);
+  await writeFile(charmmPath, `* CHARMM coordinates
+*
+    2 EXT
+    1    1 MOL  C1     0.000000    0.000000    0.000000 MOL  1  0.00000
+    2    1 MOL  O1     1.240000    0.000000    0.000000 MOL  1  0.00000
+`);
+  await writeFile(statePath, `<State>
+  <Positions>
+    <Position x="0.0" y="0.0" z="0.0"/>
+    <Position x="0.8" y="0.0" z="0.0"/>
+  </Positions>
+</State>
+`);
+  await writeFile(hoomdPath, `<hoomd_xml version="1.6">
+  <configuration time_step="0" dimensions="3" natoms="2">
+    <position>
+      0.0 0.0 0.0
+      1.2 0.0 0.0
+    </position>
+    <type>C O</type>
+  </configuration>
+</hoomd_xml>
+`);
+  await writeFile(lammpsPath, `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS pp pp pp
+0 10
+0 10
+0 10
+ITEM: ATOMS id element x y z
+1 C 0.0 0.0 0.0
+2 O 1.2 0.0 0.0
+`);
+  for (const coordinatePath of [amberPath, charmmPath, statePath, hoomdPath, lammpsPath]) {
+    const coordinatePort = await freePort();
+    const coordinateChild = spawn(process.execPath, ['scripts/agent-preview.mjs', coordinatePath, '--port', String(coordinatePort)], {
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    try {
+      const coordinateReady = await waitForReady(coordinateChild);
+      const coordinateHtml = await get(coordinateReady.url);
+      assert.equal(coordinateHtml.statusCode, 200);
+      const coordinateCookie = coordinateHtml.headers['set-cookie']?.find(value => value.startsWith('BurreteAgentPreviewToken='));
+      assert.ok(coordinateCookie, 'authorized coordinate HTML response should set the preview token cookie');
+      const coordinateCookieHeader = coordinateCookie.split(';')[0];
+      const coordinateConfig = await get(`http://127.0.0.1:${coordinatePort}/preview-config.js`, { Cookie: coordinateCookieHeader });
+      assert.equal(coordinateConfig.statusCode, 200);
+      assert.match(coordinateConfig.body, /"format":"pdb"/);
+      assert.match(coordinateConfig.body, /"binary":false/);
+      const coordinateData = await get(`http://127.0.0.1:${coordinatePort}/preview-data.js`, { Cookie: coordinateCookieHeader });
+      assert.equal(coordinateData.statusCode, 200);
+      const coordinatePdb = previewDataText(coordinateData.body);
+      assert.match(coordinatePdb, /^REMARK Converted from /m);
+      assert.match(coordinatePdb, /^HETATM\s+1 /m);
+      assert.match(coordinatePdb, /^END$/m);
+    } finally {
+      coordinateChild.kill('SIGTERM');
+    }
+  }
+  await rm(coordinateTempDir, { recursive: true, force: true });
+
   const observeWithCookie = await get(`${base}/__agent/observe`, { Cookie: cookieHeader });
   assert.equal(observeWithCookie.statusCode, 200);
   const observed = JSON.parse(observeWithCookie.body);

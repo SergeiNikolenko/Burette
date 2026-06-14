@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Atom01Icon,
   File02Icon,
@@ -14,14 +14,11 @@ import { showNativeContextMenu } from "./native-context-menu";
 import { ViewerFrame } from "./editor-area/viewer-frame";
 import { TextFileViewer } from "./text-file-viewer";
 import { CloseIcon } from "./close-icon";
+import { formatBytes } from "./format";
 import { StructureInfoPanel } from "./structure-info-panel";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
-import { readStructureText } from "../lib/structure-text";
+import { readStructureTextDocument } from "../lib/structure-text";
 import type { TextFileDocument, ViewerDocument } from "../types";
-
-const KetcherPage = lazy(() => import("./ketcher-page").then((module) => ({
-  default: module.KetcherPage,
-})));
 
 type DockPanelProps = {
   area: DockArea;
@@ -210,10 +207,13 @@ function DockPanelContent({
   dockDrops: ShellViewState["dockDroppedStructures"];
 }) {
   const activeDocument = state.activeDocument;
+  const activePageKind = state.activeTab?.location.kind ?? null;
   const dockDocumentId = area === "right" ? state.rightDockDocumentId : state.bottomDockDocumentId;
   const dockTool = area === "right" ? state.rightDockTool : state.bottomDockTool;
   const dockDocument = dockDocumentId ? state.documents.find((document) => document.id === dockDocumentId) ?? null : null;
   const dockTextDocument = dockDocumentId ? state.textDocuments.find((document) => document.id === dockDocumentId) ?? null : null;
+  const dockStructureDocument = dockDocument ?? activeDocument;
+  const activeTextDocument = activeTextDocumentFromState(state);
   const fileEntries = activeTabKind === "files"
     ? dockFileEntries({
         dockDrops,
@@ -233,18 +233,7 @@ function DockPanelContent({
         actions={actions}
       />
     );
-    if (dockTool === "ketcher") {
-      return (
-        <div className="dock-files-view">
-          {fileTabs}
-          <div className="dock-viewer">
-            <Suspense fallback={<div className="ketcher-loading">Loading editor</div>}>
-              <KetcherPage location={{ kind: "ketcher" }} state={state} actions={actions} isActive acceptImportRequests={false} />
-            </Suspense>
-          </div>
-        </div>
-      );
-    }
+    if (dockTool === "ketcher") return <KetcherDockTool area={area} state={state} fileTabs={fileTabs} />;
     if (dockDocument) {
       return (
         <div className="dock-files-view">
@@ -272,9 +261,24 @@ function DockPanelContent({
     );
   }
   if (activeTabKind === "text") {
+    if (area === "right" && activePageKind === "ketcher") {
+      return (
+        <div className="dock-content dock-content-empty">
+          <div className="dock-empty dock-empty-large">Ketcher text is available from the bottom Export panel</div>
+        </div>
+      );
+    }
+    if (dockTextDocument) {
+      return (
+        <div className="dock-viewer">
+          <TextFileViewer document={dockTextDocument} openPaths={actions.openPaths} onStructureSelection={actions.selectTextStructure} />
+        </div>
+      );
+    }
     return (
       <ActiveDocumentTextPanel
-        activeDocument={activeDocument}
+        activeDocument={dockStructureDocument}
+        activeTextDocument={activeTextDocument}
         textDocuments={state.textDocuments}
         openPaths={actions.openPaths}
         onStructureSelection={actions.selectTextStructure}
@@ -282,7 +286,9 @@ function DockPanelContent({
     );
   }
   if (activeTabKind === "inspector") {
-    return <StructureInfoPanel document={activeDocument} dockDrops={dockDrops} actions={actions} />;
+    if (area === "right" && activePageKind === "ketcher") return <KetcherInspectorPanel state={state} />;
+    if (dockTextDocument) return <TextDocumentInfoPanel document={dockTextDocument} actions={actions} />;
+    return <StructureInfoPanel document={dockStructureDocument} dockDrops={dockDrops} actions={actions} />;
   }
   if (activeTabKind === "structure-basket") {
     return (
@@ -343,44 +349,159 @@ function DockPanelContent({
   );
 }
 
+function KetcherDockTool({
+  area,
+  state,
+  fileTabs,
+}: {
+  area: DockArea;
+  state: ShellViewState;
+  fileTabs: ReactNode;
+}) {
+  if (area === "right") {
+    return (
+      <div className="dock-files-view">
+        {fileTabs}
+        <KetcherInspectorPanel state={state} />
+      </div>
+    );
+  }
+  return (
+    <div className="dock-files-view">
+      {fileTabs}
+      <div className="ketcher-dock-portal" data-ketcher-dock-portal="bottom">
+        <div className="dock-content dock-content-empty">
+          <div className="dock-empty dock-empty-large">Open Export or Import from Ketcher</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TextDocumentInfoPanel({ document, actions }: { document: TextFileDocument; actions: ShellActions }) {
+  return (
+    <div className="dock-content structure-brief">
+      <section className="structure-brief-card">
+        <div className="structure-brief-card-header">
+          <div>
+            <small>TEXT FILE</small>
+            <h3>{document.title}</h3>
+          </div>
+          <span className="structure-brief-pill">{document.extension ? document.extension.toUpperCase() : "TEXT"}</span>
+        </div>
+        <div className="structure-brief-rows">
+          <StructureBriefTextRow label="Language" value={document.language} />
+          <StructureBriefTextRow label="Size" value={formatBytes(document.byteCount)} />
+          <StructureBriefTextRow label="Path" value={document.path} />
+          {document.truncated && <StructureBriefTextRow label="Preview" value="Truncated" />}
+        </div>
+        <div className="structure-brief-actions">
+          <button type="button" className="dock-action" onClick={() => void actions.showTextFileMetadata(document)}>
+            Show metadata
+          </button>
+          <button type="button" className="dock-action" onClick={() => void actions.revealPath(document.path, "file")}>
+            Reveal file
+          </button>
+          <button type="button" className="dock-action" onClick={() => void actions.copyPath(document.path, "file")}>
+            Copy path
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function KetcherInspectorPanel({ state }: { state: ShellViewState }) {
+  const sketchInfo = ketcherSketchInfo(state.ketcherDraftMolfile);
+  return (
+    <div className="dock-content ketcher-inspector-panel">
+      <Metric label="Tool" value="Ketcher" />
+      <Metric label="Sketch" value={sketchInfo.hasSketch ? "Modified" : "Empty"} />
+      <Metric label="Atoms" value={sketchInfo.atomCount} />
+      <Metric label="Bonds" value={sketchInfo.bondCount} />
+      <Metric label="Document" value={state.activeTab?.location.kind === "ketcher" ? "Ketcher sketch" : "No active Ketcher tab"} />
+    </div>
+  );
+}
+
+function StructureBriefTextRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="structure-brief-row">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function ketcherSketchInfo(molfile: string) {
+  const counts = molfile.split(/\r?\n/u)
+    .map((line) => ketcherMolfileCounts(line))
+    .find((candidate) => candidate !== null);
+  if (!counts) return { hasSketch: false, atomCount: "0", bondCount: "0" };
+  const { atomCount, bondCount } = counts;
+  const hasSketch = atomCount > 0 || bondCount > 0;
+  return {
+    hasSketch,
+    atomCount: String(atomCount),
+    bondCount: String(bondCount),
+  };
+}
+
+function ketcherMolfileCounts(line: string) {
+  const v3000Counts = line.match(/^M\s+V30\s+COUNTS\s+(\d+)\s+(\d+)/u);
+  if (v3000Counts) {
+    return {
+      atomCount: Number(v3000Counts[1]),
+      bondCount: Number(v3000Counts[2]),
+    };
+  }
+  if (!/\bV2000\b/u.test(line)) return null;
+  const [fallbackAtomCount, fallbackBondCount] = line.trim().split(/\s+/u);
+  const atomCount = Number(line.slice(0, 3).trim() || fallbackAtomCount);
+  const bondCount = Number(line.slice(3, 6).trim() || fallbackBondCount);
+  if (!Number.isFinite(atomCount) || !Number.isFinite(bondCount)) return null;
+  return { atomCount, bondCount };
+}
+
 function ActiveDocumentTextPanel({
   activeDocument,
+  activeTextDocument,
   textDocuments,
   openPaths,
   onStructureSelection,
 }: {
   activeDocument: ViewerDocument | null;
+  activeTextDocument: TextFileDocument | null;
   textDocuments: TextFileDocument[];
   openPaths: ShellActions["openPaths"];
   onStructureSelection: ShellActions["selectTextStructure"];
 }) {
-  const existingDocument = activeDocument
+  const textPreviewLimit = isMaestroStructure(activeDocument) ? 1_500_000 : 3_000_000;
+  const existingDocument = activeTextDocument ?? (activeDocument
     ? textDocuments.find((document) => document.path === activeDocument.path) ?? null
-    : null;
+    : null);
   const [loadedDocument, setLoadedDocument] = useState<TextFileDocument | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoadedDocument(null);
     setError(null);
-    if (!activeDocument || existingDocument) return undefined;
+    if (!activeDocument || activeTextDocument || existingDocument) return undefined;
     let cancelled = false;
     const virtualText = readBrowserDevVirtualTextDocument(activeDocument.path);
-    const textPromise = virtualText === null ? readStructureText(activeDocument.path) : Promise.resolve(virtualText);
-    void textPromise
-      .then((content) => {
+    const documentPromise = virtualText === null
+      ? readStructureTextDocument(activeDocument.path, {
+        id: activeDocument.id,
+        path: activeDocument.path,
+        title: activeDocument.title,
+        extension: activeDocument.extension,
+        byteCount: activeDocument.byteCount,
+      }, { maxBytes: textPreviewLimit })
+      : Promise.resolve(textDocumentFromVirtualText(activeDocument, virtualText));
+    void documentPromise
+      .then((document) => {
         if (cancelled) return;
-        setLoadedDocument({
-          id: `dock-text:${activeDocument.id}`,
-          path: activeDocument.path,
-          title: activeDocument.title,
-          extension: activeDocument.extension,
-          language: activeDocument.extension,
-          byteCount: activeDocument.byteCount,
-          content,
-          truncated: false,
-          modifiedAt: null,
-        });
+        setLoadedDocument(document);
       })
       .catch((loadError) => {
         if (cancelled) return;
@@ -389,12 +510,12 @@ function ActiveDocumentTextPanel({
     return () => {
       cancelled = true;
     };
-  }, [activeDocument, existingDocument]);
+  }, [activeDocument, activeTextDocument, existingDocument, textPreviewLimit]);
 
-  if (!activeDocument) {
+  if (!activeDocument && !activeTextDocument) {
     return (
       <div className="dock-content dock-content-empty">
-        <div className="dock-empty dock-empty-large">Open a structure to inspect its text</div>
+        <div className="dock-empty dock-empty-large">Open a structure or text file to inspect its text</div>
       </div>
     );
   }
@@ -414,6 +535,34 @@ function ActiveDocumentTextPanel({
         {error ? `Text preview failed: ${error}` : "Loading text..."}
       </div>
     </div>
+  );
+}
+
+function textDocumentFromVirtualText(document: ViewerDocument, content: string): TextFileDocument {
+  return {
+    id: document.id,
+    path: document.path,
+    title: document.title,
+    extension: document.extension,
+    language: document.extension,
+    byteCount: content.length,
+    content,
+    truncated: false,
+    modifiedAt: null,
+  };
+}
+
+function isMaestroStructure(document: ViewerDocument | null) {
+  return document ? ["mae", "maegz", "cms"].includes(document.extension.toLowerCase()) : false;
+}
+
+function activeTextDocumentFromState(state: ShellViewState) {
+  const location = state.activeTab?.location;
+  if (location?.kind !== "text-file") return null;
+  return (
+    state.textDocuments.find((document) => document.id === location.documentId) ??
+    state.textDocuments.find((document) => document.path === location.path) ??
+    null
   );
 }
 

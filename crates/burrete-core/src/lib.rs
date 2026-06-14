@@ -186,6 +186,7 @@ pub enum PreviewStrategy {
     Grid,
     Trajectory,
     Custom,
+    Text,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -518,6 +519,19 @@ fn preview_plan_from_registry(
                 ..preview.capabilities.clone()
             },
         }),
+        PreviewStrategy::Text => Ok(PreviewPlan {
+            source_extension: extension.to_string(),
+            strategy: PreviewStrategy::Text,
+            renderer: preview.renderer.clone(),
+            primary: preview.primary.clone(),
+            converter: preview.converter.clone(),
+            staged: preview.staged.clone(),
+            fallbacks: preview.fallbacks.clone(),
+            capabilities: PreviewCapabilities {
+                can_open_in_vesta: format.can_open_in_vesta,
+                ..preview.capabilities.clone()
+            },
+        }),
         PreviewStrategy::Direct => {
             let format_info = format_for_extension(extension)?;
             Ok(PreviewPlan {
@@ -627,13 +641,17 @@ pub fn supported_structure_extensions() -> Result<BTreeSet<String>, String> {
     Ok(format_registry()?
         .formats
         .iter()
+        .filter(|format| !matches!(format.preview.as_ref().map(|preview| &preview.strategy), Some(PreviewStrategy::Text)))
         .flat_map(|format| format.extensions.iter().cloned())
         .collect())
 }
 
 pub fn is_supported_extension(extension: &str) -> Result<bool, String> {
     let normalized = normalize_extension(extension);
-    Ok(supported_structure_extensions()?.contains(normalized.as_str()))
+    Ok(format_registry()?
+        .formats
+        .iter()
+        .any(|format| format.extensions.iter().any(|value| value == &normalized)))
 }
 
 pub fn quick_look_size_limit_for_extension(extension: &str) -> i64 {
@@ -1160,6 +1178,20 @@ mod tests {
         assert_eq!(graphml.renderer, "fep-graphml");
         assert!(graphml.primary.is_none());
 
+        let openmm = preview_plan_for_extension("inpcrd", "auto")
+            .expect("OpenMM coordinate artifact plan should resolve");
+        assert_eq!(openmm.strategy, PreviewStrategy::Convert);
+        assert_eq!(openmm.renderer, "molstar");
+        assert_eq!(openmm.primary.as_ref().unwrap().role, "structure");
+        assert_eq!(openmm.primary.as_ref().unwrap().format, "pdb");
+        assert_eq!(
+            openmm
+                .converter
+                .as_ref()
+                .map(|converter| converter.id.as_str()),
+            Some("text-coordinates-to-pdb")
+        );
+
         let cms = preview_plan_for_extension("cms", "auto").expect("cms plan should resolve");
         assert_eq!(cms.strategy, PreviewStrategy::Convert);
         assert_eq!(cms.renderer, "molstar");
@@ -1195,6 +1227,8 @@ mod tests {
             ("xtc", PreviewStrategy::Trajectory),
             ("cms", PreviewStrategy::Convert),
             ("graphml", PreviewStrategy::Custom),
+            ("inpcrd", PreviewStrategy::Convert),
+            ("checkpoint", PreviewStrategy::Text),
         ];
 
         for (extension, expected_strategy) in cases {
@@ -1223,6 +1257,19 @@ mod tests {
                 .unwrap_or_else(|| panic!("{extension} should declare preview strategy"));
             assert_eq!(preview.strategy, PreviewStrategy::Direct, "{extension}");
         }
+    }
+
+    #[test]
+    fn text_preview_artifacts_are_supported_but_not_structures() {
+        assert!(is_supported_extension("checkpoint").expect("registry should load"));
+        assert!(!supported_structure_extensions()
+            .expect("supported extensions should load")
+            .contains("checkpoint"));
+        assert!(format_for_extension("checkpoint").is_err());
+        assert!(supported_structure_extensions()
+            .expect("supported extensions should load")
+            .contains("inpcrd"));
+        assert!(format_for_extension("inpcrd").is_ok());
     }
 
     #[test]

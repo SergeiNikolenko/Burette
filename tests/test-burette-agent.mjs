@@ -52,6 +52,41 @@ function fakeStructure(options = {}) {
   };
 }
 
+function fakeSpcWaterStructure() {
+  const model = {
+    modelNum: 0,
+    atomicHierarchy: {
+      atoms: {
+        id: col([1, 2, 3]),
+        label_atom_id: col(['OW', 'HW1', 'HW2']),
+        auth_atom_id: col(['OW', 'HW1', 'HW2']),
+        type_symbol: col(['O', 'H', 'H'])
+      },
+      residues: {
+        label_comp_id: col(['SPC']),
+        auth_comp_id: col(['SPC']),
+        label_seq_id: col([1]),
+        auth_seq_id: col([1]),
+        pdbx_PDB_ins_code: col([undefined])
+      },
+      chains: {
+        label_entity_id: col(['1']),
+        label_asym_id: col(['W']),
+        auth_asym_id: col(['W'])
+      },
+      residueAtomSegments: { index: col([0, 0, 0]) },
+      chainAtomSegments: { index: col([0, 0, 0]) }
+    },
+    entities: {
+      getEntityIndex: id => id === '1' ? 0 : undefined,
+      data: { type: col(['non-polymer']), id: col(['1']), rowCount: 1 }
+    }
+  };
+  return {
+    units: [{ id: 1, elements: [0, 1, 2], model, conformation: { position: (i, out) => { out[0] = i; out[1] = 0; out[2] = 0; } } }]
+  };
+}
+
 const agentSource = await readFile(resolve('PreviewExtension/Web/burette-agent.js'), 'utf8');
 const interactions = [];
 const selectionEntries = new Map();
@@ -179,6 +214,14 @@ assert.equal(ligWithMissingNeighborhood.ok, true);
 assert.equal(ligWithMissingNeighborhood.result.ligand.label_comp_id, 'HEM');
 assert.equal(ligWithMissingNeighborhood.result.neighborhood.ok, false);
 assert.equal(ligWithMissingNeighborhood.result.neighborhood.error.code, 'SELECTION_EMPTY');
+
+viewer.plugin.managers.structure.hierarchy.current.structures[0].cell.obj.data = fakeSpcWaterStructure();
+context.window.BurreteAgent.attach({ viewer, plugin: viewer.plugin, config: { label: 'fake-spc-water.pdb', format: 'pdb' } });
+context.window.BurreteAgent.notifyStructureLoaded({ prepared: { label: 'fake-spc-water.pdb', format: 'pdb' } });
+const spcWater = await context.window.BurreteAgent.run({ command: 'selectResidues', args: { selector: { kind: 'water' } } });
+assert.equal(spcWater.ok, true);
+assert.equal(spcWater.result.counts.atoms, 3);
+assert.equal(spcWater.result.counts.residues, 1);
 
 const label = await context.window.BurreteAgent.run({
   command: 'labelSelection',

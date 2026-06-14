@@ -8,6 +8,7 @@ export type StructureSummaryRow = {
 export type StructureCompositionSummary = {
   rows: StructureSummaryRow[];
   componentRows: StructureSummaryRow[];
+  maestroRows?: StructureSummaryRow[];
   polymerRows: StructureSummaryRow[];
   ligandRows: StructureSummaryRow[];
   solventRows: StructureSummaryRow[];
@@ -72,7 +73,22 @@ type ChainGroup = {
   otherResidues: number;
 };
 
-const WATER_NAMES = new Set(["HOH", "WAT", "H2O", "DOD", "TIP", "TIP3", "SOL"]);
+type MaestroCtSummary = {
+  index: number;
+  title: string;
+  entryName: string;
+  ctType: string;
+  forceField: string;
+  variant: string;
+  charge: string;
+  energy: string;
+  atomCount: number;
+  bondCount: number;
+  elements: Map<string, number>;
+  records: AtomRecord[];
+};
+
+const WATER_NAMES = new Set(["HOH", "WAT", "H2O", "DOD", "TIP", "TIP3", "TIP3P", "TIP4", "TIP4P", "TP3", "TP4", "SPC", "SPCE", "SOL"]);
 const ION_NAMES = new Set([
   "AG", "AL", "BA", "BR", "CA", "CD", "CL", "CO", "CS", "CU", "FE", "HG", "IOD", "K",
   "LI", "MG", "MN", "NA", "NI", "RB", "SR", "ZN",
@@ -80,11 +96,13 @@ const ION_NAMES = new Set([
 const POLYMER_RESIDUES = new Set([
   "ALA", "ARG", "ASN", "ASP", "CYS", "GLN", "GLU", "GLY", "HIS", "ILE", "LEU", "LYS",
   "MET", "PHE", "PRO", "SER", "THR", "TRP", "TYR", "VAL", "ASX", "GLX", "SEC", "PYL",
+  "HID", "HIE", "HIP", "HSD", "HSE", "HSP",
   "A", "C", "G", "T", "U", "DA", "DC", "DG", "DT", "DU", "ADE", "CYT", "GUA", "THY", "URA",
 ]);
 const PROTEIN_RESIDUES = new Set([
   "ALA", "ARG", "ASN", "ASP", "CYS", "GLN", "GLU", "GLY", "HIS", "ILE", "LEU", "LYS",
   "MET", "PHE", "PRO", "SER", "THR", "TRP", "TYR", "VAL", "ASX", "GLX", "SEC", "PYL",
+  "HID", "HIE", "HIP", "HSD", "HSE", "HSP",
 ]);
 const NUCLEIC_RESIDUES = new Set(["A", "C", "G", "T", "U", "DA", "DC", "DG", "DT", "DU", "ADE", "CYT", "GUA", "THY", "URA"]);
 
@@ -98,6 +116,7 @@ export function parseStructureComposition(text: string, extension: string): Stru
   if (normalizedExtension === "sdf") return parseSdfComposition(text);
   if (normalizedExtension === "mol") return parseMolComposition(text);
   if (normalizedExtension === "mol2") return parseMol2Composition(text);
+  if (["mae", "maegz", "cms"].includes(normalizedExtension)) return parseMaestroComposition(text);
   return null;
 }
 
@@ -567,6 +586,303 @@ function parseMol2Composition(text: string): StructureCompositionSummary | null 
     solventRows: [],
     notes: ["MOL2 files are grouped as one small-molecule component unless multiple records are present."],
   };
+}
+
+function parseMaestroComposition(text: string): StructureCompositionSummary | null {
+  const cts = parseMaestroCtSummaries(text);
+  if (cts.length === 0) return null;
+  const elements = new Map<string, number>();
+  for (const ct of cts) {
+    for (const [element, count] of ct.elements) increment(elements, element, count);
+  }
+  const atomTotal = cts.reduce((total, ct) => total + ct.atomCount, 0);
+  const bondTotal = cts.reduce((total, ct) => total + ct.bondCount, 0);
+  const shareTopology = maestroCtsShareTopology(cts);
+  const previewCts = maestroPreviewCts(cts);
+  const previewCt = previewCts[0];
+  const previewRecords = shareTopology
+    ? previewRecordsForSharedTopology(previewCts)
+    : previewRecordsForIndependentCts(previewCts);
+  const previewUsesIndependentEntries = cts.length > 1 && !shareTopology && previewCts.length > 1;
+  const baseSummary = previewRecords.length > 0
+    ? summarizeAtomRecords(previewRecords, 1)
+    : {
+        rows: [],
+        componentRows: [],
+        polymerRows: [],
+        ligandRows: [],
+        solventRows: [],
+        notes: [],
+      };
+  const previewLabel = maestroCtLabel(previewCt);
+  const previewAtomCount = previewCts.reduce((total, ct) => total + ct.atomCount, 0);
+  const rows: StructureSummaryRow[] = [
+    { label: "CT blocks", value: formatInteger(cts.length) },
+    { label: "Preview atoms", value: formatInteger(previewAtomCount || atomTotal) },
+    { label: "Source atoms", value: formatInteger(atomTotal) },
+    { label: "Source bonds", value: formatInteger(bondTotal) },
+    { label: "Elements", value: formatElementCounts(elements, 8) },
+  ];
+  if (previewCt) rows.splice(1, 0, { label: previewCts.length > 1 ? "Preview entries" : "Preview CT", value: previewCts.length > 1 ? formatInteger(previewCts.length) : previewLabel });
+
+  const ctRows: StructureSummaryRow[] = cts.slice(0, 12).map((ct) => ({
+    label: maestroCtLabel(ct),
+    value: maestroCtValue(ct),
+    action: maestroCtAction(ct),
+  }));
+  if (cts.length > ctRows.length) ctRows.push({ label: "More CT blocks", value: `${cts.length - ctRows.length} hidden` });
+
+  return {
+    rows,
+    componentRows: baseSummary.componentRows,
+    maestroRows: ctRows,
+    polymerRows: baseSummary.polymerRows,
+    ligandRows: baseSummary.ligandRows,
+    solventRows: baseSummary.solventRows,
+    notes: [
+      "MAE, MAEGZ, and CMS composition is parsed from Maestro CT atom and bond tables.",
+      cts.length > 1 ? "Component counts use the Mol* preview entries; source CT blocks are listed separately as Maestro entries." : "",
+      previewUsesIndependentEntries ? "Independent Maestro CT blocks are combined into one Mol* preview so separate molecules remain visible together." : "",
+      cts.length > 1 && shareTopology && previewCts.length > 1 ? "Multiple CT blocks share topology and can be previewed as Mol* models." : "",
+      ...baseSummary.notes,
+    ].filter(Boolean),
+  };
+}
+
+function parseMaestroCtSummaries(text: string): MaestroCtSummary[] {
+  return splitMaestroCtBlocks(text).map((lines, index) => parseMaestroCtSummary(lines, index + 1)).filter((ct) => ct.atomCount > 0 || ct.bondCount > 0);
+}
+
+function splitMaestroCtBlocks(text: string) {
+  const lines = text.split(/\r?\n/);
+  const blocks: string[][] = [];
+  let blockStart = -1;
+  let depth = 0;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const startsCt = /^\s*f_m_ct\s*\{\s*$/.test(line);
+    if (startsCt && depth === 0) blockStart = index;
+    if (blockStart < 0) continue;
+    depth += countOccurrences(line, "{") - countOccurrences(line, "}");
+    if (depth === 0) {
+      blocks.push(lines.slice(blockStart, index + 1));
+      blockStart = -1;
+    }
+  }
+  return blocks;
+}
+
+function parseMaestroCtSummary(lines: string[], index: number): MaestroCtSummary {
+  const scalarValues = parseMaestroScalarValues(lines);
+  const atomTables = parseMaestroTables(lines, "m_atom");
+  const bondTables = parseMaestroTables(lines, "m_bond");
+  const elements = new Map<string, number>();
+  const records: AtomRecord[] = [];
+  for (const table of atomTables) {
+    for (const row of table.rows) {
+      const element = maestroAtomElement(table.headers, row);
+      if (element) increment(elements, element, 1);
+      records.push({
+        group: residueGroupForName(maestroAtomResidueName(table.headers, row)),
+        atomName: maestroTableValue(table.headers, row, ["s_m_pdb_atom_name", "s_m_atom_name"]) || element || "X",
+        resName: maestroAtomResidueName(table.headers, row),
+        chain: maestroTableValue(table.headers, row, ["s_m_chain_name", "s_m_pdb_chain_name"]) || "-",
+        seq: maestroTableValue(table.headers, row, ["i_m_residue_number", "i_m_pdb_residue_number"]) || String(index),
+        icode: "",
+        element,
+        model: String(index),
+      });
+    }
+  }
+  return {
+    index,
+    title: scalarValues.get("s_m_title") ?? "",
+    entryName: scalarValues.get("s_m_entry_name") ?? "",
+    ctType: scalarValues.get("s_ffio_ct_type") ?? "",
+    forceField: scalarValues.get("s_lp_Force_Field") ?? "",
+    variant: scalarValues.get("s_lp_Variant") ?? "",
+    charge: scalarValues.get("i_epik_Tot_Q") ?? "",
+    energy: scalarValues.get("r_lp_Energy") ?? "",
+    atomCount: atomTables.reduce((total, table) => total + Math.max(table.declaredCount, table.rows.length), 0),
+    bondCount: bondTables.reduce((total, table) => total + Math.max(table.declaredCount, table.rows.length), 0),
+    elements,
+    records,
+  };
+}
+
+function parseMaestroScalarValues(lines: string[]) {
+  const values = new Map<string, string>();
+  const headers: string[] = [];
+  let cursor = 1;
+  while (cursor < lines.length) {
+    const trimmed = lines[cursor].trim();
+    cursor += 1;
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    if (trimmed === ":::") break;
+    if (/^[A-Za-z]_/.test(trimmed)) headers.push(trimmed);
+  }
+  for (const header of headers) {
+    if (cursor >= lines.length) break;
+    const trimmed = lines[cursor].trim();
+    if (/^m_[A-Za-z0-9_]+\[\d+\]\s*\{\s*$/.test(trimmed) || trimmed === "}") break;
+    values.set(header, cleanMaestroValue(lines[cursor]));
+    cursor += 1;
+  }
+  return values;
+}
+
+function parseMaestroTables(lines: string[], tableName: "m_atom" | "m_bond") {
+  const tables: Array<{ declaredCount: number; headers: string[]; rows: string[][] }> = [];
+  const tablePattern = new RegExp(`^\\s*${tableName}\\[(\\d+)\\]\\s*\\{\\s*$`);
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = lines[index].match(tablePattern);
+    if (!match) continue;
+    const declaredCount = Number.parseInt(match[1], 10);
+    const headers: string[] = [];
+    const rows: string[][] = [];
+    let cursor = index + 1;
+    while (cursor < lines.length) {
+      const trimmed = lines[cursor].trim();
+      cursor += 1;
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      if (trimmed === ":::") break;
+      headers.push(trimmed);
+    }
+    while (cursor < lines.length) {
+      const trimmed = lines[cursor].trim();
+      cursor += 1;
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      if (trimmed === ":::" || trimmed === "}") break;
+      rows.push(splitCifTokens(trimmed).map(cleanMaestroValue));
+    }
+    tables.push({ declaredCount: Number.isFinite(declaredCount) ? declaredCount : rows.length, headers, rows });
+    index = cursor;
+  }
+  return tables;
+}
+
+function maestroTableValue(headers: string[], row: string[], names: string[]) {
+  const offset = row.length === headers.length + 1 ? 1 : 0;
+  for (const name of names) {
+    const index = headers.indexOf(name);
+    if (index >= 0) return row[index + offset] ?? "";
+  }
+  return "";
+}
+
+function maestroAtomElement(headers: string[], row: string[]) {
+  const atomicNumber = Number.parseInt(maestroTableValue(headers, row, ["i_m_atomic_number"]), 10);
+  return elementFromAtomicNumber(atomicNumber)
+    || normalizeElement(maestroTableValue(headers, row, ["s_m_pdb_element", "s_m_element"]))
+    || normalizeElement(inferElement(maestroTableValue(headers, row, ["s_m_pdb_atom_name", "s_m_atom_name"])));
+}
+
+function maestroAtomResidueName(headers: string[], row: string[]) {
+  return (maestroTableValue(headers, row, ["s_m_pdb_residue_name", "s_m_mmod_res"]) || "UNK").toUpperCase();
+}
+
+function maestroCtLabel(ct: MaestroCtSummary | undefined) {
+  if (!ct) return "CT";
+  return ct.title || ct.entryName || `CT ${ct.index}`;
+}
+
+function maestroCtValue(ct: MaestroCtSummary) {
+  return [
+    `${ct.atomCount} ${plural(ct.atomCount, "atom")}`,
+    `${ct.bondCount} ${plural(ct.bondCount, "bond")}`,
+    ct.forceField,
+    ct.variant,
+    ct.ctType,
+  ].filter(Boolean).join(" / ");
+}
+
+function maestroCtAction(ct: MaestroCtSummary): StructureViewerAction {
+  const label = `Select ${maestroCtLabel(ct)}`;
+  const ctType = ct.ctType.trim().toLowerCase();
+  if (ctType === "full_system") {
+    return { type: "select_residues", label, selector: { kind: "all" }, granularity: "residue", mode: "replace" };
+  }
+  if (ctType === "solute") {
+    return { type: "select_residues", label, selector: { structure: "primary" }, granularity: "residue", mode: "replace" };
+  }
+  if (ctType === "ion") {
+    return { type: "select_residues", label, selector: { kind: "ion" }, granularity: "residue", mode: "replace" };
+  }
+  if (ctType === "solvent") {
+    return { type: "select_residues", label, selector: { kind: "water" }, granularity: "residue", mode: "replace" };
+  }
+  return { type: "select_residues", label, selector: maestroCtResidueSelector(ct), granularity: "residue", mode: "replace" };
+}
+
+function maestroCtResidueSelector(ct: MaestroCtSummary) {
+  const residueNames = Array.from(new Set(ct.records
+    .map((record) => record.resName)
+    .filter((name) => name && !WATER_NAMES.has(name) && !ION_NAMES.has(name))));
+  const selector: Record<string, string | number | Array<string | number>> = { kind: "ligand" };
+  if (residueNames.length === 1) selector.label_comp_id = residueNames[0];
+  return selector;
+}
+
+function maestroPreviewCts(cts: MaestroCtSummary[]) {
+  const bestScore = Math.max(...cts.map(maestroCtScore));
+  return cts.filter((ct) => maestroCtScore(ct) === bestScore);
+}
+
+function previewRecordsForSharedTopology(cts: MaestroCtSummary[]) {
+  return cts[0]?.records ?? [];
+}
+
+function previewRecordsForIndependentCts(cts: MaestroCtSummary[]) {
+  return cts.flatMap((ct, index) => ct.records.map((record) => ({
+    ...record,
+    chain: maestroPreviewChainName(index),
+    model: "1",
+  })));
+}
+
+function maestroPreviewChainName(index: number) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  return alphabet[index % alphabet.length] || "A";
+}
+
+function maestroCtScore(ct: MaestroCtSummary | undefined) {
+  const normalizedType = ct?.ctType.trim().toLowerCase();
+  if (normalizedType === "full_system") return 4;
+  if (normalizedType === "solute") return 3;
+  if (normalizedType === "ion") return 1;
+  if (normalizedType === "solvent") return 0;
+  return 2;
+}
+
+function maestroCtsShareTopology(cts: MaestroCtSummary[]) {
+  const [firstCt, ...otherCts] = cts;
+  if (!firstCt || otherCts.length === 0) return true;
+  const firstKeys = firstCt.records.map(maestroRecordTopologyKey);
+  return otherCts.every((ct) => (
+    ct.records.length === firstKeys.length
+    && ct.records.every((record, index) => maestroRecordTopologyKey(record) === firstKeys[index])
+  ));
+}
+
+function maestroRecordTopologyKey(record: AtomRecord) {
+  return [
+    record.element,
+    record.atomName,
+    record.resName,
+    record.seq,
+    record.chain,
+  ].join("|");
+}
+
+function cleanMaestroValue(value: string | undefined) {
+  if (!value) return "";
+  const cleaned = value.trim().replace(/^['"]|['"]$/g, "").trim();
+  if (!cleaned || cleaned === "." || cleaned === "?" || cleaned === "<>") return "";
+  return cleaned;
+}
+
+function countOccurrences(value: string, needle: string) {
+  return value.split(needle).length - 1;
 }
 
 function classifyResidue(residue: ResidueGroup) {

@@ -1,20 +1,23 @@
-import { existsSync, statSync, watch } from "node:fs";
+import { existsSync, readFileSync, statSync, watch } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
+import { gunzipSync } from "node:zlib";
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 
 const desktopRoot = fileURLToPath(new URL(".", import.meta.url));
 const desktopDist = fileURLToPath(new URL("dist", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
+const previewFormatRegistry = JSON.parse(readFileSync(join(repoRoot, "config", "preview-formats.json"), "utf8"));
 const extraFsAllow = (process.env.BURRETE_DEV_FS_ALLOW ?? "").split(delimiter).filter(Boolean);
 const defaultDevFileRoots = (process.env.BURRETE_DEV_DEFAULT_FILES ?? "").split(delimiter).filter(Boolean);
 const defaultDesktopRoots = [
   join(homedir(), "Desktop", "BurettePreviewSamples"),
+  join(homedir(), "Desktop", "BuretteMDAnalysisSamples"),
   join(homedir(), "Desktop", "xyzrender-main"),
 ].filter((path) => existsSync(path));
 const defaultProjectFiles = [
@@ -59,11 +62,43 @@ type StructureFileBundle = {
   attachments: Array<{ role: StructureAttachmentRole; path: string }>;
 };
 const DEV_FILE_EXTENSIONS = new Set([
-  "abi", "bcif", "cif", "cms", "com", "csv", "cub", "cube", "dcd", "ent", "fdf", "gro",
-  "in", "inp", "lammpstrj", "log", "mae", "mae.gz", "maegz", "mcif", "mmcif", "mol",
-  "mol2", "mvsj", "mvsx", "nctraj", "nw", "out", "pdb", "pdbqt", "pqr", "prmtop", "psf", "psi4", "qcin",
-  "sd", "sdf", "smi", "smiles", "top", "trr", "tsv", "vasp", "xtc", "xyz",
+  ...previewFormatRegistry.documentTypes.extensions,
   "dtr",
+  "md",
+  "markdown",
+  "mdx",
+  "txt",
+  "log",
+  "err",
+  "sh",
+  "bash",
+  "zsh",
+  "py",
+  "rs",
+  "js",
+  "jsx",
+  "ts",
+  "tsx",
+  "json",
+  "yaml",
+  "yml",
+  "toml",
+  "html",
+  "css",
+]);
+const MD_COORDINATE_EXTENSIONS = [
+  "xtc", "trr", "dcd", "nctraj", "tng", "h5md", "gsd", "trz", "coor", "namdbin",
+  "nc", "ncdf", "netcdf", "ncrst", "lammpstrj", "dump", "trj", "mdcrd", "crdbox",
+  "trc", "arc", "config", "history",
+];
+const MD_TOPOLOGY_EXTENSIONS = [
+  "pdb", "ent", "pdbqt", "pqr", "xpdb", "gro", "cif", "mmcif", "mcif", "bcif",
+  "mmtf", "mol2", "psf", "prmtop", "top", "tpr", "parm7", "parm", "itp", "data",
+  "lammps", "lmp", "txyz", "xml", "inpcrd", "rst7", "crd", "rst", "state",
+];
+const MOLECULAR_BINARY_METADATA_EXTENSIONS = new Set([
+  "chk", "checkpoint", "coor", "dcd", "dms", "edr", "gsd", "h5md", "namdbin", "nc",
+  "ncdf", "ncrst", "nctraj", "netcdf", "tng", "tpr", "trr", "trz", "xtc",
 ]);
 const SCHRODINGER_RUN = "/opt/schrodinger/suites2026-1/run";
 const DESMOND_PREVIEW_EXTRACTOR = join(repoRoot, "scripts", "desmond_preview_extract.py");
@@ -512,9 +547,25 @@ export function browserDevXyzrenderPlugin() {
   return {
     name: "burrete-browser-dev-xyzrender",
     configureServer(server: import("vite").ViteDevServer) {
-      server.middlewares.use("/__burette/dev-files", async (_req, res) => {
+      server.middlewares.use("/__burette/dev-files", async (req, res) => {
         try {
-          const files = await collectDefaultDevFiles();
+          const url = new URL(req.url || "", "http://127.0.0.1");
+          const root = url.searchParams.get("root");
+          let files: string[];
+          if (root) {
+            const rootPath = resolve(root);
+            if (!isDevFileReadAllowed(rootPath)) {
+              res.statusCode = 403;
+              res.setHeader("Content-Type", "application/json; charset=utf-8");
+              res.end(JSON.stringify({ error: "Forbidden" }));
+              return;
+            }
+            files = [];
+            await collectDevFiles(rootPath, files);
+            files = Array.from(new Set(files)).sort((left, right) => left.localeCompare(right));
+          } else {
+            files = await collectDefaultDevFiles();
+          }
           res.statusCode = 200;
           res.setHeader("Content-Type", "application/json; charset=utf-8");
           res.end(JSON.stringify({ files }));
@@ -720,6 +771,7 @@ export function browserDevXyzrenderPlugin() {
         try {
           const url = new URL(req.url || "", "http://127.0.0.1");
           const path = url.searchParams.get("path");
+          const maxBytes = textFileReadLimit(url.searchParams.get("maxBytes"));
           if (!path) {
             res.statusCode = 400;
             res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -741,15 +793,33 @@ export function browserDevXyzrenderPlugin() {
             return;
           }
           const bytes = await readFile(filePath);
-          if (looksBinary(bytes)) {
+          const extension = fileExtension(filePath);
+          const textBytes = readableTextBytes(bytes, extension);
+          if (looksBinary(textBytes)) {
+            if (MOLECULAR_BINARY_METADATA_EXTENSIONS.has(extension)) {
+              res.statusCode = 200;
+              res.setHeader("Content-Type", "application/json; charset=utf-8");
+              res.setHeader("Cache-Control", "no-cache");
+              res.end(JSON.stringify({
+                id: `browser-dev-${filePath}-${info.mtimeMs}`,
+                path: filePath,
+                title: fileTitle(filePath),
+                extension,
+                language: "text",
+                byteCount: info.size,
+                content: molecularBinaryArtifactSummary(filePath, info.size),
+                truncated: false,
+                modifiedAt: Math.max(0, Math.floor(info.mtimeMs)),
+              }));
+              return;
+            }
             res.statusCode = 400;
             res.setHeader("Content-Type", "application/json; charset=utf-8");
             res.end(JSON.stringify({ error: `${filePath} is not a text file` }));
             return;
           }
-          const truncated = bytes.length > TEXT_FILE_READ_LIMIT;
-          const readableBytes = truncated ? bytes.subarray(0, TEXT_FILE_READ_LIMIT) : bytes;
-          const extension = fileExtension(filePath);
+          const truncated = textBytes.length > maxBytes;
+          const readableBytes = truncated ? textBytes.subarray(0, maxBytes) : textBytes;
           res.statusCode = 200;
           res.setHeader("Content-Type", "application/json; charset=utf-8");
           res.setHeader("Cache-Control", "no-cache");
@@ -1004,7 +1074,7 @@ function isDevFileReadAllowed(path: string) {
 
 function fileExtension(path: string) {
   const lower = path.toLowerCase();
-  if (lower.endsWith(".mae.gz")) return "mae.gz";
+  if (lower.endsWith(".mae.gz")) return "maegz";
   const index = lower.lastIndexOf(".");
   return index >= 0 ? lower.slice(index + 1) : "";
 }
@@ -1021,6 +1091,25 @@ function looksBinary(bytes: Buffer) {
   return false;
 }
 
+function textFileReadLimit(value: string | null) {
+  const parsed = Number.parseInt(value ?? "", 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return TEXT_FILE_READ_LIMIT;
+  return Math.min(parsed, TEXT_FILE_READ_LIMIT);
+}
+
+function readableTextBytes(bytes: Buffer, extension: string) {
+  if (extension === "maegz") return gunzipSync(bytes);
+  return bytes;
+}
+
+function molecularBinaryArtifactSummary(path: string, byteCount: number) {
+  const extension = fileExtension(path);
+  if (extension === "chk" || extension === "checkpoint") {
+    return `Binary OpenMM checkpoint artifact\n\nFile: ${path}\nSize: ${byteCount} bytes\n\nBurrete registers this file as an OpenMM workflow artifact, but does not deserialize checkpoint payloads. OpenMM checkpoints are tied to the matching System, Platform, OpenMM version, and hardware context, so this viewer shows metadata instead of raw binary bytes.\n`;
+  }
+  return `Binary molecular workflow artifact\n\nFile: ${path}\nSize: ${byteCount} bytes\nFormat: .${extension}\n\nBurrete registers this file as an MDAnalysis-compatible molecular artifact. This text viewer shows metadata because the file is a binary payload; structure preview can still use it when a compatible topology/trajectory pair is available.\n`;
+}
+
 function languageForTextExtension(extension: string) {
   if (extension === "md" || extension === "markdown" || extension === "mdx") return "markdown";
   if (extension === "sh" || extension === "bash" || extension === "zsh") return "shell";
@@ -1034,6 +1123,7 @@ function languageForTextExtension(extension: string) {
   if (extension === "css") return "css";
   if (extension === "html" || extension === "htm") return "html";
   if (extension === "xml") return "xml";
+  if (extension === "mae" || extension === "maegz" || extension === "cms") return "maestro";
   return "text";
 }
 
@@ -1119,9 +1209,9 @@ function resolveDesmondFileBundle(path: string): StructureFileBundle | null {
 function resolveMdFileBundle(path: string): StructureFileBundle | null {
   const extension = fileExtension(path);
   const base = path.slice(0, Math.max(0, path.length - extension.length - 1));
-  if (["xtc", "trr", "dcd", "nctraj"].includes(extension)) {
+  if (MD_COORDINATE_EXTENSIONS.includes(extension)) {
     const topology = existingFileCandidate(
-      ["pdb", "gro", "cif", "mmcif", "bcif", "psf", "prmtop", "top"].map((candidate) => `${base}.${candidate}`),
+      MD_TOPOLOGY_EXTENSIONS.map((candidate) => `${base}.${candidate}`),
     );
     if (!topology) return null;
     return {
@@ -1134,9 +1224,9 @@ function resolveMdFileBundle(path: string): StructureFileBundle | null {
       ],
     };
   }
-  if (["pdb", "gro", "cif", "mmcif", "bcif", "psf", "prmtop", "top"].includes(extension)) {
+  if (MD_TOPOLOGY_EXTENSIONS.includes(extension)) {
     const trajectory = existingFileCandidate(
-      ["xtc", "trr", "dcd", "nctraj"].map((candidate) => `${base}.${candidate}`),
+      MD_COORDINATE_EXTENSIONS.map((candidate) => `${base}.${candidate}`),
     );
     if (!trajectory) return null;
     return {
