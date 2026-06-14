@@ -24,6 +24,7 @@ type GridControlProps = {
   xyzrenderPresetOptions: XyzrenderPresetOption[];
   ketcherOpen: boolean;
   rendererSwitch: boolean;
+  generating3d: boolean;
   sortOptions: SortOption[];
   onSearchInput: (value: string) => void;
   onSortChange: (value: string) => void;
@@ -40,6 +41,7 @@ type GridControlProps = {
   onSetCardRenderer: (value: "rdkit" | "xyzrender") => void;
   onXyzrenderPresetChange: (value: string) => void;
   onOpenKetcher: () => void;
+  onGenerate3D: () => void;
   onRendererSwitch: (value: "molstar") => void;
   onRdkitUseInputCoordsChange: (checked: boolean) => void;
 };
@@ -56,6 +58,10 @@ declare global {
 
 const roots = new WeakMap<Element, Root>();
 
+function ControlTooltip({ label }: { label: string }) {
+  return <span className="buret-control-tooltip" role="tooltip" aria-hidden="true">{label}</span>;
+}
+
 function GridControls(props: GridControlProps) {
   const collectionType = props.format === "sdf" ? "SDF collection" : "SMILES collection";
   const searchPlaceholder = props.substructureSearch
@@ -71,12 +77,30 @@ function GridControls(props: GridControlProps) {
           <div id="summary" className="buret-summary" />
         </div>
         <div className="buret-actions" hidden={!props.exportEnabled}>
-          <button id="copy-selected" type="button" onClick={props.onCopySelected}>Copy selected</button>
-          <button id="save-grid" type="button" disabled onClick={props.onSaveGrid}>Save</button>
-          <button id="save-grid-as" type="button" onClick={props.onSaveGridAs}>Save As...</button>
-          <button id="undo-grid-edit" type="button" disabled onClick={props.onUndoGridEdit}>Undo</button>
-          <button id="export-smi" type="button" onClick={props.onExportSmiles}>Export SMILES</button>
-          <button id="export-csv" type="button" onClick={props.onExportCSV}>Export CSV</button>
+          <button id="copy-selected" type="button" onClick={props.onCopySelected}>
+            Copy selected
+            <ControlTooltip label="Copy selected molecule records" />
+          </button>
+          <button id="save-grid" type="button" disabled onClick={props.onSaveGrid}>
+            Save
+            <ControlTooltip label="Save changes back to this collection" />
+          </button>
+          <button id="save-grid-as" type="button" onClick={props.onSaveGridAs}>
+            Save As...
+            <ControlTooltip label="Save this collection as a new file" />
+          </button>
+          <button id="undo-grid-edit" type="button" disabled onClick={props.onUndoGridEdit}>
+            Undo
+            <ControlTooltip label="Undo the last grid edit" />
+          </button>
+          <button id="export-smi" type="button" onClick={props.onExportSmiles}>
+            Export SMILES
+            <ControlTooltip label="Export visible molecules as SMILES" />
+          </button>
+          <button id="export-csv" type="button" onClick={props.onExportCSV}>
+            Export CSV
+            <ControlTooltip label="Export visible table data as CSV" />
+          </button>
         </div>
       </header>
       <div className="buret-grid-toolbar">
@@ -112,6 +136,7 @@ function GridControls(props: GridControlProps) {
             onClick={props.onShowProperties}
           >
             Properties
+            <ControlTooltip label="Show molecule properties in cards" />
           </button>
           <button
             id="clear-smarts"
@@ -121,10 +146,17 @@ function GridControls(props: GridControlProps) {
             onClick={props.onClearSmarts}
           >
             Clear search
+            <ControlTooltip label="Clear the SMARTS search" />
           </button>
           <div className="buret-selection-actions" hidden={!props.selectionEnabled}>
-            <button id="select-all" className="buret-toggle-button" type="button" onClick={props.onSelectAll}>Select all</button>
-            <button id="clear-selection" className="buret-toggle-button" type="button" onClick={props.onClearSelection}>Clear selection</button>
+            <button id="select-all" className="buret-toggle-button" type="button" onClick={props.onSelectAll}>
+              Select all
+              <ControlTooltip label="Select all visible molecules" />
+            </button>
+            <button id="clear-selection" className="buret-toggle-button" type="button" onClick={props.onClearSelection}>
+              Clear selection
+              <ControlTooltip label="Clear selected molecules" />
+            </button>
           </div>
           <div className="buret-grid-card-renderer-switch" role="group" aria-label="Grid card renderer">
             <span>Cards</span>
@@ -135,6 +167,7 @@ function GridControls(props: GridControlProps) {
               onClick={() => props.onSetCardRenderer("rdkit")}
             >
               RDKit
+              <ControlTooltip label="Render 2D cards with RDKit" />
             </button>
             {props.supportsXyzrenderCards ? (
               <button
@@ -144,6 +177,7 @@ function GridControls(props: GridControlProps) {
                 onClick={() => props.onSetCardRenderer("xyzrender")}
               >
                 xyzrender
+                <ControlTooltip label="Render cards with external xyzrender" />
               </button>
             ) : null}
           </div>
@@ -187,6 +221,7 @@ function GridControls(props: GridControlProps) {
                     onClick={() => props.onRendererSwitch("molstar")}
                   >
                     Molstar
+                    <ControlTooltip label="Open selected molecules in Molstar" />
                   </button>
                 ) : null}
                 {props.ketcherOpen ? (
@@ -196,6 +231,19 @@ function GridControls(props: GridControlProps) {
                     onClick={props.onOpenKetcher}
                   >
                     Ketcher
+                    <ControlTooltip label="Open selected molecule in Ketcher" />
+                  </button>
+                ) : null}
+                {props.ketcherOpen ? (
+                  <button
+                    id="generate-3d-selected"
+                    type="button"
+                    data-buret-grid-generate-3d
+                    disabled={props.generating3d}
+                    onClick={props.onGenerate3D}
+                  >
+                    <span data-buret-grid-generate-3d-label>{props.generating3d ? "Generating..." : "Generate 3D"}</span>
+                    <ControlTooltip label="Generate 3D conformers for selected molecules" />
                   </button>
                 ) : null}
               </div>
