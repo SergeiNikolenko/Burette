@@ -160,7 +160,7 @@ export function RangeControl({
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
       />
-      <span>{Math.round(value)}</span>
+      <span>{Number.isInteger(step) ? Math.round(value) : value.toFixed(2).replace(/\.?0+$/u, "")}</span>
     </div>
   );
 }

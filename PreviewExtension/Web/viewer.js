@@ -77,6 +77,7 @@
   const DOCKING_TOPOLOGY_TRAJECTORY_FORMATS = new Set(['top', 'psf', 'prmtop']);
   const STRUCTURE_DRAG_MIME = 'application/x-burrete-structure-paths';
   const XYZRENDER_POPOVER_OPEN_KEY_PREFIX = 'buret.xyzrender.popover.open.v2';
+  const MOLSTAR_VIEWPORT_PANEL_OPEN_CLASS = 'buret-molstar-viewport-panel-open';
   let xyzrenderControlsApplyTimer = 0;
   let xyzrenderInlineRequestSerial = 0;
   let xyzrenderSheetRequestSerial = 0;
@@ -89,6 +90,9 @@
   let activeDockingPrepared = null;
   let burreteAgentActionPollTimer = 0;
   let burreteAgentActionPollBusy = false;
+  let molstarViewportPanelObserver = null;
+  let generate3dPending = false;
+  let generate3dPendingMode = 'single';
   try { window.__mqlDebug && window.__mqlDebug('[viewer.js] top-level IIFE entered; readyState=' + document.readyState); } catch (_) {}
 
   function post(type, message) {
@@ -141,6 +145,101 @@
   }
 
   initShellShortcutBridge();
+
+  let molstarControlTooltip = null;
+  let molstarControlTooltipTarget = null;
+
+  function installMolstarControlTooltips() {
+    if (window.__buretteMolstarControlTooltipsInstalled) return;
+    window.__buretteMolstarControlTooltipsInstalled = true;
+    document.addEventListener('pointerover', event => {
+      const control = molstarTooltipControlFromEvent(event);
+      if (control) showMolstarControlTooltip(control);
+    }, true);
+    document.addEventListener('pointerout', event => {
+      if (!molstarControlTooltipTarget) return;
+      if (event.relatedTarget && molstarControlTooltipTarget.contains(event.relatedTarget)) return;
+      hideMolstarControlTooltip();
+    }, true);
+    document.addEventListener('focusin', event => {
+      const control = molstarTooltipControlFromEvent(event);
+      if (control) showMolstarControlTooltip(control);
+    }, true);
+    document.addEventListener('focusout', hideMolstarControlTooltip, true);
+    window.addEventListener('resize', () => {
+      if (molstarControlTooltipTarget) positionMolstarControlTooltip(molstarControlTooltipTarget);
+    });
+    window.addEventListener('scroll', hideMolstarControlTooltip, true);
+  }
+
+  function molstarTooltipControlFromEvent(event) {
+    const target = event.target;
+    if (!target?.closest) return null;
+    const control = target.closest(
+      '.msp-plugin button[aria-label], .msp-plugin button[title], ' +
+      '.msp-plugin [role="button"][aria-label], .msp-plugin [role="button"][title], ' +
+      '.msp-plugin select[aria-label], .msp-plugin select[title], ' +
+      '.msp-plugin input[aria-label], .msp-plugin input[title]'
+    );
+    if (!control || control.closest('#buret-toolbar, .buret-preview-dock, .buret-generate-3d-control')) return null;
+    return control;
+  }
+
+  function molstarTooltipLabel(control) {
+    const label = (control.getAttribute('aria-label') || control.getAttribute('title') || '').replace(/\s+/g, ' ').trim();
+    if (!label || label.length > 96) return '';
+    return label;
+  }
+
+  function ensureMolstarControlTooltip() {
+    if (molstarControlTooltip) return molstarControlTooltip;
+    molstarControlTooltip = document.createElement('div');
+    molstarControlTooltip.className = 'buret-molstar-tooltip';
+    molstarControlTooltip.setAttribute('role', 'tooltip');
+    molstarControlTooltip.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(molstarControlTooltip);
+    return molstarControlTooltip;
+  }
+
+  function showMolstarControlTooltip(control) {
+    const label = molstarTooltipLabel(control);
+    if (!label) {
+      hideMolstarControlTooltip();
+      return;
+    }
+    const tooltip = ensureMolstarControlTooltip();
+    molstarControlTooltipTarget = control;
+    tooltip.textContent = label;
+    tooltip.classList.add('visible');
+    tooltip.setAttribute('aria-hidden', 'false');
+    positionMolstarControlTooltip(control);
+  }
+
+  function positionMolstarControlTooltip(control) {
+    if (!molstarControlTooltip || !control?.getBoundingClientRect) return;
+    const margin = 12;
+    const rect = control.getBoundingClientRect();
+    molstarControlTooltip.style.maxWidth = Math.max(120, Math.min(280, window.innerWidth - margin * 2)) + 'px';
+    const tooltipRect = molstarControlTooltip.getBoundingClientRect();
+    const width = tooltipRect.width || 160;
+    const height = tooltipRect.height || 30;
+    const center = rect.left + rect.width / 2;
+    const left = Math.min(window.innerWidth - margin - width, Math.max(margin, center - width / 2));
+    let top = rect.bottom + 8;
+    if (top + height > window.innerHeight - margin) top = rect.top - height - 8;
+    if (top < margin) top = margin;
+    molstarControlTooltip.style.left = Math.round(left) + 'px';
+    molstarControlTooltip.style.top = Math.round(top) + 'px';
+  }
+
+  function hideMolstarControlTooltip() {
+    molstarControlTooltipTarget = null;
+    if (!molstarControlTooltip) return;
+    molstarControlTooltip.classList.remove('visible');
+    molstarControlTooltip.setAttribute('aria-hidden', 'true');
+  }
+
+  installMolstarControlTooltips();
 
   function installDownloadExportBridge() {
     if (window.__buretteDownloadExportBridgeInstalled) return;
@@ -1100,6 +1199,8 @@
     const tuneButton = toolbar.querySelector('[data-buret-action="xyzrender-tune"]');
     const sdfGridButton = toolbar.querySelector('[data-buret-action="sdf-grid"]');
     const ketcherButton = toolbar.querySelector('[data-buret-action="ketcher"]');
+    const generate3dButton = document.querySelector('[data-buret-action="generate-3d-conformer"]');
+    const generate3dMenu = document.querySelector('[data-buret-generate-3d-menu]');
     const popover = toolbar.querySelector('[data-buret-xyzrender-popover]');
     control.classList.toggle('visible', canSwitchRenderer);
     const molstarStyleSlot = toolbar.querySelector('[data-buret-molstar-style-slot]');
@@ -1124,6 +1225,31 @@
       ketcherButton.addEventListener('click', requestOpenInKetcher);
       toolbar.dataset.ketcherBound = '1';
     }
+    const canGenerate3d = canGenerate3DConformerFromConfig(config, renderer);
+    generate3dButton?.classList.toggle('hidden', !canGenerate3d);
+    generate3dMenu?.classList.toggle('hidden', true);
+    if (generate3dButton) {
+      generate3dButton.disabled = !canGenerate3d || generate3dPending;
+      generate3dButton.setAttribute('aria-hidden', canGenerate3d ? 'false' : 'true');
+      applyGenerate3DPendingState(generate3dButton);
+    }
+    if (generate3dButton && generate3dButton.dataset.bound !== '1') {
+      generate3dButton.dataset.bound = '1';
+      generate3dButton.addEventListener('click', requestGenerate3DConformer);
+      generate3dButton.addEventListener('contextmenu', event => {
+        event.preventDefault();
+        showGenerate3DMenu(generate3dButton);
+      });
+    }
+    const ensembleButton = generate3dMenu?.querySelector('[data-buret-action="generate-3d-ensemble"]');
+    if (ensembleButton && ensembleButton.dataset.bound !== '1') {
+      ensembleButton.dataset.bound = '1';
+      ensembleButton.addEventListener('click', () => {
+        hideGenerate3DMenu();
+        requestGenerate3DConformer({ mode: 'ensemble' });
+      });
+    }
+    observeMolstarViewportPanel();
     const popoverWasOpen = popover?.classList.contains('hidden') === false;
     const popoverScrollTop = popover?.scrollTop || 0;
     control.querySelectorAll('[data-buret-renderer]').forEach(button => {
@@ -1417,6 +1543,273 @@
     if (!sent) setStatus('SDF grid switching is available only in the app or Quick Look viewer.', 'error');
   }
 
+  function showGenerate3DMenu(anchor) {
+    const menu = document.querySelector('[data-buret-generate-3d-menu]');
+    if (!menu || anchor?.classList?.contains('hidden') || anchor?.disabled) return;
+    const rect = anchor.getBoundingClientRect();
+    menu.classList.remove('hidden');
+    menu.style.top = `${Math.round(rect.bottom + 6)}px`;
+    menu.style.left = `${Math.round(Math.max(8, rect.right - menu.offsetWidth))}px`;
+    menu.querySelector('[role="menuitem"]')?.focus?.();
+  }
+
+  function hideGenerate3DMenu() {
+    document.querySelector('[data-buret-generate-3d-menu]')?.classList.add('hidden');
+  }
+
+  function setGenerate3DPending(pending, mode = 'single') {
+    generate3dPending = pending === true;
+    generate3dPendingMode = mode === 'ensemble' ? 'ensemble' : 'single';
+    const button = document.querySelector('[data-buret-action="generate-3d-conformer"]');
+    if (button) applyGenerate3DPendingState(button);
+  }
+
+  function applyGenerate3DPendingState(button) {
+    const label = button.querySelector('[data-buret-generate-3d-label]');
+    if (!button.dataset.readyLabel) button.dataset.readyLabel = label?.textContent?.trim() || 'Generate 3D';
+    const config = activeConfig || window.BurreteConfig || {};
+    const renderer = normalizeRenderer(config.renderer);
+    const canGenerate3d = canGenerate3DConformerFromConfig(config, renderer);
+    button.classList.toggle('generating', generate3dPending);
+    button.setAttribute('aria-busy', generate3dPending ? 'true' : 'false');
+    button.disabled = !canGenerate3d || generate3dPending;
+    if (label) {
+      label.textContent = generate3dPending
+        ? (generate3dPendingMode === 'ensemble' ? 'Generating set...' : 'Generating 3D...')
+        : button.dataset.readyLabel;
+    }
+  }
+
+  document.addEventListener('pointerdown', event => {
+    const menu = document.querySelector('[data-buret-generate-3d-menu]');
+    if (!menu || menu.classList.contains('hidden')) return;
+    if (menu.contains(event.target) || event.target?.closest?.('[data-buret-action="generate-3d-conformer"]')) return;
+    hideGenerate3DMenu();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') hideGenerate3DMenu();
+  });
+
+  function requestGenerate3DConformer(options = {}) {
+    const config = activeConfig || window.BurreteConfig || {};
+    const format = normalizeFormat(config.sourceExtension || config.molstarFormat || config.format);
+    if (!['sdf', 'sd', 'mol'].includes(format)) {
+      setStatus('3D conformer generation supports SDF and MOL structures.', 'error');
+      return;
+    }
+    const mode = options.mode === 'ensemble' ? 'ensemble' : 'single';
+    const sent = postHostMessage({
+      type: 'generate3dConformer',
+      path: String(config.sourcePath || '').trim(),
+      title: String(config.label || 'structure').trim(),
+      extension: String(config.sourceExtension || config.format || '').trim(),
+      molstarStyle: configuredMolstarStyle(config),
+      mode
+    });
+    if (!sent) {
+      setStatus('3D conformer generation is available only in the app viewer.', 'error');
+      return;
+    }
+    setGenerate3DPending(true, mode);
+    setStatus(mode === 'ensemble'
+      ? '[web] Generating conformer set with RDKit...'
+      : '[web] Generating 3D conformer with RDKit...');
+  }
+
+  function canGenerate3DConformerFromConfig(config, renderer) {
+    const format = normalizeFormat(config?.sourceExtension || config?.molstarFormat || config?.format);
+    return renderer === 'molstar' && ['sdf', 'sd', 'mol'].includes(format);
+  }
+
+  function isSdfPoseConformerSet(config) {
+    const format = normalizeFormat(config?.sourceExtension || config?.molstarFormat || config?.format);
+    if (format !== 'sdf' && format !== 'sd') return false;
+    const configuredPoseCount = Number(config?.trajectoryFrameCount || 0);
+    const preparedPoseCount = Number(activeMolstarPrepared?.sdfPoseRecordCount || activeMolstarPrepared?.poseCount || 0);
+    return (config?.sdfPosePager === true && configuredPoseCount > 1) || preparedPoseCount > 1;
+  }
+
+  window.addEventListener('message', event => {
+    const data = event.data || {};
+    const body = data.source === 'burrete-host' ? data.body : null;
+    if (!body) return;
+    if (body.type === 'generate3dConformerStarted') {
+      setGenerate3DPending(true, body.mode);
+      return;
+    }
+    if (body.type === 'generate3dConformerFinished') {
+      setGenerate3DPending(false);
+      return;
+    }
+    if (body.type !== 'replaceMolstarStructure') return;
+    void replaceMolstarStructureFromHost(body).catch(error => {
+      setGenerate3DPending(false);
+      setStatus(`3D structure update failed.\n\n${error?.message || String(error)}`, 'error');
+    });
+  });
+
+  async function replaceMolstarStructureFromHost(body) {
+    const documentId = String((activeConfig || window.BurreteConfig || {}).documentId || '');
+    if (body.documentId && documentId && String(body.documentId) !== documentId) return;
+    if (!activeViewer) throw new Error('Mol* viewer is not ready.');
+    const textBase64 = typeof body.textBase64 === 'string' ? body.textBase64.trim() : '';
+    if (!textBase64) throw new Error('Generated 3D structure payload is empty.');
+    const text = base64ToText(textBase64);
+    const title = String(body.title || 'generated-3d.sdf').trim() || 'generated-3d.sdf';
+    const byteCount = Number(body.byteCount || new TextEncoder().encode(text).byteLength);
+    const generatedStyle = normalizeMolstarStyle(body.molstarStyle || configuredMolstarStyle(activeConfig || window.BurreteConfig || {}));
+    const nextConfig = {
+      ...(activeConfig || window.BurreteConfig || {}),
+      label: title,
+      format: 'sdf',
+      molstarFormat: 'sdf',
+      molstarStyle: generatedStyle,
+      binary: false,
+      renderer: 'molstar',
+      requestedRenderer: 'molstar',
+      byteCount: Number.isFinite(byteCount) && byteCount > 0 ? byteCount : text.length,
+      previewByteCount: Number.isFinite(byteCount) && byteCount > 0 ? byteCount : text.length,
+      sourcePath: typeof body.path === 'string' ? body.path : '',
+      sourceExtension: 'sdf',
+      dataPath: null,
+      stagedEntries: [],
+      docking: null,
+      sdfPosePager: true,
+      generated3dConformer: true,
+      trajectoryControls: false,
+      trajectoryFrameCount: 0
+    };
+    activeConfig = nextConfig;
+    window.BurreteConfig = nextConfig;
+    window.BurreteDataBytes = null;
+    window.BurreteDataBase64 = textBase64;
+    activeMolstarCacheBuster = String(Date.now());
+    setStatus(`[web] Updating Mol* structure…\n${title}`);
+    const plugin = activeViewer?.plugin;
+    const transitionFrame = captureMolstarTransitionFrame();
+    let prepared = null;
+    try {
+      if (typeof plugin?.clear === 'function') await plugin.clear();
+      prepared = structureDataForMolstar(nextConfig);
+      await withTimeout(
+        loadPreparedStructure(activeViewer, prepared),
+        45000,
+        `Mol* timed out while updating ${title} as 3D SDF.`
+      );
+      await applyMolstarStyle(activeViewer, generatedStyle);
+      applyLayoutState(activeViewer);
+      scheduleLayoutStateReapply(activeViewer);
+      configureRendererControls(nextConfig);
+      try { activeViewer.handleResize(); } catch (_) {}
+      requestGenerated3DCameraView(activeViewer);
+      fadeMolstarTransitionFrame(transitionFrame);
+    } catch (error) {
+      removeMolstarTransitionFrame(transitionFrame);
+      throw error;
+    }
+    try {
+      window.BurreteAgent?.notifyStructureLoaded?.({ viewer: activeViewer, plugin: activeViewer.plugin, config: nextConfig, prepared });
+      postHostMessage({ type: 'agentReady', message: 'Burrete agent ready' });
+    } catch (error) {
+      debug('BurreteAgent notifyStructureLoaded failed after in-place structure update: ' + (error && error.message || String(error)));
+    }
+    void reportBurreteAgentState();
+    setGenerate3DPending(false);
+    setStatus(`[web] Updated ${title} with generated 3D coordinates`);
+    postHostMessage({
+      type: 'molstarStructureReplaced',
+      requestId: typeof body.requestId === 'string' ? body.requestId : '',
+      documentId: documentId || String(body.documentId || ''),
+      title,
+      path: nextConfig.sourcePath || '',
+      method: String(body.method || '')
+    });
+    setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
+  }
+
+  function captureMolstarTransitionFrame() {
+    const canvas = document.querySelector('.msp-plugin canvas');
+    if (!canvas?.getBoundingClientRect || typeof canvas.toDataURL !== 'function') return null;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width < 4 || rect.height < 4) return null;
+    try {
+      const image = document.createElement('img');
+      image.className = 'buret-molstar-transition-frame';
+      image.alt = '';
+      image.src = canvas.toDataURL('image/png');
+      image.style.left = `${Math.round(rect.left)}px`;
+      image.style.top = `${Math.round(rect.top)}px`;
+      image.style.width = `${Math.round(rect.width)}px`;
+      image.style.height = `${Math.round(rect.height)}px`;
+      document.body.appendChild(image);
+      return image;
+    } catch (error) {
+      debug('Mol* transition frame capture failed: ' + (error && error.message || String(error)));
+      return null;
+    }
+  }
+
+  function fadeMolstarTransitionFrame(frame) {
+    if (!frame) return;
+    requestAnimationFrame(() => {
+      frame.classList.add('fade-out');
+      setTimeout(() => removeMolstarTransitionFrame(frame), 380);
+    });
+  }
+
+  function removeMolstarTransitionFrame(frame) {
+    if (!frame) return;
+    try { frame.remove(); } catch (_) {}
+  }
+
+  function requestGenerated3DCameraView(viewer) {
+    const canvas3d = viewer?.plugin?.canvas3d;
+    const camera = canvas3d?.camera;
+    if (!canvas3d || !camera) return;
+    try {
+      const sphere = canvas3d.boundingSphereVisible || canvas3d.boundingSphere;
+      const center = Array.isArray(sphere?.center) ? sphere.center : null;
+      const radius = Number(sphere?.radius);
+      const target = center && center.length >= 3 ? [center[0], center[1], center[2]] : camera.target;
+      const safeRadius = Number.isFinite(radius) && radius > 0 ? radius : Number(camera.state?.radius || 10);
+      const snapshot = typeof camera.getFocus === 'function'
+        ? camera.getFocus(target, safeRadius, [0, 1, 0], [0.85, -0.38, 0.92])
+        : null;
+      if (snapshot) snapshot.mode = 'perspective';
+      canvas3d.requestCameraReset({
+        snapshot: snapshot || undefined,
+        durationMs: 650,
+      });
+    } catch (error) {
+      debug('Generated 3D camera view failed: ' + (error && error.message || String(error)));
+      try { canvas3d.requestCameraReset?.({ durationMs: 450 }); } catch (_) {}
+    }
+  }
+
+  function observeMolstarViewportPanel() {
+    if (molstarViewportPanelObserver || !document.body) return;
+    const update = () => {
+      const panel = document.querySelector('.msp-viewport-controls-panel');
+      const rect = panel?.getBoundingClientRect();
+      const open = !!rect && rect.width > 0 && rect.height > 0;
+      if (open) {
+        const nextTop = Math.min(Math.max(rect.bottom + 12, 64), Math.max(window.innerHeight - 48, 64));
+        document.documentElement.style.setProperty('--buret-generate-3d-panel-top', `${Math.round(nextTop)}px`);
+      } else {
+        document.documentElement.style.removeProperty('--buret-generate-3d-panel-top');
+      }
+      document.body.classList.toggle(MOLSTAR_VIEWPORT_PANEL_OPEN_CLASS, open);
+    };
+    molstarViewportPanelObserver = new MutationObserver(update);
+    molstarViewportPanelObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class', 'style', 'hidden']
+    });
+    update();
+  }
+
   function readSdfPoseMode(config) {
     const format = normalizeFormat(config?.molstarFormat || config?.format);
     if (format !== 'sdf') return 'single';
@@ -1453,6 +1846,7 @@
     button.setAttribute('aria-pressed', allMode ? 'true' : 'false');
     button.setAttribute('aria-label', title);
     button.setAttribute('title', title);
+    setTooltipLabel(button, title);
   }
 
   async function reloadSdfPoseMode() {
@@ -3073,10 +3467,23 @@
     const button = document.querySelector('#buret-toolbar [data-buret-action="theme"]');
     if (!button) return;
     const isDark = resolveViewerTheme() === 'dark';
-    button.textContent = isDark ? 'Light' : 'Dark';
-    button.setAttribute('aria-label', isDark ? 'Switch to light theme' : 'Switch to dark theme');
-    button.setAttribute('title', isDark ? 'Switch to light theme' : 'Switch to dark theme');
+    const label = isDark ? 'Switch to light theme' : 'Switch to dark theme';
+    setButtonLabel(button, isDark ? 'Light' : 'Dark');
+    button.setAttribute('aria-label', label);
+    button.setAttribute('title', label);
+    setTooltipLabel(button, label);
     button.classList.toggle('active', !isDark);
+  }
+
+  function setButtonLabel(button, label) {
+    const tooltip = button.querySelector('.buret-tooltip');
+    button.textContent = label;
+    if (tooltip) button.append(tooltip);
+  }
+
+  function setTooltipLabel(root, label) {
+    const tooltip = root?.querySelector?.('.buret-tooltip');
+    if (tooltip) tooltip.textContent = label;
   }
 
   function loadScript(src, label, timeoutMs) {

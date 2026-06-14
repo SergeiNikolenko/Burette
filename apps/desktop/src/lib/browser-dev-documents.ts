@@ -53,8 +53,8 @@ const KETCHER_EDIT_MAX_BYTES = 1024 * 1024;
 const KETCHER_EDIT_MAX_ATOMS = 300;
 const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
-const GRID_ASSET_VERSION = "grid-ui-v99";
-const VIEWER_ASSET_VERSION = "viewer-ui-v34";
+const GRID_ASSET_VERSION = "grid-ui-v101";
+const VIEWER_ASSET_VERSION = "viewer-ui-v40";
 const REPO_ROOT = String(import.meta.env.BURRETE_REPO_ROOT || "");
 const WEB_ASSETS_BASE = fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
 const browserDevVirtualTextDocuments = new Map<string, string>();
@@ -83,6 +83,29 @@ type BrowserDevExternalArtifact = {
   configArgument: string;
   elapsedMs: number;
   log?: string;
+};
+
+type BrowserDevConformerGenerationRequest = {
+  title: string;
+  extension: string;
+  text: string;
+  engine?: ViewerPreferences["conformerEngine"];
+  mode?: "single" | "ensemble";
+  candidateCount?: number;
+  rmsdCutoff?: number;
+  source3d?: {
+    title: string;
+    extension: string;
+    text: string;
+  } | null;
+};
+
+type BrowserDevConformerGenerationResult = {
+  title: string;
+  extension: "sdf";
+  text: string;
+  method: string;
+  conformerCount?: number;
 };
 
 export type BrowserDevMolstarContextDocument = {
@@ -182,13 +205,14 @@ export async function openBrowserDevTextDocument(
   text: string,
   preferences: ViewerPreferences,
   reloadOptions?: ViewerReloadOptions,
+  documentId?: string,
 ): Promise<ViewerDocument> {
   const cleanExtension = extension.toLowerCase().replace(/^\./u, "");
   const cleanTitle = fileTitle(title).replace(/[\\/]/gu, "").trim() || `ketcher-sketch.${cleanExtension}`;
   const path = `burrete-ketcher://${stableId(`${cleanTitle}:${text}`)}/${cleanTitle}`;
   const bytes = new TextEncoder().encode(text);
   browserDevVirtualTextDocuments.set(path, text);
-  const document = await openBrowserDevDocumentFromBytes(path, cleanExtension, bytes, bytes.length, preferences, reloadOptions);
+  const document = await openBrowserDevDocumentFromBytes(path, cleanExtension, bytes, bytes.length, preferences, reloadOptions, documentId);
   return { ...document, virtual: true };
 }
 
@@ -471,6 +495,43 @@ export function readBrowserDevVirtualTextDocument(path: string) {
   return browserDevVirtualTextDocuments.get(path) ?? null;
 }
 
+export function writeBrowserDevVirtualTextDocument(path: string, text: string) {
+  browserDevVirtualTextDocuments.set(path, text);
+}
+
+export async function generateBrowserDev3DConformer(
+  request: BrowserDevConformerGenerationRequest,
+): Promise<BrowserDevConformerGenerationResult> {
+  const response = await fetch("/__burette/generate-3d-conformer", {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({ request }),
+  });
+  const payload = await response.json().catch(() => null) as Partial<BrowserDevConformerGenerationResult> & { error?: unknown } | null;
+  if (!response.ok) {
+    const message = typeof payload?.error === "string" && payload.error.trim()
+      ? payload.error.trim()
+      : `3D conformer request failed with status ${response.status}`;
+    throw new Error(message);
+  }
+  if (
+    !payload
+    || typeof payload.title !== "string"
+    || payload.extension !== "sdf"
+    || typeof payload.text !== "string"
+    || typeof payload.method !== "string"
+  ) {
+    throw new Error("3D conformer request returned an invalid response.");
+  }
+  return {
+    title: payload.title,
+    extension: payload.extension,
+    text: payload.text,
+    method: payload.method,
+    conformerCount: typeof payload.conformerCount === "number" ? payload.conformerCount : undefined,
+  };
+}
+
 async function openBrowserDevDocument(
   path: string,
   preferences: ViewerPreferences,
@@ -525,6 +586,7 @@ async function openBrowserDevDocumentFromBytes(
   sourceByteCount: number,
   preferences: ViewerPreferences,
   reloadOptions?: ViewerReloadOptions,
+  documentId?: string,
 ): Promise<ViewerDocument> {
   const text = await decodeStructureText(bytes, extension);
   const grid = gridPayload(path, extension, text);
@@ -533,10 +595,15 @@ async function openBrowserDevDocumentFromBytes(
   const explicitSdfViewer = isSdfExtension(extension)
     && Boolean(reloadOptions)
     && (requestedMode === "molstar" || requestedMode === "xyzrender-external");
-  if (grid && !(grid.format === "sdf" && explicitSdfViewer)) {
-    const id = stableId(path);
+  const singleSdfGrid = grid?.format === "sdf" && grid.records.length <= 1;
+  const shouldOpenGrid = Boolean(grid) && (
+    requestedMode === "grid2d"
+    || !(grid?.format === "sdf" && (singleSdfGrid || explicitSdfViewer))
+  );
+  if (grid && shouldOpenGrid) {
+    const id = documentId ?? stableId(path);
     const html = await gridHtml(path, id, grid.records, grid.format, preferences, bytes.length);
-    return browserDocument(path, extension, "grid2d", html, bytes.length);
+    return browserDocument(path, extension, "grid2d", html, bytes.length, id);
   }
   if (gridRequiresPreview(extension)) {
     throw new Error(`${path} does not contain supported molecule grid records`);
@@ -609,8 +676,9 @@ async function openBrowserDevDocumentFromBytes(
     Math.max(trajectoryFrameCount, sdfRecordCount),
     ketcherEditConfig(path, extension, text, sourceByteCount, sdfRecordCount),
     convertedMolstarData?.stagedEntries,
+    documentId,
   );
-  return browserDocument(path, extension, renderer, html, sourceByteCount);
+  return browserDocument(path, extension, renderer, html, sourceByteCount, documentId);
 }
 
 function browserDocument(
@@ -619,9 +687,10 @@ function browserDocument(
   renderer: string,
   html: string,
   byteCount: number,
+  documentId?: string,
 ): ViewerDocument {
   return {
-    id: stableId(path),
+    id: documentId ?? stableId(path),
     path,
     title: fileTitle(path),
     extension,
@@ -784,6 +853,7 @@ function viewerHtml(
   trajectoryFrameCount = 0,
   ketcherConfig: Record<string, unknown> | null = null,
   stagedEntries?: Array<Record<string, unknown>>,
+  documentId?: string,
 ) {
   const label = fileTitle(path);
   const extension = fileExtension(path);
@@ -807,7 +877,7 @@ function viewerHtml(
     theme: visuals.theme,
     themeTokens: previewThemeTokens(preferences),
     canvasBackground: visuals.canvasBackground,
-    documentId: stableId(path),
+    documentId: documentId ?? stableId(path),
     uiScale: 0.9,
     overlayOpacity: 0.9,
     transparentBackground: visuals.transparentBackground,
