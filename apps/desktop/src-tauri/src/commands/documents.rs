@@ -20,9 +20,9 @@ use crate::preview::formats::{
 };
 use crate::preview::grid_store::GridParseOptions;
 use crate::preview::runtime::{
-    open_docking_document as open_docking_document_runtime, open_document_for_window,
-    open_document_with_grid_options, DockingDocumentRequest, OpenDocumentsResult, ViewerDocument,
-    ViewerPreferences, ViewerReloadOptions, XyzrenderControls,
+    companion_paths_for_open_path, open_docking_document as open_docking_document_runtime,
+    open_document_for_window, open_document_with_grid_options, DockingDocumentRequest,
+    OpenDocumentsResult, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XyzrenderControls,
 };
 use crate::preview::runtime_grid::create_grid_runtime_with_options;
 use crate::preview::runtime_viewer::create_combined_sdf_pose_runtime;
@@ -1457,7 +1457,12 @@ fn expand_open_targets(path: PathBuf) -> Result<Vec<PathBuf>, String> {
     let metadata =
         fs::metadata(&canonical).map_err(|err| format!("{}: {err}", canonical.display()))?;
     if metadata.is_file() {
-        return Ok(vec![canonical]);
+        let extension = structure_path_extension(&canonical);
+        let mut paths = vec![canonical.clone()];
+        for companion in companion_paths_for_open_path(&canonical, &extension) {
+            paths.push(companion);
+        }
+        return Ok(paths);
     }
     if !metadata.is_dir() {
         return Err(format!(

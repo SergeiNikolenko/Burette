@@ -2,7 +2,7 @@ import { RangeSetBuilder } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 
-type StructureLanguage = "pdb" | "cif" | "gro" | "xyz" | "sdf" | "mol2" | "cube";
+type StructureLanguage = "pdb" | "cif" | "gro" | "xyz" | "sdf" | "mol2" | "cube" | "maestro";
 
 const recordMark = Decoration.mark({ class: "cm-structure-record" });
 const atomMark = Decoration.mark({ class: "cm-structure-atom" });
@@ -38,6 +38,29 @@ export function structureTextHighlighting(extension: string): Extension {
   ];
 }
 
+export function textNumberHighlighting(): Extension {
+  return ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet;
+
+      constructor(view: EditorView) {
+        this.decorations = buildNumberDecorations(view);
+      }
+
+      update(update: ViewUpdate) {
+        if (update.docChanged || update.viewportChanged) this.decorations = buildNumberDecorations(update.view);
+      }
+    },
+    {
+      decorations: (value) => value.decorations,
+    },
+  );
+}
+
+export function hasStructureTextHighlighting(extension: string) {
+  return structureLanguageForExtension(extension) !== null;
+}
+
 function structureLanguageForExtension(extension: string): StructureLanguage | null {
   const normalized = extension.toLowerCase();
   if (["pdb", "pdbqt", "ent"].includes(normalized)) return "pdb";
@@ -47,6 +70,7 @@ function structureLanguageForExtension(extension: string): StructureLanguage | n
   if (["sdf", "mol"].includes(normalized)) return "sdf";
   if (normalized === "mol2") return "mol2";
   if (["cube", "cub"].includes(normalized)) return "cube";
+  if (["mae", "maegz", "cms"].includes(normalized)) return "maestro";
   return null;
 }
 
@@ -63,6 +87,20 @@ function buildDecorations(view: EditorView, language: StructureLanguage) {
   return builder.finish();
 }
 
+function buildNumberDecorations(view: EditorView) {
+  const builder = new RangeSetBuilder<Decoration>();
+  for (const range of view.visibleRanges) {
+    let position = range.from;
+    while (position <= range.to) {
+      const line = view.state.doc.lineAt(position);
+      activeLineLength = line.text.length;
+      highlightNumbers(builder, line.from, line.text, 0);
+      position = line.to + 1;
+    }
+  }
+  return builder.finish();
+}
+
 function highlightLine(builder: RangeSetBuilder<Decoration>, language: StructureLanguage, from: number, text: string, lineNumber: number) {
   activeLineLength = text.length;
   if (language === "pdb") return highlightPdbLine(builder, from, text);
@@ -71,6 +109,7 @@ function highlightLine(builder: RangeSetBuilder<Decoration>, language: Structure
   if (language === "xyz") return highlightXyzLine(builder, from, text, lineNumber);
   if (language === "sdf") return highlightSdfLine(builder, from, text, lineNumber);
   if (language === "mol2") return highlightMol2Line(builder, from, text);
+  if (language === "maestro") return highlightMaestroLine(builder, from, text);
   highlightCubeLine(builder, from, text, lineNumber);
 }
 
@@ -187,6 +226,29 @@ function highlightCubeLine(builder: RangeSetBuilder<Decoration>, from: number, t
     return;
   }
   highlightNumbers(builder, from, text, 0);
+}
+
+function highlightMaestroLine(builder: RangeSetBuilder<Decoration>, from: number, text: string) {
+  const trimmed = text.trimStart();
+  const offset = text.length - trimmed.length;
+  if (!trimmed) return;
+  if (trimmed.startsWith("#")) {
+    markRange(builder, from, offset, text.length, commentMark);
+    return;
+  }
+  const record = trimmed.match(/^[A-Za-z][A-Za-z0-9_]*(?=\s*(?:\[|\{|\())/);
+  if (record) {
+    markRange(builder, from, offset, offset + record[0].length, recordMark);
+    highlightNumbers(builder, from, text, offset + record[0].length);
+    return;
+  }
+  const property = trimmed.match(/^[a-z]_[A-Za-z0-9_]+/);
+  if (property) {
+    markRange(builder, from, offset, offset + property[0].length, propertyMark);
+    highlightNumbers(builder, from, text, offset + property[0].length);
+    return;
+  }
+  highlightNumbers(builder, from, text, offset);
 }
 
 function highlightNumbers(builder: RangeSetBuilder<Decoration>, from: number, text: string, start: number) {

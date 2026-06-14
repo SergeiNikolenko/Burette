@@ -13,6 +13,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 
 import ligandProLogo from "../assets/short-logo-ligandpro.svg";
 import { collectionExtension, collectionFamily } from "../lib/collection-documents";
@@ -370,6 +371,8 @@ export function KetcherPage({
   ));
   const [ketcherZoom, setKetcherZoom] = useState(DEFAULT_KETCHER_ZOOM);
   const [outputPanelHeight, setOutputPanelHeight] = useState(KETCHER_OUTPUT_DEFAULT_HEIGHT);
+  const [dockPortalElement, setDockPortalElement] = useState<HTMLElement | null>(null);
+  const [liveSmilesImportDirty, setLiveSmilesImportDirty] = useState(false);
   const [selectedCollectionPath, setSelectedCollectionPath] = useState("");
   const [gridEditSource, setGridEditSource] = useState<NonNullable<NonNullable<KetcherImportRequest["fragments"]>[number]["source"]> | null>(null);
   const [preserved3dSource, setPreserved3dSource] = useState<KetcherSource3D | null>(null);
@@ -396,6 +399,19 @@ export function KetcherPage({
   const outputPanelStyle = useMemo(() => ({
     "--ketcher-output-height": `${outputPanelHeight}px`,
   }) as CSSProperties, [outputPanelHeight]);
+
+  useEffect(() => {
+    if (!panelMode) {
+      setDockPortalElement(null);
+      return undefined;
+    }
+    const syncPortalElement = () => {
+      setDockPortalElement(document.querySelector<HTMLElement>('[data-ketcher-dock-portal="bottom"]'));
+    };
+    syncPortalElement();
+    const frameId = window.requestAnimationFrame(syncPortalElement);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [panelMode, state.bottomDockOpen, state.bottomDockTool]);
 
   useEffect(() => {
     if (!isActive || editorHasActivated) return;
@@ -473,6 +489,9 @@ export function KetcherPage({
           if (hasCurrentSketch) {
             locallySavedDraftRef.current = molfile.trimEnd();
             actions.saveKetcherDraft(molfile);
+          } else {
+            locallySavedDraftRef.current = "";
+            actions.saveKetcherDraft("");
           }
         })
         .catch(() => {});
@@ -515,38 +534,68 @@ export function KetcherPage({
 
   const showExport = useCallback(async (format: KetcherTextFormat) => {
     if (!ketcher) return;
-    if (panelMode?.purpose === "export" && panelMode.format === format) {
-      setOutput("");
-      setPanelMode(null);
-      return;
-    }
     const label = KETCHER_FORMAT_LABELS[format];
     setStatus(`Exporting ${label}`);
     try {
       const text = await withKetcherTimeout(exportKetcherText(ketcher, format), `${label} export`);
       setOutput(text || "");
       setPanelMode({ purpose: "export", format });
-      if (!navigator.clipboard?.writeText) {
-        setStatus(`Exported ${label}`);
-        return;
-      }
-      try {
-        await navigator.clipboard.writeText(text || "");
-        setStatus(`Exported ${label} and copied`);
-      } catch (copyError) {
-        const message = copyError instanceof Error ? copyError.message : String(copyError);
-        setStatus(`Exported ${label}. Copy failed: ${message}`);
-      }
+      setStatus(`Exported ${label}`);
     } catch (error) {
       setStatus(ketcherExportErrorMessage(error));
     }
+  }, [ketcher]);
+
+  useEffect(() => {
+    if (!ketcher || panelMode?.purpose !== "export") return undefined;
+    let cancelled = false;
+    let exportSerial = 0;
+    let timerId: number | null = null;
+    const format = panelMode.format;
+    const label = KETCHER_FORMAT_LABELS[format];
+    const refreshExport = () => {
+      const serial = exportSerial + 1;
+      exportSerial = serial;
+      void withKetcherTimeout(exportKetcherText(ketcher, format), `${label} export`)
+        .then((text) => {
+          if (cancelled || serial !== exportSerial) return;
+          setOutput(text || "");
+          setStatus(`Exported ${label}`);
+        })
+        .catch((error) => {
+          if (cancelled || serial !== exportSerial) return;
+          setStatus(ketcherExportErrorMessage(error));
+        });
+    };
+    const scheduleRefresh = () => {
+      if (timerId !== null) window.clearTimeout(timerId);
+      timerId = window.setTimeout(refreshExport, 180);
+    };
+    refreshExport();
+    const unsubscribe = ketcher.subscribeChange(scheduleRefresh);
+    return () => {
+      cancelled = true;
+      if (timerId !== null) window.clearTimeout(timerId);
+      unsubscribe();
+    };
   }, [ketcher, panelMode]);
 
   const startImport = useCallback((format: KetcherTextFormat) => {
-    setOutput("");
+    setLiveSmilesImportDirty(false);
+    setOutput((current) => (panelMode?.purpose === "import" && panelMode.format === format ? current : ""));
     setPanelMode({ purpose: "import", format });
     setStatus(`Paste ${KETCHER_FORMAT_LABELS[format]} to import`);
-  }, []);
+  }, [panelMode]);
+
+  const selectExportFormat = useCallback((format: KetcherTextFormat) => {
+    actions.setDockTool("bottom", "ketcher");
+    void showExport(format);
+  }, [actions, showExport]);
+
+  const selectImportFormat = useCallback((format: KetcherTextFormat) => {
+    actions.setDockTool("bottom", "ketcher");
+    startImport(format);
+  }, [actions, startImport]);
 
   const applyOutput = useCallback(async () => {
     if (!ketcher || panelMode?.purpose !== "import") return;
@@ -577,6 +626,7 @@ export function KetcherPage({
 
   useEffect(() => {
     if (!ketcher || panelMode?.purpose !== "import" || panelMode.format !== "smiles") return;
+    if (!liveSmilesImportDirty) return;
     const smiles = output.trim();
     const serial = liveSmilesImportSerialRef.current + 1;
     liveSmilesImportSerialRef.current = serial;
@@ -612,7 +662,7 @@ export function KetcherPage({
       })();
     }, 220);
     return () => window.clearTimeout(timer);
-  }, [actions, ketcher, output, panelMode]);
+  }, [actions, ketcher, liveSmilesImportDirty, output, panelMode]);
 
   const openSketch = useCallback(async (target: KetcherSketchTarget, collectionTargetPath?: string | null) => {
     if (!ketcher || exportingSketch) return;
@@ -1107,25 +1157,6 @@ export function KetcherPage({
             </div>
           )}
         </div>
-        {panelMode ? (
-          <div className="ketcher-output-panel" style={outputPanelStyle}>
-            <button
-              type="button"
-              className="ketcher-output-resizer"
-              aria-label="Resize Ketcher output panel"
-              onPointerDown={resizeOutputPanel}
-              onMouseDown={resizeOutputPanelWithMouse}
-            />
-            <textarea
-              className="ketcher-output ketcher-output-input"
-              aria-label={`${panelMode.purpose === "import" ? "Import" : "Export"} ${panelFormatLabel}`}
-              readOnly={panelMode.purpose === "export"}
-              spellCheck={false}
-              value={output}
-              onChange={(event) => setOutput(event.target.value)}
-            />
-          </div>
-        ) : null}
       </div>
       <footer className="ketcher-page-footer">
         <span className="ketcher-page-status">{status}</span>
@@ -1137,7 +1168,7 @@ export function KetcherPage({
             id: `export-${format}`,
             text: KETCHER_FORMAT_LABELS[format],
             detail: `Export ${KETCHER_FORMAT_DETAILS[format]}`,
-            action: () => void showExport(format),
+            action: () => selectExportFormat(format),
           }))}
           trigger={(
             <button type="button" className={panelMode?.purpose === "export" ? "is-active" : undefined} disabled={!ketcher}>
@@ -1154,7 +1185,7 @@ export function KetcherPage({
             id: `import-${format}`,
             text: KETCHER_FORMAT_LABELS[format],
             detail: `Import ${KETCHER_FORMAT_DETAILS[format]}`,
-            action: () => startImport(format),
+            action: () => selectImportFormat(format),
           }))}
           trigger={(
             <button type="button" className={panelMode?.purpose === "import" ? "is-active" : undefined} disabled={!ketcher}>
@@ -1163,33 +1194,66 @@ export function KetcherPage({
             </button>
           )}
         />
-        {panelMode?.purpose === "export" ? (
-          <>
-            <button type="button" disabled={!output} onClick={() => void copyExportOutput()}>
-              Copy
-              <ShortcutTooltip label="Copy exported text" side="top" />
-            </button>
-            <button type="button" disabled={!output} onClick={saveExportOutput}>
-              Save
-              <ShortcutTooltip label="Save exported output to a file" side="top" />
-            </button>
-            <button type="button" className="ketcher-primary-action" disabled={!output} onClick={openRawExportOutput}>
-              Open raw
-              <ShortcutTooltip label="Open exported text in a raw document tab" side="top" />
-            </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            className="ketcher-primary-action"
-            disabled={!ketcher || exportingSketch || (gridEditSource ? false : panelMode?.purpose !== "import" || !output.trim())}
-            onClick={() => void (gridEditSource ? applyGridEdit() : applyOutput())}
-          >
-            {gridEditSource ? "Apply" : "Load"}
-            <ShortcutTooltip label={gridEditSource ? "Apply Ketcher edits to the grid row" : "Load imported text into Ketcher"} side="top" />
-          </button>
-        )}
       </footer>
+      {panelMode && dockPortalElement ? createPortal((
+        <section className="ketcher-dock-workflow" data-mode={panelMode.purpose} aria-label={`${panelMode.purpose === "import" ? "Import" : "Export"} panel`}>
+          <div className="ketcher-dock-toolbar">
+            <div className="ketcher-dock-title">
+              <strong>{panelMode.purpose === "import" ? "Import" : "Export"}</strong>
+              <span>{status}</span>
+            </div>
+            <span className="ketcher-dock-format">{panelFormatLabel}</span>
+          </div>
+          <div className="ketcher-output-panel" style={outputPanelStyle}>
+            <button
+              type="button"
+              className="ketcher-output-resizer"
+              aria-label="Resize Ketcher output panel"
+              onPointerDown={resizeOutputPanel}
+              onMouseDown={resizeOutputPanelWithMouse}
+            />
+            <textarea
+              className="ketcher-output ketcher-output-input"
+              aria-label={`${panelMode.purpose === "import" ? "Import" : "Export"} ${panelFormatLabel}`}
+              readOnly={panelMode.purpose === "export"}
+              spellCheck={false}
+              value={output}
+              onChange={(event) => {
+                setOutput(event.target.value);
+                if (panelMode.purpose === "import") setLiveSmilesImportDirty(true);
+              }}
+            />
+          </div>
+          <div className="ketcher-dock-actions">
+            {panelMode.purpose === "export" ? (
+              <>
+                <button type="button" disabled={!output} onClick={() => void copyExportOutput()}>
+                  Copy
+                  <ShortcutTooltip label="Copy exported text" side="top" />
+                </button>
+                <button type="button" disabled={!output} onClick={saveExportOutput}>
+                  Save
+                  <ShortcutTooltip label="Save exported output to a file" side="top" />
+                </button>
+                <button type="button" className="ketcher-primary-action" disabled={!output} onClick={openRawExportOutput}>
+                  Open raw
+                  <ShortcutTooltip label="Open exported text in a raw document tab" side="top" />
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="ketcher-primary-action"
+                disabled={!ketcher || exportingSketch || (gridEditSource ? false : !output.trim())}
+                onClick={() => void (gridEditSource ? applyGridEdit() : applyOutput())}
+              >
+                {gridEditSource ? "Apply" : "Load"}
+                <ShortcutTooltip label={gridEditSource ? "Apply Ketcher edits to the grid row" : "Load imported text into Ketcher"} side="top" />
+              </button>
+            )}
+          </div>
+        </section>
+      ), dockPortalElement) : null}
     </section>
   );
 }

@@ -5589,7 +5589,7 @@
                     scale: 1,
                     color: 0x000000,
                     threshold: 0.33,
-                    includeTransparent: true
+                    includeTransparent: false
                   }
             },
             occlusion: {
@@ -5649,6 +5649,21 @@
     return value === 'line' || value === 'lines' || value === 'solvent-lines';
   }
 
+  function molstarWaterLineRepresentation() {
+    return {
+      type: 'line',
+      typeParams: {
+        alpha: 0.32,
+        sizeFactor: 0.035,
+        visuals: ['intra-bond']
+      },
+      color: 'uniform',
+      colorParams: { value: 0x4db6ff },
+      size: 'uniform',
+      sizeParams: { value: 0.03 }
+    };
+  }
+
   async function applyMolstarWaterLineRepresentation(viewer) {
     if (!shouldUseMolstarWaterLines(activeConfig)) return;
     const plugin = viewer?.plugin;
@@ -5673,32 +5688,10 @@
       await plugin.managers.structure.component.removeRepresentations(waterComponents);
     }
     for (const component of waterComponents) {
-      await plugin.builders.structure.representation.addRepresentation(component.cell, {
-        type: 'line',
-        typeParams: {
-          alpha: 0.32,
-          sizeFactor: 0.035,
-          visuals: ['intra-bond']
-        },
-        color: 'uniform',
-        colorParams: { value: 0x8aa4b8 },
-        size: 'uniform',
-        sizeParams: { value: 0.03 }
-      }, { tag: 'water' });
+      await plugin.builders.structure.representation.addRepresentation(component.cell, molstarWaterLineRepresentation(), { tag: 'water' });
     }
     for (const component of createdWaterComponents) {
-      await plugin.builders.structure.representation.addRepresentation(component.cell || component, {
-        type: 'line',
-        typeParams: {
-          alpha: 0.32,
-          sizeFactor: 0.035,
-          visuals: ['intra-bond']
-        },
-        color: 'uniform',
-        colorParams: { value: 0x8aa4b8 },
-        size: 'uniform',
-        sizeParams: { value: 0.03 }
-      }, { tag: 'water' });
+      await plugin.builders.structure.representation.addRepresentation(component.cell || component, molstarWaterLineRepresentation(), { tag: 'water' });
     }
     return waterComponents.length;
   }
@@ -6024,21 +6017,13 @@
     for (const kind of ['water', 'ion', 'ligand']) {
       const component = await plugin.builders.structure.tryCreateComponentStatic(structure, kind);
       if (!component) continue;
-      await plugin.builders.structure.representation.addRepresentation(component, {
-        type: 'line',
-        typeParams: { sizeFactor: 0.16 },
-        color: 'element-symbol'
-      });
+      await plugin.builders.structure.representation.addRepresentation(component, molstarWaterLineRepresentation(), { tag: 'water' });
       created += 1;
     }
     if (created > 0) return;
     const component = await plugin.builders.structure.tryCreateComponentStatic(structure, 'all');
     if (!component) throw new Error('Mol* could not create staged solvent component.');
-    await plugin.builders.structure.representation.addRepresentation(component, {
-      type: 'line',
-      typeParams: { sizeFactor: 0.16 },
-      color: 'element-symbol'
-    });
+    await plugin.builders.structure.representation.addRepresentation(component, molstarWaterLineRepresentation(), { tag: 'water' });
   }
 
   function isDockingTrajectoryPairEntry(entry, pair) {
