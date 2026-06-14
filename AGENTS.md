@@ -90,6 +90,13 @@ explicitly asks for a release or final non-dev bundle. `scripts/build-dev.sh`
 does not support dev flavors; agents should prefer the flavored
 `./scripts/build.sh` path for packaged local builds.
 
+## Subagents
+
+Agents may use subagents for any task without asking for additional permission
+when delegation, parallel work, or an independent review would help complete the
+requested work. Keep subagent tasks scoped to the current objective and
+summarize their findings before acting on them.
+
 Rust validation runs from the Tauri crate:
 
 ```bash
