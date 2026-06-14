@@ -115,6 +115,9 @@ export type ViewerPreferences = {
   openInDefaultDestination: "default-app" | "finder" | `editor:${string}`;
   rendererMode: "auto" | "grid2d" | "molstar" | "xyzrender-external";
   molstarStyle: "default" | "illustrative";
+  conformerEngine: "datamol" | "rdkit";
+  conformerCandidateCount: number;
+  conformerRmsdCutoff: number;
   themeLightAccent: string;
   themeLightBackground: string;
   themeLightForeground: string;

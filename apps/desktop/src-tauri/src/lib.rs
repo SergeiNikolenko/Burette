@@ -110,6 +110,7 @@ pub fn run() {
             commands::text_files::read_text_file,
             commands::text_files::open_text_files,
             commands::documents::read_structure_text,
+            commands::documents::generate_3d_conformer,
             commands::documents::open_text_structure,
             commands::documents::open_delimited_grid_document,
             commands::documents::open_docking_document,

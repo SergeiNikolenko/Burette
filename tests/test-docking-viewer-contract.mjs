@@ -27,9 +27,9 @@ const [app, gridViewer, gridUi, viewer, dockingDocuments, dropActions, dropActio
 
 assert.match(gridUi, /data-buret-grid-sdf-poses/);
 assert.match(gridUi, /data-buret-grid-docking/);
-assert.match(gridUi, />\s*Molstar\s*<\/button>/);
+assert.match(gridUi, />\s*Molstar\s*<ControlTooltip label="Open selected molecules in Molstar" \/>/);
 assert.match(gridUi, /data-buret-grid-ketcher/);
-assert.match(gridUi, />\s*Ketcher\s*<\/button>/);
+assert.match(gridUi, />\s*Ketcher\s*<ControlTooltip label="Open selected molecule in Ketcher" \/>/);
 assert.match(gridViewer, /setStatus\('\[grid\] Select one or more molecules before opening Molstar\.', 'error'\)/);
 assert.match(gridViewer, /post\('openSdfMolstarDocument', '\[grid\] Open selected molecules in Molstar.'/);
 assert.match(gridViewer, /setStatus\('\[grid\] Select one or more molecules before opening Ketcher\.', 'error'\)/);
