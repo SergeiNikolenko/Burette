@@ -32,6 +32,15 @@ external-renderer-only groups:
 
 SDF, SMILES, CSV, and TSV collection previews use the grid runtime.
 
+OpenMM, Amber, and CHARMM coordinate artifacts render as structures when they
+contain standalone coordinates. This includes INPCRD, RST7, CRD, RST, STATE,
+and XML files with `<Position>` entries. Burrete also opens the raw text in the
+document surfaces so the parsed coordinates remain inspectable. Parameter,
+topology, stream, key, and checkpoint artifacts that do not contain standalone
+coordinates open through the text-file surface instead. Binary checkpoint
+artifacts show metadata only because OpenMM checkpoints are not portable
+structure files.
+
 MolViewSpec files are loaded through the Mol* `loadMvsData` path instead of the
 coordinate trajectory parser. This keeps MVS usable as a declarative scene and
 agent-control format for camera, components, selections, annotations, and

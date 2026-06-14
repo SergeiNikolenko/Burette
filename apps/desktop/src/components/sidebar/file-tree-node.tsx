@@ -1,4 +1,4 @@
-import { useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { useState, type CSSProperties, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import {
   File02Icon,
   Folder01Icon,
@@ -16,6 +16,20 @@ import type { ShellActions, ShellViewState } from "../types";
 
 const COLLAPSED_PROJECT_ITEM_LIMIT = 5;
 
+type ProjectTreeNode =
+  | {
+    kind: "folder";
+    key: string;
+    name: string;
+    path: string;
+    children: ProjectTreeNode[];
+  }
+  | {
+    kind: "item";
+    key: string;
+    item: SidebarProjectItem;
+  };
+
 export function ProjectGroup({
   project,
   state,
@@ -26,6 +40,7 @@ export function ProjectGroup({
   actions: ShellActions;
 }) {
   const [showAllItems, setShowAllItems] = useState(false);
+  const [collapsedFolderPaths, setCollapsedFolderPaths] = useState<Set<string>>(() => new Set());
   const sidebarQuery = state.sidebarQuery.trim();
   const hasSidebarQuery = sidebarQuery.length > 0;
   const expanded = hasSidebarQuery || state.expandedProjectIds.includes(project.id);
@@ -35,6 +50,7 @@ export function ProjectGroup({
   const visibleItems = shouldLimitItems
     ? project.items.slice(0, COLLAPSED_PROJECT_ITEM_LIMIT)
     : project.items;
+  const visibleTree = buildProjectTree(visibleItems);
   const hiddenItemCount = project.items.length - COLLAPSED_PROJECT_ITEM_LIMIT;
 
   const handleToggle = () => {
@@ -52,6 +68,18 @@ export function ProjectGroup({
     event.preventDefault();
     event.stopPropagation();
     void showNativeContextMenu(projectMenuItems(project, actions), { x: event.clientX, y: event.clientY });
+  };
+
+  const toggleFolderPath = (path: string) => {
+    setCollapsedFolderPaths((current) => {
+      const next = new Set(current);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
   };
 
   return (
@@ -92,8 +120,17 @@ export function ProjectGroup({
       </div>
       {expanded && (
         <div className="project-children" role="list">
-          {visibleItems.map((item) => (
-            <ProjectItem key={item.key} item={item} state={state} actions={actions} />
+          {visibleTree.map((node) => (
+            <ProjectTreeNodeView
+              key={node.key}
+              node={node}
+              state={state}
+              actions={actions}
+              depth={1}
+              collapsedFolderPaths={collapsedFolderPaths}
+              forceExpanded={hasSidebarQuery}
+              toggleFolderPath={toggleFolderPath}
+            />
           ))}
           {project.items.length > COLLAPSED_PROJECT_ITEM_LIMIT && !hasSidebarQuery && (
             <button
@@ -159,16 +196,88 @@ function projectMenuItems(project: SidebarProject, actions: ShellActions) {
   ];
 }
 
+function ProjectTreeNodeView({
+  node,
+  state,
+  actions,
+  depth,
+  collapsedFolderPaths,
+  forceExpanded,
+  toggleFolderPath,
+}: {
+  node: ProjectTreeNode;
+  state: ShellViewState;
+  actions: ShellActions;
+  depth: number;
+  collapsedFolderPaths: Set<string>;
+  forceExpanded: boolean;
+  toggleFolderPath: (path: string) => void;
+}) {
+  if (node.kind === "item") {
+    return <ProjectItem item={node.item} state={state} actions={actions} depth={depth} />;
+  }
+
+  const expanded = forceExpanded || !collapsedFolderPaths.has(node.path);
+  const handleToggle = () => {
+    if (!forceExpanded) toggleFolderPath(node.path);
+  };
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handleToggle();
+    }
+  };
+
+  return (
+    <div className="project-folder-node" role="listitem">
+      <div
+        role="button"
+        tabIndex={0}
+        className="project-folder-row"
+        style={projectDepthStyle(depth)}
+        onClick={handleToggle}
+        onKeyDown={handleKeyDown}
+        aria-expanded={expanded}
+        aria-label={node.path}
+        title={node.path}
+      >
+        <span className="project-folder-icon" aria-hidden="true">
+          <HugeiconsIcon icon={Folder02Icon} size={16} color="currentColor" strokeWidth={2} />
+        </span>
+        <span className="project-folder-name">{node.name}</span>
+      </div>
+      {expanded && (
+        <div className="project-folder-children" role="list">
+          {node.children.map((child) => (
+            <ProjectTreeNodeView
+              key={child.key}
+              node={child}
+              state={state}
+              actions={actions}
+              depth={depth + 1}
+              collapsedFolderPaths={collapsedFolderPaths}
+              forceExpanded={forceExpanded}
+              toggleFolderPath={toggleFolderPath}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ProjectItem({
   item,
   state,
   actions,
   nested = true,
+  depth,
 }: {
   item: SidebarProjectItem;
   state: ShellViewState;
   actions: ShellActions;
   nested?: boolean;
+  depth?: number;
 }) {
   const openItem = () => {
     if (item.documentId) {
@@ -281,6 +390,7 @@ export function ProjectItem({
       tabIndex={0}
       draggable
       className={className}
+      style={projectDepthStyle(depth ?? (nested ? 1 : 0))}
       data-sidebar-structure-path={item.path}
       data-sidebar-structure-renderer={item.renderer}
       data-sidebar-structure-document-id={item.documentId ?? undefined}
@@ -316,6 +426,46 @@ export function ProjectItem({
       </span>
     </div>
   );
+}
+
+function buildProjectTree(items: SidebarProjectItem[]) {
+  const roots: ProjectTreeNode[] = [];
+  const folders = new Map<string, Extract<ProjectTreeNode, { kind: "folder" }>>();
+
+  const childrenFor = (folderPath: string | null) => {
+    if (!folderPath) return roots;
+    let folder = folders.get(folderPath);
+    if (!folder) {
+      const segments = folderPath.split("/");
+      folder = {
+        kind: "folder",
+        key: `folder:${folderPath}`,
+        name: segments.at(-1) ?? folderPath,
+        path: folderPath,
+        children: [],
+      };
+      folders.set(folderPath, folder);
+      const parentPath = segments.length > 1 ? segments.slice(0, -1).join("/") : null;
+      childrenFor(parentPath).push(folder);
+    }
+    return folder.children;
+  };
+
+  for (const item of items) {
+    const segments = item.relativePath.split("/").filter(Boolean);
+    const parentPath = segments.length > 1 ? segments.slice(0, -1).join("/") : null;
+    childrenFor(parentPath).push({
+      kind: "item",
+      key: item.key,
+      item,
+    });
+  }
+
+  return roots;
+}
+
+function projectDepthStyle(depth: number): CSSProperties {
+  return { "--project-depth": depth } as CSSProperties;
 }
 
 function PinIcon() {

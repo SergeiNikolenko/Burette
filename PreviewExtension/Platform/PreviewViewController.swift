@@ -477,6 +477,18 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             diag("previewPlan.unavailable=true")
         }
 
+        if shouldUseTextArtifactPreview(fileExtension: pathExtension, previewPlan: previewPlan) {
+            return try buildTextArtifactPreviewResult(
+                for: url,
+                requestID: requestID,
+                fileExtension: pathExtension,
+                artifactData: structureData,
+                webDirectory: webDirectory,
+                fileManager: fileManager,
+                diagnostics: &diagnostics
+            )
+        }
+
         if shouldUseFepGraphMLPreview(fileExtension: pathExtension, previewPlan: previewPlan) {
             return try buildFepGraphMLPreviewResult(
                 for: url,
@@ -620,6 +632,58 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         diag("elapsed.runtimeWriteMs=\(elapsedMs(since: runtimeWriteStarted))")
         diag("runtimeDirectory=\(runtimePreview.runtimeDirectory.path)")
         diag("runtime.index.exists=\(fileManager.fileExists(atPath: runtimePreview.indexURL.path))")
+        return BuildResult(
+            html: html,
+            indexURL: runtimePreview.indexURL,
+            readAccessURL: runtimePreview.readAccessURL,
+            diagnostics: diagnostics,
+            renderTimeoutSeconds: defaultRenderTimeoutSeconds
+        )
+    }
+
+    private static func buildTextArtifactPreviewResult(
+        for url: URL,
+        requestID: String,
+        fileExtension: String,
+        artifactData: Data,
+        webDirectory: URL,
+        fileManager: FileManager,
+        diagnostics: inout [String]
+    ) throws -> BuildResult {
+        diagnostics.append("[build] detected.previewMode=text-artifact")
+        let text = textArtifactPreviewContent(
+            title: url.lastPathComponent,
+            fileExtension: fileExtension,
+            byteCount: artifactData.count,
+            data: artifactData
+        )
+        let html = inlineTextArtifactHTML(
+            title: url.lastPathComponent,
+            fileExtension: fileExtension,
+            byteCount: artifactData.count,
+            content: text,
+            requestID: requestID
+        )
+        let runtimePreview = try createRuntimePreview(
+            bundledWebDirectory: webDirectory,
+            html: html,
+            configJSON: try textArtifactConfigJSON(
+                title: url.lastPathComponent,
+                fileExtension: fileExtension,
+                byteCount: artifactData.count,
+                requestID: requestID
+            ),
+            structureData: nil,
+            auxiliaryFiles: [],
+            gridRecordsScript: nil,
+            requiredAssets: [],
+            requiresRDKit: false,
+            externalArtifactSourceURL: nil,
+            fileManager: fileManager,
+            diagnostics: &diagnostics
+        )
+        diagnostics.append("[build] textArtifact.html.bytes=\(html.utf8.count)")
+        diagnostics.append("[build] runtimeDirectory=\(runtimePreview.runtimeDirectory.path)")
         return BuildResult(
             html: html,
             indexURL: runtimePreview.indexURL,
@@ -1849,6 +1913,75 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         return molstarRuntimeCSP
     }
 
+    private static func inlineTextArtifactHTML(
+        title: String,
+        fileExtension: String,
+        byteCount: Int,
+        content: String,
+        requestID: String
+    ) -> String {
+        let safeTitle = escapeHTML(title)
+        let safeExtension = escapeHTML(fileExtension)
+        let safeContent = escapeHTML(content)
+        return """
+        <!doctype html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline';" />
+          <title>Burrete - \(safeTitle)</title>
+          <style>
+            :root { color-scheme: light dark; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
+            body { margin: 0; background: Canvas; color: CanvasText; }
+            main { min-height: 100vh; display: grid; grid-template-rows: auto 1fr; }
+            header { padding: 14px 18px 10px; border-bottom: 1px solid rgba(127, 127, 127, 0.24); }
+            h1 { margin: 0 0 6px; font-size: 15px; font-weight: 600; letter-spacing: 0; }
+            .meta { display: flex; gap: 10px; color: #6b7280; font-size: 12px; }
+            @media (prefers-color-scheme: dark) { .meta { color: #9ca3af; } }
+            pre { margin: 0; padding: 16px 18px 28px; overflow: auto; white-space: pre; font: 12px/1.45 "SF Mono", Menlo, Consolas, monospace; tab-size: 2; }
+          </style>
+        </head>
+        <body>
+          <main>
+            <header>
+              <h1>\(safeTitle)</h1>
+              <div class="meta"><span>.\(safeExtension)</span><span>\(byteCount) bytes</span></div>
+            </header>
+            <pre>\(safeContent)</pre>
+          </main>
+          <script>
+            window.addEventListener('load', function () {
+              try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burrete.postMessage({ type: 'ready', message: 'ready', requestID: '\(requestID)' }); } catch (_) {}
+            });
+          </script>
+        </body>
+        </html>
+        """
+    }
+
+    private static func textArtifactConfigJSON(
+        title: String,
+        fileExtension: String,
+        byteCount: Int,
+        requestID: String
+    ) throws -> String {
+        let payload: [String: Any] = [
+            "label": title,
+            "format": "text",
+            "sourceExtension": fileExtension,
+            "renderer": "text",
+            "byteCount": byteCount,
+            "previewByteCount": byteCount,
+            "quickLookBuild": "burrete-text-quicklook",
+            "quickLookViewer": true,
+            "previewRequestID": requestID,
+        ]
+        let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes])
+        guard let json = String(data: data, encoding: .utf8) else { throw PreviewError.couldNotCreatePreviewConfig }
+        return json
+    }
+
     private static func locateBundledWebDirectory(fileManager: FileManager, diagnostics: inout [String]) throws -> URL {
         let bundles = [Bundle.main, Bundle(for: PreviewViewController.self)]
         let candidates = bundles.compactMap { bundle -> URL? in
@@ -1951,6 +2084,32 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         return String(decoding: data, as: UTF8.self)
     }
 
+    private static func textArtifactPreviewContent(
+        title: String,
+        fileExtension: String,
+        byteCount: Int,
+        data: Data
+    ) -> String {
+        if ["chk", "checkpoint"].contains(fileExtension.lowercased()), looksBinary(data) {
+            return """
+            \(title) is a binary OpenMM checkpoint artifact.
+
+            Bytes: \(byteCount)
+
+            Burrete shows metadata for binary checkpoints instead of rendering opaque bytes as text.
+            """
+        }
+        return decodeText(data)
+    }
+
+    private static func looksBinary(_ data: Data) -> Bool {
+        for byte in data.prefix(8192) {
+            if byte == 0 { return true }
+            if byte < 7 || (byte > 13 && byte < 32) { return true }
+        }
+        return false
+    }
+
     private static func quickLookSizeLimit(for url: URL) -> Int64 {
         let fileExtension = structurePathExtension(for: url)
         if let bridgeLimit = BurreteCoreBridge.quickLookSizeLimit(fileExtension: fileExtension) {
@@ -1964,7 +2123,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             return 40 * mib
         case "bcif":
             return 50 * mib
-        case "abi", "com", "csv", "fdf", "sdf", "sd", "mol", "mol2", "xyz", "gro", "smi", "smiles", "tsv", "cub", "cube", "in", "inp", "log", "nw", "out", "psi4", "qcin", "vasp", "lammpstrj", "top", "psf", "prmtop", "graphml":
+        case "abi", "com", "csv", "fdf", "fhiaims", "gms", "sdf", "sd", "mol", "mol2", "xyz", "gro", "smi", "smiles", "tsv", "cub", "cube", "in", "inp", "log", "nw", "out", "psi4", "qcin", "vasp", "lammpstrj", "dump", "top", "psf", "prmtop", "graphml":
             return 25 * mib
         case "mae", "maegz", "cms":
             return 64 * mib
@@ -1997,6 +2156,13 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             return previewPlan.strategy == "custom" && previewPlan.renderer == "fep-graphml"
         }
         return fileExtension.lowercased() == "graphml"
+    }
+
+    private static func shouldUseTextArtifactPreview(fileExtension: String, previewPlan: BurretePreviewPlan?) -> Bool {
+        if let previewPlan {
+            return previewPlan.strategy == "text"
+        }
+        return ["par", "prm", "rtf", "str", "key", "chk", "checkpoint"].contains(fileExtension.lowercased())
     }
 
     private static func requiresGridPreview(fileExtension: String, previewPlan: BurretePreviewPlan?) -> Bool {
@@ -2956,6 +3122,16 @@ private enum PreviewStructureTextConverter {
             return parseBestCoordinateBlock(lines)
         case "log", "out":
             return parseOrcaOutput(lines) ?? parseGaussianOutput(lines) ?? parseBestCoordinateBlock(lines)
+        case "inpcrd", "rst7", "restrt":
+            return parseAmberRestart(lines)
+        case "lammpstrj", "dump":
+            return parseLammpsDump(lines)
+        case "crd":
+            return parseCharmmCoordinates(lines)
+        case "rst":
+            return parseCharmmCoordinates(lines) ?? parseAmberRestart(lines)
+        case "state", "xml":
+            return parseXMLPositions(text) ?? parseHOOMDXMLAtoms(text)
         case "cms", "mae", "maegz":
             return parseMaestroAtoms(lines, atomLimit: 20_000)
         default:
@@ -3982,6 +4158,179 @@ private enum PreviewStructureTextConverter {
         return best.count >= 2 ? best : nil
     }
 
+    private static func parseAmberRestart(_ lines: [String]) -> [Atom]? {
+        guard lines.count >= 2,
+              let atomCountText = fields(lines[1]).first,
+              let atomCount = Int(atomCountText),
+              atomCount > 0 else {
+            return nil
+        }
+        var values: [Double] = []
+        values.reserveCapacity(atomCount * 3)
+        for line in lines.dropFirst(2) {
+            for token in fields(line) {
+                guard let value = Double(token) else { continue }
+                values.append(value)
+                if values.count >= atomCount * 3 { break }
+            }
+            if values.count >= atomCount * 3 { break }
+        }
+        guard values.count >= atomCount * 3 else { return nil }
+        return (0..<atomCount).map { index in
+            Atom(symbol: "C", x: values[index * 3], y: values[index * 3 + 1], z: values[index * 3 + 2])
+        }
+    }
+
+    private static func parseCharmmCoordinates(_ lines: [String]) -> [Atom]? {
+        var atoms: [Atom] = []
+        for line in lines {
+            let parts = fields(line)
+            guard parts.count >= 7,
+                  let x = Double(parts[4]),
+                  let y = Double(parts[5]),
+                  let z = Double(parts[6]) else {
+                continue
+            }
+            let symbol = elementSymbol(fromAtomName: parts[3])
+                ?? elementSymbol(fromAtomName: parts[2])
+                ?? "C"
+            atoms.append(Atom(symbol: symbol, x: x, y: y, z: z))
+        }
+        return atoms.isEmpty ? nil : atoms
+    }
+
+    private static func parseLammpsDump(_ lines: [String]) -> [Atom]? {
+        var atoms: [Atom] = []
+        var inAtoms = false
+        var columns: [String] = []
+        var xIndex: Int?
+        var yIndex: Int?
+        var zIndex: Int?
+        var symbolIndex: Int?
+        var typeIndex: Int?
+        for line in lines {
+            if line.hasPrefix("ITEM: ") {
+                if inAtoms && !atoms.isEmpty { break }
+                inAtoms = false
+                if line.hasPrefix("ITEM: ATOMS") {
+                    columns = fields(String(line.dropFirst("ITEM: ATOMS".count)))
+                    xIndex = coordinateColumnIndex(columns, ["x", "xu", "xs", "xsu"])
+                    yIndex = coordinateColumnIndex(columns, ["y", "yu", "ys", "ysu"])
+                    zIndex = coordinateColumnIndex(columns, ["z", "zu", "zs", "zsu"])
+                    symbolIndex = coordinateColumnIndex(columns, ["element", "symbol", "name"])
+                    typeIndex = coordinateColumnIndex(columns, ["type"])
+                    inAtoms = xIndex != nil && yIndex != nil && zIndex != nil
+                }
+                continue
+            }
+            guard inAtoms else { continue }
+            let parts = fields(line)
+            guard let xIndex, let yIndex, let zIndex,
+                  xIndex < parts.count, yIndex < parts.count, zIndex < parts.count,
+                  let x = Double(parts[xIndex]),
+                  let y = Double(parts[yIndex]),
+                  let z = Double(parts[zIndex]) else {
+                continue
+            }
+            let symbol = symbolIndex.flatMap { $0 < parts.count ? elementSymbol(fromAtomName: parts[$0]) : nil }
+                ?? typeIndex.flatMap { $0 < parts.count ? elementSymbol(fromAtomName: parts[$0]) : nil }
+                ?? "C"
+            atoms.append(Atom(symbol: symbol, x: x, y: y, z: z))
+        }
+        return atoms.isEmpty ? nil : atoms
+    }
+
+    private static func coordinateColumnIndex(_ columns: [String], _ names: [String]) -> Int? {
+        columns.firstIndex { column in
+            names.contains(column.lowercased())
+        }
+    }
+
+    private static func parseXMLPositions(_ text: String) -> [Atom]? {
+        var atoms: [Atom] = []
+        let pattern = #"<Position\b([^>]*)/?>"#
+        guard let expression = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        for match in expression.matches(in: text, options: [], range: range) {
+            guard match.numberOfRanges > 1,
+                  let attributesRange = Range(match.range(at: 1), in: text) else {
+                continue
+            }
+            let attributes = String(text[attributesRange])
+            guard let x = xmlNumberAttribute(attributes, "x"),
+                  let y = xmlNumberAttribute(attributes, "y"),
+                  let z = xmlNumberAttribute(attributes, "z") else {
+                continue
+            }
+            atoms.append(Atom(symbol: "C", x: x, y: y, z: z))
+        }
+        return atoms.isEmpty ? nil : atoms
+    }
+
+    private static func parseHOOMDXMLAtoms(_ text: String) -> [Atom]? {
+        let lower = text.lowercased()
+        guard lower.contains("<hoomd_xml") || lower.contains("<configuration") else { return nil }
+        guard let positionText = xmlTextBlock(text, "position") else { return nil }
+        let values = numericTokens(positionText)
+        guard values.count >= 3 else { return nil }
+        let typeSymbols = xmlTextBlock(text, "type")
+            .map { fields($0).map { elementSymbol(fromAtomName: $0) ?? "C" } }
+            ?? []
+        var atoms: [Atom] = []
+        var index = 0
+        while index + 2 < values.count {
+            let symbolIndex = atoms.count
+            atoms.append(Atom(
+                symbol: symbolIndex < typeSymbols.count ? typeSymbols[symbolIndex] : "C",
+                x: values[index],
+                y: values[index + 1],
+                z: values[index + 2]
+            ))
+            index += 3
+        }
+        return atoms.isEmpty ? nil : atoms
+    }
+
+    private static func xmlTextBlock(_ text: String, _ tagName: String) -> String? {
+        let escapedTag = NSRegularExpression.escapedPattern(for: tagName)
+        let pattern = "<\(escapedTag)\\b[^>]*>([\\s\\S]*?)</\(escapedTag)>"
+        guard let expression = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = expression.firstMatch(in: text, options: [], range: range),
+              match.numberOfRanges > 1,
+              let bodyRange = Range(match.range(at: 1), in: text) else {
+            return nil
+        }
+        return String(text[bodyRange])
+    }
+
+    private static func numericTokens(_ text: String) -> [Double] {
+        fields(text).compactMap(Double.init)
+    }
+
+    private static func xmlNumberAttribute(_ attributes: String, _ name: String) -> Double? {
+        let pattern = "\\b\(NSRegularExpression.escapedPattern(for: name))=[\"']([^\"']+)[\"']"
+        guard let expression = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
+        let range = NSRange(attributes.startIndex..<attributes.endIndex, in: attributes)
+        guard let match = expression.firstMatch(in: attributes, options: [], range: range),
+              match.numberOfRanges > 1,
+              let valueRange = Range(match.range(at: 1), in: attributes) else {
+            return nil
+        }
+        return Double(attributes[valueRange])
+    }
+
+    private static func elementSymbol(fromAtomName value: String) -> String? {
+        let clean = value
+            .drop { $0.isNumber }
+            .filter { $0.isLetter }
+        guard !clean.isEmpty else { return nil }
+        let two = normalizeElementSymbol(String(clean.prefix(2)))
+        if isElementSymbol(two) { return two }
+        let one = normalizeElementSymbol(String(clean.prefix(1)))
+        return isElementSymbol(one) ? one : nil
+    }
+
     private static func parseElementCoordinateLine(_ line: String) -> Atom? {
         let parts = fields(line.trimmingCharacters(in: .whitespacesAndNewlines))
         guard parts.count >= 4,
@@ -4136,7 +4485,7 @@ private struct StructureFormat {
             self = Self(molstarFormat: "gro", isBinary: false)
         case "xtc", "trr", "dcd", "nctraj":
             self = Self(molstarFormat: ext, isBinary: true)
-        case "lammpstrj", "top", "psf", "prmtop":
+        case "lammpstrj", "dump", "top", "psf", "prmtop":
             self = Self(molstarFormat: ext, isBinary: false)
         case "mae", "maegz", "cms":
             self = Self(molstarFormat: "xyzrender", isBinary: false, isExternalXyzrenderOnly: true)
