@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/
 import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { gunzipSync } from "node:zlib";
 import { defineConfig, type Plugin } from "vite";
@@ -48,6 +48,12 @@ const DEV_FILE_SIZE_LIMIT = 75 * 1024 * 1024;
 const TEXT_FILE_READ_LIMIT = 12 * 1024 * 1024;
 const DESMOND_PREVIEW_TARGET_MB = 24;
 const RDKIT_WASM_PATH = join(repoRoot, "PreviewExtension", "Web", "rdkit", "RDKit_minimal.wasm");
+const RDKIT_CONFORMER_SCRIPT_PATH = join(repoRoot, "scripts", "rdkit_conformer.py");
+type PythonCommand = {
+  label: string;
+  command: string;
+  args: string[];
+};
 type StructureAttachmentRole = "topology" | "trajectory" | "trajectoryPointer" | "configuration";
 type StructureFileBundle = {
   kind: "desmond" | "md" | "single";
@@ -347,6 +353,196 @@ function resolveXyzrenderExecutable() {
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
 }
 
+function conformerPythonCandidates(engine: string) {
+  const candidates: PythonCommand[] = [];
+  const configuredPython = String(engine === "datamol" ? process.env.BURRETE_DATAMOL_PYTHON || "" : process.env.BURRETE_RDKIT_PYTHON || "").trim();
+  if (configuredPython) candidates.push({ label: configuredPython, command: configuredPython, args: [] });
+  const packageName = engine === "datamol" ? "datamol" : "rdkit";
+  const uvx = resolveExecutable("uvx", [
+    process.env.HOME ? join(process.env.HOME, ".local/bin/uvx") : "",
+    "/opt/homebrew/bin/uvx",
+    "/usr/local/bin/uvx",
+  ]);
+  if (uvx) candidates.push({ label: `${uvx} --from ${packageName} python`, command: uvx, args: ["--from", packageName, "python"] });
+  candidates.push(
+    { label: "python3", command: "python3", args: [] },
+    { label: "python", command: "python", args: [] },
+  );
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    const key = [candidate.command, ...candidate.args].join("\0");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function resolveExecutable(name: string, preferredPaths: string[]) {
+  for (const path of preferredPaths) {
+    if (path && existsSync(path)) return path;
+  }
+  for (const row of String(process.env.PATH || "").split(delimiter).filter(Boolean)) {
+    const candidate = join(row, name);
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function safeTextStructureFileName(title: string, extension: string) {
+  const rawName = title.replace(/\\/g, "/").split("/").filter(Boolean).pop() || "ketcher-sketch";
+  const dotIndex = rawName.lastIndexOf(".");
+  const rawStem = dotIndex > 0 ? rawName.slice(0, dotIndex) : rawName;
+  const stem = rawStem
+    .replace(/[^A-Za-z0-9_.-]/gu, "-")
+    .replace(/^[-_.]+|[-_.]+$/gu, "")
+    || "ketcher-sketch";
+  return `${stem}.${extension}`;
+}
+
+function generatedConformerTitle(title: string) {
+  const fileName = safeTextStructureFileName(title, "sdf");
+  const dotIndex = fileName.lastIndexOf(".");
+  const stem = dotIndex > 0 ? fileName.slice(0, dotIndex) : "ketcher-sketch";
+  return `${stem}-3d.sdf`;
+}
+
+function generatedConformerSetTitle(title: string) {
+  const fileName = safeTextStructureFileName(title, "sdf");
+  const dotIndex = fileName.lastIndexOf(".");
+  const stem = dotIndex > 0 ? fileName.slice(0, dotIndex) : "ketcher-sketch";
+  return `${stem}-3d-conformers.sdf`;
+}
+
+function readConformerRequestBody(body: unknown) {
+  const source = body && typeof body === "object" && "request" in body
+    ? (body as { request?: unknown }).request
+    : body;
+  if (!source || typeof source !== "object") {
+    throw new Error("Missing conformer generation request");
+  }
+  const request = source as Record<string, unknown>;
+  const title = typeof request.title === "string" && request.title.trim() ? request.title : "ketcher-sketch.sdf";
+  const extension = String(request.extension || "").trim().replace(/^\./u, "").toLowerCase();
+  const text = typeof request.text === "string" ? request.text : "";
+  const engine = String(request.engine || "datamol").trim().toLowerCase();
+  const mode = String(request.mode || "single").trim().toLowerCase() === "ensemble" ? "ensemble" : "single";
+  const candidateCount = boundedNumber(request.candidateCount, 128, 1, 512);
+  const rmsdCutoff = boundedNumber(request.rmsdCutoff, 0.75, 0, 5);
+  const source3d = request.source3d && typeof request.source3d === "object"
+    ? request.source3d as Record<string, unknown>
+    : null;
+  const source3dRequest = source3d
+    ? {
+        title: typeof source3d.title === "string" ? source3d.title : "",
+        extension: typeof source3d.extension === "string" ? source3d.extension : "",
+        text: typeof source3d.text === "string" ? source3d.text : "",
+      }
+    : null;
+
+  if (!["sdf", "sd", "mol", "smi", "smiles"].includes(extension)) {
+    throw new Error("3D conformer generation currently supports MOL, SDF, and SMILES input.");
+  }
+  if (!["datamol", "rdkit"].includes(engine)) {
+    throw new Error("3D conformer generation supports Datamol and RDKit engines.");
+  }
+  if (!text.trim()) {
+    throw new Error("Draw a molecule first");
+  }
+  if (Buffer.byteLength(text, "utf8") > TEXT_FILE_READ_LIMIT) {
+    throw new Error("Structure text is too large");
+  }
+  if (text.includes("$RXN")) {
+    throw new Error("3D conformer generation supports single small molecules, not reactions.");
+  }
+  if (source3dRequest) {
+    const sourceExtension = source3dRequest.extension.trim().replace(/^\./u, "").toLowerCase();
+    if (!["sdf", "sd", "mol"].includes(sourceExtension)) {
+      throw new Error("3D pose preservation currently supports MOL and SDF sources.");
+    }
+    if (Buffer.byteLength(source3dRequest.text, "utf8") > TEXT_FILE_READ_LIMIT) {
+      throw new Error("Source 3D structure text is too large");
+    }
+  }
+
+  return { title, extension, text, engine, mode, candidateCount, rmsdCutoff, source3d: source3dRequest };
+}
+
+function boundedNumber(value: unknown, fallback: number, min: number, max: number) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(min, Math.min(max, number));
+}
+
+async function generate3DConformerForBrowserDev(body: unknown) {
+  const request = readConformerRequestBody(body);
+  const script = await readFile(RDKIT_CONFORMER_SCRIPT_PATH, "utf8");
+  const input = JSON.stringify({
+    text: request.text,
+    extension: request.extension,
+    engine: request.engine,
+    mode: request.mode,
+    candidateCount: request.candidateCount,
+    rmsdCutoff: request.rmsdCutoff,
+    source3d: request.source3d,
+  });
+  const errors: string[] = [];
+  for (const python of conformerPythonCandidates(request.engine)) {
+    try {
+      const outputText = await runPythonWithStdin(python, script, input, conformerGenerationTimeoutMs(request.candidateCount));
+      const generated = JSON.parse(outputText) as { text?: unknown; method?: unknown };
+      if (typeof generated.text !== "string" || !generated.text.trim()) {
+        throw new Error("3D conformer generator returned an empty structure.");
+      }
+      return {
+        title: request.mode === "ensemble" ? generatedConformerSetTitle(request.title) : generatedConformerTitle(request.title),
+        extension: "sdf",
+        text: generated.text,
+        method: typeof generated.method === "string" && generated.method.trim() ? generated.method : "ETKDG",
+        conformerCount: typeof generated.conformerCount === "number" ? generated.conformerCount : undefined,
+      };
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : `${python.label}: ${String(error)}`);
+    }
+  }
+  const engineLabel = request.engine === "datamol" ? "Datamol" : "RDKit";
+  const envName = request.engine === "datamol" ? "BURRETE_DATAMOL_PYTHON" : "BURRETE_RDKIT_PYTHON";
+  throw new Error(errors.length
+    ? `${engineLabel} conformer generation failed: ${errors.join("; ")}`
+    : `${engineLabel} Python is required for 3D conformer generation. Set ${envName} to a Python executable with ${request.engine} installed.`);
+}
+
+function conformerGenerationTimeoutMs(candidateCount: number) {
+  return Math.max(30_000, candidateCount * 1_000);
+}
+
+function runPythonWithStdin(python: PythonCommand, script: string, input: string, timeoutMs = 30_000): Promise<string> {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn(python.command, [...python.args, "-c", script], { stdio: ["pipe", "pipe", "pipe"] });
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    const timeout = setTimeout(() => {
+      child.kill();
+      rejectPromise(new Error(`${python.label}: conformer generator timed out`));
+    }, timeoutMs);
+    child.stdout.on("data", (chunk) => stdoutChunks.push(Buffer.from(chunk)));
+    child.stderr.on("data", (chunk) => stderrChunks.push(Buffer.from(chunk)));
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      rejectPromise(new Error(`${python.label}: ${error.message}`));
+    });
+    child.on("close", (code, signal) => {
+      clearTimeout(timeout);
+      const stderr = Buffer.concat(stderrChunks).toString("utf8").trim();
+      if (code === 0) {
+        resolvePromise(Buffer.concat(stdoutChunks).toString("utf8"));
+        return;
+      }
+      rejectPromise(new Error(stderr || `${python.label}: conformer generator exited with ${signal || code}`));
+    });
+    child.stdin.end(input);
+  });
+}
+
 export function browserDevXyzrenderPlugin() {
   return {
     name: "burrete-browser-dev-xyzrender",
@@ -391,6 +587,22 @@ export function browserDevXyzrenderPlugin() {
           res.statusCode = 500;
           res.setHeader("Content-Type", "application/json; charset=utf-8");
           res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+        }
+      });
+      server.middlewares.use("/__burette/generate-3d-conformer", async (req, res) => {
+        const reply = (status: number, body: unknown) => {
+          res.statusCode = status;
+          res.setHeader("Content-Type", "application/json; charset=utf-8");
+          res.end(JSON.stringify(body));
+        };
+        if ((req.method || "GET").toUpperCase() !== "POST") {
+          reply(405, { error: "Method not allowed" });
+          return;
+        }
+        try {
+          reply(200, await generate3DConformerForBrowserDev(await readJsonBody(req)));
+        } catch (error) {
+          reply(500, { error: error instanceof Error ? error.message : String(error) });
         }
       });
       server.middlewares.use("/__burette/agent-session/", async (req, res) => {

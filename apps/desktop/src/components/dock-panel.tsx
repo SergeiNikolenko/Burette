@@ -16,7 +16,8 @@ import { TextFileViewer } from "./text-file-viewer";
 import { CloseIcon } from "./close-icon";
 import { formatBytes } from "./format";
 import { StructureInfoPanel } from "./structure-info-panel";
-import { readStructureText, readStructureTextDocument } from "../lib/structure-text";
+import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
+import { readStructureTextDocument } from "../lib/structure-text";
 import type { TextFileDocument, ViewerDocument } from "../types";
 
 type DockPanelProps = {
@@ -487,13 +488,17 @@ function ActiveDocumentTextPanel({
     setError(null);
     if (!activeDocument || activeTextDocument || existingDocument) return undefined;
     let cancelled = false;
-    void readStructureTextDocument(activeDocument.path, {
-      id: activeDocument.id,
-      path: activeDocument.path,
-      title: activeDocument.title,
-      extension: activeDocument.extension,
-      byteCount: activeDocument.byteCount,
-    }, { maxBytes: textPreviewLimit })
+    const virtualText = readBrowserDevVirtualTextDocument(activeDocument.path);
+    const documentPromise = virtualText === null
+      ? readStructureTextDocument(activeDocument.path, {
+        id: activeDocument.id,
+        path: activeDocument.path,
+        title: activeDocument.title,
+        extension: activeDocument.extension,
+        byteCount: activeDocument.byteCount,
+      }, { maxBytes: textPreviewLimit })
+      : Promise.resolve(textDocumentFromVirtualText(activeDocument, virtualText));
+    void documentPromise
       .then((document) => {
         if (cancelled) return;
         setLoadedDocument(document);
@@ -531,6 +536,20 @@ function ActiveDocumentTextPanel({
       </div>
     </div>
   );
+}
+
+function textDocumentFromVirtualText(document: ViewerDocument, content: string): TextFileDocument {
+  return {
+    id: document.id,
+    path: document.path,
+    title: document.title,
+    extension: document.extension,
+    language: document.extension,
+    byteCount: content.length,
+    content,
+    truncated: false,
+    modifiedAt: null,
+  };
 }
 
 function isMaestroStructure(document: ViewerDocument | null) {
