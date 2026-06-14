@@ -5,8 +5,8 @@ import type { MenuItemSpec } from "./menu-types";
 import type { ShellActions, ShellViewState } from "./types";
 import { structureBriefForDocument, type StructureBriefRow as BriefRow } from "../lib/structure-brief";
 import { parseStructureComposition, type StructureCompositionSummary, type StructureSummaryRow, type StructureViewerAction } from "../lib/structure-composition";
-import { readStructureText } from "../lib/structure-text";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
+import { readStructureText } from "../lib/structure-text";
 import type { ViewerDocument } from "../types";
 
 type StructureInfoPanelProps = {

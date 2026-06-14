@@ -18,7 +18,7 @@ export type StatusNotice = {
   details: string[];
 };
 
-export type KetcherSketchTarget = "grid" | "molstar" | "xyzrender" | "collection";
+export type KetcherSketchTarget = "grid" | "molstar" | "generate3d" | "xyzrender" | "collection";
 
 export type KetcherSketchRequest = {
   title: string;
@@ -26,8 +26,15 @@ export type KetcherSketchRequest = {
   text: string;
   draftKet?: string;
   draftMolfile?: string;
+  source3d?: KetcherSource3D;
   target: KetcherSketchTarget;
   collectionTargetPath?: string | null;
+};
+
+export type KetcherSource3D = {
+  title: string;
+  extension: string;
+  text: string;
 };
 
 export type KetcherImportRequest = {
@@ -36,6 +43,7 @@ export type KetcherImportRequest = {
   fragments?: Array<{
     title: string;
     text: string;
+    source3d?: KetcherSource3D;
     source?: {
       kind: "grid-row";
       documentId: string;
@@ -161,6 +169,7 @@ export type ShellActions = {
   showActiveDocumentMetadata: () => void | Promise<void>;
   showDocumentMetadata: (document: ViewerDocument) => void | Promise<void>;
   showTextFileMetadata: (document: TextFileDocument) => void | Promise<void>;
+  generate3DConformer: (document: ViewerDocument) => void | Promise<void>;
   runStructureViewerAction: (document: ViewerDocument, action: StructureViewerAction) => void;
   selectTextStructure: (document: TextFileDocument, selection: TextStructureSelection) => void;
   exportActivePreviewAsPng: () => void | Promise<void>;

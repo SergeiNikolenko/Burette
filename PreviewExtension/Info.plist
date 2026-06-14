@@ -20,6 +20,52 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionAttributes</key>
+		<dict>
+			<key>QLSupportedContentTypes</key>
+			<array>
+				<string>com.local.burrete10.pdb</string>
+				<string>com.local.burrete10.cif</string>
+				<string>public.cif</string>
+				<string>com.local.burrete10.mmcif</string>
+				<string>com.local.burrete10.bcif</string>
+				<string>com.local.burrete10.mmtf</string>
+				<string>com.local.burrete10.sdf</string>
+				<string>com.local.burrete10.smiles</string>
+				<string>com.local.burrete10.csv</string>
+				<string>com.local.burrete10.tsv</string>
+				<string>com.local.burrete10.mol</string>
+				<string>com.local.burrete10.mol2</string>
+				<string>com.schrodinger.mol</string>
+				<string>com.schrodinger.pdb</string>
+				<string>com.schrodinger.sdf</string>
+				<string>com.local.burrete10.xyz</string>
+				<string>com.local.burrete10.xyzrender-input</string>
+				<string>net.sourceforge.openbabel.xyz</string>
+				<string>com.adobe.fdf</string>
+				<string>com.apple.videoapps.cube</string>
+				<string>com.gaussian.cube</string>
+				<string>com.local.burrete10.gro</string>
+				<string>gg.flew.unfold.gromacs-structure</string>
+				<string>com.local.burrete10.mvsj</string>
+				<string>com.local.burrete10.mvsx</string>
+				<string>com.local.burrete10.molecular-dynamics</string>
+				<string>com.schrodinger.mae</string>
+				<string>com.local.burrete10.schrodinger</string>
+				<string>com.local.burrete10.graphml</string>
+				<string>com.local.burrete10.openmm-coordinate-artifact</string>
+				<string>com.local.burrete10.openmm-workflow-text-artifact</string>
+			</array>
+			<key>QLSupportsSearchableItems</key>
+			<false/>
+		</dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.quicklook.preview</string>
+		<key>NSExtensionPrincipalClass</key>
+		<string>$(PRODUCT_MODULE_NAME).PreviewViewController</string>
+	</dict>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>
@@ -40,6 +86,7 @@
 					<string>ent</string>
 					<string>pdbqt</string>
 					<string>pqr</string>
+					<string>xpdb</string>
 				</array>
 				<key>public.mime-type</key>
 				<array>
@@ -98,53 +145,6 @@
 		<dict>
 			<key>UTTypeConformsTo</key>
 			<array>
-				<string>public.json</string>
-				<string>public.text</string>
-				<string>public.data</string>
-			</array>
-			<key>UTTypeDescription</key>
-			<string>MolViewSpec JSON scene file</string>
-			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.mvsj</string>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>mvsj</string>
-				</array>
-				<key>public.mime-type</key>
-				<array>
-					<string>application/vnd.molstar.mvsj+json</string>
-					<string>application/json</string>
-				</array>
-			</dict>
-		</dict>
-		<dict>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.data</string>
-				<string>public.archive</string>
-			</array>
-			<key>UTTypeDescription</key>
-			<string>MolViewSpec archive scene file</string>
-			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.mvsx</string>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>mvsx</string>
-				</array>
-				<key>public.mime-type</key>
-				<array>
-					<string>application/vnd.molstar.mvsx</string>
-					<string>application/zip</string>
-				</array>
-			</dict>
-		</dict>
-		<dict>
-			<key>UTTypeConformsTo</key>
-			<array>
 				<string>public.data</string>
 			</array>
 			<key>UTTypeDescription</key>
@@ -156,6 +156,27 @@
 				<key>public.filename-extension</key>
 				<array>
 					<string>bcif</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/octet-stream</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Macromolecular Transmission Format structure file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.mmtf</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mmtf</string>
 				</array>
 				<key>public.mime-type</key>
 				<array>
@@ -345,6 +366,85 @@
 		<dict>
 			<key>UTTypeConformsTo</key>
 			<array>
+				<string>public.json</string>
+				<string>public.text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>MolViewSpec JSON scene file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.mvsj</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mvsj</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/vnd.molstar.mvsj+json</string>
+					<string>application/json</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+				<string>public.archive</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>MolViewSpec archive scene file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.mvsx</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mvsx</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/vnd.molstar.mvsx</string>
+					<string>application/zip</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>xyzrender-compatible molecular structure file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.xyzrender-input</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>abi</string>
+					<string>com</string>
+					<string>cub</string>
+					<string>cube</string>
+					<string>fdf</string>
+					<string>fhiaims</string>
+					<string>gms</string>
+					<string>in</string>
+					<string>inp</string>
+					<string>log</string>
+					<string>nw</string>
+					<string>out</string>
+					<string>psi4</string>
+					<string>qcin</string>
+					<string>vasp</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
 				<string>public.data</string>
 			</array>
 			<key>UTTypeDescription</key>
@@ -359,10 +459,36 @@
 					<string>trr</string>
 					<string>dcd</string>
 					<string>nctraj</string>
+					<string>tng</string>
+					<string>h5md</string>
+					<string>gsd</string>
+					<string>trz</string>
+					<string>coor</string>
+					<string>namdbin</string>
 					<string>lammpstrj</string>
+					<string>dump</string>
+					<string>trj</string>
+					<string>mdcrd</string>
+					<string>crdbox</string>
+					<string>trc</string>
+					<string>arc</string>
+					<string>config</string>
+					<string>history</string>
+					<string>nc</string>
+					<string>ncdf</string>
+					<string>netcdf</string>
+					<string>ncrst</string>
 					<string>top</string>
 					<string>psf</string>
 					<string>prmtop</string>
+					<string>tpr</string>
+					<string>parm7</string>
+					<string>parm</string>
+					<string>itp</string>
+					<string>data</string>
+					<string>lammps</string>
+					<string>lmp</string>
+					<string>txyz</string>
 				</array>
 			</dict>
 		</dict>
@@ -414,76 +540,64 @@
 		<dict>
 			<key>UTTypeConformsTo</key>
 			<array>
-				<string>public.plain-text</string>
+				<string>public.text</string>
 				<string>public.data</string>
 			</array>
 			<key>UTTypeDescription</key>
-			<string>xyzrender-compatible molecular structure file</string>
+			<string>OpenMM workflow coordinate artifact</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.xyzrender-input</string>
+			<string>com.local.burrete10.openmm-coordinate-artifact</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
-			<key>public.filename-extension</key>
+				<key>public.filename-extension</key>
+				<array>
+					<string>xml</string>
+					<string>inpcrd</string>
+					<string>rst7</string>
+					<string>restrt</string>
+					<string>crd</string>
+					<string>rst</string>
+					<string>state</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>text/plain</string>
+					<string>application/xml</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
 			<array>
-				<string>abi</string>
-				<string>com</string>
-				<string>cub</string>
-				<string>cube</string>
-				<string>fdf</string>
-				<string>in</string>
-				<string>inp</string>
-				<string>log</string>
-				<string>nw</string>
-				<string>out</string>
-				<string>psi4</string>
-				<string>qcin</string>
-				<string>vasp</string>
+				<string>public.text</string>
+				<string>public.data</string>
 			</array>
+			<key>UTTypeDescription</key>
+			<string>Molecular workflow text or metadata artifact</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.openmm-workflow-text-artifact</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>par</string>
+					<string>prm</string>
+					<string>rtf</string>
+					<string>str</string>
+					<string>key</string>
+					<string>chk</string>
+					<string>checkpoint</string>
+					<string>dms</string>
+					<string>xvg</string>
+					<string>edr</string>
+					<string>fasta</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>text/plain</string>
+				</array>
 			</dict>
 		</dict>
 	</array>
-	<key>NSExtension</key>
-	<dict>
-		<key>NSExtensionAttributes</key>
-		<dict>
-			<key>QLSupportedContentTypes</key>
-			<array>
-				<string>com.local.burrete10.pdb</string>
-				<string>com.local.burrete10.cif</string>
-				<string>public.cif</string>
-				<string>com.local.burrete10.mmcif</string>
-				<string>com.local.burrete10.bcif</string>
-				<string>com.local.burrete10.sdf</string>
-				<string>com.local.burrete10.smiles</string>
-				<string>com.local.burrete10.csv</string>
-				<string>com.local.burrete10.tsv</string>
-				<string>com.local.burrete10.mol</string>
-				<string>com.local.burrete10.mol2</string>
-				<string>com.schrodinger.mol</string>
-				<string>com.schrodinger.pdb</string>
-				<string>com.schrodinger.sdf</string>
-				<string>com.local.burrete10.xyz</string>
-				<string>com.local.burrete10.xyzrender-input</string>
-				<string>net.sourceforge.openbabel.xyz</string>
-				<string>com.adobe.fdf</string>
-				<string>com.apple.videoapps.cube</string>
-				<string>com.gaussian.cube</string>
-				<string>com.local.burrete10.gro</string>
-				<string>gg.flew.unfold.gromacs-structure</string>
-				<string>com.local.burrete10.mvsj</string>
-				<string>com.local.burrete10.mvsx</string>
-				<string>com.local.burrete10.molecular-dynamics</string>
-				<string>com.schrodinger.mae</string>
-				<string>com.local.burrete10.schrodinger</string>
-				<string>com.local.burrete10.graphml</string>
-			</array>
-			<key>QLSupportsSearchableItems</key>
-			<false/>
-		</dict>
-		<key>NSExtensionPointIdentifier</key>
-		<string>com.apple.quicklook.preview</string>
-		<key>NSExtensionPrincipalClass</key>
-		<string>$(PRODUCT_MODULE_NAME).PreviewViewController</string>
-	</dict>
 </dict>
 </plist>
