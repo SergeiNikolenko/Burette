@@ -5,6 +5,7 @@ import type { MenuItemSpec } from "./menu-types";
 import type { ShellActions, ShellViewState } from "./types";
 import { structureBriefForDocument, type StructureBriefRow as BriefRow } from "../lib/structure-brief";
 import { parseStructureComposition, type StructureCompositionSummary, type StructureSummaryRow, type StructureViewerAction } from "../lib/structure-composition";
+import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureText } from "../lib/structure-text";
 import type { ViewerDocument } from "../types";
 
@@ -199,7 +200,11 @@ function useStructureComposition(document: ViewerDocument | null) {
     }
     let cancelled = false;
     setState({ documentId: document.id, loading: true, summary: null, error: null });
-    void readStructureText(document.path, { maxBytes: compositionReadLimit(document) })
+    const virtualText = readBrowserDevVirtualTextDocument(document.path);
+    const textPromise = virtualText === null
+      ? readStructureText(document.path, { maxBytes: compositionReadLimit(document) })
+      : Promise.resolve(virtualText);
+    void textPromise
       .then((text) => {
         if (cancelled) return;
         setState({

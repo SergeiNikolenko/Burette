@@ -14,6 +14,7 @@ commands.allow = [
   "read_text_file",
   "open_text_files",
   "read_structure_text",
+  "generate_3d_conformer",
   "open_text_structure",
   "open_merged_collection",
   "open_delimited_grid_document",

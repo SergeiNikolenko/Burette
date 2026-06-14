@@ -1,10 +1,13 @@
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashSet};
+use std::env;
 #[cfg(target_os = "macos")]
 use std::ffi::CString;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 #[cfg(target_os = "macos")]
 use std::sync::mpsc;
 use tauri::{Manager, Runtime};
@@ -112,6 +115,37 @@ pub(crate) struct TextStructureRequest {
     title: String,
     extension: String,
     text: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ConformerGenerationRequest {
+    title: String,
+    extension: String,
+    text: String,
+    engine: Option<String>,
+    mode: Option<String>,
+    candidate_count: Option<usize>,
+    rmsd_cutoff: Option<f64>,
+    source_3d: Option<ConformerGenerationSource>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ConformerGenerationSource {
+    title: String,
+    extension: String,
+    text: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ConformerGenerationResult {
+    title: String,
+    extension: String,
+    text: String,
+    method: String,
+    conformer_count: Option<usize>,
 }
 
 #[derive(Debug, Serialize)]
@@ -575,6 +609,268 @@ pub(crate) fn read_structure_text(path: String) -> Result<String, String> {
         ));
     }
     fs::read_to_string(&input_path).map_err(|err| format!("{}: {err}", input_path.display()))
+}
+
+#[tauri::command]
+pub(crate) fn generate_3d_conformer(
+    request: ConformerGenerationRequest,
+) -> Result<ConformerGenerationResult, String> {
+    let extension = request
+        .extension
+        .trim()
+        .trim_start_matches('.')
+        .to_lowercase();
+    if !matches!(extension.as_str(), "sdf" | "sd" | "mol" | "smi" | "smiles") {
+        return Err(
+            "3D conformer generation currently supports MOL, SDF, and SMILES input.".to_string(),
+        );
+    }
+    let engine = request
+        .engine
+        .as_deref()
+        .unwrap_or("datamol")
+        .trim()
+        .to_lowercase();
+    if !matches!(engine.as_str(), "datamol" | "rdkit") {
+        return Err("3D conformer generation supports Datamol and RDKit engines.".to_string());
+    }
+    let mode = if request.mode.as_deref().unwrap_or("single").trim() == "ensemble" {
+        "ensemble"
+    } else {
+        "single"
+    };
+    let candidate_count = request.candidate_count.unwrap_or(128).clamp(1, 512);
+    let rmsd_cutoff = request.rmsd_cutoff.unwrap_or(0.75);
+    let rmsd_cutoff = if rmsd_cutoff.is_finite() {
+        rmsd_cutoff.clamp(0.0, 5.0)
+    } else {
+        0.75
+    };
+    if request.text.trim().is_empty() {
+        return Err("Draw a molecule first".to_string());
+    }
+    if request.text.len() as u64 > KETCHER_IMPORT_MAX_STRUCTURE_FILE_SIZE {
+        return Err("Structure text is too large".to_string());
+    }
+    if request.text.contains("$RXN") {
+        return Err(
+            "3D conformer generation supports single small molecules, not reactions.".to_string(),
+        );
+    }
+    if let Some(source_3d) = &request.source_3d {
+        if !matches!(
+            source_3d
+                .extension
+                .trim()
+                .trim_start_matches('.')
+                .to_lowercase()
+                .as_str(),
+            "sdf" | "sd" | "mol"
+        ) {
+            return Err("3D pose preservation currently supports MOL and SDF sources.".to_string());
+        }
+        if source_3d.text.len() as u64 > KETCHER_IMPORT_MAX_STRUCTURE_FILE_SIZE {
+            return Err("Source 3D structure text is too large".to_string());
+        }
+    }
+
+    let script = rdkit_conformer_python_script();
+    let input_payload = serde_json::json!({
+        "text": request.text,
+        "extension": extension,
+        "engine": engine,
+        "mode": mode,
+        "candidateCount": candidate_count,
+        "rmsdCutoff": rmsd_cutoff,
+        "source3d": request.source_3d,
+    })
+    .to_string();
+    let mut last_error = String::new();
+    for python in conformer_python_candidates(&engine) {
+        let mut command = Command::new(&python.command);
+        command
+            .args(&python.args)
+            .arg("-c")
+            .arg(script)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut child = match command.spawn() {
+            Ok(child) => child,
+            Err(error) => {
+                last_error = format!("{}: {error}", python.label);
+                continue;
+            }
+        };
+        if let Some(mut stdin) = child.stdin.take() {
+            if let Err(error) = stdin.write_all(input_payload.as_bytes()) {
+                last_error = format!("{}: failed to send structure text: {error}", python.label);
+                let _ = child.kill();
+                let _ = child.wait();
+                continue;
+            }
+        }
+        let output = child.wait_with_output().map_err(|error| {
+            format!(
+                "{}: failed to run conformer generator: {error}",
+                python.label
+            )
+        })?;
+        if !output.status.success() {
+            last_error = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            if last_error.is_empty() {
+                last_error = format!(
+                    "{}: conformer generator exited with {}",
+                    python.label, output.status
+                );
+            }
+            continue;
+        }
+        let generated: ConformerPythonResult =
+            serde_json::from_slice(&output.stdout).map_err(|error| {
+                format!(
+                    "{}: invalid conformer generator output: {error}",
+                    python.label
+                )
+            })?;
+        if generated.text.trim().is_empty() {
+            return Err("3D conformer generator returned an empty structure.".to_string());
+        }
+        return Ok(ConformerGenerationResult {
+            title: if mode == "ensemble" {
+                generated_conformer_set_title(&request.title)
+            } else {
+                generated_conformer_title(&request.title)
+            },
+            extension: "sdf".to_string(),
+            text: generated.text,
+            method: generated.method,
+            conformer_count: generated.conformer_count,
+        });
+    }
+
+    let (engine_label, env_name) = if engine == "datamol" {
+        ("Datamol", "BURRETE_DATAMOL_PYTHON")
+    } else {
+        ("RDKit", "BURRETE_RDKIT_PYTHON")
+    };
+    Err(if last_error.is_empty() {
+        format!("{engine_label} Python is required for 3D conformer generation. Set {env_name} to a Python executable with {engine} installed.")
+    } else {
+        format!("{engine_label} conformer generation failed: {last_error}")
+    })
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ConformerPythonResult {
+    text: String,
+    method: String,
+    conformer_count: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PythonCommand {
+    label: String,
+    command: String,
+    args: Vec<String>,
+}
+
+fn conformer_python_candidates(engine: &str) -> Vec<PythonCommand> {
+    let mut candidates = Vec::new();
+    let (env_name, package_name) = if engine == "datamol" {
+        ("BURRETE_DATAMOL_PYTHON", "datamol")
+    } else {
+        ("BURRETE_RDKIT_PYTHON", "rdkit")
+    };
+    if let Ok(value) = env::var(env_name) {
+        let value = value.trim();
+        if !value.is_empty() {
+            candidates.push(PythonCommand {
+                label: value.to_string(),
+                command: value.to_string(),
+                args: Vec::new(),
+            });
+        }
+    }
+    if let Some(uvx) = resolve_executable(
+        "uvx",
+        &[
+            env::var("HOME")
+                .ok()
+                .map(|home| PathBuf::from(home).join(".local/bin/uvx")),
+            Some(PathBuf::from("/opt/homebrew/bin/uvx")),
+            Some(PathBuf::from("/usr/local/bin/uvx")),
+        ],
+    ) {
+        candidates.push(PythonCommand {
+            label: format!("{} --from {package_name} python", uvx.display()),
+            command: uvx.to_string_lossy().to_string(),
+            args: vec![
+                "--from".to_string(),
+                package_name.to_string(),
+                "python".to_string(),
+            ],
+        });
+    }
+    candidates.push(PythonCommand {
+        label: "python3".to_string(),
+        command: "python3".to_string(),
+        args: Vec::new(),
+    });
+    candidates.push(PythonCommand {
+        label: "python".to_string(),
+        command: "python".to_string(),
+        args: Vec::new(),
+    });
+    let mut seen = HashSet::new();
+    candidates.retain(|candidate| {
+        let key = format!("{}\0{}", candidate.command, candidate.args.join("\0"));
+        seen.insert(key)
+    });
+    candidates
+}
+
+fn resolve_executable(name: &str, preferred_paths: &[Option<PathBuf>]) -> Option<PathBuf> {
+    for path in preferred_paths.iter().flatten() {
+        if path.exists() {
+            return Some(path.clone());
+        }
+    }
+    if let Some(paths) = env::var_os("PATH") {
+        for row in env::split_paths(&paths) {
+            let candidate = row.join(name);
+            if candidate.exists() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+fn generated_conformer_title(title: &str) -> String {
+    let file_name = safe_text_structure_file_name(title, "sdf");
+    let stem = Path::new(&file_name)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("ketcher-sketch");
+    format!("{stem}-3d.sdf")
+}
+
+fn generated_conformer_set_title(title: &str) -> String {
+    let file_name = safe_text_structure_file_name(title, "sdf");
+    let stem = Path::new(&file_name)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("ketcher-sketch");
+    format!("{stem}-3d-conformers.sdf")
+}
+
+fn rdkit_conformer_python_script() -> &'static str {
+    include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../scripts/rdkit_conformer.py"
+    ))
 }
 
 #[tauri::command]
@@ -1567,10 +1863,10 @@ fn pick_open_targets_macos<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<Vec<
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_open_paths, expand_open_document_paths, expand_open_targets,
-        list_project_structure_files, looks_like_supported_structure_file,
-        normalize_inline_structure_extension, open_text_structure_for_window_label,
-        smiles_from_sheet_data, TextStructureRequest,
+        classify_open_paths, conformer_python_candidates, expand_open_document_paths,
+        expand_open_targets, generated_conformer_title, list_project_structure_files,
+        looks_like_supported_structure_file, normalize_inline_structure_extension,
+        open_text_structure_for_window_label, smiles_from_sheet_data, TextStructureRequest,
     };
     use crate::preview::formats::supported_structure_extensions;
     use crate::preview::grid_store::GridRuntimeRegistry;
@@ -1608,6 +1904,26 @@ mod tests {
         let app = tauri::test::mock_app();
         app.manage(GridRuntimeRegistry::default());
         app
+    }
+
+    #[test]
+    fn generated_conformer_title_adds_3d_suffix() {
+        assert_eq!(
+            generated_conformer_title("ketcher-sketch.sdf"),
+            "ketcher-sketch-3d.sdf"
+        );
+        assert_eq!(generated_conformer_title("Ligand A.mol"), "Ligand-A-3d.sdf");
+    }
+
+    #[test]
+    fn conformer_python_candidates_include_default_python_names() {
+        let candidates = conformer_python_candidates("datamol");
+        assert!(candidates
+            .iter()
+            .any(|candidate| candidate.label == "python3"));
+        assert!(candidates
+            .iter()
+            .any(|candidate| candidate.label == "python"));
     }
 
     #[test]
