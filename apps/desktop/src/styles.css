@@ -2089,6 +2089,64 @@ img.radix-menu-item-icon {
 .structure-inspector-selected-card {
   border-color: color-mix(in srgb, var(--accent) 22%, var(--line-subtler));
 }
+.structure-inspector-context-style {
+  gap: 7px;
+}
+.structure-inspector-style-options {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+.structure-inspector-style-option {
+  min-width: 0;
+  height: 28px;
+  border: 1px solid var(--line-subtler);
+  border-radius: 7px;
+  background: var(--surface-card);
+  color: var(--text-secondary);
+  padding: 0 7px;
+  font: inherit;
+  font-size: 11px;
+  cursor: default;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out, transform 120ms ease-out;
+}
+.structure-inspector-style-option:hover {
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+}
+.structure-inspector-style-option[data-selected="true"] {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line-subtler));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-card));
+  color: var(--text-primary);
+}
+.structure-inspector-style-option:active {
+  transform: scale(0.99);
+}
+.structure-inspector-opacity-control {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 38px;
+  gap: 8px;
+  align-items: center;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.structure-inspector-opacity-control input {
+  min-width: 0;
+  width: 100%;
+  accent-color: var(--accent);
+}
+.structure-inspector-opacity-control strong {
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  text-align: right;
+}
 .structure-inspector-selected-meta {
   min-width: 0;
   display: grid;

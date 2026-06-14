@@ -42,6 +42,9 @@ assert.match(gridViewer, /body\.type === 'poseReviewSelection'/);
 assert.match(gridViewer, /function selectPoseReviewRow\(activePose, cfg\)/);
 assert.match(gridViewer, /function selectedMolstarRows\(\)/);
 assert.match(gridViewer, /function sdfRecordTextForMolstar\(row\)/);
+assert.match(gridViewer, /function smilesRecordTextForMolstar\(row\)/);
+assert.match(gridViewer, /const molblock = typeof mol\.get_molblock === 'function' \? mol\.get_molblock\(\) : ''/);
+assert.match(gridViewer, /return sdfRecordFromMolblock\(molblock\)/);
 assert.match(gridViewer, /const text = String\(record\.text \|\| ''\)\.trimEnd\(\);[\s\S]*?if \(!text\.trim\(\)\) return null;/);
 assert.match(gridViewer, /const molblock = String\(row\?\.molblock \|\| ''\)\.trimEnd\(\);[\s\S]*?if \(molblock\.trim\(\)\) \{/);
 
@@ -145,7 +148,7 @@ assert.match(viewer, /let loopActive = false/);
 assert.match(viewer, /loopActive = Boolean\(active\)/);
 assert.match(viewer, /speed\.classList\.toggle\('buret-docking-pose-speed-skip', Number\.isFinite\(fps\) && fps > NATIVE_TRAJECTORY_LOOP_SKIP_FPS_THRESHOLD\)/);
 assert.match(viewer, /const scheduleSliderInputPose = \(index\) => \{/);
-assert.match(viewer, /if \(prepared\.nativeTrajectoryControls\) scheduleSliderInputPose\(previewIndex\)/);
+assert.match(viewer, /if \(prepared\.nativeTrajectoryControls \|\| prepared\.kind === 'sdf-collection'\) scheduleSliderInputPose\(previewIndex\)/);
 assert.match(viewer, /if \(event\.key === 'ArrowLeft'\)/);
 assert.match(viewer, /if \(activePose > 0\) void setPose\(activePose - 1\)/);
 assert.match(viewer, /if \(event\.key === 'ArrowRight'\)/);

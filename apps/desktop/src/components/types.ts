@@ -22,7 +22,7 @@ export type KetcherSketchTarget = "grid" | "molstar" | "xyzrender" | "collection
 
 export type KetcherSketchRequest = {
   title: string;
-  extension: "sdf";
+  extension: "sdf" | "smi" | "csv" | "tsv";
   text: string;
   draftKet?: string;
   draftMolfile?: string;

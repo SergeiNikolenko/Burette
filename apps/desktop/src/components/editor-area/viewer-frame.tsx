@@ -29,8 +29,8 @@ export function ViewerFrame({
     "data-document-id": document.id,
   };
   return tauriRuntime ? (
-    <iframe {...commonProps} src={convertFileSrc(document.runtimePath)} />
+    <iframe key={document.runtimePath} {...commonProps} src={convertFileSrc(document.runtimePath)} />
   ) : (
-    <iframe {...commonProps} srcDoc={document.runtimePath} />
+    <iframe key={document.runtimePath} {...commonProps} srcDoc={document.runtimePath} />
   );
 }
