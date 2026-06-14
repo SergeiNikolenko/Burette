@@ -89,6 +89,7 @@ const [
   architectureDocsSource,
   rendererSupportDocsSource,
   performanceDocsSource,
+  rdkitConformerScript,
 ] = await Promise.all([
   source('apps/desktop/src-tauri/src/commands/mod.rs'),
   source('apps/desktop/src-tauri/src/lib.rs'),
@@ -162,6 +163,7 @@ const [
   source('docs/architecture.md'),
   source('docs/renderer-support.md'),
   source('docs/performance.md'),
+  source('scripts/rdkit_conformer.py'),
 ]);
 const previewFormatsSource = previewFormats;
 const previewTrace = await source('apps/desktop/src-tauri/src/preview/trace.rs');
@@ -244,6 +246,7 @@ for (const commandPath of [
   'commands::documents::open_documents',
   'commands::documents::open_delimited_grid_document',
   'commands::documents::read_structure_text',
+  'commands::documents::generate_3d_conformer',
   'commands::documents::open_text_structure',
   'commands::documents::save_text_as',
   'commands::grid::grid_fetch_page',
@@ -333,6 +336,30 @@ assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn classify_o
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_documents/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_delimited_grid_document/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn read_structure_text/);
+assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn generate_3d_conformer/);
+assert.match(documentsCommand, /engine: Option<String>/);
+assert.match(documentsCommand, /mode: Option<String>/);
+assert.match(documentsCommand, /candidate_count: Option<usize>/);
+assert.match(documentsCommand, /rmsd_cutoff: Option<f64>/);
+assert.match(documentsCommand, /conformer_count: Option<usize>/);
+assert.match(documentsCommand, /3D conformer generation supports Datamol and RDKit engines/);
+assert.match(documentsCommand, /source_3d: Option<ConformerGenerationSource>/);
+assert.match(documentsCommand, /fn generated_conformer_set_title/);
+assert.match(documentsCommand, /"mode": mode/);
+assert.match(documentsCommand, /"candidateCount": candidate_count/);
+assert.match(documentsCommand, /"rmsdCutoff": rmsd_cutoff/);
+assert.match(documentsCommand, /include_str!\(concat!\([\s\S]*env!\("CARGO_MANIFEST_DIR"\),[\s\S]*"\/\.\.\/\.\.\/\.\.\/scripts\/rdkit_conformer\.py"/);
+assert.match(rdkitConformerScript, /Cannot preserve the original 3D pose because the original core no longer matches the current Ketcher sketch/);
+assert.match(rdkitConformerScript, /3D conformer generation supports Datamol and RDKit engines/);
+assert.match(rdkitConformerScript, /ff\.AddFixedPoint\(int\(atom_idx\)\)/);
+assert.match(rdkitConformerScript, /method = "ETKDG\+" \+ family \+ \("\+fixed-core" if core is not None else "\+ensemble"\)/);
+assert.match(rdkitConformerScript, /mode = str\(payload\.get\("mode"\) or "single"\)/);
+assert.match(rdkitConformerScript, /DEFAULT_ENSEMBLE_CANDIDATE_COUNT = 128/);
+assert.match(rdkitConformerScript, /DEFAULT_ENSEMBLE_RMSD_CUTOFF = 0\.75/);
+assert.doesNotMatch(rdkitConformerScript, /ENSEMBLE_OUTPUT_COUNT/);
+assert.match(rdkitConformerScript, /def select_ensemble_conformer_ids\(scored\):/);
+assert.match(rdkitConformerScript, /selected_conf_ids = select_ensemble_conformer_ids\(scored\)/);
+assert.match(rdkitConformerScript, /"conformerCount": len\(records\)/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_text_structure/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn save_text_as/);
 assert.match(previewRuntime, /pub\(crate\) fn into_virtual\(mut self\) -> Self/);
