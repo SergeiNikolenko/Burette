@@ -1139,6 +1139,9 @@ body.buret-docking-pose-controls-active .msp-traj-controls {
   width: 28px;
   padding: 0 !important;
 }
+.buret-docking-pose-all {
+  min-width: 34px;
+}
 .buret-docking-pose-speed {
   appearance: textfield;
   -moz-appearance: textfield;
