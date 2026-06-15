@@ -3,6 +3,7 @@ import type { MoleculeTab } from "../stores/molecule-store";
 import type { StructureDragPayload } from "../lib/structure-drag";
 import type { StructureViewerAction } from "../lib/structure-composition";
 import type { TextStructureSelection } from "../lib/text-structure-selection";
+import type { DescriptorSourcePayload, GridDescriptorControls, GridDescriptorResultRow, GridDescriptorRunOptions } from "../lib/descriptors";
 import type { UpdatePreferences, UpdateState } from "../update";
 import type { SidebarProject } from "../lib/sidebar-projects";
 import type { SettingsSectionId } from "../lib/settings-sections";
@@ -122,6 +123,11 @@ export type ShellActions = {
   }) => void;
   openFepSetupWorkspace: (request: FepSetupRequest) => void;
   openKetcherSketch: (request: KetcherSketchRequest) => void | Promise<void>;
+  openDescriptorSource: (source: DescriptorSourcePayload) => void;
+  clearDescriptorSource: () => void;
+  applyGridDescriptorControls: (documentId: string, controls: GridDescriptorControls) => void;
+  applyGridDescriptorResults: (documentId: string, rows: GridDescriptorResultRow[]) => void;
+  calculateGridDescriptors: (documentId: string, options?: GridDescriptorRunOptions) => void;
   saveKetcherDraft: (molfile: string) => void;
   clearKetcherImportRequest: (id: number) => void;
   moveTab: (id: string, toIndex: number) => void;
@@ -225,6 +231,7 @@ export type ShellViewState = {
   poseReviewSelections: Record<string, number>;
   ketcherImportRequest: KetcherImportRequest | null;
   ketcherDraftMolfile: string;
+  descriptorSource: DescriptorSourcePayload | null;
   sidebarQuery: string;
   status: StatusNotice | null;
   dropActive: boolean;
