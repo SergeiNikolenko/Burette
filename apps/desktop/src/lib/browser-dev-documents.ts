@@ -1,5 +1,5 @@
 import { collectionExtension, mergeCollectionSources } from "./collection-documents";
-import type { DockingDocumentRequest, OpenDocumentsResult, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XyzrenderControls } from "../types";
+import type { DockingDocumentRequest, DockingSceneMode, OpenDocumentsResult, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XyzrenderControls } from "../types";
 import previewFormatRegistry from "../../../../config/preview-formats.json";
 
 type FormatInfo = {
@@ -226,14 +226,16 @@ export async function openBrowserDevDockingDocument(
   receptorPath: string,
   ligandPaths: string[],
   preferences: ViewerPreferences,
-  options: { activePose?: number | null } = {},
+  options: { activePose?: number | null; sceneMode?: DockingSceneMode | null } = {},
 ): Promise<ViewerDocument> {
   const receptor = await readBrowserDevDockingPayload(receptorPath);
   const ligands = await Promise.all(Array.from(new Set(ligandPaths)).map(readBrowserDevDockingPayload));
   if (ligands.length === 0) throw new Error("Choose at least one ligand or pose file for docking view");
 
   const id = stableId(`docking:${receptor.path}:${ligands.map((ligand) => ligand.path).join("|")}`);
-  const label = `Docking: ${receptor.title} + ${ligands.length} ligand${ligands.length === 1 ? "" : "s"}`;
+  const label = options.sceneMode
+    ? `Mol* scene: ${receptor.title} + ${ligands.length} more structure${ligands.length === 1 ? "" : "s"}`
+    : `Docking: ${receptor.title} + ${ligands.length} ligand${ligands.length === 1 ? "" : "s"}`;
   const visuals = resolvePreviewVisuals(preferences);
   const sdfGridPath = ligands.find((ligand) => (
     ligand.format.molstarFormat === "sdf"
@@ -273,6 +275,7 @@ export async function openBrowserDevDockingDocument(
     defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" },
     docking: {
       activePose: options.activePose ?? null,
+      sceneMode: options.sceneMode ?? null,
       receptor: dockingConfigSource(receptor),
       ligands: ligands.map(dockingConfigSource),
     },
@@ -310,6 +313,8 @@ export async function openBrowserDevDockingDocument(
       receptorPath: receptor.path,
       ligandPaths: ligands.map((ligand) => ligand.path),
       activePose: options.activePose ?? null,
+      sceneMode: options.sceneMode ?? null,
+      poseMode: options.sceneMode === "structureAll" ? "all" : "single",
     } satisfies DockingDocumentRequest,
   };
 }
