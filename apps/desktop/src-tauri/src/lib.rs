@@ -8,6 +8,7 @@ mod startup;
 mod tray;
 mod windows;
 
+use commands::descriptors::DescriptorGridJobRegistry;
 use preview::grid_store::GridRuntimeRegistry;
 use std::path::PathBuf;
 use tauri::{Manager, RunEvent};
@@ -28,6 +29,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(GridRuntimeRegistry::default())
+        .manage(DescriptorGridJobRegistry::default())
         .manage(startup::PendingOpenDocuments::default())
         .setup(|app| {
             let argv: Vec<String> = std::env::args().collect();
@@ -101,6 +103,14 @@ pub fn run() {
             commands::agent_integration::agent_integration_status,
             commands::chemical_editors::list_chemical_editor_targets,
             commands::chemical_editors::open_in_chemical_editor,
+            commands::descriptors::descriptor_runtime_status,
+            commands::descriptors::descriptor_runtime_install,
+            commands::descriptors::descriptor_calculate,
+            commands::descriptors::descriptor_calculate_grid,
+            commands::descriptors::descriptor_start_grid,
+            commands::descriptors::descriptor_grid_job_status,
+            commands::descriptors::descriptor_cancel_grid,
+            commands::descriptors::descriptor_grid_summary,
             commands::startup::startup_documents,
             commands::startup::startup_agent_session,
             commands::documents::pick_open_targets,

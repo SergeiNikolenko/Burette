@@ -5,8 +5,9 @@ use tauri::{Runtime, State};
 
 use crate::preview::formats::{structure_path_extension, supported_structure_extensions};
 use crate::preview::grid_store::{
-    delimited_smiles_column_choices, GridDelimitedColumnChoice, GridPageResult, GridParseOptions,
-    GridQuery, GridRuntimeRegistry,
+    delimited_smiles_column_choices, GridColumnFilter, GridDelimitedColumnChoice,
+    GridDescriptorFilter, GridDescriptorSort, GridPageResult, GridParseOptions, GridQuery,
+    GridRuntimeRegistry,
 };
 
 const GRID_APPEND_MAX_SOURCE_SIZE: u64 = 25 * 1024 * 1024;
@@ -17,8 +18,36 @@ pub(crate) struct GridPageRequest {
     document_id: String,
     query: Option<String>,
     sort: Option<String>,
+    column_filters: Option<Vec<GridColumnFilterRequest>>,
+    descriptor_filters: Option<Vec<GridDescriptorFilterRequest>>,
+    descriptor_sort: Option<GridDescriptorSortRequest>,
     offset: Option<usize>,
     limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GridDescriptorFilterRequest {
+    id: String,
+    min: Option<f64>,
+    max: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GridColumnFilterRequest {
+    id: String,
+    filter_type: String,
+    text: Option<String>,
+    min: Option<f64>,
+    max: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GridDescriptorSortRequest {
+    id: String,
+    direction: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -70,6 +99,32 @@ pub(crate) fn grid_fetch_page<R: Runtime>(
         &GridQuery {
             query: request.query.unwrap_or_default(),
             sort: request.sort.unwrap_or_else(|| "index".to_string()),
+            column_filters: request
+                .column_filters
+                .unwrap_or_default()
+                .into_iter()
+                .map(|filter| GridColumnFilter {
+                    id: filter.id,
+                    filter_type: filter.filter_type,
+                    text: filter.text,
+                    min: filter.min,
+                    max: filter.max,
+                })
+                .collect(),
+            descriptor_filters: request
+                .descriptor_filters
+                .unwrap_or_default()
+                .into_iter()
+                .map(|filter| GridDescriptorFilter {
+                    id: filter.id,
+                    min: filter.min,
+                    max: filter.max,
+                })
+                .collect(),
+            descriptor_sort: request.descriptor_sort.map(|sort| GridDescriptorSort {
+                id: sort.id,
+                direction: sort.direction.unwrap_or_else(|| "asc".to_string()),
+            }),
             offset: request.offset.unwrap_or(0),
             limit: request.limit.unwrap_or(48),
         },
