@@ -439,6 +439,7 @@
 					<string>psi4</string>
 					<string>qcin</string>
 					<string>vasp</string>
+					<string>xyzr</string>
 				</array>
 			</dict>
 		</dict>
