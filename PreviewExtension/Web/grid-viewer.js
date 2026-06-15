@@ -869,7 +869,7 @@
         });
         return;
       }
-      requestSdfPoseDocument(cfg);
+      void requestSdfPoseDocument(cfg);
       return;
     }
     post('setRenderer', `[grid] Switch renderer to ${value}.`, {
@@ -878,18 +878,19 @@
     });
   }
 
-  function requestSdfPoseDocument(cfg) {
+  async function requestSdfPoseDocument(cfg) {
     const receptorPath = String(cfg?.dockingReceptorPath || '').trim();
     const rows = selectedMolstarRows();
     if (!rows.length) {
       setStatus('[grid] Select one or more molecules before opening Molstar.', 'error');
       return;
     }
-    const records = rows
-      .map(row => sdfRecordTextForMolstar(row))
-      .filter(text => typeof text === 'string' && text.trim().length > 0);
+    setStatus(rows.length > 1
+      ? '[grid] Aligning selected molecules for Molstar...'
+      : '[grid] Preparing selected molecule for Molstar...');
+    const records = await sdfRecordTextsForMolstar(rows);
     if (!records.length) {
-      setStatus('[grid] Selected molecules do not have SDF structure data for Molstar.', 'error');
+      setStatus('[grid] Selected molecules do not have structure data for Molstar.', 'error');
       return;
     }
     const title = records.length === 1
@@ -900,16 +901,17 @@
       title,
       extension: 'sdf',
       textBase64: textToBase64(records.join('\n')),
+      controlLabel: 'Molecule',
       receptorPath: receptorPath || null
     });
     setStatus(`[grid] Opening ${records.length.toLocaleString()} selected molecule${records.length === 1 ? '' : 's'} in Molstar.`);
   }
 
-  function requestSingleMolstarDocument(row, cfg) {
-    const record = sdfRecordTextForMolstar(row);
+  async function requestSingleMolstarDocument(row, cfg) {
     const label = row?.name || `Molecule ${Number(row?.index) + 1 || 1}`;
+    const record = await sdfRecordTextForMolstar(row);
     if (!record) {
-      setStatus(`[grid] ${label} does not have SDF structure data for Molstar.`, 'error');
+      setStatus(`[grid] ${label} does not have structure data for Molstar.`, 'error');
       return;
     }
     const receptorPath = String(cfg?.dockingReceptorPath || '').trim();
@@ -1029,10 +1031,111 @@
       .sort((a, b) => Number(a.index) - Number(b.index));
   }
 
-  function sdfRecordTextForMolstar(row) {
+  async function sdfRecordTextForMolstar(row) {
     const record = gridDragRecord(row);
-    if (!record || record.inputExtension !== 'sdf') return null;
+    if (!record) return null;
+    if (record.inputExtension !== 'sdf') return smilesRecordTextForMolstar(row);
     const text = String(record.text || '').trimEnd();
+    if (!text.trim()) return null;
+    return sdfRecordFromMolblock(text);
+  }
+
+  async function smilesRecordTextForMolstar(row) {
+    const smiles = String(row?.smiles || '').trim();
+    if (!smiles) return null;
+    let mol = null;
+    try {
+      const rdkit = await initRDKit();
+      mol = rdkit.get_mol(smiles);
+      if (!mol || (typeof mol.is_valid === 'function' && !mol.is_valid())) return null;
+      try { mol.set_new_coords?.(); } catch (_) {}
+      const molblock = typeof mol.get_molblock === 'function' ? mol.get_molblock() : '';
+      return sdfRecordFromMolblock(molblock);
+    } catch (error) {
+      state.rdkitError = error?.message || String(error);
+      return null;
+    } finally {
+      try { mol?.delete?.(); } catch {}
+    }
+  }
+
+  async function sdfRecordTextsForMolstar(rows) {
+    if (!Array.isArray(rows) || rows.length <= 1) {
+      return (await Promise.all((rows || []).map(row => sdfRecordTextForMolstar(row))))
+        .filter(text => typeof text === 'string' && text.trim().length > 0);
+    }
+    const aligned = await alignedSdfRecordTextsForMolstar(rows);
+    if (aligned.length) return aligned;
+    return (await Promise.all(rows.map(row => sdfRecordTextForMolstar(row))))
+      .filter(text => typeof text === 'string' && text.trim().length > 0);
+  }
+
+  async function alignedSdfRecordTextsForMolstar(rows) {
+    let rdkit = null;
+    try {
+      rdkit = await initRDKit();
+    } catch (error) {
+      state.rdkitError = error?.message || String(error);
+      return [];
+    }
+
+    const molecules = [];
+    let templateMol = null;
+    try {
+      for (const row of rows) {
+        const mol = rdkitMolForMolstarRow(rdkit, row);
+        if (!mol || (typeof mol.is_valid === 'function' && !mol.is_valid())) {
+          try { mol?.delete?.(); } catch {}
+          continue;
+        }
+        if (!templateMol) {
+          ensureRdkitMolCoordinates(mol);
+          templateMol = mol;
+        }
+        molecules.push(mol);
+      }
+      if (!templateMol) return [];
+      return molecules
+        .map(mol => alignedMolblockForMolstar(mol, templateMol))
+        .map(sdfRecordFromMolblock)
+        .filter(text => typeof text === 'string' && text.trim().length > 0);
+    } finally {
+      for (const mol of molecules) {
+        try { mol?.delete?.(); } catch {}
+      }
+    }
+  }
+
+  function rdkitMolForMolstarRow(rdkit, row) {
+    const record = gridDragRecord(row);
+    if (!record) return null;
+    if (record.inputExtension === 'sdf') {
+      const text = String(record.text || '').replace(/\n?\$\$\$\$\s*$/u, '').trimEnd();
+      return text.trim() ? rdkit.get_mol(text) : null;
+    }
+    const smiles = String(row?.smiles || '').trim();
+    return smiles ? rdkit.get_mol(smiles) : null;
+  }
+
+  function ensureRdkitMolCoordinates(mol) {
+    if (typeof mol?.has_coords === 'function' && mol.has_coords()) return;
+    if (typeof mol?.set_new_coords === 'function') mol.set_new_coords();
+  }
+
+  function alignedMolblockForMolstar(mol, templateMol) {
+    if (mol !== templateMol && typeof mol?.generate_aligned_coords === 'function') {
+      mol.generate_aligned_coords(templateMol, JSON.stringify({
+        acceptFailure: true,
+        useCoordGen: false
+      }));
+    } else {
+      ensureRdkitMolCoordinates(mol);
+    }
+    return typeof mol?.get_molblock === 'function' ? mol.get_molblock() : '';
+  }
+
+  function sdfRecordFromMolblock(value) {
+    const text = String(value || '').trimEnd();
     if (!text.trim()) return null;
     return `${text.replace(/\n?\$\$\$\$\s*$/u, '').trimEnd()}\n$$$$\n`;
   }
@@ -2695,7 +2798,7 @@
     overlay.querySelectorAll('[data-buret-detail-action]').forEach(button => {
       button.addEventListener('click', () => {
         const action = button.getAttribute('data-buret-detail-action') || '';
-        if (action === 'molstar') requestSingleMolstarDocument(row, cfg);
+        if (action === 'molstar') void requestSingleMolstarDocument(row, cfg);
         else if (action === 'ketcher') requestOpenInKetcher(row, cfg);
         else if (action === 'generate3d') requestSingle3DGeneration(row, cfg);
         else if (action === 'copy') void copyMoleculeStructure(row);
@@ -2771,7 +2874,7 @@
       void render(cfg);
       setStatus(`[grid] Deleted ${label}. Unsaved changes.`);
     } else if (action === 'molstar') {
-      requestSingleMolstarDocument(row, cfg);
+      void requestSingleMolstarDocument(row, cfg);
     } else if (action === 'ketcher') {
       requestOpenInKetcher(row, cfg);
       setStatus(`[grid] Opening ${label} in Ketcher.`);

@@ -54,7 +54,7 @@ const KETCHER_EDIT_MAX_ATOMS = 300;
 const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
 const GRID_ASSET_VERSION = "grid-ui-v101";
-const VIEWER_ASSET_VERSION = "viewer-ui-v40";
+const VIEWER_ASSET_VERSION = "viewer-ui-v66";
 const REPO_ROOT = String(import.meta.env.BURRETE_REPO_ROOT || "");
 const WEB_ASSETS_BASE = fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
 const browserDevVirtualTextDocuments = new Map<string, string>();
@@ -676,6 +676,7 @@ async function openBrowserDevDocumentFromBytes(
     Math.max(trajectoryFrameCount, sdfRecordCount),
     ketcherEditConfig(path, extension, text, sourceByteCount, sdfRecordCount),
     convertedMolstarData?.stagedEntries,
+    reloadOptions,
     documentId,
   );
   return browserDocument(path, extension, renderer, html, sourceByteCount, documentId);
@@ -853,6 +854,7 @@ function viewerHtml(
   trajectoryFrameCount = 0,
   ketcherConfig: Record<string, unknown> | null = null,
   stagedEntries?: Array<Record<string, unknown>>,
+  reloadOptions?: ViewerReloadOptions,
   documentId?: string,
 ) {
   const label = fileTitle(path);
@@ -884,6 +886,7 @@ function viewerHtml(
     sdfPosePager: renderer === "molstar" && format.molstarFormat === "sdf" && !format.binary,
     trajectoryControls: renderer === "molstar" && trajectoryFrameCount > 1,
     trajectoryFrameCount,
+    ...(reloadOptions?.sdfPoseControlLabel ? { sdfPoseControlLabel: reloadOptions.sdfPoseControlLabel } : {}),
     appViewer: true,
     tauriViewer: false,
     molstarStyle: preferences.molstarStyle,
@@ -1114,7 +1117,7 @@ async function gridHtml(
       selection: true,
       export: true,
       substructureSearch: true,
-      rendererSwitch: format === "sdf",
+      rendererSwitch: true,
     },
   };
   return `<!doctype html>
