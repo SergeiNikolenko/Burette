@@ -16,17 +16,23 @@ type StructureInfoPanelProps = {
 };
 
 const SDF_CONTEXT_STYLE_OPTIONS = [
+  { value: "illustrative", label: "Colorful" },
+  { value: "cartoon", label: "Cartoon" },
   { value: "line", label: "Line" },
   { value: "ball-and-stick", label: "Ball+Stick" },
   { value: "spacefill", label: "Spacefill" },
   { value: "molecular-surface", label: "Surface" },
   { value: "match", label: "Match" },
 ] as const;
+const STRUCTURE_SCENE_STYLE_OPTIONS = SDF_CONTEXT_STYLE_OPTIONS.filter((option) => (
+  option.value !== "match" && option.value !== "cartoon" && option.value !== "spacefill"
+));
 
 type SdfContextStyle = typeof SDF_CONTEXT_STYLE_OPTIONS[number]["value"];
 const SDF_CONTEXT_OPACITY_DEFAULT = 0.12;
 const SDF_CONTEXT_OPACITY_MIN = 0.04;
-const SDF_CONTEXT_OPACITY_MAX = 0.6;
+const SDF_CONTEXT_OPACITY_MAX = 1;
+const STRUCTURE_SCENE_OPACITY_MAX = 1;
 
 export function StructureInfoPanel({ document, dockDrops, actions }: StructureInfoPanelProps) {
   const composition = useStructureComposition(document);
@@ -40,7 +46,10 @@ export function StructureInfoPanel({ document, dockDrops, actions }: StructureIn
 
   useEffect(() => {
     if (!document) return;
-    setSdfContextStyle(readSdfContextStylePreference(document));
+    const style = readSdfContextStylePreference(document);
+    const sceneStyle = document.dockingRequest?.sceneMode ? normalizeStructureSceneStyle(style) : style;
+    if (sceneStyle !== style) writeSdfContextStylePreference(document, sceneStyle);
+    setSdfContextStyle(sceneStyle);
     setSdfContextOpacity(readSdfContextOpacityPreference(document));
   }, [document]);
 
@@ -62,6 +71,8 @@ export function StructureInfoPanel({ document, dockDrops, actions }: StructureIn
   const compositionPending = composition.documentId === document.id && composition.loading;
   const compositionError = composition.documentId === document.id ? composition.error : null;
   const selectedEntity = selectedStructureRow(document, compositionSummary, activeActionKey);
+  const hasStructureScene = Boolean(document.dockingRequest?.sceneMode);
+  const hasStructureSceneAllMode = document.dockingRequest?.poseMode === "all";
   const clearSelection = () => {
     actions.runStructureViewerAction(document, { type: "clear_selection", label: "Clear selection" });
     setActiveActionKey(null);
@@ -121,6 +132,28 @@ export function StructureInfoPanel({ document, dockDrops, actions }: StructureIn
           setValue={setSdfContextStyle}
           opacity={sdfContextOpacity}
           setOpacity={setSdfContextOpacity}
+        />
+      ) : null}
+
+      {hasStructureScene ? (
+        <StructureSceneControlsCard document={document} actions={actions} />
+      ) : null}
+
+      {hasStructureSceneAllMode ? (
+        <SdfContextStyleCard
+          document={document}
+          actions={actions}
+          setValue={setSdfContextStyle}
+          setOpacity={setSdfContextOpacity}
+          title="All structures"
+          detail="All-together view"
+          ariaLabel="All structures style"
+          opacityLabel="All structures opacity"
+          styleOptions={STRUCTURE_SCENE_STYLE_OPTIONS}
+          opacityDisabled={sdfContextStyle === "illustrative"}
+          value={normalizeStructureSceneStyle(sdfContextStyle)}
+          opacity={clampOpacity(sdfContextOpacity, SDF_CONTEXT_OPACITY_MIN, STRUCTURE_SCENE_OPACITY_MAX)}
+          opacityMax={STRUCTURE_SCENE_OPACITY_MAX}
         />
       ) : null}
 
@@ -221,6 +254,56 @@ function hasSdfMoleculeCollection(summary: StructureCompositionSummary) {
   return summary.componentRows.filter((row) => row.action?.type === "set_sdf_molecule").length > 1;
 }
 
+function StructureSceneControlsCard({ document, actions }: { document: ViewerDocument; actions: ShellActions }) {
+  const request = document.dockingRequest;
+  if (!request?.sceneMode) return null;
+  const paths = [request.receptorPath, ...request.ligandPaths];
+  const runMode = (mode: "all" | "single") => {
+    actions.runStructureViewerAction(document, {
+      type: "set_sdf_pose_mode",
+      label: mode === "all" ? "Showing all structures together" : "Showing structures individually",
+      notify: false,
+      mode,
+    });
+  };
+  const showStructure = (index: number) => {
+    actions.runStructureViewerAction(document, {
+      type: "set_sdf_pose_index",
+      label: `Show ${fileName(paths[index])}`,
+      index,
+    });
+  };
+  return (
+    <section className="structure-brief-card structure-inspector-scene-controls">
+      <StructureSectionHeader title="Scene structures" detail={`${paths.length} structures`} />
+      <div className="structure-inspector-style-options" role="group" aria-label="Structure scene mode">
+        <button type="button" className="structure-inspector-style-option" onClick={() => runMode("all")}>
+          Show all together
+        </button>
+        <button type="button" className="structure-inspector-style-option" onClick={() => runMode("single")}>
+          Show individually
+        </button>
+      </div>
+      <div className="structure-brief-rows">
+        {paths.map((path, index) => (
+          <button
+            key={`${path}:${index}`}
+            type="button"
+            className="structure-brief-action-row"
+            onClick={() => showStructure(index)}
+            title={path}
+          >
+            <span className="structure-inspector-row-content">
+              <span className="structure-inspector-row-label">Structure {index + 1}</span>
+              <strong title={path}>{fileName(path)}</strong>
+            </span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function sdfContextStyleStorageKey(document: ViewerDocument) {
   return `buret.sdf.contextStyle.${document.id}`;
 }
@@ -233,10 +316,18 @@ function normalizeSdfContextStyle(value: string | null | undefined): SdfContextS
   return SDF_CONTEXT_STYLE_OPTIONS.some((option) => option.value === value) ? value as SdfContextStyle : "line";
 }
 
+function normalizeStructureSceneStyle(value: SdfContextStyle): SdfContextStyle {
+  return STRUCTURE_SCENE_STYLE_OPTIONS.some((option) => option.value === value) ? value : "line";
+}
+
 function normalizeSdfContextOpacity(value: string | number | null | undefined) {
   const opacity = Number(value);
   if (!Number.isFinite(opacity)) return SDF_CONTEXT_OPACITY_DEFAULT;
-  return Math.max(SDF_CONTEXT_OPACITY_MIN, Math.min(SDF_CONTEXT_OPACITY_MAX, opacity));
+  return clampOpacity(opacity, SDF_CONTEXT_OPACITY_MIN, SDF_CONTEXT_OPACITY_MAX);
+}
+
+function clampOpacity(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
 }
 
 function readSdfContextStylePreference(document: ViewerDocument): SdfContextStyle {
@@ -274,6 +365,14 @@ function SdfContextStyleCard({
   setValue,
   opacity,
   setOpacity,
+  title = "All background",
+  detail = "Context molecules",
+  ariaLabel = "All background style",
+  opacityLabel = "All background opacity",
+  styleOptions = SDF_CONTEXT_STYLE_OPTIONS,
+  opacityMin = SDF_CONTEXT_OPACITY_MIN,
+  opacityMax = SDF_CONTEXT_OPACITY_MAX,
+  opacityDisabled = false,
 }: {
   document: ViewerDocument;
   actions: ShellActions;
@@ -281,6 +380,14 @@ function SdfContextStyleCard({
   setValue: (value: SdfContextStyle) => void;
   opacity: number;
   setOpacity: (value: number) => void;
+  title?: string;
+  detail?: string;
+  ariaLabel?: string;
+  opacityLabel?: string;
+  styleOptions?: ReadonlyArray<typeof SDF_CONTEXT_STYLE_OPTIONS[number]>;
+  opacityMin?: number;
+  opacityMax?: number;
+  opacityDisabled?: boolean;
 }) {
   const applyStyle = (style: SdfContextStyle) => {
     setValue(style);
@@ -293,7 +400,7 @@ function SdfContextStyleCard({
     });
   };
   const applyOpacity = (nextOpacity: number) => {
-    const normalized = normalizeSdfContextOpacity(nextOpacity);
+    const normalized = clampOpacity(nextOpacity, opacityMin, opacityMax);
     setOpacity(normalized);
     writeSdfContextOpacityPreference(document, normalized);
     actions.runStructureViewerAction(document, {
@@ -305,9 +412,9 @@ function SdfContextStyleCard({
   };
   return (
     <section className="structure-brief-card structure-inspector-context-style">
-      <StructureSectionHeader title="All background" detail="Context molecules" />
-      <div className="structure-inspector-style-options" role="group" aria-label="All background style">
-        {SDF_CONTEXT_STYLE_OPTIONS.map((option) => (
+      <StructureSectionHeader title={title} detail={detail} />
+      <div className="structure-inspector-style-options" role="group" aria-label={ariaLabel}>
+        {styleOptions.map((option) => (
           <button
             key={option.value}
             type="button"
@@ -320,19 +427,21 @@ function SdfContextStyleCard({
           </button>
         ))}
       </div>
-      <label className="structure-inspector-opacity-control">
-        <span>Opacity</span>
-        <input
-          type="range"
-          min={SDF_CONTEXT_OPACITY_MIN}
-          max={SDF_CONTEXT_OPACITY_MAX}
-          step="0.01"
-          value={opacity}
-          aria-label="All background opacity"
-          onInput={(event) => applyOpacity(Number(event.currentTarget.value))}
-        />
-        <strong>{Math.round(opacity * 100)}%</strong>
-      </label>
+      {opacityDisabled ? null : (
+        <label className="structure-inspector-opacity-control">
+          <span>Opacity</span>
+          <input
+            type="range"
+            min={opacityMin}
+            max={opacityMax}
+            step="0.01"
+            value={opacity}
+            aria-label={opacityLabel}
+            onInput={(event) => applyOpacity(Number(event.currentTarget.value))}
+          />
+          <strong>{Math.round(opacity * 100)}%</strong>
+        </label>
+      )}
     </section>
   );
 }
@@ -358,7 +467,7 @@ function useStructureComposition(document: ViewerDocument | null) {
         setState({
           documentId: document.id,
           loading: false,
-          summary: parseStructureComposition(text, document.extension),
+          summary: parseStructureComposition(text, inspectorCompositionExtension(document)),
           error: null,
         });
       })
@@ -385,7 +494,22 @@ function readInspectorStructureText(document: ViewerDocument) {
   if (virtualText !== null) {
     return Promise.resolve(maxBytes === undefined ? virtualText : virtualText.slice(0, maxBytes));
   }
-  return readStructureText(document.path, { maxBytes });
+  return readStructureText(inspectorCompositionPath(document), { maxBytes });
+}
+
+function inspectorCompositionPath(document: ViewerDocument) {
+  return document.dockingRequest?.receptorPath ?? document.path;
+}
+
+function inspectorCompositionExtension(document: ViewerDocument) {
+  if (!document.dockingRequest) return document.extension;
+  return extensionFromPath(document.dockingRequest.receptorPath) || document.extension;
+}
+
+function extensionFromPath(path: string) {
+  const file = fileName(path);
+  const dot = file.lastIndexOf(".");
+  return dot >= 0 ? file.slice(dot + 1).toLowerCase() : "";
 }
 
 function compositionReadLimit(document: ViewerDocument) {
@@ -551,6 +675,10 @@ function StructureBriefRow({ label, value }: BriefRow) {
 
 function plural(count: number, noun: string) {
   return count === 1 ? noun : `${noun}s`;
+}
+
+function fileName(path: string) {
+  return path.split(/[\\/]/u).pop() || path;
 }
 
 function StructureActionList({

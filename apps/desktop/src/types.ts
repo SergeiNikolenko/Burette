@@ -52,10 +52,15 @@ export type ViewerReloadOptions = {
   sdfPoseControlLabel?: string | null;
 };
 
+export type DockingSceneMode = "structureAll" | "structurePoses";
+export type DockingPoseMode = "all" | "single";
+
 export type DockingDocumentRequest = {
   receptorPath: string;
   ligandPaths: string[];
   activePose?: number | null;
+  sceneMode?: DockingSceneMode | null;
+  poseMode?: DockingPoseMode | null;
 };
 
 export type FepSetupRequest = {
