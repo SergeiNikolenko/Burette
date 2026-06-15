@@ -8,6 +8,7 @@ import { pageKind } from "./page-kinds";
 import { isMoleculeCollectionPath } from "../../lib/collection-documents";
 import { CloseIcon } from "../close-icon";
 import type { DropTargetContext } from "../../lib/drop-actions";
+import type { DockArea, DockTabKind } from "../../lib/dock";
 
 const TAB_DRAG_MIME = "application/x-burrete-tab-id";
 const TAB_REORDER_ANIMATION_MS = 170;
@@ -263,10 +264,25 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
     };
   }, [state.activeDocument, state.activeTabId]);
 
+  const dockDropTargetAtPoint = useCallback((clientX: number, clientY: number): { area: DockArea; tabKind: DockTabKind } | null => {
+    const element = typeof document === "undefined" ? null : document.elementFromPoint(clientX, clientY);
+    const dockTarget = element?.closest<HTMLElement>(".dock-panel[data-area][data-active-tab]");
+    const area = dockTarget?.dataset.area;
+    const tabKind = dockTarget?.dataset.activeTab;
+    if ((area !== "right" && area !== "bottom") || !tabKind) return null;
+    return { area, tabKind: tabKind as DockTabKind };
+  }, []);
+
   const runTabDropAtPoint = useCallback((sourceTabId: string, clientX: number, clientY: number) => {
     if (clientX <= 0 && clientY <= 0) return false;
     const payload = tabStructurePayload(sourceTabId);
     if (!payload || (payload.paths.length === 0 && payload.records.length === 0)) return false;
+    const dockTarget = dockDropTargetAtPoint(clientX, clientY);
+    if (dockTarget) {
+      actions.setStructureDragActive(false);
+      void actions.openDockPayload({ area: dockTarget.area, tabKind: dockTarget.tabKind, payload });
+      return true;
+    }
     const targetTabId = tabIdFromPoint(clientX, clientY, sourceTabId);
     const target = targetTabId
       ? dropTargetForTabId(targetTabId)
@@ -276,7 +292,7 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
     if (choices.length === 0) return false;
     actions.setStructureDragActive(false);
     return runShellDropActionChoices(actions, payload, choices, { x: clientX, y: clientY });
-  }, [actions, activeViewerDropTargetAtPoint, dropTargetForTabId, tabIdFromPoint, tabStructurePayload]);
+  }, [actions, activeViewerDropTargetAtPoint, dockDropTargetAtPoint, dropTargetForTabId, tabIdFromPoint, tabStructurePayload]);
 
   const moveDraggedTab = useCallback((tabId: string, pointerX: number) => {
     const orderedTabs = latestTabsRef.current;
