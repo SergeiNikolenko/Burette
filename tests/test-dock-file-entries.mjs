@@ -90,11 +90,11 @@ assert.deepEqual(activeTextWithDroppedStructureEntries.map((entry) => entry.key)
 ]);
 assert.ok(activeTextWithDroppedStructureEntries.some((entry) => entry.key === "text-document:text-1"));
 
-assert.deepEqual(defaultDockTabs("right").map((tab) => tab.kind), ["inspector", "text", "files"]);
+assert.deepEqual(defaultDockTabs("right").map((tab) => tab.kind), ["inspector", "descriptors", "text", "files"]);
 assert.deepEqual(
   ensureDefaultDockTabs("right", [{ id: "dock-inspector", kind: "inspector" }, { id: "dock-files", kind: "files" }])
     .map((tab) => tab.kind),
-  ["inspector", "text", "files"],
+  ["inspector", "descriptors", "text", "files"],
 );
 
 console.log("dock file entry tests passed");

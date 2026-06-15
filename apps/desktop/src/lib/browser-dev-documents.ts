@@ -15,6 +15,12 @@ type GridRecord = {
   smiles?: string;
   molblock?: string;
   props: Record<string, string>;
+  descriptors?: Record<string, {
+    label: string;
+    value: number | string | boolean | null;
+    missingKind?: string | null;
+    errorText?: string | null;
+  }>;
 };
 
 type Atom = {
@@ -53,7 +59,7 @@ const KETCHER_EDIT_MAX_BYTES = 1024 * 1024;
 const KETCHER_EDIT_MAX_ATOMS = 300;
 const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
-const GRID_ASSET_VERSION = "grid-ui-v101";
+const GRID_ASSET_VERSION = "grid-ui-v137";
 const VIEWER_ASSET_VERSION = "viewer-ui-v66";
 const REPO_ROOT = String(import.meta.env.BURRETE_REPO_ROOT || "");
 const WEB_ASSETS_BASE = fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
@@ -1229,16 +1235,54 @@ function parseDelimited(text: string, delimiter: "," | "\t"): GridRecord[] {
     ["smiles", "smile", "canonical_smiles", "cxsmiles"].includes(header.toLowerCase()),
   );
   if (smilesIndex < 0) return [];
+  const descriptorColumns = new Map<number, { id: string; label: string }>();
+  headers.forEach((header, index) => {
+    const descriptor = descriptorColumnFromHeader(header);
+    if (descriptor) descriptorColumns.set(index, descriptor);
+  });
   return rows.slice(1).flatMap((row, rowIndex) => {
     const smiles = row[smilesIndex]?.trim();
     if (!looksLikeSmiles(smiles)) return [];
     const props: Record<string, string> = {};
+    const descriptors: GridRecord["descriptors"] = {};
     headers.forEach((header, index) => {
-      if (index !== smilesIndex && row[index]?.trim()) props[header || `Column ${index + 1}`] = row[index].trim();
+      if (index === smilesIndex) return;
+      const value = row[index]?.trim();
+      const descriptor = descriptorColumns.get(index);
+      if (descriptor) {
+        descriptors[descriptor.id] = descriptorCellFromText(descriptor.label, value || "");
+      } else if (value) {
+        props[header || `Column ${index + 1}`] = value;
+      }
     });
     const name = props.name || props.Name || props.title || props.Title || `Molecule ${rowIndex + 1}`;
-    return [{ index: rowIndex, name, smiles, props }];
+    return [{
+      index: rowIndex,
+      name,
+      smiles,
+      props,
+      ...(Object.keys(descriptors).length ? { descriptors } : {}),
+    }];
   });
+}
+
+function descriptorColumnFromHeader(header: string) {
+  const match = /^(?:descriptor|mordred):(.+)$/iu.exec(header.trim());
+  if (!match) return null;
+  const id = match[1].trim();
+  if (!id) return null;
+  return { id, label: id };
+}
+
+function descriptorCellFromText(label: string, text: string) {
+  const trimmed = text.trim();
+  if (!trimmed) return { label, value: null, missingKind: "missing", errorText: null };
+  const numeric = Number(trimmed);
+  if (Number.isFinite(numeric)) return { label, value: numeric, missingKind: null, errorText: null };
+  if (/^(true|false)$/iu.test(trimmed)) {
+    return { label, value: trimmed.toLowerCase() === "true", missingKind: null, errorText: null };
+  }
+  return { label, value: trimmed, missingKind: null, errorText: null };
 }
 
 function parseDelimitedLine(line: string, delimiter: "," | "\t") {
