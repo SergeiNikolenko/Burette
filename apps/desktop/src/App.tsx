@@ -76,7 +76,7 @@ import type { TextStructureSelection } from "./lib/text-structure-selection";
 import { isTauriRuntime } from "./lib/tauri";
 import { isTemporaryDocumentPath } from "./lib/temporary-documents";
 import { calculateGridDescriptors as runGridDescriptorCalculation, type DescriptorSourcePayload, type GridDescriptorControls, type GridDescriptorJobStatus, type GridDescriptorResultRow, type GridDescriptorRunOptions } from "./lib/descriptors";
-import type { DockingDocumentRequest, FepSetupRequest, OpenDocumentsMode, OpenDocumentsResult, OpenTextFilesResult, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "./types";
+import type { DockingDocumentRequest, DockingSceneMode, FepSetupRequest, OpenDocumentsMode, OpenDocumentsResult, OpenTextFilesResult, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "./types";
 import { checkForUpdates as requestUpdateCheck, clearDismissedUpdate, dismissUpdate, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically, shouldPromptForUpdate } from "./update";
 import type { UpdatePreferences, UpdateRelease, UpdateState } from "./update";
 
@@ -1153,13 +1153,15 @@ export default function App() {
   const openDockingDocument = useCallback(async (
     targetPath: string,
     droppedPaths: string[],
-    options: { activePose?: number | null } = {},
+    options: { activePose?: number | null; sceneMode?: DockingSceneMode | null } = {},
   ) => {
     const existingDockingRequest = documents.find((document) => document.path === targetPath || document.id === targetPath)?.dockingRequest;
     const request = dockingRequestForDrop(targetPath, droppedPaths, existingDockingRequest);
     if (!request) return null;
     if (request.ligandPaths.length === 0) return null;
     request.activePose = options.activePose ?? null;
+    request.sceneMode = options.sceneMode ?? null;
+    request.poseMode = options.sceneMode === "structureAll" ? "all" : "single";
     pushStatus("Opening Molstar docking view...");
     try {
       const document = isTauriRuntime()
@@ -1167,6 +1169,9 @@ export default function App() {
         : await openBrowserDevDockingDocument(request.receptorPath, request.ligandPaths, preferences, options);
       addDocuments([document]);
       rememberRecentStructures([document]);
+      if (request.sceneMode && rightDockOpen && rightDockActiveTab === "descriptors") {
+        setDockOpen("right", false);
+      }
       setStructureDragActive(false);
       pushStatus(`Opened docking view with ${request.ligandPaths.length} ligand${request.ligandPaths.length === 1 ? "" : "s"}`);
       return document;
@@ -1175,7 +1180,7 @@ export default function App() {
       pushErrorStatus(error, "Docking view failed");
       return null;
     }
-  }, [addDocuments, documents, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
+  }, [addDocuments, documents, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, rightDockActiveTab, rightDockOpen, setDockOpen]);
 
   const openDockingStructureRecords = useCallback(async (
     receptorPath: string,
@@ -2700,6 +2705,16 @@ export default function App() {
           ? documents.find((document) => document.path === sourcePath && document.renderer === "grid2d")
           : null;
         const activePose = Math.max(0, Math.trunc(Number(body.activePose) || 0));
+        const poseMode = body.poseMode === "all" ? "all" : "single";
+        if (dockingDocument?.dockingRequest && dockingDocument.dockingRequest.poseMode !== poseMode) {
+          addBackgroundDocuments([{
+            ...dockingDocument,
+            dockingRequest: {
+              ...dockingDocument.dockingRequest,
+              poseMode,
+            },
+          }]);
+        }
         if (gridDocument) {
           setPoseReviewSelections((previous) => ({ ...previous, [gridDocument.id]: activePose }));
           notifyGridPoseReviewSelection(gridDocument.id, activePose);
@@ -3672,7 +3687,7 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, addDocuments, calculateGridDescriptors, documents, generate3DConformer, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar, writeGridPerfMetric]);
+  }, [activeDocument, addBackgroundDocuments, addDocuments, calculateGridDescriptors, documents, generate3DConformer, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar, writeGridPerfMetric]);
 
   useEffect(() => {
     if (!buildInfoLoaded || buildInfo.isDevBuild) return undefined;
