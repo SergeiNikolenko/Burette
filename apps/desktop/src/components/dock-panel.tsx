@@ -16,6 +16,7 @@ import { TextFileViewer } from "./text-file-viewer";
 import { CloseIcon } from "./close-icon";
 import { formatBytes } from "./format";
 import { StructureInfoPanel } from "./structure-info-panel";
+import { DescriptorPanel } from "./descriptor-panel";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureTextDocument } from "../lib/structure-text";
 import type { TextFileDocument, ViewerDocument } from "../types";
@@ -31,6 +32,7 @@ const dockTabIcons: Record<DockTabKind, typeof File02Icon> = {
   files: Folder01Icon,
   text: File02Icon,
   inspector: Search01Icon,
+  descriptors: Atom01Icon,
   "structure-basket": Atom01Icon,
   compare: Atom01Icon,
   jobs: File02Icon,
@@ -289,6 +291,9 @@ function DockPanelContent({
     if (area === "right" && activePageKind === "ketcher") return <KetcherInspectorPanel state={state} />;
     if (dockTextDocument) return <TextDocumentInfoPanel document={dockTextDocument} actions={actions} />;
     return <StructureInfoPanel document={dockStructureDocument} dockDrops={dockDrops} actions={actions} />;
+  }
+  if (activeTabKind === "descriptors") {
+    return <DescriptorPanel state={state} actions={actions} />;
   }
   if (activeTabKind === "structure-basket") {
     return (

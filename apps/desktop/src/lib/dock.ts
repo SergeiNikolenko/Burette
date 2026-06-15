@@ -8,6 +8,7 @@ export type DockTabKind =
   | "files"
   | "text"
   | "inspector"
+  | "descriptors"
   | "structure-basket"
   | "jobs"
   | "logs"
@@ -73,6 +74,7 @@ export const DOCK_TAB_LABELS: Record<DockTabKind, string> = {
   files: "Files",
   text: "Text",
   inspector: "Info",
+  descriptors: "Descriptors",
   "structure-basket": "Structure Basket",
   jobs: "Jobs",
   logs: "Logs",
@@ -83,6 +85,7 @@ export const DOCK_TAB_LABELS: Record<DockTabKind, string> = {
 
 export const RIGHT_DOCK_DEFAULT_TABS: DockTabKind[] = [
   "inspector",
+  "descriptors",
   "text",
   "files",
 ];
@@ -93,6 +96,7 @@ export const BOTTOM_DOCK_DEFAULT_TABS: DockTabKind[] = [
 
 const RIGHT_DOCK_TAB_CATALOG: DockTabKind[] = [
   "inspector",
+  "descriptors",
   "text",
   "files",
 ];

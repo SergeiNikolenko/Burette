@@ -1,5 +1,6 @@
 pub(crate) mod agent_integration;
 pub(crate) mod chemical_editors;
+pub(crate) mod descriptors;
 pub(crate) mod documents;
 pub(crate) mod grid;
 pub(crate) mod preview_cache;

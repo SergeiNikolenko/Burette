@@ -477,6 +477,88 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   background-color: var(--buret-molstar-hover-background) !important;
   border-color: transparent !important;
 }
+.buret-molstar-molecule-preview {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 1200;
+  width: min(148px, calc(100vw - 32px));
+  min-width: 96px;
+  min-height: 126px;
+  max-width: min(340px, calc(100vw - 16px));
+  max-height: min(420px, calc(100vh - 16px));
+  box-sizing: border-box;
+  padding: 6px;
+  overflow: hidden;
+  resize: both;
+  pointer-events: auto;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  color: #1d1d1f;
+  background: #ffffff;
+  box-shadow: 0 10px 28px var(--buret-molstar-shadow);
+  cursor: grab;
+  -webkit-backdrop-filter: blur(18px) saturate(1.1);
+  backdrop-filter: blur(18px) saturate(1.1);
+}
+.buret-molstar-molecule-preview:active {
+  cursor: grabbing;
+}
+.buret-molstar-molecule-preview:focus {
+  outline: 2px solid rgba(0, 122, 255, 0.36);
+  outline-offset: 2px;
+}
+.buret-molstar-molecule-preview-image {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: calc(100% - 34px);
+  min-height: 88px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #ffffff;
+}
+.buret-molstar-molecule-preview-image svg,
+.buret-molstar-molecule-preview-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.buret-molstar-molecule-preview-image svg {
+  padding: 9px;
+}
+.buret-molstar-molecule-preview-bonds line {
+  stroke: currentColor;
+  stroke-width: 0.085;
+  stroke-linecap: round;
+}
+.buret-molstar-molecule-preview-atoms text {
+  font: 0.42px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-weight: 700;
+  letter-spacing: 0;
+  paint-order: stroke;
+  stroke: #ffffff;
+  stroke-width: 0.11px;
+}
+.buret-molstar-molecule-preview-title {
+  margin-top: 5px;
+  overflow: hidden;
+  color: #1d1d1f;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.buret-molstar-molecule-preview-subtitle {
+  overflow: hidden;
+  color: #6e6e73;
+  font-size: 9.5px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 #status {
   position: fixed; left: 50%; right: auto; bottom: 16px; top: auto;
   transform: translateX(-50%);
