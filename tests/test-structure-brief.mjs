@@ -198,6 +198,63 @@ for (const extension of ["mol", "mol2", "smiles", "smi"]) {
   assert.equal(rowValue(usefulElements(document(extension)), "Properties"), "File metadata", extension);
 }
 
+const sdfComposition = parseStructureComposition([
+  "Molecule A",
+  "  Burette",
+  "",
+  "  2  1  0  0  0  0            999 V2000",
+  "    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0",
+  "    1.2000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0",
+  "  1  2  1  0  0  0  0",
+  "M  END",
+  "$$$$",
+  "Molecule B",
+  "  Burette",
+  "",
+  "  3  2  0  0  0  0            999 V2000",
+  "    0.0000    0.0000    0.0000 N   0  0  0  0  0  0  0  0  0  0  0  0",
+  "    1.2000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0",
+  "    2.4000    0.0000    0.0000 F   0  0  0  0  0  0  0  0  0  0  0  0",
+  "  1  2  1  0  0  0  0",
+  "  2  3  1  0  0  0  0",
+  "M  END",
+  "$$$$",
+].join("\n"), "sdf");
+assert.ok(sdfComposition);
+assert.equal(rowValue(sdfComposition.rows, "Molecules"), "2");
+assert.equal(rowValue(sdfComposition.rows, "Atoms"), "5");
+assert.equal(rowValue(sdfComposition.componentRows, "Molecule A"), "2 atoms / 1 bond");
+assert.equal(rowValue(sdfComposition.componentRows, "Molecule B"), "3 atoms / 2 bonds");
+assert.deepEqual(sdfComposition.componentRows.find((row) => row.label === "Molecule A")?.action, {
+  type: "set_sdf_molecule",
+  label: "Show Molecule A",
+  index: 0,
+});
+assert.deepEqual(sdfComposition.componentRows.find((row) => row.label === "Molecule B")?.action, {
+  type: "set_sdf_molecule",
+  label: "Show Molecule B",
+  index: 1,
+});
+const duplicateTitleSdfComposition = parseStructureComposition([
+  "RDKit 2D",
+  "  Burette",
+  "",
+  "  1  0  0  0  0  0            999 V2000",
+  "    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0",
+  "M  END",
+  "$$$$",
+  "RDKit 2D",
+  "  Burette",
+  "",
+  "  1  0  0  0  0  0            999 V2000",
+  "    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0",
+  "M  END",
+  "$$$$",
+].join("\n"), "sdf");
+assert.ok(duplicateTitleSdfComposition);
+assert.equal(rowValue(duplicateTitleSdfComposition.componentRows, "Molecule 1"), "1 atom / 0 bonds");
+assert.equal(rowValue(duplicateTitleSdfComposition.componentRows, "Molecule 2"), "1 atom / 0 bonds");
+
 for (const extension of ["csv", "tsv"]) {
   assert.equal(documentKind(document(extension)), "Molecule collection", extension);
   assert.equal(rowValue(usefulElements(document(extension)), "Table"), "Rows and columns available in grid", extension);
@@ -330,6 +387,22 @@ const miniSdf = parseStructureComposition(await readFile(join(fixturesRoot, "min
 assert.ok(miniSdf);
 assert.equal(rowValue(miniSdf.rows, "Molecules"), "1");
 assert.match(rowValue(miniSdf.rows, "Atoms"), /^\d+$/);
+
+const shiftedCountsSdf = parseStructureComposition([
+  "shifted counts",
+  "  RDKit",
+  "",
+  "",
+  "  2  1  0  0  0  0            999 V2000",
+  "    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0",
+  "    1.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0",
+  "  1  2  1  0",
+  "M  END",
+  "$$$$",
+].join("\n"), "sdf");
+assert.ok(shiftedCountsSdf);
+assert.equal(rowValue(shiftedCountsSdf.rows, "Atoms"), "2");
+assert.equal(rowValue(shiftedCountsSdf.rows, "Bonds"), "1");
 
 assert.equal(rendererLabel("molstar"), "Mol*");
 assert.equal(rendererLabel("grid2d"), "Grid");

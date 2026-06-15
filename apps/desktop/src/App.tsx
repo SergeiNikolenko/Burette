@@ -1415,7 +1415,9 @@ export default function App() {
         action,
       },
     }, "*");
-    pushStatus(action.label);
+    if (!("notify" in action) || action.notify !== false) {
+      pushStatus(action.label);
+    }
   }, [pushStatus]);
 
   const generate3DConformer = useCallback(async (document: ViewerDocument, mode: ConformerGenerationMode = "single", molstarStyle?: MolstarStylePreference | null) => {
@@ -2463,6 +2465,7 @@ export default function App() {
           title?: string | null;
           extension?: string | null;
           textBase64?: string | null;
+          controlLabel?: string | null;
           orientationRef?: string | null;
           preset?: string | null;
           text?: string | null;
@@ -3153,6 +3156,9 @@ export default function App() {
         const requestedReceptorPath = typeof body.receptorPath === "string"
           ? body.receptorPath.trim()
           : "";
+        const controlLabel = typeof body.controlLabel === "string" && body.controlLabel.trim()
+          ? body.controlLabel.trim()
+          : "Molecule";
         const receptorDocument = requestedReceptorPath
           ? documents.find((document) => (
             document.path === requestedReceptorPath &&
@@ -3167,7 +3173,7 @@ export default function App() {
           const bytes = Uint8Array.from(atob(textBase64), (char) => char.charCodeAt(0));
           const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
           if (!text.trim()) {
-            pushErrorStatus("Selected molecules do not have SDF structure data for Molstar.", "Molstar view failed");
+            pushErrorStatus("Selected molecules do not have structure data for Molstar.", "Molstar view failed");
             return;
           }
           const molstarPreferences = { ...preferences, rendererMode: "molstar" as const };
@@ -3179,14 +3185,14 @@ export default function App() {
                   text,
                 },
                 preferences: molstarPreferences,
-                reloadOptions: {},
+                reloadOptions: { sdfPoseControlLabel: controlLabel },
               })
             : await openBrowserDevTextDocument(
                 title,
                 "sdf",
                 text,
                 molstarPreferences,
-                {},
+                { sdfPoseControlLabel: controlLabel },
               );
           if (receptorDocument && document.path) {
             pushStatus("Opening selected molecules in Molstar docking view...");
