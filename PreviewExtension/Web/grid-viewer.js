@@ -4,6 +4,8 @@
   const root = document.getElementById('app');
   const status = document.getElementById('status');
   const CARD_MIN_STORAGE_KEY = 'buret.grid.cardMin';
+  const GRID_VIEW_MODE_STORAGE_KEY = 'buret.grid.viewMode';
+  const TABLE_HIDDEN_COLUMNS_STORAGE_KEY = 'buret.grid.tableHiddenColumns';
   const CARD_RENDERER_STORAGE_KEY = 'buret.grid.cardRenderer';
   const RDKIT_USE_INPUT_COORDS_STORAGE_KEY = 'buret.grid.rdkitUseInputCoords';
   const DEFAULT_XYZRENDER_PRESETS = [
@@ -39,6 +41,9 @@
   const GRID_WINDOW_OVERSCAN_ROWS = 4;
   const GRID_MAX_WINDOW_ROWS = 18;
   const GRID_MIN_ESTIMATED_ROW_HEIGHT = 190;
+  const TABLE_COLUMN_PICKER_LIMIT = 240;
+  const TABLE_DEFAULT_COLUMN_WIDTH = 118;
+  const TABLE_COLUMN_OVERSCAN_PX = 360;
   const RDKIT_SVG_CACHE_LIMIT = 220;
   const XYZRENDER_CARD_CACHE_LIMIT = 180;
   const STRUCTURE_DRAG_MIME = 'application/x-burrete-structure-paths';
@@ -59,13 +64,29 @@
     smartsError: '',
     smartsMatches: new Map(),
     sort: 'index',
+    descriptorFilters: [],
+    descriptorSort: null,
     showProperties: false,
+    viewMode: storedGridViewMode(),
+    tableColumnPanelOpen: false,
+    tableFiltersOpen: false,
+    tableColumnQuery: '',
+    tableColumnVisibleLimit: TABLE_COLUMN_PICKER_LIMIT,
+    tableHiddenColumns: storedStringSet(TABLE_HIDDEN_COLUMNS_STORAGE_KEY),
+    tableColumnFilters: {},
+    tableColumnCatalogCache: null,
+    tableColumnPanelOutsideController: null,
+    tableScrollLeft: 0,
+    tableColumnScrollFrame: 0,
+    remoteDescriptorIds: [],
+    tableFilterTimer: 0,
     cardRenderer: storedCardRenderer(),
     xyzrenderPreset: null,
     rdkitUseInputCoords: storedBoolean(RDKIT_USE_INPUT_COORDS_STORAGE_KEY, false),
     cardMin: storedOptionalInteger(CARD_MIN_STORAGE_KEY, MIN_CARD_MIN, MAX_CARD_MIN),
     hiddenRows: new Set(),
     selected: new Set(),
+    ketcherOpenPendingUntil: 0,
     selectionAnchorIndex: null,
     selectionKeydownHandler: null,
     svgCache: new Map(),
@@ -112,6 +133,7 @@
     contextMenuOutsideHandler: null,
     contextMenuKeyHandler: null,
     generating3d: false,
+    tableMoleculePreview: null,
     railDragging: false,
     pendingGridScrollIndex: null,
     pendingGridRailPosition: null
@@ -256,6 +278,28 @@
         void refreshRemote(config());
         return;
       }
+      if (body.type === 'gridDescriptorControls') {
+        applyDescriptorGridControls(body, config());
+        return;
+      }
+      if (body.type === 'gridDescriptorResults') {
+        applyDescriptorGridResults(body, config());
+        return;
+      }
+      if (body.type === 'gridGenerate3DStarted') {
+        setGridGenerate3DPending(true);
+        setStatus('[grid] Generating 3D conformers.');
+        return;
+      }
+      if (body.type === 'gridGenerate3DFinished') {
+        setGridGenerate3DPending(false);
+        return;
+      }
+      if (body.type === 'gridGenerate3DError') {
+        setGridGenerate3DPending(false);
+        setStatus(body.error || '[grid] 3D generation failed.', 'error');
+        return;
+      }
       if (body.type === 'poseReviewSelection') {
         selectPoseReviewRow(body.activePose, config());
         return;
@@ -290,20 +334,6 @@
       }
       if (body.type === 'gridMoleculeExportError') {
         setStatus(body.error || '[grid] Export molecule failed.', 'error');
-        return;
-      }
-      if (body.type === 'gridGenerate3DStarted') {
-        setGridGenerate3DPending(true);
-        setStatus('[grid] Generating 3D conformers.');
-        return;
-      }
-      if (body.type === 'gridGenerate3DFinished') {
-        setGridGenerate3DPending(false);
-        return;
-      }
-      if (body.type === 'gridGenerate3DError') {
-        setGridGenerate3DPending(false);
-        setStatus(body.error || '[grid] 3D generation failed.', 'error');
         return;
       }
       const requestId = String(body.requestId || '');
@@ -341,6 +371,7 @@
     state.recordsTotalHint = result.recordsTotalHint == null ? null : Number(result.recordsTotalHint || 0);
     state.indexReady = result.indexReady !== false;
     state.indexing = result.indexing === true || !state.indexReady;
+    state.remoteDescriptorIds = Array.isArray(result.descriptorIds) ? result.descriptorIds.map(String) : [];
   }
 
   function scheduleIndexPoll(cfg) {
@@ -480,6 +511,30 @@
     } catch (_) {
       return 'rdkit';
     }
+  }
+
+  function storedGridViewMode() {
+    try {
+      return window.localStorage?.getItem(GRID_VIEW_MODE_STORAGE_KEY) === 'table' ? 'table' : 'cards';
+    } catch (_) {
+      return 'cards';
+    }
+  }
+
+  function storedStringSet(key) {
+    try {
+      const raw = window.localStorage?.getItem(key);
+      const values = JSON.parse(raw || '[]');
+      return new Set(Array.isArray(values) ? values.map(value => String(value || '')).filter(Boolean) : []);
+    } catch (_) {
+      return new Set();
+    }
+  }
+
+  function storeStringSet(key, values) {
+    try {
+      window.localStorage?.setItem(key, JSON.stringify([...values].sort()));
+    } catch (_) {}
   }
 
   function supportsXyzrenderCards(cfg) {
@@ -644,6 +699,7 @@
       selectionEnabled: caps.selection,
       substructureSearch: caps.substructureSearch,
       supportsXyzrenderCards: supportsXyzrenderCards(cfg),
+      viewMode: state.viewMode,
       cardRenderer: state.cardRenderer,
       xyzrenderPreset: currentXyzrenderPreset(cfg),
       xyzrenderPresetOptions: xyzrenderPresetOptions(cfg),
@@ -679,10 +735,14 @@
       onUndoGridEdit() { undoLastGridEdit(cfg); },
       onExportSmiles() { exportSmiles(cfg); },
       onExportCSV() { exportCSV(cfg); },
+      onViewModeChange(value) { setGridViewMode(value, cfg); },
+      onToggleTableColumns() { toggleTableColumnPanel(cfg); },
+      onToggleTableFilters() { toggleTableFilters(cfg); },
       onSetCardRenderer(value) { setCardRenderer(value, cfg); },
       onXyzrenderPresetChange(value) { setXyzrenderPreset(value, cfg); },
       onOpenKetcher() { requestSelectedKetcherDocument(cfg); },
       onGenerate3D() { requestSelected3DGeneration(cfg); },
+      onCalculateSelectedDescriptors() { requestSelectedDescriptorCalculation(cfg); },
       onRendererSwitch(value) { requestRendererSwitch(value, cfg); },
       onRdkitUseInputCoordsChange(checked) {
         state.rdkitUseInputCoords = checked === true;
@@ -726,10 +786,14 @@
     }
     const propertiesToggle = document.getElementById('show-properties');
     if (propertiesToggle) {
+      propertiesToggle.hidden = state.viewMode !== 'cards';
       propertiesToggle.classList.toggle('active', state.showProperties);
       propertiesToggle.setAttribute('aria-pressed', state.showProperties ? 'true' : 'false');
     }
     syncCardRendererSwitch();
+    syncGridViewModeSwitch();
+    syncTableColumnsButton();
+    syncTableFiltersButtons();
     syncXyzrenderPresetControl(currentCfg);
     syncRdkitCoordinatesControl();
     syncGridEditControls();
@@ -816,12 +880,201 @@
     render(cfg);
   }
 
+  function setGridViewMode(value, cfg) {
+    const next = value === 'table' ? 'table' : 'cards';
+    if (state.viewMode === next) return;
+    state.viewMode = next;
+    store(GRID_VIEW_MODE_STORAGE_KEY, next);
+    if (next !== 'table') {
+      state.tableColumnPanelOpen = false;
+      state.tableFiltersOpen = false;
+      state.tableColumnPanelOutsideController?.abort();
+      state.tableColumnPanelOutsideController = null;
+    }
+    applyGridPreferences(cfg);
+    void render(cfg);
+  }
+
+  function toggleTableColumnPanel(cfg) {
+    if (state.viewMode !== 'table') {
+      state.viewMode = 'table';
+      store(GRID_VIEW_MODE_STORAGE_KEY, 'table');
+    }
+    if (state.tableColumnPanelOpen) {
+      closeTableColumnPanel(cfg);
+      return;
+    }
+    state.tableColumnPanelOpen = !state.tableColumnPanelOpen;
+    applyGridPreferences(cfg);
+    void render(cfg);
+  }
+
+  function toggleTableFilters(cfg) {
+    if (state.viewMode !== 'table') {
+      state.viewMode = 'table';
+      store(GRID_VIEW_MODE_STORAGE_KEY, 'table');
+    }
+    state.tableFiltersOpen = !state.tableFiltersOpen;
+    applyGridPreferences(cfg);
+    void render(cfg);
+  }
+
+  function closeTableColumnPanel(cfg) {
+    if (!state.tableColumnPanelOpen) return;
+    state.tableColumnPanelOpen = false;
+    state.tableColumnPanelOutsideController?.abort();
+    state.tableColumnPanelOutsideController = null;
+    applyGridPreferences(cfg);
+    void render(cfg);
+  }
+
+  function applyDescriptorGridControls(body, cfg) {
+    state.descriptorFilters = normalizeDescriptorFilters(body.filters || body.descriptorFilters);
+    state.descriptorSort = normalizeDescriptorSort(body.descriptorSort);
+    setStatus('[grid] Descriptor controls applied.');
+    if (state.remoteMode) void refreshRemote(cfg);
+    else refresh(cfg);
+  }
+
+  function applyDescriptorGridResults(body, cfg) {
+    const rows = Array.isArray(body.rows) ? body.rows : [];
+    const descriptorIds = new Set(state.remoteDescriptorIds || []);
+    let applied = 0;
+    for (const result of rows) {
+      const index = Number(result?.index);
+      if (!Number.isFinite(index)) continue;
+      const target = state.all.find(row => Number(row.index) === index);
+      if (!target) continue;
+      const descriptors = normalizeDescriptorResultMap(result.descriptors);
+      const ids = Object.keys(descriptors);
+      if (!ids.length) continue;
+      target.descriptors = { ...(target.descriptors || {}), ...descriptors };
+      ids.forEach(id => descriptorIds.add(id));
+      applied += 1;
+    }
+    state.remoteDescriptorIds = Array.from(descriptorIds).sort((left, right) => left.localeCompare(right));
+    if (Array.isArray(window.BurreteGridRecords)) window.BurreteGridRecords = state.all;
+    invalidateTableColumnCatalog();
+    refreshOpenMoleculeDetail(cfg);
+    setStatus(`[grid] Applied descriptors to ${applied.toLocaleString()} molecule${applied === 1 ? '' : 's'}.`);
+    refresh(cfg);
+  }
+
+  function normalizeDescriptorResultMap(value) {
+    if (!value || typeof value !== 'object') return {};
+    const descriptors = {};
+    for (const [id, cell] of Object.entries(value)) {
+      if (!id || !cell || typeof cell !== 'object') continue;
+      descriptors[id] = {
+        label: String(cell.label || cell.id || id),
+        value: cell.value === undefined ? null : cell.value,
+        missingKind: cell.missingKind ?? null,
+        errorText: cell.errorText ?? null
+      };
+    }
+    return descriptors;
+  }
+
+  function normalizeDescriptorFilters(filters) {
+    if (!Array.isArray(filters)) return [];
+    return filters
+      .map(filter => {
+        const id = String(filter?.id || '').trim();
+        if (!id) return null;
+        const min = Number(filter?.min);
+        const max = Number(filter?.max);
+        const normalized = { id };
+        if (Number.isFinite(min)) normalized.min = min;
+        if (Number.isFinite(max)) normalized.max = max;
+        return normalized.min === undefined && normalized.max === undefined ? null : normalized;
+      })
+      .filter(Boolean);
+  }
+
+  function normalizeDescriptorSort(sort) {
+    const id = String(sort?.id || '').trim();
+    if (!id) return null;
+    return {
+      id,
+      direction: sort?.direction === 'desc' ? 'desc' : 'asc'
+    };
+  }
+
+  function gridFetchPayload(fields) {
+    return {
+      ...fields,
+      columnFilters: remoteTableColumnFilters(),
+      descriptorFilters: mergedDescriptorFilters(),
+      descriptorSort: state.descriptorSort
+    };
+  }
+
+  function remoteTableColumnFilters() {
+    const filters = [];
+    for (const [columnId, filter] of Object.entries(state.tableColumnFilters || {})) {
+      if (!filter || columnId.startsWith('descriptor:')) continue;
+      const row = { id: columnId, filterType: filter.type === 'number' ? 'number' : 'text' };
+      if (row.filterType === 'number') {
+        const min = Number(filter.min);
+        const max = Number(filter.max);
+        if (Number.isFinite(min)) row.min = min;
+        if (Number.isFinite(max)) row.max = max;
+        if (row.min === undefined && row.max === undefined) continue;
+      } else {
+        const text = String(filter.text || '').trim();
+        if (!text) continue;
+        row.text = text;
+      }
+      filters.push(row);
+    }
+    return filters;
+  }
+
+  function mergedDescriptorFilters() {
+    const merged = [...state.descriptorFilters];
+    for (const [columnId, filter] of Object.entries(state.tableColumnFilters || {})) {
+      if (!columnId.startsWith('descriptor:') || filter?.type !== 'number') continue;
+      const id = columnId.slice('descriptor:'.length);
+      const min = Number(filter.min);
+      const max = Number(filter.max);
+      const row = { id };
+      if (Number.isFinite(min)) row.min = min;
+      if (Number.isFinite(max)) row.max = max;
+      if (row.min !== undefined || row.max !== undefined) merged.push(row);
+    }
+    return merged;
+  }
+
   function syncCardRendererSwitch() {
     document.body.dataset.buretGridCardRenderer = state.cardRenderer;
     root.querySelectorAll('[data-buret-grid-card-renderer]').forEach(button => {
       const active = button.getAttribute('data-buret-grid-card-renderer') === state.cardRenderer;
       button.classList.toggle('active', active);
       button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
+  function syncGridViewModeSwitch() {
+    document.body.dataset.buretGridViewMode = state.viewMode;
+    root.querySelectorAll('[data-buret-grid-view-mode]').forEach(button => {
+      const active = button.getAttribute('data-buret-grid-view-mode') === state.viewMode;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
+  function syncTableColumnsButton() {
+    const button = document.getElementById('table-columns');
+    if (!button) return;
+    button.hidden = state.viewMode !== 'table';
+    button.classList.toggle('active', state.tableColumnPanelOpen);
+    button.setAttribute('aria-pressed', state.tableColumnPanelOpen ? 'true' : 'false');
+  }
+
+  function syncTableFiltersButtons() {
+    root.querySelectorAll('[data-buret-table-filter-toggle]').forEach(button => {
+      button.classList.toggle('active', state.tableFiltersOpen);
+      button.setAttribute('aria-pressed', state.tableFiltersOpen ? 'true' : 'false');
     });
   }
 
@@ -885,12 +1138,10 @@
       setStatus('[grid] Select one or more molecules before opening Molstar.', 'error');
       return;
     }
-    setStatus(rows.length > 1
-      ? '[grid] Aligning selected molecules for Molstar...'
-      : '[grid] Preparing selected molecule for Molstar...');
+    if (rows.length > 1) setStatus('[grid] Aligning selected molecules for Molstar.');
     const records = await sdfRecordTextsForMolstar(rows);
     if (!records.length) {
-      setStatus('[grid] Selected molecules do not have structure data for Molstar.', 'error');
+      setStatus('[grid] Selected molecules do not have SDF structure data for Molstar.', 'error');
       return;
     }
     const title = records.length === 1
@@ -908,10 +1159,11 @@
   }
 
   async function requestSingleMolstarDocument(row, cfg) {
+    const records = await sdfRecordTextsForMolstar([row]);
+    const record = records[0] || null;
     const label = row?.name || `Molecule ${Number(row?.index) + 1 || 1}`;
-    const record = await sdfRecordTextForMolstar(row);
     if (!record) {
-      setStatus(`[grid] ${label} does not have structure data for Molstar.`, 'error');
+      setStatus(`[grid] ${label} does not have SDF structure data for Molstar.`, 'error');
       return;
     }
     const receptorPath = String(cfg?.dockingReceptorPath || '').trim();
@@ -921,12 +1173,15 @@
       title,
       extension: 'sdf',
       textBase64: textToBase64(record),
+      controlLabel: 'Molecule',
       receptorPath: receptorPath || null
     });
     setStatus(`[grid] Opening ${label} in Molstar.`);
   }
 
   function requestSelectedKetcherDocument(cfg) {
+    const now = Date.now();
+    if (now < state.ketcherOpenPendingUntil) return;
     const rows = selectedMolstarRows();
     if (!rows.length) {
       setStatus('[grid] Select one or more molecules before opening Ketcher.', 'error');
@@ -951,7 +1206,18 @@
       documentId: cfg?.documentId || null,
       fragments
     });
+    state.ketcherOpenPendingUntil = now + 1200;
+    updateChrome(cfg);
+    window.setTimeout(() => updateChrome(cfg), 1250);
     setStatus(`[grid] Opening ${fragments.length.toLocaleString()} selected molecule${fragments.length === 1 ? '' : 's'} in Ketcher.`);
+  }
+
+  function selectedMolstarRows() {
+    if (!state.selected.size) return [];
+    const pool = state.remoteMode ? state.rows : state.all;
+    return pool
+      .filter(row => state.selected.has(Number(row.index)))
+      .sort((a, b) => Number(a.index) - Number(b.index));
   }
 
   function requestSelected3DGeneration(cfg) {
@@ -1023,7 +1289,7 @@
     if (label) label.textContent = state.generating3d ? 'Generating...' : 'Generate 3D';
   }
 
-  function selectedMolstarRows() {
+  function selectedDescriptorRows() {
     if (!state.selected.size) return [];
     const pool = state.remoteMode ? state.rows : state.all;
     return pool
@@ -1031,7 +1297,35 @@
       .sort((a, b) => Number(a.index) - Number(b.index));
   }
 
-  async function sdfRecordTextForMolstar(row) {
+  function requestSelectedDescriptorCalculation(cfg) {
+    const rows = selectedDescriptorRows();
+    if (!rows.length) {
+      setStatus('[grid] Select one or more molecules before calculating descriptors.', 'error');
+      return;
+    }
+    requestDescriptorCalculationForRows(rows, cfg);
+  }
+
+  function requestDescriptorCalculationForRow(row, cfg) {
+    requestDescriptorCalculationForRows([row], cfg);
+  }
+
+  function requestDescriptorCalculationForRows(rows, cfg) {
+    const rowIndexes = rows
+      .map(row => Math.trunc(Number(row?.index)))
+      .filter(index => Number.isFinite(index) && index >= 0);
+    if (!rowIndexes.length) {
+      setStatus('[grid] No molecule rows are available for descriptor calculation.', 'error');
+      return;
+    }
+    post('calculateGridDescriptors', `[grid] Calculate descriptors for ${rowIndexes.length} molecule${rowIndexes.length === 1 ? '' : 's'}.`, {
+      documentId: cfg?.documentId || null,
+      rowIndexes
+    });
+    setStatus(`[grid] Calculating descriptors for ${rowIndexes.length.toLocaleString()} molecule${rowIndexes.length === 1 ? '' : 's'}.`);
+  }
+
+  function sdfRecordTextForMolstar(row) {
     const record = gridDragRecord(row);
     if (!record) return null;
     if (record.inputExtension !== 'sdf') return smilesRecordTextForMolstar(row);
@@ -1041,6 +1335,10 @@
   }
 
   async function smilesRecordTextForMolstar(row) {
+    const molblock = String(row?.molblock || '').trimEnd();
+    if (molblock.trim()) {
+      return sdfRecordFromMolblock(molblock);
+    }
     const smiles = String(row?.smiles || '').trim();
     if (!smiles) return null;
     let mol = null;
@@ -1211,6 +1509,7 @@
   }
 
   function refresh(cfg) {
+    resetGridWindowForNewResultSet();
     if (state.remoteMode) {
       void refreshRemote(cfg);
       return;
@@ -1220,7 +1519,7 @@
     const textRows = query
       ? allRows.filter(row => normalize([row.name, row.smiles, ...Object.entries(row.props || {}).flat()].join('\n')).includes(query))
       : allRows.slice();
-    state.rows = filterBySMARTS(textRows);
+    state.rows = filterByTableColumnControls(filterByDescriptorControls(filterBySMARTS(textRows)));
     if (shouldFallbackSMARTSToTextSearch()) {
       const fallbackQuery = normalize(state.query);
       state.smartsError = '';
@@ -1228,10 +1527,56 @@
       state.rows = fallbackQuery
         ? allRows.filter(row => normalize([row.name, row.smiles, ...Object.entries(row.props || {}).flat()].join('\n')).includes(fallbackQuery))
         : allRows.slice();
+      state.rows = filterByTableColumnControls(filterByDescriptorControls(state.rows));
     }
-    state.rows.sort((a, b) => compare(a, b, state.sort));
+    state.rows.sort((a, b) => compareWithDescriptorSort(a, b));
     state.totalRows = state.rows.length;
     render(cfg);
+  }
+
+  function resetGridWindowForNewResultSet() {
+    cancelVirtualWindowRender();
+    state.windowStart = 0;
+    state.windowEnd = 0;
+    state.renderedCount = 0;
+    state.visibleCount = 0;
+    const grid = document.getElementById('grid');
+    if (!grid) return;
+    const top = grid.getBoundingClientRect().top + scrollTop();
+    if (scrollTop() > top) window.scrollTo({ top, left: window.scrollX || 0, behavior: 'auto' });
+  }
+
+  function filterByDescriptorControls(rows) {
+    if (!state.descriptorFilters.length) return rows;
+    return rows.filter(row => state.descriptorFilters.every(filter => {
+      const value = descriptorNumericValue(row.descriptors?.[filter.id]);
+      if (!Number.isFinite(value)) return false;
+      if (Number.isFinite(filter.min) && value < filter.min) return false;
+      if (Number.isFinite(filter.max) && value > filter.max) return false;
+      return true;
+    }));
+  }
+
+  function filterByTableColumnControls(rows) {
+    const filters = Object.entries(state.tableColumnFilters || {});
+    if (!filters.length) return rows;
+    return rows.filter(row => filters.every(([columnId, filter]) => tableColumnFilterMatches(row, columnId, filter)));
+  }
+
+  function tableColumnFilterMatches(row, columnId, filter) {
+    if (!filter) return true;
+    if (filter.type === 'number') {
+      const value = tableColumnNumericValue(row, columnId);
+      if (!Number.isFinite(value)) return false;
+      const min = Number(filter.min);
+      const max = Number(filter.max);
+      if (Number.isFinite(min) && value < min) return false;
+      if (Number.isFinite(max) && value > max) return false;
+      return true;
+    }
+    const text = String(filter.text || '').trim().toLowerCase();
+    if (!text) return true;
+    return tableColumnDisplayValue(row, columnId).toLowerCase().includes(text);
   }
 
   function filterBySMARTS(rows) {
@@ -1288,6 +1633,26 @@
       numeric: true,
       sensitivity: 'base'
     }) || Number(a.index) - Number(b.index);
+  }
+
+  function compareWithDescriptorSort(a, b) {
+    if (state.descriptorSort?.id) {
+      const left = descriptorNumericValue(a.descriptors?.[state.descriptorSort.id]);
+      const right = descriptorNumericValue(b.descriptors?.[state.descriptorSort.id]);
+      const leftFinite = Number.isFinite(left);
+      const rightFinite = Number.isFinite(right);
+      if (leftFinite && rightFinite && left !== right) {
+        return state.descriptorSort.direction === 'desc' ? right - left : left - right;
+      }
+      if (leftFinite !== rightFinite) return leftFinite ? -1 : 1;
+    }
+    return compare(a, b, state.sort);
+  }
+
+  function descriptorNumericValue(value) {
+    if (!value || value.errorText || value.missingKind) return Number.NaN;
+    const numeric = Number(value.value);
+    return Number.isFinite(numeric) ? numeric : Number.NaN;
   }
 
   function initInfiniteLoading(cfg) {
@@ -1347,7 +1712,7 @@
     if (!state.rows.length) {
       grid.innerHTML = '<div class="buret-empty">No molecules match this search.</div>';
       updateChrome(cfg);
-      post('ready', 'ready');
+      post('ready', '');
       return;
     }
     await renderVirtualWindow(cfg, token, { force: true });
@@ -1374,6 +1739,7 @@
     state.smartsError = '';
     state.smartsMatches = new Map();
     state.rows = [];
+    invalidateTableColumnCatalog();
     state.totalRows = 0;
     state.renderedCount = 0;
     state.visibleCount = 0;
@@ -1387,6 +1753,7 @@
         if (token !== state.token) return;
         if (!shouldFallbackSMARTSToTextSearch()) {
           state.rows = matches;
+          invalidateTableColumnCatalog();
           state.totalRows = matches.length;
           state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
           await renderVirtualWindow(cfg, token, { force: true });
@@ -1395,14 +1762,15 @@
         state.smartsError = '';
         state.smartsMatches = new Map();
       }
-      const result = await hostRequest('gridFetchPage', {
+      const result = await hostRequest('gridFetchPage', gridFetchPayload({
         query: state.query || '',
         sort: state.sort || 'index',
         offset: 0,
         limit: loadBatchSize(cfg)
-      });
+      }));
       if (token !== state.token) return;
       state.rows = applyVirtualGridEdits(Array.isArray(result.rows) ? result.rows : []);
+      invalidateTableColumnCatalog();
       applyGridPageState(result);
       state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
       await renderVirtualWindow(cfg, token, { force: true });
@@ -1432,12 +1800,12 @@
       const limit = Math.max(120, loadBatchSize(cfg));
       while (total === null || offset < total) {
         if (token !== state.token) return matches;
-        const result = await hostRequest('gridFetchPage', {
+        const result = await hostRequest('gridFetchPage', gridFetchPayload({
           query: '',
           sort: state.sort || 'index',
           offset,
           limit
-        });
+        }));
         const pageRows = Array.isArray(result.rows) ? result.rows : [];
         applyGridPageState(result);
         total = Number(result.totalRows || 0);
@@ -1546,16 +1914,17 @@
     const token = state.token;
     state.remoteLoading = true;
     try {
-      const result = await hostRequest('gridFetchPage', {
+      const result = await hostRequest('gridFetchPage', gridFetchPayload({
         query: state.query || '',
         sort: state.sort || 'index',
         offset: state.rows.length,
         limit: loadBatchSize(cfg)
-      });
+      }));
       if (token !== state.token) return;
       const nextRows = applyVirtualGridEdits(Array.isArray(result.rows) ? result.rows : []);
       applyGridPageState(result);
       state.rows.push(...nextRows);
+      if (nextRows.length) invalidateTableColumnCatalog();
       state.visibleCount = Math.min(state.rows.length, state.visibleCount + loadBatchSize(cfg));
       await renderVirtualWindow(cfg, state.token, { force: true });
       if (!nextRows.length && state.indexing) scheduleIndexPoll(cfg);
@@ -1602,6 +1971,32 @@
     });
   }
 
+  function handleTableColumnScroll(wrapper, cfg) {
+    const next = Math.max(0, Math.round(wrapper.scrollLeft || 0));
+    if (next === state.tableScrollLeft) return;
+    state.tableScrollLeft = next;
+    if (state.tableColumnScrollFrame || state.rendering || !state.rows.length) return;
+    state.tableColumnScrollFrame = window.requestAnimationFrame(() => {
+      state.tableColumnScrollFrame = 0;
+      void renderVirtualWindow(cfg, state.token, { force: true });
+    });
+  }
+
+  function handleTableWheel(event, wrapper, cfg) {
+    const maxScrollLeft = Math.max(0, wrapper.scrollWidth - wrapper.clientWidth);
+    if (maxScrollLeft <= 0) return;
+    const deltaX = Number(event.deltaX) || 0;
+    const deltaY = Number(event.deltaY) || 0;
+    const shouldScrollHorizontally = Math.abs(deltaX) > Math.abs(deltaY) || event.shiftKey;
+    if (!shouldScrollHorizontally) return;
+    const delta = Math.abs(deltaX) > 0 ? deltaX : deltaY;
+    const next = Math.max(0, Math.min(maxScrollLeft, wrapper.scrollLeft + delta));
+    if (next === wrapper.scrollLeft) return;
+    event.preventDefault();
+    wrapper.scrollLeft = next;
+    handleTableColumnScroll(wrapper, cfg);
+  }
+
   async function renderVirtualWindow(cfg, token, options = {}) {
     const grid = document.getElementById('grid');
     if (!grid || token !== state.token) return;
@@ -1622,8 +2017,24 @@
       resetCardRenderQueues();
       const fragment = document.createDocumentFragment();
       const cards = [];
-      if (range.topHeight > 0) fragment.appendChild(gridSpacer('top', range.topHeight));
       const rows = state.rows.slice(range.start, range.end);
+      if (state.viewMode === 'table') {
+        fragment.appendChild(gridTable(rows, cfg, range));
+        grid.replaceChildren(fragment);
+        restoreTableScrollPosition(grid);
+        state.windowStart = range.start;
+        state.windowEnd = range.end;
+        state.renderedCount = Math.max(0, range.end - range.start);
+        updateVirtualGridMetrics();
+        updateChrome(cfg);
+        scrollPendingGridRow();
+        maybeLoadMoreForRenderedRange(cfg, range);
+        post('ready', '');
+        emitGridPerfMetric(cfg, 'window-render', startedAt, { force: true });
+        if (status && !window.BurreteDebug) status.classList.add('hidden');
+        return;
+      }
+      if (range.topHeight > 0) fragment.appendChild(gridSpacer('top', range.topHeight));
       for (const row of rows) {
         if (token !== state.token) return;
         const nextCard = card(row, cfg);
@@ -1642,7 +2053,8 @@
       updateVirtualGridMetrics();
       updateChrome(cfg);
       scrollPendingGridRow();
-      post('ready', 'ready');
+      maybeLoadMoreForRenderedRange(cfg, range);
+      post('ready', '');
       emitGridPerfMetric(cfg, 'window-render', startedAt, { force: true });
       if (status && !window.BurreteDebug) status.classList.add('hidden');
     } finally {
@@ -1669,12 +2081,30 @@
     }
   }
 
+  function restoreTableScrollPosition(grid) {
+    const wrapper = grid?.querySelector?.('.buret-grid-table-wrap');
+    if (!wrapper) return;
+    const left = Math.max(0, Number(state.tableScrollLeft) || 0);
+    wrapper.scrollLeft = left;
+    window.requestAnimationFrame(() => {
+      const current = grid?.querySelector?.('.buret-grid-table-wrap');
+      if (current) current.scrollLeft = left;
+    });
+  }
+
   function gridSpacer(position, height) {
     const spacer = document.createElement('div');
     spacer.className = `buret-grid-spacer buret-grid-spacer-${position}`;
     spacer.style.height = `${Math.max(0, Math.round(height))}px`;
     spacer.setAttribute('aria-hidden', 'true');
     return spacer;
+  }
+
+  function maybeLoadMoreForRenderedRange(cfg, range) {
+    if (!hasMoreRows() || state.remoteLoading) return;
+    if (range.end >= Math.max(0, state.visibleCount - GRID_WINDOW_OVERSCAN_ROWS)) {
+      window.setTimeout(() => loadMore(cfg), 0);
+    }
   }
 
   function virtualWindowRange(grid) {
@@ -1709,6 +2139,15 @@
     const styles = getComputedStyle(grid);
     const gap = cssPixels(styles.rowGap || styles.gap, state.estimatedGridGap || 10);
     state.estimatedGridGap = gap;
+    if (state.viewMode === 'table') {
+      const row = grid.querySelector('.buret-grid-table-row');
+      const rect = row?.getBoundingClientRect?.();
+      state.estimatedColumnCount = 1;
+      state.estimatedRowHeight = rect && Number.isFinite(rect.height) && rect.height > 0
+        ? Math.max(36, rect.height)
+        : 44;
+      return;
+    }
     const card = grid.querySelector('.buret-card');
     const gridWidth = grid.getBoundingClientRect().width || window.innerWidth || DEFAULT_CARD_MIN;
     if (card) {
@@ -1732,6 +2171,9 @@
   }
 
   function estimatedRowStride() {
+    if (state.viewMode === 'table') {
+      return Math.max(36, state.estimatedRowHeight + state.estimatedGridGap);
+    }
     return Math.max(GRID_MIN_ESTIMATED_ROW_HEIGHT, state.estimatedRowHeight + state.estimatedGridGap);
   }
 
@@ -1750,17 +2192,17 @@
     const included = state.remoteMode ? state.recordsIndexed : Number(cfg.recordsIncluded || state.all.length);
     const visible = state.remoteMode ? state.totalRows : state.rows.length;
     const scrollable = Math.min(state.visibleCount, state.rows.length);
-    document.getElementById('summary').textContent = [
-      `${visible.toLocaleString()} visible`,
-      `${scrollable.toLocaleString()} scrollable`,
-      `${state.renderedCount.toLocaleString()} mounted`,
-      `${included.toLocaleString()} loaded`,
-      state.dirty ? `unsaved ${state.dirtyReason || 'edits'}` : '',
-      state.indexing
-        ? `${included.toLocaleString()} indexed`
-        : `${total.toLocaleString()} in file`,
-      state.selected.size ? `${state.selected.size.toLocaleString()} selected` : ''
-    ].filter(Boolean).join(' · ');
+    const summaryParts = [];
+    if (state.indexing) {
+      summaryParts.push(`Indexing ${moleculeCountLabel(included)}${total ? ` of ${total.toLocaleString()}` : ''}`);
+    } else if (total > 0 && visible !== total) {
+      summaryParts.push(`${visible.toLocaleString()} of ${moleculeCountLabel(total)}`);
+    } else {
+      summaryParts.push(moleculeCountLabel(visible || total || included));
+    }
+    if (state.dirty) summaryParts.push(`unsaved ${state.dirtyReason || 'edits'}`);
+    if (state.selected.size) summaryParts.push(`${state.selected.size.toLocaleString()} selected`);
+    document.getElementById('summary').textContent = summaryParts.filter(Boolean).join(' · ');
     if (!state.remoteMode && state.smarts.trim() && !state.smartsError) {
       document.getElementById('summary').textContent += ` · SMARTS matches ${state.smartsMatches.size.toLocaleString()}`;
     }
@@ -1769,8 +2211,8 @@
       loadStatus.textContent = state.indexing
         ? `Indexing ${included.toLocaleString()}${state.recordsTotalHint ? ` / ${state.recordsTotalHint.toLocaleString()}` : ''} molecules`
         : hasMoreRows()
-        ? `${scrollable.toLocaleString()} of ${visible.toLocaleString()} scrollable`
-        : 'All visible molecules loaded';
+        ? 'More rows available'
+        : '';
     }
     const clearSMARTS = document.getElementById('clear-smarts');
     if (clearSMARTS) clearSMARTS.hidden = !state.query.trim();
@@ -1779,9 +2221,21 @@
     const selectableIndexes = selectableRowIndexes();
     const allCurrentSelected = selectableIndexes.length > 0 && selectableIndexes.every(index => state.selected.has(index));
     const selectAllButton = document.getElementById('select-all');
-    if (selectAllButton) selectAllButton.disabled = selectableIndexes.length === 0 || allCurrentSelected;
+    if (selectAllButton) {
+      selectAllButton.hidden = selectableIndexes.length === 0;
+      selectAllButton.disabled = selectableIndexes.length === 0 || allCurrentSelected;
+    }
     const clearSelectionButton = document.getElementById('clear-selection');
-    if (clearSelectionButton) clearSelectionButton.disabled = state.selected.size === 0;
+    if (clearSelectionButton) {
+      clearSelectionButton.hidden = state.selected.size === 0;
+      clearSelectionButton.disabled = state.selected.size === 0;
+    }
+    const selectedOpenActions = document.getElementById('selected-open-actions');
+    if (selectedOpenActions) selectedOpenActions.hidden = state.selected.size === 0;
+    const openSelectedMolstar = document.getElementById('open-selected-molstar');
+    if (openSelectedMolstar) openSelectedMolstar.disabled = state.selected.size === 0;
+    const openSelectedKetcher = document.getElementById('open-selected-ketcher');
+    if (openSelectedKetcher) openSelectedKetcher.disabled = state.selected.size === 0 || Date.now() < state.ketcherOpenPendingUntil;
     syncRdkitCoordinatesControl();
     syncGridEditControls();
     let footerText;
@@ -1804,6 +2258,11 @@
     }
     document.getElementById('footer').textContent = footerText;
     updateGridRail();
+  }
+
+  function moleculeCountLabel(count) {
+    const numeric = Math.max(0, Number(count || 0));
+    return `${numeric.toLocaleString()} ${numeric === 1 ? 'molecule' : 'molecules'}`;
   }
 
   function initGridRail(cfg) {
@@ -1867,7 +2326,7 @@
   }
 
   function updateGridRailActive() {
-    const cards = [...document.querySelectorAll('.buret-card[data-index]')];
+    const cards = [...document.querySelectorAll('.buret-card[data-index], .buret-grid-table-row[data-index]')];
     if (!cards.length) return;
     const threshold = Math.max(96, window.innerHeight * 0.24);
     let activeIndex = Number(cards[0].getAttribute('data-index'));
@@ -1934,7 +2393,7 @@
 
   function scrollToGridRow(index, cfg, options = {}) {
     const behavior = options.behavior || (state.railDragging ? 'auto' : 'smooth');
-    let card = document.querySelector(`.buret-card[data-index="${index}"]`);
+    let card = document.querySelector(`.buret-card[data-index="${index}"], .buret-grid-table-row[data-index="${index}"]`);
     if (card) {
       state.pendingGridScrollIndex = null;
       scrollGridCardIntoView(card, behavior);
@@ -1975,17 +2434,18 @@
     state.remoteLoading = true;
     try {
       while (token === state.token && state.rows.length <= position && state.rows.length < state.totalRows) {
-        const result = await hostRequest('gridFetchPage', {
+        const result = await hostRequest('gridFetchPage', gridFetchPayload({
           query: state.query || '',
           sort: state.sort || 'index',
           offset: state.rows.length,
           limit: Math.max(loadBatchSize(cfg), 240)
-        });
+        }));
         if (token !== state.token) return;
         const nextRows = applyVirtualGridEdits(Array.isArray(result.rows) ? result.rows : []);
         state.totalRows = Number(result.totalRows || state.totalRows);
         if (!nextRows.length) break;
         state.rows.push(...nextRows);
+        invalidateTableColumnCatalog();
       }
       if (position < state.rows.length) {
         const row = state.rows[position];
@@ -2010,7 +2470,7 @@
 
   function scrollPendingGridRow() {
     if (state.pendingGridScrollIndex == null) return false;
-    const card = document.querySelector(`.buret-card[data-index="${state.pendingGridScrollIndex}"]`);
+    const card = document.querySelector(`.buret-card[data-index="${state.pendingGridScrollIndex}"], .buret-grid-table-row[data-index="${state.pendingGridScrollIndex}"]`);
     if (!card) return false;
     state.pendingGridScrollIndex = null;
     scrollGridCardIntoView(card, 'auto');
@@ -2159,6 +2619,536 @@
     installCardDrag(el, row);
     installCardDrop(el, row, cfg);
     return el;
+  }
+
+  function gridTable(rows, cfg, range) {
+    const catalog = tableColumnCatalog();
+    const allColumns = tableVisibleColumns(catalog);
+    const columnWindow = tableColumnWindow(allColumns);
+    const columns = tableRenderedColumns(columnWindow);
+    const searchColumns = tableSearchMatchColumns(rows, columns);
+    const columnSpan = tableRenderedColumnSpan(columnWindow);
+    const wrapper = document.createElement('div');
+    wrapper.className = 'buret-grid-table-wrap';
+    wrapper.tabIndex = 0;
+    wrapper.setAttribute('aria-label', 'Molecule table');
+    wrapper.innerHTML = `
+      ${state.tableColumnPanelOpen ? tableColumnPanelHTML(catalog, allColumns) : ''}
+      <table class="buret-grid-table">
+        <thead>
+          <tr>${tableHeaderCellsHTML(columnWindow, searchColumns)}</tr>
+          ${state.tableFiltersOpen ? `<tr class="buret-grid-table-filter-row">${tableFilterCellsHTML(columnWindow, searchColumns)}</tr>` : ''}
+        </thead>
+        <tbody>
+          ${range.topHeight > 0 ? `<tr class="buret-grid-table-spacer" aria-hidden="true"><td colspan="${columnSpan}" style="height:${Math.max(0, Math.round(range.topHeight))}px"></td></tr>` : ''}
+          ${rows.map(row => tableRowHTML(row, columns, cfg)).join('')}
+          ${range.bottomHeight > 0 ? `<tr class="buret-grid-table-spacer" aria-hidden="true"><td colspan="${columnSpan}" style="height:${Math.max(0, Math.round(range.bottomHeight))}px"></td></tr>` : ''}
+        </tbody>
+      </table>`;
+    wrapper.scrollLeft = state.tableScrollLeft;
+    wrapper.addEventListener('scroll', () => handleTableColumnScroll(wrapper, cfg), { passive: true });
+    wrapper.addEventListener('wheel', event => handleTableWheel(event, wrapper, cfg), { passive: false });
+    wrapper.querySelectorAll('[data-buret-table-filter-toggle]').forEach(button => {
+      button.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleTableFilters(cfg);
+      });
+    });
+    wrapper.querySelectorAll('.buret-grid-table-row').forEach(rowEl => {
+      const index = Number(rowEl.getAttribute('data-index'));
+      const row = state.rows.find(candidate => Number(candidate.index) === index);
+      if (!row) return;
+      rowEl.addEventListener('click', event => handleTableRowSelection(event, row, cfg, rowEl));
+      rowEl.addEventListener('dblclick', event => handleTableRowOpen(event, row, cfg));
+      rowEl.addEventListener('contextmenu', event => showMoleculeContextMenu(event, row));
+      installTableMoleculeHover(rowEl, row, cfg);
+      scheduleRdkitCard(rowEl, row);
+      scheduleXyzrenderCard(rowEl, row, cfg);
+    });
+    bindTableColumnPanel(wrapper, cfg, catalog);
+    bindTableFilterControls(wrapper, cfg);
+    return wrapper;
+  }
+
+  function tableColumnCatalog() {
+    const rows = tableColumnDiscoveryRows();
+    const cacheKey = tableColumnCatalogKey(rows);
+    if (state.tableColumnCatalogCache?.key === cacheKey) {
+      return state.tableColumnCatalogCache.columns;
+    }
+    const columns = [
+      { id: 'index', label: '#', type: 'number', fixed: true, get: row => String(Number(row.index) + 1) },
+      { id: 'molecule', label: 'Mol', type: 'none', fixed: true, html: (row, cfg) => `<div class="buret-grid-table-molecule" data-buret-molecule-picture>${draw(row, cfg)}</div>` },
+      { id: 'name', label: 'Name', type: 'text', fixed: true, get: row => row.name || `Molecule ${Number(row.index) + 1}` },
+      { id: 'smiles', label: 'SMILES', type: 'text', fixed: true, get: row => row.smiles || '' }
+    ];
+    const descriptorColumns = new Map();
+    const propColumns = new Set();
+    for (const row of rows) {
+      for (const [id, value] of Object.entries(row.descriptors || {})) {
+        if (!descriptorColumns.has(id)) descriptorColumns.set(id, value?.label || id);
+      }
+      for (const key of Object.keys(row.props || {})) {
+        propColumns.add(key);
+      }
+    }
+    if (state.remoteMode) {
+      for (const id of state.remoteDescriptorIds || []) {
+        if (!descriptorColumns.has(id)) descriptorColumns.set(id, id);
+      }
+    }
+    for (const key of propColumns) {
+      columns.push({
+        id: `prop:${key}`,
+        label: key,
+        type: inferPropColumnType(rows, key),
+        kind: 'property',
+        get: row => row.props?.[key] ?? ''
+      });
+    }
+    for (const [id, label] of descriptorColumns) {
+      columns.push({
+        id: `descriptor:${id}`,
+        label,
+        type: 'number',
+        kind: 'descriptor',
+        title: descriptorHelpText(id, label),
+        get: row => descriptorDisplayValue(row.descriptors?.[id])
+      });
+    }
+    columns.forEach(column => {
+      column.searchText = tableColumnPickerSearchText(column);
+    });
+    state.tableColumnCatalogCache = { key: cacheKey, columns };
+    return columns;
+  }
+
+  function invalidateTableColumnCatalog() {
+    state.tableColumnCatalogCache = null;
+  }
+
+  function tableColumnDiscoveryRows() {
+    return state.remoteMode ? state.rows : currentLocalCollectionRows();
+  }
+
+  function tableColumnCatalogKey(rows) {
+    const first = rows[0];
+    const last = rows[rows.length - 1];
+    const firstKey = tableColumnCatalogRowKey(first);
+    const lastKey = tableColumnCatalogRowKey(last);
+    const sourceSize = state.remoteMode ? state.rows.length : state.all.length;
+    return [
+      state.remoteMode ? 'remote' : 'local',
+      sourceSize,
+      rows.length,
+      state.totalRows,
+      state.recordsIndexed,
+      state.remoteMode ? (state.remoteDescriptorIds || []).join('\u001f') : '',
+      firstKey,
+      lastKey,
+      state.rowPatches.size,
+      state.insertedRows.length,
+      state.hiddenRows.size
+    ].join('|');
+  }
+
+  function tableColumnCatalogRowKey(row) {
+    if (!row) return 'empty';
+    return `${row.rowId ?? ''}:${row.index ?? ''}:${Object.keys(row.descriptors || {}).length}:${Object.keys(row.props || {}).length}`;
+  }
+
+  function tableVisibleColumns(catalog) {
+    return catalog.filter(column => column.fixed || !state.tableHiddenColumns.has(column.id));
+  }
+
+  function tableColumnWindow(columns) {
+    const viewportWidth = tableViewportWidth();
+    const scrollLeft = Math.max(0, Number(state.tableScrollLeft) || 0);
+    const visibleLeft = Math.max(0, scrollLeft - TABLE_COLUMN_OVERSCAN_PX);
+    const visibleRight = scrollLeft + viewportWidth + TABLE_COLUMN_OVERSCAN_PX;
+    const widths = columns.map(tableColumnWidth);
+    const totalWidth = widths.reduce((sum, width) => sum + width, 0);
+    const maxScrollLeft = Math.max(0, totalWidth - viewportWidth);
+    if (state.tableScrollLeft > maxScrollLeft) state.tableScrollLeft = maxScrollLeft;
+    let offset = 0;
+    let start = 0;
+    while (start < columns.length && offset + widths[start] < visibleLeft) {
+      offset += widths[start];
+      start += 1;
+    }
+    let end = start;
+    let rightOffset = offset;
+    while (end < columns.length && rightOffset <= visibleRight) {
+      rightOffset += widths[end];
+      end += 1;
+    }
+    if (start === end && columns.length) {
+      end = Math.min(columns.length, start + 1);
+      rightOffset += widths[start] || TABLE_DEFAULT_COLUMN_WIDTH;
+    }
+    return {
+      fixedColumns: [],
+      scrollColumns: columns,
+      windowColumns: columns.slice(start, end),
+      leftSpacerWidth: offset,
+      rightSpacerWidth: Math.max(0, totalWidth - rightOffset)
+    };
+  }
+
+  function tableViewportWidth() {
+    const wrapper = document.querySelector('.buret-grid-table-wrap');
+    const grid = document.getElementById('grid');
+    const width = wrapper?.clientWidth || grid?.clientWidth || window.innerWidth || 960;
+    return Math.max(TABLE_DEFAULT_COLUMN_WIDTH, Number(width) || 960);
+  }
+
+  function tableRenderedColumns(columnWindow) {
+    const columns = [...columnWindow.fixedColumns];
+    if (columnWindow.leftSpacerWidth > 0) columns.push(tableSpacerColumn('left', columnWindow.leftSpacerWidth));
+    columns.push(...columnWindow.windowColumns);
+    if (columnWindow.rightSpacerWidth > 0) columns.push(tableSpacerColumn('right', columnWindow.rightSpacerWidth));
+    return columns;
+  }
+
+  function tableRenderedColumnSpan(columnWindow) {
+    return tableRenderedColumns(columnWindow).length;
+  }
+
+  function tableSpacerColumn(side, width) {
+    return {
+      id: `virtual-spacer:${side}`,
+      type: 'none',
+      spacer: true,
+      width
+    };
+  }
+
+  function tableColumnWidth(column) {
+    if (column.id === 'index') return 64;
+    if (column.id === 'molecule') return 74;
+    if (column.id === 'name') return 160;
+    if (column.id === 'smiles') return 240;
+    return TABLE_DEFAULT_COLUMN_WIDTH;
+  }
+
+  function tableHeaderCellsHTML(columnWindow, searchColumns = new Set()) {
+    return tableRenderedColumns(columnWindow).map(column => {
+      if (column.spacer) return tableSpacerCellHTML('th', column);
+      const classes = [
+        searchColumns.has(column.id) ? 'buret-grid-table-search-column' : '',
+        column.type !== 'none' || column.id === 'index' ? 'buret-grid-table-filter-header' : ''
+      ].filter(Boolean).join(' ');
+      const className = classes ? ` class="${classes}"` : '';
+      const filterToggle = column.type !== 'none' || column.id === 'index'
+        ? ` data-buret-table-filter-toggle aria-pressed="${state.tableFiltersOpen ? 'true' : 'false'}" title="Show table filters" aria-label="Show table filters for ${escapeAttr(column.label)}"`
+        : '';
+      if (column.id === 'index') {
+        return `<th scope="col" data-column="${escapeHTML(column.id)}"${className}${filterToggle}>${escapeHTML(column.label)}</th>`;
+      }
+      return `<th scope="col" data-column="${escapeHTML(column.id)}"${className}${filterToggle}${column.title ? ` title="${escapeAttr(column.title)}"` : ''}>${escapeHTML(column.label)}</th>`;
+    }).join('');
+  }
+
+  function tableFilterCellsHTML(columnWindow, searchColumns = new Set()) {
+    return tableRenderedColumns(columnWindow).map(column => column.spacer ? tableSpacerCellHTML('th', column) : tableFilterCellHTML(column, searchColumns)).join('');
+  }
+
+  function tableSpacerCellHTML(tagName, column) {
+    const width = Math.max(0, Math.round(Number(column.width) || 0));
+    return `<${tagName} class="buret-grid-table-column-spacer" data-column="${escapeHTML(column.id)}" style="width:${width}px;min-width:${width}px;max-width:${width}px"></${tagName}>`;
+  }
+
+  function tableRowHTML(row, columns, cfg) {
+    const index = Number(row.index);
+    const selected = state.selected.has(index);
+    const className = `buret-grid-table-row${selected ? ' selected' : ''}${state.smartsMatches.has(index) ? ' smarts-match' : ''}`;
+    const rowSearchMatch = tableRowMatchesSearch(row, columns);
+    return `
+      <tr class="${className}" data-index="${escapeHTML(String(index))}" aria-selected="${selected ? 'true' : 'false'}">
+        ${columns.map(column => {
+          if (column.spacer) return tableSpacerCellHTML('td', column);
+          const searchMatch = tableColumnMatchesSearch(row, column) || (column.id === 'molecule' && rowSearchMatch);
+          const searchClass = searchMatch ? ' class="buret-grid-table-search-match"' : '';
+          return `<td data-column="${escapeHTML(column.id)}"${searchClass}>${tableCellHTML(row, column, cfg)}</td>`;
+        }).join('')}
+      </tr>`;
+  }
+
+  function tableCellHTML(row, column, cfg) {
+    if (column.html) return column.html(row, cfg);
+    return tableHighlightedTextHTML(String(column.get(row) ?? ''));
+  }
+
+  function tableHighlightedTextHTML(text) {
+    const rawQuery = String(state.query || '').trim();
+    if (!rawQuery) return escapeHTML(text);
+    const index = text.toLowerCase().indexOf(rawQuery.toLowerCase());
+    if (index < 0) return escapeHTML(text);
+    const before = text.slice(0, index);
+    const match = text.slice(index, index + rawQuery.length);
+    const after = text.slice(index + rawQuery.length);
+    return `${escapeHTML(before)}<mark class="buret-grid-table-search-mark">${escapeHTML(match)}</mark>${escapeHTML(after)}`;
+  }
+
+  function tableFilterCellHTML(column, searchColumns = new Set()) {
+    const className = searchColumns.has(column.id) ? ' class="buret-grid-table-search-column"' : '';
+    if (column.type === 'none' || column.id === 'index') return `<th data-column="${escapeHTML(column.id)}"${className}></th>`;
+    const filter = state.tableColumnFilters[column.id] || {};
+    if (column.type === 'number') {
+      return `<th data-column="${escapeHTML(column.id)}"${className}>
+        <div class="buret-grid-table-number-filter">
+          <input type="number" inputmode="decimal" placeholder="min" value="${escapeAttr(filter.min ?? '')}" data-buret-table-filter="${escapeAttr(column.id)}" data-buret-table-filter-part="min" aria-label="Minimum ${escapeAttr(column.label)}">
+          <input type="number" inputmode="decimal" placeholder="max" value="${escapeAttr(filter.max ?? '')}" data-buret-table-filter="${escapeAttr(column.id)}" data-buret-table-filter-part="max" aria-label="Maximum ${escapeAttr(column.label)}">
+        </div>
+      </th>`;
+    }
+    return `<th data-column="${escapeHTML(column.id)}"${className}>
+      <input type="search" value="${escapeAttr(filter.text ?? '')}" placeholder="filter" data-buret-table-filter="${escapeAttr(column.id)}" data-buret-table-filter-part="text" aria-label="Filter ${escapeAttr(column.label)}">
+    </th>`;
+  }
+
+  function tableSearchMatchColumns(rows, columns) {
+    const query = tableSearchQuery();
+    if (!query) return new Set();
+    const matches = new Set();
+    for (const column of columns) {
+      if (column.spacer || column.type === 'none') continue;
+      if (rows.some(row => tableColumnMatchesSearch(row, column, query))) matches.add(column.id);
+    }
+    return matches;
+  }
+
+  function tableColumnMatchesSearch(row, column, query = tableSearchQuery()) {
+    if (!query || !column || column.spacer || column.type === 'none') return false;
+    return normalize(tableColumnDisplayValue(row, column.id)).includes(query);
+  }
+
+  function tableRowMatchesSearch(row, columns, query = tableSearchQuery()) {
+    if (!query) return false;
+    return columns.some(column => tableColumnMatchesSearch(row, column, query));
+  }
+
+  function tableSearchQuery() {
+    return normalize(state.query).trim();
+  }
+
+  function tableColumnPanelHTML(catalog, visibleColumns) {
+    const manageable = catalog.filter(column => !column.fixed);
+    const visible = new Set(visibleColumns.map(column => column.id));
+    const query = state.tableColumnQuery;
+    const matches = tableColumnPickerMatches(manageable, query);
+    const shown = tableColumnPickerShown(matches);
+    const visibleManageableCount = manageable.filter(column => visible.has(column.id)).length;
+    const allManageableVisible = manageable.length > 0 && visibleManageableCount === manageable.length;
+    return `
+      <section class="buret-table-column-panel" aria-label="Table columns">
+        <button type="button" class="buret-table-column-select-all" data-buret-table-column-action="toggle-all" aria-pressed="${allManageableVisible ? 'true' : 'false'}">
+          <span class="buret-table-column-checkbox" aria-hidden="true">${allManageableVisible ? '✓' : ''}</span>
+          <span>Select all / none</span>
+        </button>
+        <input type="search" class="buret-table-column-search" value="${escapeAttr(query)}" placeholder="Search" aria-label="Search columns" data-buret-table-column-search>
+        <div class="buret-table-column-summary">${tableColumnPanelSummary(visible.size, catalog.length, shown.length, matches.length, manageable.length)}</div>
+        <div class="buret-table-column-list">
+          ${tableColumnPickerItemsHTML(shown, visible, matches.length)}
+        </div>
+      </section>`;
+  }
+
+  function tableColumnPickerShown(matches) {
+    const limit = Math.max(TABLE_COLUMN_PICKER_LIMIT, Number(state.tableColumnVisibleLimit) || TABLE_COLUMN_PICKER_LIMIT);
+    return matches.slice(0, limit);
+  }
+
+  function tableColumnPickerMatches(columns, query) {
+    const normalized = String(query || '').trim().toLowerCase();
+    return normalized
+      ? columns.filter(column => tableColumnPickerSearchText(column).includes(normalized))
+      : columns;
+  }
+
+  function tableColumnPickerSearchText(column) {
+    return column.searchText || `${column.label} ${column.id} ${column.kind || ''} ${column.type || ''}`.toLowerCase();
+  }
+
+  function tableColumnPanelSummary(visibleCount, totalCount, shownCount, matchCount, manageableCount) {
+    const visibleText = `${visibleCount.toLocaleString()} of ${totalCount.toLocaleString()} columns visible`;
+    const shownText = matchCount === manageableCount
+      ? `showing ${shownCount.toLocaleString()} of ${manageableCount.toLocaleString()} manageable columns`
+      : `showing ${shownCount.toLocaleString()} of ${matchCount.toLocaleString()} matches`;
+    return `${visibleText} · ${shownText}`;
+  }
+
+  function tableColumnPickerItemsHTML(columns, visible, matchCount = columns.length) {
+    if (!columns.length) {
+      return '<div class="buret-table-column-empty">No matching columns.</div>';
+    }
+    const items = columns.map(column => `
+      <label class="buret-table-column-item" data-column-search="${escapeAttr(tableColumnPickerSearchText(column))}">
+        <input type="checkbox" ${visible.has(column.id) ? 'checked' : ''} data-buret-table-column="${escapeAttr(column.id)}">
+        <span>${escapeHTML(column.label)}</span>
+        <small>${column.kind === 'descriptor' ? 'descriptor' : 'property'} / ${column.type}</small>
+      </label>
+    `).join('');
+    const remaining = Math.max(0, matchCount - columns.length);
+    if (!remaining) return items;
+    return `${items}
+      <button type="button" class="buret-table-column-more" data-buret-table-column-show-more>
+        Show next ${Math.min(TABLE_COLUMN_PICKER_LIMIT, remaining).toLocaleString()} columns
+      </button>`;
+  }
+
+  function bindTableColumnPanel(wrapper, cfg, catalog) {
+    const panel = wrapper.querySelector('.buret-table-column-panel');
+    if (!panel) return;
+    state.tableColumnPanelOutsideController?.abort();
+    state.tableColumnPanelOutsideController = new AbortController();
+    const handleOutsidePointerDown = event => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest('.buret-table-column-panel, #table-columns')) return;
+      closeTableColumnPanel(cfg);
+    };
+    document.addEventListener('pointerdown', handleOutsidePointerDown, {
+      capture: true,
+      signal: state.tableColumnPanelOutsideController.signal
+    });
+    const manageable = catalog.filter(column => !column.fixed);
+    const bindColumnToggles = () => {
+      panel.querySelectorAll('[data-buret-table-column]').forEach(input => {
+        input.addEventListener('change', event => {
+          const columnId = event.currentTarget.getAttribute('data-buret-table-column');
+          if (!columnId) return;
+          if (event.currentTarget.checked) state.tableHiddenColumns.delete(columnId);
+          else state.tableHiddenColumns.add(columnId);
+          storeStringSet(TABLE_HIDDEN_COLUMNS_STORAGE_KEY, state.tableHiddenColumns);
+          void render(cfg);
+        });
+      });
+    };
+    const bindShowMore = () => {
+      panel.querySelector('[data-buret-table-column-show-more]')?.addEventListener('click', event => {
+        event.preventDefault();
+        state.tableColumnVisibleLimit += TABLE_COLUMN_PICKER_LIMIT;
+        renderColumnList();
+      });
+    };
+    const renderColumnList = () => {
+      const list = panel.querySelector('.buret-table-column-list');
+      if (!list) return;
+      const visible = new Set(tableVisibleColumns(catalog).map(column => column.id));
+      const matches = tableColumnPickerMatches(manageable, state.tableColumnQuery);
+      const shown = tableColumnPickerShown(matches);
+      list.innerHTML = tableColumnPickerItemsHTML(shown, visible, matches.length);
+      const summary = panel.querySelector('.buret-table-column-summary');
+      if (summary) {
+        summary.textContent = tableColumnPanelSummary(visible.size, catalog.length, shown.length, matches.length, manageable.length);
+      }
+      bindColumnToggles();
+      bindShowMore();
+    };
+    const search = panel.querySelector('[data-buret-table-column-search]');
+    if (search) {
+      const applySearch = () => {
+        const nextQuery = String(search.value || '');
+        if (nextQuery !== state.tableColumnQuery) {
+          state.tableColumnVisibleLimit = TABLE_COLUMN_PICKER_LIMIT;
+        }
+        state.tableColumnQuery = nextQuery;
+        renderColumnList();
+      };
+      search.addEventListener('input', applySearch);
+      search.addEventListener('keyup', applySearch);
+      search.addEventListener('change', applySearch);
+      search.addEventListener('search', applySearch);
+    }
+    bindColumnToggles();
+    bindShowMore();
+    panel.querySelectorAll('[data-buret-table-column-action]').forEach(button => {
+      button.addEventListener('click', event => {
+        const action = event.currentTarget.getAttribute('data-buret-table-column-action');
+        const descriptorIds = catalog.filter(column => column.kind === 'descriptor').map(column => column.id);
+        const matchedIds = tableColumnPickerMatches(manageable, state.tableColumnQuery).map(column => column.id);
+        if (action === 'toggle-all') {
+          const allVisible = manageable.every(column => !state.tableHiddenColumns.has(column.id));
+          manageable.forEach(column => {
+            if (allVisible) state.tableHiddenColumns.add(column.id);
+            else state.tableHiddenColumns.delete(column.id);
+          });
+        } else if (action === 'show-all') {
+          state.tableHiddenColumns.clear();
+        } else if (action === 'show-matches') {
+          const matched = new Set(matchedIds);
+          manageable.forEach(column => {
+            if (matched.has(column.id)) state.tableHiddenColumns.delete(column.id);
+            else state.tableHiddenColumns.add(column.id);
+          });
+        } else if (action === 'hide-matches') {
+          matchedIds.forEach(id => state.tableHiddenColumns.add(id));
+        } else if (action === 'hide-descriptors') {
+          descriptorIds.forEach(id => state.tableHiddenColumns.add(id));
+        } else if (action === 'show-descriptors') {
+          descriptorIds.forEach(id => state.tableHiddenColumns.delete(id));
+        }
+        storeStringSet(TABLE_HIDDEN_COLUMNS_STORAGE_KEY, state.tableHiddenColumns);
+        void render(cfg);
+      });
+    });
+  }
+
+  function bindTableFilterControls(wrapper, cfg) {
+    wrapper.querySelectorAll('[data-buret-table-filter]').forEach(input => {
+      input.addEventListener('input', event => {
+        const columnId = event.currentTarget.getAttribute('data-buret-table-filter');
+        const part = event.currentTarget.getAttribute('data-buret-table-filter-part');
+        if (!columnId || !part) return;
+        const current = { ...(state.tableColumnFilters[columnId] || {}) };
+        current.type = part === 'text' ? 'text' : 'number';
+        current[part] = String(event.currentTarget.value || '');
+        if (tableColumnFilterEmpty(current)) delete state.tableColumnFilters[columnId];
+        else state.tableColumnFilters[columnId] = current;
+        scheduleTableFilterRefresh(cfg);
+      });
+    });
+  }
+
+  function scheduleTableFilterRefresh(cfg) {
+    clearTimeout(state.tableFilterTimer);
+    state.tableFilterTimer = setTimeout(() => refresh(cfg), 180);
+  }
+
+  function tableColumnFilterEmpty(filter) {
+    if (!filter) return true;
+    if (filter.type === 'number') return !String(filter.min || '').trim() && !String(filter.max || '').trim();
+    return !String(filter.text || '').trim();
+  }
+
+  function inferPropColumnType(rows, key) {
+    let seen = 0;
+    for (const row of rows) {
+      const value = row.props?.[key];
+      if (value === undefined || value === null || String(value).trim() === '') continue;
+      seen += 1;
+      if (!Number.isFinite(Number(value))) return 'text';
+      if (seen >= 50) break;
+    }
+    return seen > 0 ? 'number' : 'text';
+  }
+
+  function tableColumnDisplayValue(row, columnId) {
+    if (columnId === 'index') return String(Number(row.index) + 1);
+    if (columnId === 'name') return row.name || `Molecule ${Number(row.index) + 1}`;
+    if (columnId === 'smiles') return row.smiles || '';
+    if (columnId.startsWith('prop:')) return String(row.props?.[columnId.slice(5)] ?? '');
+    if (columnId.startsWith('descriptor:')) return descriptorDisplayValue(row.descriptors?.[columnId.slice('descriptor:'.length)]);
+    return '';
+  }
+
+  function tableColumnNumericValue(row, columnId) {
+    if (columnId === 'index') return Number(row.index) + 1;
+    if (columnId.startsWith('descriptor:')) return descriptorNumericValue(row.descriptors?.[columnId.slice('descriptor:'.length)]);
+    const value = Number(tableColumnDisplayValue(row, columnId));
+    return Number.isFinite(value) ? value : Number.NaN;
   }
 
   function installCardDrag(el, row) {
@@ -2410,6 +3400,7 @@
       smiles: patch.smiles,
       props: patch.props || row.props || {}
     });
+    invalidateTableColumnCatalog();
     state.svgCache.clear();
     state.xyzrenderCardCache.clear();
     markGridDirty('row edits');
@@ -2430,6 +3421,7 @@
     insertAfterRow(state.rows, index, duplicate);
     if (state.remoteMode) state.insertedRows.push(duplicate);
     else insertAfterRow(state.all, index, duplicate);
+    invalidateTableColumnCatalog();
     state.totalRows += 1;
     markGridDirty('row edits');
     void render(cfg);
@@ -2527,8 +3519,8 @@
   }
 
   function syncRenderedSelection() {
-    root.querySelectorAll('.buret-card[data-index]').forEach(card => {
-      const index = Number(card.dataset.index);
+    root.querySelectorAll('.buret-card[data-index], .buret-grid-table-row[data-index]').forEach(card => {
+      const index = Number(card.getAttribute('data-index'));
       const selected = state.selected.has(index);
       card.classList.toggle('selected', selected);
       card.setAttribute('aria-selected', selected ? 'true' : 'false');
@@ -2599,6 +3591,27 @@
     cardElement?.focus?.({ preventScroll: true });
   }
 
+  function handleTableRowSelection(event, row, cfg, rowElement) {
+    if (!capabilities(cfg).selection) return;
+    if (event.defaultPrevented || event.target?.closest?.('button, input, select, textarea, [contenteditable="true"]')) return;
+    if (event instanceof MouseEvent && event.button !== 0) return;
+    event.preventDefault();
+    hideMoleculeContextMenu();
+    const index = Number(row.index);
+    if (event.shiftKey) selectRangeTo(index, cfg);
+    else toggleSelection(index, cfg);
+    rowElement?.focus?.({ preventScroll: true });
+  }
+
+  function handleTableRowOpen(event, row, cfg) {
+    if (event.defaultPrevented || event.target?.closest?.('button, input, select, textarea, [contenteditable="true"]')) return;
+    if (event instanceof MouseEvent && event.button !== 0) return;
+    event.preventDefault();
+    hideMoleculeContextMenu();
+    showMoleculeDetail(row, cfg);
+    setStatus(`[grid] Opened ${row.name || `Molecule ${Number(row.index) + 1}`}.`);
+  }
+
   function handleGridSelectionKeydown(event, cfg) {
     if (!capabilities(cfg).selection) return;
     const target = event.target;
@@ -2666,6 +3679,7 @@
       if (allIndex >= 0) state.all.splice(allIndex, 1);
     }
     state.rows = state.rows.filter(candidate => Number(candidate.index) !== index);
+    invalidateTableColumnCatalog();
     state.totalRows = Math.max(0, state.totalRows - 1);
     markGridDirty('row edits');
   }
@@ -2720,6 +3734,7 @@
     state.insertedRows = snapshot.insertedRows.slice();
     state.dirty = snapshot.dirty;
     state.dirtyReason = snapshot.dirtyReason;
+    invalidateTableColumnCatalog();
     state.svgCache.clear();
     state.xyzrenderCardCache.clear();
     notifyGridDirty(state.dirty);
@@ -2761,6 +3776,7 @@
     const index = Number(row.index);
     const overlay = document.createElement('div');
     overlay.className = 'buret-grid-molecule-detail-overlay';
+    overlay.dataset.buretDetailRowIndex = Number.isFinite(index) ? String(index) : '';
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
     overlay.setAttribute('aria-label', row.name || `Molecule ${index + 1}`);
@@ -2769,6 +3785,7 @@
     overlay.innerHTML = `
       <div class="buret-grid-molecule-detail">
         <div class="buret-grid-molecule-detail-image" data-buret-molecule-picture>${draw(row, cfg)}</div>
+        <div class="buret-grid-molecule-detail-resizer" role="separator" aria-orientation="vertical" tabindex="0" title="Drag left or right to resize the molecule preview. Double-click to reset." aria-label="Resize molecule preview" data-buret-detail-resize></div>
         <div class="buret-grid-molecule-detail-body">
           <div class="buret-grid-molecule-detail-title-row">
             <div>
@@ -2777,11 +3794,25 @@
             </div>
             <button type="button" data-buret-detail-close aria-label="Close molecule detail">Close</button>
           </div>
-          ${row.smiles ? `<div class="buret-grid-molecule-detail-smiles">${escapeHTML(row.smiles)}</div>` : ''}
-          ${props.length
-            ? `<dl class="buret-grid-molecule-detail-props">${props.map(([key, value]) => `<dt>${escapeHTML(key)}</dt><dd>${escapeHTML(value)}</dd>`).join('')}</dl>`
-            : '<div class="buret-no-metadata">No metadata</div>'}
+          <div class="buret-grid-molecule-detail-tabs" role="tablist" aria-label="Molecule preview sections">
+            <button type="button" role="tab" class="active" aria-selected="true" data-buret-detail-tab="details">Details</button>
+            <button type="button" role="tab" aria-selected="false" data-buret-detail-tab="descriptors">Descriptors (${descriptorEntries(row).length.toLocaleString()})</button>
+            <button type="button" role="tab" aria-selected="false" data-buret-detail-tab="json">JSON</button>
+          </div>
+          <div class="buret-grid-molecule-detail-tab-panel" data-buret-detail-panel="details">
+            ${row.smiles ? `<div class="buret-grid-molecule-detail-smiles">${escapeHTML(row.smiles)}</div>` : ''}
+            ${props.length
+              ? `<dl class="buret-grid-molecule-detail-props">${props.map(([key, value]) => `<dt>${escapeHTML(key)}</dt><dd>${escapeHTML(value)}</dd>`).join('')}</dl>`
+              : '<div class="buret-no-metadata">No metadata</div>'}
+          </div>
+          <div class="buret-grid-molecule-detail-tab-panel" data-buret-detail-panel="descriptors" hidden>
+            ${moleculeDetailDescriptors(row)}
+          </div>
+          <div class="buret-grid-molecule-detail-tab-panel" data-buret-detail-panel="json" hidden>
+            <pre class="buret-grid-molecule-detail-json">${escapeHTML(moleculeDetailJson(row))}</pre>
+          </div>
           <div class="buret-grid-molecule-detail-actions">
+            <button type="button" data-buret-detail-action="descriptors">Calculate descriptors</button>
             <button type="button" data-buret-detail-action="molstar">Open in Mol*</button>
             <button type="button" data-buret-detail-action="ketcher">Edit in Ketcher</button>
             <button type="button" data-buret-detail-action="generate3d">Generate 3D</button>
@@ -2798,13 +3829,17 @@
     overlay.querySelectorAll('[data-buret-detail-action]').forEach(button => {
       button.addEventListener('click', () => {
         const action = button.getAttribute('data-buret-detail-action') || '';
-        if (action === 'molstar') void requestSingleMolstarDocument(row, cfg);
+        if (action === 'descriptors') requestDescriptorCalculationForRow(row, cfg);
+        else if (action === 'molstar') void requestSingleMolstarDocument(row, cfg);
         else if (action === 'ketcher') requestOpenInKetcher(row, cfg);
         else if (action === 'generate3d') requestSingle3DGeneration(row, cfg);
         else if (action === 'copy') void copyMoleculeStructure(row);
         else if (action === 'export') exportMolecule(row);
       });
     });
+    installMoleculeDetailTabs(overlay);
+    installMoleculeDetailDescriptorSearch(overlay);
+    installMoleculeDetailResize(overlay);
     const onKey = event => {
       if (event.key === 'Escape') hideMoleculeDetail();
     };
@@ -2813,6 +3848,204 @@
     scheduleRdkitCard(overlay, row);
     scheduleXyzrenderCard(overlay, row, cfg);
     overlay.querySelector('[data-buret-detail-close]')?.focus?.();
+  }
+
+  function refreshOpenMoleculeDetail(cfg) {
+    const overlay = root.querySelector('.buret-grid-molecule-detail-overlay');
+    if (!overlay) return;
+    const index = Number(overlay.dataset.buretDetailRowIndex);
+    if (!Number.isFinite(index)) return;
+    const row = state.all.find(candidate => Number(candidate.index) === index)
+      || state.rows.find(candidate => Number(candidate.index) === index);
+    if (!row) return;
+    const descriptorTab = overlay.querySelector('[data-buret-detail-tab="descriptors"]');
+    if (descriptorTab) descriptorTab.textContent = `Descriptors (${descriptorEntries(row).length.toLocaleString()})`;
+    const descriptorPanel = overlay.querySelector('[data-buret-detail-panel="descriptors"]');
+    if (descriptorPanel) {
+      descriptorPanel.innerHTML = moleculeDetailDescriptors(row);
+      installMoleculeDetailDescriptorSearch(overlay);
+    }
+    const jsonPre = overlay.querySelector('.buret-grid-molecule-detail-json');
+    if (jsonPre) jsonPre.textContent = moleculeDetailJson(row);
+    scheduleRdkitCard(overlay, row);
+    scheduleXyzrenderCard(overlay, row, cfg);
+  }
+
+  function installMoleculeDetailResize(overlay) {
+    const detail = overlay.querySelector('.buret-grid-molecule-detail');
+    const handle = overlay.querySelector('[data-buret-detail-resize]');
+    if (!detail || !handle) return;
+    const minImage = 320;
+    const minBody = 320;
+    const clampWidth = width => {
+      const rect = detail.getBoundingClientRect();
+      const handleWidth = handle.getBoundingClientRect().width || 10;
+      const maxImage = Math.max(minImage, rect.width - minBody - handleWidth);
+      return Math.max(minImage, Math.min(maxImage, width));
+    };
+    const setWidth = width => {
+      detail.style.setProperty('--buret-detail-image-width', `${Math.round(clampWidth(width))}px`);
+    };
+    const resetWidth = () => {
+      detail.style.removeProperty('--buret-detail-image-width');
+    };
+    const startResize = event => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const rect = detail.getBoundingClientRect();
+      const startX = event.clientX;
+      const startWidth = detail.querySelector('.buret-grid-molecule-detail-image')?.getBoundingClientRect().width || (rect.width * 0.58);
+      detail.classList.add('is-resizing');
+      try { handle.setPointerCapture?.(event.pointerId); } catch (_) {}
+      const move = moveEvent => {
+        moveEvent.preventDefault();
+        setWidth(startWidth + (moveEvent.clientX - startX));
+      };
+      const stop = stopEvent => {
+        try { handle.releasePointerCapture?.(stopEvent.pointerId); } catch (_) {}
+        handle.removeEventListener('pointermove', move);
+        handle.removeEventListener('pointerup', stop);
+        handle.removeEventListener('pointercancel', stop);
+        detail.classList.remove('is-resizing');
+      };
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('pointerup', stop);
+      handle.addEventListener('pointercancel', stop);
+    };
+    handle.addEventListener('pointerdown', startResize);
+    handle.addEventListener('dblclick', event => {
+      event.preventDefault();
+      resetWidth();
+    });
+    handle.addEventListener('keydown', event => {
+      const imageWidth = detail.querySelector('.buret-grid-molecule-detail-image')?.getBoundingClientRect().width || 0;
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        setWidth(imageWidth - 32);
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        setWidth(imageWidth + 32);
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        setWidth(minImage);
+      } else if (event.key === 'End') {
+        event.preventDefault();
+        setWidth(Number.MAX_SAFE_INTEGER);
+      } else if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        resetWidth();
+      }
+    });
+  }
+
+  function installMoleculeDetailTabs(overlay) {
+    const tabs = [...overlay.querySelectorAll('[data-buret-detail-tab]')];
+    const panels = [...overlay.querySelectorAll('[data-buret-detail-panel]')];
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const next = tab.getAttribute('data-buret-detail-tab') || 'details';
+        tabs.forEach(candidate => {
+          const selected = candidate === tab;
+          candidate.setAttribute('aria-selected', selected ? 'true' : 'false');
+          candidate.classList.toggle('active', selected);
+        });
+        panels.forEach(panel => {
+          panel.hidden = panel.getAttribute('data-buret-detail-panel') !== next;
+        });
+      });
+    });
+  }
+
+  function installMoleculeDetailDescriptorSearch(overlay) {
+    const input = overlay.querySelector('[data-buret-detail-descriptor-search]');
+    const rows = [...overlay.querySelectorAll('[data-buret-detail-descriptor-row]')];
+    const count = overlay.querySelector('[data-buret-detail-descriptor-count]');
+    if (!input || !rows.length) return;
+    const apply = () => {
+      const query = String(input.value || '').trim().toLowerCase();
+      let visible = 0;
+      rows.forEach(row => {
+        const matches = !query || String(row.getAttribute('data-buret-descriptor-search') || '').includes(query);
+        row.hidden = !matches;
+        if (matches) visible += 1;
+      });
+      if (count) count.textContent = `${visible.toLocaleString()} of ${rows.length.toLocaleString()}`;
+    };
+    input.addEventListener('input', apply);
+    apply();
+  }
+
+  function moleculeDetailDescriptors(row) {
+    const entries = descriptorEntries(row);
+    if (!entries.length) {
+      return '<div class="buret-no-metadata">No descriptors calculated for this molecule yet.</div>';
+    }
+    return `
+      <div class="buret-grid-molecule-detail-descriptor-toolbar">
+        <input type="search" placeholder="Filter descriptors" aria-label="Filter descriptors" data-buret-detail-descriptor-search>
+        <span data-buret-detail-descriptor-count>${entries.length.toLocaleString()} of ${entries.length.toLocaleString()}</span>
+      </div>
+      <div class="buret-grid-molecule-detail-descriptor-table" role="table" aria-label="Calculated descriptors">
+        <div class="buret-grid-molecule-detail-descriptor-head" role="row">
+          <span role="columnheader">Descriptor</span>
+          <span role="columnheader" aria-label="Info"></span>
+          <span role="columnheader">Value</span>
+        </div>
+        ${entries.map(([id, value]) => descriptorDetailRow(id, value)).join('')}
+      </div>`;
+  }
+
+  function descriptorEntries(row) {
+    return Object.entries(row.descriptors || {})
+      .filter(([, value]) => descriptorDisplayValue(value));
+  }
+
+  function descriptorDetailRow(id, value) {
+    const label = value?.label || id;
+    const display = descriptorDisplayValue(value);
+    const help = descriptorHelpText(id, label);
+    const searchText = `${id} ${label} ${display} ${value?.missingKind || ''} ${value?.errorText || ''}`.toLowerCase();
+    return `
+      <div class="buret-grid-molecule-detail-descriptor-row" role="row" data-buret-detail-descriptor-row data-buret-descriptor-search="${escapeAttr(searchText)}">
+        <span class="buret-grid-molecule-detail-descriptor-name" role="cell">
+          <strong>${escapeHTML(label)}</strong>
+        </span>
+        <span class="buret-grid-molecule-detail-descriptor-info-cell" role="cell">
+          <button type="button" class="buret-grid-molecule-detail-descriptor-info" title="${escapeAttr(help)}" aria-label="${escapeAttr(help)}">i</button>
+        </span>
+        <span class="buret-grid-molecule-detail-descriptor-value" role="cell">${escapeHTML(display)}</span>
+      </div>`;
+  }
+
+  function moleculeDetailJson(row) {
+    const payload = {
+      mode: 'auto',
+      messages: [],
+      descriptors: {}
+    };
+    for (const [id, value] of Object.entries(row.descriptors || {})) {
+      const normalized = descriptorJsonValue(id, value);
+      if (normalized.kind === 'value') {
+        payload.descriptors[id] = normalized.value;
+      } else if (normalized.message) {
+        payload.messages.push(normalized.message);
+      }
+    }
+    return JSON.stringify(payload, null, 2);
+  }
+
+  function descriptorJsonValue(id, value) {
+    if (!value) return { kind: 'missing', message: null };
+    if (value.errorText) {
+      return { kind: 'missing', message: `${id}: ${value.errorText}` };
+    }
+    if (value.missingKind) {
+      return { kind: 'missing', message: `${id}: ${value.missingKind}` };
+    }
+    if (typeof value !== 'object') return { kind: 'value', value };
+    if (value.value === null || value.value === undefined) return { kind: 'missing', message: null };
+    return { kind: 'value', value: value.value };
   }
 
   function hideMoleculeDetail() {
@@ -2878,8 +4111,6 @@
     } else if (action === 'ketcher') {
       requestOpenInKetcher(row, cfg);
       setStatus(`[grid] Opening ${label} in Ketcher.`);
-    } else if (action === 'generate3d') {
-      requestSingle3DGeneration(row, cfg);
     } else if (action === 'duplicate') {
       duplicateGridRow(row, cfg);
       setStatus(`[grid] Duplicated ${label}. Unsaved changes.`);
@@ -2921,7 +4152,6 @@
       ['open', 'Preview molecule'],
       ['molstar', 'Open in Mol*'],
       ['ketcher', 'Edit in Ketcher'],
-      ['generate3d', 'Generate 3D'],
       ['duplicate', 'Duplicate'],
       ['remove', 'Delete from collection'],
       ['copy', 'Copy structure'],
@@ -2973,6 +4203,64 @@
     picture.addEventListener('pointerleave', () => card.classList.remove('buret-card-hovering-molecule'));
     card.addEventListener('focusin', () => card.classList.add('buret-card-hovering-molecule'));
     card.addEventListener('focusout', () => card.classList.remove('buret-card-hovering-molecule'));
+  }
+
+  function installTableMoleculeHover(rowEl, row, cfg) {
+    const picture = rowEl.querySelector('.buret-grid-table-molecule');
+    if (!picture) return;
+    picture.addEventListener('pointerenter', event => {
+      if (event.pointerType === 'touch') return;
+      showTableMoleculePreview(event, row, cfg);
+    });
+    picture.addEventListener('pointermove', event => {
+      if (event.pointerType === 'touch') return;
+      if (!state.tableMoleculePreview) showTableMoleculePreview(event, row, cfg);
+      positionTableMoleculePreview(event);
+    });
+    picture.addEventListener('pointerleave', hideTableMoleculePreview);
+    picture.addEventListener('contextmenu', hideTableMoleculePreview);
+  }
+
+  function showTableMoleculePreview(event, row, cfg) {
+    hideTableMoleculePreview();
+    const label = row.name || `Molecule ${Number(row.index) + 1}`;
+    const popover = document.createElement('div');
+    popover.className = 'buret-grid-table-molecule-popover';
+    popover.setAttribute('role', 'tooltip');
+    popover.innerHTML = `
+      <div class="buret-grid-table-molecule-popover-image" data-buret-molecule-picture>${draw(row, cfg)}</div>
+      <div class="buret-grid-table-molecule-popover-title">${escapeHTML(label)}</div>`;
+    document.body.appendChild(popover);
+    state.tableMoleculePreview = popover;
+    scheduleRdkitCard(popover, row);
+    scheduleXyzrenderCard(popover, row, cfg);
+    window.addEventListener('scroll', hideTableMoleculePreview, true);
+    window.addEventListener('resize', hideTableMoleculePreview, true);
+    positionTableMoleculePreview(event);
+  }
+
+  function positionTableMoleculePreview(event) {
+    const popover = state.tableMoleculePreview;
+    if (!popover) return;
+    const margin = 12;
+    const offset = 16;
+    const rect = popover.getBoundingClientRect();
+    let left = event.clientX + offset;
+    let top = event.clientY + offset;
+    if (left + rect.width + margin > window.innerWidth) left = event.clientX - rect.width - offset;
+    if (top + rect.height + margin > window.innerHeight) top = window.innerHeight - rect.height - margin;
+    left = Math.max(margin, left);
+    top = Math.max(margin, top);
+    popover.style.left = `${Math.round(left)}px`;
+    popover.style.top = `${Math.round(top)}px`;
+  }
+
+  function hideTableMoleculePreview() {
+    if (!state.tableMoleculePreview) return;
+    state.tableMoleculePreview.remove();
+    state.tableMoleculePreview = null;
+    window.removeEventListener('scroll', hideTableMoleculePreview, true);
+    window.removeEventListener('resize', hideTableMoleculePreview, true);
   }
 
   function installCardResizeHandle(card) {
@@ -3353,6 +4641,7 @@
     state.pendingGridRailPosition = null;
     state.windowStart = 0;
     state.windowEnd = 0;
+    invalidateTableColumnCatalog();
     resetRdkitCardObserver();
     resetXyzrenderCardObserver();
     resetCardRenderQueues();
@@ -3701,8 +4990,45 @@
 
   function metadata(row) {
     const entries = Object.entries(row.props || {}).filter(([, value]) => String(value || '').length).slice(0, 6);
-    if (!entries.length) return '<div class="buret-no-metadata">No metadata</div>';
-    return `<dl class="buret-metadata">${entries.map(([key, value]) => `<dt>${escapeHTML(key)}</dt><dd>${escapeHTML(value)}</dd>`).join('')}</dl>`;
+    const descriptors = Object.entries(row.descriptors || {})
+      .filter(([, value]) => descriptorDisplayValue(value))
+      .slice(0, 6);
+    if (!entries.length && !descriptors.length) return '<div class="buret-no-metadata">No metadata</div>';
+    const propItems = entries.map(([key, value]) => `<dt>${escapeHTML(key)}</dt><dd>${escapeHTML(value)}</dd>`);
+    const descriptorItems = descriptors.map(([key, value]) => (
+      `<dt>${escapeHTML(value.label || key)}</dt><dd>${escapeHTML(descriptorDisplayValue(value))}</dd>`
+    ));
+    return `<dl class="buret-metadata">${[...descriptorItems, ...propItems].join('')}</dl>`;
+  }
+
+  function descriptorDisplayValue(value) {
+    if (!value) return '';
+    if (value.errorText) return value.errorText;
+    if (value.missingKind) return value.missingKind;
+    if (typeof value.value === 'number') return value.value.toFixed(1);
+    if (typeof value.value === 'boolean') return value.value ? 'true' : 'false';
+    if (value.value === null || value.value === undefined) return '';
+    return String(value.value);
+  }
+
+  function descriptorHelpText(id, label) {
+    const definitions = {
+      MW: 'Molecular weight calculated from the atoms in the parsed molecule.',
+      AMW: 'Average atomic weight for the molecule.',
+      nAtom: 'Total number of atoms in the parsed molecular graph.',
+      nHeavyAtom: 'Number of non-hydrogen atoms.',
+      nHetero: 'Number of atoms that are neither carbon nor hydrogen.',
+      nBonds: 'Total number of bonds in the parsed molecular graph.',
+      nBondsO: 'Mordred bond-count descriptor that accounts for bond order.',
+      nBondsS: 'Number of single bonds.',
+      nRot: 'Number of rotatable bonds according to Mordred/RDKit perception.',
+      nRing: 'Number of rings perceived in the molecular graph.',
+      nAromAtom: 'Number of atoms marked aromatic after molecule sanitization.',
+      nAromBond: 'Number of bonds marked aromatic after molecule sanitization.',
+      TopoPSA: 'Topological estimate of polar surface area from polar fragments.',
+      SLogP: 'Wildman-Crippen style estimate of octanol/water partition coefficient.'
+    };
+    return `${label || id}: ${definitions[id] || 'Mordred descriptor calculated from the parsed molecule.'}`;
   }
 
   function selectedOrFiltered() {
@@ -3905,12 +5231,12 @@
     const limit = Math.max(120, loadBatchSize(cfg));
     setStatus('[grid] Preparing export...');
     while (total === null || offset < total) {
-      const result = await hostRequest('gridFetchPage', {
+      const result = await hostRequest('gridFetchPage', gridFetchPayload({
         query,
         sort,
         offset,
         limit
-      });
+      }));
       const pageRows = applyVirtualGridEdits(Array.isArray(result.rows) ? result.rows : []);
       applyGridPageState(result);
       total = Number(result.totalRows || 0);

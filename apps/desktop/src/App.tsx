@@ -75,6 +75,7 @@ import { readStructureText } from "./lib/structure-text";
 import type { TextStructureSelection } from "./lib/text-structure-selection";
 import { isTauriRuntime } from "./lib/tauri";
 import { isTemporaryDocumentPath } from "./lib/temporary-documents";
+import { calculateGridDescriptors as runGridDescriptorCalculation, type DescriptorSourcePayload, type GridDescriptorControls, type GridDescriptorJobStatus, type GridDescriptorResultRow, type GridDescriptorRunOptions } from "./lib/descriptors";
 import type { DockingDocumentRequest, FepSetupRequest, OpenDocumentsMode, OpenDocumentsResult, OpenTextFilesResult, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "./types";
 import { checkForUpdates as requestUpdateCheck, clearDismissedUpdate, dismissUpdate, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically, shouldPromptForUpdate } from "./update";
 import type { UpdatePreferences, UpdateRelease, UpdateState } from "./update";
@@ -89,6 +90,12 @@ const filters = [
     extensions: [...previewFormatRegistry.documentTypes.extensions, "md", "markdown", "mdx", "txt", "log", "err", "sh", "bash", "zsh", "py", "rs", "js", "jsx", "ts", "tsx", "json", "yaml", "yml", "toml", "xml", "html", "css", "inpcrd", "rst7", "crd", "rst", "par", "prm", "rtf", "str", "key", "chk", "checkpoint", "state"],
   },
 ];
+
+const GRID_DESCRIPTOR_JOB_EVENT = "burrete-grid-descriptor-job";
+
+function publishGridDescriptorJob(status: GridDescriptorJobStatus) {
+  window.dispatchEvent(new CustomEvent<GridDescriptorJobStatus>(GRID_DESCRIPTOR_JOB_EVENT, { detail: status }));
+}
 
 const structureExtensions = new Set(previewFormatRegistry.formats
   .filter((format) => format.preview?.strategy !== "text")
@@ -518,6 +525,7 @@ export default function App() {
   const [structureDragActive, setStructureDragActive] = useState(false);
   const [ketcherImportRequest, setKetcherImportRequest] = useState<KetcherImportRequest | null>(null);
   const [ketcherDraftMolfile, setKetcherDraftMolfile] = useState("");
+  const [descriptorSource, setDescriptorSource] = useState<DescriptorSourcePayload | null>(null);
   const [dirtyGridDocuments, setDirtyGridDocuments] = useState<Set<string>>(() => new Set());
   const [status, setStatus] = useState<StatusNotice | null>(null);
   const [buildInfo, setBuildInfo] = useState(defaultBuildInfo);
@@ -1796,6 +1804,110 @@ export default function App() {
     setKetcherImportRequest((request) => (request?.id === id ? null : request));
   }, []);
 
+  const openDescriptorSource = useCallback((source: DescriptorSourcePayload) => {
+    setDescriptorSource(source);
+    openDockTab("right", "descriptors");
+    pushStatus(`Opened descriptors for ${source.sourceLabel}`);
+  }, [openDockTab, pushStatus]);
+
+  const clearDescriptorSource = useCallback(() => {
+    setDescriptorSource(null);
+  }, []);
+
+  const applyGridDescriptorControls = useCallback((documentId: string, controls: GridDescriptorControls) => {
+    const iframe = document.querySelector<HTMLIFrameElement>(`.viewer-iframe[data-document-id="${CSS.escape(documentId)}"]`);
+    if (!iframe?.contentWindow) {
+      pushStatus("Grid descriptor target is not open.", "error");
+      return;
+    }
+    iframe.contentWindow.postMessage({
+      source: "burrete-grid-host",
+      body: {
+        type: "gridDescriptorControls",
+        documentId,
+        filters: controls.filters,
+        descriptorSort: controls.descriptorSort,
+      },
+    }, "*");
+    pushStatus("Applied descriptor controls to grid");
+  }, [pushStatus]);
+
+  const applyGridDescriptorResults = useCallback((documentId: string, rows: GridDescriptorResultRow[]) => {
+    const iframe = document.querySelector<HTMLIFrameElement>(`.viewer-iframe[data-document-id="${CSS.escape(documentId)}"]`);
+    if (!iframe?.contentWindow) {
+      pushStatus("Grid descriptor target is not open.", "error");
+      return;
+    }
+    iframe.contentWindow.postMessage({
+      source: "burrete-grid-host",
+      body: {
+        type: "gridDescriptorResults",
+        documentId,
+        rows,
+      },
+    }, "*");
+    pushStatus(`Applied descriptors to ${rows.length.toLocaleString()} grid row${rows.length === 1 ? "" : "s"}`);
+  }, [pushStatus]);
+
+  const calculateGridDescriptors = useCallback((documentId: string, options: GridDescriptorRunOptions = {}) => {
+    const targetDocument = documents.find((document) => document.id === documentId);
+    if (!targetDocument) {
+      pushStatus("Grid descriptor target is not open.", "error");
+      return;
+    }
+    const rowIndexes = Array.isArray(options.rowIndexes)
+      ? Array.from(new Set(options.rowIndexes
+        .map((index) => Math.trunc(Number(index)))
+        .filter((index) => Number.isFinite(index) && index >= 0)))
+        .sort((left, right) => left - right)
+      : [];
+    const targetCount = rowIndexes.length;
+    openDockTab("right", "descriptors");
+    publishGridDescriptorJob({
+      documentId,
+      status: "running",
+      running: true,
+      totalRows: targetCount,
+      processedRows: 0,
+      calculatedRows: 0,
+      failedRows: 0,
+      message: targetCount
+        ? `Starting descriptor calculation for ${targetCount.toLocaleString()} selected molecule${targetCount === 1 ? "" : "s"}...`
+        : "Starting descriptor calculation for all molecules...",
+      startedAtMs: Date.now(),
+      finishedAtMs: null,
+      summary: null,
+    });
+    pushStatus(targetCount
+      ? `Calculating descriptors for ${targetCount.toLocaleString()} selected molecule${targetCount === 1 ? "" : "s"}`
+      : "Calculating descriptors for all molecules");
+    void runGridDescriptorCalculation(documentId, targetDocument.path, targetCount ? { rowIndexes } : {})
+      .then((status) => {
+        publishGridDescriptorJob(status);
+        if (status.rows?.length) applyGridDescriptorResults(documentId, status.rows);
+        if (!status.running) {
+          pushStatus(status.message || "Descriptor calculation finished", status.status === "failed" ? "error" : "success");
+        }
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        publishGridDescriptorJob({
+          documentId,
+          status: "failed",
+          running: false,
+          totalRows: targetCount,
+          processedRows: 0,
+          calculatedRows: 0,
+          failedRows: 0,
+          message,
+          startedAtMs: Date.now(),
+          finishedAtMs: Date.now(),
+          summary: null,
+        });
+        pushStatus(`Descriptor calculation failed: ${message}`, "error");
+      });
+  }, [applyGridDescriptorResults, documents, openDockTab, pushStatus]);
+
   const confirmDiscardDirtyGridDocument = useCallback((documentId: string | null | undefined) => {
     if (!documentId || !dirtyGridDocuments.has(documentId)) return true;
     return window.confirm("This grid has unsaved changes. Save or Save As before closing to keep edits. Close without saving?");
@@ -2490,6 +2602,9 @@ export default function App() {
           dirtyReason?: string | null;
           gridEdit?: boolean | null;
           rowIndex?: number | null;
+          rowIndexes?: number[] | null;
+          descriptorFilters?: Array<{ id?: string | null; min?: number | null; max?: number | null }> | null;
+          descriptorSort?: { id?: string | null; direction?: string | null } | null;
           id?: string | null;
           result?: {
             ok?: boolean;
@@ -2737,6 +2852,20 @@ export default function App() {
           }
           return;
         }
+        if (body?.type === "calculateGridDescriptors") {
+          const documentId = typeof body.documentId === "string" && body.documentId.trim()
+            ? body.documentId.trim()
+            : activeDocument?.id;
+          if (!documentId) {
+            pushStatus("Grid descriptor target is not open.", "error");
+            return;
+          }
+          const rowIndexes = Array.isArray(body.rowIndexes)
+            ? body.rowIndexes.map((index: unknown) => Number(index)).filter(Number.isFinite)
+            : [];
+          calculateGridDescriptors(documentId, rowIndexes.length ? { rowIndexes } : {});
+          return;
+        }
         if (body?.type === "gridPerfMetric") {
           console.info("[Burrete grid perf]", JSON.stringify(body));
           writeGridPerfMetric(body);
@@ -2935,6 +3064,8 @@ export default function App() {
                   documentId: body.documentId,
                   query: typeof body.query === "string" ? body.query : "",
                   sort: typeof body.sort === "string" ? body.sort : "index",
+                  descriptorFilters: Array.isArray(body.descriptorFilters) ? body.descriptorFilters : [],
+                  descriptorSort: body.descriptorSort && typeof body.descriptorSort === "object" ? body.descriptorSort : null,
                   offset: typeof body.offset === "number" ? body.offset : 0,
                   limit: typeof body.limit === "number" ? body.limit : 96,
                 },
@@ -3541,7 +3672,7 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, addDocuments, documents, generate3DConformer, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar, writeGridPerfMetric]);
+  }, [activeDocument, addDocuments, calculateGridDescriptors, documents, generate3DConformer, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar, writeGridPerfMetric]);
 
   useEffect(() => {
     if (!buildInfoLoaded || buildInfo.isDevBuild) return undefined;
@@ -3824,6 +3955,11 @@ export default function App() {
     applyKetcherToGridRow,
     openFepSetupWorkspace,
     openKetcherSketch,
+    openDescriptorSource,
+    clearDescriptorSource,
+    applyGridDescriptorControls,
+    applyGridDescriptorResults,
+    calculateGridDescriptors,
     saveKetcherDraft: setKetcherDraftMolfile,
     clearKetcherImportRequest,
     moveTab,
@@ -3988,7 +4124,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyKetcherToGridRow, backToApp, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openWorkspaceFolder, pushErrorStatus, pushStatus, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runStructureViewerAction, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
+  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openWorkspaceFolder, pushErrorStatus, pushStatus, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runStructureViewerAction, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
@@ -4030,6 +4166,7 @@ export default function App() {
     poseReviewSelections,
     ketcherImportRequest,
     ketcherDraftMolfile,
+    descriptorSource,
     sidebarQuery,
     status,
     dropActive,

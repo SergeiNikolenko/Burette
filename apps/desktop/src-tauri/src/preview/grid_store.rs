@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection};
+use rusqlite::{params, params_from_iter, types::Value as SqlValue, Connection};
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -51,6 +51,7 @@ pub(crate) struct GridPageResult {
     pub(crate) records_indexed: usize,
     pub(crate) records_total_hint: Option<usize>,
     pub(crate) index_ready: bool,
+    pub(crate) descriptor_ids: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -76,19 +77,55 @@ pub(crate) struct GridDelimitedColumnChoice {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct GridPageRow {
+    pub(crate) row_id: i64,
     pub(crate) index: usize,
     pub(crate) name: String,
     pub(crate) smiles: Option<String>,
     pub(crate) molblock: Option<String>,
     pub(crate) props: BTreeMap<String, String>,
+    pub(crate) descriptors: BTreeMap<String, GridDescriptorCell>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GridDescriptorCell {
+    pub(crate) label: String,
+    pub(crate) value: Option<serde_json::Value>,
+    pub(crate) missing_kind: Option<String>,
+    pub(crate) error_text: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct GridQuery {
     pub(crate) query: String,
     pub(crate) sort: String,
+    pub(crate) column_filters: Vec<GridColumnFilter>,
+    pub(crate) descriptor_filters: Vec<GridDescriptorFilter>,
+    pub(crate) descriptor_sort: Option<GridDescriptorSort>,
     pub(crate) offset: usize,
     pub(crate) limit: usize,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct GridColumnFilter {
+    pub(crate) id: String,
+    pub(crate) filter_type: String,
+    pub(crate) text: Option<String>,
+    pub(crate) min: Option<f64>,
+    pub(crate) max: Option<f64>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct GridDescriptorFilter {
+    pub(crate) id: String,
+    pub(crate) min: Option<f64>,
+    pub(crate) max: Option<f64>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct GridDescriptorSort {
+    pub(crate) id: String,
+    pub(crate) direction: String,
 }
 
 #[derive(Debug)]
@@ -100,11 +137,45 @@ struct GridInputRecord {
     props: BTreeMap<String, String>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct GridDescriptorSourceRow {
+    pub(crate) row_id: i64,
+    pub(crate) name: String,
+    pub(crate) smiles: Option<String>,
+    pub(crate) molblock: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct GridDescriptorValueInput {
+    pub(crate) id: String,
+    pub(crate) label: String,
+    pub(crate) value: Option<serde_json::Value>,
+    pub(crate) missing_kind: Option<String>,
+    pub(crate) error_text: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GridDescriptorRunSummary {
+    pub(crate) total_rows: usize,
+    pub(crate) calculated_rows: usize,
+    pub(crate) failed_rows: usize,
+    pub(crate) descriptor_id_count: usize,
+    pub(crate) descriptor_ids: Vec<String>,
+}
+
 #[derive(Clone, Copy, Debug)]
 struct GridIndexState {
     records_indexed: usize,
     records_total: Option<usize>,
     index_ready: bool,
+}
+
+#[derive(Debug, Clone)]
+struct PageSortClause {
+    join_sql: &'static str,
+    order_sql: String,
+    params: Vec<SqlValue>,
 }
 
 #[derive(Debug)]
@@ -233,6 +304,34 @@ impl GridRuntimeRegistry {
             ));
         }
         append_grid_text(&database_path, source_format, text, options)
+    }
+
+    pub(crate) fn descriptor_source_row_count(&self, document_id: &str) -> Result<usize, String> {
+        let database_path = self.database_path(document_id)?;
+        descriptor_source_row_count(&database_path)
+    }
+
+    pub(crate) fn descriptor_database_path(&self, document_id: &str) -> Result<PathBuf, String> {
+        self.database_path(document_id)
+    }
+
+    pub(crate) fn descriptor_run_summary(
+        &self,
+        document_id: &str,
+    ) -> Result<GridDescriptorRunSummary, String> {
+        let database_path = self.database_path(document_id)?;
+        descriptor_run_summary_in_database(&database_path)
+    }
+
+    fn database_path(&self, document_id: &str) -> Result<PathBuf, String> {
+        let entries = self
+            .entries
+            .lock()
+            .map_err(|_| "grid runtime registry is poisoned")?;
+        entries
+            .get(document_id)
+            .map(|entry| entry.database_path.clone())
+            .ok_or_else(|| format!("grid runtime is unavailable for document {document_id}"))
     }
 }
 
@@ -377,7 +476,19 @@ fn fetch_page(database_path: &Path, query: &GridQuery) -> Result<GridPageResult,
     let normalized_query = normalize_grid_query(&query.query);
     let limit = query.limit.clamp(1, 240);
     let offset = query.offset;
-    let sort_sql = sort_sql(&query.sort);
+    let sort_clause = page_sort_clause(query.descriptor_sort.as_ref(), &query.sort);
+    if !query.descriptor_filters.is_empty() || !query.column_filters.is_empty() {
+        return fetch_descriptor_filtered_page(
+            &connection,
+            &normalized_query,
+            &query.column_filters,
+            &query.descriptor_filters,
+            &sort_clause,
+            limit,
+            offset,
+            index_state,
+        );
+    }
     let total_rows = if normalized_query.is_empty() {
         connection
             .query_row("select count(*) from molecules", [], |row| {
@@ -388,7 +499,7 @@ fn fetch_page(database_path: &Path, query: &GridQuery) -> Result<GridPageResult,
         return fetch_filtered_page(
             &connection,
             &normalized_query,
-            sort_sql,
+            &sort_clause,
             limit,
             offset,
             index_state,
@@ -396,16 +507,23 @@ fn fetch_page(database_path: &Path, query: &GridQuery) -> Result<GridPageResult,
     };
 
     let sql = format!(
-        "select source_index, name, smiles, molblock, props_json \
+        "select id, source_index, name, smiles, molblock, props_json \
          from molecules \
-         order by {sort_sql} \
-         limit ?1 offset ?2"
+         {join_sql} \
+         order by {order_sql} \
+         limit ? offset ?",
+        join_sql = sort_clause.join_sql,
+        order_sql = sort_clause.order_sql
     );
     let mut statement = connection.prepare(&sql).map_err(|err| err.to_string())?;
+    let mut page_params = sort_clause.params;
+    page_params.push(SqlValue::Integer(limit as i64));
+    page_params.push(SqlValue::Integer(offset as i64));
     let rows = statement
-        .query(params![limit as i64, offset as i64])
+        .query(params_from_iter(page_params.iter()))
         .map_err(|err| err.to_string())?;
-    let page_rows = collect_page_rows(rows)?;
+    let mut page_rows = collect_page_rows(rows)?;
+    attach_descriptor_cells(&connection, &mut page_rows)?;
     Ok(GridPageResult {
         rows: page_rows,
         total_rows,
@@ -415,13 +533,14 @@ fn fetch_page(database_path: &Path, query: &GridQuery) -> Result<GridPageResult,
         records_indexed: index_state.records_indexed,
         records_total_hint: index_state.records_total,
         index_ready: index_state.index_ready,
+        descriptor_ids: descriptor_ids_in_connection(&connection)?,
     })
 }
 
 fn fetch_filtered_page(
     connection: &Connection,
     normalized_query: &str,
-    sort_sql: &str,
+    sort_clause: &PageSortClause,
     limit: usize,
     offset: usize,
     index_state: GridIndexState,
@@ -430,7 +549,7 @@ fn fetch_filtered_page(
         if let Ok(result) = fetch_filtered_page_with_fts(
             connection,
             &fts_query,
-            sort_sql,
+            sort_clause,
             limit,
             offset,
             index_state,
@@ -443,7 +562,7 @@ fn fetch_filtered_page(
     fetch_filtered_page_with_like(
         connection,
         normalized_query,
-        sort_sql,
+        sort_clause,
         limit,
         offset,
         index_state,
@@ -453,7 +572,7 @@ fn fetch_filtered_page(
 fn fetch_filtered_page_with_fts(
     connection: &Connection,
     fts_query: &str,
-    sort_sql: &str,
+    sort_clause: &PageSortClause,
     limit: usize,
     offset: usize,
     index_state: GridIndexState,
@@ -468,18 +587,29 @@ fn fetch_filtered_page_with_fts(
         )
         .map_err(|err| err.to_string())? as usize;
     let sql = format!(
-        "select source_index, name, smiles, molblock, props_json \
+        "select id, source_index, name, smiles, molblock, props_json \
          from molecules \
-         where id in (select rowid from molecules_fts where molecules_fts match ?1) \
-         order by {sort_sql} \
-         limit ?2 offset ?3"
+         {join_sql} \
+         where id in (select rowid from molecules_fts where molecules_fts match ?) \
+         order by {order_sql} \
+         limit ? offset ?",
+        join_sql = sort_clause.join_sql,
+        order_sql = sort_clause.order_sql
     );
     let mut statement = connection.prepare(&sql).map_err(|err| err.to_string())?;
+    let mut page_params = sort_clause.params.clone();
+    page_params.push(SqlValue::Text(fts_query.to_string()));
+    page_params.push(SqlValue::Integer(limit as i64));
+    page_params.push(SqlValue::Integer(offset as i64));
     let rows = statement
-        .query(params![fts_query, limit as i64, offset as i64])
+        .query(params_from_iter(page_params.iter()))
         .map_err(|err| err.to_string())?;
     Ok(GridPageResult {
-        rows: collect_page_rows(rows)?,
+        rows: {
+            let mut page_rows = collect_page_rows(rows)?;
+            attach_descriptor_cells(connection, &mut page_rows)?;
+            page_rows
+        },
         total_rows,
         offset,
         limit,
@@ -487,13 +617,14 @@ fn fetch_filtered_page_with_fts(
         records_indexed: index_state.records_indexed,
         records_total_hint: index_state.records_total,
         index_ready: index_state.index_ready,
+        descriptor_ids: descriptor_ids_in_connection(connection)?,
     })
 }
 
 fn fetch_filtered_page_with_like(
     connection: &Connection,
     normalized_query: &str,
-    sort_sql: &str,
+    sort_clause: &PageSortClause,
     limit: usize,
     offset: usize,
     index_state: GridIndexState,
@@ -507,18 +638,29 @@ fn fetch_filtered_page_with_like(
         )
         .map_err(|err| err.to_string())? as usize;
     let sql = format!(
-        "select source_index, name, smiles, molblock, props_json \
+        "select id, source_index, name, smiles, molblock, props_json \
          from molecules \
-         where search_text like ?1 escape '\\' \
-         order by {sort_sql} \
-         limit ?2 offset ?3"
+         {join_sql} \
+         where search_text like ? escape '\\' \
+         order by {order_sql} \
+         limit ? offset ?",
+        join_sql = sort_clause.join_sql,
+        order_sql = sort_clause.order_sql
     );
     let mut statement = connection.prepare(&sql).map_err(|err| err.to_string())?;
+    let mut page_params = sort_clause.params.clone();
+    page_params.push(SqlValue::Text(pattern));
+    page_params.push(SqlValue::Integer(limit as i64));
+    page_params.push(SqlValue::Integer(offset as i64));
     let rows = statement
-        .query(params![pattern, limit as i64, offset as i64])
+        .query(params_from_iter(page_params.iter()))
         .map_err(|err| err.to_string())?;
     Ok(GridPageResult {
-        rows: collect_page_rows(rows)?,
+        rows: {
+            let mut page_rows = collect_page_rows(rows)?;
+            attach_descriptor_cells(connection, &mut page_rows)?;
+            page_rows
+        },
         total_rows,
         offset,
         limit,
@@ -526,22 +668,71 @@ fn fetch_filtered_page_with_like(
         records_indexed: index_state.records_indexed,
         records_total_hint: index_state.records_total,
         index_ready: index_state.index_ready,
+        descriptor_ids: descriptor_ids_in_connection(connection)?,
     })
 }
 
 fn collect_page_rows(mut rows: rusqlite::Rows<'_>) -> Result<Vec<GridPageRow>, String> {
     let mut page_rows = Vec::new();
     while let Some(row) = rows.next().map_err(|err| err.to_string())? {
-        let props_json: String = row.get(4).map_err(|err| err.to_string())?;
+        let row_id = row.get::<_, i64>(0).map_err(|err| err.to_string())?;
+        let props_json: String = row.get(5).map_err(|err| err.to_string())?;
         page_rows.push(GridPageRow {
-            index: row.get::<_, i64>(0).map_err(|err| err.to_string())? as usize,
-            name: row.get(1).map_err(|err| err.to_string())?,
-            smiles: row.get(2).map_err(|err| err.to_string())?,
-            molblock: row.get(3).map_err(|err| err.to_string())?,
+            row_id,
+            index: row.get::<_, i64>(1).map_err(|err| err.to_string())? as usize,
+            name: row.get(2).map_err(|err| err.to_string())?,
+            smiles: row.get(3).map_err(|err| err.to_string())?,
+            molblock: row.get(4).map_err(|err| err.to_string())?,
             props: serde_json::from_str(&props_json).map_err(|err| err.to_string())?,
+            descriptors: BTreeMap::new(),
         });
     }
     Ok(page_rows)
+}
+
+fn attach_descriptor_cells(
+    connection: &Connection,
+    page_rows: &mut [GridPageRow],
+) -> Result<(), String> {
+    if page_rows.is_empty() {
+        return Ok(());
+    }
+    let row_ids = page_rows.iter().map(|row| row.row_id).collect::<Vec<_>>();
+    let placeholders = vec!["?"; row_ids.len()].join(", ");
+    let sql = format!(
+        "select molecule_id, descriptor_id, label, value_real, value_text, missing_kind, error_text
+         from descriptor_values
+         where molecule_id in ({placeholders})
+         order by molecule_id, descriptor_id collate nocase"
+    );
+    let mut descriptor_statement = connection.prepare(&sql).map_err(|err| err.to_string())?;
+    let mut rows = descriptor_statement
+        .query(params_from_iter(row_ids.iter()))
+        .map_err(|err| err.to_string())?;
+    let mut values_by_row_id: HashMap<i64, BTreeMap<String, GridDescriptorCell>> = HashMap::new();
+    while let Some(row) = rows.next().map_err(|err| err.to_string())? {
+        let molecule_id: i64 = row.get(0).map_err(|err| err.to_string())?;
+        let descriptor_id: String = row.get(1).map_err(|err| err.to_string())?;
+        let value_real: Option<f64> = row.get(3).map_err(|err| err.to_string())?;
+        let value_text: Option<String> = row.get(4).map_err(|err| err.to_string())?;
+        values_by_row_id.entry(molecule_id).or_default().insert(
+            descriptor_id,
+            GridDescriptorCell {
+                label: row.get(2).map_err(|err| err.to_string())?,
+                value: value_real
+                    .map(serde_json::Value::from)
+                    .or_else(|| value_text.map(serde_json::Value::from)),
+                missing_kind: row.get(5).map_err(|err| err.to_string())?,
+                error_text: row.get(6).map_err(|err| err.to_string())?,
+            },
+        );
+    }
+    for page_row in page_rows {
+        page_row.descriptors = values_by_row_id
+            .remove(&page_row.row_id)
+            .unwrap_or_default();
+    }
+    Ok(())
 }
 
 fn sort_sql(sort: &str) -> &'static str {
@@ -550,6 +741,245 @@ fn sort_sql(sort: &str) -> &'static str {
         "smiles" => "coalesce(smiles, '') collate nocase asc, source_index asc",
         _ => "source_index asc",
     }
+}
+
+fn page_sort_clause(
+    descriptor_sort: Option<&GridDescriptorSort>,
+    fallback_sort: &str,
+) -> PageSortClause {
+    let Some(sort) = descriptor_sort else {
+        return PageSortClause {
+            join_sql: "",
+            order_sql: sort_sql(fallback_sort).to_string(),
+            params: Vec::new(),
+        };
+    };
+    if !is_descriptor_identifier(&sort.id) {
+        return PageSortClause {
+            join_sql: "",
+            order_sql: sort_sql(fallback_sort).to_string(),
+            params: Vec::new(),
+        };
+    }
+    let direction = if sort.direction.eq_ignore_ascii_case("desc") {
+        "desc"
+    } else {
+        "asc"
+    };
+    PageSortClause {
+        join_sql: "left join descriptor_values descriptor_sort on descriptor_sort.molecule_id = molecules.id and descriptor_sort.descriptor_id = ?",
+        order_sql: format!(
+            "descriptor_sort.value_real is null asc, descriptor_sort.value_real {direction}, source_index asc"
+        ),
+        params: vec![SqlValue::Text(sort.id.clone())],
+    }
+}
+
+fn fetch_descriptor_filtered_page(
+    connection: &Connection,
+    normalized_query: &str,
+    column_filters: &[GridColumnFilter],
+    filters: &[GridDescriptorFilter],
+    sort_clause: &PageSortClause,
+    limit: usize,
+    offset: usize,
+    index_state: GridIndexState,
+) -> Result<GridPageResult, String> {
+    let (filter_sql, filter_params) = descriptor_filter_sql(filters)?;
+    let mut clauses = Vec::new();
+    let mut query_params: Vec<SqlValue> = Vec::new();
+    if !normalized_query.is_empty() {
+        clauses.push("search_text like ? escape '\\'".to_string());
+        query_params.push(SqlValue::Text(like_pattern(normalized_query)));
+    }
+    let (column_filter_sql, column_filter_params) = column_filter_sql(column_filters)?;
+    if !column_filter_sql.is_empty() {
+        clauses.push(column_filter_sql);
+        query_params.extend(column_filter_params);
+    }
+    if !filter_sql.is_empty() {
+        clauses.push(filter_sql);
+        query_params.extend(filter_params);
+    }
+    let where_sql = if clauses.is_empty() {
+        String::new()
+    } else {
+        format!(" where {}", clauses.join(" and "))
+    };
+    let count_sql = format!("select count(*) from molecules{where_sql}");
+    let total_rows = connection
+        .query_row(&count_sql, params_from_iter(query_params.iter()), |row| {
+            row.get::<_, i64>(0)
+        })
+        .map_err(|err| err.to_string())? as usize;
+    let page_sql = format!(
+        "select id, source_index, name, smiles, molblock, props_json
+         from molecules
+         {join_sql}
+         {where_sql}
+         order by {order_sql}
+         limit ? offset ?",
+        join_sql = sort_clause.join_sql,
+        order_sql = sort_clause.order_sql
+    );
+    let mut page_params = sort_clause.params.clone();
+    page_params.extend(query_params);
+    page_params.push(SqlValue::Integer(limit as i64));
+    page_params.push(SqlValue::Integer(offset as i64));
+    let mut statement = connection
+        .prepare(&page_sql)
+        .map_err(|err| err.to_string())?;
+    let rows = statement
+        .query(params_from_iter(page_params.iter()))
+        .map_err(|err| err.to_string())?;
+    let mut page_rows = collect_page_rows(rows)?;
+    attach_descriptor_cells(connection, &mut page_rows)?;
+    Ok(GridPageResult {
+        rows: page_rows,
+        total_rows,
+        offset,
+        limit,
+        indexing: !index_state.index_ready,
+        records_indexed: index_state.records_indexed,
+        records_total_hint: index_state.records_total,
+        index_ready: index_state.index_ready,
+        descriptor_ids: descriptor_ids_in_connection(connection)?,
+    })
+}
+
+fn descriptor_filter_sql(
+    filters: &[GridDescriptorFilter],
+) -> Result<(String, Vec<SqlValue>), String> {
+    let mut clauses = Vec::new();
+    let mut params = Vec::new();
+    for filter in filters {
+        if !is_descriptor_identifier(&filter.id) {
+            return Err(format!("Invalid descriptor filter id: {}", filter.id));
+        }
+        let mut clause = "exists (select 1 from descriptor_values where molecule_id = molecules.id and descriptor_id = ?".to_string();
+        params.push(SqlValue::Text(filter.id.clone()));
+        if let Some(min) = filter.min {
+            clause.push_str(" and value_real >= ?");
+            params.push(SqlValue::Real(min));
+        }
+        if let Some(max) = filter.max {
+            clause.push_str(" and value_real <= ?");
+            params.push(SqlValue::Real(max));
+        }
+        clause.push(')');
+        clauses.push(clause);
+    }
+    Ok((clauses.join(" and "), params))
+}
+
+fn column_filter_sql(filters: &[GridColumnFilter]) -> Result<(String, Vec<SqlValue>), String> {
+    let mut clauses = Vec::new();
+    let mut params = Vec::new();
+    for filter in filters {
+        let filter_type = filter.filter_type.as_str();
+        if filter_type == "number" {
+            let Some(expression) = numeric_column_expression(&filter.id)? else {
+                continue;
+            };
+            let mut parts = Vec::new();
+            if let Some(min) = filter.min {
+                parts.push(format!("{expression} >= ?"));
+                params.push(SqlValue::Real(min));
+            }
+            if let Some(max) = filter.max {
+                parts.push(format!("{expression} <= ?"));
+                params.push(SqlValue::Real(max));
+            }
+            if !parts.is_empty() {
+                clauses.push(format!("({})", parts.join(" and ")));
+            }
+            continue;
+        }
+        let Some(text) = filter
+            .text
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        let Some(expression) = text_column_expression(&filter.id)? else {
+            continue;
+        };
+        clauses.push(format!(
+            "lower(coalesce({expression}, '')) like ? escape '\\'"
+        ));
+        params.push(SqlValue::Text(like_pattern(&text.to_lowercase())));
+    }
+    Ok((clauses.join(" and "), params))
+}
+
+fn numeric_column_expression(id: &str) -> Result<Option<String>, String> {
+    if id == "index" {
+        return Ok(Some("(source_index + 1)".to_string()));
+    }
+    if let Some(key) = id.strip_prefix("prop:") {
+        return property_json_number_expression(key).map(Some);
+    }
+    Ok(None)
+}
+
+fn text_column_expression(id: &str) -> Result<Option<String>, String> {
+    match id {
+        "name" => Ok(Some("name".to_string())),
+        "smiles" => Ok(Some("smiles".to_string())),
+        _ => {
+            if let Some(key) = id.strip_prefix("prop:") {
+                return property_json_text_expression(key).map(Some);
+            }
+            Ok(None)
+        }
+    }
+}
+
+fn property_json_text_expression(key: &str) -> Result<String, String> {
+    Ok(format!(
+        "json_extract(props_json, '{}')",
+        property_json_path(key)?
+    ))
+}
+
+fn property_json_number_expression(key: &str) -> Result<String, String> {
+    Ok(format!(
+        "cast(json_extract(props_json, '{}') as real)",
+        property_json_path(key)?
+    ))
+}
+
+fn property_json_path(key: &str) -> Result<String, String> {
+    if key.is_empty() || key.len() > 120 {
+        return Err(format!("Invalid property filter id: prop:{key}"));
+    }
+    let escaped = key
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\'', "''");
+    Ok(format!("$.\"{escaped}\""))
+}
+
+fn is_descriptor_identifier(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 80
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+}
+
+fn descriptor_ids_in_connection(connection: &Connection) -> Result<Vec<String>, String> {
+    let mut statement = connection
+        .prepare("select distinct descriptor_id from descriptor_values order by descriptor_id")
+        .map_err(|err| err.to_string())?;
+    let descriptor_ids = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|err| err.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())?;
+    Ok(descriptor_ids)
 }
 
 fn read_index_state(connection: &Connection) -> Result<GridIndexState, String> {
@@ -676,6 +1106,19 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
                  index_ready integer not null default 0,
                  error text
              );
+             create table if not exists descriptor_values (
+                 molecule_id integer not null references molecules(id) on delete cascade,
+                 descriptor_id text not null,
+                 label text not null,
+                 value_real real,
+                 value_text text,
+                 missing_kind text,
+                 error_text text,
+                 updated_at_ms integer not null,
+                 primary key (molecule_id, descriptor_id)
+             );
+             create index if not exists descriptor_values_descriptor_real
+                 on descriptor_values(descriptor_id, value_real);
              insert or ignore into grid_index_state (id, records_indexed, index_ready) values (1, 0, 0);",
         )
         .map_err(|err| err.to_string())?;
@@ -703,6 +1146,178 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
          end;",
     );
     Ok(())
+}
+
+pub(crate) fn descriptor_source_row_count(database_path: &Path) -> Result<usize, String> {
+    let connection = Connection::open(database_path).map_err(|err| err.to_string())?;
+    initialize_schema(&connection)?;
+    connection
+        .query_row("select count(*) from molecules", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .map_err(|err| err.to_string())
+        .and_then(|count| {
+            usize::try_from(count).map_err(|_| format!("Invalid molecule count: {count}"))
+        })
+}
+
+pub(crate) fn descriptor_source_row_batch(
+    database_path: &Path,
+    offset: usize,
+    limit: usize,
+) -> Result<Vec<GridDescriptorSourceRow>, String> {
+    let connection = Connection::open(database_path).map_err(|err| err.to_string())?;
+    initialize_schema(&connection)?;
+    let mut statement = connection
+        .prepare(
+            "select id, name, smiles, molblock
+             from molecules
+             order by source_index asc
+             limit ?1 offset ?2",
+        )
+        .map_err(|err| err.to_string())?;
+    let limit = i64::try_from(limit).unwrap_or(i64::MAX);
+    let offset = i64::try_from(offset).unwrap_or(i64::MAX);
+    let mut rows = statement
+        .query(params![limit, offset])
+        .map_err(|err| err.to_string())?;
+    let mut source_rows = Vec::new();
+    while let Some(row) = rows.next().map_err(|err| err.to_string())? {
+        source_rows.push(GridDescriptorSourceRow {
+            row_id: row.get(0).map_err(|err| err.to_string())?,
+            name: row.get(1).map_err(|err| err.to_string())?,
+            smiles: row.get(2).map_err(|err| err.to_string())?,
+            molblock: row.get(3).map_err(|err| err.to_string())?,
+        });
+    }
+    Ok(source_rows)
+}
+
+pub(crate) fn descriptor_source_rows_by_indices(
+    database_path: &Path,
+    indexes: &[usize],
+) -> Result<Vec<GridDescriptorSourceRow>, String> {
+    if indexes.is_empty() {
+        return Ok(Vec::new());
+    }
+    let connection = Connection::open(database_path).map_err(|err| err.to_string())?;
+    initialize_schema(&connection)?;
+    let placeholders = std::iter::repeat_n("?", indexes.len())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "select id, name, smiles, molblock
+         from molecules
+         where source_index in ({placeholders})
+         order by source_index asc"
+    );
+    let params = indexes
+        .iter()
+        .map(|index| SqlValue::Integer(i64::try_from(*index).unwrap_or(i64::MAX)));
+    let mut statement = connection.prepare(&sql).map_err(|err| err.to_string())?;
+    let mut rows = statement
+        .query(params_from_iter(params))
+        .map_err(|err| err.to_string())?;
+    let mut source_rows = Vec::new();
+    while let Some(row) = rows.next().map_err(|err| err.to_string())? {
+        source_rows.push(GridDescriptorSourceRow {
+            row_id: row.get(0).map_err(|err| err.to_string())?,
+            name: row.get(1).map_err(|err| err.to_string())?,
+            smiles: row.get(2).map_err(|err| err.to_string())?,
+            molblock: row.get(3).map_err(|err| err.to_string())?,
+        });
+    }
+    Ok(source_rows)
+}
+
+pub(crate) fn replace_descriptor_values_in_database(
+    database_path: &Path,
+    row_id: i64,
+    values: &[GridDescriptorValueInput],
+) -> Result<(), String> {
+    let mut connection = Connection::open(database_path).map_err(|err| err.to_string())?;
+    initialize_schema(&connection)?;
+    let tx = connection.transaction().map_err(|err| err.to_string())?;
+    tx.execute(
+        "delete from descriptor_values where molecule_id = ?1",
+        params![row_id],
+    )
+    .map_err(|err| err.to_string())?;
+    let updated_at_ms = current_time_millis();
+    {
+        let mut statement = tx
+            .prepare(
+                "insert into descriptor_values (
+                   molecule_id, descriptor_id, label, value_real, value_text,
+                   missing_kind, error_text, updated_at_ms
+                 )
+                 values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            )
+            .map_err(|err| err.to_string())?;
+        for value in values {
+            let (value_real, value_text) = descriptor_storage_value(&value.value);
+            statement
+                .execute(params![
+                    row_id,
+                    value.id,
+                    value.label,
+                    value_real,
+                    value_text,
+                    value.missing_kind,
+                    value.error_text,
+                    updated_at_ms,
+                ])
+                .map_err(|err| err.to_string())?;
+        }
+    }
+    tx.commit().map_err(|err| err.to_string())
+}
+
+pub(crate) fn descriptor_run_summary_in_database(
+    database_path: &Path,
+) -> Result<GridDescriptorRunSummary, String> {
+    let connection = Connection::open(database_path).map_err(|err| err.to_string())?;
+    initialize_schema(&connection)?;
+    let total_rows = molecule_count(&connection)?;
+    let calculated_rows = connection
+        .query_row(
+            "select count(distinct molecule_id) from descriptor_values where descriptor_id <> 'error'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|err| err.to_string())? as usize;
+    let failed_rows = connection
+        .query_row(
+            "select count(distinct molecule_id) from descriptor_values where descriptor_id = 'error' and error_text is not null",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|err| err.to_string())? as usize;
+    let descriptor_ids = descriptor_ids_in_connection(&connection)?;
+    Ok(GridDescriptorRunSummary {
+        total_rows,
+        calculated_rows,
+        failed_rows,
+        descriptor_id_count: descriptor_ids.len(),
+        descriptor_ids,
+    })
+}
+
+fn descriptor_storage_value(value: &Option<serde_json::Value>) -> (Option<f64>, Option<String>) {
+    match value {
+        Some(serde_json::Value::Number(number)) => (number.as_f64(), None),
+        Some(serde_json::Value::String(text)) => (None, Some(clipped(text, 4096))),
+        Some(serde_json::Value::Bool(value)) => (None, Some(value.to_string())),
+        Some(other) => (None, Some(clipped(&other.to_string(), 4096))),
+        None => (None, None),
+    }
+}
+
+fn current_time_millis() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 fn finish_sdf_record(lines: &[String], has_content: bool, index: usize) -> Option<GridInputRecord> {
@@ -1549,6 +2164,9 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "name".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
                 offset: 0,
                 limit: 2,
             },
@@ -1568,6 +2186,9 @@ mod tests {
             &GridQuery {
                 query: "gamma".to_string(),
                 sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
                 offset: 0,
                 limit: 96,
             },
@@ -1576,6 +2197,466 @@ mod tests {
         assert_eq!(filtered.total_rows, 1);
         assert_eq!(filtered.rows.len(), 1);
         assert_eq!(filtered.rows[0].name, "Ethylamine");
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn fetches_table_column_filtered_pages() {
+        let runtime_dir = temp_runtime_dir();
+        let csv = "smiles,name,series,score\nCCO,Ethanol,Alpha,1.5\nc1ccccc1,Benzene,Beta,3.0\nCCN,Ethylamine,Alpha,2.2\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.records_total, 3);
+
+        let property_filtered = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                column_filters: vec![
+                    GridColumnFilter {
+                        id: "prop:series".to_string(),
+                        filter_type: "text".to_string(),
+                        text: Some("alpha".to_string()),
+                        min: None,
+                        max: None,
+                    },
+                    GridColumnFilter {
+                        id: "prop:score".to_string(),
+                        filter_type: "number".to_string(),
+                        text: None,
+                        min: Some(2.0),
+                        max: None,
+                    },
+                ],
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch property filtered page");
+        assert_eq!(property_filtered.total_rows, 1);
+        assert_eq!(property_filtered.rows[0].name, "Ethylamine");
+
+        let name_filtered = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                column_filters: vec![GridColumnFilter {
+                    id: "name".to_string(),
+                    filter_type: "text".to_string(),
+                    text: Some("benz".to_string()),
+                    min: None,
+                    max: None,
+                }],
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch name filtered page");
+        assert_eq!(name_filtered.total_rows, 1);
+        assert_eq!(name_filtered.rows[0].name, "Benzene");
+
+        let index_filtered = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                column_filters: vec![GridColumnFilter {
+                    id: "index".to_string(),
+                    filter_type: "number".to_string(),
+                    text: None,
+                    min: Some(2.0),
+                    max: Some(3.0),
+                }],
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch index filtered page");
+        assert_eq!(
+            index_filtered
+                .rows
+                .iter()
+                .map(|row| row.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Benzene", "Ethylamine"]
+        );
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn fetches_filters_and_sorts_descriptor_values() {
+        let runtime_dir = temp_runtime_dir();
+        let csv =
+            "smiles,name,series\nCCO,Ethanol,Alpha\nc1ccccc1,Benzene,Beta\nCCN,Ethylamine,Gamma\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.records_total, 3);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch initial page");
+        let connection = Connection::open(&database_path).expect("open database");
+        for row in &page.rows {
+            let molecular_weight = match row.name.as_str() {
+                "Ethanol" => 46.07,
+                "Benzene" => 78.11,
+                "Ethylamine" => 45.08,
+                _ => unreachable!("unexpected row"),
+            };
+            connection
+                .execute(
+                    "insert into descriptor_values (
+                        molecule_id, descriptor_id, label, value_real, value_text, missing_kind, error_text, updated_at_ms
+                    ) values (?1, ?2, ?3, ?4, null, null, null, ?5)",
+                    params![
+                        row.row_id,
+                        "MW",
+                        "Molecular weight",
+                        molecular_weight,
+                        current_time_millis()
+                    ],
+                )
+                .expect("insert descriptor value");
+        }
+
+        let filtered = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: vec![GridDescriptorFilter {
+                    id: "MW".to_string(),
+                    min: Some(46.0),
+                    max: Some(80.0),
+                }],
+                descriptor_sort: Some(GridDescriptorSort {
+                    id: "MW".to_string(),
+                    direction: "desc".to_string(),
+                }),
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch descriptor filtered page");
+
+        assert_eq!(filtered.total_rows, 2);
+        assert_eq!(filtered.descriptor_ids, vec!["MW"]);
+        assert_eq!(
+            filtered
+                .rows
+                .iter()
+                .map(|row| row.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Benzene", "Ethanol"]
+        );
+        let benzene_mw = filtered.rows[0]
+            .descriptors
+            .get("MW")
+            .and_then(|cell| cell.value.as_ref())
+            .and_then(serde_json::Value::as_f64);
+        assert_eq!(benzene_mw, Some(78.11));
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn sorts_descriptor_values_without_filtering() {
+        let runtime_dir = temp_runtime_dir();
+        let csv =
+            "smiles,name,series\nCCO,Ethanol,Alpha\nc1ccccc1,Benzene,Beta\nCCN,Ethylamine,Gamma\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.records_total, 3);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch initial page");
+        let connection = Connection::open(&database_path).expect("open database");
+        for row in &page.rows {
+            let Some(molecular_weight) = (match row.name.as_str() {
+                "Ethanol" => Some(46.07),
+                "Benzene" => Some(78.11),
+                "Ethylamine" => None,
+                _ => unreachable!("unexpected row"),
+            }) else {
+                continue;
+            };
+            connection
+                .execute(
+                    "insert into descriptor_values (
+                        molecule_id, descriptor_id, label, value_real, value_text, missing_kind, error_text, updated_at_ms
+                    ) values (?1, ?2, ?3, ?4, null, null, null, ?5)",
+                    params![
+                        row.row_id,
+                        "MW",
+                        "Molecular weight",
+                        molecular_weight,
+                        current_time_millis()
+                    ],
+                )
+                .expect("insert descriptor value");
+        }
+
+        let sorted = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: Some(GridDescriptorSort {
+                    id: "MW".to_string(),
+                    direction: "asc".to_string(),
+                }),
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch descriptor sorted page");
+
+        assert_eq!(
+            sorted
+                .rows
+                .iter()
+                .map(|row| row.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Ethanol", "Benzene", "Ethylamine"]
+        );
+        assert!(!sorted.rows[2].descriptors.contains_key("MW"));
+
+        let searched = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: "alpha".to_string(),
+                sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: Some(GridDescriptorSort {
+                    id: "MW".to_string(),
+                    direction: "desc".to_string(),
+                }),
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch descriptor sorted search page");
+        assert_eq!(searched.total_rows, 1);
+        assert_eq!(searched.rows[0].name, "Ethanol");
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn fetches_descriptor_cells_for_page_rows_in_batch() {
+        let runtime_dir = temp_runtime_dir();
+        let csv =
+            "smiles,name,series\nCCO,Ethanol,Alpha\nc1ccccc1,Benzene,Beta\nCCN,Ethylamine,Gamma\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.records_total, 3);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch initial page");
+        let connection = Connection::open(&database_path).expect("open database");
+        for row in &page.rows {
+            let (mw, bucket) = match row.name.as_str() {
+                "Ethanol" => (46.07, "small"),
+                "Benzene" => (78.11, "aromatic"),
+                "Ethylamine" => (45.08, "amine"),
+                _ => unreachable!("unexpected row"),
+            };
+            connection
+                .execute(
+                    "insert into descriptor_values (
+                        molecule_id, descriptor_id, label, value_real, value_text, missing_kind, error_text, updated_at_ms
+                    ) values (?1, ?2, ?3, ?4, null, null, null, ?5)",
+                    params![row.row_id, "MW", "Molecular weight", mw, current_time_millis()],
+                )
+                .expect("insert numeric descriptor value");
+            connection
+                .execute(
+                    "insert into descriptor_values (
+                        molecule_id, descriptor_id, label, value_real, value_text, missing_kind, error_text, updated_at_ms
+                    ) values (?1, ?2, ?3, null, ?4, null, null, ?5)",
+                    params![row.row_id, "bucket", "Bucket", bucket, current_time_millis()],
+                )
+                .expect("insert text descriptor value");
+        }
+
+        let fetched = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch page with descriptor cells");
+
+        assert_eq!(fetched.rows.len(), 3);
+        assert_eq!(
+            fetched.rows[0]
+                .descriptors
+                .get("MW")
+                .and_then(|cell| cell.value.as_ref())
+                .and_then(serde_json::Value::as_f64),
+            Some(46.07)
+        );
+        assert_eq!(
+            fetched.rows[1]
+                .descriptors
+                .get("bucket")
+                .and_then(|cell| cell.value.as_ref())
+                .and_then(serde_json::Value::as_str),
+            Some("aromatic")
+        );
+        assert_eq!(fetched.rows[2].descriptors.len(), 2);
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn descriptor_summary_counts_only_row_level_failures_as_failed() {
+        let runtime_dir = temp_runtime_dir();
+        let csv =
+            "smiles,name,series\nCCO,Ethanol,Alpha\nc1ccccc1,Benzene,Beta\nCCN,Ethylamine,Gamma\n";
+
+        let (database_path, _) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch initial page");
+
+        replace_descriptor_values_in_database(
+            &database_path,
+            page.rows[0].row_id,
+            &[
+                GridDescriptorValueInput {
+                    id: "MW".into(),
+                    label: "Molecular weight".into(),
+                    value: Some(serde_json::Value::from(46.07)),
+                    missing_kind: None,
+                    error_text: None,
+                },
+                GridDescriptorValueInput {
+                    id: "ABC".into(),
+                    label: "ABC".into(),
+                    value: None,
+                    missing_kind: Some("Missing".into()),
+                    error_text: Some("descriptor is not available".into()),
+                },
+            ],
+        )
+        .expect("store descriptor values");
+        replace_descriptor_values_in_database(
+            &database_path,
+            page.rows[1].row_id,
+            &[GridDescriptorValueInput {
+                id: "error".into(),
+                label: "Descriptor error".into(),
+                value: None,
+                missing_kind: None,
+                error_text: Some("SMILES did not parse".into()),
+            }],
+        )
+        .expect("store row-level descriptor error");
+
+        let summary =
+            descriptor_run_summary_in_database(&database_path).expect("fetch descriptor summary");
+        assert_eq!(summary.total_rows, 3);
+        assert_eq!(summary.calculated_rows, 1);
+        assert_eq!(summary.failed_rows, 1);
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn fetches_descriptor_source_rows_in_batches() {
+        let runtime_dir = temp_runtime_dir();
+        let csv =
+            "smiles,name,series\nCCO,Ethanol,Alpha\nc1ccccc1,Benzene,Beta\nCCN,Ethylamine,Gamma\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.records_total, 3);
+        assert_eq!(
+            descriptor_source_row_count(&database_path).expect("count descriptor source rows"),
+            3
+        );
+
+        let first_batch =
+            descriptor_source_row_batch(&database_path, 0, 2).expect("fetch first batch");
+        assert_eq!(
+            first_batch
+                .iter()
+                .map(|row| row.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Ethanol", "Benzene"]
+        );
+
+        let second_batch =
+            descriptor_source_row_batch(&database_path, 2, 2).expect("fetch second batch");
+        assert_eq!(
+            second_batch
+                .iter()
+                .map(|row| row.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Ethylamine"]
+        );
 
         let _ = std::fs::remove_dir_all(&runtime_dir);
     }
@@ -1598,6 +2679,9 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
                 offset: 0,
                 limit: 144,
             },
@@ -1625,6 +2709,9 @@ mod tests {
             &GridQuery {
                 query: "column 3".to_string(),
                 sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
                 offset: 0,
                 limit: 96,
             },
@@ -1655,6 +2742,9 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
                 offset: 0,
                 limit: 96,
             },
@@ -1721,6 +2811,9 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
                 offset: 0,
                 limit: 96,
             },
@@ -1754,6 +2847,9 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
                 offset: 0,
                 limit: 96,
             },
@@ -1769,6 +2865,9 @@ mod tests {
             &GridQuery {
                 query: "Molecule 09999".to_string(),
                 sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
                 offset: 0,
                 limit: 96,
             },
@@ -1811,6 +2910,9 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
                 offset: 0,
                 limit: 96,
             },
@@ -1840,6 +2942,9 @@ mod tests {
             &GridQuery {
                 query: "benzene".to_string(),
                 sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
                 offset: 0,
                 limit: 96,
             },
@@ -1853,6 +2958,9 @@ mod tests {
             &GridQuery {
                 query: "CCN".to_string(),
                 sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
                 offset: 0,
                 limit: 96,
             },
@@ -1866,6 +2974,9 @@ mod tests {
             &GridQuery {
                 query: "aromatic".to_string(),
                 sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
                 offset: 0,
                 limit: 96,
             },
@@ -1890,6 +3001,9 @@ mod tests {
             &GridQuery {
                 query: "   ".to_string(),
                 sort: "name".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
                 offset: 0,
                 limit: 2,
             },
@@ -1904,6 +3018,9 @@ mod tests {
             &GridQuery {
                 query: "eth".to_string(),
                 sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
                 offset: 0,
                 limit: 96,
             },
@@ -1928,6 +3045,9 @@ mod tests {
             &GridQuery {
                 query: "gamma".to_string(),
                 sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
                 offset: 0,
                 limit: 96,
             },
@@ -1955,6 +3075,9 @@ mod tests {
             &GridQuery {
                 query: "SharedNeedle".to_string(),
                 sort: "name".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
                 offset: 0,
                 limit: 25,
             },
@@ -1965,6 +3088,9 @@ mod tests {
             &GridQuery {
                 query: "SharedNeedle".to_string(),
                 sort: "name".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
                 offset: 25,
                 limit: 25,
             },
@@ -1996,6 +3122,9 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "prop:series".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
                 offset: 0,
                 limit: 1000,
             },
@@ -2016,6 +3145,9 @@ mod tests {
             &GridQuery {
                 query: "gamma".to_string(),
                 sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
                 offset: 10,
                 limit: 0,
             },
@@ -2046,11 +3178,12 @@ mod tests {
         wait_for_index_ready(&database_path);
         let connection = Connection::open(&database_path).expect("open database");
         let fts_query = fts_query("NeedlePerfMarker").expect("fts query");
+        let sort_clause = page_sort_clause(None, "index");
         let started = std::time::Instant::now();
         let fts_total = fetch_filtered_page_with_fts(
             &connection,
             &fts_query,
-            sort_sql("index"),
+            &sort_clause,
             96,
             0,
             read_index_state(&connection).expect("read index state"),
@@ -2063,7 +3196,7 @@ mod tests {
         let like_total = fetch_filtered_page_with_like(
             &connection,
             "needleperfmarker",
-            sort_sql("index"),
+            &sort_clause,
             96,
             0,
             read_index_state(&connection).expect("read index state"),
@@ -2122,6 +3255,9 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
                 offset: 2,
                 limit: 96,
             },
