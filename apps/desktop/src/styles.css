@@ -1432,7 +1432,8 @@ img.radix-menu-item-icon {
   width: 100%;
   min-height: 180px;
 }
-.dock-panel[data-drop-active] {
+.dock-panel[data-drop-active],
+.app-shell[data-structure-drag-active="true"] .dock-panel[data-open="true"]:hover {
   background: color-mix(in srgb, var(--accent) 8%, var(--bg-base));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 48%, transparent);
 }

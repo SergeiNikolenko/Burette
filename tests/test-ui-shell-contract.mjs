@@ -1574,6 +1574,7 @@ assert.match(styles, /\.dock-panel\[data-area="right"\] \.dock-resizer::after \{
 assert.match(styles, /\.dock-panel\[data-area="right"\] \.dock-resizer::after \{[\s\S]*width: 1px;/);
 assert.match(styles, /\.dock-panel\[data-area="bottom"\] \.dock-resizer::after \{[\s\S]*height: 1px;/);
 assert.match(styles, /\.dock-panel\[data-area="right"\] \.dock-resizer:hover::after,[\s\S]*?\.dock-panel\[data-area="bottom"\] \.dock-resizer:active::after \{\s*background: var\(--dock-divider-active-color\);\s*\}/);
+assert.match(styles, /\.dock-panel\[data-drop-active\],[\s\S]*?\.app-shell\[data-structure-drag-active="true"\] \.dock-panel\[data-open="true"\]:hover \{/);
 assert.match(styles, /\.dock-viewer \.ketcher-page \{[\s\S]*position: relative;[\s\S]*inset: auto;[\s\S]*overflow: hidden;/);
 assert.match(styles, /\.dock-viewer \.ketcher-page-header \{[\s\S]*grid-template-columns: minmax\(0, 1fr\);/);
 assert.match(styles, /\.dock-viewer \.ketcher-page-actions \{[\s\S]*overflow-x: auto;/);
@@ -2725,6 +2726,11 @@ assert.match(openDropHook, /document\.elementFromPoint\(position\.x, position\.y
 assert.match(openDropHook, /candidates\.find\(\(element\) => element\.closest\("\.dock-panel"\)\) \?\? candidates\[0\]/);
 assert.match(openDropHook, /const dockTarget = element\?\.closest<HTMLElement>\("\.dock-panel\[data-area\]\[data-active-tab\]"\)/);
 assert.match(openDropHook, /void openDockPayload\?\.\(\{ area: target\.area, tabKind: target\.tabKind, payload \}\)/);
+assert.match(editorTabs, /import type \{ DockArea, DockTabKind \} from "\.\.\/\.\.\/lib\/dock";/);
+assert.match(editorTabs, /const dockDropTargetAtPoint = useCallback\(\(clientX: number, clientY: number\): \{ area: DockArea; tabKind: DockTabKind \} \| null => \{/);
+assert.match(editorTabs, /document\.elementFromPoint\(clientX, clientY\)/);
+assert.match(editorTabs, /element\?\.closest<HTMLElement>\("\.dock-panel\[data-area\]\[data-active-tab\]"\)/);
+assert.match(editorTabs, /void actions\.openDockPayload\(\{ area: dockTarget\.area, tabKind: dockTarget\.tabKind, payload \}\)/);
 assert.match(dock, /export type DockFileEntry/);
 assert.match(dock, /export function dockFileEntries/);
 assert.match(dockPanel, /dockFileEntries\(\{/);
