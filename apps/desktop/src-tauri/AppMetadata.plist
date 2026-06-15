@@ -115,6 +115,7 @@
 				<string>xpdb</string>
 				<string>xvg</string>
 				<string>xyz</string>
+				<string>xyzr</string>
 				<string>key</string>
 				<string>chk</string>
 				<string>checkpoint</string>
@@ -535,6 +536,7 @@
 					<string>psi4</string>
 					<string>qcin</string>
 					<string>vasp</string>
+					<string>xyzr</string>
 				</array>
 			</dict>
 		</dict>
