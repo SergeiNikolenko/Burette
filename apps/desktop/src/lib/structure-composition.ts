@@ -59,6 +59,17 @@ export type StructureViewerAction =
       label: string;
       notify?: boolean;
       opacity: number;
+    }
+  | {
+      type: "set_sdf_pose_mode";
+      label: string;
+      notify?: boolean;
+      mode: "all" | "single";
+    }
+  | {
+      type: "set_sdf_pose_index";
+      label: string;
+      index: number;
     };
 
 type AtomRecord = {

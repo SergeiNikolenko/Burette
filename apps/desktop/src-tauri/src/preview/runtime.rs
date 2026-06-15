@@ -938,6 +938,7 @@ pub(crate) struct DockingDocumentRequest {
     receptor_path: String,
     ligand_paths: Vec<String>,
     active_pose: Option<usize>,
+    scene_mode: Option<String>,
 }
 
 pub(crate) fn open_docking_document<R: Runtime>(
@@ -964,12 +965,22 @@ pub(crate) fn open_docking_document<R: Runtime>(
             .join("|")
     );
     let document_id = stable_id(PathBuf::from(&source_id).as_path());
-    let title = format!(
-        "Docking: {} + {} ligand{}",
-        receptor.label,
-        ligands.len(),
-        if ligands.len() == 1 { "" } else { "s" }
-    );
+    let scene_mode = normalized_docking_scene_mode(request.scene_mode.as_deref());
+    let title = if scene_mode.is_some() {
+        format!(
+            "Mol* scene: {} + {} more structure{}",
+            receptor.label,
+            ligands.len(),
+            if ligands.len() == 1 { "" } else { "s" }
+        )
+    } else {
+        format!(
+            "Docking: {} + {} ligand{}",
+            receptor.label,
+            ligands.len(),
+            if ligands.len() == 1 { "" } else { "s" }
+        )
+    };
     let byte_count = receptor.byte_count as u64
         + ligands
             .iter()
@@ -979,6 +990,7 @@ pub(crate) fn open_docking_document<R: Runtime>(
         receptor_path: receptor.path.clone(),
         ligand_paths: ligands.iter().map(|ligand| ligand.path.clone()).collect(),
         active_pose: request.active_pose,
+        scene_mode: scene_mode.map(str::to_string),
     };
     let runtime = create_docking_runtime(
         app,
@@ -987,6 +999,7 @@ pub(crate) fn open_docking_document<R: Runtime>(
         receptor,
         ligands,
         request.active_pose,
+        scene_mode,
         preferences,
     )?;
     Ok(ViewerDocument {
@@ -1000,6 +1013,14 @@ pub(crate) fn open_docking_document<R: Runtime>(
         is_virtual: true,
         docking_request: Some(docking_request),
     })
+}
+
+fn normalized_docking_scene_mode(value: Option<&str>) -> Option<&'static str> {
+    match value {
+        Some("structureAll") => Some("structureAll"),
+        Some("structurePoses") => Some("structurePoses"),
+        _ => None,
+    }
 }
 
 fn read_docking_source(path: &str) -> Result<DockingRuntimeSource, String> {

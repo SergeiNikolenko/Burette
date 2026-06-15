@@ -44,6 +44,7 @@ export function structureBriefForDocument(document: ViewerDocument, sizeLabel: s
 }
 
 export function documentKind(document: ViewerDocument) {
+  if (document.dockingRequest?.sceneMode) return "Structure scene";
   if (document.dockingRequest) return "Docking view";
   if (document.mergedCollection) return "Merged collection";
   const extension = normalizedExtension(document);
@@ -64,6 +65,13 @@ export function rendererLabel(renderer: string) {
 }
 
 export function usefulElements(document: ViewerDocument): StructureBriefRow[] {
+  if (document.dockingRequest?.sceneMode) {
+    return [
+      { label: "Structures", value: String(1 + document.dockingRequest.ligandPaths.length) },
+      { label: "Initial mode", value: document.dockingRequest.sceneMode === "structureAll" ? "All together" : "Individual structures" },
+      { label: "First structure", value: fileName(document.dockingRequest.receptorPath) },
+    ];
+  }
   if (document.dockingRequest) {
     return [
       { label: "Receptor", value: fileName(document.dockingRequest.receptorPath) },
@@ -138,6 +146,7 @@ export function usefulElements(document: ViewerDocument): StructureBriefRow[] {
 function structureNotes(document: ViewerDocument) {
   const notes: string[] = [];
   if (document.virtual) notes.push("This document is generated in the app");
+  if (document.dockingRequest?.sceneMode) notes.push("Structure scene metadata is available from runtime config");
   if (document.dockingRequest) notes.push("Docking metadata is available from runtime config");
   if (document.mergedCollection) notes.push("Merged collection keeps source path references");
   if (isMaestroExtension(normalizedExtension(document))) notes.push("Maestro CT sections are available from the source text");

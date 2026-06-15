@@ -8,6 +8,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { isMoleculeCollectionPath } from "../../lib/collection-documents";
 import type { SidebarProject, SidebarProjectItem } from "../../lib/sidebar-projects";
 import { hasStructureDrag, readStructureDragPayload, writeStructureDragPayload } from "../../lib/structure-drag";
+import type { DockingSceneMode } from "../../types";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
 import { rendererLabel } from "../format";
 import { showNativeContextMenu } from "../native-context-menu";
@@ -124,6 +125,7 @@ export function ProjectGroup({
             <ProjectTreeNodeView
               key={node.key}
               node={node}
+              project={project}
               state={state}
               actions={actions}
               depth={1}
@@ -149,7 +151,23 @@ export function ProjectGroup({
 }
 
 function projectMenuItems(project: SidebarProject, actions: ShellActions) {
+  const scenePaths = molstarScenePathsForProjectFolder(project, null);
   return [
+    {
+      kind: "item" as const,
+      id: "open-project-molstar-scene",
+      text: "Open all in Mol* scene",
+      disabled: scenePaths.length < 2,
+      action: () => openProjectFolderMolstarScene(project, null, actions, "structureAll"),
+    },
+    {
+      kind: "item" as const,
+      id: "open-project-structure-poses",
+      text: "Open as structure poses",
+      disabled: scenePaths.length < 2,
+      action: () => openProjectFolderMolstarScene(project, null, actions, "structurePoses"),
+    },
+    { kind: "separator" as const },
     {
       kind: "item" as const,
       id: project.isPinned ? "unpin-project" : "pin-project",
@@ -196,8 +214,68 @@ function projectMenuItems(project: SidebarProject, actions: ShellActions) {
   ];
 }
 
+function projectFolderMenuItems(project: SidebarProject, folderPath: string, actions: ShellActions) {
+  const scenePaths = molstarScenePathsForProjectFolder(project, folderPath);
+  return [
+    {
+      kind: "item" as const,
+      id: "open-folder-molstar-scene",
+      text: "Open all in Mol* scene",
+      disabled: scenePaths.length < 2,
+      action: () => openProjectFolderMolstarScene(project, folderPath, actions, "structureAll"),
+    },
+    {
+      kind: "item" as const,
+      id: "open-folder-structure-poses",
+      text: "Open as structure poses",
+      disabled: scenePaths.length < 2,
+      action: () => openProjectFolderMolstarScene(project, folderPath, actions, "structurePoses"),
+    },
+    { kind: "separator" as const },
+    {
+      kind: "item" as const,
+      id: "open-folder-documents",
+      text: "Open as document tabs",
+      disabled: scenePaths.length === 0,
+      action: () => {
+        if (scenePaths.length > 0) void actions.openStructurePaths(scenePaths);
+      },
+    },
+    {
+      kind: "item" as const,
+      id: "copy-folder-path",
+      text: "Copy Path",
+      disabled: !project.rootPath,
+      action: () => {
+        if (!project.rootPath) return;
+        void actions.copyPath(`${project.rootPath}/${folderPath}`, "folder");
+      },
+    },
+  ];
+}
+
+function openProjectFolderMolstarScene(
+  project: SidebarProject,
+  folderPath: string | null,
+  actions: ShellActions,
+  sceneMode: DockingSceneMode,
+) {
+  const paths = molstarScenePathsForProjectFolder(project, folderPath);
+  if (paths.length < 2) return;
+  void actions.openDockingDocument(paths[0], paths.slice(1), { sceneMode });
+}
+
+function molstarScenePathsForProjectFolder(project: SidebarProject, folderPath: string | null) {
+  const prefix = folderPath ? `${folderPath}/` : "";
+  return project.items
+    .filter((item) => (folderPath ? item.relativePath.startsWith(prefix) : true))
+    .filter((item) => item.renderer === "molstar")
+    .map((item) => item.path);
+}
+
 function ProjectTreeNodeView({
   node,
+  project,
   state,
   actions,
   depth,
@@ -206,6 +284,7 @@ function ProjectTreeNodeView({
   toggleFolderPath,
 }: {
   node: ProjectTreeNode;
+  project: SidebarProject;
   state: ShellViewState;
   actions: ShellActions;
   depth: number;
@@ -227,6 +306,11 @@ function ProjectTreeNodeView({
       handleToggle();
     }
   };
+  const handleContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void showNativeContextMenu(projectFolderMenuItems(project, node.path, actions), { x: event.clientX, y: event.clientY });
+  };
 
   return (
     <div className="project-folder-node" role="listitem">
@@ -236,6 +320,7 @@ function ProjectTreeNodeView({
         className="project-folder-row"
         style={projectDepthStyle(depth)}
         onClick={handleToggle}
+        onContextMenu={handleContextMenu}
         onKeyDown={handleKeyDown}
         aria-expanded={expanded}
         aria-label={node.path}
@@ -252,6 +337,7 @@ function ProjectTreeNodeView({
             <ProjectTreeNodeView
               key={child.key}
               node={child}
+              project={project}
               state={state}
               actions={actions}
               depth={depth + 1}

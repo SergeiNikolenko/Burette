@@ -14,6 +14,42 @@ const TAB_REORDER_ANIMATION_MS = 170;
 const TAB_DRAG_ACTIVATE_DELAY_MS = 520;
 const TAB_MOUSE_REORDER_THRESHOLD_PX = 8;
 
+function molstarScenePathsForTabDocument(state: ShellViewState, tabDocument: ShellViewState["documents"][number]) {
+  const projectMatch = state.sidebarProjects
+    .map((project) => ({
+      project,
+      item: project.items.find((item) => item.path === tabDocument.path) ?? null,
+    }))
+    .find((match) => match.item);
+  if (projectMatch?.item) {
+    const folderPath = projectFolderPathForRelativePath(projectMatch.item.relativePath);
+    const prefix = folderPath ? `${folderPath}/` : "";
+    return uniquePaths(projectMatch.project.items
+      .filter((item) => (folderPath ? item.relativePath.startsWith(prefix) : true))
+      .filter((item) => item.renderer === "molstar")
+      .map((item) => item.path));
+  }
+
+  const folderPath = parentPath(tabDocument.path);
+  return uniquePaths(state.documents
+    .filter((document) => document.renderer === "molstar" && parentPath(document.path) === folderPath)
+    .map((document) => document.path));
+}
+
+function projectFolderPathForRelativePath(relativePath: string) {
+  const separatorIndex = relativePath.lastIndexOf("/");
+  return separatorIndex > 0 ? relativePath.slice(0, separatorIndex) : null;
+}
+
+function parentPath(path: string) {
+  const separatorIndex = path.lastIndexOf("/");
+  return separatorIndex > 0 ? path.slice(0, separatorIndex) : "";
+}
+
+function uniquePaths(paths: string[]) {
+  return [...new Set(paths)];
+}
+
 export function EditorTabs({ state, actions }: { state: ShellViewState; actions: ShellActions }) {
   const visibleTabs = state.tabs.filter((tab) => tab.location.kind !== "settings");
   const activeTabIndex = visibleTabs.findIndex((tab) => tab.id === state.activeTabId);
@@ -456,6 +492,9 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
             event.preventDefault();
             event.stopPropagation();
             const canSaveAs = tabDocument && isMoleculeCollectionPath(tabDocument.path);
+            const tabMolstarScenePaths = tabDocument?.renderer === "molstar"
+              ? molstarScenePathsForTabDocument(state, tabDocument)
+              : [];
             const canSelectAll = selectableTabIds().length > 1;
             const items = [
               ...(canSaveAs
@@ -497,6 +536,24 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
                         actions.showDocumentMetadata(tabDocument);
                       },
                     },
+                    ...(tabDocument.renderer === "molstar"
+                      ? [
+                          {
+                            kind: "item" as const,
+                            id: "open-tab-folder-molstar-scene",
+                            text: "Open all in Mol* scene",
+                            disabled: tabMolstarScenePaths.length < 2,
+                            action: () => {
+                              if (tabMolstarScenePaths.length < 2) return;
+                              void actions.openDockingDocument(
+                                tabMolstarScenePaths[0],
+                                tabMolstarScenePaths.slice(1),
+                                { sceneMode: "structureAll" },
+                              );
+                            },
+                          },
+                        ]
+                      : []),
                     { kind: "separator" as const },
                   ]
                 : []),

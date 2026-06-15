@@ -1,4 +1,4 @@
-import type { FepSetupRequest, OpenDocumentsMode, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences } from "../types";
+import type { DockingSceneMode, FepSetupRequest, OpenDocumentsMode, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences } from "../types";
 import type { MoleculeTab } from "../stores/molecule-store";
 import type { StructureDragPayload } from "../lib/structure-drag";
 import type { StructureViewerAction } from "../lib/structure-composition";
@@ -157,7 +157,7 @@ export type ShellActions = {
   closeTab: (id: string) => void;
   closeActiveDocument: () => void;
   clearAllDocuments: () => void;
-  openDockingDocument: (receptorPath: string, ligandPaths: string[], options?: { activePose?: number | null }) => void | Promise<ViewerDocument | null>;
+  openDockingDocument: (receptorPath: string, ligandPaths: string[], options?: { activePose?: number | null; sceneMode?: DockingSceneMode | null }) => void | Promise<ViewerDocument | null>;
   openDockingStructureRecords: (receptorPath: string, ligandPaths: string[], records: StructureDragPayload["records"]) => void | Promise<void>;
   appendGridRecords: (targetDocumentId: string, payload: StructureDragPayload) => boolean;
   addXyzrenderSheetItems: (targetDocumentId: string, payload: StructureDragPayload) => boolean;
