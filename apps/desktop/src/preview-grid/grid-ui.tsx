@@ -42,6 +42,7 @@ type GridControlProps = {
   onXyzrenderPresetChange: (value: string) => void;
   onOpenKetcher: () => void;
   onGenerate3D: () => void;
+  onCalculateSelectedDescriptors: () => void;
   onRendererSwitch: (value: "molstar") => void;
   onRdkitUseInputCoordsChange: (checked: boolean) => void;
 };
@@ -246,6 +247,15 @@ function GridControls(props: GridControlProps) {
                     <ControlTooltip label="Generate 3D conformers for selected molecules" />
                   </button>
                 ) : null}
+                <button
+                  id="calculate-selected-descriptors"
+                  type="button"
+                  data-buret-grid-descriptors
+                  onClick={props.onCalculateSelectedDescriptors}
+                >
+                  Calculate selected descriptors
+                  <ControlTooltip label="Calculate descriptors for selected molecules" />
+                </button>
               </div>
             </div>
           ) : null}
