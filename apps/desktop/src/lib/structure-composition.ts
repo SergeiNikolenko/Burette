@@ -42,6 +42,23 @@ export type StructureViewerAction =
   | {
       type: "clear_selection";
       label: string;
+    }
+  | {
+      type: "set_sdf_molecule";
+      label: string;
+      index: number;
+    }
+  | {
+      type: "set_sdf_context_style";
+      label: string;
+      notify?: boolean;
+      style: string;
+    }
+  | {
+      type: "set_sdf_context_opacity";
+      label: string;
+      notify?: boolean;
+      opacity: number;
     };
 
 type AtomRecord = {
@@ -527,11 +544,29 @@ function parseSdfComposition(text: string): StructureCompositionSummary | null {
   let atomTotal = 0;
   let bondTotal = 0;
   const properties = new Set<string>();
-  for (const molecule of molecules) {
+  const titles = molecules.map(sdfMoleculeTitle);
+  const duplicateTitles = new Set(titles.filter((title, index) => title && titles.indexOf(title) !== index));
+  const moleculeRows = molecules.map((molecule, index) => {
     const { atoms, bonds } = parseMolCounts(molecule);
     atomTotal += atoms;
     bondTotal += bonds;
     for (const match of molecule.matchAll(/^>\s*<([^>]+)>/gm)) properties.add(match[1].trim());
+    const label = sdfMoleculeLabel(titles[index], duplicateTitles, index);
+    return {
+      label,
+      value: `${formatInteger(atoms)} ${plural(atoms, "atom")} / ${formatInteger(bonds)} ${plural(bonds, "bond")}`,
+      action: {
+        type: "set_sdf_molecule",
+        label: `Show ${label}`,
+        index,
+      },
+    } satisfies StructureSummaryRow;
+  });
+  const componentRows: StructureSummaryRow[] = molecules.length > 1 ? moleculeRows : [
+    { label: "Small molecule", value: `${formatInteger(atomTotal)} ${plural(atomTotal, "atom")} / ${formatInteger(bondTotal)} ${plural(bondTotal, "bond")}` },
+  ];
+  if (properties.size > 0) {
+    componentRows.push({ label: "Properties", value: [...properties].slice(0, 4).join(", ") });
   }
   return {
     rows: [
@@ -540,15 +575,20 @@ function parseSdfComposition(text: string): StructureCompositionSummary | null {
       { label: "Bonds", value: formatInteger(bondTotal) },
       { label: "Properties", value: properties.size > 0 ? formatInteger(properties.size) : "None detected" },
     ],
-    componentRows: [
-      { label: "Small molecules", value: `${molecules.length} ${plural(molecules.length, "record")}` },
-      { label: "Properties", value: properties.size > 0 ? [...properties].slice(0, 4).join(", ") : "None detected" },
-    ],
+    componentRows,
     polymerRows: [],
     ligandRows: [],
     solventRows: [],
     notes: ["SDF records are treated as separate small-molecule components."],
   };
+}
+
+function sdfMoleculeTitle(molecule: string) {
+  return molecule.split(/\r?\n/, 1)[0]?.trim().slice(0, 80) || "";
+}
+
+function sdfMoleculeLabel(title: string, duplicateTitles: Set<string>, index: number) {
+  return title && !duplicateTitles.has(title) ? title : `Molecule ${index + 1}`;
 }
 
 function parseMolComposition(text: string): StructureCompositionSummary | null {
@@ -940,9 +980,10 @@ function polymerLabel(chain: ChainGroup) {
 
 function parseMolCounts(text: string) {
   const lines = text.split(/\r?\n/);
-  const countsLine = lines[3] ?? "";
-  let atoms = Number.parseInt(countsLine.slice(0, 3), 10);
-  let bonds = Number.parseInt(countsLine.slice(3, 6), 10);
+  const counts = parseV2000MolCountsLine(lines[3] ?? "")
+    ?? lines.slice(0, 8).map(parseV2000MolCountsLine).find(Boolean);
+  let atoms = counts?.atoms ?? Number.NaN;
+  let bonds = counts?.bonds ?? Number.NaN;
   if (!Number.isFinite(atoms) || !Number.isFinite(bonds)) {
     const v3000 = text.match(/M\s+V30\s+COUNTS\s+(\d+)\s+(\d+)/);
     atoms = v3000 ? Number.parseInt(v3000[1], 10) : 0;
@@ -951,6 +992,15 @@ function parseMolCounts(text: string) {
   return {
     atoms: Number.isFinite(atoms) ? atoms : 0,
     bonds: Number.isFinite(bonds) ? bonds : 0,
+  };
+}
+
+function parseV2000MolCountsLine(line: string) {
+  const match = line.match(/^\s*(\d{1,3})\s+(\d{1,3})\b.*\bV2000\b/);
+  if (!match) return null;
+  return {
+    atoms: Number.parseInt(match[1], 10),
+    bonds: Number.parseInt(match[2], 10),
   };
 }
 

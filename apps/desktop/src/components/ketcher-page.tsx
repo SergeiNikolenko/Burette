@@ -16,7 +16,7 @@ import {
 import { createPortal } from "react-dom";
 
 import ligandProLogo from "../assets/short-logo-ligandpro.svg";
-import { collectionExtension, collectionFamily } from "../lib/collection-documents";
+import { collectionExtension, collectionFamily as collectionFamilyForExtension, type CollectionFamily } from "../lib/collection-documents";
 import { readStructureText } from "../lib/structure-text";
 import { hasStructureDrag, readStructureDragPayload, structureDragRecordsToFragments, writeStructureDragRecords } from "../lib/structure-drag";
 import { resolveThemeMode, useSystemThemeMode } from "../lib/theme";
@@ -675,11 +675,17 @@ export function KetcherPage({
         return;
       }
       const draftKet = await withKetcherTimeout(ketcher.getKet(), "Sketch draft export");
+      const collectionFamily = target === "collection"
+        ? collectionFamilyForExtension(collectionExtension(collectionTargetPath ?? "")) ?? "sdf"
+        : "sdf";
+      const collectionRecord = target === "collection"
+        ? await ketcherCollectionRecord(ketcher, molfile, collectionFamily)
+        : null;
       actions.saveKetcherDraft(molfile);
       await actions.openKetcherSketch({
-        title: "ketcher-sketch.sdf",
-        extension: "sdf",
-        text: molfileToSdf(molfile),
+        title: collectionRecord?.title ?? "ketcher-sketch.sdf",
+        extension: collectionRecord?.extension ?? "sdf",
+        text: collectionRecord?.text ?? molfileToSdf(molfile),
         draftKet,
         draftMolfile: molfile,
         source3d: target === "generate3d" ? preserved3dSource ?? undefined : undefined,
@@ -1081,7 +1087,7 @@ export function KetcherPage({
                 ? [{
                     kind: "item" as const,
                     id: "no-open-collections",
-                    text: "No open SDF collections",
+                    text: "No open molecule collections",
                     disabled: true,
                   }]
                 : collectionTargets.map((target) => ({
@@ -1359,12 +1365,46 @@ async function restoreKetcherDraft(instance: KetcherEditorApi, draft: { ket?: st
 }
 
 function isCollectionAppendTarget(document: ShellViewState["documents"][number]) {
-  if (collectionFamily(collectionExtension(document.path)) !== "sdf") return false;
+  if (!collectionFamilyForExtension(collectionExtension(document.path))) return false;
   if (document.virtual || document.mergedCollection) return false;
   const normalizedPath = document.path.replace(/\\/g, "/");
   if (/^burrete-(ketcher|collection):\/\//u.test(normalizedPath)) return false;
   if (/\/viewer\/(ketcher|merged)\//u.test(normalizedPath)) return false;
   return true;
+}
+
+async function ketcherCollectionRecord(ketcher: KetcherEditorApi, molfile: string, family: CollectionFamily) {
+  if (family === "sdf") {
+    return {
+      title: "ketcher-sketch.sdf",
+      extension: "sdf" as const,
+      text: molfileToSdf(molfile),
+    };
+  }
+
+  const smiles = (await withKetcherTimeout(ketcher.getSmiles(), "Sketch SMILES export")).trim();
+  if (!smiles) throw new Error("Ketcher did not return SMILES for this sketch.");
+  if (family === "smiles") {
+    return {
+      title: "ketcher-sketch.smi",
+      extension: "smi" as const,
+      text: `${smiles} Ketcher sketch\n`,
+    };
+  }
+
+  const separator = family === "tsv" ? "\t" : ",";
+  const extension = family === "tsv" ? ("tsv" as const) : ("csv" as const);
+  return {
+    title: `ketcher-sketch.${extension}`,
+    extension,
+    text: `smiles${separator}name\n${escapeDelimitedCell(smiles, separator)}${separator}Ketcher sketch\n`,
+  };
+}
+
+function escapeDelimitedCell(value: string, separator: string) {
+  const needsQuotes = value.includes(separator) || value.includes('"') || /[\r\n]/u.test(value);
+  if (!needsQuotes) return value;
+  return `"${value.replace(/"/g, '""')}"`;
 }
 
 function withKetcherTimeout<T>(operation: Promise<T>, label: string): Promise<T> {
