@@ -55,6 +55,7 @@ jobs:
           tests/fixtures/BurettePreviewSamples/mini.cif
           tests/fixtures/BurettePreviewSamples/sdf/single.sdf
           tests/fixtures/BurettePreviewSamples/xyz/single.xyz
+          tests/fixtures/BurettePreviewSamples/xyzr/single.xyzr
 
       - name: Run non-GUI perf smoke report
         env:

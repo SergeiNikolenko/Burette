@@ -53,6 +53,7 @@ for (const fixture of [
   "tests/fixtures/BurettePreviewSamples/mini.cif",
   "tests/fixtures/BurettePreviewSamples/sdf/single.sdf",
   "tests/fixtures/BurettePreviewSamples/xyz/single.xyz",
+  "tests/fixtures/BurettePreviewSamples/xyzr/single.xyzr",
 ]) {
   assert.match(nightlySmoke, new RegExp(fixture.replaceAll("/", "\\/")));
 }

@@ -56,6 +56,13 @@ function plist(path) {
 assert.deepEqual(packageJson.workspaces, ['apps/*', 'packages/*']);
 
 const appFormats = registry.formats.filter((format) => format.contentType?.startsWith('com.local.burrete10.'));
+const xyzrenderInputFormat = registry.formats.find((format) => format.id === 'xyzrender-input');
+assert.ok(xyzrenderInputFormat?.extensions?.includes('xyzr'), 'XYZR files must map to the xyzrender Quick Look input type');
+assert.equal(
+  xyzrenderInputFormat?.contentType,
+  'com.local.burrete10.xyzrender-input',
+  'XYZR files must use the xyzrender Quick Look content type',
+);
 assert.equal(
   registry.quickLook.contentTypes.some(
     (type) =>
