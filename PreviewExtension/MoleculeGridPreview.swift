@@ -244,9 +244,14 @@ enum MoleculeGridPreviewBuilder {
             $0.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         let normalizedHeaders = headers.map { $0.lowercased().replacingOccurrences(of: " ", with: "_") }
-        let smilesIndexes = normalizedHeaders.enumerated().compactMap { index, value in
+        let namedSmilesIndexes = normalizedHeaders.enumerated().compactMap { index, value in
             isSmilesColumn(value) ? index : nil
         }
+        let firstRowLooksLikeData = headers.contains(where: looksLikeSmiles)
+        let inferredSmilesIndexes = firstRowLooksLikeData
+            ? []
+            : inferSmilesColumnIndexes(rows: Array(rows.dropFirst()), columnCount: headers.count, separator: separator)
+        let smilesIndexes = Array(Set(namedSmilesIndexes + inferredSmilesIndexes)).sorted()
         guard !smilesIndexes.isEmpty else {
             throw MoleculeGridPreviewError.missingMoleculeColumn(format.uppercased())
         }
@@ -376,6 +381,32 @@ enum MoleculeGridPreviewBuilder {
         value == "smile" || value.contains("smiles")
     }
 
+    private static func inferSmilesColumnIndexes(rows: [String], columnCount: Int, separator: Character) -> [Int] {
+        var indexes: [Int] = []
+        for columnIndex in 0..<columnCount {
+            var nonEmpty = 0
+            var valid = 0
+            for row in rows {
+                let cells = parseDelimitedLine(row, separator: separator)
+                guard columnIndex < cells.count else { continue }
+                let value = cells[columnIndex].trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !value.isEmpty else { continue }
+                nonEmpty += 1
+                if looksLikeSmiles(value) { valid += 1 }
+            }
+            if isLikelySmilesColumn(nonEmpty: nonEmpty, valid: valid) {
+                indexes.append(columnIndex)
+            }
+        }
+        return indexes
+    }
+
+    private static func isLikelySmilesColumn(nonEmpty: Int, valid: Int) -> Bool {
+        guard nonEmpty > 0, valid > 0 else { return false }
+        if valid < 2, nonEmpty > 2 { return false }
+        return valid * 5 >= nonEmpty * 4
+    }
+
     private static func isLikelyDelimitedHeader(_ cells: [String]) -> Bool {
         let normalized = cells.map { $0.lowercased().replacingOccurrences(of: " ", with: "_") }
         if normalized.contains(where: isSmilesColumn) { return true }
@@ -389,6 +420,7 @@ enum MoleculeGridPreviewBuilder {
         let lowered = trimmed.lowercased()
         let knownHeaders: Set<String> = ["smiles", "smile", "id", "name", "title", "compound", "molecule", "structure", "inchi"]
         if knownHeaders.contains(lowered) { return false }
+        if trimmed.hasPrefix("InChI=") || isInChIKey(trimmed) { return false }
         guard trimmed.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else { return false }
         let characters = Array(trimmed)
         var index = 0
@@ -397,9 +429,27 @@ enum MoleculeGridPreviewBuilder {
         var hasStructuralMarker = false
         while index < characters.count {
             let character = characters[index]
-            if character.isNumber {
+            if character == "[" {
+                var bracketIndex = index + 1
+                var hasBracketAtom = false
+                var closedBracket = false
+                while bracketIndex < characters.count {
+                    if characters[bracketIndex] == "]" {
+                        closedBracket = true
+                        break
+                    }
+                    if characters[bracketIndex].isLetter {
+                        hasBracketAtom = true
+                    }
+                    bracketIndex += 1
+                }
+                guard closedBracket, hasBracketAtom else { return false }
+                hasAtom = true
                 hasStructuralMarker = true
-            } else if "[]=#@+-/\\().,:".contains(character) {
+                index = bracketIndex
+            } else if character.isNumber {
+                hasStructuralMarker = true
+            } else if "]=#@+-/\\().,:$%".contains(character) {
                 hasStructuralMarker = true
             } else if character == "B", index + 1 < characters.count, characters[index + 1] == "r" {
                 hasAtom = true
@@ -419,6 +469,17 @@ enum MoleculeGridPreviewBuilder {
         }
         guard hasAtom else { return false }
         return !hasAromaticAtom || hasStructuralMarker
+    }
+
+    private static func isInChIKey(_ value: String) -> Bool {
+        let characters = Array(value)
+        guard characters.count == 27, characters[14] == "-", characters[25] == "-" else { return false }
+        return characters.enumerated().allSatisfy { index, character in
+            if index == 14 || index == 25 { return true }
+            let scalars = character.unicodeScalars
+            guard scalars.count == 1, let scalar = scalars.first else { return false }
+            return scalar.value >= 65 && scalar.value <= 90
+        }
     }
 
     private static func normalizedLines(_ text: String) -> [String] {
