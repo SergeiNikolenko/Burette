@@ -2915,6 +2915,8 @@ assert.match(browserDevDocuments, /candidateCount\?: number/);
 assert.match(browserDevDocuments, /rmsdCutoff\?: number/);
 assert.match(browserDevDocuments, /export async function openBrowserDevTextDocument\([\s\S]*documentId\?: string/);
 assert.match(browserDevDocuments, /openBrowserDevDocumentFromBytes\(path, cleanExtension, bytes, bytes\.length, preferences, reloadOptions, documentId\)/);
+assert.match(browserDevDocuments, /function isDelimitedSmilesHeader\(header: string\)/);
+assert.match(browserDevDocuments, /normalized === "smile" \|\| normalized\.includes\("smiles"\)/);
 assert.match(browserDevDocuments, /documentId: documentId \?\? stableId\(path\)/);
 assert.match(browserDevDocuments, /id: documentId \?\? stableId\(path\)/);
 assert.match(browserDevDocuments, /export function writeBrowserDevVirtualTextDocument\(path: string, text: string\)/);
