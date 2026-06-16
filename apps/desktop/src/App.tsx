@@ -87,7 +87,7 @@ const CommandPalette = lazy(() => import("./components/command-palette").then((m
 const filters = [
   {
     name: "Files",
-    extensions: [...previewFormatRegistry.documentTypes.extensions, "md", "markdown", "mdx", "txt", "log", "err", "sh", "bash", "zsh", "py", "rs", "js", "jsx", "ts", "tsx", "json", "yaml", "yml", "toml", "xml", "html", "css", "inpcrd", "rst7", "crd", "rst", "par", "prm", "rtf", "str", "key", "chk", "checkpoint", "state"],
+    extensions: [...previewFormatRegistry.documentTypes.extensions, "md", "markdown", "mdx", "txt", "log", "out", "err", "sh", "bash", "zsh", "py", "rs", "js", "jsx", "ts", "tsx", "json", "yaml", "yml", "toml", "xml", "html", "css", "inpcrd", "rst7", "crd", "rst", "par", "prm", "rtf", "str", "key", "chk", "checkpoint", "state"],
   },
 ];
 
@@ -112,6 +112,7 @@ const preferredTextExtensions = new Set([
   "mdx",
   "txt",
   "log",
+  "out",
   "err",
   "sh",
   "bash",
@@ -167,7 +168,6 @@ const structureAndTextExtensions = new Set([
   "lammpstrj",
   "lammps",
   "lmp",
-  "log",
   "mae",
   "maegz",
   "mdcrd",
@@ -178,7 +178,6 @@ const structureAndTextExtensions = new Set([
   "nctraj",
   "netcdf",
   "nw",
-  "out",
   "parm",
   "parm7",
   "prmtop",
@@ -857,12 +856,15 @@ export default function App() {
 
     for (const path of cleanPaths) {
       const extension = pathExtension(path);
-      if (structureAndTextExtensions.has(extension)) {
+      if (
+        preferredTextExtensions.has(extension)
+        || (extension.length > 0 && !structureExtensions.has(extension) && !structureAndTextExtensions.has(extension))
+      ) {
+        textPaths.push(path);
+      } else if (structureAndTextExtensions.has(extension)) {
         structureAndTextPaths.push(path);
       } else if (structureExtensions.has(extension)) {
         structurePaths.push(path);
-      } else if (preferredTextExtensions.has(extension) || extension.length > 0) {
-        textPaths.push(path);
       } else {
         textPaths.push(path);
       }

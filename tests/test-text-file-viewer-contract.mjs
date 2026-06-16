@@ -178,10 +178,16 @@ assert.match(app, /: await openBrowserDevTextFiles\(cleanPaths\)/);
 assert.doesNotMatch(app, /Text file viewer is available in the desktop app only/);
 assert.match(app, /const openPaths = useCallback/);
 assert.match(app, /"par"[\s\S]*"checkpoint"/);
-assert.match(app, /structureAndTextExtensions = new Set\(\[[\s\S]*"out"[\s\S]*"vasp"[\s\S]*\]\)/);
-for (const extension of ["abi", "cms", "com", "csv", "cub", "cube", "fdf", "graphml", "in", "inp", "inpcrd", "log", "mae", "maegz", "nw", "out", "psi4", "qcin", "crd", "rst", "rst7", "state", "tsv", "vasp", "xml"]) {
+assert.match(app, /preferredTextExtensions = new Set\(\[[\s\S]*"log"[\s\S]*"out"[\s\S]*"json"[\s\S]*"yaml"[\s\S]*\]\)/);
+assert.match(app, /structureAndTextExtensions = new Set\(\[[\s\S]*"nw"[\s\S]*"vasp"[\s\S]*\]\)/);
+const structureAndTextBlock = app.match(/structureAndTextExtensions = new Set\(\[([\s\S]*?)\]\);/)?.[1] ?? "";
+assert.ok(structureAndTextBlock, "structureAndTextExtensions should be declared");
+assert.doesNotMatch(structureAndTextBlock, /"log"/);
+assert.doesNotMatch(structureAndTextBlock, /"out"/);
+for (const extension of ["abi", "cms", "com", "csv", "cub", "cube", "fdf", "graphml", "in", "inp", "inpcrd", "mae", "maegz", "nw", "psi4", "qcin", "crd", "rst", "rst7", "state", "tsv", "vasp", "xml"]) {
   assert.match(app, new RegExp(`"${extension}"`), `${extension} should be a structure-and-text open extension`);
 }
+assert.match(app, /preferredTextExtensions\.has\(extension\)[\s\S]*extension\.length > 0 && !structureExtensions\.has\(extension\) && !structureAndTextExtensions\.has\(extension\)[\s\S]*textPaths\.push\(path\);/);
 assert.match(app, /if \(structureAndTextExtensions\.has\(extension\)\) \{\s*structureAndTextPaths\.push\(path\);/);
 assert.match(app, /const openedStructureAndTextPaths = new Set<string>\(\);/);
 assert.match(app, /const result = await openDocuments\(structureAndTextPaths\);/);
