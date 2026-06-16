@@ -5,6 +5,7 @@ export type DockArea = "right" | "bottom";
 export type DockToolKind = "ketcher";
 
 export type DockTabKind =
+  | "xyzrender"
   | "files"
   | "text"
   | "inspector"
@@ -71,6 +72,7 @@ export type DockFileEntriesInput = {
 };
 
 export const DOCK_TAB_LABELS: Record<DockTabKind, string> = {
+  xyzrender: "xyzr",
   files: "Files",
   text: "Text",
   inspector: "Info",
@@ -84,6 +86,7 @@ export const DOCK_TAB_LABELS: Record<DockTabKind, string> = {
 };
 
 export const RIGHT_DOCK_DEFAULT_TABS: DockTabKind[] = [
+  "xyzrender",
   "inspector",
   "descriptors",
   "text",
@@ -95,6 +98,7 @@ export const BOTTOM_DOCK_DEFAULT_TABS: DockTabKind[] = [
 ];
 
 const RIGHT_DOCK_TAB_CATALOG: DockTabKind[] = [
+  "xyzrender",
   "inspector",
   "descriptors",
   "text",

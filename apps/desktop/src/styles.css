@@ -1670,6 +1670,67 @@ img.radix-menu-item-icon {
   color: var(--text-primary);
 }
 .dock-action:active { transform: scale(0.99); }
+.xyzrender-dock-panel {
+  gap: 10px;
+}
+.xyzrender-dock-card {
+  gap: 10px;
+}
+.xyzrender-dock-badge {
+  border-radius: 6px;
+  background: var(--surface-input);
+  color: var(--text-muted);
+  padding: 3px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+.xyzrender-dock-field,
+.xyzrender-dock-check {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.xyzrender-dock-field select,
+.xyzrender-dock-field input[type="number"] {
+  width: 132px;
+  height: 30px;
+  border: 1px solid var(--line-subtler);
+  border-radius: 7px;
+  background: var(--surface-input) var(--select-chevron) no-repeat right 9px center / 12px 12px;
+  color: var(--text-primary);
+  padding: 0 28px 0 9px;
+  font: inherit;
+  font-size: 13px;
+}
+.xyzrender-dock-field input[type="number"] {
+  background: var(--surface-input);
+  padding-right: 9px;
+}
+.xyzrender-dock-field select:focus-visible,
+.xyzrender-dock-field input[type="number"]:focus-visible,
+.xyzrender-dock-check input:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 1px;
+}
+.xyzrender-dock-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+.xyzrender-dock-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.xyzrender-dock-actions .dock-action {
+  text-align: center;
+}
 .structure-brief {
   gap: 6px;
 }
