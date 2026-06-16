@@ -690,7 +690,11 @@ async function openBrowserDevDocumentFromBytes(
     reloadOptions,
     documentId,
   );
-  return browserDocument(path, extension, renderer, html, sourceByteCount, documentId);
+  return browserDocument(path, extension, renderer, html, sourceByteCount, documentId, {
+    xyzrenderControls,
+    xyzrenderPreset: externalArtifact?.preset ?? reloadOptions?.xyzrenderPreset ?? null,
+    xyzrenderPresetOptions: xyzrenderPresetOptions ?? null,
+  });
 }
 
 function browserDocument(
@@ -700,6 +704,11 @@ function browserDocument(
   html: string,
   byteCount: number,
   documentId?: string,
+  xyzrender?: {
+    xyzrenderControls?: XyzrenderControls | null;
+    xyzrenderPreset?: string | null;
+    xyzrenderPresetOptions?: Array<{ value: string; label: string }> | null;
+  },
 ): ViewerDocument {
   return {
     id: documentId ?? stableId(path),
@@ -709,6 +718,9 @@ function browserDocument(
     renderer,
     runtimePath: html,
     byteCount,
+    xyzrenderControls: xyzrender?.xyzrenderControls ?? null,
+    xyzrenderPreset: xyzrender?.xyzrenderPreset ?? null,
+    xyzrenderPresetOptions: xyzrender?.xyzrenderPresetOptions ?? null,
   };
 }
 
@@ -1384,8 +1396,8 @@ function molstarFormatForExtension(extension: string): FormatInfo | null {
 function resolveRenderer(format: FormatInfo, requested: string, externalMolstarAvailable = false) {
   const normalized = normalizeRendererMode(requested);
   if (format.externalOnly) {
-    if (normalized === "xyzrender-external") return "xyzrender-external";
-    return externalMolstarAvailable ? "molstar" : "xyzrender-external";
+    if (normalized === "molstar" && externalMolstarAvailable) return "molstar";
+    return "xyzrender-external";
   }
   const canUseXyzrender = (format.molstarFormat === "xyz" && !format.binary) || canUseExternalXyzrender(format);
   if (normalized === "molstar") return "molstar";
