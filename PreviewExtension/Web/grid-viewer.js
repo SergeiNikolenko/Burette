@@ -4434,6 +4434,36 @@
     return html;
   }
 
+  function fillMissingSmilesFromMolblocks() {
+    if (!state.rdkit) return false;
+    let changed = false;
+    for (const row of state.all) {
+      if (String(row?.smiles || '').trim() || !String(row?.molblock || '').trim()) continue;
+      const smiles = smilesFromMolblock(row.molblock);
+      if (!smiles) continue;
+      row.smiles = smiles;
+      changed = true;
+    }
+    if (changed) {
+      invalidateTableColumnCatalog();
+    }
+    return changed;
+  }
+
+  function smilesFromMolblock(molblock) {
+    let mol = null;
+    try {
+      mol = state.rdkit.get_mol(String(molblock || ''));
+      if (!mol || (typeof mol.is_valid === 'function' && !mol.is_valid())) return '';
+      if (typeof mol.get_smiles === 'function') return String(mol.get_smiles() || '').trim();
+    } catch (_) {
+      return '';
+    } finally {
+      try { mol?.delete?.(); } catch {}
+    }
+    return '';
+  }
+
   function scheduleRdkitCard(card, row) {
     const target = card.querySelector('[data-buret-rdkit-card-key]');
     if (!target) return;
@@ -5314,12 +5344,15 @@
       try {
         await initRDKit();
         state.rdkitError = '';
+        const filledSmiles = !state.remoteMode && fillMissingSmilesFromMolblocks();
         if (state.cardRenderer === 'rdkit') {
           if (state.remoteMode) {
             if (state.rows.length) void renderVirtualWindow(cfg, state.token, { force: true });
           } else {
             render(cfg);
           }
+        } else if (filledSmiles) {
+          refresh(cfg);
         }
       } catch (rdkitError) {
         state.rdkitError = rdkitError?.message || String(rdkitError);

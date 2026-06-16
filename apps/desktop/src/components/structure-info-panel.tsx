@@ -16,20 +16,23 @@ type StructureInfoPanelProps = {
 };
 
 const SDF_CONTEXT_STYLE_OPTIONS = [
-  { value: "illustrative", label: "Colorful" },
-  { value: "cartoon", label: "Cartoon" },
   { value: "line", label: "Line" },
   { value: "ball-and-stick", label: "Ball+Stick" },
   { value: "spacefill", label: "Spacefill" },
   { value: "molecular-surface", label: "Surface" },
   { value: "match", label: "Match" },
 ] as const;
-const STRUCTURE_SCENE_STYLE_OPTIONS = SDF_CONTEXT_STYLE_OPTIONS.filter((option) => (
-  option.value !== "match" && option.value !== "cartoon" && option.value !== "spacefill"
-));
+const STRUCTURE_SCENE_STYLE_OPTIONS = [
+  { value: "illustrative", label: "Colorful" },
+  { value: "line", label: "Line" },
+  { value: "ball-and-stick", label: "Ball+Stick" },
+  { value: "molecular-surface", label: "Surface" },
+] as const;
 
-type SdfContextStyle = typeof SDF_CONTEXT_STYLE_OPTIONS[number]["value"];
-const SDF_CONTEXT_OPACITY_DEFAULT = 0.12;
+type SdfContextStyle =
+  | typeof SDF_CONTEXT_STYLE_OPTIONS[number]["value"]
+  | typeof STRUCTURE_SCENE_STYLE_OPTIONS[number]["value"];
+const SDF_CONTEXT_OPACITY_DEFAULT = 0.4;
 const SDF_CONTEXT_OPACITY_MIN = 0.04;
 const SDF_CONTEXT_OPACITY_MAX = 1;
 const STRUCTURE_SCENE_OPACITY_MAX = 1;
@@ -46,10 +49,9 @@ export function StructureInfoPanel({ document, dockDrops, actions }: StructureIn
 
   useEffect(() => {
     if (!document) return;
-    const style = readSdfContextStylePreference(document);
-    const sceneStyle = document.dockingRequest?.sceneMode ? normalizeStructureSceneStyle(style) : style;
-    if (sceneStyle !== style) writeSdfContextStylePreference(document, sceneStyle);
-    setSdfContextStyle(sceneStyle);
+    const sceneControls = document.renderer === "molstar" && Boolean(document.dockingRequest?.sceneMode || isStructureFrameStyleDocument(document));
+    const style = readSdfContextStylePreference(document, sceneControls ? STRUCTURE_SCENE_STYLE_OPTIONS : SDF_CONTEXT_STYLE_OPTIONS);
+    setSdfContextStyle(style);
     setSdfContextOpacity(readSdfContextOpacityPreference(document));
   }, [document]);
 
@@ -71,8 +73,23 @@ export function StructureInfoPanel({ document, dockDrops, actions }: StructureIn
   const compositionPending = composition.documentId === document.id && composition.loading;
   const compositionError = composition.documentId === document.id ? composition.error : null;
   const selectedEntity = selectedStructureRow(document, compositionSummary, activeActionKey);
-  const hasStructureScene = Boolean(document.dockingRequest?.sceneMode);
-  const hasStructureSceneAllMode = document.dockingRequest?.poseMode === "all";
+  const isMolstarDocument = document.renderer === "molstar";
+  const hasStructureScene = isMolstarDocument && Boolean(document.dockingRequest?.sceneMode);
+  const hasStructureSceneAllMode = isMolstarDocument && document.dockingRequest?.poseMode === "all";
+  const hasStructureFrameAllMode = isMolstarDocument && shouldShowStructureFrameStyleCard(document, compositionSummary);
+  const allStructureStyleCard = hasStructureSceneAllMode
+    ? {
+        title: "All structures",
+        ariaLabel: "All structures style",
+        opacityLabel: "All structures opacity",
+      }
+    : hasStructureFrameAllMode
+      ? {
+          title: "All frames",
+          ariaLabel: "All frames style",
+          opacityLabel: "All frames opacity",
+        }
+      : null;
   const clearSelection = () => {
     actions.runStructureViewerAction(document, { type: "clear_selection", label: "Clear selection" });
     setActiveActionKey(null);
@@ -124,7 +141,7 @@ export function StructureInfoPanel({ document, dockDrops, actions }: StructureIn
         <p>{inspectorSummaryLine(brief.kind, compositionSummary, compositionPending, compositionError)}</p>
       </section>
 
-      {compositionSummary && hasSdfMoleculeCollection(compositionSummary) ? (
+      {isMolstarDocument && compositionSummary && hasSdfMoleculeCollection(compositionSummary) ? (
         <SdfContextStyleCard
           document={document}
           actions={actions}
@@ -139,16 +156,16 @@ export function StructureInfoPanel({ document, dockDrops, actions }: StructureIn
         <StructureSceneControlsCard document={document} actions={actions} />
       ) : null}
 
-      {hasStructureSceneAllMode ? (
+      {allStructureStyleCard ? (
         <SdfContextStyleCard
           document={document}
           actions={actions}
           setValue={setSdfContextStyle}
           setOpacity={setSdfContextOpacity}
-          title="All structures"
+          title={allStructureStyleCard.title}
           detail="All-together view"
-          ariaLabel="All structures style"
-          opacityLabel="All structures opacity"
+          ariaLabel={allStructureStyleCard.ariaLabel}
+          opacityLabel={allStructureStyleCard.opacityLabel}
           styleOptions={STRUCTURE_SCENE_STYLE_OPTIONS}
           opacityDisabled={sdfContextStyle === "illustrative"}
           value={normalizeStructureSceneStyle(sdfContextStyle)}
@@ -254,6 +271,21 @@ function hasSdfMoleculeCollection(summary: StructureCompositionSummary) {
   return summary.componentRows.filter((row) => row.action?.type === "set_sdf_molecule").length > 1;
 }
 
+function isStructureFrameStyleDocument(document: ViewerDocument) {
+  const extension = document.extension.toLowerCase();
+  return document.renderer === "molstar" && (extension === "xyz" || extension === "extxyz");
+}
+
+function shouldShowStructureFrameStyleCard(document: ViewerDocument, summary: StructureCompositionSummary | null) {
+  if (!isStructureFrameStyleDocument(document) || document.dockingRequest?.sceneMode) return false;
+  return summaryInteger(valueForLabel(summary?.rows ?? [], "Frames")) > 1;
+}
+
+function summaryInteger(value: string | null) {
+  const match = value?.match(/\d[\d,]*/u);
+  return match ? Number(match[0].replace(/,/g, "")) : 0;
+}
+
 function StructureSceneControlsCard({ document, actions }: { document: ViewerDocument; actions: ShellActions }) {
   const request = document.dockingRequest;
   if (!request?.sceneMode) return null;
@@ -313,11 +345,18 @@ function sdfContextOpacityStorageKey(document: ViewerDocument) {
 }
 
 function normalizeSdfContextStyle(value: string | null | undefined): SdfContextStyle {
-  return SDF_CONTEXT_STYLE_OPTIONS.some((option) => option.value === value) ? value as SdfContextStyle : "line";
+  return normalizeContextStyleForOptions(value, SDF_CONTEXT_STYLE_OPTIONS);
 }
 
 function normalizeStructureSceneStyle(value: SdfContextStyle): SdfContextStyle {
-  return STRUCTURE_SCENE_STYLE_OPTIONS.some((option) => option.value === value) ? value : "line";
+  return normalizeContextStyleForOptions(value, STRUCTURE_SCENE_STYLE_OPTIONS);
+}
+
+function normalizeContextStyleForOptions(
+  value: string | null | undefined,
+  styleOptions: ReadonlyArray<{ value: SdfContextStyle; label: string }>,
+): SdfContextStyle {
+  return styleOptions.some((option) => option.value === value) ? value as SdfContextStyle : "line";
 }
 
 function normalizeSdfContextOpacity(value: string | number | null | undefined) {
@@ -330,9 +369,12 @@ function clampOpacity(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
-function readSdfContextStylePreference(document: ViewerDocument): SdfContextStyle {
+function readSdfContextStylePreference(
+  document: ViewerDocument,
+  styleOptions: ReadonlyArray<{ value: SdfContextStyle; label: string }> = SDF_CONTEXT_STYLE_OPTIONS,
+): SdfContextStyle {
   try {
-    return normalizeSdfContextStyle(window.localStorage?.getItem(sdfContextStyleStorageKey(document)));
+    return normalizeContextStyleForOptions(window.localStorage?.getItem(sdfContextStyleStorageKey(document)), styleOptions);
   } catch (_) {
     return "line";
   }
@@ -384,7 +426,7 @@ function SdfContextStyleCard({
   detail?: string;
   ariaLabel?: string;
   opacityLabel?: string;
-  styleOptions?: ReadonlyArray<typeof SDF_CONTEXT_STYLE_OPTIONS[number]>;
+  styleOptions?: ReadonlyArray<{ value: SdfContextStyle; label: string }>;
   opacityMin?: number;
   opacityMax?: number;
   opacityDisabled?: boolean;
@@ -394,7 +436,7 @@ function SdfContextStyleCard({
     writeSdfContextStylePreference(document, style);
     actions.runStructureViewerAction(document, {
       type: "set_sdf_context_style",
-      label: `All background: ${SDF_CONTEXT_STYLE_OPTIONS.find((option) => option.value === style)?.label ?? style}`,
+      label: `${title}: ${styleOptions.find((option) => option.value === style)?.label ?? style}`,
       notify: false,
       style,
     });
