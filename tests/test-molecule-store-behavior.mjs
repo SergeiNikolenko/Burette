@@ -134,6 +134,7 @@ useMoleculeStore.setState({
       back: [],
       forward: [],
     },
+    { id: "tab-settings", location: { kind: "settings" }, back: [], forward: [] },
     { id: "tab-ketcher", location: { kind: "ketcher" }, back: [], forward: [] },
   ],
   activeTabId: "tab-file",
@@ -144,6 +145,7 @@ useMoleculeStore.setState({
 const persisted = JSON.parse(storage.get("burrete.molecule.session"));
 assert.deepEqual(persisted.state.documents, []);
 assert.equal(persisted.state.tabs.some((tab) => tab.location.kind === "file"), false);
+assert.equal(persisted.state.tabs.some((tab) => tab.location.kind === "settings"), false);
 assert.equal(persisted.state.tabs.some((tab) => tab.location.kind === "ketcher"), true);
 
 resetStore();
@@ -157,9 +159,10 @@ storage.set("burrete.molecule.session", JSON.stringify({
         back: [],
         forward: [],
       },
+      { id: "legacy-settings", location: { kind: "settings" }, back: [], forward: [] },
       { id: "legacy-ketcher", location: { kind: "ketcher" }, back: [], forward: [] },
     ],
-    activeTabId: "legacy-file",
+    activeTabId: "legacy-settings",
     recentStructures: [],
   },
   version: 0,
@@ -169,6 +172,7 @@ await useMoleculeStore.persist.rehydrate();
 const rehydrated = useMoleculeStore.getState();
 assert.equal(rehydrated.documents.length, 0);
 assert.equal(rehydrated.tabs.some((tab) => tab.location.kind === "file"), true);
+assert.equal(rehydrated.tabs.some((tab) => tab.location.kind === "settings"), false);
 assert.equal(rehydrated.tabs.some((tab) => tab.location.kind === "ketcher"), true);
 assert.equal(rehydrated.tabs.find((tab) => tab.id === rehydrated.activeTabId)?.location.kind, "file");
 assert.equal(rehydrated.activeDocumentId, null);

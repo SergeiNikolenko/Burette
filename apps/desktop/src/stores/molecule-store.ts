@@ -179,6 +179,7 @@ function toRecentStructure(document: ViewerDocument): RecentStructure {
 
 function persistedTabs(tabs: MoleculeTab[]) {
   return tabs.filter((tab) => (
+    tab.location.kind !== "settings" &&
     tab.location.kind !== "file" &&
     tab.location.kind !== "text-file" &&
     tab.location.kind !== "fep-setup" &&
@@ -730,8 +731,11 @@ export const useMoleculeStore = create<MoleculeState>()(
         }
         const documents = current.documents;
         const storedTabs = (stored?.tabs ?? current.tabs).filter((tab) => (
-          (tab.location.kind !== "file" && tab.location.kind !== "text-file") ||
-          !isTemporaryDocumentPath(tab.location.path)
+          tab.location.kind !== "settings" &&
+          (
+            (tab.location.kind !== "file" && tab.location.kind !== "text-file") ||
+            !isTemporaryDocumentPath(tab.location.path)
+          )
         ));
         const tabs = collapseDuplicateKetcherTabs(
           dedupeTabIds(ensureTabs(storedTabs.map(cloneTab))),
