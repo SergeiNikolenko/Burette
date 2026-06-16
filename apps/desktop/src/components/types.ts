@@ -1,4 +1,4 @@
-import type { DockingSceneMode, FepSetupRequest, OpenDocumentsMode, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences } from "../types";
+import type { DockingSceneMode, FepSetupRequest, OpenDocumentsMode, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "../types";
 import type { MoleculeTab } from "../stores/molecule-store";
 import type { StructureDragPayload } from "../lib/structure-drag";
 import type { StructureViewerAction } from "../lib/structure-composition";
@@ -177,6 +177,7 @@ export type ShellActions = {
   showTextFileMetadata: (document: TextFileDocument) => void | Promise<void>;
   generate3DConformer: (document: ViewerDocument) => void | Promise<void>;
   runStructureViewerAction: (document: ViewerDocument, action: StructureViewerAction) => void;
+  reloadXyzrenderDocument: (document: ViewerDocument, options: ViewerReloadOptions) => void | Promise<void>;
   selectTextStructure: (document: TextFileDocument, selection: TextStructureSelection) => void;
   exportActivePreviewAsPng: () => void | Promise<void>;
   exportActivePreviewAsSvg: () => void | Promise<void>;
