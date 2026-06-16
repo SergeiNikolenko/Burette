@@ -42,17 +42,18 @@ export function ProjectGroup({
 }) {
   const [showAllItems, setShowAllItems] = useState(false);
   const [collapsedFolderPaths, setCollapsedFolderPaths] = useState<Set<string>>(() => new Set());
+  const [showAllFolderPaths, setShowAllFolderPaths] = useState<Set<string>>(() => new Set());
   const sidebarQuery = state.sidebarQuery.trim();
   const hasSidebarQuery = sidebarQuery.length > 0;
   const expanded = hasSidebarQuery || state.expandedProjectIds.includes(project.id);
+  const projectTree = buildProjectTree(project.items);
   const shouldLimitItems = !hasSidebarQuery
-    && project.items.length > COLLAPSED_PROJECT_ITEM_LIMIT
+    && projectTree.length > COLLAPSED_PROJECT_ITEM_LIMIT
     && !showAllItems;
-  const visibleItems = shouldLimitItems
-    ? project.items.slice(0, COLLAPSED_PROJECT_ITEM_LIMIT)
-    : project.items;
-  const visibleTree = buildProjectTree(visibleItems);
-  const hiddenItemCount = project.items.length - COLLAPSED_PROJECT_ITEM_LIMIT;
+  const visibleTree = shouldLimitItems
+    ? projectTree.slice(0, COLLAPSED_PROJECT_ITEM_LIMIT)
+    : projectTree;
+  const hiddenItemCount = projectTree.length - COLLAPSED_PROJECT_ITEM_LIMIT;
 
   const handleToggle = () => {
     actions.toggleProjectExpanded(project.id);
@@ -73,6 +74,17 @@ export function ProjectGroup({
 
   const toggleFolderPath = (path: string) => {
     setCollapsedFolderPaths((current) => {
+      const next = new Set(current);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
+  };
+  const toggleShowAllFolderPath = (path: string) => {
+    setShowAllFolderPaths((current) => {
       const next = new Set(current);
       if (next.has(path)) {
         next.delete(path);
@@ -130,11 +142,13 @@ export function ProjectGroup({
               actions={actions}
               depth={1}
               collapsedFolderPaths={collapsedFolderPaths}
+              showAllFolderPaths={showAllFolderPaths}
               forceExpanded={hasSidebarQuery}
               toggleFolderPath={toggleFolderPath}
+              toggleShowAllFolderPath={toggleShowAllFolderPath}
             />
           ))}
-          {project.items.length > COLLAPSED_PROJECT_ITEM_LIMIT && !hasSidebarQuery && (
+          {projectTree.length > COLLAPSED_PROJECT_ITEM_LIMIT && !hasSidebarQuery && (
             <button
               type="button"
               className="project-show-more"
@@ -159,13 +173,6 @@ function projectMenuItems(project: SidebarProject, actions: ShellActions) {
       text: "Open all in Mol* scene",
       disabled: scenePaths.length < 2,
       action: () => openProjectFolderMolstarScene(project, null, actions, "structureAll"),
-    },
-    {
-      kind: "item" as const,
-      id: "open-project-structure-poses",
-      text: "Open as structure poses",
-      disabled: scenePaths.length < 2,
-      action: () => openProjectFolderMolstarScene(project, null, actions, "structurePoses"),
     },
     { kind: "separator" as const },
     {
@@ -224,13 +231,6 @@ function projectFolderMenuItems(project: SidebarProject, folderPath: string, act
       disabled: scenePaths.length < 2,
       action: () => openProjectFolderMolstarScene(project, folderPath, actions, "structureAll"),
     },
-    {
-      kind: "item" as const,
-      id: "open-folder-structure-poses",
-      text: "Open as structure poses",
-      disabled: scenePaths.length < 2,
-      action: () => openProjectFolderMolstarScene(project, folderPath, actions, "structurePoses"),
-    },
     { kind: "separator" as const },
     {
       kind: "item" as const,
@@ -280,8 +280,10 @@ function ProjectTreeNodeView({
   actions,
   depth,
   collapsedFolderPaths,
+  showAllFolderPaths,
   forceExpanded,
   toggleFolderPath,
+  toggleShowAllFolderPath,
 }: {
   node: ProjectTreeNode;
   project: SidebarProject;
@@ -289,8 +291,10 @@ function ProjectTreeNodeView({
   actions: ShellActions;
   depth: number;
   collapsedFolderPaths: Set<string>;
+  showAllFolderPaths: Set<string>;
   forceExpanded: boolean;
   toggleFolderPath: (path: string) => void;
+  toggleShowAllFolderPath: (path: string) => void;
 }) {
   if (node.kind === "item") {
     return <ProjectItem item={node.item} state={state} actions={actions} depth={depth} />;
@@ -311,6 +315,14 @@ function ProjectTreeNodeView({
     event.stopPropagation();
     void showNativeContextMenu(projectFolderMenuItems(project, node.path, actions), { x: event.clientX, y: event.clientY });
   };
+  const showAllChildren = showAllFolderPaths.has(node.path);
+  const shouldLimitChildren = !forceExpanded
+    && node.children.length > COLLAPSED_PROJECT_ITEM_LIMIT
+    && !showAllChildren;
+  const visibleChildren = shouldLimitChildren
+    ? node.children.slice(0, COLLAPSED_PROJECT_ITEM_LIMIT)
+    : node.children;
+  const hiddenChildCount = node.children.length - COLLAPSED_PROJECT_ITEM_LIMIT;
 
   return (
     <div className="project-folder-node" role="listitem">
@@ -333,7 +345,7 @@ function ProjectTreeNodeView({
       </div>
       {expanded && (
         <div className="project-folder-children" role="list">
-          {node.children.map((child) => (
+          {visibleChildren.map((child) => (
             <ProjectTreeNodeView
               key={child.key}
               node={child}
@@ -342,10 +354,23 @@ function ProjectTreeNodeView({
               actions={actions}
               depth={depth + 1}
               collapsedFolderPaths={collapsedFolderPaths}
+              showAllFolderPaths={showAllFolderPaths}
               forceExpanded={forceExpanded}
               toggleFolderPath={toggleFolderPath}
+              toggleShowAllFolderPath={toggleShowAllFolderPath}
             />
           ))}
+          {node.children.length > COLLAPSED_PROJECT_ITEM_LIMIT && !forceExpanded && (
+            <button
+              type="button"
+              className="project-show-more"
+              style={projectDepthStyle(depth + 1)}
+              onClick={() => toggleShowAllFolderPath(node.path)}
+              aria-label={showAllChildren ? `Show fewer files in ${node.path}` : `Show ${hiddenChildCount} more files in ${node.path}`}
+            >
+              {showAllChildren ? "Show less" : "Show more"}
+            </button>
+          )}
         </div>
       )}
     </div>

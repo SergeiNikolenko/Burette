@@ -19,6 +19,7 @@ type GridControlProps = {
   selectionEnabled: boolean;
   substructureSearch: boolean;
   supportsXyzrenderCards: boolean;
+  viewMode: "cards" | "table";
   cardRenderer: "rdkit" | "xyzrender";
   xyzrenderPreset: string;
   xyzrenderPresetOptions: XyzrenderPresetOption[];
@@ -38,6 +39,9 @@ type GridControlProps = {
   onUndoGridEdit: () => void;
   onExportSmiles: () => void;
   onExportCSV: () => void;
+  onViewModeChange: (value: "cards" | "table") => void;
+  onToggleTableColumns: () => void;
+  onToggleTableFilters: () => void;
   onSetCardRenderer: (value: "rdkit" | "xyzrender") => void;
   onXyzrenderPresetChange: (value: string) => void;
   onOpenKetcher: () => void;
@@ -51,6 +55,12 @@ type GridUIApi = {
   mountGridControls: (container: Element, props: GridControlProps) => void;
 };
 
+type SegmentedOption<T extends string> = {
+  value: T;
+  label: string;
+  disabled?: boolean;
+};
+
 declare global {
   interface Window {
     BurreteGridUI?: GridUIApi;
@@ -61,6 +71,149 @@ const roots = new WeakMap<Element, Root>();
 
 function ControlTooltip({ label }: { label: string }) {
   return <span className="buret-control-tooltip" role="tooltip" aria-hidden="true">{label}</span>;
+}
+
+function SegmentedControl<T extends string>({
+  ariaLabel,
+  options,
+  value,
+  dataAttribute,
+  onChange,
+}: {
+  ariaLabel: string;
+  options: SegmentedOption<T>[];
+  value: T;
+  dataAttribute: string;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div className="buret-grid-segmented-control" role="group" aria-label={ariaLabel}>
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          data-buret-grid-segment={dataAttribute}
+          data-buret-grid-segment-value={option.value}
+          {...{ [`data-${dataAttribute}`]: option.value }}
+          aria-pressed={value === option.value ? "true" : "false"}
+          disabled={option.disabled}
+          onClick={() => onChange(option.value)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function GridViewControls(props: GridControlProps) {
+  return (
+    <div className="buret-grid-control-group buret-grid-view-group">
+      <SegmentedControl
+        ariaLabel="Grid view mode"
+        dataAttribute="buret-grid-view-mode"
+        value={props.viewMode}
+        onChange={props.onViewModeChange}
+        options={[
+          { value: "cards", label: "Cards" },
+          { value: "table", label: "Table" },
+        ]}
+      />
+      <button
+        id="table-columns"
+        className="buret-toggle-button buret-table-columns-button"
+        type="button"
+        aria-pressed="false"
+        onClick={props.onToggleTableColumns}
+      >
+        Columns
+        <ControlTooltip label="Choose visible table columns" />
+      </button>
+      <button
+        id="show-properties"
+        className="buret-toggle-button"
+        type="button"
+        aria-pressed="false"
+        onClick={props.onShowProperties}
+      >
+        Properties
+        <ControlTooltip label="Show molecule properties in cards" />
+      </button>
+    </div>
+  );
+}
+
+function GridRenderControls(props: GridControlProps) {
+  return (
+    <div className="buret-grid-control-group buret-grid-render-group">
+      <span className="buret-grid-control-label">Render</span>
+      <SegmentedControl
+        ariaLabel="Molecule renderer"
+        dataAttribute="buret-grid-card-renderer"
+        value={props.cardRenderer}
+        onChange={props.onSetCardRenderer}
+        options={[
+          { value: "rdkit", label: "RDKit" },
+          ...(props.supportsXyzrenderCards ? [{ value: "xyzrender" as const, label: "xyzrender" }] : []),
+        ]}
+      />
+    </div>
+  );
+}
+
+function XyzrenderStyleControl(props: GridControlProps) {
+  if (!props.supportsXyzrenderCards) return null;
+  return (
+    <label
+      id="xyzrender-preset-control"
+      className="buret-grid-xyzrender-preset-control"
+      hidden={props.cardRenderer !== "xyzrender"}
+    >
+      Style
+      <select
+        id="xyzrender-preset"
+        value={props.xyzrenderPreset}
+        disabled={props.cardRenderer !== "xyzrender"}
+        aria-label="xyzrender card style"
+        onChange={(event) => props.onXyzrenderPresetChange(event.currentTarget.value)}
+      >
+        {props.xyzrenderPresetOptions.map((option) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function SelectionControls(props: GridControlProps) {
+  return (
+    <div className="buret-selection-actions" hidden={!props.selectionEnabled}>
+      <button id="select-all" className="buret-toggle-button" type="button" onClick={props.onSelectAll}>
+        Select all
+        <ControlTooltip label="Select all visible molecules" />
+      </button>
+      <button id="clear-selection" className="buret-toggle-button" type="button" onClick={props.onClearSelection}>
+        Clear selection
+        <ControlTooltip label="Clear selected molecules" />
+      </button>
+    </div>
+  );
+}
+
+function SelectedOpenActions(props: GridControlProps) {
+  if (!props.selectionEnabled) return null;
+  return (
+    <div id="selected-open-actions" className="buret-selected-open-actions" hidden>
+      <button id="open-selected-molstar" className="buret-toggle-button" type="button" onClick={() => props.onRendererSwitch("molstar")}>
+        Open in Molstar
+        <ControlTooltip label="Open selected molecules in Molstar" />
+      </button>
+      <button id="open-selected-ketcher" className="buret-toggle-button" type="button" onClick={props.onOpenKetcher}>
+        Open in Ketcher
+        <ControlTooltip label="Open selected molecule in Ketcher" />
+      </button>
+    </div>
+  );
 }
 
 function GridControls(props: GridControlProps) {
@@ -129,16 +282,7 @@ function GridControls(props: GridControlProps) {
           <div id="load-status" className="buret-load-status" />
         </div>
         <div className="buret-toolbar-row buret-toolbar-row-view">
-          <button
-            id="show-properties"
-            className="buret-toggle-button"
-            type="button"
-            aria-pressed="false"
-            onClick={props.onShowProperties}
-          >
-            Properties
-            <ControlTooltip label="Show molecule properties in cards" />
-          </button>
+          <GridViewControls {...props} />
           <button
             id="clear-smarts"
             className="buret-toggle-button buret-clear-smarts"
@@ -149,59 +293,11 @@ function GridControls(props: GridControlProps) {
             Clear search
             <ControlTooltip label="Clear the SMARTS search" />
           </button>
-          <div className="buret-selection-actions" hidden={!props.selectionEnabled}>
-            <button id="select-all" className="buret-toggle-button" type="button" onClick={props.onSelectAll}>
-              Select all
-              <ControlTooltip label="Select all visible molecules" />
-            </button>
-            <button id="clear-selection" className="buret-toggle-button" type="button" onClick={props.onClearSelection}>
-              Clear selection
-              <ControlTooltip label="Clear selected molecules" />
-            </button>
-          </div>
-          <div className="buret-grid-card-renderer-switch" role="group" aria-label="Grid card renderer">
-            <span>Cards</span>
-            <button
-              type="button"
-              data-buret-grid-card-renderer="rdkit"
-              aria-pressed="false"
-              onClick={() => props.onSetCardRenderer("rdkit")}
-            >
-              RDKit
-              <ControlTooltip label="Render 2D cards with RDKit" />
-            </button>
-            {props.supportsXyzrenderCards ? (
-              <button
-                type="button"
-                data-buret-grid-card-renderer="xyzrender"
-                aria-pressed="false"
-                onClick={() => props.onSetCardRenderer("xyzrender")}
-              >
-                xyzrender
-                <ControlTooltip label="Render cards with external xyzrender" />
-              </button>
-            ) : null}
-          </div>
-          {props.supportsXyzrenderCards ? (
-            <label
-              id="xyzrender-preset-control"
-              className="buret-grid-xyzrender-preset-control"
-              hidden={props.cardRenderer !== "xyzrender"}
-            >
-              Style
-              <select
-                id="xyzrender-preset"
-                value={props.xyzrenderPreset}
-                disabled={props.cardRenderer !== "xyzrender"}
-                aria-label="xyzrender card style"
-                onChange={(event) => props.onXyzrenderPresetChange(event.currentTarget.value)}
-              >
-                {props.xyzrenderPresetOptions.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </label>
-          ) : null}
+          <GridRenderControls {...props} />
+          <XyzrenderStyleControl {...props} />
+          <div className="buret-toolbar-spacer" aria-hidden="true" />
+          <SelectedOpenActions {...props} />
+          <SelectionControls {...props} />
           <label id="rdkit-use-input-coords-control" className="buret-rdkit-coords-control" hidden>
             <input
               id="rdkit-use-input-coords"
@@ -235,27 +331,6 @@ function GridControls(props: GridControlProps) {
                     <ControlTooltip label="Open selected molecule in Ketcher" />
                   </button>
                 ) : null}
-                {props.ketcherOpen ? (
-                  <button
-                    id="generate-3d-selected"
-                    type="button"
-                    data-buret-grid-generate-3d
-                    disabled={props.generating3d}
-                    onClick={props.onGenerate3D}
-                  >
-                    <span data-buret-grid-generate-3d-label>{props.generating3d ? "Generating..." : "Generate 3D"}</span>
-                    <ControlTooltip label="Generate 3D conformers for selected molecules" />
-                  </button>
-                ) : null}
-                <button
-                  id="calculate-selected-descriptors"
-                  type="button"
-                  data-buret-grid-descriptors
-                  onClick={props.onCalculateSelectedDescriptors}
-                >
-                  Calculate selected descriptors
-                  <ControlTooltip label="Calculate descriptors for selected molecules" />
-                </button>
               </div>
             </div>
           ) : null}
