@@ -244,38 +244,48 @@ enum MoleculeGridPreviewBuilder {
             $0.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         let normalizedHeaders = headers.map { $0.lowercased().replacingOccurrences(of: " ", with: "_") }
-        guard let smilesIndex = normalizedHeaders.firstIndex(where: { isSmilesColumn($0) }) else {
+        let smilesIndexes = normalizedHeaders.enumerated().compactMap { index, value in
+            isSmilesColumn(value) ? index : nil
+        }
+        guard !smilesIndexes.isEmpty else {
             throw MoleculeGridPreviewError.missingMoleculeColumn(format.uppercased())
         }
-        let nameIndex = normalizedHeaders.firstIndex(where: { ["compound_id", "id", "name", "title", "compound"].contains($0) && $0 != normalizedHeaders[smilesIndex] })
+        let hasMultipleSmilesColumns = smilesIndexes.count > 1
+        let nameIndex = normalizedHeaders.enumerated().first(where: { index, value in
+            ["compound_id", "id", "name", "title", "compound"].contains(value) && !smilesIndexes.contains(index)
+        })?.offset
 
         var records: [MoleculeGridRecord] = []
         var recordsTotal = 0
-        for line in rows.dropFirst() {
+        for (rowIndex, line) in rows.dropFirst().enumerated() {
             let cells = parseDelimitedLine(line, separator: separator)
-            guard smilesIndex < cells.count else { continue }
-            let smiles = cells[smilesIndex].trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !smiles.isEmpty else { continue }
-            defer { recordsTotal += 1 }
-            guard records.count < maxRecords else { continue }
+            for smilesIndex in smilesIndexes {
+                guard smilesIndex < cells.count else { continue }
+                let smiles = cells[smilesIndex].trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !smiles.isEmpty else { continue }
+                defer { recordsTotal += 1 }
+                guard records.count < maxRecords else { continue }
 
-            let rawName = nameIndex.flatMap { $0 < cells.count ? cells[$0].trimmingCharacters(in: .whitespacesAndNewlines) : nil } ?? ""
-            let name = rawName.isEmpty ? "Molecule \(recordsTotal + 1)" : rawName
-            var props: [String: String] = [:]
-            for (index, header) in headers.enumerated() where index != smilesIndex && index != nameIndex {
-                guard index < cells.count else { continue }
-                let value = cells[index].trimmingCharacters(in: .whitespacesAndNewlines)
-                if !header.isEmpty, !value.isEmpty, props.count < 64 {
-                    props[clipped(header, limit: 80)] = clipped(value, limit: 500)
+                let rawName = nameIndex.flatMap { $0 < cells.count ? cells[$0].trimmingCharacters(in: .whitespacesAndNewlines) : nil } ?? ""
+                let baseName = rawName.isEmpty ? "Molecule \(rowIndex + 1)" : rawName
+                let columnName = headers[smilesIndex].isEmpty ? "Column \(smilesIndex + 1)" : headers[smilesIndex]
+                let name = hasMultipleSmilesColumns ? "\(baseName) \(columnName)" : baseName
+                var props: [String: String] = [:]
+                for (index, header) in headers.enumerated() where !smilesIndexes.contains(index) && index != nameIndex {
+                    guard index < cells.count else { continue }
+                    let value = cells[index].trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !header.isEmpty, !value.isEmpty, props.count < 64 {
+                        props[clipped(header, limit: 80)] = clipped(value, limit: 500)
+                    }
                 }
+                records.append(MoleculeGridRecord(
+                    index: recordsTotal,
+                    name: clipped(name, limit: 160),
+                    smiles: clipped(smiles, limit: 2048),
+                    molblock: nil,
+                    props: props
+                ))
             }
-            records.append(MoleculeGridRecord(
-                index: recordsTotal,
-                name: clipped(name, limit: 160),
-                smiles: clipped(smiles, limit: 2048),
-                molblock: nil,
-                props: props
-            ))
         }
         return MoleculeGridCollection(format: format, records: records, recordsTotal: recordsTotal)
     }
@@ -363,7 +373,7 @@ enum MoleculeGridPreviewBuilder {
     }
 
     private static func isSmilesColumn(_ value: String) -> Bool {
-        ["smiles", "smile", "canonical_smiles", "isomeric_smiles", "cxsmiles", "smiles_string"].contains(value)
+        value == "smile" || value.contains("smiles")
     }
 
     private static func isLikelyDelimitedHeader(_ cells: [String]) -> Bool {
@@ -508,7 +518,7 @@ private enum MoleculeGridPreviewError: LocalizedError {
         case .couldNotEncodeJSON:
             return "Could not encode molecule grid preview JSON."
         case .missingMoleculeColumn(let format):
-            return "\(format) table needs a SMILES, canonical_smiles, isomeric_smiles, cxsmiles, or smiles_string column."
+            return "\(format) table needs a column whose name contains smiles."
         }
     }
 }
