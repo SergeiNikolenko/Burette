@@ -1543,7 +1543,12 @@ fn parse_delimited_table_batch(
         .into_iter()
         .map(|value| value.trim().to_string())
         .collect();
-    if !is_likely_delimited_header(&headers) {
+    let inferred_smiles_indexes =
+        infer_smiles_columns_from_values(headers.len(), &rows[1..], separator);
+    let first_row_looks_like_data = headers.iter().any(|value| looks_like_smiles(value));
+    if !is_likely_delimited_header(&headers)
+        && (inferred_smiles_indexes.is_empty() || first_row_looks_like_data)
+    {
         return Err("missing smiles column".to_string());
     }
     let normalized_headers: Vec<_> = headers
@@ -1553,9 +1558,8 @@ fn parse_delimited_table_batch(
     let smiles_indexes = resolve_smiles_columns(
         &headers,
         &normalized_headers,
-        &rows[1..],
-        separator,
         options.smiles_column.as_deref(),
+        &inferred_smiles_indexes,
     )?;
     let has_multiple_smiles_columns = smiles_indexes.len() > 1;
     let name_index = normalized_headers
@@ -1843,9 +1847,8 @@ fn is_smiles_column(value: &str) -> bool {
 fn resolve_smiles_columns(
     headers: &[String],
     normalized_headers: &[String],
-    data_rows: &[String],
-    separator: char,
     explicit_column: Option<&str>,
+    inferred_indexes: &[usize],
 ) -> Result<Vec<usize>, String> {
     if let Some(column) = explicit_column
         .map(str::trim)
@@ -1860,19 +1863,18 @@ fn resolve_smiles_columns(
         .enumerate()
         .filter_map(|(index, value)| is_smiles_column(value).then_some(index))
         .collect();
-    if !named.is_empty() {
-        return Ok(named);
+    let mut indexes = named;
+    for index in inferred_indexes {
+        if !indexes.contains(index) {
+            indexes.push(*index);
+        }
     }
-
-    let inferred = infer_smiles_columns_from_values(headers.len(), data_rows, separator);
-    if inferred.len() == 1 {
-        return Ok(vec![inferred[0]]);
+    indexes.sort_unstable();
+    if indexes.is_empty() {
+        Err("missing smiles column".to_string())
+    } else {
+        Ok(indexes)
     }
-    if inferred.len() > 1 {
-        return Err(ambiguous_smiles_columns_error(headers, &inferred));
-    }
-
-    Err("missing smiles column".to_string())
 }
 
 fn explicit_smiles_column_index(
@@ -1918,22 +1920,21 @@ fn infer_smiles_columns_from_values(
                 smiles_values += 1;
             }
         }
-        if values > 0 && values == smiles_values {
+        if is_likely_smiles_column(values, smiles_values) {
             candidates.push(column_index);
         }
     }
     candidates
 }
 
-fn ambiguous_smiles_columns_error(headers: &[String], indexes: &[usize]) -> String {
-    let names = indexes
-        .iter()
-        .map(|index| column_label(headers, *index))
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!(
-        "multiple possible structure columns: {names}. Rename the intended column to smiles or keep only one structure column"
-    )
+fn is_likely_smiles_column(non_empty: usize, valid: usize) -> bool {
+    if non_empty == 0 || valid == 0 {
+        return false;
+    }
+    if valid < 2 && non_empty > 2 {
+        return false;
+    }
+    valid * 5 >= non_empty * 4
 }
 
 fn column_label(headers: &[String], index: usize) -> String {
@@ -2018,6 +2019,12 @@ fn looks_like_smiles(value: &str) -> bool {
     if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.contains(char::is_whitespace) {
         return false;
     }
+    if trimmed.starts_with("InChI=") {
+        return false;
+    }
+    if is_inchi_key(trimmed) {
+        return false;
+    }
     let lowered = trimmed.to_lowercase();
     if matches!(
         lowered.as_str(),
@@ -2038,7 +2045,24 @@ fn looks_like_smiles(value: &str) -> bool {
     let mut has_aromatic_atom = false;
     let mut has_structural_marker = false;
     while let Some(ch) = chars.next() {
-        if ch.is_ascii_digit() || "[]=#@+-/\\().,:".contains(ch) {
+        if ch == '[' {
+            let mut has_bracket_atom = false;
+            let mut closed_bracket = false;
+            for bracket_ch in chars.by_ref() {
+                if bracket_ch == ']' {
+                    closed_bracket = true;
+                    break;
+                }
+                if bracket_ch.is_ascii_alphabetic() {
+                    has_bracket_atom = true;
+                }
+            }
+            if !closed_bracket || !has_bracket_atom {
+                return false;
+            }
+            has_atom = true;
+            has_structural_marker = true;
+        } else if ch.is_ascii_digit() || "]=#@+-/\\().,:$%".contains(ch) {
             has_structural_marker = true;
         } else if matches!((ch, chars.peek()), ('B', Some(&'r')) | ('C', Some(&'l'))) {
             has_atom = true;
@@ -2053,6 +2077,17 @@ fn looks_like_smiles(value: &str) -> bool {
         }
     }
     has_atom && (!has_aromatic_atom || has_structural_marker)
+}
+
+fn is_inchi_key(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if bytes.len() != 27 || bytes[14] != b'-' || bytes[25] != b'-' {
+        return false;
+    }
+    bytes
+        .iter()
+        .enumerate()
+        .all(|(index, byte)| index == 14 || index == 25 || byte.is_ascii_uppercase())
 }
 
 fn parse_sdf_properties(lines: &[String]) -> BTreeMap<String, String> {
@@ -2807,29 +2842,92 @@ mod tests {
     }
 
     #[test]
-    fn rejects_ambiguous_delimited_structure_columns() {
+    fn ingests_inferred_delimited_structure_columns() {
         let runtime_dir = temp_runtime_dir();
         let csv = "compound,active,decoy\nLigand A,CCO,CCN\nLigand B,c1ccccc1,CCCl\n";
 
-        let error = build_grid_store(&runtime_dir, "csv", csv.as_bytes())
-            .expect_err("ambiguous structure columns should fail");
-        assert!(error.contains("multiple possible structure columns"));
-        assert!(error.contains("'active'"));
-        assert!(error.contains("'decoy'"));
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.records_total, 4);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch page");
+        assert_eq!(page.rows[0].name, "Ligand A active");
+        assert_eq!(page.rows[0].smiles.as_deref(), Some("CCO"));
+        assert_eq!(page.rows[1].name, "Ligand A decoy");
+        assert_eq!(page.rows[1].smiles.as_deref(), Some("CCN"));
 
         let _ = std::fs::remove_dir_all(&runtime_dir);
     }
 
     #[test]
-    fn rejects_multiple_named_smiles_columns() {
+    fn infers_smiles_columns_without_smiles_headers() {
+        let runtime_dir = temp_runtime_dir();
+        let csv = "candidate_1,candidate_2,label\nCCO,CCN,first\nc1ccccc1,CCCl,second\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.records_total, 4);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch page");
+        assert_eq!(page.rows[0].name, "Molecule 1 candidate_1");
+        assert_eq!(page.rows[0].smiles.as_deref(), Some("CCO"));
+        assert_eq!(page.rows[1].name, "Molecule 1 candidate_2");
+        assert_eq!(page.rows[1].smiles.as_deref(), Some("CCN"));
+        assert_eq!(
+            page.rows[0].props.get("label").map(String::as_str),
+            Some("first")
+        );
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn ingests_multiple_named_smiles_columns() {
         let runtime_dir = temp_runtime_dir();
         let csv = "canonical_smiles,isomeric_smiles,name\nCCO,CCO,Ethanol\nCCN,CCN,Ethylamine\n";
 
-        let error = build_grid_store(&runtime_dir, "csv", csv.as_bytes())
-            .expect_err("multiple named structure columns should fail");
-        assert!(error.contains("multiple possible structure columns"));
-        assert!(error.contains("'canonical_smiles'"));
-        assert!(error.contains("'isomeric_smiles'"));
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.records_total, 4);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch page");
+        assert_eq!(page.rows[0].name, "Ethanol canonical_smiles");
+        assert_eq!(page.rows[0].smiles.as_deref(), Some("CCO"));
+        assert_eq!(page.rows[1].name, "Ethanol isomeric_smiles");
+        assert_eq!(page.rows[1].smiles.as_deref(), Some("CCO"));
 
         let _ = std::fs::remove_dir_all(&runtime_dir);
     }
