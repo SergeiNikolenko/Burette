@@ -158,7 +158,7 @@ Lightweight checks:
 ```bash
 bun tests/test-tauri-structure.mjs
 bun tests/test-ui-shell-contract.mjs
-bun tests/test-bun-installer-structure.mjs
+bun tests/test-bun-installer-behavior.mjs
 ```
 
 Measurement scripts:

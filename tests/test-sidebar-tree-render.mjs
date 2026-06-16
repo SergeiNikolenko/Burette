@@ -44,6 +44,32 @@ for (const expected of [
   assert.match(html, new RegExp(escapeRegExp(expected)));
 }
 
+const crowdedFolderProject = {
+  ...project,
+  id: "project:/fixtures/crowded",
+  rootPath: "/fixtures/crowded",
+  title: "crowded",
+  items: Array.from({ length: 7 }, (_, index) => {
+    const title = `pose-${index + 1}.sdf`;
+    return structure(`/fixtures/crowded/results/${title}`, title, `results/${title}`);
+  }),
+};
+const crowdedState = {
+  ...state,
+  expandedProjectIds: [crowdedFolderProject.id],
+};
+const crowdedHtml = renderToStaticMarkup(React.createElement(ProjectGroup, {
+  project: crowdedFolderProject,
+  state: crowdedState,
+  actions,
+}));
+
+assert.match(crowdedHtml, /results/);
+assert.match(crowdedHtml, /Show more/);
+assert.match(crowdedHtml, /Show 2 more files in results/);
+assert.match(crowdedHtml, /pose-5\.sdf/);
+assert.doesNotMatch(crowdedHtml, /pose-6\.sdf/);
+
 console.log("sidebar tree render tests passed");
 
 function structure(path, title, relativePath) {
