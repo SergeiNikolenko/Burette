@@ -1606,6 +1606,13 @@ fn parse_delimited_table_batch(
                 base_name
             };
             let mut props = BTreeMap::new();
+            props.insert("CSV row".to_string(), row_number.to_string());
+            props.insert(
+                "SMILES column".to_string(),
+                column_label(&headers, *smiles_index)
+                    .trim_matches('\'')
+                    .to_string(),
+            );
             for (index, header) in headers.iter().enumerate() {
                 if smiles_indexes.contains(&index) || Some(index) == name_index {
                     continue;
@@ -2770,6 +2777,18 @@ mod tests {
         assert_eq!(page.rows[0].smiles.as_deref(), Some("CCO"));
         assert_eq!(page.rows[1].name, "Molecule 1 proposal_smiles");
         assert_eq!(page.rows[1].smiles.as_deref(), Some("CCN"));
+        assert_eq!(
+            page.rows[0].props.get("CSV row").map(String::as_str),
+            Some("1")
+        );
+        assert_eq!(
+            page.rows[0].props.get("SMILES column").map(String::as_str),
+            Some("target_smiles")
+        );
+        assert_eq!(
+            page.rows[1].props.get("SMILES column").map(String::as_str),
+            Some("proposal_smiles")
+        );
         assert!(!page.rows[0].props.contains_key("proposal_smiles"));
         assert!(!page.rows[1].props.contains_key("target_smiles"));
 
@@ -2895,6 +2914,14 @@ mod tests {
         assert_eq!(page.rows[0].smiles.as_deref(), Some("CCO"));
         assert_eq!(page.rows[1].name, "Molecule 1 candidate_2");
         assert_eq!(page.rows[1].smiles.as_deref(), Some("CCN"));
+        assert_eq!(
+            page.rows[0].props.get("CSV row").map(String::as_str),
+            Some("1")
+        );
+        assert_eq!(
+            page.rows[0].props.get("SMILES column").map(String::as_str),
+            Some("candidate_1")
+        );
         assert_eq!(
             page.rows[0].props.get("label").map(String::as_str),
             Some("first")

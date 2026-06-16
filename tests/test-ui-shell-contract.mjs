@@ -2917,6 +2917,9 @@ assert.match(browserDevDocuments, /export async function openBrowserDevTextDocum
 assert.match(browserDevDocuments, /openBrowserDevDocumentFromBytes\(path, cleanExtension, bytes, bytes\.length, preferences, reloadOptions, documentId\)/);
 assert.match(browserDevDocuments, /function isDelimitedSmilesHeader\(header: string\)/);
 assert.match(browserDevDocuments, /normalized === "smile" \|\| normalized\.includes\("smiles"\)/);
+assert.match(browserDevDocuments, /function isDelimitedNameHeader\(header: string\)/);
+assert.match(browserDevDocuments, /"CSV row": String\(rowIndex \+ 1\)/);
+assert.match(browserDevDocuments, /"SMILES column": columnName/);
 assert.match(browserDevDocuments, /function inferDelimitedSmilesColumns\(rows: string\[\]\[\], columnCount: number\)/);
 assert.match(browserDevDocuments, /function isLikelySmilesColumn\(nonEmpty: number, valid: number\)/);
 assert.match(browserDevDocuments, /documentId: documentId \?\? stableId\(path\)/);

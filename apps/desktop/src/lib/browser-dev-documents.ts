@@ -1246,6 +1246,7 @@ function parseDelimited(text: string, delimiter: "," | "\t"): GridRecord[] {
   if (!smilesIndexes.length) return [];
   const smilesIndexSet = new Set(smilesIndexes);
   const hasMultipleSmilesColumns = smilesIndexes.length > 1;
+  const nameIndex = headers.findIndex((header, index) => !smilesIndexSet.has(index) && isDelimitedNameHeader(header));
   const descriptorColumns = new Map<number, { id: string; label: string }>();
   headers.forEach((header, index) => {
     const descriptor = descriptorColumnFromHeader(header);
@@ -1257,10 +1258,14 @@ function parseDelimited(text: string, delimiter: "," | "\t"): GridRecord[] {
     for (const smilesIndex of smilesIndexes) {
       const smiles = row[smilesIndex]?.trim();
       if (!looksLikeSmiles(smiles)) continue;
-      const props: Record<string, string> = {};
+      const columnName = headers[smilesIndex] || `Column ${smilesIndex + 1}`;
+      const props: Record<string, string> = {
+        "CSV row": String(rowIndex + 1),
+        "SMILES column": columnName,
+      };
       const descriptors: GridRecord["descriptors"] = {};
       headers.forEach((header, index) => {
-        if (smilesIndexSet.has(index)) return;
+        if (smilesIndexSet.has(index) || index === nameIndex) return;
         const value = row[index]?.trim();
         const descriptor = descriptorColumns.get(index);
         if (descriptor) {
@@ -1269,8 +1274,7 @@ function parseDelimited(text: string, delimiter: "," | "\t"): GridRecord[] {
           props[header || `Column ${index + 1}`] = value;
         }
       });
-      const baseName = props.name || props.Name || props.title || props.Title || `Molecule ${rowIndex + 1}`;
-      const columnName = headers[smilesIndex] || `Column ${smilesIndex + 1}`;
+      const baseName = nameIndex >= 0 ? row[nameIndex]?.trim() || `Molecule ${rowIndex + 1}` : `Molecule ${rowIndex + 1}`;
       const name = hasMultipleSmilesColumns ? `${baseName} ${columnName}` : baseName;
       records.push({
         index: recordIndex,
@@ -1288,6 +1292,10 @@ function parseDelimited(text: string, delimiter: "," | "\t"): GridRecord[] {
 function isDelimitedSmilesHeader(header: string) {
   const normalized = header.trim().toLowerCase().replace(/\s+/gu, "_");
   return normalized === "smile" || normalized.includes("smiles");
+}
+
+function isDelimitedNameHeader(header: string) {
+  return ["compound_id", "id", "name", "title", "compound"].includes(header.trim().toLowerCase().replace(/\s+/gu, "_"));
 }
 
 function inferDelimitedSmilesColumns(rows: string[][], columnCount: number) {
