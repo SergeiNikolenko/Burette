@@ -275,7 +275,10 @@ enum MoleculeGridPreviewBuilder {
                 let baseName = rawName.isEmpty ? "Molecule \(rowIndex + 1)" : rawName
                 let columnName = headers[smilesIndex].isEmpty ? "Column \(smilesIndex + 1)" : headers[smilesIndex]
                 let name = hasMultipleSmilesColumns ? "\(baseName) \(columnName)" : baseName
-                var props: [String: String] = [:]
+                var props: [String: String] = [
+                    "CSV row": "\(rowIndex + 1)",
+                    "SMILES column": columnName,
+                ]
                 for (index, header) in headers.enumerated() where !smilesIndexes.contains(index) && index != nameIndex {
                     guard index < cells.count else { continue }
                     let value = cells[index].trimmingCharacters(in: .whitespacesAndNewlines)
