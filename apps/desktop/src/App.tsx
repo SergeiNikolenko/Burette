@@ -366,7 +366,7 @@ async function expandBrowserDevStructureBundles(paths: string[]) {
       for (const attachment of bundle.attachments ?? []) {
         if (attachment.path) addPath(attachment.path);
       }
-    } catch (_) {
+    } catch {
       // Browser-dev companion discovery is opportunistic; opening the requested file still works.
     }
   }
@@ -2374,8 +2374,32 @@ export default function App() {
     const reloadOptions = pendingViewerReloadOptionsRef.current ?? undefined;
     pendingViewerReloadOptionsRef.current = null;
     pendingViewerReloadDocumentIdRef.current = null;
-    await openDocuments([targetDocument.path], reloadOptions);
+    await openDocuments([targetDocument.path], reloadOptions, undefined, { inActiveTab: true });
   }, [activeDocument, documents, openDocuments]);
+  const reloadXyzrenderDocument = useCallback(async (document: ViewerDocument, reloadOptions: ViewerReloadOptions) => {
+    const effectiveReloadOptions = {
+      ...reloadOptions,
+      xyzrenderOrientationRef: reloadOptions.xyzrenderOrientationRef ?? xyzrenderOrientationRefRef.current,
+    };
+    const iframe = activeViewerIframeForDocument(document.id);
+    if (iframe?.contentWindow) {
+      iframe.contentWindow.postMessage({
+        source: "burrete-host",
+        body: {
+          type: "setXyzrenderControls",
+          documentId: document.id,
+          preset: effectiveReloadOptions.xyzrenderPreset ?? null,
+          controls: effectiveReloadOptions.xyzrenderControls ?? null,
+        },
+      }, "*");
+      return;
+    }
+    pendingViewerReloadDocumentIdRef.current = document.id;
+    pendingViewerReloadOptionsRef.current = effectiveReloadOptions;
+    await openDocuments([document.path], effectiveReloadOptions, undefined, { inActiveTab: true });
+    pendingViewerReloadOptionsRef.current = null;
+    pendingViewerReloadDocumentIdRef.current = null;
+  }, [openDocuments]);
   const setUpdatePreferences = useCallback((preferences: UpdatePreferences) => {
     saveUpdatePreferences(preferences);
     setUpdate((previous) => ({
@@ -2592,8 +2616,11 @@ export default function App() {
           offset?: number | null;
           limit?: number | null;
           activePose?: number | null;
+          poseMode?: string | null;
           sourcePath?: string | null;
           controls?: ViewerReloadOptions["xyzrenderControls"];
+          renderer?: string | null;
+          presetOptions?: Array<{ value?: string | null; label?: string | null }> | null;
           contextDocument?: Parameters<typeof openBrowserDevMolstarContextDocument>[0];
           inputDataBase64?: string | null;
           inputExtension?: string | null;
@@ -2659,6 +2686,25 @@ export default function App() {
       }
       if ((data.source === "burrete-viewer" || data.source === "burrete-grid") && body?.type === "toggleSidebar") {
         toggleSidebar();
+        return;
+      }
+      if (data.source === "burrete-viewer" && body?.type === "rendererChanged") {
+        const targetDocument = (body.documentId
+          ? documents.find((document) => document.id === body.documentId)
+          : null) ?? activeDocument;
+        const renderer = body.renderer === "xyzrender-external" ? "xyzrender-external" : body.renderer === "molstar" ? "molstar" : null;
+        if (targetDocument && renderer) {
+          addDocuments([{
+            ...targetDocument,
+            renderer,
+            xyzrenderControls: body.controls ?? targetDocument.xyzrenderControls ?? null,
+            xyzrenderPreset: body.preset ?? targetDocument.xyzrenderPreset ?? null,
+            xyzrenderPresetOptions: body.presetOptions
+              ?.filter((option): option is { value: string; label: string } => Boolean(option?.value && option?.label))
+              ?? targetDocument.xyzrenderPresetOptions
+              ?? null,
+          }]);
+        }
         return;
       }
       if (data.source === "burrete-viewer" && (body?.type === "requestData" || body?.type === "requestRuntimeFile")) {
@@ -3283,7 +3329,7 @@ export default function App() {
       if (body?.type === "setXyzrenderControls") {
         pendingViewerReloadDocumentIdRef.current = body.documentId ?? null;
         pendingViewerReloadOptionsRef.current = {
-          xyzrenderPreset: pendingViewerReloadOptionsRef.current?.xyzrenderPreset ?? null,
+          xyzrenderPreset: body.preset ?? pendingViewerReloadOptionsRef.current?.xyzrenderPreset ?? null,
           xyzrenderOrientationRef: xyzrenderOrientationRefRef.current,
           xyzrenderControls: body.controls ?? null,
         };
@@ -4085,6 +4131,7 @@ export default function App() {
     showTextFileMetadata,
     generate3DConformer,
     runStructureViewerAction,
+    reloadXyzrenderDocument,
     selectTextStructure,
     exportActivePreviewAsPng,
     exportActivePreviewAsSvg,
@@ -4139,7 +4186,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openWorkspaceFolder, pushErrorStatus, pushStatus, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runStructureViewerAction, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
+  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runStructureViewerAction, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 

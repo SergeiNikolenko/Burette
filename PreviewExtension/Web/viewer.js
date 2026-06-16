@@ -1378,7 +1378,7 @@
       if (renderer === 'xyzrender-external') {
         populateXyzrenderControlsForm(toolbar, normalizeXyzrenderControls(config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config));
         updateXyzrenderFormVisibility(toolbar);
-        if (popoverWasOpen || shouldRestoreXyzrenderPopoverOpen()) {
+        if (popoverWasOpen || shouldRestoreXyzrenderPopoverOpen(config)) {
           setXyzrenderPopoverVisibility(toolbar, true, { resetScroll: false });
           if (popover) popover.scrollTop = popoverScrollTop;
         }
@@ -1459,12 +1459,19 @@
     } catch (_) {}
   }
 
-  function shouldRestoreXyzrenderPopoverOpen() {
+  function shouldRestoreXyzrenderPopoverOpen(config = {}) {
     try {
-      return window.localStorage?.getItem(xyzrenderPopoverStorageKey()) === '1';
+      const stored = window.localStorage?.getItem(xyzrenderPopoverStorageKey());
+      if (stored === '1') return true;
     } catch (_) {
-      return false;
+      // Fall through to the first-open default.
     }
+    return shouldOpenXyzrenderPopoverByDefault(config);
+  }
+
+  function shouldOpenXyzrenderPopoverByDefault(config = {}) {
+    return normalizeRenderer(config.renderer) === 'xyzrender-external' &&
+      config.xyzrenderViewer === true;
   }
 
   function normalizeXyzrenderControls(value, config = {}) {
@@ -1591,6 +1598,11 @@
     };
     activeConfig = nextConfig;
     window.BurreteConfig = nextConfig;
+    postHostMessage({
+      type: 'rendererChanged',
+      documentId: nextConfig.documentId,
+      renderer: 'molstar'
+    });
     xyzrenderInlineRequestSerial += 1;
     disposeExternalArtifactInteractions();
     applyConfigOptions(nextConfig);
@@ -1720,6 +1732,17 @@
     const data = event.data || {};
     const body = data.source === 'burrete-host' ? data.body : null;
     if (!body) return;
+    if (body.type === 'setXyzrenderControls') {
+      const config = activeConfig || window.BurreteConfig || {};
+      const documentId = String(config.documentId || '');
+      if (body.documentId && documentId && String(body.documentId) !== documentId) return;
+      const controls = normalizeXyzrenderControls(body.controls || config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config);
+      const preset = normalizeXyzrenderPreset(body.preset || config.externalArtifact?.preset || config.xyzrenderPreset || 'default');
+      if (requestBrowserDevXyzrenderUpdate({ controls, preset })) return;
+      const sent = postHostMessage({ type: 'setXyzrenderControls', documentId, controls, preset });
+      if (!sent) setStatus('xyzrender controls are available only in the app or Quick Look viewer.', 'error');
+      return;
+    }
     if (body.type === 'generate3dConformerStarted') {
       setGenerate3DPending(true, body.mode);
       return;
@@ -2543,6 +2566,14 @@
       }
     };
     window.BurreteConfig = { ...(window.BurreteConfig || {}), ...activeConfig };
+    postHostMessage({
+      type: 'rendererChanged',
+      documentId: activeConfig.documentId,
+      renderer: 'xyzrender-external',
+      preset,
+      controls,
+      presetOptions: activeConfig.xyzrenderPresetOptions || []
+    });
     configureRendererControls(activeConfig);
     setStatus(`[web] Rendered ${(activeConfig || {}).label || 'structure'} with external xyzrender`);
     setTimeout(hideStatus, 450);
