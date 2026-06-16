@@ -1550,18 +1550,19 @@ fn parse_delimited_table_batch(
         .iter()
         .map(|value| normalize_column_name(value))
         .collect();
-    let smiles_index = resolve_smiles_column(
+    let smiles_indexes = resolve_smiles_columns(
         &headers,
         &normalized_headers,
         &rows[1..],
         separator,
         options.smiles_column.as_deref(),
     )?;
+    let has_multiple_smiles_columns = smiles_indexes.len() > 1;
     let name_index = normalized_headers
         .iter()
         .enumerate()
         .position(|(index, value)| {
-            index != smiles_index
+            !smiles_indexes.contains(&index)
                 && matches!(
                     value.as_str(),
                     "compound_id" | "id" | "name" | "title" | "compound"
@@ -1571,47 +1572,62 @@ fn parse_delimited_table_batch(
     let mut next_line = start_line.max(1).min(rows.len());
     let mut next_index = start_index;
     while next_line < rows.len() {
+        let row_number = next_line;
         let cells = parse_delimited_line(&rows[next_line], separator);
         next_line += 1;
-        let Some(smiles) = cells
-            .get(smiles_index)
-            .map(|value| value.trim())
-            .filter(|value| !value.is_empty())
-        else {
-            continue;
-        };
-        let raw_name = name_index
-            .and_then(|index| cells.get(index))
-            .map(|value| value.trim())
-            .unwrap_or("");
-        let name = if raw_name.is_empty() {
-            format!("Molecule {}", next_index + 1)
-        } else {
-            clipped(raw_name, 160)
-        };
-        let mut props = BTreeMap::new();
-        for (index, header) in headers.iter().enumerate() {
-            if index == smiles_index || Some(index) == name_index {
-                continue;
-            }
-            if let Some(value) = cells
-                .get(index)
+        for smiles_index in &smiles_indexes {
+            let Some(smiles) = cells
+                .get(*smiles_index)
                 .map(|value| value.trim())
                 .filter(|value| !value.is_empty())
-            {
-                if !header.is_empty() && props.len() < 64 {
-                    props.insert(clipped(header, 80), clipped(value, 500));
+            else {
+                continue;
+            };
+            let raw_name = name_index
+                .and_then(|index| cells.get(index))
+                .map(|value| value.trim())
+                .unwrap_or("");
+            let base_name = if raw_name.is_empty() {
+                format!("Molecule {}", row_number)
+            } else {
+                clipped(raw_name, 160)
+            };
+            let name = if has_multiple_smiles_columns {
+                format!(
+                    "{} {}",
+                    base_name,
+                    column_label(&headers, *smiles_index).trim_matches('\'')
+                )
+            } else {
+                base_name
+            };
+            let mut props = BTreeMap::new();
+            for (index, header) in headers.iter().enumerate() {
+                if smiles_indexes.contains(&index) || Some(index) == name_index {
+                    continue;
+                }
+                if let Some(value) = cells
+                    .get(index)
+                    .map(|value| value.trim())
+                    .filter(|value| !value.is_empty())
+                {
+                    if !header.is_empty() && props.len() < 64 {
+                        props.insert(clipped(header, 80), clipped(value, 500));
+                    }
                 }
             }
+            records.push(GridInputRecord {
+                index: next_index,
+                name,
+                smiles: Some(clipped(smiles, 2048)),
+                molblock: None,
+                props,
+            });
+            next_index += 1;
+            if records.len() >= max_records {
+                break;
+            }
         }
-        records.push(GridInputRecord {
-            index: next_index,
-            name,
-            smiles: Some(clipped(smiles, 2048)),
-            molblock: None,
-            props,
-        });
-        next_index += 1;
         if records.len() >= max_records {
             break;
         }
@@ -1821,24 +1837,22 @@ fn parse_delimited_line(line: &str, separator: char) -> Vec<String> {
 }
 
 fn is_smiles_column(value: &str) -> bool {
-    matches!(
-        value,
-        "smiles" | "smile" | "canonical_smiles" | "isomeric_smiles" | "cxsmiles" | "smiles_string"
-    )
+    value == "smile" || value.contains("smiles")
 }
 
-fn resolve_smiles_column(
+fn resolve_smiles_columns(
     headers: &[String],
     normalized_headers: &[String],
     data_rows: &[String],
     separator: char,
     explicit_column: Option<&str>,
-) -> Result<usize, String> {
+) -> Result<Vec<usize>, String> {
     if let Some(column) = explicit_column
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        return explicit_smiles_column_index(headers, normalized_headers, column);
+        return explicit_smiles_column_index(headers, normalized_headers, column)
+            .map(|index| vec![index]);
     }
 
     let named: Vec<_> = normalized_headers
@@ -1846,16 +1860,13 @@ fn resolve_smiles_column(
         .enumerate()
         .filter_map(|(index, value)| is_smiles_column(value).then_some(index))
         .collect();
-    if named.len() == 1 {
-        return Ok(named[0]);
-    }
-    if named.len() > 1 {
-        return Err(ambiguous_smiles_columns_error(headers, &named));
+    if !named.is_empty() {
+        return Ok(named);
     }
 
     let inferred = infer_smiles_columns_from_values(headers.len(), data_rows, separator);
     if inferred.len() == 1 {
-        return Ok(inferred[0]);
+        return Ok(vec![inferred[0]]);
     }
     if inferred.len() > 1 {
         return Err(ambiguous_smiles_columns_error(headers, &inferred));
@@ -2691,6 +2702,41 @@ mod tests {
         assert_eq!(page.rows.len(), 4);
         assert_eq!(page.rows[0].name, "CMPD-001");
         assert_eq!(page.rows[0].smiles.as_deref(), Some("CCO"));
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn ingests_all_smiles_columns_from_calibration_csv() {
+        let runtime_dir = temp_runtime_dir();
+        let csv = "target_smiles,target_inchi_key,proposal_smiles,spec_name\n\
+                   CCO,LFQSCWFLJHTTHZ,CCN,MassSpecGymID0001\n\
+                   c1ccccc1,UHOVQNZJYSORNB,CCCl,MassSpecGymID0002\n";
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.format, "csv");
+        assert_eq!(summary.records_total, 4);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch page");
+        assert_eq!(page.total_rows, 4);
+        assert_eq!(page.rows[0].name, "Molecule 1 target_smiles");
+        assert_eq!(page.rows[0].smiles.as_deref(), Some("CCO"));
+        assert_eq!(page.rows[1].name, "Molecule 1 proposal_smiles");
+        assert_eq!(page.rows[1].smiles.as_deref(), Some("CCN"));
+        assert!(!page.rows[0].props.contains_key("proposal_smiles"));
+        assert!(!page.rows[1].props.contains_key("target_smiles"));
 
         let _ = std::fs::remove_dir_all(&runtime_dir);
     }

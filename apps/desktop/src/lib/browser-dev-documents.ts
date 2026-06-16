@@ -1236,39 +1236,54 @@ function parseDelimited(text: string, delimiter: "," | "\t"): GridRecord[] {
     .filter((row) => row.some((cell) => cell.trim() !== ""));
   if (rows.length < 2) return [];
   const headers = rows[0].map((cell) => cell.trim());
-  const smilesIndex = headers.findIndex((header) =>
-    ["smiles", "smile", "canonical_smiles", "cxsmiles"].includes(header.toLowerCase()),
-  );
-  if (smilesIndex < 0) return [];
+  const smilesIndexes = headers
+    .map((header, index) => (isDelimitedSmilesHeader(header) ? index : -1))
+    .filter((index) => index >= 0);
+  if (!smilesIndexes.length) return [];
+  const smilesIndexSet = new Set(smilesIndexes);
+  const hasMultipleSmilesColumns = smilesIndexes.length > 1;
   const descriptorColumns = new Map<number, { id: string; label: string }>();
   headers.forEach((header, index) => {
     const descriptor = descriptorColumnFromHeader(header);
     if (descriptor) descriptorColumns.set(index, descriptor);
   });
+  let recordIndex = 0;
   return rows.slice(1).flatMap((row, rowIndex) => {
-    const smiles = row[smilesIndex]?.trim();
-    if (!looksLikeSmiles(smiles)) return [];
-    const props: Record<string, string> = {};
-    const descriptors: GridRecord["descriptors"] = {};
-    headers.forEach((header, index) => {
-      if (index === smilesIndex) return;
-      const value = row[index]?.trim();
-      const descriptor = descriptorColumns.get(index);
-      if (descriptor) {
-        descriptors[descriptor.id] = descriptorCellFromText(descriptor.label, value || "");
-      } else if (value) {
-        props[header || `Column ${index + 1}`] = value;
-      }
-    });
-    const name = props.name || props.Name || props.title || props.Title || `Molecule ${rowIndex + 1}`;
-    return [{
-      index: rowIndex,
-      name,
-      smiles,
-      props,
-      ...(Object.keys(descriptors).length ? { descriptors } : {}),
-    }];
+    const records: GridRecord[] = [];
+    for (const smilesIndex of smilesIndexes) {
+      const smiles = row[smilesIndex]?.trim();
+      if (!looksLikeSmiles(smiles)) continue;
+      const props: Record<string, string> = {};
+      const descriptors: GridRecord["descriptors"] = {};
+      headers.forEach((header, index) => {
+        if (smilesIndexSet.has(index)) return;
+        const value = row[index]?.trim();
+        const descriptor = descriptorColumns.get(index);
+        if (descriptor) {
+          descriptors[descriptor.id] = descriptorCellFromText(descriptor.label, value || "");
+        } else if (value) {
+          props[header || `Column ${index + 1}`] = value;
+        }
+      });
+      const baseName = props.name || props.Name || props.title || props.Title || `Molecule ${rowIndex + 1}`;
+      const columnName = headers[smilesIndex] || `Column ${smilesIndex + 1}`;
+      const name = hasMultipleSmilesColumns ? `${baseName} ${columnName}` : baseName;
+      records.push({
+        index: recordIndex,
+        name,
+        smiles,
+        props,
+        ...(Object.keys(descriptors).length ? { descriptors } : {}),
+      });
+      recordIndex += 1;
+    }
+    return records;
   });
+}
+
+function isDelimitedSmilesHeader(header: string) {
+  const normalized = header.trim().toLowerCase().replace(/\s+/gu, "_");
+  return normalized === "smile" || normalized.includes("smiles");
 }
 
 function descriptorColumnFromHeader(header: string) {
