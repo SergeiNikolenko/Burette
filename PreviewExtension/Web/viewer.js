@@ -6212,7 +6212,7 @@
                 scale: 1,
                 color: 0x000000,
                 threshold: 0.33,
-                includeTransparent: false
+                includeTransparent: true
               }
         },
         occlusion: {
@@ -6278,11 +6278,6 @@
       return;
     }
     if (normalized === 'illustrative') {
-      await applyMolstarUniformRepresentation(viewer, {
-        type: 'ball-and-stick',
-        typeParams: { sizeFactor: 0.16, ignoreLight: true },
-        color: 'element-symbol'
-      });
       await applyMolstarIllustrativePostprocessing(viewer);
       return;
     }
@@ -6680,7 +6675,7 @@
     const plugin = viewer.plugin;
     const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
     const trajectory = await plugin.builders.structure.parseTrajectory(data, prepared.format);
-    await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default', { representationPreset: 'empty' });
+    await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default');
     await applyMolstarStyle(viewer, configuredMolstarStyle(activeConfig));
     await applyMolstarWaterLineRepresentation(viewer);
     installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));

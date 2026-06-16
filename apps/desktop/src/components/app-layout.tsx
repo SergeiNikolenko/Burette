@@ -50,8 +50,9 @@ export function AppLayout({
   const viewportWidth = typeof window === "undefined" ? 1200 : window.innerWidth;
   const maxSidebarWidth = Math.max(280, Math.min(420, Math.floor(viewportWidth * 0.35)));
   const settingsMode = state.page === "settings";
+  const sidebarVisible = settingsMode || state.sidebarOpen;
   const sidebarWidth = clampSidebarWidth(state.sidebarWidth, maxSidebarWidth);
-  const sidebarLayoutWidth = state.sidebarOpen ? sidebarWidth : 0;
+  const sidebarLayoutWidth = sidebarVisible ? sidebarWidth : 0;
   const rightDockWidth = clampRightDockWidth(state.rightDockWidth, viewportWidth, sidebarLayoutWidth);
   const layoutState = sidebarWidth === state.sidebarWidth && rightDockWidth === state.rightDockWidth ? state : { ...state, sidebarWidth, rightDockWidth };
   const tabChromeLeft = state.sidebarOpen ? sidebarLayoutWidth + 12 : 132;
@@ -78,7 +79,7 @@ export function AppLayout({
       data-settings-mode={settingsMode ? "true" : undefined}
       data-drop-active={state.dropActive || undefined}
       data-structure-drag-active={state.structureDragActive ? "true" : undefined}
-      data-sidebar-open={state.sidebarOpen ? "true" : "false"}
+      data-sidebar-open={sidebarVisible ? "true" : "false"}
       onDragEnter={onDragEnter}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
@@ -136,7 +137,7 @@ export function AppLayout({
       <section className="workspace">
         <div className="sidebar-shell" style={{ transition: chromeTransition }}>
           <div className="sidebar-shell-inner" style={{ width: sidebarWidth }}>
-            <Sidebar state={layoutState} actions={actions} open={state.sidebarOpen} />
+            <Sidebar state={layoutState} actions={actions} open={sidebarVisible} />
           </div>
         </div>
         {state.sidebarOpen && !settingsMode && (
