@@ -1497,8 +1497,8 @@ assert.match(structureInfoPanel, /function normalizeSdfContextStyle\(value: stri
 assert.match(structureInfoPanel, /return SDF_CONTEXT_STYLE_OPTIONS\.some\(\(option\) => option\.value === value\) \? value as SdfContextStyle : "line"/);
 assert.match(structureInfoPanel, /function StructurePoseControlsCard/);
 assert.match(structureInfoPanel, /StructureSectionHeader title=\{controls\.title\} detail=\{controls\.detail\}/);
-assert.match(structureInfoPanel, /type: "set_sdf_pose_mode"/);
-assert.match(structureInfoPanel, /type: "set_sdf_pose_index"/);
+assert.match(structureInfoPanel, /actions: Array<StructureViewerAction & \{ type: "set_structure_pose" \}>/);
+assert.match(structureInfoPanel, /type: "set_structure_pose"/);
 assert.doesNotMatch(structureInfoPanel, /if \(document\.dockingRequest\) \{\s*setState\(\{ documentId: document\.id, loading: false, summary: null, error: null \}\);\s*return undefined;\s*\}/);
 assert.match(structureInfoPanel, /summary: parseStructureComposition\(text, inspectorCompositionExtension\(document\)\)/);
 assert.match(structureInfoPanel, /function inspectorCompositionPath\(document: ViewerDocument\)/);
@@ -1506,7 +1506,7 @@ assert.match(structureInfoPanel, /return document\.dockingRequest\?\.receptorPat
 assert.match(structureInfoPanel, /function inspectorCompositionExtension\(document: ViewerDocument\)/);
 assert.match(structureInfoPanel, /return extensionFromPath\(document\.dockingRequest\.receptorPath\) \|\| document\.extension/);
 assert.match(structureInfoPanel, /type: "set_sdf_context_style"/);
-assert.match(structureInfoPanel, /isMolstarDocument && compositionSummary && hasSdfMoleculeCollection\(compositionSummary\)/);
+assert.match(structureInfoPanel, /if \(hasSdfMoleculeCollection\(summary\)\) \{/);
 assert.match(structureInfoPanel, /writeSdfContextStylePreference\(document, style\)/);
 assert.match(structureInfoPanel, /type: "set_sdf_context_style"[\s\S]*?notify: false[\s\S]*?style,/);
 assert.match(structureInfoPanel, /buret\.sdf\.contextStyle\.\$\{document\.id\}/);
