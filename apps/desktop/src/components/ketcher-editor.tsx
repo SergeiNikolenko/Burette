@@ -95,7 +95,7 @@ function suppressFilledKetcherSelectionPaths(root: HTMLElement) {
     const style = getComputedStyle(path);
     if (style.fill !== "rgb(0, 0, 0)") continue;
 
-    let box: DOMRect | SVGRect;
+    let box: DOMRect  ;
     try {
       box = path.getBBox();
     } catch {

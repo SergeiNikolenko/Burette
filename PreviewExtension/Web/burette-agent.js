@@ -914,7 +914,7 @@
   function normalizeSelector(input, residueDefaults) {
     if (input === 'last') return resolveSelection('last').selector;
     if (typeof input === 'string') return { kind: input };
-    const selector = { ...(input || {}) };
+    const selector = { ...input };
     delete selector.readyTimeoutMs;
     delete selector.applyToViewer;
     delete selector.mode;

@@ -19,6 +19,10 @@ commands.allow = [
   "read_text_file",
   "open_text_files",
   "read_structure_text",
+  "conformer_status",
+  "prepare_conformer_job",
+  "run_conformer_job",
+  "cancel_conformer_job",
   "generate_3d_conformer",
   "open_text_structure",
   "open_merged_collection",
@@ -47,5 +51,9 @@ commands.allow = [
   "write_base64_file",
   "write_text_file",
   "reset_quick_look",
-  "install_update"
+  "install_update",
+  "xtb_status",
+  "install_xtb",
+  "run_xtb_job",
+  "cancel_xtb_job"
 ]

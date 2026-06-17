@@ -1,16 +1,32 @@
-import type { DockingSceneMode, FepSetupRequest, OpenDocumentsMode, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "../types";
+import type { ConformerJob, ConformerOperation, ConformerSettings, ConformerStatus, DockingSceneMode, FepSetupRequest, OpenDocumentsMode, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XtbJob, XtbOperation, XtbRunRequest, XtbSettings, XtbStatus } from "../types";
 import type { MoleculeTab } from "../stores/molecule-store";
 import type { StructureDragPayload } from "../lib/structure-drag";
-import type { StructureViewerAction } from "../lib/structure-composition";
+import type { StructureViewerAction as BaseStructureViewerAction } from "../lib/structure-composition";
 import type { TextStructureSelection } from "../lib/text-structure-selection";
 import type { DescriptorSourcePayload, GridDescriptorControls, GridDescriptorResultRow, GridDescriptorRunOptions } from "../lib/descriptors";
 import type { UpdatePreferences, UpdateState } from "../update";
 import type { SidebarProject } from "../lib/sidebar-projects";
-import type { SettingsSectionId } from "../lib/settings-sections";
+import type { AppSettingsSectionId } from "../lib/settings-sections";
 import type { DockArea, DockDropInput, DockDroppedStructure, DockTab, DockTabKind, DockToolKind } from "../lib/dock";
+
+export type { AppSettingsSectionId } from "../lib/settings-sections";
 
 export type AppPage = "viewer" | "settings";
 export type StatusKind = "info" | "success" | "error";
+export type StructureViewerAction =
+  | BaseStructureViewerAction
+  | {
+      type: "color_xtb_charges";
+      label: string;
+      charges: number[];
+      chargeFilePath?: string;
+    }
+  | {
+      type: "color_xtb_fukui";
+      label: string;
+      mode: "fplus" | "fminus" | "fzero";
+      values: number[];
+    };
 
 export type StatusNotice = {
   id: number;
@@ -19,7 +35,15 @@ export type StatusNotice = {
   details: string[];
 };
 
-export type KetcherSketchTarget = "grid" | "molstar" | "generate3d" | "xyzrender" | "collection";
+export type ViewerLigandSelection = {
+  documentId: string;
+  label: string;
+  value: string;
+  selector: Record<string, string | number | Array<string | number>>;
+  atoms: number;
+};
+
+export type KetcherSketchTarget = "grid" | "molstar" | "generate3d" | "xyzrender" | "collection" | "xtb";
 
 export type KetcherSketchRequest = {
   title: string;
@@ -99,7 +123,7 @@ export type ShellActions = {
   openClipboard: () => void | Promise<void>;
   openNewWindow: () => void | Promise<void>;
   openSettings: () => void;
-  openSettingsSection: (section: SettingsSectionId) => void;
+  openSettingsSection: (section: AppSettingsSectionId) => void;
   backToApp: () => void;
   openKetcher: () => void;
   openKetcherWithStructures: (paths: string[], fragments?: KetcherImportRequest["fragments"]) => void;
@@ -128,6 +152,22 @@ export type ShellActions = {
   applyGridDescriptorControls: (documentId: string, controls: GridDescriptorControls) => void;
   applyGridDescriptorResults: (documentId: string, rows: GridDescriptorResultRow[]) => void;
   calculateGridDescriptors: (documentId: string, options?: GridDescriptorRunOptions) => void;
+  checkConformerStatus: () => void | Promise<void>;
+  runConformerOperation: (operation: ConformerOperation, document?: ViewerDocument | null, selection?: StructureViewerAction | null) => void | Promise<void>;
+  cancelConformerJob: (jobId: string) => void | Promise<void>;
+  setConformerSettings: (settings: ConformerSettings) => void;
+  clearConformerJobs: () => void;
+  checkXtbStatus: () => void | Promise<void>;
+  installXtb: () => void | Promise<void>;
+  runXtbActiveOperation: (operation: XtbOperation) => void | Promise<void>;
+  runXtbJob: (request: XtbRunRequest, options?: { title?: string; inputLabel?: string; openPrimary?: boolean; openOptimizedPoseInCurrentView?: boolean; poseSourceDocument?: ViewerDocument | null }) => void | Promise<void>;
+  cancelXtbJob: (jobId: string) => void | Promise<void>;
+  runXtbKetcherSketch: (request: KetcherSketchRequest) => void | Promise<void>;
+  runXtbGridScoring: (document?: ViewerDocument | null) => void | Promise<void>;
+  runXtbPoseRefinement: (request: FepSetupRequest) => void | Promise<void>;
+  runXtbFepPreflight: (request: FepSetupRequest) => void | Promise<void>;
+  clearXtbJobs: () => void;
+  setXtbSettings: (settings: XtbSettings) => void;
   saveKetcherDraft: (molfile: string) => void;
   clearKetcherImportRequest: (id: number) => void;
   moveTab: (id: string, toIndex: number) => void;
@@ -139,6 +179,7 @@ export type ShellActions = {
   removeProjectRoot: (root: string) => void;
   toggleSidebar: () => void;
   toggleDock: (area: DockArea) => void;
+  toggleDockTab: (area: DockArea, kind: DockTabKind) => void;
   setDockOpen: (area: DockArea, open: boolean) => void;
   setDockSize: (area: DockArea, size: number) => void;
   openDockTab: (area: DockArea, kind: DockTabKind) => void;
@@ -237,6 +278,13 @@ export type ShellViewState = {
   status: StatusNotice | null;
   dropActive: boolean;
   preferences: ViewerPreferences;
+  conformerStatus: ConformerStatus | null;
+  conformerSettings: ConformerSettings;
+  conformerJobs: ConformerJob[];
+  viewerLigandSelection: ViewerLigandSelection | null;
+  xtbStatus: XtbStatus | null;
+  xtbSettings: XtbSettings;
+  xtbJobs: XtbJob[];
   update: UpdateState;
   buildInfo: BuildInfo;
 };

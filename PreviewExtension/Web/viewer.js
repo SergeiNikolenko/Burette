@@ -96,6 +96,9 @@
   let molstarMoleculePreview = null;
   let molstarMoleculePreviewFrame = 0;
   let molstarMoleculePreviewDrag = null;
+  let molstarMoleculePreviewTarget = null;
+  let molstarMoleculePreviewSuppressClickUntil = 0;
+  let molstarPersistentMoleculePreviewTarget = null;
   let molstarStandalonePreviewTarget = null;
   let molstarPreviewRdkit = null;
   let molstarPreviewRdkitPromise = null;
@@ -453,11 +456,24 @@
 
   async function executeBurreteAgentAction(action) {
     const type = String(action?.type || '');
+    if (type === 'get_xtb_context') {
+      const target = molstarContextTarget();
+      return {
+        ok: true,
+        command: 'get_xtb_context',
+        result: {
+          label: target?.label || null,
+          scope: target?.scope || null,
+          contextDocument: molstarContextDocumentPayload(target) || null
+        }
+      };
+    }
     if (!window.BurreteAgent?.run) {
       return agentActionFailure(type, 'NO_VIEWER', 'BurreteAgent is not available in this viewer runtime.');
     }
     if (type === 'focus_ligand') {
-      return window.BurreteAgent.run({
+      const previewTarget = molstarMoleculePreviewTargetForAction(action);
+      const result = await window.BurreteAgent.run({
         command: 'focusLigand',
         args: {
           selector: action.selector || action,
@@ -469,6 +485,8 @@
           extraRadius: action.extraRadius ?? action.radiusA
         }
       });
+      if (result?.ok !== false) scheduleMolstarSelectedMoleculePreview(previewTarget);
+      return result;
     }
     if (type === 'show_ligands') {
       return window.BurreteAgent.run({ command: 'showLigands', args: action.args || {} });
@@ -480,7 +498,8 @@
       return window.BurreteSceneActions?.showComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BurreteSceneActions.showComponents is unavailable.');
     }
     if (type === 'select_residues') {
-      return window.BurreteAgent.run({
+      const previewTarget = molstarMoleculePreviewTargetForAction(action);
+      const result = await window.BurreteAgent.run({
         command: 'selectResidues',
         args: {
           ...(action.args || {}),
@@ -490,12 +509,21 @@
           label: action.label || action.args?.label
         }
       });
+      if (result?.ok !== false) scheduleMolstarSelectedMoleculePreview(previewTarget);
+      return result;
     }
     if (type === 'clear_selection') {
+      clearMolstarPersistentMoleculePreview();
       return clearMolstarSelection();
     }
     if (type === 'set_sdf_molecule') {
       return setSdfCollectionMoleculeFromAction(action);
+    }
+    if (type === 'set_structure_pose') {
+      return setStructurePoseFromAction(action);
+    }
+    if (type === 'set_molstar_style') {
+      return setMolstarStyleFromAction(action);
     }
     if (type === 'set_sdf_context_style') {
       return setSdfCollectionContextStyleFromAction(action);
@@ -2067,7 +2095,7 @@
     }
     await applyMolstarContextFocus(config);
     molstarStandalonePreviewTarget = molstarStandaloneMoleculePreviewTarget(config);
-    if (molstarStandalonePreviewTarget) showMolstarMoleculePreview(molstarStandalonePreviewTarget);
+    if (molstarStandalonePreviewTarget) showMolstarPersistentMoleculePreview(molstarStandalonePreviewTarget);
     void reportBurreteAgentState();
     startBurreteAgentActionPolling();
     setStatus(`[web] Rendered ${config.label || 'structure'}`);
@@ -2420,6 +2448,12 @@
       ...(activeConfig || window.BurreteConfig || {}),
       molstarStyle: value
     };
+    if (activeMolstarPrepared?.molstarStyleOverride) {
+      activeMolstarPrepared = {
+        ...activeMolstarPrepared,
+        molstarStyleOverride: value
+      };
+    }
     window.BurreteConfig = { ...(window.BurreteConfig || {}), ...activeConfig };
     const toolbar = document.getElementById('buret-toolbar');
     const select = toolbar?.querySelector('[data-buret-molstar-style]');
@@ -6243,7 +6277,7 @@
                 scale: 1,
                 color: 0x000000,
                 threshold: 0.33,
-                includeTransparent: false
+                includeTransparent: true
               }
         },
         occlusion: {
@@ -6309,11 +6343,6 @@
       return;
     }
     if (normalized === 'illustrative') {
-      await applyMolstarUniformRepresentation(viewer, {
-        type: 'ball-and-stick',
-        typeParams: { sizeFactor: 0.16, ignoreLight: true },
-        color: 'element-symbol'
-      });
       await applyMolstarIllustrativePostprocessing(viewer);
       return;
     }
@@ -6703,16 +6732,21 @@
       await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'all-models', {
         useDefaultIfSingleModel: true
       });
-      await applyMolstarStyle(viewer, configuredMolstarStyle(activeConfig));
+      if (prepared.keepDefaultMolstarStyle !== true) await applyMolstarStyle(viewer, prepared.molstarStyleOverride || configuredMolstarStyle(activeConfig));
       await applyMolstarWaterLineRepresentation(viewer);
       installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
       return;
     }
     const plugin = viewer.plugin;
+    if (prepared.keepDefaultMolstarStyle === true && typeof viewer.loadStructureFromData === 'function') {
+      await viewer.loadStructureFromData(prepared.data, prepared.format, { dataLabel: prepared.label });
+      installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
+      return;
+    }
     const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
     const trajectory = await plugin.builders.structure.parseTrajectory(data, prepared.format);
-    await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default', { representationPreset: 'empty' });
-    await applyMolstarStyle(viewer, configuredMolstarStyle(activeConfig));
+    await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default');
+    if (prepared.keepDefaultMolstarStyle !== true) await applyMolstarStyle(viewer, prepared.molstarStyleOverride || configuredMolstarStyle(activeConfig));
     await applyMolstarWaterLineRepresentation(viewer);
     installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
   }
@@ -6929,6 +6963,7 @@
   let dockingPoseKeydownDisposer = null;
   let dockingPoseControlsDisposer = null;
   let activeSdfCollectionPoseSetter = null;
+  let activeStructurePoseSetter = null;
 
   function isDockingPoseKeyboardTarget(target) {
     const element = target instanceof Element ? target : null;
@@ -7321,6 +7356,37 @@
     }
   }
 
+  async function setStructurePoseFromAction(action = {}) {
+    if (!activeStructurePoseSetter) {
+      return agentActionFailure('set_structure_pose', 'NO_POSE_CONTROLS', 'The active Mol* viewer does not expose pose controls.');
+    }
+    const index = Math.max(0, Math.trunc(Number(action.index) || 0));
+    try {
+      await activeStructurePoseSetter(index);
+      return {
+        ok: true,
+        command: 'set_structure_pose',
+        result: { index }
+      };
+    } catch (error) {
+      return agentActionFailure('set_structure_pose', 'ACTION_ERROR', error?.message || String(error));
+    }
+  }
+
+  async function setMolstarStyleFromAction(action = {}) {
+    const style = normalizeMolstarStyle(action.style);
+    try {
+      requestMolstarStyle(style);
+      return {
+        ok: true,
+        command: 'set_molstar_style',
+        result: { style }
+      };
+    } catch (error) {
+      return agentActionFailure('set_molstar_style', 'ACTION_ERROR', error?.message || String(error));
+    }
+  }
+
   async function setSdfCollectionContextStyleFromAction(action = {}) {
     const prepared = activeMolstarPrepared;
     if (!activeViewer || (prepared?.kind !== 'sdf-collection' && !prepared?.dockingSceneMode && prepared?.xyzFrameOverlayAvailable !== true)) {
@@ -7440,6 +7506,7 @@
       dockingPoseControlsDisposer = null;
     }
     activeSdfCollectionPoseSetter = null;
+    activeStructurePoseSetter = null;
     document.body.classList.remove('buret-docking-pose-controls-active');
     if (!prepared) return;
     const overlayAvailable = structureOverlayAvailable(prepared);
@@ -7617,6 +7684,7 @@
           activePose = nextIndex;
           updateControls();
         } else {
+          if (prepared.overlayOnly === true && activeSdfPoseMode === 'all') setSdfPoseMode('single');
           await reloadActiveMolstarStructure();
           activePose = nextIndex;
           return;
@@ -7631,6 +7699,7 @@
         console.error(error);
       }
     };
+    activeStructurePoseSetter = setPose;
     if (prepared.kind === 'sdf-collection') activeSdfCollectionPoseSetter = setPose;
     const stopPoseRepeat = () => {
       if (poseRepeatDelayTimer) {
@@ -7801,6 +7870,7 @@
       hoverDisposer?.();
       dragDisposer?.();
       document.body.classList.remove('buret-docking-pose-controls-active');
+      if (activeStructurePoseSetter === setPose) activeStructurePoseSetter = null;
       if (activeSdfCollectionPoseSetter === setPose) activeSdfCollectionPoseSetter = null;
     };
   }
@@ -9244,7 +9314,7 @@
       setStatus(`[web] ${label} failed.\n\n${error?.message || String(error)}`, 'error');
     } finally {
       if (!(action === 'select-atom' && molstarContextMenuMode === 'atom')) hideMolstarContextMenu();
-      if (previewAfterAction) showMolstarMoleculePreview(previewAfterAction);
+      if (previewAfterAction) showMolstarPersistentMoleculePreview(previewAfterAction);
     }
   }
 
@@ -9255,6 +9325,36 @@
       if (sdfEntry) return sdfEntry;
     }
     return target.selectedEntry || target.ligand || null;
+  }
+
+  function molstarMoleculePreviewTargetForAction(action) {
+    const selector = action?.selector || action?.args?.selector || null;
+    const kind = String(selector?.kind || '').toLowerCase();
+    if (kind && kind !== 'ligand' && kind !== 'ion') return null;
+    const sourceEntry = molstarContextSourceEntryForActiveConfig();
+    if (!sourceEntry) return null;
+    const atom = {
+      auth_comp_id: selector?.auth_comp_id ?? selector?.label_comp_id,
+      label_comp_id: selector?.label_comp_id ?? selector?.auth_comp_id,
+      auth_asym_id: selector?.auth_asym_id ?? selector?.label_asym_id,
+      label_asym_id: selector?.label_asym_id ?? selector?.auth_asym_id,
+      auth_seq_id: selector?.auth_seq_id ?? selector?.label_seq_id,
+      label_seq_id: selector?.label_seq_id ?? selector?.auth_seq_id
+    };
+    if (!atom.auth_seq_id && !atom.label_seq_id) return null;
+    const selectedEntry = pdbEntryForResidue(sourceEntry, atom);
+    if (!selectedEntry) return null;
+    const scope = kind === 'ion' ? 'ion' : 'ligand';
+    const structures = molstarContextStructures();
+    return {
+      structures,
+      structure: structures[0]?.structure || structures[0] || null,
+      atom,
+      label: molstarContextResidueLabel(atom),
+      scope,
+      sourceEntry,
+      selectedEntry
+    };
   }
 
   function molstarMoleculePreviewSVG(entry) {
@@ -9305,6 +9405,144 @@
 
   function molstarPreviewKey(entry) {
     return `${normalizeFormat(entry?.format)}:${String(entry?.data || '')}`;
+  }
+
+  function molstarMoleculePreviewResizeHandlesHTML() {
+    return ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'].map(direction =>
+      `<span class="buret-molstar-molecule-preview-resize buret-molstar-molecule-preview-resize-${direction}" data-buret-molecule-preview-resize="${direction}" aria-hidden="true"></span>`
+    ).join('');
+  }
+
+  function openMolstarMoleculePreviewInKetcher(target) {
+    const entry = molstarMoleculePreviewEntry(target);
+    const text = String(entry?.data || '').trim();
+    if (!text) {
+      setStatus('[web] This molecule has no structure text to open in Ketcher.', 'error');
+      return;
+    }
+    const label = target?.label || entry?.label || 'ligand';
+    const extension = normalizeFormat(entry?.format) || 'sdf';
+    const title = `${label}.${extension}`;
+    const ok = postHostMessage({
+      type: 'openInKetcher',
+      title,
+      extension,
+      textBase64: bytesToBase64(new TextEncoder().encode(text))
+    });
+    if (!ok) setStatus('[web] Ketcher is unavailable in this preview host.', 'error');
+  }
+
+  function installMolstarMoleculePreviewResize(popover) {
+    if (!popover || popover.dataset.buretResizeInstalled === '1') return;
+    popover.dataset.buretResizeInstalled = '1';
+    const minWidth = 96;
+    const minHeight = 126;
+    const maxWidth = 560;
+    const maxHeight = 520;
+    const margin = 8;
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+    const finish = (event) => {
+      if (!molstarMoleculePreviewDrag || molstarMoleculePreviewDrag.popover !== popover) return;
+      const drag = molstarMoleculePreviewDrag;
+      try { popover.releasePointerCapture?.(molstarMoleculePreviewDrag.pointerId); } catch (_) {}
+      popover.classList.remove('buret-molstar-molecule-preview-resizing');
+      popover.classList.remove('buret-molstar-molecule-preview-moving');
+      if (drag.moved) {
+        molstarMoleculePreviewSuppressClickUntil = Date.now() + 450;
+      } else if (drag.action === 'move') {
+        molstarMoleculePreviewSuppressClickUntil = Date.now() + 450;
+        openMolstarMoleculePreviewInKetcher(molstarMoleculePreviewTarget);
+      }
+      molstarMoleculePreviewDrag = null;
+      event?.preventDefault?.();
+    };
+    popover.addEventListener('pointerdown', event => {
+      const handle = event.target instanceof Element ? event.target.closest('[data-buret-molecule-preview-resize]') : null;
+      if (handle && !popover.contains(handle)) return;
+      if (event.button !== 0) return;
+      const direction = handle?.getAttribute('data-buret-molecule-preview-resize') || '';
+      const rect = popover.getBoundingClientRect();
+      const viewportWidth = window.innerWidth || document.documentElement.clientWidth || rect.right + margin;
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || rect.bottom + margin;
+      molstarMoleculePreviewDrag = {
+        popover,
+        action: handle ? 'resize' : 'move',
+        pointerId: event.pointerId,
+        direction,
+        startX: event.clientX,
+        startY: event.clientY,
+        left: rect.left,
+        bottom: viewportHeight - rect.bottom,
+        width: rect.width,
+        height: rect.height,
+        viewportWidth,
+        viewportHeight,
+        moved: false
+      };
+      popover.style.left = `${Math.round(rect.left)}px`;
+      popover.style.bottom = `${Math.round(viewportHeight - rect.bottom)}px`;
+      popover.style.right = 'auto';
+      popover.style.top = 'auto';
+      popover.style.width = `${Math.round(rect.width)}px`;
+      popover.style.height = `${Math.round(rect.height)}px`;
+      popover.classList.toggle('buret-molstar-molecule-preview-resizing', !!handle);
+      popover.classList.toggle('buret-molstar-molecule-preview-moving', !handle);
+      try { popover.setPointerCapture?.(event.pointerId); } catch (_) {}
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    popover.addEventListener('pointermove', event => {
+      const drag = molstarMoleculePreviewDrag;
+      if (!drag || drag.popover !== popover || drag.pointerId !== event.pointerId) return;
+      const dx = event.clientX - drag.startX;
+      const dy = event.clientY - drag.startY;
+      if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
+      const direction = drag.direction;
+      let left = drag.left;
+      let bottom = drag.bottom;
+      let width = drag.width;
+      let height = drag.height;
+      if (drag.action === 'move') {
+        width = Math.min(width, drag.viewportWidth - margin * 2);
+        height = Math.min(height, drag.viewportHeight - margin * 2);
+        left = clamp(drag.left + dx, margin, drag.viewportWidth - margin - width);
+        bottom = clamp(drag.bottom - dy, margin, drag.viewportHeight - margin - height);
+      } else {
+        if (direction.includes('e')) width = drag.width + dx;
+        if (direction.includes('w')) width = drag.width - dx;
+        if (direction.includes('n') || direction.includes('s')) height = drag.height - dy;
+        const right = drag.left + drag.width;
+        const maxAllowedWidth = direction.includes('w')
+          ? Math.min(maxWidth, right - margin)
+          : Math.min(maxWidth, drag.viewportWidth - margin - drag.left);
+        const maxAllowedHeight = Math.min(maxHeight, drag.viewportHeight - margin - drag.bottom);
+        width = clamp(width, minWidth, Math.max(minWidth, maxAllowedWidth));
+        height = clamp(height, minHeight, Math.max(minHeight, maxAllowedHeight));
+        if (direction.includes('w')) {
+          left = clamp(right - width, margin, drag.viewportWidth - margin - width);
+        }
+      }
+      popover.style.left = `${Math.round(left)}px`;
+      popover.style.bottom = `${Math.round(bottom)}px`;
+      popover.style.top = 'auto';
+      popover.style.width = `${Math.round(width)}px`;
+      popover.style.height = `${Math.round(height)}px`;
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    popover.addEventListener('pointerup', finish);
+    popover.addEventListener('pointercancel', finish);
+    popover.addEventListener('click', event => {
+      if (event.target instanceof Element && event.target.closest('[data-buret-molecule-preview-resize]')) return;
+      if (Date.now() < molstarMoleculePreviewSuppressClickUntil) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      openMolstarMoleculePreviewInKetcher(molstarMoleculePreviewTarget);
+      event.preventDefault();
+      event.stopPropagation();
+    });
   }
 
   function molstarPreviewLoadScript(src) {
@@ -9388,18 +9626,21 @@
     const label = target?.label || entry?.label || (target?.scope === 'ion' ? 'Ion' : 'Ligand');
     const subtitle = target?.scope === 'ion' ? 'Ion' : 'Small molecule';
     let popover = molstarMoleculePreview;
+    molstarMoleculePreviewTarget = target || null;
     if (!popover) {
       popover = document.createElement('div');
       popover.className = 'buret-molstar-molecule-preview';
       popover.setAttribute('role', 'tooltip');
       popover.tabIndex = 0;
+      installMolstarMoleculePreviewResize(popover);
       document.body.appendChild(popover);
       molstarMoleculePreview = popover;
     }
     popover.innerHTML = `
       <div class="buret-molstar-molecule-preview-image">${image || escapeHTML('Rendering 2D preview...')}</div>
       <div class="buret-molstar-molecule-preview-title">${escapeHTML(label)}</div>
-      <div class="buret-molstar-molecule-preview-subtitle">${escapeHTML(subtitle)}</div>`;
+      <div class="buret-molstar-molecule-preview-subtitle">${escapeHTML(subtitle)}</div>
+      ${molstarMoleculePreviewResizeHandlesHTML()}`;
     popover.dataset.buretPreviewKey = key;
     void molstarMoleculePreviewRDKitSVG(entry)
       .then(svg => {
@@ -9408,7 +9649,7 @@
         if (imageEl) imageEl.innerHTML = svg;
       })
       .catch(() => {
-        if (!image && molstarMoleculePreview?.dataset?.buretPreviewKey === key) hideMolstarMoleculePreview();
+        if (!image && molstarMoleculePreview?.dataset?.buretPreviewKey === key) hideMolstarMoleculePreview({ force: true });
       });
   }
 
@@ -9428,23 +9669,32 @@
     return null;
   }
 
+  function showMolstarPersistentMoleculePreview(target) {
+    const resolved = molstarSelectedMoleculePreviewTarget(target);
+    if (!molstarMoleculePreviewEntry(resolved)) return false;
+    molstarPersistentMoleculePreviewTarget = resolved;
+    showMolstarMoleculePreview(resolved);
+    if (!molstarMoleculePreview) molstarPersistentMoleculePreviewTarget = null;
+    return !!molstarMoleculePreview;
+  }
+
   function showMolstarSelectedMoleculePreview(fallbackTarget = null) {
-    const target = molstarSelectedMoleculePreviewTarget() ||
-      (fallbackTarget ? molstarSelectedMoleculePreviewTarget(fallbackTarget) : null) ||
-      molstarStandalonePreviewTarget;
-    if (target) {
-      showMolstarMoleculePreview(target);
-      return true;
-    }
-    hideMolstarMoleculePreview();
+    const target = molstarSelectedMoleculePreviewTarget();
+    if (target && showMolstarPersistentMoleculePreview(target)) return true;
+    if (fallbackTarget && showMolstarPersistentMoleculePreview(fallbackTarget)) return true;
+    if (molstarPersistentMoleculePreviewTarget && showMolstarPersistentMoleculePreview(molstarPersistentMoleculePreviewTarget)) return true;
+    if (molstarStandalonePreviewTarget && showMolstarPersistentMoleculePreview(molstarStandalonePreviewTarget)) return true;
     return false;
   }
 
   function scheduleMolstarSelectedMoleculePreview(fallbackTarget = null) {
+    if (showMolstarSelectedMoleculePreview(fallbackTarget)) return;
     if (molstarMoleculePreviewFrame) cancelAnimationFrame(molstarMoleculePreviewFrame);
     molstarMoleculePreviewFrame = requestAnimationFrame(() => {
       molstarMoleculePreviewFrame = 0;
-      showMolstarSelectedMoleculePreview(fallbackTarget);
+      if (showMolstarSelectedMoleculePreview(fallbackTarget)) return;
+      setTimeout(() => showMolstarSelectedMoleculePreview(fallbackTarget), 250);
+      setTimeout(() => showMolstarSelectedMoleculePreview(fallbackTarget), 900);
     });
   }
 
@@ -9454,7 +9704,13 @@
       molstarMoleculePreview.contains(document.activeElement);
   }
 
-  function hideMolstarMoleculePreview() {
+  function clearMolstarPersistentMoleculePreview() {
+    molstarPersistentMoleculePreviewTarget = null;
+    hideMolstarMoleculePreview({ force: true });
+  }
+
+  function hideMolstarMoleculePreview(options = {}) {
+    if (!options.force && molstarPersistentMoleculePreviewTarget) return;
     if (molstarMoleculePreviewFrame) {
       cancelAnimationFrame(molstarMoleculePreviewFrame);
       molstarMoleculePreviewFrame = 0;
@@ -9462,6 +9718,7 @@
     if (!molstarMoleculePreview) return;
     molstarMoleculePreview.remove();
     molstarMoleculePreview = null;
+    molstarMoleculePreviewTarget = null;
   }
 
   function hideMolstarContextMenu(options = {}) {
@@ -9691,12 +9948,12 @@
     const onKeyDown = (event) => {
       if (event.key === 'Escape') {
         hideMolstarContextMenu();
-        hideMolstarMoleculePreview();
+        clearMolstarPersistentMoleculePreview();
       }
     };
     const onResize = () => {
       hideMolstarContextMenu();
-      hideMolstarMoleculePreview();
+      clearMolstarPersistentMoleculePreview();
     };
     document.addEventListener('contextmenu', onContextMenu, true);
     document.addEventListener('pointerdown', onPointerDown, true);
@@ -9724,7 +9981,7 @@
       window.removeEventListener('resize', onResize);
       window.removeEventListener('scroll', hideMolstarMoleculePreview, true);
       hideMolstarContextMenu();
-      hideMolstarMoleculePreview();
+      clearMolstarPersistentMoleculePreview();
     };
   }
 
@@ -9954,7 +10211,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     }
     await applyMolstarContextFocus(config);
     const standaloneMoleculePreview = molstarStandaloneMoleculePreviewTarget(config);
-    if (standaloneMoleculePreview) showMolstarMoleculePreview(standaloneMoleculePreview);
+    if (standaloneMoleculePreview) showMolstarPersistentMoleculePreview(standaloneMoleculePreview);
     void reportBurreteAgentState();
     startBurreteAgentActionPolling();
     trackMolstarOrientation(viewer, config);
