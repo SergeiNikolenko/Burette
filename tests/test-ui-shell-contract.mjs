@@ -4630,7 +4630,7 @@ assert.ok(gridViewer.includes("const propStart = lines.findIndex(line => /^>\\s*
 assert.match(gridViewer, /const smilesKey = Object\.keys\(props\)\.find\(key => key\.toLowerCase\(\) === 'smiles'\)/);
 assert.match(gridViewer, /if \(smilesKey\) delete props\[smilesKey\]/);
 assert.match(gridViewer, /function parseSdfRecordProps\(lines\)/);
-assert.match(gridViewer, /props: \{ \.\.\.\(row\?\.props \|\| \{\}\), \.\.\.parsed\.props \}/);
+assert.match(gridViewer, /props: \{ \.\.\.row\?\.props, \.\.\.parsed\.props \}/);
 assert.match(gridViewer, /function replaceGridRow\(row, patch, cfg, options = \{\}\)/);
 assert.match(gridViewer, /props: patch\.props \|\| candidate\.props \|\| \{\}/);
 assert.match(gridViewer, /markGridDirty\('row edits'\)/);
