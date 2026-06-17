@@ -16,6 +16,7 @@ const previewFormatRegistry = JSON.parse(readFileSync(join(repoRoot, "config", "
 const extraFsAllow = (process.env.BURRETE_DEV_FS_ALLOW ?? "").split(delimiter).filter(Boolean);
 const defaultDevFileRoots = (process.env.BURRETE_DEV_DEFAULT_FILES ?? "").split(delimiter).filter(Boolean);
 const defaultDesktopRoots = [
+  join(homedir(), "Desktop"),
   join(homedir(), "Desktop", "BurettePreviewSamples"),
   join(homedir(), "Desktop", "BuretteMDAnalysisSamples"),
   join(homedir(), "Desktop", "xyzrender-main"),
@@ -128,9 +129,15 @@ type StructureFileBundle = {
 const DEV_FILE_EXTENSIONS = new Set([
   ...previewFormatRegistry.documentTypes.extensions,
   "dtr",
+  "magma",
   "md",
   "markdown",
   "mdx",
+  "mgf",
+  "ms",
+  "msp",
+  "mzml",
+  "mzxml",
   "txt",
   "log",
   "err",
