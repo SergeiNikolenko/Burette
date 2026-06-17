@@ -6,12 +6,13 @@ import type { TextStructureSelection } from "../lib/text-structure-selection";
 import type { DescriptorSourcePayload, GridDescriptorControls, GridDescriptorResultRow, GridDescriptorRunOptions } from "../lib/descriptors";
 import type { UpdatePreferences, UpdateState } from "../update";
 import type { SidebarProject } from "../lib/sidebar-projects";
-import type { SettingsSectionId } from "../lib/settings-sections";
+import type { AppSettingsSectionId } from "../lib/settings-sections";
 import type { DockArea, DockDropInput, DockDroppedStructure, DockTab, DockTabKind, DockToolKind } from "../lib/dock";
+
+export type { AppSettingsSectionId } from "../lib/settings-sections";
 
 export type AppPage = "viewer" | "settings";
 export type StatusKind = "info" | "success" | "error";
-export type AppSettingsSectionId = SettingsSectionId | "xtb";
 export type StructureViewerAction =
   | BaseStructureViewerAction
   | {

@@ -11,7 +11,7 @@ import {
   type SerializedLocation,
   type TextFileLocation,
 } from "../components/editor-area/page-kinds";
-import { DEFAULT_SETTINGS_SECTION, type SettingsSectionId } from "../lib/settings-sections";
+import { DEFAULT_SETTINGS_SECTION, type AppSettingsSectionId } from "../lib/settings-sections";
 import type { RecentStructure, TextFileDocument, ViewerDocument } from "../types";
 import {
   isTemporaryDocumentPath,
@@ -55,8 +55,8 @@ type MoleculeState = {
   openFepSetupTab: (location: FepSetupLocation) => void;
   openKetcherTab: (location?: KetcherLocation) => void;
   openPoseReviewTab: (location: PoseReviewLocation) => void;
-  openSettingsTab: (section?: SettingsSectionId) => void;
-  openSettingsSection: (section: SettingsSectionId) => void;
+  openSettingsTab: (section?: AppSettingsSectionId) => void;
+  openSettingsSection: (section: AppSettingsSectionId) => void;
   activateLastNonSettingsTab: () => void;
   navigateBack: () => void;
   navigateForward: () => void;
