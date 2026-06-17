@@ -123,7 +123,7 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
             <AgentIntegrationPanel embedded />
           ) : (
             <>
-              <h1>{settingsPanelSectionLabel(section)}</h1>
+              <h1>{settingsSectionLabel(section)}</h1>
               {section === "general" ? (
                 <>
                   <SettingsSection
@@ -243,10 +243,6 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
       </EditorScrollContainer>
     </div>
   );
-}
-
-function settingsPanelSectionLabel(section: AppSettingsSectionId) {
-  return section === "xtb" ? "xTB" : settingsSectionLabel(section);
 }
 
 function openDestinationPreferenceRow(
