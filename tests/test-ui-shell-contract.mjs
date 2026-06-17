@@ -1365,7 +1365,7 @@ assert.match(dockPanel, /function dockFilesDragPayload/);
 assert.match(dockPanel, /writeStructureDragPayload\(event\.dataTransfer, filesTabDragPayload\)/);
 assert.match(dockPanel, /writeStructureDragPayload\(event\.dataTransfer, item\.payload\)/);
 assert.match(dockPanel, /const dockStructureDocument = dockDocument \?\? activeDocument/);
-assert.match(dockPanel, /<StructureInfoPanel document=\{dockStructureDocument\} dockDrops=\{dockDrops\} actions=\{actions\} \/>/);
+assert.match(dockPanel, /<StructureInfoPanel\s+document=\{dockStructureDocument\}[\s\S]*?dockDrops=\{dockDrops\}[\s\S]*?conformerStatus=\{state\.conformerStatus\}[\s\S]*?viewerLigandSelection=\{state\.viewerLigandSelection\}[\s\S]*?xtbStatus=\{state\.xtbStatus\}[\s\S]*?preferences=\{state\.preferences\}[\s\S]*?actions=\{actions\}[\s\S]*?\/>/);
 assert.match(dockPanel, /if \(dockTextDocument\) return <TextDocumentInfoPanel document=\{dockTextDocument\} actions=\{actions\} \/>/);
 assert.match(dockPanel, /function TextDocumentInfoPanel/);
 assert.match(dockPanel, /actions\.showTextFileMetadata\(document\)/);
