@@ -864,6 +864,9 @@ export default function App() {
         else addDocuments(documents);
         if (!options.background && !options.inActiveTab && documents[0]) {
           setActiveDocument(documents[0].id);
+          setDockDocument("bottom", documents[0].id);
+          setDockActiveTab("bottom", "files");
+          setDockOpen("bottom", true);
         }
         rememberRecentStructures(documents);
         const openedText = "Opened " + documents.length + " spectrum" + (documents.length === 1 ? "" : "s");
@@ -878,7 +881,7 @@ export default function App() {
         return null;
       }
     },
-    [addBackgroundDocuments, addDocuments, openDocumentsInActiveTab, pushErrorStatus, pushStatus, rememberRecentStructures, setActiveDocument],
+    [addBackgroundDocuments, addDocuments, openDocumentsInActiveTab, pushErrorStatus, pushStatus, rememberRecentStructures, setActiveDocument, setDockActiveTab, setDockDocument, setDockOpen],
   );
 
   const openPaths = useCallback(async (paths: string[]) => {

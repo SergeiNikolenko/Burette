@@ -3661,17 +3661,11 @@ img.radix-menu-item-icon {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
-  grid-template-rows: minmax(280px, 1fr) minmax(150px, 32%);
-  grid-template-areas:
-    "plot side"
-    "table side";
+  grid-template-areas: "plot side";
 }
 .spectrum-embedded .spectrum-layout {
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(220px, 1fr) minmax(110px, 34%);
-  grid-template-areas:
-    "plot"
-    "table";
+  grid-template-areas: "plot";
 }
 .spectrum-plot-panel {
   grid-area: plot;
@@ -3679,7 +3673,6 @@ img.radix-menu-item-icon {
   min-height: 0;
   position: relative;
   overflow: hidden;
-  border-bottom: 1px solid var(--line-subtler);
 }
 .spectrum-plot {
   position: absolute;
@@ -3770,13 +3763,25 @@ img.radix-menu-item-icon {
   font-size: 12px;
 }
 .spectrum-table-panel {
-  grid-area: table;
   min-width: 0;
   min-height: 0;
   position: relative;
   z-index: 1;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
   background: var(--bg-base);
+}
+.spectrum-table-toolbar {
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line-subtler);
+  background: var(--surface-subtle);
 }
 .spectrum-info-dock {
   padding: 0;
@@ -3791,6 +3796,12 @@ img.radix-menu-item-icon {
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
+}
+.spectrum-peak-table {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
 }
 .spectrum-peak-table th,
 .spectrum-peak-table td {

@@ -17,7 +17,7 @@ import { CloseIcon } from "./close-icon";
 import { formatBytes } from "./format";
 import { StructureInfoPanel } from "./structure-info-panel";
 import { DescriptorPanel } from "./descriptor-panel";
-import { SpectrumInfoPanel, SpectrumViewer } from "./spectrum-viewer";
+import { SpectrumInfoPanel, SpectrumPeakTablePanel, SpectrumViewer } from "./spectrum-viewer";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureTextDocument } from "../lib/structure-text";
 import type { TextFileDocument, ViewerDocument } from "../types";
@@ -242,7 +242,9 @@ function DockPanelContent({
         <div className="dock-files-view">
           {fileTabs}
           <div className="dock-viewer">
-            {dockDocument.renderer === "spectrum"
+            {dockDocument.renderer === "spectrum" && area === "bottom"
+              ? <SpectrumPeakTablePanel document={dockDocument} />
+              : dockDocument.renderer === "spectrum"
               ? <SpectrumViewer document={dockDocument} embedded />
               : <ViewerFrame document={dockDocument} />}
           </div>
@@ -255,6 +257,16 @@ function DockPanelContent({
           {fileTabs}
           <div className="dock-viewer">
             <TextFileViewer document={dockTextDocument} openPaths={actions.openPaths} onStructureSelection={actions.selectTextStructure} />
+          </div>
+        </div>
+      );
+    }
+    if (area === "bottom" && activeDocument?.renderer === "spectrum") {
+      return (
+        <div className="dock-files-view">
+          {fileTabs}
+          <div className="dock-viewer">
+            <SpectrumPeakTablePanel document={activeDocument} />
           </div>
         </div>
       );

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { readStructureTextDocument } from "../lib/structure-text";
 import { parseSpectrumFile, spectrumSummary, type SpectrumDocument, type SpectrumFile } from "../lib/spectrum";
+import { useSpectrumPeakSelection } from "../lib/spectrum-selection";
 import type { ViewerDocument } from "../types";
 import { formatBytes } from "./format";
 
@@ -34,7 +35,7 @@ export function SpectrumViewer({ document, embedded = false }: SpectrumViewerPro
   const [file, setFile] = useState<SpectrumFile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [selectedPeakIndex, setSelectedPeakIndex] = useState<number | null>(null);
+  const [selectedPeakIndex, setSelectedPeakIndex] = useSpectrumPeakSelection(document.id);
   const [normalize, setNormalize] = useState(true);
   const [labelTopPeaks, setLabelTopPeaks] = useState(true);
 
@@ -66,14 +67,14 @@ export function SpectrumViewer({ document, embedded = false }: SpectrumViewerPro
     return () => {
       cancelled = true;
     };
-  }, [document.byteCount, document.extension, document.id, document.path, document.title]);
+  }, [document.byteCount, document.extension, document.id, document.path, document.title, setSelectedPeakIndex]);
 
   const selectedSpectrum = file?.spectra[selectedIndex] ?? file?.spectra[0] ?? null;
   const summary = useMemo(() => (file ? spectrumSummary(file) : null), [file]);
 
   useEffect(() => {
     setSelectedPeakIndex(null);
-  }, [selectedIndex]);
+  }, [selectedIndex, setSelectedPeakIndex]);
 
   if (error) {
     return (
@@ -142,14 +143,6 @@ export function SpectrumViewer({ document, embedded = false }: SpectrumViewerPro
             <SpectrumMetadata document={document} file={file} spectrum={selectedSpectrum} summary={summary} />
           </aside>
         )}
-        <section className="spectrum-table-panel">
-          <PeakTable
-            spectrum={selectedSpectrum}
-            normalize={normalize}
-            selectedPeakIndex={selectedPeakIndex}
-            onPeakSelect={setSelectedPeakIndex}
-          />
-        </section>
       </main>
     </div>
   );
@@ -191,6 +184,79 @@ export function SpectrumInfoPanel({ document }: { document: ViewerDocument }) {
         <SpectrumMetadata document={document} file={file} spectrum={spectrum} summary={summary} />
       )}
     </div>
+  );
+}
+
+export function SpectrumPeakTablePanel({ document }: { document: ViewerDocument }) {
+  const [file, setFile] = useState<SpectrumFile | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedPeakIndex, setSelectedPeakIndex] = useSpectrumPeakSelection(document.id);
+  const [normalize, setNormalize] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFile(null);
+    setError(null);
+    setSelectedIndex(0);
+    setSelectedPeakIndex(null);
+    void readStructureTextDocument(document.path, {
+      id: document.id,
+      path: document.path,
+      title: document.title,
+      extension: document.extension,
+      byteCount: document.byteCount,
+    }, { maxBytes: 12 * 1024 * 1024 })
+      .then((textDocument) => {
+        if (!cancelled) setFile(parseSpectrumFile({ title: textDocument.title, extension: textDocument.extension, content: textDocument.content }));
+      })
+      .catch((loadError) => {
+        if (!cancelled) setError(loadError instanceof Error ? loadError.message : String(loadError));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [document.byteCount, document.extension, document.id, document.path, document.title, setSelectedPeakIndex]);
+
+  const selectedSpectrum = file?.spectra[selectedIndex] ?? file?.spectra[0] ?? null;
+
+  useEffect(() => {
+    setSelectedPeakIndex(null);
+  }, [selectedIndex, setSelectedPeakIndex]);
+
+  return (
+    <section className="spectrum-table-panel">
+      {error && <div className="spectrum-empty" role="alert">{error}</div>}
+      {!error && !selectedSpectrum && <div className="spectrum-empty">Loading spectrum peaks...</div>}
+      {!error && selectedSpectrum && (
+        <>
+          {file && file.spectra.length > 1 && (
+            <div className="spectrum-table-toolbar">
+              <select
+                className="spectrum-select"
+                value={selectedIndex}
+                onChange={(event) => setSelectedIndex(Number(event.currentTarget.value))}
+                aria-label="Spectrum"
+              >
+                {file.spectra.map((spectrum, index) => (
+                  <option key={`${spectrum.id}:${index}`} value={index}>{spectrum.title}</option>
+                ))}
+              </select>
+              <label className="spectrum-toggle">
+                <input type="checkbox" checked={normalize} onChange={(event) => setNormalize(event.currentTarget.checked)} />
+                <span>Normalize</span>
+              </label>
+            </div>
+          )}
+          <PeakTable
+            spectrum={selectedSpectrum}
+            normalize={normalize}
+            selectedPeakIndex={selectedPeakIndex}
+            onPeakSelect={setSelectedPeakIndex}
+          />
+        </>
+      )}
+    </section>
   );
 }
 
