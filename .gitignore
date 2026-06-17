@@ -1,4 +1,5 @@
 .DS_Store
+.codegraph/
 build/
 build-dev/
 DerivedData/

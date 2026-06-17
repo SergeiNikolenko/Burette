@@ -7,6 +7,7 @@ export type DockToolKind = "ketcher";
 export type DockTabKind =
   | "xyzrender"
   | "files"
+  | "spectrum"
   | "text"
   | "inspector"
   | "descriptors"
@@ -74,6 +75,7 @@ export type DockFileEntriesInput = {
 export const DOCK_TAB_LABELS: Record<DockTabKind, string> = {
   xyzrender: "xyzr",
   files: "Files",
+  spectrum: "Spectrum",
   text: "Text",
   inspector: "Info",
   descriptors: "Descriptors",
@@ -107,6 +109,7 @@ const RIGHT_DOCK_TAB_CATALOG: DockTabKind[] = [
 
 const BOTTOM_DOCK_TAB_CATALOG: DockTabKind[] = [
   "files",
+  "spectrum",
   "logs",
 ];
 
