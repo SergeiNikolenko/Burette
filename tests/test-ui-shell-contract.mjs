@@ -1500,11 +1500,9 @@ assert.match(structureInfoPanel, /StructureSectionHeader title=\{controls\.title
 assert.match(structureInfoPanel, /actions: Array<StructureViewerAction & \{ type: "set_structure_pose" \}>/);
 assert.match(structureInfoPanel, /type: "set_structure_pose"/);
 assert.doesNotMatch(structureInfoPanel, /if \(document\.dockingRequest\) \{\s*setState\(\{ documentId: document\.id, loading: false, summary: null, error: null \}\);\s*return undefined;\s*\}/);
-assert.match(structureInfoPanel, /summary: parseStructureComposition\(text, inspectorCompositionExtension\(document\)\)/);
-assert.match(structureInfoPanel, /function inspectorCompositionPath\(document: ViewerDocument\)/);
-assert.match(structureInfoPanel, /return document\.dockingRequest\?\.receptorPath \?\? document\.path/);
-assert.match(structureInfoPanel, /function inspectorCompositionExtension\(document: ViewerDocument\)/);
-assert.match(structureInfoPanel, /return extensionFromPath\(document\.dockingRequest\.receptorPath\) \|\| document\.extension/);
+assert.match(structureInfoPanel, /summary: parseStructureComposition\(text, document\.extension\)/);
+assert.doesNotMatch(structureInfoPanel, /function inspectorCompositionPath\(document: ViewerDocument\)/);
+assert.doesNotMatch(structureInfoPanel, /function inspectorCompositionExtension\(document: ViewerDocument\)/);
 assert.match(structureInfoPanel, /type: "set_sdf_context_style"/);
 assert.match(structureInfoPanel, /if \(hasSdfMoleculeCollection\(summary\)\) \{/);
 assert.match(structureInfoPanel, /writeSdfContextStylePreference\(document, style\)/);
@@ -1531,7 +1529,7 @@ assert.match(structureInfoPanel, /inspectorSummaryLine\(brief\.kind, composition
 assert.match(structureInfoPanel, /readBrowserDevVirtualTextDocument/);
 assert.match(structureInfoPanel, /function readInspectorStructureText\(document: ViewerDocument\)/);
 assert.match(structureInfoPanel, /const virtualText = document\.virtual \? readBrowserDevVirtualTextDocument\(document\.path\) : null/);
-assert.match(structureInfoPanel, /return readStructureText\(inspectorCompositionPath\(document\), \{ maxBytes \}\)/);
+assert.match(structureInfoPanel, /return readStructureText\(document\.path, \{ maxBytes \}\)/);
 assert.match(structureInfoPanel, /return 12 \* 1024 \* 1024/);
 assert.match(structureInfoPanel, /const primaryAction = row\.action/);
 assert.match(structureInfoPanel, /key=\{structureActionRowKey\(row, index\)\}/);
