@@ -128,7 +128,7 @@
           </details>
         </div>
       </div>
-      <button class="buret-generate-3d-control hidden" type="button" data-buret-action="generate-3d-conformer" aria-label="Generate 3D conformer" title="Generate 3D conformer">
+      <button class="buret-generate-3d-control hidden" type="button" data-buret-action="generate-3d-conformer" aria-label="Generate 3D conformer">
         <span data-buret-generate-3d-label>Generate 3D</span>
         <span class="buret-tooltip" role="tooltip">Generate a real 3D conformer</span>
       </button>
