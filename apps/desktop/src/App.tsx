@@ -92,6 +92,7 @@ const filters = [
 ];
 
 const GRID_DESCRIPTOR_JOB_EVENT = "burrete-grid-descriptor-job";
+const NOT_RENDERABLE_RENDERER = "not-renderable";
 
 function publishGridDescriptorJob(status: GridDescriptorJobStatus) {
   window.dispatchEvent(new CustomEvent<GridDescriptorJobStatus>(GRID_DESCRIPTOR_JOB_EVENT, { detail: status }));
@@ -876,9 +877,14 @@ export default function App() {
     const openedStructureAndTextPaths = new Set<string>();
     if (structureAndTextPaths.length > 0) {
       const result = await openDocuments(structureAndTextPaths);
-      preferredStructureDocumentId = preferredStructureDocumentId ?? result?.documents[0]?.id ?? null;
-      for (const document of result?.documents ?? []) {
-        openedStructureAndTextPaths.add(document.path);
+      const openedDocuments = result?.documents ?? [];
+      for (const document of openedDocuments) {
+        if (document.renderer === NOT_RENDERABLE_RENDERER) {
+          closeDocument(document.id);
+        } else {
+          openedStructureAndTextPaths.add(document.path);
+          preferredStructureDocumentId = preferredStructureDocumentId ?? document.id;
+        }
       }
     }
 
@@ -898,7 +904,7 @@ export default function App() {
     if (preferredStructureDocumentId) {
       setActiveDocument(preferredStructureDocumentId);
     }
-  }, [openDocuments, openTextDocuments, setActiveDocument]);
+  }, [closeDocument, openDocuments, openTextDocuments, setActiveDocument]);
 
   useEffect(() => {
     if (isTauriRuntime() || syncingBrowserDevFilesRef.current) return;
@@ -1079,8 +1085,9 @@ export default function App() {
           const result = isTauriRuntime()
             ? await invoke<OpenDocumentsResult>("open_documents", { paths: [path], preferences, reloadOptions: undefined })
             : await openBrowserDevDocuments([path], preferences, undefined);
-          if (result.documents.length > 0) {
-            structureAndTextResults.push(result);
+          const documents = result.documents.filter((document) => document.renderer !== NOT_RENDERABLE_RENDERER);
+          if (documents.length > 0 || result.errors.length > 0) {
+            structureAndTextResults.push({ documents, errors: result.errors });
           }
         } catch {}
       }
