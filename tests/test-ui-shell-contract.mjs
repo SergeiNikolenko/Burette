@@ -1770,7 +1770,7 @@ assert.match(ketcherEditor, /editorInstance\.editor\.zoom\(value\)/);
 assert.match(ketcherEditor, /editorInstance\.editor\.event\?\.zoomChanged\?\.dispatch\?\.\(value\)/);
 assert.match(ketcherEditor, /instance\.setZoom\(value\)/);
 assert.doesNotMatch(ketcherPage, /editor\.event\.zoomChanged\.dispatch/);
-assert.match(ketcherPage, /import \{ RadixDropdownMenu \} from "\.\/radix-menu"/);
+assert.match(ketcherPage, /import \{ RadixDropdownMenu, showRadixContextMenu \} from "\.\/radix-menu"/);
 assert.match(ketcherPage, /<RadixDropdownMenu[\s\S]*align="end"/);
 assert.match(ketcherPage, /id: "no-open-collections"/);
 assert.match(ketcherPage, /text: "No open molecule collections"/);
