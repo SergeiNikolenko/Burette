@@ -4123,7 +4123,7 @@ assert.match(editorTabs, /id: "show-tab-text-file-metadata"/);
 assert.match(windowTitle, /activeDocument\.path/);
 assert.match(app, /invoke\("reveal_path"/);
 assert.match(app, /const copyPath = useCallback/);
-assert.match(app, /navigator\.clipboard\.writeText\(path\)/);
+assert.match(app, /await writeClipboardText\(path\)/);
 assert.match(app, /invoke<string>\("read_external_preview_svg"/);
 assert.match(app, /invoke<string>\("write_text_file"/);
 assert.match(app, /invoke<string>\("write_base64_file"/);
