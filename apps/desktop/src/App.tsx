@@ -344,6 +344,12 @@ async function browserDevFilesFromLocation() {
   return [];
 }
 
+function browserDevFolderFromLocation() {
+  if (typeof window === "undefined" || isTauriRuntime()) return null;
+  const folder = new URLSearchParams(window.location.search).get("devFolder")?.trim();
+  return folder ? folder.replace(/\\/g, "/").replace(/\/+$/u, "") : null;
+}
+
 function splitDevFiles(rawFiles: string) {
   return rawFiles.split("\n").map((path) => path.trim()).filter(Boolean);
 }
@@ -351,6 +357,12 @@ function splitDevFiles(rawFiles: string) {
 function browserDevHasExplicitFiles() {
   if (typeof window === "undefined" || isTauriRuntime()) return false;
   return new URLSearchParams(window.location.search).has("devFiles");
+}
+
+function browserDevHasExplicitWorkspace() {
+  if (typeof window === "undefined" || isTauriRuntime()) return false;
+  const params = new URLSearchParams(window.location.search);
+  return params.has("devFiles") || params.has("devFolder");
 }
 
 async function expandBrowserDevStructureBundles(paths: string[]) {
@@ -1206,20 +1218,23 @@ export default function App() {
     openCommandPalette("search");
   }, [openCommandPalette]);
 
+  const browserDevExplicitFolder = useMemo(() => browserDevFolderFromLocation(), []);
   const browserDevSampleRoot = useMemo(() => browserDevSampleProjectRoot(), []);
-  const sidebarProjectRoots = useMemo(() => (
-    browserDevSampleRoot && !projectRoots.includes(browserDevSampleRoot)
+  const sidebarProjectRoots = useMemo(() => {
+    if (browserDevExplicitFolder) return [browserDevExplicitFolder];
+    return browserDevSampleRoot && !projectRoots.includes(browserDevSampleRoot)
       ? [...projectRoots, browserDevSampleRoot]
-      : projectRoots
-  ), [browserDevSampleRoot, projectRoots]);
+      : projectRoots;
+  }, [browserDevExplicitFolder, browserDevSampleRoot, projectRoots]);
   const sidebarProjectStructures = useMemo(() => {
     const samples = browserDevSampleProjectStructures();
     return samples.length > 0 ? [...projectStructures, ...samples] : projectStructures;
   }, [projectStructures]);
+  const sidebarRecentStructures = browserDevExplicitFolder ? [] : recentStructures;
 
   const allSidebarProjects = useMemo(() => buildSidebarProjects({
     documents,
-    recentStructures,
+    recentStructures: sidebarRecentStructures,
     projectRoots: sidebarProjectRoots,
     projectStructures: sidebarProjectStructures,
     pinnedProjectRoots,
@@ -1227,7 +1242,7 @@ export default function App() {
     activeDocumentId: activeDocument?.id ?? null,
     hiddenProjectRoots,
     pinnedStructurePaths,
-  }), [activeDocument?.id, documents, hiddenProjectRoots, pinnedProjectRoots, pinnedStructurePaths, projectNameOverrides, recentStructures, sidebarProjectRoots, sidebarProjectStructures]);
+  }), [activeDocument?.id, documents, hiddenProjectRoots, pinnedProjectRoots, pinnedStructurePaths, projectNameOverrides, sidebarProjectRoots, sidebarProjectStructures, sidebarRecentStructures]);
 
   useEffect(() => {
     if (!isTauriRuntime() || projectRoots.length === 0) {
@@ -1540,7 +1555,7 @@ export default function App() {
       if (!needsInitialOpen && !needsRuntimeRefresh) return;
       openedBrowserDevFilesRef.current = normalizedFiles;
       syncingBrowserDevFilesRef.current = true;
-      const workspace = paths[0] ? parentDirectory(paths[0]) : null;
+      const workspace = browserDevExplicitFolder ?? (paths[0] ? parentDirectory(paths[0]) : null);
       if (workspace && !browserDevHasExplicitFiles()) {
         setWorkspacePath(workspace);
         addProjectRoot(workspace);
@@ -1555,7 +1570,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [addProjectRoot, closeAllDocuments, documents, openPaths, pushErrorStatus, setWorkspacePath]);
+  }, [addProjectRoot, browserDevExplicitFolder, closeAllDocuments, documents, openPaths, pushErrorStatus, setWorkspacePath]);
 
   useEffect(() => {
     if (refreshedPersistedSessionRef.current) return;
@@ -5720,7 +5735,7 @@ function ketcherSource3DFromText(title: string, text: string, extension: string)
 }
 
 function browserDevSampleProjectRoot() {
-  if (!import.meta.env.DEV || isTauriRuntime() || browserDevHasExplicitFiles()) return null;
+  if (!import.meta.env.DEV || isTauriRuntime() || browserDevHasExplicitWorkspace()) return null;
   const repoRoot = String(import.meta.env.BURRETE_REPO_ROOT || "").trim().replace(/\/+$/u, "");
   return repoRoot ? `${repoRoot}/samples` : null;
 }
