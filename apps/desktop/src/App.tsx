@@ -74,6 +74,7 @@ import { basename, buildSidebarProjects, parentDirectory, type SidebarProjectStr
 import { parseStructureComposition } from "./lib/structure-composition";
 import type { StructureDragPayload, StructureDragRecord } from "./lib/structure-drag";
 import { readStructureText } from "./lib/structure-text";
+import { isSpectrumExtension, spectrumDocumentFromText } from "./lib/spectrum";
 import type { TextStructureSelection } from "./lib/text-structure-selection";
 import { isTauriRuntime } from "./lib/tauri";
 import { isTemporaryDocumentPath } from "./lib/temporary-documents";
@@ -89,11 +90,12 @@ const CommandPalette = lazy(() => import("./components/command-palette").then((m
 const filters = [
   {
     name: "Files",
-    extensions: [...previewFormatRegistry.documentTypes.extensions, "md", "markdown", "mdx", "txt", "log", "err", "sh", "bash", "zsh", "py", "rs", "js", "jsx", "ts", "tsx", "json", "yaml", "yml", "toml", "xml", "html", "css", "inpcrd", "rst7", "crd", "rst", "par", "prm", "rtf", "str", "key", "chk", "checkpoint", "state"],
+    extensions: [...previewFormatRegistry.documentTypes.extensions, "ms", "magma", "mgf", "msp", "mzML", "mzXML", "md", "markdown", "mdx", "txt", "log", "out", "err", "sh", "bash", "zsh", "py", "rs", "js", "jsx", "ts", "tsx", "json", "yaml", "yml", "toml", "xml", "html", "css", "inpcrd", "rst7", "crd", "rst", "par", "prm", "rtf", "str", "key", "chk", "checkpoint", "state"],
   },
 ];
 
 const GRID_DESCRIPTOR_JOB_EVENT = "burrete-grid-descriptor-job";
+const NOT_RENDERABLE_RENDERER = "not-renderable";
 
 function publishGridDescriptorJob(status: GridDescriptorJobStatus) {
   window.dispatchEvent(new CustomEvent<GridDescriptorJobStatus>(GRID_DESCRIPTOR_JOB_EVENT, { detail: status }));
@@ -114,6 +116,7 @@ const preferredTextExtensions = new Set([
   "mdx",
   "txt",
   "log",
+  "out",
   "err",
   "sh",
   "bash",
@@ -168,7 +171,6 @@ const structureAndTextExtensions = new Set([
   "lammpstrj",
   "lammps",
   "lmp",
-  "log",
   "mae",
   "maegz",
   "mdcrd",
@@ -179,7 +181,6 @@ const structureAndTextExtensions = new Set([
   "nctraj",
   "netcdf",
   "nw",
-  "out",
   "parm",
   "parm7",
   "prmtop",
@@ -387,7 +388,7 @@ async function expandBrowserDevStructureBundles(paths: string[]) {
       for (const attachment of bundle.attachments ?? []) {
         if (attachment.path) addPath(attachment.path);
       }
-    } catch (_) {
+    } catch {
       // Browser-dev companion discovery is opportunistic; opening the requested file still works.
     }
   }
@@ -1415,26 +1416,77 @@ export default function App() {
     [addBackgroundTextDocuments, addTextDocuments, openTextDocumentsInActiveTab, pushErrorStatus, pushStatus],
   );
 
+  const openSpectrumDocuments = useCallback(
+    async (
+      paths: string[],
+      options: { inActiveTab?: boolean; background?: boolean } = {},
+    ) => {
+      const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
+      if (!cleanPaths.length) return null;
+      pushStatus("Opening spectra...");
+      try {
+        const result = isTauriRuntime()
+          ? await invoke<OpenTextFilesResult>("open_text_files", { paths: cleanPaths })
+          : await openBrowserDevTextFiles(cleanPaths);
+        const documents = result.documents.map(spectrumDocumentFromText);
+        if (options.background) addBackgroundDocuments(documents);
+        else if (options.inActiveTab) openDocumentsInActiveTab(documents);
+        else addDocuments(documents);
+        if (!options.background && !options.inActiveTab && documents[0]) {
+          setActiveDocument(documents[0].id);
+          setDockDocument("right", documents[0].id);
+          setDockActiveTab("right", "inspector");
+          setDockOpen("right", true);
+          setDockDocument("bottom", documents[0].id);
+          openDockTab("bottom", "spectrum");
+        }
+        rememberRecentStructures(documents);
+        const openedText = "Opened " + documents.length + " spectrum" + (documents.length === 1 ? "" : "s");
+        if (result.errors.length > 0) {
+          pushStatus(`${openedText}. ${summarizeErrors(result.errors)}`, "error", result.errors);
+        } else {
+          pushStatus(openedText);
+        }
+        return { documents, errors: result.errors };
+      } catch (error) {
+        pushErrorStatus(error, "Open spectrum failed");
+        return null;
+      }
+    },
+    [addBackgroundDocuments, addDocuments, openDockTab, openDocumentsInActiveTab, pushErrorStatus, pushStatus, rememberRecentStructures, setActiveDocument, setDockActiveTab, setDockDocument, setDockOpen],
+  );
+
   const openPaths = useCallback(async (paths: string[]) => {
     const cleanPaths = await expandBrowserDevStructureBundles(Array.from(new Set(paths.filter(Boolean))));
     if (!cleanPaths.length) return;
 
     const structurePaths: string[] = [];
+    const spectrumPaths: string[] = [];
     const textPaths: string[] = [];
     const structureAndTextPaths: string[] = [];
     let preferredStructureDocumentId: string | null = null;
 
     for (const path of cleanPaths) {
       const extension = pathExtension(path);
-      if (structureAndTextExtensions.has(extension)) {
+      if (isSpectrumExtension(extension)) {
+        spectrumPaths.push(path);
+      } else if (
+        preferredTextExtensions.has(extension)
+        || (extension.length > 0 && !structureExtensions.has(extension) && !structureAndTextExtensions.has(extension))
+      ) {
+        textPaths.push(path);
+      } else if (structureAndTextExtensions.has(extension)) {
         structureAndTextPaths.push(path);
       } else if (structureExtensions.has(extension)) {
         structurePaths.push(path);
-      } else if (preferredTextExtensions.has(extension) || extension.length > 0) {
-        textPaths.push(path);
       } else {
         textPaths.push(path);
       }
+    }
+
+    if (spectrumPaths.length > 0) {
+      const result = await openSpectrumDocuments(spectrumPaths);
+      preferredStructureDocumentId = result?.documents[0]?.id ?? preferredStructureDocumentId;
     }
 
     if (structurePaths.length > 0) {
@@ -1445,9 +1497,14 @@ export default function App() {
     const openedStructureAndTextPaths = new Set<string>();
     if (structureAndTextPaths.length > 0) {
       const result = await openDocuments(structureAndTextPaths);
-      preferredStructureDocumentId = preferredStructureDocumentId ?? result?.documents[0]?.id ?? null;
-      for (const document of result?.documents ?? []) {
-        openedStructureAndTextPaths.add(document.path);
+      const openedDocuments = result?.documents ?? [];
+      for (const document of openedDocuments) {
+        if (document.renderer === NOT_RENDERABLE_RENDERER) {
+          closeDocument(document.id);
+        } else {
+          openedStructureAndTextPaths.add(document.path);
+          preferredStructureDocumentId = preferredStructureDocumentId ?? document.id;
+        }
       }
     }
 
@@ -1467,7 +1524,7 @@ export default function App() {
     if (preferredStructureDocumentId) {
       setActiveDocument(preferredStructureDocumentId);
     }
-  }, [openDocuments, openTextDocuments, setActiveDocument]);
+  }, [closeDocument, openDocuments, openSpectrumDocuments, openTextDocuments, setActiveDocument]);
 
   useEffect(() => {
     if (isTauriRuntime() || syncingBrowserDevFilesRef.current) return;
@@ -1528,9 +1585,9 @@ export default function App() {
 
   const openRecentStructure = useCallback(
     async (structure: RecentStructure) => {
-      await openDocuments([structure.path]);
+      await openPaths([structure.path]);
     },
-    [openDocuments],
+    [openPaths],
   );
 
   const openStructureRecordDocuments = useCallback(async (records: StructureDragRecord[]) => {
@@ -1599,7 +1656,7 @@ export default function App() {
       if (input.area === "right" && cleanPaths.length > 0) {
         const rightDockTextPaths = cleanPaths.filter((path) => {
           const extension = pathExtension(path);
-          return !structureExtensions.has(extension) && !structureAndTextExtensions.has(extension);
+          return !isSpectrumExtension(extension) && !structureExtensions.has(extension) && !structureAndTextExtensions.has(extension);
         });
         dockOpenPaths = cleanPaths.filter((path) => !rightDockTextPaths.includes(path));
         if (rightDockTextPaths.length > 0) {
@@ -1622,11 +1679,14 @@ export default function App() {
       }
 
       const structurePaths: string[] = [];
+      const spectrumPaths: string[] = [];
       const textPaths: string[] = [];
       const structureAndTextPaths: string[] = [];
       for (const path of dockOpenPaths) {
         const extension = pathExtension(path);
-        if (structureAndTextExtensions.has(extension)) {
+        if (isSpectrumExtension(extension)) {
+          spectrumPaths.push(path);
+        } else if (structureAndTextExtensions.has(extension)) {
           structureAndTextPaths.push(path);
         } else if (structureExtensions.has(extension)) {
           structurePaths.push(path);
@@ -1642,14 +1702,21 @@ export default function App() {
           ? await invoke<OpenDocumentsResult>("open_documents", { paths: structurePaths, preferences, reloadOptions: undefined })
           : await openBrowserDevDocuments(structurePaths, preferences, undefined)
         : { documents: [], errors: [] };
+      const spectrumTextResult = spectrumPaths.length > 0
+        ? isTauriRuntime()
+          ? await invoke<OpenTextFilesResult>("open_text_files", { paths: spectrumPaths })
+          : await openBrowserDevTextFiles(spectrumPaths)
+        : { documents: [], errors: [] };
+      const spectrumDocuments = spectrumTextResult.documents.map(spectrumDocumentFromText);
       const structureAndTextResults: OpenDocumentsResult[] = [];
       for (const path of structureAndTextPaths) {
         try {
           const result = isTauriRuntime()
             ? await invoke<OpenDocumentsResult>("open_documents", { paths: [path], preferences, reloadOptions: undefined })
             : await openBrowserDevDocuments([path], preferences, undefined);
-          if (result.documents.length > 0) {
-            structureAndTextResults.push(result);
+          const documents = result.documents.filter((document) => document.renderer !== NOT_RENDERABLE_RENDERER);
+          if (documents.length > 0 || result.errors.length > 0) {
+            structureAndTextResults.push({ documents, errors: result.errors });
           }
         } catch {}
       }
@@ -1663,12 +1730,14 @@ export default function App() {
         ? await openStructureRecordDocuments(cleanRecords)
         : { opened: [], errors: [] };
       const openedStructures = [
+        ...spectrumDocuments,
         ...structurePathResult.documents,
         ...structureAndTextResults.flatMap((result) => result.documents),
         ...recordResult.opened,
       ];
       const openedTextDocuments = textResult.documents;
       const errors = [
+        ...spectrumTextResult.errors,
         ...structurePathResult.errors,
         ...structureAndTextResults.flatMap((result) => result.errors),
         ...textResult.errors,
@@ -2943,8 +3012,32 @@ export default function App() {
     const reloadOptions = pendingViewerReloadOptionsRef.current ?? undefined;
     pendingViewerReloadOptionsRef.current = null;
     pendingViewerReloadDocumentIdRef.current = null;
-    await openDocuments([targetDocument.path], reloadOptions);
+    await openDocuments([targetDocument.path], reloadOptions, undefined, { inActiveTab: true });
   }, [activeDocument, documents, openDocuments]);
+  const reloadXyzrenderDocument = useCallback(async (document: ViewerDocument, reloadOptions: ViewerReloadOptions) => {
+    const effectiveReloadOptions = {
+      ...reloadOptions,
+      xyzrenderOrientationRef: reloadOptions.xyzrenderOrientationRef ?? xyzrenderOrientationRefRef.current,
+    };
+    const iframe = activeViewerIframeForDocument(document.id);
+    if (iframe?.contentWindow) {
+      iframe.contentWindow.postMessage({
+        source: "burrete-host",
+        body: {
+          type: "setXyzrenderControls",
+          documentId: document.id,
+          preset: effectiveReloadOptions.xyzrenderPreset ?? null,
+          controls: effectiveReloadOptions.xyzrenderControls ?? null,
+        },
+      }, "*");
+      return;
+    }
+    pendingViewerReloadDocumentIdRef.current = document.id;
+    pendingViewerReloadOptionsRef.current = effectiveReloadOptions;
+    await openDocuments([document.path], effectiveReloadOptions, undefined, { inActiveTab: true });
+    pendingViewerReloadOptionsRef.current = null;
+    pendingViewerReloadDocumentIdRef.current = null;
+  }, [openDocuments]);
   const setUpdatePreferences = useCallback((preferences: UpdatePreferences) => {
     saveUpdatePreferences(preferences);
     setUpdate((previous) => ({
@@ -3164,6 +3257,8 @@ export default function App() {
           poseMode?: string | null;
           sourcePath?: string | null;
           controls?: ViewerReloadOptions["xyzrenderControls"];
+          renderer?: string | null;
+          presetOptions?: Array<{ value?: string | null; label?: string | null }> | null;
           contextDocument?: Parameters<typeof openBrowserDevMolstarContextDocument>[0];
           inputDataBase64?: string | null;
           inputExtension?: string | null;
@@ -3251,6 +3346,25 @@ export default function App() {
             atoms: Math.max(0, Math.trunc(Number(selection.atoms) || 0)),
           } : null,
         }));
+        return;
+      }
+      if (data.source === "burrete-viewer" && body?.type === "rendererChanged") {
+        const targetDocument = (body.documentId
+          ? documents.find((document) => document.id === body.documentId)
+          : null) ?? activeDocument;
+        const renderer = body.renderer === "xyzrender-external" ? "xyzrender-external" : body.renderer === "molstar" ? "molstar" : null;
+        if (targetDocument && renderer) {
+          addDocuments([{
+            ...targetDocument,
+            renderer,
+            xyzrenderControls: body.controls ?? targetDocument.xyzrenderControls ?? null,
+            xyzrenderPreset: body.preset ?? targetDocument.xyzrenderPreset ?? null,
+            xyzrenderPresetOptions: body.presetOptions
+              ?.filter((option): option is { value: string; label: string } => Boolean(option?.value && option?.label))
+              ?? targetDocument.xyzrenderPresetOptions
+            ?? null,
+          }]);
+        }
         return;
       }
       if (data.source === "burrete-viewer" && (body?.type === "requestData" || body?.type === "requestRuntimeFile")) {
@@ -3875,7 +3989,7 @@ export default function App() {
       if (body?.type === "setXyzrenderControls") {
         pendingViewerReloadDocumentIdRef.current = body.documentId ?? null;
         pendingViewerReloadOptionsRef.current = {
-          xyzrenderPreset: pendingViewerReloadOptionsRef.current?.xyzrenderPreset ?? null,
+          xyzrenderPreset: body.preset ?? pendingViewerReloadOptionsRef.current?.xyzrenderPreset ?? null,
           xyzrenderOrientationRef: xyzrenderOrientationRefRef.current,
           xyzrenderControls: body.controls ?? null,
         };
@@ -4705,6 +4819,7 @@ export default function App() {
     showTextFileMetadata,
     generate3DConformer,
     runStructureViewerAction,
+    reloadXyzrenderDocument,
     selectTextStructure,
     exportActivePreviewAsPng,
     exportActivePreviewAsSvg,
@@ -4759,7 +4874,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openWorkspaceFolder, pushErrorStatus, pushStatus, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runStructureViewerAction, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
+  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runStructureViewerAction, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 

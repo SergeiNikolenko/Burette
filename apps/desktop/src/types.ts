@@ -313,6 +313,9 @@ export type ViewerDocument = {
   sourcePath?: string | null;
   dockingRequest?: DockingDocumentRequest;
   mergedCollection?: MergedCollectionDocument;
+  xyzrenderControls?: XyzrenderControls | null;
+  xyzrenderPreset?: string | null;
+  xyzrenderPresetOptions?: Array<{ value: string; label: string }> | null;
 };
 
 export type TextFileDocument = {

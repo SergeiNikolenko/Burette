@@ -63,14 +63,20 @@
 				<string>mae</string>
 				<string>mae.gz</string>
 				<string>maegz</string>
+				<string>magma</string>
 				<string>mcif</string>
 				<string>mdcrd</string>
+				<string>mgf</string>
 				<string>mmcif</string>
 				<string>mmtf</string>
 				<string>mol</string>
 				<string>mol2</string>
+				<string>ms</string>
+				<string>msp</string>
 				<string>mvsj</string>
 				<string>mvsx</string>
+				<string>mzml</string>
+				<string>mzxml</string>
 				<string>namdbin</string>
 				<string>nc</string>
 				<string>ncdf</string>
@@ -160,6 +166,7 @@
 				<string>com.local.burrete10.graphml</string>
 				<string>com.local.burrete10.openmm-coordinate-artifact</string>
 				<string>com.local.burrete10.openmm-workflow-text-artifact</string>
+				<string>com.local.burrete10.spectrum</string>
 			</array>
 		</dict>
 	</array>
@@ -693,6 +700,34 @@
 				<key>public.mime-type</key>
 				<array>
 					<string>text/plain</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Mass spectrum or annotated spectrum file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.spectrum</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>ms</string>
+					<string>magma</string>
+					<string>mgf</string>
+					<string>msp</string>
+					<string>mzml</string>
+					<string>mzxml</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>text/plain</string>
+					<string>application/xml</string>
 				</array>
 			</dict>
 		</dict>

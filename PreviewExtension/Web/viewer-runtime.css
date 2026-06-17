@@ -23,12 +23,12 @@
   --buret-molstar-accent: #AF52DE;
   --buret-molstar-shadow: rgba(0, 0, 0, 0.38);
   --buret-molstar-panel-radius: 10px;
-  --buret-menu-background: rgba(42, 45, 51, 0.86);
-  --buret-menu-section-background: rgba(255, 255, 255, 0.06);
-  --buret-menu-input-background: rgba(255, 255, 255, 0.09);
-  --buret-menu-input-focus-background: rgba(255, 255, 255, 0.12);
-  --buret-menu-border: rgba(255, 255, 255, 0.08);
-  --buret-menu-divider: rgba(255, 255, 255, 0.06);
+  --buret-menu-background: rgba(30, 32, 36, 0.97);
+  --buret-menu-section-background: rgba(255, 255, 255, 0.09);
+  --buret-menu-input-background: rgba(255, 255, 255, 0.12);
+  --buret-menu-input-focus-background: rgba(255, 255, 255, 0.16);
+  --buret-menu-border: rgba(255, 255, 255, 0.12);
+  --buret-menu-divider: rgba(255, 255, 255, 0.09);
   --buret-menu-toggle-track: rgba(255, 255, 255, 0.20);
   --buret-menu-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
   --buret-menu-accent: #AF52DE;
@@ -60,12 +60,12 @@ body.buret-theme-light {
   --buret-molstar-muted-text: rgba(86, 88, 92, 0.82);
   --buret-molstar-accent: #AF52DE;
   --buret-molstar-shadow: rgba(0, 0, 0, 0.18);
-  --buret-menu-background: rgba(246, 246, 244, 0.88);
-  --buret-menu-section-background: rgba(0, 0, 0, 0.045);
-  --buret-menu-input-background: rgba(0, 0, 0, 0.06);
-  --buret-menu-input-focus-background: rgba(0, 0, 0, 0.085);
-  --buret-menu-border: rgba(0, 0, 0, 0.08);
-  --buret-menu-divider: rgba(0, 0, 0, 0.06);
+  --buret-menu-background: rgba(248, 248, 246, 0.98);
+  --buret-menu-section-background: rgba(0, 0, 0, 0.055);
+  --buret-menu-input-background: rgba(0, 0, 0, 0.075);
+  --buret-menu-input-focus-background: rgba(0, 0, 0, 0.105);
+  --buret-menu-border: rgba(0, 0, 0, 0.11);
+  --buret-menu-divider: rgba(0, 0, 0, 0.08);
   --buret-menu-toggle-track: rgba(0, 0, 0, 0.16);
   --buret-menu-shadow: 0 16px 36px rgba(0, 0, 0, 0.15);
   --buret-menu-accent: #AF52DE;
@@ -681,7 +681,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   width: 100%;
   min-height: 30px;
   box-sizing: border-box;
-  border: 0;
+  border: 1px solid var(--buret-menu-border);
   border-radius: 8px;
   padding: 6px 8px;
   color: inherit;
@@ -1113,8 +1113,8 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
   color: var(--buret-toolbar-color);
   background: var(--buret-menu-background);
   box-shadow: var(--buret-menu-shadow);
-  -webkit-backdrop-filter: blur(30px) saturate(1.35);
-  backdrop-filter: blur(30px) saturate(1.35);
+  -webkit-backdrop-filter: blur(18px) saturate(1.18);
+  backdrop-filter: blur(18px) saturate(1.18);
 }
 .buret-xyzrender-popover.hidden { display: none; }
 .buret-xyzrender-popover-header {

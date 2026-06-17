@@ -378,14 +378,28 @@
         "primary": { "role": "text-artifact", "format": "text", "binary": false }
       },
       "quickLook": { "sizeLimitMiB": 25 }
+    },
+    {
+      "id": "spectrum",
+      "contentType": "com.local.burrete10.spectrum",
+      "extensions": ["ms", "magma", "mgf", "msp", "mzml", "mzxml"],
+      "mimeTypes": ["text/plain", "application/xml"],
+      "conformsTo": ["public.text", "public.data"],
+      "description": "Mass spectrum or annotated spectrum file",
+      "preview": {
+        "strategy": "custom",
+        "renderer": "spectrum",
+        "primary": { "role": "spectrum", "format": "spectrum", "binary": false }
+      },
+      "quickLook": { "sizeLimitMiB": 50 }
     }
   ],
   "documentTypes": {
     "name": "Molecular structure files",
     "extensions": [
       "abi", "arc", "bcif", "cif", "cms", "com", "config", "coor", "crdbox", "csv", "cub", "cube", "data", "dcd", "dms", "dump", "edr", "ent", "fasta", "fdf", "fhiaims", "gms", "graphml", "gro", "gsd", "h5md", "history",
-      "in", "inp", "inpcrd", "itp", "lammpstrj", "lammps", "lmp", "log", "mae", "mae.gz", "maegz", "mcif", "mdcrd", "mmcif", "mmtf", "mol",
-      "mol2", "mvsj", "mvsx", "namdbin", "nc", "ncdf", "ncrst", "nctraj", "netcdf", "nw", "out", "par", "parm", "parm7", "pdb", "pdbqt", "pqr", "prm", "prmtop", "psf", "psi4", "qcin",
+      "in", "inp", "inpcrd", "itp", "lammpstrj", "lammps", "lmp", "log", "mae", "mae.gz", "maegz", "magma", "mcif", "mdcrd", "mgf", "mmcif", "mmtf", "mol",
+      "mol2", "ms", "msp", "mvsj", "mvsx", "mzml", "mzxml", "namdbin", "nc", "ncdf", "ncrst", "nctraj", "netcdf", "nw", "out", "par", "parm", "parm7", "pdb", "pdbqt", "pqr", "prm", "prmtop", "psf", "psi4", "qcin",
       "restrt", "rst", "rst7", "rtf", "sd", "sdf", "smi", "smiles", "state", "str", "top", "tpr", "tng", "trc", "trj", "trr", "trz", "tsv", "txyz", "vasp", "xtc", "xml", "xpdb", "xvg", "xyz", "xyzr",
       "key", "chk", "checkpoint", "crd"
     ]
