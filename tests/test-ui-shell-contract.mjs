@@ -3773,7 +3773,7 @@ assert.match(previewViewer, /const image = molstarPreviewSvgCache\.get\(key\) \|
 assert.doesNotMatch(previewViewer, /if \(!image\) \{\s*hideMolstarMoleculePreview\(\);\s*return;\s*\}/);
 assert.match(previewViewer, /\$\{image \|\| escapeHTML\('Rendering 2D preview\.\.\.'\)\}/);
 assert.match(previewViewer, /function showMolstarSelectedMoleculePreview\(fallbackTarget = null\)/);
-assert.match(previewViewer, /molstarStandalonePreviewTarget;/);
+assert.match(previewViewer, /if \(molstarStandalonePreviewTarget && showMolstarPersistentMoleculePreview\(molstarStandalonePreviewTarget\)\) return true/);
 assert.match(previewViewer, /function scheduleMolstarSelectedMoleculePreview\(fallbackTarget = null\)/);
 assert.match(previewViewer, /if \(handled\) scheduleMolstarSelectedMoleculePreview\(target\);/);
 assert.match(previewViewer, /function hideMolstarContextMenu\(options = \{\}\)/);
