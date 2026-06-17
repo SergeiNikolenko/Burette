@@ -7,6 +7,7 @@ import type { ShellActions } from "../../types";
 import { ViewerFrame } from "../viewer-frame";
 import { showNativeContextMenu } from "../../native-context-menu";
 import { definePageKind } from "./types";
+import { SpectrumViewer } from "../../spectrum-viewer";
 
 export type FileLocation = { kind: "file"; documentId?: string; path: string };
 
@@ -35,6 +36,19 @@ function findDocument(location: FileLocation, documents: ViewerDocument[]) {
 }
 
 function ViewerSurface({
+  document,
+  actions,
+}: {
+  document: ViewerDocument;
+  actions: ShellActions;
+}) {
+  if (document.renderer === "spectrum") {
+    return <SpectrumViewer document={document} />;
+  }
+  return <StructureViewerSurface document={document} actions={actions} />;
+}
+
+function StructureViewerSurface({
   document,
   actions,
 }: {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Atom01Icon,
   File02Icon,
@@ -17,9 +17,10 @@ import { CloseIcon } from "./close-icon";
 import { formatBytes } from "./format";
 import { StructureInfoPanel } from "./structure-info-panel";
 import { DescriptorPanel } from "./descriptor-panel";
+import { SpectrumInfoPanel, SpectrumPeakTablePanel, SpectrumViewer } from "./spectrum-viewer";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureTextDocument } from "../lib/structure-text";
-import type { ConformerJob, TextFileDocument, ViewerDocument, XtbJob } from "../types";
+import type { ConformerJob, TextFileDocument, ViewerDocument, XtbJob, XyzrenderControls } from "../types";
 
 type DockPanelProps = {
   area: DockArea;
@@ -29,7 +30,9 @@ type DockPanelProps = {
 };
 
 const dockTabIcons: Record<DockTabKind, typeof File02Icon> = {
+  xyzrender: Atom01Icon,
   files: Folder01Icon,
+  spectrum: Atom01Icon,
   text: File02Icon,
   inspector: Search01Icon,
   descriptors: Atom01Icon,
@@ -43,30 +46,55 @@ const dockTabIcons: Record<DockTabKind, typeof File02Icon> = {
 
 export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProps) {
   const [dropActive, setDropActive] = useState(false);
-  const tabs = area === "right" ? state.rightDockTabs : state.bottomDockTabs;
-  const activeTabKind = area === "right" ? state.rightDockActiveTab : state.bottomDockActiveTab;
+  const rawTabs = area === "right" ? state.rightDockTabs : state.bottomDockTabs;
   const open = area === "right" ? state.rightDockOpen : state.bottomDockOpen;
   const size = area === "right" ? state.rightDockWidth : state.bottomDockHeight;
   const dragging = area === "right" ? state.rightDockDragging : state.bottomDockDragging;
-  const activeTab = tabs.find((tab) => tab.kind === activeTabKind) ?? tabs[0];
   const dockDocumentId = area === "right" ? state.rightDockDocumentId : state.bottomDockDocumentId;
   const dockTool = area === "right" ? state.rightDockTool : state.bottomDockTool;
   const dockDocument = dockDocumentId ? state.documents.find((document) => document.id === dockDocumentId) ?? null : null;
   const dockTextDocument = dockDocumentId ? state.textDocuments.find((document) => document.id === dockDocumentId) ?? null : null;
+  const activeStructureDocument = dockDocument ?? state.activeDocument;
+  const spectrumDocumentActive = activeStructureDocument?.renderer === "spectrum";
+  const spectrumDockAvailable = area === "bottom" && (dockDocument?.renderer === "spectrum" || state.activeDocument?.renderer === "spectrum");
+  const tabs = rawTabs.filter((tab) => {
+    if (tab.kind === "spectrum") return spectrumDockAvailable;
+    if (tab.kind === "descriptors") return !(area === "right" && spectrumDocumentActive);
+    return true;
+  });
+  const storedActiveTabKind = area === "right" ? state.rightDockActiveTab : state.bottomDockActiveTab;
+  const activeTabKind = tabs.some((tab) => tab.kind === storedActiveTabKind) ? storedActiveTabKind : tabs[0]?.kind ?? "files";
+  const xyzrenderDockDocument = area === "right"
+    ? (dockDocument?.renderer === "xyzrender-external" ? dockDocument : state.activeDocument?.renderer === "xyzrender-external" ? state.activeDocument : null)
+    : null;
+  const visibleTabs = xyzrenderDockDocument ? tabs : tabs.filter((tab) => tab.kind !== "xyzrender");
+  const activeTab = visibleTabs.find((tab) => tab.kind === activeTabKind) ?? visibleTabs[0] ?? tabs[0];
   const filesTabDragPayload = dockFilesDragPayload(dockDocument, dockTextDocument, dockTool);
   const dockDrops = useMemo(
     () => state.dockDroppedStructures.filter((item) => item.area === area && item.tabKind === activeTab.kind),
     [activeTab.kind, area, state.dockDroppedStructures],
   );
+  const autoOpenedXyzrenderDocumentId = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!open || area !== "right" || !xyzrenderDockDocument) return;
+    if (autoOpenedXyzrenderDocumentId.current === xyzrenderDockDocument.id) return;
+    autoOpenedXyzrenderDocumentId.current = xyzrenderDockDocument.id;
+    actions.setDockActiveTab("right", "xyzrender");
+  }, [actions, area, open, xyzrenderDockDocument]);
 
   const showAddMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     void showNativeContextMenu(
-      dockTabCatalog(area).map((kind) => ({
+      dockTabCatalog(area).filter((kind) => {
+        if (kind === "spectrum") return spectrumDockAvailable;
+        if (kind === "descriptors") return !(area === "right" && spectrumDocumentActive);
+        return true;
+      }).map((kind) => ({
         kind: "item" as const,
         id: `dock-${area}-${kind}`,
         text: DOCK_TAB_LABELS[kind],
-        disabled: tabs.some((tab) => tab.kind === kind),
+        disabled: tabs.some((tab) => tab.kind === kind) || (kind === "xyzrender" && !xyzrenderDockDocument),
         action: () => actions.openDockTab(area, kind),
       })),
       { x: rect.left, y: rect.bottom + 6 },
@@ -131,11 +159,11 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
       >
         <div className="dock-header">
           <div className="dock-tab-strip" role="tablist" aria-label={`${area} dock tabs`}>
-            {tabs.map((tab) => {
+            {visibleTabs.map((tab) => {
               const Icon = dockTabIcons[tab.kind];
               const active = tab.kind === activeTab.kind;
               const closeTab = () => {
-                if (tabs.length > 1) {
+                if (visibleTabs.length > 1) {
                   actions.closeDockTab(area, tab.id);
                   return;
                 }
@@ -166,7 +194,7 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
                     <button
                       type="button"
                       className="dock-tab-close"
-                      aria-label={tabs.length > 1 ? `Close ${DOCK_TAB_LABELS[tab.kind]}` : `Close ${area} dock`}
+                      aria-label={visibleTabs.length > 1 ? `Close ${DOCK_TAB_LABELS[tab.kind]}` : `Close ${area} dock`}
                       onClick={closeTab}
                     >
                       <CloseIcon size={11} />
@@ -226,6 +254,21 @@ function DockPanelContent({
       })
     : [];
   const activeFileEntryKey = activeDockFileEntryKey(dockDocument, dockTextDocument, dockTool);
+  if (activeTabKind === "spectrum") {
+    const spectrumDocument = dockStructureDocument?.renderer === "spectrum" ? dockStructureDocument : null;
+    if (area === "bottom" && spectrumDocument) {
+      return (
+        <div className="dock-viewer">
+          <SpectrumPeakTablePanel document={spectrumDocument} />
+        </div>
+      );
+    }
+    return (
+      <div className="dock-content dock-content-empty">
+        <div className="dock-empty dock-empty-large">Open a spectrum to inspect peaks</div>
+      </div>
+    );
+  }
   if (activeTabKind === "files") {
     const fileTabs = (
       <DockFileTabs
@@ -241,7 +284,9 @@ function DockPanelContent({
         <div className="dock-files-view">
           {fileTabs}
           <div className="dock-viewer">
-            <ViewerFrame document={dockDocument} />
+            {dockDocument.renderer === "spectrum"
+              ? <SpectrumViewer document={dockDocument} embedded />
+              : <ViewerFrame document={dockDocument} />}
           </div>
         </div>
       );
@@ -287,9 +332,20 @@ function DockPanelContent({
       />
     );
   }
+  if (activeTabKind === "xyzrender") {
+    if (dockStructureDocument?.renderer === "xyzrender-external") {
+      return <XyzrenderDockPanel document={dockStructureDocument} actions={actions} />;
+    }
+    return (
+      <div className="dock-content dock-content-empty">
+        <div className="dock-empty dock-empty-large">xyzrender controls are available for xyzr previews</div>
+      </div>
+    );
+  }
   if (activeTabKind === "inspector") {
     if (area === "right" && activePageKind === "ketcher") return <KetcherInspectorPanel state={state} />;
     if (dockTextDocument) return <TextDocumentInfoPanel document={dockTextDocument} actions={actions} />;
+    if (dockStructureDocument?.renderer === "spectrum") return <SpectrumInfoPanel document={dockStructureDocument} />;
     return (
       <StructureInfoPanel
         document={dockStructureDocument}
@@ -382,6 +438,208 @@ function DockPanelContent({
       <DockDropList items={dockDrops} actions={actions} emptyLabel="No review inputs" />
     </div>
   );
+}
+
+const DEFAULT_XYZRENDER_DOCK_CONTROLS: XyzrenderControls = {
+  transparentBackground: true,
+  gradients: null,
+  fog: null,
+  showVdw: false,
+  hideBonds: false,
+  fieldMode: "auto",
+  fieldIso: 0.8,
+  fieldOpacity: 1,
+};
+
+function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; actions: ShellActions }) {
+  const [preset, setPreset] = useState(document.xyzrenderPreset || "default");
+  const [controls, setControls] = useState<XyzrenderControls>(() => xyzrenderDockControls(document));
+  const lastAppliedSignature = useRef("");
+
+  useEffect(() => {
+    const nextPreset = document.xyzrenderPreset || "default";
+    const nextControls = xyzrenderDockControls(document);
+    lastAppliedSignature.current = xyzrenderDockSignature(nextControls, nextPreset);
+    setPreset(nextPreset);
+    setControls(nextControls);
+  }, [document.id, document.xyzrenderControls, document.xyzrenderPreset]);
+
+  const updateControl = <K extends keyof XyzrenderControls>(key: K, value: XyzrenderControls[K]) => {
+    setControls((current) => ({ ...current, [key]: value }));
+  };
+  const apply = useCallback((nextControls = controls, nextPreset = preset) => {
+    lastAppliedSignature.current = xyzrenderDockSignature(nextControls, nextPreset);
+    void actions.reloadXyzrenderDocument(document, {
+      xyzrenderPreset: nextPreset,
+      xyzrenderControls: nextControls,
+    });
+  }, [actions, controls, document, preset]);
+
+  useEffect(() => {
+    const signature = xyzrenderDockSignature(controls, preset);
+    if (signature === lastAppliedSignature.current) return;
+    const timer = window.setTimeout(() => {
+      apply(controls, preset);
+    }, 240);
+    return () => window.clearTimeout(timer);
+  }, [apply, controls, preset]);
+
+  const reset = () => {
+    const nextControls = { ...DEFAULT_XYZRENDER_DOCK_CONTROLS };
+    setControls(nextControls);
+    setPreset("default");
+    apply(nextControls, "default");
+  };
+
+  return (
+    <div className="dock-content xyzrender-dock-panel">
+      <section className="structure-brief-card xyzrender-dock-card">
+        <div className="structure-inspector-section-header">
+          <div>
+            <h3>xyzrender</h3>
+            <p>{document.title}</p>
+          </div>
+          <span className="xyzrender-dock-badge">SVG</span>
+        </div>
+        <label className="xyzrender-dock-field">
+          <span>Preset</span>
+          <select value={preset} onChange={(event) => setPreset(event.currentTarget.value)}>
+            {xyzrenderPresetOptions(document).map((option) => (
+              <option value={option.value} key={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+        <XyzrenderDockCheckbox
+          label="Transparent"
+          checked={controls.transparentBackground === true}
+          onChange={(checked) => updateControl("transparentBackground", checked)}
+        />
+        <XyzrenderDockTriState label="Gradients" value={controls.gradients} onChange={(value) => updateControl("gradients", value)} />
+        <XyzrenderDockTriState label="Fog" value={controls.fog} onChange={(value) => updateControl("fog", value)} />
+        <XyzrenderDockCheckbox label="VdW" checked={controls.showVdw === true} onChange={(checked) => updateControl("showVdw", checked)} />
+        <XyzrenderDockCheckbox label="Hide bonds" checked={controls.hideBonds === true} onChange={(checked) => updateControl("hideBonds", checked)} />
+      </section>
+      <section className="structure-brief-card xyzrender-dock-card">
+        <div className="structure-inspector-section-header">
+          <div>
+            <h3>Field overlay</h3>
+            <p>Surface mode and opacity</p>
+          </div>
+        </div>
+        <label className="xyzrender-dock-field">
+          <span>Mode</span>
+          <select
+            value={controls.fieldMode ?? "auto"}
+            onChange={(event) => updateControl("fieldMode", normalizeXyzrenderFieldMode(event.currentTarget.value))}
+          >
+            <option value="auto">Auto</option>
+            <option value="off">Off</option>
+            <option value="density">Density</option>
+            <option value="mo">MO</option>
+            <option value="esp">ESP</option>
+            <option value="nci">NCI</option>
+          </select>
+        </label>
+        <XyzrenderDockNumber label="Iso" value={controls.fieldIso} step="0.1" onChange={(value) => updateControl("fieldIso", value)} />
+        <XyzrenderDockNumber label="Opacity" value={controls.fieldOpacity} min={0} max={1} step="0.05" onChange={(value) => updateControl("fieldOpacity", value)} />
+      </section>
+      <div className="xyzrender-dock-actions">
+        <button type="button" className="dock-action" onClick={() => apply()}>Apply</button>
+        <button type="button" className="dock-action" onClick={reset}>Reset</button>
+      </div>
+    </div>
+  );
+}
+
+function XyzrenderDockCheckbox({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+  return (
+    <label className="xyzrender-dock-check">
+      <span>{label}</span>
+      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.currentTarget.checked)} />
+    </label>
+  );
+}
+
+function XyzrenderDockTriState({ label, value, onChange }: { label: string; value: boolean | null | undefined; onChange: (value: boolean | null) => void }) {
+  return (
+    <label className="xyzrender-dock-field">
+      <span>{label}</span>
+      <select value={value === true ? "on" : value === false ? "off" : "default"} onChange={(event) => onChange(xyzrenderTriStateValue(event.currentTarget.value))}>
+        <option value="default">Default</option>
+        <option value="on">On</option>
+        <option value="off">Off</option>
+      </select>
+    </label>
+  );
+}
+
+function XyzrenderDockNumber({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+}: {
+  label: string;
+  value: number | null | undefined;
+  min?: number;
+  max?: number;
+  step: string;
+  onChange: (value: number | null) => void;
+}) {
+  const current = typeof value === "number" && Number.isFinite(value) ? value : "";
+  return (
+    <label className="xyzrender-dock-field">
+      <span>{label}</span>
+      <input
+        type="number"
+        value={current}
+        min={min}
+        max={max}
+        step={step}
+        placeholder="Auto"
+        onChange={(event) => onChange(xyzrenderNumberValue(event.currentTarget.value))}
+      />
+    </label>
+  );
+}
+
+function xyzrenderDockControls(document: ViewerDocument): XyzrenderControls {
+  return {
+    ...DEFAULT_XYZRENDER_DOCK_CONTROLS,
+    ...document.xyzrenderControls,
+  };
+}
+
+function xyzrenderDockSignature(controls: XyzrenderControls, preset: string) {
+  return JSON.stringify({ preset, controls });
+}
+
+function xyzrenderPresetOptions(document: ViewerDocument) {
+  const options = document.xyzrenderPresetOptions?.length
+    ? document.xyzrenderPresetOptions
+    : [{ value: "default", label: "Default" }];
+  if (options.some((option) => option.value === (document.xyzrenderPreset || "default"))) return options;
+  return [{ value: document.xyzrenderPreset || "default", label: document.xyzrenderPreset || "Default" }, ...options];
+}
+
+function xyzrenderTriStateValue(value: string) {
+  if (value === "on") return true;
+  if (value === "off") return false;
+  return null;
+}
+
+function xyzrenderNumberValue(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const number = Number(trimmed);
+  return Number.isFinite(number) ? number : null;
+}
+
+function normalizeXyzrenderFieldMode(value: string): XyzrenderControls["fieldMode"] {
+  if (value === "off" || value === "density" || value === "mo" || value === "esp" || value === "nci") return value;
+  return "auto";
 }
 
 function KetcherDockTool({
