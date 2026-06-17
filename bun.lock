@@ -54,7 +54,7 @@
     },
     "packages/burrete": {
       "name": "burrete",
-      "version": "0.10.45",
+      "version": "1.0.3",
       "bin": "bin/burrete.mjs",
     },
   },
