@@ -4471,6 +4471,7 @@
       return prepareDockingStructure(config);
     }
     const normalized = normalizeFormat(config.format);
+    const sourceFormat = normalizeFormat(config.sourceExtension || config.molstarFormat || config.format);
     if (isMolViewSpecFormat(normalized)) {
       return {
         kind: 'mvs',
@@ -4492,6 +4493,21 @@
     }
     if (normalized === 'xyz') {
       return prepareXyzStructure(rawStructureData(config), config);
+    }
+    if ((normalized === 'pdb' || normalized === 'pdbqt') && sourceFormat === 'pdbqt') {
+      const data = rawStructureData(config);
+      const modelTexts = splitPdbModelTexts(data);
+      const poseCount = modelTexts.length;
+      return {
+        data,
+        format: 'pdb',
+        label: config.label || 'structure',
+        loadPreset: 'default',
+        nativeTrajectoryControls: poseCount > 1,
+        poseCount,
+        activePose: readTrajectoryControlIndex(config, { controlLabel: 'Pose' }, poseCount),
+        controlLabel: 'Pose'
+      };
     }
 
     return {
@@ -7628,11 +7644,19 @@
     slider.max = String(prepared.poseCount);
     slider.step = '1';
     slider.setAttribute('aria-label', `${controlLabel} slider`);
+    const refreshNativeTrajectoryStandalonePreview = () => {
+      if (!prepared.nativeTrajectoryControls || !activeConfig) return;
+      try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(activePose)); } catch (_) {}
+      molstarStandalonePreviewTarget = molstarStandaloneMoleculePreviewTarget(activeConfig);
+      molstarPersistentMoleculePreviewTarget = null;
+      if (molstarStandalonePreviewTarget) showMolstarPersistentMoleculePreview(molstarStandalonePreviewTarget);
+    };
     const updateControls = () => {
       label.textContent = trajectoryPoseLabel(prepared, controlLabel, activePose);
       previous.disabled = activePose <= 0;
       next.disabled = activePose >= prepared.poseCount - 1;
       slider.value = String(activePose + 1);
+      refreshNativeTrajectoryStandalonePreview();
     };
     const setAnimationOptionsOpen = (open) => {
       root.classList.toggle('buret-docking-poses-animation-open', Boolean(open));
@@ -8363,9 +8387,13 @@
 
   function molstarStandaloneMoleculePreviewTarget(config) {
     if (!config || config.docking) return null;
-    const format = normalizeFormat(config.molstarFormat || config.format);
+    const format = normalizeFormat(config.sourceExtension || config.molstarFormat || config.format);
     try {
       const text = rawStructureData({ ...config, format, binary: false });
+      const modelTexts = (format === 'pdb' || format === 'pdbqt') ? splitPdbModelTexts(text) : [];
+      const activeModel = modelTexts.length > 1
+        ? readTrajectoryControlIndex(config, { controlLabel: format === 'pdbqt' ? 'Pose' : 'Model' }, modelTexts.length)
+        : 0;
       let data = null;
       if (format === 'sdf') {
         const record = splitSdfRecords(text)[0] || String(text || '');
@@ -8378,13 +8406,16 @@
       } else {
         return null;
       }
+      const label = modelTexts.length > 1
+        ? `${config.label || 'Molecule'} ${format === 'pdbqt' ? 'Pose' : 'Model'} ${activeModel + 1}/${modelTexts.length}`
+        : config.label || 'Molecule';
       return {
-        label: config.label || 'Molecule',
+        label,
         scope: 'ligand',
         ligand: {
           data,
           format: 'sdf',
-          label: config.label || 'Molecule'
+          label
         }
       };
     } catch (_) {
@@ -8711,12 +8742,13 @@
     const sdfBonds = bonds.length
       ? bonds.map(bond => ({ a: serialToSdfIndex.get(bond.a), b: serialToSdfIndex.get(bond.b) }))
       : inferStandalonePreviewBonds(parsedAtoms);
+    if (sdfBonds.length > 999) return null;
     return {
       data: [
         label,
         '  Burrete',
         'PDB ligand selection',
-        formatSdfCountsLine(parsedAtoms.length, bonds.length),
+        formatSdfCountsLine(parsedAtoms.length, sdfBonds.length),
         ...parsedAtoms.map(current => formatSdfAtomLine({
           x: current.x,
           y: current.y,
