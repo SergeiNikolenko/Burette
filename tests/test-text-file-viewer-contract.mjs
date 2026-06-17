@@ -195,7 +195,7 @@ assert.match(app, /openedStructureAndTextPaths\.add\(document\.path\);/);
 assert.match(app, /structureAndTextPaths\.filter\(\(path\) => !openedStructureAndTextPaths\.has\(path\)\)/);
 assert.match(app, /let dockOpenPaths = cleanPaths;/);
 assert.match(app, /const rightDockTextPaths = cleanPaths\.filter\(\(path\) => \{/);
-assert.match(app, /return !structureExtensions\.has\(extension\) && !structureAndTextExtensions\.has\(extension\);/);
+assert.match(app, /return !isSpectrumExtension\(extension\) && !structureExtensions\.has\(extension\) && !structureAndTextExtensions\.has\(extension\);/);
 assert.match(app, /dockOpenPaths = cleanPaths\.filter\(\(path\) => !rightDockTextPaths\.includes\(path\)\);/);
 assert.match(app, /open_text_files", \{ paths: rightDockTextPaths \}/);
 assert.match(app, /for \(const path of dockOpenPaths\) \{/);
