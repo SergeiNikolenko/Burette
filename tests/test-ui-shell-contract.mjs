@@ -733,11 +733,16 @@ assert.doesNotMatch(main, /window\.__BURRETE_BOOT_OVERLAY__\?\.markMounted\(\)/)
 assert.match(bootOverlayScript, /const overlayId = "burrete-boot-overlay"/);
 assert.match(bootOverlayScript, /let mounted = false/);
 assert.match(bootOverlayScript, /function whenBodyReady/);
-assert.match(bootOverlayScript, /function ensureOverlay\(\) \{\s*if \(mounted\) return null;/);
+assert.match(bootOverlayScript, /function ensureOverlay\(\) \{\s*if \(hasMountedApp\(\)\) return null;/);
 assert.match(bootOverlayScript, /function removeOverlay\(\) \{\s*mounted = true;/);
-assert.match(bootOverlayScript, /whenBodyReady\(\(\) => \{\s*if \(mounted\) return;/);
+assert.match(bootOverlayScript, /function hasMountedApp\(\)/);
+assert.match(bootOverlayScript, /if \(!document\.querySelector\("\.app-shell"\)\) return false;/);
+assert.match(bootOverlayScript, /function setOverlay\(message, details\) \{\s*if \(hasMountedApp\(\)\) return;/);
+assert.match(bootOverlayScript, /whenBodyReady\(\(\) => \{\s*if \(hasMountedApp\(\)\) return;/);
 assert.match(bootOverlayScript, /window\.addEventListener\("error"/);
 assert.match(bootOverlayScript, /window\.addEventListener\("unhandledrejection"/);
+assert.match(bootOverlayScript, /window\.addEventListener\("error", \(event\) => \{\s*if \(hasMountedApp\(\)\) return;/);
+assert.match(bootOverlayScript, /window\.addEventListener\("unhandledrejection", \(event\) => \{\s*if \(hasMountedApp\(\)\) return;/);
 assert.match(bootOverlayScript, /The desktop UI did not mount within 3 seconds/);
 assert.match(bootOverlayScript, /Burrete UI failed to start/);
 assert.match(bootOverlayScript, /if \(document\.querySelector\("\.app-shell"\)\) \{\s*removeOverlay\(\);\s*return;\s*\}/);
@@ -2589,7 +2594,8 @@ assert.match(tauriSource, /export function trackTauriListener\(registration: Pro
 assert.match(tauriSource, /if \(disposed\) \{\s*disposeTauriListener\(next, label\);/s);
 assert.match(tauriSource, /listener setup failed/);
 assert.match(tauriSource, /listener cleanup failed/);
-assert.match(tauriSource, /typeof result\.catch === "function"/);
+assert.match(tauriSource, /typeof result\.then === "function"/);
+assert.match(tauriSource, /Promise\.resolve\(result\)\.catch/);
 assert.match(openEventsHook, /trackTauriListener\(/);
 assert.match(openEventsHook, /listen\("open-documents"/);
 assert.doesNotMatch(openEventsHook, /let unlisten/);

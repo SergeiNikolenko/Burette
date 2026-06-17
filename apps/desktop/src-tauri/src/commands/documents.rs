@@ -1468,7 +1468,7 @@ fn expand_open_targets(path: PathBuf) -> Result<Vec<PathBuf>, String> {
         ));
     }
 
-    let supported_extensions = supported_structure_extensions()?;
+    let supported_extensions = supported_open_target_extensions()?;
     let mut collected = BTreeSet::new();
     let mut visited_directories = HashSet::new();
     collect_supported_files(
@@ -1609,6 +1609,16 @@ fn write_text_atomically(path: &Path, text: &str) -> Result<(), String> {
         return Err(format!("{}: {error}", path.display()));
     }
     Ok(())
+}
+
+fn supported_open_target_extensions() -> Result<BTreeSet<String>, String> {
+    let mut supported = supported_structure_extensions()?;
+    supported.extend(
+        ["ms", "magma", "mgf", "msp", "mzml", "mzxml"]
+            .into_iter()
+            .map(str::to_string),
+    );
+    Ok(supported)
 }
 
 fn collect_supported_files(
@@ -1863,9 +1873,9 @@ mod tests {
         classify_open_paths, conformer_python_candidates, expand_open_document_paths,
         expand_open_targets, generated_conformer_title, list_project_structure_files,
         looks_like_supported_structure_file, normalize_inline_structure_extension,
-        open_text_structure_for_window_label, smiles_from_sheet_data, TextStructureRequest,
+        open_text_structure_for_window_label, smiles_from_sheet_data,
+        supported_open_target_extensions, TextStructureRequest,
     };
-    use crate::preview::formats::supported_structure_extensions;
     use crate::preview::grid_store::GridRuntimeRegistry;
     use crate::preview::runtime::ViewerPreferences;
     use std::fs;
@@ -1926,7 +1936,7 @@ mod tests {
     #[test]
     fn recognizes_supported_structure_files() {
         let supported_extensions =
-            supported_structure_extensions().expect("supported extensions should load");
+            supported_open_target_extensions().expect("supported extensions should load");
         assert!(looks_like_supported_structure_file(
             std::path::Path::new("mini.pdb"),
             &supported_extensions
@@ -1957,6 +1967,14 @@ mod tests {
         ));
         assert!(looks_like_supported_structure_file(
             std::path::Path::new("mn-h2.log"),
+            &supported_extensions
+        ));
+        assert!(looks_like_supported_structure_file(
+            std::path::Path::new("MassSpecGymID0075191.ms"),
+            &supported_extensions
+        ));
+        assert!(looks_like_supported_structure_file(
+            std::path::Path::new("candidate.magma"),
             &supported_extensions
         ));
         assert!(!looks_like_supported_structure_file(
@@ -2096,11 +2114,17 @@ mod tests {
         let cif = nested.join("mini.cif");
         let input = nested.join("caffeine.com");
         let log = root.join("mn-h2.log");
+        let spectrum = nested.join("MassSpecGymID0075191.ms");
         let txt = nested.join("notes.txt");
         fs::write(&pdb, "HEADER TEST\n").unwrap();
         fs::write(&cif, "data_test\n").unwrap();
         fs::write(&input, "%chk=test\n").unwrap();
         fs::write(&log, "SCF DONE\n").unwrap();
+        fs::write(
+            &spectrum,
+            ">compound MassSpecGymID0075191\n>ms2peaks\n100 42\n",
+        )
+        .unwrap();
         fs::write(&txt, "ignore\n").unwrap();
 
         let canonical_root = root.canonicalize().unwrap();
@@ -2110,12 +2134,16 @@ mod tests {
             vec![
                 canonical_root.join("mini.pdb"),
                 canonical_root.join("mn-h2.log"),
+                canonical_root
+                    .join("nested")
+                    .join("MassSpecGymID0075191.ms"),
                 canonical_root.join("nested").join("caffeine.com"),
                 canonical_root.join("nested").join("mini.cif")
             ]
         );
 
         fs::remove_file(txt).unwrap();
+        fs::remove_file(spectrum).unwrap();
         fs::remove_file(log).unwrap();
         fs::remove_file(cif).unwrap();
         fs::remove_file(input).unwrap();
