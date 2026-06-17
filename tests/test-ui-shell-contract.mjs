@@ -495,10 +495,12 @@ assert.match(desmondPreviewExtract, /0 means all atoms unless --target-mb is set
 assert.match(desmondPreviewExtract, /parser\.add_argument\("--target-mb"/);
 assert.match(desmondPreviewExtract, /parser\.add_argument\("--output"/);
 assert.match(viteConfig, /plugins: \[react\(\), ketcherRaphaelImportShimPlugin\(\), deferKetcherCssPlugin\(\), browserDevXyzrenderPlugin\(\)\]/);
+assert.match(viteConfig, /join\(homedir\(\), "Desktop"\)/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "BurettePreviewSamples"\)/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "xyzrender-main"\)/);
 assert.match(viteConfig, /join\(repoRoot, "samples", "large", "litr_moses_10k\.csv"\)/);
 assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/dev-files"/);
+assert.match(viteConfig, /"ms",\s*"msp",\s*"mzml",\s*"mzxml"/);
 assert.match(viteConfig, /const RDKIT_WASM_PATH = join\(repoRoot, "PreviewExtension", "Web", "rdkit", "RDKit_minimal\.wasm"\)/);
 assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/rdkit-wasm"/);
 assert.match(viteConfig, /res\.setHeader\("Content-Type", "application\/wasm"\)/);
@@ -677,6 +679,7 @@ assert.match(moleculeStore, /const storedTabs = \(stored\?\.tabs \?\? current\.t
 assert.match(app, /async function browserDevFilesFromLocation\(\)/);
 assert.match(app, /if \(params\.has\("devDocking"\)\) return \[\];/);
 assert.match(app, /params\.has\("devFiles"\)/);
+assert.match(app, /!isSpectrumExtension\(extension\) &&\s*!structureAndTextExtensions\.has\(extension\)/);
 assert.match(app, /return \[\];\s*}\s*function splitDevFiles/);
 assert.doesNotMatch(app, /fetch\("\/__burette\/dev-files", \{ cache: "no-store" \}\)/);
 assert.match(app, /function splitDevFiles\(rawFiles: string\)/);

@@ -363,6 +363,7 @@ async function expandBrowserDevStructureBundles(paths: string[]) {
       !extension ||
       (!structureExtensions.has(extension) &&
         !isXtbOptimizationTrajectoryLogPath(path) &&
+        !isSpectrumExtension(extension) &&
         !structureAndTextExtensions.has(extension) &&
         !preferredTextExtensions.has(extension))
     ) {
