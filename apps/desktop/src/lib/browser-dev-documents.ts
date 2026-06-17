@@ -1248,39 +1248,88 @@ function parseDelimited(text: string, delimiter: "," | "\t"): GridRecord[] {
     .filter((row) => row.some((cell) => cell.trim() !== ""));
   if (rows.length < 2) return [];
   const headers = rows[0].map((cell) => cell.trim());
-  const smilesIndex = headers.findIndex((header) =>
-    ["smiles", "smile", "canonical_smiles", "cxsmiles"].includes(header.toLowerCase()),
-  );
-  if (smilesIndex < 0) return [];
+  const namedSmilesIndexes = headers
+    .map((header, index) => (isDelimitedSmilesHeader(header) ? index : -1))
+    .filter((index) => index >= 0);
+  const inferredSmilesIndexes = rows[0].some((cell) => looksLikeSmiles(cell))
+    ? []
+    : inferDelimitedSmilesColumns(rows.slice(1), headers.length);
+  const smilesIndexes = [...new Set([...namedSmilesIndexes, ...inferredSmilesIndexes])].sort((left, right) => left - right);
+  if (!smilesIndexes.length) return [];
+  const smilesIndexSet = new Set(smilesIndexes);
+  const hasMultipleSmilesColumns = smilesIndexes.length > 1;
+  const nameIndex = headers.findIndex((header, index) => !smilesIndexSet.has(index) && isDelimitedNameHeader(header));
   const descriptorColumns = new Map<number, { id: string; label: string }>();
   headers.forEach((header, index) => {
     const descriptor = descriptorColumnFromHeader(header);
     if (descriptor) descriptorColumns.set(index, descriptor);
   });
+  let recordIndex = 0;
   return rows.slice(1).flatMap((row, rowIndex) => {
-    const smiles = row[smilesIndex]?.trim();
-    if (!looksLikeSmiles(smiles)) return [];
-    const props: Record<string, string> = {};
-    const descriptors: GridRecord["descriptors"] = {};
-    headers.forEach((header, index) => {
-      if (index === smilesIndex) return;
-      const value = row[index]?.trim();
-      const descriptor = descriptorColumns.get(index);
-      if (descriptor) {
-        descriptors[descriptor.id] = descriptorCellFromText(descriptor.label, value || "");
-      } else if (value) {
-        props[header || `Column ${index + 1}`] = value;
-      }
-    });
-    const name = props.name || props.Name || props.title || props.Title || `Molecule ${rowIndex + 1}`;
-    return [{
-      index: rowIndex,
-      name,
-      smiles,
-      props,
-      ...(Object.keys(descriptors).length ? { descriptors } : {}),
-    }];
+    const records: GridRecord[] = [];
+    for (const smilesIndex of smilesIndexes) {
+      const smiles = row[smilesIndex]?.trim();
+      if (!looksLikeSmiles(smiles)) continue;
+      const columnName = headers[smilesIndex] || `Column ${smilesIndex + 1}`;
+      const props: Record<string, string> = {
+        "CSV row": String(rowIndex + 1),
+        "SMILES column": columnName,
+      };
+      const descriptors: GridRecord["descriptors"] = {};
+      headers.forEach((header, index) => {
+        if (smilesIndexSet.has(index) || index === nameIndex) return;
+        const value = row[index]?.trim();
+        const descriptor = descriptorColumns.get(index);
+        if (descriptor) {
+          descriptors[descriptor.id] = descriptorCellFromText(descriptor.label, value || "");
+        } else if (value) {
+          props[header || `Column ${index + 1}`] = value;
+        }
+      });
+      const baseName = nameIndex >= 0 ? row[nameIndex]?.trim() || `Molecule ${rowIndex + 1}` : `Molecule ${rowIndex + 1}`;
+      const name = hasMultipleSmilesColumns ? `${baseName} ${columnName}` : baseName;
+      records.push({
+        index: recordIndex,
+        name,
+        smiles,
+        props,
+        ...(Object.keys(descriptors).length ? { descriptors } : {}),
+      });
+      recordIndex += 1;
+    }
+    return records;
   });
+}
+
+function isDelimitedSmilesHeader(header: string) {
+  const normalized = header.trim().toLowerCase().replace(/\s+/gu, "_");
+  return normalized === "smile" || normalized.includes("smiles");
+}
+
+function isDelimitedNameHeader(header: string) {
+  return ["compound_id", "id", "name", "title", "compound"].includes(header.trim().toLowerCase().replace(/\s+/gu, "_"));
+}
+
+function inferDelimitedSmilesColumns(rows: string[][], columnCount: number) {
+  const indexes: number[] = [];
+  for (let columnIndex = 0; columnIndex < columnCount; columnIndex += 1) {
+    let nonEmpty = 0;
+    let valid = 0;
+    for (const row of rows) {
+      const value = row[columnIndex]?.trim();
+      if (!value) continue;
+      nonEmpty += 1;
+      if (looksLikeSmiles(value)) valid += 1;
+    }
+    if (isLikelySmilesColumn(nonEmpty, valid)) indexes.push(columnIndex);
+  }
+  return indexes;
+}
+
+function isLikelySmilesColumn(nonEmpty: number, valid: number) {
+  if (!nonEmpty || !valid) return false;
+  if (valid < 2 && nonEmpty > 2) return false;
+  return valid / nonEmpty >= 0.8;
 }
 
 function descriptorColumnFromHeader(header: string) {
@@ -2838,7 +2887,43 @@ function bytesToBase64(bytes: Uint8Array) {
 }
 
 function looksLikeSmiles(value: string | undefined) {
-  return !!value && /[A-Za-z0-9@+\-[\]()=#\\/]/.test(value) && !/\s/.test(value);
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed.startsWith("#") || /\s/u.test(trimmed)) return false;
+  const lowered = trimmed.toLowerCase();
+  if (["smiles", "smile", "id", "name", "title", "compound", "molecule", "structure", "inchi"].includes(lowered)) {
+    return false;
+  }
+  if (/^inchi=/iu.test(trimmed) || /^[A-Z]{14}-[A-Z]{10}-[A-Z]$/u.test(trimmed)) return false;
+  if (!/^(?=.{1,2048}$)(?=.*(?:Br|Cl|\[[^\]]+\]|[BCNOFPSIKHbcnops]))[A-Za-z0-9@+\-[\]()=#$:/\\.,%]+$/u.test(trimmed)) {
+    return false;
+  }
+  let hasAtom = false;
+  let hasAromaticAtom = false;
+  let hasStructuralMarker = false;
+  for (let index = 0; index < trimmed.length; index += 1) {
+    const char = trimmed[index];
+    const next = trimmed[index + 1];
+    if (char === "[") {
+      const end = trimmed.indexOf("]", index + 1);
+      if (end < 0 || !/[A-Za-z]/u.test(trimmed.slice(index + 1, end))) return false;
+      hasAtom = true;
+      hasStructuralMarker = true;
+      index = end;
+    } else if (/\d/u.test(char) || "[]=#@+-/\\().,:$%".includes(char)) {
+      hasStructuralMarker = true;
+    } else if ((char === "B" && next === "r") || (char === "C" && next === "l")) {
+      hasAtom = true;
+      index += 1;
+    } else if ("BCNOFPSIKH".includes(char)) {
+      hasAtom = true;
+    } else if ("bcnops".includes(char)) {
+      hasAtom = true;
+      hasAromaticAtom = true;
+    } else {
+      return false;
+    }
+  }
+  return hasAtom && (!hasAromaticAtom || hasStructuralMarker);
 }
 
 function stableId(value: string) {

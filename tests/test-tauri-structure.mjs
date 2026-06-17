@@ -385,13 +385,15 @@ assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_append_del
 assert.match(gridCommand, /struct GridAppendRequest/);
 assert.match(gridCommand, /registry\.append_text/);
 assert.match(gridCommand, /registry\.append_text_with_options/);
-assert.match(previewGridStore, /fn resolve_smiles_column/);
+assert.match(previewGridStore, /fn resolve_smiles_columns/);
 assert.match(previewGridStore, /struct GridParseOptions/);
 assert.match(previewGridStore, /struct GridDelimitedColumnChoice/);
 assert.match(previewGridStore, /fn infer_smiles_columns_from_values/);
+assert.match(previewGridStore, /fn is_likely_smiles_column/);
 assert.match(previewGridStore, /fn delimited_smiles_column_choices/);
-assert.match(previewGridStore, /multiple possible structure columns/);
-assert.match(previewGridStore, /fn rejects_ambiguous_delimited_structure_columns/);
+assert.match(previewGridStore, /value == "smile" \|\| value\.contains\("smiles"\)/);
+assert.match(moleculeGridPreview, /value == "smile" \|\| value\.contains\("smiles"\)/);
+assert.match(previewGridStore, /fn infers_smiles_columns_without_smiles_headers/);
 assert.match(previewGridStore, /fn uses_explicit_column_for_ambiguous_delimited_table/);
 assert.match(previewGridStore, /fn lists_delimited_structure_column_choices/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn sync_viewer_preferences/);
