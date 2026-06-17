@@ -1298,7 +1298,7 @@ assert.match(appLayout, /const systemThemeMode = useSystemThemeMode\(\)/);
 assert.match(appLayout, /buildThemeStyle\(state\.preferences, systemThemeMode\)/);
 assert.match(appLayout, /resolveThemeMode\(state\.preferences\.theme, systemThemeMode\)/);
 assert.match(styles, /\*\[data-tauri-drag-region\] \{[^}]*app-region: drag;[^}]*-webkit-app-region: drag;[^}]*\}/s);
-assert.match(styles, /button, select, input, textarea, \.tab-shell, \.tab, \.new-tab, \.chrome-button, \.tab-history-button, \.sidebar-search-row, \.sidebar-tool-row, \.sidebar-section-title-button, \.sidebar-section-menu-button, \.project-group-row, \.project-group-menu-button, \.project, \.project-show-more, \.pin-hit, \.splitter \{[^}]*app-region: no-drag;[^}]*-webkit-app-region: no-drag;[^}]*\}/s);
+assert.match(styles, /button, select, input, textarea, \.tab-shell, \.tab, \.new-tab, \.chrome-button, \.tab-history-button, \.sidebar-search-row, \.sidebar-tool-row, \.sidebar-section-title-button, \.sidebar-section-menu-button, \.project-group-row, \.project-folder-row, \.project-folder-toggle-button, \.project-group-menu-button, \.project, \.project-show-more, \.pin-hit, \.splitter \{[^}]*app-region: no-drag;[^}]*-webkit-app-region: no-drag;[^}]*\}/s);
 assert.match(styles, /\.drag-region \{[^}]*height: var\(--chrome-drag-height\);[^}]*z-index: 2/s);
 assert.match(shortcutTooltip, /export function ShortcutTooltip/);
 assert.match(shortcutTooltip, /className="shortcut-tooltip"/);
