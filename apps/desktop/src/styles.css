@@ -3778,6 +3778,15 @@ img.radix-menu-item-icon {
   overflow: auto;
   background: var(--bg-base);
 }
+.spectrum-info-dock {
+  padding: 0;
+}
+.spectrum-info-dock .spectrum-metadata {
+  padding: 12px;
+}
+.spectrum-info-dock .spectrum-stat-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
 .spectrum-peak-table table {
   width: 100%;
   border-collapse: collapse;
@@ -3801,6 +3810,20 @@ img.radix-menu-item-icon {
 }
 .spectrum-peak-table td {
   color: var(--text-secondary);
+}
+.spectrum-peak-table tbody tr {
+  cursor: default;
+  transition: background 120ms ease-out, box-shadow 120ms ease-out;
+}
+.spectrum-peak-table tbody tr:hover {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.spectrum-peak-table tbody tr[data-selected="true"] {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.spectrum-peak-table tbody tr[data-selected="true"] td {
+  color: var(--text-primary);
 }
 .spectrum-empty {
   min-height: 100%;

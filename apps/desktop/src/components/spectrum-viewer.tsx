@@ -18,10 +18,23 @@ type SpectrumViewerProps = {
   embedded?: boolean;
 };
 
+type PlotlyClickEvent = {
+  points?: Array<{
+    pointIndex?: number;
+    pointNumber?: number;
+  }>;
+};
+
+type PlotlyElement = HTMLElement & {
+  on?: (event: "plotly_click", handler: (event: PlotlyClickEvent) => void) => void;
+  removeAllListeners?: (event: "plotly_click") => void;
+};
+
 export function SpectrumViewer({ document, embedded = false }: SpectrumViewerProps) {
   const [file, setFile] = useState<SpectrumFile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedPeakIndex, setSelectedPeakIndex] = useState<number | null>(null);
   const [normalize, setNormalize] = useState(true);
   const [labelTopPeaks, setLabelTopPeaks] = useState(true);
 
@@ -30,6 +43,7 @@ export function SpectrumViewer({ document, embedded = false }: SpectrumViewerPro
     setFile(null);
     setError(null);
     setSelectedIndex(0);
+    setSelectedPeakIndex(null);
     void readStructureTextDocument(document.path, {
       id: document.id,
       path: document.path,
@@ -56,6 +70,10 @@ export function SpectrumViewer({ document, embedded = false }: SpectrumViewerPro
 
   const selectedSpectrum = file?.spectra[selectedIndex] ?? file?.spectra[0] ?? null;
   const summary = useMemo(() => (file ? spectrumSummary(file) : null), [file]);
+
+  useEffect(() => {
+    setSelectedPeakIndex(null);
+  }, [selectedIndex]);
 
   if (error) {
     return (
@@ -111,7 +129,13 @@ export function SpectrumViewer({ document, embedded = false }: SpectrumViewerPro
       </header>
       <main className="spectrum-layout">
         <section className="spectrum-plot-panel">
-          <SpectrumPlot spectrum={selectedSpectrum} normalize={normalize} labelTopPeaks={labelTopPeaks} />
+          <SpectrumPlot
+            spectrum={selectedSpectrum}
+            normalize={normalize}
+            labelTopPeaks={labelTopPeaks}
+            selectedPeakIndex={selectedPeakIndex}
+            onPeakSelect={setSelectedPeakIndex}
+          />
         </section>
         {!embedded && (
           <aside className="spectrum-side-panel">
@@ -119,7 +143,12 @@ export function SpectrumViewer({ document, embedded = false }: SpectrumViewerPro
           </aside>
         )}
         <section className="spectrum-table-panel">
-          <PeakTable spectrum={selectedSpectrum} normalize={normalize} />
+          <PeakTable
+            spectrum={selectedSpectrum}
+            normalize={normalize}
+            selectedPeakIndex={selectedPeakIndex}
+            onPeakSelect={setSelectedPeakIndex}
+          />
         </section>
       </main>
     </div>
@@ -153,38 +182,14 @@ export function SpectrumInfoPanel({ document }: { document: ViewerDocument }) {
   }, [document.byteCount, document.extension, document.id, document.path, document.title]);
 
   const summary = file ? spectrumSummary(file) : null;
+  const spectrum = file?.spectra[0] ?? null;
   return (
-    <div className="dock-content structure-brief">
-      <section className="structure-brief-card">
-        <div className="structure-brief-card-header">
-          <div>
-            <small>SPECTRUM</small>
-            <h3>{document.title}</h3>
-          </div>
-          <span className="structure-brief-pill">{document.extension.toUpperCase()}</span>
-        </div>
-        {error ? (
-          <p>{error}</p>
-        ) : summary ? (
-          <div className="structure-brief-rows">
-            <StructureBriefTextRow label="Format" value={file?.format.toUpperCase() ?? "Spectrum"} />
-            <StructureBriefTextRow label="Spectra" value={String(summary.spectraCount)} />
-            <StructureBriefTextRow label="Peaks" value={String(summary.peakCount)} />
-            <StructureBriefTextRow label="m/z range" value={summary.minX === null ? "None" : `${formatNumber(summary.minX)} - ${formatNumber(summary.maxX ?? summary.minX)}`} />
-            <StructureBriefTextRow label="Size" value={formatBytes(document.byteCount)} />
-          </div>
-        ) : (
-          <p>Loading spectrum metadata...</p>
-        )}
-      </section>
-      {file?.warnings.length ? (
-        <section className="structure-brief-card">
-          <h4>Warnings</h4>
-          <div className="structure-brief-notes">
-            {file.warnings.slice(0, 4).map((warning) => <span key={warning}>{warning}</span>)}
-          </div>
-        </section>
-      ) : null}
+    <div className="dock-content spectrum-info-dock">
+      {error && <div className="spectrum-empty" role="alert">{error}</div>}
+      {!error && (!file || !summary || !spectrum) && <div className="spectrum-empty">Loading spectrum metadata...</div>}
+      {!error && file && summary && spectrum && (
+        <SpectrumMetadata document={document} file={file} spectrum={spectrum} summary={summary} />
+      )}
     </div>
   );
 }
@@ -193,10 +198,14 @@ function SpectrumPlot({
   spectrum,
   normalize,
   labelTopPeaks,
+  selectedPeakIndex,
+  onPeakSelect,
 }: {
   spectrum: SpectrumDocument;
   normalize: boolean;
   labelTopPeaks: boolean;
+  selectedPeakIndex: number | null;
+  onPeakSelect: (index: number | null) => void;
 }) {
   const plotRef = useRef<HTMLDivElement>(null);
   const plotlyRef = useRef<PlotlyModule | null>(null);
@@ -208,12 +217,12 @@ function SpectrumPlot({
     void import("plotly.js-basic-dist-min").then((module) => {
       if (disposed || !plotRef.current) return;
       plotlyRef.current = module.default as PlotlyModule;
-      return renderPlot(plotlyRef.current, plotRef.current, spectrum, peaks, labels, normalize);
+      return renderPlot(plotlyRef.current, plotRef.current, spectrum, peaks, labels, normalize, selectedPeakIndex, onPeakSelect);
     });
     return () => {
       disposed = true;
     };
-  }, [labels, normalize, peaks, spectrum]);
+  }, [labels, normalize, onPeakSelect, peaks, selectedPeakIndex, spectrum]);
 
   useEffect(() => {
     const element = plotRef.current;
@@ -248,20 +257,47 @@ function renderPlot(
   peaks: SpectrumPeak[],
   labels: string[],
   normalize: boolean,
+  selectedPeakIndex: number | null,
+  onPeakSelect: (index: number | null) => void,
 ) {
-  const trace = {
+  const stickTrace = {
     type: "bar",
     x: peaks.map((peak) => peak.x),
     y: peaks.map((peak) => peak.y),
     width: peakBarWidths(peaks),
     marker: {
-      color: peaks.map((peak) => peak.annotations?.frag_base_form ? "#4f8cff" : "#7c8798"),
-      line: { width: 0 },
+      color: peaks.map((peak, index) => (
+        index === selectedPeakIndex
+          ? "#b456e8"
+          : peak.annotations?.frag_base_form ? "#4f8cff" : "#7c8798"
+      )),
+      line: {
+        width: peaks.map((_peak, index) => index === selectedPeakIndex ? 1.5 : 0),
+        color: peaks.map((_peak, index) => index === selectedPeakIndex ? "#6f2dbd" : "transparent"),
+      },
     },
     text: labels,
     textposition: "outside",
     customdata: peaks.map((peak) => peakHoverData(peak)),
+    hoverinfo: "skip",
+    showlegend: false,
+  };
+  const hoverTrace = {
+    type: "scatter",
+    mode: "markers",
+    x: peaks.map((peak) => peak.x),
+    y: peaks.map((peak) => peak.y),
+    marker: {
+      size: peaks.map((_peak, index) => index === selectedPeakIndex ? 18 : 14),
+      color: peaks.map((_peak, index) => index === selectedPeakIndex ? "rgba(180,86,232,0.24)" : "rgba(79,140,255,0.01)"),
+      line: {
+        width: peaks.map((_peak, index) => index === selectedPeakIndex ? 2 : 0),
+        color: peaks.map((_peak, index) => index === selectedPeakIndex ? "#6f2dbd" : "transparent"),
+      },
+    },
+    customdata: peaks.map((peak) => peakHoverData(peak)),
     hovertemplate: "%{customdata}<extra></extra>",
+    showlegend: false,
   };
   const layout = {
     autosize: true,
@@ -290,7 +326,16 @@ function renderPlot(
     responsive: true,
     modeBarButtonsToRemove: ["lasso2d", "select2d"],
   };
-  return plotly.react(element, [trace], layout, config);
+  return plotly.react(element, [stickTrace, hoverTrace], layout, config).then((value) => {
+    const plotElement = element as PlotlyElement;
+    plotElement.removeAllListeners?.("plotly_click");
+    plotElement.on?.("plotly_click", (event) => {
+      const point = event.points?.[0];
+      const index = point?.pointIndex ?? point?.pointNumber;
+      onPeakSelect(typeof index === "number" ? index : null);
+    });
+    return value;
+  });
 }
 
 function SpectrumMetadata({
@@ -341,7 +386,17 @@ function SpectrumMetadata({
   );
 }
 
-function PeakTable({ spectrum, normalize }: { spectrum: SpectrumDocument; normalize: boolean }) {
+function PeakTable({
+  spectrum,
+  normalize,
+  selectedPeakIndex,
+  onPeakSelect,
+}: {
+  spectrum: SpectrumDocument;
+  normalize: boolean;
+  selectedPeakIndex: number | null;
+  onPeakSelect: (index: number | null) => void;
+}) {
   const peaks = scaledPeaks(spectrum, normalize).slice(0, 500);
   return (
     <div className="spectrum-peak-table">
@@ -355,10 +410,14 @@ function PeakTable({ spectrum, normalize }: { spectrum: SpectrumDocument; normal
         </thead>
         <tbody>
           {peaks.map((peak, index) => (
-            <tr key={`${peak.x}:${peak.y}:${index}`}>
+            <tr
+              key={`${peak.x}:${peak.y}:${index}`}
+              data-selected={index === selectedPeakIndex || undefined}
+              onClick={() => onPeakSelect(index)}
+            >
               <td>{formatNumber(peak.x)}</td>
               <td>{formatNumber(peak.y)}</td>
-              <td>{peak.label || String(peak.annotations?.frag_base_form ?? peak.annotations?.ion ?? "")}</td>
+              <td>{peakAnnotationLabel(peak)}</td>
             </tr>
           ))}
         </tbody>
@@ -367,13 +426,8 @@ function PeakTable({ spectrum, normalize }: { spectrum: SpectrumDocument; normal
   );
 }
 
-function StructureBriefTextRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="structure-brief-row">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
+function peakAnnotationLabel(peak: SpectrumPeak) {
+  return peak.label || String(peak.annotations?.frag_base_form ?? peak.annotations?.ion ?? peak.annotations?.ppm_diff ?? "");
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -409,11 +463,13 @@ function peakBarWidths(peaks: SpectrumPeak[]) {
 }
 
 function peakHoverData(peak: SpectrumPeak) {
+  const formula = peak.annotations?.frag_base_form ?? peak.label;
   const annotationRows = Object.entries(peak.annotations ?? {})
     .slice(0, 8)
     .map(([key, value]) => `<br>${escapeHtml(key)}: ${escapeHtml(String(value))}`)
     .join("");
-  return `m/z ${formatNumber(peak.x)}<br>intensity ${formatNumber(peak.y)}${annotationRows}`;
+  const formulaRow = formula ? `<br>formula: ${escapeHtml(String(formula))}` : "";
+  return `m/z ${formatNumber(peak.x)}<br>intensity ${formatNumber(peak.y)}${formulaRow}${annotationRows}`;
 }
 
 function formatNumber(value: number) {
