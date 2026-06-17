@@ -120,6 +120,10 @@ pub fn run() {
             commands::text_files::read_text_file,
             commands::text_files::open_text_files,
             commands::documents::read_structure_text,
+            commands::conformer::conformer_status,
+            commands::conformer::prepare_conformer_job,
+            commands::conformer::run_conformer_job,
+            commands::conformer::cancel_conformer_job,
             commands::documents::generate_3d_conformer,
             commands::documents::open_text_structure,
             commands::documents::open_delimited_grid_document,
@@ -150,6 +154,10 @@ pub fn run() {
             commands::shell::write_text_file,
             commands::quicklook::reset_quick_look,
             commands::updater::install_update,
+            commands::xtb::xtb_status,
+            commands::xtb::install_xtb,
+            commands::xtb::run_xtb_job,
+            commands::xtb::cancel_xtb_job,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Burrete Tauri application")

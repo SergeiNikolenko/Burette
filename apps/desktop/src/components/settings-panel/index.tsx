@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import type { ViewerPreferences } from "../../types";
+import type { ViewerPreferences, XtbSettings } from "../../types";
 import type { UpdateChannel } from "../../update";
 import { CURRENT_VERSION, defaultUpdatePreferences } from "../../update";
 import { settingsSectionLabel, type SettingsSectionId } from "../../lib/settings-sections";
@@ -9,11 +9,12 @@ import { isTauriRuntime } from "../../lib/tauri";
 import { AgentIntegrationPanel } from "../agent-integration-panel";
 import { EditorScrollContainer } from "../editor-area/editor-scroll-container";
 import { RadixDropdownMenu } from "../radix-menu";
-import type { ChemicalEditorTarget, ShellActions, ShellViewState } from "../types";
+import type { AppSettingsSectionId, ChemicalEditorTarget, ShellActions, ShellViewState } from "../types";
 import type { MenuItemSpec } from "../menu-types";
 import {
   SettingsSection,
   RangeControl,
+  SelectControl,
   ToggleControl,
   actionRow,
   selectPreferenceRow,
@@ -24,7 +25,7 @@ import { ThemesSection } from "./themes-section";
 
 const defaultRendererModeOptions: Array<ViewerPreferences["rendererMode"]> = ["auto", "molstar", "xyzrender-external"];
 const conformerEngineOptions: Array<ViewerPreferences["conformerEngine"]> = ["datamol", "rdkit"];
-type SettingsPanelLocation = { kind: "settings"; section: SettingsSectionId };
+type SettingsPanelLocation = { kind: "settings"; section: AppSettingsSectionId };
 type OpenInDefaultDestination = ViewerPreferences["openInDefaultDestination"];
 type OpenDestinationOption = {
   value: OpenInDefaultDestination;
@@ -122,7 +123,7 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
             <AgentIntegrationPanel embedded />
           ) : (
             <>
-              <h1>{settingsSectionLabel(section)}</h1>
+              <h1>{settingsPanelSectionLabel(section)}</h1>
               {section === "general" ? (
                 <>
                   <SettingsSection
@@ -178,6 +179,42 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
                   ]}
                 />
               ) : null}
+              {section === "xtb" ? (
+                <>
+                  <SettingsSection
+                    title="xTB Runtime"
+                    rows={[
+                      actionRow(
+                        "Status",
+                        state.xtbStatus?.installed ? `Ready${state.xtbStatus.version ? ` · ${state.xtbStatus.version}` : ""}` : state.xtbStatus?.installHint ?? "xTB status has not been checked.",
+                        "Check",
+                        () => void actions.checkXtbStatus(),
+                      ),
+                      actionRow(
+                        "Executable",
+                        state.xtbStatus?.executablePath ?? "No xTB executable found.",
+                        "Install",
+                        () => void actions.installXtb(),
+                        state.xtbStatus?.installed === true,
+                      ),
+                      actionRow(
+                        "Installer",
+                        state.xtbStatus?.installer ? `Detected ${state.xtbStatus.installer}` : "Burrete tries pixi first, then uv if pixi is unavailable.",
+                        "Jobs",
+                        () => {
+                          actions.openDockTab("bottom", "jobs");
+                          actions.setDockActiveTab("bottom", "jobs");
+                          actions.setDockOpen("bottom", true);
+                        },
+                      ),
+                    ]}
+                  />
+                  <SettingsSection
+                    title="Calculation Defaults"
+                    rows={xtbSettingsRows(state.xtbSettings, actions.setXtbSettings)}
+                  />
+                </>
+              ) : null}
               {section === "updates" ? <SettingsSection title="Updates" rows={updateRows} /> : null}
               {section === "workspace" ? (
                 <SettingsSection
@@ -208,6 +245,10 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
   );
 }
 
+function settingsPanelSectionLabel(section: AppSettingsSectionId) {
+  return section === "xtb" ? "xTB" : settingsSectionLabel(section);
+}
+
 function openDestinationPreferenceRow(
   value: OpenInDefaultDestination,
   targets: ChemicalEditorTarget[],
@@ -220,6 +261,148 @@ function openDestinationPreferenceRow(
     reset: () => onChange(defaultPreferences.openInDefaultDestination),
     isModified: value !== defaultPreferences.openInDefaultDestination,
   };
+}
+
+const defaultXtbSettings: XtbSettings = {
+  method: "gfn2",
+  optLevel: "normal",
+  solvationModel: "none",
+  solvent: "none",
+  charge: 0,
+  uhf: 0,
+  threads: 0,
+  accuracy: 1,
+  electronicTemperature: 300,
+  properties: {
+    dipole: true,
+    wbo: true,
+    population: false,
+    molden: false,
+    alpha: false,
+    fod: false,
+    esp: false,
+    fukui: false,
+  },
+  mdTemperature: 298,
+  mdTimePs: 2,
+  mdStepFs: 1,
+  mdSnapshots: 100,
+  timeoutSeconds: 180,
+  saveRunFiles: true,
+};
+
+function xtbSettingsRows(
+  settings: XtbSettings,
+  onChange: (settings: XtbSettings) => void,
+): SettingRow[] {
+  const update = <K extends keyof XtbSettings>(key: K, value: XtbSettings[K]) => onChange({ ...settings, [key]: value });
+  return [
+    {
+      label: "Method",
+      description: "GFN2 is the default for small-molecule single-point and optimization jobs.",
+      control: <SelectControl value={settings.method} options={["gfn2", "gfn1", "gfn0", "gfnff"]} onChange={(method) => update("method", method as XtbSettings["method"])} />,
+      reset: () => update("method", defaultXtbSettings.method),
+      isModified: settings.method !== defaultXtbSettings.method,
+    },
+    {
+      label: "Solvent",
+      description: "Solvent name for ALPB, GBSA, COSMO, or CPCM-X.",
+      control: <SelectControl value={settings.solvent} options={["none", "water", "acetone", "acetonitrile", "benzene", "ch2cl2", "chcl3", "dmf", "dmso", "ether", "hexane", "methanol", "toluene", "thf"]} onChange={(solvent) => update("solvent", solvent)} />,
+      reset: () => update("solvent", defaultXtbSettings.solvent),
+      isModified: settings.solvent !== defaultXtbSettings.solvent,
+    },
+    {
+      label: "Solvation model",
+      description: "Continuum solvation model passed to xTB.",
+      control: <SelectControl value={settings.solvationModel} options={["none", "alpb", "gbsa", "cosmo", "cpcmx"]} onChange={(solvationModel) => update("solvationModel", solvationModel as XtbSettings["solvationModel"])} />,
+      reset: () => update("solvationModel", defaultXtbSettings.solvationModel),
+      isModified: settings.solvationModel !== defaultXtbSettings.solvationModel,
+    },
+    {
+      label: "Optimization level",
+      description: "Geometry optimization level for --opt and --ohess.",
+      control: <SelectControl value={settings.optLevel} options={["loose", "normal", "tight", "verytight"]} onChange={(optLevel) => update("optLevel", optLevel as XtbSettings["optLevel"])} />,
+      reset: () => update("optLevel", defaultXtbSettings.optLevel),
+      isModified: settings.optLevel !== defaultXtbSettings.optLevel,
+    },
+    {
+      label: "Charge",
+      description: "Total molecular charge passed as --chrg.",
+      control: <RangeControl value={settings.charge} min={-5} max={5} step={1} onChange={(charge) => update("charge", charge)} />,
+      reset: () => update("charge", defaultXtbSettings.charge),
+      isModified: settings.charge !== defaultXtbSettings.charge,
+    },
+    {
+      label: "Unpaired electrons",
+      description: "Spin setting passed as --uhf.",
+      control: <RangeControl value={settings.uhf} min={0} max={10} step={1} onChange={(uhf) => update("uhf", uhf)} />,
+      reset: () => update("uhf", defaultXtbSettings.uhf),
+      isModified: settings.uhf !== defaultXtbSettings.uhf,
+    },
+    {
+      label: "Threads",
+      description: "Passed as --parallel and OMP_NUM_THREADS. Zero leaves xTB automatic.",
+      control: <RangeControl value={settings.threads} min={0} max={32} step={1} onChange={(threads) => update("threads", threads)} />,
+      reset: () => update("threads", defaultXtbSettings.threads),
+      isModified: settings.threads !== defaultXtbSettings.threads,
+    },
+    {
+      label: "Accuracy",
+      description: "SCC accuracy passed as --acc; lower is more strict.",
+      control: <RangeControl value={settings.accuracy} min={0.05} max={10} step={0.05} onChange={(accuracy) => update("accuracy", accuracy)} />,
+      reset: () => update("accuracy", defaultXtbSettings.accuracy),
+      isModified: settings.accuracy !== defaultXtbSettings.accuracy,
+    },
+    {
+      label: "Electronic temperature",
+      description: "Electronic temperature in Kelvin passed as --etemp.",
+      control: <RangeControl value={settings.electronicTemperature} min={50} max={5000} step={50} onChange={(electronicTemperature) => update("electronicTemperature", electronicTemperature)} />,
+      reset: () => update("electronicTemperature", defaultXtbSettings.electronicTemperature),
+      isModified: settings.electronicTemperature !== defaultXtbSettings.electronicTemperature,
+    },
+    {
+      label: "MD temperature",
+      description: "Thermostat temperature in Kelvin for MD and metadynamics.",
+      control: <RangeControl value={settings.mdTemperature} min={50} max={2000} step={10} onChange={(mdTemperature) => update("mdTemperature", mdTemperature)} />,
+      reset: () => update("mdTemperature", defaultXtbSettings.mdTemperature),
+      isModified: settings.mdTemperature !== defaultXtbSettings.mdTemperature,
+    },
+    {
+      label: "MD time",
+      description: "Total dynamics length in picoseconds. Longer runs produce longer trajectories.",
+      control: <RangeControl value={settings.mdTimePs} min={0.05} max={100} step={0.05} onChange={(mdTimePs) => update("mdTimePs", mdTimePs)} />,
+      reset: () => update("mdTimePs", defaultXtbSettings.mdTimePs),
+      isModified: settings.mdTimePs !== defaultXtbSettings.mdTimePs,
+    },
+    {
+      label: "MD step",
+      description: "Integration step in femtoseconds for MD and metadynamics.",
+      control: <RangeControl value={settings.mdStepFs} min={0.1} max={10} step={0.1} onChange={(mdStepFs) => update("mdStepFs", mdStepFs)} />,
+      reset: () => update("mdStepFs", defaultXtbSettings.mdStepFs),
+      isModified: settings.mdStepFs !== defaultXtbSettings.mdStepFs,
+    },
+    {
+      label: "Trajectory snapshots",
+      description: "Requested trajectory frame count for MD/metadyn output and the metadynamics bias snapshot count.",
+      control: <RangeControl value={settings.mdSnapshots} min={1} max={1000} step={1} onChange={(mdSnapshots) => update("mdSnapshots", mdSnapshots)} />,
+      reset: () => update("mdSnapshots", defaultXtbSettings.mdSnapshots),
+      isModified: settings.mdSnapshots !== defaultXtbSettings.mdSnapshots,
+    },
+    {
+      label: "Save run files",
+      description: "Store xTB run directories such as xtb_optimize_N next to the input structure. Turn off to use temporary storage.",
+      control: <ToggleControl label="Save xTB run files" checked={settings.saveRunFiles} onChange={(saveRunFiles) => update("saveRunFiles", saveRunFiles)} />,
+      reset: () => update("saveRunFiles", defaultXtbSettings.saveRunFiles),
+      isModified: settings.saveRunFiles !== defaultXtbSettings.saveRunFiles,
+    },
+    {
+      label: "Timeout",
+      description: "Maximum runtime for ordinary xTB jobs in seconds.",
+      control: <RangeControl value={settings.timeoutSeconds} min={30} max={1200} step={30} onChange={(timeoutSeconds) => update("timeoutSeconds", timeoutSeconds)} />,
+      reset: () => update("timeoutSeconds", defaultXtbSettings.timeoutSeconds),
+      isModified: settings.timeoutSeconds !== defaultXtbSettings.timeoutSeconds,
+    },
+  ];
 }
 
 function OpenDestinationControl({

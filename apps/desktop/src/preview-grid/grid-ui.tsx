@@ -45,8 +45,6 @@ type GridControlProps = {
   onSetCardRenderer: (value: "rdkit" | "xyzrender") => void;
   onXyzrenderPresetChange: (value: string) => void;
   onOpenKetcher: () => void;
-  onGenerate3D: () => void;
-  onCalculateSelectedDescriptors: () => void;
   onRendererSwitch: (value: "molstar") => void;
   onRdkitUseInputCoordsChange: (checked: boolean) => void;
 };
@@ -306,34 +304,6 @@ function GridControls(props: GridControlProps) {
             />
             <span>Use file coords</span>
           </label>
-          {props.rendererSwitch || props.ketcherOpen ? (
-            <div className="buret-grid-renderer-controls">
-              <div className="buret-grid-renderer-switch" aria-label="3D renderer">
-                {props.rendererSwitch ? (
-                  <button
-                    type="button"
-                    data-buret-grid-renderer="molstar"
-                    data-buret-grid-sdf-poses
-                    data-buret-grid-docking
-                    onClick={() => props.onRendererSwitch("molstar")}
-                  >
-                    Molstar
-                    <ControlTooltip label="Open selected molecules in Molstar" />
-                  </button>
-                ) : null}
-                {props.ketcherOpen ? (
-                  <button
-                    type="button"
-                    data-buret-grid-ketcher
-                    onClick={props.onOpenKetcher}
-                  >
-                    Ketcher
-                    <ControlTooltip label="Open selected molecule in Ketcher" />
-                  </button>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
         </div>
       </div>
     </>
