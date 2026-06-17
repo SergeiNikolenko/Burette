@@ -6,7 +6,7 @@ import previewFormatRegistry from "../../../config/preview-formats.json";
 import { AppLayout } from "./components/app-layout";
 import { formatBytes } from "./components/format";
 import { showNativeContextMenu } from "./components/native-context-menu";
-import type { ChemicalEditorTarget, KetcherImportRequest, KetcherSketchRequest, KetcherSource3D, ShellActions, ShellViewState, StatusKind, StatusNotice } from "./components/types";
+import type { AppSettingsSectionId, ChemicalEditorTarget, KetcherImportRequest, KetcherSketchRequest, KetcherSource3D, ShellActions, ShellViewState, StatusKind, StatusNotice, StructureViewerAction, ViewerLigandSelection } from "./components/types";
 import { WindowTitle } from "./components/window-title";
 import {
   useCloseCommandPalette,
@@ -66,10 +66,12 @@ import { openBrowserDevTextFiles } from "./lib/browser-dev-text-files";
 import { defaultBuildInfo, loadBuildInfo } from "./lib/build-info";
 import { isMoleculeCollectionPath } from "./lib/collection-documents";
 import { dockingRequestForDrop, isProteinLikeDockingSource } from "./lib/docking-documents";
+import { canInspectConformerEnsemble, canUseConformerWorkflow } from "./lib/conformer-ensemble";
+import type { DockArea, DockTabKind } from "./lib/dock";
 import type { DropActionChoice } from "./lib/drop-actions";
 import { collectPerformanceMarks, markPerformanceOnce, measureAsync } from "./lib/performance";
 import { basename, buildSidebarProjects, parentDirectory, type SidebarProjectStructure } from "./lib/sidebar-projects";
-import type { StructureViewerAction } from "./lib/structure-composition";
+import { parseStructureComposition } from "./lib/structure-composition";
 import type { StructureDragPayload, StructureDragRecord } from "./lib/structure-drag";
 import { readStructureText } from "./lib/structure-text";
 import { isSpectrumExtension, spectrumDocumentFromText } from "./lib/spectrum";
@@ -77,7 +79,7 @@ import type { TextStructureSelection } from "./lib/text-structure-selection";
 import { isTauriRuntime } from "./lib/tauri";
 import { isTemporaryDocumentPath } from "./lib/temporary-documents";
 import { calculateGridDescriptors as runGridDescriptorCalculation, type DescriptorSourcePayload, type GridDescriptorControls, type GridDescriptorJobStatus, type GridDescriptorResultRow, type GridDescriptorRunOptions } from "./lib/descriptors";
-import type { DockingDocumentRequest, DockingSceneMode, FepSetupRequest, OpenDocumentsMode, OpenDocumentsResult, OpenTextFilesResult, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "./types";
+import type { ConformerJob, ConformerOperation, ConformerPreparedRun, ConformerRunRequest, ConformerRunResult, ConformerSettings, ConformerStatus, DockingDocumentRequest, DockingSceneMode, FepSetupRequest, OpenDocumentsMode, OpenDocumentsResult, OpenTextFilesResult, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XtbJob, XtbOperation, XtbRunRequest, XtbRunResult, XtbSettings, XtbStatus } from "./types";
 import { checkForUpdates as requestUpdateCheck, clearDismissedUpdate, dismissUpdate, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically, shouldPromptForUpdate } from "./update";
 import type { UpdatePreferences, UpdateRelease, UpdateState } from "./update";
 
@@ -145,7 +147,6 @@ const preferredTextExtensions = new Set([
 ]);
 const structureAndTextExtensions = new Set([
   "abi",
-  "arc",
   "cms",
   "com",
   "config",
@@ -195,7 +196,6 @@ const structureAndTextExtensions = new Set([
   "tpr",
   "tng",
   "trc",
-  "trj",
   "trr",
   "trz",
   "tsv",
@@ -206,6 +206,8 @@ const structureAndTextExtensions = new Set([
 ]);
 
 const GRID_PERF_REPORT_PATH = "/private/tmp/burrete-grid-real-app-perf.jsonl";
+const DIRECT_CHEMISTRY_JOB_ATOM_LIMIT = 300;
+const DIRECT_CHEMISTRY_JOB_READ_LIMIT = 4 * 1024 * 1024;
 const SIDEBAR_DRAG_CLOSE_WIDTH = 180;
 const RIGHT_DOCK_CLOSE_THRESHOLD = 180;
 const BOTTOM_DOCK_CLOSE_THRESHOLD = 120;
@@ -222,12 +224,25 @@ type ConformerGenerationResult = {
 type ConformerGenerationMode = "single" | "ensemble";
 type MolstarStylePreference = ViewerPreferences["molstarStyle"];
 type PendingMolstarReplaceResolver = (ok: boolean) => void;
+type XtbRunJobOptions = {
+  title?: string;
+  inputLabel?: string;
+  openPrimary?: boolean;
+  openOptimizedPoseInCurrentView?: boolean;
+  poseSourceDocument?: ViewerDocument | null;
+};
 
 function molstarContextEntryExtension(format: string | undefined) {
   const value = String(format || "pdb").toLowerCase();
   if (value === "cif" || value === "mmcif" || value === "mcif") return "cif";
   if (value === "sd") return "sdf";
   return value || "pdb";
+}
+
+function structureExtensionFromPath(path: string | null | undefined) {
+  const name = basename(String(path || ""));
+  const dotIndex = name.lastIndexOf(".");
+  return dotIndex > 0 ? name.slice(dotIndex + 1).toLowerCase() : "pdb";
 }
 
 const browserDevChemicalEditorTargets: ChemicalEditorTarget[] = [
@@ -333,6 +348,11 @@ function splitDevFiles(rawFiles: string) {
   return rawFiles.split("\n").map((path) => path.trim()).filter(Boolean);
 }
 
+function browserDevHasExplicitFiles() {
+  if (typeof window === "undefined" || isTauriRuntime()) return false;
+  return new URLSearchParams(window.location.search).has("devFiles");
+}
+
 async function expandBrowserDevStructureBundles(paths: string[]) {
   if (isTauriRuntime()) return paths;
   const expanded: string[] = [];
@@ -342,6 +362,7 @@ async function expandBrowserDevStructureBundles(paths: string[]) {
     if (
       !extension ||
       (!structureExtensions.has(extension) &&
+        !isXtbOptimizationTrajectoryLogPath(path) &&
         !structureAndTextExtensions.has(extension) &&
         !preferredTextExtensions.has(extension))
     ) {
@@ -518,6 +539,15 @@ export default function App() {
   const [sidebarDragging, setSidebarDragging] = useState(false);
   const [rightDockDragging, setRightDockDragging] = useState(false);
   const [bottomDockDragging, setBottomDockDragging] = useState(false);
+  const toggleDockTab = useCallback((area: DockArea, kind: DockTabKind) => {
+    const open = area === "right" ? rightDockOpen : bottomDockOpen;
+    const activeKind = area === "right" ? rightDockActiveTab : bottomDockActiveTab;
+    if (open && activeKind === kind) {
+      setDockOpen(area, false);
+      return;
+    }
+    openDockTab(area, kind);
+  }, [bottomDockActiveTab, bottomDockOpen, openDockTab, rightDockActiveTab, rightDockOpen, setDockOpen]);
 
   const closeGridRuntime = useCallback((documentId: string | null | undefined) => {
     if (!documentId || !isTauriRuntime()) return;
@@ -532,6 +562,13 @@ export default function App() {
   const [buildInfo, setBuildInfo] = useState(defaultBuildInfo);
   const [buildInfoLoaded, setBuildInfoLoaded] = useState(false);
   const [poseReviewSelections, setPoseReviewSelections] = useState<Record<string, number>>({});
+  const [conformerStatus, setConformerStatus] = useState<ConformerStatus | null>(null);
+  const [conformerSettings, setConformerSettingsState] = useState<ConformerSettings>(() => readConformerSettings());
+  const [conformerJobs, setConformerJobs] = useState<ConformerJob[]>([]);
+  const [viewerLigandSelections, setViewerLigandSelections] = useState<Record<string, ViewerLigandSelection | null>>({});
+  const [xtbStatus, setXtbStatus] = useState<XtbStatus | null>(null);
+  const [xtbSettings, setXtbSettingsState] = useState<XtbSettings>(() => readXtbSettings());
+  const [xtbJobs, setXtbJobs] = useState<XtbJob[]>([]);
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [projectStructures, setProjectStructures] = useState<SidebarProjectStructure[]>([]);
   const [update, setUpdate] = useState<UpdateState>(() => ({
@@ -556,6 +593,8 @@ export default function App() {
   const statusSequenceRef = useRef(0);
   const recentErrorsRef = useRef<Array<{ message: string; details: string[]; timestampMs: number }>>([]);
   const gridPerfMetricsRef = useRef<string[]>([]);
+  const cancelledConformerJobIdsRef = useRef(new Set<string>());
+  const cancelledXtbJobIdsRef = useRef(new Set<string>());
   const ketcherImportSequenceRef = useRef(0);
   const commandPaletteOpen = useIsCommandPaletteOpen();
   const commandPaletteQuery = useCommandPaletteSearch();
@@ -618,6 +657,536 @@ export default function App() {
 
   const clearStatus = useCallback(() => {
     setStatus(null);
+  }, []);
+
+  const setConformerSettings = useCallback((settings: ConformerSettings) => {
+    const normalized = normalizeConformerSettings(settings);
+    setConformerSettingsState(normalized);
+    saveConformerSettings(normalized);
+  }, []);
+
+  const checkConformerStatus = useCallback(async () => {
+    try {
+      const status = await requestConformerStatus();
+      setConformerStatus(status);
+      pushStatus(conformerStatusLine(status));
+    } catch (error) {
+      pushErrorStatus(error, "CREST/PRISM status failed");
+    }
+  }, [pushErrorStatus, pushStatus]);
+
+  const setXtbSettings = useCallback((settings: XtbSettings) => {
+    const normalized = normalizeXtbSettings(settings);
+    setXtbSettingsState(normalized);
+    saveXtbSettings(normalized);
+  }, []);
+
+  const checkXtbStatus = useCallback(async () => {
+    try {
+      const status = await requestXtbStatus();
+      setXtbStatus(status);
+      pushStatus(status.installed ? `xTB ready: ${status.version ?? status.executablePath ?? "installed"}` : status.installHint, status.installed ? "success" : "error");
+    } catch (error) {
+      pushErrorStatus(error, "xTB status failed");
+    }
+  }, [pushErrorStatus, pushStatus]);
+
+  const installXtb = useCallback(async () => {
+    try {
+      pushStatus("Installing xTB...");
+      const status = await installXtbRequest();
+      setXtbStatus(status);
+      pushStatus(status.installed ? `xTB installed: ${status.version ?? status.executablePath ?? "ready"}` : status.installHint, status.installed ? "success" : "error");
+    } catch (error) {
+      pushErrorStatus(error, "xTB install failed");
+    }
+  }, [pushErrorStatus, pushStatus]);
+
+  const openXtbOptimizedPoseInCurrentView = useCallback(async (
+    sourceDocument: ViewerDocument | null | undefined,
+    sourcePath: string | null | undefined,
+    result: XtbRunResult,
+  ) => {
+    const sourceTitle = sourceDocument?.title ?? (sourcePath ? basename(sourcePath) : "structure");
+    const trajectoryArtifact = result.artifacts.find((artifact) => artifact.title === "xtbopt.log");
+    if (trajectoryArtifact) {
+      const trajectoryText = await readStructureText(trajectoryArtifact.path);
+      const trajectoryFrames = countXyzFrames(trajectoryText);
+      if (trajectoryFrames > 1) {
+        const title = `${sourceTitle} xTB optimization.xyz`;
+        const molstarPreferences = { ...preferences, rendererMode: "molstar" as const };
+        const reloadOptions = { trajectoryAutoPlayOnce: true, molstarStyle: preferences.molstarStyle };
+        const document = isTauriRuntime()
+          ? await invoke<ViewerDocument>("open_text_structure", {
+              request: {
+                title,
+                extension: "xyz",
+                text: trajectoryText.endsWith("\n") ? trajectoryText : `${trajectoryText}\n`,
+              },
+              preferences: molstarPreferences,
+              reloadOptions,
+            })
+          : await openBrowserDevTextDocument(
+              title,
+              "xyz",
+              trajectoryText.endsWith("\n") ? trajectoryText : `${trajectoryText}\n`,
+              molstarPreferences,
+              reloadOptions,
+            );
+        const documentWithSource = sourcePath ? { ...document, sourcePath } : document;
+        openDocumentsInActiveTab([documentWithSource]);
+        rememberRecentStructures([documentWithSource]);
+        pushStatus("Opened xTB optimization trajectory in the current Mol* view", "success");
+        return;
+      }
+    }
+    if (!sourcePath || !result.primaryOpenPath) return;
+    const [sourceText, optimizedText] = await Promise.all([
+      readStructureText(sourcePath),
+      readStructureText(result.primaryOpenPath),
+    ]);
+    const molstarPreferences = { ...preferences, rendererMode: "molstar" as const };
+    const document = await openBrowserDevMolstarContextDocument({
+      label: `${sourceTitle} xTB optimized`,
+      entries: [
+        {
+          role: "receptor",
+          label: `${sourceTitle} input`,
+          format: structureExtensionFromPath(sourcePath),
+          data: sourceText,
+        },
+        {
+          role: "ligand",
+          label: "xTB optimized pose",
+          format: structureExtensionFromPath(result.primaryOpenPath),
+          data: optimizedText,
+        },
+      ],
+      context: { scope: "xtb-optimization" },
+    }, molstarPreferences);
+    openDocumentsInActiveTab([document]);
+    rememberRecentStructures([document]);
+    pushStatus("Opened xTB optimized pose in the current Mol* view", "success");
+  }, [openDocumentsInActiveTab, preferences, pushStatus, rememberRecentStructures]);
+
+  const runXtbJob = useCallback(async (
+    request: XtbRunRequest,
+    options: XtbRunJobOptions = {},
+  ) => {
+    const title = options.title ?? xtbOperationLabel(request.operation);
+    const inputLabel = options.inputLabel ?? request.label ?? request.inputPath ?? "Ketcher sketch";
+    const guardMessage = await directChemistryJobGuardMessage("xTB", request.inputText ?? null, request.inputExtension ?? structureExtensionFromPath(request.inputPath ?? request.sourcePath), request.inputPath ?? request.sourcePath ?? null);
+    if (guardMessage) {
+      pushStatus(guardMessage, "error");
+      return;
+    }
+    const jobId = `xtb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const startedAt = Date.now();
+    const pendingJob: XtbJob = {
+      id: jobId,
+      title,
+      operation: request.operation,
+      status: "running",
+      inputLabel,
+      startedAt,
+      completedAt: null,
+      result: null,
+      error: null,
+    };
+    setXtbJobs((previous) => [pendingJob, ...previous].slice(0, 20));
+    try {
+      const saveRunFiles = request.saveRunFiles ?? xtbSettings.saveRunFiles;
+      const result = await runXtbRequest({
+        method: xtbSettings.method,
+        optLevel: xtbSettings.optLevel,
+        charge: xtbSettings.charge,
+        uhf: xtbSettings.uhf,
+        threads: xtbSettings.threads,
+        accuracy: xtbSettings.accuracy,
+        electronicTemperature: xtbSettings.electronicTemperature,
+        solvationModel: xtbSettings.solvationModel,
+        solvent: xtbSettings.solvent === "none" ? null : xtbSettings.solvent,
+        properties: xtbSettings.properties,
+        mdTemperature: xtbSettings.mdTemperature,
+        mdTimePs: xtbSettings.mdTimePs,
+        mdStepFs: xtbSettings.mdStepFs,
+        mdSnapshots: xtbSettings.mdSnapshots,
+        timeoutSeconds: request.operation === "md" || request.operation === "metadyn"
+          ? Math.max(xtbSettings.timeoutSeconds, 600)
+          : xtbSettings.timeoutSeconds,
+        saveRunFiles,
+        ...request,
+        jobId,
+      });
+      const cancelled = cancelledXtbJobIdsRef.current.has(jobId) || /cancelled/iu.test(result.error ?? "");
+      const recovered = !result.ok && Boolean(result.primaryOpenPath);
+      const jobStatus: XtbJob["status"] = cancelled ? "cancelled" : result.ok ? "success" : recovered ? "recovered" : "failed";
+      setXtbJobs((previous) => previous.map((job) => job.id === jobId ? {
+        ...job,
+        status: jobStatus,
+        completedAt: Date.now(),
+        result,
+        error: result.error ?? null,
+      } : job));
+      if (cancelled) {
+        pushStatus(`xTB cancelled: ${title}`);
+        return;
+      }
+      void requestXtbStatus().then(setXtbStatus).catch(() => {});
+      const textArtifacts = [result.reportPath, result.logPath].filter(Boolean);
+      if (textArtifacts.length > 0) {
+        void openTextDocuments(textArtifacts, { background: true });
+      }
+      const sourcePath = request.sourcePath ?? request.inputPath ?? null;
+      if ((result.ok || recovered) && options.openOptimizedPoseInCurrentView && request.operation === "optimize") {
+        await openXtbOptimizedPoseInCurrentView(options.poseSourceDocument, sourcePath, result);
+      }
+      if (options.openPrimary !== false && result.primaryOpenPath) {
+        void openPaths([result.primaryOpenPath]);
+      }
+      if (!options.openOptimizedPoseInCurrentView && result.ok && request.operation === "optimize" && sourcePath && result.primaryOpenPath) {
+        openDockTab("bottom", "compare");
+        setDockActiveTab("bottom", "compare");
+        setDockOpen("bottom", true);
+        addDockDrop({
+          area: "bottom",
+          tabKind: "compare",
+          payload: { paths: [sourcePath, result.primaryOpenPath], records: [] },
+        });
+      }
+      if (result.ok) {
+        pushStatus(`xTB finished: ${title}`, "success");
+      } else if (recovered) {
+        pushStatus(`xTB produced partial results: ${title}`, "info", result.error ? [result.error] : []);
+      } else {
+        pushStatus(`xTB failed: ${result.error ?? title}`, "error", result.error ? [result.error] : []);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const cancelled = cancelledXtbJobIdsRef.current.has(jobId);
+      setXtbJobs((previous) => previous.map((job) => job.id === jobId ? {
+        ...job,
+        status: cancelled ? "cancelled" : "failed",
+        completedAt: Date.now(),
+        error: cancelled ? "xTB job cancelled." : message,
+      } : job));
+      if (cancelled) {
+        pushStatus(`xTB cancelled: ${title}`);
+        return;
+      }
+      pushErrorStatus(error, `xTB ${request.operation} failed`);
+    }
+  }, [addDockDrop, openDockTab, openXtbOptimizedPoseInCurrentView, pushErrorStatus, pushStatus, setDockActiveTab, setDockOpen, xtbSettings]);
+
+  const cancelXtbJob = useCallback(async (jobId: string) => {
+    cancelledXtbJobIdsRef.current.add(jobId);
+    setXtbJobs((previous) => previous.map((job) => job.id === jobId && job.status === "running" ? {
+      ...job,
+      status: "cancelled",
+      completedAt: Date.now(),
+      error: "xTB job cancelled.",
+    } : job));
+    try {
+      await cancelXtbRequest(jobId);
+      pushStatus("xTB job cancelled");
+    } catch (error) {
+      pushErrorStatus(error, "Cancel xTB job failed");
+    }
+  }, [pushErrorStatus, pushStatus]);
+
+  const requestMolstarXtbContextDocument = useCallback(async (document: ViewerDocument): Promise<MolstarContextDocument | null> => {
+    if (document.renderer !== "molstar") return null;
+    const iframe = activeViewerIframeForDocument(document.id);
+    if (!iframe?.contentWindow) return null;
+    const actionId = `xtb-context-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    return new Promise((resolve) => {
+      const finish = (contextDocument: MolstarContextDocument | null) => {
+        window.clearTimeout(timeout);
+        window.removeEventListener("message", onMessage);
+        resolve(contextDocument);
+      };
+      const onMessage = (event: MessageEvent) => {
+        const data = event.data;
+        const body = data?.body;
+        if (data?.source !== "burrete-agent-viewer" || body?.type !== "agent-action-result" || body.id !== actionId) return;
+        if (!isKnownViewerMessageSource(event.source, document.id)) return;
+        const contextDocument = body.result?.result?.contextDocument;
+        finish(contextDocument && typeof contextDocument === "object" ? contextDocument : null);
+      };
+      const timeout = window.setTimeout(() => finish(null), 500);
+      window.addEventListener("message", onMessage);
+      iframe.contentWindow?.postMessage({
+        source: "burrete-agent-host",
+        body: {
+          type: "agent-action",
+          id: actionId,
+          action: { type: "get_xtb_context" },
+        },
+      }, "*");
+    });
+  }, []);
+
+  const runXtbActiveOperation = useCallback(async (operation: XtbOperation) => {
+    if (!activeDocument) {
+      pushStatus("Open a structure before running xTB.", "error");
+      return;
+    }
+    const contextDocument = await requestMolstarXtbContextDocument(activeDocument);
+    const contextInputRequest = xtbInputRequestForMolstarContextDocument(contextDocument, activeDocument.sourcePath ?? activeDocument.path);
+    const inputRequest = contextInputRequest ?? xtbInputRequestForDocument(activeDocument);
+    if (!inputRequest) {
+      pushStatus("This generated structure cannot be used for xTB because its source text is unavailable.", "error");
+      return;
+    }
+    const secondaryPaths = operation === "dock"
+      ? dockDroppedStructures.flatMap((item) => item.payload.paths).filter((path) => path !== activeDocument.path).slice(0, 1)
+      : [];
+    if (operation === "dock" && secondaryPaths.length === 0) {
+      pushStatus("Drop a ligand or second structure into a dock before running xTB docking.", "error");
+      return;
+    }
+    const openOptimizedPoseInCurrentView = operation === "optimize";
+    await runXtbJob({
+      operation,
+      ...inputRequest,
+      secondaryPaths,
+    }, {
+      title: xtbOperationLabel(operation),
+      inputLabel: inputRequest.label ?? activeDocument.title,
+      openPrimary: operation !== "properties" && !openOptimizedPoseInCurrentView,
+      openOptimizedPoseInCurrentView,
+      poseSourceDocument: openOptimizedPoseInCurrentView ? activeDocument : null,
+    });
+  }, [activeDocument, dockDroppedStructures, pushStatus, requestMolstarXtbContextDocument, runXtbJob]);
+
+  const runXtbKetcherSketch = useCallback(async (request: KetcherSketchRequest) => {
+    await runXtbJob({
+      operation: "optimize",
+      inputText: request.text,
+      inputExtension: request.extension,
+      label: request.title,
+    }, {
+      title: "xTB Optimize Ketcher Sketch",
+      inputLabel: request.title,
+    });
+  }, [runXtbJob]);
+
+  const runXtbGridScoring = useCallback(async (document: ViewerDocument | null = activeDocument) => {
+    if (!document) {
+      pushStatus("Open a grid or structure before running xTB scoring.", "error");
+      return;
+    }
+    const inputRequest = xtbInputRequestForDocument(document);
+    if (!inputRequest) {
+      pushStatus("This generated structure cannot be used for xTB because its source text is unavailable.", "error");
+      return;
+    }
+    await runXtbJob({
+      operation: document.renderer === "grid2d" ? "grid-properties" : "properties",
+      ...inputRequest,
+    }, {
+      title: document.renderer === "grid2d" ? "xTB Grid Properties" : "xTB Properties",
+      inputLabel: document.title,
+      openPrimary: false,
+    });
+  }, [activeDocument, pushStatus, runXtbJob]);
+
+  const runXtbPoseRefinement = useCallback(async (request: FepSetupRequest) => {
+    await runXtbJob({
+      operation: "pose-refine",
+      inputPath: request.gridPath,
+      secondaryPaths: [request.receptorPath, request.dockingPath],
+      label: `pose-${request.referencePose + 1}`,
+    }, {
+      title: `xTB Refine Pose ${request.referencePose + 1}`,
+      inputLabel: basename(request.gridPath),
+    });
+  }, [runXtbJob]);
+
+  const runXtbFepPreflight = useCallback(async (request: FepSetupRequest) => {
+    await runXtbJob({
+      operation: "fep-preflight",
+      inputPath: request.gridPath,
+      secondaryPaths: [request.receptorPath, request.dockingPath],
+      label: "fep-preflight",
+    }, {
+      title: "xTB FEP Preflight",
+      inputLabel: basename(request.gridPath),
+      openPrimary: false,
+    });
+  }, [runXtbJob]);
+
+  const runConformerJob = useCallback(async (request: ConformerRunRequest) => {
+    const title = conformerOperationLabel(request.operation);
+    const jobId = `conformer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const fullRequest: ConformerRunRequest = {
+      ...request,
+      jobId,
+      method: conformerSettings.method,
+      solvent: conformerSettings.solvent === "none" ? null : conformerSettings.solvent,
+      charge: conformerSettings.charge,
+      uhf: conformerSettings.uhf,
+      threads: conformerSettings.threads,
+      timeoutSeconds: request.operation === "prism-prune" ? conformerSettings.prismTimeoutSeconds : conformerSettings.timeoutSeconds,
+      energyWindowKcalMol: conformerSettings.energyWindowKcalMol,
+      rmsdThresholdAngstrom: conformerSettings.rmsdThresholdAngstrom,
+      samplingMode: conformerSettings.samplingMode,
+      prismEnergySort: conformerSettings.prismEnergySort,
+      prismRotamerPruning: conformerSettings.prismRotamerPruning,
+    };
+    let preparedRun: ConformerPreparedRun;
+    try {
+      preparedRun = await prepareConformerRequest(fullRequest);
+    } catch (error) {
+      pushErrorStatus(error, `${title} setup failed`);
+      return;
+    }
+    const pendingJob: ConformerJob = {
+      id: jobId,
+      title,
+      operation: request.operation,
+      inputTitle: request.title,
+      status: "running",
+      startedAt: Date.now(),
+      workDir: preparedRun.workDir,
+      logPath: preparedRun.logPath,
+      result: null,
+      error: null,
+    };
+    setConformerJobs((previous) => [pendingJob, ...previous].slice(0, 20));
+    try {
+      const result = await runConformerRequest({ ...fullRequest, workDir: preparedRun.workDir });
+      const cancelled = cancelledConformerJobIdsRef.current.has(jobId) || /cancelled/iu.test(result.errorSummary ?? "");
+      setConformerJobs((previous) => previous.map((job) => job.id === jobId ? {
+        ...job,
+        status: cancelled ? "cancelled" : result.ok ? (result.exitCode === 0 ? "success" : "recovered") : "failed",
+        completedAt: Date.now(),
+        workDir: result.workDir,
+        logPath: result.logPath,
+        result,
+        error: result.errorSummary ?? (result.ok ? null : `Exited with code ${result.exitCode}`),
+      } : job));
+      if (cancelled) {
+        pushStatus(`${title} cancelled: ${request.title}`);
+        return;
+      }
+      if (result.reportPath) {
+        void openTextDocuments([result.reportPath], { background: true });
+      }
+      if (result.ok && result.primaryOpenPath) {
+        void openPaths([result.primaryOpenPath]);
+      }
+      void requestConformerStatus().then(setConformerStatus).catch(() => {});
+      pushStatus(`${title} ${result.ok ? "finished" : "failed"}: ${request.title}`, result.ok ? "success" : "error", [
+        ...(result.errorSummary ? [result.errorSummary] : []),
+        `Exit code: ${result.exitCode}`,
+        `Run folder: ${result.workDir}`,
+      ]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const cancelled = cancelledConformerJobIdsRef.current.has(jobId);
+      setConformerJobs((previous) => previous.map((job) => job.id === jobId ? {
+        ...job,
+        status: cancelled ? "cancelled" : "failed",
+        completedAt: Date.now(),
+        error: cancelled ? "Conformer job cancelled." : message,
+      } : job));
+      if (cancelled) {
+        pushStatus(`${title} cancelled: ${request.title}`);
+        return;
+      }
+      pushErrorStatus(error, `${title} failed`);
+    }
+  }, [conformerSettings, pushErrorStatus, pushStatus]);
+
+  const cancelConformerJob = useCallback(async (jobId: string) => {
+    cancelledConformerJobIdsRef.current.add(jobId);
+    setConformerJobs((previous) => previous.map((job) => job.id === jobId && job.status === "running" ? {
+      ...job,
+      status: "cancelled",
+      completedAt: Date.now(),
+      error: "Conformer job cancelled.",
+    } : job));
+    try {
+      await cancelConformerRequest(jobId);
+      pushStatus("Conformer job cancelled");
+    } catch (error) {
+      pushErrorStatus(error, "Cancel conformer job failed");
+    }
+  }, [pushErrorStatus, pushStatus]);
+
+  const runConformerOperation = useCallback(async (
+    operation: ConformerOperation,
+    document: ViewerDocument | null | undefined = activeDocument,
+    selection: StructureViewerAction | null = null,
+  ) => {
+    if (!document) {
+      pushStatus("Open a small molecule or conformer ensemble before running CREST/PRISM.", "error");
+      return;
+    }
+    let selectedInput: SelectedConformerInput | null = null;
+    if (selection && operation === "crest-generate") {
+      try {
+        selectedInput = await selectedPdbLigandConformerInput(document, selection);
+      } catch (error) {
+        pushErrorStatus(error, "Selected object extraction failed");
+        return;
+      }
+    }
+    if (!selectedInput && operation === "crest-generate") {
+      const contextDocument = await requestMolstarXtbContextDocument(document);
+      selectedInput = conformerInputForMolstarContextDocument(contextDocument);
+    }
+    if (selection && operation === "crest-generate" && !selectedInput) {
+      pushStatus("Selected object could not be extracted for CREST.", "error");
+      return;
+    }
+    if (!selectedInput && !canUseConformerWorkflow(document.extension)) {
+      pushStatus("CREST/PRISM needs a small-molecule file or a selected object.", "error");
+      return;
+    }
+    if (operation === "prism-prune" && !canInspectConformerEnsemble(document.extension)) {
+      pushStatus("PRISM pruning expects an ensemble file such as XYZ or SDF.", "error");
+      return;
+    }
+    const virtualText = !isTauriRuntime() ? readBrowserDevVirtualTextDocument(document.path) : null;
+    const inputText = selectedInput?.text ?? virtualText;
+    const guardMessage = await directChemistryJobGuardMessage(
+      operation === "crest-generate" ? "CREST" : "PRISM",
+      inputText,
+      selectedInput?.extension ?? document.extension,
+      inputText ? null : document.sourcePath ?? document.path,
+    );
+    if (guardMessage) {
+      pushStatus(guardMessage, "error");
+      return;
+    }
+    const inputBytes = inputText === null ? null : new TextEncoder().encode(inputText);
+    await runConformerJob({
+      operation,
+      path: document.sourcePath ?? document.path,
+      title: selectedInput?.title ?? document.title,
+      extension: selectedInput?.extension ?? document.extension,
+      inputDataBase64: inputBytes ? arrayBufferToBase64(inputBytes.buffer) : null,
+      outputDirectory: conformerOutputDirectory(document),
+    });
+  }, [activeDocument, pushErrorStatus, pushStatus, requestMolstarXtbContextDocument, runConformerJob]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void requestXtbStatus()
+      .then((status) => {
+        if (!cancelled) setXtbStatus(status);
+      })
+      .catch(() => {});
+    void requestConformerStatus()
+      .then((status) => {
+        if (!cancelled) setConformerStatus(status);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -971,7 +1540,7 @@ export default function App() {
       openedBrowserDevFilesRef.current = normalizedFiles;
       syncingBrowserDevFilesRef.current = true;
       const workspace = paths[0] ? parentDirectory(paths[0]) : null;
-      if (workspace) {
+      if (workspace && !browserDevHasExplicitFiles()) {
         setWorkspacePath(workspace);
         addProjectRoot(workspace);
       }
@@ -1278,7 +1847,7 @@ export default function App() {
       addDocuments([dockingDocument]);
       rememberRecentStructures([...opened, dockingDocument]);
       setStructureDragActive(false);
-      const message = `Opened docking view with ${request.ligandPaths.length} ligand${request.ligandPaths.length === 1 ? "" : "s"}`;
+      const message = "Opened docking view";
       if (errors.length > 0) {
         pushStatus(`${message}. ${summarizeErrors(errors)}`, "error", errors);
       } else {
@@ -1414,7 +1983,7 @@ export default function App() {
 
   const copyPath = useCallback(async (path: string, label = "file") => {
     try {
-      await navigator.clipboard.writeText(path);
+      await writeClipboardText(path);
       pushStatus(`Copied ${label} path`);
     } catch (error) {
       pushErrorStatus(error, "Copy path failed");
@@ -1696,9 +2265,9 @@ export default function App() {
     openSettingsTab();
   }, [openSettingsTab, sidebarOpen, toggleSidebar]);
 
-  const openSettingsSection = useCallback((section: Parameters<typeof openSettingsSectionTab>[0]) => {
+  const openSettingsSection = useCallback((section: AppSettingsSectionId) => {
     if (!sidebarOpen) toggleSidebar();
-    openSettingsSectionTab(section);
+    openSettingsSectionTab(section as Parameters<typeof openSettingsSectionTab>[0]);
   }, [openSettingsSectionTab, sidebarOpen, toggleSidebar]);
 
   const backToApp = useCallback(() => {
@@ -2706,6 +3275,12 @@ export default function App() {
           rowIndexes?: number[] | null;
           descriptorFilters?: Array<{ id?: string | null; min?: number | null; max?: number | null }> | null;
           descriptorSort?: { id?: string | null; direction?: string | null } | null;
+          selection?: {
+            label?: string | null;
+            value?: string | null;
+            selector?: Record<string, string | number | Array<string | number>> | null;
+            atoms?: number | null;
+          } | null;
           id?: string | null;
           result?: {
             ok?: boolean;
@@ -2757,6 +3332,22 @@ export default function App() {
         toggleSidebar();
         return;
       }
+      if (data.source === "burrete-viewer" && body?.type === "selectionChanged") {
+        const documentId = typeof body.documentId === "string" ? body.documentId : "";
+        if (!documentId) return;
+        const selection = body.selection;
+        setViewerLigandSelections((previous) => ({
+          ...previous,
+          [documentId]: selection?.selector ? {
+            documentId,
+            label: String(selection.label || "Selected ligand"),
+            value: String(selection.value || ""),
+            selector: selection.selector,
+            atoms: Math.max(0, Math.trunc(Number(selection.atoms) || 0)),
+          } : null,
+        }));
+        return;
+      }
       if (data.source === "burrete-viewer" && body?.type === "rendererChanged") {
         const targetDocument = (body.documentId
           ? documents.find((document) => document.id === body.documentId)
@@ -2771,7 +3362,7 @@ export default function App() {
             xyzrenderPresetOptions: body.presetOptions
               ?.filter((option): option is { value: string; label: string } => Boolean(option?.value && option?.label))
               ?? targetDocument.xyzrenderPresetOptions
-              ?? null,
+            ?? null,
           }]);
         }
         return;
@@ -3003,7 +3594,7 @@ export default function App() {
         }
         if (body?.type === "copyText") {
           const text = typeof body.text === "string" ? body.text : "";
-          void navigator.clipboard.writeText(text)
+          void writeClipboardText(text)
             .then(() => pushStatus("Copied grid text"))
             .catch((error) => pushErrorStatus(error, "Grid copy failed"));
           return;
@@ -3644,7 +4235,12 @@ export default function App() {
         if (body.contextDocument && typeof body.contextDocument === "object") {
           pushStatus("Opening selected Molstar context...");
           const contextDocument = body.contextDocument;
-          const molstarPreferences = { ...preferences, rendererMode: "molstar" as const };
+          const requestedMolstarStyle = normalizeMolstarStylePreference(body.molstarStyle);
+          const molstarPreferences = {
+            ...preferences,
+            rendererMode: "molstar" as const,
+            molstarStyle: requestedMolstarStyle ?? preferences.molstarStyle,
+          };
           const openContextDocument = async () => {
             if (!isTauriRuntime()) return openBrowserDevMolstarContextDocument(contextDocument, molstarPreferences);
             const entries = (contextDocument.entries ?? []).filter((entry): entry is MolstarContextEntry & { data: string } => (
@@ -4090,6 +4686,28 @@ export default function App() {
     applyGridDescriptorControls,
     applyGridDescriptorResults,
     calculateGridDescriptors,
+    checkConformerStatus,
+    runConformerOperation,
+    cancelConformerJob,
+    clearConformerJobs: () => {
+      setConformerJobs([]);
+      pushStatus("Job history cleared");
+    },
+    setConformerSettings,
+    checkXtbStatus,
+    installXtb,
+    runXtbActiveOperation,
+    runXtbJob,
+    cancelXtbJob,
+    runXtbKetcherSketch,
+    runXtbGridScoring,
+    runXtbPoseRefinement,
+    runXtbFepPreflight,
+    clearXtbJobs: () => {
+      setXtbJobs([]);
+      pushStatus("xTB job history cleared");
+    },
+    setXtbSettings,
     saveKetcherDraft: setKetcherDraftMolfile,
     clearKetcherImportRequest,
     moveTab,
@@ -4110,6 +4728,7 @@ export default function App() {
     },
     toggleSidebar,
     toggleDock,
+    toggleDockTab,
     setDockOpen,
     setDockSize,
     openDockTab,
@@ -4255,7 +4874,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runStructureViewerAction, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
+  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runStructureViewerAction, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
@@ -4302,6 +4921,13 @@ export default function App() {
     status,
     dropActive,
     preferences,
+    conformerStatus,
+    conformerSettings,
+    conformerJobs,
+    viewerLigandSelection: activeDocument ? viewerLigandSelections[activeDocument.id] ?? null : null,
+    xtbStatus,
+    xtbSettings,
+    xtbJobs,
     update,
     buildInfo,
   };
@@ -4587,6 +5213,491 @@ function isFepGraphmlPath(path: string) {
   return /\.graphml$/iu.test(path);
 }
 
+function conformerOutputDirectory(document: ViewerDocument) {
+  const sourcePath = document.sourcePath?.trim() || (!document.virtual ? document.path : "");
+  if (!sourcePath || /^[a-z][a-z0-9+.-]*:/iu.test(sourcePath)) return null;
+  return parentDirectory(sourcePath);
+}
+
+function countXyzFrames(text: string) {
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  let index = 0;
+  let frames = 0;
+  while (index < lines.length && frames < 100000) {
+    while (index < lines.length && !lines[index].trim()) index += 1;
+    const atomCount = Number.parseInt(lines[index]?.trim().split(/\s+/u)[0] ?? "", 10);
+    if (!Number.isFinite(atomCount) || atomCount <= 0) break;
+    if (index + atomCount + 1 >= lines.length) break;
+    const atomLines = lines.slice(index + 2, index + 2 + atomCount);
+    if (atomLines.length !== atomCount || atomLines.some((line) => !line.trim())) break;
+    frames += 1;
+    index += atomCount + 2;
+  }
+  return frames;
+}
+
+function isXtbOptimizationTrajectoryLogPath(path: string) {
+  return (path.split(/[\\/]/).filter(Boolean).pop() ?? "").toLowerCase() === "xtbopt.log";
+}
+
+const DEFAULT_CONFORMER_SETTINGS: ConformerSettings = {
+  method: "gfn2",
+  solvent: "none",
+  charge: 0,
+  uhf: 0,
+  threads: 4,
+  timeoutSeconds: 3600,
+  energyWindowKcalMol: 6,
+  rmsdThresholdAngstrom: 0.125,
+  samplingMode: "auto",
+  prismTimeoutSeconds: 300,
+  prismEnergySort: true,
+  prismRotamerPruning: false,
+};
+
+const CONFORMER_SETTINGS_STORAGE_KEY = "burrete.conformer.settings";
+
+function readConformerSettings(): ConformerSettings {
+  try {
+    const text = window.localStorage.getItem(CONFORMER_SETTINGS_STORAGE_KEY);
+    return normalizeConformerSettings(text ? JSON.parse(text) : null);
+  } catch (_) {
+    return DEFAULT_CONFORMER_SETTINGS;
+  }
+}
+
+function saveConformerSettings(settings: ConformerSettings) {
+  try {
+    window.localStorage.setItem(CONFORMER_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  } catch (_) {}
+}
+
+function normalizeConformerSettings(value: unknown): ConformerSettings {
+  const source = value && typeof value === "object" ? value as Partial<ConformerSettings> : {};
+  const methods = new Set<ConformerSettings["method"]>(["gfn2", "gfn1", "gfn0", "gfnff"]);
+  const solvents = new Set<ConformerSettings["solvent"]>(["none", "water", "methanol", "acetonitrile", "dmso", "chloroform"]);
+  const samplingModes = new Set<ConformerSettings["samplingMode"]>(["auto", "normal", "quick", "squick", "mquick"]);
+  return {
+    method: source.method && methods.has(source.method) ? source.method : DEFAULT_CONFORMER_SETTINGS.method,
+    solvent: source.solvent && solvents.has(source.solvent) ? source.solvent : DEFAULT_CONFORMER_SETTINGS.solvent,
+    charge: clampInteger(source.charge, -8, 8, DEFAULT_CONFORMER_SETTINGS.charge),
+    uhf: clampInteger(source.uhf, 0, 12, DEFAULT_CONFORMER_SETTINGS.uhf),
+    threads: clampInteger(source.threads, 1, 16, DEFAULT_CONFORMER_SETTINGS.threads),
+    timeoutSeconds: clampInteger(source.timeoutSeconds, 30, 86_400, DEFAULT_CONFORMER_SETTINGS.timeoutSeconds),
+    energyWindowKcalMol: clampNumber(source.energyWindowKcalMol, 1, 60, DEFAULT_CONFORMER_SETTINGS.energyWindowKcalMol),
+    rmsdThresholdAngstrom: clampNumber(source.rmsdThresholdAngstrom, 0.01, 2, DEFAULT_CONFORMER_SETTINGS.rmsdThresholdAngstrom),
+    samplingMode: source.samplingMode && samplingModes.has(source.samplingMode) ? source.samplingMode : DEFAULT_CONFORMER_SETTINGS.samplingMode,
+    prismTimeoutSeconds: clampInteger(source.prismTimeoutSeconds, 5, 86_400, DEFAULT_CONFORMER_SETTINGS.prismTimeoutSeconds),
+    prismEnergySort: source.prismEnergySort !== false,
+    prismRotamerPruning: source.prismRotamerPruning === true,
+  };
+}
+
+function conformerOperationLabel(operation: ConformerOperation) {
+  return operation === "prism-prune" ? "PRISM Prune" : "CREST Generate";
+}
+
+function conformerStatusLine(status: ConformerStatus) {
+  const crest = status.crest.installed ? "CREST ready" : "CREST missing";
+  const prism = status.prism.installed ? "PRISM ready" : "PRISM missing";
+  return `${crest}; ${prism}`;
+}
+
+const DEFAULT_XTB_SETTINGS: XtbSettings = {
+  method: "gfn2",
+  optLevel: "normal",
+  solvationModel: "none",
+  solvent: "none",
+  charge: 0,
+  uhf: 0,
+  threads: 0,
+  accuracy: 1,
+  electronicTemperature: 300,
+  properties: {
+    dipole: true,
+    wbo: true,
+    population: false,
+    molden: false,
+    alpha: false,
+    fod: false,
+    esp: false,
+    fukui: false,
+  },
+  mdTemperature: 298,
+  mdTimePs: 2,
+  mdStepFs: 1,
+  mdSnapshots: 100,
+  timeoutSeconds: 180,
+  saveRunFiles: true,
+};
+
+const XTB_SETTINGS_STORAGE_KEY = "burrete.xtb.settings";
+const XTB_METHODS = new Set<XtbSettings["method"]>(["gfn2", "gfn1", "gfn0", "gfnff"]);
+const XTB_OPT_LEVELS = new Set<XtbSettings["optLevel"]>(["loose", "normal", "tight", "verytight"]);
+const XTB_SOLVATION_MODELS = new Set<XtbSettings["solvationModel"]>(["none", "alpb", "gbsa", "cosmo", "cpcmx"]);
+
+function readXtbSettings(): XtbSettings {
+  try {
+    const text = window.localStorage.getItem(XTB_SETTINGS_STORAGE_KEY);
+    return migrateLegacyXtbMdDefaults(normalizeXtbSettings(text ? JSON.parse(text) : null));
+  } catch (_) {
+    return DEFAULT_XTB_SETTINGS;
+  }
+}
+
+function saveXtbSettings(settings: XtbSettings) {
+  try {
+    window.localStorage.setItem(XTB_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  } catch (_) {}
+}
+
+function normalizeXtbSettings(value: unknown): XtbSettings {
+  const source = value && typeof value === "object" ? value as Partial<XtbSettings> : {};
+  const method = XTB_METHODS.has(source.method as XtbSettings["method"]) ? source.method as XtbSettings["method"] : DEFAULT_XTB_SETTINGS.method;
+  const optLevel = XTB_OPT_LEVELS.has(source.optLevel as XtbSettings["optLevel"]) ? source.optLevel as XtbSettings["optLevel"] : DEFAULT_XTB_SETTINGS.optLevel;
+  const solvationModel = XTB_SOLVATION_MODELS.has(source.solvationModel as XtbSettings["solvationModel"]) ? source.solvationModel as XtbSettings["solvationModel"] : DEFAULT_XTB_SETTINGS.solvationModel;
+  const solvent = typeof source.solvent === "string" && source.solvent.trim() ? source.solvent.trim().toLowerCase() : DEFAULT_XTB_SETTINGS.solvent;
+  const properties = source.properties && typeof source.properties === "object" ? source.properties : {};
+  return {
+    method,
+    optLevel,
+    solvationModel,
+    solvent,
+    charge: clampInteger(source.charge, -5, 5, DEFAULT_XTB_SETTINGS.charge),
+    uhf: clampInteger(source.uhf, 0, 10, DEFAULT_XTB_SETTINGS.uhf),
+    threads: clampInteger(source.threads, 0, 32, DEFAULT_XTB_SETTINGS.threads),
+    accuracy: clampNumber(source.accuracy, 0.05, 10, DEFAULT_XTB_SETTINGS.accuracy),
+    electronicTemperature: clampInteger(source.electronicTemperature, 50, 5000, DEFAULT_XTB_SETTINGS.electronicTemperature),
+    properties: {
+      dipole: booleanSetting((properties as Partial<XtbSettings["properties"]>).dipole, DEFAULT_XTB_SETTINGS.properties.dipole),
+      wbo: booleanSetting((properties as Partial<XtbSettings["properties"]>).wbo, DEFAULT_XTB_SETTINGS.properties.wbo),
+      population: booleanSetting((properties as Partial<XtbSettings["properties"]>).population, DEFAULT_XTB_SETTINGS.properties.population),
+      molden: booleanSetting((properties as Partial<XtbSettings["properties"]>).molden, DEFAULT_XTB_SETTINGS.properties.molden),
+      alpha: booleanSetting((properties as Partial<XtbSettings["properties"]>).alpha, DEFAULT_XTB_SETTINGS.properties.alpha),
+      fod: booleanSetting((properties as Partial<XtbSettings["properties"]>).fod, DEFAULT_XTB_SETTINGS.properties.fod),
+      esp: booleanSetting((properties as Partial<XtbSettings["properties"]>).esp, DEFAULT_XTB_SETTINGS.properties.esp),
+      fukui: booleanSetting((properties as Partial<XtbSettings["properties"]>).fukui, DEFAULT_XTB_SETTINGS.properties.fukui),
+    },
+    mdTemperature: clampInteger(source.mdTemperature, 50, 2000, DEFAULT_XTB_SETTINGS.mdTemperature),
+    mdTimePs: clampNumber(source.mdTimePs, 0.05, 100, DEFAULT_XTB_SETTINGS.mdTimePs),
+    mdStepFs: clampNumber(source.mdStepFs, 0.1, 10, DEFAULT_XTB_SETTINGS.mdStepFs),
+    mdSnapshots: clampInteger(source.mdSnapshots, 1, 1000, DEFAULT_XTB_SETTINGS.mdSnapshots),
+    timeoutSeconds: clampInteger(source.timeoutSeconds, 30, 1200, DEFAULT_XTB_SETTINGS.timeoutSeconds),
+    saveRunFiles: booleanSetting(source.saveRunFiles, DEFAULT_XTB_SETTINGS.saveRunFiles),
+  };
+}
+
+function migrateLegacyXtbMdDefaults(settings: XtbSettings): XtbSettings {
+  if (settings.mdTimePs === 0.2 && settings.mdSnapshots === 10) {
+    return {
+      ...settings,
+      mdTimePs: DEFAULT_XTB_SETTINGS.mdTimePs,
+      mdSnapshots: DEFAULT_XTB_SETTINGS.mdSnapshots,
+    };
+  }
+  return settings;
+}
+
+function clampInteger(value: unknown, min: number, max: number, fallback: number) {
+  const number = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, number));
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number) {
+  const number = Number.parseFloat(String(value ?? ""));
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, number));
+}
+
+function booleanSetting(value: unknown, fallback: boolean) {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function xtbInputRequestForDocument(document: ViewerDocument): Pick<XtbRunRequest, "inputPath" | "inputText" | "inputExtension" | "sourcePath" | "label"> | null {
+  if (document.virtual && !isTauriRuntime()) {
+    const text = readBrowserDevVirtualTextDocument(document.path);
+    if (text === null) return null;
+    return {
+      inputText: text,
+      inputExtension: document.extension || structureExtensionFromPath(document.path),
+      sourcePath: document.sourcePath ?? null,
+      label: document.title,
+    };
+  }
+  return {
+    inputPath: document.path,
+    sourcePath: document.sourcePath ?? null,
+    label: document.title,
+  };
+}
+
+function xtbInputRequestForMolstarContextDocument(
+  contextDocument: MolstarContextDocument | null | undefined,
+  sourcePath: string | null | undefined,
+): Pick<XtbRunRequest, "inputText" | "inputExtension" | "sourcePath" | "label"> | null {
+  const entry = (contextDocument?.entries ?? []).find((candidate): candidate is MolstarContextEntry & { data: string } => (
+    typeof candidate?.data === "string" && candidate.data.trim().length > 0
+  ));
+  if (!entry) return null;
+  return {
+    inputText: entry.data,
+    inputExtension: molstarContextEntryExtension(entry.format),
+    sourcePath: sourcePath ?? null,
+    label: contextDocument?.label?.trim() || entry.label?.trim() || "Molstar selection",
+  };
+}
+
+function xtbOperationLabel(operation: XtbOperation) {
+  switch (operation) {
+    case "optimize":
+      return "xTB Optimize";
+    case "properties":
+      return "xTB Properties";
+    case "grid-properties":
+      return "xTB Grid Properties";
+    case "fep-preflight":
+      return "xTB FEP Preflight";
+    case "pose-refine":
+      return "xTB Pose Refine";
+    case "cube":
+      return "xTB Density Cube";
+    case "hessian":
+      return "xTB Hessian";
+    case "optimized-hessian":
+      return "xTB Optimized Hessian";
+    case "vip":
+      return "xTB Ionization Potential";
+    case "vea":
+      return "xTB Electron Affinity";
+    case "vipea":
+      return "xTB IP/EA";
+    case "vfukui":
+      return "xTB Fukui";
+    case "vomega":
+      return "xTB Electrophilicity";
+    case "md":
+      return "xTB MD";
+    case "metadyn":
+      return "xTB Metadynamics";
+    case "dock":
+      return "xTB Dock";
+  }
+}
+
+async function directChemistryJobGuardMessage(
+  engine: "xTB" | "CREST" | "PRISM",
+  inlineText: string | null | undefined,
+  extension: string | null | undefined,
+  path: string | null | undefined,
+) {
+  const atomCount = await directChemistryJobAtomCount(inlineText, extension, path);
+  if (atomCount === null || atomCount <= DIRECT_CHEMISTRY_JOB_ATOM_LIMIT) return null;
+  return `${engine} is disabled for full structures above ${DIRECT_CHEMISTRY_JOB_ATOM_LIMIT} atoms (${atomCount} atoms detected). Select an object or open a small-molecule file first.`;
+}
+
+async function directChemistryJobAtomCount(
+  inlineText: string | null | undefined,
+  extension: string | null | undefined,
+  path: string | null | undefined,
+) {
+  const text = typeof inlineText === "string" && inlineText.trim()
+    ? inlineText
+    : path ? await readStructureText(path, { maxBytes: DIRECT_CHEMISTRY_JOB_READ_LIMIT }).catch(() => "") : "";
+  if (!text.trim()) return null;
+  return estimateStructureAtomCount(text, extension ?? structureExtensionFromPath(path));
+}
+
+function estimateStructureAtomCount(text: string, extension: string | null | undefined) {
+  const normalizedExtension = String(extension || "").replace(/^\./u, "").toLowerCase();
+  const summary = parseStructureComposition(text, normalizedExtension);
+  const summaryCounts = summary ? [
+    ...summary.rows,
+    ...summary.componentRows,
+    ...summary.polymerRows,
+    ...summary.ligandRows,
+    ...summary.solventRows,
+  ].flatMap((row) => atomCountsFromLabelValue(row.label, row.value)) : [];
+  const summaryMax = Math.max(0, ...summaryCounts);
+  return summaryMax > 0 ? summaryMax : fallbackStructureAtomCount(text, normalizedExtension);
+}
+
+function atomCountsFromLabelValue(label: string, value: string) {
+  const counts: number[] = [];
+  const labelValue = `${label} ${value}`;
+  for (const match of labelValue.matchAll(/([\d,]+)\s+atoms?\b/giu)) {
+    const count = Number.parseInt(match[1].replaceAll(",", ""), 10);
+    if (Number.isFinite(count) && count > 0) counts.push(count);
+  }
+  if (/^atoms$/iu.test(label.trim())) {
+    const count = Number.parseInt(value.replaceAll(",", "").trim(), 10);
+    if (Number.isFinite(count) && count > 0) counts.push(count);
+  }
+  return counts;
+}
+
+function fallbackStructureAtomCount(text: string, extension: string) {
+  if (["pdb", "pdbqt", "ent"].includes(extension)) {
+    const count = text.split(/\r?\n/u).filter((line) => line.startsWith("ATOM") || line.startsWith("HETATM")).length;
+    return count > 0 ? count : null;
+  }
+  if (["xyz", "trj", "log"].includes(extension)) {
+    const count = Number.parseInt(text.trimStart().split(/\s+/u)[0] ?? "", 10);
+    return Number.isFinite(count) && count > 0 ? count : null;
+  }
+  return null;
+}
+
+async function requestXtbStatus(): Promise<XtbStatus> {
+  if (isTauriRuntime()) return invoke<XtbStatus>("xtb_status");
+  return browserDevXtbJson<XtbStatus>("/__burette/xtb-status");
+}
+
+async function requestConformerStatus(): Promise<ConformerStatus> {
+  if (isTauriRuntime()) return invoke<ConformerStatus>("conformer_status");
+  return browserDevConformerJson<ConformerStatus>("/__burette/conformer-status");
+}
+
+async function prepareConformerRequest(request: ConformerRunRequest): Promise<ConformerPreparedRun> {
+  if (isTauriRuntime()) return invoke<ConformerPreparedRun>("prepare_conformer_job", { request });
+  return browserDevConformerJson<ConformerPreparedRun>("/__burette/prepare-conformer-job", request);
+}
+
+async function runConformerRequest(request: ConformerRunRequest): Promise<ConformerRunResult> {
+  if (isTauriRuntime()) return invoke<ConformerRunResult>("run_conformer_job", { request });
+  return browserDevConformerJson<ConformerRunResult>("/__burette/run-conformer-job", request);
+}
+
+async function cancelConformerRequest(jobId: string): Promise<void> {
+  if (isTauriRuntime()) return invoke<void>("cancel_conformer_job", { jobId });
+  await browserDevConformerJson<{ ok: boolean }>("/__burette/cancel-conformer-job", { jobId });
+}
+
+async function installXtbRequest(): Promise<XtbStatus> {
+  if (isTauriRuntime()) return invoke<XtbStatus>("install_xtb");
+  return browserDevXtbJson<XtbStatus>("/__burette/install-xtb", {
+    method: "POST",
+  });
+}
+
+async function runXtbRequest(request: XtbRunRequest): Promise<XtbRunResult> {
+  if (isTauriRuntime()) return invoke<XtbRunResult>("run_xtb_job", { request });
+  return browserDevXtbJson<XtbRunResult>("/__burette/run-xtb-job", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+}
+
+async function cancelXtbRequest(jobId: string): Promise<void> {
+  if (isTauriRuntime()) return invoke<void>("cancel_xtb_job", { jobId });
+  await browserDevXtbJson<{ ok: boolean }>("/__burette/cancel-xtb-job", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jobId }),
+  });
+}
+
+async function browserDevXtbJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, { cache: "no-store", ...init });
+  const payload = await response.json().catch(() => null) as { error?: unknown } | T | null;
+  if (!response.ok) {
+    const message = payload && typeof (payload as { error?: unknown }).error === "string"
+      ? String((payload as { error: string }).error)
+      : `xTB browser-dev request failed with HTTP ${response.status}`;
+    throw new Error(message);
+  }
+  return payload as T;
+}
+
+async function browserDevConformerJson<T>(url: string, body?: unknown): Promise<T> {
+  const response = await fetch(url, body === undefined ? { cache: "no-store" } : {
+    method: "POST",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const payload = await response.json().catch(() => null) as { error?: unknown } | T | null;
+  if (!response.ok) {
+    const message = payload && typeof (payload as { error?: unknown }).error === "string"
+      ? String((payload as { error: string }).error)
+      : `CREST/PRISM browser-dev request failed with HTTP ${response.status}`;
+    throw new Error(message);
+  }
+  return payload as T;
+}
+
+type SelectedConformerInput = {
+  title: string;
+  extension: string;
+  text: string;
+};
+
+async function selectedPdbLigandConformerInput(
+  document: ViewerDocument,
+  action: StructureViewerAction,
+): Promise<SelectedConformerInput | null> {
+  if (action.type !== "focus_ligand") return null;
+  const extension = document.extension.toLowerCase();
+  if (extension !== "pdb" && extension !== "pdbqt" && extension !== "ent") return null;
+  const comp = selectorText(action.selector, "label_comp_id") ?? selectorText(action.selector, "auth_comp_id");
+  const chain = selectorText(action.selector, "auth_asym_id") ?? selectorText(action.selector, "label_asym_id");
+  const seq = selectorText(action.selector, "auth_seq_id") ?? selectorText(action.selector, "label_seq_id");
+  const icode = selectorText(action.selector, "pdbx_PDB_ins_code");
+  if (!comp || !chain || !seq) return null;
+  const sourceText = await readStructureText(document.sourcePath ?? document.path);
+  const records = sourceText.split(/\r?\n/u).filter((line) => pdbAtomLineMatchesLigand(line, comp, chain, seq, icode));
+  if (records.length === 0) return null;
+  const ligandCode = comp.toUpperCase();
+  const title = [ligandCode, chain, seq].filter(Boolean).join(" ");
+  const selectorSummary = [ligandCode, chain, seq + (icode ?? "")].filter(Boolean).join(" ");
+  const text = [
+    `${ligandCode} PDB ligand selection`,
+    `REMARK PDB ligand selection from ${document.title}`,
+    `REMARK Selected ${selectorSummary}`,
+    ...records,
+    "END",
+    "",
+  ].join("\n");
+  return { title, extension: "pdb", text };
+}
+
+function conformerInputForMolstarContextDocument(
+  contextDocument: MolstarContextDocument | null | undefined,
+): SelectedConformerInput | null {
+  const entry = (contextDocument?.entries ?? []).find((candidate): candidate is MolstarContextEntry & { data: string } => (
+    typeof candidate?.data === "string" && candidate.data.trim().length > 0
+  ));
+  if (!entry) return null;
+  return {
+    title: contextDocument?.label?.trim() || entry.label?.trim() || "Molstar selection",
+    extension: molstarContextEntryExtension(entry.format),
+    text: entry.data,
+  };
+}
+
+function pdbAtomLineMatchesLigand(line: string, comp: string, chain: string, seq: string, icode: string | null) {
+  const record = line.slice(0, 6).trim();
+  if (record !== "ATOM" && record !== "HETATM") return false;
+  const lineComp = line.slice(17, 20).trim().toUpperCase();
+  const lineChain = line.slice(21, 22).trim() || "-";
+  const lineSeq = line.slice(22, 26).trim();
+  const lineIcode = line.slice(26, 27).trim();
+  return lineComp === comp.toUpperCase()
+    && lineChain === chain
+    && lineSeq === seq
+    && (icode ? lineIcode === icode : true);
+}
+
+function selectorText(
+  selector: Record<string, string | number | Array<string | number>>,
+  key: string,
+) {
+  const value = selector[key];
+  if (Array.isArray(value) || value === undefined || value === null) return null;
+  return String(value);
+}
+
 function pathExtension(path: string) {
   const fileName = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
   if (fileName.toLowerCase().endsWith(".mae.gz")) return "maegz";
@@ -4608,7 +5719,7 @@ function ketcherSource3DFromText(title: string, text: string, extension: string)
 }
 
 function browserDevSampleProjectRoot() {
-  if (!import.meta.env.DEV || isTauriRuntime()) return null;
+  if (!import.meta.env.DEV || isTauriRuntime() || browserDevHasExplicitFiles()) return null;
   const repoRoot = String(import.meta.env.BURRETE_REPO_ROOT || "").trim().replace(/\/+$/u, "");
   return repoRoot ? `${repoRoot}/samples` : null;
 }
@@ -4640,6 +5751,37 @@ function ketcherDraftMolfileFromImportText(text: string) {
 function looksLikeMolfile(text: string) {
   const lines = text.split("\n");
   return lines.length >= 4 && /^\s*\d+\s+\d+\b/u.test(lines[3] ?? "");
+}
+
+async function writeClipboardText(text: string) {
+  try {
+    if (typeof navigator.clipboard?.writeText === "function") {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+  } catch (error) {
+    if (!copyTextWithSelectionFallback(text)) throw error;
+    return;
+  }
+  if (!copyTextWithSelectionFallback(text)) throw new Error("Clipboard write is unavailable.");
+}
+
+function copyTextWithSelectionFallback(text: string) {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "0";
+  textarea.style.opacity = "0";
+  document.body.append(textarea);
+  textarea.select();
+  textarea.setSelectionRange(0, textarea.value.length);
+  try {
+    return document.execCommand("copy");
+  } finally {
+    textarea.remove();
+  }
 }
 
 function downloadTextFile(fileName: string, text: string) {

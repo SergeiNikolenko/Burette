@@ -1,8 +1,8 @@
 import { Suspense, lazy } from "react";
-import { DEFAULT_SETTINGS_SECTION, normalizeSettingsSection, settingsSectionLabel, type SettingsSectionId } from "../../../lib/settings-sections";
+import { DEFAULT_SETTINGS_SECTION, normalizeSettingsSection, settingsSectionLabel, type AppSettingsSectionId } from "../../../lib/settings-sections";
 import { definePageKind } from "./types";
 
-export type SettingsLocation = { kind: "settings"; section: SettingsSectionId };
+export type SettingsLocation = { kind: "settings"; section: AppSettingsSectionId };
 
 const SettingsPanel = lazy(() => import("../../settings-panel").then((module) => ({
   default: module.SettingsPanel,

@@ -50,6 +50,8 @@ export type ViewerReloadOptions = {
   xyzrenderPreset?: string | null;
   xyzrenderControls?: XyzrenderControls | null;
   sdfPoseControlLabel?: string | null;
+  trajectoryAutoPlayOnce?: boolean | null;
+  molstarStyle?: "default" | "illustrative" | "polymer-ligand" | "cartoon" | "ball-and-stick" | "spacefill" | "line" | "molecular-surface" | null;
 };
 
 export type DockingSceneMode = "structureAll" | "structurePoses";
@@ -73,6 +75,225 @@ export type FepSetupRequest = {
   candidatePayload?: StructureDragPayload;
 };
 
+export type ConformerOperation = "crest-generate" | "prism-prune";
+
+export type ConformerToolStatus = {
+  installed: boolean;
+  executable: string | null;
+  version: string | null;
+  installHint: string;
+};
+
+export type ConformerStatus = {
+  crest: ConformerToolStatus;
+  prism: ConformerToolStatus;
+};
+
+export type ConformerSettings = {
+  method: "gfn2" | "gfn1" | "gfn0" | "gfnff";
+  solvent: "none" | "water" | "methanol" | "acetonitrile" | "dmso" | "chloroform";
+  charge: number;
+  uhf: number;
+  threads: number;
+  timeoutSeconds: number;
+  energyWindowKcalMol: number;
+  rmsdThresholdAngstrom: number;
+  samplingMode: "auto" | "normal" | "quick" | "squick" | "mquick";
+  prismTimeoutSeconds: number;
+  prismEnergySort: boolean;
+  prismRotamerPruning: boolean;
+};
+
+export type ConformerRunRequest = {
+  operation: ConformerOperation;
+  jobId?: string | null;
+  path: string;
+  title: string;
+  extension: string;
+  inputDataBase64?: string | null;
+  outputDirectory?: string | null;
+  workDir?: string | null;
+  method?: ConformerSettings["method"];
+  solvent?: string | null;
+  charge?: number;
+  uhf?: number;
+  threads?: number;
+  timeoutSeconds?: number;
+  energyWindowKcalMol?: number;
+  rmsdThresholdAngstrom?: number;
+  samplingMode?: ConformerSettings["samplingMode"];
+  prismEnergySort?: boolean;
+  prismRotamerPruning?: boolean;
+};
+
+export type ConformerPreparedRun = {
+  operation: ConformerOperation;
+  workDir: string;
+  logPath: string;
+  reportPath: string;
+  outputRoot: string;
+};
+
+export type ConformerArtifact = {
+  title: string;
+  path: string;
+  extension: string;
+  byteCount: number;
+  kind: "ensemble" | "report" | "log" | "summary" | "artifact";
+  validEnsemble?: boolean;
+};
+
+export type ConformerRunResult = {
+  ok: boolean;
+  operation: ConformerOperation;
+  title: string;
+  inputPath: string;
+  workDir: string;
+  logPath: string;
+  reportPath: string;
+  exitCode: number;
+  errorSummary?: string | null;
+  elapsedMs: number;
+  command: string[];
+  preparation?: {
+    path: string;
+    source: string;
+  };
+  recovery?: string | null;
+  artifacts: ConformerArtifact[];
+  primaryOpenPath: string | null;
+};
+
+export type ConformerJob = {
+  id: string;
+  title: string;
+  operation: ConformerOperation;
+  inputTitle: string;
+  status: "running" | "success" | "recovered" | "failed" | "cancelled";
+  startedAt: number;
+  workDir?: string | null;
+  logPath?: string | null;
+  completedAt?: number;
+  result?: ConformerRunResult | null;
+  error?: string | null;
+};
+
+export type XtbOperation =
+  | "optimize"
+  | "properties"
+  | "grid-properties"
+  | "fep-preflight"
+  | "pose-refine"
+  | "cube"
+  | "hessian"
+  | "optimized-hessian"
+  | "vip"
+  | "vea"
+  | "vipea"
+  | "vfukui"
+  | "vomega"
+  | "md"
+  | "metadyn"
+  | "dock";
+
+export type XtbStatus = {
+  installed: boolean;
+  executablePath?: string | null;
+  version?: string | null;
+  installer?: string | null;
+  installHint: string;
+};
+
+export type XtbSettings = {
+  method: "gfn2" | "gfn1" | "gfn0" | "gfnff";
+  optLevel: "loose" | "normal" | "tight" | "verytight";
+  solvationModel: "none" | "alpb" | "gbsa" | "cosmo" | "cpcmx";
+  solvent: string;
+  charge: number;
+  uhf: number;
+  threads: number;
+  accuracy: number;
+  electronicTemperature: number;
+  properties: {
+    dipole: boolean;
+    wbo: boolean;
+    population: boolean;
+    molden: boolean;
+    alpha: boolean;
+    fod: boolean;
+    esp: boolean;
+    fukui: boolean;
+  };
+  mdTemperature: number;
+  mdTimePs: number;
+  mdStepFs: number;
+  mdSnapshots: number;
+  timeoutSeconds: number;
+  saveRunFiles: boolean;
+};
+
+export type XtbRunRequest = {
+  operation: XtbOperation;
+  jobId?: string | null;
+  inputPath?: string | null;
+  inputText?: string | null;
+  inputExtension?: string | null;
+  sourcePath?: string | null;
+  secondaryPaths?: string[] | null;
+  label?: string | null;
+  method?: "gfn0" | "gfn1" | "gfn2" | "gfnff" | null;
+  charge?: number | null;
+  uhf?: number | null;
+  optLevel?: "loose" | "normal" | "tight" | "verytight" | null;
+  solvationModel?: "none" | "alpb" | "gbsa" | "cosmo" | "cpcmx" | null;
+  solvent?: string | null;
+  threads?: number | null;
+  accuracy?: number | null;
+  electronicTemperature?: number | null;
+  properties?: XtbSettings["properties"] | null;
+  mdTemperature?: number | null;
+  mdTimePs?: number | null;
+  mdStepFs?: number | null;
+  mdSnapshots?: number | null;
+  timeoutSeconds?: number | null;
+  saveRunFiles?: boolean | null;
+};
+
+export type XtbArtifact = {
+  path: string;
+  title: string;
+  extension: string;
+  kind: string;
+  byteCount: number;
+};
+
+export type XtbRunResult = {
+  ok: boolean;
+  operation: XtbOperation;
+  command: string[];
+  workDir: string;
+  elapsedMs: number;
+  exitCode?: number | null;
+  logPath: string;
+  reportPath: string;
+  primaryOpenPath?: string | null;
+  artifacts: XtbArtifact[];
+  summary?: unknown;
+  error?: string | null;
+};
+
+export type XtbJob = {
+  id: string;
+  title: string;
+  operation: XtbOperation;
+  status: "queued" | "running" | "success" | "recovered" | "failed" | "cancelled";
+  inputLabel: string;
+  startedAt: number;
+  completedAt?: number | null;
+  result?: XtbRunResult | null;
+  error?: string | null;
+};
+
 export type MergedCollectionDocument = {
   sourcePaths: string[];
   format: string;
@@ -89,6 +310,7 @@ export type ViewerDocument = {
   runtimePath: string;
   byteCount: number;
   virtual?: boolean;
+  sourcePath?: string | null;
   dockingRequest?: DockingDocumentRequest;
   mergedCollection?: MergedCollectionDocument;
   xyzrenderControls?: XyzrenderControls | null;
@@ -122,7 +344,7 @@ export type ViewerPreferences = {
   canvasBackground: "auto" | "black" | "graphite" | "white" | "transparent";
   openInDefaultDestination: "default-app" | "finder" | `editor:${string}`;
   rendererMode: "auto" | "grid2d" | "molstar" | "xyzrender-external";
-  molstarStyle: "default" | "illustrative";
+  molstarStyle: "default" | "illustrative" | "polymer-ligand" | "cartoon" | "ball-and-stick" | "spacefill" | "line" | "molecular-surface";
   conformerEngine: "datamol" | "rdkit";
   conformerCandidateCount: number;
   conformerRmsdCutoff: number;

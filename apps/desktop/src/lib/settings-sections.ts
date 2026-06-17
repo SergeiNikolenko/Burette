@@ -8,6 +8,8 @@ export type SettingsSectionId =
   | "agent"
   | "maintenance";
 
+export type AppSettingsSectionId = SettingsSectionId | "xtb";
+
 export type SettingsNavItem = {
   id: SettingsSectionId;
   label: string;
@@ -56,13 +58,15 @@ const settingsSectionIds = new Set<SettingsSectionId>(
   settingsNavGroups.flatMap((group) => group.items.map((item) => item.id)),
 );
 
-export function normalizeSettingsSection(value: unknown): SettingsSectionId {
+export function normalizeSettingsSection(value: unknown): AppSettingsSectionId {
+  if (value === "xtb") return "xtb";
   return typeof value === "string" && settingsSectionIds.has(value as SettingsSectionId)
     ? value as SettingsSectionId
     : DEFAULT_SETTINGS_SECTION;
 }
 
-export function settingsSectionLabel(section: SettingsSectionId) {
+export function settingsSectionLabel(section: AppSettingsSectionId) {
+  if (section === "xtb") return "xTB";
   for (const group of settingsNavGroups) {
     const item = group.items.find((candidate) => candidate.id === section);
     if (item) return item.label;

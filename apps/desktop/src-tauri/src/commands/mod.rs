@@ -1,5 +1,6 @@
 pub(crate) mod agent_integration;
 pub(crate) mod chemical_editors;
+pub(crate) mod conformer;
 pub(crate) mod descriptors;
 pub(crate) mod documents;
 pub(crate) mod grid;
@@ -10,3 +11,4 @@ pub(crate) mod startup;
 pub(crate) mod text_files;
 pub(crate) mod update_progress;
 pub(crate) mod updater;
+pub(crate) mod xtb;
