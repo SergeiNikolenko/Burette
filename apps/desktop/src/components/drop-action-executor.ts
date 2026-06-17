@@ -86,7 +86,7 @@ function runShellDropAction(
     return;
   }
   if (action.kind === "open-documents") {
-    void actions.openStructurePaths(action.paths);
+    void actions.openPaths(action.paths);
     return;
   }
   if (action.kind === "open-documents-combined-poses") {
@@ -102,9 +102,9 @@ function runShellDropAction(
     return;
   }
   if (action.kind === "open-structure-records") {
-    if (action.paths.length > 0) void actions.openStructurePaths(action.paths);
+    if (action.paths.length > 0) void actions.openPaths(action.paths);
     if (action.records.length > 0) void actions.openStructureRecords(action.records);
     return;
   }
-  void actions.openStructurePaths(payload.paths);
+  void actions.openPaths(payload.paths);
 }
