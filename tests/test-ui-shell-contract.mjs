@@ -2871,7 +2871,7 @@ assert.match(viteConfig, /if \(controls\.fieldCmapPalette\) args\.push\("--cmap-
 assert.match(viteConfig, /if \(controls\.fieldCmapMin != null && controls\.fieldCmapMax != null\) args\.push\("--cmap-range", String\(controls\.fieldCmapMin\), String\(controls\.fieldCmapMax\)\)/);
 assert.match(browserDevDocuments, /export async function openBrowserDevDockingDocument\(/);
 assert.match(browserDevDocuments, /options\.sceneMode\s*\?\s*`Mol\* scene: \$\{receptor\.title\} \+ \$\{ligands\.length\} more structure/);
-assert.match(browserDevDocuments, /:\s*`Docking: \$\{receptor\.title\} \+ \$\{ligands\.length\} ligand/);
+assert.match(browserDevDocuments, /:\s*`Docking: \$\{receptor\.title\} \+ \$\{dockingLigands\.length\} ligand/);
 assert.match(browserDevDocuments, /path: `burrete-docking:\/\/\$\{id\}`/);
 assert.match(browserDevDocuments, /virtual: true/);
 assert.match(browserDevDocuments, /dockingRequest: \{/);
