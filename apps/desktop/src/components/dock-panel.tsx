@@ -19,7 +19,7 @@ import { StructureInfoPanel } from "./structure-info-panel";
 import { DescriptorPanel } from "./descriptor-panel";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureTextDocument } from "../lib/structure-text";
-import type { TextFileDocument, ViewerDocument } from "../types";
+import type { ConformerJob, TextFileDocument, ViewerDocument, XtbJob } from "../types";
 
 type DockPanelProps = {
   area: DockArea;
@@ -290,7 +290,22 @@ function DockPanelContent({
   if (activeTabKind === "inspector") {
     if (area === "right" && activePageKind === "ketcher") return <KetcherInspectorPanel state={state} />;
     if (dockTextDocument) return <TextDocumentInfoPanel document={dockTextDocument} actions={actions} />;
-    return <StructureInfoPanel document={dockStructureDocument} dockDrops={dockDrops} actions={actions} />;
+    return (
+      <StructureInfoPanel
+        document={dockStructureDocument}
+        textDocument={activeTextDocument}
+        dockDrops={dockDrops}
+        conformerStatus={state.conformerStatus}
+        conformerSettings={state.conformerSettings}
+        viewerLigandSelection={state.viewerLigandSelection}
+        xtbStatus={state.xtbStatus}
+        xtbSettings={state.xtbSettings}
+        xtbJobs={state.xtbJobs}
+        preferences={state.preferences}
+        isBrowserDev={state.buildInfo.isBrowserDev}
+        actions={actions}
+      />
+    );
   }
   if (activeTabKind === "descriptors") {
     return <DescriptorPanel state={state} actions={actions} />;
@@ -313,10 +328,25 @@ function DockPanelContent({
     );
   }
   if (activeTabKind === "jobs") {
+    const jobCount = state.conformerJobs.length + state.xtbJobs.length;
     return (
       <div className="dock-content">
-        <Metric label="Renderer jobs" value="Idle" />
-        <Metric label="Open runtimes" value={String(state.documents.length)} />
+        <div className="dock-jobs-toolbar">
+          <span>Job history</span>
+          <button
+            type="button"
+            className="dock-action dock-action-compact"
+            disabled={jobCount === 0}
+            onClick={() => {
+              actions.clearConformerJobs();
+              actions.clearXtbJobs();
+            }}
+          >
+            Clear
+          </button>
+        </div>
+        <ConformerJobList jobs={state.conformerJobs} actions={actions} />
+        <XtbJobList jobs={state.xtbJobs} actions={actions} emptyLabel={state.conformerJobs.length === 0 ? "No jobs yet" : "No xTB jobs yet"} />
         <DockDropList items={dockDrops} actions={actions} emptyLabel="No job inputs" />
       </div>
     );
@@ -412,6 +442,243 @@ function TextDocumentInfoPanel({ document, actions }: { document: TextFileDocume
           </button>
         </div>
       </section>
+    </div>
+  );
+}
+
+function XtbJobList({
+  jobs,
+  actions,
+  emptyLabel,
+}: {
+  jobs: XtbJob[];
+  actions: ShellActions;
+  emptyLabel: string;
+}) {
+  return (
+    <div className="dock-drop-list">
+      {jobs.length === 0 ? (
+        emptyLabel ? <div className="dock-empty">{emptyLabel}</div> : null
+      ) : jobs.map((job) => {
+        const primaryOpenPath = job.result?.primaryOpenPath;
+        const isRunning = job.status === "running";
+        const openJobResult = () => {
+          if (!primaryOpenPath) return;
+          void actions.openPaths([primaryOpenPath]);
+        };
+        const showJobMenu = (event: React.MouseEvent<HTMLDivElement>) => {
+          const items = [
+            isRunning ? {
+              kind: "item" as const,
+              id: `xtb-job-${job.id}-cancel`,
+              text: "Cancel",
+              action: () => void actions.cancelXtbJob(job.id),
+            } : null,
+            job.result?.logPath ? {
+              kind: "item" as const,
+              id: `xtb-job-${job.id}-log`,
+              text: "Log",
+              action: () => void actions.openTextPaths([job.result!.logPath]),
+            } : null,
+            primaryOpenPath ? {
+              kind: "item" as const,
+              id: `xtb-job-${job.id}-open`,
+              text: "Open result",
+              action: openJobResult,
+            } : null,
+          ].filter((item) => item !== null);
+          if (items.length === 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+          void showNativeContextMenu(items, { x: event.clientX, y: event.clientY }, { forceWeb: true });
+        };
+        return (
+          <div
+            className="dock-drop-item dock-xtb-job-item"
+            key={job.id}
+            data-status={job.status}
+            data-has-primary-result={primaryOpenPath ? true : undefined}
+            role={primaryOpenPath ? "button" : undefined}
+            tabIndex={primaryOpenPath ? 0 : undefined}
+            onClick={primaryOpenPath ? openJobResult : undefined}
+            onContextMenu={showJobMenu}
+            onKeyDown={primaryOpenPath ? (event) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              openJobResult();
+            } : undefined}
+          >
+            <div className="dock-drop-item-header">
+              <div className="dock-drop-item-title">
+                <strong>{job.title}</strong>
+                <span className="dock-job-meta">
+                  <span className="dock-job-status">{job.status === "running" ? <span className="dock-job-spinner" aria-hidden="true" /> : null}{job.status}</span>
+                  {" · "}
+                  {job.inputLabel}
+                </span>
+              </div>
+              {isRunning || job.result ? (
+                <div className="dock-inline-action-row">
+                  {isRunning ? (
+                    <button
+                      type="button"
+                      className="dock-action dock-action-compact"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void actions.cancelXtbJob(job.id);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  ) : null}
+                  {job.result ? (
+                    <button
+                      type="button"
+                      className="dock-action dock-action-compact"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void actions.openTextPaths([job.result!.logPath]);
+                      }}
+                    >
+                      Log
+                    </button>
+                  ) : null}
+                  {primaryOpenPath ? (
+                    <button
+                      type="button"
+                      className="dock-action dock-action-compact"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openJobResult();
+                      }}
+                    >
+                      Open result
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            {!job.result && job.error ? <span>{job.error}</span> : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ConformerJobList({
+  jobs,
+  actions,
+}: {
+  jobs: ConformerJob[];
+  actions: ShellActions;
+}) {
+  if (jobs.length === 0) return null;
+  return (
+    <div className="dock-drop-list">
+      {jobs.map((job) => {
+        const primaryOpenPath = job.result?.primaryOpenPath;
+        const isRunning = job.status === "running";
+        const openJobResult = () => {
+          if (!primaryOpenPath) return;
+          void actions.openPaths([primaryOpenPath]);
+        };
+        const showJobMenu = (event: React.MouseEvent<HTMLDivElement>) => {
+          const items = [
+            isRunning ? {
+              kind: "item" as const,
+              id: `conformer-job-${job.id}-cancel`,
+              text: "Cancel",
+              action: () => void actions.cancelConformerJob(job.id),
+            } : null,
+            job.logPath ? {
+              kind: "item" as const,
+              id: `conformer-job-${job.id}-log`,
+              text: "Log",
+              action: () => void actions.openTextPaths([job.logPath!]),
+            } : null,
+            primaryOpenPath ? {
+              kind: "item" as const,
+              id: `conformer-job-${job.id}-open`,
+              text: "Open result",
+              action: openJobResult,
+            } : null,
+          ].filter((item) => item !== null);
+          if (items.length === 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+          void showNativeContextMenu(items, { x: event.clientX, y: event.clientY }, { forceWeb: true });
+        };
+        return (
+          <div
+            className="dock-drop-item dock-xtb-job-item"
+            key={job.id}
+            data-status={job.status}
+            data-has-primary-result={primaryOpenPath ? true : undefined}
+            role={primaryOpenPath ? "button" : undefined}
+            tabIndex={primaryOpenPath ? 0 : undefined}
+            onClick={primaryOpenPath ? openJobResult : undefined}
+            onContextMenu={showJobMenu}
+            onKeyDown={primaryOpenPath ? (event) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              openJobResult();
+            } : undefined}
+          >
+            <div className="dock-drop-item-header">
+              <div className="dock-drop-item-title">
+                <strong>{job.title}</strong>
+                <span className="dock-job-meta">
+                  <span className="dock-job-status">{job.status === "running" ? <span className="dock-job-spinner" aria-hidden="true" /> : null}{job.status}</span>
+                  {" · "}
+                  {job.inputTitle}
+                </span>
+              </div>
+              {isRunning || job.logPath || primaryOpenPath ? (
+                <div className="dock-inline-action-row">
+                  {isRunning ? (
+                    <button
+                      type="button"
+                      className="dock-action dock-action-compact"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void actions.cancelConformerJob(job.id);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  ) : null}
+                  {job.logPath ? (
+                    <button
+                      type="button"
+                      className="dock-action dock-action-compact"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void actions.openTextPaths([job.logPath!]);
+                      }}
+                    >
+                      Log
+                    </button>
+                  ) : null}
+                  {primaryOpenPath ? (
+                    <button
+                      type="button"
+                      className="dock-action dock-action-compact"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openJobResult();
+                      }}
+                    >
+                      Open result
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            {job.error ? <span>{job.error}</span> : null}
+          </div>
+        );
+      })}
     </div>
   );
 }

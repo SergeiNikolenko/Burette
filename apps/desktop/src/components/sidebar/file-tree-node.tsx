@@ -59,6 +59,19 @@ export function ProjectGroup({
     actions.toggleProjectExpanded(project.id);
   };
 
+  const handleRecursiveToggle = () => {
+    const folderPaths = collectProjectFolderPaths(projectTree);
+    setCollapsedFolderPaths((current) => {
+      const next = new Set(current);
+      for (const folderPath of folderPaths) {
+        if (expanded) next.add(folderPath);
+        else next.delete(folderPath);
+      }
+      return next;
+    });
+    actions.toggleProjectExpanded(project.id);
+  };
+
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
@@ -73,12 +86,26 @@ export function ProjectGroup({
   };
 
   const toggleFolderPath = (path: string) => {
+    const descendantPaths = collectProjectFolderPathsFor(projectTree, path).slice(1);
     setCollapsedFolderPaths((current) => {
       const next = new Set(current);
       if (next.has(path)) {
         next.delete(path);
+        for (const descendantPath of descendantPaths) next.add(descendantPath);
       } else {
         next.add(path);
+      }
+      return next;
+    });
+  };
+  const toggleFolderPathRecursive = (path: string) => {
+    const folderPaths = collectProjectFolderPathsFor(projectTree, path);
+    setCollapsedFolderPaths((current) => {
+      const next = new Set(current);
+      if (next.has(path)) {
+        for (const folderPath of folderPaths) next.delete(folderPath);
+      } else {
+        for (const folderPath of folderPaths) next.add(folderPath);
       }
       return next;
     });
@@ -113,6 +140,18 @@ export function ProjectGroup({
         <span className="project-group-copy">
           <span className="project-group-title">{project.title}</span>
         </span>
+        <button
+          type="button"
+          className="project-folder-toggle-button"
+          aria-label={expanded ? `Collapse ${project.title}` : `Expand ${project.title}`}
+          title={expanded ? "Collapse all nested folders" : "Expand all nested folders"}
+          onClick={(event) => {
+            event.stopPropagation();
+            handleRecursiveToggle();
+          }}
+        >
+          <FolderExpandCollapseIcon collapse={expanded} />
+        </button>
         <span className="project-group-actions">
           <RadixDropdownMenu
             items={projectMenuItems(project, actions)}
@@ -145,6 +184,7 @@ export function ProjectGroup({
               showAllFolderPaths={showAllFolderPaths}
               forceExpanded={hasSidebarQuery}
               toggleFolderPath={toggleFolderPath}
+              toggleFolderPathRecursive={toggleFolderPathRecursive}
               toggleShowAllFolderPath={toggleShowAllFolderPath}
             />
           ))}
@@ -283,6 +323,7 @@ function ProjectTreeNodeView({
   showAllFolderPaths,
   forceExpanded,
   toggleFolderPath,
+  toggleFolderPathRecursive,
   toggleShowAllFolderPath,
 }: {
   node: ProjectTreeNode;
@@ -294,6 +335,7 @@ function ProjectTreeNodeView({
   showAllFolderPaths: Set<string>;
   forceExpanded: boolean;
   toggleFolderPath: (path: string) => void;
+  toggleFolderPathRecursive: (path: string) => void;
   toggleShowAllFolderPath: (path: string) => void;
 }) {
   if (node.kind === "item") {
@@ -342,6 +384,18 @@ function ProjectTreeNodeView({
           <HugeiconsIcon icon={Folder02Icon} size={16} color="currentColor" strokeWidth={2} />
         </span>
         <span className="project-folder-name">{node.name}</span>
+        <button
+          type="button"
+          className="project-folder-toggle-button"
+          aria-label={expanded ? `Collapse ${node.path}` : `Expand ${node.path}`}
+          title={expanded ? "Collapse nested folders" : "Expand nested folders"}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (!forceExpanded) toggleFolderPathRecursive(node.path);
+          }}
+        >
+          <FolderExpandCollapseIcon collapse={expanded} />
+        </button>
       </div>
       {expanded && (
         <div className="project-folder-children" role="list">
@@ -357,6 +411,7 @@ function ProjectTreeNodeView({
               showAllFolderPaths={showAllFolderPaths}
               forceExpanded={forceExpanded}
               toggleFolderPath={toggleFolderPath}
+              toggleFolderPathRecursive={toggleFolderPathRecursive}
               toggleShowAllFolderPath={toggleShowAllFolderPath}
             />
           ))}
@@ -575,6 +630,25 @@ function buildProjectTree(items: SidebarProjectItem[]) {
   return roots;
 }
 
+function collectProjectFolderPaths(nodes: ProjectTreeNode[]) {
+  const paths: string[] = [];
+  for (const node of nodes) {
+    if (node.kind !== "folder") continue;
+    paths.push(node.path, ...collectProjectFolderPaths(node.children));
+  }
+  return paths;
+}
+
+function collectProjectFolderPathsFor(nodes: ProjectTreeNode[], path: string): string[] {
+  for (const node of nodes) {
+    if (node.kind !== "folder") continue;
+    if (node.path === path) return [node.path, ...collectProjectFolderPaths(node.children)];
+    const childPaths = collectProjectFolderPathsFor(node.children, path);
+    if (childPaths.length > 0) return childPaths;
+  }
+  return [];
+}
+
 function projectDepthStyle(depth: number): CSSProperties {
   return { "--project-depth": depth } as CSSProperties;
 }
@@ -599,6 +673,24 @@ function MoreIcon() {
       <circle cx="4" cy="8" r="1.2" fill="currentColor" />
       <circle cx="8" cy="8" r="1.2" fill="currentColor" />
       <circle cx="12" cy="8" r="1.2" fill="currentColor" />
+    </svg>
+  );
+}
+
+function FolderExpandCollapseIcon({ collapse }: { collapse: boolean }) {
+  return collapse ? (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M3.5 3.5L6.9 6.9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M6.9 4.7V6.9H4.7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12.5 12.5L9.1 9.1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M9.1 11.3V9.1H11.3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ) : (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M6.9 6.9L3.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M3.5 5.7V3.5H5.7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9.1 9.1L12.5 12.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M12.5 10.3V12.5H10.3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

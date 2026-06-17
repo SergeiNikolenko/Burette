@@ -231,11 +231,12 @@ export async function openBrowserDevDockingDocument(
   const receptor = await readBrowserDevDockingPayload(receptorPath);
   const ligands = await Promise.all(Array.from(new Set(ligandPaths)).map(readBrowserDevDockingPayload));
   if (ligands.length === 0) throw new Error("Choose at least one ligand or pose file for docking view");
+  const dockingLigands = options.sceneMode ? ligands : expandBrowserDevDockingLigandPoses(ligands);
 
   const id = stableId(`docking:${receptor.path}:${ligands.map((ligand) => ligand.path).join("|")}`);
   const label = options.sceneMode
     ? `Mol* scene: ${receptor.title} + ${ligands.length} more structure${ligands.length === 1 ? "" : "s"}`
-    : `Docking: ${receptor.title} + ${ligands.length} ligand${ligands.length === 1 ? "" : "s"}`;
+    : `Docking: ${receptor.title} + ${dockingLigands.length} ligand${dockingLigands.length === 1 ? "" : "s"}`;
   const visuals = resolvePreviewVisuals(preferences);
   const sdfGridPath = ligands.find((ligand) => (
     ligand.format.molstarFormat === "sdf"
@@ -251,7 +252,7 @@ export async function openBrowserDevDockingDocument(
     allowMolstarFallback: false,
     label,
     byteCount: receptor.byteCount + ligands.reduce((total, ligand) => total + ligand.byteCount, 0),
-    previewByteCount: receptor.bytes.length + ligands.reduce((total, ligand) => total + ligand.bytes.length, 0),
+    previewByteCount: receptor.bytes.length + dockingLigands.reduce((total, ligand) => total + ligand.bytes.length, 0),
     quickLookBuild: "burrete-browser-dev-docking",
     debug: false,
     theme: visuals.theme,
@@ -277,12 +278,12 @@ export async function openBrowserDevDockingDocument(
       activePose: options.activePose ?? null,
       sceneMode: options.sceneMode ?? null,
       receptor: dockingConfigSource(receptor),
-      ligands: ligands.map(dockingConfigSource),
+      ligands: dockingLigands.map(dockingConfigSource),
     },
   };
   const payloads = {
     receptor: { dataBase64: bytesToBase64(receptor.bytes) },
-    ligands: ligands.map((ligand) => ({ dataBase64: bytesToBase64(ligand.bytes) })),
+    ligands: dockingLigands.map((ligand) => ({ dataBase64: bytesToBase64(ligand.bytes) })),
   };
   const html = viewerHtml(
     label,
@@ -620,7 +621,10 @@ async function openBrowserDevDocumentFromBytes(
     throw new Error(`${path} does not contain supported molecule grid records`);
   }
 
-  const format = formatForExtension(extension);
+  const sourceXyzFrameCount = countXyzFrames(text);
+  const format = sourceXyzFrameCount > 0 && shouldTreatTextAsXyzFrames(extension)
+    ? { molstarFormat: "xyz", binary: false, externalOnly: false, canOpenInVesta: false }
+    : formatForExtension(extension);
   const maestroPreview = isMaestroPreviewExtension(extension)
     ? convertedDataFromText(text, extension, fileTitle(path))
     : null;
@@ -636,7 +640,7 @@ async function openBrowserDevDocumentFromBytes(
     ? convertedMolstarData.bytes
     : null;
   const runtimeFrameText = maestroPreview?.bytes ? decodeUtf8(maestroPreview.bytes) : text;
-  const xyzFrameCount = runtimeFormat.molstarFormat === "xyz" && !runtimeFormat.binary ? countXyzFrames(runtimeFrameText) : 0;
+  const xyzFrameCount = runtimeFormat.molstarFormat === "xyz" && !runtimeFormat.binary ? Math.max(sourceXyzFrameCount, countXyzFrames(runtimeFrameText)) : 0;
   const pdbModelCount = runtimeFormat.molstarFormat === "pdb" && !runtimeFormat.binary ? countPdbModels(runtimeFrameText) : 0;
   const trajectoryFrameCount = Math.max(xyzFrameCount, pdbModelCount);
   const shouldOpenTrajectoryInMolstar = trajectoryFrameCount > 1 && requestedMode === "auto";
@@ -734,9 +738,12 @@ async function readBrowserDevDockingPayload(path: string): Promise<BrowserDevDoc
   if (originalBytes.length > MAX_STRUCTURE_FILE_SIZE) {
     throw new Error(`${path} is larger than the 75 MB preview limit`);
   }
-  const format = formatForExtension(extension);
   const title = fileTitle(path);
   const text = await decodeStructureText(originalBytes, extension);
+  const sourceXyzFrameCount = countXyzFrames(text);
+  const format = sourceXyzFrameCount > 0 && shouldTreatTextAsXyzFrames(extension)
+    ? { molstarFormat: "xyz", binary: false, externalOnly: false, canOpenInVesta: false }
+    : formatForExtension(extension);
   const converted = convertedDataFromText(text, extension, title);
   if (converted && shouldUseConvertedMolstarData(format, converted, extension)) {
     return {
@@ -752,6 +759,73 @@ async function readBrowserDevDockingPayload(path: string): Promise<BrowserDevDoc
     throw new Error(`${path} cannot be added to Mol* docking view because it needs xyzrender conversion`);
   }
   return { path, title, extension, format, bytes: originalBytes, byteCount: originalBytes.length };
+}
+
+function expandBrowserDevDockingLigandPoses(ligands: BrowserDevDockingPayload[]) {
+  return ligands.flatMap((ligand) => {
+    if (ligand.format.binary) return [ligand];
+    const text = decodeUtf8(ligand.bytes);
+    const poseTexts = dockingPoseTextsForLigand(ligand, text);
+    if (poseTexts.length <= 1) return [ligand];
+    return poseTexts.map((poseText, index) => {
+      const bytes = new TextEncoder().encode(poseText);
+      return {
+        ...ligand,
+        title: `${ligand.title} pose ${index + 1}`,
+        bytes,
+        byteCount: bytes.length,
+      };
+    });
+  });
+}
+
+function dockingPoseTextsForLigand(ligand: BrowserDevDockingPayload, text: string) {
+  const format = ligand.format.molstarFormat;
+  if (format === "sdf") return parseSdf(text).map((record) => record.molblock).filter((record): record is string => Boolean(record));
+  if (format === "pdb") return splitPdbModelTexts(text);
+  if (format === "xyz") return splitXyzFrameTexts(text);
+  return [];
+}
+
+function splitPdbModelTexts(text: string) {
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const firstModelIndex = lines.findIndex((line) => /^MODEL\b/u.test(line));
+  if (firstModelIndex < 0) return [];
+  const header = lines.slice(0, firstModelIndex).filter((line) => !/^END\b/u.test(line));
+  const models: string[][] = [];
+  let current: string[] | null = null;
+  for (const line of lines.slice(firstModelIndex)) {
+    if (/^MODEL\b/u.test(line)) {
+      current = [];
+      continue;
+    }
+    if (/^ENDMDL\b/u.test(line)) {
+      if (current?.some((modelLine) => /^(?:ATOM|HETATM)\b/u.test(modelLine))) models.push(current);
+      current = null;
+      continue;
+    }
+    if (current) current.push(line);
+  }
+  if (models.length <= 1) return [];
+  return models.map((model) => [...header, ...model.filter((line) => !/^END\b/u.test(line)), "END", ""].join("\n"));
+}
+
+function splitXyzFrameTexts(text: string) {
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const frames: string[] = [];
+  let index = 0;
+  while (index < lines.length && frames.length < 100000) {
+    while (index < lines.length && !lines[index].trim()) index += 1;
+    const atomCount = Number.parseInt(lines[index]?.trim().split(/\s+/u)[0] ?? "", 10);
+    if (!Number.isFinite(atomCount) || atomCount <= 0) break;
+    if (index + atomCount + 1 >= lines.length) break;
+    const frameLines = lines.slice(index, index + atomCount + 2);
+    const atomLines = frameLines.slice(2);
+    if (atomLines.length !== atomCount || atomLines.some((line) => !line.trim())) break;
+    frames.push(`${frameLines.join("\n")}\n`);
+    index += atomCount + 2;
+  }
+  return frames.length > 1 ? frames : [];
 }
 
 function dockingConfigSource(source: BrowserDevDockingPayload) {
@@ -1358,6 +1432,10 @@ function formatForExtension(extension: string): FormatInfo {
     };
   }
   throw new Error(`Unsupported structure extension: ${extension}`);
+}
+
+function shouldTreatTextAsXyzFrames(extension: string) {
+  return ["log", "out", "trj", "arc", "xyz"].includes(extension);
 }
 
 function molstarFormatForExtension(extension: string): FormatInfo | null {

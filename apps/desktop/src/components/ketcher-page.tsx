@@ -24,7 +24,7 @@ import type { StructureDragRecord } from "../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "./drop-action-executor";
 import type { KetcherLocation } from "./editor-area/page-kinds";
 import type { KetcherEditorApi } from "./ketcher-editor";
-import { RadixDropdownMenu } from "./radix-menu";
+import { RadixDropdownMenu, showRadixContextMenu } from "./radix-menu";
 import { ShortcutTooltip } from "./shortcut-tooltip";
 import type { KetcherImportRequest, KetcherSketchTarget, KetcherSource3D, ShellActions, ShellViewState } from "./types";
 
@@ -240,6 +240,8 @@ const KETCHER_IMPORT_FORMATS: KetcherTextFormat[] = [
   "cdx",
   "inchi",
 ];
+const DEFAULT_KETCHER_EXPORT_FORMAT: KetcherTextFormat = "sdf-v3000";
+const DEFAULT_KETCHER_IMPORT_FORMAT: KetcherTextFormat = "sdf-v3000";
 const KETCHER_EXPORT_FILE_EXTENSIONS: Record<KetcherTextFormat, string> = {
   smiles: "smi",
   "extended-smiles": "smi",
@@ -596,6 +598,44 @@ export function KetcherPage({
     actions.setDockTool("bottom", "ketcher");
     startImport(format);
   }, [actions, startImport]);
+
+  const exportFormatItems = useMemo(() => KETCHER_EXPORT_FORMATS.map((format) => ({
+    kind: "item" as const,
+    id: `export-${format}`,
+    text: KETCHER_FORMAT_LABELS[format],
+    detail: `Export ${KETCHER_FORMAT_DETAILS[format]}`,
+    action: () => selectExportFormat(format),
+  })), [selectExportFormat]);
+
+  const importFormatItems = useMemo(() => KETCHER_IMPORT_FORMATS.map((format) => ({
+    kind: "item" as const,
+    id: `import-${format}`,
+    text: KETCHER_FORMAT_LABELS[format],
+    detail: `Import ${KETCHER_FORMAT_DETAILS[format]}`,
+    action: () => selectImportFormat(format),
+  })), [selectImportFormat]);
+
+  const openDefaultExportPanel = useCallback(() => {
+    if (!ketcher) return;
+    selectExportFormat(panelMode?.purpose === "export" ? panelMode.format : DEFAULT_KETCHER_EXPORT_FORMAT);
+  }, [ketcher, panelMode, selectExportFormat]);
+
+  const openDefaultImportPanel = useCallback(() => {
+    if (!ketcher) return;
+    selectImportFormat(panelMode?.purpose === "import" ? panelMode.format : DEFAULT_KETCHER_IMPORT_FORMAT);
+  }, [ketcher, panelMode, selectImportFormat]);
+
+  const showExportFormatMenu = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
+    if (!ketcher) return;
+    event.preventDefault();
+    showRadixContextMenu(exportFormatItems, { x: event.clientX, y: event.clientY });
+  }, [exportFormatItems, ketcher]);
+
+  const showImportFormatMenu = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
+    if (!ketcher) return;
+    event.preventDefault();
+    showRadixContextMenu(importFormatItems, { x: event.clientX, y: event.clientY });
+  }, [importFormatItems, ketcher]);
 
   const applyOutput = useCallback(async () => {
     if (!ketcher || panelMode?.purpose !== "import") return;
@@ -1166,40 +1206,26 @@ export function KetcherPage({
       </div>
       <footer className="ketcher-page-footer">
         <span className="ketcher-page-status">{status}</span>
-        <RadixDropdownMenu
-          align="end"
-          side="top"
-          items={KETCHER_EXPORT_FORMATS.map((format) => ({
-            kind: "item" as const,
-            id: `export-${format}`,
-            text: KETCHER_FORMAT_LABELS[format],
-            detail: `Export ${KETCHER_FORMAT_DETAILS[format]}`,
-            action: () => selectExportFormat(format),
-          }))}
-          trigger={(
-            <button type="button" className={panelMode?.purpose === "export" ? "is-active" : undefined} disabled={!ketcher}>
-              Export
-              <ShortcutTooltip label="Export sketch to a text or image format" side="top" />
-            </button>
-          )}
-        />
-        <RadixDropdownMenu
-          align="end"
-          side="top"
-          items={KETCHER_IMPORT_FORMATS.map((format) => ({
-            kind: "item" as const,
-            id: `import-${format}`,
-            text: KETCHER_FORMAT_LABELS[format],
-            detail: `Import ${KETCHER_FORMAT_DETAILS[format]}`,
-            action: () => selectImportFormat(format),
-          }))}
-          trigger={(
-            <button type="button" className={panelMode?.purpose === "import" ? "is-active" : undefined} disabled={!ketcher}>
-              Import
-              <ShortcutTooltip label="Import structure text into Ketcher" side="top" />
-            </button>
-          )}
-        />
+        <button
+          type="button"
+          className={panelMode?.purpose === "export" ? "is-active" : undefined}
+          disabled={!ketcher}
+          onClick={openDefaultExportPanel}
+          onContextMenu={showExportFormatMenu}
+        >
+          Export
+          <ShortcutTooltip label="Export sketch to a text or image format" side="top" />
+        </button>
+        <button
+          type="button"
+          className={panelMode?.purpose === "import" ? "is-active" : undefined}
+          disabled={!ketcher}
+          onClick={openDefaultImportPanel}
+          onContextMenu={showImportFormatMenu}
+        >
+          Import
+          <ShortcutTooltip label="Import structure text into Ketcher" side="top" />
+        </button>
       </footer>
       {panelMode && dockPortalElement ? createPortal((
         <section className="ketcher-dock-workflow" data-mode={panelMode.purpose} aria-label={`${panelMode.purpose === "import" ? "Import" : "Export"} panel`}>

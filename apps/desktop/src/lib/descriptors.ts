@@ -307,7 +307,15 @@ async function fetchBrowserDevJson<T>(path: string, body?: Record<string, unknow
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await response.text();
-  const payload = text ? JSON.parse(text) as Record<string, unknown> : {};
+  let payload: Record<string, unknown> = {};
+  if (text) {
+    try {
+      payload = JSON.parse(text) as Record<string, unknown>;
+    } catch (_) {
+      const preview = text.replace(/\s+/g, " ").trim().slice(0, 120);
+      throw new Error(`Browser-dev descriptor endpoint returned non-JSON response (${response.status}): ${preview}`);
+    }
+  }
   if (!response.ok) {
     const message = typeof payload.error === "string" ? payload.error : `Browser-dev descriptor request failed: ${response.status}`;
     throw new Error(message);

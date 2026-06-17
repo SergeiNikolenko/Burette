@@ -1,19 +1,34 @@
-import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { useEffect, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { showNativeContextMenu } from "./native-context-menu";
 import { formatBytes } from "./format";
+import { RangeControl, SelectControl, ToggleControl } from "./settings-panel/setting-control";
+import { ShortcutTooltip } from "./shortcut-tooltip";
 import type { MenuItemSpec } from "./menu-types";
-import type { ShellActions, ShellViewState } from "./types";
+import type { ShellActions, ShellViewState, StructureViewerAction } from "./types";
 import { structureBriefForDocument, type StructureBriefRow as BriefRow } from "../lib/structure-brief";
-import { parseStructureComposition, type StructureCompositionSummary, type StructureSummaryRow, type StructureViewerAction } from "../lib/structure-composition";
+import { parseStructureComposition, type StructureCompositionSummary, type StructureSummaryRow } from "../lib/structure-composition";
+import { canInspectConformerEnsemble, canShowConformerWorkflow, canUseConformerWorkflow } from "../lib/conformer-ensemble";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureText } from "../lib/structure-text";
-import type { ViewerDocument } from "../types";
+import type { ConformerSettings, TextFileDocument, ViewerDocument, XtbArtifact, XtbRunResult, XtbSettings } from "../types";
 
 type StructureInfoPanelProps = {
   document: ViewerDocument | null;
+  textDocument?: TextFileDocument | null;
   dockDrops: ShellViewState["dockDroppedStructures"];
+  conformerStatus: ShellViewState["conformerStatus"];
+  conformerSettings: ShellViewState["conformerSettings"];
+  viewerLigandSelection: ShellViewState["viewerLigandSelection"];
+  xtbStatus: ShellViewState["xtbStatus"];
+  xtbSettings: ShellViewState["xtbSettings"];
+  xtbJobs: ShellViewState["xtbJobs"];
+  preferences: ShellViewState["preferences"];
+  isBrowserDev: boolean;
   actions: ShellActions;
 };
+
+type XtbSettingsScope = "general" | "optimize" | "properties" | "optimized-hessian" | "vipea" | "vfukui" | "md" | "metadyn";
+type XtbSettingsCategory = "core" | "solvation" | "properties" | "dynamics" | "output";
 
 const SDF_CONTEXT_STYLE_OPTIONS = [
   { value: "line", label: "Line" },
@@ -22,26 +37,22 @@ const SDF_CONTEXT_STYLE_OPTIONS = [
   { value: "molecular-surface", label: "Surface" },
   { value: "match", label: "Match" },
 ] as const;
-const STRUCTURE_SCENE_STYLE_OPTIONS = [
-  { value: "illustrative", label: "Colorful" },
-  { value: "line", label: "Line" },
-  { value: "ball-and-stick", label: "Ball+Stick" },
-  { value: "molecular-surface", label: "Surface" },
-] as const;
 
-type SdfContextStyle =
-  | typeof SDF_CONTEXT_STYLE_OPTIONS[number]["value"]
-  | typeof STRUCTURE_SCENE_STYLE_OPTIONS[number]["value"];
+type SdfContextStyle = typeof SDF_CONTEXT_STYLE_OPTIONS[number]["value"];
 const SDF_CONTEXT_OPACITY_DEFAULT = 0.4;
 const SDF_CONTEXT_OPACITY_MIN = 0.04;
 const SDF_CONTEXT_OPACITY_MAX = 1;
-const STRUCTURE_SCENE_OPACITY_MAX = 1;
+const INFO_TRAJECTORY_CONTROL_LIMIT = 200;
 
-export function StructureInfoPanel({ document, dockDrops, actions }: StructureInfoPanelProps) {
+export function StructureInfoPanel({ document, textDocument, dockDrops, conformerStatus, conformerSettings, viewerLigandSelection, xtbStatus, xtbSettings, xtbJobs, preferences, isBrowserDev, actions }: StructureInfoPanelProps) {
   const composition = useStructureComposition(document);
   const [activeActionKey, setActiveActionKey] = useState<string | null>(null);
   const [sdfContextStyle, setSdfContextStyle] = useState<SdfContextStyle>("line");
   const [sdfContextOpacity, setSdfContextOpacity] = useState(SDF_CONTEXT_OPACITY_DEFAULT);
+  const [xtbOpen, setXtbOpen] = useState(true);
+  const [xtbSettingsOpen, setXtbSettingsOpen] = useState(false);
+  const [xtbSettingsScope, setXtbSettingsScope] = useState<XtbSettingsScope>("general");
+  const [conformerOpen, setConformerOpen] = useState(true);
 
   useEffect(() => {
     setActiveActionKey(null);
@@ -49,13 +60,14 @@ export function StructureInfoPanel({ document, dockDrops, actions }: StructureIn
 
   useEffect(() => {
     if (!document) return;
-    const sceneControls = document.renderer === "molstar" && Boolean(document.dockingRequest?.sceneMode || isStructureFrameStyleDocument(document));
-    const style = readSdfContextStylePreference(document, sceneControls ? STRUCTURE_SCENE_STYLE_OPTIONS : SDF_CONTEXT_STYLE_OPTIONS);
-    setSdfContextStyle(style);
+    setSdfContextStyle(readSdfContextStylePreference(document));
     setSdfContextOpacity(readSdfContextOpacityPreference(document));
   }, [document]);
 
   if (!document) {
+    if (textDocument) {
+      return <TextFileInfoPanel document={textDocument} dockDrops={dockDrops} actions={actions} />;
+    }
     return (
       <div className="dock-content structure-brief">
         <section className="structure-brief-card">
@@ -71,28 +83,29 @@ export function StructureInfoPanel({ document, dockDrops, actions }: StructureIn
   const brief = structureBriefForDocument(document, formatBytes(document.byteCount));
   const compositionSummary = composition.documentId === document.id ? composition.summary : null;
   const compositionPending = composition.documentId === document.id && composition.loading;
-  const compositionError = composition.documentId === document.id ? composition.error : null;
+  const rawCompositionError = composition.documentId === document.id ? composition.error : null;
+  const compositionError = isVirtualMolstarScene(document) ? null : rawCompositionError;
   const selectedEntity = selectedStructureRow(document, compositionSummary, activeActionKey);
-  const isMolstarDocument = document.renderer === "molstar";
-  const hasStructureScene = isMolstarDocument && Boolean(document.dockingRequest?.sceneMode);
-  const hasStructureSceneAllMode = isMolstarDocument && document.dockingRequest?.poseMode === "all";
-  const hasStructureFrameAllMode = isMolstarDocument && shouldShowStructureFrameStyleCard(document, compositionSummary);
-  const allStructureStyleCard = hasStructureSceneAllMode
-    ? {
-        title: "All structures",
-        ariaLabel: "All structures style",
-        opacityLabel: "All structures opacity",
-      }
-    : hasStructureFrameAllMode
-      ? {
-          title: "All frames",
-          ariaLabel: "All frames style",
-          opacityLabel: "All frames opacity",
-        }
-      : null;
+  const poseControls = structurePoseControlsFor(document, compositionSummary);
+  const contextStyleCard = structureContextStyleCardFor(document, compositionSummary);
+  const latestXtbJob = latestXtbJobForDocument(document, xtbJobs);
+  const structureXtbArtifact = xtbArtifactInfoForPath(document.path, document.extension);
   const clearSelection = () => {
     actions.runStructureViewerAction(document, { type: "clear_selection", label: "Clear selection" });
     setActiveActionKey(null);
+  };
+  const openXtbSettingsFor = (scope: XtbSettingsScope) => {
+    setXtbSettingsScope(scope);
+    setXtbSettingsOpen(true);
+  };
+  const showXtbSettingsFor = (scope: XtbSettingsScope) => (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openXtbSettingsFor(scope);
+  };
+  const toggleGeneralXtbSettings = () => {
+    setXtbSettingsScope("general");
+    setXtbSettingsOpen((open) => xtbSettingsScope === "general" ? !open : true);
   };
   const showFileActionsMenu = (event: MouseEvent<HTMLButtonElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -141,7 +154,7 @@ export function StructureInfoPanel({ document, dockDrops, actions }: StructureIn
         <p>{inspectorSummaryLine(brief.kind, compositionSummary, compositionPending, compositionError)}</p>
       </section>
 
-      {isMolstarDocument && compositionSummary && hasSdfMoleculeCollection(compositionSummary) ? (
+      {contextStyleCard ? (
         <SdfContextStyleCard
           document={document}
           actions={actions}
@@ -149,28 +162,7 @@ export function StructureInfoPanel({ document, dockDrops, actions }: StructureIn
           setValue={setSdfContextStyle}
           opacity={sdfContextOpacity}
           setOpacity={setSdfContextOpacity}
-        />
-      ) : null}
-
-      {hasStructureScene ? (
-        <StructureSceneControlsCard document={document} actions={actions} />
-      ) : null}
-
-      {allStructureStyleCard ? (
-        <SdfContextStyleCard
-          document={document}
-          actions={actions}
-          setValue={setSdfContextStyle}
-          setOpacity={setSdfContextOpacity}
-          title={allStructureStyleCard.title}
-          detail="All-together view"
-          ariaLabel={allStructureStyleCard.ariaLabel}
-          opacityLabel={allStructureStyleCard.opacityLabel}
-          styleOptions={STRUCTURE_SCENE_STYLE_OPTIONS}
-          opacityDisabled={sdfContextStyle === "illustrative"}
-          value={normalizeStructureSceneStyle(sdfContextStyle)}
-          opacity={clampOpacity(sdfContextOpacity, SDF_CONTEXT_OPACITY_MIN, STRUCTURE_SCENE_OPACITY_MAX)}
-          opacityMax={STRUCTURE_SCENE_OPACITY_MAX}
+          copy={contextStyleCard}
         />
       ) : null}
 
@@ -189,6 +181,97 @@ export function StructureInfoPanel({ document, dockDrops, actions }: StructureIn
             <div className="dock-empty">{compositionPending ? "Reading structure text..." : `Composition unavailable: ${compositionError}`}</div>
           )}
         </section>
+      ) : null}
+
+      <ConformerWorkflowCard
+        document={document}
+        selectedEntity={selectedEntity}
+        viewerLigandSelection={viewerLigandSelection}
+        status={conformerStatus}
+        settings={conformerSettings}
+        open={conformerOpen}
+        setOpen={setConformerOpen}
+        actions={actions}
+      />
+
+      <section className="structure-brief-card structure-inspector-xtb-card" data-collapsed={!xtbOpen || undefined}>
+        <div className="structure-inspector-section-header">
+          <button
+            type="button"
+            className="structure-inspector-section-title-button"
+            aria-expanded={xtbOpen}
+            onClick={() => setXtbOpen((open) => !open)}
+          >
+            xTB
+            <ShortcutTooltip label="Semiempirical quantum calculations for the current molecular scope." />
+          </button>
+          <span>{xtbStatusLine(xtbStatus, isBrowserDev)}</span>
+        </div>
+        {xtbOpen ? (
+          <>
+            <div
+              className="structure-inspector-xtb-summary"
+              data-modified={xtbSettingsModified(xtbSettings) || undefined}
+              data-xtb-tooltip="Hamiltonian, convergence, charge, spin, solvation, and parallelism for xTB calculations."
+            >
+              <span>{xtbSettingsSummary(xtbSettings)}</span>
+              {xtbSettingsModified(xtbSettings) ? (
+                <button type="button" className="structure-inspector-inline-action" onClick={() => actions.setXtbSettings(defaultXtbSettings)}>
+                  Reset
+                <ShortcutTooltip label="Restore the default GFN2 gas-phase calculation settings." />
+                </button>
+              ) : null}
+            </div>
+            <div className="structure-brief-actions structure-brief-actions-grid">
+              <XtbActionButton label="Optimize" tooltip={XTB_ACTION_TOOLTIPS.optimize} onClick={() => void actions.runXtbActiveOperation("optimize")} onContextMenu={showXtbSettingsFor("optimize")} />
+              <XtbActionButton label="Properties" tooltip={XTB_ACTION_TOOLTIPS.properties} onClick={() => void actions.runXtbActiveOperation("properties")} onContextMenu={showXtbSettingsFor("properties")} />
+              <XtbActionButton label="Frequencies" tooltip={XTB_ACTION_TOOLTIPS["optimized-hessian"]} onClick={() => void actions.runXtbActiveOperation("optimized-hessian")} onContextMenu={showXtbSettingsFor("optimized-hessian")} />
+              <XtbActionButton label="IP/EA" tooltip={XTB_ACTION_TOOLTIPS.vipea} onClick={() => void actions.runXtbActiveOperation("vipea")} onContextMenu={showXtbSettingsFor("vipea")} />
+              <XtbActionButton label="Fukui" tooltip={XTB_ACTION_TOOLTIPS.vfukui} onClick={() => void actions.runXtbActiveOperation("vfukui")} onContextMenu={showXtbSettingsFor("vfukui")} />
+              <XtbActionButton label="MD" tooltip={XTB_ACTION_TOOLTIPS.md} onClick={() => void actions.runXtbActiveOperation("md")} onContextMenu={showXtbSettingsFor("md")} />
+              <XtbActionButton label="Metadyn" tooltip={XTB_ACTION_TOOLTIPS.metadyn} onClick={() => void actions.runXtbActiveOperation("metadyn")} onContextMenu={showXtbSettingsFor("metadyn")} />
+              <button
+                type="button"
+                className="dock-action"
+                aria-expanded={xtbSettingsOpen}
+                onClick={toggleGeneralXtbSettings}
+              >
+                Settings
+                <ShortcutTooltip label="Hamiltonian, charge, spin, solvation, accuracy, property, and dynamics parameters." />
+              </button>
+              <button type="button" className="dock-action" onClick={() => actions.toggleDockTab("bottom", "jobs")}>
+                Jobs
+                <ShortcutTooltip label="xTB calculation history, energies, properties, trajectories, and output artifacts." />
+              </button>
+            </div>
+            {xtbSettingsOpen ? (
+              <XtbInlineSettings
+                settings={xtbSettings}
+                scope={xtbSettingsScope}
+                xtbStatus={xtbStatus}
+                isBrowserDev={isBrowserDev}
+                actions={actions}
+                onClose={() => setXtbSettingsOpen(false)}
+              />
+            ) : null}
+          </>
+        ) : null}
+      </section>
+
+      {latestXtbJob?.result ? (
+        <XtbResultsPanel document={document} job={latestXtbJob} actions={actions} />
+      ) : null}
+
+      {structureXtbArtifact ? <XtbArtifactInfoCard artifact={structureXtbArtifact} byteCount={document.byteCount} /> : null}
+
+      {poseControls ? (
+        <StructurePoseControlsCard
+          document={document}
+          controls={poseControls}
+          actions={actions}
+          activeActionKey={activeActionKey}
+          setActiveActionKey={setActiveActionKey}
+        />
       ) : null}
 
       {selectedEntity ? (
@@ -271,69 +354,282 @@ function hasSdfMoleculeCollection(summary: StructureCompositionSummary) {
   return summary.componentRows.filter((row) => row.action?.type === "set_sdf_molecule").length > 1;
 }
 
-function isStructureFrameStyleDocument(document: ViewerDocument) {
-  const extension = document.extension.toLowerCase();
-  return document.renderer === "molstar" && (extension === "xyz" || extension === "extxyz");
+type StructurePoseControls = {
+  kind: "frames";
+  title: string;
+  detail: string;
+  controlLabel: string;
+  actions: Array<StructureViewerAction & { type: "set_structure_pose" }>;
+};
+
+function structurePoseControlsFor(document: ViewerDocument, summary: StructureCompositionSummary | null): StructurePoseControls | null {
+  if (document.renderer !== "molstar") return null;
+  const sceneStructureCount = molstarSceneStructureCount(document);
+  if (!summary && sceneStructureCount > 1 && sceneStructureCount <= INFO_TRAJECTORY_CONTROL_LIMIT) {
+    return {
+      kind: "frames",
+      title: "Structures",
+      detail: `${sceneStructureCount} structures`,
+      controlLabel: "Structure",
+      actions: Array.from({ length: sceneStructureCount }, (_, index) => ({
+        type: "set_structure_pose",
+        label: `Show structure ${index + 1}`,
+        index,
+      })),
+    };
+  }
+  if (!summary) return null;
+  const frameCount = numberFromSummaryRows(summary.rows, "Frames") ?? numberFromSummaryRows(summary.rows, "Models");
+  if (frameCount && frameCount > 1 && frameCount <= INFO_TRAJECTORY_CONTROL_LIMIT) {
+    const controlLabel = numberFromSummaryRows(summary.rows, "Models") === frameCount ? "Model" : "Frame";
+    return {
+      kind: "frames",
+      title: `${controlLabel}s`,
+      detail: `${frameCount} ${controlLabel.toLowerCase()}s`,
+      controlLabel,
+      actions: Array.from({ length: frameCount }, (_, index) => ({
+        type: "set_structure_pose",
+        label: `Show ${controlLabel.toLowerCase()} ${index + 1}`,
+        index,
+      })),
+    };
+  }
+  return null;
 }
 
-function shouldShowStructureFrameStyleCard(document: ViewerDocument, summary: StructureCompositionSummary | null) {
-  if (!isStructureFrameStyleDocument(document) || document.dockingRequest?.sceneMode) return false;
-  return summaryInteger(valueForLabel(summary?.rows ?? [], "Frames")) > 1;
+type StructureContextStyleCardCopy = {
+  title: string;
+  detail: string;
+  styleAriaLabel: string;
+  opacityAriaLabel: string;
+};
+
+function structureContextStyleCardFor(
+  document: ViewerDocument,
+  summary: StructureCompositionSummary | null,
+): StructureContextStyleCardCopy | null {
+  if (document.renderer !== "molstar") return null;
+  if (!summary && isVirtualMolstarScene(document)) {
+    return {
+      title: "All background",
+      detail: "Context structures",
+      styleAriaLabel: "All background style",
+      opacityAriaLabel: "All background opacity",
+    };
+  }
+  if (!summary) return null;
+  if (hasSdfMoleculeCollection(summary)) {
+    return {
+      title: "All background",
+      detail: "Context molecules",
+      styleAriaLabel: "All background style",
+      opacityAriaLabel: "All background opacity",
+    };
+  }
+  const frameCount = numberFromSummaryRows(summary.rows, "Frames") ?? numberFromSummaryRows(summary.rows, "Models");
+  if (frameCount !== null && frameCount > 1 && frameCount <= INFO_TRAJECTORY_CONTROL_LIMIT) {
+    return {
+      title: "All background",
+      detail: "Background frames",
+      styleAriaLabel: "All background frame style",
+      opacityAriaLabel: "All background frame opacity",
+    };
+  }
+  return null;
 }
 
-function summaryInteger(value: string | null) {
-  const match = value?.match(/\d[\d,]*/u);
-  return match ? Number(match[0].replace(/,/g, "")) : 0;
+function isVirtualMolstarScene(document: ViewerDocument) {
+  return document.renderer === "molstar" && Boolean(document.dockingRequest?.sceneMode);
 }
 
-function StructureSceneControlsCard({ document, actions }: { document: ViewerDocument; actions: ShellActions }) {
-  const request = document.dockingRequest;
-  if (!request?.sceneMode) return null;
-  const paths = [request.receptorPath, ...request.ligandPaths];
-  const runMode = (mode: "all" | "single") => {
-    actions.runStructureViewerAction(document, {
-      type: "set_sdf_pose_mode",
-      label: mode === "all" ? "Showing all structures together" : "Showing structures individually",
-      notify: false,
-      mode,
-    });
-  };
-  const showStructure = (index: number) => {
-    actions.runStructureViewerAction(document, {
-      type: "set_sdf_pose_index",
-      label: `Show ${fileName(paths[index])}`,
-      index,
-    });
+function molstarSceneStructureCount(document: ViewerDocument) {
+  if (!isVirtualMolstarScene(document)) return 0;
+  return Math.max(1, 1 + (document.dockingRequest?.ligandPaths?.length ?? 0));
+}
+
+function numberFromSummaryRows(rows: BriefRow[], label: string) {
+  const value = rows.find((row) => row.label === label)?.value;
+  if (!value) return null;
+  const parsed = Number.parseInt(value.replace(/,/g, ""), 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function ConformerWorkflowCard({
+  document,
+  selectedEntity,
+  viewerLigandSelection,
+  status,
+  settings,
+  open,
+  setOpen,
+  actions,
+}: {
+  document: ViewerDocument;
+  selectedEntity: SelectedStructureRow | null;
+  viewerLigandSelection: ShellViewState["viewerLigandSelection"];
+  status: ShellViewState["conformerStatus"];
+  settings: ShellViewState["conformerSettings"];
+  open: boolean;
+  setOpen: (updater: (open: boolean) => boolean) => void;
+  actions: ShellActions;
+}) {
+  const [settingsPanel, setSettingsPanel] = useState<"all" | "crest" | "prism" | null>(null);
+  useEffect(() => {
+    setSettingsPanel(null);
+  }, [document.id]);
+  const selectedConformerAction = conformerSelectionAction(selectedEntity, viewerLigandSelection);
+  const canRunCrest = canUseConformerWorkflow(document.extension) || Boolean(selectedConformerAction);
+  const canRunPrism = canInspectConformerEnsemble(document.extension);
+  if (!canShowConformerWorkflow(document.extension, document.renderer) && !selectedConformerAction) return null;
+  if (!canRunCrest && !canRunPrism) return null;
+  const crestDisabled = !canRunCrest || status?.crest.installed === false;
+  const prismDisabled = !canRunPrism || status?.prism.installed === false;
+  const showSettingsFor = (panel: "crest" | "prism") => (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setSettingsPanel((current) => current === panel ? null : panel);
   };
   return (
-    <section className="structure-brief-card structure-inspector-scene-controls">
-      <StructureSectionHeader title="Scene structures" detail={`${paths.length} structures`} />
-      <div className="structure-inspector-style-options" role="group" aria-label="Structure scene mode">
-        <button type="button" className="structure-inspector-style-option" onClick={() => runMode("all")}>
-          Show all together
+    <section className="structure-brief-card conformer-inspector-card" data-collapsed={!open || undefined}>
+      <div className="structure-inspector-section-header">
+        <button type="button" className="structure-inspector-section-title-button" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+          Conformers
+          <ShortcutTooltip label="Conformer search and ensemble pruning for small molecules or selected objects." />
         </button>
-        <button type="button" className="structure-inspector-style-option" onClick={() => runMode("single")}>
-          Show individually
-        </button>
+        <span>{conformerStatusSummary(status)}</span>
       </div>
-      <div className="structure-brief-rows">
-        {paths.map((path, index) => (
-          <button
-            key={`${path}:${index}`}
-            type="button"
-            className="structure-brief-action-row"
-            onClick={() => showStructure(index)}
-            title={path}
-          >
-            <span className="structure-inspector-row-content">
-              <span className="structure-inspector-row-label">Structure {index + 1}</span>
-              <strong title={path}>{fileName(path)}</strong>
-            </span>
-          </button>
-        ))}
-      </div>
+      {open ? (
+        <>
+          <div className="structure-inspector-xtb-summary">
+            <span>{conformerSettingsSummary(settings)}</span>
+          </div>
+          {selectedConformerAction ? (
+            <div className="structure-brief-notes">
+              <span>Scope: selected object</span>
+            </div>
+          ) : null}
+          <div className="structure-brief-actions structure-brief-actions-grid">
+            <button type="button" className="dock-action" disabled={crestDisabled} onClick={() => void actions.runConformerOperation("crest-generate", document, selectedConformerAction)} onContextMenu={showSettingsFor("crest")}>
+              CREST
+              <ShortcutTooltip label="Sample low-energy conformers with CREST." />
+            </button>
+            <button type="button" className="dock-action" disabled={prismDisabled} onClick={() => void actions.runConformerOperation("prism-prune", document)} onContextMenu={showSettingsFor("prism")}>
+              PRISM
+              <ShortcutTooltip label="Prune duplicate or redundant conformers." />
+            </button>
+            <button type="button" className="dock-action" aria-expanded={settingsPanel !== null} onClick={() => setSettingsPanel((current) => current === "all" ? null : "all")}>
+              Settings
+              <ShortcutTooltip label="CREST and PRISM run parameters." />
+            </button>
+            <button type="button" className="dock-action" onClick={() => actions.toggleDockTab("bottom", "jobs")}>
+              Jobs
+              <ShortcutTooltip label="Calculation history and output artifacts." />
+            </button>
+          </div>
+          {settingsPanel ? <ConformerInlineSettings panel={settingsPanel} settings={settings} status={status} actions={actions} /> : null}
+        </>
+      ) : null}
     </section>
   );
+}
+
+function ConformerInlineSettings({
+  panel,
+  settings,
+  status,
+  actions,
+}: {
+  panel: "all" | "crest" | "prism";
+  settings: ConformerSettings;
+  status: ShellViewState["conformerStatus"];
+  actions: ShellActions;
+}) {
+  const updateSettings = (patch: Partial<ConformerSettings>) => actions.setConformerSettings({ ...settings, ...patch });
+  const showCrest = panel === "all" || panel === "crest";
+  const showPrism = panel === "all" || panel === "prism";
+  return (
+    <div className="structure-inspector-xtb-settings conformer-inline-settings">
+      <div className="structure-inspector-section-header">
+        <h4>{panel === "crest" ? "CREST settings" : panel === "prism" ? "PRISM settings" : "Conformer settings"}</h4>
+        <button type="button" className="structure-inspector-inline-action" onClick={() => void actions.checkConformerStatus()}>
+          Check
+        </button>
+      </div>
+      <div className="structure-inspector-settings-status">{conformerStatusSummary(status)}</div>
+      {showCrest ? (
+        <div className="structure-inspector-settings-category">
+          <h5>CREST</h5>
+          <InlineXtbSetting label="Method">
+            <SelectControl value={settings.method} options={["gfn2", "gfn1", "gfn0", "gfnff"]} onChange={(value) => updateSettings({ method: value as ConformerSettings["method"] })} />
+          </InlineXtbSetting>
+          <InlineXtbSetting label="Sampling">
+            <SelectControl value={settings.samplingMode} options={["auto", "normal", "quick", "squick", "mquick"]} onChange={(value) => updateSettings({ samplingMode: value as ConformerSettings["samplingMode"] })} />
+          </InlineXtbSetting>
+          <InlineXtbSetting label="Solvent">
+            <SelectControl value={settings.solvent} options={["none", "water", "methanol", "acetonitrile", "dmso", "chloroform"]} onChange={(value) => updateSettings({ solvent: value as ConformerSettings["solvent"] })} />
+          </InlineXtbSetting>
+          <InlineXtbSetting label="Charge">
+            <RangeControl value={settings.charge} min={-8} max={8} step={1} onChange={(value) => updateSettings({ charge: value })} />
+          </InlineXtbSetting>
+          <InlineXtbSetting label="UHF">
+            <RangeControl value={settings.uhf} min={0} max={12} step={1} onChange={(value) => updateSettings({ uhf: value })} />
+          </InlineXtbSetting>
+          <InlineXtbSetting label="Threads">
+            <RangeControl value={settings.threads} min={1} max={16} step={1} onChange={(value) => updateSettings({ threads: value })} />
+          </InlineXtbSetting>
+          <InlineXtbSetting label="Energy window">
+            <NumberXtbControl value={settings.energyWindowKcalMol} min={1} max={60} step={0.5} suffix="kcal/mol" onChange={(value) => updateSettings({ energyWindowKcalMol: value })} />
+          </InlineXtbSetting>
+          <InlineXtbSetting label="RMSD">
+            <NumberXtbControl value={settings.rmsdThresholdAngstrom} min={0.01} max={2} step={0.005} suffix="A" onChange={(value) => updateSettings({ rmsdThresholdAngstrom: value })} />
+          </InlineXtbSetting>
+        </div>
+      ) : null}
+      {showPrism ? (
+        <div className="structure-inspector-settings-category">
+          <h5>PRISM</h5>
+          <InlineXtbSetting label="Timeout">
+            <RangeControl value={settings.prismTimeoutSeconds} min={5} max={86400} step={5} onChange={(value) => updateSettings({ prismTimeoutSeconds: value })} />
+          </InlineXtbSetting>
+          <InlineXtbSetting label="Energy sort">
+            <ToggleControl label="Sort by energy" checked={settings.prismEnergySort} onChange={(value) => updateSettings({ prismEnergySort: value })} />
+          </InlineXtbSetting>
+          <InlineXtbSetting label="Rotamer pruning">
+            <ToggleControl label="Prune rotamers" checked={settings.prismRotamerPruning} onChange={(value) => updateSettings({ prismRotamerPruning: value })} />
+          </InlineXtbSetting>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function conformerSelectionAction(
+  selectedEntity: SelectedStructureRow | null,
+  viewerLigandSelection: ShellViewState["viewerLigandSelection"],
+): StructureViewerAction | null {
+  if (selectedEntity && conformerActionCanScopeCrest(selectedEntity.action)) return selectedEntity.action;
+  if (!viewerLigandSelection) return null;
+  return {
+    type: "focus_ligand",
+    label: viewerLigandSelection.label,
+    selector: viewerLigandSelection.selector,
+  };
+}
+
+function conformerActionCanScopeCrest(action: StructureViewerAction) {
+  return action.type === "focus_ligand" || action.type === "select_residues";
+}
+
+function conformerStatusSummary(status: ShellViewState["conformerStatus"]) {
+  if (!status) return "CREST / PRISM";
+  const crest = status.crest.installed ? "CREST ready" : "CREST missing";
+  const prism = status.prism.installed ? "PRISM ready" : "PRISM missing";
+  return `${crest} · ${prism}`;
+}
+
+function conformerSettingsSummary(settings: ConformerSettings) {
+  const solvent = settings.solvent === "none" ? "gas phase" : settings.solvent;
+  return `${settings.method.toUpperCase()} · ${settings.samplingMode} · charge ${settings.charge} · UHF ${settings.uhf} · ${solvent}`;
 }
 
 function sdfContextStyleStorageKey(document: ViewerDocument) {
@@ -345,36 +641,18 @@ function sdfContextOpacityStorageKey(document: ViewerDocument) {
 }
 
 function normalizeSdfContextStyle(value: string | null | undefined): SdfContextStyle {
-  return normalizeContextStyleForOptions(value, SDF_CONTEXT_STYLE_OPTIONS);
-}
-
-function normalizeStructureSceneStyle(value: SdfContextStyle): SdfContextStyle {
-  return normalizeContextStyleForOptions(value, STRUCTURE_SCENE_STYLE_OPTIONS);
-}
-
-function normalizeContextStyleForOptions(
-  value: string | null | undefined,
-  styleOptions: ReadonlyArray<{ value: SdfContextStyle; label: string }>,
-): SdfContextStyle {
-  return styleOptions.some((option) => option.value === value) ? value as SdfContextStyle : "line";
+  return SDF_CONTEXT_STYLE_OPTIONS.some((option) => option.value === value) ? value as SdfContextStyle : "line";
 }
 
 function normalizeSdfContextOpacity(value: string | number | null | undefined) {
   const opacity = Number(value);
   if (!Number.isFinite(opacity)) return SDF_CONTEXT_OPACITY_DEFAULT;
-  return clampOpacity(opacity, SDF_CONTEXT_OPACITY_MIN, SDF_CONTEXT_OPACITY_MAX);
+  return Math.max(SDF_CONTEXT_OPACITY_MIN, Math.min(SDF_CONTEXT_OPACITY_MAX, opacity));
 }
 
-function clampOpacity(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function readSdfContextStylePreference(
-  document: ViewerDocument,
-  styleOptions: ReadonlyArray<{ value: SdfContextStyle; label: string }> = SDF_CONTEXT_STYLE_OPTIONS,
-): SdfContextStyle {
+function readSdfContextStylePreference(document: ViewerDocument): SdfContextStyle {
   try {
-    return normalizeContextStyleForOptions(window.localStorage?.getItem(sdfContextStyleStorageKey(document)), styleOptions);
+    return normalizeSdfContextStyle(window.localStorage?.getItem(sdfContextStyleStorageKey(document)));
   } catch (_) {
     return "line";
   }
@@ -400,6 +678,50 @@ function writeSdfContextOpacityPreference(document: ViewerDocument, value: numbe
   } catch (_) {}
 }
 
+function StructurePoseControlsCard({
+  document,
+  controls,
+  actions,
+  activeActionKey,
+  setActiveActionKey,
+}: {
+  document: ViewerDocument;
+  controls: StructurePoseControls;
+  actions: ShellActions;
+  activeActionKey: string | null;
+  setActiveActionKey: (key: string | null) => void;
+}) {
+  const runAction = (action: StructureViewerAction) => {
+    const key = selectionActionKey(document, action);
+    actions.runStructureViewerAction(document, action);
+    if (key) setActiveActionKey(key);
+  };
+  return (
+    <section className="structure-brief-card structure-inspector-pose-controls">
+      <StructureSectionHeader title={controls.title} detail={controls.detail} />
+      <div className="structure-inspector-pose-options" role="group" aria-label={`${controls.controlLabel} controls`}>
+        {controls.actions.map((action) => {
+          const key = selectionActionKey(document, action);
+          const selected = key !== null && key === activeActionKey;
+          return (
+            <button
+              key={`${action.type}:${action.index}`}
+              type="button"
+              className="structure-inspector-pose-option"
+              data-selected={selected || undefined}
+              aria-pressed={selected}
+              title={action.label}
+              onClick={() => runAction(action)}
+            >
+              {action.index + 1}
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function SdfContextStyleCard({
   document,
   actions,
@@ -407,14 +729,7 @@ function SdfContextStyleCard({
   setValue,
   opacity,
   setOpacity,
-  title = "All background",
-  detail = "Context molecules",
-  ariaLabel = "All background style",
-  opacityLabel = "All background opacity",
-  styleOptions = SDF_CONTEXT_STYLE_OPTIONS,
-  opacityMin = SDF_CONTEXT_OPACITY_MIN,
-  opacityMax = SDF_CONTEXT_OPACITY_MAX,
-  opacityDisabled = false,
+  copy,
 }: {
   document: ViewerDocument;
   actions: ShellActions;
@@ -422,27 +737,20 @@ function SdfContextStyleCard({
   setValue: (value: SdfContextStyle) => void;
   opacity: number;
   setOpacity: (value: number) => void;
-  title?: string;
-  detail?: string;
-  ariaLabel?: string;
-  opacityLabel?: string;
-  styleOptions?: ReadonlyArray<{ value: SdfContextStyle; label: string }>;
-  opacityMin?: number;
-  opacityMax?: number;
-  opacityDisabled?: boolean;
+  copy: StructureContextStyleCardCopy;
 }) {
   const applyStyle = (style: SdfContextStyle) => {
     setValue(style);
     writeSdfContextStylePreference(document, style);
     actions.runStructureViewerAction(document, {
       type: "set_sdf_context_style",
-      label: `${title}: ${styleOptions.find((option) => option.value === style)?.label ?? style}`,
+      label: `All background: ${SDF_CONTEXT_STYLE_OPTIONS.find((option) => option.value === style)?.label ?? style}`,
       notify: false,
       style,
     });
   };
   const applyOpacity = (nextOpacity: number) => {
-    const normalized = clampOpacity(nextOpacity, opacityMin, opacityMax);
+    const normalized = normalizeSdfContextOpacity(nextOpacity);
     setOpacity(normalized);
     writeSdfContextOpacityPreference(document, normalized);
     actions.runStructureViewerAction(document, {
@@ -454,9 +762,9 @@ function SdfContextStyleCard({
   };
   return (
     <section className="structure-brief-card structure-inspector-context-style">
-      <StructureSectionHeader title={title} detail={detail} />
-      <div className="structure-inspector-style-options" role="group" aria-label={ariaLabel}>
-        {styleOptions.map((option) => (
+      <StructureSectionHeader title={copy.title} detail={copy.detail} />
+      <div className="structure-inspector-style-options" role="group" aria-label={copy.styleAriaLabel}>
+        {SDF_CONTEXT_STYLE_OPTIONS.map((option) => (
           <button
             key={option.value}
             type="button"
@@ -469,21 +777,113 @@ function SdfContextStyleCard({
           </button>
         ))}
       </div>
-      {opacityDisabled ? null : (
-        <label className="structure-inspector-opacity-control">
-          <span>Opacity</span>
-          <input
-            type="range"
-            min={opacityMin}
-            max={opacityMax}
-            step="0.01"
-            value={opacity}
-            aria-label={opacityLabel}
-            onInput={(event) => applyOpacity(Number(event.currentTarget.value))}
-          />
-          <strong>{Math.round(opacity * 100)}%</strong>
-        </label>
+      <label className="structure-inspector-opacity-control">
+        <span>Opacity</span>
+        <input
+          type="range"
+          min={SDF_CONTEXT_OPACITY_MIN}
+          max={SDF_CONTEXT_OPACITY_MAX}
+          step="0.01"
+          value={opacity}
+          aria-label={copy.opacityAriaLabel}
+          onInput={(event) => applyOpacity(Number(event.currentTarget.value))}
+        />
+        <strong>{Math.round(opacity * 100)}%</strong>
+      </label>
+    </section>
+  );
+}
+
+function TextFileInfoPanel({ document, dockDrops, actions }: { document: TextFileDocument; dockDrops: ShellViewState["dockDroppedStructures"]; actions: ShellActions }) {
+  const artifact = xtbArtifactInfoForTextDocument(document);
+  const showFileActionsMenu = (event: MouseEvent<HTMLButtonElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    void showNativeContextMenu([
+      {
+        kind: "item",
+        id: "show-metadata",
+        text: "Show metadata",
+        detail: document.title,
+        action: () => void actions.showTextFileMetadata(document),
+      },
+      {
+        kind: "item",
+        id: "copy-path",
+        text: "Copy path",
+        detail: document.path,
+        action: () => void actions.copyPath(document.path, "file"),
+      },
+      {
+        kind: "item",
+        id: "reveal-file",
+        text: "Reveal file",
+        detail: document.title,
+        action: () => void actions.revealPath(document.path, "file"),
+      },
+    ], { x: rect.left, y: rect.bottom + 6 }, { forceWeb: true });
+  };
+
+  return (
+    <div className="dock-content structure-brief">
+      <section className="structure-brief-card structure-inspector-header">
+        <div className="structure-brief-kicker">{artifact ? "xTB Artifact Inspector" : "File Inspector"}</div>
+        <div className="structure-brief-title-row">
+          <h3 title={document.title}>{document.title}</h3>
+          <span>{document.extension ? document.extension.toUpperCase() : "FILE"}</span>
+          <button
+            type="button"
+            className="structure-inspector-more-button"
+            aria-label="File actions"
+            title="File actions"
+            onClick={showFileActionsMenu}
+          >
+            ...
+          </button>
+        </div>
+        <p>{artifact?.summary ?? "Text artifact opened in the file viewer."}</p>
+      </section>
+
+      {artifact ? (
+        <XtbArtifactInfoCard artifact={artifact} byteCount={document.byteCount} previewDocument={document} />
+      ) : (
+        <section className="structure-brief-card">
+          <StructureSectionHeader title="Text file" detail={document.language || document.extension || "text"} />
+          <div className="structure-brief-rows">
+            <StructureBriefRow label="Size" value={formatBytes(document.byteCount)} />
+            <StructureBriefRow label="Path" value={document.path} />
+          </div>
+        </section>
       )}
+      <StructureDropSummary dockDrops={dockDrops} />
+    </div>
+  );
+}
+
+function XtbArtifactInfoCard({
+  artifact,
+  byteCount,
+  previewDocument,
+}: {
+  artifact: XtbTextArtifactInfo;
+  byteCount: number;
+  previewDocument?: TextFileDocument;
+}) {
+  return (
+    <section className="structure-brief-card structure-inspector-xtb-artifact-card">
+      <StructureSectionHeader title={artifact.title} detail={artifact.kind} />
+      <div className="structure-brief-rows">
+        <StructureBriefRow label="Purpose" value={artifact.purpose} />
+        <StructureBriefRow label="Use" value={artifact.use} />
+        <StructureBriefRow label="Format" value={artifact.format} />
+        <StructureBriefRow label="Run folder" value={artifact.runName ?? "Outside xTB run"} />
+        <StructureBriefRow label="Size" value={formatBytes(byteCount)} />
+      </div>
+      {artifact.notes.length > 0 ? (
+        <div className="structure-brief-notes">
+          {artifact.notes.map((note) => <span key={note}>{note}</span>)}
+        </div>
+      ) : null}
+      {previewDocument ? <XtbArtifactPreview document={previewDocument} artifact={artifact} /> : null}
     </section>
   );
 }
@@ -509,7 +909,7 @@ function useStructureComposition(document: ViewerDocument | null) {
         setState({
           documentId: document.id,
           loading: false,
-          summary: parseStructureComposition(text, inspectorCompositionExtension(document)),
+          summary: parseStructureComposition(text, document.extension),
           error: null,
         });
       })
@@ -536,22 +936,7 @@ function readInspectorStructureText(document: ViewerDocument) {
   if (virtualText !== null) {
     return Promise.resolve(maxBytes === undefined ? virtualText : virtualText.slice(0, maxBytes));
   }
-  return readStructureText(inspectorCompositionPath(document), { maxBytes });
-}
-
-function inspectorCompositionPath(document: ViewerDocument) {
-  return document.dockingRequest?.receptorPath ?? document.path;
-}
-
-function inspectorCompositionExtension(document: ViewerDocument) {
-  if (!document.dockingRequest) return document.extension;
-  return extensionFromPath(document.dockingRequest.receptorPath) || document.extension;
-}
-
-function extensionFromPath(path: string) {
-  const file = fileName(path);
-  const dot = file.lastIndexOf(".");
-  return dot >= 0 ? file.slice(dot + 1).toLowerCase() : "";
+  return readStructureText(document.path, { maxBytes });
 }
 
 function compositionReadLimit(document: ViewerDocument) {
@@ -599,6 +984,1164 @@ function inspectorSummaryLine(
   if (loading) return "Reading coordinate text for molecular components.";
   if (error) return "Composition parser could not read this source.";
   return kind;
+}
+
+function xtbStatusLine(xtbStatus: ShellViewState["xtbStatus"], isBrowserDev: boolean) {
+  if (!xtbStatus) return "Not checked";
+  if (xtbStatus.installed) return shortXtbVersion(xtbStatus.version) ?? "Ready";
+  if (isBrowserDev) return "Not found";
+  return "Not installed";
+}
+
+function shortXtbVersion(version: string | null | undefined) {
+  const match = String(version ?? "").match(/xtb version\s+([^\s]+)/iu);
+  if (match) return `xTB ${match[1]}`;
+  return version || null;
+}
+
+const defaultXtbSettings: XtbSettings = {
+  method: "gfn2",
+  optLevel: "normal",
+  solvationModel: "none",
+  solvent: "none",
+  charge: 0,
+  uhf: 0,
+  threads: 0,
+  accuracy: 1,
+  electronicTemperature: 300,
+  properties: {
+    dipole: true,
+    wbo: true,
+    population: false,
+    molden: false,
+    alpha: false,
+    fod: false,
+    esp: false,
+    fukui: false,
+  },
+  mdTemperature: 298,
+  mdTimePs: 2,
+  mdStepFs: 1,
+  mdSnapshots: 100,
+  timeoutSeconds: 180,
+  saveRunFiles: true,
+};
+
+function xtbSettingsModified(settings: XtbSettings) {
+  return settings.method !== defaultXtbSettings.method
+    || settings.optLevel !== defaultXtbSettings.optLevel
+    || settings.solvationModel !== defaultXtbSettings.solvationModel
+    || settings.solvent !== defaultXtbSettings.solvent
+    || settings.charge !== defaultXtbSettings.charge
+    || settings.uhf !== defaultXtbSettings.uhf
+    || settings.threads !== defaultXtbSettings.threads
+    || settings.accuracy !== defaultXtbSettings.accuracy
+    || settings.electronicTemperature !== defaultXtbSettings.electronicTemperature
+    || settings.mdTemperature !== defaultXtbSettings.mdTemperature
+    || settings.mdTimePs !== defaultXtbSettings.mdTimePs
+    || settings.mdStepFs !== defaultXtbSettings.mdStepFs
+    || settings.mdSnapshots !== defaultXtbSettings.mdSnapshots
+    || settings.saveRunFiles !== defaultXtbSettings.saveRunFiles
+    || Object.keys(settings.properties).some((key) => (
+      settings.properties[key as keyof XtbSettings["properties"]] !== defaultXtbSettings.properties[key as keyof XtbSettings["properties"]]
+    ))
+    || settings.timeoutSeconds !== defaultXtbSettings.timeoutSeconds;
+}
+
+function xtbSettingsSummary(settings: XtbSettings) {
+  const charge = settings.charge > 0 ? `+${settings.charge}` : String(settings.charge);
+  const solvent = settings.solvationModel === "none" || settings.solvent === "none" ? "gas phase" : `${settings.solvationModel.toUpperCase()} ${settings.solvent}`;
+  const threads = settings.threads > 0 ? ` · ${settings.threads} threads` : "";
+  return `${settings.method.toUpperCase()} · ${settings.optLevel} opt · charge ${charge} · UHF ${settings.uhf} · ${solvent}${threads}`;
+}
+
+const XTB_ACTION_TOOLTIPS = {
+  optimize: "Relax atomic coordinates toward a local minimum on the selected xTB potential energy surface.",
+  properties: "Evaluate single-point electronic properties at the current geometry.",
+  "optimized-hessian": "Optimize geometry, then compute Hessian-derived vibrational frequencies.",
+  vipea: "Estimate vertical ionization potential and electron affinity.",
+  vfukui: "Estimate local electrophilic and nucleophilic Fukui reactivity descriptors.",
+  md: "Sample finite-temperature molecular motion with xTB molecular dynamics.",
+  metadyn: "Bias the xTB dynamics to explore conformational space beyond local minima.",
+} satisfies Record<string, string>;
+
+const XTB_SETTING_TOOLTIPS = {
+  method: "Choose the xTB Hamiltonian. GFN2 is the default balanced method; GFNFF is faster for large systems.",
+  optLevel: "Controls geometry optimization convergence. Loose is faster; tight and verytight are more conservative.",
+  solvation: "Select the implicit solvation model used when a solvent is selected.",
+  solvent: "Select the solvent name passed to the chosen implicit solvation model.",
+  charge: "Total molecular charge passed with --chrg.",
+  uhf: "Number of unpaired electrons passed with --uhf.",
+  threads: "CPU threads for xTB parallel execution. Zero lets xTB choose the default.",
+  accuracy: "xTB --acc quality/speed setting. Lower values are stricter and usually slower.",
+  electronicTemperature: "Electronic temperature in Kelvin for fractional occupation handling.",
+  properties: "Choose electronic property outputs such as dipoles, WBO, populations, orbitals, ESP, and Fukui data.",
+  mdTemperature: "MD thermostat temperature in Kelvin.",
+  mdTime: "Total MD simulation time in picoseconds.",
+  mdStep: "MD integration step in femtoseconds.",
+  mdSnapshots: "Number of molecular geometries sampled from the trajectory.",
+  saveRunFiles: "Persist xTB inputs, logs, structures, properties, and restart files for reproducibility.",
+  timeout: "Maximum wall-clock time allowed for the xTB calculation.",
+} satisfies Record<string, string>;
+
+const XTB_PROPERTY_TOOLTIPS = {
+  dipole: "Write dipole information into the result summary.",
+  wbo: "Write Wiberg bond orders for bond inspection.",
+  population: "Write Mulliken population/charge output.",
+  molden: "Write Molden orbital output for external viewers.",
+  alpha: "Calculate molecular polarizability output.",
+  fod: "Calculate fractional occupation density artifacts.",
+  esp: "Write electrostatic potential related output.",
+  fukui: "Write Fukui reactivity output during property jobs.",
+} satisfies Record<string, string>;
+
+function xtbSettingsScopeLabel(scope: XtbSettingsScope) {
+  switch (scope) {
+    case "optimize":
+      return "Optimize";
+    case "properties":
+      return "Properties";
+    case "optimized-hessian":
+      return "Frequencies";
+    case "vipea":
+      return "IP/EA";
+    case "vfukui":
+      return "Fukui";
+    case "md":
+      return "MD";
+    case "metadyn":
+      return "Metadyn";
+    default:
+      return "Advanced xTB";
+  }
+}
+
+const XTB_SETTINGS_CATEGORIES: Array<{ key: XtbSettingsCategory; label: string; tooltip: string }> = [
+  { key: "core", label: "Core", tooltip: "Method, optimization level, charge, spin, threads, accuracy, and electronic temperature." },
+  { key: "solvation", label: "Solvation", tooltip: "Implicit solvent model and solvent name." },
+  { key: "properties", label: "Properties", tooltip: "Dipole, WBO, population, Molden, alpha, FOD, ESP, and Fukui outputs." },
+  { key: "dynamics", label: "Dynamics", tooltip: "MD and metadynamics temperature, time, step, and snapshot settings." },
+  { key: "output", label: "Output", tooltip: "Run file persistence and timeout." },
+];
+
+function defaultXtbSettingsCategory(scope: XtbSettingsScope): XtbSettingsCategory {
+  if (scope === "properties" || scope === "vfukui") return "properties";
+  if (scope === "md" || scope === "metadyn") return "dynamics";
+  return "core";
+}
+
+function XtbSettingsCategoryBar({
+  category,
+  setCategory,
+}: {
+  category: XtbSettingsCategory;
+  setCategory: (category: XtbSettingsCategory) => void;
+}) {
+  return (
+    <div className="structure-inspector-xtb-category-bar" aria-label="xTB settings categories">
+      {XTB_SETTINGS_CATEGORIES.map((item) => (
+        <button
+          type="button"
+          key={item.key}
+          className="structure-inspector-xtb-category-button"
+          data-active={category === item.key || undefined}
+          onClick={() => setCategory(item.key)}
+          data-xtb-tooltip={item.tooltip}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function XtbActionButton({
+  label,
+  tooltip,
+  onClick,
+  onContextMenu,
+}: {
+  label: string;
+  tooltip: string;
+  onClick: () => void;
+  onContextMenu: (event: MouseEvent<HTMLButtonElement>) => void;
+}) {
+  return (
+    <button type="button" className="dock-action structure-inspector-xtb-action" onClick={onClick} onContextMenu={onContextMenu}>
+      {label}
+      <ShortcutTooltip label={tooltip} />
+    </button>
+  );
+}
+
+function XtbInlineSettings({
+  settings,
+  scope,
+  xtbStatus,
+  isBrowserDev,
+  actions,
+  onClose,
+}: {
+  settings: XtbSettings;
+  scope: XtbSettingsScope;
+  xtbStatus: ShellViewState["xtbStatus"];
+  isBrowserDev: boolean;
+  actions: ShellActions;
+  onClose: () => void;
+}) {
+  const update = <K extends keyof XtbSettings>(key: K, value: XtbSettings[K]) => actions.setXtbSettings({ ...settings, [key]: value });
+  const updateProperty = <K extends keyof XtbSettings["properties"]>(key: K, value: boolean) => actions.setXtbSettings({
+    ...settings,
+    properties: { ...settings.properties, [key]: value },
+  });
+  const [category, setCategory] = useState<XtbSettingsCategory>(() => defaultXtbSettingsCategory(scope));
+  useEffect(() => {
+    setCategory(defaultXtbSettingsCategory(scope));
+  }, [scope]);
+  const showCategories = scope === "general";
+  const showCore = !showCategories || category === "core";
+  const showSolvation = !showCategories || category === "solvation";
+  const showOptLevel = showCategories ? category === "core" : scope === "optimize" || scope === "optimized-hessian";
+  const showProperties = showCategories ? category === "properties" : scope === "properties" || scope === "vfukui";
+  const showMd = showCategories ? category === "dynamics" : scope === "md" || scope === "metadyn";
+  const showOutput = !showCategories || category === "output";
+  return (
+    <div className="structure-inspector-xtb-settings">
+      <div className="structure-inspector-xtb-settings-title">
+        <span>{xtbSettingsScopeLabel(scope)} settings</span>
+        <button type="button" className="structure-inspector-inline-action" onClick={onClose}>
+          Close
+        </button>
+      </div>
+      <div className="structure-inspector-xtb-runtime">
+        <span>{xtbStatus?.executablePath ?? xtbStatus?.installHint ?? (isBrowserDev ? "Browser dev can run local xTB jobs." : "xTB status has not been checked.")}</span>
+        <button type="button" className="structure-inspector-inline-action" onClick={() => void actions.checkXtbStatus()}>
+          Check
+        </button>
+      </div>
+      {showCategories ? <XtbSettingsCategoryBar category={category} setCategory={setCategory} /> : null}
+      {showCore ? (
+        <>
+          <InlineXtbSetting label="Method" tooltip={XTB_SETTING_TOOLTIPS.method} reset={() => update("method", defaultXtbSettings.method)} modified={settings.method !== defaultXtbSettings.method}>
+            <SelectControl value={settings.method} options={["gfn2", "gfn1", "gfn0", "gfnff"]} onChange={(method) => update("method", method as XtbSettings["method"])} />
+          </InlineXtbSetting>
+          {showOptLevel ? (
+            <InlineXtbSetting label="Opt level" tooltip={XTB_SETTING_TOOLTIPS.optLevel} reset={() => update("optLevel", defaultXtbSettings.optLevel)} modified={settings.optLevel !== defaultXtbSettings.optLevel}>
+              <SelectControl value={settings.optLevel} options={["loose", "normal", "tight", "verytight"]} onChange={(optLevel) => update("optLevel", optLevel as XtbSettings["optLevel"])} />
+            </InlineXtbSetting>
+          ) : null}
+          <InlineXtbSetting label="Charge" tooltip={XTB_SETTING_TOOLTIPS.charge} reset={() => update("charge", defaultXtbSettings.charge)} modified={settings.charge !== defaultXtbSettings.charge}>
+            <RangeControl value={settings.charge} min={-5} max={5} step={1} onChange={(charge) => update("charge", charge)} />
+          </InlineXtbSetting>
+          <InlineXtbSetting label="UHF" tooltip={XTB_SETTING_TOOLTIPS.uhf} reset={() => update("uhf", defaultXtbSettings.uhf)} modified={settings.uhf !== defaultXtbSettings.uhf}>
+            <RangeControl value={settings.uhf} min={0} max={10} step={1} onChange={(uhf) => update("uhf", uhf)} />
+          </InlineXtbSetting>
+          <InlineXtbSetting label="Threads" tooltip={XTB_SETTING_TOOLTIPS.threads} reset={() => update("threads", defaultXtbSettings.threads)} modified={settings.threads !== defaultXtbSettings.threads}>
+            <RangeControl value={settings.threads} min={0} max={32} step={1} onChange={(threads) => update("threads", threads)} />
+          </InlineXtbSetting>
+          <InlineXtbSetting label="Accuracy" tooltip={XTB_SETTING_TOOLTIPS.accuracy} reset={() => update("accuracy", defaultXtbSettings.accuracy)} modified={settings.accuracy !== defaultXtbSettings.accuracy}>
+            <NumberXtbControl value={settings.accuracy} min={0.05} max={10} step={0.05} onChange={(accuracy) => update("accuracy", accuracy)} />
+          </InlineXtbSetting>
+          <InlineXtbSetting label="E-temp" tooltip={XTB_SETTING_TOOLTIPS.electronicTemperature} reset={() => update("electronicTemperature", defaultXtbSettings.electronicTemperature)} modified={settings.electronicTemperature !== defaultXtbSettings.electronicTemperature}>
+            <RangeControl value={settings.electronicTemperature} min={50} max={5000} step={50} onChange={(electronicTemperature) => update("electronicTemperature", electronicTemperature)} />
+          </InlineXtbSetting>
+        </>
+      ) : null}
+      {showSolvation ? (
+        <>
+          <InlineXtbSetting label="Solvation" tooltip={XTB_SETTING_TOOLTIPS.solvation} reset={() => update("solvationModel", defaultXtbSettings.solvationModel)} modified={settings.solvationModel !== defaultXtbSettings.solvationModel}>
+            <SelectControl value={settings.solvationModel} options={["none", "alpb", "gbsa", "cosmo", "cpcmx"]} onChange={(solvationModel) => update("solvationModel", solvationModel as XtbSettings["solvationModel"])} />
+          </InlineXtbSetting>
+          <InlineXtbSetting label="Solvent" tooltip={XTB_SETTING_TOOLTIPS.solvent} reset={() => update("solvent", defaultXtbSettings.solvent)} modified={settings.solvent !== defaultXtbSettings.solvent}>
+            <SelectControl value={settings.solvent} options={XTB_SOLVENT_OPTIONS} onChange={(solvent) => update("solvent", solvent)} />
+          </InlineXtbSetting>
+        </>
+      ) : null}
+      {showProperties ? (
+        <div className="structure-inspector-xtb-toggle-grid" aria-label="xTB property outputs" data-xtb-tooltip={XTB_SETTING_TOOLTIPS.properties}>
+          <XtbToggle label="Dipole" tooltip={XTB_PROPERTY_TOOLTIPS.dipole} checked={settings.properties.dipole} onChange={(value) => updateProperty("dipole", value)} />
+          <XtbToggle label="WBO" tooltip={XTB_PROPERTY_TOOLTIPS.wbo} checked={settings.properties.wbo} onChange={(value) => updateProperty("wbo", value)} />
+          <XtbToggle label="Mulliken" tooltip={XTB_PROPERTY_TOOLTIPS.population} checked={settings.properties.population} onChange={(value) => updateProperty("population", value)} />
+          <XtbToggle label="Molden" tooltip={XTB_PROPERTY_TOOLTIPS.molden} checked={settings.properties.molden} onChange={(value) => updateProperty("molden", value)} />
+          <XtbToggle label="Alpha" tooltip={XTB_PROPERTY_TOOLTIPS.alpha} checked={settings.properties.alpha} onChange={(value) => updateProperty("alpha", value)} />
+          <XtbToggle label="FOD" tooltip={XTB_PROPERTY_TOOLTIPS.fod} checked={settings.properties.fod} onChange={(value) => updateProperty("fod", value)} />
+          <XtbToggle label="ESP" tooltip={XTB_PROPERTY_TOOLTIPS.esp} checked={settings.properties.esp} onChange={(value) => updateProperty("esp", value)} />
+          <XtbToggle label="Fukui" tooltip={XTB_PROPERTY_TOOLTIPS.fukui} checked={settings.properties.fukui} onChange={(value) => updateProperty("fukui", value)} />
+        </div>
+      ) : null}
+      {showMd ? (
+        <>
+          <InlineXtbSetting label="MD temp" tooltip={XTB_SETTING_TOOLTIPS.mdTemperature} reset={() => update("mdTemperature", defaultXtbSettings.mdTemperature)} modified={settings.mdTemperature !== defaultXtbSettings.mdTemperature}>
+            <RangeControl value={settings.mdTemperature} min={50} max={2000} step={10} onChange={(mdTemperature) => update("mdTemperature", mdTemperature)} />
+          </InlineXtbSetting>
+          <InlineXtbSetting label="MD time" tooltip={XTB_SETTING_TOOLTIPS.mdTime} reset={() => update("mdTimePs", defaultXtbSettings.mdTimePs)} modified={settings.mdTimePs !== defaultXtbSettings.mdTimePs}>
+            <NumberXtbControl value={settings.mdTimePs} min={0.05} max={100} step={0.05} onChange={(mdTimePs) => update("mdTimePs", mdTimePs)} suffix="ps" />
+          </InlineXtbSetting>
+          <InlineXtbSetting label="MD step" tooltip={XTB_SETTING_TOOLTIPS.mdStep} reset={() => update("mdStepFs", defaultXtbSettings.mdStepFs)} modified={settings.mdStepFs !== defaultXtbSettings.mdStepFs}>
+            <NumberXtbControl value={settings.mdStepFs} min={0.1} max={10} step={0.1} onChange={(mdStepFs) => update("mdStepFs", mdStepFs)} suffix="fs" />
+          </InlineXtbSetting>
+          <InlineXtbSetting label="Snapshots" tooltip={XTB_SETTING_TOOLTIPS.mdSnapshots} reset={() => update("mdSnapshots", defaultXtbSettings.mdSnapshots)} modified={settings.mdSnapshots !== defaultXtbSettings.mdSnapshots}>
+            <RangeControl value={settings.mdSnapshots} min={1} max={1000} step={1} onChange={(mdSnapshots) => update("mdSnapshots", mdSnapshots)} />
+          </InlineXtbSetting>
+        </>
+      ) : null}
+      {showOutput ? (
+        <>
+          <InlineXtbSetting label="Save files" tooltip={XTB_SETTING_TOOLTIPS.saveRunFiles} reset={() => update("saveRunFiles", defaultXtbSettings.saveRunFiles)} modified={settings.saveRunFiles !== defaultXtbSettings.saveRunFiles}>
+            <ToggleControl label="Save xTB run files" checked={settings.saveRunFiles} onChange={(saveRunFiles) => update("saveRunFiles", saveRunFiles)} />
+          </InlineXtbSetting>
+          <InlineXtbSetting label="Timeout" tooltip={XTB_SETTING_TOOLTIPS.timeout} reset={() => update("timeoutSeconds", defaultXtbSettings.timeoutSeconds)} modified={settings.timeoutSeconds !== defaultXtbSettings.timeoutSeconds}>
+            <RangeControl value={settings.timeoutSeconds} min={30} max={1200} step={30} onChange={(timeoutSeconds) => update("timeoutSeconds", timeoutSeconds)} />
+          </InlineXtbSetting>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+const XTB_SOLVENT_OPTIONS = [
+  "none",
+  "water",
+  "acetone",
+  "acetonitrile",
+  "aniline",
+  "benzaldehyde",
+  "benzene",
+  "ch2cl2",
+  "chcl3",
+  "cs2",
+  "dioxane",
+  "dmf",
+  "dmso",
+  "ether",
+  "ethylacetate",
+  "furane",
+  "hexane",
+  "methanol",
+  "nitromethane",
+  "octanol",
+  "phenol",
+  "toluene",
+  "thf",
+];
+
+function XtbToggle({ label, tooltip, checked, onChange }: { label: string; tooltip: string; checked: boolean; onChange: (checked: boolean) => void }) {
+  return (
+    <label className="structure-inspector-xtb-toggle" data-xtb-tooltip={tooltip}>
+      <ToggleControl label={label} checked={checked} onChange={onChange} />
+      <span>{label}</span>
+    </label>
+  );
+}
+
+function NumberXtbControl({
+  value,
+  min,
+  max,
+  step,
+  suffix,
+  onChange,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  suffix?: string;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div className="structure-inspector-number-control">
+      <input
+        type="number"
+        value={value}
+        min={min}
+        max={max}
+        step={step}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+      {suffix ? <span>{suffix}</span> : null}
+    </div>
+  );
+}
+
+type XtbTextArtifactInfo = {
+  title: string;
+  kind: string;
+  summary: string;
+  purpose: string;
+  use: string;
+  format: string;
+  notes: string[];
+  runName: string | null;
+};
+
+function xtbArtifactInfoForTextDocument(document: TextFileDocument): XtbTextArtifactInfo | null {
+  return xtbArtifactInfoForPath(document.path, document.extension, document.content);
+}
+
+function xtbArtifactInfoForPath(path: string, extension: string, content = ""): XtbTextArtifactInfo | null {
+  const runName = xtbRunNameForPath(path);
+  const name = fileName(path);
+  const lowerName = name.toLowerCase();
+  const normalizedExtension = extension.toLowerCase();
+  const base = XTB_TEXT_ARTIFACTS[lowerName] ?? xtbArtifactInfoByPattern(lowerName, normalizedExtension);
+  if (!base && !runName) return null;
+  const notes = [...(base?.notes ?? [])];
+  if (lowerName === "xtb.log" && /Fukui functions:/u.test(content)) {
+    notes.push("This log contains the Fukui table. xTB prints f(+), f(-), and f(0) here rather than writing a separate Fukui file.");
+  }
+  return {
+    title: base?.title ?? "xTB run artifact",
+    kind: base?.kind ?? "xTB artifact",
+    summary: base?.summary ?? "File generated inside an xTB run directory.",
+    purpose: base?.purpose ?? "Preserves intermediate or output data from the local xTB calculation.",
+    use: base?.use ?? "Retains reproducibility data from the local xTB calculation.",
+    format: base?.format ?? artifactFormatLabel(normalizedExtension, name),
+    notes,
+    runName,
+  };
+}
+
+function xtbArtifactInfoByPattern(name: string, extension: string) {
+  if (name.startsWith('input-with-h.')) return XTB_PATTERN_ARTIFACTS.inputWithHydrogens;
+  if (name.startsWith('input.')) return XTB_PATTERN_ARTIFACTS.input;
+  if (/^secondary-.*-with-h\./u.test(name)) return XTB_PATTERN_ARTIFACTS.secondaryInput;
+  if (/^xtbopt\.(pdb|xyz|sdf|mol)$/u.test(name)) return XTB_PATTERN_ARTIFACTS.optimizedStructure;
+  if (["cub", "cube"].includes(extension)) return XTB_PATTERN_ARTIFACTS.cube;
+  if (name.endsWith(".trj") || name.endsWith(".arc")) return XTB_PATTERN_ARTIFACTS.trajectory;
+  if (name === "g98.out" || name.endsWith(".g98.out")) return XTB_PATTERN_ARTIFACTS.frequencyOutput;
+  if (name === "molden.input" || name.endsWith(".molden")) return XTB_PATTERN_ARTIFACTS.molden;
+  return null;
+}
+
+function XtbArtifactPreview({ document, artifact }: { document: TextFileDocument; artifact: XtbTextArtifactInfo }) {
+  const rows = xtbArtifactPreviewRows(document, artifact);
+  if (rows.length === 0) return null;
+  return (
+    <div className="structure-inspector-xtb-artifact-preview">
+      <strong>Preview</strong>
+      {rows.map((row) => (
+        <div key={`${row.label}-${row.value}`} className="structure-brief-row">
+          <span>{row.label}</span>
+          <strong title={row.value}>{row.value}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function xtbArtifactPreviewRows(document: TextFileDocument, artifact: XtbTextArtifactInfo): BriefRow[] {
+  const name = fileName(document.path).toLowerCase();
+  const content = readBrowserDevVirtualTextDocument(document.path) ?? document.content;
+  if (name === "charges") {
+    return numericPreviewRows(content, "charge");
+  }
+  if (name === "wbo") {
+    return content.trim().split(/\r?\n/u).slice(0, 4).map((line, index) => {
+      const [from, to, order] = line.trim().split(/\s+/u);
+      return { label: `Bond ${index + 1}`, value: from && to && order ? `${from}-${to}: ${order}` : line.trim() };
+    }).filter((row) => row.value);
+  }
+  if (name === "xtb.log" && /Fukui functions:/u.test(content)) {
+    return fukuiPreviewRows(content);
+  }
+  if (name === "xtbout.json") {
+    return xtboutPreviewRows(content);
+  }
+  if (artifact.kind === "Log" || artifact.kind === "Report" || artifact.kind === "Input") {
+    return content.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean).slice(0, 3).map((line, index) => ({
+      label: `Line ${index + 1}`,
+      value: truncateInline(line, 120),
+    }));
+  }
+  return [];
+}
+
+function numericPreviewRows(text: string, label: string): BriefRow[] {
+  return text.trim().split(/\r?\n/u).slice(0, 6).map((line, index) => ({
+    label: `Atom ${index + 1}`,
+    value: `${label} ${line.trim()}`,
+  })).filter((row) => row.value.trim() !== label);
+}
+
+function fukuiPreviewRows(text: string): BriefRow[] {
+  const lines = text.split(/\r?\n/u);
+  const start = lines.findIndex((line) => line.includes("Fukui functions:"));
+  if (start < 0) return [];
+  return lines.slice(start + 3, start + 9).map((line) => line.trim()).filter((line) => /^\d+/u.test(line)).map((line) => {
+    const match = line.match(/^(\d+)\s*([A-Za-z]{1,3})\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/u);
+    return {
+      label: match ? `${match[1]}${match[2]}` : "Fukui",
+      value: match ? `f+ ${match[3]}, f- ${match[4]}, f0 ${match[5]}` : line,
+    };
+  });
+}
+
+function xtboutPreviewRows(text: string): BriefRow[] {
+  try {
+    const data = JSON.parse(text) as Record<string, unknown>;
+    return [
+      { label: "Energy", value: formatMaybeNumber(data["total energy"], " Eh") },
+      { label: "HL gap", value: formatMaybeNumber(data["HOMO-LUMO gap / eV"], " eV") },
+      { label: "Charges", value: Array.isArray(data["partial charges"]) ? `${data["partial charges"].length} atoms` : "Not present" },
+    ];
+  } catch (_) {
+    return [];
+  }
+}
+
+function xtbRunNameForPath(path: string) {
+  const match = path.replace(/\\/g, "/").match(/\/(xtb_(?:run|optimize|properties|hessian|ip_ea|fukui|md|metadyn)_\d+)(?:\/|$)/u);
+  if (match) return match[1];
+  if (path.includes("/burrete-xtb-jobs/")) return "temporary xTB run";
+  return null;
+}
+
+function artifactFormatLabel(extension: string, name: string) {
+  if (extension) return extension.toUpperCase();
+  if (name.startsWith(".")) return "marker file";
+  return "plain text";
+}
+
+function fileName(path: string) {
+  return path.split(/[\\/]/u).filter(Boolean).pop() ?? path;
+}
+
+function truncateInline(text: string, limit: number) {
+  return text.length <= limit ? text : `${text.slice(0, limit)}...`;
+}
+
+const XTB_TEXT_ARTIFACTS: Record<string, Omit<XtbTextArtifactInfo, "runName">> = {
+  ".xtboptok": {
+    title: "Optimization success marker",
+    kind: "Marker",
+    summary: "xTB marker created when geometry optimization finished successfully.",
+    purpose: "Lets xTB and Burrete distinguish a completed optimization from a partial run.",
+    use: "Marker for completed geometry relaxation; useful when auditing run completeness.",
+    format: "empty marker file",
+    notes: ["Presence is the signal; file content is usually empty."],
+  },
+  charges: {
+    title: "Partial charges",
+    kind: "Table",
+    summary: "Atomic partial charges from the xTB calculation.",
+    purpose: "Shows charge distribution atom-by-atom in the same atom order as the xTB input/topology.",
+    use: "Use for charge inspection, electrostatics, Fukui/IP/EA context, and result tables.",
+    format: "one numeric charge per atom",
+    notes: [],
+  },
+  wbo: {
+    title: "Wiberg bond orders",
+    kind: "Table",
+    summary: "Bond order estimates for atom pairs.",
+    purpose: "Helps inspect bonding, connectivity, and bond-strength changes after xTB jobs.",
+    use: "Use alongside the structure/topology to explain which bonds xTB considers strong or weak.",
+    format: "atom index, atom index, WBO value",
+    notes: ["Atom indices follow xTB input order."],
+  },
+  "xtb-prep.log": {
+    title: "Input preparation log",
+    kind: "Log",
+    summary: "Records how Burrete prepared the input before xTB.",
+    purpose: "Explains whether hydrogens were added and which tool/path was used.",
+    use: "Check this first when optimized geometry looks odd because missing hydrogens or conversion can change results.",
+    format: "plain text log",
+    notes: ["Generated by Burrete, not by xTB itself."],
+  },
+  "xtb-report.md": {
+    title: "Burrete xTB report",
+    kind: "Report",
+    summary: "Human-readable summary of one xTB job.",
+    purpose: "Collects operation, status, command, artifacts, JSON summary, and log tail in one place.",
+    use: "Use as the compact audit trail for operation, command, outputs, and log tail.",
+    format: "Markdown",
+    notes: ["Safe to share as a compact run report when paths are acceptable."],
+  },
+  "xtb.log": {
+    title: "xTB run log",
+    kind: "Log",
+    summary: "Full xTB stdout/stderr log for the calculation.",
+    purpose: "Contains convergence, warnings, command details, and text-only property sections.",
+    use: "Use to debug failed jobs or inspect values not exported to JSON, including Fukui functions.",
+    format: "plain text log",
+    notes: ["For Fukui jobs, the f(+), f(-), and f(0) table is printed here."],
+  },
+  "xtbopt.log": {
+    title: "Optimization trajectory",
+    kind: "Trajectory",
+    summary: "XYZ-like trajectory frames written during xTB geometry optimization.",
+    purpose: "Shows how the structure moved from the starting geometry to the optimized pose.",
+    use: "Use as trajectory frames to inspect coordinate relaxation step-by-step.",
+    format: "XYZ trajectory text",
+    notes: ["The .log extension is misleading here; xTB writes repeated XYZ frames into this file."],
+  },
+  "xtbout.json": {
+    title: "Machine-readable xTB summary",
+    kind: "JSON",
+    summary: "Structured xTB output used by Burrete result cards.",
+    purpose: "Stores energy, gap, dipole, partial charges, orbital data, method, version, and command metadata.",
+    use: "Use for tables, comparisons, and automated parsing instead of scraping xtb.log.",
+    format: "JSON",
+    notes: ["Fukui functions are not present in current xTB JSON output; they must be parsed from xtb.log."],
+  },
+  "xtb.json": {
+    title: "Machine-readable xTB summary",
+    kind: "JSON",
+    summary: "Structured xTB output used by result cards.",
+    purpose: "Stores calculation summary values in JSON form.",
+    use: "Use for automated parsing and report generation.",
+    format: "JSON",
+    notes: [],
+  },
+  xtbrestart: {
+    title: "xTB restart data",
+    kind: "Restart",
+    summary: "Restart/state data written by xTB.",
+    purpose: "Allows xTB internals to reuse state or continue related calculations.",
+    use: "Keep for reproducibility; usually not useful to inspect manually.",
+    format: "xTB restart text/binary-like data",
+    notes: ["Do not edit unless you are intentionally debugging xTB restart behavior."],
+  },
+  "xtbtopo.mol": {
+    title: "xTB topology",
+    kind: "Structure",
+    summary: "MOL topology inferred or written during the xTB run.",
+    purpose: "Preserves atom/bond connectivity used for interpreting results.",
+    use: "Use as the connectivity reference for charges and WBO.",
+    format: "MOL",
+    notes: ["Useful companion for charges and WBO tables."],
+  },
+  "md.inp": {
+    title: "xTB dynamics input",
+    kind: "Input",
+    summary: "Control file for MD or metadynamics parameters.",
+    purpose: "Stores temperature, time, step size, and related dynamics settings passed to xTB.",
+    use: "Use to verify what dynamics settings were actually run.",
+    format: "xTB input/control text",
+    notes: ["Generated from the xTB Settings panel."],
+  },
+  "xcontrol.inp": {
+    title: "xTB control input",
+    kind: "Input",
+    summary: "Extra xTB control file for specialized property jobs.",
+    purpose: "Carries options that cannot be represented as simple command-line flags.",
+    use: "Use to audit cube/grid or other advanced property setup.",
+    format: "xTB input/control text",
+    notes: [],
+  },
+};
+
+const XTB_PATTERN_ARTIFACTS: Record<string, Omit<XtbTextArtifactInfo, "runName">> = {
+  input: {
+    title: "Copied xTB input",
+    kind: "Input",
+    summary: "Input structure copied into the run directory.",
+    purpose: "Freezes the exact coordinates passed into this xTB run.",
+    use: "Use as the coordinate reference for reproducing energy or property calculations with the same xTB setup.",
+    format: "structure file",
+    notes: ["This can differ from the original file when the run used a selected fragment or inline input."],
+  },
+  inputWithHydrogens: {
+    title: "Prepared input with hydrogens",
+    kind: "Input",
+    summary: "Structure after Burrete/Open Babel hydrogen preparation.",
+    purpose: "xTB generally needs chemically complete hydrogens for stable local calculations.",
+    use: "Use to verify chemical completeness if geometry or charge distribution looks unexpected.",
+    format: "structure file",
+    notes: ["This is the file usually passed to xTB after preparation."],
+  },
+  secondaryInput: {
+    title: "Prepared secondary input",
+    kind: "Input",
+    summary: "Second structure prepared for workflows that need two inputs.",
+    purpose: "Used for paired or docking-like xTB operations.",
+    use: "Use to verify the paired structure in two-input workflows.",
+    format: "structure file",
+    notes: [],
+  },
+  optimizedStructure: {
+    title: "Optimized structure",
+    kind: "Structure",
+    summary: "Geometry produced by xTB optimization.",
+    purpose: "Stores the post-optimization coordinates.",
+    use: "Use as the post-relaxation geometry for energy/property interpretation or downstream calculations.",
+    format: "structure file",
+    notes: ["This is the main output of Optimize and pose-refine workflows."],
+  },
+  cube: {
+    title: "Volumetric grid",
+    kind: "Cube",
+    summary: "Cube/grid output such as density, ESP, FOD, or orbital fields.",
+    purpose: "Stores a scalar field on a 3D grid for surface visualization.",
+    use: "Use for isosurfaces or volume maps of density, ESP, FOD, or orbital fields.",
+    format: "Cube",
+    notes: [],
+  },
+  trajectory: {
+    title: "Trajectory frames",
+    kind: "Trajectory",
+    summary: "Frames generated by MD or metadynamics.",
+    purpose: "Stores time-series coordinates from dynamics.",
+    use: "Use to inspect conformational motion and representative frames.",
+    format: "trajectory",
+    notes: ["Frame count depends on MD/metadyn settings."],
+  },
+  frequencyOutput: {
+    title: "Frequency output",
+    kind: "Frequencies",
+    summary: "Frequency/Hessian output in Gaussian-style text form.",
+    purpose: "Stores vibrational analysis data for frequency inspection.",
+    use: "Use for checking normal modes or passing data to tools that understand Gaussian-like output.",
+    format: "Gaussian-style output",
+    notes: [],
+  },
+  molden: {
+    title: "Molden output",
+    kind: "Orbitals",
+    summary: "Molden-compatible orbital or vibration data.",
+    purpose: "Exports xTB results for external visualization tools.",
+    use: "Use with Molden-compatible orbital or vibration analysis.",
+    format: "Molden",
+    notes: [],
+  },
+};
+
+function latestXtbJobForDocument(document: ViewerDocument, jobs: ShellViewState["xtbJobs"]) {
+  return jobs.find((job) => {
+    const result = job.result;
+    const documentPaths = [document.path, document.sourcePath].filter((path): path is string => Boolean(path));
+    return result && (
+      documentPaths.includes(result.primaryOpenPath ?? "")
+      || job.inputLabel === document.title
+      || result.command.some((part) => documentPaths.includes(part))
+      || result.artifacts.some((artifact) => documentPaths.includes(artifact.path))
+    );
+  }) ?? null;
+}
+
+function XtbResultsPanel({ document, job, actions }: { document: ViewerDocument; job: ShellViewState["xtbJobs"][number]; actions: ShellActions }) {
+  const result = job.result;
+  if (!result) return null;
+  const summary = result.summary && typeof result.summary === "object" ? result.summary as Record<string, unknown> : {};
+  const allCharges = numericArray(summary["partial charges"] ?? summary.buretteCharges);
+  const charges = allCharges.slice(0, 12);
+  const wbo = wboRows(summary.buretteWbo).slice(0, 12);
+  const fukui = fukuiRows(summary.buretteFukui);
+  const fukuiPreview = fukui.slice(0, 12);
+  const artifactGroups = groupXtbArtifacts(result.artifacts);
+  const chargesArtifact = xtbChargesArtifact(result.artifacts);
+  const runName = xtbRunNameForPath(result.workDir) ?? fileName(result.workDir);
+  const commandSummary = xtbCommandSummary(result.command);
+  const openedInMs = Number.isFinite(result.elapsedMs) ? `${Math.max(0.1, result.elapsedMs / 1000).toFixed(1)} s` : "n/a";
+  const colorChargesInMolstar = () => {
+    actions.runStructureViewerAction(document, {
+      type: "color_xtb_charges",
+      label: "Color xTB charges",
+      charges: allCharges,
+      chargeFilePath: chargesArtifact?.path,
+    });
+  };
+  const colorChargesInXyzrender = () => {
+    if (!chargesArtifact) return;
+    actions.runStructureViewerAction(document, {
+      type: "color_xtb_charges",
+      label: "Color xTB charges",
+      charges: allCharges,
+      chargeFilePath: chargesArtifact.path,
+    });
+  };
+  const colorFukuiInMolstar = (mode: "fplus" | "fminus" | "fzero") => {
+    actions.runStructureViewerAction(document, {
+      type: "color_xtb_fukui",
+      label: `Highlight xTB ${fukuiModeLabel(mode)} in Mol*`,
+      mode,
+      values: fukui.map((row) => row[mode]),
+    });
+  };
+  const showResultsMenu = (event: MouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void showNativeContextMenu(xtbResultMenuItems(result, actions), { x: event.clientX, y: event.clientY }, { forceWeb: true });
+  };
+  const showArtifactMenu = (event: MouseEvent<HTMLButtonElement>, artifact: XtbArtifact) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void showNativeContextMenu(xtbArtifactMenuItems(artifact, actions), { x: event.clientX, y: event.clientY }, { forceWeb: true });
+  };
+  return (
+    <section className="structure-brief-card structure-inspector-xtb-results" onContextMenu={showResultsMenu}>
+      <div className="structure-inspector-xtb-result-header">
+        <div>
+          <span className="structure-brief-kicker">{operationTitle(result.operation)}</span>
+          <h3>{job.title}</h3>
+        </div>
+        <span className="structure-inspector-xtb-status" data-status={job.status}>{job.status}</span>
+      </div>
+      <p className="structure-inspector-xtb-result-context">{commandSummary} · Scope: {job.inputLabel} · Run: {runName}</p>
+      <div className="structure-inspector-xtb-metrics" aria-label="xTB run summary">
+        <XtbMetric label="Energy" value={formatMaybeNumber(summary["total energy"], " Eh")} />
+        <XtbMetric label="HL gap" value={formatMaybeNumber(summary["HOMO-LUMO gap / eV"], " eV")} />
+        <XtbMetric label="Dipole" value={formatDipole(summary["dipole / a.u."])} />
+        <XtbMetric label="Files" value={String(result.artifacts.length)} />
+        <XtbMetric label="Elapsed" value={openedInMs} />
+        <XtbMetric label="Exit code" value={result.exitCode === null || result.exitCode === undefined ? "n/a" : String(result.exitCode)} />
+      </div>
+      {charges.length > 0 ? (
+        <XtbResultTable
+          title="Charges"
+          note="Partial atomic charges from xTB output."
+          columns={["Atom", "Charge"]}
+          rows={charges.map((charge, index) => [`#${index + 1}`, charge.toFixed(4)])}
+          action={document.renderer === "molstar" ? (
+            <button type="button" className="structure-inspector-xtb-table-action" onClick={colorChargesInMolstar}>
+              Color in Mol*
+            </button>
+          ) : document.renderer === "xyzrender-external" && chargesArtifact ? (
+            <button type="button" className="structure-inspector-xtb-table-action" onClick={colorChargesInXyzrender}>
+              Color in xyzr
+            </button>
+          ) : null}
+        />
+      ) : null}
+      {wbo.length > 0 ? (
+        <XtbResultTable
+          title="WBO"
+          note="Wiberg bond orders for the strongest reported bonds."
+          columns={["Bond", "Order"]}
+          rows={wbo.map((row) => [`${row.from}-${row.to}`, row.order.toFixed(3)])}
+        />
+      ) : null}
+      {fukuiPreview.length > 0 ? (
+        <XtbResultTable
+          title="Fukui"
+          note="Condensed Fukui functions from xTB log."
+          columns={["Atom", "f+", "f-", "f0"]}
+          rows={fukuiPreview.map((row) => [`#${row.atom}${row.element}`, row.fplus.toFixed(3), row.fminus.toFixed(3), row.fzero.toFixed(3)])}
+          action={document.renderer === "molstar" ? (
+            <div className="structure-inspector-xtb-table-actions">
+              <button type="button" className="structure-inspector-xtb-table-action" onClick={() => colorFukuiInMolstar("fplus")}>
+                f+ in Mol*
+              </button>
+              <button type="button" className="structure-inspector-xtb-table-action" onClick={() => colorFukuiInMolstar("fminus")}>
+                f- in Mol*
+              </button>
+              <button type="button" className="structure-inspector-xtb-table-action" onClick={() => colorFukuiInMolstar("fzero")}>
+                f0 in Mol*
+              </button>
+            </div>
+          ) : null}
+        />
+      ) : null}
+      <div className="structure-inspector-xtb-file-groups" aria-label="xTB output files">
+        {artifactGroups.map((group) => (
+          <div className="structure-inspector-xtb-file-group" key={group.title}>
+            <strong>{group.title}</strong>
+            <div>
+              {group.artifacts.map((artifact) => (
+                <button
+                  type="button"
+                  className="dock-action structure-inspector-xtb-file-button"
+                  key={artifact.path}
+                  onClick={() => void openXtbArtifact(artifact, actions)}
+                  onContextMenu={(event) => showArtifactMenu(event, artifact)}
+                  title={xtbArtifactButtonTitle(artifact)}
+                >
+                  {artifact.title}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="dock-action-row structure-inspector-xtb-result-actions">
+        {result.primaryOpenPath ? (
+          <button type="button" className="dock-action" onClick={() => void actions.openPaths([result.primaryOpenPath!])}>
+            Open result
+          </button>
+        ) : null}
+        <button type="button" className="dock-action" onClick={() => void actions.revealPath(result.workDir, "xTB run folder")}>
+          Open run folder
+        </button>
+        <button type="button" className="dock-action" onClick={() => void actions.openTextPaths([result.logPath])}>
+          Log
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function XtbMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="structure-inspector-xtb-metric">
+      <span>{label}</span>
+      <strong title={value}>{value}</strong>
+    </div>
+  );
+}
+
+function XtbResultTable({
+  title,
+  note,
+  columns,
+  rows,
+  action,
+}: {
+  title: string;
+  note: string;
+  columns: string[];
+  rows: string[][];
+  action?: ReactNode;
+}) {
+  return (
+    <div className="structure-inspector-xtb-table">
+      <div className="structure-inspector-xtb-table-title">
+        <div>
+          <strong>{title}</strong>
+          <span>{note}</span>
+        </div>
+        {action}
+      </div>
+      <table>
+        <thead>
+          <tr>
+            {columns.map((column) => <th key={column}>{column}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={`${title}-${index}`}>
+              {row.map((cell, cellIndex) => <td key={`${title}-${index}-${cellIndex}`}>{cell}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function groupXtbArtifacts(artifacts: XtbArtifact[]) {
+  const groups: Array<{ title: string; artifacts: XtbArtifact[] }> = [
+    { title: "Structures", artifacts: [] },
+    { title: "Trajectories", artifacts: [] },
+    { title: "Properties", artifacts: [] },
+    { title: "Logs", artifacts: [] },
+    { title: "Restart", artifacts: [] },
+    { title: "Other", artifacts: [] },
+  ];
+  const byTitle = new Map(groups.map((group) => [group.title, group]));
+  for (const artifact of artifacts) {
+    byTitle.get(xtbArtifactGroupTitle(artifact))!.artifacts.push(artifact);
+  }
+  return groups.filter((group) => group.artifacts.length > 0);
+}
+
+function xtbArtifactGroupTitle(artifact: XtbArtifact) {
+  const name = artifact.title.toLowerCase();
+  const kind = artifact.kind.toLowerCase();
+  if (kind === "structure" || ["input.pdb", "input-with-h.pdb", "xtbopt.pdb", "xtbopt.xyz", "xtbtopo.mol"].includes(name)) return "Structures";
+  if (kind === "trajectory" || name.endsWith(".trj") || name.endsWith(".arc") || name === "xtbopt.log") return "Trajectories";
+  if (["charges", "wbo", "xtbout.json"].includes(name) || kind === "cube") return "Properties";
+  if (name.endsWith(".log") || name.endsWith(".out") || name.endsWith(".md")) return "Logs";
+  if (name.includes("restart") || name.startsWith(".xtb")) return "Restart";
+  return "Other";
+}
+
+function xtbChargesArtifact(artifacts: XtbArtifact[]) {
+  return artifacts.find((artifact) => artifact.title.toLowerCase() === "charges" || artifact.path.split("/").pop()?.toLowerCase() === "charges") ?? null;
+}
+
+function openXtbArtifact(artifact: XtbArtifact, actions: ShellActions) {
+  if (artifact.kind === "structure" || artifact.kind === "cube" || artifact.kind === "trajectory") {
+    return actions.openPaths([artifact.path]);
+  }
+  return actions.openTextPaths([artifact.path]);
+}
+
+function xtbArtifactButtonTitle(artifact: XtbArtifact) {
+  const info = xtbArtifactInfoForPath(artifact.path, artifact.extension);
+  return info ? `${info.title}: ${info.summary}` : artifact.path;
+}
+
+function operationTitle(operation: XtbRunResult["operation"]) {
+  switch (operation) {
+    case "optimize":
+      return "Geometry optimization";
+    case "properties":
+      return "Single-point properties";
+    case "optimized-hessian":
+      return "Optimized Hessian";
+    case "vipea":
+      return "IP/EA workflow";
+    case "vfukui":
+      return "Fukui workflow";
+    case "md":
+      return "Molecular dynamics";
+    case "metadyn":
+      return "Metadynamics";
+    default:
+      return "xTB run";
+  }
+}
+
+function xtbCommandSummary(command: string[]) {
+  const joined = command.join(" ");
+  const method = command.find((part) => /^--?gfn\d$/iu.test(part))?.replace(/^--/u, "").toUpperCase() ?? "xTB";
+  const optIndex = command.indexOf("--opt");
+  const opt = optIndex >= 0 ? `opt ${command[optIndex + 1] ?? "normal"}` : null;
+  const chargeIndex = command.indexOf("--chrg");
+  const charge = chargeIndex >= 0 ? `charge ${command[chargeIndex + 1] ?? "0"}` : null;
+  const uhfIndex = command.indexOf("--uhf");
+  const uhf = uhfIndex >= 0 ? `UHF ${command[uhfIndex + 1] ?? "0"}` : null;
+  const solventFlag = command.find((part) => ["--alpb", "--gbsa", "--cosmo", "--cpcm"].includes(part.toLowerCase()));
+  const solventIndex = solventFlag ? command.indexOf(solventFlag) : -1;
+  const solvent = solventFlag ? `${solventFlag.replace("--", "").toUpperCase()} ${command[solventIndex + 1] ?? ""}`.trim() : "gas phase";
+  return [method, opt, charge, uhf, solvent].filter(Boolean).join(" · ") || truncateInline(joined, 80);
+}
+
+function xtbArtifactMenuItems(artifact: XtbArtifact, actions: ShellActions): MenuItemSpec[] {
+  return [
+    {
+      kind: "item",
+      id: "open-artifact-file",
+      text: "Open as file",
+      detail: artifact.title,
+      action: () => void actions.openPaths([artifact.path]),
+    },
+    {
+      kind: "item",
+      id: "open-artifact-text",
+      text: "Open as text",
+      detail: artifact.title,
+      action: () => void actions.openTextPaths([artifact.path]),
+    },
+    {
+      kind: "item",
+      id: "copy-artifact-path",
+      text: "Copy path",
+      detail: artifact.path,
+      action: () => void actions.copyPath(artifact.path, "xTB artifact"),
+    },
+    {
+      kind: "item",
+      id: "reveal-artifact",
+      text: "Reveal file",
+      detail: artifact.title,
+      action: () => void actions.revealPath(artifact.path, "xTB artifact"),
+    },
+  ];
+}
+
+function xtbResultMenuItems(result: XtbRunResult, actions: ShellActions): MenuItemSpec[] {
+  return [
+    {
+      kind: "item",
+      id: "open-primary-result",
+      text: "Open result as file",
+      detail: result.primaryOpenPath?.split(/[\\/]/u).pop() ?? "No primary result",
+      disabled: !result.primaryOpenPath,
+      action: result.primaryOpenPath ? () => void actions.openPaths([result.primaryOpenPath!]) : undefined,
+    },
+    {
+      kind: "item",
+      id: "open-report",
+      text: "Open report",
+      detail: result.reportPath.split(/[\\/]/u).pop() ?? "xtb-report.md",
+      action: () => void actions.openTextPaths([result.reportPath]),
+    },
+    {
+      kind: "item",
+      id: "open-log",
+      text: "Open log",
+      detail: result.logPath.split(/[\\/]/u).pop() ?? "xtb.log",
+      action: () => void actions.openTextPaths([result.logPath]),
+    },
+    { kind: "separator" },
+    {
+      kind: "item",
+      id: "copy-workdir",
+      text: "Copy work dir",
+      detail: result.workDir,
+      action: () => void actions.copyPath(result.workDir, "xTB work dir"),
+    },
+  ];
+}
+
+function numericArray(value: unknown) {
+  return Array.isArray(value) ? value.map(Number).filter(Number.isFinite) : [];
+}
+
+function wboRows(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.map((row) => {
+    const source = row && typeof row === "object" ? row as Record<string, unknown> : {};
+    return { from: Number(source.from), to: Number(source.to), order: Number(source.order) };
+  }).filter((row) => Number.isFinite(row.from) && Number.isFinite(row.to) && Number.isFinite(row.order));
+}
+
+function fukuiRows(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.map((row) => {
+    const source = row && typeof row === "object" ? row as Record<string, unknown> : {};
+    return {
+      atom: Number(source.atom),
+      element: String(source.element ?? ""),
+      fplus: Number(source.fplus),
+      fminus: Number(source.fminus),
+      fzero: Number(source.fzero),
+    };
+  }).filter((row) => Number.isInteger(row.atom) && row.atom > 0 && Number.isFinite(row.fplus) && Number.isFinite(row.fminus) && Number.isFinite(row.fzero));
+}
+
+function fukuiModeLabel(mode: "fplus" | "fminus" | "fzero") {
+  if (mode === "fminus") return "f(-)";
+  if (mode === "fzero") return "f(0)";
+  return "f(+)";
+}
+
+function formatMaybeNumber(value: unknown, suffix: string) {
+  const number = Number(value);
+  return Number.isFinite(number) ? `${number.toFixed(6)}${suffix}` : "n/a";
+}
+
+function formatDipole(value: unknown) {
+  const rows = numericArray(value);
+  return rows.length >= 3 ? rows.slice(0, 3).map((number) => number.toFixed(3)).join(", ") : "n/a";
+}
+
+function InlineXtbSetting({
+  label,
+  tooltip,
+  reset,
+  modified,
+  children,
+}: {
+  label: string;
+  tooltip?: string;
+  reset?: () => void;
+  modified?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className="structure-inspector-xtb-setting-row" data-xtb-tooltip={tooltip}>
+      <span>{label}</span>
+      <div className="structure-inspector-xtb-setting-control">
+        {reset ? (
+          <button
+            type="button"
+            className="settings-reset-button"
+            aria-hidden={!modified}
+            tabIndex={modified ? 0 : -1}
+            data-hidden={!modified || undefined}
+            onClick={reset}
+          >
+            Reset
+            <ShortcutTooltip label={`Restore the default ${label} parameter.`} />
+          </button>
+        ) : null}
+        {children}
+      </div>
+    </div>
+  );
 }
 
 function countFromSummaryValue(value: string | null, unit: string) {
@@ -681,6 +2224,7 @@ function SelectedEntityCard({
 function actionTypeLabel(action: StructureViewerAction) {
   if (action.type === "focus_ligand") return "Focus in 3D";
   if (action.type === "set_sdf_molecule") return "Show molecule";
+  if (action.type === "set_structure_pose") return "Show pose";
   if (action.type === "select_residues") return "Residues";
   if (action.type === "hide_waters") return "Hide water";
   if (action.type === "show_waters") return "Show water";
@@ -691,6 +2235,7 @@ function actionTypeLabel(action: StructureViewerAction) {
 
 function selectorLabel(action: StructureViewerAction) {
   if (action.type === "set_sdf_molecule") return `Molecule ${action.index + 1}`;
+  if (action.type === "set_structure_pose") return `Pose ${action.index + 1}`;
   if (!("selector" in action)) return "Scene action";
   const chain = valueFromSelector(action.selector, "auth_asym_id") ?? valueFromSelector(action.selector, "label_asym_id");
   const seq = valueFromSelector(action.selector, "auth_seq_id") ?? valueFromSelector(action.selector, "label_seq_id");
@@ -717,10 +2262,6 @@ function StructureBriefRow({ label, value }: BriefRow) {
 
 function plural(count: number, noun: string) {
   return count === 1 ? noun : `${noun}s`;
-}
-
-function fileName(path: string) {
-  return path.split(/[\\/]/u).pop() || path;
 }
 
 function StructureActionList({
@@ -958,6 +2499,7 @@ function StructureDetailsSection({
 
 function selectionActionKey(document: ViewerDocument, action: StructureViewerAction) {
   if (action.type === "set_sdf_molecule") return JSON.stringify([document.id, action.type, action.index]);
+  if (action.type === "set_structure_pose") return JSON.stringify([document.id, action.type, action.index]);
   if (action.type !== "select_residues" && action.type !== "focus_ligand") return null;
   return JSON.stringify([document.id, action.type, action.selector]);
 }

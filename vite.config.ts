@@ -32,6 +32,7 @@ export default defineConfig({
   fmt: {
     ignorePatterns: [
       ".github/**",
+      ".thoughts/**",
       "AGENTS.md",
       "DESIGN.md",
       "PRODUCT.md",
