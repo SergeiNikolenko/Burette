@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { readStructureTextDocument } from "../lib/structure-text";
-import { parseSpectrumFile, spectrumSummary, type SpectrumDocument, type SpectrumFile } from "../lib/spectrum";
+import { parseSpectrumFile, spectrumSummary, type SpectrumDocument, type SpectrumFile, type SpectrumPeak } from "../lib/spectrum";
 import { useSpectrumPeakSelection } from "../lib/spectrum-selection";
 import type { ViewerDocument } from "../types";
 import { formatBytes } from "./format";
@@ -35,7 +35,7 @@ export function SpectrumViewer({ document, embedded = false }: SpectrumViewerPro
   const [file, setFile] = useState<SpectrumFile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [selectedPeakIndex, setSelectedPeakIndex] = useSpectrumPeakSelection(document.id);
+  const { activePeakIndex, selectedPeakIndices, selectPeak, clearPeakSelection } = useSpectrumPeakSelection(document.id);
   const [normalize, setNormalize] = useState(true);
   const [labelTopPeaks, setLabelTopPeaks] = useState(true);
 
@@ -44,7 +44,7 @@ export function SpectrumViewer({ document, embedded = false }: SpectrumViewerPro
     setFile(null);
     setError(null);
     setSelectedIndex(0);
-    setSelectedPeakIndex(null);
+    clearPeakSelection();
     void readStructureTextDocument(document.path, {
       id: document.id,
       path: document.path,
@@ -67,14 +67,14 @@ export function SpectrumViewer({ document, embedded = false }: SpectrumViewerPro
     return () => {
       cancelled = true;
     };
-  }, [document.byteCount, document.extension, document.id, document.path, document.title, setSelectedPeakIndex]);
+  }, [clearPeakSelection, document.byteCount, document.extension, document.id, document.path, document.title]);
 
   const selectedSpectrum = file?.spectra[selectedIndex] ?? file?.spectra[0] ?? null;
   const summary = useMemo(() => (file ? spectrumSummary(file) : null), [file]);
 
   useEffect(() => {
-    setSelectedPeakIndex(null);
-  }, [selectedIndex, setSelectedPeakIndex]);
+    clearPeakSelection();
+  }, [clearPeakSelection, selectedIndex]);
 
   if (error) {
     return (
@@ -134,15 +134,11 @@ export function SpectrumViewer({ document, embedded = false }: SpectrumViewerPro
             spectrum={selectedSpectrum}
             normalize={normalize}
             labelTopPeaks={labelTopPeaks}
-            selectedPeakIndex={selectedPeakIndex}
-            onPeakSelect={setSelectedPeakIndex}
+            activePeakIndex={activePeakIndex}
+            selectedPeakIndices={selectedPeakIndices}
+            onPeakSelect={selectPeak}
           />
         </section>
-        {!embedded && (
-          <aside className="spectrum-side-panel">
-            <SpectrumMetadata document={document} file={file} spectrum={selectedSpectrum} summary={summary} />
-          </aside>
-        )}
       </main>
     </div>
   );
@@ -191,7 +187,13 @@ export function SpectrumPeakTablePanel({ document }: { document: ViewerDocument 
   const [file, setFile] = useState<SpectrumFile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [selectedPeakIndex, setSelectedPeakIndex] = useSpectrumPeakSelection(document.id);
+  const {
+    activePeakIndex,
+    selectedPeakIndices,
+    previewPeak,
+    selectPeakRange,
+    clearPeakSelection,
+  } = useSpectrumPeakSelection(document.id);
   const [normalize, setNormalize] = useState(true);
 
   useEffect(() => {
@@ -199,7 +201,7 @@ export function SpectrumPeakTablePanel({ document }: { document: ViewerDocument 
     setFile(null);
     setError(null);
     setSelectedIndex(0);
-    setSelectedPeakIndex(null);
+    clearPeakSelection();
     void readStructureTextDocument(document.path, {
       id: document.id,
       path: document.path,
@@ -216,13 +218,13 @@ export function SpectrumPeakTablePanel({ document }: { document: ViewerDocument 
     return () => {
       cancelled = true;
     };
-  }, [document.byteCount, document.extension, document.id, document.path, document.title, setSelectedPeakIndex]);
+  }, [clearPeakSelection, document.byteCount, document.extension, document.id, document.path, document.title]);
 
   const selectedSpectrum = file?.spectra[selectedIndex] ?? file?.spectra[0] ?? null;
 
   useEffect(() => {
-    setSelectedPeakIndex(null);
-  }, [selectedIndex, setSelectedPeakIndex]);
+    clearPeakSelection();
+  }, [clearPeakSelection, selectedIndex]);
 
   return (
     <section className="spectrum-table-panel">
@@ -251,8 +253,10 @@ export function SpectrumPeakTablePanel({ document }: { document: ViewerDocument 
           <PeakTable
             spectrum={selectedSpectrum}
             normalize={normalize}
-            selectedPeakIndex={selectedPeakIndex}
-            onPeakSelect={setSelectedPeakIndex}
+            activePeakIndex={activePeakIndex}
+            selectedPeakIndices={selectedPeakIndices}
+            onPeakHover={previewPeak}
+            onPeakRangeSelect={selectPeakRange}
           />
         </>
       )}
@@ -264,13 +268,15 @@ function SpectrumPlot({
   spectrum,
   normalize,
   labelTopPeaks,
-  selectedPeakIndex,
+  activePeakIndex,
+  selectedPeakIndices,
   onPeakSelect,
 }: {
   spectrum: SpectrumDocument;
   normalize: boolean;
   labelTopPeaks: boolean;
-  selectedPeakIndex: number | null;
+  activePeakIndex: number | null;
+  selectedPeakIndices: number[];
   onPeakSelect: (index: number | null) => void;
 }) {
   const plotRef = useRef<HTMLDivElement>(null);
@@ -283,12 +289,12 @@ function SpectrumPlot({
     void import("plotly.js-basic-dist-min").then((module) => {
       if (disposed || !plotRef.current) return;
       plotlyRef.current = module.default as PlotlyModule;
-      return renderPlot(plotlyRef.current, plotRef.current, spectrum, peaks, labels, normalize, selectedPeakIndex, onPeakSelect);
+      return renderPlot(plotlyRef.current, plotRef.current, spectrum, peaks, labels, normalize, activePeakIndex, selectedPeakIndices, onPeakSelect);
     });
     return () => {
       disposed = true;
     };
-  }, [labels, normalize, onPeakSelect, peaks, selectedPeakIndex, spectrum]);
+  }, [activePeakIndex, labels, normalize, onPeakSelect, peaks, selectedPeakIndices, spectrum]);
 
   useEffect(() => {
     const element = plotRef.current;
@@ -323,9 +329,11 @@ function renderPlot(
   peaks: SpectrumPeak[],
   labels: string[],
   normalize: boolean,
-  selectedPeakIndex: number | null,
+  activePeakIndex: number | null,
+  selectedPeakIndices: number[],
   onPeakSelect: (index: number | null) => void,
 ) {
+  const selectedPeakSet = new Set(selectedPeakIndices);
   const stickTrace = {
     type: "bar",
     x: peaks.map((peak) => peak.x),
@@ -333,13 +341,15 @@ function renderPlot(
     width: peakBarWidths(peaks),
     marker: {
       color: peaks.map((peak, index) => (
-        index === selectedPeakIndex
+        index === activePeakIndex
           ? "#b456e8"
+          : selectedPeakSet.has(index)
+          ? "rgba(180,86,232,0.7)"
           : peak.annotations?.frag_base_form ? "#4f8cff" : "#7c8798"
       )),
       line: {
-        width: peaks.map((_peak, index) => index === selectedPeakIndex ? 1.5 : 0),
-        color: peaks.map((_peak, index) => index === selectedPeakIndex ? "#6f2dbd" : "transparent"),
+        width: peaks.map((_peak, index) => index === activePeakIndex || selectedPeakSet.has(index) ? 1.5 : 0),
+        color: peaks.map((_peak, index) => index === activePeakIndex || selectedPeakSet.has(index) ? "#6f2dbd" : "transparent"),
       },
     },
     text: labels,
@@ -354,11 +364,11 @@ function renderPlot(
     x: peaks.map((peak) => peak.x),
     y: peaks.map((peak) => peak.y),
     marker: {
-      size: peaks.map((_peak, index) => index === selectedPeakIndex ? 18 : 14),
-      color: peaks.map((_peak, index) => index === selectedPeakIndex ? "rgba(180,86,232,0.24)" : "rgba(79,140,255,0.01)"),
+      size: peaks.map((_peak, index) => index === activePeakIndex ? 18 : selectedPeakSet.has(index) ? 16 : 14),
+      color: peaks.map((_peak, index) => index === activePeakIndex ? "rgba(180,86,232,0.24)" : selectedPeakSet.has(index) ? "rgba(180,86,232,0.14)" : "rgba(79,140,255,0.01)"),
       line: {
-        width: peaks.map((_peak, index) => index === selectedPeakIndex ? 2 : 0),
-        color: peaks.map((_peak, index) => index === selectedPeakIndex ? "#6f2dbd" : "transparent"),
+        width: peaks.map((_peak, index) => index === activePeakIndex || selectedPeakSet.has(index) ? 2 : 0),
+        color: peaks.map((_peak, index) => index === activePeakIndex || selectedPeakSet.has(index) ? "#6f2dbd" : "transparent"),
       },
     },
     customdata: peaks.map((peak) => peakHoverData(peak)),
@@ -455,17 +465,44 @@ function SpectrumMetadata({
 function PeakTable({
   spectrum,
   normalize,
-  selectedPeakIndex,
-  onPeakSelect,
+  activePeakIndex,
+  selectedPeakIndices,
+  onPeakHover,
+  onPeakRangeSelect,
 }: {
   spectrum: SpectrumDocument;
   normalize: boolean;
-  selectedPeakIndex: number | null;
-  onPeakSelect: (index: number | null) => void;
+  activePeakIndex: number | null;
+  selectedPeakIndices: number[];
+  onPeakHover: (index: number | null) => void;
+  onPeakRangeSelect: (startIndex: number, endIndex: number) => void;
 }) {
+  const [dragStartIndex, setDragStartIndex] = useState<number | null>(null);
   const peaks = scaledPeaks(spectrum, normalize).slice(0, 500);
+  const selectedPeakSet = useMemo(() => new Set(selectedPeakIndices), [selectedPeakIndices]);
+
+  useEffect(() => {
+    if (dragStartIndex === null) return undefined;
+    const finishDrag = () => setDragStartIndex(null);
+    window.addEventListener("pointerup", finishDrag);
+    window.addEventListener("pointercancel", finishDrag);
+    return () => {
+      window.removeEventListener("pointerup", finishDrag);
+      window.removeEventListener("pointercancel", finishDrag);
+    };
+  }, [dragStartIndex]);
+
   return (
-    <div className="spectrum-peak-table">
+    <div className="spectrum-peak-table" onMouseLeave={() => {
+      if (dragStartIndex === null) onPeakHover(null);
+    }} onPointerMove={(event) => {
+      const row = event.target instanceof HTMLElement ? event.target.closest<HTMLTableRowElement>("tr[data-peak-index]") : null;
+      if (!row) return;
+      const index = Number(row.dataset.peakIndex);
+      if (!Number.isInteger(index)) return;
+      onPeakHover(index);
+      if (dragStartIndex !== null && event.buttons === 1) onPeakRangeSelect(dragStartIndex, index);
+    }}>
       <table>
         <thead>
           <tr>
@@ -478,8 +515,19 @@ function PeakTable({
           {peaks.map((peak, index) => (
             <tr
               key={`${peak.x}:${peak.y}:${index}`}
-              data-selected={index === selectedPeakIndex || undefined}
-              onClick={() => onPeakSelect(index)}
+              data-peak-index={index}
+              data-active={index === activePeakIndex || undefined}
+              data-selected={selectedPeakSet.has(index) || undefined}
+              onPointerDown={(event) => {
+                if (event.button !== 0) return;
+                event.preventDefault();
+                setDragStartIndex(index);
+                onPeakRangeSelect(index, index);
+              }}
+              onPointerEnter={() => {
+                onPeakHover(index);
+                if (dragStartIndex !== null) onPeakRangeSelect(dragStartIndex, index);
+              }}
             >
               <td>{formatNumber(peak.x)}</td>
               <td>{formatNumber(peak.y)}</td>

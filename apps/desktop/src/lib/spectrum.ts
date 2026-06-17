@@ -131,7 +131,7 @@ function parseMagmaFile(title: string, content: string): SpectrumFile {
   const column = (name: string) => header.indexOf(name);
   const mzIndex = column("mz_observed");
   const intensityIndex = column("inten");
-  const peaks = lines.map((line, index) => {
+  const peaks = lines.map((line, index): SpectrumPeak | null => {
     const cells = line.split("\t");
     const x = Number(cells[mzIndex]);
     const y = Number(cells[intensityIndex]);

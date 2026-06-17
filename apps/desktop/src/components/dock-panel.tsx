@@ -31,6 +31,7 @@ type DockPanelProps = {
 
 const dockTabIcons: Record<DockTabKind, typeof File02Icon> = {
   files: Folder01Icon,
+  spectrum: Atom01Icon,
   text: File02Icon,
   inspector: Search01Icon,
   descriptors: Atom01Icon,
@@ -44,16 +45,25 @@ const dockTabIcons: Record<DockTabKind, typeof File02Icon> = {
 
 export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProps) {
   const [dropActive, setDropActive] = useState(false);
-  const tabs = area === "right" ? state.rightDockTabs : state.bottomDockTabs;
-  const activeTabKind = area === "right" ? state.rightDockActiveTab : state.bottomDockActiveTab;
+  const rawTabs = area === "right" ? state.rightDockTabs : state.bottomDockTabs;
   const open = area === "right" ? state.rightDockOpen : state.bottomDockOpen;
   const size = area === "right" ? state.rightDockWidth : state.bottomDockHeight;
   const dragging = area === "right" ? state.rightDockDragging : state.bottomDockDragging;
-  const activeTab = tabs.find((tab) => tab.kind === activeTabKind) ?? tabs[0];
   const dockDocumentId = area === "right" ? state.rightDockDocumentId : state.bottomDockDocumentId;
   const dockTool = area === "right" ? state.rightDockTool : state.bottomDockTool;
   const dockDocument = dockDocumentId ? state.documents.find((document) => document.id === dockDocumentId) ?? null : null;
   const dockTextDocument = dockDocumentId ? state.textDocuments.find((document) => document.id === dockDocumentId) ?? null : null;
+  const activeStructureDocument = dockDocument ?? state.activeDocument;
+  const spectrumDocumentActive = activeStructureDocument?.renderer === "spectrum";
+  const spectrumDockAvailable = area === "bottom" && (dockDocument?.renderer === "spectrum" || state.activeDocument?.renderer === "spectrum");
+  const tabs = rawTabs.filter((tab) => {
+    if (tab.kind === "spectrum") return spectrumDockAvailable;
+    if (tab.kind === "descriptors") return !(area === "right" && spectrumDocumentActive);
+    return true;
+  });
+  const storedActiveTabKind = area === "right" ? state.rightDockActiveTab : state.bottomDockActiveTab;
+  const activeTabKind = tabs.some((tab) => tab.kind === storedActiveTabKind) ? storedActiveTabKind : tabs[0]?.kind ?? "files";
+  const activeTab = tabs.find((tab) => tab.kind === activeTabKind) ?? tabs[0];
   const filesTabDragPayload = dockFilesDragPayload(dockDocument, dockTextDocument, dockTool);
   const dockDrops = useMemo(
     () => state.dockDroppedStructures.filter((item) => item.area === area && item.tabKind === activeTab.kind),
@@ -63,7 +73,11 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
   const showAddMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     void showNativeContextMenu(
-      dockTabCatalog(area).map((kind) => ({
+      dockTabCatalog(area).filter((kind) => {
+        if (kind === "spectrum") return spectrumDockAvailable;
+        if (kind === "descriptors") return !(area === "right" && spectrumDocumentActive);
+        return true;
+      }).map((kind) => ({
         kind: "item" as const,
         id: `dock-${area}-${kind}`,
         text: DOCK_TAB_LABELS[kind],
@@ -227,6 +241,21 @@ function DockPanelContent({
       })
     : [];
   const activeFileEntryKey = activeDockFileEntryKey(dockDocument, dockTextDocument, dockTool);
+  if (activeTabKind === "spectrum") {
+    const spectrumDocument = dockStructureDocument?.renderer === "spectrum" ? dockStructureDocument : null;
+    if (area === "bottom" && spectrumDocument) {
+      return (
+        <div className="dock-viewer">
+          <SpectrumPeakTablePanel document={spectrumDocument} />
+        </div>
+      );
+    }
+    return (
+      <div className="dock-content dock-content-empty">
+        <div className="dock-empty dock-empty-large">Open a spectrum to inspect peaks</div>
+      </div>
+    );
+  }
   if (activeTabKind === "files") {
     const fileTabs = (
       <DockFileTabs
@@ -242,9 +271,7 @@ function DockPanelContent({
         <div className="dock-files-view">
           {fileTabs}
           <div className="dock-viewer">
-            {dockDocument.renderer === "spectrum" && area === "bottom"
-              ? <SpectrumPeakTablePanel document={dockDocument} />
-              : dockDocument.renderer === "spectrum"
+            {dockDocument.renderer === "spectrum"
               ? <SpectrumViewer document={dockDocument} embedded />
               : <ViewerFrame document={dockDocument} />}
           </div>
@@ -257,16 +284,6 @@ function DockPanelContent({
           {fileTabs}
           <div className="dock-viewer">
             <TextFileViewer document={dockTextDocument} openPaths={actions.openPaths} onStructureSelection={actions.selectTextStructure} />
-          </div>
-        </div>
-      );
-    }
-    if (area === "bottom" && activeDocument?.renderer === "spectrum") {
-      return (
-        <div className="dock-files-view">
-          {fileTabs}
-          <div className="dock-viewer">
-            <SpectrumPeakTablePanel document={activeDocument} />
           </div>
         </div>
       );

@@ -3660,8 +3660,8 @@ img.radix-menu-item-icon {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
-  grid-template-areas: "plot side";
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "plot";
 }
 .spectrum-embedded .spectrum-layout {
   grid-template-columns: minmax(0, 1fr);
@@ -3802,6 +3802,7 @@ img.radix-menu-item-icon {
   min-height: 0;
   flex: 1;
   overflow: auto;
+  user-select: none;
 }
 .spectrum-peak-table th,
 .spectrum-peak-table td {
@@ -3814,10 +3815,11 @@ img.radix-menu-item-icon {
 .spectrum-peak-table th {
   position: sticky;
   top: 0;
-  z-index: 1;
-  background: var(--surface-subtle);
+  z-index: 3;
+  background: var(--bg-base);
   color: var(--text-muted);
   font-weight: 500;
+  box-shadow: 0 1px 0 var(--line-subtler);
 }
 .spectrum-peak-table td {
   color: var(--text-secondary);
@@ -3830,10 +3832,17 @@ img.radix-menu-item-icon {
   background: color-mix(in srgb, var(--accent) 7%, transparent);
 }
 .spectrum-peak-table tbody tr[data-selected="true"] {
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.spectrum-peak-table tbody tr[data-active="true"] {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
   box-shadow: inset 3px 0 0 var(--accent);
 }
 .spectrum-peak-table tbody tr[data-selected="true"] td {
+  color: var(--text-primary);
+}
+.spectrum-peak-table tbody tr[data-active="true"] td {
   color: var(--text-primary);
 }
 .spectrum-empty {
