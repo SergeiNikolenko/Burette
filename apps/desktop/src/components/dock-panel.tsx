@@ -17,6 +17,7 @@ import { CloseIcon } from "./close-icon";
 import { formatBytes } from "./format";
 import { StructureInfoPanel } from "./structure-info-panel";
 import { DescriptorPanel } from "./descriptor-panel";
+import { SpectrumInfoPanel, SpectrumViewer } from "./spectrum-viewer";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureTextDocument } from "../lib/structure-text";
 import type { TextFileDocument, ViewerDocument } from "../types";
@@ -241,7 +242,9 @@ function DockPanelContent({
         <div className="dock-files-view">
           {fileTabs}
           <div className="dock-viewer">
-            <ViewerFrame document={dockDocument} />
+            {dockDocument.renderer === "spectrum"
+              ? <SpectrumViewer document={dockDocument} embedded />
+              : <ViewerFrame document={dockDocument} />}
           </div>
         </div>
       );
@@ -290,6 +293,7 @@ function DockPanelContent({
   if (activeTabKind === "inspector") {
     if (area === "right" && activePageKind === "ketcher") return <KetcherInspectorPanel state={state} />;
     if (dockTextDocument) return <TextDocumentInfoPanel document={dockTextDocument} actions={actions} />;
+    if (dockStructureDocument?.renderer === "spectrum") return <SpectrumInfoPanel document={dockStructureDocument} />;
     return <StructureInfoPanel document={dockStructureDocument} dockDrops={dockDrops} actions={actions} />;
   }
   if (activeTabKind === "descriptors") {

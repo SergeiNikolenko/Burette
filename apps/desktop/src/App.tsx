@@ -72,6 +72,7 @@ import { basename, buildSidebarProjects, parentDirectory, type SidebarProjectStr
 import type { StructureViewerAction } from "./lib/structure-composition";
 import type { StructureDragPayload, StructureDragRecord } from "./lib/structure-drag";
 import { readStructureText } from "./lib/structure-text";
+import { isSpectrumExtension, spectrumDocumentFromText } from "./lib/spectrum";
 import type { TextStructureSelection } from "./lib/text-structure-selection";
 import { isTauriRuntime } from "./lib/tauri";
 import { isTemporaryDocumentPath } from "./lib/temporary-documents";
@@ -87,7 +88,7 @@ const CommandPalette = lazy(() => import("./components/command-palette").then((m
 const filters = [
   {
     name: "Files",
-    extensions: [...previewFormatRegistry.documentTypes.extensions, "md", "markdown", "mdx", "txt", "log", "out", "err", "sh", "bash", "zsh", "py", "rs", "js", "jsx", "ts", "tsx", "json", "yaml", "yml", "toml", "xml", "html", "css", "inpcrd", "rst7", "crd", "rst", "par", "prm", "rtf", "str", "key", "chk", "checkpoint", "state"],
+    extensions: [...previewFormatRegistry.documentTypes.extensions, "ms", "magma", "mgf", "msp", "mzML", "mzXML", "md", "markdown", "mdx", "txt", "log", "out", "err", "sh", "bash", "zsh", "py", "rs", "js", "jsx", "ts", "tsx", "json", "yaml", "yml", "toml", "xml", "html", "css", "inpcrd", "rst7", "crd", "rst", "par", "prm", "rtf", "str", "key", "chk", "checkpoint", "state"],
   },
 ];
 
@@ -845,18 +846,56 @@ export default function App() {
     [addBackgroundTextDocuments, addTextDocuments, openTextDocumentsInActiveTab, pushErrorStatus, pushStatus],
   );
 
+  const openSpectrumDocuments = useCallback(
+    async (
+      paths: string[],
+      options: { inActiveTab?: boolean; background?: boolean } = {},
+    ) => {
+      const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
+      if (!cleanPaths.length) return null;
+      pushStatus("Opening spectra...");
+      try {
+        const result = isTauriRuntime()
+          ? await invoke<OpenTextFilesResult>("open_text_files", { paths: cleanPaths })
+          : await openBrowserDevTextFiles(cleanPaths);
+        const documents = result.documents.map(spectrumDocumentFromText);
+        if (options.background) addBackgroundDocuments(documents);
+        else if (options.inActiveTab) openDocumentsInActiveTab(documents);
+        else addDocuments(documents);
+        if (!options.background && !options.inActiveTab && documents[0]) {
+          setActiveDocument(documents[0].id);
+        }
+        rememberRecentStructures(documents);
+        const openedText = "Opened " + documents.length + " spectrum" + (documents.length === 1 ? "" : "s");
+        if (result.errors.length > 0) {
+          pushStatus(`${openedText}. ${summarizeErrors(result.errors)}`, "error", result.errors);
+        } else {
+          pushStatus(openedText);
+        }
+        return { documents, errors: result.errors };
+      } catch (error) {
+        pushErrorStatus(error, "Open spectrum failed");
+        return null;
+      }
+    },
+    [addBackgroundDocuments, addDocuments, openDocumentsInActiveTab, pushErrorStatus, pushStatus, rememberRecentStructures, setActiveDocument],
+  );
+
   const openPaths = useCallback(async (paths: string[]) => {
     const cleanPaths = await expandBrowserDevStructureBundles(Array.from(new Set(paths.filter(Boolean))));
     if (!cleanPaths.length) return;
 
     const structurePaths: string[] = [];
+    const spectrumPaths: string[] = [];
     const textPaths: string[] = [];
     const structureAndTextPaths: string[] = [];
     let preferredStructureDocumentId: string | null = null;
 
     for (const path of cleanPaths) {
       const extension = pathExtension(path);
-      if (
+      if (isSpectrumExtension(extension)) {
+        spectrumPaths.push(path);
+      } else if (
         preferredTextExtensions.has(extension)
         || (extension.length > 0 && !structureExtensions.has(extension) && !structureAndTextExtensions.has(extension))
       ) {
@@ -868,6 +907,11 @@ export default function App() {
       } else {
         textPaths.push(path);
       }
+    }
+
+    if (spectrumPaths.length > 0) {
+      const result = await openSpectrumDocuments(spectrumPaths);
+      preferredStructureDocumentId = result?.documents[0]?.id ?? preferredStructureDocumentId;
     }
 
     if (structurePaths.length > 0) {
@@ -900,7 +944,7 @@ export default function App() {
     if (preferredStructureDocumentId) {
       setActiveDocument(preferredStructureDocumentId);
     }
-  }, [openDocuments, openTextDocuments, setActiveDocument]);
+  }, [openDocuments, openSpectrumDocuments, openTextDocuments, setActiveDocument]);
 
   useEffect(() => {
     if (isTauriRuntime() || syncingBrowserDevFilesRef.current) return;
@@ -961,9 +1005,9 @@ export default function App() {
 
   const openRecentStructure = useCallback(
     async (structure: RecentStructure) => {
-      await openDocuments([structure.path]);
+      await openPaths([structure.path]);
     },
-    [openDocuments],
+    [openPaths],
   );
 
   const openStructureRecordDocuments = useCallback(async (records: StructureDragRecord[]) => {
@@ -1032,7 +1076,7 @@ export default function App() {
       if (input.area === "right" && cleanPaths.length > 0) {
         const rightDockTextPaths = cleanPaths.filter((path) => {
           const extension = pathExtension(path);
-          return !structureExtensions.has(extension) && !structureAndTextExtensions.has(extension);
+          return !isSpectrumExtension(extension) && !structureExtensions.has(extension) && !structureAndTextExtensions.has(extension);
         });
         dockOpenPaths = cleanPaths.filter((path) => !rightDockTextPaths.includes(path));
         if (rightDockTextPaths.length > 0) {
@@ -1055,11 +1099,14 @@ export default function App() {
       }
 
       const structurePaths: string[] = [];
+      const spectrumPaths: string[] = [];
       const textPaths: string[] = [];
       const structureAndTextPaths: string[] = [];
       for (const path of dockOpenPaths) {
         const extension = pathExtension(path);
-        if (structureAndTextExtensions.has(extension)) {
+        if (isSpectrumExtension(extension)) {
+          spectrumPaths.push(path);
+        } else if (structureAndTextExtensions.has(extension)) {
           structureAndTextPaths.push(path);
         } else if (structureExtensions.has(extension)) {
           structurePaths.push(path);
@@ -1075,6 +1122,12 @@ export default function App() {
           ? await invoke<OpenDocumentsResult>("open_documents", { paths: structurePaths, preferences, reloadOptions: undefined })
           : await openBrowserDevDocuments(structurePaths, preferences, undefined)
         : { documents: [], errors: [] };
+      const spectrumTextResult = spectrumPaths.length > 0
+        ? isTauriRuntime()
+          ? await invoke<OpenTextFilesResult>("open_text_files", { paths: spectrumPaths })
+          : await openBrowserDevTextFiles(spectrumPaths)
+        : { documents: [], errors: [] };
+      const spectrumDocuments = spectrumTextResult.documents.map(spectrumDocumentFromText);
       const structureAndTextResults: OpenDocumentsResult[] = [];
       for (const path of structureAndTextPaths) {
         try {
@@ -1096,12 +1149,14 @@ export default function App() {
         ? await openStructureRecordDocuments(cleanRecords)
         : { opened: [], errors: [] };
       const openedStructures = [
+        ...spectrumDocuments,
         ...structurePathResult.documents,
         ...structureAndTextResults.flatMap((result) => result.documents),
         ...recordResult.opened,
       ];
       const openedTextDocuments = textResult.documents;
       const errors = [
+        ...spectrumTextResult.errors,
         ...structurePathResult.errors,
         ...structureAndTextResults.flatMap((result) => result.errors),
         ...textResult.errors,
