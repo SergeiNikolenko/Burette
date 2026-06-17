@@ -948,7 +948,7 @@
       const descriptors = normalizeDescriptorResultMap(result.descriptors);
       const ids = Object.keys(descriptors);
       if (!ids.length) continue;
-      target.descriptors = { ...(target.descriptors || {}), ...descriptors };
+      target.descriptors = { ...target.descriptors, ...descriptors };
       ids.forEach(id => descriptorIds.add(id));
       applied += 1;
     }
@@ -1485,7 +1485,7 @@
 
   function queryLooksLikeExplicitSMARTS(value) {
     const text = String(value || '').trim();
-    return !!text && !/\s/u.test(text) && /[\[\]#@:+\\/$()=~!;]/u.test(text);
+    return !!text && !/\s/u.test(text) && /[[\]#@:+\\/$()=~!;]/u.test(text);
   }
 
   function queryLooksLikeSMILESFragment(value) {
@@ -2681,7 +2681,7 @@
       { id: 'index', label: '#', type: 'number', fixed: true, get: row => String(Number(row.index) + 1) },
       { id: 'molecule', label: 'Mol', type: 'none', fixed: true, html: (row, cfg) => `<div class="buret-grid-table-molecule" data-buret-molecule-picture>${draw(row, cfg)}</div>` },
       { id: 'name', label: 'Name', type: 'text', fixed: true, get: row => row.name || `Molecule ${Number(row.index) + 1}` },
-      { id: 'smiles', label: 'SMILES', type: 'text', fixed: true, get: row => row.smiles || '' }
+      { id: 'smiles', label: 'SMILES', type: 'text', fixed: true, get: row => rowSmiles(row) }
     ];
     const descriptorColumns = new Map();
     const propColumns = new Set();
@@ -3102,7 +3102,7 @@
         const columnId = event.currentTarget.getAttribute('data-buret-table-filter');
         const part = event.currentTarget.getAttribute('data-buret-table-filter-part');
         if (!columnId || !part) return;
-        const current = { ...(state.tableColumnFilters[columnId] || {}) };
+        const current = { ...state.tableColumnFilters[columnId] };
         current.type = part === 'text' ? 'text' : 'number';
         current[part] = String(event.currentTarget.value || '');
         if (tableColumnFilterEmpty(current)) delete state.tableColumnFilters[columnId];
@@ -3138,7 +3138,7 @@
   function tableColumnDisplayValue(row, columnId) {
     if (columnId === 'index') return String(Number(row.index) + 1);
     if (columnId === 'name') return row.name || `Molecule ${Number(row.index) + 1}`;
-    if (columnId === 'smiles') return row.smiles || '';
+    if (columnId === 'smiles') return rowSmiles(row);
     if (columnId.startsWith('prop:')) return String(row.props?.[columnId.slice(5)] ?? '');
     if (columnId.startsWith('descriptor:')) return descriptorDisplayValue(row.descriptors?.[columnId.slice('descriptor:'.length)]);
     return '';
@@ -3304,7 +3304,7 @@
         name: structureRecordDisplayName(record, title, fallbackName),
         molblock,
         smiles: parsed.smiles,
-        props: { ...(row?.props || {}), ...parsed.props }
+        props: { ...row?.props, ...parsed.props }
       };
     }
     if (extension === 'smi' || extension === 'smiles') {
@@ -3416,7 +3416,7 @@
       ...row,
       index: nextGridRowIndex(),
       name: `${row.name || `Molecule ${index + 1}`} copy`,
-      props: { ...(row.props || {}) }
+      props: { ...row.props }
     };
     insertAfterRow(state.rows, index, duplicate);
     if (state.remoteMode) state.insertedRows.push(duplicate);
@@ -4450,6 +4450,17 @@
     return changed;
   }
 
+  function rowSmiles(row) {
+    const current = String(row?.smiles || '').trim();
+    if (current) return current;
+    if (!state.rdkit || !String(row?.molblock || '').trim()) return '';
+    const smiles = smilesFromMolblock(row.molblock);
+    if (!smiles) return '';
+    row.smiles = smiles;
+    invalidateTableColumnCatalog();
+    return smiles;
+  }
+
   function smilesFromMolblock(molblock) {
     let mol = null;
     try {
@@ -5194,7 +5205,7 @@
       const props = {
         Name: row.name || `Molecule ${Number(row.index) + 1}`,
         ...(row.smiles ? { SMILES: row.smiles } : {}),
-        ...(row.props || {})
+        ...row.props
       };
       const propText = Object.entries(props)
         .filter(([, value]) => String(value ?? '').trim().length > 0)

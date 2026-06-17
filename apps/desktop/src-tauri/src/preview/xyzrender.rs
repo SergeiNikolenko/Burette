@@ -1174,41 +1174,43 @@ fn build_xyzrender_args(
                 }
             }
         }
-        if let Some(value) = finite_positive(controls.field_iso) {
-            args.push("--iso".to_string());
-            args.push(value.to_string());
-        }
-        if let Some(value) = finite_non_negative(controls.field_opacity) {
-            args.push("--opacity".to_string());
-            args.push(value.to_string());
-        }
-        if let Some(value) = normalized_surface_style(controls.field_surface_style.as_deref()) {
-            args.push("--surface-style".to_string());
-            args.push(value.to_string());
-        }
-        if let (Some(positive), Some(negative)) = (
-            non_empty_text(controls.field_mo_positive_color.as_deref()),
-            non_empty_text(controls.field_mo_negative_color.as_deref()),
-        ) {
-            args.push("--mo-colors".to_string());
-            args.push(positive.to_string());
-            args.push(negative.to_string());
-        }
-        if let Some(value) = non_empty_text(controls.field_density_color.as_deref()) {
-            args.push("--dens-color".to_string());
-            args.push(value.to_string());
-        }
-        if let Some(value) = non_empty_text(controls.field_cmap_palette.as_deref()) {
-            args.push("--cmap-palette".to_string());
-            args.push(value.to_string());
-        }
-        if let (Some(min), Some(max)) = (
-            finite_number(controls.field_cmap_min),
-            finite_number(controls.field_cmap_max),
-        ) {
-            args.push("--cmap-range".to_string());
-            args.push(min.to_string());
-            args.push(max.to_string());
+        if normalized_field_mode(controls.field_mode.as_deref()).is_some() {
+            if let Some(value) = finite_positive(controls.field_iso) {
+                args.push("--iso".to_string());
+                args.push(value.to_string());
+            }
+            if let Some(value) = finite_non_negative(controls.field_opacity) {
+                args.push("--opacity".to_string());
+                args.push(value.to_string());
+            }
+            if let Some(value) = normalized_surface_style(controls.field_surface_style.as_deref()) {
+                args.push("--surface-style".to_string());
+                args.push(value.to_string());
+            }
+            if let (Some(positive), Some(negative)) = (
+                non_empty_text(controls.field_mo_positive_color.as_deref()),
+                non_empty_text(controls.field_mo_negative_color.as_deref()),
+            ) {
+                args.push("--mo-colors".to_string());
+                args.push(positive.to_string());
+                args.push(negative.to_string());
+            }
+            if let Some(value) = non_empty_text(controls.field_density_color.as_deref()) {
+                args.push("--dens-color".to_string());
+                args.push(value.to_string());
+            }
+            if let Some(value) = non_empty_text(controls.field_cmap_palette.as_deref()) {
+                args.push("--cmap-palette".to_string());
+                args.push(value.to_string());
+            }
+            if let (Some(min), Some(max)) = (
+                finite_number(controls.field_cmap_min),
+                finite_number(controls.field_cmap_max),
+            ) {
+                args.push("--cmap-range".to_string());
+                args.push(min.to_string());
+                args.push(max.to_string());
+            }
         }
     }
     args

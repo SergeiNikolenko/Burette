@@ -49,6 +49,17 @@ export type StructureViewerAction =
       index: number;
     }
   | {
+      type: "set_structure_pose";
+      label: string;
+      index: number;
+    }
+  | {
+      type: "set_molstar_style";
+      label: string;
+      notify?: boolean;
+      style: string;
+    }
+  | {
       type: "set_sdf_context_style";
       label: string;
       notify?: boolean;
