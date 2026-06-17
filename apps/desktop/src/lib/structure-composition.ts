@@ -147,7 +147,8 @@ const NUCLEIC_RESIDUES = new Set(["A", "C", "G", "T", "U", "DA", "DC", "DG", "DT
 
 export function parseStructureComposition(text: string, extension: string): StructureCompositionSummary | null {
   const normalizedExtension = extension.toLowerCase();
-  if (["pdb", "pdbqt", "ent"].includes(normalizedExtension)) return parsePdbComposition(text);
+  if (["pdb", "ent"].includes(normalizedExtension)) return parsePdbComposition(text);
+  if (normalizedExtension === "pdbqt") return parsePdbqtComposition(text);
   if (["cif", "mmcif"].includes(normalizedExtension)) return parseCifComposition(text);
   if (normalizedExtension === "gro") return parseGroComposition(text);
   if (["xyz", "extxyz"].includes(normalizedExtension)) return parseXyzComposition(text);
@@ -178,6 +179,30 @@ function parsePdbComposition(text: string): StructureCompositionSummary | null {
     const icode = line.slice(26, 27).trim();
     const element = normalizeElement(line.slice(76, 78).trim() || inferElement(atomName));
     records.push({ group: record, atomName, resName, chain, seq, icode, element, model });
+  }
+  if (records.length === 0) return null;
+  return summarizeAtomRecords(records, explicitModelCount > 0 ? explicitModelCount : 1);
+}
+
+function parsePdbqtComposition(text: string): StructureCompositionSummary | null {
+  const records: AtomRecord[] = [];
+  let model = "1";
+  let explicitModelCount = 0;
+  for (const line of text.split(/\r?\n/)) {
+    const record = line.slice(0, 6).trim();
+    if (record === "MODEL") {
+      model = line.slice(10, 14).trim() || String(explicitModelCount + 1);
+      explicitModelCount += 1;
+      continue;
+    }
+    if (record !== "ATOM" && record !== "HETATM") continue;
+    const atomName = line.slice(12, 16).trim();
+    const resName = line.slice(17, 20).trim().toUpperCase() || "UNK";
+    const chain = line.slice(21, 22).trim() || "-";
+    const seq = line.slice(22, 26).trim() || "?";
+    const icode = line.slice(26, 27).trim();
+    const element = normalizeElement(pdbqtElementFromAtomType(line) || line.slice(76, 78).trim() || inferElement(atomName));
+    records.push({ group: "HETATM", atomName, resName, chain, seq, icode, element, model });
   }
   if (records.length === 0) return null;
   return summarizeAtomRecords(records, explicitModelCount > 0 ? explicitModelCount : 1);
@@ -952,6 +977,18 @@ function classifyResidue(residue: ResidueGroup) {
   if (ION_NAMES.has(residue.resName) && residue.atoms <= 2) return "ion";
   if (residue.group === "ATOM" || POLYMER_RESIDUES.has(residue.resName)) return "polymer";
   return "ligand";
+}
+
+function pdbqtElementFromAtomType(line: string) {
+  const atomType = line.trim().split(/\s+/).at(-1)?.replace(/[^A-Za-z]/g, "") ?? "";
+  if (!atomType) return "";
+  const normalized = atomType.toUpperCase();
+  if (normalized === "A") return "C";
+  if (normalized === "HD" || normalized === "HS") return "H";
+  if (normalized === "NA" || normalized === "NS") return "N";
+  if (normalized === "OA" || normalized === "OS") return "O";
+  if (normalized === "SA") return "S";
+  return atomType.slice(0, 2);
 }
 
 function residueGroupForName(resName: string): "ATOM" | "HETATM" {
