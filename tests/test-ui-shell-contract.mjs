@@ -2218,10 +2218,12 @@ assert.match(ketcherPage, /if \(panelMode\.purpose === "import"\) setLiveSmilesI
 assert.match(ketcherPage, /className="ketcher-output-panel" style=\{outputPanelStyle\}/);
 assert.match(ketcherPage, /className="ketcher-output-resizer"[\s\S]*aria-label="Resize Ketcher output panel"/);
 assert.match(ketcherPage, /onMouseDown=\{resizeOutputPanelWithMouse\}/);
-assert.match(ketcherPage, /items=\{KETCHER_EXPORT_FORMATS\.map\(\(format\) => \(\{/);
-assert.match(ketcherPage, /items=\{KETCHER_IMPORT_FORMATS\.map\(\(format\) => \(\{/);
+assert.match(ketcherPage, /const exportFormatItems = useMemo\(\(\) => KETCHER_EXPORT_FORMATS\.map\(\(format\) => \(\{/);
+assert.match(ketcherPage, /const importFormatItems = useMemo\(\(\) => KETCHER_IMPORT_FORMATS\.map\(\(format\) => \(\{/);
 assert.match(ketcherPage, /action: \(\) => selectExportFormat\(format\)/);
 assert.match(ketcherPage, /action: \(\) => selectImportFormat\(format\)/);
+assert.match(ketcherPage, /onContextMenu=\{showExportFormatMenu\}/);
+assert.match(ketcherPage, /onContextMenu=\{showImportFormatMenu\}/);
 assert.doesNotMatch(ketcherPage, /<select[\s\S]*value=\{panelMode\.format\}/);
 assert.match(ketcherPage, /className="ketcher-dock-format">\{panelFormatLabel\}/);
 assert.match(ketcherPage, /disabled=\{!ketcher \|\| exportingSketch \|\| \(gridEditSource \? false : !output\.trim\(\)\)\}/);
