@@ -2874,10 +2874,41 @@
     const format = normalizeFormat(config.molstarFormat || config.format);
     const text = rawStructureData({ ...config, binary: false });
     if (format === 'xyz') return parseFirstXYZFrame(text);
-    if (format === 'pdb' || format === 'pdbqt') return orientationFrameFromPdbText(text);
+    if (format === 'pdb' || format === 'pdbqt') return orientationFrameFromPdbText(activePdbModelText(text, config));
     if (format === 'sdf') return orientationFrameFromSdfText(text);
     if (format === 'mmcif' || format === 'cifCore') return orientationFrameFromCifText(text);
     return null;
+  }
+
+  function activePdbModelText(text, config) {
+    const modelTexts = splitPdbModelTexts(text);
+    if (modelTexts.length <= 1) return text;
+    const controlLabel = normalizeFormat(config?.sourceExtension || config?.molstarFormat || config?.format) === 'pdbqt' ? 'Pose' : 'Model';
+    const activeModel = readTrajectoryControlIndex(config, { controlLabel }, modelTexts.length);
+    return modelTexts[activeModel] || modelTexts[0] || text;
+  }
+
+  function splitPdbModelTexts(text) {
+    const lines = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    const firstModelIndex = lines.findIndex(line => /^MODEL\b/u.test(line));
+    if (firstModelIndex < 0) return [];
+    const header = lines.slice(0, firstModelIndex).filter(line => !/^END\b/u.test(line));
+    const models = [];
+    let current = null;
+    for (const line of lines.slice(firstModelIndex)) {
+      if (/^MODEL\b/u.test(line)) {
+        current = [];
+        continue;
+      }
+      if (/^ENDMDL\b/u.test(line)) {
+        if (current?.some(modelLine => /^(?:ATOM|HETATM)\b/u.test(modelLine))) models.push(current);
+        current = null;
+        continue;
+      }
+      if (current) current.push(line);
+    }
+    if (models.length <= 1) return [];
+    return models.map(model => [...header, ...model.filter(line => !/^END\b/u.test(line)), 'END', ''].join('\n'));
   }
 
   function orientationFrameFromPdbText(text) {
@@ -2885,7 +2916,7 @@
       .map(line => {
         const atom = parsePdbAtomLine(line);
         if (!atom) return null;
-        return { symbol: pdbAtomSymbol(line), x: atom.x, y: atom.y, z: atom.z };
+        return { symbol: atom.element || pdbAtomSymbol(line), x: atom.x, y: atom.y, z: atom.z };
       })
       .filter(Boolean);
     return atoms.length ? { atoms } : null;
@@ -2953,7 +2984,7 @@
   }
 
   function pdbAtomSymbol(line) {
-    return cleanElement(line.slice(76, 78).trim() || line.slice(12, 16).replace(/[0-9]/gu, '').trim() || 'X');
+    return pdbAtomElement(line);
   }
 
   function sdfAtomSymbol(atom) {
@@ -8317,11 +8348,12 @@
   function molstarContextSourceEntryForActiveConfig() {
     if (!activeConfig || activeConfig.docking) return null;
     const format = normalizeFormat(activeConfig.molstarFormat || activeConfig.format);
-    if (format !== 'pdb') return null;
+    if (format !== 'pdb' && format !== 'pdbqt') return null;
     try {
+      const data = rawStructureData({ ...activeConfig, format, binary: false });
       return {
-        data: rawStructureData({ ...activeConfig, format, binary: false }),
-        format,
+        data: activePdbModelText(data, activeConfig),
+        format: 'pdb',
         label: activeConfig.label || 'structure'
       };
     } catch (_) {
@@ -8575,13 +8607,31 @@
 
   function pdbAtomElement(line) {
     const explicit = String(line || '').slice(76, 78).trim();
+    const explicitElement = pdbqtAtomTypeElement(explicit);
+    if (explicitElement) return explicitElement;
     if (explicit) return explicit.charAt(0).toUpperCase() + explicit.slice(1).toLowerCase();
+    const atomTypeElement = pdbqtAtomTypeElement(String(line || '').trim().split(/\s+/u).at(-1));
+    if (atomTypeElement) return atomTypeElement;
     const atomName = String(line || '').slice(12, 16).trim().replace(/^[0-9]+/u, '');
     const match = /^[A-Za-z]{1,2}/u.exec(atomName);
     if (!match) return 'C';
     const candidate = match[0].charAt(0).toUpperCase() + match[0].slice(1).toLowerCase();
     if (['Cl', 'Br', 'Na', 'Mg', 'Al', 'Si', 'Ca', 'Fe', 'Zn', 'Cu', 'Mn', 'Co', 'Ni'].includes(candidate)) return candidate;
     return candidate.charAt(0) || 'C';
+  }
+
+  function pdbqtAtomTypeElement(value) {
+    const atomType = String(value || '').replace(/[^A-Za-z]/gu, '').toUpperCase();
+    if (!atomType) return '';
+    if (atomType === 'A') return 'C';
+    if (atomType === 'HD' || atomType === 'HS') return 'H';
+    if (atomType === 'NA' || atomType === 'NS') return 'N';
+    if (atomType === 'OA' || atomType === 'OS') return 'O';
+    if (atomType === 'SA') return 'S';
+    if (atomType.length === 1) return atomType;
+    const twoLetter = atomType.charAt(0) + atomType.charAt(1).toLowerCase();
+    if (['Cl', 'Br', 'Na', 'Mg', 'Al', 'Si', 'Ca', 'Fe', 'Zn', 'Cu', 'Mn', 'Co', 'Ni'].includes(twoLetter)) return twoLetter;
+    return atomType.charAt(0);
   }
 
   function ligandAtomCoordinates(source) {
@@ -8658,6 +8708,9 @@
     if (bonds.length > 999) return null;
     const firstAtom = parsedAtoms[0];
     const label = [residue.compId || firstAtom.compId || 'Ligand', residue.chainId, residue.seqId].filter(Boolean).join(' ');
+    const sdfBonds = bonds.length
+      ? bonds.map(bond => ({ a: serialToSdfIndex.get(bond.a), b: serialToSdfIndex.get(bond.b) }))
+      : inferStandalonePreviewBonds(parsedAtoms);
     return {
       data: [
         label,
@@ -8670,7 +8723,7 @@
           z: current.z,
           tail: ` ${String(current.element || 'C').padEnd(3, ' ')} 0  0  0  0  0  0  0  0  0  0  0  0`
         }, current.x, current.y, current.z)),
-        ...bonds.map(bond => `${padSdfInt(serialToSdfIndex.get(bond.a))}${padSdfInt(serialToSdfIndex.get(bond.b))}  1  0  0  0  0`),
+        ...sdfBonds.map(bond => `${padSdfInt(bond.a)}${padSdfInt(bond.b)}  1  0  0  0  0`),
         'M  END',
         '$$$$',
         ''

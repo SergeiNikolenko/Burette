@@ -3559,7 +3559,10 @@ assert.match(previewViewer, /if \(config\.binary === true \|\| !activeViewer \|\
 assert.match(previewViewer, /if \(config\.binary === true \|\| !canUseExternalXyzrender\(config\.molstarFormat \|\| config\.format\)\) return;/);
 assert.match(previewViewer, /const frame = orientationFrameFromConfig\(config\);/);
 assert.match(previewViewer, /function orientationFrameFromConfig\(config\)/);
-assert.match(previewViewer, /if \(format === 'pdb' \|\| format === 'pdbqt'\) return orientationFrameFromPdbText\(text\);/);
+assert.match(previewViewer, /if \(format === 'pdb' \|\| format === 'pdbqt'\) return orientationFrameFromPdbText\(activePdbModelText\(text, config\)\);/);
+assert.match(previewViewer, /function activePdbModelText\(text, config\)/);
+assert.match(previewViewer, /const controlLabel = normalizeFormat\(config\?\.sourceExtension \|\| config\?\.molstarFormat \|\| config\?\.format\) === 'pdbqt' \? 'Pose' : 'Model';/);
+assert.match(previewViewer, /function splitPdbModelTexts\(text\)/);
 assert.match(previewViewer, /if \(format === 'sdf'\) return orientationFrameFromSdfText\(text\);/);
 assert.match(previewViewer, /if \(format === 'mmcif' \|\| format === 'cifCore'\) return orientationFrameFromCifText\(text\);/);
 assert.match(previewViewer, /function requestBrowserDevRendererSwitch\(renderer\)/);
