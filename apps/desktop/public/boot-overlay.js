@@ -64,7 +64,7 @@
   }
 
   function ensureOverlay() {
-    if (mounted) return null;
+    if (hasMountedApp()) return null;
     if (!document.body) return null;
     ensureStyle();
     const existing = document.getElementById(overlayId);
@@ -84,6 +84,7 @@
   }
 
   function setOverlay(message, details) {
+    if (hasMountedApp()) return;
     mounted = false;
     const overlay = ensureOverlay();
     if (!overlay) {
@@ -117,6 +118,13 @@
     return String(error ?? "");
   }
 
+  function hasMountedApp() {
+    if (mounted) return true;
+    if (!document.querySelector(".app-shell")) return false;
+    removeOverlay();
+    return true;
+  }
+
   function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, (character) => {
       switch (character) {
@@ -130,7 +138,7 @@
   }
 
   whenBodyReady(() => {
-    if (mounted) return;
+    if (hasMountedApp()) return;
     if (pendingOverlay) {
       setOverlay(pendingOverlay.message, pendingOverlay.details);
     } else {
@@ -149,6 +157,7 @@
     markMounted: removeOverlay,
   };
   window.addEventListener("error", (event) => {
+    if (hasMountedApp()) return;
     const details = event.error ? errorDetails(event.error) : [
       event.message,
       event.filename ? `${event.filename}:${event.lineno}:${event.colno}` : "",
@@ -156,6 +165,7 @@
     setOverlay(event.message || "A startup script failed.", details);
   });
   window.addEventListener("unhandledrejection", (event) => {
+    if (hasMountedApp()) return;
     setOverlay("A startup promise was rejected.", errorDetails(event.reason));
   });
 }());
