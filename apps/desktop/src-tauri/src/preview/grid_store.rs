@@ -1848,7 +1848,7 @@ fn parse_delimited_line(line: &str, separator: char) -> Vec<String> {
 }
 
 fn is_smiles_column(value: &str) -> bool {
-    value == "smile" || value.contains("smiles")
+    value == "smile" || value == "smiels" || value.contains("smiles")
 }
 
 fn resolve_smiles_columns(
