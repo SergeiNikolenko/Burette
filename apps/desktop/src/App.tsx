@@ -74,7 +74,7 @@ import { basename, buildSidebarProjects, parentDirectory, type SidebarProjectStr
 import { parseStructureComposition } from "./lib/structure-composition";
 import type { StructureDragPayload, StructureDragRecord } from "./lib/structure-drag";
 import { readStructureText } from "./lib/structure-text";
-import { isSpectrumExtension, spectrumDocumentFromText } from "./lib/spectrum";
+import { isSpectrumPath, spectrumDocumentFromText } from "./lib/spectrum";
 import type { TextStructureSelection } from "./lib/text-structure-selection";
 import { isTauriRuntime } from "./lib/tauri";
 import { isTemporaryDocumentPath } from "./lib/temporary-documents";
@@ -375,7 +375,7 @@ async function expandBrowserDevStructureBundles(paths: string[]) {
       !extension ||
       (!structureExtensions.has(extension) &&
         !isXtbOptimizationTrajectoryLogPath(path) &&
-        !isSpectrumExtension(extension) &&
+        !isSpectrumPath(path, extension) &&
         !structureAndTextExtensions.has(extension) &&
         !preferredTextExtensions.has(extension))
     ) {
@@ -1484,7 +1484,7 @@ export default function App() {
 
     for (const path of cleanPaths) {
       const extension = pathExtension(path);
-      if (isSpectrumExtension(extension)) {
+      if (isSpectrumPath(path, extension)) {
         spectrumPaths.push(path);
       } else if (
         preferredTextExtensions.has(extension)
@@ -1672,7 +1672,7 @@ export default function App() {
       if (input.area === "right" && cleanPaths.length > 0) {
         const rightDockTextPaths = cleanPaths.filter((path) => {
           const extension = pathExtension(path);
-          return !isSpectrumExtension(extension) && !structureExtensions.has(extension) && !structureAndTextExtensions.has(extension);
+          return !isSpectrumPath(path, extension) && !structureExtensions.has(extension) && !structureAndTextExtensions.has(extension);
         });
         dockOpenPaths = cleanPaths.filter((path) => !rightDockTextPaths.includes(path));
         if (rightDockTextPaths.length > 0) {
@@ -1700,7 +1700,7 @@ export default function App() {
       const structureAndTextPaths: string[] = [];
       for (const path of dockOpenPaths) {
         const extension = pathExtension(path);
-        if (isSpectrumExtension(extension)) {
+        if (isSpectrumPath(path, extension)) {
           spectrumPaths.push(path);
         } else if (structureAndTextExtensions.has(extension)) {
           structureAndTextPaths.push(path);
