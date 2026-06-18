@@ -1377,7 +1377,7 @@ function parseDelimited(text: string, delimiter: "," | "\t"): GridRecord[] {
 
 function isDelimitedSmilesHeader(header: string) {
   const normalized = header.trim().toLowerCase().replace(/\s+/gu, "_");
-  return normalized === "smile" || normalized.includes("smiles");
+  return normalized === "smile" || normalized === "smiels" || normalized.includes("smiles");
 }
 
 function isDelimitedNameHeader(header: string) {
