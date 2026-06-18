@@ -1,6 +1,6 @@
 import type { TextFileDocument, ViewerDocument } from "../types";
 
-export type SpectrumFormat = "ms" | "magma" | "mgf" | "msp" | "mzml" | "mzxml";
+export type SpectrumFormat = "ms" | "magma" | "mgf" | "msp" | "mzml" | "mzxml" | "json";
 
 export type SpectrumPeak = {
   x: number;
@@ -35,6 +35,14 @@ export function isSpectrumExtension(extension: string) {
   return spectrumExtensions.has(extension.toLowerCase());
 }
 
+export function isSpectrumPath(path: string, extension = pathExtension(path)) {
+  return isSpectrumExtension(extension) || isSubformulaSpectrumJsonPath(path, extension);
+}
+
+export function isSubformulaSpectrumJsonPath(path: string, extension = pathExtension(path)) {
+  return extension.toLowerCase() === "json" && /\/subformulae\/default_subformulae\/[^/]+\.json$/u.test(path);
+}
+
 export function spectrumDocumentFromText(document: TextFileDocument): ViewerDocument {
   return {
     id: `spectrum:${stableHash(document.path)}`,
@@ -60,6 +68,7 @@ export function parseSpectrumFile(input: {
   if (format === "msp") return parseMspFile(input.title, input.content);
   if (format === "mzml") return parseMzmlFile(input.title, input.content);
   if (format === "mzxml") return parseMzxmlFile(input.title, input.content);
+  if (format === "json") return parseSubformulaJsonFile(input.title, input.content);
   throw new Error(`Unsupported spectrum format: ${input.extension}`);
 }
 
@@ -81,6 +90,7 @@ function normalizeSpectrumFormat(extension: string): SpectrumFormat {
   const value = extension.toLowerCase().replace(/^\./u, "");
   if (value === "mzml") return "mzml";
   if (value === "mzxml") return "mzxml";
+  if (value === "json") return "json";
   if (isSpectrumExtension(value)) return value as SpectrumFormat;
   throw new Error(`Unsupported spectrum extension: ${extension}`);
 }
@@ -158,6 +168,50 @@ function parseMagmaFile(title: string, content: string): SpectrumFile {
     peaks,
     metadata: { annotation: "MAGMa fragments" },
   }], { annotation: "MAGMa fragments" });
+}
+
+function parseSubformulaJsonFile(title: string, content: string): SpectrumFile {
+  const data = JSON.parse(content) as unknown;
+  if (!isRecord(data) || !isRecord(data.output_tbl)) {
+    throw new Error("JSON file does not contain subformula spectrum data.");
+  }
+  const table = data.output_tbl;
+  const mz = numericArray(table.mz);
+  const intensity = numericArray(table.ms2_inten);
+  const peaks = mz.slice(0, intensity.length).map((x, index): SpectrumPeak | null => {
+    const y = intensity[index];
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    const formula = tableValue(table, "formula", index);
+    const ion = tableValue(table, "ions", index);
+    return {
+      x,
+      y,
+      label: formula || undefined,
+      annotations: {
+        row: index + 1,
+        formula,
+        ion,
+        mono_mass: tableValue(table, "mono_mass", index),
+        mass_diff: tableValue(table, "mass_diff", index),
+        abs_mass_diff: tableValue(table, "abs_mass_diff", index),
+      },
+    };
+  }).filter((peak): peak is SpectrumPeak => peak !== null);
+  const metadata = {
+    cand_form: stringValue(data.cand_form),
+    cand_ion: stringValue(data.cand_ion),
+    annotation: "Subformula fragments",
+  };
+  return spectrumFile("json", title, [{
+    id: "subformula",
+    title,
+    kind: "ms2",
+    xLabel: "m/z",
+    yLabel: "Relative intensity",
+    xUnit: "m/z",
+    peaks,
+    metadata,
+  }], metadata);
 }
 
 function parseMgfFile(title: string, content: string): SpectrumFile {
@@ -293,6 +347,24 @@ function numericIfPossible(value: string) {
   return Number.isFinite(number) && value.trim() !== "" ? number : value;
 }
 
+function numericArray(value: unknown) {
+  return Array.isArray(value) ? value.map((item) => Number(item)).filter(Number.isFinite) : [];
+}
+
+function tableValue(table: Record<string, unknown>, key: string, index: number) {
+  const column = table[key];
+  if (!Array.isArray(column)) return "";
+  return stringValue(column[index]);
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? String(value) : "";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function xmlMetadata(element: Element) {
   const metadata: Record<string, string> = {};
   for (const attribute of Array.from(element.attributes)) metadata[attribute.name] = attribute.value;
@@ -349,4 +421,10 @@ function stableHash(value: string) {
   let hash = 0;
   for (let index = 0; index < value.length; index += 1) hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
   return Math.abs(hash).toString(36);
+}
+
+function pathExtension(path: string) {
+  const name = path.split("/").pop() ?? path;
+  const index = name.lastIndexOf(".");
+  return index >= 0 ? name.slice(index + 1).toLowerCase() : "";
 }
