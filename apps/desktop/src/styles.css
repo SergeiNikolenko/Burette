@@ -4447,6 +4447,19 @@ img.radix-menu-item-icon {
   width: 100% !important;
   height: 100% !important;
 }
+.spectrum-plot .hoverlayer .hovertext {
+  filter: drop-shadow(0 10px 20px rgb(0 0 0 / 18%));
+}
+.spectrum-plot .hoverlayer .hovertext path {
+  fill: var(--surface-card) !important;
+  stroke: var(--line-subtle) !important;
+  stroke-width: 1px !important;
+}
+.spectrum-plot .hoverlayer .hovertext text {
+  fill: var(--text-primary) !important;
+  font-family: var(--ui-font) !important;
+  font-size: 12px !important;
+}
 .spectrum-side-panel {
   grid-area: side;
   min-width: 0;
