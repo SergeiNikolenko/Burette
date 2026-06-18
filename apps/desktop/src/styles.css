@@ -4451,7 +4451,7 @@ img.radix-menu-item-icon {
   filter: drop-shadow(0 10px 20px rgb(0 0 0 / 18%));
 }
 .spectrum-plot .hoverlayer .hovertext path {
-  fill: var(--surface-card) !important;
+  fill: color-mix(in srgb, var(--bg-base) 94%, var(--fg-base) 6%) !important;
   stroke: var(--line-subtle) !important;
   stroke-width: 1px !important;
 }
