@@ -31,6 +31,14 @@ type PlotlyElement = HTMLElement & {
   removeAllListeners?: (event: "plotly_click") => void;
 };
 
+type SpectrumSubformulaAnnotation = {
+  candidateFormula: string;
+  candidateIon: string;
+  fragmentCount: number;
+  fragmentIons: string[];
+  fragmentFormulas: string[];
+};
+
 export function SpectrumViewer({ document, embedded = false }: SpectrumViewerProps) {
   const [file, setFile] = useState<SpectrumFile | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -425,6 +433,21 @@ function SpectrumMetadata({
   spectrum: SpectrumDocument;
   summary: ReturnType<typeof spectrumSummary>;
 }) {
+  const [subformula, setSubformula] = useState<SpectrumSubformulaAnnotation | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setSubformula(null);
+    void readSpectrumSubformulaAnnotation(document.path)
+      .then((annotation) => {
+        if (!cancelled) setSubformula(annotation);
+      })
+      .catch(() => {
+        if (!cancelled) setSubformula(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [document.path]);
   const metadataRows = Object.entries(spectrum.metadata).filter(([, value]) => value !== "").slice(0, 16);
   return (
     <div className="spectrum-metadata">
@@ -437,6 +460,25 @@ function SpectrumMetadata({
           <Metric label="File" value={formatBytes(document.byteCount)} />
         </div>
       </section>
+      {subformula && (
+        <section>
+          <h4>Candidate ion</h4>
+          <div className="spectrum-stat-grid">
+            <Metric label="Formula" value={subformula.candidateFormula} />
+            <Metric label="Ion" value={subformula.candidateIon} />
+            <Metric label="Fragments" value={String(subformula.fragmentCount)} />
+            <Metric label="Fragment ions" value={subformula.fragmentIons.join(", ") || "-"} />
+          </div>
+          {subformula.fragmentFormulas.length > 0 && (
+            <div className="spectrum-metadata-list">
+              <div>
+                <span>top formulas</span>
+                <strong>{subformula.fragmentFormulas.slice(0, 8).join(", ")}</strong>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
       {file.warnings.length > 0 && (
         <section>
           <h4>Warnings</h4>
@@ -586,6 +628,58 @@ function peakHoverData(peak: SpectrumPeak) {
   const row = peak.annotations?.row;
   if (row !== undefined && row !== null && row !== "") rows.push(`row: ${String(row)}`);
   return rows.map(escapeHtml).join("<br>");
+}
+
+async function readSpectrumSubformulaAnnotation(path: string): Promise<SpectrumSubformulaAnnotation | null> {
+  const annotationPath = spectrumSubformulaAnnotationPath(path);
+  if (!annotationPath) return null;
+  const document = await readStructureTextDocument(annotationPath, undefined, { maxBytes: 2 * 1024 * 1024 });
+  return parseSpectrumSubformulaAnnotation(document.content);
+}
+
+function spectrumSubformulaAnnotationPath(path: string) {
+  const inputsIndex = path.indexOf("/inputs/");
+  if (inputsIndex < 0) return null;
+  const root = path.slice(0, inputsIndex + "/inputs".length);
+  const title = pathBaseName(path).replace(/\.[^.]+$/u, "");
+  if (!title) return null;
+  return `${root}/subformulae/default_subformulae/${title}.json`;
+}
+
+function parseSpectrumSubformulaAnnotation(content: string): SpectrumSubformulaAnnotation | null {
+  const data = JSON.parse(content) as unknown;
+  if (!isRecord(data)) return null;
+  const outputTable = isRecord(data.output_tbl) ? data.output_tbl : {};
+  const fragmentFormulas = uniqueStrings(outputTable.formula);
+  const fragmentIons = uniqueStrings(outputTable.ions);
+  return {
+    candidateFormula: stringValue(data.cand_form),
+    candidateIon: stringValue(data.cand_ion),
+    fragmentCount: tableRowCount(outputTable),
+    fragmentIons,
+    fragmentFormulas,
+  };
+}
+
+function tableRowCount(table: Record<string, unknown>) {
+  return Math.max(0, ...Object.values(table).map((value) => Array.isArray(value) ? value.length : 0));
+}
+
+function uniqueStrings(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value.map((item) => stringValue(item)).filter(Boolean)));
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? String(value) : "";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function pathBaseName(path: string) {
+  return path.split("/").filter(Boolean).pop() ?? "";
 }
 
 function formatNumber(value: number) {
