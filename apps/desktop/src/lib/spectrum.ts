@@ -1,6 +1,6 @@
 import type { TextFileDocument, ViewerDocument } from "../types";
 
-export type SpectrumFormat = "ms" | "magma" | "mgf" | "msp" | "mzml" | "mzxml" | "json";
+export type SpectrumFormat = "ms" | "magma" | "mgf" | "msp" | "mzml" | "mzxml" | "json" | "csv" | "tsv";
 
 export type SpectrumPeak = {
   x: number;
@@ -39,6 +39,22 @@ export function isSpectrumPath(path: string, extension = pathExtension(path)) {
   return isSpectrumExtension(extension) || isSubformulaSpectrumJsonPath(path, extension);
 }
 
+export function isTabularSpectrumExtension(extension: string) {
+  return extension.toLowerCase() === "csv" || extension.toLowerCase() === "tsv";
+}
+
+export function isTabularSpectrumText(text: string, extension: string) {
+  const format = extension.toLowerCase().replace(/^\./u, "");
+  if (!isTabularSpectrumExtension(format)) return false;
+  const rows = parseDelimitedRows(text, format === "csv" ? "," : "\t", 12);
+  if (rows.length < 2) return false;
+  const headers = rows[0].map(normalizeHeader);
+  const mzIndex = firstHeaderIndex(headers, ["mz", "m_z", "m/z", "mass_to_charge", "masscharge"]);
+  const intensityIndex = firstHeaderIndex(headers, ["intensity", "inten", "relative_intensity", "rel_intensity", "ms2_inten", "abundance"]);
+  if (mzIndex < 0 || intensityIndex < 0) return false;
+  return rows.slice(1).some((row) => Number.isFinite(Number(row[mzIndex])) && Number.isFinite(Number(row[intensityIndex])));
+}
+
 export function isSubformulaSpectrumJsonPath(path: string, extension = pathExtension(path)) {
   return extension.toLowerCase() === "json" && /\/subformulae\/default_subformulae\/[^/]+\.json$/u.test(path);
 }
@@ -69,6 +85,7 @@ export function parseSpectrumFile(input: {
   if (format === "mzml") return parseMzmlFile(input.title, input.content);
   if (format === "mzxml") return parseMzxmlFile(input.title, input.content);
   if (format === "json") return parseSubformulaJsonFile(input.title, input.content);
+  if (format === "csv" || format === "tsv") return parseTabularSpectrumFile(input.title, format, input.content);
   throw new Error(`Unsupported spectrum format: ${input.extension}`);
 }
 
@@ -86,11 +103,40 @@ export function spectrumSummary(file: SpectrumFile) {
   };
 }
 
+export function spectrumAnalytics(spectrum: SpectrumDocument) {
+  const peaks = spectrum.peaks;
+  const totalIntensity = peaks.reduce((total, peak) => total + peak.y, 0);
+  const basePeak = peaks.reduce<SpectrumPeak | null>((best, peak) => !best || peak.y > best.y ? peak : best, null);
+  const annotatedPeaks = peaks.filter((peak) => Boolean(peakAnnotationValue(peak))).length;
+  const topPeaks = [...peaks].sort((left, right) => right.y - left.y).slice(0, 10);
+  const mzValues = peaks.map((peak) => peak.x);
+  return {
+    basePeak,
+    topPeaks,
+    totalIntensity,
+    annotatedPeaks,
+    annotationCoverage: peaks.length ? annotatedPeaks / peaks.length : 0,
+    minMz: mzValues.length ? Math.min(...mzValues) : null,
+    maxMz: mzValues.length ? Math.max(...mzValues) : null,
+  };
+}
+
+export function peakAnnotationValue(peak: SpectrumPeak) {
+  const annotations = peak.annotations ?? {};
+  return peak.label
+    || annotations.formula
+    || annotations.frag_base_form
+    || annotations.annotation
+    || annotations.ion
+    || "";
+}
+
 function normalizeSpectrumFormat(extension: string): SpectrumFormat {
   const value = extension.toLowerCase().replace(/^\./u, "");
   if (value === "mzml") return "mzml";
   if (value === "mzxml") return "mzxml";
   if (value === "json") return "json";
+  if (value === "csv" || value === "tsv") return value;
   if (isSpectrumExtension(value)) return value as SpectrumFormat;
   throw new Error(`Unsupported spectrum extension: ${extension}`);
 }
@@ -208,6 +254,53 @@ function parseSubformulaJsonFile(title: string, content: string): SpectrumFile {
     kind: "ms2",
     xLabel: "m/z",
     yLabel: "Relative intensity",
+    xUnit: "m/z",
+    peaks,
+    metadata,
+  }], metadata);
+}
+
+function parseTabularSpectrumFile(title: string, format: "csv" | "tsv", content: string): SpectrumFile {
+  const delimiter = format === "csv" ? "," : "\t";
+  const rows = parseDelimitedRows(content, delimiter);
+  if (rows.length < 2) throw new Error(`${format.toUpperCase()} spectrum needs a header row and peak rows.`);
+  const headers = rows[0].map(normalizeHeader);
+  const mzIndex = firstHeaderIndex(headers, ["mz", "m_z", "m/z", "mass_to_charge", "masscharge"]);
+  const intensityIndex = firstHeaderIndex(headers, ["intensity", "inten", "relative_intensity", "rel_intensity", "ms2_inten", "abundance"]);
+  if (mzIndex < 0 || intensityIndex < 0) {
+    throw new Error(`${format.toUpperCase()} spectrum needs m/z and intensity columns.`);
+  }
+  const formulaIndex = firstHeaderIndex(headers, ["formula", "annotation", "frag_base_form", "ion_formula"]);
+  const ionIndex = firstHeaderIndex(headers, ["ion", "ions", "cand_ion", "ionization"]);
+  const metadata = metadataFromTitle(title);
+  copyFirstTableValue(headers, rows, metadata, ["precursor", "precursor_mz", "parentmass"], "precursor");
+  copyFirstTableValue(headers, rows, metadata, ["collision_energies", "collision_energy", "ce"], "collision energy");
+  copyFirstTableValue(headers, rows, metadata, ["ionization", "ion", "cand_ion"], "ion");
+  copyFirstTableValue(headers, rows, metadata, ["instrument"], "instrument");
+  const peaks = rows.slice(1).map((row, index): SpectrumPeak | null => {
+    const x = Number(row[mzIndex]);
+    const y = Number(row[intensityIndex]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    const annotations: SpectrumPeak["annotations"] = { row: index + 1 };
+    headers.forEach((header, columnIndex) => {
+      const value = row[columnIndex]?.trim();
+      if (value) annotations[header || `column_${columnIndex + 1}`] = numericIfPossible(value);
+    });
+    const formula = formulaIndex >= 0 ? row[formulaIndex]?.trim() : "";
+    const ion = ionIndex >= 0 ? row[ionIndex]?.trim() : "";
+    return {
+      x,
+      y,
+      label: formula || ion || undefined,
+      annotations,
+    };
+  }).filter((peak): peak is SpectrumPeak => peak !== null);
+  return spectrumFile(format, title, [{
+    id: "tabular-spectrum",
+    title,
+    kind: "ms2",
+    xLabel: "m/z",
+    yLabel: "Intensity",
     xUnit: "m/z",
     peaks,
     metadata,
@@ -340,6 +433,69 @@ function parseNumberPair(line: string): [number, number] | null {
   const x = Number(left);
   const y = Number(right);
   return Number.isFinite(x) && Number.isFinite(y) ? [x, y] : null;
+}
+
+function parseDelimitedRows(text: string, delimiter: "," | "\t", limit = Number.POSITIVE_INFINITY) {
+  const rows: string[][] = [];
+  for (const line of text.split(/\r?\n/u)) {
+    if (rows.length >= limit) break;
+    const row = parseDelimitedLine(line, delimiter);
+    if (row.some((cell) => cell.trim() !== "")) rows.push(row);
+  }
+  return rows;
+}
+
+function parseDelimitedLine(line: string, delimiter: "," | "\t") {
+  const cells: string[] = [];
+  let current = "";
+  let quoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if (char === '"' && line[index + 1] === '"') {
+      current += '"';
+      index += 1;
+      continue;
+    }
+    if (char === '"') {
+      quoted = !quoted;
+      continue;
+    }
+    if (char === delimiter && !quoted) {
+      cells.push(current);
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  cells.push(current);
+  return cells;
+}
+
+function normalizeHeader(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9/]+/gu, "_").replace(/^_+|_+$/gu, "");
+}
+
+function firstHeaderIndex(headers: string[], names: string[]) {
+  return headers.findIndex((header) => names.includes(header));
+}
+
+function metadataFromTitle(title: string) {
+  const metadata: Record<string, string> = {};
+  const collisionEnergy = /(?:^|[_\-.])CE\s*([0-9]+(?:\.[0-9]+)?)(?:$|[_\-.])/iu.exec(title)
+    ?? /collision[_\-. ]?energy[_\-. ]?([0-9]+(?:\.[0-9]+)?)/iu.exec(title);
+  if (collisionEnergy?.[1]) metadata["collision energy"] = `${collisionEnergy[1]} eV`;
+  const hashId = /(^|\/)([0-9a-f]{32})(?:__|[_\-.])/iu.exec(title);
+  if (hashId?.[2]) metadata.id = hashId[2];
+  const massSpecGymId = /(MassSpecGymID\d+)/iu.exec(title);
+  if (massSpecGymId?.[1]) metadata.id = massSpecGymId[1];
+  return metadata;
+}
+
+function copyFirstTableValue(headers: string[], rows: string[][], metadata: Record<string, string>, names: string[], label: string) {
+  if (metadata[label]) return;
+  const index = firstHeaderIndex(headers, names);
+  const value = index >= 0 ? rows.slice(1).find((row) => row[index]?.trim())?.[index]?.trim() : "";
+  if (value) metadata[label] = value;
 }
 
 function numericIfPossible(value: string) {
