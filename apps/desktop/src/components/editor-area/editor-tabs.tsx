@@ -546,6 +546,15 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
                     },
                     {
                       kind: "item" as const,
+                      id: "quick-look-tab-document",
+                      text: "Quick Look",
+                      accelerator: "Space",
+                      action: () => {
+                        actions.showQuickLookPreview(tabDocument);
+                      },
+                    },
+                    {
+                      kind: "item" as const,
                       id: "show-tab-document-metadata",
                       text: "Show Metadata",
                       action: () => {
