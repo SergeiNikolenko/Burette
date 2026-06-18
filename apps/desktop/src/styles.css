@@ -4337,6 +4337,134 @@ img.radix-menu-item-icon {
   background: var(--bg-base);
 }
 .viewer-iframe { width: 100%; height: 100%; border: 0; display: block; background: transparent; }
+.web-quicklook-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 950;
+  display: grid;
+  place-items: center;
+  padding: 52px;
+  background: rgb(0 0 0 / 0.16);
+  pointer-events: auto;
+}
+.web-quicklook-backdrop-standalone {
+  padding: 32px;
+  background:
+    radial-gradient(circle at 24% 18%, color-mix(in srgb, var(--accent) 24%, transparent), transparent 30%),
+    color-mix(in srgb, var(--bg-base) 92%, transparent);
+}
+.app-shell[data-quicklook-debug="true"] {
+  background: var(--bg);
+}
+.web-quicklook-debug-loading {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  background:
+    radial-gradient(circle at 24% 18%, color-mix(in srgb, var(--accent) 24%, transparent), transparent 30%),
+    color-mix(in srgb, var(--bg-base) 92%, transparent);
+}
+.web-quicklook-window {
+  width: min(980px, calc(100vw - 96px));
+  height: min(720px, calc(100vh - 104px));
+  min-width: min(680px, calc(100vw - 32px));
+  min-height: min(460px, calc(100vh - 32px));
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: 48px minmax(0, 1fr);
+  border: 1px solid color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 34%), transparent);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--bg-base) 82%, transparent);
+  color: var(--text-primary);
+  box-shadow: 0 28px 80px rgb(0 0 0 / 0.38), 0 1px 0 rgb(255 255 255 / 0.16) inset;
+  backdrop-filter: blur(34px) saturate(1.35);
+  -webkit-backdrop-filter: blur(34px) saturate(1.35);
+}
+.web-quicklook-titlebar {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr) 86px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--line-subtler);
+  background: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 10%), transparent);
+}
+.web-quicklook-traffic-lights {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.web-quicklook-light {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  display: block;
+  box-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.18) inset;
+}
+.web-quicklook-close-dot { background: #ff5f57; }
+.web-quicklook-minimize-dot { background: #ffbd2e; }
+.web-quicklook-zoom-dot { background: #28c840; }
+.web-quicklook-title {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  text-align: center;
+  line-height: 1.1;
+}
+.web-quicklook-title span,
+.web-quicklook-title small {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.web-quicklook-title span {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+}
+.web-quicklook-title small {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 400;
+}
+.web-quicklook-done {
+  justify-self: end;
+  min-width: 54px;
+  min-height: 26px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0 10px;
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.web-quicklook-done:hover,
+.web-quicklook-done:focus-visible {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+  outline: none;
+}
+.web-quicklook-content {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: rgb(0 0 0 / 0.12);
+}
+.web-quicklook-iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: transparent;
+}
 .spectrum-stage {
   position: absolute;
   inset: var(--chrome-height) 0 0;

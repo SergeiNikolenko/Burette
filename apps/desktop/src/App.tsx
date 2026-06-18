@@ -330,6 +330,7 @@ function delimitedColumnChoiceLabel(choice: GridDelimitedColumnChoice) {
 
 async function browserDevFilesFromLocation() {
   const params = new URLSearchParams(window.location.search);
+  if (params.has("quickLookFile")) return [];
   if (params.has("devDocking")) return [];
   if (params.has("devFiles")) {
     return splitDevFiles(params.get("devFiles") ?? "");
@@ -346,6 +347,13 @@ async function browserDevFilesFromLocation() {
 
 function splitDevFiles(rawFiles: string) {
   return rawFiles.split("\n").map((path) => path.trim()).filter(Boolean);
+}
+
+function browserDevQuickLookFileFromLocation() {
+  if (typeof window === "undefined" || isTauriRuntime()) return null;
+  const params = new URLSearchParams(window.location.search);
+  const path = params.get("quickLookFile")?.trim();
+  return path || null;
 }
 
 function browserDevHasExplicitFiles() {
@@ -557,6 +565,8 @@ export default function App() {
   const [ketcherImportRequest, setKetcherImportRequest] = useState<KetcherImportRequest | null>(null);
   const [ketcherDraftMolfile, setKetcherDraftMolfile] = useState("");
   const [descriptorSource, setDescriptorSource] = useState<DescriptorSourcePayload | null>(null);
+  const [quickLookDocument, setQuickLookDocument] = useState<ViewerDocument | null>(null);
+  const [quickLookError, setQuickLookError] = useState<string | null>(null);
   const [dirtyGridDocuments, setDirtyGridDocuments] = useState<Set<string>>(() => new Set());
   const [status, setStatus] = useState<StatusNotice | null>(null);
   const [buildInfo, setBuildInfo] = useState(defaultBuildInfo);
@@ -579,6 +589,7 @@ export default function App() {
     availableRelease: null,
   }));
   const openedBrowserDevFilesRef = useRef<string | null>(null);
+  const openedBrowserDevQuickLookRef = useRef<string | null>(null);
   const openedBrowserDevDockingRef = useRef<string | null>(null);
   const prunedPersistedPathsRef = useRef(false);
   const refreshedPersistedSessionRef = useRef(false);
@@ -1527,6 +1538,32 @@ export default function App() {
   }, [closeDocument, openDocuments, openSpectrumDocuments, openTextDocuments, setActiveDocument]);
 
   useEffect(() => {
+    const quickLookPath = browserDevQuickLookFileFromLocation();
+    if (!quickLookPath || openedBrowserDevQuickLookRef.current === quickLookPath) return;
+    let cancelled = false;
+    openedBrowserDevQuickLookRef.current = quickLookPath;
+    setQuickLookDocument(null);
+    setQuickLookError(null);
+    void openBrowserDevDocuments([quickLookPath], preferences).then((result) => {
+      if (cancelled) return;
+      const document = result.documents[0] ?? null;
+      if (document) {
+        setQuickLookDocument(document);
+        return;
+      }
+      setQuickLookError("Quick Look debug file did not produce a preview document.");
+    }).catch((error) => {
+      if (cancelled) return;
+      const message = error instanceof Error ? error.message : String(error);
+      setQuickLookError(`Open Quick Look debug file failed: ${message}`);
+      pushErrorStatus(error, "Open Quick Look debug file failed");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [preferences, pushErrorStatus]);
+
+  useEffect(() => {
     if (isTauriRuntime() || syncingBrowserDevFilesRef.current) return;
     let cancelled = false;
     void (async () => {
@@ -2014,6 +2051,10 @@ export default function App() {
       `Size: ${formatBytes(document.byteCount)}`,
     ]);
   }, [pushStatus]);
+
+  const closeQuickLookPreview = useCallback(() => {
+    setQuickLookDocument(null);
+  }, []);
 
   const showTextFileMetadata = useCallback((document: TextFileDocument) => {
     const details = [
@@ -4817,6 +4858,7 @@ export default function App() {
     showActiveDocumentMetadata,
     showDocumentMetadata,
     showTextFileMetadata,
+    closeQuickLookPreview,
     generate3DConformer,
     runStructureViewerAction,
     reloadXyzrenderDocument,
@@ -4874,7 +4916,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runStructureViewerAction, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
+  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeQuickLookPreview, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runStructureViewerAction, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
@@ -4886,6 +4928,9 @@ export default function App() {
     activeTabId,
     activeDocument,
     activeDocumentId: activeDocument?.id ?? null,
+    quickLookDocument,
+    quickLookError,
+    quickLookStandalone: Boolean(browserDevQuickLookFileFromLocation()),
     visibleDocuments: documents,
     recentStructures,
     sidebarProjects: allSidebarProjects,
