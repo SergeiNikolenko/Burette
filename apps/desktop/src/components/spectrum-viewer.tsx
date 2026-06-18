@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { readStructureTextDocument } from "../lib/structure-text";
-import { parseSpectrumFile, spectrumSummary, type SpectrumDocument, type SpectrumFile, type SpectrumPeak } from "../lib/spectrum";
+import { parseSpectrumFile, peakAnnotationValue, spectrumAnalytics, spectrumSummary, type SpectrumDocument, type SpectrumFile, type SpectrumPeak } from "../lib/spectrum";
 import { useSpectrumPeakSelection } from "../lib/spectrum-selection";
 import type { ViewerDocument } from "../types";
 import { formatBytes } from "./format";
@@ -448,7 +448,11 @@ function SpectrumMetadata({
       cancelled = true;
     };
   }, [document.path]);
+  const analytics = useMemo(() => spectrumAnalytics(spectrum), [spectrum]);
   const metadataRows = Object.entries(spectrum.metadata).filter(([, value]) => value !== "").slice(0, 16);
+  const collisionEnergy = metadataValue(spectrum.metadata, ["collision energy", "collision_energy", "CE", "COLLISIONENERGY"]);
+  const precursor = metadataValue(spectrum.metadata, ["precursor", "precursor_mz", "PEPMASS", "PRECURSORMZ", "parentmass"]);
+  const charge = metadataValue(spectrum.metadata, ["charge", "CHARGE"]);
   return (
     <div className="spectrum-metadata">
       <section>
@@ -459,6 +463,28 @@ function SpectrumMetadata({
           <Metric label="Peaks" value={String(spectrum.peaks.length)} />
           <Metric label="File" value={formatBytes(document.byteCount)} />
         </div>
+      </section>
+      <section>
+        <h4>Spectrum summary</h4>
+        <div className="spectrum-stat-grid">
+          <Metric label="Base peak" value={analytics.basePeak ? `${formatNumber(analytics.basePeak.x)} / ${formatNumber(analytics.basePeak.y)}` : "-"} />
+          <Metric label="m/z range" value={analytics.minMz !== null && analytics.maxMz !== null ? `${formatNumber(analytics.minMz)}-${formatNumber(analytics.maxMz)}` : "-"} />
+          <Metric label="TIC" value={formatNumber(analytics.totalIntensity)} />
+          <Metric label="Annotated" value={`${analytics.annotatedPeaks}/${spectrum.peaks.length} (${formatPercent(analytics.annotationCoverage)})`} />
+          {collisionEnergy && <Metric label="Collision energy" value={collisionEnergy} />}
+          {precursor && <Metric label="Precursor" value={precursor} />}
+          {charge && <Metric label="Charge" value={charge} />}
+        </div>
+        {analytics.topPeaks.length > 0 && (
+          <div className="spectrum-metadata-list spectrum-top-peaks">
+            {analytics.topPeaks.slice(0, 8).map((peak, index) => (
+              <div key={`${peak.x}:${peak.y}:${index}`}>
+                <span>{formatNumber(peak.x)}</span>
+                <strong>{formatNumber(peak.y)}{peakAnnotationLabel(peak) ? ` · ${peakAnnotationLabel(peak)}` : ""}</strong>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
       {subformula && (
         <section>
@@ -551,6 +577,8 @@ function PeakTable({
             <th>m/z</th>
             <th>{normalize ? "Relative intensity" : "Intensity"}</th>
             <th>Annotation</th>
+            <th>ppm diff</th>
+            <th>frag mass</th>
           </tr>
         </thead>
         <tbody>
@@ -574,6 +602,8 @@ function PeakTable({
               <td>{formatNumber(peak.x)}</td>
               <td>{formatNumber(peak.y)}</td>
               <td>{peakAnnotationLabel(peak)}</td>
+              <td>{annotationNumber(peak, "ppm_diff")}</td>
+              <td>{annotationNumber(peak, "frag_mass")}</td>
             </tr>
           ))}
         </tbody>
@@ -583,7 +613,7 @@ function PeakTable({
 }
 
 function peakAnnotationLabel(peak: SpectrumPeak) {
-  return peak.label || String(peak.annotations?.frag_base_form ?? peak.annotations?.ion ?? peak.annotations?.ppm_diff ?? "");
+  return String(peakAnnotationValue(peak));
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -684,6 +714,25 @@ function pathBaseName(path: string) {
 
 function formatNumber(value: number) {
   return Number.isFinite(value) ? Number(value.toFixed(4)).toString() : "";
+}
+
+function formatPercent(value: number) {
+  return Number.isFinite(value) ? `${Math.round(value * 100)}%` : "-";
+}
+
+function metadataValue(metadata: Record<string, string>, keys: string[]) {
+  const lowered = new Map(Object.entries(metadata).map(([key, value]) => [key.toLowerCase(), value]));
+  for (const key of keys) {
+    const value = lowered.get(key.toLowerCase());
+    if (value) return value;
+  }
+  return "";
+}
+
+function annotationNumber(peak: SpectrumPeak, key: string) {
+  const value = peak.annotations?.[key];
+  if (typeof value === "number") return formatNumber(value);
+  return typeof value === "string" ? value : "";
 }
 
 function escapeHtml(value: string) {
