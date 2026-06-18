@@ -4,6 +4,7 @@ import { ViewerArea } from "./editor-area";
 import { EditorTabs } from "./editor-area/editor-tabs";
 import { NotificationPopup } from "./notification-popup";
 import { OpenInEditorMenu } from "./open-in-editor-menu";
+import { QuickLookPreview } from "./quick-look-preview";
 import { Sidebar } from "./sidebar";
 import { ShortcutTooltip } from "./shortcut-tooltip";
 import type { ShellActions, ShellViewState } from "./types";
@@ -69,6 +70,27 @@ export function AppLayout({
   } as CSSProperties;
   const effectiveTheme = resolveThemeMode(state.preferences.theme, systemThemeMode);
   const activePageKind = state.activeTab?.location.kind ?? null;
+  if (state.quickLookStandalone) {
+    return (
+      <main
+        className="app-shell"
+        data-theme={state.preferences.theme}
+        data-effective-theme={effectiveTheme}
+        data-runtime={isTauriRuntime() ? "tauri" : "browser"}
+        data-quicklook-debug="true"
+        style={shellStyle}
+      >
+        {state.quickLookDocument ? (
+          <QuickLookPreview document={state.quickLookDocument} onClose={actions.closeQuickLookPreview} standalone />
+        ) : state.quickLookError ? (
+          <div className="web-quicklook-debug-loading" role="alert">{state.quickLookError}</div>
+        ) : (
+          <div className="web-quicklook-debug-loading" role="status">Loading Quick Look preview...</div>
+        )}
+      </main>
+    );
+  }
+
   return (
     <main
       className="app-shell"
@@ -185,6 +207,9 @@ export function AppLayout({
       {state.status && (
         <NotificationPopup notice={state.status} onDismiss={onDismissStatus} />
       )}
+      {state.quickLookDocument ? (
+        <QuickLookPreview document={state.quickLookDocument} onClose={actions.closeQuickLookPreview} />
+      ) : null}
     </main>
   );
 }
