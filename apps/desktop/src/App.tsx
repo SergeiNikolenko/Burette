@@ -74,7 +74,7 @@ import { basename, buildSidebarProjects, parentDirectory, type SidebarProjectStr
 import { parseStructureComposition } from "./lib/structure-composition";
 import type { StructureDragPayload, StructureDragRecord } from "./lib/structure-drag";
 import { readStructureText } from "./lib/structure-text";
-import { isSpectrumPath, spectrumDocumentFromText } from "./lib/spectrum";
+import { isSpectrumPath, isTabularSpectrumExtension, isTabularSpectrumText, spectrumDocumentFromText } from "./lib/spectrum";
 import type { TextStructureSelection } from "./lib/text-structure-selection";
 import { isTauriRuntime } from "./lib/tauri";
 import { isTemporaryDocumentPath } from "./lib/temporary-documents";
@@ -406,6 +406,19 @@ async function expandBrowserDevStructureBundles(paths: string[]) {
     }
   }
   return expanded;
+}
+
+async function detectTabularSpectrumPaths(paths: string[]) {
+  const matches = new Set<string>();
+  await Promise.all(paths.map(async (path) => {
+    const extension = pathExtension(path);
+    if (!isTabularSpectrumExtension(extension)) return;
+    try {
+      const text = await readStructureText(path, { maxBytes: 256 * 1024 });
+      if (isTabularSpectrumText(text, extension)) matches.add(path);
+    } catch {}
+  }));
+  return matches;
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer) {
@@ -1481,10 +1494,11 @@ export default function App() {
     const textPaths: string[] = [];
     const structureAndTextPaths: string[] = [];
     let preferredStructureDocumentId: string | null = null;
+    const tabularSpectrumPaths = await detectTabularSpectrumPaths(cleanPaths);
 
     for (const path of cleanPaths) {
       const extension = pathExtension(path);
-      if (isSpectrumPath(path, extension)) {
+      if (isSpectrumPath(path, extension) || tabularSpectrumPaths.has(path)) {
         spectrumPaths.push(path);
       } else if (
         preferredTextExtensions.has(extension)
@@ -1670,9 +1684,10 @@ export default function App() {
     try {
       let dockOpenPaths = cleanPaths;
       if (input.area === "right" && cleanPaths.length > 0) {
+        const rightDockTabularSpectrumPaths = await detectTabularSpectrumPaths(cleanPaths);
         const rightDockTextPaths = cleanPaths.filter((path) => {
           const extension = pathExtension(path);
-          return !isSpectrumPath(path, extension) && !structureExtensions.has(extension) && !structureAndTextExtensions.has(extension);
+          return !isSpectrumPath(path, extension) && !rightDockTabularSpectrumPaths.has(path) && !structureExtensions.has(extension) && !structureAndTextExtensions.has(extension);
         });
         dockOpenPaths = cleanPaths.filter((path) => !rightDockTextPaths.includes(path));
         if (rightDockTextPaths.length > 0) {
@@ -1698,9 +1713,10 @@ export default function App() {
       const spectrumPaths: string[] = [];
       const textPaths: string[] = [];
       const structureAndTextPaths: string[] = [];
+      const tabularSpectrumPaths = await detectTabularSpectrumPaths(dockOpenPaths);
       for (const path of dockOpenPaths) {
         const extension = pathExtension(path);
-        if (isSpectrumPath(path, extension)) {
+        if (isSpectrumPath(path, extension) || tabularSpectrumPaths.has(path)) {
           spectrumPaths.push(path);
         } else if (structureAndTextExtensions.has(extension)) {
           structureAndTextPaths.push(path);
