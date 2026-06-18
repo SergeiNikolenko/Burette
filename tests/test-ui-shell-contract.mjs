@@ -679,7 +679,7 @@ assert.match(moleculeStore, /const storedTabs = \(stored\?\.tabs \?\? current\.t
 assert.match(app, /async function browserDevFilesFromLocation\(\)/);
 assert.match(app, /if \(params\.has\("devDocking"\)\) return \[\];/);
 assert.match(app, /params\.has\("devFiles"\)/);
-assert.match(app, /!isSpectrumExtension\(extension\) &&\s*!structureAndTextExtensions\.has\(extension\)/);
+assert.match(app, /!isSpectrumPath\(path, extension\) &&\s*!structureAndTextExtensions\.has\(extension\)/);
 assert.match(app, /function browserDevFolderFromLocation\(\)/);
 assert.match(app, /get\("devFolder"\)\?\.trim\(\)/);
 assert.ok(app.includes('return folder ? folder.replace(/\\\\/g, "/").replace(/\\/+$/u, "") : null;'));
