@@ -59,6 +59,52 @@ qlmanage -r cache
 killall quicklookd 2>/dev/null || true
 ```
 
+## Browser-Only Preview Debug Loop
+
+Use the browser-only Quick Look debug loop when changing React/CSS/viewer web
+surfaces and you need to inspect the Quick Look-shaped preview without building
+or registering the native Finder extension. This route is for development and
+debugging only. It must not be exposed as an end-user command or menu item.
+
+Start the desktop Vite server:
+
+```bash
+vp dev
+```
+
+Open the dedicated debug URL in the built-in Browser:
+
+```text
+http://127.0.0.1:1420/?quickLookFile=/absolute/path/to/file.pdb
+```
+
+For repository samples, use:
+
+```text
+http://127.0.0.1:1420/?quickLookFile=/absolute/path/to/Burette/samples/mini.pdb
+```
+
+Build the sample path from the current repository root and URL-encode it when
+constructing the URL from tooling. Do not use `devFiles` for this check.
+`devFiles` opens the normal browser-dev app shell; `quickLookFile` is the
+isolated Quick Look debug surface.
+
+Expected browser state:
+
+- The page renders a single `Quick Look <filename>` dialog.
+- The preview content is the same viewer runtime that the selected renderer
+  would use for that file.
+- The normal browser-dev app chrome is absent: no `Open structures` tablist, no
+  project sidebar search, and no main workbench behind the preview.
+- The dialog has an explicit `Done` close control and the red close dot.
+
+Use this loop for fast visual checks of toolbar spacing, preview sizing,
+transparent surfaces, renderer controls, and CSS regressions. It does not prove
+Launch Services registration, extension signing, cache invalidation, or Finder
+Quick Look process behavior. After changes to Swift, packaging, content types,
+extension assets, or native runtime generation, still run the forced preview
+smoke path below.
+
 ## Smoke Tests
 
 Use forced previews to bypass Launch Services ambiguity while debugging:
