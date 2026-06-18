@@ -4347,6 +4347,26 @@ img.radix-menu-item-icon {
   background: rgb(0 0 0 / 0.16);
   pointer-events: auto;
 }
+.web-quicklook-backdrop-standalone {
+  padding: 32px;
+  background:
+    radial-gradient(circle at 24% 18%, color-mix(in srgb, var(--accent) 24%, transparent), transparent 30%),
+    color-mix(in srgb, var(--bg-base) 92%, transparent);
+}
+.app-shell[data-quicklook-debug="true"] {
+  background: var(--bg);
+}
+.web-quicklook-debug-loading {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  background:
+    radial-gradient(circle at 24% 18%, color-mix(in srgb, var(--accent) 24%, transparent), transparent 30%),
+    color-mix(in srgb, var(--bg-base) 92%, transparent);
+}
 .web-quicklook-window {
   width: min(980px, calc(100vw - 96px));
   height: min(720px, calc(100vh - 104px));

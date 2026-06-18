@@ -6,9 +6,11 @@ import type { ViewerDocument } from "../types";
 export function QuickLookPreview({
   document,
   onClose,
+  standalone = false,
 }: {
   document: ViewerDocument;
   onClose: () => void;
+  standalone?: boolean;
 }) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
 
@@ -27,7 +29,7 @@ export function QuickLookPreview({
   return (
     <div
       ref={dialogRef}
-      className="web-quicklook-backdrop"
+      className={standalone ? "web-quicklook-backdrop web-quicklook-backdrop-standalone" : "web-quicklook-backdrop"}
       role="dialog"
       aria-modal="true"
       aria-label={`Quick Look ${document.title}`}
