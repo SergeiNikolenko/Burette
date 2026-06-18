@@ -577,13 +577,15 @@ function peakBarWidths(peaks: SpectrumPeak[]) {
 }
 
 function peakHoverData(peak: SpectrumPeak) {
-  const formula = peak.annotations?.frag_base_form ?? peak.label;
-  const annotationRows = Object.entries(peak.annotations ?? {})
-    .slice(0, 8)
-    .map(([key, value]) => `<br>${escapeHtml(key)}: ${escapeHtml(String(value))}`)
-    .join("");
-  const formulaRow = formula ? `<br>formula: ${escapeHtml(String(formula))}` : "";
-  return `m/z ${formatNumber(peak.x)}<br>intensity ${formatNumber(peak.y)}${formulaRow}${annotationRows}`;
+  const rows = [
+    `m/z: ${formatNumber(peak.x)}`,
+    `intensity: ${formatNumber(peak.y)}`,
+  ];
+  const annotation = peakAnnotationLabel(peak);
+  if (annotation) rows.push(`annotation: ${annotation}`);
+  const row = peak.annotations?.row;
+  if (row !== undefined && row !== null && row !== "") rows.push(`row: ${String(row)}`);
+  return rows.map(escapeHtml).join("<br>");
 }
 
 function formatNumber(value: number) {
