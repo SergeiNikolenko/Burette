@@ -2939,7 +2939,7 @@ assert.match(browserDevDocuments, /rmsdCutoff\?: number/);
 assert.match(browserDevDocuments, /export async function openBrowserDevTextDocument\([\s\S]*documentId\?: string/);
 assert.match(browserDevDocuments, /openBrowserDevDocumentFromBytes\(path, cleanExtension, bytes, bytes\.length, preferences, reloadOptions, documentId\)/);
 assert.match(browserDevDocuments, /function isDelimitedSmilesHeader\(header: string\)/);
-assert.match(browserDevDocuments, /normalized === "smile" \|\| normalized\.includes\("smiles"\)/);
+assert.match(browserDevDocuments, /normalized === "smile" \|\| normalized === "smiels" \|\| normalized\.includes\("smiles"\)/);
 assert.match(browserDevDocuments, /function isDelimitedNameHeader\(header: string\)/);
 assert.match(browserDevDocuments, /"CSV row": String\(rowIndex \+ 1\)/);
 assert.match(browserDevDocuments, /"SMILES column": columnName/);
