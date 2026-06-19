@@ -88,6 +88,8 @@ const [
   windowScope,
   viteConfig,
   viteBuildPlugins,
+  browserDevAssets,
+  browserDevFiles,
   browserDevHttp,
   bundleReportScript,
   previewRuntimeViewer,
@@ -193,6 +195,8 @@ const [
   source('apps/desktop/src/lib/window-scope.ts'),
   source('apps/desktop/vite.config.ts'),
   source('apps/desktop/vite/build-plugins.ts'),
+  source('apps/desktop/vite/browser-dev/assets.ts'),
+  source('apps/desktop/vite/browser-dev/files.ts'),
   source('apps/desktop/vite/browser-dev/http.ts'),
   source('scripts/bundle-report.mjs'),
   source('apps/desktop/src-tauri/src/preview/runtime_viewer.rs'),
@@ -505,11 +509,13 @@ assert.match(viteConfig, /join\(homedir\(\), "Desktop"\)/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "BurettePreviewSamples"\)/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "xyzrender-main"\)/);
 assert.match(viteConfig, /join\(repoRoot, "samples", "large", "litr_moses_10k\.csv"\)/);
-assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/dev-files"/);
+assert.match(viteConfig, /registerBrowserDevFileDiscoveryRoute\(server, fileRoutes\)/);
+assert.match(browserDevFiles, /server\.middlewares\.use\("\/__burette\/dev-files"/);
 assert.match(viteConfig, /"ms",\s*"msp",\s*"mzml",\s*"mzxml"/);
 assert.match(viteConfig, /const RDKIT_WASM_PATH = join\(repoRoot, "PreviewExtension", "Web", "rdkit", "RDKit_minimal\.wasm"\)/);
-assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/rdkit-wasm"/);
-assert.match(viteConfig, /res\.setHeader\("Content-Type", "application\/wasm"\)/);
+assert.match(viteConfig, /registerBrowserDevRdkitWasmRoute\(server, RDKIT_WASM_PATH\)/);
+assert.match(browserDevAssets, /server\.middlewares\.use\("\/__burette\/rdkit-wasm"/);
+assert.match(browserDevAssets, /res\.setHeader\("Content-Type", "application\/wasm"\)/);
 assert.match(viteConfig, /const RDKIT_CONFORMER_SCRIPT_PATH = join\(repoRoot, "scripts", "rdkit_conformer\.py"\)/);
 assert.match(viteConfig, /type PythonCommand = \{/);
 assert.match(viteConfig, /function conformerPythonCandidates\(engine: string\)/);
@@ -545,13 +551,16 @@ assert.match(rdkitConformer, /"conformerCount": len\(records\)/);
 assert.match(rdkitConformer, /value\.GetAtomWithIdx\(atom_idx\)\.GetAtomicNum\(\) == 1/);
 assert.match(rdkitConformer, /conformer_plane_thickness\(mol, conf_id\)/);
 assert.match(rdkitConformer, /method = "ETKDG\+" \+ family \+ \("\+fixed-core" if core is not None else "\+ensemble"\)/);
-assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/read-file"/);
-assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/read-text-file"/);
+assert.match(viteConfig, /registerBrowserDevFileContentRoutes\(server, fileRoutes\)/);
+assert.match(browserDevFiles, /server\.middlewares\.use\("\/__burette\/read-file"/);
+assert.match(browserDevFiles, /server\.middlewares\.use\("\/__burette\/read-text-file"/);
 assert.match(viteConfig, /const TEXT_FILE_READ_LIMIT = 12 \* 1024 \* 1024/);
-assert.match(viteConfig, /const maxBytes = textFileReadLimit\(url\.searchParams\.get\("maxBytes"\)\)/);
+assert.match(browserDevFiles, /const maxBytes = options\.textFileReadLimit\(url\.searchParams\.get\("maxBytes"\)\)/);
 assert.match(viteConfig, /function textFileReadLimit\(value: string \| null\)/);
 assert.match(viteConfig, /function languageForTextExtension/);
-assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/file-bundle"/);
+assert.match(browserDevFiles, /server\.middlewares\.use\("\/__burette\/file-bundle"/);
+assert.match(viteConfig, /registerBrowserDevAppIconRoute\(server, BROWSER_DEV_APP_ICONS, execFileAsync\)/);
+assert.match(browserDevAssets, /server\.middlewares\.use\("\/__burette\/app-icon\/"/);
 assert.match(viteConfig, /const SCHRODINGER_RUN = "\/opt\/schrodinger\/suites2026-1\/run"/);
 assert.match(viteConfig, /const DESMOND_PREVIEW_TARGET_MB = 24/);
 assert.match(viteConfig, /desmond_preview_extract\.py/);
