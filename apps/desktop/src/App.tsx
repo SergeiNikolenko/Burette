@@ -3059,7 +3059,23 @@ export default function App() {
   }, [activeTab?.location, documents, poseReviewSelections]);
 
   useOpenEvents(openPaths, pushErrorStatus);
-  useAgentSession({ activeDocument, documents, openTextDocuments, openPaths, pushErrorStatus, setDockDocument });
+  const agentTabActions = useMemo(() => ({
+    openNewTab,
+    setActiveTab,
+    closeTab,
+    moveTab,
+  }), [openNewTab, setActiveTab, closeTab, moveTab]);
+  useAgentSession({
+    activeDocument,
+    documents,
+    tabs,
+    activeTabId,
+    openTextDocuments,
+    openPaths,
+    tabActions: agentTabActions,
+    pushErrorStatus,
+    setDockDocument,
+  });
   const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop, handleBrowserPaste, openClipboardText } = useOpenDrop(openPaths, pushStatus, {
     activeTabKind: activeTab?.location.kind ?? null,
     activeDocumentId: activeDocument?.id ?? null,
