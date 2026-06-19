@@ -207,6 +207,9 @@ export function AppLayout({
       {state.status && (
         <NotificationPopup notice={state.status} onDismiss={onDismissStatus} />
       )}
+      {state.quickLookDocument ? (
+        <QuickLookPreview document={state.quickLookDocument} onClose={actions.closeQuickLookPreview} />
+      ) : null}
     </main>
   );
 }

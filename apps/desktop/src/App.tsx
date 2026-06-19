@@ -351,14 +351,15 @@ function browserDevFolderFromLocation() {
   return folder ? folder.replace(/\\/g, "/").replace(/\/+$/u, "") : null;
 }
 
-function browserDevQuickLookFileFromLocation() {
-  if (typeof window === "undefined" || isTauriRuntime()) return null;
-  const path = new URLSearchParams(window.location.search).get("quickLookFile")?.trim();
-  return path || null;
-}
-
 function splitDevFiles(rawFiles: string) {
   return rawFiles.split("\n").map((path) => path.trim()).filter(Boolean);
+}
+
+function browserDevQuickLookFileFromLocation() {
+  if (typeof window === "undefined" || isTauriRuntime()) return null;
+  const params = new URLSearchParams(window.location.search);
+  const path = params.get("quickLookFile")?.trim();
+  return path || null;
 }
 
 function browserDevHasExplicitFiles() {
@@ -597,9 +598,9 @@ export default function App() {
   const [ketcherImportRequest, setKetcherImportRequest] = useState<KetcherImportRequest | null>(null);
   const [ketcherDraftMolfile, setKetcherDraftMolfile] = useState("");
   const [descriptorSource, setDescriptorSource] = useState<DescriptorSourcePayload | null>(null);
-  const [dirtyGridDocuments, setDirtyGridDocuments] = useState<Set<string>>(() => new Set());
   const [quickLookDocument, setQuickLookDocument] = useState<ViewerDocument | null>(null);
   const [quickLookError, setQuickLookError] = useState<string | null>(null);
+  const [dirtyGridDocuments, setDirtyGridDocuments] = useState<Set<string>>(() => new Set());
   const [status, setStatus] = useState<StatusNotice | null>(null);
   const [buildInfo, setBuildInfo] = useState(defaultBuildInfo);
   const [buildInfoLoaded, setBuildInfoLoaded] = useState(false);
@@ -4913,6 +4914,7 @@ export default function App() {
     showActiveDocumentMetadata,
     showDocumentMetadata,
     showTextFileMetadata,
+    closeQuickLookPreview,
     generate3DConformer,
     runStructureViewerAction,
     reloadXyzrenderDocument,
@@ -4968,7 +4970,6 @@ export default function App() {
         pushErrorStatus(error, "Open release page failed");
       }
     },
-    closeQuickLookPreview,
     setPreference,
     setUpdatePreferences,
   }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeQuickLookPreview, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runStructureViewerAction, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
