@@ -15,6 +15,7 @@ import {
   useSetCommandPaletteSearch,
 } from "./hooks/use-command-palette";
 import { useAppDescriptors } from "./hooks/use-app-descriptors";
+import { useAppDirtyGridDocuments } from "./hooks/use-app-dirty-grid-documents";
 import { useAppFileActions } from "./hooks/use-app-file-actions";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
 import { useAppMaintenance } from "./hooks/use-app-maintenance";
@@ -536,8 +537,15 @@ export default function App() {
   const [structureDragActive, setStructureDragActive] = useState(false);
   const [ketcherImportRequest, setKetcherImportRequest] = useState<KetcherImportRequest | null>(null);
   const [ketcherDraftMolfile, setKetcherDraftMolfile] = useState("");
-  const [dirtyGridDocuments, setDirtyGridDocuments] = useState<Set<string>>(() => new Set());
   const { status, pushStatus, pushErrorStatus, clearStatus, recentErrorsRef } = useAppStatus();
+  const {
+    clearDirtyGridDocuments,
+    confirmDiscardDirtyGridDocument,
+    confirmDiscardDirtyGridDocuments,
+    forgetDirtyGridDocument,
+    forgetDirtyGridDocuments,
+    updateDirtyGridDocument,
+  } = useAppDirtyGridDocuments();
   const [poseReviewSelections, setPoseReviewSelections] = useState<Record<string, number>>({});
   const [conformerStatus, setConformerStatus] = useState<ConformerStatus | null>(null);
   const [conformerSettings, setConformerSettingsState] = useState<ConformerSettings>(() => readConformerSettings());
@@ -2247,17 +2255,6 @@ export default function App() {
     setKetcherImportRequest((request) => (request?.id === id ? null : request));
   }, []);
 
-  const confirmDiscardDirtyGridDocument = useCallback((documentId: string | null | undefined) => {
-    if (!documentId || !dirtyGridDocuments.has(documentId)) return true;
-    return window.confirm("This grid has unsaved changes. Save or Save As before closing to keep edits. Close without saving?");
-  }, [dirtyGridDocuments]);
-
-  const confirmDiscardDirtyGridDocuments = useCallback((documentIds: string[]) => {
-    const dirtyCount = documentIds.filter((documentId) => dirtyGridDocuments.has(documentId)).length;
-    if (dirtyCount === 0) return true;
-    return window.confirm(`${dirtyCount} grid document${dirtyCount === 1 ? " has" : "s have"} unsaved changes. Save or Save As before closing to keep edits. Close without saving?`);
-  }, [dirtyGridDocuments]);
-
   const openKetcherSketch = useCallback(async (request: KetcherSketchRequest) => {
     const rendererMode: ViewerPreferences["rendererMode"] = request.target === "grid"
       ? "grid2d"
@@ -3140,14 +3137,7 @@ export default function App() {
         }
         if (body?.type === "gridDirtyChanged") {
           const documentId = typeof body.documentId === "string" ? body.documentId : "";
-          if (documentId) {
-            setDirtyGridDocuments((previous) => {
-              const next = new Set(previous);
-              if (body.dirty === true) next.add(documentId);
-              else next.delete(documentId);
-              return next;
-            });
-          }
+          updateDirtyGridDocument(documentId, body.dirty === true);
           return;
         }
         if (body?.type === "exportText") {
@@ -3241,11 +3231,7 @@ export default function App() {
                 outputPath: targetDocument.path,
               });
               const savedName = basename(savedPath);
-              setDirtyGridDocuments((previous) => {
-                const next = new Set(previous);
-                if (body.documentId) next.delete(body.documentId);
-                return next;
-              });
+              forgetDirtyGridDocument(typeof body.documentId === "string" ? body.documentId : null);
               pushStatus(`Saved ${savedName}`);
               reply({ type: "gridSaved", name: savedName });
             } catch (error) {
@@ -3273,11 +3259,7 @@ export default function App() {
               if (!isTauriRuntime()) {
                 downloadTextFile(name, text);
                 pushStatus(`Saved ${name}`);
-                setDirtyGridDocuments((previous) => {
-                  const next = new Set(previous);
-                  if (body.documentId) next.delete(body.documentId);
-                  return next;
-                });
+                forgetDirtyGridDocument(typeof body.documentId === "string" ? body.documentId : null);
                 reply({ type: "gridSavedAs", name });
                 return;
               }
@@ -3288,11 +3270,7 @@ export default function App() {
               if (!outputPath) return;
               const savedPath = await invoke<string>("save_text_as", { text, outputPath });
               const savedName = basename(savedPath);
-              setDirtyGridDocuments((previous) => {
-                const next = new Set(previous);
-                if (body.documentId) next.delete(body.documentId);
-                return next;
-              });
+              forgetDirtyGridDocument(typeof body.documentId === "string" ? body.documentId : null);
               pushStatus(`Saved ${savedName}`);
               reply({ type: "gridSavedAs", name: savedName });
             } catch (error) {
@@ -3937,7 +3915,7 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, addBackgroundDocuments, addDocuments, calculateGridDescriptors, documents, generate3DConformer, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar, writeGridPerfMetric]);
+  }, [activeDocument, addBackgroundDocuments, addDocuments, calculateGridDescriptors, documents, forgetDirtyGridDocument, generate3DConformer, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar, updateDirtyGridDocument, writeGridPerfMetric]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -4067,11 +4045,7 @@ export default function App() {
     closeDocument: (id: string) => {
       if (!confirmDiscardDirtyGridDocument(id)) return;
       closeGridRuntime(id);
-      setDirtyGridDocuments((previous) => {
-        const next = new Set(previous);
-        next.delete(id);
-        return next;
-      });
+      forgetDirtyGridDocument(id);
       closeDocument(id);
     },
     closeTab: (id: string) => {
@@ -4089,29 +4063,21 @@ export default function App() {
         closeGridRuntime(targetDocumentId);
       }
       if (documentIds.length > 0) {
-        setDirtyGridDocuments((previous) => {
-          const next = new Set(previous);
-          for (const documentId of documentIds) next.delete(documentId);
-          return next;
-        });
+        forgetDirtyGridDocuments(documentIds);
       }
       closeTab(id);
     },
     closeActiveDocument: () => {
       if (!confirmDiscardDirtyGridDocument(activeDocument?.id)) return;
       closeGridRuntime(activeDocument?.id);
-      setDirtyGridDocuments((previous) => {
-        const next = new Set(previous);
-        if (activeDocument?.id) next.delete(activeDocument.id);
-        return next;
-      });
+      forgetDirtyGridDocument(activeDocument?.id);
       closeActiveDocument();
       pushStatus("Closed active tab");
     },
     clearAllDocuments: () => {
       if (!confirmDiscardDirtyGridDocuments(documents.map((document) => document.id))) return;
       for (const document of documents) closeGridRuntime(document.id);
-      setDirtyGridDocuments(new Set());
+      clearDirtyGridDocuments();
       closeAllDocuments();
       pushStatus("Closed all tabs");
     },
@@ -4179,7 +4145,7 @@ export default function App() {
     openUpdateRelease,
     setPreference,
     setUpdatePreferences,
-  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeQuickLookPreview, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openUpdateRelease, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runStructureViewerAction, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar]);
+  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearDirtyGridDocuments, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeQuickLookPreview, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, forgetDirtyGridDocument, forgetDirtyGridDocuments, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openUpdateRelease, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runStructureViewerAction, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
