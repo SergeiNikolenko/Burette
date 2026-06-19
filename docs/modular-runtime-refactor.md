@@ -101,6 +101,33 @@ Current Stage 3 progress:
   These are the remaining high-risk slices and should move only after each
   boundary has contract coverage for the exact message/action names.
 
+## Current Epic Status
+
+The original refactor epic is not complete yet. This branch has completed the
+safe extraction baseline and part of the app-shell extraction, while keeping
+the high-risk runtime boundaries intact.
+
+| Epic area | Status | Notes |
+| --- | --- | --- |
+| Contract safety net | Partial | Existing contract tests were strengthened as modules moved, but the full named test matrix from the epic is not complete yet. |
+| Dev-server extraction | Complete | Browser-dev endpoint modules now live under `apps/desktop/vite/browser-dev/`, with `vite.config.ts` acting as registration/composition. |
+| App shell extraction | Partial | Several app hooks and pure chemistry libs are extracted, but document opening, Ketcher, docking, xTB/conformer controllers, and message handling still live in `App.tsx`. |
+| Opening workflow | Not started | `openDocuments`, `openPaths`, file/text routing, and recent-structure behavior remain in `App.tsx`. |
+| Ketcher workflow | Not started | Ketcher import/export/sketch/grid-row sync remains in `App.tsx`. |
+| Grid workflow | Partial | Dirty-grid state and descriptor workflows are extracted; grid append/save/export/message handling remains in `App.tsx`. |
+| Docking/collections/dock payloads | Not started | Docking, collection merge/save, and dock payload handlers remain in `App.tsx`. |
+| Viewer bridge | Not started | `window.message` handling remains in `App.tsx`; typed dispatch is still pending. |
+| ShellActions/ShellViewState slicing | Not started | The compatibility surface is unchanged; slicing has not started. |
+| Update flow | Complete | Update state/actions are in `use-app-updates.ts`. |
+| Hardening pass | Not started | Trusted shell vs preview capability split, diagnostics privacy redaction, cache contract, scanner limits, renderer policy matrix, and doctor flow remain pending. |
+| Runtime cache contract | Not started | No dedicated cache contract extraction yet. |
+| Folder scanner job | Not started | No cancellable/limited scanner refactor yet. |
+| Renderer policy contract | Not started | Desktop/Quick Look renderer-policy matrix remains pending. |
+| External runtime doctor | Not started | No doctor flow has been added. |
+| Diagnostics privacy | Partial | Diagnostics export action is extracted; privacy/redaction tests from the epic remain pending. |
+| Viewer runtime decomposition | Not started | `PreviewExtension/Web/viewer.js` remains untouched as planned until stronger contracts exist. |
+| CSS split | Not started | No CSS mechanical split has been attempted. |
+
 ## Verification Discipline
 
 Every refactor slice must run the smallest targeted contract tests first. If a
