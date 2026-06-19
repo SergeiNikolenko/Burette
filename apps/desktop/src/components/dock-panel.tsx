@@ -1,4 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Atom01Icon,
+  File02Icon,
+  Folder01Icon,
+  Search01Icon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { DOCK_TAB_LABELS, dockFileEntries, dockTabCatalog, type DockArea, type DockFileEntry, type DockTabKind } from "../lib/dock";
 import { hasStructureDrag, readStructureDragPayload, writeStructureDragPayload } from "../lib/structure-drag";
 import type { StructureDragPayload } from "../lib/structure-drag";
@@ -14,7 +21,6 @@ import { SpectrumInfoPanel, SpectrumPeakTablePanel, SpectrumViewer } from "./spe
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureTextDocument } from "../lib/structure-text";
 import type { ConformerJob, TextFileDocument, ViewerDocument, XtbJob, XyzrenderControls } from "../types";
-import { SystemIcon, type SystemIconName } from "./system-icon";
 
 type DockPanelProps = {
   area: DockArea;
@@ -23,19 +29,19 @@ type DockPanelProps = {
   onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
 };
 
-const dockTabIcons: Record<DockTabKind, SystemIconName> = {
-  xyzrender: "atom",
-  files: "folder",
-  spectrum: "chart.xyaxis.line",
-  text: "doc.text",
-  inspector: "info.circle",
-  descriptors: "list.bullet.rectangle",
-  "structure-basket": "tray.full",
-  compare: "square.split.2x1",
-  jobs: "terminal",
-  logs: "doc.plaintext",
-  diagnostics: "wrench.and.screwdriver",
-  review: "checklist",
+const dockTabIcons: Record<DockTabKind, typeof File02Icon> = {
+  xyzrender: Atom01Icon,
+  files: Folder01Icon,
+  spectrum: Atom01Icon,
+  text: File02Icon,
+  inspector: Search01Icon,
+  descriptors: Atom01Icon,
+  "structure-basket": Atom01Icon,
+  compare: Atom01Icon,
+  jobs: File02Icon,
+  logs: File02Icon,
+  diagnostics: Search01Icon,
+  review: Search01Icon,
 };
 
 export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProps) {
@@ -62,7 +68,7 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
     ? (dockDocument?.renderer === "xyzrender-external" ? dockDocument : state.activeDocument?.renderer === "xyzrender-external" ? state.activeDocument : null)
     : null;
   const visibleTabs = xyzrenderDockDocument ? tabs : tabs.filter((tab) => tab.kind !== "xyzrender");
-  const activeTab = visibleTabs.find((tab) => tab.kind === activeTabKind) ?? visibleTabs[0] ?? tabs[0] ?? { kind: "files" as DockTabKind };
+  const activeTab = visibleTabs.find((tab) => tab.kind === activeTabKind) ?? visibleTabs[0] ?? tabs[0];
   const filesTabDragPayload = dockFilesDragPayload(dockDocument, dockTextDocument, dockTool);
   const dockDrops = useMemo(
     () => state.dockDroppedStructures.filter((item) => item.area === area && item.tabKind === activeTab.kind),
@@ -154,7 +160,7 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
         <div className="dock-header">
           <div className="dock-tab-strip" role="tablist" aria-label={`${area} dock tabs`}>
             {visibleTabs.map((tab) => {
-              const icon = dockTabIcons[tab.kind];
+              const Icon = dockTabIcons[tab.kind];
               const active = tab.kind === activeTab.kind;
               const closeTab = () => {
                 if (visibleTabs.length > 1) {
@@ -181,7 +187,7 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
                     aria-selected={active}
                     title={DOCK_TAB_LABELS[tab.kind]}
                   >
-                    <SystemIcon name={icon} size={16} />
+                    <HugeiconsIcon icon={Icon} size={16} color="currentColor" strokeWidth={2} />
                     <span>{DOCK_TAB_LABELS[tab.kind]}</span>
                   </button>
                   {active && (
@@ -199,7 +205,7 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
             })}
           </div>
           <button type="button" className="dock-icon-button" onClick={showAddMenu} aria-label={`Add ${area} dock tab`}>
-            <SystemIcon name="plus" size={15} />
+            +
           </button>
           <button type="button" className="dock-icon-button" onClick={() => actions.setDockOpen(area, false)} aria-label={`Close ${area} dock`}>
             <CloseIcon size={15} />
@@ -339,7 +345,7 @@ function DockPanelContent({
   if (activeTabKind === "inspector") {
     if (area === "right" && activePageKind === "ketcher") return <KetcherInspectorPanel state={state} />;
     if (dockTextDocument) return <TextDocumentInfoPanel document={dockTextDocument} actions={actions} />;
-    if (dockStructureDocument?.renderer === "spectrum") return <SpectrumInfoPanel document={dockStructureDocument} actions={actions} />;
+    if (dockStructureDocument?.renderer === "spectrum") return <SpectrumInfoPanel document={dockStructureDocument} />;
     return (
       <StructureInfoPanel
         document={dockStructureDocument}

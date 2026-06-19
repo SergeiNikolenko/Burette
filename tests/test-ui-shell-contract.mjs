@@ -101,6 +101,7 @@ const [
   previewViewer,
   previewShell,
   previewRuntimeCss,
+  mobilePreviewRuntime,
   updateSource,
   readme,
   buildScript,
@@ -204,6 +205,7 @@ const [
   source('PreviewExtension/Web/viewer.js'),
   source('PreviewExtension/Web/viewer-shell.js'),
   source('PreviewExtension/Web/viewer-runtime.css'),
+  source('ios/BurreteMobile/MobilePreviewRuntime.swift'),
   source('apps/desktop/src/update.ts'),
   source('README.md'),
   source('scripts/build.sh'),
@@ -465,7 +467,6 @@ assert.doesNotMatch(patchWebAssetsScript, /xcodebuild/);
 assert.doesNotMatch(patchWebAssetsScript, /cargo build/);
 assert.doesNotMatch(patchWebAssetsScript, /build:tauri/);
 assert.equal(JSON.parse(tauriConfig).bundle.resources['../../../PreviewExtension/Web'], 'ViewerWeb');
-assert.equal(JSON.parse(tauriConfig).bundle.resources['../../../plugins/burette-agent'], 'plugins/burette-agent');
 assert.match(previewRuntimeViewer, /resolve\("ViewerWeb", tauri::path::BaseDirectory::Resource\)/);
 assert.match(buildScript, /built desktop app Resources\/Web was overwritten by the preview shell/);
 assert.match(buildScript, /Contents\/Resources\/ViewerWeb\/viewer-shell\.js/);
@@ -496,12 +497,10 @@ assert.match(desmondPreviewExtract, /0 means all atoms unless --target-mb is set
 assert.match(desmondPreviewExtract, /parser\.add_argument\("--target-mb"/);
 assert.match(desmondPreviewExtract, /parser\.add_argument\("--output"/);
 assert.match(viteConfig, /plugins: \[react\(\), ketcherRaphaelImportShimPlugin\(\), deferKetcherCssPlugin\(\), browserDevXyzrenderPlugin\(\)\]/);
-assert.match(viteConfig, /join\(homedir\(\), "Desktop"\)/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "BurettePreviewSamples"\)/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "xyzrender-main"\)/);
 assert.match(viteConfig, /join\(repoRoot, "samples", "large", "litr_moses_10k\.csv"\)/);
 assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/dev-files"/);
-assert.match(viteConfig, /"ms",\s*"msp",\s*"mzml",\s*"mzxml"/);
 assert.match(viteConfig, /const RDKIT_WASM_PATH = join\(repoRoot, "PreviewExtension", "Web", "rdkit", "RDKit_minimal\.wasm"\)/);
 assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/rdkit-wasm"/);
 assert.match(viteConfig, /res\.setHeader\("Content-Type", "application\/wasm"\)/);
@@ -680,19 +679,9 @@ assert.match(moleculeStore, /const storedTabs = \(stored\?\.tabs \?\? current\.t
 assert.match(app, /async function browserDevFilesFromLocation\(\)/);
 assert.match(app, /if \(params\.has\("devDocking"\)\) return \[\];/);
 assert.match(app, /params\.has\("devFiles"\)/);
-assert.match(app, /!isSpectrumPath\(path, extension\) &&\s*!structureAndTextExtensions\.has\(extension\)/);
-assert.match(app, /function browserDevFolderFromLocation\(\)/);
-assert.match(app, /get\("devFolder"\)\?\.trim\(\)/);
-assert.ok(app.includes('return folder ? folder.replace(/\\\\/g, "/").replace(/\\/+$/u, "") : null;'));
-assert.match(app, /function browserDevHasExplicitWorkspace\(\)/);
-assert.match(app, /return params\.has\("devFiles"\) \|\| params\.has\("devFolder"\);/);
-assert.match(app, /const browserDevExplicitFolder = useMemo\(\(\) => browserDevFolderFromLocation\(\), \[\]\);/);
-assert.match(app, /if \(browserDevExplicitFolder\) return \[browserDevExplicitFolder\];/);
-assert.match(app, /const sidebarRecentStructures = browserDevExplicitFolder \? \[\] : recentStructures;/);
-assert.match(app, /recentStructures: sidebarRecentStructures,/);
-assert.match(app, /return \[\];\s*}\s*function browserDevFolderFromLocation/);
-assert.match(app, /function splitDevFiles\(rawFiles: string\)/);
+assert.match(app, /return \[\];\s*}\s*function splitDevFiles/);
 assert.doesNotMatch(app, /fetch\("\/__burette\/dev-files", \{ cache: "no-store" \}\)/);
+assert.match(app, /function splitDevFiles\(rawFiles: string\)/);
 assert.match(app, /const NOT_RENDERABLE_RENDERER = "not-renderable";/);
 assert.match(app, /if \(document\.renderer === NOT_RENDERABLE_RENDERER\) \{\s*closeDocument\(document\.id\);/);
 assert.match(app, /const documents = result\.documents\.filter\(\(document\) => document\.renderer !== NOT_RENDERABLE_RENDERER\);/);
@@ -746,16 +735,11 @@ assert.doesNotMatch(main, /window\.__BURRETE_BOOT_OVERLAY__\?\.markMounted\(\)/)
 assert.match(bootOverlayScript, /const overlayId = "burrete-boot-overlay"/);
 assert.match(bootOverlayScript, /let mounted = false/);
 assert.match(bootOverlayScript, /function whenBodyReady/);
-assert.match(bootOverlayScript, /function ensureOverlay\(\) \{\s*if \(hasMountedApp\(\)\) return null;/);
+assert.match(bootOverlayScript, /function ensureOverlay\(\) \{\s*if \(mounted\) return null;/);
 assert.match(bootOverlayScript, /function removeOverlay\(\) \{\s*mounted = true;/);
-assert.match(bootOverlayScript, /function hasMountedApp\(\)/);
-assert.match(bootOverlayScript, /if \(!document\.querySelector\("\.app-shell"\)\) return false;/);
-assert.match(bootOverlayScript, /function setOverlay\(message, details\) \{\s*if \(hasMountedApp\(\)\) return;/);
-assert.match(bootOverlayScript, /whenBodyReady\(\(\) => \{\s*if \(hasMountedApp\(\)\) return;/);
+assert.match(bootOverlayScript, /whenBodyReady\(\(\) => \{\s*if \(mounted\) return;/);
 assert.match(bootOverlayScript, /window\.addEventListener\("error"/);
 assert.match(bootOverlayScript, /window\.addEventListener\("unhandledrejection"/);
-assert.match(bootOverlayScript, /window\.addEventListener\("error", \(event\) => \{\s*if \(hasMountedApp\(\)\) return;/);
-assert.match(bootOverlayScript, /window\.addEventListener\("unhandledrejection", \(event\) => \{\s*if \(hasMountedApp\(\)\) return;/);
 assert.match(bootOverlayScript, /The desktop UI did not mount within 3 seconds/);
 assert.match(bootOverlayScript, /Burrete UI failed to start/);
 assert.match(bootOverlayScript, /if \(document\.querySelector\("\.app-shell"\)\) \{\s*removeOverlay\(\);\s*return;\s*\}/);
@@ -786,7 +770,7 @@ assert.equal((app.match(/useOpenEvents\(/g) || []).length, 1);
 assert.match(app, /useOpenEvents\(openPaths, pushErrorStatus\)/);
 assert.doesNotMatch(app, /isTauriRuntime\(\) && !startupOpenSettled/);
 assert.match(app, /buildSidebarProjects/);
-assert.match(app, /buildSidebarProjects\(\{\s*documents,\s*recentStructures: sidebarRecentStructures,/);
+assert.match(app, /buildSidebarProjects\(\{\s*documents,\s*recentStructures,/);
 assert.doesNotMatch(app, /recentStructures:\s*documents\.length === 0 \? recentStructures : \[\]/);
 assert.match(app, /from "\.\/lib\/temporary-documents"/);
 assert.match(app, /!isTemporaryDocumentPath\(activeTab\.location\.path\)/);
@@ -796,8 +780,6 @@ assert.match(app, /pinnedProjectRoots,/);
 assert.match(app, /projectNameOverrides,/);
 assert.match(app, /hiddenProjectRoots,/);
 assert.match(app, /sidebarProjects/);
-assert.match(app, /!import\.meta\.env\.DEV \|\| isTauriRuntime\(\) \|\| browserDevHasExplicitWorkspace\(\)/);
-assert.match(app, /const workspace = browserDevExplicitFolder \?\? \(paths\[0\] \? parentDirectory\(paths\[0\]\) : null\);/);
 assert.match(app, /!isTauriRuntime\(\) \|\| documents\.length === 0/);
 assert.match(app, /void openPaths\(paths\)\.then\(\(\) => \{/);
 assert.match(openEventsHook, /return startupOpenSettled/);
@@ -807,11 +789,10 @@ assert.match(appLayout, /from "\.\/editor-area\/editor-tabs"/);
 assert.match(appLayout, /from "\.\/sidebar"/);
 assert.match(appLayout, /from "\.\/notification-popup"/);
 assert.doesNotMatch(appLayout, /SidebarLeftIcon/);
-assert.match(appLayout, /from "\.\/system-icon"/);
-assert.match(appLayout, /<SystemIcon name="sidebar\.left" size=\{18\} \/>/);
+assert.match(appLayout, /function DockToggleIcon\(\{ className \}: \{ className\?: string \}\)/);
 assert.match(appLayout, /function clampRightDockWidth\(width: number, viewportWidth: number, sidebarLayoutWidth: number\)/);
-assert.match(appLayout, /<SystemIcon name="rectangle\.bottomthird\.inset\.filled" size=\{18\} \/>/);
-assert.match(appLayout, /<SystemIcon name="sidebar\.right" size=\{18\} \/>/);
+assert.match(appLayout, /<rect x="2\.25" y="2\.25" width="13\.5" height="13\.5" rx="3\.25" stroke="currentColor" strokeWidth="1\.8" \/>/);
+assert.match(appLayout, /<path d="M6\.75 4\.75V13\.25" stroke="currentColor" strokeWidth="1\.8" strokeLinecap="round" \/>/);
 assert.match(appLayout, /onDismissStatus: \(\) => void;/);
 assert.match(appLayout, /<NotificationPopup notice=\{state\.status\} onDismiss=\{onDismissStatus\} \/>/);
 assert.doesNotMatch(appLayout, /StatusSurface/);
@@ -1365,8 +1346,7 @@ assert.match(styles, /\.tab-shell:focus-within \.tab-close \{[^}]*transform: tra
 assert.match(styles, /\.tab-close:hover \{ color: var\(--text-secondary\); \}/);
 assert.match(closeIcon, /export function CloseIcon/);
 assert.match(closeIcon, /className="close-glyph"/);
-assert.match(closeIcon, /from "\.\/system-icon"/);
-assert.match(closeIcon, /name="xmark"/);
+assert.match(closeIcon, /strokeLinecap="round"/);
 for (const sourceText of [dockPanel, editorTabs, notificationPopup, settingControl]) {
   assert.doesNotMatch(sourceText, /className="(?:tab-close|dock-tab-close|radix-dialog-close)"[\s\S]*?>\s*[x×]\s*<\/button>/);
 }
@@ -2298,16 +2278,12 @@ assert.match(agentIntegrationPanel, /navigator\.clipboard\.writeText\(status\.bu
 assert.match(agentIntegrationPanel, /data-agent-integration-panel/);
 assert.match(agentIntegrationPanel, /embedded = false/);
 assert.match(agentIntegrationPanel, /browserPreviewStatus/);
-assert.match(agentIntegrationPanel, /Install in Codex/);
-assert.match(agentIntegrationPanel, /Codex handoff/);
-assert.match(agentIntegrationPanel, /Open Bundle/);
-assert.match(agentIntegrationPanel, /Copy Bundle Path/);
+assert.match(agentIntegrationPanel, /Codex setup prompt/);
 assert.match(agentIntegrationPanel, /Copy Prompt/);
 assert.match(agentIntegrationPanel, /function codexSetupPrompt/);
 assert.match(agentIntegrationPanel, /Install or update the local Codex plugin @Burrete \(id \\`burrete\\`\) to version/);
 assert.match(agentIntegrationPanel, /bundled plugin directory `plugins\/burette-agent` from the current Burrete repository or app bundle/);
-assert.match(agentIntegrationPanel, /Use this bundled plugin directory:/);
-assert.match(agentIntegrationPanel, /If the path is unavailable from Codex, open this panel in the packaged Burrete app/);
+assert.match(agentIntegrationPanel, /If Codex cannot resolve that relative path, ask for the explicit bundle path from Burrete/);
 assert.match(agentIntegrationPanel, /verify @Burrete is available in Codex/);
 assert.match(agentIntegrationPanel, /bundled with Burrete/);
 assert.doesNotMatch(agentIntegrationPanel, /v\$\{status\.bundledPlugin\.version\} at/);
@@ -2346,9 +2322,8 @@ assert.match(sidebarSurface, /state\.projectsOpen/);
 assert.match(sidebarSurface, /actions\.toggleProjectsOpen/);
 assert.match(sidebarSurface, /actions\.setExpandedProjectIds/);
 assert.match(sidebarSurface, /actions\.openRecentStructure/);
-assert.doesNotMatch(sidebarSurface, /from "@hugeicons\/core-free-icons"/);
-assert.doesNotMatch(sidebarSurface, /from "@hugeicons\/react"/);
-assert.match(sidebarSurface, /from "\.\.\/system-icon"/);
+assert.match(sidebarSurface, /from "@hugeicons\/core-free-icons"/);
+assert.match(sidebarSurface, /from "@hugeicons\/react"/);
 assert.match(sidebarSurface, /actions\.openCommandPalette/);
 assert.doesNotMatch(sidebarFileBrowser, /from "\.\.\/shortcut-tooltip"/);
 assert.doesNotMatch(sidebarFileBrowser, /<ShortcutTooltip label="Search projects and structures" shortcut="⌘P" \/>/);
@@ -2543,8 +2518,6 @@ assert.match(styles, /\.agent-integration-content \{[^}]*margin: 0 auto[^}]*padd
 assert.match(styles, /\.page-surface\[data-page-kind="settings"\] \{[^}]*overflow: hidden/s);
 assert.doesNotMatch(styles, /\.page-surface\[data-page-kind="agent-integration"\]/);
 assert.match(styles, /\.agent-status-badge/);
-assert.match(styles, /\.agent-install-row/);
-assert.match(styles, /\.agent-install-step/);
 assert.match(styles, /\.agent-setup-prompt/);
 assert.match(styles, /\.page-surface:not\(\[data-active\]\) \{[^}]*display: none/s);
 assert.doesNotMatch(editorScrollContainer, /ProgressiveBlur|editor-progressive-blur/);
@@ -2618,8 +2591,7 @@ assert.match(tauriSource, /export function trackTauriListener\(registration: Pro
 assert.match(tauriSource, /if \(disposed\) \{\s*disposeTauriListener\(next, label\);/s);
 assert.match(tauriSource, /listener setup failed/);
 assert.match(tauriSource, /listener cleanup failed/);
-assert.match(tauriSource, /typeof result\.then === "function"/);
-assert.match(tauriSource, /Promise\.resolve\(result\)\.catch/);
+assert.match(tauriSource, /typeof result\.catch === "function"/);
 assert.match(openEventsHook, /trackTauriListener\(/);
 assert.match(openEventsHook, /listen\("open-documents"/);
 assert.doesNotMatch(openEventsHook, /let unlisten/);
@@ -2860,7 +2832,7 @@ assert.match(instance, /"8a18"/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
 assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v138"/);
-assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v67"/);
+assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v66"/);
 assert.match(browserDevDocuments, /const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT = 1500/);
 assert.match(viteConfig, /__burette\/agent-session\//);
 assert.match(viteConfig, /BURRETE_AGENT_SHELL_SESSION_DIR/);
@@ -2910,22 +2882,18 @@ assert.match(viteConfig, /if \(controls\.fieldDensityColor\) args\.push\("--dens
 assert.match(viteConfig, /if \(controls\.fieldCmapPalette\) args\.push\("--cmap-palette", controls\.fieldCmapPalette\)/);
 assert.match(viteConfig, /if \(controls\.fieldCmapMin != null && controls\.fieldCmapMax != null\) args\.push\("--cmap-range", String\(controls\.fieldCmapMin\), String\(controls\.fieldCmapMax\)\)/);
 assert.match(browserDevDocuments, /export async function openBrowserDevDockingDocument\(/);
-assert.match(browserDevDocuments, /const hasCoordinateTrajectory = ligands\.some\(isCoordinateTrajectoryPayload\)/);
-assert.match(browserDevDocuments, /const effectiveSceneMode = hasCoordinateTrajectory \? null : \(options\.sceneMode \?\? null\)/);
-assert.match(browserDevDocuments, /effectiveSceneMode\s*\?\s*`Mol\* scene: \$\{receptor\.title\} \+ \$\{ligands\.length\} more structure/);
+assert.match(browserDevDocuments, /options\.sceneMode\s*\?\s*`Mol\* scene: \$\{receptor\.title\} \+ \$\{ligands\.length\} more structure/);
 assert.match(browserDevDocuments, /:\s*`Docking: \$\{receptor\.title\} \+ \$\{dockingLigands\.length\} ligand/);
 assert.match(browserDevDocuments, /path: `burrete-docking:\/\/\$\{id\}`/);
 assert.match(browserDevDocuments, /virtual: true/);
 assert.match(browserDevDocuments, /dockingRequest: \{/);
 assert.match(browserDevDocuments, /receptorPath: receptor\.path/);
 assert.match(browserDevDocuments, /ligandPaths: ligands\.map\(\(ligand\) => ligand\.path\)/);
-assert.match(browserDevDocuments, /sceneMode: effectiveSceneMode/);
-assert.match(browserDevDocuments, /poseMode: effectiveSceneMode === "structureAll" \? "all" : "single"/);
+assert.match(browserDevDocuments, /sceneMode: options\.sceneMode \?\? null/);
+assert.match(browserDevDocuments, /poseMode: options\.sceneMode === "structureAll" \? "all" : "single"/);
 assert.match(browserDevDocuments, /window\.BurreteDockingPayloads =/);
 assert.match(browserDevDocuments, /sdfGrid: false/);
 assert.match(browserDevDocuments, /xyzrenderAvailable: false/);
-assert.match(browserDevDocuments, /function isCoordinateTrajectoryPayload\(payload: BrowserDevDockingPayload\)/);
-assert.match(browserDevDocuments, /\["xtc", "trr", "dcd", "nctraj", "lammpstrj"\]\.includes\(payload\.format\.molstarFormat\)/);
 assert.match(browserDevDocuments, /function readBrowserDevDockingPayload/);
 assert.match(browserDevDocuments, /cannot be added to Mol\* docking view because it needs xyzrender conversion/);
 assert.match(browserDevDocuments, /const explicitSdfViewer = isSdfExtension\(extension\)\s*&& Boolean\(reloadOptions\)\s*&& \(requestedMode === "molstar" \|\| requestedMode === "xyzrender-external"\);/);
@@ -2953,7 +2921,7 @@ assert.match(browserDevDocuments, /rmsdCutoff\?: number/);
 assert.match(browserDevDocuments, /export async function openBrowserDevTextDocument\([\s\S]*documentId\?: string/);
 assert.match(browserDevDocuments, /openBrowserDevDocumentFromBytes\(path, cleanExtension, bytes, bytes\.length, preferences, reloadOptions, documentId\)/);
 assert.match(browserDevDocuments, /function isDelimitedSmilesHeader\(header: string\)/);
-assert.match(browserDevDocuments, /normalized === "smile" \|\| normalized === "smiels" \|\| normalized\.includes\("smiles"\)/);
+assert.match(browserDevDocuments, /normalized === "smile" \|\| normalized\.includes\("smiles"\)/);
 assert.match(browserDevDocuments, /function isDelimitedNameHeader\(header: string\)/);
 assert.match(browserDevDocuments, /"CSV row": String\(rowIndex \+ 1\)/);
 assert.match(browserDevDocuments, /"SMILES column": columnName/);
@@ -3266,7 +3234,7 @@ assert.match(previewViewer, /fadeMolstarTransitionFrame\(transitionFrame\)/);
 assert.match(previewViewer, /function captureMolstarTransitionFrame\(\)/);
 assert.match(previewViewer, /canvas\.toDataURL\('image\/png'\)/);
 assert.match(previewViewer, /function requestGenerated3DCameraView\(viewer\)/);
-assert.match(previewViewer, /camera\.getFocus\(target, safeRadius, \[0, 1, 0\], \[0\.85, -0\.38, 0\.92\]\)/);
+assert.match(previewViewer, /camera\.getFocus\(target, Math\.max\(0\.1, safeRadius \* radiusScale\), \[0, 1, 0\], \[0\.85, -0\.38, 0\.92\]\)/);
 assert.match(previewViewer, /snapshot\.mode = 'perspective'/);
 assert.match(previewViewer, /window\.BurreteDataBase64 = textBase64/);
 assert.match(previewViewer, /loadPreparedStructure\(activeViewer, prepared\)/);
@@ -3612,7 +3580,7 @@ assert.match(previewViewer, /const trajectoryFrameCount = Number\(config\.trajec
 assert.match(previewViewer, /trajectoryControls: config\.trajectoryControls === true \|\| trajectoryFrameCount > 1/);
 assert.match(previewViewer, /await ensureBrowserDevStructureData\(nextConfig, cb\);\s*await startMolstar\(nextConfig, cb\);/s);
 assert.doesNotMatch(previewViewer, /startXYZFast/);
-assert.match(previewViewer, /Keep the native Mol\* top-left animation button on every Mol\* screen\. Do not remove\.\s*viewportShowAnimation: true,/);
+assert.match(previewViewer, /Keep the native Mol\* top-left animation button on every Mol\* screen\. Do not remove\.\s*viewportShowAnimation: option\('viewportShowAnimation', true\),/);
 assert.match(previewViewer, /function embeddedStructureDataByteLength\(\)/);
 assert.match(previewViewer, /async function ensureBrowserDevStructureData\(config, cb\)/);
 assert.match(previewViewer, /window\.BurreteDataBytes = null;\s*window\.BurreteDataBase64 = null;\s*await loadStructureData\(config, cb\);/);
@@ -3626,7 +3594,6 @@ assert.doesNotMatch(previewViewer, /value === 'xyz-fast'/);
 assert.doesNotMatch(browserDevDocuments, /"xyz-fast"/);
 assert.match(previewViewer, /if \(value === 'xyzrender-external'\) return !xyzrenderAvailable \|\| !canUseExternalXyzrender\(format\);/);
 assert.match(previewViewer, /function prepareDockingStructure\(config\)/);
-assert.match(previewViewer, /const trajectoryPair = dockingTrajectoryPair\(entries\);[\s\S]*if \(trajectoryPair\)[\s\S]*const sceneMode = dockingSceneMode\(config\);/);
 assert.match(previewViewer, /if \(config\.docking\) \{\s*return prepareDockingStructure\(config\);/);
 assert.match(browserDevDocuments, /return records\.length >= 1 \? \{ format: "sdf", records \} : null;/);
 assert.match(previewViewer, /records\.length >= 1 && config\.sdfPosePager === true/);
@@ -3668,7 +3635,9 @@ assert.match(previewViewer, /function installMolstarContextMenu\(viewer\)/);
 assert.match(previewViewer, /document\.addEventListener\('contextmenu', onContextMenu, true\)/);
 assert.match(previewViewer, /if \(!viewer \|\| \(!picked && !isMolstarContextMenuTarget\(event\.target\)\)\) \{\s*hideMolstarContextMenu\(\);\s*return false;/);
 assert.match(previewViewer, /const MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX = 4;/);
+assert.match(previewViewer, /const MOLSTAR_TOUCH_PICK_RADIUS_PX = 18;/);
 assert.match(previewViewer, /let contextPointer = null;/);
+assert.match(previewViewer, /let touchContextPointer = null;/);
 assert.match(previewViewer, /if \(event\.button === 2\) \{[\s\S]*?contextPointer = \{/);
 assert.match(previewViewer, /const contextPick = molstarContextPickFromEvent\(event\);[\s\S]*?event\.preventDefault\(\);\s*event\.stopPropagation\(\);[\s\S]*?contextPointer = \{[\s\S]*?pick: contextPick/);
 assert.doesNotMatch(previewViewer, /if \(event\.button === 2\) \{\s*event\.preventDefault\(\);\s*event\.stopPropagation\(\);[\s\S]*?contextPointer = \{/);
@@ -3679,13 +3648,26 @@ assert.match(previewViewer, /document\.addEventListener\('pointerup', onPointerU
 assert.match(previewViewer, /if \(contextPointer\) \{\s*event\.preventDefault\(\);\s*event\.stopPropagation\(\);\s*if \(!contextPointer\.moved\) return;\s*hideMolstarContextMenu\(\);\s*contextPointer = null;\s*return;/);
 assert.doesNotMatch(previewViewer, /if \(event\.button === 2\) \{\s*openFromEvent\(event\);\s*return;/);
 assert.match(previewViewer, /function isMolstarContextMenuTarget\(target\)/);
-assert.match(previewViewer, /function molstarContextPickFromEvent\(event\)/);
+assert.match(previewViewer, /function molstarContextPickFromEvent\(event, options = \{\}\)/);
 assert.doesNotMatch(previewViewer, /function molstarContextCanvasPixelLooksEmpty/);
 assert.doesNotMatch(previewViewer, /gl\.readPixels/);
 assert.doesNotMatch(previewViewer, /canvas3d\.setProps\(\{ pickPadding: 0 \}\)/);
 assert.doesNotMatch(previewViewer, /canvas3d\.setProps\(\{ pickPadding: previousPickPadding \}\)/);
-assert.match(previewViewer, /canvas3d\.identify\(\[event\.clientX - rect\.left, event\.clientY - rect\.top\]\)/);
+assert.match(previewViewer, /for \(const \[dx, dy\] of offsets\)/);
+assert.match(previewViewer, /canvas3d\.identify\(\[x - rect\.left, y - rect\.top\]\)/);
 assert.match(previewViewer, /canvas3d\.getLoci\(picking\.id\)/);
+assert.match(previewViewer, /if \(molstarContextEventIsTouch\(event\) && event\.isPrimary !== false && event\.button === 0/);
+assert.match(previewViewer, /const pixelScale = numberOption\('molstarPixelScale'\);/);
+assert.match(previewViewer, /const pickScale = numberOption\('molstarPickScale'\);/);
+assert.match(previewViewer, /const resolutionMode = stringOption\('molstarResolutionMode', \['auto', 'scaled', 'native'\]\);/);
+assert.match(previewViewer, /preferWebgl1: option\('molstarPreferWebgl1', true\),/);
+assert.match(previewViewer, /disableAntialiasing: option\('molstarDisableAntialiasing', true\),/);
+assert.match(previewViewer, /\.\.\.\(resolutionMode !== undefined \? \{ resolutionMode \} : \{\}\),/);
+assert.match(mobilePreviewRuntime, /"molstarDisableAntialiasing": false,/);
+assert.match(mobilePreviewRuntime, /"molstarPickScale": 1,/);
+assert.match(mobilePreviewRuntime, /"molstarPixelScale": 1,/);
+assert.match(mobilePreviewRuntime, /"molstarPreferWebgl1": false,/);
+assert.match(mobilePreviewRuntime, /"molstarResolutionMode": "native",/);
 assert.match(previewViewer, /\.msp-plugin \.msp-viewport-host/);
 assert.match(previewViewer, /className = 'buret-molecule-context-menu'/);
 assert.match(previewViewer, /function molstarContextScopeForAtom\(atom\)/);
@@ -4005,6 +3987,11 @@ assert.match(previewViewer, /prepared\?\.kind !== 'sdf-collection' && !prepared\
 assert.match(previewViewer, /await applyDockingSceneVisibility\(activeViewer, prepared, activePose\)/);
 assert.match(previewViewer, /else if \(activeSdfPoseMode === 'all'\) \{/);
 assert.match(previewViewer, /async function applySdfCollectionMolstarStyle\(viewer, style, structures = null, alpha = 1\)/);
+assert.match(previewViewer, /const raw = await plugin\.builders\.data\.rawData\(\{ data, label \}\)/);
+assert.match(previewViewer, /const trajectory = await plugin\.builders\.structure\.parseTrajectory\(raw, 'pdb'\)/);
+assert.match(previewViewer, /const preset = await plugin\.builders\.structure\.hierarchy\.applyPreset\(trajectory, 'default', \{ representationPreset: 'empty' \}\)/);
+assert.match(previewViewer, /const structure = preset\?\.structureProperties \|\| preset\?\.structure \|\| null/);
+assert.match(previewViewer, /return structure \? \[structure\] : \[\]/);
 assert.match(previewViewer, /const backgroundData = sdfCollectionBackgroundPdb\(prepared, activeIndex\)/);
 assert.match(previewViewer, /if \(backgroundData\) \{/);
 assert.match(previewViewer, /const contextStructures = await loadSdfCollectionPdbLayer\(viewer, backgroundData,/);
@@ -4029,7 +4016,7 @@ assert.match(previewViewer, /if \(contextStructures\.length\) \{\s*await applySd
 assert.match(previewViewer, /await loadMolstarEntry\(viewer, activeEntry\);\s*await applyMolstarIllustrativePostprocessing\(viewer\);/s);
 assert.match(previewViewer, /function dockingSceneBackgroundStyle\(contextStyle, foregroundStyle\)/);
 assert.match(previewViewer, /if \(resolved === 'cartoon' \|\| resolved === 'spacefill'\) return 'line'/);
-assert.match(previewViewer, /updateStructureOverlayToggleButton\(document\.querySelector\('\[data-buret-action="structure-overlay-toggle"\]'\), prepared\);\s*return;/);
+assert.match(previewViewer, /updateStructureOverlayToggleButton\(document\.querySelector\('\[data-buret-action="structure-overlay-toggle"\]'\), prepared\);\s*scheduleMolstarStructureFocus\(viewer, \{ reason: 'docking-scene', durationMs: 180 \}\);\s*return;/);
 assert.match(previewViewer, /await loadMolstarEntry\(viewer, activeEntry\);\s*await applyMolstarStyle\(viewer, style\)/);
 assert.match(previewViewer, /function sdfCollectionRepresentationForStyle\(style, alpha = 1\)/);
 assert.doesNotMatch(previewViewer, /if \(normalized === 'illustrative' \|\| normalized === 'cartoon' \|\| normalized === 'polymer-ligand'\) \{/);
@@ -4063,6 +4050,10 @@ assert.match(previewViewer, /speed\.max = formatTrajectoryFps\(maximumTrajectory
 assert.match(previewViewer, /speed\.inputMode = 'decimal'/);
 assert.match(previewViewer, /speed\.value = formatTrajectoryFps\(readTrajectoryLoopFps\(activeConfig, prepared\)\)/);
 assert.match(previewViewer, /speed\.title = 'Frames per second \(FPS\)'/);
+assert.match(previewViewer, /function setMobileTrajectorySpeed\(value\)/);
+assert.match(previewViewer, /speed\.dispatchEvent\(new Event\('input', \{ bubbles: true \}\)\)/);
+assert.match(previewViewer, /speed\.dispatchEvent\(new Event\('change', \{ bubbles: true \}\)\)/);
+assert.match(previewViewer, /name\.startsWith\('trajectory-speed:'\)/);
 assert.match(previewViewer, /function createStructureOverlayToggleButton\(prepared = activeMolstarPrepared\)/);
 assert.match(previewViewer, /button\.dataset\.buretAction = 'structure-overlay-toggle'/);
 assert.match(previewViewer, /root\.classList\.add\('buret-docking-poses-overlay-only'\)/);
@@ -4082,6 +4073,10 @@ assert.match(previewViewer, /const scheduleLoopStep = \(delayMs = loopNextDelay\
 assert.match(previewViewer, /loopTimer = window\.setTimeout\(\(\) => \{/);
 assert.match(previewViewer, /const nextIndex = loopTargetIndex\(\)/);
 assert.match(previewViewer, /if \(nextIndex === activePose\) \{/);
+assert.match(previewViewer, /setPose\(nextIndex, \{ loopStep: true \}\)/);
+assert.match(previewViewer, /if \(options\.loopStep !== true && loopActive\) \{/);
+assert.match(previewViewer, /loopStartPose = activePose/);
+assert.match(previewViewer, /if \(options\.loopStep !== true\) \{\s*scheduleMolstarStructureFocus\(viewer, \{ reason: 'native-trajectory-pose', durationMs: 180 \}\);\s*\}/);
 assert.match(previewViewer, /slider\.className = 'buret-docking-pose-slider'/);
 assert.match(previewViewer, /const scheduleSliderInputPose = \(index\) => \{/);
 assert.match(previewViewer, /if \(prepared\.nativeTrajectoryControls \|\| prepared\.kind === 'sdf-collection'\) scheduleSliderInputPose\(previewIndex\)/);

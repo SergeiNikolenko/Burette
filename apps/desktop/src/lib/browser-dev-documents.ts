@@ -60,7 +60,7 @@ const KETCHER_EDIT_MAX_ATOMS = 300;
 const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
 const GRID_ASSET_VERSION = "grid-ui-v138";
-const VIEWER_ASSET_VERSION = "viewer-ui-v67";
+const VIEWER_ASSET_VERSION = "viewer-ui-v66";
 const REPO_ROOT = String(import.meta.env.BURRETE_REPO_ROOT || "");
 const WEB_ASSETS_BASE = fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
 const browserDevVirtualTextDocuments = new Map<string, string>();
@@ -231,12 +231,10 @@ export async function openBrowserDevDockingDocument(
   const receptor = await readBrowserDevDockingPayload(receptorPath);
   const ligands = await Promise.all(Array.from(new Set(ligandPaths)).map(readBrowserDevDockingPayload));
   if (ligands.length === 0) throw new Error("Choose at least one ligand or pose file for docking view");
-  const hasCoordinateTrajectory = ligands.some(isCoordinateTrajectoryPayload);
-  const effectiveSceneMode = hasCoordinateTrajectory ? null : (options.sceneMode ?? null);
-  const dockingLigands = effectiveSceneMode ? ligands : expandBrowserDevDockingLigandPoses(ligands);
+  const dockingLigands = options.sceneMode ? ligands : expandBrowserDevDockingLigandPoses(ligands);
 
   const id = stableId(`docking:${receptor.path}:${ligands.map((ligand) => ligand.path).join("|")}`);
-  const label = effectiveSceneMode
+  const label = options.sceneMode
     ? `Mol* scene: ${receptor.title} + ${ligands.length} more structure${ligands.length === 1 ? "" : "s"}`
     : `Docking: ${receptor.title} + ${dockingLigands.length} ligand${dockingLigands.length === 1 ? "" : "s"}`;
   const visuals = resolvePreviewVisuals(preferences);
@@ -278,7 +276,7 @@ export async function openBrowserDevDockingDocument(
     defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" },
     docking: {
       activePose: options.activePose ?? null,
-      sceneMode: effectiveSceneMode,
+      sceneMode: options.sceneMode ?? null,
       receptor: dockingConfigSource(receptor),
       ligands: dockingLigands.map(dockingConfigSource),
     },
@@ -316,8 +314,8 @@ export async function openBrowserDevDockingDocument(
       receptorPath: receptor.path,
       ligandPaths: ligands.map((ligand) => ligand.path),
       activePose: options.activePose ?? null,
-      sceneMode: effectiveSceneMode,
-      poseMode: effectiveSceneMode === "structureAll" ? "all" : "single",
+      sceneMode: options.sceneMode ?? null,
+      poseMode: options.sceneMode === "structureAll" ? "all" : "single",
     } satisfies DockingDocumentRequest,
   };
 }
@@ -791,10 +789,6 @@ function expandBrowserDevDockingLigandPoses(ligands: BrowserDevDockingPayload[])
       };
     });
   });
-}
-
-function isCoordinateTrajectoryPayload(payload: BrowserDevDockingPayload) {
-  return ["xtc", "trr", "dcd", "nctraj", "lammpstrj"].includes(payload.format.molstarFormat);
 }
 
 function dockingPoseTextsForLigand(ligand: BrowserDevDockingPayload, text: string) {
@@ -1383,7 +1377,7 @@ function parseDelimited(text: string, delimiter: "," | "\t"): GridRecord[] {
 
 function isDelimitedSmilesHeader(header: string) {
   const normalized = header.trim().toLowerCase().replace(/\s+/gu, "_");
-  return normalized === "smile" || normalized === "smiels" || normalized.includes("smiles");
+  return normalized === "smile" || normalized.includes("smiles");
 }
 
 function isDelimitedNameHeader(header: string) {

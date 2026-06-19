@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { RadixDropdownMenu } from "./radix-menu";
 import { ShortcutTooltip } from "./shortcut-tooltip";
-import { SystemIcon, type SystemIconName } from "./system-icon";
 import type { ChemicalEditorTarget, ShellActions, ShellViewState } from "./types";
 import type { MenuItemSpec } from "./menu-types";
 import { isTauriRuntime } from "../lib/tauri";
@@ -49,7 +48,8 @@ export function OpenInEditorMenu({ state, actions }: { state: ShellViewState; ac
       kind: "item",
       id: `chemical-editor-${target.id}`,
       text: target.name,
-      ...editorMenuIcon(target),
+      iconText: editorIconText(target.name),
+      iconUrl: editorIconUrl(target) ?? undefined,
       action: () => {
         void actions.openPathInChemicalEditor(activeFile.path, target.id, target.name);
       },
@@ -72,7 +72,7 @@ export function OpenInEditorMenu({ state, actions }: { state: ShellViewState; ac
         kind: "item" as const,
         id: "chemical-editor-default",
         text: "Open with Default App",
-        iconSymbol: "app",
+        iconText: "DA",
         action: () => {
           void actions.openPathWithDefaultApp(activeFile.path);
         },
@@ -81,7 +81,7 @@ export function OpenInEditorMenu({ state, actions }: { state: ShellViewState; ac
         kind: "item" as const,
         id: "chemical-editor-finder",
         text: "Reveal in Finder",
-        iconSymbol: "folder",
+        iconText: "FI",
         iconUrl: finderIconUrl() ?? undefined,
         action: () => {
           void actions.revealPath(activeFile.path, activeFile.label);
@@ -95,7 +95,6 @@ export function OpenInEditorMenu({ state, actions }: { state: ShellViewState; ac
   const visibleTargets = targets.length > 0 ? targets : browserDevPreviewTargets(activeFile.path);
   const preferredTarget = preferredTargetForDestination(state.preferences.openInDefaultDestination, visibleTargets);
   const preferredIconUrl = openDestinationIconUrl(state.preferences.openInDefaultDestination, preferredTarget);
-  const preferredIconSymbol = openDestinationIconSymbol(state.preferences.openInDefaultDestination, preferredTarget);
   const label = openDestinationLabel(state.preferences.openInDefaultDestination, preferredTarget);
 
   return (
@@ -116,11 +115,11 @@ export function OpenInEditorMenu({ state, actions }: { state: ShellViewState; ac
           <span className={preferredIconUrl ? "open-editor-trigger-icon open-editor-trigger-icon-image" : "open-editor-trigger-icon"} aria-hidden="true">
             {preferredIconUrl ? (
               <img src={preferredIconUrl} alt="" aria-hidden="true" />
-            ) : (
-              <SystemIcon name={preferredIconSymbol} size={13} strokeWidth={2.1} />
-            )}
+            ) : openDestinationIconText(state.preferences.openInDefaultDestination, preferredTarget)}
           </span>
-          <SystemIcon name="chevron.down" className="open-editor-chevron" size={13} />
+          <svg className="open-editor-chevron" width="13" height="13" viewBox="0 0 13 13" aria-hidden="true">
+            <path d="M3.5 5 6.5 8 9.5 5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
           <ShortcutTooltip label={label} />
         </button>
       )}
@@ -149,10 +148,10 @@ function openDestinationIconUrl(destination: string, target: ChemicalEditorTarge
   return null;
 }
 
-function openDestinationIconSymbol(destination: string, target: ChemicalEditorTarget | null): SystemIconName {
-  if (destination === "default-app") return "app";
-  if (destination === "finder" || destination === "auto") return "folder";
-  return target ? "app" : "square.and.pencil";
+function openDestinationIconText(destination: string, target: ChemicalEditorTarget | null) {
+  if (destination === "default-app") return "DA";
+  if (destination === "finder" || destination === "auto") return "FI";
+  return target ? editorIconText(target.name) : "OP";
 }
 
 function activeFileFromState(state: ShellViewState): ActiveFile | null {
@@ -167,16 +166,18 @@ function activeFileFromState(state: ShellViewState): ActiveFile | null {
   return document?.path ? { path: document.path, label: "file" } : null;
 }
 
+function editorIconText(name: string) {
+  const compact = name.replace(/[^a-z0-9]+/giu, " ").trim();
+  const parts = compact.split(/\s+/u).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  return compact.slice(0, 2).toUpperCase() || "ED";
+}
+
 function editorIconUrl(target: ChemicalEditorTarget) {
   if (target.iconUrl) return target.iconUrl;
   if (target.iconPath && isTauriRuntime()) return convertFileSrc(target.iconPath);
   if (!isTauriRuntime() && import.meta.env.DEV) return browserDevIconUrl(target);
   return null;
-}
-
-function editorMenuIcon(target: ChemicalEditorTarget): Pick<Extract<MenuItemSpec, { kind: "item" }>, "iconSymbol" | "iconUrl"> {
-  const iconUrl = editorIconUrl(target);
-  return iconUrl ? { iconUrl } : { iconSymbol: "app" };
 }
 
 function finderIconUrl() {
