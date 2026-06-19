@@ -91,6 +91,14 @@ const [
   browserDevAssets,
   browserDevFiles,
   browserDevHttp,
+  browserDevAgentSession,
+  browserDevConformerInline,
+  browserDevConformerJobs,
+  browserDevDescriptors,
+  browserDevDesmond,
+  browserDevMsbuddy,
+  browserDevXtb,
+  browserDevXyzrender,
   bundleReportScript,
   previewRuntimeViewer,
   previewRuntimeSource,
@@ -198,6 +206,14 @@ const [
   source('apps/desktop/vite/browser-dev/assets.ts'),
   source('apps/desktop/vite/browser-dev/files.ts'),
   source('apps/desktop/vite/browser-dev/http.ts'),
+  source('apps/desktop/vite/browser-dev/agent-session.ts'),
+  source('apps/desktop/vite/browser-dev/conformer-inline.ts'),
+  source('apps/desktop/vite/browser-dev/conformer-jobs.ts'),
+  source('apps/desktop/vite/browser-dev/descriptors.ts'),
+  source('apps/desktop/vite/browser-dev/desmond.ts'),
+  source('apps/desktop/vite/browser-dev/msbuddy.ts'),
+  source('apps/desktop/vite/browser-dev/xtb.ts'),
+  source('apps/desktop/vite/browser-dev/xyzrender.ts'),
   source('scripts/bundle-report.mjs'),
   source('apps/desktop/src-tauri/src/preview/runtime_viewer.rs'),
   source('apps/desktop/src-tauri/src/preview/runtime.rs'),
@@ -528,10 +544,23 @@ assert.match(viteConfig, /const mode = String\(request\.mode \|\| "single"\).*"e
 assert.match(viteConfig, /const candidateCount = boundedNumber\(request\.candidateCount, 128, 1, 512\)/);
 assert.match(viteConfig, /const rmsdCutoff = boundedNumber\(request\.rmsdCutoff, 0\.75, 0, 5\)/);
 assert.match(viteConfig, /function boundedNumber\(value: unknown, fallback: number, min: number, max: number\)/);
-assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/generate-3d-conformer"/);
-assert.match(viteConfig, /await generate3DConformerForBrowserDev\(await readJsonBody\(req\)\)/);
+assert.match(viteConfig, /registerBrowserDevInlineConformerRoute\(server, generate3DConformerForBrowserDev\)/);
+assert.match(browserDevConformerInline, /server\.middlewares\.use\("\/__burette\/generate-3d-conformer"/);
+assert.match(browserDevConformerInline, /await generate3DConformerForBrowserDev\(await readJsonBody\(req\)\)/);
 assert.match(browserDevHttp, /export async function readJsonBody/);
 assert.match(browserDevHttp, /JSON\.parse\(text\) as Record<string, unknown>/);
+assert.match(viteConfig, /registerBrowserDevMsbuddyRoutes\(server,/);
+assert.match(browserDevMsbuddy, /server\.middlewares\.use\("\/__burette\/msbuddy"/);
+assert.match(browserDevMsbuddy, /sendJsonError\(res, 500, error, "no-cache"\)/);
+assert.match(viteConfig, /registerBrowserDevDescriptorRoutes\(server,/);
+assert.match(browserDevDescriptors, /server\.middlewares\.use\("\/__burette\/descriptors"/);
+assert.match(browserDevDescriptors, /sendJsonError\(res, 500, error, "no-cache"\)/);
+assert.match(viteConfig, /registerBrowserDevConformerJobRoutes\(server,/);
+assert.match(browserDevConformerJobs, /server\.middlewares\.use\("\/__burette\/conformer-status"/);
+assert.match(browserDevConformerJobs, /server\.middlewares\.use\("\/__burette\/prepare-conformer-job"/);
+assert.match(viteConfig, /registerBrowserDevXtbRoutes\(server,/);
+assert.match(browserDevXtb, /server\.middlewares\.use\("\/__burette\/xtb-status"/);
+assert.match(browserDevXtb, /server\.middlewares\.use\("\/__burette\/run-xtb-job"/);
 assert.match(viteConfig, /function conformerGenerationTimeoutMs\(candidateCount: number\)/);
 assert.match(viteConfig, /Math\.max\(30_000, candidateCount \* 1_000\)/);
 assert.match(viteConfig, /function runPythonWithStdin\(python: PythonCommand, script: string, input: string, timeoutMs = 30_000\): Promise<string>/);
@@ -564,9 +593,10 @@ assert.match(browserDevAssets, /server\.middlewares\.use\("\/__burette\/app-icon
 assert.match(viteConfig, /const SCHRODINGER_RUN = "\/opt\/schrodinger\/suites2026-1\/run"/);
 assert.match(viteConfig, /const DESMOND_PREVIEW_TARGET_MB = 24/);
 assert.match(viteConfig, /desmond_preview_extract\.py/);
-assert.match(viteConfig, /"--frames",\s*"0",\s*"--atoms",\s*"0",\s*"--target-mb",\s*String\(DESMOND_PREVIEW_TARGET_MB\)/s);
-assert.match(viteConfig, /timeout: 0/);
-assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/desmond-preview"/);
+assert.match(viteConfig, /registerBrowserDevDesmondPreviewRoute\(server,/);
+assert.match(browserDevDesmond, /"--frames",\s*"0",\s*"--atoms",\s*"0",\s*"--target-mb",\s*String\(options\.targetMb\)/s);
+assert.match(browserDevDesmond, /timeout: 0/);
+assert.match(browserDevDesmond, /server\.middlewares\.use\("\/__burette\/desmond-preview"/);
 assert.match(viteConfig, /function isDesmondPreviewCandidate/);
 assert.match(viteConfig, /function resolveStructureFileBundle\(path: string\): StructureFileBundle/);
 assert.match(viteConfig, /function resolveDesmondFileBundle\(path: string\): StructureFileBundle \| null/);
@@ -597,7 +627,9 @@ assert.match(viteConfig, /function isDevFileReadAllowed\(path: string\)/);
 assert.match(viteConfig, /async function collectDefaultDevFiles\(\)/);
 assert.match(viteConfig, /if \(path\.endsWith\("\/no-molecule-column\.csv"\)\) return;/);
 assert.match(viteConfig, /function normalizeXyzrenderInputExtension\(value: string \| null\)/);
-assert.match(viteConfig, /const convertedInputPath = join\(tempDirectory, `xyzrender-input\.\$\{inputExtension\}`\);/);
+assert.match(viteConfig, /registerBrowserDevXyzrenderRoute\(server,/);
+assert.match(browserDevXyzrender, /server\.middlewares\.use\("\/__burette\/xyzrender"/);
+assert.match(browserDevXyzrender, /const convertedInputPath = join\(tempDirectory, `xyzrender-input\.\$\{inputExtension\}`\);/);
 assert.match(previewViewController, /Set\(\["-o", "--output", "-go", "--gif-output", "--config", "--ref"\]\)/);
 assert.match(previewXyzrender, /config_argument: resolved_config_argument/);
 assert.match(viewer, /left: 'hidden'/);
@@ -2878,12 +2910,13 @@ assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh
 assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v138"/);
 assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v67"/);
 assert.match(browserDevDocuments, /const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT = 1500/);
-assert.match(viteConfig, /__burette\/agent-session\//);
-assert.match(viteConfig, /BURRETE_AGENT_SHELL_SESSION_DIR/);
-assert.match(viteConfig, /"actions\.json", "observe\.json", "session\.json", "events"/);
-assert.match(viteConfig, /text\/event-stream/);
-assert.match(viteConfig, /watch\(sessionDir/);
-assert.match(viteConfig, /changedFileName === "actions\.json"/);
+assert.match(viteConfig, /registerBrowserDevAgentSessionRoute\(server\)/);
+assert.match(browserDevAgentSession, /__burette\/agent-session\//);
+assert.match(browserDevAgentSession, /BURRETE_AGENT_SHELL_SESSION_DIR/);
+assert.match(browserDevAgentSession, /"actions\.json", "observe\.json", "session\.json", "events"/);
+assert.match(browserDevAgentSession, /text\/event-stream/);
+assert.match(browserDevAgentSession, /watch\(sessionDir/);
+assert.match(browserDevAgentSession, /changedFileName === "actions\.json"/);
 assert.match(agentSessionHook, /type AgentSceneAction = \{/);
 assert.match(agentSessionHook, /type AgentSceneSelection = \{/);
 assert.match(agentSessionHook, /viewerAgentStateWithActionResult/);
