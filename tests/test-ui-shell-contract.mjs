@@ -12,6 +12,7 @@ const [
   app,
   uiStore,
   commandPaletteHook,
+  appBootstrapHook,
   appStatusHook,
   tabsHook,
   sidebarHook,
@@ -128,6 +129,7 @@ const [
   source('apps/desktop/src/App.tsx'),
   source('apps/desktop/src/stores/ui-store.ts'),
   source('apps/desktop/src/hooks/use-command-palette.ts'),
+  source('apps/desktop/src/hooks/use-app-bootstrap.ts'),
   source('apps/desktop/src/hooks/use-app-status.ts'),
   source('apps/desktop/src/hooks/use-tabs.ts'),
   source('apps/desktop/src/hooks/use-sidebar.ts'),
@@ -785,7 +787,7 @@ assert.match(moleculeStore, /activateLastNonSettingsTab: \(\) => void/);
 assert.match(moleculeStore, /location: \{ kind: "settings" as const, section \}/);
 assert.doesNotMatch(editorArea, /state\.page === "agent"/);
 assert.match(app, /lazy\(\(\) => import\("\.\/components\/command-palette"\)/);
-assert.match(app, /markPerformanceOnce\("app:shell-visible"\)/);
+assert.match(appBootstrapHook, /markPerformanceOnce\("app:shell-visible"\)/);
 assert.match(app, /markPerformanceOnce\("app:first-document-opened"\)/);
 assert.match(app, /markPerformanceOnce\("viewer:first-render"\)/);
 assert.match(desktopIndex, /<script src="\.\/boot-overlay\.js"><\/script>[\s\S]*?<body>\s*<div id="root"><\/div>\s*<script type="module" src="\/src\/main\.tsx"><\/script>/);
@@ -813,7 +815,12 @@ assert.match(bootOverlayScript, /document\.getElementById\(styleId\)/);
 assert.doesNotMatch(bootOverlayScript, /\bimport\b/);
 assert.doesNotThrow(() => new Function(bootOverlayScript));
 assert.match(packageJson, /scripts\/bundle-report\.mjs/);
-assert.match(app, /useEffect\(\(\) => \{\s*window\.__BURRETE_BOOT_OVERLAY__\?\.markMounted\(\);[\s\S]*?markPerformanceOnce\("app:shell-visible"\);/);
+assert.match(app, /const \{ buildInfo, buildInfoLoaded \} = useAppBootstrap\(setUpdate\)/);
+assert.match(appBootstrapHook, /window\.__BURRETE_BOOT_OVERLAY__\?\.markMounted\(\);[\s\S]*?markPerformanceOnce\("app:shell-visible"\);/);
+assert.match(appBootstrapHook, /void loadBuildInfo\(\)\.then\(\(info\) => \{/);
+assert.match(appBootstrapHook, /setBuildInfo\(info\);/);
+assert.match(appBootstrapHook, /setBuildInfoLoaded\(true\);/);
+assert.match(appBootstrapHook, /statusText: "Updates are disabled for dev builds\."/);
 assert.match(bundleReportScript, /source\.includes\("ketcher-core"\)/);
 assert.match(bundleReportScript, /source\.includes\("indigo-ketcher"\)/);
 assert.match(bundleReportScript, /relativePath\.toLowerCase\(\)\.includes\("ketcher"\)/);
@@ -4379,9 +4386,9 @@ assert.match(app, /sha256BrowserDownloadUrl: release\.installAsset\.sha256Browse
 assert.match(updateSource, /manifestAssetFor\(assets, asset\.name!\)/);
 assert.match(updateSource, /manifestSignatureAssetFor\(assets, asset\.name!\)/);
 assert.match(app, /manifestSignatureBrowserDownloadUrl: release\.installAsset\.manifestSignatureBrowserDownloadUrl/);
-assert.match(app, /const \[buildInfoLoaded, setBuildInfoLoaded\] = useState\(false\)/);
+assert.match(appBootstrapHook, /const \[buildInfoLoaded, setBuildInfoLoaded\] = useState\(false\)/);
 assert.match(app, /if \(!buildInfoLoaded\) \{\s*if \(!automatic\) pushStatus\("Update checks are not ready yet\."\);\s*return;\s*\}\s*if \(buildInfo\.isDevBuild\) \{/s);
-assert.match(app, /statusText: "Updates are disabled for dev builds\."/);
+assert.match(appBootstrapHook, /statusText: "Updates are disabled for dev builds\."/);
 assert.match(app, /if \(!buildInfoLoaded \|\| buildInfo\.isDevBuild\) return undefined;\s*const loadedPreferences = loadUpdatePreferences\(\);/s);
 assert.match(browserDevDocuments, /documentId: documentId \?\? stableId\(path\)/);
 assert.match(browserDevDocuments, /const html = await gridHtml\(path, id, grid\.records, grid\.format, preferences, bytes\.length\)/);
