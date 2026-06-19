@@ -13,6 +13,7 @@ const [
   uiStore,
   commandPaletteHook,
   appBootstrapHook,
+  appMaintenanceHook,
   appQuickLookHook,
   appResizeHook,
   appSidebarProjectsHook,
@@ -134,6 +135,7 @@ const [
   source('apps/desktop/src/stores/ui-store.ts'),
   source('apps/desktop/src/hooks/use-command-palette.ts'),
   source('apps/desktop/src/hooks/use-app-bootstrap.ts'),
+  source('apps/desktop/src/hooks/use-app-maintenance.ts'),
   source('apps/desktop/src/hooks/use-app-quick-look.ts'),
   source('apps/desktop/src/hooks/use-app-resize.ts'),
   source('apps/desktop/src/hooks/use-app-sidebar-projects.ts'),
@@ -849,6 +851,11 @@ assert.match(app, /useAppQuickLook\(\{\s*browserDevQuickLookPath,\s*openQuickLoo
 assert.match(appQuickLookHook, /openedBrowserDevQuickLookRef/);
 assert.match(appQuickLookHook, /Open Quick Look debug file failed/);
 assert.match(appQuickLookHook, /url\.searchParams\.delete\("quickLookFile"\)/);
+assert.match(app, /useAppMaintenance\(\{ pushErrorStatus, pushStatus \}\)/);
+assert.match(appMaintenanceHook, /invoke\("clear_preview_cache"\)/);
+assert.match(appMaintenanceHook, /invoke<\{ ok: boolean \}>\("reset_quick_look"\)/);
+assert.match(appMaintenanceHook, /invoke\("open_logs_folder"\)/);
+assert.match(appMaintenanceHook, /invoke<string>\("open_new_workspace_window"\)/);
 assert.doesNotMatch(app, /setCommandPaletteOpen/);
 assert.doesNotMatch(app, /useState\(false\).*commandPalette/i);
 assert.match(app, /refreshedPersistedSessionRef/);
@@ -4372,8 +4379,8 @@ assert.match(app, /toggleSidebar\(\);\s*return;/);
 assert.match(app, /Preferences refresh only the mounted file runtime\. Inactive file tabs are unloaded\./);
 assert.match(app, /if \(skipNextPreferenceRefreshRef\.current\) \{\s*skipNextPreferenceRefreshRef\.current = false;\s*return;\s*\}/s);
 assert.match(app, /void openDocuments\(\[path\]\)\.then/);
-assert.match(app, /Quick Look reset completed/);
-assert.match(app, /Quick Look reset reported issues/);
+assert.match(appMaintenanceHook, /Quick Look reset completed/);
+assert.match(appMaintenanceHook, /Quick Look reset reported issues/);
 assert.doesNotMatch(app, /Quick Look reset requested/);
 
 assert.match(shortcutDocs, /\| Cmd\+P or \/ \| Open command palette \|/);
