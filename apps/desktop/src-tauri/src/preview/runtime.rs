@@ -630,17 +630,16 @@ fn open_document_with_grid_options_inner<R: Runtime>(
         })
         .unwrap_or(&data);
     let format = format_for_extension(runtime_extension)?;
-    let requested_renderer_for_document = if pharmacophore_preview_data.is_some() {
-        "molstar"
-    } else if maestro_preview_data.is_some() {
-        "molstar"
-    } else if matches!(extension.as_str(), "sd" | "sdf") && reload_options.is_none() {
-        default_renderer_mode_for_document(&extension, requested_renderer, reload_options)
-    } else if let Some(preview_plan) = preview_plan.as_ref() {
-        preview_plan.renderer.as_str()
-    } else {
-        default_renderer_mode_for_document(&extension, requested_renderer, reload_options)
-    };
+    let requested_renderer_for_document =
+        if pharmacophore_preview_data.is_some() || maestro_preview_data.is_some() {
+            "molstar"
+        } else if matches!(extension.as_str(), "sd" | "sdf") && reload_options.is_none() {
+            default_renderer_mode_for_document(&extension, requested_renderer, reload_options)
+        } else if let Some(preview_plan) = preview_plan.as_ref() {
+            preview_plan.renderer.as_str()
+        } else {
+            default_renderer_mode_for_document(&extension, requested_renderer, reload_options)
+        };
     let renderer = resolve_renderer(&format, requested_renderer_for_document);
     let runtime = create_runtime(
         app,
