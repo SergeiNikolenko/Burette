@@ -465,6 +465,7 @@ assert.doesNotMatch(patchWebAssetsScript, /xcodebuild/);
 assert.doesNotMatch(patchWebAssetsScript, /cargo build/);
 assert.doesNotMatch(patchWebAssetsScript, /build:tauri/);
 assert.equal(JSON.parse(tauriConfig).bundle.resources['../../../PreviewExtension/Web'], 'ViewerWeb');
+assert.equal(JSON.parse(tauriConfig).bundle.resources['../../../plugins/burette-agent'], 'plugins/burette-agent');
 assert.match(previewRuntimeViewer, /resolve\("ViewerWeb", tauri::path::BaseDirectory::Resource\)/);
 assert.match(buildScript, /built desktop app Resources\/Web was overwritten by the preview shell/);
 assert.match(buildScript, /Contents\/Resources\/ViewerWeb\/viewer-shell\.js/);
