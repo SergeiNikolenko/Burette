@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ask, open, save } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import previewFormatRegistry from "../../../config/preview-formats.json";
 import { AppLayout } from "./components/app-layout";
@@ -16,10 +16,10 @@ import {
   useSetCommandPaletteSearch,
 } from "./hooks/use-command-palette";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
-import { useAppBootstrap } from "./hooks/use-app-bootstrap";
 import { useAppResize } from "./hooks/use-app-resize";
 import { useAppSidebarProjects } from "./hooks/use-app-sidebar-projects";
 import { useAppStatus } from "./hooks/use-app-status";
+import { useAppUpdates } from "./hooks/use-app-updates";
 import { useAgentSession } from "./hooks/use-agent-session";
 import { useMenuEvents } from "./hooks/use-menu-events";
 import { useDockLayout } from "./hooks/use-dock-layout";
@@ -83,8 +83,6 @@ import { isTauriRuntime } from "./lib/tauri";
 import { isTemporaryDocumentPath } from "./lib/temporary-documents";
 import { calculateGridDescriptors as runGridDescriptorCalculation, type DescriptorSourcePayload, type GridDescriptorControls, type GridDescriptorJobStatus, type GridDescriptorResultRow, type GridDescriptorRunOptions } from "./lib/descriptors";
 import type { ConformerJob, ConformerOperation, ConformerPreparedRun, ConformerRunRequest, ConformerRunResult, ConformerSettings, ConformerStatus, DockingDocumentRequest, DockingSceneMode, FepSetupRequest, OpenDocumentsMode, OpenDocumentsResult, OpenTextFilesResult, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XtbJob, XtbOperation, XtbRunRequest, XtbRunResult, XtbSettings, XtbStatus } from "./types";
-import { checkForUpdates as requestUpdateCheck, clearDismissedUpdate, dismissUpdate, loadUpdatePreferences, markAutomaticCheck, releasePageUrl, saveUpdatePreferences, shouldCheckAutomatically, shouldPromptForUpdate } from "./update";
-import type { UpdatePreferences, UpdateRelease, UpdateState } from "./update";
 
 const CommandPalette = lazy(() => import("./components/command-palette").then((module) => ({
   default: module.CommandPalette,
@@ -617,14 +615,14 @@ export default function App() {
   const [xtbStatus, setXtbStatus] = useState<XtbStatus | null>(null);
   const [xtbSettings, setXtbSettingsState] = useState<XtbSettings>(() => readXtbSettings());
   const [xtbJobs, setXtbJobs] = useState<XtbJob[]>([]);
-  const [update, setUpdate] = useState<UpdateState>(() => ({
-    preferences: loadUpdatePreferences(),
-    isChecking: false,
-    isInstalling: false,
-    statusText: "No update check has run yet.",
-    availableRelease: null,
-  }));
-  const { buildInfo, buildInfoLoaded } = useAppBootstrap(setUpdate);
+  const {
+    buildInfo,
+    checkForUpdates,
+    installUpdate,
+    openUpdateRelease,
+    setUpdatePreferences,
+    update,
+  } = useAppUpdates({ pushErrorStatus, pushStatus });
   const openedBrowserDevFilesRef = useRef<string | null>(null);
   const openedBrowserDevQuickLookRef = useRef<string | null>(null);
   const openedBrowserDevDockingRef = useRef<string | null>(null);
@@ -3037,140 +3035,6 @@ export default function App() {
     pendingViewerReloadOptionsRef.current = null;
     pendingViewerReloadDocumentIdRef.current = null;
   }, [openDocuments]);
-  const setUpdatePreferences = useCallback((preferences: UpdatePreferences) => {
-    saveUpdatePreferences(preferences);
-    setUpdate((previous) => ({
-      ...previous,
-      preferences,
-      availableRelease: preferences.channel === previous.preferences.channel ? previous.availableRelease : null,
-      statusText: preferences.channel === previous.preferences.channel ? previous.statusText : "Update channel changed. Check for updates again.",
-    }));
-  }, []);
-
-  const installUpdate = useCallback(async (releaseOverride?: UpdateRelease | null) => {
-    const release = releaseOverride ?? update.availableRelease;
-    if (!release) return;
-    if (!release.installAsset) {
-      const url = releasePageUrl(release);
-      if (isTauriRuntime()) {
-        await invoke("open_external_url", { url });
-      } else {
-        window.open(url, "_blank", "noopener,noreferrer");
-      }
-      pushStatus("Opened release page");
-      return;
-    }
-
-    if (!isTauriRuntime()) {
-      window.open(release.htmlUrl, "_blank", "noopener,noreferrer");
-      return;
-    }
-
-    setUpdate((previous) => ({
-      ...previous,
-      isInstalling: true,
-      statusText: "Installing " + release.displayName + "... Burrete will restart when the update is ready.",
-    }));
-    pushStatus("Installing update...");
-    try {
-      clearDismissedUpdate();
-      await invoke("install_update", {
-        request: {
-          tagName: release.tagName,
-          assetName: release.installAsset.name,
-          browserDownloadUrl: release.installAsset.browserDownloadUrl,
-          size: release.installAsset.size,
-          sha256AssetName: release.installAsset.sha256AssetName,
-          sha256BrowserDownloadUrl: release.installAsset.sha256BrowserDownloadUrl,
-          sha256Size: release.installAsset.sha256Size,
-          manifestAssetName: release.installAsset.manifestAssetName,
-          manifestBrowserDownloadUrl: release.installAsset.manifestBrowserDownloadUrl,
-          manifestSize: release.installAsset.manifestSize,
-          manifestSignatureAssetName: release.installAsset.manifestSignatureAssetName,
-          manifestSignatureBrowserDownloadUrl: release.installAsset.manifestSignatureBrowserDownloadUrl,
-          manifestSignatureSize: release.installAsset.manifestSignatureSize,
-          allowSameVersion: release.replacesCurrentBuild,
-        },
-      });
-    } catch (error) {
-      setUpdate((previous) => ({
-        ...previous,
-        isInstalling: false,
-        statusText: "Update install failed: " + (error instanceof Error ? error.message : String(error)),
-      }));
-      pushErrorStatus(error, "Update install failed");
-    }
-  }, [pushErrorStatus, pushStatus, update.availableRelease]);
-
-  const promptForUpdate = useCallback(async (release: UpdateRelease, automatic: boolean) => {
-    if (!shouldPromptForUpdate(release, automatic)) return;
-    const canInstall = release.installAsset !== null;
-    const message = canInstall
-      ? "Burrete " + release.tagName + " is available. Install it now and restart Burrete when the update is ready?"
-      : "Burrete " + release.tagName + " is available, but this release does not include an installable app archive.";
-    const accepted = isTauriRuntime()
-      ? await ask(message, {
-        title: "Update Available",
-        kind: "info",
-        okLabel: canInstall ? "Install and Restart" : "Open Release Page",
-        cancelLabel: "Later",
-      })
-      : window.confirm(message);
-    if (accepted) {
-      await installUpdate(release);
-    } else {
-      dismissUpdate(release);
-    }
-  }, [installUpdate]);
-
-  const checkForUpdates = useCallback(async (automatic = false, channelOverride?: UpdatePreferences["channel"]) => {
-    if (!buildInfoLoaded) {
-      if (!automatic) pushStatus("Update checks are not ready yet.");
-      return;
-    }
-    if (buildInfo.isDevBuild) {
-      setUpdate((previous) => ({
-        ...previous,
-        isChecking: false,
-        availableRelease: null,
-        statusText: "Updates are disabled for dev builds.",
-      }));
-      if (!automatic) pushStatus("Updates are disabled for dev builds.");
-      return;
-    }
-    const channel = channelOverride ?? update.preferences.channel;
-    setUpdate((previous) => ({
-      ...previous,
-      isChecking: true,
-      statusText: automatic ? previous.statusText : "Checking GitHub releases...",
-    }));
-    try {
-      const release = await requestUpdateCheck(channel);
-      setUpdate((previous) => ({
-        ...previous,
-        isChecking: false,
-        availableRelease: release,
-        statusText: release
-          ? "Update available: " + release.displayName + " (" + release.tagName + ")." + (release.installAsset ? "" : " No downloadable app archive is attached to this release.")
-          : "Burrete is up to date on " + channel + ".",
-      }));
-      if (release) {
-        await promptForUpdate(release, automatic);
-      } else {
-        clearDismissedUpdate();
-      }
-      if (automatic) markAutomaticCheck(true);
-    } catch (error) {
-      setUpdate((previous) => ({
-        ...previous,
-        isChecking: false,
-        statusText: "Update check failed: " + (error instanceof Error ? error.message : String(error)),
-      }));
-      if (automatic) markAutomaticCheck(false);
-      if (!automatic) pushErrorStatus(error, "Update check failed");
-    }
-  }, [buildInfo.isDevBuild, buildInfoLoaded, promptForUpdate, pushErrorStatus, pushStatus, update.preferences.channel]);
-
   const clearCache = useCallback(async () => {
     try {
       await invoke("clear_preview_cache");
@@ -4400,16 +4264,6 @@ export default function App() {
   }, [activeDocument, addBackgroundDocuments, addDocuments, calculateGridDescriptors, documents, generate3DConformer, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar, writeGridPerfMetric]);
 
   useEffect(() => {
-    if (!buildInfoLoaded || buildInfo.isDevBuild) return undefined;
-    const loadedPreferences = loadUpdatePreferences();
-    if (!shouldCheckAutomatically(loadedPreferences)) return undefined;
-    const timeout = window.setTimeout(() => {
-      void checkForUpdates(true, loadedPreferences.channel);
-    }, 1200);
-    return () => window.clearTimeout(timeout);
-  }, [buildInfo.isDevBuild, buildInfoLoaded, checkForUpdates]);
-
-  useEffect(() => {
     if (!isTauriRuntime()) return;
     void invoke("sync_viewer_preferences", { preferences }).catch((error) => {
       pushErrorStatus(error, "Preview preference sync failed");
@@ -4646,22 +4500,10 @@ export default function App() {
     installUpdate: async () => {
       await installUpdate();
     },
-    openUpdateRelease: async () => {
-      try {
-        const url = releasePageUrl(update.availableRelease);
-        if (isTauriRuntime()) {
-          await invoke("open_external_url", { url });
-        } else {
-          window.open(url, "_blank", "noopener,noreferrer");
-        }
-        pushStatus("Opened release page");
-      } catch (error) {
-        pushErrorStatus(error, "Open release page failed");
-      }
-    },
+    openUpdateRelease,
     setPreference,
     setUpdatePreferences,
-  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeQuickLookPreview, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runStructureViewerAction, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
+  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeQuickLookPreview, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openUpdateRelease, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runStructureViewerAction, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
