@@ -678,6 +678,7 @@ assert.match(appMetadata, /com\.local\.burrete10\.graphml/);
 assert.match(appMetadata, /com\.local\.burrete10\.openmm-coordinate-artifact/);
 assert.match(appMetadata, /com\.local\.burrete10\.openmm-workflow-text-artifact/);
 assert.match(tauriConfigSource, /"graphml"/);
+assert.match(tauriConfigSource, /"\.\.\/\.\.\/\.\.\/plugins\/burette-agent": "plugins\/burette-agent"/);
 assert.match(quickLookPreviewController, /shouldUseFepGraphMLPreview\(fileExtension: String, previewPlan: BurretePreviewPlan\?\)/);
 assert.match(quickLookPreviewController, /return fileExtension\.lowercased\(\) == "graphml"/);
 assert.match(quickLookPreviewController, /detected\.previewMode=fep-graphml/);
