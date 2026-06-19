@@ -194,9 +194,9 @@ assert.match(app, /const result = await openDocuments\(structureAndTextPaths\);/
 assert.match(app, /openedStructureAndTextPaths\.add\(document\.path\);/);
 assert.match(app, /structureAndTextPaths\.filter\(\(path\) => !openedStructureAndTextPaths\.has\(path\)\)/);
 assert.match(app, /let dockOpenPaths = cleanPaths;/);
-assert.match(app, /const rightDockTabularSpectrumPaths = await detectTabularSpectrumPaths\(cleanPaths\);/);
+assert.match(app, /const rightDockContentSpectrumPaths = await detectContentSpectrumPaths\(cleanPaths\);/);
 assert.match(app, /const rightDockTextPaths = cleanPaths\.filter\(\(path\) => \{/);
-assert.match(app, /return !isSpectrumPath\(path, extension\) && !rightDockTabularSpectrumPaths\.has\(path\) && !structureExtensions\.has\(extension\) && !structureAndTextExtensions\.has\(extension\);/);
+assert.match(app, /return !isSpectrumPath\(path, extension\) && !rightDockContentSpectrumPaths\.has\(path\) && !structureExtensions\.has\(extension\) && !structureAndTextExtensions\.has\(extension\);/);
 assert.match(app, /dockOpenPaths = cleanPaths\.filter\(\(path\) => !rightDockTextPaths\.includes\(path\)\);/);
 assert.match(app, /open_text_files", \{ paths: rightDockTextPaths \}/);
 assert.match(app, /for \(const path of dockOpenPaths\) \{/);

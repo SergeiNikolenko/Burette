@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { annotateSpectrumWithMsbuddy, msbuddyPeakInput, type MsbuddyAnnotationResult, type MsbuddyCandidate } from "../lib/msbuddy";
 import { readStructureTextDocument } from "../lib/structure-text";
 import { parseSpectrumFile, peakAnnotationValue, spectrumAnalytics, spectrumSummary, type SpectrumDocument, type SpectrumFile, type SpectrumPeak } from "../lib/spectrum";
 import { useSpectrumPeakSelection } from "../lib/spectrum-selection";
 import type { ViewerDocument } from "../types";
 import { formatBytes } from "./format";
+import type { ShellActions } from "./types";
 
 type PlotlyModule = {
   newPlot: (element: HTMLElement, traces: unknown[], layout: unknown, config: unknown) => Promise<unknown>;
@@ -19,16 +21,34 @@ type SpectrumViewerProps = {
   embedded?: boolean;
 };
 
+type RDKitModule = {
+  get_mol: (input: string) => RDKitMol;
+};
+
+type RDKitModuleOptions = {
+  locateFile?: (file: string) => string;
+  wasmBinary?: Uint8Array;
+};
+
+type RDKitMol = {
+  delete?: () => void;
+  get_svg: (width?: number, height?: number) => string;
+  is_valid?: () => boolean;
+  set_new_coords?: () => void;
+};
+
 type PlotlyClickEvent = {
   points?: Array<{
     pointIndex?: number;
     pointNumber?: number;
+    customdata?: number;
   }>;
 };
 
 type PlotlyElement = HTMLElement & {
   on?: (event: "plotly_click", handler: (event: PlotlyClickEvent) => void) => void;
   removeAllListeners?: (event: "plotly_click") => void;
+  __buretteSpectrumClickCleanup?: () => void;
 };
 
 type SpectrumSubformulaAnnotation = {
@@ -37,6 +57,14 @@ type SpectrumSubformulaAnnotation = {
   fragmentCount: number;
   fragmentIons: string[];
   fragmentFormulas: string[];
+};
+
+const rdkitScriptUrl = new URL("../../../../PreviewExtension/Web/rdkit/RDKit_minimal.js", import.meta.url).href;
+const rdkitWasmUrl = new URL("../../../../PreviewExtension/Web/rdkit/RDKit_minimal.wasm", import.meta.url).href;
+let rdkitPromise: Promise<RDKitModule> | null = null;
+
+type RDKitWindow = Window & {
+  initRDKitModule?: (options?: RDKitModuleOptions) => Promise<RDKitModule>;
 };
 
 export function SpectrumViewer({ document, embedded = false }: SpectrumViewerProps) {
@@ -152,7 +180,7 @@ export function SpectrumViewer({ document, embedded = false }: SpectrumViewerPro
   );
 }
 
-export function SpectrumInfoPanel({ document }: { document: ViewerDocument }) {
+export function SpectrumInfoPanel({ document, actions }: { document: ViewerDocument; actions?: ShellActions }) {
   const [file, setFile] = useState<SpectrumFile | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -185,7 +213,7 @@ export function SpectrumInfoPanel({ document }: { document: ViewerDocument }) {
       {error && <div className="spectrum-empty" role="alert">{error}</div>}
       {!error && (!file || !summary || !spectrum) && <div className="spectrum-empty">Loading spectrum metadata...</div>}
       {!error && file && summary && spectrum && (
-        <SpectrumMetadata document={document} file={file} spectrum={spectrum} summary={summary} />
+        <SpectrumMetadata document={document} file={file} spectrum={spectrum} summary={summary} actions={actions} />
       )}
     </div>
   );
@@ -342,6 +370,9 @@ function renderPlot(
   onPeakSelect: (index: number | null) => void,
 ) {
   const selectedPeakSet = new Set(selectedPeakIndices);
+  const selectedPeakPoints = peaks
+    .map((peak, index) => ({ peak, index, active: index === activePeakIndex }))
+    .filter(({ index }) => index === activePeakIndex || selectedPeakSet.has(index));
   const stickTrace = {
     type: "bar",
     x: peaks.map((peak) => peak.x),
@@ -363,6 +394,24 @@ function renderPlot(
     text: labels,
     textposition: "outside",
     customdata: peaks.map((peak) => peakHoverData(peak)),
+    hoverinfo: "skip",
+    showlegend: false,
+  };
+  const selectedTrace = {
+    type: "scatter",
+    mode: "markers",
+    x: selectedPeakPoints.map(({ peak }) => peak.x),
+    y: selectedPeakPoints.map(({ peak }) => peak.y),
+    marker: {
+      size: selectedPeakPoints.map(({ active }) => active ? 22 : 18),
+      color: selectedPeakPoints.map(({ active }) => active ? "rgba(180,86,232,0.32)" : "rgba(180,86,232,0.2)"),
+      line: {
+        width: 3,
+        color: "#b456e8",
+      },
+      symbol: "circle-open",
+    },
+    customdata: selectedPeakPoints.map(({ index }) => index),
     hoverinfo: "skip",
     showlegend: false,
   };
@@ -410,14 +459,29 @@ function renderPlot(
     responsive: true,
     modeBarButtonsToRemove: ["lasso2d", "select2d"],
   };
-  return plotly.react(element, [stickTrace, hoverTrace], layout, config).then((value) => {
+  return plotly.react(element, [stickTrace, selectedTrace, hoverTrace], layout, config).then((value) => {
     const plotElement = element as PlotlyElement;
+    let lastPeakClickAt = 0;
     plotElement.removeAllListeners?.("plotly_click");
+    plotElement.__buretteSpectrumClickCleanup?.();
     plotElement.on?.("plotly_click", (event) => {
+      lastPeakClickAt = window.performance.now();
       const point = event.points?.[0];
-      const index = point?.pointIndex ?? point?.pointNumber;
+      const index = typeof point?.customdata === "number" ? point.customdata : point?.pointIndex ?? point?.pointNumber;
       onPeakSelect(typeof index === "number" ? index : null);
+      window.getSelection()?.removeAllRanges();
     });
+    const handleBlankClick = () => {
+      window.setTimeout(() => {
+        if (window.performance.now() - lastPeakClickAt < 100) return;
+        onPeakSelect(null);
+        window.getSelection()?.removeAllRanges();
+      }, 0);
+    };
+    element.addEventListener("click", handleBlankClick);
+    plotElement.__buretteSpectrumClickCleanup = () => {
+      element.removeEventListener("click", handleBlankClick);
+    };
     return value;
   });
 }
@@ -427,13 +491,19 @@ function SpectrumMetadata({
   file,
   spectrum,
   summary,
+  actions,
 }: {
   document: ViewerDocument;
   file: SpectrumFile;
   spectrum: SpectrumDocument;
   summary: ReturnType<typeof spectrumSummary>;
+  actions?: ShellActions;
 }) {
+  const { selectPeaks } = useSpectrumPeakSelection(document.id);
   const [subformula, setSubformula] = useState<SpectrumSubformulaAnnotation | null>(null);
+  const [msbuddyStatus, setMsbuddyStatus] = useState<"idle" | "running" | "ready" | "error">("idle");
+  const [msbuddyResult, setMsbuddyResult] = useState<MsbuddyAnnotationResult | null>(null);
+  const [msbuddyError, setMsbuddyError] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     setSubformula(null);
@@ -448,61 +518,127 @@ function SpectrumMetadata({
       cancelled = true;
     };
   }, [document.path]);
+  useEffect(() => {
+    setMsbuddyStatus("idle");
+    setMsbuddyResult(null);
+    setMsbuddyError(null);
+  }, [document.path, spectrum.id]);
   const analytics = useMemo(() => spectrumAnalytics(spectrum), [spectrum]);
-  const metadataRows = Object.entries(spectrum.metadata).filter(([, value]) => value !== "").slice(0, 16);
+  const metadataEntries = Object.entries(spectrum.metadata).filter(([, value]) => value !== "");
+  const baseMetadataRows = metadataEntries.slice(0, 16);
+  const smilesMetadataRow = metadataEntries.find(([key]) => isSmilesMetadataKey(key));
+  const metadataRows = smilesMetadataRow && !baseMetadataRows.some(([key]) => key === smilesMetadataRow[0])
+    ? [smilesMetadataRow, ...baseMetadataRows.slice(0, 15)]
+    : baseMetadataRows;
   const collisionEnergy = metadataValue(spectrum.metadata, ["collision energy", "collision_energy", "CE", "COLLISIONENERGY"]);
   const precursor = metadataValue(spectrum.metadata, ["precursor", "precursor_mz", "PEPMASS", "PRECURSORMZ", "parentmass"]);
   const charge = metadataValue(spectrum.metadata, ["charge", "CHARGE"]);
+  const runMsbuddy = useCallback(() => {
+    setMsbuddyStatus("running");
+    setMsbuddyError(null);
+    void annotateSpectrumWithMsbuddy({
+      title: spectrum.title,
+      format: file.format,
+      precursorMz: parseNumericMetadata(precursor),
+      candidateFormula: subformula?.candidateFormula ?? null,
+      candidateIon: subformula?.candidateIon ?? null,
+      fragmentFormulas: subformula?.fragmentFormulas ?? [],
+      metadata: spectrum.metadata,
+      peaks: spectrum.peaks.map(msbuddyPeakInput),
+    }).then((result) => {
+      setMsbuddyResult(result);
+      setMsbuddyStatus("ready");
+    }).catch((annotationError) => {
+      setMsbuddyError(annotationError instanceof Error ? annotationError.message : String(annotationError));
+      setMsbuddyStatus("error");
+    });
+  }, [file.format, precursor, spectrum, subformula]);
+  const selectMsbuddyCandidate = useCallback((candidate: MsbuddyCandidate) => {
+    if (candidate.explainedPeakIndexes.length > 0) {
+      selectPeaks(candidate.explainedPeakIndexes);
+    } else {
+      selectPeaks(findPeakIndexesForFormula(spectrum, candidate.formula));
+    }
+  }, [selectPeaks, spectrum]);
+  const selectFragmentFormula = useCallback((formula: string) => {
+    selectPeaks(findPeakIndexesForFormula(spectrum, formula));
+  }, [selectPeaks, spectrum]);
   return (
     <div className="spectrum-metadata">
-      <section>
+      <section className="spectrum-metadata-hero">
         <h3>{spectrum.title}</h3>
-        <div className="spectrum-stat-grid">
-          <Metric label="Format" value={file.format.toUpperCase()} />
-          <Metric label="Spectra" value={String(summary.spectraCount)} />
-          <Metric label="Peaks" value={String(spectrum.peaks.length)} />
-          <Metric label="File" value={formatBytes(document.byteCount)} />
+        <div className="spectrum-summary-line">
+          <span>{file.format.toUpperCase()}</span>
+          <span>{spectrum.peaks.length} peaks</span>
+          {analytics.minMz !== null && analytics.maxMz !== null && <span>m/z {formatMzRangeValue(analytics.minMz)}-{formatMzRangeValue(analytics.maxMz)}</span>}
+          <span>{analytics.annotatedPeaks}/{spectrum.peaks.length} annotated</span>
         </div>
-      </section>
-      <section>
-        <h4>Spectrum summary</h4>
-        <div className="spectrum-stat-grid">
-          <Metric label="Base peak" value={analytics.basePeak ? `${formatNumber(analytics.basePeak.x)} / ${formatNumber(analytics.basePeak.y)}` : "-"} />
-          <Metric label="m/z range" value={analytics.minMz !== null && analytics.maxMz !== null ? `${formatNumber(analytics.minMz)}-${formatNumber(analytics.maxMz)}` : "-"} />
-          <Metric label="TIC" value={formatNumber(analytics.totalIntensity)} />
-          <Metric label="Annotated" value={`${analytics.annotatedPeaks}/${spectrum.peaks.length} (${formatPercent(analytics.annotationCoverage)})`} />
-          {collisionEnergy && <Metric label="Collision energy" value={collisionEnergy} />}
-          {precursor && <Metric label="Precursor" value={precursor} />}
-          {charge && <Metric label="Charge" value={charge} />}
-        </div>
-        {analytics.topPeaks.length > 0 && (
-          <div className="spectrum-metadata-list spectrum-top-peaks">
-            {analytics.topPeaks.slice(0, 8).map((peak, index) => (
-              <div key={`${peak.x}:${peak.y}:${index}`}>
-                <span>{formatNumber(peak.x)}</span>
-                <strong>{formatNumber(peak.y)}{peakAnnotationLabel(peak) ? ` · ${peakAnnotationLabel(peak)}` : ""}</strong>
-              </div>
-            ))}
-          </div>
-        )}
       </section>
       {subformula && (
         <section>
-          <h4>Candidate ion</h4>
-          <div className="spectrum-stat-grid">
+          <h4>Candidate</h4>
+          <div className="spectrum-stat-grid spectrum-stat-grid-compact">
             <Metric label="Formula" value={subformula.candidateFormula} />
             <Metric label="Ion" value={subformula.candidateIon} />
+            {precursor && <Metric label="Precursor" value={precursor} />}
+            {charge && <Metric label="Charge" value={charge} />}
+            {collisionEnergy && <Metric label="Collision energy" value={collisionEnergy} />}
             <Metric label="Fragments" value={String(subformula.fragmentCount)} />
-            <Metric label="Fragment ions" value={subformula.fragmentIons.join(", ") || "-"} />
           </div>
-          {subformula.fragmentFormulas.length > 0 && (
-            <div className="spectrum-metadata-list">
-              <div>
-                <span>top formulas</span>
-                <strong>{subformula.fragmentFormulas.slice(0, 8).join(", ")}</strong>
-              </div>
-            </div>
-          )}
+        </section>
+      )}
+      <section className="spectrum-msbuddy">
+        <div className="spectrum-section-header">
+          <h4>msbuddy</h4>
+          <button type="button" onClick={runMsbuddy} disabled={msbuddyStatus === "running"}>
+            {msbuddyStatus === "running" ? "Annotating..." : "Annotate"}
+          </button>
+        </div>
+        <p>{msbuddyResult?.message ?? "Annotate molecular formulas from the current spectrum and map results back to peaks."}</p>
+        {msbuddyError && <div className="spectrum-inline-error">{msbuddyError}</div>}
+        {msbuddyResult && msbuddyResult.candidates.length > 0 && (
+          <div className="spectrum-msbuddy-candidates">
+            {msbuddyResult.candidates.map((candidate) => (
+              <button
+                key={`${candidate.rank}:${candidate.formula}:${candidate.evidence}`}
+                type="button"
+                onClick={() => selectMsbuddyCandidate(candidate)}
+              >
+                <span>#{candidate.rank} {candidate.formula}</span>
+                <strong>{candidate.score === null ? "score -" : `score ${formatNumber(candidate.score)}`}</strong>
+                <small>{candidate.evidence}{candidate.explainedPeakIndexes.length ? ` · ${candidate.explainedPeakIndexes.length} peaks` : ""}</small>
+              </button>
+            ))}
+          </div>
+        )}
+        {msbuddyResult && msbuddyResult.candidates.length === 0 && (
+          <div className="spectrum-empty spectrum-empty-compact">No formula candidates found in this spectrum.</div>
+        )}
+      </section>
+      <section>
+        <h4>Spectrum summary</h4>
+        <div className="spectrum-stat-grid spectrum-stat-grid-compact">
+          <Metric label="Base peak" value={analytics.basePeak ? `m/z ${formatNumber(analytics.basePeak.x)} · ${formatNumber(analytics.basePeak.y)}` : "-"} />
+          <Metric label="m/z range" value={analytics.minMz !== null && analytics.maxMz !== null ? `${formatMzRangeValue(analytics.minMz)}-${formatMzRangeValue(analytics.maxMz)}` : "-"} />
+          <Metric label="TIC" value={formatNumber(analytics.totalIntensity)} />
+          <Metric label="Annotated" value={`${analytics.annotatedPeaks}/${spectrum.peaks.length} (${formatPercent(analytics.annotationCoverage)})`} />
+          <Metric label="Spectra" value={String(summary.spectraCount)} />
+          <Metric label="File" value={formatBytes(document.byteCount)} />
+        </div>
+      </section>
+      {subformula && subformula.fragmentFormulas.length > 0 && (
+        <section>
+          <h4>Fragment formulas</h4>
+          <div className="spectrum-chip-list">
+            {subformula.fragmentFormulas.slice(0, 10).map((formula) => (
+              <FragmentFormulaChip
+                key={formula}
+                formula={formula}
+                peakCount={findPeakIndexesForFormula(spectrum, formula).length}
+                onSelect={selectFragmentFormula}
+              />
+            ))}
+          </div>
         </section>
       )}
       {file.warnings.length > 0 && (
@@ -514,19 +650,89 @@ function SpectrumMetadata({
         </section>
       )}
       {metadataRows.length > 0 && (
-        <section>
-          <h4>Metadata</h4>
+        <section className="spectrum-source-metadata">
+          <h4>Source metadata</h4>
           <div className="spectrum-metadata-list">
             {metadataRows.map(([key, value]) => (
               <div key={key}>
                 <span>{key}</span>
-                <strong>{value}</strong>
+                {isSmilesMetadataKey(key) ? (
+                  <SmilesMetadataValue title={spectrum.title} smiles={value} actions={actions} />
+                ) : (
+                  <strong>{value}</strong>
+                )}
               </div>
             ))}
           </div>
         </section>
       )}
     </div>
+  );
+}
+
+function SmilesMetadataValue({
+  title,
+  smiles,
+  actions,
+}: {
+  title: string;
+  smiles: string;
+  actions?: ShellActions;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const [svg, setSvg] = useState("");
+  const [error, setError] = useState("");
+  const openMolstar = useCallback(() => {
+    const cleanSmiles = smiles.trim();
+    if (!cleanSmiles || !actions) return;
+    void actions.openKetcherSketch({
+      title: `${title || "SMILES"}.smi`,
+      extension: "smi",
+      text: `${cleanSmiles}\n`,
+      target: "molstar",
+    });
+  }, [actions, smiles, title]);
+
+  useEffect(() => {
+    if (!hovered || svg || error) return;
+    let cancelled = false;
+    void drawSmilesSvg(smiles)
+      .then((nextSvg) => {
+        if (cancelled) return;
+        setSvg(nextSvg);
+      })
+      .catch((loadError) => {
+        if (cancelled) return;
+        setError(loadError instanceof Error ? loadError.message : String(loadError));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [error, hovered, smiles, svg]);
+
+  return (
+    <span
+      className="spectrum-smiles-value-wrap"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={() => setHovered(true)}
+      onBlur={() => setHovered(false)}
+    >
+      <button
+        type="button"
+        className="spectrum-smiles-value"
+        disabled={!actions}
+        onClick={openMolstar}
+        title={actions ? "Open SMILES in Molstar" : "Molstar open unavailable here"}
+      >
+        {smiles}
+      </button>
+      {hovered && (
+        <span className="spectrum-smiles-popover" role="tooltip">
+          {svg ? <span className="spectrum-smiles-svg" dangerouslySetInnerHTML={{ __html: svg }} /> : <span>{error || "Rendering molecule..."}</span>}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -546,8 +752,15 @@ function PeakTable({
   onPeakRangeSelect: (startIndex: number, endIndex: number) => void;
 }) {
   const [dragStartIndex, setDragStartIndex] = useState<number | null>(null);
-  const peaks = scaledPeaks(spectrum, normalize).slice(0, 500);
+  const tableRef = useRef<HTMLDivElement>(null);
+  const peaks = scaledPeaks(spectrum, normalize);
   const selectedPeakSet = useMemo(() => new Set(selectedPeakIndices), [selectedPeakIndices]);
+
+  useEffect(() => {
+    if (activePeakIndex === null || !selectedPeakSet.has(activePeakIndex)) return;
+    const row = tableRef.current?.querySelector<HTMLTableRowElement>(`tr[data-peak-index="${activePeakIndex}"]`);
+    row?.scrollIntoView({ block: "center" });
+  }, [activePeakIndex, selectedPeakSet]);
 
   useEffect(() => {
     if (dragStartIndex === null) return undefined;
@@ -561,7 +774,7 @@ function PeakTable({
   }, [dragStartIndex]);
 
   return (
-    <div className="spectrum-peak-table" onMouseLeave={() => {
+    <div ref={tableRef} className="spectrum-peak-table" onMouseLeave={() => {
       if (dragStartIndex === null) onPeakHover(null);
     }} onPointerMove={(event) => {
       const row = event.target instanceof HTMLElement ? event.target.closest<HTMLTableRowElement>("tr[data-peak-index]") : null;
@@ -614,6 +827,127 @@ function PeakTable({
 
 function peakAnnotationLabel(peak: SpectrumPeak) {
   return String(peakAnnotationValue(peak));
+}
+
+function FragmentFormulaChip({
+  formula,
+  peakCount,
+  onSelect,
+}: {
+  formula: string;
+  peakCount: number;
+  onSelect: (formula: string) => void;
+}) {
+  const disabled = peakCount === 0;
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      title={disabled ? "No matching visible peak" : `${peakCount} matching peak${peakCount === 1 ? "" : "s"}`}
+      onClick={() => onSelect(formula)}
+    >
+      {formula}
+    </button>
+  );
+}
+
+function findPeakIndexesForFormula(spectrum: SpectrumDocument, formula: string) {
+  const normalizedFormula = formula.trim();
+  if (!normalizedFormula) return [];
+  return spectrum.peaks
+    .map((peak, index) => peakHasFormula(peak, normalizedFormula) ? index : null)
+    .filter((index): index is number => index !== null);
+}
+
+function peakHasFormula(peak: SpectrumPeak, formula: string) {
+  if (formulaTokenMatches(peak.label, formula)) return true;
+  for (const value of Object.values(peak.annotations ?? {})) {
+    if (formulaTokenMatches(value, formula)) return true;
+  }
+  return false;
+}
+
+function formulaTokenMatches(value: unknown, formula: string) {
+  if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") return false;
+  const text = String(value).trim();
+  if (text === formula) return true;
+  const escapedFormula = formula.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  return new RegExp(`(^|[^A-Za-z0-9])${escapedFormula}($|[^A-Za-z0-9])`, "u").test(text);
+}
+
+function isSmilesMetadataKey(key: string) {
+  return key.trim().toLowerCase() === "smiles";
+}
+
+async function drawSmilesSvg(smiles: string) {
+  const cleanSmiles = smiles.trim();
+  if (!cleanSmiles) throw new Error("No SMILES");
+  const rdkit = await loadRDKit();
+  let mol: RDKitMol | null = null;
+  try {
+    mol = rdkit.get_mol(cleanSmiles);
+    if (!mol || (typeof mol.is_valid === "function" && !mol.is_valid())) throw new Error("Invalid SMILES");
+    try { mol.set_new_coords?.(); } catch (_) {}
+    return sanitizeSvg(mol.get_svg(260, 190));
+  } finally {
+    try { mol?.delete?.(); } catch (_) {}
+  }
+}
+
+async function loadRDKit() {
+  const rdkitWindow = window as RDKitWindow;
+  if (!rdkitWindow.initRDKitModule) await loadScript(rdkitScriptUrl);
+  if (!rdkitWindow.initRDKitModule) throw new Error("RDKit loader is unavailable");
+  rdkitPromise ??= loadRDKitWasmBinary().then((wasm) => {
+    const loader = (window as RDKitWindow).initRDKitModule;
+    if (!loader) throw new Error("RDKit loader is unavailable");
+    return loader({ locateFile: () => wasm.path, wasmBinary: wasm.bytes });
+  });
+  return rdkitPromise;
+}
+
+async function loadRDKitWasmBinary() {
+  const candidates = [rdkitWasmUrl, "/__burette/rdkit-wasm"];
+  let lastError: Error | null = null;
+  for (const path of candidates) {
+    try {
+      const response = await fetch(path, { cache: "force-cache" });
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`.trim());
+      return { path, bytes: new Uint8Array(await response.arrayBuffer()) };
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+    }
+  }
+  throw new Error(`Could not load RDKit wasm: ${lastError?.message ?? "unknown error"}`);
+}
+
+function loadScript(src: string) {
+  return new Promise<void>((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${cssEscape(src)}"]`);
+    if (existing?.dataset.loaded === "true") {
+      resolve();
+      return;
+    }
+    const script = existing ?? document.createElement("script");
+    script.src = src;
+    script.async = true;
+    script.addEventListener("load", () => {
+      script.dataset.loaded = "true";
+      resolve();
+    }, { once: true });
+    script.addEventListener("error", () => reject(new Error(`Could not load ${src}`)), { once: true });
+    if (!existing) document.head.append(script);
+  });
+}
+
+function cssEscape(value: string) {
+  return value.replace(/["\\]/gu, "\\$&");
+}
+
+function sanitizeSvg(svg: string) {
+  return String(svg || "")
+    .replace(/<script[\s\S]*?<\/script>/giu, "")
+    .replace(/\s(?:on\w+)=(?:"[^"]*"|'[^']*')/giu, "");
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -716,6 +1050,10 @@ function formatNumber(value: number) {
   return Number.isFinite(value) ? Number(value.toFixed(4)).toString() : "";
 }
 
+function formatMzRangeValue(value: number) {
+  return Number.isFinite(value) ? value.toFixed(1) : "";
+}
+
 function formatPercent(value: number) {
   return Number.isFinite(value) ? `${Math.round(value * 100)}%` : "-";
 }
@@ -727,6 +1065,14 @@ function metadataValue(metadata: Record<string, string>, keys: string[]) {
     if (value) return value;
   }
   return "";
+}
+
+function parseNumericMetadata(value: string | null) {
+  if (!value) return null;
+  const match = value.match(/-?\d+(?:\.\d+)?/u);
+  if (!match) return null;
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function annotationNumber(peak: SpectrumPeak, key: string) {
