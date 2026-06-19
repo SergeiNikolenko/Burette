@@ -12,6 +12,7 @@ const [
   app,
   uiStore,
   commandPaletteHook,
+  appStatusHook,
   tabsHook,
   sidebarHook,
   moleculeStore,
@@ -127,6 +128,7 @@ const [
   source('apps/desktop/src/App.tsx'),
   source('apps/desktop/src/stores/ui-store.ts'),
   source('apps/desktop/src/hooks/use-command-palette.ts'),
+  source('apps/desktop/src/hooks/use-app-status.ts'),
   source('apps/desktop/src/hooks/use-tabs.ts'),
   source('apps/desktop/src/hooks/use-sidebar.ts'),
   source('apps/desktop/src/stores/molecule-store.ts'),
@@ -819,9 +821,13 @@ assert.match(bundleReportScript, /const initialKetcherAssets = assets\.filter\(\
 assert.match(bundleReportScript, /const mainImportsKetcher = \/from\\s\*\["'\]\\\.\\\/ketcher-/);
 assert.match(bundleReportScript, /const ketcherBoundaryOk = ketcherChunks\.length > 0 && initialKetcherAssets\.length === 0 && !mainImportsKetcher/);
 assert.match(bundleReportScript, /Ketcher lazy boundary failed/);
-assert.match(app, /useState<StatusNotice \| null>\(null\)/);
-assert.match(app, /const pushStatus = useCallback/);
-assert.match(app, /const pushErrorStatus = useCallback/);
+assert.match(app, /const \{ status, pushStatus, pushErrorStatus, clearStatus, recentErrorsRef \} = useAppStatus\(\)/);
+assert.match(appStatusHook, /useState<StatusNotice \| null>\(null\)/);
+assert.match(appStatusHook, /const pushStatus = useCallback/);
+assert.match(appStatusHook, /const pushErrorStatus = useCallback/);
+assert.match(appStatusHook, /recentErrorsRef\.current = recentErrorsRef\.current\.slice\(-20\)/);
+assert.match(appStatusHook, /window\.setTimeout/);
+assert.match(appStatusHook, /current\?\.id === status\.id \? null : current/);
 assert.doesNotMatch(app, /setCommandPaletteOpen/);
 assert.doesNotMatch(app, /useState\(false\).*commandPalette/i);
 assert.match(app, /refreshedPersistedSessionRef/);

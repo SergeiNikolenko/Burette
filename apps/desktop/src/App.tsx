@@ -6,7 +6,7 @@ import previewFormatRegistry from "../../../config/preview-formats.json";
 import { AppLayout } from "./components/app-layout";
 import { formatBytes } from "./components/format";
 import { showNativeContextMenu } from "./components/native-context-menu";
-import type { AppSettingsSectionId, ChemicalEditorTarget, KetcherImportRequest, KetcherSketchRequest, KetcherSource3D, ShellActions, ShellViewState, StatusKind, StatusNotice, StructureViewerAction, ViewerLigandSelection } from "./components/types";
+import type { AppSettingsSectionId, ChemicalEditorTarget, KetcherImportRequest, KetcherSketchRequest, KetcherSource3D, ShellActions, ShellViewState, StructureViewerAction, ViewerLigandSelection } from "./components/types";
 import { WindowTitle } from "./components/window-title";
 import {
   useCloseCommandPalette,
@@ -16,6 +16,7 @@ import {
   useSetCommandPaletteSearch,
 } from "./hooks/use-command-palette";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
+import { useAppStatus } from "./hooks/use-app-status";
 import { useAgentSession } from "./hooks/use-agent-session";
 import { useMenuEvents } from "./hooks/use-menu-events";
 import { useDockLayout } from "./hooks/use-dock-layout";
@@ -601,7 +602,7 @@ export default function App() {
   const [quickLookDocument, setQuickLookDocument] = useState<ViewerDocument | null>(null);
   const [quickLookError, setQuickLookError] = useState<string | null>(null);
   const [dirtyGridDocuments, setDirtyGridDocuments] = useState<Set<string>>(() => new Set());
-  const [status, setStatus] = useState<StatusNotice | null>(null);
+  const { status, pushStatus, pushErrorStatus, clearStatus, recentErrorsRef } = useAppStatus();
   const [buildInfo, setBuildInfo] = useState(defaultBuildInfo);
   const [buildInfoLoaded, setBuildInfoLoaded] = useState(false);
   const [poseReviewSelections, setPoseReviewSelections] = useState<Record<string, number>>({});
@@ -634,8 +635,6 @@ export default function App() {
   const pendingXyzrenderSheetDropRef = useRef<{ documentId: string; payload: StructureDragPayload } | null>(null);
   const xyzrenderOrientationRefRef = useRef<string | null>(null);
   const skipNextPreferenceRefreshRef = useRef(false);
-  const statusSequenceRef = useRef(0);
-  const recentErrorsRef = useRef<Array<{ message: string; details: string[]; timestampMs: number }>>([]);
   const gridPerfMetricsRef = useRef<string[]>([]);
   const cancelledConformerJobIdsRef = useRef(new Set<string>());
   const cancelledXtbJobIdsRef = useRef(new Set<string>());
@@ -672,35 +671,6 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  const pushStatus = useCallback((message: string, kind: StatusKind = "info", details: string[] = []) => {
-    const trimmed = message.trim();
-    if (!trimmed) return;
-    const normalizedDetails = details.filter(Boolean);
-    if (kind === "error") {
-      recentErrorsRef.current.push({
-        message: trimmed,
-        details: normalizedDetails,
-        timestampMs: Date.now(),
-      });
-      recentErrorsRef.current = recentErrorsRef.current.slice(-20);
-    }
-    setStatus({
-      id: ++statusSequenceRef.current,
-      kind,
-      message: trimmed,
-      details: normalizedDetails,
-    });
-  }, []);
-
-  const pushErrorStatus = useCallback((error: unknown, prefix?: string, details: string[] = []) => {
-    const message = error instanceof Error ? error.message : String(error);
-    pushStatus(prefix ? `${prefix}: ${message}` : message, "error", details.length > 0 ? details : [message]);
-  }, [pushStatus]);
-
-  const clearStatus = useCallback(() => {
-    setStatus(null);
   }, []);
 
   const setConformerSettings = useCallback((settings: ConformerSettings) => {
@@ -1232,14 +1202,6 @@ export default function App() {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    if (!status || status.kind === "error") return undefined;
-    const timeout = window.setTimeout(() => {
-      setStatus((current) => (current?.id === status.id ? null : current));
-    }, 3200);
-    return () => window.clearTimeout(timeout);
-  }, [status]);
 
   const selectDocument = useCallback((id: string) => {
     setActiveDocument(id);
