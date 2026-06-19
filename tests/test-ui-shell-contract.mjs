@@ -34,6 +34,7 @@ const [
   structureComposition,
   structureText,
   dock,
+  chemistrySettings,
   packageJson,
   themeSource,
   appLayout,
@@ -161,6 +162,7 @@ const [
   source('apps/desktop/src/lib/structure-composition.ts'),
   source('apps/desktop/src/lib/structure-text.ts'),
   source('apps/desktop/src/lib/dock.ts'),
+  source('apps/desktop/src/lib/chemistry-settings.ts'),
   source('package.json'),
   source('apps/desktop/src/lib/theme.ts'),
   source('apps/desktop/src/components/app-layout.tsx'),
@@ -889,6 +891,16 @@ assert.match(appDiagnosticsHook, /invoke<string>\("export_diagnostics_bundle"/);
 assert.match(appDiagnosticsHook, /performanceMarks: collectPerformanceMarks\(\)/);
 assert.match(appDiagnosticsHook, /recentErrors: recentErrorsRef\.current/);
 assert.match(appDiagnosticsHook, /Diagnostics export failed/);
+assert.match(app, /from "\.\/lib\/chemistry-settings"/);
+assert.doesNotMatch(app, /const DEFAULT_CONFORMER_SETTINGS/);
+assert.doesNotMatch(app, /const DEFAULT_XTB_SETTINGS/);
+assert.match(chemistrySettings, /const CONFORMER_SETTINGS_STORAGE_KEY = "burrete\.conformer\.settings"/);
+assert.match(chemistrySettings, /const XTB_SETTINGS_STORAGE_KEY = "burrete\.xtb\.settings"/);
+assert.match(chemistrySettings, /export function normalizeConformerSettings/);
+assert.match(chemistrySettings, /export function normalizeXtbSettings/);
+assert.match(chemistrySettings, /return operation === "prism-prune" \? "PRISM Prune" : "CREST Generate"/);
+assert.match(chemistrySettings, /case "optimize":\s*return "xTB Optimize";/s);
+assert.match(chemistrySettings, /migrateLegacyXtbMdDefaults/);
 assert.doesNotMatch(app, /setCommandPaletteOpen/);
 assert.doesNotMatch(app, /useState\(false\).*commandPalette/i);
 assert.match(app, /refreshedPersistedSessionRef/);
