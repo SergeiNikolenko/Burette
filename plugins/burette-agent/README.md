@@ -15,6 +15,8 @@ The plugin is intentionally layered:
 
 Once installed, Codex can:
 
+- fetch public HTTP(S) reference pages as bounded readable text for agent-side
+  research;
 - open local PDB, CIF, XYZ, SDF, and related molecular files in Burrete;
 - observe the active workspace, tabs, documents, scene state, and current
   structure summary as JSON;
@@ -122,7 +124,7 @@ skills/
 
 mcp/
   server.mjs
-  registrations/         tool/resource registrations
+  registrations/         tool/resource registrations, including bounded fetch
   widget-assets/         browser assets only
   lib/                   validation, CLI bridge, resource helpers
 
@@ -165,6 +167,9 @@ bun scripts/burrete-agent.mjs render-panel --session-dir /tmp/burrete-agent-sess
 ```
 
 MCP tools wrap this CLI instead of reimplementing the app control layer.
+`fetch` follows the standard MCP fetch shape (`url`, `max_length`,
+`start_index`, and `raw`) for public HTTP(S) references, returns bounded text,
+and blocks localhost, private, and link-local hosts.
 `summarize_burrete_structure` is the agent-side structure brief: it reads an
 explicit file or the active workspace document and returns the same kind of
 high-level content facts used by the Info dock, including format, kind, atom
