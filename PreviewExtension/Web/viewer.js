@@ -6133,7 +6133,7 @@
 
   async function loadSdfCollectionPdbLayer(viewer, data, label) {
     const plugin = viewer?.plugin;
-    const raw = await plugin.builders.data.rawData({ data, label });
+    const raw = await plugin.builders.data.rawData({ data: molstarDisplayData(data, 'pdb'), label });
     const trajectory = await plugin.builders.structure.parseTrajectory(raw, 'pdb');
     const preset = await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default', { representationPreset: 'empty' });
     const structure = preset?.structureProperties || preset?.structure || null;
@@ -6774,7 +6774,7 @@
     }
     if (prepared.loadPreset === 'all-models') {
       const plugin = viewer.plugin;
-      const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
+      const data = await plugin.builders.data.rawData({ data: molstarDisplayData(prepared.data, prepared.format), label: prepared.label });
       const trajectory = await plugin.builders.structure.parseTrajectory(data, prepared.format);
       await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'all-models', {
         useDefaultIfSingleModel: true
@@ -6786,11 +6786,11 @@
     }
     const plugin = viewer.plugin;
     if (prepared.keepDefaultMolstarStyle === true && typeof viewer.loadStructureFromData === 'function') {
-      await viewer.loadStructureFromData(prepared.data, prepared.format, { dataLabel: prepared.label });
+      await viewer.loadStructureFromData(molstarDisplayData(prepared.data, prepared.format), prepared.format, { dataLabel: prepared.label });
       installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
       return;
     }
-    const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
+    const data = await plugin.builders.data.rawData({ data: molstarDisplayData(prepared.data, prepared.format), label: prepared.label });
     const trajectory = await plugin.builders.structure.parseTrajectory(data, prepared.format);
     await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default');
     if (prepared.keepDefaultMolstarStyle !== true) await applyMolstarStyle(viewer, prepared.molstarStyleOverride || configuredMolstarStyle(activeConfig));
@@ -6800,13 +6800,43 @@
 
   async function loadMolstarEntry(viewer, entry, presetOptions = undefined) {
     const plugin = viewer.plugin;
+    const payload = molstarEntryPayload(entry);
+    const data = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
+    const trajectory = await plugin.builders.structure.parseTrajectory(data, payload.format);
+    await plugin.builders.structure.hierarchy.applyPreset(trajectory, entry.loadPreset || 'default', presetOptions);
+  }
+
+  function molstarEntryPayload(entry) {
     const normalized = normalizeFormat(entry.format);
     const payload = normalized === 'cifCore'
       ? { data: coreCifToPdb(entry.data), format: 'pdb' }
       : { data: entry.data, format: normalized };
-    const data = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
-    const trajectory = await plugin.builders.structure.parseTrajectory(data, payload.format);
-    await plugin.builders.structure.hierarchy.applyPreset(trajectory, entry.loadPreset || 'default', presetOptions);
+    return { ...payload, data: molstarDisplayData(payload.data, payload.format) };
+  }
+
+  function molstarDisplayData(data, format) {
+    const normalized = normalizeFormat(format);
+    if (normalized !== 'pdb') return data;
+    return normalizePdbLigandRecordsForMolstar(data);
+  }
+
+  function normalizePdbLigandRecordsForMolstar(data) {
+    return String(data || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+      .map(normalizePdbLigandLineForMolstar)
+      .join('\n');
+  }
+
+  function normalizePdbLigandLineForMolstar(line) {
+    if (!line.startsWith('HETATM')) return line;
+    const resName = line.slice(17, 20).trim().toUpperCase();
+    const chain = line.slice(21, 22).trim();
+    const seq = line.slice(22, 26).trim();
+    const occupancy = Number(line.slice(54, 60).trim());
+    if (resName !== 'UNK' || chain || seq !== '0' || (Number.isFinite(occupancy) && occupancy > 0)) return line;
+    let normalized = line.padEnd(80, ' ');
+    normalized = `${normalized.slice(0, 21)}L${normalized.slice(22)}`;
+    normalized = `${normalized.slice(0, 54)}  1.00${normalized.slice(60)}`;
+    return normalized.trimEnd();
   }
 
   async function loadMolstarEntryWithStructureRefs(viewer, entry, presetOptions = undefined) {
@@ -6817,10 +6847,7 @@
 
   async function loadMolstarEntryAsLines(viewer, entry) {
     const plugin = viewer.plugin;
-    const normalized = normalizeFormat(entry.format);
-    const payload = normalized === 'cifCore'
-      ? { data: coreCifToPdb(entry.data), format: 'pdb' }
-      : { data: entry.data, format: normalized };
+    const payload = molstarEntryPayload(entry);
     const data = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
     const trajectory = await plugin.builders.structure.parseTrajectory(data, payload.format);
     const model = await plugin.builders.structure.createModel(trajectory);
@@ -6900,10 +6927,7 @@
     const boundingBoxes = await applyMolstarStructureBoundingBoxGeometry(viewer);
     if (boundingBoxes > 0) return;
 
-    const normalized = normalizeFormat(entry.format);
-    const payload = normalized === 'cifCore'
-      ? { data: coreCifToPdb(entry.data), format: 'pdb' }
-      : { data: entry.data, format: normalized };
+    const payload = molstarEntryPayload(entry);
     const data = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
     const trajectory = await plugin.builders.structure.parseTrajectory(data, payload.format);
     const model = await plugin.builders.structure.createModel(trajectory);
@@ -8011,7 +8035,7 @@
   const MOLSTAR_CONTEXT_STANDARD_RESIDUES = new Set([
     'ALA', 'ARG', 'ASN', 'ASP', 'CYS', 'GLN', 'GLU', 'GLY', 'HIS', 'ILE',
     'LEU', 'LYS', 'MET', 'PHE', 'PRO', 'SER', 'THR', 'TRP', 'TYR', 'VAL',
-    'SEC', 'PYL', 'ASX', 'GLX', 'UNK',
+    'SEC', 'PYL', 'ASX', 'GLX',
     'A', 'C', 'G', 'T', 'U', 'DA', 'DC', 'DG', 'DT', 'DU', 'I', 'DI',
     'PSU', '5MC', 'OMC', 'OMG', '1MA', '2MG', 'M2G', '7MG'
   ]);
