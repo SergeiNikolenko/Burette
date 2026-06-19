@@ -3674,6 +3674,21 @@ private enum PreviewStructureTextConverter {
         let y: Double
         let z: Double
         let radius: Double
+        let vector: Vec3?
+    }
+
+    private struct PharmacophoreSphere {
+        let x: Double
+        let y: Double
+        let z: Double
+        let radius: Double
+    }
+
+    private struct PharmacophorePreview {
+        let features: [PharmacophoreFeature]
+        let connectors: [(Int, Int)]
+        let volumeSpheres: [PharmacophoreSphere]
+        let structurePDB: String?
     }
 
     fileprivate static func convertedData(from data: Data, fileExtension: String, label: String) -> ConvertedStructure? {
@@ -3769,20 +3784,20 @@ private enum PreviewStructureTextConverter {
     }
 
     private static func pharmacophorePDBData(from data: Data, fileExtension: String, label: String) -> Data? {
-        let features: [PharmacophoreFeature]?
+        let preview: PharmacophorePreview?
         switch fileExtension.lowercased() {
         case "ph4":
-            features = parseMOEPh4Features(decodeText(data))
+            preview = parseMOEPh4Preview(decodeText(data))
         case "json":
-            features = parsePharmitJSONFeatures(data)
+            preview = parsePharmitJSONPreview(data)
         default:
-            features = nil
+            preview = nil
         }
-        guard let features, !features.isEmpty else { return nil }
-        return pharmacophorePDBData(from: features, label: label)
+        guard let preview, !preview.features.isEmpty else { return nil }
+        return pharmacophorePDBData(from: preview, label: label)
     }
 
-    private static func parsePharmitJSONFeatures(_ data: Data) -> [PharmacophoreFeature]? {
+    private static func parsePharmitJSONPreview(_ data: Data) -> PharmacophorePreview? {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let points = object["points"] as? [[String: Any]] else { return nil }
         let features = points.compactMap { point -> PharmacophoreFeature? in
@@ -3796,13 +3811,19 @@ private enum PreviewStructureTextConverter {
                 x: x,
                 y: y,
                 z: z,
-                radius: point["radius"] as? Double ?? 1.0
+                radius: point["radius"] as? Double ?? 1.0,
+                vector: (point["hasvec"] as? Bool) == true ? normalizedPharmacophoreVector(point["svector"]) : nil
             )
         }
-        return features.isEmpty ? nil : features
+        return features.isEmpty ? nil : PharmacophorePreview(
+            features: features,
+            connectors: [],
+            volumeSpheres: [],
+            structurePDB: joinedPDBBlocks(object["receptor"], object["ligand"])
+        )
     }
 
-    private static func parseMOEPh4Features(_ text: String) -> [PharmacophoreFeature]? {
+    private static func parseMOEPh4Preview(_ text: String) -> PharmacophorePreview? {
         guard text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("#moe:ph4que") else { return nil }
         let tokens = text.split { $0.isWhitespace }.map(String.init)
         guard let featureIndex = tokens.firstIndex(of: "#feature"),
@@ -3827,37 +3848,140 @@ private enum PreviewStructureTextConverter {
                 x: x,
                 y: y,
                 z: z,
-                radius: Double(tokens[index + 5]) ?? 1.0
+                radius: Double(tokens[index + 5]) ?? 1.0,
+                vector: nil
             ))
             index += 9
         }
-        return features.isEmpty ? nil : features
+        return features.isEmpty ? nil : PharmacophorePreview(
+            features: features,
+            connectors: parseMOEPh4Constraints(tokens, featureCount: features.count),
+            volumeSpheres: parseMOEPh4VolumeSpheres(tokens),
+            structurePDB: nil
+        )
     }
 
-    private static func pharmacophorePDBData(from features: [PharmacophoreFeature], label: String) -> Data {
+    private static func pharmacophorePDBData(from preview: PharmacophorePreview, label: String) -> Data {
         var pdb = "REMARK Pharmacophore preview converted from \(label)\n"
-        pdb += "REMARK Pseudo-atoms mark pharmacophore feature centers for Molstar preview.\n"
-        for (index, feature) in features.prefix(99_999).enumerated() {
-            let symbol = pharmacophoreFeatureSymbol(feature.name)
-            let atomName = formatPDBAtomName(pharmacophoreAtomName(feature.name), symbol: symbol)
-            let atomNameField = atomName.padding(toLength: 4, withPad: " ", startingAt: 0)
-            let residueName = pharmacophoreResidueName(feature.name)
-            let elementField = String(repeating: " ", count: max(0, 2 - symbol.count)) + truncateASCII(symbol, maxLength: 2)
-            pdb += String(
-                format: "HETATM%5d %@ %3@ P%4d    %8.3f%8.3f%8.3f  1.00%6.2f          %@\n",
-                index + 1,
-                atomNameField,
-                residueName,
-                min(index + 1, 9999),
-                feature.x,
-                feature.y,
-                feature.z,
-                feature.radius,
-                elementField
+        pdb += "REMARK Feature centers are pseudo-atoms; Pharmit vectors and MOE constraints are rendered as CONECT sticks.\n"
+        if !preview.volumeSpheres.isEmpty {
+            pdb += "REMARK MOE volume spheres are rendered as low-occupancy pseudo-atoms.\n"
+        }
+        if let structurePDB = preview.structurePDB {
+            pdb += structurePDB
+            if !structurePDB.hasSuffix("\n") { pdb += "\n" }
+        }
+        var serial = maxPDBSerial(preview.structurePDB) + 1
+        var featureSerials: [Int] = []
+        var conectLines: [(Int, Int)] = []
+        for (index, feature) in preview.features.enumerated() {
+            guard serial <= 99_999 else { break }
+            let featureSerial = serial
+            featureSerials.append(featureSerial)
+            pdb += pharmacophorePDBAtomLine(serial: featureSerial, feature: feature, residueNumber: min(index + 1, 9999))
+            serial += 1
+            if let vector = feature.vector, serial <= 99_999 {
+                let length = max(feature.radius * 2.0, 1.25)
+                pdb += pharmacophorePDBAtomLine(
+                    serial: serial,
+                    name: "vector",
+                    x: feature.x + vector.0 * length,
+                    y: feature.y + vector.1 * length,
+                    z: feature.z + vector.2 * length,
+                    radius: 0.2,
+                    atomName: "VEC",
+                    residueName: "VEC",
+                    chain: "V",
+                    residueNumber: min(index + 1, 9999),
+                    element: "C"
+                )
+                conectLines.append((featureSerial, serial))
+                serial += 1
+            }
+        }
+        for (left, right) in preview.connectors {
+            guard left >= 0, right >= 0, left < featureSerials.count, right < featureSerials.count else { continue }
+            conectLines.append((featureSerials[left], featureSerials[right]))
+        }
+        for (index, sphere) in preview.volumeSpheres.enumerated() {
+            guard serial <= 99_999 else { break }
+            pdb += pharmacophorePDBAtomLine(
+                serial: serial,
+                name: "volume",
+                x: sphere.x,
+                y: sphere.y,
+                z: sphere.z,
+                radius: sphere.radius,
+                atomName: "VOL",
+                residueName: "VOL",
+                chain: "Q",
+                residueNumber: min(index + 1, 9999),
+                occupancy: 0.2,
+                element: "C"
             )
+            serial += 1
+        }
+        for (left, right) in conectLines {
+            pdb += String(format: "CONECT%5d%5d\n", left, right)
         }
         pdb += "END\n"
         return Data(pdb.utf8)
+    }
+
+    private static func pharmacophorePDBAtomLine(
+        serial: Int,
+        feature: PharmacophoreFeature,
+        residueNumber: Int
+    ) -> String {
+        pharmacophorePDBAtomLine(
+            serial: serial,
+            name: feature.name,
+            x: feature.x,
+            y: feature.y,
+            z: feature.z,
+            radius: feature.radius,
+            atomName: pharmacophoreAtomName(feature.name),
+            residueName: pharmacophoreResidueName(feature.name),
+            chain: "P",
+            residueNumber: residueNumber,
+            element: pharmacophoreFeatureSymbol(feature.name)
+        )
+    }
+
+    private static func pharmacophorePDBAtomLine(
+        serial: Int,
+        name: String,
+        x: Double,
+        y: Double,
+        z: Double,
+        radius: Double,
+        atomName: String,
+        residueName: String,
+        chain: String,
+        residueNumber: Int,
+        occupancy: Double = 1.0,
+        element: String
+    ) -> String {
+        let formattedAtomName = formatPDBAtomName(atomName, symbol: element)
+        let atomNameField = formattedAtomName.padding(toLength: 4, withPad: " ", startingAt: 0)
+        let elementField = String(repeating: " ", count: max(0, 2 - element.count)) + truncateASCII(element, maxLength: 2)
+        let cleanResidueName = truncateASCII(residueName, maxLength: 3)
+        let cleanChain = String((truncateASCII(chain, maxLength: 1).isEmpty ? "P" : truncateASCII(chain, maxLength: 1)).prefix(1))
+        _ = name
+        return String(
+            format: "HETATM%5d %@ %3@ %@%4d    %8.3f%8.3f%8.3f%6.2f%6.2f          %@\n",
+            min(serial, 99_999),
+            atomNameField,
+            cleanResidueName,
+            cleanChain,
+            min(residueNumber, 9999),
+            x,
+            y,
+            z,
+            occupancy,
+            radius,
+            elementField
+        )
     }
 
     private static func pharmacophoreFeatureSymbol(_ name: String) -> String {
@@ -3882,6 +4006,107 @@ private enum PreviewStructureTextConverter {
         if lower.contains("positive") || lower.contains("pos") { return "POS" }
         if lower.contains("negative") || lower.contains("neg") { return "NEG" }
         return "PH4"
+    }
+
+    private static func normalizedPharmacophoreVector(_ value: Any?) -> Vec3? {
+        guard let vector = value as? [String: Any],
+              let x = vector["x"] as? Double,
+              let y = vector["y"] as? Double,
+              let z = vector["z"] as? Double else { return nil }
+        let length = sqrt(x * x + y * y + z * z)
+        guard length > 0.000_001 else { return nil }
+        return (x / length, y / length, z / length)
+    }
+
+    private static func joinedPDBBlocks(_ blocks: Any?...) -> String? {
+        var lines: [String] = []
+        for block in blocks {
+            guard let text = block as? String else { continue }
+            for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+                let trimmed = String(line).trimmingCharacters(in: CharacterSet(charactersIn: "\r"))
+                guard !trimmed.isEmpty, trimmed != "END", trimmed != "ENDMDL" else { continue }
+                if trimmed.hasPrefix("ATOM") ||
+                    trimmed.hasPrefix("HETATM") ||
+                    trimmed.hasPrefix("TER") ||
+                    trimmed.hasPrefix("CONECT") {
+                    lines.append(trimmed)
+                }
+            }
+        }
+        guard !lines.isEmpty else { return nil }
+        lines.append("TER")
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    private static func maxPDBSerial(_ pdb: String?) -> Int {
+        guard let pdb else { return 0 }
+        var maxSerial = 0
+        for line in pdb.split(separator: "\n", omittingEmptySubsequences: false) {
+            guard line.hasPrefix("ATOM") || line.hasPrefix("HETATM"), line.count >= 11 else { continue }
+            let start = line.index(line.startIndex, offsetBy: 6)
+            let end = line.index(line.startIndex, offsetBy: 11)
+            let serial = Int(line[start..<end].trimmingCharacters(in: .whitespaces)) ?? 0
+            maxSerial = max(maxSerial, serial)
+        }
+        return maxSerial
+    }
+
+    private static func parseMOEPh4Constraints(_ tokens: [String], featureCount: Int) -> [(Int, Int)] {
+        guard var index = tokens.firstIndex(of: "#constraint"),
+              index + 1 < tokens.count,
+              let count = Int(tokens[index + 1]),
+              count > 0 else { return [] }
+        index += 2
+        while index < tokens.count, tokens[index] != "ids" {
+            index += 1
+        }
+        guard index < tokens.count else { return [] }
+        index += 2
+        var connectors: [(Int, Int)] = []
+        for _ in 0..<count {
+            guard index + 4 < tokens.count, !tokens[index].hasPrefix("#") else { break }
+            guard let idCount = Int(tokens[index + 2]), idCount >= 2 else { break }
+            let left = Int(tokens[index + 3]) ?? 0
+            let right = Int(tokens[index + 4]) ?? 0
+            if (1...featureCount).contains(left), (1...featureCount).contains(right) {
+                connectors.append((left - 1, right - 1))
+            }
+            index += 3 + idCount
+        }
+        return connectors
+    }
+
+    private static func parseMOEPh4VolumeSpheres(_ tokens: [String]) -> [PharmacophoreSphere] {
+        guard var index = tokens.firstIndex(of: "#volumesphere"),
+              index + 1 < tokens.count,
+              let count = Int(tokens[index + 1]),
+              count > 0 else { return [] }
+        index += 2
+        while index + 7 < tokens.count {
+            if tokens[index] == "x",
+               tokens[index + 1] == "r",
+               tokens[index + 2] == "y",
+               tokens[index + 3] == "r",
+               tokens[index + 4] == "z",
+               tokens[index + 5] == "r",
+               tokens[index + 6] == "r",
+               tokens[index + 7] == "r" {
+                index += 8
+                break
+            }
+            index += 1
+        }
+        var spheres: [PharmacophoreSphere] = []
+        for _ in 0..<count {
+            guard index + 3 < tokens.count, !tokens[index].hasPrefix("#"),
+                  let x = Double(tokens[index]),
+                  let y = Double(tokens[index + 1]),
+                  let z = Double(tokens[index + 2]),
+                  let radius = Double(tokens[index + 3]) else { break }
+            spheres.append(PharmacophoreSphere(x: x, y: y, z: z, radius: radius))
+            index += 4
+        }
+        return spheres
     }
 
     private static func pdbData(from data: Data, fileExtension: String, label: String) -> Data? {

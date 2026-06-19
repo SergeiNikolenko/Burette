@@ -132,11 +132,37 @@ struct PharmacophoreFeature {
     y: f64,
     z: f64,
     radius: f64,
+    vector: Option<PharmacophoreVector>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct PharmacophoreVector {
+    x: f64,
+    y: f64,
+    z: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct PharmacophoreSphere {
+    x: f64,
+    y: f64,
+    z: f64,
+    radius: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct PharmacophorePreview {
+    features: Vec<PharmacophoreFeature>,
+    connectors: Vec<(usize, usize)>,
+    volume_spheres: Vec<PharmacophoreSphere>,
+    structure_pdb: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct PharmitSession {
     points: Vec<PharmitPoint>,
+    ligand: Option<String>,
+    receptor: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -149,6 +175,16 @@ struct PharmitPoint {
     radius: f64,
     #[serde(default = "default_enabled_pharmit_point")]
     enabled: bool,
+    #[serde(default)]
+    hasvec: bool,
+    svector: Option<PharmitVector>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PharmitVector {
+    x: f64,
+    y: f64,
+    z: f64,
 }
 
 fn default_pharmacophore_radius() -> f64 {
@@ -161,18 +197,18 @@ fn default_enabled_pharmit_point() -> bool {
 
 fn pharmacophore_pdb_data_from_text(data: &[u8], extension: &str, label: &str) -> Option<Vec<u8>> {
     let text = String::from_utf8_lossy(data);
-    let features = match extension {
-        "ph4" => parse_moe_ph4_features(&text),
-        "json" => parse_pharmit_json_features(&text),
+    let preview = match extension {
+        "ph4" => parse_moe_ph4_preview(&text),
+        "json" => parse_pharmit_json_preview(&text),
         _ => None,
     }?;
-    if features.is_empty() {
+    if preview.features.is_empty() {
         return None;
     }
-    Some(pharmacophore_features_to_pdb(&features, label).into_bytes())
+    Some(pharmacophore_preview_to_pdb(&preview, label).into_bytes())
 }
 
-fn parse_pharmit_json_features(text: &str) -> Option<Vec<PharmacophoreFeature>> {
+fn parse_pharmit_json_preview(text: &str) -> Option<PharmacophorePreview> {
     let session: PharmitSession = serde_json::from_str(text).ok()?;
     let features: Vec<PharmacophoreFeature> = session
         .points
@@ -184,12 +220,24 @@ fn parse_pharmit_json_features(text: &str) -> Option<Vec<PharmacophoreFeature>> 
             y: point.y,
             z: point.z,
             radius: point.radius,
+            vector: if point.hasvec {
+                point.svector.and_then(|vector| {
+                    normalized_pharmacophore_vector(vector.x, vector.y, vector.z)
+                })
+            } else {
+                None
+            },
         })
         .collect();
-    (!features.is_empty()).then_some(features)
+    (!features.is_empty()).then_some(PharmacophorePreview {
+        features,
+        connectors: Vec::new(),
+        volume_spheres: Vec::new(),
+        structure_pdb: joined_pdb_blocks([session.receptor, session.ligand]),
+    })
 }
 
-fn parse_moe_ph4_features(text: &str) -> Option<Vec<PharmacophoreFeature>> {
+fn parse_moe_ph4_preview(text: &str) -> Option<PharmacophorePreview> {
     if !text.trim_start().starts_with("#moe:ph4que") {
         return None;
     }
@@ -220,32 +268,262 @@ fn parse_moe_ph4_features(text: &str) -> Option<Vec<PharmacophoreFeature>> {
             y,
             z,
             radius,
+            vector: None,
         });
         index += 9;
     }
-    (!features.is_empty()).then_some(features)
+    (!features.is_empty()).then_some(PharmacophorePreview {
+        connectors: parse_moe_ph4_constraints(&tokens, features.len()),
+        volume_spheres: parse_moe_ph4_volume_spheres(&tokens),
+        features,
+        structure_pdb: None,
+    })
 }
 
-fn pharmacophore_features_to_pdb(features: &[PharmacophoreFeature], label: &str) -> String {
+fn pharmacophore_preview_to_pdb(preview: &PharmacophorePreview, label: &str) -> String {
     let mut pdb = format!("REMARK Pharmacophore preview converted from {label}\n");
-    pdb.push_str("REMARK Pseudo-atoms mark pharmacophore feature centers for Molstar preview.\n");
-    for (index, feature) in features.iter().take(99_999).enumerate() {
+    pdb.push_str("REMARK Feature centers are pseudo-atoms; Pharmit vectors and MOE constraints are rendered as CONECT sticks.\n");
+    if !preview.volume_spheres.is_empty() {
+        pdb.push_str("REMARK MOE volume spheres are rendered as low-occupancy pseudo-atoms.\n");
+    }
+    if let Some(structure_pdb) = &preview.structure_pdb {
+        pdb.push_str(structure_pdb);
+        if !structure_pdb.ends_with('\n') {
+            pdb.push('\n');
+        }
+    }
+    let mut serial = max_pdb_serial(preview.structure_pdb.as_deref()).unwrap_or(0) + 1;
+    let mut feature_serials = Vec::new();
+    let mut conect_lines = Vec::new();
+    for (index, feature) in preview.features.iter().enumerate() {
+        if serial > 99_999 {
+            break;
+        }
         let symbol = pharmacophore_feature_symbol(&feature.name);
         let atom_name = format_pdb_atom_name(&pharmacophore_atom_name(&feature.name), symbol);
         let residue_name = pharmacophore_residue_name(&feature.name);
-        pdb.push_str(&format!(
-            "HETATM{serial:>5} {atom_name:<4} {residue_name:>3} P{residue_number:>4}    {x:>8.3}{y:>8.3}{z:>8.3}  1.00{radius:>6.2}          {element:>2}\n",
-            serial = index + 1,
-            residue_number = (index + 1).min(9999),
-            x = feature.x,
-            y = feature.y,
-            z = feature.z,
-            radius = feature.radius,
-            element = symbol,
+        let feature_serial = serial;
+        feature_serials.push(feature_serial);
+        pdb.push_str(&pharmacophore_pdb_atom_line(
+            feature_serial,
+            &atom_name,
+            residue_name,
+            "P",
+            (index + 1).min(9999),
+            feature.x,
+            feature.y,
+            feature.z,
+            1.0,
+            feature.radius,
+            symbol,
         ));
+        serial += 1;
+        if let Some(vector) = feature.vector {
+            if serial > 99_999 {
+                break;
+            }
+            let length = (feature.radius * 2.0).max(1.25);
+            pdb.push_str(&pharmacophore_pdb_atom_line(
+                serial,
+                "VEC",
+                "VEC",
+                "V",
+                (index + 1).min(9999),
+                feature.x + vector.x * length,
+                feature.y + vector.y * length,
+                feature.z + vector.z * length,
+                1.0,
+                0.2,
+                "C",
+            ));
+            conect_lines.push((feature_serial, serial));
+            serial += 1;
+        }
+    }
+    for (left, right) in &preview.connectors {
+        if let (Some(left_serial), Some(right_serial)) =
+            (feature_serials.get(*left), feature_serials.get(*right))
+        {
+            conect_lines.push((*left_serial, *right_serial));
+        }
+    }
+    for (index, sphere) in preview.volume_spheres.iter().enumerate() {
+        if serial > 99_999 {
+            break;
+        }
+        pdb.push_str(&pharmacophore_pdb_atom_line(
+            serial,
+            "VOL",
+            "VOL",
+            "Q",
+            (index + 1).min(9999),
+            sphere.x,
+            sphere.y,
+            sphere.z,
+            0.2,
+            sphere.radius,
+            "C",
+        ));
+        serial += 1;
+    }
+    for (left, right) in conect_lines {
+        pdb.push_str(&format!("CONECT{left:>5}{right:>5}\n"));
     }
     pdb.push_str("END\n");
     pdb
+}
+
+fn pharmacophore_pdb_atom_line(
+    serial: usize,
+    atom_name: &str,
+    residue_name: &str,
+    chain: &str,
+    residue_number: usize,
+    x: f64,
+    y: f64,
+    z: f64,
+    occupancy: f64,
+    b_factor: f64,
+    element: &str,
+) -> String {
+    format!(
+        "HETATM{serial:>5} {atom_name:<4} {residue_name:>3} {chain}{residue_number:>4}    {x:>8.3}{y:>8.3}{z:>8.3}{occupancy:>6.2}{b_factor:>6.2}          {element:>2}\n",
+        serial = serial.min(99_999),
+        atom_name = atom_name.chars().take(4).collect::<String>(),
+        residue_name = residue_name.chars().take(3).collect::<String>(),
+        chain = chain.chars().next().unwrap_or('P'),
+        residue_number = residue_number.min(9999),
+    )
+}
+
+fn normalized_pharmacophore_vector(x: f64, y: f64, z: f64) -> Option<PharmacophoreVector> {
+    let length = (x * x + y * y + z * z).sqrt();
+    (length > 0.000_001).then_some(PharmacophoreVector {
+        x: x / length,
+        y: y / length,
+        z: z / length,
+    })
+}
+
+fn joined_pdb_blocks(blocks: [Option<String>; 2]) -> Option<String> {
+    let mut lines = Vec::new();
+    for block in blocks.into_iter().flatten() {
+        for line in block.lines() {
+            let trimmed = line.trim_end();
+            if trimmed == "END" || trimmed == "ENDMDL" || trimmed.is_empty() {
+                continue;
+            }
+            if trimmed.starts_with("ATOM")
+                || trimmed.starts_with("HETATM")
+                || trimmed.starts_with("TER")
+                || trimmed.starts_with("CONECT")
+            {
+                lines.push(trimmed.to_string());
+            }
+        }
+    }
+    (!lines.is_empty()).then(|| {
+        lines.push("TER".to_string());
+        lines.join("\n") + "\n"
+    })
+}
+
+fn max_pdb_serial(pdb: Option<&str>) -> Option<usize> {
+    pdb?.lines()
+        .filter(|line| line.starts_with("ATOM") || line.starts_with("HETATM"))
+        .filter_map(|line| line.get(6..11)?.trim().parse::<usize>().ok())
+        .max()
+}
+
+fn parse_moe_ph4_constraints(tokens: &[&str], feature_count: usize) -> Vec<(usize, usize)> {
+    let Some(mut index) = tokens.iter().position(|token| *token == "#constraint") else {
+        return Vec::new();
+    };
+    let Some(count) = tokens
+        .get(index + 1)
+        .and_then(|token| token.parse::<usize>().ok())
+    else {
+        return Vec::new();
+    };
+    index += 2;
+    while index < tokens.len() && tokens[index] != "ids" {
+        index += 1;
+    }
+    if index >= tokens.len() {
+        return Vec::new();
+    }
+    index += 2;
+    let mut connectors = Vec::new();
+    for _ in 0..count {
+        if index + 4 >= tokens.len() || tokens[index].starts_with('#') {
+            break;
+        }
+        let id_count = tokens[index + 2].parse::<usize>().unwrap_or(0);
+        if id_count >= 2 {
+            let left = tokens[index + 3].parse::<usize>().unwrap_or(0);
+            let right = tokens[index + 4].parse::<usize>().unwrap_or(0);
+            if (1..=feature_count).contains(&left) && (1..=feature_count).contains(&right) {
+                connectors.push((left - 1, right - 1));
+            }
+        }
+        index += 3 + id_count;
+    }
+    connectors
+}
+
+fn parse_moe_ph4_volume_spheres(tokens: &[&str]) -> Vec<PharmacophoreSphere> {
+    let Some(mut index) = tokens.iter().position(|token| *token == "#volumesphere") else {
+        return Vec::new();
+    };
+    let Some(count) = tokens
+        .get(index + 1)
+        .and_then(|token| token.parse::<usize>().ok())
+    else {
+        return Vec::new();
+    };
+    index += 2;
+    while index + 7 < tokens.len() {
+        if tokens[index] == "x"
+            && tokens[index + 1] == "r"
+            && tokens[index + 2] == "y"
+            && tokens[index + 3] == "r"
+            && tokens[index + 4] == "z"
+            && tokens[index + 5] == "r"
+            && tokens[index + 6] == "r"
+            && tokens[index + 7] == "r"
+        {
+            index += 8;
+            break;
+        }
+        index += 1;
+    }
+    let mut spheres = Vec::new();
+    for _ in 0..count {
+        if index + 3 >= tokens.len() || tokens[index].starts_with('#') {
+            break;
+        }
+        let (Some(x), Some(y), Some(z), Some(radius)) = (
+            tokens[index].parse::<f64>().ok(),
+            tokens[index + 1].parse::<f64>().ok(),
+            tokens[index + 2].parse::<f64>().ok(),
+            tokens[index + 3].parse::<f64>().ok(),
+        ) else {
+            break;
+        };
+        spheres.push(PharmacophoreSphere { x, y, z, radius });
+        index += 4;
+    }
+    spheres
+}
+
+#[allow(dead_code)]
+fn parse_pharmit_json_features(text: &str) -> Option<Vec<PharmacophoreFeature>> {
+    parse_pharmit_json_preview(text).map(|preview| preview.features)
+}
+
+#[allow(dead_code)]
+fn parse_moe_ph4_features(text: &str) -> Option<Vec<PharmacophoreFeature>> {
+    parse_moe_ph4_preview(text).map(|preview| preview.features)
 }
 
 fn pharmacophore_feature_symbol(name: &str) -> &'static str {
@@ -1933,6 +2211,10 @@ footer
 #pharmacophore 7 tag t value *
 #feature 2 expr tt color ix x r y r z r r r ebits ix gbits ix m ix
 Acc df2f2 16.0079479 12.0568863 2.5561313 1 0 400 a64cff Don f20df2 13.7719302 12.1259417 2.9526787 1.4 0 400 a64cff
+#constraint 1 expr tt ebits ix ids i*
+SAMEAIDX 0 2 1 2
+#volumesphere 1 x r y r z r r r
+9.572 19.724 -4.435 1.95000002384186
 "#;
         let converted = converted_data_from_text(data, "ph4", "abl1_U1.ph4").unwrap();
         let pdb = String::from_utf8(converted.data).unwrap();
@@ -1940,13 +2222,17 @@ Acc df2f2 16.0079479 12.0568863 2.5561313 1 0 400 a64cff Don f20df2 13.7719302 1
         assert!(pdb.contains("REMARK Pharmacophore preview converted from abl1_U1.ph4"));
         assert!(pdb.contains(" ACC P   1"));
         assert!(pdb.contains(" DON P   2"));
+        assert!(pdb.contains(" VOL Q   1"));
+        assert!(pdb.contains("CONECT    1    2"));
     }
 
     #[test]
     fn converts_pharmit_json_points_to_pdb_for_molstar() {
         let data = br#"{
+  "receptor": "ATOM      7  CA  GLY A   1       1.000   2.000   3.000  1.00 10.00           C\nEND\n",
+  "ligand": "HETATM   18  C1  LIG B   1       4.000   5.000   6.000  1.00 10.00           C\nEND\n",
   "points": [
-    {"name": "HydrogenDonor", "x": 9.532, "y": 3.916, "z": 35.82, "radius": 0.5, "enabled": true},
+    {"name": "HydrogenDonor", "hasvec": true, "svector": {"x": 1, "y": 0, "z": 0}, "x": 9.532, "y": 3.916, "z": 35.82, "radius": 0.5, "enabled": true},
     {"name": "Hydrophobic", "x": 12.17, "y": 4.268, "z": 35.199, "radius": 1.0, "enabled": true}
   ]
 }"#;
@@ -1956,6 +2242,10 @@ Acc df2f2 16.0079479 12.0568863 2.5561313 1 0 400 a64cff Don f20df2 13.7719302 1
         assert_eq!(converted.extension, "pdb");
         assert!(pdb.contains("DON P"), "{pdb}");
         assert!(pdb.contains("HYD P"), "{pdb}");
+        assert!(pdb.contains("ATOM      7  CA  GLY A   1"));
+        assert!(pdb.contains("HETATM   18  C1  LIG B   1"));
+        assert!(pdb.contains("VEC  VEC V   1"), "{pdb}");
+        assert!(pdb.contains("CONECT   19   20"), "{pdb}");
         assert!(pdb.contains("  9.532   3.916  35.820"), "{pdb}");
     }
 
