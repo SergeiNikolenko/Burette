@@ -3808,12 +3808,16 @@ function parseNumpyArrays(path: string, bytes: Buffer, maxValues: number): Brows
     if (offset + 30 > bytes.length) throw new Error("truncated NPZ local file header");
     const flags = bytes.readUInt16LE(offset + 6);
     const compression = bytes.readUInt16LE(offset + 8);
-    const compressedSize = bytes.readUInt32LE(offset + 18);
+    const rawCompressedSize = bytes.readUInt32LE(offset + 18);
+    const rawUncompressedSize = bytes.readUInt32LE(offset + 22);
     const nameLength = bytes.readUInt16LE(offset + 26);
     const extraLength = bytes.readUInt16LE(offset + 28);
     const nameStart = offset + 30;
     const nameEnd = nameStart + nameLength;
     const dataStart = nameEnd + extraLength;
+    if (nameEnd > bytes.length || dataStart > bytes.length) throw new Error("truncated NPZ entry metadata");
+    const extra = bytes.subarray(nameEnd, dataStart);
+    const compressedSize = zipEntryCompressedSize(extra, rawUncompressedSize, rawCompressedSize);
     const dataEnd = dataStart + compressedSize;
     if ((flags & 0x08) !== 0) throw new Error("NPZ entries with data descriptors are not supported");
     if (dataEnd > bytes.length) throw new Error("truncated NPZ entry data");
@@ -3948,6 +3952,27 @@ function bufferHasMagic(bytes: Buffer, offset: number, magic: string) {
   return bytes.subarray(offset, offset + magic.length).toString("latin1") === magic;
 }
 
+function zipEntryCompressedSize(extra: Buffer, rawUncompressedSize: number, rawCompressedSize: number) {
+  if (rawCompressedSize !== 0xffffffff) return rawCompressedSize;
+  let offset = 0;
+  while (offset + 4 <= extra.length) {
+    const tag = extra.readUInt16LE(offset);
+    const size = extra.readUInt16LE(offset + 2);
+    const dataStart = offset + 4;
+    const dataEnd = dataStart + size;
+    if (dataEnd > extra.length) throw new Error("truncated NPZ extra field");
+    if (tag === 0x0001) {
+      let cursor = dataStart;
+      if (rawUncompressedSize === 0xffffffff) cursor += 8;
+      const compressedSize = Number(extra.readBigUInt64LE(cursor));
+      if (!Number.isSafeInteger(compressedSize)) throw new Error("NPZ entry is too large to preview");
+      return compressedSize;
+    }
+    offset = dataEnd;
+  }
+  throw new Error("NPZ entry uses ZIP64 sizes but has no ZIP64 extra field");
+}
+
 function formatNumpyShape(shape: number[]) {
   return shape.length ? `(${shape.join(", ")})` : "()";
 }
@@ -3964,13 +3989,24 @@ function formatOptionalNumber(value: number | null) {
 
 function readBrowserDevFoldingResultBundle(inputPath: string): BrowserDevFoldingResultBundle {
   const roots = candidateFoldingRoots(inputPath);
-  let best: { score: number; bundle: BrowserDevFoldingResultBundle } | null = null;
-  for (const root of roots) {
+  let fallback: BrowserDevFoldingResultBundle | null = null;
+  for (const [distance, root] of roots.entries()) {
     const bundle = scanBrowserDevFoldingRoot(root, inputPath);
-    const score = bundle.models.length * 100 + bundle.artifacts.length + (bundle.models.some((model) => model.structurePath === inputPath) ? 50 : 0);
-    if (!best || score > best.score) best = { score, bundle };
+    if (!browserDevFoldingBundleHasContent(bundle)) continue;
+    if (distance === 0 || browserDevFoldingBundleReferencesInput(bundle, inputPath)) return bundle;
+    fallback ||= bundle;
   }
-  return best?.bundle || emptyBrowserDevFoldingBundle(inputPath, inputPath, []);
+  return fallback || emptyBrowserDevFoldingBundle(inputPath, inputPath, []);
+}
+
+function browserDevFoldingBundleHasContent(bundle: BrowserDevFoldingResultBundle) {
+  return bundle.models.length > 0 || bundle.artifacts.length > 0;
+}
+
+function browserDevFoldingBundleReferencesInput(bundle: BrowserDevFoldingResultBundle, inputPath: string) {
+  return bundle.models.some((model) => model.structurePath === inputPath)
+    || bundle.artifacts.some((artifact) => artifact.path === inputPath)
+    || bundle.models.some((model) => model.artifacts.some((artifact) => artifact.path === inputPath));
 }
 
 function scanBrowserDevFoldingRoot(root: string, inputPath: string): BrowserDevFoldingResultBundle {

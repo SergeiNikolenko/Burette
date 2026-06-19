@@ -96,17 +96,18 @@ pub(crate) fn read_folding_result_bundle(path: String) -> Result<FoldingResultBu
 fn read_folding_result_bundle_impl(path: PathBuf) -> Result<FoldingResultBundle, String> {
     let input = fs::canonicalize(&path).map_err(|err| format!("{}: {err}", path.display()))?;
     let roots = candidate_roots(&input)?;
-    let mut best: Option<(usize, FoldingResultBundle)> = None;
-    for root in roots {
+    let mut fallback: Option<FoldingResultBundle> = None;
+    for (distance, root) in roots.iter().enumerate() {
         let bundle = scan_folding_root(&root, &input)?;
-        let score = bundle_score(&bundle, &input);
-        if score > best.as_ref().map(|(score, _)| *score).unwrap_or(0) {
-            best = Some((score, bundle));
+        if !folding_bundle_has_content(&bundle) {
+            continue;
         }
+        if distance == 0 || folding_bundle_references_input(&bundle, &input) {
+            return Ok(bundle);
+        }
+        fallback.get_or_insert(bundle);
     }
-    Ok(best
-        .map(|(_, bundle)| bundle)
-        .unwrap_or_else(|| empty_bundle(&input, &input, Vec::new())))
+    Ok(fallback.unwrap_or_else(|| empty_bundle(&input, &input, Vec::new())))
 }
 
 fn scan_folding_root(root: &Path, input: &Path) -> Result<FoldingResultBundle, String> {
@@ -378,15 +379,26 @@ fn matching_artifacts(
     matches
 }
 
-fn bundle_score(bundle: &FoldingResultBundle, input: &Path) -> usize {
+fn folding_bundle_has_content(bundle: &FoldingResultBundle) -> bool {
+    !bundle.models.is_empty() || !bundle.artifacts.is_empty()
+}
+
+fn folding_bundle_references_input(bundle: &FoldingResultBundle, input: &Path) -> bool {
     let input_string = input.to_string_lossy();
-    let input_bonus = bundle
+    bundle
         .models
         .iter()
         .any(|model| model.structure_path == input_string)
-        .then_some(50)
-        .unwrap_or(0);
-    bundle.models.len() * 100 + bundle.artifacts.len() + input_bonus
+        || bundle
+            .artifacts
+            .iter()
+            .any(|artifact| artifact.path == input_string)
+        || bundle.models.iter().any(|model| {
+            model
+                .artifacts
+                .iter()
+                .any(|artifact| artifact.path == input_string)
+        })
 }
 
 fn source_for_root(root: &Path, models: &[FoldingModel], artifacts: &[FoldingArtifact]) -> String {
@@ -811,5 +823,42 @@ mod tests {
             .iter()
             .any(|metric| metric.key == "affinity_pred_value"));
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn prefers_nearest_result_root_over_broad_ancestor() {
+        let root = temp_dir("ancestor");
+        let dir = root.join("test");
+        let unrelated = root.join("other");
+        fs::create_dir_all(&dir).expect("test dir should create");
+        fs::create_dir_all(&unrelated).expect("other dir should create");
+        let pdb = dir.join("Boltz.pdb");
+        fs::write(&pdb, "ATOM      1  N   GLY A   1       0.0 0.0 0.0\n")
+            .expect("pdb should write");
+        fs::write(
+            dir.join("affinity_reflig.json"),
+            r#"{"affinity_pred_value": -7.2}"#,
+        )
+        .expect("json should write");
+        fs::write(
+            unrelated.join("unrelated.pdb"),
+            "ATOM      1  N   GLY A   1\n",
+        )
+        .expect("unrelated pdb should write");
+        fs::write(
+            unrelated.join("summary_confidences.json"),
+            r#"{"ranking_score": 0.5}"#,
+        )
+        .expect("unrelated json should write");
+        let bundle = read_folding_result_bundle_impl(pdb.clone()).expect("bundle should read");
+        let canonical_dir = fs::canonicalize(&dir).expect("dir should canonicalize");
+        assert_eq!(bundle.root_path, canonical_dir.to_string_lossy());
+        assert_eq!(bundle.models.len(), 1);
+        let canonical_pdb = fs::canonicalize(&pdb).expect("pdb should canonicalize");
+        assert_eq!(
+            bundle.models[0].structure_path,
+            canonical_pdb.to_string_lossy()
+        );
+        let _ = fs::remove_dir_all(root);
     }
 }
