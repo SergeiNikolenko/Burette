@@ -665,7 +665,7 @@ async function postActionToActiveViewer(
   return result;
 }
 
-function viewerAgentStateFromMessage(body: { type?: unknown; message?: unknown; documentId?: unknown }, previous?: ViewerAgentState) {
+function viewerAgentStateFromMessage(body: { type?: unknown; message?: unknown; documentId?: unknown; selection?: unknown }, previous?: ViewerAgentState) {
   const documentId = typeof body.documentId === "string" ? body.documentId : "";
   if (!documentId) return null;
   const type = String(body.type || "");
@@ -695,6 +695,14 @@ function viewerAgentStateFromMessage(body: { type?: unknown; message?: unknown; 
   if (type === "error") {
     next.lastError = message || "Viewer reported an error.";
     next.lastMessage = message || next.lastMessage;
+    return next;
+  }
+  if (type === "agentSelectionChanged") {
+    next.selection = body.selection && typeof body.selection === "object"
+      ? body.selection as AgentSceneSelection
+      : null;
+    next.lastMessage = next.selection ? "Viewer selection changed" : "Viewer selection cleared";
+    next.lastError = null;
     return next;
   }
   return null;
