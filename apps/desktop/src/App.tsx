@@ -14,6 +14,7 @@ import {
   useOpenCommandPalette,
   useSetCommandPaletteSearch,
 } from "./hooks/use-command-palette";
+import { useAppDescriptors } from "./hooks/use-app-descriptors";
 import { useAppFileActions } from "./hooks/use-app-file-actions";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
 import { useAppMaintenance } from "./hooks/use-app-maintenance";
@@ -83,7 +84,6 @@ import { isSpectrumPath, isSubformulaSpectrumJsonText, isTabularSpectrumExtensio
 import type { TextStructureSelection } from "./lib/text-structure-selection";
 import { isTauriRuntime } from "./lib/tauri";
 import { isTemporaryDocumentPath } from "./lib/temporary-documents";
-import { calculateGridDescriptors as runGridDescriptorCalculation, type DescriptorSourcePayload, type GridDescriptorControls, type GridDescriptorJobStatus, type GridDescriptorResultRow, type GridDescriptorRunOptions } from "./lib/descriptors";
 import type { ConformerJob, ConformerOperation, ConformerPreparedRun, ConformerRunRequest, ConformerRunResult, ConformerSettings, ConformerStatus, DockingDocumentRequest, DockingSceneMode, FepSetupRequest, OpenDocumentsMode, OpenDocumentsResult, OpenTextFilesResult, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XtbJob, XtbOperation, XtbRunRequest, XtbRunResult, XtbSettings, XtbStatus } from "./types";
 
 const CommandPalette = lazy(() => import("./components/command-palette").then((module) => ({
@@ -97,12 +97,7 @@ const filters = [
   },
 ];
 
-const GRID_DESCRIPTOR_JOB_EVENT = "burrete-grid-descriptor-job";
 const NOT_RENDERABLE_RENDERER = "not-renderable";
-
-function publishGridDescriptorJob(status: GridDescriptorJobStatus) {
-  window.dispatchEvent(new CustomEvent<GridDescriptorJobStatus>(GRID_DESCRIPTOR_JOB_EVENT, { detail: status }));
-}
 
 const structureExtensions = new Set(previewFormatRegistry.formats
   .filter((format) => format.preview?.strategy !== "text")
@@ -541,7 +536,6 @@ export default function App() {
   const [structureDragActive, setStructureDragActive] = useState(false);
   const [ketcherImportRequest, setKetcherImportRequest] = useState<KetcherImportRequest | null>(null);
   const [ketcherDraftMolfile, setKetcherDraftMolfile] = useState("");
-  const [descriptorSource, setDescriptorSource] = useState<DescriptorSourcePayload | null>(null);
   const [dirtyGridDocuments, setDirtyGridDocuments] = useState<Set<string>>(() => new Set());
   const { status, pushStatus, pushErrorStatus, clearStatus, recentErrorsRef } = useAppStatus();
   const [poseReviewSelections, setPoseReviewSelections] = useState<Record<string, number>>({});
@@ -566,6 +560,18 @@ export default function App() {
     openNewWindow,
     resetQuickLook,
   } = useAppMaintenance({ pushErrorStatus, pushStatus });
+  const {
+    applyGridDescriptorControls,
+    applyGridDescriptorResults,
+    calculateGridDescriptors,
+    clearDescriptorSource,
+    descriptorSource,
+    openDescriptorSource,
+  } = useAppDescriptors({
+    documents,
+    openDockTab,
+    pushStatus,
+  });
   const openedBrowserDevFilesRef = useRef<string | null>(null);
   const openedBrowserDevDockingRef = useRef<string | null>(null);
   const refreshedPersistedSessionRef = useRef(false);
@@ -2240,110 +2246,6 @@ export default function App() {
   const clearKetcherImportRequest = useCallback((id: number) => {
     setKetcherImportRequest((request) => (request?.id === id ? null : request));
   }, []);
-
-  const openDescriptorSource = useCallback((source: DescriptorSourcePayload) => {
-    setDescriptorSource(source);
-    openDockTab("right", "descriptors");
-    pushStatus(`Opened descriptors for ${source.sourceLabel}`);
-  }, [openDockTab, pushStatus]);
-
-  const clearDescriptorSource = useCallback(() => {
-    setDescriptorSource(null);
-  }, []);
-
-  const applyGridDescriptorControls = useCallback((documentId: string, controls: GridDescriptorControls) => {
-    const iframe = document.querySelector<HTMLIFrameElement>(`.viewer-iframe[data-document-id="${CSS.escape(documentId)}"]`);
-    if (!iframe?.contentWindow) {
-      pushStatus("Grid descriptor target is not open.", "error");
-      return;
-    }
-    iframe.contentWindow.postMessage({
-      source: "burrete-grid-host",
-      body: {
-        type: "gridDescriptorControls",
-        documentId,
-        filters: controls.filters,
-        descriptorSort: controls.descriptorSort,
-      },
-    }, "*");
-    pushStatus("Applied descriptor controls to grid");
-  }, [pushStatus]);
-
-  const applyGridDescriptorResults = useCallback((documentId: string, rows: GridDescriptorResultRow[]) => {
-    const iframe = document.querySelector<HTMLIFrameElement>(`.viewer-iframe[data-document-id="${CSS.escape(documentId)}"]`);
-    if (!iframe?.contentWindow) {
-      pushStatus("Grid descriptor target is not open.", "error");
-      return;
-    }
-    iframe.contentWindow.postMessage({
-      source: "burrete-grid-host",
-      body: {
-        type: "gridDescriptorResults",
-        documentId,
-        rows,
-      },
-    }, "*");
-    pushStatus(`Applied descriptors to ${rows.length.toLocaleString()} grid row${rows.length === 1 ? "" : "s"}`);
-  }, [pushStatus]);
-
-  const calculateGridDescriptors = useCallback((documentId: string, options: GridDescriptorRunOptions = {}) => {
-    const targetDocument = documents.find((document) => document.id === documentId);
-    if (!targetDocument) {
-      pushStatus("Grid descriptor target is not open.", "error");
-      return;
-    }
-    const rowIndexes = Array.isArray(options.rowIndexes)
-      ? Array.from(new Set(options.rowIndexes
-        .map((index) => Math.trunc(Number(index)))
-        .filter((index) => Number.isFinite(index) && index >= 0)))
-        .sort((left, right) => left - right)
-      : [];
-    const targetCount = rowIndexes.length;
-    openDockTab("right", "descriptors");
-    publishGridDescriptorJob({
-      documentId,
-      status: "running",
-      running: true,
-      totalRows: targetCount,
-      processedRows: 0,
-      calculatedRows: 0,
-      failedRows: 0,
-      message: targetCount
-        ? `Starting descriptor calculation for ${targetCount.toLocaleString()} selected molecule${targetCount === 1 ? "" : "s"}...`
-        : "Starting descriptor calculation for all molecules...",
-      startedAtMs: Date.now(),
-      finishedAtMs: null,
-      summary: null,
-    });
-    pushStatus(targetCount
-      ? `Calculating descriptors for ${targetCount.toLocaleString()} selected molecule${targetCount === 1 ? "" : "s"}`
-      : "Calculating descriptors for all molecules");
-    void runGridDescriptorCalculation(documentId, targetDocument.path, targetCount ? { rowIndexes } : {})
-      .then((status) => {
-        publishGridDescriptorJob(status);
-        if (status.rows?.length) applyGridDescriptorResults(documentId, status.rows);
-        if (!status.running) {
-          pushStatus(status.message || "Descriptor calculation finished", status.status === "failed" ? "error" : "success");
-        }
-      })
-      .catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
-        publishGridDescriptorJob({
-          documentId,
-          status: "failed",
-          running: false,
-          totalRows: targetCount,
-          processedRows: 0,
-          calculatedRows: 0,
-          failedRows: 0,
-          message,
-          startedAtMs: Date.now(),
-          finishedAtMs: Date.now(),
-          summary: null,
-        });
-        pushStatus(`Descriptor calculation failed: ${message}`, "error");
-      });
-  }, [applyGridDescriptorResults, documents, openDockTab, pushStatus]);
 
   const confirmDiscardDirtyGridDocument = useCallback((documentId: string | null | undefined) => {
     if (!documentId || !dirtyGridDocuments.has(documentId)) return true;
