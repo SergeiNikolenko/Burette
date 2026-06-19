@@ -33,6 +33,7 @@ const [
   structureBrief,
   structureComposition,
   structureText,
+  fileRouting,
   directChemistryGuard,
   dock,
   chemistryJobRequests,
@@ -164,6 +165,7 @@ const [
   source('apps/desktop/src/lib/structure-brief.ts'),
   source('apps/desktop/src/lib/structure-composition.ts'),
   source('apps/desktop/src/lib/structure-text.ts'),
+  source('apps/desktop/src/lib/file-routing.ts'),
   source('apps/desktop/src/lib/direct-chemistry-guard.ts'),
   source('apps/desktop/src/lib/dock.ts'),
   source('apps/desktop/src/lib/chemistry-job-requests.ts'),
@@ -773,7 +775,9 @@ assert.match(appSidebarProjectsHook, /recentStructures: sidebarRecentStructures,
 assert.match(app, /return \[\];\s*}\s*function browserDevFolderFromLocation/);
 assert.match(app, /function splitDevFiles\(rawFiles: string\)/);
 assert.doesNotMatch(app, /fetch\("\/__burette\/dev-files", \{ cache: "no-store" \}\)/);
-assert.match(app, /const NOT_RENDERABLE_RENDERER = "not-renderable";/);
+assert.match(fileRouting, /export const NOT_RENDERABLE_RENDERER = "not-renderable";/);
+assert.match(fileRouting, /export function summarizeErrorText\(message: string\)/);
+assert.match(app, /from "\.\/lib\/file-routing"/);
 assert.match(app, /if \(document\.renderer === NOT_RENDERABLE_RENDERER\) \{\s*closeDocument\(document\.id\);/);
 assert.match(app, /const documents = result\.documents\.filter\(\(document\) => document\.renderer !== NOT_RENDERABLE_RENDERER\);/);
 assert.match(app, /const backgroundTextPaths = structureAndTextPaths\.filter\(\(path\) => openedStructureAndTextPaths\.has\(path\)\);/);
@@ -2881,7 +2885,7 @@ assert.match(app, /const structurePaths = cleanPaths\.filter\(\(path\) => !isFep
 assert.match(app, /const graphmlText = await readStructureText\(path\)/);
 assert.match(app, /openFepNetworkTab\(\{ kind: "fep-network", title: basename\(path\), graphmlText \}\)/);
 assert.match(app, /openFepNetworkTab\(\{ kind: "fep-network", \.\.\.request \}\)/);
-assert.match(app, /function isFepGraphmlPath\(path: string\)/);
+assert.match(fileRouting, /export function isFepGraphmlPath\(path: string\)/);
 assert.match(app, /pushStatus\("Opened FEP network preview"\)/);
 assert.match(app, /const currentFepSetupRequest = useMemo<FepSetupRequest \| null>/);
 assert.match(app, /fepSetupRequest: currentFepSetupRequest/);
@@ -3257,7 +3261,7 @@ assert.match(browserDevDocuments, /dataBase64: bytesToBase64\(new TextEncoder\(\
 assert.match(browserDevDocuments, /if \(ctType === "full_system"\) return 4/);
 assert.match(browserDevDocuments, /if \(ctType === "solute"\) return 3/);
 assert.match(browserDevDocuments, /function parseOrcaAtoms\(lines: string\[\]\)/);
-assert.match(app, /if \(fileName\.toLowerCase\(\)\.endsWith\("\.mae\.gz"\)\) return "maegz";/);
+assert.match(fileRouting, /if \(fileName\.toLowerCase\(\)\.endsWith\("\.mae\.gz"\)\) return "maegz";/);
 assert.match(browserDevDocuments, /if \(name\.toLowerCase\(\)\.endsWith\("\.mae\.gz"\)\) return "maegz";/);
 assert.match(browserDevDocuments, /isMaestroPreviewExtension\(extension\) && extension !== "maegz"/);
 assert.match(browserDevDocuments, /function browserDevReadUrl\(path: string, extension: string\)/);
@@ -4378,9 +4382,9 @@ assert.match(app, /function exportDialogFilters\(fileName: string, mimeType: str
 assert.match(app, /if \(body\?\.type === "gridFetchPage"\) \{\s*if \(!body\.requestId \|\| !body\.documentId\) return;/s);
 assert.match(app, /invoke\("grid_fetch_page"/);
 assert.match(app, /source: "burrete-grid-host"/);
-assert.match(app, /type GridDelimitedColumnChoice = \{/);
-assert.match(app, /function isDelimitedColumnAmbiguity\(error: unknown\)/);
-assert.match(app, /multiple possible structure columns/);
+assert.match(fileRouting, /export type GridDelimitedColumnChoice = \{/);
+assert.match(fileRouting, /export function isDelimitedColumnAmbiguity\(error: unknown\)/);
+assert.match(fileRouting, /multiple possible structure columns/);
 assert.match(app, /const openDelimitedGridDocument = useCallback/);
 assert.match(app, /invoke<ViewerDocument>\("open_delimited_grid_document"/);
 assert.match(app, /const showDelimitedGridColumnOpenMenu = useCallback/);
