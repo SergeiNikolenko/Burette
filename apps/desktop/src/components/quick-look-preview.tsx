@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import { ViewerFrame } from "./editor-area/viewer-frame";
 import { SpectrumViewer } from "./spectrum-viewer";
+import { ViewerFrame } from "./editor-area/viewer-frame";
 import type { ViewerDocument } from "../types";
 
 export function QuickLookPreview({

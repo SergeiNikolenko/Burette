@@ -347,6 +347,28 @@ assert.equal(oneHtbPdb.ligandRows[0].action?.selector.label_comp_id, "NAD");
 assert.equal(oneHtbPdb.ligandRows[0].action?.selector.auth_asym_id, "A");
 assert.equal(oneHtbPdb.ligandRows[0].action?.selector.auth_seq_id, 377);
 
+const multiPosePdbqt = parseStructureComposition([
+  "MODEL 1",
+  "REMARK minimizedAffinity -8.0",
+  "ROOT",
+  "ATOM      1  C   UNL     1      56.893  -9.434  10.824  0.00  0.00    +0.000 C ",
+  "ATOM      2  C   UNL     1      58.152  -9.602   9.952  0.00  0.00    +0.000 A ",
+  "ENDROOT",
+  "ENDMDL",
+  "MODEL 2",
+  "ROOT",
+  "ATOM      1  C   UNL     1      57.893  -8.434  11.824  0.00  0.00    +0.000 C ",
+  "ATOM      2  O   UNL     1      58.152  -8.602   8.952  0.00  0.00    +0.000 OA",
+  "ENDROOT",
+  "ENDMDL",
+].join("\n"), "pdbqt");
+assert.ok(multiPosePdbqt);
+assert.equal(rowValue(multiPosePdbqt.rows, "Models"), "2");
+assert.equal(rowValue(multiPosePdbqt.rows, "Elements"), "C 3, O 1");
+assert.equal(rowValue(multiPosePdbqt.componentRows, "Polymers"), "None detected");
+assert.equal(rowValue(multiPosePdbqt.componentRows, "Ligands"), "1 type / 2 instances / 4 atoms");
+assert.equal(multiPosePdbqt.ligandRows.length, 2);
+
 const miniCif = parseStructureComposition(await readFile(join(fixturesRoot, "mini.cif"), "utf8"), "cif");
 assert.ok(miniCif);
 assert.equal(rowValue(miniCif.rows, "Atoms"), "4");

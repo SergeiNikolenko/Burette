@@ -18,8 +18,8 @@ contains only documents that describe the active project.
   check paths that avoid full local rebuilds.
 - [Control affordances](control-affordances.md): tooltip and menu-detail rules
   for compact controls across React, Mol*, `xyzrender`, Grid, and Ketcher.
-- [Quick Look debugging](quicklook-debugging.md): Finder preview diagnosis and
-  cache reset workflow.
+- [Quick Look debugging](quicklook-debugging.md): browser-only preview debug,
+  Finder preview diagnosis, and cache reset workflow.
 - [Launch modes](launch-modes.md): normal, file-open, tray, and registration
   launch semantics.
 - [Releasing](releasing.md): version, build, signing, update, and artifact
