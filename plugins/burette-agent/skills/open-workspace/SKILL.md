@@ -49,6 +49,31 @@ bun scripts/burrete-agent.mjs observe --session-dir <sessionDir>
 bun scripts/burrete-agent.mjs act --session-dir <sessionDir> '{"type":"focus_ligand","selector":{"comp_id":"PYZ"},"allowAmbiguous":true}' --wait-ms 12000
 ```
 
+Use `manage_burrete_tabs` for tab strip work inside Burrete:
+
+- `list` to read tab ids, indexes, paths, titles, and active state;
+- `focus`, `next`, or `previous` to switch active Burrete tabs;
+- `open_file` to open a file as a Burrete tab in the existing workspace;
+- `new` to create a blank Burrete tab;
+- `close` to close a Burrete tab by id, index, path, title, or the active tab;
+- `move` to reorder a tab with `toIndex`.
+
+Do not open additional Codex Browser tabs when the user asks for additional
+Burrete tabs.
+
+Use `manage_burrete_structure_component` instead of manually driving the
+right-click menus when the user asks to select, focus, hide/remove from view,
+restore, or open a structure part separately:
+
+- `select` or `focus` with `component`, `chain`, `compId`, `seq`, or `element`;
+- `hide` or `show` for polymer, ligand, water, or ion component classes;
+- `clear` to clear the active Mol* selection;
+- `open_as_tab` to extract a PDB component to a temporary PDB and open it as a
+  Burrete tab in the same workspace.
+
+This is view/runtime control. Do not delete or rewrite the user's source file
+unless they explicitly ask for file mutation.
+
 If the visible in-app Browser tab is already on the agent-owned
 browser-dev-shell URL but `sessionDir` is missing from the conversation, pass
 the URL directly:

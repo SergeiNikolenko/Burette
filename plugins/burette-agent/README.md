@@ -68,6 +68,14 @@ high-level content facts used by the Info dock, including format, kind, atom
 counts, chains, ligand instances, water, ions, and Mol* selectors for detected
 ligands. `open_burrete_workspace` attaches this summary to its structured
 result when a file is opened.
+`manage_burrete_tabs` controls the Burrete tab strip through the same agent
+session: list tabs, focus by id/index/path/title, move tabs, close tabs, create
+a blank tab, or open a file into the workspace without creating a separate
+Browser tab.
+`manage_burrete_structure_component` exposes the structure context-menu
+operations as tools: select/focus components in Mol*, hide/show component
+classes, clear selection, or extract a chain/ligand/water/ion/polymer/element
+from a PDB file into a temporary PDB and open it as a separate Burrete tab.
 
 ## MolViewSpec Scene Language
 
