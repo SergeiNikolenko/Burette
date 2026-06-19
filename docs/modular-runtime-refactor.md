@@ -64,6 +64,15 @@ After Stage 1 is green, split browser-dev handlers by endpoint group:
 Keep xTB and conformer job lifecycle logic in one slice each so process
 registration, cancellation, and cleanup stay auditable.
 
+Current Stage 2 progress:
+
+- file discovery and file content route registration lives in
+  `apps/desktop/vite/browser-dev/files.ts`;
+- RDKit wasm and app icon route registration lives in
+  `apps/desktop/vite/browser-dev/assets.ts`;
+- shared file-system helpers stay in `vite.config.ts` until the remaining
+  xTB, conformer, Desmond, and xyzrender routes are split.
+
 ## Stage 3: App Composition Refactor
 
 Move `App.tsx` logic in dependency order:
