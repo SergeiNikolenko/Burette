@@ -37,6 +37,7 @@ const [
   dock,
   chemistryJobRequests,
   chemistrySettings,
+  conformerGeneration,
   packageJson,
   themeSource,
   appLayout,
@@ -167,6 +168,7 @@ const [
   source('apps/desktop/src/lib/dock.ts'),
   source('apps/desktop/src/lib/chemistry-job-requests.ts'),
   source('apps/desktop/src/lib/chemistry-settings.ts'),
+  source('apps/desktop/src/lib/conformer-generation.ts'),
   source('package.json'),
   source('apps/desktop/src/lib/theme.ts'),
   source('apps/desktop/src/components/app-layout.tsx'),
@@ -1596,25 +1598,28 @@ assert.match(app, /source3d: null/);
 assert.doesNotMatch(app, /Generate 3D runs in the desktop app runtime\. Browser dev shows the control placement only\./);
 assert.match(app, /pushStatus\(generated3DStatus\(conformer, "opened it in Molstar"\)\)/);
 assert.doesNotMatch(app, /Generated 3D conformer with \$\{conformer\.method\} and replaced the current view/);
-assert.match(app, /function generated3DStatus\(conformer: ConformerGenerationResult, action: string\)/);
-assert.match(app, /function conformerGenerationPreferences\(preferences: ViewerPreferences\)/);
-assert.match(app, /candidateCount: preferences\.conformerCandidateCount/);
-assert.match(app, /rmsdCutoff: preferences\.conformerRmsdCutoff/);
-assert.match(app, /const subject = count > 1 \? `\$\{count\} 3D conformers` : "3D conformer"/);
-assert.match(app, /function generated3DPoseSetText\(sourceText: string, sourceExtension: string, generatedText: string, mode: ConformerGenerationMode = "single"\)/);
-assert.match(app, /function sourcePoseRecordBlocks\(text: string, extension: string\)/);
-assert.match(app, /function sdfRecordBlocks\(text: string\)/);
-assert.match(app, /const alignedGeneratedRecords = alignGeneratedPoseRecordsToSource\(generatedRecords, sourceRecords\[0\]\)/);
-assert.match(app, /const records = mode === "ensemble" \? alignedGeneratedRecords : \[\.\.\.alignedGeneratedRecords, \.\.\.sourceRecords\]/);
-assert.match(app, /function alignGeneratedPoseRecordsToSource\(records: string\[\], sourceRecord: string \| undefined\)/);
-assert.match(app, /function alignMolBlockCentroid\(record: string, source: MolBlockAtomCoordinates\)/);
-assert.match(app, /function readMolBlockAtomCoordinates\(record: string\): MolBlockAtomCoordinates \| null/);
-assert.match(app, /function formatMolCoordinate\(value: number\)/);
-assert.match(app, /function normalizeMolstarStylePreference\(value: unknown\): MolstarStylePreference \| null/);
-assert.match(app, /function conformerGenerationTaskLabel\(mode: ConformerGenerationMode\)/);
-assert.match(app, /mode === "ensemble" \? "3D conformer set" : "3D conformer"/);
-assert.match(app, /function conformerZDepth\(text: string\)/);
-assert.match(app, /z-depth \$\{depth\.toFixed\(2\)\} A/);
+assert.match(app, /from "\.\/lib\/conformer-generation"/);
+assert.doesNotMatch(app, /function generated3DStatus/);
+assert.doesNotMatch(app, /function generated3DPoseSetText/);
+assert.match(conformerGeneration, /export function generated3DStatus\(conformer: ConformerGenerationResult, action: string\)/);
+assert.match(conformerGeneration, /export function conformerGenerationPreferences\(preferences: ViewerPreferences\)/);
+assert.match(conformerGeneration, /candidateCount: preferences\.conformerCandidateCount/);
+assert.match(conformerGeneration, /rmsdCutoff: preferences\.conformerRmsdCutoff/);
+assert.match(conformerGeneration, /const subject = count > 1 \? `\$\{count\} 3D conformers` : "3D conformer"/);
+assert.match(conformerGeneration, /export function generated3DPoseSetText\(sourceText: string, sourceExtension: string, generatedText: string, mode: ConformerGenerationMode = "single"\)/);
+assert.match(conformerGeneration, /function sourcePoseRecordBlocks\(text: string, extension: string\)/);
+assert.match(conformerGeneration, /function sdfRecordBlocks\(text: string\)/);
+assert.match(conformerGeneration, /const alignedGeneratedRecords = alignGeneratedPoseRecordsToSource\(generatedRecords, sourceRecords\[0\]\)/);
+assert.match(conformerGeneration, /const records = mode === "ensemble" \? alignedGeneratedRecords : \[\.\.\.alignedGeneratedRecords, \.\.\.sourceRecords\]/);
+assert.match(conformerGeneration, /function alignGeneratedPoseRecordsToSource\(records: string\[\], sourceRecord: string \| undefined\)/);
+assert.match(conformerGeneration, /function alignMolBlockCentroid\(record: string, source: MolBlockAtomCoordinates\)/);
+assert.match(conformerGeneration, /function readMolBlockAtomCoordinates\(record: string\): MolBlockAtomCoordinates \| null/);
+assert.match(conformerGeneration, /function formatMolCoordinate\(value: number\)/);
+assert.match(conformerGeneration, /export function normalizeMolstarStylePreference\(value: unknown\): MolstarStylePreference \| null/);
+assert.match(conformerGeneration, /export function conformerGenerationTaskLabel\(mode: ConformerGenerationMode\)/);
+assert.match(conformerGeneration, /mode === "ensemble" \? "3D conformer set" : "3D conformer"/);
+assert.match(conformerGeneration, /function conformerZDepth\(text: string\)/);
+assert.match(conformerGeneration, /z-depth \$\{depth\.toFixed\(2\)\} A/);
 assert.match(app, /function replaceMolstarStructureInPlace\(/);
 assert.match(app, /type: "replaceMolstarStructure"/);
 assert.match(app, /const requestId = `molstar-replace-\$\{Date\.now\(\)\}-\$\{Math\.random\(\)\.toString\(36\)\.slice\(2\)\}`/);
