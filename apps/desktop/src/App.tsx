@@ -82,6 +82,7 @@ import { conformerGenerationPreferences, conformerGenerationTaskLabel, generated
 import { directChemistryJobGuardMessage } from "./lib/direct-chemistry-guard";
 import type { DockArea, DockTabKind } from "./lib/dock";
 import type { DropActionChoice } from "./lib/drop-actions";
+import { delimitedColumnChoiceLabel, isDelimitedColumnAmbiguity, isFepGraphmlPath, NOT_RENDERABLE_RENDERER, pathExtension, preferredTextExtensions, structureAndTextExtensions, structureExtensionFromPath, structureExtensions, summarizeErrors, summarizeErrorText, type GridDelimitedColumnChoice } from "./lib/file-routing";
 import { markPerformanceOnce } from "./lib/performance";
 import { basename, parentDirectory } from "./lib/sidebar-projects";
 import type { StructureDragPayload, StructureDragRecord } from "./lib/structure-drag";
@@ -103,107 +104,6 @@ const filters = [
   },
 ];
 
-const NOT_RENDERABLE_RENDERER = "not-renderable";
-
-const structureExtensions = new Set(previewFormatRegistry.formats
-  .filter((format) => format.preview?.strategy !== "text")
-  .flatMap((format) => format.extensions)
-  .map((extension) => extension.toLowerCase()));
-const preferredTextExtensions = new Set([
-  "md",
-  "markdown",
-  "mdx",
-  "txt",
-  "log",
-  "out",
-  "err",
-  "sh",
-  "bash",
-  "zsh",
-  "py",
-  "rs",
-  "js",
-  "jsx",
-  "ts",
-  "tsx",
-  "json",
-  "yaml",
-  "yml",
-  "toml",
-  "html",
-  "css",
-  "dms",
-  "edr",
-  "fasta",
-  "par",
-  "prm",
-  "rtf",
-  "str",
-  "xvg",
-  "key",
-  "chk",
-  "checkpoint",
-]);
-const structureAndTextExtensions = new Set([
-  "abi",
-  "cms",
-  "com",
-  "config",
-  "coor",
-  "csv",
-  "crdbox",
-  "cub",
-  "cube",
-  "data",
-  "dcd",
-  "dump",
-  "fdf",
-  "fhiaims",
-  "gms",
-  "graphml",
-  "gsd",
-  "h5md",
-  "in",
-  "inp",
-  "inpcrd",
-  "itp",
-  "lammpstrj",
-  "lammps",
-  "lmp",
-  "mae",
-  "maegz",
-  "mdcrd",
-  "namdbin",
-  "nc",
-  "ncdf",
-  "ncrst",
-  "nctraj",
-  "netcdf",
-  "nw",
-  "parm",
-  "parm7",
-  "prmtop",
-  "psf",
-  "psi4",
-  "qcin",
-  "crd",
-  "restrt",
-  "rst",
-  "rst7",
-  "state",
-  "top",
-  "tpr",
-  "tng",
-  "trc",
-  "trr",
-  "trz",
-  "tsv",
-  "txyz",
-  "xtc",
-  "vasp",
-  "xml",
-]);
-
 const GRID_PERF_REPORT_PATH = "/private/tmp/burrete-grid-real-app-perf.jsonl";
 type MolstarContextDocument = Parameters<typeof openBrowserDevMolstarContextDocument>[0];
 type MolstarContextEntry = NonNullable<MolstarContextDocument["entries"]>[number];
@@ -223,31 +123,11 @@ function molstarContextEntryExtension(format: string | undefined) {
   return value || "pdb";
 }
 
-function structureExtensionFromPath(path: string | null | undefined) {
-  const name = basename(String(path || ""));
-  const dotIndex = name.lastIndexOf(".");
-  return dotIndex > 0 ? name.slice(dotIndex + 1).toLowerCase() : "pdb";
-}
-
 type GridAppendResult = {
   recordsAppended: number;
   totalRows: number;
   errors: string[];
 };
-
-type GridDelimitedColumnChoice = {
-  index: number;
-  name: string;
-};
-
-function isDelimitedColumnAmbiguity(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.includes("multiple possible structure columns");
-}
-
-function delimitedColumnChoiceLabel(choice: GridDelimitedColumnChoice) {
-  return `${choice.name} (column ${choice.index})`;
-}
 
 async function browserDevFilesFromLocation() {
   const params = new URLSearchParams(window.location.search);
@@ -4291,21 +4171,6 @@ function normalizeViewerRuntimeRelativePath(path: string) {
   return parts.join("/");
 }
 
-function summarizeErrors(errors: string[]) {
-  const [first = "Unknown error", ...rest] = errors.map(summarizeErrorText);
-  return rest.length > 0
-    ? `${first} (+${rest.length} more ${rest.length === 1 ? "issue" : "issues"})`
-    : first;
-}
-
-function summarizeErrorText(message: string) {
-  return (message || "Unknown error").trim().split(/\r?\n| Error:| at /)[0]?.trim() || "Unknown error";
-}
-
-function isFepGraphmlPath(path: string) {
-  return /\.graphml$/iu.test(path);
-}
-
 function conformerOutputDirectory(document: ViewerDocument) {
   const sourcePath = document.sourcePath?.trim() || (!document.virtual ? document.path : "");
   if (!sourcePath || /^[a-z][a-z0-9+.-]*:/iu.test(sourcePath)) return null;
@@ -4436,14 +4301,6 @@ function selectorText(
   const value = selector[key];
   if (Array.isArray(value) || value === undefined || value === null) return null;
   return String(value);
-}
-
-function pathExtension(path: string) {
-  const fileName = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
-  if (fileName.toLowerCase().endsWith(".mae.gz")) return "maegz";
-  const index = fileName.lastIndexOf(".");
-  if (index <= 0 || index === fileName.length - 1) return "";
-  return fileName.slice(index + 1).toLowerCase();
 }
 
 function ketcherSource3DFromText(title: string, text: string, extension: string): KetcherSource3D | undefined {
