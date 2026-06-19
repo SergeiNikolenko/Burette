@@ -17,6 +17,7 @@ import {
 } from "./hooks/use-command-palette";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
 import { useAppBootstrap } from "./hooks/use-app-bootstrap";
+import { useAppResize } from "./hooks/use-app-resize";
 import { useAppStatus } from "./hooks/use-app-status";
 import { useAgentSession } from "./hooks/use-agent-session";
 import { useMenuEvents } from "./hooks/use-menu-events";
@@ -209,10 +210,6 @@ const structureAndTextExtensions = new Set([
 const GRID_PERF_REPORT_PATH = "/private/tmp/burrete-grid-real-app-perf.jsonl";
 const DIRECT_CHEMISTRY_JOB_ATOM_LIMIT = 300;
 const DIRECT_CHEMISTRY_JOB_READ_LIMIT = 4 * 1024 * 1024;
-const SIDEBAR_DRAG_CLOSE_WIDTH = 180;
-const RIGHT_DOCK_CLOSE_THRESHOLD = 180;
-const BOTTOM_DOCK_CLOSE_THRESHOLD = 120;
-
 type MolstarContextDocument = Parameters<typeof openBrowserDevMolstarContextDocument>[0];
 type MolstarContextEntry = NonNullable<MolstarContextDocument["entries"]>[number];
 type ConformerGenerationResult = {
@@ -578,9 +575,22 @@ export default function App() {
     setDockTool,
     addDockDrop,
   } = useDockLayout();
-  const [sidebarDragging, setSidebarDragging] = useState(false);
-  const [rightDockDragging, setRightDockDragging] = useState(false);
-  const [bottomDockDragging, setBottomDockDragging] = useState(false);
+  const {
+    bottomDockDragging,
+    rightDockDragging,
+    sidebarDragging,
+    startBottomDockResize,
+    startRightDockResize,
+    startSidebarResize,
+  } = useAppResize({
+    bottomDockHeight,
+    closeSidebar,
+    rightDockWidth,
+    setDockOpen,
+    setDockSize,
+    setSidebarWidth,
+    sidebarWidth,
+  });
   const toggleDockTab = useCallback((area: DockArea, kind: DockTabKind) => {
     const open = area === "right" ? rightDockOpen : bottomDockOpen;
     const activeKind = area === "right" ? rightDockActiveTab : bottomDockActiveTab;
@@ -4480,219 +4490,6 @@ export default function App() {
     // Preferences refresh only the mounted file runtime. Inactive file tabs are unloaded.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preferences]);
-
-  const startSidebarResize = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      if (event.button !== 0) return;
-      event.preventDefault();
-      setSidebarDragging(true);
-      const resizeTarget = event.currentTarget;
-      const pointerId = event.pointerId;
-      const startX = event.clientX;
-      const startWidth = sidebarWidth;
-      const previousCursor = document.documentElement.style.cursor;
-      const previousUserSelect = document.body.style.userSelect;
-      document.documentElement.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-      let didCloseSidebar = false;
-      let didStop = false;
-      const stop = () => {
-        if (didStop) return;
-        didStop = true;
-        setSidebarDragging(false);
-        document.documentElement.style.cursor = previousCursor;
-        document.body.style.userSelect = previousUserSelect;
-        try {
-          if (resizeTarget.hasPointerCapture(pointerId)) {
-            resizeTarget.releasePointerCapture(pointerId);
-          }
-        } catch {
-          // The pointer may already be gone if the native window lost focus.
-        }
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", stop);
-        window.removeEventListener("pointercancel", stop);
-        window.removeEventListener("blur", stop);
-        document.removeEventListener("visibilitychange", onVisibilityChange);
-        resizeTarget.removeEventListener("lostpointercapture", stop);
-      };
-      const onVisibilityChange = () => {
-        if (document.hidden) stop();
-      };
-      const onMove = (move: PointerEvent) => {
-        if (move.buttons === 0) {
-          stop();
-          return;
-        }
-        const nextWidth = startWidth + move.clientX - startX;
-        if (nextWidth < SIDEBAR_DRAG_CLOSE_WIDTH) {
-          if (!didCloseSidebar) {
-            didCloseSidebar = true;
-            closeSidebar();
-          }
-          stop();
-          return;
-        }
-        setSidebarWidth(nextWidth);
-      };
-      try {
-        resizeTarget.setPointerCapture(pointerId);
-      } catch {
-        // Keep the window-level fallback listeners active if capture is unavailable.
-      }
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", stop);
-      window.addEventListener("pointercancel", stop);
-      window.addEventListener("blur", stop);
-      document.addEventListener("visibilitychange", onVisibilityChange);
-      resizeTarget.addEventListener("lostpointercapture", stop);
-    },
-    [closeSidebar, setSidebarWidth, sidebarWidth],
-  );
-
-  const startRightDockResize = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      if (event.button !== 0) return;
-      event.preventDefault();
-      setRightDockDragging(true);
-      const resizeTarget = event.currentTarget;
-      const pointerId = event.pointerId;
-      const startX = event.clientX;
-      const startWidth = rightDockWidth;
-      let closedByDrag = false;
-      let didStop = false;
-      const previousCursor = document.documentElement.style.cursor;
-      const previousUserSelect = document.body.style.userSelect;
-      document.documentElement.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-      const onMove = (move: PointerEvent) => {
-        if (move.buttons === 0) {
-          stop();
-          return;
-        }
-        const nextWidth = startWidth + startX - move.clientX;
-        if (nextWidth <= RIGHT_DOCK_CLOSE_THRESHOLD) {
-          if (!closedByDrag) {
-            closedByDrag = true;
-            setDockOpen("right", false);
-          }
-          return;
-        }
-        if (closedByDrag) {
-          closedByDrag = false;
-          setDockOpen("right", true);
-        }
-        setDockSize("right", nextWidth);
-      };
-      const stop = () => {
-        if (didStop) return;
-        didStop = true;
-        setRightDockDragging(false);
-        document.documentElement.style.cursor = previousCursor;
-        document.body.style.userSelect = previousUserSelect;
-        try {
-          if (resizeTarget.hasPointerCapture(pointerId)) {
-            resizeTarget.releasePointerCapture(pointerId);
-          }
-        } catch {
-          // The pointer may already be gone if the native window lost focus.
-        }
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", stop);
-        window.removeEventListener("pointercancel", stop);
-        window.removeEventListener("blur", stop);
-        document.removeEventListener("visibilitychange", onVisibilityChange);
-        resizeTarget.removeEventListener("lostpointercapture", stop);
-      };
-      const onVisibilityChange = () => {
-        if (document.hidden) stop();
-      };
-      try {
-        resizeTarget.setPointerCapture(pointerId);
-      } catch {
-        // Keep the window-level fallback listeners active if capture is unavailable.
-      }
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", stop);
-      window.addEventListener("pointercancel", stop);
-      window.addEventListener("blur", stop);
-      document.addEventListener("visibilitychange", onVisibilityChange);
-      resizeTarget.addEventListener("lostpointercapture", stop);
-    },
-    [rightDockWidth, setDockOpen, setDockSize],
-  );
-
-  const startBottomDockResize = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      if (event.button !== 0) return;
-      event.preventDefault();
-      setBottomDockDragging(true);
-      const resizeTarget = event.currentTarget;
-      const pointerId = event.pointerId;
-      const startY = event.clientY;
-      const startHeight = bottomDockHeight;
-      let closedByDrag = false;
-      let didStop = false;
-      const previousCursor = document.documentElement.style.cursor;
-      const previousUserSelect = document.body.style.userSelect;
-      document.documentElement.style.cursor = "row-resize";
-      document.body.style.userSelect = "none";
-      const onMove = (move: PointerEvent) => {
-        if (move.buttons === 0) {
-          stop();
-          return;
-        }
-        const nextHeight = startHeight + startY - move.clientY;
-        if (nextHeight <= BOTTOM_DOCK_CLOSE_THRESHOLD) {
-          if (!closedByDrag) {
-            closedByDrag = true;
-            setDockOpen("bottom", false);
-          }
-          return;
-        }
-        if (closedByDrag) {
-          closedByDrag = false;
-          setDockOpen("bottom", true);
-        }
-        setDockSize("bottom", nextHeight);
-      };
-      const stop = () => {
-        if (didStop) return;
-        didStop = true;
-        setBottomDockDragging(false);
-        document.documentElement.style.cursor = previousCursor;
-        document.body.style.userSelect = previousUserSelect;
-        try {
-          if (resizeTarget.hasPointerCapture(pointerId)) {
-            resizeTarget.releasePointerCapture(pointerId);
-          }
-        } catch {
-          // The pointer may already be gone if the native window lost focus.
-        }
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", stop);
-        window.removeEventListener("pointercancel", stop);
-        window.removeEventListener("blur", stop);
-        document.removeEventListener("visibilitychange", onVisibilityChange);
-        resizeTarget.removeEventListener("lostpointercapture", stop);
-      };
-      const onVisibilityChange = () => {
-        if (document.hidden) stop();
-      };
-      try {
-        resizeTarget.setPointerCapture(pointerId);
-      } catch {
-        // Keep the window-level fallback listeners active if capture is unavailable.
-      }
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", stop);
-      window.addEventListener("pointercancel", stop);
-      window.addEventListener("blur", stop);
-      document.addEventListener("visibilitychange", onVisibilityChange);
-      resizeTarget.addEventListener("lostpointercapture", stop);
-    },
-    [bottomDockHeight, setDockOpen, setDockSize],
-  );
 
   const actions = useMemo<ShellActions>(() => ({
     chooseFiles,
