@@ -922,7 +922,7 @@ assert.match(quickLookPreviewController, /guard let url = currentPreviewURL else
 assert.match(viewerJS, /function requestStructureDataFromNative\(\)/);
 assert.match(viewerJS, /const fallbackKey = format === 'xyz' \? XYZ_FRAME_MODE_STORAGE_KEY : SDF_POSE_MODE_STORAGE_KEY/);
 assert.match(viewerJS, /const storageKey = String\(config\?\.sdfPoseModeStorageKey \|\| fallbackKey\)/);
-assert.match(viewerJS, /const defaultMode = config\?\.defaultSdfPoseMode === 'all' \? 'all' : 'single'/);
+assert.match(viewerJS, /const defaultMode = sceneMode === 'structureAll' \? 'all' : 'single'/);
 assert.match(viewerJS, /window\.__mqlPost\('requestData', 'requestData', \{ requestToken \}\);/);
 assert.match(viewerJS, /function loadArrayBufferViaXHR\(url\)/);
 assert.match(viewerJS, /fetch preview-data\.bin failed, falling back to XMLHttpRequest/);
