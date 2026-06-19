@@ -5,8 +5,10 @@ import path from "node:path";
 import { tmpdir } from "node:os";
 import {
   buildDoctorReport,
+  buildPluginStatus,
   compareVersions,
   findZipAsset,
+  installCodexPlugin,
   replaceInstalledApp,
   selectRelease,
 } from "../packages/burrete/bin/burrete.mjs";
@@ -71,6 +73,81 @@ try {
   });
   assert.deepEqual(doctorReport.map(item => item.ok), [true, true, true, true]);
   assert.match(doctorReport[3].detail, /0\.10\.40/);
+
+  const pluginSource = path.join(root, "repo", "plugins", "burette-agent");
+  await mkdir(path.join(pluginSource, ".codex-plugin"), { recursive: true });
+  await writeFile(path.join(pluginSource, ".codex-plugin", "plugin.json"), JSON.stringify({
+    name: "burrete",
+    version: "0.1.0",
+    skills: "./skills/",
+    mcpServers: "./.mcp.json",
+  }));
+  await writeFile(path.join(pluginSource, "README.md"), "# Plugin\n");
+  await writeFile(path.join(pluginSource, "package.json"), JSON.stringify({ name: "burette-agent-plugin" }));
+
+  const pluginCache = path.join(root, "codex-cache");
+  const statusBeforeInstall = await buildPluginStatus({
+    sourcePath: pluginSource,
+    cacheDir: pluginCache,
+    namespace: "test-local",
+  });
+  assert.equal(statusBeforeInstall.sourceOk, true);
+  assert.equal(statusBeforeInstall.installed, false);
+  assert.equal(statusBeforeInstall.target, path.join(pluginCache, "test-local", "burrete", "0.1.0"));
+
+  const installResult = await installCodexPlugin({
+    sourcePath: pluginSource,
+    cacheDir: pluginCache,
+    namespace: "test-local",
+    installDeps: false,
+    now: () => new Date("2026-06-19T00:00:00.000Z"),
+  });
+  assert.equal(installResult.action, "installed");
+  assert.equal(await readFile(path.join(installResult.target, "README.md"), "utf8"), "# Plugin\n");
+  const installMetadata = JSON.parse(await readFile(path.join(installResult.target, ".burette-agent-install.json"), "utf8"));
+  assert.equal(installMetadata.plugin.name, "burrete");
+  assert.equal(installMetadata.plugin.version, "0.1.0");
+  assert.equal(installMetadata.source, pluginSource);
+
+  await writeFile(path.join(pluginSource, "README.md"), "# Plugin updated\n");
+  const updateResult = await installCodexPlugin({
+    sourcePath: pluginSource,
+    cacheDir: pluginCache,
+    namespace: "test-local",
+    installDeps: false,
+  });
+  assert.equal(updateResult.action, "updated");
+  assert.equal(await readFile(path.join(updateResult.target, "README.md"), "utf8"), "# Plugin updated\n");
+
+  const statusAfterInstall = await buildPluginStatus({
+    sourcePath: pluginSource,
+    cacheDir: pluginCache,
+    namespace: "test-local",
+  });
+  assert.equal(statusAfterInstall.installed, true);
+
+  const existingNamespaceCache = path.join(root, "existing-namespace-cache");
+  const oldInstall = path.join(existingNamespaceCache, "market-local", "burrete", "0.0.9");
+  await mkdir(path.join(oldInstall, ".codex-plugin"), { recursive: true });
+  await writeFile(path.join(oldInstall, ".codex-plugin", "plugin.json"), JSON.stringify({
+    name: "burrete",
+    version: "0.0.9",
+  }));
+  const inferredStatus = await buildPluginStatus({
+    sourcePath: pluginSource,
+    cacheDir: existingNamespaceCache,
+  });
+  assert.equal(inferredStatus.namespace, "market-local");
+  assert.equal(inferredStatus.installedVersion, "0.0.9");
+  assert.equal(inferredStatus.target, path.join(existingNamespaceCache, "market-local", "burrete", "0.1.0"));
+  const inferredUpdate = await installCodexPlugin({
+    sourcePath: pluginSource,
+    cacheDir: existingNamespaceCache,
+    installDeps: false,
+  });
+  assert.equal(inferredUpdate.action, "updated");
+  assert.equal(inferredUpdate.namespace, "market-local");
+  assert.equal(inferredUpdate.target, path.join(existingNamespaceCache, "market-local", "burrete", "0.1.0"));
 } finally {
   await rm(root, { recursive: true, force: true });
 }

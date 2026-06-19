@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readFile, unlink } from "node:fs/promises";
 import path from "node:path";
 
+import { extractStructureComponentFile } from "../plugins/burette-agent/mcp/lib/structure-components.mjs";
+import { summarizeStructureFile } from "../plugins/burette-agent/mcp/lib/structure-summary.mjs";
 import { validateMolecularArtifact } from "../plugins/burette-agent/mcp/lib/validation.mjs";
 
 const pluginRoot = path.resolve("plugins/burette-agent");
@@ -45,18 +47,43 @@ assert.deepEqual(mcpConfig.mcpServers.burette_agent_mcp.args, ["./mcp/server.mjs
 const packageJson = JSON.parse(await read("package.json"));
 assert.match(packageJson.scripts.check, /mcp\/server\.mjs/);
 assert.match(packageJson.scripts.check, /scripts\/burette_agent_preflight\.mjs/);
+assert.match(packageJson.scripts.check, /mcp\/registrations\/fetch\/register\.mjs/);
 assert.match(packageJson.scripts.check, /mcp\/registrations\/molecular-workspace\/register\.mjs/);
 
 const server = await read("mcp/server.mjs");
 assert.match(server, /new McpServer/);
+assert.match(server, /registerFetch\(server\)/);
 assert.match(server, /registerMolecularWorkspace\(server\)/);
 assert.match(server, /registerMoleculeTable\(server\)/);
 assert.match(server, /registerTrajectoryReview\(server\)/);
 assert.match(server, /registerMolecularReport\(server\)/);
 
+const fetchRegistration = await read("mcp/registrations/fetch/register.mjs");
+assert.match(fetchRegistration, /registerAppTool/);
+assert.match(fetchRegistration, /"fetch"/);
+assert.match(fetchRegistration, /max_length/);
+assert.match(fetchRegistration, /start_index/);
+assert.match(fetchRegistration, /raw/);
+assert.match(fetchRegistration, /openWorldHint: true/);
+assert.match(fetchRegistration, /Local, private, and link-local hosts are blocked/);
+assert.match(fetchRegistration, /MAX_RESPONSE_BYTES/);
+
 const workspaceRegistration = await read("mcp/registrations/molecular-workspace/register.mjs");
 assert.match(workspaceRegistration, /registerAppTool/);
 assert.match(workspaceRegistration, /open_burrete_workspace/);
+assert.match(workspaceRegistration, /summarize_burrete_structure/);
+assert.match(workspaceRegistration, /summarizeStructureFile/);
+assert.match(workspaceRegistration, /structureSummary/);
+assert.match(workspaceRegistration, /manage_burrete_tabs/);
+assert.match(workspaceRegistration, /type: "manage_tabs"/);
+assert.match(workspaceRegistration, /operation: z\.enum\(\["list", "focus", "next", "previous", "open_file", "new", "close", "move"\]\)/);
+assert.match(workspaceRegistration, /manage_burrete_structure_component/);
+assert.match(workspaceRegistration, /extractStructureComponentFile/);
+assert.match(workspaceRegistration, /type: "clear_selection"/);
+assert.match(workspaceRegistration, /hide_components/);
+assert.match(workspaceRegistration, /open_burrete_docking_view/);
+assert.match(workspaceRegistration, /type: "open_docking_view"/);
+assert.match(workspaceRegistration, /sceneMode: z\.enum\(\["structureAll", "structurePoses"\]\)/);
 assert.match(workspaceRegistration, /observe_burrete_workspace/);
 assert.match(workspaceRegistration, /act_molstar_scene/);
 assert.match(workspaceRegistration, /declarative Mol\* scene action/);
@@ -210,12 +237,32 @@ assert.match(readme, /"type":"apply_scene"/);
 assert.match(readme, /"selector":"protein"/);
 assert.match(readme, /load_mvs/);
 
+const structureSummary = await summarizeStructureFile("tests/fixtures/BurettePreviewSamples/mini.pdb");
+assert.equal(structureSummary.format, "PDB");
+assert.equal(structureSummary.counts.atoms, 9);
+assert.equal(structureSummary.counts.chains, 1);
+
+const extractedLigand = await extractStructureComponentFile({
+  file: "tests/fixtures/BurettePreviewSamples/1HTB.pdb",
+  component: "ligand",
+  chain: "A",
+  compId: "NAD",
+  seq: 377,
+  title: "test-nad-a-377",
+});
+assert.equal(extractedLigand.atomCount, 44);
+assert.match(extractedLigand.outputPath, /test-nad-a-377\.pdb$/);
+await unlink(extractedLigand.outputPath);
+
 const syntaxTargets = [
   "plugins/burette-agent/mcp/server.mjs",
   "plugins/burette-agent/mcp/lib/cli-bridge.mjs",
   "plugins/burette-agent/mcp/lib/plugin-root.mjs",
+  "plugins/burette-agent/mcp/lib/structure-components.mjs",
+  "plugins/burette-agent/mcp/lib/structure-summary.mjs",
   "plugins/burette-agent/mcp/lib/validation.mjs",
   "plugins/burette-agent/mcp/lib/widget-resource.mjs",
+  "plugins/burette-agent/mcp/registrations/fetch/register.mjs",
   "plugins/burette-agent/mcp/registrations/molecular-workspace/register.mjs",
   "plugins/burette-agent/mcp/registrations/molecule-table/register.mjs",
   "plugins/burette-agent/mcp/registrations/trajectory-review/register.mjs",

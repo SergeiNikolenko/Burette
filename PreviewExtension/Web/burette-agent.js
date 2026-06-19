@@ -41,6 +41,9 @@
     sceneVersion: 0,
     selectionCounter: 0,
     lastSelectionId: null,
+    lastManualSelectionSignature: null,
+    selectionSubscriptions: [],
+    selectionInteractivityProviders: [],
     selections: new Map(),
     commandLog: [],
     readyResolve: null,
@@ -145,6 +148,7 @@
     state.config = config || state.config || window.BurreteConfig || null;
     state.structureReady = true;
     state.sceneVersion++;
+    installManualSelectionBridge();
     try { state.readyResolve?.({ viewer: state.viewer, plugin: state.plugin }); } catch (_) {}
     dispatchAgentEvent('burette-agent-ready', { sceneVersion: state.sceneVersion });
   }
@@ -155,6 +159,100 @@
         window.dispatchEvent(new window.CustomEvent(name, { detail }));
       }
     } catch (_) {}
+  }
+
+  function postHostMessage(payload) {
+    try {
+      const body = { ...(payload || {}) };
+      const config = state.config || window.BurreteConfig || {};
+      if (config.documentId) body.documentId = String(config.documentId);
+      if (config.previewRequestID) body.requestID = String(config.previewRequestID);
+      const hasWebkitBridge = !!window.webkit?.messageHandlers?.burrete;
+      window.webkit?.messageHandlers?.burrete?.postMessage(body);
+      if (hasWebkitBridge) return true;
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ source: 'burrete-viewer', body }, '*');
+        return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function installManualSelectionBridge() {
+    attach();
+    const plugin = state.plugin;
+    if (!plugin) return;
+    for (const subscription of state.selectionSubscriptions.splice(0)) {
+      try { subscription?.unsubscribe?.(); } catch (_) {}
+      try { if (typeof subscription === 'function') subscription(); } catch (_) {}
+    }
+    for (const item of state.selectionInteractivityProviders.splice(0)) {
+      try { item.manager?.removeProvider?.(item.provider); } catch (_) {}
+    }
+    subscribeSelectionEvent(plugin.managers?.structure?.selection?.events?.changed, () => reportManualSelection('selection'));
+    subscribeSelectionEvent(plugin.behaviors?.interaction?.click, event => reportManualLoci('click', interactionLoci(event)));
+    subscribeSelectionEvent(plugin.behaviors?.interaction?.hover, event => reportManualLoci('hover', interactionLoci(event)));
+    subscribeInteractivityProvider(plugin.managers?.interactivity?.lociSelects, 'select');
+    subscribeInteractivityProvider(plugin.managers?.interactivity?.lociHighlights, 'highlight');
+  }
+
+  function subscribeSelectionEvent(source, handler) {
+    try {
+      const subscription = source?.subscribe?.(handler);
+      if (subscription) state.selectionSubscriptions.push(subscription);
+    } catch (_) {}
+  }
+
+  function subscribeInteractivityProvider(manager, source) {
+    if (typeof manager?.addProvider !== 'function') return;
+    const provider = (current, action) => {
+      const actionName = action == null ? source : String(action);
+      reportManualLoci(`${source}:${actionName}`, current?.loci || current);
+    };
+    try {
+      manager.addProvider(provider);
+      state.selectionInteractivityProviders.push({ manager, provider });
+    } catch (_) {}
+  }
+
+  function interactionLoci(event) {
+    return event?.current?.loci || event?.loci || event?.selection || event;
+  }
+
+  function reportManualSelection(source) {
+    const atoms = atomsFromSelectionManager(2000);
+    postManualSelectionSnapshot(source, atoms);
+  }
+
+  function reportManualLoci(source, loci) {
+    if (!loci || isEmptySelectionLoci(loci)) return;
+    postManualSelectionSnapshot(source, atomsFromLoci(loci, 2000));
+  }
+
+  function postManualSelectionSnapshot(source, atoms) {
+    const snapshot = manualSelectionSnapshot(source, atoms);
+    const signature = snapshot ? JSON.stringify([source, snapshot.counts, snapshot.residuesPreview, snapshot.atomsPreview]) : `${source}:empty`;
+    if (signature === state.lastManualSelectionSignature) return;
+    state.lastManualSelectionSignature = signature;
+    if (!snapshot) {
+      postHostMessage({ type: 'agentSelectionChanged', selection: null });
+      return;
+    }
+    if (source !== 'hover' && !source.startsWith('highlight:')) {
+      state.lastSelectionId = snapshot.selectionId;
+      state.selections.set(snapshot.selectionId, {
+        id: snapshot.selectionId,
+        label: snapshot.label,
+        selector: cloneJson(snapshot.selector),
+        counts: cloneJson(snapshot.counts),
+        createdAt: snapshot.createdAt
+      });
+    }
+    state.sceneVersion++;
+    postHostMessage({ type: 'agentSelectionChanged', selection: snapshot });
+    dispatchAgentEvent('burette-agent-selection-changed', { selection: snapshot });
   }
 
   function getMolstarVersion() {
@@ -792,6 +890,111 @@
       }
     }
     return atoms;
+  }
+
+  function atomsFromSelectionManager(maxAtoms = 2000) {
+    const entries = state.plugin?.managers?.structure?.selection?.entries;
+    if (!entries || typeof entries[Symbol.iterator] !== 'function') return [];
+    const atoms = [];
+    for (const [, entry] of entries) {
+      atoms.push(...atomsFromLoci(entry?.selection, Math.max(0, maxAtoms - atoms.length)));
+      if (atoms.length >= maxAtoms) break;
+    }
+    return atoms;
+  }
+
+  function atomsFromLoci(loci, maxAtoms = 2000) {
+    if (!loci || !Array.isArray(loci.elements) || maxAtoms <= 0) return [];
+    const atoms = [];
+    for (const lociEntry of loci.elements) {
+      const unit = lociEntry?.unit;
+      if (!unit) continue;
+      const structureEntry = structureEntryForUnit(unit);
+      if (!structureEntry) continue;
+      const elementIndexes = indicesToArray(lociEntry.indices, Math.max(0, maxAtoms - atoms.length));
+      for (const elementIndex of elementIndexes) {
+        const atomIndex = unit.elements?.[elementIndex] ?? elementIndex;
+        const atom = atomRecord(structureEntry.entry, structureEntry.structureIndex, unit, structureEntry.unitIndex, atomIndex, false);
+        if (atom) atoms.push(atom);
+        if (atoms.length >= maxAtoms) return atoms;
+      }
+    }
+    return atoms;
+  }
+
+  function structureEntryForUnit(unit) {
+    const structures = getStructures();
+    for (let structureIndex = 0; structureIndex < structures.length; structureIndex++) {
+      const entry = structures[structureIndex];
+      const structure = entry.data || entry;
+      const units = Array.isArray(structure?.units) ? structure.units : [];
+      for (let unitIndex = 0; unitIndex < units.length; unitIndex++) {
+        if (units[unitIndex] === unit) return { entry, structureIndex, unitIndex };
+      }
+    }
+    return null;
+  }
+
+  function indicesToArray(indices, maxCount = 2000) {
+    if (!indices || maxCount <= 0) return [];
+    try {
+      if (Array.isArray(indices)) return indices.slice(0, maxCount).map(Number).filter(Number.isFinite);
+      if (typeof indices.toArray === 'function') return Array.from(indices.toArray()).slice(0, maxCount).map(Number).filter(Number.isFinite);
+      if (typeof indices[Symbol.iterator] === 'function') return Array.from(indices).slice(0, maxCount).map(Number).filter(Number.isFinite);
+      if (typeof indices.length === 'number') {
+        const out = [];
+        for (let i = 0; i < indices.length && out.length < maxCount; i++) out.push(Number(indices[i]));
+        return out.filter(Number.isFinite);
+      }
+      if (Number.isInteger(indices.size) && typeof indices.getAt === 'function') {
+        const out = [];
+        for (let i = 0; i < indices.size && out.length < maxCount; i++) out.push(Number(indices.getAt(i)));
+        return out.filter(Number.isFinite);
+      }
+      if (Number.isInteger(indices.start) && Number.isInteger(indices.end)) {
+        const out = [];
+        for (let i = indices.start; i < indices.end && out.length < maxCount; i++) out.push(i);
+        return out;
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  function manualSelectionSnapshot(source, atoms) {
+    if (!atoms.length) return null;
+    const residueMap = new Map();
+    const chainSet = new Set();
+    for (const atom of atoms) {
+      residueMap.set(residueIdentity(atom), residueSummary(atom));
+      chainSet.add([atom.label_entity_id, atom.label_asym_id, atom.auth_asym_id].join('|'));
+    }
+    state.selectionCounter++;
+    const residuesPreview = Array.from(residueMap.values()).sort(sortResidueLike).slice(0, 24);
+    const atomIndexes = atoms.map(atom => atom.atom_index).filter(Number.isFinite);
+    const selector = residuesPreview.length === 1
+      ? ligandToSelector(residuesPreview[0])
+      : { atom_index: atomIndexes.slice(0, 256) };
+    return {
+      selectionId: `manual-${String(state.selectionCounter).padStart(6, '0')}`,
+      label: `${source} selection`,
+      source,
+      selector,
+      ligand: residuesPreview.length === 1 && residuesPreview[0].kind === 'ligand' ? residuesPreview[0] : null,
+      counts: { atoms: atoms.length, residues: residueMap.size, chains: chainSet.size },
+      residuesPreview,
+      atomsPreview: atoms.slice(0, 24).map(atom => ({
+        atom_index: atom.atom_index,
+        atom_id: atom.atom_id,
+        label_atom_id: atom.label_atom_id,
+        auth_atom_id: atom.auth_atom_id,
+        type_symbol: atom.type_symbol,
+        label_comp_id: atom.label_comp_id,
+        auth_asym_id: atom.auth_asym_id,
+        auth_seq_id: atom.auth_seq_id
+      })),
+      truncated: atoms.length >= 2000,
+      createdAt: new Date().toISOString()
+    };
   }
 
   function atomRecord(entry, structureIndex, unit, unitIndex, atomIndex, includePosition) {
