@@ -59,6 +59,19 @@ export function isSubformulaSpectrumJsonPath(path: string, extension = pathExten
   return extension.toLowerCase() === "json" && /\/subformulae\/default_subformulae\/[^/]+\.json$/u.test(path);
 }
 
+export function isSubformulaSpectrumJsonText(text: string) {
+  try {
+    const data = JSON.parse(text) as unknown;
+    if (!isRecord(data) || !isRecord(data.output_tbl)) return false;
+    const table = data.output_tbl;
+    const mz = numericArray(table.mz ?? table.mz_observed);
+    const intensity = numericArray(table.ms2_inten ?? table.inten ?? table.intensity);
+    return mz.length > 0 && mz.length === intensity.length;
+  } catch {
+    return false;
+  }
+}
+
 export function spectrumDocumentFromText(document: TextFileDocument): ViewerDocument {
   return {
     id: `spectrum:${stableHash(document.path)}`,
@@ -222,8 +235,8 @@ function parseSubformulaJsonFile(title: string, content: string): SpectrumFile {
     throw new Error("JSON file does not contain subformula spectrum data.");
   }
   const table = data.output_tbl;
-  const mz = numericArray(table.mz);
-  const intensity = numericArray(table.ms2_inten);
+  const mz = numericArray(table.mz ?? table.mz_observed);
+  const intensity = numericArray(table.ms2_inten ?? table.inten ?? table.intensity);
   const peaks = mz.slice(0, intensity.length).map((x, index): SpectrumPeak | null => {
     const y = intensity[index];
     if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
