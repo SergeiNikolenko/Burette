@@ -33,6 +33,7 @@ const [
   structureBrief,
   structureComposition,
   structureText,
+  directChemistryGuard,
   dock,
   chemistryJobRequests,
   chemistrySettings,
@@ -162,6 +163,7 @@ const [
   source('apps/desktop/src/lib/structure-brief.ts'),
   source('apps/desktop/src/lib/structure-composition.ts'),
   source('apps/desktop/src/lib/structure-text.ts'),
+  source('apps/desktop/src/lib/direct-chemistry-guard.ts'),
   source('apps/desktop/src/lib/dock.ts'),
   source('apps/desktop/src/lib/chemistry-job-requests.ts'),
   source('apps/desktop/src/lib/chemistry-settings.ts'),
@@ -895,8 +897,17 @@ assert.match(appDiagnosticsHook, /recentErrors: recentErrorsRef\.current/);
 assert.match(appDiagnosticsHook, /Diagnostics export failed/);
 assert.match(app, /from "\.\/lib\/chemistry-settings"/);
 assert.match(app, /from "\.\/lib\/chemistry-job-requests"/);
+assert.match(app, /from "\.\/lib\/direct-chemistry-guard"/);
 assert.doesNotMatch(app, /async function requestXtbStatus/);
 assert.doesNotMatch(app, /browserDevConformerJson/);
+assert.doesNotMatch(app, /DIRECT_CHEMISTRY_JOB_ATOM_LIMIT/);
+assert.doesNotMatch(app, /function estimateStructureAtomCount/);
+assert.match(directChemistryGuard, /const DIRECT_CHEMISTRY_JOB_ATOM_LIMIT = 300/);
+assert.match(directChemistryGuard, /const DIRECT_CHEMISTRY_JOB_READ_LIMIT = 4 \* 1024 \* 1024/);
+assert.match(directChemistryGuard, /readStructureText\(path, \{ maxBytes: DIRECT_CHEMISTRY_JOB_READ_LIMIT \}/);
+assert.match(directChemistryGuard, /parseStructureComposition\(text, normalizedExtension\)/);
+assert.match(directChemistryGuard, /atoms detected/);
+assert.match(directChemistryGuard, /fallbackStructureAtomCount/);
 assert.match(chemistryJobRequests, /invoke<XtbStatus>\("xtb_status"\)/);
 assert.match(chemistryJobRequests, /"\/__burette\/xtb-status"/);
 assert.match(chemistryJobRequests, /invoke<ConformerStatus>\("conformer_status"\)/);
