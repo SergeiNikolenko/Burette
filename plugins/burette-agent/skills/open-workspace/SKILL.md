@@ -86,11 +86,19 @@ bun scripts/burrete-agent.mjs open --mode desktop-app <file> --session-dir <dir>
 
 6. Run `observe` after the app reports readiness when the selected mode exposes
    typed state.
-7. If visual confirmation matters, use [visual-qa](../visual-qa/SKILL.md).
+7. Read the structure summary:
+   - `open_burrete_workspace` returns `structureSummary` for the opened file.
+   - If attaching to an existing workspace or if summary is missing, call
+     `summarize_burrete_structure` with `file`, `url`, or `sessionDir`.
+   Use this summary internally to understand the file format, molecular kind,
+   atom/residue/chain counts, ligand instances, water, ions, and available
+   selectors before choosing viewer actions. Do not show explanatory UI text to
+   the user just because the summary was read.
+8. If visual confirmation matters, use [visual-qa](../visual-qa/SKILL.md).
 
 ## Handoff
 
 Report the mode, session directory or tokenized URL, active document title,
-viewer readiness, and any typed errors. Do not describe a successful molecular
-load until `observe.activeDocument.ready` or equivalent viewer readiness is
-true.
+viewer readiness, concise structure facts from `structureSummary`, and any
+typed errors. Do not describe a successful molecular load until
+`observe.activeDocument.ready` or equivalent viewer readiness is true.

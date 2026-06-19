@@ -62,6 +62,12 @@ bun scripts/burrete-agent.mjs render-panel --session-dir /tmp/burrete-agent-sess
 ```
 
 MCP tools wrap this CLI instead of reimplementing the app control layer.
+`summarize_burrete_structure` is the agent-side structure brief: it reads an
+explicit file or the active workspace document and returns the same kind of
+high-level content facts used by the Info dock, including format, kind, atom
+counts, chains, ligand instances, water, ions, and Mol* selectors for detected
+ligands. `open_burrete_workspace` attaches this summary to its structured
+result when a file is opened.
 
 ## MolViewSpec Scene Language
 

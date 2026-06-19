@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { runBurreteAgent } from "../../lib/cli-bridge.mjs";
 import { pluginPath } from "../../lib/plugin-root.mjs";
+import { summarizeStructureFile } from "../../lib/structure-summary.mjs";
 import { registerWidgetResource, toolText, widgetHtml } from "../../lib/widget-resource.mjs";
 
 const WIDGET_URI = "ui://widget/burette-agent/molecular-workspace-20260607.html";
@@ -55,7 +56,59 @@ export function registerMolecularWorkspace(server) {
       if (input.noLaunch) args.push("--no-launch");
       args.push(input.file);
       const result = await runBurreteAgent(args, { timeoutMs: 45000 });
-      return cliToolResult("open_burrete_workspace", result);
+      const structureSummary = await safeStructureSummary(input.file);
+      return cliToolResult("open_burrete_workspace", result, { structureSummary });
+    },
+  );
+
+  registerAppTool(
+    server,
+    "summarize_burrete_structure",
+    {
+      title: "Summarize Burrete Structure",
+      description: "Read a local molecular file, or the active Burrete workspace document, and return an Info-panel-style structured summary for agent planning.",
+      inputSchema: {
+        file: z.string().trim().optional(),
+        url: z.string().trim().optional(),
+        sessionDir: z.string().trim().optional(),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: {
+        ui: {
+          visibility: ["model"],
+        },
+      },
+    },
+    async input => {
+      const resolved = await resolveStructureSummaryTarget(input);
+      if (!resolved.ok) {
+        return {
+          content: toolText(`summarize_burrete_structure failed: ${resolved.error.message}`),
+          structuredContent: {
+            ok: false,
+            tool: "summarize_burrete_structure",
+            summary: null,
+            observe: resolved.observe || null,
+            error: resolved.error,
+          },
+        };
+      }
+      const summary = await summarizeStructureFile(resolved.file);
+      return {
+        content: toolText(`summarize_burrete_structure completed: ${summary.summaryLine}`),
+        structuredContent: {
+          ok: true,
+          tool: "summarize_burrete_structure",
+          summary,
+          observe: resolved.observe || null,
+          error: null,
+        },
+      };
     },
   );
 
@@ -187,13 +240,60 @@ export function registerMolecularWorkspace(server) {
   );
 }
 
-function cliToolResult(tool, result) {
+async function resolveStructureSummaryTarget(input) {
+  if (input.file) return { ok: true, file: input.file };
+  if (!input.url && !input.sessionDir) {
+    return {
+      ok: false,
+      error: { message: "Provide file, url, or sessionDir." },
+    };
+  }
+
+  const args = ["observe"];
+  if (input.url) args.push("--url", input.url);
+  if (input.sessionDir) args.push("--session-dir", input.sessionDir);
+  const result = await runBurreteAgent(args);
+  const observe = result.payload?.result || null;
+  const file = observe?.activeDocument?.path;
+  if (!result.ok) {
+    return {
+      ok: false,
+      observe,
+      error: result.error || { message: "Observe failed." },
+    };
+  }
+  if (!file) {
+    return {
+      ok: false,
+      observe,
+      error: { message: "No active document path is available in the observed workspace." },
+    };
+  }
+  return { ok: true, file, observe };
+}
+
+async function safeStructureSummary(file) {
+  try {
+    return await summarizeStructureFile(file);
+  } catch (error) {
+    return {
+      ok: false,
+      path: file,
+      error: {
+        message: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+}
+
+function cliToolResult(tool, result, extra = {}) {
   return {
     content: toolText(result.ok ? `${tool} completed.` : `${tool} failed: ${result.error?.message || "unknown error"}`),
     structuredContent: {
       ok: result.ok,
       tool,
       result: result.payload?.result || null,
+      ...extra,
       error: result.ok ? null : result.error,
       exitCode: result.exitCode,
     },
