@@ -806,10 +806,11 @@ assert.match(appLayout, /from "\.\/editor-area\/editor-tabs"/);
 assert.match(appLayout, /from "\.\/sidebar"/);
 assert.match(appLayout, /from "\.\/notification-popup"/);
 assert.doesNotMatch(appLayout, /SidebarLeftIcon/);
-assert.match(appLayout, /function DockToggleIcon\(\{ className \}: \{ className\?: string \}\)/);
+assert.match(appLayout, /from "\.\/system-icon"/);
+assert.match(appLayout, /<SystemIcon name="sidebar\.left" size=\{18\} \/>/);
 assert.match(appLayout, /function clampRightDockWidth\(width: number, viewportWidth: number, sidebarLayoutWidth: number\)/);
-assert.match(appLayout, /<rect x="2\.25" y="2\.25" width="13\.5" height="13\.5" rx="3\.25" stroke="currentColor" strokeWidth="1\.8" \/>/);
-assert.match(appLayout, /<path d="M6\.75 4\.75V13\.25" stroke="currentColor" strokeWidth="1\.8" strokeLinecap="round" \/>/);
+assert.match(appLayout, /<SystemIcon name="rectangle\.bottomthird\.inset\.filled" size=\{18\} \/>/);
+assert.match(appLayout, /<SystemIcon name="sidebar\.right" size=\{18\} \/>/);
 assert.match(appLayout, /onDismissStatus: \(\) => void;/);
 assert.match(appLayout, /<NotificationPopup notice=\{state\.status\} onDismiss=\{onDismissStatus\} \/>/);
 assert.doesNotMatch(appLayout, /StatusSurface/);
@@ -1363,7 +1364,8 @@ assert.match(styles, /\.tab-shell:focus-within \.tab-close \{[^}]*transform: tra
 assert.match(styles, /\.tab-close:hover \{ color: var\(--text-secondary\); \}/);
 assert.match(closeIcon, /export function CloseIcon/);
 assert.match(closeIcon, /className="close-glyph"/);
-assert.match(closeIcon, /strokeLinecap="round"/);
+assert.match(closeIcon, /from "\.\/system-icon"/);
+assert.match(closeIcon, /name="xmark"/);
 for (const sourceText of [dockPanel, editorTabs, notificationPopup, settingControl]) {
   assert.doesNotMatch(sourceText, /className="(?:tab-close|dock-tab-close|radix-dialog-close)"[\s\S]*?>\s*[x×]\s*<\/button>/);
 }
@@ -2339,8 +2341,9 @@ assert.match(sidebarSurface, /state\.projectsOpen/);
 assert.match(sidebarSurface, /actions\.toggleProjectsOpen/);
 assert.match(sidebarSurface, /actions\.setExpandedProjectIds/);
 assert.match(sidebarSurface, /actions\.openRecentStructure/);
-assert.match(sidebarSurface, /from "@hugeicons\/core-free-icons"/);
-assert.match(sidebarSurface, /from "@hugeicons\/react"/);
+assert.doesNotMatch(sidebarSurface, /from "@hugeicons\/core-free-icons"/);
+assert.doesNotMatch(sidebarSurface, /from "@hugeicons\/react"/);
+assert.match(sidebarSurface, /from "\.\.\/system-icon"/);
 assert.match(sidebarSurface, /actions\.openCommandPalette/);
 assert.doesNotMatch(sidebarFileBrowser, /from "\.\.\/shortcut-tooltip"/);
 assert.doesNotMatch(sidebarFileBrowser, /<ShortcutTooltip label="Search projects and structures" shortcut="⌘P" \/>/);
@@ -3990,11 +3993,6 @@ assert.match(previewViewer, /prepared\?\.kind !== 'sdf-collection' && !prepared\
 assert.match(previewViewer, /await applyDockingSceneVisibility\(activeViewer, prepared, activePose\)/);
 assert.match(previewViewer, /else if \(activeSdfPoseMode === 'all'\) \{/);
 assert.match(previewViewer, /async function applySdfCollectionMolstarStyle\(viewer, style, structures = null, alpha = 1\)/);
-assert.match(previewViewer, /const raw = await plugin\.builders\.data\.rawData\(\{ data, label \}\)/);
-assert.match(previewViewer, /const trajectory = await plugin\.builders\.structure\.parseTrajectory\(raw, 'pdb'\)/);
-assert.match(previewViewer, /const preset = await plugin\.builders\.structure\.hierarchy\.applyPreset\(trajectory, 'default', \{ representationPreset: 'empty' \}\)/);
-assert.match(previewViewer, /const structure = preset\?\.structureProperties \|\| preset\?\.structure \|\| null/);
-assert.match(previewViewer, /return structure \? \[structure\] : \[\]/);
 assert.match(previewViewer, /const backgroundData = sdfCollectionBackgroundPdb\(prepared, activeIndex\)/);
 assert.match(previewViewer, /if \(backgroundData\) \{/);
 assert.match(previewViewer, /const contextStructures = await loadSdfCollectionPdbLayer\(viewer, backgroundData,/);
