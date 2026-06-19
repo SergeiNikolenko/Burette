@@ -8115,9 +8115,9 @@
     };
     window.addEventListener('keydown', onKeyDown);
     dockingPoseKeydownDisposer = () => window.removeEventListener('keydown', onKeyDown);
-    mainRow.append(animation, previous, label, next);
+    mainRow.append(animation, previous, label, next, slider);
     if (all) mainRow.append(all);
-    animationRow.append(speed, loop, slider);
+    animationRow.append(speed, loop);
     root.append(mainRow, animationRow);
     document.body.appendChild(root);
     restoreDockingPoseControlsPosition(root);
