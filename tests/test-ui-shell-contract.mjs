@@ -34,6 +34,7 @@ const [
   structureComposition,
   structureText,
   dock,
+  chemistryJobRequests,
   chemistrySettings,
   packageJson,
   themeSource,
@@ -162,6 +163,7 @@ const [
   source('apps/desktop/src/lib/structure-composition.ts'),
   source('apps/desktop/src/lib/structure-text.ts'),
   source('apps/desktop/src/lib/dock.ts'),
+  source('apps/desktop/src/lib/chemistry-job-requests.ts'),
   source('apps/desktop/src/lib/chemistry-settings.ts'),
   source('package.json'),
   source('apps/desktop/src/lib/theme.ts'),
@@ -892,6 +894,21 @@ assert.match(appDiagnosticsHook, /performanceMarks: collectPerformanceMarks\(\)/
 assert.match(appDiagnosticsHook, /recentErrors: recentErrorsRef\.current/);
 assert.match(appDiagnosticsHook, /Diagnostics export failed/);
 assert.match(app, /from "\.\/lib\/chemistry-settings"/);
+assert.match(app, /from "\.\/lib\/chemistry-job-requests"/);
+assert.doesNotMatch(app, /async function requestXtbStatus/);
+assert.doesNotMatch(app, /browserDevConformerJson/);
+assert.match(chemistryJobRequests, /invoke<XtbStatus>\("xtb_status"\)/);
+assert.match(chemistryJobRequests, /"\/__burette\/xtb-status"/);
+assert.match(chemistryJobRequests, /invoke<ConformerStatus>\("conformer_status"\)/);
+assert.match(chemistryJobRequests, /"\/__burette\/conformer-status"/);
+assert.match(chemistryJobRequests, /"\/__burette\/prepare-conformer-job"/);
+assert.match(chemistryJobRequests, /"\/__burette\/run-conformer-job"/);
+assert.match(chemistryJobRequests, /"\/__burette\/cancel-conformer-job"/);
+assert.match(chemistryJobRequests, /"\/__burette\/install-xtb"/);
+assert.match(chemistryJobRequests, /"\/__burette\/run-xtb-job"/);
+assert.match(chemistryJobRequests, /"\/__burette\/cancel-xtb-job"/);
+assert.match(chemistryJobRequests, /xTB browser-dev request failed with HTTP/);
+assert.match(chemistryJobRequests, /CREST\/PRISM browser-dev request failed with HTTP/);
 assert.doesNotMatch(app, /const DEFAULT_CONFORMER_SETTINGS/);
 assert.doesNotMatch(app, /const DEFAULT_XTB_SETTINGS/);
 assert.match(chemistrySettings, /const CONFORMER_SETTINGS_STORAGE_KEY = "burrete\.conformer\.settings"/);
