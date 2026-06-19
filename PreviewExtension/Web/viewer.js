@@ -19,7 +19,9 @@
   const SDF_POSE_MODE_STORAGE_KEY = 'buret.sdf.poseMode';
   const SDF_CONTEXT_STYLE_STORAGE_KEY = 'buret.sdf.contextStyle';
   const SDF_CONTEXT_OPACITY_STORAGE_KEY = 'buret.sdf.contextOpacity';
+  const SDF_CONTEXT_COLOR_STORAGE_KEY = 'buret.sdf.contextColor';
   const XYZ_FRAME_MODE_STORAGE_KEY = 'buret.xyz.frameMode';
+  const XYZ_FRAME_OVERLAY_BACKGROUND_LIMIT = 80;
   const DEFAULT_MOLSTAR_STYLE = 'illustrative';
   const MOLSTAR_STYLE_OPTIONS = [
     { value: 'default', label: 'Default' },
@@ -531,6 +533,9 @@
     if (type === 'set_sdf_context_opacity') {
       return setSdfCollectionContextOpacityFromAction(action);
     }
+    if (type === 'set_sdf_context_color') {
+      return setSdfCollectionContextColorFromAction(action);
+    }
     if (type === 'set_sdf_pose_mode') {
       return setSdfPoseModeFromAction(action);
     }
@@ -1005,10 +1010,21 @@
     return `${SDF_CONTEXT_OPACITY_STORAGE_KEY}.fallback-${stableTextHash(fallback)}`;
   }
 
+  function sdfCollectionContextColorStorageKey(config) {
+    const documentId = String(config?.documentId || '').trim();
+    if (documentId) return `${SDF_CONTEXT_COLOR_STORAGE_KEY}.${documentId}`;
+    const fallback = `${config?.label || 'active'}:${window.location.pathname}:${window.location.search}`;
+    return `${SDF_CONTEXT_COLOR_STORAGE_KEY}.fallback-${stableTextHash(fallback)}`;
+  }
+
   function normalizeSdfCollectionContextOpacity(value) {
     const opacity = Number(value);
     if (!Number.isFinite(opacity)) return 0.4;
     return Math.max(0.04, Math.min(1, opacity));
+  }
+
+  function normalizeSdfCollectionContextColor(value) {
+    return value === 'colored' ? 'colored' : 'gray';
   }
 
   function readSdfCollectionContextStyle(config) {
@@ -1040,6 +1056,22 @@
     const value = normalizeSdfCollectionContextOpacity(opacity);
     try {
       window.localStorage?.setItem(sdfCollectionContextOpacityStorageKey(activeConfig || window.BurreteConfig || {}), value.toFixed(2));
+    } catch (_) {}
+    return value;
+  }
+
+  function readSdfCollectionContextColor(config) {
+    try {
+      return normalizeSdfCollectionContextColor(window.localStorage?.getItem(sdfCollectionContextColorStorageKey(config)));
+    } catch (_) {
+      return 'gray';
+    }
+  }
+
+  function setSdfCollectionContextColor(color) {
+    const value = normalizeSdfCollectionContextColor(color);
+    try {
+      window.localStorage?.setItem(sdfCollectionContextColorStorageKey(activeConfig || window.BurreteConfig || {}), value);
     } catch (_) {}
     return value;
   }
@@ -1963,15 +1995,7 @@
     }
     const format = normalizeFormat(config?.molstarFormat || config?.format);
     if (format !== 'sdf' && format !== 'xyz') return 'single';
-    const storageKey = poseModeStorageKey(config);
-    const defaultMode = config?.defaultSdfPoseMode === 'all' ? 'all' : 'single';
-    try {
-      const stored = window.localStorage?.getItem(storageKey);
-      if (stored === 'all' || stored === 'single') return stored;
-      return defaultMode;
-    } catch (_) {
-      return defaultMode;
-    }
+    return 'single';
   }
 
   function poseModeStorageKey(config) {
@@ -1994,6 +2018,21 @@
       const storageKey = poseModeStorageKey(activeConfig);
       window.localStorage?.setItem(storageKey, activeSdfPoseMode);
     } catch (_) {}
+  }
+
+  function notifyStructureOverlayModeChanged(prepared = activeMolstarPrepared) {
+    if (!structureOverlayAvailable(prepared)) return;
+    const documentId = String(activeConfig?.documentId || window.BurreteConfig?.documentId || '');
+    postHostMessage({
+      type: 'structureOverlayModeChanged',
+      documentId,
+      mode: activeSdfPoseMode === 'all' ? 'all' : 'single',
+      overlayKind: prepared?.kind === 'sdf-collection'
+        ? 'sdf-collection'
+        : prepared?.dockingSceneMode
+          ? 'docking-scene'
+          : 'xyz-frames'
+    });
   }
 
   function structureOverlayAvailable(prepared = activeMolstarPrepared) {
@@ -2061,6 +2100,12 @@
       await applySdfCollectionVisibility(activeViewer, activeMolstarPrepared, activePose);
       return;
     }
+    if (activeMolstarPrepared?.xyzFrameOverlayAvailable === true) {
+      const poseCount = Number(activeMolstarPrepared.poseCount || activeMolstarPrepared.xyzFrameCount || 0);
+      const activePose = readTrajectoryControlIndex(activeConfig, activeMolstarPrepared, poseCount || 1);
+      await applyXyzFrameOverlayVisibility(activeViewer, activeMolstarPrepared, activePose);
+      return;
+    }
     await reloadActiveMolstarStructure();
   }
 
@@ -2107,6 +2152,7 @@
     const nextMode = activeSdfPoseMode === 'all' ? 'single' : 'all';
     const noun = structureOverlayNoun(activeMolstarPrepared);
     setSdfPoseMode(nextMode);
+    notifyStructureOverlayModeChanged(activeMolstarPrepared);
     updateSdfPoseButton(activeMolstarPrepared);
     setStatus(nextMode === 'all' ? `[web] Showing all ${noun} together…` : `[web] Showing ${noun} individually…`);
     void reloadSdfPoseMode().catch(error => {
@@ -4281,6 +4327,19 @@
         overlayOnly: true
       };
     }
+    if (prepared?.xyzFrameOverlayAvailable === true && activeSdfPoseMode === 'all') {
+      const poseCount = Number(prepared?.poseCount || prepared?.xyzFrameCount || activeConfig?.trajectoryFrameCount || 0);
+      if (!Number.isFinite(poseCount) || poseCount <= 1) return null;
+      return {
+        kind: 'xyz-frame-overlay',
+        activePose: readTrajectoryControlIndex(activeConfig, prepared, poseCount),
+        poseCount,
+        nativeTrajectoryControls: false,
+        ligandLabel: prepared?.label || activeConfig?.label || 'Mol* XYZ frames',
+        controlLabel: prepared?.controlLabel || 'Frame',
+        xyzFrameOverlayAvailable: true
+      };
+    }
     const poseCount = Number(prepared?.poseCount || activeConfig?.trajectoryFrameCount || 0);
     const enabled = prepared?.nativeTrajectoryControls === true ||
       activeConfig?.trajectoryControls === true ||
@@ -5586,14 +5645,6 @@
     const frames = splitXyzFrames(text);
     if (frames.length > 1) {
       const overlay = buildXyzFrameOverlay(frames, label);
-      if (overlay && activeSdfPoseMode === 'all') {
-        return {
-          ...overlay,
-          xyzFrameMode: 'all',
-          xyzFrameOverlayAvailable: true,
-          xyzFrameCount: frames.length
-        };
-      }
       return {
         data: text,
         format: 'xyz',
@@ -5896,6 +5947,67 @@
     };
   }
 
+  function xyzFrameEntry(frame, label) {
+    const atoms = Array.isArray(frame?.atoms) ? frame.atoms : [];
+    if (!atoms.length) return null;
+    return {
+      data: [
+        String(atoms.length),
+        label,
+        ...atoms.map(atom => [
+          atom.symbol,
+          formatCoordinate(atom.x),
+          formatCoordinate(atom.y),
+          formatCoordinate(atom.z)
+        ].join(' '))
+      ].join('\n') + '\n',
+      format: 'xyz',
+      label
+    };
+  }
+
+  function xyzFramesCombinedEntry(frames, indexes, label) {
+    const selectedAtoms = [];
+    for (const index of indexes) {
+      const atoms = Array.isArray(frames[index]?.atoms) ? frames[index].atoms : [];
+      selectedAtoms.push(...atoms);
+    }
+    if (!selectedAtoms.length) return null;
+    return {
+      data: [
+        String(selectedAtoms.length),
+        label,
+        ...selectedAtoms.map(atom => [
+          atom.symbol,
+          formatCoordinate(atom.x),
+          formatCoordinate(atom.y),
+          formatCoordinate(atom.z)
+        ].join(' '))
+      ].join('\n') + '\n',
+      format: 'xyz',
+      label
+    };
+  }
+
+  function sampledXyzFrameBackgroundIndexes(frameCount, activeIndex) {
+    const count = Math.max(0, Math.trunc(Number(frameCount) || 0));
+    if (count <= 1) return [];
+    const all = Array.from({ length: count }, (_, index) => index).filter(index => index !== activeIndex);
+    if (all.length <= XYZ_FRAME_OVERLAY_BACKGROUND_LIMIT) return all;
+    const picked = new Set();
+    const last = count - 1;
+    for (let slot = 0; slot < XYZ_FRAME_OVERLAY_BACKGROUND_LIMIT; slot += 1) {
+      const rawIndex = Math.round((slot * last) / Math.max(1, XYZ_FRAME_OVERLAY_BACKGROUND_LIMIT - 1));
+      const candidates = [rawIndex];
+      for (let delta = 1; delta < count && candidates.length < count; delta += 1) {
+        candidates.push(rawIndex - delta, rawIndex + delta);
+      }
+      const next = candidates.find(index => index >= 0 && index < count && index !== activeIndex && !picked.has(index));
+      if (next !== undefined) picked.add(next);
+    }
+    return Array.from(picked).sort((left, right) => left - right);
+  }
+
   function parseV2000SdfRecord(record) {
     const lines = String(record || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     const countsIndex = lines.findIndex(line => /\bV2000\b/u.test(line) || /^\s*\d+\s+\d+\s+/.test(line));
@@ -6073,14 +6185,74 @@
         const contextStructures = await loadSdfCollectionPdbLayer(viewer, backgroundData, `${prepared.label || 'Molecule collection'} (background)`);
         const contextStyle = options.contextStyle ?? readSdfCollectionContextStyle(activeConfig);
         const contextOpacity = options.contextOpacity ?? readSdfCollectionContextOpacity(activeConfig);
-        await applySdfCollectionMolstarStyle(viewer, contextStyle === 'match' ? style : contextStyle, contextStructures, contextOpacity);
+        const contextColor = options.contextColor ?? readSdfCollectionContextColor(activeConfig);
+        await applySdfCollectionMolstarStyle(viewer, contextStyle === 'match' ? style : contextStyle, contextStructures, contextOpacity, contextColor);
       }
     }
 
     const label = `${prepared.label || 'Molecule collection'} (${prepared.controlLabel || 'Molecule'} ${activeIndex + 1})`;
     const structures = await loadSdfCollectionPdbLayer(viewer, activeData, label);
-    await applySdfCollectionMolstarStyle(viewer, style, structures, 1);
+    await applySdfCollectionMolstarStyle(viewer, style, structures, 1, 'colored');
     updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
+  }
+
+  async function applyXyzFrameOverlayVisibility(viewer, prepared, activePose = 0, options = {}) {
+    if (!viewer || prepared?.xyzFrameOverlayAvailable !== true) return;
+    const plugin = viewer.plugin;
+    if (!plugin?.builders?.data?.rawData || !plugin?.builders?.structure?.parseTrajectory || !plugin?.builders?.structure?.hierarchy?.applyPreset) {
+      throw new Error('Mol* structure builders are not available in this runtime.');
+    }
+    const frames = splitXyzFrames(rawStructureData(activeConfig));
+    if (frames.length <= 1) {
+      await reloadActiveMolstarStructure();
+      return;
+    }
+    const allMode = activeSdfPoseMode === 'all';
+    const activeIndex = Math.max(0, Math.min(frames.length - 1, Math.trunc(Number(activePose) || 0)));
+    const label = activeConfig?.label || prepared?.label || 'XYZ frames';
+    const style = configuredMolstarStyle(activeConfig);
+    if (typeof plugin.clear === 'function') await plugin.clear();
+
+    if (allMode) {
+      const contextStructures = [];
+      const backgroundIndexes = sampledXyzFrameBackgroundIndexes(frames.length, activeIndex);
+      const contextStyle = options.contextStyle ?? readSdfCollectionContextStyle(activeConfig);
+      const resolvedContextStyle = xyzFrameBackgroundStyle(contextStyle, style);
+      if (resolvedContextStyle === 'molecular-surface') {
+        const entry = xyzFramesCombinedEntry(frames, backgroundIndexes, `${label} (sampled background frames)`);
+        if (entry) contextStructures.push(...await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' }));
+      } else {
+        for (const index of backgroundIndexes) {
+          const entry = xyzFrameEntry(frames[index], `${label} (background frame ${index + 1})`);
+          if (!entry) continue;
+          contextStructures.push(...await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' }));
+        }
+      }
+      if (contextStructures.length) {
+        const contextOpacity = options.contextOpacity ?? readSdfCollectionContextOpacity(activeConfig);
+        const contextColor = options.contextColor ?? readSdfCollectionContextColor(activeConfig);
+        await applySdfCollectionMolstarStyle(viewer, resolvedContextStyle, contextStructures, contextOpacity, contextColor);
+      }
+    }
+
+    const activeEntry = xyzFrameEntry(frames[activeIndex], `${label} (${prepared.controlLabel || 'Frame'} ${activeIndex + 1})`);
+    if (!activeEntry) throw new Error('XYZ frame data is unavailable.');
+    const structuresBeforeActive = new Set(molstarCurrentStructures(viewer));
+    const activeStructures = await loadMolstarEntryWithStructureRefs(viewer, activeEntry, { representationPreset: 'empty' });
+    const scopedActiveStructures = activeStructures.length
+      ? activeStructures
+      : Array.from(molstarCurrentStructures(viewer)).filter(structure => !structuresBeforeActive.has(structure));
+    if (!scopedActiveStructures.length) throw new Error('Mol* did not expose the active XYZ frame structure.');
+    await applySdfCollectionMolstarStyle(viewer, style, scopedActiveStructures, 1, 'colored');
+    if (options.installControls !== false) installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
+    updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
+  }
+
+  function xyzFrameBackgroundStyle(contextStyle, foregroundStyle) {
+    if (contextStyle !== 'match') return normalizeMolstarStyle(contextStyle);
+    const resolved = normalizeMolstarStyle(foregroundStyle);
+    if (resolved === 'spacefill' || resolved === 'molecular-surface' || resolved === 'illustrative') return 'line';
+    return resolved;
   }
 
   async function applyDockingSceneVisibility(viewer, prepared, activePose = 0) {
@@ -6108,8 +6280,9 @@
           contextStructures.push(...await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' }));
         }
         const contextOpacity = readSdfCollectionContextOpacity(activeConfig);
+        const contextColor = readSdfCollectionContextColor(activeConfig);
         if (contextStructures.length) {
-          await applySdfCollectionMolstarStyle(viewer, resolvedContextStyle, contextStructures, contextOpacity);
+          await applySdfCollectionMolstarStyle(viewer, resolvedContextStyle, contextStructures, contextOpacity, contextColor);
         }
         await loadMolstarEntry(viewer, activeEntry);
         await applyMolstarIllustrativePostprocessing(viewer);
@@ -6140,29 +6313,29 @@
     return structure ? [structure] : [];
   }
 
-  async function applySdfCollectionMolstarStyle(viewer, style, structures = null, alpha = 1) {
+  async function applySdfCollectionMolstarStyle(viewer, style, structures = null, alpha = 1, colorMode = 'gray') {
     const normalized = normalizeMolstarStyle(style);
     const targets = Array.isArray(structures) && structures.length ? structures : Array.from(molstarCurrentStructures(viewer));
-    await applyMolstarRepresentationsToStructures(viewer, targets, sdfCollectionRepresentationForStyle(normalized, alpha));
+    await applyMolstarRepresentationsToStructures(viewer, targets, sdfCollectionRepresentationForStyle(normalized, alpha, colorMode));
     if (normalized === 'illustrative') await applyMolstarIllustrativePostprocessing(viewer);
     else await applyMolstarNonIllustrativePostprocessing(viewer);
   }
 
-  function sdfCollectionAlphaHelpers(alpha = 1) {
+  function sdfCollectionAlphaHelpers(alpha = 1, colorMode = 'gray') {
     const ghost = Number.isFinite(Number(alpha)) && Number(alpha) < 1;
     const withAlpha = (params = {}) => {
       const value = Number(alpha);
       return ghost ? { ...params, alpha: Math.max(0.04, Math.min(value, 1)), transparentBackfaces: 'on' } : params;
     };
-    const color = ghost ? 'uniform' : 'element-symbol';
-    const colorParams = ghost ? { value: 0x6f7886 } : undefined;
+    const color = normalizeSdfCollectionContextColor(colorMode) === 'colored' ? 'element-symbol' : 'uniform';
+    const colorParams = color === 'uniform' ? { value: 0x6f7886 } : undefined;
     const themed = (representation) => colorParams ? { ...representation, color, colorParams } : { ...representation, color };
     return { ghost, withAlpha, themed };
   }
 
-  function sdfCollectionRepresentationForStyle(style, alpha = 1) {
+  function sdfCollectionRepresentationForStyle(style, alpha = 1, colorMode = 'gray') {
     const normalized = normalizeMolstarStyle(style);
-    const { ghost, withAlpha, themed } = sdfCollectionAlphaHelpers(alpha);
+    const { ghost, withAlpha, themed } = sdfCollectionAlphaHelpers(alpha, colorMode);
     if (normalized === 'line') {
       return themed({ type: 'line', typeParams: withAlpha({ sizeFactor: ghost ? 0.035 : 0.08 }) });
     }
@@ -6749,6 +6922,7 @@
   async function loadPreparedStructure(viewer, prepared) {
     activeMolstarPrepared = prepared;
     updateSdfPoseButton(prepared);
+    notifyStructureOverlayModeChanged(prepared);
     if (prepared.kind === 'docking') {
       await loadDockingPreparedStructure(viewer, prepared);
       return;
@@ -6770,6 +6944,10 @@
       await viewer.loadStructureFromData(prepared.data, prepared.format, { dataLabel: prepared.label });
       installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
       await applySdfCollectionVisibility(viewer, prepared, readTrajectoryControlIndex(activeConfig, prepared, prepared.poseCount));
+      return;
+    }
+    if (prepared.xyzFrameOverlayAvailable === true && activeSdfPoseMode === 'all') {
+      await applyXyzFrameOverlayVisibility(viewer, prepared, readTrajectoryControlIndex(activeConfig, prepared, prepared.poseCount || prepared.xyzFrameCount));
       return;
     }
     if (prepared.loadPreset === 'all-models') {
@@ -7445,12 +7623,14 @@
         const poseCount = Number(prepared.poseCount || 0);
         const activePose = readTrajectoryControlIndex(activeConfig, prepared, poseCount || 1);
         await applyDockingSceneVisibility(activeViewer, prepared, activePose);
+      } else if (prepared.xyzFrameOverlayAvailable === true && activeSdfPoseMode === 'all') {
+        const poseCount = Number(prepared.poseCount || prepared.xyzFrameCount || 0);
+        const activePose = readTrajectoryControlIndex(activeConfig, prepared, poseCount || 1);
+        await applyXyzFrameOverlayVisibility(activeViewer, prepared, activePose, { contextStyle: style });
       } else if (activeSdfPoseMode === 'all') {
         const poseCount = Number(prepared.poseCount || prepared.sdfPoseRecordCount || 0);
         const activePose = readTrajectoryControlIndex(activeConfig, prepared, poseCount || 1);
         await applySdfCollectionVisibility(activeViewer, prepared, activePose, { contextStyle: style });
-      } else if (prepared.xyzFrameOverlayAvailable === true) {
-        await reloadSdfPoseMode();
       }
       return {
         ok: true,
@@ -7473,12 +7653,14 @@
         const poseCount = Number(prepared.poseCount || 0);
         const activePose = readTrajectoryControlIndex(activeConfig, prepared, poseCount || 1);
         await applyDockingSceneVisibility(activeViewer, prepared, activePose);
+      } else if (prepared.xyzFrameOverlayAvailable === true && activeSdfPoseMode === 'all') {
+        const poseCount = Number(prepared.poseCount || prepared.xyzFrameCount || 0);
+        const activePose = readTrajectoryControlIndex(activeConfig, prepared, poseCount || 1);
+        await applyXyzFrameOverlayVisibility(activeViewer, prepared, activePose, { contextOpacity: opacity });
       } else if (activeSdfPoseMode === 'all') {
         const poseCount = Number(prepared.poseCount || prepared.sdfPoseRecordCount || 0);
         const activePose = readTrajectoryControlIndex(activeConfig, prepared, poseCount || 1);
         await applySdfCollectionVisibility(activeViewer, prepared, activePose, { contextOpacity: opacity });
-      } else if (prepared.xyzFrameOverlayAvailable === true) {
-        await reloadSdfPoseMode();
       }
       return {
         ok: true,
@@ -7490,6 +7672,36 @@
     }
   }
 
+  async function setSdfCollectionContextColorFromAction(action = {}) {
+    const prepared = activeMolstarPrepared;
+    if (!activeViewer || (prepared?.kind !== 'sdf-collection' && !prepared?.dockingSceneMode && prepared?.xyzFrameOverlayAvailable !== true)) {
+      return agentActionFailure('set_sdf_context_color', 'NO_SCENE_CONTEXT', 'The active Mol* viewer does not expose scene background controls.');
+    }
+    const color = setSdfCollectionContextColor(action.color);
+    try {
+      if (prepared.dockingSceneMode) {
+        const poseCount = Number(prepared.poseCount || 0);
+        const activePose = readTrajectoryControlIndex(activeConfig, prepared, poseCount || 1);
+        await applyDockingSceneVisibility(activeViewer, prepared, activePose);
+      } else if (prepared.xyzFrameOverlayAvailable === true && activeSdfPoseMode === 'all') {
+        const poseCount = Number(prepared.poseCount || prepared.xyzFrameCount || 0);
+        const activePose = readTrajectoryControlIndex(activeConfig, prepared, poseCount || 1);
+        await applyXyzFrameOverlayVisibility(activeViewer, prepared, activePose, { contextColor: color });
+      } else if (activeSdfPoseMode === 'all') {
+        const poseCount = Number(prepared.poseCount || prepared.sdfPoseRecordCount || 0);
+        const activePose = readTrajectoryControlIndex(activeConfig, prepared, poseCount || 1);
+        await applySdfCollectionVisibility(activeViewer, prepared, activePose, { contextColor: color });
+      }
+      return {
+        ok: true,
+        command: 'set_sdf_context_color',
+        result: { color }
+      };
+    } catch (error) {
+      return agentActionFailure('set_sdf_context_color', 'ACTION_ERROR', error?.message || String(error));
+    }
+  }
+
   async function setSdfPoseModeFromAction(action = {}) {
     const prepared = activeMolstarPrepared;
     if (!activeViewer || !structureOverlayAvailable(prepared)) {
@@ -7498,6 +7710,7 @@
     const mode = action.mode === 'all' ? 'all' : 'single';
     try {
       setSdfPoseMode(mode);
+      notifyStructureOverlayModeChanged(prepared);
       updateSdfPoseButton(prepared);
       await reloadSdfPoseMode();
       return {
@@ -7520,6 +7733,7 @@
     try {
       if (activeSdfPoseMode === 'all' && structureOverlayAvailable(prepared)) {
         setSdfPoseMode('single');
+        notifyStructureOverlayModeChanged(prepared);
         updateSdfPoseButton(prepared);
       }
       try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(index)); } catch (_) {}
@@ -7528,6 +7742,8 @@
         if (!switched) throw new Error('Mol* trajectory controls are not available.');
       } else if (prepared.kind === 'sdf-collection') {
         await applySdfCollectionVisibility(activeViewer, prepared, index);
+      } else if (prepared.xyzFrameOverlayAvailable === true) {
+        await applyXyzFrameOverlayVisibility(activeViewer, prepared, index);
       } else {
         await reloadActiveMolstarStructure();
       }
@@ -7738,8 +7954,15 @@
           await applySdfCollectionVisibility(viewer, activeMolstarPrepared || prepared, nextIndex);
           activePose = nextIndex;
           updateControls();
+        } else if (prepared.kind === 'xyz-frame-overlay') {
+          await applyXyzFrameOverlayVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { installControls: false });
+          activePose = nextIndex;
+          updateControls();
         } else {
-          if (prepared.overlayOnly === true && activeSdfPoseMode === 'all') setSdfPoseMode('single');
+          if (prepared.overlayOnly === true && activeSdfPoseMode === 'all') {
+            setSdfPoseMode('single');
+            notifyStructureOverlayModeChanged(activeMolstarPrepared || prepared);
+          }
           await reloadActiveMolstarStructure();
           activePose = nextIndex;
           return;
@@ -7863,11 +8086,11 @@
     slider.addEventListener('input', () => {
       const previewIndex = Math.max(0, Math.min(prepared.poseCount - 1, Number(slider.value) - 1));
       label.textContent = `${controlLabel} ${previewIndex + 1} / ${prepared.poseCount}`;
-      if (prepared.nativeTrajectoryControls || prepared.kind === 'sdf-collection') scheduleSliderInputPose(previewIndex);
+      if (prepared.nativeTrajectoryControls || prepared.kind === 'sdf-collection' || prepared.kind === 'xyz-frame-overlay') scheduleSliderInputPose(previewIndex);
     });
     slider.addEventListener('change', () => {
       const nextIndex = Math.max(0, Math.min(prepared.poseCount - 1, Number(slider.value) - 1));
-      if (prepared.nativeTrajectoryControls || prepared.kind === 'sdf-collection') {
+      if (prepared.nativeTrajectoryControls || prepared.kind === 'sdf-collection' || prepared.kind === 'xyz-frame-overlay') {
         if (sliderInputTimer) {
           clearTimeout(sliderInputTimer);
           sliderInputTimer = null;
