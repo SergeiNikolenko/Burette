@@ -4053,7 +4053,8 @@ assert.match(previewViewer, /for \(const entry of backgroundEntries\) \{\s*conte
 assert.match(previewViewer, /if \(contextStructures\.length\) \{\s*await applySdfCollectionMolstarStyle\(viewer, resolvedContextStyle, contextStructures, contextOpacity, contextColor\);\s*\}/s);
 assert.match(previewViewer, /await loadMolstarEntry\(viewer, activeEntry\);\s*await applyMolstarIllustrativePostprocessing\(viewer\);/s);
 assert.match(previewViewer, /function dockingSceneBackgroundStyle\(contextStyle, foregroundStyle\)/);
-assert.match(previewViewer, /if \(resolved === 'cartoon' \|\| resolved === 'spacefill'\) return 'line'/);
+assert.match(previewViewer, /if \(contextStyle !== 'match'\) return normalizeMolstarStyle\(contextStyle\)/);
+assert.match(previewViewer, /if \(resolved === 'cartoon' \|\| resolved === 'spacefill' \|\| resolved === 'molecular-surface' \|\| resolved === 'illustrative' \|\| resolved === 'polymer-ligand'\) return 'line'/);
 assert.match(previewViewer, /updateStructureOverlayToggleButton\(document\.querySelector\('\[data-buret-action="structure-overlay-toggle"\]'\), prepared\);\s*return;/);
 assert.match(previewViewer, /await loadMolstarEntry\(viewer, activeEntry\);\s*await applyMolstarStyle\(viewer, style\)/);
 assert.match(previewViewer, /function sdfCollectionRepresentationForStyle\(style, alpha = 1, colorMode = 'gray'\)/);
