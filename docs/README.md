@@ -14,6 +14,8 @@ contains only documents that describe the active project.
   smoke, and staged stability guardrails.
 - [Vite+ workflow](vite-plus.md): `vp` entrypoints for frontend development and
   JavaScript validation.
+- [Modular runtime refactor](modular-runtime-refactor.md): staged extraction
+  plan for `vite.config.ts`, `App.tsx`, and browser-dev runtime modules.
 - [Development loops](development-loops.md): fast edit, debug, patch, and remote
   check paths that avoid full local rebuilds.
 - [Control affordances](control-affordances.md): tooltip and menu-detail rules
