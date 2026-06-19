@@ -142,12 +142,19 @@ fn parse_npz_arrays(bytes: &[u8], max_values: usize) -> Result<Vec<NumpyArraySum
         }
         let flags = read_u16_le(bytes, offset + 6)?;
         let compression = read_u16_le(bytes, offset + 8)?;
-        let compressed_size = read_u32_le(bytes, offset + 18)? as usize;
+        let raw_compressed_size = read_u32_le(bytes, offset + 18)?;
+        let raw_uncompressed_size = read_u32_le(bytes, offset + 22)?;
         let file_name_length = read_u16_le(bytes, offset + 26)? as usize;
         let extra_length = read_u16_le(bytes, offset + 28)? as usize;
         let name_start = offset + 30;
         let name_end = name_start + file_name_length;
         let data_start = name_end + extra_length;
+        if name_end > bytes.len() || data_start > bytes.len() {
+            return Err("truncated NPZ entry metadata".to_string());
+        }
+        let extra = &bytes[name_end..data_start];
+        let compressed_size =
+            zip_entry_compressed_size(extra, raw_uncompressed_size, raw_compressed_size)?;
         let data_end = data_start + compressed_size;
         if flags & 0x08 != 0 {
             return Err("NPZ entries with data descriptors are not supported".to_string());
@@ -498,6 +505,53 @@ fn read_u32_le(bytes: &[u8], offset: usize) -> Result<u32, String> {
     ]))
 }
 
+fn read_u64_le(bytes: &[u8], offset: usize) -> Result<u64, String> {
+    if offset + 8 > bytes.len() {
+        return Err("unexpected end of bytes".to_string());
+    }
+    Ok(u64::from_le_bytes([
+        bytes[offset],
+        bytes[offset + 1],
+        bytes[offset + 2],
+        bytes[offset + 3],
+        bytes[offset + 4],
+        bytes[offset + 5],
+        bytes[offset + 6],
+        bytes[offset + 7],
+    ]))
+}
+
+fn zip_entry_compressed_size(
+    extra: &[u8],
+    raw_uncompressed_size: u32,
+    raw_compressed_size: u32,
+) -> Result<usize, String> {
+    if raw_compressed_size != u32::MAX {
+        return Ok(raw_compressed_size as usize);
+    }
+    let mut offset = 0usize;
+    while offset + 4 <= extra.len() {
+        let tag = read_u16_le(extra, offset)?;
+        let size = read_u16_le(extra, offset + 2)? as usize;
+        let data_start = offset + 4;
+        let data_end = data_start + size;
+        if data_end > extra.len() {
+            return Err("truncated NPZ extra field".to_string());
+        }
+        if tag == 0x0001 {
+            let mut cursor = data_start;
+            if raw_uncompressed_size == u32::MAX {
+                cursor += 8;
+            }
+            let compressed_size = read_u64_le(extra, cursor)?;
+            return usize::try_from(compressed_size)
+                .map_err(|_| "NPZ entry is too large to preview".to_string());
+        }
+        offset = data_end;
+    }
+    Err("NPZ entry uses ZIP64 sizes but has no ZIP64 extra field".to_string())
+}
+
 fn trim_npy_suffix(name: &str) -> String {
     name.strip_suffix(".npy").unwrap_or(name).to_string()
 }
@@ -573,6 +627,27 @@ mod tests {
         bytes
     }
 
+    fn npz_zip64_stored(name: &str, payload: &[u8]) -> Vec<u8> {
+        let mut bytes = b"PK\x03\x04".to_vec();
+        bytes.extend_from_slice(&45u16.to_le_bytes());
+        bytes.extend_from_slice(&0u16.to_le_bytes());
+        bytes.extend_from_slice(&0u16.to_le_bytes());
+        bytes.extend_from_slice(&0u16.to_le_bytes());
+        bytes.extend_from_slice(&0u16.to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&u32::MAX.to_le_bytes());
+        bytes.extend_from_slice(&u32::MAX.to_le_bytes());
+        bytes.extend_from_slice(&(name.len() as u16).to_le_bytes());
+        bytes.extend_from_slice(&20u16.to_le_bytes());
+        bytes.extend_from_slice(name.as_bytes());
+        bytes.extend_from_slice(&0x0001u16.to_le_bytes());
+        bytes.extend_from_slice(&16u16.to_le_bytes());
+        bytes.extend_from_slice(&(payload.len() as u64).to_le_bytes());
+        bytes.extend_from_slice(&(payload.len() as u64).to_le_bytes());
+        bytes.extend_from_slice(payload);
+        bytes
+    }
+
     #[test]
     fn reads_npy_array_summary() {
         let path = temp_path("plddt.npy");
@@ -586,6 +661,19 @@ mod tests {
         let summary = numpy_artifact_text_summary(&path, 128).expect("summary should render");
         assert!(summary.contains("NumPy NPY array"));
         assert!(summary.contains("plddt.npy"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn reads_npz_zip64_local_sizes() {
+        let path = temp_path("plddt.npz");
+        let payload = npy_f32(&[3], &[0.8, 0.9, 1.0]);
+        fs::write(&path, npz_zip64_stored("plddt.npy", &payload)).expect("fixture should write");
+        let arrays = read_numpy_arrays(&path, 16).expect("npz should parse");
+        assert_eq!(arrays.len(), 1);
+        assert_eq!(arrays[0].name, "plddt");
+        assert_eq!(arrays[0].shape, vec![3]);
+        assert!(arrays[0].mean.expect("mean") > 0.89);
         let _ = fs::remove_file(path);
     }
 }
