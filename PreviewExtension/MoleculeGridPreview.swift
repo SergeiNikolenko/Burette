@@ -381,7 +381,7 @@ enum MoleculeGridPreviewBuilder {
     }
 
     private static func isSmilesColumn(_ value: String) -> Bool {
-        value == "smile" || value.contains("smiles")
+        value == "smile" || value == "smiels" || value.contains("smiles")
     }
 
     private static func inferSmilesColumnIndexes(rows: [String], columnCount: Int, separator: Character) -> [Int] {

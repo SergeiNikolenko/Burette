@@ -20,6 +20,7 @@ const defaultDesktopRoots = [
   join(homedir(), "Desktop", "BurettePreviewSamples"),
   join(homedir(), "Desktop", "BuretteMDAnalysisSamples"),
   join(homedir(), "Desktop", "xyzrender-main"),
+  join(homedir(), ".codex", "worktrees"),
 ].filter((path) => existsSync(path));
 const defaultProjectFiles = [
   join(repoRoot, "samples", "large", "litr_moses_10k.csv"),
@@ -57,6 +58,9 @@ const BROWSER_DEV_CHEMISTRY_PREP_PROJECT = join(repoRoot, "tools", "chemistry-pr
 const BROWSER_DEV_DESCRIPTOR_RUNTIME_DIR = process.env.BURRETE_DESCRIPTOR_RUNTIME_DIR
   ? resolve(process.env.BURRETE_DESCRIPTOR_RUNTIME_DIR)
   : join(homedir(), "Library", "Application Support", "Burrete", "descriptor-python");
+const BROWSER_DEV_MSBUDDY_RUNTIME_DIR = process.env.BURRETE_MSBUDDY_RUNTIME_DIR
+  ? resolve(process.env.BURRETE_MSBUDDY_RUNTIME_DIR)
+  : join(homedir(), "Library", "Application Support", "Burrete", "msbuddy-python");
 const XTB_RUN_METADATA_FILE = ".burrete-xtb-run.json";
 const CONFORMER_RUN_METADATA_FILE = ".burrete-conformer-run.json";
 const XTB_LOG_CAPTURE_BYTES = 128 * 1024;
@@ -67,6 +71,7 @@ const DESCRIPTOR_STATUS_TIMEOUT_MS = 10_000;
 const DESCRIPTOR_RUN_TIMEOUT_MS = 30_000;
 const DESCRIPTOR_GRID_BATCH_TIMEOUT_MS = 300_000;
 const DESCRIPTOR_INSTALL_TIMEOUT_MS = 600_000;
+const MSBUDDY_RUN_TIMEOUT_MS = 180_000;
 const runningBrowserDevJobs = new Map<string, ChildProcess>();
 const cancelledBrowserDevJobs = new Set<string>();
 const browserDevDescriptorJobs = new Map<string, BrowserDevGridDescriptorJobStatus>();
@@ -88,6 +93,24 @@ type BrowserDevGridRecord = {
   name: string;
   smiles?: string;
   molblock?: string;
+};
+
+type BrowserDevMsbuddyPeak = {
+  index: number;
+  mz: number;
+  intensity: number;
+  annotation?: string;
+  annotations?: Record<string, unknown>;
+};
+
+type BrowserDevMsbuddyCandidate = {
+  rank: number;
+  formula: string;
+  score: number | null;
+  massErrorPpm: number | null;
+  explainedPeakIndexes: number[];
+  evidence: string;
+  source: "msbuddy" | "spectrum";
 };
 
 type BrowserDevGridDescriptorResultRow = {
@@ -196,7 +219,7 @@ import traceback
 
 
 def emit(payload):
-    print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), flush=True)
+    print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), file=sys.__stdout__, flush=True)
 
 
 def import_engine():
@@ -351,6 +374,166 @@ try:
     main()
 except Exception as exc:
     emit({"ok": False, "error": str(exc), "traceback": traceback.format_exc(limit=8)})
+`;
+const BROWSER_DEV_MSBUDDY_RUNNER = `
+import contextlib
+import io
+import json
+import math
+import sys
+import traceback
+
+
+def emit(payload):
+    print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), file=sys.__stdout__, flush=True)
+
+
+def finite_number(value):
+    try:
+        number = float(value)
+    except Exception:
+        return None
+    return number if math.isfinite(number) else None
+
+
+def adduct_charge(adduct):
+    text = str(adduct or "").strip()
+    if text.endswith("-") or "]-" in text:
+        return -1
+    return 1
+
+
+def clean_adduct(value):
+    text = str(value or "").strip()
+    return text if text else "[M+H]+"
+
+
+def normalize_peaks(peaks):
+    mz_values = []
+    intensity_values = []
+    for peak in peaks or []:
+        if not isinstance(peak, dict):
+            continue
+        mz = finite_number(peak.get("mz"))
+        intensity = finite_number(peak.get("intensity"))
+        if mz is None or intensity is None or mz <= 0 or intensity < 0:
+            continue
+        mz_values.append(mz)
+        intensity_values.append(intensity)
+    return mz_values, intensity_values
+
+
+def best_precursor(input_payload, mz_values, intensity_values):
+    precursor = finite_number(input_payload.get("precursorMz"))
+    if precursor is not None and precursor > 0:
+        return precursor, "metadata"
+    if mz_values:
+        base_index = max(range(len(mz_values)), key=lambda index: intensity_values[index])
+        return mz_values[base_index], "base peak fallback"
+    return None, "missing"
+
+
+def summary_candidates(summary):
+    candidates = []
+    estimated_fdr = finite_number(summary.get("estimated_fdr"))
+    for rank in range(1, 6):
+        formula = summary.get(f"formula_rank_{rank}")
+        if not formula:
+            continue
+        score = None
+        if rank == 1 and estimated_fdr is not None:
+            score = max(0.0, min(1.0, 1.0 - estimated_fdr))
+        candidates.append({
+            "rank": rank,
+            "formula": str(formula),
+            "score": score,
+            "massErrorPpm": None,
+            "explainedPeakIndexes": [],
+            "evidence": "msbuddy annotate_formula",
+            "source": "msbuddy",
+        })
+    return candidates
+
+
+def mz_candidates(engine, precursor, adduct):
+    candidates = []
+    for rank, formula_result in enumerate(engine.mz_to_formula(precursor, adduct=adduct, mz_tol=10, ppm=True, halogen=True)[:5], start=1):
+        candidates.append({
+            "rank": rank,
+            "formula": str(getattr(formula_result, "formula", "")),
+            "score": None,
+            "massErrorPpm": finite_number(getattr(formula_result, "mass_error_ppm", None)),
+            "explainedPeakIndexes": [],
+            "evidence": "msbuddy mz_to_formula",
+            "source": "msbuddy",
+        })
+    return [candidate for candidate in candidates if candidate["formula"]]
+
+
+def main():
+    try:
+        payload = json.load(sys.stdin)
+        input_payload = payload.get("input") if isinstance(payload.get("input"), dict) else payload
+        if not isinstance(input_payload, dict):
+            raise ValueError("msbuddy input must be an object.")
+
+        mz_values, intensity_values = normalize_peaks(input_payload.get("peaks"))
+        if not mz_values:
+            raise ValueError("Spectrum has no usable peaks.")
+
+        precursor, precursor_source = best_precursor(input_payload, mz_values, intensity_values)
+        if precursor is None:
+            raise ValueError("Spectrum has no precursor or usable base peak.")
+
+        adduct = clean_adduct(input_payload.get("candidateIon"))
+
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            import numpy as np
+            from msbuddy import MetaFeature, Msbuddy, MsbuddyConfig, Spectrum
+
+            config = MsbuddyConfig(
+                ms_instr="orbitrap",
+                ppm=True,
+                ms1_tol=10,
+                ms2_tol=10,
+                halogen=True,
+                parallel=False,
+                timeout_secs=90,
+                batch_size=1,
+            )
+            engine = Msbuddy(config)
+            feature = MetaFeature(
+                str(input_payload.get("title") or "spectrum"),
+                mz=float(precursor),
+                charge=adduct_charge(adduct),
+                adduct=adduct,
+                ms2=Spectrum(np.array(mz_values, dtype=float), np.array(intensity_values, dtype=float)),
+            )
+            engine.add_data([feature])
+            engine.annotate_formula()
+            summary = engine.get_summary()[0]
+            candidates = summary_candidates(summary)
+            if not candidates:
+                candidates = mz_candidates(engine, precursor, adduct)
+
+        emit({
+            "ok": True,
+            "runtime": "msbuddy",
+            "message": f"msbuddy annotated this spectrum using {adduct}; precursor from {precursor_source}.",
+            "precursorMz": precursor,
+            "adduct": adduct,
+            "candidates": candidates,
+        })
+    except Exception as exc:
+        emit({
+            "ok": False,
+            "error": str(exc),
+            "traceback": traceback.format_exc(limit=4),
+        })
+
+
+if __name__ == "__main__":
+    main()
 `;
 
 function readOptionalNumber(value: unknown) {
@@ -655,6 +838,21 @@ function browserDevDescriptorPythonCandidates() {
   });
 }
 
+function browserDevMsbuddyPythonCandidates() {
+  const candidates = [
+    process.env.BURRETE_MSBUDDY_PYTHON || "",
+    join(BROWSER_DEV_MSBUDDY_RUNTIME_DIR, "bin", "python3"),
+    ...browserDevDescriptorPythonCandidates(),
+  ].filter(Boolean);
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    const key = resolve(candidate);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return existsSync(candidate);
+  });
+}
+
 async function browserDevDescriptorStatus() {
   for (const pythonPath of browserDevDescriptorPythonCandidates()) {
     try {
@@ -741,6 +939,211 @@ function parseBrowserDevDescriptorRunnerOutput(output: string) {
     throw new Error(typeof payload.error === "string" ? payload.error : "Descriptor calculation failed.");
   }
   return payload;
+}
+
+function runBrowserDevMsbuddyRunner(pythonPath: string, payload: Record<string, unknown>, timeoutMs: number): Promise<Record<string, unknown>> {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn(pythonPath, ["-c", BROWSER_DEV_MSBUDDY_RUNNER], { stdio: ["pipe", "pipe", "pipe"] });
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    const timeout = setTimeout(() => {
+      child.kill();
+      rejectPromise(new Error("msbuddy annotation timed out."));
+    }, timeoutMs);
+    child.stdout.on("data", (chunk) => stdoutChunks.push(Buffer.from(chunk)));
+    child.stderr.on("data", (chunk) => stderrChunks.push(Buffer.from(chunk)));
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      rejectPromise(error);
+    });
+    child.on("close", (code, signal) => {
+      clearTimeout(timeout);
+      const stdout = Buffer.concat(stdoutChunks).toString("utf8").trim();
+      const stderr = Buffer.concat(stderrChunks).toString("utf8").trim();
+      if (code !== 0 || !stdout) {
+        rejectPromise(new Error(stderr || `msbuddy runner exited with ${signal || code}`));
+        return;
+      }
+      try {
+        const payload = parseBrowserDevMsbuddyRunnerOutput(stdout);
+        resolvePromise(payload);
+      } catch (error) {
+        rejectPromise(error);
+      }
+    });
+    child.stdin.end(JSON.stringify(payload));
+  });
+}
+
+function parseBrowserDevMsbuddyRunnerOutput(output: string) {
+  const lastLine = output.trim().split(/\r?\n/u).filter(Boolean).at(-1) || "{}";
+  const payload = JSON.parse(lastLine) as Record<string, unknown>;
+  if (payload.ok === false) {
+    throw new Error(typeof payload.error === "string" ? payload.error : "msbuddy annotation failed.");
+  }
+  return payload;
+}
+
+async function browserDevMsbuddyStatus() {
+  for (const pythonPath of browserDevMsbuddyPythonCandidates()) {
+    try {
+      await execFileAsync(pythonPath, ["-c", "import msbuddy"], { timeout: 20_000, maxBuffer: 128 * 1024 });
+      return { available: true, pythonPath };
+    } catch (_) {
+      // Try the next interpreter candidate.
+    }
+  }
+  return { available: false, pythonPath: browserDevMsbuddyPythonCandidates()[0] ?? null };
+}
+
+async function annotateBrowserDevSpectrumWithMsbuddy(body: Record<string, unknown>) {
+  const input = body.input && typeof body.input === "object" ? body.input as Record<string, unknown> : {};
+  const status = await browserDevMsbuddyStatus();
+  const fallbackCandidates = buildBrowserDevSpectrumFormulaCandidates(input);
+  if (!status.available) {
+    return {
+      ok: true,
+      runtime: "fallback",
+      message: "msbuddy Python package is not available in this browser-dev runtime; showing formula candidates from spectrum annotations.",
+      candidates: fallbackCandidates,
+    };
+  }
+  const pythonPath = status.pythonPath;
+  if (!pythonPath) {
+    return {
+      ok: true,
+      runtime: "fallback",
+      message: "msbuddy Python interpreter was not resolved; showing formula candidates from spectrum annotations.",
+      candidates: fallbackCandidates,
+    };
+  }
+  try {
+    const result = await runBrowserDevMsbuddyRunner(pythonPath, { input }, MSBUDDY_RUN_TIMEOUT_MS);
+    const candidates = mergeBrowserDevMsbuddyCandidates(result.candidates, fallbackCandidates);
+    return {
+      ok: true,
+      runtime: "msbuddy",
+      message: typeof result.message === "string" ? result.message : "msbuddy annotated this spectrum.",
+      precursorMz: result.precursorMz ?? null,
+      adduct: result.adduct ?? null,
+      candidates: candidates.length > 0 ? candidates : fallbackCandidates,
+    };
+  } catch (error) {
+    return {
+      ok: true,
+      runtime: "fallback",
+      message: `msbuddy runtime failed (${error instanceof Error ? error.message : String(error)}); showing formula candidates from spectrum annotations.`,
+      candidates: fallbackCandidates,
+    };
+  }
+}
+
+function mergeBrowserDevMsbuddyCandidates(rawCandidates: unknown, fallbackCandidates: BrowserDevMsbuddyCandidate[]) {
+  if (!Array.isArray(rawCandidates)) return [];
+  const fallbackByFormula = new Map(fallbackCandidates.map((candidate) => [candidate.formula, candidate]));
+  const merged: BrowserDevMsbuddyCandidate[] = [];
+  for (const rawCandidate of rawCandidates) {
+    if (!rawCandidate || typeof rawCandidate !== "object") continue;
+    const row = rawCandidate as Record<string, unknown>;
+    const formula = typeof row.formula === "string" ? row.formula.trim() : "";
+    if (!formula) continue;
+    const fallback = fallbackByFormula.get(formula);
+    const rank = Number(row.rank);
+    const score = numericAnnotation(row.score);
+    const massErrorPpm = numericAnnotation(row.massErrorPpm);
+    const explainedPeakIndexes = Array.isArray(row.explainedPeakIndexes)
+      ? row.explainedPeakIndexes.filter((index): index is number => Number.isInteger(index))
+      : [];
+    const fallbackIndexes = fallback?.explainedPeakIndexes ?? [];
+    const allIndexes = [...new Set([...explainedPeakIndexes, ...fallbackIndexes])].sort((left, right) => left - right);
+    const evidence = typeof row.evidence === "string" && row.evidence.trim()
+      ? row.evidence.trim()
+      : "msbuddy";
+    merged.push({
+      rank: Number.isFinite(rank) && rank > 0 ? rank : merged.length + 1,
+      formula,
+      score: score ?? fallback?.score ?? null,
+      massErrorPpm: massErrorPpm ?? fallback?.massErrorPpm ?? null,
+      explainedPeakIndexes: allIndexes,
+      evidence: fallback && !evidence.includes(fallback.evidence) ? `${evidence}, ${fallback.evidence}` : evidence,
+      source: "msbuddy",
+    });
+  }
+  return merged.sort((left, right) => left.rank - right.rank).slice(0, 16);
+}
+
+function buildBrowserDevSpectrumFormulaCandidates(input: Record<string, unknown>) {
+  const peaks = Array.isArray(input.peaks) ? input.peaks.filter((peak): peak is BrowserDevMsbuddyPeak => Boolean(peak && typeof peak === "object")) : [];
+  const formulas = new Map<string, BrowserDevMsbuddyCandidate>();
+  const addFormula = (rawFormula: unknown, evidence: string, peakIndex: number | null, score: number | null, massErrorPpm: number | null) => {
+    if (typeof rawFormula !== "string") return;
+    for (const formula of extractChemicalFormulas(rawFormula)) {
+      const current = formulas.get(formula);
+      if (current) {
+        current.score = Math.max(current.score ?? 0, score ?? 0);
+        if (massErrorPpm !== null && (current.massErrorPpm === null || Math.abs(massErrorPpm) < Math.abs(current.massErrorPpm))) {
+          current.massErrorPpm = massErrorPpm;
+        }
+        if (peakIndex !== null && !current.explainedPeakIndexes.includes(peakIndex)) current.explainedPeakIndexes.push(peakIndex);
+        if (!current.evidence.includes(evidence)) current.evidence = `${current.evidence}, ${evidence}`;
+        continue;
+      }
+      formulas.set(formula, {
+        rank: 0,
+        formula,
+        score,
+        massErrorPpm,
+        explainedPeakIndexes: peakIndex === null ? [] : [peakIndex],
+        evidence,
+        source: "spectrum",
+      });
+    }
+  };
+  addFormula(input.candidateFormula, "candidate formula", null, 1, null);
+  if (Array.isArray(input.fragmentFormulas)) {
+    for (const formula of input.fragmentFormulas) addFormula(formula, "fragment formula", null, 0.8, null);
+  }
+  const metadata = input.metadata && typeof input.metadata === "object" ? input.metadata as Record<string, unknown> : {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (/formula|cand_form|parent|precursor/iu.test(key)) addFormula(String(value), key, null, 0.75, null);
+  }
+  for (const peak of peaks) {
+    const peakIndex = Number.isInteger(peak.index) ? peak.index : null;
+    const annotations = peak.annotations && typeof peak.annotations === "object" ? peak.annotations : {};
+    const massErrorPpm = numericAnnotation(annotations.ppm_diff);
+    const intensityScore = Number.isFinite(peak.intensity) ? Math.max(0.1, Math.min(1, peak.intensity / 100)) : 0.25;
+    addFormula(peak.annotation, "peak annotation", peakIndex, intensityScore, massErrorPpm);
+    addFormula(annotations.frag_base_form, "fragment base formula", peakIndex, intensityScore, massErrorPpm);
+    addFormula(annotations.formula, "peak formula", peakIndex, intensityScore, massErrorPpm);
+  }
+  return [...formulas.values()]
+    .sort((left, right) => {
+      const scoreDiff = (right.score ?? 0) - (left.score ?? 0);
+      if (scoreDiff !== 0) return scoreDiff;
+      return right.explainedPeakIndexes.length - left.explainedPeakIndexes.length;
+    })
+    .slice(0, 16)
+    .map((candidate, index) => ({
+      ...candidate,
+      rank: index + 1,
+      explainedPeakIndexes: candidate.explainedPeakIndexes.sort((left, right) => left - right),
+    }));
+}
+
+function extractChemicalFormulas(value: string) {
+  const formulas = new Set<string>();
+  for (const match of value.matchAll(/\b(?:[A-Z][a-z]?\d*){2,}\b/gu)) {
+    const formula = match[0];
+    if (!/[A-Z][a-z]?\d*/u.test(formula)) continue;
+    if (/^[A-Z]{2,}$/u.test(formula)) continue;
+    formulas.add(formula);
+  }
+  return formulas;
+}
+
+function numericAnnotation(value: unknown) {
+  const number = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  return Number.isFinite(number) ? number : null;
 }
 
 async function calculateBrowserDevDescriptors(body: Record<string, unknown>) {
@@ -2886,7 +3289,44 @@ export function browserDevXyzrenderPlugin() {
         }
       });
 
-server.middlewares.use("/__burette/descriptors", async (req, res) => {
+      server.middlewares.use("/__burette/msbuddy", async (req, res) => {
+        const reply = (status: number, body: unknown) => {
+          res.statusCode = status;
+          res.setHeader("Content-Type", "application/json; charset=utf-8");
+          res.setHeader("Cache-Control", "no-cache");
+          res.end(JSON.stringify(body));
+        };
+        const method = (req.method || "GET").toUpperCase();
+        const url = new URL(req.url || "/", "http://127.0.0.1");
+        const endpoint = url.pathname
+          .replace(/^\/+/, "")
+          .replace(/^__burette\/msbuddy\/?/u, "")
+          .replace(/\/+$/u, "")
+          || "status";
+        try {
+          if (endpoint === "status") {
+            if (method !== "GET") {
+              reply(405, { error: "Method not allowed" });
+              return;
+            }
+            reply(200, await browserDevMsbuddyStatus());
+            return;
+          }
+          if (endpoint === "annotate") {
+            if (method !== "POST") {
+              reply(405, { error: "Method not allowed" });
+              return;
+            }
+            reply(200, await annotateBrowserDevSpectrumWithMsbuddy(await readJsonBody(req)));
+            return;
+          }
+          reply(404, { error: "Unknown msbuddy endpoint." });
+        } catch (error) {
+          reply(500, { error: error instanceof Error ? error.message : String(error) });
+        }
+      });
+
+      server.middlewares.use("/__burette/descriptors", async (req, res) => {
         const reply = (status: number, body: unknown) => {
           res.statusCode = status;
           res.setHeader("Content-Type", "application/json; charset=utf-8");

@@ -231,6 +231,7 @@ export type ShellActions = {
   checkForUpdates: () => void | Promise<void>;
   installUpdate: () => void | Promise<void>;
   openUpdateRelease: () => void | Promise<void>;
+  closeQuickLookPreview: () => void;
   setPreference: <K extends keyof ViewerPreferences>(key: K, value: ViewerPreferences[K]) => void;
   setUpdatePreferences: (preferences: UpdatePreferences) => void;
 };
@@ -243,6 +244,9 @@ export type ShellViewState = {
   activeTabId: string | null;
   activeDocument: ViewerDocument | null;
   activeDocumentId: string | null;
+  quickLookDocument: ViewerDocument | null;
+  quickLookError: string | null;
+  quickLookStandalone: boolean;
   visibleDocuments: ViewerDocument[];
   recentStructures: RecentStructure[];
   sidebarProjects: SidebarProject[];
