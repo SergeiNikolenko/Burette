@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readFile, unlink } from "node:fs/promises";
 import path from "node:path";
 
+import { extractStructureComponentFile } from "../plugins/burette-agent/mcp/lib/structure-components.mjs";
 import { summarizeStructureFile } from "../plugins/burette-agent/mcp/lib/structure-summary.mjs";
 import { validateMolecularArtifact } from "../plugins/burette-agent/mcp/lib/validation.mjs";
 
@@ -61,6 +62,13 @@ assert.match(workspaceRegistration, /open_burrete_workspace/);
 assert.match(workspaceRegistration, /summarize_burrete_structure/);
 assert.match(workspaceRegistration, /summarizeStructureFile/);
 assert.match(workspaceRegistration, /structureSummary/);
+assert.match(workspaceRegistration, /manage_burrete_tabs/);
+assert.match(workspaceRegistration, /type: "manage_tabs"/);
+assert.match(workspaceRegistration, /operation: z\.enum\(\["list", "focus", "next", "previous", "open_file", "new", "close", "move"\]\)/);
+assert.match(workspaceRegistration, /manage_burrete_structure_component/);
+assert.match(workspaceRegistration, /extractStructureComponentFile/);
+assert.match(workspaceRegistration, /type: "clear_selection"/);
+assert.match(workspaceRegistration, /hide_components/);
 assert.match(workspaceRegistration, /observe_burrete_workspace/);
 assert.match(workspaceRegistration, /act_molstar_scene/);
 assert.match(workspaceRegistration, /declarative Mol\* scene action/);
@@ -219,10 +227,23 @@ assert.equal(structureSummary.format, "PDB");
 assert.equal(structureSummary.counts.atoms, 9);
 assert.equal(structureSummary.counts.chains, 1);
 
+const extractedLigand = await extractStructureComponentFile({
+  file: "tests/fixtures/BurettePreviewSamples/1HTB.pdb",
+  component: "ligand",
+  chain: "A",
+  compId: "NAD",
+  seq: 377,
+  title: "test-nad-a-377",
+});
+assert.equal(extractedLigand.atomCount, 44);
+assert.match(extractedLigand.outputPath, /test-nad-a-377\.pdb$/);
+await unlink(extractedLigand.outputPath);
+
 const syntaxTargets = [
   "plugins/burette-agent/mcp/server.mjs",
   "plugins/burette-agent/mcp/lib/cli-bridge.mjs",
   "plugins/burette-agent/mcp/lib/plugin-root.mjs",
+  "plugins/burette-agent/mcp/lib/structure-components.mjs",
   "plugins/burette-agent/mcp/lib/structure-summary.mjs",
   "plugins/burette-agent/mcp/lib/validation.mjs",
   "plugins/burette-agent/mcp/lib/widget-resource.mjs",
