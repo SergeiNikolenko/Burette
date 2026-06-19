@@ -18,11 +18,18 @@ import {
   registerBrowserDevAppIconRoute,
   registerBrowserDevRdkitWasmRoute,
 } from "./vite/browser-dev/assets";
+import { registerBrowserDevAgentSessionRoute } from "./vite/browser-dev/agent-session";
+import { registerBrowserDevConformerJobRoutes } from "./vite/browser-dev/conformer-jobs";
+import { registerBrowserDevInlineConformerRoute } from "./vite/browser-dev/conformer-inline";
+import { registerBrowserDevDescriptorRoutes } from "./vite/browser-dev/descriptors";
+import { registerBrowserDevDesmondPreviewRoute } from "./vite/browser-dev/desmond";
 import {
   registerBrowserDevFileContentRoutes,
   registerBrowserDevFileDiscoveryRoute,
 } from "./vite/browser-dev/files";
-import { readJsonBody, sendJson, sendJsonError } from "./vite/browser-dev/http";
+import { registerBrowserDevMsbuddyRoutes } from "./vite/browser-dev/msbuddy";
+import { registerBrowserDevXtbRoutes } from "./vite/browser-dev/xtb";
+import { registerBrowserDevXyzrenderRoute } from "./vite/browser-dev/xyzrender";
 
 const desktopRoot = fileURLToPath(new URL(".", import.meta.url));
 const desktopDist = fileURLToPath(new URL("dist", import.meta.url));
@@ -3263,545 +3270,54 @@ export function browserDevXyzrenderPlugin() {
       };
       registerBrowserDevFileDiscoveryRoute(server, fileRoutes);
       registerBrowserDevRdkitWasmRoute(server, RDKIT_WASM_PATH);
-      server.middlewares.use("/__burette/generate-3d-conformer", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "POST") {
-          sendJson(res, 405, { error: "Method not allowed" });
-          return;
-        }
-        try {
-          sendJson(res, 200, await generate3DConformerForBrowserDev(await readJsonBody(req)));
-        } catch (error) {
-          sendJsonError(res, 500, error);
-        }
+      registerBrowserDevInlineConformerRoute(server, generate3DConformerForBrowserDev);
+      registerBrowserDevMsbuddyRoutes(server, {
+        annotateSpectrum: annotateBrowserDevSpectrumWithMsbuddy,
+        status: browserDevMsbuddyStatus,
       });
 
-      server.middlewares.use("/__burette/msbuddy", async (req, res) => {
-        const reply = (status: number, body: unknown) => {
-          res.statusCode = status;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(JSON.stringify(body));
-        };
-        const method = (req.method || "GET").toUpperCase();
-        const url = new URL(req.url || "/", "http://127.0.0.1");
-        const endpoint = url.pathname
-          .replace(/^\/+/, "")
-          .replace(/^__burette\/msbuddy\/?/u, "")
-          .replace(/\/+$/u, "")
-          || "status";
-        try {
-          if (endpoint === "status") {
-            if (method !== "GET") {
-              reply(405, { error: "Method not allowed" });
-              return;
-            }
-            reply(200, await browserDevMsbuddyStatus());
-            return;
-          }
-          if (endpoint === "annotate") {
-            if (method !== "POST") {
-              reply(405, { error: "Method not allowed" });
-              return;
-            }
-            reply(200, await annotateBrowserDevSpectrumWithMsbuddy(await readJsonBody(req)));
-            return;
-          }
-          reply(404, { error: "Unknown msbuddy endpoint." });
-        } catch (error) {
-          reply(500, { error: error instanceof Error ? error.message : String(error) });
-        }
+      registerBrowserDevDescriptorRoutes(server, {
+        calculate: calculateBrowserDevDescriptors,
+        calculateGrid: calculateBrowserDevGridDescriptors,
+        gridJobs: browserDevDescriptorJobs,
+        gridSummary: browserDevDescriptorGridSummary,
+        install: installBrowserDevDescriptorRuntime,
+        status: browserDevDescriptorStatus,
       });
-
-      server.middlewares.use("/__burette/descriptors", async (req, res) => {
-        const reply = (status: number, body: unknown) => {
-          res.statusCode = status;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(JSON.stringify(body));
-        };
-        const method = (req.method || "GET").toUpperCase();
-        const url = new URL(req.url || "/", "http://127.0.0.1");
-        const endpoint = url.pathname
-          .replace(/^\/+/, "")
-          .replace(/^__burette\/descriptors\/?/u, "")
-          || "status";
-        try {
-          if (endpoint === "status") {
-            if (method !== "GET") {
-              reply(405, { error: "Method not allowed" });
-              return;
-            }
-            reply(200, await browserDevDescriptorStatus());
-            return;
-          }
-          if (endpoint === "install") {
-            if (method !== "POST") {
-              reply(405, { error: "Method not allowed" });
-              return;
-            }
-            reply(200, await installBrowserDevDescriptorRuntime());
-            return;
-          }
-          if (endpoint === "calculate") {
-            if (method !== "POST") {
-              reply(405, { error: "Method not allowed" });
-              return;
-            }
-            reply(200, await calculateBrowserDevDescriptors(await readJsonBody(req)));
-            return;
-          }
-          if (endpoint === "grid") {
-            if (method !== "POST") {
-              reply(405, { error: "Method not allowed" });
-              return;
-            }
-            reply(200, await calculateBrowserDevGridDescriptors(await readJsonBody(req)));
-            return;
-          }
-          if (endpoint === "grid-summary") {
-            const body = method === "POST" ? await readJsonBody(req) : {};
-            const documentId = typeof body.documentId === "string" ? body.documentId : url.searchParams.get("documentId") || "browser-dev-grid";
-            const path = typeof body.path === "string" ? body.path : url.searchParams.get("path") || "";
-            reply(200, await browserDevDescriptorGridSummary(documentId, path));
-            return;
-          }
-          if (endpoint === "grid-job-status") {
-            if (method !== "GET") {
-              reply(405, { error: "Method not allowed" });
-              return;
-            }
-            const documentId = url.searchParams.get("documentId") || "browser-dev-grid";
-            reply(200, browserDevDescriptorJobs.get(documentId) ?? {
-              documentId,
-              status: "idle",
-              running: false,
-              totalRows: 0,
-              processedRows: 0,
-              calculatedRows: 0,
-              failedRows: 0,
-              message: "No descriptor job has run yet.",
-              startedAtMs: Date.now(),
-              finishedAtMs: Date.now(),
-              summary: null,
-              rows: [],
-            });
-            return;
-          }
-          if (endpoint === "grid-cancel") {
-            if (method !== "POST") {
-              reply(405, { error: "Method not allowed" });
-              return;
-            }
-            const body = await readJsonBody(req);
-            const documentId = typeof body.documentId === "string" ? body.documentId : "browser-dev-grid";
-            const previous = browserDevDescriptorJobs.get(documentId);
-            const cancelled = {
-              ...(previous ?? {
-                documentId,
-                totalRows: 0,
-                processedRows: 0,
-                calculatedRows: 0,
-                failedRows: 0,
-                startedAtMs: Date.now(),
-                summary: null,
-                rows: [],
-              }),
-              documentId,
-              status: "cancelled" as const,
-              running: false,
-              message: "Descriptor calculation cancelled.",
-              finishedAtMs: Date.now(),
-            };
-            browserDevDescriptorJobs.set(documentId, cancelled);
-            reply(200, cancelled);
-            return;
-          }
-          reply(404, { error: "Descriptor endpoint not found" });
-        } catch (error) {
-          reply(500, { error: error instanceof Error ? error.message : String(error) });
-        }
+      registerBrowserDevConformerJobRoutes(server, {
+        cancel: cancelBrowserDevJob,
+        prepare: prepareBrowserDevConformerJob,
+        run: runBrowserDevConformerJob,
+        status: browserDevConformerStatus,
       });
-      server.middlewares.use("/__burette/conformer-status", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "GET") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(JSON.stringify(await browserDevConformerStatus()));
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
+      registerBrowserDevXtbRoutes(server, {
+        cancel: cancelBrowserDevJob,
+        install: installBrowserDevXtb,
+        run: runBrowserDevXtbJob,
+        status: browserDevXtbStatus,
       });
-      server.middlewares.use("/__burette/prepare-conformer-job", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "POST") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          const body = await readJsonBody(req);
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(JSON.stringify(await prepareBrowserDevConformerJob(body)));
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
-      server.middlewares.use("/__burette/run-conformer-job", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "POST") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          const body = await readJsonBody(req);
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(JSON.stringify(await runBrowserDevConformerJob(body)));
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
-      server.middlewares.use("/__burette/cancel-conformer-job", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "POST") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          const body = await readJsonBody(req);
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(JSON.stringify(cancelBrowserDevJob("conformer", body?.jobId)));
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
-      server.middlewares.use("/__burette/xtb-status", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "GET") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(JSON.stringify(await browserDevXtbStatus()));
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
-      server.middlewares.use("/__burette/install-xtb", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "POST") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify(await installBrowserDevXtb()));
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
-      server.middlewares.use("/__burette/run-xtb-job", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "POST") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          const body = await readJsonBody(req);
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify(await runBrowserDevXtbJob(body)));
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
-      server.middlewares.use("/__burette/cancel-xtb-job", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "POST") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          const body = await readJsonBody(req);
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(JSON.stringify(cancelBrowserDevJob("xtb", body?.jobId)));
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
-
-      server.middlewares.use("/__burette/agent-session/", async (req, res) => {
-        const sessionDir = process.env.BURRETE_AGENT_SHELL_SESSION_DIR
-          ? resolve(process.env.BURRETE_AGENT_SHELL_SESSION_DIR)
-          : null;
-        const method = (req.method || "GET").toUpperCase();
-        const url = new URL(req.url || "", "http://127.0.0.1");
-        const fileName = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
-        if (!sessionDir || !["actions.json", "observe.json", "session.json", "events"].includes(fileName)) {
-          res.statusCode = sessionDir ? 404 : 403;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: sessionDir ? "Not found" : "Agent shell session is not enabled" }));
-          return;
-        }
-        if (fileName === "events") {
-          if (method !== "GET") {
-            res.statusCode = 405;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Method not allowed" }));
-            return;
-          }
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-          res.setHeader("Cache-Control", "no-cache, no-transform");
-          res.setHeader("Connection", "keep-alive");
-          const sendActionsEvent = () => {
-            res.write(`event: actions\ndata: ${JSON.stringify({ file: "actions.json", at: new Date().toISOString() })}\n\n`);
-          };
-          sendActionsEvent();
-          const watcher = watch(sessionDir, (_eventType, changedFileName) => {
-            if (changedFileName === "actions.json") sendActionsEvent();
-          });
-          req.on("close", () => watcher.close());
-          return;
-        }
-        const filePath = resolve(sessionDir, fileName);
-        if (!filePath.startsWith(`${sessionDir}/`)) {
-          res.statusCode = 403;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Forbidden" }));
-          return;
-        }
-        try {
-          if (method === "GET") {
-            const fallback = fileName === "actions.json"
-              ? { apiVersion: "burette-agent-control/v1", actions: [] }
-              : {};
-            let value = fallback;
-            if (existsSync(filePath)) value = JSON.parse(await readFile(filePath, "utf8"));
-            res.statusCode = 200;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.setHeader("Cache-Control", "no-cache");
-            res.end(JSON.stringify(value));
-            return;
-          }
-          if (method === "PUT") {
-            if (fileName === "session.json") {
-              res.statusCode = 405;
-              res.setHeader("Content-Type", "application/json; charset=utf-8");
-              res.end(JSON.stringify({ error: "session.json is read-only" }));
-              return;
-            }
-            const body = await readJsonBody(req);
-            await mkdir(sessionDir, { recursive: true });
-            await writeFile(filePath, `${JSON.stringify(body, null, 2)}\n`);
-            res.statusCode = 200;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ ok: true }));
-            return;
-          }
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
+      registerBrowserDevAgentSessionRoute(server);
       registerBrowserDevAppIconRoute(server, BROWSER_DEV_APP_ICONS, execFileAsync);
       registerBrowserDevFileContentRoutes(server, fileRoutes);
-      server.middlewares.use("/__burette/desmond-preview", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "GET") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          const url = new URL(req.url || "", "http://127.0.0.1");
-          const path = url.searchParams.get("path");
-          if (!path) {
-            res.statusCode = 400;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Missing path" }));
-            return;
-          }
-          const filePath = resolve(path);
-          if (!isDevFileReadAllowed(filePath)) {
-            res.statusCode = 403;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Forbidden" }));
-            return;
-          }
-          const bundle = resolveStructureFileBundle(filePath);
-          if (bundle.kind !== "desmond") {
-            res.statusCode = 404;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "No Desmond trajectory candidate found." }));
-            return;
-          }
-          if (!existsSync(SCHRODINGER_RUN) || !existsSync(DESMOND_PREVIEW_EXTRACTOR)) {
-            res.statusCode = 404;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Schrodinger Desmond preview extractor is unavailable." }));
-            return;
-          }
-          const tempDirectory = await mkdtemp(join(tmpdir(), "burrete-desmond-preview-"));
-          const outputPath = join(tempDirectory, "desmond-preview.pdb");
-          try {
-            await execFileAsync(
-              SCHRODINGER_RUN,
-              [
-                "python3",
-                DESMOND_PREVIEW_EXTRACTOR,
-                bundle.inputPath,
-                "--frames",
-                "0",
-                "--atoms",
-                "0",
-                "--target-mb",
-                String(DESMOND_PREVIEW_TARGET_MB),
-                "--output",
-                outputPath,
-              ],
-              { timeout: 0, maxBuffer: 16 * 1024 * 1024 },
-            );
-            const bytes = await readFile(outputPath);
-            if (!bytes.length) {
-              res.statusCode = 500;
-              res.setHeader("Content-Type", "application/json; charset=utf-8");
-              res.end(JSON.stringify({ error: "Desmond preview extractor produced an empty PDB file." }));
-              return;
-            }
-            res.statusCode = 200;
-            res.setHeader("Content-Type", "application/octet-stream");
-            res.setHeader("Content-Length", String(bytes.length));
-            res.setHeader("Cache-Control", "no-cache");
-            res.setHeader("X-Burrete-Preview-Extension", "pdb");
-            res.end(bytes);
-          } finally {
-            await rm(tempDirectory, { recursive: true, force: true });
-          }
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
+      registerBrowserDevDesmondPreviewRoute(server, {
+        desmondPreviewExtractor: DESMOND_PREVIEW_EXTRACTOR,
+        execFileAsync,
+        isDevFileReadAllowed,
+        resolveStructureFileBundle,
+        schrodingerRun: SCHRODINGER_RUN,
+        targetMb: DESMOND_PREVIEW_TARGET_MB,
       });
-      server.middlewares.use("/__burette/xyzrender", async (req, res) => {
-        const reply = (status: number, body: unknown) => {
-          res.statusCode = status;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify(body));
-        };
-        if ((req.method || "GET").toUpperCase() !== "POST") {
-          reply(405, { error: "Method not allowed" });
-          return;
-        }
-        try {
-          const body = await readJsonBody(req);
-          const inputPath = typeof body.path === "string" ? body.path : null;
-          if (!inputPath) {
-            reply(400, { error: "Missing path" });
-            return;
-          }
-          const preset = normalizeXyzrenderPreset(typeof body.preset === "string" ? body.preset : null);
-          const orientationRef = normalizeOrientationRef(typeof body.orientationRef === "string" ? body.orientationRef : null);
-          const controls = normalizeXyzrenderControls(body.controls);
-          const inputData = typeof body.inputDataBase64 === "string"
-            ? Buffer.from(body.inputDataBase64, "base64")
-            : null;
-          const inputExtension = normalizeXyzrenderInputExtension(typeof body.inputExtension === "string" ? body.inputExtension : null);
-          const executable = resolveXyzrenderExecutable();
-          if (!executable) {
-            reply(404, { error: "External xyzrender executable was not found." });
-            return;
-          }
-          const tempDirectory = await mkdtemp(join(tmpdir(), "burrete-xyzrender-"));
-          const outputPath = join(tempDirectory, "xyzrender.svg");
-          const convertedInputPath = join(tempDirectory, `xyzrender-input.${inputExtension}`);
-          const orientationRefPath = join(tempDirectory, "orientation-ref.xyz");
-          const startedAt = Date.now();
-          try {
-            const effectiveInputPath = inputData?.length ? convertedInputPath : inputPath;
-            if (inputData?.length) {
-              await writeFile(convertedInputPath, inputData);
-            }
-            const args = buildXyzrenderArgs(
-              effectiveInputPath,
-              outputPath,
-              preset,
-              orientationRef ? orientationRefPath : null,
-              controls,
-            );
-            if (orientationRef) {
-              await writeFile(orientationRefPath, orientationRef, "utf8");
-            }
-            const { stdout, stderr } = await execFileAsync(
-              executable,
-              args,
-              { timeout: 25_000, maxBuffer: 8 * 1024 * 1024 },
-            );
-            const svg = await readFile(outputPath, "utf8");
-            if (!svg.trim()) {
-              reply(500, { error: "External xyzrender produced an empty SVG output file." });
-              return;
-            }
-            reply(200, {
-              svg,
-              preset: resolveEffectivePreset(preset, controls),
-              configArgument: resolveConfigArgument(preset, controls),
-              elapsedMs: Date.now() - startedAt,
-              log: `${stdout || ""}${stderr || ""}`,
-              xyzrenderControls: controls,
-              xyzrenderPresetOptions: XYZRENDER_PRESET_OPTIONS,
-            });
-          } finally {
-            await rm(tempDirectory, { recursive: true, force: true });
-          }
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          reply(500, { error: message });
-        }
+      registerBrowserDevXyzrenderRoute(server, {
+        buildArgs: buildXyzrenderArgs,
+        execFileAsync,
+        normalizeControls: normalizeXyzrenderControls,
+        normalizeInputExtension: normalizeXyzrenderInputExtension,
+        normalizeOrientationRef,
+        normalizePreset: normalizeXyzrenderPreset,
+        presetOptions: XYZRENDER_PRESET_OPTIONS,
+        resolveConfigArgument,
+        resolveEffectivePreset,
+        resolveExecutable: resolveXyzrenderExecutable,
       });
     },
   };

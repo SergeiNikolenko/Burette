@@ -16,6 +16,6 @@ export function sendJson(res: ServerResponse, status: number, body: unknown, cac
   res.end(JSON.stringify(body));
 }
 
-export function sendJsonError(res: ServerResponse, status: number, error: unknown) {
-  sendJson(res, status, { error: error instanceof Error ? error.message : String(error) });
+export function sendJsonError(res: ServerResponse, status: number, error: unknown, cacheControl?: string) {
+  sendJson(res, status, { error: error instanceof Error ? error.message : String(error) }, cacheControl);
 }
