@@ -13,6 +13,7 @@ const [
   uiStore,
   commandPaletteHook,
   appDescriptorsHook,
+  appDiagnosticsHook,
   appDirtyGridHook,
   appFileActionsHook,
   appBootstrapHook,
@@ -138,6 +139,7 @@ const [
   source('apps/desktop/src/stores/ui-store.ts'),
   source('apps/desktop/src/hooks/use-command-palette.ts'),
   source('apps/desktop/src/hooks/use-app-descriptors.ts'),
+  source('apps/desktop/src/hooks/use-app-diagnostics.ts'),
   source('apps/desktop/src/hooks/use-app-dirty-grid-documents.ts'),
   source('apps/desktop/src/hooks/use-app-file-actions.ts'),
   source('apps/desktop/src/hooks/use-app-bootstrap.ts'),
@@ -876,6 +878,15 @@ assert.match(appMaintenanceHook, /invoke\("clear_preview_cache"\)/);
 assert.match(appMaintenanceHook, /invoke<\{ ok: boolean \}>\("reset_quick_look"\)/);
 assert.match(appMaintenanceHook, /invoke\("open_logs_folder"\)/);
 assert.match(appMaintenanceHook, /invoke<string>\("open_new_workspace_window"\)/);
+assert.match(app, /useAppDiagnostics\(\{\s*pushErrorStatus,\s*pushStatus,\s*recentErrorsRef,\s*\}\)/s);
+assert.doesNotMatch(app, /collectPerformanceMarks/);
+assert.doesNotMatch(app, /measureAsync\("ipc:export-diagnostics"/);
+assert.match(appDiagnosticsHook, /Diagnostics export is available in the desktop app only/);
+assert.match(appDiagnosticsHook, /measureAsync\("ipc:export-diagnostics"/);
+assert.match(appDiagnosticsHook, /invoke<string>\("export_diagnostics_bundle"/);
+assert.match(appDiagnosticsHook, /performanceMarks: collectPerformanceMarks\(\)/);
+assert.match(appDiagnosticsHook, /recentErrors: recentErrorsRef\.current/);
+assert.match(appDiagnosticsHook, /Diagnostics export failed/);
 assert.doesNotMatch(app, /setCommandPaletteOpen/);
 assert.doesNotMatch(app, /useState\(false\).*commandPalette/i);
 assert.match(app, /refreshedPersistedSessionRef/);
