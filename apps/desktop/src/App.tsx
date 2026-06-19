@@ -15,6 +15,7 @@ import {
   useSetCommandPaletteSearch,
 } from "./hooks/use-command-palette";
 import { useAppDescriptors } from "./hooks/use-app-descriptors";
+import { useAppDiagnostics } from "./hooks/use-app-diagnostics";
 import { useAppDirtyGridDocuments } from "./hooks/use-app-dirty-grid-documents";
 import { useAppFileActions } from "./hooks/use-app-file-actions";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
@@ -76,7 +77,7 @@ import { dockingRequestForDrop, isProteinLikeDockingSource } from "./lib/docking
 import { canInspectConformerEnsemble, canUseConformerWorkflow } from "./lib/conformer-ensemble";
 import type { DockArea, DockTabKind } from "./lib/dock";
 import type { DropActionChoice } from "./lib/drop-actions";
-import { collectPerformanceMarks, markPerformanceOnce, measureAsync } from "./lib/performance";
+import { markPerformanceOnce } from "./lib/performance";
 import { basename, parentDirectory } from "./lib/sidebar-projects";
 import { parseStructureComposition } from "./lib/structure-composition";
 import type { StructureDragPayload, StructureDragRecord } from "./lib/structure-drag";
@@ -568,6 +569,11 @@ export default function App() {
     openNewWindow,
     resetQuickLook,
   } = useAppMaintenance({ pushErrorStatus, pushStatus });
+  const { exportDiagnostics } = useAppDiagnostics({
+    pushErrorStatus,
+    pushStatus,
+    recentErrorsRef,
+  });
   const {
     applyGridDescriptorControls,
     applyGridDescriptorResults,
@@ -4114,28 +4120,7 @@ export default function App() {
     clearCache,
     resetQuickLook,
     openLogs,
-    exportDiagnostics: async () => {
-      try {
-        if (!isTauriRuntime()) {
-          pushStatus("Diagnostics export is available in the desktop app only.", "error");
-          return;
-        }
-        const outputPath = await save({
-          title: "Export Diagnostics Bundle",
-          defaultPath: `Burrete-Diagnostics-${new Date().toISOString().replace(/[:.]/g, "-")}.diagnostics`,
-          filters: [{ name: "Burrete diagnostics", extensions: ["diagnostics"] }],
-        });
-        if (!outputPath) return;
-        const exportedPath = await measureAsync("ipc:export-diagnostics", () => invoke<string>("export_diagnostics_bundle", {
-          outputPath,
-          performanceMarks: collectPerformanceMarks(),
-          recentErrors: recentErrorsRef.current,
-        }));
-        pushStatus(`Exported diagnostics to ${basename(exportedPath)}`);
-      } catch (error) {
-        pushErrorStatus(error, "Diagnostics export failed");
-      }
-    },
+    exportDiagnostics,
     checkForUpdates: async () => {
       await checkForUpdates(false);
     },
@@ -4145,7 +4130,7 @@ export default function App() {
     openUpdateRelease,
     setPreference,
     setUpdatePreferences,
-  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearDirtyGridDocuments, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeQuickLookPreview, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, forgetDirtyGridDocument, forgetDirtyGridDocuments, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openUpdateRelease, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runStructureViewerAction, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar]);
+  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearDirtyGridDocuments, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeQuickLookPreview, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, exportDiagnostics, focusSidebarSearch, forgetDirtyGridDocument, forgetDirtyGridDocuments, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openUpdateRelease, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runStructureViewerAction, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
