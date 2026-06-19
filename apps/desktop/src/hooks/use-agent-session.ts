@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { ViewerDocument } from "../types";
+import type { DockingSceneMode, ViewerDocument } from "../types";
 import type { OpenTextFilesResult } from "../types";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 import type { DockArea } from "../lib/dock";
+import type { MoleculeTab } from "./use-tabs";
 
 const AGENT_API_VERSION = "burette-agent-control/v1";
 const ACTION_POLL_INTERVAL_MS = 500;
@@ -12,6 +13,17 @@ const BROWSER_AGENT_SESSION_DIR = "__browser_agent_shell__";
 const isBrowserAgentShell = import.meta.env.VITE_BURRETE_AGENT_SHELL === "1";
 
 type OpenPaths = (paths: string[]) => void | Promise<void>;
+type OpenDockingView = (
+  receptorPath: string,
+  ligandPaths: string[],
+  options?: { activePose?: number | null; sceneMode?: DockingSceneMode | null },
+) => void | Promise<ViewerDocument | null> | ViewerDocument | null;
+type TabActionHandlers = {
+  openNewTab: () => void;
+  setActiveTab: (id: string) => void;
+  closeTab: (id: string) => void;
+  moveTab: (id: string, toIndex: number) => void;
+};
 type OpenTextDocuments = (
   paths: string[],
   options?: { inActiveTab?: boolean; background?: boolean },
@@ -73,8 +85,12 @@ type AgentSceneSelection = {
 type UseAgentSessionArgs = {
   activeDocument: ViewerDocument | null | undefined;
   documents: ViewerDocument[];
+  tabs: MoleculeTab[];
+  activeTabId: string | null;
   openTextDocuments: OpenTextDocuments;
   openPaths: OpenPaths;
+  openDockingView: OpenDockingView;
+  tabActions: TabActionHandlers;
   pushErrorStatus: (error: unknown, prefix?: string) => void;
   setDockDocument: (area: DockArea, documentId: string | null) => void;
 };
@@ -82,15 +98,23 @@ type UseAgentSessionArgs = {
 export function useAgentSession({
   activeDocument,
   documents,
+  tabs,
+  activeTabId,
   openTextDocuments,
   openPaths,
+  openDockingView,
+  tabActions,
   pushErrorStatus,
   setDockDocument,
 }: UseAgentSessionArgs) {
   const sessionDirRef = useRef<string | null>(null);
   const activeDocumentRef = useRef<ViewerDocument | null | undefined>(activeDocument);
   const documentsRef = useRef<ViewerDocument[]>(documents);
+  const tabsRef = useRef<MoleculeTab[]>(tabs);
+  const activeTabIdRef = useRef<string | null>(activeTabId);
   const openPathsRef = useRef(openPaths);
+  const openDockingViewRef = useRef(openDockingView);
+  const tabActionsRef = useRef(tabActions);
   const openTextDocumentsRef = useRef(openTextDocuments);
   const pushErrorStatusRef = useRef(pushErrorStatus);
   const setDockDocumentRef = useRef(setDockDocument);
@@ -101,21 +125,25 @@ export function useAgentSession({
   useEffect(() => {
     activeDocumentRef.current = activeDocument;
     documentsRef.current = documents;
-    void writeObserve(sessionDirRef.current, activeDocument, documents, workspacePanelsRef.current, viewerAgentStatesRef.current);
-  }, [activeDocument, documents]);
+    tabsRef.current = tabs;
+    activeTabIdRef.current = activeTabId;
+    void writeObserve(sessionDirRef.current, activeDocument, documents, tabs, activeTabId, workspacePanelsRef.current, viewerAgentStatesRef.current);
+  }, [activeDocument, documents, tabs, activeTabId]);
 
   useEffect(() => {
     openPathsRef.current = openPaths;
+    openDockingViewRef.current = openDockingView;
+    tabActionsRef.current = tabActions;
     openTextDocumentsRef.current = openTextDocuments;
     pushErrorStatusRef.current = pushErrorStatus;
     setDockDocumentRef.current = setDockDocument;
-  }, [openPaths, openTextDocuments, pushErrorStatus, setDockDocument]);
+  }, [openPaths, openDockingView, tabActions, openTextDocuments, pushErrorStatus, setDockDocument]);
 
   const activateSession = useCallback((sessionDir: string | null | undefined) => {
     const cleanSessionDir = typeof sessionDir === "string" ? sessionDir.trim() : "";
     if (!cleanSessionDir) return;
     sessionDirRef.current = cleanSessionDir;
-    void writeObserve(cleanSessionDir, activeDocumentRef.current, documentsRef.current, workspacePanelsRef.current, viewerAgentStatesRef.current);
+    void writeObserve(cleanSessionDir, activeDocumentRef.current, documentsRef.current, tabsRef.current, activeTabIdRef.current, workspacePanelsRef.current, viewerAgentStatesRef.current);
   }, []);
 
   useEffect(() => {
@@ -160,6 +188,8 @@ export function useAgentSession({
             sessionDirRef.current,
             activeDocumentRef.current,
             documentsRef.current,
+            tabsRef.current,
+            activeTabIdRef.current,
             workspacePanelsRef.current,
             viewerAgentStatesRef.current,
           );
@@ -180,6 +210,8 @@ export function useAgentSession({
         sessionDirRef.current,
         activeDocumentRef.current,
         documentsRef.current,
+        tabsRef.current,
+        activeTabIdRef.current,
         workspacePanelsRef.current,
         viewerAgentStatesRef.current,
       );
@@ -198,12 +230,16 @@ export function useAgentSession({
       void pollAgentActions(
         sessionDir,
         openPathsRef.current,
+        openDockingViewRef.current,
+        tabActionsRef.current,
         openTextDocumentsRef.current,
         setDockDocumentRef.current,
         pendingViewerActionsRef.current,
         workspacePanelsRef.current,
         activeDocumentRef.current,
         documentsRef.current,
+        tabsRef.current,
+        activeTabIdRef.current,
         viewerAgentStatesRef.current,
       )
         .catch((error) => pushErrorStatusRef.current(error, "Agent action failed"))
@@ -228,6 +264,8 @@ async function writeObserve(
   sessionDir: string | null,
   activeDocument: ViewerDocument | null | undefined,
   documents: ViewerDocument[],
+  tabs: MoleculeTab[],
+  activeTabId: string | null,
   workspacePanels: AgentWorkspacePanel[],
   viewerAgentStates: Record<string, ViewerAgentState>,
 ) {
@@ -263,6 +301,8 @@ async function writeObserve(
       renderer: document.renderer,
       byteCount: document.byteCount,
     })),
+    tabs: tabs.map((tab, index) => serializeTabForAgent(tab, index, activeTabId, documents)),
+    activeTabId,
     viewerAgent: {
       apiVersion: "burette-agent/v1",
       available: activeMolstar && !!activeAgentState?.agentReady,
@@ -291,12 +331,16 @@ async function writeObserve(
 async function pollAgentActions(
   sessionDir: string,
   openPaths: OpenPaths,
+  openDockingView: OpenDockingView,
+  tabActions: TabActionHandlers,
   openTextDocuments: OpenTextDocuments,
   setDockDocument: (area: DockArea, documentId: string | null) => void,
   pendingViewerActions: Map<string, (result: unknown) => void>,
   workspacePanels: AgentWorkspacePanel[],
   activeDocument: ViewerDocument | null | undefined,
   documents: ViewerDocument[],
+  tabs: MoleculeTab[],
+  activeTabId: string | null,
   viewerAgentStates: Record<string, ViewerAgentState>,
 ) {
   const actionsPath = joinSessionPath(sessionDir, "actions.json");
@@ -310,28 +354,38 @@ async function pollAgentActions(
   const result = await executeDesktopAgentAction(
     nextAction,
     openPaths,
+    openDockingView,
+    tabActions,
     openTextDocuments,
     setDockDocument,
     pendingViewerActions,
     workspacePanels,
     activeDocument,
+    documents,
+    tabs,
+    activeTabId,
     viewerAgentStates,
   );
   nextAction.completedAt = new Date().toISOString();
   nextAction.result = result;
   nextAction.status = isFailedResult(result) ? "failed" : "completed";
   await writeJson(actionsPath, { apiVersion: AGENT_API_VERSION, actions });
-  await writeObserve(sessionDir, activeDocument, documents, workspacePanels, viewerAgentStates);
+  await writeObserve(sessionDir, activeDocument, documents, tabs, activeTabId, workspacePanels, viewerAgentStates);
 }
 
 async function executeDesktopAgentAction(
   item: AgentActionItem,
   openPaths: OpenPaths,
+  openDockingView: OpenDockingView,
+  tabActions: TabActionHandlers,
   openTextDocuments: OpenTextDocuments,
   setDockDocument: (area: DockArea, documentId: string | null) => void,
   pendingViewerActions: Map<string, (result: unknown) => void>,
   workspacePanels: AgentWorkspacePanel[],
   activeDocument: ViewerDocument | null | undefined,
+  documents: ViewerDocument[],
+  tabs: MoleculeTab[],
+  activeTabId: string | null,
   viewerAgentStates: Record<string, ViewerAgentState>,
 ) {
   const type = String(item.action?.type || "");
@@ -343,10 +397,185 @@ async function executeDesktopAgentAction(
     await openPaths(paths);
     return { ok: true, command: "open_files", result: { pathCount: paths.length } };
   }
+  if (type === "manage_tabs") {
+    return manageTabs(item.action, openPaths, tabActions, tabs, activeTabId, documents);
+  }
+  if (type === "open_docking_view") {
+    return openAgentDockingView(item.action, openDockingView);
+  }
   if (type === "render_panel") {
     return renderPanel(item.action, openTextDocuments, setDockDocument, workspacePanels);
   }
   return postActionToActiveViewer(item, pendingViewerActions, activeDocument, viewerAgentStates);
+}
+
+async function openAgentDockingView(action: Record<string, unknown>, openDockingView: OpenDockingView) {
+  const receptorPath = typeof action.receptorPath === "string" ? action.receptorPath.trim() : "";
+  const ligandPaths = Array.isArray(action.ligandPaths)
+    ? action.ligandPaths.filter((path): path is string => typeof path === "string" && path.trim().length > 0)
+    : [];
+  if (!receptorPath) return agentFailure("open_docking_view", "INVALID_ARGS", "open_docking_view requires receptorPath.");
+  if (ligandPaths.length === 0) return agentFailure("open_docking_view", "INVALID_ARGS", "open_docking_view requires ligandPaths.");
+  const sceneMode = action.sceneMode === "structureAll" || action.sceneMode === "structurePoses"
+    ? action.sceneMode
+    : null;
+  const activePose = numericActionValue(action.activePose);
+  const document = await openDockingView(receptorPath, ligandPaths, {
+    activePose,
+    sceneMode,
+  });
+  if (!document) return agentFailure("open_docking_view", "OPEN_FAILED", "Docking view could not be opened.");
+  return {
+    ok: true,
+    command: "open_docking_view",
+    result: {
+      documentId: document.id,
+      title: document.title,
+      path: document.path,
+      receptorPath,
+      ligandPaths,
+      sceneMode,
+      activePose,
+    },
+  };
+}
+
+async function manageTabs(
+  action: Record<string, unknown>,
+  openPaths: OpenPaths,
+  tabActions: TabActionHandlers,
+  tabs: MoleculeTab[],
+  activeTabId: string | null,
+  documents: ViewerDocument[],
+) {
+  const operation = String(action.operation || action.action || "list").trim();
+  const before = tabs.map((tab, index) => serializeTabForAgent(tab, index, activeTabId, documents));
+
+  if (operation === "list") {
+    return { ok: true, command: "manage_tabs", result: { operation, tabs: before, activeTabId } };
+  }
+
+  if (operation === "open_file") {
+    const path = typeof action.path === "string" ? action.path.trim() : "";
+    if (!path) return agentFailure("manage_tabs", "INVALID_ARGS", "open_file requires path.");
+    await openPaths([path]);
+    return { ok: true, command: "manage_tabs", result: { operation, openedPath: path, before } };
+  }
+
+  if (operation === "new") {
+    tabActions.openNewTab();
+    return { ok: true, command: "manage_tabs", result: { operation, before } };
+  }
+
+  const target = resolveTabTarget(action, tabs, activeTabId, documents);
+  if (operation === "next" || operation === "previous") {
+    if (tabs.length === 0) return agentFailure("manage_tabs", "NO_TABS", "No tabs are open.");
+    const activeIndex = Math.max(0, tabs.findIndex((tab) => tab.id === activeTabId));
+    const offset = operation === "next" ? 1 : -1;
+    const nextIndex = (activeIndex + offset + tabs.length) % tabs.length;
+    const tab = tabs[nextIndex];
+    tabActions.setActiveTab(tab.id);
+    return { ok: true, command: "manage_tabs", result: { operation, tabId: tab.id, index: nextIndex, before } };
+  }
+
+  if (!target) {
+    return agentFailure("manage_tabs", "TAB_NOT_FOUND", "No matching tab was found.");
+  }
+
+  if (operation === "focus") {
+    tabActions.setActiveTab(target.tab.id);
+    return { ok: true, command: "manage_tabs", result: { operation, tabId: target.tab.id, index: target.index, before } };
+  }
+
+  if (operation === "close") {
+    tabActions.closeTab(target.tab.id);
+    return { ok: true, command: "manage_tabs", result: { operation, tabId: target.tab.id, index: target.index, before } };
+  }
+
+  if (operation === "move") {
+    const toIndex = numericActionValue(action.toIndex);
+    if (toIndex === null) return agentFailure("manage_tabs", "INVALID_ARGS", "move requires toIndex.");
+    tabActions.moveTab(target.tab.id, toIndex);
+    return { ok: true, command: "manage_tabs", result: { operation, tabId: target.tab.id, fromIndex: target.index, toIndex, before } };
+  }
+
+  return agentFailure("manage_tabs", "INVALID_ARGS", "operation must be list, focus, next, previous, open_file, new, close, or move.");
+}
+
+function resolveTabTarget(
+  action: Record<string, unknown>,
+  tabs: MoleculeTab[],
+  activeTabId: string | null,
+  documents: ViewerDocument[],
+) {
+  const tabId = typeof action.tabId === "string" ? action.tabId.trim() : "";
+  const path = typeof action.path === "string" ? action.path.trim() : "";
+  const title = typeof action.title === "string" ? action.title.trim() : "";
+  const index = numericActionValue(action.index);
+  let matchIndex = -1;
+  if (tabId) {
+    matchIndex = tabs.findIndex((tab) => tab.id === tabId);
+  } else if (index !== null) {
+    matchIndex = index >= 0 && index < tabs.length ? index : -1;
+  } else if (path) {
+    matchIndex = tabs.findIndex((tab) => tabPath(tab) === path);
+  } else if (title) {
+    matchIndex = tabs.findIndex((tab, tabIndex) => serializeTabForAgent(tab, tabIndex, activeTabId, documents).title === title);
+  } else if (activeTabId) {
+    matchIndex = tabs.findIndex((tab) => tab.id === activeTabId);
+  }
+  if (matchIndex < 0) return null;
+  return { tab: tabs[matchIndex], index: matchIndex };
+}
+
+function serializeTabForAgent(tab: MoleculeTab, index: number, activeTabId: string | null, documents: ViewerDocument[]) {
+  const path = tabPath(tab);
+  const documentId = tab.location.kind === "file" || tab.location.kind === "text-file" ? tab.location.documentId : null;
+  const document = documentId
+    ? documents.find((candidate) => candidate.id === documentId || candidate.path === path)
+    : null;
+  return {
+    id: tab.id,
+    index,
+    active: tab.id === activeTabId,
+    kind: tab.location.kind,
+    title: document?.title ?? titleFromTab(tab),
+    path,
+    documentId,
+  };
+}
+
+function tabPath(tab: MoleculeTab) {
+  if (tab.location.kind === "file" || tab.location.kind === "text-file") return tab.location.path;
+  if (tab.location.kind === "fep-setup" || tab.location.kind === "pose-review") {
+    return tab.location.dockingPath;
+  }
+  return null;
+}
+
+function titleFromTab(tab: MoleculeTab) {
+  const path = tabPath(tab);
+  if (path) return basename(path);
+  if (tab.location.kind === "launcher") return "New Tab";
+  if (tab.location.kind === "settings") return "Settings";
+  if (tab.location.kind === "ketcher") return "Ketcher";
+  if (tab.location.kind === "fep-setup") return "FEP Setup";
+  if (tab.location.kind === "fep-network") return "FEP Network";
+  if (tab.location.kind === "pose-review") return "Pose Review";
+  return tab.location.kind;
+}
+
+function basename(value: string) {
+  return value.split(/[\\/]/u).pop() || value;
+}
+
+function numericActionValue(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return Math.round(value);
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
 }
 
 async function renderPanel(
@@ -436,7 +665,7 @@ async function postActionToActiveViewer(
   return result;
 }
 
-function viewerAgentStateFromMessage(body: { type?: unknown; message?: unknown; documentId?: unknown }, previous?: ViewerAgentState) {
+function viewerAgentStateFromMessage(body: { type?: unknown; message?: unknown; documentId?: unknown; selection?: unknown }, previous?: ViewerAgentState) {
   const documentId = typeof body.documentId === "string" ? body.documentId : "";
   if (!documentId) return null;
   const type = String(body.type || "");
@@ -466,6 +695,14 @@ function viewerAgentStateFromMessage(body: { type?: unknown; message?: unknown; 
   if (type === "error") {
     next.lastError = message || "Viewer reported an error.";
     next.lastMessage = message || next.lastMessage;
+    return next;
+  }
+  if (type === "agentSelectionChanged") {
+    next.selection = body.selection && typeof body.selection === "object"
+      ? body.selection as AgentSceneSelection
+      : null;
+    next.lastMessage = next.selection ? "Viewer selection changed" : "Viewer selection cleared";
+    next.lastError = null;
     return next;
   }
   return null;
