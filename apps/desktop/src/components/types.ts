@@ -216,6 +216,7 @@ export type ShellActions = {
   showActiveDocumentMetadata: () => void | Promise<void>;
   showDocumentMetadata: (document: ViewerDocument) => void | Promise<void>;
   showTextFileMetadata: (document: TextFileDocument) => void | Promise<void>;
+  closeQuickLookPreview: () => void;
   generate3DConformer: (document: ViewerDocument) => void | Promise<void>;
   runStructureViewerAction: (document: ViewerDocument, action: StructureViewerAction) => void;
   reloadXyzrenderDocument: (document: ViewerDocument, options: ViewerReloadOptions) => void | Promise<void>;
@@ -231,7 +232,6 @@ export type ShellActions = {
   checkForUpdates: () => void | Promise<void>;
   installUpdate: () => void | Promise<void>;
   openUpdateRelease: () => void | Promise<void>;
-  closeQuickLookPreview: () => void;
   setPreference: <K extends keyof ViewerPreferences>(key: K, value: ViewerPreferences[K]) => void;
   setUpdatePreferences: (preferences: UpdatePreferences) => void;
 };
