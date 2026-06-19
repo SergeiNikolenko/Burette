@@ -6299,8 +6299,9 @@
   }
 
   function dockingSceneBackgroundStyle(contextStyle, foregroundStyle) {
-    const resolved = contextStyle === 'match' ? foregroundStyle : contextStyle;
-    if (resolved === 'cartoon' || resolved === 'spacefill') return 'line';
+    if (contextStyle !== 'match') return normalizeMolstarStyle(contextStyle);
+    const resolved = normalizeMolstarStyle(foregroundStyle);
+    if (resolved === 'cartoon' || resolved === 'spacefill' || resolved === 'molecular-surface' || resolved === 'illustrative' || resolved === 'polymer-ligand') return 'line';
     return resolved;
   }
 
