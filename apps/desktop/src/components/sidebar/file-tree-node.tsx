@@ -1,4 +1,10 @@
 import { useState, type CSSProperties, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  File02Icon,
+  Folder01Icon,
+  Folder02Icon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { isMoleculeCollectionPath } from "../../lib/collection-documents";
 import type { SidebarProject, SidebarProjectItem } from "../../lib/sidebar-projects";
 import { hasStructureDrag, readStructureDragPayload, writeStructureDragPayload } from "../../lib/structure-drag";
@@ -7,7 +13,6 @@ import { runShellDropActionChoices, shellDropActionChoices } from "../drop-actio
 import { rendererLabel } from "../format";
 import { showNativeContextMenu } from "../native-context-menu";
 import { RadixDropdownMenu } from "../radix-menu";
-import { SystemIcon } from "../system-icon";
 import type { ShellActions, ShellViewState } from "../types";
 
 const COLLAPSED_PROJECT_ITEM_LIMIT = 5;
@@ -130,7 +135,7 @@ export function ProjectGroup({
         aria-label={`${project.title}, ${project.items.length} structure${project.items.length === 1 ? "" : "s"}`}
       >
         <span className="project-folder-icon" aria-hidden="true">
-          <SystemIcon name={expanded ? "folder.fill" : "folder"} size={16} />
+          <HugeiconsIcon icon={expanded ? Folder02Icon : Folder01Icon} size={16} color="currentColor" strokeWidth={2} />
         </span>
         <span className="project-group-copy">
           <span className="project-group-title">{project.title}</span>
@@ -376,7 +381,7 @@ function ProjectTreeNodeView({
         title={node.path}
       >
         <span className="project-folder-icon" aria-hidden="true">
-          <SystemIcon name="folder.fill" size={16} />
+          <HugeiconsIcon icon={Folder02Icon} size={16} color="currentColor" strokeWidth={2} />
         </span>
         <span className="project-folder-name">{node.name}</span>
         <button
@@ -566,7 +571,7 @@ export function ProjectItem({
       title={item.relativePath}
     >
       <span className="project-icon" aria-hidden="true">
-        <SystemIcon name="doc" size={16} />
+        <HugeiconsIcon icon={File02Icon} size={16} color="currentColor" strokeWidth={2} />
       </span>
       <span className="project-copy">
         <span className="project-name">{item.title}</span>
@@ -649,15 +654,45 @@ function projectDepthStyle(depth: number): CSSProperties {
 }
 
 function PinIcon() {
-  return <SystemIcon name="pin" size={14} />;
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path
+        d="M8.25 1.75L12.25 5.75L10.4 7.6L9.25 6.45L6.8 8.9L7.15 11.2L6.35 12L4 9.65L1.9 11.75L1.25 11.1L3.35 9L1 6.65L1.8 5.85L4.1 6.2L6.55 3.75L5.4 2.6L8.25 1.75Z"
+        stroke="currentColor"
+        strokeWidth="1.15"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 function MoreIcon() {
-  return <SystemIcon name="ellipsis" size={16} />;
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="4" cy="8" r="1.2" fill="currentColor" />
+      <circle cx="8" cy="8" r="1.2" fill="currentColor" />
+      <circle cx="12" cy="8" r="1.2" fill="currentColor" />
+    </svg>
+  );
 }
 
 function FolderExpandCollapseIcon({ collapse }: { collapse: boolean }) {
-  return <SystemIcon name={collapse ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right"} size={16} />;
+  return collapse ? (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M3.5 3.5L6.9 6.9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M6.9 4.7V6.9H4.7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12.5 12.5L9.1 9.1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M9.1 11.3V9.1H11.3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ) : (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M6.9 6.9L3.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M3.5 5.7V3.5H5.7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9.1 9.1L12.5 12.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M12.5 10.3V12.5H10.3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 function sidebarDropTarget(item: SidebarProjectItem, state: ShellViewState) {

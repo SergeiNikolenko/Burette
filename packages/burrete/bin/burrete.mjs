@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { cp, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, rename, rm, stat } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
 
 const OWNER = 'SergeiNikolenko';
 const REPO = 'Burrete';
@@ -16,13 +16,6 @@ const QUICK_LOOK_EXTENSION_NAME = 'BurretePreview.appex';
 const QUICK_LOOK_EXTENSION_ID = 'com.local.BurreteV10.Preview';
 const LSREGISTER = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister';
 const UPDATE_CHANNELS = new Set(['stable', 'beta']);
-const PLUGIN_RELATIVE_PATH = 'plugins/burette-agent';
-const CODEX_PLUGIN_ID = 'burrete';
-const DEFAULT_PLUGIN_NAMESPACE = 'nikolenko-local';
-const CODEX_PLUGIN_CACHE = path.join(homedir(), '.codex', 'plugins', 'cache');
-const CLI_DIR = path.dirname(fileURLToPath(import.meta.url));
-const CLI_PACKAGE_ROOT = path.resolve(CLI_DIR, '..');
-const REPO_ROOT_FROM_CLI = path.resolve(CLI_PACKAGE_ROOT, '..', '..');
 
 async function main() {
   const args = process.argv.slice(2);
@@ -60,31 +53,7 @@ async function main() {
     return;
   }
 
-  if (command === 'plugin') {
-    await handlePluginCommand(args.slice(1));
-    return;
-  }
-
   fail(`Unknown command: ${command}`);
-}
-
-async function handlePluginCommand(args) {
-  const subcommand = args[0] || 'help';
-  if (subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
-    printPluginHelp();
-    return;
-  }
-  const options = parsePluginOptions(args.slice(1));
-  if (subcommand === 'status') {
-    printPluginStatus(await buildPluginStatus(options));
-    return;
-  }
-  if (subcommand === 'install' || subcommand === 'update') {
-    const result = await installCodexPlugin(options);
-    printPluginInstallResult(result);
-    return;
-  }
-  fail(`Unknown plugin command: ${subcommand}`);
 }
 
 async function install({ system, channel }) {
@@ -126,240 +95,6 @@ async function install({ system, channel }) {
   console.log('  1. Open Burrete once so macOS registers the Quick Look extension.');
   console.log('  2. Select a supported molecule file in Finder and press Space.');
   console.log('  3. Run `burrete doctor` if Finder previews do not appear.');
-}
-
-export async function buildPluginStatus({
-  sourcePath = null,
-  cacheDir = CODEX_PLUGIN_CACHE,
-  namespace = null,
-  system = false,
-  exists = pathExists,
-} = {}) {
-  const source = await resolveBundledPluginPath({ sourcePath, system, exists });
-  const manifest = source ? await readPluginManifest(source) : null;
-  const installedPlugin = await findInstalledPlugin({ cacheDir, namespace, name: manifest?.name ?? CODEX_PLUGIN_ID });
-  const effectiveNamespace = namespace || installedPlugin?.namespace || DEFAULT_PLUGIN_NAMESPACE;
-  const target = manifest ? pluginInstallPath({ cacheDir, namespace: effectiveNamespace, name: manifest.name, version: manifest.version }) : null;
-  const installed = target ? await exists(target) : false;
-  return {
-    source,
-    sourceOk: Boolean(source && manifest),
-    target,
-    installed,
-    installedPath: installedPlugin?.path ?? null,
-    installedVersion: installedPlugin?.manifest.version ?? null,
-    namespace: effectiveNamespace,
-    name: manifest?.name ?? CODEX_PLUGIN_ID,
-    version: manifest?.version ?? null,
-  };
-}
-
-export async function installCodexPlugin({
-  sourcePath = null,
-  cacheDir = CODEX_PLUGIN_CACHE,
-  namespace = null,
-  system = false,
-  installDeps = true,
-  exists = pathExists,
-  copyPath = copyPluginBundle,
-  movePath = rename,
-  removePath = removeTree,
-  runCommand = spawnSync,
-  now = () => new Date(),
-} = {}) {
-  const source = await resolveBundledPluginPath({ sourcePath, system, exists });
-  if (!source) {
-    fail([
-      'Could not find the bundled Burrete Codex plugin.',
-      `Pass --path /absolute/path/to/${PLUGIN_RELATIVE_PATH}, install Burrete.app first, or run this command from a Burrete source checkout.`,
-    ].join(' '));
-  }
-
-  const manifest = await readPluginManifest(source);
-  const installedPlugin = await findInstalledPlugin({ cacheDir, namespace, name: manifest.name });
-  const effectiveNamespace = namespace || installedPlugin?.namespace || DEFAULT_PLUGIN_NAMESPACE;
-  const target = pluginInstallPath({ cacheDir, namespace: effectiveNamespace, name: manifest.name, version: manifest.version });
-  const pluginBase = path.dirname(target);
-  const stage = path.join(pluginBase, `.${manifest.version}.updating-${process.pid}`);
-  const backup = path.join(pluginBase, `.${manifest.version}.previous-${process.pid}`);
-  await mkdir(pluginBase, { recursive: true });
-  await removePath(stage);
-  await removePath(backup);
-  await copyPath(source, stage);
-  await writePluginInstallMetadata(stage, {
-    plugin: {
-      name: manifest.name,
-      version: manifest.version,
-    },
-    namespace: effectiveNamespace,
-    source,
-    installedAt: now().toISOString(),
-  });
-
-  if (installDeps) {
-    const result = runCommand('npm', ['install', '--omit=dev', '--no-audit', '--no-fund'], {
-      cwd: stage,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    if (result.status !== 0) {
-      await removePath(stage);
-      fail(`Could not install plugin dependencies with npm. ${commandOutputText(result.stdout, result.stderr)}`);
-    }
-  }
-
-  const hadExistingInstall = await exists(target);
-  try {
-    if (hadExistingInstall) {
-      await movePath(target, backup);
-    }
-    await movePath(stage, target);
-    await removePath(backup);
-  } catch (error) {
-    await removePath(stage);
-    if (hadExistingInstall) {
-      if (await exists(target)) {
-        await removePath(target);
-      }
-      await movePath(backup, target);
-    }
-    throw error;
-  }
-
-  return {
-    action: installedPlugin ? 'updated' : 'installed',
-    source,
-    target,
-    namespace: effectiveNamespace,
-    name: manifest.name,
-    version: manifest.version,
-    depsInstalled: installDeps,
-  };
-}
-
-function printPluginStatus(status) {
-  console.log('Burrete Codex plugin');
-  console.log(`${status.sourceOk ? 'ok' : 'fail'} - Bundle: ${status.source || 'not found'}`);
-  console.log(`${status.installed ? 'ok' : 'missing'} - Installed: ${status.target || 'target unavailable'}`);
-  console.log(`info - Plugin: ${status.name}${status.version ? ` v${status.version}` : ''}`);
-  console.log(`info - Namespace: ${status.namespace}`);
-}
-
-function printPluginInstallResult(result) {
-  console.log(`${result.action === 'updated' ? 'Updated' : 'Installed'} Codex plugin ${result.name} v${result.version}`);
-  console.log(`Source: ${result.source}`);
-  console.log(`Target: ${result.target}`);
-  console.log(`Dependencies: ${result.depsInstalled ? 'installed' : 'skipped'}`);
-  console.log('Restart Codex or refresh plugin discovery if the new tools are not visible yet.');
-}
-
-async function resolveBundledPluginPath({ sourcePath = null, system = false, exists = pathExists } = {}) {
-  const candidates = [];
-  if (sourcePath) candidates.push(sourcePath);
-  candidates.push(path.join(process.cwd(), PLUGIN_RELATIVE_PATH));
-  candidates.push(path.join(REPO_ROOT_FROM_CLI, PLUGIN_RELATIVE_PATH));
-  const appDirs = system ? ['/Applications'] : [path.join(homedir(), 'Applications'), '/Applications'];
-  for (const appDir of appDirs) {
-    candidates.push(path.join(appDir, APP_NAME, 'Contents', 'Resources', PLUGIN_RELATIVE_PATH));
-    candidates.push(path.join(appDir, APP_NAME, 'Contents', 'Resources', 'plugins', 'burrete-agent'));
-  }
-  for (const candidate of uniquePaths(candidates)) {
-    if (await exists(path.join(candidate, '.codex-plugin', 'plugin.json'))) {
-      return candidate;
-    }
-  }
-  return null;
-}
-
-async function readPluginManifest(pluginRoot) {
-  const manifestPath = path.join(pluginRoot, '.codex-plugin', 'plugin.json');
-  let manifest;
-  try {
-    manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-  } catch (error) {
-    fail(`Could not read Burrete plugin manifest at ${manifestPath}. ${error?.message || String(error)}`);
-  }
-  if (manifest.name !== CODEX_PLUGIN_ID) {
-    fail(`Expected plugin id ${CODEX_PLUGIN_ID}, found ${manifest.name || 'unknown'}.`);
-  }
-  if (!manifest.version) {
-    fail(`Plugin manifest at ${manifestPath} does not declare a version.`);
-  }
-  return manifest;
-}
-
-function pluginInstallPath({ cacheDir, namespace, name, version }) {
-  return path.join(cacheDir, namespace, name, version);
-}
-
-async function findInstalledPlugin({ cacheDir, namespace = null, name }) {
-  const roots = namespace ? [path.join(cacheDir, namespace)] : [cacheDir];
-  const matches = [];
-  for (const root of roots) {
-    const queue = [root];
-    let visited = 0;
-    while (queue.length > 0) {
-      const directory = queue.shift();
-      visited += 1;
-      if (visited > 2000) break;
-      const manifest = await readOptionalPluginManifest(directory);
-      if (manifest?.name === name) {
-        matches.push({
-          path: directory,
-          namespace: pluginNamespace(cacheDir, directory),
-          manifest,
-        });
-        continue;
-      }
-      let entries = [];
-      try {
-        entries = await readdir(directory, { withFileTypes: true });
-      } catch {
-        continue;
-      }
-      for (const entry of entries) {
-        if (entry.isDirectory()) {
-          queue.push(path.join(directory, entry.name));
-        }
-      }
-    }
-  }
-  matches.sort((left, right) => compareVersions(right.manifest.version || '0.0.0', left.manifest.version || '0.0.0'));
-  return matches[0] || null;
-}
-
-async function readOptionalPluginManifest(pluginRoot) {
-  try {
-    return JSON.parse(await readFile(path.join(pluginRoot, '.codex-plugin', 'plugin.json'), 'utf8'));
-  } catch {
-    return null;
-  }
-}
-
-function pluginNamespace(cacheDir, pluginRoot) {
-  const [namespace] = path.relative(cacheDir, pluginRoot).split(path.sep);
-  return namespace || DEFAULT_PLUGIN_NAMESPACE;
-}
-
-function copyPluginBundle(source, target) {
-  return cp(source, target, {
-    recursive: true,
-    filter: (candidate) => {
-      const relative = path.relative(source, candidate);
-      return !relative.split(path.sep).includes('.git');
-    },
-  });
-}
-
-async function writePluginInstallMetadata(pluginRoot, metadata) {
-  await writeFile(
-    path.join(pluginRoot, '.burette-agent-install.json'),
-    `${JSON.stringify({ schema: 'burette_agent_install.v1', ...metadata }, null, 2)}\n`,
-  );
-}
-
-function uniquePaths(paths) {
-  return [...new Set(paths.filter(Boolean).map(item => path.resolve(item)))];
 }
 
 function registerInstalledApp(targetApp) {
@@ -406,59 +141,6 @@ function parseOptions(args) {
     fail(`Unknown option: ${arg}`);
   }
   return { system, channel: channel || 'stable' };
-}
-
-function parsePluginOptions(args) {
-  let sourcePath = null;
-  let cacheDir = CODEX_PLUGIN_CACHE;
-  let namespace = null;
-  let system = false;
-  let installDeps = true;
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if (arg === '--path') {
-      sourcePath = requireOptionValue(args, index, '--path');
-      index += 1;
-      continue;
-    }
-    if (arg === '--cache-dir') {
-      cacheDir = requireOptionValue(args, index, '--cache-dir');
-      index += 1;
-      continue;
-    }
-    if (arg === '--namespace') {
-      namespace = requireOptionValue(args, index, '--namespace');
-      index += 1;
-      continue;
-    }
-    if (arg === '--system') {
-      system = true;
-      continue;
-    }
-    if (arg === '--skip-deps') {
-      installDeps = false;
-      continue;
-    }
-    fail(`Unknown plugin option: ${arg}`);
-  }
-  if (namespace && !/^[a-zA-Z0-9._-]+$/.test(namespace)) {
-    fail(`Invalid plugin namespace: ${namespace}`);
-  }
-  return {
-    sourcePath: sourcePath ? path.resolve(sourcePath) : null,
-    cacheDir: path.resolve(cacheDir),
-    namespace,
-    system,
-    installDeps,
-  };
-}
-
-function requireOptionValue(args, index, label) {
-  const value = args[index + 1];
-  if (!value) {
-    fail(`Missing value for ${label}.`);
-  }
-  return value;
 }
 
 export async function fetchLatestRelease(channel) {
@@ -715,13 +397,6 @@ function run(command, args, errorMessage, options = {}) {
   }
 }
 
-function commandOutputText(stdout, stderr) {
-  return [stdout, stderr]
-    .map(value => String(value || '').trim())
-    .filter(Boolean)
-    .join('\n');
-}
-
 function logStep(message) {
   console.log(`- ${message}`);
 }
@@ -733,15 +408,11 @@ Usage:
   burrete install [--system] [--beta|--channel stable|beta]
   burrete latest [--beta|--channel stable|beta]
   burrete doctor [--system]
-  burrete plugin install [--path <dir>] [--namespace <name>] [--skip-deps]
-  burrete plugin update [--path <dir>] [--namespace <name>] [--skip-deps]
-  burrete plugin status [--path <dir>] [--namespace <name>]
 
 Commands:
   install   Download the latest Burrete release and install Burrete.app.
   latest    Print the latest release tag and zip URL.
   doctor    Check app installation, Quick Look extension, qlmanage, and version.
-  plugin    Install, update, or inspect the bundled local Codex plugin.
 
 Options:
   --system           Use /Applications instead of ~/Applications for install or doctor.
@@ -752,24 +423,6 @@ Launch registration:
   For registration-only app launches, use BURRETE_LAUNCH_MODE=register with
   Burrete.app. The installer itself registers LaunchServices and Quick Look
   without launching the full app.
-`);
-}
-
-function printPluginHelp() {
-  console.log(`Burrete Codex plugin
-
-Usage:
-  burrete plugin install [--path <dir>] [--namespace <name>] [--skip-deps]
-  burrete plugin update [--path <dir>] [--namespace <name>] [--skip-deps]
-  burrete plugin status [--path <dir>] [--namespace <name>]
-
-Options:
-  --path <dir>        Explicit plugins/burette-agent directory.
-  --namespace <name>  Codex plugin cache namespace. Defaults to an existing
-                      Burrete namespace, then nikolenko-local.
-  --cache-dir <dir>   Override the Codex plugin cache root.
-  --skip-deps         Copy the plugin without running npm install.
-  --system            Prefer /Applications/Burrete.app when auto-detecting.
 `);
 }
 

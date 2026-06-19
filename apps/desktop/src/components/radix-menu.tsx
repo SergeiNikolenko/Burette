@@ -3,7 +3,6 @@ import { createRoot, type Root as ReactRoot } from "react-dom/client";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { MenuItemSpec } from "./menu-types";
-import { SystemIcon } from "./system-icon";
 
 type RadixDropdownProps = {
   items: MenuItemSpec[];
@@ -151,10 +150,6 @@ function renderItemBody(item: Extract<MenuItemSpec, { kind: "item" }>) {
     <span className="radix-menu-item-body">
       {item.iconUrl ? (
         <img className="radix-menu-item-icon" src={item.iconUrl} alt="" aria-hidden="true" />
-      ) : item.iconSymbol ? (
-        <span className="radix-menu-item-icon" aria-hidden="true">
-          <SystemIcon name={item.iconSymbol} size={14} strokeWidth={2.1} />
-        </span>
       ) : item.iconText ? (
         <span className="radix-menu-item-icon" aria-hidden="true">{item.iconText}</span>
       ) : null}
