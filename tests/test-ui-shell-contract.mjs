@@ -2297,12 +2297,16 @@ assert.match(agentIntegrationPanel, /navigator\.clipboard\.writeText\(status\.bu
 assert.match(agentIntegrationPanel, /data-agent-integration-panel/);
 assert.match(agentIntegrationPanel, /embedded = false/);
 assert.match(agentIntegrationPanel, /browserPreviewStatus/);
-assert.match(agentIntegrationPanel, /Codex setup prompt/);
+assert.match(agentIntegrationPanel, /Install in Codex/);
+assert.match(agentIntegrationPanel, /Codex handoff/);
+assert.match(agentIntegrationPanel, /Open Bundle/);
+assert.match(agentIntegrationPanel, /Copy Bundle Path/);
 assert.match(agentIntegrationPanel, /Copy Prompt/);
 assert.match(agentIntegrationPanel, /function codexSetupPrompt/);
 assert.match(agentIntegrationPanel, /Install or update the local Codex plugin @Burrete \(id \\`burrete\\`\) to version/);
 assert.match(agentIntegrationPanel, /bundled plugin directory `plugins\/burette-agent` from the current Burrete repository or app bundle/);
-assert.match(agentIntegrationPanel, /If Codex cannot resolve that relative path, ask for the explicit bundle path from Burrete/);
+assert.match(agentIntegrationPanel, /Use this bundled plugin directory:/);
+assert.match(agentIntegrationPanel, /If the path is unavailable from Codex, open this panel in the packaged Burrete app/);
 assert.match(agentIntegrationPanel, /verify @Burrete is available in Codex/);
 assert.match(agentIntegrationPanel, /bundled with Burrete/);
 assert.doesNotMatch(agentIntegrationPanel, /v\$\{status\.bundledPlugin\.version\} at/);
@@ -2538,6 +2542,8 @@ assert.match(styles, /\.agent-integration-content \{[^}]*margin: 0 auto[^}]*padd
 assert.match(styles, /\.page-surface\[data-page-kind="settings"\] \{[^}]*overflow: hidden/s);
 assert.doesNotMatch(styles, /\.page-surface\[data-page-kind="agent-integration"\]/);
 assert.match(styles, /\.agent-status-badge/);
+assert.match(styles, /\.agent-install-row/);
+assert.match(styles, /\.agent-install-step/);
 assert.match(styles, /\.agent-setup-prompt/);
 assert.match(styles, /\.page-surface:not\(\[data-active\]\) \{[^}]*display: none/s);
 assert.doesNotMatch(editorScrollContainer, /ProgressiveBlur|editor-progressive-blur/);
