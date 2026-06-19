@@ -13,6 +13,7 @@ const [
   uiStore,
   commandPaletteHook,
   appBootstrapHook,
+  appResizeHook,
   appStatusHook,
   tabsHook,
   sidebarHook,
@@ -130,6 +131,7 @@ const [
   source('apps/desktop/src/stores/ui-store.ts'),
   source('apps/desktop/src/hooks/use-command-palette.ts'),
   source('apps/desktop/src/hooks/use-app-bootstrap.ts'),
+  source('apps/desktop/src/hooks/use-app-resize.ts'),
   source('apps/desktop/src/hooks/use-app-status.ts'),
   source('apps/desktop/src/hooks/use-tabs.ts'),
   source('apps/desktop/src/hooks/use-sidebar.ts'),
@@ -1438,14 +1440,14 @@ assert.doesNotMatch(styles, /\.dock-tab\[data-active\] \+ \.dock-tab-close/);
 assert.match(styles, /\.dock-tab-shell\[data-active\] \.dock-tab \{\s*padding-right: 27px;/);
 assert.doesNotMatch(styles, /\.dock-tab-shell:hover \.dock-tab svg,\s*\.dock-tab-shell:focus-within \.dock-tab svg \{\s*opacity: 0/s);
 assert.doesNotMatch(styles, /\.dock-tab\[data-active\] svg \{\s*opacity: 0/s);
-assert.match(app, /const RIGHT_DOCK_CLOSE_THRESHOLD = 180/);
-assert.match(app, /const BOTTOM_DOCK_CLOSE_THRESHOLD = 120/);
-assert.match(app, /if \(nextWidth <= RIGHT_DOCK_CLOSE_THRESHOLD\) \{/);
-assert.match(app, /setDockOpen\("right", false\)/);
-assert.match(app, /if \(nextHeight <= BOTTOM_DOCK_CLOSE_THRESHOLD\) \{/);
-assert.match(app, /setDockOpen\("bottom", false\)/);
-assert.match(app, /\[rightDockWidth, setDockOpen, setDockSize\]/);
-assert.match(app, /\[bottomDockHeight, setDockOpen, setDockSize\]/);
+assert.match(appResizeHook, /const RIGHT_DOCK_CLOSE_THRESHOLD = 180/);
+assert.match(appResizeHook, /const BOTTOM_DOCK_CLOSE_THRESHOLD = 120/);
+assert.match(appResizeHook, /if \(nextWidth <= RIGHT_DOCK_CLOSE_THRESHOLD\) \{/);
+assert.match(appResizeHook, /setDockOpen\("right", false\)/);
+assert.match(appResizeHook, /if \(nextHeight <= BOTTOM_DOCK_CLOSE_THRESHOLD\) \{/);
+assert.match(appResizeHook, /setDockOpen\("bottom", false\)/);
+assert.match(appResizeHook, /\[rightDockWidth, setDockOpen, setDockSize\]/);
+assert.match(appResizeHook, /\[bottomDockHeight, setDockOpen, setDockSize\]/);
 assert.match(dockPanel, /data-open=\{open \? "true" : "false"\}/);
 assert.match(dockPanel, /data-active-tab=\{activeTab\.kind\}/);
 assert.match(dockPanel, /data-dragging=\{dragging \|\| undefined\}/);
@@ -2643,24 +2645,25 @@ assert.match(commandPalette, /heading=\{group\.heading\}/);
 assert.match(commandPalette, /value=\{item\.id\}/);
 assert.match(commandPalette, /onSelect=\{\(\) => runItem\(item\)\}/);
 assert.match(app, /useKeyboardShortcuts\(state, actions, toggleSidebar, !commandPaletteOpen\)/);
-assert.match(app, /const SIDEBAR_DRAG_CLOSE_WIDTH = 180/);
-assert.match(app, /const resizeTarget = event\.currentTarget/);
-assert.match(app, /const pointerId = event\.pointerId/);
-assert.match(app, /let didStop = false/);
-assert.match(app, /if \(didStop\) return/);
-assert.match(app, /resizeTarget\.setPointerCapture\(pointerId\)/);
-assert.match(app, /resizeTarget\.releasePointerCapture\(pointerId\)/);
-assert.match(app, /move\.buttons === 0/);
-assert.match(app, /const nextWidth = startWidth \+ move\.clientX - startX/);
-assert.match(app, /nextWidth < SIDEBAR_DRAG_CLOSE_WIDTH/);
-assert.match(app, /closeSidebar\(\)/);
-assert.match(app, /stop\(\);\s*return;/);
-assert.match(app, /window\.addEventListener\("blur", stop\)/);
-assert.match(app, /document\.addEventListener\("visibilitychange", onVisibilityChange\)/);
-assert.match(app, /resizeTarget\.addEventListener\("lostpointercapture", stop\)/);
-assert.match(app, /window\.removeEventListener\("blur", stop\)/);
-assert.match(app, /document\.removeEventListener\("visibilitychange", onVisibilityChange\)/);
-assert.match(app, /resizeTarget\.removeEventListener\("lostpointercapture", stop\)/);
+assert.match(appResizeHook, /const SIDEBAR_DRAG_CLOSE_WIDTH = 180/);
+assert.match(app, /const \{\s*bottomDockDragging,\s*rightDockDragging,\s*sidebarDragging,\s*startBottomDockResize,\s*startRightDockResize,\s*startSidebarResize,\s*\} = useAppResize/);
+assert.match(appResizeHook, /const resizeTarget = event\.currentTarget/);
+assert.match(appResizeHook, /const pointerId = event\.pointerId/);
+assert.match(appResizeHook, /let didStop = false/);
+assert.match(appResizeHook, /if \(didStop\) return/);
+assert.match(appResizeHook, /resizeTarget\.setPointerCapture\(pointerId\)/);
+assert.match(appResizeHook, /resizeTarget\.releasePointerCapture\(pointerId\)/);
+assert.match(appResizeHook, /move\.buttons === 0/);
+assert.match(appResizeHook, /const nextWidth = startWidth \+ move\.clientX - startX/);
+assert.match(appResizeHook, /nextWidth < SIDEBAR_DRAG_CLOSE_WIDTH/);
+assert.match(appResizeHook, /closeSidebar\(\)/);
+assert.match(appResizeHook, /stop\(\);\s*return;/);
+assert.match(appResizeHook, /window\.addEventListener\("blur", stop\)/);
+assert.match(appResizeHook, /document\.addEventListener\("visibilitychange", onVisibilityChange\)/);
+assert.match(appResizeHook, /resizeTarget\.addEventListener\("lostpointercapture", stop\)/);
+assert.match(appResizeHook, /window\.removeEventListener\("blur", stop\)/);
+assert.match(appResizeHook, /document\.removeEventListener\("visibilitychange", onVisibilityChange\)/);
+assert.match(appResizeHook, /resizeTarget\.removeEventListener\("lostpointercapture", stop\)/);
 assert.match(styles, /--focus-ring: color-mix\(in srgb, var\(--fg-base\) calc\(var\(--contrast\) \* 95%\), transparent\)/);
 assert.match(styles, /--focus-ring: color-mix\(in srgb, black calc\(var\(--contrast\) \* 120%\), transparent\)/);
 assert.doesNotMatch(styles, /\[cmdk-input\]:focus-visible/);
