@@ -16,6 +16,7 @@ import {
   useSetCommandPaletteSearch,
 } from "./hooks/use-command-palette";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
+import { useAppMaintenance } from "./hooks/use-app-maintenance";
 import { useAppQuickLook } from "./hooks/use-app-quick-look";
 import { useAppResize } from "./hooks/use-app-resize";
 import { useAppSidebarProjects } from "./hooks/use-app-sidebar-projects";
@@ -622,6 +623,12 @@ export default function App() {
     setUpdatePreferences,
     update,
   } = useAppUpdates({ pushErrorStatus, pushStatus });
+  const {
+    clearCache,
+    openLogs,
+    openNewWindow,
+    resetQuickLook,
+  } = useAppMaintenance({ pushErrorStatus, pushStatus });
   const openedBrowserDevFilesRef = useRef<string | null>(null);
   const openedBrowserDevDockingRef = useRef<string | null>(null);
   const refreshedPersistedSessionRef = useRef(false);
@@ -3007,46 +3014,6 @@ export default function App() {
     pendingViewerReloadOptionsRef.current = null;
     pendingViewerReloadDocumentIdRef.current = null;
   }, [openDocuments]);
-  const clearCache = useCallback(async () => {
-    try {
-      await invoke("clear_preview_cache");
-      pushStatus("Preview cache cleared");
-    } catch (error) {
-      pushErrorStatus(error, "Preview cache clear failed");
-    }
-  }, [pushErrorStatus, pushStatus]);
-
-  const resetQuickLook = useCallback(async () => {
-    try {
-      const report = await invoke<{ ok: boolean }>("reset_quick_look");
-      pushStatus(report.ok ? "Quick Look reset completed" : "Quick Look reset reported issues", report.ok ? "info" : "error");
-    } catch (error) {
-      pushErrorStatus(error, "Quick Look reset failed");
-    }
-  }, [pushErrorStatus, pushStatus]);
-
-  const openLogs = useCallback(async () => {
-    try {
-      await invoke("open_logs_folder");
-      pushStatus("Opened logs folder");
-    } catch (error) {
-      pushErrorStatus(error, "Open logs folder failed");
-    }
-  }, [pushErrorStatus, pushStatus]);
-
-  const openNewWindow = useCallback(async () => {
-    if (!isTauriRuntime()) {
-      pushStatus("New windows are available in the desktop app only.", "error");
-      return;
-    }
-    try {
-      await invoke<string>("open_new_workspace_window");
-      pushStatus("Opened new window");
-    } catch (error) {
-      pushErrorStatus(error, "Open new window failed");
-    }
-  }, [pushErrorStatus, pushStatus]);
-
   useMenuEvents({
     chooseFiles,
     openMostRecentStructure,
