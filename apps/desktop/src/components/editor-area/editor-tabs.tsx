@@ -7,7 +7,6 @@ import { showNativeContextMenu } from "../native-context-menu";
 import { pageKind } from "./page-kinds";
 import { isMoleculeCollectionPath } from "../../lib/collection-documents";
 import { CloseIcon } from "../close-icon";
-import { SystemIcon } from "../system-icon";
 import type { DropTargetContext } from "../../lib/drop-actions";
 import type { DockArea, DockTabKind } from "../../lib/dock";
 
@@ -777,7 +776,7 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
         })}
       </ScrollFade>
       <button type="button" className="new-tab" onClick={actions.openNewTab} title="New tab" aria-label="New tab">
-        <SystemIcon name="plus" size={15} />
+        +
       </button>
       <div
         className="tab-strip-spacer"

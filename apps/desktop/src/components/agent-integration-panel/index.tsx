@@ -85,11 +85,12 @@ export function AgentIntegrationPanel({ embedded = false }: { embedded?: boolean
     window.setTimeout(() => setPromptCopied(false), 1400);
   }, [setupPrompt]);
 
+  const actionLabel = codexActionLabel(status?.codexInstall.state);
   const content = (
     <div className="agent-integration-content">
       <div className="agent-integration-header">
         <div>
-          <h1>Codex plugin</h1>
+          <h1>Burrete</h1>
           <p>{statusLine(status, error)}</p>
         </div>
         <div className="agent-integration-actions">
@@ -97,40 +98,13 @@ export function AgentIntegrationPanel({ embedded = false }: { embedded?: boolean
             {refreshing ? "Checking..." : "Refresh"}
           </button>
           <button type="button" className="settings-action-button" onClick={() => void openBundle()} disabled={!status?.bundledPlugin.path}>
-            Open Bundle
+            {actionLabel}
           </button>
           <button type="button" className="settings-action-button" onClick={() => void copyBundlePath()} disabled={!status?.bundledPlugin.path}>
-            {copied ? "Copied" : "Copy Bundle Path"}
+            {copied ? "Copied" : "Copy Path"}
           </button>
         </div>
       </div>
-
-      <section className="agent-integration-section" aria-label="Codex plugin installation">
-        <h2>Install in Codex</h2>
-        <div className="settings-card">
-          <div className="agent-install-row">
-            <div className="agent-install-step">1</div>
-            <div className="agent-status-copy">
-              <div className="settings-control-label">Bundle directory</div>
-              <div className="settings-control-description">{bundlePathSummary(status)}</div>
-            </div>
-          </div>
-          <div className="agent-install-row">
-            <div className="agent-install-step">2</div>
-            <div className="agent-status-copy">
-              <div className="settings-control-label">{installActionTitle(status)}</div>
-              <div className="settings-control-description">{installActionSummary(status)}</div>
-            </div>
-          </div>
-          <div className="agent-install-row">
-            <div className="agent-install-step">3</div>
-            <div className="agent-status-copy">
-              <div className="settings-control-label">Verify tools</div>
-              <div className="settings-control-description">Refresh this page in the packaged app to confirm the installed plugin version, skills, and MCP registration.</div>
-            </div>
-          </div>
-        </div>
-      </section>
 
       <section className="agent-integration-section" aria-label="Plugin status">
         <h2>Status</h2>
@@ -142,12 +116,12 @@ export function AgentIntegrationPanel({ embedded = false }: { embedded?: boolean
       </section>
 
       <section className="agent-integration-section" aria-label="Codex setup prompt">
-        <h2>Codex handoff</h2>
+        <h2>Codex setup prompt</h2>
         <div className="settings-card">
           <div className="agent-setup-prompt">
             <pre>{setupPrompt}</pre>
             <div className="agent-setup-prompt-footer">
-              <span>Use this only when Codex needs an explicit local plugin path.</span>
+              <span>Paste this into Codex if automatic install is unavailable.</span>
               <button type="button" className="settings-action-button" onClick={() => void copySetupPrompt()}>
                 {promptCopied ? "Copied" : "Copy Prompt"}
               </button>
@@ -205,7 +179,7 @@ const browserPreviewStatus: AgentIntegrationStatus = {
     state: "unknown",
     version: null,
     path: null,
-    message: "Browser-dev cannot inspect the local Codex plugin cache. Open the packaged app for native install status.",
+    message: "Open the packaged app to inspect the local Codex plugin installation.",
   },
   checks: [
     {
@@ -234,7 +208,6 @@ function StatusRow({ label, value, state }: { label: string; value: string; stat
 function statusLine(status: AgentIntegrationStatus | null, error: string | null) {
   if (error) return "Integration status could not be read.";
   if (!status) return "Checking local integration.";
-  if (status.appVersion === "browser-dev") return "Bundle path is available; native Codex install status requires the packaged app.";
   if (status.state === "update_available") return "A different Burrete plugin version is installed in Codex.";
   if (status.state === "install_available") return "Burrete is bundled and ready to install in Codex.";
   if (status.state === "broken") return "The bundled plugin is incomplete.";
@@ -256,17 +229,10 @@ function codexSummary(status: AgentIntegrationStatus | null) {
 
 function codexSetupPrompt(status: AgentIntegrationStatus | null) {
   const version = status?.bundledPlugin.version ?? "0.1.0";
-  const pluginPath = status?.bundledPlugin.path;
-  const bundleInstruction = pluginPath
-    ? `Use this bundled plugin directory: ${pluginPath}`
-    : "Use the bundled plugin directory `plugins/burette-agent` from the current Burrete repository or app bundle.";
-  const fallbackInstruction = pluginPath
-    ? "If the path is unavailable from Codex, open this panel in the packaged Burrete app and copy the bundle path again."
-    : "If Codex cannot resolve that relative path, ask for the explicit bundle path from Burrete.";
   return [
     `Install or update the local Codex plugin @Burrete (id \`burrete\`) to version ${version}.`,
-    bundleInstruction,
-    fallbackInstruction,
+    "Use the bundled plugin directory `plugins/burette-agent` from the current Burrete repository or app bundle.",
+    "If Codex cannot resolve that relative path, ask for the explicit bundle path from Burrete.",
     "After installation, verify @Burrete is available in Codex, its skills load, and its MCP server is registered.",
   ].join("\n");
 }
@@ -278,30 +244,13 @@ function browserPreviewPluginPath() {
 
 function appSummary(status: AgentIntegrationStatus | null) {
   if (!status) return "Checking app version.";
-  if (status.appVersion === "browser-dev") return "Browser-dev shell; native Codex checks are limited.";
   return `Burrete v${status.appVersion}`;
 }
 
-function bundlePathSummary(status: AgentIntegrationStatus | null) {
-  if (!status) return "Checking bundled plugin path.";
-  if (!status.bundledPlugin.path) return "Bundle path is unavailable in this build.";
-  return status.bundledPlugin.path;
-}
-
-function installActionTitle(status: AgentIntegrationStatus | null) {
-  if (!status) return "Choose action";
-  if (status.codexInstall.state === "current") return "Already installed";
-  if (status.codexInstall.state === "update_available") return "Update existing plugin";
-  if (status.codexInstall.state === "unknown") return "Install or update from bundle";
-  return "Install plugin";
-}
-
-function installActionSummary(status: AgentIntegrationStatus | null) {
-  if (!status) return "Codex install status is loading.";
-  if (status.codexInstall.state === "current") return "The installed Codex plugin matches the bundled Burrete plugin.";
-  if (status.codexInstall.state === "update_available") return "Copy the bundle path, then update the local Codex plugin from that directory.";
-  if (status.codexInstall.state === "unknown") return status.codexInstall.message;
-  return "Copy the bundle path, then install the local Codex plugin from that directory.";
+function codexActionLabel(state: string | undefined) {
+  if (state === "update_available") return "Open Update";
+  if (state === "current") return "Open Bundle";
+  return "Open Install";
 }
 
 function badgeState(state: string) {

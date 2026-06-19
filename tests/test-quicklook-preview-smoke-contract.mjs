@@ -49,14 +49,15 @@ assert.match(nightlySmoke, /schedule:/);
 assert.match(nightlySmoke, /BURRETE_DEV_FLAVOR:\s*ci/);
 assert.match(nightlySmoke, /quicklook-preview-smoke\.sh/);
 for (const fixture of [
-  "tests/fixtures/BurettePreviewSamples/mini.pdb",
-  "tests/fixtures/BurettePreviewSamples/mini.cif",
-  "tests/fixtures/BurettePreviewSamples/sdf/single.sdf",
-  "tests/fixtures/BurettePreviewSamples/xyz/single.xyz",
-  "tests/fixtures/BurettePreviewSamples/xyzr/single.xyzr",
+  "samples/mini.pdb",
+  "samples/mini.cif",
+  "samples/mini.sdf",
+  "samples/mini.xyz",
+  "build/smoke/single.xyzr",
 ]) {
   assert.match(nightlySmoke, new RegExp(fixture.replaceAll("/", "\\/")));
 }
+assert.match(nightlySmoke, /cp samples\/mini\.xyz build\/smoke\/single\.xyzr/);
 assert.match(nightlySmoke, /BURRETE_PERF_RUN_GUI:\s*0/);
 
 console.log("quicklook preview smoke contract tests passed");

@@ -13,6 +13,10 @@
   const FLOATING_LAYOUT_GAP = 12;
   const PANEL_CLOSE_HIT_WIDTH = 38;
   const MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX = 4;
+  const MOLSTAR_TOUCH_CONTEXT_MENU_DELAY_MS = 520;
+  const MOLSTAR_TOUCH_CONTEXT_MENU_MOVE_THRESHOLD_PX = 12;
+  const MOLSTAR_TOUCH_PICK_RADIUS_PX = 18;
+  const MOLSTAR_TOUCH_PICK_STEP_PX = 6;
   const MOLSTAR_PREVIEW_RDKIT_SVG_SIZE = 260;
   const MOLSTAR_STANDALONE_PREVIEW_MAX_ATOMS = 300;
   const VIEWER_THEME_STORAGE_KEY = 'buret.viewer.theme';
@@ -109,6 +113,7 @@
   let molstarViewportPanelObserver = null;
   let generate3dPending = false;
   let generate3dPendingMode = 'single';
+  let molstarStructureFocusSerial = 0;
   try { window.__mqlDebug && window.__mqlDebug('[viewer.js] top-level IIFE entered; readyState=' + document.readyState); } catch (_) {}
 
   function post(type, message) {
@@ -1901,6 +1906,37 @@
   }
 
   function requestGenerated3DCameraView(viewer) {
+    requestMolstarStructureFocus(viewer, {
+      reason: 'generated-3d',
+      durationMs: 650,
+      radiusScale: document.body?.classList.contains('burette-mobile-host') ? 0.58 : 0.88
+    });
+  }
+
+  function scheduleMolstarStructureFocus(viewer, options = {}) {
+    if (!molstarAutoFocusEnabled(activeConfig)) return;
+    if (options.allowWithContextFocus !== true && hasMolstarContextFocus(activeConfig)) return;
+    const serial = ++molstarStructureFocusSerial;
+    const delays = Array.isArray(options.delays) && options.delays.length ? options.delays : [0, 80, 240, 520];
+    delays.forEach(delayMs => {
+      window.setTimeout(() => {
+        if (serial !== molstarStructureFocusSerial) return;
+        if (viewer !== activeViewer && viewer !== window.BurreteViewer && viewer !== window.BuretteViewer) return;
+        try { viewer?.handleResize?.(); } catch (_) {}
+        requestMolstarStructureFocus(viewer, options);
+      }, Math.max(0, Number(delayMs) || 0));
+    });
+  }
+
+  function molstarAutoFocusEnabled(config) {
+    return config?.autoFocusStructure !== false;
+  }
+
+  function hasMolstarContextFocus(config) {
+    return !!config?.molstarContextFocus && typeof config.molstarContextFocus === 'object';
+  }
+
+  function requestMolstarStructureFocus(viewer, options = {}) {
     const canvas3d = viewer?.plugin?.canvas3d;
     const camera = canvas3d?.camera;
     if (!canvas3d || !camera) return;
@@ -1910,16 +1946,21 @@
       const radius = Number(sphere?.radius);
       const target = center && center.length >= 3 ? [center[0], center[1], center[2]] : camera.target;
       const safeRadius = Number.isFinite(radius) && radius > 0 ? radius : Number(camera.state?.radius || 10);
+      const configuredScale = Number(options.radiusScale);
+      const radiusScale = Number.isFinite(configuredScale) && configuredScale > 0
+        ? configuredScale
+        : (document.body?.classList.contains('burette-mobile-host') ? 0.58 : 0.88);
       const snapshot = typeof camera.getFocus === 'function'
-        ? camera.getFocus(target, safeRadius, [0, 1, 0], [0.85, -0.38, 0.92])
+        ? camera.getFocus(target, Math.max(0.1, safeRadius * radiusScale), [0, 1, 0], [0.85, -0.38, 0.92])
         : null;
       if (snapshot) snapshot.mode = 'perspective';
       canvas3d.requestCameraReset({
         snapshot: snapshot || undefined,
-        durationMs: 650,
+        durationMs: Number.isFinite(Number(options.durationMs)) ? Number(options.durationMs) : 160,
       });
+      try { canvas3d.requestDraw?.(); } catch (_) {}
     } catch (error) {
-      debug('Generated 3D camera view failed: ' + (error && error.message || String(error)));
+      debug('Mol* structure focus failed: ' + (error && error.message || String(error)));
       try { canvas3d.requestCameraReset?.({ durationMs: 450 }); } catch (_) {}
     }
   }
@@ -3690,6 +3731,112 @@
     }
   }
 
+  function applyMobileLayoutState(state, viewer = activeViewer || window.BurreteViewer || null) {
+    const next = state && typeof state === 'object' ? state : {};
+    const boolRegion = (value, visibleState = 'full') => value === true ? visibleState : 'hidden';
+    document.body?.classList.toggle('burette-mobile-show-left', next.left === true);
+    document.body?.classList.toggle('burette-mobile-show-right', next.right === true);
+    document.body?.classList.toggle('burette-mobile-show-sequence', next.sequence === true);
+    document.body?.classList.toggle('burette-mobile-show-log', next.log === true);
+    document.body?.classList.toggle('burette-mobile-show-controls', next.molstarControls === true);
+    if (next.left !== undefined) layoutState.left = boolRegion(next.left);
+    if (next.right !== undefined) layoutState.right = boolRegion(next.right);
+    if (next.sequence !== undefined) layoutState.top = boolRegion(next.sequence);
+    if (next.log !== undefined) layoutState.bottom = boolRegion(next.log);
+    try {
+      const plugin = viewer?.plugin;
+      if (plugin?.layout?.setProps) {
+        const payload = { regionState: { ...layoutState } };
+        if (next.molstarControls !== undefined) payload.showControls = next.molstarControls !== false;
+        plugin.layout.setProps(payload);
+      }
+    } catch (error) {
+      debug('mobile layout state failed: ' + (error && error.message || String(error)));
+    }
+    applyLayoutState(viewer);
+  }
+
+  function clickFirstMobileControl(selectors) {
+    for (const selector of selectors) {
+      const element = document.querySelector(selector);
+      if (element && element.disabled !== true && element.getAttribute('aria-disabled') !== 'true') {
+        element.click();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function setMobileTrajectorySpeed(value) {
+    const speed = document.querySelector('.buret-docking-poses .buret-docking-pose-speed');
+    if (!speed || speed.disabled === true || speed.getAttribute('aria-disabled') === 'true') return false;
+    speed.value = String(value);
+    speed.dispatchEvent(new Event('input', { bubbles: true }));
+    speed.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  }
+
+  function runMobileControlAction(action) {
+    const name = String(action || '');
+    const unavailable = label => setStatus(`[web] ${label} is unavailable. Enable Mol* Controls in the Controls sheet if you need the original Mol* panel.`, 'error');
+    if (name === 'reset-camera') {
+      const canvas3d = activeViewer?.plugin?.canvas3d;
+      if (canvas3d?.requestCameraReset) {
+        canvas3d.requestCameraReset({ durationMs: 350 });
+        try { canvas3d.requestDraw?.(); } catch (_) {}
+        return;
+      }
+      if (!clickFirstMobileControl([
+        '.msp-viewport-controls [title="Reset Zoom"]',
+        '.msp-viewport-controls [aria-label="Reset Zoom"]'
+      ])) unavailable('Reset Camera');
+    } else if (name === 'settings') {
+      if (!clickFirstMobileControl([
+        '.msp-viewport-controls [title="Settings / Controls Info"]',
+        '.msp-viewport-controls [aria-label="Settings / Controls Info"]'
+      ])) unavailable('Settings');
+    } else if (name === 'screenshot') {
+      if (!clickFirstMobileControl([
+        '.msp-viewport-controls [title="Screenshot / State Snapshot"]',
+        '.msp-viewport-controls [aria-label="Screenshot / State Snapshot"]'
+      ])) unavailable('Screenshot');
+    } else if (name === 'animation') {
+      if (!clickFirstMobileControl([
+        '.msp-animation-viewport-controls button',
+        '.buret-docking-pose-animation-button'
+      ])) unavailable('Animation');
+    } else if (name === 'pose-prev' || name === 'trajectory-prev') {
+      if (!clickFirstMobileControl(['.buret-docking-poses button[aria-label^="Previous"]'])) unavailable('Previous Pose');
+    } else if (name === 'pose-next' || name === 'trajectory-next') {
+      if (!clickFirstMobileControl(['.buret-docking-poses button[aria-label^="Next"]'])) unavailable('Next Pose');
+    } else if (name === 'pose-all') {
+      if (!clickFirstMobileControl([
+        '.buret-docking-poses button[aria-label*="all"]',
+        '#buret-toolbar [data-buret-action="sdf-poses"]'
+      ])) unavailable('All Poses');
+    } else if (name.startsWith('pose-index:')) {
+      const index = Number(name.slice('pose-index:'.length));
+      if (!Number.isFinite(index)) {
+        unavailable('Pose Index');
+      } else {
+        setSdfPoseIndexFromAction({ index }).then(result => {
+          if (!result?.ok) unavailable('Pose Index');
+        });
+      }
+    } else if (name === 'trajectory-loop') {
+      if (!clickFirstMobileControl(['.buret-docking-poses button[aria-label^="Play"], .buret-docking-poses button[aria-label^="Stop"]'])) unavailable('Trajectory Loop');
+    } else if (name.startsWith('trajectory-speed:')) {
+      const value = Number(name.slice('trajectory-speed:'.length));
+      if (!Number.isFinite(value) || !setMobileTrajectorySpeed(value)) unavailable('Trajectory Speed');
+    }
+  }
+
+  window.BurreteApplyMobileLayoutState = applyMobileLayoutState;
+  window.BurreteRunMobileControlAction = runMobileControlAction;
+  if (window.BurreteMobileControls?.pendingLayoutState) {
+    requestAnimationFrame(() => applyMobileLayoutState(window.BurreteMobileControls.pendingLayoutState));
+  }
+
   function scheduleLayoutStateReapply(viewer) {
     [250, 1000, 3000, 6000].forEach(delayMs => {
       setTimeout(() => reapplyLayoutStateAfterMolstarPass(viewer), delayMs);
@@ -4036,6 +4183,7 @@
     if (value === 'cif' || value === 'mmcif' || value === 'mcif') return 'mmcif';
     if (value === 'bcif' || value === 'binarycif') return 'mmcif';
     if (value === 'sd') return 'sdf';
+    if (value === 'xyzr') return 'xyz';
     if (value === 'molviewspec' || value === 'mol-view-spec') return 'mvsj';
     return value;
   }
@@ -4337,6 +4485,39 @@
       label: receptor.label || 'Receptor',
       sourcePath: receptor.path || ''
     };
+    const sceneMode = dockingSceneMode(config);
+    if (sceneMode) {
+      const sceneEntries = [receptorEntry];
+      ligandSources.forEach((source, ligandIndex) => {
+        const data = dockingPayloadData(source, ligandPayloads[ligandIndex]);
+        sceneEntries.push({
+          data,
+          format: normalizeFormat(source.format),
+          label: source.label || `Structure ${ligandIndex + 2}`,
+          sourcePath: source.path || ''
+        });
+      });
+      const poses = sceneEntries.map((entry, poseIndex) => ({
+        ...entry,
+        ligandIndex: poseIndex,
+        poseIndex,
+        poseCount: sceneEntries.length
+      }));
+      const activePose = readDockingPoseIndex(config, poses.length);
+      const allMode = activeSdfPoseMode === 'all';
+      return {
+        kind: 'docking',
+        dockingSceneMode: sceneMode,
+        label: config.label || 'Mol* scene',
+        activePose,
+        poseCount: poses.length,
+        ligandLabel: poses[activePose].label,
+        controlLabel: 'Structure',
+        receptorEntry,
+        poses,
+        entries: allMode ? sceneEntries : [poses[activePose]]
+      };
+    }
     const entries = [receptorEntry];
     let nativeTrajectoryPoseCount = 0;
     ligandSources.forEach((source, ligandIndex) => {
@@ -4369,8 +4550,7 @@
       entries.push({
         data,
         format,
-        label: source.label || `Ligand ${ligandIndex + 1}`,
-        sourcePath: source.path || ''
+        label: source.label || `Ligand ${ligandIndex + 1}`
       });
       poses.push({
         data,
@@ -4397,33 +4577,6 @@
         poses,
         entries,
         trajectoryPair
-      };
-    }
-    const sceneMode = dockingSceneMode(config);
-    if (sceneMode) {
-      const sceneEntries = entries.map((entry, entryIndex) => ({
-        ...entry,
-        label: entryIndex === 0 ? entry.label : (entry.label || `Structure ${entryIndex + 1}`)
-      }));
-      const scenePoses = sceneEntries.map((entry, poseIndex) => ({
-        ...entry,
-        ligandIndex: poseIndex,
-        poseIndex,
-        poseCount: sceneEntries.length
-      }));
-      const activePose = readDockingPoseIndex(config, scenePoses.length);
-      const allMode = activeSdfPoseMode === 'all';
-      return {
-        kind: 'docking',
-        dockingSceneMode: sceneMode,
-        label: config.label || 'Mol* scene',
-        activePose,
-        poseCount: scenePoses.length,
-        ligandLabel: scenePoses[activePose].label,
-        controlLabel: 'Structure',
-        receptorEntry,
-        poses: scenePoses,
-        entries: allMode ? sceneEntries : [scenePoses[activePose]]
       };
     }
     const activePose = readDockingPoseIndex(config, poses.length);
@@ -6076,6 +6229,7 @@
     const structures = await loadSdfCollectionPdbLayer(viewer, activeData, label);
     await applySdfCollectionMolstarStyle(viewer, style, structures, 1);
     updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
+    scheduleMolstarStructureFocus(viewer, { reason: 'sdf-collection', durationMs: 180 });
   }
 
   async function applyDockingSceneVisibility(viewer, prepared, activePose = 0) {
@@ -6111,6 +6265,7 @@
       }
       await applyMolstarWaterLineRepresentation(viewer);
       updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
+      scheduleMolstarStructureFocus(viewer, { reason: 'docking-scene', durationMs: 180 });
       return;
     }
 
@@ -6118,6 +6273,7 @@
     await applyMolstarStyle(viewer, style);
     await applyMolstarWaterLineRepresentation(viewer);
     updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
+    scheduleMolstarStructureFocus(viewer, { reason: 'docking-scene', durationMs: 180 });
   }
 
   function dockingSceneBackgroundStyle(contextStyle, foregroundStyle) {
@@ -6128,7 +6284,7 @@
 
   async function loadSdfCollectionPdbLayer(viewer, data, label) {
     const plugin = viewer?.plugin;
-    const raw = await plugin.builders.data.rawData({ data: molstarDisplayData(data, 'pdb'), label });
+    const raw = await plugin.builders.data.rawData({ data, label });
     const trajectory = await plugin.builders.structure.parseTrajectory(raw, 'pdb');
     const preset = await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default', { representationPreset: 'empty' });
     const structure = preset?.structureProperties || preset?.structure || null;
@@ -6769,7 +6925,7 @@
     }
     if (prepared.loadPreset === 'all-models') {
       const plugin = viewer.plugin;
-      const data = await plugin.builders.data.rawData({ data: molstarDisplayData(prepared.data, prepared.format), label: prepared.label });
+      const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
       const trajectory = await plugin.builders.structure.parseTrajectory(data, prepared.format);
       await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'all-models', {
         useDefaultIfSingleModel: true
@@ -6781,11 +6937,11 @@
     }
     const plugin = viewer.plugin;
     if (prepared.keepDefaultMolstarStyle === true && typeof viewer.loadStructureFromData === 'function') {
-      await viewer.loadStructureFromData(molstarDisplayData(prepared.data, prepared.format), prepared.format, { dataLabel: prepared.label });
+      await viewer.loadStructureFromData(prepared.data, prepared.format, { dataLabel: prepared.label });
       installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
       return;
     }
-    const data = await plugin.builders.data.rawData({ data: molstarDisplayData(prepared.data, prepared.format), label: prepared.label });
+    const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
     const trajectory = await plugin.builders.structure.parseTrajectory(data, prepared.format);
     await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default');
     if (prepared.keepDefaultMolstarStyle !== true) await applyMolstarStyle(viewer, prepared.molstarStyleOverride || configuredMolstarStyle(activeConfig));
@@ -6795,43 +6951,13 @@
 
   async function loadMolstarEntry(viewer, entry, presetOptions = undefined) {
     const plugin = viewer.plugin;
-    const payload = molstarEntryPayload(entry);
-    const data = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
-    const trajectory = await plugin.builders.structure.parseTrajectory(data, payload.format);
-    await plugin.builders.structure.hierarchy.applyPreset(trajectory, entry.loadPreset || 'default', presetOptions);
-  }
-
-  function molstarEntryPayload(entry) {
     const normalized = normalizeFormat(entry.format);
     const payload = normalized === 'cifCore'
       ? { data: coreCifToPdb(entry.data), format: 'pdb' }
       : { data: entry.data, format: normalized };
-    return { ...payload, data: molstarDisplayData(payload.data, payload.format) };
-  }
-
-  function molstarDisplayData(data, format) {
-    const normalized = normalizeFormat(format);
-    if (normalized !== 'pdb') return data;
-    return normalizePdbLigandRecordsForMolstar(data);
-  }
-
-  function normalizePdbLigandRecordsForMolstar(data) {
-    return String(data || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
-      .map(normalizePdbLigandLineForMolstar)
-      .join('\n');
-  }
-
-  function normalizePdbLigandLineForMolstar(line) {
-    if (!line.startsWith('HETATM')) return line;
-    const resName = line.slice(17, 20).trim().toUpperCase();
-    const chain = line.slice(21, 22).trim();
-    const seq = line.slice(22, 26).trim();
-    const occupancy = Number(line.slice(54, 60).trim());
-    if (resName !== 'UNK' || chain || seq !== '0' || (Number.isFinite(occupancy) && occupancy > 0)) return line;
-    let normalized = line.padEnd(80, ' ');
-    normalized = `${normalized.slice(0, 21)}L${normalized.slice(22)}`;
-    normalized = `${normalized.slice(0, 54)}  1.00${normalized.slice(60)}`;
-    return normalized.trimEnd();
+    const data = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
+    const trajectory = await plugin.builders.structure.parseTrajectory(data, payload.format);
+    await plugin.builders.structure.hierarchy.applyPreset(trajectory, entry.loadPreset || 'default', presetOptions);
   }
 
   async function loadMolstarEntryWithStructureRefs(viewer, entry, presetOptions = undefined) {
@@ -6842,7 +6968,10 @@
 
   async function loadMolstarEntryAsLines(viewer, entry) {
     const plugin = viewer.plugin;
-    const payload = molstarEntryPayload(entry);
+    const normalized = normalizeFormat(entry.format);
+    const payload = normalized === 'cifCore'
+      ? { data: coreCifToPdb(entry.data), format: 'pdb' }
+      : { data: entry.data, format: normalized };
     const data = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
     const trajectory = await plugin.builders.structure.parseTrajectory(data, payload.format);
     const model = await plugin.builders.structure.createModel(trajectory);
@@ -6922,7 +7051,10 @@
     const boundingBoxes = await applyMolstarStructureBoundingBoxGeometry(viewer);
     if (boundingBoxes > 0) return;
 
-    const payload = molstarEntryPayload(entry);
+    const normalized = normalizeFormat(entry.format);
+    const payload = normalized === 'cifCore'
+      ? { data: coreCifToPdb(entry.data), format: 'pdb' }
+      : { data: entry.data, format: normalized };
     const data = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
     const trajectory = await plugin.builders.structure.parseTrajectory(data, payload.format);
     const model = await plugin.builders.structure.createModel(trajectory);
@@ -7733,14 +7865,14 @@
           return;
         }
         loopBusy = true;
-        void setPose(nextIndex).finally(() => {
+        void setPose(nextIndex, { loopStep: true }).finally(() => {
           loopBusy = false;
           if (!loopActive) return;
           scheduleLoopStep();
         });
       }, Math.max(minimumTrajectoryLoopTimerDelay(prepared), delayMs));
     };
-    const setPose = async (index) => {
+    const setPose = async (index, options = {}) => {
       const nextIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
       const previousIndex = activePose;
       try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(nextIndex)); } catch (_) {}
@@ -7753,6 +7885,18 @@
           if (!switched) throw new Error('Mol* trajectory controls are not available.');
           activePose = readNativeTrajectoryPosition(prepared.poseCount)?.index ?? nextIndex;
           updateControls();
+          if (options.loopStep !== true && loopActive) {
+            loopStartedAt = loopNow();
+            loopStartPose = activePose;
+            if (loopTimer) {
+              clearTimeout(loopTimer);
+              loopTimer = null;
+            }
+            scheduleLoopStep(loopDelayMs());
+          }
+          if (options.loopStep !== true) {
+            scheduleMolstarStructureFocus(viewer, { reason: 'native-trajectory-pose', durationMs: 180 });
+          }
         } else if (prepared.kind === 'sdf-collection') {
           await applySdfCollectionVisibility(viewer, activeMolstarPrepared || prepared, nextIndex);
           activePose = nextIndex;
@@ -7799,7 +7943,7 @@
           ? 0
           : nextIndex;
       poseRepeatBusy = true;
-      void setPose(wrappedIndex).finally(() => {
+      void setPose(wrappedIndex, { userStep: true }).finally(() => {
         poseRepeatBusy = false;
       });
     };
@@ -7826,7 +7970,7 @@
           event.stopPropagation();
           return;
         }
-        void setPose(activePose + direction);
+        void setPose(activePose + direction, { userStep: true });
       });
     };
     const flushPendingSliderInput = () => {
@@ -7834,7 +7978,7 @@
       const nextIndex = pendingSliderIndex;
       pendingSliderIndex = null;
       sliderInputBusy = true;
-      void setPose(nextIndex).finally(() => {
+      void setPose(nextIndex, { userStep: true }).finally(() => {
         sliderInputBusy = false;
         flushPendingSliderInput();
       });
@@ -7895,17 +8039,17 @@
         flushPendingSliderInput();
         return;
       }
-      void setPose(nextIndex);
+      void setPose(nextIndex, { userStep: true });
     });
     const onKeyDown = (event) => {
       if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
       if (isDockingPoseKeyboardTarget(event.target)) return;
       if (event.key === 'ArrowLeft') {
         event.preventDefault();
-        if (activePose > 0) void setPose(activePose - 1);
+        if (activePose > 0) void setPose(activePose - 1, { userStep: true });
       } else if (event.key === 'ArrowRight') {
         event.preventDefault();
-        if (activePose < prepared.poseCount - 1) void setPose(activePose + 1);
+        if (activePose < prepared.poseCount - 1) void setPose(activePose + 1, { userStep: true });
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -7982,22 +8126,55 @@
     return target.closest('canvas') || target.closest('.msp-plugin')?.querySelector('canvas') || null;
   }
 
-  function molstarContextPickFromEvent(event) {
+  function molstarContextPickFromEvent(event, options = {}) {
     const canvas3d = activeViewer?.plugin?.canvas3d;
     if (!canvas3d || typeof canvas3d.identify !== 'function' || typeof canvas3d.getLoci !== 'function') return null;
     const canvas = molstarContextCanvasFromEvent(event);
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
     if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) return null;
+    const radius = Math.max(0, Number(options.radiusPx) || 0);
+    const step = Math.max(2, Number(options.stepPx) || MOLSTAR_TOUCH_PICK_STEP_PX);
+    const offsets = [[0, 0]];
+    if (radius > 0) {
+      for (let distance = step; distance <= radius; distance += step) {
+        offsets.push(
+          [distance, 0],
+          [-distance, 0],
+          [0, distance],
+          [0, -distance],
+          [distance, distance],
+          [distance, -distance],
+          [-distance, distance],
+          [-distance, -distance]
+        );
+      }
+    }
     try {
-      const picking = canvas3d.identify([event.clientX - rect.left, event.clientY - rect.top]);
-      const pick = picking?.id ? canvas3d.getLoci(picking.id) : null;
-      if (!pick?.loci || molstarLociIsEmpty(pick.loci)) return null;
-      return { ...pick, position: picking.position };
+      for (const [dx, dy] of offsets) {
+        const x = event.clientX + dx;
+        const y = event.clientY + dy;
+        if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) continue;
+        const picking = canvas3d.identify([x - rect.left, y - rect.top]);
+        const pick = picking?.id ? canvas3d.getLoci(picking.id) : null;
+        if (!pick?.loci || molstarLociIsEmpty(pick.loci)) continue;
+        return { ...pick, position: picking.position, touchAdjusted: dx !== 0 || dy !== 0 };
+      }
+      return null;
     } catch (error) {
       debug('Mol* context pick failed: ' + (error?.message || String(error)));
       return null;
     }
+  }
+
+  function molstarContextEventIsTouch(event) {
+    return event?.pointerType === 'touch' || event?.sourceCapabilities?.firesTouchEvents === true;
+  }
+
+  function molstarContextTouchPickOptions(event) {
+    return molstarContextEventIsTouch(event)
+      ? { radiusPx: MOLSTAR_TOUCH_PICK_RADIUS_PX, stepPx: MOLSTAR_TOUCH_PICK_STEP_PX }
+      : {};
   }
 
   function molstarContextStructures() {
@@ -8030,7 +8207,7 @@
   const MOLSTAR_CONTEXT_STANDARD_RESIDUES = new Set([
     'ALA', 'ARG', 'ASN', 'ASP', 'CYS', 'GLN', 'GLU', 'GLY', 'HIS', 'ILE',
     'LEU', 'LYS', 'MET', 'PHE', 'PRO', 'SER', 'THR', 'TRP', 'TYR', 'VAL',
-    'SEC', 'PYL', 'ASX', 'GLX',
+    'SEC', 'PYL', 'ASX', 'GLX', 'UNK',
     'A', 'C', 'G', 'T', 'U', 'DA', 'DC', 'DG', 'DT', 'DU', 'I', 'DI',
     'PSU', '5MC', 'OMC', 'OMG', '1MA', '2MG', 'M2G', '7MG'
   ]);
@@ -9355,6 +9532,31 @@
     return actions;
   }
 
+  function molstarContextActionsPayload(actions) {
+    return (Array.isArray(actions) ? actions : []).map(([name, title]) => ({
+      name: String(name || ''),
+      title: String(title || '')
+    })).filter(action => action.name && action.title);
+  }
+
+  function showNativeMolstarContextMenu(menuTarget, mode) {
+    if (!document.body?.classList.contains('burette-mobile-host')) return false;
+    const supportsAtomMode = menuTarget?.scope === 'ligand' && !!menuTarget?.atomLoci;
+    const moleculeActions = molstarContextActionsPayload(molstarContextMenuActions(menuTarget, 'molecule'));
+    const atomActions = supportsAtomMode
+      ? molstarContextActionsPayload(molstarContextMenuActions(menuTarget, 'atom'))
+      : [];
+    if (!moleculeActions.length && !atomActions.length) return false;
+    return postHostMessage({
+      type: 'mobileContextMenu',
+      label: menuTarget?.label || '',
+      scope: menuTarget?.scope || 'selection',
+      mode: mode === 'atom' ? 'atom' : 'molecule',
+      moleculeActions,
+      atomActions
+    });
+  }
+
   async function moleculeContextMenuAction(action, label) {
     const target = molstarContextTarget();
     const targetLabel = target.label;
@@ -9421,6 +9623,16 @@
       if (previewAfterAction) showMolstarPersistentMoleculePreview(previewAfterAction);
     }
   }
+
+  window.BurreteRunMobileContextMenuAction = function (action, mode = 'molecule') {
+    const actionName = String(action || '');
+    if (!actionName) return;
+    const nextMode = mode === 'atom' ? 'atom' : 'molecule';
+    molstarContextMenuMode = nextMode;
+    const target = molstarContextTarget();
+    const matchedAction = molstarContextMenuActions(target, nextMode).find(([name]) => name === actionName);
+    void moleculeContextMenuAction(actionName, matchedAction?.[1] || actionName);
+  };
 
   function molstarMoleculePreviewEntry(target) {
     if (!target || (target.scope !== 'ligand' && target.scope !== 'ion')) return null;
@@ -9840,6 +10052,16 @@
       hideMolstarContextMenu();
       return;
     }
+    postHostMessage({
+      type: 'mobileInspectorTarget',
+      label: menuTarget.label || '',
+      scope: menuTarget.scope || ''
+    });
+    let mode = menuTarget.scope === 'ligand' && menuTarget.atomLoci && molstarContextMenuMode === 'atom' ? 'atom' : 'molecule';
+    if (showNativeMolstarContextMenu(menuTarget, mode)) {
+      molstarContextMenuMode = mode;
+      return;
+    }
     const menu = document.createElement('div');
     menu.className = 'buret-molecule-context-menu';
     menu.setAttribute('role', 'menu');
@@ -9851,7 +10073,6 @@
     subtitle.className = 'buret-molecule-context-menu-subtitle';
     subtitle.textContent = menuTarget.label;
     menu.append(title, subtitle);
-    let mode = menuTarget.scope === 'ligand' && menuTarget.atomLoci && molstarContextMenuMode === 'atom' ? 'atom' : 'molecule';
     const actionContainer = document.createElement('div');
     actionContainer.className = 'buret-molecule-context-menu-actions';
     const renderActions = () => {
@@ -9904,13 +10125,25 @@
       molstarSelectionPreviewCleanup = null;
     }
     let contextPointer = null;
+    let touchContextPointer = null;
     const menuIsOpen = () => !!document.querySelector('.buret-molecule-context-menu');
     const menuIsInAtomMode = () => menuIsOpen() && molstarContextMenuMode === 'atom';
     const clearMolstarHoverHighlights = () => {
       try { activeViewer?.plugin?.managers?.interactivity?.lociHighlights?.clearHighlights?.(); } catch (_) {}
     };
+    const clearTouchContextPointer = () => {
+      if (touchContextPointer?.timer) clearTimeout(touchContextPointer.timer);
+      touchContextPointer = null;
+    };
+    const syntheticContextEvent = (pointer) => ({
+      clientX: pointer.clientX,
+      clientY: pointer.clientY,
+      target: pointer.target,
+      preventDefault() {},
+      stopPropagation() {}
+    });
     const selectAtomFromEvent = (event) => {
-      const contextPick = molstarContextPickFromEvent(event);
+      const contextPick = molstarContextPickFromEvent(event, molstarContextTouchPickOptions(event));
       if (!contextPick) return false;
       molstarContextMenuPick = contextPick;
       const target = molstarContextTarget();
@@ -9955,6 +10188,7 @@
       contextPointer = null;
     };
     const onPointerDown = (event) => {
+      clearTouchContextPointer();
       if (event.button === 2) {
         if (!viewer || !isMolstarContextMenuTarget(event.target)) {
           contextPointer = null;
@@ -9979,6 +10213,33 @@
         hideMolstarContextMenu();
         return;
       }
+      if (molstarContextEventIsTouch(event) && event.isPrimary !== false && event.button === 0 && viewer && isMolstarContextMenuTarget(event.target)) {
+        const pointer = {
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
+          clientX: event.clientX,
+          clientY: event.clientY,
+          target: event.target,
+          moved: false,
+          opened: false,
+          timer: 0
+        };
+        pointer.timer = window.setTimeout(() => {
+          if (touchContextPointer !== pointer || pointer.moved) return;
+          const contextPick = molstarContextPickFromEvent(syntheticContextEvent(pointer), {
+            radiusPx: MOLSTAR_TOUCH_PICK_RADIUS_PX,
+            stepPx: MOLSTAR_TOUCH_PICK_STEP_PX
+          });
+          if (!contextPick) {
+            clearTouchContextPointer();
+            return;
+          }
+          pointer.opened = true;
+          openFromEvent(syntheticContextEvent(pointer), contextPick);
+        }, MOLSTAR_TOUCH_CONTEXT_MENU_DELAY_MS);
+        touchContextPointer = pointer;
+      }
       const target = event.target;
       if (target instanceof Element && target.closest('.buret-molecule-context-menu')) return;
       if (event.button === 0 && menuIsInAtomMode() && isMolstarContextMenuTarget(target)) {
@@ -9991,6 +10252,16 @@
       hideMolstarContextMenu();
     };
     const onPointerMove = (event) => {
+      if (touchContextPointer && event.pointerId === touchContextPointer.pointerId) {
+        touchContextPointer.clientX = event.clientX;
+        touchContextPointer.clientY = event.clientY;
+        if (!touchContextPointer.moved) {
+          touchContextPointer.moved =
+            Math.abs(event.clientX - touchContextPointer.startX) > MOLSTAR_TOUCH_CONTEXT_MENU_MOVE_THRESHOLD_PX ||
+            Math.abs(event.clientY - touchContextPointer.startY) > MOLSTAR_TOUCH_CONTEXT_MENU_MOVE_THRESHOLD_PX;
+        }
+        if (touchContextPointer.moved) clearTouchContextPointer();
+      }
       if (!contextPointer || event.pointerId !== contextPointer.pointerId) return;
       if (contextPointer.moved) return;
       contextPointer.moved =
@@ -9998,6 +10269,15 @@
         Math.abs(event.clientY - contextPointer.startY) > MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX;
     };
     const onPointerUp = (event) => {
+      if (touchContextPointer && event.pointerId === touchContextPointer.pointerId) {
+        const opened = touchContextPointer.opened;
+        clearTouchContextPointer();
+        if (opened) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+      }
       if (!contextPointer || event.pointerId !== contextPointer.pointerId) return;
       if (contextPointer.moved) {
         hideMolstarContextMenu();
@@ -10010,6 +10290,7 @@
       contextPointer = null;
     };
     const onPointerCancel = (event) => {
+      if (touchContextPointer && event.pointerId === touchContextPointer.pointerId) clearTouchContextPointer();
       if (contextPointer && event.pointerId === contextPointer.pointerId) contextPointer = null;
     };
     const suppressAtomModeHover = (event) => {
@@ -10084,6 +10365,7 @@
       document.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('resize', onResize);
       window.removeEventListener('scroll', hideMolstarMoleculePreview, true);
+      clearTouchContextPointer();
       hideMolstarContextMenu();
       clearMolstarPersistentMoleculePreview();
     };
@@ -10143,32 +10425,47 @@
     const showTrajectoryControls = activeConfig?.trajectoryControls === true ||
       activeConfig?.sdfPosePager === true ||
       Boolean(activeConfig?.docking && sdfGridPathForConfig(activeConfig));
+    const option = (key, fallback) => activeConfig?.[key] !== undefined ? !!activeConfig[key] : fallback;
+    const numberOption = (key) => {
+      const value = Number(activeConfig?.[key]);
+      return Number.isFinite(value) && value > 0 ? value : undefined;
+    };
+    const stringOption = (key, allowed) => {
+      const value = String(activeConfig?.[key] || '');
+      return allowed.includes(value) ? value : undefined;
+    };
+    const pixelScale = numberOption('molstarPixelScale');
+    const pickScale = numberOption('molstarPickScale');
+    const resolutionMode = stringOption('molstarResolutionMode', ['auto', 'scaled', 'native']);
     return {
       // Keep the real Mol* application UI, not a minimal canvas-only preview.
       // This is intentionally close to https://molstar.org/viewer/: right controls,
       // sequence strip, import/session panels, toolbar buttons and full interactivity.
       layoutIsExpanded: true,
-      layoutShowControls: true,
+      layoutShowControls: option('layoutShowControls', true),
       layoutShowRemoteState: false,
-      layoutShowSequence: true,
-      layoutShowLog: true,
-      layoutShowLeftPanel: true,
-      viewportShowReset: true,
-      viewportShowScreenshotControls: true,
-      viewportShowControls: true,
+      layoutShowSequence: option('layoutShowSequence', true),
+      layoutShowLog: option('layoutShowLog', true),
+      layoutShowLeftPanel: option('layoutShowLeftPanel', true),
+      viewportShowReset: option('viewportShowReset', true),
+      viewportShowScreenshotControls: option('viewportShowScreenshotControls', true),
+      viewportShowControls: option('viewportShowControls', true),
       viewportShowExpand: false,
       viewportShowToggleFullscreen: false,
-      viewportShowSelectionMode: true,
+      viewportShowSelectionMode: option('viewportShowSelectionMode', true),
       // Keep the native Mol* top-left animation button on every Mol* screen. Do not remove.
-      viewportShowAnimation: true,
+      viewportShowAnimation: option('viewportShowAnimation', true),
       viewportShowTrajectoryControls: showTrajectoryControls,
-      viewportShowSettings: true,
+      viewportShowSettings: option('viewportShowSettings', true),
       collapseLeftPanel: true,
       collapseRightPanel: true,
       pdbProvider: 'rcsb',
       emdbProvider: 'rcsb',
-      preferWebgl1: true,
-      disableAntialiasing: true,
+      preferWebgl1: option('molstarPreferWebgl1', true),
+      disableAntialiasing: option('molstarDisableAntialiasing', true),
+      ...(pixelScale !== undefined ? { pixelScale } : {}),
+      ...(pickScale !== undefined ? { pickScale } : {}),
+      ...(resolutionMode !== undefined ? { resolutionMode } : {}),
       viewportBackgroundColor: transparentBackground ? undefined : canvasBackgroundCSS(),
       powerPreference: isQuickLookHost() ? 'default' : 'high-performance'
     };
@@ -10306,6 +10603,9 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     );
     applyLayoutState(viewer);
     scheduleLayoutStateReapply(viewer);
+    if (!hasMolstarContextFocus(config)) {
+      scheduleMolstarStructureFocus(viewer, { reason: 'initial-load', durationMs: 120 });
+    }
 
     try {
       window.BurreteAgent?.notifyStructureLoaded?.({ viewer, plugin: viewer.plugin, config, prepared });
@@ -10331,6 +10631,9 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     if (stagedEntries.length > 0) {
       try {
         await loadStagedMolstarEntries(viewer, config, cb);
+        if (!hasMolstarContextFocus(config)) {
+          scheduleMolstarStructureFocus(viewer, { reason: 'staged-entries', durationMs: 120 });
+        }
       } catch (error) {
         setStatus(`[web] Could not load staged solvent.\n\n${error?.message || String(error)}`, 'error');
         // eslint-disable-next-line no-console

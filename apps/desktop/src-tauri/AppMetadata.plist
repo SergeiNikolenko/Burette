@@ -71,7 +71,6 @@
 				<string>mmtf</string>
 				<string>mol</string>
 				<string>mol2</string>
-				<string>json</string>
 				<string>ms</string>
 				<string>msp</string>
 				<string>mvsj</string>
@@ -168,7 +167,6 @@
 				<string>com.local.burrete10.openmm-coordinate-artifact</string>
 				<string>com.local.burrete10.openmm-workflow-text-artifact</string>
 				<string>com.local.burrete10.spectrum</string>
-				<string>com.local.burrete10.spectrum-json</string>
 			</array>
 		</dict>
 	</array>
@@ -730,29 +728,6 @@
 				<array>
 					<string>text/plain</string>
 					<string>application/xml</string>
-				</array>
-			</dict>
-		</dict>
-		<dict>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.json</string>
-				<string>public.text</string>
-				<string>public.data</string>
-			</array>
-			<key>UTTypeDescription</key>
-			<string>Mass spectrum annotation JSON file</string>
-			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.spectrum-json</string>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>json</string>
-				</array>
-				<key>public.mime-type</key>
-				<array>
-					<string>application/json</string>
 				</array>
 			</dict>
 		</dict>

@@ -53,7 +53,6 @@
     "targets": "app",
     "resources": {
       "../../../PreviewExtension/Web": "ViewerWeb",
-      "../../../plugins/burette-agent": "plugins/burette-agent",
       "../../../scripts/desmond_preview_extract.py": "desmond_preview_extract.py"
     },
     "macOS": {
@@ -94,7 +93,6 @@
           "inp",
           "inpcrd",
           "itp",
-          "json",
           "lammpstrj",
           "lammps",
           "lmp",
