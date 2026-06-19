@@ -6,8 +6,15 @@ import { fileURLToPath } from "node:url";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
 import { gunzipSync } from "node:zlib";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import {
+  deferKetcherCssPlugin,
+  desktopManualChunks,
+  ketcherRaphaelImportShimPlugin,
+  resolveModulePreloadDependencies,
+} from "./vite/build-plugins";
+import { readJsonBody, sendJson, sendJsonError } from "./vite/browser-dev/http";
 
 const desktopRoot = fileURLToPath(new URL(".", import.meta.url));
 const desktopDist = fileURLToPath(new URL("dist", import.meta.url));
@@ -3273,19 +3280,14 @@ export function browserDevXyzrenderPlugin() {
         }
       });
       server.middlewares.use("/__burette/generate-3d-conformer", async (req, res) => {
-        const reply = (status: number, body: unknown) => {
-          res.statusCode = status;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify(body));
-        };
         if ((req.method || "GET").toUpperCase() !== "POST") {
-          reply(405, { error: "Method not allowed" });
+          sendJson(res, 405, { error: "Method not allowed" });
           return;
         }
         try {
-          reply(200, await generate3DConformerForBrowserDev(await readJsonBody(req)));
+          sendJson(res, 200, await generate3DConformerForBrowserDev(await readJsonBody(req)));
         } catch (error) {
-          reply(500, { error: error instanceof Error ? error.message : String(error) });
+          sendJsonError(res, 500, error);
         }
       });
 
@@ -4224,15 +4226,6 @@ function isDesmondPreviewCandidate(path: string) {
   return resolveDesmondFileBundle(path) !== null;
 }
 
-async function readJsonBody(req: import("node:http").IncomingMessage) {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-  const text = Buffer.concat(chunks).toString("utf8").trim();
-  return text ? JSON.parse(text) as Record<string, unknown> : {};
-}
-
 function normalizeOrientationRef(value: string | null) {
   if (!value) return null;
   const normalized = value.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
@@ -4241,54 +4234,6 @@ function normalizeOrientationRef(value: string | null) {
   const atomCount = Number.parseInt((lines[0] || "").trim().split(/\s+/u)[0] || "", 10);
   if (!Number.isFinite(atomCount) || atomCount <= 0 || lines.length < atomCount + 2) return null;
   return normalized.endsWith("\n") ? normalized : `${normalized}\n`;
-}
-
-function ketcherRaphaelImportShimPlugin(): Plugin {
-  const target = "raphaelModule = require('raphael');";
-  const replacement = "raphaelModule = __burreteRaphael;";
-
-  return {
-    name: "burrete-ketcher-raphael-import-shim",
-    transform(code, id) {
-      const normalized = id.replaceAll("\\", "/");
-      if (!normalized.endsWith("/node_modules/ketcher-core/dist/index.modern.js")) return null;
-      if (!code.includes(target)) return null;
-      return {
-        code: `import __burreteRaphael from "raphael";\n${code.replaceAll(target, replacement)}`,
-        map: null,
-      };
-    },
-  };
-}
-
-function deferKetcherCssPlugin(): Plugin {
-  return {
-    name: "burrete-defer-ketcher-css",
-    transformIndexHtml(html) {
-      return html.replace(/\n\s*<link rel="stylesheet" crossorigin href="\.\/assets\/ketcher-[^"]+\.css">/gu, "");
-    },
-  };
-}
-
-function desktopManualChunks(id: string) {
-  const normalized = id.replaceAll("\\", "/");
-  if (normalized.includes("/node_modules/molstar/")) return "molstar";
-  if (
-    normalized.includes("/node_modules/raphael/")
-    || normalized.includes("/node_modules/eve-raphael/")
-    || normalized.includes("/node_modules/ketcher-core/")
-    || normalized.includes("/node_modules/ketcher-react/")
-    || normalized.includes("/node_modules/ketcher-standalone/")
-    || normalized.includes("/node_modules/indigo-ketcher/")
-  ) {
-    return "ketcher";
-  }
-  return undefined;
-}
-
-function resolveModulePreloadDependencies(_url: string, deps: string[], context: { hostType: "html" | "js" }) {
-  if (context.hostType !== "html") return deps;
-  return deps.filter((dep) => !dep.includes("ketcher"));
 }
 
 export default defineConfig({

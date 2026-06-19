@@ -87,6 +87,8 @@ const [
   temporaryDocuments,
   windowScope,
   viteConfig,
+  viteBuildPlugins,
+  browserDevHttp,
   bundleReportScript,
   previewRuntimeViewer,
   previewRuntimeSource,
@@ -190,6 +192,8 @@ const [
   source('apps/desktop/src/lib/temporary-documents.ts'),
   source('apps/desktop/src/lib/window-scope.ts'),
   source('apps/desktop/vite.config.ts'),
+  source('apps/desktop/vite/build-plugins.ts'),
+  source('apps/desktop/vite/browser-dev/http.ts'),
   source('scripts/bundle-report.mjs'),
   source('apps/desktop/src-tauri/src/preview/runtime_viewer.rs'),
   source('apps/desktop/src-tauri/src/preview/runtime.rs'),
@@ -403,30 +407,31 @@ assert.match(viteConfig, /base: "\.\/"/);
 assert.doesNotMatch(viteConfig, /const KETCHER_CHUNK_PACKAGES = \[/);
 assert.match(viteConfig, /onlyExplicitManualChunks: true/);
 assert.doesNotMatch(viteConfig, /require: "globalThis\.__burreteRequire"/);
-assert.match(viteConfig, /function desktopManualChunks\(id: string\)/);
+assert.match(viteConfig, /desktopManualChunks/);
 assert.match(viteConfig, /manualChunks: desktopManualChunks/);
-assert.match(viteConfig, /normalized\.includes\("\/node_modules\/molstar\/"\)/);
-assert.match(viteConfig, /normalized\.includes\("\/node_modules\/raphael\/"\)/);
-assert.match(viteConfig, /normalized\.includes\("\/node_modules\/eve-raphael\/"\)/);
-assert.match(viteConfig, /normalized\.includes\("\/node_modules\/ketcher-core\/"\)/);
-assert.match(viteConfig, /normalized\.includes\("\/node_modules\/ketcher-react\/"\)/);
-assert.match(viteConfig, /normalized\.includes\("\/node_modules\/ketcher-standalone\/"\)/);
-assert.match(viteConfig, /normalized\.includes\("\/node_modules\/indigo-ketcher\/"\)/);
-assert.match(viteConfig, /return "ketcher";/);
-assert.doesNotMatch(viteConfig, /return "ketcher-raphael";/);
-assert.match(viteConfig, /normalized\.includes\("\/node_modules\/raphael\/"\)[\s\S]*normalized\.includes\("\/node_modules\/ketcher-core\/"\)[\s\S]*return "ketcher";/);
-assert.match(viteConfig, /function resolveModulePreloadDependencies\(_url: string, deps: string\[\], context: \{ hostType: "html" \| "js" \}\)/);
+assert.match(viteBuildPlugins, /function desktopManualChunks\(id: string\)/);
+assert.match(viteBuildPlugins, /normalized\.includes\("\/node_modules\/molstar\/"\)/);
+assert.match(viteBuildPlugins, /normalized\.includes\("\/node_modules\/raphael\/"\)/);
+assert.match(viteBuildPlugins, /normalized\.includes\("\/node_modules\/eve-raphael\/"\)/);
+assert.match(viteBuildPlugins, /normalized\.includes\("\/node_modules\/ketcher-core\/"\)/);
+assert.match(viteBuildPlugins, /normalized\.includes\("\/node_modules\/ketcher-react\/"\)/);
+assert.match(viteBuildPlugins, /normalized\.includes\("\/node_modules\/ketcher-standalone\/"\)/);
+assert.match(viteBuildPlugins, /normalized\.includes\("\/node_modules\/indigo-ketcher\/"\)/);
+assert.match(viteBuildPlugins, /return "ketcher";/);
+assert.doesNotMatch(viteBuildPlugins, /return "ketcher-raphael";/);
+assert.match(viteBuildPlugins, /normalized\.includes\("\/node_modules\/raphael\/"\)[\s\S]*normalized\.includes\("\/node_modules\/ketcher-core\/"\)[\s\S]*return "ketcher";/);
+assert.match(viteBuildPlugins, /function resolveModulePreloadDependencies\(_url: string, deps: string\[\], context: \{ hostType: "html" \| "js" \}\)/);
 assert.match(viteConfig, /resolveDependencies: resolveModulePreloadDependencies/);
-assert.match(viteConfig, /function ketcherRaphaelImportShimPlugin\(\)/);
-assert.match(viteConfig, /const target = "raphaelModule = require\('raphael'\);"/);
-assert.match(viteConfig, /const replacement = "raphaelModule = __burreteRaphael;"/);
-assert.match(viteConfig, /transform\(code, id\)/);
-assert.match(viteConfig, /normalized\.endsWith\("\/node_modules\/ketcher-core\/dist\/index\.modern\.js"\)/);
-assert.match(viteConfig, /import __burreteRaphael from "raphael";/);
-assert.match(viteConfig, /code\.replaceAll\(target, replacement\)/);
-assert.match(viteConfig, /function deferKetcherCssPlugin\(\)/);
-assert.match(viteConfig, /burrete-defer-ketcher-css/);
-assert.match(viteConfig, /assets\\\/ketcher-\[\^"\]\+\\\.css/);
+assert.match(viteBuildPlugins, /function ketcherRaphaelImportShimPlugin\(\)/);
+assert.match(viteBuildPlugins, /const target = "raphaelModule = require\('raphael'\);"/);
+assert.match(viteBuildPlugins, /const replacement = "raphaelModule = __burreteRaphael;"/);
+assert.match(viteBuildPlugins, /transform\(code, id\)/);
+assert.match(viteBuildPlugins, /normalized\.endsWith\("\/node_modules\/ketcher-core\/dist\/index\.modern\.js"\)/);
+assert.match(viteBuildPlugins, /import __burreteRaphael from "raphael";/);
+assert.match(viteBuildPlugins, /code\.replaceAll\(target, replacement\)/);
+assert.match(viteBuildPlugins, /function deferKetcherCssPlugin\(\)/);
+assert.match(viteBuildPlugins, /burrete-defer-ketcher-css/);
+assert.match(viteBuildPlugins, /assets\\\/ketcher-\[\^"\]\+\\\.css/);
 for (const script of [buildScript, buildDevScript]) {
   assert.match(script, /printf 'APPL\?\?\?\?' > "\$app\/Contents\/PkgInfo"/);
   assert.match(script, /Delete :LSRequiresCarbon/);
@@ -519,6 +524,8 @@ assert.match(viteConfig, /const rmsdCutoff = boundedNumber\(request\.rmsdCutoff,
 assert.match(viteConfig, /function boundedNumber\(value: unknown, fallback: number, min: number, max: number\)/);
 assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/generate-3d-conformer"/);
 assert.match(viteConfig, /await generate3DConformerForBrowserDev\(await readJsonBody\(req\)\)/);
+assert.match(browserDevHttp, /export async function readJsonBody/);
+assert.match(browserDevHttp, /JSON\.parse\(text\) as Record<string, unknown>/);
 assert.match(viteConfig, /function conformerGenerationTimeoutMs\(candidateCount: number\)/);
 assert.match(viteConfig, /Math\.max\(30_000, candidateCount \* 1_000\)/);
 assert.match(viteConfig, /function runPythonWithStdin\(python: PythonCommand, script: string, input: string, timeoutMs = 30_000\): Promise<string>/);
