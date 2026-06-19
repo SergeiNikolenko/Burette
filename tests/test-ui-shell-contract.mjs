@@ -12,6 +12,7 @@ const [
   app,
   uiStore,
   commandPaletteHook,
+  appClipboardHook,
   appDescriptorsHook,
   appDiagnosticsHook,
   appDirtyGridHook,
@@ -138,6 +139,7 @@ const [
   source('apps/desktop/src/App.tsx'),
   source('apps/desktop/src/stores/ui-store.ts'),
   source('apps/desktop/src/hooks/use-command-palette.ts'),
+  source('apps/desktop/src/hooks/use-app-clipboard.ts'),
   source('apps/desktop/src/hooks/use-app-descriptors.ts'),
   source('apps/desktop/src/hooks/use-app-diagnostics.ts'),
   source('apps/desktop/src/hooks/use-app-dirty-grid-documents.ts'),
@@ -2753,10 +2755,12 @@ assert.match(menuEventsHook, /for \(const cleanup of cleanups\) cleanup\(\)/);
 assert.doesNotMatch(menuEventsHook, /let unlisten/);
 assert.doesNotMatch(menuEventsHook, /unlisten\?\.\(\)/);
 assert.match(app, /documents,/);
-assert.match(app, /openClipboardText/);
-assert.match(app, /navigator\.clipboard\?\.readText/);
-assert.match(app, /await navigator\.clipboard\.readText\(\)/);
-assert.match(app, /openClipboardText\(text\)/);
+assert.match(app, /useAppClipboard\(\{ openClipboardText, pushErrorStatus, pushStatus \}\)/);
+assert.match(appClipboardHook, /navigator\.clipboard\?\.readText/);
+assert.match(appClipboardHook, /await navigator\.clipboard\.readText\(\)/);
+assert.match(appClipboardHook, /openClipboardText\(text\)/);
+assert.match(appClipboardHook, /Clipboard text is not available in this environment\./);
+assert.match(appClipboardHook, /Open from clipboard failed/);
 assert.match(app, /openClipboard,/);
 assert.match(app, /openStructurePaths: async \(paths: string\[\], options\?: \{ mode\?: OpenDocumentsMode \}\) => \{\s*await openDocuments\(paths, undefined, undefined, options\);\s*\}/s);
 assert.match(app, /openPaths,/);
