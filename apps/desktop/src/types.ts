@@ -294,6 +294,64 @@ export type XtbJob = {
   error?: string | null;
 };
 
+export type FoldingArtifact = {
+  path: string;
+  title: string;
+  extension: string;
+  kind: string;
+  byteCount: number;
+};
+
+export type FoldingMetric = {
+  key: string;
+  label: string;
+  value: number;
+  formatted: string;
+};
+
+export type FoldingProfile = {
+  label: string;
+  path: string;
+  values: number[];
+  min: number;
+  max: number;
+  mean: number;
+};
+
+export type FoldingMatrixPreview = {
+  kind: string;
+  label: string;
+  path: string;
+  shape: number[];
+  values: Array<Array<number | null>>;
+  min?: number | null;
+  max?: number | null;
+  mean?: number | null;
+};
+
+export type FoldingModel = {
+  id: string;
+  title: string;
+  backend: string;
+  seed?: number | null;
+  modelIndex?: number | null;
+  structurePath: string;
+  structureTitle: string;
+  metrics: FoldingMetric[];
+  plddtProfile?: FoldingProfile | null;
+  matrixPreview?: FoldingMatrixPreview | null;
+  artifacts: FoldingArtifact[];
+};
+
+export type FoldingResultBundle = {
+  rootPath: string;
+  title: string;
+  source: string;
+  models: FoldingModel[];
+  artifacts: FoldingArtifact[];
+  warnings: string[];
+};
+
 export type MergedCollectionDocument = {
   sourcePaths: string[];
   format: string;
