@@ -47,14 +47,26 @@ assert.deepEqual(mcpConfig.mcpServers.burette_agent_mcp.args, ["./mcp/server.mjs
 const packageJson = JSON.parse(await read("package.json"));
 assert.match(packageJson.scripts.check, /mcp\/server\.mjs/);
 assert.match(packageJson.scripts.check, /scripts\/burette_agent_preflight\.mjs/);
+assert.match(packageJson.scripts.check, /mcp\/registrations\/fetch\/register\.mjs/);
 assert.match(packageJson.scripts.check, /mcp\/registrations\/molecular-workspace\/register\.mjs/);
 
 const server = await read("mcp/server.mjs");
 assert.match(server, /new McpServer/);
+assert.match(server, /registerFetch\(server\)/);
 assert.match(server, /registerMolecularWorkspace\(server\)/);
 assert.match(server, /registerMoleculeTable\(server\)/);
 assert.match(server, /registerTrajectoryReview\(server\)/);
 assert.match(server, /registerMolecularReport\(server\)/);
+
+const fetchRegistration = await read("mcp/registrations/fetch/register.mjs");
+assert.match(fetchRegistration, /registerAppTool/);
+assert.match(fetchRegistration, /"fetch"/);
+assert.match(fetchRegistration, /max_length/);
+assert.match(fetchRegistration, /start_index/);
+assert.match(fetchRegistration, /raw/);
+assert.match(fetchRegistration, /openWorldHint: true/);
+assert.match(fetchRegistration, /Local, private, and link-local hosts are blocked/);
+assert.match(fetchRegistration, /MAX_RESPONSE_BYTES/);
 
 const workspaceRegistration = await read("mcp/registrations/molecular-workspace/register.mjs");
 assert.match(workspaceRegistration, /registerAppTool/);
@@ -250,6 +262,7 @@ const syntaxTargets = [
   "plugins/burette-agent/mcp/lib/structure-summary.mjs",
   "plugins/burette-agent/mcp/lib/validation.mjs",
   "plugins/burette-agent/mcp/lib/widget-resource.mjs",
+  "plugins/burette-agent/mcp/registrations/fetch/register.mjs",
   "plugins/burette-agent/mcp/registrations/molecular-workspace/register.mjs",
   "plugins/burette-agent/mcp/registrations/molecule-table/register.mjs",
   "plugins/burette-agent/mcp/registrations/trajectory-review/register.mjs",
