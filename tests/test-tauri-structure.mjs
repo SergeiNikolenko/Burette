@@ -316,6 +316,8 @@ assert.match(agentSessionHook, /workspacePanels/);
 assert.match(agentSessionHook, /viewerAgentStatesRef/);
 assert.match(agentSessionHook, /viewerAgentStateFromMessage/);
 assert.match(agentSessionHook, /type === "agentReady"/);
+assert.match(agentSessionHook, /type === "agentSelectionChanged"/);
+assert.match(agentSessionHook, /Viewer selection changed/);
 assert.match(agentSessionHook, /agent-panel:\$\{area\}:\$\{kind\}:\$\{document\.title\}/);
 assert.match(agentSessionHook, /type === "open_files"/);
 assert.match(agentSessionHook, /type === "manage_tabs"/);
