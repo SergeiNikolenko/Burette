@@ -42,6 +42,18 @@ as a local Codex plugin with id `burrete`.
    plugin version, installed Codex version, skill availability, and MCP
    registration.
 
+### From the Burrete CLI
+
+```bash
+bunx burrete plugin install
+bunx burrete plugin status
+```
+
+The CLI auto-detects the bundled plugin from a source checkout or installed
+`Burrete.app`, installs missing dependencies, and updates the local Codex plugin
+cache atomically. Use `--skip-deps` only when dependencies are already present
+or managed by Codex.
+
 ### From a Source Checkout
 
 Use this plugin directory:
@@ -59,6 +71,12 @@ plugins/burette-agent.
 
 If Codex asks for an absolute path, use the full path to this directory in your
 checkout or copy it from the Burrete settings panel.
+
+You can pass the same path directly to the CLI:
+
+```bash
+bunx burrete plugin install --path plugins/burette-agent
+```
 
 ## Verify
 
