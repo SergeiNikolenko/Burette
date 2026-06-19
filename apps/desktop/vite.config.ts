@@ -14,6 +14,14 @@ import {
   ketcherRaphaelImportShimPlugin,
   resolveModulePreloadDependencies,
 } from "./vite/build-plugins";
+import {
+  registerBrowserDevAppIconRoute,
+  registerBrowserDevRdkitWasmRoute,
+} from "./vite/browser-dev/assets";
+import {
+  registerBrowserDevFileContentRoutes,
+  registerBrowserDevFileDiscoveryRoute,
+} from "./vite/browser-dev/files";
 import { readJsonBody, sendJson, sendJsonError } from "./vite/browser-dev/http";
 
 const desktopRoot = fileURLToPath(new URL(".", import.meta.url));
@@ -3237,48 +3245,24 @@ export function browserDevXyzrenderPlugin() {
   return {
     name: "burrete-browser-dev-xyzrender",
     configureServer(server: import("vite").ViteDevServer) {
-      server.middlewares.use("/__burette/dev-files", async (req, res) => {
-        try {
-          const url = new URL(req.url || "", "http://127.0.0.1");
-          const root = url.searchParams.get("root");
-          let files: string[];
-          if (root) {
-            const rootPath = resolve(root);
-            if (!isDevFileReadAllowed(rootPath)) {
-              res.statusCode = 403;
-              res.setHeader("Content-Type", "application/json; charset=utf-8");
-              res.end(JSON.stringify({ error: "Forbidden" }));
-              return;
-            }
-            files = [];
-            await collectDevFiles(rootPath, files);
-            files = Array.from(new Set(files)).sort((left, right) => left.localeCompare(right));
-          } else {
-            files = await collectDefaultDevFiles();
-          }
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ files }));
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
-      server.middlewares.use("/__burette/rdkit-wasm", async (_req, res) => {
-        try {
-          const bytes = await readFile(RDKIT_WASM_PATH);
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/wasm");
-          res.setHeader("Content-Length", String(bytes.length));
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(bytes);
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
+      const fileRoutes = {
+        collectDefaultDevFiles,
+        collectDevFiles,
+        devFileExtensions: DEV_FILE_EXTENSIONS,
+        devFileSizeLimit: DEV_FILE_SIZE_LIMIT,
+        fileExtension,
+        fileTitle,
+        isDevFileReadAllowed,
+        languageForTextExtension,
+        looksBinary,
+        molecularBinaryArtifactSummary,
+        molecularBinaryMetadataExtensions: MOLECULAR_BINARY_METADATA_EXTENSIONS,
+        readableTextBytes,
+        resolveStructureFileBundle,
+        textFileReadLimit,
+      };
+      registerBrowserDevFileDiscoveryRoute(server, fileRoutes);
+      registerBrowserDevRdkitWasmRoute(server, RDKIT_WASM_PATH);
       server.middlewares.use("/__burette/generate-3d-conformer", async (req, res) => {
         if ((req.method || "GET").toUpperCase() !== "POST") {
           sendJson(res, 405, { error: "Method not allowed" });
@@ -3663,197 +3647,8 @@ export function browserDevXyzrenderPlugin() {
           res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
         }
       });
-      server.middlewares.use("/__burette/app-icon/", async (req, res) => {
-        const method = (req.method || "GET").toUpperCase();
-        if (method !== "GET" && method !== "HEAD") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          const url = new URL(req.url || "", "http://127.0.0.1");
-          const id = decodeURIComponent(url.pathname.replace(/^\/+/, "")).replace(/\.png$/u, "");
-          const iconPath = BROWSER_DEV_APP_ICONS[id];
-          if (!iconPath || !existsSync(iconPath)) {
-            res.statusCode = 404;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Icon not found" }));
-            return;
-          }
-          const cacheDir = join(tmpdir(), "burrete-app-icons");
-          const outputPath = join(cacheDir, `${id}.png`);
-          if (!existsSync(outputPath)) {
-            await mkdir(cacheDir, { recursive: true });
-            await execFileAsync("/usr/bin/sips", ["-s", "format", "png", iconPath, "--out", outputPath]);
-          }
-          const bytes = await readFile(outputPath);
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "image/png");
-          res.setHeader("Content-Length", String(bytes.length));
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(method === "HEAD" ? undefined : bytes);
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
-      server.middlewares.use("/__burette/read-file", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "GET") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          const url = new URL(req.url || "", "http://127.0.0.1");
-          const path = url.searchParams.get("path");
-          if (!path) {
-            res.statusCode = 400;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Missing path" }));
-            return;
-          }
-          const filePath = resolve(path);
-          if (!isDevFileReadAllowed(filePath)) {
-            res.statusCode = 403;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Forbidden" }));
-            return;
-          }
-          const info = await stat(filePath);
-          if (!info.isFile() || info.size > DEV_FILE_SIZE_LIMIT || !DEV_FILE_EXTENSIONS.has(fileExtension(filePath))) {
-            res.statusCode = 400;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Unsupported file" }));
-            return;
-          }
-          const bytes = await readFile(filePath);
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/octet-stream");
-          res.setHeader("Content-Length", String(bytes.length));
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(bytes);
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
-      server.middlewares.use("/__burette/read-text-file", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "GET") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          const url = new URL(req.url || "", "http://127.0.0.1");
-          const path = url.searchParams.get("path");
-          const maxBytes = textFileReadLimit(url.searchParams.get("maxBytes"));
-          if (!path) {
-            res.statusCode = 400;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Missing path" }));
-            return;
-          }
-          const filePath = resolve(path);
-          if (!isDevFileReadAllowed(filePath)) {
-            res.statusCode = 403;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Forbidden" }));
-            return;
-          }
-          const info = await stat(filePath);
-          if (!info.isFile() || info.size > DEV_FILE_SIZE_LIMIT) {
-            res.statusCode = 400;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Unsupported file" }));
-            return;
-          }
-          const bytes = await readFile(filePath);
-          const extension = fileExtension(filePath);
-          const textBytes = readableTextBytes(bytes, extension);
-          if (looksBinary(textBytes)) {
-            if (MOLECULAR_BINARY_METADATA_EXTENSIONS.has(extension)) {
-              res.statusCode = 200;
-              res.setHeader("Content-Type", "application/json; charset=utf-8");
-              res.setHeader("Cache-Control", "no-cache");
-              res.end(JSON.stringify({
-                id: `browser-dev-${filePath}-${info.mtimeMs}`,
-                path: filePath,
-                title: fileTitle(filePath),
-                extension,
-                language: "text",
-                byteCount: info.size,
-                content: molecularBinaryArtifactSummary(filePath, info.size),
-                truncated: false,
-                modifiedAt: Math.max(0, Math.floor(info.mtimeMs)),
-              }));
-              return;
-            }
-            res.statusCode = 400;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: `${filePath} is not a text file` }));
-            return;
-          }
-          const truncated = textBytes.length > maxBytes;
-          const readableBytes = truncated ? textBytes.subarray(0, maxBytes) : textBytes;
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(JSON.stringify({
-            id: `browser-dev-${filePath}-${info.mtimeMs}`,
-            path: filePath,
-            title: fileTitle(filePath),
-            extension,
-            language: languageForTextExtension(extension),
-            byteCount: info.size,
-            content: readableBytes.toString("utf8"),
-            truncated,
-            modifiedAt: Math.max(0, Math.floor(info.mtimeMs)),
-          }));
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
-      server.middlewares.use("/__burette/file-bundle", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "GET") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          const url = new URL(req.url || "", "http://127.0.0.1");
-          const path = url.searchParams.get("path");
-          if (!path) {
-            res.statusCode = 400;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Missing path" }));
-            return;
-          }
-          const filePath = resolve(path);
-          if (!isDevFileReadAllowed(filePath)) {
-            res.statusCode = 403;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Forbidden" }));
-            return;
-          }
-          const bundle = resolveStructureFileBundle(filePath);
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(JSON.stringify(bundle));
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
+      registerBrowserDevAppIconRoute(server, BROWSER_DEV_APP_ICONS, execFileAsync);
+      registerBrowserDevFileContentRoutes(server, fileRoutes);
       server.middlewares.use("/__burette/desmond-preview", async (req, res) => {
         if ((req.method || "GET").toUpperCase() !== "GET") {
           res.statusCode = 405;
