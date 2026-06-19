@@ -13,6 +13,7 @@ const [
   uiStore,
   commandPaletteHook,
   appDescriptorsHook,
+  appDirtyGridHook,
   appFileActionsHook,
   appBootstrapHook,
   appMaintenanceHook,
@@ -137,6 +138,7 @@ const [
   source('apps/desktop/src/stores/ui-store.ts'),
   source('apps/desktop/src/hooks/use-command-palette.ts'),
   source('apps/desktop/src/hooks/use-app-descriptors.ts'),
+  source('apps/desktop/src/hooks/use-app-dirty-grid-documents.ts'),
   source('apps/desktop/src/hooks/use-app-file-actions.ts'),
   source('apps/desktop/src/hooks/use-app-bootstrap.ts'),
   source('apps/desktop/src/hooks/use-app-maintenance.ts'),
@@ -856,6 +858,14 @@ assert.match(appDescriptorsHook, /type: "gridDescriptorControls"/);
 assert.match(appDescriptorsHook, /type: "gridDescriptorResults"/);
 assert.match(appDescriptorsHook, /runGridDescriptorCalculation\(documentId, targetDocument\.path, targetCount \? \{ rowIndexes \} : \{\}\)/);
 assert.match(appDescriptorsHook, /Descriptor calculation failed:/);
+assert.match(app, /useAppDirtyGridDocuments\(\)/);
+assert.doesNotMatch(app, /setDirtyGridDocuments/);
+assert.match(app, /updateDirtyGridDocument\(documentId, body\.dirty === true\)/);
+assert.match(app, /forgetDirtyGridDocument\(typeof body\.documentId === "string" \? body\.documentId : null\)/);
+assert.match(app, /clearDirtyGridDocuments\(\);/);
+assert.match(appDirtyGridHook, /useState<Set<string>>\(\(\) => new Set\(\)\)/);
+assert.match(appDirtyGridHook, /This grid has unsaved changes/);
+assert.match(appDirtyGridHook, /dirtyCount === 1 \? " has" : "s have"/);
 assert.match(app, /const openQuickLookDocument = useCallback/);
 assert.match(app, /useAppQuickLook\(\{\s*browserDevQuickLookPath,\s*openQuickLookDocument,\s*pushErrorStatus,/s);
 assert.match(appQuickLookHook, /openedBrowserDevQuickLookRef/);
@@ -4292,8 +4302,8 @@ assert.match(app, /invoke<string>\("save_text_as"/);
 assert.match(app, /body\?\.type === "saveGridAs"/);
 assert.match(app, /body\?\.type === "saveGrid"/);
 assert.match(app, /body\?\.type === "gridDirtyChanged"/);
-assert.match(app, /This grid has unsaved changes\. Save or Save As before closing to keep edits\. Close without saving\?/);
-assert.match(app, /\$\{dirtyCount\} grid document\$\{dirtyCount === 1 \? " has" : "s have"\} unsaved changes\. Save or Save As before closing to keep edits\. Close without saving\?/);
+assert.match(appDirtyGridHook, /This grid has unsaved changes\. Save or Save As before closing to keep edits\. Close without saving\?/);
+assert.match(appDirtyGridHook, /\$\{dirtyCount\} grid document\$\{dirtyCount === 1 \? " has" : "s have"\} unsaved changes\. Save or Save As before closing to keep edits\. Close without saving\?/);
 assert.match(app, /body\?\.type === "exportGridMolecule"/);
 assert.match(app, /type: "gridSavedAs"/);
 assert.match(app, /type: "gridSaveAsError"/);
