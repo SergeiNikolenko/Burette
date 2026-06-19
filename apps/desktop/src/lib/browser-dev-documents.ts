@@ -36,6 +36,14 @@ type ConvertedStructureData = {
   stagedEntries?: Array<Record<string, unknown>>;
 };
 
+type PharmacophoreFeature = {
+  name: string;
+  x: number;
+  y: number;
+  z: number;
+  radius: number;
+};
+
 type MaestroAtom = Atom & {
   atomName: string;
   residueName: string;
@@ -621,8 +629,13 @@ async function openBrowserDevDocumentFromBytes(
     throw new Error(`${path} does not contain supported molecule grid records`);
   }
 
+  const pharmacophorePreview = isPharmacophorePreviewExtension(extension)
+    ? convertedDataFromText(text, extension, fileTitle(path))
+    : null;
   const sourceXyzFrameCount = countXyzFrames(text);
-  const format = sourceXyzFrameCount > 0 && shouldTreatTextAsXyzFrames(extension)
+  const format = pharmacophorePreview
+    ? { molstarFormat: "pdb", binary: false, externalOnly: false, canOpenInVesta: false }
+    : sourceXyzFrameCount > 0 && shouldTreatTextAsXyzFrames(extension)
     ? { molstarFormat: "xyz", binary: false, externalOnly: false, canOpenInVesta: false }
     : formatForExtension(extension);
   const maestroPreview = isMaestroPreviewExtension(extension)
@@ -631,11 +644,13 @@ async function openBrowserDevDocumentFromBytes(
   if (isMaestroPreviewExtension(extension) && !maestroPreview) {
     throw new Error(`${path}: no Maestro atom table could be extracted for preview`);
   }
-  const runtimeFormat = maestroPreview
+  const runtimeFormat = pharmacophorePreview
+    ? { ...format, molstarFormat: pharmacophorePreview.molstarFormat, binary: false, externalOnly: false }
+    : maestroPreview
     ? { ...format, molstarFormat: maestroPreview.molstarFormat, binary: false, externalOnly: false }
     : format;
   const sourceXyzBytes = xyzDataFromText(text, extension, fileTitle(path));
-  const convertedMolstarData = maestroPreview ?? convertedDataFromText(text, extension, fileTitle(path));
+  const convertedMolstarData = pharmacophorePreview ?? maestroPreview ?? convertedDataFromText(text, extension, fileTitle(path));
   const molstarBytes: Uint8Array | null = convertedMolstarData?.bytes && shouldUseConvertedMolstarData(format, convertedMolstarData, extension)
     ? convertedMolstarData.bytes
     : null;
@@ -1556,6 +1571,7 @@ function proteinLikeAtomRecordCount(text: string) {
 
 function shouldUseConvertedMolstarData(format: FormatInfo, converted: ConvertedStructureData | null, extension: string) {
   if (!converted?.bytes) return false;
+  if (isPharmacophorePreviewExtension(extension)) return true;
   if (format.externalOnly) return true;
   if (format.binary) return false;
   if (["gro", "mmcif", "cifCore"].includes(format.molstarFormat)) return true;
@@ -1802,6 +1818,10 @@ function browserDevSourceByteCount(response: Response, fallback: number) {
 }
 
 function convertedDataFromText(text: string, extension: string, label: string): ConvertedStructureData | null {
+  if (isPharmacophorePreviewExtension(extension)) {
+    const bytes = pharmacophorePdbDataFromText(text, extension, label);
+    return bytes ? { bytes, molstarFormat: "pdb" } : null;
+  }
   if (isMaestroPreviewExtension(extension)) {
     const converted = maestroPdbDataFromText(text);
     return converted ? { molstarFormat: "pdb", ...converted } : null;
@@ -1812,6 +1832,135 @@ function convertedDataFromText(text: string, extension: string, label: string): 
   }
   const bytes = pdbDataFromText(text, extension, label);
   return bytes ? { bytes, molstarFormat: "pdb" } : null;
+}
+
+function isPharmacophorePreviewExtension(extension: string) {
+  return extension === "ph4" || extension === "json";
+}
+
+function pharmacophorePdbDataFromText(text: string, extension: string, label: string) {
+  const features = extension === "ph4"
+    ? parseMoePh4Features(text)
+    : extension === "json"
+      ? parsePharmitJsonFeatures(text)
+      : null;
+  if (!features?.length) return null;
+  const lines = [
+    `REMARK Pharmacophore preview converted from ${label}`,
+    "REMARK Pseudo-atoms mark pharmacophore feature centers for Molstar preview.",
+    ...features.slice(0, 99999).map((feature, index) => pharmacophorePdbAtomLine(index + 1, feature)),
+    "END",
+    "",
+  ];
+  return new TextEncoder().encode(lines.join("\n"));
+}
+
+function parsePharmitJsonFeatures(text: string): PharmacophoreFeature[] | null {
+  let session: unknown;
+  try {
+    session = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!session || typeof session !== "object" || !Array.isArray((session as { points?: unknown }).points)) return null;
+  const features = ((session as { points: unknown[] }).points).flatMap((point): PharmacophoreFeature[] => {
+    if (!point || typeof point !== "object") return [];
+    const record = point as Record<string, unknown>;
+    if (record.enabled === false) return [];
+    if (typeof record.name !== "string") return [];
+    if (typeof record.x !== "number" || typeof record.y !== "number" || typeof record.z !== "number") return [];
+    return [{
+      name: record.name,
+      x: record.x,
+      y: record.y,
+      z: record.z,
+      radius: typeof record.radius === "number" ? record.radius : 1,
+    }];
+  });
+  return features.length ? features : null;
+}
+
+function parseMoePh4Features(text: string): PharmacophoreFeature[] | null {
+  if (!text.trimStart().startsWith("#moe:ph4que")) return null;
+  const tokens = text.split(/\s+/u).filter(Boolean);
+  const featureIndex = tokens.indexOf("#feature");
+  if (featureIndex < 0) return null;
+  const featureCount = Number(tokens[featureIndex + 1]);
+  if (!Number.isInteger(featureCount) || featureCount <= 0) return null;
+  let index = featureIndex + 2;
+  while (index + 1 < tokens.length) {
+    if (tokens[index] === "m" && tokens[index + 1] === "ix") {
+      index += 2;
+      break;
+    }
+    index += 1;
+  }
+  const features: PharmacophoreFeature[] = [];
+  for (let i = 0; i < featureCount; i += 1) {
+    if (index + 8 >= tokens.length || tokens[index].startsWith("#")) break;
+    const x = Number(tokens[index + 2]);
+    const y = Number(tokens[index + 3]);
+    const z = Number(tokens[index + 4]);
+    const radius = Number(tokens[index + 5]);
+    if (![x, y, z].every(Number.isFinite)) return null;
+    features.push({
+      name: tokens[index],
+      x,
+      y,
+      z,
+      radius: Number.isFinite(radius) ? radius : 1,
+    });
+    index += 9;
+  }
+  return features.length ? features : null;
+}
+
+function pharmacophorePdbAtomLine(serial: number, feature: PharmacophoreFeature) {
+  const symbol = pharmacophoreFeatureSymbol(feature.name);
+  const atomName = formatPdbAtomName(pharmacophoreAtomName(feature.name), symbol);
+  return [
+    "HETATM",
+    String(Math.min(serial, 99999)).padStart(5, " "),
+    " ",
+    atomName.padEnd(4, " ").slice(0, 4),
+    " ",
+    pharmacophoreResidueName(feature.name),
+    " ",
+    "P",
+    String(Math.min(serial, 9999)).padStart(4, " "),
+    "    ",
+    formatPdbCoordinate(feature.x),
+    formatPdbCoordinate(feature.y),
+    formatPdbCoordinate(feature.z),
+    "  1.00",
+    feature.radius.toFixed(2).padStart(6, " "),
+    "          ",
+    symbol.padStart(2, " "),
+  ].join("");
+}
+
+function pharmacophoreFeatureSymbol(name: string) {
+  const lower = name.toLowerCase();
+  if (lower.includes("acceptor") || lower.startsWith("acc")) return "O";
+  if (lower.includes("donor") || lower.startsWith("don")) return "N";
+  if (lower.includes("positive") || lower.includes("pos")) return "P";
+  if (lower.includes("negative") || lower.includes("neg")) return "S";
+  return "C";
+}
+
+function pharmacophoreAtomName(name: string) {
+  return name.replace(/[^a-z0-9]/giu, "").slice(0, 4);
+}
+
+function pharmacophoreResidueName(name: string) {
+  const lower = name.toLowerCase();
+  if (lower.includes("acceptor") || lower.startsWith("acc")) return "ACC";
+  if (lower.includes("donor") || lower.startsWith("don")) return "DON";
+  if (lower.includes("aromatic") || lower.startsWith("aro")) return "ARO";
+  if (lower.includes("hydrophobic") || lower.startsWith("hyd")) return "HYD";
+  if (lower.includes("positive") || lower.includes("pos")) return "POS";
+  if (lower.includes("negative") || lower.includes("neg")) return "NEG";
+  return "PH4";
 }
 
 function xyzDataFromText(text: string, extension: string, label: string) {

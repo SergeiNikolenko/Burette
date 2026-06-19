@@ -606,16 +606,33 @@ fn open_document_with_grid_options_inner<R: Runtime>(
         ));
     }
 
-    let runtime_extension = maestro_preview_data
+    let pharmacophore_preview_data = if matches!(extension.as_str(), "ph4" | "json") {
+        converted_data_from_text(&data, &extension, &title)
+    } else {
+        None
+    };
+    let runtime_extension = pharmacophore_preview_data
         .as_ref()
         .map(|preview| preview.extension)
+        .or_else(|| {
+            maestro_preview_data
+                .as_ref()
+                .map(|preview| preview.extension)
+        })
         .unwrap_or(extension.as_str());
-    let runtime_data = maestro_preview_data
+    let runtime_data = pharmacophore_preview_data
         .as_ref()
         .map(|preview| preview.data.as_slice())
+        .or_else(|| {
+            maestro_preview_data
+                .as_ref()
+                .map(|preview| preview.data.as_slice())
+        })
         .unwrap_or(&data);
     let format = format_for_extension(runtime_extension)?;
-    let requested_renderer_for_document = if maestro_preview_data.is_some() {
+    let requested_renderer_for_document = if pharmacophore_preview_data.is_some() {
+        "molstar"
+    } else if maestro_preview_data.is_some() {
         "molstar"
     } else if matches!(extension.as_str(), "sd" | "sdf") && reload_options.is_none() {
         default_renderer_mode_for_document(&extension, requested_renderer, reload_options)

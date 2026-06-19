@@ -1,4 +1,5 @@
 use flate2::read::GzDecoder;
+use serde::Deserialize;
 use std::io::Read;
 
 const BOHR_TO_ANGSTROM: f64 = 0.529_177_210_903;
@@ -51,6 +52,15 @@ pub(crate) fn converted_data_from_text(
     extension: &str,
     label: &str,
 ) -> Option<ConvertedStructureData> {
+    if matches!(extension, "ph4" | "json") {
+        return pharmacophore_pdb_data_from_text(data, extension, label).map(|data| {
+            ConvertedStructureData {
+                data,
+                extension: "pdb",
+                staged_entries: Vec::new(),
+            }
+        });
+    }
     if matches!(extension, "cms" | "mae" | "maegz") {
         return maestro_pdb_data_from_text(data, extension);
     }
@@ -113,6 +123,170 @@ fn atoms_to_xyz(atoms: &[Atom], label: &str) -> String {
         ));
     }
     xyz
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct PharmacophoreFeature {
+    name: String,
+    x: f64,
+    y: f64,
+    z: f64,
+    radius: f64,
+}
+
+#[derive(Debug, Deserialize)]
+struct PharmitSession {
+    points: Vec<PharmitPoint>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PharmitPoint {
+    name: String,
+    x: f64,
+    y: f64,
+    z: f64,
+    #[serde(default = "default_pharmacophore_radius")]
+    radius: f64,
+    #[serde(default = "default_enabled_pharmit_point")]
+    enabled: bool,
+}
+
+fn default_pharmacophore_radius() -> f64 {
+    1.0
+}
+
+fn default_enabled_pharmit_point() -> bool {
+    true
+}
+
+fn pharmacophore_pdb_data_from_text(data: &[u8], extension: &str, label: &str) -> Option<Vec<u8>> {
+    let text = String::from_utf8_lossy(data);
+    let features = match extension {
+        "ph4" => parse_moe_ph4_features(&text),
+        "json" => parse_pharmit_json_features(&text),
+        _ => None,
+    }?;
+    if features.is_empty() {
+        return None;
+    }
+    Some(pharmacophore_features_to_pdb(&features, label).into_bytes())
+}
+
+fn parse_pharmit_json_features(text: &str) -> Option<Vec<PharmacophoreFeature>> {
+    let session: PharmitSession = serde_json::from_str(text).ok()?;
+    let features: Vec<PharmacophoreFeature> = session
+        .points
+        .into_iter()
+        .filter(|point| point.enabled)
+        .map(|point| PharmacophoreFeature {
+            name: point.name,
+            x: point.x,
+            y: point.y,
+            z: point.z,
+            radius: point.radius,
+        })
+        .collect();
+    (!features.is_empty()).then_some(features)
+}
+
+fn parse_moe_ph4_features(text: &str) -> Option<Vec<PharmacophoreFeature>> {
+    if !text.trim_start().starts_with("#moe:ph4que") {
+        return None;
+    }
+    let tokens: Vec<&str> = text.split_whitespace().collect();
+    let feature_index = tokens.iter().position(|token| *token == "#feature")?;
+    let feature_count = tokens.get(feature_index + 1)?.parse::<usize>().ok()?;
+    let mut index = feature_index + 2;
+    while index + 1 < tokens.len() {
+        if tokens[index] == "m" && tokens[index + 1] == "ix" {
+            index += 2;
+            break;
+        }
+        index += 1;
+    }
+    let mut features = Vec::new();
+    for _ in 0..feature_count {
+        if index + 8 >= tokens.len() || tokens[index].starts_with('#') {
+            break;
+        }
+        let name = tokens[index].to_string();
+        let x = tokens[index + 2].parse::<f64>().ok()?;
+        let y = tokens[index + 3].parse::<f64>().ok()?;
+        let z = tokens[index + 4].parse::<f64>().ok()?;
+        let radius = tokens[index + 5].parse::<f64>().unwrap_or(1.0);
+        features.push(PharmacophoreFeature {
+            name,
+            x,
+            y,
+            z,
+            radius,
+        });
+        index += 9;
+    }
+    (!features.is_empty()).then_some(features)
+}
+
+fn pharmacophore_features_to_pdb(features: &[PharmacophoreFeature], label: &str) -> String {
+    let mut pdb = format!("REMARK Pharmacophore preview converted from {label}\n");
+    pdb.push_str("REMARK Pseudo-atoms mark pharmacophore feature centers for Molstar preview.\n");
+    for (index, feature) in features.iter().take(99_999).enumerate() {
+        let symbol = pharmacophore_feature_symbol(&feature.name);
+        let atom_name = format_pdb_atom_name(&pharmacophore_atom_name(&feature.name), symbol);
+        let residue_name = pharmacophore_residue_name(&feature.name);
+        pdb.push_str(&format!(
+            "HETATM{serial:>5} {atom_name:<4} {residue_name:>3} P{residue_number:>4}    {x:>8.3}{y:>8.3}{z:>8.3}  1.00{radius:>6.2}          {element:>2}\n",
+            serial = index + 1,
+            residue_number = (index + 1).min(9999),
+            x = feature.x,
+            y = feature.y,
+            z = feature.z,
+            radius = feature.radius,
+            element = symbol,
+        ));
+    }
+    pdb.push_str("END\n");
+    pdb
+}
+
+fn pharmacophore_feature_symbol(name: &str) -> &'static str {
+    let lower = name.to_ascii_lowercase();
+    if lower.contains("acceptor") || lower.starts_with("acc") {
+        "O"
+    } else if lower.contains("donor") || lower.starts_with("don") {
+        "N"
+    } else if lower.contains("positive") || lower.contains("pos") {
+        "P"
+    } else if lower.contains("negative") || lower.contains("neg") {
+        "S"
+    } else {
+        "C"
+    }
+}
+
+fn pharmacophore_atom_name(name: &str) -> String {
+    name.chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .take(4)
+        .collect::<String>()
+}
+
+fn pharmacophore_residue_name(name: &str) -> &'static str {
+    let lower = name.to_ascii_lowercase();
+    if lower.contains("acceptor") || lower.starts_with("acc") {
+        "ACC"
+    } else if lower.contains("donor") || lower.starts_with("don") {
+        "DON"
+    } else if lower.contains("aromatic") || lower.starts_with("aro") {
+        "ARO"
+    } else if lower.contains("hydrophobic") || lower.starts_with("hyd") {
+        "HYD"
+    } else if lower.contains("positive") || lower.contains("pos") {
+        "POS"
+    } else if lower.contains("negative") || lower.contains("neg") {
+        "NEG"
+    } else {
+        "PH4"
+    }
 }
 
 const MAESTRO_PREVIEW_ATOM_LIMIT: usize = 3_000;
@@ -1751,6 +1925,38 @@ footer
         let xyz = String::from_utf8(xyz_data_from_text(data, "out", "bimp.out").unwrap()).unwrap();
         assert!(xyz.starts_with("2\nConverted from bimp.out\n"));
         assert!(xyz.contains("O -2.304659 -0.473599 0.509723"));
+    }
+
+    #[test]
+    fn converts_moe_ph4_features_to_pdb_for_molstar() {
+        let data = br#"#moe:ph4que 2024.06
+#pharmacophore 7 tag t value *
+#feature 2 expr tt color ix x r y r z r r r ebits ix gbits ix m ix
+Acc df2f2 16.0079479 12.0568863 2.5561313 1 0 400 a64cff Don f20df2 13.7719302 12.1259417 2.9526787 1.4 0 400 a64cff
+"#;
+        let converted = converted_data_from_text(data, "ph4", "abl1_U1.ph4").unwrap();
+        let pdb = String::from_utf8(converted.data).unwrap();
+        assert_eq!(converted.extension, "pdb");
+        assert!(pdb.contains("REMARK Pharmacophore preview converted from abl1_U1.ph4"));
+        assert!(pdb.contains(" ACC P   1"));
+        assert!(pdb.contains(" DON P   2"));
+    }
+
+    #[test]
+    fn converts_pharmit_json_points_to_pdb_for_molstar() {
+        let data = br#"{
+  "points": [
+    {"name": "HydrogenDonor", "x": 9.532, "y": 3.916, "z": 35.82, "radius": 0.5, "enabled": true},
+    {"name": "Hydrophobic", "x": 12.17, "y": 4.268, "z": 35.199, "radius": 1.0, "enabled": true}
+  ]
+}"#;
+        let converted =
+            converted_data_from_text(data, "json", "4pps_estrogen_receptor.json").unwrap();
+        let pdb = String::from_utf8(converted.data).unwrap();
+        assert_eq!(converted.extension, "pdb");
+        assert!(pdb.contains("DON P"), "{pdb}");
+        assert!(pdb.contains("HYD P"), "{pdb}");
+        assert!(pdb.contains("  9.532   3.916  35.820"), "{pdb}");
     }
 
     #[test]
