@@ -1,14 +1,94 @@
-# Burrete Plugin
+# Burrete Agent Plugin
 
-Burrete turns Burrete into an agent-operable molecular workspace. The
-plugin is intentionally layered:
+Burrete Agent is the local Codex plugin bundled with Burrete. It teaches an
+assistant how to operate Burrete as a molecular workspace instead of treating
+the app as an opaque browser screenshot.
 
-- skills decide the workflow and user-facing handoff;
+The plugin is intentionally layered:
+
+- skills decide the workflow and handoff;
 - MCP tools/resources expose stable app and widget surfaces;
 - the repository CLI remains the readable execution contract;
 - Browser and Computer are QA surfaces, not the source of molecular truth.
 
-## Architecture
+## What It Does
+
+Once installed, Codex can:
+
+- open local PDB, CIF, XYZ, SDF, and related molecular files in Burrete;
+- observe the active workspace, tabs, documents, scene state, and current
+  structure summary as JSON;
+- manage Burrete tabs without opening extra browser tabs;
+- focus ligands, hide waters, reset the camera, select/highlight components,
+  and apply allowlisted Mol* scene actions;
+- extract chains, ligands, waters, ions, polymers, or element selections into
+  separate Burrete tabs;
+- open docking/combined structure views from receptor and ligand files;
+- render bounded molecular report, table, trajectory, and workspace widgets;
+- validate molecular artifacts before showing them to the user.
+
+## Install
+
+The plugin lives in this repository under `plugins/burette-agent/`. Install it
+as a local Codex plugin with id `burrete`.
+
+### From the Burrete App
+
+1. Open Burrete.
+2. Go to Settings -> Integrations -> Burrete.
+3. Copy the bundle path from the Codex plugin panel.
+4. In Codex, install or update the local plugin `burrete` from that path.
+5. Return to the Burrete panel and refresh. The panel should report the bundled
+   plugin version, installed Codex version, skill availability, and MCP
+   registration.
+
+### From a Source Checkout
+
+Use this plugin directory:
+
+```text
+plugins/burette-agent
+```
+
+Prompt Codex with:
+
+```text
+Install or update the local Codex plugin @Burrete (id `burrete`) from
+plugins/burette-agent.
+```
+
+If Codex asks for an absolute path, use the full path to this directory in your
+checkout or copy it from the Burrete settings panel.
+
+## Verify
+
+From the repository root:
+
+```bash
+node plugins/burette-agent/scripts/burette_agent_preflight.mjs
+bun tests/test-burette-agent-plugin.mjs
+```
+
+From the plugin directory:
+
+```bash
+npm run preflight
+npm run check
+```
+
+The preflight output is the quick health check for the plugin root, repository
+CLI, available session transports, and current capability registry.
+
+## Prerequisites
+
+- Burrete desktop app or a source checkout containing `scripts/burrete-agent.mjs`.
+- Node.js available to run the MCP server and helper scripts.
+- Codex with local plugin support.
+- Browser plugin for browser-shell visual QA.
+- Computer plugin only when real native desktop accessibility or screenshots are
+  required.
+
+## How It Is Structured
 
 ```text
 skills/
@@ -32,6 +112,11 @@ scripts/
   burette_agent_preflight.mjs
   validate_molecular_artifact.mjs
 ```
+
+The shape follows the same progressive-disclosure principle as compact agent
+plugins such as `serve-sim`: Codex discovers the plugin metadata first, reads
+the router skill when Burrete is relevant, and loads only the focused skill or
+reference needed for the active molecular task.
 
 This mirrors the split used by the reference plugins:
 
