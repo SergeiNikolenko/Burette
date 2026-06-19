@@ -3411,7 +3411,7 @@ assert.match(previewViewer, /tryCreateComponentStatic\(target, 'water'\)/);
 assert.match(previewViewer, /function shouldUseMolstarWaterLines\(config\)/);
 assert.match(previewViewer, /waterRepresentation \|\| 'line'/);
 assert.match(previewViewer, /async function applyMolstarWaterLineRepresentation\(viewer\)/);
-assert.match(previewViewer, /includeTransparent: true/);
+assert.match(previewViewer, /includeTransparent: false/);
 assert.match(previewViewer, /function molstarWaterLineRepresentation\(\)/);
 assert.match(buretteAgent, /'SPC', 'SPCE', 'SOL'/);
 assert.match(previewViewer, /await plugin\.managers\.structure\.component\.removeRepresentations\(waterComponents\)/);
