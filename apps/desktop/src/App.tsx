@@ -16,6 +16,7 @@ import {
   useSetCommandPaletteSearch,
 } from "./hooks/use-command-palette";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
+import { useAppQuickLook } from "./hooks/use-app-quick-look";
 import { useAppResize } from "./hooks/use-app-resize";
 import { useAppSidebarProjects } from "./hooks/use-app-sidebar-projects";
 import { useAppStatus } from "./hooks/use-app-status";
@@ -603,8 +604,6 @@ export default function App() {
   const [ketcherImportRequest, setKetcherImportRequest] = useState<KetcherImportRequest | null>(null);
   const [ketcherDraftMolfile, setKetcherDraftMolfile] = useState("");
   const [descriptorSource, setDescriptorSource] = useState<DescriptorSourcePayload | null>(null);
-  const [quickLookDocument, setQuickLookDocument] = useState<ViewerDocument | null>(null);
-  const [quickLookError, setQuickLookError] = useState<string | null>(null);
   const [dirtyGridDocuments, setDirtyGridDocuments] = useState<Set<string>>(() => new Set());
   const { status, pushStatus, pushErrorStatus, clearStatus, recentErrorsRef } = useAppStatus();
   const [poseReviewSelections, setPoseReviewSelections] = useState<Record<string, number>>({});
@@ -624,7 +623,6 @@ export default function App() {
     update,
   } = useAppUpdates({ pushErrorStatus, pushStatus });
   const openedBrowserDevFilesRef = useRef<string | null>(null);
-  const openedBrowserDevQuickLookRef = useRef<string | null>(null);
   const openedBrowserDevDockingRef = useRef<string | null>(null);
   const refreshedPersistedSessionRef = useRef(false);
   const openedPersistedTabsRef = useRef(false);
@@ -644,6 +642,29 @@ export default function App() {
   const openCommandPalette = useOpenCommandPalette();
   const closeCommandPalette = useCloseCommandPalette();
   const setCommandPaletteQuery = useSetCommandPaletteSearch();
+
+  const openQuickLookDocument = useCallback(async (quickLookPath: string) => {
+    const extension = pathExtension(quickLookPath);
+    const contentSpectrumPaths = await detectContentSpectrumPaths([quickLookPath]);
+    if (isSpectrumPath(quickLookPath, extension) || contentSpectrumPaths.has(quickLookPath)) {
+      const result = await openBrowserDevTextFiles([quickLookPath]);
+      const textDocument = result.documents[0] ?? null;
+      if (!textDocument) return null;
+      return spectrumDocumentFromText(textDocument);
+    }
+    const result = await openBrowserDevDocuments([quickLookPath], preferences);
+    return result.documents[0] ?? null;
+  }, [preferences]);
+  const {
+    closeQuickLookPreview,
+    quickLookDocument,
+    quickLookError,
+    quickLookStandalone,
+  } = useAppQuickLook({
+    browserDevQuickLookPath,
+    openQuickLookDocument,
+    pushErrorStatus,
+  });
 
   const setConformerSettings = useCallback((settings: ConformerSettings) => {
     const normalized = normalizeConformerSettings(settings);
@@ -1456,42 +1477,6 @@ export default function App() {
   }, [closeDocument, openDocuments, openSpectrumDocuments, openTextDocuments, setActiveDocument]);
 
   useEffect(() => {
-    const quickLookPath = browserDevQuickLookPath;
-    if (!quickLookPath || openedBrowserDevQuickLookRef.current === quickLookPath) return;
-    let cancelled = false;
-    openedBrowserDevQuickLookRef.current = quickLookPath;
-    setQuickLookDocument(null);
-    setQuickLookError(null);
-    void (async () => {
-      const extension = pathExtension(quickLookPath);
-      const contentSpectrumPaths = await detectContentSpectrumPaths([quickLookPath]);
-      if (isSpectrumPath(quickLookPath, extension) || contentSpectrumPaths.has(quickLookPath)) {
-        const result = await openBrowserDevTextFiles([quickLookPath]);
-        const textDocument = result.documents[0] ?? null;
-        if (!textDocument) return null;
-        return spectrumDocumentFromText(textDocument);
-      }
-      const result = await openBrowserDevDocuments([quickLookPath], preferences);
-      return result.documents[0] ?? null;
-    })().then((document) => {
-      if (cancelled) return;
-      if (document) {
-        setQuickLookDocument(document);
-        return;
-      }
-      setQuickLookError("Quick Look debug file did not produce a preview document.");
-    }).catch((error) => {
-      if (cancelled) return;
-      const message = error instanceof Error ? error.message : String(error);
-      setQuickLookError(`Open Quick Look debug file failed: ${message}`);
-      pushErrorStatus(error, "Open Quick Look debug file failed");
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [browserDevQuickLookPath, preferences, pushErrorStatus]);
-
-  useEffect(() => {
     if (isTauriRuntime() || syncingBrowserDevFilesRef.current) return;
     let cancelled = false;
     void (async () => {
@@ -1981,19 +1966,6 @@ export default function App() {
       `Size: ${formatBytes(document.byteCount)}`,
     ]);
   }, [pushStatus]);
-
-  const closeQuickLookPreview = useCallback(() => {
-    if (browserDevQuickLookPath) {
-      openedBrowserDevQuickLookRef.current = null;
-      if (!isTauriRuntime()) {
-        const url = new URL(window.location.href);
-        url.searchParams.delete("quickLookFile");
-        window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
-      }
-    }
-    setQuickLookDocument(null);
-    setQuickLookError(null);
-  }, [browserDevQuickLookPath]);
 
   const showTextFileMetadata = useCallback((document: TextFileDocument) => {
     const details = [
@@ -4517,7 +4489,7 @@ export default function App() {
     activeDocumentId: activeDocument?.id ?? null,
     quickLookDocument,
     quickLookError,
-    quickLookStandalone: Boolean(browserDevQuickLookPath),
+    quickLookStandalone,
     visibleDocuments: documents,
     recentStructures,
     sidebarProjects,
