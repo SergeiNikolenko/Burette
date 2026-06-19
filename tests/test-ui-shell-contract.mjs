@@ -12,6 +12,7 @@ const [
   app,
   uiStore,
   commandPaletteHook,
+  appDescriptorsHook,
   appFileActionsHook,
   appBootstrapHook,
   appMaintenanceHook,
@@ -135,6 +136,7 @@ const [
   source('apps/desktop/src/App.tsx'),
   source('apps/desktop/src/stores/ui-store.ts'),
   source('apps/desktop/src/hooks/use-command-palette.ts'),
+  source('apps/desktop/src/hooks/use-app-descriptors.ts'),
   source('apps/desktop/src/hooks/use-app-file-actions.ts'),
   source('apps/desktop/src/hooks/use-app-bootstrap.ts'),
   source('apps/desktop/src/hooks/use-app-maintenance.ts'),
@@ -848,6 +850,12 @@ assert.match(appStatusHook, /const pushErrorStatus = useCallback/);
 assert.match(appStatusHook, /recentErrorsRef\.current = recentErrorsRef\.current\.slice\(-20\)/);
 assert.match(appStatusHook, /window\.setTimeout/);
 assert.match(appStatusHook, /current\?\.id === status\.id \? null : current/);
+assert.match(app, /useAppDescriptors\(\{\s*documents,\s*openDockTab,\s*pushStatus,\s*\}\)/s);
+assert.match(appDescriptorsHook, /const GRID_DESCRIPTOR_JOB_EVENT = "burrete-grid-descriptor-job"/);
+assert.match(appDescriptorsHook, /type: "gridDescriptorControls"/);
+assert.match(appDescriptorsHook, /type: "gridDescriptorResults"/);
+assert.match(appDescriptorsHook, /runGridDescriptorCalculation\(documentId, targetDocument\.path, targetCount \? \{ rowIndexes \} : \{\}\)/);
+assert.match(appDescriptorsHook, /Descriptor calculation failed:/);
 assert.match(app, /const openQuickLookDocument = useCallback/);
 assert.match(app, /useAppQuickLook\(\{\s*browserDevQuickLookPath,\s*openQuickLookDocument,\s*pushErrorStatus,/s);
 assert.match(appQuickLookHook, /openedBrowserDevQuickLookRef/);
