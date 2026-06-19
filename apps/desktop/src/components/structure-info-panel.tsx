@@ -4,7 +4,7 @@ import { formatBytes } from "./format";
 import { RangeControl, SelectControl, ToggleControl } from "./settings-panel/setting-control";
 import { ShortcutTooltip } from "./shortcut-tooltip";
 import type { MenuItemSpec } from "./menu-types";
-import type { ShellActions, ShellViewState, StructureViewerAction } from "./types";
+import type { ShellActions, ShellViewState, StructureOverlayMode, StructureViewerAction } from "./types";
 import { structureBriefForDocument, type StructureBriefRow as BriefRow } from "../lib/structure-brief";
 import { parseStructureComposition, type StructureCompositionSummary, type StructureSummaryRow } from "../lib/structure-composition";
 import { canInspectConformerEnsemble, canShowConformerWorkflow, canUseConformerWorkflow } from "../lib/conformer-ensemble";
@@ -19,6 +19,7 @@ type StructureInfoPanelProps = {
   conformerStatus: ShellViewState["conformerStatus"];
   conformerSettings: ShellViewState["conformerSettings"];
   viewerLigandSelection: ShellViewState["viewerLigandSelection"];
+  structureOverlayMode: StructureOverlayMode;
   xtbStatus: ShellViewState["xtbStatus"];
   xtbSettings: ShellViewState["xtbSettings"];
   xtbJobs: ShellViewState["xtbJobs"];
@@ -39,15 +40,17 @@ const SDF_CONTEXT_STYLE_OPTIONS = [
 ] as const;
 
 type SdfContextStyle = typeof SDF_CONTEXT_STYLE_OPTIONS[number]["value"];
+type SdfContextColor = "gray" | "colored";
 const SDF_CONTEXT_OPACITY_DEFAULT = 0.4;
 const SDF_CONTEXT_OPACITY_MIN = 0.04;
 const SDF_CONTEXT_OPACITY_MAX = 1;
 const INFO_TRAJECTORY_CONTROL_LIMIT = 200;
 
-export function StructureInfoPanel({ document, textDocument, dockDrops, conformerStatus, conformerSettings, viewerLigandSelection, xtbStatus, xtbSettings, xtbJobs, preferences, isBrowserDev, actions }: StructureInfoPanelProps) {
+export function StructureInfoPanel({ document, textDocument, dockDrops, conformerStatus, conformerSettings, viewerLigandSelection, structureOverlayMode, xtbStatus, xtbSettings, xtbJobs, preferences, isBrowserDev, actions }: StructureInfoPanelProps) {
   const composition = useStructureComposition(document);
   const [activeActionKey, setActiveActionKey] = useState<string | null>(null);
   const [sdfContextStyle, setSdfContextStyle] = useState<SdfContextStyle>("line");
+  const [sdfContextColor, setSdfContextColor] = useState<SdfContextColor>("gray");
   const [sdfContextOpacity, setSdfContextOpacity] = useState(SDF_CONTEXT_OPACITY_DEFAULT);
   const [xtbOpen, setXtbOpen] = useState(true);
   const [xtbSettingsOpen, setXtbSettingsOpen] = useState(false);
@@ -61,6 +64,7 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
   useEffect(() => {
     if (!document) return;
     setSdfContextStyle(readSdfContextStylePreference(document));
+    setSdfContextColor(readSdfContextColorPreference(document));
     setSdfContextOpacity(readSdfContextOpacityPreference(document));
   }, [document]);
 
@@ -87,7 +91,7 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
   const compositionError = isVirtualMolstarScene(document) ? null : rawCompositionError;
   const selectedEntity = selectedStructureRow(document, compositionSummary, activeActionKey);
   const poseControls = structurePoseControlsFor(document, compositionSummary);
-  const contextStyleCard = structureContextStyleCardFor(document, compositionSummary);
+  const contextStyleCard = structureContextStyleCardFor(document, compositionSummary, structureOverlayMode);
   const latestXtbJob = latestXtbJobForDocument(document, xtbJobs);
   const structureXtbArtifact = xtbArtifactInfoForPath(document.path, document.extension);
   const clearSelection = () => {
@@ -160,6 +164,8 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
           actions={actions}
           value={sdfContextStyle}
           setValue={setSdfContextStyle}
+          color={sdfContextColor}
+          setColor={setSdfContextColor}
           opacity={sdfContextOpacity}
           setOpacity={setSdfContextOpacity}
           copy={contextStyleCard}
@@ -407,8 +413,10 @@ type StructureContextStyleCardCopy = {
 function structureContextStyleCardFor(
   document: ViewerDocument,
   summary: StructureCompositionSummary | null,
+  structureOverlayMode: StructureOverlayMode,
 ): StructureContextStyleCardCopy | null {
   if (document.renderer !== "molstar") return null;
+  if (structureOverlayMode !== "all") return null;
   if (!summary && isVirtualMolstarScene(document)) {
     return {
       title: "All background",
@@ -640,6 +648,10 @@ function sdfContextOpacityStorageKey(document: ViewerDocument) {
   return `buret.sdf.contextOpacity.${document.id}`;
 }
 
+function sdfContextColorStorageKey(document: ViewerDocument) {
+  return `buret.sdf.contextColor.${document.id}`;
+}
+
 function normalizeSdfContextStyle(value: string | null | undefined): SdfContextStyle {
   return SDF_CONTEXT_STYLE_OPTIONS.some((option) => option.value === value) ? value as SdfContextStyle : "line";
 }
@@ -648,6 +660,10 @@ function normalizeSdfContextOpacity(value: string | number | null | undefined) {
   const opacity = Number(value);
   if (!Number.isFinite(opacity)) return SDF_CONTEXT_OPACITY_DEFAULT;
   return Math.max(SDF_CONTEXT_OPACITY_MIN, Math.min(SDF_CONTEXT_OPACITY_MAX, opacity));
+}
+
+function normalizeSdfContextColor(value: string | null | undefined): SdfContextColor {
+  return value === "colored" ? "colored" : "gray";
 }
 
 function readSdfContextStylePreference(document: ViewerDocument): SdfContextStyle {
@@ -675,6 +691,20 @@ function readSdfContextOpacityPreference(document: ViewerDocument) {
 function writeSdfContextOpacityPreference(document: ViewerDocument, value: number) {
   try {
     window.localStorage?.setItem(sdfContextOpacityStorageKey(document), normalizeSdfContextOpacity(value).toFixed(2));
+  } catch (_) {}
+}
+
+function readSdfContextColorPreference(document: ViewerDocument): SdfContextColor {
+  try {
+    return normalizeSdfContextColor(window.localStorage?.getItem(sdfContextColorStorageKey(document)));
+  } catch (_) {
+    return "gray";
+  }
+}
+
+function writeSdfContextColorPreference(document: ViewerDocument, value: SdfContextColor) {
+  try {
+    window.localStorage?.setItem(sdfContextColorStorageKey(document), normalizeSdfContextColor(value));
   } catch (_) {}
 }
 
@@ -727,6 +757,8 @@ function SdfContextStyleCard({
   actions,
   value,
   setValue,
+  color,
+  setColor,
   opacity,
   setOpacity,
   copy,
@@ -735,6 +767,8 @@ function SdfContextStyleCard({
   actions: ShellActions;
   value: SdfContextStyle;
   setValue: (value: SdfContextStyle) => void;
+  color: SdfContextColor;
+  setColor: (value: SdfContextColor) => void;
   opacity: number;
   setOpacity: (value: number) => void;
   copy: StructureContextStyleCardCopy;
@@ -760,6 +794,17 @@ function SdfContextStyleCard({
       opacity: normalized,
     });
   };
+  const applyColor = (nextColor: SdfContextColor) => {
+    const normalized = normalizeSdfContextColor(nextColor);
+    setColor(normalized);
+    writeSdfContextColorPreference(document, normalized);
+    actions.runStructureViewerAction(document, {
+      type: "set_sdf_context_color",
+      label: `All background color: ${normalized === "colored" ? "Colored" : "Gray"}`,
+      notify: false,
+      color: normalized,
+    });
+  };
   return (
     <section className="structure-brief-card structure-inspector-context-style">
       <StructureSectionHeader title={copy.title} detail={copy.detail} />
@@ -776,6 +821,26 @@ function SdfContextStyleCard({
             {option.label}
           </button>
         ))}
+      </div>
+      <div className="structure-inspector-color-row">
+        <span>Color</span>
+        <div className="structure-inspector-style-options" role="group" aria-label="All background color">
+          {[
+            { value: "gray" as const, label: "Gray" },
+            { value: "colored" as const, label: "Colored" },
+          ].map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className="structure-inspector-style-option"
+              data-selected={option.value === color || undefined}
+              aria-pressed={option.value === color}
+              onClick={() => applyColor(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
       </div>
       <label className="structure-inspector-opacity-control">
         <span>Opacity</span>
