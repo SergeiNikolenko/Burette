@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+import { summarizeStructureFile } from "../plugins/burette-agent/mcp/lib/structure-summary.mjs";
 import { validateMolecularArtifact } from "../plugins/burette-agent/mcp/lib/validation.mjs";
 
 const pluginRoot = path.resolve("plugins/burette-agent");
@@ -57,6 +58,9 @@ assert.match(server, /registerMolecularReport\(server\)/);
 const workspaceRegistration = await read("mcp/registrations/molecular-workspace/register.mjs");
 assert.match(workspaceRegistration, /registerAppTool/);
 assert.match(workspaceRegistration, /open_burrete_workspace/);
+assert.match(workspaceRegistration, /summarize_burrete_structure/);
+assert.match(workspaceRegistration, /summarizeStructureFile/);
+assert.match(workspaceRegistration, /structureSummary/);
 assert.match(workspaceRegistration, /observe_burrete_workspace/);
 assert.match(workspaceRegistration, /act_molstar_scene/);
 assert.match(workspaceRegistration, /declarative Mol\* scene action/);
@@ -210,10 +214,16 @@ assert.match(readme, /"type":"apply_scene"/);
 assert.match(readme, /"selector":"protein"/);
 assert.match(readme, /load_mvs/);
 
+const structureSummary = await summarizeStructureFile("tests/fixtures/BurettePreviewSamples/mini.pdb");
+assert.equal(structureSummary.format, "PDB");
+assert.equal(structureSummary.counts.atoms, 9);
+assert.equal(structureSummary.counts.chains, 1);
+
 const syntaxTargets = [
   "plugins/burette-agent/mcp/server.mjs",
   "plugins/burette-agent/mcp/lib/cli-bridge.mjs",
   "plugins/burette-agent/mcp/lib/plugin-root.mjs",
+  "plugins/burette-agent/mcp/lib/structure-summary.mjs",
   "plugins/burette-agent/mcp/lib/validation.mjs",
   "plugins/burette-agent/mcp/lib/widget-resource.mjs",
   "plugins/burette-agent/mcp/registrations/molecular-workspace/register.mjs",
