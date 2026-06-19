@@ -16,6 +16,7 @@ import {
   useSetCommandPaletteSearch,
 } from "./hooks/use-command-palette";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
+import { useAppBootstrap } from "./hooks/use-app-bootstrap";
 import { useAppStatus } from "./hooks/use-app-status";
 import { useAgentSession } from "./hooks/use-agent-session";
 import { useMenuEvents } from "./hooks/use-menu-events";
@@ -64,7 +65,6 @@ import {
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
 import { browserDevRuntimeNeedsRefresh, generateBrowserDev3DConformer, openBrowserDevDockingDocument, openBrowserDevDocuments, openBrowserDevMergedCollection, openBrowserDevMolstarContextDocument, openBrowserDevTextDocument, readBrowserDevCollectionText, readBrowserDevVirtualTextDocument, writeBrowserDevVirtualTextDocument } from "./lib/browser-dev-documents";
 import { openBrowserDevTextFiles } from "./lib/browser-dev-text-files";
-import { defaultBuildInfo, loadBuildInfo } from "./lib/build-info";
 import { isMoleculeCollectionPath } from "./lib/collection-documents";
 import { dockingRequestForDrop, isProteinLikeDockingSource } from "./lib/docking-documents";
 import { canInspectConformerEnsemble, canUseConformerWorkflow } from "./lib/conformer-ensemble";
@@ -603,8 +603,6 @@ export default function App() {
   const [quickLookError, setQuickLookError] = useState<string | null>(null);
   const [dirtyGridDocuments, setDirtyGridDocuments] = useState<Set<string>>(() => new Set());
   const { status, pushStatus, pushErrorStatus, clearStatus, recentErrorsRef } = useAppStatus();
-  const [buildInfo, setBuildInfo] = useState(defaultBuildInfo);
-  const [buildInfoLoaded, setBuildInfoLoaded] = useState(false);
   const [poseReviewSelections, setPoseReviewSelections] = useState<Record<string, number>>({});
   const [conformerStatus, setConformerStatus] = useState<ConformerStatus | null>(null);
   const [conformerSettings, setConformerSettingsState] = useState<ConformerSettings>(() => readConformerSettings());
@@ -622,6 +620,7 @@ export default function App() {
     statusText: "No update check has run yet.",
     availableRelease: null,
   }));
+  const { buildInfo, buildInfoLoaded } = useAppBootstrap(setUpdate);
   const openedBrowserDevFilesRef = useRef<string | null>(null);
   const openedBrowserDevQuickLookRef = useRef<string | null>(null);
   const openedBrowserDevDockingRef = useRef<string | null>(null);
@@ -644,34 +643,6 @@ export default function App() {
   const openCommandPalette = useOpenCommandPalette();
   const closeCommandPalette = useCloseCommandPalette();
   const setCommandPaletteQuery = useSetCommandPaletteSearch();
-
-  useEffect(() => {
-    window.__BURRETE_BOOT_OVERLAY__?.markMounted();
-    const frame = window.requestAnimationFrame(() => {
-      markPerformanceOnce("app:shell-visible");
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void loadBuildInfo().then((info) => {
-      if (cancelled) return;
-      setBuildInfo(info);
-      setBuildInfoLoaded(true);
-      if (info.isDevBuild) {
-        setUpdate((previous) => ({
-          ...previous,
-          isChecking: false,
-          availableRelease: null,
-          statusText: "Updates are disabled for dev builds.",
-        }));
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const setConformerSettings = useCallback((settings: ConformerSettings) => {
     const normalized = normalizeConformerSettings(settings);
