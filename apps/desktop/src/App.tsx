@@ -3072,6 +3072,7 @@ export default function App() {
     activeTabId,
     openTextDocuments,
     openPaths,
+    openDockingView: openDockingDocument,
     tabActions: agentTabActions,
     pushErrorStatus,
     setDockDocument,

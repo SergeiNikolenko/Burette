@@ -74,6 +74,12 @@ restore, or open a structure part separately:
 This is view/runtime control. Do not delete or rewrite the user's source file
 unless they explicitly ask for file mutation.
 
+Use `open_burrete_docking_view` when the user asks for a docking view inside
+the existing Burrete workspace. Pass `receptorPath`, `ligandPaths`, and
+optionally `sceneMode: "structureAll"` when the request is to show structures
+together rather than pose-paged docking. Do not use a new Codex Browser tab for
+this; it must create a Burrete tab in the current workspace.
+
 If the visible in-app Browser tab is already on the agent-owned
 browser-dev-shell URL but `sessionDir` is missing from the conversation, pass
 the URL directly:
