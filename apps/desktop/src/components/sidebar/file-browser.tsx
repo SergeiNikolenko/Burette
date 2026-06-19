@@ -1,11 +1,10 @@
 import { useState, type DragEvent as ReactDragEvent } from "react";
-import { Atom01Icon, Search01Icon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
 import { filterSidebarProjects } from "../../lib/sidebar-projects";
 import { hasStructureDrag, readStructureDragPayload, writeStructureDragItems } from "../../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
 import { RadixDropdownMenu } from "../radix-menu";
 import { ScrollFade } from "../scroll-fade";
+import { SystemIcon } from "../system-icon";
 import type { ShellActions, ShellViewState } from "../types";
 import { ProjectGroup, ProjectItem } from "./file-tree-node";
 
@@ -79,7 +78,7 @@ export function FileBrowser({
         aria-label="Search projects and structures"
       >
         <span className="sidebar-search-icon" aria-hidden="true">
-          <HugeiconsIcon icon={Search01Icon} size={16} color="currentColor" strokeWidth={2} />
+          <SystemIcon name="magnifyingglass" size={16} />
         </span>
         <span className="sidebar-search-label">Search</span>
         <kbd>⌘<span>P</span></kbd>
@@ -98,7 +97,7 @@ export function FileBrowser({
         aria-label="Open Ketcher"
       >
         <span className="sidebar-tool-icon" aria-hidden="true">
-          <HugeiconsIcon icon={Atom01Icon} size={16} color="currentColor" strokeWidth={2} />
+          <SystemIcon name="atom" size={16} />
         </span>
         <span className="sidebar-tool-label">Ketcher</span>
       </button>
@@ -205,37 +204,13 @@ export function FileBrowser({
 }
 
 function ExpandCollapseIcon({ collapsed }: { collapsed: boolean }) {
-  return collapsed ? (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M3.5 3.5L6.9 6.9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      <path d="M6.9 4.7V6.9H4.7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M12.5 12.5L9.1 9.1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      <path d="M9.1 11.3V9.1H11.3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  ) : (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M6.9 6.9L3.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      <path d="M3.5 5.7V3.5H5.7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M9.1 9.1L12.5 12.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      <path d="M12.5 10.3V12.5H10.3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
+  return <SystemIcon name={collapsed ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right"} size={16} />;
 }
 
 function ChevronIcon() {
-  return (
-    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-      <path d="M3.5 2L6.5 5L3.5 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
+  return <SystemIcon name="chevron.forward" size={10} />;
 }
 
 function MoreIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <circle cx="4" cy="8" r="1.2" fill="currentColor" />
-      <circle cx="8" cy="8" r="1.2" fill="currentColor" />
-      <circle cx="12" cy="8" r="1.2" fill="currentColor" />
-    </svg>
-  );
+  return <SystemIcon name="ellipsis" size={16} />;
 }
