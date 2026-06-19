@@ -315,8 +315,8 @@ assert.deepEqual(unknownBrief.badges, ["Molecular file", "custom-renderer", "DAT
 assert.equal(rowValue(unknownBrief.overviewRows, "Source"), "Virtual document");
 assert.ok(unknownBrief.notes.includes("This document is generated in the app"));
 
-const fixturesRoot = join(process.cwd(), "tests/fixtures/BurettePreviewSamples");
-const miniPdb = parseStructureComposition(await readFile(join(fixturesRoot, "mini.pdb"), "utf8"), "pdb");
+const samplesRoot = join(process.cwd(), "samples");
+const miniPdb = parseStructureComposition(await readFile(join(samplesRoot, "mini.pdb"), "utf8"), "pdb");
 assert.ok(miniPdb);
 assert.equal(rowValue(miniPdb.rows, "Atoms"), "9");
 assert.equal(rowValue(miniPdb.rows, "Residues"), "2");
@@ -331,21 +331,30 @@ assert.equal(miniPdb.componentRows.find((row) => row.label === "Polymers")?.acti
 assert.equal(miniPdb.componentRows.find((row) => row.label === "Polymers")?.secondaryAction, undefined);
 assert.equal(miniPdb.polymerRows.find((row) => row.label === "Chain A")?.action?.selector.auth_asym_id, "A");
 
-const oneHtbPdb = parseStructureComposition(await readFile(join(fixturesRoot, "1HTB.pdb"), "utf8"), "pdb");
-assert.ok(oneHtbPdb);
-assert.match(rowValue(oneHtbPdb.rows, "Atoms"), /^\d/);
-assert.notEqual(rowValue(oneHtbPdb.componentRows, "Polymers"), "None detected");
-assert.ok(oneHtbPdb.polymerRows.length > 0, "1HTB should expose polymer chains");
-assert.equal(oneHtbPdb.ligandRows.length, 4, "1HTB should expose individual ligand instances");
-assert.equal(oneHtbPdb.componentRows.find((row) => row.label === "Ligands")?.action?.type, "select_residues");
-assert.equal(oneHtbPdb.componentRows.find((row) => row.label === "Ligands")?.action?.selector.kind, "ligand");
-assert.equal(oneHtbPdb.componentRows.find((row) => row.label === "Ligands")?.secondaryAction, undefined);
-assert.equal(oneHtbPdb.ligandRows[0].action?.type, "focus_ligand");
-assert.equal(oneHtbPdb.ligandRows[0].label, "NAD A 377");
-assert.equal(oneHtbPdb.ligandRows[0].action?.selector.kind, "ligand");
-assert.equal(oneHtbPdb.ligandRows[0].action?.selector.label_comp_id, "NAD");
-assert.equal(oneHtbPdb.ligandRows[0].action?.selector.auth_asym_id, "A");
-assert.equal(oneHtbPdb.ligandRows[0].action?.selector.auth_seq_id, 377);
+const ligandPdb = parseStructureComposition([
+  "ATOM      1  N   GLY A   1      11.104  13.207   9.991  1.00 10.00           N",
+  "ATOM      2  CA  GLY A   1      12.560  13.120   9.991  1.00 10.00           C",
+  "ATOM      3  C   GLY A   1      13.022  11.720   9.991  1.00 10.00           C",
+  "ATOM      4  O   GLY A   1      12.250  10.800   9.991  1.00 10.00           O",
+  "HETATM    5  C1  NAD A 377      15.000  12.000   9.991  1.00 10.00           C",
+  "HETATM    6  N1  NAD A 377      15.900  12.600   9.991  1.00 10.00           N",
+  "HETATM    7  O   HOH A 501      18.000  12.000   9.991  1.00 10.00           O",
+  "END",
+].join("\n"), "pdb");
+assert.ok(ligandPdb);
+assert.match(rowValue(ligandPdb.rows, "Atoms"), /^\d/);
+assert.notEqual(rowValue(ligandPdb.componentRows, "Polymers"), "None detected");
+assert.ok(ligandPdb.polymerRows.length > 0, "inline ligand PDB should expose polymer chains");
+assert.equal(ligandPdb.ligandRows.length, 1, "inline ligand PDB should expose individual ligand instances");
+assert.equal(ligandPdb.componentRows.find((row) => row.label === "Ligands")?.action?.type, "select_residues");
+assert.equal(ligandPdb.componentRows.find((row) => row.label === "Ligands")?.action?.selector.kind, "ligand");
+assert.equal(ligandPdb.componentRows.find((row) => row.label === "Ligands")?.secondaryAction, undefined);
+assert.equal(ligandPdb.ligandRows[0].action?.type, "focus_ligand");
+assert.equal(ligandPdb.ligandRows[0].label, "NAD A 377");
+assert.equal(ligandPdb.ligandRows[0].action?.selector.kind, "ligand");
+assert.equal(ligandPdb.ligandRows[0].action?.selector.label_comp_id, "NAD");
+assert.equal(ligandPdb.ligandRows[0].action?.selector.auth_asym_id, "A");
+assert.equal(ligandPdb.ligandRows[0].action?.selector.auth_seq_id, 377);
 
 const multiPosePdbqt = parseStructureComposition([
   "MODEL 1",
@@ -369,7 +378,7 @@ assert.equal(rowValue(multiPosePdbqt.componentRows, "Polymers"), "None detected"
 assert.equal(rowValue(multiPosePdbqt.componentRows, "Ligands"), "1 type / 2 instances / 4 atoms");
 assert.equal(multiPosePdbqt.ligandRows.length, 2);
 
-const miniCif = parseStructureComposition(await readFile(join(fixturesRoot, "mini.cif"), "utf8"), "cif");
+const miniCif = parseStructureComposition(await readFile(join(samplesRoot, "mini.cif"), "utf8"), "cif");
 assert.ok(miniCif);
 assert.equal(rowValue(miniCif.rows, "Atoms"), "4");
 assert.equal(rowValue(miniCif.componentRows, "Polymers"), "1 chain / 1 residue / 4 atoms");
@@ -405,9 +414,9 @@ assert.ok(histidineAliasGro);
 assert.equal(rowValue(histidineAliasGro.componentRows, "Polymers"), "1 chain / 1 residue / 1 atoms");
 assert.equal(rowValue(histidineAliasGro.componentRows, "Ligands"), "None detected");
 
-const miniSdf = parseStructureComposition(await readFile(join(fixturesRoot, "mini.sdf"), "utf8"), "sdf");
+const miniSdf = parseStructureComposition(await readFile(join(samplesRoot, "mini.sdf"), "utf8"), "sdf");
 assert.ok(miniSdf);
-assert.equal(rowValue(miniSdf.rows, "Molecules"), "1");
+assert.equal(rowValue(miniSdf.rows, "Molecules"), "2");
 assert.match(rowValue(miniSdf.rows, "Atoms"), /^\d+$/);
 
 const shiftedCountsSdf = parseStructureComposition([

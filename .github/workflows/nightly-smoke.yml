@@ -49,13 +49,15 @@ jobs:
           BURRETE_DEV_FLAVOR: ci
           BURRETE_QUICKLOOK_SMOKE_RESULTS: build/reports/nightly-quicklook-preview-smoke.tsv
           BURRETE_QUICKLOOK_SMOKE_TIMEOUT_SECONDS: 60
-        run: >
-          ./scripts/quicklook-preview-smoke.sh
-          tests/fixtures/BurettePreviewSamples/mini.pdb
-          tests/fixtures/BurettePreviewSamples/mini.cif
-          tests/fixtures/BurettePreviewSamples/sdf/single.sdf
-          tests/fixtures/BurettePreviewSamples/xyz/single.xyz
-          tests/fixtures/BurettePreviewSamples/xyzr/single.xyzr
+        run: |
+          mkdir -p build/smoke
+          cp samples/mini.xyz build/smoke/single.xyzr
+          ./scripts/quicklook-preview-smoke.sh \
+            samples/mini.pdb \
+            samples/mini.cif \
+            samples/mini.sdf \
+            samples/mini.xyz \
+            build/smoke/single.xyzr
 
       - name: Run non-GUI perf smoke report
         env:

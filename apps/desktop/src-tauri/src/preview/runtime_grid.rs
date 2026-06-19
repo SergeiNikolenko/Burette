@@ -548,13 +548,7 @@ fn parse_delimited_line(line: &str, separator: char) -> Vec<String> {
 fn is_smiles_column(value: &str) -> bool {
     matches!(
         value,
-        "smiles"
-            | "smile"
-            | "smiels"
-            | "canonical_smiles"
-            | "isomeric_smiles"
-            | "cxsmiles"
-            | "smiles_string"
+        "smiles" | "smile" | "canonical_smiles" | "isomeric_smiles" | "cxsmiles" | "smiles_string"
     )
 }
 

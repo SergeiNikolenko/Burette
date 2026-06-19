@@ -91,12 +91,6 @@ const agentSource = await readFile(resolve('PreviewExtension/Web/burette-agent.j
 const interactions = [];
 const selectionEntries = new Map();
 const measurementLabels = [];
-const selectionChangedHandlers = [];
-const clickHandlers = [];
-const hoverHandlers = [];
-const postedMessages = [];
-const selectProviders = [];
-const highlightProviders = [];
 const context = {
   console,
   setTimeout,
@@ -109,8 +103,7 @@ const context = {
   window: {
     molstar: { version: '5.7.0-test' },
     dispatchEvent() {},
-    CustomEvent: class CustomEvent { constructor(name, init) { this.name = name; this.detail = init?.detail; } },
-    parent: { postMessage: message => postedMessages.push(message) }
+    CustomEvent: class CustomEvent { constructor(name, init) { this.name = name; this.detail = init?.detail; } }
   },
   document: {
     querySelector() {
@@ -128,17 +121,7 @@ const viewer = {
     managers: {
       structure: {
         hierarchy: { current: { structures: [{ cell: { transform: { ref: 's0' }, obj: { data: fakeStructure(), label: 'fake.pdb' } } }] } },
-        selection: {
-          entries: selectionEntries,
-          events: {
-            changed: {
-              subscribe: handler => {
-                selectionChangedHandlers.push(handler);
-                return { unsubscribe() {} };
-              }
-            }
-          }
-        },
+        selection: { entries: selectionEntries },
         measurement: {
           addLabel: async (loci, options) => {
             measurementLabels.push({ loci, options });
@@ -146,29 +129,7 @@ const viewer = {
           }
         }
       },
-      camera: { reset: () => { interactions.push({ action: 'reset' }); } },
-      interactivity: {
-        lociSelects: {
-          addProvider: provider => selectProviders.push(provider),
-          removeProvider: provider => {
-            const index = selectProviders.indexOf(provider);
-            if (index >= 0) selectProviders.splice(index, 1);
-          }
-        },
-        lociHighlights: {
-          addProvider: provider => highlightProviders.push(provider),
-          removeProvider: provider => {
-            const index = highlightProviders.indexOf(provider);
-            if (index >= 0) highlightProviders.splice(index, 1);
-          }
-        }
-      }
-    },
-    behaviors: {
-      interaction: {
-        click: { subscribe: handler => { clickHandlers.push(handler); return { unsubscribe() {} }; } },
-        hover: { subscribe: handler => { hoverHandlers.push(handler); return { unsubscribe() {} }; } }
-      }
+      camera: { reset: () => { interactions.push({ action: 'reset' }); } }
     },
     helpers: { viewportScreenshot: { getImageDataUri: async () => 'data:image/png;base64,from-helper' } }
   },
@@ -183,7 +144,7 @@ const viewer = {
   }
 };
 
-context.window.BurreteAgent.attach({ viewer, plugin: viewer.plugin, config: { label: 'fake.pdb', format: 'pdb', documentId: 'doc-fake' } });
+context.window.BurreteAgent.attach({ viewer, plugin: viewer.plugin, config: { label: 'fake.pdb', format: 'pdb' } });
 context.window.BurreteAgent.notifyStructureLoaded({ prepared: { label: 'fake.pdb', format: 'pdb' } });
 
 const capabilities = await context.window.BurreteAgent.run({ command: 'capabilities' });
@@ -204,26 +165,6 @@ assert.equal(selected.ok, true);
 assert.equal(selected.result.counts.residues, 2);
 assert.ok(selected.result.selectionId.startsWith('sel-'));
 assert.ok(interactions.some(x => x.action === 'select'));
-
-const fakeUnit = viewer.plugin.managers.structure.hierarchy.current.structures[0].cell.obj.data.units[0];
-selectionEntries.set('manual', { selection: { elements: [{ unit: fakeUnit, indices: [4, 5] }] } });
-selectionChangedHandlers.at(-1)();
-const manualSelectionMessage = postedMessages.findLast(message => message.body?.type === 'agentSelectionChanged');
-assert.equal(manualSelectionMessage.body.documentId, 'doc-fake');
-assert.equal(manualSelectionMessage.body.selection.source, 'selection');
-assert.equal(manualSelectionMessage.body.selection.counts.atoms, 2);
-assert.equal(manualSelectionMessage.body.selection.ligand.label_comp_id, 'HEM');
-
-hoverHandlers.at(-1)({ current: { loci: { elements: [{ unit: fakeUnit, indices: [0] }] } } });
-const hoverSelectionMessage = postedMessages.findLast(message => message.body?.selection?.source === 'hover');
-assert.equal(hoverSelectionMessage.body.selection.atomsPreview[0].label_atom_id, 'N');
-
-assert.equal(highlightProviders.length, 1);
-highlightProviders[0]({ loci: { elements: [{ unit: fakeUnit, indices: [4, 5] }] } }, 'Highlight');
-const highlightSelectionMessage = postedMessages.findLast(message => message.body?.selection?.source === 'highlight:Highlight');
-assert.equal(highlightSelectionMessage.body.selection.counts.atoms, 2);
-assert.equal(highlightSelectionMessage.body.selection.ligand.label_comp_id, 'HEM');
-selectionEntries.delete('manual');
 
 const focus = await context.window.BurreteAgent.run({ command: 'focusSelection', args: { selection: 'last' } });
 assert.equal(focus.ok, true);

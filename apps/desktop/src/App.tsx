@@ -74,7 +74,7 @@ import { basename, buildSidebarProjects, parentDirectory, type SidebarProjectStr
 import { parseStructureComposition } from "./lib/structure-composition";
 import type { StructureDragPayload, StructureDragRecord } from "./lib/structure-drag";
 import { readStructureText } from "./lib/structure-text";
-import { isSpectrumPath, isSubformulaSpectrumJsonText, isTabularSpectrumExtension, isTabularSpectrumText, spectrumDocumentFromText } from "./lib/spectrum";
+import { isSpectrumExtension, spectrumDocumentFromText } from "./lib/spectrum";
 import type { TextStructureSelection } from "./lib/text-structure-selection";
 import { isTauriRuntime } from "./lib/tauri";
 import { isTemporaryDocumentPath } from "./lib/temporary-documents";
@@ -330,10 +330,9 @@ function delimitedColumnChoiceLabel(choice: GridDelimitedColumnChoice) {
 
 async function browserDevFilesFromLocation() {
   const params = new URLSearchParams(window.location.search);
-  if (params.has("quickLookFile")) return [];
   if (params.has("devDocking")) return [];
   if (params.has("devFiles")) {
-    return params.getAll("devFiles").flatMap((value) => splitDevFiles(value));
+    return splitDevFiles(params.get("devFiles") ?? "");
   }
   if (params.has("devFolder")) {
     const folder = params.get("devFolder") ?? "";
@@ -345,32 +344,13 @@ async function browserDevFilesFromLocation() {
   return [];
 }
 
-function browserDevFolderFromLocation() {
-  if (typeof window === "undefined" || isTauriRuntime()) return null;
-  const folder = new URLSearchParams(window.location.search).get("devFolder")?.trim();
-  return folder ? folder.replace(/\\/g, "/").replace(/\/+$/u, "") : null;
-}
-
 function splitDevFiles(rawFiles: string) {
   return rawFiles.split("\n").map((path) => path.trim()).filter(Boolean);
-}
-
-function browserDevQuickLookFileFromLocation() {
-  if (typeof window === "undefined" || isTauriRuntime()) return null;
-  const params = new URLSearchParams(window.location.search);
-  const path = params.get("quickLookFile")?.trim();
-  return path || null;
 }
 
 function browserDevHasExplicitFiles() {
   if (typeof window === "undefined" || isTauriRuntime()) return false;
   return new URLSearchParams(window.location.search).has("devFiles");
-}
-
-function browserDevHasExplicitWorkspace() {
-  if (typeof window === "undefined" || isTauriRuntime()) return false;
-  const params = new URLSearchParams(window.location.search);
-  return params.has("devFiles") || params.has("devFolder");
 }
 
 async function expandBrowserDevStructureBundles(paths: string[]) {
@@ -383,7 +363,6 @@ async function expandBrowserDevStructureBundles(paths: string[]) {
       !extension ||
       (!structureExtensions.has(extension) &&
         !isXtbOptimizationTrajectoryLogPath(path) &&
-        !isSpectrumPath(path, extension) &&
         !structureAndTextExtensions.has(extension) &&
         !preferredTextExtensions.has(extension))
     ) {
@@ -414,25 +393,6 @@ async function expandBrowserDevStructureBundles(paths: string[]) {
     }
   }
   return expanded;
-}
-
-async function detectContentSpectrumPaths(paths: string[]) {
-  const matches = new Set<string>();
-  await Promise.all(paths.map(async (path) => {
-    const extension = pathExtension(path);
-    const canDetectByContent = isTabularSpectrumExtension(extension) || extension === "json";
-    if (!canDetectByContent) return;
-    try {
-      const text = await readStructureText(path, { maxBytes: 256 * 1024 });
-      if (
-        (isTabularSpectrumExtension(extension) && isTabularSpectrumText(text, extension))
-        || (extension === "json" && isSubformulaSpectrumJsonText(text))
-      ) {
-        matches.add(path);
-      }
-    } catch {}
-  }));
-  return matches;
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer) {
@@ -489,7 +449,6 @@ function queueKetcherImportRequest(request: KetcherImportRequest) {
 }
 
 export default function App() {
-  const browserDevQuickLookPath = browserDevQuickLookFileFromLocation();
   const preferences = useViewerPreferences();
   const setPreference = useSetViewerPreference();
   const tabs = useOpenTabs();
@@ -598,8 +557,6 @@ export default function App() {
   const [ketcherImportRequest, setKetcherImportRequest] = useState<KetcherImportRequest | null>(null);
   const [ketcherDraftMolfile, setKetcherDraftMolfile] = useState("");
   const [descriptorSource, setDescriptorSource] = useState<DescriptorSourcePayload | null>(null);
-  const [quickLookDocument, setQuickLookDocument] = useState<ViewerDocument | null>(null);
-  const [quickLookError, setQuickLookError] = useState<string | null>(null);
   const [dirtyGridDocuments, setDirtyGridDocuments] = useState<Set<string>>(() => new Set());
   const [status, setStatus] = useState<StatusNotice | null>(null);
   const [buildInfo, setBuildInfo] = useState(defaultBuildInfo);
@@ -622,7 +579,6 @@ export default function App() {
     availableRelease: null,
   }));
   const openedBrowserDevFilesRef = useRef<string | null>(null);
-  const openedBrowserDevQuickLookRef = useRef<string | null>(null);
   const openedBrowserDevDockingRef = useRef<string | null>(null);
   const prunedPersistedPathsRef = useRef(false);
   const refreshedPersistedSessionRef = useRef(false);
@@ -1249,23 +1205,20 @@ export default function App() {
     openCommandPalette("search");
   }, [openCommandPalette]);
 
-  const browserDevExplicitFolder = useMemo(() => browserDevFolderFromLocation(), []);
   const browserDevSampleRoot = useMemo(() => browserDevSampleProjectRoot(), []);
-  const sidebarProjectRoots = useMemo(() => {
-    if (browserDevExplicitFolder) return [browserDevExplicitFolder];
-    return browserDevSampleRoot && !projectRoots.includes(browserDevSampleRoot)
+  const sidebarProjectRoots = useMemo(() => (
+    browserDevSampleRoot && !projectRoots.includes(browserDevSampleRoot)
       ? [...projectRoots, browserDevSampleRoot]
-      : projectRoots;
-  }, [browserDevExplicitFolder, browserDevSampleRoot, projectRoots]);
+      : projectRoots
+  ), [browserDevSampleRoot, projectRoots]);
   const sidebarProjectStructures = useMemo(() => {
     const samples = browserDevSampleProjectStructures();
     return samples.length > 0 ? [...projectStructures, ...samples] : projectStructures;
   }, [projectStructures]);
-  const sidebarRecentStructures = browserDevExplicitFolder ? [] : recentStructures;
 
   const allSidebarProjects = useMemo(() => buildSidebarProjects({
     documents,
-    recentStructures: sidebarRecentStructures,
+    recentStructures,
     projectRoots: sidebarProjectRoots,
     projectStructures: sidebarProjectStructures,
     pinnedProjectRoots,
@@ -1273,7 +1226,7 @@ export default function App() {
     activeDocumentId: activeDocument?.id ?? null,
     hiddenProjectRoots,
     pinnedStructurePaths,
-  }), [activeDocument?.id, documents, hiddenProjectRoots, pinnedProjectRoots, pinnedStructurePaths, projectNameOverrides, sidebarProjectRoots, sidebarProjectStructures, sidebarRecentStructures]);
+  }), [activeDocument?.id, documents, hiddenProjectRoots, pinnedProjectRoots, pinnedStructurePaths, projectNameOverrides, recentStructures, sidebarProjectRoots, sidebarProjectStructures]);
 
   useEffect(() => {
     if (!isTauriRuntime() || projectRoots.length === 0) {
@@ -1481,8 +1434,10 @@ export default function App() {
         else addDocuments(documents);
         if (!options.background && !options.inActiveTab && documents[0]) {
           setActiveDocument(documents[0].id);
+          setDockDocument("right", documents[0].id);
           setDockActiveTab("right", "inspector");
           setDockOpen("right", true);
+          setDockDocument("bottom", documents[0].id);
           openDockTab("bottom", "spectrum");
         }
         rememberRecentStructures(documents);
@@ -1498,7 +1453,7 @@ export default function App() {
         return null;
       }
     },
-    [addBackgroundDocuments, addDocuments, openDockTab, openDocumentsInActiveTab, pushErrorStatus, pushStatus, rememberRecentStructures, setActiveDocument, setDockActiveTab, setDockOpen],
+    [addBackgroundDocuments, addDocuments, openDockTab, openDocumentsInActiveTab, pushErrorStatus, pushStatus, rememberRecentStructures, setActiveDocument, setDockActiveTab, setDockDocument, setDockOpen],
   );
 
   const openPaths = useCallback(async (paths: string[]) => {
@@ -1510,11 +1465,10 @@ export default function App() {
     const textPaths: string[] = [];
     const structureAndTextPaths: string[] = [];
     let preferredStructureDocumentId: string | null = null;
-    const contentSpectrumPaths = await detectContentSpectrumPaths(cleanPaths);
 
     for (const path of cleanPaths) {
       const extension = pathExtension(path);
-      if (isSpectrumPath(path, extension) || contentSpectrumPaths.has(path)) {
+      if (isSpectrumExtension(extension)) {
         spectrumPaths.push(path);
       } else if (
         preferredTextExtensions.has(extension)
@@ -1573,42 +1527,6 @@ export default function App() {
   }, [closeDocument, openDocuments, openSpectrumDocuments, openTextDocuments, setActiveDocument]);
 
   useEffect(() => {
-    const quickLookPath = browserDevQuickLookPath;
-    if (!quickLookPath || openedBrowserDevQuickLookRef.current === quickLookPath) return;
-    let cancelled = false;
-    openedBrowserDevQuickLookRef.current = quickLookPath;
-    setQuickLookDocument(null);
-    setQuickLookError(null);
-    void (async () => {
-      const extension = pathExtension(quickLookPath);
-      const contentSpectrumPaths = await detectContentSpectrumPaths([quickLookPath]);
-      if (isSpectrumPath(quickLookPath, extension) || contentSpectrumPaths.has(quickLookPath)) {
-        const result = await openBrowserDevTextFiles([quickLookPath]);
-        const textDocument = result.documents[0] ?? null;
-        if (!textDocument) return null;
-        return spectrumDocumentFromText(textDocument);
-      }
-      const result = await openBrowserDevDocuments([quickLookPath], preferences);
-      return result.documents[0] ?? null;
-    })().then((document) => {
-      if (cancelled) return;
-      if (document) {
-        setQuickLookDocument(document);
-        return;
-      }
-      setQuickLookError("Quick Look debug file did not produce a preview document.");
-    }).catch((error) => {
-      if (cancelled) return;
-      const message = error instanceof Error ? error.message : String(error);
-      setQuickLookError(`Open Quick Look debug file failed: ${message}`);
-      pushErrorStatus(error, "Open Quick Look debug file failed");
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [browserDevQuickLookPath, preferences, pushErrorStatus]);
-
-  useEffect(() => {
     if (isTauriRuntime() || syncingBrowserDevFilesRef.current) return;
     let cancelled = false;
     void (async () => {
@@ -1621,7 +1539,7 @@ export default function App() {
       if (!needsInitialOpen && !needsRuntimeRefresh) return;
       openedBrowserDevFilesRef.current = normalizedFiles;
       syncingBrowserDevFilesRef.current = true;
-      const workspace = browserDevExplicitFolder ?? (paths[0] ? parentDirectory(paths[0]) : null);
+      const workspace = paths[0] ? parentDirectory(paths[0]) : null;
       if (workspace && !browserDevHasExplicitFiles()) {
         setWorkspacePath(workspace);
         addProjectRoot(workspace);
@@ -1636,7 +1554,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [addProjectRoot, browserDevExplicitFolder, closeAllDocuments, documents, openPaths, pushErrorStatus, setWorkspacePath]);
+  }, [addProjectRoot, closeAllDocuments, documents, openPaths, pushErrorStatus, setWorkspacePath]);
 
   useEffect(() => {
     if (refreshedPersistedSessionRef.current) return;
@@ -1736,10 +1654,9 @@ export default function App() {
     try {
       let dockOpenPaths = cleanPaths;
       if (input.area === "right" && cleanPaths.length > 0) {
-        const rightDockContentSpectrumPaths = await detectContentSpectrumPaths(cleanPaths);
         const rightDockTextPaths = cleanPaths.filter((path) => {
           const extension = pathExtension(path);
-          return !isSpectrumPath(path, extension) && !rightDockContentSpectrumPaths.has(path) && !structureExtensions.has(extension) && !structureAndTextExtensions.has(extension);
+          return !isSpectrumExtension(extension) && !structureExtensions.has(extension) && !structureAndTextExtensions.has(extension);
         });
         dockOpenPaths = cleanPaths.filter((path) => !rightDockTextPaths.includes(path));
         if (rightDockTextPaths.length > 0) {
@@ -1765,10 +1682,9 @@ export default function App() {
       const spectrumPaths: string[] = [];
       const textPaths: string[] = [];
       const structureAndTextPaths: string[] = [];
-      const contentSpectrumPaths = await detectContentSpectrumPaths(dockOpenPaths);
       for (const path of dockOpenPaths) {
         const extension = pathExtension(path);
-        if (isSpectrumPath(path, extension) || contentSpectrumPaths.has(path)) {
+        if (isSpectrumExtension(extension)) {
           spectrumPaths.push(path);
         } else if (structureAndTextExtensions.has(extension)) {
           structureAndTextPaths.push(path);
@@ -2098,19 +2014,6 @@ export default function App() {
       `Size: ${formatBytes(document.byteCount)}`,
     ]);
   }, [pushStatus]);
-
-  const closeQuickLookPreview = useCallback(() => {
-    if (browserDevQuickLookPath) {
-      openedBrowserDevQuickLookRef.current = null;
-      if (!isTauriRuntime()) {
-        const url = new URL(window.location.href);
-        url.searchParams.delete("quickLookFile");
-        window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
-      }
-    }
-    setQuickLookDocument(null);
-    setQuickLookError(null);
-  }, [browserDevQuickLookPath]);
 
   const showTextFileMetadata = useCallback((document: TextFileDocument) => {
     const details = [
@@ -3059,24 +2962,7 @@ export default function App() {
   }, [activeTab?.location, documents, poseReviewSelections]);
 
   useOpenEvents(openPaths, pushErrorStatus);
-  const agentTabActions = useMemo(() => ({
-    openNewTab,
-    setActiveTab,
-    closeTab,
-    moveTab,
-  }), [openNewTab, setActiveTab, closeTab, moveTab]);
-  useAgentSession({
-    activeDocument,
-    documents,
-    tabs,
-    activeTabId,
-    openTextDocuments,
-    openPaths,
-    openDockingView: openDockingDocument,
-    tabActions: agentTabActions,
-    pushErrorStatus,
-    setDockDocument,
-  });
+  useAgentSession({ activeDocument, documents, openTextDocuments, openPaths, pushErrorStatus, setDockDocument });
   const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop, handleBrowserPaste, openClipboardText } = useOpenDrop(openPaths, pushStatus, {
     activeTabKind: activeTab?.location.kind ?? null,
     activeDocumentId: activeDocument?.id ?? null,
@@ -4931,7 +4817,6 @@ export default function App() {
     showActiveDocumentMetadata,
     showDocumentMetadata,
     showTextFileMetadata,
-    closeQuickLookPreview,
     generate3DConformer,
     runStructureViewerAction,
     reloadXyzrenderDocument,
@@ -4989,7 +4874,7 @@ export default function App() {
     },
     setPreference,
     setUpdatePreferences,
-  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeQuickLookPreview, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runStructureViewerAction, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
+  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, focusSidebarSearch, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runStructureViewerAction, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar, update.availableRelease]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
@@ -5001,9 +4886,6 @@ export default function App() {
     activeTabId,
     activeDocument,
     activeDocumentId: activeDocument?.id ?? null,
-    quickLookDocument,
-    quickLookError,
-    quickLookStandalone: Boolean(browserDevQuickLookPath),
     visibleDocuments: documents,
     recentStructures,
     sidebarProjects: allSidebarProjects,
@@ -5837,7 +5719,7 @@ function ketcherSource3DFromText(title: string, text: string, extension: string)
 }
 
 function browserDevSampleProjectRoot() {
-  if (!import.meta.env.DEV || isTauriRuntime() || browserDevHasExplicitWorkspace()) return null;
+  if (!import.meta.env.DEV || isTauriRuntime() || browserDevHasExplicitFiles()) return null;
   const repoRoot = String(import.meta.env.BURRETE_REPO_ROOT || "").trim().replace(/\/+$/u, "");
   return repoRoot ? `${repoRoot}/samples` : null;
 }

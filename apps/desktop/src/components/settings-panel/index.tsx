@@ -9,7 +9,6 @@ import { isTauriRuntime } from "../../lib/tauri";
 import { AgentIntegrationPanel } from "../agent-integration-panel";
 import { EditorScrollContainer } from "../editor-area/editor-scroll-container";
 import { RadixDropdownMenu } from "../radix-menu";
-import { SystemIcon, type SystemIconName } from "../system-icon";
 import type { AppSettingsSectionId, ChemicalEditorTarget, ShellActions, ShellViewState } from "../types";
 import type { MenuItemSpec } from "../menu-types";
 import {
@@ -31,7 +30,7 @@ type OpenInDefaultDestination = ViewerPreferences["openInDefaultDestination"];
 type OpenDestinationOption = {
   value: OpenInDefaultDestination;
   label: string;
-  iconSymbol: SystemIconName;
+  iconText: string;
   iconUrl?: string;
 };
 
@@ -417,7 +416,7 @@ function OpenDestinationControl({
     kind: "item",
     id: `open-destination-${option.value}`,
     text: option.label,
-    iconSymbol: option.iconSymbol,
+    iconText: option.iconText,
     iconUrl: option.iconUrl,
     action: () => onChange(option.value),
   }));
@@ -434,12 +433,12 @@ function OpenDestinationControl({
           {selected.iconUrl ? (
             <img className="settings-open-destination-icon" src={selected.iconUrl} alt="" aria-hidden="true" />
           ) : (
-            <span className="settings-open-destination-icon" aria-hidden="true">
-              <SystemIcon name={selected.iconSymbol} size={14} strokeWidth={2.1} />
-            </span>
+            <span className="settings-open-destination-icon" aria-hidden="true">{selected.iconText}</span>
           )}
           <span>{selected.label}</span>
-          <SystemIcon name="chevron.down" size={13} />
+          <svg width="13" height="13" viewBox="0 0 13 13" aria-hidden="true">
+            <path d="M3.5 5 6.5 8 9.5 5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
         </button>
       )}
     />
@@ -448,17 +447,17 @@ function OpenDestinationControl({
 
 function openDestinationOptions(value: OpenInDefaultDestination, targets: ChemicalEditorTarget[]): OpenDestinationOption[] {
   const options: OpenDestinationOption[] = [
-    { value: "finder", label: "Finder", iconSymbol: "folder", iconUrl: finderIconUrl() ?? undefined },
-    { value: "default-app", label: "Default app", iconSymbol: "app" },
+    { value: "finder", label: "Finder", iconText: "FI", iconUrl: finderIconUrl() ?? undefined },
+    { value: "default-app", label: "Default app", iconText: "DA" },
     ...targets.map((target) => ({
       value: `editor:${target.id}` as OpenInDefaultDestination,
       label: target.name,
-      iconSymbol: "app" as const,
+      iconText: editorIconText(target.name),
       iconUrl: editorIconUrl(target) ?? undefined,
     })),
   ];
   if (value.startsWith("editor:") && !options.some((option) => option.value === value)) {
-    options.push({ value, label: "Saved editor", iconSymbol: "square.and.pencil" });
+    options.push({ value, label: "Saved editor", iconText: "ED" });
   }
   return options;
 }
@@ -486,4 +485,11 @@ function browserDevIconUrl(target: ChemicalEditorTarget) {
   if (appPath.includes("datawarrior") || name === "datawarrior") return "/__burette/app-icon/datawarrior.png";
   if (appPath.includes("vesta") || name === "vesta") return "/__burette/app-icon/vesta.png";
   return null;
+}
+
+function editorIconText(name: string) {
+  const compact = name.replace(/[^a-z0-9]+/giu, " ").trim();
+  const parts = compact.split(/\s+/u).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  return compact.slice(0, 2).toUpperCase() || "ED";
 }
