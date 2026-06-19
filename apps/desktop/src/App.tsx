@@ -4,9 +4,8 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import previewFormatRegistry from "../../../config/preview-formats.json";
 import { AppLayout } from "./components/app-layout";
-import { formatBytes } from "./components/format";
 import { showNativeContextMenu } from "./components/native-context-menu";
-import type { AppSettingsSectionId, ChemicalEditorTarget, KetcherImportRequest, KetcherSketchRequest, KetcherSource3D, ShellActions, ShellViewState, StructureViewerAction, ViewerLigandSelection } from "./components/types";
+import type { AppSettingsSectionId, KetcherImportRequest, KetcherSketchRequest, KetcherSource3D, ShellActions, ShellViewState, StructureViewerAction, ViewerLigandSelection } from "./components/types";
 import { WindowTitle } from "./components/window-title";
 import {
   useCloseCommandPalette,
@@ -15,6 +14,7 @@ import {
   useOpenCommandPalette,
   useSetCommandPaletteSearch,
 } from "./hooks/use-command-palette";
+import { useAppFileActions } from "./hooks/use-app-file-actions";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
 import { useAppMaintenance } from "./hooks/use-app-maintenance";
 import { useAppQuickLook } from "./hooks/use-app-quick-look";
@@ -238,69 +238,6 @@ function structureExtensionFromPath(path: string | null | undefined) {
   const dotIndex = name.lastIndexOf(".");
   return dotIndex > 0 ? name.slice(dotIndex + 1).toLowerCase() : "pdb";
 }
-
-const browserDevChemicalEditorTargets: ChemicalEditorTarget[] = [
-  {
-    id: "browser-dev-maestro",
-    name: "Maestro",
-    bundleId: "com.schrodinger.maestro",
-    appPath: "/Applications/SchrodingerSuites2026-1/Maestro.app",
-    iconUrl: "/__burette/app-icon/maestro.png",
-    rank: 10,
-    supportedExtensions: ["pdb", "cif", "sdf", "mol2", "mae"],
-    matchReason: "Browser dev preview target",
-  },
-  {
-    id: "browser-dev-chimerax",
-    name: "ChimeraX",
-    bundleId: "edu.ucsf.rbvi.ChimeraX",
-    appPath: "/Applications/ChimeraX-1.10.app",
-    iconUrl: "/__burette/app-icon/chimerax.png",
-    rank: 20,
-    supportedExtensions: ["pdb", "cif", "mol2", "sdf"],
-    matchReason: "Browser dev preview target",
-  },
-  {
-    id: "browser-dev-pymol",
-    name: "PyMOL",
-    bundleId: "org.pymol.PyMOL",
-    appPath: "/Applications/PyMOL.app",
-    iconUrl: "/__burette/app-icon/pymol.png",
-    rank: 30,
-    supportedExtensions: ["pdb", "cif", "mol2"],
-    matchReason: "Browser dev preview target",
-  },
-  {
-    id: "browser-dev-avogadro",
-    name: "Avogadro2",
-    bundleId: "org.openchemistry.Avogadro2",
-    appPath: "/Applications/Avogadro2.app",
-    iconUrl: "/__burette/app-icon/avogadro2.png",
-    rank: 40,
-    supportedExtensions: ["pdb", "cif", "sdf", "mol", "mol2", "xyz"],
-    matchReason: "Browser dev preview target",
-  },
-  {
-    id: "browser-dev-datawarrior",
-    name: "DataWarrior",
-    bundleId: "com.actelion.research.datawarrior",
-    appPath: "/Applications/DataWarrior.app",
-    iconUrl: "/__burette/app-icon/datawarrior.png",
-    rank: 50,
-    supportedExtensions: ["sdf", "mol", "smi", "csv"],
-    matchReason: "Browser dev preview target",
-  },
-  {
-    id: "browser-dev-vesta",
-    name: "VESTA",
-    bundleId: "jp.riken.VESTA",
-    appPath: "/Applications/VESTA.app",
-    iconUrl: "/__burette/app-icon/vesta.png",
-    rank: 60,
-    supportedExtensions: ["cif", "pdb", "xyz"],
-    matchReason: "Browser dev preview target",
-  },
-];
 
 type GridAppendResult = {
   recordsAppended: number;
@@ -1239,6 +1176,26 @@ export default function App() {
     if (location?.kind !== "text-file") return null;
     return textDocuments.find((document) => document.id === location.documentId || document.path === location.path) ?? null;
   }, [activeTab?.location, textDocuments]);
+  const {
+    copyActiveDocumentPath,
+    copyDocumentPath,
+    copyPath,
+    listChemicalEditorTargets,
+    openPathInChemicalEditor,
+    openPathWithDefaultApp,
+    revealActiveDocument,
+    revealDocument,
+    revealPath,
+    showActiveDocumentMetadata,
+    showDocumentMetadata,
+    showTextFileMetadata,
+  } = useAppFileActions({
+    activeDocument,
+    activeTextDocument,
+    pushErrorStatus,
+    pushStatus,
+    writeClipboardText,
+  });
 
   const openDelimitedGridDocument = useCallback(
     async (
@@ -1875,116 +1832,6 @@ export default function App() {
     }
   }, [documents, pushErrorStatus, pushStatus]);
 
-  const listChemicalEditorTargets = useCallback(async (path: string): Promise<ChemicalEditorTarget[]> => {
-    if (!isTauriRuntime()) {
-      const extension = path.split(".").pop()?.toLowerCase() ?? "";
-      return browserDevChemicalEditorTargets.filter((target) => target.supportedExtensions.includes(extension));
-    }
-    try {
-      return await invoke<ChemicalEditorTarget[]>("list_chemical_editor_targets", { path });
-    } catch (error) {
-      pushErrorStatus(error, "Chemical editor discovery failed");
-      return [];
-    }
-  }, [pushErrorStatus]);
-
-  const openPathInChemicalEditor = useCallback(async (path: string, targetId: string, targetName: string) => {
-    try {
-      if (!isTauriRuntime()) {
-        await openPath(path);
-        pushStatus(`Opened ${basename(path)}`);
-        return;
-      }
-      await invoke("open_in_chemical_editor", { path, targetId });
-      pushStatus(`Opened ${basename(path)} in ${targetName}`);
-    } catch (error) {
-      pushErrorStatus(error, `Open in ${targetName} failed`);
-    }
-  }, [pushErrorStatus, pushStatus]);
-
-  const openPathWithDefaultApp = useCallback(async (path: string) => {
-    try {
-      await openPath(path);
-      pushStatus(`Opened ${basename(path)}`);
-    } catch (error) {
-      pushErrorStatus(error, "Open with default app failed");
-    }
-  }, [pushErrorStatus, pushStatus]);
-
-  const revealPath = useCallback(async (path: string, label = "file") => {
-    try {
-      if (isTauriRuntime()) {
-        await invoke("reveal_path", { path });
-      } else {
-        await openPath(parentDirectory(path) ?? path);
-      }
-      pushStatus(`Revealed ${label} in Finder`);
-    } catch (error) {
-      pushErrorStatus(error, "Reveal in Finder failed");
-    }
-  }, [pushErrorStatus, pushStatus]);
-
-  const revealDocument = useCallback(async (document: ViewerDocument) => {
-    await revealPath(document.path, "structure");
-  }, [revealPath]);
-
-  const revealActiveDocument = useCallback(async () => {
-    if (activeTextDocument) {
-      await revealPath(activeTextDocument.path, "file");
-      return;
-    }
-    if (!activeDocument) {
-      pushStatus("No active file to reveal", "error");
-      return;
-    }
-    await revealDocument(activeDocument);
-  }, [activeDocument, activeTextDocument, pushStatus, revealDocument, revealPath]);
-
-  const copyPath = useCallback(async (path: string, label = "file") => {
-    try {
-      await writeClipboardText(path);
-      pushStatus(`Copied ${label} path`);
-    } catch (error) {
-      pushErrorStatus(error, "Copy path failed");
-    }
-  }, [pushErrorStatus, pushStatus]);
-
-  const copyDocumentPath = useCallback(async (document: ViewerDocument) => {
-    await copyPath(document.path, "structure");
-  }, [copyPath]);
-
-  const copyActiveDocumentPath = useCallback(async () => {
-    if (activeTextDocument) {
-      await copyPath(activeTextDocument.path, "file");
-      return;
-    }
-    if (!activeDocument) {
-      pushStatus("No active file path to copy", "error");
-      return;
-    }
-    await copyDocumentPath(activeDocument);
-  }, [activeDocument, activeTextDocument, copyDocumentPath, copyPath, pushStatus]);
-
-  const showDocumentMetadata = useCallback((document: ViewerDocument) => {
-    pushStatus(document.title, "info", [
-      `Path: ${document.path}`,
-      `Renderer: ${document.renderer}`,
-      `Format: ${document.extension.toUpperCase()}`,
-      `Size: ${formatBytes(document.byteCount)}`,
-    ]);
-  }, [pushStatus]);
-
-  const showTextFileMetadata = useCallback((document: TextFileDocument) => {
-    const details = [
-      `Path: ${document.path}`,
-      `Format: ${document.extension ? document.extension.toUpperCase() : "TEXT"}`,
-      `Language: ${document.language}`,
-      `Size: ${formatBytes(document.byteCount)}`,
-    ];
-    if (document.truncated) details.push("Content preview was truncated");
-    pushStatus(document.title, "info", details);
-  }, [pushStatus]);
-
   const selectTextStructure = useCallback((textDocument: TextFileDocument, selection: TextStructureSelection) => {
     const targetDocument = documents.find((document) => document.path === textDocument.path) ??
       (activeDocument?.path === textDocument.path ? activeDocument : null);
@@ -2096,18 +1943,6 @@ export default function App() {
       pushErrorStatus(error, "3D conformer generation failed");
     }
   }, [documents, openDocumentsInActiveTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setActiveDocument, setDocuments]);
-
-  const showActiveDocumentMetadata = useCallback(() => {
-    if (activeTextDocument) {
-      showTextFileMetadata(activeTextDocument);
-      return;
-    }
-    if (!activeDocument) {
-      pushStatus("No active file metadata to show", "error");
-      return;
-    }
-    showDocumentMetadata(activeDocument);
-  }, [activeDocument, activeTextDocument, pushStatus, showDocumentMetadata, showTextFileMetadata]);
 
   const readActiveExternalPreviewSvg = useCallback(async () => {
     if (!activeDocument) throw new Error("No active structure preview to export");
