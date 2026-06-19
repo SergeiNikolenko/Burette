@@ -4337,39 +4337,6 @@
       label: receptor.label || 'Receptor',
       sourcePath: receptor.path || ''
     };
-    const sceneMode = dockingSceneMode(config);
-    if (sceneMode) {
-      const sceneEntries = [receptorEntry];
-      ligandSources.forEach((source, ligandIndex) => {
-        const data = dockingPayloadData(source, ligandPayloads[ligandIndex]);
-        sceneEntries.push({
-          data,
-          format: normalizeFormat(source.format),
-          label: source.label || `Structure ${ligandIndex + 2}`,
-          sourcePath: source.path || ''
-        });
-      });
-      const poses = sceneEntries.map((entry, poseIndex) => ({
-        ...entry,
-        ligandIndex: poseIndex,
-        poseIndex,
-        poseCount: sceneEntries.length
-      }));
-      const activePose = readDockingPoseIndex(config, poses.length);
-      const allMode = activeSdfPoseMode === 'all';
-      return {
-        kind: 'docking',
-        dockingSceneMode: sceneMode,
-        label: config.label || 'Mol* scene',
-        activePose,
-        poseCount: poses.length,
-        ligandLabel: poses[activePose].label,
-        controlLabel: 'Structure',
-        receptorEntry,
-        poses,
-        entries: allMode ? sceneEntries : [poses[activePose]]
-      };
-    }
     const entries = [receptorEntry];
     let nativeTrajectoryPoseCount = 0;
     ligandSources.forEach((source, ligandIndex) => {
@@ -4402,7 +4369,8 @@
       entries.push({
         data,
         format,
-        label: source.label || `Ligand ${ligandIndex + 1}`
+        label: source.label || `Ligand ${ligandIndex + 1}`,
+        sourcePath: source.path || ''
       });
       poses.push({
         data,
@@ -4429,6 +4397,33 @@
         poses,
         entries,
         trajectoryPair
+      };
+    }
+    const sceneMode = dockingSceneMode(config);
+    if (sceneMode) {
+      const sceneEntries = entries.map((entry, entryIndex) => ({
+        ...entry,
+        label: entryIndex === 0 ? entry.label : (entry.label || `Structure ${entryIndex + 1}`)
+      }));
+      const scenePoses = sceneEntries.map((entry, poseIndex) => ({
+        ...entry,
+        ligandIndex: poseIndex,
+        poseIndex,
+        poseCount: sceneEntries.length
+      }));
+      const activePose = readDockingPoseIndex(config, scenePoses.length);
+      const allMode = activeSdfPoseMode === 'all';
+      return {
+        kind: 'docking',
+        dockingSceneMode: sceneMode,
+        label: config.label || 'Mol* scene',
+        activePose,
+        poseCount: scenePoses.length,
+        ligandLabel: scenePoses[activePose].label,
+        controlLabel: 'Structure',
+        receptorEntry,
+        poses: scenePoses,
+        entries: allMode ? sceneEntries : [scenePoses[activePose]]
       };
     }
     const activePose = readDockingPoseIndex(config, poses.length);
