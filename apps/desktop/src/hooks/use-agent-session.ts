@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { ViewerDocument } from "../types";
+import type { DockingSceneMode, ViewerDocument } from "../types";
 import type { OpenTextFilesResult } from "../types";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 import type { DockArea } from "../lib/dock";
@@ -13,6 +13,11 @@ const BROWSER_AGENT_SESSION_DIR = "__browser_agent_shell__";
 const isBrowserAgentShell = import.meta.env.VITE_BURRETE_AGENT_SHELL === "1";
 
 type OpenPaths = (paths: string[]) => void | Promise<void>;
+type OpenDockingView = (
+  receptorPath: string,
+  ligandPaths: string[],
+  options?: { activePose?: number | null; sceneMode?: DockingSceneMode | null },
+) => void | Promise<ViewerDocument | null> | ViewerDocument | null;
 type TabActionHandlers = {
   openNewTab: () => void;
   setActiveTab: (id: string) => void;
@@ -84,6 +89,7 @@ type UseAgentSessionArgs = {
   activeTabId: string | null;
   openTextDocuments: OpenTextDocuments;
   openPaths: OpenPaths;
+  openDockingView: OpenDockingView;
   tabActions: TabActionHandlers;
   pushErrorStatus: (error: unknown, prefix?: string) => void;
   setDockDocument: (area: DockArea, documentId: string | null) => void;
@@ -96,6 +102,7 @@ export function useAgentSession({
   activeTabId,
   openTextDocuments,
   openPaths,
+  openDockingView,
   tabActions,
   pushErrorStatus,
   setDockDocument,
@@ -106,6 +113,7 @@ export function useAgentSession({
   const tabsRef = useRef<MoleculeTab[]>(tabs);
   const activeTabIdRef = useRef<string | null>(activeTabId);
   const openPathsRef = useRef(openPaths);
+  const openDockingViewRef = useRef(openDockingView);
   const tabActionsRef = useRef(tabActions);
   const openTextDocumentsRef = useRef(openTextDocuments);
   const pushErrorStatusRef = useRef(pushErrorStatus);
@@ -124,11 +132,12 @@ export function useAgentSession({
 
   useEffect(() => {
     openPathsRef.current = openPaths;
+    openDockingViewRef.current = openDockingView;
     tabActionsRef.current = tabActions;
     openTextDocumentsRef.current = openTextDocuments;
     pushErrorStatusRef.current = pushErrorStatus;
     setDockDocumentRef.current = setDockDocument;
-  }, [openPaths, tabActions, openTextDocuments, pushErrorStatus, setDockDocument]);
+  }, [openPaths, openDockingView, tabActions, openTextDocuments, pushErrorStatus, setDockDocument]);
 
   const activateSession = useCallback((sessionDir: string | null | undefined) => {
     const cleanSessionDir = typeof sessionDir === "string" ? sessionDir.trim() : "";
@@ -221,6 +230,7 @@ export function useAgentSession({
       void pollAgentActions(
         sessionDir,
         openPathsRef.current,
+        openDockingViewRef.current,
         tabActionsRef.current,
         openTextDocumentsRef.current,
         setDockDocumentRef.current,
@@ -321,6 +331,7 @@ async function writeObserve(
 async function pollAgentActions(
   sessionDir: string,
   openPaths: OpenPaths,
+  openDockingView: OpenDockingView,
   tabActions: TabActionHandlers,
   openTextDocuments: OpenTextDocuments,
   setDockDocument: (area: DockArea, documentId: string | null) => void,
@@ -343,6 +354,7 @@ async function pollAgentActions(
   const result = await executeDesktopAgentAction(
     nextAction,
     openPaths,
+    openDockingView,
     tabActions,
     openTextDocuments,
     setDockDocument,
@@ -364,6 +376,7 @@ async function pollAgentActions(
 async function executeDesktopAgentAction(
   item: AgentActionItem,
   openPaths: OpenPaths,
+  openDockingView: OpenDockingView,
   tabActions: TabActionHandlers,
   openTextDocuments: OpenTextDocuments,
   setDockDocument: (area: DockArea, documentId: string | null) => void,
@@ -387,10 +400,44 @@ async function executeDesktopAgentAction(
   if (type === "manage_tabs") {
     return manageTabs(item.action, openPaths, tabActions, tabs, activeTabId, documents);
   }
+  if (type === "open_docking_view") {
+    return openAgentDockingView(item.action, openDockingView);
+  }
   if (type === "render_panel") {
     return renderPanel(item.action, openTextDocuments, setDockDocument, workspacePanels);
   }
   return postActionToActiveViewer(item, pendingViewerActions, activeDocument, viewerAgentStates);
+}
+
+async function openAgentDockingView(action: Record<string, unknown>, openDockingView: OpenDockingView) {
+  const receptorPath = typeof action.receptorPath === "string" ? action.receptorPath.trim() : "";
+  const ligandPaths = Array.isArray(action.ligandPaths)
+    ? action.ligandPaths.filter((path): path is string => typeof path === "string" && path.trim().length > 0)
+    : [];
+  if (!receptorPath) return agentFailure("open_docking_view", "INVALID_ARGS", "open_docking_view requires receptorPath.");
+  if (ligandPaths.length === 0) return agentFailure("open_docking_view", "INVALID_ARGS", "open_docking_view requires ligandPaths.");
+  const sceneMode = action.sceneMode === "structureAll" || action.sceneMode === "structurePoses"
+    ? action.sceneMode
+    : null;
+  const activePose = numericActionValue(action.activePose);
+  const document = await openDockingView(receptorPath, ligandPaths, {
+    activePose,
+    sceneMode,
+  });
+  if (!document) return agentFailure("open_docking_view", "OPEN_FAILED", "Docking view could not be opened.");
+  return {
+    ok: true,
+    command: "open_docking_view",
+    result: {
+      documentId: document.id,
+      title: document.title,
+      path: document.path,
+      receptorPath,
+      ligandPaths,
+      sceneMode,
+      activePose,
+    },
+  };
 }
 
 async function manageTabs(
