@@ -14,6 +14,7 @@ const [
   commandPaletteHook,
   appBootstrapHook,
   appResizeHook,
+  appSidebarProjectsHook,
   appStatusHook,
   tabsHook,
   sidebarHook,
@@ -132,6 +133,7 @@ const [
   source('apps/desktop/src/hooks/use-command-palette.ts'),
   source('apps/desktop/src/hooks/use-app-bootstrap.ts'),
   source('apps/desktop/src/hooks/use-app-resize.ts'),
+  source('apps/desktop/src/hooks/use-app-sidebar-projects.ts'),
   source('apps/desktop/src/hooks/use-app-status.ts'),
   source('apps/desktop/src/hooks/use-tabs.ts'),
   source('apps/desktop/src/hooks/use-sidebar.ts'),
@@ -741,9 +743,9 @@ assert.ok(app.includes('return folder ? folder.replace(/\\\\/g, "/").replace(/\\
 assert.match(app, /function browserDevHasExplicitWorkspace\(\)/);
 assert.match(app, /return params\.has\("devFiles"\) \|\| params\.has\("devFolder"\);/);
 assert.match(app, /const browserDevExplicitFolder = useMemo\(\(\) => browserDevFolderFromLocation\(\), \[\]\);/);
-assert.match(app, /if \(browserDevExplicitFolder\) return \[browserDevExplicitFolder\];/);
-assert.match(app, /const sidebarRecentStructures = browserDevExplicitFolder \? \[\] : recentStructures;/);
-assert.match(app, /recentStructures: sidebarRecentStructures,/);
+assert.match(appSidebarProjectsHook, /if \(browserDevExplicitFolder\) return \[browserDevExplicitFolder\];/);
+assert.match(appSidebarProjectsHook, /const sidebarRecentStructures = browserDevExplicitFolder \? \[\] : recentStructures;/);
+assert.match(appSidebarProjectsHook, /recentStructures: sidebarRecentStructures,/);
 assert.match(app, /return \[\];\s*}\s*function browserDevFolderFromLocation/);
 assert.match(app, /function splitDevFiles\(rawFiles: string\)/);
 assert.doesNotMatch(app, /fetch\("\/__burette\/dev-files", \{ cache: "no-store" \}\)/);
@@ -848,8 +850,9 @@ assert.match(app, /void openPaths\(paths\)\.then\(\(\) => \{/);
 assert.equal((app.match(/useOpenEvents\(/g) || []).length, 1);
 assert.match(app, /useOpenEvents\(openPaths, pushErrorStatus\)/);
 assert.doesNotMatch(app, /isTauriRuntime\(\) && !startupOpenSettled/);
-assert.match(app, /buildSidebarProjects/);
-assert.match(app, /buildSidebarProjects\(\{\s*documents,\s*recentStructures: sidebarRecentStructures,/);
+assert.match(app, /useAppSidebarProjects/);
+assert.match(appSidebarProjectsHook, /buildSidebarProjects/);
+assert.match(appSidebarProjectsHook, /buildSidebarProjects\(\{\s*documents,\s*recentStructures: sidebarRecentStructures,/);
 assert.doesNotMatch(app, /recentStructures:\s*documents\.length === 0 \? recentStructures : \[\]/);
 assert.match(app, /from "\.\/lib\/temporary-documents"/);
 assert.match(app, /!isTemporaryDocumentPath\(activeTab\.location\.path\)/);
@@ -859,7 +862,11 @@ assert.match(app, /pinnedProjectRoots,/);
 assert.match(app, /projectNameOverrides,/);
 assert.match(app, /hiddenProjectRoots,/);
 assert.match(app, /sidebarProjects/);
-assert.match(app, /!import\.meta\.env\.DEV \|\| isTauriRuntime\(\) \|\| browserDevHasExplicitWorkspace\(\)/);
+assert.match(appSidebarProjectsHook, /!import\.meta\.env\.DEV \|\| isTauriRuntime\(\) \|\| browserDevHasExplicitWorkspace/);
+assert.match(appSidebarProjectsHook, /list_project_structure_files/);
+assert.match(appSidebarProjectsHook, /prunedPersistedPathsRef/);
+assert.match(appSidebarProjectsHook, /pruneSidebarPaths\(existingPaths\)/);
+assert.match(appSidebarProjectsHook, /pruneRecentStructures\(existingPaths\)/);
 assert.match(app, /const workspace = browserDevExplicitFolder \?\? \(paths\[0\] \? parentDirectory\(paths\[0\]\) : null\);/);
 assert.match(app, /!isTauriRuntime\(\) \|\| documents\.length === 0/);
 assert.match(app, /void openPaths\(paths\)\.then\(\(\) => \{/);
