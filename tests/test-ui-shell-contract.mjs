@@ -12,6 +12,7 @@ const [
   app,
   uiStore,
   commandPaletteHook,
+  appFileActionsHook,
   appBootstrapHook,
   appMaintenanceHook,
   appQuickLookHook,
@@ -134,6 +135,7 @@ const [
   source('apps/desktop/src/App.tsx'),
   source('apps/desktop/src/stores/ui-store.ts'),
   source('apps/desktop/src/hooks/use-command-palette.ts'),
+  source('apps/desktop/src/hooks/use-app-file-actions.ts'),
   source('apps/desktop/src/hooks/use-app-bootstrap.ts'),
   source('apps/desktop/src/hooks/use-app-maintenance.ts'),
   source('apps/desktop/src/hooks/use-app-quick-look.ts'),
@@ -4265,9 +4267,10 @@ assert.match(editorTabs, /id: "reveal-tab-text-file"/);
 assert.match(editorTabs, /id: "copy-tab-text-file-path"/);
 assert.match(editorTabs, /id: "show-tab-text-file-metadata"/);
 assert.match(windowTitle, /activeDocument\.path/);
-assert.match(app, /invoke\("reveal_path"/);
-assert.match(app, /const copyPath = useCallback/);
-assert.match(app, /await writeClipboardText\(path\)/);
+assert.match(app, /useAppFileActions\(\{/);
+assert.match(appFileActionsHook, /invoke\("reveal_path"/);
+assert.match(appFileActionsHook, /const copyPath = useCallback/);
+assert.match(appFileActionsHook, /await writeClipboardText\(path\)/);
 assert.match(app, /invoke<string>\("read_external_preview_svg"/);
 assert.match(app, /invoke<string>\("write_text_file"/);
 assert.match(app, /invoke<string>\("write_base64_file"/);
