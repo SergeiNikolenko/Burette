@@ -18,6 +18,7 @@ import {
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
 import { useAppBootstrap } from "./hooks/use-app-bootstrap";
 import { useAppResize } from "./hooks/use-app-resize";
+import { useAppSidebarProjects } from "./hooks/use-app-sidebar-projects";
 import { useAppStatus } from "./hooks/use-app-status";
 import { useAgentSession } from "./hooks/use-agent-session";
 import { useMenuEvents } from "./hooks/use-menu-events";
@@ -72,7 +73,7 @@ import { canInspectConformerEnsemble, canUseConformerWorkflow } from "./lib/conf
 import type { DockArea, DockTabKind } from "./lib/dock";
 import type { DropActionChoice } from "./lib/drop-actions";
 import { collectPerformanceMarks, markPerformanceOnce, measureAsync } from "./lib/performance";
-import { basename, buildSidebarProjects, parentDirectory, type SidebarProjectStructure } from "./lib/sidebar-projects";
+import { basename, parentDirectory } from "./lib/sidebar-projects";
 import { parseStructureComposition } from "./lib/structure-composition";
 import type { StructureDragPayload, StructureDragRecord } from "./lib/structure-drag";
 import { readStructureText } from "./lib/structure-text";
@@ -107,11 +108,6 @@ const structureExtensions = new Set(previewFormatRegistry.formats
   .filter((format) => format.preview?.strategy !== "text")
   .flatMap((format) => format.extensions)
   .map((extension) => extension.toLowerCase()));
-const browserDevSampleFiles = [
-  { title: "ketcher-2d-benzene.sdf", extension: "sdf", byteCount: 579 },
-  { title: "ketcher-3d-core.sdf", extension: "sdf", byteCount: 409 },
-  { title: "nad-2d.sdf", extension: "sdf", byteCount: 3813 },
-] as const;
 const preferredTextExtensions = new Set([
   "md",
   "markdown",
@@ -621,8 +617,6 @@ export default function App() {
   const [xtbStatus, setXtbStatus] = useState<XtbStatus | null>(null);
   const [xtbSettings, setXtbSettingsState] = useState<XtbSettings>(() => readXtbSettings());
   const [xtbJobs, setXtbJobs] = useState<XtbJob[]>([]);
-  const [workspacePath, setWorkspacePath] = useState<string | null>(null);
-  const [projectStructures, setProjectStructures] = useState<SidebarProjectStructure[]>([]);
   const [update, setUpdate] = useState<UpdateState>(() => ({
     preferences: loadUpdatePreferences(),
     isChecking: false,
@@ -634,7 +628,6 @@ export default function App() {
   const openedBrowserDevFilesRef = useRef<string | null>(null);
   const openedBrowserDevQuickLookRef = useRef<string | null>(null);
   const openedBrowserDevDockingRef = useRef<string | null>(null);
-  const prunedPersistedPathsRef = useRef(false);
   const refreshedPersistedSessionRef = useRef(false);
   const openedPersistedTabsRef = useRef(false);
   const syncingBrowserDevFilesRef = useRef(false);
@@ -1193,84 +1186,33 @@ export default function App() {
   }, [openCommandPalette]);
 
   const browserDevExplicitFolder = useMemo(() => browserDevFolderFromLocation(), []);
-  const browserDevSampleRoot = useMemo(() => browserDevSampleProjectRoot(), []);
-  const sidebarProjectRoots = useMemo(() => {
-    if (browserDevExplicitFolder) return [browserDevExplicitFolder];
-    return browserDevSampleRoot && !projectRoots.includes(browserDevSampleRoot)
-      ? [...projectRoots, browserDevSampleRoot]
-      : projectRoots;
-  }, [browserDevExplicitFolder, browserDevSampleRoot, projectRoots]);
-  const sidebarProjectStructures = useMemo(() => {
-    const samples = browserDevSampleProjectStructures();
-    return samples.length > 0 ? [...projectStructures, ...samples] : projectStructures;
-  }, [projectStructures]);
-  const sidebarRecentStructures = browserDevExplicitFolder ? [] : recentStructures;
-
-  const allSidebarProjects = useMemo(() => buildSidebarProjects({
-    documents,
-    recentStructures: sidebarRecentStructures,
-    projectRoots: sidebarProjectRoots,
-    projectStructures: sidebarProjectStructures,
-    pinnedProjectRoots,
-    projectNameOverrides,
+  const browserDevHasExplicitWorkspaceQuery = useMemo(() => browserDevHasExplicitWorkspace(), []);
+  const {
+    activeProject,
+    setWorkspacePath,
+    sidebarProjects,
+    workspacePath,
+  } = useAppSidebarProjects({
     activeDocumentId: activeDocument?.id ?? null,
+    browserDevExplicitFolder,
+    browserDevHasExplicitWorkspace: browserDevHasExplicitWorkspaceQuery,
+    documents,
     hiddenProjectRoots,
+    pinnedProjectRoots,
     pinnedStructurePaths,
-  }), [activeDocument?.id, documents, hiddenProjectRoots, pinnedProjectRoots, pinnedStructurePaths, projectNameOverrides, sidebarProjectRoots, sidebarProjectStructures, sidebarRecentStructures]);
-
-  useEffect(() => {
-    if (!isTauriRuntime() || projectRoots.length === 0) {
-      setProjectStructures([]);
-      return undefined;
-    }
-    let cancelled = false;
-    void invoke<SidebarProjectStructure[]>("list_project_structure_files", { paths: projectRoots })
-      .then((files) => {
-        if (!cancelled) setProjectStructures(files);
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        setProjectStructures([]);
-        pushErrorStatus(error, "Project file scan failed");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [projectRoots, pushErrorStatus]);
-
-  useEffect(() => {
-    if (prunedPersistedPathsRef.current || !isTauriRuntime()) return;
-    const paths = Array.from(new Set([
-      ...projectRoots,
-      ...pinnedProjectRoots,
-      ...pinnedStructurePaths,
-      ...recentStructures.map((structure) => structure.path),
-    ].filter(Boolean)));
-    if (paths.length === 0) return;
-    prunedPersistedPathsRef.current = true;
-    let cancelled = false;
-    void invoke<string[]>("existing_paths", { paths })
-      .then((existingPaths) => {
-        if (cancelled) return;
-        pruneSidebarPaths(existingPaths);
-        pruneRecentStructures(existingPaths);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [pinnedProjectRoots, pinnedStructurePaths, projectRoots, pruneRecentStructures, pruneSidebarPaths, recentStructures]);
+    projectNameOverrides,
+    projectRoots,
+    pruneRecentStructures,
+    pruneSidebarPaths,
+    pushErrorStatus,
+    recentStructures,
+  });
 
   const activeTextDocument = useMemo(() => {
     const location = activeTab?.location;
     if (location?.kind !== "text-file") return null;
     return textDocuments.find((document) => document.id === location.documentId || document.path === location.path) ?? null;
   }, [activeTab?.location, textDocuments]);
-
-  const activeProject = useMemo(
-    () => allSidebarProjects.find((project) => project.isActive) ?? null,
-    [allSidebarProjects],
-  );
 
   const openDelimitedGridDocument = useCallback(
     async (
@@ -4736,7 +4678,7 @@ export default function App() {
     quickLookStandalone: Boolean(browserDevQuickLookPath),
     visibleDocuments: documents,
     recentStructures,
-    sidebarProjects: allSidebarProjects,
+    sidebarProjects,
     projectsOpen,
     expandedProjectIds,
     pinnedStructurePaths,
@@ -5564,25 +5506,6 @@ function ketcherSource3DFromText(title: string, text: string, extension: string)
     extension: cleanExtension,
     text: cleanText,
   };
-}
-
-function browserDevSampleProjectRoot() {
-  if (!import.meta.env.DEV || isTauriRuntime() || browserDevHasExplicitWorkspace()) return null;
-  const repoRoot = String(import.meta.env.BURRETE_REPO_ROOT || "").trim().replace(/\/+$/u, "");
-  return repoRoot ? `${repoRoot}/samples` : null;
-}
-
-function browserDevSampleProjectStructures(): SidebarProjectStructure[] {
-  const sampleRoot = browserDevSampleProjectRoot();
-  if (!sampleRoot) return [];
-  return browserDevSampleFiles.map((file) => ({
-    path: `${sampleRoot}/${file.title}`,
-    title: file.title,
-    extension: file.extension,
-    renderer: "molstar",
-    byteCount: file.byteCount,
-    openedAt: null,
-  }));
 }
 
 function ketcherDraftMolfileFromImportText(text: string) {
