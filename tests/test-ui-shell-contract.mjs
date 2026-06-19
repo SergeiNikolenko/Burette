@@ -15,6 +15,7 @@ const [
   appBootstrapHook,
   appResizeHook,
   appSidebarProjectsHook,
+  appUpdatesHook,
   appStatusHook,
   tabsHook,
   sidebarHook,
@@ -134,6 +135,7 @@ const [
   source('apps/desktop/src/hooks/use-app-bootstrap.ts'),
   source('apps/desktop/src/hooks/use-app-resize.ts'),
   source('apps/desktop/src/hooks/use-app-sidebar-projects.ts'),
+  source('apps/desktop/src/hooks/use-app-updates.ts'),
   source('apps/desktop/src/hooks/use-app-status.ts'),
   source('apps/desktop/src/hooks/use-tabs.ts'),
   source('apps/desktop/src/hooks/use-sidebar.ts'),
@@ -819,7 +821,8 @@ assert.match(bootOverlayScript, /document\.getElementById\(styleId\)/);
 assert.doesNotMatch(bootOverlayScript, /\bimport\b/);
 assert.doesNotThrow(() => new Function(bootOverlayScript));
 assert.match(packageJson, /scripts\/bundle-report\.mjs/);
-assert.match(app, /const \{ buildInfo, buildInfoLoaded \} = useAppBootstrap\(setUpdate\)/);
+assert.match(app, /useAppUpdates\(\{ pushErrorStatus, pushStatus \}\)/);
+assert.match(appUpdatesHook, /const \{ buildInfo, buildInfoLoaded \} = useAppBootstrap\(setUpdate\)/);
 assert.match(appBootstrapHook, /window\.__BURRETE_BOOT_OVERLAY__\?\.markMounted\(\);[\s\S]*?markPerformanceOnce\("app:shell-visible"\);/);
 assert.match(appBootstrapHook, /void loadBuildInfo\(\)\.then\(\(info\) => \{/);
 assert.match(appBootstrapHook, /setBuildInfo\(info\);/);
@@ -4392,14 +4395,14 @@ assert.match(updateSource, /const installExtensions = \["\.zip"\]/);
 assert.doesNotMatch(updateSource, /"\.dmg"|"\.pkg"/);
 assert.match(updateSource, /sha256AssetFor\(assets, asset\.name!\)/);
 assert.match(updateSource, /sha256AssetName: selected\.digest\.name!/);
-assert.match(app, /sha256BrowserDownloadUrl: release\.installAsset\.sha256BrowserDownloadUrl/);
+assert.match(appUpdatesHook, /sha256BrowserDownloadUrl: release\.installAsset\.sha256BrowserDownloadUrl/);
 assert.match(updateSource, /manifestAssetFor\(assets, asset\.name!\)/);
 assert.match(updateSource, /manifestSignatureAssetFor\(assets, asset\.name!\)/);
-assert.match(app, /manifestSignatureBrowserDownloadUrl: release\.installAsset\.manifestSignatureBrowserDownloadUrl/);
+assert.match(appUpdatesHook, /manifestSignatureBrowserDownloadUrl: release\.installAsset\.manifestSignatureBrowserDownloadUrl/);
 assert.match(appBootstrapHook, /const \[buildInfoLoaded, setBuildInfoLoaded\] = useState\(false\)/);
-assert.match(app, /if \(!buildInfoLoaded\) \{\s*if \(!automatic\) pushStatus\("Update checks are not ready yet\."\);\s*return;\s*\}\s*if \(buildInfo\.isDevBuild\) \{/s);
+assert.match(appUpdatesHook, /if \(!buildInfoLoaded\) \{\s*if \(!automatic\) pushStatus\("Update checks are not ready yet\."\);\s*return;\s*\}\s*if \(buildInfo\.isDevBuild\) \{/s);
 assert.match(appBootstrapHook, /statusText: "Updates are disabled for dev builds\."/);
-assert.match(app, /if \(!buildInfoLoaded \|\| buildInfo\.isDevBuild\) return undefined;\s*const loadedPreferences = loadUpdatePreferences\(\);/s);
+assert.match(appUpdatesHook, /if \(!buildInfoLoaded \|\| buildInfo\.isDevBuild\) return undefined;\s*const loadedPreferences = loadUpdatePreferences\(\);/s);
 assert.match(browserDevDocuments, /documentId: documentId \?\? stableId\(path\)/);
 assert.match(browserDevDocuments, /const html = await gridHtml\(path, id, grid\.records, grid\.format, preferences, bytes\.length\)/);
 assert.match(browserDevDocuments, /browserDevVirtualTextDocuments\.set\(path, merged\.text\)/);
