@@ -72,6 +72,12 @@ export type StructureViewerAction =
       opacity: number;
     }
   | {
+      type: "set_sdf_context_color";
+      label: string;
+      notify?: boolean;
+      color: "gray" | "colored";
+    }
+  | {
       type: "set_sdf_pose_mode";
       label: string;
       notify?: boolean;
