@@ -66,12 +66,13 @@ registration, cancellation, and cleanup stay auditable.
 
 Current Stage 2 progress:
 
-- file discovery and file content route registration lives in
-  `apps/desktop/vite/browser-dev/files.ts`;
-- RDKit wasm and app icon route registration lives in
-  `apps/desktop/vite/browser-dev/assets.ts`;
-- shared file-system helpers stay in `vite.config.ts` until the remaining
-  xTB, conformer, Desmond, and xyzrender routes are split.
+- browser-dev route registration has been split out of `vite.config.ts` by
+  endpoint group under `apps/desktop/vite/browser-dev/`;
+- file discovery/content, assets, Desmond, xyzrender, descriptors, MSBuddy,
+  inline conformer generation, conformer job lifecycle, xTB job lifecycle, and
+  agent-session endpoints now live in dedicated modules;
+- `vite.config.ts` is now the composition point for these route modules instead
+  of the owner of the endpoint bodies.
 
 ## Stage 3: App Composition Refactor
 
@@ -85,6 +86,20 @@ Move `App.tsx` logic in dependency order:
 6. viewer/grid message bus as the final high-risk extraction.
 
 Keep `ShellActions` stable while internal slices are introduced.
+
+Current Stage 3 progress:
+
+- app status, bootstrap, resize, sidebar project derivation, update actions,
+  Quick Look startup, maintenance actions, file/path actions, descriptor
+  workflows, dirty-grid state, diagnostics export, and clipboard opening now
+  live in dedicated hooks;
+- chemistry settings, chemistry job request wrappers, direct chemistry job
+  guards, and conformer-generation text helpers now live under
+  `apps/desktop/src/lib/`;
+- `App.tsx` still owns document opening, Ketcher orchestration, xTB/conformer
+  controller state, Mol* in-place replacement, and the viewer/grid message bus.
+  These are the remaining high-risk slices and should move only after each
+  boundary has contract coverage for the exact message/action names.
 
 ## Verification Discipline
 
