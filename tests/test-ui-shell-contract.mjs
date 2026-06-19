@@ -3978,6 +3978,7 @@ assert.match(previewViewer, /if \(resolvedContextStyle === 'molecular-surface'\)
 assert.match(previewViewer, /xyzFramesCombinedEntry\(frames, backgroundIndexes,/);
 assert.match(previewViewer, /function xyzFrameBackgroundStyle\(contextStyle, foregroundStyle\)/);
 assert.match(previewViewer, /if \(contextStyle !== 'match'\) return normalizeMolstarStyle\(contextStyle\)/);
+assert.match(previewViewer, /function xyzFrameBackgroundStyle\(contextStyle, foregroundStyle\) \{\s*if \(contextStyle !== 'match'\) return normalizeMolstarStyle\(contextStyle\);\s*return normalizeMolstarStyle\(foregroundStyle\);\s*\}/s);
 assert.doesNotMatch(previewViewer, /if \(activeSdfPoseMode !== 'all'\) setSdfPoseMode\('all'\)/);
 assert.match(previewViewer, /if \(!scopedActiveStructures\.length\) throw new Error\('Mol\* did not expose the active XYZ frame structure\.'\)/);
 assert.match(previewViewer, /await applyXyzFrameOverlayVisibility\(activeViewer, prepared, activePose, \{ contextStyle: style \}\)/);
@@ -4054,7 +4055,7 @@ assert.match(previewViewer, /if \(contextStructures\.length\) \{\s*await applySd
 assert.match(previewViewer, /await loadMolstarEntry\(viewer, activeEntry\);\s*await applyMolstarIllustrativePostprocessing\(viewer\);/s);
 assert.match(previewViewer, /function dockingSceneBackgroundStyle\(contextStyle, foregroundStyle\)/);
 assert.match(previewViewer, /if \(contextStyle !== 'match'\) return normalizeMolstarStyle\(contextStyle\)/);
-assert.match(previewViewer, /if \(resolved === 'cartoon' \|\| resolved === 'spacefill' \|\| resolved === 'molecular-surface' \|\| resolved === 'illustrative' \|\| resolved === 'polymer-ligand'\) return 'line'/);
+assert.match(previewViewer, /function dockingSceneBackgroundStyle\(contextStyle, foregroundStyle\) \{\s*if \(contextStyle !== 'match'\) return normalizeMolstarStyle\(contextStyle\);\s*return normalizeMolstarStyle\(foregroundStyle\);\s*\}/s);
 assert.match(previewViewer, /updateStructureOverlayToggleButton\(document\.querySelector\('\[data-buret-action="structure-overlay-toggle"\]'\), prepared\);\s*return;/);
 assert.match(previewViewer, /await loadMolstarEntry\(viewer, activeEntry\);\s*await applyMolstarStyle\(viewer, style\)/);
 assert.match(previewViewer, /function sdfCollectionRepresentationForStyle\(style, alpha = 1, colorMode = 'gray'\)/);

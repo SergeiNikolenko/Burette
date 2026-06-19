@@ -6250,9 +6250,7 @@
 
   function xyzFrameBackgroundStyle(contextStyle, foregroundStyle) {
     if (contextStyle !== 'match') return normalizeMolstarStyle(contextStyle);
-    const resolved = normalizeMolstarStyle(foregroundStyle);
-    if (resolved === 'spacefill' || resolved === 'molecular-surface' || resolved === 'illustrative') return 'line';
-    return resolved;
+    return normalizeMolstarStyle(foregroundStyle);
   }
 
   async function applyDockingSceneVisibility(viewer, prepared, activePose = 0) {
@@ -6300,9 +6298,7 @@
 
   function dockingSceneBackgroundStyle(contextStyle, foregroundStyle) {
     if (contextStyle !== 'match') return normalizeMolstarStyle(contextStyle);
-    const resolved = normalizeMolstarStyle(foregroundStyle);
-    if (resolved === 'cartoon' || resolved === 'spacefill' || resolved === 'molecular-surface' || resolved === 'illustrative' || resolved === 'polymer-ligand') return 'line';
-    return resolved;
+    return normalizeMolstarStyle(foregroundStyle);
   }
 
   async function loadSdfCollectionPdbLayer(viewer, data, label) {
