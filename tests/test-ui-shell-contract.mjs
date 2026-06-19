@@ -4153,8 +4153,7 @@ assert.match(previewRuntimeCss, /\.buret-docking-pose-speed \{[\s\S]*width: 44px
 assert.match(previewRuntimeCss, /\.buret-docking-pose-speed\.buret-docking-pose-speed-skip \{[\s\S]*#f59e0b/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-speed::-webkit-inner-spin-button,\s*\.buret-docking-pose-speed::-webkit-outer-spin-button \{[\s\S]*-webkit-appearance: none;/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-slider \{[\s\S]*flex: 0 0 110px;/);
-assert.match(previewViewer, /mainRow\.append\(animation, previous, label, next, slider\)/);
-assert.match(previewViewer, /animationRow\.append\(speed, loop\)/);
+assert.match(previewViewer, /animationRow\.append\(speed, loop, slider\)/);
 assert.match(previewViewer, /root\.style\.top = clampedTop \+ 'px'/);
 assert.match(previewViewer, /root\.style\.bottom = 'auto'/);
 assert.match(previewViewer, /if \(saved\.mode === 'custom' && Number\.isFinite\(saved\.left\) && Number\.isFinite\(saved\.top\)\) \{/);
