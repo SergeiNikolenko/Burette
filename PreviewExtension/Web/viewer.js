@@ -6494,7 +6494,7 @@
                 scale: 1,
                 color: 0x000000,
                 threshold: 0.33,
-                includeTransparent: true
+                includeTransparent: false
               }
         },
         occlusion: {
