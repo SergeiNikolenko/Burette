@@ -13,6 +13,7 @@ const [
   uiStore,
   commandPaletteHook,
   appBootstrapHook,
+  appQuickLookHook,
   appResizeHook,
   appSidebarProjectsHook,
   appUpdatesHook,
@@ -133,6 +134,7 @@ const [
   source('apps/desktop/src/stores/ui-store.ts'),
   source('apps/desktop/src/hooks/use-command-palette.ts'),
   source('apps/desktop/src/hooks/use-app-bootstrap.ts'),
+  source('apps/desktop/src/hooks/use-app-quick-look.ts'),
   source('apps/desktop/src/hooks/use-app-resize.ts'),
   source('apps/desktop/src/hooks/use-app-sidebar-projects.ts'),
   source('apps/desktop/src/hooks/use-app-updates.ts'),
@@ -842,6 +844,11 @@ assert.match(appStatusHook, /const pushErrorStatus = useCallback/);
 assert.match(appStatusHook, /recentErrorsRef\.current = recentErrorsRef\.current\.slice\(-20\)/);
 assert.match(appStatusHook, /window\.setTimeout/);
 assert.match(appStatusHook, /current\?\.id === status\.id \? null : current/);
+assert.match(app, /const openQuickLookDocument = useCallback/);
+assert.match(app, /useAppQuickLook\(\{\s*browserDevQuickLookPath,\s*openQuickLookDocument,\s*pushErrorStatus,/s);
+assert.match(appQuickLookHook, /openedBrowserDevQuickLookRef/);
+assert.match(appQuickLookHook, /Open Quick Look debug file failed/);
+assert.match(appQuickLookHook, /url\.searchParams\.delete\("quickLookFile"\)/);
 assert.doesNotMatch(app, /setCommandPaletteOpen/);
 assert.doesNotMatch(app, /useState\(false\).*commandPalette/i);
 assert.match(app, /refreshedPersistedSessionRef/);
