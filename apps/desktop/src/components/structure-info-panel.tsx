@@ -3,6 +3,7 @@ import { showNativeContextMenu } from "./native-context-menu";
 import { formatBytes } from "./format";
 import { RangeControl, SelectControl, ToggleControl } from "./settings-panel/setting-control";
 import { ShortcutTooltip } from "./shortcut-tooltip";
+import { FoldingResultsPanel, useFoldingResult } from "./folding-results-panel";
 import type { MenuItemSpec } from "./menu-types";
 import type { ShellActions, ShellViewState, StructureViewerAction } from "./types";
 import { structureBriefForDocument, type StructureBriefRow as BriefRow } from "../lib/structure-brief";
@@ -53,6 +54,7 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
   const [xtbSettingsOpen, setXtbSettingsOpen] = useState(false);
   const [xtbSettingsScope, setXtbSettingsScope] = useState<XtbSettingsScope>("general");
   const [conformerOpen, setConformerOpen] = useState(true);
+  const foldingResult = useFoldingResult(document);
 
   useEffect(() => {
     setActiveActionKey(null);
@@ -182,6 +184,8 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
           )}
         </section>
       ) : null}
+
+      <FoldingResultsPanel state={foldingResult} actions={actions} />
 
       <ConformerWorkflowCard
         document={document}
