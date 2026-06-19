@@ -127,6 +127,12 @@ function normalizeBottomDockHeight(height: number) {
   return Math.max(180, Math.min(720, Math.round(height)));
 }
 
+function isAgentShellUrl() {
+  if (typeof window === "undefined") return false;
+  const params = new URLSearchParams(window.location.search);
+  return params.has("devFiles") || params.has("devDocking");
+}
+
 function dockTabState(area: DockArea, state: ShellState) {
   return area === "right"
     ? { tabs: state.rightDockTabs, activeTab: state.rightDockActiveTab }
@@ -397,7 +403,7 @@ export const useShellStore = create<ShellState>()(
           .filter((root) => !projectRoots.includes(root));
         return {
           ...current,
-          sidebarOpen: stored?.sidebarOpen ?? current.sidebarOpen,
+          sidebarOpen: isAgentShellUrl() ? false : stored?.sidebarOpen ?? current.sidebarOpen,
           sidebarWidth: normalizeSidebarWidth(stored?.sidebarWidth ?? current.sidebarWidth),
           rightDockOpen,
           rightDockWidth: normalizeRightDockWidth(stored?.rightDockWidth ?? current.rightDockWidth),

@@ -6028,6 +6028,26 @@ img.radix-menu-item-icon {
 }
 .agent-status-row + .agent-status-row { border-top: 1px solid var(--line-subtler); }
 .agent-status-copy { min-width: 0; flex: 1; }
+.agent-install-row {
+  min-height: 64px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+}
+.agent-install-row + .agent-install-row { border-top: 1px solid var(--line-subtler); }
+.agent-install-step {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-input);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
 .agent-status-badge {
   flex: 0 0 auto;
   min-width: 72px;
@@ -6377,6 +6397,7 @@ img.settings-open-destination-icon {
   .agent-integration-header { display: grid; gap: 16px; }
   .agent-integration-actions { justify-content: flex-start; }
   .agent-status-row { display: grid; gap: 10px; }
+  .agent-install-row { display: grid; grid-template-columns: 24px minmax(0, 1fr); }
   .agent-status-badge { justify-self: start; }
   .keyboard-shortcuts-search,
   .keyboard-shortcuts-card { margin-left: 0; margin-right: 0; }

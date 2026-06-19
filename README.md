@@ -91,6 +91,53 @@ After installation:
 bunx burrete doctor
 ```
 
+## Codex Plugin
+
+Burrete ships with a local Codex plugin in `plugins/burette-agent/`. It teaches
+Codex how to open molecular files in Burrete, inspect the active workspace as
+structured data, run allowlisted Mol* scene actions, manage Burrete tabs, extract
+chains or ligands into separate tabs, and render adjacent molecular reports or
+review widgets.
+
+Install or update the plugin from the bundled directory:
+
+```text
+plugins/burette-agent
+```
+
+The easiest path is through the app:
+
+1. Open Burrete.
+2. Go to Settings -> Integrations -> Burrete.
+3. Copy the bundle path from the Codex plugin panel.
+4. In Codex, install or update the local plugin `burrete` from that path.
+5. Return to the panel and refresh to verify the installed version, skills, and
+   MCP registration.
+
+You can also install or update it with the Burrete CLI:
+
+```bash
+bunx burrete plugin install
+bunx burrete plugin status
+```
+
+From a source checkout, pass the local bundle explicitly when the app is not
+installed yet:
+
+```bash
+bunx burrete plugin install --path plugins/burette-agent
+```
+
+Or use this prompt in Codex:
+
+```text
+Install or update the local Codex plugin @Burrete (id `burrete`) from
+plugins/burette-agent.
+```
+
+See [plugins/burette-agent/README.md](plugins/burette-agent/README.md) for the
+plugin capability list, prerequisites, structure, and verification commands.
+
 ## Supported Files
 
 Burrete supports several preview paths. Some formats open directly in Mol*,

@@ -5,6 +5,8 @@ import { z } from "zod";
 
 import { runBurreteAgent } from "../../lib/cli-bridge.mjs";
 import { pluginPath } from "../../lib/plugin-root.mjs";
+import { componentSelector, extractStructureComponentFile } from "../../lib/structure-components.mjs";
+import { summarizeStructureFile } from "../../lib/structure-summary.mjs";
 import { registerWidgetResource, toolText, widgetHtml } from "../../lib/widget-resource.mjs";
 
 const WIDGET_URI = "ui://widget/burette-agent/molecular-workspace-20260607.html";
@@ -55,7 +57,59 @@ export function registerMolecularWorkspace(server) {
       if (input.noLaunch) args.push("--no-launch");
       args.push(input.file);
       const result = await runBurreteAgent(args, { timeoutMs: 45000 });
-      return cliToolResult("open_burrete_workspace", result);
+      const structureSummary = await safeStructureSummary(input.file);
+      return cliToolResult("open_burrete_workspace", result, { structureSummary });
+    },
+  );
+
+  registerAppTool(
+    server,
+    "summarize_burrete_structure",
+    {
+      title: "Summarize Burrete Structure",
+      description: "Read a local molecular file, or the active Burrete workspace document, and return an Info-panel-style structured summary for agent planning.",
+      inputSchema: {
+        file: z.string().trim().optional(),
+        url: z.string().trim().optional(),
+        sessionDir: z.string().trim().optional(),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: {
+        ui: {
+          visibility: ["model"],
+        },
+      },
+    },
+    async input => {
+      const resolved = await resolveStructureSummaryTarget(input);
+      if (!resolved.ok) {
+        return {
+          content: toolText(`summarize_burrete_structure failed: ${resolved.error.message}`),
+          structuredContent: {
+            ok: false,
+            tool: "summarize_burrete_structure",
+            summary: null,
+            observe: resolved.observe || null,
+            error: resolved.error,
+          },
+        };
+      }
+      const summary = await summarizeStructureFile(resolved.file);
+      return {
+        content: toolText(`summarize_burrete_structure completed: ${summary.summaryLine}`),
+        structuredContent: {
+          ok: true,
+          tool: "summarize_burrete_structure",
+          summary,
+          observe: resolved.observe || null,
+          error: null,
+        },
+      };
     },
   );
 
@@ -106,6 +160,202 @@ export function registerMolecularWorkspace(server) {
           },
         },
       };
+    },
+  );
+
+  registerAppTool(
+    server,
+    "manage_burrete_tabs",
+    {
+      title: "Manage Burrete Tabs",
+      description: "List, focus, open, close, and move tabs inside the active Burrete Browser shell or desktop workspace.",
+      inputSchema: {
+        operation: z.enum(["list", "focus", "next", "previous", "open_file", "new", "close", "move"]),
+        url: z.string().trim().optional(),
+        sessionDir: z.string().trim().optional(),
+        tabId: z.string().trim().optional(),
+        index: z.number().int().min(0).optional(),
+        path: z.string().trim().optional(),
+        title: z.string().trim().optional(),
+        toIndex: z.number().int().min(0).optional(),
+        waitMs: z.number().int().min(0).max(60000).optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      _meta: {
+        ui: {
+          visibility: ["model"],
+        },
+      },
+    },
+    async input => {
+      if (input.operation === "list") {
+        const args = ["observe"];
+        if (input.url) args.push("--url", input.url);
+        if (input.sessionDir) args.push("--session-dir", input.sessionDir);
+        const result = await runBurreteAgent(args);
+        return cliToolResult("manage_burrete_tabs", result, {
+          tabs: result.payload?.result?.tabs || [],
+          activeTabId: result.payload?.result?.activeTabId || null,
+        });
+      }
+
+      const action = {
+        type: "manage_tabs",
+        operation: input.operation,
+        tabId: input.tabId,
+        index: input.index,
+        path: input.path,
+        title: input.title,
+        toIndex: input.toIndex,
+      };
+      const args = ["act"];
+      if (input.url) args.push("--url", input.url);
+      if (input.sessionDir) args.push("--session-dir", input.sessionDir);
+      args.push(JSON.stringify(action));
+      const waitMs = input.waitMs ?? 12000;
+      args.push("--wait-ms", String(waitMs));
+      const result = await runBurreteAgent(args, { timeoutMs: Math.max(30000, waitMs + 5000) });
+      return cliToolResult("manage_burrete_tabs", result);
+    },
+  );
+
+  registerAppTool(
+    server,
+    "manage_burrete_structure_component",
+    {
+      title: "Manage Burrete Structure Component",
+      description: "Select, focus, hide, show, clear, or open a chain/ligand/water/ion/polymer/element from the active Burrete structure as its own tab.",
+      inputSchema: {
+        operation: z.enum(["select", "focus", "hide", "show", "clear", "open_as_tab"]),
+        component: z.enum(["polymer", "ligand", "water", "ion", "chain", "element"]).optional(),
+        file: z.string().trim().optional(),
+        url: z.string().trim().optional(),
+        sessionDir: z.string().trim().optional(),
+        chain: z.string().trim().optional(),
+        compId: z.string().trim().optional(),
+        seq: z.union([z.string().trim(), z.number().int()]).optional(),
+        element: z.string().trim().optional(),
+        title: z.string().trim().optional(),
+        waitMs: z.number().int().min(0).max(60000).optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      _meta: {
+        ui: {
+          visibility: ["model"],
+        },
+      },
+    },
+    async input => {
+      const resolved = await resolveStructureComponentTarget(input);
+      if (!resolved.ok) {
+        return {
+          content: toolText(`manage_burrete_structure_component failed: ${resolved.error.message}`),
+          structuredContent: {
+            ok: false,
+            tool: "manage_burrete_structure_component",
+            error: resolved.error,
+            observe: resolved.observe || null,
+          },
+        };
+      }
+
+      if (input.operation === "open_as_tab") {
+        const extracted = await extractStructureComponentFile({
+          file: resolved.file,
+          component: input.component,
+          chain: input.chain,
+          compId: input.compId,
+          seq: input.seq,
+          element: input.element,
+          title: input.title,
+        });
+        const result = await runWorkspaceAction({
+          url: input.url,
+          sessionDir: input.sessionDir,
+          waitMs: input.waitMs ?? 12000,
+          action: {
+            type: "manage_tabs",
+            operation: "open_file",
+            path: extracted.outputPath,
+          },
+        });
+        return cliToolResult("manage_burrete_structure_component", result, { extracted });
+      }
+
+      const action = structureComponentAction(input);
+      if (!action.ok) {
+        return {
+          content: toolText(`manage_burrete_structure_component failed: ${action.error.message}`),
+          structuredContent: {
+            ok: false,
+            tool: "manage_burrete_structure_component",
+            error: action.error,
+          },
+        };
+      }
+      const result = await runWorkspaceAction({
+        url: input.url,
+        sessionDir: input.sessionDir,
+        waitMs: input.waitMs ?? 12000,
+        action: action.value,
+      });
+      return cliToolResult("manage_burrete_structure_component", result, {
+        selector: action.value.selector || null,
+      });
+    },
+  );
+
+  registerAppTool(
+    server,
+    "open_burrete_docking_view",
+    {
+      title: "Open Burrete Docking View",
+      description: "Open a Mol* docking or combined structure-scene view inside the active Burrete Browser shell or desktop workspace.",
+      inputSchema: {
+        receptorPath: z.string().trim(),
+        ligandPaths: z.array(z.string().trim()).min(1),
+        url: z.string().trim().optional(),
+        sessionDir: z.string().trim().optional(),
+        activePose: z.number().int().min(0).optional(),
+        sceneMode: z.enum(["structureAll", "structurePoses"]).optional(),
+        waitMs: z.number().int().min(0).max(60000).optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      _meta: {
+        ui: {
+          visibility: ["model"],
+        },
+      },
+    },
+    async input => {
+      const result = await runWorkspaceAction({
+        url: input.url,
+        sessionDir: input.sessionDir,
+        waitMs: input.waitMs ?? 12000,
+        action: {
+          type: "open_docking_view",
+          receptorPath: input.receptorPath,
+          ligandPaths: input.ligandPaths,
+          activePose: input.activePose,
+          sceneMode: input.sceneMode,
+        },
+      });
+      return cliToolResult("open_burrete_docking_view", result);
     },
   );
 
@@ -187,13 +437,171 @@ export function registerMolecularWorkspace(server) {
   );
 }
 
-function cliToolResult(tool, result) {
+async function resolveStructureSummaryTarget(input) {
+  if (input.file) return { ok: true, file: input.file };
+  if (!input.url && !input.sessionDir) {
+    return {
+      ok: false,
+      error: { message: "Provide file, url, or sessionDir." },
+    };
+  }
+
+  const args = ["observe"];
+  if (input.url) args.push("--url", input.url);
+  if (input.sessionDir) args.push("--session-dir", input.sessionDir);
+  const result = await runBurreteAgent(args);
+  const observe = result.payload?.result || null;
+  const file = observe?.activeDocument?.path;
+  if (!result.ok) {
+    return {
+      ok: false,
+      observe,
+      error: result.error || { message: "Observe failed." },
+    };
+  }
+  if (!file) {
+    return {
+      ok: false,
+      observe,
+      error: { message: "No active document path is available in the observed workspace." },
+    };
+  }
+  return { ok: true, file, observe };
+}
+
+async function resolveStructureComponentTarget(input) {
+  if (input.file) return { ok: true, file: input.file };
+  return resolveStructureSummaryTarget(input);
+}
+
+function structureComponentAction(input) {
+  if (input.operation === "clear") {
+    return { ok: true, value: { type: "clear_selection", label: "Clear selection" } };
+  }
+  const component = input.component || (input.chain ? "chain" : input.element ? "element" : input.compId ? "ligand" : "");
+  if (!component) {
+    return {
+      ok: false,
+      error: { message: "Provide component, chain, compId, or element." },
+    };
+  }
+  const selector = componentSelector({
+    component: component === "chain" ? "polymer" : component,
+    chain: input.chain,
+    compId: input.compId,
+    seq: input.seq,
+    element: input.element,
+  });
+  const label = structureComponentLabel({ component, chain: input.chain, compId: input.compId, seq: input.seq, element: input.element });
+
+  if (input.operation === "focus") {
+    return {
+      ok: true,
+      value: {
+        type: "focus_ligand",
+        label: `Focus ${label}`,
+        selector,
+        showNeighborhood: component === "ligand",
+        radiusA: component === "ligand" ? 4 : undefined,
+      },
+    };
+  }
+
+  if (input.operation === "select") {
+    return {
+      ok: true,
+      value: {
+        type: "select_residues",
+        label: `Select ${label}`,
+        selector,
+        granularity: "residue",
+        mode: "replace",
+      },
+    };
+  }
+
+  if (input.operation === "hide" || input.operation === "show") {
+    const kind = hideableComponentKind(component);
+    if (!kind) {
+      return {
+        ok: false,
+        error: { message: "hide/show supports polymer, ligand, ion, and water components." },
+      };
+    }
+    if (kind === "water") {
+      return {
+        ok: true,
+        value: {
+          type: input.operation === "hide" ? "hide_waters" : "show_waters",
+          label: `${input.operation === "hide" ? "Hide" : "Show"} water`,
+        },
+      };
+    }
+    return {
+      ok: true,
+      value: {
+        type: input.operation === "hide" ? "hide_components" : "show_components",
+        label: `${input.operation === "hide" ? "Hide" : "Show"} ${kind}`,
+        kind,
+      },
+    };
+  }
+
+  return {
+    ok: false,
+    error: { message: "Unsupported structure component operation." },
+  };
+}
+
+function hideableComponentKind(component) {
+  if (component === "chain" || component === "polymer") return "polymer";
+  if (component === "ligand") return "ligand";
+  if (component === "ion") return "ion";
+  if (component === "water") return "water";
+  return null;
+}
+
+function structureComponentLabel({ component, chain, compId, seq, element }) {
+  return [
+    component || "component",
+    compId ? compId.toUpperCase() : null,
+    chain ? `chain ${chain}` : null,
+    seq !== undefined && seq !== null && String(seq).trim() ? `seq ${seq}` : null,
+    element ? `element ${element}` : null,
+  ].filter(Boolean).join(" ");
+}
+
+async function runWorkspaceAction({ url, sessionDir, action, waitMs }) {
+  const args = ["act"];
+  if (url) args.push("--url", url);
+  if (sessionDir) args.push("--session-dir", sessionDir);
+  args.push(JSON.stringify(action));
+  args.push("--wait-ms", String(waitMs));
+  return await runBurreteAgent(args, { timeoutMs: Math.max(30000, waitMs + 5000) });
+}
+
+async function safeStructureSummary(file) {
+  try {
+    return await summarizeStructureFile(file);
+  } catch (error) {
+    return {
+      ok: false,
+      path: file,
+      error: {
+        message: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+}
+
+function cliToolResult(tool, result, extra = {}) {
   return {
     content: toolText(result.ok ? `${tool} completed.` : `${tool} failed: ${result.error?.message || "unknown error"}`),
     structuredContent: {
       ok: result.ok,
       tool,
       result: result.payload?.result || null,
+      ...extra,
       error: result.ok ? null : result.error,
       exitCode: result.exitCode,
     },
