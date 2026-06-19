@@ -114,7 +114,21 @@ The easiest path is through the app:
 5. Return to the panel and refresh to verify the installed version, skills, and
    MCP registration.
 
-From a source checkout, use this prompt in Codex:
+You can also install or update it with the Burrete CLI:
+
+```bash
+bunx burrete plugin install
+bunx burrete plugin status
+```
+
+From a source checkout, pass the local bundle explicitly when the app is not
+installed yet:
+
+```bash
+bunx burrete plugin install --path plugins/burette-agent
+```
+
+Or use this prompt in Codex:
 
 ```text
 Install or update the local Codex plugin @Burrete (id `burrete`) from
