@@ -76,6 +76,8 @@ Browser tab.
 operations as tools: select/focus components in Mol*, hide/show component
 classes, clear selection, or extract a chain/ligand/water/ion/polymer/element
 from a PDB file into a temporary PDB and open it as a separate Burrete tab.
+`open_burrete_docking_view` opens a Mol* docking or combined structure-scene
+view as a Burrete tab from a receptor path plus one or more ligand paths.
 
 ## MolViewSpec Scene Language
 

@@ -317,6 +317,50 @@ export function registerMolecularWorkspace(server) {
 
   registerAppTool(
     server,
+    "open_burrete_docking_view",
+    {
+      title: "Open Burrete Docking View",
+      description: "Open a Mol* docking or combined structure-scene view inside the active Burrete Browser shell or desktop workspace.",
+      inputSchema: {
+        receptorPath: z.string().trim(),
+        ligandPaths: z.array(z.string().trim()).min(1),
+        url: z.string().trim().optional(),
+        sessionDir: z.string().trim().optional(),
+        activePose: z.number().int().min(0).optional(),
+        sceneMode: z.enum(["structureAll", "structurePoses"]).optional(),
+        waitMs: z.number().int().min(0).max(60000).optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      _meta: {
+        ui: {
+          visibility: ["model"],
+        },
+      },
+    },
+    async input => {
+      const result = await runWorkspaceAction({
+        url: input.url,
+        sessionDir: input.sessionDir,
+        waitMs: input.waitMs ?? 12000,
+        action: {
+          type: "open_docking_view",
+          receptorPath: input.receptorPath,
+          ligandPaths: input.ligandPaths,
+          activePose: input.activePose,
+          sceneMode: input.sceneMode,
+        },
+      });
+      return cliToolResult("open_burrete_docking_view", result);
+    },
+  );
+
+  registerAppTool(
+    server,
     "act_molstar_scene",
     {
       title: "Act On Molstar Scene",
