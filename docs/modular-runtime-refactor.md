@@ -125,6 +125,8 @@ Current Stage 3 progress:
 - grid control message routing for Ketcher handoff, descriptor runs, perf
   metrics, clipboard copy, and dirty-state updates now lives in
   `apps/desktop/src/hooks/use-app-grid-control-messages.ts`;
+- viewer text and binary export message handling now lives in
+  `apps/desktop/src/hooks/use-app-viewer-file-actions.ts`;
 - FEP setup/network preview action callbacks and the current FEP setup request
   derivation now live in `apps/desktop/src/hooks/use-app-fep-workflows.ts`;
 - drop action menu selection and dropped project-root callbacks now live in
@@ -149,12 +151,12 @@ the high-risk runtime boundaries intact.
 | --- | --- | --- |
 | Contract safety net | Partial | Existing contract tests were strengthened as modules moved, but the full named test matrix from the epic is not complete yet. |
 | Dev-server extraction | Complete | Browser-dev endpoint modules now live under `apps/desktop/vite/browser-dev/`, with `vite.config.ts` acting as registration/composition. |
-| App shell extraction | Partial | Several app hooks, pure chemistry libs, file-routing helpers, shared file-export helpers, the core file-open hook, file picker/recent-open actions, the dock payload-open hook, browser-dev startup URL helpers/effects, pure Ketcher workflow helpers, Ketcher action callbacks, docking/collection action callbacks, grid append/xyzrender sheet callbacks, grid save/export/runtime/control message handling, FEP setup/network callbacks, drop action callbacks, and workspace/project-folder callbacks are extracted, but xTB/conformer controllers and broader message handling still live in `App.tsx`. |
+| App shell extraction | Partial | Several app hooks, pure chemistry libs, file-routing helpers, shared file-export helpers, the core file-open hook, file picker/recent-open actions, the dock payload-open hook, browser-dev startup URL helpers/effects, pure Ketcher workflow helpers, Ketcher action callbacks, docking/collection action callbacks, grid append/xyzrender sheet callbacks, grid save/export/runtime/control message handling, viewer export message handling, FEP setup/network callbacks, drop action callbacks, and workspace/project-folder callbacks are extracted, but xTB/conformer controllers and broader message handling still live in `App.tsx`. |
 | Opening workflow | Partial | `openDocuments`, `openPaths`, text/spectrum opening, path classification, pasted-structure opening, file picker/recent-open actions, dock payload opening, browser-dev startup URL parsing, and browser-dev startup orchestration effects are in dedicated modules/hooks. |
 | Ketcher workflow | Partial | Ketcher import queueing, draft/source helpers, import state, import/export/sketch/grid-row action callbacks, and grid-origin `openInKetcher` message routing are extracted; viewer-side `openInKetcher` and Ketcher sketch requests remain in `App.tsx`. |
 | Grid workflow | Partial | Dirty-grid state, descriptor workflows, grid append, delimited append fallback, xyzrender sheet drops, pose-review selection refresh, grid save/export message handling, grid paging/read/xyzrender-card runtime messages, and grid control message routing are extracted; broader viewer/grid message routing remains in `App.tsx`. |
 | Docking/collections/dock payloads | Partial | Dock payload opening plus docking document construction, dropped-structure docking, collection merge/save, and pose-review workspace action callbacks are extracted; message handlers that invoke these actions remain in `App.tsx`. |
-| Viewer bridge | Partial | Grid-origin file/runtime/control messages now delegate to dedicated hooks, but the `window.message` listener, shared viewer/grid xyzrender sheet rendering, and typed dispatch still remain in `App.tsx`. |
+| Viewer bridge | Partial | Grid-origin file/runtime/control messages and viewer-origin export messages now delegate to dedicated hooks, but the `window.message` listener, shared viewer/grid xyzrender sheet rendering, and typed dispatch still remain in `App.tsx`. |
 | ShellActions/ShellViewState slicing | Not started | The compatibility surface is unchanged; slicing has not started. |
 | Update flow | Complete | Update state/actions are in `use-app-updates.ts`. |
 | Hardening pass | Not started | Trusted shell vs preview capability split, diagnostics privacy redaction, cache contract, scanner limits, renderer policy matrix, and doctor flow remain pending. |
