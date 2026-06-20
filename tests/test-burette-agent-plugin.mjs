@@ -143,6 +143,7 @@ for (const asset of [
   "scripts/agent-preview.mjs",
   "scripts/agent-shell-server.mjs",
   "scripts/burrete-agent.mjs",
+  "scripts/install-local.mjs",
 ]) {
   assert.equal(packedFiles.has(asset), true, `npm package is missing ${asset}`);
 }
@@ -266,6 +267,8 @@ assert.match(molstarSceneSkill, /"label": "Active loop"/);
 assert.match(molstarSceneSkill, /"type": "label_selection"/);
 
 const readme = await read("README.md");
+assert.match(readme, /node plugins\/burette-agent\/scripts\/install-local\.mjs/);
+assert.match(readme, /--skip-build/);
 assert.match(readme, /MolViewSpec Scene Language/);
 assert.match(readme, /"type":"apply_scene"/);
 assert.match(readme, /"selector":"protein"/);

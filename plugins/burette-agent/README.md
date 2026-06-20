@@ -99,37 +99,20 @@ Codex config:
 
 ```bash
 cd /path/to/Burette
-bun run build:agent-shell
-rm -rf ~/.codex/plugins/cache/nikolenko-local/burrete
-install_root="$HOME/.codex/plugins/cache/nikolenko-local/burrete/0.1.0"
-mkdir -p "$install_root"
-rsync -a --delete --exclude node_modules plugins/burette-agent/ "$install_root/"
-cat > "$install_root/.burette-agent-install.json" <<EOF
-{
-  "repoRoot": "$PWD"
-}
-EOF
-(cd "$install_root" && bun install --production)
-node <<'NODE'
-const fs = require("fs");
-const path = `${process.env.HOME}/.agents/plugins/marketplace.json`;
-const data = JSON.parse(fs.readFileSync(path, "utf8"));
-data.plugins = (data.plugins || []).filter((plugin) => plugin.name !== "burrete");
-data.plugins.push({
-  name: "burrete",
-  source: { source: "local", path: "./.agents/plugins/burrete" },
-  policy: { installation: "AVAILABLE", authentication: "ON_INSTALL" },
-  category: "Science"
-});
-fs.writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`);
-NODE
-rm -f ~/.agents/plugins/burrete
-ln -s "$install_root" ~/.agents/plugins/burrete
-grep -q '^\[plugins."burrete@nikolenko-local"\]' ~/.codex/config.toml || cat >> ~/.codex/config.toml <<'EOF'
+node plugins/burette-agent/scripts/install-local.mjs
+```
 
-[plugins."burrete@nikolenko-local"]
-enabled = true
-EOF
+The installer runs `bun run build:agent-shell` when it is executed from a source
+checkout, copies the self-contained plugin bundle into
+`~/.codex/plugins/cache/nikolenko-local/burrete/0.1.0`, installs production MCP
+dependencies, registers `burrete` in `~/.agents/plugins/marketplace.json`,
+updates the `~/.agents/plugins/burrete` symlink, and enables
+`burrete@nikolenko-local` in `~/.codex/config.toml`.
+
+Use `--skip-build` only when installing an already prebuilt plugin directory:
+
+```bash
+node scripts/install-local.mjs --skip-build
 ```
 
 The `.burette-agent-install.json` file is useful for source-checkout fallbacks
