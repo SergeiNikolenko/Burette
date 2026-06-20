@@ -143,8 +143,349 @@ type UseAppShellActionsOptions = {
   toggleSidebar: ShellActions["toggleSidebar"];
 };
 
+type OpeningShellActions = Pick<
+  ShellActions,
+  | "chooseFiles"
+  | "openStructurePaths"
+  | "openTextPaths"
+  | "openPaths"
+  | "openStructureRecords"
+  | "openRecentStructure"
+  | "openMostRecentStructure"
+  | "openClipboard"
+>;
+
+type NavigationShellActions = Pick<
+  ShellActions,
+  | "selectDocument"
+  | "selectTab"
+  | "openNewTab"
+  | "canNavigateBack"
+  | "canNavigateForward"
+  | "navigateBack"
+  | "navigateForward"
+  | "focusSidebarSearch"
+  | "openCommandPalette"
+  | "openNewWindow"
+  | "openSettings"
+  | "openSettingsSection"
+  | "backToApp"
+  | "moveTab"
+>;
+
+type KetcherShellActions = Pick<
+  ShellActions,
+  | "openKetcher"
+  | "openKetcherWithStructures"
+  | "openKetcherExportRaw"
+  | "saveKetcherExportFile"
+  | "applyKetcherToGridRow"
+  | "openKetcherSketch"
+  | "saveKetcherDraft"
+  | "clearKetcherImportRequest"
+>;
+
+type GridShellActions = Pick<
+  ShellActions,
+  | "openDescriptorSource"
+  | "clearDescriptorSource"
+  | "applyGridDescriptorControls"
+  | "applyGridDescriptorResults"
+  | "calculateGridDescriptors"
+  | "appendGridRecords"
+  | "addXyzrenderSheetItems"
+>;
+
+type ChemistryShellActions = Pick<
+  ShellActions,
+  | "checkConformerStatus"
+  | "runConformerOperation"
+  | "cancelConformerJob"
+  | "clearConformerJobs"
+  | "setConformerSettings"
+  | "checkXtbStatus"
+  | "installXtb"
+  | "runXtbActiveOperation"
+  | "runXtbJob"
+  | "cancelXtbJob"
+  | "runXtbKetcherSketch"
+  | "runXtbGridScoring"
+  | "runXtbPoseRefinement"
+  | "runXtbFepPreflight"
+  | "clearXtbJobs"
+  | "setXtbSettings"
+>;
+
+type WorkspaceShellActions = Pick<
+  ShellActions,
+  | "chooseWorkspace"
+  | "openWorkspaceFolder"
+  | "openProjectFolder"
+  | "togglePinnedProjectRoot"
+  | "renameProjectRoot"
+  | "removeProjectRoot"
+  | "toggleProjectsOpen"
+  | "setExpandedProjectIds"
+  | "setSidebarQuery"
+  | "toggleProjectExpanded"
+  | "togglePinnedStructure"
+  | "clearRecentStructures"
+>;
+
+type DockShellActions = Pick<
+  ShellActions,
+  | "toggleSidebar"
+  | "toggleDock"
+  | "toggleDockTab"
+  | "setDockOpen"
+  | "setDockSize"
+  | "openDockTab"
+  | "closeDockTab"
+  | "setDockActiveTab"
+  | "setDockDocument"
+  | "setDockTool"
+  | "addDockDrop"
+  | "openDockPayload"
+  | "setStructureDragActive"
+>;
+
+type DocumentShellActions = Pick<
+  ShellActions,
+  | "closeDocument"
+  | "closeTab"
+  | "closeActiveDocument"
+  | "clearAllDocuments"
+  | "listChemicalEditorTargets"
+  | "openPathInChemicalEditor"
+  | "openPathWithDefaultApp"
+  | "revealActiveDocument"
+  | "revealDocument"
+  | "revealPath"
+  | "copyActiveDocumentPath"
+  | "copyDocumentPath"
+  | "copyPath"
+  | "showActiveDocumentMetadata"
+  | "showDocumentMetadata"
+  | "showTextFileMetadata"
+>;
+
+type DockingShellActions = Pick<
+  ShellActions,
+  | "openDockingDocument"
+  | "openDockingStructureRecords"
+  | "mergeMoleculeCollections"
+  | "saveMoleculeCollectionAs"
+  | "openFepNetworkPreview"
+  | "openFepSetupWorkspace"
+>;
+
+type ViewerShellActions = Pick<
+  ShellActions,
+  | "generate3DConformer"
+  | "runStructureViewerAction"
+  | "reloadXyzrenderDocument"
+  | "selectTextStructure"
+  | "exportActivePreviewAsPng"
+  | "exportActivePreviewAsSvg"
+>;
+
+type MaintenanceShellActions = Pick<
+  ShellActions,
+  | "clearCache"
+  | "resetQuickLook"
+  | "runExternalRuntimeDoctor"
+  | "openLogs"
+  | "exportDiagnostics"
+>;
+
+type SettingsShellActions = Pick<
+  ShellActions,
+  | "checkForUpdates"
+  | "installUpdate"
+  | "openUpdateRelease"
+  | "setPreference"
+  | "setUpdatePreferences"
+>;
+
+export type AppShellActionSlices = {
+  opening: OpeningShellActions;
+  navigation: NavigationShellActions;
+  ketcher: KetcherShellActions;
+  grid: GridShellActions;
+  chemistry: ChemistryShellActions;
+  workspace: WorkspaceShellActions;
+  dock: DockShellActions;
+  documents: DocumentShellActions;
+  docking: DockingShellActions;
+  viewer: ViewerShellActions;
+  maintenance: MaintenanceShellActions;
+  settings: SettingsShellActions;
+};
+
 export function createAppShellActions(actions: ShellActions): ShellActions {
-  return actions;
+  return flattenAppShellActionSlices(createAppShellActionSlices(actions));
+}
+
+export function flattenAppShellActionSlices(slices: AppShellActionSlices): ShellActions {
+  return {
+    ...slices.opening,
+    ...slices.navigation,
+    ...slices.ketcher,
+    ...slices.grid,
+    ...slices.chemistry,
+    ...slices.workspace,
+    ...slices.dock,
+    ...slices.documents,
+    ...slices.docking,
+    ...slices.viewer,
+    ...slices.maintenance,
+    ...slices.settings,
+  };
+}
+
+export function createAppShellActionSlices(actions: ShellActions): AppShellActionSlices {
+  return {
+    opening: {
+      chooseFiles: actions.chooseFiles,
+      openStructurePaths: actions.openStructurePaths,
+      openTextPaths: actions.openTextPaths,
+      openPaths: actions.openPaths,
+      openStructureRecords: actions.openStructureRecords,
+      openRecentStructure: actions.openRecentStructure,
+      openMostRecentStructure: actions.openMostRecentStructure,
+      openClipboard: actions.openClipboard,
+    },
+    navigation: {
+      selectDocument: actions.selectDocument,
+      selectTab: actions.selectTab,
+      openNewTab: actions.openNewTab,
+      canNavigateBack: actions.canNavigateBack,
+      canNavigateForward: actions.canNavigateForward,
+      navigateBack: actions.navigateBack,
+      navigateForward: actions.navigateForward,
+      focusSidebarSearch: actions.focusSidebarSearch,
+      openCommandPalette: actions.openCommandPalette,
+      openNewWindow: actions.openNewWindow,
+      openSettings: actions.openSettings,
+      openSettingsSection: actions.openSettingsSection,
+      backToApp: actions.backToApp,
+      moveTab: actions.moveTab,
+    },
+    ketcher: {
+      openKetcher: actions.openKetcher,
+      openKetcherWithStructures: actions.openKetcherWithStructures,
+      openKetcherExportRaw: actions.openKetcherExportRaw,
+      saveKetcherExportFile: actions.saveKetcherExportFile,
+      applyKetcherToGridRow: actions.applyKetcherToGridRow,
+      openKetcherSketch: actions.openKetcherSketch,
+      saveKetcherDraft: actions.saveKetcherDraft,
+      clearKetcherImportRequest: actions.clearKetcherImportRequest,
+    },
+    grid: {
+      openDescriptorSource: actions.openDescriptorSource,
+      clearDescriptorSource: actions.clearDescriptorSource,
+      applyGridDescriptorControls: actions.applyGridDescriptorControls,
+      applyGridDescriptorResults: actions.applyGridDescriptorResults,
+      calculateGridDescriptors: actions.calculateGridDescriptors,
+      appendGridRecords: actions.appendGridRecords,
+      addXyzrenderSheetItems: actions.addXyzrenderSheetItems,
+    },
+    chemistry: {
+      checkConformerStatus: actions.checkConformerStatus,
+      runConformerOperation: actions.runConformerOperation,
+      cancelConformerJob: actions.cancelConformerJob,
+      clearConformerJobs: actions.clearConformerJobs,
+      setConformerSettings: actions.setConformerSettings,
+      checkXtbStatus: actions.checkXtbStatus,
+      installXtb: actions.installXtb,
+      runXtbActiveOperation: actions.runXtbActiveOperation,
+      runXtbJob: actions.runXtbJob,
+      cancelXtbJob: actions.cancelXtbJob,
+      runXtbKetcherSketch: actions.runXtbKetcherSketch,
+      runXtbGridScoring: actions.runXtbGridScoring,
+      runXtbPoseRefinement: actions.runXtbPoseRefinement,
+      runXtbFepPreflight: actions.runXtbFepPreflight,
+      clearXtbJobs: actions.clearXtbJobs,
+      setXtbSettings: actions.setXtbSettings,
+    },
+    workspace: {
+      chooseWorkspace: actions.chooseWorkspace,
+      openWorkspaceFolder: actions.openWorkspaceFolder,
+      openProjectFolder: actions.openProjectFolder,
+      togglePinnedProjectRoot: actions.togglePinnedProjectRoot,
+      renameProjectRoot: actions.renameProjectRoot,
+      removeProjectRoot: actions.removeProjectRoot,
+      toggleProjectsOpen: actions.toggleProjectsOpen,
+      setExpandedProjectIds: actions.setExpandedProjectIds,
+      setSidebarQuery: actions.setSidebarQuery,
+      toggleProjectExpanded: actions.toggleProjectExpanded,
+      togglePinnedStructure: actions.togglePinnedStructure,
+      clearRecentStructures: actions.clearRecentStructures,
+    },
+    dock: {
+      toggleSidebar: actions.toggleSidebar,
+      toggleDock: actions.toggleDock,
+      toggleDockTab: actions.toggleDockTab,
+      setDockOpen: actions.setDockOpen,
+      setDockSize: actions.setDockSize,
+      openDockTab: actions.openDockTab,
+      closeDockTab: actions.closeDockTab,
+      setDockActiveTab: actions.setDockActiveTab,
+      setDockDocument: actions.setDockDocument,
+      setDockTool: actions.setDockTool,
+      addDockDrop: actions.addDockDrop,
+      openDockPayload: actions.openDockPayload,
+      setStructureDragActive: actions.setStructureDragActive,
+    },
+    documents: {
+      closeDocument: actions.closeDocument,
+      closeTab: actions.closeTab,
+      closeActiveDocument: actions.closeActiveDocument,
+      clearAllDocuments: actions.clearAllDocuments,
+      listChemicalEditorTargets: actions.listChemicalEditorTargets,
+      openPathInChemicalEditor: actions.openPathInChemicalEditor,
+      openPathWithDefaultApp: actions.openPathWithDefaultApp,
+      revealActiveDocument: actions.revealActiveDocument,
+      revealDocument: actions.revealDocument,
+      revealPath: actions.revealPath,
+      copyActiveDocumentPath: actions.copyActiveDocumentPath,
+      copyDocumentPath: actions.copyDocumentPath,
+      copyPath: actions.copyPath,
+      showActiveDocumentMetadata: actions.showActiveDocumentMetadata,
+      showDocumentMetadata: actions.showDocumentMetadata,
+      showTextFileMetadata: actions.showTextFileMetadata,
+    },
+    docking: {
+      openDockingDocument: actions.openDockingDocument,
+      openDockingStructureRecords: actions.openDockingStructureRecords,
+      mergeMoleculeCollections: actions.mergeMoleculeCollections,
+      saveMoleculeCollectionAs: actions.saveMoleculeCollectionAs,
+      openFepNetworkPreview: actions.openFepNetworkPreview,
+      openFepSetupWorkspace: actions.openFepSetupWorkspace,
+    },
+    viewer: {
+      generate3DConformer: actions.generate3DConformer,
+      runStructureViewerAction: actions.runStructureViewerAction,
+      reloadXyzrenderDocument: actions.reloadXyzrenderDocument,
+      selectTextStructure: actions.selectTextStructure,
+      exportActivePreviewAsPng: actions.exportActivePreviewAsPng,
+      exportActivePreviewAsSvg: actions.exportActivePreviewAsSvg,
+    },
+    maintenance: {
+      clearCache: actions.clearCache,
+      resetQuickLook: actions.resetQuickLook,
+      runExternalRuntimeDoctor: actions.runExternalRuntimeDoctor,
+      openLogs: actions.openLogs,
+      exportDiagnostics: actions.exportDiagnostics,
+    },
+    settings: {
+      checkForUpdates: actions.checkForUpdates,
+      installUpdate: actions.installUpdate,
+      openUpdateRelease: actions.openUpdateRelease,
+      setPreference: actions.setPreference,
+      setUpdatePreferences: actions.setUpdatePreferences,
+    },
+  };
 }
 
 export function useAppShellActions({

@@ -3009,6 +3009,26 @@ assert.match(commandPalette, /onSelect=\{\(\) => runItem\(item\)\}/);
 assert.match(app, /const actions = useAppShellActions\(\{/);
 assert.doesNotMatch(app, /const actions = useMemo<ShellActions>/);
 assert.match(appShellActionsHook, /createAppShellActions\(actions: ShellActions\): ShellActions/);
+assert.match(appShellActionsHook, /export type AppShellActionSlices = \{/);
+assert.match(appShellActionsHook, /export function createAppShellActionSlices\(actions: ShellActions\): AppShellActionSlices/);
+assert.match(appShellActionsHook, /export function flattenAppShellActionSlices\(slices: AppShellActionSlices\): ShellActions/);
+assert.match(appShellActionsHook, /return flattenAppShellActionSlices\(createAppShellActionSlices\(actions\)\);/);
+for (const sliceName of [
+  "opening",
+  "navigation",
+  "ketcher",
+  "grid",
+  "chemistry",
+  "workspace",
+  "dock",
+  "documents",
+  "docking",
+  "viewer",
+  "maintenance",
+  "settings",
+]) {
+  assert.match(appShellActionsHook, new RegExp(`\\.\\.\\.slices\\.${sliceName}`));
+}
 assert.match(appShellActionsHook, /export function useAppShellActions\(\{/);
 assert.match(appShellActionsHook, /useMemo<ShellActions>\(\(\) => createAppShellActions\(\{/);
 assert.match(appShellActionsHook, /\.\.\.createJobHistoryShellActions\(\{ pushStatus, setConformerJobs, setXtbJobs \}\)/);
