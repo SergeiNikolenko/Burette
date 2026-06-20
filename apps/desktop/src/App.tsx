@@ -21,6 +21,7 @@ import { useAppDockingWorkflows } from "./hooks/use-app-docking-workflows";
 import { useAppDockPayloadOpen } from "./hooks/use-app-dock-payload-open";
 import { useAppFileActions } from "./hooks/use-app-file-actions";
 import { useAppFileOpen } from "./hooks/use-app-file-open";
+import { useAppFepWorkflows } from "./hooks/use-app-fep-workflows";
 import { useAppGridWorkflows } from "./hooks/use-app-grid-workflows";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
 import { useAppKetcherActions } from "./hooks/use-app-ketcher-actions";
@@ -1410,18 +1411,18 @@ export default function App() {
     tabs,
   });
 
-  const openFepSetupWorkspace = useCallback((request: FepSetupRequest) => {
-    openFepSetupTab({
-      kind: "fep-setup",
-      ...request,
-    });
-    pushStatus("Opened FEP setup workspace");
-  }, [openFepSetupTab, pushStatus]);
-
-  const openFepNetworkPreview = useCallback((request?: { title?: string; graphmlText?: string }) => {
-    openFepNetworkTab({ kind: "fep-network", ...request });
-    pushStatus("Opened FEP network preview");
-  }, [openFepNetworkTab, pushStatus]);
+  const {
+    currentFepSetupRequest,
+    openFepNetworkPreview,
+    openFepSetupWorkspace,
+  } = useAppFepWorkflows({
+    activeTab,
+    documents,
+    openFepNetworkTab,
+    openFepSetupTab,
+    poseReviewSelections,
+    pushStatus,
+  });
 
   const chooseDropAction = useCallback((
     choices: DropActionChoice[],
@@ -1451,33 +1452,6 @@ export default function App() {
     setWorkspacePath(cleanPaths[0]);
     pushStatus("Project folder added");
   }, [addProjectRoot, pushStatus]);
-
-  const currentFepSetupRequest = useMemo<FepSetupRequest | null>(() => {
-    const location = activeTab?.location;
-    if (!location) return null;
-    if (location.kind === "fep-setup") {
-      return {
-        receptorPath: location.receptorPath,
-        gridDocumentId: location.gridDocumentId,
-        gridPath: location.gridPath,
-        dockingDocumentId: location.dockingDocumentId,
-        dockingPath: location.dockingPath,
-        referencePose: location.referencePose,
-      };
-    }
-    if (location.kind !== "pose-review") return null;
-    const grid = documents.find((document) => document.id === location.gridDocumentId || document.path === location.gridPath);
-    const docking = documents.find((document) => document.id === location.dockingDocumentId || document.path === location.dockingPath);
-    if (!grid || !docking) return null;
-    return {
-      receptorPath: location.receptorPath,
-      gridDocumentId: grid.id,
-      gridPath: grid.path,
-      dockingDocumentId: docking.id,
-      dockingPath: docking.path,
-      referencePose: poseReviewSelections[grid.id] ?? 0,
-    };
-  }, [activeTab?.location, documents, poseReviewSelections]);
 
   useOpenEvents(openPaths, pushErrorStatus);
   const agentTabActions = useMemo(() => ({

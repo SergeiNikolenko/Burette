@@ -19,6 +19,7 @@ const [
   appDockingWorkflowsHook,
   appFileActionsHook,
   appFileOpenHook,
+  appFepWorkflowsHook,
   appGridWorkflowsHook,
   appDockPayloadHook,
   appKetcherActionsHook,
@@ -160,6 +161,7 @@ const [
   source('apps/desktop/src/hooks/use-app-docking-workflows.ts'),
   source('apps/desktop/src/hooks/use-app-file-actions.ts'),
   source('apps/desktop/src/hooks/use-app-file-open.ts'),
+  source('apps/desktop/src/hooks/use-app-fep-workflows.ts'),
   source('apps/desktop/src/hooks/use-app-grid-workflows.ts'),
   source('apps/desktop/src/hooks/use-app-dock-payload-open.ts'),
   source('apps/desktop/src/hooks/use-app-ketcher-actions.ts'),
@@ -2907,19 +2909,21 @@ assert.match(app, /notifyGridPoseReviewSelection/);
 assert.match(app, /pushStatus\("Opening pose-review workspace\.\.\."\)/);
 assert.match(appDockingWorkflowsHook, /const openPoseReviewWorkspace = useCallback/);
 assert.match(appDockingWorkflowsHook, /openPoseReviewTab\(\{/);
-assert.match(app, /const openFepSetupWorkspace = useCallback/);
-assert.match(app, /const openFepNetworkPreview = useCallback/);
-assert.match(app, /openFepSetupTab\(\{/);
-assert.match(app, /kind: "fep-setup"/);
-assert.match(app, /pushStatus\("Opened FEP setup workspace"\)/);
+assert.match(app, /from "\.\/hooks\/use-app-fep-workflows"/);
+assert.match(app, /useAppFepWorkflows\(\{/);
+assert.match(appFepWorkflowsHook, /const openFepSetupWorkspace = useCallback/);
+assert.match(appFepWorkflowsHook, /const openFepNetworkPreview = useCallback/);
+assert.match(appFepWorkflowsHook, /openFepSetupTab\(\{/);
+assert.match(appFepWorkflowsHook, /kind: "fep-setup"/);
+assert.match(appFepWorkflowsHook, /pushStatus\("Opened FEP setup workspace"\)/);
 assert.match(appFileOpenHook, /const graphmlPaths = cleanPaths\.filter\(isFepGraphmlPath\)/);
 assert.match(appFileOpenHook, /const structurePaths = cleanPaths\.filter\(\(path\) => !isFepGraphmlPath\(path\)\)/);
 assert.match(appFileOpenHook, /const graphmlText = await readStructureText\(path\)/);
 assert.match(appFileOpenHook, /openFepNetworkTab\(\{ kind: "fep-network", title: basename\(path\), graphmlText \}\)/);
-assert.match(app, /openFepNetworkTab\(\{ kind: "fep-network", \.\.\.request \}\)/);
+assert.match(appFepWorkflowsHook, /openFepNetworkTab\(\{ kind: "fep-network", \.\.\.request \}\)/);
 assert.match(fileRouting, /export function isFepGraphmlPath\(path: string\)/);
-assert.match(app, /pushStatus\("Opened FEP network preview"\)/);
-assert.match(app, /const currentFepSetupRequest = useMemo<FepSetupRequest \| null>/);
+assert.match(appFepWorkflowsHook, /pushStatus\("Opened FEP network preview"\)/);
+assert.match(appFepWorkflowsHook, /const currentFepSetupRequest = useMemo<FepSetupRequest \| null>/);
 assert.match(app, /fepSetupRequest: currentFepSetupRequest/);
 assert.match(app, /openFepSetupWorkspace,/);
 assert.match(app, /void openPoseReviewWorkspace\(receptorDocument, poseTargetDocument, activePose\)/);

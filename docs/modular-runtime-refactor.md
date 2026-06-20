@@ -116,6 +116,8 @@ Current Stage 3 progress:
 - grid record append, delimited append fallback, xyzrender sheet drop, and
   pose-review selection refresh callbacks now live in
   `apps/desktop/src/hooks/use-app-grid-workflows.ts`;
+- FEP setup/network preview action callbacks and the current FEP setup request
+  derivation now live in `apps/desktop/src/hooks/use-app-fep-workflows.ts`;
 - shared text/base64 download, export filename, temporary text id, and save
   dialog filter helpers now live in `apps/desktop/src/lib/file-export.ts`;
 - `App.tsx` still owns Ketcher viewer/grid message routing that calls Ketcher
@@ -134,7 +136,7 @@ the high-risk runtime boundaries intact.
 | --- | --- | --- |
 | Contract safety net | Partial | Existing contract tests were strengthened as modules moved, but the full named test matrix from the epic is not complete yet. |
 | Dev-server extraction | Complete | Browser-dev endpoint modules now live under `apps/desktop/vite/browser-dev/`, with `vite.config.ts` acting as registration/composition. |
-| App shell extraction | Partial | Several app hooks, pure chemistry libs, file-routing helpers, shared file-export helpers, the core file-open hook, the dock payload-open hook, browser-dev startup URL helpers/effects, pure Ketcher workflow helpers, Ketcher action callbacks, docking/collection action callbacks, and grid append/xyzrender sheet callbacks are extracted, but grid save/export wiring, xTB/conformer controllers, and message handling still live in `App.tsx`. |
+| App shell extraction | Partial | Several app hooks, pure chemistry libs, file-routing helpers, shared file-export helpers, the core file-open hook, the dock payload-open hook, browser-dev startup URL helpers/effects, pure Ketcher workflow helpers, Ketcher action callbacks, docking/collection action callbacks, grid append/xyzrender sheet callbacks, and FEP setup/network callbacks are extracted, but grid save/export wiring, xTB/conformer controllers, and message handling still live in `App.tsx`. |
 | Opening workflow | Partial | `openDocuments`, `openPaths`, text/spectrum opening, path classification, pasted-structure opening, dock payload opening, browser-dev startup URL parsing, and browser-dev startup orchestration effects are in dedicated modules/hooks. |
 | Ketcher workflow | Partial | Ketcher import queueing, draft/source helpers, import state, and import/export/sketch/grid-row action callbacks are extracted; viewer/grid message handlers that route `openInKetcher` and Ketcher sketch requests remain in `App.tsx`. |
 | Grid workflow | Partial | Dirty-grid state, descriptor workflows, grid append, delimited append fallback, xyzrender sheet drops, and pose-review selection refresh are extracted; grid save/export and message handling remain in `App.tsx`. |
