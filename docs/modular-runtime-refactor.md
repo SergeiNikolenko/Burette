@@ -119,6 +119,8 @@ Current Stage 3 progress:
 - docking document opening, dropped-structure docking, molecule collection
   merge/save, and pose-review workspace action callbacks now live in
   `apps/desktop/src/hooks/use-app-docking-workflows.ts`;
+- pose-review selection notification routing now lives in
+  `apps/desktop/src/hooks/use-app-docking-pose-selection.ts`;
 - grid record append, delimited append fallback, xyzrender sheet drop, and
   pose-review selection refresh callbacks now live in
   `apps/desktop/src/hooks/use-app-grid-workflows.ts`;
@@ -249,7 +251,7 @@ the high-risk runtime boundaries intact.
 | Opening workflow | Partial | `openDocuments`, `openPaths`, text/spectrum opening, path classification, pasted-structure opening, file picker/recent-open actions, dock payload opening, Quick Look browser-dev document opening, browser-dev startup URL parsing, and browser-dev startup orchestration effects are in dedicated modules/hooks. |
 | Ketcher workflow | Partial | Ketcher import queueing, draft/source helpers, import state, import/export/sketch/grid-row action callbacks, grid-origin `openInKetcher` message routing, and viewer-origin Ketcher handoff messages are extracted; broader Ketcher sketch state still flows through `App.tsx`. |
 | Grid workflow | Partial | Dirty-grid state, descriptor workflows, grid append, delimited append fallback, xyzrender sheet drops, pose-review selection refresh, grid save/export message handling, grid paging/read/xyzrender-card runtime messages, grid control/conformer message routing, SDF grid open message handling, and shared viewer/grid dispatch are extracted. |
-| Docking/collections/dock payloads | Partial | Dock payload opening plus docking document construction, dropped-structure docking, collection merge/save, pose-review workspace action callbacks, SDF pose-review message handling, Molstar context handoff, docking pose-change synchronization, and shell-action wiring are extracted; deeper domain-specific docking runtime boundaries remain in the app composition. |
+| Docking/collections/dock payloads | Partial | Dock payload opening plus docking document construction, dropped-structure docking, collection merge/save, pose-review workspace action callbacks, pose-review selection notification routing, SDF pose-review message handling, Molstar context handoff, docking pose-change synchronization, and shell-action wiring are extracted; deeper domain-specific docking runtime boundaries remain in the app composition. |
 | Viewer bridge | Partial | Grid-origin file/runtime/control/conformer messages, viewer-origin export/runtime/runtime-file/state/renderer/Ketcher/host/conformer/Molstar-context messages, active viewer reload/xyzrender control reload actions, shared viewer/grid xyzrender sheet rendering, SDF open messages, docking pose-change messages, the top-level `window.message` dispatch, viewer source/transport helpers, and Molstar xTB context response listener now delegate to dedicated hooks/libs. |
 | ShellActions/ShellViewState slicing | Complete for compatibility assembly | `ShellViewState` derived-field assembly is behind `useAppShellViewState`/`createAppShellViewState`; `ShellActions` now flows through `useAppShellActions` and `createAppShellActions`, with job-history, project, dock-drop, close/dirty-cleanup, recent, and update action groups behind the same compatibility adapter. |
 | Update flow | Complete | Update state/actions are in `use-app-updates.ts`. |

@@ -22,6 +22,7 @@ const [
   appDockActionsHook,
   appDirtyGridHook,
   appDockingPoseMessagesHook,
+  appDockingPoseSelectionHook,
   appDockingWorkflowsHook,
   appDropActionsHook,
   appFileActionsHook,
@@ -205,6 +206,7 @@ const [
   source('apps/desktop/src/hooks/use-app-dock-actions.ts'),
   source('apps/desktop/src/hooks/use-app-dirty-grid-documents.ts'),
   source('apps/desktop/src/hooks/use-app-docking-pose-messages.ts'),
+  source('apps/desktop/src/hooks/use-app-docking-pose-selection.ts'),
   source('apps/desktop/src/hooks/use-app-docking-workflows.ts'),
   source('apps/desktop/src/hooks/use-app-drop-actions.ts'),
   source('apps/desktop/src/hooks/use-app-file-actions.ts'),
@@ -3195,6 +3197,17 @@ assert.match(appViewerBridgeMessagesHook, /handleDockingPoseMessage\(source, bod
 assert.match(appDockingPoseMessagesHook, /body\?\.type !== "dockingPoseChanged"/);
 assert.match(appDockingPoseMessagesHook, /setPoseReviewSelections/);
 assert.match(appDockingPoseMessagesHook, /notifyGridPoseReviewSelection/);
+assert.match(app, /from "\.\/hooks\/use-app-docking-pose-selection"/);
+assert.match(app, /const \{ notifyGridPoseReviewSelection \} = useAppDockingPoseSelection\(\)/);
+assert.doesNotMatch(app, /const notifyGridPoseReviewSelection = useCallback/);
+assert.match(appDockingPoseSelectionHook, /export function useAppDockingPoseSelection\(\)/);
+assert.match(appDockingPoseSelectionHook, /const notifyGridPoseReviewSelection = useCallback/);
+assert.match(appDockingPoseSelectionHook, /document\.querySelectorAll<HTMLIFrameElement>\("\.viewer-iframe\[data-document-id\]"\)/);
+assert.match(appDockingPoseSelectionHook, /item\.dataset\.documentId === targetDocumentId/);
+assert.match(appDockingPoseSelectionHook, /source: "burrete-grid-host"/);
+assert.match(appDockingPoseSelectionHook, /type: "poseReviewSelection"/);
+assert.match(appDockingPoseSelectionHook, /documentId: targetDocumentId/);
+assert.match(appDockingPoseSelectionHook, /activePose/);
 assert.match(appSdfViewerMessagesHook, /pushStatus\("Opening pose-review workspace\.\.\."\)/);
 assert.match(appDockingWorkflowsHook, /const openPoseReviewWorkspace = useCallback/);
 assert.match(appDockingWorkflowsHook, /openPoseReviewTab\(\{/);
