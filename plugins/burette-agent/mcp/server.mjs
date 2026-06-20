@@ -4,6 +4,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 import { pluginPath } from "./lib/plugin-root.mjs";
+import { registerFetch } from "./registrations/fetch/register.mjs";
 import { registerMolecularReport } from "./registrations/molecular-report/register.mjs";
 import { registerMolecularWorkspace } from "./registrations/molecular-workspace/register.mjs";
 import { registerMoleculeTable } from "./registrations/molecule-table/register.mjs";
@@ -22,6 +23,7 @@ const server = new McpServer(
   },
 );
 
+registerFetch(server);
 registerMolecularWorkspace(server);
 registerMoleculeTable(server);
 registerTrajectoryReview(server);
