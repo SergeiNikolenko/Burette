@@ -157,10 +157,11 @@ Current Stage 3 progress:
   `apps/desktop/src/hooks/use-app-viewer-bridge-messages.ts`;
 - ShellViewState compatibility assembly now lives in
   `apps/desktop/src/hooks/use-app-shell-view-state.ts`;
-- ShellActions compatibility assembly now passes through
-  `apps/desktop/src/hooks/use-app-shell-actions.ts`, with job-history,
-  project, dock-drop, close/dirty-cleanup, recent, and update action groups
-  extracted from `App.tsx`;
+- ShellActions compatibility assembly now lives in
+  `apps/desktop/src/hooks/use-app-shell-actions.ts`: `App.tsx` wires the
+  `useAppShellActions` adapter while job-history, project, dock-drop,
+  close/dirty-cleanup, recent, and update action groups stay behind the same
+  compatibility boundary;
 - FEP setup/network preview action callbacks and the current FEP setup request
   derivation now live in `apps/desktop/src/hooks/use-app-fep-workflows.ts`;
 - drop action menu selection and dropped project-root callbacks now live in
@@ -186,9 +187,9 @@ Current Stage 3 progress:
   `apps/desktop/src/hooks/use-app-xtb-workflows.ts`;
 - shared text/base64 download, export filename, temporary text id, and save
   dialog filter helpers now live in `apps/desktop/src/lib/file-export.ts`;
-- `App.tsx` still owns grouped ShellActions assembly.
-  These are the remaining high-risk slices
-  and should move only after each boundary has contract coverage for the exact
+- `App.tsx` still owns the top-level shell composition and remaining runtime
+  hardening boundaries. These are the remaining high-risk slices and should
+  move only after each boundary has contract coverage for the exact
   message/action names.
 
 ## Current Epic Status
@@ -201,13 +202,13 @@ the high-risk runtime boundaries intact.
 | --- | --- | --- |
 | Contract safety net | Partial | Existing contract tests were strengthened as modules moved, but the full named test matrix from the epic is not complete yet. |
 | Dev-server extraction | Complete | Browser-dev endpoint modules now live under `apps/desktop/vite/browser-dev/`, with `vite.config.ts` acting as registration/composition. |
-| App shell extraction | Partial | Several app hooks, pure chemistry libs, file-routing helpers, shared file-export helpers, the core file-open hook, file picker/recent-open actions, the dock payload-open hook, browser-dev startup URL helpers/effects, pure Ketcher workflow helpers, Ketcher action callbacks, docking/collection action callbacks, grid append/xyzrender sheet callbacks, grid save/export/runtime/control/conformer message handling, viewer export/runtime/runtime-file/state/renderer/Ketcher/host/conformer/Molstar-context message handling, top-level viewer/grid dispatch, xTB/CREST status/settings/cancel state, CREST/PRISM workflow runners, 3D conformer generation/Molstar replacement sender, Molstar text-selection/action senders, Molstar xTB context request handling, xTB workflow runners, shared xyzrender sheet message handling, SDF open message handling, docking pose-change message handling, FEP setup/network callbacks, drop action callbacks, workspace/project-folder callbacks, and ShellViewState assembly are extracted, but remaining grouped ShellActions assembly still lives in `App.tsx`. |
+| App shell extraction | Partial | Several app hooks, pure chemistry libs, file-routing helpers, shared file-export helpers, the core file-open hook, file picker/recent-open actions, the dock payload-open hook, browser-dev startup URL helpers/effects, pure Ketcher workflow helpers, Ketcher action callbacks, docking/collection action callbacks, grid append/xyzrender sheet callbacks, grid save/export/runtime/control/conformer message handling, viewer export/runtime/runtime-file/state/renderer/Ketcher/host/conformer/Molstar-context message handling, top-level viewer/grid dispatch, xTB/CREST status/settings/cancel state, CREST/PRISM workflow runners, 3D conformer generation/Molstar replacement sender, Molstar text-selection/action senders, Molstar xTB context request handling, xTB workflow runners, shared xyzrender sheet message handling, SDF open message handling, docking pose-change message handling, FEP setup/network callbacks, drop action callbacks, workspace/project-folder callbacks, ShellViewState assembly, and ShellActions assembly are extracted. Remaining app-shell work is smaller composition cleanup plus runtime hardening boundaries. |
 | Opening workflow | Partial | `openDocuments`, `openPaths`, text/spectrum opening, path classification, pasted-structure opening, file picker/recent-open actions, dock payload opening, browser-dev startup URL parsing, and browser-dev startup orchestration effects are in dedicated modules/hooks. |
 | Ketcher workflow | Partial | Ketcher import queueing, draft/source helpers, import state, import/export/sketch/grid-row action callbacks, grid-origin `openInKetcher` message routing, and viewer-origin Ketcher handoff messages are extracted; broader Ketcher sketch state still flows through `App.tsx`. |
 | Grid workflow | Partial | Dirty-grid state, descriptor workflows, grid append, delimited append fallback, xyzrender sheet drops, pose-review selection refresh, grid save/export message handling, grid paging/read/xyzrender-card runtime messages, grid control/conformer message routing, SDF grid open message handling, and shared viewer/grid dispatch are extracted. |
-| Docking/collections/dock payloads | Partial | Dock payload opening plus docking document construction, dropped-structure docking, collection merge/save, pose-review workspace action callbacks, SDF pose-review message handling, Molstar context handoff, and docking pose-change synchronization are extracted; grouped docking action assembly still lives in `App.tsx`. |
+| Docking/collections/dock payloads | Partial | Dock payload opening plus docking document construction, dropped-structure docking, collection merge/save, pose-review workspace action callbacks, SDF pose-review message handling, Molstar context handoff, docking pose-change synchronization, and shell-action wiring are extracted; deeper domain-specific docking runtime boundaries remain in the app composition. |
 | Viewer bridge | Partial | Grid-origin file/runtime/control/conformer messages, viewer-origin export/runtime/runtime-file/state/renderer/Ketcher/host/conformer/Molstar-context messages, shared viewer/grid xyzrender sheet rendering, SDF open messages, docking pose-change messages, the top-level `window.message` dispatch, and Molstar xTB context response listener now delegate to dedicated hooks. |
-| ShellActions/ShellViewState slicing | Partial | `ShellViewState` derived-field assembly is behind `createAppShellViewState`; `ShellActions` has a compatibility adapter plus extracted job-history, project, dock-drop, close/dirty-cleanup, recent, and update action groups. The remaining large domain action assembly is still inline in `App.tsx`. |
+| ShellActions/ShellViewState slicing | Complete for compatibility assembly | `ShellViewState` derived-field assembly is behind `createAppShellViewState`; `ShellActions` now flows through `useAppShellActions` and `createAppShellActions`, with job-history, project, dock-drop, close/dirty-cleanup, recent, and update action groups behind the same compatibility adapter. |
 | Update flow | Complete | Update state/actions are in `use-app-updates.ts`. |
 | Hardening pass | Not started | Trusted shell vs preview capability split, diagnostics privacy redaction, cache contract, scanner limits, renderer policy matrix, and doctor flow remain pending. |
 | Runtime cache contract | Not started | No dedicated cache contract extraction yet. |
