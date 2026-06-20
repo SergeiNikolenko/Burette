@@ -132,12 +132,17 @@ assert.equal(packDryRun.status, 0, packDryRun.stderr);
 const packPayload = JSON.parse(packDryRun.stdout);
 const packedFiles = new Set(packPayload[0].files.map(file => file.path));
 for (const asset of [
+  "browser-shell-dist/index.html",
   "mcp/widget-assets/molecular-workspace/widget.html",
   "mcp/widget-assets/molecular-workspace/widget.css",
   "mcp/widget-assets/molecular-workspace/widget.js",
   "mcp/widget-assets/molecule-table/widget.html",
   "mcp/widget-assets/trajectory-review/widget.html",
   "mcp/widget-assets/molecular-report/widget.html",
+  "preview-web/index.html",
+  "scripts/agent-preview.mjs",
+  "scripts/agent-shell-server.mjs",
+  "scripts/burrete-agent.mjs",
 ]) {
   assert.equal(packedFiles.has(asset), true, `npm package is missing ${asset}`);
 }
@@ -283,7 +288,7 @@ assert.equal(extractedLigand.atomCount, 44);
 assert.match(extractedLigand.outputPath, /test-nad-a-377\.pdb$/);
 await unlink(extractedLigand.outputPath);
 
-const missingRepoRootCheck = runNode([
+const selfContainedPluginCheck = runNode([
   "--input-type=module",
   "--eval",
   `
@@ -294,16 +299,24 @@ const missingRepoRootCheck = runNode([
     const pluginRoot = path.join(tempRoot, "cache", "nikolenko-local", "burrete", "0.1.0");
     await cp("plugins/burette-agent", pluginRoot, { recursive: true });
     const bridge = await import(path.join(pluginRoot, "mcp", "lib", "cli-bridge.mjs"));
-    const result = await bridge.runBurreteAgent(["open", "--mode", "browser-preview", "samples/mini.pdb"]);
-    console.log(JSON.stringify(result.error));
+    const result = await bridge.runBurreteAgent(["open", "--mode", "browser-preview", path.resolve("samples/mini.pdb")]);
+    console.log(JSON.stringify({
+      ok: result.ok,
+      mode: result.payload?.result?.mode,
+      processId: result.payload?.result?.processId ?? null,
+      url: result.payload?.result?.url ?? null
+    }));
+    if (result.payload?.result?.processId) {
+      try { process.kill(result.payload.result.processId, "SIGTERM"); } catch {}
+    }
     await rm(tempRoot, { recursive: true, force: true });
   `,
 ]);
-assert.equal(missingRepoRootCheck.status, 0, missingRepoRootCheck.stderr);
-const missingRepoRootError = JSON.parse(missingRepoRootCheck.stdout);
-assert.equal(missingRepoRootError.code, "BURRETE_REPO_ROOT_UNAVAILABLE");
-assert.match(missingRepoRootError.message, /BURRETE_AGENT_REPO_ROOT/);
-assert.equal(missingRepoRootError.details.repoRootSource, "fallback-unverified");
+assert.equal(selfContainedPluginCheck.status, 0, selfContainedPluginCheck.stderr);
+const selfContainedPlugin = JSON.parse(selfContainedPluginCheck.stdout);
+assert.equal(selfContainedPlugin.ok, true);
+assert.equal(selfContainedPlugin.mode, "browser-preview");
+assert.match(selfContainedPlugin.url, /^http:\/\/127\.0\.0\.1:/);
 
 const syntaxTargets = [
   "plugins/burette-agent/mcp/server.mjs",

@@ -68,24 +68,33 @@ MCP tools wrap this CLI instead of reimplementing the app control layer.
 available. It tries `browser-agent-shell` first and falls back to the tokenized
 `browser-preview` server for basic molecular opening and observation.
 
-The full `browser-agent-shell` prefers a prebuilt agent-shell web bundle served
-by `scripts/agent-shell-server.mjs`. Build that bundle with:
+The full `browser-agent-shell` is self-contained when the plugin bundle is built
+with:
 
 ```bash
 bun run build:agent-shell
 ```
 
-When `apps/desktop/dist/index.html` is present, the CLI serves those static
-assets plus the runtime `/__burette/agent-session/*`, `/__burette/read-file`,
-and `/__burette/file-bundle` endpoints without `vp`. If the prebuilt bundle is
+That command writes the runtime files into the plugin bundle:
+
+- `plugins/burette-agent/scripts/burrete-agent.mjs`
+- `plugins/burette-agent/scripts/agent-shell-server.mjs`
+- `plugins/burette-agent/scripts/agent-preview.mjs`
+- `plugins/burette-agent/browser-shell-dist/`
+- `plugins/burette-agent/preview-web/`
+
+When `browser-shell-dist/index.html` is present, the plugin-local CLI serves
+those static assets plus the runtime `/__burette/agent-session/*`,
+`/__burette/read-file`, and `/__burette/file-bundle` endpoints without `vp` and
+without needing the source repository checkout. If the prebuilt bundle is
 missing in a source checkout, the CLI falls back to `vp dev`.
 
 ## Local Codex Installation
 
 The current Codex CLI does not expose a direct
 `codex plugin install <plugin-dir>` command. For a clean local install from this
-repository, install the bundle into the local plugin cache, record the source
-repository root, install the MCP dependencies, and enable the plugin in the
+repository, build the self-contained plugin runtime, install the bundle into the
+local plugin cache, install the MCP dependencies, and enable the plugin in the
 Codex config:
 
 ```bash
@@ -122,6 +131,10 @@ grep -q '^\[plugins."burrete@nikolenko-local"\]' ~/.codex/config.toml || cat >> 
 enabled = true
 EOF
 ```
+
+The `.burette-agent-install.json` file is useful for source-checkout fallbacks
+and repository-local summaries, but the Browser shell and Browser preview paths
+must work from the plugin cache itself after `bun run build:agent-shell`.
 
 Restart Codex after changing the marketplace or plugin config. A running Codex
 process can keep the old MCP tool surface and cached plugin process alive until

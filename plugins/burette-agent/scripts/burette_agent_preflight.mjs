@@ -43,20 +43,32 @@ async function resolveRepoRoot() {
 
 const pluginManifestPath = path.join(pluginRoot, ".codex-plugin", "plugin.json");
 const repoPackagePath = path.join(repoRoot, "package.json");
-const cliPath = path.join(repoRoot, "scripts", "burrete-agent.mjs");
-const previewPath = path.join(repoRoot, "scripts", "agent-preview.mjs");
-const agentShellServerPath = path.join(repoRoot, "scripts", "agent-shell-server.mjs");
+const pluginCliPath = path.join(pluginRoot, "scripts", "burrete-agent.mjs");
+const repoCliPath = path.join(repoRoot, "scripts", "burrete-agent.mjs");
+const cliPath = await exists(pluginCliPath) ? pluginCliPath : repoCliPath;
+const pluginPreviewPath = path.join(pluginRoot, "scripts", "agent-preview.mjs");
+const repoPreviewPath = path.join(repoRoot, "scripts", "agent-preview.mjs");
+const previewPath = await exists(pluginPreviewPath) ? pluginPreviewPath : repoPreviewPath;
+const pluginAgentShellServerPath = path.join(pluginRoot, "scripts", "agent-shell-server.mjs");
+const repoAgentShellServerPath = path.join(repoRoot, "scripts", "agent-shell-server.mjs");
+const agentShellServerPath = await exists(pluginAgentShellServerPath) ? pluginAgentShellServerPath : repoAgentShellServerPath;
 const agentShellDistPath = process.env.BURRETE_AGENT_SHELL_DIST_DIR
   ? path.resolve(process.env.BURRETE_AGENT_SHELL_DIST_DIR)
-  : path.join(repoRoot, "apps", "desktop", "dist");
+  : await exists(path.join(pluginRoot, "browser-shell-dist", "index.html"))
+    ? path.join(pluginRoot, "browser-shell-dist")
+    : path.join(repoRoot, "apps", "desktop", "dist");
+const previewWebPath = await exists(path.join(pluginRoot, "preview-web", "index.html"))
+  ? path.join(pluginRoot, "preview-web")
+  : path.join(repoRoot, "PreviewExtension", "Web");
 const desktopApp = process.env.BURRETE_AGENT_APP || null;
 const hasVp = commandExists("vp");
 
-const [pluginManifest, repoPackage, hasCli, hasPreview, hasAgentShellServer, hasAgentShellDist, hasDesktopApp] = await Promise.all([
+const [pluginManifest, repoPackage, hasCli, hasPreview, hasPreviewWeb, hasAgentShellServer, hasAgentShellDist, hasDesktopApp] = await Promise.all([
   readJson(pluginManifestPath, {}),
   readJson(repoPackagePath, {}),
   exists(cliPath),
   exists(previewPath),
+  exists(previewWebPath),
   exists(agentShellServerPath),
   exists(path.join(agentShellDistPath, "index.html")),
   desktopApp ? exists(desktopApp) : Promise.resolve(false),
@@ -95,6 +107,10 @@ const payload = {
       path: previewPath,
       status: hasPreview ? "available" : "missing",
     },
+    browserPreviewWeb: {
+      path: previewWebPath,
+      status: hasPreviewWeb ? "available" : "missing",
+    },
     browserAgentShellServer: {
       path: agentShellServerPath,
       status: hasAgentShellServer ? "available" : "missing",
@@ -118,7 +134,7 @@ const payload = {
     transports: [
       {
         id: "auto",
-        status: hasCli && hasPreview ? "available" : "blocked",
+        status: hasCli && hasPreview && hasPreviewWeb ? "available" : "blocked",
         note: "Start the full browser agent shell when available; fall back to browser-preview when the shell cannot start.",
       },
       {
@@ -130,7 +146,7 @@ const payload = {
       },
       {
         id: "browser-preview",
-        status: hasCli && hasPreview ? "available" : "blocked",
+        status: hasCli && hasPreview && hasPreviewWeb ? "available" : "blocked",
         note: "Token-gated localhost preview driven by scripts/agent-preview.mjs.",
       },
       {
@@ -200,10 +216,11 @@ const payload = {
     },
   },
   control: {
-    proceed: hasCli && hasPreview,
+    proceed: hasCli && hasPreview && hasPreviewWeb,
     blockers: [
       ...(hasCli ? [] : ["scripts/burrete-agent.mjs is missing"]),
       ...(hasPreview ? [] : ["scripts/agent-preview.mjs is missing"]),
+      ...(hasPreviewWeb ? [] : ["preview-web/index.html is missing"]),
     ],
   },
 };
