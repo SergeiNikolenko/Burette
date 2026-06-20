@@ -1,11 +1,10 @@
 import { useCallback } from "react";
 
 import { openBrowserDevMolstarContextDocument } from "../lib/browser-dev-documents";
+import type { ActiveViewerIframeForDocument, KnownViewerMessageSource } from "../lib/viewer-bridge";
 import type { ViewerDocument } from "../types";
 
 type MolstarContextDocument = Parameters<typeof openBrowserDevMolstarContextDocument>[0];
-type ActiveViewerIframeForDocument = (documentId: string) => HTMLIFrameElement | null;
-type KnownViewerMessageSource = (source: MessageEventSource | null, documentId?: string) => boolean;
 
 type UseAppMolstarXtbContextOptions = {
   activeViewerIframeForDocument: ActiveViewerIframeForDocument;

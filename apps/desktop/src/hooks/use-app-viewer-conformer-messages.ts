@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { normalizeMolstarStylePreference, type ConformerGenerationMode, type MolstarStylePreference } from "../lib/conformer-generation";
+import type { PostMessageToViewerSource } from "../lib/viewer-bridge";
 import type { ViewerDocument } from "../types";
 
 type ViewerConformerMessageBody = Record<string, unknown> | null | undefined;
@@ -8,7 +9,6 @@ type Generate3DConformer = (
   mode: ConformerGenerationMode,
   molstarStyle?: MolstarStylePreference | null,
 ) => Promise<unknown>;
-type PostMessageToViewerSource = (source: MessageEventSource | null, payload: unknown) => void;
 type PushStatus = (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
 
 type UseAppViewerConformerMessagesOptions = {

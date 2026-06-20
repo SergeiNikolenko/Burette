@@ -1,12 +1,13 @@
 import { useEffect } from "react";
 
+import type { KnownViewerMessageSource } from "../lib/viewer-bridge";
+
 type ViewerBridgeMessageSource = "burrete-viewer" | "burrete-grid" | "burrete-agent-viewer";
 type ViewerBridgeMessageBody = (Record<string, unknown> & { documentId?: string }) | null | undefined;
 type ViewerBridgeMessageData = {
   source?: string;
   body?: ViewerBridgeMessageBody;
 } | undefined;
-type KnownViewerMessageSource = (source: MessageEventSource | null, documentId?: string) => boolean;
 type SourceMessageHandler = (source: ViewerBridgeMessageSource, body: ViewerBridgeMessageBody) => boolean;
 type SourceEventMessageHandler = (
   source: ViewerBridgeMessageSource,

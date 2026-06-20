@@ -2,9 +2,9 @@ import { useCallback } from "react";
 
 import type { StructureViewerAction } from "../components/types";
 import type { TextStructureSelection } from "../lib/text-structure-selection";
+import type { ActiveViewerIframeForDocument } from "../lib/viewer-bridge";
 import type { TextFileDocument, ViewerDocument } from "../types";
 
-type ActiveViewerIframeForDocument = (documentId: string) => HTMLIFrameElement | null;
 type PushStatus = (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
 
 type UseAppMolstarActionSendersOptions = {

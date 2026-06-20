@@ -1,8 +1,8 @@
 import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { isTauriRuntime } from "../lib/tauri";
+import type { PostMessageToViewerSource } from "../lib/viewer-bridge";
 
-type PostMessageToViewerSource = (source: MessageEventSource | null, payload: unknown) => void;
 type XyzrenderSheetMessageBody = Record<string, unknown> | null | undefined;
 
 type UseAppXyzrenderSheetMessagesOptions = {
