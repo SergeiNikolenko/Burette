@@ -2169,10 +2169,11 @@ img.radix-menu-item-icon {
   min-height: 0;
   height: 100%;
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  align-content: start;
   gap: 10px;
   padding: 12px;
-  overflow: hidden;
+  overflow: auto;
 }
 .folding-analysis-header {
   min-width: 0;
@@ -2247,6 +2248,9 @@ img.radix-menu-item-icon {
 }
 .folding-sequence-text {
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 1px;
   overflow-x: auto;
   background: color-mix(in srgb, #b54fb3 22%, var(--surface-input));
   color: var(--text-secondary);
@@ -2254,57 +2258,26 @@ img.radix-menu-item-icon {
   font: 13px/1.45 var(--mono-font);
   white-space: pre;
 }
-.folding-analysis-main {
-  min-width: 0;
-  min-height: 0;
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  gap: 10px;
-  overflow: auto;
+.folding-sequence-residue {
+  min-width: 1.45em;
+  height: 24px;
+  padding: 0 3px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 24px;
+  text-align: center;
+  cursor: pointer;
 }
-.folding-analysis-side {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(180px, 260px) minmax(240px, 1fr) minmax(220px, 1fr);
-  align-items: start;
-  gap: 10px;
-  overflow: visible;
+.folding-sequence-residue:hover {
+  background: color-mix(in srgb, #2f6fed 18%, transparent);
+  color: var(--text-primary);
 }
-.folding-analysis-model-card {
-  min-width: 0;
-  display: grid;
-  gap: 2px;
-  border: 1px solid var(--line-subtler);
-  border-radius: 7px;
-  background: var(--surface-input);
-  padding: 8px;
-}
-.folding-analysis-model-card strong,
-.folding-analysis-model-card span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.folding-analysis-model-card strong {
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-.folding-analysis-model-card span {
-  color: var(--text-muted);
-  font-size: 11px;
-}
-.folding-analysis-artifacts {
-  min-width: 0;
-  display: grid;
-  gap: 6px;
-  max-height: 92px;
-  overflow: auto;
-}
-.folding-analysis-plot {
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
+.folding-sequence-residue[data-selected="true"] {
+  background: #2f6fed;
+  color: #fff;
 }
 .folding-warning-list {
   min-width: 0;
