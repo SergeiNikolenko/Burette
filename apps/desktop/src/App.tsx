@@ -31,6 +31,7 @@ import { useAppMaintenance } from "./hooks/use-app-maintenance";
 import { useAppOpenActions } from "./hooks/use-app-open-actions";
 import { useAppQuickLook } from "./hooks/use-app-quick-look";
 import { useAppResize } from "./hooks/use-app-resize";
+import { useAppRendererMessage } from "./hooks/use-app-renderer-message";
 import { useAppSidebarProjects } from "./hooks/use-app-sidebar-projects";
 import { useAppSdfViewerMessages } from "./hooks/use-app-sdf-viewer-messages";
 import { useAppStartupEffects } from "./hooks/use-app-startup-effects";
@@ -1492,6 +1493,16 @@ export default function App() {
     reloadActive,
     xyzrenderOrientationRefRef,
   });
+  const { handleRendererMessage } = useAppRendererMessage({
+    activeDocument,
+    documents,
+    openDocuments,
+    pendingViewerReloadDocumentIdRef,
+    pendingViewerReloadOptionsRef,
+    setPreference,
+    skipNextPreferenceRefreshRef,
+    xyzrenderOrientationRefRef,
+  });
   const { handleViewerRuntimeFileMessage } = useAppViewerRuntimeFileMessages({
     activeDocument,
     documents,
@@ -1932,48 +1943,13 @@ export default function App() {
         }
         return;
       }
-      if (body?.type === "setRenderer") {
-        const renderer = body.value;
-        if (renderer === "auto" || renderer === "molstar" || renderer === "xyzrender-external") {
-          const targetDocument = (body.documentId
-            ? documents.find((document) => document.id === body.documentId)
-            : null) ?? activeDocument;
-          const reloadOptions = renderer === "xyzrender-external"
-            ? {
-                xyzrenderOrientationRef: body.orientationRef ?? xyzrenderOrientationRefRef.current,
-                xyzrenderPreset: body.preset ?? pendingViewerReloadOptionsRef.current?.xyzrenderPreset ?? null,
-                xyzrenderControls: body.controls ?? pendingViewerReloadOptionsRef.current?.xyzrenderControls ?? null,
-              }
-            : renderer === "molstar"
-              ? {}
-            : undefined;
-          if (renderer === "xyzrender-external" && body.orientationRef) {
-            xyzrenderOrientationRefRef.current = body.orientationRef;
-          }
-          pendingViewerReloadOptionsRef.current = renderer === "xyzrender-external"
-            ? {
-                xyzrenderOrientationRef: body.orientationRef ?? xyzrenderOrientationRefRef.current,
-                xyzrenderPreset: body.preset ?? pendingViewerReloadOptionsRef.current?.xyzrenderPreset ?? null,
-                xyzrenderControls: body.controls ?? pendingViewerReloadOptionsRef.current?.xyzrenderControls ?? null,
-              }
-            : null;
-          pendingViewerReloadDocumentIdRef.current = renderer === "xyzrender-external"
-            ? body.documentId ?? null
-            : null;
-          skipNextPreferenceRefreshRef.current = true;
-          setPreference("rendererMode", renderer);
-          if (targetDocument) {
-            pendingViewerReloadOptionsRef.current = null;
-            pendingViewerReloadDocumentIdRef.current = null;
-            void openDocuments([targetDocument.path], reloadOptions, { rendererMode: renderer }, { inActiveTab: true });
-          }
-        }
+      if (handleRendererMessage(body)) {
         return;
       }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, generate3DConformer, handleDockingPoseMessage, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleSdfViewerMessage, handleViewerFileMessage, handleViewerRuntimeFileMessage, handleViewerRuntimeMessage, handleViewerStateMessage, handleXyzrenderSheetMessage, markViewerFirstRenderMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
+  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, generate3DConformer, handleDockingPoseMessage, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleRendererMessage, handleSdfViewerMessage, handleViewerFileMessage, handleViewerRuntimeFileMessage, handleViewerRuntimeMessage, handleViewerStateMessage, handleXyzrenderSheetMessage, markViewerFirstRenderMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;

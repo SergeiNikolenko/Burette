@@ -33,6 +33,7 @@ const [
   appOpenActionsHook,
   appQuickLookHook,
   appResizeHook,
+  appRendererMessageHook,
   appSidebarProjectsHook,
   appSdfViewerMessagesHook,
   appStartupEffectsHook,
@@ -188,6 +189,7 @@ const [
   source('apps/desktop/src/hooks/use-app-open-actions.ts'),
   source('apps/desktop/src/hooks/use-app-quick-look.ts'),
   source('apps/desktop/src/hooks/use-app-resize.ts'),
+  source('apps/desktop/src/hooks/use-app-renderer-message.ts'),
   source('apps/desktop/src/hooks/use-app-sidebar-projects.ts'),
   source('apps/desktop/src/hooks/use-app-sdf-viewer-messages.ts'),
   source('apps/desktop/src/hooks/use-app-startup-effects.ts'),
@@ -2933,12 +2935,14 @@ assert.match(appViewerRuntimeMessagesHook, /body\?\.type === "setXyzrenderPreset
 assert.match(appViewerRuntimeMessagesHook, /pendingViewerReloadDocumentIdRef\.current = bodyString\(body\.documentId\) \?\? null/);
 assert.match(appViewerRuntimeMessagesHook, /xyzrenderPreset: bodyString\(body\.value\) \?\? null/);
 assert.match(app, /await openDocuments\(\[targetDocument\.path\], reloadOptions, undefined, \{ inActiveTab: true \}\)/);
-assert.match(app, /const reloadOptions = renderer === "xyzrender-external"\s*\?\s*\{\s*xyzrenderOrientationRef: body\.orientationRef \?\? xyzrenderOrientationRefRef\.current,\s*xyzrenderPreset: body\.preset \?\? pendingViewerReloadOptionsRef\.current\?\.xyzrenderPreset \?\? null,\s*xyzrenderControls: body\.controls \?\? pendingViewerReloadOptionsRef\.current\?\.xyzrenderControls \?\? null,\s*\}\s*: renderer === "molstar"\s*\?\s*\{\}/s);
-assert.match(app, /const targetDocument = \(body\.documentId/);
-assert.match(app, /pendingViewerReloadDocumentIdRef\.current = renderer === "xyzrender-external"/);
-assert.match(app, /skipNextPreferenceRefreshRef\.current = true/);
-assert.match(app, /setPreference\("rendererMode", renderer\)/);
-assert.match(app, /void openDocuments\(\[targetDocument\.path\], reloadOptions, \{ rendererMode: renderer \}, \{ inActiveTab: true \}\)/);
+assert.match(app, /handleRendererMessage\(body\)/);
+assert.match(appRendererMessageHook, /body\?\.type !== "setRenderer"/);
+assert.match(appRendererMessageHook, /const reloadOptions = renderer === "xyzrender-external"\s*\?\s*\{\s*xyzrenderOrientationRef: orientationRef \?\? xyzrenderOrientationRefRef\.current,\s*xyzrenderPreset: preset \?\? pendingViewerReloadOptionsRef\.current\?\.xyzrenderPreset \?\? null,\s*xyzrenderControls: body\.controls \?\? pendingViewerReloadOptionsRef\.current\?\.xyzrenderControls \?\? null,\s*\}\s*: renderer === "molstar"\s*\?\s*\{\}/s);
+assert.match(appRendererMessageHook, /const targetDocument = \(documentId/);
+assert.match(appRendererMessageHook, /pendingViewerReloadDocumentIdRef\.current = renderer === "xyzrender-external"/);
+assert.match(appRendererMessageHook, /skipNextPreferenceRefreshRef\.current = true/);
+assert.match(appRendererMessageHook, /setPreference\("rendererMode", renderer\)/);
+assert.match(appRendererMessageHook, /void openDocuments\(\[targetDocument\.path\], reloadOptions, \{ rendererMode: renderer \}, \{ inActiveTab: true \}\)/);
 assert.match(app, /await handleSdfViewerMessage\(body\)/);
 assert.match(appSdfViewerMessagesHook, /body\?\.type === "openSdfMolstarDocument"/);
 assert.match(appSdfViewerMessagesHook, /pushErrorStatus\("Select one or more molecules before opening Molstar\.", "Molstar view failed"\)/);
