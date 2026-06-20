@@ -37,7 +37,15 @@ import { useAppResize } from "./hooks/use-app-resize";
 import { useAppRendererMessage } from "./hooks/use-app-renderer-message";
 import { useAppSidebarProjects } from "./hooks/use-app-sidebar-projects";
 import { useAppSdfViewerMessages } from "./hooks/use-app-sdf-viewer-messages";
-import { createAppShellActions } from "./hooks/use-app-shell-actions";
+import {
+  createAppShellActions,
+  createDockDropShellActions,
+  createDocumentCloseShellActions,
+  createJobHistoryShellActions,
+  createProjectShellActions,
+  createRecentShellActions,
+  createUpdateShellActions,
+} from "./hooks/use-app-shell-actions";
 import { createAppShellViewState } from "./hooks/use-app-shell-view-state";
 import { useAppStartupEffects } from "./hooks/use-app-startup-effects";
 import { useAppStatus } from "./hooks/use-app-status";
@@ -1809,10 +1817,7 @@ export default function App() {
     checkConformerStatus,
     runConformerOperation,
     cancelConformerJob,
-    clearConformerJobs: () => {
-      setConformerJobs([]);
-      pushStatus("Job history cleared");
-    },
+    ...createJobHistoryShellActions({ pushStatus, setConformerJobs, setXtbJobs }),
     setConformerSettings,
     checkXtbStatus,
     installXtb,
@@ -1823,10 +1828,6 @@ export default function App() {
     runXtbGridScoring,
     runXtbPoseRefinement,
     runXtbFepPreflight,
-    clearXtbJobs: () => {
-      setXtbJobs([]);
-      pushStatus("xTB job history cleared");
-    },
     setXtbSettings,
     saveKetcherDraft,
     clearKetcherImportRequest,
@@ -1834,18 +1835,7 @@ export default function App() {
     chooseWorkspace,
     openWorkspaceFolder,
     openProjectFolder,
-    togglePinnedProjectRoot: (root: string) => {
-      togglePinnedProjectRoot(root);
-      pushStatus("Project pin updated");
-    },
-    renameProjectRoot: (root: string, name: string) => {
-      renameProjectRoot(root, name);
-      pushStatus(name.trim() ? "Project renamed" : "Project name reset");
-    },
-    removeProjectRoot: (root: string) => {
-      removeProjectRoot(root);
-      pushStatus("Project removed");
-    },
+    ...createProjectShellActions({ pushStatus, removeProjectRoot, renameProjectRoot, togglePinnedProjectRoot }),
     toggleSidebar,
     toggleDock,
     toggleDockTab,
@@ -1856,57 +1846,29 @@ export default function App() {
     setDockActiveTab,
     setDockDocument,
     setDockTool,
-    addDockDrop: (input) => {
-      addDockDrop(input);
-      const count = input.payload.paths.length + input.payload.records.length + (input.payload.items?.length ?? 0);
-      const target = input.area === "right" ? "right dock" : "bottom dock";
-      pushStatus(`Added ${count} item${count === 1 ? "" : "s"} to ${target}`);
-    },
+    ...createDockDropShellActions({ addDockDrop, pushStatus }),
     openDockPayload,
     toggleProjectsOpen,
     setExpandedProjectIds,
     setSidebarQuery,
     toggleProjectExpanded,
     togglePinnedStructure,
-    closeDocument: (id: string) => {
-      if (!confirmDiscardDirtyGridDocument(id)) return;
-      closeGridRuntime(id);
-      forgetDirtyGridDocument(id);
-      closeDocument(id);
-    },
-    closeTab: (id: string) => {
-      const tab = tabs.find((candidate) => candidate.id === id);
-      const documentIds: string[] = [];
-      if (tab?.location.kind === "file") {
-        const location = tab.location;
-        const document = documents.find((candidate) => (
-          candidate.id === location.documentId ||
-          candidate.path === location.path
-        ));
-        const targetDocumentId = document?.id ?? location.documentId ?? null;
-        if (targetDocumentId) documentIds.push(targetDocumentId);
-        if (!confirmDiscardDirtyGridDocuments(documentIds)) return;
-        closeGridRuntime(targetDocumentId);
-      }
-      if (documentIds.length > 0) {
-        forgetDirtyGridDocuments(documentIds);
-      }
-      closeTab(id);
-    },
-    closeActiveDocument: () => {
-      if (!confirmDiscardDirtyGridDocument(activeDocument?.id)) return;
-      closeGridRuntime(activeDocument?.id);
-      forgetDirtyGridDocument(activeDocument?.id);
-      closeActiveDocument();
-      pushStatus("Closed active tab");
-    },
-    clearAllDocuments: () => {
-      if (!confirmDiscardDirtyGridDocuments(documents.map((document) => document.id))) return;
-      for (const document of documents) closeGridRuntime(document.id);
-      clearDirtyGridDocuments();
-      closeAllDocuments();
-      pushStatus("Closed all tabs");
-    },
+    ...createDocumentCloseShellActions({
+      activeDocument,
+      clearDirtyGridDocuments,
+      closeActiveDocument,
+      closeAllDocuments,
+      closeDocument,
+      closeGridRuntime,
+      closeTab,
+      confirmDiscardDirtyGridDocument,
+      confirmDiscardDirtyGridDocuments,
+      documents,
+      forgetDirtyGridDocument,
+      forgetDirtyGridDocuments,
+      pushStatus,
+      tabs,
+    }),
     openDockingDocument,
     openDockingStructureRecords,
     appendGridRecords,
@@ -1933,20 +1895,12 @@ export default function App() {
     exportActivePreviewAsPng,
     exportActivePreviewAsSvg,
     setStructureDragActive,
-    clearRecentStructures: () => {
-      clearRecentStructures();
-      pushStatus("Recent structures cleared");
-    },
+    ...createRecentShellActions({ clearRecentStructures, pushStatus }),
     clearCache,
     resetQuickLook,
     openLogs,
     exportDiagnostics,
-    checkForUpdates: async () => {
-      await checkForUpdates(false);
-    },
-    installUpdate: async () => {
-      await installUpdate();
-    },
+    ...createUpdateShellActions({ checkForUpdates, installUpdate }),
     openUpdateRelease,
     setPreference,
     setUpdatePreferences,
