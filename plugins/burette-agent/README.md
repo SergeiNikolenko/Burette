@@ -65,16 +65,24 @@ MCP tools wrap this CLI instead of reimplementing the app control layer.
 
 ## Local Codex Installation
 
-The Codex CLI manages local plugins through a marketplace bundle. It does not
-currently expose a direct `codex plugin install <plugin-dir>` command. For a
-clean local install from this repository, point the local marketplace entry at
-the bundled plugin directory and enable the plugin in the Codex config:
+The current Codex CLI does not expose a direct
+`codex plugin install <plugin-dir>` command. For a clean local install from this
+repository, install the bundle into the local plugin cache, record the source
+repository root, install the MCP dependencies, and enable the plugin in the
+Codex config:
 
 ```bash
 cd /path/to/Burette
 rm -rf ~/.codex/plugins/cache/nikolenko-local/burrete
-rm -f ~/.agents/plugins/burrete
-ln -s "$PWD/plugins/burette-agent" ~/.agents/plugins/burrete
+install_root="$HOME/.codex/plugins/cache/nikolenko-local/burrete/0.1.0"
+mkdir -p "$install_root"
+rsync -a --delete --exclude node_modules plugins/burette-agent/ "$install_root/"
+cat > "$install_root/.burette-agent-install.json" <<EOF
+{
+  "repoRoot": "$PWD"
+}
+EOF
+(cd "$install_root" && bun install --production)
 node <<'NODE'
 const fs = require("fs");
 const path = `${process.env.HOME}/.agents/plugins/marketplace.json`;
@@ -88,7 +96,8 @@ data.plugins.push({
 });
 fs.writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`);
 NODE
-codex plugin marketplace add ~/.agents/plugins
+rm -f ~/.agents/plugins/burrete
+ln -s "$install_root" ~/.agents/plugins/burrete
 grep -q '^\[plugins."burrete@nikolenko-local"\]' ~/.codex/config.toml || cat >> ~/.codex/config.toml <<'EOF'
 
 [plugins."burrete@nikolenko-local"]
