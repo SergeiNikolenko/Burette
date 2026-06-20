@@ -39,6 +39,7 @@ import { useAppStartupEffects } from "./hooks/use-app-startup-effects";
 import { useAppStatus } from "./hooks/use-app-status";
 import { useAppUpdates } from "./hooks/use-app-updates";
 import { useAppViewerFileActions } from "./hooks/use-app-viewer-file-actions";
+import { useAppViewerHostMessages } from "./hooks/use-app-viewer-host-messages";
 import { useAppViewerRuntimeFileMessages } from "./hooks/use-app-viewer-runtime-file-messages";
 import { useAppViewerRuntimeMessages } from "./hooks/use-app-viewer-runtime-messages";
 import { useAppViewerStateMessages } from "./hooks/use-app-viewer-state-messages";
@@ -1387,6 +1388,10 @@ export default function App() {
     openKetcherWithStructures,
     pushStatus,
   });
+  const { handleViewerHostMessage } = useAppViewerHostMessages({
+    pendingMolstarReplaceRef,
+    pushStatus,
+  });
 
   const { handleViewerFileMessage } = useAppViewerFileActions({
     pushErrorStatus,
@@ -1657,27 +1662,7 @@ export default function App() {
       if (data?.source !== "burrete-viewer" && data?.source !== "burrete-grid" && data?.source !== "burrete-agent-viewer") return;
       const body = data.body;
       if (!isKnownViewerMessageSource(event.source, body?.documentId)) return;
-      if (body?.type === "molstarStructureReplaced") {
-        const requestId = typeof body.requestId === "string" ? body.requestId : "";
-        const resolve = pendingMolstarReplaceRef.current.get(requestId);
-        if (resolve) {
-          pendingMolstarReplaceRef.current.delete(requestId);
-          resolve(true);
-        }
-        return;
-      }
-      if (data.source === "burrete-agent-viewer" && body?.type === "agent-action-result") {
-        if (typeof body.id === "string" && body.id.startsWith("text-selection-")) return;
-        const result = body.result;
-        if (result?.ok) {
-          return;
-        } else {
-          const actionDetails = result?.error?.details ? JSON.stringify(result.error.details).slice(0, 1600) : null;
-          pushStatus("Structure action did not match the structure", "error", [
-            result?.error?.message ?? "No matching atoms were reported by the viewer",
-            actionDetails,
-          ].filter((detail): detail is string => Boolean(detail)));
-        }
+      if (handleViewerHostMessage(data.source, body)) {
         return;
       }
       if (handleViewerStateMessage(data.source, body)) {
@@ -1887,7 +1872,7 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, generate3DConformer, handleDockingPoseMessage, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleKetcherViewerMessage, handleRendererMessage, handleSdfViewerMessage, handleViewerFileMessage, handleViewerRuntimeFileMessage, handleViewerRuntimeMessage, handleViewerStateMessage, handleXyzrenderSheetMessage, markViewerFirstRenderMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
+  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, generate3DConformer, handleDockingPoseMessage, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleKetcherViewerMessage, handleRendererMessage, handleSdfViewerMessage, handleViewerFileMessage, handleViewerHostMessage, handleViewerRuntimeFileMessage, handleViewerRuntimeMessage, handleViewerStateMessage, handleXyzrenderSheetMessage, markViewerFirstRenderMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
