@@ -93,6 +93,8 @@ Current Stage 3 progress:
   Quick Look startup, maintenance actions, file/path actions, descriptor
   workflows, dirty-grid state, diagnostics export, and clipboard opening now
   live in dedicated hooks;
+- active text-document derivation now lives in
+  `apps/desktop/src/hooks/use-app-active-text-document.ts`;
 - chemistry settings, chemistry job request wrappers, direct chemistry job
   guards, and conformer-generation text helpers now live under
   `apps/desktop/src/lib/`;
