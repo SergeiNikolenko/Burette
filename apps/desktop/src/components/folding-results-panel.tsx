@@ -68,6 +68,12 @@ type ChainSequence = {
   residueNumbers: string[];
 };
 
+type SelectedResidue = {
+  chainId: string;
+  residueNumber: string;
+  index: number;
+};
+
 export function useFoldingResult(document: ViewerDocument | null): FoldingResultState {
   const [bundle, setBundle] = useState<FoldingResultBundle | null>(null);
   const [loading, setLoading] = useState(false);
@@ -132,7 +138,7 @@ export function FoldingResultsPanel({ state, actions }: { state: FoldingResultSt
         >
           Folding Results
         </button>
-        <span>{bundle.source}</span>
+        <span>{bundle.source} · {modelCountLabel(bundle.models.length)}</span>
       </div>
 
       {bundle.models.length > 1 ? (
@@ -144,7 +150,10 @@ export function FoldingResultsPanel({ state, actions }: { state: FoldingResultSt
               role="tab"
               aria-selected={model.id === activeModel.id}
               data-active={model.id === activeModel.id || undefined}
-              onClick={() => setActiveModelId(model.id)}
+              onClick={() => {
+                setActiveModelId(model.id);
+                if (model.structurePath !== activeModel.structurePath) void actions.openStructurePaths([model.structurePath]);
+              }}
             >
               {modelLabel(model)}
             </button>
@@ -218,6 +227,7 @@ export function FoldingAnalysisPanel({ document, actions }: { document: ViewerDo
   const state = useFoldingResult(document);
   const bundle = state.bundle;
   const [activeModelId, setActiveModelId] = useState<string | null>(null);
+  const [selectedResidue, setSelectedResidue] = useState<SelectedResidue | null>(null);
 
   useEffect(() => {
     setActiveModelId(bundle?.models[0]?.id ?? null);
@@ -228,6 +238,10 @@ export function FoldingAnalysisPanel({ document, actions }: { document: ViewerDo
     return bundle.models.find((model) => model.id === activeModelId) ?? bundle.models[0] ?? null;
   }, [activeModelId, bundle]);
   const sequences = useStructureSequences(activeModel?.structurePath ?? null);
+
+  useEffect(() => {
+    setSelectedResidue(null);
+  }, [activeModel?.id]);
 
   if (state.loading) {
     return (
@@ -256,7 +270,7 @@ export function FoldingAnalysisPanel({ document, actions }: { document: ViewerDo
       <div className="folding-analysis-header">
         <div>
           <strong>{activeModel.title}</strong>
-          <span>{bundle.source}</span>
+          <span>{bundle.source} · {modelCountLabel(bundle.models.length)}</span>
         </div>
         <div className="folding-analysis-actions">
           <button type="button" className="dock-action dock-action-compact" onClick={() => actions.openStructurePaths([activeModel.structurePath])}>
@@ -277,7 +291,10 @@ export function FoldingAnalysisPanel({ document, actions }: { document: ViewerDo
               role="tab"
               aria-selected={model.id === activeModel.id}
               data-active={model.id === activeModel.id || undefined}
-              onClick={() => setActiveModelId(model.id)}
+              onClick={() => {
+                setActiveModelId(model.id);
+                if (model.structurePath !== activeModel.structurePath) void actions.openStructurePaths([model.structurePath]);
+              }}
             >
               {modelLabel(model)}
             </button>
@@ -285,51 +302,21 @@ export function FoldingAnalysisPanel({ document, actions }: { document: ViewerDo
         </div>
       ) : null}
 
-      <FoldingSequenceStrip sequences={sequences} />
-
-      <div className="folding-analysis-main">
-        <div className="folding-analysis-plot">
-          {activeModel.matrixPreview ? (
-            <FoldingMatrixHeatmap preview={activeModel.matrixPreview} size="large" />
-          ) : (
-            <div className="dock-content dock-content-empty">
-              <div className="dock-empty dock-empty-large">No PAE matrix found for this model</div>
-            </div>
-          )}
-        </div>
-        <div className="folding-analysis-side">
-          <div className="folding-analysis-model-card">
-            <strong>{activeModel.structureTitle}</strong>
-            <span>{activeModel.backend}</span>
-          </div>
-          {activeModel.metrics.length ? (
-            <div className="structure-inspector-xtb-metrics folding-metric-grid">
-              {activeModel.metrics.slice(0, 8).map((metric) => (
-                <div key={metric.key} className="structure-inspector-xtb-metric">
-                  <span>{metric.label}</span>
-                  <strong>{metric.formatted || formatMetric(metric.value)}</strong>
-                </div>
-              ))}
-            </div>
-          ) : null}
-          {activeModel.artifacts.length ? (
-            <div className="folding-analysis-artifacts">
-              {activeModel.artifacts.slice(0, 10).map((artifact) => (
-                <button
-                  key={artifact.path}
-                  type="button"
-                  className="dock-action structure-inspector-xtb-file-button"
-                  title={`${artifact.title} · ${formatBytes(artifact.byteCount)}`}
-                  onClick={() => openFoldingArtifact(artifact, actions)}
-                >
-                  <span>{artifactKindLabel(artifact.kind)}</span>
-                  <span>{artifact.title}</span>
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      </div>
+      <FoldingSequenceStrip
+        sequences={sequences}
+        selectedResidue={selectedResidue}
+        onSelectResidue={(chainId, residueNumber, residue, index) => {
+          setSelectedResidue({ chainId, residueNumber, index });
+          if (!document) return;
+          actions.runStructureViewerAction(document, {
+            type: "select_residues",
+            label: `Select Chain-${chainId} ${residueNumber}`,
+            selector: residueSelectionSelector(chainId, residueNumber),
+            granularity: "residue",
+            mode: "replace",
+          });
+        }}
+      />
     </div>
   );
 }
@@ -529,7 +516,15 @@ function useStructureSequences(path: string | null): ChainSequence[] {
   return sequences;
 }
 
-function FoldingSequenceStrip({ sequences }: { sequences: ChainSequence[] }) {
+function FoldingSequenceStrip({
+  sequences,
+  selectedResidue,
+  onSelectResidue,
+}: {
+  sequences: ChainSequence[];
+  selectedResidue?: SelectedResidue | null;
+  onSelectResidue?: (chainId: string, residueNumber: string, residue: string, index: number) => void;
+}) {
   if (!sequences.length) return null;
   return (
     <div className="folding-sequence-strip">
@@ -541,7 +536,28 @@ function FoldingSequenceStrip({ sequences }: { sequences: ChainSequence[] }) {
               <span key={`${chain.chainId}-${tick.index}`} style={{ left: `${tick.percent}%` }}>{tick.label}</span>
             ))}
           </div>
-          <div className="folding-sequence-text">{chain.sequence}</div>
+          <div className="folding-sequence-text" role="list" aria-label={`Chain-${chain.chainId} residues`}>
+            {Array.from(chain.sequence).map((residue, index) => {
+              const residueNumber = chain.residueNumbers[index] ?? String(index + 1);
+              const selected = selectedResidue?.chainId === chain.chainId
+                && selectedResidue.residueNumber === residueNumber
+                && selectedResidue.index === index;
+              return (
+                <button
+                  key={`${chain.chainId}-${residueNumber}-${index}`}
+                  type="button"
+                  className="folding-sequence-residue"
+                  data-selected={selected || undefined}
+                  title={`Chain-${chain.chainId} ${residueNumber} ${residue}`}
+                  aria-label={`Select Chain-${chain.chainId} residue ${residueNumber} ${residue}`}
+                  aria-pressed={selected}
+                  onClick={() => onSelectResidue?.(chain.chainId, residueNumber, residue, index)}
+                >
+                  {residue}
+                </button>
+              );
+            })}
+          </div>
         </div>
       ))}
     </div>
@@ -567,6 +583,10 @@ function sequenceTicks(residueNumbers: string[]) {
 }
 
 function parseStructureSequences(text: string): ChainSequence[] {
+  if (/^data_/imu.test(text) || text.includes("_atom_site.")) {
+    const cifSequences = parseCifSequences(text);
+    if (cifSequences.length) return cifSequences;
+  }
   const pdbSequences = parsePdbSequences(text);
   if (pdbSequences.length) return pdbSequences;
   return parseCifSequences(text);
@@ -685,6 +705,27 @@ function chainSequencesFromMap(chains: Map<string, { residues: string[]; residue
     .filter((chain) => chain.sequence.length > 0);
 }
 
+function residueSelectionSelector(chainId: string, residueNumber: string): Record<string, string | number | Array<string | number>> {
+  const selector: Record<string, string | number | Array<string | number>> = { kind: "polymer" };
+  if (chainId && chainId !== "-") {
+    selector.auth_asym_id = chainId;
+    selector.label_asym_id = chainId;
+  }
+  const residueValues = residueSelectorValues(residueNumber);
+  selector.auth_seq_id = residueValues;
+  selector.label_seq_id = residueValues;
+  return selector;
+}
+
+function residueSelectorValues(residueNumber: string): Array<string | number> {
+  const values: Array<string | number> = [];
+  const trimmed = residueNumber.trim();
+  const numeric = Number(trimmed);
+  if (Number.isFinite(numeric)) values.push(numeric);
+  if (trimmed && !values.some((value) => String(value) === trimmed)) values.push(trimmed);
+  return values.length ? values : [residueNumber];
+}
+
 function openFoldingArtifact(artifact: FoldingArtifact, actions: ShellActions) {
   if (["pdb", "cif", "mmcif", "mcif", "bcif"].includes(artifact.extension)) {
     void actions.openStructurePaths([artifact.path]);
@@ -701,6 +742,10 @@ function modelLabel(model: FoldingModel) {
   if (model.modelIndex !== null && model.modelIndex !== undefined) return `Model ${model.modelIndex}`;
   if (model.seed !== null && model.seed !== undefined) return `Seed ${model.seed}`;
   return model.backend;
+}
+
+function modelCountLabel(count: number) {
+  return `${count} ${count === 1 ? "model" : "models"}`;
 }
 
 function artifactKindLabel(kind: string) {
