@@ -1,7 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { open, save } from "@tauri-apps/plugin-dialog";
-import { openPath } from "@tauri-apps/plugin-opener";
+import { save } from "@tauri-apps/plugin-dialog";
 import { AppLayout } from "./components/app-layout";
 import type { AppSettingsSectionId, KetcherSketchRequest, ShellActions, ShellViewState, StructureViewerAction, ViewerLigandSelection } from "./components/types";
 import { WindowTitle } from "./components/window-title";
@@ -32,6 +31,7 @@ import { useAppSidebarProjects } from "./hooks/use-app-sidebar-projects";
 import { useAppStartupEffects } from "./hooks/use-app-startup-effects";
 import { useAppStatus } from "./hooks/use-app-status";
 import { useAppUpdates } from "./hooks/use-app-updates";
+import { useAppWorkspaceActions } from "./hooks/use-app-workspace-actions";
 import { useAgentSession } from "./hooks/use-agent-session";
 import { useAppClipboard } from "./hooks/use-app-clipboard";
 import { useMenuEvents } from "./hooks/use-menu-events";
@@ -1291,43 +1291,20 @@ export default function App() {
     }).catch(() => {});
   }, []);
 
-  const chooseWorkspace = useCallback(async () => {
-    try {
-      const selection = await open({ directory: true, multiple: false });
-      if (!selection || Array.isArray(selection)) return;
-      setWorkspacePath(selection);
-      addProjectRoot(selection);
-      pushStatus("Project folder added");
-    } catch (error) {
-      pushErrorStatus(error, "Workspace selection failed");
-    }
-  }, [addProjectRoot, pushErrorStatus, pushStatus]);
-
-  const openWorkspaceFolder = useCallback(async () => {
-    const fallbackPath = activeProject?.rootPath ?? workspacePath ?? activeDocument?.path ?? recentStructures[0]?.path ?? null;
-    if (!fallbackPath) {
-      await chooseWorkspace();
-      return;
-    }
-    const path = activeProject?.rootPath ?? workspacePath ?? parentDirectory(fallbackPath);
-    if (!path) return;
-    try {
-      await openPath(path);
-      pushStatus("Opened project folder");
-    } catch (error) {
-      pushErrorStatus(error, "Open project folder failed");
-    }
-  }, [activeDocument?.path, activeProject?.rootPath, chooseWorkspace, pushErrorStatus, pushStatus, recentStructures, workspacePath]);
-
-  const openProjectFolder = useCallback(async (path: string | null) => {
-    if (!path) return;
-    try {
-      await openPath(path);
-      pushStatus("Opened project folder");
-    } catch (error) {
-      pushErrorStatus(error, "Open project folder failed");
-    }
-  }, [pushErrorStatus, pushStatus]);
+  const {
+    chooseWorkspace,
+    openProjectFolder,
+    openWorkspaceFolder,
+  } = useAppWorkspaceActions({
+    activeDocumentPath: activeDocument?.path,
+    activeProjectRoot: activeProject?.rootPath,
+    addProjectRoot,
+    pushErrorStatus,
+    pushStatus,
+    recentStructures,
+    setWorkspacePath,
+    workspacePath,
+  });
 
   const openSettings = useCallback(() => {
     if (!sidebarOpen) toggleSidebar();
