@@ -51,6 +51,7 @@ import { useAppStartupEffects } from "./hooks/use-app-startup-effects";
 import { useAppStatus } from "./hooks/use-app-status";
 import { useAppUpdates } from "./hooks/use-app-updates";
 import { useAppViewerFileActions } from "./hooks/use-app-viewer-file-actions";
+import { useAppViewerBridgeMessages } from "./hooks/use-app-viewer-bridge-messages";
 import { useAppViewerConformerMessages } from "./hooks/use-app-viewer-conformer-messages";
 import { useAppViewerHostMessages } from "./hooks/use-app-viewer-host-messages";
 import { useAppViewerRuntimeFileMessages } from "./hooks/use-app-viewer-runtime-file-messages";
@@ -1621,135 +1622,26 @@ export default function App() {
     checkForUpdates,
   });
 
-  useEffect(() => {
-    const onMessage = async (event: MessageEvent) => {
-      const data = event.data as {
-        source?: string;
-        body?: {
-          type?: string;
-          requestId?: string;
-          message?: string;
-          value?: string;
-          mode?: string;
-          molstarStyle?: string | null;
-          documentId?: string;
-          path?: string | null;
-          receptorPath?: string | null;
-          title?: string | null;
-          extension?: string | null;
-          textBase64?: string | null;
-          controlLabel?: string | null;
-          orientationRef?: string | null;
-          preset?: string | null;
-          text?: string | null;
-          base64?: string | null;
-          query?: string | null;
-          sort?: string | null;
-          offset?: number | null;
-          limit?: number | null;
-          activePose?: number | null;
-          poseMode?: string | null;
-          sourcePath?: string | null;
-          controls?: ViewerReloadOptions["xyzrenderControls"];
-          renderer?: string | null;
-          presetOptions?: Array<{ value?: string | null; label?: string | null }> | null;
-          contextDocument?: Parameters<typeof openBrowserDevMolstarContextDocument>[0];
-          inputDataBase64?: string | null;
-          inputExtension?: string | null;
-          fragments?: Array<{ title?: string | null; textBase64?: string | null }> | null;
-          molecules?: Array<{ title?: string | null; extension?: string | null; textBase64?: string | null }> | null;
-          items?: Record<string, unknown>[] | null;
-          name?: string | null;
-          mimeType?: string | null;
-          requestToken?: string | null;
-          dirty?: boolean | null;
-          dirtyReason?: string | null;
-          gridEdit?: boolean | null;
-          rowIndex?: number | null;
-          rowIndexes?: number[] | null;
-          descriptorFilters?: Array<{ id?: string | null; min?: number | null; max?: number | null }> | null;
-          descriptorSort?: { id?: string | null; direction?: string | null } | null;
-          selection?: {
-            label?: string | null;
-            value?: string | null;
-            selector?: Record<string, string | number | Array<string | number>> | null;
-            atoms?: number | null;
-          } | null;
-          id?: string | null;
-          result?: {
-            ok?: boolean;
-            command?: string;
-            result?: {
-              counts?: {
-                atoms?: number;
-                residues?: number;
-              };
-            };
-            error?: {
-              message?: string;
-              details?: unknown;
-            };
-          } | null;
-        };
-      } | undefined;
-      if (data?.source !== "burrete-viewer" && data?.source !== "burrete-grid" && data?.source !== "burrete-agent-viewer") return;
-      const body = data.body;
-      if (!isKnownViewerMessageSource(event.source, body?.documentId)) return;
-      if (handleViewerHostMessage(data.source, body)) {
-        return;
-      }
-      if (handleViewerStateMessage(data.source, body)) {
-        return;
-      }
-      if (handleViewerRuntimeFileMessage(data.source, body, event.source)) {
-        return;
-      }
-      if (handleDockingPoseMessage(data.source, body)) {
-        return;
-      }
-      markViewerFirstRenderMessage(data.source, body);
-      if (data.source === "burrete-viewer" && handleViewerFileMessage(body)) {
-        return;
-      }
-      if (handleXyzrenderSheetMessage(data.source, body, event.source)) {
-        return;
-      }
-      if (data.source === "burrete-grid") {
-        if (handleGridControlMessage(body)) {
-          return;
-        }
-        if (handleGridFileMessage(body, event.source)) {
-          return;
-        }
-        if (handleGridRuntimeMessage(body, event.source)) {
-          return;
-        }
-      }
-      if (handleViewerRuntimeMessage(body)) {
-        return;
-      }
-      if (await handleSdfViewerMessage(body)) {
-        return;
-      }
-      if (handleGridConformerMessage(body, event.source)) {
-        return;
-      }
-      if (handleViewerConformerMessage(body, event.source)) {
-        return;
-      }
-      if (handleMolstarContextMessage(body)) {
-        return;
-      }
-      if (handleKetcherViewerMessage(body)) {
-        return;
-      }
-      if (handleRendererMessage(body)) {
-        return;
-      }
-    };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, handleDockingPoseMessage, handleGridConformerMessage, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleKetcherViewerMessage, handleMolstarContextMessage, handleRendererMessage, handleSdfViewerMessage, handleViewerConformerMessage, handleViewerFileMessage, handleViewerHostMessage, handleViewerRuntimeFileMessage, handleViewerRuntimeMessage, handleViewerStateMessage, handleXyzrenderSheetMessage, markViewerFirstRenderMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
+  useAppViewerBridgeMessages({
+    handleDockingPoseMessage,
+    handleGridConformerMessage,
+    handleGridControlMessage,
+    handleGridFileMessage,
+    handleGridRuntimeMessage,
+    handleKetcherViewerMessage,
+    handleMolstarContextMessage,
+    handleRendererMessage,
+    handleSdfViewerMessage,
+    handleViewerConformerMessage,
+    handleViewerFileMessage,
+    handleViewerHostMessage,
+    handleViewerRuntimeFileMessage,
+    handleViewerRuntimeMessage,
+    handleViewerStateMessage,
+    handleXyzrenderSheetMessage,
+    isKnownViewerMessageSource,
+    markViewerFirstRenderMessage,
+  });
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
