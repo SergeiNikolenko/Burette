@@ -16,6 +16,7 @@ const [
   appDescriptorsHook,
   appDiagnosticsHook,
   appDirtyGridHook,
+  appDockingWorkflowsHook,
   appFileActionsHook,
   appFileOpenHook,
   appDockPayloadHook,
@@ -154,6 +155,7 @@ const [
   source('apps/desktop/src/hooks/use-app-descriptors.ts'),
   source('apps/desktop/src/hooks/use-app-diagnostics.ts'),
   source('apps/desktop/src/hooks/use-app-dirty-grid-documents.ts'),
+  source('apps/desktop/src/hooks/use-app-docking-workflows.ts'),
   source('apps/desktop/src/hooks/use-app-file-actions.ts'),
   source('apps/desktop/src/hooks/use-app-file-open.ts'),
   source('apps/desktop/src/hooks/use-app-dock-payload-open.ts'),
@@ -2840,19 +2842,20 @@ assert.match(app, /openStructurePaths: async \(paths: string\[\], options\?: \{ 
 assert.match(app, /openStructureRecords,/);
 assert.match(app, /activeTabKind: activeTab\?\.location\.kind \?\? null/);
 assert.match(app, /activeDocumentPath: activeDocument\?\.path \?\? null/);
+assert.match(app, /from "\.\/hooks\/use-app-docking-workflows"/);
 assert.match(app, /openDockingDocument,/);
 assert.match(appFileOpenHook, /const openStructureRecordDocuments = useCallback/);
-assert.match(app, /const openDockingStructureRecords = useCallback/);
-assert.match(app, /if \(opened\.length > 0\) addDocuments\(opened\)/);
-assert.match(app, /addDocuments\(\[dockingDocument\]\)/);
+assert.match(appDockingWorkflowsHook, /const openDockingStructureRecords = useCallback/);
+assert.match(appDockingWorkflowsHook, /if \(opened\.length > 0\) addDocuments\(opened\)/);
+assert.match(appDockingWorkflowsHook, /addDocuments\(\[dockingDocument\]\)/);
 assert.match(app, /openDockingStructureRecords,/);
 assert.match(appFileOpenHook, /const openStructureRecords = useCallback/);
 assert.match(appFileOpenHook, /invoke<ViewerDocument>\("open_text_structure"/);
 assert.match(appFileOpenHook, /openBrowserDevTextDocument\(record\.path, record\.inputExtension, record\.text, preferences\)/);
 assert.match(app, /openStructureRecords,/);
 assert.match(app, /openKetcherWithStructures,/);
-assert.match(app, /existingDockingRequest = documents\.find/);
-assert.match(app, /dockingRequestForDrop\(targetPath, droppedPaths, existingDockingRequest\)/);
+assert.match(appDockingWorkflowsHook, /existingDockingRequest = documents\.find/);
+assert.match(appDockingWorkflowsHook, /dockingRequestForDrop\(targetPath, droppedPaths, existingDockingRequest\)/);
 assert.match(app, /useOpenEvents\(openPaths, pushErrorStatus\)/);
 assert.match(
   app,
@@ -2896,8 +2899,8 @@ assert.match(app, /body\?\.type === "dockingPoseChanged"/);
 assert.match(app, /setPoseReviewSelections/);
 assert.match(app, /notifyGridPoseReviewSelection/);
 assert.match(app, /pushStatus\("Opening pose-review workspace\.\.\."\)/);
-assert.match(app, /const openPoseReviewWorkspace = useCallback/);
-assert.match(app, /openPoseReviewTab\(\{/);
+assert.match(appDockingWorkflowsHook, /const openPoseReviewWorkspace = useCallback/);
+assert.match(appDockingWorkflowsHook, /openPoseReviewTab\(\{/);
 assert.match(app, /const openFepSetupWorkspace = useCallback/);
 assert.match(app, /const openFepNetworkPreview = useCallback/);
 assert.match(app, /openFepSetupTab\(\{/);
@@ -5138,23 +5141,23 @@ assert.match(fileKind, /targetDocumentId === document\.id && postXyzrenderSheetI
 assert.doesNotMatch(fileKind, /dockingRequestForDrop/);
 assert.doesNotMatch(fileKind, /hasGridAppendInput/);
 assert.match(fileKind, /Add to Mol\* docking view/);
-assert.match(app, /openBrowserDevDockingDocument/);
-assert.match(app, /const openDockingDocument = useCallback/);
+assert.match(appDockingWorkflowsHook, /openBrowserDevDockingDocument/);
+assert.match(appDockingWorkflowsHook, /const openDockingDocument = useCallback/);
 assert.match(app, /browserDevDockingFromLocation\(\)/);
 assert.match(app, /void openDockingDocument\(request\.receptorPath, request\.ligandPaths\)/);
-assert.match(app, /request\.activePose = options\.activePose \?\? null/);
-assert.match(app, /request\.sceneMode = options\.sceneMode \?\? null/);
-assert.match(app, /request\.poseMode = options\.sceneMode === "structureAll" \? "all" : "single"/);
+assert.match(appDockingWorkflowsHook, /request\.activePose = options\.activePose \?\? null/);
+assert.match(appDockingWorkflowsHook, /request\.sceneMode = options\.sceneMode \?\? null/);
+assert.match(appDockingWorkflowsHook, /request\.poseMode = options\.sceneMode === "structureAll" \? "all" : "single"/);
 assert.match(app, /const poseMode = body\.poseMode === "all" \? "all" : "single"/);
 assert.match(app, /if \(dockingDocument\?\.dockingRequest && dockingDocument\.dockingRequest\.poseMode !== poseMode\) \{/);
 assert.match(app, /addBackgroundDocuments\(\[\{/);
 assert.match(app, /poseMode,/);
-assert.match(app, /if \(request\.sceneMode && rightDockOpen && rightDockActiveTab === "descriptors"\) \{\s*setDockOpen\("right", false\);\s*\}/);
-assert.match(app, /openBrowserDevDockingDocument\(request\.receptorPath, request\.ligandPaths, preferences, options\)/);
+assert.match(appDockingWorkflowsHook, /if \(request\.sceneMode && rightDockOpen && rightDockActiveTab === "descriptors"\) \{\s*setDockOpen\("right", false\);\s*\}/);
+assert.match(appDockingWorkflowsHook, /openBrowserDevDockingDocument\(request\.receptorPath, request\.ligandPaths, preferences, options\)/);
 assert.match(app, /const point = payload\.point && Number\.isFinite\(payload\.point\.x\) && Number\.isFinite\(payload\.point\.y\)/);
 assert.match(app, /point,/);
-assert.match(app, /invoke<ViewerDocument>\("open_docking_document"/);
-assert.match(app, /rememberRecentStructures\(\[document\]\)/);
+assert.match(appDockingWorkflowsHook, /invoke<ViewerDocument>\("open_docking_document"/);
+assert.match(appDockingWorkflowsHook, /rememberRecentStructures\(\[document\]\)/);
 assert.match(app, /setStructureDragActive/);
 assert.match(previewViewer, /let dockingPoseKeydownDisposer = null/);
 assert.match(viewer, /function structureDropPathsFromPlainText\(text\)/);
