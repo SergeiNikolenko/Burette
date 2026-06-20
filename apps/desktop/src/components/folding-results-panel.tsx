@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { hasFoldingResultContent, readFoldingResultBundle } from "../lib/folding-results";
 import { readStructureText } from "../lib/structure-text";
 import type { FoldingArtifact, FoldingMatrixPreview, FoldingModel, FoldingProfile, FoldingResultBundle, ViewerDocument } from "../types";
@@ -227,7 +227,8 @@ export function FoldingAnalysisPanel({ document, actions }: { document: ViewerDo
   const state = useFoldingResult(document);
   const bundle = state.bundle;
   const [activeModelId, setActiveModelId] = useState<string | null>(null);
-  const [selectedResidue, setSelectedResidue] = useState<SelectedResidue | null>(null);
+  const [selectedResidues, setSelectedResidues] = useState<SelectedResidue[]>([]);
+  const [selectionAnchor, setSelectionAnchor] = useState<SelectedResidue | null>(null);
 
   useEffect(() => {
     setActiveModelId(bundle?.models[0]?.id ?? null);
@@ -240,7 +241,8 @@ export function FoldingAnalysisPanel({ document, actions }: { document: ViewerDo
   const sequences = useStructureSequences(activeModel?.structurePath ?? null);
 
   useEffect(() => {
-    setSelectedResidue(null);
+    setSelectedResidues([]);
+    setSelectionAnchor(null);
   }, [activeModel?.id]);
 
   if (state.loading) {
@@ -304,14 +306,29 @@ export function FoldingAnalysisPanel({ document, actions }: { document: ViewerDo
 
       <FoldingSequenceStrip
         sequences={sequences}
-        selectedResidue={selectedResidue}
-        onSelectResidue={(chainId, residueNumber, residue, index) => {
-          setSelectedResidue({ chainId, residueNumber, index });
+        selectedResidues={selectedResidues}
+        onClearSelection={() => {
+          setSelectedResidues([]);
+          setSelectionAnchor(null);
           if (!document) return;
+          actions.runStructureViewerAction(document, { type: "clear_selection", label: "Clear folding residue selection" });
+        }}
+        onSelectResidue={(chain, residueNumber, residue, index, event) => {
+          const selectedResidue = { chainId: chain.chainId, residueNumber, index };
+          const nextSelection = event.shiftKey && selectionAnchor?.chainId === chain.chainId
+            ? mergeResidueRange(selectedResidues, chain, selectionAnchor.index, index)
+            : toggleResidueSelection(selectedResidues, selectedResidue);
+          setSelectedResidues(nextSelection);
+          setSelectionAnchor(nextSelection.length ? selectedResidue : null);
+          if (!document) return;
+          if (!nextSelection.length) {
+            actions.runStructureViewerAction(document, { type: "clear_selection", label: "Clear folding residue selection" });
+            return;
+          }
           actions.runStructureViewerAction(document, {
             type: "select_residues",
-            label: `Select Chain-${chainId} ${residueNumber}`,
-            selector: residueSelectionSelector(chainId, residueNumber),
+            label: selectedResiduesLabel(nextSelection),
+            selector: residueSelectionSelector(nextSelection),
             granularity: "residue",
             mode: "replace",
           });
@@ -518,13 +535,19 @@ function useStructureSequences(path: string | null): ChainSequence[] {
 
 function FoldingSequenceStrip({
   sequences,
-  selectedResidue,
+  selectedResidues,
+  onClearSelection,
   onSelectResidue,
 }: {
   sequences: ChainSequence[];
-  selectedResidue?: SelectedResidue | null;
-  onSelectResidue?: (chainId: string, residueNumber: string, residue: string, index: number) => void;
+  selectedResidues?: SelectedResidue[];
+  onClearSelection?: () => void;
+  onSelectResidue?: (chain: ChainSequence, residueNumber: string, residue: string, index: number, event: ReactMouseEvent<HTMLButtonElement>) => void;
 }) {
+  const selectedResidueKeys = useMemo(
+    () => new Set((selectedResidues ?? []).map(residueSelectionKey)),
+    [selectedResidues],
+  );
   if (!sequences.length) return null;
   return (
     <div className="folding-sequence-strip">
@@ -539,9 +562,7 @@ function FoldingSequenceStrip({
           <div className="folding-sequence-text" role="list" aria-label={`Chain-${chain.chainId} residues`}>
             {Array.from(chain.sequence).map((residue, index) => {
               const residueNumber = chain.residueNumbers[index] ?? String(index + 1);
-              const selected = selectedResidue?.chainId === chain.chainId
-                && selectedResidue.residueNumber === residueNumber
-                && selectedResidue.index === index;
+              const selected = selectedResidueKeys.has(residueSelectionKey({ chainId: chain.chainId, residueNumber, index }));
               return (
                 <button
                   key={`${chain.chainId}-${residueNumber}-${index}`}
@@ -551,7 +572,7 @@ function FoldingSequenceStrip({
                   title={`Chain-${chain.chainId} ${residueNumber} ${residue}`}
                   aria-label={`Select Chain-${chain.chainId} residue ${residueNumber} ${residue}`}
                   aria-pressed={selected}
-                  onClick={() => onSelectResidue?.(chain.chainId, residueNumber, residue, index)}
+                  onClick={(event) => onSelectResidue?.(chain, residueNumber, residue, index, event)}
                 >
                   {residue}
                 </button>
@@ -560,6 +581,14 @@ function FoldingSequenceStrip({
           </div>
         </div>
       ))}
+      {selectedResidues?.length ? (
+        <div className="folding-sequence-selection">
+          <span>{selectedResidues.length} {selectedResidues.length === 1 ? "residue" : "residues"} selected</span>
+          <button type="button" className="dock-action dock-action-compact" onClick={onClearSelection}>
+            Clear
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -705,13 +734,41 @@ function chainSequencesFromMap(chains: Map<string, { residues: string[]; residue
     .filter((chain) => chain.sequence.length > 0);
 }
 
-function residueSelectionSelector(chainId: string, residueNumber: string): Record<string, string | number | Array<string | number>> {
-  const selector: Record<string, string | number | Array<string | number>> = { kind: "polymer" };
-  if (chainId && chainId !== "-") {
-    selector.auth_asym_id = chainId;
-    selector.label_asym_id = chainId;
+type ResidueSelectionSelectorValue =
+  | string
+  | number
+  | Array<string | number>
+  | Array<Record<string, string | number | Array<string | number>>>;
+
+function residueSelectionSelector(residues: SelectedResidue[]): Record<string, ResidueSelectionSelectorValue> {
+  const uniqueResidues = uniqueSelectedResidues(residues);
+  if (uniqueResidues.length === 1) return singleResidueSelectionSelector(uniqueResidues[0]);
+  const chains = new Set(uniqueResidues.map((residue) => residue.chainId));
+  if (chains.size === 1) {
+    const chainId = uniqueResidues[0]?.chainId ?? "A";
+    const selector: Record<string, ResidueSelectionSelectorValue> = { kind: "polymer" };
+    if (chainId && chainId !== "-") {
+      selector.auth_asym_id = chainId;
+      selector.label_asym_id = chainId;
+    }
+    const residueValues = uniqueResidueSelectorValues(uniqueResidues);
+    selector.auth_seq_id = residueValues;
+    selector.label_seq_id = residueValues;
+    return selector;
   }
-  const residueValues = residueSelectorValues(residueNumber);
+  return {
+    kind: "polymer",
+    residues: uniqueResidues.map(singleResidueSelectionSelector),
+  };
+}
+
+function singleResidueSelectionSelector(residue: SelectedResidue): Record<string, string | number | Array<string | number>> {
+  const selector: Record<string, string | number | Array<string | number>> = { kind: "polymer" };
+  if (residue.chainId && residue.chainId !== "-") {
+    selector.auth_asym_id = residue.chainId;
+    selector.label_asym_id = residue.chainId;
+  }
+  const residueValues = residueSelectorValues(residue.residueNumber);
   selector.auth_seq_id = residueValues;
   selector.label_seq_id = residueValues;
   return selector;
@@ -724,6 +781,62 @@ function residueSelectorValues(residueNumber: string): Array<string | number> {
   if (Number.isFinite(numeric)) values.push(numeric);
   if (trimmed && !values.some((value) => String(value) === trimmed)) values.push(trimmed);
   return values.length ? values : [residueNumber];
+}
+
+function uniqueResidueSelectorValues(residues: SelectedResidue[]) {
+  const values: Array<string | number> = [];
+  const seen = new Set<string>();
+  for (const residue of residues) {
+    for (const value of residueSelectorValues(residue.residueNumber)) {
+      const key = String(value);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      values.push(value);
+    }
+  }
+  return values;
+}
+
+function toggleResidueSelection(selectedResidues: SelectedResidue[], residue: SelectedResidue) {
+  const key = residueSelectionKey(residue);
+  const selected = selectedResidues.some((candidate) => residueSelectionKey(candidate) === key);
+  if (selected) return selectedResidues.filter((candidate) => residueSelectionKey(candidate) !== key);
+  return sortSelectedResidues([...selectedResidues, residue]);
+}
+
+function mergeResidueRange(selectedResidues: SelectedResidue[], chain: ChainSequence, anchorIndex: number, targetIndex: number) {
+  const start = Math.max(0, Math.min(anchorIndex, targetIndex));
+  const end = Math.min(chain.residueNumbers.length - 1, Math.max(anchorIndex, targetIndex));
+  const byKey = new Map(selectedResidues.map((residue) => [residueSelectionKey(residue), residue]));
+  for (let index = start; index <= end; index += 1) {
+    const residue = { chainId: chain.chainId, residueNumber: chain.residueNumbers[index] ?? String(index + 1), index };
+    byKey.set(residueSelectionKey(residue), residue);
+  }
+  return sortSelectedResidues([...byKey.values()]);
+}
+
+function sortSelectedResidues(residues: SelectedResidue[]) {
+  return uniqueSelectedResidues(residues).sort((left, right) => (
+    left.chainId.localeCompare(right.chainId, undefined, { numeric: true }) || left.index - right.index
+  ));
+}
+
+function uniqueSelectedResidues(residues: SelectedResidue[]) {
+  const byKey = new Map<string, SelectedResidue>();
+  for (const residue of residues) byKey.set(residueSelectionKey(residue), residue);
+  return [...byKey.values()];
+}
+
+function residueSelectionKey(residue: SelectedResidue) {
+  return `${residue.chainId}\u0000${residue.residueNumber}\u0000${residue.index}`;
+}
+
+function selectedResiduesLabel(residues: SelectedResidue[]) {
+  if (residues.length === 1) {
+    const residue = residues[0];
+    return `Select Chain-${residue.chainId} ${residue.residueNumber}`;
+  }
+  return `Select ${residues.length} folding residues`;
 }
 
 function openFoldingArtifact(artifact: FoldingArtifact, actions: ShellActions) {
