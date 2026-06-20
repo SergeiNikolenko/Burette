@@ -28,6 +28,7 @@ const [
   appGridWorkflowsHook,
   appDockPayloadHook,
   appKetcherActionsHook,
+  appKetcherViewerMessagesHook,
   appBootstrapHook,
   appMaintenanceHook,
   appOpenActionsHook,
@@ -184,6 +185,7 @@ const [
   source('apps/desktop/src/hooks/use-app-grid-workflows.ts'),
   source('apps/desktop/src/hooks/use-app-dock-payload-open.ts'),
   source('apps/desktop/src/hooks/use-app-ketcher-actions.ts'),
+  source('apps/desktop/src/hooks/use-app-ketcher-viewer-messages.ts'),
   source('apps/desktop/src/hooks/use-app-bootstrap.ts'),
   source('apps/desktop/src/hooks/use-app-maintenance.ts'),
   source('apps/desktop/src/hooks/use-app-open-actions.ts'),
@@ -2109,7 +2111,7 @@ assert.match(appKetcherActionsHook, /const saveKetcherExportFile = useCallback\(
 assert.match(appKetcherActionsHook, /invoke<string>\("save_text_as", \{ text: request\.text, outputPath \}\)/);
 assert.match(componentTypes, /openKetcherExportRaw: \(request: \{/);
 assert.match(componentTypes, /saveKetcherExportFile: \(request: \{/);
-assert.match(app, /from "\.\/lib\/ketcher-workflow"/);
+assert.match(appKetcherViewerMessagesHook, /from "\.\.\/lib\/ketcher-workflow"/);
 assert.match(ketcherPage, /function withKetcherTimeout<T>\(operation: Promise<T>, label: string\): Promise<T>/);
 assert.match(ketcherPage, /Ketcher did not return a sketch\. Draw a molecule first or try again\./);
 assert.match(app, /const openDocumentsInActiveTab = useOpenDocumentsInActiveTab\(\)/);
@@ -2490,12 +2492,15 @@ assert.match(ketcherPage, /className="ketcher-dock-format">\{panelFormatLabel\}/
 assert.match(ketcherPage, /disabled=\{!ketcher \|\| exportingSketch \|\| \(gridEditSource \? false : !output\.trim\(\)\)\}/);
 assert.match(ketcherPage, /\{gridEditSource \? "Apply" : "Load"\}/);
 assert.doesNotMatch(ketcherPage, /actions\.openCommandPalette/);
-assert.match(app, /body\?\.type === "openInKetcher"/);
+assert.match(app, /handleKetcherViewerMessage\(body\)/);
+assert.match(appKetcherViewerMessagesHook, /body\?\.type === "openInKetcher"/);
 assert.match(appGridControlMessagesHook, /body\?\.type === "openInKetcher"/);
 assert.match(appGridControlMessagesHook, /openKetcherWithFragment\(title, text/);
 assert.match(appGridControlMessagesHook, /openKetcherWithStructures\(\[targetPath\]\)/);
 assert.match(appKetcherActionsHook, /const openKetcherWithFragment = useCallback/);
-assert.match(app, /textBase64/);
+assert.match(appKetcherViewerMessagesHook, /textBase64/);
+assert.match(appKetcherViewerMessagesHook, /readBrowserDevVirtualTextDocument\(targetPath\)/);
+assert.match(appKetcherViewerMessagesHook, /openKetcherWithFragment\(title, virtualText\)/);
 assert.match(ketcherWorkflow, /export function queueKetcherImportRequest\(request: KetcherImportRequest\)/);
 assert.match(ketcherWorkflow, /window\.dispatchEvent\(new CustomEvent\("burette:ketcher-import", \{ detail: request \}\)\)/);
 assert.match(appKetcherActionsHook, /queueKetcherImportRequest\(request\);\s*setKetcherImportRequest\(request\);\s*openKetcherTab\(\{ kind: "ketcher", importRequestId: request\.id, importRequest: request \}\);/);
@@ -4915,12 +4920,13 @@ assert.match(app, /generateBrowserDev3DConformer\(request\)/);
 assert.match(app, /\.\.\.conformerGenerationPreferences\(preferences\)/);
 assert.match(app, /generatedTexts\.push\(generated3DPoseSetText\(text, extension, conformer\.text, "single"\)\.trimEnd\(\)\)/);
 assert.match(app, /Generated 3D for \$\{generatedTexts\.length\} molecule/);
-assert.match(app, /body\?\.type === "openSdfKetcherDocument"/);
+assert.match(appKetcherViewerMessagesHook, /body\?\.type === "openSdfKetcherDocument"/);
 assert.match(appSdfViewerMessagesHook, /const controlLabel = bodyString\(body\.controlLabel\)\.trim\(\) \|\| "Molecule"/);
 assert.match(appSdfViewerMessagesHook, /reloadOptions: \{ sdfPoseControlLabel: controlLabel \}/);
 assert.match(appSdfViewerMessagesHook, /\{ sdfPoseControlLabel: controlLabel \}/);
 assert.match(browserDevDocuments, /\.\.\.\(reloadOptions\?\.sdfPoseControlLabel \? \{ sdfPoseControlLabel: reloadOptions\.sdfPoseControlLabel \} : \{\}\)/);
-assert.match(app, /openKetcherWithStructures\(\[\], fragments\)/);
+assert.match(appKetcherViewerMessagesHook, /source3d: ketcherSource3DFromText\(title, text, pathExtension\(title\)\)/);
+assert.match(appKetcherViewerMessagesHook, /openKetcherWithStructures\(\[\], fragments\)/);
 assert.match(gridViewer, /setStatus\(`\[grid\] Opening \$\{label\} in Molstar\.`\)/);
 assert.match(gridViewer, /body\.type === 'poseReviewSelection'/);
 assert.match(gridViewer, /function selectPoseReviewRow\(activePose, cfg\)/);
