@@ -37,6 +37,7 @@ import { useAppResize } from "./hooks/use-app-resize";
 import { useAppRendererMessage } from "./hooks/use-app-renderer-message";
 import { useAppSidebarProjects } from "./hooks/use-app-sidebar-projects";
 import { useAppSdfViewerMessages } from "./hooks/use-app-sdf-viewer-messages";
+import { createAppShellActions } from "./hooks/use-app-shell-actions";
 import { createAppShellViewState } from "./hooks/use-app-shell-view-state";
 import { useAppStartupEffects } from "./hooks/use-app-startup-effects";
 import { useAppStatus } from "./hooks/use-app-status";
@@ -1766,7 +1767,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preferences]);
 
-  const actions = useMemo<ShellActions>(() => ({
+  const actions = useMemo<ShellActions>(() => createAppShellActions({
     chooseFiles,
     openStructurePaths: async (paths: string[], options?: { mode?: OpenDocumentsMode }) => {
       await openDocuments(paths, undefined, undefined, options);
