@@ -155,6 +155,8 @@ Current Stage 3 progress:
   `apps/desktop/src/hooks/use-app-grid-conformer-messages.ts`;
 - ShellViewState compatibility assembly now lives in
   `apps/desktop/src/hooks/use-app-shell-view-state.ts`;
+- ShellActions compatibility assembly now passes through
+  `apps/desktop/src/hooks/use-app-shell-actions.ts`;
 - FEP setup/network preview action callbacks and the current FEP setup request
   derivation now live in `apps/desktop/src/hooks/use-app-fep-workflows.ts`;
 - drop action menu selection and dropped project-root callbacks now live in
@@ -185,7 +187,7 @@ the high-risk runtime boundaries intact.
 | Grid workflow | Partial | Dirty-grid state, descriptor workflows, grid append, delimited append fallback, xyzrender sheet drops, pose-review selection refresh, grid save/export message handling, grid paging/read/xyzrender-card runtime messages, grid control/conformer message routing, and SDF grid open message handling are extracted; broader viewer/grid message routing remains in `App.tsx`. |
 | Docking/collections/dock payloads | Partial | Dock payload opening plus docking document construction, dropped-structure docking, collection merge/save, pose-review workspace action callbacks, SDF pose-review message handling, and docking pose-change synchronization are extracted; message handlers that invoke remaining docking actions remain in `App.tsx`. |
 | Viewer bridge | Partial | Grid-origin file/runtime/control/conformer messages, viewer-origin export/runtime/runtime-file/state/renderer/Ketcher/host/conformer/Molstar-context messages, shared viewer/grid xyzrender sheet rendering, SDF open messages, and docking pose-change messages now delegate to dedicated hooks, but the `window.message` listener and typed dispatch still remain in `App.tsx`. |
-| ShellActions/ShellViewState slicing | Partial | `ShellViewState` derived-field assembly is behind `createAppShellViewState`; `ShellActions` assembly is still inline in `App.tsx`. |
+| ShellActions/ShellViewState slicing | Partial | `ShellViewState` derived-field assembly is behind `createAppShellViewState`; `ShellActions` now has a compatibility adapter, while grouped action assembly is still inline in `App.tsx`. |
 | Update flow | Complete | Update state/actions are in `use-app-updates.ts`. |
 | Hardening pass | Not started | Trusted shell vs preview capability split, diagnostics privacy redaction, cache contract, scanner limits, renderer policy matrix, and doctor flow remain pending. |
 | Runtime cache contract | Not started | No dedicated cache contract extraction yet. |
