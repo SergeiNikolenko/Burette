@@ -1,6 +1,6 @@
 import { Suspense, lazy, useRef, useState } from "react";
 import { AppLayout } from "./components/app-layout";
-import type { ViewerLigandSelection } from "./components/types";
+import type { StructureOverlayMode, ViewerLigandSelection } from "./components/types";
 import { WindowTitle } from "./components/window-title";
 import {
   useCloseCommandPalette,
@@ -10,7 +10,6 @@ import {
   useSetCommandPaletteSearch,
 } from "./hooks/use-command-palette";
 import { useAppActiveTextDocument } from "./hooks/use-app-active-text-document";
-import { useAppAgentSessionActions } from "./hooks/use-app-agent-session-actions";
 import { useAppBrowserDevStartup } from "./hooks/use-app-browser-dev-startup";
 import { useAppChemistryJobs } from "./hooks/use-app-chemistry-jobs";
 import { useAppConformerWorkflows } from "./hooks/use-app-conformer-workflows";
@@ -43,8 +42,6 @@ import { useAppMolstarXtbContext } from "./hooks/use-app-molstar-xtb-context";
 import { useAppOpenActions } from "./hooks/use-app-open-actions";
 import { useAppOpenDropMergeCollections } from "./hooks/use-app-open-drop-merge-collections";
 import { useAppPreferenceEffects } from "./hooks/use-app-preference-effects";
-import { useAppQuickLook } from "./hooks/use-app-quick-look";
-import { useAppQuickLookDocumentOpen } from "./hooks/use-app-quick-look-document-open";
 import { useAppResize } from "./hooks/use-app-resize";
 import { useAppRendererMessage } from "./hooks/use-app-renderer-message";
 import { useAppSidebarProjects } from "./hooks/use-app-sidebar-projects";
@@ -118,7 +115,6 @@ import { writeClipboardText } from "./lib/clipboard";
 import { detectContentSpectrumPaths } from "./lib/content-spectrum-detection";
 import { isProteinLikeDockingSource } from "./lib/docking-documents";
 import { structureExtensionFromPath } from "./lib/file-routing";
-import { browserDevQuickLookFileFromLocation } from "./lib/browser-dev-startup";
 import type { StructureDragPayload } from "./lib/structure-drag";
 import {
   activeViewerIframeForDocument,
@@ -134,7 +130,6 @@ const CommandPalette = lazy(() => import("./components/command-palette").then((m
 type MolstarContextDocument = Parameters<typeof openBrowserDevMolstarContextDocument>[0];
 
 export default function App() {
-  const browserDevQuickLookPath = browserDevQuickLookFileFromLocation();
   const preferences = useViewerPreferences();
   const setPreference = useSetViewerPreference();
   const tabs = useOpenTabs();
@@ -259,6 +254,7 @@ export default function App() {
   } = useAppDirtyGridDocuments();
   const [poseReviewSelections, setPoseReviewSelections] = useState<Record<string, number>>({});
   const [viewerLigandSelections, setViewerLigandSelections] = useState<Record<string, ViewerLigandSelection | null>>({});
+  const [structureOverlayModes, setStructureOverlayModes] = useState<Record<string, StructureOverlayMode>>({});
   const {
     cancelConformerJob,
     cancelXtbJob,
@@ -322,18 +318,6 @@ export default function App() {
   const openCommandPalette = useOpenCommandPalette();
   const closeCommandPalette = useCloseCommandPalette();
   const setCommandPaletteQuery = useSetCommandPaletteSearch();
-
-  const { openQuickLookDocument } = useAppQuickLookDocumentOpen({ preferences });
-  const {
-    closeQuickLookPreview,
-    quickLookDocument,
-    quickLookError,
-    quickLookStandalone,
-  } = useAppQuickLook({
-    browserDevQuickLookPath,
-    openQuickLookDocument,
-    pushErrorStatus,
-  });
 
   const { requestMolstarXtbContextDocument } = useAppMolstarXtbContext({
     activeViewerIframeForDocument,
@@ -411,6 +395,7 @@ export default function App() {
     rememberRecentStructures,
     setActiveDocument,
     setDockActiveTab,
+    setDockDocument,
     setDockOpen,
     setDocuments,
   });
@@ -722,21 +707,11 @@ export default function App() {
     activeDocument,
     mergeMoleculeCollections,
   });
-  const agentTabActions = useAppAgentSessionActions({
-    closeTab,
-    moveTab,
-    openNewTab,
-    setActiveTab,
-  });
   useAgentSession({
     activeDocument,
     documents,
-    tabs,
-    activeTabId,
     openTextDocuments,
     openPaths,
-    openDockingView: openDockingDocument,
-    tabActions: agentTabActions,
     pushErrorStatus,
     setDockDocument,
   });
@@ -799,6 +774,7 @@ export default function App() {
     documents,
     openCommandPalette,
     setViewerLigandSelections,
+    setStructureOverlayModes,
     toggleSidebar,
   });
   const { handleDockingPoseMessage } = useAppDockingPoseMessages({
@@ -897,7 +873,6 @@ export default function App() {
     closeDocument,
     closeDockTab,
     closeGridRuntime,
-    closeQuickLookPreview,
     closeTab,
     confirmDiscardDirtyGridDocument,
     confirmDiscardDirtyGridDocuments,
@@ -1008,9 +983,6 @@ export default function App() {
     activeTab,
     activeTabId,
     activeDocument,
-    quickLookDocument,
-    quickLookError,
-    quickLookStandalone,
     recentStructures,
     sidebarProjects,
     projectsOpen,
@@ -1049,6 +1021,7 @@ export default function App() {
     conformerSettings,
     conformerJobs,
     viewerLigandSelections,
+    structureOverlayMode: activeDocument ? structureOverlayModes[activeDocument.id] ?? "single" : "single",
     xtbStatus,
     xtbSettings,
     xtbJobs,

@@ -15,18 +15,23 @@ export type StructureCompositionSummary = {
   notes: string[];
 };
 
+export type StructureViewerSelectorPrimitive = string | number | Array<string | number>;
+export type StructureViewerResidueSelector = Record<string, StructureViewerSelectorPrimitive>;
+export type StructureViewerSelector = Record<string, StructureViewerSelectorPrimitive | StructureViewerResidueSelector[] | undefined>;
+
 export type StructureViewerAction =
   | {
       type: "select_residues";
       label: string;
-      selector: Record<string, string | number | Array<string | number>>;
+      notify?: boolean;
+      selector: StructureViewerSelector;
       granularity: "residue";
       mode?: "replace";
     }
   | {
       type: "focus_ligand";
       label: string;
-      selector: Record<string, string | number | Array<string | number>>;
+      selector: StructureViewerSelector;
       showNeighborhood?: boolean;
       radiusA?: number;
     }
@@ -42,6 +47,7 @@ export type StructureViewerAction =
   | {
       type: "clear_selection";
       label: string;
+      notify?: boolean;
     }
   | {
       type: "set_sdf_molecule";
@@ -70,6 +76,12 @@ export type StructureViewerAction =
       label: string;
       notify?: boolean;
       opacity: number;
+    }
+  | {
+      type: "set_sdf_context_color";
+      label: string;
+      notify?: boolean;
+      color: "gray" | "colored";
     }
   | {
       type: "set_sdf_pose_mode";

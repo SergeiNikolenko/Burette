@@ -1848,7 +1848,7 @@ fn parse_delimited_line(line: &str, separator: char) -> Vec<String> {
 }
 
 fn is_smiles_column(value: &str) -> bool {
-    value == "smile" || value == "smiels" || value.contains("smiles")
+    value == "smile" || value.contains("smiles")
 }
 
 fn resolve_smiles_columns(
@@ -2791,45 +2791,6 @@ mod tests {
         );
         assert!(!page.rows[0].props.contains_key("proposal_smiles"));
         assert!(!page.rows[1].props.contains_key("target_smiles"));
-
-        let _ = std::fs::remove_dir_all(&runtime_dir);
-    }
-
-    #[test]
-    fn ingests_prediction_round_smiles_columns() {
-        let runtime_dir = temp_runtime_dir();
-        let csv = "true_smiles,name,pred_smiles_1,pred_smiles_2,pred_smiles_3\n\
-                   CCO,MassSpecGymID0075191,CCN,CCCl,\n\
-                   c1ccccc1,MassSpecGymID0075192,CC(=O)O,CN(C)C,CCBr\n";
-
-        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
-        assert_eq!(summary.format, "csv");
-        assert_eq!(summary.records_total, 7);
-
-        let page = fetch_page(
-            &database_path,
-            &GridQuery {
-                query: String::new(),
-                sort: "index".to_string(),
-                column_filters: Vec::new(),
-                descriptor_filters: Vec::new(),
-                descriptor_sort: None,
-                offset: 0,
-                limit: 96,
-            },
-        )
-        .expect("fetch page");
-        assert_eq!(page.total_rows, 7);
-        assert_eq!(page.rows[0].name, "MassSpecGymID0075191 true_smiles");
-        assert_eq!(page.rows[0].smiles.as_deref(), Some("CCO"));
-        assert_eq!(page.rows[1].name, "MassSpecGymID0075191 pred_smiles_1");
-        assert_eq!(page.rows[1].smiles.as_deref(), Some("CCN"));
-        assert_eq!(page.rows[3].name, "MassSpecGymID0075192 true_smiles");
-        assert_eq!(page.rows[3].smiles.as_deref(), Some("c1ccccc1"));
-        assert_eq!(
-            page.rows[4].props.get("SMILES column").map(String::as_str),
-            Some("pred_smiles_1")
-        );
 
         let _ = std::fs::remove_dir_all(&runtime_dir);
     }

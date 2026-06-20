@@ -108,12 +108,11 @@ function pdbAtomLineMatchesLigand(line: string, comp: string, chain: string, seq
     && (icode ? lineIcode === icode : true);
 }
 
-function selectorText(
-  selector: Record<string, string | number | Array<string | number>>,
-  key: string,
-) {
-  const value = selector[key];
+function selectorText(selector: unknown, key: string) {
+  if (!selector || typeof selector !== "object" || Array.isArray(selector)) return null;
+  const value = (selector as Record<string, unknown>)[key];
   if (Array.isArray(value) || value === undefined || value === null) return null;
+  if (typeof value !== "string" && typeof value !== "number") return null;
   return String(value);
 }
 

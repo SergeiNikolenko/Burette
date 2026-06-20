@@ -1,3 +1,4 @@
+use super::numpy_artifact::{is_numpy_artifact_extension, numpy_artifact_text_summary};
 use flate2::read::GzDecoder;
 use serde::Serialize;
 use std::fs;
@@ -83,15 +84,28 @@ fn read_text_file_impl(
     }
 
     let extension = file_extension(&path);
+    let modified_at = metadata
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis() as u64);
+    if is_numpy_artifact_extension(&extension) {
+        return Ok(TextFileDocument {
+            id: uuid::Uuid::new_v4().to_string(),
+            path: path.to_string_lossy().to_string(),
+            title: file_title(&path),
+            extension,
+            language: "markdown".to_string(),
+            byte_count: metadata.len(),
+            content: numpy_artifact_text_summary(&path, metadata.len())?,
+            truncated: false,
+            modified_at,
+        });
+    }
     let read_limit = read_limit(max_bytes);
     let text_bytes = readable_text_bytes(&path, &extension, read_limit + 1)?;
     if looks_binary(&text_bytes) {
         if is_molecular_binary_metadata_artifact(&extension) {
-            let modified_at = metadata
-                .modified()
-                .ok()
-                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|duration| duration.as_millis() as u64);
             return Ok(TextFileDocument {
                 id: uuid::Uuid::new_v4().to_string(),
                 path: path.to_string_lossy().to_string(),
@@ -114,11 +128,6 @@ fn read_text_file_impl(
         text_bytes.as_slice()
     };
     let content = String::from_utf8_lossy(readable_bytes).into_owned();
-    let modified_at = metadata
-        .modified()
-        .ok()
-        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|duration| duration.as_millis() as u64);
 
     Ok(TextFileDocument {
         id: uuid::Uuid::new_v4().to_string(),
@@ -244,6 +253,30 @@ mod tests {
         ))
     }
 
+    fn npy_f32(shape: &[usize], values: &[f32]) -> Vec<u8> {
+        let shape_text = if shape.len() == 1 {
+            format!("{},", shape[0])
+        } else {
+            shape
+                .iter()
+                .map(|value| value.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let mut header =
+            format!("{{'descr': '<f4', 'fortran_order': False, 'shape': ({shape_text}), }}");
+        let padding = (16 - ((10 + header.len() + 1) % 16)) % 16;
+        header.push_str(&" ".repeat(padding));
+        header.push('\n');
+        let mut bytes = b"\x93NUMPY\x01\x00".to_vec();
+        bytes.extend_from_slice(&(header.len() as u16).to_le_bytes());
+        bytes.extend_from_slice(header.as_bytes());
+        for value in values {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        bytes
+    }
+
     #[test]
     fn reads_utf8_text_file() {
         let path = temp_path("script.sh");
@@ -297,6 +330,22 @@ mod tests {
         assert!(document
             .content
             .contains("MDAnalysis-compatible molecular artifact"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn renders_numpy_arrays_as_text_summary() {
+        let path = temp_path("pae.npy");
+        fs::write(&path, npy_f32(&[2, 2], &[0.25, 1.0, 1.1, 0.3])).expect("fixture should write");
+        let document = read_text_file_impl(path.clone(), None).expect("npy summary should read");
+        assert_eq!(document.extension, "npy");
+        assert_eq!(document.language, "markdown");
+        assert!(document.content.contains("NumPy NPY array"));
+        assert!(document
+            .content
+            .contains("| Array | Shape | Dtype | Values |"));
+        assert!(document.content.contains("(2, 2)"));
+        assert!(!document.truncated);
         let _ = fs::remove_file(path);
     }
 

@@ -268,8 +268,7 @@ function buildFileTabs(documents: ViewerDocument[]) {
 
 function shouldIgnorePersistedSession() {
   if (typeof window === "undefined") return false;
-  const params = new URLSearchParams(window.location.search);
-  if (params.has("devFiles") || params.has("devDocking")) return true;
+  if (new URLSearchParams(window.location.search).has("devFiles")) return true;
   return window.location.protocol === "http:" && (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost");
 }
 
