@@ -38,6 +38,7 @@ import { useAppMolstarXtbContext } from "./hooks/use-app-molstar-xtb-context";
 import { useAppOpenActions } from "./hooks/use-app-open-actions";
 import { useAppPreferenceEffects } from "./hooks/use-app-preference-effects";
 import { useAppQuickLook } from "./hooks/use-app-quick-look";
+import { useAppQuickLookDocumentOpen } from "./hooks/use-app-quick-look-document-open";
 import { useAppResize } from "./hooks/use-app-resize";
 import { useAppRendererMessage } from "./hooks/use-app-renderer-message";
 import { useAppSidebarProjects } from "./hooks/use-app-sidebar-projects";
@@ -105,18 +106,16 @@ import {
   useSetDocuments,
 } from "./hooks/use-tabs";
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
-import { openBrowserDevDocuments, openBrowserDevMolstarContextDocument, openBrowserDevTextDocument } from "./lib/browser-dev-documents";
+import { openBrowserDevMolstarContextDocument, openBrowserDevTextDocument } from "./lib/browser-dev-documents";
 import { expandBrowserDevStructureBundles } from "./lib/browser-dev-structure-bundles";
-import { openBrowserDevTextFiles } from "./lib/browser-dev-text-files";
 import { writeClipboardText } from "./lib/clipboard";
 import { isMoleculeCollectionPath } from "./lib/collection-documents";
 import { detectContentSpectrumPaths } from "./lib/content-spectrum-detection";
 import { isProteinLikeDockingSource } from "./lib/docking-documents";
 import type { DockArea, DockTabKind } from "./lib/dock";
-import { pathExtension, structureExtensionFromPath } from "./lib/file-routing";
+import { structureExtensionFromPath } from "./lib/file-routing";
 import { browserDevFolderFromLocation, browserDevHasExplicitWorkspace, browserDevQuickLookFileFromLocation } from "./lib/browser-dev-startup";
 import type { StructureDragPayload } from "./lib/structure-drag";
-import { isSpectrumPath, spectrumDocumentFromText } from "./lib/spectrum";
 import {
   activeViewerIframeForDocument,
   isKnownViewerMessageSource,
@@ -321,18 +320,7 @@ export default function App() {
   const closeCommandPalette = useCloseCommandPalette();
   const setCommandPaletteQuery = useSetCommandPaletteSearch();
 
-  const openQuickLookDocument = useCallback(async (quickLookPath: string) => {
-    const extension = pathExtension(quickLookPath);
-    const contentSpectrumPaths = await detectContentSpectrumPaths([quickLookPath]);
-    if (isSpectrumPath(quickLookPath, extension) || contentSpectrumPaths.has(quickLookPath)) {
-      const result = await openBrowserDevTextFiles([quickLookPath]);
-      const textDocument = result.documents[0] ?? null;
-      if (!textDocument) return null;
-      return spectrumDocumentFromText(textDocument);
-    }
-    const result = await openBrowserDevDocuments([quickLookPath], preferences);
-    return result.documents[0] ?? null;
-  }, [preferences]);
+  const { openQuickLookDocument } = useAppQuickLookDocumentOpen({ preferences });
   const {
     closeQuickLookPreview,
     quickLookDocument,
