@@ -189,6 +189,8 @@ Current Stage 3 progress:
   dialog filter helpers now live in `apps/desktop/src/lib/file-export.ts`;
 - diagnostics bundle export now redacts local filesystem paths from copied app
   logs, preview traces, Quick Look logs, and manifest `recentErrors` entries;
+- preview cache clearing now has a Rust contract for preserving packaged viewer
+  assets while removing volatile preview/render/cache entries;
 - `App.tsx` still owns the top-level shell composition and remaining runtime
   hardening boundaries. These are the remaining high-risk slices and should
   move only after each boundary has contract coverage for the exact
@@ -213,7 +215,7 @@ the high-risk runtime boundaries intact.
 | ShellActions/ShellViewState slicing | Complete for compatibility assembly | `ShellViewState` derived-field assembly is behind `createAppShellViewState`; `ShellActions` now flows through `useAppShellActions` and `createAppShellActions`, with job-history, project, dock-drop, close/dirty-cleanup, recent, and update action groups behind the same compatibility adapter. |
 | Update flow | Complete | Update state/actions are in `use-app-updates.ts`. |
 | Hardening pass | Not started | Trusted shell vs preview capability split, diagnostics privacy redaction, cache contract, scanner limits, renderer policy matrix, and doctor flow remain pending. |
-| Runtime cache contract | Not started | No dedicated cache contract extraction yet. |
+| Runtime cache contract | Partial | `clear_preview_cache` now delegates to a tested cache-directory helper that preserves `viewer/assets` and removes volatile preview/render/cache entries; broader runtime storage/cache inventory remains pending. |
 | Folder scanner job | Not started | No cancellable/limited scanner refactor yet. |
 | Renderer policy contract | Not started | Desktop/Quick Look renderer-policy matrix remains pending. |
 | External runtime doctor | Not started | No doctor flow has been added. |
