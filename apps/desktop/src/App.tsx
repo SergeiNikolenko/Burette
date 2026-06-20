@@ -20,6 +20,7 @@ import { useAppDropActions } from "./hooks/use-app-drop-actions";
 import { useAppFileActions } from "./hooks/use-app-file-actions";
 import { useAppFileOpen } from "./hooks/use-app-file-open";
 import { useAppFepWorkflows } from "./hooks/use-app-fep-workflows";
+import { useAppGridControlMessages } from "./hooks/use-app-grid-control-messages";
 import { useAppGridFileActions } from "./hooks/use-app-grid-file-actions";
 import { useAppGridRuntimeMessages } from "./hooks/use-app-grid-runtime-messages";
 import { useAppGridWorkflows } from "./hooks/use-app-grid-workflows";
@@ -1361,6 +1362,19 @@ export default function App() {
     tabs,
   });
 
+  const { handleGridControlMessage } = useAppGridControlMessages({
+    activeDocument,
+    calculateGridDescriptors,
+    documents,
+    openKetcherWithFragment,
+    openKetcherWithStructures,
+    pushErrorStatus,
+    pushStatus,
+    updateDirtyGridDocument,
+    writeClipboardText,
+    writeGridPerfMetric,
+  });
+
   const {
     addXyzrenderSheetItems,
     addXyzrenderSheetItemsToDocument,
@@ -1803,73 +1817,7 @@ export default function App() {
         return;
       }
       if (data.source === "burrete-grid") {
-        if (body?.type === "openInKetcher") {
-          const title = typeof body.title === "string" && body.title.trim()
-            ? body.title.trim()
-            : "structure";
-          const textBase64 = typeof body.textBase64 === "string" ? body.textBase64.trim() : "";
-          if (textBase64) {
-            try {
-              const bytes = Uint8Array.from(atob(textBase64), (char) => char.charCodeAt(0));
-              const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
-              const rowIndex = Number(body.rowIndex);
-              const extension = typeof body.extension === "string" && body.extension.trim()
-                ? body.extension.trim().replace(/^\./u, "")
-                : "sdf";
-              openKetcherWithFragment(title, text, body.gridEdit === true && body.documentId && Number.isFinite(rowIndex)
-                ? {
-                    kind: "grid-row",
-                    documentId: body.documentId,
-                    rowIndex,
-                    title,
-                    extension,
-                  }
-                : undefined, extension);
-            } catch (error) {
-              pushStatus(`Open in Ketcher failed: ${error instanceof Error ? error.message : String(error)}`, "error");
-            }
-            return;
-          }
-          const targetDocument = (body.documentId
-            ? documents.find((document) => document.id === body.documentId)
-            : null) ?? activeDocument;
-          const targetPath = typeof body.path === "string" && body.path.trim().length > 0
-            ? body.path.trim()
-            : targetDocument?.path;
-          if (targetPath) {
-            openKetcherWithStructures([targetPath]);
-          }
-          return;
-        }
-        if (body?.type === "calculateGridDescriptors") {
-          const documentId = typeof body.documentId === "string" && body.documentId.trim()
-            ? body.documentId.trim()
-            : activeDocument?.id;
-          if (!documentId) {
-            pushStatus("Grid descriptor target is not open.", "error");
-            return;
-          }
-          const rowIndexes = Array.isArray(body.rowIndexes)
-            ? body.rowIndexes.map((index: unknown) => Number(index)).filter(Number.isFinite)
-            : [];
-          calculateGridDescriptors(documentId, rowIndexes.length ? { rowIndexes } : {});
-          return;
-        }
-        if (body?.type === "gridPerfMetric") {
-          console.info("[Burrete grid perf]", JSON.stringify(body));
-          writeGridPerfMetric(body);
-          return;
-        }
-        if (body?.type === "copyText") {
-          const text = typeof body.text === "string" ? body.text : "";
-          void writeClipboardText(text)
-            .then(() => pushStatus("Copied grid text"))
-            .catch((error) => pushErrorStatus(error, "Grid copy failed"));
-          return;
-        }
-        if (body?.type === "gridDirtyChanged") {
-          const documentId = typeof body.documentId === "string" ? body.documentId : "";
-          updateDirtyGridDocument(documentId, body.dirty === true);
+        if (handleGridControlMessage(body)) {
           return;
         }
         if (handleGridFileMessage(body, event.source)) {
@@ -2309,7 +2257,7 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, addBackgroundDocuments, addDocuments, calculateGridDescriptors, documents, generate3DConformer, handleGridFileMessage, handleGridRuntimeMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar, updateDirtyGridDocument, writeGridPerfMetric]);
+  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, generate3DConformer, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
