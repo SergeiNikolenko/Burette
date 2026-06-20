@@ -172,9 +172,12 @@ Current Stage 3 progress:
   `apps/desktop/src/hooks/use-app-chemistry-jobs.ts`;
 - Molstar xTB context request/response listener lifecycle now lives in
   `apps/desktop/src/hooks/use-app-molstar-xtb-context.ts`;
+- xTB job runners, active-operation routing, Ketcher sketch optimization,
+  grid scoring, pose refinement, and FEP preflight callbacks now live in
+  `apps/desktop/src/hooks/use-app-xtb-workflows.ts`;
 - shared text/base64 download, export filename, temporary text id, and save
   dialog filter helpers now live in `apps/desktop/src/lib/file-export.ts`;
-- `App.tsx` still owns xTB/conformer job runners and active-operation routing,
+- `App.tsx` still owns the conformer job runner and active-operation routing,
   the Molstar in-place replacement sender, and grouped ShellActions assembly.
   These are the remaining high-risk slices
   and should move only after each boundary has contract coverage for the exact
@@ -190,7 +193,7 @@ the high-risk runtime boundaries intact.
 | --- | --- | --- |
 | Contract safety net | Partial | Existing contract tests were strengthened as modules moved, but the full named test matrix from the epic is not complete yet. |
 | Dev-server extraction | Complete | Browser-dev endpoint modules now live under `apps/desktop/vite/browser-dev/`, with `vite.config.ts` acting as registration/composition. |
-| App shell extraction | Partial | Several app hooks, pure chemistry libs, file-routing helpers, shared file-export helpers, the core file-open hook, file picker/recent-open actions, the dock payload-open hook, browser-dev startup URL helpers/effects, pure Ketcher workflow helpers, Ketcher action callbacks, docking/collection action callbacks, grid append/xyzrender sheet callbacks, grid save/export/runtime/control/conformer message handling, viewer export/runtime/runtime-file/state/renderer/Ketcher/host/conformer/Molstar-context message handling, top-level viewer/grid dispatch, xTB/CREST status/settings/cancel state, Molstar xTB context request handling, shared xyzrender sheet message handling, SDF open message handling, docking pose-change message handling, FEP setup/network callbacks, drop action callbacks, workspace/project-folder callbacks, and ShellViewState assembly are extracted, but xTB/conformer job runners and remaining grouped ShellActions assembly still live in `App.tsx`. |
+| App shell extraction | Partial | Several app hooks, pure chemistry libs, file-routing helpers, shared file-export helpers, the core file-open hook, file picker/recent-open actions, the dock payload-open hook, browser-dev startup URL helpers/effects, pure Ketcher workflow helpers, Ketcher action callbacks, docking/collection action callbacks, grid append/xyzrender sheet callbacks, grid save/export/runtime/control/conformer message handling, viewer export/runtime/runtime-file/state/renderer/Ketcher/host/conformer/Molstar-context message handling, top-level viewer/grid dispatch, xTB/CREST status/settings/cancel state, Molstar xTB context request handling, xTB workflow runners, shared xyzrender sheet message handling, SDF open message handling, docking pose-change message handling, FEP setup/network callbacks, drop action callbacks, workspace/project-folder callbacks, and ShellViewState assembly are extracted, but conformer job runners and remaining grouped ShellActions assembly still live in `App.tsx`. |
 | Opening workflow | Partial | `openDocuments`, `openPaths`, text/spectrum opening, path classification, pasted-structure opening, file picker/recent-open actions, dock payload opening, browser-dev startup URL parsing, and browser-dev startup orchestration effects are in dedicated modules/hooks. |
 | Ketcher workflow | Partial | Ketcher import queueing, draft/source helpers, import state, import/export/sketch/grid-row action callbacks, grid-origin `openInKetcher` message routing, and viewer-origin Ketcher handoff messages are extracted; broader Ketcher sketch state still flows through `App.tsx`. |
 | Grid workflow | Partial | Dirty-grid state, descriptor workflows, grid append, delimited append fallback, xyzrender sheet drops, pose-review selection refresh, grid save/export message handling, grid paging/read/xyzrender-card runtime messages, grid control/conformer message routing, SDF grid open message handling, and shared viewer/grid dispatch are extracted. |
