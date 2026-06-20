@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } fro
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { AppLayout } from "./components/app-layout";
-import type { AppSettingsSectionId, KetcherSketchRequest, ShellActions, ShellViewState, StructureViewerAction, ViewerLigandSelection } from "./components/types";
+import type { AppSettingsSectionId, KetcherSketchRequest, ShellActions, StructureViewerAction, ViewerLigandSelection } from "./components/types";
 import { WindowTitle } from "./components/window-title";
 import {
   useCloseCommandPalette,
@@ -37,6 +37,7 @@ import { useAppResize } from "./hooks/use-app-resize";
 import { useAppRendererMessage } from "./hooks/use-app-renderer-message";
 import { useAppSidebarProjects } from "./hooks/use-app-sidebar-projects";
 import { useAppSdfViewerMessages } from "./hooks/use-app-sdf-viewer-messages";
+import { createAppShellViewState } from "./hooks/use-app-shell-view-state";
 import { useAppStartupEffects } from "./hooks/use-app-startup-effects";
 import { useAppStatus } from "./hooks/use-app-status";
 import { useAppUpdates } from "./hooks/use-app-updates";
@@ -1952,18 +1953,16 @@ export default function App() {
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
-  const state: ShellViewState = {
+  const state = createAppShellViewState({
     documents,
     textDocuments,
     tabs,
     activeTab,
     activeTabId,
     activeDocument,
-    activeDocumentId: activeDocument?.id ?? null,
     quickLookDocument,
     quickLookError,
     quickLookStandalone,
-    visibleDocuments: documents,
     recentStructures,
     sidebarProjects,
     projectsOpen,
@@ -2001,13 +2000,13 @@ export default function App() {
     conformerStatus,
     conformerSettings,
     conformerJobs,
-    viewerLigandSelection: activeDocument ? viewerLigandSelections[activeDocument.id] ?? null : null,
+    viewerLigandSelections,
     xtbStatus,
     xtbSettings,
     xtbJobs,
     update,
     buildInfo,
-  };
+  });
 
   useKeyboardShortcuts(state, actions, toggleSidebar, !commandPaletteOpen);
 
