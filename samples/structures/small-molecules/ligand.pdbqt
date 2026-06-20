@@ -1,0 +1,4 @@
+REMARK PDBQT sample
+ATOM      1  C   LIG A   1       0.000   0.000   0.000  0.00  0.00     0.000 C
+ATOM      2  O   LIG A   1       1.200   0.000   0.000  0.00  0.00    -0.300 OA
+END
