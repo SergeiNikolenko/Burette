@@ -152,6 +152,7 @@ const [
   browserDevDescriptors,
   browserDevDesmond,
   browserDevMsbuddy,
+  browserDevRuntimeDoctor,
   browserDevXtb,
   browserDevXyzrender,
   bundleReportScript,
@@ -322,6 +323,7 @@ const [
   source('apps/desktop/vite/browser-dev/descriptors.ts'),
   source('apps/desktop/vite/browser-dev/desmond.ts'),
   source('apps/desktop/vite/browser-dev/msbuddy.ts'),
+  source('apps/desktop/vite/browser-dev/runtime-doctor.ts'),
   source('apps/desktop/vite/browser-dev/xtb.ts'),
   source('apps/desktop/vite/browser-dev/xyzrender.ts'),
   source('scripts/bundle-report.mjs'),
@@ -672,6 +674,14 @@ assert.match(browserDevConformerJobs, /server\.middlewares\.use\("\/__burette\/p
 assert.match(viteConfig, /registerBrowserDevXtbRoutes\(server,/);
 assert.match(browserDevXtb, /server\.middlewares\.use\("\/__burette\/xtb-status"/);
 assert.match(browserDevXtb, /server\.middlewares\.use\("\/__burette\/run-xtb-job"/);
+assert.match(viteConfig, /registerBrowserDevRuntimeDoctorRoute\(server,/);
+assert.match(viteConfig, /xyzrenderStatus: browserDevXyzrenderStatus/);
+assert.match(viteConfig, /schrodingerStatus: browserDevSchrodingerStatus/);
+assert.match(browserDevRuntimeDoctor, /server\.middlewares\.use\("\/__burette\/external-runtime-doctor"/);
+assert.match(browserDevRuntimeDoctor, /burrete\.external-runtime-doctor\.v1/);
+assert.match(browserDevRuntimeDoctor, /runtime: "browser-dev"/);
+assert.match(browserDevRuntimeDoctor, /Promise\.all\(\[/);
+assert.doesNotMatch(browserDevRuntimeDoctor, /installBrowserDev|runBrowserDevXtbJob|runBrowserDevConformerJob|createXyzrender/);
 assert.match(viteConfig, /function conformerGenerationTimeoutMs\(candidateCount: number\)/);
 assert.match(viteConfig, /Math\.max\(30_000, candidateCount \* 1_000\)/);
 assert.match(viteConfig, /function runPythonWithStdin\(python: PythonCommand, script: string, input: string, timeoutMs = 30_000\): Promise<string>/);
@@ -974,7 +984,8 @@ assert.match(appMaintenanceHook, /invoke\("clear_preview_cache"\)/);
 assert.match(appMaintenanceHook, /invoke<\{ ok: boolean \}>\("reset_quick_look"\)/);
 assert.match(appMaintenanceHook, /invoke\("open_logs_folder"\)/);
 assert.match(appMaintenanceHook, /invoke<ExternalRuntimeDoctorReport>\("external_runtime_doctor"\)/);
-assert.match(appMaintenanceHook, /Runtime doctor is available in the desktop app only/);
+assert.match(appMaintenanceHook, /fetch\("\/__burette\/external-runtime-doctor", \{ cache: "no-store" \}\)/);
+assert.match(appMaintenanceHook, /Runtime doctor is available in the desktop app or browser-dev only/);
 assert.match(appMaintenanceHook, /Runtime doctor failed/);
 assert.match(appMaintenanceHook, /invoke<string>\("open_new_workspace_window"\)/);
 assert.match(app, /runExternalRuntimeDoctor,\s*\} = useAppMaintenance\(\{ pushErrorStatus, pushStatus \}\)/);
