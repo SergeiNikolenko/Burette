@@ -253,6 +253,10 @@ Current Stage 3 progress:
   external-only formats;
 - project folder structure scanning now uses a bounded backend traversal for
   sidebar/project roots, with file-count and directory-count contracts;
+- preview runtime localStorage/sessionStorage usage now has an inventory
+  contract in `tests/test-runtime-storage-contract.mjs`, covering the current
+  `buret.*` and `burrete.*` runtime key namespaces in `viewer.js` and
+  `grid-viewer.js`;
 - trusted shell capability boundaries now have a structural contract: Tauri
   command permissions remain limited to shell windows and bundled preview
   runtime artifacts do not call Tauri IPC directly;
@@ -283,8 +287,8 @@ the high-risk runtime boundaries intact.
 | Viewer bridge | Partial | Grid-origin file/runtime/control/conformer messages, viewer-origin export/runtime/runtime-file/state/renderer/Ketcher/host/conformer/Molstar-context messages, active viewer reload/xyzrender control reload actions, shared viewer/grid xyzrender sheet rendering, SDF open messages, docking pose-change messages, the top-level `window.message` dispatch, viewer source/transport helpers, viewer runtime refs, and Molstar xTB context response listener now delegate to dedicated hooks/libs. The handler graph is now composed by `use-app-viewer-bridge-controller.ts` instead of directly in `App.tsx`; the bridge envelope/source parser and dispatch order are covered by `tests/test-viewer-bridge-message-contract.mjs`; stricter per-message payload schemas still remain pending. |
 | ShellActions/ShellViewState slicing | Complete for compatibility assembly | `ShellViewState` derived-field assembly is behind `useAppShellViewState`/`createAppShellViewState`, grouped by `AppShellViewStateSlices` and flattened back to the legacy layout contract. `ShellActions` now flows through `useAppShellActions` and `createAppShellActions`, grouped by `AppShellActionSlices` and flattened back to the legacy layout contract, with job-history, project, dock-drop, close/dirty-cleanup, recent, and update action groups behind the same compatibility adapter. Child components still consume the flat compatibility surface; narrowing their props remains a later cleanup. |
 | Update flow | Complete | Update state/actions are in `use-app-updates.ts`. |
-| Hardening pass | Partial | Trusted shell capability boundaries, diagnostics privacy redaction, cache clearing, scanner limits, renderer policy matrix, and doctor flow now have narrow contracts; full preview capability review, runtime storage inventory, cancellable scanner UX, and remaining Quick Look/browser-dev parity checks remain pending. |
-| Runtime cache contract | Partial | `clear_preview_cache` now delegates to a tested cache-directory helper that preserves `viewer/assets` and removes volatile preview/render/cache entries; broader runtime storage/cache inventory remains pending. |
+| Hardening pass | Partial | Trusted shell capability boundaries, diagnostics privacy redaction, cache clearing, scanner limits, renderer policy matrix, preview runtime storage inventory, and doctor flow now have narrow contracts; full preview capability review, cancellable scanner UX, and remaining Quick Look/browser-dev parity checks remain pending. |
+| Runtime cache contract | Partial | `clear_preview_cache` now delegates to a tested cache-directory helper that preserves `viewer/assets` and removes volatile preview/render/cache entries; preview runtime localStorage/sessionStorage keys are inventoried by `tests/test-runtime-storage-contract.mjs`; broader storage/cache behavior review remains pending. |
 | Folder scanner job | Partial | Project/sidebar folder scanning now has backend file and directory limits with Rust tests; a fully cancellable/background scanner with user-visible truncation status remains pending. |
 | Renderer policy contract | Partial | Core renderer selection now has an explicit matrix test for Molstar/external xyzrender/grid-request/trajectory/external-only routing; browser-dev and Quick Look parity checks still need a higher-level surface test. |
 | External runtime doctor | Complete for current scope | A read-only Tauri/browser-dev doctor report now aggregates xyzrender, descriptor Python/RDKit, Datamol/RDKit conformer Python, CREST, PRISM, xTB, and Schrodinger status sources and is surfaced through trusted shell settings/command-palette actions. |
@@ -302,4 +306,10 @@ Viewer bridge extraction slices must include:
 
 ```bash
 bun tests/test-viewer-bridge-message-contract.mjs
+```
+
+Preview runtime storage/cache slices must include:
+
+```bash
+bun tests/test-runtime-storage-contract.mjs
 ```
