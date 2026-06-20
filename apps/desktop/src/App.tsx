@@ -5,7 +5,7 @@ import { openPath } from "@tauri-apps/plugin-opener";
 import previewFormatRegistry from "../../../config/preview-formats.json";
 import { AppLayout } from "./components/app-layout";
 import { showNativeContextMenu } from "./components/native-context-menu";
-import type { AppSettingsSectionId, KetcherImportRequest, KetcherSketchRequest, ShellActions, ShellViewState, StructureViewerAction, ViewerLigandSelection } from "./components/types";
+import type { AppSettingsSectionId, KetcherSketchRequest, ShellActions, ShellViewState, StructureViewerAction, ViewerLigandSelection } from "./components/types";
 import { WindowTitle } from "./components/window-title";
 import {
   useCloseCommandPalette,
@@ -21,6 +21,7 @@ import { useAppDockPayloadOpen } from "./hooks/use-app-dock-payload-open";
 import { useAppFileActions } from "./hooks/use-app-file-actions";
 import { useAppFileOpen } from "./hooks/use-app-file-open";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
+import { useAppKetcherActions } from "./hooks/use-app-ketcher-actions";
 import { useAppMaintenance } from "./hooks/use-app-maintenance";
 import { useAppQuickLook } from "./hooks/use-app-quick-look";
 import { useAppResize } from "./hooks/use-app-resize";
@@ -85,9 +86,9 @@ import { directChemistryJobGuardMessage } from "./lib/direct-chemistry-guard";
 import type { DockArea, DockTabKind } from "./lib/dock";
 import type { DropActionChoice } from "./lib/drop-actions";
 import { delimitedColumnChoiceLabel, isDelimitedColumnAmbiguity, pathExtension, preferredTextExtensions, structureAndTextExtensions, structureExtensionFromPath, structureExtensions, summarizeErrors, summarizeErrorText, type GridDelimitedColumnChoice } from "./lib/file-routing";
-import { downloadBase64File, downloadTextFile, exportDialogFilters, safeExportFileName, stableTextDocumentId } from "./lib/file-export";
+import { downloadBase64File, downloadTextFile, exportDialogFilters, safeExportFileName } from "./lib/file-export";
 import { browserDevDockingFromLocation, browserDevFilesFromLocation, browserDevFolderFromLocation, browserDevHasExplicitFiles, browserDevHasExplicitWorkspace, browserDevQuickLookFileFromLocation } from "./lib/browser-dev-startup";
-import { ketcherDraftMolfileFromImportText, ketcherSource3DFromText, queueKetcherImportRequest } from "./lib/ketcher-workflow";
+import { ketcherSource3DFromText } from "./lib/ketcher-workflow";
 import { markPerformanceOnce } from "./lib/performance";
 import { basename, parentDirectory } from "./lib/sidebar-projects";
 import type { StructureDragPayload, StructureDragRecord } from "./lib/structure-drag";
@@ -355,8 +356,6 @@ export default function App() {
     void invoke("grid_close_runtime", { documentId }).catch(() => {});
   }, []);
   const [structureDragActive, setStructureDragActive] = useState(false);
-  const [ketcherImportRequest, setKetcherImportRequest] = useState<KetcherImportRequest | null>(null);
-  const [ketcherDraftMolfile, setKetcherDraftMolfile] = useState("");
   const { status, pushStatus, pushErrorStatus, clearStatus, recentErrorsRef } = useAppStatus();
   const {
     clearDirtyGridDocuments,
@@ -419,7 +418,6 @@ export default function App() {
   const gridPerfMetricsRef = useRef<string[]>([]);
   const cancelledConformerJobIdsRef = useRef(new Set<string>());
   const cancelledXtbJobIdsRef = useRef(new Set<string>());
-  const ketcherImportSequenceRef = useRef(0);
   const commandPaletteOpen = useIsCommandPaletteOpen();
   const commandPaletteQuery = useCommandPaletteSearch();
   const openCommandPalette = useOpenCommandPalette();
@@ -1527,316 +1525,33 @@ export default function App() {
     activateLastNonSettingsTab();
   }, [activateLastNonSettingsTab]);
 
-  const openKetcher = useCallback(() => {
-    openKetcherTab();
-  }, [openKetcherTab]);
-
-  const nextKetcherImportRequestId = useCallback(() => {
-    const nextId = Math.max(ketcherImportSequenceRef.current + 1, Date.now());
-    ketcherImportSequenceRef.current = nextId;
-    return nextId;
-  }, []);
-
-  const openKetcherWithStructures = useCallback((paths: string[], fragments: KetcherImportRequest["fragments"] = []) => {
-    const cleanPaths = Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
-    const virtualFragments: KetcherImportRequest["fragments"] = [];
-    const readablePaths = cleanPaths.filter((path) => {
-      const virtualText = readBrowserDevVirtualTextDocument(path);
-      if (virtualText === null) return true;
-      virtualFragments.push({
-        title: basename(path),
-        text: virtualText,
-        source3d: ketcherSource3DFromText(basename(path), virtualText, pathExtension(path)),
-      });
-      return false;
-    });
-    const cleanFragments = [...(fragments?.filter((fragment) => fragment.text.trim()) ?? []), ...virtualFragments];
-    if (readablePaths.length === 0 && cleanFragments.length === 0) return;
-    const hasGridEditSource = cleanFragments.some((fragment) => fragment.source?.kind === "grid-row");
-    if (!hasGridEditSource && readablePaths.length === 0 && cleanFragments.length === 1 && !cleanFragments[0]?.source3d) {
-      const [fragment] = cleanFragments;
-      const draftMolfile = ketcherDraftMolfileFromImportText(fragment.text);
-      if (draftMolfile) {
-        openKetcherTab({ kind: "ketcher", draftMolfile });
-        setStructureDragActive(false);
-        setKetcherDraftMolfile(draftMolfile);
-        setKetcherImportRequest(null);
-        pushStatus(`Opened ${fragment.title.trim() || "structure"} in Ketcher`);
-        return;
-      }
-    }
-    const request: KetcherImportRequest = {
-      id: nextKetcherImportRequestId(),
-      paths: readablePaths,
-      fragments: cleanFragments,
-    };
-    queueKetcherImportRequest(request);
-    setKetcherImportRequest(request);
-    openKetcherTab({ kind: "ketcher", importRequestId: request.id, importRequest: request });
-    setStructureDragActive(false);
-    const count = readablePaths.length + cleanFragments.length;
-    pushStatus(`Adding ${count} structure${count === 1 ? "" : "s"} to Ketcher`);
-  }, [nextKetcherImportRequestId, openKetcherTab, pushStatus]);
-
-  const openKetcherExportRaw = useCallback((request: {
-    title: string;
-    extension: string;
-    text: string;
-  }) => {
-    const title = safeExportFileName(request.title);
-    const extension = request.extension.trim().toLowerCase().replace(/^\./u, "") || pathExtension(title) || "txt";
-    const text = request.text;
-    const id = stableTextDocumentId(`ketcher-export:${title}:${text}`);
-    const document: TextFileDocument = {
-      id,
-      path: `burrete-ketcher-export://${id}/${title}`,
-      title,
-      extension,
-      language: extension,
-      byteCount: new TextEncoder().encode(text).byteLength,
-      content: text,
-      truncated: false,
-      modifiedAt: Date.now(),
-    };
-    addTextDocuments([document]);
-    pushStatus(`Opened ${title}`);
-  }, [addTextDocuments, pushStatus]);
-
-  const saveKetcherExportFile = useCallback(async (request: {
-    title: string;
-    extension: string;
-    text: string;
-  }) => {
-    const title = safeExportFileName(request.title);
-    if (!isTauriRuntime()) {
-      downloadTextFile(title, request.text);
-      pushStatus(`Saved ${title}`);
-      return;
-    }
-    try {
-      const outputPath = await save({
-        defaultPath: title,
-        filters: exportDialogFilters(title, "text/plain"),
-      });
-      if (!outputPath) return;
-      const savedPath = await invoke<string>("save_text_as", { text: request.text, outputPath });
-      pushStatus(`Saved ${basename(savedPath)}`);
-    } catch (error) {
-      pushErrorStatus(error, "Save Ketcher export failed");
-    }
-  }, [pushErrorStatus, pushStatus]);
-
-  const openKetcherWithFragment = useCallback((title: string, text: string, source?: NonNullable<NonNullable<KetcherImportRequest["fragments"]>[number]["source"]>, extensionOverride?: string) => {
-    const cleanText = text.trim();
-    if (!cleanText) return;
-    const cleanTitle = title.trim() || "structure";
-    const source3d = ketcherSource3DFromText(cleanTitle, cleanText, source?.extension ?? extensionOverride ?? pathExtension(cleanTitle));
-    const draftMolfile = source ? "" : ketcherDraftMolfileFromImportText(cleanText);
-    if (!source && draftMolfile && !source3d) {
-      openKetcherTab({ kind: "ketcher", draftMolfile });
-      setStructureDragActive(false);
-      setKetcherDraftMolfile(draftMolfile);
-      setKetcherImportRequest(null);
-      pushStatus(`Opened ${cleanTitle} in Ketcher`);
-      return;
-    }
-    const request: KetcherImportRequest = {
-      id: nextKetcherImportRequestId(),
-      paths: [],
-      fragments: [{
-        title: cleanTitle,
-        text,
-        source3d,
-        source: source
-          ? {
-              ...source,
-              title: source.title.trim() || cleanTitle,
-              extension: source.extension.trim().replace(/^\./u, "") || "sdf",
-            }
-          : undefined,
-      }],
-    };
-    queueKetcherImportRequest(request);
-    setKetcherImportRequest(request);
-    openKetcherTab({ kind: "ketcher", importRequestId: request.id, importRequest: request });
-    setStructureDragActive(false);
-    pushStatus(`Adding ${cleanTitle} to Ketcher`);
-  }, [nextKetcherImportRequestId, openKetcherTab, pushStatus]);
-
-  const applyKetcherToGridRow = useCallback((request: {
-    documentId: string;
-    rowIndex: number;
-    title: string;
-    extension: string;
-    text: string;
-  }) => {
-    const ketcherTabId = tabs.find((tab) => tab.location.kind === "ketcher")?.id ?? null;
-    const iframe = document.querySelector<HTMLIFrameElement>(`.viewer-iframe[data-document-id="${CSS.escape(request.documentId)}"]`);
-    if (!iframe?.contentWindow) {
-      pushStatus("Grid edit target is not open.", "error");
-      return;
-    }
-    iframe.contentWindow.postMessage({
-      source: "burrete-grid-host",
-      body: {
-        type: "gridApplyKetcherRow",
-        documentId: request.documentId,
-        rowIndex: request.rowIndex,
-        title: request.title,
-        extension: request.extension,
-        text: request.text,
-      },
-    }, "*");
-    if (ketcherTabId) {
-      window.setTimeout(() => {
-        setActiveDocument(request.documentId);
-        closeTab(ketcherTabId);
-      }, 0);
-    }
-    pushStatus("Applied Ketcher edit to grid");
-  }, [closeTab, pushStatus, setActiveDocument, tabs]);
-
-  const clearKetcherImportRequest = useCallback((id: number) => {
-    setKetcherImportRequest((request) => (request?.id === id ? null : request));
-  }, []);
-
-  const openKetcherSketch = useCallback(async (request: KetcherSketchRequest) => {
-    const rendererMode: ViewerPreferences["rendererMode"] = request.target === "grid"
-      ? "grid2d"
-      : request.target === "molstar" || request.target === "generate3d"
-      ? "molstar"
-      : request.target === "xyzrender"
-        ? "xyzrender-external"
-        : "auto";
-    const reloadOptions = request.target === "collection" ? undefined : {};
-    const effectivePreferences = { ...preferences, rendererMode };
-    pushStatus("Opening Ketcher sketch...");
-    try {
-      if (request.target === "collection" && request.collectionTargetPath) {
-        if (isTauriRuntime()) {
-          const document = await invoke<ViewerDocument>("append_to_molecule_collection", {
-            request: {
-              targetPath: request.collectionTargetPath,
-              extension: request.extension,
-              text: request.text,
-            },
-            preferences: effectivePreferences,
-          });
-          openDocumentsInActiveTab([document]);
-          rememberRecentStructures([document]);
-          pushStatus(`Added Ketcher sketch to ${basename(document.path)}`);
-          return;
-        }
-
-        const sketchDocument = await openBrowserDevTextDocument(
-          request.title,
-          request.extension,
-          request.text,
-          effectivePreferences,
-          reloadOptions,
-        );
-        await mergeMoleculeCollections(request.collectionTargetPath, [sketchDocument.path]);
-        return;
-      }
-      if (request.target === "collection") {
-        if (isTauriRuntime()) {
-          const outputPath = await save({
-            defaultPath: "ketcher-collection.sdf",
-            filters: [{ name: "SDF collections", extensions: ["sdf", "sd"] }],
-          });
-          if (!outputPath) {
-            pushStatus("New collection canceled");
-            return;
-          }
-          const document = await invoke<ViewerDocument>("create_molecule_collection", {
-            request: {
-              outputPath,
-              extension: request.extension,
-              text: request.text,
-            },
-            preferences: effectivePreferences,
-          });
-          openDocumentsInActiveTab([document]);
-          rememberRecentStructures([document]);
-          pushStatus(`Created ${basename(document.path)}`);
-          return;
-        }
-
-        const document = await openBrowserDevTextDocument(
-          "ketcher-collection.sdf",
-          request.extension,
-          request.text,
-          effectivePreferences,
-          reloadOptions,
-        );
-        openDocumentsInActiveTab([document]);
-        downloadTextFile("ketcher-collection.sdf", request.text);
-        pushStatus("Created ketcher-collection.sdf");
-        return;
-      }
-
-      if (request.target === "generate3d") {
-        pushStatus("Generating 3D conformer...");
-        const conformerRequest = {
-          title: request.title,
-          extension: request.extension,
-          text: request.text,
-          ...conformerGenerationPreferences(preferences),
-          source3d: request.source3d ?? null,
-        };
-        const conformer = isTauriRuntime()
-          ? await invoke<ConformerGenerationResult>("generate_3d_conformer", { request: conformerRequest })
-          : await generateBrowserDev3DConformer(conformerRequest);
-        const document = isTauriRuntime()
-          ? await invoke<ViewerDocument>("open_text_structure", {
-              request: {
-                title: conformer.title,
-                extension: conformer.extension,
-                text: conformer.text,
-              },
-              preferences: effectivePreferences,
-              reloadOptions,
-            })
-          : await openBrowserDevTextDocument(
-              conformer.title,
-              conformer.extension,
-              conformer.text,
-              effectivePreferences,
-              reloadOptions,
-        );
-        openDocumentsInActiveTab([document]);
-        rememberRecentStructures([document]);
-        pushStatus(generated3DStatus(conformer, "opened it in Molstar"));
-        return;
-      }
-
-      const document = isTauriRuntime()
-        ? await invoke<ViewerDocument>("open_text_structure", {
-            request: {
-              title: request.title,
-              extension: request.extension,
-              text: request.text,
-            },
-            preferences: effectivePreferences,
-            reloadOptions,
-          })
-        : await openBrowserDevTextDocument(
-            request.title,
-            request.extension,
-            request.text,
-            effectivePreferences,
-            reloadOptions,
-          );
-      addDocuments([document]);
-      rememberRecentStructures([document]);
-      pushStatus(
-        `Opened Ketcher sketch in ${request.target === "grid" ? "grid" : request.target === "molstar" ? "Molstar" : "xyzrender"}`,
-      );
-    } catch (error) {
-      pushErrorStatus(error, "Open Ketcher sketch failed");
-      throw error;
-    }
-  }, [addDocuments, mergeMoleculeCollections, openDocumentsInActiveTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
+  const {
+    applyKetcherToGridRow,
+    clearKetcherImportRequest,
+    ketcherDraftMolfile,
+    ketcherImportRequest,
+    openKetcher,
+    openKetcherExportRaw,
+    openKetcherSketch,
+    openKetcherWithFragment,
+    openKetcherWithStructures,
+    saveKetcherDraft,
+    saveKetcherExportFile,
+  } = useAppKetcherActions({
+    addDocuments,
+    addTextDocuments,
+    closeTab,
+    mergeMoleculeCollections,
+    openDocumentsInActiveTab,
+    openKetcherTab,
+    preferences,
+    pushErrorStatus,
+    pushStatus,
+    rememberRecentStructures,
+    setActiveDocument,
+    setStructureDragActive,
+    tabs,
+  });
 
   const postXyzrenderSheetItems = useCallback((documentId: string, payload: StructureDragPayload) => {
     const iframe = Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).find(
@@ -3434,7 +3149,7 @@ export default function App() {
       pushStatus("xTB job history cleared");
     },
     setXtbSettings,
-    saveKetcherDraft: setKetcherDraftMolfile,
+    saveKetcherDraft,
     clearKetcherImportRequest,
     moveTab,
     chooseWorkspace,
@@ -3556,7 +3271,7 @@ export default function App() {
     openUpdateRelease,
     setPreference,
     setUpdatePreferences,
-  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearDirtyGridDocuments, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeQuickLookPreview, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, exportDiagnostics, focusSidebarSearch, forgetDirtyGridDocument, forgetDirtyGridDocuments, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openUpdateRelease, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runStructureViewerAction, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar]);
+  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearDirtyGridDocuments, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeQuickLookPreview, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, exportDiagnostics, focusSidebarSearch, forgetDirtyGridDocument, forgetDirtyGridDocuments, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openUpdateRelease, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runStructureViewerAction, saveKetcherDraft, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar]);
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
