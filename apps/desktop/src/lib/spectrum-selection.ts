@@ -56,14 +56,6 @@ export function useSpectrumPeakSelection(documentId: string) {
     });
   }, [setSpectrumSelection]);
 
-  const selectPeaks = useCallback((peakIndices: number[]) => {
-    const uniqueIndices = [...new Set(peakIndices.filter((peakIndex) => Number.isInteger(peakIndex) && peakIndex >= 0))];
-    setSpectrumSelection({
-      activePeakIndex: uniqueIndices[0] ?? null,
-      selectedPeakIndices: uniqueIndices,
-    });
-  }, [setSpectrumSelection]);
-
   const selectPeakRange = useCallback((startIndex: number, endIndex: number) => {
     const start = Math.min(startIndex, endIndex);
     const end = Math.max(startIndex, endIndex);
@@ -82,7 +74,6 @@ export function useSpectrumPeakSelection(documentId: string) {
     selectedPeakIndices: selection.selectedPeakIndices,
     previewPeak,
     selectPeak,
-    selectPeaks,
     selectPeakRange,
     clearPeakSelection,
   } as const;

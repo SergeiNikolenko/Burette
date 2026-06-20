@@ -4,10 +4,8 @@ import { ViewerArea } from "./editor-area";
 import { EditorTabs } from "./editor-area/editor-tabs";
 import { NotificationPopup } from "./notification-popup";
 import { OpenInEditorMenu } from "./open-in-editor-menu";
-import { QuickLookPreview } from "./quick-look-preview";
 import { Sidebar } from "./sidebar";
 import { ShortcutTooltip } from "./shortcut-tooltip";
-import { SystemIcon } from "./system-icon";
 import type { ShellActions, ShellViewState } from "./types";
 import { isTauriRuntime } from "../lib/tauri";
 import { buildThemeStyle, resolveThemeMode, useSystemThemeMode } from "../lib/theme";
@@ -71,27 +69,6 @@ export function AppLayout({
   } as CSSProperties;
   const effectiveTheme = resolveThemeMode(state.preferences.theme, systemThemeMode);
   const activePageKind = state.activeTab?.location.kind ?? null;
-  if (state.quickLookStandalone) {
-    return (
-      <main
-        className="app-shell"
-        data-theme={state.preferences.theme}
-        data-effective-theme={effectiveTheme}
-        data-runtime={isTauriRuntime() ? "tauri" : "browser"}
-        data-quicklook-debug="true"
-        style={shellStyle}
-      >
-        {state.quickLookDocument ? (
-          <QuickLookPreview document={state.quickLookDocument} onClose={actions.closeQuickLookPreview} standalone />
-        ) : state.quickLookError ? (
-          <div className="web-quicklook-debug-loading" role="alert">{state.quickLookError}</div>
-        ) : (
-          <div className="web-quicklook-debug-loading" role="status">Loading Quick Look preview...</div>
-        )}
-      </main>
-    );
-  }
-
   return (
     <main
       className="app-shell"
@@ -121,7 +98,7 @@ export function AppLayout({
               onClick={onToggleSidebar}
               aria-label={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"}
             >
-              <SystemIcon name="sidebar.left" size={18} />
+              <DockToggleIcon />
             </button>
           </div>
           <div className="chrome-trailing-controls" data-tauri-drag-region>
@@ -134,7 +111,7 @@ export function AppLayout({
               onClick={() => actions.toggleDock("bottom")}
               aria-label={state.bottomDockOpen ? "Hide bottom dock" : "Show bottom dock"}
             >
-              <SystemIcon name="rectangle.bottomthird.inset.filled" size={18} />
+              <DockToggleIcon className="dock-toggle-icon-bottom" />
               <ShortcutTooltip label={state.bottomDockOpen ? "Hide bottom dock" : "Show bottom dock"} shortcut="⌘J" />
             </button>
             <button
@@ -145,7 +122,7 @@ export function AppLayout({
               onClick={() => actions.toggleDock("right")}
               aria-label={state.rightDockOpen ? "Hide right dock" : "Show right dock"}
             >
-              <SystemIcon name="sidebar.right" size={18} />
+              <DockToggleIcon className="dock-toggle-icon-right" />
               <ShortcutTooltip label={state.rightDockOpen ? "Hide right dock" : "Show right dock"} shortcut="⌥⌘B" />
             </button>
           </div>
@@ -208,9 +185,22 @@ export function AppLayout({
       {state.status && (
         <NotificationPopup notice={state.status} onDismiss={onDismissStatus} />
       )}
-      {state.quickLookDocument ? (
-        <QuickLookPreview document={state.quickLookDocument} onClose={actions.closeQuickLookPreview} />
-      ) : null}
     </main>
+  );
+}
+
+function DockToggleIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="18"
+      height="18"
+      viewBox="0 0 18 18"
+      fill="none"
+      aria-hidden="true"
+    >
+      <rect x="2.25" y="2.25" width="13.5" height="13.5" rx="3.25" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M6.75 4.75V13.25" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
   );
 }

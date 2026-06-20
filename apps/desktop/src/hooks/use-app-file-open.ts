@@ -57,6 +57,7 @@ type UseAppFileOpenOptions = {
   rememberRecentStructures: (documents: ViewerDocument[]) => void;
   setActiveDocument: (id: string) => void;
   setDockActiveTab: (area: DockArea, kind: DockTabKind) => void;
+  setDockDocument: (area: DockArea, documentId: string | null) => void;
   setDockOpen: (area: DockArea, open: boolean) => void;
   setDocuments: (documents: ViewerDocument[]) => void;
 };
@@ -79,6 +80,7 @@ export function useAppFileOpen({
   rememberRecentStructures,
   setActiveDocument,
   setDockActiveTab,
+  setDockDocument,
   setDockOpen,
   setDocuments,
 }: UseAppFileOpenOptions) {
@@ -235,8 +237,10 @@ export function useAppFileOpen({
         else addDocuments(documents);
         if (!options.background && !options.inActiveTab && documents[0]) {
           setActiveDocument(documents[0].id);
+          setDockDocument("right", documents[0].id);
           setDockActiveTab("right", "inspector");
           setDockOpen("right", true);
+          setDockDocument("bottom", documents[0].id);
           openDockTab("bottom", "spectrum");
         }
         rememberRecentStructures(documents);
@@ -252,7 +256,7 @@ export function useAppFileOpen({
         return null;
       }
     },
-    [addBackgroundDocuments, addDocuments, openDockTab, openDocumentsInActiveTab, pushErrorStatus, pushStatus, rememberRecentStructures, setActiveDocument, setDockActiveTab, setDockOpen],
+    [addBackgroundDocuments, addDocuments, openDockTab, openDocumentsInActiveTab, pushErrorStatus, pushStatus, rememberRecentStructures, setActiveDocument, setDockActiveTab, setDockDocument, setDockOpen],
   );
 
   const openPaths = useCallback(async (paths: string[]) => {

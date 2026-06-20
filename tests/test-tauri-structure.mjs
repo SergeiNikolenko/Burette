@@ -248,14 +248,15 @@ assert.match(nightlySmokeWorkflow, /on:\s*\n\s*schedule:/);
 assert.match(nightlySmokeWorkflow, /BURRETE_DEV_FLAVOR:\s*ci/);
 assert.match(nightlySmokeWorkflow, /scripts\/quicklook-preview-smoke\.sh/);
 for (const fixture of [
-  'tests/fixtures/BurettePreviewSamples/mini.pdb',
-  'tests/fixtures/BurettePreviewSamples/mini.cif',
-  'tests/fixtures/BurettePreviewSamples/sdf/single.sdf',
-  'tests/fixtures/BurettePreviewSamples/xyz/single.xyz',
-  'tests/fixtures/BurettePreviewSamples/xyzr/single.xyzr',
+  'samples/mini.pdb',
+  'samples/mini.cif',
+  'samples/mini.sdf',
+  'samples/mini.xyz',
+  'build/smoke/single.xyzr',
 ]) {
   assert.match(nightlySmokeWorkflow, new RegExp(fixture.replaceAll('/', '\\/')));
 }
+assert.match(nightlySmokeWorkflow, /cp samples\/mini\.xyz build\/smoke\/single\.xyzr/);
 assert.match(nightlySmokeWorkflow, /scripts\/perf-smoke\.sh/);
 
 for (const moduleName of ['agent_integration', 'documents', 'grid', 'preview_cache', 'quicklook', 'runtime_doctor', 'shell', 'startup', 'updater']) {
@@ -341,17 +342,8 @@ assert.match(agentSessionHook, /workspacePanels/);
 assert.match(agentSessionHook, /viewerAgentStatesRef/);
 assert.match(agentSessionHook, /viewerAgentStateFromMessage/);
 assert.match(agentSessionHook, /type === "agentReady"/);
-assert.match(agentSessionHook, /type === "agentSelectionChanged"/);
-assert.match(agentSessionHook, /Viewer selection changed/);
 assert.match(agentSessionHook, /agent-panel:\$\{area\}:\$\{kind\}:\$\{document\.title\}/);
 assert.match(agentSessionHook, /type === "open_files"/);
-assert.match(agentSessionHook, /type === "manage_tabs"/);
-assert.match(agentSessionHook, /function manageTabs/);
-assert.match(agentSessionHook, /operation must be list, focus, next, previous, open_file, new, close, or move/);
-assert.match(agentSessionHook, /tabs: tabs\.map\(\(tab, index\) => serializeTabForAgent/);
-assert.match(agentSessionHook, /type === "open_docking_view"/);
-assert.match(agentSessionHook, /function openAgentDockingView/);
-assert.match(agentSessionHook, /open_docking_view requires receptorPath/);
 assert.match(agentSessionHook, /type === "render_panel"/);
 assert.match(agentSessionHook, /render_panel kind must be markdown, table, or chart/);
 assert.match(agentSessionHook, /openTextDocuments\(\[file\], \{ background: true \}\)/);
@@ -425,8 +417,8 @@ assert.match(previewGridStore, /struct GridDelimitedColumnChoice/);
 assert.match(previewGridStore, /fn infer_smiles_columns_from_values/);
 assert.match(previewGridStore, /fn is_likely_smiles_column/);
 assert.match(previewGridStore, /fn delimited_smiles_column_choices/);
-assert.match(previewGridStore, /fn is_smiles_column\(value: &str\) -> bool \{[\s\S]*value == "smile"[\s\S]*value == "smiels"[\s\S]*value\.contains\("smiles"\)/);
-assert.match(moleculeGridPreview, /private static func isSmilesColumn\(_ value: String\) -> Bool \{[\s\S]*value == "smile"[\s\S]*value == "smiels"[\s\S]*value\.contains\("smiles"\)/);
+assert.match(previewGridStore, /value == "smile" \|\| value\.contains\("smiles"\)/);
+assert.match(moleculeGridPreview, /value == "smile" \|\| value\.contains\("smiles"\)/);
 assert.match(previewGridStore, /fn infers_smiles_columns_without_smiles_headers/);
 assert.match(previewGridStore, /fn uses_explicit_column_for_ambiguous_delimited_table/);
 assert.match(previewGridStore, /fn lists_delimited_structure_column_choices/);
@@ -716,7 +708,6 @@ assert.match(appMetadata, /com\.local\.burrete10\.graphml/);
 assert.match(appMetadata, /com\.local\.burrete10\.openmm-coordinate-artifact/);
 assert.match(appMetadata, /com\.local\.burrete10\.openmm-workflow-text-artifact/);
 assert.match(tauriConfigSource, /"graphml"/);
-assert.match(tauriConfigSource, /"\.\.\/\.\.\/\.\.\/plugins\/burette-agent": "plugins\/burette-agent"/);
 assert.match(quickLookPreviewController, /shouldUseFepGraphMLPreview\(fileExtension: String, previewPlan: BurretePreviewPlan\?\)/);
 assert.match(quickLookPreviewController, /return fileExtension\.lowercased\(\) == "graphml"/);
 assert.match(quickLookPreviewController, /detected\.previewMode=fep-graphml/);
@@ -970,7 +961,7 @@ assert.match(quickLookPreviewController, /guard let url = currentPreviewURL else
 assert.match(viewerJS, /function requestStructureDataFromNative\(\)/);
 assert.match(viewerJS, /const fallbackKey = format === 'xyz' \? XYZ_FRAME_MODE_STORAGE_KEY : SDF_POSE_MODE_STORAGE_KEY/);
 assert.match(viewerJS, /const storageKey = String\(config\?\.sdfPoseModeStorageKey \|\| fallbackKey\)/);
-assert.match(viewerJS, /const defaultMode = config\?\.defaultSdfPoseMode === 'all' \? 'all' : 'single'/);
+assert.match(viewerJS, /const defaultMode = sceneMode === 'structureAll' \? 'all' : 'single'/);
 assert.match(viewerJS, /window\.__mqlPost\('requestData', 'requestData', \{ requestToken \}\);/);
 assert.match(viewerJS, /function loadArrayBufferViaXHR\(url\)/);
 assert.match(viewerJS, /fetch preview-data\.bin failed, falling back to XMLHttpRequest/);
