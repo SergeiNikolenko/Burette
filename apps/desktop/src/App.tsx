@@ -17,6 +17,7 @@ import { useAppDiagnostics } from "./hooks/use-app-diagnostics";
 import { useAppDockActions } from "./hooks/use-app-dock-actions";
 import { useAppDirtyGridDocuments } from "./hooks/use-app-dirty-grid-documents";
 import { useAppDockingPoseMessages } from "./hooks/use-app-docking-pose-messages";
+import { useAppDockingPoseSelection } from "./hooks/use-app-docking-pose-selection";
 import { useAppDockingWorkflows } from "./hooks/use-app-docking-workflows";
 import { useAppDockPayloadOpen } from "./hooks/use-app-dock-payload-open";
 import { useAppDropActions } from "./hooks/use-app-drop-actions";
@@ -486,19 +487,7 @@ export default function App() {
     xtbSettings,
   });
 
-  const notifyGridPoseReviewSelection = useCallback((targetDocumentId: string, activePose: number) => {
-    const iframe = Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).find(
-      (item) => item.dataset.documentId === targetDocumentId,
-    );
-    iframe?.contentWindow?.postMessage({
-      source: "burrete-grid-host",
-      body: {
-        type: "poseReviewSelection",
-        documentId: targetDocumentId,
-        activePose,
-      },
-    }, "*");
-  }, []);
+  const { notifyGridPoseReviewSelection } = useAppDockingPoseSelection();
 
   const {
     mergeMoleculeCollections,
