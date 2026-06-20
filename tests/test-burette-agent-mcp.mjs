@@ -8,6 +8,7 @@ import path from "node:path";
 const repoRoot = process.cwd();
 const sourcePluginRoot = path.resolve("plugins/burette-agent");
 const sampleMini = path.resolve("samples/mini.pdb");
+const sample1htb = path.resolve("samples/structures/proteins/1htb.pdb");
 
 function moduleUrl(...parts) {
   return pathToFileURL(path.join(...parts)).href;
@@ -87,6 +88,74 @@ async function copyPlugin(tempRoot, name) {
   const pluginRoot = path.join(tempRoot, name);
   await cp(sourcePluginRoot, pluginRoot, { recursive: true });
   return pluginRoot;
+}
+
+async function installMockAgentCli(pluginRoot) {
+  await writeFile(
+    path.join(pluginRoot, "scripts", "burrete-agent.mjs"),
+    [
+      "#!/usr/bin/env node",
+      `const activeFile = ${JSON.stringify(sampleMini)};`,
+      "const apiVersion = 'burette-agent-cli/v1';",
+      "const [command, ...args] = process.argv.slice(2);",
+      "function parseArgs(values) {",
+      "  const options = {};",
+      "  const rest = [];",
+      "  for (let index = 0; index < values.length; index += 1) {",
+      "    const value = values[index];",
+      "    if (value.startsWith('--')) {",
+      "      const key = value.slice(2).replace(/-([a-z])/g, (_, char) => char.toUpperCase());",
+      "      if (key === 'noLaunch') {",
+      "        options[key] = true;",
+      "        continue;",
+      "      }",
+      "      const next = values[index + 1];",
+      "      if (!next || next.startsWith('--')) {",
+      "        options[key] = true;",
+      "      } else {",
+      "        options[key] = next;",
+      "        index += 1;",
+      "      }",
+      "    } else {",
+      "      rest.push(value);",
+      "    }",
+      "  }",
+      "  return { options, rest };",
+      "}",
+      "function ok(result) {",
+      "  console.log(JSON.stringify({ ok: true, apiVersion, result }, null, 2));",
+      "}",
+      "const parsed = parseArgs(args);",
+      "if (command === 'open') {",
+      "  ok({",
+      "    mode: parsed.options.mode || 'browser-preview',",
+      "    url: 'http://127.0.0.1:49000/index.html?token=mock-token',",
+      "    sessionDir: parsed.options.sessionDir || '/tmp/burrete-mock-session',",
+      "    launched: !parsed.options.noLaunch,",
+      "    initialPaths: parsed.rest,",
+      "    argv: args,",
+      "  });",
+      "} else if (command === 'observe') {",
+      "  ok({",
+      "    mode: 'browser-agent-shell',",
+      "    activeTabId: 'tab-structure',",
+      "    tabs: [{ id: 'tab-structure', title: 'mini.pdb', path: activeFile }],",
+      "    activeDocument: { title: 'mini.pdb', path: activeFile, ready: true },",
+      "    viewer: { ready: true, representationCount: 2 },",
+      "    actions: { recent: [] },",
+      "    argv: args,",
+      "  });",
+      "} else if (command === 'act') {",
+      "  const actionText = parsed.rest[0] || '{}';",
+      "  const action = JSON.parse(actionText);",
+      "  ok({ ok: true, action: { id: 'act-mock', type: action.type, status: 'queued', payload: action }, argv: args });",
+      "} else {",
+      "  console.error(JSON.stringify({ ok: false, error: { code: 'UNKNOWN_COMMAND', message: `Unknown command: ${command}` } }));",
+      "  process.exit(2);",
+      "}",
+      "",
+    ].join("\n"),
+  );
 }
 
 async function testMcpRegistrations(tempRoot) {
@@ -235,6 +304,142 @@ async function testFetchAndWorkspaceHandlers(tempRoot) {
   }
 }
 
+async function testMockedWorkspaceToolScenarios(tempRoot) {
+  const pluginRoot = await copyPlugin(tempRoot, "mocked-workspace-plugin");
+  await installMockAgentCli(pluginRoot);
+  const server = await registerAll(pluginRoot);
+  const coveredTools = new Set();
+
+  const opened = await server.tools.get("open_burrete_workspace").handler({
+    file: sampleMini,
+    mode: "browser-preview",
+    noLaunch: true,
+  });
+  coveredTools.add("open_burrete_workspace");
+  assert.equal(opened.structuredContent.ok, true);
+  assert.equal(opened.structuredContent.result.mode, "browser-preview");
+  assert.deepEqual(opened.structuredContent.result.initialPaths, [sampleMini]);
+  assert.equal(opened.structuredContent.result.launched, false);
+
+  const observed = await server.tools.get("observe_burrete_workspace").handler({
+    url: opened.structuredContent.result.url,
+  });
+  coveredTools.add("observe_burrete_workspace");
+  assert.equal(observed.structuredContent.ok, true);
+  assert.equal(observed.structuredContent.observe.activeDocument.path, sampleMini);
+  assert.equal(observed._meta.widgetData.observe.activeTabId, "tab-structure");
+
+  const summarizedFromWorkspace = await server.tools.get("summarize_burrete_structure").handler({
+    url: opened.structuredContent.result.url,
+  });
+  coveredTools.add("summarize_burrete_structure");
+  assert.equal(summarizedFromWorkspace.structuredContent.ok, true);
+  assert.equal(summarizedFromWorkspace.structuredContent.summary.counts.atoms, 9);
+  assert.equal(summarizedFromWorkspace.structuredContent.observe.activeDocument.path, sampleMini);
+
+  const listedTabs = await server.tools.get("manage_burrete_tabs").handler({
+    operation: "list",
+    url: opened.structuredContent.result.url,
+  });
+  coveredTools.add("manage_burrete_tabs");
+  assert.equal(listedTabs.structuredContent.ok, true);
+  assert.equal(listedTabs.structuredContent.activeTabId, "tab-structure");
+  assert.equal(listedTabs.structuredContent.tabs[0].path, sampleMini);
+
+  const focusedTab = await server.tools.get("manage_burrete_tabs").handler({
+    operation: "focus",
+    url: opened.structuredContent.result.url,
+    tabId: "tab-structure",
+  });
+  assert.equal(focusedTab.structuredContent.ok, true);
+  assert.equal(focusedTab.structuredContent.result.action.type, "manage_tabs");
+  assert.equal(focusedTab.structuredContent.result.action.payload.operation, "focus");
+  assert.equal(focusedTab.structuredContent.result.action.payload.tabId, "tab-structure");
+
+  const clearedSelection = await server.tools.get("manage_burrete_structure_component").handler({
+    operation: "clear",
+    url: opened.structuredContent.result.url,
+  });
+  coveredTools.add("manage_burrete_structure_component");
+  assert.equal(clearedSelection.structuredContent.ok, true);
+  assert.equal(clearedSelection.structuredContent.result.action.payload.type, "clear_selection");
+
+  const selectedChain = await server.tools.get("manage_burrete_structure_component").handler({
+    operation: "select",
+    file: sampleMini,
+    url: opened.structuredContent.result.url,
+    chain: "A",
+  });
+  assert.equal(selectedChain.structuredContent.ok, true);
+  assert.equal(selectedChain.structuredContent.selector.auth_asym_id, "A");
+  assert.equal(selectedChain.structuredContent.result.action.payload.type, "select_residues");
+
+  const hidWater = await server.tools.get("manage_burrete_structure_component").handler({
+    operation: "hide",
+    file: sampleMini,
+    url: opened.structuredContent.result.url,
+    component: "water",
+  });
+  assert.equal(hidWater.structuredContent.ok, true);
+  assert.equal(hidWater.structuredContent.result.action.payload.type, "hide_waters");
+
+  const openedLigandTab = await server.tools.get("manage_burrete_structure_component").handler({
+    operation: "open_as_tab",
+    file: sample1htb,
+    url: opened.structuredContent.result.url,
+    component: "ligand",
+    chain: "A",
+    compId: "NAD",
+    seq: 377,
+    title: "mock-nad-a-377",
+  });
+  assert.equal(openedLigandTab.structuredContent.ok, true);
+  assert.equal(openedLigandTab.structuredContent.extracted.atomCount, 44);
+  assert.equal(openedLigandTab.structuredContent.result.action.payload.operation, "open_file");
+  await rm(openedLigandTab.structuredContent.extracted.outputPath, { force: true });
+
+  const dockingView = await server.tools.get("open_burrete_docking_view").handler({
+    receptorPath: sampleMini,
+    ligandPaths: [sample1htb],
+    url: opened.structuredContent.result.url,
+    activePose: 0,
+    sceneMode: "structurePoses",
+  });
+  coveredTools.add("open_burrete_docking_view");
+  assert.equal(dockingView.structuredContent.ok, true);
+  assert.equal(dockingView.structuredContent.result.action.payload.type, "open_docking_view");
+  assert.deepEqual(dockingView.structuredContent.result.action.payload.ligandPaths, [sample1htb]);
+
+  const sceneAction = await server.tools.get("act_molstar_scene").handler({
+    url: opened.structuredContent.result.url,
+    action: { type: "focus_ligand", selector: { compId: "NAD", chain: "A" }, radiusA: 4 },
+  });
+  coveredTools.add("act_molstar_scene");
+  assert.equal(sceneAction.structuredContent.ok, true);
+  assert.equal(sceneAction.structuredContent.result.action.payload.type, "focus_ligand");
+  assert.equal(sceneAction.structuredContent.result.action.payload.selector.compId, "NAD");
+
+  const workspaceWidget = await server.tools.get("render_molecular_workspace_widget").handler({
+    title: "Mock Workspace",
+    observe: observed.structuredContent.observe,
+  });
+  coveredTools.add("render_molecular_workspace_widget");
+  assert.equal(workspaceWidget.structuredContent.widget, "molecular-workspace");
+  assert.equal(workspaceWidget.structuredContent.ready, true);
+  assert.equal(workspaceWidget._meta.widgetData.observe.activeDocument.path, sampleMini);
+
+  assert.deepEqual([...coveredTools].sort(), [
+    "act_molstar_scene",
+    "manage_burrete_structure_component",
+    "manage_burrete_tabs",
+    "observe_burrete_workspace",
+    "open_burrete_docking_view",
+    "open_burrete_workspace",
+    "render_molecular_workspace_widget",
+    "summarize_burrete_structure",
+  ]);
+}
+
 async function testCliBridgeErrors(tempRoot) {
   const failureRoot = await copyPlugin(tempRoot, "failure-plugin");
   await writeFile(
@@ -276,6 +481,7 @@ try {
   await testMcpRegistrations(tempRoot);
   await testValidationAndRenderHandlers(tempRoot);
   await testFetchAndWorkspaceHandlers(tempRoot);
+  await testMockedWorkspaceToolScenarios(tempRoot);
   await testCliBridgeErrors(tempRoot);
 } finally {
   await rm(tempRoot, { recursive: true, force: true });
