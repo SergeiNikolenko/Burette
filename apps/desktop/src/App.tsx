@@ -104,16 +104,19 @@ import {
 } from "./hooks/use-tabs";
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
 import { openBrowserDevDocuments, openBrowserDevMolstarContextDocument, openBrowserDevTextDocument } from "./lib/browser-dev-documents";
+import { expandBrowserDevStructureBundles } from "./lib/browser-dev-structure-bundles";
 import { openBrowserDevTextFiles } from "./lib/browser-dev-text-files";
+import { writeClipboardText } from "./lib/clipboard";
 import { isMoleculeCollectionPath } from "./lib/collection-documents";
+import { detectContentSpectrumPaths } from "./lib/content-spectrum-detection";
 import { isProteinLikeDockingSource } from "./lib/docking-documents";
 import type { DockArea, DockTabKind } from "./lib/dock";
-import { pathExtension, preferredTextExtensions, structureAndTextExtensions, structureExtensionFromPath, structureExtensions } from "./lib/file-routing";
+import { pathExtension, structureExtensionFromPath } from "./lib/file-routing";
 import { browserDevFolderFromLocation, browserDevHasExplicitWorkspace, browserDevQuickLookFileFromLocation } from "./lib/browser-dev-startup";
+import { svgToPngBase64 } from "./lib/preview-image-export";
 import { basename } from "./lib/sidebar-projects";
 import type { StructureDragPayload } from "./lib/structure-drag";
-import { readStructureText } from "./lib/structure-text";
-import { isSpectrumPath, isSubformulaSpectrumJsonText, isTabularSpectrumExtension, isTabularSpectrumText, spectrumDocumentFromText } from "./lib/spectrum";
+import { isSpectrumPath, spectrumDocumentFromText } from "./lib/spectrum";
 import { isTauriRuntime } from "./lib/tauri";
 import { isTemporaryDocumentPath } from "./lib/temporary-documents";
 import {
@@ -129,107 +132,6 @@ const CommandPalette = lazy(() => import("./components/command-palette").then((m
 
 const GRID_PERF_REPORT_PATH = "/private/tmp/burrete-grid-real-app-perf.jsonl";
 type MolstarContextDocument = Parameters<typeof openBrowserDevMolstarContextDocument>[0];
-
-async function expandBrowserDevStructureBundles(paths: string[]) {
-  if (isTauriRuntime()) return paths;
-  const expanded: string[] = [];
-  const seen = new Set<string>();
-  const addPath = (path: string) => {
-    const extension = pathExtension(path);
-    if (
-      !extension ||
-      (!structureExtensions.has(extension) &&
-        !isXtbOptimizationTrajectoryLogPath(path) &&
-        !isSpectrumPath(path, extension) &&
-        !structureAndTextExtensions.has(extension) &&
-        !preferredTextExtensions.has(extension))
-    ) {
-      return;
-    }
-    if (!seen.has(path)) {
-      seen.add(path);
-      expanded.push(path);
-    }
-  };
-  for (const path of paths) {
-    addPath(path);
-    try {
-      const response = await fetch(`/__burette/file-bundle?path=${encodeURIComponent(path)}`, { cache: "no-store" });
-      if (!response.ok) continue;
-      const bundle = await response.json() as {
-        kind?: string;
-        primaryPath?: string;
-        attachments?: Array<{ path?: string }>;
-      };
-      if (bundle.kind === "single") continue;
-      if (bundle.primaryPath) addPath(bundle.primaryPath);
-      for (const attachment of bundle.attachments ?? []) {
-        if (attachment.path) addPath(attachment.path);
-      }
-    } catch {
-      // Browser-dev companion discovery is opportunistic; opening the requested file still works.
-    }
-  }
-  return expanded;
-}
-
-async function detectContentSpectrumPaths(paths: string[]) {
-  const matches = new Set<string>();
-  await Promise.all(paths.map(async (path) => {
-    const extension = pathExtension(path);
-    const canDetectByContent = isTabularSpectrumExtension(extension) || extension === "json";
-    if (!canDetectByContent) return;
-    try {
-      const text = await readStructureText(path, { maxBytes: 256 * 1024 });
-      if (
-        (isTabularSpectrumExtension(extension) && isTabularSpectrumText(text, extension))
-        || (extension === "json" && isSubformulaSpectrumJsonText(text))
-      ) {
-        matches.add(path);
-      }
-    } catch {}
-  }));
-  return matches;
-}
-
-function arrayBufferToBase64(buffer: ArrayBuffer) {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  for (let index = 0; index < bytes.length; index += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
-  }
-  return btoa(binary);
-}
-
-async function svgToPngBase64(svg: string) {
-  const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  try {
-    const image = new Image();
-    image.decoding = "async";
-    const loaded = new Promise<void>((resolve, reject) => {
-      image.onload = () => resolve();
-      image.onerror = () => reject(new Error("Preview SVG could not be rasterized"));
-    });
-    image.src = url;
-    await loaded;
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, image.naturalWidth || image.width);
-    canvas.height = Math.max(1, image.naturalHeight || image.height);
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("Canvas is unavailable");
-    context.drawImage(image, 0, 0);
-    const pngBlob = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob((value) => {
-        if (value) resolve(value);
-        else reject(new Error("PNG export failed"));
-      }, "image/png");
-    });
-    return arrayBufferToBase64(await pngBlob.arrayBuffer());
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
 
 export default function App() {
   const browserDevQuickLookPath = browserDevQuickLookFileFromLocation();
@@ -1311,39 +1213,4 @@ export default function App() {
       ) : null}
     </>
   );
-}
-
-function isXtbOptimizationTrajectoryLogPath(path: string) {
-  return (path.split(/[\\/]/).filter(Boolean).pop() ?? "").toLowerCase() === "xtbopt.log";
-}
-
-async function writeClipboardText(text: string) {
-  try {
-    if (typeof navigator.clipboard?.writeText === "function") {
-      await navigator.clipboard.writeText(text);
-      return;
-    }
-  } catch (error) {
-    if (!copyTextWithSelectionFallback(text)) throw error;
-    return;
-  }
-  if (!copyTextWithSelectionFallback(text)) throw new Error("Clipboard write is unavailable.");
-}
-
-function copyTextWithSelectionFallback(text: string) {
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.setAttribute("readonly", "");
-  textarea.style.position = "fixed";
-  textarea.style.left = "-9999px";
-  textarea.style.top = "0";
-  textarea.style.opacity = "0";
-  document.body.append(textarea);
-  textarea.select();
-  textarea.setSelectionRange(0, textarea.value.length);
-  try {
-    return document.execCommand("copy");
-  } finally {
-    textarea.remove();
-  }
 }
