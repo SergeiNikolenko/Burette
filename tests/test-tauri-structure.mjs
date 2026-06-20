@@ -27,6 +27,7 @@ const [
   documentsCommand,
   gridCommand,
   previewCacheCommand,
+  runtimeDoctorCommand,
   shellCommand,
   performanceSource,
   shellActionsSource,
@@ -102,6 +103,7 @@ const [
   source('apps/desktop/src-tauri/src/commands/documents.rs'),
   source('apps/desktop/src-tauri/src/commands/grid.rs'),
   source('apps/desktop/src-tauri/src/commands/preview_cache.rs'),
+  source('apps/desktop/src-tauri/src/commands/runtime_doctor.rs'),
   source('apps/desktop/src-tauri/src/commands/shell.rs'),
   source('apps/desktop/src/lib/performance.ts'),
   source('apps/desktop/src/components/types.ts'),
@@ -256,7 +258,7 @@ for (const fixture of [
 }
 assert.match(nightlySmokeWorkflow, /scripts\/perf-smoke\.sh/);
 
-for (const moduleName of ['agent_integration', 'documents', 'grid', 'preview_cache', 'quicklook', 'shell', 'startup', 'updater']) {
+for (const moduleName of ['agent_integration', 'documents', 'grid', 'preview_cache', 'quicklook', 'runtime_doctor', 'shell', 'startup', 'updater']) {
   assert.match(commandsIndex, new RegExp(`pub\\(crate\\) mod ${moduleName};`));
 }
 
@@ -280,6 +282,7 @@ for (const commandPath of [
   'commands::documents::render_xyzrender_sheet_items',
   'commands::documents::sync_viewer_preferences',
   'commands::preview_cache::clear_preview_cache',
+  'commands::runtime_doctor::external_runtime_doctor',
   'commands::shell::export_diagnostics_bundle',
   'commands::shell::open_logs_folder',
   'commands::shell::open_external_url',
@@ -436,6 +439,17 @@ assert.match(documentsCommand, /fn expand_open_targets/);
 assert.match(documentsCommand, /fn collect_supported_files/);
 assert.match(documentsCommand, /fn looks_like_supported_structure_file/);
 assert.match(previewCacheCommand, /#\[tauri::command\]\s+pub\(crate\) fn clear_preview_cache/);
+assert.match(runtimeDoctorCommand, /#\[tauri::command\]\s+pub\(crate\) fn external_runtime_doctor/);
+assert.match(runtimeDoctorCommand, /burrete\.external-runtime-doctor\.v1/);
+for (const checkId of ['xyzrender', 'descriptors-python', 'crest', 'prism', 'xtb', 'schrodinger']) {
+  assert.match(runtimeDoctorCommand, new RegExp(`"${checkId}"`));
+}
+assert.match(runtimeDoctorCommand, /descriptors::descriptor_runtime_status\(\)/);
+assert.match(runtimeDoctorCommand, /conformer::conformer_status\(\)/);
+assert.match(runtimeDoctorCommand, /xtb::xtb_status\(\)/);
+assert.match(runtimeDoctorCommand, /xyzrender::xyzrender_runtime_status\(\)/);
+assert.doesNotMatch(runtimeDoctorCommand, /descriptor_runtime_install|install_xtb|run_xtb_job|run_conformer_job|create_xyzrender_artifact/);
+assert.match(previewXyzrender, /pub\(crate\) fn xyzrender_runtime_status/);
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn export_diagnostics_bundle/);
 assert.match(shellCommand, /timestamp level subsystem documentId event elapsedMs message/);
 assert.match(shellCommand, /BurreteApp\.log/);

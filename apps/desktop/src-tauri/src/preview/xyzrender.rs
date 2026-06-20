@@ -87,6 +87,16 @@ pub(crate) struct XyzrenderDocumentDefaults {
     pub(crate) input_path: Option<PathBuf>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct XyzrenderRuntimeStatus {
+    installed: bool,
+    executable_path: Option<String>,
+    source: Option<&'static str>,
+    install_hint: &'static str,
+    message: String,
+}
+
 pub(crate) fn create_xyzrender_artifact(
     input_path: &Path,
     output_directory: &Path,
@@ -1681,6 +1691,39 @@ pub(crate) fn xyzrender_preset_options() -> serde_json::Value {
         { "value": "graph", "label": "Graph" },
         { "value": "custom", "label": "Custom JSON" }
     ])
+}
+
+pub(crate) fn xyzrender_runtime_status() -> XyzrenderRuntimeStatus {
+    const INSTALL_HINT: &str = "Bundle xyzrender-runtime with Burrete, install xyzrender in ~/.local/bin, or make it available on PATH.";
+    match resolve_xyzrender_executable() {
+        Ok(path) => XyzrenderRuntimeStatus {
+            installed: true,
+            executable_path: Some(path.to_string_lossy().to_string()),
+            source: Some(xyzrender_source_for_path(&path)),
+            install_hint: INSTALL_HINT,
+            message: "External xyzrender runtime is available".into(),
+        },
+        Err(error) => XyzrenderRuntimeStatus {
+            installed: false,
+            executable_path: None,
+            source: None,
+            install_hint: INSTALL_HINT,
+            message: error,
+        },
+    }
+}
+
+fn xyzrender_source_for_path(path: &Path) -> &'static str {
+    let text = path.to_string_lossy();
+    if text.contains("xyzrender-runtime") {
+        "bundled"
+    } else if text.contains(".local/bin") || text.contains(".local/share") {
+        "user-local"
+    } else if text.contains("/opt/homebrew/") || text.contains("/usr/local/") {
+        "system"
+    } else {
+        "resolved-path"
+    }
 }
 
 fn truncate_text(value: &str, limit: usize) -> String {

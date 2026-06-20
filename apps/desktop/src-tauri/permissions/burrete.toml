@@ -40,6 +40,7 @@ commands.allow = [
   "render_xyzrender_sheet_items",
   "sync_viewer_preferences",
   "clear_preview_cache",
+  "external_runtime_doctor",
   "export_diagnostics_bundle",
   "open_logs_folder",
   "open_external_url",

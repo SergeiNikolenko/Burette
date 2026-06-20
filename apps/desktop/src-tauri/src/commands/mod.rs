@@ -6,6 +6,7 @@ pub(crate) mod documents;
 pub(crate) mod grid;
 pub(crate) mod preview_cache;
 pub(crate) mod quicklook;
+pub(crate) mod runtime_doctor;
 pub(crate) mod shell;
 pub(crate) mod startup;
 pub(crate) mod text_files;
