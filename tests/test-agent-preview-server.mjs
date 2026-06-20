@@ -338,6 +338,43 @@ ITEM: ATOMS id element x y z
   assert.equal(queued.action.status, 'queued');
   assert.equal(queued.action.type, 'focus_ligand');
 
+  const styleAction = await postJson(`${base}/__agent/act`, {
+    type: 'set_molstar_style',
+    style: 'ball-and-stick'
+  }, { Cookie: cookieHeader });
+  assert.equal(styleAction.statusCode, 200);
+  const queuedStyle = JSON.parse(styleAction.body);
+  assert.equal(queuedStyle.ok, true);
+  assert.equal(queuedStyle.action.type, 'set_molstar_style');
+  assert.equal(queuedStyle.action.status, 'queued');
+
+  const poseAction = await postJson(`${base}/__agent/act`, {
+    type: 'set_structure_pose',
+    index: 2
+  }, { Cookie: cookieHeader });
+  assert.equal(poseAction.statusCode, 200);
+  const queuedPose = JSON.parse(poseAction.body);
+  assert.equal(queuedPose.ok, true);
+  assert.equal(queuedPose.action.type, 'set_structure_pose');
+
+  const sdfPoseModeAction = await postJson(`${base}/__agent/act`, {
+    type: 'set_sdf_pose_mode',
+    mode: 'all'
+  }, { Cookie: cookieHeader });
+  assert.equal(sdfPoseModeAction.statusCode, 200);
+  const queuedSdfPoseMode = JSON.parse(sdfPoseModeAction.body);
+  assert.equal(queuedSdfPoseMode.ok, true);
+  assert.equal(queuedSdfPoseMode.action.type, 'set_sdf_pose_mode');
+
+  const openFilesAction = await postJson(`${base}/__agent/act`, {
+    type: 'open_files',
+    paths: ['samples/mini.pdb']
+  }, { Cookie: cookieHeader });
+  assert.equal(openFilesAction.statusCode, 200);
+  const queuedOpenFiles = JSON.parse(openFilesAction.body);
+  assert.equal(queuedOpenFiles.ok, true);
+  assert.equal(queuedOpenFiles.action.type, 'open_files');
+
   const panelAction = await postJson(`${base}/__agent/act`, {
     type: 'render_panel',
     kind: 'markdown',
@@ -377,6 +414,30 @@ ITEM: ATOMS id element x y z
   assert.equal(nextLigand.id, queued.action.id);
   assert.equal(nextLigand.action.selector.label_comp_id, 'HEM');
 
+  const nextStyleAction = await get(`${base}/__agent/next-action`, { Cookie: cookieHeader });
+  assert.equal(nextStyleAction.statusCode, 200);
+  const nextStyle = JSON.parse(nextStyleAction.body);
+  assert.equal(nextStyle.id, queuedStyle.action.id);
+  assert.equal(nextStyle.action.style, 'ball-and-stick');
+
+  const nextPoseAction = await get(`${base}/__agent/next-action`, { Cookie: cookieHeader });
+  assert.equal(nextPoseAction.statusCode, 200);
+  const nextPose = JSON.parse(nextPoseAction.body);
+  assert.equal(nextPose.id, queuedPose.action.id);
+  assert.equal(nextPose.action.index, 2);
+
+  const nextSdfPoseModeAction = await get(`${base}/__agent/next-action`, { Cookie: cookieHeader });
+  assert.equal(nextSdfPoseModeAction.statusCode, 200);
+  const nextSdfPoseMode = JSON.parse(nextSdfPoseModeAction.body);
+  assert.equal(nextSdfPoseMode.id, queuedSdfPoseMode.action.id);
+  assert.equal(nextSdfPoseMode.action.mode, 'all');
+
+  const nextOpenFilesAction = await get(`${base}/__agent/next-action`, { Cookie: cookieHeader });
+  assert.equal(nextOpenFilesAction.statusCode, 200);
+  const nextOpenFiles = JSON.parse(nextOpenFilesAction.body);
+  assert.equal(nextOpenFiles.id, queuedOpenFiles.action.id);
+  assert.deepEqual(nextOpenFiles.action.paths, ['samples/mini.pdb']);
+
   const nextPanelAction = await get(`${base}/__agent/next-action`, { Cookie: cookieHeader });
   assert.equal(nextPanelAction.statusCode, 200);
   const nextPanel = JSON.parse(nextPanelAction.body);
@@ -388,11 +449,11 @@ ITEM: ATOMS id element x y z
   const actionObserve = await get(`${base}/__agent/observe`, { Cookie: cookieHeader });
   assert.equal(actionObserve.statusCode, 200);
   const observedAction = JSON.parse(actionObserve.body);
-  assert.equal(observedAction.actions.dispatched, 3);
+  assert.equal(observedAction.actions.dispatched, 7);
   assert.equal(observedAction.actions.completed, 1);
   assert.equal(observedAction.actions.last.id, queuedPanel.action.id);
   assert.equal(observedAction.actions.last.status, 'dispatched');
-  assert.equal(observedAction.actions.recent.length, 4);
+  assert.equal(observedAction.actions.recent.length, 8);
   assert.equal(observedAction.actions.recent[0].id, queuedScene.action.id);
   assert.equal(observedAction.actions.recent[0].status, 'completed');
   assert.equal(observedAction.panels.includes('agent-panel:right:markdown:README.md'), true);

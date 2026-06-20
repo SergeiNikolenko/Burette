@@ -50,6 +50,84 @@ export async function extractStructureComponentFile({
   };
 }
 
+export async function editStructureFragmentFile({
+  file,
+  operation,
+  component,
+  chain,
+  compId,
+  seq,
+  element,
+  replacementFile,
+  title,
+}) {
+  if (operation === "extract") {
+    const extracted = await extractStructureComponentFile({ file, component, chain, compId, seq, element, title });
+    return { operation, ...extracted };
+  }
+  if (operation !== "remove_to_new_file" && operation !== "replace_to_new_file") {
+    throw new Error(`Unsupported fragment edit operation: ${operation}.`);
+  }
+  const sourcePath = path.resolve(file);
+  const fileStat = await stat(sourcePath);
+  if (!fileStat.isFile()) throw new Error(`Not a file: ${sourcePath}`);
+  if (fileStat.size > MAX_COMPONENT_BYTES) throw new Error(`File is too large for fragment editing: ${fileStat.size} bytes`);
+  const extension = path.extname(sourcePath).replace(/^\./u, "").toLowerCase();
+  if (extension !== "pdb" && extension !== "ent") {
+    throw new Error(`Fragment editing currently supports PDB/ENT files, not .${extension || "file"}.`);
+  }
+
+  const text = await readFile(sourcePath, "utf8");
+  const lines = text.split(/\r?\n/u);
+  const atomRecords = pdbAtomLines(text);
+  const matchedLineIndexes = new Set(atomRecords
+    .filter((record) => matchesComponent(record, { component, chain, compId, seq, element }))
+    .map((record) => record.lineIndex));
+  if (matchedLineIndexes.size === 0) {
+    throw new Error("No atoms matched the requested fragment.");
+  }
+
+  const outputLines = [];
+  let replacementInserted = false;
+  const replacementLines = operation === "replace_to_new_file"
+    ? await replacementAtomLines(replacementFile)
+    : [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (lines[index].startsWith("CONECT")) continue;
+    if (matchedLineIndexes.has(index)) {
+      if (!replacementInserted && replacementLines.length) {
+        outputLines.push(...replacementLines);
+        replacementInserted = true;
+      }
+      continue;
+    }
+    outputLines.push(lines[index]);
+  }
+  if (operation === "replace_to_new_file" && !replacementInserted) {
+    outputLines.push(...replacementLines);
+  }
+
+  const outputDir = path.join(tmpdir(), "burrete-agent-components");
+  await mkdir(outputDir, { recursive: true });
+  const outputTitle = safeFileName(title || `${operation}-${componentTitle({ component, chain, compId, seq, element }) || "fragment"}`);
+  const outputPath = path.join(outputDir, `${outputTitle}.pdb`);
+  const header = [
+    `REMARK Derived by Burrete agent from ${sourcePath}`,
+    `REMARK Operation ${operation}`,
+    `REMARK Fragment ${componentTitle({ component, chain, compId, seq, element })}`,
+  ];
+  await writeFile(outputPath, `${[...header, ...outputLines].join("\n").replace(/\n*$/u, "")}\n`, "utf8");
+  return {
+    operation,
+    outputPath,
+    sourcePath,
+    title: path.basename(outputPath),
+    removedAtomCount: matchedLineIndexes.size,
+    insertedAtomCount: replacementLines.length,
+    component: componentTitle({ component, chain, compId, seq, element }),
+  };
+}
+
 export function componentSelector({ component, chain, compId, seq, element }) {
   const selector = {};
   if (component === "polymer" || component === "ligand" || component === "water" || component === "ion") {
@@ -64,12 +142,15 @@ export function componentSelector({ component, chain, compId, seq, element }) {
 
 function pdbAtomLines(text) {
   const records = [];
-  for (const line of text.split(/\r?\n/u)) {
+  const lines = text.split(/\r?\n/u);
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex];
     const group = line.slice(0, 6).trim();
     if (group !== "ATOM" && group !== "HETATM") continue;
     const atomName = line.slice(12, 16).trim();
     records.push({
       line,
+      lineIndex,
       group,
       atomName,
       resName: line.slice(17, 20).trim().toUpperCase() || "UNK",
@@ -79,6 +160,22 @@ function pdbAtomLines(text) {
     });
   }
   return records;
+}
+
+async function replacementAtomLines(replacementFile) {
+  const cleanReplacement = typeof replacementFile === "string" ? replacementFile.trim() : "";
+  if (!cleanReplacement) throw new Error("replace_to_new_file requires replacementFile.");
+  const replacementPath = path.resolve(cleanReplacement);
+  const fileStat = await stat(replacementPath);
+  if (!fileStat.isFile()) throw new Error(`Not a file: ${replacementPath}`);
+  if (fileStat.size > MAX_COMPONENT_BYTES) throw new Error(`Replacement file is too large: ${fileStat.size} bytes`);
+  const extension = path.extname(replacementPath).replace(/^\./u, "").toLowerCase();
+  if (extension !== "pdb" && extension !== "ent") {
+    throw new Error(`Replacement currently supports PDB/ENT files, not .${extension || "file"}.`);
+  }
+  const records = pdbAtomLines(await readFile(replacementPath, "utf8"));
+  if (!records.length) throw new Error("Replacement file has no ATOM/HETATM records.");
+  return records.map((record) => record.line);
 }
 
 function matchesComponent(record, request) {

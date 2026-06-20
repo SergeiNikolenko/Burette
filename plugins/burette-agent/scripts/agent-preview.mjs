@@ -776,12 +776,21 @@ function validateAction(action) {
     'show_ligands',
     'select_residues',
     'focus_selection',
+    'label_selection',
     'contacts',
     'reset_camera',
     'hide_waters',
     'show_waters',
     'show_surface',
     'color_by_chain',
+    'open_files',
+    'set_structure_pose',
+    'set_molstar_style',
+    'set_sdf_context_style',
+    'set_sdf_context_opacity',
+    'set_sdf_context_color',
+    'set_sdf_pose_mode',
+    'set_sdf_pose_index',
     'render_panel',
     'apply_scene',
     'load_mvs',
@@ -794,6 +803,10 @@ function validateAction(action) {
     const kind = String(action.kind || '').trim();
     if (!['markdown', 'table', 'chart'].includes(kind)) return 'render_panel kind must be markdown, table, or chart.';
     if (typeof action.content !== 'string' && typeof action.file !== 'string') return 'render_panel requires file or content.';
+  }
+  if (type === 'open_files') {
+    if (!Array.isArray(action.paths) || action.paths.length === 0) return 'open_files requires a non-empty paths array.';
+    if (!action.paths.every(item => typeof item === 'string' && item.trim())) return 'open_files paths must be non-empty strings.';
   }
   if (type === 'load_mvs') {
     if (

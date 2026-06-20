@@ -169,7 +169,9 @@ async function testMcpRegistrations(tempRoot) {
   ]);
   assert.deepEqual([...server.tools.keys()].sort(), [
     "act_molstar_scene",
+    "edit_burrete_fragment",
     "fetch",
+    "focus_burrete_selection",
     "manage_burrete_structure_component",
     "manage_burrete_tabs",
     "observe_burrete_workspace",
@@ -179,6 +181,8 @@ async function testMcpRegistrations(tempRoot) {
     "render_molecular_workspace_widget",
     "render_molecule_table_widget",
     "render_trajectory_review_widget",
+    "set_burrete_representation_style",
+    "set_burrete_trajectory",
     "summarize_burrete_structure",
     "validate_molecular_report_artifact",
     "validate_molecule_collection_artifact",
@@ -395,7 +399,10 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
   });
   assert.equal(openedLigandTab.structuredContent.ok, true);
   assert.equal(openedLigandTab.structuredContent.extracted.atomCount, 44);
-  assert.equal(openedLigandTab.structuredContent.result.action.payload.operation, "open_file");
+  assert.equal(openedLigandTab.structuredContent.result.action.payload.type, "open_files");
+  assert.deepEqual(openedLigandTab.structuredContent.result.action.payload.paths, [
+    openedLigandTab.structuredContent.extracted.outputPath,
+  ]);
   await rm(openedLigandTab.structuredContent.extracted.outputPath, { force: true });
 
   const dockingView = await server.tools.get("open_burrete_docking_view").handler({
@@ -419,6 +426,73 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
   assert.equal(sceneAction.structuredContent.result.action.payload.type, "focus_ligand");
   assert.equal(sceneAction.structuredContent.result.action.payload.selector.compId, "NAD");
 
+  const trajectory = await server.tools.get("set_burrete_trajectory").handler({
+    url: opened.structuredContent.result.url,
+    index: 3,
+    mode: "sdf-pose",
+    poseMode: "single",
+  });
+  coveredTools.add("set_burrete_trajectory");
+  assert.equal(trajectory.structuredContent.ok, true);
+  assert.equal(trajectory.structuredContent.actionType, "set_sdf_pose_index");
+  assert.equal(trajectory.structuredContent.result.action.payload.type, "set_sdf_pose_index");
+  assert.equal(trajectory.structuredContent.result.action.payload.index, 3);
+  assert.equal(trajectory.structuredContent.results[0].action.payload.type, "set_sdf_pose_mode");
+
+  const style = await server.tools.get("set_burrete_representation_style").handler({
+    url: opened.structuredContent.result.url,
+    style: "ball-and-stick",
+  });
+  coveredTools.add("set_burrete_representation_style");
+  assert.equal(style.structuredContent.ok, true);
+  assert.equal(style.structuredContent.result.action.payload.type, "set_molstar_style");
+  assert.equal(style.structuredContent.result.action.payload.style, "ball-and-stick");
+
+  const focusedSelection = await server.tools.get("focus_burrete_selection").handler({
+    operation: "focus",
+    url: opened.structuredContent.result.url,
+    selector: { auth_asym_id: "A", beg_auth_seq_id: 1, end_auth_seq_id: 3 },
+    durationMs: 250,
+    extraRadius: 2,
+  });
+  coveredTools.add("focus_burrete_selection");
+  assert.equal(focusedSelection.structuredContent.ok, true);
+  assert.equal(focusedSelection.structuredContent.action.type, "focus_selection");
+  assert.equal(focusedSelection.structuredContent.action.args.selector.auth_asym_id, "A");
+
+  const highlightedSelection = await server.tools.get("focus_burrete_selection").handler({
+    operation: "highlight",
+    url: opened.structuredContent.result.url,
+    selector: { kind: "polymer" },
+    label: "Protein",
+    color: "#4f8cff",
+  });
+  assert.equal(highlightedSelection.structuredContent.ok, true);
+  assert.equal(highlightedSelection.structuredContent.action.type, "apply_scene");
+  assert.equal(highlightedSelection.structuredContent.action.components[0].selector.kind, "polymer");
+
+  const editedFragment = await server.tools.get("edit_burrete_fragment").handler({
+    operation: "remove_to_new_file",
+    file: sample1htb,
+    component: "ligand",
+    chain: "A",
+    compId: "NAD",
+    seq: 377,
+    title: "mock-1htb-without-nad",
+    openAsTab: true,
+    url: opened.structuredContent.result.url,
+  });
+  coveredTools.add("edit_burrete_fragment");
+  assert.equal(editedFragment.structuredContent.ok, true);
+  assert.equal(editedFragment.structuredContent.edited.operation, "remove_to_new_file");
+  assert.equal(editedFragment.structuredContent.edited.removedAtomCount, 44);
+  assert.equal(editedFragment.structuredContent.edited.insertedAtomCount, 0);
+  assert.equal(editedFragment.structuredContent.opened.action.payload.type, "open_files");
+  assert.deepEqual(editedFragment.structuredContent.opened.action.payload.paths, [
+    editedFragment.structuredContent.edited.outputPath,
+  ]);
+  await rm(editedFragment.structuredContent.edited.outputPath, { force: true });
+
   const workspaceWidget = await server.tools.get("render_molecular_workspace_widget").handler({
     title: "Mock Workspace",
     observe: observed.structuredContent.observe,
@@ -430,12 +504,16 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
 
   assert.deepEqual([...coveredTools].sort(), [
     "act_molstar_scene",
+    "edit_burrete_fragment",
+    "focus_burrete_selection",
     "manage_burrete_structure_component",
     "manage_burrete_tabs",
     "observe_burrete_workspace",
     "open_burrete_docking_view",
     "open_burrete_workspace",
     "render_molecular_workspace_widget",
+    "set_burrete_representation_style",
+    "set_burrete_trajectory",
     "summarize_burrete_structure",
   ]);
 }

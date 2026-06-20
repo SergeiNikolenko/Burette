@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { readFile, unlink } from "node:fs/promises";
 import path from "node:path";
 
-import { extractStructureComponentFile } from "../plugins/burette-agent/mcp/lib/structure-components.mjs";
+import { editStructureFragmentFile, extractStructureComponentFile } from "../plugins/burette-agent/mcp/lib/structure-components.mjs";
 import { summarizeStructureFile } from "../plugins/burette-agent/mcp/lib/structure-summary.mjs";
 import { validateMolecularArtifact } from "../plugins/burette-agent/mcp/lib/validation.mjs";
 
@@ -90,11 +90,21 @@ assert.match(workspaceRegistration, /type: "manage_tabs"/);
 assert.match(workspaceRegistration, /operation: z\.enum\(\["list", "focus", "next", "previous", "open_file", "new", "close", "move"\]\)/);
 assert.match(workspaceRegistration, /manage_burrete_structure_component/);
 assert.match(workspaceRegistration, /extractStructureComponentFile/);
+assert.match(workspaceRegistration, /type: "open_files"/);
 assert.match(workspaceRegistration, /type: "clear_selection"/);
 assert.match(workspaceRegistration, /hide_components/);
 assert.match(workspaceRegistration, /open_burrete_docking_view/);
 assert.match(workspaceRegistration, /type: "open_docking_view"/);
 assert.match(workspaceRegistration, /sceneMode: z\.enum\(\["structureAll", "structurePoses"\]\)/);
+assert.match(workspaceRegistration, /set_burrete_trajectory/);
+assert.match(workspaceRegistration, /"set_structure_pose"/);
+assert.match(workspaceRegistration, /"set_sdf_pose_index"/);
+assert.match(workspaceRegistration, /set_burrete_representation_style/);
+assert.match(workspaceRegistration, /type: "set_molstar_style"/);
+assert.match(workspaceRegistration, /focus_burrete_selection/);
+assert.match(workspaceRegistration, /type: "focus_selection"/);
+assert.match(workspaceRegistration, /edit_burrete_fragment/);
+assert.match(workspaceRegistration, /editStructureFragmentFile/);
 assert.match(workspaceRegistration, /observe_burrete_workspace/);
 assert.match(workspaceRegistration, /act_molstar_scene/);
 assert.match(workspaceRegistration, /declarative Mol\* scene action/);
@@ -296,6 +306,43 @@ const extractedLigand = await extractStructureComponentFile({
 assert.equal(extractedLigand.atomCount, 44);
 assert.match(extractedLigand.outputPath, /test-nad-a-377\.pdb$/);
 await unlink(extractedLigand.outputPath);
+
+const removedLigand = await editStructureFragmentFile({
+  file: "samples/structures/proteins/1htb.pdb",
+  operation: "remove_to_new_file",
+  component: "ligand",
+  chain: "A",
+  compId: "NAD",
+  seq: 377,
+  title: "test-1htb-without-nad",
+});
+assert.equal(removedLigand.removedAtomCount, 44);
+assert.equal(removedLigand.insertedAtomCount, 0);
+assert.match(removedLigand.outputPath, /test-1htb-without-nad\.pdb$/);
+const removedLigandText = await readFile(removedLigand.outputPath, "utf8");
+assert.doesNotMatch(removedLigandText, /^(?:ATOM|HETATM).{11}NAD A\s+377\b/m);
+assert.doesNotMatch(removedLigandText, /^CONECT/m);
+await unlink(removedLigand.outputPath);
+
+const replacementLigand = await editStructureFragmentFile({
+  file: "samples/structures/proteins/1htb.pdb",
+  operation: "replace_to_new_file",
+  component: "ligand",
+  chain: "A",
+  compId: "NAD",
+  seq: 377,
+  replacementFile: "samples/mini.pdb",
+  title: "test-1htb-nad-replaced",
+});
+assert.equal(replacementLigand.removedAtomCount, 44);
+assert.equal(replacementLigand.insertedAtomCount, 9);
+assert.match(replacementLigand.outputPath, /test-1htb-nad-replaced\.pdb$/);
+const replacementLigandText = await readFile(replacementLigand.outputPath, "utf8");
+assert.match(replacementLigandText, /REMARK Operation replace_to_new_file/);
+assert.doesNotMatch(replacementLigandText, /^(?:ATOM|HETATM).{11}NAD A\s+377\b/m);
+assert.doesNotMatch(replacementLigandText, /^CONECT/m);
+assert.match(replacementLigandText, /\bGLY A\s+1\b/);
+await unlink(replacementLigand.outputPath);
 
 const selfContainedPluginCheck = runNode([
   "--input-type=module",

@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { runBurreteAgent } from "../../lib/cli-bridge.mjs";
 import { pluginPath } from "../../lib/plugin-root.mjs";
-import { componentSelector, extractStructureComponentFile } from "../../lib/structure-components.mjs";
+import { componentSelector, editStructureFragmentFile, extractStructureComponentFile } from "../../lib/structure-components.mjs";
 import { summarizeStructureFile } from "../../lib/structure-summary.mjs";
 import { registerWidgetResource, toolText, widgetHtml } from "../../lib/widget-resource.mjs";
 
@@ -284,9 +284,8 @@ export function registerMolecularWorkspace(server) {
           sessionDir: input.sessionDir,
           waitMs: input.waitMs ?? 12000,
           action: {
-            type: "manage_tabs",
-            operation: "open_file",
-            path: extracted.outputPath,
+            type: "open_files",
+            paths: [extracted.outputPath],
           },
         });
         return cliToolResult("manage_burrete_structure_component", result, { extracted });
@@ -356,6 +355,206 @@ export function registerMolecularWorkspace(server) {
         },
       });
       return cliToolResult("open_burrete_docking_view", result);
+    },
+  );
+
+  registerAppTool(
+    server,
+    "set_burrete_trajectory",
+    {
+      title: "Set Burrete Trajectory",
+      description: "Switch the active Mol* trajectory/model/pose frame and optionally toggle single/all pose overlay mode.",
+      inputSchema: {
+        index: z.number().int().min(0),
+        mode: z.enum(["auto", "structure", "sdf-pose"]).default("auto").optional(),
+        poseMode: z.enum(["single", "all"]).optional(),
+        url: z.string().trim().optional(),
+        sessionDir: z.string().trim().optional(),
+        waitMs: z.number().int().min(0).max(60000).optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: {
+        ui: {
+          visibility: ["model"],
+        },
+      },
+    },
+    async input => {
+      const results = [];
+      if (input.poseMode) {
+        results.push(await runWorkspaceAction({
+          url: input.url,
+          sessionDir: input.sessionDir,
+          waitMs: input.waitMs ?? 12000,
+          action: {
+            type: "set_sdf_pose_mode",
+            mode: input.poseMode,
+          },
+        }));
+      }
+      const actionType = input.mode === "sdf-pose" ? "set_sdf_pose_index" : "set_structure_pose";
+      const result = await runWorkspaceAction({
+        url: input.url,
+        sessionDir: input.sessionDir,
+        waitMs: input.waitMs ?? 12000,
+        action: {
+          type: actionType,
+          index: input.index,
+        },
+      });
+      results.push(result);
+      return cliToolResult("set_burrete_trajectory", result, {
+        results: results.map((item) => item.payload?.result || item.error || null),
+        actionType,
+      });
+    },
+  );
+
+  registerAppTool(
+    server,
+    "set_burrete_representation_style",
+    {
+      title: "Set Burrete Representation Style",
+      description: "Change the active Mol* representation style through an allowlisted viewer action.",
+      inputSchema: {
+        style: z.enum(["default", "illustrative", "polymer-ligand", "cartoon", "ball-and-stick", "spacefill", "line", "molecular-surface"]),
+        url: z.string().trim().optional(),
+        sessionDir: z.string().trim().optional(),
+        waitMs: z.number().int().min(0).max(60000).optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: {
+        ui: {
+          visibility: ["model"],
+        },
+      },
+    },
+    async input => {
+      const result = await runWorkspaceAction({
+        url: input.url,
+        sessionDir: input.sessionDir,
+        waitMs: input.waitMs ?? 12000,
+        action: {
+          type: "set_molstar_style",
+          style: input.style,
+        },
+      });
+      return cliToolResult("set_burrete_representation_style", result, { style: input.style });
+    },
+  );
+
+  registerAppTool(
+    server,
+    "focus_burrete_selection",
+    {
+      title: "Focus Burrete Selection",
+      description: "Select, focus, highlight, label, or clear a Mol* fragment selection by selector.",
+      inputSchema: {
+        operation: z.enum(["select", "focus", "highlight", "label", "clear"]),
+        selector: z.record(z.unknown()).optional(),
+        label: z.string().trim().optional(),
+        text: z.string().trim().optional(),
+        color: z.string().trim().optional(),
+        mode: z.enum(["replace", "add"]).optional(),
+        granularity: z.enum(["element", "residue"]).optional(),
+        durationMs: z.number().int().min(0).max(60000).optional(),
+        extraRadius: z.number().min(0).optional(),
+        url: z.string().trim().optional(),
+        sessionDir: z.string().trim().optional(),
+        waitMs: z.number().int().min(0).max(60000).optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      _meta: {
+        ui: {
+          visibility: ["model"],
+        },
+      },
+    },
+    async input => {
+      const action = selectionAction(input);
+      const result = await runWorkspaceAction({
+        url: input.url,
+        sessionDir: input.sessionDir,
+        waitMs: input.waitMs ?? 12000,
+        action,
+      });
+      return cliToolResult("focus_burrete_selection", result, { action });
+    },
+  );
+
+  registerAppTool(
+    server,
+    "edit_burrete_fragment",
+    {
+      title: "Edit Burrete Fragment",
+      description: "Create a derived PDB by extracting, removing, or replacing a matched fragment without mutating the source file.",
+      inputSchema: {
+        operation: z.enum(["extract", "remove_to_new_file", "replace_to_new_file"]),
+        file: z.string().trim(),
+        component: z.enum(["polymer", "ligand", "water", "ion", "chain", "element"]).optional(),
+        chain: z.string().trim().optional(),
+        compId: z.string().trim().optional(),
+        seq: z.union([z.string().trim(), z.number().int()]).optional(),
+        element: z.string().trim().optional(),
+        replacementFile: z.string().trim().optional(),
+        title: z.string().trim().optional(),
+        openAsTab: z.boolean().optional(),
+        url: z.string().trim().optional(),
+        sessionDir: z.string().trim().optional(),
+        waitMs: z.number().int().min(0).max(60000).optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      _meta: {
+        ui: {
+          visibility: ["model"],
+        },
+      },
+    },
+    async input => {
+      const edited = await editStructureFragmentFile(input);
+      let opened = null;
+      if (input.openAsTab) {
+        opened = await runWorkspaceAction({
+          url: input.url,
+          sessionDir: input.sessionDir,
+          waitMs: input.waitMs ?? 12000,
+          action: {
+            type: "open_files",
+            paths: [edited.outputPath],
+          },
+        });
+      }
+      return {
+        content: toolText(`edit_burrete_fragment completed: ${edited.outputPath}`),
+        structuredContent: {
+          ok: true,
+          tool: "edit_burrete_fragment",
+          edited,
+          opened: opened?.payload?.result || null,
+          error: null,
+          exitCode: opened?.exitCode ?? null,
+        },
+      };
     },
   );
 
@@ -551,6 +750,56 @@ function structureComponentAction(input) {
     ok: false,
     error: { message: "Unsupported structure component operation." },
   };
+}
+
+function selectionAction(input) {
+  if (input.operation === "clear") return { type: "clear_selection" };
+  const selector = input.selector || {};
+  if (input.operation === "select") {
+    return {
+      type: "select_residues",
+      selector,
+      label: input.label,
+      mode: input.mode || "replace",
+      granularity: input.granularity || "residue",
+    };
+  }
+  if (input.operation === "focus") {
+    return {
+      type: "focus_selection",
+      args: {
+        selector,
+        durationMs: input.durationMs,
+        extraRadius: input.extraRadius,
+      },
+    };
+  }
+  if (input.operation === "highlight") {
+    return {
+      type: "apply_scene",
+      components: [
+        {
+          selector,
+          label: input.label,
+          highlight: true,
+          color: input.color,
+          mode: input.mode || "replace",
+          granularity: input.granularity || "residue",
+        },
+      ],
+    };
+  }
+  if (input.operation === "label") {
+    return {
+      type: "label_selection",
+      selector,
+      label: input.label,
+      text: input.text || input.label,
+      mode: input.mode,
+      granularity: input.granularity,
+    };
+  }
+  return { type: "clear_selection" };
 }
 
 function hideableComponentKind(component) {
