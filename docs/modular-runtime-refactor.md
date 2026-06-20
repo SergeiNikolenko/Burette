@@ -101,6 +101,8 @@ Current Stage 3 progress:
   pasted structure opening now live in `apps/desktop/src/hooks/use-app-file-open.ts`;
 - file picker and recent-structure open action callbacks now live in
   `apps/desktop/src/hooks/use-app-open-actions.ts`;
+- shell document selection, sidebar search focus, and settings navigation
+  callbacks now live in `apps/desktop/src/hooks/use-app-shell-navigation-actions.ts`;
 - dock payload opening now lives in
   `apps/desktop/src/hooks/use-app-dock-payload-open.ts`;
 - dock panel tab toggle action assembly now lives in
