@@ -413,8 +413,7 @@ DEV
 Normal tests:
   qlmanage -p "$ROOT/samples/mini.pdb"
   qlmanage -p "$ROOT/samples/mini.cif"
-  qlmanage -p "$ROOT/tests/fixtures/BurettePreviewSamples/tables/compounds.csv"
-  qlmanage -p "$ROOT/tests/fixtures/BurettePreviewSamples/tables/compounds.tsv"
+  qlmanage -p "$ROOT/samples/mini.sdf"
   qlmanage -p "$ROOT/samples/mini.xyz"
 NORMAL
   fi

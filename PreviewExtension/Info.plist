@@ -55,6 +55,9 @@
 				<string>com.schrodinger.mae</string>
 				<string>com.local.burrete10.schrodinger</string>
 				<string>com.local.burrete10.graphml</string>
+				<string>com.local.burrete10.pharmacophore</string>
+				<string>com.local.burrete10.spectrum</string>
+				<string>com.local.burrete10.spectrum-json</string>
 				<string>com.local.burrete10.openmm-coordinate-artifact</string>
 				<string>com.local.burrete10.openmm-workflow-text-artifact</string>
 			</array>
@@ -541,6 +544,28 @@
 		<dict>
 			<key>UTTypeConformsTo</key>
 			<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Pharmacophore model file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.pharmacophore</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>ph4</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>text/plain</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
 				<string>public.text</string>
 				<string>public.data</string>
 			</array>
@@ -592,10 +617,39 @@
 					<string>xvg</string>
 					<string>edr</string>
 					<string>fasta</string>
+					<string>fdef</string>
 				</array>
 				<key>public.mime-type</key>
 				<array>
 					<string>text/plain</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Mass spectrum or annotated spectrum file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.spectrum</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>ms</string>
+					<string>magma</string>
+					<string>mgf</string>
+					<string>msp</string>
+					<string>mzml</string>
+					<string>mzxml</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>text/plain</string>
+					<string>application/xml</string>
 				</array>
 			</dict>
 		</dict>

@@ -218,7 +218,6 @@ export type ShellActions = {
   showActiveDocumentMetadata: () => void | Promise<void>;
   showDocumentMetadata: (document: ViewerDocument) => void | Promise<void>;
   showTextFileMetadata: (document: TextFileDocument) => void | Promise<void>;
-  closeQuickLookPreview: () => void;
   generate3DConformer: (document: ViewerDocument) => void | Promise<void>;
   runStructureViewerAction: (document: ViewerDocument, action: StructureViewerAction) => void;
   reloadXyzrenderDocument: (document: ViewerDocument, options: ViewerReloadOptions) => void | Promise<void>;
@@ -246,9 +245,6 @@ export type ShellViewState = {
   activeTabId: string | null;
   activeDocument: ViewerDocument | null;
   activeDocumentId: string | null;
-  quickLookDocument: ViewerDocument | null;
-  quickLookError: string | null;
-  quickLookStandalone: boolean;
   visibleDocuments: ViewerDocument[];
   recentStructures: RecentStructure[];
   sidebarProjects: SidebarProject[];

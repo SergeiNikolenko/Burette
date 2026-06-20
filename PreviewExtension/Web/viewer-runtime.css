@@ -694,6 +694,92 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   outline: none;
   background: var(--buret-menu-input-background);
 }
+body.burette-mobile-host #status {
+  display: none !important;
+}
+body.burette-mobile-host .buret-molecule-context-menu {
+  min-width: min(342px, calc(100vw - 28px));
+  max-width: calc(100vw - 28px);
+  padding: 10px;
+  border: 0.5px solid rgba(255, 255, 255, 0.22);
+  border-radius: 24px;
+  color: #f5f5f7;
+  background: rgba(28, 28, 30, 0.78);
+  -webkit-backdrop-filter: blur(42px) saturate(1.75);
+  backdrop-filter: blur(42px) saturate(1.75);
+  box-shadow:
+    0 24px 72px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+body.buret-theme-light.burette-mobile-host .buret-molecule-context-menu {
+  color: #1d1d1f;
+  background: rgba(246, 246, 242, 0.76);
+  border-color: rgba(0, 0, 0, 0.10);
+  box-shadow:
+    0 24px 72px rgba(0, 0, 0, 0.20),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+body.burette-mobile-host .buret-molecule-context-menu-title {
+  padding: 8px 10px 2px;
+  font: 600 17px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  letter-spacing: 0;
+}
+body.burette-mobile-host .buret-molecule-context-menu-subtitle {
+  max-width: 100%;
+  padding: 0 10px 10px;
+  color: rgba(245, 245, 247, 0.68);
+  font: 400 13px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+body.buret-theme-light.burette-mobile-host .buret-molecule-context-menu-subtitle {
+  color: rgba(60, 60, 67, 0.68);
+}
+body.burette-mobile-host .buret-molecule-context-mode {
+  gap: 3px;
+  margin: 2px 4px 10px;
+  padding: 3px;
+  border-radius: 13px;
+  background: rgba(118, 118, 128, 0.22);
+}
+body.buret-theme-light.burette-mobile-host .buret-molecule-context-mode {
+  background: rgba(118, 118, 128, 0.14);
+}
+body.burette-mobile-host .buret-molecule-context-menu .buret-molecule-context-mode-button {
+  min-height: 36px;
+  border: 0;
+  border-radius: 10px;
+  padding: 7px 10px;
+  font: 600 13px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  text-align: center;
+}
+body.burette-mobile-host .buret-molecule-context-menu .buret-molecule-context-mode-button[aria-pressed="true"] {
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+body.buret-theme-light.burette-mobile-host .buret-molecule-context-menu .buret-molecule-context-mode-button[aria-pressed="true"] {
+  background: rgba(255, 255, 255, 0.74);
+}
+body.burette-mobile-host .buret-molecule-context-menu button {
+  min-height: 48px;
+  border: 0;
+  border-radius: 14px;
+  padding: 12px 14px;
+  color: inherit;
+  background: rgba(118, 118, 128, 0.18);
+  font: 500 16px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+body.buret-theme-light.burette-mobile-host .buret-molecule-context-menu button {
+  background: rgba(118, 118, 128, 0.10);
+}
+body.burette-mobile-host .buret-molecule-context-menu button + button {
+  margin-top: 6px;
+}
+body.burette-mobile-host .buret-molecule-context-menu button[data-buret-molecule-action^="remove"] {
+  color: #ff6961;
+}
+body.burette-mobile-host .buret-molecule-context-menu button:hover,
+body.burette-mobile-host .buret-molecule-context-menu button:focus {
+  background: rgba(255, 255, 255, 0.20);
+}
 #buret-toolbar {
   position: absolute; top: var(--buret-toolbar-safe-top); right: 12px; left: auto; z-index: 2147483646;
   display: flex; align-items: center; flex-wrap: nowrap; max-width: calc(100vw - 24px); gap: 6px; padding: 6px;
@@ -1288,6 +1374,193 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
   border-radius: 0 0 9px 9px;
   background: var(--buret-menu-section-background);
 }
+body.burette-mobile-host {
+  --buret-molstar-panel-radius: 24px;
+  --buret-viewport-controls-top: max(104px, calc(env(safe-area-inset-top) + 78px));
+  --buret-viewport-panel-max-height: min(58vh, 560px);
+}
+body.burette-mobile-host .msp-plugin .msp-layout-left,
+body.burette-mobile-host .msp-plugin .msp-layout-right,
+body.burette-mobile-host .msp-plugin .msp-layout-top,
+body.burette-mobile-host .msp-plugin .msp-layout-bottom,
+body.burette-mobile-host .msp-plugin .msp-viewport-controls-panel,
+body.burette-mobile-host .msp-plugin .msp-action-menu-options,
+body.burette-mobile-host .msp-plugin .msp-action-menu-options-no-header,
+body.burette-mobile-host .msp-plugin .msp-selection-viewport-controls-actions,
+body.burette-mobile-host .msp-plugin .msp-animation-viewport-controls-select,
+body.burette-mobile-host .msp-plugin .msp-log,
+body.burette-mobile-host .msp-plugin .msp-sequence {
+  border: 0.5px solid rgba(255, 255, 255, 0.20) !important;
+  border-radius: var(--buret-molstar-panel-radius) !important;
+  background: rgba(28, 28, 30, 0.76) !important;
+  box-shadow:
+    0 24px 72px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
+  -webkit-backdrop-filter: blur(42px) saturate(1.75) !important;
+  backdrop-filter: blur(42px) saturate(1.75) !important;
+}
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-layout-left,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-layout-right,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-layout-top,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-layout-bottom,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-viewport-controls-panel,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-action-menu-options,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-action-menu-options-no-header,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-selection-viewport-controls-actions,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-animation-viewport-controls-select,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-log,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-sequence {
+  border-color: rgba(0, 0, 0, 0.10) !important;
+  background: rgba(246, 246, 242, 0.78) !important;
+  box-shadow:
+    0 24px 72px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+}
+body.burette-mobile-host .msp-plugin .msp-viewport-controls-panel {
+  position: fixed !important;
+  left: 12px !important;
+  right: 12px !important;
+  bottom: max(10px, env(safe-area-inset-bottom)) !important;
+  top: auto !important;
+  width: auto !important;
+  max-width: none !important;
+  overflow: hidden !important;
+  z-index: 72 !important;
+}
+body.burette-mobile-host .msp-plugin .msp-viewport-controls-panel::before {
+  content: "";
+  display: block;
+  width: 42px;
+  height: 5px;
+  margin: 10px auto 6px;
+  border-radius: 999px;
+  background: rgba(235, 235, 245, 0.36);
+}
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-viewport-controls-panel::before {
+  background: rgba(60, 60, 67, 0.30);
+}
+body.burette-mobile-host .msp-plugin .msp-layout-left,
+body.burette-mobile-host .msp-plugin .msp-layout-right {
+  position: fixed !important;
+  left: 12px !important;
+  right: 12px !important;
+  top: max(112px, calc(env(safe-area-inset-top) + 86px)) !important;
+  bottom: max(12px, env(safe-area-inset-bottom)) !important;
+  width: auto !important;
+  max-width: none !important;
+  overflow: hidden !important;
+  z-index: 60 !important;
+}
+body.burette-mobile-host .msp-plugin .msp-layout-top {
+  position: fixed !important;
+  left: 12px !important;
+  right: 12px !important;
+  top: max(112px, calc(env(safe-area-inset-top) + 86px)) !important;
+  width: auto !important;
+  max-width: none !important;
+  max-height: min(32vh, 320px) !important;
+  overflow: hidden !important;
+  z-index: 58 !important;
+}
+body.burette-mobile-host .msp-plugin .msp-layout-bottom {
+  position: fixed !important;
+  left: 12px !important;
+  right: 12px !important;
+  bottom: max(12px, env(safe-area-inset-bottom)) !important;
+  width: auto !important;
+  max-width: none !important;
+  max-height: min(44vh, 420px) !important;
+  overflow: hidden !important;
+  z-index: 58 !important;
+}
+body.burette-mobile-host .msp-plugin .msp-viewport-controls {
+  top: var(--buret-viewport-controls-top) !important;
+  right: 12px !important;
+  z-index: 64 !important;
+}
+body.burette-mobile-host .msp-plugin .msp-viewport-controls-buttons > div,
+body.burette-mobile-host .msp-plugin .msp-animation-viewport-controls > div:first-child {
+  border: 0.5px solid rgba(255, 255, 255, 0.20) !important;
+  border-radius: 18px !important;
+  background: rgba(28, 28, 30, 0.70) !important;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
+  -webkit-backdrop-filter: blur(32px) saturate(1.6);
+  backdrop-filter: blur(32px) saturate(1.6);
+}
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-viewport-controls-buttons > div,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-animation-viewport-controls > div:first-child {
+  border-color: rgba(0, 0, 0, 0.10) !important;
+  background: rgba(246, 246, 242, 0.76) !important;
+}
+body.burette-mobile-host .msp-plugin .msp-viewport-controls-buttons button,
+body.burette-mobile-host .msp-plugin .msp-animation-viewport-controls button,
+body.burette-mobile-host .msp-plugin .msp-btn-icon,
+body.burette-mobile-host .msp-plugin .msp-btn-icon-small {
+  min-width: 44px !important;
+  min-height: 44px !important;
+  border-radius: 14px !important;
+  font-size: 16px !important;
+}
+body.burette-mobile-host .msp-plugin .msp-control-group-header,
+body.burette-mobile-host .msp-plugin .msp-control-group-header > button,
+body.burette-mobile-host .msp-plugin .msp-section-header,
+body.burette-mobile-host .msp-plugin .msp-current-header {
+  min-height: 48px !important;
+  padding: 0 14px !important;
+  color: var(--buret-molstar-text) !important;
+  background: rgba(118, 118, 128, 0.18) !important;
+  font: 600 16px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif !important;
+}
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-control-group-header,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-control-group-header > button,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-section-header,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-current-header {
+  background: rgba(118, 118, 128, 0.10) !important;
+}
+body.burette-mobile-host .msp-plugin .msp-control-row,
+body.burette-mobile-host .msp-plugin .msp-control-current,
+body.burette-mobile-host .msp-plugin .msp-flex-row,
+body.burette-mobile-host .msp-plugin .msp-state-image-row,
+body.burette-mobile-host .msp-plugin .msp-row-text,
+body.burette-mobile-host .msp-plugin .msp-log li {
+  min-height: 46px !important;
+  color: var(--buret-molstar-text) !important;
+  background: transparent !important;
+  font-size: 15px !important;
+}
+body.burette-mobile-host .msp-plugin .msp-control-row > div,
+body.burette-mobile-host .msp-plugin .msp-control-row > div.msp-control-row-text,
+body.burette-mobile-host .msp-plugin .msp-control-current,
+body.burette-mobile-host .msp-plugin .msp-sequence-wrapper,
+body.burette-mobile-host .msp-plugin .msp-sequence-wrapper-non-empty,
+body.burette-mobile-host .msp-plugin .msp-log .msp-log-entry {
+  min-height: 44px !important;
+  border-radius: 14px !important;
+  color: var(--buret-molstar-text) !important;
+  background: rgba(118, 118, 128, 0.14) !important;
+}
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-control-row > div,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-control-row > div.msp-control-row-text,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-control-current,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-sequence-wrapper,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-sequence-wrapper-non-empty,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-log .msp-log-entry {
+  background: rgba(118, 118, 128, 0.08) !important;
+}
+body.burette-mobile-host .msp-plugin .msp-form-control,
+body.burette-mobile-host .msp-plugin .msp-control-row select,
+body.burette-mobile-host .msp-plugin .msp-control-row button,
+body.burette-mobile-host .msp-plugin .msp-control-row input[type=text],
+body.burette-mobile-host .msp-plugin textarea,
+body.burette-mobile-host .msp-plugin .msp-btn {
+  min-height: 38px !important;
+  border: 0 !important;
+  border-radius: 12px !important;
+  padding-inline: 12px !important;
+  color: var(--buret-molstar-text) !important;
+  background: rgba(118, 118, 128, 0.18) !important;
+  font-size: 15px !important;
+}
 @media (max-width: 640px) {
   .buret-xyzrender-popover {
     width: min(216px, calc(100vw - 18px));
@@ -1364,6 +1637,61 @@ body.burette-quicklook-host {
 body.burette-quicklook-host .buret-corner-button {
   display: inline-flex;
 }
+body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-layout-left,
+body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-layout-right,
+body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-layout-top,
+body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-layout-bottom,
+body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-action-menu-options,
+body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-action-menu-options-no-header,
+body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-animation-viewport-controls-select,
+body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-selection-viewport-controls-actions,
+body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-log,
+body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-sequence,
+body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-viewport-controls-panel {
+  -webkit-backdrop-filter: blur(42px) saturate(1.75) !important;
+  backdrop-filter: blur(42px) saturate(1.75) !important;
+}
+body.burette-mobile-host .msp-plugin .msp-viewport-top-left-controls,
+body.burette-mobile-host .msp-plugin .msp-animation-viewport-controls {
+  top: max(122px, calc(env(safe-area-inset-top) + 96px)) !important;
+  right: 12px !important;
+  left: auto !important;
+  z-index: 64 !important;
+}
+body.burette-mobile-host .msp-plugin .msp-viewport-top-left-controls > div,
+body.burette-mobile-host .msp-plugin .msp-animation-viewport-controls > div {
+  overflow: hidden;
+  border: 0.5px solid rgba(255, 255, 255, 0.20) !important;
+  border-radius: 20px !important;
+  background: rgba(28, 28, 30, 0.70) !important;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
+  -webkit-backdrop-filter: blur(32px) saturate(1.6);
+  backdrop-filter: blur(32px) saturate(1.6);
+}
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-viewport-top-left-controls > div,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-animation-viewport-controls > div {
+  border-color: rgba(0, 0, 0, 0.10) !important;
+  background: rgba(246, 246, 242, 0.76) !important;
+}
+body.burette-mobile-host .msp-plugin .msp-viewport-top-left-controls button,
+body.burette-mobile-host .msp-plugin .msp-animation-viewport-controls button {
+  min-width: 46px !important;
+  min-height: 46px !important;
+  border-radius: 16px !important;
+  color: var(--buret-molstar-text) !important;
+  background: transparent !important;
+}
+body.burette-mobile-host:not(.burette-mobile-show-controls) .msp-plugin .msp-viewport-controls,
+body.burette-mobile-host:not(.burette-mobile-show-controls) .msp-plugin .msp-viewport-top-left-controls,
+body.burette-mobile-host:not(.burette-mobile-show-controls) .msp-plugin .msp-animation-viewport-controls,
+body.burette-mobile-host:not(.burette-mobile-show-controls) .msp-plugin .msp-selection-viewport-controls {
+  display: none !important;
+  pointer-events: none !important;
+}
+body.burette-mobile-host .buret-molstar-molecule-preview {
+  display: none !important;
+  pointer-events: none !important;
+}
 .buret-docking-poses {
   position: fixed;
   left: 14px;
@@ -1412,6 +1740,30 @@ body.buret-docking-pose-controls-active .msp-traj-controls {
 .buret-docking-poses button.active {
   background: var(--buret-molstar-accent);
   color: #fff;
+}
+body.burette-mobile-host .buret-docking-poses {
+  left: 12px;
+  right: auto;
+  top: max(122px, calc(env(safe-area-inset-top) + 96px));
+  min-height: 46px;
+  padding: 6px;
+  border: 0.5px solid rgba(255, 255, 255, 0.20);
+  border-radius: 20px;
+  background: rgba(28, 28, 30, 0.74);
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
+  -webkit-backdrop-filter: blur(32px) saturate(1.6);
+  backdrop-filter: blur(32px) saturate(1.6);
+  font: 500 15px/1.1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+body.buret-theme-light.burette-mobile-host .buret-docking-poses {
+  border-color: rgba(0, 0, 0, 0.10);
+  background: rgba(246, 246, 242, 0.76);
+}
+body.burette-mobile-host .buret-docking-poses button {
+  min-width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  padding: 0 12px;
 }
 .buret-docking-poses button:disabled {
   opacity: 0.38;
