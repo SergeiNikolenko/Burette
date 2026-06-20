@@ -22,6 +22,7 @@ import { useAppFileActions } from "./hooks/use-app-file-actions";
 import { useAppFileOpen } from "./hooks/use-app-file-open";
 import { useAppFepWorkflows } from "./hooks/use-app-fep-workflows";
 import { useAppGridControlMessages } from "./hooks/use-app-grid-control-messages";
+import { useAppGridConformerMessages } from "./hooks/use-app-grid-conformer-messages";
 import { useAppGridFileActions } from "./hooks/use-app-grid-file-actions";
 import { useAppGridRuntimeMessages } from "./hooks/use-app-grid-runtime-messages";
 import { useAppGridWorkflows } from "./hooks/use-app-grid-workflows";
@@ -1377,6 +1378,14 @@ export default function App() {
     writeClipboardText,
     writeGridPerfMetric,
   });
+  const { handleGridConformerMessage } = useAppGridConformerMessages({
+    openDocumentsInActiveTab,
+    postMessageToViewerSource,
+    preferences,
+    pushErrorStatus,
+    pushStatus,
+    rememberRecentStructures,
+  });
   const { handleKetcherViewerMessage } = useAppKetcherViewerMessages({
     activeDocument,
     documents,
@@ -1712,82 +1721,7 @@ export default function App() {
       if (await handleSdfViewerMessage(body)) {
         return;
       }
-      if (body?.type === "generate3dGridSelection") {
-        const molecules = Array.isArray(body.molecules) ? body.molecules : [];
-        const title = typeof body.title === "string" && body.title.trim()
-          ? body.title.trim()
-          : "selected-3d-molecules.sdf";
-        const reply = (type: "gridGenerate3DStarted" | "gridGenerate3DFinished" | "gridGenerate3DError", payload: Record<string, unknown> = {}) => {
-          postMessageToViewerSource(event.source, {
-            source: "burrete-grid-host",
-            body: { type, ...payload },
-          });
-        };
-        if (!molecules.length) {
-          reply("gridGenerate3DError", { error: "Select one or more molecules before generating 3D." });
-          pushStatus("Select one or more molecules before generating 3D.", "error");
-          return;
-        }
-        reply("gridGenerate3DStarted");
-        void (async () => {
-          const generatedTexts: string[] = [];
-          const errors: string[] = [];
-          for (const molecule of molecules) {
-            const item = molecule && typeof molecule === "object" ? molecule as Record<string, unknown> : {};
-            const itemTitle = typeof item.title === "string" && item.title.trim() ? item.title.trim() : "molecule.smi";
-            const extension = typeof item.extension === "string" && item.extension.trim() ? item.extension.trim() : pathExtension(itemTitle);
-            const textBase64 = typeof item.textBase64 === "string" ? item.textBase64.trim() : "";
-            if (!textBase64) {
-              errors.push(`${itemTitle}: empty structure text`);
-              continue;
-            }
-            try {
-              const bytes = Uint8Array.from(atob(textBase64), (char) => char.charCodeAt(0));
-              const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
-              const request = {
-                title: itemTitle,
-                extension,
-                text,
-                ...conformerGenerationPreferences(preferences),
-                mode: "single" as const,
-                source3d: null,
-              };
-              const conformer = isTauriRuntime()
-                ? await invoke<ConformerGenerationResult>("generate_3d_conformer", { request })
-                : await generateBrowserDev3DConformer(request);
-              generatedTexts.push(generated3DPoseSetText(text, extension, conformer.text, "single").trimEnd());
-            } catch (error) {
-              errors.push(`${itemTitle}: ${error instanceof Error ? error.message : String(error)}`);
-            }
-          }
-          if (!generatedTexts.length) {
-            throw new Error(errors.length ? errors.join("; ") : "3D generation did not return any structures.");
-          }
-          const text = `${generatedTexts.join("\n")}\n`;
-          const molstarPreferences = { ...preferences, rendererMode: "molstar" as const };
-          const generatedDocument = isTauriRuntime()
-            ? await invoke<ViewerDocument>("open_text_structure", {
-                request: { title, extension: "sdf", text },
-                preferences: molstarPreferences,
-                reloadOptions: {},
-              })
-            : await openBrowserDevTextDocument(
-                title,
-                "sdf",
-                text,
-                molstarPreferences,
-                {},
-              );
-          openDocumentsInActiveTab([generatedDocument]);
-          rememberRecentStructures([generatedDocument]);
-          const suffix = errors.length ? ` ${errors.length} failed.` : "";
-          pushStatus(`Generated 3D for ${generatedTexts.length} molecule${generatedTexts.length === 1 ? "" : "s"} and opened it in Molstar.${suffix}`);
-        })()
-          .catch((error) => {
-            reply("gridGenerate3DError", { error: error instanceof Error ? error.message : String(error) });
-            pushErrorStatus(error, "Grid 3D generation failed");
-          })
-          .finally(() => reply("gridGenerate3DFinished"));
+      if (handleGridConformerMessage(body, event.source)) {
         return;
       }
       if (handleViewerConformerMessage(body, event.source)) {
@@ -1805,7 +1739,7 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, handleDockingPoseMessage, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleKetcherViewerMessage, handleMolstarContextMessage, handleRendererMessage, handleSdfViewerMessage, handleViewerConformerMessage, handleViewerFileMessage, handleViewerHostMessage, handleViewerRuntimeFileMessage, handleViewerRuntimeMessage, handleViewerStateMessage, handleXyzrenderSheetMessage, markViewerFirstRenderMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
+  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, handleDockingPoseMessage, handleGridConformerMessage, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleKetcherViewerMessage, handleMolstarContextMessage, handleRendererMessage, handleSdfViewerMessage, handleViewerConformerMessage, handleViewerFileMessage, handleViewerHostMessage, handleViewerRuntimeFileMessage, handleViewerRuntimeMessage, handleViewerStateMessage, handleXyzrenderSheetMessage, markViewerFirstRenderMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;

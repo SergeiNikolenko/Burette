@@ -23,6 +23,7 @@ const [
   appFileOpenHook,
   appFepWorkflowsHook,
   appGridControlMessagesHook,
+  appGridConformerMessagesHook,
   appGridFileActionsHook,
   appGridRuntimeMessagesHook,
   appGridWorkflowsHook,
@@ -183,6 +184,7 @@ const [
   source('apps/desktop/src/hooks/use-app-file-open.ts'),
   source('apps/desktop/src/hooks/use-app-fep-workflows.ts'),
   source('apps/desktop/src/hooks/use-app-grid-control-messages.ts'),
+  source('apps/desktop/src/hooks/use-app-grid-conformer-messages.ts'),
   source('apps/desktop/src/hooks/use-app-grid-file-actions.ts'),
   source('apps/desktop/src/hooks/use-app-grid-runtime-messages.ts'),
   source('apps/desktop/src/hooks/use-app-grid-workflows.ts'),
@@ -4922,14 +4924,15 @@ assert.match(gridViewer, /function requestSingleMolstarDocument\(row, cfg\)/);
 assert.match(gridViewer, /data-buret-detail-action="molstar">Open in Mol\*/);
 assert.match(gridViewer, /data-buret-detail-action="ketcher">Edit in Ketcher/);
 assert.match(gridViewer, /data-buret-detail-action="generate3d">Generate 3D/);
-assert.match(app, /body\?\.type === "generate3dGridSelection"/);
-assert.match(app, /reply\("gridGenerate3DStarted"\)/);
-assert.match(app, /reply\("gridGenerate3DError"/);
-assert.match(app, /invoke<ConformerGenerationResult>\("generate_3d_conformer", \{ request \}\)/);
-assert.match(app, /generateBrowserDev3DConformer\(request\)/);
-assert.match(app, /\.\.\.conformerGenerationPreferences\(preferences\)/);
-assert.match(app, /generatedTexts\.push\(generated3DPoseSetText\(text, extension, conformer\.text, "single"\)\.trimEnd\(\)\)/);
-assert.match(app, /Generated 3D for \$\{generatedTexts\.length\} molecule/);
+assert.match(app, /handleGridConformerMessage\(body, event\.source\)/);
+assert.match(appGridConformerMessagesHook, /body\?\.type !== "generate3dGridSelection"/);
+assert.match(appGridConformerMessagesHook, /reply\("gridGenerate3DStarted"\)/);
+assert.match(appGridConformerMessagesHook, /reply\("gridGenerate3DError"/);
+assert.match(appGridConformerMessagesHook, /invoke<ConformerGenerationResult>\("generate_3d_conformer", \{ request \}\)/);
+assert.match(appGridConformerMessagesHook, /generateBrowserDev3DConformer\(request\)/);
+assert.match(appGridConformerMessagesHook, /\.\.\.conformerGenerationPreferences\(preferences\)/);
+assert.match(appGridConformerMessagesHook, /generatedTexts\.push\(generated3DPoseSetText\(text, extension, conformer\.text, "single"\)\.trimEnd\(\)\)/);
+assert.match(appGridConformerMessagesHook, /Generated 3D for \$\{generatedTexts\.length\} molecule/);
 assert.match(appKetcherViewerMessagesHook, /body\?\.type === "openSdfKetcherDocument"/);
 assert.match(appSdfViewerMessagesHook, /const controlLabel = bodyString\(body\.controlLabel\)\.trim\(\) \|\| "Molecule"/);
 assert.match(appSdfViewerMessagesHook, /reloadOptions: \{ sdfPoseControlLabel: controlLabel \}/);
