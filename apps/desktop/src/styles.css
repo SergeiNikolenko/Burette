@@ -2031,6 +2031,19 @@ img.radix-menu-item-icon {
 .folding-results-card[data-collapsed] {
   gap: 0;
 }
+.folding-results-card .structure-inspector-section-title-button {
+  cursor: pointer;
+}
+.folding-results-card .structure-inspector-section-title-button:focus {
+  outline: none;
+  box-shadow: none;
+}
+.folding-results-card .structure-inspector-section-title-button:focus-visible {
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
 .folding-results-body {
   min-width: 0;
   display: grid;
