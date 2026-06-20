@@ -4,10 +4,10 @@ import { generateBrowserDev3DConformer, openBrowserDevTextDocument } from "../li
 import { conformerGenerationPreferences, generated3DPoseSetText, type ConformerGenerationResult } from "../lib/conformer-generation";
 import { pathExtension } from "../lib/file-routing";
 import { isTauriRuntime } from "../lib/tauri";
+import type { PostMessageToViewerSource } from "../lib/viewer-bridge";
 import type { ViewerDocument, ViewerPreferences } from "../types";
 
 type GridConformerMessageBody = Record<string, unknown> | null | undefined;
-type PostMessageToViewerSource = (source: MessageEventSource | null, payload: unknown) => void;
 type PushStatus = (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
 

@@ -4,11 +4,11 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { downloadTextFile, exportDialogFilters, safeExportFileName } from "../lib/file-export";
 import { basename } from "../lib/sidebar-projects";
 import { isTauriRuntime } from "../lib/tauri";
+import type { PostMessageToViewerSource } from "../lib/viewer-bridge";
 import type { ViewerDocument } from "../types";
 
 type PushStatus = (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
-type PostMessageToViewerSource = (source: MessageEventSource | null, payload: unknown) => void;
 type GridFileMessageBody = Record<string, unknown> | null | undefined;
 
 type UseAppGridFileActionsOptions = {

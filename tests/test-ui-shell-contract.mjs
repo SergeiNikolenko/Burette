@@ -141,6 +141,7 @@ const [
   agentSessionHook,
   temporaryDocuments,
   windowScope,
+  viewerBridgeLib,
   viteConfig,
   viteBuildPlugins,
   browserDevAssets,
@@ -312,6 +313,7 @@ const [
   source('apps/desktop/src/hooks/use-agent-session.ts'),
   source('apps/desktop/src/lib/temporary-documents.ts'),
   source('apps/desktop/src/lib/window-scope.ts'),
+  source('apps/desktop/src/lib/viewer-bridge.ts'),
   source('apps/desktop/vite.config.ts'),
   source('apps/desktop/vite/build-plugins.ts'),
   source('apps/desktop/vite/browser-dev/assets.ts'),
@@ -4611,7 +4613,18 @@ assert.match(appFileActionsHook, /await writeClipboardText\(path\)/);
 assert.match(app, /invoke<string>\("read_external_preview_svg"/);
 assert.match(app, /invoke<string>\("write_text_file"/);
 assert.match(app, /invoke<string>\("write_base64_file"/);
+assert.match(app, /from "\.\/lib\/viewer-bridge"/);
+assert.doesNotMatch(app, /function isKnownViewerMessageSource/);
+assert.doesNotMatch(app, /function postMessageToViewerSource/);
+assert.doesNotMatch(app, /function activeViewerIframeForDocument/);
+assert.match(viewerBridgeLib, /export type ActiveViewerIframeForDocument/);
+assert.match(viewerBridgeLib, /export type KnownViewerMessageSource/);
+assert.match(viewerBridgeLib, /export type PostMessageToViewerSource/);
+assert.match(viewerBridgeLib, /document\.querySelectorAll<HTMLIFrameElement>\("\.viewer-iframe\[data-document-id\]"\)/);
+assert.match(viewerBridgeLib, /CSS\.escape\(documentId\)/);
+assert.match(appMolstarXtbContextHook, /import type \{ ActiveViewerIframeForDocument, KnownViewerMessageSource \} from "\.\.\/lib\/viewer-bridge"/);
 assert.match(appViewerBridgeMessagesHook, /isKnownViewerMessageSource\(event\.source, body\?\.documentId\)/);
+assert.match(appViewerBridgeMessagesHook, /import type \{ KnownViewerMessageSource \} from "\.\.\/lib\/viewer-bridge"/);
 assert.match(appViewerBridgeMessagesHook, /source === "burrete-grid"/);
 assert.match(appViewerBridgeMessagesHook, /handleGridControlMessage\(body\)/);
 assert.match(appGridControlMessagesHook, /body\?\.type === "copyText"/);
@@ -4712,10 +4725,10 @@ assert.match(appGridRuntimeMessagesHook, /if \(body\?\.type === "renderXyzrender
 assert.match(appGridRuntimeMessagesHook, /type: "xyzrenderCard"/);
 assert.match(appGridRuntimeMessagesHook, /cacheScope: "grid-card"/);
 assert.match(appGridRuntimeMessagesHook, /cacheHit: result\.cacheHit \?\? false/);
-assert.match(app, /CSS\.escape\(documentId\)/);
-assert.match(app, /iframe\?\.contentWindow\?\.postMessage\(payload, "\*"\)/);
+assert.match(viewerBridgeLib, /CSS\.escape\(documentId\)/);
+assert.match(viewerBridgeLib, /iframe\?\.contentWindow\?\.postMessage\(payload, "\*"\)/);
 assert.match(browserDevDocuments, /if \(window\.BurreteConfig && window\.BurreteConfig\.documentId\) body\.documentId = String\(window\.BurreteConfig\.documentId\);/);
-assert.match(app, /querySelectorAll<HTMLIFrameElement>\("\.viewer-iframe\[data-document-id\]"\)/);
+assert.match(viewerBridgeLib, /querySelectorAll<HTMLIFrameElement>\("\.viewer-iframe\[data-document-id\]"\)/);
 assert.match(viewer, /function initShellShortcutBridge\(\)/);
 assert.match(viewer, /const togglesSidebar = commandKey && !event\.altKey && !event\.shiftKey && key === 'b'/);
 assert.match(viewer, /postHostMessage\(\{ type: togglesSidebar \? 'toggleSidebar' : 'openCommandPalette' \}\)/);
