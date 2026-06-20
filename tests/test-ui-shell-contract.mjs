@@ -40,6 +40,7 @@ const [
   appStartupEffectsHook,
   appUpdatesHook,
   appViewerFileActionsHook,
+  appViewerHostMessagesHook,
   appViewerRuntimeFileMessagesHook,
   appViewerRuntimeMessagesHook,
   appViewerStateMessagesHook,
@@ -197,6 +198,7 @@ const [
   source('apps/desktop/src/hooks/use-app-startup-effects.ts'),
   source('apps/desktop/src/hooks/use-app-updates.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-file-actions.ts'),
+  source('apps/desktop/src/hooks/use-app-viewer-host-messages.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-runtime-file-messages.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-runtime-messages.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-state-messages.ts'),
@@ -1689,8 +1691,9 @@ assert.match(app, /type: "replaceMolstarStructure"/);
 assert.match(app, /const requestId = `molstar-replace-\$\{Date\.now\(\)\}-\$\{Math\.random\(\)\.toString\(36\)\.slice\(2\)\}`/);
 assert.match(app, /requestId,/);
 assert.match(app, /textBase64: textToBase64\(conformer\.text\)/);
-assert.match(app, /body\?\.type === "molstarStructureReplaced"/);
-assert.match(app, /pendingMolstarReplaceRef\.current\.get\(requestId\)/);
+assert.match(app, /handleViewerHostMessage\(data\.source, body\)/);
+assert.match(appViewerHostMessagesHook, /body\?\.type === "molstarStructureReplaced"/);
+assert.match(appViewerHostMessagesHook, /pendingMolstarReplaceRef\.current\.get\(requestId\)/);
 assert.match(app, /generate3DConformer,/);
 assert.match(app, /body\?\.type === "generate3dConformer"/);
 const generate3dHandlerStart = app.indexOf('if (body?.type === "generate3dConformer")');
@@ -1707,8 +1710,9 @@ assert.match(generate3dHandler, /"generate3dConformerStarted"/);
 assert.match(generate3dHandler, /"generate3dConformerFinished"/);
 assert.match(generate3dHandler, /void generate3DConformer\(targetDocument, mode, molstarStyle\)[\s\S]*\.finally\(\(\) => notifyGeneratorState\("generate3dConformerFinished"\)\)/);
 assert.match(app, /data\?\.source !== "burrete-viewer" && data\?\.source !== "burrete-grid" && data\?\.source !== "burrete-agent-viewer"/);
-assert.match(app, /data\.source === "burrete-agent-viewer" && body\?\.type === "agent-action-result"/);
-assert.match(app, /body\.id === "string" && body\.id\.startsWith\("text-selection-"\)/);
+assert.match(appViewerHostMessagesHook, /source === "burrete-agent-viewer" && body\?\.type === "agent-action-result"/);
+assert.match(appViewerHostMessagesHook, /Structure action did not match the structure/);
+assert.match(appViewerHostMessagesHook, /bodyString\(body\.id\)\.startsWith\("text-selection-"\)/);
 assert.doesNotMatch(app, /pushStatus\("Text selection applied"/);
 assert.match(app, /pushStatus\(action\.label\)/);
 assert.match(dock, /inspector: "Info"/);
