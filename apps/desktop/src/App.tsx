@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } fro
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { AppLayout } from "./components/app-layout";
-import type { AppSettingsSectionId, KetcherSketchRequest, ShellActions, StructureViewerAction, ViewerLigandSelection } from "./components/types";
+import type { AppSettingsSectionId, ShellActions, StructureViewerAction, ViewerLigandSelection } from "./components/types";
 import { WindowTitle } from "./components/window-title";
 import {
   useCloseCommandPalette,
@@ -60,6 +60,7 @@ import { useAppViewerRuntimeFileMessages } from "./hooks/use-app-viewer-runtime-
 import { useAppViewerRuntimeMessages } from "./hooks/use-app-viewer-runtime-messages";
 import { useAppViewerStateMessages } from "./hooks/use-app-viewer-state-messages";
 import { useAppWorkspaceActions } from "./hooks/use-app-workspace-actions";
+import { useAppXtbWorkflows } from "./hooks/use-app-xtb-workflows";
 import { useAppXyzrenderSheetMessages } from "./hooks/use-app-xyzrender-sheet-messages";
 import { useAgentSession } from "./hooks/use-agent-session";
 import { useAppClipboard } from "./hooks/use-app-clipboard";
@@ -109,8 +110,8 @@ import {
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
 import { generateBrowserDev3DConformer, openBrowserDevDocuments, openBrowserDevMolstarContextDocument, openBrowserDevTextDocument, readBrowserDevVirtualTextDocument, writeBrowserDevVirtualTextDocument } from "./lib/browser-dev-documents";
 import { openBrowserDevTextFiles } from "./lib/browser-dev-text-files";
-import { prepareConformerRequest, requestConformerStatus, requestXtbStatus, runConformerRequest, runXtbRequest } from "./lib/chemistry-job-requests";
-import { conformerOperationLabel, xtbOperationLabel } from "./lib/chemistry-settings";
+import { prepareConformerRequest, requestConformerStatus, runConformerRequest } from "./lib/chemistry-job-requests";
+import { conformerOperationLabel } from "./lib/chemistry-settings";
 import { isMoleculeCollectionPath } from "./lib/collection-documents";
 import { isProteinLikeDockingSource } from "./lib/docking-documents";
 import { canInspectConformerEnsemble, canUseConformerWorkflow } from "./lib/conformer-ensemble";
@@ -127,7 +128,7 @@ import { isSpectrumPath, isSubformulaSpectrumJsonText, isTabularSpectrumExtensio
 import type { TextStructureSelection } from "./lib/text-structure-selection";
 import { isTauriRuntime } from "./lib/tauri";
 import { isTemporaryDocumentPath } from "./lib/temporary-documents";
-import type { ConformerJob, ConformerOperation, ConformerPreparedRun, ConformerRunRequest, FepSetupRequest, OpenDocumentsMode, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XtbJob, XtbOperation, XtbRunRequest, XtbRunResult } from "./types";
+import type { ConformerJob, ConformerOperation, ConformerPreparedRun, ConformerRunRequest, FepSetupRequest, OpenDocumentsMode, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "./types";
 
 const CommandPalette = lazy(() => import("./components/command-palette").then((module) => ({
   default: module.CommandPalette,
@@ -137,13 +138,6 @@ const GRID_PERF_REPORT_PATH = "/private/tmp/burrete-grid-real-app-perf.jsonl";
 type MolstarContextDocument = Parameters<typeof openBrowserDevMolstarContextDocument>[0];
 type MolstarContextEntry = NonNullable<MolstarContextDocument["entries"]>[number];
 type PendingMolstarReplaceResolver = (ok: boolean) => void;
-type XtbRunJobOptions = {
-  title?: string;
-  inputLabel?: string;
-  openPrimary?: boolean;
-  openOptimizedPoseInCurrentView?: boolean;
-  poseSourceDocument?: ViewerDocument | null;
-};
 
 async function expandBrowserDevStructureBundles(paths: string[]) {
   if (isTauriRuntime()) return paths;
@@ -464,276 +458,10 @@ export default function App() {
     pushErrorStatus,
   });
 
-  const openXtbOptimizedPoseInCurrentView = useCallback(async (
-    sourceDocument: ViewerDocument | null | undefined,
-    sourcePath: string | null | undefined,
-    result: XtbRunResult,
-  ) => {
-    const sourceTitle = sourceDocument?.title ?? (sourcePath ? basename(sourcePath) : "structure");
-    const trajectoryArtifact = result.artifacts.find((artifact) => artifact.title === "xtbopt.log");
-    if (trajectoryArtifact) {
-      const trajectoryText = await readStructureText(trajectoryArtifact.path);
-      const trajectoryFrames = countXyzFrames(trajectoryText);
-      if (trajectoryFrames > 1) {
-        const title = `${sourceTitle} xTB optimization.xyz`;
-        const molstarPreferences = { ...preferences, rendererMode: "molstar" as const };
-        const reloadOptions = { trajectoryAutoPlayOnce: true, molstarStyle: preferences.molstarStyle };
-        const document = isTauriRuntime()
-          ? await invoke<ViewerDocument>("open_text_structure", {
-              request: {
-                title,
-                extension: "xyz",
-                text: trajectoryText.endsWith("\n") ? trajectoryText : `${trajectoryText}\n`,
-              },
-              preferences: molstarPreferences,
-              reloadOptions,
-            })
-          : await openBrowserDevTextDocument(
-              title,
-              "xyz",
-              trajectoryText.endsWith("\n") ? trajectoryText : `${trajectoryText}\n`,
-              molstarPreferences,
-              reloadOptions,
-            );
-        const documentWithSource = sourcePath ? { ...document, sourcePath } : document;
-        openDocumentsInActiveTab([documentWithSource]);
-        rememberRecentStructures([documentWithSource]);
-        pushStatus("Opened xTB optimization trajectory in the current Mol* view", "success");
-        return;
-      }
-    }
-    if (!sourcePath || !result.primaryOpenPath) return;
-    const [sourceText, optimizedText] = await Promise.all([
-      readStructureText(sourcePath),
-      readStructureText(result.primaryOpenPath),
-    ]);
-    const molstarPreferences = { ...preferences, rendererMode: "molstar" as const };
-    const document = await openBrowserDevMolstarContextDocument({
-      label: `${sourceTitle} xTB optimized`,
-      entries: [
-        {
-          role: "receptor",
-          label: `${sourceTitle} input`,
-          format: structureExtensionFromPath(sourcePath),
-          data: sourceText,
-        },
-        {
-          role: "ligand",
-          label: "xTB optimized pose",
-          format: structureExtensionFromPath(result.primaryOpenPath),
-          data: optimizedText,
-        },
-      ],
-      context: { scope: "xtb-optimization" },
-    }, molstarPreferences);
-    openDocumentsInActiveTab([document]);
-    rememberRecentStructures([document]);
-    pushStatus("Opened xTB optimized pose in the current Mol* view", "success");
-  }, [openDocumentsInActiveTab, preferences, pushStatus, rememberRecentStructures]);
-
-  const runXtbJob = useCallback(async (
-    request: XtbRunRequest,
-    options: XtbRunJobOptions = {},
-  ) => {
-    const title = options.title ?? xtbOperationLabel(request.operation);
-    const inputLabel = options.inputLabel ?? request.label ?? request.inputPath ?? "Ketcher sketch";
-    const guardMessage = await directChemistryJobGuardMessage("xTB", request.inputText ?? null, request.inputExtension ?? structureExtensionFromPath(request.inputPath ?? request.sourcePath), request.inputPath ?? request.sourcePath ?? null);
-    if (guardMessage) {
-      pushStatus(guardMessage, "error");
-      return;
-    }
-    const jobId = `xtb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const startedAt = Date.now();
-    const pendingJob: XtbJob = {
-      id: jobId,
-      title,
-      operation: request.operation,
-      status: "running",
-      inputLabel,
-      startedAt,
-      completedAt: null,
-      result: null,
-      error: null,
-    };
-    setXtbJobs((previous) => [pendingJob, ...previous].slice(0, 20));
-    try {
-      const saveRunFiles = request.saveRunFiles ?? xtbSettings.saveRunFiles;
-      const result = await runXtbRequest({
-        method: xtbSettings.method,
-        optLevel: xtbSettings.optLevel,
-        charge: xtbSettings.charge,
-        uhf: xtbSettings.uhf,
-        threads: xtbSettings.threads,
-        accuracy: xtbSettings.accuracy,
-        electronicTemperature: xtbSettings.electronicTemperature,
-        solvationModel: xtbSettings.solvationModel,
-        solvent: xtbSettings.solvent === "none" ? null : xtbSettings.solvent,
-        properties: xtbSettings.properties,
-        mdTemperature: xtbSettings.mdTemperature,
-        mdTimePs: xtbSettings.mdTimePs,
-        mdStepFs: xtbSettings.mdStepFs,
-        mdSnapshots: xtbSettings.mdSnapshots,
-        timeoutSeconds: request.operation === "md" || request.operation === "metadyn"
-          ? Math.max(xtbSettings.timeoutSeconds, 600)
-          : xtbSettings.timeoutSeconds,
-        saveRunFiles,
-        ...request,
-        jobId,
-      });
-      const cancelled = cancelledXtbJobIdsRef.current.has(jobId) || /cancelled/iu.test(result.error ?? "");
-      const recovered = !result.ok && Boolean(result.primaryOpenPath);
-      const jobStatus: XtbJob["status"] = cancelled ? "cancelled" : result.ok ? "success" : recovered ? "recovered" : "failed";
-      setXtbJobs((previous) => previous.map((job) => job.id === jobId ? {
-        ...job,
-        status: jobStatus,
-        completedAt: Date.now(),
-        result,
-        error: result.error ?? null,
-      } : job));
-      if (cancelled) {
-        pushStatus(`xTB cancelled: ${title}`);
-        return;
-      }
-      void requestXtbStatus().then(setXtbStatus).catch(() => {});
-      const textArtifacts = [result.reportPath, result.logPath].filter(Boolean);
-      if (textArtifacts.length > 0) {
-        void openTextDocuments(textArtifacts, { background: true });
-      }
-      const sourcePath = request.sourcePath ?? request.inputPath ?? null;
-      if ((result.ok || recovered) && options.openOptimizedPoseInCurrentView && request.operation === "optimize") {
-        await openXtbOptimizedPoseInCurrentView(options.poseSourceDocument, sourcePath, result);
-      }
-      if (options.openPrimary !== false && result.primaryOpenPath) {
-        void openPaths([result.primaryOpenPath]);
-      }
-      if (!options.openOptimizedPoseInCurrentView && result.ok && request.operation === "optimize" && sourcePath && result.primaryOpenPath) {
-        openDockTab("bottom", "compare");
-        setDockActiveTab("bottom", "compare");
-        setDockOpen("bottom", true);
-        addDockDrop({
-          area: "bottom",
-          tabKind: "compare",
-          payload: { paths: [sourcePath, result.primaryOpenPath], records: [] },
-        });
-      }
-      if (result.ok) {
-        pushStatus(`xTB finished: ${title}`, "success");
-      } else if (recovered) {
-        pushStatus(`xTB produced partial results: ${title}`, "info", result.error ? [result.error] : []);
-      } else {
-        pushStatus(`xTB failed: ${result.error ?? title}`, "error", result.error ? [result.error] : []);
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const cancelled = cancelledXtbJobIdsRef.current.has(jobId);
-      setXtbJobs((previous) => previous.map((job) => job.id === jobId ? {
-        ...job,
-        status: cancelled ? "cancelled" : "failed",
-        completedAt: Date.now(),
-        error: cancelled ? "xTB job cancelled." : message,
-      } : job));
-      if (cancelled) {
-        pushStatus(`xTB cancelled: ${title}`);
-        return;
-      }
-      pushErrorStatus(error, `xTB ${request.operation} failed`);
-    }
-  }, [addDockDrop, openDockTab, openXtbOptimizedPoseInCurrentView, pushErrorStatus, pushStatus, setDockActiveTab, setDockOpen, xtbSettings]);
-
   const { requestMolstarXtbContextDocument } = useAppMolstarXtbContext({
     activeViewerIframeForDocument,
     isKnownViewerMessageSource,
   });
-
-  const runXtbActiveOperation = useCallback(async (operation: XtbOperation) => {
-    if (!activeDocument) {
-      pushStatus("Open a structure before running xTB.", "error");
-      return;
-    }
-    const contextDocument = await requestMolstarXtbContextDocument(activeDocument);
-    const contextInputRequest = xtbInputRequestForMolstarContextDocument(contextDocument, activeDocument.sourcePath ?? activeDocument.path);
-    const inputRequest = contextInputRequest ?? xtbInputRequestForDocument(activeDocument);
-    if (!inputRequest) {
-      pushStatus("This generated structure cannot be used for xTB because its source text is unavailable.", "error");
-      return;
-    }
-    const secondaryPaths = operation === "dock"
-      ? dockDroppedStructures.flatMap((item) => item.payload.paths).filter((path) => path !== activeDocument.path).slice(0, 1)
-      : [];
-    if (operation === "dock" && secondaryPaths.length === 0) {
-      pushStatus("Drop a ligand or second structure into a dock before running xTB docking.", "error");
-      return;
-    }
-    const openOptimizedPoseInCurrentView = operation === "optimize";
-    await runXtbJob({
-      operation,
-      ...inputRequest,
-      secondaryPaths,
-    }, {
-      title: xtbOperationLabel(operation),
-      inputLabel: inputRequest.label ?? activeDocument.title,
-      openPrimary: operation !== "properties" && !openOptimizedPoseInCurrentView,
-      openOptimizedPoseInCurrentView,
-      poseSourceDocument: openOptimizedPoseInCurrentView ? activeDocument : null,
-    });
-  }, [activeDocument, dockDroppedStructures, pushStatus, requestMolstarXtbContextDocument, runXtbJob]);
-
-  const runXtbKetcherSketch = useCallback(async (request: KetcherSketchRequest) => {
-    await runXtbJob({
-      operation: "optimize",
-      inputText: request.text,
-      inputExtension: request.extension,
-      label: request.title,
-    }, {
-      title: "xTB Optimize Ketcher Sketch",
-      inputLabel: request.title,
-    });
-  }, [runXtbJob]);
-
-  const runXtbGridScoring = useCallback(async (document: ViewerDocument | null = activeDocument) => {
-    if (!document) {
-      pushStatus("Open a grid or structure before running xTB scoring.", "error");
-      return;
-    }
-    const inputRequest = xtbInputRequestForDocument(document);
-    if (!inputRequest) {
-      pushStatus("This generated structure cannot be used for xTB because its source text is unavailable.", "error");
-      return;
-    }
-    await runXtbJob({
-      operation: document.renderer === "grid2d" ? "grid-properties" : "properties",
-      ...inputRequest,
-    }, {
-      title: document.renderer === "grid2d" ? "xTB Grid Properties" : "xTB Properties",
-      inputLabel: document.title,
-      openPrimary: false,
-    });
-  }, [activeDocument, pushStatus, runXtbJob]);
-
-  const runXtbPoseRefinement = useCallback(async (request: FepSetupRequest) => {
-    await runXtbJob({
-      operation: "pose-refine",
-      inputPath: request.gridPath,
-      secondaryPaths: [request.receptorPath, request.dockingPath],
-      label: `pose-${request.referencePose + 1}`,
-    }, {
-      title: `xTB Refine Pose ${request.referencePose + 1}`,
-      inputLabel: basename(request.gridPath),
-    });
-  }, [runXtbJob]);
-
-  const runXtbFepPreflight = useCallback(async (request: FepSetupRequest) => {
-    await runXtbJob({
-      operation: "fep-preflight",
-      inputPath: request.gridPath,
-      secondaryPaths: [request.receptorPath, request.dockingPath],
-      label: "fep-preflight",
-    }, {
-      title: "xTB FEP Preflight",
-      inputLabel: basename(request.gridPath),
-      openPrimary: false,
-    });
-  }, [runXtbJob]);
 
   const runConformerJob = useCallback(async (request: ConformerRunRequest) => {
     const title = conformerOperationLabel(request.operation);
@@ -983,6 +711,33 @@ export default function App() {
     pushErrorStatus,
     pushStatus,
     recentStructures,
+  });
+  const {
+    runXtbActiveOperation,
+    runXtbFepPreflight,
+    runXtbGridScoring,
+    runXtbJob,
+    runXtbKetcherSketch,
+    runXtbPoseRefinement,
+  } = useAppXtbWorkflows({
+    activeDocument,
+    addDockDrop,
+    cancelledXtbJobIdsRef,
+    dockDroppedStructures,
+    openDockTab,
+    openDocumentsInActiveTab,
+    openPaths,
+    openTextDocuments,
+    preferences,
+    pushErrorStatus,
+    pushStatus,
+    rememberRecentStructures,
+    requestMolstarXtbContextDocument,
+    setDockActiveTab,
+    setDockOpen,
+    setXtbJobs,
+    setXtbStatus,
+    xtbSettings,
   });
 
   const notifyGridPoseReviewSelection = useCallback((targetDocumentId: string, activePose: number) => {
@@ -1870,59 +1625,8 @@ function conformerOutputDirectory(document: ViewerDocument) {
   return parentDirectory(sourcePath);
 }
 
-function countXyzFrames(text: string) {
-  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-  let index = 0;
-  let frames = 0;
-  while (index < lines.length && frames < 100000) {
-    while (index < lines.length && !lines[index].trim()) index += 1;
-    const atomCount = Number.parseInt(lines[index]?.trim().split(/\s+/u)[0] ?? "", 10);
-    if (!Number.isFinite(atomCount) || atomCount <= 0) break;
-    if (index + atomCount + 1 >= lines.length) break;
-    const atomLines = lines.slice(index + 2, index + 2 + atomCount);
-    if (atomLines.length !== atomCount || atomLines.some((line) => !line.trim())) break;
-    frames += 1;
-    index += atomCount + 2;
-  }
-  return frames;
-}
-
 function isXtbOptimizationTrajectoryLogPath(path: string) {
   return (path.split(/[\\/]/).filter(Boolean).pop() ?? "").toLowerCase() === "xtbopt.log";
-}
-
-function xtbInputRequestForDocument(document: ViewerDocument): Pick<XtbRunRequest, "inputPath" | "inputText" | "inputExtension" | "sourcePath" | "label"> | null {
-  if (document.virtual && !isTauriRuntime()) {
-    const text = readBrowserDevVirtualTextDocument(document.path);
-    if (text === null) return null;
-    return {
-      inputText: text,
-      inputExtension: document.extension || structureExtensionFromPath(document.path),
-      sourcePath: document.sourcePath ?? null,
-      label: document.title,
-    };
-  }
-  return {
-    inputPath: document.path,
-    sourcePath: document.sourcePath ?? null,
-    label: document.title,
-  };
-}
-
-function xtbInputRequestForMolstarContextDocument(
-  contextDocument: MolstarContextDocument | null | undefined,
-  sourcePath: string | null | undefined,
-): Pick<XtbRunRequest, "inputText" | "inputExtension" | "sourcePath" | "label"> | null {
-  const entry = (contextDocument?.entries ?? []).find((candidate): candidate is MolstarContextEntry & { data: string } => (
-    typeof candidate?.data === "string" && candidate.data.trim().length > 0
-  ));
-  if (!entry) return null;
-  return {
-    inputText: entry.data,
-    inputExtension: molstarContextEntryExtension(entry.format),
-    sourcePath: sourcePath ?? null,
-    label: contextDocument?.label?.trim() || entry.label?.trim() || "Molstar selection",
-  };
 }
 
 type SelectedConformerInput = {
