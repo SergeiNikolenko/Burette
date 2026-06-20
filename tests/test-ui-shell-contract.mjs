@@ -35,6 +35,7 @@ const [
   appSidebarProjectsHook,
   appStartupEffectsHook,
   appUpdatesHook,
+  appViewerFileActionsHook,
   appWorkspaceActionsHook,
   appStatusHook,
   tabsHook,
@@ -183,6 +184,7 @@ const [
   source('apps/desktop/src/hooks/use-app-sidebar-projects.ts'),
   source('apps/desktop/src/hooks/use-app-startup-effects.ts'),
   source('apps/desktop/src/hooks/use-app-updates.ts'),
+  source('apps/desktop/src/hooks/use-app-viewer-file-actions.ts'),
   source('apps/desktop/src/hooks/use-app-workspace-actions.ts'),
   source('apps/desktop/src/hooks/use-app-status.ts'),
   source('apps/desktop/src/hooks/use-tabs.ts'),
@@ -4149,10 +4151,12 @@ assert.match(app, /const molstarPreferences = \{ \.\.\.preferences, rendererMode
 assert.match(app, /if \(!isTauriRuntime\(\)\) return openBrowserDevMolstarContextDocument\(contextDocument, molstarPreferences\);/);
 assert.match(app, /invoke<ViewerDocument>\("open_text_structure", \{\s*request: \{\s*title: `\$\{label\}\.\$\{extension\}`,\s*extension,\s*text: entry\.data,/s);
 assert.match(app, /reloadOptions: \{\},/);
-assert.match(app, /data\.source === "burrete-viewer" && body\?\.type === "exportText"/);
-assert.match(app, /data\.source === "burrete-viewer" && body\?\.type === "exportData"/);
-assert.match(app, /invoke<string>\("write_base64_file", \{\s*request: \{ outputPath, contentsBase64: base64 \},\s*\}\)/s);
-assert.match(app, /pushErrorStatus\(error, "Molstar export failed"\)/);
+assert.match(app, /useAppViewerFileActions\(\{\s*pushErrorStatus,\s*pushStatus,\s*\}\)/s);
+assert.match(app, /data\.source === "burrete-viewer" && handleViewerFileMessage\(body\)/);
+assert.match(appViewerFileActionsHook, /body\?\.type === "exportText"/);
+assert.match(appViewerFileActionsHook, /body\?\.type === "exportData"/);
+assert.match(appViewerFileActionsHook, /invoke<string>\("write_base64_file", \{\s*request: \{ outputPath, contentsBase64: base64 \},\s*\}\)/s);
+assert.match(appViewerFileActionsHook, /pushErrorStatus\(error, "Molstar export failed"\)/);
 assert.match(previewViewController, /if type == "exportText" \{\s*handleJavaScriptTextExport\(body\)\s*return\s*\}/s);
 assert.match(previewViewController, /if type == "exportData" \{\s*handleJavaScriptDataExport\(body\)\s*return\s*\}/s);
 assert.match(previewViewController, /private func presentJavaScriptExportSavePanel\(data: Data, name: String\)/);
@@ -4464,7 +4468,7 @@ assert.match(appGridFileActionsHook, /type: "gridMoleculeExported"/);
 assert.match(appGridFileActionsHook, /type: "gridMoleculeExportError"/);
 assert.match(appGridFileActionsHook, /pushErrorStatus\(error, "Grid Save As failed"\)/);
 assert.match(appGridFileActionsHook, /pushErrorStatus\(error, "Grid Save failed"\)/);
-assert.match(app, /from "\.\/lib\/file-export"/);
+assert.match(appViewerFileActionsHook, /from "\.\.\/lib\/file-export"/);
 assert.match(fileExport, /export function safeExportFileName\(name: string\)/);
 assert.match(fileExport, /export function exportDialogFilters\(fileName: string, mimeType: string\)/);
 assert.match(app, /handleGridRuntimeMessage\(body, event\.source\)/);
