@@ -138,7 +138,11 @@ const [
   settingsSections,
   browserDevStartup,
   browserDevDocuments,
+  browserDevStructureBundles,
+  clipboardLib,
+  contentSpectrumDetection,
   agentSessionHook,
+  previewImageExport,
   temporaryDocuments,
   windowScope,
   viewerBridgeLib,
@@ -310,7 +314,11 @@ const [
   source('apps/desktop/src/lib/settings-sections.ts'),
   source('apps/desktop/src/lib/browser-dev-startup.ts'),
   source('apps/desktop/src/lib/browser-dev-documents.ts'),
+  source('apps/desktop/src/lib/browser-dev-structure-bundles.ts'),
+  source('apps/desktop/src/lib/clipboard.ts'),
+  source('apps/desktop/src/lib/content-spectrum-detection.ts'),
   source('apps/desktop/src/hooks/use-agent-session.ts'),
+  source('apps/desktop/src/lib/preview-image-export.ts'),
   source('apps/desktop/src/lib/temporary-documents.ts'),
   source('apps/desktop/src/lib/window-scope.ts'),
   source('apps/desktop/src/lib/viewer-bridge.ts'),
@@ -858,7 +866,7 @@ assert.match(moleculeStore, /const storedTabs = \(stored\?\.tabs \?\? current\.t
 assert.match(browserDevStartup, /export async function browserDevFilesFromLocation\(\)/);
 assert.match(browserDevStartup, /if \(params\.has\("devDocking"\)\) return \[\];/);
 assert.match(browserDevStartup, /params\.has\("devFiles"\)/);
-assert.match(app, /!isSpectrumPath\(path, extension\) &&\s*!structureAndTextExtensions\.has\(extension\)/);
+assert.match(browserDevStructureBundles, /!isSpectrumPath\(path, extension\) &&\s*!structureAndTextExtensions\.has\(extension\)/);
 assert.match(browserDevStartup, /export function browserDevFolderFromLocation\(\)/);
 assert.match(browserDevStartup, /get\("devFolder"\)\?\.trim\(\)/);
 assert.ok(browserDevStartup.includes('return folder ? folder.replace(/\\\\/g, "/").replace(/\\/+$/u, "") : null;'));
@@ -4610,6 +4618,30 @@ assert.match(app, /useAppFileActions\(\{/);
 assert.match(appFileActionsHook, /invoke\("reveal_path"/);
 assert.match(appFileActionsHook, /const copyPath = useCallback/);
 assert.match(appFileActionsHook, /await writeClipboardText\(path\)/);
+assert.match(app, /from "\.\/lib\/browser-dev-structure-bundles"/);
+assert.match(app, /from "\.\/lib\/clipboard"/);
+assert.match(app, /from "\.\/lib\/content-spectrum-detection"/);
+assert.match(app, /from "\.\/lib\/preview-image-export"/);
+assert.doesNotMatch(app, /async function expandBrowserDevStructureBundles/);
+assert.doesNotMatch(app, /async function detectContentSpectrumPaths/);
+assert.doesNotMatch(app, /async function svgToPngBase64/);
+assert.doesNotMatch(app, /function arrayBufferToBase64/);
+assert.doesNotMatch(app, /async function writeClipboardText/);
+assert.doesNotMatch(app, /function copyTextWithSelectionFallback/);
+assert.doesNotMatch(app, /function isXtbOptimizationTrajectoryLogPath/);
+assert.match(browserDevStructureBundles, /export async function expandBrowserDevStructureBundles/);
+assert.match(browserDevStructureBundles, /export function isXtbOptimizationTrajectoryLogPath/);
+assert.match(browserDevStructureBundles, /\/__burette\/file-bundle\?path=\$\{encodeURIComponent\(path\)\}/);
+assert.match(browserDevStructureBundles, /Browser-dev companion discovery is opportunistic/);
+assert.match(contentSpectrumDetection, /export async function detectContentSpectrumPaths/);
+assert.match(contentSpectrumDetection, /readStructureText\(path, \{ maxBytes: 256 \* 1024 \}\)/);
+assert.match(contentSpectrumDetection, /isSubformulaSpectrumJsonText\(text\)/);
+assert.match(previewImageExport, /export function arrayBufferToBase64/);
+assert.match(previewImageExport, /export async function svgToPngBase64/);
+assert.match(previewImageExport, /Preview SVG could not be rasterized/);
+assert.match(clipboardLib, /export async function writeClipboardText/);
+assert.match(clipboardLib, /navigator\.clipboard\?\.writeText/);
+assert.match(clipboardLib, /export function copyTextWithSelectionFallback/);
 assert.match(app, /invoke<string>\("read_external_preview_svg"/);
 assert.match(app, /invoke<string>\("write_text_file"/);
 assert.match(app, /invoke<string>\("write_base64_file"/);
