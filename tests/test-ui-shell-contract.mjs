@@ -101,6 +101,7 @@ const [
   previewViewer,
   previewShell,
   previewRuntimeCss,
+  mobilePreviewRuntime,
   updateSource,
   readme,
   buildScript,
@@ -204,6 +205,7 @@ const [
   source('PreviewExtension/Web/viewer.js'),
   source('PreviewExtension/Web/viewer-shell.js'),
   source('PreviewExtension/Web/viewer-runtime.css'),
+  source('ios/BurreteMobile/MobilePreviewRuntime.swift'),
   source('apps/desktop/src/update.ts'),
   source('README.md'),
   source('scripts/build.sh'),
@@ -497,7 +499,7 @@ assert.match(desmondPreviewExtract, /parser\.add_argument\("--output"/);
 assert.match(viteConfig, /plugins: \[react\(\), ketcherRaphaelImportShimPlugin\(\), deferKetcherCssPlugin\(\), browserDevXyzrenderPlugin\(\)\]/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "BurettePreviewSamples"\)/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "xyzrender-main"\)/);
-assert.match(viteConfig, /join\(repoRoot, "samples", "large", "litr_moses_10k\.csv"\)/);
+assert.match(viteConfig, /join\(repoRoot, "samples", "large", "moses_10k\.csv"\)/);
 assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/dev-files"/);
 assert.match(viteConfig, /const RDKIT_WASM_PATH = join\(repoRoot, "PreviewExtension", "Web", "rdkit", "RDKit_minimal\.wasm"\)/);
 assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/rdkit-wasm"/);
@@ -3040,7 +3042,7 @@ assert.match(previewViewController, /case "fdf":\s*return parseFDF\(lines\)/);
 assert.match(previewViewController, /private static func parseMaestroAtoms\(_ lines: \[String\], atomLimit: Int\) -> \[Atom\]\?/);
 assert.match(previewViewController, /private static func parseABINIT\(_ lines: \[String\]\) -> \[Atom\]\?/);
 assert.match(previewViewController, /private static func parseFDF\(_ lines: \[String\]\) -> \[Atom\]\?/);
-assert.match(previewViewController, /fileprivate static func shouldPreferConvertedMolstarData\(fileExtension: String\) -> Bool \{\s*isGROExtension\(fileExtension\) \|\| isMOL2Extension\(fileExtension\)\s*\}/);
+assert.match(previewViewController, /fileprivate static func shouldPreferConvertedMolstarData\(fileExtension: String\) -> Bool \{\s*\["ph4", "json"\]\.contains\(fileExtension\.lowercased\(\)\) \|\| isGROExtension\(fileExtension\) \|\| isMOL2Extension\(fileExtension\)\s*\}/);
 assert.match(previewViewController, /private static func parseGROAtoms\(_ lines: \[String\], atomLimit: Int\) -> \[MaestroAtom\]\?/);
 assert.match(previewViewController, /private static func mol2PDBData\(from data: Data, label: String\) -> Data\?/);
 assert.match(previewViewController, /private static func parseQSiteGeometry\(_ lines: \[String\]\) -> \[Atom\]\?/);
@@ -3256,7 +3258,7 @@ assert.match(previewViewer, /fadeMolstarTransitionFrame\(transitionFrame\)/);
 assert.match(previewViewer, /function captureMolstarTransitionFrame\(\)/);
 assert.match(previewViewer, /canvas\.toDataURL\('image\/png'\)/);
 assert.match(previewViewer, /function requestGenerated3DCameraView\(viewer\)/);
-assert.match(previewViewer, /camera\.getFocus\(target, safeRadius, \[0, 1, 0\], \[0\.85, -0\.38, 0\.92\]\)/);
+assert.match(previewViewer, /camera\.getFocus\(target, Math\.max\(0\.1, safeRadius \* radiusScale\), \[0, 1, 0\], \[0\.85, -0\.38, 0\.92\]\)/);
 assert.match(previewViewer, /snapshot\.mode = 'perspective'/);
 assert.match(previewViewer, /window\.BurreteDataBase64 = textBase64/);
 assert.match(previewViewer, /loadPreparedStructure\(activeViewer, prepared\)/);
@@ -3602,7 +3604,7 @@ assert.match(previewViewer, /const trajectoryFrameCount = Number\(config\.trajec
 assert.match(previewViewer, /trajectoryControls: config\.trajectoryControls === true \|\| trajectoryFrameCount > 1/);
 assert.match(previewViewer, /await ensureBrowserDevStructureData\(nextConfig, cb\);\s*await startMolstar\(nextConfig, cb\);/s);
 assert.doesNotMatch(previewViewer, /startXYZFast/);
-assert.match(previewViewer, /Keep the native Mol\* top-left animation button on every Mol\* screen\. Do not remove\.\s*viewportShowAnimation: true,/);
+assert.match(previewViewer, /Keep the native Mol\* top-left animation button on every Mol\* screen\. Do not remove\.\s*viewportShowAnimation: option\('viewportShowAnimation', true\),/);
 assert.match(previewViewer, /function embeddedStructureDataByteLength\(\)/);
 assert.match(previewViewer, /async function ensureBrowserDevStructureData\(config, cb\)/);
 assert.match(previewViewer, /window\.BurreteDataBytes = null;\s*window\.BurreteDataBase64 = null;\s*await loadStructureData\(config, cb\);/);
@@ -3657,7 +3659,9 @@ assert.match(previewViewer, /function installMolstarContextMenu\(viewer\)/);
 assert.match(previewViewer, /document\.addEventListener\('contextmenu', onContextMenu, true\)/);
 assert.match(previewViewer, /if \(!viewer \|\| \(!picked && !isMolstarContextMenuTarget\(event\.target\)\)\) \{\s*hideMolstarContextMenu\(\);\s*return false;/);
 assert.match(previewViewer, /const MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX = 4;/);
+assert.match(previewViewer, /const MOLSTAR_TOUCH_PICK_RADIUS_PX = 18;/);
 assert.match(previewViewer, /let contextPointer = null;/);
+assert.match(previewViewer, /let touchContextPointer = null;/);
 assert.match(previewViewer, /if \(event\.button === 2\) \{[\s\S]*?contextPointer = \{/);
 assert.match(previewViewer, /const contextPick = molstarContextPickFromEvent\(event\);[\s\S]*?event\.preventDefault\(\);\s*event\.stopPropagation\(\);[\s\S]*?contextPointer = \{[\s\S]*?pick: contextPick/);
 assert.doesNotMatch(previewViewer, /if \(event\.button === 2\) \{\s*event\.preventDefault\(\);\s*event\.stopPropagation\(\);[\s\S]*?contextPointer = \{/);
@@ -3668,13 +3672,26 @@ assert.match(previewViewer, /document\.addEventListener\('pointerup', onPointerU
 assert.match(previewViewer, /if \(contextPointer\) \{\s*event\.preventDefault\(\);\s*event\.stopPropagation\(\);\s*if \(!contextPointer\.moved\) return;\s*hideMolstarContextMenu\(\);\s*contextPointer = null;\s*return;/);
 assert.doesNotMatch(previewViewer, /if \(event\.button === 2\) \{\s*openFromEvent\(event\);\s*return;/);
 assert.match(previewViewer, /function isMolstarContextMenuTarget\(target\)/);
-assert.match(previewViewer, /function molstarContextPickFromEvent\(event\)/);
+assert.match(previewViewer, /function molstarContextPickFromEvent\(event, options = \{\}\)/);
 assert.doesNotMatch(previewViewer, /function molstarContextCanvasPixelLooksEmpty/);
 assert.doesNotMatch(previewViewer, /gl\.readPixels/);
 assert.doesNotMatch(previewViewer, /canvas3d\.setProps\(\{ pickPadding: 0 \}\)/);
 assert.doesNotMatch(previewViewer, /canvas3d\.setProps\(\{ pickPadding: previousPickPadding \}\)/);
-assert.match(previewViewer, /canvas3d\.identify\(\[event\.clientX - rect\.left, event\.clientY - rect\.top\]\)/);
+assert.match(previewViewer, /for \(const \[dx, dy\] of offsets\)/);
+assert.match(previewViewer, /canvas3d\.identify\(\[x - rect\.left, y - rect\.top\]\)/);
 assert.match(previewViewer, /canvas3d\.getLoci\(picking\.id\)/);
+assert.match(previewViewer, /if \(molstarContextEventIsTouch\(event\) && event\.isPrimary !== false && event\.button === 0/);
+assert.match(previewViewer, /const pixelScale = numberOption\('molstarPixelScale'\);/);
+assert.match(previewViewer, /const pickScale = numberOption\('molstarPickScale'\);/);
+assert.match(previewViewer, /const resolutionMode = stringOption\('molstarResolutionMode', \['auto', 'scaled', 'native'\]\);/);
+assert.match(previewViewer, /preferWebgl1: option\('molstarPreferWebgl1', true\),/);
+assert.match(previewViewer, /disableAntialiasing: option\('molstarDisableAntialiasing', true\),/);
+assert.match(previewViewer, /\.\.\.\(resolutionMode !== undefined \? \{ resolutionMode \} : \{\}\),/);
+assert.match(mobilePreviewRuntime, /"molstarDisableAntialiasing": false,/);
+assert.match(mobilePreviewRuntime, /"molstarPickScale": 1,/);
+assert.match(mobilePreviewRuntime, /"molstarPixelScale": 1,/);
+assert.match(mobilePreviewRuntime, /"molstarPreferWebgl1": false,/);
+assert.match(mobilePreviewRuntime, /"molstarResolutionMode": "native",/);
 assert.match(previewViewer, /\.msp-plugin \.msp-viewport-host/);
 assert.match(previewViewer, /className = 'buret-molecule-context-menu'/);
 assert.match(previewViewer, /function molstarContextScopeForAtom\(atom\)/);
@@ -4056,7 +4073,7 @@ assert.match(previewViewer, /await loadMolstarEntry\(viewer, activeEntry\);\s*aw
 assert.match(previewViewer, /function dockingSceneBackgroundStyle\(contextStyle, foregroundStyle\)/);
 assert.match(previewViewer, /if \(contextStyle !== 'match'\) return normalizeMolstarStyle\(contextStyle\)/);
 assert.match(previewViewer, /function dockingSceneBackgroundStyle\(contextStyle, foregroundStyle\) \{\s*if \(contextStyle !== 'match'\) return normalizeMolstarStyle\(contextStyle\);\s*return normalizeMolstarStyle\(foregroundStyle\);\s*\}/s);
-assert.match(previewViewer, /updateStructureOverlayToggleButton\(document\.querySelector\('\[data-buret-action="structure-overlay-toggle"\]'\), prepared\);\s*return;/);
+assert.match(previewViewer, /updateStructureOverlayToggleButton\(document\.querySelector\('\[data-buret-action="structure-overlay-toggle"\]'\), prepared\);\s*scheduleMolstarStructureFocus\(viewer, \{ reason: 'docking-scene', durationMs: 180 \}\);\s*return;/);
 assert.match(previewViewer, /await loadMolstarEntry\(viewer, activeEntry\);\s*await applyMolstarStyle\(viewer, style\)/);
 assert.match(previewViewer, /function sdfCollectionRepresentationForStyle\(style, alpha = 1, colorMode = 'gray'\)/);
 assert.doesNotMatch(previewViewer, /if \(normalized === 'illustrative' \|\| normalized === 'cartoon' \|\| normalized === 'polymer-ligand'\) \{/);
@@ -4090,6 +4107,10 @@ assert.match(previewViewer, /speed\.max = formatTrajectoryFps\(maximumTrajectory
 assert.match(previewViewer, /speed\.inputMode = 'decimal'/);
 assert.match(previewViewer, /speed\.value = formatTrajectoryFps\(readTrajectoryLoopFps\(activeConfig, prepared\)\)/);
 assert.match(previewViewer, /speed\.title = 'Frames per second \(FPS\)'/);
+assert.match(previewViewer, /function setMobileTrajectorySpeed\(value\)/);
+assert.match(previewViewer, /speed\.dispatchEvent\(new Event\('input', \{ bubbles: true \}\)\)/);
+assert.match(previewViewer, /speed\.dispatchEvent\(new Event\('change', \{ bubbles: true \}\)\)/);
+assert.match(previewViewer, /name\.startsWith\('trajectory-speed:'\)/);
 assert.match(previewViewer, /function createStructureOverlayToggleButton\(prepared = activeMolstarPrepared\)/);
 assert.match(previewViewer, /button\.dataset\.buretAction = 'structure-overlay-toggle'/);
 assert.match(previewViewer, /root\.classList\.add\('buret-docking-poses-overlay-only'\)/);
@@ -4109,6 +4130,10 @@ assert.match(previewViewer, /const scheduleLoopStep = \(delayMs = loopNextDelay\
 assert.match(previewViewer, /loopTimer = window\.setTimeout\(\(\) => \{/);
 assert.match(previewViewer, /const nextIndex = loopTargetIndex\(\)/);
 assert.match(previewViewer, /if \(nextIndex === activePose\) \{/);
+assert.match(previewViewer, /setPose\(nextIndex, \{ loopStep: true \}\)/);
+assert.match(previewViewer, /if \(options\.loopStep !== true && loopActive\) \{/);
+assert.match(previewViewer, /loopStartPose = activePose/);
+assert.match(previewViewer, /if \(options\.loopStep !== true\) \{\s*scheduleMolstarStructureFocus\(viewer, \{ reason: 'native-trajectory-pose', durationMs: 180 \}\);\s*\}/);
 assert.match(previewViewer, /slider\.className = 'buret-docking-pose-slider'/);
 assert.match(previewViewer, /const scheduleSliderInputPose = \(index\) => \{/);
 assert.match(previewViewer, /prepared\.nativeTrajectoryControls \|\| prepared\.kind === 'sdf-collection' \|\| prepared\.kind === 'xyz-frame-overlay'/);

@@ -1,14 +1,16 @@
 <h1 align="center">Burrete</h1>
 
 <p align="center">
-  A macOS molecular file workspace with Finder Quick Look previews, Mol* 3D,
-  external xyzrender SVG rendering, RDKit molecule grids, and Ketcher sketching.
+  A molecular file workspace with macOS Finder Quick Look previews, Mol* 3D,
+  external xyzrender SVG rendering, RDKit molecule grids, Ketcher sketching,
+  and a source-built iPhone preview app.
 </p>
 
 <p align="center">
   <img alt="Version 1.0.3" src="https://img.shields.io/badge/version-1.0.3-0f8f72.svg?style=flat-square" />
   <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-yellow.svg?style=flat-square" /></a>
   <img alt="macOS 12+" src="https://img.shields.io/badge/macOS-12%2B-blue.svg?style=flat-square" />
+  <img alt="iOS source app" src="https://img.shields.io/badge/iOS-source%20app-blue.svg?style=flat-square" />
   <img alt="Quick Look" src="https://img.shields.io/badge/Quick%20Look-extension-57606a.svg?style=flat-square" />
   <img alt="Molstar" src="https://img.shields.io/badge/viewer-Mol%2A-0f8f72.svg?style=flat-square" />
 </p>
@@ -19,11 +21,12 @@
 
 ## What Is Burrete?
 
-Burrete is a macOS desktop app and Finder Quick Look extension for molecular
-structure files. It is built for the small daily loop of computational
-chemistry, structural biology, and cheminformatics work: open a structure,
-confirm what it is, switch renderer when needed, compare files in tabs, and
-recover quickly when Quick Look or renderer caches need maintenance.
+Burrete is a macOS desktop app, Finder Quick Look extension, and source-built
+iPhone preview app for molecular structure files. It is built for the small
+daily loop of computational chemistry, structural biology, and cheminformatics
+work: open a structure, confirm what it is, switch renderer when needed,
+compare files in tabs, and recover quickly when Quick Look or renderer caches
+need maintenance.
 
 Use it in two ways:
 
@@ -31,6 +34,8 @@ Use it in two ways:
 - **Desktop workspace:** open Burrete directly to inspect files in tabs, browse
   project folders, search commands and structures, sketch molecules, review
   collections, and send files to external chemistry tools.
+- **iPhone preview app:** build the `BurreteMobile` Xcode target from source,
+  then open molecular documents from Files or another iOS document provider.
 
 Burrete is intentionally a compact utility, not a full molecular modeling
 environment.
@@ -126,6 +131,25 @@ Opening Burrete directly gives you a compact molecular workspace:
   and workflow panels
 - "Open In" actions for Finder, the default app, or discovered chemistry editors
 - text-file viewing for logs, scripts, configs, and related project files
+
+## iPhone Preview App
+
+The repository includes a source-built iPhone app target at
+[`ios/BurreteMobile`](ios/BurreteMobile). It is not part of the Homebrew macOS
+release, but it shares the project preview runtime and supports iOS document
+handoff through Files and "Open In" sheets.
+
+The mobile app focuses on phone-first inspection:
+
+- Apple-style file browser and document opening for molecular project files
+- Mol* structure previews in a full-screen mobile viewer
+- RDKit-rendered SDF grid and table previews
+- trajectory and pose controls surfaced near the bottom of the viewport when a
+  loaded document needs them
+- app icon and document-type registration for supported molecular formats
+
+See [ios/BurreteMobile/README.md](ios/BurreteMobile/README.md) for the target
+layout, build command, signing notes, and real-device install flow.
 
 ## Molecule Collections and Ketcher
 
