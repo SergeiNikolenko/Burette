@@ -56,6 +56,7 @@ const [
   appViewerConformerMessagesHook,
   appViewerFileActionsHook,
   appViewerHostMessagesHook,
+  appViewerReloadActionsHook,
   appViewerRuntimeFileMessagesHook,
   appViewerRuntimeMessagesHook,
   appViewerStateMessagesHook,
@@ -235,6 +236,7 @@ const [
   source('apps/desktop/src/hooks/use-app-viewer-conformer-messages.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-file-actions.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-host-messages.ts'),
+  source('apps/desktop/src/hooks/use-app-viewer-reload-actions.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-runtime-file-messages.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-runtime-messages.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-state-messages.ts'),
@@ -3127,14 +3129,26 @@ assert.match(app, /const pendingViewerReloadOptionsRef = useRef<ViewerReloadOpti
 assert.match(app, /const pendingViewerReloadDocumentIdRef = useRef<string \| null>\(null\)/);
 assert.match(app, /const xyzrenderOrientationRefRef = useRef<string \| null>\(null\)/);
 assert.match(app, /const skipNextPreferenceRefreshRef = useRef\(false\)/);
-assert.match(app, /source: "burrete-host"[\s\S]*type: "setXyzrenderControls"/);
+assert.match(app, /from "\.\/hooks\/use-app-viewer-reload-actions"/);
+assert.match(app, /const \{ reloadActive, reloadXyzrenderDocument \} = useAppViewerReloadActions\(\{/);
+assert.doesNotMatch(app, /const reloadActive = useCallback/);
+assert.doesNotMatch(app, /const reloadXyzrenderDocument = useCallback/);
+assert.doesNotMatch(app, /source: "burrete-host"[\s\S]*type: "setXyzrenderControls"/);
+assert.match(appViewerReloadActionsHook, /export function useAppViewerReloadActions\(\{/);
+assert.match(appViewerReloadActionsHook, /const reloadActive = useCallback/);
+assert.match(appViewerReloadActionsHook, /await openDocuments\(\[targetDocument\.path\], reloadOptions, undefined, \{ inActiveTab: true \}\)/);
+assert.match(appViewerReloadActionsHook, /source: "burrete-host"[\s\S]*type: "setXyzrenderControls"/);
+assert.match(appViewerReloadActionsHook, /preset: effectiveReloadOptions\.xyzrenderPreset \?\? null/);
+assert.match(appViewerReloadActionsHook, /controls: effectiveReloadOptions\.xyzrenderControls \?\? null/);
+assert.match(appViewerReloadActionsHook, /pendingViewerReloadDocumentIdRef\.current = document\.id/);
+assert.match(appViewerReloadActionsHook, /await openDocuments\(\[document\.path\], effectiveReloadOptions, undefined, \{ inActiveTab: true \}\)/);
 assert.match(appViewerRuntimeMessagesHook, /body\?\.type === "error"/);
 assert.match(appGridWorkflowsHook, /summarizeErrors\(result\.errors\)/);
 assert.match(appViewerRuntimeMessagesHook, /body\?\.type === "setXyzrenderOrientation"/);
 assert.match(appViewerRuntimeMessagesHook, /body\?\.type === "setXyzrenderPreset"/);
 assert.match(appViewerRuntimeMessagesHook, /pendingViewerReloadDocumentIdRef\.current = bodyString\(body\.documentId\) \?\? null/);
 assert.match(appViewerRuntimeMessagesHook, /xyzrenderPreset: bodyString\(body\.value\) \?\? null/);
-assert.match(app, /await openDocuments\(\[targetDocument\.path\], reloadOptions, undefined, \{ inActiveTab: true \}\)/);
+assert.doesNotMatch(app, /await openDocuments\(\[targetDocument\.path\], reloadOptions, undefined, \{ inActiveTab: true \}\)/);
 assert.match(appViewerBridgeMessagesHook, /handleRendererMessage\(body\)/);
 assert.match(appRendererMessageHook, /body\?\.type !== "setRenderer"/);
 assert.match(appRendererMessageHook, /const reloadOptions = renderer === "xyzrender-external"\s*\?\s*\{\s*xyzrenderOrientationRef: orientationRef \?\? xyzrenderOrientationRefRef\.current,\s*xyzrenderPreset: preset \?\? pendingViewerReloadOptionsRef\.current\?\.xyzrenderPreset \?\? null,\s*xyzrenderControls: body\.controls \?\? pendingViewerReloadOptionsRef\.current\?\.xyzrenderControls \?\? null,\s*\}\s*: renderer === "molstar"\s*\?\s*\{\}/s);
@@ -3194,9 +3208,10 @@ assert.match(appViewerBridgeMessagesHook, /handleMolstarContextMessage\(body\)/)
 assert.match(appMolstarContextMessagesHook, /body\?\.type !== "openMolstarContextDocument"/);
 assert.match(appMolstarContextMessagesHook, /pushStatus\("Opening separate Molstar docking view\.\.\."\)/);
 assert.match(appMolstarContextMessagesHook, /void openDockingDocument\(targetDocument\.dockingRequest\.receptorPath, targetDocument\.dockingRequest\.ligandPaths\)/);
-assert.match(app, /const targetDocument = \(pendingViewerReloadDocumentIdRef\.current/);
-assert.match(app, /const reloadOptions = pendingViewerReloadOptionsRef\.current \?\? undefined/);
-assert.match(app, /await openDocuments\(\[targetDocument\.path\], reloadOptions, undefined, \{ inActiveTab: true \}\)/);
+assert.doesNotMatch(app, /const targetDocument = \(pendingViewerReloadDocumentIdRef\.current/);
+assert.match(appViewerReloadActionsHook, /const targetDocument = \(pendingViewerReloadDocumentIdRef\.current/);
+assert.match(appViewerReloadActionsHook, /const reloadOptions = pendingViewerReloadOptionsRef\.current \?\? undefined/);
+assert.match(appViewerReloadActionsHook, /await openDocuments\(\[targetDocument\.path\], reloadOptions, undefined, \{ inActiveTab: true \}\)/);
 assert.match(app, /from "\.\/hooks\/use-app-drop-actions"/);
 assert.match(app, /useAppDropActions\(\{/);
 assert.match(appDropActionsHook, /from "\.\.\/components\/native-context-menu"/);

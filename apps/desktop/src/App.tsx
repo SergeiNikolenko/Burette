@@ -52,6 +52,7 @@ import { useAppViewerFileActions } from "./hooks/use-app-viewer-file-actions";
 import { useAppViewerBridgeMessages } from "./hooks/use-app-viewer-bridge-messages";
 import { useAppViewerConformerMessages } from "./hooks/use-app-viewer-conformer-messages";
 import { useAppViewerHostMessages } from "./hooks/use-app-viewer-host-messages";
+import { useAppViewerReloadActions } from "./hooks/use-app-viewer-reload-actions";
 import { useAppViewerRuntimeFileMessages } from "./hooks/use-app-viewer-runtime-file-messages";
 import { useAppViewerRuntimeMessages } from "./hooks/use-app-viewer-runtime-messages";
 import { useAppViewerStateMessages } from "./hooks/use-app-viewer-state-messages";
@@ -790,16 +791,14 @@ export default function App() {
       : undefined,
   });
   const { openClipboard } = useAppClipboard({ openClipboardText, pushErrorStatus, pushStatus });
-  const reloadActive = useCallback(async () => {
-    const targetDocument = (pendingViewerReloadDocumentIdRef.current
-      ? documents.find((document) => document.id === pendingViewerReloadDocumentIdRef.current)
-      : null) ?? activeDocument;
-    if (!targetDocument) return;
-    const reloadOptions = pendingViewerReloadOptionsRef.current ?? undefined;
-    pendingViewerReloadOptionsRef.current = null;
-    pendingViewerReloadDocumentIdRef.current = null;
-    await openDocuments([targetDocument.path], reloadOptions, undefined, { inActiveTab: true });
-  }, [activeDocument, documents, openDocuments]);
+  const { reloadActive, reloadXyzrenderDocument } = useAppViewerReloadActions({
+    activeDocument,
+    documents,
+    openDocuments,
+    pendingViewerReloadDocumentIdRef,
+    pendingViewerReloadOptionsRef,
+    xyzrenderOrientationRefRef,
+  });
   const { handleViewerRuntimeMessage, markViewerFirstRenderMessage } = useAppViewerRuntimeMessages({
     documents,
     pendingViewerReloadDocumentIdRef,
@@ -852,30 +851,6 @@ export default function App() {
     rememberRecentStructures,
     setPoseReviewSelections,
   });
-  const reloadXyzrenderDocument = useCallback(async (document: ViewerDocument, reloadOptions: ViewerReloadOptions) => {
-    const effectiveReloadOptions = {
-      ...reloadOptions,
-      xyzrenderOrientationRef: reloadOptions.xyzrenderOrientationRef ?? xyzrenderOrientationRefRef.current,
-    };
-    const iframe = activeViewerIframeForDocument(document.id);
-    if (iframe?.contentWindow) {
-      iframe.contentWindow.postMessage({
-        source: "burrete-host",
-        body: {
-          type: "setXyzrenderControls",
-          documentId: document.id,
-          preset: effectiveReloadOptions.xyzrenderPreset ?? null,
-          controls: effectiveReloadOptions.xyzrenderControls ?? null,
-        },
-      }, "*");
-      return;
-    }
-    pendingViewerReloadDocumentIdRef.current = document.id;
-    pendingViewerReloadOptionsRef.current = effectiveReloadOptions;
-    await openDocuments([document.path], effectiveReloadOptions, undefined, { inActiveTab: true });
-    pendingViewerReloadOptionsRef.current = null;
-    pendingViewerReloadDocumentIdRef.current = null;
-  }, [openDocuments]);
   useMenuEvents({
     chooseFiles,
     openMostRecentStructure,
