@@ -21,6 +21,7 @@ const [
   appFileActionsHook,
   appFileOpenHook,
   appFepWorkflowsHook,
+  appGridControlMessagesHook,
   appGridFileActionsHook,
   appGridRuntimeMessagesHook,
   appGridWorkflowsHook,
@@ -168,6 +169,7 @@ const [
   source('apps/desktop/src/hooks/use-app-file-actions.ts'),
   source('apps/desktop/src/hooks/use-app-file-open.ts'),
   source('apps/desktop/src/hooks/use-app-fep-workflows.ts'),
+  source('apps/desktop/src/hooks/use-app-grid-control-messages.ts'),
   source('apps/desktop/src/hooks/use-app-grid-file-actions.ts'),
   source('apps/desktop/src/hooks/use-app-grid-runtime-messages.ts'),
   source('apps/desktop/src/hooks/use-app-grid-workflows.ts'),
@@ -911,7 +913,7 @@ assert.match(appDescriptorsHook, /runGridDescriptorCalculation\(documentId, targ
 assert.match(appDescriptorsHook, /Descriptor calculation failed:/);
 assert.match(app, /useAppDirtyGridDocuments\(\)/);
 assert.doesNotMatch(app, /setDirtyGridDocuments/);
-assert.match(app, /updateDirtyGridDocument\(documentId, body\.dirty === true\)/);
+assert.match(appGridControlMessagesHook, /updateDirtyGridDocument\(documentId, body\.dirty === true\)/);
 assert.match(appGridFileActionsHook, /forgetDirtyGridDocument\(typeof body\.documentId === "string" \? body\.documentId : null\)/);
 assert.match(app, /clearDirtyGridDocuments\(\);/);
 assert.match(appDirtyGridHook, /useState<Set<string>>\(\(\) => new Set\(\)\)/);
@@ -2470,6 +2472,9 @@ assert.match(ketcherPage, /disabled=\{!ketcher \|\| exportingSketch \|\| \(gridE
 assert.match(ketcherPage, /\{gridEditSource \? "Apply" : "Load"\}/);
 assert.doesNotMatch(ketcherPage, /actions\.openCommandPalette/);
 assert.match(app, /body\?\.type === "openInKetcher"/);
+assert.match(appGridControlMessagesHook, /body\?\.type === "openInKetcher"/);
+assert.match(appGridControlMessagesHook, /openKetcherWithFragment\(title, text/);
+assert.match(appGridControlMessagesHook, /openKetcherWithStructures\(\[targetPath\]\)/);
 assert.match(appKetcherActionsHook, /const openKetcherWithFragment = useCallback/);
 assert.match(app, /textBase64/);
 assert.match(ketcherWorkflow, /export function queueKetcherImportRequest\(request: KetcherImportRequest\)/);
@@ -4433,15 +4438,21 @@ assert.match(app, /invoke<string>\("write_text_file"/);
 assert.match(app, /invoke<string>\("write_base64_file"/);
 assert.match(app, /isKnownViewerMessageSource\(event\.source, body\?\.documentId\)/);
 assert.match(app, /data\?\.source !== "burrete-grid"/);
-assert.match(app, /body\?\.type === "copyText"/);
-assert.match(app, /navigator\.clipboard\.writeText\(text\)/);
+assert.match(app, /handleGridControlMessage\(body\)/);
+assert.match(appGridControlMessagesHook, /body\?\.type === "copyText"/);
+assert.match(appGridControlMessagesHook, /writeClipboardText\(text\)/);
+assert.match(appGridControlMessagesHook, /body\?\.type === "calculateGridDescriptors"/);
+assert.match(appGridControlMessagesHook, /calculateGridDescriptors\(documentId, rowIndexes\.length \? \{ rowIndexes \} : \{\}\)/);
+assert.match(appGridControlMessagesHook, /body\?\.type === "gridPerfMetric"/);
+assert.match(appGridControlMessagesHook, /writeGridPerfMetric\(body\)/);
 assert.match(app, /handleGridFileMessage\(body, event\.source\)/);
 assert.match(appGridFileActionsHook, /body\?\.type === "exportText"/);
 assert.match(appGridFileActionsHook, /const outputPath = await save\(/);
 assert.match(appGridFileActionsHook, /invoke<string>\("save_text_as"/);
 assert.match(appGridFileActionsHook, /body\?\.type === "saveGridAs"/);
 assert.match(appGridFileActionsHook, /body\?\.type === "saveGrid"/);
-assert.match(app, /body\?\.type === "gridDirtyChanged"/);
+assert.match(appGridControlMessagesHook, /body\?\.type === "gridDirtyChanged"/);
+assert.match(appGridControlMessagesHook, /updateDirtyGridDocument\(documentId, body\.dirty === true\)/);
 assert.match(appDirtyGridHook, /This grid has unsaved changes\. Save or Save As before closing to keep edits\. Close without saving\?/);
 assert.match(appDirtyGridHook, /\$\{dirtyCount\} grid document\$\{dirtyCount === 1 \? " has" : "s have"\} unsaved changes\. Save or Save As before closing to keep edits\. Close without saving\?/);
 assert.match(appGridFileActionsHook, /body\?\.type === "exportGridMolecule"/);
