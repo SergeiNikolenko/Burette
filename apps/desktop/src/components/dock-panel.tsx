@@ -354,6 +354,7 @@ function DockPanelContent({
         conformerStatus={state.conformerStatus}
         conformerSettings={state.conformerSettings}
         viewerLigandSelection={state.viewerLigandSelection}
+        structureOverlayMode={state.structureOverlayMode}
         xtbStatus={state.xtbStatus}
         xtbSettings={state.xtbSettings}
         xtbJobs={state.xtbJobs}
