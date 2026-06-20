@@ -17,7 +17,6 @@ import { useAppDescriptors } from "./hooks/use-app-descriptors";
 import { useAppDiagnostics } from "./hooks/use-app-diagnostics";
 import { useAppDockActions } from "./hooks/use-app-dock-actions";
 import { useAppDirtyGridDocuments } from "./hooks/use-app-dirty-grid-documents";
-import { useAppDockingPoseMessages } from "./hooks/use-app-docking-pose-messages";
 import { useAppDockingPoseSelection } from "./hooks/use-app-docking-pose-selection";
 import { useAppDockingWorkflows } from "./hooks/use-app-docking-workflows";
 import { useAppDockPayloadOpen } from "./hooks/use-app-dock-payload-open";
@@ -26,43 +25,28 @@ import { useAppFileActions } from "./hooks/use-app-file-actions";
 import { useAppFileOpen } from "./hooks/use-app-file-open";
 import { useAppFepWorkflows } from "./hooks/use-app-fep-workflows";
 import { useAppGenerate3DConformer, type PendingMolstarReplaceResolver } from "./hooks/use-app-generate-3d-conformer";
-import { useAppGridControlMessages } from "./hooks/use-app-grid-control-messages";
-import { useAppGridConformerMessages } from "./hooks/use-app-grid-conformer-messages";
-import { useAppGridFileActions } from "./hooks/use-app-grid-file-actions";
-import { useAppGridRuntimeMessages } from "./hooks/use-app-grid-runtime-messages";
 import { useAppGridWorkflows } from "./hooks/use-app-grid-workflows";
 import { useAppHostRuntimeOperations } from "./hooks/use-app-host-runtime-operations";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
 import { useAppKetcherActions } from "./hooks/use-app-ketcher-actions";
-import { useAppKetcherViewerMessages } from "./hooks/use-app-ketcher-viewer-messages";
 import { useAppMaintenance } from "./hooks/use-app-maintenance";
-import { useAppMolstarContextMessages } from "./hooks/use-app-molstar-context-messages";
 import { useAppMolstarActionSenders } from "./hooks/use-app-molstar-action-senders";
 import { useAppMolstarXtbContext } from "./hooks/use-app-molstar-xtb-context";
 import { useAppOpenActions } from "./hooks/use-app-open-actions";
 import { useAppOpenDropMergeCollections } from "./hooks/use-app-open-drop-merge-collections";
 import { useAppPreferenceEffects } from "./hooks/use-app-preference-effects";
 import { useAppResize } from "./hooks/use-app-resize";
-import { useAppRendererMessage } from "./hooks/use-app-renderer-message";
 import { useAppSidebarProjects } from "./hooks/use-app-sidebar-projects";
-import { useAppSdfViewerMessages } from "./hooks/use-app-sdf-viewer-messages";
 import { useAppShellActions } from "./hooks/use-app-shell-actions";
 import { useAppShellNavigationActions } from "./hooks/use-app-shell-navigation-actions";
 import { useAppShellViewState } from "./hooks/use-app-shell-view-state";
 import { useAppStartupEffects } from "./hooks/use-app-startup-effects";
 import { useAppStatus } from "./hooks/use-app-status";
 import { useAppUpdates } from "./hooks/use-app-updates";
-import { useAppViewerFileActions } from "./hooks/use-app-viewer-file-actions";
-import { useAppViewerBridgeMessages } from "./hooks/use-app-viewer-bridge-messages";
-import { useAppViewerConformerMessages } from "./hooks/use-app-viewer-conformer-messages";
-import { useAppViewerHostMessages } from "./hooks/use-app-viewer-host-messages";
+import { useAppViewerBridgeController } from "./hooks/use-app-viewer-bridge-controller";
 import { useAppViewerReloadActions } from "./hooks/use-app-viewer-reload-actions";
-import { useAppViewerRuntimeFileMessages } from "./hooks/use-app-viewer-runtime-file-messages";
-import { useAppViewerRuntimeMessages } from "./hooks/use-app-viewer-runtime-messages";
-import { useAppViewerStateMessages } from "./hooks/use-app-viewer-state-messages";
 import { useAppWorkspaceActions } from "./hooks/use-app-workspace-actions";
 import { useAppXtbWorkflows } from "./hooks/use-app-xtb-workflows";
-import { useAppXyzrenderSheetMessages } from "./hooks/use-app-xyzrender-sheet-messages";
 import { useAgentSession } from "./hooks/use-agent-session";
 import { useAppClipboard } from "./hooks/use-app-clipboard";
 import { useMenuEvents } from "./hooks/use-menu-events";
@@ -109,25 +93,17 @@ import {
   useSetDocuments,
 } from "./hooks/use-tabs";
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
-import { openBrowserDevMolstarContextDocument, openBrowserDevTextDocument } from "./lib/browser-dev-documents";
 import { expandBrowserDevStructureBundles } from "./lib/browser-dev-structure-bundles";
 import { writeClipboardText } from "./lib/clipboard";
 import { detectContentSpectrumPaths } from "./lib/content-spectrum-detection";
-import { isProteinLikeDockingSource } from "./lib/docking-documents";
 import { structureExtensionFromPath } from "./lib/file-routing";
 import type { StructureDragPayload } from "./lib/structure-drag";
-import {
-  activeViewerIframeForDocument,
-  isKnownViewerMessageSource,
-  postMessageToViewerSource,
-} from "./lib/viewer-bridge";
+import { activeViewerIframeForDocument, isKnownViewerMessageSource } from "./lib/viewer-bridge";
 import type { ViewerDocument, ViewerReloadOptions } from "./types";
 
 const CommandPalette = lazy(() => import("./components/command-palette").then((module) => ({
   default: module.CommandPalette,
 })));
-
-type MolstarContextDocument = Parameters<typeof openBrowserDevMolstarContextDocument>[0];
 
 export default function App() {
   const preferences = useViewerPreferences();
@@ -535,17 +511,6 @@ export default function App() {
     pushStatus,
   });
 
-  const { handleGridFileMessage } = useAppGridFileActions({
-    documents,
-    forgetDirtyGridDocument,
-    postMessageToViewerSource,
-    pushErrorStatus,
-    pushStatus,
-  });
-  const { handleGridRuntimeMessage } = useAppGridRuntimeMessages({
-    postMessageToViewerSource,
-  });
-
   const {
     chooseWorkspace,
     openProjectFolder,
@@ -603,65 +568,6 @@ export default function App() {
     setActiveDocument,
     setStructureDragActive,
     tabs,
-  });
-
-  const { handleGridControlMessage } = useAppGridControlMessages({
-    activeDocument,
-    calculateGridDescriptors,
-    documents,
-    openKetcherWithFragment,
-    openKetcherWithStructures,
-    pushErrorStatus,
-    pushStatus,
-    updateDirtyGridDocument,
-    writeClipboardText,
-    writeGridPerfMetric,
-  });
-  const { handleGridConformerMessage } = useAppGridConformerMessages({
-    openDocumentsInActiveTab,
-    postMessageToViewerSource,
-    preferences,
-    pushErrorStatus,
-    pushStatus,
-    rememberRecentStructures,
-  });
-  const { handleKetcherViewerMessage } = useAppKetcherViewerMessages({
-    activeDocument,
-    documents,
-    openKetcherWithFragment,
-    openKetcherWithStructures,
-    pushStatus,
-  });
-  const { handleViewerHostMessage } = useAppViewerHostMessages({
-    pendingMolstarReplaceRef,
-    pushStatus,
-  });
-  const { handleViewerConformerMessage } = useAppViewerConformerMessages({
-    activeDocument,
-    documents,
-    generate3DConformer,
-    postMessageToViewerSource,
-    pushStatus,
-  });
-  const { handleMolstarContextMessage } = useAppMolstarContextMessages({
-    activeDocument,
-    addDocuments,
-    documents,
-    openDockingDocument,
-    openDocuments,
-    preferences,
-    pushErrorStatus,
-    pushStatus,
-    rememberRecentStructures,
-  });
-
-  const { handleViewerFileMessage } = useAppViewerFileActions({
-    pushErrorStatus,
-    pushStatus,
-  });
-
-  const { handleXyzrenderSheetMessage } = useAppXyzrenderSheetMessages({
-    postMessageToViewerSource,
   });
 
   const {
@@ -745,58 +651,39 @@ export default function App() {
     pendingViewerReloadOptionsRef,
     xyzrenderOrientationRefRef,
   });
-  const { handleViewerRuntimeMessage, markViewerFirstRenderMessage } = useAppViewerRuntimeMessages({
-    documents,
-    pendingViewerReloadDocumentIdRef,
-    pendingViewerReloadOptionsRef,
-    pushStatus,
-    reloadActive,
-    xyzrenderOrientationRefRef,
-  });
-  const { handleRendererMessage } = useAppRendererMessage({
-    activeDocument,
-    documents,
-    openDocuments,
-    pendingViewerReloadDocumentIdRef,
-    pendingViewerReloadOptionsRef,
-    setPreference,
-    skipNextPreferenceRefreshRef,
-    xyzrenderOrientationRefRef,
-  });
-  const { handleViewerRuntimeFileMessage } = useAppViewerRuntimeFileMessages({
-    activeDocument,
-    documents,
-    postMessageToViewerSource,
-  });
-  const { handleViewerStateMessage } = useAppViewerStateMessages({
-    activeDocument,
-    addDocuments,
-    documents,
-    openCommandPalette,
-    setViewerLigandSelections,
-    setStructureOverlayModes,
-    toggleSidebar,
-  });
-  const { handleDockingPoseMessage } = useAppDockingPoseMessages({
+  useAppViewerBridgeController({
     activeDocument,
     addBackgroundDocuments,
+    addDocuments,
+    calculateGridDescriptors,
     documents,
+    forgetDirtyGridDocument,
+    generate3DConformer,
     notifyGridPoseReviewSelection,
-    setPoseReviewSelections,
-  });
-  const { handleSdfViewerMessage } = useAppSdfViewerMessages({
-    activeDocument,
-    documents,
-    openBrowserDevTextDocument,
     openDockingDocument,
     openDocuments,
     openDocumentsInActiveTab,
+    openKetcherWithFragment,
+    openKetcherWithStructures,
+    openCommandPalette,
     openPoseReviewWorkspace,
+    pendingMolstarReplaceRef,
+    pendingViewerReloadDocumentIdRef,
+    pendingViewerReloadOptionsRef,
     preferences,
     pushErrorStatus,
     pushStatus,
+    reloadActive,
     rememberRecentStructures,
+    setPreference,
     setPoseReviewSelections,
+    setStructureOverlayModes,
+    setViewerLigandSelections,
+    skipNextPreferenceRefreshRef,
+    toggleSidebar,
+    updateDirtyGridDocument,
+    writeGridPerfMetric,
+    xyzrenderOrientationRefRef,
   });
   useMenuEvents({
     chooseFiles,
@@ -811,27 +698,6 @@ export default function App() {
     openLogs,
     openSettings,
     checkForUpdates,
-  });
-
-  useAppViewerBridgeMessages({
-    handleDockingPoseMessage,
-    handleGridConformerMessage,
-    handleGridControlMessage,
-    handleGridFileMessage,
-    handleGridRuntimeMessage,
-    handleKetcherViewerMessage,
-    handleMolstarContextMessage,
-    handleRendererMessage,
-    handleSdfViewerMessage,
-    handleViewerConformerMessage,
-    handleViewerFileMessage,
-    handleViewerHostMessage,
-    handleViewerRuntimeFileMessage,
-    handleViewerRuntimeMessage,
-    handleViewerStateMessage,
-    handleXyzrenderSheetMessage,
-    isKnownViewerMessageSource,
-    markViewerFirstRenderMessage,
   });
 
   useAppPreferenceEffects({
