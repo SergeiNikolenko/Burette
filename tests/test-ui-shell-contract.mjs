@@ -35,6 +35,7 @@ const [
   appMaintenanceHook,
   appMolstarContextMessagesHook,
   appMolstarXtbContextHook,
+  appXtbWorkflowsHook,
   appOpenActionsHook,
   appQuickLookHook,
   appResizeHook,
@@ -201,6 +202,7 @@ const [
   source('apps/desktop/src/hooks/use-app-maintenance.ts'),
   source('apps/desktop/src/hooks/use-app-molstar-context-messages.ts'),
   source('apps/desktop/src/hooks/use-app-molstar-xtb-context.ts'),
+  source('apps/desktop/src/hooks/use-app-xtb-workflows.ts'),
   source('apps/desktop/src/hooks/use-app-open-actions.ts'),
   source('apps/desktop/src/hooks/use-app-quick-look.ts'),
   source('apps/desktop/src/hooks/use-app-resize.ts'),
@@ -1752,6 +1754,18 @@ assert.match(appMolstarXtbContextHook, /data\?\.source !== "burrete-agent-viewer
 assert.match(appMolstarXtbContextHook, /isKnownViewerMessageSource\(event\.source, document\.id\)/);
 assert.match(appMolstarXtbContextHook, /window\.setTimeout\(\(\) => finish\(null\), 500\)/);
 assert.match(appMolstarXtbContextHook, /action: \{ type: "get_xtb_context" \}/);
+assert.match(app, /useAppXtbWorkflows\(\{\s*activeDocument,\s*addDockDrop,\s*cancelledXtbJobIdsRef,/s);
+assert.doesNotMatch(app, /const runXtbJob = useCallback/);
+assert.doesNotMatch(app, /function countXyzFrames\(text: string\)/);
+assert.doesNotMatch(app, /function xtbInputRequestForDocument/);
+assert.doesNotMatch(app, /function xtbInputRequestForMolstarContextDocument/);
+assert.match(appXtbWorkflowsHook, /directChemistryJobGuardMessage\("xTB"/);
+assert.match(appXtbWorkflowsHook, /runXtbRequest\(\{/);
+assert.match(appXtbWorkflowsHook, /requestXtbStatus\(\)\.then\(setXtbStatus\)\.catch\(\(\) => \{\}\)/);
+assert.match(appXtbWorkflowsHook, /openOptimizedPoseInCurrentView/);
+assert.match(appXtbWorkflowsHook, /xtbOperationLabel\(operation\)/);
+assert.match(appXtbWorkflowsHook, /molstarContextEntryExtension\(entry\.format\)/);
+assert.match(appXtbWorkflowsHook, /operation === "dock"/);
 assert.match(appViewerHostMessagesHook, /Structure action did not match the structure/);
 assert.match(appViewerHostMessagesHook, /bodyString\(body\.id\)\.startsWith\("text-selection-"\)/);
 assert.doesNotMatch(app, /pushStatus\("Text selection applied"/);
