@@ -567,6 +567,7 @@ export default function App() {
   const [conformerSettings, setConformerSettingsState] = useState<ConformerSettings>(() => readConformerSettings());
   const [conformerJobs, setConformerJobs] = useState<ConformerJob[]>([]);
   const [viewerLigandSelections, setViewerLigandSelections] = useState<Record<string, ViewerLigandSelection | null>>({});
+  const [structureOverlayModes, setStructureOverlayModes] = useState<Record<string, "single" | "all">>({});
   const [xtbStatus, setXtbStatus] = useState<XtbStatus | null>(null);
   const [xtbSettings, setXtbSettingsState] = useState<XtbSettings>(() => readXtbSettings());
   const [xtbJobs, setXtbJobs] = useState<XtbJob[]>([]);
@@ -3256,6 +3257,7 @@ export default function App() {
           limit?: number | null;
           activePose?: number | null;
           poseMode?: string | null;
+          overlayKind?: string | null;
           sourcePath?: string | null;
           controls?: ViewerReloadOptions["xyzrenderControls"];
           renderer?: string | null;
@@ -3426,6 +3428,13 @@ export default function App() {
           setPoseReviewSelections((previous) => ({ ...previous, [gridDocument.id]: activePose }));
           notifyGridPoseReviewSelection(gridDocument.id, activePose);
         }
+        return;
+      }
+      if (data.source === "burrete-viewer" && body?.type === "structureOverlayModeChanged") {
+        const documentId = typeof body.documentId === "string" ? body.documentId : "";
+        if (!documentId) return;
+        const mode = body.mode === "all" ? "all" : "single";
+        setStructureOverlayModes((previous) => ({ ...previous, [documentId]: mode }));
         return;
       }
       if (
@@ -4926,6 +4935,7 @@ export default function App() {
     conformerSettings,
     conformerJobs,
     viewerLigandSelection: activeDocument ? viewerLigandSelections[activeDocument.id] ?? null : null,
+    structureOverlayMode: activeDocument ? structureOverlayModes[activeDocument.id] ?? "single" : "single",
     xtbStatus,
     xtbSettings,
     xtbJobs,
