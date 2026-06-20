@@ -19,6 +19,7 @@ const [
   appDockingWorkflowsHook,
   appFileActionsHook,
   appFileOpenHook,
+  appGridWorkflowsHook,
   appDockPayloadHook,
   appKetcherActionsHook,
   appBootstrapHook,
@@ -158,6 +159,7 @@ const [
   source('apps/desktop/src/hooks/use-app-docking-workflows.ts'),
   source('apps/desktop/src/hooks/use-app-file-actions.ts'),
   source('apps/desktop/src/hooks/use-app-file-open.ts'),
+  source('apps/desktop/src/hooks/use-app-grid-workflows.ts'),
   source('apps/desktop/src/hooks/use-app-dock-payload-open.ts'),
   source('apps/desktop/src/hooks/use-app-ketcher-actions.ts'),
   source('apps/desktop/src/hooks/use-app-bootstrap.ts'),
@@ -2870,7 +2872,7 @@ assert.match(app, /const xyzrenderOrientationRefRef = useRef<string \| null>\(nu
 assert.match(app, /const skipNextPreferenceRefreshRef = useRef\(false\)/);
 assert.match(app, /source: "burrete-host"[\s\S]*type: "setXyzrenderControls"/);
 assert.match(app, /body\?\.type === "error"/);
-assert.match(app, /summarizeErrors\(result\.errors\)/);
+assert.match(appGridWorkflowsHook, /summarizeErrors\(result\.errors\)/);
 assert.match(app, /if \(body\?\.type === "setXyzrenderOrientation"\)/);
 assert.match(app, /if \(body\?\.type === "setXyzrenderPreset"\)/);
 assert.match(app, /pendingViewerReloadDocumentIdRef\.current = body\.documentId \?\? null/);
@@ -4427,14 +4429,15 @@ assert.match(appFileOpenHook, /invoke<ViewerDocument>\("open_delimited_grid_docu
 assert.match(appFileOpenHook, /const showDelimitedGridColumnOpenMenu = useCallback/);
 assert.match(appFileOpenHook, /invoke<GridDelimitedColumnChoice\[\]>\("grid_delimited_columns"/);
 assert.match(appFileOpenHook, /void showDelimitedGridColumnOpenMenu\(cleanPaths\[0\], effectivePreferences, options\.replace === true\)/);
-assert.match(app, /const appendGridRecords = useCallback/);
-assert.match(app, /invoke<GridAppendResult>\("grid_append_records"/);
-assert.match(app, /const appendDelimitedGridRecords = useCallback/);
-assert.match(app, /invoke<GridAppendResult>\("grid_append_delimited_records"/);
-assert.match(app, /const showDelimitedGridColumnAppendMenu = useCallback/);
-assert.match(app, /void showDelimitedGridColumnAppendMenu\(targetDocument, payload\.paths\[0\]\)/);
-assert.match(app, /notifyGridRecordsAppended\(targetDocument\.id, result\)/);
-assert.match(app, /type: "gridRecordsAppended"/);
+assert.match(app, /from "\.\/hooks\/use-app-grid-workflows"/);
+assert.match(appGridWorkflowsHook, /const appendGridRecords = useCallback/);
+assert.match(appGridWorkflowsHook, /invoke<GridAppendResult>\("grid_append_records"/);
+assert.match(appGridWorkflowsHook, /const appendDelimitedGridRecords = useCallback/);
+assert.match(appGridWorkflowsHook, /invoke<GridAppendResult>\("grid_append_delimited_records"/);
+assert.match(appGridWorkflowsHook, /const showDelimitedGridColumnAppendMenu = useCallback/);
+assert.match(appGridWorkflowsHook, /void showDelimitedGridColumnAppendMenu\(targetDocument, payload\.paths\[0\]\)/);
+assert.match(appGridWorkflowsHook, /notifyGridRecordsAppended\(targetDocument\.id, result\)/);
+assert.match(appGridWorkflowsHook, /type: "gridRecordsAppended"/);
 assert.match(app, /appendGridRecords,/);
 assert.match(gridViewer, /dirty: false/);
 assert.match(gridViewer, /dirtyReason: ''/);
@@ -5154,8 +5157,8 @@ assert.match(app, /addBackgroundDocuments\(\[\{/);
 assert.match(app, /poseMode,/);
 assert.match(appDockingWorkflowsHook, /if \(request\.sceneMode && rightDockOpen && rightDockActiveTab === "descriptors"\) \{\s*setDockOpen\("right", false\);\s*\}/);
 assert.match(appDockingWorkflowsHook, /openBrowserDevDockingDocument\(request\.receptorPath, request\.ligandPaths, preferences, options\)/);
-assert.match(app, /const point = payload\.point && Number\.isFinite\(payload\.point\.x\) && Number\.isFinite\(payload\.point\.y\)/);
-assert.match(app, /point,/);
+assert.match(appGridWorkflowsHook, /const point = payload\.point && Number\.isFinite\(payload\.point\.x\) && Number\.isFinite\(payload\.point\.y\)/);
+assert.match(appGridWorkflowsHook, /point,/);
 assert.match(appDockingWorkflowsHook, /invoke<ViewerDocument>\("open_docking_document"/);
 assert.match(appDockingWorkflowsHook, /rememberRecentStructures\(\[document\]\)/);
 assert.match(app, /setStructureDragActive/);
