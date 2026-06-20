@@ -142,6 +142,7 @@ pub fn run() {
             commands::grid::grid_close_runtime,
             commands::documents::sync_viewer_preferences,
             commands::preview_cache::clear_preview_cache,
+            commands::runtime_doctor::external_runtime_doctor,
             commands::shell::export_diagnostics_bundle,
             commands::shell::open_logs_folder,
             commands::shell::open_external_url,
