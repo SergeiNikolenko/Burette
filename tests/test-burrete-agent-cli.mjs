@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
@@ -58,6 +58,10 @@ try {
   assert.match(cliSource, /function openAuto\(file, options\)/);
   assert.match(cliSource, /function openBrowserPreview\(file, options/);
   assert.match(cliSource, /function openBrowserAgentShell\(file, options\)/);
+  assert.match(cliSource, /function openPrebuiltBrowserAgentShell/);
+  assert.match(cliSource, /agent-shell-server\.mjs/);
+  assert.match(cliSource, /BURRETE_AGENT_SHELL_DIST_DIR/);
+  assert.match(cliSource, /runtime: 'prebuilt-static'/);
   assert.match(cliSource, /spawn\('vp', \['dev', 'apps\/desktop'/);
   assert.match(cliSource, /await allocatePort\(host\)/);
   assert.match(cliSource, /mkdtemp\(resolve\(tmpdir\(\), 'burrete-agent-shell-'\)\)/);
@@ -137,7 +141,30 @@ try {
   await writeFile(fakeVp, '#!/bin/sh\necho "fake vp native binding failure" >&2\nexit 42\n');
   await chmod(fakeVp, 0o755);
   try {
+    const prebuiltDist = await mkdtemp(resolve(tmpdir(), 'burrete-agent-shell-dist-'));
+    await mkdir(resolve(prebuiltDist, 'assets'), { recursive: true });
+    await writeFile(resolve(prebuiltDist, 'index.html'), '<!doctype html><title>Burrete Agent Shell</title><main>ready</main>');
+    try {
+      const prebuiltShell = runCliWithEnv(['open', '--mode', 'browser-agent-shell', 'samples/mini.pdb'], {
+        BURRETE_AGENT_SHELL_DIST_DIR: prebuiltDist,
+        PATH: `${fakeBin}:${process.env.PATH}`,
+      });
+      assert.equal(prebuiltShell.status, 0, prebuiltShell.stderr);
+      const prebuiltPayload = JSON.parse(prebuiltShell.stdout);
+      assert.equal(prebuiltPayload.ok, true);
+      assert.equal(prebuiltPayload.result.mode, 'browser-agent-shell');
+      assert.equal(prebuiltPayload.result.runtime, 'prebuilt-static');
+      if (prebuiltPayload.result.processId) {
+        try {
+          process.kill(prebuiltPayload.result.processId, 'SIGTERM');
+        } catch {}
+      }
+    } finally {
+      await rm(prebuiltDist, { recursive: true, force: true });
+    }
+
     const failedShell = runCliWithEnv(['open', '--mode', 'browser-agent-shell', 'samples/mini.pdb'], {
+      BURRETE_AGENT_SHELL_FORCE_VP: '1',
       PATH: `${fakeBin}:${process.env.PATH}`,
     });
     assert.equal(failedShell.status, 1);
@@ -146,6 +173,7 @@ try {
     assert.equal(failedPayload.error.code, 'BROWSER_AGENT_SHELL_FAILED');
     assert.match(failedPayload.error.details.logTail, /fake vp native binding failure/);
     const autoFallback = runCliWithEnv(['open', '--mode', 'auto', 'samples/mini.pdb'], {
+      BURRETE_AGENT_SHELL_FORCE_VP: '1',
       PATH: `${fakeBin}:${process.env.PATH}`,
     });
     assert.equal(autoFallback.status, 0, autoFallback.stderr);

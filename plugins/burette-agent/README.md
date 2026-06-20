@@ -68,12 +68,17 @@ MCP tools wrap this CLI instead of reimplementing the app control layer.
 available. It tries `browser-agent-shell` first and falls back to the tokenized
 `browser-preview` server for basic molecular opening and observation.
 
-The current full `browser-agent-shell` implementation is source-checkout
-oriented: it starts `vp dev` so Vite can serve the application assets and the
-runtime `/__burette/agent-session/*` endpoints. A clean installation can avoid
-that dependency only after the plugin ships a prebuilt agent-shell web bundle
-plus a small local static/runtime server for the same endpoints. Plain built
-assets are not enough because `observe` and `act` need the session endpoint.
+The full `browser-agent-shell` prefers a prebuilt agent-shell web bundle served
+by `scripts/agent-shell-server.mjs`. Build that bundle with:
+
+```bash
+bun run build:agent-shell
+```
+
+When `apps/desktop/dist/index.html` is present, the CLI serves those static
+assets plus the runtime `/__burette/agent-session/*`, `/__burette/read-file`,
+and `/__burette/file-bundle` endpoints without `vp`. If the prebuilt bundle is
+missing in a source checkout, the CLI falls back to `vp dev`.
 
 ## Local Codex Installation
 
@@ -85,6 +90,7 @@ Codex config:
 
 ```bash
 cd /path/to/Burette
+bun run build:agent-shell
 rm -rf ~/.codex/plugins/cache/nikolenko-local/burrete
 install_root="$HOME/.codex/plugins/cache/nikolenko-local/burrete/0.1.0"
 mkdir -p "$install_root"

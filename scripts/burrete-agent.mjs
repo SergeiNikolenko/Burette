@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, open as openFile, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -10,6 +11,10 @@ import { dirname, resolve } from 'node:path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
 const agentPreviewScript = resolve(__dirname, 'agent-preview.mjs');
+const agentShellServerScript = resolve(__dirname, 'agent-shell-server.mjs');
+const agentShellDistDir = process.env.BURRETE_AGENT_SHELL_DIST_DIR
+  ? resolve(process.env.BURRETE_AGENT_SHELL_DIST_DIR)
+  : resolve(repoRoot, 'apps/desktop/dist');
 const apiVersion = 'burette-agent-cli/v1';
 const supportedModes = new Set(['auto', 'browser-preview', 'browser-agent-shell', 'browser-dev-shell', 'desktop-app']);
 
@@ -278,6 +283,18 @@ async function openBrowserAgentShell(file, options) {
     VITE_BURETTE_DEV_INSTANCE: 'agent',
   };
   const logPath = resolve(sessionDir, 'server.log');
+  if (hasPrebuiltAgentShell() && process.env.BURRETE_AGENT_SHELL_FORCE_VP !== '1') {
+    await openPrebuiltBrowserAgentShell({
+      initialFile,
+      sessionDir,
+      host,
+      port,
+      url,
+      logPath,
+      options,
+    });
+    return;
+  }
   const logHandle = await openFile(logPath, 'a');
   let childExit = null;
   const child = spawn('vp', ['dev', 'apps/desktop', '--host', host, '--port', String(port), '--strictPort', '--config', 'apps/desktop/vite.config.ts'], {
@@ -313,6 +330,69 @@ async function openBrowserAgentShell(file, options) {
     result: {
       mode: 'browser-agent-shell',
       legacyMode: 'browser-dev-shell',
+      runtime: 'vite-dev',
+      url: url.toString(),
+      host,
+      port,
+      launched: false,
+      sessionDir,
+      logPath,
+      initialPaths: [initialFile],
+      processId: child.pid,
+      browser: 'Codex in-app Browser',
+      observe: `node scripts/burrete-agent.mjs observe --session-dir ${JSON.stringify(sessionDir)}`,
+      act: `node scripts/burrete-agent.mjs act --session-dir ${JSON.stringify(sessionDir)} '<json-action>'`,
+    },
+  }, null, 2));
+}
+
+function hasPrebuiltAgentShell() {
+  return existsSync(resolve(agentShellDistDir, 'index.html')) && existsSync(agentShellServerScript);
+}
+
+async function openPrebuiltBrowserAgentShell({ initialFile, sessionDir, host, port, url, logPath, options }) {
+  const logHandle = await openFile(logPath, 'a');
+  let childExit = null;
+  const child = spawn(process.execPath, [
+    agentShellServerScript,
+    '--dist', agentShellDistDir,
+    '--session-dir', sessionDir,
+    '--allow', dirname(initialFile),
+    '--host', host,
+    '--port', String(port),
+  ], {
+    cwd: repoRoot,
+    detached: true,
+    stdio: ['ignore', logHandle.fd, logHandle.fd],
+  });
+  await logHandle.close();
+  child.once('error', (error) => {
+    childExit = { error };
+  });
+  child.once('exit', (code, signal) => {
+    childExit = { code, signal };
+  });
+  try {
+    await waitForHttpReady(url, 10000, {
+      childExit: () => childExit,
+      logPath,
+      failureCode: 'BROWSER_AGENT_SHELL_FAILED',
+      timeoutCode: 'BROWSER_AGENT_SHELL_TIMEOUT',
+      label: 'Browser agent shell',
+    });
+  } catch (error) {
+    if (options.recover && error?.burreteAgentError) throw error;
+    if (error?.burreteAgentError) fail(error.code, error.message, 1, error.details);
+    throw error;
+  }
+  child.unref();
+  console.log(JSON.stringify({
+    ok: true,
+    apiVersion,
+    result: {
+      mode: 'browser-agent-shell',
+      legacyMode: 'browser-dev-shell',
+      runtime: 'prebuilt-static',
       url: url.toString(),
       host,
       port,

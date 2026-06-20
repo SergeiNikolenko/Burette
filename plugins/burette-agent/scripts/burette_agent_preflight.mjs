@@ -45,16 +45,24 @@ const pluginManifestPath = path.join(pluginRoot, ".codex-plugin", "plugin.json")
 const repoPackagePath = path.join(repoRoot, "package.json");
 const cliPath = path.join(repoRoot, "scripts", "burrete-agent.mjs");
 const previewPath = path.join(repoRoot, "scripts", "agent-preview.mjs");
+const agentShellServerPath = path.join(repoRoot, "scripts", "agent-shell-server.mjs");
+const agentShellDistPath = process.env.BURRETE_AGENT_SHELL_DIST_DIR
+  ? path.resolve(process.env.BURRETE_AGENT_SHELL_DIST_DIR)
+  : path.join(repoRoot, "apps", "desktop", "dist");
 const desktopApp = process.env.BURRETE_AGENT_APP || null;
 const hasVp = commandExists("vp");
 
-const [pluginManifest, repoPackage, hasCli, hasPreview, hasDesktopApp] = await Promise.all([
+const [pluginManifest, repoPackage, hasCli, hasPreview, hasAgentShellServer, hasAgentShellDist, hasDesktopApp] = await Promise.all([
   readJson(pluginManifestPath, {}),
   readJson(repoPackagePath, {}),
   exists(cliPath),
   exists(previewPath),
+  exists(agentShellServerPath),
+  exists(path.join(agentShellDistPath, "index.html")),
   desktopApp ? exists(desktopApp) : Promise.resolve(false),
 ]);
+const hasPrebuiltAgentShell = hasAgentShellServer && hasAgentShellDist;
+const hasFullBrowserAgentShell = hasCli && (hasPrebuiltAgentShell || hasVp);
 
 function commandExists(command) {
   const result = spawnSync(command, ["--version"], {
@@ -87,6 +95,14 @@ const payload = {
       path: previewPath,
       status: hasPreview ? "available" : "missing",
     },
+    browserAgentShellServer: {
+      path: agentShellServerPath,
+      status: hasAgentShellServer ? "available" : "missing",
+    },
+    browserAgentShellDist: {
+      path: agentShellDistPath,
+      status: hasAgentShellDist ? "available" : "missing",
+    },
     preferredDesktopApp: {
       path: desktopApp,
       status: desktopApp ? (hasDesktopApp ? "available" : "missing") : "not_configured",
@@ -107,8 +123,10 @@ const payload = {
       },
       {
         id: "browser-agent-shell",
-        status: hasCli && hasVp ? "available" : "blocked",
-        note: "Agent-owned full Browser shell on a fresh local port with ?devFiles=...; currently requires vp dev.",
+        status: hasFullBrowserAgentShell ? "available" : "blocked",
+        note: hasPrebuiltAgentShell
+          ? "Agent-owned full Browser shell from the prebuilt static bundle with local runtime endpoints."
+          : "Agent-owned full Browser shell on a fresh local port with ?devFiles=...; currently requires vp dev until the prebuilt bundle is present.",
       },
       {
         id: "browser-preview",
