@@ -31,6 +31,7 @@ import { useAppOpenActions } from "./hooks/use-app-open-actions";
 import { useAppQuickLook } from "./hooks/use-app-quick-look";
 import { useAppResize } from "./hooks/use-app-resize";
 import { useAppSidebarProjects } from "./hooks/use-app-sidebar-projects";
+import { useAppSdfViewerMessages } from "./hooks/use-app-sdf-viewer-messages";
 import { useAppStartupEffects } from "./hooks/use-app-startup-effects";
 import { useAppStatus } from "./hooks/use-app-status";
 import { useAppUpdates } from "./hooks/use-app-updates";
@@ -1488,6 +1489,20 @@ export default function App() {
     reloadActive,
     xyzrenderOrientationRefRef,
   });
+  const { handleSdfViewerMessage } = useAppSdfViewerMessages({
+    activeDocument,
+    documents,
+    openBrowserDevTextDocument,
+    openDockingDocument,
+    openDocuments,
+    openDocumentsInActiveTab,
+    openPoseReviewWorkspace,
+    preferences,
+    pushErrorStatus,
+    pushStatus,
+    rememberRecentStructures,
+    setPoseReviewSelections,
+  });
   const reloadXyzrenderDocument = useCallback(async (document: ViewerDocument, reloadOptions: ViewerReloadOptions) => {
     const effectiveReloadOptions = {
       ...reloadOptions,
@@ -1748,128 +1763,7 @@ export default function App() {
       if (handleViewerRuntimeMessage(body)) {
         return;
       }
-      if (body?.type === "openSdfMolstarDocument") {
-        const title = typeof body.title === "string" && body.title.trim()
-          ? body.title.trim()
-          : "selected-molecules.sdf";
-        const textBase64 = typeof body.textBase64 === "string" ? body.textBase64.trim() : "";
-        if (!textBase64) {
-          pushErrorStatus("Select one or more molecules before opening Molstar.", "Molstar view failed");
-          return;
-        }
-        const requestedReceptorPath = typeof body.receptorPath === "string"
-          ? body.receptorPath.trim()
-          : "";
-        const controlLabel = typeof body.controlLabel === "string" && body.controlLabel.trim()
-          ? body.controlLabel.trim()
-          : "Molecule";
-        const receptorDocument = requestedReceptorPath
-          ? documents.find((document) => (
-            document.path === requestedReceptorPath &&
-            isProteinLikeDockingSource(document.path)
-          ))
-          : null;
-        if (requestedReceptorPath && !receptorDocument) {
-          pushErrorStatus("Selected receptor is not available for Molstar.", "Molstar view failed");
-          return;
-        }
-        try {
-          const bytes = Uint8Array.from(atob(textBase64), (char) => char.charCodeAt(0));
-          const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
-          if (!text.trim()) {
-            pushErrorStatus("Selected molecules do not have structure data for Molstar.", "Molstar view failed");
-            return;
-          }
-          const molstarPreferences = { ...preferences, rendererMode: "molstar" as const };
-          const document = isTauriRuntime()
-            ? await invoke<ViewerDocument>("open_text_structure", {
-                request: {
-                  title,
-                  extension: "sdf",
-                  text,
-                },
-                preferences: molstarPreferences,
-                reloadOptions: { sdfPoseControlLabel: controlLabel },
-              })
-            : await openBrowserDevTextDocument(
-                title,
-                "sdf",
-                text,
-                molstarPreferences,
-                { sdfPoseControlLabel: controlLabel },
-              );
-          if (receptorDocument && document.path) {
-            pushStatus("Opening selected molecules in Molstar docking view...");
-            void openDockingDocument(receptorDocument.path, [document.path]);
-            return;
-          }
-          openDocumentsInActiveTab([document]);
-          rememberRecentStructures([document]);
-          pushStatus("Opened selected molecules in Molstar");
-        } catch (error) {
-          pushErrorStatus(error, "Molstar view failed");
-        }
-        return;
-      }
-      if (body?.type === "openSdfPoseDocument") {
-        const requestedPath = typeof body.path === "string" ? body.path.trim() : "";
-        const pathDocument = requestedPath.length > 0
-          ? documents.find((document) => document.path === requestedPath) ?? null
-          : null;
-        const targetDocument = (body.documentId
-          ? documents.find((document) => document.id === body.documentId)
-          : null)
-          ?? pathDocument
-          ?? activeDocument;
-        const targetPath = requestedPath.length > 0
-          ? requestedPath
-          : targetDocument?.path;
-        if (targetPath) {
-          const poseTargetDocument = targetDocument?.path === targetPath ? targetDocument : pathDocument;
-          const activePose = Math.max(0, Math.trunc(Number(body.activePose) || 0));
-          if (poseTargetDocument) {
-            setPoseReviewSelections((previous) => ({ ...previous, [poseTargetDocument.id]: activePose }));
-          }
-          const requestedReceptorPath = typeof body.receptorPath === "string"
-            ? body.receptorPath.trim()
-            : "";
-          const receptorDocument = requestedReceptorPath
-            ? documents.find((document) => (
-              document.path === requestedReceptorPath &&
-              document.path !== targetPath &&
-              isProteinLikeDockingSource(document.path)
-            ))
-            : documents.find((document) => (
-              document.path !== targetPath && isProteinLikeDockingSource(document.path)
-            ));
-          if (requestedReceptorPath && !receptorDocument) {
-            pushErrorStatus("Selected receptor is not available for SDF poses.", "SDF poses failed");
-            return;
-          }
-          if (receptorDocument && poseTargetDocument) {
-            pushStatus("Opening pose-review workspace...");
-            void openPoseReviewWorkspace(receptorDocument, poseTargetDocument, activePose);
-          } else if (receptorDocument) {
-            pushStatus("Opening SDF poses in Molstar docking view...");
-            void openDockingDocument(receptorDocument.path, [targetPath]);
-          } else {
-            pushStatus("Opening SDF poses in Molstar...");
-            void openDocuments([targetPath], {}, { rendererMode: "molstar" }, { inActiveTab: true });
-          }
-        }
-        return;
-      }
-      if (body?.type === "openSdfGridDocument") {
-        const targetDocument = (body.documentId
-          ? documents.find((document) => document.id === body.documentId)
-          : null) ?? activeDocument;
-        const targetPath = typeof body.path === "string" && body.path.trim().length > 0
-          ? body.path.trim()
-          : targetDocument?.path;
-        if (targetPath) {
-          pushStatus("Opening SDF grid...");
-          void openDocuments([targetPath], undefined, { rendererMode: "grid2d" }, { inActiveTab: true });
-        }
+      if (await handleSdfViewerMessage(body)) {
         return;
       }
       if (body?.type === "generate3dGridSelection") {
@@ -2150,7 +2044,7 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, generate3DConformer, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleViewerFileMessage, handleViewerRuntimeMessage, handleXyzrenderSheetMessage, markViewerFirstRenderMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
+  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, generate3DConformer, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleSdfViewerMessage, handleViewerFileMessage, handleViewerRuntimeMessage, handleXyzrenderSheetMessage, markViewerFirstRenderMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
