@@ -33,6 +33,7 @@ const [
   appQuickLookHook,
   appResizeHook,
   appSidebarProjectsHook,
+  appSdfViewerMessagesHook,
   appStartupEffectsHook,
   appUpdatesHook,
   appViewerFileActionsHook,
@@ -184,6 +185,7 @@ const [
   source('apps/desktop/src/hooks/use-app-quick-look.ts'),
   source('apps/desktop/src/hooks/use-app-resize.ts'),
   source('apps/desktop/src/hooks/use-app-sidebar-projects.ts'),
+  source('apps/desktop/src/hooks/use-app-sdf-viewer-messages.ts'),
   source('apps/desktop/src/hooks/use-app-startup-effects.ts'),
   source('apps/desktop/src/hooks/use-app-updates.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-file-actions.ts'),
@@ -2930,23 +2932,24 @@ assert.match(app, /pendingViewerReloadDocumentIdRef\.current = renderer === "xyz
 assert.match(app, /skipNextPreferenceRefreshRef\.current = true/);
 assert.match(app, /setPreference\("rendererMode", renderer\)/);
 assert.match(app, /void openDocuments\(\[targetDocument\.path\], reloadOptions, \{ rendererMode: renderer \}, \{ inActiveTab: true \}\)/);
-assert.match(app, /body\?\.type === "openSdfMolstarDocument"/);
-assert.match(app, /pushErrorStatus\("Select one or more molecules before opening Molstar\.", "Molstar view failed"\)/);
-assert.match(app, /invoke<ViewerDocument>\("open_text_structure"/);
-assert.match(app, /rendererMode: "molstar" as const/);
-assert.match(app, /void openDockingDocument\(receptorDocument\.path, \[document\.path\]\)/);
-assert.match(app, /pushStatus\("Opening selected molecules in Molstar docking view\.\.\."\)/);
-assert.match(app, /pushStatus\("Opened selected molecules in Molstar"\)/);
-assert.match(app, /openDocumentsInActiveTab\(\[document\]\)/);
-assert.match(app, /body\?\.type === "openSdfPoseDocument"/);
-assert.match(app, /const targetPath = typeof body\.path === "string" && body\.path\.trim\(\)\.length > 0/);
-assert.match(app, /const requestedReceptorPath = typeof body\.receptorPath === "string"/);
-assert.match(app, /document\.path === requestedReceptorPath/);
-assert.match(app, /isProteinLikeDockingSource\(document\.path\)/);
+assert.match(app, /await handleSdfViewerMessage\(body\)/);
+assert.match(appSdfViewerMessagesHook, /body\?\.type === "openSdfMolstarDocument"/);
+assert.match(appSdfViewerMessagesHook, /pushErrorStatus\("Select one or more molecules before opening Molstar\.", "Molstar view failed"\)/);
+assert.match(appSdfViewerMessagesHook, /invoke<ViewerDocument>\("open_text_structure"/);
+assert.match(appSdfViewerMessagesHook, /rendererMode: "molstar" as const/);
+assert.match(appSdfViewerMessagesHook, /void openDockingDocument\(receptorDocument\.path, \[document\.path\]\)/);
+assert.match(appSdfViewerMessagesHook, /pushStatus\("Opening selected molecules in Molstar docking view\.\.\."\)/);
+assert.match(appSdfViewerMessagesHook, /pushStatus\("Opened selected molecules in Molstar"\)/);
+assert.match(appSdfViewerMessagesHook, /openDocumentsInActiveTab\(\[document\]\)/);
+assert.match(appSdfViewerMessagesHook, /body\?\.type === "openSdfPoseDocument"/);
+assert.match(appSdfViewerMessagesHook, /const targetPath = requestedPath\.length > 0/);
+assert.match(appSdfViewerMessagesHook, /const requestedReceptorPath = bodyString\(body\.receptorPath\)\.trim\(\)/);
+assert.match(appSdfViewerMessagesHook, /document\.path === requestedReceptorPath/);
+assert.match(appSdfViewerMessagesHook, /isProteinLikeDockingSource\(document\.path\)/);
 assert.match(app, /body\?\.type === "dockingPoseChanged"/);
 assert.match(app, /setPoseReviewSelections/);
 assert.match(app, /notifyGridPoseReviewSelection/);
-assert.match(app, /pushStatus\("Opening pose-review workspace\.\.\."\)/);
+assert.match(appSdfViewerMessagesHook, /pushStatus\("Opening pose-review workspace\.\.\."\)/);
 assert.match(appDockingWorkflowsHook, /const openPoseReviewWorkspace = useCallback/);
 assert.match(appDockingWorkflowsHook, /openPoseReviewTab\(\{/);
 assert.match(app, /from "\.\/hooks\/use-app-fep-workflows"/);
@@ -2966,15 +2969,15 @@ assert.match(appFepWorkflowsHook, /pushStatus\("Opened FEP network preview"\)/);
 assert.match(appFepWorkflowsHook, /const currentFepSetupRequest = useMemo<FepSetupRequest \| null>/);
 assert.match(app, /fepSetupRequest: currentFepSetupRequest/);
 assert.match(app, /openFepSetupWorkspace,/);
-assert.match(app, /void openPoseReviewWorkspace\(receptorDocument, poseTargetDocument, activePose\)/);
-assert.match(app, /pushStatus\("Opening SDF poses in Molstar docking view\.\.\."\)/);
-assert.match(app, /void openDockingDocument\(receptorDocument\.path, \[targetPath\]\)/);
-assert.match(app, /pushStatus\("Opening SDF poses in Molstar\.\.\."\)/);
-assert.match(app, /void openDocuments\(\[targetPath\], \{\}, \{ rendererMode: "molstar" \}, \{ inActiveTab: true \}\)/);
-assert.match(app, /body\?\.type === "openSdfGridDocument"/);
-assert.match(app, /const targetPath = typeof body\.path === "string" && body\.path\.trim\(\)\.length > 0/);
-assert.match(app, /pushStatus\("Opening SDF grid\.\.\."\)/);
-assert.match(app, /void openDocuments\(\[targetPath\], undefined, \{ rendererMode: "grid2d" \}, \{ inActiveTab: true \}\)/);
+assert.match(appSdfViewerMessagesHook, /void openPoseReviewWorkspace\(receptorDocument, poseTargetDocument, activePose\)/);
+assert.match(appSdfViewerMessagesHook, /pushStatus\("Opening SDF poses in Molstar docking view\.\.\."\)/);
+assert.match(appSdfViewerMessagesHook, /void openDockingDocument\(receptorDocument\.path, \[targetPath\]\)/);
+assert.match(appSdfViewerMessagesHook, /pushStatus\("Opening SDF poses in Molstar\.\.\."\)/);
+assert.match(appSdfViewerMessagesHook, /void openDocuments\(\[targetPath\], \{\}, \{ rendererMode: "molstar" \}, \{ inActiveTab: true \}\)/);
+assert.match(appSdfViewerMessagesHook, /body\?\.type === "openSdfGridDocument"/);
+assert.match(appSdfViewerMessagesHook, /const targetPath = bodyString\(body\.path\)\.trim\(\) \|\| targetDocument\?\.path/);
+assert.match(appSdfViewerMessagesHook, /pushStatus\("Opening SDF grid\.\.\."\)/);
+assert.match(appSdfViewerMessagesHook, /void openDocuments\(\[targetPath\], undefined, \{ rendererMode: "grid2d" \}, \{ inActiveTab: true \}\)/);
 assert.match(app, /body\?\.type === "openMolstarContextDocument"/);
 assert.match(app, /pushStatus\("Opening separate Molstar docking view\.\.\."\)/);
 assert.match(app, /void openDockingDocument\(targetDocument\.dockingRequest\.receptorPath, targetDocument\.dockingRequest\.ligandPaths\)/);
@@ -4896,9 +4899,9 @@ assert.match(app, /\.\.\.conformerGenerationPreferences\(preferences\)/);
 assert.match(app, /generatedTexts\.push\(generated3DPoseSetText\(text, extension, conformer\.text, "single"\)\.trimEnd\(\)\)/);
 assert.match(app, /Generated 3D for \$\{generatedTexts\.length\} molecule/);
 assert.match(app, /body\?\.type === "openSdfKetcherDocument"/);
-assert.match(app, /const controlLabel = typeof body\.controlLabel === "string" && body\.controlLabel\.trim\(\)/);
-assert.match(app, /reloadOptions: \{ sdfPoseControlLabel: controlLabel \}/);
-assert.match(app, /\{ sdfPoseControlLabel: controlLabel \}/);
+assert.match(appSdfViewerMessagesHook, /const controlLabel = bodyString\(body\.controlLabel\)\.trim\(\) \|\| "Molecule"/);
+assert.match(appSdfViewerMessagesHook, /reloadOptions: \{ sdfPoseControlLabel: controlLabel \}/);
+assert.match(appSdfViewerMessagesHook, /\{ sdfPoseControlLabel: controlLabel \}/);
 assert.match(browserDevDocuments, /\.\.\.\(reloadOptions\?\.sdfPoseControlLabel \? \{ sdfPoseControlLabel: reloadOptions\.sdfPoseControlLabel \} : \{\}\)/);
 assert.match(app, /openKetcherWithStructures\(\[\], fragments\)/);
 assert.match(gridViewer, /setStatus\(`\[grid\] Opening \$\{label\} in Molstar\.`\)/);
