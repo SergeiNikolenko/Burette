@@ -12,6 +12,7 @@ const [
   app,
   uiStore,
   appChemistryJobsHook,
+  appConformerWorkflowsHook,
   commandPaletteHook,
   appClipboardHook,
   appDescriptorsHook,
@@ -179,6 +180,7 @@ const [
   source('apps/desktop/src/App.tsx'),
   source('apps/desktop/src/stores/ui-store.ts'),
   source('apps/desktop/src/hooks/use-app-chemistry-jobs.ts'),
+  source('apps/desktop/src/hooks/use-app-conformer-workflows.ts'),
   source('apps/desktop/src/hooks/use-command-palette.ts'),
   source('apps/desktop/src/hooks/use-app-clipboard.ts'),
   source('apps/desktop/src/hooks/use-app-descriptors.ts'),
@@ -977,10 +979,11 @@ assert.match(appDiagnosticsHook, /invoke<string>\("export_diagnostics_bundle"/);
 assert.match(appDiagnosticsHook, /performanceMarks: collectPerformanceMarks\(\)/);
 assert.match(appDiagnosticsHook, /recentErrors: recentErrorsRef\.current/);
 assert.match(appDiagnosticsHook, /Diagnostics export failed/);
-assert.match(app, /from "\.\/lib\/chemistry-settings"/);
-assert.match(app, /from "\.\/lib\/chemistry-job-requests"/);
-assert.match(app, /from "\.\/lib\/direct-chemistry-guard"/);
+assert.match(appConformerWorkflowsHook, /from "\.\.\/lib\/chemistry-settings"/);
+assert.match(appConformerWorkflowsHook, /from "\.\.\/lib\/chemistry-job-requests"/);
+assert.match(appConformerWorkflowsHook, /from "\.\.\/lib\/direct-chemistry-guard"/);
 assert.match(app, /useAppChemistryJobs\(\{ pushErrorStatus, pushStatus \}\)/);
+assert.match(app, /useAppConformerWorkflows\(\{\s*activeDocument,\s*cancelledConformerJobIdsRef,\s*conformerSettings,/s);
 assert.doesNotMatch(app, /const \[conformerStatus, setConformerStatus\]/);
 assert.doesNotMatch(app, /const \[xtbStatus, setXtbStatus\]/);
 assert.match(appChemistryJobsHook, /readConformerSettings\(\)/);
@@ -996,6 +999,19 @@ assert.match(appChemistryJobsHook, /installXtbRequest\(\)/);
 assert.match(appChemistryJobsHook, /cancelConformerRequest\(jobId\)/);
 assert.match(appChemistryJobsHook, /cancelXtbRequest\(jobId\)/);
 assert.doesNotMatch(app, /async function requestXtbStatus/);
+assert.doesNotMatch(app, /const runConformerJob = useCallback/);
+assert.doesNotMatch(app, /function selectedPdbLigandConformerInput/);
+assert.doesNotMatch(app, /function conformerInputForMolstarContextDocument/);
+assert.doesNotMatch(app, /function conformerOutputDirectory/);
+assert.match(appConformerWorkflowsHook, /prepareConformerRequest\(fullRequest\)/);
+assert.match(appConformerWorkflowsHook, /runConformerRequest\(\{ \.\.\.fullRequest, workDir: preparedRun\.workDir \}\)/);
+assert.match(appConformerWorkflowsHook, /requestConformerStatus\(\)\.then\(setConformerStatus\)\.catch\(\(\) => \{\}\)/);
+assert.match(appConformerWorkflowsHook, /directChemistryJobGuardMessage\(/);
+assert.match(appConformerWorkflowsHook, /selectedPdbLigandConformerInput\(document, selection\)/);
+assert.match(appConformerWorkflowsHook, /conformerInputForMolstarContextDocument\(contextDocument\)/);
+assert.match(appConformerWorkflowsHook, /molstarContextEntryExtension\(entry\.format\)/);
+assert.match(appConformerWorkflowsHook, /canInspectConformerEnsemble\(document\.extension\)/);
+assert.match(appConformerWorkflowsHook, /inputDataBase64: inputText === null \? null : textToBase64\(inputText\)/);
 assert.doesNotMatch(app, /browserDevConformerJson/);
 assert.doesNotMatch(app, /DIRECT_CHEMISTRY_JOB_ATOM_LIMIT/);
 assert.doesNotMatch(app, /function estimateStructureAtomCount/);
