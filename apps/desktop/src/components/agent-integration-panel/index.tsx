@@ -229,10 +229,11 @@ function codexSummary(status: AgentIntegrationStatus | null) {
 
 function codexSetupPrompt(status: AgentIntegrationStatus | null) {
   const version = status?.bundledPlugin.version ?? "0.1.0";
+  const pluginPath = status?.bundledPlugin.path ?? "plugins/burette-agent";
   return [
     `Install or update the local Codex plugin @Burrete (id \`burrete\`) to version ${version}.`,
-    "Use the bundled plugin directory `plugins/burette-agent` from the current Burrete repository or app bundle.",
-    "If Codex cannot resolve that relative path, ask for the explicit bundle path from Burrete.",
+    `Use the bundled plugin directory \`${pluginPath}\`.`,
+    "Install it into `~/.codex/plugins/cache/nikolenko-local/burrete/0.1.0`, write `.burette-agent-install.json` with the current Burrete repository root, run `bun install --production` in that installed cache directory, point `~/.agents/plugins/burrete` at the installed cache directory, and enable `[plugins.\"burrete@nikolenko-local\"]` in `~/.codex/config.toml`.",
     "After installation, verify @Burrete is available in Codex, its skills load, and its MCP server is registered.",
   ].join("\n");
 }
