@@ -10,6 +10,7 @@ async function source(path) {
 const [
   desktopIndex,
   app,
+  appActiveTextDocumentHook,
   appAgentSessionActionsHook,
   uiStore,
   appChemistryJobsHook,
@@ -194,6 +195,7 @@ const [
 ] = await Promise.all([
   source('apps/desktop/index.html'),
   source('apps/desktop/src/App.tsx'),
+  source('apps/desktop/src/hooks/use-app-active-text-document.ts'),
   source('apps/desktop/src/hooks/use-app-agent-session-actions.ts'),
   source('apps/desktop/src/stores/ui-store.ts'),
   source('apps/desktop/src/hooks/use-app-chemistry-jobs.ts'),
@@ -4725,6 +4727,13 @@ assert.match(editorTabs, /id: "reveal-tab-text-file"/);
 assert.match(editorTabs, /id: "copy-tab-text-file-path"/);
 assert.match(editorTabs, /id: "show-tab-text-file-metadata"/);
 assert.match(windowTitle, /activeDocument\.path/);
+assert.match(app, /from "\.\/hooks\/use-app-active-text-document"/);
+assert.match(app, /const activeTextDocument = useAppActiveTextDocument\(\{ activeTab, textDocuments \}\)/);
+assert.doesNotMatch(app, /const activeTextDocument = useMemo/);
+assert.match(appActiveTextDocumentHook, /export function useAppActiveTextDocument\(\{/);
+assert.match(appActiveTextDocumentHook, /const location = activeTab\?\.location/);
+assert.match(appActiveTextDocumentHook, /location\?\.kind !== "text-file"/);
+assert.match(appActiveTextDocumentHook, /document\.id === location\.documentId \|\| document\.path === location\.path/);
 assert.match(app, /useAppFileActions\(\{/);
 assert.match(appFileActionsHook, /invoke\("reveal_path"/);
 assert.match(appFileActionsHook, /const copyPath = useCallback/);
