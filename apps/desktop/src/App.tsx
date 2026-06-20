@@ -391,6 +391,7 @@ export default function App() {
     openLogs,
     openNewWindow,
     resetQuickLook,
+    runExternalRuntimeDoctor,
   } = useAppMaintenance({ pushErrorStatus, pushStatus });
   const { exportDiagnostics } = useAppDiagnostics({
     pushErrorStatus,
@@ -1174,6 +1175,7 @@ export default function App() {
     revealDocument,
     revealPath,
     runConformerOperation,
+    runExternalRuntimeDoctor,
     runStructureViewerAction,
     runXtbActiveOperation,
     runXtbFepPreflight,
