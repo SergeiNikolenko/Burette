@@ -2143,6 +2143,36 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
     }
 
+    private struct QuickLookSpectrum: Encodable {
+        let format: String
+        let title: String
+        let primary: QuickLookSpectrumDocument
+        let metadata: [String: String]
+    }
+
+    private struct QuickLookSpectrumDocument: Encodable {
+        let id: String
+        let title: String
+        let xLabel: String
+        let yLabel: String
+        let peaks: [QuickLookSpectrumPeak]
+        let summary: [QuickLookSpectrumMetric]
+        let topPeaks: [QuickLookSpectrumPeak]
+        let fragmentFormulas: [String]
+    }
+
+    private struct QuickLookSpectrumPeak: Encodable {
+        let x: Double
+        let y: Double
+        let label: String?
+        let annotations: [String: String]
+    }
+
+    private struct QuickLookSpectrumMetric: Encodable {
+        let label: String
+        let value: String
+    }
+
     private static func parseQuickLookSpectrum(
         title: String,
         fileExtension: String,
