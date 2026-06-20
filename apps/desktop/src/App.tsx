@@ -17,6 +17,7 @@ import {
 import { useAppDescriptors } from "./hooks/use-app-descriptors";
 import { useAppDiagnostics } from "./hooks/use-app-diagnostics";
 import { useAppDirtyGridDocuments } from "./hooks/use-app-dirty-grid-documents";
+import { useAppDockingWorkflows } from "./hooks/use-app-docking-workflows";
 import { useAppDockPayloadOpen } from "./hooks/use-app-dock-payload-open";
 import { useAppFileActions } from "./hooks/use-app-file-actions";
 import { useAppFileOpen } from "./hooks/use-app-file-open";
@@ -74,12 +75,12 @@ import {
   useSetDocuments,
 } from "./hooks/use-tabs";
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
-import { browserDevRuntimeNeedsRefresh, generateBrowserDev3DConformer, openBrowserDevDockingDocument, openBrowserDevDocuments, openBrowserDevMergedCollection, openBrowserDevMolstarContextDocument, openBrowserDevTextDocument, readBrowserDevCollectionText, readBrowserDevVirtualTextDocument, writeBrowserDevVirtualTextDocument } from "./lib/browser-dev-documents";
+import { browserDevRuntimeNeedsRefresh, generateBrowserDev3DConformer, openBrowserDevDocuments, openBrowserDevMolstarContextDocument, openBrowserDevTextDocument, readBrowserDevVirtualTextDocument, writeBrowserDevVirtualTextDocument } from "./lib/browser-dev-documents";
 import { openBrowserDevTextFiles } from "./lib/browser-dev-text-files";
 import { cancelConformerRequest, cancelXtbRequest, installXtbRequest, prepareConformerRequest, requestConformerStatus, requestXtbStatus, runConformerRequest, runXtbRequest } from "./lib/chemistry-job-requests";
 import { conformerOperationLabel, conformerStatusLine, normalizeConformerSettings, normalizeXtbSettings, readConformerSettings, readXtbSettings, saveConformerSettings, saveXtbSettings, xtbOperationLabel } from "./lib/chemistry-settings";
 import { isMoleculeCollectionPath } from "./lib/collection-documents";
-import { dockingRequestForDrop, isProteinLikeDockingSource } from "./lib/docking-documents";
+import { isProteinLikeDockingSource } from "./lib/docking-documents";
 import { canInspectConformerEnsemble, canUseConformerWorkflow } from "./lib/conformer-ensemble";
 import { conformerGenerationPreferences, conformerGenerationTaskLabel, generated3DPoseSetText, generated3DPoseSetTitle, generated3DStatus, normalizeMolstarStylePreference, textToBase64, type ConformerGenerationMode, type ConformerGenerationResult, type MolstarStylePreference } from "./lib/conformer-generation";
 import { directChemistryJobGuardMessage } from "./lib/direct-chemistry-guard";
@@ -91,13 +92,13 @@ import { browserDevDockingFromLocation, browserDevFilesFromLocation, browserDevF
 import { ketcherSource3DFromText } from "./lib/ketcher-workflow";
 import { markPerformanceOnce } from "./lib/performance";
 import { basename, parentDirectory } from "./lib/sidebar-projects";
-import type { StructureDragPayload, StructureDragRecord } from "./lib/structure-drag";
+import type { StructureDragPayload } from "./lib/structure-drag";
 import { readStructureText } from "./lib/structure-text";
 import { isSpectrumPath, isSubformulaSpectrumJsonText, isTabularSpectrumExtension, isTabularSpectrumText, spectrumDocumentFromText } from "./lib/spectrum";
 import type { TextStructureSelection } from "./lib/text-structure-selection";
 import { isTauriRuntime } from "./lib/tauri";
 import { isTemporaryDocumentPath } from "./lib/temporary-documents";
-import type { ConformerJob, ConformerOperation, ConformerPreparedRun, ConformerRunRequest, ConformerRunResult, ConformerSettings, ConformerStatus, DockingDocumentRequest, DockingSceneMode, FepSetupRequest, OpenDocumentsMode, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XtbJob, XtbOperation, XtbRunRequest, XtbRunResult, XtbSettings, XtbStatus } from "./types";
+import type { ConformerJob, ConformerOperation, ConformerPreparedRun, ConformerRunRequest, ConformerRunResult, ConformerSettings, ConformerStatus, FepSetupRequest, OpenDocumentsMode, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XtbJob, XtbOperation, XtbRunRequest, XtbRunResult, XtbSettings, XtbStatus } from "./types";
 
 const CommandPalette = lazy(() => import("./components/command-palette").then((module) => ({
   default: module.CommandPalette,
@@ -1161,133 +1162,41 @@ export default function App() {
     }
   }, [openPaths, pushErrorStatus]);
 
-  const openDockingDocument = useCallback(async (
-    targetPath: string,
-    droppedPaths: string[],
-    options: { activePose?: number | null; sceneMode?: DockingSceneMode | null } = {},
-  ) => {
-    const existingDockingRequest = documents.find((document) => document.path === targetPath || document.id === targetPath)?.dockingRequest;
-    const request = dockingRequestForDrop(targetPath, droppedPaths, existingDockingRequest);
-    if (!request) return null;
-    if (request.ligandPaths.length === 0) return null;
-    request.activePose = options.activePose ?? null;
-    request.sceneMode = options.sceneMode ?? null;
-    request.poseMode = options.sceneMode === "structureAll" ? "all" : "single";
-    pushStatus("Opening Molstar docking view...");
-    try {
-      const document = isTauriRuntime()
-        ? await invoke<ViewerDocument>("open_docking_document", { request, preferences })
-        : await openBrowserDevDockingDocument(request.receptorPath, request.ligandPaths, preferences, options);
-      addDocuments([document]);
-      rememberRecentStructures([document]);
-      if (request.sceneMode && rightDockOpen && rightDockActiveTab === "descriptors") {
-        setDockOpen("right", false);
-      }
-      setStructureDragActive(false);
-      pushStatus(`Opened docking view with ${request.ligandPaths.length} ligand${request.ligandPaths.length === 1 ? "" : "s"}`);
-      return document;
-    } catch (error) {
-      setStructureDragActive(false);
-      pushErrorStatus(error, "Docking view failed");
-      return null;
-    }
-  }, [addDocuments, documents, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, rightDockActiveTab, rightDockOpen, setDockOpen]);
+  const notifyGridPoseReviewSelection = useCallback((targetDocumentId: string, activePose: number) => {
+    const iframe = Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).find(
+      (item) => item.dataset.documentId === targetDocumentId,
+    );
+    iframe?.contentWindow?.postMessage({
+      source: "burrete-grid-host",
+      body: {
+        type: "poseReviewSelection",
+        documentId: targetDocumentId,
+        activePose,
+      },
+    }, "*");
+  }, []);
 
-  const openDockingStructureRecords = useCallback(async (
-    receptorPath: string,
-    ligandPaths: string[],
-    records: StructureDragRecord[],
-  ) => {
-    const cleanLigandPaths = Array.from(new Set(ligandPaths.map((path) => path.trim()).filter(Boolean)));
-    const cleanRecords = records.filter((record) => record.text.trim().length > 0);
-    if (!receptorPath || (cleanLigandPaths.length === 0 && cleanRecords.length === 0)) return;
-    pushStatus("Opening Molstar docking view...");
-    try {
-      const { opened, errors } = await openStructureRecordDocuments(cleanRecords);
-      if (errors.length > 0 && opened.length === 0 && cleanLigandPaths.length === 0) {
-        pushStatus(summarizeErrors(errors), "error", errors);
-        return;
-      }
-      const request: DockingDocumentRequest = {
-        receptorPath,
-        ligandPaths: [...cleanLigandPaths, ...opened.map((document) => document.path)],
-      };
-      if (request.ligandPaths.length === 0) return;
-      const dockingDocument = isTauriRuntime()
-        ? await invoke<ViewerDocument>("open_docking_document", { request, preferences })
-        : await openBrowserDevDockingDocument(request.receptorPath, request.ligandPaths, preferences);
-      if (opened.length > 0) addDocuments(opened);
-      addDocuments([dockingDocument]);
-      rememberRecentStructures([...opened, dockingDocument]);
-      setStructureDragActive(false);
-      const message = "Opened docking view";
-      if (errors.length > 0) {
-        pushStatus(`${message}. ${summarizeErrors(errors)}`, "error", errors);
-      } else {
-        pushStatus(message);
-      }
-    } catch (error) {
-      setStructureDragActive(false);
-      pushErrorStatus(error, "Docking view failed");
-    }
-  }, [addDocuments, openStructureRecordDocuments, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
-
-  const collectionSourcePaths = useCallback((path: string | null) => {
-    if (!path) return [];
-    const document = documents.find((candidate) => candidate.path === path || candidate.id === path);
-    if (document?.mergedCollection) return document.mergedCollection.sourcePaths;
-    return [path];
-  }, [documents]);
-
-  const mergeMoleculeCollections = useCallback(async (targetPath: string | null, paths: string[]) => {
-    const sourcePaths = Array.from(new Set([
-      ...collectionSourcePaths(targetPath),
-      ...paths.flatMap((path) => collectionSourcePaths(path)),
-    ].filter(isMoleculeCollectionPath)));
-    if (sourcePaths.length < 2) {
-      pushStatus("Drop another SDF, SMILES, CSV, or TSV collection to merge it.", "error");
-      return;
-    }
-    pushStatus("Merging molecule collections...");
-    try {
-      const document = isTauriRuntime()
-        ? await invoke<ViewerDocument>("open_merged_collection", {
-            request: { paths: sourcePaths },
-            preferences,
-          })
-        : await openBrowserDevMergedCollection(sourcePaths, preferences);
-      addDocuments([document]);
-      setStructureDragActive(false);
-      pushStatus(`Merged ${sourcePaths.length} collection${sourcePaths.length === 1 ? "" : "s"}`);
-    } catch (error) {
-      setStructureDragActive(false);
-      pushErrorStatus(error, "Merge collections failed");
-    }
-  }, [addDocuments, collectionSourcePaths, preferences, pushErrorStatus, pushStatus]);
-
-  const saveMoleculeCollectionAs = useCallback(async (targetPath: string) => {
-    const document = documents.find((candidate) => candidate.path === targetPath || candidate.id === targetPath);
-    const path = document?.path ?? targetPath;
-    const suggestedFileName = document?.mergedCollection?.suggestedFileName ?? basename(path);
-    try {
-      if (isTauriRuntime()) {
-        const outputPath = await save({
-          defaultPath: suggestedFileName,
-          filters: [{ name: "Molecule collections", extensions: ["sdf", "sd", "smi", "smiles", "csv", "tsv"] }],
-        });
-        if (!outputPath) return;
-        await invoke("save_molecule_collection_as", { path, outputPath });
-        pushStatus(`Saved ${basename(outputPath)}`);
-        return;
-      }
-
-      const text = document?.mergedCollection?.text ?? await readBrowserDevCollectionText(path);
-      downloadTextFile(suggestedFileName || "molecule-collection.sdf", text);
-      pushStatus(`Saved ${suggestedFileName}`);
-    } catch (error) {
-      pushErrorStatus(error, "Save collection failed");
-    }
-  }, [documents, pushErrorStatus, pushStatus]);
+  const {
+    mergeMoleculeCollections,
+    openDockingDocument,
+    openDockingStructureRecords,
+    openPoseReviewWorkspace,
+    saveMoleculeCollectionAs,
+  } = useAppDockingWorkflows({
+    addDocuments,
+    documents,
+    notifyGridPoseReviewSelection,
+    openPoseReviewTab,
+    openStructureRecordDocuments,
+    preferences,
+    pushErrorStatus,
+    pushStatus,
+    rememberRecentStructures,
+    rightDockActiveTab,
+    rightDockOpen,
+    setDockOpen,
+    setStructureDragActive,
+  });
 
   const selectTextStructure = useCallback((textDocument: TextFileDocument, selection: TextStructureSelection) => {
     const targetDocument = documents.find((document) => document.path === textDocument.path) ??
@@ -1618,39 +1527,6 @@ export default function App() {
       },
     }, "*");
   }, []);
-
-  const notifyGridPoseReviewSelection = useCallback((targetDocumentId: string, activePose: number) => {
-    const iframe = Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).find(
-      (item) => item.dataset.documentId === targetDocumentId,
-    );
-    iframe?.contentWindow?.postMessage({
-      source: "burrete-grid-host",
-      body: {
-        type: "poseReviewSelection",
-        documentId: targetDocumentId,
-        activePose,
-      },
-    }, "*");
-  }, []);
-
-  const openPoseReviewWorkspace = useCallback(async (
-    receptorDocument: ViewerDocument,
-    gridDocument: ViewerDocument,
-    activePose: number,
-  ) => {
-    const dockingDocument = await openDockingDocument(receptorDocument.path, [gridDocument.path], { activePose });
-    if (!dockingDocument) return;
-    openPoseReviewTab({
-      kind: "pose-review",
-      receptorPath: receptorDocument.path,
-      gridDocumentId: gridDocument.id,
-      gridPath: gridDocument.path,
-      dockingDocumentId: dockingDocument.id,
-      dockingPath: dockingDocument.path,
-    });
-    notifyGridPoseReviewSelection(gridDocument.id, activePose);
-    pushStatus("Opened pose-review workspace");
-  }, [notifyGridPoseReviewSelection, openDockingDocument, openPoseReviewTab, pushStatus]);
 
   const openFepSetupWorkspace = useCallback((request: FepSetupRequest) => {
     openFepSetupTab({
