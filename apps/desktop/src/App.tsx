@@ -33,7 +33,7 @@ import { useAppMaintenance } from "./hooks/use-app-maintenance";
 import { useAppMolstarActionSenders } from "./hooks/use-app-molstar-action-senders";
 import { useAppMolstarXtbContext } from "./hooks/use-app-molstar-xtb-context";
 import { useAppOpenActions } from "./hooks/use-app-open-actions";
-import { useAppOpenDropMergeCollections } from "./hooks/use-app-open-drop-merge-collections";
+import { useAppOpenDropController } from "./hooks/use-app-open-drop-controller";
 import { useAppPreferenceEffects } from "./hooks/use-app-preference-effects";
 import { useAppResize } from "./hooks/use-app-resize";
 import { useAppSidebarProjects } from "./hooks/use-app-sidebar-projects";
@@ -47,12 +47,8 @@ import { useAppViewerBridgeController } from "./hooks/use-app-viewer-bridge-cont
 import { useAppViewerReloadActions } from "./hooks/use-app-viewer-reload-actions";
 import { useAppWorkspaceActions } from "./hooks/use-app-workspace-actions";
 import { useAppXtbWorkflows } from "./hooks/use-app-xtb-workflows";
-import { useAgentSession } from "./hooks/use-agent-session";
-import { useAppClipboard } from "./hooks/use-app-clipboard";
 import { useMenuEvents } from "./hooks/use-menu-events";
 import { useDockLayout } from "./hooks/use-dock-layout";
-import { useOpenDrop } from "./hooks/use-open-drop";
-import { useOpenEvents } from "./hooks/use-open-events";
 import { useSidebar } from "./hooks/use-sidebar";
 import {
   useActiveDocument,
@@ -608,41 +604,35 @@ export default function App() {
     setWorkspacePath,
   });
 
-  useOpenEvents(openPaths, pushErrorStatus);
-  const mergeDroppedMoleculeCollections = useAppOpenDropMergeCollections({
+  const {
+    dropActive,
+    handleBrowserDrag,
+    handleBrowserDragLeave,
+    handleBrowserDrop,
+    handleBrowserPaste,
+    openClipboard,
+  } = useAppOpenDropController({
     activeDocument,
-    mergeMoleculeCollections,
-  });
-  useAgentSession({
-    activeDocument,
-    documents,
-    openTextDocuments,
-    openPaths,
-    pushErrorStatus,
-    setDockDocument,
-  });
-  const { dropActive, handleBrowserDrag, handleBrowserDragLeave, handleBrowserDrop, handleBrowserPaste, openClipboardText } = useOpenDrop(openPaths, pushStatus, {
     activeTabKind: activeTab?.location.kind ?? null,
-    activeDocumentId: activeDocument?.id ?? null,
-    activeDocumentPath: activeDocument?.path ?? null,
-    activeDocumentRenderer: activeDocument?.renderer ?? null,
-    activeDockingRequest: activeDocument?.dockingRequest ?? null,
+    addProjectRoots: addDroppedProjectRoots,
+    addXyzrenderSheetItems,
+    appendGridRecords,
+    chooseDropAction,
     documents,
     fepSetupRequest: currentFepSetupRequest,
+    mergeMoleculeCollections,
+    openDockPayload,
     openDockingDocument,
     openDockingStructureRecords,
+    openFepSetupWorkspace,
+    openKetcherWithStructures,
+    openPaths,
     openStructureRecords,
     openTextDocuments,
-    openKetcherWithStructures,
-    openFepSetupWorkspace,
-    openDockPayload,
-    appendGridRecords,
-    addXyzrenderSheetItems,
-    addProjectRoots: addDroppedProjectRoots,
-    chooseDropAction,
-    mergeMoleculeCollections: mergeDroppedMoleculeCollections,
+    pushErrorStatus,
+    pushStatus,
+    setDockDocument,
   });
-  const { openClipboard } = useAppClipboard({ openClipboardText, pushErrorStatus, pushStatus });
   const { reloadActive, reloadXyzrenderDocument } = useAppViewerReloadActions({
     activeDocument,
     documents,

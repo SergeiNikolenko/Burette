@@ -10,6 +10,7 @@ const [
   app,
   appFileOpen,
   appDockPayloadOpen,
+  appOpenDropController,
   appQuickLookDocumentOpen,
   fileRouting,
   types,
@@ -39,6 +40,7 @@ const [
   source("apps/desktop/src/App.tsx"),
   source("apps/desktop/src/hooks/use-app-file-open.ts"),
   source("apps/desktop/src/hooks/use-app-dock-payload-open.ts"),
+  source("apps/desktop/src/hooks/use-app-open-drop-controller.ts"),
   source("apps/desktop/src/hooks/use-app-quick-look-document-open.ts"),
   source("apps/desktop/src/lib/file-routing.ts"),
   source("apps/desktop/src/types.ts"),
@@ -212,8 +214,8 @@ assert.match(appDockPayloadOpen, /for \(const path of dockOpenPaths\) \{/);
 const rightDockTextOpenBlock = appDockPayloadOpen.match(/if \(input\.area === "right" && cleanPaths\.length > 0\) \{[\s\S]*?return;\s*\}/)?.[0] ?? "";
 assert.match(rightDockTextOpenBlock, /pathExtension|structureExtensions|structureAndTextExtensions/);
 assert.doesNotMatch(rightDockTextOpenBlock, /preferredTextExtensions/);
-assert.match(app, /useOpenEvents\(openPaths, pushErrorStatus\)/);
-assert.match(app, /useOpenDrop\(openPaths, pushStatus/);
+assert.match(appOpenDropController, /useOpenEvents\(openPaths, pushErrorStatus\)/);
+assert.match(appOpenDropController, /useOpenDrop\(openPaths, pushStatus/);
 assert.match(app, /showTextFileMetadata/);
 assert.match(app, /activeTextDocument/);
 
