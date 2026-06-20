@@ -26,6 +26,7 @@ const [
   appKetcherActionsHook,
   appBootstrapHook,
   appMaintenanceHook,
+  appOpenActionsHook,
   appQuickLookHook,
   appResizeHook,
   appSidebarProjectsHook,
@@ -169,6 +170,7 @@ const [
   source('apps/desktop/src/hooks/use-app-ketcher-actions.ts'),
   source('apps/desktop/src/hooks/use-app-bootstrap.ts'),
   source('apps/desktop/src/hooks/use-app-maintenance.ts'),
+  source('apps/desktop/src/hooks/use-app-open-actions.ts'),
   source('apps/desktop/src/hooks/use-app-quick-look.ts'),
   source('apps/desktop/src/hooks/use-app-resize.ts'),
   source('apps/desktop/src/hooks/use-app-sidebar-projects.ts'),
@@ -812,7 +814,7 @@ assert.match(appFileOpenHook, /await openTextDocuments\(backgroundTextPaths, \{ 
 assert.match(appFileOpenHook, /const fallbackTextPaths = structureAndTextPaths\.filter\(\(path\) => !openedStructureAndTextPaths\.has\(path\)\);/);
 assert.match(browserDevStartup, /export function browserDevDockingFromLocation\(\): DockingDocumentRequest \| null/);
 assert.match(browserDevStartup, /params\.has\("devDocking"\)/);
-assert.match(app, /await openPaths\(paths\)/);
+assert.match(appOpenActionsHook, /await openPaths\(paths\)/);
 assert.match(tabsHook, /from "\.\.\/stores\/molecule-store"/);
 assert.match(tabsHook, /getSessionSnapshot/);
 assert.match(tabsHook, /restoreSession/);
@@ -2867,12 +2869,20 @@ assert.match(app, /openKetcherWithStructures,/);
 assert.match(appDockingWorkflowsHook, /existingDockingRequest = documents\.find/);
 assert.match(appDockingWorkflowsHook, /dockingRequestForDrop\(targetPath, droppedPaths, existingDockingRequest\)/);
 assert.match(app, /useOpenEvents\(openPaths, pushErrorStatus\)/);
+assert.match(app, /from "\.\/hooks\/use-app-open-actions"/);
+assert.match(app, /useAppOpenActions\(\{/);
+assert.match(appOpenActionsHook, /import previewFormatRegistry from "\.\.\/\.\.\/\.\.\/\.\.\/config\/preview-formats\.json"/);
+assert.match(appOpenActionsHook, /const openRecentStructure = useCallback/);
+assert.match(appOpenActionsHook, /const openMostRecentStructure = useCallback/);
+assert.match(appOpenActionsHook, /No recent structures to open/);
+assert.match(appOpenActionsHook, /const chooseFiles = useCallback/);
 assert.match(
   app,
   /useMenuEvents\(\{\s*chooseFiles,\s*openMostRecentStructure,\s*revealActiveDocument,\s*copyActiveDocumentPath,\s*showActiveDocumentMetadata,\s*exportActivePreviewAsPng,\s*exportActivePreviewAsSvg,\s*clearCache,\s*resetQuickLook,\s*openLogs,\s*openSettings,\s*checkForUpdates,\s*\}\)/s,
 );
 assert.match(app, /invoke\("sync_viewer_preferences", \{ preferences \}\)/);
-assert.match(app, /await invoke<string\[]>\("pick_open_targets"\)/);
+assert.match(appOpenActionsHook, /await invoke<string\[]>\("pick_open_targets"\)/);
+assert.match(appOpenActionsHook, /await open\(\{ multiple: true, filters \}\)/);
 assert.match(app, /<WindowTitle activeDocument=\{activeDocument\} \/>/);
 assert.match(app, /const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions \| null>\(null\)/);
 assert.match(app, /const pendingViewerReloadDocumentIdRef = useRef<string \| null>\(null\)/);
