@@ -32,6 +32,7 @@ const [
   appSidebarProjectsHook,
   appStartupEffectsHook,
   appUpdatesHook,
+  appWorkspaceActionsHook,
   appStatusHook,
   tabsHook,
   sidebarHook,
@@ -176,6 +177,7 @@ const [
   source('apps/desktop/src/hooks/use-app-sidebar-projects.ts'),
   source('apps/desktop/src/hooks/use-app-startup-effects.ts'),
   source('apps/desktop/src/hooks/use-app-updates.ts'),
+  source('apps/desktop/src/hooks/use-app-workspace-actions.ts'),
   source('apps/desktop/src/hooks/use-app-status.ts'),
   source('apps/desktop/src/hooks/use-tabs.ts'),
   source('apps/desktop/src/hooks/use-sidebar.ts'),
@@ -2674,7 +2676,16 @@ assert.match(settingsSidebar, /actions\.openNewTab\(\)/);
 assert.match(settingsSidebar, /actions\.openSettingsSection\(item\.id\)/);
 assert.match(settingsSidebar, /Burrete|SettingsItemIcon/);
 assert.doesNotMatch(sidebarSurface, /Open preferences/);
-assert.match(app, /openPath/);
+assert.match(app, /from "\.\/hooks\/use-app-workspace-actions"/);
+assert.match(app, /useAppWorkspaceActions\(\{/);
+assert.match(appWorkspaceActionsHook, /from "@tauri-apps\/plugin-opener"/);
+assert.match(appWorkspaceActionsHook, /const chooseWorkspace = useCallback/);
+assert.match(appWorkspaceActionsHook, /await open\(\{ directory: true, multiple: false \}\)/);
+assert.match(appWorkspaceActionsHook, /setWorkspacePath\(selection\)/);
+assert.match(appWorkspaceActionsHook, /const openWorkspaceFolder = useCallback/);
+assert.match(appWorkspaceActionsHook, /await chooseWorkspace\(\)/);
+assert.match(appWorkspaceActionsHook, /await openPath\(path\)/);
+assert.match(appWorkspaceActionsHook, /const openProjectFolder = useCallback/);
 assert.match(app, /chooseWorkspace/);
 assert.match(app, /openWorkspaceFolder/);
 assert.match(app, /openProjectFolder/);
