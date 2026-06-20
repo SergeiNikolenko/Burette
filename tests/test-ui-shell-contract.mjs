@@ -21,6 +21,7 @@ const [
   appFileActionsHook,
   appFileOpenHook,
   appFepWorkflowsHook,
+  appGridFileActionsHook,
   appGridWorkflowsHook,
   appDockPayloadHook,
   appKetcherActionsHook,
@@ -166,6 +167,7 @@ const [
   source('apps/desktop/src/hooks/use-app-file-actions.ts'),
   source('apps/desktop/src/hooks/use-app-file-open.ts'),
   source('apps/desktop/src/hooks/use-app-fep-workflows.ts'),
+  source('apps/desktop/src/hooks/use-app-grid-file-actions.ts'),
   source('apps/desktop/src/hooks/use-app-grid-workflows.ts'),
   source('apps/desktop/src/hooks/use-app-dock-payload-open.ts'),
   source('apps/desktop/src/hooks/use-app-ketcher-actions.ts'),
@@ -908,7 +910,7 @@ assert.match(appDescriptorsHook, /Descriptor calculation failed:/);
 assert.match(app, /useAppDirtyGridDocuments\(\)/);
 assert.doesNotMatch(app, /setDirtyGridDocuments/);
 assert.match(app, /updateDirtyGridDocument\(documentId, body\.dirty === true\)/);
-assert.match(app, /forgetDirtyGridDocument\(typeof body\.documentId === "string" \? body\.documentId : null\)/);
+assert.match(appGridFileActionsHook, /forgetDirtyGridDocument\(typeof body\.documentId === "string" \? body\.documentId : null\)/);
 assert.match(app, /clearDirtyGridDocuments\(\);/);
 assert.match(appDirtyGridHook, /useState<Set<string>>\(\(\) => new Set\(\)\)/);
 assert.match(appDirtyGridHook, /This grid has unsaved changes/);
@@ -4431,23 +4433,24 @@ assert.match(app, /isKnownViewerMessageSource\(event\.source, body\?\.documentId
 assert.match(app, /data\?\.source !== "burrete-grid"/);
 assert.match(app, /body\?\.type === "copyText"/);
 assert.match(app, /navigator\.clipboard\.writeText\(text\)/);
-assert.match(app, /body\?\.type === "exportText"/);
-assert.match(app, /const outputPath = await save\(/);
-assert.match(app, /invoke<string>\("save_text_as"/);
-assert.match(app, /body\?\.type === "saveGridAs"/);
-assert.match(app, /body\?\.type === "saveGrid"/);
+assert.match(app, /handleGridFileMessage\(body, event\.source\)/);
+assert.match(appGridFileActionsHook, /body\?\.type === "exportText"/);
+assert.match(appGridFileActionsHook, /const outputPath = await save\(/);
+assert.match(appGridFileActionsHook, /invoke<string>\("save_text_as"/);
+assert.match(appGridFileActionsHook, /body\?\.type === "saveGridAs"/);
+assert.match(appGridFileActionsHook, /body\?\.type === "saveGrid"/);
 assert.match(app, /body\?\.type === "gridDirtyChanged"/);
 assert.match(appDirtyGridHook, /This grid has unsaved changes\. Save or Save As before closing to keep edits\. Close without saving\?/);
 assert.match(appDirtyGridHook, /\$\{dirtyCount\} grid document\$\{dirtyCount === 1 \? " has" : "s have"\} unsaved changes\. Save or Save As before closing to keep edits\. Close without saving\?/);
-assert.match(app, /body\?\.type === "exportGridMolecule"/);
-assert.match(app, /type: "gridSavedAs"/);
-assert.match(app, /type: "gridSaveAsError"/);
-assert.match(app, /type: "gridSaved"/);
-assert.match(app, /type: "gridSaveError"/);
-assert.match(app, /type: "gridMoleculeExported"/);
-assert.match(app, /type: "gridMoleculeExportError"/);
-assert.match(app, /pushErrorStatus\(error, "Grid Save As failed"\)/);
-assert.match(app, /pushErrorStatus\(error, "Grid Save failed"\)/);
+assert.match(appGridFileActionsHook, /body\?\.type === "exportGridMolecule"/);
+assert.match(appGridFileActionsHook, /type: "gridSavedAs"/);
+assert.match(appGridFileActionsHook, /type: "gridSaveAsError"/);
+assert.match(appGridFileActionsHook, /type: "gridSaved"/);
+assert.match(appGridFileActionsHook, /type: "gridSaveError"/);
+assert.match(appGridFileActionsHook, /type: "gridMoleculeExported"/);
+assert.match(appGridFileActionsHook, /type: "gridMoleculeExportError"/);
+assert.match(appGridFileActionsHook, /pushErrorStatus\(error, "Grid Save As failed"\)/);
+assert.match(appGridFileActionsHook, /pushErrorStatus\(error, "Grid Save failed"\)/);
 assert.match(app, /from "\.\/lib\/file-export"/);
 assert.match(fileExport, /export function safeExportFileName\(name: string\)/);
 assert.match(fileExport, /export function exportDialogFilters\(fileName: string, mimeType: string\)/);

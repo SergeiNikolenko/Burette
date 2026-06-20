@@ -20,6 +20,7 @@ import { useAppDropActions } from "./hooks/use-app-drop-actions";
 import { useAppFileActions } from "./hooks/use-app-file-actions";
 import { useAppFileOpen } from "./hooks/use-app-file-open";
 import { useAppFepWorkflows } from "./hooks/use-app-fep-workflows";
+import { useAppGridFileActions } from "./hooks/use-app-grid-file-actions";
 import { useAppGridWorkflows } from "./hooks/use-app-grid-workflows";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
 import { useAppKetcherActions } from "./hooks/use-app-ketcher-actions";
@@ -1291,6 +1292,14 @@ export default function App() {
     }).catch(() => {});
   }, []);
 
+  const { handleGridFileMessage } = useAppGridFileActions({
+    documents,
+    forgetDirtyGridDocument,
+    postMessageToViewerSource,
+    pushErrorStatus,
+    pushStatus,
+  });
+
   const {
     chooseWorkspace,
     openProjectFolder,
@@ -1859,145 +1868,7 @@ export default function App() {
           updateDirtyGridDocument(documentId, body.dirty === true);
           return;
         }
-        if (body?.type === "exportText") {
-          const text = typeof body.text === "string" ? body.text : "";
-          const name = safeExportFileName(body.name ?? "grid-export.txt");
-          void (async () => {
-            try {
-              if (!isTauriRuntime()) {
-                downloadTextFile(name, text);
-                pushStatus(`Exported ${name}`);
-                return;
-              }
-              const outputPath = await save({
-                defaultPath: name,
-                filters: exportDialogFilters(name, body.mimeType ?? ""),
-              });
-              if (!outputPath) return;
-              const savedPath = await invoke<string>("save_text_as", { text, outputPath });
-              pushStatus(`Exported ${basename(savedPath)}`);
-            } catch (error) {
-              pushErrorStatus(error, "Grid export failed");
-            }
-          })();
-          return;
-        }
-        if (body?.type === "exportGridMolecule") {
-          const text = typeof body.text === "string" ? body.text : "";
-          const name = safeExportFileName(body.name ?? "molecule.sdf");
-          const reply = (bodyPayload: Record<string, unknown>) => {
-            postMessageToViewerSource(event.source, {
-              source: "burrete-grid-host",
-              body: {
-                documentId: body.documentId,
-                ...bodyPayload,
-              },
-            });
-          };
-          void (async () => {
-            try {
-              if (!isTauriRuntime()) {
-                downloadTextFile(name, text);
-                pushStatus(`Exported ${name}`);
-                reply({ type: "gridMoleculeExported", name });
-                return;
-              }
-              const outputPath = await save({
-                defaultPath: name,
-                filters: exportDialogFilters(name, body.mimeType ?? ""),
-              });
-              if (!outputPath) return;
-              const savedPath = await invoke<string>("save_text_as", { text, outputPath });
-              const savedName = basename(savedPath);
-              pushStatus(`Exported ${savedName}`);
-              reply({ type: "gridMoleculeExported", name: savedName });
-            } catch (error) {
-              const message = error instanceof Error ? error.message : String(error);
-              reply({ type: "gridMoleculeExportError", error: message });
-              pushErrorStatus(error, "Molecule export failed");
-            }
-          })();
-          return;
-        }
-        if (body?.type === "saveGrid") {
-          const text = typeof body.text === "string" ? body.text : "";
-          const targetDocument = body.documentId
-            ? documents.find((document) => document.id === body.documentId)
-            : null;
-          const reply = (bodyPayload: Record<string, unknown>) => {
-            postMessageToViewerSource(event.source, {
-              source: "burrete-grid-host",
-              body: {
-                documentId: body.documentId,
-                ...bodyPayload,
-              },
-            });
-          };
-          void (async () => {
-            try {
-              if (!targetDocument?.path || targetDocument.virtual) {
-                throw new Error("This grid document cannot be overwritten. Use Save As instead.");
-              }
-              if (!isTauriRuntime()) {
-                const name = safeExportFileName(body.name ?? basename(targetDocument.path));
-                downloadTextFile(name, text);
-                pushStatus(`Saved ${name}`);
-                reply({ type: "gridSaved", name });
-                return;
-              }
-              const savedPath = await invoke<string>("save_text_as", {
-                text,
-                outputPath: targetDocument.path,
-              });
-              const savedName = basename(savedPath);
-              forgetDirtyGridDocument(typeof body.documentId === "string" ? body.documentId : null);
-              pushStatus(`Saved ${savedName}`);
-              reply({ type: "gridSaved", name: savedName });
-            } catch (error) {
-              const message = error instanceof Error ? error.message : String(error);
-              reply({ type: "gridSaveError", error: message });
-              pushErrorStatus(error, "Grid Save failed");
-            }
-          })();
-          return;
-        }
-        if (body?.type === "saveGridAs") {
-          const text = typeof body.text === "string" ? body.text : "";
-          const name = safeExportFileName(body.name ?? "grid-save-as.csv");
-          const reply = (bodyPayload: Record<string, unknown>) => {
-            postMessageToViewerSource(event.source, {
-              source: "burrete-grid-host",
-              body: {
-                documentId: body.documentId,
-                ...bodyPayload,
-              },
-            });
-          };
-          void (async () => {
-            try {
-              if (!isTauriRuntime()) {
-                downloadTextFile(name, text);
-                pushStatus(`Saved ${name}`);
-                forgetDirtyGridDocument(typeof body.documentId === "string" ? body.documentId : null);
-                reply({ type: "gridSavedAs", name });
-                return;
-              }
-              const outputPath = await save({
-                defaultPath: name,
-                filters: exportDialogFilters(name, body.mimeType ?? ""),
-              });
-              if (!outputPath) return;
-              const savedPath = await invoke<string>("save_text_as", { text, outputPath });
-              const savedName = basename(savedPath);
-              forgetDirtyGridDocument(typeof body.documentId === "string" ? body.documentId : null);
-              pushStatus(`Saved ${savedName}`);
-              reply({ type: "gridSavedAs", name: savedName });
-            } catch (error) {
-              const message = error instanceof Error ? error.message : String(error);
-              reply({ type: "gridSaveAsError", error: message });
-              pushErrorStatus(error, "Grid Save As failed");
-            }
-          })();
+        if (handleGridFileMessage(body, event.source)) {
           return;
         }
         if (body?.type === "gridFetchPage") {
@@ -2634,7 +2505,7 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, addBackgroundDocuments, addDocuments, calculateGridDescriptors, documents, forgetDirtyGridDocument, generate3DConformer, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar, updateDirtyGridDocument, writeGridPerfMetric]);
+  }, [activeDocument, addBackgroundDocuments, addDocuments, calculateGridDescriptors, documents, generate3DConformer, handleGridFileMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar, updateDirtyGridDocument, writeGridPerfMetric]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
