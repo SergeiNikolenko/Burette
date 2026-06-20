@@ -2276,6 +2276,8 @@ img.radix-menu-item-icon {
   padding: 7px 10px 9px;
   font: 13px/1.45 var(--mono-font);
   white-space: pre;
+  user-select: none;
+  touch-action: none;
 }
 .folding-sequence-residue {
   min-width: 1.45em;
@@ -2289,6 +2291,8 @@ img.radix-menu-item-icon {
   line-height: 24px;
   text-align: center;
   cursor: pointer;
+  user-select: none;
+  touch-action: none;
 }
 .folding-sequence-residue:hover {
   background: color-mix(in srgb, #2f6fed 18%, transparent);
