@@ -13,6 +13,7 @@ const [
   uiStore,
   appChemistryJobsHook,
   appConformerWorkflowsHook,
+  appGenerate3DConformerHook,
   commandPaletteHook,
   appClipboardHook,
   appDescriptorsHook,
@@ -181,6 +182,7 @@ const [
   source('apps/desktop/src/stores/ui-store.ts'),
   source('apps/desktop/src/hooks/use-app-chemistry-jobs.ts'),
   source('apps/desktop/src/hooks/use-app-conformer-workflows.ts'),
+  source('apps/desktop/src/hooks/use-app-generate-3d-conformer.ts'),
   source('apps/desktop/src/hooks/use-command-palette.ts'),
   source('apps/desktop/src/hooks/use-app-clipboard.ts'),
   source('apps/desktop/src/hooks/use-app-descriptors.ts'),
@@ -1689,31 +1691,34 @@ assert.match(app, /granularity: selection\.granularity/);
 assert.match(app, /const runStructureViewerAction = useCallback/);
 assert.match(app, /id: `structure-action-\$\{Date\.now\(\)\}`/);
 assert.match(componentTypes, /generate3DConformer: \(document: ViewerDocument\) => void \| Promise<void>;/);
-assert.match(app, /const generate3DConformer = useCallback\(async \(document: ViewerDocument, mode: ConformerGenerationMode = "single", molstarStyle\?: MolstarStylePreference \| null\) =>/);
-assert.match(app, /invoke<ConformerGenerationResult>\("generate_3d_conformer"/);
-assert.match(app, /generateBrowserDev3DConformer\(request\)/);
-assert.match(app, /\.\.\.conformerGenerationPreferences\(preferences\)/);
-assert.match(app, /mode,/);
-assert.match(app, /pushStatus\(`Generating \$\{conformerGenerationTaskLabel\(mode\)\} with \$\{preferences\.conformerEngine\.toUpperCase\(\)\}\.\.\.`\)/);
+assert.match(app, /useAppGenerate3DConformer\(\{\s*activeViewerIframeForDocument,\s*openDocumentsInActiveTab,\s*pendingMolstarReplaceRef,/s);
+assert.doesNotMatch(app, /const generate3DConformer = useCallback/);
+assert.match(appGenerate3DConformerHook, /const generate3DConformer = useCallback\(async \(/);
+assert.match(appGenerate3DConformerHook, /invoke<ConformerGenerationResult>\("generate_3d_conformer"/);
+assert.match(appGenerate3DConformerHook, /generateBrowserDev3DConformer\(request\)/);
+assert.match(appGenerate3DConformerHook, /\.\.\.conformerGenerationPreferences\(preferences\)/);
+assert.match(appGenerate3DConformerHook, /mode,/);
+assert.match(appGenerate3DConformerHook, /pushStatus\(`Generating \$\{conformerGenerationTaskLabel\(mode\)\} with \$\{preferences\.conformerEngine\.toUpperCase\(\)\}\.\.\.`\)/);
 assert.doesNotMatch(app, /browserDevGeneratedConformerDocument/);
-assert.match(app, /const poseSetText = generated3DPoseSetText\(text, document\.extension, conformer\.text, mode\)/);
-assert.match(app, /const poseSetTitle = generated3DPoseSetTitle\(document\.title, poseSetText\)/);
-assert.match(app, /const effectiveMolstarStyle = molstarStyle \?\? preferences\.molstarStyle/);
-assert.match(app, /const molstarPreferences = \{ \.\.\.preferences, rendererMode: "molstar" as const, molstarStyle: effectiveMolstarStyle \}/);
-assert.match(app, /openBrowserDevTextDocument\([\s\S]*poseSetTitle,[\s\S]*conformer\.extension,[\s\S]*poseSetText,[\s\S]*molstarPreferences,[\s\S]*\{\},[\s\S]*\)/);
+assert.match(appGenerate3DConformerHook, /const poseSetText = generated3DPoseSetText\(text, document\.extension, conformer\.text, mode\)/);
+assert.match(appGenerate3DConformerHook, /const poseSetTitle = generated3DPoseSetTitle\(document\.title, poseSetText\)/);
+assert.match(appGenerate3DConformerHook, /const effectiveMolstarStyle = molstarStyle \?\? preferences\.molstarStyle/);
+assert.match(appGenerate3DConformerHook, /const molstarPreferences = \{ \.\.\.preferences, rendererMode: "molstar" as const, molstarStyle: effectiveMolstarStyle \}/);
+assert.match(appGenerate3DConformerHook, /openBrowserDevTextDocument\([\s\S]*poseSetTitle,[\s\S]*conformer\.extension,[\s\S]*poseSetText,[\s\S]*molstarPreferences,[\s\S]*\{\},[\s\S]*\)/);
 assert.doesNotMatch(app, /const updatedDocument = \{[\s\S]*?runtimePath: document\.runtimePath[\s\S]*?setDocuments/);
 assert.match(app, /const pendingMolstarReplaceRef = useRef<Map<string, PendingMolstarReplaceResolver>>\(new Map\(\)\)/);
-assert.match(app, /const replacedInPlace = await replaceMolstarStructureInPlace\([\s\S]*pendingMolstarReplaceRef\.current,[\s\S]*\)/);
-assert.match(app, /writeBrowserDevVirtualTextDocument\(generatedDocument\.path, poseSetText\)/);
-assert.match(app, /openDocumentsInActiveTab\(\[generatedDocument\], \{\s*backLocation: \{ kind: "file", documentId: document\.id, path: document\.path \},\s*\}\)/);
-assert.match(app, /pushStatus\(generated3DStatus\(conformer, "added it as a new Molstar pose"\)\)/);
-assert.match(app, /openDocumentsInActiveTab\(\[generatedDocument\]\)/);
-assert.match(app, /3D conformer was generated, but the current Molstar viewer did not apply it in place/);
-assert.match(app, /source3d: null/);
+assert.match(appGenerate3DConformerHook, /const replacedInPlace = await replaceMolstarStructureInPlace\([\s\S]*pendingMolstarReplaceRef\.current,[\s\S]*activeViewerIframeForDocument,[\s\S]*\)/);
+assert.match(appGenerate3DConformerHook, /writeBrowserDevVirtualTextDocument\(generatedDocument\.path, poseSetText\)/);
+assert.match(appGenerate3DConformerHook, /openDocumentsInActiveTab\(\[generatedDocument\], \{\s*backLocation: \{ kind: "file", documentId: document\.id, path: document\.path \},\s*\}\)/);
+assert.match(appGenerate3DConformerHook, /pushStatus\(generated3DStatus\(conformer, "added it as a new Molstar pose"\)\)/);
+assert.match(appGenerate3DConformerHook, /openDocumentsInActiveTab\(\[generatedDocument\]\)/);
+assert.match(appGenerate3DConformerHook, /3D conformer was generated, but the current Molstar viewer did not apply it in place/);
+assert.match(appGenerate3DConformerHook, /source3d: null/);
 assert.doesNotMatch(app, /Generate 3D runs in the desktop app runtime\. Browser dev shows the control placement only\./);
-assert.match(app, /pushStatus\(generated3DStatus\(conformer, "opened it in Molstar"\)\)/);
+assert.match(appGenerate3DConformerHook, /pushStatus\(generated3DStatus\(conformer, "opened it in Molstar"\)\)/);
 assert.doesNotMatch(app, /Generated 3D conformer with \$\{conformer\.method\} and replaced the current view/);
-assert.match(app, /from "\.\/lib\/conformer-generation"/);
+assert.doesNotMatch(app, /from "\.\/lib\/conformer-generation"/);
+assert.match(appGenerate3DConformerHook, /from "\.\.\/lib\/conformer-generation"/);
 assert.doesNotMatch(app, /function generated3DStatus/);
 assert.doesNotMatch(app, /function generated3DPoseSetText/);
 assert.match(conformerGeneration, /export function generated3DStatus\(conformer: ConformerGenerationResult, action: string\)/);
@@ -1735,11 +1740,12 @@ assert.match(conformerGeneration, /export function conformerGenerationTaskLabel\
 assert.match(conformerGeneration, /mode === "ensemble" \? "3D conformer set" : "3D conformer"/);
 assert.match(conformerGeneration, /function conformerZDepth\(text: string\)/);
 assert.match(conformerGeneration, /z-depth \$\{depth\.toFixed\(2\)\} A/);
-assert.match(app, /function replaceMolstarStructureInPlace\(/);
-assert.match(app, /type: "replaceMolstarStructure"/);
-assert.match(app, /const requestId = `molstar-replace-\$\{Date\.now\(\)\}-\$\{Math\.random\(\)\.toString\(36\)\.slice\(2\)\}`/);
-assert.match(app, /requestId,/);
-assert.match(app, /textBase64: textToBase64\(conformer\.text\)/);
+assert.doesNotMatch(app, /function replaceMolstarStructureInPlace\(/);
+assert.match(appGenerate3DConformerHook, /function replaceMolstarStructureInPlace\(/);
+assert.match(appGenerate3DConformerHook, /type: "replaceMolstarStructure"/);
+assert.match(appGenerate3DConformerHook, /const requestId = `molstar-replace-\$\{Date\.now\(\)\}-\$\{Math\.random\(\)\.toString\(36\)\.slice\(2\)\}`/);
+assert.match(appGenerate3DConformerHook, /requestId,/);
+assert.match(appGenerate3DConformerHook, /textBase64: textToBase64\(conformer\.text\)/);
 assert.match(app, /useAppViewerBridgeMessages\(\{/);
 assert.match(appViewerBridgeMessagesHook, /handleViewerHostMessage\(source, body\)/);
 assert.match(appViewerHostMessagesHook, /body\?\.type === "molstarStructureReplaced"/);

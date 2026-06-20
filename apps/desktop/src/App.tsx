@@ -23,6 +23,7 @@ import { useAppDropActions } from "./hooks/use-app-drop-actions";
 import { useAppFileActions } from "./hooks/use-app-file-actions";
 import { useAppFileOpen } from "./hooks/use-app-file-open";
 import { useAppFepWorkflows } from "./hooks/use-app-fep-workflows";
+import { useAppGenerate3DConformer, type PendingMolstarReplaceResolver } from "./hooks/use-app-generate-3d-conformer";
 import { useAppGridControlMessages } from "./hooks/use-app-grid-control-messages";
 import { useAppGridConformerMessages } from "./hooks/use-app-grid-conformer-messages";
 import { useAppGridFileActions } from "./hooks/use-app-grid-file-actions";
@@ -109,11 +110,10 @@ import {
   useSetDocuments,
 } from "./hooks/use-tabs";
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
-import { generateBrowserDev3DConformer, openBrowserDevDocuments, openBrowserDevMolstarContextDocument, openBrowserDevTextDocument, readBrowserDevVirtualTextDocument, writeBrowserDevVirtualTextDocument } from "./lib/browser-dev-documents";
+import { openBrowserDevDocuments, openBrowserDevMolstarContextDocument, openBrowserDevTextDocument } from "./lib/browser-dev-documents";
 import { openBrowserDevTextFiles } from "./lib/browser-dev-text-files";
 import { isMoleculeCollectionPath } from "./lib/collection-documents";
 import { isProteinLikeDockingSource } from "./lib/docking-documents";
-import { conformerGenerationPreferences, conformerGenerationTaskLabel, generated3DPoseSetText, generated3DPoseSetTitle, generated3DStatus, normalizeMolstarStylePreference, textToBase64, type ConformerGenerationMode, type ConformerGenerationResult, type MolstarStylePreference } from "./lib/conformer-generation";
 import type { DockArea, DockTabKind } from "./lib/dock";
 import { pathExtension, preferredTextExtensions, structureAndTextExtensions, structureExtensionFromPath, structureExtensions } from "./lib/file-routing";
 import { browserDevFolderFromLocation, browserDevHasExplicitWorkspace, browserDevQuickLookFileFromLocation } from "./lib/browser-dev-startup";
@@ -132,7 +132,6 @@ const CommandPalette = lazy(() => import("./components/command-palette").then((m
 
 const GRID_PERF_REPORT_PATH = "/private/tmp/burrete-grid-real-app-perf.jsonl";
 type MolstarContextDocument = Parameters<typeof openBrowserDevMolstarContextDocument>[0];
-type PendingMolstarReplaceResolver = (ok: boolean) => void;
 
 async function expandBrowserDevStructureBundles(paths: string[]) {
   if (isTauriRuntime()) return paths;
@@ -704,72 +703,15 @@ export default function App() {
     }
   }, [pushStatus]);
 
-  const generate3DConformer = useCallback(async (document: ViewerDocument, mode: ConformerGenerationMode = "single", molstarStyle?: MolstarStylePreference | null) => {
-    if (!["sdf", "sd", "mol", "smi", "smiles"].includes(document.extension.trim().toLowerCase())) {
-      pushStatus("3D conformer generation supports SDF, MOL, and SMILES structures.", "error");
-      return;
-    }
-    pushStatus(`Generating ${conformerGenerationTaskLabel(mode)} with ${preferences.conformerEngine.toUpperCase()}...`);
-    try {
-      const text = readBrowserDevVirtualTextDocument(document.path) ?? await readStructureText(document.path);
-      const request = {
-        title: document.title,
-        extension: document.extension,
-        text,
-        ...conformerGenerationPreferences(preferences),
-        mode,
-        source3d: null,
-      };
-      const conformer = isTauriRuntime()
-        ? await invoke<ConformerGenerationResult>("generate_3d_conformer", { request })
-        : await generateBrowserDev3DConformer(request);
-      const poseSetText = generated3DPoseSetText(text, document.extension, conformer.text, mode);
-      const poseSetTitle = generated3DPoseSetTitle(document.title, poseSetText);
-      const effectiveMolstarStyle = molstarStyle ?? preferences.molstarStyle;
-      const molstarPreferences = { ...preferences, rendererMode: "molstar" as const, molstarStyle: effectiveMolstarStyle };
-      const generatedDocument = isTauriRuntime()
-        ? await invoke<ViewerDocument>("open_text_structure", {
-            request: { title: poseSetTitle, extension: conformer.extension, text: poseSetText },
-            preferences: molstarPreferences,
-            reloadOptions: {},
-          })
-        : await openBrowserDevTextDocument(
-            poseSetTitle,
-            conformer.extension,
-            poseSetText,
-            molstarPreferences,
-            {},
-          );
-      const replacedInPlace = await replaceMolstarStructureInPlace(
-        document,
-        generatedDocument,
-        { ...conformer, title: poseSetTitle, text: poseSetText },
-        pendingMolstarReplaceRef.current,
-        effectiveMolstarStyle,
-      );
-      if (replacedInPlace) {
-        if (!isTauriRuntime()) writeBrowserDevVirtualTextDocument(generatedDocument.path, poseSetText);
-        openDocumentsInActiveTab([generatedDocument], {
-          backLocation: { kind: "file", documentId: document.id, path: document.path },
-        });
-        rememberRecentStructures([generatedDocument]);
-        pushStatus(generated3DStatus(conformer, "added it as a new Molstar pose"));
-        return;
-      }
-      if (document.renderer === "molstar") {
-        pushStatus(
-          "3D conformer was generated, but the current Molstar viewer did not apply it in place. Reload the viewer tab once and try again.",
-          "error",
-        );
-        return;
-      }
-      openDocumentsInActiveTab([generatedDocument]);
-      rememberRecentStructures([generatedDocument]);
-      pushStatus(generated3DStatus(conformer, "opened it in Molstar"));
-    } catch (error) {
-      pushErrorStatus(error, "3D conformer generation failed");
-    }
-  }, [documents, openDocumentsInActiveTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setActiveDocument, setDocuments]);
+  const { generate3DConformer } = useAppGenerate3DConformer({
+    activeViewerIframeForDocument,
+    openDocumentsInActiveTab,
+    pendingMolstarReplaceRef,
+    preferences,
+    pushErrorStatus,
+    pushStatus,
+    rememberRecentStructures,
+  });
 
   const readActiveExternalPreviewSvg = useCallback(async () => {
     if (!activeDocument) throw new Error("No active structure preview to export");
@@ -1440,50 +1382,6 @@ function activeViewerIframeForDocument(documentId: string) {
   ) ?? document.querySelector<HTMLIFrameElement>(
     `.viewer-iframe[data-document-id="${escapedId}"]`,
   );
-}
-
-function replaceMolstarStructureInPlace(
-  sourceDocument: ViewerDocument,
-  generatedDocument: ViewerDocument,
-  conformer: ConformerGenerationResult,
-  pendingReplacements: Map<string, PendingMolstarReplaceResolver>,
-  molstarStyle: MolstarStylePreference,
-) {
-  if (sourceDocument.renderer !== "molstar") return Promise.resolve(false);
-  const iframe = activeViewerIframeForDocument(sourceDocument.id);
-  if (!iframe?.contentWindow) return Promise.resolve(false);
-  const requestId = `molstar-replace-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  return new Promise<boolean>((resolve) => {
-    const timeout = window.setTimeout(() => {
-      pendingReplacements.delete(requestId);
-      resolve(false);
-    }, 8000);
-    pendingReplacements.set(requestId, (ok) => {
-      window.clearTimeout(timeout);
-      resolve(ok);
-    });
-    try {
-      iframe.contentWindow?.postMessage({
-        source: "burrete-host",
-        body: {
-          type: "replaceMolstarStructure",
-          requestId,
-          documentId: sourceDocument.id,
-          title: conformer.title,
-          extension: conformer.extension,
-          path: generatedDocument.path,
-          byteCount: new TextEncoder().encode(conformer.text).byteLength,
-          textBase64: textToBase64(conformer.text),
-          method: conformer.method,
-          molstarStyle,
-        },
-      }, "*");
-    } catch {
-      window.clearTimeout(timeout);
-      pendingReplacements.delete(requestId);
-      resolve(false);
-    }
-  });
 }
 
 function isXtbOptimizationTrajectoryLogPath(path: string) {
