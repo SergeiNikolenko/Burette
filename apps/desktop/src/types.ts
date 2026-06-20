@@ -324,6 +324,8 @@ export type FoldingMatrixPreview = {
   path: string;
   shape: number[];
   values: Array<Array<number | null>>;
+  xLabels?: string[];
+  yLabels?: string[];
   min?: number | null;
   max?: number | null;
   mean?: number | null;
