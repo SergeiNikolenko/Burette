@@ -35,6 +35,7 @@ import { useAppStartupEffects } from "./hooks/use-app-startup-effects";
 import { useAppStatus } from "./hooks/use-app-status";
 import { useAppUpdates } from "./hooks/use-app-updates";
 import { useAppViewerFileActions } from "./hooks/use-app-viewer-file-actions";
+import { useAppViewerRuntimeMessages } from "./hooks/use-app-viewer-runtime-messages";
 import { useAppWorkspaceActions } from "./hooks/use-app-workspace-actions";
 import { useAppXyzrenderSheetMessages } from "./hooks/use-app-xyzrender-sheet-messages";
 import { useAgentSession } from "./hooks/use-agent-session";
@@ -93,10 +94,9 @@ import { canInspectConformerEnsemble, canUseConformerWorkflow } from "./lib/conf
 import { conformerGenerationPreferences, conformerGenerationTaskLabel, generated3DPoseSetText, generated3DPoseSetTitle, generated3DStatus, normalizeMolstarStylePreference, textToBase64, type ConformerGenerationMode, type ConformerGenerationResult, type MolstarStylePreference } from "./lib/conformer-generation";
 import { directChemistryJobGuardMessage } from "./lib/direct-chemistry-guard";
 import type { DockArea, DockTabKind } from "./lib/dock";
-import { pathExtension, preferredTextExtensions, structureAndTextExtensions, structureExtensionFromPath, structureExtensions, summarizeErrors, summarizeErrorText } from "./lib/file-routing";
+import { pathExtension, preferredTextExtensions, structureAndTextExtensions, structureExtensionFromPath, structureExtensions } from "./lib/file-routing";
 import { browserDevFolderFromLocation, browserDevHasExplicitWorkspace, browserDevQuickLookFileFromLocation } from "./lib/browser-dev-startup";
 import { ketcherSource3DFromText } from "./lib/ketcher-workflow";
-import { markPerformanceOnce } from "./lib/performance";
 import { basename, parentDirectory } from "./lib/sidebar-projects";
 import type { StructureDragPayload } from "./lib/structure-drag";
 import { readStructureText } from "./lib/structure-text";
@@ -1480,6 +1480,14 @@ export default function App() {
     pendingViewerReloadDocumentIdRef.current = null;
     await openDocuments([targetDocument.path], reloadOptions, undefined, { inActiveTab: true });
   }, [activeDocument, documents, openDocuments]);
+  const { handleViewerRuntimeMessage, markViewerFirstRenderMessage } = useAppViewerRuntimeMessages({
+    documents,
+    pendingViewerReloadDocumentIdRef,
+    pendingViewerReloadOptionsRef,
+    pushStatus,
+    reloadActive,
+    xyzrenderOrientationRefRef,
+  });
   const reloadXyzrenderDocument = useCallback(async (document: ViewerDocument, reloadOptions: ViewerReloadOptions) => {
     const effectiveReloadOptions = {
       ...reloadOptions,
@@ -1719,12 +1727,7 @@ export default function App() {
         }
         return;
       }
-      if (
-        data.source === "burrete-viewer" &&
-        (body?.type === "ready" || (body?.type === "status" && body.message?.startsWith("[web] Rendered ")))
-      ) {
-        markPerformanceOnce("viewer:first-render");
-      }
+      markViewerFirstRenderMessage(data.source, body);
       if (data.source === "burrete-viewer" && handleViewerFileMessage(body)) {
         return;
       }
@@ -1742,32 +1745,7 @@ export default function App() {
           return;
         }
       }
-      if (body?.type === "error") {
-        pushStatus(formatViewerError(body.message, body.documentId, documents), "error", body.message ? [body.message] : []);
-        return;
-      }
-      if (body?.type === "setXyzrenderOrientation") {
-        xyzrenderOrientationRefRef.current = body.text ?? body.value ?? null;
-        return;
-      }
-      if (body?.type === "setXyzrenderPreset") {
-        pendingViewerReloadDocumentIdRef.current = body.documentId ?? null;
-        pendingViewerReloadOptionsRef.current = {
-          xyzrenderPreset: body.value ?? null,
-          xyzrenderOrientationRef: xyzrenderOrientationRefRef.current,
-          xyzrenderControls: pendingViewerReloadOptionsRef.current?.xyzrenderControls ?? null,
-        };
-        void reloadActive();
-        return;
-      }
-      if (body?.type === "setXyzrenderControls") {
-        pendingViewerReloadDocumentIdRef.current = body.documentId ?? null;
-        pendingViewerReloadOptionsRef.current = {
-          xyzrenderPreset: body.preset ?? pendingViewerReloadOptionsRef.current?.xyzrenderPreset ?? null,
-          xyzrenderOrientationRef: xyzrenderOrientationRefRef.current,
-          xyzrenderControls: body.controls ?? null,
-        };
-        void reloadActive();
+      if (handleViewerRuntimeMessage(body)) {
         return;
       }
       if (body?.type === "openSdfMolstarDocument") {
@@ -2172,7 +2150,7 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, generate3DConformer, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleViewerFileMessage, handleXyzrenderSheetMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
+  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, generate3DConformer, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleViewerFileMessage, handleViewerRuntimeMessage, handleXyzrenderSheetMessage, markViewerFirstRenderMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -2723,17 +2701,4 @@ function copyTextWithSelectionFallback(text: string) {
   } finally {
     textarea.remove();
   }
-}
-
-function formatViewerError(
-  message: string | undefined,
-  documentId: string | undefined,
-  documents: { id: string; title: string }[],
-) {
-  const text = (message || "Viewer error").trim();
-  const title = documentId
-    ? documents.find((document) => document.id === documentId)?.title
-    : null;
-  const summary = summarizeErrorText(text);
-  return title ? `${title}: ${summary}` : summary;
 }

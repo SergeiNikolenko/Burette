@@ -36,6 +36,7 @@ const [
   appStartupEffectsHook,
   appUpdatesHook,
   appViewerFileActionsHook,
+  appViewerRuntimeMessagesHook,
   appWorkspaceActionsHook,
   appXyzrenderSheetMessagesHook,
   appStatusHook,
@@ -186,6 +187,7 @@ const [
   source('apps/desktop/src/hooks/use-app-startup-effects.ts'),
   source('apps/desktop/src/hooks/use-app-updates.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-file-actions.ts'),
+  source('apps/desktop/src/hooks/use-app-viewer-runtime-messages.ts'),
   source('apps/desktop/src/hooks/use-app-workspace-actions.ts'),
   source('apps/desktop/src/hooks/use-app-xyzrender-sheet-messages.ts'),
   source('apps/desktop/src/hooks/use-app-status.ts'),
@@ -862,7 +864,7 @@ assert.doesNotMatch(editorArea, /state\.page === "agent"/);
 assert.match(app, /lazy\(\(\) => import\("\.\/components\/command-palette"\)/);
 assert.match(appBootstrapHook, /markPerformanceOnce\("app:shell-visible"\)/);
 assert.match(appFileOpenHook, /markPerformanceOnce\("app:first-document-opened"\)/);
-assert.match(app, /markPerformanceOnce\("viewer:first-render"\)/);
+assert.match(appViewerRuntimeMessagesHook, /markPerformanceOnce\("viewer:first-render"\)/);
 assert.match(desktopIndex, /<script src="\.\/boot-overlay\.js"><\/script>[\s\S]*?<body>\s*<div id="root"><\/div>\s*<script type="module" src="\/src\/main\.tsx"><\/script>/);
 assert.doesNotMatch(desktopIndex, /<script(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/);
 assert.match(main, /import "\.\/performance-start"/);
@@ -2915,12 +2917,12 @@ assert.match(app, /const pendingViewerReloadDocumentIdRef = useRef<string \| nul
 assert.match(app, /const xyzrenderOrientationRefRef = useRef<string \| null>\(null\)/);
 assert.match(app, /const skipNextPreferenceRefreshRef = useRef\(false\)/);
 assert.match(app, /source: "burrete-host"[\s\S]*type: "setXyzrenderControls"/);
-assert.match(app, /body\?\.type === "error"/);
+assert.match(appViewerRuntimeMessagesHook, /body\?\.type === "error"/);
 assert.match(appGridWorkflowsHook, /summarizeErrors\(result\.errors\)/);
-assert.match(app, /if \(body\?\.type === "setXyzrenderOrientation"\)/);
-assert.match(app, /if \(body\?\.type === "setXyzrenderPreset"\)/);
-assert.match(app, /pendingViewerReloadDocumentIdRef\.current = body\.documentId \?\? null/);
-assert.match(app, /xyzrenderPreset: body\.value \?\? null/);
+assert.match(appViewerRuntimeMessagesHook, /body\?\.type === "setXyzrenderOrientation"/);
+assert.match(appViewerRuntimeMessagesHook, /body\?\.type === "setXyzrenderPreset"/);
+assert.match(appViewerRuntimeMessagesHook, /pendingViewerReloadDocumentIdRef\.current = bodyString\(body\.documentId\) \?\? null/);
+assert.match(appViewerRuntimeMessagesHook, /xyzrenderPreset: bodyString\(body\.value\) \?\? null/);
 assert.match(app, /await openDocuments\(\[targetDocument\.path\], reloadOptions, undefined, \{ inActiveTab: true \}\)/);
 assert.match(app, /const reloadOptions = renderer === "xyzrender-external"\s*\?\s*\{\s*xyzrenderOrientationRef: body\.orientationRef \?\? xyzrenderOrientationRefRef\.current,\s*xyzrenderPreset: body\.preset \?\? pendingViewerReloadOptionsRef\.current\?\.xyzrenderPreset \?\? null,\s*xyzrenderControls: body\.controls \?\? pendingViewerReloadOptionsRef\.current\?\.xyzrenderControls \?\? null,\s*\}\s*: renderer === "molstar"\s*\?\s*\{\}/s);
 assert.match(app, /const targetDocument = \(body\.documentId/);
