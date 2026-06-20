@@ -34,6 +34,7 @@ const [
   appBootstrapHook,
   appMaintenanceHook,
   appMolstarContextMessagesHook,
+  appMolstarXtbContextHook,
   appOpenActionsHook,
   appQuickLookHook,
   appResizeHook,
@@ -199,6 +200,7 @@ const [
   source('apps/desktop/src/hooks/use-app-bootstrap.ts'),
   source('apps/desktop/src/hooks/use-app-maintenance.ts'),
   source('apps/desktop/src/hooks/use-app-molstar-context-messages.ts'),
+  source('apps/desktop/src/hooks/use-app-molstar-xtb-context.ts'),
   source('apps/desktop/src/hooks/use-app-open-actions.ts'),
   source('apps/desktop/src/hooks/use-app-quick-look.ts'),
   source('apps/desktop/src/hooks/use-app-resize.ts'),
@@ -1742,6 +1744,14 @@ assert.match(generate3dHandler, /"generate3dConformerFinished"/);
 assert.match(generate3dHandler, /void generate3DConformer\(targetDocument, mode, molstarStyle\)[\s\S]*\.finally\(\(\) => notifyGeneratorState\("generate3dConformerFinished"\)\)/);
 assert.match(appViewerBridgeMessagesHook, /value === "burrete-viewer" \|\| value === "burrete-grid" \|\| value === "burrete-agent-viewer"/);
 assert.match(appViewerHostMessagesHook, /source === "burrete-agent-viewer" && body\?\.type === "agent-action-result"/);
+assert.match(app, /useAppMolstarXtbContext\(\{\s*activeViewerIframeForDocument,\s*isKnownViewerMessageSource,\s*\}\)/);
+assert.doesNotMatch(app, /action: \{ type: "get_xtb_context" \}/);
+assert.match(appMolstarXtbContextHook, /const actionId = `xtb-context-\$\{Date\.now\(\)\}-\$\{Math\.random\(\)\.toString\(36\)\.slice\(2, 8\)\}`/);
+assert.match(appMolstarXtbContextHook, /window\.removeEventListener\("message", onMessage\)/);
+assert.match(appMolstarXtbContextHook, /data\?\.source !== "burrete-agent-viewer" \|\| body\?\.type !== "agent-action-result" \|\| body\.id !== actionId/);
+assert.match(appMolstarXtbContextHook, /isKnownViewerMessageSource\(event\.source, document\.id\)/);
+assert.match(appMolstarXtbContextHook, /window\.setTimeout\(\(\) => finish\(null\), 500\)/);
+assert.match(appMolstarXtbContextHook, /action: \{ type: "get_xtb_context" \}/);
 assert.match(appViewerHostMessagesHook, /Structure action did not match the structure/);
 assert.match(appViewerHostMessagesHook, /bodyString\(body\.id\)\.startsWith\("text-selection-"\)/);
 assert.doesNotMatch(app, /pushStatus\("Text selection applied"/);
