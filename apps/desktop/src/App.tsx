@@ -34,6 +34,7 @@ import { useAppSidebarProjects } from "./hooks/use-app-sidebar-projects";
 import { useAppStartupEffects } from "./hooks/use-app-startup-effects";
 import { useAppStatus } from "./hooks/use-app-status";
 import { useAppUpdates } from "./hooks/use-app-updates";
+import { useAppViewerFileActions } from "./hooks/use-app-viewer-file-actions";
 import { useAppWorkspaceActions } from "./hooks/use-app-workspace-actions";
 import { useAgentSession } from "./hooks/use-agent-session";
 import { useAppClipboard } from "./hooks/use-app-clipboard";
@@ -92,7 +93,6 @@ import { conformerGenerationPreferences, conformerGenerationTaskLabel, generated
 import { directChemistryJobGuardMessage } from "./lib/direct-chemistry-guard";
 import type { DockArea, DockTabKind } from "./lib/dock";
 import { pathExtension, preferredTextExtensions, structureAndTextExtensions, structureExtensionFromPath, structureExtensions, summarizeErrors, summarizeErrorText } from "./lib/file-routing";
-import { downloadBase64File, downloadTextFile, exportDialogFilters, safeExportFileName } from "./lib/file-export";
 import { browserDevFolderFromLocation, browserDevHasExplicitWorkspace, browserDevQuickLookFileFromLocation } from "./lib/browser-dev-startup";
 import { ketcherSource3DFromText } from "./lib/ketcher-workflow";
 import { markPerformanceOnce } from "./lib/performance";
@@ -1375,6 +1375,11 @@ export default function App() {
     writeGridPerfMetric,
   });
 
+  const { handleViewerFileMessage } = useAppViewerFileActions({
+    pushErrorStatus,
+    pushStatus,
+  });
+
   const {
     addXyzrenderSheetItems,
     addXyzrenderSheetItemsToDocument,
@@ -1715,53 +1720,7 @@ export default function App() {
       ) {
         markPerformanceOnce("viewer:first-render");
       }
-      if (data.source === "burrete-viewer" && body?.type === "exportText") {
-        const text = typeof body.text === "string" ? body.text : "";
-        const name = safeExportFileName(body.name ?? "molstar-export.cif");
-        void (async () => {
-          try {
-            if (!isTauriRuntime()) {
-              downloadTextFile(name, text);
-              pushStatus(`Exported ${name}`);
-              return;
-            }
-            const outputPath = await save({
-              defaultPath: name,
-              filters: exportDialogFilters(name, body.mimeType ?? ""),
-            });
-            if (!outputPath) return;
-            const savedPath = await invoke<string>("save_text_as", { text, outputPath });
-            pushStatus(`Exported ${basename(savedPath)}`);
-          } catch (error) {
-            pushErrorStatus(error, "Molstar export failed");
-          }
-        })();
-        return;
-      }
-      if (data.source === "burrete-viewer" && body?.type === "exportData") {
-        const base64 = typeof body.base64 === "string" ? body.base64 : "";
-        const name = safeExportFileName(body.name ?? "molstar-export.bin");
-        const mimeType = typeof body.mimeType === "string" ? body.mimeType : "application/octet-stream";
-        void (async () => {
-          try {
-            if (!isTauriRuntime()) {
-              downloadBase64File(name, base64, mimeType);
-              pushStatus(`Exported ${name}`);
-              return;
-            }
-            const outputPath = await save({
-              defaultPath: name,
-              filters: exportDialogFilters(name, mimeType),
-            });
-            if (!outputPath) return;
-            const savedPath = await invoke<string>("write_base64_file", {
-              request: { outputPath, contentsBase64: base64 },
-            });
-            pushStatus(`Exported ${basename(savedPath)}`);
-          } catch (error) {
-            pushErrorStatus(error, "Molstar export failed");
-          }
-        })();
+      if (data.source === "burrete-viewer" && handleViewerFileMessage(body)) {
         return;
       }
       if ((data.source === "burrete-viewer" || data.source === "burrete-grid") && body?.type === "renderXyzrenderSheetItem") {
@@ -2257,7 +2216,7 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, generate3DConformer, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
+  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, generate3DConformer, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleViewerFileMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
