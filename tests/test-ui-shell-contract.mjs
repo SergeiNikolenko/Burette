@@ -160,6 +160,7 @@ const [
   temporaryDocuments,
   windowScope,
   viewerBridgeLib,
+  viewerBridgeMessagesLib,
   viteConfig,
   viteBuildPlugins,
   browserDevAssets,
@@ -351,6 +352,7 @@ const [
   source('apps/desktop/src/lib/temporary-documents.ts'),
   source('apps/desktop/src/lib/window-scope.ts'),
   source('apps/desktop/src/lib/viewer-bridge.ts'),
+  source('apps/desktop/src/lib/viewer-bridge-messages.ts'),
   source('apps/desktop/vite.config.ts'),
   source('apps/desktop/vite/build-plugins.ts'),
   source('apps/desktop/vite/browser-dev/assets.ts'),
@@ -464,7 +466,7 @@ assert.match(sidebarHook, /projectNameOverrides/);
 assert.match(sidebarHook, /expandedProjectIds/);
 assert.match(sidebarHook, /hiddenProjectRoots/);
 assert.match(sidebarHook, /pinnedStructurePaths/);
-assert.match(appViewerBridgeMessagesHook, /handleViewerRuntimeFileMessage\(source, body, event\.source\)/);
+assert.match(viewerBridgeMessagesLib, /handleViewerRuntimeFileMessage\(source, body, eventSource\)/);
 assert.match(appViewerRuntimeFileMessagesHook, /body\?\.type !== "requestData" && body\?\.type !== "requestRuntimeFile"/);
 assert.match(appViewerRuntimeFileMessagesHook, /source: "burrete-native-host"/);
 assert.match(appViewerRuntimeFileMessagesHook, /invoke<string>\("read_viewer_runtime_file_base64"/);
@@ -1347,7 +1349,7 @@ assert.match(viewer, /records: \[\]/);
 assert.match(viewer, /function requestHostXyzrenderSheetItem\(entry, preset, controls\)/);
 assert.match(viewer, /inputDataBase64: sheetEntryInputDataBase64\(entry\)/);
 assert.match(viewer, /type: 'renderXyzrenderSheetItem'/);
-assert.match(appViewerBridgeMessagesHook, /handleXyzrenderSheetMessage\(source, body, event\.source\)/);
+assert.match(viewerBridgeMessagesLib, /handleXyzrenderSheetMessage\(source, body, eventSource\)/);
 assert.match(appXyzrenderSheetMessagesHook, /body\?\.type !== "renderXyzrenderSheetItem"/);
 assert.match(appXyzrenderSheetMessagesHook, /inputDataBase64: body\.inputDataBase64 \?\? null/);
 assert.match(appXyzrenderSheetMessagesHook, /invoke<\{[\s\S]*\}>\("render_xyzrender_sheet_item"/);
@@ -1870,11 +1872,11 @@ for (const handlerName of [
 ]) {
   assert.match(appViewerBridgeControllerHook, new RegExp(`${handlerName},`));
 }
-assert.match(appViewerBridgeMessagesHook, /handleViewerHostMessage\(source, body\)/);
+assert.match(viewerBridgeMessagesLib, /handleViewerHostMessage\(source, body\)/);
 assert.match(appViewerHostMessagesHook, /body\?\.type === "molstarStructureReplaced"/);
 assert.match(appViewerHostMessagesHook, /pendingMolstarReplaceRef\.current\.get\(requestId\)/);
 assert.match(app, /generate3DConformer,/);
-assert.match(appViewerBridgeMessagesHook, /handleViewerConformerMessage\(body, event\.source\)/);
+assert.match(viewerBridgeMessagesLib, /handleViewerConformerMessage\(body, eventSource\)/);
 assert.match(appViewerConformerMessagesHook, /body\?\.type !== "generate3dConformer"/);
 const generate3dHandlerStart = appViewerConformerMessagesHook.indexOf('if (body?.type !== "generate3dConformer") return false;');
 const generate3dHandlerEnd = appViewerConformerMessagesHook.indexOf('return true;', generate3dHandlerStart);
@@ -1889,7 +1891,7 @@ assert.doesNotMatch(generate3dHandler, /const targetDocument = \(body\.documentI
 assert.match(generate3dHandler, /"generate3dConformerStarted"/);
 assert.match(generate3dHandler, /"generate3dConformerFinished"/);
 assert.match(generate3dHandler, /void generate3DConformer\(targetDocument, mode, molstarStyle\)[\s\S]*\.finally\(\(\) => notifyGeneratorState\("generate3dConformerFinished"\)\)/);
-assert.match(appViewerBridgeMessagesHook, /value === "burrete-viewer" \|\| value === "burrete-grid" \|\| value === "burrete-agent-viewer"/);
+assert.match(viewerBridgeMessagesLib, /value === "burrete-viewer" \|\| value === "burrete-grid" \|\| value === "burrete-agent-viewer"/);
 assert.match(appViewerHostMessagesHook, /source === "burrete-agent-viewer" && body\?\.type === "agent-action-result"/);
 assert.match(app, /useAppMolstarXtbContext\(\{\s*activeViewerIframeForDocument,\s*isKnownViewerMessageSource,\s*\}\)/);
 assert.doesNotMatch(app, /action: \{ type: "get_xtb_context" \}/);
@@ -2711,7 +2713,7 @@ assert.match(ketcherPage, /className="ketcher-dock-format">\{panelFormatLabel\}/
 assert.match(ketcherPage, /disabled=\{!ketcher \|\| exportingSketch \|\| \(gridEditSource \? false : !output\.trim\(\)\)\}/);
 assert.match(ketcherPage, /\{gridEditSource \? "Apply" : "Load"\}/);
 assert.doesNotMatch(ketcherPage, /actions\.openCommandPalette/);
-assert.match(appViewerBridgeMessagesHook, /handleKetcherViewerMessage\(body\)/);
+assert.match(viewerBridgeMessagesLib, /handleKetcherViewerMessage\(body\)/);
 assert.match(appKetcherViewerMessagesHook, /body\?\.type === "openInKetcher"/);
 assert.match(appGridControlMessagesHook, /body\?\.type === "openInKetcher"/);
 assert.match(appGridControlMessagesHook, /openKetcherWithFragment\(title, text/);
@@ -3282,7 +3284,7 @@ assert.match(appViewerRuntimeMessagesHook, /body\?\.type === "setXyzrenderPreset
 assert.match(appViewerRuntimeMessagesHook, /pendingViewerReloadDocumentIdRef\.current = bodyString\(body\.documentId\) \?\? null/);
 assert.match(appViewerRuntimeMessagesHook, /xyzrenderPreset: bodyString\(body\.value\) \?\? null/);
 assert.doesNotMatch(app, /await openDocuments\(\[targetDocument\.path\], reloadOptions, undefined, \{ inActiveTab: true \}\)/);
-assert.match(appViewerBridgeMessagesHook, /handleRendererMessage\(body\)/);
+assert.match(viewerBridgeMessagesLib, /handleRendererMessage\(body\)/);
 assert.match(appRendererMessageHook, /body\?\.type !== "setRenderer"/);
 assert.match(appRendererMessageHook, /const reloadOptions = renderer === "xyzrender-external"\s*\?\s*\{\s*xyzrenderOrientationRef: orientationRef \?\? xyzrenderOrientationRefRef\.current,\s*xyzrenderPreset: preset \?\? pendingViewerReloadOptionsRef\.current\?\.xyzrenderPreset \?\? null,\s*xyzrenderControls: body\.controls \?\? pendingViewerReloadOptionsRef\.current\?\.xyzrenderControls \?\? null,\s*\}\s*: renderer === "molstar"\s*\?\s*\{\}/s);
 assert.match(appRendererMessageHook, /const targetDocument = \(documentId/);
@@ -3290,7 +3292,7 @@ assert.match(appRendererMessageHook, /pendingViewerReloadDocumentIdRef\.current 
 assert.match(appRendererMessageHook, /skipNextPreferenceRefreshRef\.current = true/);
 assert.match(appRendererMessageHook, /setPreference\("rendererMode", renderer\)/);
 assert.match(appRendererMessageHook, /void openDocuments\(\[targetDocument\.path\], reloadOptions, \{ rendererMode: renderer \}, \{ inActiveTab: true \}\)/);
-assert.match(appViewerBridgeMessagesHook, /await handleSdfViewerMessage\(body\)/);
+assert.match(viewerBridgeMessagesLib, /await handlers\.handleSdfViewerMessage\(body\)/);
 assert.match(appSdfViewerMessagesHook, /body\?\.type === "openSdfMolstarDocument"/);
 assert.match(appSdfViewerMessagesHook, /pushErrorStatus\("Select one or more molecules before opening Molstar\.", "Molstar view failed"\)/);
 assert.match(appSdfViewerMessagesHook, /invoke<ViewerDocument>\("open_text_structure"/);
@@ -3304,7 +3306,7 @@ assert.match(appSdfViewerMessagesHook, /const targetPath = requestedPath\.length
 assert.match(appSdfViewerMessagesHook, /const requestedReceptorPath = bodyString\(body\.receptorPath\)\.trim\(\)/);
 assert.match(appSdfViewerMessagesHook, /document\.path === requestedReceptorPath/);
 assert.match(appSdfViewerMessagesHook, /isProteinLikeDockingSource\(document\.path\)/);
-assert.match(appViewerBridgeMessagesHook, /handleDockingPoseMessage\(source, body\)/);
+assert.match(viewerBridgeMessagesLib, /handleDockingPoseMessage\(source, body\)/);
 assert.match(appDockingPoseMessagesHook, /body\?\.type !== "dockingPoseChanged"/);
 assert.match(appDockingPoseMessagesHook, /setPoseReviewSelections/);
 assert.match(appDockingPoseMessagesHook, /notifyGridPoseReviewSelection/);
@@ -3348,7 +3350,7 @@ assert.match(appSdfViewerMessagesHook, /body\?\.type === "openSdfGridDocument"/)
 assert.match(appSdfViewerMessagesHook, /const targetPath = bodyString\(body\.path\)\.trim\(\) \|\| targetDocument\?\.path/);
 assert.match(appSdfViewerMessagesHook, /pushStatus\("Opening SDF grid\.\.\."\)/);
 assert.match(appSdfViewerMessagesHook, /void openDocuments\(\[targetPath\], undefined, \{ rendererMode: "grid2d" \}, \{ inActiveTab: true \}\)/);
-assert.match(appViewerBridgeMessagesHook, /handleMolstarContextMessage\(body\)/);
+assert.match(viewerBridgeMessagesLib, /handleMolstarContextMessage\(body\)/);
 assert.match(appMolstarContextMessagesHook, /body\?\.type !== "openMolstarContextDocument"/);
 assert.match(appMolstarContextMessagesHook, /pushStatus\("Opening separate Molstar docking view\.\.\."\)/);
 assert.match(appMolstarContextMessagesHook, /void openDockingDocument\(targetDocument\.dockingRequest\.receptorPath, targetDocument\.dockingRequest\.ligandPaths\)/);
@@ -4552,7 +4554,7 @@ assert.match(appMolstarContextMessagesHook, /if \(!isTauriRuntime\(\)\) return o
 assert.match(appMolstarContextMessagesHook, /invoke<ViewerDocument>\("open_text_structure", \{\s*request: \{\s*title: `\$\{label\}\.\$\{extension\}`,\s*extension,\s*text: entry\.data,/s);
 assert.match(appMolstarContextMessagesHook, /reloadOptions: \{\},/);
 assert.match(appViewerBridgeControllerHook, /useAppViewerFileActions\(\{\s*pushErrorStatus,\s*pushStatus,\s*\}\)/s);
-assert.match(appViewerBridgeMessagesHook, /source === "burrete-viewer" && handleViewerFileMessage\(body\)/);
+assert.match(viewerBridgeMessagesLib, /source === "burrete-viewer" && handlers\.handleViewerFileMessage\(body\)/);
 assert.match(appViewerFileActionsHook, /body\?\.type === "exportText"/);
 assert.match(appViewerFileActionsHook, /body\?\.type === "exportData"/);
 assert.match(appViewerFileActionsHook, /invoke<string>\("write_base64_file", \{\s*request: \{ outputPath, contentsBase64: base64 \},\s*\}\)/s);
@@ -4888,17 +4890,21 @@ assert.match(viewerBridgeLib, /export type PostMessageToViewerSource/);
 assert.match(viewerBridgeLib, /document\.querySelectorAll<HTMLIFrameElement>\("\.viewer-iframe\[data-document-id\]"\)/);
 assert.match(viewerBridgeLib, /CSS\.escape\(documentId\)/);
 assert.match(appMolstarXtbContextHook, /import type \{ ActiveViewerIframeForDocument, KnownViewerMessageSource \} from "\.\.\/lib\/viewer-bridge"/);
-assert.match(appViewerBridgeMessagesHook, /isKnownViewerMessageSource\(event\.source, body\?\.documentId\)/);
-assert.match(appViewerBridgeMessagesHook, /import type \{ KnownViewerMessageSource \} from "\.\.\/lib\/viewer-bridge"/);
-assert.match(appViewerBridgeMessagesHook, /source === "burrete-grid"/);
-assert.match(appViewerBridgeMessagesHook, /handleGridControlMessage\(body\)/);
+assert.match(appViewerBridgeMessagesHook, /parseViewerBridgeMessage\(event\)/);
+assert.match(appViewerBridgeMessagesHook, /dispatchViewerBridgeMessage\(message, \{/);
+assert.doesNotMatch(appViewerBridgeMessagesHook, /body\?\.documentId/);
+assert.match(viewerBridgeMessagesLib, /export function viewerBridgeSource\(value: unknown\)/);
+assert.match(viewerBridgeMessagesLib, /export function viewerBridgeBodyDocumentId\(body: ViewerBridgeMessageBody\)/);
+assert.match(viewerBridgeMessagesLib, /isKnownViewerMessageSource\(eventSource, viewerBridgeBodyDocumentId\(body\)\)/);
+assert.match(viewerBridgeMessagesLib, /source === "burrete-grid"/);
+assert.match(viewerBridgeMessagesLib, /handleGridControlMessage\(body\)/);
 assert.match(appGridControlMessagesHook, /body\?\.type === "copyText"/);
 assert.match(appGridControlMessagesHook, /writeClipboardText\(text\)/);
 assert.match(appGridControlMessagesHook, /body\?\.type === "calculateGridDescriptors"/);
 assert.match(appGridControlMessagesHook, /calculateGridDescriptors\(documentId, rowIndexes\.length \? \{ rowIndexes \} : \{\}\)/);
 assert.match(appGridControlMessagesHook, /body\?\.type === "gridPerfMetric"/);
 assert.match(appGridControlMessagesHook, /writeGridPerfMetric\(body\)/);
-assert.match(appViewerBridgeMessagesHook, /handleGridFileMessage\(body, event\.source\)/);
+assert.match(viewerBridgeMessagesLib, /handleGridFileMessage\(body, eventSource\)/);
 assert.match(appGridFileActionsHook, /body\?\.type === "exportText"/);
 assert.match(appGridFileActionsHook, /const outputPath = await save\(/);
 assert.match(appGridFileActionsHook, /invoke<string>\("save_text_as"/);
@@ -4920,7 +4926,7 @@ assert.match(appGridFileActionsHook, /pushErrorStatus\(error, "Grid Save failed"
 assert.match(appViewerFileActionsHook, /from "\.\.\/lib\/file-export"/);
 assert.match(fileExport, /export function safeExportFileName\(name: string\)/);
 assert.match(fileExport, /export function exportDialogFilters\(fileName: string, mimeType: string\)/);
-assert.match(appViewerBridgeMessagesHook, /handleGridRuntimeMessage\(body, event\.source\)/);
+assert.match(viewerBridgeMessagesLib, /handleGridRuntimeMessage\(body, eventSource\)/);
 assert.match(appGridRuntimeMessagesHook, /if \(body\?\.type === "gridFetchPage"\) \{\s*if \(!body\.requestId \|\| !body\.documentId\) return true;/s);
 assert.match(appGridRuntimeMessagesHook, /invoke\("grid_fetch_page"/);
 assert.match(appGridRuntimeMessagesHook, /source: "burrete-grid-host"/);
@@ -5000,7 +5006,7 @@ assert.match(viewer, /postHostMessage\(\{ type: togglesSidebar \? 'toggleSidebar
 assert.match(gridViewer, /function initShellShortcutBridge\(\)/);
 assert.match(gridViewer, /const togglesSidebar = commandKey && !event\.altKey && !event\.shiftKey && key === 'b'/);
 assert.match(gridViewer, /post\(togglesSidebar \? 'toggleSidebar' : 'openCommandPalette'\)/);
-assert.match(appViewerBridgeMessagesHook, /handleViewerStateMessage\(source, body\)/);
+assert.match(viewerBridgeMessagesLib, /handleViewerStateMessage\(source, body\)/);
 assert.match(appViewerStateMessagesHook, /body\?\.type === "openCommandPalette"/);
 assert.match(appViewerStateMessagesHook, /openCommandPalette\(\);\s*return true;/);
 assert.match(appViewerStateMessagesHook, /body\?\.type === "toggleSidebar"/);
@@ -5338,7 +5344,7 @@ assert.match(gridViewer, /function requestSingleMolstarDocument\(row, cfg\)/);
 assert.match(gridViewer, /data-buret-detail-action="molstar">Open in Mol\*/);
 assert.match(gridViewer, /data-buret-detail-action="ketcher">Edit in Ketcher/);
 assert.match(gridViewer, /data-buret-detail-action="generate3d">Generate 3D/);
-assert.match(appViewerBridgeMessagesHook, /handleGridConformerMessage\(body, event\.source\)/);
+assert.match(viewerBridgeMessagesLib, /handleGridConformerMessage\(body, eventSource\)/);
 assert.match(appGridConformerMessagesHook, /body\?\.type !== "generate3dGridSelection"/);
 assert.match(appGridConformerMessagesHook, /reply\("gridGenerate3DStarted"\)/);
 assert.match(appGridConformerMessagesHook, /reply\("gridGenerate3DError"/);
