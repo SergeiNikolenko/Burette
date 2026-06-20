@@ -18,3 +18,7 @@ export function createAppShellViewState(input: AppShellViewStateInput): ShellVie
       : null,
   };
 }
+
+export function useAppShellViewState(input: AppShellViewStateInput): ShellViewState {
+  return createAppShellViewState(input);
+}
