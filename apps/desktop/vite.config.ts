@@ -21,7 +21,7 @@ const defaultDesktopRoots = [
   join(homedir(), "Desktop", "xyzrender-main"),
 ].filter((path) => existsSync(path));
 const defaultProjectFiles = [
-  join(repoRoot, "samples", "large", "litr_moses_10k.csv"),
+  join(repoRoot, "samples", "large", "moses_10k.csv"),
 ].filter((path) => existsSync(path));
 const defaultDevFileSources = defaultDevFileRoots.length > 0
   ? defaultDevFileRoots

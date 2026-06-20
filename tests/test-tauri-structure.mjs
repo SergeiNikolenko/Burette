@@ -224,14 +224,15 @@ assert.match(nightlySmokeWorkflow, /on:\s*\n\s*schedule:/);
 assert.match(nightlySmokeWorkflow, /BURRETE_DEV_FLAVOR:\s*ci/);
 assert.match(nightlySmokeWorkflow, /scripts\/quicklook-preview-smoke\.sh/);
 for (const fixture of [
-  'tests/fixtures/BurettePreviewSamples/mini.pdb',
-  'tests/fixtures/BurettePreviewSamples/mini.cif',
-  'tests/fixtures/BurettePreviewSamples/sdf/single.sdf',
-  'tests/fixtures/BurettePreviewSamples/xyz/single.xyz',
-  'tests/fixtures/BurettePreviewSamples/xyzr/single.xyzr',
+  'samples/mini.pdb',
+  'samples/mini.cif',
+  'samples/mini.sdf',
+  'samples/mini.xyz',
+  'build/smoke/single.xyzr',
 ]) {
   assert.match(nightlySmokeWorkflow, new RegExp(fixture.replaceAll('/', '\\/')));
 }
+assert.match(nightlySmokeWorkflow, /cp samples\/mini\.xyz build\/smoke\/single\.xyzr/);
 assert.match(nightlySmokeWorkflow, /scripts\/perf-smoke\.sh/);
 
 for (const moduleName of ['agent_integration', 'documents', 'grid', 'preview_cache', 'quicklook', 'shell', 'startup', 'updater']) {
