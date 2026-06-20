@@ -10,6 +10,7 @@ const [
   app,
   appFileOpen,
   appDockPayloadOpen,
+  appQuickLookDocumentOpen,
   fileRouting,
   types,
   tabsHook,
@@ -38,6 +39,7 @@ const [
   source("apps/desktop/src/App.tsx"),
   source("apps/desktop/src/hooks/use-app-file-open.ts"),
   source("apps/desktop/src/hooks/use-app-dock-payload-open.ts"),
+  source("apps/desktop/src/hooks/use-app-quick-look-document-open.ts"),
   source("apps/desktop/src/lib/file-routing.ts"),
   source("apps/desktop/src/types.ts"),
   source("apps/desktop/src/hooks/use-tabs.ts"),
@@ -179,7 +181,8 @@ for (const extension of ["inpcrd", "rst7", "crd", "rst", "state", "xml"]) {
 }
 
 assert.match(appFileOpen, /const openTextDocuments = useCallback/);
-assert.match(app, /import \{ openBrowserDevTextFiles \} from "\.\/lib\/browser-dev-text-files";/);
+assert.match(appQuickLookDocumentOpen, /import \{ openBrowserDevTextFiles \} from "\.\.\/lib\/browser-dev-text-files";/);
+assert.doesNotMatch(app, /import \{ openBrowserDevTextFiles \} from "\.\/lib\/browser-dev-text-files";/);
 assert.match(appFileOpen, /: await openBrowserDevTextFiles\(cleanPaths\)/);
 assert.doesNotMatch(app, /Text file viewer is available in the desktop app only/);
 assert.match(appFileOpen, /const openPaths = useCallback/);

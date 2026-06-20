@@ -43,6 +43,7 @@ const [
   appOpenActionsHook,
   appPreferenceEffectsHook,
   appQuickLookHook,
+  appQuickLookDocumentOpenHook,
   appResizeHook,
   appRendererMessageHook,
   appSidebarProjectsHook,
@@ -223,6 +224,7 @@ const [
   source('apps/desktop/src/hooks/use-app-open-actions.ts'),
   source('apps/desktop/src/hooks/use-app-preference-effects.ts'),
   source('apps/desktop/src/hooks/use-app-quick-look.ts'),
+  source('apps/desktop/src/hooks/use-app-quick-look-document-open.ts'),
   source('apps/desktop/src/hooks/use-app-resize.ts'),
   source('apps/desktop/src/hooks/use-app-renderer-message.ts'),
   source('apps/desktop/src/hooks/use-app-sidebar-projects.ts'),
@@ -1000,7 +1002,16 @@ assert.match(appShellActionsHook, /clearDirtyGridDocuments\(\);/);
 assert.match(appDirtyGridHook, /useState<Set<string>>\(\(\) => new Set\(\)\)/);
 assert.match(appDirtyGridHook, /This grid has unsaved changes/);
 assert.match(appDirtyGridHook, /dirtyCount === 1 \? " has" : "s have"/);
-assert.match(app, /const openQuickLookDocument = useCallback/);
+assert.match(app, /from "\.\/hooks\/use-app-quick-look-document-open"/);
+assert.match(app, /const \{ openQuickLookDocument \} = useAppQuickLookDocumentOpen\(\{ preferences \}\)/);
+assert.doesNotMatch(app, /const openQuickLookDocument = useCallback/);
+assert.match(appQuickLookDocumentOpenHook, /export function useAppQuickLookDocumentOpen\(\{ preferences \}/);
+assert.match(appQuickLookDocumentOpenHook, /const openQuickLookDocument = useCallback/);
+assert.match(appQuickLookDocumentOpenHook, /detectContentSpectrumPaths\(\[quickLookPath\]\)/);
+assert.match(appQuickLookDocumentOpenHook, /isSpectrumPath\(quickLookPath, extension\) \|\| contentSpectrumPaths\.has\(quickLookPath\)/);
+assert.match(appQuickLookDocumentOpenHook, /openBrowserDevTextFiles\(\[quickLookPath\]\)/);
+assert.match(appQuickLookDocumentOpenHook, /spectrumDocumentFromText\(textDocument\)/);
+assert.match(appQuickLookDocumentOpenHook, /openBrowserDevDocuments\(\[quickLookPath\], preferences\)/);
 assert.match(app, /useAppQuickLook\(\{\s*browserDevQuickLookPath,\s*openQuickLookDocument,\s*pushErrorStatus,/s);
 assert.match(appQuickLookHook, /openedBrowserDevQuickLookRef/);
 assert.match(appQuickLookHook, /Open Quick Look debug file failed/);
