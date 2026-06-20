@@ -5,11 +5,13 @@ use std::env;
 #[cfg(target_os = "macos")]
 use std::ffi::CString;
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 #[cfg(target_os = "macos")]
 use std::sync::mpsc;
+use std::thread::sleep;
+use std::time::{Duration, Instant};
 use tauri::{Manager, Runtime};
 #[cfg(not(target_os = "macos"))]
 use tauri_plugin_dialog::DialogExt;
@@ -35,6 +37,7 @@ const XYZRENDER_SHEET_MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
 const KETCHER_IMPORT_MAX_STRUCTURE_FILE_SIZE: u64 = 10 * 1024 * 1024;
 const PROJECT_STRUCTURE_SCAN_MAX_FILES: usize = 2_000;
 const PROJECT_STRUCTURE_SCAN_MAX_DIRECTORIES: usize = 400;
+const CONFORMER_PYTHON_STATUS_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Clone, Copy)]
 struct ProjectStructureScanLimits {
@@ -815,6 +818,70 @@ struct PythonCommand {
     args: Vec<String>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ConformerPythonRuntimeStatus {
+    available: bool,
+    engine: &'static str,
+    package_name: &'static str,
+    python_label: Option<String>,
+    executable_path: Option<String>,
+    command: Option<Vec<String>>,
+    version: Option<String>,
+    message: String,
+    install_hint: Option<String>,
+    last_error: Option<String>,
+}
+
+struct ConformerPythonRuntimeSpec {
+    engine: &'static str,
+    package_name: &'static str,
+    env_name: &'static str,
+    label: &'static str,
+}
+
+pub(crate) fn conformer_python_runtime_status(engine: &str) -> ConformerPythonRuntimeStatus {
+    let spec = conformer_python_runtime_spec(engine);
+    let mut last_error = None;
+    for python in conformer_python_status_candidates(spec.engine) {
+        match conformer_python_status_probe(&python, conformer_python_status_script(spec.engine)) {
+            Ok(version) => {
+                return ConformerPythonRuntimeStatus {
+                    available: true,
+                    engine: spec.engine,
+                    package_name: spec.package_name,
+                    python_label: Some(python.label.clone()),
+                    executable_path: Some(python.command.clone()),
+                    command: Some(python.argv()),
+                    version,
+                    message: format!("{} conformer Python is available", spec.label),
+                    install_hint: None,
+                    last_error: None,
+                };
+            }
+            Err(error) => last_error = Some(error),
+        }
+    }
+    ConformerPythonRuntimeStatus {
+        available: false,
+        engine: spec.engine,
+        package_name: spec.package_name,
+        python_label: None,
+        executable_path: None,
+        command: None,
+        version: None,
+        message: match &last_error {
+            Some(error) => format!("{} conformer Python was not found: {error}", spec.label),
+            None => format!("{} conformer Python was not found", spec.label),
+        },
+        install_hint: Some(format!(
+            "Set {} to a Python executable with {} installed, or install {} into python3.",
+            spec.env_name, spec.package_name, spec.package_name
+        )),
+        last_error,
+    }
+}
+
 fn conformer_python_candidates(engine: &str) -> Vec<PythonCommand> {
     let mut candidates = Vec::new();
     let (env_name, package_name) = if engine == "datamol" {
@@ -868,6 +935,104 @@ fn conformer_python_candidates(engine: &str) -> Vec<PythonCommand> {
         seen.insert(key)
     });
     candidates
+}
+
+impl PythonCommand {
+    fn argv(&self) -> Vec<String> {
+        let mut argv = Vec::with_capacity(self.args.len() + 1);
+        argv.push(self.command.clone());
+        argv.extend(self.args.clone());
+        argv
+    }
+}
+
+fn conformer_python_runtime_spec(engine: &str) -> ConformerPythonRuntimeSpec {
+    if engine == "datamol" {
+        ConformerPythonRuntimeSpec {
+            engine: "datamol",
+            package_name: "datamol",
+            env_name: "BURRETE_DATAMOL_PYTHON",
+            label: "Datamol",
+        }
+    } else {
+        ConformerPythonRuntimeSpec {
+            engine: "rdkit",
+            package_name: "rdkit",
+            env_name: "BURRETE_RDKIT_PYTHON",
+            label: "RDKit",
+        }
+    }
+}
+
+fn conformer_python_status_candidates(engine: &str) -> Vec<PythonCommand> {
+    conformer_python_candidates(engine)
+        .into_iter()
+        .filter(|candidate| !is_uvx_from_python_candidate(candidate))
+        .collect()
+}
+
+fn is_uvx_from_python_candidate(candidate: &PythonCommand) -> bool {
+    candidate.args.first().map(String::as_str) == Some("--from")
+        && candidate.args.last().map(String::as_str) == Some("python")
+}
+
+fn conformer_python_status_script(engine: &str) -> &'static str {
+    if engine == "datamol" {
+        "import datamol as dm\nprint(getattr(dm, '__version__', 'unknown'))"
+    } else {
+        "import rdkit\nprint(getattr(rdkit, '__version__', 'unknown'))"
+    }
+}
+
+fn conformer_python_status_probe(
+    python: &PythonCommand,
+    script: &str,
+) -> Result<Option<String>, String> {
+    let mut child = Command::new(&python.command)
+        .args(&python.args)
+        .arg("-c")
+        .arg(script)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("{}: {error}", python.label))?;
+    let deadline = Instant::now() + CONFORMER_PYTHON_STATUS_TIMEOUT;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let mut stdout = String::new();
+                let mut stderr = String::new();
+                if let Some(mut pipe) = child.stdout.take() {
+                    let _ = pipe.read_to_string(&mut stdout);
+                }
+                if let Some(mut pipe) = child.stderr.take() {
+                    let _ = pipe.read_to_string(&mut stderr);
+                }
+                if status.success() {
+                    return Ok(stdout
+                        .lines()
+                        .map(str::trim)
+                        .find(|line| !line.is_empty())
+                        .map(str::to_string));
+                }
+                let error = stderr
+                    .lines()
+                    .map(str::trim)
+                    .find(|line| !line.is_empty())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| status.to_string());
+                return Err(format!("{}: {error}", python.label));
+            }
+            Ok(None) if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("{}: status probe timed out", python.label));
+            }
+            Ok(None) => sleep(Duration::from_millis(50)),
+            Err(error) => return Err(format!("{}: {error}", python.label)),
+        }
+    }
 }
 
 fn resolve_executable(name: &str, preferred_paths: &[Option<PathBuf>]) -> Option<PathBuf> {
@@ -1996,12 +2161,12 @@ fn pick_open_targets_macos<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<Vec<
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_open_paths, conformer_python_candidates, expand_open_document_paths,
-        expand_open_targets, expand_project_structure_targets, generated_conformer_title,
-        list_project_structure_files, looks_like_supported_structure_file,
-        normalize_inline_structure_extension, open_text_structure_for_window_label,
-        smiles_from_sheet_data, supported_open_target_extensions, ProjectStructureScanLimits,
-        TextStructureRequest,
+        classify_open_paths, conformer_python_candidates, conformer_python_runtime_spec,
+        conformer_python_status_candidates, expand_open_document_paths, expand_open_targets,
+        expand_project_structure_targets, generated_conformer_title, list_project_structure_files,
+        looks_like_supported_structure_file, normalize_inline_structure_extension,
+        open_text_structure_for_window_label, smiles_from_sheet_data,
+        supported_open_target_extensions, ProjectStructureScanLimits, TextStructureRequest,
     };
     use crate::preview::grid_store::GridRuntimeRegistry;
     use crate::preview::runtime::ViewerPreferences;
@@ -2058,6 +2223,24 @@ mod tests {
         assert!(candidates
             .iter()
             .any(|candidate| candidate.label == "python"));
+    }
+
+    #[test]
+    fn conformer_python_status_candidates_skip_uvx_from_python_probe() {
+        let status_candidates = conformer_python_status_candidates("datamol");
+        assert!(status_candidates.iter().all(|candidate| !(candidate
+            .args
+            .first()
+            .map(String::as_str)
+            == Some("--from")
+            && candidate.args.last().map(String::as_str) == Some("python"))));
+
+        let datamol = conformer_python_runtime_spec("datamol");
+        assert_eq!(datamol.package_name, "datamol");
+        assert_eq!(datamol.env_name, "BURRETE_DATAMOL_PYTHON");
+        let rdkit = conformer_python_runtime_spec("rdkit");
+        assert_eq!(rdkit.package_name, "rdkit");
+        assert_eq!(rdkit.env_name, "BURRETE_RDKIT_PYTHON");
     }
 
     #[test]
