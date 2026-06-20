@@ -187,6 +187,8 @@ Current Stage 3 progress:
   `apps/desktop/src/hooks/use-app-xtb-workflows.ts`;
 - shared text/base64 download, export filename, temporary text id, and save
   dialog filter helpers now live in `apps/desktop/src/lib/file-export.ts`;
+- diagnostics bundle export now redacts local filesystem paths from copied app
+  logs, preview traces, Quick Look logs, and manifest `recentErrors` entries;
 - `App.tsx` still owns the top-level shell composition and remaining runtime
   hardening boundaries. These are the remaining high-risk slices and should
   move only after each boundary has contract coverage for the exact
@@ -215,7 +217,7 @@ the high-risk runtime boundaries intact.
 | Folder scanner job | Not started | No cancellable/limited scanner refactor yet. |
 | Renderer policy contract | Not started | Desktop/Quick Look renderer-policy matrix remains pending. |
 | External runtime doctor | Not started | No doctor flow has been added. |
-| Diagnostics privacy | Partial | Diagnostics export action is extracted; privacy/redaction tests from the epic remain pending. |
+| Diagnostics privacy | Partial | Diagnostics export action is extracted and diagnostics bundle local-path redaction is covered by Rust tests; broader privacy review for every copied artifact remains pending. |
 | Viewer runtime decomposition | Not started | `PreviewExtension/Web/viewer.js` remains untouched as planned until stronger contracts exist. |
 | CSS split | Not started | No CSS mechanical split has been attempted. |
 
