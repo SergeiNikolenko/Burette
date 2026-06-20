@@ -5,7 +5,7 @@ import { openPath } from "@tauri-apps/plugin-opener";
 import previewFormatRegistry from "../../../config/preview-formats.json";
 import { AppLayout } from "./components/app-layout";
 import { showNativeContextMenu } from "./components/native-context-menu";
-import type { AppSettingsSectionId, KetcherImportRequest, KetcherSketchRequest, KetcherSource3D, ShellActions, ShellViewState, StructureViewerAction, ViewerLigandSelection } from "./components/types";
+import type { AppSettingsSectionId, KetcherImportRequest, KetcherSketchRequest, ShellActions, ShellViewState, StructureViewerAction, ViewerLigandSelection } from "./components/types";
 import { WindowTitle } from "./components/window-title";
 import {
   useCloseCommandPalette,
@@ -86,6 +86,7 @@ import type { DockArea, DockTabKind } from "./lib/dock";
 import type { DropActionChoice } from "./lib/drop-actions";
 import { delimitedColumnChoiceLabel, isDelimitedColumnAmbiguity, pathExtension, preferredTextExtensions, structureAndTextExtensions, structureExtensionFromPath, structureExtensions, summarizeErrors, summarizeErrorText, type GridDelimitedColumnChoice } from "./lib/file-routing";
 import { browserDevDockingFromLocation, browserDevFilesFromLocation, browserDevFolderFromLocation, browserDevHasExplicitFiles, browserDevHasExplicitWorkspace, browserDevQuickLookFileFromLocation } from "./lib/browser-dev-startup";
+import { ketcherDraftMolfileFromImportText, ketcherSource3DFromText, queueKetcherImportRequest } from "./lib/ketcher-workflow";
 import { markPerformanceOnce } from "./lib/performance";
 import { basename, parentDirectory } from "./lib/sidebar-projects";
 import type { StructureDragPayload, StructureDragRecord } from "./lib/structure-drag";
@@ -231,12 +232,6 @@ async function svgToPngBase64(svg: string) {
   } finally {
     URL.revokeObjectURL(url);
   }
-}
-
-function queueKetcherImportRequest(request: KetcherImportRequest) {
-  const targetWindow = window as Window & { __buretteKetcherImportRequest?: KetcherImportRequest | null };
-  targetWindow.__buretteKetcherImportRequest = request;
-  window.dispatchEvent(new CustomEvent("burette:ketcher-import", { detail: request }));
 }
 
 export default function App() {
@@ -3871,34 +3866,6 @@ function selectorText(
   const value = selector[key];
   if (Array.isArray(value) || value === undefined || value === null) return null;
   return String(value);
-}
-
-function ketcherSource3DFromText(title: string, text: string, extension: string): KetcherSource3D | undefined {
-  const cleanText = text.trim();
-  if (!cleanText) return undefined;
-  const cleanExtension = extension.trim().replace(/^\./u, "").toLowerCase();
-  if (!["sdf", "sd", "mol"].includes(cleanExtension)) return undefined;
-  return {
-    title: title.trim() || "structure",
-    extension: cleanExtension,
-    text: cleanText,
-  };
-}
-
-function ketcherDraftMolfileFromImportText(text: string) {
-  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trimEnd();
-  if (!normalized.trim()) return null;
-  const records = normalized.split(/\n\$\$\$\$\s*(?:\n|$)/u).map((record) => record.trimEnd()).filter(Boolean);
-  if (records.length === 1 && normalized !== records[0]) {
-    const [record] = records;
-    return record && looksLikeMolfile(record) ? record + "\n" : null;
-  }
-  return looksLikeMolfile(normalized) ? normalized + "\n" : null;
-}
-
-function looksLikeMolfile(text: string) {
-  const lines = text.split("\n");
-  return lines.length >= 4 && /^\s*\d+\s+\d+\b/u.test(lines[3] ?? "");
 }
 
 async function writeClipboardText(text: string) {

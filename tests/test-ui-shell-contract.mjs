@@ -84,6 +84,7 @@ const [
   ketcherPage,
   ketcherEditor,
   ketcherBrowserRequire,
+  ketcherWorkflow,
   componentTypes,
   launcherKind,
   settingsKind,
@@ -219,6 +220,7 @@ const [
   source('apps/desktop/src/components/ketcher-page.tsx'),
   source('apps/desktop/src/components/ketcher-editor.tsx'),
   source('apps/desktop/src/lib/ketcher-browser-require.ts'),
+  source('apps/desktop/src/lib/ketcher-workflow.ts'),
   source('apps/desktop/src/components/types.ts'),
   source('apps/desktop/src/components/editor-area/page-kinds/launcher.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/settings.tsx'),
@@ -2061,6 +2063,7 @@ assert.match(app, /const saveKetcherExportFile = useCallback\(async/);
 assert.match(app, /invoke<string>\("save_text_as", \{ text: request\.text, outputPath \}\)/);
 assert.match(componentTypes, /openKetcherExportRaw: \(request: \{/);
 assert.match(componentTypes, /saveKetcherExportFile: \(request: \{/);
+assert.match(app, /from "\.\/lib\/ketcher-workflow"/);
 assert.match(ketcherPage, /function withKetcherTimeout<T>\(operation: Promise<T>, label: string\): Promise<T>/);
 assert.match(ketcherPage, /Ketcher did not return a sketch\. Draw a molecule first or try again\./);
 assert.match(app, /const openDocumentsInActiveTab = useOpenDocumentsInActiveTab\(\)/);
@@ -2075,6 +2078,8 @@ assert.match(app, /generateBrowserDev3DConformer\(conformerRequest\)/);
 assert.match(app, /\.\.\.conformerGenerationPreferences\(preferences\)/);
 assert.match(app, /source3d: request\.source3d \?\? null/);
 assert.match(app, /source3d: ketcherSource3DFromText\(basename\(path\), virtualText, pathExtension\(path\)\)/);
+assert.match(ketcherWorkflow, /export function ketcherSource3DFromText/);
+assert.match(ketcherWorkflow, /if \(!\["sdf", "sd", "mol"\]\.includes\(cleanExtension\)\) return undefined/);
 assert.match(app, /openDocumentsInActiveTab\(\[document\]\)/);
 assert.match(app, /request\.target === "collection" && request\.collectionTargetPath/);
 assert.match(app, /request\.target === "collection"[\s\S]*save\(\{[\s\S]*defaultPath: "ketcher-collection\.sdf"/);
@@ -2442,14 +2447,16 @@ assert.doesNotMatch(ketcherPage, /actions\.openCommandPalette/);
 assert.match(app, /body\?\.type === "openInKetcher"/);
 assert.match(app, /const openKetcherWithFragment = useCallback/);
 assert.match(app, /textBase64/);
-assert.match(app, /function queueKetcherImportRequest\(request: KetcherImportRequest\)/);
-assert.match(app, /window\.dispatchEvent\(new CustomEvent\("burette:ketcher-import", \{ detail: request \}\)\)/);
+assert.match(ketcherWorkflow, /export function queueKetcherImportRequest\(request: KetcherImportRequest\)/);
+assert.match(ketcherWorkflow, /window\.dispatchEvent\(new CustomEvent\("burette:ketcher-import", \{ detail: request \}\)\)/);
 assert.match(app, /queueKetcherImportRequest\(request\);\s*setKetcherImportRequest\(request\);\s*openKetcherTab\(\{ kind: "ketcher", importRequestId: request\.id, importRequest: request \}\);/);
 assert.doesNotMatch(app, /openKetcherTab\(\);\s*window\.setTimeout\(\(\) => \{\s*queueKetcherImportRequest\(request\)/);
 assert.match(app, /applyKetcherToGridRow,/);
 assert.match(app, /const ketcherTabId = tabs\.find\(\(tab\) => tab\.location\.kind === "ketcher"\)\?\.id \?\? null;/);
 assert.match(app, /if \(ketcherTabId\) \{\s*window\.setTimeout\(\(\) => \{\s*setActiveDocument\(request\.documentId\);\s*closeTab\(ketcherTabId\);\s*\}, 0\);\s*\}/);
 assert.match(app, /openKetcherWithStructures = useCallback\(\(paths: string\[\], fragments: KetcherImportRequest\["fragments"\] = \[\]\)/);
+assert.match(ketcherWorkflow, /export function ketcherDraftMolfileFromImportText\(text: string\)/);
+assert.match(ketcherWorkflow, /function looksLikeMolfile\(text: string\)/);
 assert.match(ketcherPage, /const \[gridEditSource, setGridEditSource\]/);
 assert.match(ketcherPage, /actions\.applyKetcherToGridRow\(\{/);
 assert.match(ketcherPage, /gridEditSource \? applyGridEdit\(\) : applyOutput\(\)/);
