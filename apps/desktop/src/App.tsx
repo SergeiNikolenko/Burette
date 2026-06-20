@@ -71,7 +71,7 @@ import type { DockArea, DockTabKind } from "./lib/dock";
 import type { DropActionChoice } from "./lib/drop-actions";
 import { collectPerformanceMarks, markPerformanceOnce, measureAsync } from "./lib/performance";
 import { basename, buildSidebarProjects, parentDirectory, type SidebarProjectStructure } from "./lib/sidebar-projects";
-import { parseStructureComposition } from "./lib/structure-composition";
+import { parseStructureComposition, type StructureViewerSelector } from "./lib/structure-composition";
 import type { StructureDragPayload, StructureDragRecord } from "./lib/structure-drag";
 import { readStructureText } from "./lib/structure-text";
 import { isSpectrumExtension, spectrumDocumentFromText } from "./lib/spectrum";
@@ -5691,7 +5691,7 @@ function pdbAtomLineMatchesLigand(line: string, comp: string, chain: string, seq
 }
 
 function selectorText(
-  selector: Record<string, string | number | Array<string | number>>,
+  selector: StructureViewerSelector,
   key: string,
 ) {
   const value = selector[key];

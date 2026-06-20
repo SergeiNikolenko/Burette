@@ -951,6 +951,11 @@
 
   function matchesSelector(atom, selector = {}) {
     if (!selector || selector.kind === 'all') return true;
+    if (Array.isArray(selector.residues) && selector.residues.length > 0) {
+      const baseSelector = { ...selector };
+      delete baseSelector.residues;
+      return selector.residues.some(residue => matchesSelector(atom, { ...baseSelector, ...normalizeSelector(residue, false) }));
+    }
     if (selector.structure && selector.structure !== 'primary' && selector.structure !== atom.structureId && Number(selector.structure) !== atom.structureIndex) return false;
     if (selector.modelIndex != null && Number(selector.modelIndex) !== atom.modelIndex) return false;
     if (selector.kind && !matchesKind(atom, selector.kind)) return false;
