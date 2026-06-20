@@ -46,7 +46,7 @@ import { useAppSidebarProjects } from "./hooks/use-app-sidebar-projects";
 import { useAppSdfViewerMessages } from "./hooks/use-app-sdf-viewer-messages";
 import { useAppShellActions } from "./hooks/use-app-shell-actions";
 import { useAppShellNavigationActions } from "./hooks/use-app-shell-navigation-actions";
-import { createAppShellViewState } from "./hooks/use-app-shell-view-state";
+import { useAppShellViewState } from "./hooks/use-app-shell-view-state";
 import { useAppStartupEffects } from "./hooks/use-app-startup-effects";
 import { useAppStatus } from "./hooks/use-app-status";
 import { useAppUpdates } from "./hooks/use-app-updates";
@@ -1017,7 +1017,7 @@ export default function App() {
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
-  const state = createAppShellViewState({
+  const state = useAppShellViewState({
     documents,
     textDocuments,
     tabs,

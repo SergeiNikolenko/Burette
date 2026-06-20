@@ -3004,7 +3004,12 @@ assert.match(appShellActionsHook, /\.\.\.createRecentShellActions\(\{ clearRecen
 assert.match(appShellActionsHook, /pushStatus\("Recent structures cleared"\)/);
 assert.match(appShellActionsHook, /\.\.\.createUpdateShellActions\(\{ checkForUpdates, installUpdate \}\)/);
 assert.match(appShellActionsHook, /await checkForUpdates\(false\)/);
-assert.match(app, /const state = createAppShellViewState\(\{/);
+assert.match(app, /from "\.\/hooks\/use-app-shell-view-state"/);
+assert.match(app, /const state = useAppShellViewState\(\{/);
+assert.doesNotMatch(app, /const state = createAppShellViewState\(\{/);
+assert.match(appShellViewStateHook, /export function createAppShellViewState\(input: AppShellViewStateInput\): ShellViewState/);
+assert.match(appShellViewStateHook, /export function useAppShellViewState\(input: AppShellViewStateInput\): ShellViewState/);
+assert.match(appShellViewStateHook, /return createAppShellViewState\(input\)/);
 assert.match(appShellViewStateHook, /activeDocumentId: state\.activeDocument\?\.id \?\? null/);
 assert.match(appShellViewStateHook, /visibleDocuments: state\.documents/);
 assert.match(appShellViewStateHook, /viewerLigandSelection: state\.activeDocument/);
