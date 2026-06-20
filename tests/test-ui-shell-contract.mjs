@@ -47,6 +47,7 @@ const [
   appXtbWorkflowsHook,
   appOpenActionsHook,
   appOpenDropMergeCollectionsHook,
+  appOpenDropControllerHook,
   appPreferenceEffectsHook,
   appQuickLookHook,
   appQuickLookDocumentOpenHook,
@@ -236,6 +237,7 @@ const [
   source('apps/desktop/src/hooks/use-app-xtb-workflows.ts'),
   source('apps/desktop/src/hooks/use-app-open-actions.ts'),
   source('apps/desktop/src/hooks/use-app-open-drop-merge-collections.ts'),
+  source('apps/desktop/src/hooks/use-app-open-drop-controller.ts'),
   source('apps/desktop/src/hooks/use-app-preference-effects.ts'),
   source('apps/desktop/src/hooks/use-app-quick-look.ts'),
   source('apps/desktop/src/hooks/use-app-quick-look-document-open.ts'),
@@ -1134,8 +1136,9 @@ assert.match(appStartupEffectsHook, /openedBrowserDevDockingRef/);
 assert.match(appStartupEffectsHook, /browserDevRuntimeNeedsRefresh/);
 assert.match(appStartupEffectsHook, /openedPersistedTabsRef/);
 assert.match(appStartupEffectsHook, /void Promise\.resolve\(openPaths\(paths\)\)\.then\(\(\) => \{/);
-assert.equal((app.match(/useOpenEvents\(/g) || []).length, 1);
-assert.match(app, /useOpenEvents\(openPaths, pushErrorStatus\)/);
+assert.match(app, /useAppOpenDropController\(\{/);
+assert.equal((appOpenDropControllerHook.match(/useOpenEvents\(/g) || []).length, 1);
+assert.match(appOpenDropControllerHook, /useOpenEvents\(openPaths, pushErrorStatus\)/);
 assert.doesNotMatch(app, /isTauriRuntime\(\) && !startupOpenSettled/);
 assert.match(app, /useAppSidebarProjects/);
 assert.match(appSidebarProjectsHook, /buildSidebarProjects/);
@@ -3147,16 +3150,16 @@ assert.match(styles, /\[cmdk-dialog\] \{[\s\S]*overflow: hidden/);
 assert.match(styles, /\[cmdk-dialog\]::before \{[\s\S]*background: color-mix\(in srgb, var\(--bg-base\) 55%, transparent\)/);
 assert.match(styles, /\[cmdk-item\]\[data-selected="true"\]/);
 assert.match(styles, /\[cmdk-item\]:hover,[\s\S]*\[cmdk-item\]\[data-selected="true"\] \{[\s\S]*background: var\(--surface-subtle\)/);
-assert.match(app, /from "\.\/hooks\/use-app-open-drop-merge-collections"/);
-assert.match(app, /const mergeDroppedMoleculeCollections = useAppOpenDropMergeCollections\(\{/);
-assert.match(app, /mergeMoleculeCollections: mergeDroppedMoleculeCollections/);
+assert.doesNotMatch(app, /from "\.\/hooks\/use-app-open-drop-merge-collections"/);
+assert.match(appOpenDropControllerHook, /useAppOpenDropMergeCollections\(\{/);
+assert.match(appOpenDropControllerHook, /mergeMoleculeCollections: mergeDroppedMoleculeCollections/);
 assert.doesNotMatch(app, /mergeMoleculeCollections: activeDocument\?\.renderer === "grid2d"/);
 assert.doesNotMatch(app, /isMoleculeCollectionPath/);
 assert.match(appOpenDropMergeCollectionsHook, /export function useAppOpenDropMergeCollections\(\{/);
 assert.match(appOpenDropMergeCollectionsHook, /activeDocument\?\.renderer !== "grid2d"/);
 assert.match(appOpenDropMergeCollectionsHook, /paths\.some\(isMoleculeCollectionPath\)/);
 assert.match(appOpenDropMergeCollectionsHook, /void mergeMoleculeCollections\(activeDocument\.path, paths\)/);
-assert.match(app, /useOpenDrop\(openPaths, pushStatus, \{/);
+assert.match(appOpenDropControllerHook, /useOpenDrop\(openPaths, pushStatus, \{/);
 assert.match(tauriSource, /export function trackTauriListener\(registration: Promise<TauriUnlisten>, label: string\)/);
 assert.match(tauriSource, /if \(disposed\) \{\s*disposeTauriListener\(next, label\);/s);
 assert.match(tauriSource, /listener setup failed/);
@@ -3177,7 +3180,7 @@ assert.match(menuEventsHook, /for \(const cleanup of cleanups\) cleanup\(\)/);
 assert.doesNotMatch(menuEventsHook, /let unlisten/);
 assert.doesNotMatch(menuEventsHook, /unlisten\?\.\(\)/);
 assert.match(app, /documents,/);
-assert.match(app, /useAppClipboard\(\{ openClipboardText, pushErrorStatus, pushStatus \}\)/);
+assert.match(appOpenDropControllerHook, /useAppClipboard\(\{ openClipboardText, pushErrorStatus, pushStatus \}\)/);
 assert.match(appClipboardHook, /navigator\.clipboard\?\.readText/);
 assert.match(appClipboardHook, /await navigator\.clipboard\.readText\(\)/);
 assert.match(appClipboardHook, /openClipboardText\(text\)/);
@@ -3189,7 +3192,7 @@ assert.match(app, /openPaths,/);
 assert.match(appShellActionsHook, /openStructurePaths: async \(paths: string\[\], options\?: \{ mode\?: OpenDocumentsMode \}\) => \{/);
 assert.match(app, /openStructureRecords,/);
 assert.match(app, /activeTabKind: activeTab\?\.location\.kind \?\? null/);
-assert.match(app, /activeDocumentPath: activeDocument\?\.path \?\? null/);
+assert.match(appOpenDropControllerHook, /activeDocumentPath: activeDocument\?\.path \?\? null/);
 assert.match(app, /from "\.\/hooks\/use-app-docking-workflows"/);
 assert.match(app, /openDockingDocument,/);
 assert.match(appFileOpenHook, /const openStructureRecordDocuments = useCallback/);
@@ -3204,7 +3207,7 @@ assert.match(app, /openStructureRecords,/);
 assert.match(app, /openKetcherWithStructures,/);
 assert.match(appDockingWorkflowsHook, /existingDockingRequest = documents\.find/);
 assert.match(appDockingWorkflowsHook, /dockingRequestForDrop\(targetPath, droppedPaths, existingDockingRequest\)/);
-assert.match(app, /useOpenEvents\(openPaths, pushErrorStatus\)/);
+assert.match(appOpenDropControllerHook, /useOpenEvents\(openPaths, pushErrorStatus\)/);
 assert.match(app, /from "\.\/hooks\/use-app-open-actions"/);
 assert.match(app, /useAppOpenActions\(\{/);
 assert.match(appOpenActionsHook, /import previewFormatRegistry from "\.\.\/\.\.\/\.\.\/\.\.\/config\/preview-formats\.json"/);
@@ -3511,7 +3514,7 @@ assert.match(browserDevAgentSession, /changedFileName === "actions\.json"/);
 assert.doesNotMatch(app, /from "\.\/hooks\/use-app-agent-session-actions"/);
 assert.doesNotMatch(app, /const agentTabActions = useAppAgentSessionActions\(\{/);
 assert.doesNotMatch(app, /tabActions: agentTabActions/);
-assert.match(app, /useAgentSession\(\{\s*activeDocument,\s*documents,\s*openTextDocuments,\s*openPaths,\s*pushErrorStatus,\s*setDockDocument,\s*\}\);/s);
+assert.match(appOpenDropControllerHook, /useAgentSession\(\{\s*activeDocument,\s*documents,\s*openTextDocuments,\s*openPaths,\s*pushErrorStatus,\s*setDockDocument,\s*\}\);/s);
 assert.match(agentSessionHook, /type UseAgentSessionArgs = \{\s*activeDocument: ViewerDocument \| null \| undefined;\s*documents: ViewerDocument\[\];\s*openTextDocuments: OpenTextDocuments;\s*openPaths: OpenPaths;\s*pushErrorStatus: \(error: unknown, prefix\?: string\) => void;\s*setDockDocument: \(area: DockArea, documentId: string \| null\) => void;\s*\};/s);
 assert.doesNotMatch(agentSessionHook, /tabActions:/);
 assert.match(agentSessionHook, /type AgentSceneAction = \{/);
