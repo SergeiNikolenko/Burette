@@ -2028,6 +2028,14 @@ img.radix-menu-item-icon {
   border-color: color-mix(in srgb, #2f6fed 24%, var(--line-subtler));
   background: color-mix(in srgb, #2f6fed 5%, var(--surface-card));
 }
+.folding-results-card[data-collapsed] {
+  gap: 0;
+}
+.folding-results-body {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
 .folding-model-selector {
   min-width: 0;
   display: grid;

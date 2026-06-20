@@ -123,9 +123,14 @@ export function useFoldingResult(document: ViewerDocument | null): FoldingResult
 export function FoldingResultsPanel({ state, actions }: { state: FoldingResultState; actions: ShellActions }) {
   const bundle = state.bundle;
   const [activeModelId, setActiveModelId] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
     setActiveModelId(bundle?.models[0]?.id ?? null);
+  }, [bundle?.rootPath]);
+
+  useEffect(() => {
+    setCollapsed(false);
   }, [bundle?.rootPath]);
 
   const activeModel = useMemo(() => {
@@ -143,78 +148,83 @@ export function FoldingResultsPanel({ state, actions }: { state: FoldingResultSt
   };
 
   return (
-    <section className="structure-brief-card folding-results-card">
+    <section className="structure-brief-card folding-results-card" data-collapsed={collapsed || undefined}>
       <div className="structure-inspector-section-header">
         <button
           type="button"
           className="structure-inspector-section-title-button"
-          onClick={() => actions.revealPath(bundle.rootPath, "Folding result")}
+          aria-expanded={!collapsed}
+          onClick={() => setCollapsed((value) => !value)}
         >
           Folding Results
         </button>
         <span>{bundle.source} · {modelCountLabel(bundle.models.length)}</span>
       </div>
 
-      <FoldingModelSelector models={bundle.models} activeModel={activeModel} onSelect={selectModel} />
+      {collapsed ? null : (
+        <div className="folding-results-body">
+          <FoldingModelSelector models={bundle.models} activeModel={activeModel} onSelect={selectModel} />
 
-      <div className="folding-model-summary">
-        <div>
-          <strong>{activeModel.title}</strong>
-          <span title={activeModel.structureTitle}>{activeModel.structureTitle}</span>
-        </div>
-        <button type="button" className="structure-inspector-xtb-table-action" onClick={() => actions.openStructurePaths([activeModel.structurePath])}>
-          Open
-        </button>
-      </div>
-      {activeModel.matrixPreview ? (
-        <button type="button" className="dock-action folding-full-pae-button" onClick={() => actions.openDockTab("bottom", "folding")}>
-          Full PAE
-        </button>
-      ) : null}
-
-      {activeModel.metrics.length ? (
-        <div className="structure-inspector-xtb-metrics folding-metric-grid">
-          {activeModel.metrics.slice(0, 8).map((metric) => (
-            <div key={metric.key} className="structure-inspector-xtb-metric">
-              <span>{metric.label}</span>
-              <strong>{metric.formatted || formatMetric(metric.value)}</strong>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      {activeModel.plddtProfile ? <FoldingPlddtPlot profile={activeModel.plddtProfile} /> : null}
-      {activeModel.matrixPreview ? <FoldingMatrixHeatmap preview={activeModel.matrixPreview} /> : null}
-
-      {activeModel.artifacts.length ? (
-        <div className="structure-inspector-xtb-file-groups">
-          <div className="structure-inspector-xtb-file-group">
-            <strong>Artifacts</strong>
+          <div className="folding-model-summary">
             <div>
-              {activeModel.artifacts.slice(0, 12).map((artifact) => (
-                <button
-                  key={artifact.path}
-                  type="button"
-                  className="dock-action structure-inspector-xtb-file-button"
-                  title={`${artifact.title} · ${formatBytes(artifact.byteCount)}`}
-                  onClick={() => openFoldingArtifact(artifact, actions)}
-                >
-                  <span>{artifactKindLabel(artifact.kind)}</span>
-                  <span>{artifact.title}</span>
-                </button>
+              <strong>{activeModel.title}</strong>
+              <span title={activeModel.structureTitle}>{activeModel.structureTitle}</span>
+            </div>
+            <button type="button" className="structure-inspector-xtb-table-action" onClick={() => actions.openStructurePaths([activeModel.structurePath])}>
+              Open
+            </button>
+          </div>
+          {activeModel.matrixPreview ? (
+            <button type="button" className="dock-action folding-full-pae-button" onClick={() => actions.openDockTab("bottom", "folding")}>
+              Full PAE
+            </button>
+          ) : null}
+
+          {activeModel.metrics.length ? (
+            <div className="structure-inspector-xtb-metrics folding-metric-grid">
+              {activeModel.metrics.slice(0, 8).map((metric) => (
+                <div key={metric.key} className="structure-inspector-xtb-metric">
+                  <span>{metric.label}</span>
+                  <strong>{metric.formatted || formatMetric(metric.value)}</strong>
+                </div>
               ))}
             </div>
-          </div>
-        </div>
-      ) : null}
+          ) : null}
 
-      {bundle.warnings.length ? (
-        <div className="folding-warning-list">
-          {bundle.warnings.slice(0, 3).map((warning) => (
-            <span key={warning}>{warning}</span>
-          ))}
+          {activeModel.plddtProfile ? <FoldingPlddtPlot profile={activeModel.plddtProfile} /> : null}
+          {activeModel.matrixPreview ? <FoldingMatrixHeatmap preview={activeModel.matrixPreview} /> : null}
+
+          {activeModel.artifacts.length ? (
+            <div className="structure-inspector-xtb-file-groups">
+              <div className="structure-inspector-xtb-file-group">
+                <strong>Artifacts</strong>
+                <div>
+                  {activeModel.artifacts.slice(0, 12).map((artifact) => (
+                    <button
+                      key={artifact.path}
+                      type="button"
+                      className="dock-action structure-inspector-xtb-file-button"
+                      title={`${artifact.title} · ${formatBytes(artifact.byteCount)}`}
+                      onClick={() => openFoldingArtifact(artifact, actions)}
+                    >
+                      <span>{artifactKindLabel(artifact.kind)}</span>
+                      <span>{artifact.title}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {bundle.warnings.length ? (
+            <div className="folding-warning-list">
+              {bundle.warnings.slice(0, 3).map((warning) => (
+                <span key={warning}>{warning}</span>
+              ))}
+            </div>
+          ) : null}
         </div>
-      ) : null}
+      )}
     </section>
   );
 }
