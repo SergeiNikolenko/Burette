@@ -8,7 +8,6 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const pluginRoot = path.resolve(scriptDir, "..");
 const repoRoot = path.resolve(pluginRoot, "..", "..");
-const installRoot = path.join(process.env.HOME, ".codex", "plugins", "cache", "nikolenko-local", "burrete", "0.1.0");
 const marketplacePath = path.join(process.env.HOME, ".agents", "plugins", "marketplace.json");
 const pluginSymlinkPath = path.join(process.env.HOME, ".agents", "plugins", "burrete");
 const codexConfigPath = path.join(process.env.HOME, ".codex", "config.toml");
@@ -18,6 +17,10 @@ const skipBuild = process.argv.includes("--skip-build");
 if (!process.env.HOME) {
   throw new Error("HOME is not set.");
 }
+
+const marketplaceName = await resolveMarketplaceName();
+const pluginId = `burrete@${marketplaceName}`;
+const installRoot = path.join(process.env.HOME, ".codex", "plugins", "cache", marketplaceName, "burrete", "0.1.0");
 
 if (!skipBuild && isSourceCheckout()) {
   await run("bun", ["run", "build:agent-shell"], { cwd: repoRoot });
@@ -33,7 +36,7 @@ if (!existsSync(path.join(pluginRoot, "scripts", "burrete-agent.mjs"))) {
   throw new Error("Missing bundled scripts/burrete-agent.mjs. Run bun run build:agent-shell before installing.");
 }
 
-await rm(path.join(process.env.HOME, ".codex", "plugins", "cache", "nikolenko-local", "burrete"), {
+await rm(path.join(process.env.HOME, ".codex", "plugins", "cache", marketplaceName, "burrete"), {
   recursive: true,
   force: true,
 });
@@ -48,7 +51,8 @@ await updateCodexConfig();
 
 console.log(JSON.stringify({
   ok: true,
-  plugin: "burrete@nikolenko-local",
+  plugin: pluginId,
+  marketplaceName,
   installRoot,
   marketplacePath,
   codexConfigPath,
@@ -64,10 +68,12 @@ function isSourceCheckout() {
 
 async function updateMarketplace() {
   await mkdir(path.dirname(marketplacePath), { recursive: true });
-  let data = { plugins: [] };
+  let data = { name: marketplaceName, interface: { displayName: marketplaceDisplayName(marketplaceName) }, plugins: [] };
   if (existsSync(marketplacePath)) {
     data = JSON.parse(await readFile(marketplacePath, "utf8"));
   }
+  data.name = marketplaceName;
+  data.interface = data.interface || { displayName: marketplaceDisplayName(marketplaceName) };
   data.plugins = (data.plugins || []).filter((plugin) => plugin.name !== "burrete");
   data.plugins.push({
     name: "burrete",
@@ -89,9 +95,33 @@ async function updatePluginSymlink() {
 async function updateCodexConfig() {
   await mkdir(path.dirname(codexConfigPath), { recursive: true });
   const existing = existsSync(codexConfigPath) ? await readFile(codexConfigPath, "utf8") : "";
-  if (/^\[plugins\."burrete@nikolenko-local"\]/mu.test(existing)) return;
-  const next = `${existing.replace(/\s*$/u, "")}\n\n[plugins."burrete@nikolenko-local"]\nenabled = true\n`;
+  const oldBlockPattern = /\n?\[plugins\."burrete@[^"]+"\]\n(?:[^\n\[]*\n)*/gu;
+  const cleaned = existing.replace(oldBlockPattern, "\n").replace(/\n{3,}/gu, "\n\n");
+  if (new RegExp(`^\\[plugins\\."${escapeRegExp(pluginId)}"\\]`, "mu").test(cleaned)) return;
+  const next = `${cleaned.replace(/\s*$/u, "")}\n\n[plugins."${pluginId}"]\nenabled = true\n`;
   await writeFile(codexConfigPath, next);
+}
+
+async function resolveMarketplaceName() {
+  const explicit = process.env.BURRETE_PLUGIN_MARKETPLACE?.trim();
+  if (explicit) return explicit;
+  if (existsSync(marketplacePath)) {
+    try {
+      const data = JSON.parse(await readFile(marketplacePath, "utf8"));
+      if (typeof data.name === "string" && data.name.trim()) return data.name.trim();
+    } catch {
+      // Fall through to the portable default.
+    }
+  }
+  return "burrete";
+}
+
+function marketplaceDisplayName(name) {
+  return name === "burrete" ? "Burrete" : name;
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
 
 function run(command, args, options) {

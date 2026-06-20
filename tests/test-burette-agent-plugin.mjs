@@ -272,6 +272,8 @@ assert.match(molstarSceneSkill, /"type": "label_selection"/);
 
 const readme = await read("README.md");
 assert.match(readme, /bun run install:plugin/);
+assert.match(readme, /BURRETE_PLUGIN_MARKETPLACE=burrete bun run install:plugin/);
+assert.match(readme, /burrete@burrete/);
 assert.match(readme, /--skip-build/);
 assert.match(readme, /MolViewSpec Scene Language/);
 assert.match(readme, /"type":"apply_scene"/);
@@ -303,7 +305,7 @@ const selfContainedPluginCheck = runNode([
     import { tmpdir } from "node:os";
     import path from "node:path";
     const tempRoot = await mkdtemp(path.join(tmpdir(), "burrete-plugin-cache-test-"));
-    const pluginRoot = path.join(tempRoot, "cache", "nikolenko-local", "burrete", "0.1.0");
+    const pluginRoot = path.join(tempRoot, "cache", "burrete", "burrete", "0.1.0");
     await cp("plugins/burette-agent", pluginRoot, { recursive: true });
     const bridge = await import(path.join(pluginRoot, "mcp", "lib", "cli-bridge.mjs"));
     const result = await bridge.runBurreteAgent(["open", "--mode", "browser-preview", path.resolve("samples/mini.pdb")]);

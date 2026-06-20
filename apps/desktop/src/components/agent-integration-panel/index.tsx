@@ -233,7 +233,7 @@ function codexSetupPrompt(status: AgentIntegrationStatus | null) {
   return [
     `Install or update the local Codex plugin @Burrete (id \`burrete\`) to version ${version}.`,
     `Use the bundled plugin directory \`${pluginPath}\`.`,
-    "Install it into `~/.codex/plugins/cache/nikolenko-local/burrete/0.1.0`, write `.burette-agent-install.json` with the current Burrete repository root, run `bun install --production` in that installed cache directory, point `~/.agents/plugins/burrete` at the installed cache directory, and enable `[plugins.\"burrete@nikolenko-local\"]` in `~/.codex/config.toml`.",
+    "Install it with `bun run install:plugin`. On a fresh machine the marketplace name defaults to `burrete`, so the plugin id is `burrete@burrete`. If a local marketplace already exists, the installer keeps that marketplace name unless `BURRETE_PLUGIN_MARKETPLACE=burrete` is set.",
     "After installation, verify @Burrete is available in Codex, its skills load, and its MCP server is registered.",
   ].join("\n");
 }

@@ -104,10 +104,19 @@ bun run install:plugin
 
 The installer runs `bun run build:agent-shell` when it is executed from a source
 checkout, copies the self-contained plugin bundle into
-`~/.codex/plugins/cache/nikolenko-local/burrete/0.1.0`, installs production MCP
+`~/.codex/plugins/cache/<marketplace>/burrete/0.1.0`, installs production MCP
 dependencies, registers `burrete` in `~/.agents/plugins/marketplace.json`,
 updates the `~/.agents/plugins/burrete` symlink, and enables
-`burrete@nikolenko-local` in `~/.codex/config.toml`.
+`burrete@<marketplace>` in `~/.codex/config.toml`.
+
+On a fresh machine, `<marketplace>` defaults to `burrete`, so the plugin id is
+`burrete@burrete`. If `~/.agents/plugins/marketplace.json` already exists, the
+installer keeps its existing marketplace name to avoid renaming unrelated local
+plugins. To force the Burrete marketplace name, run:
+
+```bash
+BURRETE_PLUGIN_MARKETPLACE=burrete bun run install:plugin
+```
 
 Use `--skip-build` only when installing an already prebuilt plugin directory:
 
