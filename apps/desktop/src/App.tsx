@@ -36,6 +36,7 @@ import { useAppStatus } from "./hooks/use-app-status";
 import { useAppUpdates } from "./hooks/use-app-updates";
 import { useAppViewerFileActions } from "./hooks/use-app-viewer-file-actions";
 import { useAppWorkspaceActions } from "./hooks/use-app-workspace-actions";
+import { useAppXyzrenderSheetMessages } from "./hooks/use-app-xyzrender-sheet-messages";
 import { useAgentSession } from "./hooks/use-agent-session";
 import { useAppClipboard } from "./hooks/use-app-clipboard";
 import { useMenuEvents } from "./hooks/use-menu-events";
@@ -1380,6 +1381,10 @@ export default function App() {
     pushStatus,
   });
 
+  const { handleXyzrenderSheetMessage } = useAppXyzrenderSheetMessages({
+    postMessageToViewerSource,
+  });
+
   const {
     addXyzrenderSheetItems,
     addXyzrenderSheetItemsToDocument,
@@ -1723,56 +1728,7 @@ export default function App() {
       if (data.source === "burrete-viewer" && handleViewerFileMessage(body)) {
         return;
       }
-      if ((data.source === "burrete-viewer" || data.source === "burrete-grid") && body?.type === "renderXyzrenderSheetItem") {
-        if (!body.requestId) return;
-        const replySource = data.source === "burrete-grid" ? "burrete-grid-host" : "burrete-host";
-        const reply = (bodyPayload: Record<string, unknown>) => {
-          postMessageToViewerSource(event.source, {
-            source: replySource,
-            body: {
-              requestId: body.requestId,
-              documentId: body.documentId,
-              ...bodyPayload,
-            },
-          });
-        };
-        if (!isTauriRuntime()) {
-          reply({
-            type: "xyzrenderSheetItemError",
-            error: "Desktop xyzrender sheet rendering is unavailable outside the Tauri runtime.",
-          });
-          return;
-        }
-        void (async () => {
-          try {
-            const result = await invoke<{
-              svg: string;
-              preset?: string;
-              elapsedMs?: number;
-              log?: string;
-            }>("render_xyzrender_sheet_item", {
-              request: {
-                path: body.path,
-                preset: body.preset ?? null,
-                controls: body.controls ?? null,
-                inputDataBase64: body.inputDataBase64 ?? null,
-                inputExtension: body.inputExtension ?? null,
-              },
-            });
-            reply({
-              type: "xyzrenderSheetItemRendered",
-              svg: result.svg,
-              preset: result.preset ?? null,
-              elapsedMs: result.elapsedMs ?? null,
-              log: result.log ?? "",
-            });
-          } catch (error) {
-            reply({
-              type: "xyzrenderSheetItemError",
-              error: error instanceof Error ? error.message : String(error),
-            });
-          }
-        })();
+      if (handleXyzrenderSheetMessage(data.source, body, event.source)) {
         return;
       }
       if (data.source === "burrete-grid") {
@@ -2216,7 +2172,7 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, generate3DConformer, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleViewerFileMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
+  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, generate3DConformer, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleViewerFileMessage, handleXyzrenderSheetMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
