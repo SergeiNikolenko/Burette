@@ -22,6 +22,7 @@ const [
   appFileOpenHook,
   appFepWorkflowsHook,
   appGridFileActionsHook,
+  appGridRuntimeMessagesHook,
   appGridWorkflowsHook,
   appDockPayloadHook,
   appKetcherActionsHook,
@@ -168,6 +169,7 @@ const [
   source('apps/desktop/src/hooks/use-app-file-open.ts'),
   source('apps/desktop/src/hooks/use-app-fep-workflows.ts'),
   source('apps/desktop/src/hooks/use-app-grid-file-actions.ts'),
+  source('apps/desktop/src/hooks/use-app-grid-runtime-messages.ts'),
   source('apps/desktop/src/hooks/use-app-grid-workflows.ts'),
   source('apps/desktop/src/hooks/use-app-dock-payload-open.ts'),
   source('apps/desktop/src/hooks/use-app-ketcher-actions.ts'),
@@ -1187,8 +1189,8 @@ assert.match(viewer, /type: 'renderXyzrenderSheetItem'/);
 assert.match(app, /body\?\.type === "renderXyzrenderSheetItem"/);
 assert.match(app, /inputDataBase64: body\.inputDataBase64 \?\? null/);
 assert.match(app, /invoke<\{[\s\S]*\}>\("render_xyzrender_sheet_item"/);
-assert.match(app, /body\?\.type === "renderXyzrenderCards"/);
-assert.match(app, /"render_xyzrender_sheet_items"/);
+assert.match(appGridRuntimeMessagesHook, /body\?\.type === "renderXyzrenderCards"/);
+assert.match(appGridRuntimeMessagesHook, /"render_xyzrender_sheet_items"/);
 assert.match(commandDocuments, /pub\(crate\) async fn render_xyzrender_sheet_item/);
 assert.match(commandDocuments, /pub\(crate\) async fn render_xyzrender_sheet_items/);
 assert.match(commandDocuments, /tauri::async_runtime::spawn_blocking/);
@@ -1266,8 +1268,8 @@ assert.match(gridViewer, /const XYZRENDER_CARD_BATCH_MIN_CONCURRENCY = 1;/);
 assert.match(gridViewer, /const XYZRENDER_CARD_BATCH_MAX_CONCURRENCY = 3;/);
 assert.match(gridViewer, /const XYZRENDER_CARD_BATCH_DELAY_MS = 16;/);
 assert.match(gridViewer, /return cfg\?\.appViewer === true && \(\s*cfg\?\.gridDataMode === 'bridge'\s*\|\|\s*\(typeof cfg\?\.xyzrenderEndpoint === 'string' && cfg\.xyzrenderEndpoint\.trim\(\)\.length > 0\)\s*\);/);
-assert.match(app, /body\?\.type === "readStructureText"/);
-assert.match(app, /invoke<string>\("read_structure_text"/);
+assert.match(appGridRuntimeMessagesHook, /body\?\.type === "readStructureText"/);
+assert.match(appGridRuntimeMessagesHook, /invoke<string>\("read_structure_text"/);
 assert.match(structureText, /function isCompressedMaestroPath\(path: string\)/);
 assert.match(structureText, /export async function readStructureTextDocument/);
 assert.match(structureText, /invoke<TextFileReadResult>\("read_text_file", \{ path, maxBytes \}\)/);
@@ -4454,9 +4456,10 @@ assert.match(appGridFileActionsHook, /pushErrorStatus\(error, "Grid Save failed"
 assert.match(app, /from "\.\/lib\/file-export"/);
 assert.match(fileExport, /export function safeExportFileName\(name: string\)/);
 assert.match(fileExport, /export function exportDialogFilters\(fileName: string, mimeType: string\)/);
-assert.match(app, /if \(body\?\.type === "gridFetchPage"\) \{\s*if \(!body\.requestId \|\| !body\.documentId\) return;/s);
-assert.match(app, /invoke\("grid_fetch_page"/);
-assert.match(app, /source: "burrete-grid-host"/);
+assert.match(app, /handleGridRuntimeMessage\(body, event\.source\)/);
+assert.match(appGridRuntimeMessagesHook, /if \(body\?\.type === "gridFetchPage"\) \{\s*if \(!body\.requestId \|\| !body\.documentId\) return true;/s);
+assert.match(appGridRuntimeMessagesHook, /invoke\("grid_fetch_page"/);
+assert.match(appGridRuntimeMessagesHook, /source: "burrete-grid-host"/);
 assert.match(fileRouting, /export type GridDelimitedColumnChoice = \{/);
 assert.match(fileRouting, /export function isDelimitedColumnAmbiguity\(error: unknown\)/);
 assert.match(fileRouting, /multiple possible structure columns/);
@@ -4519,10 +4522,10 @@ assert.match(gridViewer, /if \(state\.dirty\) summaryParts\.push\(`unsaved \$\{s
 assert.match(gridViewer, /Unsaved changes\. Use Save to overwrite the source file, Save As to write a new file, or Undo to revert the last edit\./);
 assert.match(gridViewer, /function markGridDirty\(reason\)/);
 assert.match(gridViewer, /function markGridClean\(\)/);
-assert.match(app, /if \(body\?\.type === "renderXyzrenderCard"\) \{/);
-assert.match(app, /type: "xyzrenderCard"/);
-assert.match(app, /cacheScope: "grid-card"/);
-assert.match(app, /cacheHit: result\.cacheHit \?\? false/);
+assert.match(appGridRuntimeMessagesHook, /if \(body\?\.type === "renderXyzrenderCard"\) \{/);
+assert.match(appGridRuntimeMessagesHook, /type: "xyzrenderCard"/);
+assert.match(appGridRuntimeMessagesHook, /cacheScope: "grid-card"/);
+assert.match(appGridRuntimeMessagesHook, /cacheHit: result\.cacheHit \?\? false/);
 assert.match(app, /CSS\.escape\(documentId\)/);
 assert.match(app, /iframe\?\.contentWindow\?\.postMessage\(payload, "\*"\)/);
 assert.match(browserDevDocuments, /if \(window\.BurreteConfig && window\.BurreteConfig\.documentId\) body\.documentId = String\(window\.BurreteConfig\.documentId\);/);
