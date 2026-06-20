@@ -7,7 +7,7 @@ import { FoldingResultsPanel, useFoldingResult } from "./folding-results-panel";
 import type { MenuItemSpec } from "./menu-types";
 import type { ShellActions, ShellViewState, StructureViewerAction } from "./types";
 import { structureBriefForDocument, type StructureBriefRow as BriefRow } from "../lib/structure-brief";
-import { parseStructureComposition, type StructureCompositionSummary, type StructureSummaryRow } from "../lib/structure-composition";
+import { parseStructureComposition, type StructureCompositionSummary, type StructureSummaryRow, type StructureViewerSelector } from "../lib/structure-composition";
 import { canInspectConformerEnsemble, canShowConformerWorkflow, canUseConformerWorkflow } from "../lib/conformer-ensemble";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureText } from "../lib/structure-text";
@@ -2248,9 +2248,12 @@ function selectorLabel(action: StructureViewerAction) {
   return [comp, chain, seq, kind && `kind ${kind}`].filter(Boolean).join(" ") || "Selector";
 }
 
-function valueFromSelector(selector: Record<string, string | number | Array<string | number>>, key: string) {
+function valueFromSelector(selector: StructureViewerSelector, key: string) {
   const value = selector[key];
-  if (Array.isArray(value)) return value.join(", ");
+  if (Array.isArray(value)) {
+    if (value.some((item) => typeof item === "object")) return null;
+    return value.join(", ");
+  }
   if (value === undefined || value === null) return null;
   return String(value);
 }
