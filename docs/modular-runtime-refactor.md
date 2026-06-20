@@ -103,8 +103,10 @@ Current Stage 3 progress:
   `apps/desktop/src/hooks/use-app-dock-payload-open.ts`;
 - browser-dev startup URL parsing helpers now live in
   `apps/desktop/src/lib/browser-dev-startup.ts`;
+- Ketcher import queueing, 3D-source detection, and draft molfile detection
+  helpers now live in `apps/desktop/src/lib/ketcher-workflow.ts`;
 - `App.tsx` still owns browser-dev startup orchestration effects, Ketcher
-  orchestration, docking document construction, collection merge/save,
+  action wiring, docking document construction, collection merge/save,
   xTB/conformer controller state, Mol* in-place replacement, and the
   viewer/grid message bus. These are the remaining high-risk slices and should
   move only after each boundary has contract coverage for the exact
@@ -120,9 +122,9 @@ the high-risk runtime boundaries intact.
 | --- | --- | --- |
 | Contract safety net | Partial | Existing contract tests were strengthened as modules moved, but the full named test matrix from the epic is not complete yet. |
 | Dev-server extraction | Complete | Browser-dev endpoint modules now live under `apps/desktop/vite/browser-dev/`, with `vite.config.ts` acting as registration/composition. |
-| App shell extraction | Partial | Several app hooks, pure chemistry libs, file-routing helpers, the core file-open hook, the dock payload-open hook, and browser-dev startup URL helpers are extracted, but browser-dev startup effects, Ketcher, docking, collections, xTB/conformer controllers, and message handling still live in `App.tsx`. |
+| App shell extraction | Partial | Several app hooks, pure chemistry libs, file-routing helpers, the core file-open hook, the dock payload-open hook, browser-dev startup URL helpers, and pure Ketcher workflow helpers are extracted, but browser-dev startup effects, Ketcher action wiring, docking, collections, xTB/conformer controllers, and message handling still live in `App.tsx`. |
 | Opening workflow | Partial | `openDocuments`, `openPaths`, text/spectrum opening, path classification, pasted-structure opening, dock payload opening, and browser-dev startup URL parsing are in dedicated modules; browser-dev startup orchestration effects remain in `App.tsx`. |
-| Ketcher workflow | Not started | Ketcher import/export/sketch/grid-row sync remains in `App.tsx`. |
+| Ketcher workflow | Partial | Ketcher import queueing and draft/source helpers are extracted; import/export/sketch/grid-row action wiring remains in `App.tsx`. |
 | Grid workflow | Partial | Dirty-grid state and descriptor workflows are extracted; grid append/save/export/message handling remains in `App.tsx`. |
 | Docking/collections/dock payloads | Partial | Dock payload opening is extracted; docking document construction and collection merge/save remain in `App.tsx`. |
 | Viewer bridge | Not started | `window.message` handling remains in `App.tsx`; typed dispatch is still pending. |
