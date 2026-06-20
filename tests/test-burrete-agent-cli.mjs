@@ -55,6 +55,8 @@ try {
   const cliSource = await readFile(resolve('scripts/burrete-agent.mjs'), 'utf8');
   assert.match(cliSource, /'browser-agent-shell'/);
   assert.match(cliSource, /'browser-dev-shell'/);
+  assert.match(cliSource, /function openAuto\(file, options\)/);
+  assert.match(cliSource, /function openBrowserPreview\(file, options/);
   assert.match(cliSource, /function openBrowserAgentShell\(file, options\)/);
   assert.match(cliSource, /spawn\('vp', \['dev', 'apps\/desktop'/);
   assert.match(cliSource, /await allocatePort\(host\)/);
@@ -143,6 +145,20 @@ try {
     assert.equal(failedPayload.ok, false);
     assert.equal(failedPayload.error.code, 'BROWSER_AGENT_SHELL_FAILED');
     assert.match(failedPayload.error.details.logTail, /fake vp native binding failure/);
+    const autoFallback = runCliWithEnv(['open', '--mode', 'auto', 'samples/mini.pdb'], {
+      PATH: `${fakeBin}:${process.env.PATH}`,
+    });
+    assert.equal(autoFallback.status, 0, autoFallback.stderr);
+    const autoFallbackPayload = JSON.parse(autoFallback.stdout);
+    assert.equal(autoFallbackPayload.ok, true);
+    assert.equal(autoFallbackPayload.result.mode, 'browser-preview');
+    assert.equal(autoFallbackPayload.result.fallback.from, 'browser-agent-shell');
+    assert.equal(autoFallbackPayload.result.fallback.reason.code, 'BROWSER_AGENT_SHELL_FAILED');
+    if (autoFallbackPayload.result.processId) {
+      try {
+        process.kill(autoFallbackPayload.result.processId, 'SIGTERM');
+      } catch {}
+    }
   } finally {
     await rm(fakeBin, { recursive: true, force: true });
   }

@@ -84,8 +84,13 @@ const payload = {
   },
   context: {
     scope: "burette_agent_capability_registry",
-    preferredMode: "browser-agent-shell",
+    preferredMode: "auto",
     transports: [
+      {
+        id: "auto",
+        status: hasCli && hasPreview ? "available" : "blocked",
+        note: "Start the full browser agent shell when available; fall back to browser-preview when the shell cannot start.",
+      },
       {
         id: "browser-agent-shell",
         status: hasCli ? "available" : "blocked",
@@ -115,7 +120,7 @@ const payload = {
       },
     ],
     workflowRoutes: {
-      openWorkspace: ["open local PDB/CIF/XYZ/SDF-like artifacts", "choose browser-agent-shell, browser-preview, or desktop-app"],
+      openWorkspace: ["open local PDB/CIF/XYZ/SDF-like artifacts", "choose auto, browser-agent-shell, browser-preview, or desktop-app"],
       molstarScene: [
         "observe scene",
         "apply MolViewSpec-informed declarative scene schema",

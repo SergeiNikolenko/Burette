@@ -11,10 +11,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
 const agentPreviewScript = resolve(__dirname, 'agent-preview.mjs');
 const apiVersion = 'burette-agent-cli/v1';
-const supportedModes = new Set(['browser-preview', 'browser-agent-shell', 'browser-dev-shell', 'desktop-app']);
+const supportedModes = new Set(['auto', 'browser-preview', 'browser-agent-shell', 'browser-dev-shell', 'desktop-app']);
 
 function usage() {
   console.error(`Usage:
+  node scripts/burrete-agent.mjs open --mode auto <file> [--host 127.0.0.1]
   node scripts/burrete-agent.mjs open --mode browser-preview <file> [--port 5177] [--host 127.0.0.1]
   node scripts/burrete-agent.mjs open --mode browser-agent-shell <file> [--host 127.0.0.1]
   node scripts/burrete-agent.mjs open --mode desktop-app <file> [--app Burrete] [--session-dir /tmp/session] [--no-launch]
@@ -24,10 +25,12 @@ function usage() {
   node scripts/burrete-agent.mjs act --session-dir <desktop-agent-session> '<json-action>' [--wait-ms 5000]
   node scripts/burrete-agent.mjs render-panel --session-dir <desktop-agent-session> --kind markdown --file /tmp/notes.md [--area right]
 
-The CLI is the readable Burrete agent contract. Browser-preview mode uses a
-tokenized localhost server. Browser-agent-shell mode starts an agent-owned full
-Browser workspace shell. Desktop app mode uses an explicit file-backed local
-session directory passed to the app at launch.`);
+The CLI is the readable Burrete agent contract. Auto mode starts the full
+browser-agent-shell when available and falls back to browser-preview when the
+shell cannot start. Browser-preview mode uses a tokenized localhost server.
+Browser-agent-shell mode starts an agent-owned full Browser workspace shell.
+Desktop app mode uses an explicit file-backed local session directory passed to
+the app at launch.`);
 }
 
 function parseOptions(args) {
@@ -143,6 +146,10 @@ async function open(options) {
   if (!supportedModes.has(mode)) fail('INVALID_ARGS', `Unsupported mode: ${mode}.`, 2);
   const file = options.rest[0];
   if (!file) fail('INVALID_ARGS', 'open requires a structure file path.', 2);
+  if (mode === 'auto') {
+    await openAuto(file, options);
+    return;
+  }
   if (mode === 'desktop-app') {
     await openDesktopApp(file, options);
     return;
@@ -152,17 +159,77 @@ async function open(options) {
     return;
   }
 
-  const childArgs = [agentPreviewScript, file];
-  if (options.port) childArgs.push('--port', options.port);
-  if (options.host) childArgs.push('--host', options.host);
+  await openBrowserPreview(file, options);
+}
+
+async function openAuto(file, options) {
+  try {
+    await openBrowserAgentShell(file, { ...options, recover: true });
+  } catch (error) {
+    if (!error?.burreteAgentError) throw error;
+    await openBrowserPreview(file, options, {
+      from: 'browser-agent-shell',
+      reason: errorPayload(error),
+    });
+  }
+}
+
+async function openBrowserPreview(file, options, fallback = null) {
+  const initialFile = resolve(file);
+  const host = options.host || '127.0.0.1';
+  const port = options.port ? Number(options.port) : await allocatePort(host);
+  if (!Number.isInteger(port) || port <= 0) fail('INVALID_ARGS', '--port must be a positive integer.', 2);
+  const token = randomUUID();
+  const url = `http://${host}:${port}/index.html?token=${encodeURIComponent(token)}`;
+  const sessionDir = options.sessionDir ? resolve(options.sessionDir) : await mkdtemp(resolve(tmpdir(), 'burrete-agent-preview-'));
+  await mkdir(sessionDir, { recursive: true });
+  const logPath = resolve(sessionDir, 'server.log');
+  const logHandle = await openFile(logPath, 'a');
+  let childExit = null;
+  const childArgs = [agentPreviewScript, initialFile, '--host', host, '--port', String(port), '--token', token];
   const child = spawn(process.execPath, childArgs, {
     cwd: repoRoot,
-    stdio: 'inherit'
+    detached: true,
+    stdio: ['ignore', logHandle.fd, logHandle.fd]
   });
-  child.on('exit', (code, signal) => {
-    if (signal) process.kill(process.pid, signal);
-    process.exit(code ?? 0);
+  await logHandle.close();
+  child.once('error', (error) => {
+    childExit = { error };
   });
+  child.once('exit', (code, signal) => {
+    childExit = { code, signal };
+  });
+  try {
+    await waitForHttpReady(new URL(`http://${host}:${port}/healthz`), 10000, {
+      childExit: () => childExit,
+      logPath,
+      failureCode: 'BROWSER_PREVIEW_FAILED',
+      timeoutCode: 'BROWSER_PREVIEW_TIMEOUT',
+      label: 'Browser preview',
+    });
+  } catch (error) {
+    if (error?.burreteAgentError) fail(error.code, error.message, 1, error.details);
+    throw error;
+  }
+  child.unref();
+  console.log(JSON.stringify({
+    ok: true,
+    apiVersion,
+    result: {
+      mode: 'browser-preview',
+      transport: 'http-local-token',
+      url,
+      token,
+      host,
+      port,
+      launched: false,
+      sessionDir,
+      logPath,
+      initialPaths: [initialFile],
+      processId: child.pid,
+      fallback,
+    },
+  }, null, 2));
 }
 
 function canonicalMode(mode) {
@@ -226,10 +293,19 @@ async function openBrowserAgentShell(file, options) {
   child.once('exit', (code, signal) => {
     childExit = { code, signal };
   });
-  await waitForHttpReady(url, 30000, {
-    childExit: () => childExit,
-    logPath,
-  });
+  try {
+    await waitForHttpReady(url, 30000, {
+      childExit: () => childExit,
+      logPath,
+      failureCode: 'BROWSER_AGENT_SHELL_FAILED',
+      timeoutCode: 'BROWSER_AGENT_SHELL_TIMEOUT',
+      label: 'Browser agent shell',
+    });
+  } catch (error) {
+    if (options.recover && error?.burreteAgentError) throw error;
+    if (error?.burreteAgentError) fail(error.code, error.message, 1, error.details);
+    throw error;
+  }
   child.unref();
   console.log(JSON.stringify({
     ok: true,
@@ -274,10 +350,9 @@ async function waitForHttpReady(url, timeoutMs, options = {}) {
       const cause = childExit.error
         ? { message: childExit.error?.message || String(childExit.error) }
         : { code: childExit.code, signal: childExit.signal };
-      fail(
-        'BROWSER_AGENT_SHELL_FAILED',
-        `Browser agent shell process exited before ${url} became ready.`,
-        1,
+      throw agentError(
+        options.failureCode || 'BROWSER_PROCESS_FAILED',
+        `${options.label || 'Browser process'} exited before ${url} became ready.`,
         { url: url.toString(), logPath: options.logPath, logTail, cause },
       );
     }
@@ -289,12 +364,27 @@ async function waitForHttpReady(url, timeoutMs, options = {}) {
     }
     await new Promise(resolve => setTimeout(resolve, 100));
   }
-  fail(
-    'BROWSER_AGENT_SHELL_TIMEOUT',
-    `Timed out waiting for browser agent shell at ${url}.`,
-    1,
+  throw agentError(
+    options.timeoutCode || 'BROWSER_PROCESS_TIMEOUT',
+    `Timed out waiting for ${options.label || 'browser process'} at ${url}.`,
     { url: url.toString(), logPath: options.logPath, logTail: await readLogTail(options.logPath) },
   );
+}
+
+function agentError(code, message, details = null) {
+  const error = new Error(message);
+  error.burreteAgentError = true;
+  error.code = code;
+  error.details = details;
+  return error;
+}
+
+function errorPayload(error) {
+  return {
+    code: error?.code || 'BROWSER_PROCESS_FAILED',
+    message: error?.message || String(error),
+    details: error?.details || null,
+  };
 }
 
 async function readLogTail(logPath) {

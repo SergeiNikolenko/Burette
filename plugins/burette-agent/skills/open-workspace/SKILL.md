@@ -12,6 +12,9 @@ or workflow result bundles in Burrete.
 
 1. Run Burrete preflight through [user-context](../user-context/SKILL.md).
 2. Choose mode:
+   - `auto` for the default agent path. It starts `browser-agent-shell` when
+     the full Browser UI is available and falls back to `browser-preview` when
+     the shell cannot start.
    - `browser-agent-shell` when the user asks for the normal Browser UI, right
      or bottom docks, sidebars, tabs, files/projects, or app-like browser
      behavior. This is the full agent-owned Browser application shell and should use a
@@ -21,7 +24,18 @@ or workflow result bundles in Burrete.
      localhost preview without the full app shell.
    - `desktop-app` when the user asks for the real Burrete application or wants
      results left open in the app.
-3. For `browser-agent-shell`, navigate the Codex in-app Browser to the
+3. For `auto`, call the CLI and use the returned `mode`:
+
+```bash
+bun scripts/burrete-agent.mjs open --mode auto <file>
+```
+
+If the result mode is `browser-preview`, inspect `result.fallback` before
+deciding whether the task still satisfies the user request. Preview fallback is
+acceptable for opening/observing a molecule; it is not a substitute for a task
+that explicitly needs app chrome such as tabs, docks, or sidebars.
+
+4. For `browser-agent-shell`, navigate the Codex in-app Browser to the
    agent-owned full Browser shell URL returned by the CLI. The CLI must start
    a fresh local port for this agent session; do not reuse another Browser tab,
    a user-provided Browser development port, or an already-running app unless the user
@@ -93,7 +107,7 @@ The CLI resolves the live shell session through
 `/__burette/agent-session/session.json` and fails quickly when the shell port is
 dead.
 
-4. For `browser-preview`, create the preview URL without launching any external
+5. For `browser-preview`, create the preview URL without launching any external
    browser, then open that URL only through the Codex in-app Browser plugin:
 
 ```bash
@@ -105,19 +119,20 @@ Chrome, Safari, or another external browser for Browser preview unless the user
 explicitly asks for an external browser. If the in-app Browser is unavailable,
 report a typed blocker instead of falling back to an external browser.
 
-Use the returned tokenized URL when typed agent control is required. Do not use
-`browser-preview` as a substitute for the full browser agent shell when the user
-is asking about ordinary Burrete UI chrome.
+Use the returned tokenized URL when typed agent control is required. Use it as
+the `auto` fallback for molecular opening/observation, but do not treat it as
+equivalent to the full browser agent shell when the user is asking about
+ordinary Burrete UI chrome.
 
-5. For `desktop-app`, open through the CLI:
+6. For `desktop-app`, open through the CLI:
 
 ```bash
 bun scripts/burrete-agent.mjs open --mode desktop-app <file> --session-dir <dir>
 ```
 
-6. Run `observe` after the app reports readiness when the selected mode exposes
+7. Run `observe` after the app reports readiness when the selected mode exposes
    typed state.
-7. Read the structure summary:
+8. Read the structure summary:
    - `open_burrete_workspace` returns `structureSummary` for the opened file.
    - If attaching to an existing workspace or if summary is missing, call
      `summarize_burrete_structure` with `file`, `url`, or `sessionDir`.
@@ -125,7 +140,7 @@ bun scripts/burrete-agent.mjs open --mode desktop-app <file> --session-dir <dir>
    atom/residue/chain counts, ligand instances, water, ions, and available
    selectors before choosing viewer actions. Do not show explanatory UI text to
    the user just because the summary was read.
-8. If visual confirmation matters, use [visual-qa](../visual-qa/SKILL.md).
+9. If visual confirmation matters, use [visual-qa](../visual-qa/SKILL.md).
 
 ## Handoff
 

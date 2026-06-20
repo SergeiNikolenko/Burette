@@ -52,6 +52,7 @@ plugin-by-plugin alignment checklist.
 The source of truth is the repository CLI:
 
 ```bash
+bun scripts/burrete-agent.mjs open --mode auto samples/mini.pdb
 bun scripts/burrete-agent.mjs open --mode browser-preview samples/mini.pdb
 bun scripts/burrete-agent.mjs open --mode browser-agent-shell samples/mini.pdb
 bun scripts/burrete-agent.mjs open --mode desktop-app samples/mini.pdb

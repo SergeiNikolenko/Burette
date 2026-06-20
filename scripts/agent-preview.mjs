@@ -15,19 +15,20 @@ const coordinateArtifactExtensions = new Set(['xml', 'inpcrd', 'rst7', 'restrt',
 const textArtifactExtensions = new Set(['par', 'prm', 'rtf', 'str', 'key', 'chk', 'checkpoint']);
 
 function usage() {
-  console.error(`Usage: node scripts/agent-preview.mjs <structure-file> [--port 5177] [--host 127.0.0.1]
+  console.error(`Usage: node scripts/agent-preview.mjs <structure-file> [--port 5177] [--host 127.0.0.1] [--token <token>]
 
 Starts a tiny localhost-only Burrete agent viewer for browser-use/manual QA.
 It serves PreviewExtension/Web assets and generates preview-config.js/preview-data.js in-memory.`);
 }
 
 function parseArgs(argv) {
-  const args = { host: '127.0.0.1', port: 5177, structure: null };
+  const args = { host: '127.0.0.1', port: 5177, token: null, structure: null };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--help' || arg === '-h') { args.help = true; continue; }
     if (arg === '--port') { args.port = Number(argv[++i]); continue; }
     if (arg === '--host') { args.host = String(argv[++i] || '127.0.0.1'); continue; }
+    if (arg === '--token') { args.token = String(argv[++i] || '').trim(); continue; }
     if (!args.structure) args.structure = arg;
     else throw new Error(`Unexpected argument: ${arg}`);
   }
@@ -912,7 +913,7 @@ async function main() {
     canvasBackground: 'auto'
   };
   const dataBase64 = preview.bytes.toString('base64');
-  const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  const token = args.token || Math.random().toString(36).slice(2) + Date.now().toString(36);
   const tokenCookieName = 'BurreteAgentPreviewToken';
   let liveReport = null;
   let nextActionId = 1;
