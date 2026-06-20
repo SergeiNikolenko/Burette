@@ -641,7 +641,12 @@ pub fn supported_structure_extensions() -> Result<BTreeSet<String>, String> {
     Ok(format_registry()?
         .formats
         .iter()
-        .filter(|format| !matches!(format.preview.as_ref().map(|preview| &preview.strategy), Some(PreviewStrategy::Text)))
+        .filter(|format| {
+            !matches!(
+                format.preview.as_ref().map(|preview| &preview.strategy),
+                Some(PreviewStrategy::Text)
+            )
+        })
         .flat_map(|format| format.extensions.iter().cloned())
         .collect())
 }
@@ -692,8 +697,8 @@ pub fn resolve_renderer(format: &FormatInfo, requested: &str) -> String {
         }
         .to_string();
     }
-    let can_use_xyzrender = (format.molstar_format == "xyz" && !format.is_binary)
-        || can_use_external_xyzrender(format);
+    let can_use_xyzrender =
+        (format.molstar_format == "xyz" && !format.is_binary) || can_use_external_xyzrender(format);
     match normalized {
         "molstar" => "molstar".to_string(),
         "xyzrender-external" => if can_use_xyzrender {
@@ -824,6 +829,40 @@ mod tests {
     }
 
     #[test]
+    fn renderer_policy_matrix_preserves_desktop_and_quicklook_routing() {
+        let cases = [
+            ("pdb", "auto", "molstar"),
+            ("pdb", "molstar", "molstar"),
+            ("pdb", "xyzrender-external", "xyzrender-external"),
+            ("cif", "auto", "molstar"),
+            ("cif", "xyzrender", "xyzrender-external"),
+            ("sdf", "auto", "molstar"),
+            ("sdf", "grid2d", "molstar"),
+            ("sdf", "external-xyzrender", "xyzrender-external"),
+            ("xyz", "auto", "molstar"),
+            ("xyz", "mol*", "molstar"),
+            ("xyz", "xyzrender-external", "xyzrender-external"),
+            ("xtc", "xyzrender-external", "molstar"),
+            ("cube", "auto", "molstar"),
+            ("cube", "molstar", "molstar"),
+            ("cube", "xyzrender-external", "xyzrender-external"),
+            ("maegz", "auto", "molstar"),
+            ("maegz", "xyzrender-external", "xyzrender-external"),
+        ];
+
+        for (extension, requested, expected) in cases {
+            let format = format_for_extension(extension)
+                .unwrap_or_else(|_| panic!("{extension} should be supported"));
+
+            assert_eq!(
+                resolve_renderer(&format, requested),
+                expected,
+                "{extension} requested as {requested} should resolve to {expected}",
+            );
+        }
+    }
+
+    #[test]
     fn defaults_external_only_formats_to_molstar_with_explicit_xyzrender() {
         let cube = format_for_extension("cube").expect("cube should be supported");
         assert!(cube.external_only);
@@ -847,7 +886,10 @@ mod tests {
             let format = format_for_extension(extension)
                 .unwrap_or_else(|_| panic!("{extension} should be supported"));
             assert_eq!(format.molstar_format, "xyz");
-            assert!(format.external_only, "{extension} should use external conversion");
+            assert!(
+                format.external_only,
+                "{extension} should use external conversion"
+            );
             assert_eq!(resolve_renderer(&format, "auto"), "molstar");
             assert_eq!(
                 resolve_renderer(&format, "external-xyzrender"),
@@ -862,7 +904,10 @@ mod tests {
             let format = format_for_extension(extension)
                 .unwrap_or_else(|_| panic!("{extension} should be supported"));
             assert_eq!(format.molstar_format, "xyz");
-            assert!(format.external_only, "{extension} should use external conversion");
+            assert!(
+                format.external_only,
+                "{extension} should use external conversion"
+            );
             assert_eq!(resolve_renderer(&format, "auto"), "molstar");
             assert_eq!(
                 resolve_renderer(&format, "external-xyzrender"),
