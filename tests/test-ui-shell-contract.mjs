@@ -37,6 +37,7 @@ const [
   appUpdatesHook,
   appViewerFileActionsHook,
   appWorkspaceActionsHook,
+  appXyzrenderSheetMessagesHook,
   appStatusHook,
   tabsHook,
   sidebarHook,
@@ -186,6 +187,7 @@ const [
   source('apps/desktop/src/hooks/use-app-updates.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-file-actions.ts'),
   source('apps/desktop/src/hooks/use-app-workspace-actions.ts'),
+  source('apps/desktop/src/hooks/use-app-xyzrender-sheet-messages.ts'),
   source('apps/desktop/src/hooks/use-app-status.ts'),
   source('apps/desktop/src/hooks/use-tabs.ts'),
   source('apps/desktop/src/hooks/use-sidebar.ts'),
@@ -1190,9 +1192,11 @@ assert.match(viewer, /records: \[\]/);
 assert.match(viewer, /function requestHostXyzrenderSheetItem\(entry, preset, controls\)/);
 assert.match(viewer, /inputDataBase64: sheetEntryInputDataBase64\(entry\)/);
 assert.match(viewer, /type: 'renderXyzrenderSheetItem'/);
-assert.match(app, /body\?\.type === "renderXyzrenderSheetItem"/);
-assert.match(app, /inputDataBase64: body\.inputDataBase64 \?\? null/);
-assert.match(app, /invoke<\{[\s\S]*\}>\("render_xyzrender_sheet_item"/);
+assert.match(app, /handleXyzrenderSheetMessage\(data\.source, body, event\.source\)/);
+assert.match(appXyzrenderSheetMessagesHook, /body\?\.type !== "renderXyzrenderSheetItem"/);
+assert.match(appXyzrenderSheetMessagesHook, /inputDataBase64: body\.inputDataBase64 \?\? null/);
+assert.match(appXyzrenderSheetMessagesHook, /invoke<\{[\s\S]*\}>\("render_xyzrender_sheet_item"/);
+assert.match(appXyzrenderSheetMessagesHook, /sourceName === "burrete-grid" \? "burrete-grid-host" : "burrete-host"/);
 assert.match(appGridRuntimeMessagesHook, /body\?\.type === "renderXyzrenderCards"/);
 assert.match(appGridRuntimeMessagesHook, /"render_xyzrender_sheet_items"/);
 assert.match(commandDocuments, /pub\(crate\) async fn render_xyzrender_sheet_item/);
