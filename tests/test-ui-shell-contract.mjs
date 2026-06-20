@@ -499,7 +499,7 @@ assert.match(desmondPreviewExtract, /parser\.add_argument\("--output"/);
 assert.match(viteConfig, /plugins: \[react\(\), ketcherRaphaelImportShimPlugin\(\), deferKetcherCssPlugin\(\), browserDevXyzrenderPlugin\(\)\]/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "BurettePreviewSamples"\)/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "xyzrender-main"\)/);
-assert.match(viteConfig, /join\(repoRoot, "samples", "large", "litr_moses_10k\.csv"\)/);
+assert.match(viteConfig, /join\(repoRoot, "samples", "large", "moses_10k\.csv"\)/);
 assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/dev-files"/);
 assert.match(viteConfig, /const RDKIT_WASM_PATH = join\(repoRoot, "PreviewExtension", "Web", "rdkit", "RDKit_minimal\.wasm"\)/);
 assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/rdkit-wasm"/);
