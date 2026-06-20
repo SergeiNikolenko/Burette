@@ -2056,6 +2056,10 @@ img.radix-menu-item-icon {
   background: color-mix(in srgb, #2f6fed 18%, var(--surface-input));
   color: var(--text-primary);
 }
+.folding-full-pae-button {
+  height: 28px;
+  justify-content: center;
+}
 .folding-model-summary {
   min-width: 0;
   display: grid;
@@ -2142,6 +2146,10 @@ img.radix-menu-item-icon {
   background: var(--surface-subtle);
   overflow: hidden;
 }
+.folding-matrix-heatmap[data-size="large"] {
+  height: min(52vh, 460px);
+  min-height: 320px;
+}
 .folding-matrix-heatmap .js-plotly-plot,
 .folding-matrix-heatmap .plot-container,
 .folding-matrix-heatmap .svg-container {
@@ -2155,6 +2163,148 @@ img.radix-menu-item-icon {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.folding-analysis-panel {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+  overflow: hidden;
+}
+.folding-analysis-header {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+.folding-analysis-header > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.folding-analysis-header strong,
+.folding-analysis-header span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.folding-analysis-header strong {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+.folding-analysis-header span {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.folding-analysis-actions {
+  display: flex;
+  gap: 6px;
+}
+.folding-analysis-tabs {
+  grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));
+}
+.folding-sequence-strip {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+.folding-sequence-chain {
+  min-width: 0;
+  border: 1px solid var(--line-subtler);
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--surface-input);
+}
+.folding-sequence-chain-title {
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.folding-sequence-ruler {
+  position: relative;
+  height: 20px;
+  background: color-mix(in srgb, #b54fb3 18%, var(--surface-input));
+  color: var(--text-muted);
+  font: 10px/20px var(--mono-font);
+}
+.folding-sequence-ruler span {
+  position: absolute;
+  transform: translateX(-50%);
+}
+.folding-sequence-ruler span:first-child {
+  transform: translateX(0);
+}
+.folding-sequence-ruler span:last-child {
+  transform: translateX(-100%);
+}
+.folding-sequence-text {
+  min-width: 0;
+  overflow-x: auto;
+  background: color-mix(in srgb, #b54fb3 22%, var(--surface-input));
+  color: var(--text-secondary);
+  padding: 7px 10px 9px;
+  font: 13px/1.45 var(--mono-font);
+  white-space: pre;
+}
+.folding-analysis-main {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 10px;
+  overflow: auto;
+}
+.folding-analysis-side {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(180px, 260px) minmax(240px, 1fr) minmax(220px, 1fr);
+  align-items: start;
+  gap: 10px;
+  overflow: visible;
+}
+.folding-analysis-model-card {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--line-subtler);
+  border-radius: 7px;
+  background: var(--surface-input);
+  padding: 8px;
+}
+.folding-analysis-model-card strong,
+.folding-analysis-model-card span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.folding-analysis-model-card strong {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.folding-analysis-model-card span {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.folding-analysis-artifacts {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  max-height: 92px;
+  overflow: auto;
+}
+.folding-analysis-plot {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 .folding-warning-list {
   min-width: 0;

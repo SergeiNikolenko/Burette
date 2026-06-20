@@ -16,6 +16,7 @@ import { TextFileViewer } from "./text-file-viewer";
 import { CloseIcon } from "./close-icon";
 import { formatBytes } from "./format";
 import { StructureInfoPanel } from "./structure-info-panel";
+import { FoldingAnalysisPanel } from "./folding-results-panel";
 import { DescriptorPanel } from "./descriptor-panel";
 import { SpectrumInfoPanel, SpectrumPeakTablePanel, SpectrumViewer } from "./spectrum-viewer";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
@@ -35,6 +36,7 @@ const dockTabIcons: Record<DockTabKind, typeof File02Icon> = {
   spectrum: Atom01Icon,
   text: File02Icon,
   inspector: Search01Icon,
+  folding: Atom01Icon,
   descriptors: Atom01Icon,
   "structure-basket": Atom01Icon,
   compare: Atom01Icon,
@@ -362,6 +364,9 @@ function DockPanelContent({
         actions={actions}
       />
     );
+  }
+  if (activeTabKind === "folding") {
+    return <FoldingAnalysisPanel document={dockStructureDocument} actions={actions} />;
   }
   if (activeTabKind === "descriptors") {
     return <DescriptorPanel state={state} actions={actions} />;
