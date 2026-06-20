@@ -1,4 +1,4 @@
-import { Suspense, lazy, useRef, useState } from "react";
+import { Suspense, lazy, useState } from "react";
 import { AppLayout } from "./components/app-layout";
 import type { StructureOverlayMode, ViewerLigandSelection } from "./components/types";
 import { WindowTitle } from "./components/window-title";
@@ -24,7 +24,7 @@ import { useAppDropActions } from "./hooks/use-app-drop-actions";
 import { useAppFileActions } from "./hooks/use-app-file-actions";
 import { useAppFileOpen } from "./hooks/use-app-file-open";
 import { useAppFepWorkflows } from "./hooks/use-app-fep-workflows";
-import { useAppGenerate3DConformer, type PendingMolstarReplaceResolver } from "./hooks/use-app-generate-3d-conformer";
+import { useAppGenerate3DConformer } from "./hooks/use-app-generate-3d-conformer";
 import { useAppGridWorkflows } from "./hooks/use-app-grid-workflows";
 import { useAppHostRuntimeOperations } from "./hooks/use-app-host-runtime-operations";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
@@ -45,6 +45,7 @@ import { useAppStatus } from "./hooks/use-app-status";
 import { useAppUpdates } from "./hooks/use-app-updates";
 import { useAppViewerBridgeController } from "./hooks/use-app-viewer-bridge-controller";
 import { useAppViewerReloadActions } from "./hooks/use-app-viewer-reload-actions";
+import { useAppViewerRuntimeRefs } from "./hooks/use-app-viewer-runtime-refs";
 import { useAppWorkspaceActions } from "./hooks/use-app-workspace-actions";
 import { useAppXtbWorkflows } from "./hooks/use-app-xtb-workflows";
 import { useMenuEvents } from "./hooks/use-menu-events";
@@ -95,7 +96,6 @@ import { detectContentSpectrumPaths } from "./lib/content-spectrum-detection";
 import { structureExtensionFromPath } from "./lib/file-routing";
 import type { StructureDragPayload } from "./lib/structure-drag";
 import { activeViewerIframeForDocument, isKnownViewerMessageSource } from "./lib/viewer-bridge";
-import type { ViewerDocument, ViewerReloadOptions } from "./types";
 
 const CommandPalette = lazy(() => import("./components/command-palette").then((module) => ({
   default: module.CommandPalette,
@@ -280,11 +280,13 @@ export default function App() {
     openDockTab,
     pushStatus,
   });
-  const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions | null>(null);
-  const pendingViewerReloadDocumentIdRef = useRef<string | null>(null);
-  const pendingMolstarReplaceRef = useRef<Map<string, PendingMolstarReplaceResolver>>(new Map());
-  const xyzrenderOrientationRefRef = useRef<string | null>(null);
-  const skipNextPreferenceRefreshRef = useRef(false);
+  const {
+    pendingViewerReloadOptionsRef,
+    pendingViewerReloadDocumentIdRef,
+    pendingMolstarReplaceRef,
+    xyzrenderOrientationRefRef,
+    skipNextPreferenceRefreshRef,
+  } = useAppViewerRuntimeRefs();
   const commandPaletteOpen = useIsCommandPaletteOpen();
   const commandPaletteQuery = useCommandPaletteSearch();
   const openCommandPalette = useOpenCommandPalette();

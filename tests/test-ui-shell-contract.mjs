@@ -66,6 +66,7 @@ const [
   appViewerFileActionsHook,
   appViewerHostMessagesHook,
   appViewerReloadActionsHook,
+  appViewerRuntimeRefsHook,
   appViewerRuntimeFileMessagesHook,
   appViewerRuntimeMessagesHook,
   appViewerStateMessagesHook,
@@ -256,6 +257,7 @@ const [
   source('apps/desktop/src/hooks/use-app-viewer-file-actions.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-host-messages.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-reload-actions.ts'),
+  source('apps/desktop/src/hooks/use-app-viewer-runtime-refs.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-runtime-file-messages.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-runtime-messages.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-state-messages.ts'),
@@ -1794,7 +1796,7 @@ assert.match(appGenerate3DConformerHook, /const effectiveMolstarStyle = molstarS
 assert.match(appGenerate3DConformerHook, /const molstarPreferences = \{ \.\.\.preferences, rendererMode: "molstar" as const, molstarStyle: effectiveMolstarStyle \}/);
 assert.match(appGenerate3DConformerHook, /openBrowserDevTextDocument\([\s\S]*poseSetTitle,[\s\S]*conformer\.extension,[\s\S]*poseSetText,[\s\S]*molstarPreferences,[\s\S]*\{\},[\s\S]*\)/);
 assert.doesNotMatch(app, /const updatedDocument = \{[\s\S]*?runtimePath: document\.runtimePath[\s\S]*?setDocuments/);
-assert.match(app, /const pendingMolstarReplaceRef = useRef<Map<string, PendingMolstarReplaceResolver>>\(new Map\(\)\)/);
+assert.match(appViewerRuntimeRefsHook, /const pendingMolstarReplaceRef = useRef<Map<string, PendingMolstarReplaceResolver>>\(new Map\(\)\)/);
 assert.match(appGenerate3DConformerHook, /const replacedInPlace = await replaceMolstarStructureInPlace\([\s\S]*pendingMolstarReplaceRef\.current,[\s\S]*activeViewerIframeForDocument,[\s\S]*\)/);
 assert.match(appGenerate3DConformerHook, /writeBrowserDevVirtualTextDocument\(generatedDocument\.path, poseSetText\)/);
 assert.match(appGenerate3DConformerHook, /openDocumentsInActiveTab\(\[generatedDocument\], \{\s*backLocation: \{ kind: "file", documentId: document\.id, path: document\.path \},\s*\}\)/);
@@ -3255,10 +3257,11 @@ assert.match(appShellNavigationActionsHook, /activateLastNonSettingsTab\(\)/);
 assert.match(appOpenActionsHook, /await invoke<string\[]>\("pick_open_targets"\)/);
 assert.match(appOpenActionsHook, /await open\(\{ multiple: true, filters \}\)/);
 assert.match(app, /<WindowTitle activeDocument=\{activeDocument\} \/>/);
-assert.match(app, /const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions \| null>\(null\)/);
-assert.match(app, /const pendingViewerReloadDocumentIdRef = useRef<string \| null>\(null\)/);
-assert.match(app, /const xyzrenderOrientationRefRef = useRef<string \| null>\(null\)/);
-assert.match(app, /const skipNextPreferenceRefreshRef = useRef\(false\)/);
+assert.match(app, /useAppViewerRuntimeRefs\(\)/);
+assert.match(appViewerRuntimeRefsHook, /const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions \| null>\(null\)/);
+assert.match(appViewerRuntimeRefsHook, /const pendingViewerReloadDocumentIdRef = useRef<string \| null>\(null\)/);
+assert.match(appViewerRuntimeRefsHook, /const xyzrenderOrientationRefRef = useRef<string \| null>\(null\)/);
+assert.match(appViewerRuntimeRefsHook, /const skipNextPreferenceRefreshRef = useRef\(false\)/);
 assert.match(app, /from "\.\/hooks\/use-app-viewer-reload-actions"/);
 assert.match(app, /const \{ reloadActive, reloadXyzrenderDocument \} = useAppViewerReloadActions\(\{/);
 assert.doesNotMatch(app, /const reloadActive = useCallback/);
