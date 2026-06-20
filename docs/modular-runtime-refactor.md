@@ -191,6 +191,9 @@ Current Stage 3 progress:
   logs, preview traces, Quick Look logs, and manifest `recentErrors` entries;
 - preview cache clearing now has a Rust contract for preserving packaged viewer
   assets while removing volatile preview/render/cache entries;
+- core renderer selection now has an explicit matrix contract for Molstar,
+  external xyzrender, grid requests, MD trajectories, and converted
+  external-only formats;
 - `App.tsx` still owns the top-level shell composition and remaining runtime
   hardening boundaries. These are the remaining high-risk slices and should
   move only after each boundary has contract coverage for the exact
@@ -217,7 +220,7 @@ the high-risk runtime boundaries intact.
 | Hardening pass | Not started | Trusted shell vs preview capability split, diagnostics privacy redaction, cache contract, scanner limits, renderer policy matrix, and doctor flow remain pending. |
 | Runtime cache contract | Partial | `clear_preview_cache` now delegates to a tested cache-directory helper that preserves `viewer/assets` and removes volatile preview/render/cache entries; broader runtime storage/cache inventory remains pending. |
 | Folder scanner job | Not started | No cancellable/limited scanner refactor yet. |
-| Renderer policy contract | Not started | Desktop/Quick Look renderer-policy matrix remains pending. |
+| Renderer policy contract | Partial | Core renderer selection now has an explicit matrix test for Molstar/external xyzrender/grid-request/trajectory/external-only routing; browser-dev and Quick Look parity checks still need a higher-level surface test. |
 | External runtime doctor | Not started | No doctor flow has been added. |
 | Diagnostics privacy | Partial | Diagnostics export action is extracted and diagnostics bundle local-path redaction is covered by Rust tests; broader privacy review for every copied artifact remains pending. |
 | Viewer runtime decomposition | Not started | `PreviewExtension/Web/viewer.js` remains untouched as planned until stronger contracts exist. |
