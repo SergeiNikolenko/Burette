@@ -18,6 +18,7 @@ const [
   appClipboardHook,
   appDescriptorsHook,
   appDiagnosticsHook,
+  appDockActionsHook,
   appDirtyGridHook,
   appDockingPoseMessagesHook,
   appDockingWorkflowsHook,
@@ -199,6 +200,7 @@ const [
   source('apps/desktop/src/hooks/use-app-clipboard.ts'),
   source('apps/desktop/src/hooks/use-app-descriptors.ts'),
   source('apps/desktop/src/hooks/use-app-diagnostics.ts'),
+  source('apps/desktop/src/hooks/use-app-dock-actions.ts'),
   source('apps/desktop/src/hooks/use-app-dirty-grid-documents.ts'),
   source('apps/desktop/src/hooks/use-app-docking-pose-messages.ts'),
   source('apps/desktop/src/hooks/use-app-docking-workflows.ts'),
@@ -3311,6 +3313,16 @@ assert.match(openDropHook, /document\.elementFromPoint\(position\.x, position\.y
 assert.match(openDropHook, /candidates\.find\(\(element\) => element\.closest\("\.dock-panel"\)\) \?\? candidates\[0\]/);
 assert.match(openDropHook, /const dockTarget = element\?\.closest<HTMLElement>\("\.dock-panel\[data-area\]\[data-active-tab\]"\)/);
 assert.match(openDropHook, /void openDockPayload\?\.\(\{ area: target\.area, tabKind: target\.tabKind, payload \}\)/);
+assert.match(app, /from "\.\/hooks\/use-app-dock-actions"/);
+assert.match(app, /const \{ toggleDockTab \} = useAppDockActions\(\{/);
+assert.doesNotMatch(app, /const toggleDockTab = useCallback/);
+assert.match(appDockActionsHook, /export function useAppDockActions\(\{/);
+assert.match(appDockActionsHook, /const toggleDockTab = useCallback/);
+assert.match(appDockActionsHook, /const open = area === "right" \? rightDockOpen : bottomDockOpen/);
+assert.match(appDockActionsHook, /const activeKind = area === "right" \? rightDockActiveTab : bottomDockActiveTab/);
+assert.match(appDockActionsHook, /if \(open && activeKind === kind\)/);
+assert.match(appDockActionsHook, /setDockOpen\(area, false\)/);
+assert.match(appDockActionsHook, /openDockTab\(area, kind\)/);
 assert.match(appDockPayloadHook, /export function useAppDockPayloadOpen/);
 assert.match(appDockPayloadHook, /const ketcherItem = input\.payload\.items\?\.find\(\(item\) => item\.kind === "ketcher"\) \?\? null/);
 assert.match(appDockPayloadHook, /setDockTool\(input\.area, "ketcher"\)/);

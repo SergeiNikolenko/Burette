@@ -13,6 +13,7 @@ import { useAppChemistryJobs } from "./hooks/use-app-chemistry-jobs";
 import { useAppConformerWorkflows } from "./hooks/use-app-conformer-workflows";
 import { useAppDescriptors } from "./hooks/use-app-descriptors";
 import { useAppDiagnostics } from "./hooks/use-app-diagnostics";
+import { useAppDockActions } from "./hooks/use-app-dock-actions";
 import { useAppDirtyGridDocuments } from "./hooks/use-app-dirty-grid-documents";
 import { useAppDockingPoseMessages } from "./hooks/use-app-docking-pose-messages";
 import { useAppDockingWorkflows } from "./hooks/use-app-docking-workflows";
@@ -112,7 +113,6 @@ import { writeClipboardText } from "./lib/clipboard";
 import { isMoleculeCollectionPath } from "./lib/collection-documents";
 import { detectContentSpectrumPaths } from "./lib/content-spectrum-detection";
 import { isProteinLikeDockingSource } from "./lib/docking-documents";
-import type { DockArea, DockTabKind } from "./lib/dock";
 import { structureExtensionFromPath } from "./lib/file-routing";
 import { browserDevFolderFromLocation, browserDevHasExplicitWorkspace, browserDevQuickLookFileFromLocation } from "./lib/browser-dev-startup";
 import type { StructureDragPayload } from "./lib/structure-drag";
@@ -234,15 +234,14 @@ export default function App() {
     setSidebarWidth,
     sidebarWidth,
   });
-  const toggleDockTab = useCallback((area: DockArea, kind: DockTabKind) => {
-    const open = area === "right" ? rightDockOpen : bottomDockOpen;
-    const activeKind = area === "right" ? rightDockActiveTab : bottomDockActiveTab;
-    if (open && activeKind === kind) {
-      setDockOpen(area, false);
-      return;
-    }
-    openDockTab(area, kind);
-  }, [bottomDockActiveTab, bottomDockOpen, openDockTab, rightDockActiveTab, rightDockOpen, setDockOpen]);
+  const { toggleDockTab } = useAppDockActions({
+    bottomDockActiveTab,
+    bottomDockOpen,
+    openDockTab,
+    rightDockActiveTab,
+    rightDockOpen,
+    setDockOpen,
+  });
 
   const [structureDragActive, setStructureDragActive] = useState(false);
   const { status, pushStatus, pushErrorStatus, clearStatus, recentErrorsRef } = useAppStatus();
