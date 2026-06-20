@@ -27,6 +27,7 @@ import { useAppGridRuntimeMessages } from "./hooks/use-app-grid-runtime-messages
 import { useAppGridWorkflows } from "./hooks/use-app-grid-workflows";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
 import { useAppKetcherActions } from "./hooks/use-app-ketcher-actions";
+import { useAppKetcherViewerMessages } from "./hooks/use-app-ketcher-viewer-messages";
 import { useAppMaintenance } from "./hooks/use-app-maintenance";
 import { useAppOpenActions } from "./hooks/use-app-open-actions";
 import { useAppQuickLook } from "./hooks/use-app-quick-look";
@@ -101,7 +102,6 @@ import { directChemistryJobGuardMessage } from "./lib/direct-chemistry-guard";
 import type { DockArea, DockTabKind } from "./lib/dock";
 import { pathExtension, preferredTextExtensions, structureAndTextExtensions, structureExtensionFromPath, structureExtensions } from "./lib/file-routing";
 import { browserDevFolderFromLocation, browserDevHasExplicitWorkspace, browserDevQuickLookFileFromLocation } from "./lib/browser-dev-startup";
-import { ketcherSource3DFromText } from "./lib/ketcher-workflow";
 import { basename, parentDirectory } from "./lib/sidebar-projects";
 import type { StructureDragPayload } from "./lib/structure-drag";
 import { readStructureText } from "./lib/structure-text";
@@ -1380,6 +1380,13 @@ export default function App() {
     writeClipboardText,
     writeGridPerfMetric,
   });
+  const { handleKetcherViewerMessage } = useAppKetcherViewerMessages({
+    activeDocument,
+    documents,
+    openKetcherWithFragment,
+    openKetcherWithStructures,
+    pushStatus,
+  });
 
   const { handleViewerFileMessage } = useAppViewerFileActions({
     pushErrorStatus,
@@ -1871,76 +1878,7 @@ export default function App() {
         }
         return;
       }
-      if (body?.type === "openInKetcher") {
-        const title = typeof body.title === "string" && body.title.trim()
-          ? body.title.trim()
-          : "structure";
-        const textBase64 = typeof body.textBase64 === "string" ? body.textBase64.trim() : "";
-        if (textBase64) {
-          try {
-            const bytes = Uint8Array.from(atob(textBase64), (char) => char.charCodeAt(0));
-            const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
-            const rowIndex = Number(body.rowIndex);
-            const extension = typeof body.extension === "string" && body.extension.trim()
-              ? body.extension.trim().replace(/^\./u, "")
-              : "sdf";
-            openKetcherWithFragment(title, text, body.gridEdit === true && body.documentId && Number.isFinite(rowIndex)
-              ? {
-                  kind: "grid-row",
-                  documentId: body.documentId,
-                  rowIndex,
-                  title,
-                  extension,
-                }
-              : undefined, extension);
-          } catch (error) {
-            pushStatus(`Open in Ketcher failed: ${error instanceof Error ? error.message : String(error)}`, "error");
-          }
-          return;
-        }
-        const targetDocument = (body.documentId
-          ? documents.find((document) => document.id === body.documentId)
-          : null) ?? activeDocument;
-        const targetPath = typeof body.path === "string" && body.path.trim().length > 0
-          ? body.path.trim()
-          : targetDocument?.path;
-        if (targetPath) {
-          const virtualText = readBrowserDevVirtualTextDocument(targetPath);
-          if (virtualText !== null) {
-            openKetcherWithFragment(title, virtualText);
-            return;
-          }
-          openKetcherWithStructures([targetPath]);
-        }
-        return;
-      }
-      if (body?.type === "openSdfKetcherDocument") {
-        const rawFragments = Array.isArray(body.fragments) ? body.fragments : [];
-        const fragments = rawFragments.flatMap((fragment) => {
-          if (!fragment || typeof fragment !== "object") return [];
-          const textBase64 = typeof fragment.textBase64 === "string" ? fragment.textBase64.trim() : "";
-          if (!textBase64) return [];
-          try {
-            const bytes = Uint8Array.from(atob(textBase64), (char) => char.charCodeAt(0));
-            const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
-            if (!text.trim()) return [];
-            const title = typeof fragment.title === "string" && fragment.title.trim()
-              ? fragment.title.trim()
-              : "ketcher-sketch.sdf";
-            return [{
-              title,
-              text,
-              source3d: ketcherSource3DFromText(title, text, pathExtension(title)),
-            }];
-          } catch {
-            return [];
-          }
-        });
-        if (fragments.length > 0) {
-          openKetcherWithStructures([], fragments);
-        } else {
-          pushStatus("Open in Ketcher failed: selected molecules do not have structure data.", "error");
-        }
+      if (handleKetcherViewerMessage(body)) {
         return;
       }
       if (handleRendererMessage(body)) {
@@ -1949,7 +1887,7 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, generate3DConformer, handleDockingPoseMessage, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleRendererMessage, handleSdfViewerMessage, handleViewerFileMessage, handleViewerRuntimeFileMessage, handleViewerRuntimeMessage, handleViewerStateMessage, handleXyzrenderSheetMessage, markViewerFirstRenderMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
+  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, generate3DConformer, handleDockingPoseMessage, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleKetcherViewerMessage, handleRendererMessage, handleSdfViewerMessage, handleViewerFileMessage, handleViewerRuntimeFileMessage, handleViewerRuntimeMessage, handleViewerStateMessage, handleXyzrenderSheetMessage, markViewerFirstRenderMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
