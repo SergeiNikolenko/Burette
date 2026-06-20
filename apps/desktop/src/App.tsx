@@ -2,7 +2,6 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } fro
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
-import previewFormatRegistry from "../../../config/preview-formats.json";
 import { AppLayout } from "./components/app-layout";
 import type { AppSettingsSectionId, KetcherSketchRequest, ShellActions, ShellViewState, StructureViewerAction, ViewerLigandSelection } from "./components/types";
 import { WindowTitle } from "./components/window-title";
@@ -26,6 +25,7 @@ import { useAppGridWorkflows } from "./hooks/use-app-grid-workflows";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
 import { useAppKetcherActions } from "./hooks/use-app-ketcher-actions";
 import { useAppMaintenance } from "./hooks/use-app-maintenance";
+import { useAppOpenActions } from "./hooks/use-app-open-actions";
 import { useAppQuickLook } from "./hooks/use-app-quick-look";
 import { useAppResize } from "./hooks/use-app-resize";
 import { useAppSidebarProjects } from "./hooks/use-app-sidebar-projects";
@@ -100,18 +100,11 @@ import { isSpectrumPath, isSubformulaSpectrumJsonText, isTabularSpectrumExtensio
 import type { TextStructureSelection } from "./lib/text-structure-selection";
 import { isTauriRuntime } from "./lib/tauri";
 import { isTemporaryDocumentPath } from "./lib/temporary-documents";
-import type { ConformerJob, ConformerOperation, ConformerPreparedRun, ConformerRunRequest, ConformerRunResult, ConformerSettings, ConformerStatus, FepSetupRequest, OpenDocumentsMode, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XtbJob, XtbOperation, XtbRunRequest, XtbRunResult, XtbSettings, XtbStatus } from "./types";
+import type { ConformerJob, ConformerOperation, ConformerPreparedRun, ConformerRunRequest, ConformerRunResult, ConformerSettings, ConformerStatus, FepSetupRequest, OpenDocumentsMode, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XtbJob, XtbOperation, XtbRunRequest, XtbRunResult, XtbSettings, XtbStatus } from "./types";
 
 const CommandPalette = lazy(() => import("./components/command-palette").then((module) => ({
   default: module.CommandPalette,
 })));
-
-const filters = [
-  {
-    name: "Files",
-    extensions: [...previewFormatRegistry.documentTypes.extensions, "ms", "magma", "mgf", "msp", "mzML", "mzXML", "md", "markdown", "mdx", "txt", "log", "out", "err", "sh", "bash", "zsh", "py", "rs", "js", "jsx", "ts", "tsx", "json", "yaml", "yml", "toml", "xml", "html", "css", "inpcrd", "rst7", "crd", "rst", "par", "prm", "rtf", "str", "key", "chk", "checkpoint", "state"],
-  },
-];
 
 const GRID_PERF_REPORT_PATH = "/private/tmp/burrete-grid-real-app-perf.jsonl";
 type MolstarContextDocument = Parameters<typeof openBrowserDevMolstarContextDocument>[0];
@@ -1053,13 +1046,6 @@ export default function App() {
     setDocuments,
   });
 
-  const openRecentStructure = useCallback(
-    async (structure: RecentStructure) => {
-      await openPaths([structure.path]);
-    },
-    [openPaths],
-  );
-
   const openDockPayload = useAppDockPayloadOpen({
     addBackgroundDocuments,
     addBackgroundTextDocuments,
@@ -1074,26 +1060,16 @@ export default function App() {
     setDockTool,
   });
 
-  const openMostRecentStructure = useCallback(async () => {
-    const structure = recentStructures[0];
-    if (!structure) {
-      pushStatus("No recent structures to open", "error");
-      return;
-    }
-    await openRecentStructure(structure);
-  }, [openRecentStructure, pushStatus, recentStructures]);
-
-  const chooseFiles = useCallback(async () => {
-    try {
-      const selection = isTauriRuntime()
-        ? await invoke<string[]>("pick_open_targets")
-        : await open({ multiple: true, filters });
-      const paths = Array.isArray(selection) ? selection : selection ? [selection] : [];
-      await openPaths(paths);
-    } catch (error) {
-      pushErrorStatus(error, "Open failed");
-    }
-  }, [openPaths, pushErrorStatus]);
+  const {
+    chooseFiles,
+    openMostRecentStructure,
+    openRecentStructure,
+  } = useAppOpenActions({
+    openPaths,
+    pushErrorStatus,
+    pushStatus,
+    recentStructures,
+  });
 
   const notifyGridPoseReviewSelection = useCallback((targetDocumentId: string, activePose: number) => {
     const iframe = Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).find(
