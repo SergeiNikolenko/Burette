@@ -100,7 +100,7 @@ fn read_folding_result_bundle_impl(path: PathBuf) -> Result<FoldingResultBundle,
     let roots = candidate_roots(&input)?;
     let mut fallback: Option<FoldingResultBundle> = None;
     for (distance, root) in roots.iter().enumerate() {
-        let bundle = scan_folding_root(&root, &input)?;
+        let bundle = scan_folding_root(root, &input)?;
         if !folding_bundle_has_content(&bundle) {
             continue;
         }
@@ -949,10 +949,10 @@ fn metric_label(key: &str) -> String {
 }
 
 fn format_metric_value(key: &str, value: f64) -> String {
-    if key.contains("probability") || key.contains("confidence") || key.contains("fraction") {
-        if (0.0..=1.0).contains(&value) {
-            return format!("{:.1}%", value * 100.0);
-        }
+    if (key.contains("probability") || key.contains("confidence") || key.contains("fraction"))
+        && (0.0..=1.0).contains(&value)
+    {
+        return format!("{:.1}%", value * 100.0);
     }
     if key.contains("plddt") {
         return format!("{value:.1}");
