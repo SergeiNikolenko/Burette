@@ -128,6 +128,11 @@ export function FoldingResultsPanel({ state, actions }: { state: FoldingResultSt
     return null;
   }
 
+  const selectModel = (model: FoldingModel) => {
+    setActiveModelId(model.id);
+    if (model.structurePath !== activeModel.structurePath) void actions.openStructurePaths([model.structurePath]);
+  };
+
   return (
     <section className="structure-brief-card folding-results-card">
       <div className="structure-inspector-section-header">
@@ -141,25 +146,7 @@ export function FoldingResultsPanel({ state, actions }: { state: FoldingResultSt
         <span>{bundle.source} · {modelCountLabel(bundle.models.length)}</span>
       </div>
 
-      {bundle.models.length > 1 ? (
-        <div className="folding-model-tabs" role="tablist" aria-label="Folding models">
-          {bundle.models.map((model) => (
-            <button
-              key={model.id}
-              type="button"
-              role="tab"
-              aria-selected={model.id === activeModel.id}
-              data-active={model.id === activeModel.id || undefined}
-              onClick={() => {
-                setActiveModelId(model.id);
-                if (model.structurePath !== activeModel.structurePath) void actions.openStructurePaths([model.structurePath]);
-              }}
-            >
-              {modelLabel(model)}
-            </button>
-          ))}
-        </div>
-      ) : null}
+      <FoldingModelSelector models={bundle.models} activeModel={activeModel} onSelect={selectModel} />
 
       <div className="folding-model-summary">
         <div>
@@ -267,6 +254,11 @@ export function FoldingAnalysisPanel({ document, actions }: { document: ViewerDo
     );
   }
 
+  const selectModel = (model: FoldingModel) => {
+    setActiveModelId(model.id);
+    if (model.structurePath !== activeModel.structurePath) void actions.openStructurePaths([model.structurePath]);
+  };
+
   return (
     <div className="folding-analysis-panel">
       <div className="folding-analysis-header">
@@ -284,25 +276,7 @@ export function FoldingAnalysisPanel({ document, actions }: { document: ViewerDo
         </div>
       </div>
 
-      {bundle.models.length > 1 ? (
-        <div className="folding-model-tabs folding-analysis-tabs" role="tablist" aria-label="Folding models">
-          {bundle.models.map((model) => (
-            <button
-              key={model.id}
-              type="button"
-              role="tab"
-              aria-selected={model.id === activeModel.id}
-              data-active={model.id === activeModel.id || undefined}
-              onClick={() => {
-                setActiveModelId(model.id);
-                if (model.structurePath !== activeModel.structurePath) void actions.openStructurePaths([model.structurePath]);
-              }}
-            >
-              {modelLabel(model)}
-            </button>
-          ))}
-        </div>
-      ) : null}
+      <FoldingModelSelector models={bundle.models} activeModel={activeModel} onSelect={selectModel} />
 
       <FoldingSequenceStrip
         sequences={sequences}
@@ -334,6 +308,40 @@ export function FoldingAnalysisPanel({ document, actions }: { document: ViewerDo
           });
         }}
       />
+    </div>
+  );
+}
+
+function FoldingModelSelector({
+  models,
+  activeModel,
+  onSelect,
+}: {
+  models: FoldingModel[];
+  activeModel: FoldingModel;
+  onSelect: (model: FoldingModel) => void;
+}) {
+  return (
+    <div className="folding-model-selector">
+      <label>
+        <span>Model / seed</span>
+        <select
+          value={activeModel.id}
+          disabled={models.length <= 1}
+          aria-label="Folding model or seed"
+          onChange={(event) => {
+            const model = models.find((candidate) => candidate.id === event.currentTarget.value);
+            if (model && model.id !== activeModel.id) onSelect(model);
+          }}
+        >
+          {models.map((model) => (
+            <option key={model.id} value={model.id}>
+              {modelOptionLabel(model)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <span className="folding-model-selector-count">{modelAvailabilityLabel(models.length)}</span>
     </div>
   );
 }
@@ -851,14 +859,19 @@ function openFoldingArtifact(artifact: FoldingArtifact, actions: ShellActions) {
   void actions.openPaths([artifact.path]);
 }
 
-function modelLabel(model: FoldingModel) {
-  if (model.modelIndex !== null && model.modelIndex !== undefined) return `Model ${model.modelIndex}`;
-  if (model.seed !== null && model.seed !== undefined) return `Seed ${model.seed}`;
-  return model.backend;
+function modelOptionLabel(model: FoldingModel) {
+  const parts = [model.backend];
+  if (model.modelIndex !== null && model.modelIndex !== undefined) parts.push(`model ${model.modelIndex}`);
+  if (model.seed !== null && model.seed !== undefined) parts.push(`seed ${model.seed}`);
+  return parts.filter(Boolean).join(" / ") || model.title || model.structureTitle;
 }
 
 function modelCountLabel(count: number) {
   return `${count} ${count === 1 ? "model" : "models"}`;
+}
+
+function modelAvailabilityLabel(count: number) {
+  return `${count} available`;
 }
 
 function artifactKindLabel(kind: string) {
