@@ -477,18 +477,6 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             diag("previewPlan.unavailable=true")
         }
 
-        if let spectrumPreviewResult = try buildSpectrumPreviewResult(
-            for: url,
-            requestID: requestID,
-            fileExtension: pathExtension,
-            spectrumData: structureData,
-            webDirectory: webDirectory,
-            fileManager: fileManager,
-            diagnostics: &diagnostics
-        ) {
-            return spectrumPreviewResult
-        }
-
         if shouldUseTextArtifactPreview(fileExtension: pathExtension, previewPlan: previewPlan) {
             return try buildTextArtifactPreviewResult(
                 for: url,
@@ -695,59 +683,6 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             diagnostics: &diagnostics
         )
         diagnostics.append("[build] textArtifact.html.bytes=\(html.utf8.count)")
-        diagnostics.append("[build] runtimeDirectory=\(runtimePreview.runtimeDirectory.path)")
-        return BuildResult(
-            html: html,
-            indexURL: runtimePreview.indexURL,
-            readAccessURL: runtimePreview.readAccessURL,
-            diagnostics: diagnostics,
-            renderTimeoutSeconds: defaultRenderTimeoutSeconds
-        )
-    }
-
-    private static func buildSpectrumPreviewResult(
-        for url: URL,
-        requestID: String,
-        fileExtension: String,
-        spectrumData: Data,
-        webDirectory: URL,
-        fileManager: FileManager,
-        diagnostics: inout [String]
-    ) throws -> BuildResult? {
-        guard shouldTrySpectrumPreview(fileExtension: fileExtension, data: spectrumData, url: url) else {
-            return nil
-        }
-        let content = decodeText(spectrumData)
-        guard let spectrum = try parseQuickLookSpectrum(
-            title: url.lastPathComponent,
-            fileExtension: fileExtension,
-            content: content
-        ) else {
-            return nil
-        }
-        diagnostics.append("[build] detected.previewMode=spectrum format=\(spectrum.format) peaks=\(spectrum.primary.peaks.count)")
-        let html = spectrumInlineHTML(title: url.lastPathComponent, spectrum: spectrum, requestID: requestID)
-        let configJSON = try spectrumConfigJSON(
-            title: url.lastPathComponent,
-            fileExtension: fileExtension,
-            byteCount: spectrumData.count,
-            requestID: requestID,
-            format: spectrum.format
-        )
-        let runtimePreview = try createRuntimePreview(
-            bundledWebDirectory: webDirectory,
-            html: html,
-            configJSON: configJSON,
-            structureData: nil,
-            auxiliaryFiles: [],
-            gridRecordsScript: nil,
-            requiredAssets: [],
-            requiresRDKit: false,
-            externalArtifactSourceURL: nil,
-            fileManager: fileManager,
-            diagnostics: &diagnostics
-        )
-        diagnostics.append("[build] spectrum.html.bytes=\(html.utf8.count)")
         diagnostics.append("[build] runtimeDirectory=\(runtimePreview.runtimeDirectory.path)")
         return BuildResult(
             html: html,
@@ -2208,6 +2143,36 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
     }
 
+    private struct QuickLookSpectrum: Encodable {
+        let format: String
+        let title: String
+        let primary: QuickLookSpectrumDocument
+        let metadata: [String: String]
+    }
+
+    private struct QuickLookSpectrumDocument: Encodable {
+        let id: String
+        let title: String
+        let xLabel: String
+        let yLabel: String
+        let peaks: [QuickLookSpectrumPeak]
+        let summary: [QuickLookSpectrumMetric]
+        let topPeaks: [QuickLookSpectrumPeak]
+        let fragmentFormulas: [String]
+    }
+
+    private struct QuickLookSpectrumPeak: Encodable {
+        let x: Double
+        let y: Double
+        let label: String?
+        let annotations: [String: String]
+    }
+
+    private struct QuickLookSpectrumMetric: Encodable {
+        let label: String
+        let value: String
+    }
+
     private static func parseQuickLookSpectrum(
         title: String,
         fileExtension: String,
@@ -2660,15 +2625,15 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             function renderRows() {
               tbody.innerHTML = '';
               (doc.peaks || []).forEach((peak, index) => {
-	                const row = document.createElement('tr');
-	                row.dataset.index = index;
-	                row.className = index === selected ? 'selected' : '';
-	                appendCell(row, fmt(peak.x, 4));
-	                appendCell(row, fmt(peak.y, 4));
-	                appendCell(row, peak.label || '');
-	                row.addEventListener('click', () => selectPeak(index));
-	                tbody.appendChild(row);
-	              });
+                const row = document.createElement('tr');
+                row.dataset.index = index;
+                row.className = index === selected ? 'selected' : '';
+                appendCell(row, fmt(peak.x, 4));
+                appendCell(row, fmt(peak.y, 4));
+                appendCell(row, peak.label || '');
+                row.addEventListener('click', () => selectPeak(index));
+                tbody.appendChild(row);
+              });
             }
             function renderPlot() {
               const peaks = scaledPeaks();
@@ -2676,12 +2641,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
               const width = Math.max(320, rect.width || 640);
               const height = Math.max(240, rect.height || 420);
               const pad = { left: 58, right: 20, top: 18, bottom: 48 };
-	              if (!peaks.length) {
-	                svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-	                svg.innerHTML = '';
-	                svg.onclick = null;
-	                return;
-	              }
+              if (!peaks.length) {
+                svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+                svg.innerHTML = '';
+                svg.onclick = null;
+                return;
+              }
               const minX = Math.min(...peaks.map((peak) => peak.x));
               const maxX = Math.max(...peaks.map((peak) => peak.x));
               const maxY = Math.max(normalizeInput.checked ? 100 : 1, ...peaks.map((peak) => peak.y));
@@ -2753,8 +2718,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                   text(x, Math.max(12, y - 7), fmt(peak.x, 1), 'peak-label');
                 }
               });
-	              svg.onclick = () => { selected = -1; renderPlot(); renderRows(); };
-	            }
+              svg.onclick = () => { selected = -1; renderPlot(); renderRows(); };
+            }
             normalizeInput.addEventListener('change', renderPlot);
             topLabelsInput.addEventListener('change', renderPlot);
             renderMetrics(); renderMetadata(); renderFormulas(); renderRows(); renderPlot();
@@ -2801,7 +2766,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             return 40 * mib
         case "bcif":
             return 50 * mib
-        case "abi", "com", "csv", "fdf", "fhiaims", "gms", "sdf", "sd", "mol", "mol2", "xyz", "gro", "smi", "smiles", "tsv", "cub", "cube", "in", "inp", "log", "nw", "out", "psi4", "qcin", "vasp", "lammpstrj", "dump", "top", "psf", "prmtop", "graphml", "ms", "magma", "mgf", "msp", "json":
+        case "abi", "com", "csv", "fdf", "fhiaims", "gms", "sdf", "sd", "mol", "mol2", "xyz", "gro", "smi", "smiles", "tsv", "cub", "cube", "in", "inp", "log", "nw", "out", "psi4", "qcin", "vasp", "lammpstrj", "dump", "top", "psf", "prmtop", "graphml":
             return 25 * mib
         case "mae", "maegz", "cms":
             return 64 * mib
@@ -2840,7 +2805,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         if let previewPlan {
             return previewPlan.strategy == "text"
         }
-        return ["par", "prm", "rtf", "str", "key", "chk", "checkpoint"].contains(fileExtension.lowercased())
+        return ["par", "prm", "rtf", "str", "key", "chk", "checkpoint", "fdef"].contains(fileExtension.lowercased())
     }
 
     private static func requiresGridPreview(fileExtension: String, previewPlan: BurretePreviewPlan?) -> Bool {
@@ -2859,7 +2824,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
     private static func shouldAllowSystemFallback(for error: Error, fileExtension: String) -> Bool {
         let lowercasedExtension = fileExtension.lowercased()
-        guard ["csv", "tsv", "json"].contains(lowercasedExtension) else { return false }
+        guard ["csv", "tsv"].contains(lowercasedExtension) else { return false }
         guard let previewError = error as? PreviewError else { return false }
         switch previewError {
         case .unsupportedStructureFile, .gridFileTypeDisabled:
@@ -3733,7 +3698,34 @@ private enum PreviewStructureTextConverter {
 
     private typealias Vec3 = (Double, Double, Double)
 
+    private struct PharmacophoreFeature {
+        let name: String
+        let x: Double
+        let y: Double
+        let z: Double
+        let radius: Double
+        let vector: Vec3?
+    }
+
+    private struct PharmacophoreSphere {
+        let x: Double
+        let y: Double
+        let z: Double
+        let radius: Double
+    }
+
+    private struct PharmacophorePreview {
+        let features: [PharmacophoreFeature]
+        let connectors: [(Int, Int)]
+        let volumeSpheres: [PharmacophoreSphere]
+        let structurePDB: String?
+    }
+
     fileprivate static func convertedData(from data: Data, fileExtension: String, label: String) -> ConvertedStructure? {
+        if ["ph4", "json"].contains(fileExtension.lowercased()),
+           let pdb = pharmacophorePDBData(from: data, fileExtension: fileExtension, label: label) {
+            return ConvertedStructure(data: pdb, format: .convertedPDB, auxiliaryFiles: [], stagedEntries: [])
+        }
         if isMaestroExtension(fileExtension), let bundle = maestroPDBBundle(from: data), !bundle.primaryAtoms.isEmpty {
             let solventPath = "preview-solvent.pdb"
             let solventData = bundle.solventAtoms.isEmpty
@@ -3818,7 +3810,333 @@ private enum PreviewStructureTextConverter {
     }
 
     fileprivate static func shouldPreferConvertedMolstarData(fileExtension: String) -> Bool {
-        isGROExtension(fileExtension) || isMOL2Extension(fileExtension)
+        ["ph4", "json"].contains(fileExtension.lowercased()) || isGROExtension(fileExtension) || isMOL2Extension(fileExtension)
+    }
+
+    private static func pharmacophorePDBData(from data: Data, fileExtension: String, label: String) -> Data? {
+        let preview: PharmacophorePreview?
+        switch fileExtension.lowercased() {
+        case "ph4":
+            preview = parseMOEPh4Preview(decodeText(data))
+        case "json":
+            preview = parsePharmitJSONPreview(data)
+        default:
+            preview = nil
+        }
+        guard let preview, !preview.features.isEmpty else { return nil }
+        return pharmacophorePDBData(from: preview, label: label)
+    }
+
+    private static func parsePharmitJSONPreview(_ data: Data) -> PharmacophorePreview? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let points = object["points"] as? [[String: Any]] else { return nil }
+        let features = points.compactMap { point -> PharmacophoreFeature? in
+            if let enabled = point["enabled"] as? Bool, !enabled { return nil }
+            guard let name = point["name"] as? String,
+                  let x = point["x"] as? Double,
+                  let y = point["y"] as? Double,
+                  let z = point["z"] as? Double else { return nil }
+            return PharmacophoreFeature(
+                name: name,
+                x: x,
+                y: y,
+                z: z,
+                radius: point["radius"] as? Double ?? 1.0,
+                vector: (point["hasvec"] as? Bool) == true ? normalizedPharmacophoreVector(point["svector"]) : nil
+            )
+        }
+        return features.isEmpty ? nil : PharmacophorePreview(
+            features: features,
+            connectors: [],
+            volumeSpheres: [],
+            structurePDB: joinedPDBBlocks(object["receptor"], object["ligand"])
+        )
+    }
+
+    private static func parseMOEPh4Preview(_ text: String) -> PharmacophorePreview? {
+        guard text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("#moe:ph4que") else { return nil }
+        let tokens = text.split { $0.isWhitespace }.map(String.init)
+        guard let featureIndex = tokens.firstIndex(of: "#feature"),
+              featureIndex + 1 < tokens.count,
+              let featureCount = Int(tokens[featureIndex + 1]) else { return nil }
+        var index = featureIndex + 2
+        while index + 1 < tokens.count {
+            if tokens[index] == "m", tokens[index + 1] == "ix" {
+                index += 2
+                break
+            }
+            index += 1
+        }
+        var features: [PharmacophoreFeature] = []
+        for _ in 0..<featureCount {
+            guard index + 8 < tokens.count, !tokens[index].hasPrefix("#") else { break }
+            guard let x = Double(tokens[index + 2]),
+                  let y = Double(tokens[index + 3]),
+                  let z = Double(tokens[index + 4]) else { return nil }
+            features.append(PharmacophoreFeature(
+                name: tokens[index],
+                x: x,
+                y: y,
+                z: z,
+                radius: Double(tokens[index + 5]) ?? 1.0,
+                vector: nil
+            ))
+            index += 9
+        }
+        return features.isEmpty ? nil : PharmacophorePreview(
+            features: features,
+            connectors: parseMOEPh4Constraints(tokens, featureCount: features.count),
+            volumeSpheres: parseMOEPh4VolumeSpheres(tokens),
+            structurePDB: nil
+        )
+    }
+
+    private static func pharmacophorePDBData(from preview: PharmacophorePreview, label: String) -> Data {
+        var pdb = "REMARK Pharmacophore preview converted from \(label)\n"
+        pdb += "REMARK Feature centers are pseudo-atoms; Pharmit vectors and MOE constraints are rendered as CONECT sticks.\n"
+        if !preview.volumeSpheres.isEmpty {
+            pdb += "REMARK MOE volume spheres are rendered as low-occupancy pseudo-atoms.\n"
+        }
+        if let structurePDB = preview.structurePDB {
+            pdb += structurePDB
+            if !structurePDB.hasSuffix("\n") { pdb += "\n" }
+        }
+        var serial = maxPDBSerial(preview.structurePDB) + 1
+        var featureSerials: [Int] = []
+        var conectLines: [(Int, Int)] = []
+        for (index, feature) in preview.features.enumerated() {
+            guard serial <= 99_999 else { break }
+            let featureSerial = serial
+            featureSerials.append(featureSerial)
+            pdb += pharmacophorePDBAtomLine(serial: featureSerial, feature: feature, residueNumber: min(index + 1, 9999))
+            serial += 1
+            if let vector = feature.vector, serial <= 99_999 {
+                let length = max(feature.radius * 2.0, 1.25)
+                pdb += pharmacophorePDBAtomLine(
+                    serial: serial,
+                    name: "vector",
+                    x: feature.x + vector.0 * length,
+                    y: feature.y + vector.1 * length,
+                    z: feature.z + vector.2 * length,
+                    radius: 0.2,
+                    atomName: "VEC",
+                    residueName: "VEC",
+                    chain: "V",
+                    residueNumber: min(index + 1, 9999),
+                    element: "C"
+                )
+                conectLines.append((featureSerial, serial))
+                serial += 1
+            }
+        }
+        for (left, right) in preview.connectors {
+            guard left >= 0, right >= 0, left < featureSerials.count, right < featureSerials.count else { continue }
+            conectLines.append((featureSerials[left], featureSerials[right]))
+        }
+        for (index, sphere) in preview.volumeSpheres.enumerated() {
+            guard serial <= 99_999 else { break }
+            pdb += pharmacophorePDBAtomLine(
+                serial: serial,
+                name: "volume",
+                x: sphere.x,
+                y: sphere.y,
+                z: sphere.z,
+                radius: sphere.radius,
+                atomName: "VOL",
+                residueName: "VOL",
+                chain: "Q",
+                residueNumber: min(index + 1, 9999),
+                occupancy: 0.2,
+                element: "C"
+            )
+            serial += 1
+        }
+        for (left, right) in conectLines {
+            pdb += String(format: "CONECT%5d%5d\n", left, right)
+        }
+        pdb += "END\n"
+        return Data(pdb.utf8)
+    }
+
+    private static func pharmacophorePDBAtomLine(
+        serial: Int,
+        feature: PharmacophoreFeature,
+        residueNumber: Int
+    ) -> String {
+        pharmacophorePDBAtomLine(
+            serial: serial,
+            name: feature.name,
+            x: feature.x,
+            y: feature.y,
+            z: feature.z,
+            radius: feature.radius,
+            atomName: pharmacophoreAtomName(feature.name),
+            residueName: pharmacophoreResidueName(feature.name),
+            chain: "P",
+            residueNumber: residueNumber,
+            element: pharmacophoreFeatureSymbol(feature.name)
+        )
+    }
+
+    private static func pharmacophorePDBAtomLine(
+        serial: Int,
+        name: String,
+        x: Double,
+        y: Double,
+        z: Double,
+        radius: Double,
+        atomName: String,
+        residueName: String,
+        chain: String,
+        residueNumber: Int,
+        occupancy: Double = 1.0,
+        element: String
+    ) -> String {
+        let formattedAtomName = formatPDBAtomName(atomName, symbol: element)
+        let atomNameField = formattedAtomName.padding(toLength: 4, withPad: " ", startingAt: 0)
+        let elementField = String(repeating: " ", count: max(0, 2 - element.count)) + truncateASCII(element, maxLength: 2)
+        let cleanResidueName = truncateASCII(residueName, maxLength: 3)
+        let cleanChain = String((truncateASCII(chain, maxLength: 1).isEmpty ? "P" : truncateASCII(chain, maxLength: 1)).prefix(1))
+        _ = name
+        return String(
+            format: "HETATM%5d %@ %3@ %@%4d    %8.3f%8.3f%8.3f%6.2f%6.2f          %@\n",
+            min(serial, 99_999),
+            atomNameField,
+            cleanResidueName,
+            cleanChain,
+            min(residueNumber, 9999),
+            x,
+            y,
+            z,
+            occupancy,
+            radius,
+            elementField
+        )
+    }
+
+    private static func pharmacophoreFeatureSymbol(_ name: String) -> String {
+        let lower = name.lowercased()
+        if lower.contains("acceptor") || lower.hasPrefix("acc") { return "O" }
+        if lower.contains("donor") || lower.hasPrefix("don") { return "N" }
+        if lower.contains("positive") || lower.contains("pos") { return "P" }
+        if lower.contains("negative") || lower.contains("neg") { return "S" }
+        return "C"
+    }
+
+    private static func pharmacophoreAtomName(_ name: String) -> String {
+        String(name.filter { ($0.isASCII && $0.isLetter) || $0.isNumber }.prefix(4))
+    }
+
+    private static func pharmacophoreResidueName(_ name: String) -> String {
+        let lower = name.lowercased()
+        if lower.contains("acceptor") || lower.hasPrefix("acc") { return "ACC" }
+        if lower.contains("donor") || lower.hasPrefix("don") { return "DON" }
+        if lower.contains("aromatic") || lower.hasPrefix("aro") { return "ARO" }
+        if lower.contains("hydrophobic") || lower.hasPrefix("hyd") { return "HYD" }
+        if lower.contains("positive") || lower.contains("pos") { return "POS" }
+        if lower.contains("negative") || lower.contains("neg") { return "NEG" }
+        return "PH4"
+    }
+
+    private static func normalizedPharmacophoreVector(_ value: Any?) -> Vec3? {
+        guard let vector = value as? [String: Any],
+              let x = vector["x"] as? Double,
+              let y = vector["y"] as? Double,
+              let z = vector["z"] as? Double else { return nil }
+        let length = sqrt(x * x + y * y + z * z)
+        guard length > 0.000_001 else { return nil }
+        return (x / length, y / length, z / length)
+    }
+
+    private static func joinedPDBBlocks(_ blocks: Any?...) -> String? {
+        var lines: [String] = []
+        for block in blocks {
+            guard let text = block as? String else { continue }
+            for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+                let trimmed = String(line).trimmingCharacters(in: CharacterSet(charactersIn: "\r"))
+                guard !trimmed.isEmpty, trimmed != "END", trimmed != "ENDMDL" else { continue }
+                if trimmed.hasPrefix("ATOM") ||
+                    trimmed.hasPrefix("HETATM") ||
+                    trimmed.hasPrefix("TER") ||
+                    trimmed.hasPrefix("CONECT") {
+                    lines.append(trimmed)
+                }
+            }
+        }
+        guard !lines.isEmpty else { return nil }
+        lines.append("TER")
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    private static func maxPDBSerial(_ pdb: String?) -> Int {
+        guard let pdb else { return 0 }
+        var maxSerial = 0
+        for line in pdb.split(separator: "\n", omittingEmptySubsequences: false) {
+            guard line.hasPrefix("ATOM") || line.hasPrefix("HETATM"), line.count >= 11 else { continue }
+            let start = line.index(line.startIndex, offsetBy: 6)
+            let end = line.index(line.startIndex, offsetBy: 11)
+            let serial = Int(line[start..<end].trimmingCharacters(in: .whitespaces)) ?? 0
+            maxSerial = max(maxSerial, serial)
+        }
+        return maxSerial
+    }
+
+    private static func parseMOEPh4Constraints(_ tokens: [String], featureCount: Int) -> [(Int, Int)] {
+        guard var index = tokens.firstIndex(of: "#constraint"),
+              index + 1 < tokens.count,
+              let count = Int(tokens[index + 1]),
+              count > 0 else { return [] }
+        index += 2
+        while index < tokens.count, tokens[index] != "ids" {
+            index += 1
+        }
+        guard index < tokens.count else { return [] }
+        index += 2
+        var connectors: [(Int, Int)] = []
+        for _ in 0..<count {
+            guard index + 4 < tokens.count, !tokens[index].hasPrefix("#") else { break }
+            guard let idCount = Int(tokens[index + 2]), idCount >= 2 else { break }
+            let left = Int(tokens[index + 3]) ?? 0
+            let right = Int(tokens[index + 4]) ?? 0
+            if (1...featureCount).contains(left), (1...featureCount).contains(right) {
+                connectors.append((left - 1, right - 1))
+            }
+            index += 3 + idCount
+        }
+        return connectors
+    }
+
+    private static func parseMOEPh4VolumeSpheres(_ tokens: [String]) -> [PharmacophoreSphere] {
+        guard var index = tokens.firstIndex(of: "#volumesphere"),
+              index + 1 < tokens.count,
+              let count = Int(tokens[index + 1]),
+              count > 0 else { return [] }
+        index += 2
+        while index + 7 < tokens.count {
+            if tokens[index] == "x",
+               tokens[index + 1] == "r",
+               tokens[index + 2] == "y",
+               tokens[index + 3] == "r",
+               tokens[index + 4] == "z",
+               tokens[index + 5] == "r",
+               tokens[index + 6] == "r",
+               tokens[index + 7] == "r" {
+                index += 8
+                break
+            }
+            index += 1
+        }
+        var spheres: [PharmacophoreSphere] = []
+        for _ in 0..<count {
+            guard index + 3 < tokens.count, !tokens[index].hasPrefix("#"),
+                  let x = Double(tokens[index]),
+                  let y = Double(tokens[index + 1]),
+                  let z = Double(tokens[index + 2]),
+                  let radius = Double(tokens[index + 3]) else { break }
+            spheres.append(PharmacophoreSphere(x: x, y: y, z: z, radius: radius))
+            index += 4
+        }
+        return spheres
     }
 
     private static func pdbData(from data: Data, fileExtension: String, label: String) -> Data? {
@@ -5980,36 +6298,6 @@ private enum PreviewExternalXyzrenderError: LocalizedError {
             return "External xyzrender failed with exit status \(status)." + (trimmed.isEmpty ? "" : " \(trimmed.prefix(320))")
         }
     }
-}
-
-private struct QuickLookSpectrum: Codable {
-    let format: String
-    let title: String
-    let primary: QuickLookSpectrumDocument
-    let metadata: [String: String]
-}
-
-private struct QuickLookSpectrumDocument: Codable {
-    let id: String
-    let title: String
-    let xLabel: String
-    let yLabel: String
-    let peaks: [QuickLookSpectrumPeak]
-    let summary: [QuickLookSpectrumMetric]
-    let topPeaks: [QuickLookSpectrumPeak]
-    let fragmentFormulas: [String]
-}
-
-private struct QuickLookSpectrumPeak: Codable {
-    let x: Double
-    let y: Double
-    let label: String?
-    let annotations: [String: String]
-}
-
-private struct QuickLookSpectrumMetric: Codable {
-    let label: String
-    let value: String
 }
 
 private struct PreviewPreferences {

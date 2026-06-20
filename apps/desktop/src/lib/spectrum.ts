@@ -464,12 +464,12 @@ function parseDelimitedLine(line: string, delimiter: "," | "\t") {
   let quoted = false;
   for (let index = 0; index < line.length; index += 1) {
     const char = line[index];
-    if (char === '"' && line[index + 1] === '"') {
-      current += '"';
+    if (char === "\"" && line[index + 1] === "\"") {
+      current += "\"";
       index += 1;
       continue;
     }
-    if (char === '"') {
+    if (char === "\"") {
       quoted = !quoted;
       continue;
     }

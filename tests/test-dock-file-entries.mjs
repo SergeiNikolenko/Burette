@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 
-const { defaultDockTabs, dockFileEntries, ensureDefaultDockTabs } = await import("../apps/desktop/src/lib/dock.ts");
+const { defaultDockTabs, dockFileEntries, ensureDefaultDockTabs, persistentDockTabs } = await import("../apps/desktop/src/lib/dock.ts");
 
 function document(id, path, title = path.split("/").at(-1) ?? id) {
   return {
@@ -95,6 +95,16 @@ assert.deepEqual(
   ensureDefaultDockTabs("right", [{ id: "dock-inspector", kind: "inspector" }, { id: "dock-files", kind: "files" }])
     .map((tab) => tab.kind),
   ["xyzrender", "inspector", "descriptors", "text", "files"],
+);
+assert.deepEqual(
+  persistentDockTabs("bottom", [{ id: "dock-folding", kind: "folding" }, { id: "dock-files", kind: "files" }])
+    .map((tab) => tab.kind),
+  ["files"],
+);
+assert.deepEqual(
+  persistentDockTabs("bottom", [{ id: "dock-folding", kind: "folding" }])
+    .map((tab) => tab.kind),
+  ["files"],
 );
 
 console.log("dock file entry tests passed");

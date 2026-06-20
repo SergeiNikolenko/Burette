@@ -27,6 +27,11 @@ import {
   registerBrowserDevFileContentRoutes,
   registerBrowserDevFileDiscoveryRoute,
 } from "./vite/browser-dev/files";
+import {
+  isNumpyArtifactExtension,
+  numpyArtifactTextSummary,
+  registerBrowserDevFoldingResultRoute,
+} from "./vite/browser-dev/folding-results";
 import { registerBrowserDevMsbuddyRoutes } from "./vite/browser-dev/msbuddy";
 import { registerBrowserDevRuntimeDoctorRoute } from "./vite/browser-dev/runtime-doctor";
 import { registerBrowserDevXtbRoutes } from "./vite/browser-dev/xtb";
@@ -39,14 +44,12 @@ const previewFormatRegistry = JSON.parse(readFileSync(join(repoRoot, "config", "
 const extraFsAllow = (process.env.BURRETE_DEV_FS_ALLOW ?? "").split(delimiter).filter(Boolean);
 const defaultDevFileRoots = (process.env.BURRETE_DEV_DEFAULT_FILES ?? "").split(delimiter).filter(Boolean);
 const defaultDesktopRoots = [
-  join(homedir(), "Desktop"),
   join(homedir(), "Desktop", "BurettePreviewSamples"),
   join(homedir(), "Desktop", "BuretteMDAnalysisSamples"),
   join(homedir(), "Desktop", "xyzrender-main"),
-  join(homedir(), ".codex", "worktrees"),
 ].filter((path) => existsSync(path));
 const defaultProjectFiles = [
-  join(repoRoot, "samples", "large", "litr_moses_10k.csv"),
+  join(repoRoot, "samples", "large", "moses_10k.csv"),
 ].filter((path) => existsSync(path));
 const defaultDevFileSources = defaultDevFileRoots.length > 0
   ? defaultDevFileRoots
@@ -199,6 +202,9 @@ const DEV_FILE_EXTENSIONS = new Set([
   "ts",
   "tsx",
   "json",
+  "npy",
+  "npz",
+  "pkl",
   "yaml",
   "yml",
   "toml",
@@ -3379,10 +3385,12 @@ export function browserDevXyzrenderPlugin() {
         fileExtension,
         fileTitle,
         isDevFileReadAllowed,
+        isNumpyArtifactExtension,
         languageForTextExtension,
         looksBinary,
         molecularBinaryArtifactSummary,
         molecularBinaryMetadataExtensions: MOLECULAR_BINARY_METADATA_EXTENSIONS,
+        numpyArtifactTextSummary,
         readableTextBytes,
         resolveStructureFileBundle,
         textFileReadLimit,
@@ -3427,6 +3435,7 @@ export function browserDevXyzrenderPlugin() {
       registerBrowserDevAgentSessionRoute(server);
       registerBrowserDevAppIconRoute(server, BROWSER_DEV_APP_ICONS, execFileAsync);
       registerBrowserDevFileContentRoutes(server, fileRoutes);
+      registerBrowserDevFoldingResultRoute(server, { isDevFileReadAllowed });
       registerBrowserDevDesmondPreviewRoute(server, {
         desmondPreviewExtractor: DESMOND_PREVIEW_EXTRACTOR,
         execFileAsync,

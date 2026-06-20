@@ -12,10 +12,12 @@ type BrowserDevFileRoutesOptions = {
   fileExtension: (path: string) => string;
   fileTitle: (path: string) => string;
   isDevFileReadAllowed: (path: string) => boolean | string;
+  isNumpyArtifactExtension: (extension: string) => boolean;
   languageForTextExtension: (extension: string) => string;
   looksBinary: (bytes: Buffer) => boolean;
   molecularBinaryArtifactSummary: (path: string, byteCount: number) => string;
   molecularBinaryMetadataExtensions: Set<string>;
+  numpyArtifactTextSummary: (path: string, bytes: Buffer, byteCount: number) => string;
   readableTextBytes: (bytes: Buffer, extension: string) => Buffer;
   resolveStructureFileBundle: (path: string) => unknown;
   textFileReadLimit: (value: string | null) => number;
@@ -105,6 +107,20 @@ export function registerBrowserDevFileContentRoutes(server: ViteDevServer, optio
       }
       const bytes = await readFile(filePath);
       const extension = options.fileExtension(filePath);
+      if (options.isNumpyArtifactExtension(extension)) {
+        sendJson(res, 200, {
+          id: `browser-dev-${filePath}-${info.mtimeMs}`,
+          path: filePath,
+          title: options.fileTitle(filePath),
+          extension,
+          language: "markdown",
+          byteCount: info.size,
+          content: options.numpyArtifactTextSummary(filePath, bytes, info.size),
+          truncated: false,
+          modifiedAt: Math.max(0, Math.floor(info.mtimeMs)),
+        }, "no-cache");
+        return;
+      }
       const textBytes = options.readableTextBytes(bytes, extension);
       if (options.looksBinary(textBytes)) {
         if (options.molecularBinaryMetadataExtensions.has(extension)) {

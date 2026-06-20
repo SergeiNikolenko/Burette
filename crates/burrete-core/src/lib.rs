@@ -1223,6 +1223,18 @@ mod tests {
         assert_eq!(graphml.renderer, "fep-graphml");
         assert!(graphml.primary.is_none());
 
+        let ph4 = preview_plan_for_extension("ph4", "auto")
+            .expect("pharmacophore plan should resolve");
+        assert_eq!(ph4.strategy, PreviewStrategy::Convert);
+        assert_eq!(ph4.renderer, "molstar");
+        assert_eq!(
+            ph4.converter
+                .as_ref()
+                .map(|converter| converter.id.as_str()),
+            Some("pharmacophore-to-pdb")
+        );
+        assert_eq!(ph4.primary.as_ref().unwrap().role, "pharmacophore");
+
         let openmm = preview_plan_for_extension("inpcrd", "auto")
             .expect("OpenMM coordinate artifact plan should resolve");
         assert_eq!(openmm.strategy, PreviewStrategy::Convert);
@@ -1272,7 +1284,9 @@ mod tests {
             ("xtc", PreviewStrategy::Trajectory),
             ("cms", PreviewStrategy::Convert),
             ("graphml", PreviewStrategy::Custom),
+            ("ph4", PreviewStrategy::Convert),
             ("inpcrd", PreviewStrategy::Convert),
+            ("fdef", PreviewStrategy::Text),
             ("checkpoint", PreviewStrategy::Text),
         ];
 

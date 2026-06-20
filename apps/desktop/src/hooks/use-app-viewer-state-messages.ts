@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import type { ViewerLigandSelection } from "../components/types";
+import type { StructureOverlayMode, ViewerLigandSelection } from "../components/types";
 import type { ViewerDocument } from "../types";
 
 type ViewerStateMessageBody = Record<string, unknown> | null | undefined;
@@ -8,6 +8,11 @@ type SetViewerLigandSelections = (
     previous: Record<string, ViewerLigandSelection | null>,
   ) => Record<string, ViewerLigandSelection | null>,
 ) => void;
+type SetStructureOverlayModes = (
+  updater: (
+    previous: Record<string, StructureOverlayMode>,
+  ) => Record<string, StructureOverlayMode>,
+) => void;
 
 type UseAppViewerStateMessagesOptions = {
   activeDocument: ViewerDocument | null;
@@ -15,6 +20,7 @@ type UseAppViewerStateMessagesOptions = {
   documents: ViewerDocument[];
   openCommandPalette: () => void;
   setViewerLigandSelections: SetViewerLigandSelections;
+  setStructureOverlayModes: SetStructureOverlayModes;
   toggleSidebar: () => void;
 };
 
@@ -33,6 +39,7 @@ export function useAppViewerStateMessages({
   documents,
   openCommandPalette,
   setViewerLigandSelections,
+  setStructureOverlayModes,
   toggleSidebar,
 }: UseAppViewerStateMessagesOptions) {
   const handleViewerStateMessage = useCallback((sourceName: unknown, body: ViewerStateMessageBody) => {
@@ -65,6 +72,14 @@ export function useAppViewerStateMessages({
       return true;
     }
 
+    if (sourceName === "burrete-viewer" && body?.type === "structureOverlayModeChanged") {
+      const documentId = bodyString(body.documentId);
+      if (!documentId) return true;
+      const mode: StructureOverlayMode = body.mode === "all" ? "all" : "single";
+      setStructureOverlayModes((previous) => ({ ...previous, [documentId]: mode }));
+      return true;
+    }
+
     if (sourceName === "burrete-viewer" && body?.type === "rendererChanged") {
       const documentId = bodyString(body.documentId);
       const targetDocument = (documentId
@@ -88,7 +103,7 @@ export function useAppViewerStateMessages({
     }
 
     return false;
-  }, [activeDocument, addDocuments, documents, openCommandPalette, setViewerLigandSelections, toggleSidebar]);
+  }, [activeDocument, addDocuments, documents, openCommandPalette, setStructureOverlayModes, setViewerLigandSelections, toggleSidebar]);
 
   return { handleViewerStateMessage };
 }

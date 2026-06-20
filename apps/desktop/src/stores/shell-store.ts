@@ -12,6 +12,7 @@ import {
   firstDockTabKind,
   normalizeDockActiveTab,
   normalizeDockTabs,
+  persistentDockTabs,
 } from "../lib/dock";
 import { isTemporaryDocumentPath } from "../lib/temporary-documents";
 import { workspaceStorageKey } from "../lib/window-scope";
@@ -125,12 +126,6 @@ function normalizeRightDockWidth(width: number) {
 
 function normalizeBottomDockHeight(height: number) {
   return Math.max(180, Math.min(720, Math.round(height)));
-}
-
-function isAgentShellUrl() {
-  if (typeof window === "undefined") return false;
-  const params = new URLSearchParams(window.location.search);
-  return params.has("devFiles") || params.has("devDocking");
 }
 
 function dockTabState(area: DockArea, state: ShellState) {
@@ -381,8 +376,8 @@ export const useShellStore = create<ShellState>()(
         rightDockActiveTab: normalizeDockActiveTab("right", normalizeDockTabs("right", state.rightDockTabs), state.rightDockActiveTab),
         bottomDockOpen: state.bottomDockOpen,
         bottomDockHeight: state.bottomDockHeight,
-        bottomDockTabs: normalizeDockTabs("bottom", state.bottomDockTabs),
-        bottomDockActiveTab: normalizeDockActiveTab("bottom", normalizeDockTabs("bottom", state.bottomDockTabs), state.bottomDockActiveTab),
+        bottomDockTabs: persistentDockTabs("bottom", state.bottomDockTabs),
+        bottomDockActiveTab: normalizeDockActiveTab("bottom", persistentDockTabs("bottom", state.bottomDockTabs), state.bottomDockActiveTab),
         projectsOpen: state.projectsOpen,
         projectRoots: persistentRoots(state.projectRoots),
         pinnedProjectRoots: persistentRoots(state.pinnedProjectRoots),
@@ -403,7 +398,7 @@ export const useShellStore = create<ShellState>()(
           .filter((root) => !projectRoots.includes(root));
         return {
           ...current,
-          sidebarOpen: isAgentShellUrl() ? false : stored?.sidebarOpen ?? current.sidebarOpen,
+          sidebarOpen: stored?.sidebarOpen ?? current.sidebarOpen,
           sidebarWidth: normalizeSidebarWidth(stored?.sidebarWidth ?? current.sidebarWidth),
           rightDockOpen,
           rightDockWidth: normalizeRightDockWidth(stored?.rightDockWidth ?? current.rightDockWidth),
@@ -415,10 +410,10 @@ export const useShellStore = create<ShellState>()(
           ),
           bottomDockOpen: stored?.bottomDockOpen ?? current.bottomDockOpen,
           bottomDockHeight: normalizeBottomDockHeight(stored?.bottomDockHeight ?? current.bottomDockHeight),
-          bottomDockTabs: normalizeDockTabs("bottom", stored?.bottomDockTabs ?? current.bottomDockTabs),
+          bottomDockTabs: persistentDockTabs("bottom", stored?.bottomDockTabs ?? current.bottomDockTabs),
           bottomDockActiveTab: normalizeDockActiveTab(
             "bottom",
-            normalizeDockTabs("bottom", stored?.bottomDockTabs ?? current.bottomDockTabs),
+            persistentDockTabs("bottom", stored?.bottomDockTabs ?? current.bottomDockTabs),
             stored?.bottomDockActiveTab ?? current.bottomDockActiveTab,
           ),
           projectsOpen: stored?.projectsOpen ?? current.projectsOpen,

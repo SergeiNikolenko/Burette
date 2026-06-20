@@ -14,16 +14,32 @@
 		E31816093C5AEC762F9638CB /* Web in Resources */ = {isa = PBXBuildFile; fileRef = 4ADF66CA120EDD24C9E3F203 /* Web */; };
 		C0F025400000000000000002 /* preview-formats.json in Resources */ = {isa = PBXBuildFile; fileRef = C0F025400000000000000001 /* preview-formats.json */; };
 		B15000000000000000000002 /* ThumbnailProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B15000000000000000000001 /* ThumbnailProvider.swift */; };
+		C20000000000000000000021 /* BurreteMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000011 /* BurreteMobileApp.swift */; };
+		C20000000000000000000022 /* MobilePreviewScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000012 /* MobilePreviewScreen.swift */; };
+		C20000000000000000000023 /* MobilePreviewWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000013 /* MobilePreviewWebView.swift */; };
+		C20000000000000000000024 /* MobilePreviewRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000014 /* MobilePreviewRuntime.swift */; };
+		C20000000000000000000025 /* Web in Resources */ = {isa = PBXBuildFile; fileRef = 4ADF66CA120EDD24C9E3F203 /* Web */; };
+		C20000000000000000000026 /* mini.pdb in Resources */ = {isa = PBXBuildFile; fileRef = 4A566BCA24ADD5993DACE9DD /* mini.pdb */; };
+		C20000000000000000000027 /* samples in Resources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000015 /* samples */; };
+		C20000000000000000000029 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000018 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		664D234BD361BA8FA6C574ED /* BurretePreview.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BurretePreview.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B15000000000000000000005 /* BurreteThumbnail.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BurreteThumbnail.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		C20000000000000000000001 /* BurreteMobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BurreteMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA02CDF88EC813372195D216 /* PreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Platform/PreviewViewController.swift; sourceTree = "<group>"; };
 		A11111111111111111111104 /* QuickLookPreviewSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickLookPreviewSurface.swift; sourceTree = "<group>"; };
 		3F8B96A03E7544E6A395D200 /* MoleculeGridPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoleculeGridPreview.swift; sourceTree = "<group>"; };
 		71B2D3E4F5A60718293A4B5B /* RendererPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RendererPolicy.swift; sourceTree = "<group>"; };
 		B15000000000000000000001 /* ThumbnailProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbnailProvider.swift; sourceTree = "<group>"; };
+		C20000000000000000000011 /* BurreteMobileApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurreteMobileApp.swift; sourceTree = "<group>"; };
+		C20000000000000000000012 /* MobilePreviewScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobilePreviewScreen.swift; sourceTree = "<group>"; };
+		C20000000000000000000013 /* MobilePreviewWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobilePreviewWebView.swift; sourceTree = "<group>"; };
+		C20000000000000000000014 /* MobilePreviewRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobilePreviewRuntime.swift; sourceTree = "<group>"; };
+		C20000000000000000000017 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		C20000000000000000000015 /* samples */ = {isa = PBXFileReference; lastKnownFileType = folder; path = samples; sourceTree = SOURCE_ROOT; };
+		C20000000000000000000018 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D112F5444BEBEFD99D68B6DD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B15000000000000000000004 /* ThumbnailInfo.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = ThumbnailInfo.plist; sourceTree = "<group>"; };
 		F27769504D80BCF7B53A232F /* BurretePreview.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BurretePreview.entitlements; sourceTree = "<group>"; };
@@ -40,6 +56,7 @@
 /* Begin PBXFrameworksBuildPhase section */
 		EDE31F8E8E26065E582B8440 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		B15000000000000000000008 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		C20000000000000000000032 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -47,8 +64,10 @@
 			isa = PBXGroup;
 			children = (
 				AEC1F3248E3064F59FE6E9BC /* PreviewExtension */,
+				C20000000000000000000010 /* BurreteMobile */,
 				97E8C637FB2B333FCF3DA441 /* scripts */,
 				C2959D171E182DEA26D7FE92 /* samples */,
+				C20000000000000000000015 /* samples */,
 				C0F025400000000000000001 /* preview-formats.json */,
 				B262D4721622654301018823 /* package.json */,
 				7179C178DEEA22EE9D4E2FA3 /* README.md */,
@@ -95,8 +114,22 @@
 			children = (
 				664D234BD361BA8FA6C574ED /* BurretePreview.appex */,
 				B15000000000000000000005 /* BurreteThumbnail.appex */,
+				C20000000000000000000001 /* BurreteMobile.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		C20000000000000000000010 /* BurreteMobile */ = {
+			isa = PBXGroup;
+			children = (
+				C20000000000000000000011 /* BurreteMobileApp.swift */,
+				C20000000000000000000012 /* MobilePreviewScreen.swift */,
+				C20000000000000000000013 /* MobilePreviewWebView.swift */,
+				C20000000000000000000014 /* MobilePreviewRuntime.swift */,
+				C20000000000000000000017 /* Info.plist */,
+				C20000000000000000000018 /* Assets.xcassets */,
+			);
+			path = ios/BurreteMobile;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -134,6 +167,21 @@
 			productReference = B15000000000000000000005 /* BurreteThumbnail.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		C20000000000000000000040 /* BurreteMobile */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C20000000000000000000050 /* Build configuration list for PBXNativeTarget "BurreteMobile" */;
+			buildPhases = (
+				C20000000000000000000031 /* Sources */,
+				C20000000000000000000032 /* Frameworks */,
+				C20000000000000000000033 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = ();
+			name = BurreteMobile;
+			productName = BurreteMobile;
+			productReference = C20000000000000000000001 /* BurreteMobile.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -150,6 +198,9 @@
 					B15000000000000000000006 = {
 						CreatedOnToolsVersion = 16.1;
 					};
+					C20000000000000000000040 = {
+						CreatedOnToolsVersion = 16.1;
+					};
 				};
 			};
 			buildConfigurationList = 4B2380CA9135CE36448D46F6 /* Build configuration list for PBXProject "Burrete" */;
@@ -164,6 +215,7 @@
 			targets = (
 				61BF5421FB639DEF491CFBE0 /* BurretePreview */,
 				B15000000000000000000006 /* BurreteThumbnail */,
+				C20000000000000000000040 /* BurreteMobile */,
 			);
 		};
 /* End PBXProject section */
@@ -182,6 +234,17 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C20000000000000000000033 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C20000000000000000000025 /* Web in Resources */,
+				C20000000000000000000026 /* mini.pdb in Resources */,
+				C20000000000000000000027 /* samples in Resources */,
+				C20000000000000000000029 /* Assets.xcassets in Resources */,
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
@@ -248,6 +311,17 @@
 			buildActionMask = 2147483647;
 			files = (
 				B15000000000000000000002 /* ThumbnailProvider.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C20000000000000000000031 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C20000000000000000000021 /* BurreteMobileApp.swift in Sources */,
+				C20000000000000000000022 /* MobilePreviewScreen.swift in Sources */,
+				C20000000000000000000023 /* MobilePreviewWebView.swift in Sources */,
+				C20000000000000000000024 /* MobilePreviewRuntime.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -422,6 +496,52 @@
 			};
 			name = Release;
 		};
+		C20000000000000000000051 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ios/BurreteMobile/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0.3;
+				PRODUCT_BUNDLE_IDENTIFIER = com.local.BurreteV10.Mobile;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		C20000000000000000000052 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ios/BurreteMobile/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0.3;
+				PRODUCT_BUNDLE_IDENTIFIER = com.local.BurreteV10.Mobile;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -448,6 +568,15 @@
 			buildConfigurations = (
 				B1500000000000000000000C /* Debug */,
 				B1500000000000000000000D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C20000000000000000000050 /* Build configuration list for PBXNativeTarget "BurreteMobile" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C20000000000000000000051 /* Debug */,
+				C20000000000000000000052 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

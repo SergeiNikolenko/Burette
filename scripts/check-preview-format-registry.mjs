@@ -147,6 +147,23 @@ assert.equal(
   'Molecular document type must make Burrete the default opener',
 );
 
+const mobileInfo = plist('ios/BurreteMobile/Info.plist');
+assert.deepEqual(
+  mobileInfo.CFBundleDocumentTypes ?? [],
+  appInfo.CFBundleDocumentTypes ?? [],
+  'Mobile app document types must match AppMetadata so iOS Open In stays aligned',
+);
+assert.deepEqual(
+  mobileInfo.UTExportedTypeDeclarations ?? [],
+  appInfo.UTExportedTypeDeclarations ?? [],
+  'Mobile app exported UTIs must match AppMetadata',
+);
+assert.equal(
+  mobileInfo.LSSupportsOpeningDocumentsInPlace,
+  true,
+  'Mobile app should accept document URLs from Files and share sheets',
+);
+
 const previewInfo = plist('PreviewExtension/Info.plist');
 assertSameSet(
   previewInfo.NSExtension?.NSExtensionAttributes?.QLSupportedContentTypes ?? [],
