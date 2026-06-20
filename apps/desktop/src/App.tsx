@@ -9,6 +9,7 @@ import {
   useOpenCommandPalette,
   useSetCommandPaletteSearch,
 } from "./hooks/use-command-palette";
+import { useAppActiveTextDocument } from "./hooks/use-app-active-text-document";
 import { useAppAgentSessionActions } from "./hooks/use-app-agent-session-actions";
 import { useAppChemistryJobs } from "./hooks/use-app-chemistry-jobs";
 import { useAppConformerWorkflows } from "./hooks/use-app-conformer-workflows";
@@ -123,7 +124,7 @@ import {
   isKnownViewerMessageSource,
   postMessageToViewerSource,
 } from "./lib/viewer-bridge";
-import type { TextFileDocument, ViewerDocument, ViewerReloadOptions } from "./types";
+import type { ViewerDocument, ViewerReloadOptions } from "./types";
 
 const CommandPalette = lazy(() => import("./components/command-palette").then((module) => ({
   default: module.CommandPalette,
@@ -361,11 +362,7 @@ export default function App() {
     recentStructures,
   });
 
-  const activeTextDocument = useMemo(() => {
-    const location = activeTab?.location;
-    if (location?.kind !== "text-file") return null;
-    return textDocuments.find((document) => document.id === location.documentId || document.path === location.path) ?? null;
-  }, [activeTab?.location, textDocuments]);
+  const activeTextDocument = useAppActiveTextDocument({ activeTab, textDocuments });
   const {
     copyActiveDocumentPath,
     copyDocumentPath,
