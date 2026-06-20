@@ -156,6 +156,14 @@ export function normalizeDockTabs(area: DockArea, tabs: DockTab[] | undefined) {
   return normalized.length > 0 ? normalized : defaultDockTabs(area);
 }
 
+export function persistentDockTabs(area: DockArea, tabs: DockTab[] | undefined) {
+  const normalized = normalizeDockTabs(area, tabs);
+  const persistentTabs = area === "bottom"
+    ? normalized.filter((tab) => tab.kind !== "folding")
+    : normalized;
+  return persistentTabs.length > 0 ? persistentTabs : defaultDockTabs(area);
+}
+
 export function normalizeDockActiveTab(area: DockArea, tabs: DockTab[], activeTab: DockTabKind) {
   return tabs.some((tab) => tab.kind === activeTab) ? activeTab : firstDockTabKind(area);
 }

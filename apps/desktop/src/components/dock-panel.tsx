@@ -16,7 +16,7 @@ import { TextFileViewer } from "./text-file-viewer";
 import { CloseIcon } from "./close-icon";
 import { formatBytes } from "./format";
 import { StructureInfoPanel } from "./structure-info-panel";
-import { FoldingAnalysisPanel } from "./folding-results-panel";
+import { FoldingAnalysisPanel, useFoldingResult } from "./folding-results-panel";
 import { DescriptorPanel } from "./descriptor-panel";
 import { SpectrumInfoPanel, SpectrumPeakTablePanel, SpectrumViewer } from "./spectrum-viewer";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
@@ -59,12 +59,16 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
   const activeStructureDocument = dockDocument ?? state.activeDocument;
   const spectrumDocumentActive = activeStructureDocument?.renderer === "spectrum";
   const spectrumDockAvailable = area === "bottom" && (dockDocument?.renderer === "spectrum" || state.activeDocument?.renderer === "spectrum");
+  const storedActiveTabKind = area === "right" ? state.rightDockActiveTab : state.bottomDockActiveTab;
+  const foldingState = useFoldingResult(area === "bottom" ? activeStructureDocument : null);
+  const foldingDockAvailable = area === "bottom" && (foldingState.loading || Boolean(foldingState.bundle));
+  const foldingDockRequested = area === "bottom" && storedActiveTabKind === "folding" && rawTabs.some((tab) => tab.kind === "folding");
   const tabs = rawTabs.filter((tab) => {
     if (tab.kind === "spectrum") return spectrumDockAvailable;
+    if (tab.kind === "folding") return foldingDockAvailable || foldingDockRequested;
     if (tab.kind === "descriptors") return !(area === "right" && spectrumDocumentActive);
     return true;
   });
-  const storedActiveTabKind = area === "right" ? state.rightDockActiveTab : state.bottomDockActiveTab;
   const activeTabKind = tabs.some((tab) => tab.kind === storedActiveTabKind) ? storedActiveTabKind : tabs[0]?.kind ?? "files";
   const xyzrenderDockDocument = area === "right"
     ? (dockDocument?.renderer === "xyzrender-external" ? dockDocument : state.activeDocument?.renderer === "xyzrender-external" ? state.activeDocument : null)
@@ -90,6 +94,7 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
     void showNativeContextMenu(
       dockTabCatalog(area).filter((kind) => {
         if (kind === "spectrum") return spectrumDockAvailable;
+        if (kind === "folding") return foldingDockAvailable;
         if (kind === "descriptors") return !(area === "right" && spectrumDocumentActive);
         return true;
       }).map((kind) => ({
