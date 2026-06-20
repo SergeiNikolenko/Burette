@@ -4,7 +4,6 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import previewFormatRegistry from "../../../config/preview-formats.json";
 import { AppLayout } from "./components/app-layout";
-import { showNativeContextMenu } from "./components/native-context-menu";
 import type { AppSettingsSectionId, KetcherSketchRequest, ShellActions, ShellViewState, StructureViewerAction, ViewerLigandSelection } from "./components/types";
 import { WindowTitle } from "./components/window-title";
 import {
@@ -19,6 +18,7 @@ import { useAppDiagnostics } from "./hooks/use-app-diagnostics";
 import { useAppDirtyGridDocuments } from "./hooks/use-app-dirty-grid-documents";
 import { useAppDockingWorkflows } from "./hooks/use-app-docking-workflows";
 import { useAppDockPayloadOpen } from "./hooks/use-app-dock-payload-open";
+import { useAppDropActions } from "./hooks/use-app-drop-actions";
 import { useAppFileActions } from "./hooks/use-app-file-actions";
 import { useAppFileOpen } from "./hooks/use-app-file-open";
 import { useAppFepWorkflows } from "./hooks/use-app-fep-workflows";
@@ -88,7 +88,6 @@ import { canInspectConformerEnsemble, canUseConformerWorkflow } from "./lib/conf
 import { conformerGenerationPreferences, conformerGenerationTaskLabel, generated3DPoseSetText, generated3DPoseSetTitle, generated3DStatus, normalizeMolstarStylePreference, textToBase64, type ConformerGenerationMode, type ConformerGenerationResult, type MolstarStylePreference } from "./lib/conformer-generation";
 import { directChemistryJobGuardMessage } from "./lib/direct-chemistry-guard";
 import type { DockArea, DockTabKind } from "./lib/dock";
-import type { DropActionChoice } from "./lib/drop-actions";
 import { pathExtension, preferredTextExtensions, structureAndTextExtensions, structureExtensionFromPath, structureExtensions, summarizeErrors, summarizeErrorText } from "./lib/file-routing";
 import { downloadBase64File, downloadTextFile, exportDialogFilters, safeExportFileName } from "./lib/file-export";
 import { browserDevFolderFromLocation, browserDevHasExplicitWorkspace, browserDevQuickLookFileFromLocation } from "./lib/browser-dev-startup";
@@ -1424,34 +1423,15 @@ export default function App() {
     pushStatus,
   });
 
-  const chooseDropAction = useCallback((
-    choices: DropActionChoice[],
-    at: { x: number; y: number } | null | undefined,
-    runChoice: (choice: DropActionChoice) => void,
-  ) => {
-    if (choices.length < 2) return false;
-    void showNativeContextMenu(
-      choices.map((choice, index) => ({
-        kind: "item" as const,
-        id: `drop-action-${index}-${choice.id}`,
-        text: choice.confidence === "default" ? `${choice.label} (default)` : choice.label,
-        action: () => runChoice(choice),
-      })),
-      at ?? undefined,
-    ).catch((error) => {
-      pushErrorStatus(error, "Drop action menu failed");
-      runChoice(choices[0]);
-    });
-    return true;
-  }, [pushErrorStatus]);
-
-  const addDroppedProjectRoots = useCallback((paths: string[]) => {
-    const cleanPaths = Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
-    if (cleanPaths.length === 0) return;
-    for (const path of cleanPaths) addProjectRoot(path);
-    setWorkspacePath(cleanPaths[0]);
-    pushStatus("Project folder added");
-  }, [addProjectRoot, pushStatus]);
+  const {
+    addDroppedProjectRoots,
+    chooseDropAction,
+  } = useAppDropActions({
+    addProjectRoot,
+    pushErrorStatus,
+    pushStatus,
+    setWorkspacePath,
+  });
 
   useOpenEvents(openPaths, pushErrorStatus);
   const agentTabActions = useMemo(() => ({
