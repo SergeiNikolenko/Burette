@@ -17,6 +17,7 @@ const [
   appDiagnosticsHook,
   appDirtyGridHook,
   appFileActionsHook,
+  appFileOpenHook,
   appBootstrapHook,
   appMaintenanceHook,
   appQuickLookHook,
@@ -149,6 +150,7 @@ const [
   source('apps/desktop/src/hooks/use-app-diagnostics.ts'),
   source('apps/desktop/src/hooks/use-app-dirty-grid-documents.ts'),
   source('apps/desktop/src/hooks/use-app-file-actions.ts'),
+  source('apps/desktop/src/hooks/use-app-file-open.ts'),
   source('apps/desktop/src/hooks/use-app-bootstrap.ts'),
   source('apps/desktop/src/hooks/use-app-maintenance.ts'),
   source('apps/desktop/src/hooks/use-app-quick-look.ts'),
@@ -778,11 +780,13 @@ assert.doesNotMatch(app, /fetch\("\/__burette\/dev-files", \{ cache: "no-store" 
 assert.match(fileRouting, /export const NOT_RENDERABLE_RENDERER = "not-renderable";/);
 assert.match(fileRouting, /export function summarizeErrorText\(message: string\)/);
 assert.match(app, /from "\.\/lib\/file-routing"/);
-assert.match(app, /if \(document\.renderer === NOT_RENDERABLE_RENDERER\) \{\s*closeDocument\(document\.id\);/);
+assert.match(app, /from "\.\/hooks\/use-app-file-open"/);
+assert.match(appFileOpenHook, /from "\.\.\/lib\/file-routing"/);
+assert.match(appFileOpenHook, /if \(document\.renderer === NOT_RENDERABLE_RENDERER\) \{\s*closeDocument\(document\.id\);/);
 assert.match(app, /const documents = result\.documents\.filter\(\(document\) => document\.renderer !== NOT_RENDERABLE_RENDERER\);/);
-assert.match(app, /const backgroundTextPaths = structureAndTextPaths\.filter\(\(path\) => openedStructureAndTextPaths\.has\(path\)\);/);
-assert.match(app, /await openTextDocuments\(backgroundTextPaths, \{ background: true \}\);/);
-assert.match(app, /const fallbackTextPaths = structureAndTextPaths\.filter\(\(path\) => !openedStructureAndTextPaths\.has\(path\)\);/);
+assert.match(appFileOpenHook, /const backgroundTextPaths = structureAndTextPaths\.filter\(\(path\) => openedStructureAndTextPaths\.has\(path\)\);/);
+assert.match(appFileOpenHook, /await openTextDocuments\(backgroundTextPaths, \{ background: true \}\);/);
+assert.match(appFileOpenHook, /const fallbackTextPaths = structureAndTextPaths\.filter\(\(path\) => !openedStructureAndTextPaths\.has\(path\)\);/);
 assert.match(app, /function browserDevDockingFromLocation\(\): DockingDocumentRequest \| null/);
 assert.match(app, /params\.has\("devDocking"\)/);
 assert.match(app, /await openPaths\(paths\)/);
@@ -820,7 +824,7 @@ assert.match(moleculeStore, /location: \{ kind: "settings" as const, section \}/
 assert.doesNotMatch(editorArea, /state\.page === "agent"/);
 assert.match(app, /lazy\(\(\) => import\("\.\/components\/command-palette"\)/);
 assert.match(appBootstrapHook, /markPerformanceOnce\("app:shell-visible"\)/);
-assert.match(app, /markPerformanceOnce\("app:first-document-opened"\)/);
+assert.match(appFileOpenHook, /markPerformanceOnce\("app:first-document-opened"\)/);
 assert.match(app, /markPerformanceOnce\("viewer:first-render"\)/);
 assert.match(desktopIndex, /<script src="\.\/boot-overlay\.js"><\/script>[\s\S]*?<body>\s*<div id="root"><\/div>\s*<script type="module" src="\/src\/main\.tsx"><\/script>/);
 assert.doesNotMatch(desktopIndex, /<script(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/);
@@ -2055,7 +2059,7 @@ assert.match(ketcherPage, /Ketcher did not return a sketch\. Draw a molecule fir
 assert.match(app, /const openDocumentsInActiveTab = useOpenDocumentsInActiveTab\(\)/);
 assert.match(app, /const \[ketcherDraftMolfile, setKetcherDraftMolfile\] = useState\(""\)/);
 assert.match(app, /saveKetcherDraft: setKetcherDraftMolfile/);
-assert.match(app, /openDocumentsInActiveTab\(result\.documents\)/);
+assert.match(appFileOpenHook, /openDocumentsInActiveTab\(result\.documents\)/);
 assert.match(app, /addDocuments\(\[document\]\)/);
 assert.doesNotMatch(app, /openDocumentsInActiveTab\(\[document\], \{\s*backLocation: request\.draftKet\?\.trim\(\) \|\| request\.draftMolfile\?\.trim\(\)/s);
 assert.match(app, /request\.target === "molstar" \|\| request\.target === "generate3d"/);
@@ -2818,14 +2822,14 @@ assert.match(app, /openStructureRecords,/);
 assert.match(app, /activeTabKind: activeTab\?\.location\.kind \?\? null/);
 assert.match(app, /activeDocumentPath: activeDocument\?\.path \?\? null/);
 assert.match(app, /openDockingDocument,/);
-assert.match(app, /const openStructureRecordDocuments = useCallback/);
+assert.match(appFileOpenHook, /const openStructureRecordDocuments = useCallback/);
 assert.match(app, /const openDockingStructureRecords = useCallback/);
 assert.match(app, /if \(opened\.length > 0\) addDocuments\(opened\)/);
 assert.match(app, /addDocuments\(\[dockingDocument\]\)/);
 assert.match(app, /openDockingStructureRecords,/);
-assert.match(app, /const openStructureRecords = useCallback/);
-assert.match(app, /invoke<ViewerDocument>\("open_text_structure"/);
-assert.match(app, /openBrowserDevTextDocument\(record\.path, record\.inputExtension, record\.text, preferences\)/);
+assert.match(appFileOpenHook, /const openStructureRecords = useCallback/);
+assert.match(appFileOpenHook, /invoke<ViewerDocument>\("open_text_structure"/);
+assert.match(appFileOpenHook, /openBrowserDevTextDocument\(record\.path, record\.inputExtension, record\.text, preferences\)/);
 assert.match(app, /openStructureRecords,/);
 assert.match(app, /openKetcherWithStructures,/);
 assert.match(app, /existingDockingRequest = documents\.find/);
@@ -2880,10 +2884,10 @@ assert.match(app, /const openFepNetworkPreview = useCallback/);
 assert.match(app, /openFepSetupTab\(\{/);
 assert.match(app, /kind: "fep-setup"/);
 assert.match(app, /pushStatus\("Opened FEP setup workspace"\)/);
-assert.match(app, /const graphmlPaths = cleanPaths\.filter\(isFepGraphmlPath\)/);
-assert.match(app, /const structurePaths = cleanPaths\.filter\(\(path\) => !isFepGraphmlPath\(path\)\)/);
-assert.match(app, /const graphmlText = await readStructureText\(path\)/);
-assert.match(app, /openFepNetworkTab\(\{ kind: "fep-network", title: basename\(path\), graphmlText \}\)/);
+assert.match(appFileOpenHook, /const graphmlPaths = cleanPaths\.filter\(isFepGraphmlPath\)/);
+assert.match(appFileOpenHook, /const structurePaths = cleanPaths\.filter\(\(path\) => !isFepGraphmlPath\(path\)\)/);
+assert.match(appFileOpenHook, /const graphmlText = await readStructureText\(path\)/);
+assert.match(appFileOpenHook, /openFepNetworkTab\(\{ kind: "fep-network", title: basename\(path\), graphmlText \}\)/);
 assert.match(app, /openFepNetworkTab\(\{ kind: "fep-network", \.\.\.request \}\)/);
 assert.match(fileRouting, /export function isFepGraphmlPath\(path: string\)/);
 assert.match(app, /pushStatus\("Opened FEP network preview"\)/);
@@ -4385,11 +4389,11 @@ assert.match(app, /source: "burrete-grid-host"/);
 assert.match(fileRouting, /export type GridDelimitedColumnChoice = \{/);
 assert.match(fileRouting, /export function isDelimitedColumnAmbiguity\(error: unknown\)/);
 assert.match(fileRouting, /multiple possible structure columns/);
-assert.match(app, /const openDelimitedGridDocument = useCallback/);
-assert.match(app, /invoke<ViewerDocument>\("open_delimited_grid_document"/);
-assert.match(app, /const showDelimitedGridColumnOpenMenu = useCallback/);
-assert.match(app, /invoke<GridDelimitedColumnChoice\[\]>\("grid_delimited_columns"/);
-assert.match(app, /void showDelimitedGridColumnOpenMenu\(cleanPaths\[0\], effectivePreferences, options\.replace === true\)/);
+assert.match(appFileOpenHook, /const openDelimitedGridDocument = useCallback/);
+assert.match(appFileOpenHook, /invoke<ViewerDocument>\("open_delimited_grid_document"/);
+assert.match(appFileOpenHook, /const showDelimitedGridColumnOpenMenu = useCallback/);
+assert.match(appFileOpenHook, /invoke<GridDelimitedColumnChoice\[\]>\("grid_delimited_columns"/);
+assert.match(appFileOpenHook, /void showDelimitedGridColumnOpenMenu\(cleanPaths\[0\], effectivePreferences, options\.replace === true\)/);
 assert.match(app, /const appendGridRecords = useCallback/);
 assert.match(app, /invoke<GridAppendResult>\("grid_append_records"/);
 assert.match(app, /const appendDelimitedGridRecords = useCallback/);
@@ -5008,7 +5012,7 @@ assert.match(openDropHook, /action\.kind === "open-documents-combined-poses"/);
 assert.match(openDropHook, /openDocuments\(action\.paths, undefined, undefined, \{ mode: "combinePoses" \}\)/);
 assert.match(openDropHook, /action\.kind === "open-documents-combined-grid"/);
 assert.match(openDropHook, /openDocuments\(action\.paths, undefined, undefined, \{ mode: "combineGrid" \}\)/);
-assert.match(app, /mode: options\.mode/);
+assert.match(appFileOpenHook, /mode: options\.mode/);
 assert.match(componentsTypes, /openDockingStructureRecords: \(receptorPath: string, ligandPaths: string\[\], records: StructureDragPayload\["records"\]\)/);
 assert.match(componentsTypes, /addXyzrenderSheetItems: \(targetDocumentId: string, payload: StructureDragPayload\) => boolean/);
 assert.match(editorTabs, /from "\.\.\/\.\.\/lib\/structure-drag"/);
