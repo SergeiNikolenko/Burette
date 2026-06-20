@@ -53,6 +53,7 @@ const [
   gridViewerJS,
   gridUiTSX,
   viewerShell,
+  buretteAgentJS,
   tauriConfigSource,
   tauriPermissionSource,
   defaultCapabilitySource,
@@ -127,6 +128,7 @@ const [
   source('PreviewExtension/Web/grid-viewer.js'),
   source('apps/desktop/src/preview-grid/grid-ui.tsx'),
   source('PreviewExtension/Web/viewer-shell.js'),
+  source('PreviewExtension/Web/burette-agent.js'),
   source('apps/desktop/src-tauri/tauri.conf.json'),
   source('apps/desktop/src-tauri/permissions/burrete.toml'),
   source('apps/desktop/src-tauri/capabilities/default.json'),
@@ -195,6 +197,26 @@ assert.ok(defaultCapability.permissions.includes('core:menu:allow-new'));
 assert.ok(defaultCapability.permissions.includes('core:menu:allow-popup'));
 assert.ok(defaultCapability.permissions.includes('core:window:allow-internal-toggle-maximize'));
 assert.deepEqual(defaultCapability.windows, ['main', 'workspace-*']);
+assert.equal(defaultCapability.webviews, undefined);
+assert.equal(defaultCapability.remote, undefined);
+assert.ok(defaultCapability.permissions.includes('allow-viewer-commands'));
+for (const windowLabel of defaultCapability.windows) {
+  assert.doesNotMatch(windowLabel, /quicklook|quick-look|preview|viewer/i);
+}
+for (const permission of defaultCapability.permissions) {
+  if (typeof permission === 'string') {
+    assert.doesNotMatch(permission, /^(fs|shell|process|updater):/);
+  }
+}
+const tauriIpcSurface = /@tauri-apps\/api|__TAURI__|window\.__TAURI__|\bcore\.invoke\b|\binvoke\s*\(|ipc:/;
+for (const [artifactName, artifactSource] of [
+  ['viewer.js', viewerJS],
+  ['grid-viewer.js', gridViewerJS],
+  ['viewer-shell.js', viewerShell],
+  ['burette-agent.js', buretteAgentJS],
+]) {
+  assert.doesNotMatch(artifactSource, tauriIpcSurface, `${artifactName} must use the host bridge instead of direct Tauri IPC`);
+}
 assert.match(tauriConfig.app.security.csp, /script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' asset: http:\/\/asset\.localhost/);
 assert.match(tauriConfig.app.security.csp, /connect-src[^;]*asset: http:\/\/asset\.localhost/);
 assert.match(tauriConfig.app.security.csp, /worker-src 'self' asset: http:\/\/asset\.localhost/);
