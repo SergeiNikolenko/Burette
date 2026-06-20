@@ -101,6 +101,7 @@ const [
   instance,
   tauriSource,
   settingsSections,
+  browserDevStartup,
   browserDevDocuments,
   agentSessionHook,
   temporaryDocuments,
@@ -235,6 +236,7 @@ const [
   source('apps/desktop/src/lib/instance.ts'),
   source('apps/desktop/src/lib/tauri.ts'),
   source('apps/desktop/src/lib/settings-sections.ts'),
+  source('apps/desktop/src/lib/browser-dev-startup.ts'),
   source('apps/desktop/src/lib/browser-dev-documents.ts'),
   source('apps/desktop/src/hooks/use-agent-session.ts'),
   source('apps/desktop/src/lib/temporary-documents.ts'),
@@ -763,21 +765,22 @@ assert.match(moleculeStore, /tab\.location\.kind !== "file"/);
 assert.match(moleculeStore, /recentStructures: recentStructures\.filter\(isPersistentRecentStructure\)/);
 assert.match(moleculeStore, /if \(isPersistentViewerDocument\(document\)\) byPath\.set\(document\.path, toRecentStructure\(document\)\)/);
 assert.match(moleculeStore, /const storedTabs = \(stored\?\.tabs \?\? current\.tabs\)\.filter/);
-assert.match(app, /async function browserDevFilesFromLocation\(\)/);
-assert.match(app, /if \(params\.has\("devDocking"\)\) return \[\];/);
-assert.match(app, /params\.has\("devFiles"\)/);
+assert.match(browserDevStartup, /export async function browserDevFilesFromLocation\(\)/);
+assert.match(browserDevStartup, /if \(params\.has\("devDocking"\)\) return \[\];/);
+assert.match(browserDevStartup, /params\.has\("devFiles"\)/);
 assert.match(app, /!isSpectrumPath\(path, extension\) &&\s*!structureAndTextExtensions\.has\(extension\)/);
-assert.match(app, /function browserDevFolderFromLocation\(\)/);
-assert.match(app, /get\("devFolder"\)\?\.trim\(\)/);
-assert.ok(app.includes('return folder ? folder.replace(/\\\\/g, "/").replace(/\\/+$/u, "") : null;'));
-assert.match(app, /function browserDevHasExplicitWorkspace\(\)/);
-assert.match(app, /return params\.has\("devFiles"\) \|\| params\.has\("devFolder"\);/);
+assert.match(browserDevStartup, /export function browserDevFolderFromLocation\(\)/);
+assert.match(browserDevStartup, /get\("devFolder"\)\?\.trim\(\)/);
+assert.ok(browserDevStartup.includes('return folder ? folder.replace(/\\\\/g, "/").replace(/\\/+$/u, "") : null;'));
+assert.match(browserDevStartup, /export function browserDevHasExplicitWorkspace\(\)/);
+assert.match(browserDevStartup, /return params\.has\("devFiles"\) \|\| params\.has\("devFolder"\);/);
+assert.match(app, /from "\.\/lib\/browser-dev-startup"/);
 assert.match(app, /const browserDevExplicitFolder = useMemo\(\(\) => browserDevFolderFromLocation\(\), \[\]\);/);
 assert.match(appSidebarProjectsHook, /if \(browserDevExplicitFolder\) return \[browserDevExplicitFolder\];/);
 assert.match(appSidebarProjectsHook, /const sidebarRecentStructures = browserDevExplicitFolder \? \[\] : recentStructures;/);
 assert.match(appSidebarProjectsHook, /recentStructures: sidebarRecentStructures,/);
-assert.match(app, /return \[\];\s*}\s*function browserDevFolderFromLocation/);
-assert.match(app, /function splitDevFiles\(rawFiles: string\)/);
+assert.match(browserDevStartup, /return \[\];\s*}\s*export function browserDevFolderFromLocation/);
+assert.match(browserDevStartup, /export function splitDevFiles\(rawFiles: string\)/);
 assert.doesNotMatch(app, /fetch\("\/__burette\/dev-files", \{ cache: "no-store" \}\)/);
 assert.match(fileRouting, /export const NOT_RENDERABLE_RENDERER = "not-renderable";/);
 assert.match(fileRouting, /export function summarizeErrorText\(message: string\)/);
@@ -791,8 +794,8 @@ assert.match(appDockPayloadHook, /const documents = result\.documents\.filter\(\
 assert.match(appFileOpenHook, /const backgroundTextPaths = structureAndTextPaths\.filter\(\(path\) => openedStructureAndTextPaths\.has\(path\)\);/);
 assert.match(appFileOpenHook, /await openTextDocuments\(backgroundTextPaths, \{ background: true \}\);/);
 assert.match(appFileOpenHook, /const fallbackTextPaths = structureAndTextPaths\.filter\(\(path\) => !openedStructureAndTextPaths\.has\(path\)\);/);
-assert.match(app, /function browserDevDockingFromLocation\(\): DockingDocumentRequest \| null/);
-assert.match(app, /params\.has\("devDocking"\)/);
+assert.match(browserDevStartup, /export function browserDevDockingFromLocation\(\): DockingDocumentRequest \| null/);
+assert.match(browserDevStartup, /params\.has\("devDocking"\)/);
 assert.match(app, /await openPaths\(paths\)/);
 assert.match(tabsHook, /from "\.\.\/stores\/molecule-store"/);
 assert.match(tabsHook, /getSessionSnapshot/);

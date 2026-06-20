@@ -85,6 +85,7 @@ import { directChemistryJobGuardMessage } from "./lib/direct-chemistry-guard";
 import type { DockArea, DockTabKind } from "./lib/dock";
 import type { DropActionChoice } from "./lib/drop-actions";
 import { delimitedColumnChoiceLabel, isDelimitedColumnAmbiguity, pathExtension, preferredTextExtensions, structureAndTextExtensions, structureExtensionFromPath, structureExtensions, summarizeErrors, summarizeErrorText, type GridDelimitedColumnChoice } from "./lib/file-routing";
+import { browserDevDockingFromLocation, browserDevFilesFromLocation, browserDevFolderFromLocation, browserDevHasExplicitFiles, browserDevHasExplicitWorkspace, browserDevQuickLookFileFromLocation } from "./lib/browser-dev-startup";
 import { markPerformanceOnce } from "./lib/performance";
 import { basename, parentDirectory } from "./lib/sidebar-projects";
 import type { StructureDragPayload, StructureDragRecord } from "./lib/structure-drag";
@@ -130,51 +131,6 @@ type GridAppendResult = {
   totalRows: number;
   errors: string[];
 };
-
-async function browserDevFilesFromLocation() {
-  const params = new URLSearchParams(window.location.search);
-  if (params.has("quickLookFile")) return [];
-  if (params.has("devDocking")) return [];
-  if (params.has("devFiles")) {
-    return params.getAll("devFiles").flatMap((value) => splitDevFiles(value));
-  }
-  if (params.has("devFolder")) {
-    const folder = params.get("devFolder") ?? "";
-    const response = await fetch(`/__burette/dev-files?root=${encodeURIComponent(folder)}`, { cache: "no-store" });
-    if (!response.ok) throw new Error(`Could not load dev folder: ${response.status}`);
-    const payload = await response.json() as { files?: string[] };
-    return Array.isArray(payload.files) ? payload.files : [];
-  }
-  return [];
-}
-
-function browserDevFolderFromLocation() {
-  if (typeof window === "undefined" || isTauriRuntime()) return null;
-  const folder = new URLSearchParams(window.location.search).get("devFolder")?.trim();
-  return folder ? folder.replace(/\\/g, "/").replace(/\/+$/u, "") : null;
-}
-
-function splitDevFiles(rawFiles: string) {
-  return rawFiles.split("\n").map((path) => path.trim()).filter(Boolean);
-}
-
-function browserDevQuickLookFileFromLocation() {
-  if (typeof window === "undefined" || isTauriRuntime()) return null;
-  const params = new URLSearchParams(window.location.search);
-  const path = params.get("quickLookFile")?.trim();
-  return path || null;
-}
-
-function browserDevHasExplicitFiles() {
-  if (typeof window === "undefined" || isTauriRuntime()) return false;
-  return new URLSearchParams(window.location.search).has("devFiles");
-}
-
-function browserDevHasExplicitWorkspace() {
-  if (typeof window === "undefined" || isTauriRuntime()) return false;
-  const params = new URLSearchParams(window.location.search);
-  return params.has("devFiles") || params.has("devFolder");
-}
 
 async function expandBrowserDevStructureBundles(paths: string[]) {
   if (isTauriRuntime()) return paths;
@@ -275,14 +231,6 @@ async function svgToPngBase64(svg: string) {
   } finally {
     URL.revokeObjectURL(url);
   }
-}
-
-function browserDevDockingFromLocation(): DockingDocumentRequest | null {
-  const params = new URLSearchParams(window.location.search);
-  if (!params.has("devDocking")) return null;
-  const paths = splitDevFiles(params.get("devDocking") ?? "");
-  if (paths.length < 2) return null;
-  return dockingRequestForDrop(paths[0], paths.slice(1));
 }
 
 function queueKetcherImportRequest(request: KetcherImportRequest) {
