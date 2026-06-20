@@ -1,0 +1,4 @@
+compound_id	SMILES	activity	class
+TSV-001	CCO	low	alcohol
+TSV-002	c1ccccc1	medium	aromatic
+TSV-003	CC(=O)O	low	acid
