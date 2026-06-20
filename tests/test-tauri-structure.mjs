@@ -441,10 +441,12 @@ assert.match(documentsCommand, /fn looks_like_supported_structure_file/);
 assert.match(previewCacheCommand, /#\[tauri::command\]\s+pub\(crate\) fn clear_preview_cache/);
 assert.match(runtimeDoctorCommand, /#\[tauri::command\]\s+pub\(crate\) fn external_runtime_doctor/);
 assert.match(runtimeDoctorCommand, /burrete\.external-runtime-doctor\.v1/);
-for (const checkId of ['xyzrender', 'descriptors-python', 'crest', 'prism', 'xtb', 'schrodinger']) {
+for (const checkId of ['xyzrender', 'descriptors-python', 'datamol-conformer-python', 'rdkit-conformer-python', 'crest', 'prism', 'xtb', 'schrodinger']) {
   assert.match(runtimeDoctorCommand, new RegExp(`"${checkId}"`));
 }
 assert.match(runtimeDoctorCommand, /descriptors::descriptor_runtime_status\(\)/);
+assert.match(runtimeDoctorCommand, /documents::conformer_python_runtime_status\("datamol"\)/);
+assert.match(runtimeDoctorCommand, /documents::conformer_python_runtime_status\("rdkit"\)/);
 assert.match(runtimeDoctorCommand, /conformer::conformer_status\(\)/);
 assert.match(runtimeDoctorCommand, /xtb::xtb_status\(\)/);
 assert.match(runtimeDoctorCommand, /xyzrender::xyzrender_runtime_status\(\)/);

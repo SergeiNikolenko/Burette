@@ -200,9 +200,9 @@ Current Stage 3 progress:
   command permissions remain limited to shell windows and bundled preview
   runtime artifacts do not call Tauri IPC directly;
 - external runtime doctor now has a read-only backend aggregate for xyzrender,
-  descriptor Python/RDKit, CREST, PRISM, xTB, and Schrodinger status sources,
-  exposed through trusted shell maintenance/settings actions and a browser-dev
-  parity endpoint;
+  descriptor Python/RDKit, Datamol/RDKit conformer Python, CREST, PRISM, xTB,
+  and Schrodinger status sources, exposed through trusted shell
+  maintenance/settings actions and a browser-dev parity endpoint;
 - `App.tsx` still owns the top-level shell composition and remaining runtime
   hardening boundaries. These are the remaining high-risk slices and should
   move only after each boundary has contract coverage for the exact
@@ -230,7 +230,7 @@ the high-risk runtime boundaries intact.
 | Runtime cache contract | Partial | `clear_preview_cache` now delegates to a tested cache-directory helper that preserves `viewer/assets` and removes volatile preview/render/cache entries; broader runtime storage/cache inventory remains pending. |
 | Folder scanner job | Partial | Project/sidebar folder scanning now has backend file and directory limits with Rust tests; a fully cancellable/background scanner with user-visible truncation status remains pending. |
 | Renderer policy contract | Partial | Core renderer selection now has an explicit matrix test for Molstar/external xyzrender/grid-request/trajectory/external-only routing; browser-dev and Quick Look parity checks still need a higher-level surface test. |
-| External runtime doctor | Partial | A read-only Tauri/browser-dev doctor report now aggregates xyzrender, descriptor Python/RDKit, CREST, PRISM, xTB, and Schrodinger status sources and is surfaced through trusted shell settings/command-palette actions; Datamol conformer Python status remains pending. |
+| External runtime doctor | Complete for current scope | A read-only Tauri/browser-dev doctor report now aggregates xyzrender, descriptor Python/RDKit, Datamol/RDKit conformer Python, CREST, PRISM, xTB, and Schrodinger status sources and is surfaced through trusted shell settings/command-palette actions. |
 | Diagnostics privacy | Partial | Diagnostics export action is extracted and diagnostics bundle local-path redaction is covered by Rust tests; broader privacy review for every copied artifact remains pending. |
 | Viewer runtime decomposition | Not started | `PreviewExtension/Web/viewer.js` remains untouched as planned until stronger contracts exist. |
 | CSS split | Not started | No CSS mechanical split has been attempted. |
