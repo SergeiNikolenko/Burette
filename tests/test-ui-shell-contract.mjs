@@ -36,6 +36,7 @@ const [
   structureComposition,
   structureText,
   fileRouting,
+  fileExport,
   directChemistryGuard,
   dock,
   chemistryJobRequests,
@@ -172,6 +173,7 @@ const [
   source('apps/desktop/src/lib/structure-composition.ts'),
   source('apps/desktop/src/lib/structure-text.ts'),
   source('apps/desktop/src/lib/file-routing.ts'),
+  source('apps/desktop/src/lib/file-export.ts'),
   source('apps/desktop/src/lib/direct-chemistry-guard.ts'),
   source('apps/desktop/src/lib/dock.ts'),
   source('apps/desktop/src/lib/chemistry-job-requests.ts'),
@@ -4405,8 +4407,9 @@ assert.match(app, /type: "gridMoleculeExported"/);
 assert.match(app, /type: "gridMoleculeExportError"/);
 assert.match(app, /pushErrorStatus\(error, "Grid Save As failed"\)/);
 assert.match(app, /pushErrorStatus\(error, "Grid Save failed"\)/);
-assert.match(app, /function safeExportFileName\(name: string\)/);
-assert.match(app, /function exportDialogFilters\(fileName: string, mimeType: string\)/);
+assert.match(app, /from "\.\/lib\/file-export"/);
+assert.match(fileExport, /export function safeExportFileName\(name: string\)/);
+assert.match(fileExport, /export function exportDialogFilters\(fileName: string, mimeType: string\)/);
 assert.match(app, /if \(body\?\.type === "gridFetchPage"\) \{\s*if \(!body\.requestId \|\| !body\.documentId\) return;/s);
 assert.match(app, /invoke\("grid_fetch_page"/);
 assert.match(app, /source: "burrete-grid-host"/);
