@@ -99,11 +99,13 @@ Current Stage 3 progress:
 - file-routing helpers now live in `apps/desktop/src/lib/file-routing.ts`;
 - core file opening, text opening, spectrum opening, path classification, and
   pasted structure opening now live in `apps/desktop/src/hooks/use-app-file-open.ts`;
-- `App.tsx` still owns browser-dev startup routing, dock payload opening,
-  Ketcher orchestration, xTB/conformer controller state, Mol* in-place
-  replacement, and the viewer/grid message bus. These are the remaining
-  high-risk slices and should move only after each boundary has contract
-  coverage for the exact message/action names.
+- dock payload opening now lives in
+  `apps/desktop/src/hooks/use-app-dock-payload-open.ts`;
+- `App.tsx` still owns browser-dev startup routing, Ketcher orchestration,
+  docking document construction, collection merge/save, xTB/conformer
+  controller state, Mol* in-place replacement, and the viewer/grid message bus.
+  These are the remaining high-risk slices and should move only after each
+  boundary has contract coverage for the exact message/action names.
 
 ## Current Epic Status
 
@@ -115,11 +117,11 @@ the high-risk runtime boundaries intact.
 | --- | --- | --- |
 | Contract safety net | Partial | Existing contract tests were strengthened as modules moved, but the full named test matrix from the epic is not complete yet. |
 | Dev-server extraction | Complete | Browser-dev endpoint modules now live under `apps/desktop/vite/browser-dev/`, with `vite.config.ts` acting as registration/composition. |
-| App shell extraction | Partial | Several app hooks, pure chemistry libs, file-routing helpers, and the core file-open hook are extracted, but browser-dev startup routing, dock payload opening, Ketcher, docking, xTB/conformer controllers, and message handling still live in `App.tsx`. |
-| Opening workflow | Partial | `openDocuments`, `openPaths`, text/spectrum opening, path classification, and pasted-structure opening are in `use-app-file-open.ts`; dock payload opening and browser-dev startup routing remain in `App.tsx`. |
+| App shell extraction | Partial | Several app hooks, pure chemistry libs, file-routing helpers, the core file-open hook, and the dock payload-open hook are extracted, but browser-dev startup routing, Ketcher, docking, collections, xTB/conformer controllers, and message handling still live in `App.tsx`. |
+| Opening workflow | Partial | `openDocuments`, `openPaths`, text/spectrum opening, path classification, pasted-structure opening, and dock payload opening are in dedicated hooks; browser-dev startup routing remains in `App.tsx`. |
 | Ketcher workflow | Not started | Ketcher import/export/sketch/grid-row sync remains in `App.tsx`. |
 | Grid workflow | Partial | Dirty-grid state and descriptor workflows are extracted; grid append/save/export/message handling remains in `App.tsx`. |
-| Docking/collections/dock payloads | Not started | Docking, collection merge/save, and dock payload handlers remain in `App.tsx`. |
+| Docking/collections/dock payloads | Partial | Dock payload opening is extracted; docking document construction and collection merge/save remain in `App.tsx`. |
 | Viewer bridge | Not started | `window.message` handling remains in `App.tsx`; typed dispatch is still pending. |
 | ShellActions/ShellViewState slicing | Not started | The compatibility surface is unchanged; slicing has not started. |
 | Update flow | Complete | Update state/actions are in `use-app-updates.ts`. |

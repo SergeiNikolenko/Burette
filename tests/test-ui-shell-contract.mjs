@@ -18,6 +18,7 @@ const [
   appDirtyGridHook,
   appFileActionsHook,
   appFileOpenHook,
+  appDockPayloadHook,
   appBootstrapHook,
   appMaintenanceHook,
   appQuickLookHook,
@@ -151,6 +152,7 @@ const [
   source('apps/desktop/src/hooks/use-app-dirty-grid-documents.ts'),
   source('apps/desktop/src/hooks/use-app-file-actions.ts'),
   source('apps/desktop/src/hooks/use-app-file-open.ts'),
+  source('apps/desktop/src/hooks/use-app-dock-payload-open.ts'),
   source('apps/desktop/src/hooks/use-app-bootstrap.ts'),
   source('apps/desktop/src/hooks/use-app-maintenance.ts'),
   source('apps/desktop/src/hooks/use-app-quick-look.ts'),
@@ -781,9 +783,11 @@ assert.match(fileRouting, /export const NOT_RENDERABLE_RENDERER = "not-renderabl
 assert.match(fileRouting, /export function summarizeErrorText\(message: string\)/);
 assert.match(app, /from "\.\/lib\/file-routing"/);
 assert.match(app, /from "\.\/hooks\/use-app-file-open"/);
+assert.match(app, /from "\.\/hooks\/use-app-dock-payload-open"/);
 assert.match(appFileOpenHook, /from "\.\.\/lib\/file-routing"/);
+assert.match(appDockPayloadHook, /from "\.\.\/lib\/file-routing"/);
 assert.match(appFileOpenHook, /if \(document\.renderer === NOT_RENDERABLE_RENDERER\) \{\s*closeDocument\(document\.id\);/);
-assert.match(app, /const documents = result\.documents\.filter\(\(document\) => document\.renderer !== NOT_RENDERABLE_RENDERER\);/);
+assert.match(appDockPayloadHook, /const documents = result\.documents\.filter\(\(document\) => document\.renderer !== NOT_RENDERABLE_RENDERER\);/);
 assert.match(appFileOpenHook, /const backgroundTextPaths = structureAndTextPaths\.filter\(\(path\) => openedStructureAndTextPaths\.has\(path\)\);/);
 assert.match(appFileOpenHook, /await openTextDocuments\(backgroundTextPaths, \{ background: true \}\);/);
 assert.match(appFileOpenHook, /const fallbackTextPaths = structureAndTextPaths\.filter\(\(path\) => !openedStructureAndTextPaths\.has\(path\)\);/);
@@ -2995,6 +2999,16 @@ assert.match(openDropHook, /document\.elementFromPoint\(position\.x, position\.y
 assert.match(openDropHook, /candidates\.find\(\(element\) => element\.closest\("\.dock-panel"\)\) \?\? candidates\[0\]/);
 assert.match(openDropHook, /const dockTarget = element\?\.closest<HTMLElement>\("\.dock-panel\[data-area\]\[data-active-tab\]"\)/);
 assert.match(openDropHook, /void openDockPayload\?\.\(\{ area: target\.area, tabKind: target\.tabKind, payload \}\)/);
+assert.match(appDockPayloadHook, /export function useAppDockPayloadOpen/);
+assert.match(appDockPayloadHook, /const ketcherItem = input\.payload\.items\?\.find\(\(item\) => item\.kind === "ketcher"\) \?\? null/);
+assert.match(appDockPayloadHook, /setDockTool\(input\.area, "ketcher"\)/);
+assert.match(appDockPayloadHook, /const rightDockTextPaths = cleanPaths\.filter\(\(path\) => \{/);
+assert.match(appDockPayloadHook, /invoke<OpenTextFilesResult>\("open_text_files"/);
+assert.match(appDockPayloadHook, /openBrowserDevDocuments\(structurePaths, preferences, undefined\)/);
+assert.match(appDockPayloadHook, /const textOpenPaths = \[\.\.\.textPaths, \.\.\.structureAndTextPaths\]/);
+assert.match(appDockPayloadHook, /const recordResult = cleanRecords\.length > 0/);
+assert.match(appDockPayloadHook, /setDockDocument\(input\.area, firstDockDocumentId\)/);
+assert.match(appDockPayloadHook, /pushErrorStatus\(error, "Dock open failed"\)/);
 assert.match(editorTabs, /import type \{ DockArea, DockTabKind \} from "\.\.\/\.\.\/lib\/dock";/);
 assert.match(editorTabs, /const dockDropTargetAtPoint = useCallback\(\(clientX: number, clientY: number\): \{ area: DockArea; tabKind: DockTabKind \} \| null => \{/);
 assert.match(editorTabs, /document\.elementFromPoint\(clientX, clientY\)/);
