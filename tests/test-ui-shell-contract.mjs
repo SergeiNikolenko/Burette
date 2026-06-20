@@ -16,6 +16,7 @@ const [
   appDescriptorsHook,
   appDiagnosticsHook,
   appDirtyGridHook,
+  appDockingPoseMessagesHook,
   appDockingWorkflowsHook,
   appDropActionsHook,
   appFileActionsHook,
@@ -169,6 +170,7 @@ const [
   source('apps/desktop/src/hooks/use-app-descriptors.ts'),
   source('apps/desktop/src/hooks/use-app-diagnostics.ts'),
   source('apps/desktop/src/hooks/use-app-dirty-grid-documents.ts'),
+  source('apps/desktop/src/hooks/use-app-docking-pose-messages.ts'),
   source('apps/desktop/src/hooks/use-app-docking-workflows.ts'),
   source('apps/desktop/src/hooks/use-app-drop-actions.ts'),
   source('apps/desktop/src/hooks/use-app-file-actions.ts'),
@@ -2949,9 +2951,10 @@ assert.match(appSdfViewerMessagesHook, /const targetPath = requestedPath\.length
 assert.match(appSdfViewerMessagesHook, /const requestedReceptorPath = bodyString\(body\.receptorPath\)\.trim\(\)/);
 assert.match(appSdfViewerMessagesHook, /document\.path === requestedReceptorPath/);
 assert.match(appSdfViewerMessagesHook, /isProteinLikeDockingSource\(document\.path\)/);
-assert.match(app, /body\?\.type === "dockingPoseChanged"/);
-assert.match(app, /setPoseReviewSelections/);
-assert.match(app, /notifyGridPoseReviewSelection/);
+assert.match(app, /handleDockingPoseMessage\(data\.source, body\)/);
+assert.match(appDockingPoseMessagesHook, /body\?\.type !== "dockingPoseChanged"/);
+assert.match(appDockingPoseMessagesHook, /setPoseReviewSelections/);
+assert.match(appDockingPoseMessagesHook, /notifyGridPoseReviewSelection/);
 assert.match(appSdfViewerMessagesHook, /pushStatus\("Opening pose-review workspace\.\.\."\)/);
 assert.match(appDockingWorkflowsHook, /const openPoseReviewWorkspace = useCallback/);
 assert.match(appDockingWorkflowsHook, /openPoseReviewTab\(\{/);
@@ -5217,10 +5220,10 @@ assert.match(appStartupEffectsHook, /void openDockingDocument\(request\.receptor
 assert.match(appDockingWorkflowsHook, /request\.activePose = options\.activePose \?\? null/);
 assert.match(appDockingWorkflowsHook, /request\.sceneMode = options\.sceneMode \?\? null/);
 assert.match(appDockingWorkflowsHook, /request\.poseMode = options\.sceneMode === "structureAll" \? "all" : "single"/);
-assert.match(app, /const poseMode = body\.poseMode === "all" \? "all" : "single"/);
-assert.match(app, /if \(dockingDocument\?\.dockingRequest && dockingDocument\.dockingRequest\.poseMode !== poseMode\) \{/);
-assert.match(app, /addBackgroundDocuments\(\[\{/);
-assert.match(app, /poseMode,/);
+assert.match(appDockingPoseMessagesHook, /const poseMode = body\.poseMode === "all" \? "all" : "single"/);
+assert.match(appDockingPoseMessagesHook, /if \(dockingDocument\?\.dockingRequest && dockingDocument\.dockingRequest\.poseMode !== poseMode\) \{/);
+assert.match(appDockingPoseMessagesHook, /addBackgroundDocuments\(\[\{/);
+assert.match(appDockingPoseMessagesHook, /poseMode,/);
 assert.match(appDockingWorkflowsHook, /if \(request\.sceneMode && rightDockOpen && rightDockActiveTab === "descriptors"\) \{\s*setDockOpen\("right", false\);\s*\}/);
 assert.match(appDockingWorkflowsHook, /openBrowserDevDockingDocument\(request\.receptorPath, request\.ligandPaths, preferences, options\)/);
 assert.match(appGridWorkflowsHook, /const point = payload\.point && Number\.isFinite\(payload\.point\.x\) && Number\.isFinite\(payload\.point\.y\)/);
