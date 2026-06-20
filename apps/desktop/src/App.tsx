@@ -1,8 +1,6 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { save } from "@tauri-apps/plugin-dialog";
+import { Suspense, lazy, useCallback, useMemo, useRef, useState } from "react";
 import { AppLayout } from "./components/app-layout";
-import type { AppSettingsSectionId, ViewerLigandSelection } from "./components/types";
+import type { ViewerLigandSelection } from "./components/types";
 import { WindowTitle } from "./components/window-title";
 import {
   useCloseCommandPalette,
@@ -29,6 +27,7 @@ import { useAppGridConformerMessages } from "./hooks/use-app-grid-conformer-mess
 import { useAppGridFileActions } from "./hooks/use-app-grid-file-actions";
 import { useAppGridRuntimeMessages } from "./hooks/use-app-grid-runtime-messages";
 import { useAppGridWorkflows } from "./hooks/use-app-grid-workflows";
+import { useAppHostRuntimeOperations } from "./hooks/use-app-host-runtime-operations";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
 import { useAppKetcherActions } from "./hooks/use-app-ketcher-actions";
 import { useAppKetcherViewerMessages } from "./hooks/use-app-ketcher-viewer-messages";
@@ -37,12 +36,14 @@ import { useAppMolstarContextMessages } from "./hooks/use-app-molstar-context-me
 import { useAppMolstarActionSenders } from "./hooks/use-app-molstar-action-senders";
 import { useAppMolstarXtbContext } from "./hooks/use-app-molstar-xtb-context";
 import { useAppOpenActions } from "./hooks/use-app-open-actions";
+import { useAppPreferenceEffects } from "./hooks/use-app-preference-effects";
 import { useAppQuickLook } from "./hooks/use-app-quick-look";
 import { useAppResize } from "./hooks/use-app-resize";
 import { useAppRendererMessage } from "./hooks/use-app-renderer-message";
 import { useAppSidebarProjects } from "./hooks/use-app-sidebar-projects";
 import { useAppSdfViewerMessages } from "./hooks/use-app-sdf-viewer-messages";
 import { useAppShellActions } from "./hooks/use-app-shell-actions";
+import { useAppShellNavigationActions } from "./hooks/use-app-shell-navigation-actions";
 import { createAppShellViewState } from "./hooks/use-app-shell-view-state";
 import { useAppStartupEffects } from "./hooks/use-app-startup-effects";
 import { useAppStatus } from "./hooks/use-app-status";
@@ -113,12 +114,8 @@ import { isProteinLikeDockingSource } from "./lib/docking-documents";
 import type { DockArea, DockTabKind } from "./lib/dock";
 import { pathExtension, structureExtensionFromPath } from "./lib/file-routing";
 import { browserDevFolderFromLocation, browserDevHasExplicitWorkspace, browserDevQuickLookFileFromLocation } from "./lib/browser-dev-startup";
-import { svgToPngBase64 } from "./lib/preview-image-export";
-import { basename } from "./lib/sidebar-projects";
 import type { StructureDragPayload } from "./lib/structure-drag";
 import { isSpectrumPath, spectrumDocumentFromText } from "./lib/spectrum";
-import { isTauriRuntime } from "./lib/tauri";
-import { isTemporaryDocumentPath } from "./lib/temporary-documents";
 import {
   activeViewerIframeForDocument,
   isKnownViewerMessageSource,
@@ -130,7 +127,6 @@ const CommandPalette = lazy(() => import("./components/command-palette").then((m
   default: module.CommandPalette,
 })));
 
-const GRID_PERF_REPORT_PATH = "/private/tmp/burrete-grid-real-app-perf.jsonl";
 type MolstarContextDocument = Parameters<typeof openBrowserDevMolstarContextDocument>[0];
 
 export default function App() {
@@ -248,10 +244,6 @@ export default function App() {
     openDockTab(area, kind);
   }, [bottomDockActiveTab, bottomDockOpen, openDockTab, rightDockActiveTab, rightDockOpen, setDockOpen]);
 
-  const closeGridRuntime = useCallback((documentId: string | null | undefined) => {
-    if (!documentId || !isTauriRuntime()) return;
-    void invoke("grid_close_runtime", { documentId }).catch(() => {});
-  }, []);
   const [structureDragActive, setStructureDragActive] = useState(false);
   const { status, pushStatus, pushErrorStatus, clearStatus, recentErrorsRef } = useAppStatus();
   const {
@@ -322,7 +314,6 @@ export default function App() {
   const pendingMolstarReplaceRef = useRef<Map<string, PendingMolstarReplaceResolver>>(new Map());
   const xyzrenderOrientationRefRef = useRef<string | null>(null);
   const skipNextPreferenceRefreshRef = useRef(false);
-  const gridPerfMetricsRef = useRef<string[]>([]);
   const commandPaletteOpen = useIsCommandPaletteOpen();
   const commandPaletteQuery = useCommandPaletteSearch();
   const openCommandPalette = useOpenCommandPalette();
@@ -578,61 +569,16 @@ export default function App() {
     rememberRecentStructures,
   });
 
-  const readActiveExternalPreviewSvg = useCallback(async () => {
-    if (!activeDocument) throw new Error("No active structure preview to export");
-    if (!isTauriRuntime()) throw new Error("Preview export is available in the desktop app only");
-    return invoke<string>("read_external_preview_svg", { runtimePath: activeDocument.runtimePath });
-  }, [activeDocument]);
-
-  const exportActivePreviewAsSvg = useCallback(async () => {
-    try {
-      const svg = await readActiveExternalPreviewSvg();
-      const outputPath = await save({
-        defaultPath: `${activeDocument?.title ?? "preview"}.svg`,
-        filters: [{ name: "SVG", extensions: ["svg"] }],
-      });
-      if (!outputPath) return;
-      const savedPath = await invoke<string>("write_text_file", {
-        request: { outputPath, contents: svg },
-      });
-      pushStatus(`Exported preview to ${basename(savedPath)}`);
-    } catch (error) {
-      pushErrorStatus(error, "Export SVG failed");
-    }
-  }, [activeDocument?.title, pushErrorStatus, pushStatus, readActiveExternalPreviewSvg]);
-
-  const exportActivePreviewAsPng = useCallback(async () => {
-    try {
-      const svg = await readActiveExternalPreviewSvg();
-      const pngBase64 = await svgToPngBase64(svg);
-      const outputPath = await save({
-        defaultPath: `${activeDocument?.title ?? "preview"}.png`,
-        filters: [{ name: "PNG", extensions: ["png"] }],
-      });
-      if (!outputPath) return;
-      const savedPath = await invoke<string>("write_base64_file", {
-        request: { outputPath, contentsBase64: pngBase64 },
-      });
-      pushStatus(`Exported preview to ${basename(savedPath)}`);
-    } catch (error) {
-      pushErrorStatus(error, "Export PNG failed");
-    }
-  }, [activeDocument?.title, pushErrorStatus, pushStatus, readActiveExternalPreviewSvg]);
-
-  const writeGridPerfMetric = useCallback((body: unknown) => {
-    if (!isTauriRuntime()) return;
-    const line = JSON.stringify({
-      receivedAtMs: Date.now(),
-      metric: body,
-    });
-    gridPerfMetricsRef.current = [...gridPerfMetricsRef.current.slice(-399), line];
-    void invoke("write_text_file", {
-      request: {
-        outputPath: GRID_PERF_REPORT_PATH,
-        contents: `${gridPerfMetricsRef.current.join("\n")}\n`,
-      },
-    }).catch(() => {});
-  }, []);
+  const {
+    closeGridRuntime,
+    exportActivePreviewAsPng,
+    exportActivePreviewAsSvg,
+    writeGridPerfMetric,
+  } = useAppHostRuntimeOperations({
+    activeDocument,
+    pushErrorStatus,
+    pushStatus,
+  });
 
   const { handleGridFileMessage } = useAppGridFileActions({
     documents,
@@ -660,19 +606,17 @@ export default function App() {
     workspacePath,
   });
 
-  const openSettings = useCallback(() => {
-    if (!sidebarOpen) toggleSidebar();
-    openSettingsTab();
-  }, [openSettingsTab, sidebarOpen, toggleSidebar]);
-
-  const openSettingsSection = useCallback((section: AppSettingsSectionId) => {
-    if (!sidebarOpen) toggleSidebar();
-    openSettingsSectionTab(section as Parameters<typeof openSettingsSectionTab>[0]);
-  }, [openSettingsSectionTab, sidebarOpen, toggleSidebar]);
-
-  const backToApp = useCallback(() => {
-    activateLastNonSettingsTab();
-  }, [activateLastNonSettingsTab]);
+  const {
+    backToApp,
+    openSettings,
+    openSettingsSection,
+  } = useAppShellNavigationActions({
+    activateLastNonSettingsTab,
+    openSettingsSectionTab,
+    openSettingsTab,
+    sidebarOpen,
+    toggleSidebar,
+  });
 
   const {
     applyKetcherToGridRow,
@@ -968,29 +912,15 @@ export default function App() {
     markViewerFirstRenderMessage,
   });
 
-  useEffect(() => {
-    if (!isTauriRuntime()) return;
-    void invoke("sync_viewer_preferences", { preferences }).catch((error) => {
-      pushErrorStatus(error, "Preview preference sync failed");
-    });
-  }, [preferences, pushErrorStatus]);
-
-  useEffect(() => {
-    if (skipNextPreferenceRefreshRef.current) {
-      skipNextPreferenceRefreshRef.current = false;
-      return;
-    }
-    const path = activeTab?.location.kind === "file" && !isTemporaryDocumentPath(activeTab.location.path)
-      ? activeTab.location.path
-      : null;
-    if (!path) return;
-    const restoreTabId = activeTabId;
-    void openDocuments([path]).then(() => {
-      if (restoreTabId) setActiveTab(restoreTabId);
-    });
-    // Preferences refresh only the mounted file runtime. Inactive file tabs are unloaded.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preferences]);
+  useAppPreferenceEffects({
+    activeTab,
+    activeTabId,
+    openDocuments,
+    preferences,
+    pushErrorStatus,
+    setActiveTab,
+    skipNextPreferenceRefreshRef,
+  });
 
   const actions = useAppShellActions({
     activeDocument,
