@@ -39,6 +39,7 @@ import { useAppUpdates } from "./hooks/use-app-updates";
 import { useAppViewerFileActions } from "./hooks/use-app-viewer-file-actions";
 import { useAppViewerRuntimeFileMessages } from "./hooks/use-app-viewer-runtime-file-messages";
 import { useAppViewerRuntimeMessages } from "./hooks/use-app-viewer-runtime-messages";
+import { useAppViewerStateMessages } from "./hooks/use-app-viewer-state-messages";
 import { useAppWorkspaceActions } from "./hooks/use-app-workspace-actions";
 import { useAppXyzrenderSheetMessages } from "./hooks/use-app-xyzrender-sheet-messages";
 import { useAgentSession } from "./hooks/use-agent-session";
@@ -1496,6 +1497,14 @@ export default function App() {
     documents,
     postMessageToViewerSource,
   });
+  const { handleViewerStateMessage } = useAppViewerStateMessages({
+    activeDocument,
+    addDocuments,
+    documents,
+    openCommandPalette,
+    setViewerLigandSelections,
+    toggleSidebar,
+  });
   const { handleDockingPoseMessage } = useAppDockingPoseMessages({
     activeDocument,
     addBackgroundDocuments,
@@ -1653,47 +1662,7 @@ export default function App() {
         }
         return;
       }
-      if ((data.source === "burrete-viewer" || data.source === "burrete-grid") && body?.type === "openCommandPalette") {
-        openCommandPalette();
-        return;
-      }
-      if ((data.source === "burrete-viewer" || data.source === "burrete-grid") && body?.type === "toggleSidebar") {
-        toggleSidebar();
-        return;
-      }
-      if (data.source === "burrete-viewer" && body?.type === "selectionChanged") {
-        const documentId = typeof body.documentId === "string" ? body.documentId : "";
-        if (!documentId) return;
-        const selection = body.selection;
-        setViewerLigandSelections((previous) => ({
-          ...previous,
-          [documentId]: selection?.selector ? {
-            documentId,
-            label: String(selection.label || "Selected ligand"),
-            value: String(selection.value || ""),
-            selector: selection.selector,
-            atoms: Math.max(0, Math.trunc(Number(selection.atoms) || 0)),
-          } : null,
-        }));
-        return;
-      }
-      if (data.source === "burrete-viewer" && body?.type === "rendererChanged") {
-        const targetDocument = (body.documentId
-          ? documents.find((document) => document.id === body.documentId)
-          : null) ?? activeDocument;
-        const renderer = body.renderer === "xyzrender-external" ? "xyzrender-external" : body.renderer === "molstar" ? "molstar" : null;
-        if (targetDocument && renderer) {
-          addDocuments([{
-            ...targetDocument,
-            renderer,
-            xyzrenderControls: body.controls ?? targetDocument.xyzrenderControls ?? null,
-            xyzrenderPreset: body.preset ?? targetDocument.xyzrenderPreset ?? null,
-            xyzrenderPresetOptions: body.presetOptions
-              ?.filter((option): option is { value: string; label: string } => Boolean(option?.value && option?.label))
-              ?? targetDocument.xyzrenderPresetOptions
-            ?? null,
-          }]);
-        }
+      if (handleViewerStateMessage(data.source, body)) {
         return;
       }
       if (handleViewerRuntimeFileMessage(data.source, body, event.source)) {
@@ -2004,7 +1973,7 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, generate3DConformer, handleDockingPoseMessage, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleSdfViewerMessage, handleViewerFileMessage, handleViewerRuntimeFileMessage, handleViewerRuntimeMessage, handleXyzrenderSheetMessage, markViewerFirstRenderMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
+  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, generate3DConformer, handleDockingPoseMessage, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleSdfViewerMessage, handleViewerFileMessage, handleViewerRuntimeFileMessage, handleViewerRuntimeMessage, handleViewerStateMessage, handleXyzrenderSheetMessage, markViewerFirstRenderMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
