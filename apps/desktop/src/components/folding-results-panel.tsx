@@ -18,6 +18,25 @@ type PlotlyModule = {
   };
 };
 
+type SelectedMatrixCell = {
+  xLabel: string;
+  yLabel: string;
+  value: number;
+};
+
+const ABCFOLD_PAE_COLORSCALE = [
+  [0, "#1b4223"],
+  [0.125, "#2c5f36"],
+  [0.25, "#3f794b"],
+  [0.375, "#559262"],
+  [0.5, "#6eaa7a"],
+  [0.625, "#89c094"],
+  [0.75, "#a7d4b0"],
+  [0.875, "#c8e6ce"],
+  [1, "#ebf7ed"],
+];
+const PAE_PLOT_MARGIN = { l: 34, r: 42, t: 8, b: 30 };
+
 export function useFoldingResult(document: ViewerDocument | null): FoldingResultState {
   const [bundle, setBundle] = useState<FoldingResultBundle | null>(null);
   const [loading, setLoading] = useState(false);
@@ -217,33 +236,103 @@ function FoldingPlddtPlot({ profile }: { profile: FoldingProfile }) {
 }
 
 function FoldingMatrixHeatmap({ preview }: { preview: FoldingMatrixPreview }) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const plotRef = useRef<HTMLDivElement | null>(null);
+  const [selectedCell, setSelectedCell] = useState<SelectedMatrixCell | null>(null);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    const context = canvas?.getContext("2d");
-    if (!canvas || !context || !preview.values.length || !preview.values[0]?.length) return;
-    const width = canvas.clientWidth || 240;
-    const height = canvas.clientHeight || 180;
-    const scale = window.devicePixelRatio || 1;
-    canvas.width = Math.max(1, Math.floor(width * scale));
-    canvas.height = Math.max(1, Math.floor(height * scale));
-    context.setTransform(scale, 0, 0, scale, 0, 0);
-    context.clearRect(0, 0, width, height);
+    let cancelled = false;
+    let plotly: PlotlyModule | null = null;
+    const element = plotRef.current;
+    if (!element || !preview.values.length || !preview.values[0]?.length) return;
     const rows = preview.values.length;
     const cols = preview.values[0].length;
-    const min = preview.min ?? 0;
-    const max = preview.max ?? 1;
-    const span = Math.max(0.000001, max - min);
-    const cellWidth = width / cols;
-    const cellHeight = height / rows;
-    for (let row = 0; row < rows; row += 1) {
-      for (let col = 0; col < cols; col += 1) {
-        const value = preview.values[row]?.[col];
-        context.fillStyle = value === null ? "rgba(128,128,128,0.18)" : heatmapColor((value - min) / span);
-        context.fillRect(col * cellWidth, row * cellHeight, Math.ceil(cellWidth), Math.ceil(cellHeight));
+    const x = Array.from({ length: cols }, (_, index) => index + 1);
+    const y = Array.from({ length: rows }, (_, index) => index + 1);
+    const xLabels = matrixAxisLabels(preview.xLabels, cols);
+    const yLabels = matrixAxisLabels(preview.yLabels, rows);
+    const customdata = preview.values.map((row, rowIndex) =>
+      row.map((_, colIndex) => [xLabels[colIndex], yLabels[rowIndex]]),
+    );
+    const handleMatrixClick = (event: MouseEvent) => {
+      if ((event.target as Element | null)?.closest(".modebar")) return;
+      const rect = element.getBoundingClientRect();
+      const plotWidth = rect.width - PAE_PLOT_MARGIN.l - PAE_PLOT_MARGIN.r;
+      const plotHeight = rect.height - PAE_PLOT_MARGIN.t - PAE_PLOT_MARGIN.b;
+      if (plotWidth <= 0 || plotHeight <= 0) return;
+      const plotX = event.clientX - rect.left - PAE_PLOT_MARGIN.l;
+      const plotY = event.clientY - rect.top - PAE_PLOT_MARGIN.t;
+      if (plotX < 0 || plotY < 0 || plotX > plotWidth || plotY > plotHeight) return;
+      const colIndex = Math.max(0, Math.min(cols - 1, Math.floor(plotX / plotWidth * cols)));
+      const rowIndex = Math.max(0, Math.min(rows - 1, Math.floor(plotY / plotHeight * rows)));
+      const value = preview.values[rowIndex]?.[colIndex];
+      if (typeof value !== "number") {
+        setSelectedCell(null);
+        return;
       }
-    }
+      setSelectedCell({ xLabel: xLabels[colIndex], yLabel: yLabels[rowIndex], value });
+    };
+    element.addEventListener("click", handleMatrixClick);
+    void import("plotly.js-basic-dist-min")
+      .then((module) => {
+        if (cancelled || !plotRef.current) return;
+        plotly = module.default as PlotlyModule;
+        return plotly.react(
+          plotRef.current,
+          [{
+            type: "heatmap",
+            x,
+            y,
+            z: preview.values,
+            customdata,
+            zmin: 0,
+            zmax: preview.max ?? undefined,
+            colorscale: ABCFOLD_PAE_COLORSCALE,
+            hoverongaps: false,
+            hovertemplate: "Scored %{customdata[0]}<br>Aligned %{customdata[1]}<br>PAE %{z:.2f} A<extra></extra>",
+            colorbar: {
+              title: { text: "PAE", side: "right" },
+              thickness: 8,
+              len: 0.82,
+              tickfont: { size: 10, color: "rgba(128,128,128,0.9)" },
+            },
+          }],
+          {
+            margin: PAE_PLOT_MARGIN,
+            paper_bgcolor: "rgba(0,0,0,0)",
+            plot_bgcolor: "rgba(0,0,0,0)",
+            xaxis: {
+              range: [0.5, cols + 0.5],
+              tickmode: "array",
+              ...matrixAxisTicks(xLabels),
+              showgrid: false,
+              zeroline: false,
+              tickfont: { size: 10, color: "rgba(128,128,128,0.9)" },
+            },
+            yaxis: {
+              range: [rows + 0.5, 0.5],
+              tickmode: "array",
+              ...matrixAxisTicks(yLabels),
+              showgrid: false,
+              zeroline: false,
+              tickfont: { size: 10, color: "rgba(128,128,128,0.9)" },
+            },
+            shapes: matrixBoundaryShapes(xLabels, yLabels, rows, cols),
+            showlegend: false,
+          },
+          { displayModeBar: true, displaylogo: false, responsive: true },
+        );
+      })
+      .catch(() => {});
+    const observer = new ResizeObserver(() => {
+      if (plotRef.current && plotly?.Plots?.resize) void plotly.Plots.resize(plotRef.current);
+    });
+    observer.observe(element);
+    return () => {
+      cancelled = true;
+      observer.disconnect();
+      element.removeEventListener("click", handleMatrixClick);
+      if (element && plotly) plotly.purge(element);
+    };
   }, [preview]);
 
   return (
@@ -252,7 +341,12 @@ function FoldingMatrixHeatmap({ preview }: { preview: FoldingMatrixPreview }) {
         <strong>{preview.label}</strong>
         <span>{preview.shape.join(" x ")} · mean {preview.mean === null || preview.mean === undefined ? "-" : preview.mean.toFixed(2)}</span>
       </div>
-      <canvas ref={canvasRef} className="folding-matrix-heatmap" aria-label={`${preview.label} heatmap`} />
+      <div ref={plotRef} className="folding-matrix-heatmap" aria-label={`${preview.label} heatmap`} />
+      {selectedCell ? (
+        <div className="folding-matrix-status">
+          {selectedCell.yLabel} / {selectedCell.xLabel}: {selectedCell.value.toFixed(2)} A
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -287,17 +381,62 @@ function formatMetric(value: number) {
   return value.toFixed(3);
 }
 
-function heatmapColor(value: number) {
-  const clamped = Math.max(0, Math.min(1, value));
-  if (clamped < 0.5) {
-    return interpolateColor([47, 111, 237], [245, 247, 250], clamped * 2);
-  }
-  return interpolateColor([245, 247, 250], [217, 79, 69], (clamped - 0.5) * 2);
+function matrixAxisLabels(labels: string[] | undefined, count: number) {
+  if (labels?.length === count) return labels;
+  return Array.from({ length: count }, (_, index) => String(index + 1));
 }
 
-function interpolateColor(from: [number, number, number], to: [number, number, number], t: number) {
-  const r = Math.round(from[0] + (to[0] - from[0]) * t);
-  const g = Math.round(from[1] + (to[1] - from[1]) * t);
-  const b = Math.round(from[2] + (to[2] - from[2]) * t);
-  return `rgb(${r} ${g} ${b})`;
+function matrixAxisTicks(labels: string[]) {
+  const step = Math.max(1, Math.ceil(labels.length / 6));
+  const tickvals: number[] = [];
+  const ticktext: string[] = [];
+  for (let index = 0; index < labels.length; index += step) {
+    tickvals.push(index + 1);
+    ticktext.push(labels[index]);
+  }
+  if (tickvals[tickvals.length - 1] !== labels.length) {
+    tickvals.push(labels.length);
+    ticktext.push(labels[labels.length - 1]);
+  }
+  return { tickvals, ticktext };
+}
+
+function matrixBoundaryShapes(xLabels: string[], yLabels: string[], rows: number, cols: number) {
+  const shapes: unknown[] = [];
+  for (const boundary of chainBoundaries(xLabels)) {
+    shapes.push({
+      type: "line",
+      x0: boundary,
+      x1: boundary,
+      y0: 0.5,
+      y1: rows + 0.5,
+      line: { color: "rgba(255,255,255,0.48)", width: 1 },
+    });
+  }
+  for (const boundary of chainBoundaries(yLabels)) {
+    shapes.push({
+      type: "line",
+      x0: 0.5,
+      x1: cols + 0.5,
+      y0: boundary,
+      y1: boundary,
+      line: { color: "rgba(255,255,255,0.48)", width: 1 },
+    });
+  }
+  return shapes;
+}
+
+function chainBoundaries(labels: string[]) {
+  const boundaries: number[] = [];
+  for (let index = 1; index < labels.length; index += 1) {
+    const previous = chainPrefix(labels[index - 1]);
+    const current = chainPrefix(labels[index]);
+    if (previous && current && previous !== current) boundaries.push(index + 0.5);
+  }
+  return boundaries;
+}
+
+function chainPrefix(label: string) {
+  const separator = label.indexOf(":");
+  return separator > 0 ? label.slice(0, separator) : "";
 }

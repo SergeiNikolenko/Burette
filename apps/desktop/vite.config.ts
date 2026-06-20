@@ -173,6 +173,8 @@ type BrowserDevFoldingModel = {
     path: string;
     shape: number[];
     values: Array<Array<number | null>>;
+    xLabels: string[];
+    yLabels: string[];
     min: number | null;
     max: number | null;
     mean: number | null;
@@ -4059,9 +4061,26 @@ function browserDevModelOutputsForArtifacts(artifacts: Array<{ path: string; tit
   for (const artifact of artifacts) {
     if (artifact.extension === "json") {
       try {
-        collectBrowserDevJsonMetrics(JSON.parse(readFileSync(artifact.path, "utf8")), "", metrics, metricKeys);
+        const value = JSON.parse(readFileSync(artifact.path, "utf8"));
+        collectBrowserDevJsonMetrics(value, "", metrics, metricKeys);
+        plddtProfile ||= browserDevPlddtProfileForJson(value, artifact);
+        const preview = matrixPreview ? null : browserDevMatrixPreviewForJson(value, artifact);
+        if (preview) {
+          addBrowserDevMatrixMetric(preview, metrics, metricKeys);
+          matrixPreview = preview;
+        }
       } catch (_) {
         warnings.push(`Could not parse ${artifact.title}`);
+      }
+      continue;
+    }
+    if (artifact.extension === "html" || artifact.extension === "htm") {
+      if (!matrixPreview) {
+        const preview = browserDevMatrixPreviewForAbcfoldHtml(artifact);
+        if (preview) {
+          addBrowserDevMatrixMetric(preview, metrics, metricKeys);
+          matrixPreview = preview;
+        }
       }
       continue;
     }
@@ -4091,6 +4110,12 @@ function collectBrowserDevJsonMetrics(value: unknown, prefix: string, metrics: B
   if (isBrowserDevConfidenceMetric(key)) addBrowserDevMetric(metrics, keys, key, browserDevMetricLabel(key), value);
 }
 
+function addBrowserDevMatrixMetric(preview: NonNullable<BrowserDevFoldingModel["matrixPreview"]>, metrics: BrowserDevFoldingMetric[], keys: Set<string>) {
+  if (preview.mean === null) return;
+  if (preview.kind === "pae") addBrowserDevMetric(metrics, keys, "pae_mean", "Mean PAE", preview.mean);
+  if (preview.kind === "pde") addBrowserDevMetric(metrics, keys, "pde_mean", "Mean PDE", preview.mean);
+}
+
 function addBrowserDevArrayMetrics(array: BrowserDevNumpyArraySummary, artifact: { title: string }, metrics: BrowserDevFoldingMetric[], keys: Set<string>) {
   const name = normalizeFoldingMetricKey(array.name);
   const path = normalizeFoldingMetricKey(artifact.title);
@@ -4110,6 +4135,17 @@ function browserDevPlddtProfileForArray(array: BrowserDevNumpyArraySummary, arti
   if (!(name.includes("plddt") || path.includes("plddt")) || array.shape.length !== 1) return null;
   const scale = (array.max ?? 0) <= 1.5;
   const values = array.values.filter((value): value is number => value !== null).map((value) => scale ? value * 100 : value);
+  const stats = finiteNumberStats(values);
+  if (!stats) return null;
+  return { label: "pLDDT", path: artifact.path, values, min: stats.min, max: stats.max, mean: stats.mean };
+}
+
+function browserDevPlddtProfileForJson(value: unknown, artifact: { path: string }) {
+  const payload = browserDevJsonObjectPayload(value);
+  const rawValues = payload ? browserDevNumericVector(payload.plddt ?? payload.plddts ?? payload.predicted_lddt) : null;
+  if (!rawValues) return null;
+  const scale = Math.max(...rawValues) <= 1.5;
+  const values = rawValues.map((value) => scale ? value * 100 : value);
   const stats = finiteNumberStats(values);
   if (!stats) return null;
   return { label: "pLDDT", path: artifact.path, values, min: stats.min, max: stats.max, mean: stats.mean };
@@ -4136,7 +4172,135 @@ function browserDevMatrixPreviewForArray(array: BrowserDevNumpyArraySummary, art
     }
     values.push(previewRow);
   }
-  return { kind, label: kind.toUpperCase(), path: artifact.path, shape: array.shape, values, min: array.min, max: array.max, mean: array.mean };
+  return { kind, label: kind.toUpperCase(), path: artifact.path, shape: array.shape, values, xLabels: [], yLabels: [], min: array.min, max: array.max, mean: array.mean };
+}
+
+function browserDevMatrixPreviewForJson(value: unknown, artifact: { path: string; title: string }) {
+  const payload = browserDevJsonObjectPayload(value);
+  const artifactKey = normalizeFoldingMetricKey(artifact.title);
+  const matrixValue = payload?.pae ?? payload?.predicted_aligned_error ?? (artifactKey.includes("pae") || artifactKey.includes("predicted_aligned_error") ? value : null);
+  const matrix = browserDevNumericMatrix(matrixValue);
+  if (!matrix) return null;
+  return browserDevMatrixPreviewFromMatrix("pae", "PAE", artifact.path, matrix, payload ? browserDevTokenLabelsForJson(payload, matrix.length) : null);
+}
+
+function browserDevMatrixPreviewForAbcfoldHtml(artifact: { path: string; title: string }) {
+  if (!artifact.title.toLowerCase().includes("pae")) return null;
+  const sessionText = browserDevHtmlJsonScriptContent(readFileSync(artifact.path, "utf8"), "session-data");
+  if (!sessionText) return null;
+  const session = JSON.parse(sessionText);
+  const scoresContent = browserDevJsonObjectPayload(session)?.scoresFile;
+  if (scoresContent && typeof scoresContent === "object" && !Array.isArray(scoresContent) && typeof scoresContent.content === "string") {
+    return browserDevMatrixPreviewForJson(JSON.parse(scoresContent.content), artifact);
+  }
+  return browserDevMatrixPreviewForJson(session, artifact);
+}
+
+function browserDevMatrixPreviewFromMatrix(
+  kind: string,
+  label: string,
+  path: string,
+  matrix: Array<Array<number | null>>,
+  labels: string[] | null,
+) {
+  const rows = matrix.length;
+  const cols = matrix[0]?.length ?? 0;
+  if (!rows || !cols) return null;
+  const rowCount = Math.min(rows, 72);
+  const colCount = Math.min(cols, 72);
+  const values: Array<Array<number | null>> = [];
+  const xLabels: string[] = [];
+  const yLabels: string[] = [];
+  for (let col = 0; col < colCount; col += 1) {
+    const sourceCol = Math.floor(col * cols / colCount);
+    xLabels.push(labels?.[sourceCol] ?? String(sourceCol + 1));
+  }
+  for (let row = 0; row < rowCount; row += 1) {
+    const sourceRow = Math.floor(row * rows / rowCount);
+    yLabels.push(labels?.[sourceRow] ?? String(sourceRow + 1));
+    const previewRow: Array<number | null> = [];
+    for (let col = 0; col < colCount; col += 1) {
+      const sourceCol = Math.floor(col * cols / colCount);
+      previewRow.push(matrix[sourceRow]?.[sourceCol] ?? null);
+    }
+    values.push(previewRow);
+  }
+  const stats = finiteNumberStats(matrix.flat().filter((value): value is number => value !== null));
+  if (!stats) return null;
+  return { kind, label, path, shape: [rows, cols], values, xLabels, yLabels, min: stats.min, max: stats.max, mean: stats.mean };
+}
+
+function browserDevJsonObjectPayload(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+  if (Array.isArray(value)) {
+    const object = value.find((item) => item && typeof item === "object" && !Array.isArray(item));
+    return object ? object as Record<string, unknown> : null;
+  }
+  return null;
+}
+
+function browserDevNumericVector(value: unknown) {
+  if (!Array.isArray(value) || !value.length) return null;
+  const output: number[] = [];
+  for (const item of value) {
+    if (typeof item !== "number" || !Number.isFinite(item)) return null;
+    output.push(item);
+  }
+  return output;
+}
+
+function browserDevNumericMatrix(value: unknown) {
+  if (!Array.isArray(value) || !value.length) return null;
+  const first = value[0];
+  if (!Array.isArray(first) || !first.length) return null;
+  const colCount = first.length;
+  const matrix: Array<Array<number | null>> = [];
+  for (const row of value) {
+    if (!Array.isArray(row) || row.length !== colCount) return null;
+    const outputRow: Array<number | null> = [];
+    for (const item of row) {
+      if (item === null) {
+        outputRow.push(null);
+      } else if (typeof item === "number" && Number.isFinite(item) && item >= 0) {
+        outputRow.push(item);
+      } else {
+        return null;
+      }
+    }
+    matrix.push(outputRow);
+  }
+  return matrix;
+}
+
+function browserDevTokenLabelsForJson(payload: Record<string, unknown>, expectedLength: number) {
+  const residueLabels = browserDevJsonLabelArray(payload.token_res_ids ?? payload.residue_ids ?? payload.residue_index);
+  if (!residueLabels || residueLabels.length !== expectedLength) return null;
+  const chainLabels = browserDevJsonLabelArray(payload.token_chain_ids ?? payload.chain_ids);
+  if (!chainLabels || chainLabels.length !== expectedLength) return residueLabels;
+  return residueLabels.map((residue, index) => `${chainLabels[index]}:${residue}`);
+}
+
+function browserDevJsonLabelArray(value: unknown) {
+  if (!Array.isArray(value) || !value.length) return null;
+  const labels: string[] = [];
+  for (const item of value) {
+    if (typeof item === "string") labels.push(item);
+    else if (typeof item === "number" && Number.isFinite(item)) labels.push(String(item));
+    else return null;
+  }
+  return labels;
+}
+
+function browserDevHtmlJsonScriptContent(html: string, scriptId: string) {
+  const idPosition = html.indexOf(`id="${scriptId}"`);
+  if (idPosition < 0) return null;
+  const scriptStart = html.lastIndexOf("<script", idPosition);
+  if (scriptStart < 0) return null;
+  const contentStart = html.indexOf(">", scriptStart);
+  if (contentStart < 0) return null;
+  const contentEnd = html.indexOf("</script>", contentStart + 1);
+  if (contentEnd < 0) return null;
+  return html.slice(contentStart + 1, contentEnd).trim();
 }
 
 function matchingBrowserDevFoldingArtifacts(
@@ -4251,9 +4415,9 @@ function backendForBrowserDevFoldingModel(structure: { path: string }, artifacts
   const combined = [structure.path, ...artifacts.map((artifact) => artifact.path), root].join("\n").toLowerCase();
   if (combined.includes("boltz") || combined.includes("affinity_")) return "Boltz";
   if (combined.includes("chai") || combined.includes("model_idx")) return "Chai-1";
-  if (combined.includes("alphafold") || combined.includes("seed-") || combined.includes("summary_confidences")) return "AlphaFold";
   if (combined.includes("protenix")) return "Protenix";
   if (combined.includes("openfold")) return "OpenFold";
+  if (combined.includes("alphafold") || combined.includes("seed-") || combined.includes("summary_confidences")) return "AlphaFold3";
   return "Folding";
 }
 

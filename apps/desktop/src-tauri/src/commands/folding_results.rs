@@ -65,6 +65,8 @@ struct FoldingMatrixPreview {
     path: String,
     shape: Vec<usize>,
     values: Vec<Vec<Option<f64>>>,
+    x_labels: Vec<String>,
+    y_labels: Vec<String>,
     min: Option<f64>,
     max: Option<f64>,
     mean: Option<f64>,
@@ -192,8 +194,28 @@ fn model_outputs_for_artifacts(
                 .ok()
                 .and_then(|text| serde_json::from_str::<Value>(&text).ok())
             {
-                Some(value) => collect_json_metrics(&value, "", &mut metrics, &mut metric_keys),
+                Some(value) => {
+                    collect_json_metrics(&value, "", &mut metrics, &mut metric_keys);
+                    if plddt_profile.is_none() {
+                        plddt_profile = plddt_profile_for_json(&value, artifact);
+                    }
+                    if matrix_preview.is_none() {
+                        if let Some(preview) = matrix_preview_for_json(&value, artifact) {
+                            add_matrix_metric(&preview, &mut metrics, &mut metric_keys);
+                            matrix_preview = Some(preview);
+                        }
+                    }
+                }
                 None => warnings.push(format!("Could not parse {}", artifact.title)),
+            }
+            continue;
+        }
+        if matches!(artifact.extension.as_str(), "html" | "htm") {
+            if matrix_preview.is_none() {
+                if let Some(preview) = matrix_preview_for_abcfold_html(artifact) {
+                    add_matrix_metric(&preview, &mut metrics, &mut metric_keys);
+                    matrix_preview = Some(preview);
+                }
             }
             continue;
         }
@@ -216,6 +238,22 @@ fn model_outputs_for_artifacts(
         }
     }
     (metrics, plddt_profile, matrix_preview, warnings)
+}
+
+fn add_matrix_metric(
+    preview: &FoldingMatrixPreview,
+    metrics: &mut Vec<FoldingMetric>,
+    keys: &mut HashSet<String>,
+) {
+    let Some(mean) = preview.mean else {
+        return;
+    };
+    let (key, label) = match preview.kind.as_str() {
+        "pae" => ("pae_mean", "Mean PAE"),
+        "pde" => ("pde_mean", "Mean PDE"),
+        _ => return,
+    };
+    add_metric(metrics, keys, key.to_string(), label.to_string(), mean);
 }
 
 fn collect_json_metrics(
@@ -306,6 +344,30 @@ fn plddt_profile_for_array(
     })
 }
 
+fn plddt_profile_for_json(value: &Value, artifact: &FileEntry) -> Option<FoldingProfile> {
+    let payload = json_object_payload(value)?;
+    let values = numeric_vector(
+        payload
+            .get("plddt")
+            .or_else(|| payload.get("plddts"))
+            .or_else(|| payload.get("predicted_lddt"))?,
+    )?;
+    let scale = values.iter().copied().fold(0.0f64, f64::max) <= 1.5;
+    let values = values
+        .into_iter()
+        .map(|value| if scale { value * 100.0 } else { value })
+        .collect::<Vec<_>>();
+    let (min, max, mean) = finite_stats(&values)?;
+    Some(FoldingProfile {
+        label: "pLDDT".to_string(),
+        path: artifact.path.to_string_lossy().to_string(),
+        values,
+        min,
+        max,
+        mean,
+    })
+}
+
 fn matrix_preview_for_array(
     array: &NumpyArraySummary,
     artifact: &FileEntry,
@@ -345,10 +407,222 @@ fn matrix_preview_for_array(
         path: artifact.path.to_string_lossy().to_string(),
         shape: array.shape.clone(),
         values,
+        x_labels: Vec::new(),
+        y_labels: Vec::new(),
         min: array.min,
         max: array.max,
         mean: array.mean,
     })
+}
+
+fn matrix_preview_for_json(value: &Value, artifact: &FileEntry) -> Option<FoldingMatrixPreview> {
+    let payload = json_object_payload(value);
+    let matrix_value = payload
+        .and_then(|object| {
+            object
+                .get("pae")
+                .or_else(|| object.get("predicted_aligned_error"))
+        })
+        .or_else(|| {
+            let path = normalize_metric_key(&artifact.title);
+            (path.contains("pae") || path.contains("predicted_aligned_error")).then_some(value)
+        })?;
+    let matrix = numeric_matrix(matrix_value)?;
+    let labels = payload.and_then(|object| token_labels_for_json(object, matrix.len()));
+    matrix_preview_from_matrix(
+        "pae",
+        "PAE",
+        artifact.path.to_string_lossy().to_string(),
+        matrix,
+        labels,
+    )
+}
+
+fn matrix_preview_for_abcfold_html(artifact: &FileEntry) -> Option<FoldingMatrixPreview> {
+    let lower = artifact.title.to_ascii_lowercase();
+    if !lower.contains("pae") {
+        return None;
+    }
+    let text = fs::read_to_string(&artifact.path).ok()?;
+    let session_text = html_json_script_content(&text, "session-data")?;
+    let session = serde_json::from_str::<Value>(session_text).ok()?;
+    if let Some(scores_content) = session
+        .get("scoresFile")
+        .and_then(|value| value.get("content"))
+        .and_then(Value::as_str)
+    {
+        let scores = serde_json::from_str::<Value>(scores_content).ok()?;
+        return matrix_preview_for_json(&scores, artifact);
+    }
+    matrix_preview_for_json(&session, artifact)
+}
+
+fn matrix_preview_from_matrix(
+    kind: &str,
+    label: &str,
+    path: String,
+    matrix: Vec<Vec<Option<f64>>>,
+    labels: Option<Vec<String>>,
+) -> Option<FoldingMatrixPreview> {
+    let rows = matrix.len();
+    let cols = matrix.first()?.len();
+    if rows == 0 || cols == 0 {
+        return None;
+    }
+    let row_count = rows.min(FOLDING_MATRIX_PREVIEW_LIMIT);
+    let col_count = cols.min(FOLDING_MATRIX_PREVIEW_LIMIT);
+    let mut values = Vec::with_capacity(row_count);
+    let mut x_labels = Vec::with_capacity(col_count);
+    let mut y_labels = Vec::with_capacity(row_count);
+    for col in 0..col_count {
+        let source_col = col * cols / col_count;
+        x_labels.push(matrix_axis_label(labels.as_ref(), source_col));
+    }
+    for row in 0..row_count {
+        let source_row = row * rows / row_count;
+        y_labels.push(matrix_axis_label(labels.as_ref(), source_row));
+        let mut preview_row = Vec::with_capacity(col_count);
+        for col in 0..col_count {
+            let source_col = col * cols / col_count;
+            preview_row.push(matrix[source_row][source_col]);
+        }
+        values.push(preview_row);
+    }
+    let stats_values = matrix
+        .iter()
+        .flat_map(|row| row.iter().filter_map(|value| *value))
+        .collect::<Vec<_>>();
+    let (min, max, mean) = finite_stats(&stats_values)?;
+    Some(FoldingMatrixPreview {
+        kind: kind.to_string(),
+        label: label.to_string(),
+        path,
+        shape: vec![rows, cols],
+        values,
+        x_labels,
+        y_labels,
+        min: Some(min),
+        max: Some(max),
+        mean: Some(mean),
+    })
+}
+
+fn json_object_payload(value: &Value) -> Option<&serde_json::Map<String, Value>> {
+    match value {
+        Value::Object(object) => Some(object),
+        Value::Array(items) => items.iter().find_map(|item| match item {
+            Value::Object(object) => Some(object),
+            _ => None,
+        }),
+        _ => None,
+    }
+}
+
+fn numeric_vector(value: &Value) -> Option<Vec<f64>> {
+    let values = value.as_array()?;
+    let mut output = Vec::with_capacity(values.len());
+    for value in values {
+        let number = value.as_f64()?;
+        if !number.is_finite() {
+            return None;
+        }
+        output.push(number);
+    }
+    (!output.is_empty()).then_some(output)
+}
+
+fn numeric_matrix(value: &Value) -> Option<Vec<Vec<Option<f64>>>> {
+    let rows = value.as_array()?;
+    let first = rows.first()?.as_array()?;
+    if first.is_empty() {
+        return None;
+    }
+    let col_count = first.len();
+    let mut matrix = Vec::with_capacity(rows.len());
+    for row in rows {
+        let row = row.as_array()?;
+        if row.len() != col_count {
+            return None;
+        }
+        let mut output_row = Vec::with_capacity(row.len());
+        for value in row {
+            if value.is_null() {
+                output_row.push(None);
+                continue;
+            }
+            let number = value.as_f64()?;
+            if !number.is_finite() || number < 0.0 {
+                return None;
+            }
+            output_row.push(Some(number));
+        }
+        matrix.push(output_row);
+    }
+    (!matrix.is_empty()).then_some(matrix)
+}
+
+fn token_labels_for_json(
+    object: &serde_json::Map<String, Value>,
+    expected_len: usize,
+) -> Option<Vec<String>> {
+    let residue_labels = json_label_array(
+        object
+            .get("token_res_ids")
+            .or_else(|| object.get("residue_ids"))
+            .or_else(|| object.get("residue_index"))?,
+    )?;
+    if residue_labels.len() != expected_len {
+        return None;
+    }
+    let chain_labels = object
+        .get("token_chain_ids")
+        .or_else(|| object.get("chain_ids"))
+        .and_then(json_label_array);
+    Some(match chain_labels {
+        Some(chains) if chains.len() == expected_len => chains
+            .into_iter()
+            .zip(residue_labels)
+            .map(|(chain, residue)| format!("{chain}:{residue}"))
+            .collect(),
+        _ => residue_labels,
+    })
+}
+
+fn json_label_array(value: &Value) -> Option<Vec<String>> {
+    let values = value.as_array()?;
+    let mut labels = Vec::with_capacity(values.len());
+    for value in values {
+        labels.push(json_label(value)?);
+    }
+    (!labels.is_empty()).then_some(labels)
+}
+
+fn json_label(value: &Value) -> Option<String> {
+    match value {
+        Value::String(label) => Some(label.clone()),
+        Value::Number(number) => number
+            .as_i64()
+            .map(|value| value.to_string())
+            .or_else(|| number.as_u64().map(|value| value.to_string()))
+            .or_else(|| number.as_f64().map(|value| value.to_string())),
+        _ => None,
+    }
+}
+
+fn matrix_axis_label(labels: Option<&Vec<String>>, source_index: usize) -> String {
+    labels
+        .and_then(|labels| labels.get(source_index))
+        .cloned()
+        .unwrap_or_else(|| (source_index + 1).to_string())
+}
+
+fn html_json_script_content<'a>(html: &'a str, script_id: &str) -> Option<&'a str> {
+    let id_attribute = format!("id=\"{script_id}\"");
+    let id_position = html.find(&id_attribute)?;
+    let script_start = html[..id_position].rfind("<script")?;
+    let content_start = html[script_start..].find('>')? + script_start + 1;
+    let content_end = html[content_start..].find("</script>")? + content_start;
+    Some(html[content_start..content_end].trim())
 }
 
 fn matching_artifacts(
@@ -438,17 +712,17 @@ fn backend_for_model(structure: &FileEntry, artifacts: &[FileEntry], root: &Path
     if combined.contains("chai") || combined.contains("model_idx") {
         return "Chai-1".to_string();
     }
-    if combined.contains("alphafold")
-        || combined.contains("seed-")
-        || combined.contains("summary_confidences")
-    {
-        return "AlphaFold".to_string();
-    }
     if combined.contains("protenix") {
         return "Protenix".to_string();
     }
     if combined.contains("openfold") {
         return "OpenFold".to_string();
+    }
+    if combined.contains("alphafold")
+        || combined.contains("seed-")
+        || combined.contains("summary_confidences")
+    {
+        return "AlphaFold3".to_string();
     }
     "Folding".to_string()
 }
@@ -860,5 +1134,73 @@ mod tests {
             canonical_pdb.to_string_lossy()
         );
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn extracts_pae_matrix_from_confidence_json() {
+        let dir = temp_dir("pae-json");
+        let cif = dir.join("model_0.cif");
+        fs::write(&cif, "data_model\n#\n").expect("cif should write");
+        fs::write(
+            dir.join("model_0_confidences.json"),
+            r#"{
+              "ptm": 0.64,
+              "pae": [[0.0, 3.5], [4.5, 0.2]],
+              "token_chain_ids": ["A", "B"],
+              "token_res_ids": [10, 22]
+            }"#,
+        )
+        .expect("confidence json should write");
+        let bundle = read_folding_result_bundle_impl(cif).expect("bundle should read");
+        let preview = bundle.models[0]
+            .matrix_preview
+            .as_ref()
+            .expect("pae preview should be present");
+        assert_eq!(preview.kind, "pae");
+        assert_eq!(preview.shape, vec![2, 2]);
+        assert_eq!(
+            preview.x_labels,
+            vec!["A:10".to_string(), "B:22".to_string()]
+        );
+        assert!(bundle.models[0]
+            .metrics
+            .iter()
+            .any(|metric| metric.key == "pae_mean"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn extracts_pae_matrix_from_abcfold_html_session_data() {
+        let dir = temp_dir("pae-html");
+        let cif = dir.join("model_0.cif");
+        fs::write(&cif, "data_model\n#\n").expect("cif should write");
+        let scores = serde_json::json!({
+            "pae": [[0.0, 1.0], [2.0, 0.0]],
+            "token_chain_ids": ["A", "A"],
+            "token_res_ids": [1, 2]
+        })
+        .to_string();
+        let session = serde_json::json!({
+            "scoresFile": {
+                "name": "scores.json",
+                "content": scores
+            }
+        });
+        fs::write(
+            dir.join("model_0_af3_pae_plot.html"),
+            format!(
+                r#"<html><head><script type="application/json" id="session-data">{session}</script></head></html>"#
+            ),
+        )
+        .expect("pae html should write");
+        let bundle = read_folding_result_bundle_impl(cif).expect("bundle should read");
+        let preview = bundle.models[0]
+            .matrix_preview
+            .as_ref()
+            .expect("pae preview should be present");
+        assert_eq!(preview.kind, "pae");
+        assert_eq!(preview.values[0][1], Some(1.0));
+        assert_eq!(preview.y_labels, vec!["A:1".to_string(), "A:2".to_string()]);
+        let _ = fs::remove_dir_all(dir);
     }
 }
