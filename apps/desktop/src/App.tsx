@@ -11,6 +11,7 @@ import {
   useOpenCommandPalette,
   useSetCommandPaletteSearch,
 } from "./hooks/use-command-palette";
+import { useAppChemistryJobs } from "./hooks/use-app-chemistry-jobs";
 import { useAppDescriptors } from "./hooks/use-app-descriptors";
 import { useAppDiagnostics } from "./hooks/use-app-diagnostics";
 import { useAppDirtyGridDocuments } from "./hooks/use-app-dirty-grid-documents";
@@ -107,8 +108,8 @@ import {
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
 import { generateBrowserDev3DConformer, openBrowserDevDocuments, openBrowserDevMolstarContextDocument, openBrowserDevTextDocument, readBrowserDevVirtualTextDocument, writeBrowserDevVirtualTextDocument } from "./lib/browser-dev-documents";
 import { openBrowserDevTextFiles } from "./lib/browser-dev-text-files";
-import { cancelConformerRequest, cancelXtbRequest, installXtbRequest, prepareConformerRequest, requestConformerStatus, requestXtbStatus, runConformerRequest, runXtbRequest } from "./lib/chemistry-job-requests";
-import { conformerOperationLabel, conformerStatusLine, normalizeConformerSettings, normalizeXtbSettings, readConformerSettings, readXtbSettings, saveConformerSettings, saveXtbSettings, xtbOperationLabel } from "./lib/chemistry-settings";
+import { prepareConformerRequest, requestConformerStatus, requestXtbStatus, runConformerRequest, runXtbRequest } from "./lib/chemistry-job-requests";
+import { conformerOperationLabel, xtbOperationLabel } from "./lib/chemistry-settings";
 import { isMoleculeCollectionPath } from "./lib/collection-documents";
 import { isProteinLikeDockingSource } from "./lib/docking-documents";
 import { canInspectConformerEnsemble, canUseConformerWorkflow } from "./lib/conformer-ensemble";
@@ -125,7 +126,7 @@ import { isSpectrumPath, isSubformulaSpectrumJsonText, isTabularSpectrumExtensio
 import type { TextStructureSelection } from "./lib/text-structure-selection";
 import { isTauriRuntime } from "./lib/tauri";
 import { isTemporaryDocumentPath } from "./lib/temporary-documents";
-import type { ConformerJob, ConformerOperation, ConformerPreparedRun, ConformerRunRequest, ConformerRunResult, ConformerSettings, ConformerStatus, FepSetupRequest, OpenDocumentsMode, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XtbJob, XtbOperation, XtbRunRequest, XtbRunResult, XtbSettings, XtbStatus } from "./types";
+import type { ConformerJob, ConformerOperation, ConformerPreparedRun, ConformerRunRequest, FepSetupRequest, OpenDocumentsMode, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XtbJob, XtbOperation, XtbRunRequest, XtbRunResult } from "./types";
 
 const CommandPalette = lazy(() => import("./components/command-palette").then((module) => ({
   default: module.CommandPalette,
@@ -374,13 +375,28 @@ export default function App() {
     updateDirtyGridDocument,
   } = useAppDirtyGridDocuments();
   const [poseReviewSelections, setPoseReviewSelections] = useState<Record<string, number>>({});
-  const [conformerStatus, setConformerStatus] = useState<ConformerStatus | null>(null);
-  const [conformerSettings, setConformerSettingsState] = useState<ConformerSettings>(() => readConformerSettings());
-  const [conformerJobs, setConformerJobs] = useState<ConformerJob[]>([]);
   const [viewerLigandSelections, setViewerLigandSelections] = useState<Record<string, ViewerLigandSelection | null>>({});
-  const [xtbStatus, setXtbStatus] = useState<XtbStatus | null>(null);
-  const [xtbSettings, setXtbSettingsState] = useState<XtbSettings>(() => readXtbSettings());
-  const [xtbJobs, setXtbJobs] = useState<XtbJob[]>([]);
+  const {
+    cancelConformerJob,
+    cancelXtbJob,
+    cancelledConformerJobIdsRef,
+    cancelledXtbJobIdsRef,
+    checkConformerStatus,
+    checkXtbStatus,
+    conformerJobs,
+    conformerSettings,
+    conformerStatus,
+    installXtb,
+    setConformerJobs,
+    setConformerSettings,
+    setConformerStatus,
+    setXtbJobs,
+    setXtbSettings,
+    setXtbStatus,
+    xtbJobs,
+    xtbSettings,
+    xtbStatus,
+  } = useAppChemistryJobs({ pushErrorStatus, pushStatus });
   const {
     buildInfo,
     checkForUpdates,
@@ -418,8 +434,6 @@ export default function App() {
   const xyzrenderOrientationRefRef = useRef<string | null>(null);
   const skipNextPreferenceRefreshRef = useRef(false);
   const gridPerfMetricsRef = useRef<string[]>([]);
-  const cancelledConformerJobIdsRef = useRef(new Set<string>());
-  const cancelledXtbJobIdsRef = useRef(new Set<string>());
   const commandPaletteOpen = useIsCommandPaletteOpen();
   const commandPaletteQuery = useCommandPaletteSearch();
   const openCommandPalette = useOpenCommandPalette();
@@ -448,49 +462,6 @@ export default function App() {
     openQuickLookDocument,
     pushErrorStatus,
   });
-
-  const setConformerSettings = useCallback((settings: ConformerSettings) => {
-    const normalized = normalizeConformerSettings(settings);
-    setConformerSettingsState(normalized);
-    saveConformerSettings(normalized);
-  }, []);
-
-  const checkConformerStatus = useCallback(async () => {
-    try {
-      const status = await requestConformerStatus();
-      setConformerStatus(status);
-      pushStatus(conformerStatusLine(status));
-    } catch (error) {
-      pushErrorStatus(error, "CREST/PRISM status failed");
-    }
-  }, [pushErrorStatus, pushStatus]);
-
-  const setXtbSettings = useCallback((settings: XtbSettings) => {
-    const normalized = normalizeXtbSettings(settings);
-    setXtbSettingsState(normalized);
-    saveXtbSettings(normalized);
-  }, []);
-
-  const checkXtbStatus = useCallback(async () => {
-    try {
-      const status = await requestXtbStatus();
-      setXtbStatus(status);
-      pushStatus(status.installed ? `xTB ready: ${status.version ?? status.executablePath ?? "installed"}` : status.installHint, status.installed ? "success" : "error");
-    } catch (error) {
-      pushErrorStatus(error, "xTB status failed");
-    }
-  }, [pushErrorStatus, pushStatus]);
-
-  const installXtb = useCallback(async () => {
-    try {
-      pushStatus("Installing xTB...");
-      const status = await installXtbRequest();
-      setXtbStatus(status);
-      pushStatus(status.installed ? `xTB installed: ${status.version ?? status.executablePath ?? "ready"}` : status.installHint, status.installed ? "success" : "error");
-    } catch (error) {
-      pushErrorStatus(error, "xTB install failed");
-    }
-  }, [pushErrorStatus, pushStatus]);
 
   const openXtbOptimizedPoseInCurrentView = useCallback(async (
     sourceDocument: ViewerDocument | null | undefined,
@@ -667,22 +638,6 @@ export default function App() {
       pushErrorStatus(error, `xTB ${request.operation} failed`);
     }
   }, [addDockDrop, openDockTab, openXtbOptimizedPoseInCurrentView, pushErrorStatus, pushStatus, setDockActiveTab, setDockOpen, xtbSettings]);
-
-  const cancelXtbJob = useCallback(async (jobId: string) => {
-    cancelledXtbJobIdsRef.current.add(jobId);
-    setXtbJobs((previous) => previous.map((job) => job.id === jobId && job.status === "running" ? {
-      ...job,
-      status: "cancelled",
-      completedAt: Date.now(),
-      error: "xTB job cancelled.",
-    } : job));
-    try {
-      await cancelXtbRequest(jobId);
-      pushStatus("xTB job cancelled");
-    } catch (error) {
-      pushErrorStatus(error, "Cancel xTB job failed");
-    }
-  }, [pushErrorStatus, pushStatus]);
 
   const requestMolstarXtbContextDocument = useCallback(async (document: ViewerDocument): Promise<MolstarContextDocument | null> => {
     if (document.renderer !== "molstar") return null;
@@ -889,22 +844,6 @@ export default function App() {
     }
   }, [conformerSettings, pushErrorStatus, pushStatus]);
 
-  const cancelConformerJob = useCallback(async (jobId: string) => {
-    cancelledConformerJobIdsRef.current.add(jobId);
-    setConformerJobs((previous) => previous.map((job) => job.id === jobId && job.status === "running" ? {
-      ...job,
-      status: "cancelled",
-      completedAt: Date.now(),
-      error: "Conformer job cancelled.",
-    } : job));
-    try {
-      await cancelConformerRequest(jobId);
-      pushStatus("Conformer job cancelled");
-    } catch (error) {
-      pushErrorStatus(error, "Cancel conformer job failed");
-    }
-  }, [pushErrorStatus, pushStatus]);
-
   const runConformerOperation = useCallback(async (
     operation: ConformerOperation,
     document: ViewerDocument | null | undefined = activeDocument,
@@ -961,23 +900,6 @@ export default function App() {
       outputDirectory: conformerOutputDirectory(document),
     });
   }, [activeDocument, pushErrorStatus, pushStatus, requestMolstarXtbContextDocument, runConformerJob]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void requestXtbStatus()
-      .then((status) => {
-        if (!cancelled) setXtbStatus(status);
-      })
-      .catch(() => {});
-    void requestConformerStatus()
-      .then((status) => {
-        if (!cancelled) setConformerStatus(status);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const selectDocument = useCallback((id: string) => {
     setActiveDocument(id);
