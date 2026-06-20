@@ -43,6 +43,8 @@ export type ViewerLigandSelection = {
   atoms: number;
 };
 
+export type StructureOverlayMode = "single" | "all";
+
 export type KetcherSketchTarget = "grid" | "molstar" | "generate3d" | "xyzrender" | "collection" | "xtb";
 
 export type KetcherSketchRequest = {
@@ -282,6 +284,7 @@ export type ShellViewState = {
   conformerSettings: ConformerSettings;
   conformerJobs: ConformerJob[];
   viewerLigandSelection: ViewerLigandSelection | null;
+  structureOverlayMode: StructureOverlayMode;
   xtbStatus: XtbStatus | null;
   xtbSettings: XtbSettings;
   xtbJobs: XtbJob[];
