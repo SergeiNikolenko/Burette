@@ -27,6 +27,7 @@ const [
   appQuickLookHook,
   appResizeHook,
   appSidebarProjectsHook,
+  appStartupEffectsHook,
   appUpdatesHook,
   appStatusHook,
   tabsHook,
@@ -167,6 +168,7 @@ const [
   source('apps/desktop/src/hooks/use-app-quick-look.ts'),
   source('apps/desktop/src/hooks/use-app-resize.ts'),
   source('apps/desktop/src/hooks/use-app-sidebar-projects.ts'),
+  source('apps/desktop/src/hooks/use-app-startup-effects.ts'),
   source('apps/desktop/src/hooks/use-app-updates.ts'),
   source('apps/desktop/src/hooks/use-app-status.ts'),
   source('apps/desktop/src/hooks/use-tabs.ts'),
@@ -958,12 +960,14 @@ assert.match(chemistrySettings, /case "optimize":\s*return "xTB Optimize";/s);
 assert.match(chemistrySettings, /migrateLegacyXtbMdDefaults/);
 assert.doesNotMatch(app, /setCommandPaletteOpen/);
 assert.doesNotMatch(app, /useState\(false\).*commandPalette/i);
-assert.match(app, /refreshedPersistedSessionRef/);
-assert.match(app, /syncingBrowserDevFilesRef/);
-assert.match(app, /openedBrowserDevDockingRef/);
-assert.match(app, /browserDevRuntimeNeedsRefresh/);
-assert.match(app, /openedPersistedTabsRef/);
-assert.match(app, /void openPaths\(paths\)\.then\(\(\) => \{/);
+assert.match(app, /from "\.\/hooks\/use-app-startup-effects"/);
+assert.match(app, /useAppStartupEffects\(\{/);
+assert.match(appStartupEffectsHook, /refreshedPersistedSessionRef/);
+assert.match(appStartupEffectsHook, /syncingBrowserDevFilesRef/);
+assert.match(appStartupEffectsHook, /openedBrowserDevDockingRef/);
+assert.match(appStartupEffectsHook, /browserDevRuntimeNeedsRefresh/);
+assert.match(appStartupEffectsHook, /openedPersistedTabsRef/);
+assert.match(appStartupEffectsHook, /void Promise\.resolve\(openPaths\(paths\)\)\.then\(\(\) => \{/);
 assert.equal((app.match(/useOpenEvents\(/g) || []).length, 1);
 assert.match(app, /useOpenEvents\(openPaths, pushErrorStatus\)/);
 assert.doesNotMatch(app, /isTauriRuntime\(\) && !startupOpenSettled/);
@@ -973,7 +977,7 @@ assert.match(appSidebarProjectsHook, /buildSidebarProjects\(\{\s*documents,\s*re
 assert.doesNotMatch(app, /recentStructures:\s*documents\.length === 0 \? recentStructures : \[\]/);
 assert.match(app, /from "\.\/lib\/temporary-documents"/);
 assert.match(app, /!isTemporaryDocumentPath\(activeTab\.location\.path\)/);
-assert.match(app, /typeof path === "string" && !isTemporaryDocumentPath\(path\)/);
+assert.match(appStartupEffectsHook, /typeof path === "string" && !isTemporaryDocumentPath\(path\)/);
 assert.match(app, /pinnedStructurePaths,/);
 assert.match(app, /pinnedProjectRoots,/);
 assert.match(app, /projectNameOverrides,/);
@@ -984,9 +988,9 @@ assert.match(appSidebarProjectsHook, /list_project_structure_files/);
 assert.match(appSidebarProjectsHook, /prunedPersistedPathsRef/);
 assert.match(appSidebarProjectsHook, /pruneSidebarPaths\(existingPaths\)/);
 assert.match(appSidebarProjectsHook, /pruneRecentStructures\(existingPaths\)/);
-assert.match(app, /const workspace = browserDevExplicitFolder \?\? \(paths\[0\] \? parentDirectory\(paths\[0\]\) : null\);/);
-assert.match(app, /!isTauriRuntime\(\) \|\| documents\.length === 0/);
-assert.match(app, /void openPaths\(paths\)\.then\(\(\) => \{/);
+assert.match(appStartupEffectsHook, /const workspace = browserDevExplicitFolder \?\? \(paths\[0\] \? parentDirectory\(paths\[0\]\) : null\);/);
+assert.match(appStartupEffectsHook, /!isTauriRuntime\(\) \|\| documents\.length === 0/);
+assert.match(appStartupEffectsHook, /void Promise\.resolve\(openPaths\(paths\)\)\.then\(\(\) => \{/);
 assert.match(openEventsHook, /return startupOpenSettled/);
 assert.match(openEventsHook, /openPendingDocuments\(\{ replace: true \}, true\)/);
 assert.match(appLayout, /from "\.\/editor-area"/);
@@ -5146,8 +5150,8 @@ assert.doesNotMatch(fileKind, /hasGridAppendInput/);
 assert.match(fileKind, /Add to Mol\* docking view/);
 assert.match(appDockingWorkflowsHook, /openBrowserDevDockingDocument/);
 assert.match(appDockingWorkflowsHook, /const openDockingDocument = useCallback/);
-assert.match(app, /browserDevDockingFromLocation\(\)/);
-assert.match(app, /void openDockingDocument\(request\.receptorPath, request\.ligandPaths\)/);
+assert.match(appStartupEffectsHook, /browserDevDockingFromLocation\(\)/);
+assert.match(appStartupEffectsHook, /void openDockingDocument\(request\.receptorPath, request\.ligandPaths\)/);
 assert.match(appDockingWorkflowsHook, /request\.activePose = options\.activePose \?\? null/);
 assert.match(appDockingWorkflowsHook, /request\.sceneMode = options\.sceneMode \?\? null/);
 assert.match(appDockingWorkflowsHook, /request\.poseMode = options\.sceneMode === "structureAll" \? "all" : "single"/);

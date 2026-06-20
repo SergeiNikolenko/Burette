@@ -28,6 +28,7 @@ import { useAppMaintenance } from "./hooks/use-app-maintenance";
 import { useAppQuickLook } from "./hooks/use-app-quick-look";
 import { useAppResize } from "./hooks/use-app-resize";
 import { useAppSidebarProjects } from "./hooks/use-app-sidebar-projects";
+import { useAppStartupEffects } from "./hooks/use-app-startup-effects";
 import { useAppStatus } from "./hooks/use-app-status";
 import { useAppUpdates } from "./hooks/use-app-updates";
 import { useAgentSession } from "./hooks/use-agent-session";
@@ -76,7 +77,7 @@ import {
   useSetDocuments,
 } from "./hooks/use-tabs";
 import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settings";
-import { browserDevRuntimeNeedsRefresh, generateBrowserDev3DConformer, openBrowserDevDocuments, openBrowserDevMolstarContextDocument, openBrowserDevTextDocument, readBrowserDevVirtualTextDocument, writeBrowserDevVirtualTextDocument } from "./lib/browser-dev-documents";
+import { generateBrowserDev3DConformer, openBrowserDevDocuments, openBrowserDevMolstarContextDocument, openBrowserDevTextDocument, readBrowserDevVirtualTextDocument, writeBrowserDevVirtualTextDocument } from "./lib/browser-dev-documents";
 import { openBrowserDevTextFiles } from "./lib/browser-dev-text-files";
 import { cancelConformerRequest, cancelXtbRequest, installXtbRequest, prepareConformerRequest, requestConformerStatus, requestXtbStatus, runConformerRequest, runXtbRequest } from "./lib/chemistry-job-requests";
 import { conformerOperationLabel, conformerStatusLine, normalizeConformerSettings, normalizeXtbSettings, readConformerSettings, readXtbSettings, saveConformerSettings, saveXtbSettings, xtbOperationLabel } from "./lib/chemistry-settings";
@@ -89,7 +90,7 @@ import type { DockArea, DockTabKind } from "./lib/dock";
 import type { DropActionChoice } from "./lib/drop-actions";
 import { pathExtension, preferredTextExtensions, structureAndTextExtensions, structureExtensionFromPath, structureExtensions, summarizeErrors, summarizeErrorText } from "./lib/file-routing";
 import { downloadBase64File, downloadTextFile, exportDialogFilters, safeExportFileName } from "./lib/file-export";
-import { browserDevDockingFromLocation, browserDevFilesFromLocation, browserDevFolderFromLocation, browserDevHasExplicitFiles, browserDevHasExplicitWorkspace, browserDevQuickLookFileFromLocation } from "./lib/browser-dev-startup";
+import { browserDevFolderFromLocation, browserDevHasExplicitWorkspace, browserDevQuickLookFileFromLocation } from "./lib/browser-dev-startup";
 import { ketcherSource3DFromText } from "./lib/ketcher-workflow";
 import { markPerformanceOnce } from "./lib/performance";
 import { basename, parentDirectory } from "./lib/sidebar-projects";
@@ -400,11 +401,6 @@ export default function App() {
     openDockTab,
     pushStatus,
   });
-  const openedBrowserDevFilesRef = useRef<string | null>(null);
-  const openedBrowserDevDockingRef = useRef<string | null>(null);
-  const refreshedPersistedSessionRef = useRef(false);
-  const openedPersistedTabsRef = useRef(false);
-  const syncingBrowserDevFilesRef = useRef(false);
   const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions | null>(null);
   const pendingViewerReloadDocumentIdRef = useRef<string | null>(null);
   const pendingMolstarReplaceRef = useRef<Map<string, PendingMolstarReplaceResolver>>(new Map());
@@ -1057,63 +1053,6 @@ export default function App() {
     setDocuments,
   });
 
-  useEffect(() => {
-    if (isTauriRuntime() || syncingBrowserDevFilesRef.current) return;
-    let cancelled = false;
-    void (async () => {
-      const paths = await browserDevFilesFromLocation();
-      if (cancelled || paths.length === 0) return;
-      const normalizedFiles = paths.join("\n");
-      const needsInitialOpen = openedBrowserDevFilesRef.current !== normalizedFiles;
-      const needsRuntimeRefresh = !needsInitialOpen
-        && documents.some((document) => paths.includes(document.path) && browserDevRuntimeNeedsRefresh(document));
-      if (!needsInitialOpen && !needsRuntimeRefresh) return;
-      openedBrowserDevFilesRef.current = normalizedFiles;
-      syncingBrowserDevFilesRef.current = true;
-      const workspace = browserDevExplicitFolder ?? (paths[0] ? parentDirectory(paths[0]) : null);
-      if (workspace && !browserDevHasExplicitFiles()) {
-        setWorkspacePath(workspace);
-        addProjectRoot(workspace);
-      }
-      closeAllDocuments();
-      await openPaths(paths);
-      syncingBrowserDevFilesRef.current = false;
-    })().catch((error) => {
-      if (!cancelled) pushErrorStatus(error, "Open dev files failed");
-      syncingBrowserDevFilesRef.current = false;
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [addProjectRoot, browserDevExplicitFolder, closeAllDocuments, documents, openPaths, pushErrorStatus, setWorkspacePath]);
-
-  useEffect(() => {
-    if (refreshedPersistedSessionRef.current) return;
-    if (!isTauriRuntime() || documents.length === 0) return;
-    refreshedPersistedSessionRef.current = true;
-    const activePath = activeDocument?.path;
-    const paths = documents
-      .map((document) => document.path)
-      .filter((path) => !isTemporaryDocumentPath(path))
-      .sort((a, b) => (a === activePath ? -1 : b === activePath ? 1 : 0));
-    if (paths.length === 0) return;
-    void openDocuments(paths);
-  }, [activeDocument, documents, openDocuments]);
-
-  useEffect(() => {
-    if (openedPersistedTabsRef.current) return;
-    if (!isTauriRuntime() || documents.length > 0) return;
-    const paths = Array.from(new Set(tabs
-      .map((tab) => tab.location.kind === "file" || tab.location.kind === "text-file" ? tab.location.path : null)
-      .filter((path): path is string => typeof path === "string" && !isTemporaryDocumentPath(path))));
-    if (paths.length === 0) return;
-    openedPersistedTabsRef.current = true;
-    const restoreTabId = activeTabId;
-    void openPaths(paths).then(() => {
-      if (restoreTabId) setActiveTab(restoreTabId);
-    });
-  }, [activeTabId, documents.length, openPaths, setActiveTab, tabs]);
-
   const openRecentStructure = useCallback(
     async (structure: RecentStructure) => {
       await openPaths([structure.path]);
@@ -1190,6 +1129,22 @@ export default function App() {
     rightDockOpen,
     setDockOpen,
     setStructureDragActive,
+  });
+
+  useAppStartupEffects({
+    activeDocument,
+    activeTabId,
+    addProjectRoot,
+    browserDevExplicitFolder,
+    closeAllDocuments,
+    documents,
+    openDockingDocument,
+    openDocuments,
+    openPaths,
+    pushErrorStatus,
+    setActiveTab,
+    setWorkspacePath,
+    tabs,
   });
 
   const selectTextStructure = useCallback((textDocument: TextFileDocument, selection: TextStructureSelection) => {
@@ -1359,22 +1314,6 @@ export default function App() {
       },
     }).catch(() => {});
   }, []);
-
-  useEffect(() => {
-    if (isTauriRuntime()) return;
-    const request = browserDevDockingFromLocation();
-    if (!request) return;
-    const normalizedDocking = [request.receptorPath, ...request.ligandPaths].join("\n");
-    if (openedBrowserDevDockingRef.current === normalizedDocking) return;
-    openedBrowserDevDockingRef.current = normalizedDocking;
-    const workspace = parentDirectory(request.receptorPath);
-    if (workspace) {
-      setWorkspacePath(workspace);
-      addProjectRoot(workspace);
-    }
-    closeAllDocuments();
-    void openDockingDocument(request.receptorPath, request.ligandPaths);
-  }, [addProjectRoot, closeAllDocuments, openDockingDocument]);
 
   const chooseWorkspace = useCallback(async () => {
     try {
