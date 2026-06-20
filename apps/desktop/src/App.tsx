@@ -21,6 +21,7 @@ import { useAppFileActions } from "./hooks/use-app-file-actions";
 import { useAppFileOpen } from "./hooks/use-app-file-open";
 import { useAppFepWorkflows } from "./hooks/use-app-fep-workflows";
 import { useAppGridFileActions } from "./hooks/use-app-grid-file-actions";
+import { useAppGridRuntimeMessages } from "./hooks/use-app-grid-runtime-messages";
 import { useAppGridWorkflows } from "./hooks/use-app-grid-workflows";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
 import { useAppKetcherActions } from "./hooks/use-app-ketcher-actions";
@@ -1299,6 +1300,9 @@ export default function App() {
     pushErrorStatus,
     pushStatus,
   });
+  const { handleGridRuntimeMessage } = useAppGridRuntimeMessages({
+    postMessageToViewerSource,
+  });
 
   const {
     chooseWorkspace,
@@ -1871,207 +1875,7 @@ export default function App() {
         if (handleGridFileMessage(body, event.source)) {
           return;
         }
-        if (body?.type === "gridFetchPage") {
-          if (!body.requestId || !body.documentId) return;
-          if (!isTauriRuntime()) {
-            postMessageToViewerSource(event.source, {
-              source: "burrete-grid-host",
-              body: {
-                type: "gridError",
-                requestId: body.requestId,
-                documentId: body.documentId,
-                error: "Desktop grid paging is unavailable outside the Tauri runtime.",
-              },
-            });
-            return;
-          }
-          void (async () => {
-            try {
-              const result = await invoke("grid_fetch_page", {
-                request: {
-                  documentId: body.documentId,
-                  query: typeof body.query === "string" ? body.query : "",
-                  sort: typeof body.sort === "string" ? body.sort : "index",
-                  descriptorFilters: Array.isArray(body.descriptorFilters) ? body.descriptorFilters : [],
-                  descriptorSort: body.descriptorSort && typeof body.descriptorSort === "object" ? body.descriptorSort : null,
-                  offset: typeof body.offset === "number" ? body.offset : 0,
-                  limit: typeof body.limit === "number" ? body.limit : 96,
-                },
-              });
-              postMessageToViewerSource(event.source, {
-                source: "burrete-grid-host",
-                body: {
-                  type: "gridPage",
-                  requestId: body.requestId,
-                  documentId: body.documentId,
-                  result,
-                },
-              });
-            } catch (error) {
-              postMessageToViewerSource(event.source, {
-                source: "burrete-grid-host",
-                body: {
-                  type: "gridError",
-                  requestId: body.requestId,
-                  documentId: body.documentId,
-                  error: error instanceof Error ? error.message : String(error),
-                },
-              });
-            }
-          })();
-          return;
-        }
-        if (body?.type === "readStructureText") {
-          if (!body.requestId || !body.documentId) return;
-          const reply = (bodyPayload: Record<string, unknown>) => {
-            postMessageToViewerSource(event.source, {
-              source: "burrete-grid-host",
-              body: {
-                requestId: body.requestId,
-                documentId: body.documentId,
-                ...bodyPayload,
-              },
-            });
-          };
-          if (!isTauriRuntime()) {
-            reply({
-              type: "gridError",
-              error: "Desktop file reading is unavailable outside the Tauri runtime.",
-            });
-            return;
-          }
-          void (async () => {
-            try {
-              const text = await invoke<string>("read_structure_text", {
-                path: typeof body.path === "string" ? body.path : "",
-              });
-              reply({
-                type: "structureText",
-                text,
-              });
-            } catch (error) {
-              reply({
-                type: "gridError",
-                error: error instanceof Error ? error.message : String(error),
-              });
-            }
-          })();
-          return;
-        }
-        if (body?.type === "renderXyzrenderCard") {
-          if (!body.requestId || !body.documentId) return;
-          const reply = (bodyPayload: Record<string, unknown>) => {
-            postMessageToViewerSource(event.source, {
-              source: "burrete-grid-host",
-              body: {
-                requestId: body.requestId,
-                documentId: body.documentId,
-                ...bodyPayload,
-              },
-            });
-          };
-          if (!isTauriRuntime()) {
-            reply({
-              type: "gridError",
-              error: "Desktop xyzrender grid rendering is unavailable outside the Tauri runtime.",
-            });
-            return;
-          }
-          void (async () => {
-            try {
-              const result = await invoke<{
-                svg: string;
-                preset?: string;
-                elapsedMs?: number;
-                log?: string;
-                cacheHit?: boolean;
-              }>("render_xyzrender_sheet_item", {
-                request: {
-                  path: body.path,
-                  preset: body.preset ?? null,
-                  controls: body.controls ?? null,
-                  inputDataBase64: body.inputDataBase64 ?? null,
-                  inputExtension: body.inputExtension ?? null,
-                  cacheScope: "grid-card",
-                },
-              });
-              reply({
-                type: "xyzrenderCard",
-                result: {
-                  svg: result.svg,
-                  preset: result.preset ?? null,
-                  elapsedMs: result.elapsedMs ?? null,
-                  log: result.log ?? "",
-                  cacheHit: result.cacheHit ?? false,
-                },
-              });
-            } catch (error) {
-              reply({
-                type: "gridError",
-                error: error instanceof Error ? error.message : String(error),
-              });
-            }
-          })();
-          return;
-        }
-        if (body?.type === "renderXyzrenderCards") {
-          if (!body.requestId || !body.documentId) return;
-          const reply = (bodyPayload: Record<string, unknown>) => {
-            postMessageToViewerSource(event.source, {
-              source: "burrete-grid-host",
-              body: {
-                requestId: body.requestId,
-                documentId: body.documentId,
-                ...bodyPayload,
-              },
-            });
-          };
-          if (!isTauriRuntime()) {
-            reply({
-              type: "gridError",
-              error: "Desktop xyzrender grid rendering is unavailable outside the Tauri runtime.",
-            });
-            return;
-          }
-          void (async () => {
-            try {
-              const items = Array.isArray(body.items) ? body.items : [];
-              const result = await invoke<{
-                items?: Array<{
-                  id?: string;
-                  svg?: string;
-                  preset?: string;
-                  elapsedMs?: number;
-                  log?: string;
-                  cacheHit?: boolean;
-                  error?: string;
-                }>;
-              }>("render_xyzrender_sheet_items", {
-                request: {
-                  items: items.map((item: Record<string, unknown>) => ({
-                    id: typeof item.id === "string" ? item.id : "",
-                    path: typeof item.path === "string" ? item.path : "",
-                    preset: item.preset ?? null,
-                    controls: item.controls ?? null,
-                    inputDataBase64: item.inputDataBase64 ?? null,
-                    inputExtension: item.inputExtension ?? null,
-                    cacheScope: "grid-card",
-                  })),
-                },
-              });
-              reply({
-                type: "xyzrenderCard",
-                result: {
-                  items: result.items ?? [],
-                },
-              });
-            } catch (error) {
-              reply({
-                type: "gridError",
-                error: error instanceof Error ? error.message : String(error),
-              });
-            }
-          })();
+        if (handleGridRuntimeMessage(body, event.source)) {
           return;
         }
       }
@@ -2505,7 +2309,7 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, addBackgroundDocuments, addDocuments, calculateGridDescriptors, documents, generate3DConformer, handleGridFileMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar, updateDirtyGridDocument, writeGridPerfMetric]);
+  }, [activeDocument, addBackgroundDocuments, addDocuments, calculateGridDescriptors, documents, generate3DConformer, handleGridFileMessage, handleGridRuntimeMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar, updateDirtyGridDocument, writeGridPerfMetric]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
