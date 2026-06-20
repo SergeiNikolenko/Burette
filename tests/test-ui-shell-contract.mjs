@@ -35,6 +35,7 @@ const [
   appKetcherViewerMessagesHook,
   appBootstrapHook,
   appMaintenanceHook,
+  appMolstarActionSendersHook,
   appMolstarContextMessagesHook,
   appMolstarXtbContextHook,
   appXtbWorkflowsHook,
@@ -204,6 +205,7 @@ const [
   source('apps/desktop/src/hooks/use-app-ketcher-viewer-messages.ts'),
   source('apps/desktop/src/hooks/use-app-bootstrap.ts'),
   source('apps/desktop/src/hooks/use-app-maintenance.ts'),
+  source('apps/desktop/src/hooks/use-app-molstar-action-senders.ts'),
   source('apps/desktop/src/hooks/use-app-molstar-context-messages.ts'),
   source('apps/desktop/src/hooks/use-app-molstar-xtb-context.ts'),
   source('apps/desktop/src/hooks/use-app-xtb-workflows.ts'),
@@ -1683,13 +1685,16 @@ assert.match(dockPanel, /actions\.copyPath\(document\.path, "file"\)/);
 assert.match(dockPanel, /onStructureSelection=\{actions\.selectTextStructure\}/);
 assert.match(dockPanel, /readStructureTextDocument\(activeDocument\.path/);
 assert.match(dockPanel, /isMaestroStructure\(activeDocument\) \? 1_500_000 : 3_000_000/);
-assert.match(app, /const selectTextStructure = useCallback/);
-assert.match(app, /source: "burrete-agent-host"/);
-assert.match(app, /type: "agent-action"/);
-assert.match(app, /type: "select_residues"/);
-assert.match(app, /granularity: selection\.granularity/);
-assert.match(app, /const runStructureViewerAction = useCallback/);
-assert.match(app, /id: `structure-action-\$\{Date\.now\(\)\}`/);
+assert.match(app, /useAppMolstarActionSenders\(\{\s*activeDocument,\s*activeViewerIframeForDocument,\s*documents,\s*pushStatus,/s);
+assert.doesNotMatch(app, /const selectTextStructure = useCallback/);
+assert.doesNotMatch(app, /const runStructureViewerAction = useCallback/);
+assert.match(appMolstarActionSendersHook, /const selectTextStructure = useCallback/);
+assert.match(appMolstarActionSendersHook, /source: "burrete-agent-host"/);
+assert.match(appMolstarActionSendersHook, /type: "agent-action"/);
+assert.match(appMolstarActionSendersHook, /type: "select_residues"/);
+assert.match(appMolstarActionSendersHook, /granularity: selection\.granularity/);
+assert.match(appMolstarActionSendersHook, /const runStructureViewerAction = useCallback/);
+assert.match(appMolstarActionSendersHook, /id: `structure-action-\$\{Date\.now\(\)\}`/);
 assert.match(componentTypes, /generate3DConformer: \(document: ViewerDocument\) => void \| Promise<void>;/);
 assert.match(app, /useAppGenerate3DConformer\(\{\s*activeViewerIframeForDocument,\s*openDocumentsInActiveTab,\s*pendingMolstarReplaceRef,/s);
 assert.doesNotMatch(app, /const generate3DConformer = useCallback/);
@@ -1791,7 +1796,7 @@ assert.match(appXtbWorkflowsHook, /operation === "dock"/);
 assert.match(appViewerHostMessagesHook, /Structure action did not match the structure/);
 assert.match(appViewerHostMessagesHook, /bodyString\(body\.id\)\.startsWith\("text-selection-"\)/);
 assert.doesNotMatch(app, /pushStatus\("Text selection applied"/);
-assert.match(app, /pushStatus\(action\.label\)/);
+assert.match(appMolstarActionSendersHook, /pushStatus\(action\.label\)/);
 assert.match(dock, /inspector: "Info"/);
 assert.match(structureInfoPanel, /Molecular Inspector/);
 assert.match(structureInfoPanel, /No active structure/);
