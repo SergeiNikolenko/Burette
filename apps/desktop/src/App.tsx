@@ -41,6 +41,7 @@ import { useAppMolstarContextMessages } from "./hooks/use-app-molstar-context-me
 import { useAppMolstarActionSenders } from "./hooks/use-app-molstar-action-senders";
 import { useAppMolstarXtbContext } from "./hooks/use-app-molstar-xtb-context";
 import { useAppOpenActions } from "./hooks/use-app-open-actions";
+import { useAppOpenDropMergeCollections } from "./hooks/use-app-open-drop-merge-collections";
 import { useAppPreferenceEffects } from "./hooks/use-app-preference-effects";
 import { useAppQuickLook } from "./hooks/use-app-quick-look";
 import { useAppQuickLookDocumentOpen } from "./hooks/use-app-quick-look-document-open";
@@ -114,7 +115,6 @@ import { useSetViewerPreference, useViewerPreferences } from "./hooks/use-settin
 import { openBrowserDevMolstarContextDocument, openBrowserDevTextDocument } from "./lib/browser-dev-documents";
 import { expandBrowserDevStructureBundles } from "./lib/browser-dev-structure-bundles";
 import { writeClipboardText } from "./lib/clipboard";
-import { isMoleculeCollectionPath } from "./lib/collection-documents";
 import { detectContentSpectrumPaths } from "./lib/content-spectrum-detection";
 import { isProteinLikeDockingSource } from "./lib/docking-documents";
 import { structureExtensionFromPath } from "./lib/file-routing";
@@ -718,6 +718,10 @@ export default function App() {
   });
 
   useOpenEvents(openPaths, pushErrorStatus);
+  const mergeDroppedMoleculeCollections = useAppOpenDropMergeCollections({
+    activeDocument,
+    mergeMoleculeCollections,
+  });
   const agentTabActions = useAppAgentSessionActions({
     closeTab,
     moveTab,
@@ -755,13 +759,7 @@ export default function App() {
     addXyzrenderSheetItems,
     addProjectRoots: addDroppedProjectRoots,
     chooseDropAction,
-    mergeMoleculeCollections: activeDocument?.renderer === "grid2d"
-      ? (paths) => {
-          if (!paths.some(isMoleculeCollectionPath)) return false;
-          void mergeMoleculeCollections(activeDocument.path, paths);
-          return true;
-        }
-      : undefined,
+    mergeMoleculeCollections: mergeDroppedMoleculeCollections,
   });
   const { openClipboard } = useAppClipboard({ openClipboardText, pushErrorStatus, pushStatus });
   const { reloadActive, reloadXyzrenderDocument } = useAppViewerReloadActions({
