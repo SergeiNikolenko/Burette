@@ -1,4 +1,4 @@
-use crate::commands::{conformer, descriptors, xtb};
+use crate::commands::{conformer, descriptors, documents, xtb};
 use crate::preview::xyzrender;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -34,6 +34,12 @@ pub(crate) fn external_runtime_doctor() -> ExternalRuntimeDoctorReport {
         .unwrap_or_else(|error| json!({ "message": error.to_string() }));
     let conformer_status = serde_json::to_value(conformer::conformer_status())
         .unwrap_or_else(|error| json!({ "message": error.to_string() }));
+    let datamol_conformer_python_status =
+        serde_json::to_value(documents::conformer_python_runtime_status("datamol"))
+            .unwrap_or_else(|error| json!({ "message": error.to_string() }));
+    let rdkit_conformer_python_status =
+        serde_json::to_value(documents::conformer_python_runtime_status("rdkit"))
+            .unwrap_or_else(|error| json!({ "message": error.to_string() }));
     let xtb_status = serde_json::to_value(xtb::xtb_status())
         .unwrap_or_else(|error| json!({ "message": error.to_string() }));
     let xyzrender_status = serde_json::to_value(xyzrender::xyzrender_runtime_status())
@@ -57,6 +63,22 @@ pub(crate) fn external_runtime_doctor() -> ExternalRuntimeDoctorReport {
                 &descriptor_status,
                 "available",
                 "pythonPath",
+            ),
+            check_from_payload(
+                "datamol-conformer-python",
+                "Datamol conformer Python",
+                "python-runtime",
+                &datamol_conformer_python_status,
+                "available",
+                "executablePath",
+            ),
+            check_from_payload(
+                "rdkit-conformer-python",
+                "RDKit conformer Python",
+                "python-runtime",
+                &rdkit_conformer_python_status,
+                "available",
+                "executablePath",
             ),
             check_from_payload(
                 "crest",

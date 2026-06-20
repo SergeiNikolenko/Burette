@@ -8,16 +8,26 @@ type RuntimeStatusPayload = Record<string, unknown>;
 
 type BrowserDevRuntimeDoctorRoutes = {
   conformerStatus: () => Promise<RuntimeStatusPayload>;
+  datamolConformerStatus: () => Promise<RuntimeStatusPayload>;
   descriptorStatus: () => Promise<RuntimeStatusPayload>;
+  rdkitConformerStatus: () => Promise<RuntimeStatusPayload>;
   schrodingerStatus: () => RuntimeStatusPayload;
   xtbStatus: () => Promise<RuntimeStatusPayload>;
   xyzrenderStatus: () => RuntimeStatusPayload;
 };
 
 export async function browserDevRuntimeDoctorReport(routes: BrowserDevRuntimeDoctorRoutes) {
-  const [descriptorStatus, conformerStatus, xtbStatus] = await Promise.all([
+  const [
+    descriptorStatus,
+    conformerStatus,
+    datamolConformerStatus,
+    rdkitConformerStatus,
+    xtbStatus,
+  ] = await Promise.all([
     routes.descriptorStatus(),
     routes.conformerStatus(),
+    routes.datamolConformerStatus(),
+    routes.rdkitConformerStatus(),
     routes.xtbStatus(),
   ]);
   const xyzrenderStatus = routes.xyzrenderStatus();
@@ -29,6 +39,8 @@ export async function browserDevRuntimeDoctorReport(routes: BrowserDevRuntimeDoc
     checks: [
       checkFromPayload("xyzrender", "xyzrender", "external-renderer", xyzrenderStatus, "installed", "executablePath"),
       checkFromPayload("descriptors-python", "Descriptor Python", "python-runtime", descriptorStatus, "available", "pythonPath"),
+      checkFromPayload("datamol-conformer-python", "Datamol conformer Python", "python-runtime", datamolConformerStatus, "available", "executablePath"),
+      checkFromPayload("rdkit-conformer-python", "RDKit conformer Python", "python-runtime", rdkitConformerStatus, "available", "executablePath"),
       checkFromPayload("crest", "CREST", "conformer-tool", payloadObject(conformerStatus.crest), "installed", "executable"),
       checkFromPayload("prism", "PRISM Pruner", "conformer-tool", payloadObject(conformerStatus.prism), "installed", "executable"),
       checkFromPayload("xtb", "xTB", "semiempirical-tool", xtbStatus, "installed", "executablePath"),

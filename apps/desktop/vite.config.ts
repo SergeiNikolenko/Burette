@@ -94,6 +94,7 @@ const DESCRIPTOR_STATUS_TIMEOUT_MS = 10_000;
 const DESCRIPTOR_RUN_TIMEOUT_MS = 30_000;
 const DESCRIPTOR_GRID_BATCH_TIMEOUT_MS = 300_000;
 const DESCRIPTOR_INSTALL_TIMEOUT_MS = 600_000;
+const CONFORMER_PYTHON_STATUS_TIMEOUT_MS = 10_000;
 const MSBUDDY_RUN_TIMEOUT_MS = 180_000;
 const runningBrowserDevJobs = new Map<string, ChildProcess>();
 const cancelledBrowserDevJobs = new Set<string>();
@@ -103,6 +104,7 @@ type PythonCommand = {
   command: string;
   args: string[];
 };
+type ConformerPythonEngine = "datamol" | "rdkit";
 type BrowserDevDescriptorCellValue = {
   id: string;
   label: string;
@@ -865,6 +867,76 @@ function conformerPythonCandidates(engine: string) {
     seen.add(key);
     return true;
   });
+}
+
+function conformerPythonStatusCandidates(engine: ConformerPythonEngine) {
+  return conformerPythonCandidates(engine).filter((candidate) => !isUvxFromPythonCandidate(candidate));
+}
+
+function isUvxFromPythonCandidate(candidate: PythonCommand) {
+  return candidate.args[0] === "--from" && candidate.args.at(-1) === "python";
+}
+
+function conformerPythonRuntimeSpec(engine: ConformerPythonEngine) {
+  return engine === "datamol"
+    ? {
+        engine,
+        packageName: "datamol",
+        envName: "BURRETE_DATAMOL_PYTHON",
+        label: "Datamol",
+        script: "import datamol as dm\nprint(getattr(dm, '__version__', 'unknown'))",
+      }
+    : {
+        engine,
+        packageName: "rdkit",
+        envName: "BURRETE_RDKIT_PYTHON",
+        label: "RDKit",
+        script: "import rdkit\nprint(getattr(rdkit, '__version__', 'unknown'))",
+      };
+}
+
+async function browserDevConformerPythonStatus(engine: ConformerPythonEngine) {
+  const spec = conformerPythonRuntimeSpec(engine);
+  let lastError: string | null = null;
+  for (const python of conformerPythonStatusCandidates(engine)) {
+    try {
+      const version = await browserDevConformerPythonVersion(python, spec.script);
+      return {
+        available: true,
+        engine: spec.engine,
+        packageName: spec.packageName,
+        pythonLabel: python.label,
+        executablePath: python.command,
+        command: [python.command, ...python.args],
+        version,
+        message: `${spec.label} conformer Python is available`,
+        installHint: null,
+        lastError: null,
+      };
+    } catch (error) {
+      lastError = error instanceof Error ? `${python.label}: ${error.message}` : `${python.label}: ${String(error)}`;
+    }
+  }
+  return {
+    available: false,
+    engine: spec.engine,
+    packageName: spec.packageName,
+    pythonLabel: null,
+    executablePath: null,
+    command: null,
+    version: null,
+    message: lastError ? `${spec.label} conformer Python was not found: ${lastError}` : `${spec.label} conformer Python was not found`,
+    installHint: `Set ${spec.envName} to a Python executable with ${spec.packageName} installed, or install ${spec.packageName} into python3.`,
+    lastError,
+  };
+}
+
+async function browserDevConformerPythonVersion(python: PythonCommand, script: string) {
+  const { stdout } = await execFileAsync(python.command, [...python.args, "-c", script], {
+    timeout: CONFORMER_PYTHON_STATUS_TIMEOUT_MS,
+    maxBuffer: 128 * 1024,
+  });
+  return String(stdout || "").split(/\r?\n/u).map((line) => line.trim()).find(Boolean) ?? null;
 }
 
 function resolveExecutable(name: string, preferredPaths: string[] = []) {
@@ -3345,7 +3417,9 @@ export function browserDevXyzrenderPlugin() {
       });
       registerBrowserDevRuntimeDoctorRoute(server, {
         conformerStatus: browserDevConformerStatus,
+        datamolConformerStatus: () => browserDevConformerPythonStatus("datamol"),
         descriptorStatus: browserDevDescriptorStatus,
+        rdkitConformerStatus: () => browserDevConformerPythonStatus("rdkit"),
         schrodingerStatus: browserDevSchrodingerStatus,
         xtbStatus: browserDevXtbStatus,
         xyzrenderStatus: browserDevXyzrenderStatus,
