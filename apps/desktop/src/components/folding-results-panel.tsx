@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { hasFoldingResultContent, readFoldingResultBundle } from "../lib/folding-results";
 import { readStructureText } from "../lib/structure-text";
 import type { FoldingArtifact, FoldingMatrixPreview, FoldingModel, FoldingProfile, FoldingResultBundle, ViewerDocument } from "../types";
@@ -72,6 +72,15 @@ type SelectedResidue = {
   chainId: string;
   residueNumber: string;
   index: number;
+};
+
+type ResidueDragSelection = {
+  chainId: string;
+  startIndex: number;
+  currentIndex: number;
+  source: "mouse" | "pointer";
+  pointerId?: number;
+  moved: boolean;
 };
 
 export function useFoldingResult(document: ViewerDocument | null): FoldingResultState {
@@ -232,6 +241,23 @@ export function FoldingAnalysisPanel({ document, actions }: { document: ViewerDo
     setSelectionAnchor(null);
   }, [activeModel?.id]);
 
+  const applyResidueSelection = (nextSelection: SelectedResidue[]) => {
+    setSelectedResidues(nextSelection);
+    if (!document) return;
+    if (!nextSelection.length) {
+      actions.runStructureViewerAction(document, { type: "clear_selection", label: "Clear folding residue selection", notify: false });
+      return;
+    }
+    actions.runStructureViewerAction(document, {
+      type: "select_residues",
+      label: selectedResiduesLabel(nextSelection),
+      notify: false,
+      selector: residueSelectionSelector(nextSelection),
+      granularity: "residue",
+      mode: "replace",
+    });
+  };
+
   if (state.loading) {
     return (
       <div className="dock-content dock-content-empty">
@@ -282,30 +308,22 @@ export function FoldingAnalysisPanel({ document, actions }: { document: ViewerDo
         sequences={sequences}
         selectedResidues={selectedResidues}
         onClearSelection={() => {
-          setSelectedResidues([]);
+          applyResidueSelection([]);
           setSelectionAnchor(null);
-          if (!document) return;
-          actions.runStructureViewerAction(document, { type: "clear_selection", label: "Clear folding residue selection" });
         }}
-        onSelectResidue={(chain, residueNumber, residue, index, event) => {
+        onSelectResidue={(chain, residueNumber, _residue, index, options) => {
           const selectedResidue = { chainId: chain.chainId, residueNumber, index };
-          const nextSelection = event.shiftKey && selectionAnchor?.chainId === chain.chainId
+          const nextSelection = options?.rangeFromAnchor && selectionAnchor?.chainId === chain.chainId
             ? mergeResidueRange(selectedResidues, chain, selectionAnchor.index, index)
             : toggleResidueSelection(selectedResidues, selectedResidue);
-          setSelectedResidues(nextSelection);
           setSelectionAnchor(nextSelection.length ? selectedResidue : null);
-          if (!document) return;
-          if (!nextSelection.length) {
-            actions.runStructureViewerAction(document, { type: "clear_selection", label: "Clear folding residue selection" });
-            return;
-          }
-          actions.runStructureViewerAction(document, {
-            type: "select_residues",
-            label: selectedResiduesLabel(nextSelection),
-            selector: residueSelectionSelector(nextSelection),
-            granularity: "residue",
-            mode: "replace",
-          });
+          applyResidueSelection(nextSelection);
+        }}
+        onSelectResidueRange={(chain, startIndex, targetIndex) => {
+          const nextSelection = replaceResidueRange(chain, startIndex, targetIndex);
+          const anchorResidue = nextSelection.find((residue) => residue.index === startIndex) ?? nextSelection[0] ?? null;
+          setSelectionAnchor(anchorResidue);
+          applyResidueSelection(nextSelection);
         }}
       />
     </div>
@@ -546,16 +564,58 @@ function FoldingSequenceStrip({
   selectedResidues,
   onClearSelection,
   onSelectResidue,
+  onSelectResidueRange,
 }: {
   sequences: ChainSequence[];
   selectedResidues?: SelectedResidue[];
   onClearSelection?: () => void;
-  onSelectResidue?: (chain: ChainSequence, residueNumber: string, residue: string, index: number, event: ReactMouseEvent<HTMLButtonElement>) => void;
+  onSelectResidue?: (chain: ChainSequence, residueNumber: string, residue: string, index: number, options?: { rangeFromAnchor?: boolean }) => void;
+  onSelectResidueRange?: (chain: ChainSequence, startIndex: number, targetIndex: number) => void;
 }) {
+  const dragSelectionRef = useRef<ResidueDragSelection | null>(null);
+  const [dragSelection, setDragSelection] = useState<ResidueDragSelection | null>(null);
   const selectedResidueKeys = useMemo(
     () => new Set((selectedResidues ?? []).map(residueSelectionKey)),
     [selectedResidues],
   );
+  const setActiveDragSelection = (selection: ResidueDragSelection | null) => {
+    dragSelectionRef.current = selection;
+    setDragSelection(selection);
+  };
+  const residueIndexFromPoint = (clientX: number, clientY: number, chain: ChainSequence) => {
+    const element = document
+      .elementFromPoint(clientX, clientY)
+      ?.closest<HTMLButtonElement>(".folding-sequence-residue");
+    if (!element || element.dataset.chainId !== chain.chainId) return null;
+    const index = Number(element.dataset.residueIndex);
+    return Number.isInteger(index) && index >= 0 && index < chain.sequence.length ? index : null;
+  };
+  const residueIndexFromPointer = (event: ReactPointerEvent<HTMLElement>, chain: ChainSequence) => (
+    residueIndexFromPoint(event.clientX, event.clientY, chain)
+  );
+  const residueIndexFromMouse = (event: ReactMouseEvent<HTMLElement>, chain: ChainSequence) => (
+    residueIndexFromPoint(event.clientX, event.clientY, chain)
+  );
+  const updateDragRange = (chain: ChainSequence, index: number) => {
+    const current = dragSelectionRef.current;
+    if (!current || current.chainId !== chain.chainId) return;
+    const moved = current.moved || index !== current.startIndex;
+    if (current.currentIndex === index && current.moved === moved) return;
+    setActiveDragSelection({ ...current, currentIndex: index, moved });
+    if (moved) onSelectResidueRange?.(chain, current.startIndex, index);
+  };
+  useEffect(() => {
+    if (!dragSelection) return;
+    const clearDragSelection = () => setActiveDragSelection(null);
+    window.addEventListener("pointerup", clearDragSelection);
+    window.addEventListener("pointercancel", clearDragSelection);
+    window.addEventListener("mouseup", clearDragSelection);
+    return () => {
+      window.removeEventListener("pointerup", clearDragSelection);
+      window.removeEventListener("pointercancel", clearDragSelection);
+      window.removeEventListener("mouseup", clearDragSelection);
+    };
+  }, [dragSelection]);
   if (!sequences.length) return null;
   return (
     <div className="folding-sequence-strip">
@@ -567,20 +627,121 @@ function FoldingSequenceStrip({
               <span key={`${chain.chainId}-${tick.index}`} style={{ left: `${tick.percent}%` }}>{tick.label}</span>
             ))}
           </div>
-          <div className="folding-sequence-text" role="list" aria-label={`Chain-${chain.chainId} residues`}>
+          <div
+            className="folding-sequence-text"
+            role="list"
+            aria-label={`Chain-${chain.chainId} residues`}
+            onPointerDown={(event) => {
+              if (event.button !== 0) return;
+              if (dragSelectionRef.current) return;
+              const index = residueIndexFromPointer(event, chain);
+              if (index === null) return;
+              event.preventDefault();
+              try {
+                event.currentTarget.setPointerCapture(event.pointerId);
+              } catch {
+                // Pointer capture is best-effort; drag selection still works without it inside the strip.
+              }
+              setActiveDragSelection({
+                chainId: chain.chainId,
+                startIndex: index,
+                currentIndex: index,
+                source: "pointer",
+                pointerId: event.pointerId,
+                moved: false,
+              });
+            }}
+            onPointerMove={(event) => {
+              const current = dragSelectionRef.current;
+              if (!current || current.source !== "pointer" || current.pointerId !== event.pointerId || current.chainId !== chain.chainId) return;
+              const index = residueIndexFromPointer(event, chain);
+              if (index === null) return;
+              event.preventDefault();
+              updateDragRange(chain, index);
+            }}
+            onPointerUp={(event) => {
+              const current = dragSelectionRef.current;
+              if (!current || current.source !== "pointer" || current.pointerId !== event.pointerId || current.chainId !== chain.chainId) return;
+              event.preventDefault();
+              try {
+                if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                  event.currentTarget.releasePointerCapture(event.pointerId);
+                }
+              } catch {
+                // Ignore stale pointer capture state from cancelled synthetic events.
+              }
+              const targetIndex = residueIndexFromPointer(event, chain) ?? current.currentIndex;
+              if (current.moved || targetIndex !== current.startIndex) {
+                onSelectResidueRange?.(chain, current.startIndex, targetIndex);
+              } else {
+                const residueNumber = chain.residueNumbers[targetIndex] ?? String(targetIndex + 1);
+                const residue = chain.sequence[targetIndex] ?? "";
+                onSelectResidue?.(chain, residueNumber, residue, targetIndex, { rangeFromAnchor: event.shiftKey });
+              }
+              setActiveDragSelection(null);
+            }}
+            onPointerCancel={(event) => {
+              const current = dragSelectionRef.current;
+              if (!current || current.source !== "pointer" || current.pointerId !== event.pointerId) return;
+              setActiveDragSelection(null);
+            }}
+            onMouseDown={(event) => {
+              if (event.button !== 0) return;
+              if (dragSelectionRef.current) return;
+              const index = residueIndexFromMouse(event, chain);
+              if (index === null) return;
+              event.preventDefault();
+              setActiveDragSelection({
+                chainId: chain.chainId,
+                startIndex: index,
+                currentIndex: index,
+                source: "mouse",
+                moved: false,
+              });
+            }}
+            onMouseMove={(event) => {
+              const current = dragSelectionRef.current;
+              if (!current || current.chainId !== chain.chainId) return;
+              if ((event.buttons & 1) !== 1) {
+                setActiveDragSelection(null);
+                return;
+              }
+              const index = residueIndexFromMouse(event, chain);
+              if (index === null) return;
+              event.preventDefault();
+              updateDragRange(chain, index);
+            }}
+            onMouseUp={(event) => {
+              const current = dragSelectionRef.current;
+              if (!current || current.chainId !== chain.chainId) return;
+              event.preventDefault();
+              const targetIndex = residueIndexFromMouse(event, chain) ?? current.currentIndex;
+              if (current.moved || targetIndex !== current.startIndex) {
+                onSelectResidueRange?.(chain, current.startIndex, targetIndex);
+              } else {
+                const residueNumber = chain.residueNumbers[targetIndex] ?? String(targetIndex + 1);
+                const residue = chain.sequence[targetIndex] ?? "";
+                onSelectResidue?.(chain, residueNumber, residue, targetIndex, { rangeFromAnchor: event.shiftKey });
+              }
+              setActiveDragSelection(null);
+            }}
+          >
             {Array.from(chain.sequence).map((residue, index) => {
               const residueNumber = chain.residueNumbers[index] ?? String(index + 1);
-              const selected = selectedResidueKeys.has(residueSelectionKey({ chainId: chain.chainId, residueNumber, index }));
+              const dragSelected = dragSelection?.chainId === chain.chainId
+                && index >= Math.min(dragSelection.startIndex, dragSelection.currentIndex)
+                && index <= Math.max(dragSelection.startIndex, dragSelection.currentIndex);
+              const selected = dragSelected || selectedResidueKeys.has(residueSelectionKey({ chainId: chain.chainId, residueNumber, index }));
               return (
                 <button
                   key={`${chain.chainId}-${residueNumber}-${index}`}
                   type="button"
                   className="folding-sequence-residue"
                   data-selected={selected || undefined}
-                  title={`Chain-${chain.chainId} ${residueNumber} ${residue}`}
+                  data-chain-id={chain.chainId}
+                  data-residue-index={index}
                   aria-label={`Select Chain-${chain.chainId} residue ${residueNumber} ${residue}`}
                   aria-pressed={selected}
-                  onClick={(event) => onSelectResidue?.(chain, residueNumber, residue, index, event)}
                 >
                   {residue}
                 </button>
@@ -821,6 +982,16 @@ function mergeResidueRange(selectedResidues: SelectedResidue[], chain: ChainSequ
     byKey.set(residueSelectionKey(residue), residue);
   }
   return sortSelectedResidues([...byKey.values()]);
+}
+
+function replaceResidueRange(chain: ChainSequence, anchorIndex: number, targetIndex: number) {
+  const start = Math.max(0, Math.min(anchorIndex, targetIndex));
+  const end = Math.min(chain.residueNumbers.length - 1, Math.max(anchorIndex, targetIndex));
+  const residues: SelectedResidue[] = [];
+  for (let index = start; index <= end; index += 1) {
+    residues.push({ chainId: chain.chainId, residueNumber: chain.residueNumbers[index] ?? String(index + 1), index });
+  }
+  return residues;
 }
 
 function sortSelectedResidues(residues: SelectedResidue[]) {
