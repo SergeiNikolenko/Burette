@@ -23,6 +23,7 @@ export type StructureViewerAction =
   | {
       type: "select_residues";
       label: string;
+      notify?: boolean;
       selector: StructureViewerSelector;
       granularity: "residue";
       mode?: "replace";
@@ -46,6 +47,7 @@ export type StructureViewerAction =
   | {
       type: "clear_selection";
       label: string;
+      notify?: boolean;
     }
   | {
       type: "set_sdf_molecule";
