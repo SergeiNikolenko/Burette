@@ -2017,16 +2017,8 @@ img.radix-menu-item-icon {
 .structure-inspector-section-title-button:focus-visible {
   color: var(--text-primary);
 }
-.structure-inspector-xtb-card {
-  border-color: color-mix(in srgb, var(--accent) 20%, var(--line-subtler));
-  background: color-mix(in srgb, var(--accent) 5%, var(--surface-card));
-}
 .structure-inspector-xtb-card[data-collapsed] {
   gap: 0;
-}
-.folding-results-card {
-  border-color: color-mix(in srgb, #2f6fed 24%, var(--line-subtler));
-  background: color-mix(in srgb, #2f6fed 5%, var(--surface-card));
 }
 .folding-results-card[data-collapsed] {
   gap: 0;
@@ -2345,10 +2337,6 @@ img.radix-menu-item-icon {
   color: color-mix(in srgb, #ffd60a 80%, var(--text-secondary));
   font-size: 11px;
   line-height: 1.35;
-}
-.conformer-inspector-card {
-  border-color: color-mix(in srgb, var(--accent) 20%, var(--line-subtler));
-  background: color-mix(in srgb, var(--accent) 5%, var(--surface-card));
 }
 .conformer-inline-settings {
   gap: 8px;
