@@ -29,6 +29,7 @@ import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
 import { useAppKetcherActions } from "./hooks/use-app-ketcher-actions";
 import { useAppKetcherViewerMessages } from "./hooks/use-app-ketcher-viewer-messages";
 import { useAppMaintenance } from "./hooks/use-app-maintenance";
+import { useAppMolstarContextMessages } from "./hooks/use-app-molstar-context-messages";
 import { useAppOpenActions } from "./hooks/use-app-open-actions";
 import { useAppQuickLook } from "./hooks/use-app-quick-look";
 import { useAppResize } from "./hooks/use-app-resize";
@@ -104,6 +105,7 @@ import { directChemistryJobGuardMessage } from "./lib/direct-chemistry-guard";
 import type { DockArea, DockTabKind } from "./lib/dock";
 import { pathExtension, preferredTextExtensions, structureAndTextExtensions, structureExtensionFromPath, structureExtensions } from "./lib/file-routing";
 import { browserDevFolderFromLocation, browserDevHasExplicitWorkspace, browserDevQuickLookFileFromLocation } from "./lib/browser-dev-startup";
+import { molstarContextEntryExtension } from "./lib/molstar-context";
 import { basename, parentDirectory } from "./lib/sidebar-projects";
 import type { StructureDragPayload } from "./lib/structure-drag";
 import { readStructureText } from "./lib/structure-text";
@@ -128,13 +130,6 @@ type XtbRunJobOptions = {
   openOptimizedPoseInCurrentView?: boolean;
   poseSourceDocument?: ViewerDocument | null;
 };
-
-function molstarContextEntryExtension(format: string | undefined) {
-  const value = String(format || "pdb").toLowerCase();
-  if (value === "cif" || value === "mmcif" || value === "mcif") return "cif";
-  if (value === "sd") return "sdf";
-  return value || "pdb";
-}
 
 async function expandBrowserDevStructureBundles(paths: string[]) {
   if (isTauriRuntime()) return paths;
@@ -1400,6 +1395,17 @@ export default function App() {
     postMessageToViewerSource,
     pushStatus,
   });
+  const { handleMolstarContextMessage } = useAppMolstarContextMessages({
+    activeDocument,
+    addDocuments,
+    documents,
+    openDockingDocument,
+    openDocuments,
+    preferences,
+    pushErrorStatus,
+    pushStatus,
+    rememberRecentStructures,
+  });
 
   const { handleViewerFileMessage } = useAppViewerFileActions({
     pushErrorStatus,
@@ -1787,58 +1793,7 @@ export default function App() {
       if (handleViewerConformerMessage(body, event.source)) {
         return;
       }
-      if (body?.type === "openMolstarContextDocument") {
-        if (body.contextDocument && typeof body.contextDocument === "object") {
-          pushStatus("Opening selected Molstar context...");
-          const contextDocument = body.contextDocument;
-          const requestedMolstarStyle = normalizeMolstarStylePreference(body.molstarStyle);
-          const molstarPreferences = {
-            ...preferences,
-            rendererMode: "molstar" as const,
-            molstarStyle: requestedMolstarStyle ?? preferences.molstarStyle,
-          };
-          const openContextDocument = async () => {
-            if (!isTauriRuntime()) return openBrowserDevMolstarContextDocument(contextDocument, molstarPreferences);
-            const entries = (contextDocument.entries ?? []).filter((entry): entry is MolstarContextEntry & { data: string } => (
-              typeof entry?.data === "string" && entry.data.length > 0
-            ));
-            if (entries.length !== 1) {
-              throw new Error("Native Molstar context view supports one inline structure at a time.");
-            }
-            const entry = entries[0];
-            const extension = molstarContextEntryExtension(entry.format);
-            const label = contextDocument.label?.trim() || entry.label?.trim() || "Molstar context";
-            return invoke<ViewerDocument>("open_text_structure", {
-              request: {
-                title: `${label}.${extension}`,
-                extension,
-                text: entry.data,
-              },
-              preferences: molstarPreferences,
-              reloadOptions: {},
-            });
-          };
-          void openContextDocument()
-            .then((document) => {
-              addDocuments([document]);
-              rememberRecentStructures([document]);
-              pushStatus("Opened selected Molstar context");
-            })
-            .catch((error) => pushErrorStatus(error, "Molstar context view failed"));
-          return;
-        }
-        const targetDocument = (body.documentId
-          ? documents.find((document) => document.id === body.documentId)
-          : null) ?? activeDocument;
-        if (targetDocument?.dockingRequest) {
-          pushStatus("Opening separate Molstar docking view...");
-          void openDockingDocument(targetDocument.dockingRequest.receptorPath, targetDocument.dockingRequest.ligandPaths);
-        } else if (targetDocument?.path && !targetDocument.virtual) {
-          pushStatus("Opening separate Molstar view...");
-          void openDocuments([targetDocument.path], undefined, { rendererMode: "molstar" }, { inActiveTab: true });
-        } else {
-          pushStatus("This virtual structure cannot be opened separately.", "error");
-        }
+      if (handleMolstarContextMessage(body)) {
         return;
       }
       if (handleKetcherViewerMessage(body)) {
@@ -1850,7 +1805,7 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, handleDockingPoseMessage, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleKetcherViewerMessage, handleRendererMessage, handleSdfViewerMessage, handleViewerConformerMessage, handleViewerFileMessage, handleViewerHostMessage, handleViewerRuntimeFileMessage, handleViewerRuntimeMessage, handleViewerStateMessage, handleXyzrenderSheetMessage, markViewerFirstRenderMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
+  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, handleDockingPoseMessage, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleKetcherViewerMessage, handleMolstarContextMessage, handleRendererMessage, handleSdfViewerMessage, handleViewerConformerMessage, handleViewerFileMessage, handleViewerHostMessage, handleViewerRuntimeFileMessage, handleViewerRuntimeMessage, handleViewerStateMessage, handleXyzrenderSheetMessage, markViewerFirstRenderMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
