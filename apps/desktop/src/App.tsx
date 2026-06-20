@@ -39,6 +39,7 @@ import { useAppStartupEffects } from "./hooks/use-app-startup-effects";
 import { useAppStatus } from "./hooks/use-app-status";
 import { useAppUpdates } from "./hooks/use-app-updates";
 import { useAppViewerFileActions } from "./hooks/use-app-viewer-file-actions";
+import { useAppViewerConformerMessages } from "./hooks/use-app-viewer-conformer-messages";
 import { useAppViewerHostMessages } from "./hooks/use-app-viewer-host-messages";
 import { useAppViewerRuntimeFileMessages } from "./hooks/use-app-viewer-runtime-file-messages";
 import { useAppViewerRuntimeMessages } from "./hooks/use-app-viewer-runtime-messages";
@@ -1392,6 +1393,13 @@ export default function App() {
     pendingMolstarReplaceRef,
     pushStatus,
   });
+  const { handleViewerConformerMessage } = useAppViewerConformerMessages({
+    activeDocument,
+    documents,
+    generate3DConformer,
+    postMessageToViewerSource,
+    pushStatus,
+  });
 
   const { handleViewerFileMessage } = useAppViewerFileActions({
     pushErrorStatus,
@@ -1776,37 +1784,7 @@ export default function App() {
           .finally(() => reply("gridGenerate3DFinished"));
         return;
       }
-      if (body?.type === "generate3dConformer") {
-        const requestDocumentId = typeof body.documentId === "string" && body.documentId.trim().length > 0
-          ? body.documentId.trim()
-          : null;
-        const requestPath = typeof body.path === "string" && body.path.trim().length > 0
-          ? body.path.trim()
-          : null;
-        const mode: ConformerGenerationMode = body.mode === "ensemble" ? "ensemble" : "single";
-        const molstarStyle = normalizeMolstarStylePreference(body.molstarStyle);
-        const targetDocument = requestDocumentId
-          ? documents.find((document) => document.id === requestDocumentId)
-            ?? (requestPath ? documents.find((document) => document.path === requestPath) : undefined)
-          : (requestPath ? documents.find((document) => document.path === requestPath) : undefined) ?? activeDocument;
-        const notifyGeneratorState = (type: "generate3dConformerStarted" | "generate3dConformerFinished") => {
-          postMessageToViewerSource(event.source, {
-            source: "burrete-host",
-            body: {
-              type,
-              documentId: targetDocument?.id ?? requestDocumentId ?? "",
-              mode,
-            },
-          });
-        };
-        if (targetDocument) {
-          notifyGeneratorState("generate3dConformerStarted");
-          void generate3DConformer(targetDocument, mode, molstarStyle)
-            .finally(() => notifyGeneratorState("generate3dConformerFinished"));
-        } else {
-          notifyGeneratorState("generate3dConformerFinished");
-          pushStatus("The Generate 3D request came from a tab that is no longer open.", "error");
-        }
+      if (handleViewerConformerMessage(body, event.source)) {
         return;
       }
       if (body?.type === "openMolstarContextDocument") {
@@ -1872,7 +1850,7 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, generate3DConformer, handleDockingPoseMessage, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleKetcherViewerMessage, handleRendererMessage, handleSdfViewerMessage, handleViewerFileMessage, handleViewerHostMessage, handleViewerRuntimeFileMessage, handleViewerRuntimeMessage, handleViewerStateMessage, handleXyzrenderSheetMessage, markViewerFirstRenderMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
+  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, handleDockingPoseMessage, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleKetcherViewerMessage, handleRendererMessage, handleSdfViewerMessage, handleViewerConformerMessage, handleViewerFileMessage, handleViewerHostMessage, handleViewerRuntimeFileMessage, handleViewerRuntimeMessage, handleViewerStateMessage, handleXyzrenderSheetMessage, markViewerFirstRenderMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;

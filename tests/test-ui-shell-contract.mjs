@@ -39,6 +39,7 @@ const [
   appSdfViewerMessagesHook,
   appStartupEffectsHook,
   appUpdatesHook,
+  appViewerConformerMessagesHook,
   appViewerFileActionsHook,
   appViewerHostMessagesHook,
   appViewerRuntimeFileMessagesHook,
@@ -197,6 +198,7 @@ const [
   source('apps/desktop/src/hooks/use-app-sdf-viewer-messages.ts'),
   source('apps/desktop/src/hooks/use-app-startup-effects.ts'),
   source('apps/desktop/src/hooks/use-app-updates.ts'),
+  source('apps/desktop/src/hooks/use-app-viewer-conformer-messages.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-file-actions.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-host-messages.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-runtime-file-messages.ts'),
@@ -1695,16 +1697,17 @@ assert.match(app, /handleViewerHostMessage\(data\.source, body\)/);
 assert.match(appViewerHostMessagesHook, /body\?\.type === "molstarStructureReplaced"/);
 assert.match(appViewerHostMessagesHook, /pendingMolstarReplaceRef\.current\.get\(requestId\)/);
 assert.match(app, /generate3DConformer,/);
-assert.match(app, /body\?\.type === "generate3dConformer"/);
-const generate3dHandlerStart = app.indexOf('if (body?.type === "generate3dConformer")');
-const generate3dHandlerEnd = app.indexOf('if (body?.type === "openMolstarContextDocument")', generate3dHandlerStart);
+assert.match(app, /handleViewerConformerMessage\(body, event\.source\)/);
+assert.match(appViewerConformerMessagesHook, /body\?\.type !== "generate3dConformer"/);
+const generate3dHandlerStart = appViewerConformerMessagesHook.indexOf('if (body?.type !== "generate3dConformer") return false;');
+const generate3dHandlerEnd = appViewerConformerMessagesHook.indexOf('return true;', generate3dHandlerStart);
 assert.ok(generate3dHandlerStart >= 0);
 assert.ok(generate3dHandlerEnd > generate3dHandlerStart);
-const generate3dHandler = app.slice(generate3dHandlerStart, generate3dHandlerEnd);
-assert.match(app, /const requestDocumentId = typeof body\.documentId === "string" && body\.documentId\.trim\(\)\.length > 0/);
-assert.match(app, /const requestPath = typeof body\.path === "string" && body\.path\.trim\(\)\.length > 0/);
-assert.match(app, /const mode: ConformerGenerationMode = body\.mode === "ensemble" \? "ensemble" : "single"/);
-assert.match(app, /documents\.find\(\(document\) => document\.id === requestDocumentId\)[\s\S]*documents\.find\(\(document\) => document\.path === requestPath\)/);
+const generate3dHandler = appViewerConformerMessagesHook.slice(generate3dHandlerStart, generate3dHandlerEnd);
+assert.match(appViewerConformerMessagesHook, /const requestDocumentId = bodyString\(body\.documentId\)\.trim\(\) \|\| null/);
+assert.match(appViewerConformerMessagesHook, /const requestPath = bodyString\(body\.path\)\.trim\(\) \|\| null/);
+assert.match(appViewerConformerMessagesHook, /const mode: ConformerGenerationMode = body\.mode === "ensemble" \? "ensemble" : "single"/);
+assert.match(appViewerConformerMessagesHook, /documents\.find\(\(document\) => document\.id === requestDocumentId\)[\s\S]*documents\.find\(\(document\) => document\.path === requestPath\)/);
 assert.doesNotMatch(generate3dHandler, /const targetDocument = \(body\.documentId\s*\?\s*documents\.find\(\(document\) => document\.id === body\.documentId\)\s*:\s*null\) \?\? activeDocument/);
 assert.match(generate3dHandler, /"generate3dConformerStarted"/);
 assert.match(generate3dHandler, /"generate3dConformerFinished"/);
