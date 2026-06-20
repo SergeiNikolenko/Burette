@@ -3018,7 +3018,7 @@ assert.match(previewViewController, /case "fdf":\s*return parseFDF\(lines\)/);
 assert.match(previewViewController, /private static func parseMaestroAtoms\(_ lines: \[String\], atomLimit: Int\) -> \[Atom\]\?/);
 assert.match(previewViewController, /private static func parseABINIT\(_ lines: \[String\]\) -> \[Atom\]\?/);
 assert.match(previewViewController, /private static func parseFDF\(_ lines: \[String\]\) -> \[Atom\]\?/);
-assert.match(previewViewController, /fileprivate static func shouldPreferConvertedMolstarData\(fileExtension: String\) -> Bool \{\s*isGROExtension\(fileExtension\) \|\| isMOL2Extension\(fileExtension\)\s*\}/);
+assert.match(previewViewController, /fileprivate static func shouldPreferConvertedMolstarData\(fileExtension: String\) -> Bool \{\s*\["ph4", "json"\]\.contains\(fileExtension\.lowercased\(\)\) \|\| isGROExtension\(fileExtension\) \|\| isMOL2Extension\(fileExtension\)\s*\}/);
 assert.match(previewViewController, /private static func parseGROAtoms\(_ lines: \[String\], atomLimit: Int\) -> \[MaestroAtom\]\?/);
 assert.match(previewViewController, /private static func mol2PDBData\(from data: Data, label: String\) -> Data\?/);
 assert.match(previewViewController, /private static func parseQSiteGeometry\(_ lines: \[String\]\) -> \[Atom\]\?/);
