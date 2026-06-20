@@ -17,6 +17,7 @@ const [
   appDiagnosticsHook,
   appDirtyGridHook,
   appDockingWorkflowsHook,
+  appDropActionsHook,
   appFileActionsHook,
   appFileOpenHook,
   appFepWorkflowsHook,
@@ -159,6 +160,7 @@ const [
   source('apps/desktop/src/hooks/use-app-diagnostics.ts'),
   source('apps/desktop/src/hooks/use-app-dirty-grid-documents.ts'),
   source('apps/desktop/src/hooks/use-app-docking-workflows.ts'),
+  source('apps/desktop/src/hooks/use-app-drop-actions.ts'),
   source('apps/desktop/src/hooks/use-app-file-actions.ts'),
   source('apps/desktop/src/hooks/use-app-file-open.ts'),
   source('apps/desktop/src/hooks/use-app-fep-workflows.ts'),
@@ -2941,18 +2943,20 @@ assert.match(app, /void openDockingDocument\(targetDocument\.dockingRequest\.rec
 assert.match(app, /const targetDocument = \(pendingViewerReloadDocumentIdRef\.current/);
 assert.match(app, /const reloadOptions = pendingViewerReloadOptionsRef\.current \?\? undefined/);
 assert.match(app, /await openDocuments\(\[targetDocument\.path\], reloadOptions, undefined, \{ inActiveTab: true \}\)/);
-assert.match(app, /from "\.\/components\/native-context-menu"/);
-assert.match(app, /import type \{ DropActionChoice \} from "\.\/lib\/drop-actions"/);
-assert.match(app, /const chooseDropAction = useCallback/);
-assert.match(app, /choices\.length < 2/);
-assert.match(app, /showNativeContextMenu\(/);
-assert.match(app, /text: choice\.confidence === "default" \? `\$\{choice\.label\} \(default\)` : choice\.label/);
-assert.match(app, /pushErrorStatus\(error, "Drop action menu failed"\)/);
-assert.match(app, /runChoice\(choices\[0\]\)/);
+assert.match(app, /from "\.\/hooks\/use-app-drop-actions"/);
+assert.match(app, /useAppDropActions\(\{/);
+assert.match(appDropActionsHook, /from "\.\.\/components\/native-context-menu"/);
+assert.match(appDropActionsHook, /import type \{ DropActionChoice \} from "\.\.\/lib\/drop-actions"/);
+assert.match(appDropActionsHook, /const chooseDropAction = useCallback/);
+assert.match(appDropActionsHook, /choices\.length < 2/);
+assert.match(appDropActionsHook, /showNativeContextMenu\(/);
+assert.match(appDropActionsHook, /text: choice\.confidence === "default" \? `\$\{choice\.label\} \(default\)` : choice\.label/);
+assert.match(appDropActionsHook, /pushErrorStatus\(error, "Drop action menu failed"\)/);
+assert.match(appDropActionsHook, /runChoice\(choices\[0\]\)/);
 assert.match(app, /chooseDropAction,/);
-assert.match(app, /const addDroppedProjectRoots = useCallback/);
-assert.match(app, /for \(const path of cleanPaths\) addProjectRoot\(path\)/);
-assert.match(app, /setWorkspacePath\(cleanPaths\[0\]\)/);
+assert.match(appDropActionsHook, /const addDroppedProjectRoots = useCallback/);
+assert.match(appDropActionsHook, /for \(const path of cleanPaths\) addProjectRoot\(path\)/);
+assert.match(appDropActionsHook, /setWorkspacePath\(cleanPaths\[0\]\)/);
 assert.match(app, /addProjectRoots: addDroppedProjectRoots/);
 assert.match(app, /handleBrowserPaste/);
 assert.match(app, /onPaste=\{handleBrowserPaste\}/);
