@@ -40,6 +40,7 @@ const [
   appViewerFileActionsHook,
   appViewerRuntimeFileMessagesHook,
   appViewerRuntimeMessagesHook,
+  appViewerStateMessagesHook,
   appWorkspaceActionsHook,
   appXyzrenderSheetMessagesHook,
   appStatusHook,
@@ -194,6 +195,7 @@ const [
   source('apps/desktop/src/hooks/use-app-viewer-file-actions.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-runtime-file-messages.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-runtime-messages.ts'),
+  source('apps/desktop/src/hooks/use-app-viewer-state-messages.ts'),
   source('apps/desktop/src/hooks/use-app-workspace-actions.ts'),
   source('apps/desktop/src/hooks/use-app-xyzrender-sheet-messages.ts'),
   source('apps/desktop/src/hooks/use-app-status.ts'),
@@ -4566,10 +4568,15 @@ assert.match(viewer, /postHostMessage\(\{ type: togglesSidebar \? 'toggleSidebar
 assert.match(gridViewer, /function initShellShortcutBridge\(\)/);
 assert.match(gridViewer, /const togglesSidebar = commandKey && !event\.altKey && !event\.shiftKey && key === 'b'/);
 assert.match(gridViewer, /post\(togglesSidebar \? 'toggleSidebar' : 'openCommandPalette'\)/);
-assert.match(app, /body\?\.type === "openCommandPalette"/);
-assert.match(app, /openCommandPalette\(\);\s*return;/);
-assert.match(app, /body\?\.type === "toggleSidebar"/);
-assert.match(app, /toggleSidebar\(\);\s*return;/);
+assert.match(app, /handleViewerStateMessage\(data\.source, body\)/);
+assert.match(appViewerStateMessagesHook, /body\?\.type === "openCommandPalette"/);
+assert.match(appViewerStateMessagesHook, /openCommandPalette\(\);\s*return true;/);
+assert.match(appViewerStateMessagesHook, /body\?\.type === "toggleSidebar"/);
+assert.match(appViewerStateMessagesHook, /toggleSidebar\(\);\s*return true;/);
+assert.match(appViewerStateMessagesHook, /body\?\.type === "selectionChanged"/);
+assert.match(appViewerStateMessagesHook, /setViewerLigandSelections/);
+assert.match(appViewerStateMessagesHook, /body\?\.type === "rendererChanged"/);
+assert.match(appViewerStateMessagesHook, /xyzrenderPresetOptions: presetOptions/);
 assert.match(app, /Preferences refresh only the mounted file runtime\. Inactive file tabs are unloaded\./);
 assert.match(app, /if \(skipNextPreferenceRefreshRef\.current\) \{\s*skipNextPreferenceRefreshRef\.current = false;\s*return;\s*\}/s);
 assert.match(app, /void openDocuments\(\[path\]\)\.then/);
