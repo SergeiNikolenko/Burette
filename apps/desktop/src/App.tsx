@@ -116,6 +116,11 @@ import { readStructureText } from "./lib/structure-text";
 import { isSpectrumPath, isSubformulaSpectrumJsonText, isTabularSpectrumExtension, isTabularSpectrumText, spectrumDocumentFromText } from "./lib/spectrum";
 import { isTauriRuntime } from "./lib/tauri";
 import { isTemporaryDocumentPath } from "./lib/temporary-documents";
+import {
+  activeViewerIframeForDocument,
+  isKnownViewerMessageSource,
+  postMessageToViewerSource,
+} from "./lib/viewer-bridge";
 import type { TextFileDocument, ViewerDocument, ViewerReloadOptions } from "./types";
 
 const CommandPalette = lazy(() => import("./components/command-palette").then((module) => ({
@@ -1305,40 +1310,6 @@ export default function App() {
         </Suspense>
       ) : null}
     </>
-  );
-}
-
-function isKnownViewerMessageSource(source: MessageEventSource | null, documentId?: string) {
-  if (!source) return false;
-  return Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).some(
-    (iframe) => (!documentId || iframe.dataset.documentId === documentId) && iframe.contentWindow === source,
-  );
-}
-
-function postMessageToViewerSource(source: MessageEventSource | null, payload: unknown) {
-  if (source && typeof source === "object" && "postMessage" in source && typeof source.postMessage === "function") {
-    (source as Window).postMessage(payload, "*");
-    return;
-  }
-  const documentId = payload && typeof payload === "object"
-    && "body" in payload
-    && payload.body
-    && typeof payload.body === "object"
-    && "documentId" in payload.body
-    && typeof payload.body.documentId === "string"
-    ? payload.body.documentId
-    : null;
-  if (!documentId) return;
-  const iframe = document.querySelector<HTMLIFrameElement>(`.viewer-iframe[data-document-id="${CSS.escape(documentId)}"]`);
-  iframe?.contentWindow?.postMessage(payload, "*");
-}
-
-function activeViewerIframeForDocument(documentId: string) {
-  const escapedId = CSS.escape(documentId);
-  return document.querySelector<HTMLIFrameElement>(
-    `.page-surface[data-active="true"] .viewer-iframe[data-document-id="${escapedId}"]`,
-  ) ?? document.querySelector<HTMLIFrameElement>(
-    `.viewer-iframe[data-document-id="${escapedId}"]`,
   );
 }
 

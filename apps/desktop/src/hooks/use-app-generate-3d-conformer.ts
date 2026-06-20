@@ -15,11 +15,11 @@ import {
 } from "../lib/conformer-generation";
 import { readStructureText } from "../lib/structure-text";
 import { isTauriRuntime } from "../lib/tauri";
+import type { ActiveViewerIframeForDocument } from "../lib/viewer-bridge";
 import type { ViewerDocument, ViewerPreferences } from "../types";
 
 export type PendingMolstarReplaceResolver = (ok: boolean) => void;
 
-type ActiveViewerIframeForDocument = (documentId: string) => HTMLIFrameElement | null;
 type PushStatus = (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
 

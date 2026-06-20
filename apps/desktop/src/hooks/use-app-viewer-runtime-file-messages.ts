@@ -1,8 +1,8 @@
 import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import type { PostMessageToViewerSource } from "../lib/viewer-bridge";
 import type { ViewerDocument } from "../types";
 
-type PostMessageToViewerSource = (source: MessageEventSource | null, payload: unknown) => void;
 type ViewerRuntimeFileMessageBody = Record<string, unknown> | null | undefined;
 
 type UseAppViewerRuntimeFileMessagesOptions = {
