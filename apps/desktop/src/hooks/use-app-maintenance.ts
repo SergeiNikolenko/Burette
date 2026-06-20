@@ -31,6 +31,19 @@ function doctorDetail(check: ExternalRuntimeDoctorCheck) {
   return `${check.label}: ${check.available ? "available" : "unavailable"}${version}${source}`;
 }
 
+async function loadExternalRuntimeDoctorReport() {
+  if (isTauriRuntime()) {
+    return invoke<ExternalRuntimeDoctorReport>("external_runtime_doctor");
+  }
+  const response = await fetch("/__burette/external-runtime-doctor", { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(response.status === 404
+      ? "Runtime doctor is available in the desktop app or browser-dev only."
+      : `Runtime doctor request failed with status ${response.status}`);
+  }
+  return await response.json() as ExternalRuntimeDoctorReport;
+}
+
 export function useAppMaintenance({ pushErrorStatus, pushStatus }: UseAppMaintenanceArgs) {
   const clearCache = useCallback(async () => {
     try {
@@ -60,12 +73,8 @@ export function useAppMaintenance({ pushErrorStatus, pushStatus }: UseAppMainten
   }, [pushErrorStatus, pushStatus]);
 
   const runExternalRuntimeDoctor = useCallback(async () => {
-    if (!isTauriRuntime()) {
-      pushStatus("Runtime doctor is available in the desktop app only.", "error");
-      return;
-    }
     try {
-      const report = await invoke<ExternalRuntimeDoctorReport>("external_runtime_doctor");
+      const report = await loadExternalRuntimeDoctorReport();
       const available = report.checks.filter((check) => check.available).length;
       const total = report.checks.length;
       const missing = report.checks.filter((check) => !check.available);

@@ -28,6 +28,7 @@ import {
   registerBrowserDevFileDiscoveryRoute,
 } from "./vite/browser-dev/files";
 import { registerBrowserDevMsbuddyRoutes } from "./vite/browser-dev/msbuddy";
+import { registerBrowserDevRuntimeDoctorRoute } from "./vite/browser-dev/runtime-doctor";
 import { registerBrowserDevXtbRoutes } from "./vite/browser-dev/xtb";
 import { registerBrowserDevXyzrenderRoute } from "./vite/browser-dev/xyzrender";
 
@@ -794,6 +795,52 @@ function resolveXyzrenderExecutable() {
   const pathRows = String(process.env.PATH || "").split(delimiter).filter(Boolean);
   for (const row of pathRows) candidates.push(join(row, "xyzrender"));
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
+}
+
+function sourceForRuntimePath(path: string) {
+  if (path.includes("xyzrender-runtime")) return "bundled";
+  if (path.includes(".local/bin") || path.includes(".local/share")) return "user-local";
+  if (path.includes("/opt/") || path.includes("/usr/local/") || path.includes("/opt/homebrew/")) return "system";
+  return "resolved-path";
+}
+
+function browserDevXyzrenderStatus() {
+  const executable = resolveXyzrenderExecutable();
+  return executable
+    ? {
+        installed: true,
+        executablePath: executable,
+        source: sourceForRuntimePath(executable),
+        installHint: "Install xyzrender in ~/.local/bin or make it available on PATH.",
+        message: "External xyzrender runtime is available",
+      }
+    : {
+        installed: false,
+        executablePath: null,
+        source: null,
+        installHint: "Install xyzrender in ~/.local/bin or make it available on PATH.",
+        message: "External xyzrender executable was not found.",
+      };
+}
+
+function browserDevSchrodingerStatus() {
+  const configuredRun = process.env.SCHRODINGER ? join(process.env.SCHRODINGER, "run") : "";
+  const executable = [configuredRun, SCHRODINGER_RUN].filter(Boolean).find((candidate) => existsSync(candidate)) ?? null;
+  return executable
+    ? {
+        installed: true,
+        executablePath: executable,
+        source: sourceForRuntimePath(executable),
+        installHint: "Schrodinger runtime is available.",
+        message: "Schrodinger runtime is available",
+      }
+    : {
+        installed: false,
+        executablePath: null,
+        source: null,
+        installHint: "Install Schrodinger or set SCHRODINGER to a suite directory that contains run.",
+        message: "Schrodinger runtime was not found",
+      };
 }
 
 function conformerPythonCandidates(engine: string) {
@@ -3295,6 +3342,13 @@ export function browserDevXyzrenderPlugin() {
         install: installBrowserDevXtb,
         run: runBrowserDevXtbJob,
         status: browserDevXtbStatus,
+      });
+      registerBrowserDevRuntimeDoctorRoute(server, {
+        conformerStatus: browserDevConformerStatus,
+        descriptorStatus: browserDevDescriptorStatus,
+        schrodingerStatus: browserDevSchrodingerStatus,
+        xtbStatus: browserDevXtbStatus,
+        xyzrenderStatus: browserDevXyzrenderStatus,
       });
       registerBrowserDevAgentSessionRoute(server);
       registerBrowserDevAppIconRoute(server, BROWSER_DEV_APP_ICONS, execFileAsync);
