@@ -172,12 +172,17 @@ Current Stage 3 progress:
   `apps/desktop/src/lib/viewer-bridge.ts`;
 - ShellViewState compatibility assembly now lives behind the
   `useAppShellViewState` boundary in
-  `apps/desktop/src/hooks/use-app-shell-view-state.ts`;
+  `apps/desktop/src/hooks/use-app-shell-view-state.ts`, with domain slices
+  assembled through `createAppShellViewStateSlices` and flattened back to the
+  legacy `ShellViewState` shape for `AppLayout`;
 - ShellActions compatibility assembly now lives in
   `apps/desktop/src/hooks/use-app-shell-actions.ts`: `App.tsx` wires the
   `useAppShellActions` adapter while job-history, project, dock-drop,
   close/dirty-cleanup, recent, and update action groups stay behind the same
-  compatibility boundary;
+  compatibility boundary, and `createAppShellActionSlices` groups the full flat
+  action surface into opening, navigation, ketcher, grid, chemistry, workspace,
+  dock, documents, docking, viewer, maintenance, and settings slices before
+  flattening it back to `ShellActions`;
 - agent-session tab action assembly now lives in
   `apps/desktop/src/hooks/use-app-agent-session-actions.ts`;
 - FEP setup/network preview action callbacks and the current FEP setup request
@@ -261,7 +266,7 @@ the high-risk runtime boundaries intact.
 | Grid workflow | Partial | Dirty-grid state, descriptor workflows, grid append, delimited append fallback, xyzrender sheet drops, pose-review selection refresh, grid save/export message handling, grid paging/read/xyzrender-card runtime messages, grid control/conformer message routing, SDF grid open message handling, and shared viewer/grid dispatch are extracted. |
 | Docking/collections/dock payloads | Partial | Dock payload opening plus docking document construction, dropped-structure docking, collection merge/save, pose-review workspace action callbacks, pose-review selection notification routing, SDF pose-review message handling, Molstar context handoff, docking pose-change synchronization, and shell-action wiring are extracted; deeper domain-specific docking runtime boundaries remain in the app composition. |
 | Viewer bridge | Partial | Grid-origin file/runtime/control/conformer messages, viewer-origin export/runtime/runtime-file/state/renderer/Ketcher/host/conformer/Molstar-context messages, active viewer reload/xyzrender control reload actions, shared viewer/grid xyzrender sheet rendering, SDF open messages, docking pose-change messages, the top-level `window.message` dispatch, viewer source/transport helpers, and Molstar xTB context response listener now delegate to dedicated hooks/libs. |
-| ShellActions/ShellViewState slicing | Complete for compatibility assembly | `ShellViewState` derived-field assembly is behind `useAppShellViewState`/`createAppShellViewState`; `ShellActions` now flows through `useAppShellActions` and `createAppShellActions`, with job-history, project, dock-drop, close/dirty-cleanup, recent, and update action groups behind the same compatibility adapter. |
+| ShellActions/ShellViewState slicing | Complete for compatibility assembly | `ShellViewState` derived-field assembly is behind `useAppShellViewState`/`createAppShellViewState`, grouped by `AppShellViewStateSlices` and flattened back to the legacy layout contract. `ShellActions` now flows through `useAppShellActions` and `createAppShellActions`, grouped by `AppShellActionSlices` and flattened back to the legacy layout contract, with job-history, project, dock-drop, close/dirty-cleanup, recent, and update action groups behind the same compatibility adapter. Child components still consume the flat compatibility surface; narrowing their props remains a later cleanup. |
 | Update flow | Complete | Update state/actions are in `use-app-updates.ts`. |
 | Hardening pass | Partial | Trusted shell capability boundaries, diagnostics privacy redaction, cache clearing, scanner limits, renderer policy matrix, and doctor flow now have narrow contracts; full preview capability review, runtime storage inventory, cancellable scanner UX, and remaining Quick Look/browser-dev parity checks remain pending. |
 | Runtime cache contract | Partial | `clear_preview_cache` now delegates to a tested cache-directory helper that preserves `viewer/assets` and removes volatile preview/render/cache entries; broader runtime storage/cache inventory remains pending. |
