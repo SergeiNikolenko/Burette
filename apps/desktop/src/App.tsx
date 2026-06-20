@@ -136,6 +136,7 @@ const preferredTextExtensions = new Set([
   "dms",
   "edr",
   "fasta",
+  "fdef",
   "par",
   "prm",
   "rtf",
