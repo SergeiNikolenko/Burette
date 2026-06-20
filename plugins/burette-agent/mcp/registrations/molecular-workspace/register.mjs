@@ -29,7 +29,7 @@ export function registerMolecularWorkspace(server) {
       description: "Open a local molecular artifact in the full Browser shell, Browser preview, or the real Burrete desktop app through the repository CLI.",
       inputSchema: {
         file: z.string().trim(),
-        mode: z.enum(["browser-dev-shell", "browser-preview", "desktop-app"]).default("browser-dev-shell"),
+        mode: z.enum(["browser-agent-shell", "browser-dev-shell", "browser-preview", "desktop-app"]).default("browser-agent-shell"),
         app: z.string().trim().optional(),
         sessionDir: z.string().trim().optional(),
         host: z.string().trim().optional(),

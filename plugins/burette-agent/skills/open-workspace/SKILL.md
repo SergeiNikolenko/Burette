@@ -12,23 +12,23 @@ or workflow result bundles in Burrete.
 
 1. Run Burrete preflight through [user-context](../user-context/SKILL.md).
 2. Choose mode:
-   - `browser-dev-shell` when the user asks for the normal Browser UI, right
+   - `browser-agent-shell` when the user asks for the normal Browser UI, right
      or bottom docks, sidebars, tabs, files/projects, or app-like browser
-     behavior. This is the full browser-dev application shell and should use a
+     behavior. This is the full agent-owned Browser application shell and should use a
      URL shaped like `http://127.0.0.1:<port>/?devFiles=<encoded absolute path>`.
    - `browser-preview` when the task needs the tokenized agent transport,
      typed MCP/CLI `observe` and `act`, quick visual QA, screenshots, or a
      localhost preview without the full app shell.
    - `desktop-app` when the user asks for the real Burrete application or wants
      results left open in the app.
-3. For `browser-dev-shell`, navigate the Codex in-app Browser to the
+3. For `browser-agent-shell`, navigate the Codex in-app Browser to the
    agent-owned full Browser shell URL returned by the CLI. The CLI must start
    a fresh local port for this agent session; do not reuse another Browser tab,
-   a user-provided browser-dev port, or an already-running app unless the user
+   a user-provided Browser development port, or an already-running app unless the user
    explicitly asks to attach to that exact surface.
 
 ```bash
-bun scripts/burrete-agent.mjs open --mode browser-dev-shell <file>
+bun scripts/burrete-agent.mjs open --mode browser-agent-shell <file>
 ```
 
 Use the returned URL shaped like:
@@ -81,7 +81,7 @@ together rather than pose-paged docking. Do not use a new Codex Browser tab for
 this; it must create a Burrete tab in the current workspace.
 
 If the visible in-app Browser tab is already on the agent-owned
-browser-dev-shell URL but `sessionDir` is missing from the conversation, pass
+browser-agent-shell URL but `sessionDir` is missing from the conversation, pass
 the URL directly:
 
 ```bash
@@ -106,7 +106,7 @@ explicitly asks for an external browser. If the in-app Browser is unavailable,
 report a typed blocker instead of falling back to an external browser.
 
 Use the returned tokenized URL when typed agent control is required. Do not use
-`browser-preview` as a substitute for the full browser-dev shell when the user
+`browser-preview` as a substitute for the full browser agent shell when the user
 is asking about ordinary Burrete UI chrome.
 
 5. For `desktop-app`, open through the CLI:

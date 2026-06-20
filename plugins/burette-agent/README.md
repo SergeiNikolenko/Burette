@@ -53,7 +53,7 @@ The source of truth is the repository CLI:
 
 ```bash
 bun scripts/burrete-agent.mjs open --mode browser-preview samples/mini.pdb
-bun scripts/burrete-agent.mjs open --mode browser-dev-shell samples/mini.pdb
+bun scripts/burrete-agent.mjs open --mode browser-agent-shell samples/mini.pdb
 bun scripts/burrete-agent.mjs open --mode desktop-app samples/mini.pdb
 bun scripts/burrete-agent.mjs observe --session-dir /tmp/burrete-agent-session
 bun scripts/burrete-agent.mjs act --session-dir /tmp/burrete-agent-session '{"type":"reset_camera"}'

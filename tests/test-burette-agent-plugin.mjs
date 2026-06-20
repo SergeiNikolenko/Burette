@@ -237,7 +237,7 @@ assert.equal(preflightPayload.schema, "burette_agent_preflight.v1");
 assert.equal(preflightPayload.repository.source, "source-checkout");
 assert.equal(preflightPayload.files.cli.status, "available");
 assert.equal(preflightPayload.files.browserPreviewServer.status, "available");
-assert.equal(preflightPayload.context.transports[0].id, "browser-dev-shell");
+assert.equal(preflightPayload.context.transports[0].id, "browser-agent-shell");
 assert.equal(preflightPayload.context.transports[1].id, "browser-preview");
 assert.equal(preflightPayload.context.transports[2].id, "desktop-app");
 assert.equal(preflightPayload.context.workflowRoutes.molstarScene.includes("observe scene"), true);

@@ -33,11 +33,11 @@ Use one typed action surface:
 bun scripts/burrete-agent.mjs act --session-dir <dir> '{"type":"hide_waters"}' --wait-ms 12000
 ```
 
-For `browser-dev-shell`, use the `sessionDir` returned by
-`open --mode browser-dev-shell`; the browser shell polls that session over its
+For `browser-agent-shell`, use the `sessionDir` returned by
+`open --mode browser-agent-shell`; the browser shell polls that session over its
 local dev-server endpoint and relays actions to the active Mol* iframe. Do not
 use Browser DOM clicks for scene edits when this session contract is available.
-If the user is already looking at a browser-dev-shell URL and the session
+If the user is already looking at a browser-agent-shell URL and the session
 directory is not in context, pass that URL directly with `--url`; the CLI will
 resolve the shell session through `/__burette/agent-session/session.json` when
 the shell is alive.
@@ -194,7 +194,7 @@ Computer only for visual confirmation. If the active fixture has no waters,
 `hide_waters` should return a successful typed no-op such as `componentCount: 0`
 instead of a false failure.
 
-For browser-dev-shell and desktop sessions, check `observe.scene.selection`
+For browser-agent-shell and desktop sessions, check `observe.scene.selection`
 first. It reports the last known selection/focused ligand with `selectionId`,
 ligand identity, and counts when the active viewer returned them.
 

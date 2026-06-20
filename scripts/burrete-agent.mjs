@@ -11,12 +11,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
 const agentPreviewScript = resolve(__dirname, 'agent-preview.mjs');
 const apiVersion = 'burette-agent-cli/v1';
-const supportedModes = new Set(['browser-preview', 'browser-dev-shell', 'desktop-app']);
+const supportedModes = new Set(['browser-preview', 'browser-agent-shell', 'browser-dev-shell', 'desktop-app']);
 
 function usage() {
   console.error(`Usage:
   node scripts/burrete-agent.mjs open --mode browser-preview <file> [--port 5177] [--host 127.0.0.1]
-  node scripts/burrete-agent.mjs open --mode browser-dev-shell <file> [--host 127.0.0.1]
+  node scripts/burrete-agent.mjs open --mode browser-agent-shell <file> [--host 127.0.0.1]
   node scripts/burrete-agent.mjs open --mode desktop-app <file> [--app Burrete] [--session-dir /tmp/session] [--no-launch]
   node scripts/burrete-agent.mjs observe --url <tokenized-preview-url>
   node scripts/burrete-agent.mjs observe --session-dir <desktop-agent-session>
@@ -25,7 +25,8 @@ function usage() {
   node scripts/burrete-agent.mjs render-panel --session-dir <desktop-agent-session> --kind markdown --file /tmp/notes.md [--area right]
 
 The CLI is the readable Burrete agent contract. Browser-preview mode uses a
-tokenized localhost server. Desktop app mode uses an explicit file-backed local
+tokenized localhost server. Browser-agent-shell mode starts an agent-owned full
+Browser workspace shell. Desktop app mode uses an explicit file-backed local
 session directory passed to the app at launch.`);
 }
 
@@ -138,7 +139,7 @@ async function main() {
 }
 
 async function open(options) {
-  const mode = options.mode || 'browser-preview';
+  const mode = canonicalMode(options.mode || 'browser-preview');
   if (!supportedModes.has(mode)) fail('INVALID_ARGS', `Unsupported mode: ${mode}.`, 2);
   const file = options.rest[0];
   if (!file) fail('INVALID_ARGS', 'open requires a structure file path.', 2);
@@ -146,8 +147,8 @@ async function open(options) {
     await openDesktopApp(file, options);
     return;
   }
-  if (mode === 'browser-dev-shell') {
-    await openBrowserDevShell(file, options);
+  if (mode === 'browser-agent-shell') {
+    await openBrowserAgentShell(file, options);
     return;
   }
 
@@ -164,7 +165,11 @@ async function open(options) {
   });
 }
 
-async function openBrowserDevShell(file, options) {
+function canonicalMode(mode) {
+  return mode === 'browser-dev-shell' ? 'browser-agent-shell' : mode;
+}
+
+async function openBrowserAgentShell(file, options) {
   const initialFile = resolve(file);
   const sessionDir = options.sessionDir ? resolve(options.sessionDir) : await mkdtemp(resolve(tmpdir(), 'burrete-agent-shell-'));
   const token = randomUUID();
@@ -207,23 +212,31 @@ async function openBrowserDevShell(file, options) {
   };
   const logPath = resolve(sessionDir, 'server.log');
   const logHandle = await openFile(logPath, 'a');
+  let childExit = null;
   const child = spawn('vp', ['dev', 'apps/desktop', '--host', host, '--port', String(port), '--strictPort', '--config', 'apps/desktop/vite.config.ts'], {
     cwd: repoRoot,
     env,
     detached: true,
     stdio: ['ignore', logHandle.fd, logHandle.fd],
   });
-  child.unref();
   await logHandle.close();
-  child.on('error', (error) => {
-    fail('BROWSER_DEV_SHELL_FAILED', `Failed to start browser-dev shell: ${error?.message || String(error)}.`, 1);
+  child.once('error', (error) => {
+    childExit = { error };
   });
-  await waitForHttpReady(url, 30000);
+  child.once('exit', (code, signal) => {
+    childExit = { code, signal };
+  });
+  await waitForHttpReady(url, 30000, {
+    childExit: () => childExit,
+    logPath,
+  });
+  child.unref();
   console.log(JSON.stringify({
     ok: true,
     apiVersion,
     result: {
-      mode: 'browser-dev-shell',
+      mode: 'browser-agent-shell',
+      legacyMode: 'browser-dev-shell',
       url: url.toString(),
       host,
       port,
@@ -248,13 +261,26 @@ async function allocatePort(host) {
   const address = server.address();
   const port = typeof address === 'object' && address ? address.port : null;
   await new Promise(resolveClose => server.close(resolveClose));
-  if (!port) fail('PORT_UNAVAILABLE', 'Could not allocate a browser-dev shell port.', 1);
+  if (!port) fail('PORT_UNAVAILABLE', 'Could not allocate a browser agent shell port.', 1);
   return port;
 }
 
-async function waitForHttpReady(url, timeoutMs) {
+async function waitForHttpReady(url, timeoutMs, options = {}) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() <= deadline) {
+    const childExit = options.childExit?.();
+    if (childExit) {
+      const logTail = await readLogTail(options.logPath);
+      const cause = childExit.error
+        ? { message: childExit.error?.message || String(childExit.error) }
+        : { code: childExit.code, signal: childExit.signal };
+      fail(
+        'BROWSER_AGENT_SHELL_FAILED',
+        `Browser agent shell process exited before ${url} became ready.`,
+        1,
+        { url: url.toString(), logPath: options.logPath, logTail, cause },
+      );
+    }
     try {
       const response = await fetch(url);
       if (response.ok) return;
@@ -263,7 +289,22 @@ async function waitForHttpReady(url, timeoutMs) {
     }
     await new Promise(resolve => setTimeout(resolve, 100));
   }
-  fail('BROWSER_DEV_SHELL_TIMEOUT', `Timed out waiting for browser-dev shell at ${url}.`, 1);
+  fail(
+    'BROWSER_AGENT_SHELL_TIMEOUT',
+    `Timed out waiting for browser agent shell at ${url}.`,
+    1,
+    { url: url.toString(), logPath: options.logPath, logTail: await readLogTail(options.logPath) },
+  );
+}
+
+async function readLogTail(logPath) {
+  if (!logPath) return null;
+  try {
+    const text = await readFile(logPath, 'utf8');
+    return text.split(/\r?\n/u).slice(-80).join('\n');
+  } catch (error) {
+    return `Could not read log file ${logPath}: ${error?.message || String(error)}`;
+  }
 }
 
 async function observe(options) {
@@ -444,7 +485,7 @@ async function assertSessionResponsive(sessionDir) {
   try {
     await fetchWithTimeout(session.url, 1500);
   } catch (error) {
-    fail('BROWSER_DEV_SHELL_UNAVAILABLE', `Browser-dev shell is not reachable at ${session.url}. Reopen the workspace instead of waiting for an action timeout.`, 1, { sessionDir, cause: error?.message || String(error) });
+    fail('BROWSER_AGENT_SHELL_UNAVAILABLE', `Browser agent shell is not reachable at ${session.url}. Reopen the workspace instead of waiting for an action timeout.`, 1, { sessionDir, cause: error?.message || String(error) });
   }
 }
 
