@@ -234,6 +234,7 @@ const preflight = runNode(["plugins/burette-agent/scripts/burette_agent_prefligh
 assert.equal(preflight.status, 0, preflight.stderr);
 const preflightPayload = JSON.parse(preflight.stdout);
 assert.equal(preflightPayload.schema, "burette_agent_preflight.v1");
+assert.equal(preflightPayload.repository.source, "source-checkout");
 assert.equal(preflightPayload.files.cli.status, "available");
 assert.equal(preflightPayload.files.browserPreviewServer.status, "available");
 assert.equal(preflightPayload.context.transports[0].id, "browser-dev-shell");
@@ -280,6 +281,28 @@ const extractedLigand = await extractStructureComponentFile({
 assert.equal(extractedLigand.atomCount, 44);
 assert.match(extractedLigand.outputPath, /test-nad-a-377\.pdb$/);
 await unlink(extractedLigand.outputPath);
+
+const missingRepoRootCheck = runNode([
+  "--input-type=module",
+  "--eval",
+  `
+    import { mkdtemp, cp, rm } from "node:fs/promises";
+    import { tmpdir } from "node:os";
+    import path from "node:path";
+    const tempRoot = await mkdtemp(path.join(tmpdir(), "burrete-plugin-cache-test-"));
+    const pluginRoot = path.join(tempRoot, "cache", "nikolenko-local", "burrete", "0.1.0");
+    await cp("plugins/burette-agent", pluginRoot, { recursive: true });
+    const bridge = await import(path.join(pluginRoot, "mcp", "lib", "cli-bridge.mjs"));
+    const result = await bridge.runBurreteAgent(["open", "--mode", "browser-preview", "samples/mini.pdb"]);
+    console.log(JSON.stringify(result.error));
+    await rm(tempRoot, { recursive: true, force: true });
+  `,
+]);
+assert.equal(missingRepoRootCheck.status, 0, missingRepoRootCheck.stderr);
+const missingRepoRootError = JSON.parse(missingRepoRootCheck.stdout);
+assert.equal(missingRepoRootError.code, "BURRETE_REPO_ROOT_UNAVAILABLE");
+assert.match(missingRepoRootError.message, /BURRETE_AGENT_REPO_ROOT/);
+assert.equal(missingRepoRootError.details.repoRootSource, "fallback-unverified");
 
 const syntaxTargets = [
   "plugins/burette-agent/mcp/server.mjs",

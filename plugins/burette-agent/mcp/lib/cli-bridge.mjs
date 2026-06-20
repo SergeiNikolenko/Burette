@@ -1,10 +1,35 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 
-import { repoPath, repoRoot } from "./plugin-root.mjs";
+import { pluginRoot, repoPath, repoRoot, repoRootMetadataPath, repoRootSource } from "./plugin-root.mjs";
 
 const cliScript = repoPath("scripts", "burrete-agent.mjs");
 
 export async function runBurreteAgent(args, { timeoutMs = 30000 } = {}) {
+  if (!existsSync(cliScript)) {
+    return {
+      ok: false,
+      exitCode: 127,
+      signal: null,
+      stdout: "",
+      stderr: "",
+      error: {
+        code: "BURRETE_REPO_ROOT_UNAVAILABLE",
+        message:
+          `Burrete agent CLI was not found at ${cliScript}. ` +
+          `The plugin resolved repoRoot from ${repoRootSource}. ` +
+          "Install metadata or BURRETE_AGENT_REPO_ROOT must point at a Burrete repository or app resource root that contains scripts/burrete-agent.mjs.",
+        details: {
+          pluginRoot,
+          repoRoot,
+          repoRootSource,
+          metadataPath: repoRootMetadataPath,
+          cliScript,
+        },
+      },
+    };
+  }
+
   const child = spawn(process.execPath, [cliScript, ...args], {
     cwd: repoRoot,
     stdio: ["ignore", "pipe", "pipe"],

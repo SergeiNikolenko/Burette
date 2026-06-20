@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const pluginRoot = path.resolve(scriptDir, "..");
 const defaultRepoRoot = path.resolve(pluginRoot, "..", "..");
-const repoRoot = await resolveRepoRoot();
+const repoRootResolution = await resolveRepoRoot();
+const repoRoot = repoRootResolution.path;
 
 async function exists(filePath) {
   try {
@@ -27,13 +28,16 @@ async function readJson(filePath, fallback = null) {
 
 async function resolveRepoRoot() {
   if (process.env.BURRETE_AGENT_REPO_ROOT) {
-    return path.resolve(process.env.BURRETE_AGENT_REPO_ROOT);
+    return { path: path.resolve(process.env.BURRETE_AGENT_REPO_ROOT), source: "env" };
   }
   const metadata = await readJson(path.join(pluginRoot, ".burette-agent-install.json"), {});
   if (typeof metadata.repoRoot === "string" && metadata.repoRoot.trim()) {
-    return path.resolve(metadata.repoRoot);
+    return { path: path.resolve(metadata.repoRoot), source: "metadata" };
   }
-  return defaultRepoRoot;
+  if (await exists(path.join(defaultRepoRoot, "scripts", "burrete-agent.mjs"))) {
+    return { path: defaultRepoRoot, source: "source-checkout" };
+  }
+  return { path: defaultRepoRoot, source: "fallback-unverified" };
 }
 
 const pluginManifestPath = path.join(pluginRoot, ".codex-plugin", "plugin.json");
@@ -60,6 +64,7 @@ const payload = {
   },
   repository: {
     root: repoRoot,
+    source: repoRootResolution.source,
     packageName: repoPackage.name || null,
     packageVersion: repoPackage.version || null,
   },
