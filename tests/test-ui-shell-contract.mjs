@@ -11,6 +11,7 @@ const [
   desktopIndex,
   app,
   uiStore,
+  appChemistryJobsHook,
   commandPaletteHook,
   appClipboardHook,
   appDescriptorsHook,
@@ -175,6 +176,7 @@ const [
   source('apps/desktop/index.html'),
   source('apps/desktop/src/App.tsx'),
   source('apps/desktop/src/stores/ui-store.ts'),
+  source('apps/desktop/src/hooks/use-app-chemistry-jobs.ts'),
   source('apps/desktop/src/hooks/use-command-palette.ts'),
   source('apps/desktop/src/hooks/use-app-clipboard.ts'),
   source('apps/desktop/src/hooks/use-app-descriptors.ts'),
@@ -974,6 +976,21 @@ assert.match(appDiagnosticsHook, /Diagnostics export failed/);
 assert.match(app, /from "\.\/lib\/chemistry-settings"/);
 assert.match(app, /from "\.\/lib\/chemistry-job-requests"/);
 assert.match(app, /from "\.\/lib\/direct-chemistry-guard"/);
+assert.match(app, /useAppChemistryJobs\(\{ pushErrorStatus, pushStatus \}\)/);
+assert.doesNotMatch(app, /const \[conformerStatus, setConformerStatus\]/);
+assert.doesNotMatch(app, /const \[xtbStatus, setXtbStatus\]/);
+assert.match(appChemistryJobsHook, /readConformerSettings\(\)/);
+assert.match(appChemistryJobsHook, /readXtbSettings\(\)/);
+assert.match(appChemistryJobsHook, /normalizeConformerSettings\(settings\)/);
+assert.match(appChemistryJobsHook, /saveConformerSettings\(normalized\)/);
+assert.match(appChemistryJobsHook, /normalizeXtbSettings\(settings\)/);
+assert.match(appChemistryJobsHook, /saveXtbSettings\(normalized\)/);
+assert.match(appChemistryJobsHook, /requestConformerStatus\(\)/);
+assert.match(appChemistryJobsHook, /pushStatus\(conformerStatusLine\(status\)\)/);
+assert.match(appChemistryJobsHook, /requestXtbStatus\(\)/);
+assert.match(appChemistryJobsHook, /installXtbRequest\(\)/);
+assert.match(appChemistryJobsHook, /cancelConformerRequest\(jobId\)/);
+assert.match(appChemistryJobsHook, /cancelXtbRequest\(jobId\)/);
 assert.doesNotMatch(app, /async function requestXtbStatus/);
 assert.doesNotMatch(app, /browserDevConformerJson/);
 assert.doesNotMatch(app, /DIRECT_CHEMISTRY_JOB_ATOM_LIMIT/);
