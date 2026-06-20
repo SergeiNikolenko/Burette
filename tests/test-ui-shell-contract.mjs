@@ -12,6 +12,7 @@ const [
   app,
   appActiveTextDocumentHook,
   appAgentSessionActionsHook,
+  appBrowserDevStartupHook,
   uiStore,
   appChemistryJobsHook,
   appConformerWorkflowsHook,
@@ -197,6 +198,7 @@ const [
   source('apps/desktop/src/App.tsx'),
   source('apps/desktop/src/hooks/use-app-active-text-document.ts'),
   source('apps/desktop/src/hooks/use-app-agent-session-actions.ts'),
+  source('apps/desktop/src/hooks/use-app-browser-dev-startup.ts'),
   source('apps/desktop/src/stores/ui-store.ts'),
   source('apps/desktop/src/hooks/use-app-chemistry-jobs.ts'),
   source('apps/desktop/src/hooks/use-app-conformer-workflows.ts'),
@@ -891,7 +893,13 @@ assert.ok(browserDevStartup.includes('return folder ? folder.replace(/\\\\/g, "/
 assert.match(browserDevStartup, /export function browserDevHasExplicitWorkspace\(\)/);
 assert.match(browserDevStartup, /return params\.has\("devFiles"\) \|\| params\.has\("devFolder"\);/);
 assert.match(app, /from "\.\/lib\/browser-dev-startup"/);
-assert.match(app, /const browserDevExplicitFolder = useMemo\(\(\) => browserDevFolderFromLocation\(\), \[\]\);/);
+assert.match(app, /from "\.\/hooks\/use-app-browser-dev-startup"/);
+assert.match(app, /browserDevExplicitFolder,[\s\S]*browserDevHasExplicitWorkspaceQuery,[\s\S]*\} = useAppBrowserDevStartup\(\)/);
+assert.doesNotMatch(app, /browserDevFolderFromLocation\(/);
+assert.doesNotMatch(app, /browserDevHasExplicitWorkspace\(/);
+assert.match(appBrowserDevStartupHook, /export function useAppBrowserDevStartup\(\)/);
+assert.match(appBrowserDevStartupHook, /useMemo\(\(\) => browserDevFolderFromLocation\(\), \[\]\)/);
+assert.match(appBrowserDevStartupHook, /useMemo\(\(\) => browserDevHasExplicitWorkspace\(\), \[\]\)/);
 assert.match(appSidebarProjectsHook, /if \(browserDevExplicitFolder\) return \[browserDevExplicitFolder\];/);
 assert.match(appSidebarProjectsHook, /const sidebarRecentStructures = browserDevExplicitFolder \? \[\] : recentStructures;/);
 assert.match(appSidebarProjectsHook, /recentStructures: sidebarRecentStructures,/);

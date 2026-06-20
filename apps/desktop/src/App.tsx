@@ -1,4 +1,4 @@
-import { Suspense, lazy, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useRef, useState } from "react";
 import { AppLayout } from "./components/app-layout";
 import type { ViewerLigandSelection } from "./components/types";
 import { WindowTitle } from "./components/window-title";
@@ -11,6 +11,7 @@ import {
 } from "./hooks/use-command-palette";
 import { useAppActiveTextDocument } from "./hooks/use-app-active-text-document";
 import { useAppAgentSessionActions } from "./hooks/use-app-agent-session-actions";
+import { useAppBrowserDevStartup } from "./hooks/use-app-browser-dev-startup";
 import { useAppChemistryJobs } from "./hooks/use-app-chemistry-jobs";
 import { useAppConformerWorkflows } from "./hooks/use-app-conformer-workflows";
 import { useAppDescriptors } from "./hooks/use-app-descriptors";
@@ -117,7 +118,7 @@ import { isMoleculeCollectionPath } from "./lib/collection-documents";
 import { detectContentSpectrumPaths } from "./lib/content-spectrum-detection";
 import { isProteinLikeDockingSource } from "./lib/docking-documents";
 import { structureExtensionFromPath } from "./lib/file-routing";
-import { browserDevFolderFromLocation, browserDevHasExplicitWorkspace, browserDevQuickLookFileFromLocation } from "./lib/browser-dev-startup";
+import { browserDevQuickLookFileFromLocation } from "./lib/browser-dev-startup";
 import type { StructureDragPayload } from "./lib/structure-drag";
 import {
   activeViewerIframeForDocument,
@@ -339,8 +340,10 @@ export default function App() {
     isKnownViewerMessageSource,
   });
 
-  const browserDevExplicitFolder = useMemo(() => browserDevFolderFromLocation(), []);
-  const browserDevHasExplicitWorkspaceQuery = useMemo(() => browserDevHasExplicitWorkspace(), []);
+  const {
+    browserDevExplicitFolder,
+    browserDevHasExplicitWorkspaceQuery,
+  } = useAppBrowserDevStartup();
   const {
     activeProject,
     setWorkspacePath,
