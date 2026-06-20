@@ -177,6 +177,8 @@ Current Stage 3 progress:
   in `apps/desktop/src/hooks/use-app-generate-3d-conformer.ts`, while the
   existing host-message acknowledgement still resolves the shared pending
   replacement ref;
+- Molstar text-selection and structure-action senders now live in
+  `apps/desktop/src/hooks/use-app-molstar-action-senders.ts`;
 - Molstar xTB context request/response listener lifecycle now lives in
   `apps/desktop/src/hooks/use-app-molstar-xtb-context.ts`;
 - xTB job runners, active-operation routing, Ketcher sketch optimization,
@@ -184,8 +186,7 @@ Current Stage 3 progress:
   `apps/desktop/src/hooks/use-app-xtb-workflows.ts`;
 - shared text/base64 download, export filename, temporary text id, and save
   dialog filter helpers now live in `apps/desktop/src/lib/file-export.ts`;
-- `App.tsx` still owns Molstar structure action/text-selection senders and
-  grouped ShellActions assembly.
+- `App.tsx` still owns grouped ShellActions assembly.
   These are the remaining high-risk slices
   and should move only after each boundary has contract coverage for the exact
   message/action names.
@@ -200,7 +201,7 @@ the high-risk runtime boundaries intact.
 | --- | --- | --- |
 | Contract safety net | Partial | Existing contract tests were strengthened as modules moved, but the full named test matrix from the epic is not complete yet. |
 | Dev-server extraction | Complete | Browser-dev endpoint modules now live under `apps/desktop/vite/browser-dev/`, with `vite.config.ts` acting as registration/composition. |
-| App shell extraction | Partial | Several app hooks, pure chemistry libs, file-routing helpers, shared file-export helpers, the core file-open hook, file picker/recent-open actions, the dock payload-open hook, browser-dev startup URL helpers/effects, pure Ketcher workflow helpers, Ketcher action callbacks, docking/collection action callbacks, grid append/xyzrender sheet callbacks, grid save/export/runtime/control/conformer message handling, viewer export/runtime/runtime-file/state/renderer/Ketcher/host/conformer/Molstar-context message handling, top-level viewer/grid dispatch, xTB/CREST status/settings/cancel state, CREST/PRISM workflow runners, 3D conformer generation/Molstar replacement sender, Molstar xTB context request handling, xTB workflow runners, shared xyzrender sheet message handling, SDF open message handling, docking pose-change message handling, FEP setup/network callbacks, drop action callbacks, workspace/project-folder callbacks, and ShellViewState assembly are extracted, but Molstar structure action/text-selection senders and remaining grouped ShellActions assembly still live in `App.tsx`. |
+| App shell extraction | Partial | Several app hooks, pure chemistry libs, file-routing helpers, shared file-export helpers, the core file-open hook, file picker/recent-open actions, the dock payload-open hook, browser-dev startup URL helpers/effects, pure Ketcher workflow helpers, Ketcher action callbacks, docking/collection action callbacks, grid append/xyzrender sheet callbacks, grid save/export/runtime/control/conformer message handling, viewer export/runtime/runtime-file/state/renderer/Ketcher/host/conformer/Molstar-context message handling, top-level viewer/grid dispatch, xTB/CREST status/settings/cancel state, CREST/PRISM workflow runners, 3D conformer generation/Molstar replacement sender, Molstar text-selection/action senders, Molstar xTB context request handling, xTB workflow runners, shared xyzrender sheet message handling, SDF open message handling, docking pose-change message handling, FEP setup/network callbacks, drop action callbacks, workspace/project-folder callbacks, and ShellViewState assembly are extracted, but remaining grouped ShellActions assembly still lives in `App.tsx`. |
 | Opening workflow | Partial | `openDocuments`, `openPaths`, text/spectrum opening, path classification, pasted-structure opening, file picker/recent-open actions, dock payload opening, browser-dev startup URL parsing, and browser-dev startup orchestration effects are in dedicated modules/hooks. |
 | Ketcher workflow | Partial | Ketcher import queueing, draft/source helpers, import state, import/export/sketch/grid-row action callbacks, grid-origin `openInKetcher` message routing, and viewer-origin Ketcher handoff messages are extracted; broader Ketcher sketch state still flows through `App.tsx`. |
 | Grid workflow | Partial | Dirty-grid state, descriptor workflows, grid append, delimited append fallback, xyzrender sheet drops, pose-review selection refresh, grid save/export message handling, grid paging/read/xyzrender-card runtime messages, grid control/conformer message routing, SDF grid open message handling, and shared viewer/grid dispatch are extracted. |
