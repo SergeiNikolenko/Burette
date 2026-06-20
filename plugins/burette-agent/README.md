@@ -64,6 +64,17 @@ bun scripts/burrete-agent.mjs render-panel --session-dir /tmp/burrete-agent-sess
 
 MCP tools wrap this CLI instead of reimplementing the app control layer.
 
+`auto` is the default because it does not require the full Browser shell to be
+available. It tries `browser-agent-shell` first and falls back to the tokenized
+`browser-preview` server for basic molecular opening and observation.
+
+The current full `browser-agent-shell` implementation is source-checkout
+oriented: it starts `vp dev` so Vite can serve the application assets and the
+runtime `/__burette/agent-session/*` endpoints. A clean installation can avoid
+that dependency only after the plugin ships a prebuilt agent-shell web bundle
+plus a small local static/runtime server for the same endpoints. Plain built
+assets are not enough because `observe` and `act` need the session endpoint.
+
 ## Local Codex Installation
 
 The current Codex CLI does not expose a direct

@@ -19,6 +19,9 @@ or workflow result bundles in Burrete.
      or bottom docks, sidebars, tabs, files/projects, or app-like browser
      behavior. This is the full agent-owned Browser application shell and should use a
      URL shaped like `http://127.0.0.1:<port>/?devFiles=<encoded absolute path>`.
+     In the current source-checkout implementation this mode requires `vp` in
+     PATH because it starts `vp dev` for the app assets and
+     `/__burette/agent-session/*` runtime endpoints.
    - `browser-preview` when the task needs the tokenized agent transport,
      typed MCP/CLI `observe` and `act`, quick visual QA, screenshots, or a
      localhost preview without the full app shell.

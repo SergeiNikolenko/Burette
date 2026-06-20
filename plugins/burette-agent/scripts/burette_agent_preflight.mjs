@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { access, readFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -45,6 +46,7 @@ const repoPackagePath = path.join(repoRoot, "package.json");
 const cliPath = path.join(repoRoot, "scripts", "burrete-agent.mjs");
 const previewPath = path.join(repoRoot, "scripts", "agent-preview.mjs");
 const desktopApp = process.env.BURRETE_AGENT_APP || null;
+const hasVp = commandExists("vp");
 
 const [pluginManifest, repoPackage, hasCli, hasPreview, hasDesktopApp] = await Promise.all([
   readJson(pluginManifestPath, {}),
@@ -53,6 +55,14 @@ const [pluginManifest, repoPackage, hasCli, hasPreview, hasDesktopApp] = await P
   exists(previewPath),
   desktopApp ? exists(desktopApp) : Promise.resolve(false),
 ]);
+
+function commandExists(command) {
+  const result = spawnSync(command, ["--version"], {
+    encoding: "utf8",
+    stdio: "ignore",
+  });
+  return result.status === 0;
+}
 
 const payload = {
   schema: "burette_agent_preflight.v1",
@@ -81,6 +91,10 @@ const payload = {
       path: desktopApp,
       status: desktopApp ? (hasDesktopApp ? "available" : "missing") : "not_configured",
     },
+    vitePlus: {
+      command: "vp",
+      status: hasVp ? "available" : "missing",
+    },
   },
   context: {
     scope: "burette_agent_capability_registry",
@@ -93,8 +107,8 @@ const payload = {
       },
       {
         id: "browser-agent-shell",
-        status: hasCli ? "available" : "blocked",
-        note: "Agent-owned full Browser shell on a fresh local port with ?devFiles=...",
+        status: hasCli && hasVp ? "available" : "blocked",
+        note: "Agent-owned full Browser shell on a fresh local port with ?devFiles=...; currently requires vp dev.",
       },
       {
         id: "browser-preview",
