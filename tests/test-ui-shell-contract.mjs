@@ -10,6 +10,7 @@ async function source(path) {
 const [
   desktopIndex,
   app,
+  appAgentSessionActionsHook,
   uiStore,
   appChemistryJobsHook,
   appConformerWorkflowsHook,
@@ -192,6 +193,7 @@ const [
 ] = await Promise.all([
   source('apps/desktop/index.html'),
   source('apps/desktop/src/App.tsx'),
+  source('apps/desktop/src/hooks/use-app-agent-session-actions.ts'),
   source('apps/desktop/src/stores/ui-store.ts'),
   source('apps/desktop/src/hooks/use-app-chemistry-jobs.ts'),
   source('apps/desktop/src/hooks/use-app-conformer-workflows.ts'),
@@ -3388,6 +3390,14 @@ assert.match(browserDevAgentSession, /"actions\.json", "observe\.json", "session
 assert.match(browserDevAgentSession, /text\/event-stream/);
 assert.match(browserDevAgentSession, /watch\(sessionDir/);
 assert.match(browserDevAgentSession, /changedFileName === "actions\.json"/);
+assert.match(app, /from "\.\/hooks\/use-app-agent-session-actions"/);
+assert.match(app, /const agentTabActions = useAppAgentSessionActions\(\{/);
+assert.match(app, /tabActions: agentTabActions/);
+assert.doesNotMatch(app, /const agentTabActions = useMemo\(\(\) => \(\{/);
+assert.match(appAgentSessionActionsHook, /export function useAppAgentSessionActions\(\{/);
+assert.match(appAgentSessionActionsHook, /return useMemo\(\(\) => \(\{/);
+assert.match(appAgentSessionActionsHook, /openNewTab,[\s\S]*setActiveTab,[\s\S]*closeTab,[\s\S]*moveTab,/);
+assert.match(appAgentSessionActionsHook, /\[openNewTab, setActiveTab, closeTab, moveTab\]/);
 assert.match(agentSessionHook, /type AgentSceneAction = \{/);
 assert.match(agentSessionHook, /type AgentSceneSelection = \{/);
 assert.match(agentSessionHook, /viewerAgentStateWithActionResult/);
