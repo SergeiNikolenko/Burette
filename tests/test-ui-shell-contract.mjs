@@ -60,6 +60,7 @@ const [
   appStartupEffectsHook,
   appUpdatesHook,
   appViewerBridgeMessagesHook,
+  appViewerBridgeControllerHook,
   appViewerConformerMessagesHook,
   appViewerFileActionsHook,
   appViewerHostMessagesHook,
@@ -248,6 +249,7 @@ const [
   source('apps/desktop/src/hooks/use-app-startup-effects.ts'),
   source('apps/desktop/src/hooks/use-app-updates.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-bridge-messages.ts'),
+  source('apps/desktop/src/hooks/use-app-viewer-bridge-controller.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-conformer-messages.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-file-actions.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-host-messages.ts'),
@@ -1829,7 +1831,40 @@ assert.match(appGenerate3DConformerHook, /type: "replaceMolstarStructure"/);
 assert.match(appGenerate3DConformerHook, /const requestId = `molstar-replace-\$\{Date\.now\(\)\}-\$\{Math\.random\(\)\.toString\(36\)\.slice\(2\)\}`/);
 assert.match(appGenerate3DConformerHook, /requestId,/);
 assert.match(appGenerate3DConformerHook, /textBase64: textToBase64\(conformer\.text\)/);
-assert.match(app, /useAppViewerBridgeMessages\(\{/);
+assert.match(app, /useAppViewerBridgeController\(\{/);
+assert.doesNotMatch(app, /useAppViewerBridgeMessages\(\{/);
+for (const messageHook of [
+  "useAppGridControlMessages",
+  "useAppGridFileActions",
+  "useAppGridRuntimeMessages",
+  "useAppKetcherViewerMessages",
+  "useAppMolstarContextMessages",
+  "useAppViewerFileActions",
+  "useAppViewerRuntimeMessages",
+]) {
+  assert.doesNotMatch(app, new RegExp(`${messageHook}\\(`));
+}
+assert.match(appViewerBridgeControllerHook, /useAppViewerBridgeMessages\(\{/);
+for (const handlerName of [
+  "handleDockingPoseMessage",
+  "handleGridConformerMessage",
+  "handleGridControlMessage",
+  "handleGridFileMessage",
+  "handleGridRuntimeMessage",
+  "handleKetcherViewerMessage",
+  "handleMolstarContextMessage",
+  "handleRendererMessage",
+  "handleSdfViewerMessage",
+  "handleViewerConformerMessage",
+  "handleViewerFileMessage",
+  "handleViewerHostMessage",
+  "handleViewerRuntimeFileMessage",
+  "handleViewerRuntimeMessage",
+  "handleViewerStateMessage",
+  "handleXyzrenderSheetMessage",
+]) {
+  assert.match(appViewerBridgeControllerHook, new RegExp(`${handlerName},`));
+}
 assert.match(appViewerBridgeMessagesHook, /handleViewerHostMessage\(source, body\)/);
 assert.match(appViewerHostMessagesHook, /body\?\.type === "molstarStructureReplaced"/);
 assert.match(appViewerHostMessagesHook, /pendingMolstarReplaceRef\.current\.get\(requestId\)/);
@@ -4510,7 +4545,7 @@ assert.match(appMolstarContextMessagesHook, /const molstarPreferences = \{[\s\S]
 assert.match(appMolstarContextMessagesHook, /if \(!isTauriRuntime\(\)\) return openBrowserDevMolstarContextDocument\(contextDocument, molstarPreferences\);/);
 assert.match(appMolstarContextMessagesHook, /invoke<ViewerDocument>\("open_text_structure", \{\s*request: \{\s*title: `\$\{label\}\.\$\{extension\}`,\s*extension,\s*text: entry\.data,/s);
 assert.match(appMolstarContextMessagesHook, /reloadOptions: \{\},/);
-assert.match(app, /useAppViewerFileActions\(\{\s*pushErrorStatus,\s*pushStatus,\s*\}\)/s);
+assert.match(appViewerBridgeControllerHook, /useAppViewerFileActions\(\{\s*pushErrorStatus,\s*pushStatus,\s*\}\)/s);
 assert.match(appViewerBridgeMessagesHook, /source === "burrete-viewer" && handleViewerFileMessage\(body\)/);
 assert.match(appViewerFileActionsHook, /body\?\.type === "exportText"/);
 assert.match(appViewerFileActionsHook, /body\?\.type === "exportData"/);
