@@ -39,6 +39,7 @@ const [
   appRendererMessageHook,
   appSidebarProjectsHook,
   appSdfViewerMessagesHook,
+  appShellViewStateHook,
   appStartupEffectsHook,
   appUpdatesHook,
   appViewerConformerMessagesHook,
@@ -200,6 +201,7 @@ const [
   source('apps/desktop/src/hooks/use-app-renderer-message.ts'),
   source('apps/desktop/src/hooks/use-app-sidebar-projects.ts'),
   source('apps/desktop/src/hooks/use-app-sdf-viewer-messages.ts'),
+  source('apps/desktop/src/hooks/use-app-shell-view-state.ts'),
   source('apps/desktop/src/hooks/use-app-startup-effects.ts'),
   source('apps/desktop/src/hooks/use-app-updates.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-conformer-messages.ts'),
@@ -2842,6 +2844,11 @@ assert.match(commandPalette, /placeholder="Search commands and structures\.\.\."
 assert.match(commandPalette, /heading=\{group\.heading\}/);
 assert.match(commandPalette, /value=\{item\.id\}/);
 assert.match(commandPalette, /onSelect=\{\(\) => runItem\(item\)\}/);
+assert.match(app, /const state = createAppShellViewState\(\{/);
+assert.match(appShellViewStateHook, /activeDocumentId: state\.activeDocument\?\.id \?\? null/);
+assert.match(appShellViewStateHook, /visibleDocuments: state\.documents/);
+assert.match(appShellViewStateHook, /viewerLigandSelection: state\.activeDocument/);
+assert.match(appShellViewStateHook, /viewerLigandSelections\[state\.activeDocument\.id\] \?\? null/);
 assert.match(app, /useKeyboardShortcuts\(state, actions, toggleSidebar, !commandPaletteOpen\)/);
 assert.match(appResizeHook, /const SIDEBAR_DRAG_CLOSE_WIDTH = 180/);
 assert.match(app, /const \{\s*bottomDockDragging,\s*rightDockDragging,\s*sidebarDragging,\s*startBottomDockResize,\s*startRightDockResize,\s*startSidebarResize,\s*\} = useAppResize/);
