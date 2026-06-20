@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } fro
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { AppLayout } from "./components/app-layout";
-import type { AppSettingsSectionId, ShellActions, StructureViewerAction, ViewerLigandSelection } from "./components/types";
+import type { AppSettingsSectionId, ShellActions, ViewerLigandSelection } from "./components/types";
 import { WindowTitle } from "./components/window-title";
 import {
   useCloseCommandPalette,
@@ -34,6 +34,7 @@ import { useAppKetcherActions } from "./hooks/use-app-ketcher-actions";
 import { useAppKetcherViewerMessages } from "./hooks/use-app-ketcher-viewer-messages";
 import { useAppMaintenance } from "./hooks/use-app-maintenance";
 import { useAppMolstarContextMessages } from "./hooks/use-app-molstar-context-messages";
+import { useAppMolstarActionSenders } from "./hooks/use-app-molstar-action-senders";
 import { useAppMolstarXtbContext } from "./hooks/use-app-molstar-xtb-context";
 import { useAppOpenActions } from "./hooks/use-app-open-actions";
 import { useAppQuickLook } from "./hooks/use-app-quick-look";
@@ -121,7 +122,6 @@ import { basename } from "./lib/sidebar-projects";
 import type { StructureDragPayload } from "./lib/structure-drag";
 import { readStructureText } from "./lib/structure-text";
 import { isSpectrumPath, isSubformulaSpectrumJsonText, isTabularSpectrumExtension, isTabularSpectrumText, spectrumDocumentFromText } from "./lib/spectrum";
-import type { TextStructureSelection } from "./lib/text-structure-selection";
 import { isTauriRuntime } from "./lib/tauri";
 import { isTemporaryDocumentPath } from "./lib/temporary-documents";
 import type { OpenDocumentsMode, TextFileDocument, ViewerDocument, ViewerReloadOptions } from "./types";
@@ -658,50 +658,15 @@ export default function App() {
     tabs,
   });
 
-  const selectTextStructure = useCallback((textDocument: TextFileDocument, selection: TextStructureSelection) => {
-    const targetDocument = documents.find((document) => document.path === textDocument.path) ??
-      (activeDocument?.path === textDocument.path ? activeDocument : null);
-    if (!targetDocument || targetDocument.renderer !== "molstar") return;
-    const iframe = activeViewerIframeForDocument(targetDocument.id);
-    if (!iframe?.contentWindow) return;
-    iframe.contentWindow.postMessage({
-      source: "burrete-agent-host",
-      body: {
-        type: "agent-action",
-        id: `text-selection-${Date.now()}`,
-        action: {
-          type: "select_residues",
-          label: selection.label,
-          selector: selection.selector,
-          granularity: selection.granularity,
-          mode: "replace",
-        },
-      },
-    }, "*");
-  }, [activeDocument, documents]);
-
-  const runStructureViewerAction = useCallback((document: ViewerDocument, action: StructureViewerAction) => {
-    if (document.renderer !== "molstar") {
-      pushStatus(`${action.label} needs a Mol* viewer`, "error");
-      return;
-    }
-    const iframe = activeViewerIframeForDocument(document.id);
-    if (!iframe?.contentWindow) {
-      pushStatus(`Open ${document.title} in the main viewer first`, "error");
-      return;
-    }
-    iframe.contentWindow.postMessage({
-      source: "burrete-agent-host",
-      body: {
-        type: "agent-action",
-        id: `structure-action-${Date.now()}`,
-        action,
-      },
-    }, "*");
-    if (!("notify" in action) || action.notify !== false) {
-      pushStatus(action.label);
-    }
-  }, [pushStatus]);
+  const {
+    runStructureViewerAction,
+    selectTextStructure,
+  } = useAppMolstarActionSenders({
+    activeDocument,
+    activeViewerIframeForDocument,
+    documents,
+    pushStatus,
+  });
 
   const { generate3DConformer } = useAppGenerate3DConformer({
     activeViewerIframeForDocument,
