@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useMemo, useRef, useState } from "react";
 import { AppLayout } from "./components/app-layout";
 import type { ViewerLigandSelection } from "./components/types";
 import { WindowTitle } from "./components/window-title";
@@ -338,14 +338,6 @@ export default function App() {
     isKnownViewerMessageSource,
   });
 
-  const selectDocument = useCallback((id: string) => {
-    setActiveDocument(id);
-  }, [setActiveDocument]);
-
-  const focusSidebarSearch = useCallback(() => {
-    openCommandPalette("search");
-  }, [openCommandPalette]);
-
   const browserDevExplicitFolder = useMemo(() => browserDevFolderFromLocation(), []);
   const browserDevHasExplicitWorkspaceQuery = useMemo(() => browserDevHasExplicitWorkspace(), []);
   const {
@@ -586,12 +578,16 @@ export default function App() {
 
   const {
     backToApp,
+    focusSidebarSearch,
     openSettings,
     openSettingsSection,
+    selectDocument,
   } = useAppShellNavigationActions({
     activateLastNonSettingsTab,
+    openCommandPalette,
     openSettingsSectionTab,
     openSettingsTab,
+    setActiveDocument,
     sidebarOpen,
     toggleSidebar,
   });
