@@ -57,6 +57,10 @@ assert.match(packageJson.scripts.check, /scripts\/burette_agent_preflight\.mjs/)
 assert.match(packageJson.scripts.check, /mcp\/registrations\/fetch\/register\.mjs/);
 assert.match(packageJson.scripts.check, /mcp\/registrations\/molecular-workspace\/register\.mjs/);
 
+const rootPackageJson = JSON.parse(await readFile("package.json", "utf8"));
+assert.equal(rootPackageJson.scripts["install:plugin"], "bun plugins/burette-agent/scripts/install-local.mjs");
+assert.equal(rootPackageJson.scripts["build:agent-shell"], "bun scripts/build-agent-shell-plugin.mjs");
+
 const server = await read("mcp/server.mjs");
 assert.match(server, /new McpServer/);
 assert.match(server, /registerFetch\(server\)/);
@@ -267,7 +271,7 @@ assert.match(molstarSceneSkill, /"label": "Active loop"/);
 assert.match(molstarSceneSkill, /"type": "label_selection"/);
 
 const readme = await read("README.md");
-assert.match(readme, /node plugins\/burette-agent\/scripts\/install-local\.mjs/);
+assert.match(readme, /bun run install:plugin/);
 assert.match(readme, /--skip-build/);
 assert.match(readme, /MolViewSpec Scene Language/);
 assert.match(readme, /"type":"apply_scene"/);

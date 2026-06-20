@@ -99,7 +99,7 @@ Codex config:
 
 ```bash
 cd /path/to/Burette
-node plugins/burette-agent/scripts/install-local.mjs
+bun run install:plugin
 ```
 
 The installer runs `bun run build:agent-shell` when it is executed from a source
@@ -112,7 +112,7 @@ updates the `~/.agents/plugins/burrete` symlink, and enables
 Use `--skip-build` only when installing an already prebuilt plugin directory:
 
 ```bash
-node scripts/install-local.mjs --skip-build
+bun scripts/install-local.mjs --skip-build
 ```
 
 The `.burette-agent-install.json` file is useful for source-checkout fallbacks
