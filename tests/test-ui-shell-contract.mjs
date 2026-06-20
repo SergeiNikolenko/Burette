@@ -30,6 +30,7 @@ const [
   appGridFileActionsHook,
   appGridRuntimeMessagesHook,
   appGridWorkflowsHook,
+  appHostRuntimeOperationsHook,
   appDockPayloadHook,
   appKetcherActionsHook,
   appKetcherViewerMessagesHook,
@@ -40,12 +41,14 @@ const [
   appMolstarXtbContextHook,
   appXtbWorkflowsHook,
   appOpenActionsHook,
+  appPreferenceEffectsHook,
   appQuickLookHook,
   appResizeHook,
   appRendererMessageHook,
   appSidebarProjectsHook,
   appSdfViewerMessagesHook,
   appShellActionsHook,
+  appShellNavigationActionsHook,
   appShellViewStateHook,
   appStartupEffectsHook,
   appUpdatesHook,
@@ -206,6 +209,7 @@ const [
   source('apps/desktop/src/hooks/use-app-grid-file-actions.ts'),
   source('apps/desktop/src/hooks/use-app-grid-runtime-messages.ts'),
   source('apps/desktop/src/hooks/use-app-grid-workflows.ts'),
+  source('apps/desktop/src/hooks/use-app-host-runtime-operations.ts'),
   source('apps/desktop/src/hooks/use-app-dock-payload-open.ts'),
   source('apps/desktop/src/hooks/use-app-ketcher-actions.ts'),
   source('apps/desktop/src/hooks/use-app-ketcher-viewer-messages.ts'),
@@ -216,12 +220,14 @@ const [
   source('apps/desktop/src/hooks/use-app-molstar-xtb-context.ts'),
   source('apps/desktop/src/hooks/use-app-xtb-workflows.ts'),
   source('apps/desktop/src/hooks/use-app-open-actions.ts'),
+  source('apps/desktop/src/hooks/use-app-preference-effects.ts'),
   source('apps/desktop/src/hooks/use-app-quick-look.ts'),
   source('apps/desktop/src/hooks/use-app-resize.ts'),
   source('apps/desktop/src/hooks/use-app-renderer-message.ts'),
   source('apps/desktop/src/hooks/use-app-sidebar-projects.ts'),
   source('apps/desktop/src/hooks/use-app-sdf-viewer-messages.ts'),
   source('apps/desktop/src/hooks/use-app-shell-actions.ts'),
+  source('apps/desktop/src/hooks/use-app-shell-navigation-actions.ts'),
   source('apps/desktop/src/hooks/use-app-shell-view-state.ts'),
   source('apps/desktop/src/hooks/use-app-startup-effects.ts'),
   source('apps/desktop/src/hooks/use-app-updates.ts'),
@@ -919,7 +925,8 @@ assert.match(app, /from "\.\/hooks\/use-tabs"/);
 assert.match(app, /from "\.\/hooks\/use-settings"/);
 assert.match(app, /useOpenSettingsSection/);
 assert.match(app, /useActivateLastNonSettingsTab/);
-assert.match(app, /const openSettingsSection = useCallback/);
+assert.match(app, /const \{\s*backToApp,\s*openSettings,\s*openSettingsSection,\s*\} = useAppShellNavigationActions/s);
+assert.match(appShellNavigationActionsHook, /const openSettingsSection = useCallback/);
 assert.match(app, /openSettingsSection,/);
 assert.match(componentsTypes, /openSettingsSection: \(section: AppSettingsSectionId\) => void/);
 assert.match(componentsTypes, /backToApp: \(\) => void/);
@@ -1101,8 +1108,10 @@ assert.match(app, /useAppSidebarProjects/);
 assert.match(appSidebarProjectsHook, /buildSidebarProjects/);
 assert.match(appSidebarProjectsHook, /buildSidebarProjects\(\{\s*documents,\s*recentStructures: sidebarRecentStructures,/);
 assert.doesNotMatch(app, /recentStructures:\s*documents\.length === 0 \? recentStructures : \[\]/);
-assert.match(app, /from "\.\/lib\/temporary-documents"/);
-assert.match(app, /!isTemporaryDocumentPath\(activeTab\.location\.path\)/);
+assert.doesNotMatch(app, /from "\.\/lib\/temporary-documents"/);
+assert.doesNotMatch(app, /!isTemporaryDocumentPath\(activeTab\.location\.path\)/);
+assert.match(appPreferenceEffectsHook, /from "\.\.\/lib\/temporary-documents"/);
+assert.match(appPreferenceEffectsHook, /!isTemporaryDocumentPath\(activeTab\.location\.path\)/);
 assert.match(appStartupEffectsHook, /typeof path === "string" && !isTemporaryDocumentPath\(path\)/);
 assert.match(app, /pinnedStructurePaths,/);
 assert.match(app, /pinnedProjectRoots,/);
@@ -3078,7 +3087,39 @@ assert.match(
   app,
   /useMenuEvents\(\{\s*chooseFiles,\s*openMostRecentStructure,\s*revealActiveDocument,\s*copyActiveDocumentPath,\s*showActiveDocumentMetadata,\s*exportActivePreviewAsPng,\s*exportActivePreviewAsSvg,\s*clearCache,\s*resetQuickLook,\s*openLogs,\s*openSettings,\s*checkForUpdates,\s*\}\)/s,
 );
-assert.match(app, /invoke\("sync_viewer_preferences", \{ preferences \}\)/);
+assert.match(app, /from "\.\/hooks\/use-app-host-runtime-operations"/);
+assert.match(app, /from "\.\/hooks\/use-app-preference-effects"/);
+assert.match(app, /from "\.\/hooks\/use-app-shell-navigation-actions"/);
+assert.doesNotMatch(app, /from "@tauri-apps\/api\/core"/);
+assert.doesNotMatch(app, /from "@tauri-apps\/plugin-dialog"/);
+assert.doesNotMatch(app, /const readActiveExternalPreviewSvg = useCallback/);
+assert.doesNotMatch(app, /const exportActivePreviewAsSvg = useCallback/);
+assert.doesNotMatch(app, /const exportActivePreviewAsPng = useCallback/);
+assert.doesNotMatch(app, /const writeGridPerfMetric = useCallback/);
+assert.doesNotMatch(app, /invoke\("sync_viewer_preferences", \{ preferences \}\)/);
+assert.match(app, /useAppHostRuntimeOperations\(\{\s*activeDocument,\s*pushErrorStatus,\s*pushStatus,\s*\}\)/s);
+assert.match(appHostRuntimeOperationsHook, /export function useAppHostRuntimeOperations\(\{/);
+assert.match(appHostRuntimeOperationsHook, /invoke\("grid_close_runtime", \{ documentId \}\)/);
+assert.match(appHostRuntimeOperationsHook, /invoke<string>\("read_external_preview_svg", \{ runtimePath: activeDocument\.runtimePath \}\)/);
+assert.match(appHostRuntimeOperationsHook, /save\(\{\s*defaultPath: `\$\{activeDocument\?\.title \?\? "preview"\}\.svg`/s);
+assert.match(appHostRuntimeOperationsHook, /invoke<string>\("write_text_file", \{\s*request: \{ outputPath, contents: svg \},\s*\}\)/s);
+assert.match(appHostRuntimeOperationsHook, /save\(\{\s*defaultPath: `\$\{activeDocument\?\.title \?\? "preview"\}\.png`/s);
+assert.match(appHostRuntimeOperationsHook, /svgToPngBase64\(svg\)/);
+assert.match(appHostRuntimeOperationsHook, /invoke<string>\("write_base64_file", \{\s*request: \{ outputPath, contentsBase64: pngBase64 \},\s*\}\)/s);
+assert.match(appHostRuntimeOperationsHook, /GRID_PERF_REPORT_PATH = "\/private\/tmp\/burrete-grid-real-app-perf\.jsonl"/);
+assert.match(appHostRuntimeOperationsHook, /gridPerfMetricsRef\.current = \[\.\.\.gridPerfMetricsRef\.current\.slice\(-399\), line\]/);
+assert.match(app, /useAppPreferenceEffects\(\{\s*activeTab,\s*activeTabId,\s*openDocuments,\s*preferences,\s*pushErrorStatus,\s*setActiveTab,\s*skipNextPreferenceRefreshRef,\s*\}\)/s);
+assert.match(appPreferenceEffectsHook, /invoke\("sync_viewer_preferences", \{ preferences \}\)/);
+assert.match(appPreferenceEffectsHook, /isTemporaryDocumentPath\(activeTab\.location\.path\)/);
+assert.match(appPreferenceEffectsHook, /const restoreTabId = activeTabId/);
+assert.match(appPreferenceEffectsHook, /void openDocuments\(\[path\]\)\.then\(\(\) => \{/);
+assert.match(appPreferenceEffectsHook, /eslint-disable-next-line react-hooks\/exhaustive-deps/);
+assert.match(app, /useAppShellNavigationActions\(\{/);
+assert.match(appShellNavigationActionsHook, /export function useAppShellNavigationActions\(\{/);
+assert.match(appShellNavigationActionsHook, /if \(!sidebarOpen\) toggleSidebar\(\);/);
+assert.match(appShellNavigationActionsHook, /openSettingsTab\(\)/);
+assert.match(appShellNavigationActionsHook, /openSettingsSectionTab\(section\)/);
+assert.match(appShellNavigationActionsHook, /activateLastNonSettingsTab\(\)/);
 assert.match(appOpenActionsHook, /await invoke<string\[]>\("pick_open_targets"\)/);
 assert.match(appOpenActionsHook, /await open\(\{ multiple: true, filters \}\)/);
 assert.match(app, /<WindowTitle activeDocument=\{activeDocument\} \/>/);
@@ -4621,7 +4662,8 @@ assert.match(appFileActionsHook, /await writeClipboardText\(path\)/);
 assert.match(app, /from "\.\/lib\/browser-dev-structure-bundles"/);
 assert.match(app, /from "\.\/lib\/clipboard"/);
 assert.match(app, /from "\.\/lib\/content-spectrum-detection"/);
-assert.match(app, /from "\.\/lib\/preview-image-export"/);
+assert.doesNotMatch(app, /from "\.\/lib\/preview-image-export"/);
+assert.match(appHostRuntimeOperationsHook, /from "\.\.\/lib\/preview-image-export"/);
 assert.doesNotMatch(app, /async function expandBrowserDevStructureBundles/);
 assert.doesNotMatch(app, /async function detectContentSpectrumPaths/);
 assert.doesNotMatch(app, /async function svgToPngBase64/);
@@ -4642,9 +4684,12 @@ assert.match(previewImageExport, /Preview SVG could not be rasterized/);
 assert.match(clipboardLib, /export async function writeClipboardText/);
 assert.match(clipboardLib, /navigator\.clipboard\?\.writeText/);
 assert.match(clipboardLib, /export function copyTextWithSelectionFallback/);
-assert.match(app, /invoke<string>\("read_external_preview_svg"/);
-assert.match(app, /invoke<string>\("write_text_file"/);
-assert.match(app, /invoke<string>\("write_base64_file"/);
+assert.doesNotMatch(app, /invoke<string>\("read_external_preview_svg"/);
+assert.doesNotMatch(app, /invoke<string>\("write_text_file"/);
+assert.doesNotMatch(app, /invoke<string>\("write_base64_file"/);
+assert.match(appHostRuntimeOperationsHook, /invoke<string>\("read_external_preview_svg"/);
+assert.match(appHostRuntimeOperationsHook, /invoke<string>\("write_text_file"/);
+assert.match(appHostRuntimeOperationsHook, /invoke<string>\("write_base64_file"/);
 assert.match(app, /from "\.\/lib\/viewer-bridge"/);
 assert.doesNotMatch(app, /function isKnownViewerMessageSource/);
 assert.doesNotMatch(app, /function postMessageToViewerSource/);
@@ -4776,9 +4821,12 @@ assert.match(appViewerStateMessagesHook, /body\?\.type === "selectionChanged"/);
 assert.match(appViewerStateMessagesHook, /setViewerLigandSelections/);
 assert.match(appViewerStateMessagesHook, /body\?\.type === "rendererChanged"/);
 assert.match(appViewerStateMessagesHook, /xyzrenderPresetOptions: presetOptions/);
-assert.match(app, /Preferences refresh only the mounted file runtime\. Inactive file tabs are unloaded\./);
-assert.match(app, /if \(skipNextPreferenceRefreshRef\.current\) \{\s*skipNextPreferenceRefreshRef\.current = false;\s*return;\s*\}/s);
-assert.match(app, /void openDocuments\(\[path\]\)\.then/);
+assert.doesNotMatch(app, /Preferences refresh only the mounted file runtime\. Inactive file tabs are unloaded\./);
+assert.doesNotMatch(app, /if \(skipNextPreferenceRefreshRef\.current\) \{\s*skipNextPreferenceRefreshRef\.current = false;\s*return;\s*\}/s);
+assert.doesNotMatch(app, /void openDocuments\(\[path\]\)\.then/);
+assert.match(appPreferenceEffectsHook, /Preferences refresh only the mounted file runtime\. Inactive file tabs are unloaded\./);
+assert.match(appPreferenceEffectsHook, /if \(skipNextPreferenceRefreshRef\.current\) \{\s*skipNextPreferenceRefreshRef\.current = false;\s*return;\s*\}/s);
+assert.match(appPreferenceEffectsHook, /void openDocuments\(\[path\]\)\.then/);
 assert.match(appMaintenanceHook, /Quick Look reset completed/);
 assert.match(appMaintenanceHook, /Quick Look reset reported issues/);
 assert.doesNotMatch(app, /Quick Look reset requested/);
