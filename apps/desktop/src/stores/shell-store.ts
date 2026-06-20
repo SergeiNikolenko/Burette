@@ -12,6 +12,7 @@ import {
   firstDockTabKind,
   normalizeDockActiveTab,
   normalizeDockTabs,
+  persistentDockTabs,
 } from "../lib/dock";
 import { isTemporaryDocumentPath } from "../lib/temporary-documents";
 import { workspaceStorageKey } from "../lib/window-scope";
@@ -375,8 +376,8 @@ export const useShellStore = create<ShellState>()(
         rightDockActiveTab: normalizeDockActiveTab("right", normalizeDockTabs("right", state.rightDockTabs), state.rightDockActiveTab),
         bottomDockOpen: state.bottomDockOpen,
         bottomDockHeight: state.bottomDockHeight,
-        bottomDockTabs: normalizeDockTabs("bottom", state.bottomDockTabs),
-        bottomDockActiveTab: normalizeDockActiveTab("bottom", normalizeDockTabs("bottom", state.bottomDockTabs), state.bottomDockActiveTab),
+        bottomDockTabs: persistentDockTabs("bottom", state.bottomDockTabs),
+        bottomDockActiveTab: normalizeDockActiveTab("bottom", persistentDockTabs("bottom", state.bottomDockTabs), state.bottomDockActiveTab),
         projectsOpen: state.projectsOpen,
         projectRoots: persistentRoots(state.projectRoots),
         pinnedProjectRoots: persistentRoots(state.pinnedProjectRoots),
@@ -409,10 +410,10 @@ export const useShellStore = create<ShellState>()(
           ),
           bottomDockOpen: stored?.bottomDockOpen ?? current.bottomDockOpen,
           bottomDockHeight: normalizeBottomDockHeight(stored?.bottomDockHeight ?? current.bottomDockHeight),
-          bottomDockTabs: normalizeDockTabs("bottom", stored?.bottomDockTabs ?? current.bottomDockTabs),
+          bottomDockTabs: persistentDockTabs("bottom", stored?.bottomDockTabs ?? current.bottomDockTabs),
           bottomDockActiveTab: normalizeDockActiveTab(
             "bottom",
-            normalizeDockTabs("bottom", stored?.bottomDockTabs ?? current.bottomDockTabs),
+            persistentDockTabs("bottom", stored?.bottomDockTabs ?? current.bottomDockTabs),
             stored?.bottomDockActiveTab ?? current.bottomDockActiveTab,
           ),
           projectsOpen: stored?.projectsOpen ?? current.projectsOpen,

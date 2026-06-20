@@ -117,6 +117,7 @@ pub fn run() {
             commands::documents::classify_open_paths,
             commands::documents::open_documents,
             commands::documents::list_project_structure_files,
+            commands::folding_results::read_folding_result_bundle,
             commands::text_files::read_text_file,
             commands::text_files::open_text_files,
             commands::documents::read_structure_text,
