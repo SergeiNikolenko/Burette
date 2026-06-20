@@ -8,6 +8,29 @@ type UseAppMaintenanceArgs = {
   pushStatus: (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
 };
 
+type ExternalRuntimeDoctorCheck = {
+  id: string;
+  label: string;
+  kind: string;
+  available: boolean;
+  source?: string | null;
+  executablePath?: string | null;
+  version?: string | null;
+  message: string;
+  installHint?: string | null;
+};
+
+type ExternalRuntimeDoctorReport = {
+  schema: string;
+  checks: ExternalRuntimeDoctorCheck[];
+};
+
+function doctorDetail(check: ExternalRuntimeDoctorCheck) {
+  const source = check.source ? ` (${check.source})` : "";
+  const version = check.version ? ` ${check.version}` : "";
+  return `${check.label}: ${check.available ? "available" : "unavailable"}${version}${source}`;
+}
+
 export function useAppMaintenance({ pushErrorStatus, pushStatus }: UseAppMaintenanceArgs) {
   const clearCache = useCallback(async () => {
     try {
@@ -36,6 +59,26 @@ export function useAppMaintenance({ pushErrorStatus, pushStatus }: UseAppMainten
     }
   }, [pushErrorStatus, pushStatus]);
 
+  const runExternalRuntimeDoctor = useCallback(async () => {
+    if (!isTauriRuntime()) {
+      pushStatus("Runtime doctor is available in the desktop app only.", "error");
+      return;
+    }
+    try {
+      const report = await invoke<ExternalRuntimeDoctorReport>("external_runtime_doctor");
+      const available = report.checks.filter((check) => check.available).length;
+      const total = report.checks.length;
+      const missing = report.checks.filter((check) => !check.available);
+      pushStatus(
+        `Runtime doctor: ${available}/${total} checks available`,
+        missing.length ? "error" : "success",
+        report.checks.map(doctorDetail),
+      );
+    } catch (error) {
+      pushErrorStatus(error, "Runtime doctor failed");
+    }
+  }, [pushErrorStatus, pushStatus]);
+
   const openNewWindow = useCallback(async () => {
     if (!isTauriRuntime()) {
       pushStatus("New windows are available in the desktop app only.", "error");
@@ -54,5 +97,6 @@ export function useAppMaintenance({ pushErrorStatus, pushStatus }: UseAppMainten
     openLogs,
     openNewWindow,
     resetQuickLook,
+    runExternalRuntimeDoctor,
   };
 }
