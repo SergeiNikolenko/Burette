@@ -37,6 +37,7 @@ const [
   appStartupEffectsHook,
   appUpdatesHook,
   appViewerFileActionsHook,
+  appViewerRuntimeFileMessagesHook,
   appViewerRuntimeMessagesHook,
   appWorkspaceActionsHook,
   appXyzrenderSheetMessagesHook,
@@ -189,6 +190,7 @@ const [
   source('apps/desktop/src/hooks/use-app-startup-effects.ts'),
   source('apps/desktop/src/hooks/use-app-updates.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-file-actions.ts'),
+  source('apps/desktop/src/hooks/use-app-viewer-runtime-file-messages.ts'),
   source('apps/desktop/src/hooks/use-app-viewer-runtime-messages.ts'),
   source('apps/desktop/src/hooks/use-app-workspace-actions.ts'),
   source('apps/desktop/src/hooks/use-app-xyzrender-sheet-messages.ts'),
@@ -386,11 +388,12 @@ assert.match(sidebarHook, /projectNameOverrides/);
 assert.match(sidebarHook, /expandedProjectIds/);
 assert.match(sidebarHook, /hiddenProjectRoots/);
 assert.match(sidebarHook, /pinnedStructurePaths/);
-assert.match(app, /body\?\.type === "requestData" \|\| body\?\.type === "requestRuntimeFile"/);
-assert.match(app, /source: "burrete-native-host"/);
-assert.match(app, /invoke<string>\("read_viewer_runtime_file_base64"/);
-assert.match(app, /preview-data\.bin/);
-assert.match(app, /relativePath: fileName/);
+assert.match(app, /handleViewerRuntimeFileMessage\(data\.source, body, event\.source\)/);
+assert.match(appViewerRuntimeFileMessagesHook, /body\?\.type !== "requestData" && body\?\.type !== "requestRuntimeFile"/);
+assert.match(appViewerRuntimeFileMessagesHook, /source: "burrete-native-host"/);
+assert.match(appViewerRuntimeFileMessagesHook, /invoke<string>\("read_viewer_runtime_file_base64"/);
+assert.match(appViewerRuntimeFileMessagesHook, /preview-data\.bin/);
+assert.match(appViewerRuntimeFileMessagesHook, /relativePath: fileName/);
 assert.match(sidebarHook, /sidebarQuery/);
 assert.match(sidebarHook, /toggleProjectsOpen/);
 assert.match(sidebarHook, /setExpandedProjectIds/);

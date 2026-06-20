@@ -36,6 +36,7 @@ import { useAppStartupEffects } from "./hooks/use-app-startup-effects";
 import { useAppStatus } from "./hooks/use-app-status";
 import { useAppUpdates } from "./hooks/use-app-updates";
 import { useAppViewerFileActions } from "./hooks/use-app-viewer-file-actions";
+import { useAppViewerRuntimeFileMessages } from "./hooks/use-app-viewer-runtime-file-messages";
 import { useAppViewerRuntimeMessages } from "./hooks/use-app-viewer-runtime-messages";
 import { useAppWorkspaceActions } from "./hooks/use-app-workspace-actions";
 import { useAppXyzrenderSheetMessages } from "./hooks/use-app-xyzrender-sheet-messages";
@@ -1489,6 +1490,11 @@ export default function App() {
     reloadActive,
     xyzrenderOrientationRefRef,
   });
+  const { handleViewerRuntimeFileMessage } = useAppViewerRuntimeFileMessages({
+    activeDocument,
+    documents,
+    postMessageToViewerSource,
+  });
   const { handleSdfViewerMessage } = useAppSdfViewerMessages({
     activeDocument,
     documents,
@@ -1682,37 +1688,7 @@ export default function App() {
         }
         return;
       }
-      if (data.source === "burrete-viewer" && (body?.type === "requestData" || body?.type === "requestRuntimeFile")) {
-        if (!body.requestToken) return;
-        const document = body.documentId
-          ? documents.find((item) => item.id === body.documentId)
-          : activeDocument;
-        const reply = (payload: Record<string, unknown>) => {
-          postMessageToViewerSource(event.source, {
-            source: "burrete-native-host",
-            body: {
-              type: body.type === "requestData" ? "nativeData" : "nativeRuntimeFile",
-              documentId: body.documentId,
-              payload,
-            },
-          });
-        };
-        void (async () => {
-          try {
-            if (!document) throw new Error("No matching viewer document.");
-            const fileName = body.type === "requestData"
-              ? "preview-data.bin"
-              : normalizeViewerRuntimeRelativePath(body.path || "");
-            if (!fileName) throw new Error("Invalid runtime file path.");
-            const base64 = await invoke<string>("read_viewer_runtime_file_base64", {
-              runtimePath: document.runtimePath,
-              relativePath: fileName,
-            });
-            reply({ requestToken: body.requestToken, base64 });
-          } catch (error) {
-            reply({ requestToken: body.requestToken, error: error instanceof Error ? error.message : String(error) });
-          }
-        })();
+      if (handleViewerRuntimeFileMessage(data.source, body, event.source)) {
         return;
       }
       if (data.source === "burrete-viewer" && body?.type === "dockingPoseChanged") {
@@ -2044,7 +2020,7 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, generate3DConformer, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleSdfViewerMessage, handleViewerFileMessage, handleViewerRuntimeMessage, handleXyzrenderSheetMessage, markViewerFirstRenderMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
+  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, generate3DConformer, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleSdfViewerMessage, handleViewerFileMessage, handleViewerRuntimeFileMessage, handleViewerRuntimeMessage, handleXyzrenderSheetMessage, markViewerFirstRenderMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -2425,13 +2401,6 @@ function replaceMolstarStructureInPlace(
       resolve(false);
     }
   });
-}
-
-function normalizeViewerRuntimeRelativePath(path: string) {
-  const normalized = String(path || "").replaceAll("\\", "/");
-  const parts = normalized.split("/").filter(Boolean);
-  if (parts.length === 0 || parts.some((part) => part === "." || part === "..")) return null;
-  return parts.join("/");
 }
 
 function conformerOutputDirectory(document: ViewerDocument) {
