@@ -14,6 +14,7 @@ import {
 import { useAppDescriptors } from "./hooks/use-app-descriptors";
 import { useAppDiagnostics } from "./hooks/use-app-diagnostics";
 import { useAppDirtyGridDocuments } from "./hooks/use-app-dirty-grid-documents";
+import { useAppDockingPoseMessages } from "./hooks/use-app-docking-pose-messages";
 import { useAppDockingWorkflows } from "./hooks/use-app-docking-workflows";
 import { useAppDockPayloadOpen } from "./hooks/use-app-dock-payload-open";
 import { useAppDropActions } from "./hooks/use-app-drop-actions";
@@ -1495,6 +1496,13 @@ export default function App() {
     documents,
     postMessageToViewerSource,
   });
+  const { handleDockingPoseMessage } = useAppDockingPoseMessages({
+    activeDocument,
+    addBackgroundDocuments,
+    documents,
+    notifyGridPoseReviewSelection,
+    setPoseReviewSelections,
+  });
   const { handleSdfViewerMessage } = useAppSdfViewerMessages({
     activeDocument,
     documents,
@@ -1691,31 +1699,7 @@ export default function App() {
       if (handleViewerRuntimeFileMessage(data.source, body, event.source)) {
         return;
       }
-      if (data.source === "burrete-viewer" && body?.type === "dockingPoseChanged") {
-        const dockingDocument = body.documentId
-          ? documents.find((document) => document.id === body.documentId)
-          : activeDocument;
-        const sourcePath = typeof body.sourcePath === "string" && body.sourcePath.trim().length > 0
-          ? body.sourcePath.trim()
-          : dockingDocument?.dockingRequest?.ligandPaths[0];
-        const gridDocument = sourcePath
-          ? documents.find((document) => document.path === sourcePath && document.renderer === "grid2d")
-          : null;
-        const activePose = Math.max(0, Math.trunc(Number(body.activePose) || 0));
-        const poseMode = body.poseMode === "all" ? "all" : "single";
-        if (dockingDocument?.dockingRequest && dockingDocument.dockingRequest.poseMode !== poseMode) {
-          addBackgroundDocuments([{
-            ...dockingDocument,
-            dockingRequest: {
-              ...dockingDocument.dockingRequest,
-              poseMode,
-            },
-          }]);
-        }
-        if (gridDocument) {
-          setPoseReviewSelections((previous) => ({ ...previous, [gridDocument.id]: activePose }));
-          notifyGridPoseReviewSelection(gridDocument.id, activePose);
-        }
+      if (handleDockingPoseMessage(data.source, body)) {
         return;
       }
       markViewerFirstRenderMessage(data.source, body);
@@ -2020,7 +2004,7 @@ export default function App() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, generate3DConformer, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleSdfViewerMessage, handleViewerFileMessage, handleViewerRuntimeFileMessage, handleViewerRuntimeMessage, handleXyzrenderSheetMessage, markViewerFirstRenderMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
+  }, [activeDocument, addBackgroundDocuments, addDocuments, documents, generate3DConformer, handleDockingPoseMessage, handleGridControlMessage, handleGridFileMessage, handleGridRuntimeMessage, handleSdfViewerMessage, handleViewerFileMessage, handleViewerRuntimeFileMessage, handleViewerRuntimeMessage, handleXyzrenderSheetMessage, markViewerFirstRenderMessage, notifyGridPoseReviewSelection, openCommandPalette, openDockingDocument, openDocuments, openDocumentsInActiveTab, openKetcherWithFragment, openKetcherWithStructures, openPoseReviewWorkspace, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, reloadActive, setPreference, toggleSidebar]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
