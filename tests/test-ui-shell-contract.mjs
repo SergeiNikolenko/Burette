@@ -46,6 +46,7 @@ const [
   appMolstarXtbContextHook,
   appXtbWorkflowsHook,
   appOpenActionsHook,
+  appOpenDropMergeCollectionsHook,
   appPreferenceEffectsHook,
   appQuickLookHook,
   appQuickLookDocumentOpenHook,
@@ -232,6 +233,7 @@ const [
   source('apps/desktop/src/hooks/use-app-molstar-xtb-context.ts'),
   source('apps/desktop/src/hooks/use-app-xtb-workflows.ts'),
   source('apps/desktop/src/hooks/use-app-open-actions.ts'),
+  source('apps/desktop/src/hooks/use-app-open-drop-merge-collections.ts'),
   source('apps/desktop/src/hooks/use-app-preference-effects.ts'),
   source('apps/desktop/src/hooks/use-app-quick-look.ts'),
   source('apps/desktop/src/hooks/use-app-quick-look-document-open.ts'),
@@ -3065,6 +3067,15 @@ assert.match(styles, /\[cmdk-dialog\] \{[\s\S]*overflow: hidden/);
 assert.match(styles, /\[cmdk-dialog\]::before \{[\s\S]*background: color-mix\(in srgb, var\(--bg-base\) 55%, transparent\)/);
 assert.match(styles, /\[cmdk-item\]\[data-selected="true"\]/);
 assert.match(styles, /\[cmdk-item\]:hover,[\s\S]*\[cmdk-item\]\[data-selected="true"\] \{[\s\S]*background: var\(--surface-subtle\)/);
+assert.match(app, /from "\.\/hooks\/use-app-open-drop-merge-collections"/);
+assert.match(app, /const mergeDroppedMoleculeCollections = useAppOpenDropMergeCollections\(\{/);
+assert.match(app, /mergeMoleculeCollections: mergeDroppedMoleculeCollections/);
+assert.doesNotMatch(app, /mergeMoleculeCollections: activeDocument\?\.renderer === "grid2d"/);
+assert.doesNotMatch(app, /isMoleculeCollectionPath/);
+assert.match(appOpenDropMergeCollectionsHook, /export function useAppOpenDropMergeCollections\(\{/);
+assert.match(appOpenDropMergeCollectionsHook, /activeDocument\?\.renderer !== "grid2d"/);
+assert.match(appOpenDropMergeCollectionsHook, /paths\.some\(isMoleculeCollectionPath\)/);
+assert.match(appOpenDropMergeCollectionsHook, /void mergeMoleculeCollections\(activeDocument\.path, paths\)/);
 assert.match(app, /useOpenDrop\(openPaths, pushStatus, \{/);
 assert.match(tauriSource, /export function trackTauriListener\(registration: Promise<TauriUnlisten>, label: string\)/);
 assert.match(tauriSource, /if \(disposed\) \{\s*disposeTauriListener\(next, label\);/s);
