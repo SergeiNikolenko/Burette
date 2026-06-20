@@ -3055,6 +3055,24 @@ assert.match(app, /from "\.\/hooks\/use-app-shell-view-state"/);
 assert.match(app, /const state = useAppShellViewState\(\{/);
 assert.doesNotMatch(app, /const state = createAppShellViewState\(\{/);
 assert.match(appShellViewStateHook, /export function createAppShellViewState\(input: AppShellViewStateInput\): ShellViewState/);
+assert.match(appShellViewStateHook, /export type AppShellViewStateSlices = \{/);
+assert.match(appShellViewStateHook, /export function createAppShellViewStateSlices\(input: AppShellViewStateInput\): AppShellViewStateSlices/);
+assert.match(appShellViewStateHook, /export function flattenAppShellViewStateSlices\(slices: AppShellViewStateSlices\): ShellViewState/);
+assert.match(appShellViewStateHook, /return flattenAppShellViewStateSlices\(createAppShellViewStateSlices\(input\)\);/);
+for (const sliceName of [
+  "documents",
+  "workspace",
+  "layout",
+  "dock",
+  "ketcher",
+  "grid",
+  "docking",
+  "viewer",
+  "chemistry",
+  "settings",
+]) {
+  assert.match(appShellViewStateHook, new RegExp(`\\.\\.\\.slices\\.${sliceName}`));
+}
 assert.match(appShellViewStateHook, /export function useAppShellViewState\(input: AppShellViewStateInput\): ShellViewState/);
 assert.match(appShellViewStateHook, /return createAppShellViewState\(input\)/);
 assert.match(appShellViewStateHook, /activeDocumentId: state\.activeDocument\?\.id \?\? null/);
