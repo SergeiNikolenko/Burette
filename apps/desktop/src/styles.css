@@ -2028,33 +2028,55 @@ img.radix-menu-item-icon {
   border-color: color-mix(in srgb, #2f6fed 24%, var(--line-subtler));
   background: color-mix(in srgb, #2f6fed 5%, var(--surface-card));
 }
-.folding-model-tabs {
+.folding-model-selector {
   min-width: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+.folding-model-selector label {
+  min-width: 0;
+  display: grid;
   gap: 4px;
 }
-.folding-model-tabs button {
+.folding-model-selector label > span {
   min-width: 0;
-  height: 28px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: var(--surface-input);
   color: var(--text-muted);
-  padding: 0 7px;
-  font: 11px/1 var(--ui-font);
+  font-size: 10px;
+  font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.folding-model-tabs button:hover {
-  background: var(--surface-subtle);
+.folding-model-selector select,
+.folding-model-selector-count {
+  min-width: 0;
+  height: 30px;
+  border: 1px solid var(--line-subtler);
+  border-radius: 7px;
+  background: var(--surface-input);
   color: var(--text-secondary);
+  font: 11px/1 var(--ui-font);
 }
-.folding-model-tabs button[data-active] {
-  border-color: color-mix(in srgb, #2f6fed 42%, transparent);
-  background: color-mix(in srgb, #2f6fed 18%, var(--surface-input));
-  color: var(--text-primary);
+.folding-model-selector select {
+  width: 100%;
+  padding: 0 28px 0 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.folding-model-selector select:disabled {
+  opacity: 1;
+  color: var(--text-muted);
+}
+.folding-model-selector-count {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  padding: 0 8px;
+  color: var(--text-muted);
+  background: var(--surface-subtle);
 }
 .folding-full-pae-button {
   height: 28px;
@@ -2206,9 +2228,6 @@ img.radix-menu-item-icon {
 .folding-analysis-actions {
   display: flex;
   gap: 6px;
-}
-.folding-analysis-tabs {
-  grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));
 }
 .folding-sequence-strip {
   min-width: 0;
