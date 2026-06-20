@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { hasFoldingResultContent, readFoldingResultBundle } from "../lib/folding-results";
+import { readStructureText } from "../lib/structure-text";
 import type { FoldingArtifact, FoldingMatrixPreview, FoldingModel, FoldingProfile, FoldingResultBundle, ViewerDocument } from "../types";
 import { formatBytes } from "./format";
 import type { ShellActions } from "./types";
@@ -36,6 +37,36 @@ const ABCFOLD_PAE_COLORSCALE = [
   [1, "#ebf7ed"],
 ];
 const PAE_PLOT_MARGIN = { l: 34, r: 42, t: 8, b: 30 };
+const RESIDUE_ONE_LETTER: Record<string, string> = {
+  ALA: "A",
+  ARG: "R",
+  ASN: "N",
+  ASP: "D",
+  CYS: "C",
+  GLN: "Q",
+  GLU: "E",
+  GLY: "G",
+  HIS: "H",
+  ILE: "I",
+  LEU: "L",
+  LYS: "K",
+  MET: "M",
+  PHE: "F",
+  PRO: "P",
+  SER: "S",
+  THR: "T",
+  TRP: "W",
+  TYR: "Y",
+  VAL: "V",
+  SEC: "U",
+  PYL: "O",
+};
+
+type ChainSequence = {
+  chainId: string;
+  sequence: string;
+  residueNumbers: string[];
+};
 
 export function useFoldingResult(document: ViewerDocument | null): FoldingResultState {
   const [bundle, setBundle] = useState<FoldingResultBundle | null>(null);
@@ -130,6 +161,11 @@ export function FoldingResultsPanel({ state, actions }: { state: FoldingResultSt
           Open
         </button>
       </div>
+      {activeModel.matrixPreview ? (
+        <button type="button" className="dock-action folding-full-pae-button" onClick={() => actions.openDockTab("bottom", "folding")}>
+          Full PAE
+        </button>
+      ) : null}
 
       {activeModel.metrics.length ? (
         <div className="structure-inspector-xtb-metrics folding-metric-grid">
@@ -175,6 +211,126 @@ export function FoldingResultsPanel({ state, actions }: { state: FoldingResultSt
         </div>
       ) : null}
     </section>
+  );
+}
+
+export function FoldingAnalysisPanel({ document, actions }: { document: ViewerDocument | null; actions: ShellActions }) {
+  const state = useFoldingResult(document);
+  const bundle = state.bundle;
+  const [activeModelId, setActiveModelId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setActiveModelId(bundle?.models[0]?.id ?? null);
+  }, [bundle?.rootPath]);
+
+  const activeModel = useMemo(() => {
+    if (!bundle?.models.length) return null;
+    return bundle.models.find((model) => model.id === activeModelId) ?? bundle.models[0] ?? null;
+  }, [activeModelId, bundle]);
+  const sequences = useStructureSequences(activeModel?.structurePath ?? null);
+
+  if (state.loading) {
+    return (
+      <div className="dock-content dock-content-empty">
+        <div className="dock-empty dock-empty-large">Loading folding results</div>
+      </div>
+    );
+  }
+  if (state.error) {
+    return (
+      <div className="dock-content dock-content-empty">
+        <div className="dock-empty dock-empty-large">Folding results failed to load</div>
+      </div>
+    );
+  }
+  if (!bundle || !activeModel) {
+    return (
+      <div className="dock-content dock-content-empty">
+        <div className="dock-empty dock-empty-large">Open a folding result model to inspect PAE</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="folding-analysis-panel">
+      <div className="folding-analysis-header">
+        <div>
+          <strong>{activeModel.title}</strong>
+          <span>{bundle.source}</span>
+        </div>
+        <div className="folding-analysis-actions">
+          <button type="button" className="dock-action dock-action-compact" onClick={() => actions.openStructurePaths([activeModel.structurePath])}>
+            Open model
+          </button>
+          <button type="button" className="dock-action dock-action-compact" onClick={() => actions.revealPath(bundle.rootPath, "Folding result")}>
+            Reveal bundle
+          </button>
+        </div>
+      </div>
+
+      {bundle.models.length > 1 ? (
+        <div className="folding-model-tabs folding-analysis-tabs" role="tablist" aria-label="Folding models">
+          {bundle.models.map((model) => (
+            <button
+              key={model.id}
+              type="button"
+              role="tab"
+              aria-selected={model.id === activeModel.id}
+              data-active={model.id === activeModel.id || undefined}
+              onClick={() => setActiveModelId(model.id)}
+            >
+              {modelLabel(model)}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      <FoldingSequenceStrip sequences={sequences} />
+
+      <div className="folding-analysis-main">
+        <div className="folding-analysis-plot">
+          {activeModel.matrixPreview ? (
+            <FoldingMatrixHeatmap preview={activeModel.matrixPreview} size="large" />
+          ) : (
+            <div className="dock-content dock-content-empty">
+              <div className="dock-empty dock-empty-large">No PAE matrix found for this model</div>
+            </div>
+          )}
+        </div>
+        <div className="folding-analysis-side">
+          <div className="folding-analysis-model-card">
+            <strong>{activeModel.structureTitle}</strong>
+            <span>{activeModel.backend}</span>
+          </div>
+          {activeModel.metrics.length ? (
+            <div className="structure-inspector-xtb-metrics folding-metric-grid">
+              {activeModel.metrics.slice(0, 8).map((metric) => (
+                <div key={metric.key} className="structure-inspector-xtb-metric">
+                  <span>{metric.label}</span>
+                  <strong>{metric.formatted || formatMetric(metric.value)}</strong>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {activeModel.artifacts.length ? (
+            <div className="folding-analysis-artifacts">
+              {activeModel.artifacts.slice(0, 10).map((artifact) => (
+                <button
+                  key={artifact.path}
+                  type="button"
+                  className="dock-action structure-inspector-xtb-file-button"
+                  title={`${artifact.title} · ${formatBytes(artifact.byteCount)}`}
+                  onClick={() => openFoldingArtifact(artifact, actions)}
+                >
+                  <span>{artifactKindLabel(artifact.kind)}</span>
+                  <span>{artifact.title}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -235,7 +391,7 @@ function FoldingPlddtPlot({ profile }: { profile: FoldingProfile }) {
   );
 }
 
-function FoldingMatrixHeatmap({ preview }: { preview: FoldingMatrixPreview }) {
+function FoldingMatrixHeatmap({ preview, size = "compact" }: { preview: FoldingMatrixPreview; size?: "compact" | "large" }) {
   const plotRef = useRef<HTMLDivElement | null>(null);
   const [selectedCell, setSelectedCell] = useState<SelectedMatrixCell | null>(null);
 
@@ -341,7 +497,7 @@ function FoldingMatrixHeatmap({ preview }: { preview: FoldingMatrixPreview }) {
         <strong>{preview.label}</strong>
         <span>{preview.shape.join(" x ")} · mean {preview.mean === null || preview.mean === undefined ? "-" : preview.mean.toFixed(2)}</span>
       </div>
-      <div ref={plotRef} className="folding-matrix-heatmap" aria-label={`${preview.label} heatmap`} />
+      <div ref={plotRef} className="folding-matrix-heatmap" data-size={size} aria-label={`${preview.label} heatmap`} />
       {selectedCell ? (
         <div className="folding-matrix-status">
           {selectedCell.yLabel} / {selectedCell.xLabel}: {selectedCell.value.toFixed(2)} A
@@ -349,6 +505,184 @@ function FoldingMatrixHeatmap({ preview }: { preview: FoldingMatrixPreview }) {
       ) : null}
     </div>
   );
+}
+
+function useStructureSequences(path: string | null): ChainSequence[] {
+  const [sequences, setSequences] = useState<ChainSequence[]>([]);
+  useEffect(() => {
+    if (!path) {
+      setSequences([]);
+      return;
+    }
+    let cancelled = false;
+    void readStructureText(path, { maxBytes: 8_000_000 })
+      .then((text) => {
+        if (!cancelled) setSequences(parseStructureSequences(text));
+      })
+      .catch(() => {
+        if (!cancelled) setSequences([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
+  return sequences;
+}
+
+function FoldingSequenceStrip({ sequences }: { sequences: ChainSequence[] }) {
+  if (!sequences.length) return null;
+  return (
+    <div className="folding-sequence-strip">
+      {sequences.slice(0, 4).map((chain) => (
+        <div key={chain.chainId} className="folding-sequence-chain">
+          <div className="folding-sequence-chain-title">Chain-{chain.chainId} ({chain.sequence.length} aa)</div>
+          <div className="folding-sequence-ruler">
+            {sequenceTicks(chain.residueNumbers).map((tick) => (
+              <span key={`${chain.chainId}-${tick.index}`} style={{ left: `${tick.percent}%` }}>{tick.label}</span>
+            ))}
+          </div>
+          <div className="folding-sequence-text">{chain.sequence}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function sequenceTicks(residueNumbers: string[]) {
+  if (!residueNumbers.length) return [];
+  const step = Math.max(1, Math.ceil(residueNumbers.length / 5));
+  const ticks = [];
+  for (let index = 0; index < residueNumbers.length; index += step) {
+    ticks.push({
+      index,
+      label: residueNumbers[index],
+      percent: residueNumbers.length === 1 ? 0 : index / (residueNumbers.length - 1) * 100,
+    });
+  }
+  const lastIndex = residueNumbers.length - 1;
+  if (ticks[ticks.length - 1]?.index !== lastIndex) {
+    ticks.push({ index: lastIndex, label: residueNumbers[lastIndex], percent: 100 });
+  }
+  return ticks;
+}
+
+function parseStructureSequences(text: string): ChainSequence[] {
+  const pdbSequences = parsePdbSequences(text);
+  if (pdbSequences.length) return pdbSequences;
+  return parseCifSequences(text);
+}
+
+function parsePdbSequences(text: string): ChainSequence[] {
+  const chains = new Map<string, { residues: string[]; residueNumbers: string[]; seen: Set<string> }>();
+  for (const line of text.split(/\r?\n/u)) {
+    if (!line.startsWith("ATOM")) continue;
+    const residueName = line.slice(17, 20).trim().toUpperCase();
+    const residue = RESIDUE_ONE_LETTER[residueName];
+    if (!residue) continue;
+    const chainId = line.slice(21, 22).trim() || "A";
+    const residueNumber = line.slice(22, 27).trim();
+    const key = `${chainId}:${residueNumber}`;
+    const chain = chains.get(chainId) ?? { residues: [], residueNumbers: [], seen: new Set<string>() };
+    if (!chain.seen.has(key)) {
+      chain.seen.add(key);
+      chain.residues.push(residue);
+      chain.residueNumbers.push(residueNumber || String(chain.residues.length));
+      chains.set(chainId, chain);
+    }
+  }
+  return chainSequencesFromMap(chains);
+}
+
+function parseCifSequences(text: string): ChainSequence[] {
+  const lines = text.split(/\r?\n/u);
+  const chains = new Map<string, { residues: string[]; residueNumbers: string[]; seen: Set<string> }>();
+  for (let index = 0; index < lines.length; index += 1) {
+    if (lines[index].trim() !== "loop_") continue;
+    const headers: string[] = [];
+    let rowIndex = index + 1;
+    while (rowIndex < lines.length && lines[rowIndex].trim().startsWith("_")) {
+      headers.push(lines[rowIndex].trim());
+      rowIndex += 1;
+    }
+    const groupIndex = headers.indexOf("_atom_site.group_PDB");
+    const residueIndex = headers.indexOf("_atom_site.label_comp_id");
+    const chainIndex = firstHeaderIndex(headers, ["_atom_site.label_asym_id", "_atom_site.auth_asym_id"]);
+    const sequenceIndex = firstHeaderIndex(headers, ["_atom_site.label_seq_id", "_atom_site.auth_seq_id"]);
+    if (groupIndex < 0 || residueIndex < 0 || chainIndex < 0 || sequenceIndex < 0) continue;
+    while (rowIndex < lines.length) {
+      const line = lines[rowIndex].trim();
+      if (!line || line === "#" || line === "loop_" || line.startsWith("_")) break;
+      const fields = tokenizeCifRow(line);
+      const group = fields[groupIndex];
+      if (group === "ATOM") {
+        const residueName = fields[residueIndex]?.toUpperCase();
+        const residue = RESIDUE_ONE_LETTER[residueName];
+        if (residue) {
+          const chainId = fields[chainIndex] && fields[chainIndex] !== "." ? fields[chainIndex] : "A";
+          const residueNumber = fields[sequenceIndex] && fields[sequenceIndex] !== "." ? fields[sequenceIndex] : "";
+          const key = `${chainId}:${residueNumber}`;
+          const chain = chains.get(chainId) ?? { residues: [], residueNumbers: [], seen: new Set<string>() };
+          if (!chain.seen.has(key)) {
+            chain.seen.add(key);
+            chain.residues.push(residue);
+            chain.residueNumbers.push(residueNumber || String(chain.residues.length));
+            chains.set(chainId, chain);
+          }
+        }
+      }
+      rowIndex += 1;
+    }
+  }
+  return chainSequencesFromMap(chains);
+}
+
+function firstHeaderIndex(headers: string[], candidates: string[]) {
+  for (const candidate of candidates) {
+    const index = headers.indexOf(candidate);
+    if (index >= 0) return index;
+  }
+  return -1;
+}
+
+function tokenizeCifRow(line: string) {
+  const values: string[] = [];
+  let current = "";
+  let quote: string | null = null;
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (quote) {
+      if (character === quote) {
+        quote = null;
+      } else {
+        current += character;
+      }
+      continue;
+    }
+    if (character === "\"" || character === "'") {
+      quote = character;
+      continue;
+    }
+    if (/\s/u.test(character)) {
+      if (current) {
+        values.push(current);
+        current = "";
+      }
+      continue;
+    }
+    current += character;
+  }
+  if (current) values.push(current);
+  return values;
+}
+
+function chainSequencesFromMap(chains: Map<string, { residues: string[]; residueNumbers: string[] }>) {
+  return [...chains.entries()]
+    .map(([chainId, chain]) => ({
+      chainId,
+      sequence: chain.residues.join(""),
+      residueNumbers: chain.residueNumbers,
+    }))
+    .filter((chain) => chain.sequence.length > 0);
 }
 
 function openFoldingArtifact(artifact: FoldingArtifact, actions: ShellActions) {
