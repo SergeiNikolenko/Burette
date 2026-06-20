@@ -39,6 +39,7 @@ const [
   appRendererMessageHook,
   appSidebarProjectsHook,
   appSdfViewerMessagesHook,
+  appShellActionsHook,
   appShellViewStateHook,
   appStartupEffectsHook,
   appUpdatesHook,
@@ -201,6 +202,7 @@ const [
   source('apps/desktop/src/hooks/use-app-renderer-message.ts'),
   source('apps/desktop/src/hooks/use-app-sidebar-projects.ts'),
   source('apps/desktop/src/hooks/use-app-sdf-viewer-messages.ts'),
+  source('apps/desktop/src/hooks/use-app-shell-actions.ts'),
   source('apps/desktop/src/hooks/use-app-shell-view-state.ts'),
   source('apps/desktop/src/hooks/use-app-startup-effects.ts'),
   source('apps/desktop/src/hooks/use-app-updates.ts'),
@@ -2844,6 +2846,8 @@ assert.match(commandPalette, /placeholder="Search commands and structures\.\.\."
 assert.match(commandPalette, /heading=\{group\.heading\}/);
 assert.match(commandPalette, /value=\{item\.id\}/);
 assert.match(commandPalette, /onSelect=\{\(\) => runItem\(item\)\}/);
+assert.match(app, /const actions = useMemo<ShellActions>\(\(\) => createAppShellActions\(\{/);
+assert.match(appShellActionsHook, /createAppShellActions\(actions: ShellActions\): ShellActions/);
 assert.match(app, /const state = createAppShellViewState\(\{/);
 assert.match(appShellViewStateHook, /activeDocumentId: state\.activeDocument\?\.id \?\? null/);
 assert.match(appShellViewStateHook, /visibleDocuments: state\.documents/);
