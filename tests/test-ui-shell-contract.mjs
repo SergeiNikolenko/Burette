@@ -31,6 +31,7 @@ const [
   appKetcherViewerMessagesHook,
   appBootstrapHook,
   appMaintenanceHook,
+  appMolstarContextMessagesHook,
   appOpenActionsHook,
   appQuickLookHook,
   appResizeHook,
@@ -190,6 +191,7 @@ const [
   source('apps/desktop/src/hooks/use-app-ketcher-viewer-messages.ts'),
   source('apps/desktop/src/hooks/use-app-bootstrap.ts'),
   source('apps/desktop/src/hooks/use-app-maintenance.ts'),
+  source('apps/desktop/src/hooks/use-app-molstar-context-messages.ts'),
   source('apps/desktop/src/hooks/use-app-open-actions.ts'),
   source('apps/desktop/src/hooks/use-app-quick-look.ts'),
   source('apps/desktop/src/hooks/use-app-resize.ts'),
@@ -3002,9 +3004,10 @@ assert.match(appSdfViewerMessagesHook, /body\?\.type === "openSdfGridDocument"/)
 assert.match(appSdfViewerMessagesHook, /const targetPath = bodyString\(body\.path\)\.trim\(\) \|\| targetDocument\?\.path/);
 assert.match(appSdfViewerMessagesHook, /pushStatus\("Opening SDF grid\.\.\."\)/);
 assert.match(appSdfViewerMessagesHook, /void openDocuments\(\[targetPath\], undefined, \{ rendererMode: "grid2d" \}, \{ inActiveTab: true \}\)/);
-assert.match(app, /body\?\.type === "openMolstarContextDocument"/);
-assert.match(app, /pushStatus\("Opening separate Molstar docking view\.\.\."\)/);
-assert.match(app, /void openDockingDocument\(targetDocument\.dockingRequest\.receptorPath, targetDocument\.dockingRequest\.ligandPaths\)/);
+assert.match(app, /handleMolstarContextMessage\(body\)/);
+assert.match(appMolstarContextMessagesHook, /body\?\.type !== "openMolstarContextDocument"/);
+assert.match(appMolstarContextMessagesHook, /pushStatus\("Opening separate Molstar docking view\.\.\."\)/);
+assert.match(appMolstarContextMessagesHook, /void openDockingDocument\(targetDocument\.dockingRequest\.receptorPath, targetDocument\.dockingRequest\.ligandPaths\)/);
 assert.match(app, /const targetDocument = \(pendingViewerReloadDocumentIdRef\.current/);
 assert.match(app, /const reloadOptions = pendingViewerReloadOptionsRef\.current \?\? undefined/);
 assert.match(app, /await openDocuments\(\[targetDocument\.path\], reloadOptions, undefined, \{ inActiveTab: true \}\)/);
@@ -4180,10 +4183,10 @@ assert.match(previewViewer, /saveMolstarModifiedStructureAs\(format, target\)/);
 assert.match(previewViewer, /if \(normalizeFormat\(format\) !== 'sdf'\) setMolstarStructureDirty\(false\);/);
 assert.match(previewViewer, /contextDocument = molstarContextDocumentPayload\(target\)/);
 assert.match(previewViewer, /if \(!contextDocument\) throw new Error\('No molecule-level Mol\* context is available for this target\.'\)/);
-assert.match(app, /const molstarPreferences = \{ \.\.\.preferences, rendererMode: "molstar" as const \};/);
-assert.match(app, /if \(!isTauriRuntime\(\)\) return openBrowserDevMolstarContextDocument\(contextDocument, molstarPreferences\);/);
-assert.match(app, /invoke<ViewerDocument>\("open_text_structure", \{\s*request: \{\s*title: `\$\{label\}\.\$\{extension\}`,\s*extension,\s*text: entry\.data,/s);
-assert.match(app, /reloadOptions: \{\},/);
+assert.match(appMolstarContextMessagesHook, /const molstarPreferences = \{[\s\S]*rendererMode: "molstar" as const,[\s\S]*molstarStyle: requestedMolstarStyle \?\? preferences\.molstarStyle,/);
+assert.match(appMolstarContextMessagesHook, /if \(!isTauriRuntime\(\)\) return openBrowserDevMolstarContextDocument\(contextDocument, molstarPreferences\);/);
+assert.match(appMolstarContextMessagesHook, /invoke<ViewerDocument>\("open_text_structure", \{\s*request: \{\s*title: `\$\{label\}\.\$\{extension\}`,\s*extension,\s*text: entry\.data,/s);
+assert.match(appMolstarContextMessagesHook, /reloadOptions: \{\},/);
 assert.match(app, /useAppViewerFileActions\(\{\s*pushErrorStatus,\s*pushStatus,\s*\}\)/s);
 assert.match(app, /data\.source === "burrete-viewer" && handleViewerFileMessage\(body\)/);
 assert.match(appViewerFileActionsHook, /body\?\.type === "exportText"/);
