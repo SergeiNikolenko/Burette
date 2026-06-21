@@ -195,6 +195,7 @@ external chemistry editors discovered by macOS.
 ## Docs
 
 - [Documentation map](docs/README.md)
+- [Changelog](CHANGELOG.md)
 - [Installing and building from source](docs/installing-building.md)
 - [Renderer support](docs/renderer-support.md)
 - [Quick Look debugging](docs/quicklook-debugging.md)

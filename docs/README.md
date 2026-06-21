@@ -5,6 +5,8 @@ contains only documents that describe the active project.
 
 ## Current Docs
 
+- [Changelog](../CHANGELOG.md): pointer to GitHub Releases, which are the
+  human-readable changelog for each version.
 - [Architecture](architecture.md): repository boundaries and runtime shape.
 - [Repository layout](repository-layout.md): top-level code map, app surfaces,
   checked-in samples, and scratch-file policy.
