@@ -4,6 +4,15 @@ Burrete uses compact toolbars, icon buttons, short mode labels, and embedded
 viewer controls. Every control whose visible text is abbreviated, icon-only, or
 domain-specific must expose a short explanation on hover and keyboard focus.
 
+## Capability Routing
+
+- Invoke `@product-design` before changing product flows, information
+  architecture, prototypes, or user-facing workflow direction.
+- Invoke `$apple-design` before Apple-platform UI, SwiftUI/AppKit, icon,
+  typography, accessibility, or Human Interface Guidelines decisions.
+- Invoke `@build-ios-apps` or `@build-macos-apps` when UI work needs native
+  iOS/macOS build, run, screenshot, log, simulator, device, or Xcode validation.
+
 ## Required Tooltip Coverage
 
 Add a tooltip or menu detail when introducing:

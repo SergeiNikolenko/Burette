@@ -26,6 +26,9 @@ contains only documents that describe the active project.
   app target, runtime reuse, signing, and real-device install flow.
   Agent-facing local rules live in
   [ios/BurreteMobile/AGENTS.md](../ios/BurreteMobile/AGENTS.md).
+- Apple-platform agent routes are dispatched from [AGENTS.md](../AGENTS.md):
+  use `@build-ios-apps`, `@build-macos-apps`, `@product-design`, and
+  `$apple-design` where those platform/design rules apply.
 - [Launch modes](launch-modes.md): normal, file-open, tray, and registration
   launch semantics.
 - [Releasing](releasing.md): version, build, signing, update, and artifact
