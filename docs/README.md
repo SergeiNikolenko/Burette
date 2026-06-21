@@ -10,6 +10,11 @@ contains only documents that describe the active project.
 - [Architecture](architecture.md): repository boundaries and runtime shape.
 - [Repository layout](repository-layout.md): top-level code map, app surfaces,
   checked-in samples, and scratch-file policy.
+- [Configuration](configuration.md): source-of-truth config files, development
+  overrides, runtime environment, release secrets, and smoke/perf variables.
+- [Security and permissions](security-and-permissions.md): local file access,
+  Tauri permissions, browser/agent surfaces, local servers, release secrets,
+  diagnostics, and security reporting.
 - [Renderer support](renderer-support.md): renderer modes, supported formats,
   Ketcher editing scope, artifacts, and checks.
 - [Performance architecture](performance.md): runtime profiles, caches, binary
