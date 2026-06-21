@@ -241,7 +241,7 @@ async function writeObserve(
     : false;
   const observe = {
     apiVersion: AGENT_API_VERSION,
-    mode: isBrowserAgentSessionDir(sessionDir) ? "browser-dev-shell" : "desktop-app",
+    mode: isBrowserAgentSessionDir(sessionDir) ? "browser-agent-shell" : "desktop-app",
     transport: isBrowserAgentSessionDir(sessionDir) ? "browser-agent-http-session" : "file-session-token",
     reportedAt: new Date().toISOString(),
     activeDocument: activeDocument
