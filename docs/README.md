@@ -6,12 +6,16 @@ contains only documents that describe the active project.
 ## Current Docs
 
 - [Architecture](architecture.md): repository boundaries and runtime shape.
+- [Repository layout](repository-layout.md): top-level code map, app surfaces,
+  checked-in samples, and scratch-file policy.
 - [Renderer support](renderer-support.md): renderer modes, supported formats,
   Ketcher editing scope, artifacts, and checks.
 - [Performance architecture](performance.md): runtime profiles, caches, binary
   payloads, grid search, and no-regression guardrails.
 - [Stability program](stability.md): preview trace, runtime manifest, nightly
   smoke, and staged stability guardrails.
+- [Installing and building](installing-building.md): source build, local
+  install, development entrypoints, and Quick Look refresh commands.
 - [Vite+ workflow](vite-plus.md): `vp` entrypoints for frontend development and
   JavaScript validation.
 - [Modular runtime refactor](modular-runtime-refactor.md): staged extraction
