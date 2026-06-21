@@ -5,12 +5,48 @@ import { z } from "zod";
 
 import { runBurreteAgent } from "../../lib/cli-bridge.mjs";
 import { pluginPath } from "../../lib/plugin-root.mjs";
+import {
+  createWorkspaceSession,
+  listWorkspaceSessions,
+  resolveWorkspaceSession,
+  updateWorkspaceSession,
+} from "../../lib/session-registry.mjs";
 import { componentSelector, editStructureFragmentFile, extractStructureComponentFile } from "../../lib/structure-components.mjs";
 import { summarizeStructureFile } from "../../lib/structure-summary.mjs";
 import { registerWidgetResource, toolText, widgetHtml } from "../../lib/widget-resource.mjs";
 
 const WIDGET_URI = "ui://widget/burette-agent/molecular-workspace-20260607.html";
 const actionSchema = z.object({ type: z.string().trim().min(1) }).passthrough();
+const externalActionSchema = z.object({ type: z.string().trim().min(1) }).passthrough();
+const PUBLIC_CONTRACT = {
+  apiVersion: "burrete-external-agent/v1",
+  tools: [
+    "burrete.get_context",
+    "burrete.open_workspace",
+    "burrete.observe_workspace",
+    "burrete.control_viewer",
+    "burrete.render_panel",
+  ],
+  advancedTools: [
+    "open_burrete_workspace",
+    "observe_burrete_workspace",
+    "act_molstar_scene",
+    "manage_burrete_tabs",
+    "manage_burrete_structure_component",
+    "open_burrete_docking_view",
+    "summarize_burrete_structure",
+  ],
+  supportedFormats: ["pdb", "cif", "mmcif", "mol", "sdf", "xyz", "mae", "maegz"],
+  capabilities: {
+    canOpenWorkspace: true,
+    canObserveWorkspace: true,
+    canControlMolstar: true,
+    canRenderPanels: true,
+    canUseBrowserShell: true,
+    canUseBrowserPreview: true,
+    canUseDesktopApp: true,
+  },
+};
 
 export function registerMolecularWorkspace(server) {
   registerWidgetResource(server, {
@@ -20,6 +56,287 @@ export function registerMolecularWorkspace(server) {
     description: "A compact review surface for Burrete observe payloads, active documents, viewer status, panels, and recent actions.",
     html: injectInitialData(widgetHtml("molecular-workspace")),
   });
+
+  registerAppTool(
+    server,
+    "burrete.get_context",
+    {
+      title: "Get Burrete Agent Context",
+      description: "Return the short external-agent contract, known workspace sessions, and optional live workspace model context.",
+      inputSchema: {
+        workspaceSessionId: z.string().trim().optional(),
+        viewerSessionId: z.string().trim().optional(),
+        url: z.string().trim().optional(),
+        sessionDir: z.string().trim().optional(),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: {
+        ui: {
+          visibility: ["model"],
+        },
+      },
+    },
+    async input => {
+      const hasLocator = Boolean(input.workspaceSessionId || input.viewerSessionId || input.url || input.sessionDir);
+      if (!hasLocator) {
+        return publicContractResult("burrete.get_context", {
+          ok: true,
+          session: null,
+          observe: null,
+          result: {
+            sessions: listWorkspaceSessions(),
+          },
+        });
+      }
+      const resolved = resolveWorkspaceSession(input);
+      if (!resolved.ok) return publicContractFailure("burrete.get_context", resolved.error);
+      const observed = await observeWorkspaceSession(resolved.session);
+      const session = updateKnownSession(resolved.session, {
+        observe: observed.payload?.result || null,
+      });
+      return publicContractResult("burrete.get_context", {
+        ok: observed.ok,
+        session,
+        observe: observed.payload?.result || null,
+        result: {
+          sessions: listWorkspaceSessions(),
+        },
+        error: observed.ok ? null : observed.error,
+        exitCode: observed.exitCode,
+      });
+    },
+  );
+
+  registerAppTool(
+    server,
+    "burrete.open_workspace",
+    {
+      title: "Open Burrete Workspace",
+      description: "Open a local molecular artifact and return a stable workspaceSessionId for external-agent follow-up actions.",
+      inputSchema: {
+        file: z.string().trim(),
+        mode: z.enum(["auto", "browser-agent-shell", "browser-dev-shell", "browser-preview", "desktop-app"]).default("auto"),
+        app: z.string().trim().optional(),
+        sessionDir: z.string().trim().optional(),
+        host: z.string().trim().optional(),
+        port: z.number().int().min(1).max(65535).optional(),
+        noLaunch: z.boolean().optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      _meta: {
+        ui: {
+          resourceUri: WIDGET_URI,
+          visibility: ["model", "app"],
+        },
+        "openai/outputTemplate": WIDGET_URI,
+        "openai/widgetAccessible": true,
+      },
+    },
+    async input => {
+      const mode = input.mode || "auto";
+      const args = ["open", "--mode", mode];
+      if (input.app) args.push("--app", input.app);
+      if (input.sessionDir) args.push("--session-dir", input.sessionDir);
+      if (input.host) args.push("--host", input.host);
+      if (input.port) args.push("--port", String(input.port));
+      if (input.noLaunch) args.push("--no-launch");
+      args.push(input.file);
+      const result = await runBurreteAgent(args, { timeoutMs: 45000 });
+      if (!result.ok) {
+        return publicContractFailure("burrete.open_workspace", result.error, {
+          exitCode: result.exitCode,
+        });
+      }
+      const openResult = result.payload?.result || null;
+      const structureSummary = await safeStructureSummary(input.file);
+      const provisionalSession = createWorkspaceSession({
+        file: input.file,
+        mode,
+        result: openResult,
+        structureSummary,
+      });
+      const observed = await observeWorkspaceSession(provisionalSession);
+      const session = updateWorkspaceSession(provisionalSession.workspaceSessionId, {
+        observe: observed.payload?.result || null,
+      }) || provisionalSession;
+      return publicContractResult("burrete.open_workspace", {
+        ok: result.ok,
+        session,
+        observe: observed.payload?.result || null,
+        result: openResult,
+        structureSummary,
+        error: observed.ok ? null : observed.error,
+        exitCode: result.exitCode,
+      });
+    },
+  );
+
+  registerAppTool(
+    server,
+    "burrete.observe_workspace",
+    {
+      title: "Observe Burrete Workspace",
+      description: "Observe a workspace through workspaceSessionId or a direct url/sessionDir and return compact model context.",
+      inputSchema: {
+        workspaceSessionId: z.string().trim().optional(),
+        viewerSessionId: z.string().trim().optional(),
+        url: z.string().trim().optional(),
+        sessionDir: z.string().trim().optional(),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: {
+        ui: {
+          resourceUri: WIDGET_URI,
+          visibility: ["model", "app"],
+        },
+        "openai/outputTemplate": WIDGET_URI,
+        "openai/widgetAccessible": true,
+      },
+    },
+    async input => {
+      const resolved = resolveWorkspaceSession(input);
+      if (!resolved.ok) return publicContractFailure("burrete.observe_workspace", resolved.error);
+      const observed = await observeWorkspaceSession(resolved.session);
+      const session = updateKnownSession(resolved.session, {
+        observe: observed.payload?.result || null,
+      });
+      return publicContractResult("burrete.observe_workspace", {
+        ok: observed.ok,
+        session,
+        observe: observed.payload?.result || null,
+        result: observed.payload?.result || null,
+        error: observed.ok ? null : observed.error,
+        exitCode: observed.exitCode,
+      });
+    },
+  );
+
+  registerAppTool(
+    server,
+    "burrete.control_viewer",
+    {
+      title: "Control Burrete Viewer",
+      description: "Run an allowlisted viewer action against a workspaceSessionId and return a refreshed model context.",
+      inputSchema: {
+        workspaceSessionId: z.string().trim().optional(),
+        viewerSessionId: z.string().trim().optional(),
+        url: z.string().trim().optional(),
+        sessionDir: z.string().trim().optional(),
+        action: externalActionSchema,
+        waitMs: z.number().int().min(0).max(60000).optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      _meta: {
+        ui: {
+          visibility: ["model"],
+        },
+      },
+    },
+    async input => {
+      const resolved = resolveWorkspaceSession(input);
+      if (!resolved.ok) return publicContractFailure("burrete.control_viewer", resolved.error);
+      const actionResult = await runWorkspaceAction({
+        url: resolved.session.url,
+        sessionDir: resolved.session.sessionDir,
+        waitMs: input.waitMs ?? 12000,
+        action: input.action,
+      });
+      const observed = actionResult.ok ? await observeWorkspaceSession(resolved.session) : null;
+      const session = updateKnownSession(resolved.session, {
+        observe: observed?.payload?.result || resolved.session.observe || null,
+      });
+      return publicContractResult("burrete.control_viewer", {
+        ok: actionResult.ok,
+        session,
+        observe: observed?.payload?.result || null,
+        result: actionResult.payload?.result || null,
+        action: input.action,
+        applied: actionResult.ok,
+        error: actionResult.ok ? null : actionResult.error,
+        exitCode: actionResult.exitCode,
+      });
+    },
+  );
+
+  registerAppTool(
+    server,
+    "burrete.render_panel",
+    {
+      title: "Render Burrete Panel",
+      description: "Render a markdown, table, or chart file into a Burrete workspace dock through the short external-agent contract.",
+      inputSchema: {
+        workspaceSessionId: z.string().trim().optional(),
+        viewerSessionId: z.string().trim().optional(),
+        url: z.string().trim().optional(),
+        sessionDir: z.string().trim().optional(),
+        kind: z.enum(["markdown", "table", "chart"]),
+        file: z.string().trim(),
+        area: z.enum(["right", "bottom"]).optional(),
+        waitMs: z.number().int().min(0).max(60000).optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      _meta: {
+        ui: {
+          visibility: ["model"],
+        },
+      },
+    },
+    async input => {
+      const resolved = resolveWorkspaceSession(input);
+      if (!resolved.ok) return publicContractFailure("burrete.render_panel", resolved.error);
+      const action = {
+        type: "render_panel",
+        kind: input.kind,
+        file: input.file,
+        area: input.area || "right",
+      };
+      const actionResult = await runWorkspaceAction({
+        url: resolved.session.url,
+        sessionDir: resolved.session.sessionDir,
+        waitMs: input.waitMs ?? 12000,
+        action,
+      });
+      const observed = actionResult.ok ? await observeWorkspaceSession(resolved.session) : null;
+      const session = updateKnownSession(resolved.session, {
+        observe: observed?.payload?.result || resolved.session.observe || null,
+      });
+      return publicContractResult("burrete.render_panel", {
+        ok: actionResult.ok,
+        session,
+        observe: observed?.payload?.result || null,
+        result: actionResult.payload?.result || null,
+        action,
+        applied: actionResult.ok,
+        error: actionResult.ok ? null : actionResult.error,
+        exitCode: actionResult.exitCode,
+      });
+    },
+  );
 
   registerAppTool(
     server,
@@ -634,6 +951,157 @@ export function registerMolecularWorkspace(server) {
       },
     }),
   );
+}
+
+async function observeWorkspaceSession(session) {
+  const args = ["observe"];
+  const locator = workspaceLocatorArgs(session);
+  if (!locator.ok) return missingWorkspaceLocatorResult(locator.error);
+  args.push(...locator.args);
+  return await runBurreteAgent(args);
+}
+
+function updateKnownSession(session, patch) {
+  if (session?.workspaceSessionId) {
+    return updateWorkspaceSession(session.workspaceSessionId, patch) || { ...session, ...patch };
+  }
+  return { ...session, ...patch };
+}
+
+function workspaceLocatorArgs(session) {
+  if (session?.url) return { ok: true, args: ["--url", session.url] };
+  if (session?.sessionDir) return { ok: true, args: ["--session-dir", session.sessionDir] };
+  return {
+    ok: false,
+    error: {
+      code: "WORKSPACE_LOCATOR_UNAVAILABLE",
+      message: "The workspace session does not include a url or sessionDir.",
+    },
+  };
+}
+
+function missingWorkspaceLocatorResult(error) {
+  return {
+    ok: false,
+    exitCode: null,
+    signal: null,
+    stdout: "",
+    stderr: "",
+    error,
+  };
+}
+
+function publicContractResult(tool, {
+  ok,
+  session = null,
+  observe = null,
+  result = null,
+  structureSummary = null,
+  action = null,
+  applied = null,
+  error = null,
+  exitCode = null,
+}) {
+  const modelContext = buildModelContext({ session, observe, structureSummary: structureSummary || session?.structureSummary || null });
+  const title = observe?.activeDocument?.title || session?.result?.activeDocument?.title || "Burrete Workspace";
+  return {
+    content: toolText(ok ? `${tool} completed.` : `${tool} failed: ${error?.message || "unknown error"}`),
+    structuredContent: {
+      ok,
+      tool,
+      apiVersion: PUBLIC_CONTRACT.apiVersion,
+      workspaceSessionId: session?.workspaceSessionId || null,
+      viewerSessionId: session?.workspaceSessionId || null,
+      surface: session?.surface || modelContext.surface,
+      capabilities: PUBLIC_CONTRACT.capabilities,
+      supportedFormats: PUBLIC_CONTRACT.supportedFormats,
+      activeDocument: modelContext.activeDocument,
+      modelContext,
+      result,
+      action,
+      applied: applied === null ? inferApplied(ok, result) : applied,
+      observe,
+      sessions: result?.sessions || undefined,
+      error: ok ? null : error,
+      exitCode,
+    },
+    _meta: observe
+      ? {
+          "openai/outputTemplate": WIDGET_URI,
+          widgetData: {
+            title,
+            observe,
+          },
+        }
+      : undefined,
+  };
+}
+
+function publicContractFailure(tool, error, { exitCode = null } = {}) {
+  return publicContractResult(tool, {
+    ok: false,
+    error,
+    exitCode,
+  });
+}
+
+function buildModelContext({ session, observe, structureSummary }) {
+  const activeDocument = observe?.activeDocument || (session?.file
+    ? {
+        path: session.file,
+        title: fileTitle(session.file),
+        ready: false,
+      }
+    : null);
+  return {
+    apiVersion: PUBLIC_CONTRACT.apiVersion,
+    workspaceSessionId: session?.workspaceSessionId || null,
+    viewerSessionId: session?.workspaceSessionId || null,
+    mode: observe?.mode || session?.mode || null,
+    surface: session?.surface || surfaceFromMode(observe?.mode || session?.mode),
+    activeDocument,
+    viewer: observe?.viewer || observe?.viewerAgent || null,
+    scene: observe?.scene || null,
+    tabs: Array.isArray(observe?.tabs) ? observe.tabs.map(tab => ({
+      id: tab.id,
+      title: tab.title,
+      path: tab.path,
+      active: Boolean(tab.active || tab.id === observe.activeTabId),
+    })) : [],
+    panels: Array.isArray(observe?.workspacePanels) ? observe.workspacePanels : [],
+    structureSummary: briefStructureSummary(structureSummary),
+    nextActions: PUBLIC_CONTRACT.tools,
+  };
+}
+
+function briefStructureSummary(summary) {
+  if (!summary || summary.ok === false) return summary || null;
+  return {
+    format: summary.format || null,
+    summaryLine: summary.summaryLine || null,
+    counts: summary.counts || null,
+    chains: summary.chains || null,
+    ligands: summary.ligands || null,
+    waters: summary.waters || null,
+    ions: summary.ions || null,
+  };
+}
+
+function inferApplied(ok, result) {
+  if (!ok) return false;
+  if (result && typeof result === "object" && result.ok === false) return false;
+  return true;
+}
+
+function surfaceFromMode(mode) {
+  if (mode === "desktop-app") return "desktop-app";
+  if (mode === "browser-agent-shell" || mode === "browser-dev-shell") return "browser-agent-shell";
+  if (mode === "browser-preview") return "browser-preview";
+  return mode || "unknown";
+}
+
+function fileTitle(file) {
+  return String(file || "").replace(/\\/g, "/").split("/").filter(Boolean).pop() || "workspace";
 }
 
 async function resolveStructureSummaryTarget(input) {
