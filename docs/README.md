@@ -39,6 +39,8 @@ contains only documents that describe the active project.
   plugin, MCP, observe/action, and visual QA boundaries.
 - [Agent tool index](tools/index.md): focused validation and runtime helper
   commands for agents.
+- [Testing surfaces](tools/testing-surfaces.md): strict dev-server, browser
+  Quick Look, native Quick Look, tokenized preview, and contract-test flows.
 
 ## Maintenance Rules
 

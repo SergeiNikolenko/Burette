@@ -3,6 +3,10 @@
 Burrete has several edit loops. Use the narrowest loop that matches the layer
 you changed.
 
+For strict agent-facing server startup, browser Quick Look URLs, tokenized
+preview sessions, and contract test levels, use
+[Testing surfaces](tools/testing-surfaces.md).
+
 ## Desktop React UI
 
 Use the UI-only design loop for layout, styling, panels, tabs, empty states, and

@@ -6,6 +6,7 @@ runtime boundaries.
 
 | Tool | Path | Use When | Input | Output |
 | --- | --- | --- | --- | --- |
+| Testing surfaces | `docs/tools/testing-surfaces.md` | Starting dev servers, browser Quick Look, native Quick Look, or broad contract checks. | Changed surface and intended runtime. | Strict command sequence and validation level. |
 | Vite+ install/check/test/build | `vp install`, `vp check`, `vp test`, `vp build` | Frontend development and JavaScript validation. | Current checkout. | Vite+ validation output. |
 | Fast CI | `bun run ci:fast` | PR-scale validation before a broad review. | Current checkout. | Focused CI summary. |
 | Full CI | `bun run ci` | Broad pre-merge validation. | Current checkout. | Full repository validation summary. |
