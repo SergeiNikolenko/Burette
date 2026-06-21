@@ -25,6 +25,13 @@ registration behavior without an explicit migration plan.
 
 ## Contract Rules
 
+- Invoke `@build-macos-apps` for macOS app, Xcode project, Quick Look extension,
+  signing, packaging, build, run, and native verification work.
+- Invoke `$apple-design` for macOS Finder/Quick Look UI, AppKit/SwiftUI shell,
+  icon, menu, toolbar, accessibility, or Apple Human Interface Guidelines
+  decisions.
+- Invoke `@product-design` before implementation when the change affects the
+  preview product flow, inspection workflow, or user-facing design direction.
 - Use `BURRETE_DEV_FLAVOR=<worktree-slug>` for packaged local builds and Quick
   Look checks. Do not run unflavored build/install commands for local testing
   unless the task is explicitly a release-bundle task.
