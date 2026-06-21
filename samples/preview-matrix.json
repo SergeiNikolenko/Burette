@@ -1,0 +1,209 @@
+{
+  "schemaVersion": 1,
+  "description": "Registry-driven preview validation expectations for lightweight tests and smoke scripts.",
+  "surfaces": [
+    "browser-dev-shell",
+    "browser-quicklook",
+    "agent-preview",
+    "packaged-desktop",
+    "native-quicklook",
+    "ios-mobile"
+  ],
+  "representatives": [
+    {
+      "formatId": "pdb",
+      "path": "samples/mini.pdb",
+      "surfaces": ["browser-dev-shell", "browser-quicklook", "agent-preview", "packaged-desktop", "native-quicklook", "ios-mobile"]
+    },
+    {
+      "formatId": "cif",
+      "path": "samples/mini.cif",
+      "surfaces": ["browser-dev-shell", "browser-quicklook", "agent-preview", "packaged-desktop", "native-quicklook", "ios-mobile"]
+    },
+    {
+      "formatId": "sdf",
+      "path": "samples/mini.sdf",
+      "surfaces": ["browser-dev-shell", "browser-quicklook", "agent-preview", "packaged-desktop", "native-quicklook", "ios-mobile"]
+    },
+    {
+      "formatId": "smiles",
+      "path": "samples/collections/smiles/multi.smi",
+      "surfaces": ["browser-dev-shell", "browser-quicklook", "packaged-desktop", "native-quicklook"]
+    },
+    {
+      "formatId": "csv",
+      "path": "samples/collections/tables/compounds.csv",
+      "surfaces": ["browser-dev-shell", "browser-quicklook", "packaged-desktop", "native-quicklook"]
+    },
+    {
+      "formatId": "tsv",
+      "path": "samples/collections/tables/compounds.tsv",
+      "surfaces": ["browser-dev-shell", "browser-quicklook", "packaged-desktop", "native-quicklook"]
+    },
+    {
+      "formatId": "mol2",
+      "path": "samples/structures/small-molecules/water.mol2",
+      "surfaces": ["browser-dev-shell", "browser-quicklook", "agent-preview", "packaged-desktop", "native-quicklook"]
+    },
+    {
+      "formatId": "xyz",
+      "path": "samples/mini.xyz",
+      "surfaces": ["browser-dev-shell", "browser-quicklook", "agent-preview", "packaged-desktop", "native-quicklook", "ios-mobile"]
+    },
+    {
+      "formatId": "xyzrender-input",
+      "path": "samples/quantum/volumes/base-pair-density.cube",
+      "surfaces": ["browser-dev-shell", "browser-quicklook", "packaged-desktop", "native-quicklook"]
+    },
+    {
+      "formatId": "molecular-dynamics",
+      "path": "samples/md/paired/paired.lammpstrj",
+      "surfaces": ["browser-dev-shell", "browser-quicklook", "packaged-desktop", "native-quicklook"]
+    },
+    {
+      "formatId": "schrodinger",
+      "path": "samples/schrodinger/metadynamics-binding.mae",
+      "surfaces": ["browser-dev-shell", "browser-quicklook", "packaged-desktop", "native-quicklook"]
+    },
+    {
+      "formatId": "graphml",
+      "path": "samples/fep/ligand_network.graphml",
+      "surfaces": ["browser-dev-shell", "browser-quicklook", "packaged-desktop", "native-quicklook"]
+    },
+    {
+      "formatId": "spectrum",
+      "path": "samples/spectra/massspecgym-0075191.ms",
+      "surfaces": ["browser-dev-shell", "browser-quicklook", "packaged-desktop", "native-quicklook"]
+    }
+  ],
+  "extensionCoverageGaps": {
+    "pdb": {
+      "extensions": ["ent"],
+      "reason": "Need a compact ENT fixture that can be redistributed."
+    },
+    "mmcif": {
+      "extensions": ["mcif", "mmcif"],
+      "reason": "Need explicit mmCIF fixtures separate from CIF fixtures."
+    },
+    "bcif": {
+      "extensions": ["bcif"],
+      "reason": "Need a compact BinaryCIF fixture."
+    },
+    "mmtf": {
+      "extensions": ["mmtf"],
+      "reason": "Need a compact MMTF fixture."
+    },
+    "sdf": {
+      "extensions": ["sd"],
+      "reason": "SD is an SDF alias; add a named alias fixture when alias smoke is required."
+    },
+    "smiles": {
+      "extensions": ["smiles"],
+      "reason": "SMILES alias coverage currently uses .smi fixtures."
+    },
+    "mol": {
+      "extensions": ["mol"],
+      "reason": "Need a compact MDL molfile fixture."
+    },
+    "gro": {
+      "extensions": ["gro"],
+      "reason": "Need a compact GROMACS structure fixture."
+    },
+    "mol-view-spec-json": {
+      "extensions": ["mvsj"],
+      "reason": "MolViewSpec sample coverage needs a valid scene fixture."
+    },
+    "mol-view-spec-archive": {
+      "extensions": ["mvsx"],
+      "reason": "MolViewSpec archive coverage needs a valid archive fixture."
+    },
+    "xyzrender-input": {
+      "extensions": ["fhiaims", "gms", "log", "out", "xyzr"],
+      "reason": "Quantum/input alias coverage has representative xyzrender-compatible fixtures but not every alias."
+    },
+    "molecular-dynamics": {
+      "extensions": [
+        "arc",
+        "config",
+        "coor",
+        "crdbox",
+        "data",
+        "dcd",
+        "dump",
+        "gsd",
+        "h5md",
+        "history",
+        "itp",
+        "lammps",
+        "lmp",
+        "mdcrd",
+        "namdbin",
+        "nc",
+        "ncdf",
+        "ncrst",
+        "nctraj",
+        "netcdf",
+        "parm",
+        "parm7",
+        "prmtop",
+        "psf",
+        "tng",
+        "top",
+        "tpr",
+        "trc",
+        "trj",
+        "trr",
+        "trz",
+        "txyz",
+        "xtc"
+      ],
+      "reason": "Trajectory/topology aliases need small paired fixtures and expected pairing metadata."
+    },
+    "schrodinger": {
+      "extensions": ["cms", "mae.gz"],
+      "reason": "Schrodinger coverage has .mae/.maegz fixtures; CMS and literal .mae.gz aliases still need redistributable samples."
+    },
+    "pharmacophore-model": {
+      "extensions": ["ph4"],
+      "reason": "Need a compact pharmacophore fixture."
+    },
+    "openmm-coordinate-artifact": {
+      "extensions": ["crd", "inpcrd", "restrt", "rst", "rst7", "state", "xml"],
+      "reason": "Need compact OpenMM coordinate artifacts with expected converter behavior."
+    },
+    "openmm-workflow-text-artifact": {
+      "extensions": ["checkpoint", "chk", "dms", "edr", "fasta", "fdef", "key", "par", "prm", "rtf", "str", "xvg"],
+      "reason": "Need representative workflow text/metadata fixtures."
+    },
+    "spectrum": {
+      "extensions": ["mgf", "msp", "mzml", "mzxml"],
+      "reason": "Spectrum smoke currently covers MS and MAGMa text formats; XML/list formats need compact fixtures."
+    }
+  },
+  "documentTypeOnlyExtensions": {
+    "json": "Registered for Launch Services spectrum JSON handoff; it is not a generic preview format until routed by schema or UTI."
+  },
+  "quickLookContentTypeGaps": {
+    "com.local.burrete10.spectrum-json": "Registered as a Quick Look content type for spectrum JSON handoff; it needs a dedicated format entry or explicit schema router before sample preview coverage."
+  },
+  "smokeSets": {
+    "nativeQuickLookFocused": [
+      "samples/mini.pdb",
+      "samples/mini.cif",
+      "samples/mini.sdf",
+      "samples/mini.xyz",
+      "build/smoke/single.xyzr"
+    ],
+    "browserQuickLookCore": [
+      "samples/mini.pdb",
+      "samples/mini.sdf",
+      "samples/fep/ligand_network.graphml",
+      "samples/spectra/massspecgym-0075191.ms"
+    ],
+    "iosManualCore": [
+      "samples/mini.pdb",
+      "samples/mini.sdf",
+      "samples/mini.xyz"
+    ]
+  }
+}
