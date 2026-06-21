@@ -389,7 +389,7 @@ const [
   source('scripts/check-remote.sh'),
   source('scripts/patch-web-assets.sh'),
   source('scripts/desmond_preview_extract.py'),
-  source('prototypes/ligand_network.graphml'),
+  source('samples/fep/ligand_network.graphml'),
   source('scripts/rdkit_conformer.py'),
 ]);
 const viewerShell = previewShell;
@@ -2477,7 +2477,7 @@ assert.match(fepSetupKind, /<ViewerFrame document=\{grid\} \/>/);
 assert.match(fepNetworkKind, /export const fepNetworkKind = definePageKind/);
 assert.match(fepNetworkKind, /kind: "fep-network"/);
 assert.match(fepNetworkKind, /parseFepGraphml/);
-assert.match(fepNetworkKind, /sampleGraphmlUrl = new URL\("[^"]*prototypes\/ligand_network\.graphml"/);
+assert.match(fepNetworkKind, /sampleGraphmlUrl = new URL\("[^"]*samples\/fep\/ligand_network\.graphml"/);
 assert.match(fepNetworkKind, /graphmlText\?: string/);
 assert.match(fepNetworkKind, /title: \(location\) => location\.title \? `FEP Network: \$\{location\.title\}` : "FEP Network Preview"/);
 assert.match(fepNetworkKind, /serialize: \(\) => null/);
