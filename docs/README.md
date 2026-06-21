@@ -10,10 +10,10 @@ contains only documents that describe the active project.
 - [Architecture](architecture.md): repository boundaries and runtime shape.
 - [Repository layout](repository-layout.md): top-level code map, app surfaces,
   checked-in samples, and scratch-file policy.
-- [Product](product.md): target users, product purpose, voice, anti-references,
-  design principles, and accessibility direction.
-- [Design system](design-system.md): shell design tokens, interaction rules, and
-  component vocabulary for the native-feeling desktop utility.
+- [Product direction](product.md): current product surfaces, users, core jobs,
+  principles, non-goals, and product voice.
+- [Design direction](design-system.md): current shell reality, source-of-truth
+  theme files, surface rules, and component guidance.
 - [Configuration](configuration.md): source-of-truth config files, development
   overrides, runtime environment, release secrets, and smoke/perf variables.
 - [Security and permissions](security-and-permissions.md): local file access,
