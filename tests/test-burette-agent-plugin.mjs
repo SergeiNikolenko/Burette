@@ -56,6 +56,7 @@ assert.match(packageJson.scripts.check, /mcp\/server\.mjs/);
 assert.match(packageJson.scripts.check, /scripts\/burette_agent_preflight\.mjs/);
 assert.match(packageJson.scripts.check, /mcp\/registrations\/fetch\/register\.mjs/);
 assert.match(packageJson.scripts.check, /mcp\/registrations\/molecular-workspace\/register\.mjs/);
+assert.match(packageJson.scripts.check, /mcp\/lib\/session-registry\.mjs/);
 
 const rootPackageJson = JSON.parse(await readFile("package.json", "utf8"));
 assert.equal(rootPackageJson.scripts["install:plugin"], "bun plugins/burette-agent/scripts/install-local.mjs");
@@ -81,6 +82,14 @@ assert.match(fetchRegistration, /MAX_RESPONSE_BYTES/);
 
 const workspaceRegistration = await read("mcp/registrations/molecular-workspace/register.mjs");
 assert.match(workspaceRegistration, /registerAppTool/);
+assert.match(workspaceRegistration, /burrete\.get_context/);
+assert.match(workspaceRegistration, /burrete\.open_workspace/);
+assert.match(workspaceRegistration, /workspaceSessionId/);
+assert.match(workspaceRegistration, /viewerSessionId/);
+assert.match(workspaceRegistration, /burrete\.observe_workspace/);
+assert.match(workspaceRegistration, /burrete\.control_viewer/);
+assert.match(workspaceRegistration, /burrete\.render_panel/);
+assert.match(workspaceRegistration, /PUBLIC_CONTRACT/);
 assert.match(workspaceRegistration, /open_burrete_workspace/);
 assert.match(workspaceRegistration, /summarize_burrete_structure/);
 assert.match(workspaceRegistration, /summarizeStructureFile/);
@@ -164,6 +173,8 @@ for (const asset of [
 
 const indexSkill = await read("skills/index/SKILL.md");
 assert.match(indexSkill, /Mandatory Preflight/);
+assert.match(indexSkill, /external-agent-contract/);
+assert.match(indexSkill, /workspaceSessionId/);
 assert.match(indexSkill, /open-workspace/);
 assert.match(indexSkill, /molstar-scene/);
 assert.match(indexSkill, /molecule-collection/);
@@ -177,6 +188,12 @@ const userContextSkill = await read("skills/user-context/SKILL.md");
 assert.match(userContextSkill, /burette_agent_preflight/);
 assert.match(userContextSkill, /capability registry/);
 assert.match(userContextSkill, /Do not store arbitrary molecule facts/);
+
+const externalAgentSkill = await read("skills/external-agent-contract/SKILL.md");
+assert.match(externalAgentSkill, /burrete\.open_workspace/);
+assert.match(externalAgentSkill, /burrete\.control_viewer/);
+assert.match(externalAgentSkill, /workspaceSessionId/);
+assert.match(externalAgentSkill, /url/);
 
 const referenceAlignment = await read("REFERENCE_ALIGNMENT.md");
 assert.match(referenceAlignment, /Data Analytics/);
