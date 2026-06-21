@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
@@ -39,6 +39,13 @@ function runCli(args) {
   });
 }
 
+function runCliWithEnv(args, env) {
+  return spawnSync(process.execPath, ['scripts/burrete-agent.mjs', ...args], {
+    encoding: 'utf8',
+    env: { ...process.env, ...env },
+  });
+}
+
 const port = await freePort();
 const child = spawn(process.execPath, ['scripts/agent-preview.mjs', 'samples/mini.pdb', '--port', String(port)], {
   stdio: ['ignore', 'pipe', 'pipe']
@@ -46,8 +53,15 @@ const child = spawn(process.execPath, ['scripts/agent-preview.mjs', 'samples/min
 
 try {
   const cliSource = await readFile(resolve('scripts/burrete-agent.mjs'), 'utf8');
+  assert.match(cliSource, /'browser-agent-shell'/);
   assert.match(cliSource, /'browser-dev-shell'/);
-  assert.match(cliSource, /function openBrowserDevShell\(file, options\)/);
+  assert.match(cliSource, /function openAuto\(file, options\)/);
+  assert.match(cliSource, /function openBrowserPreview\(file, options/);
+  assert.match(cliSource, /function openBrowserAgentShell\(file, options\)/);
+  assert.match(cliSource, /function openPrebuiltBrowserAgentShell/);
+  assert.match(cliSource, /agent-shell-server\.mjs/);
+  assert.match(cliSource, /BURRETE_AGENT_SHELL_DIST_DIR/);
+  assert.match(cliSource, /runtime: 'prebuilt-static'/);
   assert.match(cliSource, /spawn\('vp', \['dev', 'apps\/desktop'/);
   assert.match(cliSource, /await allocatePort\(host\)/);
   assert.match(cliSource, /mkdtemp\(resolve\(tmpdir\(\), 'burrete-agent-shell-'\)\)/);
@@ -59,7 +73,9 @@ try {
   assert.match(cliSource, /sessionDir,/);
   assert.match(cliSource, /async function browserShellSessionDir\(urlText\)/);
   assert.match(cliSource, /async function assertSessionResponsive\(sessionDir\)/);
-  assert.match(cliSource, /BROWSER_DEV_SHELL_UNAVAILABLE/);
+  assert.match(cliSource, /BROWSER_AGENT_SHELL_UNAVAILABLE/);
+  assert.match(cliSource, /BROWSER_AGENT_SHELL_FAILED/);
+  assert.match(cliSource, /readLogTail/);
   assert.match(cliSource, /logPath,/);
   assert.match(cliSource, /observe: `node scripts\/burrete-agent\.mjs observe --session-dir/);
   assert.match(cliSource, /act: `node scripts\/burrete-agent\.mjs act --session-dir/);
@@ -119,6 +135,61 @@ try {
   assert.equal(missingUrl.status, 2);
   const missingUrlError = JSON.parse(missingUrl.stderr);
   assert.equal(missingUrlError.ok, false);
+
+  const fakeBin = await mkdtemp(resolve(tmpdir(), 'burrete-fake-vp-'));
+  const fakeVp = resolve(fakeBin, 'vp');
+  await writeFile(fakeVp, '#!/bin/sh\necho "fake vp native binding failure" >&2\nexit 42\n');
+  await chmod(fakeVp, 0o755);
+  try {
+    const prebuiltDist = await mkdtemp(resolve(tmpdir(), 'burrete-agent-shell-dist-'));
+    await mkdir(resolve(prebuiltDist, 'assets'), { recursive: true });
+    await writeFile(resolve(prebuiltDist, 'index.html'), '<!doctype html><title>Burrete Agent Shell</title><main>ready</main>');
+    try {
+      const prebuiltShell = runCliWithEnv(['open', '--mode', 'browser-agent-shell', 'samples/mini.pdb'], {
+        BURRETE_AGENT_SHELL_DIST_DIR: prebuiltDist,
+        PATH: `${fakeBin}:${process.env.PATH}`,
+      });
+      assert.equal(prebuiltShell.status, 0, prebuiltShell.stderr);
+      const prebuiltPayload = JSON.parse(prebuiltShell.stdout);
+      assert.equal(prebuiltPayload.ok, true);
+      assert.equal(prebuiltPayload.result.mode, 'browser-agent-shell');
+      assert.equal(prebuiltPayload.result.runtime, 'prebuilt-static');
+      if (prebuiltPayload.result.processId) {
+        try {
+          process.kill(prebuiltPayload.result.processId, 'SIGTERM');
+        } catch {}
+      }
+    } finally {
+      await rm(prebuiltDist, { recursive: true, force: true });
+    }
+
+    const failedShell = runCliWithEnv(['open', '--mode', 'browser-agent-shell', 'samples/mini.pdb'], {
+      BURRETE_AGENT_SHELL_FORCE_VP: '1',
+      PATH: `${fakeBin}:${process.env.PATH}`,
+    });
+    assert.equal(failedShell.status, 1);
+    const failedPayload = JSON.parse(failedShell.stderr);
+    assert.equal(failedPayload.ok, false);
+    assert.equal(failedPayload.error.code, 'BROWSER_AGENT_SHELL_FAILED');
+    assert.match(failedPayload.error.details.logTail, /fake vp native binding failure/);
+    const autoFallback = runCliWithEnv(['open', '--mode', 'auto', 'samples/mini.pdb'], {
+      BURRETE_AGENT_SHELL_FORCE_VP: '1',
+      PATH: `${fakeBin}:${process.env.PATH}`,
+    });
+    assert.equal(autoFallback.status, 0, autoFallback.stderr);
+    const autoFallbackPayload = JSON.parse(autoFallback.stdout);
+    assert.equal(autoFallbackPayload.ok, true);
+    assert.equal(autoFallbackPayload.result.mode, 'browser-preview');
+    assert.equal(autoFallbackPayload.result.fallback.from, 'browser-agent-shell');
+    assert.equal(autoFallbackPayload.result.fallback.reason.code, 'BROWSER_AGENT_SHELL_FAILED');
+    if (autoFallbackPayload.result.processId) {
+      try {
+        process.kill(autoFallbackPayload.result.processId, 'SIGTERM');
+      } catch {}
+    }
+  } finally {
+    await rm(fakeBin, { recursive: true, force: true });
+  }
   assert.equal(missingUrlError.error.code, 'INVALID_ARGS');
 
   const sessionDir = await mkdtemp(resolve(tmpdir(), 'burrete-agent-cli-test-'));

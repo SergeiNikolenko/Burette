@@ -1,0 +1,1960 @@
+/* Shared Quick Look viewer shell style. Keep app runtimes linked here; do not fork host-specific Mol* chrome. */
+:root {
+  --buret-viewer-ui-scale: 0.9;
+  --buret-toolbar-safe-top: 12px;
+  --buret-overlay-opacity: 0.90;
+  --buret-overlay-strong-opacity: 0.96;
+  --buret-canvas-background: #000000;
+  --buret-shell-background: #000000;
+  --buret-panel-background: rgba(18, 20, 22, var(--buret-overlay-opacity));
+  --buret-toolbar-background: rgba(12, 13, 14, var(--buret-overlay-opacity));
+  --buret-toolbar-border: rgba(255, 255, 255, 0.10);
+  --buret-toolbar-hover: rgba(255, 255, 255, 0.14);
+  --buret-toolbar-color: rgba(255, 255, 255, 0.94);
+  --buret-viewport-controls-top: 64px;
+  --buret-viewport-panel-max-height: calc(100vh - 96px);
+  --buret-molstar-panel-background: rgba(14, 15, 17, var(--buret-overlay-strong-opacity));
+  --buret-molstar-row-background: rgba(24, 26, 29, var(--buret-overlay-strong-opacity));
+  --buret-molstar-field-background: rgba(32, 35, 39, var(--buret-overlay-strong-opacity));
+  --buret-molstar-hover-background: rgba(48, 52, 58, 0.98);
+  --buret-molstar-border: rgba(255, 255, 255, 0.10);
+  --buret-molstar-text: rgba(246, 247, 249, 0.94);
+  --buret-molstar-muted-text: rgba(190, 196, 204, 0.82);
+  --buret-molstar-accent: #AF52DE;
+  --buret-molstar-shadow: rgba(0, 0, 0, 0.38);
+  --buret-molstar-panel-radius: 10px;
+  --buret-menu-background: rgba(30, 32, 36, 0.97);
+  --buret-menu-section-background: rgba(255, 255, 255, 0.09);
+  --buret-menu-input-background: rgba(255, 255, 255, 0.12);
+  --buret-menu-input-focus-background: rgba(255, 255, 255, 0.16);
+  --buret-menu-border: rgba(255, 255, 255, 0.12);
+  --buret-menu-divider: rgba(255, 255, 255, 0.09);
+  --buret-menu-toggle-track: rgba(255, 255, 255, 0.20);
+  --buret-menu-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
+  --buret-menu-accent: #AF52DE;
+  --buret-select-chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='rgba(255,255,255,0.62)' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M3 4.5l3 3 3-3'/></svg>");
+}
+html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: transparent; }
+html.buret-transparent-background,
+html.buret-transparent-background body,
+html.buret-transparent-background #app,
+html.buret-transparent-background .msp-plugin,
+html.buret-transparent-background .msp-viewport,
+html.buret-transparent-background .msp-layout-main,
+html.buret-transparent-background canvas { background: transparent !important; background-color: transparent !important; }
+body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: #f2f2f2; }
+strong { font-weight: 400; }
+body.buret-theme-light {
+  --buret-shell-background: #ffffff;
+  --buret-panel-background: rgba(248, 248, 248, var(--buret-overlay-opacity));
+  --buret-toolbar-background: rgba(248, 248, 248, var(--buret-overlay-opacity));
+  --buret-toolbar-border: rgba(0, 0, 0, 0.12);
+  --buret-toolbar-hover: rgba(0, 0, 0, 0.08);
+  --buret-toolbar-color: rgba(20, 21, 23, 0.92);
+  --buret-molstar-panel-background: rgba(248, 248, 248, var(--buret-overlay-strong-opacity));
+  --buret-molstar-row-background: rgba(238, 238, 238, var(--buret-overlay-strong-opacity));
+  --buret-molstar-field-background: rgba(255, 255, 255, var(--buret-overlay-strong-opacity));
+  --buret-molstar-hover-background: rgba(228, 228, 228, 0.98);
+  --buret-molstar-border: rgba(0, 0, 0, 0.13);
+  --buret-molstar-text: rgba(32, 33, 35, 0.94);
+  --buret-molstar-muted-text: rgba(86, 88, 92, 0.82);
+  --buret-molstar-accent: #AF52DE;
+  --buret-molstar-shadow: rgba(0, 0, 0, 0.18);
+  --buret-menu-background: rgba(248, 248, 246, 0.98);
+  --buret-menu-section-background: rgba(0, 0, 0, 0.055);
+  --buret-menu-input-background: rgba(0, 0, 0, 0.075);
+  --buret-menu-input-focus-background: rgba(0, 0, 0, 0.105);
+  --buret-menu-border: rgba(0, 0, 0, 0.11);
+  --buret-menu-divider: rgba(0, 0, 0, 0.08);
+  --buret-menu-toggle-track: rgba(0, 0, 0, 0.16);
+  --buret-menu-shadow: 0 16px 36px rgba(0, 0, 0, 0.15);
+  --buret-menu-accent: #AF52DE;
+  --buret-select-chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='rgba(51,54,59,0.66)' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M3 4.5l3 3 3-3'/></svg>");
+  color: #161719;
+}
+body.buret-theme-dark {
+  --buret-shell-background: var(--buret-canvas-background);
+  --buret-panel-background: rgba(18, 20, 22, var(--buret-overlay-opacity));
+  --buret-toolbar-background: rgba(12, 13, 14, var(--buret-overlay-opacity));
+  --buret-toolbar-border: rgba(255, 255, 255, 0.10);
+  --buret-toolbar-hover: rgba(255, 255, 255, 0.14);
+  --buret-toolbar-color: rgba(255, 255, 255, 0.94);
+  --buret-molstar-panel-background: rgba(14, 15, 17, var(--buret-overlay-strong-opacity));
+  --buret-molstar-row-background: rgba(24, 26, 29, var(--buret-overlay-strong-opacity));
+  --buret-molstar-field-background: rgba(32, 35, 39, var(--buret-overlay-strong-opacity));
+  --buret-molstar-hover-background: rgba(48, 52, 58, 0.98);
+  --buret-molstar-border: rgba(255, 255, 255, 0.10);
+  --buret-molstar-text: rgba(246, 247, 249, 0.94);
+  --buret-molstar-muted-text: rgba(190, 196, 204, 0.82);
+  --buret-molstar-accent: #AF52DE;
+  --buret-molstar-shadow: rgba(0, 0, 0, 0.38);
+}
+body.burette-opaque-background,
+body.burette-opaque-background #app {
+  background: var(--buret-shell-background);
+}
+#app { position: absolute; inset: 0; }
+body.burette-transparent-background .msp-plugin,
+body.burette-transparent-background .msp-plugin .msp-viewport,
+body.burette-transparent-background .msp-plugin .msp-layout-viewport,
+body.burette-transparent-background .msp-plugin .msp-plugin-content {
+  background: transparent !important;
+}
+body.burette-transparent-background .msp-plugin canvas {
+  background: transparent !important;
+}
+body.burette-opaque-background .msp-plugin,
+body.burette-opaque-background .msp-plugin .msp-viewport,
+body.burette-opaque-background .msp-plugin .msp-layout-viewport,
+body.burette-opaque-background .msp-plugin .msp-plugin-content,
+body.burette-opaque-background .msp-plugin canvas {
+  background: var(--buret-canvas-background) !important;
+}
+body .msp-plugin .msp-layout-left,
+body .msp-plugin .msp-layout-right,
+body .msp-plugin .msp-layout-top,
+body .msp-plugin .msp-layout-bottom {
+  background: var(--buret-panel-background) !important;
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+body .msp-plugin,
+body .msp-plugin .msp-plugin-content {
+  color: var(--buret-molstar-text) !important;
+  background: transparent !important;
+}
+.buret-molstar-transition-frame {
+  position: fixed;
+  display: block;
+  object-fit: fill;
+  pointer-events: none;
+  z-index: 18;
+  opacity: 1;
+  transition: opacity 320ms ease;
+  will-change: opacity;
+}
+.buret-molstar-transition-frame.fade-out {
+  opacity: 0;
+}
+body .msp-plugin .msp-layout-standard,
+body .msp-plugin .msp-layout-top,
+body .msp-plugin .msp-layout-bottom,
+body .msp-plugin .msp-layout-left,
+body .msp-plugin .msp-layout-right,
+body .msp-plugin .msp-sequence-select,
+body .msp-plugin .msp-control-row,
+body .msp-plugin .msp-log li,
+body .msp-plugin .msp-toast-container .msp-toast-entry,
+body .msp-plugin .msp-markdown table,
+body .msp-plugin .msp-markdown th,
+body .msp-plugin .msp-markdown td {
+  border-color: var(--buret-molstar-border) !important;
+}
+body .msp-plugin .msp-viewport-controls-panel,
+body .msp-plugin .msp-hover-box-body,
+body .msp-plugin .msp-action-menu-options,
+body .msp-plugin .msp-action-menu-options-no-header,
+body .msp-plugin .msp-animation-viewport-controls-select,
+body .msp-plugin .msp-selection-viewport-controls-actions,
+body .msp-plugin .msp-snapshot-description-wrapper,
+body .msp-plugin .msp-toast-container .msp-toast-entry,
+body .msp-plugin .msp-no-webgl,
+body .msp-plugin .msp-log,
+body .msp-plugin .msp-sequence {
+  color: var(--buret-molstar-text) !important;
+  background: var(--buret-molstar-panel-background) !important;
+  max-height: calc(100vh - 76px) !important;
+  box-shadow: 0 14px 34px var(--buret-molstar-shadow);
+}
+body .msp-plugin .msp-hover-box-wrapper .msp-hover-box-body,
+body .msp-plugin .msp-action-menu-options,
+body .msp-plugin .msp-action-menu-options-no-header,
+body .msp-plugin .msp-animation-viewport-controls-select,
+body .msp-plugin .msp-selection-viewport-controls-actions,
+body .msp-plugin .msp-panel-description-content,
+body .msp-plugin .msp-simple-help-section,
+body .msp-plugin .msp-help-text,
+body .msp-plugin .msp-no-webgl,
+body .msp-plugin .msp-log,
+body .msp-plugin .msp-toast-container .msp-toast-entry {
+  overflow: hidden;
+  border: 1px solid var(--buret-molstar-border) !important;
+  border-radius: var(--buret-molstar-panel-radius);
+  background: var(--buret-molstar-panel-background) !important;
+  box-shadow: 0 12px 28px var(--buret-molstar-shadow);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+body .msp-plugin .msp-action-menu-options .msp-control-group-children,
+body .msp-plugin .msp-viewport-controls-panel .msp-viewport-controls-panel-controls {
+  border-radius: inherit;
+}
+body .msp-plugin .msp-sequence-select {
+  color: var(--buret-molstar-text) !important;
+  background: var(--buret-molstar-row-background) !important;
+  border-bottom: 1px solid var(--buret-molstar-border);
+  box-shadow: none;
+}
+body .msp-plugin .msp-sequence-select > span,
+body .msp-plugin .msp-sequence-select > select {
+  color: var(--buret-molstar-text) !important;
+  background-color: var(--buret-molstar-field-background) !important;
+  border-right: 1px solid var(--buret-molstar-border);
+}
+body .msp-plugin .msp-control-row,
+body .msp-plugin .msp-control-current,
+body .msp-plugin .msp-control-group-header,
+body .msp-plugin .msp-control-group-header > button,
+body .msp-plugin .msp-control-group-header div,
+body .msp-plugin .msp-control-group-header > span,
+body .msp-plugin .msp-flex-row,
+body .msp-plugin .msp-state-image-row,
+body .msp-plugin .msp-row-text,
+body .msp-plugin .msp-section-header,
+body .msp-plugin .msp-current-header,
+body .msp-plugin .msp-description,
+body .msp-plugin .msp-help-text,
+body .msp-plugin .msp-help-row,
+body .msp-plugin .msp-image-preview,
+body .msp-plugin .msp-simple-help-section,
+body .msp-plugin .msp-left-panel-controls-buttons,
+body .msp-plugin .msp-overlay-tasks .msp-task-state > div,
+body .msp-plugin .msp-background-tasks .msp-task-state > div,
+body .msp-plugin .msp-log li {
+  color: var(--buret-molstar-text) !important;
+  background: var(--buret-molstar-row-background) !important;
+}
+body .msp-plugin .msp-control-row > div,
+body .msp-plugin .msp-control-row > div.msp-control-row-text,
+body .msp-plugin .msp-help-row > div,
+body .msp-plugin .msp-sequence-wrapper-non-empty,
+body .msp-plugin .msp-sequence-wrapper,
+body .msp-plugin .msp-log .msp-log-entry,
+body .msp-plugin .msp-copy-image-wrapper div,
+body .msp-plugin .msp-overlay-tasks .msp-task-state > div > div,
+body .msp-plugin .msp-background-tasks .msp-task-state > div > div {
+  color: var(--buret-molstar-text) !important;
+  background: var(--buret-molstar-field-background) !important;
+}
+body .msp-plugin .msp-sequence-wrapper-non-empty {
+  border-top: 1px solid var(--buret-molstar-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+body .msp-plugin .msp-form-control,
+body .msp-plugin .msp-control-row select,
+body .msp-plugin .msp-control-row button,
+body .msp-plugin .msp-control-row input[type=text],
+body .msp-plugin textarea,
+body .msp-plugin .msp-btn {
+  color: var(--buret-molstar-text) !important;
+  background-color: var(--buret-molstar-field-background) !important;
+}
+body .msp-plugin .msp-form-control:hover,
+body .msp-plugin .msp-control-row select:hover,
+body .msp-plugin .msp-control-row button:hover,
+body .msp-plugin .msp-control-row input[type=text]:hover,
+body .msp-plugin .msp-btn:hover,
+body .msp-plugin .msp-btn-icon:hover,
+body .msp-plugin .msp-btn-icon-small:hover {
+  color: var(--buret-molstar-accent) !important;
+  background-color: var(--buret-molstar-hover-background) !important;
+  outline: 1px solid var(--buret-molstar-border) !important;
+}
+body .msp-plugin .msp-btn-link,
+body .msp-plugin .msp-btn-link:active,
+body .msp-plugin .msp-btn-link:focus,
+body .msp-plugin .msp-btn-link-toggle-on,
+body .msp-plugin .msp-sequence-wrapper .msp-sequence-present,
+body .msp-plugin .msp-svg-text {
+  color: var(--buret-molstar-text) !important;
+  fill: var(--buret-molstar-text) !important;
+}
+body .msp-plugin .msp-btn-link:hover,
+body .msp-plugin .msp-highlight-info,
+body .msp-plugin .msp-highlight-info-additional,
+body .msp-plugin .msp-sequence-chain-label,
+body .msp-plugin .msp-sequence-wrapper .msp-sequence-label,
+body .msp-plugin .msp-sequence-wrapper .msp-sequence-number {
+  color: var(--buret-molstar-accent) !important;
+}
+body .msp-plugin .msp-help.msp-btn-link,
+body .msp-plugin .msp-control-row-label .msp-help {
+  color: var(--buret-molstar-accent) !important;
+  background-color: var(--buret-molstar-field-background) !important;
+  border-color: var(--buret-molstar-border) !important;
+}
+body .msp-plugin .msp-control-row > span.msp-control-row-label,
+body .msp-plugin .msp-control-row > button.msp-control-button-label,
+body .msp-plugin .msp-control-group-header > button,
+body .msp-plugin .msp-control-group-header div,
+body .msp-plugin .msp-control-group-header > span,
+body .msp-plugin .msp-log .msp-log-timestamp,
+body .msp-plugin .msp-help-row > span,
+body .msp-plugin .msp-row-text > div,
+body .msp-plugin .msp-25-lower-contrast-text,
+body .msp-plugin .msp-sequence-wrapper .msp-sequence-missing {
+  color: var(--buret-molstar-muted-text) !important;
+}
+body .msp-plugin .msp-viewport-controls-panel {
+  max-height: var(--buret-viewport-panel-max-height) !important;
+  overflow: hidden;
+  border: 1px solid var(--buret-molstar-border) !important;
+  border-radius: var(--buret-molstar-panel-radius);
+  background: var(--buret-molstar-panel-background) !important;
+  box-shadow: 0 12px 28px var(--buret-molstar-shadow);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+body .msp-plugin .msp-viewport-controls-panel.buret-draggable-viewport-panel > .msp-control-group-wrapper:first-child > .msp-control-group-header,
+body .msp-plugin .msp-viewport-controls-panel.buret-draggable-viewport-panel > .msp-control-group-wrapper:first-child > .msp-control-group-header > button {
+  cursor: grab;
+}
+body .msp-plugin .msp-viewport-controls-panel.buret-draggable-viewport-panel:active > .msp-control-group-wrapper:first-child > .msp-control-group-header,
+body .msp-plugin .msp-viewport-controls-panel.buret-draggable-viewport-panel:active > .msp-control-group-wrapper:first-child > .msp-control-group-header > button {
+  cursor: grabbing;
+}
+body .msp-plugin .msp-viewport-controls-panel .msp-control-group-wrapper {
+  background: transparent !important;
+}
+body .msp-plugin .msp-viewport-controls-panel .msp-viewport-controls-panel-controls {
+  max-height: calc(var(--buret-viewport-panel-max-height) - 34px) !important;
+  overflow-y: auto !important;
+}
+body .msp-plugin .msp-viewport-controls-panel .msp-control-group-header,
+body .msp-plugin .msp-viewport-controls-panel .msp-control-group-header > button {
+  color: var(--buret-molstar-text) !important;
+  background: var(--buret-molstar-row-background) !important;
+}
+body .msp-plugin .msp-viewport-controls-panel .msp-control-group-header > button {
+  border-bottom: 1px solid var(--buret-molstar-border) !important;
+  font-weight: 400;
+}
+body .msp-plugin .msp-viewport-controls-panel .msp-control-row {
+  border-top: 1px solid var(--buret-molstar-border) !important;
+  background: var(--buret-molstar-row-background) !important;
+}
+body .msp-plugin .msp-viewport-controls-panel .msp-control-row > div,
+body .msp-plugin .msp-viewport-controls-panel .msp-control-row > div.msp-control-row-text,
+body .msp-plugin .msp-viewport-controls-panel .msp-control-current {
+  background: var(--buret-molstar-field-background) !important;
+}
+body .msp-plugin .msp-viewport-controls-panel .msp-help-text,
+body .msp-plugin .msp-viewport-controls-panel .msp-help-text div,
+body .msp-plugin .msp-viewport-controls-panel .msp-help-text span,
+body .msp-plugin .msp-viewport-controls-panel .msp-help-text p {
+  color: var(--buret-molstar-muted-text) !important;
+  background: var(--buret-molstar-panel-background) !important;
+}
+body .msp-plugin .msp-viewport-controls-panel .msp-help-text b,
+body .msp-plugin .msp-viewport-controls-panel .msp-help-text strong {
+  color: var(--buret-molstar-text) !important;
+}
+body .msp-plugin .msp-viewport-controls-panel .msp-help-text i,
+body .msp-plugin .msp-viewport-controls-panel .msp-help-text em {
+  color: var(--buret-molstar-muted-text) !important;
+}
+body .msp-plugin .msp-selection-viewport-controls > .msp-flex-row {
+  overflow: hidden;
+  border: 1px solid var(--buret-molstar-border) !important;
+  border-radius: 10px;
+  color: var(--buret-molstar-text) !important;
+  background: var(--buret-molstar-panel-background) !important;
+  box-shadow: 0 12px 28px var(--buret-molstar-shadow);
+}
+body .msp-plugin .msp-selection-viewport-controls > .msp-flex-row > * {
+  border-left: 1px solid var(--buret-molstar-border) !important;
+  color: var(--buret-molstar-text) !important;
+  background: var(--buret-molstar-row-background) !important;
+}
+body .msp-plugin .msp-selection-viewport-controls > .msp-flex-row > *:first-child {
+  border-left: 0 !important;
+}
+body .msp-plugin .msp-selection-viewport-controls button,
+body .msp-plugin .msp-selection-viewport-controls .msp-btn {
+  color: var(--buret-molstar-text) !important;
+  background: transparent !important;
+}
+body .msp-plugin .msp-selection-viewport-controls button:hover,
+body .msp-plugin .msp-selection-viewport-controls .msp-btn:hover,
+body .msp-plugin .msp-selection-viewport-controls .msp-btn-link-toggle-on {
+  color: var(--buret-molstar-accent) !important;
+  background: var(--buret-molstar-hover-background) !important;
+  outline: 0 !important;
+}
+body .msp-plugin .msp-semi-transparent-background {
+  background: var(--buret-molstar-panel-background) !important;
+  opacity: 0.76 !important;
+}
+body .msp-plugin .msp-snapshot-description-wrapper,
+body .msp-plugin .msp-highlight-info {
+  color: var(--buret-molstar-text) !important;
+  background: var(--buret-molstar-panel-background) !important;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: 10px;
+  opacity: 1 !important;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+body .msp-plugin .msp-snapshot-description-wrapper *,
+body .msp-plugin .msp-highlight-info * {
+  background: transparent !important;
+  color: inherit !important;
+}
+body .msp-plugin .msp-snapshot-description-wrapper a,
+body .msp-plugin .msp-highlight-info-additional {
+  color: var(--buret-molstar-accent) !important;
+}
+body .msp-plugin .msp-layout-collapse-left.msp-layout-hide-top.msp-layout-hide-bottom .msp-layout-left {
+  top: 0 !important;
+  bottom: auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+  border-top: 0 !important;
+}
+body .msp-plugin .msp-layout-collapse-left.msp-layout-hide-top.msp-layout-hide-bottom .msp-layout-left .msp-layout-static,
+body .msp-plugin .msp-layout-collapse-left.msp-layout-hide-top.msp-layout-hide-bottom .msp-layout-left .msp-left-panel-controls {
+  position: relative !important;
+  inset: auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+}
+body .msp-plugin .msp-layout-collapse-left.msp-layout-hide-top.msp-layout-hide-bottom .msp-layout-left .msp-left-panel-controls-buttons {
+  position: relative !important;
+  top: auto !important;
+  bottom: auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+}
+/* Keep the native Mol* top-left animation button on every Mol* screen. Do not remove. */
+body .msp-plugin .msp-viewport-top-left-controls,
+body .msp-plugin .msp-animation-viewport-controls,
+body .msp-plugin .msp-animation-viewport-controls > div:first-child > button {
+  pointer-events: auto;
+}
+body .msp-plugin .msp-viewport-top-left-controls {
+  z-index: 45;
+}
+body .msp-plugin .msp-viewport-controls {
+  top: var(--buret-viewport-controls-top) !important;
+  z-index: 40;
+}
+body .msp-plugin .msp-viewport-controls-buttons > div {
+  overflow: hidden;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: 8px;
+  background: var(--buret-molstar-row-background) !important;
+  box-shadow: 0 8px 20px var(--buret-molstar-shadow);
+}
+body .msp-plugin .msp-viewport-controls-buttons button {
+  color: var(--buret-molstar-text) !important;
+  background: transparent !important;
+}
+body .msp-plugin .msp-viewport-controls-buttons button[disabled] {
+  color: var(--buret-molstar-muted-text) !important;
+  opacity: 0.55;
+}
+body .msp-plugin .msp-shape-filled,
+body .msp-plugin .msp-transform-header-brand svg {
+  fill: var(--buret-molstar-text) !important;
+  stroke: var(--buret-molstar-text) !important;
+}
+body .msp-plugin .msp-shape-empty {
+  stroke: var(--buret-molstar-text) !important;
+}
+body .msp-plugin .msp-slider-base-rail {
+  background-color: var(--buret-molstar-row-background) !important;
+}
+body .msp-plugin .msp-slider-base-handle {
+  background-color: var(--buret-molstar-text) !important;
+  border-color: var(--buret-molstar-row-background) !important;
+}
+body .msp-plugin ::-webkit-scrollbar-track {
+  background-color: var(--buret-molstar-panel-background) !important;
+}
+body .msp-plugin ::-webkit-scrollbar-thumb {
+  background-color: var(--buret-molstar-hover-background) !important;
+  border-color: transparent !important;
+}
+.buret-molstar-molecule-preview {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 1200;
+  width: min(148px, calc(100vw - 32px));
+  min-width: 96px;
+  min-height: 126px;
+  max-width: min(340px, calc(100vw - 16px));
+  max-height: min(420px, calc(100vh - 16px));
+  box-sizing: border-box;
+  padding: 6px;
+  overflow: hidden;
+  resize: both;
+  pointer-events: auto;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  color: #1d1d1f;
+  background: #ffffff;
+  box-shadow: 0 10px 28px var(--buret-molstar-shadow);
+  cursor: grab;
+  -webkit-backdrop-filter: blur(18px) saturate(1.1);
+  backdrop-filter: blur(18px) saturate(1.1);
+}
+.buret-molstar-molecule-preview-resize {
+  position: absolute;
+  z-index: 2;
+  background: transparent;
+}
+.buret-molstar-molecule-preview-resize-n,
+.buret-molstar-molecule-preview-resize-s {
+  left: 10px;
+  right: 10px;
+  height: 8px;
+  cursor: ns-resize;
+}
+.buret-molstar-molecule-preview-resize-e,
+.buret-molstar-molecule-preview-resize-w {
+  top: 10px;
+  bottom: 10px;
+  width: 8px;
+  cursor: ew-resize;
+}
+.buret-molstar-molecule-preview-resize-n { top: 0; }
+.buret-molstar-molecule-preview-resize-s { bottom: 0; }
+.buret-molstar-molecule-preview-resize-e { right: 0; }
+.buret-molstar-molecule-preview-resize-w { left: 0; }
+.buret-molstar-molecule-preview-resize-ne,
+.buret-molstar-molecule-preview-resize-nw,
+.buret-molstar-molecule-preview-resize-se,
+.buret-molstar-molecule-preview-resize-sw {
+  width: 14px;
+  height: 14px;
+}
+.buret-molstar-molecule-preview-resize-ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+.buret-molstar-molecule-preview-resize-nw {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+.buret-molstar-molecule-preview-resize-se {
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+}
+.buret-molstar-molecule-preview-resize-sw {
+  left: 0;
+  bottom: 0;
+  cursor: nesw-resize;
+}
+.buret-molstar-molecule-preview-moving,
+.buret-molstar-molecule-preview-resizing {
+  user-select: none;
+}
+.buret-molstar-molecule-preview:active {
+  cursor: grabbing;
+}
+.buret-molstar-molecule-preview:focus {
+  outline: 2px solid rgba(0, 122, 255, 0.36);
+  outline-offset: 2px;
+}
+.buret-molstar-molecule-preview-image {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: calc(100% - 34px);
+  min-height: 88px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #ffffff;
+}
+.buret-molstar-molecule-preview-image svg,
+.buret-molstar-molecule-preview-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.buret-molstar-molecule-preview-image svg {
+  padding: 9px;
+}
+.buret-molstar-molecule-preview-bonds line {
+  stroke: currentColor;
+  stroke-width: 0.085;
+  stroke-linecap: round;
+}
+.buret-molstar-molecule-preview-atoms text {
+  font: 0.42px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-weight: 700;
+  letter-spacing: 0;
+  paint-order: stroke;
+  stroke: #ffffff;
+  stroke-width: 0.11px;
+}
+.buret-molstar-molecule-preview-title {
+  margin-top: 5px;
+  overflow: hidden;
+  color: #1d1d1f;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.buret-molstar-molecule-preview-subtitle {
+  overflow: hidden;
+  color: #6e6e73;
+  font-size: 9.5px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#status {
+  position: fixed; left: 50%; right: auto; bottom: 16px; top: auto;
+  transform: translateX(-50%);
+  z-index: 2147483647; width: max-content; max-width: min(760px, calc(100vw - 32px)); max-height: min(34vh, 260px);
+  box-sizing: border-box; display: flex; align-items: flex-start; gap: 10px; padding: 10px 10px 10px 12px; border-radius: 10px; color: rgba(255, 255, 255, 0.96);
+  background: rgba(0, 0, 0, 0.76); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px; font-weight: 400; line-height: 1.35; pointer-events: auto;
+}
+#status.error { color: #ffd4d4; background: rgba(70, 0, 0, 0.82); }
+#status.hidden { display: none; }
+#status [data-buret-status-message] { min-width: 0; overflow: auto; white-space: pre-wrap; }
+#status [data-buret-status-dismiss] {
+  flex: 0 0 auto; min-height: 24px; border: 0; border-radius: 7px; padding: 0 8px;
+  color: inherit; background: rgba(255, 255, 255, 0.12); font: inherit;
+}
+#status [data-buret-status-dismiss]:hover { background: rgba(255, 255, 255, 0.18); }
+.buret-molecule-context-menu {
+  position: fixed;
+  z-index: 2147483647;
+  min-width: 210px;
+  box-sizing: border-box;
+  padding: 6px;
+  border: 0;
+  border-radius: 12px;
+  color: var(--buret-toolbar-color);
+  background: var(--buret-menu-background);
+  -webkit-backdrop-filter: blur(30px) saturate(1.35);
+  backdrop-filter: blur(30px) saturate(1.35);
+  box-shadow: var(--buret-menu-shadow);
+}
+.buret-molecule-context-menu-title {
+  padding: 6px 8px 1px;
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+.buret-molecule-context-menu-subtitle {
+  max-width: 260px;
+  overflow: hidden;
+  padding: 0 8px 6px;
+  color: var(--buret-molstar-muted-text);
+  font: 400 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.buret-molecule-context-mode {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  margin: 2px 2px 6px;
+  padding: 2px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--buret-toolbar-color) 8%, transparent);
+}
+.buret-molecule-context-menu .buret-molecule-context-mode-button {
+  min-height: 26px;
+  border-radius: 7px;
+  padding: 4px 8px;
+  font: 400 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  text-align: center;
+}
+.buret-molecule-context-menu .buret-molecule-context-mode-button[aria-pressed="true"] {
+  background: var(--buret-menu-input-background);
+}
+.buret-molecule-context-menu button {
+  display: block;
+  width: 100%;
+  min-height: 30px;
+  box-sizing: border-box;
+  border: 1px solid var(--buret-menu-border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  color: inherit;
+  background: transparent;
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  text-align: left;
+}
+.buret-molecule-context-menu button:hover,
+.buret-molecule-context-menu button:focus {
+  outline: none;
+  background: var(--buret-menu-input-background);
+}
+body.burette-mobile-host #status {
+  display: none !important;
+}
+body.burette-mobile-host .buret-molecule-context-menu {
+  min-width: min(342px, calc(100vw - 28px));
+  max-width: calc(100vw - 28px);
+  padding: 10px;
+  border: 0.5px solid rgba(255, 255, 255, 0.22);
+  border-radius: 24px;
+  color: #f5f5f7;
+  background: rgba(28, 28, 30, 0.78);
+  -webkit-backdrop-filter: blur(42px) saturate(1.75);
+  backdrop-filter: blur(42px) saturate(1.75);
+  box-shadow:
+    0 24px 72px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+body.buret-theme-light.burette-mobile-host .buret-molecule-context-menu {
+  color: #1d1d1f;
+  background: rgba(246, 246, 242, 0.76);
+  border-color: rgba(0, 0, 0, 0.10);
+  box-shadow:
+    0 24px 72px rgba(0, 0, 0, 0.20),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+body.burette-mobile-host .buret-molecule-context-menu-title {
+  padding: 8px 10px 2px;
+  font: 600 17px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  letter-spacing: 0;
+}
+body.burette-mobile-host .buret-molecule-context-menu-subtitle {
+  max-width: 100%;
+  padding: 0 10px 10px;
+  color: rgba(245, 245, 247, 0.68);
+  font: 400 13px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+body.buret-theme-light.burette-mobile-host .buret-molecule-context-menu-subtitle {
+  color: rgba(60, 60, 67, 0.68);
+}
+body.burette-mobile-host .buret-molecule-context-mode {
+  gap: 3px;
+  margin: 2px 4px 10px;
+  padding: 3px;
+  border-radius: 13px;
+  background: rgba(118, 118, 128, 0.22);
+}
+body.buret-theme-light.burette-mobile-host .buret-molecule-context-mode {
+  background: rgba(118, 118, 128, 0.14);
+}
+body.burette-mobile-host .buret-molecule-context-menu .buret-molecule-context-mode-button {
+  min-height: 36px;
+  border: 0;
+  border-radius: 10px;
+  padding: 7px 10px;
+  font: 600 13px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  text-align: center;
+}
+body.burette-mobile-host .buret-molecule-context-menu .buret-molecule-context-mode-button[aria-pressed="true"] {
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+body.buret-theme-light.burette-mobile-host .buret-molecule-context-menu .buret-molecule-context-mode-button[aria-pressed="true"] {
+  background: rgba(255, 255, 255, 0.74);
+}
+body.burette-mobile-host .buret-molecule-context-menu button {
+  min-height: 48px;
+  border: 0;
+  border-radius: 14px;
+  padding: 12px 14px;
+  color: inherit;
+  background: rgba(118, 118, 128, 0.18);
+  font: 500 16px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+body.buret-theme-light.burette-mobile-host .buret-molecule-context-menu button {
+  background: rgba(118, 118, 128, 0.10);
+}
+body.burette-mobile-host .buret-molecule-context-menu button + button {
+  margin-top: 6px;
+}
+body.burette-mobile-host .buret-molecule-context-menu button[data-buret-molecule-action^="remove"] {
+  color: #ff6961;
+}
+body.burette-mobile-host .buret-molecule-context-menu button:hover,
+body.burette-mobile-host .buret-molecule-context-menu button:focus {
+  background: rgba(255, 255, 255, 0.20);
+}
+#buret-toolbar {
+  position: absolute; top: var(--buret-toolbar-safe-top); right: 12px; left: auto; z-index: 2147483646;
+  display: flex; align-items: center; flex-wrap: nowrap; max-width: calc(100vw - 24px); gap: 6px; padding: 6px;
+  border: 1px solid var(--buret-toolbar-border);
+  border-radius: 12px; color: var(--buret-toolbar-color);
+  background: var(--buret-toolbar-background);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  user-select: none; touch-action: none;
+  transition: background 180ms ease, box-shadow 180ms ease;
+}
+#buret-toolbar.buret-toolbar-docked {
+  width: auto;
+  max-width: calc(100vw - 24px);
+  justify-content: flex-start;
+  align-content: center;
+  overflow: visible;
+}
+#buret-toolbar > * { flex: 0 0 auto; }
+#buret-toolbar.buret-dragging { transition: none; }
+#buret-toolbar .buret-toolbar-content {
+  display: flex; align-items: center; gap: 6px; min-width: 0; flex: 0 1 auto; overflow: hidden;
+  max-width: calc(100vw - 72px); opacity: 1; transform: translateX(0);
+  transition:
+    max-width 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    flex-basis 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 180ms ease,
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+#buret-toolbar.buret-toolbar-docked .buret-toolbar-content {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+#buret-toolbar.buret-popover-open .buret-toolbar-content {
+  overflow: visible;
+}
+#buret-toolbar.buret-toolbar-docked .buret-toolbar-content::-webkit-scrollbar { display: none; }
+#buret-toolbar.collapsed,
+#buret-toolbar.buret-suppressed-by-molstar-panel {
+  gap: 0;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+#buret-toolbar.collapsed .buret-toolbar-content,
+#buret-toolbar.buret-suppressed-by-molstar-panel .buret-toolbar-content {
+  width: 0;
+  flex-basis: 0;
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(10px);
+  pointer-events: none;
+}
+#buret-toolbar.collapsed .buret-grip,
+#buret-toolbar.buret-suppressed-by-molstar-panel .buret-grip {
+  min-width: 30px;
+  cursor: pointer;
+  background: var(--buret-toolbar-background);
+  border: 1px solid var(--buret-toolbar-border);
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.buret-button {
+  position: relative;
+  min-width: 30px; height: 30px; border: 0; border-radius: 8px; padding: 0 7px;
+  color: inherit; background: transparent; font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  display: grid; place-items: center;
+}
+.buret-molstar-style-slot,
+.buret-xyzrender-preset-slot {
+  position: relative;
+}
+.buret-tooltip {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 6px);
+  z-index: 2147483647;
+  width: max-content;
+  max-width: min(260px, calc(100vw - 24px));
+  box-sizing: border-box;
+  padding: 7px 9px;
+  border: 1px solid var(--buret-toolbar-border);
+  border-radius: 8px;
+  color: var(--buret-toolbar-color);
+  background: color-mix(in srgb, var(--buret-toolbar-background) 94%, var(--buret-molstar-panel-background));
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+  font: 400 11px/1.25 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  letter-spacing: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: nowrap;
+  transform: translate(-50%, -4px) scale(0.98);
+  transform-origin: top center;
+  transition: opacity 110ms ease-out, transform 130ms ease-out, visibility 0s linear 110ms;
+}
+.buret-button:hover > .buret-tooltip,
+.buret-button:focus-visible > .buret-tooltip,
+.buret-generate-3d-control:hover > .buret-tooltip,
+.buret-generate-3d-control:focus-visible > .buret-tooltip,
+.buret-molstar-style-slot:hover > .buret-tooltip,
+.buret-molstar-style-slot:focus-within > .buret-tooltip,
+.buret-xyzrender-preset-slot:hover > .buret-tooltip,
+.buret-xyzrender-preset-slot:focus-within > .buret-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0) scale(1);
+  transition-delay: 180ms, 180ms, 0s;
+}
+.buret-button:hover, .buret-button.active { background: var(--buret-toolbar-hover); }
+.buret-molstar-tooltip {
+  position: fixed;
+  z-index: 2147483647;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  border: 1px solid var(--buret-toolbar-border);
+  border-radius: 8px;
+  color: var(--buret-toolbar-color);
+  background: color-mix(in srgb, var(--buret-toolbar-background) 94%, var(--buret-molstar-panel-background));
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+  font: 400 11px/1.25 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  letter-spacing: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: nowrap;
+  transform: translateY(-4px) scale(0.98);
+  transform-origin: top center;
+  transition: opacity 110ms ease-out, transform 130ms ease-out, visibility 0s linear 110ms;
+}
+.buret-molstar-tooltip.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+  transition-delay: 180ms, 180ms, 0s;
+}
+.buret-xyzrender-tune.active {
+  background: var(--buret-menu-input-background);
+  box-shadow: inset 0 0 0 1px var(--buret-menu-border);
+}
+.buret-button.hidden { display: none; }
+.buret-button svg { width: 17px; height: 17px; display: block; }
+.buret-pose-toggle { width: auto; min-width: 34px; }
+.buret-grip { width: 30px; padding: 0; cursor: grab; color: currentColor; opacity: 0.66; }
+.buret-generate-3d-control {
+  position: absolute;
+  top: var(--buret-viewport-controls-top);
+  right: 62px;
+  z-index: 35;
+  min-width: 104px;
+  height: 36px;
+  border: 1px solid var(--buret-toolbar-border);
+  border-radius: 10px;
+  padding: 0 12px;
+  color: var(--buret-toolbar-color);
+  background: color-mix(in srgb, var(--buret-toolbar-background) 92%, var(--buret-menu-input-background, transparent));
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.buret-generate-3d-control:hover,
+.buret-generate-3d-control:focus-visible {
+  background: var(--buret-toolbar-hover);
+  outline: 1px solid var(--buret-toolbar-border);
+  outline-offset: -1px;
+}
+.buret-generate-3d-control.generating {
+  min-width: 132px;
+  cursor: progress;
+}
+.buret-generate-3d-control.generating::before {
+  content: "";
+  width: 6px;
+  height: 24px;
+  margin-right: 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 20%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 18%, transparent);
+  flex: 0 0 auto;
+}
+.buret-generate-3d-control.generating::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 6px;
+  width: 6px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+  animation: buret-generate-3d-progress-down 900ms ease-in-out infinite;
+}
+.buret-generate-3d-control.hidden {
+  display: none;
+}
+@keyframes buret-generate-3d-progress-down {
+  0% { transform: translateY(0); opacity: 0.35; }
+  35% { opacity: 1; }
+  100% { transform: translateY(16px); opacity: 0.35; }
+}
+.buret-generate-3d-menu {
+  position: fixed;
+  z-index: 45;
+  min-width: 182px;
+  padding: 6px;
+  border: 1px solid var(--buret-toolbar-border);
+  border-radius: 10px;
+  color: var(--buret-toolbar-color);
+  background: var(--buret-menu-background);
+  box-shadow: var(--buret-menu-shadow);
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+.buret-generate-3d-menu.hidden {
+  display: none;
+}
+.buret-generate-3d-menu button {
+  width: 100%;
+  min-height: 30px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0 10px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+.buret-generate-3d-menu button:hover,
+.buret-generate-3d-menu button:focus-visible {
+  background: var(--buret-toolbar-hover);
+  outline: none;
+}
+body.buret-molstar-viewport-panel-open .buret-generate-3d-control {
+  top: var(--buret-generate-3d-panel-top, calc(var(--buret-viewport-controls-top) + 48px));
+  z-index: 35;
+}
+.buret-renderer-control {
+  display: none; align-items: center; gap: 4px; padding-left: 5px;
+  border-left: 1px solid var(--buret-toolbar-border);
+}
+.buret-preview-dock-toggle {
+  width: 30px;
+  padding: 0;
+}
+body:not(.buret-preview-docks-enabled) .buret-preview-dock-toggle {
+  display: none;
+}
+.buret-preview-dock {
+  position: fixed;
+  z-index: 2147483644;
+  display: none;
+  box-sizing: border-box;
+  border: 1px solid var(--buret-toolbar-border);
+  color: var(--buret-toolbar-color);
+  background: var(--buret-menu-background);
+  -webkit-backdrop-filter: blur(22px) saturate(1.25);
+  backdrop-filter: blur(22px) saturate(1.25);
+  box-shadow: var(--buret-menu-shadow);
+  font: 400 12px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  overflow: hidden;
+}
+.buret-preview-dock.open {
+  display: flex;
+}
+.buret-preview-dock-right {
+  top: calc(var(--buret-toolbar-safe-top) + 48px);
+  right: 12px;
+  bottom: 12px;
+  width: min(332px, calc(100vw - 24px));
+  border-radius: 12px;
+  flex-direction: column;
+}
+.buret-preview-dock-bottom {
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  height: min(260px, calc(100vh - 96px));
+  border-radius: 12px;
+  flex-direction: column;
+}
+body.buret-preview-dock-right-open .buret-preview-dock-bottom {
+  right: min(356px, calc(100vw - 12px));
+}
+.buret-preview-dock-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 34px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--buret-toolbar-border);
+}
+.buret-preview-dock-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.buret-preview-dock-close {
+  min-width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 7px;
+}
+.buret-preview-dock-body {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 10px;
+}
+.buret-preview-dock-section {
+  display: grid;
+  gap: 8px;
+}
+.buret-preview-dock-section + .buret-preview-dock-section {
+  margin-top: 12px;
+}
+.buret-preview-dock-section-title {
+  color: var(--buret-toolbar-color);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+.buret-preview-dock-card {
+  display: grid;
+  gap: 5px;
+  padding: 9px;
+  border: 1px solid var(--buret-toolbar-border);
+  border-radius: 8px;
+  background: var(--buret-menu-section-background);
+}
+.buret-preview-dock-label {
+  color: var(--buret-molstar-muted-text);
+  font-size: 11px;
+}
+.buret-preview-dock-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.buret-preview-dock-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.buret-preview-dock-list-item {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border: 1px solid var(--buret-toolbar-border);
+  border-radius: 8px;
+  background: var(--buret-menu-section-background);
+}
+.buret-preview-dock-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.buret-preview-dock-muted {
+  color: var(--buret-molstar-muted-text);
+}
+.buret-preview-dock-status-pill {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: var(--buret-molstar-muted-text);
+  background: var(--buret-menu-input-background);
+  font-size: 10px;
+}
+.buret-preview-dock-status-pill.ok {
+  color: #b8f7cf;
+}
+.buret-preview-dock-status-pill.failed {
+  color: #ffb8b8;
+}
+.buret-renderer-control.visible { display: flex; }
+.buret-renderer-choice { min-width: 38px; }
+.buret-molstar-style-slot { display: none; align-items: center; }
+.buret-molstar-style-slot.visible { display: flex; }
+.buret-xyzrender-preset-slot { display: none; align-items: center; }
+.buret-xyzrender-preset-slot.visible { display: flex; }
+.buret-xyzrender-tune.hidden { display: none; }
+.buret-select {
+  height: 30px; max-width: 96px; border: 0; border-radius: 8px; padding: 0 22px 0 8px;
+  color: inherit; background: transparent; font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+.buret-select:hover, .buret-select:focus { background: var(--buret-toolbar-hover); outline: none; }
+.buret-xyzrender-popover {
+  position: absolute; top: calc(100% + 6px); right: 0; left: auto;
+  width: min(216px, calc(100vw - 20px));
+  max-height: min(56vh, 336px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  box-sizing: border-box;
+  padding: 5px;
+  display: grid;
+  gap: 5px;
+  border: 0;
+  border-radius: 12px;
+  color: var(--buret-toolbar-color);
+  background: var(--buret-menu-background);
+  box-shadow: var(--buret-menu-shadow);
+  -webkit-backdrop-filter: blur(18px) saturate(1.18);
+  backdrop-filter: blur(18px) saturate(1.18);
+}
+.buret-xyzrender-popover.hidden { display: none; }
+.buret-xyzrender-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 1px 4px 0;
+}
+.buret-xyzrender-popover-title {
+  font: 400 11px -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+  color: var(--buret-toolbar-color);
+}
+.buret-xyzrender-header-action {
+  min-width: auto;
+  height: 22px;
+  padding: 0 8px;
+  color: var(--buret-molstar-muted-text);
+  font: 400 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  border-radius: 999px;
+}
+.buret-xyzrender-header-action:hover {
+  background: var(--buret-menu-input-background);
+  color: var(--buret-toolbar-color);
+}
+.buret-xyzrender-section {
+  display: grid;
+  gap: 4px;
+  padding: 5px 8px;
+  border-radius: 9px;
+  border: 0;
+  background: var(--buret-menu-section-background);
+}
+.buret-xyzrender-section-flags {
+  gap: 0;
+  padding: 0 5px 1px;
+  border: 0;
+  background: transparent;
+}
+.buret-xyzrender-section-title { font: 400 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; letter-spacing: 0; color: var(--buret-molstar-muted-text); }
+.buret-flag-list { display: grid; gap: 0; }
+.buret-field-grid { display: grid; gap: 7px; grid-template-columns: 1fr; }
+.buret-field { display: grid; gap: 4px; font: 400 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: var(--buret-toolbar-color); }
+.buret-field-full { grid-column: 1 / -1; }
+.buret-flag-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 5px 0;
+  border-radius: 8px;
+  background: transparent;
+  transition: background 120ms ease, color 120ms ease;
+}
+.buret-flag-row + .buret-flag-row { border-top: 1px solid var(--buret-menu-divider); }
+.buret-flag-row:hover { background: color-mix(in srgb, var(--buret-menu-input-background) 82%, var(--buret-menu-background)); }
+.buret-flag-copy { display: block; min-width: 0; }
+.buret-flag-label { font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: var(--buret-toolbar-color); }
+.buret-flag-row input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  inline-size: 36px;
+  block-size: 20px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--buret-menu-toggle-track);
+  position: relative;
+  margin: 0;
+  transition: background 160ms ease;
+}
+.buret-flag-row input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  inset: 2px auto auto 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #fff;
+  transition: transform 160ms ease;
+}
+.buret-flag-row input[type="checkbox"]:checked {
+  background: var(--buret-menu-accent);
+}
+.buret-flag-row input[type="checkbox"]:checked::after {
+  transform: translateX(16px);
+}
+.buret-input, .buret-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 7px 9px;
+  color: inherit;
+  background: var(--buret-menu-input-background);
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+.buret-flag-row select.buret-input {
+  width: 78px;
+  min-width: 78px;
+  min-height: 30px;
+  padding-right: 24px;
+  appearance: none;
+  background-image: var(--buret-select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px 12px;
+}
+.buret-input:focus, .buret-textarea:focus {
+  outline: none;
+  border-color: var(--buret-menu-accent);
+  background: var(--buret-menu-input-focus-background);
+}
+.buret-textarea { resize: vertical; min-height: 72px; }
+.buret-slider-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 58px;
+  align-items: center;
+  gap: 8px;
+}
+.buret-slider {
+  width: 100%;
+  accent-color: var(--buret-menu-accent);
+}
+.buret-slider[data-auto] {
+  opacity: 0.62;
+}
+.buret-slider-value {
+  min-width: 0;
+  padding-inline: 6px;
+  text-align: right;
+}
+.buret-field.hidden { display: none; }
+.buret-xyzrender-advanced {
+  border: 0;
+  border-radius: 9px;
+  background: var(--buret-menu-section-background);
+}
+.buret-xyzrender-advanced.hidden { display: none; }
+.buret-xyzrender-advanced summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 6px 10px;
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  color: var(--buret-molstar-muted-text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: color 120ms ease, background 120ms ease;
+}
+.buret-xyzrender-advanced summary:hover { color: var(--buret-toolbar-color); }
+.buret-xyzrender-advanced summary::-webkit-details-marker { display: none; }
+.buret-xyzrender-advanced summary::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 140ms ease;
+}
+.buret-xyzrender-advanced[open] summary::after {
+  transform: rotate(225deg) translate(-1px, -1px);
+}
+.buret-xyzrender-advanced[open] summary {
+  color: var(--buret-toolbar-color);
+  border-bottom: 1px solid var(--buret-menu-divider);
+}
+.buret-xyzrender-section-advanced {
+  border: 0;
+  border-radius: 0 0 9px 9px;
+  background: var(--buret-menu-section-background);
+}
+body.burette-mobile-host {
+  --buret-molstar-panel-radius: 24px;
+  --buret-viewport-controls-top: max(104px, calc(env(safe-area-inset-top) + 78px));
+  --buret-viewport-panel-max-height: min(58vh, 560px);
+}
+body.burette-mobile-host .msp-plugin .msp-layout-left,
+body.burette-mobile-host .msp-plugin .msp-layout-right,
+body.burette-mobile-host .msp-plugin .msp-layout-top,
+body.burette-mobile-host .msp-plugin .msp-layout-bottom,
+body.burette-mobile-host .msp-plugin .msp-viewport-controls-panel,
+body.burette-mobile-host .msp-plugin .msp-action-menu-options,
+body.burette-mobile-host .msp-plugin .msp-action-menu-options-no-header,
+body.burette-mobile-host .msp-plugin .msp-selection-viewport-controls-actions,
+body.burette-mobile-host .msp-plugin .msp-animation-viewport-controls-select,
+body.burette-mobile-host .msp-plugin .msp-log,
+body.burette-mobile-host .msp-plugin .msp-sequence {
+  border: 0.5px solid rgba(255, 255, 255, 0.20) !important;
+  border-radius: var(--buret-molstar-panel-radius) !important;
+  background: rgba(28, 28, 30, 0.76) !important;
+  box-shadow:
+    0 24px 72px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
+  -webkit-backdrop-filter: blur(42px) saturate(1.75) !important;
+  backdrop-filter: blur(42px) saturate(1.75) !important;
+}
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-layout-left,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-layout-right,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-layout-top,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-layout-bottom,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-viewport-controls-panel,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-action-menu-options,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-action-menu-options-no-header,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-selection-viewport-controls-actions,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-animation-viewport-controls-select,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-log,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-sequence {
+  border-color: rgba(0, 0, 0, 0.10) !important;
+  background: rgba(246, 246, 242, 0.78) !important;
+  box-shadow:
+    0 24px 72px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+}
+body.burette-mobile-host .msp-plugin .msp-viewport-controls-panel {
+  position: fixed !important;
+  left: 12px !important;
+  right: 12px !important;
+  bottom: max(10px, env(safe-area-inset-bottom)) !important;
+  top: auto !important;
+  width: auto !important;
+  max-width: none !important;
+  overflow: hidden !important;
+  z-index: 72 !important;
+}
+body.burette-mobile-host .msp-plugin .msp-viewport-controls-panel::before {
+  content: "";
+  display: block;
+  width: 42px;
+  height: 5px;
+  margin: 10px auto 6px;
+  border-radius: 999px;
+  background: rgba(235, 235, 245, 0.36);
+}
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-viewport-controls-panel::before {
+  background: rgba(60, 60, 67, 0.30);
+}
+body.burette-mobile-host .msp-plugin .msp-layout-left,
+body.burette-mobile-host .msp-plugin .msp-layout-right {
+  position: fixed !important;
+  left: 12px !important;
+  right: 12px !important;
+  top: max(112px, calc(env(safe-area-inset-top) + 86px)) !important;
+  bottom: max(12px, env(safe-area-inset-bottom)) !important;
+  width: auto !important;
+  max-width: none !important;
+  overflow: hidden !important;
+  z-index: 60 !important;
+}
+body.burette-mobile-host .msp-plugin .msp-layout-top {
+  position: fixed !important;
+  left: 12px !important;
+  right: 12px !important;
+  top: max(112px, calc(env(safe-area-inset-top) + 86px)) !important;
+  width: auto !important;
+  max-width: none !important;
+  max-height: min(32vh, 320px) !important;
+  overflow: hidden !important;
+  z-index: 58 !important;
+}
+body.burette-mobile-host .msp-plugin .msp-layout-bottom {
+  position: fixed !important;
+  left: 12px !important;
+  right: 12px !important;
+  bottom: max(12px, env(safe-area-inset-bottom)) !important;
+  width: auto !important;
+  max-width: none !important;
+  max-height: min(44vh, 420px) !important;
+  overflow: hidden !important;
+  z-index: 58 !important;
+}
+body.burette-mobile-host .msp-plugin .msp-viewport-controls {
+  top: var(--buret-viewport-controls-top) !important;
+  right: 12px !important;
+  z-index: 64 !important;
+}
+body.burette-mobile-host .msp-plugin .msp-viewport-controls-buttons > div,
+body.burette-mobile-host .msp-plugin .msp-animation-viewport-controls > div:first-child {
+  border: 0.5px solid rgba(255, 255, 255, 0.20) !important;
+  border-radius: 18px !important;
+  background: rgba(28, 28, 30, 0.70) !important;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
+  -webkit-backdrop-filter: blur(32px) saturate(1.6);
+  backdrop-filter: blur(32px) saturate(1.6);
+}
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-viewport-controls-buttons > div,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-animation-viewport-controls > div:first-child {
+  border-color: rgba(0, 0, 0, 0.10) !important;
+  background: rgba(246, 246, 242, 0.76) !important;
+}
+body.burette-mobile-host .msp-plugin .msp-viewport-controls-buttons button,
+body.burette-mobile-host .msp-plugin .msp-animation-viewport-controls button,
+body.burette-mobile-host .msp-plugin .msp-btn-icon,
+body.burette-mobile-host .msp-plugin .msp-btn-icon-small {
+  min-width: 44px !important;
+  min-height: 44px !important;
+  border-radius: 14px !important;
+  font-size: 16px !important;
+}
+body.burette-mobile-host .msp-plugin .msp-control-group-header,
+body.burette-mobile-host .msp-plugin .msp-control-group-header > button,
+body.burette-mobile-host .msp-plugin .msp-section-header,
+body.burette-mobile-host .msp-plugin .msp-current-header {
+  min-height: 48px !important;
+  padding: 0 14px !important;
+  color: var(--buret-molstar-text) !important;
+  background: rgba(118, 118, 128, 0.18) !important;
+  font: 600 16px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif !important;
+}
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-control-group-header,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-control-group-header > button,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-section-header,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-current-header {
+  background: rgba(118, 118, 128, 0.10) !important;
+}
+body.burette-mobile-host .msp-plugin .msp-control-row,
+body.burette-mobile-host .msp-plugin .msp-control-current,
+body.burette-mobile-host .msp-plugin .msp-flex-row,
+body.burette-mobile-host .msp-plugin .msp-state-image-row,
+body.burette-mobile-host .msp-plugin .msp-row-text,
+body.burette-mobile-host .msp-plugin .msp-log li {
+  min-height: 46px !important;
+  color: var(--buret-molstar-text) !important;
+  background: transparent !important;
+  font-size: 15px !important;
+}
+body.burette-mobile-host .msp-plugin .msp-control-row > div,
+body.burette-mobile-host .msp-plugin .msp-control-row > div.msp-control-row-text,
+body.burette-mobile-host .msp-plugin .msp-control-current,
+body.burette-mobile-host .msp-plugin .msp-sequence-wrapper,
+body.burette-mobile-host .msp-plugin .msp-sequence-wrapper-non-empty,
+body.burette-mobile-host .msp-plugin .msp-log .msp-log-entry {
+  min-height: 44px !important;
+  border-radius: 14px !important;
+  color: var(--buret-molstar-text) !important;
+  background: rgba(118, 118, 128, 0.14) !important;
+}
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-control-row > div,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-control-row > div.msp-control-row-text,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-control-current,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-sequence-wrapper,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-sequence-wrapper-non-empty,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-log .msp-log-entry {
+  background: rgba(118, 118, 128, 0.08) !important;
+}
+body.burette-mobile-host .msp-plugin .msp-form-control,
+body.burette-mobile-host .msp-plugin .msp-control-row select,
+body.burette-mobile-host .msp-plugin .msp-control-row button,
+body.burette-mobile-host .msp-plugin .msp-control-row input[type=text],
+body.burette-mobile-host .msp-plugin textarea,
+body.burette-mobile-host .msp-plugin .msp-btn {
+  min-height: 38px !important;
+  border: 0 !important;
+  border-radius: 12px !important;
+  padding-inline: 12px !important;
+  color: var(--buret-molstar-text) !important;
+  background: rgba(118, 118, 128, 0.18) !important;
+  font-size: 15px !important;
+}
+@media (max-width: 640px) {
+  .buret-xyzrender-popover {
+    width: min(216px, calc(100vw - 18px));
+    max-height: min(56vh, 328px);
+    padding: 5px;
+  }
+}
+@media (max-width: 420px) {
+  #buret-toolbar[data-active-renderer="xyzrender-external"] {
+    gap: 4px;
+    padding: 4px;
+  }
+  #buret-toolbar[data-active-renderer="xyzrender-external"] [data-buret-toggle="left"],
+  #buret-toolbar[data-active-renderer="xyzrender-external"] [data-buret-toggle="right"],
+  #buret-toolbar[data-active-renderer="xyzrender-external"] [data-buret-toggle="sequence"],
+  #buret-toolbar[data-active-renderer="xyzrender-external"] [data-buret-toggle="log"] {
+    display: none;
+  }
+  #buret-toolbar[data-active-renderer="xyzrender-external"] .buret-button {
+    min-width: 28px;
+    height: 28px;
+    padding: 0 6px;
+  }
+  #buret-toolbar[data-active-renderer="xyzrender-external"] .buret-grip {
+    width: 28px;
+  }
+  #buret-toolbar[data-active-renderer="xyzrender-external"] [data-buret-action="theme"] {
+    display: none;
+  }
+  #buret-toolbar[data-active-renderer="xyzrender-external"] .buret-renderer-control {
+    gap: 2px;
+    padding-left: 4px;
+  }
+  #buret-toolbar[data-active-renderer="xyzrender-external"] .buret-renderer-choice {
+    min-width: 34px;
+  }
+  #buret-toolbar[data-active-renderer="xyzrender-external"] .buret-select {
+    max-width: 56px;
+    height: 28px;
+    padding: 0 18px 0 6px;
+    font-size: 11px;
+  }
+  #buret-toolbar[data-active-renderer="xyzrender-external"] .buret-toolbar-content {
+    gap: 4px;
+  }
+}
+body.burette-quicklook-host .msp-plugin .msp-layout-left,
+body.burette-quicklook-host .msp-plugin .msp-layout-right,
+body.burette-quicklook-host .msp-plugin .msp-layout-top,
+body.burette-quicklook-host .msp-plugin .msp-layout-bottom,
+body.burette-quicklook-host .msp-plugin .msp-hover-box-wrapper .msp-hover-box-body,
+body.burette-quicklook-host .msp-plugin .msp-action-menu-options,
+body.burette-quicklook-host .msp-plugin .msp-action-menu-options-no-header,
+body.burette-quicklook-host .msp-plugin .msp-animation-viewport-controls-select,
+body.burette-quicklook-host .msp-plugin .msp-selection-viewport-controls-actions,
+body.burette-quicklook-host .msp-plugin .msp-panel-description-content,
+body.burette-quicklook-host .msp-plugin .msp-simple-help-section,
+body.burette-quicklook-host .msp-plugin .msp-help-text,
+body.burette-quicklook-host .msp-plugin .msp-no-webgl,
+body.burette-quicklook-host .msp-plugin .msp-log,
+body.burette-quicklook-host .msp-plugin .msp-toast-container .msp-toast-entry,
+body.burette-quicklook-host .msp-plugin .msp-viewport-controls-panel,
+body.burette-quicklook-host .msp-plugin .msp-snapshot-description-wrapper,
+body.burette-quicklook-host .msp-plugin .msp-highlight-info,
+body.burette-quicklook-host #status,
+body.burette-quicklook-host #buret-toolbar,
+body.burette-quicklook-host .buret-xyz-badge {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+body.burette-quicklook-host {
+  --buret-toolbar-safe-top: 56px;
+}
+body.burette-quicklook-host .buret-corner-button {
+  display: inline-flex;
+}
+body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-layout-left,
+body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-layout-right,
+body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-layout-top,
+body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-layout-bottom,
+body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-action-menu-options,
+body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-action-menu-options-no-header,
+body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-animation-viewport-controls-select,
+body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-selection-viewport-controls-actions,
+body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-log,
+body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-sequence,
+body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-viewport-controls-panel {
+  -webkit-backdrop-filter: blur(42px) saturate(1.75) !important;
+  backdrop-filter: blur(42px) saturate(1.75) !important;
+}
+body.burette-mobile-host .msp-plugin .msp-viewport-top-left-controls,
+body.burette-mobile-host .msp-plugin .msp-animation-viewport-controls {
+  top: max(122px, calc(env(safe-area-inset-top) + 96px)) !important;
+  right: 12px !important;
+  left: auto !important;
+  z-index: 64 !important;
+}
+body.burette-mobile-host .msp-plugin .msp-viewport-top-left-controls > div,
+body.burette-mobile-host .msp-plugin .msp-animation-viewport-controls > div {
+  overflow: hidden;
+  border: 0.5px solid rgba(255, 255, 255, 0.20) !important;
+  border-radius: 20px !important;
+  background: rgba(28, 28, 30, 0.70) !important;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
+  -webkit-backdrop-filter: blur(32px) saturate(1.6);
+  backdrop-filter: blur(32px) saturate(1.6);
+}
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-viewport-top-left-controls > div,
+body.buret-theme-light.burette-mobile-host .msp-plugin .msp-animation-viewport-controls > div {
+  border-color: rgba(0, 0, 0, 0.10) !important;
+  background: rgba(246, 246, 242, 0.76) !important;
+}
+body.burette-mobile-host .msp-plugin .msp-viewport-top-left-controls button,
+body.burette-mobile-host .msp-plugin .msp-animation-viewport-controls button {
+  min-width: 46px !important;
+  min-height: 46px !important;
+  border-radius: 16px !important;
+  color: var(--buret-molstar-text) !important;
+  background: transparent !important;
+}
+body.burette-mobile-host:not(.burette-mobile-show-controls) .msp-plugin .msp-viewport-controls,
+body.burette-mobile-host:not(.burette-mobile-show-controls) .msp-plugin .msp-viewport-top-left-controls,
+body.burette-mobile-host:not(.burette-mobile-show-controls) .msp-plugin .msp-animation-viewport-controls,
+body.burette-mobile-host:not(.burette-mobile-show-controls) .msp-plugin .msp-selection-viewport-controls {
+  display: none !important;
+  pointer-events: none !important;
+}
+body.burette-mobile-host .buret-molstar-molecule-preview {
+  display: none !important;
+  pointer-events: none !important;
+}
+.buret-docking-poses {
+  position: fixed;
+  left: 14px;
+  top: 14px;
+  z-index: 40;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  min-height: 34px;
+  padding: 5px;
+  border: 1px solid var(--buret-menu-border);
+  border-radius: 8px;
+  background: var(--buret-menu-background);
+  color: var(--buret-toolbar-color);
+  box-shadow: var(--buret-menu-shadow);
+  font: 400 12px/1.1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  box-sizing: border-box;
+  max-width: calc(100vw - 24px);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+body.buret-docking-pose-controls-active .msp-animation-viewport-controls,
+body.buret-docking-pose-controls-active .msp-traj-controls {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+.buret-docking-poses.buret-docking-poses-dragging {
+  cursor: grabbing;
+  transition: none;
+}
+.buret-docking-poses button {
+  height: 26px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 9px;
+  background: var(--buret-menu-section-background);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+.buret-docking-poses button:not(:disabled):hover {
+  background: var(--buret-menu-input-focus-background);
+}
+.buret-docking-poses button.active {
+  background: var(--buret-molstar-accent);
+  color: #fff;
+}
+body.burette-mobile-host .buret-docking-poses {
+  left: 12px;
+  right: auto;
+  top: max(122px, calc(env(safe-area-inset-top) + 96px));
+  min-height: 46px;
+  padding: 6px;
+  border: 0.5px solid rgba(255, 255, 255, 0.20);
+  border-radius: 20px;
+  background: rgba(28, 28, 30, 0.74);
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
+  -webkit-backdrop-filter: blur(32px) saturate(1.6);
+  backdrop-filter: blur(32px) saturate(1.6);
+  font: 500 15px/1.1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+body.buret-theme-light.burette-mobile-host .buret-docking-poses {
+  border-color: rgba(0, 0, 0, 0.10);
+  background: rgba(246, 246, 242, 0.76);
+}
+body.burette-mobile-host .buret-docking-poses button {
+  min-width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  padding: 0 12px;
+}
+.buret-docking-poses button:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+.buret-docking-pose-main,
+.buret-docking-pose-animation {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.buret-docking-pose-animation {
+  max-height: 0;
+  margin-top: 0;
+  overflow: hidden;
+  opacity: 0;
+  padding-top: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition:
+    max-height 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    margin-top 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 140ms ease,
+    padding-top 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  width: max-content;
+}
+.buret-docking-poses.buret-docking-poses-animation-open .buret-docking-pose-animation {
+  max-height: 34px;
+  margin-top: 6px;
+  opacity: 1;
+  padding-top: 1px;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.buret-docking-pose-animation-button {
+  width: 28px;
+  padding: 0 !important;
+}
+.buret-docking-pose-all {
+  min-width: 34px;
+}
+.buret-docking-pose-speed {
+  appearance: textfield;
+  -moz-appearance: textfield;
+  -webkit-appearance: none;
+  height: 28px;
+  width: 44px;
+  min-width: 44px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0 7px;
+  color: inherit;
+  background: var(--buret-menu-input-background);
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  cursor: text;
+  text-align: center;
+}
+.buret-docking-pose-speed::-webkit-inner-spin-button,
+.buret-docking-pose-speed::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.buret-docking-pose-speed:hover,
+.buret-docking-pose-speed:focus {
+  outline: none;
+  background: var(--buret-menu-input-focus-background);
+}
+.buret-docking-pose-speed.buret-docking-pose-speed-skip {
+  color: #fff7ed;
+  background: color-mix(in srgb, #f59e0b 56%, var(--buret-menu-input-background));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #f59e0b 72%, transparent);
+}
+.buret-docking-pose-speed.buret-docking-pose-speed-skip:hover,
+.buret-docking-pose-speed.buret-docking-pose-speed-skip:focus {
+  background: color-mix(in srgb, #f59e0b 68%, var(--buret-menu-input-focus-background));
+}
+.buret-docking-poses span {
+  min-width: 76px;
+  text-align: center;
+}
+.buret-docking-pose-slider {
+  flex: 0 0 110px;
+  width: 110px;
+  min-width: 60px;
+  accent-color: var(--buret-molstar-accent);
+  cursor: pointer;
+}
+.buret-agent-panel {
+  position: fixed;
+  top: 64px;
+  right: 14px;
+  bottom: 14px;
+  z-index: 55;
+  display: flex;
+  flex-direction: column;
+  width: min(420px, calc(100vw - 28px));
+  border: 1px solid var(--buret-menu-border);
+  border-radius: 8px;
+  background: var(--buret-menu-background);
+  color: var(--buret-toolbar-color);
+  box-shadow: var(--buret-menu-shadow);
+  overflow: hidden;
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+.buret-agent-panel.hidden {
+  display: none;
+}
+.buret-agent-panel-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 40px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--buret-menu-border);
+  background: var(--buret-menu-section-background);
+}
+.buret-agent-panel-header strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.buret-agent-panel-header button {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 8px;
+  color: inherit;
+  background: var(--buret-menu-input-background);
+  cursor: pointer;
+}
+.buret-agent-panel-body {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 12px;
+}
+.buret-agent-panel-markdown {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.buret-agent-panel-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.buret-agent-panel-table th,
+.buret-agent-panel-table td {
+  padding: 6px 7px;
+  border: 1px solid var(--buret-menu-border);
+  text-align: left;
+  vertical-align: top;
+}
+.buret-agent-panel-table th {
+  position: sticky;
+  top: 0;
+  background: var(--buret-menu-section-background);
+}
+.buret-agent-panel-chart {
+  display: grid;
+  gap: 8px;
+}
+.buret-agent-panel-chart-row {
+  display: grid;
+  grid-template-columns: minmax(70px, 0.9fr) minmax(80px, 2fr) minmax(44px, auto);
+  gap: 8px;
+  align-items: center;
+}
+.buret-agent-panel-chart-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.buret-agent-panel-chart-row i {
+  display: block;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--buret-molstar-accent);
+}
+.buret-agent-panel-chart-row strong {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+@media (prefers-reduced-motion: reduce) {
+  .buret-docking-pose-animation {
+    transition: none;
+  }
+}

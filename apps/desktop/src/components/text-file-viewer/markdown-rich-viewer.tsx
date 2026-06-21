@@ -1,8 +1,7 @@
 import { useEffect, useRef } from "react";
 import { defaultKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
-import { forceParsing } from "@codemirror/language";
-import { languages } from "@codemirror/language-data";
+import { forceParsing, type LanguageDescription } from "@codemirror/language";
 import { search, searchKeymap } from "@codemirror/search";
 import { EditorState } from "@codemirror/state";
 import { drawSelection, EditorView, keymap } from "@codemirror/view";
@@ -23,6 +22,7 @@ const VIEWPORT_OVERSHOOT = 2000;
 const VIEWPORT_PARSE_BUDGET_MS = 50;
 const IDLE_PARSE_BUDGET_MS = 50;
 const IDLE_PARSE_TIMEOUT_MS = 2000;
+const AGENT_SHELL_BUILD = import.meta.env.VITE_BURRETE_AGENT_SHELL === "1";
 
 function invisibleSearchPanel() {
   const dom = document.createElement("div");
@@ -62,33 +62,36 @@ export function MarkdownRichViewer({
     if (!parent) return undefined;
 
     disposedRef.current = false;
-    const view = new EditorView({
-      parent,
-      state: EditorState.create({
-        doc: document.content,
-        extensions: [
-          markdown({
-            codeLanguages: languages,
-            extensions: [GFM, prosemarkMarkdownSyntaxExtensions, htmlBlockParserExtension],
-          }),
-          markdownLinkNavigation(() => document.path, () => disposedRef.current, openPaths),
-          prosemarkBasicSetup(),
-          drawSelection(),
-          prosemarkBaseThemeSetup(),
-          search({ literal: true, createPanel: invisibleSearchPanel }),
-          markdownTableDecorations(),
-          markdownHtmlBlockDecorations(),
-          markdownMermaidDecorations(),
-          markdownImageSrcResolver(() => document.path),
-          EditorState.readOnly.of(true),
-          EditorView.editable.of(false),
-          keymap.of([...searchKeymap, ...defaultKeymap]),
-        ],
-      }),
-    });
+    void loadCodeLanguages().then((languages) => {
+      if (disposedRef.current) return;
+      const view = new EditorView({
+        parent,
+        state: EditorState.create({
+          doc: document.content,
+          extensions: [
+            markdown({
+              codeLanguages: languages,
+              extensions: [GFM, prosemarkMarkdownSyntaxExtensions, htmlBlockParserExtension],
+            }),
+            markdownLinkNavigation(() => document.path, () => disposedRef.current, openPaths),
+            prosemarkBasicSetup(),
+            drawSelection(),
+            prosemarkBaseThemeSetup(),
+            search({ literal: true, createPanel: invisibleSearchPanel }),
+            markdownTableDecorations(),
+            markdownHtmlBlockDecorations(),
+            markdownMermaidDecorations(),
+            markdownImageSrcResolver(() => document.path),
+            EditorState.readOnly.of(true),
+            EditorView.editable.of(false),
+            keymap.of([...searchKeymap, ...defaultKeymap]),
+          ],
+        }),
+      });
 
-    viewRef.current = view;
-    advanceViewportParse(view, () => disposedRef.current);
+      viewRef.current = view;
+      advanceViewportParse(view, () => disposedRef.current);
+    });
 
     return () => {
       disposedRef.current = true;
@@ -98,4 +101,9 @@ export function MarkdownRichViewer({
   }, [document, openPaths]);
 
   return <div ref={parentRef} className="text-file-rich-editor" />;
+}
+
+async function loadCodeLanguages(): Promise<LanguageDescription[]> {
+  if (AGENT_SHELL_BUILD) return [];
+  return (await import("@codemirror/language-data")).languages;
 }
