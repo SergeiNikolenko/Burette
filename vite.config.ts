@@ -3,10 +3,13 @@ import { fileURLToPath } from "node:url";
 import { defineConfig, lazyPlugins } from "vite-plus";
 
 const repoRoot = fileURLToPath(new URL(".", import.meta.url));
+const desktopRoot = fileURLToPath(new URL("apps/desktop", import.meta.url));
 const desktopDist = fileURLToPath(new URL("apps/desktop/dist", import.meta.url));
+const vpContractTest = fileURLToPath(new URL("tests/vp-contract.test.mjs", import.meta.url));
 const extraFsAllow = (process.env.BURRETE_DEV_FS_ALLOW ?? "").split(delimiter).filter(Boolean);
 
 export default defineConfig({
+  root: desktopRoot,
   plugins: lazyPlugins(async () => {
     const [{ default: react }, { browserDevXyzrenderPlugin }] = await Promise.all([
       import("@vitejs/plugin-react"),
@@ -61,7 +64,7 @@ export default defineConfig({
     options: { typeAware: true, typeCheck: true },
   },
   test: {
-    include: ["tests/vp-contract.test.mjs"],
+    include: [vpContractTest],
     globals: true,
     fileParallelism: false,
     testTimeout: 30_000,
