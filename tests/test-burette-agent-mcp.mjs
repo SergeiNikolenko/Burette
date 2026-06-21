@@ -169,6 +169,11 @@ async function testMcpRegistrations(tempRoot) {
   ]);
   assert.deepEqual([...server.tools.keys()].sort(), [
     "act_molstar_scene",
+    "burrete.control_viewer",
+    "burrete.get_context",
+    "burrete.observe_workspace",
+    "burrete.open_workspace",
+    "burrete.render_panel",
     "edit_burrete_fragment",
     "fetch",
     "focus_burrete_selection",
@@ -324,6 +329,51 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
   assert.equal(opened.structuredContent.result.mode, "browser-preview");
   assert.deepEqual(opened.structuredContent.result.initialPaths, [sampleMini]);
   assert.equal(opened.structuredContent.result.launched, false);
+
+  const publicContext = await server.tools.get("burrete.get_context").handler({});
+  coveredTools.add("burrete.get_context");
+  assert.equal(publicContext.structuredContent.ok, true);
+  assert.equal(publicContext.structuredContent.apiVersion, "burrete-external-agent/v1");
+  assert.equal(publicContext.structuredContent.capabilities.canOpenWorkspace, true);
+
+  const publicOpened = await server.tools.get("burrete.open_workspace").handler({
+    file: sampleMini,
+    mode: "browser-preview",
+    noLaunch: true,
+  });
+  coveredTools.add("burrete.open_workspace");
+  assert.equal(publicOpened.structuredContent.ok, true);
+  assert.match(publicOpened.structuredContent.workspaceSessionId, /^bws_/);
+  assert.equal(publicOpened.structuredContent.viewerSessionId, publicOpened.structuredContent.workspaceSessionId);
+  assert.equal(publicOpened.structuredContent.modelContext.activeDocument.path, sampleMini);
+  assert.equal(publicOpened.structuredContent.modelContext.structureSummary.counts.atoms, 9);
+
+  const publicObserved = await server.tools.get("burrete.observe_workspace").handler({
+    workspaceSessionId: publicOpened.structuredContent.workspaceSessionId,
+  });
+  coveredTools.add("burrete.observe_workspace");
+  assert.equal(publicObserved.structuredContent.ok, true);
+  assert.equal(publicObserved.structuredContent.modelContext.activeDocument.path, sampleMini);
+
+  const publicAction = await server.tools.get("burrete.control_viewer").handler({
+    workspaceSessionId: publicOpened.structuredContent.workspaceSessionId,
+    action: { type: "reset_camera", label: "Reset camera" },
+  });
+  coveredTools.add("burrete.control_viewer");
+  assert.equal(publicAction.structuredContent.ok, true);
+  assert.equal(publicAction.structuredContent.result.action.payload.type, "reset_camera");
+  assert.equal(publicAction.structuredContent.applied, true);
+
+  const publicPanel = await server.tools.get("burrete.render_panel").handler({
+    workspaceSessionId: publicOpened.structuredContent.workspaceSessionId,
+    kind: "markdown",
+    file: "/tmp/burrete-panel.md",
+    area: "right",
+  });
+  coveredTools.add("burrete.render_panel");
+  assert.equal(publicPanel.structuredContent.ok, true);
+  assert.equal(publicPanel.structuredContent.result.action.payload.type, "render_panel");
+  assert.equal(publicPanel.structuredContent.result.action.payload.kind, "markdown");
 
   const observed = await server.tools.get("observe_burrete_workspace").handler({
     url: opened.structuredContent.result.url,
@@ -504,6 +554,11 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
 
   assert.deepEqual([...coveredTools].sort(), [
     "act_molstar_scene",
+    "burrete.control_viewer",
+    "burrete.get_context",
+    "burrete.observe_workspace",
+    "burrete.open_workspace",
+    "burrete.render_panel",
     "edit_burrete_fragment",
     "focus_burrete_selection",
     "manage_burrete_structure_component",

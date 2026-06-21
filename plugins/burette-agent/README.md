@@ -13,6 +13,7 @@ plugin is intentionally layered:
 ```text
 skills/
   index/                 router skill
+  external-agent-contract/ short handle-based agent facade
   user-context/          scoped preflight and capability registry
   open-workspace/        open Browser preview or desktop sessions
   molstar-scene/         allowlisted Mol* actions and scene inspection
@@ -63,6 +64,22 @@ bun scripts/burrete-agent.mjs render-panel --session-dir /tmp/burrete-agent-sess
 ```
 
 MCP tools wrap this CLI instead of reimplementing the app control layer.
+
+External agents should use the short facade first:
+
+```text
+burrete.get_context
+burrete.open_workspace
+burrete.observe_workspace
+burrete.control_viewer
+burrete.render_panel
+```
+
+`burrete.open_workspace` returns a stable `workspaceSessionId` and a
+`viewerSessionId` compatibility alias. Follow-up calls should pass that handle
+instead of carrying raw URLs, session directories, or transport modes. The
+advanced tools remain available for docking setup, fragment extraction,
+trajectory review, bounded report rendering, and lower-level scene operations.
 
 `auto` is the default because it does not require the full Browser shell to be
 available. It tries `browser-agent-shell` first and falls back to the tokenized
