@@ -16,6 +16,7 @@ dispatcher; load the focused doc for the surface you are changing.
 - Security and permissions: [docs/security-and-permissions.md](docs/security-and-permissions.md)
 - Quick Look debugging: [docs/quicklook-debugging.md](docs/quicklook-debugging.md)
 - Agent platform: [docs/agent-platform.md](docs/agent-platform.md)
+- Repo-local Codex maintenance skills: [.codex/README.md](.codex/README.md)
 - Agent tool index: [docs/tools/index.md](docs/tools/index.md)
 - Testing surfaces: [docs/tools/testing-surfaces.md](docs/tools/testing-surfaces.md)
 - Release process: [docs/releasing.md](docs/releasing.md)
@@ -57,6 +58,9 @@ dispatcher; load the focused doc for the surface you are changing.
 - For plugin/MCP/skill work, read
   [plugins/burette-agent/AGENTS.md](plugins/burette-agent/AGENTS.md) and
   [docs/agent-platform.md](docs/agent-platform.md).
+- For repo maintenance, PR body, release readiness, or final review work, use
+  the repo-local skills under [.codex/skills](.codex/skills). Keep those
+  separate from packaged product skills under `plugins/burette-agent/skills`.
 
 ## Change Discipline
 
@@ -185,6 +189,8 @@ metadata, and run the focused contract check.
 - Keep durable engineering docs under `docs/`.
 - Use local README files for ordinary code architecture guidance.
 - Use local AGENTS files only for high-risk agent/runtime boundaries.
+- Use `.codex/skills` for repository maintenance and review workflows, not
+  user-facing molecular plugin workflows.
 - Do not add `.override` docs unless a maintainer explicitly asks for that
   resolution model.
 - Do not reintroduce imported reference snapshots or migration handoff logs into

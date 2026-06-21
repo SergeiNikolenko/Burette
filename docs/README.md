@@ -48,6 +48,9 @@ contains only documents that describe the active project.
   actions.
 - [Agent platform](agent-platform.md): CLI, Browser shell, desktop session,
   plugin, MCP, observe/action, and visual QA boundaries.
+- [Repo-local Codex maintenance skills](../.codex/README.md): development-time
+  review, PR body, release readiness, contract, and testing skills. These are
+  not packaged product workflow skills.
 - [Agent tool index](tools/index.md): focused validation and runtime helper
   commands for agents.
 - [Testing surfaces](tools/testing-surfaces.md): strict dev-server, browser
@@ -57,6 +60,8 @@ contains only documents that describe the active project.
 
 - Keep user-facing installation and usage in [README.md](../README.md).
 - Keep current engineering docs in `docs/`.
+- Keep repository maintenance skills in `.codex/skills`; keep packaged
+  molecular workflow skills in `plugins/burette-agent/skills`.
 - Keep directory-local README files for ordinary code architecture guidance and
   directory-local AGENTS files only for high-risk agent/runtime boundaries.
 - Do not keep imported reference snapshots or migration handoff logs in the
