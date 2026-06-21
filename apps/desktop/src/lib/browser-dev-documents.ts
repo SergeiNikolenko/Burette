@@ -92,6 +92,7 @@ const GRID_ASSET_VERSION = "grid-ui-v138";
 const VIEWER_ASSET_VERSION = "viewer-ui-v66";
 const REPO_ROOT = String(import.meta.env.BURRETE_REPO_ROOT || "");
 const WEB_ASSETS_BASE = fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
+const AMBER_NETCDF_EXTENSIONS = new Set(["nc", "ncdf", "netcdf", "ncrst"]);
 const browserDevVirtualTextDocuments = new Map<string, string>();
 
 type ResolvedPreviewVisuals = {
@@ -579,6 +580,17 @@ async function openBrowserDevDocument(
   reloadOptions?: ViewerReloadOptions,
 ): Promise<ViewerDocument> {
   const extension = fileExtension(path);
+  const amberNcPreview = await requestBrowserDevAmberNcPreview(path, extension);
+  if (amberNcPreview) {
+    return openBrowserDevDocumentFromBytes(
+      `${path}.amber-preview.pdb`,
+      "pdb",
+      amberNcPreview.bytes,
+      amberNcPreview.sourceByteCount,
+      preferences,
+      reloadOptions,
+    );
+  }
   const desmondPreview = await requestBrowserDevDesmondPreview(path, extension);
   if (desmondPreview) {
     return openBrowserDevDocumentFromBytes(
@@ -605,6 +617,22 @@ async function openBrowserDevDocument(
 
   const sourceByteCount = browserDevSourceByteCount(response, bytes.length);
   return openBrowserDevDocumentFromBytes(path, extension, bytes, sourceByteCount, preferences, reloadOptions);
+}
+
+async function requestBrowserDevAmberNcPreview(path: string, extension: string) {
+  if (!AMBER_NETCDF_EXTENSIONS.has(extension)) return null;
+  const response = await fetch(`/__burette/trajectory-preview?path=${encodeURIComponent(path)}`);
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    const message = await browserDevJsonError(response).catch(() => response.statusText);
+    throw new Error(`${path}: Amber NetCDF preview failed: ${message || response.statusText}`);
+  }
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (!bytes.length) return null;
+  return {
+    bytes,
+    sourceByteCount: browserDevSourceByteCount(response, bytes.length),
+  };
 }
 
 async function requestBrowserDevDesmondPreview(path: string, extension: string) {
@@ -1828,6 +1856,8 @@ async function decodeStructureText(bytes: Uint8Array, extension: string) {
 }
 
 function browserDevSourceByteCount(response: Response, fallback: number) {
+  const sourceByteCount = Number(response.headers.get("x-burrete-source-byte-count"));
+  if (Number.isFinite(sourceByteCount) && sourceByteCount > 0) return sourceByteCount;
   const contentRange = response.headers.get("content-range");
   const total = contentRange?.match(/\/(\d+)$/u)?.[1];
   if (total) {
@@ -1836,6 +1866,11 @@ function browserDevSourceByteCount(response: Response, fallback: number) {
   }
   const contentLength = Number(response.headers.get("content-length"));
   return Number.isFinite(contentLength) && contentLength > 0 ? contentLength : fallback;
+}
+
+async function browserDevJsonError(response: Response) {
+  const payload = await response.json().catch(() => null) as { error?: unknown } | null;
+  return typeof payload?.error === "string" ? payload.error : response.statusText;
 }
 
 function convertedDataFromText(text: string, extension: string, label: string): ConvertedStructureData | null {
