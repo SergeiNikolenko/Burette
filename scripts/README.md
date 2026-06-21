@@ -63,6 +63,7 @@ changing CLI, MCP, or skill behavior.
 | `bun run test` | Agent, update, and UI test groups. |
 | `bun scripts/check-preview-format-registry.mjs` | Preview format registry or content type changes. |
 | `bun scripts/check-vendor-assets.mjs` | Vendored runtime asset checks. |
+| `python3 scripts/check-blob-size.py --base <sha> --head <sha> --max-bytes 512000 --allowlist .github/blob-size-allowlist.txt` | GitHub blob-size policy checks for accidental large files. |
 | `./scripts/perf-smoke.sh` | Non-GUI/Quick Look performance smoke reporting. |
 
 ## Internal Helpers
