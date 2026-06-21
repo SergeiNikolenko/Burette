@@ -22,6 +22,7 @@ for the surface you are changing.
 - Desktop library helpers: [apps/desktop/src/lib/README.md](apps/desktop/src/lib/README.md)
 - Desktop Vite runtime: [apps/desktop/vite/README.md](apps/desktop/vite/README.md)
 - Quick Look extension: [PreviewExtension/AGENTS.md](PreviewExtension/AGENTS.md)
+- iOS mobile app: [ios/BurreteMobile/AGENTS.md](ios/BurreteMobile/AGENTS.md)
 - Agent plugin: [plugins/burette-agent/AGENTS.md](plugins/burette-agent/AGENTS.md)
 - Repository scripts: [scripts/README.md](scripts/README.md)
 
@@ -39,6 +40,8 @@ for the surface you are changing.
   the task is explicitly release-bundle work.
 - For Quick Look work, read [PreviewExtension/AGENTS.md](PreviewExtension/AGENTS.md)
   before building, installing, or forcing previews.
+- For iPhone app work, read [ios/BurreteMobile/AGENTS.md](ios/BurreteMobile/AGENTS.md)
+  and verify the intended surface: generic build, Simulator, or real device.
 - For plugin/MCP/skill work, read
   [plugins/burette-agent/AGENTS.md](plugins/burette-agent/AGENTS.md) and
   [docs/agent-platform.md](docs/agent-platform.md).
