@@ -34,8 +34,6 @@ export default defineConfig({
       ".github/**",
       ".thoughts/**",
       "AGENTS.md",
-      "DESIGN.md",
-      "PRODUCT.md",
       "PreviewExtension/**",
       "README.md",
       "THIRD_PARTY_NOTICES.md",

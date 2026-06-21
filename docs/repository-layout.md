@@ -13,12 +13,11 @@ shared preview runtime they use.
 | `crates/burrete-core` | Shared Rust crate for native molecular and preview-support logic used by the Tauri app. |
 | `config` | Source-of-truth runtime registries, including preview formats and web runtime bundle profiles. |
 | `scripts` | Build, install, release, Quick Look, smoke-test, vendoring, and agent helper commands. See `scripts/README.md` before adding public commands. |
-| `samples` | Small checked-in sample files for supported molecular formats and preview routes. These are test and smoke inputs, not arbitrary data dumps. |
+| `samples` | Small checked-in sample files for supported molecular formats, preview routes, and focused fixtures such as FEP network GraphML. These are test and smoke inputs, not arbitrary data dumps. |
 | `tests` | JavaScript and fixture-based contract checks for app, agent, preview, update, and UI behavior. |
 | `docs` | Current engineering and agent-facing documentation graph. Start at `docs/README.md`. |
 | `.codex` | Repo-local Codex maintenance skills for review, PR, release, testing, and contract checks. These are development-time instructions, not packaged Burrete plugin skills. |
 | `.github` | GitHub workflows, contribution notes, and PR template. |
-| `Casks` | Local Homebrew cask reference metadata. User-facing Homebrew installs use the external `SergeiNikolenko/homebrew-burrete` tap, which release automation updates. |
 | `Burrete.xcodeproj` | Xcode project wiring for the macOS app, Quick Look targets, thumbnail target, and source-built iPhone target. |
 
 Do not commit scratch output, local renderer dumps, downloaded datasets, or

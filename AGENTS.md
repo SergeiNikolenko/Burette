@@ -10,6 +10,8 @@ dispatcher; load the focused doc for the surface you are changing.
 - Changelog pointer: [CHANGELOG.md](CHANGELOG.md)
 - Documentation map: [docs/README.md](docs/README.md)
 - Architecture: [docs/architecture.md](docs/architecture.md)
+- Product direction: [docs/product.md](docs/product.md)
+- Design system: [docs/design-system.md](docs/design-system.md)
 - Configuration: [docs/configuration.md](docs/configuration.md)
 - Modular runtime refactor: [docs/modular-runtime-refactor.md](docs/modular-runtime-refactor.md)
 - Renderer support: [docs/renderer-support.md](docs/renderer-support.md)
