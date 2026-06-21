@@ -13,6 +13,17 @@ source-built iPhone preview app target.
 - Read `PreviewExtension/AGENTS.md` when changing bundled web preview assets
   shared with Quick Look.
 
+## Required Capabilities
+
+- Invoke `@build-ios-apps` for iOS project discovery, simulator/device builds,
+  installs, launches, tests, screenshots, logs, and UI automation. Prefer its
+  XcodeBuildMCP flow over ad hoc `xcodebuild` or `simctl` commands when the
+  capability is available.
+- Invoke `$apple-design` for iPhone UI, SwiftUI, app icon, SF Symbols,
+  accessibility, visual polish, and Apple Human Interface Guidelines decisions.
+- Invoke `@product-design` before implementation when the task is about mobile
+  product flow, information architecture, prototype direction, or UX tradeoffs.
+
 ## Contract Rules
 
 - Treat Simulator, generic iOS builds, and real iPhone installs as separate
