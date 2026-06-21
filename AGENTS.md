@@ -45,9 +45,9 @@ for the surface you are changing.
   and verify the intended surface: generic build, Simulator, or real device.
 - For Apple-platform build/run/test work, invoke the relevant plugin first:
   `@build-ios-apps` for iOS and `@build-macos-apps` for macOS/Quick Look.
-- For Apple-platform UI, UX, icon, SwiftUI/AppKit, or visual polish work,
-  invoke `$apple-design`; invoke `@product-design` for product flow, prototype,
-  or design-context work before implementation.
+- For Apple-platform UI, UX, icon, SF Symbols, SwiftUI/AppKit, or visual polish
+  work, invoke `$apple-design`; invoke `@product-design` for product flow,
+  prototype, or design-context work before implementation.
 - For plugin/MCP/skill work, read
   [plugins/burette-agent/AGENTS.md](plugins/burette-agent/AGENTS.md) and
   [docs/agent-platform.md](docs/agent-platform.md).
