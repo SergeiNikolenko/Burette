@@ -17,6 +17,32 @@ the source of truth.
 | MCP registrations | `plugins/burette-agent/mcp/registrations/*` | Stable tools/resources wrapping the CLI and bounded widget artifacts. |
 | Widget assets | `plugins/burette-agent/mcp/widget-assets/*` | Browser-rendered molecular reports, tables, workspace, and trajectory views. |
 
+## CLI And Skill Map
+
+The CLI owns execution. Skills decide which workflow to run and how to hand the
+result back to the user.
+
+| Surface | Path | Use |
+| --- | --- | --- |
+| Workspace opener | `bun scripts/burrete-agent.mjs open` | Opens browser preview, browser-dev shell, or desktop app sessions. |
+| Workspace observer | `bun scripts/burrete-agent.mjs observe` | Reads typed state from a session directory. |
+| Workspace action | `bun scripts/burrete-agent.mjs act` | Sends typed shell or Mol* actions and waits for completion. |
+| Panel renderer | `bun scripts/burrete-agent.mjs render-panel` | Opens bounded markdown/table/chart output in a docked panel. |
+| Tokenized preview | `bun scripts/agent-preview.mjs` | Starts typed browser preview sessions for direct observe/act checks. |
+| Router skill | `plugins/burette-agent/skills/index/SKILL.md` | Routes molecular workspace requests to the right focused skill. |
+| User context | `plugins/burette-agent/skills/user-context/SKILL.md` | Performs scoped preflight and capability checks. |
+| Open workspace | `plugins/burette-agent/skills/open-workspace/SKILL.md` | Opens files in Browser, browser-shell, or desktop surfaces. |
+| Mol* scene | `plugins/burette-agent/skills/molstar-scene/SKILL.md` | Applies or reviews Mol* scene actions and MVS-like operations. |
+| Molecule collection | `plugins/burette-agent/skills/molecule-collection/SKILL.md` | Handles SDF, SMILES, CSV, TSV, and grid workflows. |
+| Trajectory review | `plugins/burette-agent/skills/trajectory-review/SKILL.md` | Reviews trajectory or result-bundle artifacts. |
+| Workflow results | `plugins/burette-agent/skills/workflow-results/SKILL.md` | Intakes external workflow artifacts and maps them to Burrete surfaces. |
+| Molecular report | `plugins/burette-agent/skills/molecular-report/SKILL.md` | Builds bounded notes, charts, tables, and report artifacts. |
+| Visual QA | `plugins/burette-agent/skills/visual-qa/SKILL.md` | Uses Browser or Computer verification after typed state checks. |
+
+Do not add a new MCP tool or skill until the repository CLI contract is clear.
+When a workflow can be expressed as an existing `open`, `observe`, `act`, or
+`render-panel` operation, reuse that path.
+
 ## Surfaces
 
 | Mode | Use When | Notes |
