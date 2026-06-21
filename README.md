@@ -40,33 +40,6 @@ Use it in two ways:
 Burrete is intentionally a compact utility, not a full molecular modeling
 environment.
 
-## Repository Layout
-
-The repository is organized around the application surfaces and the shared
-preview runtime they use.
-
-| Path | Purpose |
-| --- | --- |
-| `apps/desktop` | Main React and Tauri desktop workspace. The React shell, hooks, preview bridges, command palette, Ketcher surface, grids, and Tauri commands live here. |
-| `PreviewExtension` | macOS Finder Quick Look preview and thumbnail extension. `PreviewExtension/Web` contains the bundled Mol*, RDKit grid, and viewer runtime assets shared with desktop and Quick Look. |
-| `ios/BurreteMobile` | Source-built iPhone preview app target. It reuses the bundled preview runtime for iOS document handoff and phone-first molecular inspection. |
-| `packages/burrete` | Bun CLI installer used by `bunx burrete install`, `bunx burrete doctor`, and release-channel checks. |
-| `plugins/burette-agent` | Codex/Burrete plugin, MCP server, skills, and bounded agent workflow contracts. It wraps the repository CLI instead of reimplementing app control. |
-| `crates/burrete-core` | Shared Rust crate for native molecular and preview-support logic used by the Tauri app. |
-| `config` | Source-of-truth runtime registries, including preview formats and web runtime bundle profiles. |
-| `scripts` | Build, install, release, Quick Look, smoke-test, vendoring, and agent helper commands. See `scripts/README.md` before adding public commands. |
-| `samples` | Small checked-in sample files for supported molecular formats and preview routes. These are test and smoke inputs, not arbitrary data dumps. |
-| `tests` | JavaScript and fixture-based contract checks for app, agent, preview, update, and UI behavior. |
-| `docs` | Current engineering and agent-facing documentation graph. Start at `docs/README.md`. |
-| `.github` | GitHub workflows, contribution notes, and PR template. |
-| `Casks` | Homebrew cask metadata for released macOS builds. |
-| `Burrete.xcodeproj` | Xcode project wiring for the macOS app, Quick Look targets, thumbnail target, and source-built iPhone target. |
-
-Do not commit scratch output, local renderer dumps, downloaded datasets, or
-one-off investigation folders. Use local ignored paths such as `.tmp/` for that
-work, and promote only small, reviewed fixtures into `samples/` or
-`tests/fixtures/` when they protect a documented format or behavior.
-
 ## Download
 
 You can install Burrete with the Homebrew tap:
@@ -219,54 +192,14 @@ Burrete settings cover:
 Optional integrations include a local `xyzrender` executable, VESTA, and
 external chemistry editors discovered by macOS.
 
-## Build From Source
+## Docs
 
-Most users should install Burrete with Homebrew, the Bun CLI, or
-[GitHub Releases](https://github.com/SergeiNikolenko/Burrete/releases/latest).
-If you want to build it yourself, clone the repository and run:
-
-```bash
-./scripts/doctor.sh
-./scripts/build.sh
-./scripts/install.sh
-```
-
-The local installer places the app here:
-
-```text
-~/Applications/Burrete.app
-```
-
-Current project documentation starts at [docs/README.md](docs/README.md).
-
-## Development
-
-Burrete follows the Writer Computer development convention of using Vite+
-through the `vp` CLI. Use `vp` as the entrypoint for frontend work and
-JavaScript validation:
-
-```bash
-vp install
-vp dev
-vp check
-vp test
-vp build
-```
-
-Existing Burrete package scripts may still be run through `vp run <script>` for
-project-specific checks, but day-to-day development and JavaScript validation
-should use the Vite+ built-ins above. Rust validation runs from
-`apps/desktop/src-tauri`; native release scripts remain under `scripts/`. See
-[docs/vite-plus.md](docs/vite-plus.md) and [docs/releasing.md](docs/releasing.md).
-
-The Quick Look extension caches generated runtime files under the extension
-container. After replacing the app, refresh Quick Look with:
-
-```bash
-qlmanage -r
-qlmanage -r cache
-killall quicklookd 2>/dev/null || true
-```
+- [Documentation map](docs/README.md)
+- [Installing and building from source](docs/installing-building.md)
+- [Renderer support](docs/renderer-support.md)
+- [Quick Look debugging](docs/quicklook-debugging.md)
+- [iPhone preview app](ios/BurreteMobile/README.md)
+- [Contributing](.github/CONTRIBUTING.md)
 
 ## License
 
