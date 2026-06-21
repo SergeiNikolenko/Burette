@@ -4,6 +4,10 @@ Root scripts are the public command surface for agents and maintainers. Prefer
 these entrypoints over nested app or Xcode commands unless a task explicitly
 requires lower-level debugging.
 
+Use `docs/tools/testing-surfaces.md` before starting a dev server, browser
+Quick Look URL, tokenized preview server, native Quick Look smoke, or broad
+contract run.
+
 ## Public App Commands
 
 | Command | Use When | Notes |

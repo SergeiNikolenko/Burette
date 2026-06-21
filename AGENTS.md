@@ -14,6 +14,7 @@ for the surface you are changing.
 - Quick Look debugging: [docs/quicklook-debugging.md](docs/quicklook-debugging.md)
 - Agent platform: [docs/agent-platform.md](docs/agent-platform.md)
 - Agent tool index: [docs/tools/index.md](docs/tools/index.md)
+- Testing surfaces: [docs/tools/testing-surfaces.md](docs/tools/testing-surfaces.md)
 - Release process: [docs/releasing.md](docs/releasing.md)
 
 ## Directory Context
@@ -55,6 +56,8 @@ for the surface you are changing.
 
 - Use [docs/tools/index.md](docs/tools/index.md) to pick the smallest reliable
   command for the changed surface.
+- Use [docs/tools/testing-surfaces.md](docs/tools/testing-surfaces.md) before
+  starting dev servers, browser Quick Look URLs, or broad contract checks.
 - Rust validation runs from `apps/desktop/src-tauri`; use `cargo test`,
   `cargo clippy`, and `cargo fmt --check` when changing Tauri/Rust code.
 - If a Vite+ command reports a missing Rolldown native binding in the Codex
