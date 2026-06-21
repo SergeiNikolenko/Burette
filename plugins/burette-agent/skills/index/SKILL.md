@@ -25,6 +25,10 @@ substitute for runtime `observe`.
 
 Choose the smallest focused workflow that covers the request:
 
+- [external-agent-contract](../external-agent-contract/SKILL.md): operate
+  Burrete through a short `workspaceSessionId` contract for external agents,
+  hiding URL/session-directory transport details unless advanced control is
+  needed.
 - [open-workspace](../open-workspace/SKILL.md): open local structures,
   collections, trajectories, or result bundles in Browser preview or desktop
   app.
@@ -46,6 +50,13 @@ Choose the smallest focused workflow that covers the request:
 The CLI is the execution contract. MCP tools wrap it. Browser and Computer
 verify visual reality. Do not replace typed `observe` and `act` with screenshot
 interpretation.
+
+For external agent workflows, prefer the short MCP facade first:
+`burrete.get_context`, `burrete.open_workspace`,
+`burrete.observe_workspace`, `burrete.control_viewer`, and
+`burrete.render_panel`. These tools return a stable `workspaceSessionId` and
+compact `modelContext`; the advanced Burrete tools remain available for
+docking, fragments, reports, trajectories, and lower-level scene operations.
 
 For Browser work, distinguish two local surfaces:
 
