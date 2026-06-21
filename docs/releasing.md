@@ -216,8 +216,8 @@ Prereleases do not update the Homebrew cask.
 
 ### Homebrew Tap Verification
 
-After every stable release, verify the external tap, not the local `Casks/`
-tree:
+After every stable release, verify the external tap, not a local cask copy in
+this repository:
 
 ```bash
 brew tap SergeiNikolenko/burrete

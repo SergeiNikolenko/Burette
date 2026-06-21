@@ -10,6 +10,10 @@ contains only documents that describe the active project.
 - [Architecture](architecture.md): repository boundaries and runtime shape.
 - [Repository layout](repository-layout.md): top-level code map, app surfaces,
   checked-in samples, and scratch-file policy.
+- [Product](product.md): target users, product purpose, voice, anti-references,
+  design principles, and accessibility direction.
+- [Design system](design-system.md): shell design tokens, interaction rules, and
+  component vocabulary for the native-feeling desktop utility.
 - [Configuration](configuration.md): source-of-truth config files, development
   overrides, runtime environment, release secrets, and smoke/perf variables.
 - [Security and permissions](security-and-permissions.md): local file access,
@@ -60,6 +64,8 @@ contains only documents that describe the active project.
 
 - Keep user-facing installation and usage in [README.md](../README.md).
 - Keep current engineering docs in `docs/`.
+- Keep product and design direction in `docs/product.md` and
+  `docs/design-system.md`, not as top-level scratch notes.
 - Keep repository maintenance skills in `.codex/skills`; keep packaged
   molecular workflow skills in `plugins/burette-agent/skills`.
 - Keep directory-local README files for ordinary code architecture guidance and
