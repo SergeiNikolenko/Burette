@@ -1,11 +1,14 @@
 import path from "node:path";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const libDir = path.dirname(fileURLToPath(import.meta.url));
 export const pluginRoot = path.resolve(libDir, "..", "..");
 const defaultRepoRoot = path.resolve(pluginRoot, "..", "..");
-export const repoRoot = resolveRepoRoot();
+const repoRootResolution = resolveRepoRoot();
+export const repoRoot = repoRootResolution.path;
+export const repoRootSource = repoRootResolution.source;
+export const repoRootMetadataPath = path.join(pluginRoot, ".burette-agent-install.json");
 
 export function pluginPath(...parts) {
   return path.join(pluginRoot, ...parts);
@@ -17,15 +20,19 @@ export function repoPath(...parts) {
 
 function resolveRepoRoot() {
   if (process.env.BURRETE_AGENT_REPO_ROOT) {
-    return path.resolve(process.env.BURRETE_AGENT_REPO_ROOT);
+    return { path: path.resolve(process.env.BURRETE_AGENT_REPO_ROOT), source: "env" };
   }
   try {
     const metadata = JSON.parse(readFileSync(path.join(pluginRoot, ".burette-agent-install.json"), "utf8"));
     if (typeof metadata.repoRoot === "string" && metadata.repoRoot.trim()) {
-      return path.resolve(metadata.repoRoot);
+      return { path: path.resolve(metadata.repoRoot), source: "metadata" };
     }
   } catch {
     // Source checkouts do not have install metadata.
   }
-  return defaultRepoRoot;
+  const sourceCheckoutCli = path.join(defaultRepoRoot, "scripts", "burrete-agent.mjs");
+  if (existsSync(sourceCheckoutCli)) {
+    return { path: defaultRepoRoot, source: "source-checkout" };
+  }
+  return { path: defaultRepoRoot, source: "fallback-unverified" };
 }
