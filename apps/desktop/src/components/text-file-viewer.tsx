@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef } from "react";
 import { defaultKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { bracketMatching, defaultHighlightStyle, foldGutter, indentOnInput, LanguageDescription, syntaxHighlighting } from "@codemirror/language";
-import { languages } from "@codemirror/language-data";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { drawSelection, EditorView, highlightActiveLine, highlightActiveLineGutter, highlightSpecialChars, keymap, lineNumbers } from "@codemirror/view";
@@ -13,6 +12,8 @@ import { MarkdownRichViewer } from "./text-file-viewer/markdown-rich-viewer";
 import { MaestroOutlineViewer } from "./text-file-viewer/maestro-outline-viewer";
 import type { MarkdownOpenPaths } from "./text-file-viewer/markdown-link-navigation";
 import { hasStructureTextHighlighting, structureTextHighlighting, textNumberHighlighting } from "./text-file-viewer/structure-text-highlighting";
+
+const AGENT_SHELL_BUILD = import.meta.env.VITE_BURRETE_AGENT_SHELL === "1";
 
 export function TextFileViewer({
   document,
@@ -261,22 +262,28 @@ export function TextFileViewer({
 
 function baseLanguageSupport(document: TextFileDocument): Extension {
   if (isMarkdown(document)) {
-    return markdown({ codeLanguages: languages });
+    return markdown();
   }
   if (!hasStructureTextHighlighting(document.extension)) return textNumberHighlighting();
   return structureTextHighlighting(document.extension);
 }
 
 async function resolveLanguageSupport(document: TextFileDocument): Promise<Extension> {
+  const languages = await loadCodeLanguages();
   if (isMarkdown(document)) return markdown({ codeLanguages: languages });
   if (hasStructureTextHighlighting(document.extension)) return structureTextHighlighting(document.extension);
-  const description = LanguageDescription.matchFilename(languages, document.title) ?? matchLanguageName(document.language);
+  const description = LanguageDescription.matchFilename(languages, document.title) ?? matchLanguageName(document.language, languages);
   const numberHighlighting = textNumberHighlighting();
   if (!description) return numberHighlighting;
   return [await description.load(), numberHighlighting];
 }
 
-function matchLanguageName(language: string) {
+async function loadCodeLanguages(): Promise<LanguageDescription[]> {
+  if (AGENT_SHELL_BUILD) return [];
+  return (await import("@codemirror/language-data")).languages;
+}
+
+function matchLanguageName(language: string, languages: readonly LanguageDescription[]) {
   const normalized = language.toLowerCase();
   return languages.find((description) => (
     description.name.toLowerCase() === normalized ||
