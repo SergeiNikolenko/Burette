@@ -49,8 +49,11 @@ interpretation.
 
 For Browser work, distinguish two local surfaces:
 
-- `browser-dev-shell`: the full Burrete Browser shell, started by
-  `scripts/burrete-agent.mjs open --mode browser-dev-shell ...` on a fresh
+- `auto`: the default route. It starts the full browser agent shell when the
+  shell can start and falls back to tokenized browser-preview when the shell
+  runtime is unavailable.
+- `browser-agent-shell`: the full Burrete Browser shell, started by
+  `scripts/burrete-agent.mjs open --mode browser-agent-shell ...` on a fresh
   local port and opened as
   `http://127.0.0.1:<fresh-port>/?devFiles=<encoded absolute path>`. Use it
   when the user wants the normal app UI: sidebar, files/projects, tabs, right
