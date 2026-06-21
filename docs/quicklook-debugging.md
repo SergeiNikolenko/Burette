@@ -5,6 +5,10 @@
 Burrete's Quick Look extension is built from `PreviewExtension/` through
 `Burrete.xcodeproj`. The final local app must contain:
 
+For the browser-dev Quick Look surface (`?quickLookFile=...`) and the difference
+between browser Quick Look and native Finder Quick Look, use
+[Testing surfaces](tools/testing-surfaces.md).
+
 ```text
 build/Burrete.app/Contents/PlugIns/BurretePreview.appex
 build/Burrete.app/Contents/PlugIns/BurreteThumbnail.appex
