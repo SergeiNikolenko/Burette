@@ -1,32 +1,93 @@
-# Product
+# Product Direction
 
-## Register
+This document describes Burrete's product intent. It is not a release checklist,
+marketing page, or complete feature specification. Keep it aligned with
+`README.md`, the active desktop app, the Quick Look extension, the source-built
+iPhone app, and the agent/plugin surface.
 
-product
+## Current Product
 
-## Users
-Burrete is for macOS users who inspect molecular structure files as part of a technical workflow. The primary users are computational chemists, structural biologists, cheminformaticians, and related researchers who need a fast way to open, compare, and triage structures without launching a heavyweight modeling environment. They often come from Finder, want immediate visual feedback, and expect the shell to stay out of the way while preserving access to renderer choices, recent files, and maintenance actions.
+Burrete is a molecular file workspace with four connected surfaces:
 
-## Product Purpose
-Burrete provides Finder-native structure previews and a compact desktop workspace for molecular files. It exists to make routine inspection fast: open a file, confirm what it is, switch renderer when needed, compare multiple structures in tabs, and recover quickly when preview infrastructure needs maintenance. Success means the app feels like a reliable macOS utility with domain-specific rendering power, not like a generic web dashboard wrapped in a desktop window.
+- Finder Quick Look previews for molecular files.
+- A compact macOS desktop workspace for opening, comparing, editing, and
+  triaging molecular/project files.
+- A source-built iPhone preview app that reuses the preview runtime for mobile
+  document handoff.
+- Agent/plugin tooling for typed observe/action workflows, reports, and bounded
+  molecular workspace automation.
 
-## Brand Personality
-Practical, native, restrained.
+The product is intentionally a utility for inspection and workflow handoff. It
+is not a full molecular modeling suite, cloud ELN, collaborative notebook, or
+general chemistry platform.
 
-The product voice should communicate quiet competence. Burrete should feel precise, familiar, and trustworthy, with a native macOS sensibility and minimal visual noise. The shell is not the star of the experience; the molecular content is. The interface should signal control and predictability, especially when users are switching renderers, reopening recent files, or diagnosing preview issues.
+## Primary Users
 
-## Anti-references
-- Decorative glassmorphism used as the default visual language.
-- Loud SaaS dashboard aesthetics with hero-metric cards, saturated inactive states, or ornamental gradients.
-- Experimental frameless-window behavior that sacrifices native macOS expectations.
-- Inconsistent component vocabulary where tabs, buttons, menus, and settings controls each look like they came from a different app.
+Burrete is for people who inspect molecular and adjacent computational chemistry
+files as part of technical work:
 
-## Design Principles
-- Preserve native macOS expectations. Window chrome, focus behavior, and command surfaces should feel familiar to a macOS user.
-- Keep the shell subordinate to the molecule. The content and renderer state matter more than decorative UI treatment.
-- Prefer restrained product patterns. Use familiar controls, compact spacing, and consistent states instead of inventing new affordances.
-- Make maintenance and recovery obvious. Logs, cache reset, Quick Look reset, renderer switching, and update checks must stay easy to discover and operate.
-- Treat desktop shell and preview runtime as connected but separate layers. The shell orchestrates files, tabs, and preferences; the preview runtime renders the molecule.
+- computational chemists
+- structural biologists
+- cheminformaticians
+- molecular modeling practitioners
+- researchers and engineers reviewing generated structure/workflow artifacts
 
-## Accessibility & Inclusion
-Burrete should target practical WCAG AA behavior for the desktop shell surfaces. Every interactive shell surface must be reachable by keyboard, focus indicators must be visible, icon-only controls must have accessible names, and the command palette and launcher must remain operable without a pointer. Screen-reader-perfect narration inside embedded molecular canvases is not required in v1, but the surrounding shell must expose structure, state, and maintenance actions clearly.
+They often enter through Finder, a project folder, a generated workflow output,
+or an agent session. They need fast visual feedback, predictable file handling,
+and a way to recover when renderer or Quick Look infrastructure needs attention.
+
+## Core Jobs
+
+- Preview a molecular file from Finder without opening a heavyweight tool.
+- Open multiple structures or related files in a desktop workspace and compare
+  them without losing renderer state.
+- Switch between Mol*, RDKit grids, text/spectrum fallbacks, and external
+  `xyzrender` when the file or workflow requires it.
+- Inspect SDF/SMILES/CSV/TSV collections with search, sorting, filtering,
+  selection, append/merge, export, and Ketcher handoff.
+- Sketch or edit small molecules in Ketcher and send them to preview or
+  collection workflows.
+- Review focused workflow artifacts such as docking/pose surfaces and FEP
+  network GraphML previews.
+- Diagnose and repair local preview infrastructure: Quick Look reset, cache
+  cleanup, logs, diagnostics, update checks, and install health.
+- Use typed agent workflows where screenshots are not enough: open, observe,
+  act, render bounded panels, and validate molecular artifacts.
+- Build and use the iPhone app from source for mobile file handoff and
+  inspection.
+
+## Product Principles
+
+- **Molecule first.** The structure, collection, trajectory, spectrum, or
+  workflow artifact is the visual center. Shell UI exists to support inspection.
+- **Native enough to trust.** Burrete should feel like a serious macOS utility:
+  predictable menus, keyboard access, stable window behavior, familiar controls,
+  and clear recovery actions.
+- **Surface truth matters.** Finder Quick Look, desktop app, browser-dev,
+  tokenized browser preview, iPhone app, and agent sessions are separate
+  runtimes. Product claims must say which surface is supported.
+- **File workflows beat dashboards.** Burrete is organized around files,
+  project folders, tabs, previews, and handoff, not hero metrics or abstract
+  workspace cards.
+- **Local first.** The app should work from local files and local tools. External
+  integrations such as `xyzrender`, VESTA, chemistry editors, and agent tooling
+  remain optional and explicit.
+- **Maintenance is product UX.** Quick Look registration, renderer discovery,
+  logs, cache reset, and install checks are first-class because broken local
+  preview infrastructure is a common user problem.
+
+## Non-Goals
+
+- Replace full molecular modeling environments.
+- Provide macromolecule editing inside Ketcher.
+- Hide local tool requirements behind silent cloud execution.
+- Turn the desktop shell into a marketing-style dashboard.
+- Treat the source-built iPhone app as part of the Homebrew macOS release.
+- Let agent screenshots replace typed observe/action state or validation output.
+
+## Voice
+
+Burrete should sound practical, direct, and precise. User-facing copy should say
+what the app can do, what surface it applies to, and what the user can do next.
+Avoid aspirational claims that are not backed by README, docs, tests, or the
+current runtime.
