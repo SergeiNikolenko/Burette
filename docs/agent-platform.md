@@ -17,6 +17,10 @@ the source of truth.
 | MCP registrations | `plugins/burette-agent/mcp/registrations/*` | Stable tools/resources wrapping the CLI and bounded widget artifacts. |
 | Widget assets | `plugins/burette-agent/mcp/widget-assets/*` | Browser-rendered molecular reports, tables, workspace, and trajectory views. |
 
+Repository-local maintenance skills under `.codex/skills` are not part of the
+packaged Burrete agent plugin. Use them for development-time PR review, release
+readiness, contract checks, and PR body drafting.
+
 ## CLI And Skill Map
 
 The CLI owns execution. Skills decide which workflow to run and how to hand the
