@@ -1,0 +1,11 @@
+# Paths are matched exactly, relative to the repository root.
+# Keep this list short and limited to intentional large checked-in assets.
+PreviewExtension/Web/molstar.js
+PreviewExtension/Web/rdkit/RDKit_minimal.wasm
+docs/public/burrete-quick-look-preview.png
+samples/large/moses_10k.csv
+samples/large/moses_10k_descriptors_preview.csv
+samples/quantum/volumes/base-pair-density.cube
+samples/quantum/volumes/base-pair-gradient.cube
+samples/quantum/volumes/phenol-di-interaction.cub
+samples/schrodinger/metadynamics-binding.mae
