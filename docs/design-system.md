@@ -1,163 +1,123 @@
----
-name: Burrete
-description: Finder-native molecular structure previews for macOS.
-colors:
-  accent-blue: "#0169CC"
-  shell-dark: "#111111"
-  shell-light: "#FFFFFF"
-  shell-dark-text: "#FCFCFC"
-  shell-light-text: "#0D0D0D"
-  shell-dark-line: "#353630"
-  shell-light-line: "#D7D1C8"
-  shell-danger: "#D96A61"
-  shell-danger-bg: "#40201D"
-typography:
-  title:
-    fontFamily: "-apple-system-body, ui-sans-serif, -apple-system, system-ui, \"Segoe UI\", Helvetica, Arial, sans-serif"
-    fontSize: "13px"
-    fontWeight: 500
-    lineHeight: 1.2
-  body:
-    fontFamily: "-apple-system-body, ui-sans-serif, -apple-system, system-ui, \"Segoe UI\", Helvetica, Arial, sans-serif"
-    fontSize: "13px"
-    fontWeight: 400
-    lineHeight: 1.35
-  label:
-    fontFamily: "-apple-system-body, ui-sans-serif, -apple-system, system-ui, \"Segoe UI\", Helvetica, Arial, sans-serif"
-    fontSize: "11px"
-    fontWeight: 600
-    lineHeight: 1.2
-rounded:
-  sm: "8px"
-  md: "12px"
-  lg: "16px"
-spacing:
-  xs: "4px"
-  sm: "8px"
-  md: "12px"
-  lg: "16px"
-  xl: "24px"
-components:
-  button-primary:
-    backgroundColor: "{colors.accent-blue}"
-    textColor: "{colors.shell-dark-text}"
-    rounded: "{rounded.sm}"
-    height: "36px"
-  button-secondary:
-    backgroundColor: "{colors.shell-light}"
-    textColor: "{colors.shell-light-text}"
-    rounded: "{rounded.sm}"
-    height: "36px"
-  field-default:
-    backgroundColor: "{colors.shell-light}"
-    textColor: "{colors.shell-light-text}"
-    rounded: "{rounded.sm}"
-    height: "36px"
-  tab-active:
-    backgroundColor: "{colors.shell-light}"
-    textColor: "{colors.shell-light-text}"
-    rounded: "{rounded.sm}"
----
+# Design Direction
 
-# Design System: Burrete
+This document records Burrete's current design direction and the implementation
+constraints that should guide future UI work. It is not a generated token file.
+The source of truth for runtime theme defaults is:
 
-## Overview
+- `apps/desktop/src/stores/settings-store.ts`
+- `apps/desktop/src/lib/theme.ts`
+- `apps/desktop/src/styles.css`
 
-**Creative North Star: "The Native Lab Utility"**
+## Current Reality
 
-Burrete should feel like a focused macOS utility for molecular inspection: compact, quiet, and highly reliable. The shell is a product workspace, not a brand canvas. It should support quick file triage, renderer switching, recent-file recall, and maintenance actions without drawing attention away from the previewed structure.
+Burrete's desktop shell is a compact, translucent macOS-style workspace. It uses
+system fonts, configurable light/dark theme settings, a single default accent,
+low-contrast surfaces, and dense file-oriented controls.
 
-This system favors restrained product UI patterns over decorative novelty. Surfaces stay calm, typography stays system-native, and motion exists only to confirm state or reveal hierarchy. The desktop shell should look like a serious tool that belongs next to Finder, not like a generic web dashboard wrapped in Tauri.
+Current default theme values include:
 
-Key Characteristics:
-- native-feeling macOS chrome and controls
-- restrained color with a single working accent
-- compact but readable spacing
-- visible focus and explicit interactive states
-- consistent vocabulary across sidebar, tabs, palette, settings, and status surfaces
+| Token | Light | Dark |
+| --- | --- | --- |
+| Accent | `#AF52DE` | `#AF52DE` |
+| Background | `#FFFFFF` | `#111111` |
+| Foreground | `#0D0D0D` | `#FCFCFC` |
+| UI font | system UI stack | system UI stack |
+| Editor font | system UI stack | system UI stack |
+| Translucency | `30` | `20` |
+| Contrast | `20` | `16` |
 
-## Colors
+The runtime derives border, surface, hover, selected, palette, tab, and scrollbar
+colors from these settings through CSS variables and `color-mix()`. Users can
+edit accent, background, foreground, font, translucency, and contrast in
+settings, so design guidance should describe behavior and hierarchy rather than
+hard-code a parallel token registry.
 
-The palette is restrained and utility-first. Most of the interface runs on neutrals, while the accent exists for state, primary actions, and active selection.
+## North Star
 
-### Primary
-- **Command Blue** (`#0169CC`): used for focus, primary actions, active accents, and the most important state changes. It should stay rare enough that it still reads as intent.
+**Native lab utility.** Burrete should feel like a focused macOS tool for
+molecular inspection: compact, quiet, recoverable, and oriented around files.
+The shell is a workspace, not a brand canvas.
 
-### Neutral
-- **Graphite Shell** (`#111111`): the default dark shell background for the desktop workspace.
-- **Codex White** (`#FFFFFF`): the light shell background for the desktop workspace.
-- **Porcelain Text** (`#FCFCFC`): primary text on dark shell surfaces.
-- **Carbon Text** (`#0D0D0D`): primary text on light shell surfaces.
-- **Dark Line** (`#353630`): dark-theme separators, borders, and container definition.
-- **Light Line** (`#D7D1C8`): light-theme separators, borders, and container definition.
+## Surface Rules
 
-### Named Rules
-**The Molecule First Rule.** Accent color highlights action and state, not decoration. The molecular preview remains the visual focal point.
+- The molecular preview, collection, text artifact, or workflow panel stays the
+  primary visual object.
+- Chrome should remain compact and predictable: sidebar, tab strip, command
+  palette, settings, docks, and maintenance surfaces should share the same
+  vocabulary.
+- Translucency and blur are allowed because the current shell uses them, but they
+  must serve native integration and hierarchy. Do not add decorative glass
+  panels, gradient blobs, or purely atmospheric effects.
+- Default UI should stay readable at 13px shell scale and use system fonts.
+- Icon-only controls need accessible names and visible focus/hover states.
+- Active tab, row, or selection state should not rely on color alone; use fill,
+  border, inset, or another structural cue.
+- Browser-dev, desktop app, Finder Quick Look, and iPhone app may diverge where
+  their platform constraints differ, but the decision should be explicit.
 
-## Typography
+## Component Guidance
 
-**Display Font:** none. Burrete does not use a display face in the shell.
-**Body Font:** system UI stack (`-apple-system-body, ui-sans-serif, -apple-system, system-ui, "Segoe UI", Helvetica, Arial, sans-serif`)
-**Label/Mono Font:** the same system UI stack for labels, with monospace only inside error or log surfaces when literal runtime text is shown
+### Buttons And Icon Controls
 
-**Character:** the shell should read like a native desktop tool, not like a marketing site. Typography should be compact, legible, and stable across tabs, settings, menus, and maintenance surfaces.
+- Use compact controls with stable dimensions.
+- Use familiar icons for common actions when available.
+- Reserve filled accent treatment for primary or high-intent actions.
+- Hover and focus should clarify interactivity without shifting layout.
 
-### Hierarchy
-- **Title** (500, 13px, 1.2): tabs, primary control labels, document rows, settings labels.
-- **Body** (400, 13px, 1.35): descriptions, status copy, supporting text, empty states.
-- **Label** (600, 11px, 1.2): section headings, compact metadata, command group labels.
+### Sidebar And Search
 
-### Named Rules
-**The No Display Type Rule.** Buttons, tabs, settings, and status surfaces use the same system family. Burrete earns trust through consistency, not flourish.
+- The sidebar is a file/project navigation tool, not a marketing navigation
+  rail.
+- Project folders, recent files, nested structures, and search should stay dense
+  enough for repeated technical use.
+- Search should filter or route clearly; do not make it look like an unrelated
+  command entrypoint unless it invokes the command palette.
 
-## Elevation
+### Tabs And Workspace
 
-Burrete should stay mostly flat. Depth comes from layered neutral surfaces, borders, and focused highlights rather than heavy blur or floating glass panels. Overlays such as the command palette or status surface may separate themselves slightly from the workspace, but they should still feel like part of the same restrained shell.
+- Tabs preserve renderer state where the runtime supports it.
+- Close, pin, split, and dock controls should be reachable by keyboard and
+  discoverable on hover/focus.
+- Empty states should offer the next useful file action, not generic product
+  copy.
 
-### Named Rules
-**The Flat-At-Rest Rule.** Default shell surfaces are calm and solid. Elevation appears only when it improves clarity, never as decorative atmosphere.
+### Settings And Maintenance
 
-## Components
+- Settings groups should remain scannable rows with clear labels, descriptions,
+  controls, and reset affordances.
+- Maintenance actions such as Quick Look reset, logs, diagnostics, cache cleanup,
+  and update checks are part of the product, not hidden admin tools.
+- Settings should expose real runtime preferences. Avoid controls that do not map
+  to current behavior.
 
-### Buttons
-- **Shape:** soft rectangles with 8px radius.
-- **Primary:** accent background with high-contrast text for the launcher's main open action and the most important call to action in a local surface.
-- **Secondary / Utility:** neutral filled buttons for maintenance and navigation actions.
-- **Hover / Focus:** hover slightly increases contrast; focus uses an explicit ring, not just a tint shift.
+### Molecular And Workflow Panels
 
-### Sidebar Search
-- **Style:** quiet input surface with icon-leading layout and explicit border/focus state.
-- **Behavior:** filters open and recent structures in place; does not masquerade as a separate command palette entrypoint.
+- Viewer controls should stay close to the active preview or panel.
+- Collection grids, FEP previews, pose review, Ketcher, and text panels should
+  expose domain actions without turning the shell into a broad dashboard.
+- Reports and agent-rendered panels should stay bounded, reviewable, and clear
+  about source files or workflow artifacts.
 
-### Tabs
-- **Style:** compact product tabs with reserved space for close controls.
-- **Active State:** active tabs must be distinguishable by both fill and boundary treatment, not color alone.
-- **Close Control:** close buttons remain keyboard reachable and reveal themselves on hover or focus within the tab shell.
+### iPhone App
 
-### Lists and Rows
-- **Structure Rows:** open/recent structure rows use the same spacing, text treatment, and close-control behavior as the tab vocabulary.
-- **Active Row:** active selection uses surface contrast plus a structural cue such as inset border treatment.
+- The iPhone app is source-built and phone-first. It should not inherit desktop
+  sidebars, persistent tool rails, or dense desktop panels without adaptation.
+- Prefer full-screen preview, bottom-oriented controls, document handoff clarity,
+  and Apple-platform interaction patterns.
 
-### Settings
-- **Containers:** settings groups live in bordered, low-elevation cards with consistent internal spacing.
-- **Controls:** selects, toggles, and action buttons use the same corner radius and state vocabulary as the rest of the shell.
+## Do
 
-### Overlays
-- **Command Palette:** modal product surface with dialog semantics, solid background, and clear selection state.
-- **Status Surface:** compact informational panel with semantic success/error treatment and readable supporting details.
+- Keep the shell subordinate to molecular content.
+- Use system typography and stable compact spacing.
+- Make focus, hover, active, disabled, and error states explicit.
+- Keep Quick Look recovery, renderer switching, and install health visible.
+- Verify UI claims on the intended surface before documenting them.
 
-## Do's and Don'ts
+## Do Not
 
-### Do:
-- **Do** keep the shell visually restrained and let the preview content carry the session's visual weight.
-- **Do** use a single system UI family across tabs, settings, command palette, and launcher controls.
-- **Do** show explicit focus rings on controls that matter to keyboard users.
-- **Do** keep sidebar, tabs, palette, and settings on the same component vocabulary: matching radii, heights, and state transitions.
-- **Do** separate shell theming from the molecular canvas background preference.
-
-### Don't:
-- **Don't** use glassmorphism as the default language for the app shell.
-- **Don't** hide active state behind color alone; tabs and rows need a structural cue too.
-- **Don't** replace native-feeling titlebar behavior with experimental chrome tricks.
-- **Don't** let destructive or error states depend on raw hard-coded colors outside the token system.
-- **Don't** ship a launcher that hides the primary file-open action behind secondary navigation.
+- Describe a color, component, or layout rule that is not implemented or planned.
+- Add decorative blur, gradients, glass panels, or oversized cards just for
+  atmosphere.
+- Use a single accent as the whole visual language.
+- Hide critical file, renderer, or maintenance actions behind vague labels.
+- Treat screenshots as the source of truth when typed runtime state exists.
