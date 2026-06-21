@@ -1,0 +1,69 @@
+# Quick Look Extension Instructions
+
+## Scope
+
+These rules apply to `PreviewExtension/**`, `PreviewExtension/Web/**`, and
+changes that affect Finder Quick Look preview behavior.
+
+## Stable Identifiers
+
+The release Quick Look extension identifier is:
+
+```text
+com.local.BurreteV10.Preview
+```
+
+Forced release preview content types include:
+
+```text
+com.local.burrete10.pdb
+com.local.burrete10.cif
+```
+
+Do not change bundle identifiers, exported content types, or Launch Services
+registration behavior without an explicit migration plan.
+
+## Contract Rules
+
+- Use `BURRETE_DEV_FLAVOR=<worktree-slug>` for packaged local builds and Quick
+  Look checks. Do not run unflavored build/install commands for local testing
+  unless the task is explicitly a release-bundle task.
+- Keep `config/preview-formats.json`, `apps/desktop/src-tauri/AppMetadata.plist`,
+  and Quick Look content-type behavior in sync.
+- `PreviewExtension/Web/viewer.js` is a high-risk runtime boundary. Do not
+  mechanically refactor it without focused viewer/runtime contract coverage.
+- Browser-dev success is not Quick Look success. Finder/Quick Look has separate
+  bundle registration, container logs, cache, and Launch Services state.
+- Use logs and machine-readable smoke output before claiming a Quick Look fix.
+
+## Local Verification
+
+For a flavored packaged app:
+
+```bash
+BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/build.sh
+BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/install.sh
+BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/force-preview.sh samples/mini.pdb
+BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/force-preview.sh samples/mini.cif
+BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/force-preview.sh samples/mini.xyz
+```
+
+For broader sample coverage:
+
+```bash
+BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/smoke-samples-quicklook.sh samples
+```
+
+For focused CI-like preview checks:
+
+```bash
+BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/quicklook-preview-smoke.sh samples/mini.pdb samples/mini.cif samples/mini.sdf
+```
+
+After replacing the app or extension, refresh Quick Look state:
+
+```bash
+qlmanage -r
+qlmanage -r cache
+killall quicklookd 2>/dev/null || true
+```
