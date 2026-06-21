@@ -62,6 +62,7 @@ const [
   buildDevScript,
   ciScript,
   ciWorkflow,
+  toolchainAction,
   releaseWorkflow,
   releaseVersionCheck,
   releaseScript,
@@ -138,6 +139,7 @@ const [
   source('scripts/build-dev.sh'),
   source('scripts/ci.sh'),
   source('.github/workflows/ci.yml'),
+  source('.github/actions/setup-burrete-toolchain/action.yml'),
   source('.github/workflows/release.yml'),
   source('scripts/check-release-version.mjs'),
   source('scripts/release.sh'),
@@ -519,15 +521,16 @@ assert.match(ciScript, /\.\/scripts\/build\.sh\n/);
 assert.doesNotMatch(ciScript, /\.\/scripts\/build\.sh\s+samples\/mini\.sdf/);
 assert.match(ciScript, /bun run check:vendor-assets/);
 assert.match(ciScript, /bun run test:update/);
-assert.match(ciWorkflow, /Install xyzrender runtime/);
-assert.match(ciWorkflow, /python3 -m pip install --user --break-system-packages uv/);
-assert.match(ciWorkflow, /"\$\(python3 -m site --user-base\)\/bin\/uv" tool install xyzrender/);
+assert.match(ciWorkflow, /uses: \.\/\.github\/actions\/setup-burrete-toolchain/);
+assert.match(ciWorkflow, /install-xyzrender: "true"/);
+assert.match(toolchainAction, /Install xyzrender runtime/);
+assert.match(toolchainAction, /python3 -m pip install --user --break-system-packages uv/);
+assert.match(toolchainAction, /"\$\(python3 -m site --user-base\)\/bin\/uv" tool install xyzrender/);
 assert.match(releaseWorkflow, /BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX/);
 assert.match(releaseWorkflow, /BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM/);
 assert.match(releaseWorkflow, /BURRETE_BUILD_MODE: release/);
-assert.match(releaseWorkflow, /Install xyzrender runtime/);
-assert.match(releaseWorkflow, /python3 -m pip install --user --break-system-packages uv/);
-assert.match(releaseWorkflow, /"\$\(python3 -m site --user-base\)\/bin\/uv" tool install xyzrender/);
+assert.match(releaseWorkflow, /uses: \.\/\.github\/actions\/setup-burrete-toolchain/);
+assert.match(releaseWorkflow, /install-xyzrender: "true"/);
 assert.match(releaseWorkflow, /allow_adhoc=true/);
 assert.match(releaseWorkflow, /BURRETE_RELEASE_ALLOW_ADHOC/);
 assert.match(releaseWorkflow, /hdiutil create -volname Burrete/);
@@ -556,7 +559,17 @@ assert.equal(packageConfig.packageManager, 'bun@1.3.8');
 assert.deepEqual(packageConfig.workspaces, ['apps/*', 'packages/*']);
 assert.equal(packageConfig.scripts['check:formats'], 'bun scripts/check-preview-format-registry.mjs');
 assert.equal(packageConfig.scripts['check:vendor-assets'], 'bun scripts/check-vendor-assets.mjs');
-assert.equal(packageConfig.scripts['test:update'], 'bun tests/test-update-versioning.mjs && bun tests/test-bun-installer-behavior.mjs && bun tests/test-dev-namespace.mjs && bun tests/test-quicklook-preview-smoke-contract.mjs');
+for (const updateTest of [
+  'bun tests/test-update-versioning.mjs',
+  'bun tests/test-bun-installer-behavior.mjs',
+  'bun tests/test-dev-namespace.mjs',
+  'bun tests/test-quicklook-preview-smoke-contract.mjs',
+  'bun tests/test-install-health-contract.mjs',
+  'bun tests/test-preview-format-matrix.mjs',
+  'bun tests/test-cross-platform-preview-contract.mjs',
+]) {
+  assert.ok(packageConfig.scripts['test:update'].split(/\s*&&\s*/u).includes(updateTest), `test:update must include ${updateTest}`);
+}
 assert.equal(desktopPackageConfig.scripts.build, '../../node_modules/.bin/vite build --config vite.config.ts');
 assert.doesNotMatch(desktopPackageConfig.scripts.build, /bun --bun vite build/);
 assert.match(packageConfig.scripts['check:js'], /scripts\/dev-namespace\.mjs/);
