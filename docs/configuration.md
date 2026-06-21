@@ -85,7 +85,7 @@ overrides for debugging, CI, or known local toolchains.
 | `BURRETE_RELEASE_ALLOW_ADHOC=1` | Builds and validates an ad-hoc release artifact when Developer ID credentials are unavailable. |
 | `BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX` | Public key used by update manifest validation. |
 | `BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM` | Private key used to sign update manifests. Do not print or commit it. |
-| `HOMEBREW_TAP_TOKEN` | GitHub token used by stable release automation to update the Homebrew tap. |
+| `HOMEBREW_TAP_TOKEN` | GitHub token used by stable release automation to update the external Homebrew tap. |
 
 Secrets belong in the local environment or GitHub Actions secrets, never in
 tracked files, examples, logs, or diagnostics bundles.

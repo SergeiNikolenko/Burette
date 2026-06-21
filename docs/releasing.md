@@ -189,8 +189,9 @@ release artifact should keep web asset profile membership explainable through
 
 ## Package Managers
 
-Homebrew uses the cask in `Casks/burrete.rb` and the public tap at
-`SergeiNikolenko/homebrew-burrete`. The working user command is:
+User-facing Homebrew installs use the public tap at
+`SergeiNikolenko/homebrew-burrete`. This is Burrete's dedicated tap for release
+cask metadata. The working user command is:
 
 ```bash
 brew tap SergeiNikolenko/burrete
@@ -202,15 +203,40 @@ the cask is accepted into `Homebrew/homebrew-cask`. The first upstream PR was
 blocked because the app is not Apple-signed/notarized and the project does not
 meet the default tap notability threshold yet.
 
-Stable GitHub releases update the Homebrew tap automatically. Configure the
-`HOMEBREW_TAP_TOKEN` repository secret with write access to
+Stable GitHub releases update the external Homebrew tap automatically.
+Configure the `HOMEBREW_TAP_TOKEN` repository secret with write access to
 `SergeiNikolenko/homebrew-burrete`; the release workflow fails early for stable
 releases when this token is missing. After the GitHub release is created, the
-workflow checks out the tap, updates the cask `version` and `sha256` from the
-uploaded `Burrete-<version>.zip` artifact, normalizes the macOS dependency
-syntax, commits the cask change, and pushes it back to the tap.
+workflow checks out the tap, updates `Casks/burrete.rb` or the sharded
+`Casks/b/burrete.rb` cask `version` and `sha256` from the uploaded
+`Burrete-<version>.zip` artifact, normalizes the macOS dependency syntax,
+commits the cask change, and pushes it back to the tap.
 
 Prereleases do not update the Homebrew cask.
+
+### Homebrew Tap Verification
+
+After every stable release, verify the external tap, not the local `Casks/`
+tree:
+
+```bash
+brew tap SergeiNikolenko/burrete
+brew update
+brew info --cask SergeiNikolenko/burrete/burrete
+```
+
+Confirm the cask version matches the GitHub release tag and the cask `sha256`
+matches the uploaded `Burrete-<version>.zip.sha256` artifact. For an installable
+checksum check, run:
+
+```bash
+brew fetch --cask --force SergeiNikolenko/burrete/burrete
+```
+
+The release workflow should also push a tap commit named
+`Update Burrete cask to <version>`. If the public tap remains stale after a
+stable release, inspect the release job's Homebrew checkout/update steps and the
+`HOMEBREW_TAP_TOKEN` secret before announcing the release channel as updated.
 
 The registry package lives in `packages/burrete`. It is a thin CLI installer
 for the macOS app, not the app bundle itself. Publish it from that workspace

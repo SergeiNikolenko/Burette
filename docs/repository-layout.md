@@ -17,7 +17,7 @@ shared preview runtime they use.
 | `tests` | JavaScript and fixture-based contract checks for app, agent, preview, update, and UI behavior. |
 | `docs` | Current engineering and agent-facing documentation graph. Start at `docs/README.md`. |
 | `.github` | GitHub workflows, contribution notes, and PR template. |
-| `Casks` | Homebrew cask metadata for released macOS builds. |
+| `Casks` | Local Homebrew cask reference metadata. User-facing Homebrew installs use the external `SergeiNikolenko/homebrew-burrete` tap, which release automation updates. |
 | `Burrete.xcodeproj` | Xcode project wiring for the macOS app, Quick Look targets, thumbnail target, and source-built iPhone target. |
 
 Do not commit scratch output, local renderer dumps, downloaded datasets, or
