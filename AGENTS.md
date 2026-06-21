@@ -7,6 +7,7 @@ dispatcher; load the focused doc for the surface you are changing.
 ## Documentation Graph
 
 - User-facing overview: [README.md](README.md)
+- Changelog pointer: [CHANGELOG.md](CHANGELOG.md)
 - Documentation map: [docs/README.md](docs/README.md)
 - Architecture: [docs/architecture.md](docs/architecture.md)
 - Modular runtime refactor: [docs/modular-runtime-refactor.md](docs/modular-runtime-refactor.md)

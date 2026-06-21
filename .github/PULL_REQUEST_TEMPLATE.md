@@ -22,6 +22,15 @@ List the commands or runtime checks run:
 - [ ] Updated local README/AGENTS file when a directory-specific rule changed.
 - [ ] No stale `.override` or duplicate guidance added.
 
+## Release Notes
+
+- [ ] Applied a release-note label when this change should appear in GitHub
+      release notes.
+- Suggested labels: `feature`, `enhancement`, `bug`, `fix`, `performance`,
+  `quick-look`, `packaging`, `documentation`, `chore`, `refactor`.
+- Use `skip-changelog` only for changes that should not appear on release
+  pages.
+
 ## Status
 
 - [ ] Ready to review.
