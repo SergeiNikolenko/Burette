@@ -30,11 +30,17 @@ contains only documents that describe the active project.
   requirements.
 - [Keyboard shortcuts](keyboard-shortcuts.md): app shortcuts and command palette
   actions.
+- [Agent platform](agent-platform.md): CLI, Browser shell, desktop session,
+  plugin, MCP, observe/action, and visual QA boundaries.
+- [Agent tool index](tools/index.md): focused validation and runtime helper
+  commands for agents.
 
 ## Maintenance Rules
 
 - Keep user-facing installation and usage in [README.md](../README.md).
 - Keep current engineering docs in `docs/`.
+- Keep directory-local README files for ordinary code architecture guidance and
+  directory-local AGENTS files only for high-risk agent/runtime boundaries.
 - Do not keep imported reference snapshots or migration handoff logs in the
   active docs graph.
 - Verify doc claims against code, scripts, or runtime output before changing
