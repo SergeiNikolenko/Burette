@@ -24,6 +24,8 @@ contains only documents that describe the active project.
   cache reset workflow.
 - [iOS mobile app](../ios/BurreteMobile/README.md): source-built iPhone preview
   app target, runtime reuse, signing, and real-device install flow.
+  Agent-facing local rules live in
+  [ios/BurreteMobile/AGENTS.md](../ios/BurreteMobile/AGENTS.md).
 - [Launch modes](launch-modes.md): normal, file-open, tray, and registration
   launch semantics.
 - [Releasing](releasing.md): version, build, signing, update, and artifact
