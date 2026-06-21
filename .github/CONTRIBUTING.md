@@ -18,6 +18,8 @@ evidence for a maintainer to review the diff quickly.
   agent workflows, or runtime contracts.
 - Do not include generated bundles, app builds, cache directories, or local
   smoke output unless a maintainer explicitly asks for that artifact.
+- Do not add large blobs unless they are intentional fixtures or runtime assets
+  listed in `.github/blob-size-allowlist.txt`.
 - For AI-generated changes, the author is responsible for manual review and for
   reporting exactly which commands or runtime checks were run.
 - Keep commits atomic where practical. Each commit should describe one coherent

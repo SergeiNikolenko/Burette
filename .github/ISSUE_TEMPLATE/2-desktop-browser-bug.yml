@@ -1,0 +1,41 @@
+name: Desktop / Browser-Dev Bug
+description: Report a desktop app, browser-dev shell, or browser Quick Look issue.
+labels:
+  - bug
+body:
+  - type: textarea
+    id: issue
+    attributes:
+      label: What happened?
+      description: Describe the visible app behavior or browser-dev route problem.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - Packaged desktop app
+        - Browser-dev shell
+        - Browser Quick Look route
+        - Tokenized browser preview
+        - Ketcher/editor surface
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Include commands, URL query parameters, sample files, and Browser/desktop surface used.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Paste console output, observe JSON, or test output with secrets and private paths redacted.
