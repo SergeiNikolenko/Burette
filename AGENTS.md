@@ -1,115 +1,65 @@
-# Agent Notes
+# Agent Dispatch
 
 Burrete is a macOS menu bar app plus a Quick Look Preview Extension for
-molecular structure files.
+molecular structure files. Keep this file as a dispatcher; load the focused doc
+for the surface you are changing.
 
 ## Documentation Graph
 
 - User-facing overview: [README.md](README.md)
 - Documentation map: [docs/README.md](docs/README.md)
 - Architecture: [docs/architecture.md](docs/architecture.md)
+- Modular runtime refactor: [docs/modular-runtime-refactor.md](docs/modular-runtime-refactor.md)
 - Renderer support: [docs/renderer-support.md](docs/renderer-support.md)
 - Quick Look debugging: [docs/quicklook-debugging.md](docs/quicklook-debugging.md)
+- Agent platform: [docs/agent-platform.md](docs/agent-platform.md)
+- Agent tool index: [docs/tools/index.md](docs/tools/index.md)
 - Release process: [docs/releasing.md](docs/releasing.md)
 
-## Stable Runtime Identifiers
+## Directory Context
 
-Quick Look extension bundle identifier:
+- Desktop hooks: [apps/desktop/src/hooks/README.md](apps/desktop/src/hooks/README.md)
+- Desktop library helpers: [apps/desktop/src/lib/README.md](apps/desktop/src/lib/README.md)
+- Desktop Vite runtime: [apps/desktop/vite/README.md](apps/desktop/vite/README.md)
+- Quick Look extension: [PreviewExtension/AGENTS.md](PreviewExtension/AGENTS.md)
+- Agent plugin: [plugins/burette-agent/AGENTS.md](plugins/burette-agent/AGENTS.md)
+- Repository scripts: [scripts/README.md](scripts/README.md)
 
-```text
-com.local.BurreteV10.Preview
-```
+## Common Routing
 
-Forced preview content types:
+- For frontend development and JavaScript validation, use Vite+ through `vp`;
+  see [docs/vite-plus.md](docs/vite-plus.md) and [scripts/README.md](scripts/README.md).
+- For browser previews, use the built-in Browser plugin. Do not use macOS
+  `open`, Chrome, Safari, or another external browser unless the user explicitly
+  asks for an external browser.
+- Do not open the desktop app as a substitute for a browser preview. Use
+  `desktop-app` only for packaged app, native app, Quick Look, or other
+  desktop-specific verification.
+- For packaged local testing, always use a unique `BURRETE_DEV_FLAVOR` unless
+  the task is explicitly release-bundle work.
+- For Quick Look work, read [PreviewExtension/AGENTS.md](PreviewExtension/AGENTS.md)
+  before building, installing, or forcing previews.
+- For plugin/MCP/skill work, read
+  [plugins/burette-agent/AGENTS.md](plugins/burette-agent/AGENTS.md) and
+  [docs/agent-platform.md](docs/agent-platform.md).
 
-```text
-com.local.burrete10.pdb
-com.local.burrete10.cif
-```
+## Validation Routing
 
-## Common Commands
-
-```bash
-vp install
-vp dev
-vp check
-vp test
-vp build
-BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/build.sh
-BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/install.sh
-BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/force-preview.sh samples/mini.pdb
-BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/force-preview.sh samples/mini.cif
-BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/force-preview.sh samples/mini.xyz
-```
-
-Use Vite+ through the `vp` CLI for frontend development and JavaScript
-validation. Prefer `vp dev`, `vp check`, `vp test`, and `vp build` over direct
-package-manager or Vite commands. Existing package scripts may still be run
-through `vp run <script>` when they cover project-specific validation not yet
-folded into a Vite+ built-in. Direct Bun commands remain implementation details
-inside repository-owned build, release, and installer scripts until a separate
-toolchain migration replaces those paths.
-
-When running `vp` from the Codex desktop shell on macOS, the app-bundled Node
-binary can fail to load Vite+/Rolldown native bindings. If a Vite+ command
-reports `Cannot find native binding` for `rolldown-binding.darwin-arm64.node`,
-first run `vp install`, then retry with the first non-Codex Node executable in
-`PATH` before changing application code. Do not hard-code a Codex runtime path;
-find a normal Node installation from the environment.
-
-## Browser Opening
-
-When the user asks to open something in a browser, or simply asks to open a
-local web target, always use the built-in `@Browser` plugin
-(`plugin://browser@openai-bundled`). Do not use macOS `open`, Chrome, Safari,
-or another external browser unless the user explicitly asks for an external
-browser. If the built-in Browser plugin is unavailable, crashed, or cannot
-attach to a tab, report that blocker and provide the local URL instead of
-falling back to an external browser.
-
-Do not open the Burrete desktop app as a substitute for a browser preview.
-Use `desktop-app` only when the user explicitly asks for the real packaged app,
-native app, Quick Look behavior, or another desktop-specific verification path.
-When the requested surface is ambiguous, keep the work in the built-in Browser
-or report the blocker; do not silently switch surfaces.
-
-When an agent builds or installs a packaged app for local testing, always use a
-dev flavor with a unique slug, preferably the worktree suffix:
-
-```bash
-BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/build.sh
-BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/install.sh
-BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/force-preview.sh samples/mini.pdb
-```
-
-This keeps the app, Quick Look extension, thumbnail extension, content types,
-and Launch Services registrations isolated from other worktrees and from the
-release bundle. Do not run unflavored `./scripts/build.sh`,
-`./scripts/install.sh`, or packaged preview smoke commands unless the user
-explicitly asks for a release or final non-dev bundle. `scripts/build-dev.sh`
-does not support dev flavors; agents should prefer the flavored
-`./scripts/build.sh` path for packaged local builds.
-
-Rust validation runs from the Tauri crate:
-
-```bash
-cd apps/desktop/src-tauri
-cargo test
-cargo clippy
-cargo fmt --check
-```
-
-After replacing the app, refresh Quick Look:
-
-```bash
-qlmanage -r
-qlmanage -r cache
-killall quicklookd 2>/dev/null || true
-```
+- Use [docs/tools/index.md](docs/tools/index.md) to pick the smallest reliable
+  command for the changed surface.
+- Rust validation runs from `apps/desktop/src-tauri`; use `cargo test`,
+  `cargo clippy`, and `cargo fmt --check` when changing Tauri/Rust code.
+- If a Vite+ command reports a missing Rolldown native binding in the Codex
+  desktop shell, run `vp install`, then retry with a normal system Node before
+  changing app code.
 
 ## Maintenance Rules
 
-- Keep current docs under `docs/`.
+- Keep durable engineering docs under `docs/`.
+- Use local README files for ordinary code architecture guidance.
+- Use local AGENTS files only for high-risk agent/runtime boundaries.
+- Do not add `.override` docs unless a maintainer explicitly asks for that
+  resolution model.
 - Do not reintroduce imported reference snapshots or migration handoff logs into
   the active docs graph.
 - Verify doc claims against source, scripts, or runtime output before updating
