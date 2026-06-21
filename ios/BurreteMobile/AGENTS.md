@@ -34,6 +34,9 @@ source-built iPhone preview app target.
   `ios/BurreteMobile/README.md`.
 - Keep the mobile app iPhone-first. Do not introduce persistent desktop-style
   sidebars or always-visible tool rails into the primary phone layout.
+- Prefer SF Symbols for native iPhone controls when a semantic match exists.
+  Keep custom app or molecular icons only when product-specific meaning requires
+  them.
 - Preserve the `WKWebView` preview runtime boundary. File loading, RDKit
   thumbnails, and Mol* hosting need real-device verification when touched.
 - Do not hard-code development team IDs, device UDIDs, or local derived-data
