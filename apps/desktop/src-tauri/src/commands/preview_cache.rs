@@ -19,7 +19,7 @@ fn clear_preview_cache_dir(base: &Path) -> Result<(), String> {
     if !base.exists() {
         return Ok(());
     }
-    for entry in fs::read_dir(&base).map_err(|err| err.to_string())? {
+    for entry in fs::read_dir(base).map_err(|err| err.to_string())? {
         let entry = entry.map_err(|err| err.to_string())?;
         if entry.file_name() != PRESERVED_VIEWER_CACHE_ENTRY {
             let _ = fs::remove_dir_all(entry.path());
