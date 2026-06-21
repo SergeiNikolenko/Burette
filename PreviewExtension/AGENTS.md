@@ -30,6 +30,9 @@ registration behavior without an explicit migration plan.
 - Invoke `$apple-design` for macOS Finder/Quick Look UI, AppKit/SwiftUI shell,
   icon, menu, toolbar, accessibility, or Apple Human Interface Guidelines
   decisions.
+- For native macOS UI or icon work, check SF Symbols through `$apple-design`
+  before adding custom glyphs. Keep custom or product-specific icons only when
+  the molecular meaning is not covered by a system symbol.
 - Invoke `@product-design` before implementation when the change affects the
   preview product flow, inspection workflow, or user-facing design direction.
 - Use `BURRETE_DEV_FLAVOR=<worktree-slug>` for packaged local builds and Quick
