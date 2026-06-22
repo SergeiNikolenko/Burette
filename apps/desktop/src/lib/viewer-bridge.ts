@@ -1,4 +1,4 @@
-export type ActiveViewerIframeForDocument = (documentId: string) => HTMLIFrameElement | null;
+export type ActiveViewerIframeForDocument = (documentId: string, renderer?: string) => HTMLIFrameElement | null;
 export type KnownViewerMessageSource = (source: MessageEventSource | null, documentId?: string) => boolean;
 export type PostMessageToViewerSource = (source: MessageEventSource | null, payload: unknown) => void;
 
@@ -27,11 +27,12 @@ export function postMessageToViewerSource(source: MessageEventSource | null, pay
   iframe?.contentWindow?.postMessage(payload, "*");
 }
 
-export function activeViewerIframeForDocument(documentId: string) {
+export function activeViewerIframeForDocument(documentId: string, renderer?: string) {
   const escapedId = CSS.escape(documentId);
+  const rendererSelector = renderer ? `[data-renderer="${CSS.escape(renderer)}"]` : "";
   return document.querySelector<HTMLIFrameElement>(
-    `.page-surface[data-active="true"] .viewer-iframe[data-document-id="${escapedId}"]`,
+    `.page-surface[data-active="true"] .viewer-iframe[data-document-id="${escapedId}"]${rendererSelector}`,
   ) ?? document.querySelector<HTMLIFrameElement>(
-    `.viewer-iframe[data-document-id="${escapedId}"]`,
+    `.viewer-iframe[data-document-id="${escapedId}"]${rendererSelector}`,
   );
 }
