@@ -2144,6 +2144,12 @@
       await reloadActiveMolstarStructure();
       return;
     }
+    if (activeMolstarPrepared?.kind === 'docking' && activeMolstarPrepared?.dockingSceneMode) {
+      const poseCount = Number(activeMolstarPrepared.poseCount || 0);
+      const activePose = readTrajectoryControlIndex(activeConfig, activeMolstarPrepared, poseCount || 1);
+      await applyDockingSceneVisibility(activeViewer, activeMolstarPrepared, activePose);
+      return;
+    }
     await reloadActiveMolstarStructure();
   }
 
@@ -8232,6 +8238,10 @@
           updateControls();
         } else if (prepared.kind === 'xyz-frame-overlay') {
           await applyXyzFrameOverlayVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { installControls: false });
+          activePose = nextIndex;
+          updateControls();
+        } else if (prepared.kind === 'docking' && prepared.dockingSceneMode) {
+          await applyDockingSceneVisibility(viewer, activeMolstarPrepared || prepared, nextIndex);
           activePose = nextIndex;
           updateControls();
         } else {
