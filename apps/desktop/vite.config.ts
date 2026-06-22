@@ -38,8 +38,10 @@ import { registerBrowserDevXtbRoutes } from "./vite/browser-dev/xtb";
 import { registerBrowserDevXyzrenderRoute } from "./vite/browser-dev/xyzrender";
 
 const desktopRoot = fileURLToPath(new URL(".", import.meta.url));
-const desktopDist = fileURLToPath(new URL("dist", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
+const desktopDist = process.env.BURRETE_AGENT_SHELL_OUT_DIR
+  ? resolve(process.env.BURRETE_AGENT_SHELL_OUT_DIR)
+  : fileURLToPath(new URL("dist", import.meta.url));
 const previewFormatRegistry = JSON.parse(readFileSync(join(repoRoot, "config", "preview-formats.json"), "utf8"));
 const extraFsAllow = (process.env.BURRETE_DEV_FS_ALLOW ?? "").split(delimiter).filter(Boolean);
 const defaultDevFileRoots = (process.env.BURRETE_DEV_DEFAULT_FILES ?? "").split(delimiter).filter(Boolean);

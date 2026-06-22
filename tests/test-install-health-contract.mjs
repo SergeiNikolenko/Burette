@@ -36,8 +36,32 @@ assert.match(installLocalScript, /installed app document types do not match buil
 assert.match(installLocalScript, /installed Quick Look supported content types do not match build output/);
 assert.match(installLocalScript, /assert_bundled_xyzrender_runner/);
 assert.match(installLocalScript, /run_bundled_xyzrender_help/);
+assert.match(installLocalScript, /-m xyzrender\.cli --help/);
+assert.doesNotMatch(installLocalScript, /"\$runtime\/bin\/xyzrender" --help/);
+assert.match(installLocalScript, /unregister_stale_dev_flavor_extensions\(\)/);
+assert.match(installLocalScript, /\/Burrete-/);
+assert.doesNotMatch(installLocalScript, /assert_quicklook_xyzrender_python/);
+assert.doesNotMatch(installLocalScript, /sign_quicklook_xyzrender_python/);
+assert.doesNotMatch(installLocalScript, /APPEX_XYZRENDER/);
+assert.doesNotMatch(installLocalScript, /STAGING_APPEX\/Contents\/Resources\/xyzrender-runtime/);
+assert.doesNotMatch(installLocalScript, /STAGING_APPEX\/Contents\/Resources\/xyzrender-python(?:\/|")/);
+assert.doesNotMatch(installLocalScript, /bundle_quicklook_xyzrender_launcher\(\)/);
+assert.match(installLocalScript, /Contents\/Resources\/xyzrender-python3/);
+assert.doesNotMatch(installLocalScript, /Contents\/MacOS\/xyzrender-python3/);
+assert.match(installLocalScript, /Contents\/lib\/libpython3\.13\.dylib/);
+assert.doesNotMatch(installLocalScript, /install_name_tool -change "@executable_path\/\.\.\/lib\/libpython3\.13\.dylib" "@executable_path\/libpython3\.13\.dylib"/);
+assert.doesNotMatch(installLocalScript, /Contents\/MacOS\/xyzrender-python\/bin\/python3/);
+assert.doesNotMatch(installLocalScript, /BurretePreviewChild\.entitlements/);
+assert.match(installLocalScript, /"\$STAGING_APPEX\/Contents\/Resources\/burrete-core-bridge"/);
 assert.match(installLocalScript, /pluginkit -a "\$DEST_APPEX"/);
 assert.match(installLocalScript, /LSSetDefaultRoleHandlerForContentType|lsregister/);
+assert.doesNotMatch(installLocalScript, /-name python3 -o/);
+assert.doesNotMatch(installLocalScript, /-name 'python3\.\*' -o/);
+assert.doesNotMatch(installLocalScript, /sign_bundled_xyzrender_runtime[\s\S]*sign_xyzrender_binaries/u);
+assert.doesNotMatch(installLocalScript, /sign_quicklook_xyzrender_launcher\(\)/u);
+assert.doesNotMatch(installLocalScript, /rsync -aL --delete "\$LOCAL_XYZRENDER_ENV\/" "\$STAGING_XYZRENDER_ENV\/"/u);
+assert.match(installLocalScript, /from build output/u);
+assert.doesNotMatch(installLocalScript, /XYZRENDER_CODESIGN_ENTITLEMENTS/u);
 
 for (const [input, defaultValue] of [
   ["bun-version", '"1.3.8"'],

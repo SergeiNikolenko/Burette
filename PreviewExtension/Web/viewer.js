@@ -87,7 +87,6 @@
   const DOCKING_MODEL_TRAJECTORY_FORMATS = new Set(['pdb', 'pdbqt', 'mmcif', 'gro']);
   const DOCKING_TOPOLOGY_TRAJECTORY_FORMATS = new Set(['top', 'psf', 'prmtop']);
   const STRUCTURE_DRAG_MIME = 'application/x-burrete-structure-paths';
-  const XYZRENDER_POPOVER_OPEN_KEY_PREFIX = 'buret.xyzrender.popover.open.v2';
   const MOLSTAR_VIEWPORT_PANEL_OPEN_CLASS = 'buret-molstar-viewport-panel-open';
   let xyzrenderControlsApplyTimer = 0;
   let xyzrenderInlineRequestSerial = 0;
@@ -118,10 +117,10 @@
   let molstarStructureFocusSerial = 0;
   try { window.__mqlDebug && window.__mqlDebug('[viewer.js] top-level IIFE entered; readyState=' + document.readyState); } catch (_) {}
 
-  function post(type, message) {
+  function post(type, message, payload = {}) {
     try {
-      if (window.__mqlPost) window.__mqlPost(type, message || '');
-      else postHostMessage({ type, message: message || '' });
+      if (window.__mqlPost) window.__mqlPost(type, message || '', payload || {});
+      else postHostMessage({ type, message: message || '', ...(payload || {}) });
     } catch (_) {
       // Browser-only testing, not WKWebView.
     }
@@ -1335,6 +1334,26 @@
     });
   }
 
+  function xyzrenderPopoverDocumentKey(config = {}) {
+    const documentId = String(config?.documentId || '').trim();
+    if (documentId) return `document:${documentId}`;
+    const requestID = String(config?.previewRequestID || config?.requestID || '').trim();
+    if (requestID) return `request:${requestID}`;
+    const sourcePath = String(config?.path || config?.filePath || config?.sourcePath || config?.label || '').trim();
+    return sourcePath ? `source:${sourcePath}` : '';
+  }
+
+  function syncXyzrenderPopoverDocument(toolbar, config = {}) {
+    if (!toolbar) return false;
+    const key = xyzrenderPopoverDocumentKey(config);
+    if (!key) return false;
+    const previous = toolbar.dataset.xyzrenderPopoverDocumentKey || '';
+    toolbar.dataset.xyzrenderPopoverDocumentKey = key;
+    if (!previous || previous === key) return false;
+    setXyzrenderPopoverVisibility(toolbar, false, { persist: false });
+    return true;
+  }
+
   function configureRendererControls(config) {
     const control = document.querySelector('[data-buret-renderer-control]');
     const toolbar = document.getElementById('buret-toolbar');
@@ -1402,7 +1421,8 @@
       });
     }
     observeMolstarViewportPanel();
-    const popoverWasOpen = popover?.classList.contains('hidden') === false;
+    const popoverDocumentChanged = syncXyzrenderPopoverDocument(toolbar, config);
+    const popoverWasOpen = popover?.classList.contains('hidden') === false && !popoverDocumentChanged;
     const popoverScrollTop = popover?.scrollTop || 0;
     control.querySelectorAll('[data-buret-renderer]').forEach(button => {
       const value = button.getAttribute('data-buret-renderer');
@@ -1443,7 +1463,7 @@
       if (renderer === 'xyzrender-external') {
         populateXyzrenderControlsForm(toolbar, normalizeXyzrenderControls(config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config));
         updateXyzrenderFormVisibility(toolbar);
-        if (popoverWasOpen || shouldRestoreXyzrenderPopoverOpen(config)) {
+        if (popoverWasOpen) {
           setXyzrenderPopoverVisibility(toolbar, true, { resetScroll: false });
           if (popover) popover.scrollTop = popoverScrollTop;
         }
@@ -1492,51 +1512,21 @@
     return DEFAULT_XYZRENDER_PRESETS.some(row => row.value === raw) ? raw : 'default';
   }
 
-  function xyzrenderPopoverStorageKey() {
-    const documentId = String(window.BurreteConfig?.documentId || '').trim();
-    return documentId ? `${XYZRENDER_POPOVER_OPEN_KEY_PREFIX}:${documentId}` : XYZRENDER_POPOVER_OPEN_KEY_PREFIX;
-  }
-
   function setXyzrenderPopoverVisibility(toolbar, open, options = {}) {
     const popover = toolbar?.querySelector('[data-buret-xyzrender-popover]');
     const tuneButton = toolbar?.querySelector('[data-buret-action="xyzrender-tune"]');
     if (!popover) return;
     const resetScroll = options.resetScroll === true;
-    const persist = options.persist !== false;
     popover.classList.toggle('hidden', !open);
     toolbar?.classList.toggle('buret-popover-open', open);
     if (tuneButton) {
       tuneButton.classList.toggle('active', open);
       tuneButton.toggleAttribute('data-open', open);
     }
-    if (persist) setXyzrenderPopoverOpenPersisted(open);
     if (open) {
       if (resetScroll) popover.scrollTop = 0;
       positionXyzrenderPopover(toolbar);
     }
-  }
-
-  function setXyzrenderPopoverOpenPersisted(open) {
-    try {
-      const key = xyzrenderPopoverStorageKey();
-      if (open) window.localStorage?.setItem(key, '1');
-      else window.localStorage?.setItem(key, '0');
-    } catch (_) {}
-  }
-
-  function shouldRestoreXyzrenderPopoverOpen(config = {}) {
-    try {
-      const stored = window.localStorage?.getItem(xyzrenderPopoverStorageKey());
-      if (stored === '1') return true;
-    } catch (_) {
-      // Fall through to the first-open default.
-    }
-    return shouldOpenXyzrenderPopoverByDefault(config);
-  }
-
-  function shouldOpenXyzrenderPopoverByDefault(config = {}) {
-    return normalizeRenderer(config.renderer) === 'xyzrender-external' &&
-      config.xyzrenderViewer === true;
   }
 
   function normalizeXyzrenderControls(value, config = {}) {
@@ -1961,7 +1951,7 @@
   }
 
   function molstarAutoFocusEnabled(config) {
-    return config?.autoFocusStructure !== false;
+    return config?.autoFocusStructure === true;
   }
 
   function hasMolstarContextFocus(config) {
@@ -2184,8 +2174,15 @@
     if (molstarStandalonePreviewTarget) showMolstarPersistentMoleculePreview(molstarStandalonePreviewTarget);
     void reportBurreteAgentState();
     startBurreteAgentActionPolling();
-    setStatus(`[web] Rendered ${config.label || 'structure'}`);
-    setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
+    {
+      const poseCount = Number(prepared?.poseCount || prepared?.sdfPoseRecordCount || prepared?.xyzFrameCount || config?.trajectoryFrameCount || 0);
+      setStatus(`[web] Rendered ${config.label || 'structure'}`);
+      setTimeout(() => hideStatus(molstarReadyPayload(config, prepared, {
+        molstarStructureCount: currentMolstarStructureCount(viewer),
+        poseCount,
+        trajectoryFrameCount: Math.max(Number(config?.trajectoryFrameCount || 0), poseCount)
+      })), isQuickLookHost() ? 0 : 700);
+    }
   }
 
   function toggleSdfPoseMode() {
@@ -2260,7 +2257,6 @@
       tuneButton?.classList.remove('active');
       tuneButton?.removeAttribute('data-open');
       popover?.classList.add('hidden');
-      setXyzrenderPopoverOpenPersisted(false);
     }
   }
 
@@ -2697,7 +2693,11 @@
     });
     configureRendererControls(activeConfig);
     setStatus(`[web] Rendered ${(activeConfig || {}).label || 'structure'} with external xyzrender`);
-    setTimeout(hideStatus, 450);
+    setTimeout(() => hideStatus(previewReadyPayload(activeConfig, {
+      renderer: 'xyzrender-external',
+      externalArtifact: true,
+      xyzrenderSvgBytes: String(payload.svg || '').length
+    })), 450);
   }
 
   function populateXyzrenderControlsForm(toolbar, controls) {
@@ -3991,8 +3991,40 @@
   }
 
 
-  function hideStatus() {
-    post('ready', 'ready');
+  function previewReadyPayload(config = activeConfig || window.BurreteConfig || {}, extra = {}) {
+    const cfg = config && typeof config === 'object' ? config : {};
+    return {
+      mode: cfg.mode || 'structure',
+      renderer: normalizeRenderer(extra.renderer || cfg.renderer),
+      format: cfg.molstarFormat || cfg.format || '',
+      sourceExtension: cfg.sourceExtension || '',
+      trajectoryFrameCount: Number(cfg.trajectoryFrameCount || 0),
+      externalArtifact: Boolean(cfg.externalArtifact || extra.externalArtifact),
+      ...extra
+    };
+  }
+
+  function molstarReadyPayload(config, prepared, extra = {}) {
+    const poseCount = Number(prepared?.poseCount || prepared?.sdfPoseRecordCount || prepared?.xyzFrameCount || config?.trajectoryFrameCount || 0);
+    return previewReadyPayload(config, {
+      renderer: 'molstar',
+      molstarStructureCount: Number(extra.molstarStructureCount || 0),
+      poseCount: Number.isFinite(poseCount) ? poseCount : 0,
+      trajectoryFrameCount: Math.max(Number(config?.trajectoryFrameCount || 0), Number.isFinite(poseCount) ? poseCount : 0),
+      ...extra
+    });
+  }
+
+  function currentMolstarStructureCount(viewer = activeViewer) {
+    try {
+      return Array.from(viewer?.plugin?.managers?.structure?.hierarchy?.current?.structures || []).length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  function hideStatus(payload = null) {
+    post('ready', 'ready', payload || previewReadyPayload());
     if (window.BurreteDebug) return;
     if (status) status.classList.add('hidden');
   }
@@ -4748,7 +4780,11 @@
     if (root) installExternalArtifactInteractions(root);
     initStaticRendererToolbar();
     setStatus(`[web] Rendered ${config.label || 'structure'} with external xyzrender`);
-    setTimeout(hideStatus, 450);
+    setTimeout(() => hideStatus(previewReadyPayload(config, {
+      renderer: 'xyzrender-external',
+      externalArtifact: true,
+      xyzrenderSvgBytes: inlineSvg ? inlineSvg.length : 0
+    })), 450);
   }
 
   function initStaticRendererToolbar() {
@@ -10864,8 +10900,15 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
         }
       }
     }
-    setStatus(`[web] Rendered ${config.label || 'structure'}`);
-    setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
+    {
+      const poseCount = Number(prepared?.poseCount || prepared?.sdfPoseRecordCount || prepared?.xyzFrameCount || config?.trajectoryFrameCount || 0);
+      setStatus(`[web] Rendered ${config.label || 'structure'}`);
+      setTimeout(() => hideStatus(molstarReadyPayload(config, prepared, {
+        molstarStructureCount: currentMolstarStructureCount(viewer),
+        poseCount,
+        trajectoryFrameCount: Math.max(Number(config?.trajectoryFrameCount || 0), poseCount)
+      })), isQuickLookHost() ? 0 : 700);
+    }
   }
 
   async function start() {

@@ -69,6 +69,9 @@ assert.match(sampleQuickLookSmoke, /preview-content-type\.mjs/);
 assert.match(sampleQuickLookSmoke, /BURRETE_DEV_FLAVOR is required/);
 assert.match(sampleQuickLookSmoke, /fd -t f \. "\$SAMPLES_DIR" \| sort/);
 assert.match(sampleQuickLookSmoke, /while IFS= read -r sample_file/);
+assert.match(sampleQuickLookSmoke, /quicklook-semantic-check\.mjs/);
+assert.match(sampleQuickLookSmoke, /semantic_status/);
+assert.match(sampleQuickLookSmoke, /SKIP\\t/);
 assert.doesNotMatch(sampleQuickLookSmoke, /--reject-table/);
 
 assert.match(agentCli, /browser-dev-shell/);

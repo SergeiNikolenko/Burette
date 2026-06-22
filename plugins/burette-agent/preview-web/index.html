@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Burrete Preview</title>
+  <link rel="stylesheet" href="./molstar.css" />
+  <link rel="stylesheet" href="./viewer-runtime.css" />
+  <script>
+    (function () {
+      function post(type, message) {
+        try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burrete.postMessage({ type: type, message: message || '' }); } catch (_) {}
+      }
+      window.__mqlPost = post;
+      window.addEventListener('error', function (event) {
+        var message = (event.error && event.error.stack) || event.message || String(event);
+        var el = document.getElementById('status');
+        if (el) { el.textContent = '[web] JavaScript error\n\n' + message; el.classList.add('error'); el.classList.remove('hidden'); }
+        post('error', message);
+      });
+      window.addEventListener('unhandledrejection', function (event) {
+        var reason = event.reason || {};
+        var message = reason.stack || reason.message || String(reason);
+        var el = document.getElementById('status');
+        if (el) { el.textContent = '[web] Unhandled promise rejection\n\n' + message; el.classList.add('error'); el.classList.remove('hidden'); }
+        post('error', message);
+      });
+    })();
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+  <script src="./viewer-shell.js"></script>
+  <div id="buret-window-outline" aria-hidden="true"></div>
+  <div id="status">[web] Loading Mol* preview shell…</div>
+  <script>
+    window.BurreteCacheBuster = String(Date.now());
+  </script>
+  <script src="./burette-agent.js"></script>
+  <script src="./viewer.js"></script>
+</body>
+</html>

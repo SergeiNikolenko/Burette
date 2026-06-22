@@ -37,7 +37,13 @@ BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/smoke-samples-quicklook.sh samples
 
 `quicklook-preview-smoke.sh` is the focused CI-style smoke.
 `smoke-samples-quicklook.sh` enumerates a samples directory and writes TSV and
-Markdown reports under `build/reports`.
+Markdown reports under `build/reports`. It also runs
+`quicklook-semantic-check.mjs` against the extension log so empty or wrong
+renderers fail even when Quick Look reports a lifecycle `ready`.
+
+Native Quick Look smoke skips public CSV/TSV files because macOS normally routes
+those UTIs through the system table generator. Use browser-dev or the packaged
+desktop app for Burrete grid rendering checks.
 
 ## Agent Platform
 

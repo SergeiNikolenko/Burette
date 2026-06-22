@@ -41,6 +41,7 @@ struct GridRecord {
 pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
     app: &tauri::AppHandle<R>,
     document_id: &str,
+    registry_document_id: &str,
     file_path: &Path,
     extension: &str,
     data: &[u8],
@@ -74,7 +75,7 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
     let collection = grid_store.summary;
     app.state::<super::grid_store::GridRuntimeRegistry>()
         .register(
-            document_id,
+            registry_document_id,
             grid_store.database_path,
             collection.format,
             grid_store.cancel_token,

@@ -633,7 +633,10 @@ fn should_use_converted_molstar_data(
 ) -> bool {
     data.is_some()
         && !format.is_binary
-        && matches!(format.molstar_format.as_str(), "gro" | "mmcif" | "cifCore")
+        && matches!(
+            format.molstar_format.as_str(),
+            "gro" | "mmcif" | "cifCore" | "lammpstrj" | "dump"
+        )
 }
 
 fn xyzrender_available_for_document(format: &FormatInfo, data: &[u8]) -> bool {

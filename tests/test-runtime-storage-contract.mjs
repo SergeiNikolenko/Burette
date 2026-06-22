@@ -50,7 +50,6 @@ assert.deepEqual(storageConstants(viewer), sortedPairs([
   ["SDF_CONTEXT_STYLE_STORAGE_KEY", "buret.sdf.contextStyle"],
   ["SDF_POSE_MODE_STORAGE_KEY", "buret.sdf.poseMode"],
   ["VIEWER_THEME_STORAGE_KEY", "buret.viewer.theme"],
-  ["XYZRENDER_POPOVER_OPEN_KEY_PREFIX", "buret.xyzrender.popover.open.v2"],
   ["XYZ_FRAME_MODE_STORAGE_KEY", "buret.xyz.frameMode"],
 ]));
 
@@ -76,7 +75,7 @@ assert.match(viewer, /return `\$\{SDF_CONTEXT_STYLE_STORAGE_KEY\}\.\$\{documentI
 assert.match(viewer, /return `\$\{SDF_CONTEXT_STYLE_STORAGE_KEY\}\.fallback-\$\{stableTextHash\(fallback\)\}`/);
 assert.match(viewer, /return `\$\{SDF_CONTEXT_OPACITY_STORAGE_KEY\}\.\$\{documentId\}`/);
 assert.match(viewer, /return `\$\{SDF_CONTEXT_COLOR_STORAGE_KEY\}\.\$\{documentId\}`/);
-assert.match(viewer, /return documentId \? `\$\{XYZRENDER_POPOVER_OPEN_KEY_PREFIX\}:\$\{documentId\}` : XYZRENDER_POPOVER_OPEN_KEY_PREFIX/);
+assert.doesNotMatch(viewer, /buret\.xyzrender\.popover\.open/);
 assert.match(viewer, /return `buret\.structureScene\.poseMode\.\$\{documentId\}`/);
 assert.match(viewer, /return `buret\.structureScene\.poseMode\.fallback-\$\{stableTextHash\(fallback\)\}`/);
 assert.match(viewer, /return `burrete\.dockingPose\.\$\{documentId\}`/);

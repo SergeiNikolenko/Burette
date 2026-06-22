@@ -25,11 +25,6 @@ STAGING_DEST="$DEST_DIR/.${APP_BUNDLE_NAME%.app}.installing.app"
 LOCAL_XYZRENDER_ENV="$HOME/.local/share/uv/tools/xyzrender"
 DEST_XYZRENDER_ENV="$DEST/Contents/Resources/xyzrender-runtime"
 STAGING_XYZRENDER_ENV="$STAGING_DEST/Contents/Resources/xyzrender-runtime"
-LOCAL_XYZRENDER_PYTHON_HOME="$(sed -n 's/^home = //p' "$LOCAL_XYZRENDER_ENV/pyvenv.cfg" 2>/dev/null | head -n 1 || true)"
-LOCAL_XYZRENDER_PYTHON_ROOT=""
-if [[ -n "$LOCAL_XYZRENDER_PYTHON_HOME" ]]; then
-  LOCAL_XYZRENDER_PYTHON_ROOT="$(cd -P "$LOCAL_XYZRENDER_PYTHON_HOME/.." && pwd -P)"
-fi
 DEST_XYZRENDER_PYTHON="$DEST/Contents/Resources/xyzrender-python"
 STAGING_XYZRENDER_PYTHON="$STAGING_DEST/Contents/Resources/xyzrender-python"
 LEGACY_OLD_DEST="$DEST_DIR/Bur""ette.app"
@@ -147,6 +142,22 @@ unregister_legacy_launch_services_bundles() {
       unregister_bundle "$bundle_path"
     done
 }
+unregister_stale_dev_flavor_extensions() {
+  [[ "$IS_DEV_FLAVOR" == "1" ]] || return 0
+  while IFS= read -r old_appex; do
+    [[ "$old_appex" == "$DEST_APPEX" ]] && continue
+    case "$old_appex" in
+      *"/Burrete-"*.app/Contents/PlugIns/BurretePreview.appex)
+        pluginkit -r "$old_appex" 2>/dev/null || true
+        unregister_bundle "${old_appex%/Contents/PlugIns/*}.app"
+        ;;
+    esac
+  done < <(
+    pluginkit -m -A -D -vvv -p com.apple.quicklook.preview 2>/dev/null |
+      sed -n 's/^[[:space:]]*Path = //p' |
+      grep -F '/Burrete-' || true
+  )
+}
 echo "Unregistering old Burrete extensions, if any..."
 pkill -f "$DEST/Contents/MacOS/Burrete" 2>/dev/null || true
 pkill -f "$DEST/Contents/MacOS/burrete" 2>/dev/null || true
@@ -154,6 +165,7 @@ pkill -f "$LEGACY_OLD_DEST/Contents/MacOS/MolstarQuickLook" 2>/dev/null || true
 pkill -f "$LEGACY_XYZ_DEST" 2>/dev/null || true
 pkill -f "$ROOT/build/Build/Products/Debug/MolstarQuickLook" 2>/dev/null || true
 pluginkit -r "$EXT_ID" 2>/dev/null || true
+unregister_stale_dev_flavor_extensions
 if [[ "$IS_DEV_FLAVOR" != "1" ]]; then
   for OLD_ID in \
     com.local.Burrete.Preview \
@@ -213,11 +225,16 @@ assert_bundled_xyzrender_runtime() {
 }
 run_bundled_xyzrender_help() {
   local runtime="$1"
+  local python_root="$2"
   local timeout_seconds=10
   local elapsed=0
   local pid
+  local site_packages
+  local python="$python_root/bin/python3"
 
-  "$runtime/bin/xyzrender" --help >/dev/null &
+  site_packages="$(find "$runtime/lib" -maxdepth 2 -type d -name site-packages | head -n 1)"
+  [[ -n "$site_packages" && -d "$site_packages" ]] || return 1
+  PYTHONNOUSERSITE=1 PYTHONPATH="$site_packages" "$python" -m xyzrender.cli --help >/dev/null &
   pid=$!
   while kill -0 "$pid" 2>/dev/null; do
     if (( elapsed >= timeout_seconds )); then
@@ -240,30 +257,14 @@ assert_bundled_xyzrender_runner() {
     return 0
   fi
   for attempt in $(seq 1 6); do
-    if run_bundled_xyzrender_help "$runtime"; then
+    if run_bundled_xyzrender_help "$runtime" "$python_root"; then
       return 0
     fi
     [[ "$attempt" == 6 ]] && break
     sleep 2
   done
-  echo "error: bundled xyzrender wrapper is not runnable $stage" >&2
+  echo "error: bundled xyzrender runner is not available $stage" >&2
   exit 1
-}
-
-sign_bundled_xyzrender_runtime() {
-  local runtime="$1"
-  local python_root="$2"
-  [[ -d "$runtime" && -d "$python_root" ]] || return 0
-  while IFS= read -r binary; do
-    codesign "${CODESIGN_ARGS[@]}" "$binary" >/dev/null
-  done < <(
-    find "$runtime" "$python_root" -type f \( \
-      -name python3 -o \
-      -name 'python3.*' -o \
-      -name '*.dylib' -o \
-      -name '*.so' \
-    \)
-  )
 }
 
 mkdir -p "$DEST_DIR"
@@ -279,55 +280,21 @@ rm -rf "$STAGING_DEST/Contents/Resources/ViewerWeb" "$STAGING_APPEX/Contents/Res
 ditto --norsrc --noextattr "$ROOT/PreviewExtension/Web" "$STAGING_DEST/Contents/Resources/ViewerWeb"
 ditto --norsrc --noextattr "$ROOT/PreviewExtension/Web" "$STAGING_APPEX/Contents/Resources/Web"
 if [[ -d "$LOCAL_XYZRENDER_ENV" ]]; then
-  [[ -n "$LOCAL_XYZRENDER_PYTHON_ROOT" && -x "$LOCAL_XYZRENDER_PYTHON_ROOT/bin/python3" ]] || {
-    echo "error: could not resolve relocatable xyzrender python runtime from $LOCAL_XYZRENDER_ENV/pyvenv.cfg" >&2
+  assert_bundled_xyzrender_runtime "$STAGING_XYZRENDER_ENV" "$STAGING_XYZRENDER_PYTHON" "from build output"
+  [[ -x "$STAGING_APPEX/Contents/Resources/xyzrender-python3" ]] || {
+    echo "error: built Quick Look xyzrender launcher is missing: $STAGING_APPEX/Contents/Resources/xyzrender-python3" >&2
     exit 1
   }
-  rm -rf "$STAGING_XYZRENDER_ENV"
-  mkdir -p "$STAGING_XYZRENDER_ENV"
-  rsync -aL --delete "$LOCAL_XYZRENDER_ENV/" "$STAGING_XYZRENDER_ENV/"
-  rm -rf "$STAGING_XYZRENDER_PYTHON"
-  mkdir -p "$STAGING_XYZRENDER_PYTHON"
-  rsync -aL --delete "$LOCAL_XYZRENDER_PYTHON_ROOT/" "$STAGING_XYZRENDER_PYTHON/"
-  clean_detritus "$STAGING_XYZRENDER_PYTHON"
-  cat >"$STAGING_XYZRENDER_ENV/bin/xyzrender" <<'EOF'
-#!/bin/sh
-set -eu
-
-SELF_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-RUNTIME_ROOT="$(CDPATH= cd -- "$SELF_DIR/.." && pwd)"
-PYTHON_ROOT="$(CDPATH= cd -- "$RUNTIME_ROOT/../xyzrender-python" && pwd)"
-SITE_PACKAGES="$(find "$RUNTIME_ROOT/lib" -maxdepth 2 -type d -name site-packages | head -n 1)"
-
-if [ ! -x "$PYTHON_ROOT/bin/python3" ]; then
-  echo "missing bundled python runtime: $PYTHON_ROOT/bin/python3" >&2
-  exit 1
-fi
-if [ -z "$SITE_PACKAGES" ] || [ ! -d "$SITE_PACKAGES" ]; then
-  echo "missing bundled site-packages under $RUNTIME_ROOT/lib" >&2
-  exit 1
-fi
-
-PYTHONNOUSERSITE=1 \
-PYTHONPATH="$SITE_PACKAGES" \
-exec "$PYTHON_ROOT/bin/python3" -m xyzrender.cli "$@"
-EOF
-  chmod +x "$STAGING_XYZRENDER_ENV/bin/xyzrender"
-  clean_detritus "$STAGING_XYZRENDER_ENV"
-  codesign "${CODESIGN_ARGS[@]}" "$STAGING_XYZRENDER_PYTHON/bin/python3" >/dev/null
-  [[ -f "$STAGING_XYZRENDER_ENV/bin/xyzrender" ]] || {
-    echo "error: bundled xyzrender runtime is missing after staging: $STAGING_XYZRENDER_ENV/bin/xyzrender" >&2
+  [[ -f "$STAGING_APPEX/Contents/lib/libpython3.13.dylib" ]] || {
+    echo "error: built Quick Look libpython is missing: $STAGING_APPEX/Contents/lib/libpython3.13.dylib" >&2
     exit 1
   }
-  assert_bundled_xyzrender_runtime "$STAGING_XYZRENDER_ENV" "$STAGING_XYZRENDER_PYTHON" "before signing"
 fi
+codesign "${CODESIGN_ARGS[@]}" "$STAGING_APPEX/Contents/Resources/burrete-core-bridge" >/dev/null
 codesign "${CODESIGN_ARGS[@]}" --entitlements "$ROOT/PreviewExtension/BurretePreview.entitlements" "$STAGING_APPEX" >/dev/null
-if [[ -d "$LOCAL_XYZRENDER_ENV" ]]; then
-  sign_bundled_xyzrender_runtime "$STAGING_XYZRENDER_ENV" "$STAGING_XYZRENDER_PYTHON"
-fi
 codesign "${CODESIGN_ARGS[@]}" "$STAGING_DEST" >/dev/null
 if [[ -d "$LOCAL_XYZRENDER_ENV" ]]; then
-  assert_bundled_xyzrender_runner "$STAGING_XYZRENDER_ENV" "$STAGING_XYZRENDER_PYTHON" "after signing"
+  assert_bundled_xyzrender_runner "$STAGING_XYZRENDER_ENV" "$STAGING_XYZRENDER_PYTHON" "after app signing"
 fi
 codesign --verify --deep --strict "$STAGING_DEST"
 rm -rf "$DEST"
