@@ -22,8 +22,10 @@ assert.equal(isMolstarCombineSource("/tmp/receptor.pdb"), true);
 assert.equal(isMolstarCombineSource("/tmp/poses.sdf"), true);
 assert.equal(isMolstarCombineSource("/tmp/frame.gro"), true);
 assert.equal(isMolstarCombineSource("/tmp/traj.xtc"), true);
+assert.equal(isMolstarCombineSource("/tmp/trajectory.nc"), true);
 assert.equal(isMolstarCombineSource("/tmp/network.graphml"), false);
 assert.equal(isMolstarCoordinateTrajectorySource("/tmp/traj.xtc"), true);
+assert.equal(isMolstarCoordinateTrajectorySource("/tmp/trajectory.nc"), true);
 assert.equal(isMolstarCoordinateTrajectorySource("/tmp/frame.gro"), false);
 
 assert.deepEqual(
@@ -181,6 +183,22 @@ assert.deepEqual(
   {
     receptorPath: "/tmp/frame.gro",
     ligandPaths: ["/tmp/trajectory.xtc"],
+  },
+);
+
+assert.deepEqual(
+  dockingRequestForDrop("/tmp/reference.pdb", ["/tmp/trajectory.nc"]),
+  {
+    receptorPath: "/tmp/reference.pdb",
+    ligandPaths: ["/tmp/trajectory.nc"],
+  },
+);
+
+assert.deepEqual(
+  dockingRequestForDrop("/tmp/trajectory.nc", ["/tmp/reference.pdb"]),
+  {
+    receptorPath: "/tmp/reference.pdb",
+    ligandPaths: ["/tmp/trajectory.nc"],
   },
 );
 
